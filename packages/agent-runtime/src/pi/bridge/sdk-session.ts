@@ -1,11 +1,9 @@
 import { dirname } from "node:path";
 import {
   createAgentSessionFromServices,
-  createAgentSessionServices,
   createBashToolDefinition,
   defineTool,
   SessionManager,
-  getAgentDir,
   type AgentSession,
   type AgentSessionEvent,
   type BashSpawnHook,
@@ -17,6 +15,7 @@ import {
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import type { ImageContent } from "@earendil-works/pi-ai";
+import { createConfiguredPiServices } from "./configured-services.js";
 
 export interface PiSdkSessionOptions {
   cwd: string;
@@ -216,9 +215,8 @@ export class PiSdkSession {
     // Pi's service factory reads the global and project settings files. It also
     // discovers packages, extensions, skills, prompts, themes, context files,
     // auth, and custom models from the user's normal Pi directories.
-    const services = await createAgentSessionServices({
+    const services = await createConfiguredPiServices({
       cwd: this.options.cwd,
-      agentDir: getAgentDir(),
       ...(this.options.modelRuntime
         ? { modelRuntime: this.options.modelRuntime }
         : {}),
@@ -237,13 +235,6 @@ export class PiSdkSession {
           : {}),
       },
     });
-
-    const serviceErrors = services.diagnostics.filter(
-      (diagnostic) => diagnostic.type === "error",
-    );
-    if (serviceErrors.length > 0) {
-      throw new Error(serviceErrors.map((error) => error.message).join("\n"));
-    }
 
     const configuredModel = resolveConfiguredModel(
       services.modelRuntime,

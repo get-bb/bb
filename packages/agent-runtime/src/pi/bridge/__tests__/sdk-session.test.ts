@@ -27,7 +27,7 @@ interface MockBashToolOptions {
 }
 
 interface MockCreateAgentSessionServicesOptions {
-  agentDir: string;
+  agentDir?: string;
   cwd: string;
   modelRuntime?: object;
   resourceLoaderOptions: Record<string, unknown>;
@@ -156,7 +156,7 @@ const {
   };
   const mockCreateAgentSessionServices = vi.fn(
     async (options: MockCreateAgentSessionServicesOptions) => ({
-      agentDir: options.agentDir,
+      agentDir: options.agentDir ?? "/tmp/pi-agent",
       cwd: options.cwd,
       diagnostics: [],
       modelRuntime: options.modelRuntime ?? mockModelRuntime,
@@ -190,7 +190,6 @@ const {
 
 vi.mock("@earendil-works/pi-coding-agent", () => ({
   createAgentSessionFromServices: mockCreateAgentSession,
-  createAgentSessionServices: mockCreateAgentSessionServices,
   createBashToolDefinition: mockCreateBashToolDefinition,
   defineTool: mockDefineTool,
   getAgentDir: vi.fn(() => "/tmp/pi-agent"),
@@ -198,6 +197,10 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
     open: mockOpen,
     inMemory: mockInMemory,
   },
+}));
+
+vi.mock("../configured-services.js", () => ({
+  createConfiguredPiServices: mockCreateAgentSessionServices,
 }));
 
 import { PiSdkSession } from "../sdk-session.js";
@@ -285,10 +288,21 @@ describe("PiSdkSession", () => {
     await session.start();
 
     expect(mockCreateAgentSessionServices).toHaveBeenCalledWith({
-      agentDir: "/tmp/pi-agent",
       cwd: "/tmp/project",
       resourceLoaderOptions: {},
     });
+  });
+
+  it("reports a broken configured extension before the thread starts", async () => {
+    mockCreateAgentSessionServices.mockRejectedValueOnce(
+      new Error("Failed to load Pi extension broken.ts: syntax error"),
+    );
+    const session = new PiSdkSession({ cwd: "/tmp/project" }, vi.fn(), vi.fn());
+
+    await expect(session.start()).rejects.toThrow(
+      "Failed to load Pi extension broken.ts",
+    );
+    expect(mockCreateAgentSession).not.toHaveBeenCalled();
   });
 
   it("opens a persistent session file when provided", async () => {

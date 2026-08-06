@@ -3218,7 +3218,11 @@ describe("public thread data routes", () => {
             { id: "acp-hermes-agent", executableName: "hermes" },
           ],
         },
-        { type: "provider.list_models", providerId: "codex" },
+        {
+          type: "provider.list_models",
+          providerId: "codex",
+          cwd: "/tmp/test-environment",
+        },
       ]);
     });
   });

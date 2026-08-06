@@ -35,7 +35,7 @@ const {
   mockInMemory,
   mockOpen,
   mockResourceLoaders,
-  mockModelRuntime,
+  mockGetPiModelRuntime,
 } = vi.hoisted(() => {
   const mockResourceLoaders: MockPiResourceLoader[] = [];
   const mockSettingsManager = {
@@ -76,7 +76,7 @@ const {
     mockInMemory: vi.fn((cwd?: string) => ({ kind: "in-memory", cwd })),
     mockOpen: vi.fn((path: string) => ({ kind: "open", path })),
     mockResourceLoaders,
-    mockModelRuntime,
+    mockGetPiModelRuntime: vi.fn(async () => mockModelRuntime),
   };
 });
 
@@ -98,8 +98,12 @@ vi.mock("@earendil-works/pi-coding-agent", async (importOriginal) => {
   };
 });
 
+vi.mock("../configured-services.js", () => ({
+  createConfiguredPiServices: mockCreateAgentSessionServices,
+}));
+
 vi.mock("../model-runtime.js", () => ({
-  getPiModelRuntime: vi.fn(async () => mockModelRuntime),
+  getPiModelRuntime: mockGetPiModelRuntime,
 }));
 
 import { handleLine } from "../bridge.js";
@@ -187,6 +191,19 @@ describe("pi bridge", () => {
     delete process.env[PI_BRIDGE_SESSION_DIR_ENV];
   });
 
+  it("uses the requested project path for model listing", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+
+    try {
+      bridge.sendRequest(99, "model/list", { cwd: "/tmp/project-models" });
+      await bridge.waitForResponse(99);
+
+      expect(mockGetPiModelRuntime).toHaveBeenCalledWith("/tmp/project-models");
+    } finally {
+      bridge.restore();
+    }
+  });
+
   afterEach(() => {
     if (originalPiBridgeSessionDir === undefined) {
       delete process.env[PI_BRIDGE_SESSION_DIR_ENV];
@@ -212,7 +229,6 @@ describe("pi bridge", () => {
       expect(mockResourceLoaders).toHaveLength(1);
       expect(mockResourceLoaders[0]?.options).toMatchObject({
         cwd: "/tmp/worktree",
-        agentDir: "/tmp/pi-agent",
       });
       expect(mockResourceLoaders[0]?.options.systemPrompt).toBeUndefined();
       expect(mockResourceLoaders[0]?.options.noSkills).toBeUndefined();
@@ -243,7 +259,6 @@ describe("pi bridge", () => {
       expect(mockResourceLoaders).toHaveLength(1);
       expect(mockResourceLoaders[0]?.options).toMatchObject({
         cwd: "/tmp/worktree",
-        agentDir: "/tmp/pi-agent",
         additionalSkillPaths: ["/tmp/bb-skills", "/tmp/repo-skills"],
       });
       expect(mockResourceLoaders[0]?.options.noSkills).toBeUndefined();
@@ -269,7 +284,6 @@ describe("pi bridge", () => {
       expect(mockResourceLoaders).toHaveLength(1);
       expect(mockResourceLoaders[0]?.options).toMatchObject({
         cwd: "/tmp/worktree",
-        agentDir: "/tmp/pi-agent",
         systemPrompt: "Replacement prompt",
       });
       expect(mockResourceLoaders[0]?.options.noExtensions).toBeUndefined();

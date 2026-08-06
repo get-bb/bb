@@ -1277,7 +1277,7 @@ export function createPiProviderAdapter(
           return {
             kind: "request",
             method: "model/list",
-            params: {},
+            params: command.cwd ? { cwd: command.cwd } : {},
           };
         case "skills/configure":
           return {

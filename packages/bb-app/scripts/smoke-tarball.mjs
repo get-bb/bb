@@ -445,10 +445,7 @@ async function waitForBridgeMessage({
     if (message) {
       return message;
     }
-    if (
-      childProcess.exitCode !== null ||
-      childProcess.signalCode !== null
-    ) {
+    if (childProcess.exitCode !== null || childProcess.signalCode !== null) {
       throw new Error(
         `${label} exited before the expected message\n${formatProcessOutput(output)}`,
       );
@@ -480,19 +477,25 @@ async function smokePiUserConfiguration(packageDir) {
   const testRoot = join(tempRoot, "pi-user-config");
   const agentDir = join(testRoot, "agent");
   const workspaceDir = join(testRoot, "workspace");
+  const maintenanceDir = join(testRoot, "provider-maintenance-workspace");
   const projectConfigDir = join(workspaceDir, ".pi");
   const extensionPath = join(testRoot, "configured-extension.ts");
   const sessionMarkerPath = join(testRoot, "session-marker.json");
   const toolMarkerPath = join(testRoot, "tool-marker.txt");
   await mkdir(agentDir, { recursive: true });
   await mkdir(projectConfigDir, { recursive: true });
+  await mkdir(maintenanceDir, { recursive: true });
   await writeFile(
     extensionPath,
     await readFile(piConfigExtensionFixturePath, "utf8"),
   );
   await writeFile(
     join(agentDir, "settings.json"),
-    JSON.stringify({ extensions: [extensionPath] }, null, 2),
+    JSON.stringify({ defaultProjectTrust: "ask" }, null, 2),
+  );
+  await writeFile(
+    join(agentDir, "trust.json"),
+    JSON.stringify({ [workspaceDir]: true }, null, 2),
   );
   await writeFile(
     join(projectConfigDir, "settings.json"),
@@ -501,6 +504,7 @@ async function smokePiUserConfiguration(packageDir) {
         defaultModel: "bb-config-e2e-model",
         defaultProvider: "bb-config-e2e",
         defaultThinkingLevel: "high",
+        extensions: [extensionPath],
       },
       null,
       2,
@@ -515,7 +519,7 @@ async function smokePiUserConfiguration(packageDir) {
     "bb-pi-bridge.mjs",
   );
   const childProcess = spawn(process.execPath, [bridgePath], {
-    cwd: workspaceDir,
+    cwd: maintenanceDir,
     env: {
       ...process.env,
       BB_PI_BRIDGE_SESSION_DIR: join(testRoot, "sessions"),
@@ -552,7 +556,7 @@ async function smokePiUserConfiguration(packageDir) {
     sendBridgeRequest(childProcess, 101, "initialize", {
       clientInfo: { name: "bb-app-smoke", version: "0.0.0" },
     });
-    sendBridgeRequest(childProcess, 105, "model/list", {});
+    sendBridgeRequest(childProcess, 105, "model/list", { cwd: workspaceDir });
     const modelListResponse = await waitForBridgeMessage({
       childProcess,
       label,
@@ -565,8 +569,7 @@ async function smokePiUserConfiguration(packageDir) {
       !Array.isArray(modelListResponse.result.models) ||
       !modelListResponse.result.models.some(
         (model) =>
-          isRecord(model) &&
-          model.id === "bb-config-e2e/bb-config-e2e-model",
+          isRecord(model) && model.id === "bb-config-e2e/bb-config-e2e-model",
       )
     ) {
       throw new Error(
@@ -609,7 +612,8 @@ async function smokePiUserConfiguration(packageDir) {
     });
 
     const errors = messages.filter(
-      (message) => isRecord(message) && ("error" in message || message.method === "error"),
+      (message) =>
+        isRecord(message) && ("error" in message || message.method === "error"),
     );
     if (errors.length > 0) {
       throw new Error(`${label} emitted errors: ${JSON.stringify(errors)}`);
@@ -643,9 +647,7 @@ async function smokePiUserConfiguration(packageDir) {
       );
     }
 
-    const sessionMarker = JSON.parse(
-      await readFile(sessionMarkerPath, "utf8"),
-    );
+    const sessionMarker = JSON.parse(await readFile(sessionMarkerPath, "utf8"));
     if (
       sessionMarker.provider !== "bb-config-e2e" ||
       sessionMarker.model !== "bb-config-e2e-model" ||
@@ -672,10 +674,7 @@ async function smokePiUserConfiguration(packageDir) {
     });
   } finally {
     childProcess.stdin.end();
-    if (
-      childProcess.exitCode === null &&
-      childProcess.signalCode === null
-    ) {
+    if (childProcess.exitCode === null && childProcess.signalCode === null) {
       const exited = await Promise.race([
         waitForProcessExit(childProcess).then(() => true),
         delay(PROCESS_STOP_TIMEOUT_MS).then(() => false),

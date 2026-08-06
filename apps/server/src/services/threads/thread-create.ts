@@ -108,6 +108,7 @@ interface DeriveThreadCreateTitleFallbackArgs {
 }
 
 interface ResolveCatalogExecutionDefaultsArgs {
+  cwd?: string;
   executionDefaults: ProjectExecutionDefaults | null;
   hostId: string | null;
   providerId: string;
@@ -131,6 +132,7 @@ async function resolveCatalogExecutionDefaults(
   }
 
   const catalog = await resolveSystemProviderModels(deps, {
+    ...(args.cwd !== undefined ? { cwd: args.cwd } : {}),
     hostId: args.hostId,
     providerId: args.providerId,
   });
@@ -218,6 +220,23 @@ function childHostIdForResolvedEnvironment(
       return resolvedEnvironment.hostId;
     case "personal":
       return resolvedEnvironment.hostId;
+  }
+}
+
+function modelCatalogCwdForResolvedEnvironment(
+  resolvedEnvironment: ResolvedStableThreadRequestEnvironment,
+): string | undefined {
+  switch (resolvedEnvironment.type) {
+    case "reuse":
+      return resolvedEnvironment.environment.path ?? undefined;
+    case "host":
+      return (
+        resolvedEnvironment.unmanagedPath ??
+        resolvedEnvironment.localSource?.path ??
+        undefined
+      );
+    case "personal":
+      return undefined;
   }
 }
 
@@ -743,9 +762,12 @@ export async function createThreadFromRequest(
   const hostDataDir = await ensureCreateHostOnline(deps, {
     resolvedEnvironment,
   });
+  const modelCatalogCwd =
+    modelCatalogCwdForResolvedEnvironment(resolvedEnvironment);
   const resolvedExecutionDefaults = await resolveCatalogExecutionDefaults(
     deps,
     {
+      ...(modelCatalogCwd !== undefined ? { cwd: modelCatalogCwd } : {}),
       executionDefaults,
       hostId: childHostIdForResolvedEnvironment(resolvedEnvironment),
       providerId,

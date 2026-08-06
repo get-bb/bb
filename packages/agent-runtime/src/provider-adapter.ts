@@ -127,7 +127,7 @@ export type AdapterCommand =
       type: "skills/configure";
       skillRoots: readonly AgentRuntimeSkillRoot[];
     }
-  | { type: "model/list" }
+  | { type: "model/list"; cwd?: string }
   | {
       type: "thread/start";
       threadId: string;

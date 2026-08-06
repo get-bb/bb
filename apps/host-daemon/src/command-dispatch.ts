@@ -460,6 +460,7 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
   "provider.list_models": async (command, options) =>
     (options.listModels ?? defaultListModels)({
       providerId: command.providerId,
+      ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
       ...(command.acpLaunchSpec !== undefined
         ? { acpLaunchSpec: command.acpLaunchSpec }
         : {}),

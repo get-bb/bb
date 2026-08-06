@@ -51,6 +51,7 @@ export interface CommandDispatchOptions {
   listModels?: (args: {
     providerId: string;
     acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+    cwd?: string;
   }) => Promise<{
     models: AvailableModel[];
     selectedOnlyModels: AvailableModel[];

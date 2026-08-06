@@ -128,19 +128,22 @@ targets. Scripts launched by bb already receive `BB_SERVER_URL` and
 
 bb uses whichever providers you have configured. Common providers:
 
-| Provider       | Setup                                                                                                                                                                                  |
-| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `codex`        | Install the [Codex CLI](https://developers.openai.com/codex/cli). Then run `codex login` or configure credentials per the Codex docs.                                                  |
-| `claude-code`  | Install [Claude Code](https://docs.anthropic.com/en/docs/claude-code) and authenticate per its docs.                                                                                   |
-| `cursor`       | Install [Cursor's agent CLI](https://cursor.com/cli) (`agent`) and authenticate per Cursor's docs.                                                                                     |
+| Provider       | Setup                                                                                                                                                                                     |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `codex`        | Install the [Codex CLI](https://developers.openai.com/codex/cli). Then run `codex login` or configure credentials per the Codex docs.                                                     |
+| `claude-code`  | Install [Claude Code](https://docs.anthropic.com/en/docs/claude-code) and authenticate per its docs.                                                                                      |
+| `cursor`       | Install [Cursor's agent CLI](https://cursor.com/cli) (`agent`) and authenticate per Cursor's docs.                                                                                        |
 | `pi`           | See the [Pi coding agent docs](https://github.com/earendil-works/pi/tree/main/packages/coding-agent). BB includes a pinned Pi runtime, so it does not require an installed Pi executable. |
-| `opencode`     | Install [opencode](https://opencode.ai/) and authenticate per its docs.                                                                                                                |
-| `grok`         | Install [Grok Build](https://docs.x.ai/build/overview) and authenticate with `grok login` or `XAI_API_KEY`.                                                                            |
-| `hermes-agent` | Install [Hermes Agent](https://hermes-agent.nousresearch.com/docs/getting-started/installation), configure credentials with `hermes model`, then verify ACP with `hermes acp --check`. |
+| `opencode`     | Install [opencode](https://opencode.ai/) and authenticate per its docs.                                                                                                                   |
+| `grok`         | Install [Grok Build](https://docs.x.ai/build/overview) and authenticate with `grok login` or `XAI_API_KEY`.                                                                               |
+| `hermes-agent` | Install [Hermes Agent](https://hermes-agent.nousresearch.com/docs/getting-started/installation), configure credentials with `hermes model`, then verify ACP with `hermes acp --check`.    |
 
 BB reads Pi's global `~/.pi/agent` files and each workspace's `.pi` files.
 This includes settings, credentials, models, packages, extensions, skills,
 prompts, themes, and context files. Pi extensions can add models and tools.
+BB loads project resources only after Pi's saved or global trust policy approves
+the workspace. An unresolved `ask` decision stays untrusted because BB has no Pi
+trust prompt.
 You can still use the Pi CLI and `/login` to create this configuration.
 
 Custom ACP agents can be configured through `customAcpAgents` in

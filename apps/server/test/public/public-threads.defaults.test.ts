@@ -401,7 +401,13 @@ describe("public thread default routes", () => {
       });
       expect(
         providerResponder.requests.map((request) => request.command),
-      ).toEqual([{ type: "provider.list_models", providerId: "codex" }]);
+      ).toEqual([
+        {
+          type: "provider.list_models",
+          providerId: "codex",
+          cwd: "/tmp/thread-defaults-missing",
+        },
+      ]);
     });
   });
 

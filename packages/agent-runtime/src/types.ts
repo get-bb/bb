@@ -273,6 +273,7 @@ export interface UnarchiveThreadArgs {
 export interface ListModelsArgs {
   providerId: string;
   acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+  cwd?: string;
 }
 
 export interface AgentRuntime {

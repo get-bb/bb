@@ -1574,7 +1574,7 @@ function createAgentRuntimeInternal(
       });
     },
 
-    async listModels({ providerId, acpLaunchSpec }) {
+    async listModels({ providerId, acpLaunchSpec, cwd }) {
       await runtime.ensureProvider({
         providerId,
         ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
@@ -1588,7 +1588,10 @@ function createAgentRuntimeInternal(
       });
       const command = requireProviderRequestPlan({
         commandType: "model/list",
-        plan: proc.adapter.buildCommandPlan({ type: "model/list" }),
+        plan: proc.adapter.buildCommandPlan({
+          type: "model/list",
+          ...(cwd !== undefined ? { cwd } : {}),
+        }),
         providerId,
       });
       const result = await sendCommand({
