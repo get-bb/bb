@@ -51,13 +51,13 @@ import {
   captureTrustedRemoteAddress,
   createInternalPrincipalExecutionScopeMiddleware,
   createResolvePrincipalMiddleware,
+  requireClientSocketSession,
   resolveRequestAppSurface,
 } from "./request-context.js";
 import { runWithTelemetryAppSurface } from "./services/system/telemetry.js";
 import {
-  onClientSocketClose,
-  onClientSocketMessage,
-  onClientSocketOpen,
+  createClientSocketProtocol,
+  type ClientSocketClock,
 } from "./ws/client-protocol.js";
 import {
   onDaemonSocketClose,
@@ -128,6 +128,15 @@ interface CreateAppOptions {
   principalMode?: InternalExecutionPrincipalMode;
   slowApiRequestLogThresholdMs?: number;
   staticDir?: string;
+  /**
+   * Private test seam for deterministic client-socket timers and recheck
+   * cadence. Production omits this (10s recheck, wall clock). Invalid or
+   * >15_000ms intervals are rejected by the protocol factory.
+   */
+  clientSocketRuntime?: {
+    readonly clock?: Partial<ClientSocketClock>;
+    readonly membershipRecheckIntervalMs?: number;
+  };
 }
 
 interface StaticResponseHeadersArgs {
@@ -514,6 +523,18 @@ export function createApp(
   registerInternalInteractiveRequestRoutes(internalApi, deps);
   app.route("/internal", internalApi);
 
+  // One manager per createApp: binds the upgrade-time principal session,
+  // serializes client messages, and runs security deadlines independently.
+  // Never re-resolves identity from messages.
+  const clientSocketProtocol = createClientSocketProtocol({
+    hub: deps.hub,
+    watchInterests: deps.watchInterests,
+    db: deps.db,
+    clock: options?.clientSocketRuntime?.clock,
+    membershipRecheckIntervalMs:
+      options?.clientSocketRuntime?.membershipRecheckIntervalMs,
+  });
+
   app.use("/ws", resolveWebSocketPrincipal);
   app.get(
     "/ws",
@@ -527,11 +548,15 @@ export function createApp(
           false,
         );
       }
+      // Capture frozen client-socket session after origin check, before open.
+      // Avoids a window that would register a scoped socket unrestricted.
+      const clientSocketSession = requireClientSocketSession(context);
       return {
-        onOpen: (_event, socket) => onClientSocketOpen(deps.hub, socket),
+        onOpen: (_event, socket) =>
+          clientSocketProtocol.open(socket, clientSocketSession),
         onMessage: (event, socket) =>
-          onClientSocketMessage(deps, socket, event.data),
-        onClose: (_event, socket) => onClientSocketClose(deps, socket),
+          clientSocketProtocol.message(socket, event.data),
+        onClose: (_event, socket) => clientSocketProtocol.close(socket),
       };
     }),
   );

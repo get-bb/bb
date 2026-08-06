@@ -34,6 +34,8 @@ export function createLocalOwnerPrincipalPolicy(): PrincipalPolicy {
       const principal = LOCAL_OWNER_PRINCIPAL;
       return {
         principal,
+        expiresAtMs: null,
+        clientRealtimeScope: "unrestricted",
         async authorize(
           _action: PolicyAction,
           _resource: PolicyResource,

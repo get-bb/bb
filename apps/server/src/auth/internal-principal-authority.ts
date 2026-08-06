@@ -660,9 +660,13 @@ export function createInternalPrincipalAuthority(
         rejectInternalPrincipalAuthority();
       }
 
+      // One-use internal grants cannot back a client WebSocket. Metadata is
+      // explicit and fail-closed for any accidental /ws attachment.
       return Object.freeze({
         principal: grant.session.principal,
         authorize: grant.session.authorize,
+        expiresAtMs: null,
+        clientRealtimeScope: "scoped" as const,
       });
     },
   };

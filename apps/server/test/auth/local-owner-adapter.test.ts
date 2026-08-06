@@ -29,6 +29,10 @@ describe("local-owner principal policy", () => {
       displayName: "Local Owner",
     });
     expect(Object.isFrozen(first.principal)).toBe(true);
+    expect(first.expiresAtMs).toBeNull();
+    expect(first.clientRealtimeScope).toBe("unrestricted");
+    expect(second.expiresAtMs).toBeNull();
+    expect(second.clientRealtimeScope).toBe("unrestricted");
   });
 
   it("explicitly allows actions for the local owner session", async () => {

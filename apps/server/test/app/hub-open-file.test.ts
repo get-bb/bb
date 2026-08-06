@@ -63,4 +63,51 @@ describe("NotificationHub.notifyThreadOpen", () => {
       });
     }
   });
+
+  it("delivers thread ephemera to scoped sockets only for exact thread-detail", () => {
+    const hub = new NotificationHub();
+    const subscribed = createMockHubSocket();
+    const otherThread = createMockHubSocket();
+    const unsubscribed = createMockHubSocket();
+    hub.registerClient(subscribed, "scoped");
+    hub.registerClient(otherThread, "scoped");
+    hub.registerClient(unsubscribed, "scoped");
+    hub.subscribe(subscribed, { kind: "thread-detail", threadId: "thr_1" });
+    hub.subscribe(otherThread, { kind: "thread-detail", threadId: "thr_2" });
+
+    expect(
+      hub.notifyThreadOpen(
+        { projectId: "proj_1", threadId: "thr_1" },
+        { split: "right", file: null },
+      ),
+    ).toBe(1);
+    expect(subscribed.messages).toHaveLength(1);
+    expect(otherThread.messages).toHaveLength(0);
+    expect(unsubscribed.messages).toHaveLength(0);
+
+    expect(
+      hub.notifyThreadPaneAction(
+        { projectId: "proj_1", threadId: "thr_1" },
+        "maximize",
+      ),
+    ).toBe(1);
+    expect(subscribed.messages).toHaveLength(2);
+    expect(otherThread.messages).toHaveLength(0);
+  });
+
+  it("does not overwrite a scoped delivery mode when subscribe re-registers", () => {
+    const hub = new NotificationHub();
+    const socket = createMockHubSocket();
+    hub.registerClient(socket, "scoped");
+    // subscribe calls registerClient without a mode; must keep scoped.
+    hub.subscribe(socket, { kind: "thread-detail", threadId: "thr_other" });
+
+    expect(
+      hub.notifyThreadOpen(
+        { projectId: "proj_1", threadId: "thr_1" },
+        { split: "left", file: null },
+      ),
+    ).toBe(0);
+    expect(socket.messages).toHaveLength(0);
+  });
 });

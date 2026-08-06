@@ -16,7 +16,11 @@ import type {
   InternalPrincipalAuthority,
   InternalPrincipalSession,
 } from "./auth/internal-principal-authority.js";
-import type { PrincipalPolicy } from "./auth/principal-policy.js";
+import type {
+  ClientRealtimeScope,
+  PrincipalPolicy,
+  ResolvedPrincipal,
+} from "./auth/principal-policy.js";
 
 export const TRUSTED_REMOTE_ADDRESS_CONTEXT_KEY = "bbTrustedRemoteAddress";
 export const GATE_AUTH_HEADER_NAME = "x-bb-gate-auth";
@@ -44,9 +48,58 @@ function freezePrincipalAuthSession(
   return Object.freeze({ authorize });
 }
 
+/**
+ * Frozen client-socket session: Principal + authorize + server-policy metadata.
+ * Captured once at `/ws` upgrade; never re-resolved from in-band messages.
+ */
+export type ClientSocketSession = {
+  readonly principal: Principal;
+  readonly expiresAtMs: number | null;
+  readonly clientRealtimeScope: ClientRealtimeScope;
+  authorize(
+    action: PolicyAction,
+    resource: PolicyResource,
+  ): Promise<PolicyDecision>;
+};
+
 interface AttachedPrincipalSession {
   readonly principal: Principal;
   readonly authorization: PrincipalAuthSession;
+  readonly expiresAtMs: number | null;
+  readonly clientRealtimeScope: ClientRealtimeScope;
+}
+
+function freezeClientRealtimeScope(value: unknown): ClientRealtimeScope {
+  if (value === "unrestricted" || value === "scoped") {
+    return value;
+  }
+  throw new Error("Principal policy returned invalid clientRealtimeScope");
+}
+
+function freezeExpiresAtMs(value: unknown): number | null {
+  if (value === null) {
+    return null;
+  }
+  if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) {
+    return value;
+  }
+  throw new Error("Principal policy returned invalid expiresAtMs");
+}
+
+/**
+ * Validate and freeze policy-owned session metadata. Missing or malformed
+ * fields fail closed (middleware turns this into 401).
+ */
+function freezeResolvedSessionMetadata(resolved: ResolvedPrincipal): {
+  readonly expiresAtMs: number | null;
+  readonly clientRealtimeScope: ClientRealtimeScope;
+} {
+  return Object.freeze({
+    expiresAtMs: freezeExpiresAtMs(resolved.expiresAtMs),
+    clientRealtimeScope: freezeClientRealtimeScope(
+      resolved.clientRealtimeScope,
+    ),
+  });
 }
 
 // Module-private object identity is the authority boundary. A handler can set
@@ -127,6 +180,10 @@ function attachResolvedPrincipal(
   context: object,
   principal: Principal,
   session: PrincipalAuthSession,
+  metadata: {
+    readonly expiresAtMs: number | null;
+    readonly clientRealtimeScope: ClientRealtimeScope;
+  },
 ): void {
   if (attachedPrincipalSessions.has(context)) {
     throw new Error("Principal already attached to request");
@@ -136,6 +193,8 @@ function attachResolvedPrincipal(
     Object.freeze({
       principal: freezePrincipal(principal),
       authorization: session,
+      expiresAtMs: metadata.expiresAtMs,
+      clientRealtimeScope: metadata.clientRealtimeScope,
     }),
   );
 }
@@ -156,6 +215,7 @@ export function requirePrincipal(context: object): Principal {
  * Fail-closed immutable Principal + authorize session for handlers and the
  * internal execution-scope middleware. Backed only by the module-private
  * attachment; never accepts a Principal argument or Hono variables.
+ * Expiry-free: internal execution does not carry client-socket metadata.
  */
 export function requirePrincipalSession(
   context: object,
@@ -167,6 +227,25 @@ export function requirePrincipalSession(
   return Object.freeze({
     principal: attached.principal,
     authorize: attached.authorization.authorize,
+  });
+}
+
+/**
+ * Fail-closed frozen client-socket session (principal + authorize + metadata).
+ * Used only for `/ws` upgrade capture. Missing attachment fails closed.
+ */
+export function requireClientSocketSession(
+  context: object,
+): ClientSocketSession {
+  const attached = attachedPrincipalSessions.get(context);
+  if (attached === undefined) {
+    throw new Error("Principal is not attached to request");
+  }
+  return Object.freeze({
+    principal: attached.principal,
+    authorize: attached.authorization.authorize,
+    expiresAtMs: attached.expiresAtMs,
+    clientRealtimeScope: attached.clientRealtimeScope,
   });
 }
 
@@ -246,11 +325,13 @@ export function createResolvePrincipalMiddleware(
       ) {
         return unauthorizedPrincipalResponse();
       }
+      const metadata = freezeResolvedSessionMetadata(resolved);
       const resolvedAuthorize = resolved.authorize.bind(resolved);
       attachResolvedPrincipal(
         context,
         resolved.principal,
         freezePrincipalAuthSession(resolvedAuthorize),
+        metadata,
       );
     } catch {
       return unauthorizedPrincipalResponse();

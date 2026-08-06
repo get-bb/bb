@@ -34,6 +34,14 @@ interface HubSocket {
   send(data: string): void;
 }
 
+/**
+ * Internal client delivery mode. Scoped sockets only receive thread ephemera
+ * for exact authorized `thread-detail` keys and never receive plugin signals
+ * until channel capabilities land in S2.2. Default unrestricted preserves
+ * local-owner and existing tests.
+ */
+export type ClientDeliveryMode = "unrestricted" | "scoped";
+
 type ChangedMessageListener = (message: ChangedMessage) => void;
 
 function subscriptionKeysForMessage(message: ChangedMessage): string[] {
@@ -129,6 +137,10 @@ export class HostOnlineRpcUnavailableError extends Error {
 export class NotificationHub implements DbNotifier {
   private readonly clientKeysBySocket = new Map<HubSocket, Set<string>>();
   private readonly clientSocketsByKey = new Map<string, Set<HubSocket>>();
+  private readonly clientDeliveryModeBySocket = new Map<
+    HubSocket,
+    ClientDeliveryMode
+  >();
   private readonly daemonSessions = new Map<
     string,
     { hostId: string; platform: HostPlatform; socket: HubSocket }
@@ -170,9 +182,18 @@ export class NotificationHub implements DbNotifier {
     Set<ThreadEventWaiter>
   >();
 
-  registerClient(socket: HubSocket): void {
+  /**
+   * Register a client socket. Delivery mode is captured only on first
+   * registration; later calls (including `subscribe`) never overwrite a
+   * previously scoped mode.
+   */
+  registerClient(
+    socket: HubSocket,
+    deliveryMode: ClientDeliveryMode = "unrestricted",
+  ): void {
     if (!this.clientKeysBySocket.has(socket)) {
       this.clientKeysBySocket.set(socket, new Set());
+      this.clientDeliveryModeBySocket.set(socket, deliveryMode);
     }
   }
 
@@ -180,6 +201,7 @@ export class NotificationHub implements DbNotifier {
     this.unregisterTerminalClientSocket(socket);
     const keys = this.clientKeysBySocket.get(socket);
     if (!keys) {
+      this.clientDeliveryModeBySocket.delete(socket);
       return;
     }
 
@@ -195,6 +217,11 @@ export class NotificationHub implements DbNotifier {
     }
 
     this.clientKeysBySocket.delete(socket);
+    this.clientDeliveryModeBySocket.delete(socket);
+  }
+
+  private deliveryModeFor(socket: HubSocket): ClientDeliveryMode {
+    return this.clientDeliveryModeBySocket.get(socket) ?? "unrestricted";
   }
 
   onChangedMessage(listener: ChangedMessageListener): () => void {
@@ -577,8 +604,9 @@ export class NotificationHub implements DbNotifier {
   }
 
   /**
-   * Broadcast an ephemeral thread-open signal to every connected client.
-   * Nothing is persisted. Returns how many clients the signal reached.
+   * Deliver an ephemeral thread-open signal. Unrestricted sockets keep
+   * broadcast behavior; scoped sockets receive only when subscribed to the
+   * exact `thread-detail` key. Nothing is persisted.
    */
   notifyThreadOpen(
     thread: { projectId: string; threadId: string },
@@ -593,15 +621,26 @@ export class NotificationHub implements DbNotifier {
         file: request.file,
       }),
     );
+    const threadKey = subscriptionKey({
+      kind: "thread-detail",
+      threadId: thread.threadId,
+    });
     let delivered = 0;
-    for (const socket of this.clientKeysBySocket.keys()) {
+    for (const [socket, keys] of this.clientKeysBySocket) {
+      if (this.deliveryModeFor(socket) === "scoped" && !keys.has(threadKey)) {
+        continue;
+      }
       socket.send(payload);
       delivered += 1;
     }
     return delivered;
   }
 
-  /** Broadcast an ephemeral maximize/restore request to every app client. */
+  /**
+   * Deliver an ephemeral maximize/restore request. Unrestricted sockets keep
+   * broadcast behavior; scoped sockets receive only when subscribed to the
+   * exact `thread-detail` key.
+   */
   notifyThreadPaneAction(
     thread: { projectId: string; threadId: string },
     action: ThreadPaneAction,
@@ -614,8 +653,15 @@ export class NotificationHub implements DbNotifier {
         action,
       }),
     );
+    const threadKey = subscriptionKey({
+      kind: "thread-detail",
+      threadId: thread.threadId,
+    });
     let delivered = 0;
-    for (const socket of this.clientKeysBySocket.keys()) {
+    for (const [socket, keys] of this.clientKeysBySocket) {
+      if (this.deliveryModeFor(socket) === "scoped" && !keys.has(threadKey)) {
+        continue;
+      }
       socket.send(payload);
       delivered += 1;
     }
@@ -623,10 +669,9 @@ export class NotificationHub implements DbNotifier {
   }
 
   /**
-   * Broadcast an ephemeral plugin realtime signal (`bb.realtime.publish`) to
-   * every connected client. V1 broadcasts to all clients — per-channel
-   * subscriptions arrive with the plugin frontend runtime. Returns how many
-   * clients the signal reached.
+   * Deliver an ephemeral plugin realtime signal (`bb.realtime.publish`).
+   * Unrestricted sockets keep broadcast behavior; scoped sockets receive none
+   * pending S2.2 channel capabilities.
    */
   notifyPluginSignal(
     pluginId: string,
@@ -643,6 +688,9 @@ export class NotificationHub implements DbNotifier {
     );
     let delivered = 0;
     for (const socket of this.clientKeysBySocket.keys()) {
+      if (this.deliveryModeFor(socket) === "scoped") {
+        continue;
+      }
       socket.send(message);
       delivered += 1;
     }

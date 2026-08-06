@@ -13,6 +13,7 @@ import {
 } from "node:crypto";
 import { CompactSign, exportJWK, generateKeyPair } from "jose";
 import { afterEach, describe, expect, it } from "vitest";
+import { getClientWebsocketReauthorizePair } from "../../src/auth/client-websocket-authorization.js";
 import { createWorkTogetherMembershipMemoryFake } from "../../src/auth/work-together-membership-memory.js";
 import { WorkTogetherMembershipLookupError } from "../../src/auth/work-together-membership.js";
 import { WorkTogetherPrincipalAssertionError } from "../../src/auth/work-together-principal-assertion-error.js";
@@ -276,6 +277,8 @@ describe("work-together principal policy", () => {
       (session.principal as { displayName: string }).displayName = "x";
     }).toThrow();
     expect("membershipRevision" in session.principal).toBe(false);
+    expect(session.expiresAtMs).toBe((BASE_TIME_SEC + 30) * 1000);
+    expect(session.clientRealtimeScope).toBe("scoped");
     await expect(
       session.authorize(
         { name: "publicHttp.projects.get" },
@@ -755,6 +758,37 @@ describe("work-together principal policy", () => {
       () => errorPolicy.resolve(requestFrom({ token })),
       [SUBJECT, "administrator"],
     );
+  });
+
+  it("authorize accepts registry-issued client-WS pairs for owner and member after recheck", async () => {
+    const { publicKey } = await testKeys();
+    const membership = createWorkTogetherMembershipMemoryFake();
+    membership.setMembership({
+      cellId: CELL_ID,
+      subject: SUBJECT,
+      role: "member",
+      membershipRevision: "1",
+    });
+    const { policy } = createPolicy({ membership, publicKey });
+    const token = await signClaims(baseClaims());
+    const session = await policy.resolve(requestFrom({ token }));
+    const reauthorize = getClientWebsocketReauthorizePair();
+    await expect(
+      session.authorize(reauthorize.action, reauthorize.resource),
+    ).resolves.toEqual({ allowed: true });
+
+    // Structural forgeries of the reauthorize pair are denied.
+    await expect(
+      session.authorize(
+        { name: reauthorize.action.name },
+        { kind: reauthorize.resource.kind, id: reauthorize.resource.id },
+      ),
+    ).resolves.toEqual({ allowed: false, reason: "forbidden" });
+
+    membership.removeMembership({ cellId: CELL_ID, subject: SUBJECT });
+    await expect(
+      session.authorize(reauthorize.action, reauthorize.resource),
+    ).resolves.toEqual({ allowed: false, reason: "unauthenticated" });
   });
 
   it("authorize rechecks membership and denies after removal or revision change", async () => {

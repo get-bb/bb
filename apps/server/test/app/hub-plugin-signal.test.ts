@@ -19,12 +19,29 @@ describe("NotificationHub.notifyPluginSignal", () => {
     expect(delivered).toBe(2);
     for (const socket of [first, second]) {
       expect(socket.messages).toHaveLength(1);
-      expect(JSON.parse(socket.messages[0])).toEqual({
+      expect(JSON.parse(socket.messages[0]!)).toEqual({
         type: "plugin-signal",
         pluginId: "linear",
         channel: "issues-updated",
         payload: { count: 42 },
       });
     }
+  });
+
+  it("withholds plugin signals from scoped sockets pending channel capabilities", () => {
+    const hub = new NotificationHub();
+    const unrestricted = createMockHubSocket();
+    const scoped = createMockHubSocket();
+    hub.registerClient(unrestricted, "unrestricted");
+    hub.registerClient(scoped, "scoped");
+    hub.subscribe(scoped, { kind: "thread-detail", threadId: "thr_1" });
+
+    const delivered = hub.notifyPluginSignal("linear", "issues-updated", {
+      count: 1,
+    });
+
+    expect(delivered).toBe(1);
+    expect(unrestricted.messages).toHaveLength(1);
+    expect(scoped.messages).toHaveLength(0);
   });
 });

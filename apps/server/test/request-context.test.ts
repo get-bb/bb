@@ -75,6 +75,8 @@ describe("request principal context", () => {
             kind: "human",
             displayName: "Target Owner",
           },
+          expiresAtMs: null,
+          clientRealtimeScope: "unrestricted",
           async authorize() {
             return { allowed: true };
           },
@@ -103,6 +105,8 @@ describe("request principal context", () => {
             kind: "human",
             displayName: "Incoming Owner",
           },
+          expiresAtMs: null,
+          clientRealtimeScope: "unrestricted",
           async authorize() {
             return { allowed: true };
           },
@@ -198,6 +202,8 @@ describe("request principal context", () => {
             kind: "human",
             displayName: "Session Owner",
           },
+          expiresAtMs: null,
+          clientRealtimeScope: "unrestricted",
           async authorize(action, resource) {
             authorizeCalls += 1;
             expect(action).toEqual({ name: "thread.read" });

@@ -95,6 +95,8 @@ describe("principal resolution middleware", () => {
       async resolve() {
         return {
           principal: undefined as never,
+          expiresAtMs: null,
+          clientRealtimeScope: "unrestricted",
           async authorize() {
             return { allowed: true };
           },
@@ -105,6 +107,38 @@ describe("principal resolution middleware", () => {
     app.get("/api/v1/projects", (context) => {
       handlerReached = true;
       return context.json({ id: requirePrincipal(context).id });
+    });
+
+    const response = await app.request("/api/v1/projects");
+
+    expect(response.status).toBe(401);
+    expect(handlerReached).toBe(false);
+  });
+
+  it("fails closed when resolve omits client socket session metadata", async () => {
+    const app = new Hono();
+    let handlerReached = false;
+    const missingMetadataPolicy: PrincipalPolicy = {
+      async resolve() {
+        return {
+          principal: {
+            id: "missing-meta",
+            kind: "human",
+            displayName: "Missing Meta",
+          },
+          async authorize() {
+            return { allowed: true };
+          },
+        } as never;
+      },
+    };
+    app.use(
+      "*",
+      createResolvePrincipalMiddleware(missingMetadataPolicy, "http"),
+    );
+    app.get("/api/v1/projects", () => {
+      handlerReached = true;
+      return new Response(null, { status: 204 });
     });
 
     const response = await app.request("/api/v1/projects");
@@ -150,6 +184,8 @@ describe("principal resolution middleware", () => {
             kind: "human",
             displayName: "Bad Authorize",
           },
+          expiresAtMs: null,
+          clientRealtimeScope: "unrestricted",
           authorize: "not-a-function" as never,
         };
       },
@@ -179,6 +215,8 @@ describe("principal resolution middleware", () => {
             kind: "human",
             displayName: "Replacement",
           },
+          expiresAtMs: null,
+          clientRealtimeScope: "unrestricted",
           async authorize() {
             return { allowed: true };
           },

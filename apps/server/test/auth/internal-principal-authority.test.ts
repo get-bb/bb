@@ -40,7 +40,12 @@ function createFallbackSpy(): {
       _action: PolicyAction,
       _resource: PolicyResource,
     ): Promise<PolicyDecision> => ({ allowed: true });
-    return { principal: SYSTEM_PRINCIPAL, authorize };
+    return {
+      principal: SYSTEM_PRINCIPAL,
+      expiresAtMs: null,
+      clientRealtimeScope: "unrestricted" as const,
+      authorize,
+    };
   });
   return {
     policy: { resolve },

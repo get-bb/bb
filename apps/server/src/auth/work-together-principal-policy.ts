@@ -13,6 +13,7 @@ import {
   freezeWorkTogetherMembership,
   type WorkTogetherMembershipVerifier,
 } from "./work-together-membership.js";
+import { isRegistryIssuedClientWebsocketAuthorization } from "./client-websocket-authorization.js";
 import type { PrincipalPolicy, ResolvedPrincipal } from "./principal-policy.js";
 import { decidePublicHttpAuthorization } from "./public-http-authorization.js";
 import {
@@ -171,9 +172,13 @@ function createValidatedWorkTogetherPrincipalPolicy(
         });
         const expectedRevision = claims.membership_revision;
         const subject = claims.sub;
+        // Exact assertion expiry for client sockets (not replay-skew window).
+        const expiresAtMs = claims.exp * 1000;
 
         const session: ResolvedPrincipal = {
           principal,
+          expiresAtMs,
+          clientRealtimeScope: "scoped",
           async authorize(
             action: PolicyAction,
             resource: PolicyResource,
@@ -189,6 +194,14 @@ function createValidatedWorkTogetherPrincipalPolicy(
               const current = freezeWorkTogetherMembership(currentResult);
               if (current.membershipRevision !== expectedRevision) {
                 return { allowed: false, reason: "forbidden" };
+              }
+              // Registry-issued client-WS pairs (reauthorize + exact standard
+              // detail targets) are allowed for both owner and member after
+              // membership/revision recheck. Public HTTP stays unchanged.
+              if (
+                isRegistryIssuedClientWebsocketAuthorization(action, resource)
+              ) {
+                return { allowed: true };
               }
               return decidePublicHttpAuthorization({
                 role: current.role,

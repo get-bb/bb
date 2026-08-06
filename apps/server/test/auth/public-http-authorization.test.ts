@@ -592,6 +592,8 @@ describe("public HTTP authorization middleware", () => {
             kind: "human",
             displayName: "Test",
           },
+          expiresAtMs: null,
+          clientRealtimeScope: "unrestricted",
           async authorize(action, resource) {
             calls.push({ action: action.name, resource });
             return { allowed: true };
@@ -638,6 +640,8 @@ describe("public HTTP authorization middleware", () => {
             kind: "human",
             displayName: "Member",
           },
+          expiresAtMs: null,
+          clientRealtimeScope: "unrestricted",
           async authorize() {
             return { allowed: false, reason: "forbidden" };
           },
@@ -715,6 +719,8 @@ describe("public HTTP authorization middleware", () => {
             kind: "human",
             displayName: "Member",
           },
+          expiresAtMs: null,
+          clientRealtimeScope: "unrestricted",
           async authorize(action, resource) {
             calls.push({ action: action.name, resource });
             return action.name === PUBLIC_HTTP_UNMAPPED_ACTION_NAME

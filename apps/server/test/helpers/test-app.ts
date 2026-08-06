@@ -47,6 +47,21 @@ export interface RunningTestServer extends TestAppHarness {
 export type TestAppCreateOptions = {
   principalMode?: "local-owner" | "work-together";
   principalPolicy?: import("../../src/auth/principal-policy.js").PrincipalPolicy;
+  /**
+   * Private test seam forwarded to createApp for deterministic client-socket
+   * membership recheck / expiry timers.
+   */
+  clientSocketRuntime?: {
+    readonly clock?: {
+      now?: () => number;
+      setTimeout?: (
+        callback: () => void,
+        delayMs: number,
+      ) => ReturnType<typeof setTimeout>;
+      clearTimeout?: (handle: ReturnType<typeof setTimeout>) => void;
+    };
+    readonly membershipRecheckIntervalMs?: number;
+  };
 };
 
 export type TestAppHarnessConfigOverrides = Partial<ServerRuntimeConfig> & {

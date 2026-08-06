@@ -1,42 +1,63 @@
 import { describe, expect, it, vi } from "vitest";
-import {
-  onClientSocketMessage,
-  onClientSocketOpen,
-} from "../../src/ws/client-protocol.js";
+import type { ClientSocketSession } from "../../src/request-context.js";
+import { createClientSocketProtocol } from "../../src/ws/client-protocol.js";
 import { NotificationHub } from "../../src/ws/hub.js";
 import { createMockHubSocket } from "../helpers/mock-hub-socket.js";
 
-function createProtocolDeps(hub: NotificationHub) {
-  return {
-    hub,
-    watchInterests: {
-      releaseSocket: vi.fn(),
-      subscribe: vi.fn(),
-      unsubscribe: vi.fn(),
-    },
+function unrestrictedSession(): ClientSocketSession {
+  return Object.freeze({
+    principal: Object.freeze({
+      id: "local-owner",
+      kind: "human" as const,
+      displayName: "Local Owner",
+    }),
+    expiresAtMs: null,
+    clientRealtimeScope: "unrestricted",
+    authorize: async () => ({ allowed: true as const }),
+  });
+}
+
+function createProtocol(hub: NotificationHub) {
+  const watchInterests = {
+    releaseSocket: vi.fn(),
+    subscribe: vi.fn(),
+    unsubscribe: vi.fn(),
   };
+  const protocol = createClientSocketProtocol({
+    hub,
+    watchInterests,
+    // Unrestricted path does not consult the database for target mapping.
+    db: null as never,
+  });
+  return { protocol, watchInterests };
+}
+
+async function flushMicrotasks(): Promise<void> {
+  for (let i = 0; i < 20; i += 1) {
+    await Promise.resolve();
+  }
 }
 
 describe("client websocket protocol", () => {
-  it("subscribes valid client messages parsed through the shared schema", () => {
+  it("subscribes valid client messages parsed through the shared schema", async () => {
     const hub = new NotificationHub();
-    const deps = createProtocolDeps(hub);
+    const { protocol } = createProtocol(hub);
     const socket = createMockHubSocket();
 
-    onClientSocketOpen(hub, socket);
-    onClientSocketMessage(
-      deps,
+    protocol.open(socket, unrestrictedSession());
+    protocol.message(
       socket,
       JSON.stringify({
         type: "subscribe",
         target: { kind: "thread-detail", threadId: "thread-1" },
       }),
     );
+    await flushMicrotasks();
     hub.notifyThread("thread-1", ["events-appended"]);
 
     expect(socket.closed).toHaveLength(0);
     expect(socket.messages).toHaveLength(1);
-    expect(JSON.parse(socket.messages[0])).toMatchObject({
+    expect(JSON.parse(socket.messages[0]!)).toMatchObject({
       type: "changed",
       entity: "thread",
       id: "thread-1",
@@ -46,12 +67,11 @@ describe("client websocket protocol", () => {
 
   it("rejects subscribe messages whose target id is not a string", () => {
     const hub = new NotificationHub();
-    const deps = createProtocolDeps(hub);
+    const { protocol } = createProtocol(hub);
     const socket = createMockHubSocket();
 
-    onClientSocketOpen(hub, socket);
-    onClientSocketMessage(
-      deps,
+    protocol.open(socket, unrestrictedSession());
+    protocol.message(
       socket,
       JSON.stringify({
         type: "subscribe",
@@ -64,28 +84,28 @@ describe("client websocket protocol", () => {
     expect(socket.messages).toHaveLength(0);
   });
 
-  it("removes subscriptions after unsubscribe messages", () => {
+  it("removes subscriptions after unsubscribe messages", async () => {
     const hub = new NotificationHub();
-    const deps = createProtocolDeps(hub);
+    const { protocol } = createProtocol(hub);
     const socket = createMockHubSocket();
 
-    onClientSocketOpen(hub, socket);
-    onClientSocketMessage(
-      deps,
+    protocol.open(socket, unrestrictedSession());
+    protocol.message(
       socket,
       JSON.stringify({
         type: "subscribe",
         target: { kind: "thread-detail", threadId: "thread-1" },
       }),
     );
-    onClientSocketMessage(
-      deps,
+    await flushMicrotasks();
+    protocol.message(
       socket,
       JSON.stringify({
         type: "unsubscribe",
         target: { kind: "thread-detail", threadId: "thread-1" },
       }),
     );
+    await flushMicrotasks();
     hub.notifyThread("thread-1", ["events-appended"]);
 
     expect(socket.closed).toHaveLength(0);
@@ -94,12 +114,11 @@ describe("client websocket protocol", () => {
 
   it("rejects subscribe messages for unknown targets", () => {
     const hub = new NotificationHub();
-    const deps = createProtocolDeps(hub);
+    const { protocol } = createProtocol(hub);
     const socket = createMockHubSocket();
 
-    onClientSocketOpen(hub, socket);
-    onClientSocketMessage(
-      deps,
+    protocol.open(socket, unrestrictedSession());
+    protocol.message(
       socket,
       JSON.stringify({
         type: "subscribe",
@@ -113,12 +132,11 @@ describe("client websocket protocol", () => {
 
   it("rejects client messages with missing required fields", () => {
     const hub = new NotificationHub();
-    const deps = createProtocolDeps(hub);
+    const { protocol } = createProtocol(hub);
     const socket = createMockHubSocket();
 
-    onClientSocketOpen(hub, socket);
-    onClientSocketMessage(
-      deps,
+    protocol.open(socket, unrestrictedSession());
+    protocol.message(
       socket,
       JSON.stringify({
         type: "subscribe",
@@ -131,43 +149,43 @@ describe("client websocket protocol", () => {
 
   it("closes the socket instead of throwing on malformed JSON", () => {
     const hub = new NotificationHub();
-    const deps = createProtocolDeps(hub);
+    const { protocol } = createProtocol(hub);
     const socket = createMockHubSocket();
 
-    onClientSocketOpen(hub, socket);
+    protocol.open(socket, unrestrictedSession());
 
-    expect(() => onClientSocketMessage(deps, socket, "{")).not.toThrow();
+    expect(() => protocol.message(socket, "{")).not.toThrow();
     expect(socket.closed).toEqual([{ code: 1008, reason: "invalid-message" }]);
   });
 
-  it("updates watch interests from subscribe and unsubscribe messages", () => {
+  it("updates watch interests from subscribe and unsubscribe messages", async () => {
     const hub = new NotificationHub();
-    const deps = createProtocolDeps(hub);
+    const { protocol, watchInterests } = createProtocol(hub);
     const socket = createMockHubSocket();
 
-    onClientSocketOpen(hub, socket);
-    onClientSocketMessage(
-      deps,
+    protocol.open(socket, unrestrictedSession());
+    protocol.message(
       socket,
       JSON.stringify({
         type: "subscribe",
         target: { kind: "environment-detail", environmentId: "env-1" },
       }),
     );
-    onClientSocketMessage(
-      deps,
+    await flushMicrotasks();
+    protocol.message(
       socket,
       JSON.stringify({
         type: "unsubscribe",
         target: { kind: "environment-detail", environmentId: "env-1" },
       }),
     );
+    await flushMicrotasks();
 
-    expect(deps.watchInterests.subscribe).toHaveBeenCalledWith(socket, {
+    expect(watchInterests.subscribe).toHaveBeenCalledWith(socket, {
       kind: "environment-detail",
       environmentId: "env-1",
     });
-    expect(deps.watchInterests.unsubscribe).toHaveBeenCalledWith(socket, {
+    expect(watchInterests.unsubscribe).toHaveBeenCalledWith(socket, {
       kind: "environment-detail",
       environmentId: "env-1",
     });
@@ -175,12 +193,11 @@ describe("client websocket protocol", () => {
 
   it("rejects direct watch messages", () => {
     const hub = new NotificationHub();
-    const deps = createProtocolDeps(hub);
+    const { protocol, watchInterests } = createProtocol(hub);
     const socket = createMockHubSocket();
 
-    onClientSocketOpen(hub, socket);
-    onClientSocketMessage(
-      deps,
+    protocol.open(socket, unrestrictedSession());
+    protocol.message(
       socket,
       JSON.stringify({
         type: "watch.acquire",
@@ -192,6 +209,6 @@ describe("client websocket protocol", () => {
     );
 
     expect(socket.closed).toEqual([{ code: 1008, reason: "invalid-message" }]);
-    expect(deps.watchInterests.subscribe).not.toHaveBeenCalled();
+    expect(watchInterests.subscribe).not.toHaveBeenCalled();
   });
 });
