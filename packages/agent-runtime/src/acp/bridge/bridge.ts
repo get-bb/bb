@@ -665,7 +665,8 @@ async function loadAgentModelCatalog(
       },
       (error, out, stderr) => {
         if (!error) {
-          resolveExec(out);
+          // Prime Agent writes its model table to stderr.
+          resolveExec(out.trim().length > 0 ? out : stderr);
           return;
         }
         if (isMissingExecutableError(error)) {

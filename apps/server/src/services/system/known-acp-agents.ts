@@ -14,6 +14,33 @@ export interface KnownAcpAgentExecutableQuery {
 
 export const KNOWN_ACP_AGENTS: readonly KnownAcpAgent[] = [
   {
+    // bb owns transcript persistence, so Prime must not reuse saved sessions.
+    id: "acp-prime-agent",
+    displayName: "Prime Agent",
+    command: "prime-agent",
+    args: ["--mode", "acp", "--no-session"],
+    env: {},
+    executableName: "prime-agent",
+    modelCli: {
+      listArgs: ["model", "list"],
+      selectFlag: "--model",
+      primaryModels: [
+        "openai-codex/gpt-5.6-luna",
+        "openai-codex/gpt-5.6-sol",
+        "openai-codex/gpt-5.6-terra",
+        "anthropic/claude-opus-5",
+        "anthropic/claude-sonnet-5",
+        "anthropic/claude-fable-5",
+      ],
+    },
+    reasoningCli: {
+      flag: "--thinking",
+      supportedLevels: ["low", "medium", "high", "xhigh", "max"],
+      levelValues: { low: "minimal" },
+      defaultLevel: "medium",
+    },
+  },
+  {
     id: "acp-opencode",
     displayName: "opencode",
     command: "opencode",

@@ -66,6 +66,8 @@ interface AgentModelVariant extends RawAgentModel {
 const MODEL_LINE_PATTERN = /^(\S+) - (.+)$/;
 const BARE_PROVIDER_MODEL_LINE_PATTERN = /^\S+\/\S+$/;
 const BULLETED_MODEL_LINE_PATTERN = /^[*-]\s+(\S+)(?:\s+\([^)]*\))?$/u;
+// Prime prints provider and model as the first two fixed-width columns.
+const PRIME_MODEL_TABLE_ROW_PATTERN = /^(\S+)\s{2,}(\S+)\s{2,}\S+/;
 
 // Trailing id tokens that mark a reasoning-effort variant, longest first so
 // `extra-high` wins over `high`. `none` maps onto bb's "none" (thinking-off)
@@ -117,6 +119,13 @@ export function parseAgentModelLines(stdout: string): RawAgentModel[] {
       }
       if (BARE_PROVIDER_MODEL_LINE_PATTERN.test(trimmed)) {
         models.push({ id: trimmed, displayName: trimmed });
+      }
+      const primeTableRow = PRIME_MODEL_TABLE_ROW_PATTERN.exec(trimmed);
+      if (primeTableRow) {
+        const [, provider, model] = primeTableRow;
+        if (provider !== "provider" && model !== "model") {
+          models.push({ id: `${provider}/${model}`, displayName: model });
+        }
       }
       continue;
     }

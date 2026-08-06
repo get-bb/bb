@@ -3212,6 +3212,7 @@ describe("public thread data routes", () => {
         {
           type: "known_acp_agents.status",
           agents: [
+            { id: "acp-prime-agent", executableName: "prime-agent" },
             { id: "acp-opencode", executableName: "opencode" },
             { id: "acp-omp", executableName: "omp" },
             { id: "acp-grok", executableName: "grok" },

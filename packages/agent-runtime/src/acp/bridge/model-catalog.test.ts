@@ -62,6 +62,27 @@ describe("acp model catalog", () => {
     ]);
   });
 
+  it("parses Prime Agent's provider/model table", () => {
+    expect(
+      parseAgentModelLines(
+        [
+          "provider      model                context  max-out  thinking  images",
+          "openai        gpt-5.6-sol          1.1M     128K     yes       yes",
+          "openai-codex  gpt-5.6-terra        272K     128K     yes       yes",
+        ].join("\n"),
+      ),
+    ).toEqual([
+      {
+        id: "openai/gpt-5.6-sol",
+        displayName: "gpt-5.6-sol",
+      },
+      {
+        id: "openai-codex/gpt-5.6-terra",
+        displayName: "gpt-5.6-terra",
+      },
+    ]);
+  });
+
   it("parses Grok's bulleted model list", () => {
     expect(
       parseAgentModelLines(

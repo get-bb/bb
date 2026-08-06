@@ -97,6 +97,7 @@ interface StartThreadArgs {
         selectFlag: string;
         model: string;
         reasoningLevel?: ReasoningLevel;
+        serviceTier?: "default" | "fast";
       }
     | { modelId: string; reasoningLevel?: ReasoningLevel };
   launchReasoningLevel?: ReasoningLevel;
@@ -868,6 +869,35 @@ describe("acp bridge", () => {
         (text) => text === "argv:--model pinme --reasoning-effort high",
       ),
     ).toBe(true);
+  });
+
+  it("passes a provider-qualified fast model through the model flag", async () => {
+    chmodSync(FAKE_AGENT_PATH, 0o755);
+
+    const { providerThreadId } = await startThread({
+      agent: { command: FAKE_AGENT_PATH, args: [] },
+      modelSelection: {
+        listCommand: {
+          command: process.execPath,
+          args: [
+            "-e",
+            'console.error("provider  model  context\\nanthropic  claude-opus-5  1M\\nanthropic  claude-opus-5-fast  1M")',
+          ],
+        },
+        selectFlag: "--model",
+        model: "anthropic/claude-opus-5",
+        serviceTier: "fast",
+      },
+    });
+    sendRequest("turn/start", {
+      threadId: providerThreadId,
+      input: [{ type: "text", text: "echo-argv", mentions: [] }],
+    });
+    await waitForTurnCompleted();
+
+    expect(agentMessageTexts()).toContain(
+      "argv:--model anthropic/claude-opus-5-fast",
+    );
   });
 
   it("selects ACP-native models with session/set_config_option before the first prompt", async () => {
