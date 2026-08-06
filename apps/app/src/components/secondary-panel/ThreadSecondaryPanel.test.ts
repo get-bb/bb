@@ -81,12 +81,17 @@ describe("resolveCollapsedPanelTrafficLightReserveClassName", () => {
   const base = {
     isConversationCollapsed: true,
     renderAsDrawer: false,
-    isInSplitHost: true,
     isSidebarShowing: false as boolean | null,
     reserveMacosTrafficLights: true,
   };
 
-  it("reserves the safe area for the panel full-screen split-host case", () => {
+  // Covers both thread surfaces. Collapsing takes the conversation column to
+  // zero width and the thread header with it, on the split host and on inline
+  // thread detail alike, leaving the panel alone on the title-bar row. The
+  // reserve used to additionally require the split host, which is what left
+  // inline detail's tab strip sitting under the traffic lights; with that gate
+  // gone the surfaces are indistinguishable here, so one case covers them.
+  it("reserves the safe area for the panel full-screen case", () => {
     expect(resolveCollapsedPanelTrafficLightReserveClassName(base)).toBe(
       MACOS_COLLAPSED_TOP_LEFT_RESERVE_CLASS,
     );
@@ -97,15 +102,6 @@ describe("resolveCollapsedPanelTrafficLightReserveClassName", () => {
       resolveCollapsedPanelTrafficLightReserveClassName({
         ...base,
         isSidebarShowing: true,
-      }),
-    ).toBe(false);
-  });
-
-  it("does not reserve inline (non-host) thread detail, which keeps a header on the lights' row", () => {
-    expect(
-      resolveCollapsedPanelTrafficLightReserveClassName({
-        ...base,
-        isInSplitHost: false,
       }),
     ).toBe(false);
   });
