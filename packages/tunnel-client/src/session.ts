@@ -37,12 +37,29 @@ interface OriginHttpRequestArgs {
   url: URL;
 }
 
-function requestOriginHttp(
+/**
+ * Restore the Content-Length that the relay strips.
+ *
+ * Node's HTTP client does not use chunked encoding by default for GET, HEAD,
+ * and DELETE. Without a Content-Length, it writes such a body with no framing
+ * at all. The origin then reads a body-less request and parses the leftover
+ * bytes as the next request on that connection, which answers an empty 400.
+ * An explicit Content-Length frames the body for every method.
+ */
+function frameBodyHeaders(
+  headers: Record<string, string>,
+  body: Buffer | undefined,
+): Record<string, string> {
+  if (body === undefined) return headers;
+  return { ...headers, "Content-Length": String(body.byteLength) };
+}
+
+export function requestOriginHttp(
   args: OriginHttpRequestArgs,
 ): Promise<IncomingMessage> {
   const request = args.url.protocol === "https:" ? httpsRequest : httpRequest;
   const options: RequestOptions = {
-    headers: args.headers,
+    headers: frameBodyHeaders(args.headers, args.body),
     method: args.method,
     signal: args.signal,
   };

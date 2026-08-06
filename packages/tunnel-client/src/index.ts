@@ -13,6 +13,7 @@ export {
 } from "./reconnect.js";
 export {
   isBareBbRealtimeWs,
+  requestOriginHttp,
   TunnelSession,
   type ResolvedStreamOrigin,
   type StreamOriginResult,
