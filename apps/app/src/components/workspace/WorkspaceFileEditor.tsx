@@ -11,13 +11,16 @@ import { EmptyState } from "@bb/shared-ui/empty-state";
 import { Icon } from "@bb/shared-ui/icon";
 import type { FileWriteResult } from "@bb/sdk/browser";
 import { sdk } from "@/lib/sdk";
+import { useWriteWorkspaceFile } from "@/hooks/mutations/environment-mutations";
 import { resolveAbsoluteFilePath } from "@/lib/absolute-file-path";
 import { createWorkspaceEditorSession } from "./pierre-editor";
 
 export const WORKSPACE_EDITABLE_FILE_LIMIT_BYTES = 2 * 1024 * 1024;
 
 interface WorkspaceFileEditorProps {
+  environmentId: string;
   hostId: string;
+  onDirtyChange?: (dirty: boolean) => void;
   onSaved?: () => void;
   path: string;
   workspaceRootPath: string;
@@ -63,7 +66,9 @@ export async function saveWorkspaceFile(
 
 function LoadedEditor({
   file,
+  environmentId,
   hostId,
+  onDirtyChange,
   onSaved,
   path,
   workspaceRootPath,
@@ -71,6 +76,7 @@ function LoadedEditor({
   const [baselineSha256, setBaselineSha256] = useState(file.sha256);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const writeWorkspaceFile = useWriteWorkspaceFile();
   const session = useMemo(
     () =>
       createWorkspaceEditorSession({
@@ -87,6 +93,15 @@ function LoadedEditor({
 
   useEffect(() => () => session.destroy(), [session]);
   useEffect(() => {
+    onDirtyChange?.(snapshot.dirty);
+  }, [onDirtyChange, snapshot.dirty]);
+  useEffect(
+    () => () => {
+      onDirtyChange?.(false);
+    },
+    [onDirtyChange],
+  );
+  useEffect(() => {
     if (!snapshot.dirty) return;
     const warnBeforeUnload = (event: BeforeUnloadEvent) => {
       event.preventDefault();
@@ -102,9 +117,10 @@ function LoadedEditor({
     try {
       const result = await saveWorkspaceFile(
         (input) =>
-          sdk.files.write({
+          writeWorkspaceFile.mutateAsync({
             ...input,
             contentEncoding: "utf8",
+            environmentId,
           }),
         {
           content: snapshot.contents,
@@ -130,6 +146,7 @@ function LoadedEditor({
     }
   }, [
     baselineSha256,
+    environmentId,
     file.absolutePath,
     hostId,
     isSaving,
@@ -138,6 +155,7 @@ function LoadedEditor({
     snapshot.contents,
     snapshot.dirty,
     workspaceRootPath,
+    writeWorkspaceFile,
   ]);
 
   useEffect(() => {
@@ -191,7 +209,9 @@ function LoadedEditor({
 }
 
 export function WorkspaceFileEditor({
+  environmentId,
   hostId,
+  onDirtyChange,
   onSaved,
   path,
   workspaceRootPath,
@@ -260,7 +280,9 @@ export function WorkspaceFileEditor({
     <LoadedEditor
       key={file.sha256}
       file={file}
+      environmentId={environmentId}
       hostId={hostId}
+      onDirtyChange={onDirtyChange}
       onSaved={onSaved}
       path={path}
       workspaceRootPath={workspaceRootPath}

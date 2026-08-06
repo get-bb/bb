@@ -77,6 +77,8 @@ import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
 import { selectPrimaryHost, useHosts } from "@/hooks/queries/host-queries";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
+import { useProjectWorkspaceSettings } from "@/hooks/queries/project-queries";
+import { useProjectGitRemoteUrl } from "@/hooks/queries/sidebar-navigation-query";
 import { useConnectionAwareQueryState } from "@/hooks/queries/connection-aware-query-state";
 import {
   useCloseThreadTerminal,
@@ -91,6 +93,8 @@ import {
   resolveAbsoluteFilePath,
 } from "@/lib/absolute-file-path";
 import { getGitStatusDisplay } from "@/components/workspace/workspace-status";
+import { WorkspaceFileEditor } from "@/components/workspace/WorkspaceFileEditor";
+import { getGitHubRepositoryUrl } from "@/components/workspace/WorkspaceGitBar";
 import {
   selectWorkspaceChangedFilesSection,
   type WorkspaceChangedFileSelection,
@@ -458,6 +462,8 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   const navigate = useNavigate();
   useFixedPanelTabsStorageMaintenance(threadId);
   const systemConfigQuery = useSystemConfig();
+  const projectWorkspaceSettingsQuery = useProjectWorkspaceSettings(projectId);
+  const projectGitRemoteUrl = useProjectGitRemoteUrl(projectId);
   const fixedPanelTabsState = useFixedPanelTabsState(threadId, threadId);
   const isPersistedSecondaryPanelOpen = fixedPanelTabsState.secondary.isOpen;
   const activeFixedSecondaryTab = getActiveFixedSecondaryTab({
@@ -560,6 +566,9 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   const [hasRequestedMergeBaseOptions, setHasRequestedMergeBaseOptions] =
     useState(false);
   const [newTabFocusRequest, setNewTabFocusRequest] = useState(0);
+  const [dirtyWorkspaceFilePaths, setDirtyWorkspaceFilePaths] = useState<
+    Set<string>
+  >(() => new Set());
   const [browserAddressFocusRequest, setBrowserAddressFocusRequest] =
     useState<BrowserAddressFocusRequest | null>(null);
   const shouldLoadThreadStorageFiles = thread !== undefined;
@@ -606,6 +615,44 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     storageFiles: threadStorageFiles?.files,
     terminalSessions: terminalsListQuery.data?.sessions,
   });
+  const handleWorkspaceFileDirtyChange = useCallback(
+    (path: string, dirty: boolean) => {
+      setDirtyWorkspaceFilePaths((current) => {
+        if (current.has(path) === dirty) return current;
+        const next = new Set(current);
+        if (dirty) next.add(path);
+        else next.delete(path);
+        return next;
+      });
+    },
+    [],
+  );
+  const handleActiveWorkspaceFileDirtyChange = useCallback(
+    (dirty: boolean) => {
+      if (activeWorkspaceFilePath) {
+        handleWorkspaceFileDirtyChange(activeWorkspaceFilePath, dirty);
+      }
+    },
+    [activeWorkspaceFilePath, handleWorkspaceFileDirtyChange],
+  );
+  const handleCloseWorkspaceFileTab = useCallback(
+    (tabId: string, path: string): boolean => {
+      if (
+        dirtyWorkspaceFilePaths.has(path) &&
+        !window.confirm(`Discard unsaved changes to ${path}?`)
+      ) {
+        return false;
+      }
+      setDirtyWorkspaceFilePaths((current) => {
+        const next = new Set(current);
+        next.delete(path);
+        return next;
+      });
+      closeTab(tabId);
+      return true;
+    },
+    [closeTab, dirtyWorkspaceFilePaths],
+  );
   const pluginPanelActions = usePluginPanelActions({
     openPluginPanel,
     threadId,
@@ -1266,6 +1313,11 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     ) {
       if (activeFixedSecondaryTab.kind === "terminal") {
         handleCloseTerminalTab(activeFixedSecondaryTab.terminalId);
+      } else if (activeFixedSecondaryTab.kind === "workspace-file-preview") {
+        return handleCloseWorkspaceFileTab(
+          activeFixedSecondaryTab.id,
+          activeFixedSecondaryTab.path,
+        );
       } else {
         closeTab(activeFixedSecondaryTab.id);
       }
@@ -1280,6 +1332,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     closeSecondaryPanel,
     closeTab,
     handleCloseTerminalTab,
+    handleCloseWorkspaceFileTab,
     isSecondaryPanelOpen,
   ]);
   useAppCommandHandler("panel.toggle", () => {
@@ -1391,7 +1444,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
               leadingVisual: <RightPanelFileTabIcon path={tab.path} />,
               statusLabel: tab.statusLabel,
               onSelect: () => handleActivateFileTab(tab.id),
-              onClose: () => closeTab(tab.id),
+              onClose: () => handleCloseWorkspaceFileTab(tab.id, tab.path),
             };
           case "host-file-preview":
             return {
@@ -1463,6 +1516,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     handleActivateFileTab,
     handleActivateTerminalTab,
     handleCloseTerminalTab,
+    handleCloseWorkspaceFileTab,
     pluginThreadPanelActions,
     syncedOrderedSecondaryFileTabs,
     terminalsById,
@@ -2407,6 +2461,17 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       onStartTerminal={canCreateTerminal ? handleStartTerminal : undefined}
       pluginActions={pluginPanelActions}
     />
+  ) : activeWorkspaceFilePath &&
+    environment?.path &&
+    environment.hostId &&
+    thread.environmentId ? (
+    <WorkspaceFileEditor
+      environmentId={thread.environmentId}
+      hostId={environment.hostId}
+      path={activeWorkspaceFilePath}
+      workspaceRootPath={environment.path}
+      onDirtyChange={handleActiveWorkspaceFileDirtyChange}
+    />
   ) : activeWorkspaceFilePath ? (
     <WorkspaceFilePreviewTabContent
       activePath={activeWorkspaceFilePath}
@@ -2581,6 +2646,15 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
             unreadDividerAutoScroll: unreadDividerState.autoScroll,
             unreadDividerPlacement: unreadDividerState.placement,
             workspaceRootPath: environment?.path ?? undefined,
+          }}
+          workspace={{
+            canCreateTerminal,
+            onOpenBrowserUrl: openBrowserTabAndReveal,
+            pullRequestResponse: pullRequestQuery.data,
+            repositoryUrl: getGitHubRepositoryUrl(projectGitRemoteUrl),
+            runScript: projectWorkspaceSettingsQuery.data?.runScript ?? null,
+            setupScript:
+              projectWorkspaceSettingsQuery.data?.setupScript ?? null,
           }}
         />
         {canUseGitUi ? (

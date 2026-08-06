@@ -12,6 +12,7 @@ import { sdk } from "@/lib/sdk";
 import {
   applyProjectCreateResult,
   applyProjectDeleteResult,
+  applyProjectWorkspaceSettingsResult,
   applyReorderProjectResult,
   beginReorderProjectTransaction,
   rollbackReorderProjectTransaction,
@@ -22,7 +23,6 @@ import {
   invalidateProjectSourceQueries,
   invalidateProjectUpdateQueries,
 } from "../cache-owners/mutation-cache-effects";
-import { projectWorkspaceSettingsQueryKey } from "../queries/query-keys";
 
 interface AddLocalProjectSourceRequest {
   projectId: string;
@@ -68,10 +68,11 @@ export function useUpdateProjectWorkspaceSettings() {
     mutationFn: (request: UpdateProjectWorkspaceSettingsMutationRequest) =>
       sdk.projects.updateWorkspaceSettings(request),
     onSuccess: (settings, variables) => {
-      queryClient.setQueryData(
-        projectWorkspaceSettingsQueryKey(variables.projectId),
+      applyProjectWorkspaceSettingsResult({
+        projectId: variables.projectId,
+        queryClient,
         settings,
-      );
+      });
     },
   });
 }

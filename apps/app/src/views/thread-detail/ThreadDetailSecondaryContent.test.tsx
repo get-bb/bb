@@ -68,8 +68,14 @@ vi.mock("react-resizable-panels", async () => {
 
   const Panel = ({ children }: { children?: ReactNode }) =>
     React.createElement("div", { "data-testid": "panel" }, children);
+  const PanelResizeHandle = ({ children }: { children?: ReactNode }) =>
+    React.createElement(
+      "div",
+      { "data-testid": "panel-resize-handle" },
+      children,
+    );
 
-  return { Panel, PanelGroup };
+  return { Panel, PanelGroup, PanelResizeHandle };
 });
 
 vi.mock("@bb/shared-ui/responsive-overlay", async () => {
@@ -136,6 +142,7 @@ vi.mock(
 
     const ThreadSecondaryPanel = ({
       browserDeck,
+      hideChrome,
       inlinePanelToggle,
       isOpen,
       renderAsDrawer,
@@ -145,6 +152,7 @@ vi.mock(
         {
           "data-open": String(isOpen),
           "data-inline-panel-toggle": inlinePanelToggle,
+          "data-hide-chrome": String(hideChrome ?? false),
           "data-testid": renderAsDrawer
             ? "drawer-secondary-panel"
             : "inline-secondary-panel",
@@ -355,7 +363,9 @@ function createProps({
     onToggleSecondaryPanel: noop,
     renderHostedPanel: (panel) => panel,
     secondaryPanel: {
-      activeTab: null,
+      activeTab: isSecondaryPanelOpen
+        ? { id: "thread-info", kind: "thread-info" }
+        : null,
       canUseGitUi: false,
       fileTabs: [],
       isBrowserTabActive: true,
@@ -386,6 +396,14 @@ function createProps({
       unreadDividerPlacement: null,
       workspaceRootPath: undefined,
     } as unknown as ThreadDetailSecondaryContentProps["timeline"],
+    workspace: {
+      canCreateTerminal: false,
+      onOpenBrowserUrl: noop,
+      pullRequestResponse: undefined,
+      repositoryUrl: null,
+      runScript: null,
+      setupScript: null,
+    },
   };
 }
 
@@ -465,7 +483,7 @@ beforeEach(() => {
 });
 
 describe("ThreadDetailSecondaryContent compact drawer settling", () => {
-  it("keeps the standalone panel hide control in the panel toolbar", () => {
+  it("lets the workspace tab strip own standalone panel chrome", () => {
     renderThreadDetail({
       isCompactViewport: false,
       isSecondaryPanelOpen: true,
@@ -475,9 +493,9 @@ describe("ThreadDetailSecondaryContent compact drawer settling", () => {
 
     expect(
       screen
-        .getByTestId("inline-secondary-panel")
-        .getAttribute("data-inline-panel-toggle"),
-    ).toBe("button");
+        .getByTestId("drawer-secondary-panel")
+        .getAttribute("data-hide-chrome"),
+    ).toBe("true");
   });
 
   it("places the hosted panel hide control at the outer edge of its own toolbar", () => {
@@ -500,21 +518,18 @@ describe("ThreadDetailSecondaryContent compact drawer settling", () => {
     ).toBe("button");
   });
 
-  it("keeps the thread header inside the timeline column beside the side panel", () => {
+  it("keeps the thread header inside the main workspace beside the sidebar", () => {
     renderThreadDetail({
       isCompactViewport: false,
-      isSecondaryPanelOpen: true,
+      isSecondaryPanelOpen: false,
       renderBrowserDeck: createBrowserDeckRenderer(),
       threadId: "thread-1",
     });
 
-    const timelinePanel = screen.getByTestId("panel");
-    const sidePanel = screen.getByTestId("inline-secondary-panel");
-    const panelGroup = screen.getByTestId("panel-group");
-    expect(timelinePanel.contains(screen.getByTestId("header"))).toBe(true);
-    expect(timelinePanel.contains(sidePanel)).toBe(false);
-    expect(panelGroup.contains(timelinePanel)).toBe(true);
-    expect(panelGroup.contains(sidePanel)).toBe(true);
+    const mainWorkspace = screen.getByLabelText("Thread workspace");
+    const sidebar = screen.getByLabelText("Workspace sidebar");
+    expect(mainWorkspace.contains(screen.getByTestId("header"))).toBe(true);
+    expect(mainWorkspace.contains(sidebar)).toBe(false);
   });
 
   it("hides and restores native browser readiness as hosted pane focus changes", () => {

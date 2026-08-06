@@ -20,9 +20,7 @@ import { DETAIL_GRID_CLASS } from "@/components/ui/detail-card.js";
 import { useAtomValue } from "jotai";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { ThreadSecondaryPanel } from "@/components/secondary-panel/ThreadSecondaryPanel";
-import {
-  secondaryPanelWidthPercentAtom,
-} from "@/components/secondary-panel/threadSecondaryPanelAtoms";
+import { secondaryPanelWidthPercentAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import {
   ThreadMetadataCard,
   ThreadMetadataContent,
@@ -30,6 +28,17 @@ import {
   type ThreadMetadataContentProps,
 } from "@/components/secondary-panel/ThreadMetadataContent";
 import { useThreads } from "@/hooks/queries/thread-queries";
+import type { EnvironmentPullRequestResponse } from "@bb/server-contract";
+import {
+  ThreadWorkspaceShell,
+  type WorkspaceTab,
+} from "@/components/workspace/ThreadWorkspaceShell";
+import {
+  WorkspaceRepositoryPanel,
+  type WorkspaceUpperTabId,
+} from "@/components/workspace/WorkspaceRepositoryPanel";
+import { WorkspaceGitBar } from "@/components/workspace/WorkspaceGitBar";
+import { WorkspaceProcessTerminal } from "@/components/workspace/terminals/WorkspaceProcessTerminal";
 import { ThreadTimelinePane } from "./ThreadTimelinePane";
 import { PANEL_COLLAPSE_TRANSITION_CLASS } from "@/components/secondary-panel/panelTransitionTokens";
 import { dispatchBrowserViewBoundsSync } from "@/lib/browser-view-bounds-sync";
@@ -84,6 +93,14 @@ interface ThreadDetailSecondaryContentProps {
   metadata: ThreadMetadataContentProps;
   secondaryPanel: ThreadSecondaryPanelProps;
   timeline: ThreadTimelinePaneProps;
+  workspace: {
+    canCreateTerminal: boolean;
+    onOpenBrowserUrl: (url: string) => void;
+    pullRequestResponse: EnvironmentPullRequestResponse | undefined;
+    repositoryUrl: string | null;
+    runScript: string | null;
+    setupScript: string | null;
+  };
 }
 
 export function ThreadDetailSecondaryContent(
@@ -109,6 +126,7 @@ function ThreadDetailSecondaryContentBody({
   metadata,
   secondaryPanel,
   timeline,
+  workspace,
 }: ThreadDetailSecondaryContentProps) {
   const { isFocused, paneId, secondaryPanelHost } = usePaneContext();
   const composerHost = usePluginComposerHost();
@@ -116,6 +134,9 @@ function ThreadDetailSecondaryContentBody({
   const stableSecondaryPanel = secondaryPanel;
   const stableTimeline = timeline;
   const renderAsDrawer = useIsCompactViewport();
+  const [activeUpperTab, setActiveUpperTab] =
+    useState<WorkspaceUpperTabId>("all-files");
+  const [activeLowerTab, setActiveLowerTab] = useState("terminal");
   const persistedSecondaryWidthPercent = useAtomValue(
     secondaryPanelWidthPercentAtom,
   );
@@ -357,6 +378,156 @@ function ThreadDetailSecondaryContentBody({
         >
           <ThreadTimelinePane {...stableTimeline} footer={footer} />
         </div>
+      </div>
+    );
+  }
+
+  if (!renderAsDrawer) {
+    const visibleFileTabs = (threadSecondaryPanelProps.fileTabs ?? []).filter(
+      (tab) => tab.isHidden !== true,
+    );
+    const activeFileTab = visibleFileTabs.find((tab) => tab.isActive);
+    const activeMainTabId = !isSecondaryPanelOpen
+      ? "chat"
+      : (activeFileTab?.id ??
+        (threadSecondaryPanelProps.activeTab?.kind === "git-diff"
+          ? "changes"
+          : threadSecondaryPanelProps.activeTab?.kind === "thread-info"
+            ? "thread-info"
+            : "chat"));
+    const mainTabs: WorkspaceTab[] = [
+      { id: "chat", label: "Chat" },
+      ...(threadSecondaryPanelProps.canUseGitUi
+        ? [{ id: "changes", label: "All changes" }]
+        : []),
+      ...visibleFileTabs.map((tab) => ({
+        id: tab.id,
+        label: tab.filename,
+        closeLabel: `Close ${tab.filename}`,
+      })),
+    ];
+    if (activeMainTabId === "thread-info") {
+      mainTabs.push({ id: "thread-info", label: "Info" });
+    }
+    const selectMainTab = (tabId: string) => {
+      if (tabId === "chat") {
+        threadSecondaryPanelProps.onClose();
+        return;
+      }
+      if (tabId === "changes") {
+        threadSecondaryPanelProps.onPanelChange("git-diff");
+        return;
+      }
+      if (tabId === "thread-info") {
+        threadSecondaryPanelProps.onPanelChange("thread-info");
+        return;
+      }
+      visibleFileTabs.find((tab) => tab.id === tabId)?.onSelect();
+    };
+    const closeMainTab = (tabId: string) => {
+      visibleFileTabs.find((tab) => tab.id === tabId)?.onClose();
+    };
+    const mainContent =
+      activeMainTabId === "chat" ? (
+        <div className="flex h-full min-h-0 flex-col overflow-hidden">
+          {header}
+          <ThreadTimelinePane {...stableTimeline} footer={footer} />
+        </div>
+      ) : (
+        <ThreadSecondaryPanel
+          {...threadSecondaryPanelProps}
+          browserDeck={browserDeck}
+          hideChrome
+          renderAsDrawer
+          isConversationCollapsed={false}
+          onToggleConversationCollapse={onToggleConversationCollapse}
+          metadataContent={metadataContent}
+        />
+      );
+    const upperTabs: WorkspaceTab[] = [
+      { id: "all-files", label: "All files" },
+      { id: "changes", label: "Changes" },
+      { id: "checks", label: "Checks" },
+    ];
+    const lowerTabs: WorkspaceTab[] = [
+      { id: "setup", label: "Setup" },
+      { id: "run", label: "Run" },
+      { id: "terminal", label: "Terminal" },
+    ];
+    const environmentId = threadSecondaryPanelProps.environmentId;
+    const lowerContent = environmentId ? (
+      <WorkspaceProcessTerminal
+        canCreateTerminal={workspace.canCreateTerminal}
+        command={
+          activeLowerTab === "setup"
+            ? workspace.setupScript
+            : activeLowerTab === "run"
+              ? workspace.runScript
+              : null
+        }
+        environmentId={environmentId}
+        onOpenPreview={workspace.onOpenBrowserUrl}
+        purpose={
+          activeLowerTab === "setup"
+            ? "setup"
+            : activeLowerTab === "run"
+              ? "run"
+              : "shell"
+        }
+      />
+    ) : (
+      <div className="flex h-full items-center justify-center px-4 text-center text-xs text-muted-foreground">
+        This thread has no worktree terminal.
+      </div>
+    );
+
+    return (
+      <div
+        className={cn(
+          "flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-clip",
+          !isBoundedPane && "-mx-4 -mb-4 -mt-4 md:-mx-5 md:-mb-5 md:-mt-5",
+        )}
+      >
+        <ThreadWorkspaceShell
+          activeLowerTabId={activeLowerTab}
+          activeMainTabId={activeMainTabId}
+          activeUpperTabId={activeUpperTab}
+          isCompact={false}
+          lowerContent={lowerContent}
+          lowerTabs={lowerTabs}
+          mainContent={mainContent}
+          mainTabs={mainTabs}
+          onCloseMainTab={closeMainTab}
+          onSelectLowerTab={setActiveLowerTab}
+          onSelectMainTab={selectMainTab}
+          onSelectUpperTab={(tabId) =>
+            setActiveUpperTab(tabId as WorkspaceUpperTabId)
+          }
+          topBar={
+            <WorkspaceGitBar
+              onOpenUrl={workspace.onOpenBrowserUrl}
+              pullRequestResponse={workspace.pullRequestResponse}
+              repositoryUrl={workspace.repositoryUrl}
+              workspaceStatus={stableMetadata.workspaceStatus}
+            />
+          }
+          upperContent={
+            <WorkspaceRepositoryPanel
+              activeTab={activeUpperTab}
+              environmentId={environmentId}
+              onOpenAllChanges={() =>
+                threadSecondaryPanelProps.onPanelChange("git-diff")
+              }
+              onOpenFile={(path) =>
+                threadSecondaryPanelProps.onOpenFilePreview?.(path)
+              }
+              onOpenUrl={workspace.onOpenBrowserUrl}
+              pullRequestResponse={workspace.pullRequestResponse}
+              workspaceStatus={stableMetadata.workspaceStatus}
+            />
+          }
+          upperTabs={upperTabs}
+        />
       </div>
     );
   }

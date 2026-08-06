@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useRef, type KeyboardEvent, type ReactNode } from "react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { Button } from "@bb/shared-ui/button";
@@ -15,6 +15,7 @@ interface WorkspaceTabStripProps {
   ariaLabel: string;
   onCloseTab?: (tabId: string) => void;
   onSelectTab: (tabId: string) => void;
+  panelId: string;
   tabs: readonly WorkspaceTab[];
 }
 
@@ -45,15 +46,38 @@ function WorkspaceTabStrip({
   ariaLabel,
   onCloseTab,
   onSelectTab,
+  panelId,
   tabs,
 }: WorkspaceTabStripProps) {
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const selectByKeyboard = (
+    event: KeyboardEvent<HTMLButtonElement>,
+    currentIndex: number,
+  ) => {
+    let nextIndex: number | null = null;
+    if (event.key === "ArrowLeft") {
+      nextIndex = (currentIndex - 1 + tabs.length) % tabs.length;
+    } else if (event.key === "ArrowRight") {
+      nextIndex = (currentIndex + 1) % tabs.length;
+    } else if (event.key === "Home") {
+      nextIndex = 0;
+    } else if (event.key === "End") {
+      nextIndex = tabs.length - 1;
+    }
+    if (nextIndex === null) return;
+    event.preventDefault();
+    const nextTab = tabs[nextIndex];
+    if (!nextTab) return;
+    onSelectTab(nextTab.id);
+    tabRefs.current[nextIndex]?.focus();
+  };
   return (
     <div
       role="tablist"
       aria-label={ariaLabel}
       className="flex h-9 min-w-0 shrink-0 items-center gap-0.5 overflow-x-auto border-b border-border-seam bg-sidebar px-1"
     >
-      {tabs.map((tab) => {
+      {tabs.map((tab, index) => {
         const isActive = tab.id === activeTabId;
         return (
           <div
@@ -64,11 +88,18 @@ function WorkspaceTabStrip({
             )}
           >
             <button
+              ref={(element) => {
+                tabRefs.current[index] = element;
+              }}
               type="button"
               role="tab"
+              id={`${panelId}-tab-${index}`}
+              aria-controls={panelId}
               aria-selected={isActive}
+              tabIndex={isActive ? 0 : -1}
               className="h-full px-2 text-xs font-medium"
               onClick={() => onSelectTab(tab.id)}
+              onKeyDown={(event) => selectByKeyboard(event, index)}
             >
               {tab.label}
             </button>
@@ -118,9 +149,18 @@ export function ThreadWorkspaceShell({
         ariaLabel="Workspace tabs"
         onCloseTab={onCloseMainTab}
         onSelectTab={onSelectMainTab}
+        panelId="thread-workspace-main-panel"
         tabs={mainTabs}
       />
-      <div role="tabpanel" className="min-h-0 min-w-0 flex-1 overflow-hidden">
+      <div
+        id="thread-workspace-main-panel"
+        role="tabpanel"
+        aria-labelledby={`thread-workspace-main-panel-tab-${Math.max(
+          0,
+          mainTabs.findIndex((tab) => tab.id === activeMainTabId),
+        )}`}
+        className="min-h-0 min-w-0 flex-1 overflow-hidden"
+      >
         {mainContent}
       </div>
     </section>
@@ -159,9 +199,18 @@ export function ThreadWorkspaceShell({
                   activeTabId={activeUpperTabId}
                   ariaLabel="Repository tabs"
                   onSelectTab={onSelectUpperTab}
+                  panelId="thread-workspace-repository-panel"
                   tabs={upperTabs}
                 />
-                <div role="tabpanel" className="min-h-0 flex-1 overflow-hidden">
+                <div
+                  id="thread-workspace-repository-panel"
+                  role="tabpanel"
+                  aria-labelledby={`thread-workspace-repository-panel-tab-${Math.max(
+                    0,
+                    upperTabs.findIndex((tab) => tab.id === activeUpperTabId),
+                  )}`}
+                  className="min-h-0 flex-1 overflow-hidden"
+                >
                   {upperContent}
                 </div>
               </div>
@@ -182,10 +231,16 @@ export function ThreadWorkspaceShell({
                   activeTabId={activeLowerTabId}
                   ariaLabel="Worktree terminal tabs"
                   onSelectTab={onSelectLowerTab}
+                  panelId="thread-workspace-terminal-panel"
                   tabs={lowerTabs}
                 />
                 <div
+                  id="thread-workspace-terminal-panel"
                   role="tabpanel"
+                  aria-labelledby={`thread-workspace-terminal-panel-tab-${Math.max(
+                    0,
+                    lowerTabs.findIndex((tab) => tab.id === activeLowerTabId),
+                  )}`}
                   data-testid="thread-workspace-terminal-region"
                   className="min-h-0 flex-1 overflow-hidden"
                 >

@@ -5,9 +5,13 @@ import type {
   EnvironmentActionResponse,
   UpdateEnvironmentRequest,
 } from "@bb/server-contract";
+import type { FileWriteArgs } from "@bb/sdk/browser";
 import { sdk } from "@/lib/sdk";
 import type { RequestEnvironmentActionMutationRequest } from "./mutation-request-types";
-import { invalidateEnvironmentActionQueries } from "../cache-owners/environment-cache-effects";
+import {
+  invalidateEnvironmentActionQueries,
+  invalidateEnvironmentWorkspaceStateQueries,
+} from "../cache-owners/environment-cache-effects";
 import { applyEnvironmentUpdateResult } from "../cache-owners/environment-workspace-cache-owner";
 import {
   beginArchiveEnvironmentThreadsTransaction,
@@ -21,6 +25,31 @@ type UpdateEnvironmentMutationRequest = {
 
 interface ArchiveEnvironmentThreadsMutationRequest {
   id: string;
+}
+
+interface WriteWorkspaceFileMutationRequest extends FileWriteArgs {
+  environmentId: string;
+}
+
+export function useWriteWorkspaceFile() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    meta: {
+      errorMessage: "Failed to save workspace file.",
+      showErrorToast: false,
+    },
+    mutationFn: ({
+      environmentId: _environmentId,
+      ...request
+    }: WriteWorkspaceFileMutationRequest) => sdk.files.write(request),
+    onSuccess: (_result, variables) => {
+      invalidateEnvironmentWorkspaceStateQueries({
+        environmentId: variables.environmentId,
+        queryClient,
+      });
+    },
+  });
 }
 
 export function useRequestEnvironmentAction() {

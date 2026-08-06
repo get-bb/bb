@@ -2,9 +2,20 @@ import { describe, expect, it } from "vitest";
 import {
   getBrowserUrlHost,
   getBrowserUrlSecurity,
+  isLoopbackBrowserUrl,
   looksLikeUrl,
   resolveBrowserAddressInput,
 } from "./browser-url";
+
+describe("isLoopbackBrowserUrl", () => {
+  it("accepts HTTP loopback hosts and rejects public or unsupported URLs", () => {
+    expect(isLoopbackBrowserUrl("http://127.0.0.2:3000")).toBe(true);
+    expect(isLoopbackBrowserUrl("https://preview.localhost:5173")).toBe(true);
+    expect(isLoopbackBrowserUrl("http://[::1]:8000")).toBe(true);
+    expect(isLoopbackBrowserUrl("https://example.com")).toBe(false);
+    expect(isLoopbackBrowserUrl("file:///tmp/index.html")).toBe(false);
+  });
+});
 
 describe("looksLikeUrl", () => {
   it("treats explicit http(s) schemes as URLs", () => {

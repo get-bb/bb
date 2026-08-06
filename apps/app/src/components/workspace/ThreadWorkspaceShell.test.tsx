@@ -69,6 +69,16 @@ describe("ThreadWorkspaceShell", () => {
     expect(onSelectMainTab).toHaveBeenCalledWith("file:README.md");
   });
 
+  it("moves between workspace tabs with the keyboard", () => {
+    const { onSelectMainTab } = renderShell();
+    const chatTab = screen.getByRole("tab", { name: "Chat" });
+    fireEvent.keyDown(chatTab, { key: "ArrowRight" });
+    expect(onSelectMainTab).toHaveBeenCalledWith("file:README.md");
+    expect(document.activeElement).toBe(
+      screen.getByRole("tab", { name: "README.md" }),
+    );
+  });
+
   it("does not force the split sidebar into compact layouts", () => {
     renderShell(true);
     expect(screen.queryByTestId("thread-workspace-sidebar")).toBeNull();
