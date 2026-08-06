@@ -21,7 +21,16 @@ function setup(
     },
   });
   const db = host.bb.storage.database();
-  const store = createTasksStore(db);
+  const store = createTasksStore(db, {
+    currentActor: () => {
+      const principal = host.bb.experimental_currentPrincipal();
+      return {
+        principalId: principal.id,
+        principalKind: principal.kind,
+        displayName: principal.displayName,
+      };
+    },
+  });
   const project = store.createProject({
     name: "Plugin",
     prefix: "PLUG",

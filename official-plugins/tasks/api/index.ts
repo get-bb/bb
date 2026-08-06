@@ -69,7 +69,16 @@ export interface TasksApiStore {
 
 export function createStore(bb: BbPluginApi): TasksApiStore {
   const database = bb.storage.database();
-  const tasks = createTasksStore(database);
+  const tasks = createTasksStore(database, {
+    currentActor: () => {
+      const principal = bb.experimental_currentPrincipal();
+      return {
+        principalId: principal.id,
+        principalKind: principal.kind,
+        displayName: principal.displayName,
+      };
+    },
+  });
 
   return {
     tasks,

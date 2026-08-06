@@ -70,6 +70,16 @@ function task(
     position: number,
     createdAt: "2026-07-15T00:00:00.000Z",
     updatedAt: "2026-07-15T00:00:00.000Z",
+    createdBy: {
+      principalId: "system:legacy",
+      principalKind: "system",
+      displayName: "System (legacy)",
+    },
+    updatedBy: {
+      principalId: "system:legacy",
+      principalKind: "system",
+      displayName: "System (legacy)",
+    },
     labelIds: [],
   };
 }
@@ -118,7 +128,9 @@ async function rowOrder(slot: ReturnType<typeof renderList>) {
 async function selectSort(slot: ReturnType<typeof renderList>, label: string) {
   fireEvent.click(slot.getByRole("button", { name: /Sort/ }));
   const drawer = await slot.findByRole("dialog", { name: "Sort tasks" });
-  fireEvent.click(within(drawer).getByRole("menuitemcheckbox", { name: label }));
+  fireEvent.click(
+    within(drawer).getByRole("menuitemcheckbox", { name: label }),
+  );
 }
 
 describe("list sorting (compact viewport)", () => {
@@ -128,12 +140,22 @@ describe("list sorting (compact viewport)", () => {
 
     await selectSort(slot, "Priority");
     await waitFor(async () =>
-      expect(await rowOrder(slot)).toEqual(["TSK-2", "TSK-1", "TSK-4", "TSK-3"]),
+      expect(await rowOrder(slot)).toEqual([
+        "TSK-2",
+        "TSK-1",
+        "TSK-4",
+        "TSK-3",
+      ]),
     );
 
     await selectSort(slot, "Due date");
     await waitFor(async () =>
-      expect(await rowOrder(slot)).toEqual(["TSK-1", "TSK-2", "TSK-4", "TSK-3"]),
+      expect(await rowOrder(slot)).toEqual([
+        "TSK-1",
+        "TSK-2",
+        "TSK-4",
+        "TSK-3",
+      ]),
     );
   });
 
@@ -153,7 +175,9 @@ describe("list sorting (compact viewport)", () => {
       options.map((option) => option.getAttribute("aria-checked")),
     ).toEqual(["true", "false", "false"]);
 
-    fireEvent.click(within(drawer).getByRole("menuitemcheckbox", { name: "Priority" }));
+    fireEvent.click(
+      within(drawer).getByRole("menuitemcheckbox", { name: "Priority" }),
+    );
     await waitFor(() =>
       expect(slot.getByRole("button", { name: /Sort/ }).textContent).toContain(
         "Priority",

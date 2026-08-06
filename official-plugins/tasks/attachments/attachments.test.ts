@@ -13,7 +13,16 @@ import {
 function setup(options?: Parameters<typeof registerAttachments>[2]) {
   const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
   const db = bb.storage.database();
-  const store = createTasksStore(db);
+  const store = createTasksStore(db, {
+    currentActor: () => {
+      const principal = bb.experimental_currentPrincipal();
+      return {
+        principalId: principal.id,
+        principalKind: principal.kind,
+        displayName: principal.displayName,
+      };
+    },
+  });
   const project = store.createProject({
     name: "Attachments",
     prefix: "ATT",

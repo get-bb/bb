@@ -38,6 +38,16 @@ const task = {
   position: 100,
   createdAt: "2026-07-15T00:00:00.000Z",
   updatedAt: "2026-07-15T00:00:00.000Z",
+  createdBy: {
+    principalId: "system:legacy",
+    principalKind: "system",
+    displayName: "System (legacy)",
+  },
+  updatedBy: {
+    principalId: "system:legacy",
+    principalKind: "system",
+    displayName: "System (legacy)",
+  },
   labelIds: [],
 };
 

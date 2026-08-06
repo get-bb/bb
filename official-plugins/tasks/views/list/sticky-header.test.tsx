@@ -45,10 +45,7 @@ const project = {
   createdAt: "2026-07-15T00:00:00.000Z",
 };
 
-function task(
-  number: number,
-  status: Task["status"],
-): Task {
+function task(number: number, status: Task["status"]): Task {
   return {
     id: `01HZZZZZZZZZZZZZZZZZZZZZT${number}`,
     projectId: PROJECT_ID,
@@ -63,6 +60,16 @@ function task(
     position: number,
     createdAt: "2026-07-15T00:00:00.000Z",
     updatedAt: "2026-07-15T00:00:00.000Z",
+    createdBy: {
+      principalId: "system:legacy",
+      principalKind: "system",
+      displayName: "System (legacy)",
+    },
+    updatedBy: {
+      principalId: "system:legacy",
+      principalKind: "system",
+      displayName: "System (legacy)",
+    },
     labelIds: [],
   };
 }
@@ -101,7 +108,9 @@ describe("status-group sticky headers", () => {
     await slot.findByText("TSK-1");
 
     const headers = Array.from(
-      slot.container.querySelectorAll<HTMLElement>("[data-status-group-header]"),
+      slot.container.querySelectorAll<HTMLElement>(
+        "[data-status-group-header]",
+      ),
     );
     expect(headers.map((header) => header.dataset.statusGroupHeader)).toEqual([
       "todo",
@@ -128,8 +137,8 @@ describe("status-group sticky headers", () => {
     expect(slot.getByText("Todo")).toBeTruthy();
     expect(slot.getByText("Done")).toBeTruthy();
     expect(
-      headers.map((header) =>
-        header.querySelector(".tabular-nums")?.textContent,
+      headers.map(
+        (header) => header.querySelector(".tabular-nums")?.textContent,
       ),
     ).toEqual(["2", "2"]);
 

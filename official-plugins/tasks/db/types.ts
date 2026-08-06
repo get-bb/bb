@@ -1,5 +1,10 @@
 import type { TaskSort } from "../shared/pagination.js";
-import type { PresetPermissionMode } from "../shared/contract.js";
+import type {
+  PresetPermissionMode,
+  TaskActorSnapshot,
+} from "../shared/contract.js";
+
+export type { TaskActorSnapshot };
 
 export const TASK_STATUSES = [
   "backlog",
@@ -74,6 +79,8 @@ export interface Task {
   position: number;
   createdAt: string;
   updatedAt: string;
+  createdBy: TaskActorSnapshot;
+  updatedBy: TaskActorSnapshot;
 }
 
 export interface Label {
@@ -98,6 +105,7 @@ export interface Comment {
   body: string;
   notifiedCount: number;
   createdAt: string;
+  actor: TaskActorSnapshot;
 }
 
 export interface Attachment {

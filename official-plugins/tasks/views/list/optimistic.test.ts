@@ -26,6 +26,16 @@ function task(overrides: Partial<Task> & Pick<Task, "id">): Task {
     position: 0,
     createdAt: "2026-07-01T00:00:00.000Z",
     updatedAt: "2026-07-01T00:00:00.000Z",
+    createdBy: {
+      principalId: "system:legacy",
+      principalKind: "system",
+      displayName: "System (legacy)",
+    },
+    updatedBy: {
+      principalId: "system:legacy",
+      principalKind: "system",
+      displayName: "System (legacy)",
+    },
     labelIds: [],
     ...overrides,
   };
@@ -55,7 +65,12 @@ describe("applyEdit / editedTasks", () => {
 });
 
 describe("matchesFilters", () => {
-  const t = task({ id: "T1", status: "in_progress", priority: "high", labelIds: ["A"] });
+  const t = task({
+    id: "T1",
+    status: "in_progress",
+    priority: "high",
+    labelIds: ["A"],
+  });
 
   it("passes with no filters", () => {
     expect(matchesFilters(t, [], [], [])).toBe(true);
@@ -83,7 +98,13 @@ describe("begin / settle lifecycle", () => {
 
   it("keeps the optimistic value on success and clears pending", () => {
     let e = beginEdit(empty, "T1", { priority: "high" }, 1);
-    e = settleSuccess(e, "T1", { priority: "high" }, 1, task({ id: "T1", priority: "high" }));
+    e = settleSuccess(
+      e,
+      "T1",
+      { priority: "high" },
+      1,
+      task({ id: "T1", priority: "high" }),
+    );
     expect(e.get("T1")?.edit.priority).toBe("high");
     expect(pendingIds(e).size).toBe(0);
   });
@@ -141,7 +162,13 @@ describe("concurrent / out-of-order edits to one task", () => {
     let e = beginEdit(empty, "T1", { labelIds: ["A"] }, 1);
     e = beginEdit(e, "T1", { labelIds: ["A", "B"] }, 2);
     // gen 1 resolves late with its old value — gen 2 still owns labelIds
-    e = settleSuccess(e, "T1", { labelIds: ["A"] }, 1, task({ id: "T1", labelIds: ["A"] }));
+    e = settleSuccess(
+      e,
+      "T1",
+      { labelIds: ["A"] },
+      1,
+      task({ id: "T1", labelIds: ["A"] }),
+    );
     expect(e.get("T1")?.edit.labelIds).toEqual(["A", "B"]);
     expect(e.get("T1")?.inFlight).toBe(1);
   });
@@ -158,8 +185,12 @@ describe("reconcileEntries", () => {
       task({ id: "T1", status: "done", position: 50 }),
     );
     // Server now agrees on status + position, but not priority.
-    const server = [task({ id: "T1", status: "done", priority: "low", position: 50 })];
-    expect(reconcileEntries(e, server).get("T1")?.edit).toEqual({ priority: "high" });
+    const server = [
+      task({ id: "T1", status: "done", priority: "low", position: 50 }),
+    ];
+    expect(reconcileEntries(e, server).get("T1")?.edit).toEqual({
+      priority: "high",
+    });
     // A task the server no longer returns is dropped.
     expect(reconcileEntries(e, [task({ id: "T2" })]).size).toBe(0);
   });

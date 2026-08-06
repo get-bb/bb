@@ -62,6 +62,11 @@ describe("commentByline", () => {
     body: "Done",
     notifiedCount: 0,
     createdAt: "2026-07-15T00:00:00.000Z",
+    actor: {
+      principalId: "system:legacy",
+      principalKind: "system",
+      displayName: "System (legacy)",
+    },
   };
 
   it("links an agent comment to its thread by the resolved human title", () => {

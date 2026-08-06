@@ -76,6 +76,11 @@ function comment(
     body: "Reply",
     notifiedCount: 0,
     createdAt: "2026-07-15T00:00:00.000Z",
+    actor: {
+      principalId: "system:legacy",
+      principalKind: "system",
+      displayName: "System (legacy)",
+    },
   };
 }
 
@@ -116,7 +121,9 @@ describe("AttachmentTracks", () => {
   it("keeps each caption inside its own image figure", () => {
     const screen = render(
       <AttachmentTracks
-        attachments={[attachment("01HZZZZZZZZZZZZZZZZZZZZ1I1", "shot.png", true)]}
+        attachments={[
+          attachment("01HZZZZZZZZZZZZZZZZZZZZ1I1", "shot.png", true),
+        ]}
         onOpenImage={() => {}}
       />,
     );
@@ -424,9 +431,8 @@ describe("CommentComposer", () => {
       });
       expect(rpcCall).not.toHaveBeenCalled();
       expect(
-        (
-          screen.getByRole("button", { name: "Comment" }) as HTMLButtonElement
-        ).disabled,
+        (screen.getByRole("button", { name: "Comment" }) as HTMLButtonElement)
+          .disabled,
       ).toBe(true);
     } finally {
       releaseSend();

@@ -1,6 +1,11 @@
 import { createHash, randomBytes } from "node:crypto";
 import type { BbPluginApi } from "@bb/plugin-sdk";
 import { z } from "zod";
+import {
+  decodeTaskActorTriple,
+  requireTaskActorSnapshot,
+  type TaskActorSnapshot,
+} from "./actor";
 import { initializeTasksSchema } from "./schema";
 import {
   TASKS_PAGE_DEFAULT_LIMIT,
@@ -45,6 +50,14 @@ import type {
 type PluginDatabase = ReturnType<BbPluginApi["storage"]["database"]>;
 type SqlParameter = string | number;
 
+export interface CreateTasksStoreOptions {
+  /**
+   * Called at mutation time to snapshot the acting principal into the same
+   * SQLite statement as the write. Must not be invoked during schema init.
+   */
+  currentActor: () => TaskActorSnapshot;
+}
+
 const ULID_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 const POSITION_STEP = 1_024;
 const MIN_POSITION_GAP = 0.000_001;
@@ -84,6 +97,12 @@ interface TaskRow {
   position: number;
   created_at: string;
   updated_at: string;
+  created_principal_id: string | null;
+  created_principal_kind: string | null;
+  created_display_name: string | null;
+  updated_principal_id: string | null;
+  updated_principal_kind: string | null;
+  updated_display_name: string | null;
 }
 
 interface TaskPageRow extends TaskRow {
@@ -122,6 +141,9 @@ interface CommentRow {
   body: string;
   notified_count: number;
   created_at: string;
+  actor_principal_id: string | null;
+  actor_principal_kind: string | null;
+  actor_display_name: string | null;
 }
 
 interface AttachmentRow {
@@ -373,6 +395,16 @@ function taskFromRow(row: TaskRow): Task {
     position: row.position,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    createdBy: decodeTaskActorTriple({
+      principalId: row.created_principal_id,
+      principalKind: row.created_principal_kind,
+      displayName: row.created_display_name,
+    }),
+    updatedBy: decodeTaskActorTriple({
+      principalId: row.updated_principal_id,
+      principalKind: row.updated_principal_kind,
+      displayName: row.updated_display_name,
+    }),
   };
 }
 
@@ -400,6 +432,11 @@ function commentFromRow(row: CommentRow): Comment {
     body: row.body,
     notifiedCount: row.notified_count,
     createdAt: row.created_at,
+    actor: decodeTaskActorTriple({
+      principalId: row.actor_principal_id,
+      principalKind: row.actor_principal_kind,
+      displayName: row.actor_display_name,
+    }),
   };
 }
 
@@ -482,8 +519,15 @@ function escapeLike(value: string): string {
     .replaceAll("_", "\\_");
 }
 
-export function createTasksStore(db: PluginDatabase) {
+export function createTasksStore(
+  db: PluginDatabase,
+  options: CreateTasksStoreOptions,
+) {
   initializeTasksSchema(db);
+
+  function snapshotCurrentActor(): TaskActorSnapshot {
+    return requireTaskActorSnapshot(options.currentActor());
+  }
 
   const getFolderRow = db.prepare<[string], FolderRow>(
     "SELECT * FROM folders WHERE id = ?",
@@ -770,6 +814,7 @@ export function createTasksStore(db: PluginDatabase) {
           )
           .get(project.id, status)?.position ?? POSITION_STEP;
       const createdAt = nowIso();
+      const actor = snapshotCurrentActor();
 
       const allocated = db
         .prepare<[string, number]>(
@@ -800,13 +845,21 @@ export function createTasksStore(db: PluginDatabase) {
           number,
           string,
           string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
         ]
       >(
         `
       INSERT INTO tasks (
         id, project_id, number, title, description, status, priority, due_date,
-        parent_task_id, position, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        parent_task_id, position, created_at, updated_at,
+        created_principal_id, created_principal_kind, created_display_name,
+        updated_principal_id, updated_principal_kind, updated_display_name
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
       ).run(
         id,
@@ -821,6 +874,12 @@ export function createTasksStore(db: PluginDatabase) {
         position,
         createdAt,
         createdAt,
+        actor.principalId,
+        actor.principalKind,
+        actor.displayName,
+        actor.principalId,
+        actor.principalKind,
+        actor.displayName,
       );
       return requireTask(id);
     },
@@ -1101,6 +1160,7 @@ export function createTasksStore(db: PluginDatabase) {
             .get(current.projectId, status)?.position ?? POSITION_STEP;
       }
 
+      const actor = snapshotCurrentActor();
       db.prepare<
         [
           string,
@@ -1112,12 +1172,17 @@ export function createTasksStore(db: PluginDatabase) {
           number,
           string,
           string,
+          string,
+          string,
+          string,
         ]
       >(
         `
         UPDATE tasks SET
           title = ?, description = ?, status = ?, priority = ?, due_date = ?,
-          parent_task_id = ?, position = ?, updated_at = ?
+          parent_task_id = ?, position = ?, updated_at = ?,
+          updated_principal_id = ?, updated_principal_kind = ?,
+          updated_display_name = ?
         WHERE id = ?
       `,
       ).run(
@@ -1133,6 +1198,9 @@ export function createTasksStore(db: PluginDatabase) {
         parentTaskId,
         position,
         nowIso(),
+        actor.principalId,
+        actor.principalKind,
+        actor.displayName,
         id,
       );
       return requireTask(id);
@@ -1224,11 +1292,26 @@ export function createTasksStore(db: PluginDatabase) {
             .get(task.projectId, input.status, id)?.position ?? POSITION_STEP;
       }
 
-      db.prepare<[Task["status"], number, string, string]>(
+      const actor = snapshotCurrentActor();
+      db.prepare<
+        [Task["status"], number, string, string, string, string, string]
+      >(
         `
-        UPDATE tasks SET status = ?, position = ?, updated_at = ? WHERE id = ?
+        UPDATE tasks SET
+          status = ?, position = ?, updated_at = ?,
+          updated_principal_id = ?, updated_principal_kind = ?,
+          updated_display_name = ?
+        WHERE id = ?
       `,
-      ).run(input.status, position, nowIso(), id);
+      ).run(
+        input.status,
+        position,
+        nowIso(),
+        actor.principalId,
+        actor.principalKind,
+        actor.displayName,
+        id,
+      );
       return requireTask(id);
     },
   );
@@ -1366,6 +1449,7 @@ export function createTasksStore(db: PluginDatabase) {
   function createComment(input: CreateCommentInput): Comment {
     const id = createOrValidateUlid(input.id);
     requireTask(input.taskId);
+    const actor = snapshotCurrentActor();
     db.prepare<
       [
         string,
@@ -1377,13 +1461,17 @@ export function createTasksStore(db: PluginDatabase) {
         string,
         number,
         string,
+        string,
+        string,
+        string,
       ]
     >(
       `
       INSERT INTO comments (
         id, task_id, kind, author_name, preset_name, thread_id, body,
-        notified_count, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        notified_count, created_at,
+        actor_principal_id, actor_principal_kind, actor_display_name
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
     ).run(
       id,
@@ -1395,6 +1483,9 @@ export function createTasksStore(db: PluginDatabase) {
       input.body,
       input.notifiedCount ?? 0,
       nowIso(),
+      actor.principalId,
+      actor.principalKind,
+      actor.displayName,
     );
     return requireComment(id);
   }

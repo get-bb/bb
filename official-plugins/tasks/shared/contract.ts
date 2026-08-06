@@ -36,6 +36,37 @@ export const PRESET_ENVIRONMENT_KINDS = [
   "new-worktree",
 ] as const;
 
+export const TASK_ACTOR_PRINCIPAL_KINDS = [
+  "human",
+  "agent",
+  "machine",
+  "system",
+] as const;
+
+/**
+ * Compact durable actor snapshot for Tasks rows. Mirrors the host Principal
+ * fields plugins may persist — not an authorization capability.
+ */
+export const taskActorSnapshotSchema = z
+  .object({
+    principalId: z.string().min(1),
+    principalKind: z.enum(TASK_ACTOR_PRINCIPAL_KINDS),
+    displayName: z.string().min(1),
+  })
+  .strict();
+
+export type TaskActorSnapshot = z.infer<typeof taskActorSnapshotSchema>;
+
+/**
+ * Explicit stamp for pre-actor / migrated rows whose actor triple is entirely
+ * null. Never a guessed human — always this stable system value.
+ */
+export const LEGACY_SYSTEM_TASK_ACTOR: TaskActorSnapshot = Object.freeze({
+  principalId: "system:legacy",
+  principalKind: "system",
+  displayName: "System (legacy)",
+});
+
 const ULID_PATTERN = /^[0-7][0-9A-HJKMNP-TV-Z]{25}$/;
 const PROJECT_PREFIX_PATTERN = /^[A-Z][A-Z0-9]{0,9}$/;
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -122,6 +153,8 @@ export const taskSchema = z
     position: z.number(),
     createdAt: z.string(),
     updatedAt: z.string(),
+    createdBy: taskActorSnapshotSchema,
+    updatedBy: taskActorSnapshotSchema,
     labelIds: z.array(idSchema),
   })
   .strict();
@@ -146,6 +179,7 @@ export const commentSchema = z
     body: z.string(),
     notifiedCount: z.number().int().nonnegative(),
     createdAt: z.string(),
+    actor: taskActorSnapshotSchema,
   })
   .strict();
 
@@ -784,6 +818,8 @@ export type Project = z.infer<typeof projectSchema>;
 export type Task = z.infer<typeof taskSchema>;
 export type TaskStatus = (typeof TASK_STATUSES)[number];
 export type TaskPriority = (typeof TASK_PRIORITIES)[number];
+export type TaskActorPrincipalKind =
+  (typeof TASK_ACTOR_PRINCIPAL_KINDS)[number];
 export type Label = z.infer<typeof labelSchema>;
 export type Comment = z.infer<typeof commentSchema>;
 export type CommentProvider = z.infer<typeof commentProviderSchema>;

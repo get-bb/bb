@@ -457,6 +457,11 @@ describe("delegation seed prompt", () => {
         body: "Preserve the existing domain path.",
         notifiedCount: 0,
         createdAt: "2026-07-15T17:02:00.000Z",
+        actor: {
+          principalId: "system:legacy",
+          principalKind: "system",
+          displayName: "System (legacy)",
+        },
       },
       {
         id: "01J00000000000000000000005",
@@ -468,6 +473,11 @@ describe("delegation seed prompt", () => {
         body: "The schema study is complete.",
         notifiedCount: 0,
         createdAt: "2026-07-15T17:03:00.000Z",
+        actor: {
+          principalId: "system:legacy",
+          principalKind: "system",
+          displayName: "System (legacy)",
+        },
       },
     ];
 

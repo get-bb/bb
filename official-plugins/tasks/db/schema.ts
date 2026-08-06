@@ -2,7 +2,8 @@ import type { BbPluginApi } from "@bb/plugin-sdk";
 
 type PluginDatabase = ReturnType<BbPluginApi["storage"]["database"]>;
 
-const MIGRATIONS = [
+/** Exact ordered schema statements. Exported for migration-boundary tests only. */
+export const TASKS_SCHEMA_MIGRATIONS = [
   `
     CREATE TABLE IF NOT EXISTS folders (
       id TEXT PRIMARY KEY,
@@ -235,6 +236,18 @@ const MIGRATIONS = [
     END
     WHERE permission_mode IN ('workspace-write', 'readonly');
   `,
+  `
+    ALTER TABLE tasks ADD COLUMN created_principal_id TEXT;
+    ALTER TABLE tasks ADD COLUMN created_principal_kind TEXT;
+    ALTER TABLE tasks ADD COLUMN created_display_name TEXT;
+    ALTER TABLE tasks ADD COLUMN updated_principal_id TEXT;
+    ALTER TABLE tasks ADD COLUMN updated_principal_kind TEXT;
+    ALTER TABLE tasks ADD COLUMN updated_display_name TEXT;
+
+    ALTER TABLE comments ADD COLUMN actor_principal_id TEXT;
+    ALTER TABLE comments ADD COLUMN actor_principal_kind TEXT;
+    ALTER TABLE comments ADD COLUMN actor_display_name TEXT;
+  `,
 ] as const;
 
 export function initializeTasksSchema(db: PluginDatabase): void {
@@ -252,9 +265,8 @@ export function initializeTasksSchema(db: PluginDatabase): void {
   const recordVersion = db.prepare<[number, string]>(
     "INSERT INTO schema_version (version, applied_at) VALUES (?, ?)",
   );
-
   const migrate = db.transaction(() => {
-    for (const [index, sql] of MIGRATIONS.entries()) {
+    for (const [index, sql] of TASKS_SCHEMA_MIGRATIONS.entries()) {
       const version = index + 1;
       if (hasVersion.get(version)) continue;
       db.exec(sql);

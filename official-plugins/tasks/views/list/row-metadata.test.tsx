@@ -60,6 +60,16 @@ function task(number: number, labelIds: string[] = []): Task {
     position: number,
     createdAt: "2026-07-15T00:00:00.000Z",
     updatedAt: "2026-07-15T00:00:00.000Z",
+    createdBy: {
+      principalId: "system:legacy",
+      principalKind: "system",
+      displayName: "System (legacy)",
+    },
+    updatedBy: {
+      principalId: "system:legacy",
+      principalKind: "system",
+      displayName: "System (legacy)",
+    },
     labelIds,
   };
 }
@@ -184,7 +194,9 @@ describe("list-row metadata rail", () => {
     const { slot, calls } = renderList({ tasks: [task(1), task(2)] });
     await slot.findByText("TSK-1");
     // Give the meta query a tick to settle before asserting on RPC traffic.
-    await waitFor(() => expect(slot.getAllByRole("button").length > 0).toBe(true));
+    await waitFor(() =>
+      expect(slot.getAllByRole("button").length > 0).toBe(true),
+    );
     expect(calls.listComments).toBe(0);
     expect(calls.listAttachments).toBe(0);
     expect(slot.queryByTitle("Comments")).toBeNull();
@@ -202,7 +214,10 @@ describe("list-row metadata rail", () => {
       tasks: [
         task(1),
         task(2, [labels[0]!.id]),
-        task(3, labels.map((entry) => entry.id)),
+        task(
+          3,
+          labels.map((entry) => entry.id),
+        ),
       ],
       labels,
     });
