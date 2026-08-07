@@ -25,7 +25,7 @@ tested lines, which npm surfaces as a warning rather than an install failure.
 Windows support means the Linux stack runs entirely inside WSL2:
 
 - all `bb` processes run inside the same Ubuntu WSL2 distro
-- Node.js, Git, provider CLIs, and pnpm for source-development flows are
+- Node.js, Git, provider CLIs, and bun for source-development flows are
   installed inside WSL2
 - local project paths use Linux-style absolute paths from inside WSL2
 - native Windows PowerShell, CMD, drive-letter paths, and UNC paths are not
@@ -37,9 +37,9 @@ Windows support means the Linux stack runs entirely inside WSL2:
 
 - `npx bb-app`
 - `npx --package bb-app bb ...`
-- source checkout package startup with `pnpm start`
-- source checkout validation with `pnpm install`, `pnpm build`,
-  `pnpm exec turbo run typecheck`, and `pnpm exec turbo run test`
+- source checkout package startup with `bun start`
+- source checkout validation with `bun install`, `bun build`,
+  `bunx turbo run typecheck`, and `bunx turbo run test`
 - app + server + host-daemon startup on supported persistent-host OSes
 - local-path project creation and update in the app
 - unmanaged environments
@@ -52,8 +52,8 @@ Windows support means the Linux stack runs entirely inside WSL2:
 ### Command ownership and mode selection
 
 - `@bb/config` is the only source of dev/prod defaults.
-- Repo-root source-development commands such as `pnpm start`, `pnpm bb`,
-  `pnpm bb:dev`, and `pnpm reset` are thin wrappers around local packages and
+- Repo-root source-development commands such as `bun start`, `bun bb`,
+  `bun bb:dev`, and `bun reset` are thin wrappers around local packages and
   scripts.
 - Those wrappers set `NODE_ENV` explicitly so ambient shell state does not
   change which bb instance they target.
@@ -64,8 +64,8 @@ Windows support means the Linux stack runs entirely inside WSL2:
 
 ### WSL2-specific expectations
 
-- Run `npx bb-app`, source checkout commands such as `pnpm install`,
-  `pnpm dev`, `pnpm bb:dev`, and host-daemon commands from a WSL2 shell, not
+- Run `npx bb-app`, source checkout commands such as `bun install`,
+  `bun dev`, `bun bb:dev`, and host-daemon commands from a WSL2 shell, not
   from native Windows terminals.
 - Repositories inside the WSL filesystem are recommended for best behavior.
 - `/mnt/c/...` mounted paths are deliberately supported so WSL2 users can keep

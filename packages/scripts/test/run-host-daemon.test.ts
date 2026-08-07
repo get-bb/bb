@@ -107,7 +107,7 @@ describe("run-host-daemon auto join", () => {
     expect(() =>
       runHostDaemon.resolveHostDaemonRuntimeEnvironment("dev"),
     ).toThrow(
-      "BB_HOST_DAEMON_PORT is required when running a dev extra-host daemon without BB_DATA_DIR. Set it to a port distinct from pnpm dev's host daemon port.",
+      "BB_HOST_DAEMON_PORT is required when running a dev extra-host daemon without BB_DATA_DIR. Set it to a port distinct from bun dev's host daemon port.",
     );
   });
 

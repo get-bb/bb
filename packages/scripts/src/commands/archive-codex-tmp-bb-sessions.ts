@@ -316,7 +316,7 @@ export function renderHelpText(): string {
   ${bold("codex archive tmp bb sessions")}
 
   ${dim("Usage")}
-    pnpm codex:archive-tmp-bb-sessions -- [--dry-run] [--yes]
+    bun codex:archive-tmp-bb-sessions -- [--dry-run] [--yes]
 
   ${dim("Options")}
     --dry-run             Show matching sessions without archiving

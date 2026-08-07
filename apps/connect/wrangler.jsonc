@@ -5,8 +5,8 @@
 // then proxies through the per-handle TunnelDO. Staging serves per-handle custom
 // domains attached on demand (e.g. sawyer.vibecodethis.site).
 //
-// Deploy prod:    pnpm --filter @bb/connect exec wrangler deploy
-// Deploy staging: pnpm --filter @bb/connect exec wrangler deploy --env staging
+// Deploy prod:    bun --filter @bb/connect exec wrangler deploy
+// Deploy staging: bun --filter @bb/connect exec wrangler deploy --env staging
 // Secret: wrangler secret put BETTER_AUTH_SECRET [--env staging]
 //         (must equal bb-web's BETTER_AUTH_SECRET — the gate verifies the
 //         session cookie's HMAC with it)

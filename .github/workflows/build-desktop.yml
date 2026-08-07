@@ -20,7 +20,7 @@ on:
 env:
   CSC_IDENTITY_AUTO_DISCOVERY: "false"
   NODE_VERSION: "22.x"
-  PNPM_VERSION: "9.15.0"
+  BUN_VERSION: "1.3.14"
 
 permissions:
   contents: write
@@ -39,32 +39,31 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
         with:
-          version: ${{ env.PNPM_VERSION }}
+          bun-version: ${{ env.BUN_VERSION }}
           run_install: false
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
 
       - name: Verify arm64 runner
         run: test "$(uname -m)" = "arm64"
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile --prefer-offline
+        run: bun install --frozen-lockfile
 
       - name: Typecheck desktop and launcher
-        run: pnpm exec turbo run typecheck --filter=@bb/desktop --filter=bb-app --output-logs=new-only
+        run: bunx turbo run typecheck --filter=@bb/desktop --filter=bb-app --output-logs=new-only
 
       - name: Build desktop
-        run: pnpm exec turbo run build --filter=@bb/desktop --output-logs=new-only
+        run: bunx turbo run build --filter=@bb/desktop --output-logs=new-only
 
       - name: Test desktop and launcher
-        run: pnpm exec turbo run test --filter=@bb/desktop --filter=bb-app --force --output-logs=new-only
+        run: bunx turbo run test --filter=@bb/desktop --filter=bb-app --force --output-logs=new-only
 
       - name: Validate macOS signing secrets
         env:
@@ -111,13 +110,13 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: pnpm exec turbo run desktop:build --filter=@bb/desktop --force --output-logs=new-only
+        run: bunx turbo run desktop:build --filter=@bb/desktop --force --output-logs=new-only
 
       - name: Smoke test packaged desktop app
-        run: pnpm exec turbo run smoke:packaged --filter=@bb/desktop --force --output-logs=new-only
+        run: bunx turbo run smoke:packaged --filter=@bb/desktop --force --output-logs=new-only
 
       - name: Generate desktop version feed
-        run: pnpm --dir apps/desktop run desktop:version-feed
+        run: bun run --cwd apps/desktop desktop:version-feed
 
       - name: Plan release publication
         id: release_plan

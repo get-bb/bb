@@ -9,8 +9,7 @@
         "$TURBO_ROOT$/apps/web/tsconfig.json",
         "$TURBO_ROOT$/apps/web/vite.config.ts",
         "$TURBO_ROOT$/packages/tsconfig/*.json",
-        "$TURBO_ROOT$/pnpm-lock.yaml",
-        "$TURBO_ROOT$/pnpm-workspace.yaml",
+        "$TURBO_ROOT$/bun.lock",
         "$TURBO_ROOT$/turbo.json"
       ],
       "env": [
@@ -34,8 +33,7 @@
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/package.json",
         "$TURBO_ROOT$/packages/tsconfig/*.json",
-        "$TURBO_ROOT$/pnpm-lock.yaml",
-        "$TURBO_ROOT$/pnpm-workspace.yaml",
+        "$TURBO_ROOT$/bun.lock",
         "$TURBO_ROOT$/scripts/build-node-entry.mjs",
         "$TURBO_ROOT$/scripts/build-package.mjs",
         "$TURBO_ROOT$/scripts/build-utils.mjs",
@@ -55,8 +53,7 @@
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/package.json",
         "$TURBO_ROOT$/packages/tsconfig/*.json",
-        "$TURBO_ROOT$/pnpm-lock.yaml",
-        "$TURBO_ROOT$/pnpm-workspace.yaml",
+        "$TURBO_ROOT$/bun.lock",
         "$TURBO_ROOT$/scripts/build-node-entry.mjs",
         "$TURBO_ROOT$/scripts/build-package.mjs",
         "$TURBO_ROOT$/scripts/build-utils.mjs",
@@ -86,8 +83,7 @@
         "$TURBO_ROOT$/packages/*/tsconfig.json",
         "$TURBO_ROOT$/packages/db/drizzle/**",
         "$TURBO_ROOT$/packages/tsconfig/*.json",
-        "$TURBO_ROOT$/pnpm-lock.yaml",
-        "$TURBO_ROOT$/pnpm-workspace.yaml",
+        "$TURBO_ROOT$/bun.lock",
         "$TURBO_ROOT$/scripts/*.mjs",
         "$TURBO_ROOT$/turbo.json",
         "$TURBO_ROOT$/vitest.shared.ts"
@@ -156,8 +152,7 @@
         "$TURBO_ROOT$/packages/bb-app/host-daemon/**",
         "$TURBO_ROOT$/packages/bb-app/package.json",
         "$TURBO_ROOT$/packages/bb-app/server/**",
-        "$TURBO_ROOT$/pnpm-lock.yaml",
-        "$TURBO_ROOT$/pnpm-workspace.yaml",
+        "$TURBO_ROOT$/bun.lock",
         "$TURBO_ROOT$/turbo.json"
       ],
       "outputs": [
@@ -268,8 +263,8 @@
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/eslint.config.mjs",
         "$TURBO_ROOT$/package.json",
-        "$TURBO_ROOT$/pnpm-lock.yaml",
-        "$TURBO_ROOT$/pnpm-workspace.yaml"
+        "$TURBO_ROOT$/bun.lock",
+        "$TURBO_ROOT$/bun.lock"
       ]
     },
     "//#ensure-native-modules": {
@@ -277,7 +272,7 @@
       "inputs": [
         "$TURBO_ROOT$/package.json",
         "$TURBO_ROOT$/packages/db/package.json",
-        "$TURBO_ROOT$/pnpm-lock.yaml",
+        "$TURBO_ROOT$/bun.lock",
         "$TURBO_ROOT$/scripts/ensure-native-modules.mjs"
       ],
       "outputs": []
@@ -437,7 +432,7 @@
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/apps/app/src/components/ui/theme.css",
-        "$TURBO_ROOT$/pnpm-lock.yaml"
+        "$TURBO_ROOT$/bun.lock"
       ]
     },
     "@bb/plugin-registry#typecheck": {

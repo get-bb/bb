@@ -52,7 +52,7 @@ export function createLogger(options: CreateLoggerOptions): Logger {
 
   // Every worker-mode logger writes to two places: structured JSON to a
   // rolling file (for grep/jq/log aggregation), and human-readable output
-  // to stdout (for `pnpm start`/`pnpm dev`, where the parent script
+  // to stdout (for `bun start`/`bun dev`, where the parent script
   // forwards the child's stdout into the interactive terminal).
   // `colorize` is left unset so pino-pretty auto-detects via
   // `tty.isatty(1)` — TTYs get ANSI colors, pipes/files/journald stay clean.

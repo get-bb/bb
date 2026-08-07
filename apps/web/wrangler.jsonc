@@ -6,9 +6,9 @@
 // config to dist/server/wrangler.json and a plain `wrangler deploy` follows
 // the .wrangler/deploy/config.json redirect to it.
 //
-// Deploy staging: pnpm --filter @bb/web build && pnpm --filter @bb/web exec wrangler deploy
-// Deploy prod:    CLOUDFLARE_ENV=production pnpm --filter @bb/web build
-//                 && pnpm --filter @bb/web exec wrangler deploy
+// Deploy staging: bun --filter @bb/web build && bun --filter @bb/web exec wrangler deploy
+// Deploy prod:    CLOUDFLARE_ENV=production bun --filter @bb/web build
+//                 && bun --filter @bb/web exec wrangler deploy
 // Secrets (per worker): wrangler secret put [--name bb-web] GITHUB_CLIENT_ID /
 //   GITHUB_CLIENT_SECRET / BETTER_AUTH_SECRET / LANDING_POSTHOG_KEY / RESEND_API_KEY
 {

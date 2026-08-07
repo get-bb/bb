@@ -29,7 +29,7 @@ const repoRoot = resolve(packageRoot, "..", "..");
 export function createDevTurboCommand(): DevTurboCommand {
   return {
     args: [
-      "exec",
+      "x",
       "turbo",
       "run",
       "dev",
@@ -42,7 +42,7 @@ export function createDevTurboCommand(): DevTurboCommand {
       "20",
       "--no-update-notifier",
     ],
-    command: "pnpm",
+    command: "bun",
   };
 }
 
@@ -103,7 +103,7 @@ export async function main(): Promise<void> {
   });
   if (migration.skippedReason === "legacy-dev-process-running") {
     throw new Error(
-      "[dev] Legacy ~/.bb-dev data was found, but an old dev server or host-daemon is still running. Stop the old dev process and rerun pnpm dev to migrate it.",
+      "[dev] Legacy ~/.bb-dev data was found, but an old dev server or host-daemon is still running. Stop the old dev process and rerun bun dev to migrate it.",
     );
   }
   await assertPortsAvailable(config);

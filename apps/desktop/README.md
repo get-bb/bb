@@ -8,14 +8,14 @@ uses the packaged `bb-app` launcher for server and host-daemon lifecycle.
 From the repo root, the full source dev loop is:
 
 ```bash
-pnpm dev:desktop
+bun dev:desktop
 ```
 
 That starts the source dev server and the Electron shell through
 `scripts/bb-dev-app`. To run only the desktop package task directly:
 
 ```bash
-pnpm exec turbo run dev --filter=@bb/desktop
+bunx turbo run dev --filter=@bb/desktop
 ```
 
 The dev script builds `bb-app`, compiles the Electron main/preload files, and
@@ -30,12 +30,12 @@ directory.
 
 The launcher probes the checkout's Vite app port at startup and adapts:
 
-- **`pnpm dev` is already running** (Vite reachable): the shell loads the Vite
+- **`bun dev` is already running** (Vite reachable): the shell loads the Vite
   dev URL, so you get live source and HMR for `@bb/app` changes — no rebuild
   needed. It still attaches to the same running server/daemon for all API/WS
   traffic. The launcher prints `app <url> (Vite dev server — live reload)`. This
   is the fast loop for iterating on the desktop UI.
-- **`pnpm dev` is not running**: the shell starts its own `bb-app` runtime and
+- **`bun dev` is not running**: the shell starts its own `bb-app` runtime and
   loads the built UI it serves, so you must rebuild (re-run this task) to pick up
   source changes. The launcher prints `app (own bb-app runtime — …)`.
 
@@ -48,7 +48,7 @@ packaged runtime and keeps native dependencies rebuilt for Electron's bundled
 Node runtime:
 
 ```bash
-pnpm exec turbo run start --filter=@bb/desktop
+bunx turbo run start --filter=@bb/desktop
 ```
 
 Electron is pinned to `41.7.0`, the highest stable line verified to rebuild the
@@ -59,17 +59,17 @@ Revisit the pin when `better-sqlite3` ships support or prebuilds for that ABI.
 ## Validation
 
 ```bash
-pnpm exec turbo run typecheck --filter=@bb/desktop --filter=bb-app
-pnpm exec turbo run build --filter=@bb/desktop
-pnpm exec turbo run test --filter=@bb/desktop --filter=bb-app --force
-pnpm exec turbo run dev --filter=@bb/desktop
+bunx turbo run typecheck --filter=@bb/desktop --filter=bb-app
+bunx turbo run build --filter=@bb/desktop
+bunx turbo run test --filter=@bb/desktop --filter=bb-app --force
+bunx turbo run dev --filter=@bb/desktop
 ```
 
 ## Packaging
 
 ```bash
-pnpm exec turbo run desktop:build --filter=@bb/desktop
-pnpm exec turbo run smoke:packaged --filter=@bb/desktop
+bunx turbo run desktop:build --filter=@bb/desktop
+bunx turbo run smoke:packaged --filter=@bb/desktop
 ```
 
 Artifacts are written under `apps/desktop/release/`. The desktop build is
@@ -209,7 +209,7 @@ desktop app:
 
 ```bash
 npx bb-app@latest
-pnpm exec turbo run dev --filter=@bb/desktop
+bunx turbo run dev --filter=@bb/desktop
 ```
 
 The desktop supervisor handles normal quits plus `SIGINT` and `SIGTERM`, and it

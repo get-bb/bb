@@ -134,7 +134,7 @@ async function main() {
   const distDir = resolve(args[0] ?? DEFAULT_DIST_DIR);
   if (!existsSync(distDir)) {
     console.error(
-      `Missing ${distDir}. Run: pnpm exec turbo run build --filter=@bb/app`,
+      `Missing ${distDir}. Run: bunx turbo run build --filter=@bb/app`,
     );
     process.exitCode = 1;
     return;

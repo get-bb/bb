@@ -33,7 +33,7 @@ function createElectronAppEnv(env, config) {
   return childEnv;
 }
 
-// Detect whether `pnpm dev` is already serving the Vite app on its port. When it
+// Detect whether `bun dev` is already serving the Vite app on its port. When it
 // is, the desktop shell loads that URL (live source + HMR) instead of the built
 // UI; when it is not, the desktop falls back to starting its own bb-app runtime.
 async function isViteDevServerReachable(appUrl) {

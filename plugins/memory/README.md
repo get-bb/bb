@@ -36,7 +36,7 @@ bb memory add \
   --scope project \
   --name turbo-validation \
   --summary "Use Turbo for builds and typechecks" \
-  --details "Run pnpm exec turbo run typecheck --filter=@bb/<pkg>." \
+  --details "Run bunx turbo run typecheck --filter=@bb/<pkg>." \
   --kind procedure \
   --tag build \
   --tag testing \
@@ -65,6 +65,6 @@ next turn.
 ## Develop
 
 ```bash
-pnpm exec turbo run test typecheck --filter=bb-plugin-memory
+bunx turbo run test typecheck --filter=bb-plugin-memory
 bb plugin dev ./plugins/memory
 ```

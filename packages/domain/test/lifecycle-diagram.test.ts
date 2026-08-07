@@ -70,7 +70,7 @@ describe("docs/lifecycle-diagrams.md", () => {
       "<!-- GENERATED FILE — do not edit by hand.",
       "     Source: packages/domain/src/thread-lifecycle.ts and",
       "     packages/domain/src/environment-lifecycle.ts.",
-      "     Regenerate: pnpm --filter @bb/domain exec vitest run test/lifecycle-diagram.test.ts -u -->",
+      "     Regenerate: bun --filter @bb/domain exec vitest run test/lifecycle-diagram.test.ts -u -->",
       "",
       "# Lifecycle state machines",
       "",

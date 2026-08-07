@@ -10,7 +10,7 @@ SQLite schema diff and snapshots do not model triggers.
 From this package, generate the next migration with:
 
 ```sh
-pnpm db:generate --name <migration_name>
+bun --filter @bb/connect-db db:generate --name <migration_name>
 ```
 
 Never edit snapshot JSON by hand.
@@ -19,7 +19,7 @@ For SQL objects that Drizzle does not model, create a journaled custom migration
 before adding the SQL:
 
 ```sh
-pnpm exec drizzle-kit generate --config drizzle.config.ts --custom --name <migration_name>
+bunx drizzle-kit generate --config drizzle.config.ts --custom --name <migration_name>
 ```
 
 This creates the SQL file plus its journal/snapshot entry. Edit only the custom

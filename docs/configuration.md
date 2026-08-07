@@ -606,7 +606,7 @@ npx bb-app --data-dir ~/.bb-test --server-port 48886 --host-daemon-port 48887
 
 The data directory is the root directory for all bb-managed state: the SQLite
 database, logs, host identity, thread storage, custom themes (`theme/`), and
-plugins. It defaults to `~/.bb/` for the packaged app. The `pnpm dev` source launcher derives an isolated data
+plugins. It defaults to `~/.bb/` for the packaged app. The `bun dev` source launcher derives an isolated data
 directory under `~/.bb-dev/<checkout-instance>/` from the checkout path. The
 checkout instance id is the sanitized path to the checkout, relative to your
 home directory, plus a short hash suffix. Use `--data-dir` to point packaged-app
@@ -620,28 +620,28 @@ npx bb-app --server-port 48886 --host-daemon-port 48887
 
 ## Source Development
 
-For source development only, `pnpm dev` and `pnpm start` load the repo-root
+For source development only, `bun dev` and `bun start` load the repo-root
 dotenv cascade. Add a repo-root `.env` only when you need to override the
 defaults described above.
 
 The standard [dotenv-cli](https://github.com/entropitor/dotenv-cli) cascade
-applies to source development. `pnpm dev` loads `.env`, `.env.local`,
+applies to source development. `bun dev` loads `.env`, `.env.local`,
 `.env.development`, and `.env.development.local`, then overrides the instance
 selectors (`BB_DATA_DIR`, server URL/port, host-daemon local API port, and Vite
 port) with deterministic values derived from the checkout path. The SQLite
 database path is always derived from `BB_DATA_DIR`.
-`pnpm start` loads `.env`, `.env.local`, `.env.production`, and
+`bun start` loads `.env`, `.env.local`, `.env.production`, and
 `.env.production.local`.
 
 Production startup from source uses the same launcher policy as the packaged
 app while reading build outputs directly from `apps/app`, `apps/server`, and
-`apps/host-daemon`. `pnpm start:host-daemon` continues to run the packaged
+`apps/host-daemon`. `bun start:host-daemon` continues to run the packaged
 `packages/bb-app/dist/bb-app.js host-daemon` entrypoint. Source-only scripts do
 not own production ports or data-dir defaults.
 
-Source checkout commands such as `pnpm bb`, `pnpm bb:dev`, and `pnpm reset`
+Source checkout commands such as `bun bb`, `bun bb:dev`, and `bun reset`
 are thin wrappers around `@bb/scripts`. Those wrappers force `NODE_ENV` to the
 intended mode so ambient shell state does not silently retarget bb.
 
-Use `pnpm reset` or `pnpm reset:dev` to clear a data directory. These only
+Use `bun reset` or `bun reset:dev` to clear a data directory. These only
 remove bb-managed state, not provider credentials.

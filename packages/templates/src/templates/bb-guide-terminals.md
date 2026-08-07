@@ -17,7 +17,7 @@ List and create require exactly one explicit scope:
   bb terminal list --environment <environment-id>
   bb terminal list --machine <id-or-name> [--cwd <path>]
 
-  bb terminal create --thread <thread-id> --command "pnpm dev"
+  bb terminal create --thread <thread-id> --command "bun dev"
   bb terminal create --environment <environment-id>
   bb terminal create --machine <id-or-name> [--cwd <path>]
     --host <id-or-name>                   Alias for --machine
@@ -57,7 +57,7 @@ All other operations need only the terminal ID:
 
 For a dev server, prefer:
 
-  bb terminal create --thread <thread-id> --title "pnpm dev" --command "pnpm dev"
+  bb terminal create --thread <thread-id> --title "bun dev" --command "bun dev"
   bb terminal wait <terminal-id> --contains "Local:" --timeout 120
 
 Do not run long-lived servers as one-off foreground commands when the user will

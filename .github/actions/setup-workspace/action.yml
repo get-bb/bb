@@ -1,12 +1,12 @@
 name: Setup workspace
-description: Set up pnpm + Node, restore the Turbo cache, and install dependencies.
+description: Set up Bun + Node, restore the Turbo cache, and install dependencies.
 
 inputs:
   node-version:
     description: Node version to install
     required: true
-  pnpm-version:
-    description: pnpm version to install
+  bun-version:
+    description: Bun version to install
     required: true
   cache-prefix:
     description: Distinguishes Turbo cache entries per job type (e.g. checks, test-server)
@@ -15,37 +15,35 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Set up pnpm
-      uses: pnpm/action-setup@v4
+    - name: Set up Bun
+      uses: oven-sh/setup-bun@v2
       with:
-        version: ${{ inputs.pnpm-version }}
-        run_install: false
+        bun-version: ${{ inputs.bun-version }}
 
     - name: Set up Node.js
       uses: actions/setup-node@v4
       with:
         node-version: ${{ inputs.node-version }}
-        cache: pnpm
 
     - name: Cache Turbo task outputs
       uses: actions/cache@v4
       with:
         path: .turbo/cache
-        key: ${{ runner.os }}-node-${{ inputs.node-version }}-${{ inputs.cache-prefix }}-turbo-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+        key: ${{ runner.os }}-node-${{ inputs.node-version }}-${{ inputs.cache-prefix }}-turbo-${{ hashFiles('bun.lock') }}-${{ github.sha }}
         restore-keys: |
-          ${{ runner.os }}-node-${{ inputs.node-version }}-${{ inputs.cache-prefix }}-turbo-${{ hashFiles('pnpm-lock.yaml') }}-
+          ${{ runner.os }}-node-${{ inputs.node-version }}-${{ inputs.cache-prefix }}-turbo-${{ hashFiles('bun.lock') }}-
           ${{ runner.os }}-node-${{ inputs.node-version }}-${{ inputs.cache-prefix }}-turbo-
 
     - name: Install dependencies
       shell: bash
       run: |
         for attempt in 1 2 3; do
-          if pnpm install --frozen-lockfile --prefer-offline; then
+          if bun install --frozen-lockfile; then
             exit 0
           fi
           if [ "$attempt" -eq 3 ]; then
             exit 1
           fi
-          echo "::warning::pnpm install failed on attempt $attempt; retrying"
+          echo "::warning::bun install failed on attempt $attempt; retrying"
           sleep $((attempt * 5))
         done

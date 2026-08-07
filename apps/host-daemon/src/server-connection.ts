@@ -278,7 +278,7 @@ export class ServerConnection {
     }
     this.options.logger.error(
       { ...base, daemonProtocolVersion: HOST_DAEMON_PROTOCOL_VERSION },
-      "Server rejected the daemon session. This usually means the server is running an incompatible protocol version — restart it (e.g. `pnpm dev:restart`).",
+      "Server rejected the daemon session. This usually means the server is running an incompatible protocol version — restart it (e.g. `bun dev:restart`).",
     );
   }
 

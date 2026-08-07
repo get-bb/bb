@@ -148,7 +148,7 @@ for (const [fileName, content] of Object.entries(generated)) {
   if (check) {
     if (!unchanged) {
       console.error(
-        `bundled-types/${fileName} is stale. Run \`pnpm --filter @bb/plugin-sdk build\`.`,
+        `bundled-types/${fileName} is stale. Run \`bun --filter @bb/plugin-sdk build\`.`,
       );
       stale = true;
     }

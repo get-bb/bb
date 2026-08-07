@@ -17,7 +17,7 @@ state, and logs. This pass does not cover app UI, Electron, or browser behavior.
 - **Regression validation** reruns targeted or broad checks after a specific
   change. Its verdict is scoped to the changed behavior.
 - **Real-provider CLI/API E2E** is this non-app provider gate. The automated
-  companion is `pnpm exec turbo run test:integration`, including real-provider
+  companion is `bunx turbo run test:integration`, including real-provider
   coverage under `tests/integration/real/**` and `@bb/agent-runtime`; this
   manual runbook adds operator-driven CLI/API, standalone server + daemon,
   restart, lifecycle, API, DB, and log checks.
@@ -57,7 +57,7 @@ commands.
 Build the server, daemon, and CLI:
 
 ```bash
-pnpm build
+bun build
 ```
 
 Verify provider CLIs are installed before running real-provider checks:
@@ -86,13 +86,13 @@ fi
 Before starting, clear any leftover standalone QA processes or temp roots from a prior run:
 
 ```bash
-pnpm qa:standalone:cleanup
+bun qa:standalone:cleanup
 ```
 
 Start an isolated server + daemon pair and load the exported QA environment:
 
 ```bash
-eval "$(pnpm --silent qa:standalone:start --format env)"
+eval "$(bun --silent qa:standalone:start --format env)"
 jq . "$STATE_PATH"
 SERVER_DB_PATH=$(jq -er '.server.dataDir + "/bb.db"' "$STATE_PATH")
 SERVER_LOG_DIR=$(jq -er '(.paths.serverDataDir // .server.dataDir) + "/logs"' "$STATE_PATH")
@@ -249,8 +249,8 @@ only acceptable in an explicitly recorded API-key route pass.
 Teardown:
 
 ```bash
-pnpm qa:standalone:stop --state "$STATE_PATH"
-pnpm qa:standalone:cleanup
+bun qa:standalone:stop --state "$STATE_PATH"
+bun qa:standalone:cleanup
 ```
 
 ## CLI/API Thread Smoke Pass

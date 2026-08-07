@@ -78,10 +78,16 @@ attached. Development/source runs never send. Opt out any run with
 
 ## Development
 
+Install dependencies with [Bun](https://bun.sh) 1.3.14 or newer:
+
+```bash
+bun install
+```
+
 Use the development loop when working on bb itself:
 
 ```bash
-pnpm dev
+bun dev
 ```
 
 That starts the Vite app and proxies API and WebSocket traffic to a separate
@@ -95,7 +101,7 @@ can run alongside each other and the packaged `npx bb-app@latest` instance.
 To run that same source dev server with the Electron desktop shell:
 
 ```bash
-pnpm dev:desktop
+bun dev:desktop
 ```
 
 This uses `scripts/bb-dev-app current --desktop`, which stops stale launcher
@@ -106,7 +112,7 @@ URL but does not open a browser unless you pass `--open`.
 To use the dev app from another machine, for example over Tailscale, run:
 
 ```bash
-pnpm dev
+bun dev
 ```
 
 Then open `http://<remote-host-or-tailscale-ip>:<app-port>`. Source dev binds
@@ -116,7 +122,7 @@ default.
 To use the component storybook from another machine, run:
 
 ```bash
-pnpm storybook
+bun storybook
 ```
 
 Ladle also binds to all interfaces and configures its HMR WebSocket to use the
@@ -131,9 +137,9 @@ Development behavior is intentionally split:
 When you want the server and host daemon to pick up the latest build output, use:
 
 ```bash
-pnpm dev:restart
-pnpm dev:restart-server
-pnpm dev:restart-host-daemon
+bun dev:restart
+bun dev:restart-server
+bun dev:restart-host-daemon
 ```
 
 These rebuild first, then restart only the targeted stateful services.
@@ -141,7 +147,7 @@ These rebuild first, then restart only the targeted stateful services.
 To run a production-mode build from a source checkout:
 
 ```bash
-pnpm start
+bun start
 ```
 
 That builds only the app, server, and host-daemon runtime artifacts, then runs
@@ -150,13 +156,13 @@ tarball smoke task when validating the published `npx bb-app@latest` package
 layout.
 
 ```bash
-pnpm bb --help            # built CLI, targets the default/prod instance
-pnpm reset                # clear production state
+bun bb --help            # built CLI, targets the default/prod instance
+bun reset                # clear production state
 
-pnpm bb:dev --help        # source CLI, targets this checkout's dev instance
-pnpm reset:dev            # clear this checkout's dev state
+bun bb:dev --help        # source CLI, targets this checkout's dev instance
+bun reset:dev            # clear this checkout's dev state
 
-pnpm reset:all            # clear both production and dev states
+bun reset:all            # clear both production and dev states
 ```
 
 These reset commands prompt for confirmation before deleting anything.

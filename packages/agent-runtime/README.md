@@ -82,13 +82,13 @@ A single runtime can manage multiple threads across multiple providers simultane
 
 ```bash
 # Unit tests (no credentials needed, uses fake provider process)
-pnpm --filter @bb/agent-runtime test:unit
+bun --filter @bb/agent-runtime test:unit
 
 # Integration tests (requires real provider credentials)
-pnpm --filter @bb/agent-runtime test:integration
+bun --filter @bb/agent-runtime test:integration
 
 # All tests
-pnpm --filter @bb/agent-runtime test
+bun --filter @bb/agent-runtime test
 ```
 
 ### Integration test requirements
@@ -104,7 +104,7 @@ Integration tests hit real provider APIs and take 30-60 seconds. Some lessons le
 **Save output to a file, then read it.** Tests are slow — if you pipe output through `grep` and it doesn't match, you've wasted a full test run. Instead:
 
 ```bash
-pnpm --filter @bb/agent-runtime test:integration -- --reporter=verbose > /tmp/integ-out.txt 2>&1
+bun --filter @bb/agent-runtime test:integration -- --reporter=verbose > /tmp/integ-out.txt 2>&1
 # Then inspect:
 grep -E "(✓|×|Test Files|Tests )" /tmp/integ-out.txt
 ```

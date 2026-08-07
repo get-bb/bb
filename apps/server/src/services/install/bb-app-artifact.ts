@@ -133,8 +133,8 @@ export function createBbAppArtifactService(
     if (resolved.layout === "repo") {
       const repoRoot = resolve(packageRoot, "../..");
       await commandRunner(
-        "pnpm",
-        ["exec", "turbo", "run", "build", "--filter=bb-app"],
+        "bun",
+        ["x", "turbo", "run", "build", "--filter=bb-app"],
         repoRoot,
       );
     }

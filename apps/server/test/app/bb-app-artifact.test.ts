@@ -66,7 +66,7 @@ describe.each(MODES)("bb-app artifact service (%s)", (mode) => {
     }> = [];
     const runner: BbAppArtifactCommandRunner = async (command, args, cwd) => {
       calls.push({ command, args, cwd });
-      if (command === "pnpm") {
+      if (command === "bun") {
         return "built";
       }
       const result = await execFileAsync(command, [...args], { cwd });
@@ -97,7 +97,7 @@ describe.each(MODES)("bb-app artifact service (%s)", (mode) => {
         .stdout,
     );
     expect(packageJson.version).toBe("1.2.3-test");
-    expect(calls.filter((call) => call.command === "pnpm")).toHaveLength(
+    expect(calls.filter((call) => call.command === "bun")).toHaveLength(
       isRepoMode(mode) ? 1 : 0,
     );
     await expect(service.getTarballPath()).resolves.toBe(tarball);
@@ -113,7 +113,7 @@ describe.each(MODES)("bb-app artifact service (%s)", (mode) => {
     }> = [];
     const runner: BbAppArtifactCommandRunner = async (command, args, cwd) => {
       calls.push({ command, args, cwd });
-      if (command === "pnpm") return "built";
+      if (command === "bun") return "built";
       return (await execFileAsync(command, [...args], { cwd })).stdout;
     };
     const options = {
@@ -138,7 +138,7 @@ describe.each(MODES)("bb-app artifact service (%s)", (mode) => {
         .stdout,
     ).toBe("updated\n");
     expect(calls.filter((call) => call.command === "npm")).toHaveLength(2);
-    expect(calls.filter((call) => call.command === "pnpm")).toHaveLength(
+    expect(calls.filter((call) => call.command === "bun")).toHaveLength(
       isRepoMode(mode) ? 2 : 0,
     );
   });
@@ -152,7 +152,7 @@ describe.each(MODES)("bb-app artifact service (%s)", (mode) => {
     }> = [];
     const runner: BbAppArtifactCommandRunner = async (command, args, cwd) => {
       calls.push({ command, args, cwd });
-      if (command === "pnpm") return "built";
+      if (command === "bun") return "built";
       return (await execFileAsync(command, [...args], { cwd })).stdout;
     };
     const baseOptions = {
@@ -172,7 +172,7 @@ describe.each(MODES)("bb-app artifact service (%s)", (mode) => {
 
     expect(second).not.toBe(first);
     expect(calls.filter((call) => call.command === "npm")).toHaveLength(2);
-    expect(calls.filter((call) => call.command === "pnpm")).toHaveLength(
+    expect(calls.filter((call) => call.command === "bun")).toHaveLength(
       isRepoMode(mode) ? 2 : 0,
     );
   });
@@ -181,7 +181,7 @@ describe.each(MODES)("bb-app artifact service (%s)", (mode) => {
     const test = await fixture(mode);
     let failNextPack = false;
     const runner: BbAppArtifactCommandRunner = async (command, args, cwd) => {
-      if (command === "pnpm") return "built";
+      if (command === "bun") return "built";
       if (failNextPack) throw new Error("npm pack exploded");
       return (await execFileAsync(command, [...args], { cwd })).stdout;
     };

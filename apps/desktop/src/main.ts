@@ -1747,7 +1747,7 @@ interface InitializeRuntimeArgs {
 /**
  * Attaching to a bb this app did not start is invisible to the person using it,
  * so ask first. Local development stays silent, because attaching to a
- * `pnpm dev` server is the whole point there.
+ * `bun dev` server is the whole point there.
  *
  * `BB_DESKTOP_ATTACH_WITHOUT_PROMPT` exists for the packaged smoke test, which
  * points a packaged build at a stub server and has no one to click the dialog.
@@ -1894,7 +1894,7 @@ async function initializeRuntime(args: InitializeRuntimeArgs): Promise<void> {
       serverUrl: existingProbe.serverUrl,
       userDataPath: null,
     });
-    // When attaching to an already-running server (the `pnpm dev` case) load the
+    // When attaching to an already-running server (the `bun dev` case) load the
     // Vite dev URL if the launcher provided one, so the shell gets live source
     // and HMR. The attached server still handles every API/WS request.
     await loadBbApp(

@@ -19,8 +19,8 @@ run_step() {
   fi
 }
 
-if ! command -v pnpm >/dev/null 2>&1; then
-  log "Warning: pnpm is not available; skipping install/build"
+if ! command -v bun >/dev/null 2>&1; then
+  log "Warning: bun is not available; skipping install/build"
   exit 0
 fi
 
@@ -29,4 +29,4 @@ if [ ! -f package.json ]; then
   exit 0
 fi
 
-run_step "pnpm install" pnpm install
+run_step "bun install" bun install

@@ -50,7 +50,7 @@ Never check in `plugins/*/dist`; packaging builds it.
 ## Verify locally
 
 ```bash
-pnpm exec turbo run build --filter=bb-app
+bunx turbo run build --filter=bb-app
 ls packages/bb-app/server/dist/builtin-plugins
 ```
 

@@ -9,7 +9,7 @@ on:
 
 env:
   PRIMARY_NODE_VERSION: "22.x"
-  PNPM_VERSION: "9.15.0"
+  BUN_VERSION: "1.3.14"
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -29,11 +29,11 @@ jobs:
         uses: ./.github/actions/setup-workspace
         with:
           node-version: ${{ env.PRIMARY_NODE_VERSION }}
-          pnpm-version: ${{ env.PNPM_VERSION }}
+          bun-version: ${{ env.BUN_VERSION }}
           cache-prefix: checks
 
       - name: Build, typecheck, and lint
-        run: pnpm exec turbo run build typecheck lint --cache-dir=.turbo/cache --output-logs=new-only
+        run: bunx turbo run build typecheck lint --cache-dir=.turbo/cache --output-logs=new-only
 
       # Guards the JavaScript that blocks first paint in the web app. Heavy
       # editor, diff and math code reaches that path through barrel re-exports,
@@ -70,11 +70,11 @@ jobs:
         uses: ./.github/actions/setup-workspace
         with:
           node-version: ${{ env.PRIMARY_NODE_VERSION }}
-          pnpm-version: ${{ env.PNPM_VERSION }}
+          bun-version: ${{ env.BUN_VERSION }}
           cache-prefix: test-${{ matrix.shard }}
 
       - name: Test
-        run: pnpm exec turbo run test ${{ matrix.filter }} --cache-dir=.turbo/cache --output-logs=new-only
+        run: bunx turbo run test ${{ matrix.filter }} --cache-dir=.turbo/cache --output-logs=new-only
 
   package-smoke:
     name: Package Smoke (${{ matrix.os }}, Node ${{ matrix.node-version }})
@@ -98,11 +98,11 @@ jobs:
         uses: ./.github/actions/setup-workspace
         with:
           node-version: ${{ matrix.node-version }}
-          pnpm-version: ${{ env.PNPM_VERSION }}
+          bun-version: ${{ env.BUN_VERSION }}
           cache-prefix: package-smoke
 
       - name: Smoke bb-app tarball
-        run: pnpm exec turbo run smoke:tarball --filter=bb-app --cache-dir=.turbo/cache --output-logs=new-only
+        run: bunx turbo run smoke:tarball --filter=bb-app --cache-dir=.turbo/cache --output-logs=new-only
 
   node-compat-smoke:
     name: Node Compatibility Smoke (${{ matrix.os }}, Node ${{ matrix.node-version }})
@@ -130,8 +130,8 @@ jobs:
         uses: ./.github/actions/setup-workspace
         with:
           node-version: ${{ matrix.node-version }}
-          pnpm-version: ${{ env.PNPM_VERSION }}
+          bun-version: ${{ env.BUN_VERSION }}
           cache-prefix: compat-smoke
 
       - name: Smoke bb-app tarball
-        run: pnpm exec turbo run smoke:tarball --filter=bb-app --cache-dir=.turbo/cache --output-logs=new-only
+        run: bunx turbo run smoke:tarball --filter=bb-app --cache-dir=.turbo/cache --output-logs=new-only

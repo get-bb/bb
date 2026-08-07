@@ -113,7 +113,7 @@ Usage:
       Print branch, ports, process status, and useful URLs.
 
   scripts/bb-dev-app env
-      Print shell exports for using pnpm bb:dev against this dev instance.
+      Print shell exports for using bun bb:dev against this dev instance.
 
   scripts/bb-dev-app logs [dev|desktop|launcher]
       Follow launcher logs. Defaults to the dev server log.
@@ -317,7 +317,7 @@ switch_to_branch() {
 
 ensure_dependencies() {
   log "Installing workspace dependencies"
-  pnpm -C "${REPO_ROOT}" install --frozen-lockfile
+  bun install --frozen-lockfile --cwd "${REPO_ROOT}"
 
   log "Checking native Node modules"
   node "${REPO_ROOT}/scripts/ensure-native-modules.mjs"
@@ -325,14 +325,11 @@ ensure_dependencies() {
   # Official catalog installs execute the packaged plugin SDK at runtime.
   # Build it before source dev starts so a clean worktree can install a plugin.
   log "Building plugin SDK runtime"
-  pnpm -C "${REPO_ROOT}" exec turbo run build --filter=@bb/plugin-sdk
+  bun x turbo run build --filter=@bb/plugin-sdk --cwd "${REPO_ROOT}"
 
   if ! (cd "${REPO_ROOT}/apps/desktop" && node -e "require('electron')" >/dev/null 2>&1); then
-    local electron_install
-    electron_install="$(
-      find "${REPO_ROOT}/node_modules/.pnpm" -path '*/node_modules/electron/install.js' -type f -print -quit
-    )"
-    [[ -n "${electron_install}" ]] || die "Could not find Electron install.js"
+    local electron_install="${REPO_ROOT}/node_modules/electron/install.js"
+    [[ -f "${electron_install}" ]] || die "Could not find Electron install.js"
     log "Installing Electron runtime"
     node "${electron_install}"
   fi
@@ -364,7 +361,7 @@ start_dev_server() {
   printf -v dev_log_q '%q' "${DEV_LOG}"
   log "Starting dev server session ${DEV_SESSION}"
   rm -f "${DEV_LOG}"
-  screen -dmS "${DEV_SESSION}" "${BASH}" -lc "cd ${repo_root_q} && export PATH=${path_q} && unset BB_THREAD_ID BB_ENVIRONMENT_ID BB_THREAD_STORAGE && exec pnpm dev > ${dev_log_q} 2>&1"
+  screen -dmS "${DEV_SESSION}" "${BASH}" -lc "cd ${repo_root_q} && export PATH=${path_q} && unset BB_THREAD_ID BB_ENVIRONMENT_ID BB_THREAD_STORAGE && exec bun dev > ${dev_log_q} 2>&1"
   wait_for_log_pattern "${DEV_LOG}" "Host daemon started" "dev server" 90
 }
 
@@ -375,7 +372,7 @@ start_desktop() {
   printf -v desktop_log_q '%q' "${DESKTOP_LOG}"
   log "Starting desktop session ${DESKTOP_SESSION}"
   rm -f "${DESKTOP_LOG}"
-  screen -dmS "${DESKTOP_SESSION}" "${BASH}" -lc "cd ${repo_root_q} && export PATH=${path_q} && unset BB_THREAD_ID BB_ENVIRONMENT_ID BB_THREAD_STORAGE && exec pnpm exec turbo run dev --filter=@bb/desktop > ${desktop_log_q} 2>&1"
+  screen -dmS "${DESKTOP_SESSION}" "${BASH}" -lc "cd ${repo_root_q} && export PATH=${path_q} && unset BB_THREAD_ID BB_ENVIRONMENT_ID BB_THREAD_STORAGE && exec bunx turbo run dev --filter=@bb/desktop > ${desktop_log_q} 2>&1"
   wait_for_log_pattern "${DESKTOP_LOG}" "@bb/desktop: app http://localhost:${BB_DEV_APP_PORT}" "desktop app" 120
 }
 
@@ -449,7 +446,7 @@ follow_logs() {
 main() {
   require_command git
   require_command node
-  require_command pnpm
+  require_command bun
   require_command screen
   require_command lsof
   ensure_repo

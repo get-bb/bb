@@ -45,14 +45,14 @@
 
 ## Build And Typecheck
 
-- Always use Turbo when building and typechecking: `pnpm exec turbo run <task> --filter=@bb/<pkg>`. Turbo ensures upstream `^build` dependencies run first.
-- Typecheck with `pnpm exec turbo run typecheck --filter=@bb/<pkg>`.
-- Do not run package scripts directly, such as `pnpm --filter @bb/foo test`, or raw `npx tsc --noEmit` unless you are deliberately bypassing repo orchestration for investigation.
+- Always use Turbo when building and typechecking: `bunx turbo run <task> --filter=@bb/<pkg>`. Turbo ensures upstream `^build` dependencies run first.
+- Typecheck with `bunx turbo run typecheck --filter=@bb/<pkg>`.
+- Do not run package scripts directly, such as `bun --filter @bb/foo test`, or raw `npx tsc --noEmit` unless you are deliberately bypassing repo orchestration for investigation.
 
 ## Testing
 
 - Only write high quality tests that verify where there could be potential bugs. Avoid testing trivial getters/setters, framework wiring, or other code that is unlikely to break.
-- Pipe slow test output to a file, then read the file. Example: `pnpm exec turbo run test --filter=@bb/integration-tests --force > /tmp/test-out.txt 2>&1`.
+- Pipe slow test output to a file, then read the file. Example: `bunx turbo run test --filter=@bb/integration-tests --force > /tmp/test-out.txt 2>&1`.
 
 ## Debugging And QA
 

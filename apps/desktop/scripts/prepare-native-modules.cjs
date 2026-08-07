@@ -16,7 +16,7 @@ const PACKAGED_NATIVE_PACKAGE_NAMES = [
 // better-sqlite3 must match the runtime that loads it. The packaged app runs
 // the bb server through Electron's bundled Node, so the packaged copy has to
 // target Electron's ABI. electron-builder's `npmRebuild` would rebuild it for
-// us, but in this pnpm workspace better-sqlite3 resolves to the shared
+// us, but in this bun workspace better-sqlite3 resolves to the shared
 // content-addressed store, so an in-place rebuild clobbers the node-ABI binary
 // every other workspace package (and the server test suite) relies on. Instead
 // `npmRebuild` is disabled and we fetch the Electron prebuild into the packaged

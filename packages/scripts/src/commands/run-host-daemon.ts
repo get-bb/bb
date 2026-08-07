@@ -58,7 +58,7 @@ function resolveHostDaemonPort(args: ResolveHostDaemonPortArgs): number {
     process.env.BB_HOST_DAEMON_PORT === undefined
   ) {
     throw new Error(
-      "BB_HOST_DAEMON_PORT is required when running a dev extra-host daemon without BB_DATA_DIR. Set it to a port distinct from pnpm dev's host daemon port.",
+      "BB_HOST_DAEMON_PORT is required when running a dev extra-host daemon without BB_DATA_DIR. Set it to a port distinct from bun dev's host daemon port.",
     );
   }
 

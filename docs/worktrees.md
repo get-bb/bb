@@ -32,7 +32,7 @@ a thread.
 From the CLI:
 
 ```bash
-pnpm bb thread spawn \
+bun bb thread spawn \
   --project <project-id> \
   --new-environment worktree \
   --prompt "..."
@@ -90,7 +90,7 @@ from your main checkout, prefer `.worktreeinclude` above.
 #!/usr/bin/env bash
 set -euo pipefail
 
-pnpm install
+bun install
 ```
 
 Contract:

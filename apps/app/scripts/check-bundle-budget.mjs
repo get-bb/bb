@@ -2,7 +2,7 @@
 // Fails when the boot payload grows past bundle-budget.json, or when a heavy
 // package that should load on demand reaches the boot path again.
 //
-// Run after `pnpm build` in apps/app. Reads bundle-stats.json (written by the
+// Run after `bun build` in apps/app. Reads bundle-stats.json (written by the
 // bb:bundle-stats Vite plugin) and the brotli files written by
 // scripts/precompress-app-dist.mjs.
 import fs from "node:fs";

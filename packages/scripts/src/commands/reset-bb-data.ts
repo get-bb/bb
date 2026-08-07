@@ -83,7 +83,7 @@ export function renderHelpText(): string {
   ${bold("bb reset")}
 
   ${dim("Usage")}
-    pnpm reset -- [--all] [--yes]
+    bun reset -- [--all] [--yes]
 
   ${dim("Options")}
     --all   Remove prod and this checkout's dev data directories

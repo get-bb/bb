@@ -49,24 +49,24 @@ describe("bb bin wrapper", () => {
     return fakeRepoRoot;
   }
 
-  async function writeFakePnpm(content: string): Promise<string> {
+  async function writeFakeBun(content: string): Promise<string> {
     const fakeBinDir = join(tempRoot, "fake-bin");
     await mkdir(fakeBinDir, { recursive: true });
-    const fakePnpmPath = join(fakeBinDir, "pnpm");
-    await writeFile(fakePnpmPath, content, { mode: 0o755 });
-    await chmod(fakePnpmPath, 0o755);
+    const fakeBunPath = join(fakeBinDir, "bun");
+    await writeFile(fakeBunPath, content, { mode: 0o755 });
+    await chmod(fakeBunPath, 0o755);
     return fakeBinDir;
   }
 
   it("builds the source CLI before executing when dist is missing", async () => {
     const fakeRepoRoot = await createFakeRepo();
-    const pnpmArgsPath = join(tempRoot, "pnpm-args.txt");
-    const fakePnpmDir = await writeFakePnpm(`#!/bin/sh
-printf '%s\\n' "$@" > ${shellQuote(pnpmArgsPath)}
+    const bunArgsPath = join(tempRoot, "bun-args.txt");
+    const fakeBunDir = await writeFakeBun(`#!/bin/sh
+printf '%s\\n' "$@" > ${shellQuote(bunArgsPath)}
 repo_root=""
 previous=""
 for arg do
-  if [ "$previous" = "-C" ]; then
+  if [ "$previous" = "--cwd" ]; then
     repo_root="$arg"
     break
   fi
@@ -85,7 +85,7 @@ NODE
         cwd: fakeRepoRoot,
         env: {
           ...process.env,
-          PATH: `${fakePnpmDir}${delimiter}${process.env.PATH ?? ""}`,
+          PATH: `${fakeBunDir}${delimiter}${process.env.PATH ?? ""}`,
         },
       },
     );
@@ -94,17 +94,17 @@ NODE
     await expect(
       readFile(join(fakeRepoRoot, "apps", "cli", "dist", "index.js"), "utf8"),
     ).resolves.toContain("process.stdout.write");
-    await expect(readFile(pnpmArgsPath, "utf8")).resolves.toBe(
-      ["-C", fakeRepoRoot, "run", "--silent", "cli:prepare", ""].join("\n"),
+    await expect(readFile(bunArgsPath, "utf8")).resolves.toBe(
+      ["run", "--silent", "--cwd", fakeRepoRoot, "cli:prepare", ""].join("\n"),
     );
   });
 
   it("uses the built CLI directly when dist exists", async () => {
     const fakeRepoRoot = await createFakeRepo();
     const fakeDistDir = join(fakeRepoRoot, "apps", "cli", "dist");
-    const pnpmCalledPath = join(tempRoot, "pnpm-called.txt");
-    const fakePnpmDir = await writeFakePnpm(`#!/bin/sh
-echo called > ${shellQuote(pnpmCalledPath)}
+    const bunCalledPath = join(tempRoot, "bun-called.txt");
+    const fakeBunDir = await writeFakeBun(`#!/bin/sh
+echo called > ${shellQuote(bunCalledPath)}
 exit 42
 `);
     await mkdir(fakeDistDir, { recursive: true });
@@ -120,13 +120,13 @@ exit 42
         cwd: fakeRepoRoot,
         env: {
           ...process.env,
-          PATH: `${fakePnpmDir}${delimiter}${process.env.PATH ?? ""}`,
+          PATH: `${fakeBunDir}${delimiter}${process.env.PATH ?? ""}`,
         },
       },
     );
 
     expect(result.stdout).toBe("--help");
-    await expect(readFile(pnpmCalledPath, "utf8")).rejects.toMatchObject({
+    await expect(readFile(bunCalledPath, "utf8")).rejects.toMatchObject({
       code: "ENOENT",
     });
   });

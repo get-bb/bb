@@ -84,12 +84,7 @@ const desktopPackageJsonSchema = z
 
 const workspacePackageJsonSchema = z
   .object({
-    pnpm: z.object({
-      supportedArchitectures: z.object({
-        cpu: z.array(z.string().min(1)),
-        os: z.array(z.string().min(1)),
-      }),
-    }),
+    trustedDependencies: z.array(z.string().min(1)),
   })
   .passthrough();
 
@@ -270,7 +265,7 @@ describe("electron-builder signing config", () => {
     ).resolves.toBeUndefined();
   });
 
-  it("installs native plugin build packages for arm64 and x64", async () => {
+  it("allows native module install scripts in the workspace root", async () => {
     const packageJsonText = await readFile(
       resolve(desktopPackageRoot, "..", "..", "package.json"),
       "utf8",
@@ -279,13 +274,12 @@ describe("electron-builder signing config", () => {
       JSON.parse(packageJsonText),
     );
 
-    expect(packageJson.pnpm.supportedArchitectures).toEqual({
-      cpu: ["arm64", "x64"],
-      os: ["current"],
-    });
+    expect(packageJson.trustedDependencies).toEqual(
+      expect.arrayContaining(["better-sqlite3", "node-pty", "electron"]),
+    );
   });
 
-  it("disables in-place native rebuilds so the shared pnpm store is not mutated", async () => {
+  it("disables in-place native rebuilds so the shared install store is not mutated", async () => {
     // electron-builder's npmRebuild rebuilds better-sqlite3 through the
     // workspace symlink into the shared content-addressed store, flipping the
     // binary to Electron's ABI and breaking every plain-node consumer (the

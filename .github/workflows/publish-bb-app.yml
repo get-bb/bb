@@ -61,10 +61,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
         with:
-          version: 9.15.0
+          bun-version: 1.3.14
           run_install: false
 
       - name: Set up Node.js
@@ -87,7 +87,7 @@ jobs:
           npm --version
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: bun install --frozen-lockfile
 
       - name: Prepare nightly version
         if: ${{ github.event_name == 'schedule' || inputs.npm_tag == 'nightly' }}
@@ -157,10 +157,10 @@ jobs:
           NODE
 
       - name: Build, typecheck, and test focused packages
-        run: pnpm exec turbo run typecheck test --filter=@bb/config --filter=@bb/server --filter=bb-app --output-logs=new-only
+        run: bunx turbo run typecheck test --filter=@bb/config --filter=@bb/server --filter=bb-app --output-logs=new-only
 
       - name: Smoke bb-app tarball
-        run: pnpm exec turbo run smoke:tarball --filter=bb-app --force --output-logs=new-only
+        run: bunx turbo run smoke:tarball --filter=bb-app --force --output-logs=new-only
 
       - name: Check whitespace
         run: git diff --check
@@ -234,23 +234,22 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
         with:
-          version: 9.15.0
+          bun-version: 1.3.14
           run_install: false
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22.x
-          cache: pnpm
 
       - name: Verify arm64 runner
         run: test "$(uname -m)" = "arm64"
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile --prefer-offline
+        run: bun install --frozen-lockfile --prefer-offline
 
       - name: Prepare nightly version
         id: nightly_version
@@ -260,13 +259,13 @@ jobs:
           echo "Prepared bb-app and desktop version ${nightly_version}."
 
       - name: Typecheck desktop and launcher
-        run: pnpm exec turbo run typecheck --filter=@bb/desktop --filter=bb-app --output-logs=new-only
+        run: bunx turbo run typecheck --filter=@bb/desktop --filter=bb-app --output-logs=new-only
 
       - name: Build desktop
-        run: pnpm exec turbo run build --filter=@bb/desktop --output-logs=new-only
+        run: bunx turbo run build --filter=@bb/desktop --output-logs=new-only
 
       - name: Test desktop and launcher
-        run: pnpm exec turbo run test --filter=@bb/desktop --filter=bb-app --force --output-logs=new-only
+        run: bunx turbo run test --filter=@bb/desktop --filter=bb-app --force --output-logs=new-only
 
       - name: Require macOS signing and notarization secrets
         env:
@@ -306,13 +305,13 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: pnpm exec turbo run desktop:build --filter=@bb/desktop --force --output-logs=new-only
+        run: bunx turbo run desktop:build --filter=@bb/desktop --force --output-logs=new-only
 
       - name: Smoke test packaged nightly desktop app
-        run: pnpm exec turbo run smoke:packaged --filter=@bb/desktop --force --output-logs=new-only
+        run: bunx turbo run smoke:packaged --filter=@bb/desktop --force --output-logs=new-only
 
       - name: Generate nightly desktop version feed
-        run: pnpm --dir apps/desktop run desktop:version-feed
+        run: bun run --cwd apps/desktop desktop:version-feed
 
       - name: Upload nightly desktop workflow artifacts
         uses: actions/upload-artifact@v4

@@ -19,7 +19,7 @@ export function createAuth(env: Env) {
     baseURL: env.APP_URL,
     trustedOrigins: [env.APP_URL, `https://*.${env.BASE_DOMAIN}`],
     // `better-auth` and `@better-auth/drizzle-adapter` resolve to two copies of
-    // `@better-auth/core` under pnpm (different peer hashes — workers-types is in
+    // `@better-auth/core` under bun (different peer hashes — workers-types is in
     // one peer set), so the adapter's type is nominally distinct though identical
     // at runtime. Cast across that boundary to the option's own database type.
     database: drizzleAdapter(db, {

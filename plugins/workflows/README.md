@@ -149,8 +149,8 @@ capped exponential backoff. Status exposes notification outcome as `pending`,
 Useful checks:
 
 ```bash
-pnpm exec turbo run typecheck --filter=bb-plugin-workflows
-pnpm exec turbo run test --filter=bb-plugin-workflows --force
+bunx turbo run typecheck --filter=bb-plugin-workflows
+bunx turbo run test --filter=bb-plugin-workflows --force
 bb plugin build plugins/workflows
 ```
 

@@ -39,7 +39,7 @@ function buildCleanEnv(): NodeJS.ProcessEnv {
 
 function runSourceBb(args: string[]): Promise<SourceCliResult> {
   return new Promise((resolvePromise, rejectPromise) => {
-    const child = spawn("pnpm", ["--silent", "bb", ...args], {
+    const child = spawn("bun", ["--silent", "bb", ...args], {
       cwd: repoRoot,
       env: buildCleanEnv(),
     });

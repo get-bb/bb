@@ -353,7 +353,7 @@ For review or fix pipelines, get the environment ID from
   Add `--cwd <path>` only to a machine scope. Machine targets resolve to an
   explicit host ID; terminal commands never silently fall back to primary.
 - Start a server with
-  `bb terminal create --thread <thread-id> --title "pnpm dev" --command "pnpm dev"`.
+  `bb terminal create --thread <thread-id> --title "bun dev" --command "bun dev"`.
 - All existing-session operations need only the terminal ID. Use
   `bb terminal wait <terminal-id> --contains "Local:" --timeout 120` to wait
   for readiness from new output. Pass `--from-start` only when matching existing

@@ -113,8 +113,8 @@ If any input is unclear, ask before bumping the version.
 
    ```bash
    node .github/workflows/check-version-lockstep.mjs
-   pnpm exec turbo run typecheck test --filter=@bb/config --filter=@bb/server --filter=bb-app
-   pnpm exec turbo run smoke:tarball --filter=bb-app --force
+   bunx turbo run typecheck test --filter=@bb/config --filter=@bb/server --filter=bb-app
+   bunx turbo run smoke:tarball --filter=bb-app --force
    git diff --check
    ```
 

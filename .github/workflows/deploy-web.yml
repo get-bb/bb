@@ -11,7 +11,7 @@ on:
 
 env:
   NODE_VERSION: "22.x"
-  PNPM_VERSION: "9.15.0"
+  BUN_VERSION: "1.3.14"
 
 permissions:
   contents: read
@@ -35,29 +35,27 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
         with:
-          version: ${{ env.PNPM_VERSION }}
-          run_install: false
+          bun-version: ${{ env.BUN_VERSION }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
 
       - name: Cache Turbo task outputs
         uses: actions/cache@v4
         with:
           path: .turbo/cache
-          key: ${{ runner.os }}-node-${{ env.NODE_VERSION }}-web-turbo-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+          key: ${{ runner.os }}-node-${{ env.NODE_VERSION }}-web-turbo-${{ hashFiles('bun.lock') }}-${{ github.sha }}
           restore-keys: |
-            ${{ runner.os }}-node-${{ env.NODE_VERSION }}-web-turbo-${{ hashFiles('pnpm-lock.yaml') }}-
+            ${{ runner.os }}-node-${{ env.NODE_VERSION }}-web-turbo-${{ hashFiles('bun.lock') }}-
             ${{ runner.os }}-node-${{ env.NODE_VERSION }}-web-turbo-
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile --prefer-offline
+        run: bun install --frozen-lockfile
 
       # CLOUDFLARE_ENV selects the wrangler env at BUILD time (the
       # @cloudflare/vite-plugin writes the resolved production config to
@@ -66,7 +64,7 @@ jobs:
         env:
           CLOUDFLARE_ENV: production
           VITE_POSTHOG_KEY: ${{ secrets.VITE_POSTHOG_KEY }}
-        run: pnpm exec turbo run build --filter=@bb/web --cache-dir=.turbo/cache --output-logs=new-only
+        run: bunx turbo run build --filter=@bb/web --cache-dir=.turbo/cache --output-logs=new-only
 
       - name: Sync marketing analytics secret
         env:
@@ -77,7 +75,7 @@ jobs:
             echo "VITE_POSTHOG_KEY is required for download tracking."
             exit 1
           fi
-          printf '%s' "$LANDING_POSTHOG_KEY" | pnpm --filter @bb/web exec wrangler secret put LANDING_POSTHOG_KEY --name bb-web
+          printf '%s' "$LANDING_POSTHOG_KEY" | (cd apps/web && bunx wrangler secret put LANDING_POSTHOG_KEY --name bb-web)
 
       - name: Sync email signup secret
         env:
@@ -88,7 +86,7 @@ jobs:
             echo "RESEND_API_KEY is required for the email signup."
             exit 1
           fi
-          printf '%s' "$RESEND_API_KEY" | pnpm --filter @bb/web exec wrangler secret put RESEND_API_KEY --name bb-web
+          printf '%s' "$RESEND_API_KEY" | (cd apps/web && bunx wrangler secret put RESEND_API_KEY --name bb-web)
 
       # Apply any pending connect-db migrations BEFORE the new worker ships so
       # it never queries columns prod D1 doesn't have yet. Runs off the gate's
@@ -100,11 +98,11 @@ jobs:
       - name: Apply connect-db migrations
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: pnpm --filter @bb/connect exec wrangler d1 migrations apply DB --remote
+        run: cd apps/connect && bunx wrangler d1 migrations apply DB --remote
 
       # GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET / BETTER_AUTH_SECRET are set
       # once by hand and intentionally NOT synced from CI.
       - name: Deploy web
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: pnpm --filter @bb/web exec wrangler deploy
+        run: cd apps/web && bunx wrangler deploy
