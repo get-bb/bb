@@ -51,6 +51,8 @@ export const LEGACY_PROJECT_COMPOSE_ROUTE_PATH = "/projects/:projectId";
 export const PROJECTLESS_ARCHIVED_ROUTE_PATH = "/archived";
 export const PROJECTLESS_THREAD_DETAIL_ROUTE_PATH = "/threads/:threadId";
 export const PROJECT_SETTINGS_ROUTE_PATH = "/projects/:projectId/settings";
+export const PROJECT_SETUP_SCRIPT_FIELD_ID = "project-setup-script";
+export const PROJECT_RUN_SCRIPT_FIELD_ID = "project-run-script";
 export const PROJECT_ARCHIVED_ROUTE_PATH = "/projects/:projectId/archived";
 export const THREAD_DETAIL_ROUTE_PATH =
   "/projects/:projectId/threads/:threadId";
@@ -206,6 +208,21 @@ export function getAutomationEditRoutePath(
 
 export function getProjectSettingsRoutePath(projectId: string): string {
   return `/projects/${projectId}/settings`;
+}
+
+export function getProjectSettingsScriptFieldId(
+  purpose: "setup" | "run",
+): string {
+  return purpose === "setup"
+    ? PROJECT_SETUP_SCRIPT_FIELD_ID
+    : PROJECT_RUN_SCRIPT_FIELD_ID;
+}
+
+export function getProjectSettingsScriptRoutePath(
+  projectId: string,
+  purpose: "setup" | "run",
+): string {
+  return `${getProjectSettingsRoutePath(projectId)}#${getProjectSettingsScriptFieldId(purpose)}`;
 }
 
 export interface PluginPanelRoutePathArgs {

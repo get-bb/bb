@@ -2701,9 +2701,8 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
             pullRequestPendingAction,
             pullRequestResponse: pullRequestQuery.data,
             repositoryUrl: getGitHubRepositoryUrl(projectGitRemoteUrl),
-            runScript: projectWorkspaceSettingsQuery.data?.runScript ?? null,
-            setupScript:
-              projectWorkspaceSettingsQuery.data?.setupScript ?? null,
+            runScript: projectWorkspaceSettingsQuery.data?.runScript,
+            setupScript: projectWorkspaceSettingsQuery.data?.setupScript,
           }}
         />
         {canUseGitUi ? (

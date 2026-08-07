@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { Link } from "react-router-dom";
 import type { TerminalSessionPurpose } from "@bb/domain";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
@@ -7,13 +8,15 @@ import { ThreadTerminalContent } from "@/components/thread/terminal/ThreadTermin
 import { useThreadTerminalController } from "@/components/thread/terminal/useThreadTerminalController";
 import { sdk } from "@/lib/sdk";
 import { isLoopbackBrowserUrl } from "@/lib/browser-url";
+import { getProjectSettingsScriptRoutePath } from "@/lib/route-paths";
 import { useWorkspaceTerminalToolbarHost } from "../ThreadWorkspaceShell";
 
 interface WorkspaceProcessTerminalProps {
   canCreateTerminal: boolean;
-  command: string | null;
+  command: string | null | undefined;
   environmentId: string;
   onOpenPreview: (url: string) => void;
+  projectId: string;
   purpose: TerminalSessionPurpose;
 }
 
@@ -48,6 +51,29 @@ export type WorkspaceProcessAction =
   | { kind: "none" }
   | { kind: "open"; label: string; url: string }
   | { kind: "start" };
+
+export interface WorkspaceScriptConfigurationAction {
+  href: string;
+  label: "Add Run Script" | "Add Setup Script";
+}
+
+export function getWorkspaceScriptConfigurationAction({
+  command,
+  projectId,
+  purpose,
+}: {
+  command: string | null | undefined;
+  projectId: string;
+  purpose: TerminalSessionPurpose;
+}): WorkspaceScriptConfigurationAction | null {
+  if (command !== null || (purpose !== "setup" && purpose !== "run")) {
+    return null;
+  }
+  return {
+    href: getProjectSettingsScriptRoutePath(projectId, purpose),
+    label: purpose === "setup" ? "Add Setup Script" : "Add Run Script",
+  };
+}
 
 export function getWorkspaceProcessAction({
   canCreateTerminal,
@@ -98,6 +124,7 @@ export function WorkspaceProcessTerminal({
   command,
   environmentId,
   onOpenPreview,
+  projectId,
   purpose,
 }: WorkspaceProcessTerminalProps) {
   const effectiveCommand = command;
@@ -105,7 +132,9 @@ export function WorkspaceProcessTerminal({
     purpose === "setup" ? "Setup" : purpose === "run" ? "Run" : "Terminal";
   const controller = useThreadTerminalController({
     canCreateTerminal:
-      canCreateTerminal && (purpose === "shell" || effectiveCommand !== null),
+      canCreateTerminal &&
+      (purpose === "shell" ||
+        (effectiveCommand !== null && effectiveCommand !== undefined)),
     forceOpen: true,
     panelStateId: `${environmentId}:workspace:${purpose}`,
     purpose,
@@ -120,6 +149,11 @@ export function WorkspaceProcessTerminal({
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const activeSession = controller.activeSession;
   const toolbarHost = useWorkspaceTerminalToolbarHost();
+  const configurationAction = getWorkspaceScriptConfigurationAction({
+    command: effectiveCommand,
+    projectId,
+    purpose,
+  });
 
   useEffect(() => {
     if (purpose !== "run" || activeSession?.status !== "running") {
@@ -151,17 +185,17 @@ export function WorkspaceProcessTerminal({
     };
   }, [activeSession?.id, activeSession?.status, purpose]);
 
-  const emptyMessage = useMemo(() => {
-    if (purpose === "run" && effectiveCommand === null) {
-      return "Add a Run script in project settings.";
-    }
-    if (purpose === "setup") {
-      return effectiveCommand === null
-        ? "Add a Setup script in project settings."
-        : "Start the Setup script for this worktree.";
-    }
-    return "Start a terminal in this worktree.";
-  }, [effectiveCommand, purpose]);
+  const scriptSettingsUnavailable =
+    effectiveCommand === undefined &&
+    (purpose === "setup" || purpose === "run");
+  let emptyMessage = "Start a terminal in this worktree.";
+  if (scriptSettingsUnavailable) {
+    emptyMessage = "Workspace script settings are unavailable.";
+  } else if (configurationAction) {
+    emptyMessage = `No ${title} script is configured for this project.`;
+  } else if (purpose === "setup") {
+    emptyMessage = "Start the Setup script for this worktree.";
+  }
 
   const action = getWorkspaceProcessAction({
     canCreateTerminal: controller.canCreateTerminal,
@@ -205,8 +239,16 @@ export function WorkspaceProcessTerminal({
         : null}
       <div className="min-h-0 flex-1 overflow-hidden">
         {!activeSession && !controller.isCreateTerminalPending ? (
-          <div className="flex h-full items-center justify-center px-5 text-center text-xs text-muted-foreground">
-            {emptyMessage}
+          <div className="flex h-full flex-col items-center justify-center gap-3 px-5 text-center text-xs text-muted-foreground">
+            <p>{emptyMessage}</p>
+            {configurationAction ? (
+              <Button asChild variant="outline" size="sm">
+                <Link to={configurationAction.href}>
+                  <Icon name="Settings" className="size-3.5" />
+                  {configurationAction.label}
+                </Link>
+              </Button>
+            ) : null}
           </div>
         ) : (
           <ThreadTerminalContent controller={controller} />

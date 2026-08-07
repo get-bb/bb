@@ -111,8 +111,8 @@ interface ThreadDetailSecondaryContentProps {
     pullRequestPendingAction: PullRequestPendingAction;
     pullRequestResponse: EnvironmentPullRequestResponse | undefined;
     repositoryUrl: string | null;
-    runScript: string | null;
-    setupScript: string | null;
+    runScript: string | null | undefined;
+    setupScript: string | null | undefined;
   };
 }
 
@@ -481,6 +481,7 @@ function ThreadDetailSecondaryContentBody({
         }
         environmentId={environmentId}
         onOpenPreview={workspace.onOpenBrowserUrl}
+        projectId={stableMetadata.thread.projectId}
         purpose={
           activeLowerTab === "setup"
             ? "setup"

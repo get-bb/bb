@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useLocation, useParams } from "react-router-dom";
 import {
   findLocalPathProjectSourceForHost,
   isLocalPathProjectSource,
@@ -49,6 +49,27 @@ import {
 import { stripProjectThreads } from "@/hooks/queries/project-queries";
 import { useProjectWorkspaceSettings } from "@/hooks/queries/project-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
+import {
+  PROJECT_RUN_SCRIPT_FIELD_ID,
+  PROJECT_SETUP_SCRIPT_FIELD_ID,
+} from "@/lib/route-paths";
+
+const PROJECT_SCRIPT_FIELD_HASHES = new Set([
+  `#${PROJECT_SETUP_SCRIPT_FIELD_ID}`,
+  `#${PROJECT_RUN_SCRIPT_FIELD_ID}`,
+]);
+
+export function useProjectScriptHashTarget(enabled: boolean) {
+  const { hash } = useLocation();
+
+  useEffect(() => {
+    if (!enabled || !PROJECT_SCRIPT_FIELD_HASHES.has(hash)) return;
+    const field = document.getElementById(hash.slice(1));
+    if (!(field instanceof HTMLTextAreaElement)) return;
+    field.scrollIntoView({ block: "center" });
+    field.focus();
+  }, [enabled, hash]);
+}
 
 export function ProjectSettingsView() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -71,6 +92,7 @@ export function ProjectSettingsView() {
   const addLocalSource = useAddLocalProjectSource();
   const updateLocalSource = useUpdateLocalProjectSource();
   const workspaceSettingsQuery = useProjectWorkspaceSettings(projectId);
+  useProjectScriptHashTarget(!workspaceSettingsQuery.isLoading);
   const updateWorkspaceSettings = useUpdateProjectWorkspaceSettings();
   const [setupScript, setSetupScript] = useState("");
   const [runScript, setRunScript] = useState("");
@@ -93,6 +115,7 @@ export function ProjectSettingsView() {
     setSetupScript(savedSetupScript);
     setRunScript(savedRunScript);
   }, [
+    projectId,
     savedRunScript,
     savedSetupScript,
     workspaceScriptsDirty,
@@ -318,9 +341,9 @@ export function ProjectSettingsView() {
         <SettingsSection title="Workspace Scripts">
           <div className="space-y-5">
             <div className="space-y-2">
-              <Label htmlFor="project-setup-script">Setup</Label>
+              <Label htmlFor={PROJECT_SETUP_SCRIPT_FIELD_ID}>Setup</Label>
               <Textarea
-                id="project-setup-script"
+                id={PROJECT_SETUP_SCRIPT_FIELD_ID}
                 className="min-h-28 font-mono text-xs"
                 disabled={workspaceSettingsQuery.isLoading}
                 placeholder="corepack pnpm install"
@@ -334,9 +357,9 @@ export function ProjectSettingsView() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="project-run-script">Run</Label>
+              <Label htmlFor={PROJECT_RUN_SCRIPT_FIELD_ID}>Run</Label>
               <Textarea
-                id="project-run-script"
+                id={PROJECT_RUN_SCRIPT_FIELD_ID}
                 className="min-h-28 font-mono text-xs"
                 disabled={workspaceSettingsQuery.isLoading}
                 placeholder="corepack pnpm dev"
