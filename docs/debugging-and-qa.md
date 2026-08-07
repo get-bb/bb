@@ -11,7 +11,7 @@
 
 Use `scripts/bb-dev-app` when validating changes in the desktop dev app or helping QA from this checkout:
 
-- `scripts/bb-dev-app status` prints the active branch, dev URLs, data dir, and logs.
+- `pnpm dev:status` runs `scripts/bb-dev-app status` to print the active branch, dev URLs, data dir, and logs.
 - `scripts/bb-dev-app current` restarts the dev server on the current branch.
 - `scripts/bb-dev-app main` fetches `origin/main`, fast-forwards `main`, and launches the dev server from this checkout.
 - `scripts/bb-dev-app branch <branch>` switches to a local branch, or creates it from `origin/<branch>`, then launches the dev server.
