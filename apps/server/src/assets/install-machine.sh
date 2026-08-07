@@ -93,6 +93,12 @@ service_slug=$(printf '%s' "$server_host" | tr '.' '-')
 data_dir=${BB_DATA_DIR:-"$HOME/.bb-machines/$server_host"}
 mkdir -p "$data_dir"
 mkdir -p "$data_dir/logs"
+canonical_data_dir=$(node -e '
+  const fs = require("node:fs");
+  process.stdout.write(fs.realpathSync(process.argv[1]));
+' "$data_dir")
+port_registry_dir="$HOME/.bb-machines/host-daemon-ports"
+mkdir -p "$port_registry_dir"
 
 valid_port() {
   node -e '
@@ -146,64 +152,87 @@ wait_for_daemon_connection() {
   return 1
 }
 
-find_available_host_daemon_port() {
-  node -e '
-    const fs = require("node:fs");
-    const net = require("node:net");
-    const path = require("node:path");
-    const machinesDir = process.argv[1];
-    const reserved = new Set();
-    try {
-      for (const entry of fs.readdirSync(machinesDir, { withFileTypes: true })) {
-        if (!entry.isDirectory()) continue;
-        try {
-          const value = Number(fs.readFileSync(path.join(machinesDir, entry.name, "host-daemon-port"), "utf8").trim());
-          if (Number.isInteger(value) && value >= 1 && value <= 65535) reserved.add(value);
-        } catch {}
-      }
-    } catch {}
-
-    const tryPort = (port) => {
-      if (port > 65535) {
-        process.stderr.write("Could not find an available host-daemon port.\n");
-        process.exit(1);
-      }
-      if (reserved.has(port)) {
-        tryPort(port + 1);
-        return;
-      }
-      const server = net.createServer();
-      server.once("error", (error) => {
-        if (error && (error.code === "EADDRINUSE" || error.code === "EACCES")) {
-          tryPort(port + 1);
-          return;
-        }
-        process.stderr.write(`Could not check host-daemon port ${port}: ${error.message}\n`);
-        process.exit(1);
-      });
-      server.listen({ host: "127.0.0.1", port, exclusive: true }, () => {
-        server.close((error) => {
-          if (error) {
-            process.stderr.write(`Could not release host-daemon port probe ${port}: ${error.message}\n`);
-            process.exit(1);
-          }
-          process.stdout.write(String(port));
-        });
-      });
-    };
-    tryPort(38888);
-  ' "$HOME/.bb-machines"
+reservation_owner() {
+  sed -n '1p' "$port_registry_dir/$1/data-dir" 2>/dev/null || true
 }
 
+claim_port_for_data_dir() {
+  claim_port=$1
+  claim_data_dir=$2
+  claim_dir="$port_registry_dir/$claim_port"
+  if mkdir "$claim_dir" 2>/dev/null; then
+    claim_owner_temp="$claim_dir/data-dir.$$.tmp"
+    (umask 077 && printf '%s\n' "$claim_data_dir" >"$claim_owner_temp")
+    mv "$claim_owner_temp" "$claim_dir/data-dir"
+    return 0
+  fi
+  [ "$(reservation_owner "$claim_port")" = "$claim_data_dir" ]
+}
+
+release_port_for_data_dir() {
+  release_port=$1
+  release_data_dir=$2
+  release_dir="$port_registry_dir/$release_port"
+  if [ "$(reservation_owner "$release_port")" = "$release_data_dir" ]; then
+    rm -f "$release_dir/data-dir"
+    rmdir "$release_dir" 2>/dev/null || true
+  fi
+}
+
+# Migrate reservations from installs created before the global registry. Each
+# per-port mkdir is the allocation lock: concurrent installers cannot claim the
+# same port even after its availability probe closes.
+register_existing_default_ports() {
+  for existing_data_dir in "$HOME/.bb-machines"/*; do
+    [ -d "$existing_data_dir" ] || continue
+    existing_port_file="$existing_data_dir/host-daemon-port"
+    [ -f "$existing_port_file" ] || continue
+    existing_port=$(sed -n '1p' "$existing_port_file")
+    valid_port "$existing_port" || continue
+    existing_canonical_data_dir=$(node -e '
+      const fs = require("node:fs");
+      process.stdout.write(fs.realpathSync(process.argv[1]));
+    ' "$existing_data_dir")
+    claim_port_for_data_dir "$existing_port" "$existing_canonical_data_dir" || true
+  done
+}
+
+find_and_claim_available_host_daemon_port() {
+  candidate_port=38888
+  while [ "$candidate_port" -le 65535 ]; do
+    if claim_port_for_data_dir "$candidate_port" "$canonical_data_dir"; then
+      if port_is_available "$candidate_port"; then
+        printf '%s\n' "$candidate_port"
+        return 0
+      fi
+      release_port_for_data_dir "$candidate_port" "$canonical_data_dir"
+    fi
+    candidate_port=$((candidate_port + 1))
+  done
+  echo "Could not find an available host-daemon port." >&2
+  return 1
+}
+
+register_existing_default_ports
 host_daemon_port_file="$data_dir/host-daemon-port"
+previous_host_daemon_port=
+if [ -f "$host_daemon_port_file" ]; then
+  previous_host_daemon_port=$(sed -n '1p' "$host_daemon_port_file")
+fi
 host_daemon_port=
 if [ -n "$requested_host_daemon_port" ]; then
   if ! valid_port "$requested_host_daemon_port"; then
     echo "--host-daemon-port must be an integer between 1 and 65535." >&2
     exit 2
   fi
+  if ! claim_port_for_data_dir "$requested_host_daemon_port" "$canonical_data_dir"; then
+    echo "Host daemon local API port $requested_host_daemon_port is reserved by another bb enrollment." >&2
+    echo "Choose another value for --host-daemon-port and rerun this command." >&2
+    exit 1
+  fi
   if ! port_is_available "$requested_host_daemon_port" && \
      ! daemon_status_matches "$requested_host_daemon_port" no; then
+    release_port_for_data_dir "$requested_host_daemon_port" "$canonical_data_dir"
     echo "Host daemon local API port $requested_host_daemon_port is already in use." >&2
     echo "Choose another value for --host-daemon-port and rerun this command." >&2
     exit 1
@@ -212,19 +241,26 @@ if [ -n "$requested_host_daemon_port" ]; then
 elif [ -f "$host_daemon_port_file" ]; then
   stored_host_daemon_port=$(sed -n '1p' "$host_daemon_port_file")
   if valid_port "$stored_host_daemon_port" && \
+     claim_port_for_data_dir "$stored_host_daemon_port" "$canonical_data_dir" && \
      { port_is_available "$stored_host_daemon_port" || daemon_status_matches "$stored_host_daemon_port" no; }; then
     host_daemon_port=$stored_host_daemon_port
   else
+    if valid_port "$stored_host_daemon_port"; then
+      release_port_for_data_dir "$stored_host_daemon_port" "$canonical_data_dir"
+    fi
     echo "Stored host-daemon port $stored_host_daemon_port is unavailable; assigning a new port." >&2
   fi
 fi
 
 if [ -z "$host_daemon_port" ]; then
-  host_daemon_port=$(find_available_host_daemon_port)
+  host_daemon_port=$(find_and_claim_available_host_daemon_port)
 fi
 host_daemon_port_temp="$host_daemon_port_file.$$.tmp"
 (umask 077 && printf '%s\n' "$host_daemon_port" >"$host_daemon_port_temp")
 mv "$host_daemon_port_temp" "$host_daemon_port_file"
+if valid_port "$previous_host_daemon_port" && [ "$previous_host_daemon_port" != "$host_daemon_port" ]; then
+  release_port_for_data_dir "$previous_host_daemon_port" "$canonical_data_dir"
+fi
 echo "Using local host-daemon port $host_daemon_port."
 
 # The server's own build is always installed when it offers one: version
@@ -506,8 +542,14 @@ RestartSec=2
 WantedBy=default.target
 EOF
   systemctl --user daemon-reload
-  if ! systemctl_error=$(systemctl --user enable --now "$service_name.service" 2>&1); then
-    echo "The bb host-daemon systemd service could not be enabled or started." >&2
+  if ! systemctl_error=$(systemctl --user enable "$service_name.service" 2>&1); then
+    echo "The bb host-daemon systemd service could not be enabled." >&2
+    [ -z "$systemctl_error" ] || echo "systemctl: $systemctl_error" >&2
+    echo "Inspect it with: journalctl --user -u $service_name.service" >&2
+    exit 1
+  fi
+  if ! systemctl_error=$(systemctl --user restart "$service_name.service" 2>&1); then
+    echo "The bb host-daemon systemd service was enabled, but it could not be restarted." >&2
     [ -z "$systemctl_error" ] || echo "systemctl: $systemctl_error" >&2
     echo "Inspect it with: journalctl --user -u $service_name.service" >&2
     exit 1

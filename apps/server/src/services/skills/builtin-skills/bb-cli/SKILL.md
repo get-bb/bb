@@ -18,7 +18,8 @@ message agents, or inspect projects, providers, and environments.
   at `http://127.0.0.1:38886` and host daemon port `38887`. Set
   `BB_SERVER_URL` and `BB_HOST_DAEMON_PORT` only for remote or non-default
   targets. The Add machine installer injects its enrolled daemon's selected
-  local API port automatically.
+  local API port automatically and atomically reserves it across default and
+  custom machine data directories.
 
 ## Environment Setup Script
 
