@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  getPullRequestForBranch,
   getPullRequestForCurrentBranch,
   parseGitHostPullRequest,
+  runPullRequestActionForBranch,
   runPullRequestActionForCurrentBranch,
   type GitHostPullRequestAction,
 } from "../src/git-host.js";
@@ -232,6 +234,19 @@ describe("runPullRequestActionForCurrentBranch", () => {
         }),
         expect.any(Function),
       );
+
+      await runPullRequestActionForBranch({
+        cwd: "/tmp/workspace",
+        branch: "bb/pr-actions",
+        action,
+      });
+
+      expect(execFileMock).toHaveBeenLastCalledWith(
+        "gh",
+        [...expectedArgs, "--", "bb/pr-actions"],
+        expect.objectContaining({ cwd: "/tmp/workspace" }),
+        expect.any(Function),
+      );
     },
   );
 
@@ -302,6 +317,32 @@ describe("getPullRequestForCurrentBranch", () => {
     expect(execFileMock).toHaveBeenCalledWith(
       "gh",
       ["pr", "view", "--json", expect.any(String)],
+      expect.objectContaining({ cwd: "/tmp/workspace" }),
+      expect.any(Function),
+    );
+  });
+
+  it("preserves explicit branch lookup for existing callers", async () => {
+    mockGhStdout(ghJson());
+    await expect(
+      getPullRequestForBranch({
+        cwd: "/tmp/workspace",
+        branch: "bb/pr-lookup",
+      }),
+    ).resolves.toMatchObject({
+      outcome: "found",
+      pullRequest: { number: 42 },
+    });
+    expect(execFileMock).toHaveBeenCalledWith(
+      "gh",
+      [
+        "pr",
+        "view",
+        "--json",
+        expect.any(String),
+        "--",
+        "bb/pr-lookup",
+      ],
       expect.objectContaining({ cwd: "/tmp/workspace" }),
       expect.any(Function),
     );
