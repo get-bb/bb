@@ -3,9 +3,9 @@
 Official plugins ship **bundled inside the BB app**. There is no separate
 publish pipeline: at packaging time, `apps/server/scripts/copy-builtin-plugins.ts`
 builds every plugin declared in `BUNDLED_PLUGINS`
-(`apps/server/src/services/plugins/builtin-registry.ts`) — the auto-installed
-builtins in `plugins/*` and the store-only official plugins in
-`official-plugins/*` — and copies each prebuilt runtime layout into
+(`apps/server/src/services/plugins/builtin-registry.ts`) — the builtins in
+`plugins/*` and the official plugins in `official-plugins/*` — and copies each
+prebuilt runtime layout into
 `<server dist>/builtin-plugins/<name>`. The app in Extensions → Plugins → Browse
 installs official plugins from that local bundled copy; no network is involved.
 

@@ -189,13 +189,33 @@ describe("builtin plugin reconciliation", () => {
     workDir = await mkdtemp(join(tmpdir(), "bb-builtin-plugins-"));
   });
 
-  it("keeps official plugins bundled but out of the auto-install builtins", () => {
+  it("auto-installs the default orchestrator plugins enabled", () => {
+    for (const name of [
+      "ask-user-question",
+      "github",
+      "tasks",
+      "workflows",
+    ]) {
+      const plugin = [...BUILTIN_PLUGINS, ...OFFICIAL_PLUGINS].find(
+        (candidate) => candidate.name === name,
+      );
+      expect(plugin, name).toMatchObject({
+        autoInstall: true,
+        defaultEnabled: true,
+      });
+    }
+  });
+
+  it("keeps the remaining official plugins installable on demand", () => {
     const optionalNames = OFFICIAL_PLUGINS.map((plugin) => plugin.name);
-    for (const name of ["memory", "t3sidebar"]) {
+    for (const name of ["docs", "memory", "t3sidebar"]) {
       expect(BUILTIN_PLUGINS.map((plugin) => plugin.name)).not.toContain(name);
       expect(optionalNames).toContain(name);
+      expect(
+        OFFICIAL_PLUGINS.find((plugin) => plugin.name === name)?.autoInstall,
+        name,
+      ).toBe(false);
     }
-    expect(OFFICIAL_PLUGINS.every((plugin) => !plugin.autoInstall)).toBe(true);
   });
 
   it("gives every builtin plugin a deliberate settings icon", async () => {
@@ -376,11 +396,11 @@ describe("builtin plugin reconciliation", () => {
     ]);
   });
 
-  it("ships Workflows disabled on a fresh database", async () => {
+  it("ships Workflows enabled on a fresh database", async () => {
     const workflows = BUILTIN_PLUGINS.find(
       (builtin) => builtin.name === "workflows",
     );
-    expect(workflows?.defaultEnabled).toBe(false);
+    expect(workflows?.defaultEnabled).toBe(true);
 
     service = createService({
       db,
@@ -395,8 +415,8 @@ describe("builtin plugin reconciliation", () => {
       {
         id: "workflows",
         source: "builtin:workflows",
-        enabled: false,
-        status: "disabled",
+        enabled: true,
+        status: "running",
       },
     ]);
   });

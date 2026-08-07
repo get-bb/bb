@@ -526,8 +526,8 @@ add <key-or-comment-id> --file <path>` (task key = task-level; comment ID
 
 - The builtin `ask-user-question` plugin gives providers that lack a native
   one an `AskUserQuestion` tool — multiple-choice questions answered in a
-  composer form. It is disabled on fresh installations; enable it under
-  Extensions → Plugins or with `bb plugin enable ask-user-question`.
+  composer form. It is enabled on fresh installations and can be managed under
+  Extensions → Plugins or with `bb plugin enable|disable ask-user-question`.
 - It contributes no CLI command. Once enabled the tool appears in the agent's
   own tool list, and only for providers without a native equivalent: Claude
   Code threads keep using Claude's built-in `AskUserQuestion`, so the plugin
@@ -540,9 +540,8 @@ add <key-or-comment-id> --file <path>` (task key = task-level; comment ID
 ## Workflows
 
 - The builtin `workflows` plugin runs durable provider-independent JavaScript
-  orchestration and is disabled on fresh installations. Enable it under
-  Extensions → Plugins or with `bb plugin enable workflows` before using its
-  command.
+  orchestration. It is enabled on fresh installations and can be managed under
+  Extensions → Plugins or with `bb plugin enable|disable workflows`.
 - Author and check sources with `bb workflows validate (--script <javascript>|
 --source <javascript>|--file <path>|--name <name>)`; start a background run
   with the same selector via `bb workflows run ... [--args <json>] [--resume
@@ -624,11 +623,13 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
   subcommands that agents run through bash like any other command.
 - Plugins are on by default. Auto-installed builtin plugins ship with bb
   (except `side-chat`, which is gated by the **"Side chat plugin"**
-  experiment); official plugins install from the bundled store on demand.
+  experiment). GitHub and Tasks install automatically from the bundled store;
+  the other official plugins install on demand.
 - **BB Official plugins** (store under `/api/v1/plugin-catalog`):
   - BB's official plugins (GitHub, Docs, Memory, Tasks) ship bundled inside
-    the app and install from the local copy — no network. Installed official
-    plugins are pinned to the bundled copy and update with BB app releases.
+    the app and install from the local copy — no network. GitHub and Tasks are
+    installed automatically. Installed official plugins are pinned to the
+    bundled copy and update with BB app releases.
   - `bb plugin search <query> [--json]` — search the official plugins by id,
     name, description, or category; status shows installed / compatible /
     requires newer bb.

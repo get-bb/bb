@@ -11,9 +11,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createPluginCatalogService } from "../../../src/services/plugin-catalog/plugin-catalog-service.js";
 import {
-  BUILTIN_PLUGINS,
   BUNDLED_PLUGINS,
-  OFFICIAL_PLUGINS,
   PLUGIN_CATALOG_CATEGORIES,
   listBundledPluginRegistrations,
 } from "../../../src/services/plugins/builtin-registry.js";
@@ -79,8 +77,12 @@ describe("bundled plugin catalog service", () => {
     const catalog = service();
     expect(catalog.status()).toEqual({
       pluginCount: BUNDLED_PLUGINS.length,
-      includedPluginCount: BUILTIN_PLUGINS.length,
-      optionalPluginCount: OFFICIAL_PLUGINS.length,
+      includedPluginCount: BUNDLED_PLUGINS.filter(
+        (plugin) => plugin.autoInstall,
+      ).length,
+      optionalPluginCount: BUNDLED_PLUGINS.filter(
+        (plugin) => !plugin.autoInstall,
+      ).length,
     });
 
     const results = await catalog.search("");

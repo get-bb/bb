@@ -45,7 +45,7 @@ export const BUILTIN_PLUGINS = [
   {
     name: "ask-user-question",
     pluginId: "ask-user-question",
-    defaultEnabled: false,
+    defaultEnabled: true,
     category: "Agent interaction",
   },
   {
@@ -87,7 +87,7 @@ export const BUILTIN_PLUGINS = [
   {
     name: "workflows",
     pluginId: "workflows",
-    defaultEnabled: false,
+    defaultEnabled: true,
     category: "Workflow management",
   },
 ].map(
@@ -99,31 +99,35 @@ export const BUILTIN_PLUGINS = [
 );
 
 /**
- * Official plugins ship bundled with the app like builtins, but are not
- * auto-installed: they appear in the plugin store and install on demand.
+ * Official plugins ship bundled with the app like builtins. Core orchestrator
+ * plugins install automatically; the remaining entries install on demand.
  */
 export const OFFICIAL_PLUGINS = [
   {
     name: "github",
     pluginId: "github",
+    autoInstall: true,
     defaultEnabled: true,
     category: "Developer tools",
   },
   {
     name: "docs",
     pluginId: "simple-notes",
+    autoInstall: false,
     defaultEnabled: true,
     category: "Context & knowledge",
   },
   {
     name: "memory",
     pluginId: "memory",
+    autoInstall: false,
     defaultEnabled: true,
     category: "Context & knowledge",
   },
   {
     name: "tasks",
     pluginId: "tasks",
+    autoInstall: true,
     defaultEnabled: true,
     category: "Workflow management",
   },
@@ -132,6 +136,7 @@ export const OFFICIAL_PLUGINS = [
   {
     name: "t3sidebar",
     pluginId: "t3sidebar",
+    autoInstall: false,
     defaultEnabled: false,
     category: "Interface",
     repoDirectory: "plugins" as const,
@@ -139,7 +144,6 @@ export const OFFICIAL_PLUGINS = [
 ].map(
   (plugin): BundledPluginDefinition => ({
     ...plugin,
-    autoInstall: false,
     repoDirectory:
       ("repoDirectory" in plugin ? plugin.repoDirectory : undefined) ??
       "official-plugins",
