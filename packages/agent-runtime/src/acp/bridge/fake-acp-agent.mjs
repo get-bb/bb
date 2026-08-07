@@ -32,6 +32,7 @@
  * - FAKE_ACP_LAUNCH_LOG      → append one line per process launch (used to
  *                              count model-discovery spawns in cache/TTL tests)
  * - FAKE_ACP_PROMPT_LOG      → append one JSON-encoded prompt text per request
+ * - FAKE_ACP_PROMPT_ERROR=1  → reject every session/prompt request
  */
 
 import { createInterface } from "node:readline";
@@ -232,6 +233,16 @@ async function handlePrompt(message) {
       process.env.FAKE_ACP_PROMPT_LOG,
       `${JSON.stringify(text)}\n`,
     );
+  }
+
+  if (process.env.FAKE_ACP_PROMPT_ERROR === "1") {
+    activePromptId = null;
+    send({
+      jsonrpc: "2.0",
+      id: message.id,
+      error: { code: -32000, message: "Fake prompt failure" },
+    });
+    return;
   }
 
   if (text.includes("request-permission")) {

@@ -408,7 +408,7 @@ describe("bb thread action command output", () => {
 
     expect(post).toHaveBeenCalledWith({ param: { id: "thread-compact" } });
     expect(collectLogLines(vi.mocked(console.log))).toContain(
-      "Thread thread-compact context compacted",
+      "Thread thread-compact context compaction requested",
     );
   });
 

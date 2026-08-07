@@ -470,7 +470,7 @@ describe("EmbeddedThreadChat", () => {
     );
   });
 
-  it("keeps a failed compact command cleared", async () => {
+  it("restores a compact command when the request is rejected", async () => {
     mocks.compactThreadMutateAsync.mockRejectedValueOnce(
       new Error("Provider rejected compact"),
     );
@@ -487,7 +487,7 @@ describe("EmbeddedThreadChat", () => {
     expect(mocks.compactThreadMutateAsync).toHaveBeenCalledWith("thr_child");
     expect(
       screen.getByTestId<HTMLInputElement>("embedded-chat-composer").value,
-    ).toBe("");
+    ).toBe("/compact");
   });
 
   it("tracks read state only while active", () => {

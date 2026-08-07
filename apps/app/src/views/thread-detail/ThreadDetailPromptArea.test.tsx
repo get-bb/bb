@@ -719,7 +719,7 @@ afterEach(() => {
 });
 
 describe("ThreadDetailPromptArea", () => {
-  it("keeps a failed compact command cleared", async () => {
+  it("restores a compact command when the request is rejected", async () => {
     mocks.compactThreadMutateAsync.mockRejectedValueOnce(
       new Error("Provider rejected compact"),
     );
@@ -752,7 +752,11 @@ describe("ThreadDetailPromptArea", () => {
       mentions: mocks.promptDraft.mentions,
       text: "/compact",
     });
-    expect(mocks.promptDraft.restoreIfEmpty).not.toHaveBeenCalled();
+    expect(mocks.promptDraft.restoreIfEmpty).toHaveBeenCalledWith({
+      attachments: [],
+      mentions: mocks.promptDraft.mentions,
+      text: "/compact",
+    });
   });
 
   it("keeps the queued drawer adjacent to the bottom composer", () => {

@@ -612,9 +612,15 @@ describe("pi bridge", () => {
     }
   });
 
-  it("compacts an idle Pi SDK session without submitting a prompt", async () => {
+  it("acknowledges Pi compaction before the SDK reports its outcome", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
     const session = createControlledPiAgentSession();
+    let rejectCompaction: ((error: Error) => void) | undefined;
+    session.compact.mockReturnValueOnce(
+      new Promise<void>((_resolve, reject) => {
+        rejectCompaction = reject;
+      }),
+    );
     mockCreateAgentSession.mockResolvedValue({ session });
 
     try {
@@ -634,6 +640,12 @@ describe("pi bridge", () => {
       });
       expect(session.compact).toHaveBeenCalledOnce();
       expect(session.prompt).not.toHaveBeenCalled();
+
+      rejectCompaction?.(new Error("Pi compaction failed"));
+      await bridge.flushWork();
+      expect(
+        bridge.messages.filter((message) => message.id === 2),
+      ).toHaveLength(1);
     } finally {
       bridge.restore();
     }

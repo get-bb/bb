@@ -458,7 +458,7 @@ export function registerActionsCommands(
 
   parent
     .command("compact [id]")
-    .description("Compact an idle or errored thread's provider context")
+    .description("Request compaction of an idle or errored thread's context")
     .option("--self", "Target the current thread (from BB_THREAD_ID)")
     .option("--json", "Print machine-readable JSON output")
     .action(
@@ -467,7 +467,7 @@ export function registerActionsCommands(
         const sdk = createCliBbSdk(getUrl());
         await sdk.threads.compact({ threadId });
         if (outputJson(opts, { ok: true, threadId })) return;
-        console.log(`Thread ${threadId} context compacted`);
+        console.log(`Thread ${threadId} context compaction requested`);
       }),
     );
 

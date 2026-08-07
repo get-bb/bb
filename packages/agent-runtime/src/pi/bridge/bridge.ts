@@ -607,7 +607,7 @@ async function handleRequest(
       sendResult(request.id, await handleThreadStop(request.params));
       break;
     case "thread/compact":
-      await handleThreadCompact(request.id, request.params);
+      handleThreadCompact(request.id, request.params);
       break;
   }
 }
@@ -867,10 +867,10 @@ async function handleThreadStop(
   return { ok: true };
 }
 
-async function handleThreadCompact(
+function handleThreadCompact(
   id: string | number,
   params: ThreadCompactParams,
-): Promise<void> {
+): void {
   const threadSession = sessions.get(params.threadId);
   if (!threadSession || threadSession.stopping) {
     sendError(id, -32000, "No active pi session");
@@ -880,13 +880,10 @@ async function handleThreadCompact(
     sendError(id, -32000, "Cannot compact context while a turn is active");
     return;
   }
-  try {
-    await threadSession.session.compact();
-    sendResult(id, { threadId: params.threadId });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    sendError(id, -32000, message);
-  }
+  // Pi reports the terminal outcome through compaction_end. The command result
+  // only acknowledges that the validated maintenance operation was started.
+  void threadSession.session.compact().catch(() => undefined);
+  sendResult(id, { threadId: params.threadId });
 }
 
 interface ExtractedInput {

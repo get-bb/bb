@@ -708,9 +708,7 @@ export function ThreadDetailPromptArea({
         }
       }
     } catch (nextError) {
-      if (!isCompactCommand) {
-        promptDraft.restoreIfEmpty(submittedDraft);
-      }
+      promptDraft.restoreIfEmpty(submittedDraft);
       appToast.error(
         getMutationErrorMessage({
           error: nextError,
@@ -761,6 +759,7 @@ export function ThreadDetailPromptArea({
       try {
         await compactThread.mutateAsync(thread.id);
       } catch (nextError) {
+        promptDraft.restoreIfEmpty(submittedDraft);
         appToast.error(
           getMutationErrorMessage({
             error: nextError,

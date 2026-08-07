@@ -156,14 +156,12 @@ describe("thread runtime mutations", () => {
     expect(sdk.threads.compact).toHaveBeenCalledWith({
       threadId: "thread-1",
     });
-    expect(appToast.loading).toHaveBeenCalledWith("Compacting context");
-    expect(appToast.success).toHaveBeenCalledWith("Context compacted", {
-      id: "compact-toast",
-    });
+    expect(appToast.loading).not.toHaveBeenCalled();
+    expect(appToast.success).not.toHaveBeenCalled();
     expect(invalidateQueries).toHaveBeenCalled();
   });
 
-  it("dismisses compact progress before the shared error handling runs", async () => {
+  it("propagates compact request failures to the caller", async () => {
     vi.mocked(sdk.threads.compact).mockRejectedValueOnce(
       new Error("Nothing to compact (session too small)"),
     );
@@ -176,7 +174,7 @@ describe("thread runtime mutations", () => {
       );
     });
 
-    expect(appToast.dismiss).toHaveBeenCalledWith("compact-toast");
+    expect(appToast.dismiss).not.toHaveBeenCalled();
     expect(appToast.success).not.toHaveBeenCalled();
   });
 

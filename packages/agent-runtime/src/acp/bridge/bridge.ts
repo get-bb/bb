@@ -1745,10 +1745,10 @@ async function runCompactionPrompt(
 
 const ACP_COMPACTION_CANCELLED_MESSAGE = "ACP context compaction was cancelled";
 
-async function compactSession(
+function startCompaction(
   session: AcpThreadSession,
   compaction: AcpManualCompaction,
-): Promise<void> {
+): void {
   if (session.promptActive) {
     throw new Error("Cannot compact context while an ACP turn is active");
   }
@@ -1759,26 +1759,27 @@ async function compactSession(
     threadId: session.bbThreadId,
   });
 
-  try {
-    await runCompactionPrompt(session, compaction.prompt);
-    sendNotification(ACP_COMPACTION_COMPLETED_METHOD, {
-      threadId: session.bbThreadId,
-      status: "completed",
+  void runCompactionPrompt(session, compaction.prompt)
+    .then(() => {
+      sendNotification(ACP_COMPACTION_COMPLETED_METHOD, {
+        threadId: session.bbThreadId,
+        status: "completed",
+      });
+    })
+    .catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      sendNotification(ACP_COMPACTION_COMPLETED_METHOD, {
+        threadId: session.bbThreadId,
+        ...(message === ACP_COMPACTION_CANCELLED_MESSAGE
+          ? { status: "interrupted" }
+          : { status: "failed", error: message }),
+      });
+    })
+    .finally(() => {
+      session.compactionActive = false;
+      session.promptActive = false;
+      session.turnSettled = undefined;
     });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    sendNotification(ACP_COMPACTION_COMPLETED_METHOD, {
-      threadId: session.bbThreadId,
-      ...(message === ACP_COMPACTION_CANCELLED_MESSAGE
-        ? { status: "interrupted" }
-        : { status: "failed", error: message }),
-    });
-    throw error;
-  } finally {
-    session.compactionActive = false;
-    session.promptActive = false;
-    session.turnSettled = undefined;
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1984,7 +1985,7 @@ async function handleRequest(
         return;
       }
       try {
-        await compactSession(session, request.params.compaction);
+        startCompaction(session, request.params.compaction);
         sendResult(request.id, { threadId: request.params.threadId });
       } catch (error) {
         sendError(

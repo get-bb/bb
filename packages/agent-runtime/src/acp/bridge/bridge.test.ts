@@ -185,6 +185,13 @@ async function waitForTurnCompleted(): Promise<BridgeJsonRpcOutputMessage> {
   );
 }
 
+async function waitForCompactionCompleted(): Promise<BridgeJsonRpcOutputMessage> {
+  return waitFor(
+    () => notifications("acp/compaction/completed").at(-1),
+    "acp/compaction/completed notification",
+  );
+}
+
 function agentMessageTexts(): string[] {
   return notifications("acp/update").flatMap((message) => {
     const params = message.params;
@@ -1185,7 +1192,12 @@ describe("acp bridge", () => {
       threadId: providerThreadId,
       compaction: { method: "prompt", prompt: "/compact" },
     });
-    expect((await waitForResponse(compactId)).error).toBeUndefined();
+    const compactResponse = await waitForResponse(compactId);
+    expect(compactResponse.error).toBeUndefined();
+    const completed = await waitForCompactionCompleted();
+    expect(output.messages.indexOf(compactResponse)).toBeLessThan(
+      output.messages.indexOf(completed),
+    );
     expect(notifications("acp/turn/started")).toHaveLength(0);
     expect(notifications("acp/turn/completed")).toHaveLength(0);
     expect(notifications("acp/compaction/started")).toEqual([
@@ -1214,6 +1226,29 @@ describe("acp bridge", () => {
     await waitForTurnCompleted();
     expect(agentMessageTexts().at(-1)).toBe(
       "echo:<system_instructions>\nBe terse.\n</system_instructions>\nhi",
+    );
+  });
+
+  it("reports a rejected maintenance prompt through the compaction lifecycle", async () => {
+    const { providerThreadId } = await startThread({
+      envVars: { FAKE_ACP_PROMPT_ERROR: "1" },
+    });
+
+    const compactId = sendRequest("thread/compact", {
+      threadId: providerThreadId,
+      compaction: { method: "prompt", prompt: "/compact" },
+    });
+    const compactResponse = await waitForResponse(compactId);
+    expect(compactResponse.error).toBeUndefined();
+
+    const completed = await waitForCompactionCompleted();
+    expect(completed.params).toEqual({
+      threadId: expect.any(String),
+      status: "failed",
+      error: expect.stringContaining("Fake prompt failure"),
+    });
+    expect(output.messages.indexOf(compactResponse)).toBeLessThan(
+      output.messages.indexOf(completed),
     );
   });
 

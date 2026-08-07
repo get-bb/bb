@@ -442,7 +442,7 @@ For review or fix pipelines, get the environment ID from
 - For interrupted or stopped threads, inspect first. If the user stopped the
   thread, treat that as intentional unless they ask you to continue.
 - Use `bb thread stop <id>` when a thread is stuck or no longer needed.
-- Use `bb thread compact <id>` to manually compact an idle or errored thread's provider context. Codex, Claude Code, Pi, OpenCode ACP, and explicitly configured custom ACP agents support this operation. Cursor ACP and other agents without a verified provider-local compaction prompt remain unsupported. OpenCode invokes its `/compact` control through ACP `session/prompt`.
+- Use `bb thread compact <id>` to request manual compaction of an idle or errored thread's provider context. Completion or failure appears in the thread timeline. Codex, Claude Code, Pi, OpenCode ACP, and explicitly configured custom ACP agents support this operation. Cursor ACP and other agents without a verified provider-local compaction prompt remain unsupported. OpenCode invokes its `/compact` control through ACP `session/prompt`.
 - Use `bb thread cancel-plan <id>` to exit an active Plan turn without
   optimistically clearing its banner. Use `bb thread clear-goal <id>` to clear
   a Codex thread's durable active Goal. Both wait for provider confirmation.
