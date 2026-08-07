@@ -27,6 +27,7 @@ import {
   readRootComposeSectionTargetFromLocationState,
   readInitialPromptFromLocationState,
   requestRootComposePluginFocus,
+  resolveRootComposeInitialProvider,
   restorePromptDraftAfterOptionChange,
   resolveRootComposePanelThreadId,
   shouldReplaceInitialPromptFromLocationState,
@@ -55,6 +56,35 @@ describe("requestRootComposePluginFocus", () => {
 
     expect(focusRequests).toBe(1);
     unsubscribe();
+  });
+});
+
+describe("resolveRootComposeInitialProvider", () => {
+  it("marks the connected-agent fallback as a client preference", () => {
+    expect(
+      resolveRootComposeInitialProvider({
+        connectedProviderId: "claude-code",
+        projectDefaultExecutionOptions: null,
+      }),
+    ).toEqual({
+      providerId: "claude-code",
+      source: "client-preference",
+    });
+  });
+
+  it("leaves server-owned project defaults without client provenance", () => {
+    expect(
+      resolveRootComposeInitialProvider({
+        connectedProviderId: "claude-code",
+        projectDefaultExecutionOptions: {
+          providerId: "codex",
+          model: "gpt-5.6-sol",
+          serviceTier: "default",
+          reasoningLevel: "medium",
+          permissionMode: "auto",
+        },
+      }),
+    ).toEqual({ providerId: "codex", source: undefined });
   });
 });
 

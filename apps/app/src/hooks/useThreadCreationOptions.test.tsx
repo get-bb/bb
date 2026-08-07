@@ -598,6 +598,28 @@ describe("useThreadCreationOptions", () => {
     });
   });
 
+  it("carries an initial client-selected provider into create provenance", async () => {
+    const { wrapper } = createQueryClientTestHarness();
+    const { result } = renderHook(
+      () =>
+        useThreadCreationOptions({
+          scope: "new-thread",
+          initialProviderId: GLOBAL_PROVIDER_ID,
+          initialProviderSource: "client-preference",
+        }),
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(result.current.selectedProviderId).toBe(GLOBAL_PROVIDER_ID);
+      expect(result.current.selectedModel).toBe("global-model");
+      expect(result.current.executionInputSources).toMatchObject({
+        providerId: "client-preference",
+      });
+      expect(result.current.executionInputSources.model).toBeUndefined();
+    });
+  });
+
   it("routes reusable root-composer worktrees through their environment", async () => {
     const { wrapper } = createQueryClientTestHarness();
 

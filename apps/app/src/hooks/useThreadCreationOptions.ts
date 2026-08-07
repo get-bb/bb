@@ -9,6 +9,7 @@ import type {
 } from "@bb/domain";
 import type {
   CreateExecutionInputSources,
+  ExecutionInputFieldSource,
   ExistingThreadExecutionInputSources,
   SystemExecutionOptionsModelLoadError,
   SystemProvidersQuery,
@@ -150,6 +151,7 @@ export function useThreadCreationOptions(
     initialEnvironmentSelectionValue,
     initialModel,
     initialProviderId,
+    initialProviderSource,
     initialPermissionMode,
     initialReasoningLevel,
     initialServiceTier,
@@ -557,6 +559,10 @@ export function useThreadCreationOptions(
   // stale explicit provenance.
   const touchedFieldsPendingReset =
     usesLocalThreadSelections && threadResetKeyRef.current !== resetKey;
+  const effectiveInitialProviderSource: ExecutionInputFieldSource | undefined =
+    scope === "new-thread" && effectiveProviderId === initialProviderId
+      ? initialProviderSource
+      : undefined;
   const executionInputSources = useMemo(
     () =>
       buildExecutionInputSources({
@@ -568,6 +574,7 @@ export function useThreadCreationOptions(
           permissionMode,
         },
         forceExplicitModel: isUnavailableModelRecovery,
+        initialProviderSource: effectiveInitialProviderSource,
         scope,
         storedValues: {
           selectedProviderId: storedProviderId,
@@ -582,6 +589,7 @@ export function useThreadCreationOptions(
       }),
     [
       effectiveProviderId,
+      effectiveInitialProviderSource,
       isUnavailableModelRecovery,
       permissionMode,
       reasoningLevel,

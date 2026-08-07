@@ -14,6 +14,7 @@ import {
   type Host,
   PERSONAL_PROJECT_ID,
   type PermissionMode,
+  type ProjectExecutionDefaults,
   type PromptInput,
   type ReasoningLevel,
   type ServiceTier,
@@ -21,6 +22,7 @@ import {
 } from "@bb/domain";
 import type { OpenInTargetContext } from "@bb/host-daemon-contract";
 import type {
+  ExecutionInputFieldSource,
   SidebarBootstrapResponse,
   TerminalSession,
 } from "@bb/server-contract";
@@ -796,6 +798,32 @@ export function RootComposeRoute() {
   );
 }
 
+interface ResolveRootComposeInitialProviderArgs {
+  connectedProviderId: string | undefined;
+  projectDefaultExecutionOptions: ProjectExecutionDefaults | null;
+}
+
+interface RootComposeInitialProvider {
+  providerId: string | undefined;
+  source: ExecutionInputFieldSource | undefined;
+}
+
+export function resolveRootComposeInitialProvider({
+  connectedProviderId,
+  projectDefaultExecutionOptions,
+}: ResolveRootComposeInitialProviderArgs): RootComposeInitialProvider {
+  if (projectDefaultExecutionOptions !== null) {
+    return {
+      providerId: projectDefaultExecutionOptions.providerId,
+      source: undefined,
+    };
+  }
+  return {
+    providerId: connectedProviderId,
+    source: connectedProviderId === undefined ? undefined : "client-preference",
+  };
+}
+
 export function RootComposeView() {
   const paneContext = useOptionalPaneContext();
   const isFocusedPane = paneContext?.isFocused ?? true;
@@ -1017,6 +1045,10 @@ export function RootComposeView() {
   const connectedProviderId = agentOverviewQuery.data?.agents.find(
     (agent) => agent.status === "connected",
   )?.providerId;
+  const initialProvider = resolveRootComposeInitialProvider({
+    connectedProviderId,
+    projectDefaultExecutionOptions,
+  });
   const creationOptions = useThreadCreationOptions({
     scope: "new-thread",
     preferenceProjectId: projectId,
@@ -1025,8 +1057,8 @@ export function RootComposeView() {
     // actually signed in to. The raw provider catalog is a fixed list, so
     // `providers[0]` would always be Codex — wrong for anyone who only has,
     // say, Claude Code connected.
-    initialProviderId:
-      projectDefaultExecutionOptions?.providerId ?? connectedProviderId,
+    initialProviderId: initialProvider.providerId,
+    initialProviderSource: initialProvider.source,
     initialModel: projectDefaultExecutionOptions?.model,
     initialServiceTier: projectDefaultExecutionOptions?.serviceTier,
     initialReasoningLevel: projectDefaultExecutionOptions?.reasoningLevel,

@@ -1,3 +1,4 @@
+import { listBuiltInAgentProviderInfos } from "@bb/agent-providers";
 import type {
   DiscoverReposResult,
   ProviderCliKey,
@@ -36,32 +37,51 @@ import {
  *   plan badge rather than a fabricated one.
  */
 
-/** The three plan-capable CLIs, mapped to their agent-provider ids. */
-const PLAN_CAPABLE: readonly {
+interface PlanCapableAgentConfig {
   cliKey: ProviderCliKey;
-  providerId: string;
-  displayName: string;
   loginCommand: string;
-}[] = [
-  {
-    cliKey: "claudeCode",
-    providerId: "claude-code",
-    displayName: "Claude Code",
-    loginCommand: "claude /login",
-  },
-  {
-    cliKey: "codex",
-    providerId: "codex",
-    displayName: "Codex",
-    loginCommand: "codex login",
-  },
-  {
-    cliKey: "cursor",
-    providerId: "acp-cursor",
-    displayName: "Cursor",
-    loginCommand: "agent login",
-  },
-];
+}
+
+/**
+ * The three plan-capable CLIs, ordered by the same built-in catalog that
+ * drives the model picker's provider tabs.
+ */
+const PLAN_CAPABLE_BY_PROVIDER_ID = new Map<string, PlanCapableAgentConfig>([
+  [
+    "codex",
+    {
+      cliKey: "codex",
+      loginCommand: "codex login",
+    },
+  ],
+  [
+    "claude-code",
+    {
+      cliKey: "claudeCode",
+      loginCommand: "claude /login",
+    },
+  ],
+  [
+    "acp-cursor",
+    {
+      cliKey: "cursor",
+      loginCommand: "agent login",
+    },
+  ],
+]);
+
+const PLAN_CAPABLE = listBuiltInAgentProviderInfos().flatMap((provider) => {
+  const config = PLAN_CAPABLE_BY_PROVIDER_ID.get(provider.id);
+  return config === undefined
+    ? []
+    : [
+        {
+          ...config,
+          providerId: provider.id,
+          displayName: provider.displayName,
+        },
+      ];
+});
 
 /**
  * Collapse a `ProviderUsage` and its CLI install state into the single status
