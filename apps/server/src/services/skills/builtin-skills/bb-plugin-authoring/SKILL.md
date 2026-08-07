@@ -133,10 +133,11 @@ after configuring.
 This skill is a guide, not the contract. For an exact signature or a symbol it
 does not cover:
 
-1. **`bb plugin types`** rewrites `types/*.d.ts` from the running bb (no
-   server needed). The scaffold seeds them once, so a cloned or older plugin
-   can be thousands of lines behind. `--check` reports staleness without
-   writing; `bb plugin build` and `bb plugin dev` refresh them too.
+1. **`bb plugin types`**, run in the plugin directory (or given its path),
+   rewrites that plugin's `types/*.d.ts` from the running bb — no server
+   needed. The scaffold seeds them once, so a cloned or older plugin can be
+   thousands of lines behind. `--check` reports staleness without writing;
+   `bb plugin build` and `bb plugin dev` refresh them too.
 2. **Read `types/bb-plugin-sdk.d.ts`** (`-app.d.ts` for frontend symbols) —
    the authoritative surface, ~13,000 lines of readable declarations with doc
    comments, and what the scaffold `tsconfig.json` maps `@bb/plugin-sdk` to.
