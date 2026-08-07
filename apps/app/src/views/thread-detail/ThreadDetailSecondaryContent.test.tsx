@@ -399,8 +399,10 @@ function createProps({
     workspace: {
       canCreateTerminal: false,
       onCreatePullRequest: noop,
+      onCreateThread: noop,
       onMergePullRequest: noop,
       onOpenBrowserUrl: noop,
+      onOpenChangedFile: noop,
       pullRequestPendingAction: null,
       pullRequestResponse: undefined,
       repositoryUrl: null,
@@ -521,7 +523,7 @@ describe("ThreadDetailSecondaryContent compact drawer settling", () => {
     ).toBe("button");
   });
 
-  it("keeps the thread header inside the main workspace beside the sidebar", () => {
+  it("omits the legacy thread action row from the standalone workspace", () => {
     renderThreadDetail({
       isCompactViewport: false,
       isSecondaryPanelOpen: false,
@@ -531,8 +533,23 @@ describe("ThreadDetailSecondaryContent compact drawer settling", () => {
 
     const mainWorkspace = screen.getByLabelText("Thread workspace");
     const sidebar = screen.getByLabelText("Workspace sidebar");
-    expect(mainWorkspace.contains(screen.getByTestId("header"))).toBe(true);
+    expect(screen.queryByTestId("header")).toBeNull();
+    expect(mainWorkspace.contains(screen.getByTestId("thread-timeline-pane"))).toBe(
+      true,
+    );
     expect(mainWorkspace.contains(sidebar)).toBe(false);
+  });
+
+  it("uses the thread title for the chat tab", () => {
+    renderThreadDetail({
+      isCompactViewport: false,
+      isSecondaryPanelOpen: false,
+      renderBrowserDeck: createBrowserDeckRenderer(),
+      threadId: "thread-1",
+    });
+
+    expect(screen.getByRole("tab", { name: "Test thread" })).not.toBeNull();
+    expect(screen.queryByRole("tab", { name: "Chat" })).toBeNull();
   });
 
   it("hides and restores native browser readiness as hosted pane focus changes", () => {

@@ -19,6 +19,7 @@ interface WorkspaceRepositoryPanelProps {
   activeTab: WorkspaceUpperTabId;
   environmentId: string | null | undefined;
   onOpenAllChanges: () => void;
+  onOpenChangedFile: (path: string) => void;
   onOpenFile: (path: string) => void;
   onOpenUrl: (url: string) => void;
   pullRequestResponse: EnvironmentPullRequestResponse | undefined;
@@ -37,11 +38,11 @@ function changePresentation(file: WorkspaceFileStatus) {
 
 function ChangesPanel({
   onOpenAllChanges,
-  onOpenFile,
+  onOpenChangedFile,
   workspaceStatus,
 }: Pick<
   WorkspaceRepositoryPanelProps,
-  "onOpenAllChanges" | "onOpenFile" | "workspaceStatus"
+  "onOpenAllChanges" | "onOpenChangedFile" | "workspaceStatus"
 >) {
   const sections = selectWorkspaceChangedFilesSections(workspaceStatus);
   const files = sections.flatMap((section) => section.files);
@@ -69,7 +70,7 @@ function ChangesPanel({
                 <button
                   type="button"
                   className="flex h-7 w-full min-w-0 items-center gap-2 rounded px-2 text-left text-xs hover:bg-accent"
-                  onClick={() => onOpenFile(file.path)}
+                  onClick={() => onOpenChangedFile(file.path)}
                 >
                   <span className="min-w-0 flex-1 truncate">{file.path}</span>
                   <span

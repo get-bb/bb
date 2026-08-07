@@ -1,8 +1,6 @@
 import { useMemo, type CSSProperties } from "react";
 import { FileTree } from "@pierre/trees/react";
-import { Button } from "@bb/shared-ui/button";
 import { EmptyState } from "@bb/shared-ui/empty-state";
-import { Icon } from "@bb/shared-ui/icon";
 import { usePreferredTheme } from "@/hooks/useTheme";
 import type { WorkspaceFileTreeController } from "./useWorkspaceFileTree";
 
@@ -41,18 +39,6 @@ export function WorkspaceFileTree({ controller }: WorkspaceFileTreeProps) {
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
-      <div className="flex h-8 shrink-0 items-center justify-end border-b border-border-seam px-1">
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="size-7"
-          aria-label="Refresh all files"
-          onClick={controller.refresh}
-        >
-          <Icon name="ArrowReloadHorizontal" className="size-3.5" />
-        </Button>
-      </div>
       <div className="min-h-0 flex-1 overflow-hidden">
         {controller.error ? (
           <EmptyState

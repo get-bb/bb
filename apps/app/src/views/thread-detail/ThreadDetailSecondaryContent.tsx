@@ -45,9 +45,11 @@ import {
   type PullRequestPendingAction,
 } from "@/components/workspace/WorkspaceGitBar";
 import { WorkspaceProcessTerminal } from "@/components/workspace/terminals/WorkspaceProcessTerminal";
+import { useThreadTitleDisplayText } from "@/components/thread/ThreadTitleMentions";
 import { ThreadTimelinePane } from "./ThreadTimelinePane";
 import { PANEL_COLLAPSE_TRANSITION_CLASS } from "@/components/secondary-panel/panelTransitionTokens";
 import { dispatchBrowserViewBoundsSync } from "@/lib/browser-view-bounds-sync";
+import { getThreadDisplayTitle } from "@/lib/thread-title";
 import {
   usePaneContext,
   usePaneSecondaryPanelRegistration,
@@ -102,8 +104,10 @@ interface ThreadDetailSecondaryContentProps {
   workspace: {
     canCreateTerminal: boolean;
     onCreatePullRequest: (draft: boolean) => void;
+    onCreateThread?: () => void;
     onMergePullRequest: (method: PullRequestMergeMethod) => void;
     onOpenBrowserUrl: (url: string) => void;
+    onOpenChangedFile: (path: string) => void;
     pullRequestPendingAction: PullRequestPendingAction;
     pullRequestResponse: EnvironmentPullRequestResponse | undefined;
     repositoryUrl: string | null;
@@ -142,6 +146,9 @@ function ThreadDetailSecondaryContentBody({
   const stableMetadata = metadata;
   const stableSecondaryPanel = secondaryPanel;
   const stableTimeline = timeline;
+  const threadDisplayTitle = useThreadTitleDisplayText(
+    getThreadDisplayTitle(stableMetadata.thread),
+  );
   const renderAsDrawer = useIsCompactViewport();
   const [activeUpperTab, setActiveUpperTab] =
     useState<WorkspaceUpperTabId>("all-files");
@@ -405,7 +412,7 @@ function ThreadDetailSecondaryContentBody({
             ? "thread-info"
             : "chat"));
     const mainTabs: WorkspaceTab[] = [
-      { id: "chat", label: "Chat" },
+      { id: "chat", label: threadDisplayTitle },
       ...(threadSecondaryPanelProps.canUseGitUi
         ? [{ id: "changes", label: "All changes" }]
         : []),
@@ -439,10 +446,7 @@ function ThreadDetailSecondaryContentBody({
     };
     const mainContent =
       activeMainTabId === "chat" ? (
-        <div className="flex h-full min-h-0 flex-col overflow-hidden">
-          {header}
-          <ThreadTimelinePane {...stableTimeline} footer={footer} />
-        </div>
+        <ThreadTimelinePane {...stableTimeline} footer={footer} />
       ) : (
         <ThreadSecondaryPanel
           {...threadSecondaryPanelProps}
@@ -508,6 +512,7 @@ function ThreadDetailSecondaryContentBody({
           mainContent={mainContent}
           mainTabs={mainTabs}
           onCloseMainTab={closeMainTab}
+          onCreateChat={workspace.onCreateThread}
           onSelectLowerTab={setActiveLowerTab}
           onSelectMainTab={selectMainTab}
           onSelectUpperTab={(tabId) =>
@@ -531,6 +536,7 @@ function ThreadDetailSecondaryContentBody({
               onOpenAllChanges={() =>
                 threadSecondaryPanelProps.onPanelChange("git-diff")
               }
+              onOpenChangedFile={workspace.onOpenChangedFile}
               onOpenFile={(path) =>
                 threadSecondaryPanelProps.onOpenFilePreview?.(path)
               }

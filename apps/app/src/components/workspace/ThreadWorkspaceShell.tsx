@@ -1,5 +1,18 @@
-import { useRef, type KeyboardEvent, type ReactNode } from "react";
-import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react";
+import {
+  Panel,
+  PanelGroup,
+  PanelResizeHandle,
+  type ImperativePanelHandle,
+} from "react-resizable-panels";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
@@ -17,6 +30,7 @@ interface WorkspaceTabStripProps {
   onCloseTab?: (tabId: string) => void;
   onSelectTab: (tabId: string) => void;
   panelId: string;
+  tabListTrailingContent?: ReactNode;
   tabs: readonly WorkspaceTab[];
   trailingContent?: ReactNode;
 }
@@ -31,6 +45,7 @@ interface ThreadWorkspaceShellProps {
   mainContent: ReactNode;
   mainTabs: readonly WorkspaceTab[];
   onCloseMainTab?: (tabId: string) => void;
+  onCreateChat?: () => void;
   onSelectLowerTab: (tabId: string) => void;
   onSelectMainTab: (tabId: string) => void;
   onSelectUpperTab: (tabId: string) => void;
@@ -39,9 +54,19 @@ interface ThreadWorkspaceShellProps {
   upperTrailingContent?: ReactNode;
 }
 
-export const WORKSPACE_SIDEBAR_WIDTH_PX = 400;
+const WorkspaceTerminalToolbarHostContext =
+  createContext<HTMLDivElement | null>(null);
+
+export function useWorkspaceTerminalToolbarHost(): HTMLDivElement | null {
+  return useContext(WorkspaceTerminalToolbarHostContext);
+}
+
+export const WORKSPACE_SIDEBAR_DEFAULT_PERCENT = 32;
+export const WORKSPACE_SIDEBAR_MIN_PERCENT = 20;
+export const WORKSPACE_SIDEBAR_MAX_PERCENT = 55;
 export const WORKSPACE_SIDEBAR_SPLIT_DEFAULT_PERCENT = 50;
 export const WORKSPACE_SIDEBAR_REGION_MIN_PERCENT = 25;
+const WORKSPACE_SIDEBAR_LAYOUT_STORAGE_ID = "bb.thread.workspace.sidebar";
 
 function WorkspaceTabStrip({
   activeTabId,
@@ -49,6 +74,7 @@ function WorkspaceTabStrip({
   onCloseTab,
   onSelectTab,
   panelId,
+  tabListTrailingContent,
   tabs,
   trailingContent,
 }: WorkspaceTabStripProps) {
@@ -133,6 +159,7 @@ function WorkspaceTabStrip({
             </div>
           );
         })}
+        {tabListTrailingContent}
       </div>
       {trailingContent ? (
         <div className="ml-auto flex shrink-0 items-center pl-1">
@@ -153,6 +180,7 @@ export function ThreadWorkspaceShell({
   mainContent,
   mainTabs,
   onCloseMainTab,
+  onCreateChat,
   onSelectLowerTab,
   onSelectMainTab,
   onSelectUpperTab,
@@ -160,10 +188,32 @@ export function ThreadWorkspaceShell({
   upperTabs,
   upperTrailingContent,
 }: ThreadWorkspaceShellProps) {
+  const sidebarPanelRef = useRef<ImperativePanelHandle | null>(null);
+  const lastVisibleSidebarSizeRef = useRef(WORKSPACE_SIDEBAR_DEFAULT_PERCENT);
+  const [isSidebarVisible, setIsSidebarVisible] = useState(true);
+  const [terminalToolbarHost, setTerminalToolbarHost] =
+    useState<HTMLDivElement | null>(null);
+  const handleSidebarResize = useCallback((size: number) => {
+    if (size <= 0) return;
+    lastVisibleSidebarSizeRef.current = size;
+  }, []);
+  const hideSidebar = useCallback(() => {
+    const currentSize = sidebarPanelRef.current?.getSize();
+    if (currentSize !== undefined && currentSize > 0) {
+      lastVisibleSidebarSizeRef.current = currentSize;
+    }
+    setIsSidebarVisible(false);
+    sidebarPanelRef.current?.collapse();
+  }, []);
+  const showSidebar = useCallback(() => {
+    setIsSidebarVisible(true);
+    sidebarPanelRef.current?.expand(lastVisibleSidebarSizeRef.current);
+  }, []);
+
   const main = (
     <section
       aria-label="Thread workspace"
-      className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+      className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
     >
       <WorkspaceTabStrip
         activeTabId={activeMainTabId}
@@ -171,7 +221,39 @@ export function ThreadWorkspaceShell({
         onCloseTab={onCloseMainTab}
         onSelectTab={onSelectMainTab}
         panelId="thread-workspace-main-panel"
+        tabListTrailingContent={
+          onCreateChat ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-6 shrink-0 text-muted-foreground"
+              onClick={onCreateChat}
+              aria-label="Create new chat in this worktree"
+            >
+              <Icon name="MessageSquarePlus" className="size-3.5" />
+            </Button>
+          ) : null
+        }
         tabs={mainTabs}
+        trailingContent={
+          !isCompact ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-6 text-muted-foreground"
+              onClick={isSidebarVisible ? hideSidebar : showSidebar}
+              aria-label={
+                isSidebarVisible
+                  ? "Hide workspace sidebar"
+                  : "Show workspace sidebar"
+              }
+            >
+              <Icon name="PanelRight" />
+            </Button>
+          ) : null
+        }
       />
       <div
         id="thread-workspace-main-panel"
@@ -197,80 +279,126 @@ export function ThreadWorkspaceShell({
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-      <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
-        {main}
-        <aside
-          aria-label="Workspace sidebar"
-          data-testid="thread-workspace-sidebar"
-          className="min-h-0 shrink-0 overflow-hidden border-l border-border-seam bg-sidebar"
-          style={{ width: WORKSPACE_SIDEBAR_WIDTH_PX }}
+      <PanelGroup
+        autoSaveId={WORKSPACE_SIDEBAR_LAYOUT_STORAGE_ID}
+        direction="horizontal"
+        className="min-h-0 min-w-0 flex-1 overflow-hidden"
+      >
+        <Panel
+          id="thread-workspace-main"
+          defaultSize={100 - WORKSPACE_SIDEBAR_DEFAULT_PERCENT}
+          minSize={100 - WORKSPACE_SIDEBAR_MAX_PERCENT}
+          order={1}
+          className="min-w-0 overflow-hidden"
         >
-          <PanelGroup direction="vertical" className="h-full min-h-0">
-            <Panel
-              id="thread-workspace-upper-panel"
-              defaultSize={WORKSPACE_SIDEBAR_SPLIT_DEFAULT_PERCENT}
-              minSize={WORKSPACE_SIDEBAR_REGION_MIN_PERCENT}
-              order={1}
-              className="min-h-0 overflow-hidden"
-            >
-              <div className="flex h-full min-h-0 flex-col overflow-hidden">
-                <WorkspaceTabStrip
-                  activeTabId={activeUpperTabId}
-                  ariaLabel="Repository tabs"
-                  onSelectTab={onSelectUpperTab}
-                  panelId="thread-workspace-repository-panel"
-                  tabs={upperTabs}
-                  trailingContent={upperTrailingContent}
-                />
-                <div
-                  id="thread-workspace-repository-panel"
-                  role="tabpanel"
-                  aria-labelledby={`thread-workspace-repository-panel-tab-${Math.max(
-                    0,
-                    upperTabs.findIndex((tab) => tab.id === activeUpperTabId),
-                  )}`}
-                  className="min-h-0 flex-1 overflow-hidden"
-                >
-                  {upperContent}
+          {main}
+        </Panel>
+        <PanelResizeHandle
+          aria-label="Resize thread workspace sidebar"
+          disabled={!isSidebarVisible}
+          className={cn(
+            "group relative z-[5] shrink-0 bg-border-seam before:absolute before:inset-y-0 before:-left-1.5 before:-right-1.5 hover:bg-ring/40",
+            isSidebarVisible
+              ? "w-px cursor-col-resize"
+              : "pointer-events-none w-0",
+          )}
+        />
+        <Panel
+          ref={sidebarPanelRef}
+          id="thread-workspace-sidebar-panel"
+          collapsible
+          collapsedSize={0}
+          defaultSize={WORKSPACE_SIDEBAR_DEFAULT_PERCENT}
+          minSize={WORKSPACE_SIDEBAR_MIN_PERCENT}
+          maxSize={WORKSPACE_SIDEBAR_MAX_PERCENT}
+          onCollapse={() => setIsSidebarVisible(false)}
+          onExpand={() => setIsSidebarVisible(true)}
+          onResize={handleSidebarResize}
+          order={2}
+          className="min-w-0 overflow-hidden"
+        >
+          <aside
+            aria-label="Workspace sidebar"
+            data-testid="thread-workspace-sidebar"
+            className="h-full min-h-0 w-full overflow-hidden bg-sidebar"
+          >
+            <PanelGroup direction="vertical" className="h-full min-h-0">
+              <Panel
+                id="thread-workspace-upper-panel"
+                defaultSize={WORKSPACE_SIDEBAR_SPLIT_DEFAULT_PERCENT}
+                minSize={WORKSPACE_SIDEBAR_REGION_MIN_PERCENT}
+                order={1}
+                className="min-h-0 overflow-hidden"
+              >
+                <div className="flex h-full min-h-0 flex-col overflow-hidden">
+                  <WorkspaceTabStrip
+                    activeTabId={activeUpperTabId}
+                    ariaLabel="Repository tabs"
+                    onSelectTab={onSelectUpperTab}
+                    panelId="thread-workspace-repository-panel"
+                    tabs={upperTabs}
+                    trailingContent={upperTrailingContent}
+                  />
+                  <div
+                    id="thread-workspace-repository-panel"
+                    role="tabpanel"
+                    aria-labelledby={`thread-workspace-repository-panel-tab-${Math.max(
+                      0,
+                      upperTabs.findIndex((tab) => tab.id === activeUpperTabId),
+                    )}`}
+                    className="min-h-0 flex-1 overflow-hidden"
+                  >
+                    {upperContent}
+                  </div>
                 </div>
-              </div>
-            </Panel>
-            <PanelResizeHandle
-              aria-label="Resize repository and terminal panels"
-              className="group relative h-px shrink-0 cursor-row-resize bg-border-seam before:absolute before:-inset-y-1.5 before:inset-x-0 hover:bg-ring/40"
-            />
-            <Panel
-              id="thread-workspace-lower-panel"
-              defaultSize={WORKSPACE_SIDEBAR_SPLIT_DEFAULT_PERCENT}
-              minSize={WORKSPACE_SIDEBAR_REGION_MIN_PERCENT}
-              order={2}
-              className="min-h-0 overflow-hidden"
-            >
-              <div className="flex h-full min-h-0 flex-col overflow-hidden">
-                <WorkspaceTabStrip
-                  activeTabId={activeLowerTabId}
-                  ariaLabel="Worktree terminal tabs"
-                  onSelectTab={onSelectLowerTab}
-                  panelId="thread-workspace-terminal-panel"
-                  tabs={lowerTabs}
-                />
-                <div
-                  id="thread-workspace-terminal-panel"
-                  role="tabpanel"
-                  aria-labelledby={`thread-workspace-terminal-panel-tab-${Math.max(
-                    0,
-                    lowerTabs.findIndex((tab) => tab.id === activeLowerTabId),
-                  )}`}
-                  data-testid="thread-workspace-terminal-region"
-                  className="min-h-0 flex-1 overflow-hidden"
-                >
-                  {lowerContent}
+              </Panel>
+              <PanelResizeHandle
+                aria-label="Resize repository and terminal panels"
+                className="group relative h-px shrink-0 cursor-row-resize bg-border-seam before:absolute before:-inset-y-1.5 before:inset-x-0 hover:bg-ring/40"
+              />
+              <Panel
+                id="thread-workspace-lower-panel"
+                defaultSize={WORKSPACE_SIDEBAR_SPLIT_DEFAULT_PERCENT}
+                minSize={WORKSPACE_SIDEBAR_REGION_MIN_PERCENT}
+                order={2}
+                className="min-h-0 overflow-hidden"
+              >
+                <div className="flex h-full min-h-0 flex-col overflow-hidden">
+                  <WorkspaceTabStrip
+                    activeTabId={activeLowerTabId}
+                    ariaLabel="Worktree terminal tabs"
+                    onSelectTab={onSelectLowerTab}
+                    panelId="thread-workspace-terminal-panel"
+                    tabs={lowerTabs}
+                    trailingContent={
+                      <div
+                        ref={setTerminalToolbarHost}
+                        data-testid="workspace-terminal-toolbar-host"
+                      />
+                    }
+                  />
+                  <div
+                    id="thread-workspace-terminal-panel"
+                    role="tabpanel"
+                    aria-labelledby={`thread-workspace-terminal-panel-tab-${Math.max(
+                      0,
+                      lowerTabs.findIndex((tab) => tab.id === activeLowerTabId),
+                    )}`}
+                    data-testid="thread-workspace-terminal-region"
+                    className="min-h-0 flex-1 overflow-hidden"
+                  >
+                    <WorkspaceTerminalToolbarHostContext.Provider
+                      value={terminalToolbarHost}
+                    >
+                      {lowerContent}
+                    </WorkspaceTerminalToolbarHostContext.Provider>
+                  </div>
                 </div>
-              </div>
-            </Panel>
-          </PanelGroup>
-        </aside>
-      </div>
+              </Panel>
+            </PanelGroup>
+          </aside>
+        </Panel>
+      </PanelGroup>
     </div>
   );
 }

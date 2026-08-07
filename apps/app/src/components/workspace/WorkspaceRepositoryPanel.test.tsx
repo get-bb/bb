@@ -63,6 +63,7 @@ const pullRequest: ThreadPullRequest = {
 const commonProps = {
   environmentId: "env_1",
   onOpenAllChanges: vi.fn(),
+  onOpenChangedFile: vi.fn(),
   onOpenFile: vi.fn(),
   onOpenUrl: vi.fn(),
 };
@@ -93,6 +94,37 @@ describe("WorkspaceRepositoryPanel", () => {
     expect(screen.getByLabelText("Added")).toBeTruthy();
     expect(screen.getByLabelText("Modified")).toBeTruthy();
     expect(screen.getByLabelText("Deleted")).toBeTruthy();
+  });
+
+  it("opens a changed file in the diff viewer", () => {
+    render(
+      <WorkspaceRepositoryPanel
+        {...commonProps}
+        activeTab="changes"
+        pullRequestResponse={{ outcome: "absent" }}
+        workspaceStatus={makeWorkspaceStatus({
+          workingTree: {
+            hasUncommittedChanges: true,
+            state: "dirty_uncommitted",
+            files: [
+              {
+                path: "changed.ts",
+                status: "M",
+                insertions: 1,
+                deletions: 1,
+              },
+            ],
+            insertions: 1,
+            deletions: 1,
+          },
+        })}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("changed.ts"));
+
+    expect(commonProps.onOpenChangedFile).toHaveBeenCalledWith("changed.ts");
+    expect(commonProps.onOpenFile).not.toHaveBeenCalled();
   });
 
   it("keeps comment author and summary in one two-line clamped row", () => {

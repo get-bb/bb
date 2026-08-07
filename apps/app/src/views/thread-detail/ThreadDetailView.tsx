@@ -2694,8 +2694,10 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
           workspace={{
             canCreateTerminal,
             onCreatePullRequest: handlePullRequestCreate,
+            onCreateThread: onCreateNewThreadInWorktree,
             onMergePullRequest: handlePullRequestMerge,
             onOpenBrowserUrl: openBrowserTabAndReveal,
+            onOpenChangedFile: openSecondaryPanelDiffFile,
             pullRequestPendingAction,
             pullRequestResponse: pullRequestQuery.data,
             repositoryUrl: getGitHubRepositoryUrl(projectGitRemoteUrl),
