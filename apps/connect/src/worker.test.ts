@@ -5,13 +5,15 @@ import { machine } from "@bb/connect-db";
 import { cacheKey } from "./cache";
 import { parseClientProtocolVersion } from "./tunnel-do";
 import {
-  GATE_AUTH_HEADER,
-  GATE_MACHINE_ID_HEADER,
-  TUNNEL_TARGET_HEADER,
   cacheNamespace,
   dashboardSignInUrl,
   requestForTunnelDo,
 } from "./worker";
+import {
+  GATE_AUTH_HEADER,
+  GATE_MACHINE_ID_HEADER,
+  TUNNEL_TARGET_HEADER,
+} from "./protocol-headers";
 
 // ── pure helpers ────────────────────────────────────────────────────────────
 

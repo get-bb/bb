@@ -1248,9 +1248,10 @@ export function createPluginApi(options: {
   };
 
   const hosts: PluginHosts = {
-    ensureSharedPortTunnel(hostId) {
+    async ensureSharedPortTunnel(hostId) {
       assertLive();
-      return ensureSharedPortTunnel(hostId);
+      const identity = await ensureSharedPortTunnel(hostId);
+      return { label: identity.label, baseDomain: identity.baseDomain };
     },
     declareSharedPorts(hostId, ports) {
       assertLive();

@@ -28,7 +28,38 @@ export interface Deps {
   db: ConnectDb;
   baseDomain: string;
   appUrl: string;
+  serverUrlTemplate: string;
   closeTunnel?: (routingKey: string) => Promise<void>;
+}
+
+export function resolveServerUrlTemplate(
+  value: string | undefined,
+  baseDomain: string,
+): string {
+  const template = value?.trim() || `https://{label}.${baseDomain}`;
+  if (template.split("{label}").length !== 2) {
+    throw new Error("CONNECT_SERVER_URL_TEMPLATE must contain {label} once");
+  }
+  const probe = "bb-label-probe";
+  const url = new URL(template.replace("{label}", probe));
+  if (
+    (url.protocol !== "http:" && url.protocol !== "https:") ||
+    url.username !== "" ||
+    url.password !== "" ||
+    url.pathname !== "/" ||
+    url.search !== "" ||
+    url.hash !== "" ||
+    url.hostname !== `${probe}.${baseDomain}`
+  ) {
+    throw new Error(
+      "CONNECT_SERVER_URL_TEMPLATE must be an HTTP(S) origin under BASE_DOMAIN",
+    );
+  }
+  return `${url.protocol}//{label}.${baseDomain}${url.port ? `:${url.port}` : ""}`;
+}
+
+function serverUrlForLabel(label: string, template: string): string {
+  return template.replace("{label}", label);
 }
 
 export function depsFromEnv(env: Env): Deps {
@@ -36,6 +67,10 @@ export function depsFromEnv(env: Env): Deps {
     db: drizzle(env.DB),
     baseDomain: env.BASE_DOMAIN,
     appUrl: env.APP_URL,
+    serverUrlTemplate: resolveServerUrlTemplate(
+      env.CONNECT_SERVER_URL_TEMPLATE,
+      env.BASE_DOMAIN,
+    ),
     closeTunnel: async (routingKey) => {
       const stub = env.TUNNEL_DO.get(env.TUNNEL_DO.idFromName(routingKey));
       const response = await stub.fetch("https://tunnel/__control/close");
@@ -80,6 +115,7 @@ export interface AccountState {
   servers: ServerSummary[];
   appUrl: string;
   baseDomain: string;
+  serverUrlTemplate: string;
   /** GitHub login for the account footer link; null for pre-column rows. */
   githubLogin: string | null;
   /** Per-account server ceiling, surfaced in the footer as "N of MAX bbs". */
@@ -103,7 +139,7 @@ type ServerRow = typeof server.$inferSelect;
 function toServerSummary(
   srv: ServerRow,
   handle: string,
-  baseDomain: string,
+  serverUrlTemplate: string,
   now: number,
 ): ServerSummary {
   const lastSeenMs = srv.lastSeenAt?.getTime() ?? null;
@@ -121,7 +157,7 @@ function toServerSummary(
     lastSeenAt: lastSeenMs,
     version: srv.version,
     createdAt: srv.createdAt.getTime(),
-    serverUrl: `https://${srv.subdomain}.${baseDomain}`,
+    serverUrl: serverUrlForLabel(srv.subdomain, serverUrlTemplate),
   };
 }
 
@@ -165,7 +201,7 @@ export async function getAccountState(
   deps: Deps,
   userId: string,
 ): Promise<AccountState> {
-  const { db, baseDomain } = deps;
+  const { db, baseDomain, serverUrlTemplate } = deps;
   await retryPendingMachineRevocations(deps, userId);
   const prof = await db
     .select()
@@ -182,6 +218,7 @@ export async function getAccountState(
   const base = {
     appUrl: deps.appUrl,
     baseDomain,
+    serverUrlTemplate,
     githubLogin: userRow?.githubLogin ?? null,
     maxServers: MAX_SERVERS_PER_ACCOUNT,
   };
@@ -204,7 +241,8 @@ export async function getAccountState(
         id: row.id,
         name: row.name,
         subdomain: row.subdomain,
-        online: lastSeenMs != null && now - lastSeenMs < SERVER_OFFLINE_AFTER_MS,
+        online:
+          lastSeenMs != null && now - lastSeenMs < SERVER_OFFLINE_AFTER_MS,
         lastSeenAt: lastSeenMs,
         createdAt: row.createdAt.getTime(),
       };
@@ -222,7 +260,7 @@ export async function getAccountState(
     .all();
 
   const servers = serverRows
-    .map((srv) => toServerSummary(srv, prof.handle, baseDomain, now))
+    .map((srv) => toServerSummary(srv, prof.handle, serverUrlTemplate, now))
     .sort((a, b) =>
       a.isPrimary !== b.isPrimary
         ? a.isPrimary
@@ -385,7 +423,7 @@ export async function createServer(
   userId: string,
   rawLabel: string,
 ): Promise<{ ok: true; server: ServerSummary } | { error: CreateServerError }> {
-  const { db, baseDomain } = deps;
+  const { db, serverUrlTemplate } = deps;
   const prof = await db
     .select()
     .from(profile)
@@ -436,7 +474,12 @@ export async function createServer(
   }
   return {
     ok: true,
-    server: toServerSummary(created, prof.handle, baseDomain, Date.now()),
+    server: toServerSummary(
+      created,
+      prof.handle,
+      serverUrlTemplate,
+      Date.now(),
+    ),
   };
 }
 
@@ -457,10 +500,10 @@ export async function createConnectCode(
   userId: string,
   opts: { serverId?: string; reuse?: boolean } = {},
 ): Promise<IssuedCode | { error: string }> {
-  const { db, baseDomain } = deps;
+  const { db, serverUrlTemplate } = deps;
   const srv = await resolveServer(db, userId, opts.serverId);
   if (!srv) return { error: "no-server" };
-  const serverUrl = `https://${srv.subdomain}.${baseDomain}`;
+  const serverUrl = serverUrlForLabel(srv.subdomain, serverUrlTemplate);
   const now = Date.now();
 
   if (opts.reuse) {
@@ -517,7 +560,7 @@ export async function createMachineCode(
 ): Promise<
   { code: string; expiresInMs: number; serverUrl: string } | { error: string }
 > {
-  const { db, baseDomain } = deps;
+  const { db, serverUrlTemplate } = deps;
   const prof = await db
     .select()
     .from(profile)
@@ -559,7 +602,7 @@ export async function createMachineCode(
   return {
     code,
     expiresInMs: CONNECT_CODE_TTL_MS,
-    serverUrl: `https://${srv.subdomain}.${baseDomain}`,
+    serverUrl: serverUrlForLabel(srv.subdomain, serverUrlTemplate),
   };
 }
 
@@ -717,7 +760,7 @@ function rowsChanged(result: unknown): number {
  * Accepts `Deps` (D1 in the worker via `depsFromEnv`, better-sqlite3 in tests).
  */
 export async function redeemConnectCode(
-  deps: Pick<Deps, "db" | "baseDomain">,
+  deps: Pick<Deps, "db" | "serverUrlTemplate">,
   code: string,
 ): Promise<
   | {
@@ -728,7 +771,7 @@ export async function redeemConnectCode(
     }
   | { error: string; status: number }
 > {
-  const { db, baseDomain } = deps;
+  const { db, serverUrlTemplate } = deps;
   const normalized = code.trim().toUpperCase();
   if (!normalized) return { error: "missing-code", status: 400 };
 
@@ -765,19 +808,19 @@ export async function redeemConnectCode(
     .from(server)
     .where(eq(server.id, row.serverId))
     .get();
-  const prof = await db
-    .select()
-    .from(profile)
-    .where(eq(profile.userId, row.userId))
-    .get();
   // Routing label of the redeemed server (not necessarily the account handle).
-  const handle = srv?.subdomain ?? prof?.handle ?? null;
+  const handle = srv?.subdomain ?? null;
+  const serverUrl = handle
+    ? serverUrlForLabel(handle, serverUrlTemplate)
+    : null;
   return {
     credential,
     serverId: row.serverId,
     handle,
     // Keyed by this server's subdomain (which may be non-primary), not the account handle.
-    tunnelUrl: srv ? `wss://${srv.subdomain}.${baseDomain}/__tunnel` : null,
+    tunnelUrl: serverUrl
+      ? `${serverUrl.replace(/^http/u, "ws")}/__tunnel`
+      : null,
   };
 }
 
@@ -786,7 +829,7 @@ export async function redeemConnectCode(
  * creates a machine row, and returns the durable machine credential once.
  */
 export async function redeemMachineCode(
-  deps: Pick<Deps, "db" | "baseDomain">,
+  deps: Pick<Deps, "db" | "serverUrlTemplate">,
   code: string,
 ): Promise<
   | {
@@ -797,7 +840,7 @@ export async function redeemMachineCode(
     }
   | { error: string; status: number }
 > {
-  const { db, baseDomain } = deps;
+  const { db, serverUrlTemplate } = deps;
   const normalized = code.trim().toUpperCase();
   if (!normalized) return { error: "missing-code", status: 400 };
 
@@ -866,6 +909,6 @@ export async function redeemMachineCode(
     credential,
     machineId,
     handle: prof?.handle ?? null,
-    serverUrl: label ? `https://${label}.${baseDomain}` : null,
+    serverUrl: label ? serverUrlForLabel(label, serverUrlTemplate) : null,
   };
 }

@@ -11,10 +11,14 @@ import {
   verifyMachineCredential,
   verifySessionCookie,
 } from "./session.js";
+import {
+  resolveConnectRuntime,
+  SECURE_DESKTOP_SESSION_COOKIE,
+  SECURE_SESSION_COOKIE,
+} from "./cloud-dev.js";
 import type { Env } from "./tunnel-do.js";
 
-const SESSION_COOKIE = "__Secure-better-auth.session_token";
-export const DESKTOP_SESSION_COOKIE = "__Secure-bb-connect.desktop_session";
+export const DESKTOP_SESSION_COOKIE = SECURE_DESKTOP_SESSION_COOKIE;
 export const DESKTOP_SESSION_TTL_MS = 60 * 60 * 1000;
 
 function bytesToBase64Url(bytes: Uint8Array): string {
@@ -167,6 +171,7 @@ export async function resolveAccountUserId(
   request: Request,
   secret: string,
   db: ConnectDb,
+  sessionCookieName: string = SECURE_SESSION_COOKIE,
 ): Promise<string | null> {
   const presented = request.headers.get("x-bb-connect-machine") ?? "";
   if (presented) {
@@ -179,7 +184,7 @@ export async function resolveAccountUserId(
     if (serverUserId) return serverUserId;
   }
 
-  const cookie = parseCookie(request.headers.get("cookie"), SESSION_COOKIE);
+  const cookie = parseCookie(request.headers.get("cookie"), sessionCookieName);
   if (!cookie) return null;
   return verifySessionCookie(cookie, secret, db);
 }
@@ -249,10 +254,12 @@ export async function handleListAccountServers(
   }
 
   const db = drizzle(env.DB, { schema });
+  const runtime = resolveConnectRuntime(env);
   const userId = await resolveAccountUserId(
     request,
     env.BETTER_AUTH_SECRET,
     db,
+    runtime.sessionCookieName,
   );
   if (!userId) {
     return new Response(JSON.stringify({ error: "unauthorized" }), {
@@ -283,10 +290,12 @@ export async function handleCreateDesktopSession(
     });
   }
   const db = drizzle(env.DB, { schema });
+  const runtime = resolveConnectRuntime(env);
   const userId = await resolveAccountUserId(
     request,
     env.BETTER_AUTH_SECRET,
     db,
+    runtime.sessionCookieName,
   );
   if (!userId) {
     return new Response(JSON.stringify({ error: "unauthorized" }), {
@@ -305,7 +314,7 @@ export async function handleCreateDesktopSession(
       cookie: {
         domain: `.${env.BASE_DOMAIN}`,
         expiresAt,
-        name: DESKTOP_SESSION_COOKIE,
+        name: runtime.desktopSessionCookieName,
         value,
       },
     }),

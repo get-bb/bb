@@ -52,6 +52,7 @@ export interface ConnectTunnelClientOptions {
 interface TrustedConnectGate {
   apiOrigin: string;
   baseDomain: string;
+  protocol: "http:" | "https:";
 }
 
 export class ConnectTunnelCredentialRejectedError extends Error {
@@ -67,9 +68,11 @@ export function resolveTrustedConnectGate(
   serverUrl: string,
 ): TrustedConnectGate {
   const parsed = new URL(serverUrl);
-  if (parsed.protocol !== "https:") {
+  const localHttp =
+    parsed.protocol === "http:" && parsed.hostname.endsWith(".localhost");
+  if (parsed.protocol !== "https:" && !localHttp) {
     throw new Error(
-      `bb connect machine credentials require an HTTPS enrollment server, got ${parsed.origin}`,
+      `bb connect machine credentials require HTTPS or a local *.localhost enrollment server, got ${parsed.origin}`,
     );
   }
   const firstDot = parsed.hostname.indexOf(".");
@@ -82,14 +85,16 @@ export function resolveTrustedConnectGate(
   return {
     apiOrigin: parsed.origin,
     baseDomain: `${baseHostname}${parsed.port ? `:${parsed.port}` : ""}`,
+    protocol: localHttp ? "http:" : "https:",
   };
 }
 
 export function buildMachineTunnelUrl(
   identity: HostDaemonConnectTunnelIdentity,
 ): string {
+  const websocketProtocol = identity.protocol === "https:" ? "wss:" : "ws:";
   const url = new URL(
-    `wss://${identity.label}.${identity.baseDomain}/__tunnel`,
+    `${websocketProtocol}//${identity.label}.${identity.baseDomain}/__tunnel`,
   );
   url.searchParams.set(TUNNEL_PROTOCOL_QUERY_PARAM, String(PROTOCOL_VERSION));
   return url.toString();
@@ -222,6 +227,7 @@ export class ConnectTunnelClient {
         const identity = hostDaemonConnectTunnelIdentitySchema.parse({
           label: body.label,
           baseDomain: gate.baseDomain,
+          protocol: gate.protocol,
         });
         this.identity = identity;
         this.options.onIdentity?.(identity);
@@ -450,7 +456,7 @@ export class ConnectTunnelClient {
       kind: "ok",
       resolved: {
         origin: `http://127.0.0.1:${port}`,
-        publicOrigin: `https://${identity.label}--${port}.${identity.baseDomain}`,
+        publicOrigin: `${identity.protocol}//${identity.label}--${port}.${identity.baseDomain}`,
         host: `127.0.0.1:${port}`,
       },
     };

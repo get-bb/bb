@@ -4837,6 +4837,10 @@ declare const hostDaemonCommandRegistry: {
     }, z$1.core.$strict>, z$1.ZodObject<{
         label: z$1.ZodString;
         baseDomain: z$1.ZodString;
+        protocol: z$1.ZodEnum<{
+            "http:": "http:";
+            "https:": "https:";
+        }>;
     }, z$1.core.$strict>, "onlineRpc", true>;
     "host.list_commands": HostDaemonCommandDescriptor<"host.list_commands", z$1.ZodObject<{
         type: z$1.ZodLiteral<"host.list_commands">;

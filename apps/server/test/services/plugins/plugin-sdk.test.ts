@@ -71,6 +71,7 @@ describe("plugin bb.sdk bind gate", () => {
   const ensureSharedPortTunnel = vi.fn().mockResolvedValue({
     label: "sawyer-air",
     baseDomain: "getbb.app",
+    protocol: "https:",
   });
 
   beforeEach(async () => {

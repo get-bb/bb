@@ -13,6 +13,7 @@ export default defineConfig({
     // Connect directly to the server in dev because Vite's WS proxy does not
     // handle upstream server restarts reliably.
     __BB_DEV_WS_BROWSER_HOST_PORT__: devWebSocketBrowserHostPortDefine,
+    __BB_DEV_APP_BROWSER_HOST_PORT__: JSON.stringify(viteDevConfig.appPort),
   },
   server: {
     // Allow Tailscale MagicDNS names when Vite is behind Tailscale Serve.

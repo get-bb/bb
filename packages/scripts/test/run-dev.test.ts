@@ -57,7 +57,7 @@ describe("run-dev", () => {
     expect(config.dataDir).toBe(expectedDevDataDir({ homeDir, repoRoot }));
     expect(config.ports).toEqual(expectedDevPorts(repoRoot));
     expect(config.serverUrl).toBe(expectedDevServerUrl(repoRoot));
-    expect(new Set(Object.values(config.ports))).toHaveLength(3);
+    expect(new Set(Object.values(config.ports))).toHaveLength(5);
     expect(Object.values(config.ports)).not.toContain(5173);
     expect(Object.values(config.ports)).not.toContain(3334);
     expect(Object.values(config.ports)).not.toContain(3002);
@@ -97,6 +97,9 @@ describe("run-dev", () => {
     expect(env.BB_SERVER_URL).toBe(config.serverUrl);
     expect(env.BB_HOST_DAEMON_PORT).toBe(String(config.ports.hostDaemonPort));
     expect(env.BB_DEV_APP_PORT).toBe(String(config.ports.appPort));
+    expect(env.BB_DEV_CONNECT_BASE_URL).toBe(
+      `http://bb.localhost:${config.ports.cloudPort}`,
+    );
   });
 
   it("inherits parent bb skills for managed worktree dev apps", () => {

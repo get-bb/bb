@@ -59,6 +59,14 @@ For the packaged app, prefer `bb-app config`, `bb-app env`, and launcher flags
 over shell variables. The environment remains the internal and deployment
 substrate, and source-development commands still load `.env` files.
 
+For source development, `pnpm dev` automatically injects
+`BB_DEV_CONNECT_BASE_URL=http://bb.localhost:<worktree-cloud-port>`. The
+Connect plugin accepts this loopback origin only when `NODE_ENV=development`
+and uses it only as the unpaired default. Explicit `bb connect --server ...`
+or `--base-url ...` targets take precedence, and packaged/production bb keeps
+the `https://getbb.app` default. This value is launcher-managed, not a
+`bb-app config` setting.
+
 After `bb-app config` writes `~/.bb/config.json` or `bb-app env` writes
 `~/.bb/env.json`, it asks the running local server to reload. If bb is not
 running, the new values apply on the next start. If you edit either file by

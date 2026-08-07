@@ -180,6 +180,10 @@ isolated|reuse`, or anchor with `--source-seq-end`. Permission mode inherits
   https://getbb.app). Pairing returns immediately — the
   server itself holds the tunnel and reconnects on restart, so there is no
   foreground process.
+  In a source checkout, `pnpm dev` automatically sets
+  `BB_DEV_CONNECT_BASE_URL` to the worktree's local Cloud origin. Connect uses
+  it only as the unpaired default; explicit `--server` and `--base-url` values
+  still win, including when pairing the dev bb with getbb.app.
   `bb connect status` / `bb connect off` report and clear the pairing.
   Port sharing works from a thread on any enrolled host. `bb connect expose
 <port>` resolves that thread's environment host and returns its public URL;

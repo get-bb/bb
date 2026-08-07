@@ -3,6 +3,41 @@
 
 export const DEFAULT_CONNECT_BASE_URL = "https://getbb.app";
 
+/**
+ * Resolve the unpaired Connect apex. Source development may point at the
+ * worktree-local Cloud, but production always keeps the hosted default.
+ */
+export function resolveDefaultConnectBaseUrl(env: NodeJS.ProcessEnv): string {
+  const configured = env.BB_DEV_CONNECT_BASE_URL?.trim();
+  if (env.NODE_ENV !== "development" || !configured) {
+    return DEFAULT_CONNECT_BASE_URL;
+  }
+
+  let url: URL;
+  try {
+    url = new URL(configured);
+  } catch {
+    throw new Error(
+      "BB_DEV_CONNECT_BASE_URL must be an http://bb.localhost:<port> origin",
+    );
+  }
+  if (
+    url.protocol !== "http:" ||
+    url.hostname !== "bb.localhost" ||
+    url.port.length === 0 ||
+    url.username.length > 0 ||
+    url.password.length > 0 ||
+    (url.pathname !== "" && url.pathname !== "/") ||
+    url.search.length > 0 ||
+    url.hash.length > 0
+  ) {
+    throw new Error(
+      "BB_DEV_CONNECT_BASE_URL must be an http://bb.localhost:<port> origin",
+    );
+  }
+  return url.origin;
+}
+
 export interface RedeemedCredential {
   credential: string;
   /**

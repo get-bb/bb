@@ -91,7 +91,9 @@ export function machineSharePublicUrl(
   identity: { label: string; baseDomain: string },
   port: number,
 ): string {
-  return `https://${identity.label}--${port}.${identity.baseDomain}`;
+  const hostname = new URL(`https://${identity.baseDomain}`).hostname;
+  const protocol = hostname.endsWith(".localhost") ? "http:" : "https:";
+  return `${protocol}//${identity.label}--${port}.${identity.baseDomain}`;
 }
 
 export function shareLoopbackOrigin(port: number): string {

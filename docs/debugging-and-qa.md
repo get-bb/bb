@@ -30,3 +30,30 @@ Test agents with:
 eval "$(scripts/bb-dev-app env)"
 pnpm bb:dev thread spawn --project proj_personal --provider codex --permission-mode accept-edits --title "Smoke test" --prompt "Reply only with ok." --json
 ```
+
+## Local Cloud
+
+Run the Cloud dashboard and Connect worker against one local D1 database:
+
+```bash
+pnpm cloud:dev
+```
+
+The command applies migrations and prints the dashboard URL. Create a local
+email/password account, claim a handle, create a pairing code, and run the
+displayed `bb connect` command against a bb started with `pnpm dev`. The same
+worktree-specific local origin serves the dashboard at `bb.localhost` and
+routes `<handle>.bb.localhost` through the Connect worker. Email/password auth
+is enabled only for this loopback workflow; production remains GitHub-only.
+`pnpm dev` automatically sets `BB_DEV_CONNECT_BASE_URL` to that worktree's
+local Cloud origin. While the bb is unpaired, Settings → Plugins → Connect
+therefore opens the local dashboard and a pasted code redeems locally. An
+explicit `bb connect --server ...` or `--base-url ...` still wins, so the dev bb
+can still pair with getbb.app.
+Local machine enrollment follows the same origin: local `http:` server URLs
+produce `ws:` machine tunnels and `http:` share URLs, while non-local machine
+enrollment remains HTTPS-only.
+
+To test the AI gateway, copy `apps/connect/.dev.vars.example` to the ignored
+`apps/connect/.dev.vars` and set `OPENAI_API_KEY`. Ctrl-C stops the local
+services. Local D1 state is kept under `.wrangler/cloud-dev`.

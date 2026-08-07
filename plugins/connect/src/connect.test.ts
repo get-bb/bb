@@ -15,6 +15,7 @@ import {
 import { deriveConnectBaseUrl, serverUrlForHandle } from "@bb/connect-client";
 import {
   parseSharePort,
+  machineSharePublicUrl,
   SharePortError,
   ShareRegistry,
   sharePublicUrl,
@@ -24,6 +25,10 @@ import {
 import { CREDENTIAL_KV_KEY } from "./credential.js";
 import plugin from "./server.js";
 import { ConnectTunnel } from "./tunnel.js";
+import {
+  DEFAULT_CONNECT_BASE_URL,
+  resolveDefaultConnectBaseUrl,
+} from "./redeem.js";
 import type { ConnectStatus } from "./types.js";
 import { ShareHostResolver } from "./hosts.js";
 
@@ -81,6 +86,44 @@ describe("deriveConnectBaseUrl", () => {
     expect(deriveConnectBaseUrl("https://my-box.vibecodethis.site/")).toBe(
       "https://vibecodethis.site",
     );
+  });
+});
+
+describe("resolveDefaultConnectBaseUrl", () => {
+  it("uses the local Cloud origin only in development", () => {
+    expect(
+      resolveDefaultConnectBaseUrl({
+        NODE_ENV: "development",
+        BB_DEV_CONNECT_BASE_URL: "http://bb.localhost:42745/",
+      }),
+    ).toBe("http://bb.localhost:42745");
+    expect(
+      resolveDefaultConnectBaseUrl({
+        NODE_ENV: "production",
+        BB_DEV_CONNECT_BASE_URL: "http://bb.localhost:42745",
+      }),
+    ).toBe(DEFAULT_CONNECT_BASE_URL);
+    expect(resolveDefaultConnectBaseUrl({ NODE_ENV: "development" })).toBe(
+      DEFAULT_CONNECT_BASE_URL,
+    );
+  });
+
+  it("rejects non-local or non-origin development values", () => {
+    for (const value of [
+      "https://bb.localhost:42745",
+      "http://getbb.app:42745",
+      "http://bb.localhost:42745/dashboard",
+      "not a url",
+    ]) {
+      expect(() =>
+        resolveDefaultConnectBaseUrl({
+          NODE_ENV: "development",
+          BB_DEV_CONNECT_BASE_URL: value,
+        }),
+      ).toThrow(
+        "BB_DEV_CONNECT_BASE_URL must be an http://bb.localhost:<port> origin",
+      );
+    }
   });
 });
 
@@ -161,6 +204,15 @@ describe("sharePublicUrl", () => {
         8000,
       ),
     ).toBe("https://sawyer-desktop--8000.getbb.app");
+  });
+
+  it("uses HTTP and the local port for machine shares in local Cloud", () => {
+    expect(
+      machineSharePublicUrl(
+        { label: "sawyer-air", baseDomain: "bb.localhost:42745" },
+        8000,
+      ),
+    ).toBe("http://sawyer-air--8000.bb.localhost:42745");
   });
 });
 
@@ -680,6 +732,7 @@ describe("ConnectTunnel share activation", () => {
         clear: async () => {},
       },
       shares,
+      defaultBaseUrl: DEFAULT_CONNECT_BASE_URL,
       getLoopbackBaseUrl: () => "http://127.0.0.1:38886",
       log: pluginBb.log,
     });
@@ -740,6 +793,7 @@ describe("ConnectTunnel share activation", () => {
         clear: async () => {},
       },
       shares,
+      defaultBaseUrl: DEFAULT_CONNECT_BASE_URL,
       getLoopbackBaseUrl: () => "http://127.0.0.1:38886",
       log: pluginBb.log,
     });
@@ -1308,6 +1362,7 @@ describe("connect plugin", () => {
       host = undefined;
     }
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
   });
 
   it("starts unpaired — a healthy state, not needs-configuration", async () => {
@@ -1328,6 +1383,56 @@ describe("connect plugin", () => {
     expect(status.dashboardUrl).toBe("https://getbb.app/dashboard");
     expect(status.nextRetryAt).toBeNull();
     expect(harness.needsConfigurationMessages).toEqual([]);
+  });
+
+  it("uses the worktree-local Cloud for unpaired development", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+    vi.stubEnv("BB_DEV_CONNECT_BASE_URL", "http://bb.localhost:59329");
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({ credential: "bbcred_local", handle: "sawyer" }),
+          { status: 200 },
+        ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { harness } = await loadPlugin();
+
+    const before = (await harness.callRpc("status")) as ConnectStatus;
+    expect(before.dashboardUrl).toBe("http://bb.localhost:59329/dashboard");
+
+    const after = (await harness.callRpc("pair", {
+      code: "ABCD",
+    })) as ConnectStatus;
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://bb.localhost:59329/api/connect/redeem",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(after.url).toBe("http://sawyer.bb.localhost:59329");
+  });
+
+  it("lets an explicit production server override the development default", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+    vi.stubEnv("BB_DEV_CONNECT_BASE_URL", "http://bb.localhost:59329");
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ error: "invalid-code" }), {
+          status: 404,
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { harness } = await loadPlugin();
+
+    await expect(
+      harness.callRpc("pair", {
+        code: "ABCD",
+        server: "https://sawyer.getbb.app",
+      }),
+    ).rejects.toThrow("invalid_code");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://getbb.app/api/connect/redeem",
+      expect.objectContaining({ method: "POST" }),
+    );
   });
 
   it("registers contributeInstructions", async () => {
@@ -1750,7 +1855,10 @@ describe("connect plugin", () => {
 
   it("uses machine tunnel identity and declares per-host port sets", async () => {
     host = createConnectFakeHost({
-      remoteIdentity: { label: "sawyer-air", baseDomain: "getbb.app" },
+      remoteIdentity: {
+        label: "sawyer-air",
+        baseDomain: "getbb.app",
+      },
     });
     await plugin(host.bb as unknown as Parameters<typeof plugin>[0]);
     vi.stubGlobal(
@@ -1902,7 +2010,10 @@ describe("connect plugin", () => {
 
   it("empties machine declarations when the pairing is disconnected", async () => {
     host = createConnectFakeHost({
-      remoteIdentity: { label: "sawyer-air", baseDomain: "getbb.app" },
+      remoteIdentity: {
+        label: "sawyer-air",
+        baseDomain: "getbb.app",
+      },
     });
     await plugin(host.bb as unknown as Parameters<typeof plugin>[0]);
     vi.stubGlobal(
@@ -2156,6 +2267,51 @@ describe("connect plugin", () => {
     );
   });
 
+  it("routes local machine creation and revocation through the unified Cloud origin", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/api/connect/redeem")) {
+        return Response.json({
+          credential: "bbcred_local",
+          handle: "sawyer",
+        });
+      }
+      if (url === "http://bb.localhost:59330/api/connect/machine-code") {
+        return Response.json({
+          code: "ABCD-EFGH",
+          expiresInMs: 600_000,
+          serverUrl: "http://sawyer.bb.localhost:59330",
+        });
+      }
+      if (url === "http://bb.localhost:59330/api/connect/revoke-machine") {
+        return Response.json({ ok: true });
+      }
+      return new Response("not found", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { harness } = await loadPlugin();
+    await harness.callRpc("pair", {
+      code: "ABCD",
+      server: "http://sawyer.bb.localhost:59330",
+    });
+
+    await expect(harness.callRpc("createMachineCode")).resolves.toMatchObject({
+      code: "ABCD-EFGH",
+      serverUrl: "http://sawyer.bb.localhost:59330",
+    });
+    await expect(
+      harness.callRpc("revokeMachine", { machineId: "machine-local" }),
+    ).resolves.toEqual({ ok: true });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://bb.localhost:59330/api/connect/machine-code",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://bb.localhost:59330/api/connect/revoke-machine",
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
   it("listAccountServers surfaces unauthorized cleanly on 401", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
@@ -2388,7 +2544,10 @@ describe("connect CLI", () => {
 
   it("resolves the thread host, honors --host, and defaults no-context calls to the server host", async () => {
     host = createConnectFakeHost({
-      remoteIdentity: { label: "sawyer-air", baseDomain: "getbb.app" },
+      remoteIdentity: {
+        label: "sawyer-air",
+        baseDomain: "getbb.app",
+      },
     });
     await plugin(host.bb as unknown as Parameters<typeof plugin>[0]);
     host.harness.sdk.stub(

@@ -35,7 +35,7 @@ import {
   providerCliStatusResponseSchema,
 } from "./local.js";
 
-export const HOST_DAEMON_PROTOCOL_VERSION = 90 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 91 as const;
 
 export {
   BRANCH_LIST_LIMIT_MAX,
@@ -78,6 +78,8 @@ export const hostDaemonConnectTunnelIdentitySchema = z
       .regex(/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/)
       .refine((label) => !label.includes("--")),
     baseDomain: z.string().min(1).refine(isConnectBaseDomain),
+    /** Public gate protocol. HTTP is accepted only for local *.localhost. */
+    protocol: z.enum(["http:", "https:"]),
   })
   .strict();
 export type HostDaemonConnectTunnelIdentity = z.infer<

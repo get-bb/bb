@@ -170,6 +170,7 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
   "connect-tunnel.ensure-identity": {
     label: "sawyer-air",
     baseDomain: "getbb.app",
+    protocol: "https:",
   },
   "host.list_files": {
     files: [
@@ -1039,12 +1040,10 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  // Version 90 adds the `plan` approval subject that carries a Claude plan to
-  // the user for review. An enrolled daemon on an older build cannot raise one,
-  // so it silently leaves Plan mode instead of asking, and it would reject the
-  // subject if the server sent one back.
-  it("uses protocol version 90 for plan-review approvals", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(90);
+  // Version 91 adds the public protocol to Connect tunnel identities so local
+  // Cloud daemons use HTTP/WebSocket while production remains HTTPS/WSS.
+  it("uses protocol version 91 for protocol-aware Connect tunnels", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(91);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {
@@ -3370,11 +3369,19 @@ describe("host-daemon session schemas", () => {
     expect(
       hostDaemonDaemonWsMessageSchema.parse({
         type: "connect-tunnel.identity",
-        identity: { label: "sawyer-air", baseDomain: "getbb.app" },
+        identity: {
+          label: "sawyer-air",
+          baseDomain: "getbb.app",
+          protocol: "https:",
+        },
       }),
     ).toEqual({
       type: "connect-tunnel.identity",
-      identity: { label: "sawyer-air", baseDomain: "getbb.app" },
+      identity: {
+        label: "sawyer-air",
+        baseDomain: "getbb.app",
+        protocol: "https:",
+      },
     });
 
     expect(

@@ -30,11 +30,7 @@ import {
 } from "@bb/connect-client";
 import type { CredentialStore } from "./credential.js";
 import { fetchMachineCode, MachineCodeError } from "./machine-code.js";
-import {
-  asConnectPairError,
-  DEFAULT_CONNECT_BASE_URL,
-  redeemConnectCode,
-} from "./redeem.js";
+import { asConnectPairError, redeemConnectCode } from "./redeem.js";
 import { revokeMachine } from "./revoke-machine.js";
 import {
   ShareRegistry,
@@ -50,6 +46,8 @@ import type { ConnectStateName, ConnectStatus } from "./types.js";
 export interface ConnectTunnelOptions {
   store: CredentialStore;
   shares: ShareRegistry;
+  /** Connect apex used only while unpaired and when pair has no target. */
+  defaultBaseUrl: string;
   /**
    * The server's own loopback base URL, read lazily (bb.server is
    * bind-gated; the tunnel only needs it once a socket opens).
@@ -117,7 +115,7 @@ export class ConnectTunnel {
       args.baseUrl ??
       (args.serverUrl !== undefined
         ? deriveConnectBaseUrl(args.serverUrl)
-        : DEFAULT_CONNECT_BASE_URL);
+        : this.options.defaultBaseUrl);
     this.pairing = true;
     this.publish();
     try {
@@ -245,12 +243,12 @@ export class ConnectTunnel {
     };
   }
 
-  /** getbb.app dashboard URL, derived from the paired base (or the apex). */
+  /** Dashboard URL, derived from the paired base (or the unpaired default). */
   private dashboardUrl(): string {
     const base =
       this.credential !== null
         ? deriveConnectBaseUrl(this.credential.serverUrl)
-        : DEFAULT_CONNECT_BASE_URL;
+        : this.options.defaultBaseUrl;
     return `${base.replace(/\/$/, "")}/dashboard`;
   }
 

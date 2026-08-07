@@ -7,8 +7,9 @@ import { getEnv } from "./env.js";
 
 /** The authenticated user id for the current request, or null. */
 export async function getSessionUserId(): Promise<string | null> {
+  const env = getEnv();
   const request = getRequest();
-  const auth = createAuth(getEnv());
+  const auth = createAuth(env);
   const session = await auth.api.getSession({ headers: request.headers });
   return session?.user?.id ?? null;
 }

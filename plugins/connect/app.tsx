@@ -78,7 +78,7 @@ const PAIR_ERROR_COPY: Record<PairErrorCode, PairErrorCopy> = {
     tail: " — each code works once.",
   },
   network: {
-    lead: "Couldn't reach getbb.app.",
+    lead: "Couldn't reach the Connect service.",
     linkLabel: "Open the dashboard",
     tail: " — check your connection, then try again.",
   },
@@ -745,12 +745,14 @@ function DisconnectDialog({
   open,
   onOpenChange,
   host,
+  dashboardHost,
   pending,
   onConfirm,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   host: string;
+  dashboardHost: string;
   pending: boolean;
   onConfirm: () => void;
 }) {
@@ -765,7 +767,7 @@ function DisconnectDialog({
             <p className="text-sm text-muted-foreground">
               <span className="font-medium text-foreground">{host}</span> will
               stop working on all devices. Re-pairing needs a new code from
-              your getbb.app dashboard.
+              your {dashboardHost} dashboard.
             </p>
             <DialogFooter>
               <Button
@@ -806,12 +808,13 @@ function NotPairedContent({
   dashboardUrl: string;
   onPaired: () => void;
 }) {
+  const dashboardHost = hostOf(dashboardUrl);
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
         Pairing gives this bb a private URL like{" "}
         <span className="rounded bg-surface-recessed px-1.5 py-0.5 font-mono text-xs text-foreground">
-          you.getbb.app
+          you.{dashboardHost}
         </span>
         . Your code and data stay on this machine.
       </p>
@@ -820,7 +823,7 @@ function NotPairedContent({
         <StepNumber value={1} />
         <div className="min-w-0 flex-1 space-y-2">
           <p className="text-sm">
-            Get a one-time connect code from your getbb.app dashboard.
+            Get a one-time connect code from your {dashboardHost} dashboard.
           </p>
           <Button type="button" asChild>
             <a href={dashboardUrl} target="_blank" rel="noreferrer">
@@ -844,8 +847,8 @@ function NotPairedContent({
           name="AlertTriangle"
           className="mt-px size-3.5 shrink-0 opacity-70"
         />
-        Anyone signed in to your getbb.app account gets full control of this
-        bb.
+        Anyone signed in to your {dashboardHost} account gets full control of
+        this bb.
       </p>
     </div>
   );
@@ -971,6 +974,7 @@ function ConnectedContent({
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
         host={host}
+        dashboardHost={hostOf(status.dashboardUrl)}
         pending={disconnecting}
         onConfirm={disconnect}
       />
@@ -1063,6 +1067,7 @@ function ReconnectingContent({
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
         host={host}
+        dashboardHost={hostOf(status.dashboardUrl)}
         pending={disconnecting}
         onConfirm={disconnect}
       />

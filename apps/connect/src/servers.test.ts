@@ -304,6 +304,21 @@ describe("verifyServerCredential / resolveAccountUserId", () => {
       },
     });
     expect(await resolveAccountUserId(req, secret, db)).toBe("acct-a");
+
+    const localRequest = new Request(
+      "http://sawyer.bb.localhost:8787/api/connect/servers",
+      {
+        headers: { cookie: `better-auth.session_token=${cookieValue}` },
+      },
+    );
+    expect(
+      await resolveAccountUserId(
+        localRequest,
+        secret,
+        db,
+        "better-auth.session_token",
+      ),
+    ).toBe("acct-a");
   });
 });
 

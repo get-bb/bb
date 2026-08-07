@@ -1,0 +1,2 @@
+# Optional: only needed to exercise the local AI gateway.
+OPENAI_API_KEY=replace-with-openai-api-key
