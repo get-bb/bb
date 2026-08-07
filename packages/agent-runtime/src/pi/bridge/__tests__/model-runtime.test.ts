@@ -1,21 +1,34 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { createConfiguredPiServices, firstRuntime, secondRuntime } = vi.hoisted(
+const { loadConfiguredPiServices, firstRuntime, secondRuntime } = vi.hoisted(
   () => {
     const firstRuntime = { getModel: vi.fn() };
     const secondRuntime = { getModel: vi.fn() };
     return {
-      createConfiguredPiServices: vi.fn(async ({ cwd }: { cwd: string }) => ({
-        modelRuntime: cwd === "/tmp/project-one" ? firstRuntime : secondRuntime,
-      })),
       firstRuntime,
+      loadConfiguredPiServices: vi.fn(
+        async ({
+          cwd,
+        }: {
+          cwd: string;
+        }): Promise<{
+          configErrors: string[];
+          services: { modelRuntime: { getModel: unknown } };
+        }> => ({
+          configErrors: [],
+          services: {
+            modelRuntime:
+              cwd === "/tmp/project-one" ? firstRuntime : secondRuntime,
+          },
+        }),
+      ),
       secondRuntime,
     };
   },
 );
 
 vi.mock("../configured-services.js", () => ({
-  createConfiguredPiServices,
+  loadConfiguredPiServices,
 }));
 
 import {
@@ -37,12 +50,43 @@ describe("Pi bridge model runtime", () => {
     expect(first).toBe(firstRuntime);
     expect(firstAgain).toBe(firstRuntime);
     expect(second).toBe(secondRuntime);
-    expect(createConfiguredPiServices).toHaveBeenCalledTimes(2);
-    expect(createConfiguredPiServices).toHaveBeenNthCalledWith(1, {
+    expect(loadConfiguredPiServices).toHaveBeenCalledTimes(2);
+    expect(loadConfiguredPiServices).toHaveBeenNthCalledWith(1, {
       cwd: "/tmp/project-one",
     });
-    expect(createConfiguredPiServices).toHaveBeenNthCalledWith(2, {
+    expect(loadConfiguredPiServices).toHaveBeenNthCalledWith(2, {
       cwd: "/tmp/project-two",
     });
+  });
+
+  // A broken third-party extension used to reject here, so the picker lost
+  // every model instead of the one provider that failed to register.
+  it("still returns the runtime when the Pi configuration reports errors", async () => {
+    const write = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
+    loadConfiguredPiServices.mockResolvedValueOnce({
+      configErrors: ['Failed to load Pi extension "broken.ts": boom'],
+      services: { modelRuntime: firstRuntime },
+    });
+
+    await expect(getPiModelRuntime("/tmp/project-one")).resolves.toBe(
+      firstRuntime,
+    );
+    expect(write).toHaveBeenCalledWith(
+      'pi bridge: Failed to load Pi extension "broken.ts": boom\n',
+    );
+    write.mockRestore();
+  });
+
+  it("drops the memo when the services fail to build", async () => {
+    loadConfiguredPiServices.mockRejectedValueOnce(new Error("no agent dir"));
+
+    await expect(getPiModelRuntime("/tmp/project-one")).rejects.toThrow(
+      "no agent dir",
+    );
+    await expect(getPiModelRuntime("/tmp/project-one")).resolves.toBe(
+      firstRuntime,
+    );
   });
 });

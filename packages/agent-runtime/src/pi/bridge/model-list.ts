@@ -109,7 +109,10 @@ export async function listPiBridgeModels(modelRuntime: ModelRuntime): Promise<{
   return buildPiAvailableModels({
     models: availableModels.map((model) => ({
       id: model.id,
-      input: [...model.input],
+      // An extension registers its models from plain JavaScript, so Pi's
+      // required `input` can still be missing at runtime. Reading it blindly
+      // threw and failed the whole list, which hid every other provider too.
+      input: Array.isArray(model.input) ? [...model.input] : [],
       name: model.name,
       provider: model.provider,
       reasoning: model.reasoning,

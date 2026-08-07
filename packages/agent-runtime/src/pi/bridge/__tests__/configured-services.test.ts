@@ -9,7 +9,10 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createConfiguredPiServices } from "../configured-services.js";
+import {
+  createConfiguredPiServices,
+  loadConfiguredPiServices,
+} from "../configured-services.js";
 
 const testRoots: string[] = [];
 
@@ -114,5 +117,35 @@ describe("configured Pi services", () => {
     await expect(createConfiguredPiServices({ agentDir, cwd })).rejects.toThrow(
       "Failed to load Pi extension",
     );
+  });
+
+  // The model picker lists whatever loaded. A broken extension must cost the
+  // user that one provider, not every model on the machine.
+  it("keeps the working services when one extension fails to load", async () => {
+    const { agentDir, cwd, markerPath } = await createTestDirs();
+    await writeFile(
+      join(agentDir, "settings.json"),
+      JSON.stringify({ defaultProjectTrust: "always" }),
+    );
+    await writeFile(
+      join(cwd, ".pi", "settings.json"),
+      JSON.stringify({
+        extensions: ["./extensions/marker.ts", "./extensions/broken.ts"],
+      }),
+    );
+    await writeFile(
+      join(cwd, ".pi", "extensions", "broken.ts"),
+      "export default function extension( { this is invalid",
+    );
+
+    const { configErrors, services } = await loadConfiguredPiServices({
+      agentDir,
+      cwd,
+    });
+
+    expect(configErrors).toHaveLength(1);
+    expect(configErrors[0]).toContain("broken.ts");
+    expect(services.modelRuntime).toBeDefined();
+    expect(await markerWasWritten(markerPath)).toBe(true);
   });
 });
