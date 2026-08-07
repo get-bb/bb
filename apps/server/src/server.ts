@@ -45,6 +45,7 @@ import {
 } from "./auth/internal-execution-sessions.js";
 import { createInternalPrincipalAuthority } from "./auth/internal-principal-authority.js";
 import { createLocalOwnerPrincipalPolicy } from "./auth/local-owner-adapter.js";
+import { registerReadinessRoute } from "./readiness.js";
 import type { PrincipalPolicy } from "./auth/principal-policy.js";
 import { createPublicHttpAuthorizationMiddleware } from "./auth/public-http-authorization.js";
 import {
@@ -139,6 +140,14 @@ interface CreateAppOptions {
   roomDistribution?: WorkTogetherRoomDistributionV1;
   /** WT-only owner-authorized provisioning control plane; never public-proxied. */
   roomResourceProvisioner?: WorkTogetherRoomResourceProvisioner;
+  /**
+   * Loopback readiness wiring for `GET /readyz`. start-server forwards the
+   * membership-port reachability probe in work-together mode; its presence is
+   * also the "policy adapter composed" signal. Never carries membership data.
+   */
+  readiness?: {
+    readonly probeMembershipReachable?: () => Promise<boolean>;
+  };
   slowApiRequestLogThresholdMs?: number;
   staticDir?: string;
   /**
@@ -403,6 +412,13 @@ export function createApp(
   app.use("*", compress());
   app.onError((error) => errorToResponse(error, deps.logger));
   app.get("/health", (context) => context.json({ ok: true }));
+  registerReadinessRoute(app, {
+    db: deps.db,
+    principalMode,
+    ...(options?.readiness?.probeMembershipReachable !== undefined
+      ? { probeMembershipReachable: options.readiness.probeMembershipReachable }
+      : {}),
+  });
   app.get("/install.sh", async (context) => {
     const script = await readFile(INSTALL_MACHINE_SCRIPT_PATH);
     return new Response(script, {

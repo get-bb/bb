@@ -197,6 +197,14 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
         ? { roomResourceProvisioner }
         : {}),
       ...(roomDistribution !== undefined ? { roomDistribution } : {}),
+      ...(principalRuntime.probeMembershipReachable !== null
+        ? {
+            readiness: {
+              probeMembershipReachable:
+                principalRuntime.probeMembershipReachable,
+            },
+          }
+        : {}),
       staticDir,
     },
   );

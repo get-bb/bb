@@ -474,6 +474,7 @@ describe("server principal listen options and close helper", () => {
         principalMode: "work-together",
         hostname: "127.0.0.1",
         workTogetherRoomTaskRuntime: null,
+        probeMembershipReachable: null,
         close,
       }),
     ).resolves.toBeUndefined();

@@ -1673,6 +1673,52 @@ function validateAppliedMigrationHistory(
   );
 }
 
+/**
+ * Non-throwing readiness view over the applied-migration ledger.
+ *
+ * `atHead` is true only when every journalled migration is present in
+ * `__drizzle_migrations` with a matching hash and timestamp — the exact
+ * invariant `migrate()` asserts at boot, reused here without throwing so a
+ * liveness/readiness probe can report it. `appliedCount`/`expectedCount` are
+ * diagnostic integers only; no migration hash, SQL, or database value is
+ * exposed.
+ */
+export interface SqliteMigrationReadiness {
+  readonly atHead: boolean;
+  readonly appliedCount: number;
+  readonly expectedCount: number;
+}
+
+export function readSqliteMigrationReadiness(
+  db: DbConnection,
+): SqliteMigrationReadiness {
+  let migrationsFolder: string;
+  try {
+    migrationsFolder = resolveMigrationsFolder();
+  } catch {
+    return { atHead: false, appliedCount: 0, expectedCount: 0 };
+  }
+
+  const appliedCount = readAppliedMigrationCreatedAts(db).size;
+
+  let expectedCount = 0;
+  try {
+    expectedCount = readExpectedAppliedMigrations(migrationsFolder).length;
+  } catch {
+    return { atHead: false, appliedCount, expectedCount: 0 };
+  }
+
+  let atHead = false;
+  try {
+    validateAppliedMigrationHistory(db, migrationsFolder);
+    atHead = true;
+  } catch {
+    atHead = false;
+  }
+
+  return { atHead, appliedCount, expectedCount };
+}
+
 export function migrate(db: DbConnection, options: MigrateOptions = {}): void {
   const migrationsFolder = resolveMigrationsFolder();
   const sqlite = db.$client;

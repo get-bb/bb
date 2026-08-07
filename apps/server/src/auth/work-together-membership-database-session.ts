@@ -30,6 +30,7 @@ export const WORK_TOGETHER_MEMBERSHIP_QUERY =
   "SELECT role, membership_revision::text AS membership_revision FROM work_together.bb_cell_membership($1::uuid, $2::text)";
 export const WORK_TOGETHER_MEMBERSHIP_COMMIT = "COMMIT";
 export const WORK_TOGETHER_MEMBERSHIP_ROLLBACK = "ROLLBACK";
+export const WORK_TOGETHER_MEMBERSHIP_PROBE = "SELECT 1";
 
 /**
  * Database-session adapter: opens a pooled client, elevates to the cell
@@ -77,6 +78,49 @@ export function createWorkTogetherMembershipDatabaseSessionAdapter(
       }
     },
   };
+}
+
+/**
+ * Loopback readiness probe for the Work Together membership port.
+ *
+ * Opens a pooled client, elevates to the cell capability role inside a
+ * read-only transaction, and round-trips a trivial `SELECT 1`. This proves the
+ * configured DSN connects, the login role authenticates, and the
+ * `work_together_bb_cell` role is grantable — WITHOUT a subject and WITHOUT
+ * reading or disclosing any membership row, revision, or workspace value. The
+ * revision read-with-value stays behind an authenticated bootstrap by a real
+ * member, so this probe never widens the unauthenticated surface.
+ *
+ * Returns `true` only on a clean round-trip; any connect/role/query failure
+ * resolves to `false` (never throws), so callers can treat it as a boolean
+ * health signal.
+ */
+export async function probeWorkTogetherMembershipReachable(
+  pool: WorkTogetherMembershipSqlPool,
+): Promise<boolean> {
+  let client: WorkTogetherMembershipSqlClient;
+  try {
+    client = await pool.connect();
+  } catch {
+    return false;
+  }
+
+  try {
+    await client.query(WORK_TOGETHER_MEMBERSHIP_BEGIN);
+    await client.query(WORK_TOGETHER_MEMBERSHIP_SET_ROLE);
+    await client.query(WORK_TOGETHER_MEMBERSHIP_PROBE);
+    await client.query(WORK_TOGETHER_MEMBERSHIP_COMMIT);
+    return true;
+  } catch {
+    await bestEffortRollback(client);
+    return false;
+  } finally {
+    try {
+      client.release();
+    } catch {
+      // Always attempt release; ignore secondary failures.
+    }
+  }
 }
 
 function parseQueryRows(

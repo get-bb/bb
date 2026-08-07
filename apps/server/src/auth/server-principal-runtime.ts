@@ -9,7 +9,10 @@ import { importJWK, type JWK } from "jose";
 import { Pool } from "pg";
 import { createLocalOwnerPrincipalPolicy } from "./local-owner-adapter.js";
 import type { PrincipalPolicy } from "./principal-policy.js";
-import { createWorkTogetherMembershipDatabaseSessionAdapter } from "./work-together-membership-database-session.js";
+import {
+  createWorkTogetherMembershipDatabaseSessionAdapter,
+  probeWorkTogetherMembershipReachable,
+} from "./work-together-membership-database-session.js";
 import type {
   WorkTogetherMembershipSqlClient,
   WorkTogetherMembershipSqlPool,
@@ -68,6 +71,11 @@ export type ServerPrincipalRuntime = {
     cellId: string;
     workspaceId: string;
   }> | null;
+  /**
+   * Loopback readiness probe for the membership Postgres port; null in
+   * local-owner mode (no membership port). Never discloses membership data.
+   */
+  readonly probeMembershipReachable: (() => Promise<boolean>) | null;
   readonly close: () => Promise<void>;
 };
 
@@ -129,6 +137,7 @@ export async function createServerPrincipalRuntime(
       principalMode: PRINCIPAL_MODE_LOCAL_OWNER,
       hostname: undefined,
       workTogetherRoomTaskRuntime: null,
+      probeMembershipReachable: null,
       close: async () => undefined,
     });
   }
@@ -189,6 +198,8 @@ export async function createServerPrincipalRuntime(
         cellId: config.cellId,
         workspaceId: config.workspaceId,
       }),
+      probeMembershipReachable: () =>
+        probeWorkTogetherMembershipReachable(membershipPool),
       close,
     });
   } catch {
