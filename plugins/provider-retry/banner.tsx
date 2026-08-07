@@ -31,14 +31,14 @@ function limitDescription(view: ProviderRetryView): string {
   }
   if (view.phase === "blocked") {
     const reason = view.reachedReason ?? view.overageReason;
-    return `${provider} ${view.kind.replaceAll("-", " ")} limit reached${reason ? ` (${reason.replaceAll("_", " ")})` : ""}. There is no automatic reset time.`;
+    return `${provider} ${view.kind.replaceAll("-", " ")} limit reached${reason ? ` (${reason.replaceAll("_", " ")})` : ""}.`;
   }
   if (view.phase === "manual-only") {
     const reset =
       view.resetsAtMs === null
         ? "at an unknown time"
         : resetLabel(view.resetsAtMs);
-    return `${provider}${window} usage limit resets ${reset}, beyond the configured maximum automatic wait. Retry manually when ready.`;
+    return `${provider}${window} usage limit resets ${reset}, beyond the configured maximum automatic wait.`;
   }
   if (view.phase === "waiting-for-host") {
     return `${provider}${window} usage limit reset passed. This thread will continue when its host reconnects.`;

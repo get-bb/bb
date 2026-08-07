@@ -96,7 +96,7 @@ describe("provider retry app", () => {
     expect(await slot.findByText(/when its host reconnects/i)).toBeTruthy();
   });
 
-  it("renders credit exhaustion without claiming an automatic reset", async () => {
+  it("renders the credit exhaustion reason", async () => {
     const slot = renderSlot(
       banner,
       {},
@@ -122,8 +122,8 @@ describe("provider retry app", () => {
     );
 
     expect(
-      await slot.findByText(/There is no automatic reset time/i),
-    ).toBeTruthy();
+      (await slot.findByText(/credits limit reached/i)).textContent,
+    ).toMatch(/credits limit reached \(rate limit reached\)\.$/i);
   });
 
   it("explains when the reset exceeds the maximum automatic wait", async () => {
@@ -148,9 +148,9 @@ describe("provider retry app", () => {
     );
 
     expect(
-      await slot.findByText(/beyond the configured maximum automatic wait/i),
-    ).toBeTruthy();
-    expect(slot.getByText(/Retry manually when ready/i)).toBeTruthy();
+      (await slot.findByText(/beyond the configured maximum automatic wait/i))
+        .textContent,
+    ).toMatch(/maximum automatic wait\.$/i);
     expect(slot.getByRole("button", { name: "Retry now" })).toBeTruthy();
   });
 

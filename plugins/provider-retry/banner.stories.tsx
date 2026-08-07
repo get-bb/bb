@@ -81,7 +81,7 @@ const PHASE_CASES = {
   },
   "retry-failed": {
     label: "Continuation failed",
-    hint: "The reset passed, but the guarded continuation could not start.",
+    hint: "bb attempted to continue, but the new turn could not start. Automatic retries stop here.",
     view: providerRetryView({
       phase: "retry-failed",
       dueAtMs: null,
@@ -105,12 +105,12 @@ const PHASE_CASES = {
   },
   unsafe: {
     label: "Unsafe to continue",
-    hint: "The rejected turn may already have produced output or side effects.",
+    hint: "bb cannot prove an automatic continuation is safe and duplicate-free, so it will not start one.",
     view: providerRetryView({
       phase: "unsafe",
       automatic: false,
       dueAtMs: null,
-      recoveryReason: "possible-side-effects",
+      recoveryReason: "output-or-side-effect-observed",
       windowLabel: "Fable",
     }),
   },
