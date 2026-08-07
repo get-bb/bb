@@ -96,6 +96,7 @@ import {
   type WorkspaceChangedFileSelection,
 } from "@/components/workspace/workspace-change-summary";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
+import { buildEnvironmentRecoveryHandoffTarget } from "@/lib/thread-handoff-request";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import type { PromptDraftAttachment } from "@/lib/prompt-draft";
 import { createLocalStorageEnumStorage } from "@/lib/browser-storage";
@@ -2249,6 +2250,10 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     environment?.status === "destroying" || environment?.status === "destroyed"
       ? environment.status
       : null;
+  const threadEnvironmentGoneHandoffTarget =
+    threadEnvironmentGoneStatus !== null && environment
+      ? buildEnvironmentRecoveryHandoffTarget(environment)
+      : null;
   const threadGitStatusDisplay = getGitStatusDisplay(workspaceStatus, {
     mergeBaseBranch,
     showBranchComparison: showBranchComparisonUi,
@@ -2364,6 +2369,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
           : undefined
       }
       environmentGoneStatus={threadEnvironmentGoneStatus}
+      environmentGoneHandoffTarget={threadEnvironmentGoneHandoffTarget}
       isEnvironmentActionPending={requestEnvironmentAction.isPending}
       onCreateNewThreadInWorktree={onCreateNewThreadInWorktree}
       onEscapeEmptyPrompt={undefined}

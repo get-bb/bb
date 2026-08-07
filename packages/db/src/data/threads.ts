@@ -545,6 +545,10 @@ export interface ListLiveThreadsInEnvironmentArgs {
   environmentId: string;
 }
 
+export interface HasRevivableArchivedThreadInEnvironmentArgs {
+  environmentId: string;
+}
+
 export interface CountNonDeletedAssignedChildThreadsArgs {
   parentThreadId: string;
 }
@@ -1178,6 +1182,34 @@ export function countLiveThreadsInEnvironment(
     .get();
 
   return liveThreadCount?.count ?? 0;
+}
+
+/**
+ * Whether the environment has a thread that is archived but not deleted — i.e. a
+ * thread that could still be unarchived. The archive grace window (which delays
+ * destroying a retiring environment's worktree so an accidental archive can be
+ * undone) only applies when such a revivable thread exists; an environment left
+ * retiring solely by deleted/tombstoned threads has nothing to undo and is
+ * cleaned up immediately.
+ */
+export function hasRevivableArchivedThreadInEnvironment(
+  db: ThreadWriteConnection,
+  args: HasRevivableArchivedThreadInEnvironmentArgs,
+): boolean {
+  const row = db
+    .select({ id: threads.id })
+    .from(threads)
+    .where(
+      and(
+        eq(threads.environmentId, args.environmentId),
+        isNotNull(threads.archivedAt),
+        isNull(threads.deletedAt),
+      ),
+    )
+    .limit(1)
+    .get();
+
+  return row !== undefined;
 }
 
 export function listLiveThreadsInEnvironment(

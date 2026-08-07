@@ -646,10 +646,12 @@ const archivedFixture: ThreadPromptArchivedSection = {
 
 const destroyedEnvironmentFixture: ThreadPromptEnvironmentGoneSection = {
   status: "destroyed",
+  onHandoff: noop,
 };
 
 const destroyingEnvironmentFixture: ThreadPromptEnvironmentGoneSection = {
   status: "destroying",
+  onHandoff: noop,
 };
 
 export function Overview() {

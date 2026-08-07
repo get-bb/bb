@@ -647,6 +647,7 @@ function buildPromptAreaElement({
       childThreadsSection={null}
       composerFocusRequestNonce={0}
       contextBannerMergeBase={null}
+      environmentGoneHandoffTarget={null}
       environmentGoneStatus={null}
       goal={goal}
       modelFallback={modelFallback}
@@ -1468,9 +1469,8 @@ describe("ThreadDetailPromptArea", () => {
     expect(mocks.navigate).toHaveBeenCalledWith("/projects/proj_source", {
       state: {
         focusPrompt: true,
-        reuseEnvironmentId: "env_1",
         [THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY]: {
-          environmentId: "env_1",
+          environmentTarget: { type: "reuse", environmentId: "env_1" },
           projectId: "proj_source",
           sourceThreadId: "thr_source",
           sourceThreadTitle: "Source thread",

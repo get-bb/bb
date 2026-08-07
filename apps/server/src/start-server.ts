@@ -23,6 +23,7 @@ import { createTelemetryService } from "./services/system/telemetry.js";
 import { TerminalSessionLifecycle } from "./services/terminals/terminal-session-lifecycle.js";
 import { resolveThreadStorageRootPath } from "./services/threads/thread-storage.js";
 import { createLifecycleDedupers } from "./lifecycle-dedupers.js";
+import { MANAGED_ENVIRONMENT_RETIRE_GRACE_MS } from "./constants.js";
 import type { ServerRuntimeConfig } from "./types.js";
 import { NotificationHub } from "./ws/hub.js";
 import { WatchInterestCoordinator } from "./ws/watch-interests.js";
@@ -77,6 +78,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     inheritedSkillsRootPaths: serverConfig.BB_INHERITED_SKILLS_ROOTS,
     inferenceModel: serverConfig.BB_INFERENCE,
     isDevelopment: !isProduction,
+    managedEnvironmentRetireGraceMs: MANAGED_ENVIRONMENT_RETIRE_GRACE_MS,
     openAiApiKey: serverConfig.OPENAI_API_KEY,
     serverPort: serverConfig.BB_SERVER_PORT,
     sharedSkillRoots: { user: [], project: [] },

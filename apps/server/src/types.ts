@@ -32,6 +32,13 @@ export interface ServerRuntimeConfig {
   inheritedSkillsRootPaths: string[];
   inferenceModel: string;
   isDevelopment: boolean;
+  /**
+   * Grace window (ms) after the last live thread in a managed environment is
+   * archived before its worktree is destroyed, during which an accidental
+   * archive can be undone losslessly. Defaults to
+   * {@link MANAGED_ENVIRONMENT_RETIRE_GRACE_MS}; set to 0 to destroy immediately.
+   */
+  managedEnvironmentRetireGraceMs: number;
   openAiApiKey: string;
   serverPort: number;
   sharedSkillRoots: ProviderNativeSkillRoots;

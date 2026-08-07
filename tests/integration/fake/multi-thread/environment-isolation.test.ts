@@ -5,6 +5,7 @@ import {
   archiveThread,
   getEnvironment,
   getHosts,
+  getThread,
   runEnvironmentAction,
   sendTextMessage,
   unarchiveThread,
@@ -97,6 +98,82 @@ describe.sequential(
           threadA.environment.id,
         );
         expect(environment.status).toBe("destroyed");
+      }));
+
+    it("hands a destroyed managed environment branch off to a new thread", () =>
+      withHarness(async (harness) => {
+        const project = await createProjectFixture(harness, {
+          name: "Handoff Destroyed Environment",
+        });
+        const { thread, environment } = await createReadyHostThread(harness, {
+          projectId: project.id,
+          timeoutMs: DEFAULT_TIMEOUT_MS,
+          workspace: { type: "managed-worktree" },
+        });
+        const originalPath = environment.path;
+        const branchName = environment.branchName;
+        if (!originalPath || !branchName) {
+          throw new Error("Managed worktree path/branch was not assigned");
+        }
+
+        // Commit work in the worktree so there is recoverable history on the
+        // branch (committed work survives the destroy; uncommitted does not).
+        await fs.writeFile(
+          path.join(originalPath, "recovered.txt"),
+          "keep me\n",
+        );
+        await runGit({ cwd: originalPath, args: ["add", "recovered.txt"] });
+        await runGit({
+          cwd: originalPath,
+          args: [
+            "-c",
+            "user.email=test@bb.test",
+            "-c",
+            "user.name=BB Test",
+            "commit",
+            "-m",
+            "committed work",
+          ],
+        });
+
+        // Archiving the only thread tears the workspace down (the integration
+        // harness disables the grace window).
+        await archiveThread(harness.api, thread.id);
+        await waitForPathRemoval(originalPath, DEFAULT_TIMEOUT_MS);
+        await waitForEnvironmentStatus(
+          harness.api,
+          environment.id,
+          "destroyed",
+          DEFAULT_TIMEOUT_MS,
+        );
+
+        // Handoff uses the ordinary new-thread flow, choosing the destroyed
+        // environment's surviving branch as the new worktree's base.
+        const handedOff = await createReadyHostThread(harness, {
+          projectId: project.id,
+          timeoutMs: DEFAULT_TIMEOUT_MS,
+          title: "Continue recovered work",
+          workspace: {
+            type: "managed-worktree",
+            baseBranch: { kind: "named", name: branchName },
+          },
+        });
+        expect(handedOff.thread.id).not.toBe(thread.id);
+        expect(handedOff.environment.id).not.toBe(environment.id);
+        expect(handedOff.environment.branchName).not.toBe(branchName);
+        expect(handedOff.environment.baseBranch).toBe(branchName);
+        expect(handedOff.environment.path).toBeTruthy();
+
+        const archivedSource = await getThread(harness.api, thread.id);
+        expect(archivedSource.archivedAt).not.toBeNull();
+        expect(archivedSource.environmentId).toBe(environment.id);
+
+        // The committed work on the branch is recovered in the fresh worktree.
+        const recovered = await fs.readFile(
+          path.join(handedOff.environment.path!, "recovered.txt"),
+          "utf8",
+        );
+        expect(recovered).toBe("keep me\n");
       }));
 
     it("isolates concurrent work across separate environments", () =>

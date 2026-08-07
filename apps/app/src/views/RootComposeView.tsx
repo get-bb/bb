@@ -136,6 +136,7 @@ import {
 import {
   buildThreadHandoffPromptDraft,
   readThreadHandoffCreateSeedFromLocationState,
+  type ThreadHandoffEnvironmentTarget,
 } from "@/lib/thread-handoff-request";
 import { useNavigateToThreadAfterCreatePreference } from "@/lib/root-compose-create-preference";
 import {
@@ -612,6 +613,19 @@ export function hasSingleUseRootComposeTargetState(state: unknown): boolean {
   );
 }
 
+type ThreadHandoffRecoveryTarget = Extract<
+  ThreadHandoffEnvironmentTarget,
+  { type: "managed-worktree" | "personal" }
+>;
+
+function getThreadHandoffRecoveryTarget(
+  target: ThreadHandoffEnvironmentTarget,
+): ThreadHandoffRecoveryTarget | null {
+  return target.type === "managed-worktree" || target.type === "personal"
+    ? target
+    : null;
+}
+
 // react-router's location.state is freeform unknown — narrow it here at the
 // system boundary before reading.
 export function readInitialPromptFromLocationState(
@@ -779,6 +793,24 @@ function CodexCliVersionBanner({
   );
 }
 
+function HandoffRecoveryIssueBanner({ message }: { message: string }) {
+  return (
+    <PromptStackCard
+      ariaLabel="Handoff unavailable"
+      className="overflow-hidden"
+    >
+      <div className="flex min-h-8 max-w-full items-center gap-2 px-2.5 py-1 text-xs text-muted-foreground">
+        <Icon
+          name="CircleX"
+          className="size-3.5 shrink-0 text-destructive"
+          aria-hidden
+        />
+        <span className="min-w-0 flex-1">{message}</span>
+      </div>
+    </PromptStackCard>
+  );
+}
+
 export function RootComposeRoute() {
   const { projectId } = useParams<{ projectId: string }>();
 
@@ -884,6 +916,13 @@ export function RootComposeView() {
   const [forkSeed, setForkSeed] = useState<ForkThreadCreateSeed | null>(() =>
     readForkThreadCreateSeedFromLocationState(location.state),
   );
+  const [handoffRecoveryTarget, setHandoffRecoveryTarget] =
+    useState<ThreadHandoffRecoveryTarget | null>(() => {
+      const seed = readThreadHandoffCreateSeedFromLocationState(location.state);
+      return seed
+        ? getThreadHandoffRecoveryTarget(seed.environmentTarget)
+        : null;
+    });
   const hostsQuery = useHosts();
   const connectedHostIds = useMemo(
     () =>
@@ -1175,6 +1214,7 @@ export function RootComposeView() {
         return;
       }
       snapshotPromptDraftBeforeOptionChange();
+      setHandoffRecoveryTarget(null);
       setEnvironmentSelectionValue(nextEnvironmentValue);
     },
     [
@@ -1246,10 +1286,16 @@ export function RootComposeView() {
       setStartedComposing(true);
       setRootComposeProjectId(nextHandoffSeed.projectId);
       setForkSeed(null);
-      if (nextHandoffSeed.environmentId !== null) {
+      const target = nextHandoffSeed.environmentTarget;
+      setHandoffRecoveryTarget(getThreadHandoffRecoveryTarget(target));
+      if (target.type === "reuse") {
+        setEnvironmentSelectionValue(encodeReuseValue(target.environmentId));
+      } else if (target.type === "managed-worktree") {
         setEnvironmentSelectionValue(
-          encodeReuseValue(nextHandoffSeed.environmentId),
+          encodeHostValue(target.hostId, "worktree"),
         );
+      } else if (target.type === "personal") {
+        setEnvironmentSelectionValue(encodeHostValue(target.hostId, "local"));
       }
       seedHandoffPrompt(buildThreadHandoffPromptDraft(nextHandoffSeed));
     }
@@ -1308,7 +1354,7 @@ export function RootComposeView() {
 
   // The stored root-compose environment is global. Resolve it against the
   // selected project before the branch picker or create-thread request sees it.
-  const effectiveEnvironmentValue = useMemo(
+  const resolvedEnvironmentValue = useMemo(
     () =>
       resolveRootComposeEffectiveEnvironmentValue({
         environmentSelectionValue,
@@ -1329,6 +1375,18 @@ export function RootComposeView() {
       threadsQuery.isLoading,
     ],
   );
+  // A destroyed-environment handoff must stay pinned to its original machine.
+  // The ordinary resolver may fall back to the primary host when a source is
+  // unavailable; recovery instead fails closed and lets the user choose another
+  // destination explicitly.
+  const effectiveEnvironmentValue = handoffRecoveryTarget
+    ? encodeHostValue(
+        handoffRecoveryTarget.hostId,
+        handoffRecoveryTarget.type === "managed-worktree"
+          ? "worktree"
+          : "local",
+      )
+    : resolvedEnvironmentValue;
   const parsedEnvironment = useMemo(
     () => parseEnvironmentValue(effectiveEnvironmentValue),
     [effectiveEnvironmentValue],
@@ -1379,7 +1437,7 @@ export function RootComposeView() {
         ? "worktree"
         : "other";
   const {
-    selectedBranch,
+    selectedBranch: scopedSelectedBranch,
     onBranchChange: handleBranchChange,
     onClearBranch: handleClearBranch,
     onCreateBranch: handleCreateBranch,
@@ -1388,6 +1446,10 @@ export function RootComposeView() {
     environmentValue: effectiveEnvironmentValue,
     projectId,
   });
+  const selectedBranch: RootComposeSelectedBranch | null =
+    handoffRecoveryTarget?.type === "managed-worktree"
+      ? { name: handoffRecoveryTarget.baseBranch, isNew: false }
+      : scopedSelectedBranch;
   const canChangeBranchSelection =
     projectId !== undefined && effectiveEnvironmentValue !== "";
   const selectedBranchName = selectedBranch?.name ?? "";
@@ -1413,8 +1475,39 @@ export function RootComposeView() {
   const managedWorktreeUnavailable =
     selectedEnvironmentRequestsManagedWorktree &&
     projectSourceWorktreeUnavailable;
+  const handoffRecoveryPending =
+    handoffRecoveryTarget !== null &&
+    (hostsQuery.isLoading ||
+      (handoffRecoveryTarget.type === "managed-worktree" &&
+        activeBranchesQuery.isFetching));
+  const handoffRecoveryIssue = (() => {
+    if (handoffRecoveryTarget === null || hostsQuery.isLoading) return null;
+    if (!knownHostIds.has(handoffRecoveryTarget.hostId)) {
+      return "The original machine is no longer available. Choose another environment to continue.";
+    }
+    if (handoffRecoveryTarget.type !== "managed-worktree") return null;
+    if (
+      findLocalPathProjectSourceForHost(
+        projectSources,
+        handoffRecoveryTarget.hostId,
+      ) === undefined
+    ) {
+      return "This project is no longer set up on the original machine. Choose another environment to continue.";
+    }
+    if (activeBranchesQuery.isError) {
+      return "The original branch could not be checked. Choose another branch or environment to continue.";
+    }
+    if (
+      !activeBranchesQuery.isFetching &&
+      activeBranchesQuery.data?.selectedBranch?.kind === "missing"
+    ) {
+      return "The original branch is no longer available. Choose another branch or environment to continue.";
+    }
+    return null;
+  })();
   useEffect(() => {
     if (
+      handoffRecoveryTarget !== null ||
       !projectSourceWorktreeUnavailable ||
       parsedEnvironment?.type !== "host" ||
       parsedEnvironment.mode !== "worktree"
@@ -1425,6 +1518,7 @@ export function RootComposeView() {
       encodeHostValue(parsedEnvironment.hostId, "local"),
     );
   }, [
+    handoffRecoveryTarget,
     parsedEnvironment,
     projectSourceWorktreeUnavailable,
     setEnvironmentSelectionValue,
@@ -1521,6 +1615,7 @@ export function RootComposeView() {
         return;
       }
       snapshotPromptDraftBeforeOptionChange();
+      setHandoffRecoveryTarget(null);
       handleBranchChange(branch);
     },
     [
@@ -1538,6 +1633,7 @@ export function RootComposeView() {
       return;
     }
     snapshotPromptDraftBeforeOptionChange();
+    setHandoffRecoveryTarget(null);
     handleClearBranch();
   }, [
     canChangeBranchSelection,
@@ -1561,6 +1657,7 @@ export function RootComposeView() {
       return;
     }
     snapshotPromptDraftBeforeOptionChange();
+    setHandoffRecoveryTarget(null);
     handleCreateBranchFromSeed();
   }, [
     branchSelectionSeed,
@@ -1582,6 +1679,7 @@ export function RootComposeView() {
         return;
       }
       snapshotPromptDraftBeforeOptionChange();
+      setHandoffRecoveryTarget(null);
       handleCreateBranchFrom(branch);
     },
     [
@@ -1671,6 +1769,7 @@ export function RootComposeView() {
 
       snapshotPromptDraftBeforeOptionChange();
       setForkSeed(null);
+      setHandoffRecoveryTarget(null);
       setRootComposeProjectId(nextRootComposeProjectId);
     },
     [
@@ -1751,6 +1850,8 @@ export function RootComposeView() {
         projectDefaultsUnavailable ||
         isResolvingInitialProvider ||
         isCodexCliVersionBlocked ||
+        handoffRecoveryPending ||
+        handoffRecoveryIssue !== null ||
         managedWorktreeAvailabilityPending ||
         managedWorktreeUnavailable ||
         (forkSeed === null && !selectedEnvironment)
@@ -1798,6 +1899,7 @@ export function RootComposeView() {
         setLastCreatedThreadId(thread.id);
         clearReuseEnvironment();
         setForkSeed(null);
+        setHandoffRecoveryTarget(null);
         setRootComposeSectionId(null);
         if (submittedDraft !== null) {
           promptDraft.clearIfCurrentMatches(submittedDraft);
@@ -1819,6 +1921,8 @@ export function RootComposeView() {
       createThread,
       executionInputSources,
       forkSeed,
+      handoffRecoveryIssue,
+      handoffRecoveryPending,
       isCodexCliVersionBlocked,
       managedWorktreeAvailabilityPending,
       managedWorktreeUnavailable,
@@ -1855,6 +1959,8 @@ export function RootComposeView() {
     projectDefaultsUnavailable ||
     isResolvingInitialProvider ||
     isCopyingPromptAttachments ||
+    handoffRecoveryPending ||
+    handoffRecoveryIssue !== null ||
     promptInput.length === 0 ||
     (forkSeed === null && !selectedEnvironment) ||
     managedWorktreeAvailabilityPending ||
@@ -3420,6 +3526,9 @@ export function RootComposeView() {
   }, [forkSeed, handleCancelForkDraft]);
 
   const promptBanner = useMemo(() => {
+    if (handoffRecoveryIssue !== null) {
+      return <HandoffRecoveryIssueBanner message={handoffRecoveryIssue} />;
+    }
     if (!isCodexCliVersionBlocked || codexCliStatus === null) {
       return null;
     }
@@ -3440,6 +3549,7 @@ export function RootComposeView() {
     codexCliIssue,
     codexCliStatus,
     composeHostId,
+    handoffRecoveryIssue,
     handleUpdateCodexCli,
     isCodexCliVersionBlocked,
     queuedJobKeys,

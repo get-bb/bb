@@ -150,6 +150,82 @@ describe("ThreadPromptContextBanner", () => {
     },
   );
 
+  it("renders an enabled handoff action once the environment is destroyed", () => {
+    const markup = renderToStaticMarkup(
+      <ThreadPromptContextBanner
+        gitSection={null}
+        gitSectionPending={false}
+        archivedSection={null}
+        environmentGoneSection={{
+          status: "destroyed",
+          onHandoff: noop,
+        }}
+        parentThreadSection={null}
+        childThreadsSection={null}
+        pullRequestSection={null}
+        expandedSection={null}
+        onToggleSection={noop}
+      />,
+    );
+
+    expect(markup).toContain("Continue in new thread");
+    expect(markup).toContain("<button");
+    expect(markup).not.toContain('disabled=""');
+  });
+
+  it("shows a disabled handoff action while the environment is destroying", () => {
+    const markup = renderToStaticMarkup(
+      <ThreadPromptContextBanner
+        gitSection={null}
+        gitSectionPending={false}
+        archivedSection={null}
+        environmentGoneSection={{
+          status: "destroying",
+          onHandoff: noop,
+        }}
+        parentThreadSection={null}
+        childThreadsSection={null}
+        pullRequestSection={null}
+        expandedSection={null}
+        onToggleSection={noop}
+      />,
+    );
+
+    expect(markup).toContain("Cleaning up...");
+    expect(markup).toContain('disabled=""');
+    expect(markup).not.toContain("Continue in new thread");
+  });
+
+  it("prioritizes destroyed-environment handoff over unarchiving", () => {
+    const markup = renderToStaticMarkup(
+      <MemoryRouter>
+        <ThreadPromptContextBanner
+          gitSection={null}
+          gitSectionPending={false}
+          archivedSection={{
+            archivedAt: 1_731_456_000_000,
+            onUnarchive: noop,
+          }}
+          environmentGoneSection={{ status: "destroyed", onHandoff: noop }}
+          parentThreadSection={{
+            parentThreadTitle: "Parent thread",
+            href: "/threads/thr_parent",
+            relationship: "parent",
+          }}
+          childThreadsSection={null}
+          pullRequestSection={null}
+          expandedSection={null}
+          onToggleSection={noop}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(markup).toContain("Environment is unavailable");
+    expect(markup).toContain("Continue in new thread");
+    expect(markup).not.toContain("Thread is archived");
+    expect(markup).not.toContain(">Unarchive<");
+  });
+
   it("labels a standalone pull request without non-actionable attention text", () => {
     const markup = renderToStaticMarkup(
       <ThreadPromptContextBanner

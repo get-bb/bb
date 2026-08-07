@@ -72,6 +72,7 @@ function createRuntimeConfig(): ServerRuntimeConfig {
     inheritedSkillsRootPaths: [],
     inferenceModel: "openai/gpt-4o-mini",
     isDevelopment: false,
+    managedEnvironmentRetireGraceMs: 10_000,
     openAiApiKey: "ambient-openai-key",
     serverPort: 38886,
     sharedSkillRoots: { user: [], project: [] },

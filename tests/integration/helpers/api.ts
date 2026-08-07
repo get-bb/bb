@@ -61,7 +61,13 @@ export interface CreateHostThreadOptions {
   providerId?: string;
   title?: string;
   workspace:
-    | { type: "managed-worktree" }
+    | {
+        type: "managed-worktree";
+        baseBranch?: Extract<
+          WorkspaceArgs,
+          { type: "managed-worktree" }
+        >["baseBranch"];
+      }
     | { path: string | null; type: "unmanaged" };
 }
 
@@ -135,7 +141,10 @@ function toWorkspaceArgs(
   if (workspace.type === "unmanaged") {
     return workspace;
   }
-  return { ...workspace, baseBranch: { kind: "default" } };
+  return {
+    ...workspace,
+    baseBranch: workspace.baseBranch ?? { kind: "default" },
+  };
 }
 
 export function requireEnvironmentMergeBaseBranch(

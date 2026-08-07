@@ -237,6 +237,11 @@ async function startIntegrationServer(
     threadStorageRootPath,
     transcriptionModel: "test/mock-transcription",
     isDevelopment: false,
+    // The integration harness runs no periodic sweep and has no time control, so
+    // the archive grace window is disabled here: archiving the last live thread
+    // tears down its workspace immediately, as these tests expect. The grace
+    // window itself is covered by the server-level cleanup tests.
+    managedEnvironmentRetireGraceMs: 0,
   };
   const terminalSessions = new TerminalSessionLifecycle({
     attachTimeoutMs: 50,

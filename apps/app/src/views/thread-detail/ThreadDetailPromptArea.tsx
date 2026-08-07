@@ -84,7 +84,10 @@ import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import { promptHistoryEntriesToDrafts } from "@/lib/prompt-history";
 import { getProjectComposeRoutePath } from "@/lib/route-paths";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
-import { buildThreadHandoffLocationState } from "@/lib/thread-handoff-request";
+import {
+  buildThreadHandoffLocationState,
+  type ThreadHandoffEnvironmentTarget,
+} from "@/lib/thread-handoff-request";
 import { appToast } from "@/components/ui/app-toast";
 import {
   FollowUpPromptBox,
@@ -122,6 +125,7 @@ interface ThreadDetailPromptAreaProps {
     EnvironmentStatus,
     "destroying" | "destroyed"
   > | null;
+  environmentGoneHandoffTarget: ThreadHandoffEnvironmentTarget | null;
   environmentIcon?: IconName;
   environmentLabel?: string;
   onCreateNewThreadInWorktree?: () => void;
@@ -195,6 +199,7 @@ export function ThreadDetailPromptArea({
   environmentCheckout,
   environmentCompactLabel,
   environmentGoneStatus,
+  environmentGoneHandoffTarget,
   environmentIcon,
   environmentLabel,
   onCreateNewThreadInWorktree,
@@ -819,19 +824,31 @@ export function ThreadDetailPromptArea({
     title: thread.title,
     titleFallback: thread.titleFallback,
   });
+  const handoffEnvironmentTarget =
+    environmentGoneStatus !== null
+      ? environmentGoneHandoffTarget
+      : thread.environmentId !== null
+        ? ({
+            type: "reuse",
+            environmentId: thread.environmentId,
+          } satisfies ThreadHandoffEnvironmentTarget)
+        : ({
+            type: "project-default",
+          } satisfies ThreadHandoffEnvironmentTarget);
   const handleHandoffToNewThread = useCallback(() => {
+    if (handoffEnvironmentTarget === null) return;
     navigate(getProjectComposeRoutePath(thread.projectId), {
       state: buildThreadHandoffLocationState({
-        environmentId: thread.environmentId,
+        environmentTarget: handoffEnvironmentTarget,
         projectId: thread.projectId,
         sourceThreadId: thread.id,
         sourceThreadTitle: sourceThreadDisplayTitle,
       }),
     });
   }, [
+    handoffEnvironmentTarget,
     navigate,
     sourceThreadDisplayTitle,
-    thread.environmentId,
     thread.id,
     thread.projectId,
   ]);
@@ -1213,7 +1230,12 @@ export function ThreadDetailPromptArea({
           environmentGoneSection={
             environmentGoneStatus === null
               ? null
-              : { status: environmentGoneStatus }
+              : {
+                  status: environmentGoneStatus,
+                  ...(environmentGoneHandoffTarget
+                    ? { onHandoff: handleHandoffToNewThread }
+                    : {}),
+                }
           }
           parentThreadSection={parentThreadSection}
           childThreadsSection={childThreadsSection}
@@ -1277,6 +1299,8 @@ export function ThreadDetailPromptArea({
       handleSetQueuedMessageGroupBoundary,
       handleToggleBannerSection,
       handleUnarchiveCurrentThread,
+      handleHandoffToNewThread,
+      environmentGoneHandoffTarget,
       environmentGoneStatus,
       isFollowUpSubmitting,
       isUnarchiveCurrentThreadPending,

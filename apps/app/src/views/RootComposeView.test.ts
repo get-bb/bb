@@ -646,7 +646,10 @@ describe("hasSingleUseRootComposeTargetState", () => {
     expect(
       hasSingleUseRootComposeTargetState({
         [THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY]: {
-          environmentId: "env_source",
+          environmentTarget: {
+            type: "reuse",
+            environmentId: "env_source",
+          },
           projectId: "proj_source",
           sourceThreadId: "thr_source",
           sourceThreadTitle: "Source thread",

@@ -496,7 +496,7 @@ const archivedContextBannerElement: ReactNode = (
 const environmentGoneContextBannerElement: ReactNode = (
   <ThreadPromptContextBanner
     archivedSection={null}
-    environmentGoneSection={{ status: "destroyed" }}
+    environmentGoneSection={{ status: "destroyed", onHandoff: noop }}
     gitSection={null}
     gitSectionPending={false}
     parentThreadSection={null}
