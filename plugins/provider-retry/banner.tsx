@@ -73,63 +73,63 @@ export function ProviderRetryBannerView({
   return (
     <section
       aria-label="Provider usage recovery"
-      className="flex flex-col gap-2 rounded-lg border border-warning/25 bg-warning/5 px-3 py-2 text-xs text-foreground"
+      className="grid grid-cols-[0.875rem_minmax(0,1fr)] items-start gap-x-2 rounded-lg border border-warning/25 bg-warning/5 px-3 py-2 text-xs text-foreground"
     >
-      <div className="flex items-start gap-2">
-        <Icon
-          name={view.phase === "releasing" ? "Spinner" : "Clock"}
-          className={`mt-0.5 size-3.5 shrink-0 text-warning-text ${
-            view.phase === "releasing" ? "animate-spin" : ""
-          }`}
-          aria-hidden
-        />
+      <Icon
+        name={view.phase === "releasing" ? "Spinner" : "Clock"}
+        className={`mt-0.5 size-3.5 text-warning-text ${
+          view.phase === "releasing" ? "animate-spin" : ""
+        }`}
+        aria-hidden
+      />
+      <div className="flex min-w-0 flex-col gap-2">
         <p className="min-w-0 flex-1 leading-5">{limitDescription(view)}</p>
-      </div>
-      {view.refreshError === null ? null : (
-        <p role="status" className="text-warning-text">
-          Refresh unavailable: {view.refreshError}
-        </p>
-      )}
-      {actionError === null ? null : (
-        <p role="alert" className="text-destructive-text">
-          {actionError}
-        </p>
-      )}
-      <div className="flex flex-wrap items-center gap-1">
-        {canRefresh ? (
+        {view.refreshError === null ? null : (
+          <p role="status" className="text-warning-text">
+            Refresh unavailable: {view.refreshError}
+          </p>
+        )}
+        {actionError === null ? null : (
+          <p role="alert" className="text-destructive-text">
+            {actionError}
+          </p>
+        )}
+        <div className="flex flex-wrap items-center gap-1">
+          {canRefresh ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-xs"
+              disabled={busy !== null || view.phase === "releasing"}
+              onClick={() => void onAction("refresh")}
+            >
+              {busy === "refresh" ? "Refreshing…" : "Refresh"}
+            </Button>
+          ) : null}
+          {canRetry ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7 px-2 text-xs"
+              disabled={busy !== null}
+              onClick={() => void onAction("now")}
+            >
+              {busy === "now" ? "Continuing…" : "Retry now"}
+            </Button>
+          ) : null}
           <Button
             type="button"
             variant="ghost"
             size="sm"
-            className="h-7 px-2 text-xs"
+            className="h-7 px-2 text-xs text-muted-foreground"
             disabled={busy !== null || view.phase === "releasing"}
-            onClick={() => void onAction("refresh")}
+            onClick={() => void onAction("cancel")}
           >
-            {busy === "refresh" ? "Refreshing…" : "Refresh"}
+            {busy === "cancel" ? "Cancelling…" : "Cancel"}
           </Button>
-        ) : null}
-        {canRetry ? (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="h-7 px-2 text-xs"
-            disabled={busy !== null}
-            onClick={() => void onAction("now")}
-          >
-            {busy === "now" ? "Continuing…" : "Retry now"}
-          </Button>
-        ) : null}
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="h-7 px-2 text-xs text-muted-foreground"
-          disabled={busy !== null || view.phase === "releasing"}
-          onClick={() => void onAction("cancel")}
-        >
-          {busy === "cancel" ? "Cancelling…" : "Cancel"}
-        </Button>
+        </div>
       </div>
     </section>
   );
