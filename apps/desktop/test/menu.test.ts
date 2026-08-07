@@ -52,6 +52,7 @@ function findServerSubmenu(
 
 describe("application menu", () => {
   it("closes a native panel when Electron omits its window", () => {
+    vi.mocked(Menu.sendActionToFirstResponder).mockClear();
     const closeWindowOrSideTab = vi.fn();
     const template = buildApplicationMenuTemplate(
       menuArgs(() => {}, { closeWindowOrSideTab }),
@@ -66,6 +67,22 @@ describe("application menu", () => {
       "performClose:",
     );
     expect(closeWindowOrSideTab).not.toHaveBeenCalled();
+  });
+
+  it("forwards an undefined window for detached DevTools", () => {
+    vi.mocked(Menu.sendActionToFirstResponder).mockClear();
+    const closeWindowOrSideTab = vi.fn();
+    const template = buildApplicationMenuTemplate(
+      menuArgs(() => {}, { closeWindowOrSideTab }),
+    );
+    const fileMenu = template.find((item) => item.label === "File");
+    const submenu = fileMenu?.submenu as MenuItemConstructorOptions[];
+    const closeWindow = submenu.find((item) => item.label === "Close Window");
+
+    closeWindow?.click?.({} as never, undefined, {} as never);
+
+    expect(closeWindowOrSideTab).toHaveBeenCalledWith(undefined);
+    expect(Menu.sendActionToFirstResponder).not.toHaveBeenCalled();
   });
 
   it("shows reload shortcuts without globally stealing browser commands", () => {
