@@ -45,6 +45,7 @@ interface AppCommandHandlerRegistration {
 interface AppCommandProviderValue {
   dispatch: (command: AppCommandId, target: EventTarget | null) => boolean;
   getShortcut: (command: AppCommandId) => AppShortcut | null;
+  handleKeyboardEvent: (event: KeyboardEvent) => boolean;
   registerContext: (
     key: AppCommandContextKey,
     source: symbol,
@@ -266,9 +267,16 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
     [isDesktop, keybindings],
   );
 
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || event.isComposing || event.repeat) return;
+  // Shared by the window listener below and by focused widgets that own their
+  // own key handling. A widget that consumes keys before they reach the window
+  // — the prompt editor's rich-text keymap is the one in the app — calls this
+  // first so an app chord still runs the app command instead of the widget's
+  // own binding for the same chord.
+  const handleKeyboardEvent = useCallback(
+    (event: KeyboardEvent): boolean => {
+      if (event.defaultPrevented || event.isComposing || event.repeat) {
+        return false;
+      }
       const bindings = keybindingsRef.current;
       let context: AppCommandContext | null = null;
       const isMac = isMacKeyboardPlatform(browserPlatform());
@@ -283,15 +291,23 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
         if (!matchesAppShortcut(event, binding.shortcut, isMac)) continue;
         context ??= currentContext(event.target);
         if (!matchesAppCommandContext(binding, context)) continue;
-        if (!dispatch(binding.command, event.target)) return;
+        if (!dispatch(binding.command, event.target)) return false;
         event.preventDefault();
         event.stopPropagation();
-        return;
+        return true;
       }
+      return false;
+    },
+    [currentContext, dispatch, isDesktop],
+  );
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      handleKeyboardEvent(event);
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [currentContext, dispatch, isDesktop]);
+  }, [handleKeyboardEvent]);
 
   useEffect(() => {
     const desktop = getBbDesktopInfo();
@@ -308,10 +324,17 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
     () => ({
       dispatch,
       getShortcut,
+      handleKeyboardEvent,
       registerContext,
       registerHandler,
     }),
-    [dispatch, getShortcut, registerContext, registerHandler],
+    [
+      dispatch,
+      getShortcut,
+      handleKeyboardEvent,
+      registerContext,
+      registerHandler,
+    ],
   );
 
   return (
@@ -366,6 +389,22 @@ export function useIndexedAppCommandHandlers(
       unregister.forEach((dispose) => dispose());
     };
   }, [commands, priority, registerHandler]);
+}
+
+/**
+ * Run app keybindings for a key event a focused widget received before the
+ * event reaches the window listener. Returns true when an app command ran, so
+ * the caller can stop its own handling. The event is then marked handled, and
+ * the window listener skips it.
+ */
+export function useAppCommandKeyDispatch(): (event: KeyboardEvent) => boolean {
+  const handleKeyboardEvent = useContext(
+    AppCommandContextValue,
+  )?.handleKeyboardEvent;
+  return useCallback(
+    (event: KeyboardEvent) => handleKeyboardEvent?.(event) ?? false,
+    [handleKeyboardEvent],
+  );
 }
 
 export function useAppCommandContext(

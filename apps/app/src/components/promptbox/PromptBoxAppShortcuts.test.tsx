@@ -1,0 +1,164 @@
+// @vitest-environment jsdom
+
+import { cleanup, render } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { defaultAppSettings, type AppShortcut } from "@bb/domain";
+import {
+  AppCommandProvider,
+  useAppCommandHandler,
+} from "@/components/commands/AppCommandProvider";
+import {
+  INERT_TYPEAHEAD_COMMAND_CONFIG,
+  PromptBoxInternal,
+} from "./PromptBoxInternal";
+
+const testState = vi.hoisted(() => ({
+  calls: [] as string[],
+  // The sidebar chord under test. Overridden per test to cover both a chord the
+  // editor ignores and a chord the editor's own keymap claims.
+  sidebarShortcut: {
+    key: "\\",
+    mod: true,
+    meta: false,
+    control: false,
+    alt: false,
+    shift: false,
+  } as AppShortcut,
+}));
+
+vi.mock("@/hooks/queries/system-queries", () => ({
+  useSystemConfig: () => ({
+    data: {
+      generalSettings: { ...defaultAppSettings },
+      keybindings: [
+        {
+          command: "sidebar.toggle" as const,
+          desktopOnly: false,
+          shortcut: testState.sidebarShortcut,
+          when: { all: ["mainSurface" as const], none: ["modalOpen" as const] },
+        },
+      ],
+    },
+  }),
+}));
+
+vi.mock("@/lib/bb-desktop", () => ({
+  getBbDesktopInfo: () => null,
+}));
+
+function SidebarToggleHandler() {
+  useAppCommandHandler("sidebar.toggle", () => {
+    testState.calls.push("sidebar.toggle");
+    return true;
+  });
+  return null;
+}
+
+function renderComposer() {
+  render(
+    <MemoryRouter>
+      <AppCommandProvider>
+        <SidebarToggleHandler />
+        <PromptBoxInternal
+          value=""
+          mentionRanges={[]}
+          onChange={vi.fn()}
+          onSubmit={vi.fn()}
+          mentionMenuPlacement="bottom"
+          typeahead={{
+            mention: {
+              suggestions: [],
+              isLoading: false,
+              isError: false,
+              onQueryChange: vi.fn(),
+            },
+            command: INERT_TYPEAHEAD_COMMAND_CONFIG,
+          }}
+        />
+      </AppCommandProvider>
+    </MemoryRouter>,
+  );
+  const editor = document.querySelector<HTMLElement>('[contenteditable="true"]');
+  if (editor === null) throw new Error("prompt editor did not render");
+  editor.focus();
+  return editor;
+}
+
+function pressInEditor(
+  editor: HTMLElement,
+  init: KeyboardEventInit,
+): KeyboardEvent {
+  const event = new KeyboardEvent("keydown", {
+    bubbles: true,
+    cancelable: true,
+    ...init,
+  });
+  editor.dispatchEvent(event);
+  return event;
+}
+
+afterEach(() => {
+  cleanup();
+  testState.calls.length = 0;
+  testState.sidebarShortcut = {
+    key: "\\",
+    mod: true,
+    meta: false,
+    control: false,
+    alt: false,
+    shift: false,
+  };
+});
+
+describe("prompt editor app shortcuts", () => {
+  it("runs the sidebar shortcut while the composer has focus", () => {
+    const editor = renderComposer();
+
+    const event = pressInEditor(editor, { ctrlKey: true, key: "\\" });
+
+    expect(testState.calls).toEqual(["sidebar.toggle"]);
+    expect(event.defaultPrevented).toBe(true);
+  });
+
+  it("runs a sidebar shortcut whose chord the editor keymap also claims", () => {
+    // Mod+Shift+B toggles a blockquote in the editor. The editor cancels the
+    // event, which used to leave the app command unreachable from the composer.
+    testState.sidebarShortcut = {
+      key: "b",
+      mod: true,
+      meta: false,
+      control: false,
+      alt: false,
+      shift: true,
+    };
+    const editor = renderComposer();
+
+    pressInEditor(editor, {
+      code: "KeyB",
+      ctrlKey: true,
+      key: "B",
+      shiftKey: true,
+    });
+
+    expect(testState.calls).toEqual(["sidebar.toggle"]);
+  });
+
+  it("releases composer focus on Escape", () => {
+    const editor = renderComposer();
+    expect(document.activeElement).toBe(editor);
+
+    pressInEditor(editor, { key: "Escape" });
+
+    expect(document.activeElement).not.toBe(editor);
+  });
+
+  it("keeps typed text in the composer", () => {
+    const editor = renderComposer();
+
+    const event = pressInEditor(editor, { code: "KeyB", key: "b" });
+
+    expect(testState.calls).toEqual([]);
+    expect(event.defaultPrevented).toBe(false);
+  });
+});
