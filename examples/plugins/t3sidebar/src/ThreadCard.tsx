@@ -7,7 +7,7 @@ import {
 import { Icon, type IconName } from "./components/Icon";
 import { cn } from "./lib/utils";
 import { RowContextMenu } from "./RowContextMenu";
-import { ProviderGlyph } from "./ProviderGlyph";
+import { ProviderGlyph, type ProviderGlyphInfo } from "./ProviderGlyph";
 import { STATUS_SLOT_CLASS, StatusOrTime } from "./StatusSlot";
 import { threadDisplayTitle } from "./inbox";
 import { resolveSnoozePresets } from "./lifecycle";
@@ -23,6 +23,7 @@ import { resolveSnoozePresets } from "./lifecycle";
  */
 export function ThreadCard({
   thread,
+  provider,
   projectName,
   isActive,
   canPark,
@@ -32,6 +33,7 @@ export function ThreadCard({
   now,
 }: {
   thread: PluginSidebarThread;
+  provider?: ProviderGlyphInfo;
   projectName: string | null;
   isActive: boolean;
   /** False while the thread is working or blocked on the user. */
@@ -168,7 +170,7 @@ export function ThreadCard({
               </a>
             ) : null}
             {/* Always drawn, so the line has a fixed right edge. */}
-            <ProviderGlyph providerId={thread.providerId} />
+            <ProviderGlyph providerId={thread.providerId} provider={provider} />
           </div>
         </div>
       </li>

@@ -63,12 +63,20 @@ const listProps = {
 function render(
   threads: PluginSidebarThread[],
   projects = [{ id: "proj_1", name: "bb", isPersonal: false }],
+  providers: Array<{
+    id: string;
+    displayName: string;
+    logoUrl: string | null;
+  }> = [],
 ) {
   return renderSlot(inbox, listProps, {
     sidebarThreads: { status: "ready", threads, projects },
     // The lifecycle store is the plugin's own backend; an empty one means
     // every thread is active, which is what these list tests are about.
-    rpc: { listLifecycle: () => ({ rows: [] }) },
+    rpc: {
+      listLifecycle: () => ({ rows: [] }),
+      listProviders: () => ({ providers }),
+    },
   });
 }
 
@@ -363,6 +371,20 @@ describe("row context menu", () => {
 });
 
 describe("card metadata", () => {
+  it("uses a configured provider logo", async () => {
+    render([thread({ id: "thr_p", providerId: "acp-amp" })], undefined, [
+      {
+        id: "acp-amp",
+        displayName: "Amp",
+        logoUrl: "/api/v1/system/providers/acp-amp/logo",
+      },
+    ]);
+    const glyph = await screen.findByRole("img", { name: "Amp" });
+    expect(glyph.querySelector("img")?.getAttribute("src")).toBe(
+      "/api/v1/system/providers/acp-amp/logo",
+    );
+  });
+
   it("always shows the provider glyph, even without a branch", async () => {
     render([thread({ id: "thr_p", providerId: "claude-code" })]);
     expect(await screen.findByLabelText("Claude Code")).toBeDefined();

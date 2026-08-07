@@ -1,22 +1,47 @@
+import { useState } from "react";
 import { cn } from "./lib/utils";
 import { TRAILING_GLYPH_BOX_CLASS } from "./StatusSlot";
+
+export interface ProviderGlyphInfo {
+  displayName: string;
+  logoUrl: string | null;
+}
 
 /**
  * The agent a thread runs on, drawn by this plugin.
  *
  * Always rendered, so the card's third line has a fixed right edge even when
- * a thread has no branch. `providerId` is a free-form id, so an unknown
- * provider gets a neutral dot rather than nothing.
+ * a thread has no branch. A configured provider logo takes precedence over
+ * the built-in glyphs. `providerId` is a free-form id, so an unknown provider
+ * without a logo gets a neutral dot rather than nothing.
  */
 export function ProviderGlyph({
   providerId,
+  provider,
   className,
 }: {
   providerId: string;
+  provider?: ProviderGlyphInfo;
   className?: string;
 }) {
+  const [failedLogoUrl, setFailedLogoUrl] = useState<string | null>(null);
   const shared = "size-3 text-muted-foreground/70";
   const box = cn(TRAILING_GLYPH_BOX_CLASS, className);
+  const logoUrl = provider?.logoUrl ?? null;
+  const displayName = provider?.displayName ?? providerId;
+
+  if (logoUrl !== null && logoUrl !== failedLogoUrl) {
+    return (
+      <span role="img" aria-label={displayName} className={box}>
+        <img
+          src={logoUrl}
+          alt=""
+          className="size-3 object-contain"
+          onError={() => setFailedLogoUrl(logoUrl)}
+        />
+      </span>
+    );
+  }
 
   if (providerId === "claude-code") {
     return (
@@ -52,7 +77,7 @@ export function ProviderGlyph({
   }
 
   return (
-    <span role="img" aria-label={providerId} className={box}>
+    <span role="img" aria-label={displayName} className={box}>
       <span className="size-2 rounded-full bg-muted-foreground/50" />
     </span>
   );

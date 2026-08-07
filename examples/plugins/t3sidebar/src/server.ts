@@ -33,6 +33,18 @@ interface LifecycleDbRow {
 const threadIdSchema = z.object({ threadId: z.string().trim().min(1) });
 
 export const t3sidebarRpcContract = defineRpcContract({
+  listProviders: {
+    input: z.object({}),
+    output: z.object({
+      providers: z.array(
+        z.object({
+          id: z.string(),
+          displayName: z.string(),
+          logoUrl: z.string().nullable(),
+        }),
+      ),
+    }),
+  },
   listLifecycle: {
     input: z.object({}),
     output: z.object({
@@ -102,6 +114,16 @@ export default function plugin(bb: BbPluginApi) {
   };
 
   bb.rpc.register(t3sidebarRpcContract, {
+    async listProviders() {
+      const providers = await bb.sdk.providers.list();
+      return {
+        providers: providers.map(({ id, displayName, logoUrl }) => ({
+          id,
+          displayName,
+          logoUrl,
+        })),
+      };
+    },
     async listLifecycle() {
       return { rows: readAll() };
     },

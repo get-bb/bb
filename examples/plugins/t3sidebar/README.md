@@ -30,7 +30,8 @@ Three shelves:
 - **Inbox** — three-line cards: project and one fixed-width status slot on the
   first line; title on the second; then branch (or the machine, when a thread
   has no worktree), activity counts, the pull-request number, and the agent
-  glyph. Pinned threads sit above.
+  glyph. Configured provider logos are used when available, with built-in
+  Codex/Claude glyphs and a neutral dot as fallbacks. Pinned threads sit above.
 
   One slot, one marker, one width, so the whole column lines up. The slot
   shows the status glyph while a thread has something to say, and the age

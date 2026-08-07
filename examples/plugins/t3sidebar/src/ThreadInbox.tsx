@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   experimental_useSidebarThreadActions as useSidebarThreadActions,
   experimental_useSidebarThreads as useSidebarThreads,
+  useRpc,
   type PluginSidebarThread,
   type PluginThreadListProps,
 } from "@bb/plugin-sdk/app";
@@ -15,7 +16,9 @@ import {
   SelectValue,
 } from "./components/Select";
 import { ThreadCard } from "./ThreadCard";
+import type { ProviderGlyphInfo } from "./ProviderGlyph";
 import { SlimRow } from "./SlimRow";
+import type { t3sidebarRpcContract } from "./server";
 import { useLifecycle } from "./useLifecycle";
 import { TRAILING_GLYPH_BOX_CLASS } from "./StatusSlot";
 import {
@@ -43,8 +46,36 @@ export function ThreadInbox({
 }: PluginThreadListProps) {
   const { status, threads, projects } = useSidebarThreads();
   const actions = useSidebarThreadActions();
+  const rpc = useRpc<typeof t3sidebarRpcContract>();
   const lifecycle = useLifecycle(threads);
+  const [providerInfoById, setProviderInfoById] = useState<
+    ReadonlyMap<string, ProviderGlyphInfo>
+  >(() => new Map());
   const [scope, setScope] = useState<string>(ALL_PROJECTS);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadProviderInfo = async () => {
+      try {
+        const result = await rpc.call("listProviders", {});
+        if (!cancelled) {
+          setProviderInfoById(
+            new Map(
+              result.providers.map((provider) => [provider.id, provider]),
+            ),
+          );
+        }
+      } catch {
+        // Provider metadata only improves the glyph. Keep the built-in and
+        // neutral fallbacks if the host cannot supply it.
+      }
+    };
+    void loadProviderInfo();
+    return () => {
+      cancelled = true;
+    };
+  }, [rpc]);
+
   // One clock for every card in a render, quantized to the minute so the
   // labels do not disagree and do not churn on unrelated re-renders.
   const [nowMinute, setNowMinute] = useState(() =>
@@ -159,6 +190,7 @@ export function ThreadInbox({
                   <ThreadCard
                     key={thread.id}
                     thread={thread}
+                    provider={providerInfoById.get(thread.providerId)}
                     projectName={projectNameById.get(thread.projectId) ?? null}
                     isActive={thread.id === activeThreadId}
                     canPark={lifecycle.canPark(thread)}
@@ -176,6 +208,7 @@ export function ThreadInbox({
                   <ThreadCard
                     key={thread.id}
                     thread={thread}
+                    provider={providerInfoById.get(thread.providerId)}
                     projectName={projectNameById.get(thread.projectId) ?? null}
                     isActive={thread.id === activeThreadId}
                     canPark={lifecycle.canPark(thread)}
