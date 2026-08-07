@@ -2,6 +2,7 @@
 
 import type {
   PendingInteraction,
+  PromptTextMention,
   ResolvedThreadExecutionOptions,
   ThreadQueuedMessage,
   ThreadTimelineActivePromptMode,
@@ -35,6 +36,7 @@ import { ThreadDetailPromptArea } from "./ThreadDetailPromptArea";
 const mocks = vi.hoisted(() => ({
   cancelThreadPlanMutate: vi.fn(),
   clearThreadGoalMutate: vi.fn(),
+  compactThreadMutateAsync: vi.fn(),
   createQueuedMessageMutateAsync: vi.fn(),
   defaultExecutionOptions: null as ResolvedThreadExecutionOptions | null,
   deleteQueuedMessageMutateAsync: vi.fn(),
@@ -45,7 +47,7 @@ const mocks = vi.hoisted(() => ({
     attachments: [],
     clearIfCurrentMatches: vi.fn(),
     getCurrent: vi.fn(),
-    mentions: [],
+    mentions: [] as PromptTextMention[],
     removeAttachment: vi.fn(),
     restoreIfEmpty: vi.fn(),
     setDraft: vi.fn(),
@@ -443,7 +445,7 @@ vi.mock("@/hooks/mutations/project-mutations", () => ({
 vi.mock("@/hooks/mutations/thread-runtime-mutations", () => ({
   useCompactThread: () => ({
     isPending: false,
-    mutateAsync: vi.fn(),
+    mutateAsync: mocks.compactThreadMutateAsync,
   }),
   useCancelThreadPlan: () => ({
     isPending: false,
@@ -692,8 +694,10 @@ function deferred<T>() {
 }
 
 beforeEach(() => {
+  mocks.compactThreadMutateAsync.mockReset().mockResolvedValue(undefined);
   mocks.defaultExecutionOptions = null;
   mocks.pluginComposerHost = null;
+  mocks.promptDraft.mentions = [];
   mocks.promptDraft.text = "";
   mocks.promptDraft.getCurrent.mockImplementation(() => ({
     attachments: mocks.promptDraft.attachments,
@@ -715,6 +719,42 @@ afterEach(() => {
 });
 
 describe("ThreadDetailPromptArea", () => {
+  it("keeps a failed compact command cleared", async () => {
+    mocks.compactThreadMutateAsync.mockRejectedValueOnce(
+      new Error("Provider rejected compact"),
+    );
+    mocks.promptDraft.text = "/compact";
+    mocks.promptDraft.mentions = [
+      {
+        start: 0,
+        end: 8,
+        resource: {
+          kind: "command",
+          trigger: "/",
+          name: "compact",
+          source: "command",
+          origin: "builtin",
+          label: "compact",
+          argumentHint: null,
+        },
+      },
+    ];
+
+    renderPromptArea();
+    fireEvent.click(screen.getByRole("button", { name: "Submit composer" }));
+
+    await waitFor(() => {
+      expect(mocks.toastError).toHaveBeenCalled();
+    });
+    expect(mocks.compactThreadMutateAsync).toHaveBeenCalledWith("thr_1");
+    expect(mocks.promptDraft.clearIfCurrentMatches).toHaveBeenCalledWith({
+      attachments: [],
+      mentions: mocks.promptDraft.mentions,
+      text: "/compact",
+    });
+    expect(mocks.promptDraft.restoreIfEmpty).not.toHaveBeenCalled();
+  });
+
   it("keeps the queued drawer adjacent to the bottom composer", () => {
     mocks.queuedMessages = [makeQueuedMessage()];
 

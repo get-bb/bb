@@ -655,7 +655,9 @@ function EmbeddedThreadChatWithComposer({
           return;
         }
         onDraftSubmitError?.();
-        promptDraft.restoreIfEmpty(submittedDraft);
+        if (!isCompactCommand) {
+          promptDraft.restoreIfEmpty(submittedDraft);
+        }
         appToast.error(
           getMutationErrorMessage({
             error,
@@ -742,7 +744,9 @@ function EmbeddedThreadChatWithComposer({
         if (!isMountedRef.current) {
           return;
         }
-        promptDraft.restoreIfEmpty(submittedDraft);
+        if (!isCompactCommand) {
+          promptDraft.restoreIfEmpty(submittedDraft);
+        }
         appToast.error(
           getMutationErrorMessage({
             error,
