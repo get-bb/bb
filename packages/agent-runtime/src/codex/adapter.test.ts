@@ -19,6 +19,7 @@ import type { PromptInput, PromptMentionCommandOrigin } from "@bb/domain";
 
 import { createCodexProviderAdapter } from "./adapter.js";
 import type { CodexEvent } from "./adapter.js";
+import type { HookRunSummary } from "./generated/codex-app-server/schema/v2/HookRunSummary.js";
 import type { ThreadItem } from "./generated/codex-app-server/schema/v2/ThreadItem.js";
 import type { Turn } from "./generated/codex-app-server/schema/v2/Turn.js";
 import { ProviderRequestDecodeError } from "../runtime-json-rpc.js";
@@ -2666,6 +2667,50 @@ describe("codex provider adapter", () => {
         scope: turnScope("turn-1"),
       }),
     );
+  });
+
+  it("translateEvent ignores Codex hook lifecycle notifications", () => {
+    const adapter = createCodexProviderAdapter();
+    const run = {
+      id: "session-start:0:/tmp/hooks.json",
+      eventName: "sessionStart",
+      handlerType: "command",
+      executionMode: "sync",
+      scope: "thread",
+      sourcePath: "/tmp/hooks.json",
+      source: "user",
+      displayOrder: 0n,
+      status: "running",
+      statusMessage: null,
+      startedAt: 1n,
+      completedAt: null,
+      durationMs: null,
+      entries: [],
+    } satisfies HookRunSummary;
+
+    expect(
+      adapter.translateEvent(
+        codexEvent("hook/started", {
+          threadId: "t1",
+          turnId: "turn-1",
+          run,
+        }),
+      ),
+    ).toEqual([]);
+    expect(
+      adapter.translateEvent(
+        codexEvent("hook/completed", {
+          threadId: "t1",
+          turnId: "turn-1",
+          run: {
+            ...run,
+            status: "completed",
+            completedAt: 2n,
+            durationMs: 1n,
+          },
+        }),
+      ),
+    ).toEqual([]);
   });
 
   it("translateEvent ignores Codex turn moderation metadata", () => {
