@@ -51,7 +51,6 @@ export type {
 } from "./git.js";
 
 export {
-  getPullRequestForBranch,
   getPullRequestForCurrentBranch,
   parseGitHostPullRequest,
   type GitHostPullRequestLookup,

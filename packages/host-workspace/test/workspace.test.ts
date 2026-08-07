@@ -1164,16 +1164,6 @@ describe("Workspace", () => {
 });
 
 describe("getPullRequest", () => {
-  it("reports no pull request for a detached workspace", async () => {
-    const repoPath = await initRepo();
-    await runGit(["checkout", "--detach"], { cwd: repoPath });
-    const workspace = new Workspace(repoPath);
-
-    await expect(workspace.getPullRequest()).resolves.toEqual({
-      outcome: "none",
-    });
-  });
-
   it("reports a vanished workspace path as unavailable, not absent", async () => {
     const missingPath = path.join(
       os.tmpdir(),

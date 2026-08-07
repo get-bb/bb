@@ -44,11 +44,6 @@ const GH_PR_VIEW_JSON_FIELDS = [
   "mergeable",
 ].join(",");
 
-interface GetPullRequestForBranchArgs {
-  cwd: string;
-  branch: string;
-}
-
 interface GetPullRequestForCurrentBranchArgs {
   cwd: string;
 }
@@ -59,12 +54,6 @@ export type GitHostPullRequestAction =
   | { operation: "ready" }
   | { operation: "draft" }
   | { operation: "merge"; method: GitHostPullRequestMergeMethod };
-
-interface RunPullRequestActionForBranchArgs {
-  cwd: string;
-  branch: string;
-  action: GitHostPullRequestAction;
-}
 
 interface RunPullRequestActionForCurrentBranchArgs {
   cwd: string;
@@ -298,26 +287,15 @@ function getMergeMethodFlag(method: GitHostPullRequestMergeMethod): string {
 
 function buildPullRequestActionArgs(
   action: GitHostPullRequestAction,
-  branch: string | null,
 ): string[] {
-  let args: string[];
   switch (action.operation) {
     case "ready":
-      args = ["pr", "ready"];
-      break;
+      return ["pr", "ready"];
     case "draft":
-      args = ["pr", "ready", "--undo"];
-      break;
+      return ["pr", "ready", "--undo"];
     case "merge":
-      args = ["pr", "merge", getMergeMethodFlag(action.method)];
-      break;
+      return ["pr", "merge", getMergeMethodFlag(action.method)];
   }
-  return branch === null ? args : [...args, "--", branch];
-}
-
-function buildPullRequestViewArgs(branch: string | null): string[] {
-  const args = ["pr", "view", "--json", GH_PR_VIEW_JSON_FIELDS];
-  return branch === null ? args : [...args, "--", branch];
 }
 
 function getExecFileException(error: unknown): ExecFileException | undefined {
@@ -421,8 +399,10 @@ function classifyPullRequestViewError(
 }
 
 /**
- * Detect the open/most-relevant GitHub pull request either for an explicit
- * branch or for the branch checked out in `cwd`.
+ * Detect the open/most-relevant GitHub pull request for the branch checked out
+ * in `cwd` by shelling out to the host `gh` CLI. The command deliberately has
+ * no positional branch target: `gh` can then follow the branch's configured
+ * upstream remote, which is required when the PR head belongs to a fork.
  *
  * Never throws: a branch with no PR is `outcome: "none"`, while every lookup
  * failure (`gh` not installed, not authenticated, no GitHub remote, a timeout,
@@ -431,15 +411,14 @@ function classifyPullRequestViewError(
  * `PATH`/`HOME`/token vars so `gh` auth resolves the same way it would in the
  * user's shell.
  */
-async function getPullRequest(args: {
-  cwd: string;
-  branch: string | null;
-}): Promise<GitHostPullRequestLookup> {
+export async function getPullRequestForCurrentBranch(
+  args: GetPullRequestForCurrentBranchArgs,
+): Promise<GitHostPullRequestLookup> {
   let stdout: string;
   try {
     ({ stdout } = await execFileAsync(
       "gh",
-      buildPullRequestViewArgs(args.branch),
+      ["pr", "view", "--json", GH_PR_VIEW_JSON_FIELDS],
       {
         cwd: args.cwd,
         encoding: "utf8",
@@ -462,39 +441,15 @@ async function getPullRequest(args: {
 }
 
 /**
- * Detect the open/most-relevant GitHub pull request for an explicit branch.
- * This preserves the original low-level helper contract for callers that need
- * to target a branch other than the one checked out in `cwd`.
+ * Mutate the GitHub pull request for the branch checked out in `cwd`. Omitting
+ * a positional target lets `gh` honor a fork branch's configured upstream.
+ * Unlike pull-request detection, mutation failures are meaningful and are
+ * surfaced to the caller.
  */
-export async function getPullRequestForBranch(
-  args: GetPullRequestForBranchArgs,
-): Promise<GitHostPullRequestLookup> {
-  return getPullRequest({ cwd: args.cwd, branch: args.branch });
-}
-
-/**
- * Detect the open/most-relevant GitHub pull request for the branch checked out
- * in `cwd`. Omitting a positional branch target lets `gh` follow the branch's
- * configured upstream remote, which is required when the PR head belongs to a
- * fork.
- */
-export async function getPullRequestForCurrentBranch(
-  args: GetPullRequestForCurrentBranchArgs,
-): Promise<GitHostPullRequestLookup> {
-  return getPullRequest({ cwd: args.cwd, branch: null });
-}
-
-/**
- * Mutate the GitHub pull request either for an explicit branch or for the
- * branch checked out in `cwd`. Unlike pull-request detection, mutation
- * failures are meaningful and are surfaced to the caller.
- */
-async function runPullRequestAction(args: {
-  cwd: string;
-  branch: string | null;
-  action: GitHostPullRequestAction;
-}): Promise<void> {
-  const ghArgs = buildPullRequestActionArgs(args.action, args.branch);
+export async function runPullRequestActionForCurrentBranch(
+  args: RunPullRequestActionForCurrentBranchArgs,
+): Promise<void> {
+  const ghArgs = buildPullRequestActionArgs(args.action);
   try {
     await execFileAsync("gh", ghArgs, {
       cwd: args.cwd,
@@ -506,29 +461,4 @@ async function runPullRequestAction(args: {
   } catch (error) {
     throw createGitHostCommandFailedError(ghArgs, error);
   }
-}
-
-/** Preserve the explicit-branch action helper's original command semantics. */
-export async function runPullRequestActionForBranch(
-  args: RunPullRequestActionForBranchArgs,
-): Promise<void> {
-  return runPullRequestAction({
-    cwd: args.cwd,
-    branch: args.branch,
-    action: args.action,
-  });
-}
-
-/**
- * Mutate the pull request for the branch checked out in `cwd`. Omitting a
- * positional target lets `gh` honor a fork branch's configured upstream.
- */
-export async function runPullRequestActionForCurrentBranch(
-  args: RunPullRequestActionForCurrentBranchArgs,
-): Promise<void> {
-  return runPullRequestAction({
-    cwd: args.cwd,
-    branch: null,
-    action: args.action,
-  });
 }
