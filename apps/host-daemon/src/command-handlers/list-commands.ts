@@ -115,6 +115,7 @@ interface ResolvePluginSkillRootShapeArgs {
 const CODEX_PLUGIN_DIR_NAME = ".codex-plugin";
 const CODEX_PLUGIN_MANIFEST_FILE_NAME = "plugin.json";
 const CODEX_CONFIG_FILE_NAME = "config.toml";
+const AGENTS_DIR_NAME = ".agents";
 const CLAUDE_DIR_NAME = ".claude";
 const CLAUDE_PLUGIN_DIR_NAME = ".claude-plugin";
 const CLAUDE_PLUGIN_MANIFEST_FILE_NAME = "plugin.json";
@@ -1032,6 +1033,9 @@ export async function resolveProviderCommandScanRoots(
 ): Promise<CommandScanRoot[]> {
   const roots = resolveCommandScanRoots(resolution);
   if (resolution.providerId === "codex") {
+    if (resolution.cwd !== null) {
+      roots.push(...(await resolveCodexProjectSkillScanRoots(resolution.cwd)));
+    }
     roots.push(
       ...(await resolveCodexPluginCommandScanRoots({
         codexHome: resolution.codexHome,
@@ -1049,6 +1053,47 @@ export async function resolveProviderCommandScanRoots(
     })),
   );
   return roots;
+}
+
+async function hasProjectRootMarker(directoryPath: string): Promise<boolean> {
+  try {
+    await fs.lstat(path.join(directoryPath, ".git"));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Match Codex's default repository skill search. The nearest ancestor with a
+ * `.git` entry is the repository root. Without that marker, Codex searches the
+ * cwd only. Roots run from the repository root to the cwd.
+ */
+async function resolveCodexProjectSkillScanRoots(
+  cwd: string,
+): Promise<CommandScanRoot[]> {
+  const directories: string[] = [];
+  let directoryPath = cwd;
+  while (true) {
+    directories.push(directoryPath);
+    if (await hasProjectRootMarker(directoryPath)) {
+      break;
+    }
+    const parentPath = path.dirname(directoryPath);
+    if (parentPath === directoryPath) {
+      directories.splice(1);
+      break;
+    }
+    directoryPath = parentPath;
+  }
+
+  return directories.reverse().map((projectDirectoryPath) => ({
+    rootPath: path.join(projectDirectoryPath, AGENTS_DIR_NAME, "skills"),
+    shape: "skill",
+    namePrefix: "",
+    source: "skill",
+    origin: "project",
+  }));
 }
 
 /**

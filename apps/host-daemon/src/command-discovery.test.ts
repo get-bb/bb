@@ -870,6 +870,75 @@ describe("discoverProviderCommands (codex)", () => {
     });
   });
 
+  it("discovers .agents skills from the repository root through the cwd", async () => {
+    const fixture = await makeWorkspaceFixture();
+    const serviceRoot = path.join(fixture.cwd, "services");
+    const cwd = path.join(serviceRoot, "api");
+    await mkdir(path.join(fixture.cwd, ".git"), { recursive: true });
+    await mkdir(cwd, { recursive: true });
+    await writeFileEnsuringDir(
+      path.join(
+        fixture.cwd,
+        ".agents",
+        "skills",
+        "repository-skill",
+        "SKILL.md",
+      ),
+      "---\nname: repository-skill\ndescription: Repository skill\n---\n",
+    );
+    await writeFileEnsuringDir(
+      path.join(serviceRoot, ".agents", "skills", "service-skill", "SKILL.md"),
+      "---\nname: service-skill\ndescription: Service skill\n---\n",
+    );
+    await writeFileEnsuringDir(
+      path.join(cwd, ".agents", "skills", "cwd-skill", "SKILL.md"),
+      "---\nname: cwd-skill\ndescription: Cwd skill\n---\n",
+    );
+
+    const roots = await resolveProviderCommandScanRoots({
+      providerId: "codex",
+      cwd,
+      homeDir: fixture.homeDir,
+      codexHome: fixture.codexHome,
+    });
+    const agentsRootPaths = roots
+      .filter(
+        (root) =>
+          root.shape === "skill" &&
+          root.rootPath.includes(`${path.sep}.agents${path.sep}`),
+      )
+      .map((root) => ("rootPath" in root ? root.rootPath : null));
+    expect(agentsRootPaths).toEqual([
+      path.join(fixture.cwd, ".agents", "skills"),
+      path.join(serviceRoot, ".agents", "skills"),
+      path.join(cwd, ".agents", "skills"),
+    ]);
+
+    const commands = await discoverCodex(fixture, cwd);
+    expect(byName(commands, "repository-skill")?.origin).toBe("project");
+    expect(byName(commands, "service-skill")?.origin).toBe("project");
+    expect(byName(commands, "cwd-skill")?.origin).toBe("project");
+  });
+
+  it("does not search .agents skills above a cwd without a repository marker", async () => {
+    const fixture = await makeWorkspaceFixture();
+    const cwd = path.join(fixture.cwd, "standalone");
+    await mkdir(cwd, { recursive: true });
+    await writeFileEnsuringDir(
+      path.join(fixture.cwd, ".agents", "skills", "parent-skill", "SKILL.md"),
+      "---\nname: parent-skill\ndescription: Parent skill\n---\n",
+    );
+    await writeFileEnsuringDir(
+      path.join(cwd, ".agents", "skills", "cwd-skill", "SKILL.md"),
+      "---\nname: cwd-skill\ndescription: Cwd skill\n---\n",
+    );
+
+    const commands = await discoverCodex(fixture, cwd);
+
+    expect(byName(commands, "parent-skill")).toBeUndefined();
+    expect(byName(commands, "cwd-skill")?.origin).toBe("project");
+  });
+
   it("follows user-origin symlinked skill directories and skill files", async () => {
     const fixture = await makeWorkspaceFixture();
     const skillsRoot = path.join(fixture.codexHome, "skills");
@@ -1054,6 +1123,10 @@ describe("discoverProviderCommands (codex)", () => {
     await writeFileEnsuringDir(
       path.join(fixture.cwd, ".codex", "skills", "proj", "SKILL.md"),
       "---\nname: proj\ndescription: project\n---\n",
+    );
+    await writeFileEnsuringDir(
+      path.join(fixture.cwd, ".agents", "skills", "agents", "SKILL.md"),
+      "---\nname: agents\ndescription: agents project\n---\n",
     );
     await writeFileEnsuringDir(
       path.join(fixture.codexHome, "skills", "home", "SKILL.md"),

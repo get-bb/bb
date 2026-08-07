@@ -96,7 +96,11 @@ function classifySkillRoot(
   if (
     resolution.cwd !== null &&
     (rootPath === path.join(resolution.cwd, ".claude", "skills") ||
-      rootPath === path.join(resolution.cwd, ".codex", "skills"))
+      rootPath === path.join(resolution.cwd, ".codex", "skills") ||
+      (resolution.providerId === "codex" &&
+        root.origin === "project" &&
+        path.basename(rootPath) === "skills" &&
+        path.basename(path.dirname(rootPath)) === ".agents"))
   ) {
     return {
       identitySeed: `${resolution.providerId}:provider-project`,
