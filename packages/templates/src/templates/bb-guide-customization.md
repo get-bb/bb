@@ -35,6 +35,17 @@ appearance value forward explicitly.
 
 Add --json to any theme command for machine-readable output.
 
+Packaged launcher settings
+
+`bb-app config` and `bb-app env` reload runtime settings in a running server,
+but the CLI identifies server and launcher settings that are startup-only,
+including binding/ports, data and dev-app settings, telemetry, inherited skill
+roots, and `BB_FF_*` flags. `BB_LOG_LEVEL` is also startup-only. Use
+`bb-app config`, not `bb-app env`, to change `BB_APP_URL`, `BB_INFERENCE`, or
+`BB_TRANSCRIPTION` live. After a startup-only change, run `bb-app stop && bb-app
+start` or restart the desktop app. Until then, changing or unsetting
+`BB_SERVER_BIND_HOST` does not close a previous `0.0.0.0` listener.
+
 Server-backed General settings
 
 Settings → General includes app-wide preferences stored server-side so every

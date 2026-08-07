@@ -56,6 +56,15 @@ message agents, or inspect projects, providers, and environments.
 - `BB_TRANSCRIPTION` selects the voice transcription model. It defaults to
   `codex/gpt-transcribe`; set an override with
   `bb-app config set BB_TRANSCRIPTION <provider/model>`.
+- `bb-app config` and `bb-app env` reload runtime settings in a running server,
+  but the CLI identifies server and launcher settings that are startup-only,
+  including binding/ports, data and dev-app settings, telemetry, inherited skill
+  roots, and `BB_FF_*` flags. `BB_LOG_LEVEL` is also startup-only. Use
+  `bb-app config`, not `bb-app env`, to change `BB_APP_URL`, `BB_INFERENCE`, or
+  `BB_TRANSCRIPTION` live. After a startup-only change, run
+  `bb-app stop && bb-app start` or restart the desktop app. Until then, a server
+  previously bound to `0.0.0.0` remains exposed even if
+  `BB_SERVER_BIND_HOST` was changed or unset.
 - Settings → General holds server-backed app-wide preferences, such as the
   macOS-only "Caffeinate" toggle. For details, read
   `references/app-settings.md` (in this skill's directory).

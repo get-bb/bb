@@ -95,6 +95,28 @@ type ManagedConfigKey = "BB_SERVER_URL" | "serverUrl" | ManagedConfigValueKey;
 
 const MANAGED_CONFIG_KEYS = BB_APP_MANAGED_CONFIG_KEYS;
 const MANAGED_CONFIG_KEY_VALUES = new Set<string>(MANAGED_CONFIG_KEYS);
+const STARTUP_ONLY_MANAGED_CONFIG_KEYS = new Set<string>(["BB_LOG_LEVEL"]);
+// Keep this in sync with loadServerConfig and direct process.env reads made
+// while assembling the server. BB_APP_VERSION and NODE_ENV are omitted because
+// the launcher owns and overwrites them rather than applying env.json values.
+const STARTUP_ONLY_MANAGED_ENV_KEYS = new Set<string>([
+  "BB_APP_SURFACE",
+  "BB_APP_URL",
+  "BB_DATA_DIR",
+  "BB_DEV_APP_HOST",
+  "BB_DEV_APP_PORT",
+  "BB_EXTERNAL_URL",
+  "BB_HOST_DAEMON_PORT",
+  "BB_INFERENCE",
+  "BB_INHERITED_SKILLS_ROOTS",
+  "BB_LOG_LEVEL",
+  "BB_MANAGED_DEV_BUILTIN_PLUGIN_HOT_RELOAD",
+  "BB_POSTHOG_API_KEY",
+  "BB_SERVER_BIND_HOST",
+  "BB_SERVER_PORT",
+  "BB_TELEMETRY",
+  "BB_TRANSCRIPTION",
+]);
 const PORTABLE_ENV_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/u;
 const SECRET_SHAPED_ENV_NAME_PATTERN =
   /(?:^|_)(?:API_KEY|TOKEN|SECRET|PASSWORD)$/u;
@@ -1404,6 +1426,10 @@ Usage:
 Supported keys:
   ${supportedConfigKeysText()}
 
+Startup-only:
+  BB_LOG_LEVEL changes require a full bb-app restart with
+  bb-app stop && bb-app start, or a desktop app restart.
+
 Config file:
   ${formatBbAppConfigPath(dataDir)}
 `);
@@ -1417,6 +1443,17 @@ Usage:
   bb-app env list
   bb-app env set <key> <value>
   bb-app env unset <key>
+
+Startup-only server and launcher keys:
+  BB_APP_SURFACE, BB_APP_URL, BB_DATA_DIR, BB_DEV_APP_HOST, BB_DEV_APP_PORT,
+  BB_EXTERNAL_URL, BB_HOST_DAEMON_PORT, BB_INFERENCE,
+  BB_INHERITED_SKILLS_ROOTS, BB_LOG_LEVEL,
+  BB_MANAGED_DEV_BUILTIN_PLUGIN_HOT_RELOAD, BB_POSTHOG_API_KEY,
+  BB_SERVER_BIND_HOST, BB_SERVER_PORT, BB_TELEMETRY, BB_TRANSCRIPTION,
+  and BB_FF_* feature flags.
+  Changes require a full bb-app restart with bb-app stop && bb-app start,
+  or a desktop app restart. BB_APP_URL, BB_INFERENCE, and BB_TRANSCRIPTION
+  can instead be changed live with bb-app config.
 
 Env file:
   ${formatBbAppEnvPath(dataDir)}
@@ -1675,15 +1712,63 @@ async function refreshRunningServerConfig(
   throw new Error(message);
 }
 
+function isStartupOnlyManagedKey(
+  source: "config" | "env",
+  key: string,
+): boolean {
+  if (source === "config") {
+    return STARTUP_ONLY_MANAGED_CONFIG_KEYS.has(key);
+  }
+  return STARTUP_ONLY_MANAGED_ENV_KEYS.has(key) || key.startsWith("BB_FF_");
+}
+
+function printStartupOnlyChangeNotice(key: string): void {
+  process.stdout.write(
+    `${key} is startup-only. The running process keeps its current value; a full bb-app restart is required to apply this change. Run \`bb-app stop && bb-app start\`, or restart the desktop app.\n`,
+  );
+  if (key === "BB_SERVER_BIND_HOST") {
+    process.stdout.write(
+      "Until then, the server keeps its previous bind address. If it was bound to 0.0.0.0, that network exposure remains open.\n",
+    );
+  }
+}
+
+async function readConfiguredStartupOnlyManagedKeys(
+  dataDir: string,
+): Promise<string[]> {
+  const [config, envFile] = await Promise.all([
+    readManagedConfig({ dataDir }),
+    readManagedEnvFile({ dataDir }),
+  ]);
+  const configuredKeys = new Set<string>();
+  for (const key of Object.keys(config.config ?? {})) {
+    if (isStartupOnlyManagedKey("config", key)) {
+      configuredKeys.add(key);
+    }
+  }
+  for (const key of Object.keys(envFile.env ?? {})) {
+    if (isStartupOnlyManagedKey("env", key)) {
+      configuredKeys.add(key);
+    }
+  }
+  return [...configuredKeys].sort();
+}
+
 async function refreshRunningServerConfigAfterWrite(
   serverUrl: string,
+  source: "config" | "env",
+  key: string,
 ): Promise<void> {
   const refreshed = await refreshRunningServerConfig({
     required: false,
     serverUrl,
   });
   if (refreshed) {
-    process.stdout.write("Reloaded running bb server config.\n");
+    if (isStartupOnlyManagedKey(source, key)) {
+      printStartupOnlyChangeNotice(key);
+    } else {
+      process.stdout.write("Reloaded running bb server config.\n");
+    }
     return;
   }
   process.stdout.write(
@@ -1717,6 +1802,14 @@ async function runConfigCommand(args: RunConfigCommandArgs): Promise<void> {
       serverUrl: args.serverUrl,
     });
     process.stdout.write("Reloaded running bb server config.\n");
+    const startupOnlyKeys = await readConfiguredStartupOnlyManagedKeys(
+      args.dataDir,
+    );
+    if (startupOnlyKeys.length > 0) {
+      process.stdout.write(
+        `Startup-only settings currently configured (${startupOnlyKeys.join(", ")}) apply on the next full bb-app restart.\n`,
+      );
+    }
     return;
   }
   if (commandArgs[0] === CONFIG_UNSET_COMMAND) {
@@ -1734,7 +1827,7 @@ async function runConfigCommand(args: RunConfigCommandArgs): Promise<void> {
     process.stdout.write(
       `Unset ${key} in ${formatBbAppConfigPath(args.dataDir)}\n`,
     );
-    await refreshRunningServerConfigAfterWrite(args.serverUrl);
+    await refreshRunningServerConfigAfterWrite(args.serverUrl, "config", key);
     return;
   }
   if (commandArgs[0] !== SET_COMMAND || commandArgs.length !== 3) {
@@ -1753,7 +1846,7 @@ async function runConfigCommand(args: RunConfigCommandArgs): Promise<void> {
   process.stdout.write(
     `Set ${key} in ${formatBbAppConfigPath(args.dataDir)}\n`,
   );
-  await refreshRunningServerConfigAfterWrite(args.serverUrl);
+  await refreshRunningServerConfigAfterWrite(args.serverUrl, "config", key);
 }
 
 async function runEnvCommand(args: RunEnvCommandArgs): Promise<void> {
@@ -1789,7 +1882,7 @@ async function runEnvCommand(args: RunEnvCommandArgs): Promise<void> {
     process.stdout.write(
       `Unset ${key} in ${formatBbAppEnvPath(args.dataDir)}\n`,
     );
-    await refreshRunningServerConfigAfterWrite(args.serverUrl);
+    await refreshRunningServerConfigAfterWrite(args.serverUrl, "env", key);
     return;
   }
   if (commandArgs[0] !== SET_COMMAND || commandArgs.length !== 3) {
@@ -1809,7 +1902,7 @@ async function runEnvCommand(args: RunEnvCommandArgs): Promise<void> {
     dataDir: args.dataDir,
   });
   process.stdout.write(`Set ${key} in ${formatBbAppEnvPath(args.dataDir)}\n`);
-  await refreshRunningServerConfigAfterWrite(args.serverUrl);
+  await refreshRunningServerConfigAfterWrite(args.serverUrl, "env", key);
 }
 
 async function runClientCommand(args: RunClientCommandArgs): Promise<void> {
