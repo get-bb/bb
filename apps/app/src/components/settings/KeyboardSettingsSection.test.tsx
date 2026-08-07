@@ -8,7 +8,7 @@ import {
   within,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { defaultAppSettings, type AppKeybindings } from "@bb/domain";
+import { defaultAppSettings, type AppDefaultKeybindings } from "@bb/domain";
 import { KeyboardSettingsSection } from "./KeyboardSettingsSection";
 
 const testState = vi.hoisted(() => ({
@@ -37,6 +37,12 @@ const testState = vi.hoisted(() => ({
         alt: false,
         shift: false,
       },
+      when: { all: ["mainSurface"], none: ["modalOpen"] },
+    },
+    {
+      command: "thread.rename",
+      desktopOnly: false,
+      shortcut: null,
       when: { all: ["mainSurface"], none: ["modalOpen"] },
     },
     {
@@ -100,7 +106,7 @@ const testState = vi.hoisted(() => ({
         none: ["modalOpen", "editableFocus"],
       },
     },
-  ] as AppKeybindings,
+  ] as AppDefaultKeybindings,
   generalMutate: vi.fn(),
   isDesktop: false,
   mutate: vi.fn(),
@@ -218,6 +224,39 @@ describe("KeyboardSettingsSection", () => {
     );
     expect(testState.mutate).toHaveBeenLastCalledWith(
       [],
+      expect.objectContaining({ onError: expect.any(Function) }),
+    );
+  });
+
+  it("lets users assign a command that has no default shortcut", () => {
+    render(<KeyboardSettingsSection />);
+    const recorder = screen.getByRole("button", {
+      name: "Record shortcut for Rename thread, current shortcut unassigned",
+    });
+    expect(recorder.hasAttribute("disabled")).toBe(false);
+    expect(within(recorder).getByText("Unassigned")).toBeDefined();
+
+    fireEvent.click(recorder);
+    fireEvent.keyDown(recorder, {
+      key: "R",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    expect(testState.mutate).toHaveBeenLastCalledWith(
+      [
+        {
+          command: "thread.rename",
+          shortcut: {
+            key: "r",
+            mod: true,
+            meta: false,
+            control: false,
+            alt: false,
+            shift: true,
+          },
+        },
+      ],
       expect.objectContaining({ onError: expect.any(Function) }),
     );
   });

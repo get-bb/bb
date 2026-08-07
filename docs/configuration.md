@@ -185,6 +185,7 @@ delayed shortcut badges without disabling any shortcuts.
 | --------- | ----------------------------- | --------------------------------- | ------------------------ |
 | Threads   | New thread                    | `Mod+N` / `Mod+Shift+O`           | Desktop / web            |
 | Threads   | Search threads                | `Mod+K`                           | All clients              |
+| Threads   | Rename focused thread         | Unassigned                        | Thread view              |
 | Threads   | Previous / next thread        | `Mod+Shift+[/]` / `Mod+Shift+↑/↓` | Desktop / web            |
 | Threads   | Open visible thread 1–9       | Platform defaults above           | Web / desktop            |
 | Layout    | Previous / next chat pane     | `Mod+Shift+[/]`                   | While split              |

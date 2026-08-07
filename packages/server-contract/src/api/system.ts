@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   appSettingsSchema,
+  appDefaultKeybindingsSchema,
   appKeybindingOverridesSchema,
   appKeybindingsSchema,
   appThemeSchema,
@@ -198,7 +199,7 @@ export const systemConfigResponseSchema = z.object({
   /** Server-resolved keyboard bindings shared by every connected app window. */
   keybindings: appKeybindingsSchema,
   /** Server defaults, before the user's per-command overrides are applied. */
-  defaultKeybindings: appKeybindingsSchema,
+  defaultKeybindings: appDefaultKeybindingsSchema,
   /** Sparse per-command customizations; null shortcuts explicitly disable commands. */
   keybindingOverrides: appKeybindingOverridesSchema,
   /** User-opt-in experiments (Settings → Experiments), persisted server-side. */

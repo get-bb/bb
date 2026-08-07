@@ -2,8 +2,8 @@ import { useMemo, useState, type KeyboardEvent } from "react";
 import {
   defaultAppSettings,
   type AppCommandId,
+  type AppDefaultKeybindings,
   type AppKeybindingOverrides,
-  type AppKeybindings,
   type AppShortcut,
 } from "@bb/domain";
 import { Button } from "@bb/shared-ui/button";
@@ -21,6 +21,8 @@ import {
   canAssignAppShortcut,
   getCommandShortcut,
   getShortcutConflicts,
+  isAppCommandAvailableForClient,
+  resetCommandShortcutOverride,
   setCommandShortcutOverride,
 } from "@/lib/keyboard-shortcut-settings";
 import {
@@ -41,7 +43,7 @@ import {
 import { AppCommandShortcutPill } from "@/components/commands/AppCommandShortcutHint";
 import { getBbDesktopInfo } from "@/lib/bb-desktop";
 
-const EMPTY_KEYBINDINGS: AppKeybindings = [];
+const EMPTY_KEYBINDINGS: AppDefaultKeybindings = [];
 const EMPTY_OVERRIDES: AppKeybindingOverrides = [];
 const SETTINGS_SHORTCUT_PILL_CLASS =
   "rounded-none bg-transparent px-0 py-0 text-foreground opacity-100";
@@ -160,10 +162,11 @@ function ShortcutRecorder({
 
 interface KeyboardCommandRowProps {
   command: AppCommandId;
-  defaults: AppKeybindings;
+  defaults: AppDefaultKeybindings;
   disabled: boolean;
   isDesktop: boolean;
   onChange(command: AppCommandId, shortcut: AppShortcut | null): void;
+  onReset(command: AppCommandId): void;
   onRecordingChange(command: AppCommandId | null): void;
   overrides: AppKeybindingOverrides;
   recordingCommand: AppCommandId | null;
@@ -176,6 +179,7 @@ function KeyboardCommandRow({
   disabled,
   isDesktop,
   onChange,
+  onReset,
   onRecordingChange,
   overrides,
   platform,
@@ -207,10 +211,12 @@ function KeyboardCommandRow({
     true,
     platform,
   );
-  const activeDefaultShortcut = isDesktop
-    ? desktopDefaultShortcut
-    : webDefaultShortcut;
-  const availableOnClient = activeDefaultShortcut !== null;
+  const availableOnClient = isAppCommandAvailableForClient(
+    defaults,
+    command,
+    isDesktop,
+    platform,
+  );
   const splitDefaults =
     webDefaultShortcut !== null &&
     desktopDefaultShortcut !== null &&
@@ -309,16 +315,7 @@ function KeyboardCommandRow({
           aria-label={`Reset shortcut for ${metadata.label}`}
           className="size-7"
           disabled={disabled || !availableOnClient || !customized}
-          onClick={() => {
-            const defaultShortcut = getCommandShortcut(
-              defaults,
-              [],
-              command,
-              isDesktop,
-              platform,
-            );
-            if (defaultShortcut !== null) onChange(command, defaultShortcut);
-          }}
+          onClick={() => onReset(command)}
           size="icon"
           type="button"
           variant="ghost"
@@ -377,6 +374,16 @@ export function KeyboardSettingsSection() {
       isDesktop,
       platform,
     );
+    setDraft({ sourceKey: serverOverridesKey, value: next });
+    updateKeyboardSettings.mutate(next, {
+      onError: () =>
+        setDraft({ sourceKey: serverOverridesKey, value: previous }),
+    });
+  }
+
+  function resetCommand(command: AppCommandId) {
+    const previous = overrides;
+    const next = resetCommandShortcutOverride(overrides, command);
     setDraft({ sourceKey: serverOverridesKey, value: next });
     updateKeyboardSettings.mutate(next, {
       onError: () =>
@@ -451,6 +458,7 @@ export function KeyboardSettingsSection() {
                   key={metadata.command}
                   onChange={updateCommand}
                   onRecordingChange={setRecordingCommand}
+                  onReset={resetCommand}
                   overrides={overrides}
                   platform={platform}
                   recordingCommand={recordingCommand}
