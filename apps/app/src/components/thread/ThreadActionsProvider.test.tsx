@@ -174,7 +174,7 @@ describe("ThreadActionsProvider archive feedback", () => {
     const toastOptions = vi.mocked(appToast.success).mock.calls[0]?.[1];
     expect(toastOptions).toMatchObject({
       action: { label: "Undo" },
-      duration: 10_000,
+      duration: 5 * 60_000,
       id: "thread-archived-thr_parent",
     });
 

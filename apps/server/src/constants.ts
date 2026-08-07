@@ -11,7 +11,7 @@ export const DAEMON_ACTIVE_WORK_DISCONNECT_GRACE_MS = LEASE_TIMEOUT_MS;
  * "Undo" duration. The destroy is gated on the environment's `updatedAt` (the
  * retire-requested time), so the window is durable across restart.
  */
-export const MANAGED_ENVIRONMENT_RETIRE_GRACE_MS = 10_000;
+export const MANAGED_ENVIRONMENT_RETIRE_GRACE_MS = 5 * 60_000;
 export const WORKSPACE_DIFF_MAX_DIFF_BYTES = 2 * 1024 * 1024;
 export const WORKSPACE_DIFF_MAX_FILE_LIST_BYTES = 256 * 1024;
 

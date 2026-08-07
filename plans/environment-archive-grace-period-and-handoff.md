@@ -5,7 +5,7 @@ Status: implemented 2026-06-17; simplified 2026-08-07.
 ## Outcome
 
 Archiving the last live thread in a managed environment now has a durable
-10-second grace window. The archive toast offers **Undo** during that window;
+five-minute grace window. The archive toast offers **Undo** during that window;
 unarchiving sends the existing `retire.cancelled` lifecycle event and preserves
 the intact worktree, including uncommitted work.
 
@@ -31,7 +31,7 @@ The existing environment state machine remains authoritative:
 
 `destroyed` remains terminal. A new thread gets a new environment row.
 
-The server's `managedEnvironmentRetireGraceMs` defaults to 10 seconds. Cleanup
+The server's `managedEnvironmentRetireGraceMs` defaults to five minutes. Cleanup
 uses the retiring environment row's durable `updatedAt` value instead of an
 in-memory timer, so restart does not bypass the window. Grace applies only to a
 path-bearing retiring environment with a non-deleted archived thread that could
@@ -54,9 +54,10 @@ Orphaned `destroying` recovery remains the slower backstop.
 ### Cleanup already finished
 
 1. The source thread stays archived and its old environment stays `destroyed`.
-2. Its context banner shows **Environment is unavailable** and **Continue in new
-thread**. While destruction is in progress the action reads **Cleaning up…**
-   and is disabled.
+2. While destruction is in progress, its context banner shows **Archiving
+   environment...** and the **Continue in new thread** action is disabled. Once
+   destruction finishes, the banner shows **Environment archived** and enables
+   the action.
 3. Handoff opens new-thread compose in the source project, inserts `Continue
 from @thread:<id>`, selects the original host in managed-worktree mode, and
    selects the old branch as the new worktree's base.
