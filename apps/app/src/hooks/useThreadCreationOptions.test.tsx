@@ -196,6 +196,38 @@ afterEach(() => {
 });
 
 describe("useThreadCreationOptions", () => {
+  it("preserves a model's nested provider route for the picker", async () => {
+    const response = executionOptionsResponse();
+    const firstModel = response.models[0];
+    if (!firstModel) throw new Error("Expected a model fixture");
+    vi.mocked(sdk.system.executionOptions).mockResolvedValue({
+      ...response,
+      models: [
+        { ...firstModel, routeProviderId: "openai-codex" },
+        ...response.models.slice(1),
+      ],
+    });
+    const { wrapper } = createQueryClientTestHarness();
+
+    const { result } = renderHook(
+      () =>
+        useThreadCreationOptions({
+          scope: "component-local",
+          initialProviderId: GLOBAL_PROVIDER_ID,
+          initialModel: "global-model",
+        }),
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(result.current.modelOptions[0]).toEqual({
+        value: "global-model",
+        label: "Global Model",
+        routeProviderId: "openai-codex",
+      });
+    });
+  });
+
   it("routes root-composer provider discovery through the selected project host", async () => {
     window.localStorage.setItem("bb.promptbox.provider", GLOBAL_PROVIDER_ID);
     window.localStorage.setItem("bb.promptbox.model", "global-model");

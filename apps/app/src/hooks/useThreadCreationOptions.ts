@@ -15,6 +15,7 @@ import type {
   SystemProvidersQuery,
 } from "@bb/server-contract";
 import type { PickerOption } from "@/components/pickers/OptionPicker";
+import type { ModelPickerOption } from "@/components/pickers/model-picker-option";
 import { parseEnvironmentValue } from "@/components/pickers/environment-picker-value";
 import { PERMISSION_MODE_OPTIONS } from "@/lib/permission-mode-options";
 import { useRootComposeReuseEnvironment } from "@/lib/root-compose-selection";
@@ -86,8 +87,8 @@ export interface UseThreadCreationOptionsResult<TExecutionInputSources> {
   setEnvironmentSelectionValue: StringSelectionSetter;
   clearReuseEnvironment: ClearSelectionHandler;
   activeModel: AvailableModel | undefined;
-  modelOptions: PickerOption<string>[];
-  moreModelOptions: PickerOption<string>[];
+  modelOptions: ModelPickerOption[];
+  moreModelOptions: ModelPickerOption[];
   isLoadingModels: boolean;
   isResolvingInitialProvider: boolean;
   modelLoadFailed: boolean;
@@ -489,10 +490,13 @@ export function useThreadCreationOptions(
     selectedModel !== rawSelectedModel;
 
   const modelOptions = useMemo(
-    (): PickerOption<string>[] =>
+    (): ModelPickerOption[] =>
       availableModels.map((model) => ({
         value: model.model,
         label: formatModelLabel(model.displayName || model.model),
+        ...(model.routeProviderId
+          ? { routeProviderId: model.routeProviderId }
+          : {}),
       })),
     [availableModels],
   );
@@ -501,7 +505,7 @@ export function useThreadCreationOptions(
   // current selection already lives in `availableModels`, so it is excluded
   // here rather than listed twice.
   const moreModelOptions = useMemo(
-    (): PickerOption<string>[] =>
+    (): ModelPickerOption[] =>
       (executionOptionsQuery.data?.selectedOnlyModels ?? [])
         .filter(
           (model) =>
@@ -510,6 +514,9 @@ export function useThreadCreationOptions(
         .map((model) => ({
           value: model.model,
           label: formatModelLabel(model.displayName || model.model),
+          ...(model.routeProviderId
+            ? { routeProviderId: model.routeProviderId }
+            : {}),
         })),
     [executionOptionsQuery.data?.selectedOnlyModels, availableModels],
   );

@@ -322,6 +322,7 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
         id: "codex/gpt-5",
         model: "gpt-5",
         displayName: "GPT-5",
+        routeProviderId: "openai-codex",
         description: "Test model",
         supportedReasoningEfforts: [
           {
@@ -1038,10 +1039,10 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  // Version 81 makes same-instance daemon session replacement reconnect-safe
-  // so enrolled daemons update before receiving the revised server behavior.
-  it("uses protocol version 81 for reconnect-safe session replacement", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(81);
+  // Version 82 adds the nested provider route to model/list results so clients
+  // can disambiguate models without changing their friendly display names.
+  it("uses protocol version 82 for model route provider metadata", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(82);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {
