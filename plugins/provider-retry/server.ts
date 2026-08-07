@@ -42,7 +42,7 @@ export default async function plugin(bb: BbPluginApi) {
       type: "select",
       label: "Maximum automatic wait",
       description:
-        "Only continue automatically when the reported reset is within this time. Longer waits remain available for manual retry.",
+        "Do not schedule a retry when the reported reset is farther away than this.",
       options: [...MAXIMUM_WAIT_OPTIONS],
       default: "6 hours",
     },
@@ -59,15 +59,8 @@ export default async function plugin(bb: BbPluginApi) {
   bb.onDispose(() => service.dispose());
 
   bb.rpc.register(providerRetryRpcContract, {
-    async providerRetryStatus({ threadId }) {
+    providerRetryStatus({ threadId }) {
       return { view: service.status(threadId) };
-    },
-    async providerRetryNow({ threadId }) {
-      const started = await service.retryNow(threadId);
-      return { started, view: service.status(threadId) };
-    },
-    providerRetryCancel({ threadId }) {
-      return { cancelled: service.cancel(threadId) };
     },
   });
   registerProviderRetryCli(bb, service);
@@ -90,22 +83,6 @@ export default async function plugin(bb: BbPluginApi) {
 
   bb.background.service("provider-retry-scheduler", {
     async start(signal) {
-      const unsubscribeThread = bb.sdk.subscribe({
-        event: "thread:changed",
-        callback: (event) => {
-          if (event.id === undefined || service.status(event.id) === null)
-            return;
-          void service
-            .reconcile(event.id)
-            .catch((error) =>
-              logFailure(
-                bb,
-                `Could not refresh provider retry for ${event.id}`,
-                error,
-              ),
-            );
-        },
-      });
       const unsubscribeHost = bb.sdk.subscribe({
         event: "host:changed",
         callback: (event) => {
@@ -117,29 +94,10 @@ export default async function plugin(bb: BbPluginApi) {
           }
         },
       });
-      const unsubscribeConnection = bb.sdk.subscribe({
-        event: "realtime:connection",
-        callback: (event) => {
-          if (event.state !== "connected" || !event.reconnected) return;
-          for (const view of service.list()) {
-            void service
-              .reconcile(view.threadId)
-              .catch((error) =>
-                logFailure(
-                  bb,
-                  `Could not reconcile provider retry for ${view.threadId}`,
-                  error,
-                ),
-              );
-          }
-        },
-      });
       try {
         await waitForAbort(signal);
       } finally {
-        unsubscribeConnection();
         unsubscribeHost();
-        unsubscribeThread();
       }
     },
   });

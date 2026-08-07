@@ -52,25 +52,19 @@ tool activity does not block recovery. Threads sharing a machine/provider
 subscription are released one at a time. Provider-native retries remain
 authoritative while the provider reports that it will retry on its own.
 
-Automatic waits default to a maximum of six hours. Longer reset windows remain
-visible and manually retryable. Set `maximumWait` to `24 hours` or `No limit`
-under the plugin settings, or run:
+Automatic waits default to a maximum of six hours. Longer reset windows are not
+scheduled. Set `maximumWait` to `24 hours` or `No limit` under the plugin
+settings, or run:
 
   bb plugin config provider-retry set maximumWait "24 hours"
 
-  bb settings usage [--machine <id-or-name>]       Read live provider usage
   bb provider-retry status [thread-id] [--json]    Inspect in-memory waits
-  bb provider-retry refresh <thread-id> [--json]   Refresh live usage
-  bb provider-retry now <thread-id> [--json]       Continue now if still eligible
-  bb provider-retry cancel <thread-id> [--json]    Cancel automatic continuation
   bb thread retry [id] [--request-id <id>]         Core continuation
 
 Timed waits exist only while the current bb server/plugin process remains
 running. Disabling/reloading the plugin or restarting the server clears them;
 the original failed thread remains available for `bb thread retry`. Credit and
-spend-control exhaustion without a reset time is shown but never blindly
-retried. Run `bb provider-retry refresh` after adding credits or changing
-limits, or use Retry now when the user explicitly wants another attempt.
+spend-control exhaustion without a reset time is ignored by the plugin.
 
 Claude Code's native Workflow tool can be disabled separately on its provider
 page. This preference also defaults off and applies to newly started, resumed,

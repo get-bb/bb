@@ -6,12 +6,11 @@ import {
   useRealtimeConnectionState,
   useRpc,
 } from "@bb/plugin-sdk/app";
-import {
-  ProviderRetryBannerView,
-  type ProviderRetryBannerAction,
-} from "./banner.js";
-import type { providerRetryRpcContract } from "./src/contract.js";
-import type { ProviderRetryView } from "./src/contract.js";
+import { ProviderRetryBannerView } from "./banner.js";
+import type {
+  providerRetryRpcContract,
+  ProviderRetryView,
+} from "./src/contract.js";
 
 const REALTIME_CHANNEL = "provider-retry";
 
@@ -34,8 +33,6 @@ function ProviderRetryBannerForThread({ threadId }: { threadId: string }) {
   const connection = useRealtimeConnectionState();
   const previousConnection = useRef(connection);
   const [view, setView] = useState<ProviderRetryView | null>(null);
-  const [busy, setBusy] = useState<ProviderRetryBannerAction | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const result = await rpc.call("providerRetryStatus", { threadId });
@@ -65,48 +62,7 @@ function ProviderRetryBannerForThread({ threadId }: { threadId: string }) {
     if (reconnected) void load().catch(() => undefined);
   }, [connection, load]);
 
-  const runAction = useCallback(
-    async (action: ProviderRetryBannerAction) => {
-      setBusy(action);
-      setActionError(null);
-      try {
-        if (action === "cancel") {
-          const result = await rpc.call("providerRetryCancel", { threadId });
-          if (result.cancelled) {
-            setView(null);
-          } else {
-            await load();
-            setActionError("This continuation is already in progress.");
-          }
-        } else {
-          const result = await rpc.call("providerRetryNow", { threadId });
-          setView(result.view);
-          if (
-            !result.started &&
-            result.view?.phase !== "retry-failed" &&
-            result.view?.phase !== "waiting-for-host"
-          ) {
-            setActionError("This turn is no longer available to continue.");
-          }
-        }
-      } catch (error) {
-        setActionError(error instanceof Error ? error.message : String(error));
-      } finally {
-        setBusy(null);
-      }
-    },
-    [load, rpc, threadId],
-  );
-
-  if (view === null) return null;
-  return (
-    <ProviderRetryBannerView
-      actionError={actionError}
-      busy={busy}
-      onAction={runAction}
-      view={view}
-    />
-  );
+  return view === null ? null : <ProviderRetryBannerView view={view} />;
 }
 
 export default definePluginApp((app) => {

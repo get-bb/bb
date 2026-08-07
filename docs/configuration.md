@@ -557,9 +557,9 @@ resets when the failed turn was accepted, the provider has stopped its own
 retries, and the original execution settings remain available. Prior output or
 tool activity does not block recovery. Recovery sends one agent-only
 `Please continue.` turn on the existing provider conversation.
-The `maximumWait` setting defaults to `6 hours`; resets beyond that horizon stay
-visible for manual retry instead of being scheduled. Choose `24 hours` or
-`No limit` under the plugin settings, or configure it from the CLI:
+The `maximumWait` setting defaults to `6 hours`; resets beyond that horizon are
+not scheduled. Choose `24 hours` or `No limit` under the plugin settings, or
+configure it from the CLI:
 
 ```bash
 bb plugin config provider-retry set maximumWait "24 hours"
@@ -568,9 +568,9 @@ bb plugin config provider-retry set maximumWait "24 hours"
 Pending waits are coordinated by machine/provider subscription and live only
 in the current server/plugin process. Restarting bb, reloading the plugin, or
 disabling it clears the timers without changing the original failed thread.
-Inspect or control them with `bb provider-retry status`, `refresh`, `now`, and
-`cancel`; `bb thread retry` remains the manual recovery path. Credit or
-spend-control exhaustion without a reset time is never retried automatically.
+Inspect them with `bb provider-retry status`; `bb thread retry` remains the
+manual recovery path. Credit or spend-control exhaustion without a reset time
+is ignored by the plugin.
 
 ### Workflows plugin
 

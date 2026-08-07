@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it } from "vitest";
 import { loadPluginApp, renderSlot } from "@bb/plugin-sdk/testing/app";
 import type { ProviderRetryView } from "./src/contract.js";
 
@@ -9,30 +9,14 @@ const banner = app.composerCustomizations[0]!.banners![0]!;
 
 const waitingView: ProviderRetryView = {
   threadId: "thread-one",
-  failedRequestId: "request-one",
-  scopeKey: "host-one:claude-code",
-  hostId: "host-one",
   providerId: "claude-code",
-  phase: "waiting-for-reset",
-  automatic: true,
-  dueAtMs: Date.parse("2026-08-05T15:12:00.000Z"),
-  resetsAtMs: Date.parse("2026-08-05T15:11:30.000Z"),
-  windowLabel: "Five-hour",
-  kind: "subscription-window",
-  reachedReason: "rate_limit_reached",
-  overageReason: null,
-  recoveryReason: "eligible",
-  continuationError: null,
-  refreshError: null,
+  retryAtMs: Date.parse("2026-08-05T15:12:00.000Z"),
 };
 
-afterEach(() => {
-  cleanup();
-  vi.useRealTimers();
-});
+afterEach(cleanup);
 
 describe("provider retry app", () => {
-  it("registers a bare thread composer banner", () => {
+  it("registers one bare thread composer banner", () => {
     expect(app.composerCustomizations).toMatchObject([
       {
         id: "provider-retry-status",
@@ -42,7 +26,7 @@ describe("provider retry app", () => {
     ]);
   });
 
-  it("shows the scheduled reset and recovery actions", async () => {
+  it("shows one automatic retry message without actions", async () => {
     const slot = renderSlot(
       banner,
       {},
@@ -50,22 +34,19 @@ describe("provider retry app", () => {
         composer: { scope: { kind: "thread", threadId: "thread-one" } },
         rpc: {
           providerRetryStatus: () => ({ view: waitingView }),
-          providerRetryNow: () => ({ started: true, view: null }),
-          providerRetryCancel: () => ({ cancelled: true }),
         },
       },
     );
 
-    const description = await slot.findByText(
-      /Claude Code five-hour usage limit reached/i,
-    );
-    expect(description.textContent).not.toContain("server");
     expect(
-      slot.getAllByRole("button").map((button) => button.textContent),
-    ).toEqual(["Retry now", "Cancel"]);
+      await slot.findByText(
+        /Claude Code usage limit reached\. Retrying/i,
+      ),
+    ).toBeTruthy();
+    expect(slot.queryAllByRole("button")).toHaveLength(0);
   });
 
-  it("reacts to backend signals and can continue immediately", async () => {
+  it("removes the banner when the retry is no longer pending", async () => {
     let current: ProviderRetryView | null = waitingView;
     const slot = renderSlot(
       banner,
@@ -74,27 +55,17 @@ describe("provider retry app", () => {
         composer: { scope: { kind: "thread", threadId: "thread-one" } },
         rpc: {
           providerRetryStatus: () => ({ view: current }),
-          providerRetryNow: () => {
-            current = null;
-            return { started: true, view: null };
-          },
-          providerRetryCancel: () => ({ cancelled: true }),
         },
       },
     );
-    fireEvent.click(await slot.findByRole("button", { name: "Retry now" }));
+    await slot.findByRole("region", { name: "Provider usage recovery" });
 
-    await waitFor(() => expect(slot.container.childElementCount).toBe(0));
-    expect(slot.rpcCalls.map((call) => call.method)).toContain(
-      "providerRetryNow",
-    );
-
-    current = { ...waitingView, phase: "waiting-for-host" };
+    current = null;
     await slot.emitRealtime("provider-retry", { threadId: "thread-one" });
-    expect(await slot.findByText(/when its host reconnects/i)).toBeTruthy();
+    await waitFor(() => expect(slot.container.childElementCount).toBe(0));
   });
 
-  it("renders the credit exhaustion reason", async () => {
+  it("uses generic copy when no exact retry time is available", async () => {
     const slot = renderSlot(
       banner,
       {},
@@ -102,103 +73,12 @@ describe("provider retry app", () => {
         composer: { scope: { kind: "thread", threadId: "thread-one" } },
         rpc: {
           providerRetryStatus: () => ({
-            view: {
-              ...waitingView,
-              automatic: false,
-              dueAtMs: null,
-              resetsAtMs: null,
-              phase: "blocked",
-              kind: "credits",
-              windowLabel: null,
-            },
+            view: { ...waitingView, retryAtMs: null },
           }),
-          providerRetryNow: () => ({ started: true, view: null }),
-          providerRetryCancel: () => ({ cancelled: true }),
         },
       },
     );
 
-    expect(
-      (await slot.findByText(/credits limit reached/i)).textContent,
-    ).toMatch(/credits limit reached \(rate limit reached\)\.$/i);
-  });
-
-  it("explains when the reset exceeds the maximum automatic wait", async () => {
-    const slot = renderSlot(
-      banner,
-      {},
-      {
-        composer: { scope: { kind: "thread", threadId: "thread-one" } },
-        rpc: {
-          providerRetryStatus: () => ({
-            view: {
-              ...waitingView,
-              phase: "manual-only",
-              dueAtMs: null,
-            },
-          }),
-          providerRetryNow: () => ({ started: true, view: null }),
-          providerRetryCancel: () => ({ cancelled: true }),
-        },
-      },
-    );
-
-    expect(
-      (await slot.findByText(/beyond the configured maximum automatic wait/i))
-        .textContent,
-    ).toMatch(/maximum automatic wait\.$/i);
-    expect(slot.getByRole("button", { name: "Retry now" })).toBeTruthy();
-  });
-
-  it("explains when automatic continuation stops after an error", async () => {
-    const failedView: ProviderRetryView = {
-      ...waitingView,
-      phase: "retry-failed",
-      dueAtMs: null,
-      continuationError: "This thread is awaiting user interaction",
-    };
-    const slot = renderSlot(
-      banner,
-      {},
-      {
-        composer: { scope: { kind: "thread", threadId: "thread-one" } },
-        rpc: {
-          providerRetryStatus: () => ({ view: failedView }),
-          providerRetryNow: () => ({ started: false, view: failedView }),
-          providerRetryCancel: () => ({ cancelled: true }),
-        },
-      },
-    );
-
-    expect(
-      await slot.findByText(/bb could not continue automatically/i),
-    ).toBeTruthy();
-    expect(
-      slot.getByText(/This thread is awaiting user interaction/i),
-    ).toBeTruthy();
-    expect(slot.getByRole("button", { name: "Retry now" })).toBeTruthy();
-  });
-
-  it("keeps the banner when cancellation loses to an in-progress release", async () => {
-    const slot = renderSlot(
-      banner,
-      {},
-      {
-        composer: { scope: { kind: "thread", threadId: "thread-one" } },
-        rpc: {
-          providerRetryStatus: () => ({ view: waitingView }),
-          providerRetryNow: () => ({ started: true, view: null }),
-          providerRetryCancel: () => ({ cancelled: false }),
-        },
-      },
-    );
-
-    fireEvent.click(await slot.findByRole("button", { name: "Cancel" }));
-    expect(
-      await slot.findByText("This continuation is already in progress."),
-    ).toBeTruthy();
-    expect(
-      slot.getByRole("region", { name: "Provider usage recovery" }),
-    ).toBeTruthy();
+    expect(await slot.findByText(/Retrying automatically\.$/i)).toBeTruthy();
   });
 });

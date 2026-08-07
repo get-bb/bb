@@ -380,14 +380,12 @@ For review or fix pipelines, get the environment ID from
   its execution settings remain available. Prior output or tool activity does
   not block recovery. Enable it with
   `bb plugin enable provider-retry` or under Extensions → Plugins. Its timers
-  last only while the current bb server/plugin process is running. Inspect it with
-  `bb provider-retry status [thread-id]`; use the same command's `refresh`,
-  `now`, and `cancel` subcommands to control the wait. `bb settings usage`
-  reads current provider usage directly from the machine. Automatic waits
-  default to six hours; configure longer waits with
+  last only while the current bb server/plugin process is running. Inspect it
+  with `bb provider-retry status [thread-id]`. Automatic waits default to six
+  hours; configure longer waits with
   `bb plugin config provider-retry set maximumWait "24 hours"` or select
-  `No limit` in the plugin settings. Resets beyond the configured horizon
-  remain manually retryable.
+  `No limit` in the plugin settings. Resets beyond the configured horizon are
+  not scheduled.
 - Use `bb thread retry [id] [--request-id <id>]` for the same core
   continuation when no plugin timer remains. It sends agent-only “Please
   continue.” on the existing provider conversation and declines when input was
