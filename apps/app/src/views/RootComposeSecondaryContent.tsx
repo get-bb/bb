@@ -79,22 +79,30 @@ type RootSecondaryPanelProps = Omit<
 
 interface RootComposeSecondaryContentProps {
   children: ReactNode;
+  contentKey?: string;
   contentClassName?: string;
+  contentMaxWidthClassName?: string;
   isSecondaryPanelOpen: boolean;
   onToggleSecondaryPanel: () => void;
   panelTogglePositionClassName: string;
+  renderWindowDragStrip?: boolean;
   secondaryPanel: RootSecondaryPanelProps;
+  showPluginHomepageSections?: boolean;
 }
 
 function noopToggleConversationCollapse(): void {}
 
 export function RootComposeSecondaryContent({
   children,
+  contentKey = "new-thread",
   contentClassName,
+  contentMaxWidthClassName = ROOT_COMPOSE_MAX_WIDTH_CLASS,
   isSecondaryPanelOpen,
   onToggleSecondaryPanel,
   panelTogglePositionClassName,
+  renderWindowDragStrip = true,
   secondaryPanel,
+  showPluginHomepageSections = true,
 }: RootComposeSecondaryContentProps) {
   const paneContext = useOptionalPaneContext();
   const secondaryPanelHost = paneContext?.secondaryPanelHost ?? null;
@@ -123,7 +131,9 @@ export function RootComposeSecondaryContent({
   // Standalone/single-pane compose surfaces and every pane touching the
   // workspace's top edge keep the intended title-bar drag affordance.
   const rendersWindowDragStrip =
-    usesDesktopChrome && paneContext?.isTopRow !== false;
+    renderWindowDragStrip &&
+    usesDesktopChrome &&
+    paneContext?.isTopRow !== false;
   const compactDrawerContentSettleFrameRef = useRef<number | null>(null);
   const compactDrawerContentSettleGenerationRef = useRef(0);
   const compactDrawerContentSettleStateRef = useRef({
@@ -270,7 +280,7 @@ export function RootComposeSecondaryContent({
   const hostedPanelModel = useMemo<PaneSecondaryPanelViewModel>(
     () => ({
       composerHost,
-      contentKey: "new-thread",
+      contentKey,
       isMainCollapsed: false,
       isOpen: isSecondaryPanelOpen,
       panel: inlineSecondaryPanelContent,
@@ -278,6 +288,7 @@ export function RootComposeSecondaryContent({
     }),
     [
       composerHost,
+      contentKey,
       inlineSecondaryPanelContent,
       isSecondaryPanelOpen,
       onToggleSecondaryPanel,
@@ -314,13 +325,13 @@ export function RootComposeSecondaryContent({
         <div
           className={cn(
             "mx-auto flex w-full flex-col px-4 pb-4 pt-2",
-            ROOT_COMPOSE_MAX_WIDTH_CLASS,
+            contentMaxWidthClassName,
             contentClassName,
           )}
           style={PAGE_SHELL_CONTENT_STYLE}
         >
           {children}
-          <PluginHomepageSections />
+          {showPluginHomepageSections ? <PluginHomepageSections /> : null}
         </div>
       </div>
     </div>

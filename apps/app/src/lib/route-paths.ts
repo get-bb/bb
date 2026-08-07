@@ -3,6 +3,7 @@ import { matchPath } from "react-router-dom";
 
 export const APP_ROOT_ROUTE_PATH = "/";
 export const AUTH_CALLBACK_ROUTE_PATH = "/auth/callback";
+export const DASHBOARD_ROUTE_PATH = "/dashboard";
 export const SETTINGS_ROUTE_PATH = "/settings";
 // Settings buckets (general, files, …) plus legacy plugin routes that redirect
 // to the canonical Tools → Plugins surfaces. The static "plugins" segment must

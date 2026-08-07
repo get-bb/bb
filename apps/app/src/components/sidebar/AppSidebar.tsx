@@ -7,8 +7,9 @@ import {
 } from "react";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { THREAD_JUMP_APP_COMMAND_IDS } from "@bb/domain";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Icon } from "@bb/shared-ui/icon";
+import { Button } from "@bb/shared-ui/button";
 import { COARSE_POINTER_CHILD_ICON_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { OverflowFade } from "@/components/ui/overflow-fade.js";
@@ -22,7 +23,11 @@ import {
   useCloseMobileSidebar,
   useSidebar,
 } from "@/components/ui/sidebar.js";
-import { ProjectList, ProjectListActionButtons } from "./ProjectList";
+import {
+  PROJECT_LIST_ACTION_BUTTON_CLASS,
+  ProjectList,
+  ProjectListActionButtons,
+} from "./ProjectList";
 import { PluginThreadList } from "./PluginThreadList";
 import { useThreadListProvider } from "./threadListProvider";
 import { PluginNavSidebarItems } from "@/components/plugin/PluginNavSidebarItems";
@@ -37,7 +42,11 @@ import {
   MACOS_WINDOW_DRAG_CLASS,
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
-import { getRootComposeRoutePath, getThreadRoutePath } from "@/lib/route-paths";
+import {
+  DASHBOARD_ROUTE_PATH,
+  getRootComposeRoutePath,
+  getThreadRoutePath,
+} from "@/lib/route-paths";
 import { useThreadSplitsEnabled } from "@/hooks/useThreadSplitsEnabled";
 import { usePaneContentSplitDrag } from "./usePaneContentSplitDrag";
 import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
@@ -105,6 +114,7 @@ export function AppSidebar({
   const threadListProvider = useThreadListProvider();
   const { threadId: activeThreadId } = useRouteState();
   const navigate = useNavigate();
+  const location = useLocation();
   const threadSplitsEnabled = useThreadSplitsEnabled();
   const newThreadSplit = usePaneContentSplitDrag({
     content: NEW_THREAD_PANE_CONTENT,
@@ -420,6 +430,27 @@ export function AppSidebar({
               query: threadSearchQuery,
             }}
           />
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className={cn(
+              PROJECT_LIST_ACTION_BUTTON_CLASS,
+              "mt-1 w-full",
+              location.pathname === DASHBOARD_ROUTE_PATH &&
+                "bg-sidebar-accent text-sidebar-foreground",
+            )}
+            aria-current={
+              location.pathname === DASHBOARD_ROUTE_PATH ? "page" : undefined
+            }
+            onClick={() => {
+              closeOnMobile();
+              void navigate(DASHBOARD_ROUTE_PATH);
+            }}
+          >
+            <Icon name="GridView" />
+            <span className="min-w-0 truncate text-left">Dashboard</span>
+          </Button>
         </div>
         <PluginNavSidebarItems
           onNavigate={closeOnMobile}
