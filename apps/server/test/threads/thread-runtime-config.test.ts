@@ -271,7 +271,11 @@ describe("thread runtime config", () => {
         command: "opencode",
         args: ["acp"],
         env: {},
-        manualCompaction: { method: "prompt", prompt: "/compact" },
+        manualCompaction: {
+          method: "summarize-and-reseed",
+          summaryPrompt: expect.stringContaining("handoff summary"),
+          reseedPrompt: expect.stringContaining("compacted handoff"),
+        },
       },
       providerId: "acp-opencode",
       requestedModel: "opencode/default",

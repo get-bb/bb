@@ -308,8 +308,9 @@ environment pull-request show <id>`. Diff commands require an explicit target
   opts an agent into silent provider-local prompt compaction; only configure it
   when the agent treats that exact prompt as a control. Agents without one may
   use `summarize-and-reseed` with explicit `summaryPrompt` and `reseedPrompt`
-  strings. `acp-opencode` declares prompt compaction automatically;
-  `acp-cursor` declares summarize-and-reseed automatically. Optional
+  strings. `acp-opencode` and `acp-cursor` declare summarize-and-reseed
+  automatically because their interactive compaction controls are not reliable
+  ACP `session/prompt` controls. Optional
   `nativeSkillRoots.user` paths resolve from the target
   host home directory. Optional `nativeSkillRoots.project` paths resolve from
   the selected workspace. The composer lists skills from these roots.
@@ -442,7 +443,7 @@ For review or fix pipelines, get the environment ID from
 - For interrupted or stopped threads, inspect first. If the user stopped the
   thread, treat that as intentional unless they ask you to continue.
 - Use `bb thread stop <id>` when a thread is stuck or no longer needed.
-- Use `bb thread compact <id>` to manually compact an idle or errored thread's provider context. Codex, Claude Code, Pi, OpenCode ACP, Cursor ACP, and explicitly configured custom ACP agents support this operation; other ACP agents remain unsupported. OpenCode invokes its native control; Cursor silently summarizes and reseeds a fresh ACP session because its interactive `/compress` command is not exposed over ACP.
+- Use `bb thread compact <id>` to manually compact an idle or errored thread's provider context. Codex, Claude Code, Pi, OpenCode ACP, Cursor ACP, and explicitly configured custom ACP agents support this operation; other ACP agents remain unsupported. OpenCode and Cursor silently summarize and reseed a fresh ACP session because their interactive compaction controls are not reliable over ACP.
 - Use `bb thread cancel-plan <id>` to exit an active Plan turn without
   optimistically clearing its banner. Use `bb thread clear-goal <id>` to clear
   a Codex thread's durable active Goal. Both wait for provider confirmation.

@@ -124,6 +124,9 @@ interface AcpThreadSession {
   bbThreadId: string;
   providerThreadId: string;
   connection: AcpAgentConnection;
+  agentCommand: string;
+  agentArgs: string[];
+  agentEnv: Record<string, string | undefined>;
   agentLabel: string;
   supportsImageInput: boolean;
   policy: AcpSessionPolicy;
@@ -1489,12 +1492,14 @@ async function startAgentSession(
     onRequest: (method, requestParams, responder) =>
       handleAgentRequest(session, method, requestParams, responder),
     onExit: (info) => {
-      const wasCurrent = sessionsByBbThreadId.get(bbThreadId) === session;
-      cancelPendingPermissions(session);
-      removeSession(session);
+      const wasCurrent =
+        sessionsByBbThreadId.get(bbThreadId) === session &&
+        session.connection === connection;
       if (!wasCurrent || session.stopping) {
         return;
       }
+      cancelPendingPermissions(session);
+      removeSession(session);
       sendNotification("error", {
         threadId: bbThreadId,
         message:
@@ -1508,6 +1513,9 @@ async function startAgentSession(
     bbThreadId,
     providerThreadId: "",
     connection,
+    agentCommand: params.agent.command,
+    agentArgs: launch.args,
+    agentEnv: childEnv,
     agentLabel,
     supportsImageInput: false,
     policy: {
@@ -1785,6 +1793,85 @@ function buildCompactionReseedPrompt(
   ].join("\n\n");
 }
 
+async function startFreshAgentSessionForCompaction(
+  session: AcpThreadSession,
+): Promise<{
+  connection: AcpAgentConnection;
+  providerThreadId: string;
+  supportsImageInput: boolean;
+}> {
+  let connection: AcpAgentConnection;
+  connection = createAcpAgentConnection({
+    command: session.agentCommand,
+    args: session.agentArgs,
+    cwd: session.cwd,
+    env: session.agentEnv,
+    onNotification: (method, notificationParams) =>
+      handleAgentNotification(session, method, notificationParams),
+    onRequest: (method, requestParams, responder) =>
+      handleAgentRequest(session, method, requestParams, responder),
+    onExit: (info) => {
+      const wasCurrent =
+        sessionsByBbThreadId.get(session.bbThreadId) === session &&
+        session.connection === connection;
+      if (!wasCurrent || session.stopping) {
+        return;
+      }
+      cancelPendingPermissions(session);
+      removeSession(session);
+      sendNotification("error", {
+        threadId: session.bbThreadId,
+        message:
+          `ACP agent "${session.agentLabel}" exited unexpectedly` +
+          `${info.code !== null ? ` (code ${info.code})` : ""}` +
+          `${info.stderrTail ? `: ${info.stderrTail}` : ""}`,
+      });
+    },
+  });
+
+  try {
+    const initializeResult = await connection.request({
+      method: "initialize",
+      params: {
+        protocolVersion: ACP_PROTOCOL_VERSION,
+        clientInfo: { name: "bb", version: "1.0.0" },
+        clientCapabilities: {
+          fs: { readTextFile: true, writeTextFile: true },
+          terminal: false,
+        },
+      },
+      resultSchema: acpInitializeResultSchema,
+    });
+    await authenticateAcpAgent({
+      connection,
+      env: session.agentEnv,
+      initializeResult,
+    });
+    const newSession = await connection.request({
+      method: "session/new",
+      params: { cwd: session.cwd, mcpServers: session.mcpServers },
+      resultSchema: acpSessionNewResultSchema,
+    });
+    await selectAcpNativeModel({
+      connection,
+      sessionId: newSession.sessionId,
+      configOptions: newSession.configOptions,
+      models: newSession.models,
+      modelSelection: session.modelSelection,
+      nativeReasoning: session.nativeReasoning,
+    });
+    return {
+      connection,
+      providerThreadId: newSession.sessionId,
+      supportsImageInput:
+        initializeResult.agentCapabilities?.promptCapabilities?.image ?? false,
+    };
+  } catch (error) {
+    connection.kill();
+    throw error;
+  }
+}
+
 async function compactSession(
   session: AcpThreadSession,
   compaction: AcpManualCompaction,
@@ -1815,28 +1902,31 @@ async function compactSession(
       throw new Error("ACP agent returned an empty compaction summary");
     }
 
-    const newSession = await session.connection.request({
-      method: "session/new",
-      params: { cwd: session.cwd, mcpServers: session.mcpServers },
-      resultSchema: acpSessionNewResultSchema,
-    });
-    await selectAcpNativeModel({
-      connection: session.connection,
-      sessionId: newSession.sessionId,
-      configOptions: newSession.configOptions,
-      models: newSession.models,
-      modelSelection: session.modelSelection,
-      nativeReasoning: session.nativeReasoning,
-    });
-    await runCompactionPrompt(session, {
-      captureOutput: false,
-      prompt: buildCompactionReseedPrompt(
-        session,
-        compaction.reseedPrompt,
-        summary,
-      ),
-      sessionId: newSession.sessionId,
-    });
+    // A fresh process avoids agent-global state leaking into the replacement
+    // session. OpenCode in particular registers another event subscriber for
+    // every session/new on one ACP connection and duplicates all later text
+    // chunks; replacing the process keeps the reseeded transcript intact.
+    const replacement = await startFreshAgentSessionForCompaction(session);
+    const previousConnection = session.connection;
+    const previousSupportsImageInput = session.supportsImageInput;
+    session.connection = replacement.connection;
+    session.supportsImageInput = replacement.supportsImageInput;
+    try {
+      await runCompactionPrompt(session, {
+        captureOutput: false,
+        prompt: buildCompactionReseedPrompt(
+          session,
+          compaction.reseedPrompt,
+          summary,
+        ),
+        sessionId: replacement.providerThreadId,
+      });
+    } catch (error) {
+      session.connection = previousConnection;
+      session.supportsImageInput = previousSupportsImageInput;
+      replacement.connection.kill();
+      throw error;
+    }
 
     const previousProviderThreadId = session.providerThreadId;
     if (
@@ -1845,13 +1935,17 @@ async function compactSession(
     ) {
       bbThreadIdByProviderThreadId.delete(previousProviderThreadId);
     }
-    session.providerThreadId = newSession.sessionId;
+    session.providerThreadId = replacement.providerThreadId;
     session.pendingInstructions = undefined;
-    bbThreadIdByProviderThreadId.set(newSession.sessionId, session.bbThreadId);
+    bbThreadIdByProviderThreadId.set(
+      replacement.providerThreadId,
+      session.bbThreadId,
+    );
     sendNotification("thread/identity", {
       threadId: session.bbThreadId,
-      providerThreadId: newSession.sessionId,
+      providerThreadId: replacement.providerThreadId,
     });
+    previousConnection.kill();
   } finally {
     session.compactionActive = false;
     session.promptActive = false;

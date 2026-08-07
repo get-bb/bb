@@ -120,8 +120,9 @@ manualCompaction to { method: "prompt", prompt: "/compact" } only for agents
 that treat that exact ACP prompt as a compaction control. Agents without one
 may explicitly configure { method: "summarize-and-reseed", summaryPrompt,
 reseedPrompt }; bb captures the summary silently, starts a fresh ACP session,
-and seeds it with that context. acp-opencode declares the prompt strategy
-automatically, while acp-cursor declares summarize-and-reseed automatically.
+and seeds it with that context. acp-opencode and acp-cursor declare
+summarize-and-reseed automatically because their interactive compaction
+controls are not reliable ACP session/prompt controls.
 Optional logo
 accepts an SVG, PNG, or WebP path; relative paths resolve from the bb data dir.
 Use nativeSkillRoots to add native skills to the composer. User roots resolve

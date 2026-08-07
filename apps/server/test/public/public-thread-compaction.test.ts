@@ -118,7 +118,7 @@ describe("public thread compaction", () => {
     });
   });
 
-  it("compacts OpenCode ACP with its declared provider-local prompt", async () => {
+  it("compacts OpenCode ACP with its declared summarize-and-reseed strategy", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps);
       const { project } = seedProjectWithSource(harness.deps, {
@@ -159,15 +159,20 @@ describe("public thread compaction", () => {
             acpLaunchSpec: {
               command: "opencode",
               args: ["acp"],
-              manualCompaction: { method: "prompt", prompt: "/compact" },
+              manualCompaction: {
+                method: "summarize-and-reseed",
+                summaryPrompt: expect.stringContaining("handoff summary"),
+                reseedPrompt: expect.stringContaining("compacted handoff"),
+              },
             },
             resumeContext: {
               providerId: "acp-opencode",
               providerThreadId: "opencode-session-1",
               acpLaunchSpec: {
                 manualCompaction: {
-                  method: "prompt",
-                  prompt: "/compact",
+                  method: "summarize-and-reseed",
+                  summaryPrompt: expect.stringContaining("handoff summary"),
+                  reseedPrompt: expect.stringContaining("compacted handoff"),
                 },
               },
             },
