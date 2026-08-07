@@ -27,6 +27,12 @@ export const NATIVE_EXTERNAL_PACKAGES = [
   // lazy resolution, so it must stay external + a shipped dependency unless a
   // bundle target explicitly uses the bundle-safe `jiti/static` entry point.
   "jiti",
+  // jsonc-parser ships a UMD `main.js` that lazily require()s its own
+  // `./impl/format` at runtime; esbuild bundles the UMD wrapper but cannot
+  // follow that dynamic relative require, so the bundled server crashes on
+  // startup with "Cannot find module './impl/format'". Keep it external + a
+  // shipped dependency so the runnable dist resolves it from node_modules.
+  "jsonc-parser",
 ];
 
 export function externalPackagePatterns(packageNames) {
