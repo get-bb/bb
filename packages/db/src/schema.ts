@@ -210,6 +210,8 @@ export const appSettings = sqliteTable("app_settings", {
   })
     .notNull()
     .default(false),
+  uiFontFamily: text("ui_font_family").notNull().default(""),
+  bufferFontFamily: text("buffer_font_family").notNull().default(""),
   keybindingOverrides: text("keybinding_overrides").notNull().default("[]"),
   /** ISO timestamp of the last onboarding completion/dismissal; null = never. */
   onboardingCompletedAt: text("onboarding_completed_at"),

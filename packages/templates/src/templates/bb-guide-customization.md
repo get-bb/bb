@@ -58,8 +58,16 @@ Settings → General also includes `steerActiveThreadOnEnter`, which defaults to
 false. When enabled, Enter steers a running thread and Command+Enter queues a
 follow-up; when disabled, those actions are reversed.
 
+Settings → Appearance includes server-backed UI and buffer font-family stacks.
+The UI font applies to controls, navigation, prose, and Mermaid diagrams. The
+buffer font applies to files, diffs, code, and terminals. Quote family names
+that contain spaces and add a generic fallback. Geist Variable and iA Writer
+Mono are bundled; other families must be installed on each client machine.
+
   bb settings show
   bb settings general <key> <true|false>
+  bb settings font set <ui|buffer> <family>
+  bb settings font reset <ui|buffer>
   bb settings replay-onboarding
   bb settings experiment <key> <value>
   bb settings usage [--machine <id-or-name>]

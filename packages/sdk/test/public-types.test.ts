@@ -433,6 +433,26 @@ describe("SDK public type entrypoints", () => {
     >();
   });
 
+  it("exposes UI and buffer font settings through the system SDK", () => {
+    type SystemConfig = Awaited<ReturnType<RootBbSdk["system"]["config"]>>;
+    type GeneralSettingsUpdate = Parameters<
+      RootBbSdk["system"]["updateGeneralSettings"]
+    >[0];
+
+    expectTypeOf<
+      SystemConfig["generalSettings"]["uiFontFamily"]
+    >().toEqualTypeOf<string>();
+    expectTypeOf<
+      SystemConfig["generalSettings"]["bufferFontFamily"]
+    >().toEqualTypeOf<string>();
+    expectTypeOf<GeneralSettingsUpdate["uiFontFamily"]>().toEqualTypeOf<
+      string | undefined
+    >();
+    expectTypeOf<GeneralSettingsUpdate["bufferFontFamily"]>().toEqualTypeOf<
+      string | undefined
+    >();
+  });
+
   it("makes provider host selectors mutually exclusive", () => {
     expectTypeOf<{
       environmentId: string;

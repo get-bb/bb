@@ -287,23 +287,30 @@ function GeneralSettingsStory({
 
 function AppearanceSettingsStory() {
   const state = useSettingsStoryState();
+  const [uiFontFamily, setUiFontFamily] = useState("");
+  const [bufferFontFamily, setBufferFontFamily] = useState("");
 
   return (
     <AppearanceSettingsSection
       appearance={state.appearance}
       appearanceDisabled={false}
+      bufferFontFamily={bufferFontFamily}
       customThemes={["Monochrome Lab", "Low Contrast"]}
+      fontSettingsDisabled={false}
       pluginThemes={[]}
       faviconColor={state.appearance.faviconColor}
       onAppearanceThemeChange={(themeId) =>
         state.setAppearance((current) => ({ ...current, themeId }))
       }
+      onBufferFontFamilyChange={setBufferFontFamily}
       onCreatePalette={() => undefined}
       onFaviconColorChange={(faviconColor) =>
         state.setAppearance((current) => ({ ...current, faviconColor }))
       }
       onThemePreferenceChange={state.setThemePreference}
+      onUiFontFamilyChange={setUiFontFamily}
       themePreference={state.themePreference}
+      uiFontFamily={uiFontFamily}
     />
   );
 }

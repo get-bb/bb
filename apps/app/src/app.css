@@ -1,4 +1,7 @@
 @import "@fontsource-variable/inter";
+@import "@fontsource-variable/geist";
+@import "@fontsource/ia-writer-mono";
+@import "@fontsource/ia-writer-mono/700.css";
 @import "@/components/ui/theme.css";
 
 @layer base {

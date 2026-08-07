@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   type AppKeybindingOverrides,
-  type AppSettings,
+  type AppSettingsUpdate,
   type AppThemeSelection,
   type Experiments,
 } from "@bb/domain";
@@ -37,7 +37,7 @@ export function useUpdateExperiments() {
 }
 
 /**
- * Replace the user's server-backed Settings → General preferences. The server
+ * Update one or more server-backed Settings → General preferences. The server
  * broadcasts `config-changed` for other windows; the local invalidation gives
  * this window an immediate refresh.
  */
@@ -48,7 +48,7 @@ export function useUpdateGeneralSettings() {
     meta: {
       errorMessage: "Failed to update general settings.",
     },
-    mutationFn: (settings: AppSettings) =>
+    mutationFn: (settings: AppSettingsUpdate) =>
       sdk.system.updateGeneralSettings(settings),
     onSuccess: () => {
       invalidateGeneralSettingsDependencies({ queryClient });
@@ -107,8 +107,7 @@ export function useUpdateAppearance() {
     meta: {
       errorMessage: "Failed to update appearance.",
     },
-    mutationFn: (selection: AppThemeSelection) =>
-      sdk.theme.set(selection),
+    mutationFn: (selection: AppThemeSelection) => sdk.theme.set(selection),
     onSuccess: () => {
       invalidateSystemConfig({ queryClient });
     },

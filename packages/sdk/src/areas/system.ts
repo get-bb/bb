@@ -1,6 +1,7 @@
 import type {
   AppKeybindingOverrides,
   AppSettings,
+  AppSettingsUpdate,
   Experiments,
 } from "@bb/domain";
 import type {
@@ -102,7 +103,7 @@ export interface SystemArea {
   ): Promise<SystemVoiceTranscriptionResult>;
   updateExperiments(args: Experiments): Promise<SystemUpdateExperimentsResult>;
   updateGeneralSettings(
-    args: AppSettings,
+    args: AppSettingsUpdate,
   ): Promise<SystemUpdateGeneralSettingsResult>;
   updateKeyboardSettings(
     args: AppKeybindingOverrides,

@@ -138,12 +138,13 @@ export function registerSystemRoutes(
   );
 
   put(routes.generalSettings, (context, payload) => {
-    setAppSettings(deps.db, payload);
+    const settings = { ...getAppSettings(deps.db), ...payload };
+    setAppSettings(deps.db, settings);
     deps.hub.notifySystem(["config-changed"]);
     schedulePrimaryHostCaffeinateReconciliation(deps, {
       reason: "settings-updated",
     });
-    return context.json(getAppSettings(deps.db));
+    return context.json(settings);
   });
 
   put(routes.keyboardSettings, (context, payload) => {

@@ -177,7 +177,6 @@ export function OnboardingHost() {
     }) => {
       if (settings === undefined) return;
       updateSettings.mutate({
-        ...settings,
         onboardingCompletedAt: new Date().toISOString(),
       });
       void sdk.system

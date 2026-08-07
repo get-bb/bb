@@ -7,6 +7,7 @@ import { AppToaster } from "./components/AppToaster";
 import { registerProviderCliInstallQueryClient } from "./components/provider-cli/provider-cli-install-store";
 import { initializePreferredTheme } from "./hooks/useTheme";
 import { initializeFavicon } from "./lib/favicon-color-preference";
+import { initializeFontPreferences } from "./lib/font-preference";
 import {
   createAppQueryClient,
   installAppQueryClientBrowserEvents,
@@ -22,6 +23,7 @@ installAppQueryClientBrowserEvents(queryClient);
 registerProviderCliInstallQueryClient(queryClient);
 
 initializePreferredTheme();
+initializeFontPreferences();
 // Apply the palette cached from the last load before React renders, so a
 // non-default theme doesn't flash the default. useAppTheme reconciles it with
 // the server's authoritative appearance once /system/config loads.

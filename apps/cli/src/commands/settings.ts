@@ -2,9 +2,9 @@ import { Command } from "commander";
 import {
   appCommandIdSchema,
   appShortcutSchema,
-  appSettingsSchema,
   experimentsSchema,
-  type AppSettings,
+  fontFamilyPreferenceSchema,
+  type AppSettingsUpdate,
   type AppShortcut,
   type Experiments,
 } from "@bb/domain";
@@ -15,6 +15,18 @@ import { resolveMachineHostId, resolveMachineTargetOption } from "./machine.js";
 
 interface JsonOptions {
   json?: boolean;
+}
+
+function updateFontSetting(target: string, value: string): AppSettingsUpdate {
+  const fontFamily = fontFamilyPreferenceSchema.parse(value);
+  switch (target) {
+    case "ui":
+      return { uiFontFamily: fontFamily };
+    case "buffer":
+      return { bufferFontFamily: fontFamily };
+    default:
+      throw new Error("font target must be ui or buffer.");
+  }
 }
 
 interface UsageOptions extends JsonOptions {
@@ -53,22 +65,26 @@ function parseShortcut(value: string): AppShortcut {
   });
 }
 
-function updateGeneralSetting(
-  settings: AppSettings,
-  key: string,
-  value: boolean,
-): AppSettings {
+function updateGeneralSetting(key: string, value: boolean): AppSettingsUpdate {
   switch (key) {
     case "caffeinate":
+      return { caffeinate: value };
     case "showKeyboardHints":
+      return { showKeyboardHints: value };
     case "steerActiveThreadOnEnter":
+      return { steerActiveThreadOnEnter: value };
     case "showUnhandledProviderEvents":
+      return { showUnhandledProviderEvents: value };
     case "codexMemoryEnabled":
+      return { codexMemoryEnabled: value };
     case "claudeCodeMemoryEnabled":
+      return { claudeCodeMemoryEnabled: value };
     case "codexSubagentsDisabled":
+      return { codexSubagentsDisabled: value };
     case "claudeCodeSubagentsDisabled":
+      return { claudeCodeSubagentsDisabled: value };
     case "claudeCodeWorkflowsDisabled":
-      return appSettingsSchema.parse({ ...settings, [key]: value });
+      return { claudeCodeWorkflowsDisabled: value };
     default:
       throw new Error(`Unknown general setting '${key}'.`);
   }
@@ -116,13 +132,8 @@ export function registerSettingsCommands(
     .action(
       action(async (key: string, value: string, opts: JsonOptions) => {
         const sdk = createCliBbSdk(getUrl());
-        const config = await sdk.system.config();
         const result = await sdk.system.updateGeneralSettings(
-          updateGeneralSetting(
-            config.generalSettings,
-            key,
-            parseBoolean(value),
-          ),
+          updateGeneralSetting(key, parseBoolean(value)),
         );
         if (outputJson(opts, result)) return;
         console.log(`${key} updated`);
@@ -136,15 +147,47 @@ export function registerSettingsCommands(
     .action(
       action(async (opts: JsonOptions) => {
         const sdk = createCliBbSdk(getUrl());
-        const config = await sdk.system.config();
         // Clearing the timestamp is the whole trigger: the app gates the flow
         // on this field alone.
         const result = await sdk.system.updateGeneralSettings({
-          ...config.generalSettings,
           onboardingCompletedAt: null,
         });
         if (outputJson(opts, result)) return;
         console.log("Onboarding will show again");
+      }),
+    );
+
+  const font = settings
+    .command("font")
+    .description("Manage UI and buffer font-family stacks");
+
+  font
+    .command("set <target> <family>")
+    .description("Set the ui or buffer CSS font-family stack")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (target: string, family: string, opts: JsonOptions) => {
+        const sdk = createCliBbSdk(getUrl());
+        const result = await sdk.system.updateGeneralSettings(
+          updateFontSetting(target, family),
+        );
+        if (outputJson(opts, result)) return;
+        console.log(`${target} font updated`);
+      }),
+    );
+
+  font
+    .command("reset <target>")
+    .description("Reset the ui or buffer font to the theme default")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (target: string, opts: JsonOptions) => {
+        const sdk = createCliBbSdk(getUrl());
+        const result = await sdk.system.updateGeneralSettings(
+          updateFontSetting(target, ""),
+        );
+        if (outputJson(opts, result)) return;
+        console.log(`${target} font reset`);
       }),
     );
 
@@ -174,13 +217,8 @@ export function registerSettingsCommands(
     .action(
       action(async (value: string, opts: JsonOptions) => {
         const sdk = createCliBbSdk(getUrl());
-        const config = await sdk.system.config();
         const result = await sdk.system.updateGeneralSettings(
-          updateGeneralSetting(
-            config.generalSettings,
-            "showKeyboardHints",
-            parseBoolean(value),
-          ),
+          updateGeneralSetting("showKeyboardHints", parseBoolean(value)),
         );
         if (outputJson(opts, result)) return;
         console.log("Keyboard hint visibility updated");

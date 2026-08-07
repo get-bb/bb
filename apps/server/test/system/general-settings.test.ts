@@ -48,6 +48,8 @@ describe("general settings", () => {
           showKeyboardHints: false,
           steerActiveThreadOnEnter: true,
           codexMemoryEnabled: false,
+          uiFontFamily: '"IBM Plex Sans", sans-serif',
+          bufferFontFamily: '"Berkeley Mono", monospace',
         }),
       });
       expect(put.status).toBe(200);
@@ -57,6 +59,8 @@ describe("general settings", () => {
         showKeyboardHints: false,
         steerActiveThreadOnEnter: true,
         codexMemoryEnabled: false,
+        uiFontFamily: '"IBM Plex Sans", sans-serif',
+        bufferFontFamily: '"Berkeley Mono", monospace',
       });
       expect(getAppSettings(harness.db)).toEqual({
         ...defaultAppSettings,
@@ -64,6 +68,8 @@ describe("general settings", () => {
         showKeyboardHints: false,
         steerActiveThreadOnEnter: true,
         codexMemoryEnabled: false,
+        uiFontFamily: '"IBM Plex Sans", sans-serif',
+        bufferFontFamily: '"Berkeley Mono", monospace',
       });
 
       const config = await harness.app.request("/api/v1/system/config");
@@ -76,6 +82,8 @@ describe("general settings", () => {
         showKeyboardHints: false,
         steerActiveThreadOnEnter: true,
         codexMemoryEnabled: false,
+        uiFontFamily: '"IBM Plex Sans", sans-serif',
+        bufferFontFamily: '"Berkeley Mono", monospace',
       });
       expect(parsedConfig.primaryHostId).toBe(host.id);
       expect(parsedConfig.primaryHostPlatform).toBe("darwin");
@@ -115,7 +123,7 @@ describe("general settings", () => {
     });
   });
 
-  it("rejects payloads that are not the full general settings object", async () => {
+  it("rejects an empty settings update", async () => {
     await withTestHarness(async (harness) => {
       const response = await harness.app.request("/api/v1/settings/general", {
         method: "PUT",
@@ -123,6 +131,69 @@ describe("general settings", () => {
         body: JSON.stringify({}),
       });
       expect(response.status).toBe(400);
+    });
+  });
+
+  it("merges concurrent font updates without erasing either value", async () => {
+    await withTestHarness(async (harness) => {
+      const uiUpdate = await harness.app.request("/api/v1/settings/general", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          uiFontFamily: '"IBM Plex Sans", sans-serif',
+        }),
+      });
+      expect(uiUpdate.status).toBe(200);
+
+      const bufferUpdate = await harness.app.request(
+        "/api/v1/settings/general",
+        {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            bufferFontFamily: '"Berkeley Mono", monospace',
+          }),
+        },
+      );
+      expect(bufferUpdate.status).toBe(200);
+      expect(appSettingsSchema.parse(await readJson(bufferUpdate))).toEqual({
+        ...defaultAppSettings,
+        uiFontFamily: '"IBM Plex Sans", sans-serif',
+        bufferFontFamily: '"Berkeley Mono", monospace',
+      });
+    });
+  });
+
+  it("accepts the complete legacy payload without font fields", async () => {
+    await withTestHarness(async (harness) => {
+      setAppSettings(harness.db, {
+        ...defaultAppSettings,
+        uiFontFamily: '"IBM Plex Sans", sans-serif',
+        bufferFontFamily: '"Berkeley Mono", monospace',
+      });
+      const response = await harness.app.request("/api/v1/settings/general", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          caffeinate: false,
+          showKeyboardHints: true,
+          steerActiveThreadOnEnter: false,
+          showUnhandledProviderEvents: false,
+          codexMemoryEnabled: true,
+          claudeCodeMemoryEnabled: true,
+          codexSubagentsDisabled: false,
+          claudeCodeSubagentsDisabled: false,
+          claudeCodeWorkflowsDisabled: false,
+          onboardingCompletedAt: null,
+        }),
+      });
+
+      expect(response.status).toBe(200);
+      expect(appSettingsSchema.parse(await readJson(response))).toEqual({
+        ...defaultAppSettings,
+        uiFontFamily: '"IBM Plex Sans", sans-serif',
+        bufferFontFamily: '"Berkeley Mono", monospace',
+      });
     });
   });
 
@@ -137,6 +208,21 @@ describe("general settings", () => {
           unused: true,
         }),
       });
+      expect(response.status).toBe(400);
+    });
+  });
+
+  it("rejects font stacks that can escape a CSS declaration", async () => {
+    await withTestHarness(async (harness) => {
+      const response = await harness.app.request("/api/v1/settings/general", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          ...defaultAppSettings,
+          uiFontFamily: "Inter; color: red",
+        }),
+      });
+
       expect(response.status).toBe(400);
     });
   });

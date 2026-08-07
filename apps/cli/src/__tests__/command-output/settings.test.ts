@@ -14,13 +14,9 @@ describe("bb settings commands", () => {
   const register: CommandRegistrar = (program) =>
     registerSettingsCommands(program, () => "http://server");
 
-  it("updates one general setting while preserving the full contract", async () => {
+  it("updates one general setting without sending stale values", async () => {
     const put = vi.fn(async ({ json }) => json);
     stubServerApi({
-      "v1.system.config.$get": vi.fn(async () => ({
-        generalSettings: defaultAppSettings,
-        experiments: defaultExperiments,
-      })),
       "v1.settings.general.$put": put,
     });
 
@@ -30,34 +26,26 @@ describe("bb settings commands", () => {
     );
 
     expect(put).toHaveBeenCalledWith({
-      json: { ...defaultAppSettings, showUnhandledProviderEvents: true },
+      json: { showUnhandledProviderEvents: true },
     });
   });
 
-  it("updates keyboard hint visibility while preserving the full contract", async () => {
+  it("updates keyboard hint visibility without sending stale values", async () => {
     const put = vi.fn(async ({ json }) => json);
     stubServerApi({
-      "v1.system.config.$get": vi.fn(async () => ({
-        generalSettings: defaultAppSettings,
-        experiments: defaultExperiments,
-      })),
       "v1.settings.general.$put": put,
     });
 
     await runCommand(["settings", "keyboard", "hints", "false"], register);
 
     expect(put).toHaveBeenCalledWith({
-      json: { ...defaultAppSettings, showKeyboardHints: false },
+      json: { showKeyboardHints: false },
     });
   });
 
-  it("updates active-thread Enter behavior while preserving the full contract", async () => {
+  it("updates active-thread Enter behavior without sending stale values", async () => {
     const put = vi.fn(async ({ json }) => json);
     stubServerApi({
-      "v1.system.config.$get": vi.fn(async () => ({
-        generalSettings: defaultAppSettings,
-        experiments: defaultExperiments,
-      })),
       "v1.settings.general.$put": put,
     });
 
@@ -67,7 +55,36 @@ describe("bb settings commands", () => {
     );
 
     expect(put).toHaveBeenCalledWith({
-      json: { ...defaultAppSettings, steerActiveThreadOnEnter: true },
+      json: { steerActiveThreadOnEnter: true },
+    });
+  });
+
+  it("sets only the selected buffer font", async () => {
+    const put = vi.fn(async ({ json }) => json);
+    stubServerApi({
+      "v1.settings.general.$put": put,
+    });
+
+    await runCommand(
+      ["settings", "font", "set", "buffer", '"Berkeley Mono", monospace'],
+      register,
+    );
+
+    expect(put).toHaveBeenCalledWith({
+      json: { bufferFontFamily: '"Berkeley Mono", monospace' },
+    });
+  });
+
+  it("resets only the selected UI font", async () => {
+    const put = vi.fn(async ({ json }) => json);
+    stubServerApi({
+      "v1.settings.general.$put": put,
+    });
+
+    await runCommand(["settings", "font", "reset", "ui"], register);
+
+    expect(put).toHaveBeenCalledWith({
+      json: { uiFontFamily: "" },
     });
   });
 

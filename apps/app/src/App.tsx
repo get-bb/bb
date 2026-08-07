@@ -12,6 +12,7 @@ import { QuickCreateProjectProvider } from "./hooks/useQuickCreateProject";
 import { RouteNavigationProvider } from "./components/ui/app-route-anchor";
 import { useAppTheme } from "./hooks/useAppTheme";
 import { useFaviconColorSync } from "./lib/favicon-color-preference";
+import { useAppFontPreferences } from "./lib/font-preference";
 import { useDesktopThemeSync } from "./hooks/useDesktopThemeSync";
 import { usePluginFrontendBoot } from "./hooks/usePluginFrontendBoot";
 import { useWebSocket } from "./hooks/useWebSocket";
@@ -255,6 +256,8 @@ export function App() {
   useDesktopThemeSync();
   // Apply the server-stored app palette (built-in or custom CSS) app-wide.
   useAppTheme();
+  // Apply the server-stored UI and buffer fonts across every app surface.
+  useAppFontPreferences();
   // Reconcile the favicon tint with the server-stored appearance (and migrate
   // any legacy localStorage-only preference on first load).
   useFaviconColorSync();

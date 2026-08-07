@@ -4,6 +4,7 @@ import {
   createTerminalOutputWriteState,
   getFittedTerminalDimensions,
   isTerminalReplayCompleteMessage,
+  resolveTerminalFontFamily,
   resolveTerminalReplayDimensions,
   writeTerminalOutput,
 } from "./ThreadTerminalView";
@@ -16,6 +17,24 @@ describe("buildTerminalThemeFromCssColors", () => {
 
     expect(theme.background).toBe("--sidebar");
     expect(theme.cursorAccent).toBe("--sidebar");
+  });
+});
+
+describe("terminal font family", () => {
+  it("uses the buffer font when one is configured", () => {
+    expect(resolveTerminalFontFamily('"Berkeley Mono", monospace')).toBe(
+      '"Berkeley Mono", monospace',
+    );
+  });
+
+  it("keeps the existing terminal fallback when the preference is empty", () => {
+    expect(resolveTerminalFontFamily("   ")).toContain("ui-monospace");
+  });
+
+  it("uses the same normalisation as other buffer surfaces", () => {
+    expect(resolveTerminalFontFamily('"Berkeley Mono";\n monospace')).toBe(
+      '"Berkeley Mono" monospace',
+    );
   });
 });
 
@@ -36,9 +55,10 @@ describe("terminal replay sizing", () => {
       cols: 100,
       rows: 30,
     });
-    expect(
-      resolveTerminalReplayDimensions({ cols: 77, rows: 39 }),
-    ).toEqual({ cols: 77, rows: 39 });
+    expect(resolveTerminalReplayDimensions({ cols: 77, rows: 39 })).toEqual({
+      cols: 77,
+      rows: 39,
+    });
   });
 
   it("waits for the final replay write before fitting the terminal", () => {

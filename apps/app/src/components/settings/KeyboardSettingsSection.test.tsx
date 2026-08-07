@@ -139,7 +139,7 @@ afterEach(() => {
 });
 
 describe("KeyboardSettingsSection", () => {
-  it("turns keyboard hints off while preserving the full settings contract", () => {
+  it("updates only the keyboard hint setting", () => {
     render(<KeyboardSettingsSection />);
 
     fireEvent.click(
@@ -149,7 +149,6 @@ describe("KeyboardSettingsSection", () => {
     );
 
     expect(testState.generalMutate).toHaveBeenCalledWith({
-      ...defaultAppSettings,
       showKeyboardHints: false,
     });
   });

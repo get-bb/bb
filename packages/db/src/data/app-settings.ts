@@ -22,6 +22,8 @@ export function getAppSettings(db: DbConnection): AppSettings {
       codexSubagentsDisabled: appSettings.codexSubagentsDisabled,
       claudeCodeSubagentsDisabled: appSettings.claudeCodeSubagentsDisabled,
       claudeCodeWorkflowsDisabled: appSettings.claudeCodeWorkflowsDisabled,
+      uiFontFamily: appSettings.uiFontFamily,
+      bufferFontFamily: appSettings.bufferFontFamily,
       onboardingCompletedAt: appSettings.onboardingCompletedAt,
     })
     .from(appSettings)
@@ -48,6 +50,8 @@ export function setAppSettings(
       codexSubagentsDisabled: settings.codexSubagentsDisabled,
       claudeCodeSubagentsDisabled: settings.claudeCodeSubagentsDisabled,
       claudeCodeWorkflowsDisabled: settings.claudeCodeWorkflowsDisabled,
+      uiFontFamily: settings.uiFontFamily,
+      bufferFontFamily: settings.bufferFontFamily,
       onboardingCompletedAt: settings.onboardingCompletedAt,
       updatedAt,
     })
@@ -63,6 +67,8 @@ export function setAppSettings(
         codexSubagentsDisabled: settings.codexSubagentsDisabled,
         claudeCodeSubagentsDisabled: settings.claudeCodeSubagentsDisabled,
         claudeCodeWorkflowsDisabled: settings.claudeCodeWorkflowsDisabled,
+        uiFontFamily: settings.uiFontFamily,
+        bufferFontFamily: settings.bufferFontFamily,
         onboardingCompletedAt: settings.onboardingCompletedAt,
         updatedAt,
       },

@@ -52,6 +52,13 @@ import { MachinesSettingsSection } from "@/components/settings/MachinesSettingsS
 import { ArchivedThreadsSettingsSection } from "@/components/settings/ArchivedThreadsSettingsSection";
 import { CliSkillsSettingsSection } from "@/components/settings/CliSkillsSettingsSection";
 import {
+  BUFFER_FONT_FAMILY_EXAMPLE,
+  BUFFER_FONT_FAMILY_SUGGESTIONS,
+  FontFamilySettingsControl,
+  UI_FONT_FAMILY_EXAMPLE,
+  UI_FONT_FAMILY_SUGGESTIONS,
+} from "@/components/settings/FontFamilySettingsControl";
+import {
   useUpdateGeneralSettings,
   useUpdateAppearance,
   useUpdateExperiments,
@@ -161,14 +168,19 @@ export interface FaviconColorSettingsControlProps {
 export interface AppearanceSettingsSectionProps {
   appearance: AppTheme;
   appearanceDisabled: boolean;
+  bufferFontFamily: string;
   customThemes: readonly string[];
+  fontSettingsDisabled: boolean;
   pluginThemes: readonly PluginThemeMeta[];
   faviconColor: FaviconColorPreference;
   onAppearanceThemeChange: (themeId: string) => void;
+  onBufferFontFamilyChange: (fontFamily: string) => void;
   onCreatePalette: () => void;
   onFaviconColorChange: (faviconColor: FaviconColorPreference) => void;
   onThemePreferenceChange: (themePreference: ThemePreference) => void;
+  onUiFontFamilyChange: (fontFamily: string) => void;
   themePreference: ThemePreference;
+  uiFontFamily: string;
 }
 
 export interface GeneralSettingsSectionProps {
@@ -255,7 +267,6 @@ const SETTINGS_DROPDOWN_TRIGGER_CLASS =
   "h-7 w-full justify-between border-border/60 bg-card px-2 text-xs sm:w-36";
 const SETTINGS_DROPDOWN_CONTENT_CLASS =
   "min-w-[var(--radix-dropdown-menu-trigger-width)]";
-
 const CREATE_CUSTOM_PALETTE_PROMPT =
   "Create a custom bb palette. First run `bb theme dir` to find the custom theme directory. Ask me for the palette name and visual direction, then create `<theme-dir>/<name>/theme.css` with light and dark theme variables compatible with bb's theme tokens.";
 const PALETTE_SETTING_DESCRIPTION =
@@ -617,14 +628,19 @@ export function UnhandledProviderEventsSettingsControl({
 export function AppearanceSettingsSection({
   appearance,
   appearanceDisabled,
+  bufferFontFamily,
   customThemes,
+  fontSettingsDisabled,
   pluginThemes,
   faviconColor,
   onAppearanceThemeChange,
+  onBufferFontFamilyChange,
   onFaviconColorChange,
   onCreatePalette,
   onThemePreferenceChange,
+  onUiFontFamilyChange,
   themePreference,
+  uiFontFamily,
 }: AppearanceSettingsSectionProps) {
   return (
     <SettingsSection title="Appearance">
@@ -760,6 +776,24 @@ export function AppearanceSettingsSection({
           disabled={appearanceDisabled}
           faviconColor={faviconColor}
           onFaviconColorChange={onFaviconColorChange}
+        />
+        <FontFamilySettingsControl
+          label="UI font"
+          description="Used for controls, navigation, and prose. Quote names with spaces and add a fallback."
+          disabled={fontSettingsDisabled}
+          onValueCommit={onUiFontFamilyChange}
+          placeholder={UI_FONT_FAMILY_EXAMPLE}
+          suggestions={UI_FONT_FAMILY_SUGGESTIONS}
+          value={uiFontFamily}
+        />
+        <FontFamilySettingsControl
+          label="Buffer font"
+          description="Used for files, diffs, code, and terminals. Quote names with spaces and add a fallback."
+          disabled={fontSettingsDisabled}
+          onValueCommit={onBufferFontFamilyChange}
+          placeholder={BUFFER_FONT_FAMILY_EXAMPLE}
+          suggestions={BUFFER_FONT_FAMILY_SUGGESTIONS}
+          value={bufferFontFamily}
         />
       </div>
     </SettingsSection>
@@ -1048,24 +1082,21 @@ export function SettingsView() {
           updateGeneralSettingsMutation.isPending
         }
         onMemoryEnabledChange={(enabled) =>
-          updateGeneralSettingsMutation.mutate({
-            ...generalSettings,
-            ...(isCodex
+          updateGeneralSettingsMutation.mutate(
+            isCodex
               ? { codexMemoryEnabled: enabled }
-              : { claudeCodeMemoryEnabled: enabled }),
-          })
+              : { claudeCodeMemoryEnabled: enabled },
+          )
         }
         onSubagentsDisabledChange={(disabled) =>
-          updateGeneralSettingsMutation.mutate({
-            ...generalSettings,
-            ...(isCodex
+          updateGeneralSettingsMutation.mutate(
+            isCodex
               ? { codexSubagentsDisabled: disabled }
-              : { claudeCodeSubagentsDisabled: disabled }),
-          })
+              : { claudeCodeSubagentsDisabled: disabled },
+          )
         }
         onWorkflowsDisabledChange={(disabled) =>
           updateGeneralSettingsMutation.mutate({
-            ...generalSettings,
             claudeCodeWorkflowsDisabled: disabled,
           })
         }
@@ -1079,7 +1110,12 @@ export function SettingsView() {
           systemConfigQuery.data === undefined ||
           updateAppearanceMutation.isPending
         }
+        bufferFontFamily={generalSettings.bufferFontFamily}
         customThemes={systemConfigQuery.data?.customThemes ?? []}
+        fontSettingsDisabled={
+          systemConfigQuery.data === undefined ||
+          updateGeneralSettingsMutation.isPending
+        }
         pluginThemes={systemConfigQuery.data?.pluginThemes ?? []}
         faviconColor={appearance.faviconColor}
         themePreference={themePreference}
@@ -1087,6 +1123,11 @@ export function SettingsView() {
           updateAppearanceMutation.mutate({
             themeId,
             faviconColor: appearance.faviconColor,
+          })
+        }
+        onBufferFontFamilyChange={(bufferFontFamily) =>
+          updateGeneralSettingsMutation.mutate({
+            bufferFontFamily,
           })
         }
         onCreatePalette={() =>
@@ -1104,6 +1145,12 @@ export function SettingsView() {
           })
         }
         onThemePreferenceChange={setPreferredTheme}
+        onUiFontFamilyChange={(uiFontFamily) =>
+          updateGeneralSettingsMutation.mutate({
+            uiFontFamily,
+          })
+        }
+        uiFontFamily={generalSettings.uiFontFamily}
       />
     );
   } else if (activeSection === "usage") {
@@ -1181,7 +1228,6 @@ export function SettingsView() {
           }
           onCaffeinateChange={(enabled) =>
             updateGeneralSettingsMutation.mutate({
-              ...generalSettings,
               caffeinate: enabled,
             })
           }
@@ -1189,7 +1235,6 @@ export function SettingsView() {
           onOpenLinksInAppBrowserChange={setOpenLinksInAppBrowser}
           onReplayOnboarding={() =>
             updateGeneralSettingsMutation.mutate({
-              ...generalSettings,
               onboardingCompletedAt: null,
             })
           }
@@ -1197,7 +1242,6 @@ export function SettingsView() {
           onRichTextEditingChange={setRichTextEditing}
           onSteerActiveThreadOnEnterChange={(enabled) =>
             updateGeneralSettingsMutation.mutate({
-              ...generalSettings,
               steerActiveThreadOnEnter: enabled,
             })
           }
@@ -1212,7 +1256,6 @@ export function SettingsView() {
           }
           onEnabledChange={(enabled) =>
             updateGeneralSettingsMutation.mutate({
-              ...generalSettings,
               showUnhandledProviderEvents: enabled,
             })
           }

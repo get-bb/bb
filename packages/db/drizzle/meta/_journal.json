@@ -617,6 +617,13 @@
       "when": 1785994159635,
       "tag": "0087_terminal_session_purpose",
       "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "6",
+      "when": 1786076606427,
+      "tag": "0088_dear_pete_wisdom",
+      "breakpoints": true
     }
   ]
 }

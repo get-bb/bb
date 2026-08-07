@@ -424,7 +424,6 @@ export function KeyboardSettingsSection() {
             }
             onCheckedChange={(showKeyboardHints) =>
               updateGeneralSettings.mutate({
-                ...generalSettings,
                 showKeyboardHints,
               })
             }

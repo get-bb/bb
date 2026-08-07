@@ -32,6 +32,8 @@ describe("app settings data", () => {
       showKeyboardHints: false,
       steerActiveThreadOnEnter: true,
       codexMemoryEnabled: false,
+      uiFontFamily: '"IBM Plex Sans", sans-serif',
+      bufferFontFamily: '"Berkeley Mono", monospace',
     });
     setAppKeybindingOverrides(db, overrides);
 
@@ -41,6 +43,8 @@ describe("app settings data", () => {
       showKeyboardHints: false,
       steerActiveThreadOnEnter: true,
       codexMemoryEnabled: false,
+      uiFontFamily: '"IBM Plex Sans", sans-serif',
+      bufferFontFamily: '"Berkeley Mono", monospace',
     });
     expect(getAppKeybindingOverrides(db)).toEqual(overrides);
 

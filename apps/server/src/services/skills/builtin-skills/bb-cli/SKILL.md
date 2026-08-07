@@ -60,6 +60,12 @@ message agents, or inspect projects, providers, and environments.
   it to make Enter steer a running thread and Command+Enter queue a
   follow-up; when disabled, those actions are reversed. Update it with
   `bb settings general steerActiveThreadOnEnter <true|false>`.
+- Settings → Appearance stores separate `uiFontFamily` and
+  `bufferFontFamily` CSS stacks. Set them with
+  `bb settings font set <ui|buffer> <family>` and restore the theme default
+  with `bb settings font reset <ui|buffer>`. Quote family names that contain
+  spaces and add a generic fallback. Geist Variable and iA Writer Mono are
+  bundled; other families must be installed on each client machine.
 - Settings → Keyboard records server-backed per-command shortcut overrides.
   The `showKeyboardHints` preference controls the delayed badges shown while
   holding Command or Control and defaults to true; update it with
@@ -68,8 +74,9 @@ message agents, or inspect projects, providers, and environments.
   actions apply in browser and desktop clients, and desktop menu accelerators
   use the same resolved bindings. For details, read
   `references/app-settings.md`.
-- Use `bb settings show`, `bb settings general`, `bb settings experiment`,
-  `bb settings keyboard`, `bb settings usage`, and `bb settings version` to
+- Use `bb settings show`, `bb settings general`, `bb settings font`,
+  `bb settings experiment`, `bb settings keyboard`, `bb settings usage`, and
+  `bb settings version` to
   inspect or change these server-backed values from agents. Pass
   `bb settings usage --machine <id-or-name>` to read provider limits from a
   specific connected machine instead of the primary machine.

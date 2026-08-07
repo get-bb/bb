@@ -42,6 +42,17 @@ every window and client sees the same value.
 - Development builds always show unhandled provider events regardless of the
   saved preference.
 
+## Fonts
+
+- `uiFontFamily` and `bufferFontFamily` default to empty strings, which use the
+  active theme's fonts. Set them with
+  `bb settings font set <ui|buffer> <family>` and reset them with
+  `bb settings font reset <ui|buffer>`. The UI font applies to controls,
+  navigation, prose, and Mermaid diagrams. The buffer font applies to files,
+  diffs, code, and terminals. Quote names that contain spaces and add a generic
+  fallback. Geist Variable and iA Writer Mono are bundled; other families must
+  be installed on each client machine.
+
 ## Active-thread Enter behavior
 
 - `steerActiveThreadOnEnter` defaults to false. Set it with

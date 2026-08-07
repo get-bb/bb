@@ -132,6 +132,25 @@ Command+Enter steers. When enabled, Enter steers and Command+Enter queues. Set
 it with
 `bb settings general steerActiveThreadOnEnter <true|false>`.
 
+Settings → Appearance stores separate UI and buffer font-family stacks. The UI
+font applies to controls, navigation, prose, and Mermaid diagrams. The buffer
+font applies to files, diffs, code, and terminals. An empty value uses the
+active theme's default. These values are server-backed and apply live to every
+connected window. Quote family names that contain spaces and add a generic
+fallback. Geist Variable and iA Writer Mono are bundled with bb; other families
+must be installed on each client machine.
+
+```sh
+bb settings font set ui '"Geist Variable", sans-serif'
+bb settings font set buffer '"iA Writer Mono", monospace'
+bb settings font reset ui
+bb settings font reset buffer
+```
+
+Agents can read `generalSettings.uiFontFamily` and
+`generalSettings.bufferFontFamily` with `sdk.system.config()`, then update the
+changed fields with `sdk.system.updateGeneralSettings()`.
+
 ## Keyboard Shortcuts
 
 Settings → Keyboard edits app command shortcuts. Overrides are stored in the

@@ -22,6 +22,11 @@ import { Icon } from "@bb/shared-ui/icon";
 import { loadMermaid } from "./markdown-mermaid-loader.js";
 import { useAppThemeEpoch } from "@/hooks/useAppTheme";
 import type { Theme } from "@/hooks/useTheme";
+import {
+  resolveFontFamilyPreference,
+  useFontPreferenceEpoch,
+  useUiFontFamily,
+} from "@/lib/font-preference";
 import { cn } from "@bb/shared-ui/lib/utils";
 
 export interface MarkdownMermaidDiagramProps {
@@ -318,10 +323,17 @@ function resolveMermaidThemePalette(): MermaidThemePalette {
   return palette;
 }
 
-function buildMermaidConfig(preferredTheme: Theme): MermaidConfig {
+function buildMermaidConfig(
+  preferredTheme: Theme,
+  uiFontFamily: string,
+): MermaidConfig {
   return {
     darkMode: preferredTheme === "dark",
-    fontFamily: "Inter, sans-serif",
+    fontFamily: resolveFontFamilyPreference(
+      uiFontFamily,
+      "--font-sans",
+      "Inter, sans-serif",
+    ),
     securityLevel: "strict",
     startOnLoad: false,
     suppressErrorRendering: true,
@@ -978,6 +990,8 @@ export function MarkdownMermaidDiagram({
   // Re-render the SVG (which has baked-in colors) when the app palette changes,
   // not just on light/dark mode toggles.
   const appThemeEpoch = useAppThemeEpoch();
+  const fontPreferenceEpoch = useFontPreferenceEpoch();
+  const uiFontFamily = useUiFontFamily();
   const [renderState, setRenderState] = useState<MermaidRenderState>({
     kind: "loading",
   });
@@ -992,7 +1006,7 @@ export function MarkdownMermaidDiagram({
     setDisplayMode("preview");
     loadMermaid()
       .then((mermaid) => {
-        mermaid.initialize(buildMermaidConfig(preferredTheme));
+        mermaid.initialize(buildMermaidConfig(preferredTheme, uiFontFamily));
         return mermaid.render(renderId, source);
       })
       .then((renderResult) => {
@@ -1019,7 +1033,14 @@ export function MarkdownMermaidDiagram({
     return () => {
       isCurrentRender = false;
     };
-  }, [preferredTheme, renderId, source, appThemeEpoch]);
+  }, [
+    preferredTheme,
+    renderId,
+    source,
+    appThemeEpoch,
+    fontPreferenceEpoch,
+    uiFontFamily,
+  ]);
 
   useEffect(() => {
     if (renderState.kind !== "rendered" || displayMode !== "preview") {

@@ -1,5 +1,12 @@
 import { z } from "zod";
 
+export const fontFamilyPreferenceSchema = z
+  .string()
+  .max(256)
+  .refine((value) => !/[;{}\r\n]/u.test(value), {
+    message: "Font families cannot contain semicolons, braces, or line breaks.",
+  });
+
 /**
  * App-wide server-backed preferences.
  * Client-local settings stay in the frontend localStorage helpers instead.
@@ -30,6 +37,10 @@ export const appSettingsSchema = z
     claudeCodeSubagentsDisabled: z.boolean(),
     /** Prevent Claude Code from exposing its native Workflow tool. */
     claudeCodeWorkflowsDisabled: z.boolean(),
+    /** CSS font-family stack used for controls, navigation, and prose. */
+    uiFontFamily: fontFamilyPreferenceSchema,
+    /** CSS font-family stack used for files, diffs, code, and terminals. */
+    bufferFontFamily: fontFamilyPreferenceSchema,
     /**
      * ISO timestamp of when first-run onboarding last finished or was
      * dismissed; null means it has never run. A timestamp rather than a boolean
@@ -44,6 +55,16 @@ export const appSettingsSchema = z
   .strict();
 export type AppSettings = z.infer<typeof appSettingsSchema>;
 
+/**
+ * Partial app settings update. Omitted fields keep their current values.
+ */
+export const appSettingsUpdateSchema = appSettingsSchema
+  .partial()
+  .refine((settings) => Object.keys(settings).length > 0, {
+    message: "At least one app setting is required.",
+  });
+export type AppSettingsUpdate = z.infer<typeof appSettingsUpdateSchema>;
+
 export const defaultAppSettings: AppSettings = {
   caffeinate: false,
   showKeyboardHints: true,
@@ -54,5 +75,7 @@ export const defaultAppSettings: AppSettings = {
   codexSubagentsDisabled: false,
   claudeCodeSubagentsDisabled: false,
   claudeCodeWorkflowsDisabled: false,
+  uiFontFamily: "",
+  bufferFontFamily: "",
   onboardingCompletedAt: null,
 };

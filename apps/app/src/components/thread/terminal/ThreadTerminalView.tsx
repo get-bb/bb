@@ -16,6 +16,11 @@ import type {
 import { terminalServerMessageSchema } from "@bb/server-contract";
 import { useAppThemeEpoch } from "@/hooks/useAppTheme";
 import { usePreferredTheme } from "@/hooks/useTheme";
+import {
+  resolveFontFamilyPreference,
+  useBufferFontFamily,
+  useFontPreferenceEpoch,
+} from "@/lib/font-preference";
 import type { MarkdownPreviewLinkHandler } from "@/components/ui/markdown-link";
 import {
   openUrlInExternalBrowser,
@@ -33,6 +38,14 @@ const TERMINAL_FONT_FAMILY =
   "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace";
 const TERMINAL_SELECTION_DRAG_DIRECTION_THRESHOLD_PX = 4;
 const TERMINAL_BOTTOM_ROW_RESERVE = 2;
+
+export function resolveTerminalFontFamily(bufferFontFamily: string): string {
+  return resolveFontFamilyPreference(
+    bufferFontFamily,
+    "--font-mono",
+    TERMINAL_FONT_FAMILY,
+  );
+}
 
 type TerminalFitScheduler = () => void;
 type TerminalDimensions = NonNullable<TerminalOutputChunk["dimensions"]>;
@@ -536,6 +549,10 @@ export function ThreadTerminalView({
   const sessionRef = useRef(session);
   const lastStatusNoticeRef = useRef<TerminalSessionStatusNotice | null>(null);
   const scheduleFitRef = useRef<TerminalFitScheduler | null>(null);
+  const bufferFontFamily = useBufferFontFamily();
+  useFontPreferenceEpoch();
+  const terminalFontFamily = resolveTerminalFontFamily(bufferFontFamily);
+  const terminalFontFamilyRef = useRef(terminalFontFamily);
   const preferredTheme = usePreferredTheme();
   // The xterm canvas bakes its palette, so re-apply the theme on app-palette
   // changes too, not just light/dark toggles.
@@ -554,6 +571,7 @@ export function ThreadTerminalView({
   onOpenLinkRef.current = effectiveOnOpenLink;
   onTitleChangeRef.current = onTitleChange;
   onUserInputRef.current = onUserInput;
+  terminalFontFamilyRef.current = terminalFontFamily;
 
   const reportTerminalSelection = useCallback(
     (anchor: TerminalSelectionAnchor | null) => {
@@ -661,7 +679,7 @@ export function ThreadTerminalView({
         cols: sessionRef.current.cols,
         convertEol: true,
         cursorBlink: true,
-        fontFamily: TERMINAL_FONT_FAMILY,
+        fontFamily: terminalFontFamilyRef.current,
         fontSize: 12,
         rows: sessionRef.current.rows,
         scrollback: 10_000,
@@ -881,6 +899,15 @@ export function ThreadTerminalView({
     }
     terminal.options.theme = buildTerminalTheme();
   }, [preferredTheme, appThemeEpoch]);
+
+  useEffect(() => {
+    const terminal = terminalRef.current;
+    if (!terminal) {
+      return;
+    }
+    terminal.options.fontFamily = terminalFontFamily;
+    scheduleFitRef.current?.();
+  }, [terminalFontFamily]);
 
   return (
     <div

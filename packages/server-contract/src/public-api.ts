@@ -4,6 +4,7 @@ import type {
   AppTheme,
   AppThemeSelection,
   AppSettings,
+  AppSettingsUpdate,
   AppKeybindingOverrides,
   Environment,
   Experiments,
@@ -16,7 +17,7 @@ import type {
   ThreadQueuedMessage,
 } from "@bb/domain";
 import {
-  appSettingsSchema,
+  appSettingsUpdateSchema,
   appKeybindingOverridesSchema,
   appThemeSelectionSchema,
   experimentsSchema,
@@ -1326,7 +1327,9 @@ export const publicApiRoutes = {
     generalSettings: defineRoute({
       path: "/settings/general",
       method: "put",
-      request: jsonRequest<EmptyInput, AppSettings>(appSettingsSchema),
+      request: jsonRequest<EmptyInput, AppSettingsUpdate>(
+        appSettingsUpdateSchema,
+      ),
       response: jsonResponse<AppSettings>(),
     }),
     keyboardSettings: defineRoute({

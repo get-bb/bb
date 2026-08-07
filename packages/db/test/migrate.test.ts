@@ -296,6 +296,7 @@ function dropRewindAddedTables(db: DbConnection): void {
   dropToolsHubExperimentColumn(db);
   dropSteerActiveThreadOnEnterColumn(db);
   dropOnboardingCompletedAtColumn(db);
+  dropFontFamilyColumns(db);
   // Thread visibility was added after the legacy checkpoints these tests
   // replay, so remove it before applying the forward migration chain again.
   db.$client.prepare("ALTER TABLE threads DROP COLUMN visibility").run();
@@ -505,6 +506,27 @@ function dropOnboardingCompletedAtColumn(db: DbConnection): void {
   if (columns.some((column) => column.name === "onboarding_completed_at")) {
     db.$client
       .prepare("ALTER TABLE app_settings DROP COLUMN onboarding_completed_at")
+      .run();
+  }
+}
+
+// Migration 0088 adds the UI and buffer font-family preferences. Rewind
+// scenarios that clear its migration row must drop both columns before replay.
+function dropFontFamilyColumns(db: DbConnection): void {
+  const columns = new Set(
+    db.$client
+      .prepare<[], TableInfoRow>("PRAGMA table_info(app_settings)")
+      .all()
+      .map((column) => column.name),
+  );
+  if (columns.has("ui_font_family")) {
+    db.$client
+      .prepare("ALTER TABLE app_settings DROP COLUMN ui_font_family")
+      .run();
+  }
+  if (columns.has("buffer_font_family")) {
+    db.$client
+      .prepare("ALTER TABLE app_settings DROP COLUMN buffer_font_family")
       .run();
   }
 }
@@ -1211,6 +1233,7 @@ describe("migrate", () => {
     // Rewind 0085 so it replays against an install that already has a project —
     // exactly what an upgrading user's database looks like.
     dropOnboardingCompletedAtColumn(db);
+    dropFontFamilyColumns(db);
     // Delete by the journal timestamp, not a hash substring: migration hashes
     // are hex and can contain "0085" by coincidence.
     db.$client
@@ -1496,6 +1519,7 @@ describe("migrate", () => {
       restorePluginsExperimentColumn(db);
       dropSteerActiveThreadOnEnterColumn(db);
       dropOnboardingCompletedAtColumn(db);
+      dropFontFamilyColumns(db);
       dropHostMaxPermissionModeColumn(db);
 
       migrate(db);
@@ -1892,6 +1916,7 @@ describe("migrate", () => {
       restorePluginsExperimentColumn(db);
       dropSteerActiveThreadOnEnterColumn(db);
       dropOnboardingCompletedAtColumn(db);
+      dropFontFamilyColumns(db);
       dropHostMaxPermissionModeColumn(db);
 
       expect(
@@ -1985,6 +2010,7 @@ describe("migrate", () => {
       restorePluginsExperimentColumn(db);
       dropSteerActiveThreadOnEnterColumn(db);
       dropOnboardingCompletedAtColumn(db);
+      dropFontFamilyColumns(db);
       dropHostMaxPermissionModeColumn(db);
 
       expect(() => migrate(db)).not.toThrow();
