@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import type { TerminalSessionPurpose } from "@bb/domain";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
@@ -6,9 +7,7 @@ import { ThreadTerminalContent } from "@/components/thread/terminal/ThreadTermin
 import { useThreadTerminalController } from "@/components/thread/terminal/useThreadTerminalController";
 import { sdk } from "@/lib/sdk";
 import { isLoopbackBrowserUrl } from "@/lib/browser-url";
-
-const SETUP_FALLBACK_COMMAND =
-  "if [ -f .bb-env-setup.sh ]; then bash .bb-env-setup.sh; else echo 'No setup script configured.'; fi";
+import { useWorkspaceTerminalToolbarHost } from "../ThreadWorkspaceShell";
 
 interface WorkspaceProcessTerminalProps {
   canCreateTerminal: boolean;
@@ -39,6 +38,48 @@ export function findLatestLoopbackPreviewUrl(output: string): string | null {
   return null;
 }
 
+export function formatLoopbackPreviewLabel(url: string): string {
+  const parsed = new URL(url);
+  const port = parsed.port || (parsed.protocol === "https:" ? "443" : "80");
+  return `Open :${port}`;
+}
+
+export type WorkspaceProcessAction =
+  | { kind: "none" }
+  | { kind: "open"; label: string; url: string }
+  | { kind: "start" };
+
+export function getWorkspaceProcessAction({
+  canCreateTerminal,
+  isCreateTerminalPending,
+  previewUrl,
+  purpose,
+  sessionStatus,
+}: {
+  canCreateTerminal: boolean;
+  isCreateTerminalPending: boolean;
+  previewUrl: string | null;
+  purpose: TerminalSessionPurpose;
+  sessionStatus: "starting" | "running" | "disconnected" | "exited" | null;
+}): WorkspaceProcessAction {
+  if (purpose === "run" && previewUrl !== null) {
+    return {
+      kind: "open",
+      label: formatLoopbackPreviewLabel(previewUrl),
+      url: previewUrl,
+    };
+  }
+  if (
+    isCreateTerminalPending ||
+    sessionStatus === "starting" ||
+    sessionStatus === "running" ||
+    !canCreateTerminal
+  ) {
+    return { kind: "none" };
+  }
+  return { kind: "start" };
+}
+
 function decodeTerminalChunks(
   chunks: readonly { dataBase64: string }[],
 ): string {
@@ -59,8 +100,7 @@ export function WorkspaceProcessTerminal({
   onOpenPreview,
   purpose,
 }: WorkspaceProcessTerminalProps) {
-  const effectiveCommand =
-    purpose === "setup" ? (command ?? SETUP_FALLBACK_COMMAND) : command;
+  const effectiveCommand = command;
   const title =
     purpose === "setup" ? "Setup" : purpose === "run" ? "Run" : "Terminal";
   const controller = useThreadTerminalController({
@@ -79,6 +119,7 @@ export function WorkspaceProcessTerminal({
   });
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const activeSession = controller.activeSession;
+  const toolbarHost = useWorkspaceTerminalToolbarHost();
 
   useEffect(() => {
     if (purpose !== "run" || activeSession?.status !== "running") {
@@ -115,58 +156,53 @@ export function WorkspaceProcessTerminal({
       return "Add a Run script in project settings.";
     }
     if (purpose === "setup") {
-      return "Initial setup finished during provisioning. Rerun it here when needed.";
+      return effectiveCommand === null
+        ? "Add a Setup script in project settings."
+        : "Start the Setup script for this worktree.";
     }
     return "Start a terminal in this worktree.";
   }, [effectiveCommand, purpose]);
+
+  const action = getWorkspaceProcessAction({
+    canCreateTerminal: controller.canCreateTerminal,
+    isCreateTerminalPending: controller.isCreateTerminalPending,
+    previewUrl: activeSession?.status === "running" ? previewUrl : null,
+    purpose,
+    sessionStatus: activeSession?.status ?? null,
+  });
+  const toolbarAction =
+    action.kind === "open" ? (
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="h-7 text-xs"
+        onClick={() => onOpenPreview(action.url)}
+      >
+        <Icon name="ArrowUpRight" className="size-3.5" />
+        {action.label}
+      </Button>
+    ) : action.kind === "start" ? (
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="h-7 text-xs"
+        onClick={controller.handleCreateTerminal}
+      >
+        <Icon name="Play" className="size-3.5" />
+        Start
+      </Button>
+    ) : null;
 
   return (
     <section
       className="flex h-full min-h-0 flex-col overflow-hidden bg-sidebar"
       aria-label={`${title} terminal`}
     >
-      <div className="flex h-8 shrink-0 items-center justify-end gap-1 border-b border-border-seam px-1.5">
-        {purpose === "run" && previewUrl ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-7 text-xs"
-            onClick={() => onOpenPreview(previewUrl)}
-          >
-            <Icon name="ArrowUpRight" className="size-3.5" />
-            Open preview
-          </Button>
-        ) : null}
-        {activeSession?.status === "running" ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-7 text-xs"
-            onClick={() => controller.handleCloseTerminal(activeSession.id)}
-          >
-            <Icon name="Square" className="size-3" />
-            Stop
-          </Button>
-        ) : controller.canCreateTerminal ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-7 text-xs"
-            disabled={controller.isCreateTerminalPending}
-            onClick={controller.handleCreateTerminal}
-          >
-            {controller.isCreateTerminalPending ? (
-              <Icon name="Spinner" className="size-3.5 animate-spin" />
-            ) : (
-              <Icon name="Play" className="size-3.5" />
-            )}
-            {purpose === "setup" ? "Rerun" : "Start"}
-          </Button>
-        ) : null}
-      </div>
+      {toolbarHost && toolbarAction
+        ? createPortal(toolbarAction, toolbarHost)
+        : null}
       <div className="min-h-0 flex-1 overflow-hidden">
         {!activeSession && !controller.isCreateTerminalPending ? (
           <div className="flex h-full items-center justify-center px-5 text-center text-xs text-muted-foreground">

@@ -9,6 +9,7 @@ import "@xterm/xterm/css/xterm.css";
 import type { ITheme, Terminal as XTermTerminal } from "@xterm/xterm";
 import type { FitAddon } from "@xterm/addon-fit";
 import type {
+  TerminalOutputChunk,
   TerminalServerMessage,
   TerminalSession,
 } from "@bb/server-contract";
@@ -23,12 +24,22 @@ import {
 import type { MessageProseSelection } from "@/components/thread/timeline/SelectableMessageProse.js";
 import { TimelineSelectionMenu } from "@/components/thread/timeline/TimelineSelectionMenu.js";
 import { buildTerminalWebSocketUrl } from "./terminal-websocket-url";
+import {
+  DEFAULT_TERMINAL_COLS,
+  DEFAULT_TERMINAL_ROWS,
+} from "./useThreadTerminalController";
 
 const TERMINAL_FONT_FAMILY =
   "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace";
 const TERMINAL_SELECTION_DRAG_DIRECTION_THRESHOLD_PX = 4;
+const TERMINAL_BOTTOM_ROW_RESERVE = 2;
 
 type TerminalFitScheduler = () => void;
+type TerminalDimensions = NonNullable<TerminalOutputChunk["dimensions"]>;
+const LEGACY_TERMINAL_REPLAY_DIMENSIONS: TerminalDimensions = {
+  cols: DEFAULT_TERMINAL_COLS,
+  rows: DEFAULT_TERMINAL_ROWS,
+};
 
 interface TerminalSelectionAnchorPoint {
   x: number;
@@ -132,9 +143,24 @@ interface WriteTerminalSessionStatusNoticeArgs {
 }
 
 interface TerminalOutputWriteArgs {
+  dimensions?: TerminalDimensions;
   isReplay: boolean;
-  replayWriteState: TerminalReplayWriteState;
-  terminal: XTermTerminal;
+  onWriteComplete?: () => void;
+  outputWriteState: TerminalOutputWriteState;
+  terminal: TerminalOutputTarget;
+  text: string;
+}
+
+type TerminalOutputTarget = Pick<
+  XTermTerminal,
+  "cols" | "resize" | "rows" | "write"
+>;
+
+interface QueuedTerminalOutputWrite {
+  dimensions?: TerminalDimensions;
+  isReplay: boolean;
+  onWriteComplete?: () => void;
+  terminal: TerminalOutputTarget;
   text: string;
 }
 
@@ -144,7 +170,9 @@ interface OpenTerminalWebLinkArgs {
   uri: string;
 }
 
-interface TerminalReplayWriteState {
+interface TerminalOutputWriteState {
+  isWriting: boolean;
+  queue: QueuedTerminalOutputWrite[];
   suppressedWriteCount: number;
 }
 
@@ -155,10 +183,55 @@ type TerminalSessionStatusNoticeRef = {
 
 interface HandleTerminalServerMessageArgs {
   message: TerminalServerMessage;
+  onReplayComplete: () => void;
+  outputWriteState: TerminalOutputWriteState;
   replayNextSeq: number | null;
-  replayWriteState: TerminalReplayWriteState;
   setReplayNextSeq: (nextSeq: number) => void;
   terminal: XTermTerminal;
+}
+
+interface IsTerminalReplayCompleteMessageArgs {
+  message:
+    | { type: "attached"; nextSeq: number }
+    | { type: "output"; chunk: { seq: number } };
+  replayNextSeq: number | null;
+}
+
+export function createTerminalOutputWriteState(): TerminalOutputWriteState {
+  return {
+    isWriting: false,
+    queue: [],
+    suppressedWriteCount: 0,
+  };
+}
+
+export function resolveTerminalReplayDimensions(
+  dimensions: TerminalOutputChunk["dimensions"],
+): TerminalDimensions {
+  return dimensions ?? LEGACY_TERMINAL_REPLAY_DIMENSIONS;
+}
+
+export function getFittedTerminalDimensions(
+  dimensions: TerminalDimensions,
+): TerminalDimensions {
+  return {
+    cols: dimensions.cols,
+    rows: Math.max(1, dimensions.rows - TERMINAL_BOTTOM_ROW_RESERVE),
+  };
+}
+
+export function isTerminalReplayCompleteMessage({
+  message,
+  replayNextSeq,
+}: IsTerminalReplayCompleteMessageArgs): boolean {
+  if (message.type === "attached") {
+    return message.nextSeq === 0;
+  }
+  return (
+    message.type === "output" &&
+    replayNextSeq !== null &&
+    message.chunk.seq + 1 >= replayNextSeq
+  );
 }
 
 function encodeUtf8Base64(value: string): string {
@@ -266,7 +339,11 @@ function writeTerminalStatus({
   terminal,
   text,
 }: WriteTerminalStatusArgs): void {
-  terminal.write(`\r\n\x1b[2m${text}\x1b[0m\r\n`);
+  terminal.write(formatTerminalStatus(text));
+}
+
+function formatTerminalStatus(text: string): string {
+  return `\r\n\x1b[2m${text}\x1b[0m\r\n`;
 }
 
 function writeTerminalSessionStatusNotice({
@@ -314,58 +391,118 @@ function openTerminalWebLink({
   openUrlInExternalBrowser(uri);
 }
 
-function writeTerminalOutput({
-  isReplay,
-  replayWriteState,
-  terminal,
-  text,
-}: TerminalOutputWriteArgs): void {
-  if (!isReplay) {
-    terminal.write(text);
+function drainTerminalOutputWrites(
+  outputWriteState: TerminalOutputWriteState,
+): void {
+  if (outputWriteState.isWriting) {
+    return;
+  }
+  const next = outputWriteState.queue.shift();
+  if (!next) {
     return;
   }
 
-  replayWriteState.suppressedWriteCount += 1;
-  terminal.write(text, () => {
-    replayWriteState.suppressedWriteCount -= 1;
+  outputWriteState.isWriting = true;
+  if (
+    next.isReplay &&
+    next.dimensions !== undefined &&
+    (next.terminal.cols !== next.dimensions.cols ||
+      next.terminal.rows !== next.dimensions.rows)
+  ) {
+    next.terminal.resize(next.dimensions.cols, next.dimensions.rows);
+  }
+  if (next.isReplay) {
+    outputWriteState.suppressedWriteCount += 1;
+  }
+
+  next.terminal.write(next.text, () => {
+    if (next.isReplay) {
+      outputWriteState.suppressedWriteCount -= 1;
+    }
+    outputWriteState.isWriting = false;
+    next.onWriteComplete?.();
+    drainTerminalOutputWrites(outputWriteState);
   });
+}
+
+export function writeTerminalOutput({
+  dimensions,
+  isReplay,
+  onWriteComplete,
+  outputWriteState,
+  terminal,
+  text,
+}: TerminalOutputWriteArgs): void {
+  outputWriteState.queue.push({
+    ...(dimensions === undefined ? {} : { dimensions }),
+    isReplay,
+    ...(onWriteComplete === undefined ? {} : { onWriteComplete }),
+    terminal,
+    text,
+  });
+  drainTerminalOutputWrites(outputWriteState);
 }
 
 function handleTerminalServerMessage({
   message,
+  onReplayComplete,
+  outputWriteState,
   replayNextSeq,
-  replayWriteState,
   setReplayNextSeq,
   terminal,
 }: HandleTerminalServerMessageArgs): void {
   switch (message.type) {
     case "attached":
       setReplayNextSeq(message.nextSeq);
+      if (isTerminalReplayCompleteMessage({ message, replayNextSeq })) {
+        onReplayComplete();
+      }
       return;
     case "pong":
     case "session-updated":
       return;
-    case "output":
+    case "output": {
+      const isReplay =
+        replayNextSeq !== null && message.chunk.seq < replayNextSeq;
       writeTerminalOutput({
-        isReplay: replayNextSeq !== null && message.chunk.seq < replayNextSeq,
-        replayWriteState,
+        ...(isReplay
+          ? {
+              dimensions: resolveTerminalReplayDimensions(
+                message.chunk.dimensions,
+              ),
+            }
+          : {}),
+        isReplay,
+        onWriteComplete: isTerminalReplayCompleteMessage({
+          message,
+          replayNextSeq,
+        })
+          ? onReplayComplete
+          : undefined,
+        outputWriteState,
         terminal,
         text: decodeUtf8Base64(message.chunk.dataBase64),
       });
       return;
+    }
     case "error":
-      writeTerminalStatus({
+      writeTerminalOutput({
+        isReplay: false,
+        outputWriteState,
         terminal,
-        text: `Terminal error: ${message.message}`,
+        text: formatTerminalStatus(`Terminal error: ${message.message}`),
       });
       return;
     case "exited":
-      writeTerminalStatus({
+      writeTerminalOutput({
+        isReplay: false,
+        outputWriteState,
         terminal,
-        text:
+        text: formatTerminalStatus(
           message.session.exitCode === null
             ? "Terminal exited"
             : `Terminal exited with code ${message.session.exitCode}`,
+        ),
       });
       return;
   }
@@ -498,9 +635,9 @@ export function ThreadTerminalView({
     let terminal: XTermTerminal | null = null;
     let fitAddon: FitAddon | null = null;
     let replayNextSeq: number | null = null;
-    const replayWriteState: TerminalReplayWriteState = {
-      suppressedWriteCount: 0,
-    };
+    let replayComplete = false;
+    let measuredTerminalDimensions: TerminalDimensions | null = null;
+    const outputWriteState = createTerminalOutputWriteState();
     let resizeAnimationFrame: number | null = null;
     let selectionAnimationFrame: number | null = null;
     let resizeObserver: ResizeObserver | null = null;
@@ -521,10 +658,12 @@ export function ThreadTerminalView({
 
       terminal = new Terminal({
         allowProposedApi: false,
+        cols: sessionRef.current.cols,
         convertEol: true,
         cursorBlink: true,
         fontFamily: TERMINAL_FONT_FAMILY,
         fontSize: 12,
+        rows: sessionRef.current.rows,
         scrollback: 10_000,
         theme: buildTerminalTheme(),
       });
@@ -546,14 +685,29 @@ export function ThreadTerminalView({
         session: sessionRef.current,
         terminal,
       });
-      const fitTerminal = () => {
+      const measureAndFitTerminal = () => {
         if (!fitAddon || !terminal) {
           return;
         }
         if (!hasVisibleTerminalSize({ containerElement })) {
           return;
         }
-        fitAddon.fit();
+        const proposedDimensions = fitAddon.proposeDimensions();
+        measuredTerminalDimensions = proposedDimensions
+          ? getFittedTerminalDimensions(proposedDimensions)
+          : measuredTerminalDimensions;
+        if (!measuredTerminalDimensions || !replayComplete) {
+          return;
+        }
+        if (
+          terminal.cols !== measuredTerminalDimensions.cols ||
+          terminal.rows !== measuredTerminalDimensions.rows
+        ) {
+          terminal.resize(
+            measuredTerminalDimensions.cols,
+            measuredTerminalDimensions.rows,
+          );
+        }
         if (socket) {
           sendTerminalResize({
             socket,
@@ -567,10 +721,19 @@ export function ThreadTerminalView({
         }
         resizeAnimationFrame = window.requestAnimationFrame(() => {
           resizeAnimationFrame = null;
-          fitTerminal();
+          measureAndFitTerminal();
         });
       };
-      fitTerminal();
+      const completeReplay = () => {
+        if (replayComplete) {
+          return;
+        }
+        replayComplete = true;
+        measureAndFitTerminal();
+      };
+      // Measure the live panel immediately, but do not apply that size until
+      // stored output has replayed at the dimensions that produced each chunk.
+      measureAndFitTerminal();
       scheduleFitRef.current = scheduleFit;
       if (isPanelOpenRef.current) {
         terminal.focus();
@@ -582,12 +745,6 @@ export function ThreadTerminalView({
       const activeSocket = socket;
       const activeTerminal = terminal;
 
-      activeSocket.onopen = () => {
-        sendTerminalResize({
-          socket: activeSocket,
-          terminal: activeTerminal,
-        });
-      };
       activeSocket.onmessage = (event) => {
         if (typeof event.data !== "string") {
           return;
@@ -604,8 +761,9 @@ export function ThreadTerminalView({
         }
         handleTerminalServerMessage({
           message: result.data,
+          onReplayComplete: completeReplay,
+          outputWriteState,
           replayNextSeq,
-          replayWriteState,
           setReplayNextSeq: (nextSeq) => {
             replayNextSeq = nextSeq;
           },
@@ -614,14 +772,17 @@ export function ThreadTerminalView({
       };
       activeSocket.onclose = () => {
         if (!disposed) {
-          writeTerminalStatus({
+          writeTerminalOutput({
+            isReplay: false,
+            onWriteComplete: completeReplay,
+            outputWriteState,
             terminal: activeTerminal,
-            text: "Terminal connection closed",
+            text: formatTerminalStatus("Terminal connection closed"),
           });
         }
       };
       activeTerminal.onData((data) => {
-        if (replayWriteState.suppressedWriteCount > 0) {
+        if (outputWriteState.suppressedWriteCount > 0) {
           return;
         }
         if (sessionStatusRef.current !== "running") {
@@ -639,7 +800,7 @@ export function ThreadTerminalView({
         );
       });
       activeTerminal.onTitleChange((title) => {
-        if (replayWriteState.suppressedWriteCount > 0) {
+        if (outputWriteState.suppressedWriteCount > 0) {
           return;
         }
         if (sessionStatusRef.current !== "running") {
@@ -723,7 +884,7 @@ export function ThreadTerminalView({
 
   return (
     <div
-      className="h-full min-h-0 w-full overflow-hidden bg-sidebar p-2"
+      className="h-full min-h-0 w-full overflow-hidden bg-sidebar px-2 py-1"
       onPointerDown={handleTerminalPointerDown}
       onPointerUp={handleTerminalPointerRelease}
       onPointerCancel={handleTerminalPointerCancel}

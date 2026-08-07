@@ -609,8 +609,16 @@ describe("public terminal contracts", () => {
       terminalOutputChunkSchema.safeParse({
         seq: 0,
         dataBase64: maxPayload,
+        dimensions: { cols: 80, rows: 24 },
       }).success,
     ).toBe(true);
+    expect(
+      terminalOutputChunkSchema.safeParse({
+        seq: 0,
+        dataBase64: maxPayload,
+        dimensions: { cols: 0, rows: 24 },
+      }).success,
+    ).toBe(false);
     expect(
       terminalClientMessageSchema.safeParse({
         type: "input",

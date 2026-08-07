@@ -478,6 +478,13 @@ export const hostDaemonTerminalOutputChunkSchema = z
   .object({
     seq: z.number().int().nonnegative(),
     dataBase64: terminalDataBase64Schema,
+    dimensions: z
+      .object({
+        cols: terminalColsSchema,
+        rows: terminalRowsSchema,
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 

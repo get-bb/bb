@@ -3612,8 +3612,16 @@ describe("host-daemon session schemas", () => {
       hostDaemonTerminalOutputChunkSchema.safeParse({
         seq: 0,
         dataBase64: maxPayload,
+        dimensions: { cols: 80, rows: 24 },
       }).success,
     ).toBe(true);
+    expect(
+      hostDaemonTerminalOutputChunkSchema.safeParse({
+        seq: 0,
+        dataBase64: maxPayload,
+        dimensions: { cols: 0, rows: 24 },
+      }).success,
+    ).toBe(false);
     expect(
       hostDaemonDaemonWsMessageSchema.safeParse({
         type: "terminal.replay",

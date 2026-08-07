@@ -370,6 +370,9 @@ function toTerminalOutputChunk(
   return {
     seq: chunk.seq,
     dataBase64: chunk.dataBase64,
+    ...(chunk.dimensions === undefined
+      ? {}
+      : { dimensions: chunk.dimensions }),
   };
 }
 

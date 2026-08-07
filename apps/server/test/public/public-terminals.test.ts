@@ -938,10 +938,12 @@ describe("public terminal routes", () => {
           {
             seq: 2,
             dataBase64: Buffer.from("old", "utf8").toString("base64"),
+            dimensions: { cols: 100, rows: 30 },
           },
           {
             seq: 3,
             dataBase64: Buffer.from("new", "utf8").toString("base64"),
+            dimensions: { cols: 80, rows: 24 },
           },
         ],
         nextSeq: 4,
@@ -957,6 +959,7 @@ describe("public terminal routes", () => {
         {
           seq: 3,
           dataBase64: Buffer.from("new", "utf8").toString("base64"),
+          dimensions: { cols: 80, rows: 24 },
         },
       ],
       nextSeq: 4,
@@ -1599,6 +1602,7 @@ describe("public terminal routes", () => {
     const replayChunk = {
       seq: 0,
       dataBase64: Buffer.from("hello\n", "utf8").toString("base64"),
+      dimensions: { cols: 100, rows: 30 },
     };
     fixture.harness.deps.terminalSessions.handleDaemonTerminalMessage({
       hostId: fixture.host.id,
@@ -1623,6 +1627,7 @@ describe("public terminal routes", () => {
     const liveChunk = {
       seq: 1,
       dataBase64: Buffer.from("world\n", "utf8").toString("base64"),
+      dimensions: { cols: 80, rows: 24 },
     };
     fixture.harness.deps.terminalSessions.handleDaemonTerminalMessage({
       hostId: fixture.host.id,

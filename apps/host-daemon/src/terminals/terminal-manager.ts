@@ -736,6 +736,10 @@ export class TerminalManager {
       const chunk = {
         seq: session.nextSeq,
         dataBase64: dataBuffer.toString("base64"),
+        dimensions: {
+          cols: session.cols,
+          rows: session.rows,
+        },
       };
       session.nextSeq += 1;
       const entry: ScrollbackEntry = {
