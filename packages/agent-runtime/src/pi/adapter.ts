@@ -970,12 +970,14 @@ export function createPiProviderAdapter(
         if (turnId.length === 0) {
           return buildUnexpectedEvent(event);
         }
-        events.push({
-          type: "thread/compacted",
-          threadId,
-          providerThreadId: "",
-          scope: turnScope(turnId),
-        });
+        if (!parsed.data.aborted && !parsed.data.errorMessage) {
+          events.push({
+            type: "thread/compacted",
+            threadId,
+            providerThreadId: "",
+            scope: turnScope(turnId),
+          });
+        }
         if (parsed.data.reason === "manual" && state.currentTurnId === turnId) {
           events.push({
             type: "turn/completed",

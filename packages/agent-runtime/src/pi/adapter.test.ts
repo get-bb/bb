@@ -847,6 +847,79 @@ describe("pi provider adapter", () => {
     );
   });
 
+  it("translateEvent failed manual compaction does not report success", () => {
+    const adapter = createPiProviderAdapter();
+    const context = { threadId: "bb-thread-1" };
+
+    adapter.translateEvent(
+      {
+        type: "compaction_start",
+        reason: "manual",
+      } satisfies AgentSessionEvent,
+      context,
+    );
+    const events = adapter.translateEvent(
+      {
+        type: "compaction_end",
+        reason: "manual",
+        result: undefined,
+        aborted: false,
+        willRetry: false,
+        errorMessage: "Compaction failed: Nothing to compact (session too small)",
+      } satisfies AgentSessionEvent,
+      context,
+    );
+
+    expect(events).not.toContainEqual(
+      expect.objectContaining({ type: "thread/compacted" }),
+    );
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "turn/completed",
+        scope: turnScope("turn-1"),
+        status: "failed",
+        error: {
+          message:
+            "Compaction failed: Nothing to compact (session too small)",
+        },
+      }),
+    );
+  });
+
+  it("translateEvent aborted manual compaction does not report success", () => {
+    const adapter = createPiProviderAdapter();
+    const context = { threadId: "bb-thread-1" };
+
+    adapter.translateEvent(
+      {
+        type: "compaction_start",
+        reason: "manual",
+      } satisfies AgentSessionEvent,
+      context,
+    );
+    const events = adapter.translateEvent(
+      {
+        type: "compaction_end",
+        reason: "manual",
+        result: undefined,
+        aborted: true,
+        willRetry: false,
+      } satisfies AgentSessionEvent,
+      context,
+    );
+
+    expect(events).not.toContainEqual(
+      expect.objectContaining({ type: "thread/compacted" }),
+    );
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "turn/completed",
+        scope: turnScope("turn-1"),
+        status: "interrupted",
+      }),
+    );
+  });
+
   it("translateEvent compaction_end without a known turn is unhandled", () => {
     const adapter = createPiProviderAdapter();
     const event = {
