@@ -88,22 +88,17 @@ describe("acp adapter command plans", () => {
     ]);
   });
 
-  it("routes Cursor compaction through summarize-and-reseed", () => {
+  it("leaves manual compaction unsupported without a provider-local prompt", () => {
     const adapter = createAdapter();
-    const compaction = getAcpAgentProfile("acp-cursor").manualCompaction;
-    expect(compaction).toMatchObject({ method: "summarize-and-reseed" });
-    expect(adapter.capabilities.supportsManualCompaction).toBe(true);
+    expect(getAcpAgentProfile("acp-cursor").manualCompaction).toBeUndefined();
+    expect(adapter.capabilities.supportsManualCompaction).toBe(false);
     expect(
       adapter.buildCommandPlan({
         type: "thread/compact",
         threadId: "thread-1",
         providerThreadId: "sess-1",
       }),
-    ).toEqual({
-      kind: "request",
-      method: "thread/compact",
-      params: { threadId: "sess-1", compaction },
-    });
+    ).toEqual({ kind: "noop", reason: "manual compaction unsupported" });
   });
 
   it("routes configured ACP compaction through the provider-local prompt", () => {

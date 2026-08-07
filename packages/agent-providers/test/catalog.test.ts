@@ -26,19 +26,12 @@ describe("agent provider catalog", () => {
     expect(supportsManualCompaction("codex")).toBe(true);
     expect(supportsManualCompaction("claude-code")).toBe(true);
     expect(supportsManualCompaction("pi")).toBe(true);
-    expect(supportsManualCompaction("acp-cursor")).toBe(true);
+    expect(supportsManualCompaction("acp-cursor")).toBe(false);
     expect(supportsManualCompaction("acp-custom")).toBe(false);
     expect(
       supportsManualCompaction("acp-opencode", {
         method: "prompt",
         prompt: "/compact",
-      }),
-    ).toBe(true);
-    expect(
-      supportsManualCompaction("acp-reseed", {
-        method: "summarize-and-reseed",
-        summaryPrompt: "Summarize.",
-        reseedPrompt: "Restore.",
       }),
     ).toBe(true);
   });

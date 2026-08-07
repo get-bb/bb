@@ -12,12 +12,6 @@ export interface KnownAcpAgentExecutableQuery {
   executableName: string;
 }
 
-const OPENCODE_COMPACTION_SUMMARY_PROMPT =
-  "Create a concise but complete handoff summary of this conversation for a fresh agent session. Preserve the user's goals, decisions, constraints, current implementation state, important file paths and symbols, unresolved work, and test results. Do not use tools and do not continue the task. Return only the handoff summary.";
-
-const OPENCODE_COMPACTION_RESEED_PROMPT =
-  'The text below is a compacted handoff from this same conversation. Treat it as prior context, not as a new user request. Do not use tools or continue the task yet. Reply only "Context restored."';
-
 export const KNOWN_ACP_AGENTS: readonly KnownAcpAgent[] = [
   {
     id: "acp-opencode",
@@ -25,14 +19,9 @@ export const KNOWN_ACP_AGENTS: readonly KnownAcpAgent[] = [
     command: "opencode",
     args: ["acp"],
     env: {},
-    // OpenCode advertises `/compact`, but current ACP releases return an
-    // internal error when that control is sent through session/prompt. Use the
-    // provider-independent ACP fallback so manual compaction remains reliable.
-    manualCompaction: {
-      method: "summarize-and-reseed",
-      summaryPrompt: OPENCODE_COMPACTION_SUMMARY_PROMPT,
-      reseedPrompt: OPENCODE_COMPACTION_RESEED_PROMPT,
-    },
+    // OpenCode recognizes this provider-local control even though current
+    // releases do not include it in available_commands_update.
+    manualCompaction: { method: "prompt", prompt: "/compact" },
     executableName: "opencode",
   },
   {

@@ -117,12 +117,10 @@ example, override acp-opencode with id opencode. Use modelCli for CLI model
 listing/selection, reasoningCli for launch-time reasoning flags, and
 nativeReasoning for ACP session/set_config_option reasoning. Set
 manualCompaction to { method: "prompt", prompt: "/compact" } only for agents
-that treat that exact ACP prompt as a compaction control. Agents without one
-may explicitly configure { method: "summarize-and-reseed", summaryPrompt,
-reseedPrompt }; bb captures the summary silently, starts a fresh ACP session,
-and seeds it with that context. acp-opencode and acp-cursor declare
-summarize-and-reseed automatically because their interactive compaction
-controls are not reliable ACP session/prompt controls.
+that treat that exact ACP prompt as a compaction control. acp-opencode declares
+the /compact prompt automatically even though OpenCode does not currently
+advertise it. Cursor ACP does not support manual compaction because its
+interactive /compress command is not interpreted by its ACP server.
 Optional logo
 accepts an SVG, PNG, or WebP path; relative paths resolve from the bb data dir.
 Use nativeSkillRoots to add native skills to the composer. User roots resolve

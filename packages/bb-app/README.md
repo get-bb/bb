@@ -157,7 +157,7 @@ You can still use the Pi CLI and `/login` to create this configuration.
 Custom ACP agents can be configured through `customAcpAgents` in
 `~/.bb/config.json`; see the configuration docs for optional `modelCli` and
 `reasoningCli` or `nativeReasoning` reasoning settings and opt-in
-`manualCompaction` prompt or summarize-and-reseed strategies. A `logo`
+provider-local `manualCompaction` prompts. A `logo`
 field accepts an SVG, PNG, or WebP path for the provider picker icon.
 The optional `nativeSkillRoots` field adds provider-native skills to the
 composer. Its `user` paths resolve from the target host home directory. Its

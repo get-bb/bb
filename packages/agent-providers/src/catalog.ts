@@ -169,11 +169,6 @@ const ACP_CAPABILITIES: ProviderCapabilities = {
   supportedPermissionModes: ["accept-edits", "full"],
 };
 
-const CURSOR_ACP_CAPABILITIES: ProviderCapabilities = {
-  ...ACP_CAPABILITIES,
-  supportsManualCompaction: true,
-};
-
 const CODEX_SERVER_CAPABILITIES: ProviderServerCapabilities = {
   supportsWorkflows: false,
   supportsExecutionOverride: false,
@@ -262,7 +257,7 @@ const BUILT_IN_AGENT_PROVIDER_CATALOG: BuiltInAgentProviderCatalogEntry[] = [
   {
     info: {
       available: true,
-      capabilities: CURSOR_ACP_CAPABILITIES,
+      capabilities: ACP_CAPABILITIES,
       composerActions: ACP_COMPOSER_ACTIONS,
       displayName: "Cursor",
       id: "acp-cursor",

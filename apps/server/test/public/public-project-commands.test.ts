@@ -544,7 +544,7 @@ describe("public project command typeahead route", () => {
     });
   });
 
-  it("advertises compact only for ACP agents with a declared strategy", async () => {
+  it("advertises compact only for ACP agents with a provider-local prompt", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {
         id: "host-commands-opencode",
@@ -581,7 +581,7 @@ describe("public project command typeahead route", () => {
         commandListResponseSchema
           .parse(await readJson(cursorResponse))
           .commands.map((command) => command.name),
-      ).toEqual(["compact"]);
+      ).toEqual([]);
 
       const grokResponse = await harness.app.request(
         `/api/v1/projects/${project.id}/commands?provider=acp-grok&environmentId=${environment.id}`,

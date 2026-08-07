@@ -46,12 +46,6 @@ interface BuiltInAcpAgentProfile extends AcpAgentProfile {
   modelCli: AcpAgentModelCli;
 }
 
-const CURSOR_COMPACTION_SUMMARY_PROMPT =
-  "Create a concise but complete handoff summary of this conversation for a fresh agent session. Preserve the user's goals, decisions, constraints, current implementation state, important file paths and symbols, unresolved work, and test results. Do not use tools and do not continue the task. Return only the handoff summary.";
-
-const CURSOR_COMPACTION_RESEED_PROMPT =
-  'The text below is a compacted handoff from this same conversation. Treat it as prior context, not as a new user request. Do not use tools or continue the task yet. Reply only "Context restored."';
-
 export const ACP_AGENT_PROFILES: readonly BuiltInAcpAgentProfile[] = [
   {
     providerId: "acp-cursor",
@@ -77,14 +71,6 @@ export const ACP_AGENT_PROFILES: readonly BuiltInAcpAgentProfile[] = [
         // Composer is one family now; its `-fast` twin is the Fast-mode tier.
         "composer-2.5",
       ],
-    },
-    // Cursor's interactive `/compress` command is not interpreted by its ACP
-    // server. Preserve context by summarizing the current ACP session and
-    // reseeding a fresh session instead.
-    manualCompaction: {
-      method: "summarize-and-reseed",
-      summaryPrompt: CURSOR_COMPACTION_SUMMARY_PROMPT,
-      reseedPrompt: CURSOR_COMPACTION_RESEED_PROMPT,
     },
   },
 ];

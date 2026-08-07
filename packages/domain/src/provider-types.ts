@@ -25,25 +25,12 @@ export const availableModelSchema = z.object({
 });
 export type AvailableModel = z.infer<typeof availableModelSchema>;
 
-const acpPromptManualCompactionSchema = z
+export const acpManualCompactionSchema = z
   .object({
     method: z.literal("prompt"),
     prompt: z.string().min(1),
   })
   .strict();
-
-const acpSummarizeAndReseedManualCompactionSchema = z
-  .object({
-    method: z.literal("summarize-and-reseed"),
-    summaryPrompt: z.string().min(1),
-    reseedPrompt: z.string().min(1),
-  })
-  .strict();
-
-export const acpManualCompactionSchema = z.discriminatedUnion("method", [
-  acpPromptManualCompactionSchema,
-  acpSummarizeAndReseedManualCompactionSchema,
-]);
 export type AcpManualCompaction = z.infer<typeof acpManualCompactionSchema>;
 
 export const providerCapabilitiesSchema = z.object({

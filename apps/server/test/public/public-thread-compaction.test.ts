@@ -118,7 +118,7 @@ describe("public thread compaction", () => {
     });
   });
 
-  it("compacts OpenCode ACP with its declared summarize-and-reseed strategy", async () => {
+  it("compacts OpenCode ACP with its provider-local command", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps);
       const { project } = seedProjectWithSource(harness.deps, {
@@ -159,88 +159,16 @@ describe("public thread compaction", () => {
             acpLaunchSpec: {
               command: "opencode",
               args: ["acp"],
-              manualCompaction: {
-                method: "summarize-and-reseed",
-                summaryPrompt: expect.stringContaining("handoff summary"),
-                reseedPrompt: expect.stringContaining("compacted handoff"),
-              },
+              manualCompaction: { method: "prompt", prompt: "/compact" },
             },
             resumeContext: {
               providerId: "acp-opencode",
               providerThreadId: "opencode-session-1",
               acpLaunchSpec: {
-                manualCompaction: {
-                  method: "summarize-and-reseed",
-                  summaryPrompt: expect.stringContaining("handoff summary"),
-                  reseedPrompt: expect.stringContaining("compacted handoff"),
-                },
+                manualCompaction: { method: "prompt", prompt: "/compact" },
               },
             },
           });
-          return { ok: true, result: {} };
-        },
-      });
-
-      const response = await harness.app.request(
-        `/api/v1/threads/${thread.id}/compact`,
-        { method: "POST" },
-      );
-      expect(
-        response.status,
-        JSON.stringify(await readJson(response.clone())),
-      ).toBe(200);
-      expect(
-        responder.requests.filter(
-          ({ command }) => command.type === "thread.compact",
-        ),
-      ).toHaveLength(1);
-    });
-  });
-
-  it("compacts Cursor ACP with its built-in reseed strategy", async () => {
-    await withTestHarness(async (harness) => {
-      const { host, session } = seedHostSession(harness.deps);
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-      });
-      const thread = seedThread(harness.deps, {
-        environmentId: environment.id,
-        projectId: project.id,
-        providerId: "acp-cursor",
-        status: "idle",
-      });
-      seedThreadRuntimeState(harness.deps, {
-        environmentId: environment.id,
-        providerThreadId: "cursor-session-1",
-        threadId: thread.id,
-      });
-      const responder = registerHostRpcResponder(harness, {
-        hostId: host.id,
-        sessionId: session.id,
-        handle: ({ command }): HostRpcHandlerResult => {
-          if (command.type === "host.list_files") {
-            return { ok: true, result: { files: [], truncated: false } };
-          }
-          if (command.type === "host.read_file") {
-            return {
-              ok: false,
-              errorCode: "ENOENT",
-              errorMessage: `Path does not exist: ${command.path}`,
-            };
-          }
-          expect(command).toMatchObject({
-            type: "thread.compact",
-            threadId: thread.id,
-            resumeContext: {
-              providerId: "acp-cursor",
-              providerThreadId: "cursor-session-1",
-            },
-          });
-          expect(command).not.toHaveProperty("acpLaunchSpec");
           return { ok: true, result: {} };
         },
       });
@@ -269,7 +197,7 @@ describe("public thread compaction", () => {
       });
       const unsupportedThread = seedThread(harness.deps, {
         projectId: project.id,
-        providerId: "acp-grok",
+        providerId: "acp-cursor",
         status: "idle",
       });
       const activeThread = seedThread(harness.deps, {

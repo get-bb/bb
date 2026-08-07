@@ -53,7 +53,6 @@ import {
   acpPermissionResponseSchema,
   type AcpBridgeAgentCommand,
   type AcpBridgeCommand,
-  type AcpBridgeModelSelection,
   type AcpBridgeNativeReasoning,
   type AcpBridgePermissionCli,
   type AcpBridgeReasoningCli,
@@ -63,9 +62,7 @@ import {
 import {
   ACP_PROTOCOL_VERSION,
   type AcpConfigOption,
-  acpAgentMessageChunkUpdateSchema,
   acpConfigStateResultSchema,
-  extractAcpContentText,
   acpInitializeResultSchema,
   acpPromptResultSchema,
   acpReadTextFileParamsSchema,
@@ -124,22 +121,13 @@ interface AcpThreadSession {
   bbThreadId: string;
   providerThreadId: string;
   connection: AcpAgentConnection;
-  agentCommand: string;
-  agentArgs: string[];
-  agentEnv: Record<string, string | undefined>;
   agentLabel: string;
   supportsImageInput: boolean;
   policy: AcpSessionPolicy;
   cwd: string;
-  instructions: string | undefined;
   pendingInstructions: string | undefined;
-  modelSelection: AcpBridgeModelSelection | undefined;
-  nativeReasoning: AcpBridgeNativeReasoning | undefined;
-  mcpServers: AcpMcpServerConfig[];
   promptActive: boolean;
-  activePromptSessionId: string | undefined;
   compactionActive: boolean;
-  compactionOutput: string[] | null;
   queuedInputs: PromptInput[][];
   loading: boolean;
   loadingSessionId: string | undefined;
@@ -1492,14 +1480,12 @@ async function startAgentSession(
     onRequest: (method, requestParams, responder) =>
       handleAgentRequest(session, method, requestParams, responder),
     onExit: (info) => {
-      const wasCurrent =
-        sessionsByBbThreadId.get(bbThreadId) === session &&
-        session.connection === connection;
+      const wasCurrent = sessionsByBbThreadId.get(bbThreadId) === session;
+      cancelPendingPermissions(session);
+      removeSession(session);
       if (!wasCurrent || session.stopping) {
         return;
       }
-      cancelPendingPermissions(session);
-      removeSession(session);
       sendNotification("error", {
         threadId: bbThreadId,
         message:
@@ -1513,9 +1499,6 @@ async function startAgentSession(
     bbThreadId,
     providerThreadId: "",
     connection,
-    agentCommand: params.agent.command,
-    agentArgs: launch.args,
-    agentEnv: childEnv,
     agentLabel,
     supportsImageInput: false,
     policy: {
@@ -1524,15 +1507,9 @@ async function startAgentSession(
       workspaceWriteRoots: params.workspaceWriteRoots,
     },
     cwd: params.cwd,
-    instructions: params.instructions,
     pendingInstructions: params.instructions,
-    modelSelection: params.modelSelection,
-    nativeReasoning: params.nativeReasoning,
-    mcpServers: [],
     promptActive: false,
-    activePromptSessionId: undefined,
     compactionActive: false,
-    compactionOutput: null,
     queuedInputs: [],
     loading: false,
     loadingSessionId: undefined,
@@ -1565,7 +1542,6 @@ async function startAgentSession(
     const supportsLoadSession =
       initializeResult.agentCapabilities?.loadSession ?? false;
     const mcpServers = await buildSessionMcpServers(params);
-    session.mcpServers = mcpServers;
 
     let sessionId: string | undefined;
     let loadedConfigOptions: readonly AcpConfigOption[] | undefined;
@@ -1666,7 +1642,7 @@ async function stopSession(session: AcpThreadSession): Promise<void> {
 
   if (session.promptActive && !session.connection.exited) {
     session.connection.notify("session/cancel", {
-      sessionId: session.activePromptSessionId ?? session.providerThreadId,
+      sessionId: session.providerThreadId,
     });
     if (session.turnSettled) {
       await Promise.race([
@@ -1695,7 +1671,6 @@ function runTurn(session: AcpThreadSession, firstInput: PromptInput[]): void {
     for (;;) {
       let stopReason: z.infer<typeof acpStopReasonSchema>;
       try {
-        session.activePromptSessionId = session.providerThreadId;
         const result = await session.connection.request({
           method: "session/prompt",
           params: {
@@ -1707,7 +1682,6 @@ function runTurn(session: AcpThreadSession, firstInput: PromptInput[]): void {
         stopReason = result.stopReason;
       } catch (error) {
         session.promptActive = false;
-        session.activePromptSessionId = undefined;
         session.queuedInputs = [];
         // An exited agent already produced an error notification from the
         // connection's exit handler; only report in-protocol prompt failures.
@@ -1730,7 +1704,6 @@ function runTurn(session: AcpThreadSession, firstInput: PromptInput[]): void {
       }
 
       session.promptActive = false;
-      session.activePromptSessionId = undefined;
       session.queuedInputs = [];
       sendNotification(ACP_TURN_COMPLETED_METHOD, {
         threadId: session.bbThreadId,
@@ -1743,19 +1716,13 @@ function runTurn(session: AcpThreadSession, firstInput: PromptInput[]): void {
 
 async function runCompactionPrompt(
   session: AcpThreadSession,
-  args: {
-    captureOutput: boolean;
-    prompt: string;
-    sessionId: string;
-  },
-): Promise<string> {
-  session.activePromptSessionId = args.sessionId;
-  session.compactionOutput = args.captureOutput ? [] : null;
+  prompt: string,
+): Promise<void> {
   const request = session.connection.request({
     method: "session/prompt",
     params: {
-      sessionId: args.sessionId,
-      prompt: [{ type: "text", text: args.prompt }],
+      sessionId: session.providerThreadId,
+      prompt: [{ type: "text", text: prompt }],
     },
     resultSchema: acpPromptResultSchema,
   });
@@ -1769,106 +1736,8 @@ async function runCompactionPrompt(
     if (result.stopReason === "cancelled") {
       throw new Error("ACP context compaction was cancelled");
     }
-    return session.compactionOutput?.join("").trim() ?? "";
   } finally {
-    session.activePromptSessionId = undefined;
-    session.compactionOutput = null;
     session.turnSettled = undefined;
-  }
-}
-
-function buildCompactionReseedPrompt(
-  session: AcpThreadSession,
-  reseedPrompt: string,
-  summary: string,
-): string {
-  return [
-    ...(session.instructions
-      ? [
-          `<system_instructions>\n${session.instructions}\n</system_instructions>`,
-        ]
-      : []),
-    reseedPrompt,
-    `<compacted_context>\n${summary}\n</compacted_context>`,
-  ].join("\n\n");
-}
-
-async function startFreshAgentSessionForCompaction(
-  session: AcpThreadSession,
-): Promise<{
-  connection: AcpAgentConnection;
-  providerThreadId: string;
-  supportsImageInput: boolean;
-}> {
-  let connection: AcpAgentConnection;
-  connection = createAcpAgentConnection({
-    command: session.agentCommand,
-    args: session.agentArgs,
-    cwd: session.cwd,
-    env: session.agentEnv,
-    onNotification: (method, notificationParams) =>
-      handleAgentNotification(session, method, notificationParams),
-    onRequest: (method, requestParams, responder) =>
-      handleAgentRequest(session, method, requestParams, responder),
-    onExit: (info) => {
-      const wasCurrent =
-        sessionsByBbThreadId.get(session.bbThreadId) === session &&
-        session.connection === connection;
-      if (!wasCurrent || session.stopping) {
-        return;
-      }
-      cancelPendingPermissions(session);
-      removeSession(session);
-      sendNotification("error", {
-        threadId: session.bbThreadId,
-        message:
-          `ACP agent "${session.agentLabel}" exited unexpectedly` +
-          `${info.code !== null ? ` (code ${info.code})` : ""}` +
-          `${info.stderrTail ? `: ${info.stderrTail}` : ""}`,
-      });
-    },
-  });
-
-  try {
-    const initializeResult = await connection.request({
-      method: "initialize",
-      params: {
-        protocolVersion: ACP_PROTOCOL_VERSION,
-        clientInfo: { name: "bb", version: "1.0.0" },
-        clientCapabilities: {
-          fs: { readTextFile: true, writeTextFile: true },
-          terminal: false,
-        },
-      },
-      resultSchema: acpInitializeResultSchema,
-    });
-    await authenticateAcpAgent({
-      connection,
-      env: session.agentEnv,
-      initializeResult,
-    });
-    const newSession = await connection.request({
-      method: "session/new",
-      params: { cwd: session.cwd, mcpServers: session.mcpServers },
-      resultSchema: acpSessionNewResultSchema,
-    });
-    await selectAcpNativeModel({
-      connection,
-      sessionId: newSession.sessionId,
-      configOptions: newSession.configOptions,
-      models: newSession.models,
-      modelSelection: session.modelSelection,
-      nativeReasoning: session.nativeReasoning,
-    });
-    return {
-      connection,
-      providerThreadId: newSession.sessionId,
-      supportsImageInput:
-        initializeResult.agentCapabilities?.promptCapabilities?.image ?? false,
-    };
-  } catch (error) {
-    connection.kill();
-    throw error;
   }
 }
 
@@ -1884,73 +1753,10 @@ async function compactSession(
   session.compactionActive = true;
 
   try {
-    if (compaction.method === "prompt") {
-      await runCompactionPrompt(session, {
-        captureOutput: false,
-        prompt: compaction.prompt,
-        sessionId: session.providerThreadId,
-      });
-      return;
-    }
-
-    const summary = await runCompactionPrompt(session, {
-      captureOutput: true,
-      prompt: compaction.summaryPrompt,
-      sessionId: session.providerThreadId,
-    });
-    if (summary.length === 0) {
-      throw new Error("ACP agent returned an empty compaction summary");
-    }
-
-    // A fresh process avoids agent-global state leaking into the replacement
-    // session. OpenCode in particular registers another event subscriber for
-    // every session/new on one ACP connection and duplicates all later text
-    // chunks; replacing the process keeps the reseeded transcript intact.
-    const replacement = await startFreshAgentSessionForCompaction(session);
-    const previousConnection = session.connection;
-    const previousSupportsImageInput = session.supportsImageInput;
-    session.connection = replacement.connection;
-    session.supportsImageInput = replacement.supportsImageInput;
-    try {
-      await runCompactionPrompt(session, {
-        captureOutput: false,
-        prompt: buildCompactionReseedPrompt(
-          session,
-          compaction.reseedPrompt,
-          summary,
-        ),
-        sessionId: replacement.providerThreadId,
-      });
-    } catch (error) {
-      session.connection = previousConnection;
-      session.supportsImageInput = previousSupportsImageInput;
-      replacement.connection.kill();
-      throw error;
-    }
-
-    const previousProviderThreadId = session.providerThreadId;
-    if (
-      bbThreadIdByProviderThreadId.get(previousProviderThreadId) ===
-      session.bbThreadId
-    ) {
-      bbThreadIdByProviderThreadId.delete(previousProviderThreadId);
-    }
-    session.providerThreadId = replacement.providerThreadId;
-    session.pendingInstructions = undefined;
-    bbThreadIdByProviderThreadId.set(
-      replacement.providerThreadId,
-      session.bbThreadId,
-    );
-    sendNotification("thread/identity", {
-      threadId: session.bbThreadId,
-      providerThreadId: replacement.providerThreadId,
-    });
-    previousConnection.kill();
+    await runCompactionPrompt(session, compaction.prompt);
   } finally {
     session.compactionActive = false;
     session.promptActive = false;
-    session.activePromptSessionId = undefined;
-    session.compactionOutput = null;
     session.turnSettled = undefined;
   }
 }
@@ -2008,17 +1814,6 @@ function handleAgentNotification(
     return;
   }
   if (session.compactionActive) {
-    if (session.compactionOutput !== null) {
-      const messageUpdate = acpAgentMessageChunkUpdateSchema.safeParse(
-        parsed.data.update,
-      );
-      const text = extractAcpContentText(
-        messageUpdate.success ? messageUpdate.data.content : undefined,
-      );
-      if (text !== undefined) {
-        session.compactionOutput.push(text);
-      }
-    }
     return;
   }
   if (

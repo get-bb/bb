@@ -5,24 +5,22 @@ import {
 } from "../src/provider-types.js";
 
 describe("ACP manual compaction schema", () => {
-  it("accepts prompt and summarize-and-reseed strategies", () => {
+  it("accepts a provider-local prompt", () => {
     expect(
       acpManualCompactionSchema.parse({
         method: "prompt",
         prompt: "/compact",
       }),
     ).toEqual({ method: "prompt", prompt: "/compact" });
-    expect(
+  });
+
+  it("rejects non-provider compaction strategies", () => {
+    expect(() =>
       acpManualCompactionSchema.parse({
-        method: "summarize-and-reseed",
-        summaryPrompt: "Summarize.",
-        reseedPrompt: "Restore.",
+        method: "client-side",
+        prompt: "/compact",
       }),
-    ).toEqual({
-      method: "summarize-and-reseed",
-      summaryPrompt: "Summarize.",
-      reseedPrompt: "Restore.",
-    });
+    ).toThrow();
   });
 });
 

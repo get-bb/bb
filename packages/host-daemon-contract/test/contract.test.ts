@@ -704,7 +704,7 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
   "hostDaemonCommandSchema.acpLaunchSpec.permissionCli":
     "dynamic ACP agents may omit permissionCli when their own prompt policy does not need launch-time permission flags.",
   "hostDaemonCommandSchema.acpLaunchSpec.manualCompaction":
-    "dynamic ACP agents may omit manualCompaction when they expose no verified provider-local prompt or summarize-and-reseed compaction strategy.",
+    "dynamic ACP agents may omit manualCompaction when they expose no verified provider-local compaction prompt.",
   "hostDaemonCommandSchema.acpLaunchSpec.permissionCli.full":
     "ACP permission CLI config only needs args for modes that differ from the agent default.",
   "hostDaemonCommandSchema.acpLaunchSpec.permissionCli.workspaceWrite":
@@ -750,7 +750,7 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
   "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.permissionCli":
     "dynamic ACP agents may omit permissionCli when their own prompt policy does not need launch-time permission flags.",
   "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.manualCompaction":
-    "dynamic ACP agents may omit manualCompaction when they expose no verified provider-local prompt or summarize-and-reseed compaction strategy.",
+    "dynamic ACP agents may omit manualCompaction when they expose no verified provider-local compaction prompt.",
   "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.permissionCli.full":
     "ACP permission CLI config only needs args for modes that differ from the agent default.",
   "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.permissionCli.workspaceWrite":
@@ -814,7 +814,7 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
   "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.permissionCli":
     "resume-context ACP launch specs may omit permissionCli when the agent's prompt policy does not need launch-time permission flags.",
   "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.manualCompaction":
-    "resume-context ACP launch specs may omit manualCompaction when the agent exposes no verified provider-local prompt or summarize-and-reseed compaction strategy.",
+    "resume-context ACP launch specs may omit manualCompaction when the agent exposes no verified provider-local compaction prompt.",
   "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.permissionCli.full":
     "resume-context ACP permission CLI config only needs args for modes that differ from the agent default.",
   "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.permissionCli.workspaceWrite":

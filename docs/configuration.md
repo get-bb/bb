@@ -354,14 +354,12 @@ config vocabulary when they differ. Hermes Agent uses this with
 `manualCompaction` is optional. Declare `{ "method": "prompt", "prompt":
 "/compact" }` only when the ACP agent handles that exact provider-local prompt
 as a compaction control rather than an ordinary user turn. bb sends it as a
-silent maintenance prompt and keeps it out of the bb transcript. For agents
-without an ACP compaction control, `summarize-and-reseed` accepts explicit
-`summaryPrompt` and `reseedPrompt` strings: bb silently captures the summary,
-creates a fresh ACP session with the same model, tools, and instructions, and
-seeds it with that summary. The known `acp-opencode` agent declares the prompt
-strategy automatically. Cursor ACP declares summarize-and-reseed automatically
-because Cursor's interactive `/compress` command is not interpreted by its ACP
-server. Other custom ACP agents must opt in explicitly.
+silent maintenance prompt and keeps it out of the bb transcript. The known
+`acp-opencode` agent declares `/compact` automatically even though OpenCode does
+not currently advertise it through `available_commands_update`. Cursor ACP does
+not support manual compaction because Cursor's interactive `/compress` command
+is not interpreted by its ACP server. Other custom ACP agents must opt in
+explicitly.
 
 For ACP-native agents, bb also uses a protocol `thought_level` config option
 when the selected model advertises one. The selected reasoning level is applied
