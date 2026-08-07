@@ -30,7 +30,17 @@ export type {
 
 export const GIT_DIFF_VIEW_BASE_OPTIONS = {
   overflow: "scroll",
+  diffIndicators: "bars",
+  hunkSeparators: "line-info",
   disableFileHeader: false,
+  // Pierre reserves an inline scrollbar gutter inside each scroll-mode code
+  // pane. In split view that makes the visible 1fr/1fr pair stop short on the
+  // right, so remove only that internal reservation and keep the native grid.
+  unsafeCSS: `
+[data-diff-type="split"][data-overflow="scroll"] [data-code] {
+  scrollbar-gutter: auto;
+}
+`,
   // Reveal 30 unchanged lines per expand-up / expand-down click. Library
   // default is 100 — too aggressive for our compact diff cards.
   expansionLineCount: 30,

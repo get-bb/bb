@@ -20,11 +20,15 @@ export function DiffStatsTally({
   return (
     <span className={cn("whitespace-nowrap", className)}>
       {showInsertions ? (
-        <span className="text-diff-added">+{formatDiffCount(insertions)}</span>
+        <span className="font-normal text-diff-added">
+          +{formatDiffCount(insertions)}
+        </span>
       ) : null}
       {showInsertions && showDeletions ? " " : null}
       {showDeletions ? (
-        <span className="text-diff-removed">-{formatDiffCount(deletions)}</span>
+        <span className="font-normal text-diff-removed">
+          -{formatDiffCount(deletions)}
+        </span>
       ) : null}
     </span>
   );

@@ -10,7 +10,6 @@ import {
   type RetryDiffPatchPath,
   useEnvironmentDiffPatches,
 } from "@/hooks/queries/use-environment-diff-patches";
-import { cn } from "@bb/shared-ui/lib/utils";
 import { DiffFileCard } from "./DiffFileCard";
 import {
   diffFileCardStateAtomFamily,
@@ -21,7 +20,6 @@ import {
 
 /** Overscan rows kept mounted on each side of the viewport. */
 const DIFF_FILES_OVERSCAN = 4;
-const DIFF_FILES_GAP_PX = 8;
 
 export interface DiffFilesPanelProps {
   environmentId: string;
@@ -118,7 +116,7 @@ export function DiffFilesPanel({
         entry,
         fileCount: files.length,
       }).collapsed;
-      return estimateCardHeight({ entry, collapsed }) + DIFF_FILES_GAP_PX;
+      return estimateCardHeight({ entry, collapsed });
     },
     // Key the measurement cache by the stable per-row path (the same identity
     // used as the React key) rather than by index, so measured heights don't
@@ -188,7 +186,7 @@ export function DiffFilesPanel({
   }, [scrollToPath, files, isPlaceholderData, virtualizer, onScrolledToPath]);
 
   return (
-    <div ref={scrollRef} className={cn(PANEL_SCROLL_SLOT_CLASS, "px-4 pb-3")}>
+    <div ref={scrollRef} className={PANEL_SCROLL_SLOT_CLASS}>
       <div
         className="relative w-full"
         style={{ height: virtualizer.getTotalSize() }}
@@ -211,7 +209,6 @@ export function DiffFilesPanel({
               className="absolute left-0 w-full"
               style={{
                 top: item.start,
-                paddingBottom: DIFF_FILES_GAP_PX,
               }}
             >
               <DiffFileRow

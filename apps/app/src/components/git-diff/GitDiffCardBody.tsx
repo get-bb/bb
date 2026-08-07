@@ -16,6 +16,7 @@ import type {
 import { FileDiff as DiffView } from "@pierre/diffs/react";
 import { useIntersectionObserver } from "usehooks-ts";
 import { Button } from "@bb/shared-ui/button";
+import { cn } from "@bb/shared-ui/lib/utils";
 import { usePierreLineSelectionActions } from "./PierreLineSelectionActions.js";
 import {
   getWrappedImageIndex,
@@ -62,8 +63,9 @@ export interface DiffImageSizeStat {
 export type GitDiffCardSvgDisplayMode = "preview" | "raw";
 
 const GIT_DIFF_CARD_VIEW_STYLE = {
-  "--diffs-font-size": "12px",
-  "--diffs-line-height": "18px",
+  "--diffs-font-size": "13px",
+  "--diffs-line-height": "20px",
+  "--diffs-gap-inline": "2px",
 } as CSSProperties;
 
 const GIT_DIFF_CARD_BODY_STYLE: CSSProperties = {
@@ -1175,6 +1177,7 @@ function GitDiffCardRawDiffBody({
     >
       <div className="w-full max-w-full" style={GIT_DIFF_CARD_VIEW_STYLE}>
         <DiffView
+          className="git-diff-view"
           fileDiff={fileDiff}
           options={options}
           selectedLines={lineSelectionActions.selectedRange}
@@ -1226,6 +1229,8 @@ export interface GitDiffCardBodyProps {
    * file message aligns to that gutter so its text lines up with the diff body.
    */
   reservesCollapseGutter: boolean;
+  /** Removes card-edge rounding when the diff fills its parent surface. */
+  flushEdges?: boolean;
   onSelectionAddToChat?: (text: string) => void;
 }
 
@@ -1243,6 +1248,7 @@ export function GitDiffCardBody({
   diffViewOptions,
   svgDisplayMode,
   reservesCollapseGutter,
+  flushEdges = false,
   onSelectionAddToChat,
 }: GitDiffCardBodyProps) {
   const {
@@ -1264,7 +1270,10 @@ export function GitDiffCardBody({
   return (
     <div
       ref={bodySentinelRef}
-      className="overflow-hidden rounded-b-lg bg-background"
+      className={cn(
+        "overflow-hidden bg-background",
+        flushEdges ? "rounded-none" : "rounded-b-lg",
+      )}
       style={GIT_DIFF_CARD_BODY_STYLE}
     >
       {shouldGateDeletedDiff ? (

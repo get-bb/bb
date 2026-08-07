@@ -616,16 +616,14 @@ export function ThreadSecondaryPanel({
     >
       <IframeDragGuardOverlay active={isSecondaryPanelResizing} />
       <div
-        className={cn(
-          getSecondaryPanelChromeStackClassName(showsGitDiffToolbar),
-          hideChrome && "hidden",
-        )}
+        className={getSecondaryPanelChromeStackClassName(showsGitDiffToolbar)}
       >
         <div
           data-testid="thread-secondary-panel-top-chrome"
           className={cn(
             CHROME_ROW_CLASS,
             "min-w-0 justify-between gap-2 px-4",
+            hideChrome && "hidden",
             usesDesktopChrome && MACOS_WINDOW_DRAG_CLASS,
             usesDesktopChrome && MACOS_CHROME_CONTROL_AXIS_CLASS,
           )}
