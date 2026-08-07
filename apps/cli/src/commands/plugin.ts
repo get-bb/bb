@@ -840,8 +840,11 @@ export function registerPluginCommands(
         const hasApp = typeof manifest?.bb?.app === "string";
         // Keep the local declarations tracking the bb doing the build, so a
         // plugin scaffolded against an older SDK never typechecks green
-        // against an API this bb no longer has.
-        if (manifest) await refreshPluginTypes(rootDir, hasApp);
+        // against an API this bb no longer has. Gate on bb.server so a
+        // directory this command is about to reject is never written to first.
+        if (typeof manifest?.bb?.server === "string") {
+          await refreshPluginTypes(rootDir, hasApp);
+        }
         const toolchain = await cliBuildToolchain();
         const server = await buildPluginServer(rootDir, bbVersion, toolchain);
         const files = [server.jsPath, server.mapPath, server.metaPath];

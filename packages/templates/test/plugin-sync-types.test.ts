@@ -2,8 +2,10 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  readdir,
   rm,
   stat,
+  symlink,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -87,6 +89,47 @@ describe("syncPluginTypes", () => {
     expect(
       await readFile(join(rootDir, "types", "bb-plugin-sdk-app.d.ts"), "utf8"),
     ).toContain("definePluginApp");
+  });
+
+  /**
+   * `bb plugin build` and `bb plugin dev` refresh declarations without being
+   * asked, and building a plugin never runs its code — so cloning an untrusted
+   * plugin and building it must not write outside that plugin. Both link forms
+   * redirected the write before this was guarded.
+   */
+  describe("refuses to write through a symbolic link", () => {
+    it("rejects a linked declaration file and leaves the target intact", async () => {
+      const victim = join(rootDir, "victim.txt");
+      await writeFile(victim, "PRECIOUS\n");
+      await mkdir(join(rootDir, "types"));
+      await symlink(victim, join(rootDir, "types", "bb-plugin-sdk.d.ts"));
+
+      await expect(syncPluginTypes({ rootDir, app: false })).rejects.toThrow(
+        /symbolic link/,
+      );
+      expect(await readFile(victim, "utf8")).toBe("PRECIOUS\n");
+    });
+
+    it("rejects a linked types directory and leaves the target intact", async () => {
+      const outside = join(rootDir, "outside");
+      await mkdir(outside);
+      await writeFile(join(outside, "bb-plugin-sdk.d.ts"), "PRECIOUS\n");
+      await symlink(outside, join(rootDir, "types"));
+
+      await expect(syncPluginTypes({ rootDir, app: false })).rejects.toThrow(
+        /symbolic link/,
+      );
+      expect(await readFile(join(outside, "bb-plugin-sdk.d.ts"), "utf8")).toBe(
+        "PRECIOUS\n",
+      );
+    });
+  });
+
+  it("leaves no temporary file behind after a successful write", async () => {
+    await syncPluginTypes({ rootDir, app: true });
+
+    const entries = await readdir(join(rootDir, "types"));
+    expect(entries.filter((name) => name.includes("bb-tmp"))).toEqual([]);
   });
 
   it("check mode reports stale files and writes nothing", async () => {

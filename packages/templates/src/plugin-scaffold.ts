@@ -1,5 +1,13 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import {
+  lstat,
+  mkdir,
+  readFile,
+  realpath,
+  rename,
+  rm,
+  writeFile,
+} from "node:fs/promises";
+import { dirname, isAbsolute, join, relative } from "node:path";
 import { PLUGIN_SDK_VERSION } from "@bb/domain";
 import {
   PLUGIN_SDK_APP_DTS,
@@ -84,17 +92,17 @@ export async function syncPluginTypes(
       optional: !app,
     },
   ];
+  await assertWritableTypesDir(rootDir, typesDir);
   const results: SyncedPluginTypeFile[] = [];
   for (const candidate of candidates) {
     const filePath = join(typesDir, candidate.name);
-    let current: string | null = null;
-    try {
-      current = await readFile(filePath, "utf8");
-    } catch {
-      current = null;
-    }
-    if (current === null && candidate.optional) continue;
     const relativePath = `types/${candidate.name}`;
+    const existing = await statNoFollow(filePath, relativePath);
+    if (existing !== null && !existing.isFile()) {
+      throw new Error(`${relativePath} is not a regular file`);
+    }
+    const current = existing === null ? null : await readFile(filePath, "utf8");
+    if (current === null && candidate.optional) continue;
     if (current === candidate.content) {
       results.push({ path: relativePath, outcome: "unchanged" });
       continue;
@@ -104,10 +112,82 @@ export async function syncPluginTypes(
       continue;
     }
     await mkdir(typesDir, { recursive: true });
-    await writeFile(filePath, candidate.content);
+    await writeDeclarationAtomically(filePath, relativePath, candidate.content);
     results.push({ path: relativePath, outcome: "written" });
   }
   return results;
+}
+
+/**
+ * `lstat` that never follows the final path component. Returns null when the
+ * path does not exist, and refuses a symbolic link.
+ *
+ * `bb plugin build` and `bb plugin dev` refresh declarations automatically, so
+ * a plugin that ships `types/` — or a declaration inside it — as a link would
+ * otherwise redirect that write onto a file outside the plugin. Building a
+ * plugin does not run its code, so cloning an untrusted plugin and building it
+ * must not write anywhere but that plugin.
+ */
+async function statNoFollow(
+  path: string,
+  label: string,
+): Promise<Awaited<ReturnType<typeof lstat>> | null> {
+  let stats: Awaited<ReturnType<typeof lstat>>;
+  try {
+    stats = await lstat(path);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  }
+  if (stats.isSymbolicLink()) {
+    throw new Error(`refusing to write through the symbolic link ${label}`);
+  }
+  return stats;
+}
+
+/**
+ * Reject a `types/` that is a link, is not a directory, or resolves outside
+ * the plugin. Resolving both sides keeps a plugin inside a symlinked checkout
+ * (a bb worktree, for example) working.
+ */
+async function assertWritableTypesDir(
+  rootDir: string,
+  typesDir: string,
+): Promise<void> {
+  const stats = await statNoFollow(typesDir, "types");
+  if (stats === null) return;
+  if (!stats.isDirectory())
+    throw new Error("types exists but is not a directory");
+  const [realRoot, realTypes] = await Promise.all([
+    realpath(rootDir),
+    realpath(typesDir),
+  ]);
+  const rel = relative(realRoot, realTypes);
+  if (rel.length === 0 || rel.startsWith("..") || isAbsolute(rel)) {
+    throw new Error(`types resolves outside the plugin (${realTypes})`);
+  }
+}
+
+/**
+ * Write through a temporary regular file and rename it into place, so a
+ * concurrent reader never sees a partial declaration file and the rename
+ * replaces the entry itself rather than following anything at the destination.
+ */
+async function writeDeclarationAtomically(
+  filePath: string,
+  label: string,
+  content: string,
+): Promise<void> {
+  const tempPath = `${filePath}.bb-tmp`;
+  await statNoFollow(tempPath, `${label}.bb-tmp`);
+  await rm(tempPath, { force: true });
+  await writeFile(tempPath, content, { flag: "wx" });
+  try {
+    await rename(tempPath, filePath);
+  } catch (error) {
+    await rm(tempPath, { force: true });
+    throw error;
+  }
 }
 
 /** "bb-plugin-hello" → "hello" (mirrors the server's id derivation). */
@@ -519,16 +599,12 @@ export async function scaffoldPlugin(args: ScaffoldPluginArgs): Promise<void> {
   await writeFile(join(targetDir, "tsconfig.json"), tsconfigSource(app));
   // Bundled root/app declarations keep normal plugin source self-contained.
   // Tests that use @bb/plugin-sdk/testing install the published package; the
-  // exact root/app paths below intentionally continue to resolve here.
-  const typesDir = join(targetDir, "types");
-  await mkdir(typesDir, { recursive: true });
-  await writeFile(join(typesDir, "bb-plugin-sdk.d.ts"), PLUGIN_SDK_DTS);
+  // exact root/app paths syncPluginTypes writes intentionally keep resolving
+  // here. Seeding through the same function `bb plugin types` uses is what
+  // stops a scaffolded plugin and a refreshed one from ever diverging.
+  await syncPluginTypes({ rootDir: targetDir, app });
   if (app) {
     await writeFile(join(targetDir, "app.tsx"), appEntrySource(packageName));
-    await writeFile(
-      join(typesDir, "bb-plugin-sdk-app.d.ts"),
-      PLUGIN_SDK_APP_DTS,
-    );
     // Vendored starter components (shadcn model — the author owns and edits
     // them) + components.json so `npx shadcn add @bb/<name>` pulls more from
     // the BB registry at the version tag matching this install.
