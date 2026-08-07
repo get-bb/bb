@@ -42,7 +42,7 @@ describe("provider retry app", () => {
     ]);
   });
 
-  it("shows the reset and process-lifetime warning", async () => {
+  it("shows the scheduled reset and recovery actions", async () => {
     const slot = renderSlot(
       banner,
       {},
@@ -57,15 +57,13 @@ describe("provider retry app", () => {
       },
     );
 
+    const description = await slot.findByText(
+      /Claude Code five-hour usage limit reached/i,
+    );
+    expect(description.textContent).not.toContain("server");
     expect(
-      await slot.findByText(/Claude Code five-hour usage limit reached/i),
-    ).toBeTruthy();
-    expect(
-      slot.getByText(/while this bb server remains running/i),
-    ).toBeTruthy();
-    expect(slot.getByRole("button", { name: "Refresh" })).toBeTruthy();
-    expect(slot.getByRole("button", { name: "Retry now" })).toBeTruthy();
-    expect(slot.getByRole("button", { name: "Cancel" })).toBeTruthy();
+      slot.getAllByRole("button").map((button) => button.textContent),
+    ).toEqual(["Retry now", "Refresh", "Cancel"]);
   });
 
   it("reacts to backend signals and can continue immediately", async () => {

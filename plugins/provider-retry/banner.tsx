@@ -41,7 +41,7 @@ function limitDescription(view: ProviderRetryView): string {
     return `${provider}${window} usage limit resets ${reset}, beyond the configured maximum automatic wait. Retry manually when ready.`;
   }
   if (view.phase === "waiting-for-host") {
-    return `${provider}${window} usage limit reset passed. This thread will continue when its host reconnects, while this bb server remains running.`;
+    return `${provider}${window} usage limit reset passed. This thread will continue when its host reconnects.`;
   }
   if (view.phase === "retry-failed") {
     return `${provider}${window} usage is available, but bb could not continue automatically${view.continuationError ? `: ${view.continuationError}` : ""}. Resolve the issue, then retry.`;
@@ -50,7 +50,7 @@ function limitDescription(view: ProviderRetryView): string {
     return `${provider}${window} usage is available. Continuing this thread…`;
   }
   if (view.dueAtMs !== null) {
-    return `${provider}${window} usage limit reached. This thread will continue ${resetLabel(view.dueAtMs)} while this bb server remains running.`;
+    return `${provider}${window} usage limit reached. This thread will continue ${resetLabel(view.dueAtMs)}.`;
   }
   return `${provider}${window} usage limit reached.`;
 }
@@ -95,18 +95,6 @@ export function ProviderRetryBannerView({
           </p>
         )}
         <div className="flex flex-wrap items-center gap-1">
-          {canRefresh ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-7 px-2 text-xs"
-              disabled={busy !== null || view.phase === "releasing"}
-              onClick={() => void onAction("refresh")}
-            >
-              {busy === "refresh" ? "Refreshing…" : "Refresh"}
-            </Button>
-          ) : null}
           {canRetry ? (
             <Button
               type="button"
@@ -117,6 +105,18 @@ export function ProviderRetryBannerView({
               onClick={() => void onAction("now")}
             >
               {busy === "now" ? "Continuing…" : "Retry now"}
+            </Button>
+          ) : null}
+          {canRefresh ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-xs"
+              disabled={busy !== null || view.phase === "releasing"}
+              onClick={() => void onAction("refresh")}
+            >
+              {busy === "refresh" ? "Refreshing…" : "Refresh"}
             </Button>
           ) : null}
           <Button
