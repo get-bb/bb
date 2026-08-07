@@ -29,6 +29,8 @@
  * - FAKE_ACP_AUTH_METHODS    → comma-separated auth method ids to advertise;
  *                              session creation requires authenticate first
  * - FAKE_ACP_WRITE_PATH      → target path for the "write-file" prompt
+ * - FAKE_ACP_READ_PATH       → source path for the "file-ops" prompt
+ * - FAKE_ACP_FS_RESULT_LOG   → append client fs outcomes for bridge tests
  * - FAKE_ACP_LAUNCH_LOG      → append one line per process launch (used to
  *                              count model-discovery spawns in cache/TTL tests)
  * - FAKE_ACP_PROMPT_LOG      → append one JSON-encoded prompt text per request
@@ -278,6 +280,34 @@ async function handlePrompt(message) {
       outcome = "error";
     }
     notifyUpdate(messageChunk(`permission:${outcome}`));
+  } else if (text.includes("file-ops")) {
+    const outcomes = [];
+    try {
+      await requestClient("fs/read_text_file", {
+        sessionId,
+        path: process.env.FAKE_ACP_READ_PATH,
+      });
+      outcomes.push("read:ok");
+    } catch {
+      outcomes.push("read:denied");
+    }
+    try {
+      await requestClient("fs/write_text_file", {
+        sessionId,
+        path: process.env.FAKE_ACP_WRITE_PATH,
+        content: "hello from agent\n",
+      });
+      outcomes.push("write:ok");
+    } catch {
+      outcomes.push("write:denied");
+    }
+    if (process.env.FAKE_ACP_FS_RESULT_LOG) {
+      appendFileSync(
+        process.env.FAKE_ACP_FS_RESULT_LOG,
+        `${outcomes.join(",")}\n`,
+      );
+    }
+    notifyUpdate(messageChunk(outcomes.join(",")));
   } else if (text.includes("write-file")) {
     try {
       await requestClient("fs/write_text_file", {

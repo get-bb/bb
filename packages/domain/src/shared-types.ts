@@ -392,6 +392,14 @@ export function isStandaloneBuiltinPromptCommand(
     let remainingText = "";
     let cursor = 0;
     for (const range of ranges) {
+      if (
+        range.start >= range.end ||
+        range.end > item.text.length ||
+        item.text.slice(range.start, range.end) !==
+          `${selector.trigger}${selector.name}`
+      ) {
+        return false;
+      }
       remainingText += item.text.slice(cursor, range.start);
       cursor = range.end;
     }

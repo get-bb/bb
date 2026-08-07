@@ -458,6 +458,10 @@ describe("dispatchCommand", () => {
       createRuntime: () => runtime,
       provisionWorkspace: async () => createWorkspace(),
     });
+    const releaseRuntime = vi.fn();
+    const retainRuntime = vi
+      .spyOn(manager, "retainEnvironmentForThreadCommand")
+      .mockResolvedValue(releaseRuntime);
     const flush = vi.fn(async () => undefined);
     const command: CommandOf<"thread.compact"> = {
       type: "thread.compact",
@@ -509,6 +513,8 @@ describe("dispatchCommand", () => {
     expect(runtime.compactThread).toHaveBeenCalledWith({
       threadId: "thread-1",
     });
+    expect(retainRuntime).toHaveBeenCalledWith("env-1", "thread-1");
+    expect(releaseRuntime).toHaveBeenCalledOnce();
     expect(flush).toHaveBeenCalledOnce();
   });
 

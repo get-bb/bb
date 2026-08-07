@@ -1561,6 +1561,8 @@ async function handleThreadCompact(
     return;
   }
   try {
+    // Input consumption is Claude's acceptance boundary. Completion and any
+    // later failure remain provider lifecycle events, like Pi and ACP.
     await threadSession.session.pushInput("/compact");
     sendResult(id, { threadId: params.threadId });
   } catch (error) {

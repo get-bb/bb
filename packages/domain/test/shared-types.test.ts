@@ -200,6 +200,25 @@ describe("prompt command input helpers", () => {
         },
       ],
       [{ ...builtinCompactInput[0], text: " /compact now" }],
+      [
+        {
+          ...builtinCompactInput[0],
+          text: "ordinary prompt",
+          mentions: [
+            {
+              ...builtinCompactInput[0].mentions[0],
+              start: 0,
+              end: 999,
+            },
+          ],
+        },
+      ],
+      [
+        {
+          ...builtinCompactInput[0],
+          text: " /different ",
+        },
+      ],
     ];
     for (const input of invalidInputs) {
       expect(isStandaloneBuiltinPromptCommand(input, selector)).toBe(false);

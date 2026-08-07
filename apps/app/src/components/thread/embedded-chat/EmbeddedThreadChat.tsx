@@ -538,6 +538,7 @@ function EmbeddedThreadChatWithComposer({
     projectId,
     providerId,
     environmentId: promptContextEnvironmentId,
+    commandScope: threadId === null ? "new-thread" : "thread",
     currentThreadId: threadId ?? composer.executionDefaultsThreadId,
     selectedProviderComposerActions,
     resolveMentionLink,

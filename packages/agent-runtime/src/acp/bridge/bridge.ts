@@ -1771,6 +1771,17 @@ function handleAgentRequest(
   params: unknown,
   responder: AcpAgentRequestResponder,
 ): void {
+  if (
+    session.activePromptKind === "compaction" &&
+    (method === "fs/read_text_file" || method === "fs/write_text_file")
+  ) {
+    responder.error(
+      -32000,
+      "File operations are unavailable during context compaction",
+    );
+    return;
+  }
+
   switch (method) {
     case "session/request_permission":
       handlePermissionRequest(session, params, responder);

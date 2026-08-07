@@ -464,6 +464,7 @@ export function ThreadDetailPromptArea({
     mentionsProjectId: projectId,
     providerId: thread.providerId,
     environmentId: thread.environmentId,
+    commandScope: "thread",
     currentThreadId: thread.id,
     selectedProviderComposerActions,
     resolveMentionLink,

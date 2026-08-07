@@ -147,6 +147,28 @@ describe("thread runtime mutations", () => {
     expect(invalidateQueries).toHaveBeenCalled();
   });
 
+  it("does not refresh thread state when compaction is rejected", async () => {
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
+    vi.mocked(sdk.threads.compact).mockRejectedValueOnce(
+      new BbHttpError({
+        status: 409,
+        code: "invalid_request",
+        message: "Thread is active",
+        body: { code: "invalid_request", message: "Thread is active" },
+      }),
+    );
+    const { result } = renderHook(() => useCompactThread(), { wrapper });
+
+    await act(async () => {
+      await expect(result.current.mutateAsync("thread-1")).rejects.toThrow(
+        "Thread is active",
+      );
+    });
+
+    expect(invalidateQueries).not.toHaveBeenCalled();
+  });
+
   it.each([
     ["Plan", useCancelThreadPlan, () => sdk.threads.cancelPlan],
     ["Goal", useClearThreadGoal, () => sdk.threads.clearGoal],

@@ -11,6 +11,8 @@ import { useProjectCommands } from "./queries/project-queries";
 export interface UseCommandSuggestionsArgs {
   projectId: string | undefined;
   providerId: string | undefined;
+  /** Composer surface used to exclude commands that require an existing thread. */
+  commandScope: "new-thread" | "thread";
   skillsTrigger: PromptMentionCommandTrigger | null;
   promptActions?: readonly CommandSuggestionPromptAction[];
   /**
@@ -101,6 +103,20 @@ export function filterCommandSuggestions(
       );
       return leftPrefix === rightPrefix ? 0 : leftPrefix ? -1 : 1;
     });
+}
+
+export function commandSuggestionIsAvailableInScope(
+  suggestion: ProviderCommandSuggestion,
+  commandScope: UseCommandSuggestionsArgs["commandScope"],
+): boolean {
+  return (
+    commandScope === "thread" ||
+    !(
+      suggestion.source === "command" &&
+      suggestion.origin === "builtin" &&
+      suggestion.name === "compact"
+    )
+  );
 }
 
 export function promptActionCommandSuggestions({
@@ -203,7 +219,11 @@ export function useCommandSuggestions(
       return [];
     }
     const discoveredSuggestions = filterCommandSuggestions(
-      (commandsQuery.data?.commands ?? []).map(toProviderCommandSuggestion),
+      (commandsQuery.data?.commands ?? [])
+        .map(toProviderCommandSuggestion)
+        .filter((suggestion) =>
+          commandSuggestionIsAvailableInScope(suggestion, args.commandScope),
+        ),
       trimmedQuery,
     );
     return orderCommandSuggestionsBySection(
@@ -211,6 +231,7 @@ export function useCommandSuggestions(
     );
   }, [
     commandsQuery.data?.commands,
+    args.commandScope,
     isActive,
     promptActionSuggestions,
     trimmedQuery,

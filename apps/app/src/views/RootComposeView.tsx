@@ -1909,6 +1909,7 @@ export function RootComposeView() {
   const commandSuggestions = useCommandSuggestions({
     projectId,
     providerId: selectedProviderId,
+    commandScope: "new-thread",
     skillsTrigger: providerPromptActions.skillsTrigger,
     promptActions: providerPromptActionProps.promptActions,
     environmentId: reuseEnvironmentId,

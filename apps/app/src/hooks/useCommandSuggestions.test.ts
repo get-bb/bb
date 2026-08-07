@@ -1,10 +1,29 @@
 import { describe, expect, it } from "vitest";
 import { AUTOMATION_PROMPT_ACTION } from "@/components/promptbox/PromptBoxActionsMenu";
 import {
+  commandSuggestionIsAvailableInScope,
   commandSuggestionMatchesQuery,
   filterCommandSuggestions,
   promptActionCommandSuggestions,
 } from "./useCommandSuggestions";
+
+describe("commandSuggestionIsAvailableInScope", () => {
+  const compact = {
+    kind: "command",
+    name: "compact",
+    source: "command",
+    origin: "builtin",
+    description: "Compact context",
+    argumentHint: null,
+  } as const;
+
+  it("offers compact only after the composer has a thread", () => {
+    expect(commandSuggestionIsAvailableInScope(compact, "new-thread")).toBe(
+      false,
+    );
+    expect(commandSuggestionIsAvailableInScope(compact, "thread")).toBe(true);
+  });
+});
 
 const promptActions = [
   { kind: "skills", text: "/" },

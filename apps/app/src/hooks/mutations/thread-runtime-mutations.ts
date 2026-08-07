@@ -499,7 +499,7 @@ export function useCompactThread() {
     mutationFn: async (threadId: string) => {
       await sdk.threads.compact({ threadId });
     },
-    onSettled: (_data, _error, threadId) => {
+    onSuccess: (_data, threadId) => {
       invalidateThreadBannerQueries({ queryClient, threadId });
     },
   });

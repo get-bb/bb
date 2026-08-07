@@ -294,16 +294,25 @@ const commandHandlers: CommandHandlerMap = {
     return {};
   },
   "thread.compact": async (command, options) => {
-    const entry = await ensureThreadRuntime(command, options);
-    if (entry.runtime.getActiveTurnId(command.threadId) !== null) {
-      throw new ExpectedCommandDispatchError(
-        "thread_active",
-        `Cannot compact context while thread ${command.threadId} has an active turn`,
+    const release =
+      await options.runtimeManager.retainEnvironmentForThreadCommand(
+        command.environmentId,
+        command.threadId,
       );
+    try {
+      const entry = await ensureThreadRuntime(command, options);
+      if (entry.runtime.getActiveTurnId(command.threadId) !== null) {
+        throw new ExpectedCommandDispatchError(
+          "thread_active",
+          `Cannot compact context while thread ${command.threadId} has an active turn`,
+        );
+      }
+      await entry.runtime.compactThread({ threadId: command.threadId });
+      await options.eventSink.flush();
+      return {};
+    } finally {
+      release();
     }
-    await entry.runtime.compactThread({ threadId: command.threadId });
-    await options.eventSink.flush();
-    return {};
   },
   "thread.goal.clear": async (command, options) => {
     const entry = await ensureThreadRuntime(command, options);

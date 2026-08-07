@@ -4,6 +4,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  writeFileSync,
 } from "node:fs";
 import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
@@ -1250,6 +1251,31 @@ describe("acp bridge", () => {
     expect(output.messages.indexOf(compactResponse)).toBeLessThan(
       output.messages.indexOf(completed),
     );
+  });
+
+  it("rejects client file operations during prompt-based compaction", async () => {
+    const readPath = join(workspaceDir, "compaction-read.txt");
+    const writePath = join(workspaceDir, "compaction-write.txt");
+    const resultLog = join(workspaceDir, "compaction-fs-results.txt");
+    writeFileSync(readPath, "private context\n");
+    const { providerThreadId } = await startThread({
+      envVars: {
+        FAKE_ACP_FS_RESULT_LOG: resultLog,
+        FAKE_ACP_READ_PATH: readPath,
+        FAKE_ACP_WRITE_PATH: writePath,
+      },
+    });
+
+    const compactId = sendRequest("thread/compact", {
+      threadId: providerThreadId,
+      compaction: { method: "prompt", prompt: "file-ops" },
+    });
+    await waitForResponse(compactId);
+    await waitForCompactionCompleted();
+
+    expect(readFileSync(resultLog, "utf8")).toBe("read:denied,write:denied\n");
+    expect(existsSync(writePath)).toBe(false);
+    expect(agentMessageTexts()).toEqual([]);
   });
 
   it("authenticates ACP sessions with cached tokens when advertised", async () => {
