@@ -15,6 +15,7 @@
     "server.test.ts",
     "app.tsx",
     "app.test.tsx",
+    "banner.stories.tsx",
     "src/**/*.ts",
     "vitest.config.ts"
   ]
