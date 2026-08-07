@@ -164,6 +164,7 @@ describe("Work Together Room resource provisioner", () => {
       ).provision({ principal: PRINCIPAL, launch: exactLaunch });
       expect(firstResult.state).toBe("provisioning");
     } finally {
+      first.db.$client.close();
       await first.cleanup();
     }
 
@@ -191,6 +192,7 @@ describe("Work Together Room resource provisioner", () => {
         primaryThreadId: replay.primaryThreadId,
       });
     } finally {
+      restarted.db.$client.close();
       await restarted.cleanup();
       await rm(dataDir, { recursive: true, force: true });
     }
