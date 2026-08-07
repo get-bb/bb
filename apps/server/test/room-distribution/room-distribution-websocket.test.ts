@@ -11,6 +11,7 @@ import {
 } from "../../src/room-distribution/room-distribution-websocket.js";
 
 const BINDING_ID = "99999999-aaaa-4bbb-8ccc-dddddddddddd";
+const CHILD_ID = "55555555-6666-4777-8888-999999999999";
 const PRINCIPAL: Principal = Object.freeze({
   id: "user_RoomSocket123",
   kind: "human",
@@ -88,11 +89,17 @@ function fixture(
 describe("Room distribution WebSocket protocol", () => {
   it("binds one Principal/binding/cursor and emits JSON after issued authorization", async () => {
     const test = fixture();
-    test.protocol.open(test.socket, test.session, BINDING_ID, "evt%3A7");
+    test.protocol.open(
+      test.socket,
+      test.session,
+      BINDING_ID,
+      "evt%3A7",
+      CHILD_ID,
+    );
     await vi.advanceTimersByTimeAsync(0);
     expect(test.subscribe).toHaveBeenCalledWith(
       expect.objectContaining({ bindingId: BINDING_ID, principal: PRINCIPAL }),
-      "evt%3A7",
+      { childAttachmentId: CHILD_ID, cursor: "evt%3A7" },
       expect.any(Function),
     );
     expect(test.authorizationCalls).toHaveLength(1);
@@ -118,7 +125,7 @@ describe("Room distribution WebSocket protocol", () => {
           : { allowed: false, reason: "forbidden" };
       },
     });
-    test.protocol.open(test.socket, test.session, BINDING_ID, null);
+    test.protocol.open(test.socket, test.session, BINDING_ID, null, null);
     await vi.advanceTimersByTimeAsync(0);
     expect(test.subscribe).toHaveBeenCalledOnce();
     await vi.advanceTimersByTimeAsync(10_000);
@@ -131,7 +138,7 @@ describe("Room distribution WebSocket protocol", () => {
 
   it("closes at assertion expiry even when work is otherwise healthy", async () => {
     const test = fixture();
-    test.protocol.open(test.socket, test.session, BINDING_ID, null);
+    test.protocol.open(test.socket, test.session, BINDING_ID, null, null);
     await vi.advanceTimersByTimeAsync(0);
     await vi.advanceTimersByTimeAsync(30_000);
     expect(test.socket.close).toHaveBeenCalledWith(
@@ -143,7 +150,7 @@ describe("Room distribution WebSocket protocol", () => {
 
   it("closes on any in-band client message and never retargets", async () => {
     const test = fixture();
-    test.protocol.open(test.socket, test.session, BINDING_ID, null);
+    test.protocol.open(test.socket, test.session, BINDING_ID, null, null);
     await vi.advanceTimersByTimeAsync(0);
     test.protocol.message(test.socket);
     expect(test.socket.close).toHaveBeenCalledWith(
@@ -161,6 +168,7 @@ describe("Room distribution WebSocket protocol", () => {
       { ...unrestricted.session, clientRealtimeScope: "unrestricted" },
       BINDING_ID,
       null,
+      null,
     );
     expect(unrestricted.socket.close).toHaveBeenCalledWith(
       1008,
@@ -173,6 +181,7 @@ describe("Room distribution WebSocket protocol", () => {
       { ...expired.session, expiresAtMs: Date.now() },
       BINDING_ID,
       null,
+      null,
     );
     expect(expired.socket.close).toHaveBeenCalledWith(
       1008,
@@ -182,7 +191,13 @@ describe("Room distribution WebSocket protocol", () => {
     const hanging = fixture({
       authorize: () => new Promise(() => {}),
     });
-    hanging.protocol.open(hanging.socket, hanging.session, BINDING_ID, null);
+    hanging.protocol.open(
+      hanging.socket,
+      hanging.session,
+      BINDING_ID,
+      null,
+      null,
+    );
     await vi.advanceTimersByTimeAsync(4_000);
     expect(hanging.socket.close).toHaveBeenCalledWith(
       1008,

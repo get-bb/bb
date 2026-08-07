@@ -14,6 +14,7 @@ import {
 } from "../../src/room-distribution/room-distribution-port.js";
 
 const BINDING_ID = "99999999-aaaa-4bbb-8ccc-dddddddddddd";
+const CHILD_ID = "55555555-6666-4777-8888-999999999999";
 const PRINCIPAL: Principal = Object.freeze({
   id: "user_RoomHttp123",
   kind: "human",
@@ -57,9 +58,9 @@ function fixture(
     status: 202 as const,
     body: { receipt: "accepted" },
   }));
-  const events = vi.fn(async (_context, cursor: string | null) => ({
+  const events = vi.fn(async (_context, target) => ({
     events: [],
-    cursor,
+    cursor: target.cursor,
   }));
   const subscribe = vi.fn(async () => Object.freeze({ close() {} }));
   const distribution = {
@@ -108,9 +109,15 @@ describe("Room distribution HTTP adapter", () => {
     });
     expect(test.events).toHaveBeenCalledWith(
       expect.objectContaining({ bindingId: BINDING_ID, principal: PRINCIPAL }),
-      "evt%3A7",
+      { childAttachmentId: null, cursor: "evt%3A7" },
     );
-    expect(test.authorizations).toHaveLength(2);
+
+    await test.app.request(path("events", `?child=${CHILD_ID}&cursor=evt%3A8`));
+    expect(test.events).toHaveBeenLastCalledWith(
+      expect.objectContaining({ bindingId: BINDING_ID, principal: PRINCIPAL }),
+      { childAttachmentId: CHILD_ID, cursor: "evt%3A8" },
+    );
+    expect(test.authorizations).toHaveLength(3);
     for (const pair of test.authorizations) {
       expect(
         isRegistryIssuedRoomDistributionAuthorization(

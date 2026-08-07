@@ -177,7 +177,10 @@ export function registerRoomDistributionHttpRoutes(
       if (target.operation !== "events") notFound();
       const room = await createContext(context, target.bindingId);
       await requireOperation(room, "events");
-      const body = await distribution.events(room, target.cursor);
+      const body = await distribution.events(room, {
+        childAttachmentId: target.childAttachmentId,
+        cursor: target.cursor,
+      });
       context.header("cache-control", "no-store");
       return context.json(body, 200);
     }),

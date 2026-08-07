@@ -5,14 +5,21 @@ import {
   getLatestThreadSequence,
   getThread,
   getWorkTogetherRoomResourceReservation,
+  listNonDeletedChildThreads,
 } from "@bb/db";
 import type { Principal } from "@bb/domain";
 import type { AppDeps } from "../types.js";
 import { buildThreadTimeline } from "../services/threads/timeline.js";
 import { DEFAULT_MAX_INLINE_OUTPUT_CHARS } from "../services/threads/timeline-output-truncation.js";
+import { isParentNotifiableChildThread } from "../services/threads/thread-parent.js";
+import type {
+  WorkTogetherRoomChildAttachmentPortV1,
+  WorkTogetherRoomChildAttachmentV1,
+} from "./work-together-room-child-attachments.js";
 import {
   RoomDistributionUnavailableError,
   type RoomDistributionContextV1,
+  type RoomDistributionStreamTargetV1,
   type RoomDistributionSubscriptionV1,
   type RoomJsonObject,
   type RoomJsonValue,
@@ -22,6 +29,7 @@ import {
 const CURSOR = /^s\.([0-9]|[1-9][0-9]{0,15})$/u;
 const MAX_TASK_PROJECTION_BYTES = 131_072;
 const INITIAL_TIMELINE_SEGMENTS = 20;
+const MAX_ROOM_CHILDREN = 64;
 const FORBIDDEN_TASK_IDENTITY_KEYS = new Set([
   "clerkid",
   "email",
@@ -70,6 +78,7 @@ function participantId(bindingId: string, principalId: string): string {
 type ProjectionScope = Readonly<{
   bindingId: string;
   threadId?: string;
+  publicThreadId?: string;
   environmentId?: string;
   projectId?: string;
 }>;
@@ -77,7 +86,10 @@ type ProjectionScope = Readonly<{
 function projectString(value: string, scope: ProjectionScope): string {
   let projected = value;
   if (scope.threadId !== undefined) {
-    projected = projected.replaceAll(scope.threadId, scope.bindingId);
+    projected = projected.replaceAll(
+      scope.threadId,
+      scope.publicThreadId ?? scope.bindingId,
+    );
   }
   if (scope.environmentId !== undefined) {
     projected = projected.replaceAll(
@@ -223,6 +235,7 @@ function primaryRun(status: string): string {
 export function createBindingBackedRoomDistributionV1(
   deps: Pick<AppDeps, "config" | "db" | "hub">,
   taskProjection: WorkTogetherRoomTaskProjectionPortV1,
+  childAttachments: WorkTogetherRoomChildAttachmentPortV1,
 ): WorkTogetherRoomDistributionV1 {
   function resolve(bindingId: string) {
     let reservation;
@@ -250,7 +263,11 @@ export function createBindingBackedRoomDistributionV1(
     return { reservation, thread, environment };
   }
 
-  function timeline(bindingId: string, thread: ReturnType<typeof getThread>) {
+  function timeline(
+    bindingId: string,
+    thread: ReturnType<typeof getThread>,
+    publicThreadId = bindingId,
+  ) {
     if (thread === null) unavailable();
     const maxSeq = getLatestThreadSequence(deps.db, { threadId: thread.id });
     const response = buildThreadTimeline(deps.db, thread, {
@@ -268,9 +285,127 @@ export function createBindingBackedRoomDistributionV1(
       projection: projectObject(response, {
         bindingId,
         threadId: thread.id,
+        publicThreadId,
         environmentId: thread.environmentId ?? undefined,
         projectId: thread.projectId,
       }),
+    };
+  }
+
+  function localChildren(
+    reservation: NonNullable<
+      ReturnType<typeof getWorkTogetherRoomResourceReservation>
+    >,
+  ) {
+    const children: NonNullable<ReturnType<typeof getThread>>[] = [];
+    const visited = new Set<string>([reservation.primaryThreadId]);
+    const pending = [reservation.primaryThreadId];
+    while (pending.length > 0) {
+      const parentThreadId = pending.shift();
+      if (parentThreadId === undefined) unavailable();
+      const direct = listNonDeletedChildThreads(deps.db, {
+        parentThreadId,
+      }).sort((left, right) => left.id.localeCompare(right.id));
+      for (const child of direct) {
+        if (!isParentNotifiableChildThread(child)) continue;
+        if (
+          child.projectId !== reservation.projectId ||
+          child.environmentId !== reservation.environmentId
+        ) {
+          unavailable();
+        }
+        if (visited.has(child.id)) unavailable();
+        visited.add(child.id);
+        children.push(child);
+        pending.push(child.id);
+        if (children.length > MAX_ROOM_CHILDREN) unavailable();
+      }
+    }
+    return children;
+  }
+
+  function validateAttachedChild(
+    reservation: NonNullable<
+      ReturnType<typeof getWorkTogetherRoomResourceReservation>
+    >,
+    attachment: WorkTogetherRoomChildAttachmentV1,
+  ) {
+    const thread = getThread(deps.db, attachment.childThreadId);
+    if (
+      thread === null ||
+      thread.deletedAt !== null ||
+      thread.projectId !== reservation.projectId ||
+      thread.environmentId !== reservation.environmentId ||
+      !isParentNotifiableChildThread(thread) ||
+      thread.parentThreadId !== attachment.parentThreadId
+    ) {
+      unavailable("not_found");
+    }
+    let ancestorId = attachment.parentThreadId;
+    const visited = new Set<string>([thread.id]);
+    while (ancestorId !== reservation.primaryThreadId) {
+      if (visited.has(ancestorId)) unavailable("not_found");
+      visited.add(ancestorId);
+      const ancestor = getThread(deps.db, ancestorId);
+      if (
+        ancestor === null ||
+        ancestor.deletedAt !== null ||
+        ancestor.projectId !== reservation.projectId ||
+        ancestor.environmentId !== reservation.environmentId ||
+        !isParentNotifiableChildThread(ancestor)
+      ) {
+        unavailable("not_found");
+      }
+      ancestorId = ancestor.parentThreadId;
+    }
+    return thread;
+  }
+
+  async function authoritativeChildren(
+    context: RoomDistributionContextV1,
+    reservation: NonNullable<
+      ReturnType<typeof getWorkTogetherRoomResourceReservation>
+    >,
+    reconcile: boolean,
+  ): Promise<readonly WorkTogetherRoomChildAttachmentV1[]> {
+    if (reconcile) {
+      for (const child of localChildren(reservation)) {
+        await childAttachments.attach({
+          bindingId: context.bindingId,
+          workspaceId: reservation.workspaceId,
+          parentThreadId: child.parentThreadId ?? unavailable(),
+          childThreadId: child.id,
+        });
+      }
+    }
+    return childAttachments.list({
+      bindingId: context.bindingId,
+      workspaceId: reservation.workspaceId,
+      principal: context.principal,
+    });
+  }
+
+  async function resolveStream(
+    context: RoomDistributionContextV1,
+    childAttachmentId: string | null,
+  ) {
+    const resolved = resolve(context.bindingId);
+    if (childAttachmentId === null) {
+      return { ...resolved, publicThreadId: context.bindingId };
+    }
+    const attachments = await authoritativeChildren(
+      context,
+      resolved.reservation,
+      false,
+    );
+    const attachment = attachments.find(
+      (entry) => entry.id === childAttachmentId,
+    );
+    if (attachment === undefined) unavailable("not_found");
+    return {
+      ...resolved,
+      thread: validateAttachedChild(resolved.reservation, attachment),
+      publicThreadId: attachment.id,
     };
   }
 
@@ -287,6 +422,42 @@ export function createBindingBackedRoomDistributionV1(
         context.bindingId,
       );
       const current = timeline(context.bindingId, thread);
+      const attachments = await authoritativeChildren(
+        context,
+        reservation,
+        true,
+      );
+      const attachmentIdsByThread = new Map(
+        attachments.map((attachment) => [
+          attachment.childThreadId,
+          attachment.id,
+        ]),
+      );
+      const children = attachments.map((attachment) => {
+        let child;
+        try {
+          child = validateAttachedChild(reservation, attachment);
+        } catch {
+          return Object.freeze({
+            id: attachment.id,
+            parentId:
+              attachmentIdsByThread.get(attachment.parentThreadId) ?? null,
+            run: "unavailable",
+            stream: { child: attachment.id },
+          });
+        }
+        return Object.freeze({
+          id: attachment.id,
+          parentId:
+            attachmentIdsByThread.get(attachment.parentThreadId) ?? null,
+          run:
+            child.archivedAt === null ? primaryRun(child.status) : "archived",
+          cursor: cursorFor(
+            getLatestThreadSequence(deps.db, { threadId: child.id }),
+          ),
+          stream: { child: attachment.id },
+        });
+      });
       return Object.freeze({
         schemaVersion: 1,
         binding: { id: context.bindingId, state: "active" },
@@ -305,6 +476,7 @@ export function createBindingBackedRoomDistributionV1(
         },
         primaryRun: primaryRun(thread.status),
         capabilities: [],
+        children,
         timeline: current.projection,
         cursor: cursorFor(current.maxSeq),
       });
@@ -314,10 +486,16 @@ export function createBindingBackedRoomDistributionV1(
       unavailable("not_found");
     },
 
-    async events(context: RoomDistributionContextV1, cursor: string | null) {
-      const after = parseCursor(cursor);
-      const { thread } = resolve(context.bindingId);
-      const current = timeline(context.bindingId, thread);
+    async events(
+      context: RoomDistributionContextV1,
+      target: RoomDistributionStreamTargetV1,
+    ) {
+      const after = parseCursor(target.cursor);
+      const { thread, publicThreadId } = await resolveStream(
+        context,
+        target.childAttachmentId,
+      );
+      const current = timeline(context.bindingId, thread, publicThreadId);
       if (after > current.maxSeq) unavailable("not_found");
       return Object.freeze({
         schemaVersion: 1,
@@ -329,11 +507,11 @@ export function createBindingBackedRoomDistributionV1(
 
     async subscribe(
       context: RoomDistributionContextV1,
-      cursor: string | null,
+      target: RoomDistributionStreamTargetV1,
       emit: (event: RoomJsonObject) => void,
     ) {
-      const after = parseCursor(cursor);
-      const { thread } = resolve(context.bindingId);
+      const after = parseCursor(target.cursor);
+      const { thread } = await resolveStream(context, target.childAttachmentId);
       const current = getLatestThreadSequence(deps.db, { threadId: thread.id });
       if (after > current) unavailable("not_found");
       let closed = false;

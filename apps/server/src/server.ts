@@ -629,6 +629,7 @@ export function createApp(
               session,
               target.bindingId,
               target.cursor,
+              target.childAttachmentId,
             ),
           onMessage: (_event, socket) =>
             roomDistributionSocketProtocol.message(socket),

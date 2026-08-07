@@ -29,6 +29,12 @@ export type RoomDistributionSubscriptionV1 = Readonly<{
   close(): void;
 }>;
 
+export type RoomDistributionStreamTargetV1 = Readonly<{
+  /** Null selects the Room's primary thread. Child ids are opaque WT attachment ids. */
+  childAttachmentId: string | null;
+  cursor: string | null;
+}>;
+
 /**
  * Deep, binding-scoped Room interface consumed by the transport adapter.
  * Implementations own binding resolution and DTO validation; transport code
@@ -42,11 +48,11 @@ export interface WorkTogetherRoomDistributionV1 {
   ): Promise<RoomDistributionCommandResultV1>;
   events(
     context: RoomDistributionContextV1,
-    cursor: string | null,
+    target: RoomDistributionStreamTargetV1,
   ): Promise<RoomJsonObject>;
   subscribe(
     context: RoomDistributionContextV1,
-    cursor: string | null,
+    target: RoomDistributionStreamTargetV1,
     emit: (event: RoomJsonObject) => void,
   ): Promise<RoomDistributionSubscriptionV1>;
 }

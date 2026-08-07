@@ -25,6 +25,7 @@ export type RoomDistributionSocketProtocol = {
     session: ClientSocketSession,
     bindingId: string,
     cursor: string | null,
+    childAttachmentId: string | null,
   ): void;
   message(socket: RoomDistributionSocket): void;
   close(socket: RoomDistributionSocket): void;
@@ -160,7 +161,7 @@ export function createRoomDistributionSocketProtocol(args: {
   }
 
   return Object.freeze({
-    open(socket, session, bindingId, cursor): void {
+    open(socket, session, bindingId, cursor, childAttachmentId): void {
       if (bound.has(socket)) {
         const existing = states.get(socket);
         if (existing) release(existing);
@@ -218,7 +219,7 @@ export function createRoomDistributionSocketProtocol(args: {
         try {
           subscription = await args.distribution.subscribe(
             context,
-            cursor,
+            { childAttachmentId, cursor },
             (event) => {
               if (!state.active) return;
               try {

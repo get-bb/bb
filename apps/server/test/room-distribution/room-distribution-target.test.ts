@@ -9,6 +9,7 @@ const BINDING_ID = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
 const CURSOR = "evt_01HZX9k.abc~1";
 const SECRET_CURSOR = "super-secret-cursor-token-xyz";
 const SECRET_ID = "ffffffff-eeee-4ddd-8ccc-bbbbbbbbbbbb";
+const CHILD_ID = "11111111-2222-4333-8444-555555555555";
 
 function targetFor(
   operation: string,
@@ -103,6 +104,7 @@ describe("parseRoomDistributionTarget", () => {
       method: "GET",
       transport: "http",
       cursor: null,
+      childAttachmentId: null,
     });
     expect(Object.isFrozen(without)).toBe(true);
 
@@ -117,6 +119,7 @@ describe("parseRoomDistributionTarget", () => {
       method: "GET",
       transport: "http",
       cursor: CURSOR,
+      childAttachmentId: null,
     });
     expect(Object.isFrozen(withCursor)).toBe(true);
   });
@@ -133,6 +136,7 @@ describe("parseRoomDistributionTarget", () => {
       method: "GET",
       transport: "websocket",
       cursor: null,
+      childAttachmentId: null,
     });
     expect(Object.isFrozen(without)).toBe(true);
 
@@ -147,8 +151,30 @@ describe("parseRoomDistributionTarget", () => {
       method: "GET",
       transport: "websocket",
       cursor: CURSOR,
+      childAttachmentId: null,
     });
     expect(Object.isFrozen(withCursor)).toBe(true);
+  });
+
+  it("accepts an opaque child attachment before an optional cursor", () => {
+    expect(
+      parse({
+        method: "GET",
+        transport: "http",
+        target: targetFor("events", BINDING_ID, `child=${CHILD_ID}`),
+      }),
+    ).toMatchObject({ childAttachmentId: CHILD_ID, cursor: null });
+    expect(
+      parse({
+        method: "GET",
+        transport: "websocket",
+        target: targetFor(
+          "subscribe",
+          BINDING_ID,
+          `child=${CHILD_ID}&cursor=${CURSOR}`,
+        ),
+      }),
+    ).toMatchObject({ childAttachmentId: CHILD_ID, cursor: CURSOR });
   });
 
   it("returns bindingId unchanged for any-version lowercase UUIDs", () => {
@@ -281,6 +307,25 @@ describe("parseRoomDistributionTarget", () => {
       method: "GET",
       transport: "websocket",
       target: targetFor("subscribe", BINDING_ID, "cursor="),
+    });
+    expectRejected({
+      method: "GET",
+      transport: "http",
+      target: targetFor(
+        "events",
+        BINDING_ID,
+        `cursor=${CURSOR}&child=${CHILD_ID}`,
+      ),
+    });
+    expectRejected({
+      method: "GET",
+      transport: "http",
+      target: targetFor("events", BINDING_ID, "child=not-a-uuid"),
+    });
+    expectRejected({
+      method: "GET",
+      transport: "http",
+      target: targetFor("events", BINDING_ID, `child=${CHILD_ID}&cursor=`),
     });
   });
 

@@ -11,14 +11,19 @@ import { canonicalizeInternalRequestTarget } from "@bb/server-contract";
 const PATH_PREFIX = "/api/bb-rooms/v1/rooms/";
 
 /** Canonical lowercase UUID segment (any version), no braces. */
-const BINDING_ID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
+const UUID_FRAGMENT =
+  "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+const BINDING_ID_PATTERN = new RegExp(`^${UUID_FRAGMENT}$`, "u");
 
 /**
  * Conservative opaque cursor grammar for URL-safe raw query values.
  * Do not decode or reserialize; validate the exact characters after `cursor=`.
  */
 const CURSOR_PATTERN = /^[A-Za-z0-9._~:%+-]{1,512}$/u;
+const CHILD_QUERY_PATTERN = new RegExp(
+  `^child=(${UUID_FRAGMENT})(?:&cursor=([A-Za-z0-9._~:%+-]{1,512}))?$`,
+  "u",
+);
 
 const OPERATIONS = ["bootstrap", "commands", "events", "subscribe"] as const;
 
@@ -52,6 +57,7 @@ export type RoomDistributionEventsTarget = {
   readonly method: "GET";
   readonly transport: "http";
   readonly cursor: string | null;
+  readonly childAttachmentId: string | null;
 };
 
 export type RoomDistributionSubscribeTarget = {
@@ -60,6 +66,7 @@ export type RoomDistributionSubscribeTarget = {
   readonly method: "GET";
   readonly transport: "websocket";
   readonly cursor: string | null;
+  readonly childAttachmentId: string | null;
 };
 
 export type RoomDistributionTargetDescriptor =
@@ -89,19 +96,24 @@ function isOperation(value: string): value is RoomDistributionOperation {
   return (OPERATIONS as readonly string[]).includes(value);
 }
 
-function parseCursorQuery(query: string): string {
-  // Exactly one field: cursor=<raw>. No extra keys, duplicates, or empty value.
-  if (!query.startsWith("cursor=")) {
-    reject();
+function parseStreamQuery(query: string | null): Readonly<{
+  childAttachmentId: string | null;
+  cursor: string | null;
+}> {
+  if (query === null) {
+    return Object.freeze({ childAttachmentId: null, cursor: null });
   }
-  if (query.includes("&")) {
-    reject();
+  if (query.startsWith("cursor=")) {
+    const raw = query.slice("cursor=".length);
+    if (query.includes("&") || !CURSOR_PATTERN.test(raw)) reject();
+    return Object.freeze({ childAttachmentId: null, cursor: raw });
   }
-  const raw = query.slice("cursor=".length);
-  if (!CURSOR_PATTERN.test(raw)) {
-    reject();
-  }
-  return raw;
+  const child = CHILD_QUERY_PATTERN.exec(query);
+  if (child === null) reject();
+  return Object.freeze({
+    childAttachmentId: child[1] ?? null,
+    cursor: child[2] ?? null,
+  });
 }
 
 /**
@@ -187,26 +199,26 @@ export function parseRoomDistributionTarget(
       if (method !== "GET" || transport !== "http") {
         reject();
       }
-      const cursor = query === null ? null : parseCursorQuery(query);
+      const stream = parseStreamQuery(query);
       return Object.freeze({
         bindingId,
         operation: "events",
         method: "GET",
         transport: "http",
-        cursor,
+        ...stream,
       });
     }
     case "subscribe": {
       if (method !== "GET" || transport !== "websocket") {
         reject();
       }
-      const cursor = query === null ? null : parseCursorQuery(query);
+      const stream = parseStreamQuery(query);
       return Object.freeze({
         bindingId,
         operation: "subscribe",
         method: "GET",
         transport: "websocket",
-        cursor,
+        ...stream,
       });
     }
     default: {

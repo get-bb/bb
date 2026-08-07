@@ -13,6 +13,10 @@ import {
   createBindingBackedRoomDistributionV1,
   type WorkTogetherRoomTaskProjectionPortV1,
 } from "../../src/room-distribution/binding-backed-room-distribution.js";
+import type {
+  WorkTogetherRoomChildAttachmentPortV1,
+  WorkTogetherRoomChildAttachmentV1,
+} from "../../src/room-distribution/work-together-room-child-attachments.js";
 import {
   RoomDistributionUnavailableError,
   type RoomDistributionContextV1,
@@ -21,13 +25,19 @@ import {
   createWorkTogetherRoomResourceProvisioner,
   type WorkTogetherRoomResourceTarget,
 } from "../../src/room-distribution/room-resource-provisioner.js";
-import { seedHostSession } from "../helpers/seed.js";
+import { seedHostSession, seedThread } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
 
 const PRINCIPAL: Principal = Object.freeze({
   id: "user_room_reader",
   kind: "human",
   displayName: "Room Reader",
+});
+const NO_CHILDREN: WorkTogetherRoomChildAttachmentPortV1 = Object.freeze({
+  attach: async () => {
+    throw new Error("unexpected child attachment");
+  },
+  list: async () => Object.freeze([]),
 });
 
 function context(bindingId: string): RoomDistributionContextV1 {
@@ -92,6 +102,7 @@ describe("binding-backed Work Together Room distribution", () => {
       const distribution = createBindingBackedRoomDistributionV1(
         harness.deps,
         taskProjection,
+        NO_CHILDREN,
       );
 
       const bootstrap = await distribution.bootstrap(context(launch.bindingId));
@@ -120,11 +131,17 @@ describe("binding-backed Work Together Room distribution", () => {
       expect(wire).not.toContain(PRINCIPAL.id);
       expect(wire).toContain("participant_");
 
-      const first = await distribution.events(context(launch.bindingId), "s.0");
+      const first = await distribution.events(context(launch.bindingId), {
+        childAttachmentId: null,
+        cursor: "s.0",
+      });
       expect(first.changed).toBe(true);
       const cursor = first.cursor as string;
       await expect(
-        distribution.events(context(launch.bindingId), cursor),
+        distribution.events(context(launch.bindingId), {
+          childAttachmentId: null,
+          cursor,
+        }),
       ).resolves.toMatchObject({ changed: false, timeline: null, cursor });
     });
   });
@@ -158,13 +175,17 @@ describe("binding-backed Work Together Room distribution", () => {
           }),
         },
       ).provision({ principal: PRINCIPAL, launch });
-      const distribution = createBindingBackedRoomDistributionV1(harness.deps, {
-        read: async () => ({ id: launch.taskId, title: "Task" }),
-      });
+      const distribution = createBindingBackedRoomDistributionV1(
+        harness.deps,
+        {
+          read: async () => ({ id: launch.taskId, title: "Task" }),
+        },
+        NO_CHILDREN,
+      );
       const emitted: unknown[] = [];
       const subscription = await distribution.subscribe(
         context(launch.bindingId),
-        null,
+        { childAttachmentId: null, cursor: null },
         (event) => emitted.push(event),
       );
       expect(emitted).toEqual([
@@ -213,18 +234,196 @@ describe("binding-backed Work Together Room distribution", () => {
     });
   });
 
+  it("reconciles opaque child attachments and keeps each child on its own authorized stream", async () => {
+    await withTestHarness(async (harness) => {
+      const candidateHostId = randomUUID();
+      const { host } = seedHostSession(harness.deps, { id: createHostId() });
+      const launch = {
+        bindingId: randomUUID(),
+        workspaceId: randomUUID(),
+        taskId: randomUUID(),
+        cellId: randomUUID(),
+        repositoryBindingId: randomUUID(),
+        repositoryBindingVersion: 1,
+        providerRepositoryId: "177",
+        baseBranch: "main",
+        generatedBranch: "rooms/child-streams",
+        candidateHostId,
+        environmentTemplate: "managed-worktree" as const,
+      };
+      const provisioned = await createWorkTogetherRoomResourceProvisioner(
+        harness.deps,
+        {
+          resolve: () => ({
+            bbHostId: host.id,
+            projectName: "Child Stream Repository",
+            providerId: "codex",
+            sourcePath: "/srv/work-together/child-streams",
+          }),
+        },
+      ).provision({ principal: PRINCIPAL, launch });
+      const child = seedThread(harness.deps, {
+        projectId: provisioned.projectId,
+        environmentId: provisioned.environmentId,
+        parentThreadId: provisioned.primaryThreadId,
+        title: "Direct worker",
+      });
+      const grandchild = seedThread(harness.deps, {
+        projectId: provisioned.projectId,
+        environmentId: provisioned.environmentId,
+        parentThreadId: child.id,
+        title: "Nested worker",
+      });
+      const ids = new Map([
+        [child.id, randomUUID()],
+        [grandchild.id, randomUUID()],
+      ]);
+      const attached: WorkTogetherRoomChildAttachmentV1[] = [];
+      const childAuthority: WorkTogetherRoomChildAttachmentPortV1 = {
+        attach: vi.fn(async (input) => {
+          const id = ids.get(input.childThreadId);
+          if (id === undefined) throw new Error("unexpected child");
+          const existing = attached.find(
+            (entry) => entry.childThreadId === input.childThreadId,
+          );
+          if (existing !== undefined) return existing;
+          const entry = Object.freeze({
+            id,
+            childThreadId: input.childThreadId,
+            parentThreadId: input.parentThreadId,
+          });
+          attached.push(entry);
+          return entry;
+        }),
+        list: vi.fn(async () => Object.freeze([...attached])),
+      };
+      const distribution = createBindingBackedRoomDistributionV1(
+        harness.deps,
+        { read: async () => ({ id: launch.taskId, title: "Task" }) },
+        childAuthority,
+      );
+
+      const bootstrap = await distribution.bootstrap(context(launch.bindingId));
+      expect(bootstrap.children).toEqual([
+        expect.objectContaining({
+          id: ids.get(child.id),
+          parentId: null,
+          stream: { child: ids.get(child.id) },
+        }),
+        expect.objectContaining({
+          id: ids.get(grandchild.id),
+          parentId: ids.get(child.id),
+          stream: { child: ids.get(grandchild.id) },
+        }),
+      ]);
+      expect(childAuthority.attach).toHaveBeenNthCalledWith(1, {
+        bindingId: launch.bindingId,
+        workspaceId: launch.workspaceId,
+        parentThreadId: provisioned.primaryThreadId,
+        childThreadId: child.id,
+      });
+      expect(childAuthority.attach).toHaveBeenNthCalledWith(2, {
+        bindingId: launch.bindingId,
+        workspaceId: launch.workspaceId,
+        parentThreadId: child.id,
+        childThreadId: grandchild.id,
+      });
+      const wire = JSON.stringify(bootstrap);
+      expect(wire).not.toContain(child.id);
+      expect(wire).not.toContain(grandchild.id);
+
+      const childEvents = await distribution.events(context(launch.bindingId), {
+        childAttachmentId: ids.get(child.id)!,
+        cursor: "s.0",
+      });
+      expect(JSON.stringify(childEvents)).not.toContain(child.id);
+      await expect(
+        distribution.events(context(launch.bindingId), {
+          childAttachmentId: randomUUID(),
+          cursor: null,
+        }),
+      ).rejects.toMatchObject({ kind: "not_found" });
+      const otherPrimary = seedThread(harness.deps, {
+        projectId: provisioned.projectId,
+        environmentId: provisioned.environmentId,
+      });
+      const crossRoomChild = seedThread(harness.deps, {
+        projectId: provisioned.projectId,
+        environmentId: provisioned.environmentId,
+        parentThreadId: otherPrimary.id,
+      });
+      const crossRoomAttachmentId = randomUUID();
+      attached.push(
+        Object.freeze({
+          id: crossRoomAttachmentId,
+          childThreadId: crossRoomChild.id,
+          parentThreadId: otherPrimary.id,
+        }),
+      );
+      await expect(
+        distribution.events(context(launch.bindingId), {
+          childAttachmentId: crossRoomAttachmentId,
+          cursor: null,
+        }),
+      ).rejects.toMatchObject({ kind: "not_found" });
+
+      const emitted: unknown[] = [];
+      const subscription = await distribution.subscribe(
+        context(launch.bindingId),
+        { childAttachmentId: ids.get(child.id)!, cursor: null },
+        (event) => emitted.push(event),
+      );
+      harness.hub.notifyThread(provisioned.primaryThreadId, [
+        "events-appended",
+      ]);
+      expect(emitted).toHaveLength(1);
+      const sequence =
+        getLatestThreadSequence(harness.db, { threadId: child.id }) + 1;
+      harness.db
+        .insert(events)
+        .values({
+          id: createEventId(),
+          threadId: child.id,
+          environmentId: provisioned.environmentId,
+          scopeKind: "thread",
+          turnId: null,
+          providerThreadId: null,
+          sequence,
+          type: "system/error",
+          itemId: null,
+          itemKind: null,
+          actorPrincipalId: null,
+          actorKind: null,
+          actorDisplayName: null,
+          data: JSON.stringify({ message: "child event" }),
+          createdAt: Date.now(),
+        })
+        .run();
+      harness.hub.notifyThread(child.id, ["events-appended"]);
+      expect(emitted).toHaveLength(2);
+      subscription.close();
+    });
+  });
+
   it("fails closed for unknown bindings, future cursors, and S4.4 commands", async () => {
     await withTestHarness(async (harness) => {
-      const distribution = createBindingBackedRoomDistributionV1(harness.deps, {
-        read: async () => ({ id: "task" }),
-      });
+      const distribution = createBindingBackedRoomDistributionV1(
+        harness.deps,
+        {
+          read: async () => ({ id: "task" }),
+        },
+        NO_CHILDREN,
+      );
       const missing = context(randomUUID());
       await expect(distribution.bootstrap(missing)).rejects.toMatchObject({
         name: RoomDistributionUnavailableError.name,
         kind: "not_found",
       });
       await expect(
-        distribution.events(missing, "s.9999999999999999"),
+        distribution.events(missing, {
+          childAttachmentId: null,
+          cursor: "s.9999999999999999",
+        }),
       ).rejects.toBeInstanceOf(RoomDistributionUnavailableError);
       await expect(
         distribution.execute(missing, { type: "send" }),
@@ -259,12 +458,16 @@ describe("binding-backed Work Together Room distribution", () => {
           sourcePath: "/srv/work-together/identity-fence",
         }),
       }).provision({ principal: PRINCIPAL, launch });
-      const distribution = createBindingBackedRoomDistributionV1(harness.deps, {
-        read: async () => ({
-          id: launch.taskId,
-          assignee: { subject: "user_raw_identity" },
-        }),
-      });
+      const distribution = createBindingBackedRoomDistributionV1(
+        harness.deps,
+        {
+          read: async () => ({
+            id: launch.taskId,
+            assignee: { subject: "user_raw_identity" },
+          }),
+        },
+        NO_CHILDREN,
+      );
       await expect(
         distribution.bootstrap(context(launch.bindingId)),
       ).rejects.toMatchObject({ kind: "unavailable" });
