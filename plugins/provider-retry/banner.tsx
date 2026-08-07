@@ -42,26 +42,20 @@ export function ProviderRetryBannerView({
   return (
     <section
       aria-label="Provider usage recovery"
-      className="grid grid-cols-[0.875rem_minmax(0,1fr)] items-start gap-x-2 rounded-lg border border-warning/25 bg-warning/5 px-3 py-2 text-xs text-foreground"
+      className="grid grid-cols-[0.875rem_minmax(0,1fr)_auto] items-center gap-x-2 rounded-lg border border-warning/25 bg-warning/5 px-3 py-2 text-xs text-foreground"
     >
-      <Icon
-        name="Clock"
-        className="mt-0.5 size-3.5 text-warning-text"
-        aria-hidden
-      />
-      <div className="flex min-w-0 flex-col gap-2">
-        <p className="leading-5">{description(view)}</p>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="h-7 self-start px-2 text-xs text-muted-foreground"
-          disabled={cancelling}
-          onClick={() => void onCancel()}
-        >
-          Cancel
-        </Button>
-      </div>
+      <Icon name="Clock" className="size-3.5 text-warning-text" aria-hidden />
+      <p className="min-w-0 truncate leading-5">{description(view)}</p>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="h-7 px-2 text-xs text-muted-foreground"
+        disabled={cancelling}
+        onClick={() => void onCancel()}
+      >
+        Cancel
+      </Button>
     </section>
   );
 }
