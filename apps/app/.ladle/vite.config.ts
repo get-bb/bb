@@ -26,6 +26,11 @@ export default defineConfig({
   },
   resolve: {
     conditions: ["source"],
+    // Stories can live in linked workspace packages outside apps/app. Always
+    // resolve their React imports through Ladle's copy so the renderer and
+    // story hooks cannot end up on different module instances after Vite's
+    // dependency optimizer refreshes.
+    dedupe: ["react", "react-dom"],
     alias: {
       "@": path.resolve(__dirname, "../src"),
     },
