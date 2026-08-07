@@ -103,7 +103,8 @@ function classifySkillRoot(
         path.basename(path.dirname(rootPath)) === ".agents"))
   ) {
     return {
-      identitySeed: `${resolution.providerId}:provider-project`,
+      identitySeed:
+        root.skillIdentitySeed ?? `${resolution.providerId}:provider-project`,
       rootKind: "provider-project",
     };
   }

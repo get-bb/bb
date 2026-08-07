@@ -1087,12 +1087,17 @@ async function resolveCodexProjectSkillScanRoots(
     directoryPath = parentPath;
   }
 
+  const projectRootPath = directories.at(-1) ?? cwd;
   return directories.reverse().map((projectDirectoryPath) => ({
     rootPath: path.join(projectDirectoryPath, AGENTS_DIR_NAME, "skills"),
     shape: "skill",
     namePrefix: "",
     source: "skill",
     origin: "project",
+    skillIdentitySeed: `codex:provider-project:.agents:${path
+      .relative(projectRootPath, projectDirectoryPath)
+      .split(path.sep)
+      .join("/")}`,
   }));
 }
 

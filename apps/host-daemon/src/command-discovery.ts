@@ -48,6 +48,8 @@ interface CommandScanRootBase {
   namePrefix: string;
   source: HostCommandSource;
   origin: HostCommandOrigin;
+  /** Stable root identity for native skill roots that share one root kind. */
+  skillIdentitySeed?: string;
 }
 
 export interface CommandScanDirectoryRoot extends CommandScanRootBase {
