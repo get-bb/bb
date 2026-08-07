@@ -8,6 +8,7 @@ import type {
   ThreadQueuedMessageListResponse,
   UpdateQueuedMessageRequest,
 } from "@bb/server-contract";
+import { appToast } from "@/components/ui/app-toast";
 import { BbHttpError, sdk } from "@/lib/sdk";
 import { wsManager } from "@/lib/ws";
 import type { QueuedMessageReorderRequest } from "@/lib/queued-message-reorder";
@@ -498,6 +499,17 @@ export function useCompactThread() {
     meta: { errorMessage: "Failed to compact context." },
     mutationFn: async (threadId: string) => {
       await sdk.threads.compact({ threadId });
+    },
+    onMutate: () => ({
+      toastId: appToast.loading("Compacting context"),
+    }),
+    onSuccess: (_data, _threadId, context) => {
+      appToast.success("Context compacted", { id: context.toastId });
+    },
+    onError: (_error, _threadId, context) => {
+      if (context) {
+        appToast.dismiss(context.toastId);
+      }
     },
     onSettled: (_data, _error, threadId) => {
       invalidateThreadBannerQueries({ queryClient, threadId });

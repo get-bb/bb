@@ -7,6 +7,7 @@ import type {
   ThreadTimelineResponse,
 } from "@bb/server-contract";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { appToast } from "@/components/ui/app-toast";
 import { BbHttpError, sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import {
@@ -42,6 +43,17 @@ vi.mock("@/lib/sdk", async (importOriginal) => {
     },
   };
 });
+
+vi.mock("@/components/ui/app-toast", () => ({
+  appToast: {
+    dismiss: vi.fn(),
+    error: vi.fn(),
+    loading: vi.fn(() => "compact-toast"),
+    message: vi.fn(),
+    success: vi.fn(),
+    warning: vi.fn(),
+  },
+}));
 
 vi.mock("@/lib/ws", () => ({
   wsManager: {
@@ -144,7 +156,28 @@ describe("thread runtime mutations", () => {
     expect(sdk.threads.compact).toHaveBeenCalledWith({
       threadId: "thread-1",
     });
+    expect(appToast.loading).toHaveBeenCalledWith("Compacting context");
+    expect(appToast.success).toHaveBeenCalledWith("Context compacted", {
+      id: "compact-toast",
+    });
     expect(invalidateQueries).toHaveBeenCalled();
+  });
+
+  it("dismisses compact progress before the shared error handling runs", async () => {
+    vi.mocked(sdk.threads.compact).mockRejectedValueOnce(
+      new Error("Nothing to compact (session too small)"),
+    );
+    const { wrapper } = createQueryClientTestHarness();
+    const { result } = renderHook(() => useCompactThread(), { wrapper });
+
+    await act(async () => {
+      await expect(result.current.mutateAsync("thread-1")).rejects.toThrow(
+        "Nothing to compact (session too small)",
+      );
+    });
+
+    expect(appToast.dismiss).toHaveBeenCalledWith("compact-toast");
+    expect(appToast.success).not.toHaveBeenCalled();
   });
 
   it.each([
