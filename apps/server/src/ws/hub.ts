@@ -537,12 +537,22 @@ export class NotificationHub implements DbNotifier {
     sessionId: string,
     reason: HostDaemonSessionCloseReason,
   ): void {
+    const entry = this.daemonSessions.get(sessionId);
+    if (entry) {
+      entry.socket.send(JSON.stringify({ type: "session-close", reason }));
+    }
+    this.closeDaemonSessionSocket(sessionId, reason);
+  }
+
+  closeDaemonSessionSocket(
+    sessionId: string,
+    reason: HostDaemonSessionCloseReason,
+  ): void {
     this.cancelPendingDaemonDisconnect(sessionId);
     const entry = this.daemonSessions.get(sessionId);
     if (!entry) {
       return;
     }
-    entry.socket.send(JSON.stringify({ type: "session-close", reason }));
     entry.socket.close(1000, reason);
     this.unregisterDaemon(sessionId);
   }

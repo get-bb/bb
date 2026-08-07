@@ -1038,12 +1038,10 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  // Version 80 adds structured provider account rate-limit events in runtime
-  // session messages on top of version 79's canonical Codex repository skills.
-  // The bump updates enrolled daemons before they receive the combined wire
-  // contract.
-  it("uses protocol version 80 for provider rate-limit events", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(80);
+  // Version 81 makes same-instance daemon session replacement reconnect-safe
+  // so enrolled daemons update before receiving the revised server behavior.
+  it("uses protocol version 81 for reconnect-safe session replacement", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(81);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {
