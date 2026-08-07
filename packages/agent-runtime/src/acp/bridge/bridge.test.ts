@@ -1188,6 +1188,16 @@ describe("acp bridge", () => {
     expect((await waitForResponse(compactId)).error).toBeUndefined();
     expect(notifications("acp/turn/started")).toHaveLength(0);
     expect(notifications("acp/turn/completed")).toHaveLength(0);
+    expect(notifications("acp/compaction/started")).toEqual([
+      expect.objectContaining({
+        params: { threadId: expect.any(String) },
+      }),
+    ]);
+    expect(notifications("acp/compaction/completed")).toEqual([
+      expect.objectContaining({
+        params: { threadId: expect.any(String), status: "completed" },
+      }),
+    ]);
     expect(agentMessageTexts()).toEqual([]);
     expect(
       readFileSync(promptLog, "utf8")

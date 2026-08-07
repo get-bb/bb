@@ -214,6 +214,8 @@ export type AcpBridgeCommand = z.infer<typeof acpBridgeCommandSchema>;
 
 export const ACP_TURN_STARTED_METHOD = "acp/turn/started";
 export const ACP_TURN_COMPLETED_METHOD = "acp/turn/completed";
+export const ACP_COMPACTION_STARTED_METHOD = "acp/compaction/started";
+export const ACP_COMPACTION_COMPLETED_METHOD = "acp/compaction/completed";
 export const ACP_UPDATE_METHOD = "acp/update";
 export const ACP_FS_WRITE_METHOD = "acp/fs/write";
 export const ACP_WARNING_METHOD = "acp/warning";
@@ -230,6 +232,35 @@ export const acpTurnCompletedNotificationParamsSchema = z
     stopReason: acpStopReasonSchema,
   })
   .passthrough();
+
+export const acpCompactionStartedNotificationParamsSchema = z
+  .object({
+    threadId: z.string().min(1),
+  })
+  .passthrough();
+
+export const acpCompactionCompletedNotificationParamsSchema =
+  z.discriminatedUnion("status", [
+    z
+      .object({
+        threadId: z.string().min(1),
+        status: z.literal("completed"),
+      })
+      .passthrough(),
+    z
+      .object({
+        threadId: z.string().min(1),
+        status: z.literal("interrupted"),
+      })
+      .passthrough(),
+    z
+      .object({
+        threadId: z.string().min(1),
+        status: z.literal("failed"),
+        error: z.string().min(1),
+      })
+      .passthrough(),
+  ]);
 
 export const acpUpdateNotificationParamsSchema = z
   .object({

@@ -83,12 +83,16 @@ import type {
   AgentRuntimeSkillRoot,
 } from "../types.js";
 import {
+  ACP_COMPACTION_COMPLETED_METHOD,
+  ACP_COMPACTION_STARTED_METHOD,
   ACP_FS_WRITE_METHOD,
   ACP_PERMISSION_REQUEST_METHOD,
   ACP_TURN_COMPLETED_METHOD,
   ACP_TURN_STARTED_METHOD,
   ACP_UPDATE_METHOD,
   ACP_WARNING_METHOD,
+  acpCompactionCompletedNotificationParamsSchema,
+  acpCompactionStartedNotificationParamsSchema,
   acpFsWriteNotificationParamsSchema,
   acpPermissionRequestParamsSchema,
   acpTurnCompletedNotificationParamsSchema,
@@ -1154,6 +1158,70 @@ export function createAcpProviderAdapter(
           resolveState(context),
           context,
         );
+      }
+
+      case ACP_COMPACTION_STARTED_METHOD: {
+        const params = acpCompactionStartedNotificationParamsSchema.safeParse(
+          envelope.data.params,
+        );
+        if (!params.success) {
+          return [];
+        }
+        const events: ThreadEvent[] = [];
+        const turnId = ensureAcpTurnStarted({
+          events,
+          state: resolveState(context),
+          threadId: UNSTAMPED_THREAD_ID,
+        });
+        events.push({
+          type: "item/started",
+          threadId: UNSTAMPED_THREAD_ID,
+          providerThreadId: "",
+          scope: turnScope(turnId),
+          item: {
+            type: "contextCompaction",
+            id: `acp-compaction-${turnId}`,
+          },
+        });
+        return events;
+      }
+
+      case ACP_COMPACTION_COMPLETED_METHOD: {
+        const params = acpCompactionCompletedNotificationParamsSchema.safeParse(
+          envelope.data.params,
+        );
+        if (!params.success) {
+          return [];
+        }
+        const state = resolveState(context);
+        const turnId = state.currentTurnId;
+        if (!turnId) {
+          return [];
+        }
+        const events: ThreadEvent[] = [];
+        if (params.data.status === "completed") {
+          events.push({
+            type: "thread/compacted",
+            threadId: UNSTAMPED_THREAD_ID,
+            providerThreadId: "",
+            scope: turnScope(turnId),
+          });
+        }
+        events.push({
+          type: "turn/completed",
+          threadId: UNSTAMPED_THREAD_ID,
+          providerThreadId: "",
+          scope: turnScope(turnId),
+          status: params.data.status,
+          ...(params.data.status === "failed"
+            ? { error: { message: params.data.error } }
+            : {}),
+        });
+        turnState.finishTurn({
+          state,
+          threadId: context?.threadId ?? "",
+        });
+        return events;
       }
 
       case ACP_UPDATE_METHOD: {

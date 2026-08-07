@@ -42,6 +42,8 @@ import {
 } from "../../shared/bridge-tool-calls.js";
 import { withoutBridgeRuntimeEnv } from "../../shared/bridge-runtime-env.js";
 import {
+  ACP_COMPACTION_COMPLETED_METHOD,
+  ACP_COMPACTION_STARTED_METHOD,
   ACP_DEFAULT_MODEL_ID,
   ACP_FS_WRITE_METHOD,
   ACP_PERMISSION_REQUEST_METHOD,
@@ -1734,12 +1736,14 @@ async function runCompactionPrompt(
   try {
     const result = await request;
     if (result.stopReason === "cancelled") {
-      throw new Error("ACP context compaction was cancelled");
+      throw new Error(ACP_COMPACTION_CANCELLED_MESSAGE);
     }
   } finally {
     session.turnSettled = undefined;
   }
 }
+
+const ACP_COMPACTION_CANCELLED_MESSAGE = "ACP context compaction was cancelled";
 
 async function compactSession(
   session: AcpThreadSession,
@@ -1751,9 +1755,25 @@ async function compactSession(
 
   session.promptActive = true;
   session.compactionActive = true;
+  sendNotification(ACP_COMPACTION_STARTED_METHOD, {
+    threadId: session.bbThreadId,
+  });
 
   try {
     await runCompactionPrompt(session, compaction.prompt);
+    sendNotification(ACP_COMPACTION_COMPLETED_METHOD, {
+      threadId: session.bbThreadId,
+      status: "completed",
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    sendNotification(ACP_COMPACTION_COMPLETED_METHOD, {
+      threadId: session.bbThreadId,
+      ...(message === ACP_COMPACTION_CANCELLED_MESSAGE
+        ? { status: "interrupted" }
+        : { status: "failed", error: message }),
+    });
+    throw error;
   } finally {
     session.compactionActive = false;
     session.promptActive = false;

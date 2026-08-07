@@ -386,6 +386,99 @@ describe("acp adapter command plans", () => {
   });
 });
 
+describe("acp compaction events", () => {
+  it("translates successful maintenance prompts into a compaction lifecycle", () => {
+    const adapter = createCompactingAdapter();
+
+    const started = adapter.translateEvent(
+      {
+        jsonrpc: "2.0",
+        method: "acp/compaction/started",
+        params: { threadId: "thread-1" },
+      },
+      THREAD_CONTEXT,
+    );
+    const completed = adapter.translateEvent(
+      {
+        jsonrpc: "2.0",
+        method: "acp/compaction/completed",
+        params: { threadId: "thread-1", status: "completed" },
+      },
+      THREAD_CONTEXT,
+    );
+
+    expect(started).toEqual([
+      {
+        type: "turn/started",
+        threadId: "",
+        providerThreadId: "",
+        scope: turnScope("turn-1"),
+      },
+      {
+        type: "item/started",
+        threadId: "",
+        providerThreadId: "",
+        scope: turnScope("turn-1"),
+        item: {
+          type: "contextCompaction",
+          id: "acp-compaction-turn-1",
+        },
+      },
+    ]);
+    expect(completed).toEqual([
+      {
+        type: "thread/compacted",
+        threadId: "",
+        providerThreadId: "",
+        scope: turnScope("turn-1"),
+      },
+      {
+        type: "turn/completed",
+        threadId: "",
+        providerThreadId: "",
+        scope: turnScope("turn-1"),
+        status: "completed",
+      },
+    ]);
+  });
+
+  it("does not report failed maintenance prompts as compacted", () => {
+    const adapter = createCompactingAdapter();
+    adapter.translateEvent(
+      {
+        jsonrpc: "2.0",
+        method: "acp/compaction/started",
+        params: { threadId: "thread-1" },
+      },
+      THREAD_CONTEXT,
+    );
+
+    const events = adapter.translateEvent(
+      {
+        jsonrpc: "2.0",
+        method: "acp/compaction/completed",
+        params: {
+          threadId: "thread-1",
+          status: "failed",
+          error: "Provider rejected /compact",
+        },
+      },
+      THREAD_CONTEXT,
+    );
+
+    expect(events).toEqual([
+      {
+        type: "turn/completed",
+        threadId: "",
+        providerThreadId: "",
+        scope: turnScope("turn-1"),
+        status: "failed",
+        error: { message: "Provider rejected /compact" },
+      },
+    ]);
+  });
+});
+
 describe("acp adapter model cli", () => {
   it("requests the profile's model list command with its primary families", () => {
     const plan = createAdapter().buildCommandPlan({ type: "model/list" });
