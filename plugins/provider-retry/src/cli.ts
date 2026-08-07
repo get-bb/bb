@@ -13,6 +13,13 @@ function textView(view: ProviderRetryView): string {
   if (view.phase === "retry-failed") {
     return `${view.threadId}\t${view.phase}\t${view.providerId}\t${view.continuationError ?? "automatic continuation failed"}`;
   }
+  if (view.phase === "manual-only") {
+    const reset =
+      view.resetsAtMs === null
+        ? "unknown reset"
+        : `resets ${new Date(view.resetsAtMs).toISOString()}`;
+    return `${view.threadId}\t${view.phase}\t${view.providerId}\t${reset}; exceeds maximum automatic wait`;
+  }
   const due =
     view.dueAtMs === null
       ? "no automatic reset"

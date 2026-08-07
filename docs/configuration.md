@@ -556,6 +556,13 @@ automatically waits for structured Codex and Claude Code subscription-window
 resets only when the failed turn was accepted, the provider has stopped its own
 retries, and no output or possible side effects were observed. Recovery sends
 one agent-only `Please continue.` turn on the existing provider conversation.
+The `maximumWait` setting defaults to `6 hours`; resets beyond that horizon stay
+visible for manual retry instead of being scheduled. Choose `24 hours` or
+`No limit` under the plugin settings, or configure it from the CLI:
+
+```bash
+bb plugin config provider-retry set maximumWait "24 hours"
+```
 
 Pending waits are coordinated by machine/provider subscription and live only
 in the current server/plugin process. Restarting bb, reloading the plugin, or

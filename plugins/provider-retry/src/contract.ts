@@ -4,6 +4,7 @@ import { z } from "zod";
 export const providerRetryPhaseSchema = z.enum([
   "waiting-for-reset",
   "waiting-for-host",
+  "manual-only",
   "retry-failed",
   "releasing",
   "blocked",

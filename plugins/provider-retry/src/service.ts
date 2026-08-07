@@ -13,6 +13,7 @@ type ProviderUsage = ProviderUsageResponse[keyof ProviderUsageResponse];
 export const RESET_BUFFER_MS = 15_000;
 export const RESET_JITTER_MS = 30_000;
 export const RELEASE_PACE_MS = 1_000;
+export const DEFAULT_MAXIMUM_WAIT_MS = 6 * 60 * 60 * 1_000;
 const MAX_TIMER_DELAY_MS = 2_147_000_000;
 const REALTIME_CHANNEL = "provider-retry";
 
@@ -24,6 +25,7 @@ export interface ProviderRetrySources {
 interface WaitingEntry {
   view: ProviderRetryView;
   candidate: RecoveryCandidate | null;
+  firstObservedAtMs: number;
 }
 
 interface ScopeQueue {
@@ -160,7 +162,79 @@ export class ProviderRetryService {
       now: () => Date.now(),
       random: () => Math.random(),
     },
-  ) {}
+    private maximumWaitMs: number | null = DEFAULT_MAXIMUM_WAIT_MS,
+  ) {
+    this.validateMaximumWait(maximumWaitMs);
+  }
+
+  setMaximumWaitMs(maximumWaitMs: number | null): void {
+    this.validateMaximumWait(maximumWaitMs);
+    if (this.maximumWaitMs === maximumWaitMs) return;
+    this.maximumWaitMs = maximumWaitMs;
+
+    const scopeKeys = new Set<string>();
+    for (const entry of this.entries.values()) {
+      const candidate = entry.candidate;
+      if (
+        !candidate?.automatic ||
+        candidate.resetsAtMs === null ||
+        entry.view.phase === "releasing" ||
+        entry.view.phase === "retry-failed"
+      ) {
+        continue;
+      }
+      const resetsAtMs = entry.view.resetsAtMs ?? candidate.resetsAtMs;
+      const withinMaximumWait = this.withinMaximumWait(
+        resetsAtMs,
+        entry.firstObservedAtMs,
+      );
+      if (withinMaximumWait && entry.view.phase === "manual-only") {
+        entry.view = {
+          ...entry.view,
+          dueAtMs: this.dueAt(resetsAtMs),
+          phase: "waiting-for-reset",
+        };
+      } else if (!withinMaximumWait) {
+        entry.view = {
+          ...entry.view,
+          dueAtMs: null,
+          phase: "manual-only",
+        };
+      } else {
+        continue;
+      }
+      scopeKeys.add(entry.view.scopeKey);
+      this.publish(entry.view.threadId);
+    }
+    for (const scopeKey of scopeKeys) this.schedule(scopeKey);
+  }
+
+  private validateMaximumWait(maximumWaitMs: number | null): void {
+    if (
+      maximumWaitMs !== null &&
+      (!Number.isFinite(maximumWaitMs) || maximumWaitMs < 0)
+    ) {
+      throw new Error("Maximum provider retry wait must be nonnegative");
+    }
+  }
+
+  private withinMaximumWait(
+    resetsAtMs: number,
+    firstObservedAtMs: number,
+  ): boolean {
+    return (
+      this.maximumWaitMs === null ||
+      resetsAtMs - firstObservedAtMs <= this.maximumWaitMs
+    );
+  }
+
+  private dueAt(resetsAtMs: number): number {
+    return (
+      resetsAtMs +
+      RESET_BUFFER_MS +
+      Math.floor(this.sources.random() * RESET_JITTER_MS)
+    );
+  }
 
   list(): ProviderRetryView[] {
     return [...this.entries.values()]
@@ -205,6 +279,7 @@ export class ProviderRetryService {
       if (unsafeRecovery(status)) {
         this.upsert(threadId, {
           candidate: null,
+          firstObservedAtMs: existing?.firstObservedAtMs ?? this.sources.now(),
           view: recoveryView({
             candidate: null,
             dueAtMs: null,
@@ -222,31 +297,37 @@ export class ProviderRetryService {
     let dueAtMs: number | null = null;
     let phase: ProviderRetryPhase = "blocked";
     let continuationError: string | null = null;
+    const sameRequest =
+      existing?.candidate?.failedRequestId === candidate.failedRequestId;
+    const firstObservedAtMs = sameRequest
+      ? existing.firstObservedAtMs
+      : this.sources.now();
     const sameCandidate =
-      existing?.candidate?.failedRequestId === candidate.failedRequestId &&
-      existing.candidate.resetsAtMs === candidate.resetsAtMs;
+      sameRequest && existing?.candidate?.resetsAtMs === candidate.resetsAtMs;
     if (sameCandidate && existing.view.phase === "retry-failed") {
       phase = "retry-failed";
       continuationError = existing.view.continuationError;
     } else if (candidate.automatic && candidate.resetsAtMs !== null) {
-      if (sameCandidate && existing.view.phase === "waiting-for-host") {
+      if (status.rateLimits?.status === "allowed") {
+        dueAtMs = this.sources.now();
+      } else if (
+        !this.withinMaximumWait(candidate.resetsAtMs, firstObservedAtMs)
+      ) {
+        phase = "manual-only";
+      } else if (sameCandidate && existing.view.phase === "waiting-for-host") {
         dueAtMs = existing.view.dueAtMs;
         phase = "waiting-for-host";
-      } else if (status.rateLimits?.status === "allowed") {
-        dueAtMs = this.sources.now();
       } else if (sameCandidate && existing.view.dueAtMs !== null) {
         dueAtMs = existing.view.dueAtMs;
       } else {
-        dueAtMs =
-          candidate.resetsAtMs +
-          RESET_BUFFER_MS +
-          Math.floor(this.sources.random() * RESET_JITTER_MS);
+        dueAtMs = this.dueAt(candidate.resetsAtMs);
       }
       if (phase === "blocked") phase = "waiting-for-reset";
     }
     const view = recoveryView({ candidate, dueAtMs, phase, status, threadId });
     this.upsert(threadId, {
       candidate,
+      firstObservedAtMs,
       view: { ...view, continuationError },
     });
     return this.status(threadId);
@@ -377,10 +458,6 @@ export class ProviderRetryService {
   private rescheduleScope(scopeKey: string, resetAtMs: number): void {
     const scope = this.scopes.get(scopeKey);
     if (!scope) return;
-    const dueAtMs =
-      resetAtMs +
-      RESET_BUFFER_MS +
-      Math.floor(this.sources.random() * RESET_JITTER_MS);
     for (const threadId of scope.threadIds) {
       const entry = this.entries.get(threadId);
       if (
@@ -390,7 +467,25 @@ export class ProviderRetryService {
       ) {
         continue;
       }
-      entry.view = { ...entry.view, dueAtMs, resetsAtMs: resetAtMs };
+      entry.candidate = { ...entry.candidate, resetsAtMs: resetAtMs };
+      if (!this.withinMaximumWait(resetAtMs, entry.firstObservedAtMs)) {
+        entry.view = {
+          ...entry.view,
+          dueAtMs: null,
+          phase: "manual-only",
+          resetsAtMs: resetAtMs,
+        };
+      } else {
+        entry.view = {
+          ...entry.view,
+          dueAtMs: this.dueAt(resetAtMs),
+          phase:
+            entry.view.phase === "manual-only"
+              ? "waiting-for-reset"
+              : entry.view.phase,
+          resetsAtMs: resetAtMs,
+        };
+      }
       this.publish(threadId);
     }
     this.schedule(scopeKey);

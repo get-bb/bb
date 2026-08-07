@@ -52,6 +52,12 @@ a machine/provider subscription are released one at a time. Provider-native
 retries remain authoritative while the provider reports that it will retry on
 its own.
 
+Automatic waits default to a maximum of six hours. Longer reset windows remain
+visible and manually retryable. Set `maximumWait` to `24 hours` or `No limit`
+under the plugin settings, or run:
+
+  bb plugin config provider-retry set maximumWait "24 hours"
+
   bb settings usage [--machine <id-or-name>]       Read live provider usage
   bb provider-retry status [thread-id] [--json]    Inspect in-memory waits
   bb provider-retry refresh <thread-id> [--json]   Refresh live usage

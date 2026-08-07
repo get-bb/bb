@@ -16,6 +16,7 @@ const RESET_AT_MS = NOW_MS + 5 * 60 * 60 * 1_000;
 function rateLimits(
   status: "allowed" | "blocked" = "blocked",
   providerId: "claude-code" | "codex" = "codex",
+  resetsAtMs = RESET_AT_MS,
 ) {
   return {
     providerId,
@@ -26,7 +27,7 @@ function rateLimits(
         providerKey: "primary",
         label: "Current session",
         status,
-        resetsAtMs: RESET_AT_MS,
+        resetsAtMs,
       },
     ],
     reachedReason: status === "blocked" ? "rate_limit_reached" : null,
@@ -38,8 +39,9 @@ function rateLimits(
 function eligibleStatus(
   threadId: string,
   providerId: "claude-code" | "codex" = "codex",
+  resetsAtMs = RESET_AT_MS,
 ) {
-  const limits = rateLimits("blocked", providerId);
+  const limits = rateLimits("blocked", providerId, resetsAtMs);
   return {
     reason: "eligible",
     scopeKey: `host-one:${providerId}`,
@@ -49,7 +51,7 @@ function eligibleStatus(
       failedRequestId: `request-${threadId}`,
       turnId: `turn-${threadId}`,
       automatic: true,
-      resetsAtMs: RESET_AT_MS,
+      resetsAtMs,
       rateLimits: limits,
     },
   } as const;
@@ -93,6 +95,23 @@ afterEach(() => {
 });
 
 describe("provider retry scheduler", () => {
+  it("declares a six-hour maximum automatic wait by default", async () => {
+    const host = createFakePluginHost({ pluginId: "provider-retry" });
+    await plugin(host.bb);
+
+    expect(host.harness.registrations.settingsDescriptors).toEqual({
+      maximumWait: {
+        type: "select",
+        label: "Maximum automatic wait",
+        description:
+          "Only continue automatically when the reported reset is within this time. Longer waits remain available for manual retry.",
+        options: ["6 hours", "24 hours", "No limit"],
+        default: "6 hours",
+      },
+    });
+    await host.harness.dispose();
+  });
+
   it("does not create an unhandled rejection when reconciliation fails", async () => {
     const host = createFakePluginHost({
       pluginId: "provider-retry",
@@ -150,6 +169,91 @@ describe("provider retry scheduler", () => {
       threadId: "thread-b",
       failedRequestId: "request-thread-b",
     });
+    await host.harness.dispose();
+  });
+
+  it("keeps resets beyond the maximum wait manual and applies changes live", async () => {
+    const resetAtMs = NOW_MS + 7 * 60 * 60 * 1_000;
+    const continueAfterRateLimit = vi.fn(async () => ({
+      ok: true as const,
+      requestId: "continuation-request",
+    }));
+    const host = createFakePluginHost({
+      pluginId: "provider-retry",
+      sdk: {
+        threads: {
+          rateLimitRecovery: async ({ threadId }) =>
+            eligibleStatus(threadId, "codex", resetAtMs),
+          continueAfterRateLimit,
+        },
+      },
+    });
+    await plugin(host.bb);
+    await host.harness.emitThreadEvent("thread.failed", {
+      thread: makeThreadResponse({ id: "thread-weekly", status: "error" }),
+      error: "Usage limit reached",
+    });
+
+    await expect(
+      host.harness.callRpc("providerRetryStatus", {
+        threadId: "thread-weekly",
+      }),
+    ).resolves.toMatchObject({
+      view: {
+        phase: "manual-only",
+        dueAtMs: null,
+        resetsAtMs: resetAtMs,
+      },
+    });
+
+    await host.harness.setSettings({ maximumWait: "24 hours" });
+    await expect(
+      host.harness.callRpc("providerRetryStatus", {
+        threadId: "thread-weekly",
+      }),
+    ).resolves.toMatchObject({
+      view: {
+        phase: "waiting-for-reset",
+        dueAtMs: resetAtMs + RESET_BUFFER_MS,
+      },
+    });
+
+    await host.harness.setSettings({ maximumWait: "6 hours" });
+    await expect(
+      host.harness.callRpc("providerRetryStatus", {
+        threadId: "thread-weekly",
+      }),
+    ).resolves.toMatchObject({
+      view: { phase: "manual-only", dueAtMs: null },
+    });
+
+    await host.harness.setSettings({ maximumWait: "No limit" });
+    await expect(
+      host.harness.callRpc("providerRetryStatus", {
+        threadId: "thread-weekly",
+      }),
+    ).resolves.toMatchObject({
+      view: { phase: "waiting-for-reset" },
+    });
+
+    await host.harness.setSettings({ maximumWait: "6 hours" });
+    await vi.advanceTimersByTimeAsync(8 * 60 * 60 * 1_000);
+    expect(continueAfterRateLimit).not.toHaveBeenCalled();
+    await expect(
+      host.harness.runCli(["status", "thread-weekly"]),
+    ).resolves.toMatchObject({
+      exitCode: 0,
+      stdout: expect.stringMatching(
+        /thread-weekly\tmanual-only\tcodex\t.*exceeds maximum automatic wait/u,
+      ),
+    });
+
+    await expect(
+      host.harness.callRpc("providerRetryNow", {
+        threadId: "thread-weekly",
+      }),
+    ).resolves.toEqual({ started: true, view: null });
+    expect(continueAfterRateLimit).toHaveBeenCalledOnce();
     await host.harness.dispose();
   });
 

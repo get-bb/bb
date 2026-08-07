@@ -42,6 +42,13 @@ function limitDescription(view: ProviderRetryView): string {
     const reason = view.reachedReason ?? view.overageReason;
     return `${provider} ${view.kind.replaceAll("-", " ")} limit reached${reason ? ` (${reason.replaceAll("_", " ")})` : ""}. There is no automatic reset time.`;
   }
+  if (view.phase === "manual-only") {
+    const reset =
+      view.resetsAtMs === null
+        ? "at an unknown time"
+        : resetLabel(view.resetsAtMs);
+    return `${provider}${window} usage limit resets ${reset}, beyond the configured maximum automatic wait. Retry manually when ready.`;
+  }
   if (view.phase === "waiting-for-host") {
     return `${provider}${window} usage limit reset passed. This thread will continue when its host reconnects, while this bb server remains running.`;
   }

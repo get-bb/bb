@@ -1,7 +1,27 @@
 import type { BbPluginApi } from "@bb/plugin-sdk";
 import { registerProviderRetryCli } from "./src/cli.js";
 import { providerRetryRpcContract } from "./src/contract.js";
-import { ProviderRetryService } from "./src/service.js";
+import {
+  DEFAULT_MAXIMUM_WAIT_MS,
+  ProviderRetryService,
+} from "./src/service.js";
+
+const MAXIMUM_WAIT_OPTIONS = ["6 hours", "24 hours", "No limit"] as const;
+
+function maximumWaitMs(value: string | boolean | undefined): number | null {
+  switch (value) {
+    case "6 hours":
+      return DEFAULT_MAXIMUM_WAIT_MS;
+    case "24 hours":
+      return 24 * 60 * 60 * 1_000;
+    case "No limit":
+      return null;
+    default:
+      throw new Error(
+        `Unsupported maximum provider retry wait: ${String(value)}`,
+      );
+  }
+}
 
 function waitForAbort(signal: AbortSignal): Promise<void> {
   if (signal.aborted) return Promise.resolve();
@@ -17,7 +37,25 @@ function logFailure(bb: BbPluginApi, operation: string, error: unknown): void {
 }
 
 export default async function plugin(bb: BbPluginApi) {
-  const service = new ProviderRetryService(bb);
+  const settings = bb.settings.define({
+    maximumWait: {
+      type: "select",
+      label: "Maximum automatic wait",
+      description:
+        "Only continue automatically when the reported reset is within this time. Longer waits remain available for manual retry.",
+      options: [...MAXIMUM_WAIT_OPTIONS],
+      default: "6 hours",
+    },
+  });
+  const initialSettings = await settings.get();
+  const service = new ProviderRetryService(
+    bb,
+    undefined,
+    maximumWaitMs(initialSettings.maximumWait),
+  );
+  settings.onChange((next) => {
+    service.setMaximumWaitMs(maximumWaitMs(next.maximumWait));
+  });
   bb.onDispose(() => service.dispose());
 
   bb.rpc.register(providerRetryRpcContract, {

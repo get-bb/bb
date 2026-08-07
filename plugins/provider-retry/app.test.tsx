@@ -128,6 +128,34 @@ describe("provider retry app", () => {
     ).toBeTruthy();
   });
 
+  it("explains when the reset exceeds the maximum automatic wait", async () => {
+    const slot = renderSlot(
+      banner,
+      {},
+      {
+        composer: { scope: { kind: "thread", threadId: "thread-one" } },
+        rpc: {
+          providerRetryStatus: () => ({
+            view: {
+              ...waitingView,
+              phase: "manual-only",
+              dueAtMs: null,
+            },
+          }),
+          providerRetryNow: () => ({ started: true, view: null }),
+          providerRetryCancel: () => ({ cancelled: true }),
+          providerRetryRefresh: () => ({ view: waitingView }),
+        },
+      },
+    );
+
+    expect(
+      await slot.findByText(/beyond the configured maximum automatic wait/i),
+    ).toBeTruthy();
+    expect(slot.getByText(/Retry manually when ready/i)).toBeTruthy();
+    expect(slot.getByRole("button", { name: "Retry now" })).toBeTruthy();
+  });
+
   it("explains when automatic continuation stops after an error", async () => {
     const failedView: ProviderRetryView = {
       ...waitingView,

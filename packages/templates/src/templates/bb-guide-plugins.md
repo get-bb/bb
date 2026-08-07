@@ -29,7 +29,9 @@ a composer banner with Refresh, Retry now, and Cancel controls. A server restart
 or plugin reload clears pending timers without changing the original failed
 thread. Inspect it with `bb provider-retry status`; use the `refresh`, `now`,
 and `cancel` subcommands to control it. See `bb guide providers` for the safety
-rules.
+rules. Its `maximumWait` setting defaults to `6 hours`; choose `24 hours` or
+`No limit` from the plugin detail page, or configure it with
+`bb plugin config provider-retry set maximumWait <value>`.
 
 The builtin Workflows plugin runs durable provider-independent JavaScript
 orchestration. It is disabled on fresh installations; enable `workflows` under
