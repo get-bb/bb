@@ -8,7 +8,7 @@ import {
 } from "@/components/promptbox/follow-up-placeholder";
 import {
   isPluginPendingInteraction,
-  isStandaloneBuiltinPromptCommand,
+  isStandaloneBuiltinCompactCommand,
   PERSONAL_PROJECT_ID,
 } from "@bb/domain";
 import type {
@@ -668,10 +668,7 @@ export function ThreadDetailPromptArea({
   const handleSend = useCallback(async () => {
     const submittedDraft = currentPromptDraft;
     const submittedInput = currentPromptDraftInput;
-    const isCompactCommand = isStandaloneBuiltinPromptCommand(submittedInput, {
-      trigger: "/",
-      name: "compact",
-    });
+    const isCompactCommand = isStandaloneBuiltinCompactCommand(submittedInput);
     const isQueuingMessage = shouldQueueFollowUpMessage(runtimeDisplayStatus);
     if (
       submittedInput.length === 0 ||
@@ -747,12 +744,7 @@ export function ThreadDetailPromptArea({
 
     const submittedDraft = currentPromptDraft;
     const submittedInput = currentPromptDraftInput;
-    if (
-      isStandaloneBuiltinPromptCommand(submittedInput, {
-        trigger: "/",
-        name: "compact",
-      })
-    ) {
+    if (isStandaloneBuiltinCompactCommand(submittedInput)) {
       setIsFollowUpShortcutSending(true);
       promptDraft.clearIfCurrentMatches(submittedDraft);
       setBottomAttachmentError(null);

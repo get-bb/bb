@@ -42,7 +42,6 @@ describe("agent provider catalog", () => {
         id: "acp-my-agent",
         displayName: "My Agent",
         logoUrl: null,
-        supportsManualCompaction: false,
       }),
     ).toEqual({
       id: "acp-my-agent",
@@ -50,7 +49,6 @@ describe("agent provider catalog", () => {
       logoUrl: null,
       capabilities: {
         supportsArchive: false,
-        supportsManualCompaction: false,
         supportsRename: false,
         supportsServiceTier: true,
         supportsUserQuestion: false,
@@ -64,6 +62,7 @@ describe("agent provider catalog", () => {
     expect(getAcpProviderServerCapabilities("acp-my-agent")).toEqual({
       supportsWorkflows: false,
       supportsExecutionOverride: false,
+      supportsManualCompaction: false,
       backsHostDaemonAiServices: false,
       reasoningLevels: ["low", "medium", "high", "xhigh", "max"],
     });

@@ -563,35 +563,21 @@ describe("public project command typeahead route", () => {
         commands: [],
       });
 
-      const opencodeResponse = await harness.app.request(
-        `/api/v1/projects/${project.id}/commands?provider=acp-opencode&environmentId=${environment.id}`,
-      );
-      expect(opencodeResponse.status).toBe(200);
-      expect(
-        commandListResponseSchema
-          .parse(await readJson(opencodeResponse))
-          .commands.map((command) => command.name),
-      ).toEqual(["compact"]);
-
-      const cursorResponse = await harness.app.request(
-        `/api/v1/projects/${project.id}/commands?provider=acp-cursor&environmentId=${environment.id}`,
-      );
-      expect(cursorResponse.status).toBe(200);
-      expect(
-        commandListResponseSchema
-          .parse(await readJson(cursorResponse))
-          .commands.map((command) => command.name),
-      ).toEqual([]);
-
-      const grokResponse = await harness.app.request(
-        `/api/v1/projects/${project.id}/commands?provider=acp-grok&environmentId=${environment.id}`,
-      );
-      expect(grokResponse.status).toBe(200);
-      expect(
-        commandListResponseSchema
-          .parse(await readJson(grokResponse))
-          .commands.map((command) => command.name),
-      ).toEqual([]);
+      for (const [providerId, expectedNames] of [
+        ["acp-opencode", ["compact"]],
+        ["acp-cursor", []],
+        ["acp-grok", []],
+      ] as const) {
+        const response = await harness.app.request(
+          `/api/v1/projects/${project.id}/commands?provider=${providerId}&environmentId=${environment.id}`,
+        );
+        expect(response.status).toBe(200);
+        expect(
+          commandListResponseSchema
+            .parse(await readJson(response))
+            .commands.map((command) => command.name),
+        ).toEqual(expectedNames);
+      }
     });
   });
 

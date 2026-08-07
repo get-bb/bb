@@ -207,7 +207,6 @@ export function createWarningEventAdapter(scriptPath: string): ProviderAdapter {
     displayName: "Warning Fake",
     capabilities: {
       supportsArchive: false,
-      supportsManualCompaction: false,
       supportsRename: false,
       supportsServiceTier: false,
       supportsUserQuestion: false,
@@ -321,7 +320,6 @@ export function createStartedEventAdapter(scriptPath: string): ProviderAdapter {
     displayName: "Started Fake",
     capabilities: {
       supportsArchive: false,
-      supportsManualCompaction: false,
       supportsRename: false,
       supportsServiceTier: false,
       supportsUserQuestion: false,

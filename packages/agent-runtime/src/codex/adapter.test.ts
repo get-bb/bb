@@ -322,7 +322,6 @@ describe("codex provider adapter", () => {
     const adapter = createCodexProviderAdapter();
     expect(adapter.capabilities).toEqual({
       supportsArchive: true,
-      supportsManualCompaction: true,
       supportsRename: true,
       supportsServiceTier: true,
       supportsUserQuestion: false,

@@ -186,7 +186,6 @@ describe("pi provider adapter", () => {
     const adapter = createPiProviderAdapter();
     expect(adapter.capabilities).toEqual({
       supportsArchive: false,
-      supportsManualCompaction: true,
       supportsRename: false,
       supportsServiceTier: false,
       supportsUserQuestion: false,
@@ -803,10 +802,12 @@ describe("pi provider adapter", () => {
     );
   });
 
-  it("translateEvent manual compaction owns a complete maintenance turn", () => {
+  function translateManualCompaction(args: {
+    aborted: boolean;
+    errorMessage?: string;
+  }) {
     const adapter = createPiProviderAdapter();
     const context = { threadId: "bb-thread-1" };
-
     const started = adapter.translateEvent(
       {
         type: "compaction_start",
@@ -819,11 +820,18 @@ describe("pi provider adapter", () => {
         type: "compaction_end",
         reason: "manual",
         result: undefined,
-        aborted: false,
         willRetry: false,
+        ...args,
       } satisfies AgentSessionEvent,
       context,
     );
+    return { completed, started };
+  }
+
+  it("translateEvent manual compaction owns a complete maintenance turn", () => {
+    const { completed, started } = translateManualCompaction({
+      aborted: false,
+    });
 
     expect(started).toContainEqual(
       expect.objectContaining({
@@ -847,78 +855,42 @@ describe("pi provider adapter", () => {
     );
   });
 
-  it("translateEvent failed manual compaction does not report success", () => {
-    const adapter = createPiProviderAdapter();
-    const context = { threadId: "bb-thread-1" };
-
-    adapter.translateEvent(
-      {
-        type: "compaction_start",
-        reason: "manual",
-      } satisfies AgentSessionEvent,
-      context,
-    );
-    const events = adapter.translateEvent(
-      {
-        type: "compaction_end",
-        reason: "manual",
-        result: undefined,
+  it.each([
+    {
+      label: "failed",
+      args: {
         aborted: false,
-        willRetry: false,
-        errorMessage: "Compaction failed: Nothing to compact (session too small)",
-      } satisfies AgentSessionEvent,
-      context,
-    );
-
-    expect(events).not.toContainEqual(
-      expect.objectContaining({ type: "thread/compacted" }),
-    );
-    expect(events).toContainEqual(
-      expect.objectContaining({
-        type: "turn/completed",
-        scope: turnScope("turn-1"),
+        errorMessage:
+          "Compaction failed: Nothing to compact (session too small)",
+      },
+      expected: {
         status: "failed",
         error: {
-          message:
-            "Compaction failed: Nothing to compact (session too small)",
+          message: "Compaction failed: Nothing to compact (session too small)",
         },
-      }),
-    );
-  });
-
-  it("translateEvent aborted manual compaction does not report success", () => {
-    const adapter = createPiProviderAdapter();
-    const context = { threadId: "bb-thread-1" };
-
-    adapter.translateEvent(
-      {
-        type: "compaction_start",
-        reason: "manual",
-      } satisfies AgentSessionEvent,
-      context,
-    );
-    const events = adapter.translateEvent(
-      {
-        type: "compaction_end",
-        reason: "manual",
-        result: undefined,
-        aborted: true,
-        willRetry: false,
-      } satisfies AgentSessionEvent,
-      context,
-    );
-
-    expect(events).not.toContainEqual(
-      expect.objectContaining({ type: "thread/compacted" }),
-    );
-    expect(events).toContainEqual(
-      expect.objectContaining({
-        type: "turn/completed",
-        scope: turnScope("turn-1"),
-        status: "interrupted",
-      }),
-    );
-  });
+      },
+    },
+    {
+      label: "aborted",
+      args: { aborted: true },
+      expected: { status: "interrupted" },
+    },
+  ])(
+    "translateEvent $label manual compaction does not report success",
+    ({ args, expected }) => {
+      const { completed } = translateManualCompaction(args);
+      expect(completed).not.toContainEqual(
+        expect.objectContaining({ type: "thread/compacted" }),
+      );
+      expect(completed).toContainEqual(
+        expect.objectContaining({
+          type: "turn/completed",
+          scope: turnScope("turn-1"),
+          ...expected,
+        }),
+      );
+    },
+  );
 
   it("translateEvent compaction_end without a known turn is unhandled", () => {
     const adapter = createPiProviderAdapter();

@@ -368,21 +368,23 @@ export const threadStopCommandSchema = hostDaemonThreadTargetSchema
   })
   .strict();
 
-const threadCompactCommandSchema = hostDaemonThreadTargetSchema
+const resumableThreadMaintenanceCommandSchema = hostDaemonThreadTargetSchema
   .extend({
-    type: z.literal("thread.compact"),
     options: runtimeThreadExecutionOptionsSchema,
     acpLaunchSpec: hostDaemonAcpLaunchSpecSchema.optional(),
     resumeContext: turnResumeContextSchema,
   })
   .strict();
 
-const threadGoalClearCommandSchema = hostDaemonThreadTargetSchema
+const threadCompactCommandSchema = resumableThreadMaintenanceCommandSchema
+  .extend({
+    type: z.literal("thread.compact"),
+  })
+  .strict();
+
+const threadGoalClearCommandSchema = resumableThreadMaintenanceCommandSchema
   .extend({
     type: z.literal("thread.goal.clear"),
-    options: runtimeThreadExecutionOptionsSchema,
-    acpLaunchSpec: hostDaemonAcpLaunchSpecSchema.optional(),
-    resumeContext: turnResumeContextSchema,
   })
   .strict();
 

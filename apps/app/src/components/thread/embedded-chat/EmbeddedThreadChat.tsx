@@ -9,7 +9,7 @@ import {
 } from "react";
 import {
   defaultAppSettings,
-  isStandaloneBuiltinPromptCommand,
+  isStandaloneBuiltinCompactCommand,
   type PermissionMode,
   type PromptInput,
   type ReasoningLevel,
@@ -637,10 +637,7 @@ function EmbeddedThreadChatWithComposer({
     promptDraft.clearIfCurrentMatches(submittedDraft);
     setBottomAttachmentError(null);
     setIsTurnSubmitting(true);
-    const isCompactCommand = isStandaloneBuiltinPromptCommand(submittedInput, {
-      trigger: "/",
-      name: "compact",
-    });
+    const isCompactCommand = isStandaloneBuiltinCompactCommand(submittedInput);
     void (
       isCompactCommand
         ? threadId === null
@@ -725,10 +722,7 @@ function EmbeddedThreadChatWithComposer({
     promptDraft.clearIfCurrentMatches(submittedDraft);
     setBottomAttachmentError(null);
     setIsTurnSubmitting(true);
-    const isCompactCommand = isStandaloneBuiltinPromptCommand(submittedInput, {
-      trigger: "/",
-      name: "compact",
-    });
+    const isCompactCommand = isStandaloneBuiltinCompactCommand(submittedInput);
     void (
       isCompactCommand
         ? compactThread.mutateAsync(threadId)

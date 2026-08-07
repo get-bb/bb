@@ -31,7 +31,6 @@ describe("provider info schema", () => {
     logoUrl: null,
     capabilities: {
       supportsArchive: true,
-      supportsManualCompaction: true,
       supportsRename: true,
       supportsServiceTier: true,
       supportsUserQuestion: false,

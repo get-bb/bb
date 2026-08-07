@@ -474,7 +474,6 @@ export function createFakeAdapter(
     buildCommandPlan,
     capabilities: {
       supportsArchive: true,
-      supportsManualCompaction: true,
       supportsRename: true,
       supportsServiceTier: false,
       supportsUserQuestion,

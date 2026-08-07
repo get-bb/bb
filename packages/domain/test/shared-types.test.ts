@@ -157,6 +157,7 @@ describe("prompt mention command triggers", () => {
 
 describe("prompt command input helpers", () => {
   it("recognizes only a standalone selected built-in command", () => {
+    const selector = { trigger: "/", name: "compact" } as const;
     const builtinCompactInput = [
       {
         type: "text" as const,
@@ -180,42 +181,29 @@ describe("prompt command input helpers", () => {
     ];
 
     expect(
-      isStandaloneBuiltinPromptCommand(builtinCompactInput, {
-        trigger: "/",
-        name: "compact",
-      }),
+      isStandaloneBuiltinPromptCommand(builtinCompactInput, selector),
     ).toBe(true);
-    expect(
-      isStandaloneBuiltinPromptCommand(
-        [{ type: "text", text: "/compact", mentions: [] }],
-        { trigger: "/", name: "compact" },
-      ),
-    ).toBe(false);
-    expect(
-      isStandaloneBuiltinPromptCommand(
-        [
-          {
-            ...builtinCompactInput[0],
-            mentions: [
-              {
-                ...builtinCompactInput[0].mentions[0],
-                resource: {
-                  ...builtinCompactInput[0].mentions[0].resource,
-                  origin: "user" as const,
-                },
+    const invalidInputs = [
+      [{ type: "text" as const, text: "/compact", mentions: [] }],
+      [
+        {
+          ...builtinCompactInput[0],
+          mentions: [
+            {
+              ...builtinCompactInput[0].mentions[0],
+              resource: {
+                ...builtinCompactInput[0].mentions[0].resource,
+                origin: "user" as const,
               },
-            ],
-          },
-        ],
-        { trigger: "/", name: "compact" },
-      ),
-    ).toBe(false);
-    expect(
-      isStandaloneBuiltinPromptCommand(
-        [{ ...builtinCompactInput[0], text: " /compact now" }],
-        { trigger: "/", name: "compact" },
-      ),
-    ).toBe(false);
+            },
+          ],
+        },
+      ],
+      [{ ...builtinCompactInput[0], text: " /compact now" }],
+    ];
+    for (const input of invalidInputs) {
+      expect(isStandaloneBuiltinPromptCommand(input, selector)).toBe(false);
+    }
   });
 
   it("detects and removes command mentions while preserving ordinary text", () => {

@@ -11,183 +11,116 @@ import {
   seedThread,
   seedThreadRuntimeState,
 } from "../helpers/seed.js";
-import { withTestHarness } from "../helpers/test-app.js";
+import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
+
+function seedCompactableThread(
+  harness: TestAppHarness,
+  args: { providerId: string; providerThreadId: string },
+) {
+  const { host, session } = seedHostSession(harness.deps);
+  const { project } = seedProjectWithSource(harness.deps, {
+    hostId: host.id,
+  });
+  const environment = seedEnvironment(harness.deps, {
+    hostId: host.id,
+    projectId: project.id,
+  });
+  const thread = seedThread(harness.deps, {
+    environmentId: environment.id,
+    projectId: project.id,
+    providerId: args.providerId,
+    status: "idle",
+  });
+  seedThreadRuntimeState(harness.deps, {
+    environmentId: environment.id,
+    providerThreadId: args.providerThreadId,
+    threadId: thread.id,
+  });
+  return { host, session, thread };
+}
+
+const compactionCases = [
+  {
+    label: "Pi",
+    providerId: "pi",
+    providerThreadId: "provider-thread-1",
+    expectedCommand: {
+      resumeContext: {
+        providerId: "pi",
+        providerThreadId: "provider-thread-1",
+      },
+    },
+  },
+  {
+    label: "OpenCode ACP",
+    providerId: "acp-opencode",
+    providerThreadId: "opencode-session-1",
+    expectedCommand: {
+      acpLaunchSpec: {
+        command: "opencode",
+        args: ["acp"],
+        manualCompaction: { method: "prompt", prompt: "/compact" },
+      },
+      resumeContext: {
+        providerId: "acp-opencode",
+        providerThreadId: "opencode-session-1",
+        acpLaunchSpec: {
+          manualCompaction: { method: "prompt", prompt: "/compact" },
+        },
+      },
+    },
+  },
+] as const;
 
 describe("public thread compaction", () => {
-  it("compacts through both the explicit route and a selected built-in command", async () => {
-    await withTestHarness(async (harness) => {
-      const { host, session } = seedHostSession(harness.deps);
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-      });
-      const thread = seedThread(harness.deps, {
-        environmentId: environment.id,
-        projectId: project.id,
-        providerId: "pi",
-        status: "idle",
-      });
-      seedThreadRuntimeState(harness.deps, {
-        environmentId: environment.id,
-        providerThreadId: "provider-thread-1",
-        threadId: thread.id,
-      });
-      const responder = registerHostRpcResponder(harness, {
-        hostId: host.id,
-        sessionId: session.id,
-        handle: ({ command }): HostRpcHandlerResult => {
-          if (command.type === "host.list_files") {
-            return { ok: true, result: { files: [], truncated: false } };
-          }
-          if (command.type === "host.read_file") {
-            return {
-              ok: false,
-              errorCode: "ENOENT",
-              errorMessage: `Path does not exist: ${command.path}`,
-            };
-          }
-          expect(command).toMatchObject({
-            type: "thread.compact",
-            threadId: thread.id,
-            resumeContext: {
-              providerId: "pi",
-              providerThreadId: "provider-thread-1",
-            },
-          });
-          return { ok: true, result: {} };
-        },
-      });
+  it.each(compactionCases)(
+    "dispatches $label compaction through the explicit route",
+    async ({ expectedCommand, providerId, providerThreadId }) => {
+      await withTestHarness(async (harness) => {
+        const { host, session, thread } = seedCompactableThread(harness, {
+          providerId,
+          providerThreadId,
+        });
+        const responder = registerHostRpcResponder(harness, {
+          hostId: host.id,
+          sessionId: session.id,
+          handle: ({ command }): HostRpcHandlerResult => {
+            if (command.type === "host.list_files") {
+              return { ok: true, result: { files: [], truncated: false } };
+            }
+            if (command.type === "host.read_file") {
+              return {
+                ok: false,
+                errorCode: "ENOENT",
+                errorMessage: `Path does not exist: ${command.path}`,
+              };
+            }
+            expect(command).toMatchObject({
+              type: "thread.compact",
+              threadId: thread.id,
+              ...expectedCommand,
+            });
+            return { ok: true, result: {} };
+          },
+        });
 
-      const explicitResponse = await harness.app.request(
-        `/api/v1/threads/${thread.id}/compact`,
-        { method: "POST" },
-      );
-      expect(
-        explicitResponse.status,
-        JSON.stringify(await readJson(explicitResponse.clone())),
-      ).toBe(200);
+        const response = await harness.app.request(
+          `/api/v1/threads/${thread.id}/compact`,
+          { method: "POST" },
+        );
+        expect(
+          response.status,
+          JSON.stringify(await readJson(response.clone())),
+        ).toBe(200);
 
-      const commandResponse = await harness.app.request(
-        `/api/v1/threads/${thread.id}/send`,
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            mode: "auto",
-            input: [
-              {
-                type: "text",
-                text: "/compact",
-                mentions: [
-                  {
-                    start: 0,
-                    end: 8,
-                    resource: {
-                      kind: "command",
-                      trigger: "/",
-                      name: "compact",
-                      source: "command",
-                      origin: "builtin",
-                      label: "compact",
-                      argumentHint: null,
-                    },
-                  },
-                ],
-              },
-            ],
-          }),
-        },
-      );
-      expect(
-        commandResponse.status,
-        JSON.stringify(await readJson(commandResponse.clone())),
-      ).toBe(200);
-      expect(
-        responder.requests.filter(
-          ({ command }) => command.type === "thread.compact",
-        ),
-      ).toHaveLength(2);
-      expect(
-        responder.requests.some(
-          ({ command }) => command.type === "turn.submit",
-        ),
-      ).toBe(false);
-    });
-  });
-
-  it("compacts OpenCode ACP with its provider-local command", async () => {
-    await withTestHarness(async (harness) => {
-      const { host, session } = seedHostSession(harness.deps);
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
+        expect(
+          responder.requests.filter(
+            ({ command }) => command.type === "thread.compact",
+          ),
+        ).toHaveLength(1);
       });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-      });
-      const thread = seedThread(harness.deps, {
-        environmentId: environment.id,
-        projectId: project.id,
-        providerId: "acp-opencode",
-        status: "idle",
-      });
-      seedThreadRuntimeState(harness.deps, {
-        environmentId: environment.id,
-        providerThreadId: "opencode-session-1",
-        threadId: thread.id,
-      });
-      const responder = registerHostRpcResponder(harness, {
-        hostId: host.id,
-        sessionId: session.id,
-        handle: ({ command }): HostRpcHandlerResult => {
-          if (command.type === "host.list_files") {
-            return { ok: true, result: { files: [], truncated: false } };
-          }
-          if (command.type === "host.read_file") {
-            return {
-              ok: false,
-              errorCode: "ENOENT",
-              errorMessage: `Path does not exist: ${command.path}`,
-            };
-          }
-          expect(command).toMatchObject({
-            type: "thread.compact",
-            threadId: thread.id,
-            acpLaunchSpec: {
-              command: "opencode",
-              args: ["acp"],
-              manualCompaction: { method: "prompt", prompt: "/compact" },
-            },
-            resumeContext: {
-              providerId: "acp-opencode",
-              providerThreadId: "opencode-session-1",
-              acpLaunchSpec: {
-                manualCompaction: { method: "prompt", prompt: "/compact" },
-              },
-            },
-          });
-          return { ok: true, result: {} };
-        },
-      });
-
-      const response = await harness.app.request(
-        `/api/v1/threads/${thread.id}/compact`,
-        { method: "POST" },
-      );
-      expect(
-        response.status,
-        JSON.stringify(await readJson(response.clone())),
-      ).toBe(200);
-      expect(
-        responder.requests.filter(
-          ({ command }) => command.type === "thread.compact",
-        ),
-      ).toHaveLength(1);
-    });
-  });
+    },
+  );
 
   it("rejects manual compaction for unsupported providers and active threads", async () => {
     await withTestHarness(async (harness) => {

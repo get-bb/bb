@@ -550,7 +550,6 @@ export function createAcpProviderAdapter(
         id: profile.providerId,
         displayName: profile.displayName,
         logoUrl: null,
-        supportsManualCompaction: profile.manualCompaction !== undefined,
       });
   const additionalWorkspaceWriteRoots = opts.additionalWorkspaceWriteRoots;
 

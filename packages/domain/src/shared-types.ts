@@ -403,6 +403,15 @@ export function isStandaloneBuiltinPromptCommand(
   return mentionCount === 1;
 }
 
+export function isStandaloneBuiltinCompactCommand(
+  input: readonly PromptInput[],
+): boolean {
+  return isStandaloneBuiltinPromptCommand(input, {
+    trigger: "/",
+    name: "compact",
+  });
+}
+
 export function promptInputHasCommandMention(
   input: readonly PromptInput[],
   selector: PromptCommandSelector,

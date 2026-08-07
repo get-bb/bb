@@ -198,7 +198,6 @@ interface RequireProviderRequestPlanArgs {
 const CODEX_PROVIDER_ID = "codex";
 const CODEX_THREAD_PROCESS_KEY_PREFIX = `${CODEX_PROVIDER_ID}\0thread:`;
 const THREAD_CREATION_REQUEST_TIMEOUT_MS = 2 * 60_000;
-const THREAD_COMPACTION_REQUEST_TIMEOUT_MS = 20 * 60_000;
 const CODEX_ACCOUNT_RESTART_PROVIDER_ERROR_CATEGORIES =
   new Set<ProviderErrorCategory>(["rate-limit", "unauthorized"]);
 const CODEX_ACCOUNT_RESTART_PROVIDER_ERROR_TEXT_PATTERN =
@@ -1593,7 +1592,6 @@ function createAgentRuntimeInternal(
             proc,
             message: cmd,
             resultSchema: ignoredJsonRpcResultSchema,
-            timeoutMs: THREAD_COMPACTION_REQUEST_TIMEOUT_MS,
           });
         },
       });

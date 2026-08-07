@@ -97,7 +97,6 @@ export function buildKnownAcpProviderInfo(agent: KnownAcpAgent): ProviderInfo {
     id: agent.id,
     displayName: agent.displayName,
     logoUrl: null,
-    supportsManualCompaction: agent.manualCompaction !== undefined,
   });
 }
 

@@ -168,7 +168,6 @@ describe("claude-code provider adapter", () => {
     const adapter = createClaudeCodeProviderAdapter();
     expect(adapter.capabilities).toEqual({
       supportsArchive: false,
-      supportsManualCompaction: true,
       supportsRename: false,
       supportsServiceTier: false,
       supportsUserQuestion: true,

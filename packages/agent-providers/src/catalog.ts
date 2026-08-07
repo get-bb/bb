@@ -56,6 +56,8 @@ export interface ProviderServerCapabilities {
    * Providers without verified in-place swap require respawning the thread.
    */
   supportsExecutionOverride: boolean;
+  /** Whether BB can explicitly request provider context compaction. */
+  supportsManualCompaction: boolean;
   /**
    * Whether this provider backs host-daemon-routed AI services (voice
    * transcription and structured inference) via its `*.voice.transcribe` /
@@ -84,14 +86,12 @@ export interface BuildAcpProviderInfoArgs {
   displayName: string;
   id: string;
   logoUrl: string | null;
-  supportsManualCompaction: boolean;
 }
 
 type PiDefaultModelPerProvider = Partial<Record<string, string>>;
 
 const CODEX_CAPABILITIES: ProviderCapabilities = {
   supportsArchive: true,
-  supportsManualCompaction: true,
   supportsRename: true,
   supportsServiceTier: true,
   supportsUserQuestion: false,
@@ -101,7 +101,6 @@ const CODEX_CAPABILITIES: ProviderCapabilities = {
 
 const CLAUDE_CAPABILITIES: ProviderCapabilities = {
   supportsArchive: false,
-  supportsManualCompaction: true,
   supportsRename: false,
   supportsServiceTier: false,
   supportsUserQuestion: true,
@@ -111,7 +110,6 @@ const CLAUDE_CAPABILITIES: ProviderCapabilities = {
 
 const PI_CAPABILITIES: ProviderCapabilities = {
   supportsArchive: false,
-  supportsManualCompaction: true,
   supportsRename: false,
   supportsServiceTier: false,
   supportsUserQuestion: false,
@@ -159,7 +157,6 @@ const ACP_COMPOSER_ACTIONS: ProviderComposerAction[] = [
 // rather than fanning fast variants out as separate model-list entries.
 const ACP_CAPABILITIES: ProviderCapabilities = {
   supportsArchive: false,
-  supportsManualCompaction: false,
   supportsRename: false,
   supportsServiceTier: true,
   supportsUserQuestion: false,
@@ -172,6 +169,7 @@ const ACP_CAPABILITIES: ProviderCapabilities = {
 const CODEX_SERVER_CAPABILITIES: ProviderServerCapabilities = {
   supportsWorkflows: false,
   supportsExecutionOverride: false,
+  supportsManualCompaction: true,
   backsHostDaemonAiServices: true,
   // Per-model list from app-server is authoritative; this ladder is the
   // fallback for custom models / missing catalogs. "ultra" is Codex-only.
@@ -181,6 +179,7 @@ const CODEX_SERVER_CAPABILITIES: ProviderServerCapabilities = {
 const CLAUDE_SERVER_CAPABILITIES: ProviderServerCapabilities = {
   supportsWorkflows: true,
   supportsExecutionOverride: true,
+  supportsManualCompaction: true,
   backsHostDaemonAiServices: false,
   reasoningLevels: ["low", "medium", "high", "xhigh", "ultracode", "max"],
 };
@@ -188,6 +187,7 @@ const CLAUDE_SERVER_CAPABILITIES: ProviderServerCapabilities = {
 const PI_SERVER_CAPABILITIES: ProviderServerCapabilities = {
   supportsWorkflows: false,
   supportsExecutionOverride: false,
+  supportsManualCompaction: true,
   backsHostDaemonAiServices: false,
   reasoningLevels: ["low", "medium", "high", "xhigh", "max"],
 };
@@ -197,6 +197,7 @@ const PI_SERVER_CAPABILITIES: ProviderServerCapabilities = {
 const ACP_SERVER_CAPABILITIES: ProviderServerCapabilities = {
   supportsWorkflows: false,
   supportsExecutionOverride: false,
+  supportsManualCompaction: false,
   backsHostDaemonAiServices: false,
   // Cursor encodes reasoning effort in its model ids (`gpt-5.3-codex-high`);
   // the ACP bridge resolves (model, level) to the exact variant id at session
@@ -214,7 +215,8 @@ const ACP_SERVER_CAPABILITIES: ProviderServerCapabilities = {
  *   3. `info.composerActions` (wire-facing composer affordances): skills,
  *      plan, goal, or an explicit empty array.
  *   4. `serverCapabilities` (`ProviderServerCapabilities`, backend-only):
- *      workflows, execution override, host-daemon AI services, reasoning ladder.
+ *      workflows, execution override, manual compaction, host-daemon AI
+ *      services, reasoning ladder.
  *   5. Its adapter + factory in `@bb/agent-runtime` (`provider-registry.ts`).
  * Host-local specifics stay with the daemon: provider CLI executable/install
  * metadata (`provider-cli-health.ts`) and injected-skill root layout
@@ -297,7 +299,6 @@ function cloneCapabilities(
 ): ProviderCapabilities {
   return {
     supportsArchive: capabilities.supportsArchive,
-    supportsManualCompaction: capabilities.supportsManualCompaction,
     supportsRename: capabilities.supportsRename,
     supportsServiceTier: capabilities.supportsServiceTier,
     supportsUserQuestion: capabilities.supportsUserQuestion,
@@ -340,10 +341,7 @@ export function buildAcpProviderInfo(
   }
   return {
     available: true,
-    capabilities: {
-      ...cloneCapabilities(ACP_CAPABILITIES),
-      supportsManualCompaction: args.supportsManualCompaction,
-    },
+    capabilities: cloneCapabilities(ACP_CAPABILITIES),
     composerActions: ACP_COMPOSER_ACTIONS.map(cloneComposerAction),
     displayName: args.displayName,
     id: args.id,
@@ -366,7 +364,6 @@ export function getSupportedPermissionModes(
           id: providerId,
           displayName: providerId,
           logoUrl: null,
-          supportsManualCompaction: false,
         })
       : null;
   return provider?.capabilities.supportedPermissionModes ?? null;
@@ -410,11 +407,14 @@ export function supportsManualCompaction(
   providerId: string,
   acpManualCompaction?: AcpManualCompaction,
 ): boolean {
-  if (isAgentProviderId(providerId)) {
-    return getBuiltInAgentProviderInfo(providerId).capabilities
-      .supportsManualCompaction;
-  }
-  return isAcpProviderId(providerId) && acpManualCompaction !== undefined;
+  const builtInSupport = isAgentProviderId(providerId)
+    ? getBuiltInAgentProviderServerCapabilities(providerId)
+        .supportsManualCompaction
+    : false;
+  return (
+    builtInSupport ||
+    (isAcpProviderId(providerId) && acpManualCompaction !== undefined)
+  );
 }
 
 export function listBuiltInAgentProviderInfos(): BuiltInAgentProviderInfo[] {

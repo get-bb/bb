@@ -45,7 +45,6 @@ export function providerHasCommandSurface(providerId: string): boolean {
         id: providerId,
         displayName: providerId,
         logoUrl: null,
-        supportsManualCompaction: false,
       }).composerActions,
     );
   }

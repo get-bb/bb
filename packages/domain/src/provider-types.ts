@@ -35,7 +35,6 @@ export type AcpManualCompaction = z.infer<typeof acpManualCompactionSchema>;
 
 export const providerCapabilitiesSchema = z.object({
   supportsArchive: z.boolean(),
-  supportsManualCompaction: z.boolean(),
   supportsRename: z.boolean(),
   supportsServiceTier: z.boolean(),
   supportsUserQuestion: z.boolean(),
