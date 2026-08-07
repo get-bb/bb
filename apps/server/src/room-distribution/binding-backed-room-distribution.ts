@@ -16,6 +16,8 @@ import type {
   WorkTogetherRoomChildAttachmentPortV1,
   WorkTogetherRoomChildAttachmentV1,
 } from "./work-together-room-child-attachments.js";
+import { createBindingBackedRoomCommandHandler } from "./binding-backed-room-commands.js";
+import type { WorkTogetherRoomCommandAuthorityPortV1 } from "./work-together-room-command-authority.js";
 import {
   RoomDistributionUnavailableError,
   type RoomDistributionContextV1,
@@ -228,15 +230,19 @@ function primaryRun(status: string): string {
 }
 
 /**
- * Binding-backed read distribution. SQLite remains the sole execution/event
- * authority while the injected WT task port owns canonical task projection.
- * Mutation commands remain deliberately unavailable until S4.4.
+ * Binding-backed Room distribution. SQLite remains the sole execution/event
+ * authority while the injected WT ports own canonical task and command policy.
  */
 export function createBindingBackedRoomDistributionV1(
-  deps: Pick<AppDeps, "config" | "db" | "hub">,
+  deps: AppDeps,
   taskProjection: WorkTogetherRoomTaskProjectionPortV1,
   childAttachments: WorkTogetherRoomChildAttachmentPortV1,
+  commandAuthority: WorkTogetherRoomCommandAuthorityPortV1,
 ): WorkTogetherRoomDistributionV1 {
+  const commands = createBindingBackedRoomCommandHandler(
+    deps,
+    commandAuthority,
+  );
   function resolve(bindingId: string) {
     let reservation;
     try {
@@ -412,6 +418,13 @@ export function createBindingBackedRoomDistributionV1(
   return Object.freeze({
     async bootstrap(context: RoomDistributionContextV1) {
       const { reservation, thread, environment } = resolve(context.bindingId);
+      const capabilities = await commands.capabilities({
+        bindingId: context.bindingId,
+        workspaceId: reservation.workspaceId,
+        taskId: reservation.taskId,
+        principal: context.principal,
+        thread,
+      });
       const task = validateTaskProjection(
         await taskProjection.read({
           bindingId: context.bindingId,
@@ -475,15 +488,28 @@ export function createBindingBackedRoomDistributionV1(
           status: environment.status,
         },
         primaryRun: primaryRun(thread.status),
-        capabilities: [],
+        capabilities,
         children,
         timeline: current.projection,
         cursor: cursorFor(current.maxSeq),
       });
     },
 
-    async execute() {
-      unavailable("not_found");
+    async execute(
+      context: RoomDistributionContextV1,
+      rawCommand: RoomJsonObject,
+    ) {
+      const { reservation, thread } = resolve(context.bindingId);
+      return commands.execute(
+        {
+          bindingId: context.bindingId,
+          workspaceId: reservation.workspaceId,
+          taskId: reservation.taskId,
+          principal: context.principal,
+          thread,
+        },
+        rawCommand,
+      );
     },
 
     async events(

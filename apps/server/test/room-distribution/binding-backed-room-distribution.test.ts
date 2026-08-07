@@ -3,10 +3,14 @@ import { randomUUID } from "node:crypto";
 import {
   createEventId,
   createHostId,
+  environments,
   events,
   getLatestThreadSequence,
+  getThreadCommandAdmission,
+  threads,
 } from "@bb/db";
 import type { Principal } from "@bb/domain";
+import { eq } from "drizzle-orm";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -25,7 +29,12 @@ import {
   createWorkTogetherRoomResourceProvisioner,
   type WorkTogetherRoomResourceTarget,
 } from "../../src/room-distribution/room-resource-provisioner.js";
-import { seedHostSession, seedThread } from "../helpers/seed.js";
+import {
+  seedHostSession,
+  seedThread,
+  seedThreadRuntimeState,
+  seedTurnStarted,
+} from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
 
 const PRINCIPAL: Principal = Object.freeze({
@@ -38,6 +47,10 @@ const NO_CHILDREN: WorkTogetherRoomChildAttachmentPortV1 = Object.freeze({
     throw new Error("unexpected child attachment");
   },
   list: async () => Object.freeze([]),
+});
+const MEMBER_AUTHORITY = Object.freeze({
+  read: async () =>
+    Object.freeze({ role: "member" as const, isTaskAssignee: false }),
 });
 
 function context(bindingId: string): RoomDistributionContextV1 {
@@ -103,6 +116,7 @@ describe("binding-backed Work Together Room distribution", () => {
         harness.deps,
         taskProjection,
         NO_CHILDREN,
+        MEMBER_AUTHORITY,
       );
 
       const bootstrap = await distribution.bootstrap(context(launch.bindingId));
@@ -118,6 +132,15 @@ describe("binding-backed Work Together Room distribution", () => {
         },
         capabilities: [],
       });
+      const ownerDistribution = createBindingBackedRoomDistributionV1(
+        harness.deps,
+        taskProjection,
+        NO_CHILDREN,
+        { read: async () => ({ role: "owner", isTaskAssignee: false }) },
+      );
+      await expect(
+        ownerDistribution.bootstrap(context(launch.bindingId)),
+      ).resolves.toMatchObject({ capabilities: ["thread.interrupt"] });
       expect(taskProjection.read).toHaveBeenCalledWith({
         bindingId: launch.bindingId,
         workspaceId: launch.workspaceId,
@@ -181,6 +204,7 @@ describe("binding-backed Work Together Room distribution", () => {
           read: async () => ({ id: launch.taskId, title: "Task" }),
         },
         NO_CHILDREN,
+        MEMBER_AUTHORITY,
       );
       const emitted: unknown[] = [];
       const subscription = await distribution.subscribe(
@@ -231,6 +255,207 @@ describe("binding-backed Work Together Room distribution", () => {
         "events-appended",
       ]);
       expect(emitted).toHaveLength(2);
+    });
+  });
+
+  it("admits an active Room send once with the verified human actor and replays its receipt", async () => {
+    await withTestHarness(async (harness) => {
+      const candidateHostId = randomUUID();
+      const { host } = seedHostSession(harness.deps, { id: createHostId() });
+      const launch = {
+        bindingId: randomUUID(),
+        workspaceId: randomUUID(),
+        taskId: randomUUID(),
+        cellId: randomUUID(),
+        repositoryBindingId: randomUUID(),
+        repositoryBindingVersion: 1,
+        providerRepositoryId: "79",
+        baseBranch: "main",
+        generatedBranch: "rooms/command-room",
+        candidateHostId,
+        environmentTemplate: "managed-worktree" as const,
+      };
+      const provisioned = await createWorkTogetherRoomResourceProvisioner(
+        harness.deps,
+        {
+          resolve: () => ({
+            bbHostId: host.id,
+            projectName: "Command Repository",
+            providerId: "codex",
+            sourcePath: "/srv/work-together/commands",
+          }),
+        },
+      ).provision({ principal: PRINCIPAL, launch });
+      const turnId = "turn_room_command";
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: provisioned.environmentId,
+        providerThreadId: "provider-room-command",
+        threadId: provisioned.primaryThreadId,
+      });
+      seedTurnStarted(harness.deps, {
+        environmentId: provisioned.environmentId,
+        providerThreadId: "provider-room-command",
+        threadId: provisioned.primaryThreadId,
+        turnId,
+      });
+      harness.db
+        .update(environments)
+        .set({ path: "/tmp/room-command", status: "ready" })
+        .where(eq(environments.id, provisioned.environmentId))
+        .run();
+      harness.db
+        .update(threads)
+        .set({ status: "active" })
+        .where(eq(threads.id, provisioned.primaryThreadId))
+        .run();
+      let policyFacts = {
+        role: "member" as "member" | "owner",
+        isTaskAssignee: false,
+      };
+      const commandAuthority = {
+        read: vi.fn(async () => ({ ...policyFacts })),
+      };
+      const distribution = createBindingBackedRoomDistributionV1(
+        harness.deps,
+        { read: async () => ({ id: launch.taskId, title: "Task" }) },
+        NO_CHILDREN,
+        commandAuthority,
+      );
+      const command = {
+        kind: "message.send",
+        requestId: "creq_23456789ab",
+        text: "Queue this exact message",
+      } as const;
+
+      await expect(
+        distribution.bootstrap(context(launch.bindingId)),
+      ).resolves.toMatchObject({
+        capabilities: ["message.send", "message.steer"],
+      });
+
+      const accepted = await distribution.execute(
+        context(launch.bindingId),
+        command,
+      );
+      expect(accepted).toMatchObject({
+        status: 202,
+        body: {
+          outcome: "accepted",
+          requestId: command.requestId,
+          commandKind: "message.send",
+          admissionSequence: 1,
+          result: { disposition: "queued" },
+        },
+      });
+      expect(accepted.body.result).toEqual({ disposition: "queued" });
+      expect(JSON.stringify(accepted.body)).not.toContain("qmsg_");
+      const replayed = await distribution.execute(
+        context(launch.bindingId),
+        command,
+      );
+      expect(replayed).toMatchObject({
+        status: 200,
+        body: {
+          outcome: "already-accepted",
+          requestId: command.requestId,
+          admissionSequence: 1,
+        },
+      });
+      expect(
+        getThreadCommandAdmission(harness.db, {
+          threadId: provisioned.primaryThreadId,
+          requestId: command.requestId,
+        }),
+      ).toMatchObject({
+        actor: {
+          principalId: PRINCIPAL.id,
+          principalKind: PRINCIPAL.kind,
+          displayName: PRINCIPAL.displayName,
+        },
+      });
+      await expect(
+        distribution.execute(context(launch.bindingId), {
+          kind: "message.steer",
+          requestId: "creq_23456789ad",
+          expectedTurnId: turnId,
+          text: "Steer this exact turn",
+        }),
+      ).resolves.toMatchObject({
+        status: 202,
+        body: {
+          outcome: "accepted",
+          commandKind: "message.steer",
+          result: { disposition: "steered" },
+        },
+      });
+      await expect(
+        distribution.execute(context(launch.bindingId), {
+          kind: "message.steer",
+          requestId: "creq_23456789af",
+          expectedTurnId: "turn_wrong",
+          text: "Do not leak the active turn",
+        }),
+      ).resolves.toEqual({
+        status: 200,
+        body: {
+          schemaVersion: 1,
+          outcome: "rejected",
+          requestId: "creq_23456789af",
+          commandKind: "message.steer",
+          reason: "turn_mismatch",
+        },
+      });
+      await expect(
+        distribution.execute(context(launch.bindingId), {
+          ...command,
+          text: "Conflicting message",
+        }),
+      ).resolves.toEqual({
+        status: 200,
+        body: {
+          schemaVersion: 1,
+          outcome: "rejected",
+          requestId: command.requestId,
+          commandKind: "message.send",
+          reason: "request_identity_conflict",
+        },
+      });
+      await expect(
+        distribution.execute(context(launch.bindingId), {
+          kind: "thread.interrupt",
+          requestId: "creq_23456789ac",
+          expectedTurnId: "turn_exact",
+        }),
+      ).rejects.toMatchObject({ kind: "not_found" });
+      expect(
+        getThreadCommandAdmission(harness.db, {
+          threadId: provisioned.primaryThreadId,
+          requestId: "creq_23456789ac",
+        }),
+      ).toBeNull();
+      policyFacts = { role: "owner", isTaskAssignee: false };
+      await expect(
+        distribution.execute(context(launch.bindingId), {
+          kind: "thread.interrupt",
+          requestId: "creq_23456789ae",
+          expectedTurnId: turnId,
+        }),
+      ).resolves.toMatchObject({
+        status: 202,
+        body: {
+          outcome: "accepted",
+          commandKind: "thread.interrupt",
+          result: { disposition: "interrupted" },
+        },
+      });
+      expect(commandAuthority.read).toHaveBeenCalledTimes(8);
+
+      await expect(
+        distribution.execute(context(launch.bindingId), {
+          ...command,
+          actor: "user_spoofed",
+        }),
+      ).rejects.toMatchObject({ kind: "not_found" });
     });
   });
 
@@ -301,6 +526,7 @@ describe("binding-backed Work Together Room distribution", () => {
         harness.deps,
         { read: async () => ({ id: launch.taskId, title: "Task" }) },
         childAuthority,
+        MEMBER_AUTHORITY,
       );
 
       const bootstrap = await distribution.bootstrap(context(launch.bindingId));
@@ -413,6 +639,7 @@ describe("binding-backed Work Together Room distribution", () => {
           read: async () => ({ id: "task" }),
         },
         NO_CHILDREN,
+        MEMBER_AUTHORITY,
       );
       const missing = context(randomUUID());
       await expect(distribution.bootstrap(missing)).rejects.toMatchObject({
@@ -467,6 +694,7 @@ describe("binding-backed Work Together Room distribution", () => {
           }),
         },
         NO_CHILDREN,
+        MEMBER_AUTHORITY,
       );
       await expect(
         distribution.bootstrap(context(launch.bindingId)),

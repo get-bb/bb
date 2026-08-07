@@ -42,6 +42,7 @@ import {
 import { createWorkTogetherRoomTaskProjection } from "./room-distribution/work-together-room-task-projection.js";
 import { createWorkTogetherRoomChildAttachments } from "./room-distribution/work-together-room-child-attachments.js";
 import { createBindingBackedRoomDistributionV1 } from "./room-distribution/binding-backed-room-distribution.js";
+import { createWorkTogetherRoomCommandAuthority } from "./room-distribution/work-together-room-command-authority.js";
 import type { WorkTogetherRoomDistributionV1 } from "./room-distribution/room-distribution-port.js";
 
 export async function runServer(serverConfig: ServerConfig): Promise<void> {
@@ -177,6 +178,9 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
               principalRuntime.workTogetherRoomTaskRuntime,
             ),
             createWorkTogetherRoomChildAttachments(
+              principalRuntime.workTogetherRoomTaskRuntime,
+            ),
+            createWorkTogetherRoomCommandAuthority(
               principalRuntime.workTogetherRoomTaskRuntime,
             ),
           );
