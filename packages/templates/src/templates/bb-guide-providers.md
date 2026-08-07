@@ -69,8 +69,8 @@ Timed waits exist only while the current bb server/plugin process remains
 running. Disabling/reloading the plugin or restarting the server clears them;
 the original failed thread remains available for `bb thread retry`. Credit and
 spend-control exhaustion without a reset time is shown but never blindly
-retried. Use Refresh after adding credits or changing limits, or Retry now when
-the user explicitly wants another attempt.
+retried. Run `bb provider-retry refresh` after adding credits or changing
+limits, or use Retry now when the user explicitly wants another attempt.
 
 Claude Code's native Workflow tool can be disabled separately on its provider
 page. This preference also defaults off and applies to newly started, resumed,

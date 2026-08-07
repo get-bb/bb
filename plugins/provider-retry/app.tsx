@@ -78,7 +78,7 @@ function ProviderRetryBannerForThread({ threadId }: { threadId: string }) {
             await load();
             setActionError("This continuation is already in progress.");
           }
-        } else if (action === "now") {
+        } else {
           const result = await rpc.call("providerRetryNow", { threadId });
           setView(result.view);
           if (
@@ -88,9 +88,6 @@ function ProviderRetryBannerForThread({ threadId }: { threadId: string }) {
           ) {
             setActionError("This turn is no longer available to continue.");
           }
-        } else {
-          const result = await rpc.call("providerRetryRefresh", { threadId });
-          setView(result.view);
         }
       } catch (error) {
         setActionError(error instanceof Error ? error.message : String(error));

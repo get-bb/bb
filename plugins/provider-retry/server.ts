@@ -69,9 +69,6 @@ export default async function plugin(bb: BbPluginApi) {
     providerRetryCancel({ threadId }) {
       return { cancelled: service.cancel(threadId) };
     },
-    async providerRetryRefresh({ threadId }) {
-      return { view: await service.refresh(threadId) };
-    },
   });
   registerProviderRetryCli(bb, service);
 

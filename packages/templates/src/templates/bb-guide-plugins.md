@@ -25,8 +25,8 @@ The opt-in builtin Provider retry plugin continues Codex and Claude Code
 turns after a structured subscription window resets. Enable it under
 Extensions → Plugins or run `bb plugin enable provider-retry`. It keeps its
 timers in memory, coordinates waits by machine/provider subscription, and adds
-a composer banner with Refresh, Retry now, and Cancel controls. A server restart
-or plugin reload clears pending timers without changing the original failed
+a composer banner with Retry now and Cancel controls. A server restart or
+plugin reload clears pending timers without changing the original failed
 thread. Inspect it with `bb provider-retry status`; use the `refresh`, `now`,
 and `cancel` subcommands to control it. See `bb guide providers` for the
 eligibility rules. Prior output or tool activity does not block recovery. Its

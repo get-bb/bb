@@ -127,22 +127,9 @@ const PRESENTATION_CASES: readonly BannerPresentationCase[] = [
     }),
   },
   {
-    label: "Refresh unavailable",
-    hint: "Live provider usage could not be read.",
-    view: providerRetryView({
-      refreshError: "Claude Code usage is temporarily unavailable",
-    }),
-  },
-  {
     label: "Action failed",
     hint: "A manual action lost a race or failed at the server boundary.",
     actionError: "This continuation is already in progress.",
-    view: providerRetryView(),
-  },
-  {
-    label: "Refreshing",
-    hint: "Transient Refresh button state.",
-    busy: "refresh",
     view: providerRetryView(),
   },
   {

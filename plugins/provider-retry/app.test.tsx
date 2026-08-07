@@ -52,7 +52,6 @@ describe("provider retry app", () => {
           providerRetryStatus: () => ({ view: waitingView }),
           providerRetryNow: () => ({ started: true, view: null }),
           providerRetryCancel: () => ({ cancelled: true }),
-          providerRetryRefresh: () => ({ view: waitingView }),
         },
       },
     );
@@ -63,7 +62,7 @@ describe("provider retry app", () => {
     expect(description.textContent).not.toContain("server");
     expect(
       slot.getAllByRole("button").map((button) => button.textContent),
-    ).toEqual(["Retry now", "Refresh", "Cancel"]);
+    ).toEqual(["Retry now", "Cancel"]);
   });
 
   it("reacts to backend signals and can continue immediately", async () => {
@@ -80,7 +79,6 @@ describe("provider retry app", () => {
             return { started: true, view: null };
           },
           providerRetryCancel: () => ({ cancelled: true }),
-          providerRetryRefresh: () => ({ view: current }),
         },
       },
     );
@@ -116,7 +114,6 @@ describe("provider retry app", () => {
           }),
           providerRetryNow: () => ({ started: true, view: null }),
           providerRetryCancel: () => ({ cancelled: true }),
-          providerRetryRefresh: () => ({ view: waitingView }),
         },
       },
     );
@@ -142,7 +139,6 @@ describe("provider retry app", () => {
           }),
           providerRetryNow: () => ({ started: true, view: null }),
           providerRetryCancel: () => ({ cancelled: true }),
-          providerRetryRefresh: () => ({ view: waitingView }),
         },
       },
     );
@@ -170,7 +166,6 @@ describe("provider retry app", () => {
           providerRetryStatus: () => ({ view: failedView }),
           providerRetryNow: () => ({ started: false, view: failedView }),
           providerRetryCancel: () => ({ cancelled: true }),
-          providerRetryRefresh: () => ({ view: failedView }),
         },
       },
     );
@@ -194,7 +189,6 @@ describe("provider retry app", () => {
           providerRetryStatus: () => ({ view: waitingView }),
           providerRetryNow: () => ({ started: true, view: null }),
           providerRetryCancel: () => ({ cancelled: false }),
-          providerRetryRefresh: () => ({ view: waitingView }),
         },
       },
     );

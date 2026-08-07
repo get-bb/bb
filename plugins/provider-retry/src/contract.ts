@@ -53,8 +53,4 @@ export const providerRetryRpcContract = defineRpcContract({
     input: threadInput,
     output: z.object({ cancelled: z.boolean() }).strict(),
   },
-  providerRetryRefresh: {
-    input: threadInput,
-    output: z.object({ view: providerRetryViewSchema.nullable() }).strict(),
-  },
 });

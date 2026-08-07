@@ -369,9 +369,7 @@ describe("provider retry scheduler", () => {
       });
     }
 
-    await host.harness.callRpc("providerRetryRefresh", {
-      threadId: "thread-a",
-    });
+    await host.harness.runCli(["refresh", "thread-a"]);
     await vi.advanceTimersByTimeAsync(0);
     expect(continueAfterRateLimit).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(RELEASE_PACE_MS);
@@ -414,8 +412,9 @@ describe("provider retry scheduler", () => {
       error: "Credits exhausted",
     });
 
+    await host.harness.runCli(["refresh", "thread-manual"]);
     expect(
-      await host.harness.callRpc("providerRetryRefresh", {
+      await host.harness.callRpc("providerRetryStatus", {
         threadId: "thread-manual",
       }),
     ).toMatchObject({
@@ -466,8 +465,9 @@ describe("provider retry scheduler", () => {
       error: "Usage limit reached",
     });
 
+    await host.harness.runCli(["refresh", "thread-reset"]);
     expect(
-      await host.harness.callRpc("providerRetryRefresh", {
+      await host.harness.callRpc("providerRetryStatus", {
         threadId: "thread-reset",
       }),
     ).toMatchObject({
@@ -531,9 +531,7 @@ describe("provider retry scheduler", () => {
       thread: makeThreadResponse({ id: "thread-release", status: "error" }),
       error: "Usage limit reached",
     });
-    await host.harness.callRpc("providerRetryRefresh", {
-      threadId: "thread-release",
-    });
+    await host.harness.runCli(["refresh", "thread-release"]);
 
     await expect(
       host.harness.callRpc("providerRetryCancel", {
@@ -597,9 +595,7 @@ describe("provider retry scheduler", () => {
     ).resolves.toMatchObject({
       view: { providerId: "claude-code" },
     });
-    await host.harness.callRpc("providerRetryRefresh", {
-      threadId: "thread-claude",
-    });
+    await host.harness.runCli(["refresh", "thread-claude"]);
     await vi.advanceTimersByTimeAsync(0);
     expect(continueAfterRateLimit).toHaveBeenCalledOnce();
     await host.harness.dispose();

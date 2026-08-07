@@ -2,7 +2,7 @@ import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import type { ProviderRetryView } from "./src/contract.js";
 
-export type ProviderRetryBannerAction = "cancel" | "now" | "refresh";
+export type ProviderRetryBannerAction = "cancel" | "now";
 
 function providerLabel(providerId: string): string {
   switch (providerId) {
@@ -63,8 +63,6 @@ export function ProviderRetryBannerView({
   onAction: (action: ProviderRetryBannerAction) => void | Promise<void>;
   view: ProviderRetryView;
 }) {
-  const canRefresh =
-    view.providerId === "codex" || view.providerId === "claude-code";
   const canRetry = view.failedRequestId !== null && view.phase !== "releasing";
 
   return (
@@ -81,11 +79,6 @@ export function ProviderRetryBannerView({
       />
       <div className="flex min-w-0 flex-col gap-2">
         <p className="min-w-0 flex-1 leading-5">{limitDescription(view)}</p>
-        {view.refreshError === null ? null : (
-          <p role="status" className="text-warning-text">
-            Refresh unavailable: {view.refreshError}
-          </p>
-        )}
         {actionError === null ? null : (
           <p role="alert" className="text-destructive-text">
             {actionError}
@@ -102,18 +95,6 @@ export function ProviderRetryBannerView({
               onClick={() => void onAction("now")}
             >
               {busy === "now" ? "Continuing…" : "Retry now"}
-            </Button>
-          ) : null}
-          {canRefresh ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-7 px-2 text-xs"
-              disabled={busy !== null || view.phase === "releasing"}
-              onClick={() => void onAction("refresh")}
-            >
-              {busy === "refresh" ? "Refreshing…" : "Refresh"}
             </Button>
           ) : null}
           <Button
