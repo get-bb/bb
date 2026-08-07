@@ -4,9 +4,10 @@ set -eu
 
 usage() {
   cat >&2 <<'EOF'
-Usage: install.sh --join-code <code> --host-id <host-id> --server <url> [--machine-code <code>]
+Usage: install.sh --join-code <code> --host-id <host-id> --server <url> [--machine-code <code>] [--host-daemon-port <port>]
 
 The first three options are required. --machine-code is required through bb connect.
+By default, the installer assigns this enrolled daemon its own local API port.
 EOF
   exit 2
 }
@@ -15,10 +16,11 @@ join_code=
 host_id=
 server_url=
 machine_code=
+requested_host_daemon_port=
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --join-code|--host-id|--server|--machine-code)
+    --join-code|--host-id|--server|--machine-code|--host-daemon-port)
       [ "$#" -ge 2 ] || usage
       [ -n "$2" ] || usage
       case "$1" in
@@ -26,6 +28,7 @@ while [ "$#" -gt 0 ]; do
         --host-id) host_id=$2 ;;
         --server) server_url=$2 ;;
         --machine-code) machine_code=$2 ;;
+        --host-daemon-port) requested_host_daemon_port=$2 ;;
       esac
       shift 2
       ;;
@@ -90,6 +93,139 @@ service_slug=$(printf '%s' "$server_host" | tr '.' '-')
 data_dir=${BB_DATA_DIR:-"$HOME/.bb-machines/$server_host"}
 mkdir -p "$data_dir"
 mkdir -p "$data_dir/logs"
+
+valid_port() {
+  node -e '
+    const rawPort = process.argv[1];
+    const port = Number(rawPort);
+    process.exit(String(port) === rawPort && Number.isInteger(port) && port >= 1 && port <= 65535 ? 0 : 1);
+  ' "$1"
+}
+
+port_is_available() {
+  node -e '
+    const net = require("node:net");
+    const server = net.createServer();
+    server.once("error", () => process.exit(1));
+    server.listen({ host: "127.0.0.1", port: Number(process.argv[1]), exclusive: true }, () => {
+      server.close((error) => process.exit(error ? 1 : 0));
+    });
+  ' "$1" >/dev/null 2>&1
+}
+
+daemon_status_matches() {
+  node -e '
+    const [port, expectedHostId, expectedServerUrl, requireConnected] = process.argv.slice(1);
+    const normalize = (value) => String(value).replace(/\/+$/u, "");
+    void (async () => {
+      const response = await fetch(`http://127.0.0.1:${port}/status`, {
+        signal: AbortSignal.timeout(750),
+      });
+      if (!response.ok) process.exit(1);
+      const status = await response.json();
+      const matches =
+        status &&
+        typeof status === "object" &&
+        status.hostId === expectedHostId &&
+        normalize(status.serverUrl) === normalize(expectedServerUrl) &&
+        (requireConnected !== "yes" || status.connected === true);
+      process.exit(matches ? 0 : 1);
+    })().catch(() => process.exit(1));
+  ' "$1" "$host_id" "$server_url" "$2" >/dev/null 2>&1
+}
+
+wait_for_daemon_connection() {
+  attempts=0
+  while [ "$attempts" -lt 60 ]; do
+    if daemon_status_matches "$host_daemon_port" yes; then
+      return 0
+    fi
+    attempts=$((attempts + 1))
+    sleep 1
+  done
+  return 1
+}
+
+find_available_host_daemon_port() {
+  node -e '
+    const fs = require("node:fs");
+    const net = require("node:net");
+    const path = require("node:path");
+    const machinesDir = process.argv[1];
+    const reserved = new Set();
+    try {
+      for (const entry of fs.readdirSync(machinesDir, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue;
+        try {
+          const value = Number(fs.readFileSync(path.join(machinesDir, entry.name, "host-daemon-port"), "utf8").trim());
+          if (Number.isInteger(value) && value >= 1 && value <= 65535) reserved.add(value);
+        } catch {}
+      }
+    } catch {}
+
+    const tryPort = (port) => {
+      if (port > 65535) {
+        process.stderr.write("Could not find an available host-daemon port.\n");
+        process.exit(1);
+      }
+      if (reserved.has(port)) {
+        tryPort(port + 1);
+        return;
+      }
+      const server = net.createServer();
+      server.once("error", (error) => {
+        if (error && (error.code === "EADDRINUSE" || error.code === "EACCES")) {
+          tryPort(port + 1);
+          return;
+        }
+        process.stderr.write(`Could not check host-daemon port ${port}: ${error.message}\n`);
+        process.exit(1);
+      });
+      server.listen({ host: "127.0.0.1", port, exclusive: true }, () => {
+        server.close((error) => {
+          if (error) {
+            process.stderr.write(`Could not release host-daemon port probe ${port}: ${error.message}\n`);
+            process.exit(1);
+          }
+          process.stdout.write(String(port));
+        });
+      });
+    };
+    tryPort(38888);
+  ' "$HOME/.bb-machines"
+}
+
+host_daemon_port_file="$data_dir/host-daemon-port"
+host_daemon_port=
+if [ -n "$requested_host_daemon_port" ]; then
+  if ! valid_port "$requested_host_daemon_port"; then
+    echo "--host-daemon-port must be an integer between 1 and 65535." >&2
+    exit 2
+  fi
+  if ! port_is_available "$requested_host_daemon_port" && \
+     ! daemon_status_matches "$requested_host_daemon_port" no; then
+    echo "Host daemon local API port $requested_host_daemon_port is already in use." >&2
+    echo "Choose another value for --host-daemon-port and rerun this command." >&2
+    exit 1
+  fi
+  host_daemon_port=$requested_host_daemon_port
+elif [ -f "$host_daemon_port_file" ]; then
+  stored_host_daemon_port=$(sed -n '1p' "$host_daemon_port_file")
+  if valid_port "$stored_host_daemon_port" && \
+     { port_is_available "$stored_host_daemon_port" || daemon_status_matches "$stored_host_daemon_port" no; }; then
+    host_daemon_port=$stored_host_daemon_port
+  else
+    echo "Stored host-daemon port $stored_host_daemon_port is unavailable; assigning a new port." >&2
+  fi
+fi
+
+if [ -z "$host_daemon_port" ]; then
+  host_daemon_port=$(find_available_host_daemon_port)
+fi
+host_daemon_port_temp="$host_daemon_port_file.$$.tmp"
+(umask 077 && printf '%s\n' "$host_daemon_port" >"$host_daemon_port_temp")
+mv "$host_daemon_port_temp" "$host_daemon_port_file"
+echo "Using local host-daemon port $host_daemon_port."
 
 # The server's own build is always installed when it offers one: version
 # strings cannot distinguish unpublished builds, so an existing bb-app is
@@ -228,6 +364,7 @@ if [ "$already_joined" = no ]; then
   echo "Joining $server_url as $host_id..."
   BB_DATA_DIR="$data_dir" nohup "$bb_app" host-daemon join \
     --auto-update \
+    --host-daemon-port "$host_daemon_port" \
     --join-code "$join_code" \
     --host-id "$host_id" \
     --server-url "$server_url" >"$join_log" 2>&1 &
@@ -237,13 +374,14 @@ if [ "$already_joined" = no ]; then
   joined=no
   attempts=0
   while [ "$attempts" -lt 60 ]; do
-    if [ -f "$data_dir/auth.json" ] && auth_matches_host; then
+    if [ -f "$data_dir/auth.json" ] && auth_matches_host && \
+       daemon_status_matches "$host_daemon_port" yes; then
       joined=yes
       break
     fi
     if ! kill -0 "$join_pid" 2>/dev/null; then
       wait "$join_pid" || true
-      echo "bb host daemon exited before enrollment completed. See $join_log" >&2
+      echo "bb host daemon exited before it connected to $server_url. See $join_log" >&2
       exit 1
     fi
     attempts=$((attempts + 1))
@@ -252,7 +390,7 @@ if [ "$already_joined" = no ]; then
   if [ "$joined" != yes ]; then
     kill "$join_pid" 2>/dev/null || true
     wait "$join_pid" 2>/dev/null || true
-    echo "Timed out waiting for enrollment. See $join_log" >&2
+    echo "Timed out waiting for host daemon $host_id to connect to $server_url. See $join_log" >&2
     exit 1
   fi
   echo "Joined successfully."
@@ -309,6 +447,8 @@ if [ "$platform" = darwin ]; then
     <string>$escaped_bb_app</string>
     <string>host-daemon</string>
     <string>--auto-update</string>
+    <string>--host-daemon-port</string>
+    <string>$host_daemon_port</string>
     <string>--server-url</string>
     <string>$escaped_server</string>
   </array>
@@ -322,9 +462,24 @@ if [ "$platform" = darwin ]; then
 </plist>
 EOF
   launchctl bootout "gui/$(id -u)" "$service_file" >/dev/null 2>&1 || true
-  launchctl bootstrap "gui/$(id -u)" "$service_file"
-  launchctl kickstart -k "gui/$(id -u)/$service_label"
+  if ! launchctl_error=$(launchctl bootstrap "gui/$(id -u)" "$service_file" 2>&1); then
+    echo "Could not register the bb host-daemon launch agent $service_label." >&2
+    [ -z "$launchctl_error" ] || echo "launchctl: $launchctl_error" >&2
+    exit 1
+  fi
+  if ! launchctl_error=$(launchctl kickstart -k "gui/$(id -u)/$service_label" 2>&1); then
+    echo "The bb host-daemon launch agent was registered, but the daemon did not start." >&2
+    [ -z "$launchctl_error" ] || echo "launchctl: $launchctl_error" >&2
+    echo "See $data_dir/logs/launchd.log for the daemon error." >&2
+    exit 1
+  fi
+  if ! wait_for_daemon_connection; then
+    echo "The bb host-daemon launch agent started but did not connect to $server_url." >&2
+    echo "See $data_dir/logs/launchd.log for the daemon error." >&2
+    exit 1
+  fi
   echo "Installed and started launch agent: $service_file"
+  echo "Host daemon local API: http://127.0.0.1:$host_daemon_port"
   echo "Uninstall: launchctl bootout gui/$(id -u) '$service_file' && rm '$service_file'"
 else
   service_dir="$HOME/.config/systemd/user"
@@ -342,7 +497,7 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-ExecStart="$escaped_node_bin" "$escaped_bb_app" host-daemon --auto-update --server-url "$escaped_server"
+ExecStart="$escaped_node_bin" "$escaped_bb_app" host-daemon --auto-update --host-daemon-port "$host_daemon_port" --server-url "$escaped_server"
 Environment="BB_DATA_DIR=$escaped_data_dir"
 Restart=always
 RestartSec=2
@@ -351,8 +506,19 @@ RestartSec=2
 WantedBy=default.target
 EOF
   systemctl --user daemon-reload
-  systemctl --user enable --now "$service_name.service"
+  if ! systemctl_error=$(systemctl --user enable --now "$service_name.service" 2>&1); then
+    echo "The bb host-daemon systemd service could not be enabled or started." >&2
+    [ -z "$systemctl_error" ] || echo "systemctl: $systemctl_error" >&2
+    echo "Inspect it with: journalctl --user -u $service_name.service" >&2
+    exit 1
+  fi
+  if ! wait_for_daemon_connection; then
+    echo "The bb host-daemon systemd service started but did not connect to $server_url." >&2
+    echo "Inspect it with: journalctl --user -u $service_name.service" >&2
+    exit 1
+  fi
   echo "Installed and started systemd user service: $service_file"
+  echo "Host daemon local API: http://127.0.0.1:$host_daemon_port"
   echo "It starts with your systemd user session."
   echo "Uninstall: systemctl --user disable --now $service_name.service && rm '$service_file' && systemctl --user daemon-reload"
 fi

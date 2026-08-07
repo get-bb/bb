@@ -32,6 +32,7 @@ import {
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { HTTPException } from "hono/http-exception";
+import { isFsErrorWithCode } from "./fs-errors.js";
 import type { HostDaemonLocalApiConfig } from "./local-api-config.js";
 import { resolveHostPlatform } from "./host-platform.js";
 
@@ -277,20 +278,36 @@ export async function startLocalApiServer(
     return c.json({});
   });
 
-  const { server, port: boundPort } = await new Promise<{
+  let boundServer: {
     server: ReturnType<typeof serve>;
     port: number;
-  }>((resolve, reject) => {
-    const s = serve(
-      {
-        fetch: app.fetch,
-        port: options.localApiConfig.port,
-        hostname: options.localApiConfig.bindHost,
-      },
-      (info) => resolve({ server: s, port: info.port }),
-    );
-    s.on("error", reject);
-  });
+  };
+  try {
+    boundServer = await new Promise<{
+      server: ReturnType<typeof serve>;
+      port: number;
+    }>((resolve, reject) => {
+      const s = serve(
+        {
+          fetch: app.fetch,
+          port: options.localApiConfig.port,
+          hostname: options.localApiConfig.bindHost,
+        },
+        (info) => resolve({ server: s, port: info.port }),
+      );
+      s.on("error", reject);
+    });
+  } catch (error) {
+    if (isFsErrorWithCode(error, "EADDRINUSE")) {
+      throw new Error(
+        `Host daemon local API port ${options.localApiConfig.port} is already in use on ${options.localApiConfig.bindHost}. Choose another port with --host-daemon-port <port>.`,
+        { cause: error },
+      );
+    }
+    throw error;
+  }
+
+  const { server, port: boundPort } = boundServer;
 
   return {
     bindHost: options.localApiConfig.bindHost,

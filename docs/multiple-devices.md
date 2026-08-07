@@ -82,11 +82,13 @@ tunnel is an accepted tradeoff.
 
 Each joined server gets its own daemon instance, data directory
 (`~/.bb-machines/<server-host>`, override with `BB_DATA_DIR` when running the
-installer), and launchd/systemd service. One machine can therefore serve
-several bb servers at once, and joining never touches a full local bb
-install's `~/.bb`. Each instance self-updates against its own server, but
-instances currently share the global `bb-app` binary, so servers running
-different bb versions on one machine can still fight over it.
+installer), local API port, and launchd/systemd service. The installer persists
+the selected port in that data directory and reuses it on subsequent runs; pass
+`--host-daemon-port <port>` to the installer to override the selection. One
+machine can therefore serve several bb servers at once, and joining never
+touches a full local bb install's `~/.bb`. Each instance self-updates against
+its own server, but instances currently share the global `bb-app` binary, so
+servers running different bb versions on one machine can still fight over it.
 
 The installed launchd/systemd service enables `--auto-update`. If session open
 reports a newer server protocol, the daemon downloads and globally installs the

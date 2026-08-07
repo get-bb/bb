@@ -69,6 +69,7 @@ const HOST_AUTH_FILE_NAME = "auth.json";
 const HOST_ID_FILE_NAME = "host-id";
 const HEALTH_CHECK_TIMEOUT_MS = 60_000;
 const HEALTH_CHECK_INTERVAL_MS = 100;
+const HEALTH_CHECK_REQUEST_TIMEOUT_MS = 1_000;
 const MANAGED_PROCESS_TERMINATION_TIMEOUT_MS = 5_000;
 const MANAGED_PROCESS_KILL_TIMEOUT_MS = 1_000;
 const MANAGED_PROCESS_RESTART_RETRY_DELAY_MS = 1_000;
@@ -107,6 +108,20 @@ const hostEnrollKeyResponseSchema = z
   .object({
     enrollKey: z.string().min(1),
     hostId: z.string().min(1),
+  })
+  .passthrough();
+
+const persistedHostAuthSchema = z
+  .object({
+    hostId: z.string().min(1),
+  })
+  .passthrough();
+
+const hostDaemonStatusSchema = z
+  .object({
+    connected: z.boolean(),
+    hostId: z.string().min(1),
+    serverUrl: z.string().min(1),
   })
   .passthrough();
 
@@ -388,6 +403,14 @@ interface WaitForHealthArgs {
   childProcess: ChildProcess | null;
   timeoutMs?: number;
   url: string;
+}
+
+interface WaitForHostDaemonStatusArgs {
+  childProcess: ChildProcess | null;
+  expectedHostId: string;
+  expectedServerUrl: string;
+  port: number;
+  timeoutMs?: number;
 }
 
 interface RequestHostEnrollKeyArgs {
@@ -1911,6 +1934,33 @@ async function readPersistedHostId(dataDir: string): Promise<string | null> {
   }
 }
 
+async function readPersistedHostAuthId(
+  dataDir: string,
+): Promise<string | null> {
+  try {
+    const auth = persistedHostAuthSchema.parse(
+      JSON.parse(await readFile(join(dataDir, HOST_AUTH_FILE_NAME), "utf8")),
+    );
+    return auth.hostId;
+  } catch {
+    return null;
+  }
+}
+
+async function requireExpectedHostDaemonId(args: {
+  dataDir: string;
+  env: NodeJS.ProcessEnv;
+}): Promise<string> {
+  const hostId =
+    trimToUndefined(args.env.BB_HOST_ID) ??
+    (await readPersistedHostId(args.dataDir)) ??
+    (await readPersistedHostAuthId(args.dataDir));
+  if (hostId === null) {
+    throw new Error("Could not resolve the expected host daemon ID");
+  }
+  return hostId;
+}
+
 export async function requestHostEnrollKey(
   args: RequestHostEnrollKeyArgs,
 ): Promise<HostEnrollKeyResponse> {
@@ -1992,6 +2042,53 @@ async function waitForHealth(args: WaitForHealthArgs): Promise<void> {
     });
   }
   throw new Error(`Timed out waiting for health at ${args.url}`);
+}
+
+function normalizeServerUrlForComparison(serverUrl: string): string {
+  return serverUrl.replace(/\/+$/u, "");
+}
+
+export async function waitForHostDaemonStatus(
+  args: WaitForHostDaemonStatusArgs,
+): Promise<void> {
+  const timeoutMs = args.timeoutMs ?? HEALTH_CHECK_TIMEOUT_MS;
+  const deadline = Date.now() + timeoutMs;
+  const expectedServerUrl = normalizeServerUrlForComparison(
+    args.expectedServerUrl,
+  );
+  const statusUrl = `http://${BB_LOOPBACK_HOST}:${args.port}/status`;
+
+  while (Date.now() <= deadline) {
+    if (
+      args.childProcess &&
+      (args.childProcess.exitCode !== null ||
+        args.childProcess.signalCode !== null)
+    ) {
+      throw new Error("Host daemon exited before becoming ready");
+    }
+    try {
+      const response = await fetch(statusUrl, {
+        signal: AbortSignal.timeout(HEALTH_CHECK_REQUEST_TIMEOUT_MS),
+      });
+      if (response.ok) {
+        const status = hostDaemonStatusSchema.parse(await response.json());
+        if (
+          status.connected &&
+          status.hostId === args.expectedHostId &&
+          normalizeServerUrlForComparison(status.serverUrl) ===
+            expectedServerUrl
+        ) {
+          return;
+        }
+      }
+    } catch {}
+    await new Promise<void>((resolvePromise) => {
+      setTimeout(resolvePromise, HEALTH_CHECK_INTERVAL_MS);
+    });
+  }
+  throw new Error(
+    `Timed out waiting for host daemon ${args.expectedHostId} to connect to ${expectedServerUrl} at ${statusUrl}`,
+  );
 }
 
 function toChunkString(chunk: OutputChunk): string {
@@ -2451,6 +2548,11 @@ async function runHostDaemonOnly(args: RunHostDaemonOnlyArgs): Promise<void> {
     return;
   }
 
+  const expectedHostId = await requireExpectedHostDaemonId({
+    dataDir: args.context.dataDir,
+    env: daemonEnv,
+  });
+
   beginStep(
     enrollment.enrolled ? "Starting daemon" : "Enrolling and starting daemon",
   );
@@ -2488,9 +2590,11 @@ async function runHostDaemonOnly(args: RunHostDaemonOnlyArgs): Promise<void> {
 
   try {
     try {
-      await waitForHealth({
+      await waitForHostDaemonStatus({
         childProcess: daemonProcess,
-        url: `http://${BB_LOOPBACK_HOST}:${args.context.daemonPort}/health`,
+        expectedHostId,
+        expectedServerUrl: serverUrl,
+        port: args.context.daemonPort,
       });
     } catch {
       endStep(red("✗"), "Host daemon failed to start");
@@ -2537,8 +2641,8 @@ export async function runBbHostDaemon(
     process.stdout.write(`bb-host-daemon
 
 Usage:
-  bb-host-daemon [--server-url <url>] [--host-id <id>] [--host-type <type>] [--enroll-key <key>] [--auto-update]
-  bb-host-daemon join --server-url <url> [--join-code <code> --host-id <id>] [--auto-update]
+  bb-host-daemon [--server-url <url>] [--host-daemon-port <port>] [--host-id <id>] [--host-type <type>] [--enroll-key <key>] [--auto-update]
+  bb-host-daemon join --server-url <url> [--host-daemon-port <port>] [--join-code <code> --host-id <id>] [--auto-update]
 `);
     return;
   }
@@ -2596,8 +2700,8 @@ Usage:
   bb-app config refresh
   bb-app env set <key> <value>
   bb-app client ssh-target set <server-origin> <ssh-target>
-  bb-app host-daemon [--server-url <url>] [--host-id <id>] [--host-type <type>] [--enroll-key <key>] [--auto-update]
-  bb-app host-daemon join --server-url <url> [--join-code <code> --host-id <id>] [--auto-update]
+  bb-app host-daemon [--server-url <url>] [--host-daemon-port <port>] [--host-id <id>] [--host-type <type>] [--enroll-key <key>] [--auto-update]
+  bb-app host-daemon join --server-url <url> [--host-daemon-port <port>] [--join-code <code> --host-id <id>] [--auto-update]
 
 CLI:
   npx --package bb-app bb <command>
@@ -2660,9 +2764,15 @@ async function startFullStackDaemonProcess(
   args.processes.daemonRun = daemonRun;
 
   try {
-    await waitForHealth({
+    const expectedHostId = await requireExpectedHostDaemonId({
+      dataDir: args.context.dataDir,
+      env: args.autoJoinEnv,
+    });
+    await waitForHostDaemonStatus({
       childProcess: daemonRun.childProcess,
-      url: `http://${BB_LOOPBACK_HOST}:${args.context.daemonPort}/health`,
+      expectedHostId,
+      expectedServerUrl: args.context.serverUrl,
+      port: args.context.daemonPort,
     });
     return daemonRun;
   } catch {

@@ -35,6 +35,7 @@ import {
   readBbAppPackageVersion,
   superviseFullStackProcesses,
   terminateManagedFullStackProcesses,
+  waitForHostDaemonStatus,
   waitForProcessExit,
 } from "../src/launcher.js";
 import type { BbAppStartContext } from "../src/index.js";
@@ -434,6 +435,87 @@ function expectedConfigReloadRequest(
 }
 
 describe("bb-app launcher", () => {
+  it("waits for the expected host daemon identity and connection", async () => {
+    let statusRequests = 0;
+    const server = createServer((request, response) => {
+      if (request.url !== "/status") {
+        response.writeHead(404).end();
+        return;
+      }
+      statusRequests += 1;
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(
+        JSON.stringify({
+          connected: statusRequests >= 2,
+          hostId: "host-expected",
+          serverUrl: "https://bb.example.test/",
+        }),
+      );
+    });
+    await new Promise<void>((resolvePromise, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", resolvePromise);
+    });
+    const address = server.address();
+    if (address === null || typeof address === "string") {
+      throw new Error("Expected status test server to have a TCP address");
+    }
+
+    try {
+      await waitForHostDaemonStatus({
+        childProcess: null,
+        expectedHostId: "host-expected",
+        expectedServerUrl: "https://bb.example.test",
+        port: address.port,
+        timeoutMs: 1_000,
+      });
+      expect(statusRequests).toBeGreaterThanOrEqual(2);
+    } finally {
+      await new Promise<void>((resolvePromise, reject) => {
+        server.close((error) => (error ? reject(error) : resolvePromise()));
+      });
+    }
+  });
+
+  it("does not accept another daemon's successful health response", async () => {
+    const server = createServer((request, response) => {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(
+        request.url === "/health"
+          ? JSON.stringify({ ok: true })
+          : JSON.stringify({
+              connected: true,
+              hostId: "host-other",
+              serverUrl: "https://other.example.test",
+            }),
+      );
+    });
+    await new Promise<void>((resolvePromise, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", resolvePromise);
+    });
+    const address = server.address();
+    if (address === null || typeof address === "string") {
+      throw new Error("Expected status test server to have a TCP address");
+    }
+
+    try {
+      await expect(
+        waitForHostDaemonStatus({
+          childProcess: null,
+          expectedHostId: "host-expected",
+          expectedServerUrl: "https://bb.example.test",
+          port: address.port,
+          timeoutMs: 25,
+        }),
+      ).rejects.toThrow("Timed out waiting for host daemon host-expected");
+    } finally {
+      await new Promise<void>((resolvePromise, reject) => {
+        server.close((error) => (error ? reject(error) : resolvePromise()));
+      });
+    }
+  });
+
   it("resolves production defaults for npx startup", () => {
     const context = resolveBbAppStartContext({
       entrypointUrl: pathToFileURL("/repo/packages/bb-app/dist/bb-app.js").href,
