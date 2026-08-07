@@ -1,7 +1,7 @@
 import type { AvailableModel } from "@bb/domain";
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai";
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
-import { buildPiAvailableModels } from "../model-list.js";
+import { buildPiAvailableModels, type PiCatalogModel } from "../model-list.js";
 
 const NETWORK_REFRESH_TIMEOUT_MS = 5_000;
 
@@ -99,6 +99,38 @@ async function ensureNetworkRefresh(modelRuntime: ModelRuntime): Promise<void> {
   }
 }
 
+type PiAvailableModel = Awaited<
+  ReturnType<ModelRuntime["getAvailable"]>
+>[number];
+
+/**
+ * Narrow one Pi model for the list builder, or drop it.
+ *
+ * Pi marks `id`, `name`, `provider`, and `input` as required, but an extension
+ * registers its models from plain JavaScript and Pi does not validate them. A
+ * missing field threw here or inside the builder, which failed the whole call
+ * and hid every other provider's models. Skip the bad model instead.
+ */
+function toPiCatalogModel(model: PiAvailableModel): PiCatalogModel | undefined {
+  if (
+    typeof model.id !== "string" ||
+    model.id.length === 0 ||
+    typeof model.name !== "string" ||
+    typeof model.provider !== "string" ||
+    model.provider.length === 0
+  ) {
+    return undefined;
+  }
+  return {
+    id: model.id,
+    input: Array.isArray(model.input) ? [...model.input] : [],
+    name: model.name,
+    provider: model.provider,
+    reasoning: model.reasoning === true,
+    supportedThinkingLevels: getSupportedThinkingLevels(model),
+  };
+}
+
 export async function listPiBridgeModels(modelRuntime: ModelRuntime): Promise<{
   models: AvailableModel[];
   selectedOnlyModels: AvailableModel[];
@@ -106,16 +138,19 @@ export async function listPiBridgeModels(modelRuntime: ModelRuntime): Promise<{
   await ensureNetworkRefresh(modelRuntime);
   const availableModels = await modelRuntime.getAvailable();
 
-  return buildPiAvailableModels({
-    models: availableModels.map((model) => ({
-      id: model.id,
-      input: [...model.input],
-      name: model.name,
-      provider: model.provider,
-      reasoning: model.reasoning,
-      supportedThinkingLevels: getSupportedThinkingLevels(model),
-    })),
-  });
+  const models: PiCatalogModel[] = [];
+  for (const model of availableModels) {
+    const catalogModel = toPiCatalogModel(model);
+    if (catalogModel) {
+      models.push(catalogModel);
+      continue;
+    }
+    process.stderr.write(
+      `pi bridge: skipped an incomplete model from provider "${String(model.provider)}"\n`,
+    );
+  }
+
+  return buildPiAvailableModels({ models });
 }
 
 /** @internal Test seam: reset the per-process refresh latch. */

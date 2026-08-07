@@ -84,9 +84,23 @@ function collectServiceErrors(services: AgentSessionServices): string[] {
   return [...new Set(errors)];
 }
 
-export async function createConfiguredPiServices(
+export interface LoadedPiServices {
+  /** Problems found in the user's Pi configuration. Empty when it is clean. */
+  configErrors: string[];
+  services: AgentSessionServices;
+}
+
+/**
+ * Build the Pi services and report configuration problems instead of throwing.
+ *
+ * Pi keeps every resource it did load when one extension, skill, prompt, or
+ * theme fails, so a caller that can work with a partial configuration should
+ * report the errors and continue. A caller that cannot must use
+ * {@link createConfiguredPiServices}.
+ */
+export async function loadConfiguredPiServices(
   options: CreateConfiguredPiServicesOptions,
-): Promise<AgentSessionServices> {
+): Promise<LoadedPiServices> {
   const cwd = resolve(options.cwd);
   const agentDir = resolve(options.agentDir ?? getAgentDir());
   const settingsManager = SettingsManager.create(cwd, agentDir, {
@@ -102,9 +116,16 @@ export async function createConfiguredPiServices(
     cwd,
     settingsManager,
   });
-  const errors = collectServiceErrors(services);
-  if (errors.length > 0) {
-    throw new Error(errors.join("\n"));
+  return { configErrors: collectServiceErrors(services), services };
+}
+
+/** Build the Pi services and fail on any configuration problem. */
+export async function createConfiguredPiServices(
+  options: CreateConfiguredPiServicesOptions,
+): Promise<AgentSessionServices> {
+  const { configErrors, services } = await loadConfiguredPiServices(options);
+  if (configErrors.length > 0) {
+    throw new Error(configErrors.join("\n"));
   }
   return services;
 }

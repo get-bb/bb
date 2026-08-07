@@ -1039,10 +1039,10 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  // Version 82 adds the nested provider route to model/list results so clients
+  // Version 83 adds the nested provider route to model/list results so clients
   // can disambiguate models without changing their friendly display names.
-  it("uses protocol version 82 for model route provider metadata", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(82);
+  it("uses protocol version 83 for model route provider metadata", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(83);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {

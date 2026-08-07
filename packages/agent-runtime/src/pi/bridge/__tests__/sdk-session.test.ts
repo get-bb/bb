@@ -449,6 +449,34 @@ describe("PiSdkSession", () => {
     );
   });
 
+  it("uses the sole authenticated provider for an ambiguous bare model id", async () => {
+    mockGetModel.mockReturnValue(undefined);
+    mockGetModels.mockReturnValue([
+      { id: "gpt-5.6-terra", provider: "azure-openai-responses" },
+      { id: "gpt-5.6-terra", provider: "openai" },
+      { id: "gpt-5.6-terra", provider: "openai-codex" },
+    ]);
+    mockHasConfiguredAuth.mockImplementation(
+      (provider: string) => provider === "openai-codex",
+    );
+    const session = new PiSdkSession(
+      {
+        cwd: "/tmp/project",
+        model: "gpt-5.6-terra",
+      },
+      vi.fn(),
+      vi.fn(),
+    );
+
+    await session.start();
+
+    expect(mockCreateAgentSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: { id: "gpt-5.6-terra", provider: "openai-codex" },
+      }),
+    );
+  });
+
   it("refuses to guess when two providers serve one bare model id", async () => {
     mockGetModel.mockReturnValue(undefined);
     mockGetModels.mockReturnValue([
