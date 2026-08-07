@@ -60,6 +60,7 @@ declare const appKeybindingOverridesSchema: z$1.ZodArray<z$1.ZodObject<{
         "pane.focus.8": "pane.focus.8";
         "thread.new": "thread.new";
         "thread.search": "thread.search";
+        "thread.rename": "thread.rename";
         "thread.previous": "thread.previous";
         "thread.next": "thread.next";
         "pane.focus.previous": "pane.focus.previous";
@@ -3068,8 +3069,8 @@ declare const environmentPullRequestResponseSchema: z$1.ZodDiscriminatedUnion<[z
         updatedAt: z$1.ZodString;
         checks: z$1.ZodObject<{
             state: z$1.ZodEnum<{
-                unknown: "unknown";
                 pending: "pending";
+                unknown: "unknown";
                 passing: "passing";
                 failing: "failing";
                 no_checks: "no_checks";
@@ -3172,8 +3173,8 @@ declare const environmentDiffFilesResponseSchema: z$1.ZodDiscriminatedUnion<[z$1
         path: z$1.ZodString;
         previousPath: z$1.ZodNullable<z$1.ZodString>;
         changeKind: z$1.ZodEnum<{
-            deleted: "deleted";
             added: "added";
+            deleted: "deleted";
             modified: "modified";
             renamed: "renamed";
             copied: "copied";
@@ -6681,6 +6682,7 @@ declare const systemConfigResponseSchema: z$1.ZodObject<{
         command: z$1.ZodEnum<{
             "thread.new": "thread.new";
             "thread.search": "thread.search";
+            "thread.rename": "thread.rename";
             "thread.previous": "thread.previous";
             "thread.next": "thread.next";
             "thread.jump.1": "thread.jump.1";
@@ -6773,6 +6775,7 @@ declare const systemConfigResponseSchema: z$1.ZodObject<{
         command: z$1.ZodEnum<{
             "thread.new": "thread.new";
             "thread.search": "thread.search";
+            "thread.rename": "thread.rename";
             "thread.previous": "thread.previous";
             "thread.next": "thread.next";
             "thread.jump.1": "thread.jump.1";
@@ -6824,14 +6827,6 @@ declare const systemConfigResponseSchema: z$1.ZodObject<{
             "question.select.9": "question.select.9";
         }>;
         desktopOnly: z$1.ZodBoolean;
-        shortcut: z$1.ZodObject<{
-            key: z$1.ZodString;
-            mod: z$1.ZodBoolean;
-            meta: z$1.ZodBoolean;
-            control: z$1.ZodBoolean;
-            alt: z$1.ZodBoolean;
-            shift: z$1.ZodBoolean;
-        }, z$1.core.$strict>;
         when: z$1.ZodObject<{
             all: z$1.ZodArray<z$1.ZodEnum<{
                 mainSurface: "mainSurface";
@@ -6860,11 +6855,20 @@ declare const systemConfigResponseSchema: z$1.ZodObject<{
                 macPlatform: "macPlatform";
             }>>;
         }, z$1.core.$strict>;
+        shortcut: z$1.ZodNullable<z$1.ZodObject<{
+            key: z$1.ZodString;
+            mod: z$1.ZodBoolean;
+            meta: z$1.ZodBoolean;
+            control: z$1.ZodBoolean;
+            alt: z$1.ZodBoolean;
+            shift: z$1.ZodBoolean;
+        }, z$1.core.$strict>>;
     }, z$1.core.$strict>>;
     keybindingOverrides: z$1.ZodArray<z$1.ZodObject<{
         command: z$1.ZodEnum<{
             "thread.new": "thread.new";
             "thread.search": "thread.search";
+            "thread.rename": "thread.rename";
             "thread.previous": "thread.previous";
             "thread.next": "thread.next";
             "thread.jump.1": "thread.jump.1";
@@ -7171,9 +7175,9 @@ declare const terminalOutputResponseSchema: z$1.ZodObject<{
 type TerminalOutputResponse = z$1.infer<typeof terminalOutputResponseSchema>;
 
 declare const timelineRowStatusSchema: z$1.ZodEnum<{
-    error: "error";
     pending: "pending";
     completed: "completed";
+    error: "error";
     interrupted: "interrupted";
 }>;
 type TimelineRowStatus = z$1.infer<typeof timelineRowStatusSchema>;
@@ -7327,9 +7331,9 @@ declare const timelineSystemRowSchema: z$1.ZodUnion<readonly [z$1.ZodObject<{
     title: z$1.ZodString;
     detail: z$1.ZodNullable<z$1.ZodString>;
     status: z$1.ZodNullable<z$1.ZodEnum<{
-        error: "error";
         pending: "pending";
         completed: "completed";
+        error: "error";
         interrupted: "interrupted";
     }>>;
     systemKind: z$1.ZodEnum<{
@@ -7349,9 +7353,9 @@ declare const timelineSystemRowSchema: z$1.ZodUnion<readonly [z$1.ZodObject<{
     title: z$1.ZodString;
     detail: z$1.ZodNullable<z$1.ZodString>;
     status: z$1.ZodNullable<z$1.ZodEnum<{
-        error: "error";
         pending: "pending";
         completed: "completed";
+        error: "error";
         interrupted: "interrupted";
     }>>;
     systemKind: z$1.ZodLiteral<"operation">;
@@ -7379,9 +7383,9 @@ declare const timelineSystemRowSchema: z$1.ZodUnion<readonly [z$1.ZodObject<{
     systemKind: z$1.ZodLiteral<"operation">;
     operationKind: z$1.ZodLiteral<"parent-change">;
     status: z$1.ZodEnum<{
-        error: "error";
         pending: "pending";
         completed: "completed";
+        error: "error";
         interrupted: "interrupted";
     }>;
     parentChange: z$1.ZodObject<{
@@ -7412,9 +7416,9 @@ declare const timelineCommandWorkRowSchema: z$1.ZodObject<{
     createdAt: z$1.ZodNumber;
     kind: z$1.ZodLiteral<"work">;
     status: z$1.ZodEnum<{
-        error: "error";
         pending: "pending";
         completed: "completed";
+        error: "error";
         interrupted: "interrupted";
     }>;
     workKind: z$1.ZodLiteral<"command">;
@@ -7459,9 +7463,9 @@ declare const timelineToolWorkRowSchema: z$1.ZodObject<{
     createdAt: z$1.ZodNumber;
     kind: z$1.ZodLiteral<"work">;
     status: z$1.ZodEnum<{
-        error: "error";
         pending: "pending";
         completed: "completed";
+        error: "error";
         interrupted: "interrupted";
     }>;
     workKind: z$1.ZodLiteral<"tool">;
@@ -7508,9 +7512,9 @@ declare const timelineFileChangeWorkRowSchema: z$1.ZodObject<{
     createdAt: z$1.ZodNumber;
     kind: z$1.ZodLiteral<"work">;
     status: z$1.ZodEnum<{
-        error: "error";
         pending: "pending";
         completed: "completed";
+        error: "error";
         interrupted: "interrupted";
     }>;
     workKind: z$1.ZodLiteral<"file-change">;
@@ -7543,9 +7547,9 @@ declare const timelineWebSearchWorkRowSchema: z$1.ZodObject<{
     createdAt: z$1.ZodNumber;
     kind: z$1.ZodLiteral<"work">;
     status: z$1.ZodEnum<{
-        error: "error";
         pending: "pending";
         completed: "completed";
+        error: "error";
         interrupted: "interrupted";
     }>;
     workKind: z$1.ZodLiteral<"web-search">;
@@ -7564,9 +7568,9 @@ declare const timelineWebFetchWorkRowSchema: z$1.ZodObject<{
     createdAt: z$1.ZodNumber;
     kind: z$1.ZodLiteral<"work">;
     status: z$1.ZodEnum<{
-        error: "error";
         pending: "pending";
         completed: "completed";
+        error: "error";
         interrupted: "interrupted";
     }>;
     workKind: z$1.ZodLiteral<"web-fetch">;
@@ -7587,9 +7591,9 @@ declare const timelineImageViewWorkRowSchema: z$1.ZodObject<{
     createdAt: z$1.ZodNumber;
     kind: z$1.ZodLiteral<"work">;
     status: z$1.ZodEnum<{
-        error: "error";
         pending: "pending";
         completed: "completed";
+        error: "error";
         interrupted: "interrupted";
     }>;
     workKind: z$1.ZodLiteral<"image-view">;
@@ -7608,9 +7612,9 @@ declare const timelineApprovalWorkRowSchema: z$1.ZodDiscriminatedUnion<[z$1.ZodO
     createdAt: z$1.ZodNumber;
     kind: z$1.ZodLiteral<"work">;
     status: z$1.ZodEnum<{
-        error: "error";
         pending: "pending";
         completed: "completed";
+        error: "error";
         interrupted: "interrupted";
     }>;
     workKind: z$1.ZodLiteral<"approval">;
@@ -7634,9 +7638,9 @@ declare const timelineApprovalWorkRowSchema: z$1.ZodDiscriminatedUnion<[z$1.ZodO
     createdAt: z$1.ZodNumber;
     kind: z$1.ZodLiteral<"work">;
     status: z$1.ZodEnum<{
-        error: "error";
         pending: "pending";
         completed: "completed";
+        error: "error";
         interrupted: "interrupted";
     }>;
     workKind: z$1.ZodLiteral<"approval">;
@@ -7670,9 +7674,9 @@ declare const timelineQuestionWorkRowSchema: z$1.ZodObject<{
     createdAt: z$1.ZodNumber;
     kind: z$1.ZodLiteral<"work">;
     status: z$1.ZodEnum<{
-        error: "error";
         pending: "pending";
         completed: "completed";
+        error: "error";
         interrupted: "interrupted";
     }>;
     workKind: z$1.ZodLiteral<"question">;
@@ -7731,9 +7735,9 @@ declare const timelineWorkflowWorkRowSchema: z$1.ZodObject<{
     createdAt: z$1.ZodNumber;
     kind: z$1.ZodLiteral<"work">;
     status: z$1.ZodEnum<{
-        error: "error";
         pending: "pending";
         completed: "completed";
+        error: "error";
         interrupted: "interrupted";
     }>;
     workKind: z$1.ZodLiteral<"workflow">;
@@ -9632,9 +9636,9 @@ declare const threadTimelineResponseSchema: z$1.ZodObject<{
         createdAt: z$1.ZodNumber;
         kind: z$1.ZodLiteral<"work">;
         status: z$1.ZodEnum<{
-            error: "error";
             pending: "pending";
             completed: "completed";
+            error: "error";
             interrupted: "interrupted";
         }>;
         workKind: z$1.ZodLiteral<"workflow">;
@@ -9706,9 +9710,9 @@ declare const threadTimelineResponseSchema: z$1.ZodObject<{
         createdAt: z$1.ZodNumber;
         kind: z$1.ZodLiteral<"work">;
         status: z$1.ZodEnum<{
-            error: "error";
             pending: "pending";
             completed: "completed";
+            error: "error";
             interrupted: "interrupted";
         }>;
         workKind: z$1.ZodLiteral<"workflow">;
