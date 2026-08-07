@@ -441,6 +441,10 @@ vi.mock("@/hooks/mutations/project-mutations", () => ({
 }));
 
 vi.mock("@/hooks/mutations/thread-runtime-mutations", () => ({
+  useCompactThread: () => ({
+    isPending: false,
+    mutateAsync: vi.fn(),
+  }),
   useCancelThreadPlan: () => ({
     isPending: false,
     mutate: mocks.cancelThreadPlanMutate,

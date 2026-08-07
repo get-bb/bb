@@ -186,6 +186,7 @@ describe("pi provider adapter", () => {
     const adapter = createPiProviderAdapter();
     expect(adapter.capabilities).toEqual({
       supportsArchive: false,
+      supportsManualCompaction: true,
       supportsRename: false,
       supportsServiceTier: false,
       supportsUserQuestion: false,
@@ -530,6 +531,21 @@ describe("pi provider adapter", () => {
     });
   });
 
+  it("buildCommand thread/compact maps to the bridge compact command", () => {
+    const adapter = createPiProviderAdapter();
+    expect(
+      adapter.buildCommandPlan({
+        type: "thread/compact",
+        threadId: "bb-t1",
+        providerThreadId: "pi-session-1",
+      }),
+    ).toEqual({
+      kind: "request",
+      method: "thread/compact",
+      params: { threadId: "pi-session-1" },
+    });
+  });
+
   it("buildCommand turn/start includes input", () => {
     const adapter = createPiProviderAdapter();
     const cmd = adapter.buildCommandPlan({
@@ -783,6 +799,50 @@ describe("pi provider adapter", () => {
         threadId: "",
         providerThreadId: "",
         scope: turnScope("turn-1"),
+      }),
+    );
+  });
+
+  it("translateEvent manual compaction owns a complete maintenance turn", () => {
+    const adapter = createPiProviderAdapter();
+    const context = { threadId: "bb-thread-1" };
+
+    const started = adapter.translateEvent(
+      {
+        type: "compaction_start",
+        reason: "manual",
+      } satisfies AgentSessionEvent,
+      context,
+    );
+    const completed = adapter.translateEvent(
+      {
+        type: "compaction_end",
+        reason: "manual",
+        result: undefined,
+        aborted: false,
+        willRetry: false,
+      } satisfies AgentSessionEvent,
+      context,
+    );
+
+    expect(started).toContainEqual(
+      expect.objectContaining({
+        type: "turn/started",
+        threadId: "",
+        scope: turnScope("turn-1"),
+      }),
+    );
+    expect(completed).toContainEqual(
+      expect.objectContaining({
+        type: "thread/compacted",
+        scope: turnScope("turn-1"),
+      }),
+    );
+    expect(completed).toContainEqual(
+      expect.objectContaining({
+        type: "turn/completed",
+        scope: turnScope("turn-1"),
+        status: "completed",
       }),
     );
   });

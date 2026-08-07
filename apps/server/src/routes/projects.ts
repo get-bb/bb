@@ -47,6 +47,7 @@ import {
 } from "../services/lib/entity-lookup.js";
 import { PROMPT_HISTORY_ENTRY_LIMIT } from "@bb/domain";
 import { resolveCreateThreadExecutionDefaults } from "../services/threads/thread-default-policy.js";
+import { providerSupportsManualCompaction } from "../services/threads/thread-commands.js";
 import { resolveProjectCreateDefaultExecutionPlan } from "../services/threads/thread-execution-plan.js";
 import { toThreadListEntryResponses } from "../services/threads/thread-runtime-display.js";
 import { callHostRetryableOnlineRpc } from "../services/hosts/online-rpc.js";
@@ -732,6 +733,10 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     return context.json(
       buildCommandListResponse({
         commands: result.commands,
+        includeBuiltinCompact: providerSupportsManualCompaction(
+          deps,
+          query.provider,
+        ),
         skillCatalog,
       }),
     );

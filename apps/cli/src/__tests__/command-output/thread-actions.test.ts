@@ -400,6 +400,18 @@ describe("bb thread action command output", () => {
     expect(stopPost).toHaveBeenCalledTimes(1);
   });
 
+  it("bb thread compact calls the manual compaction endpoint", async () => {
+    const post = vi.fn(async () => ({ ok: true }));
+    stubServerApi({ "v1.threads.:id.compact.$post": post });
+
+    await runCommand(["thread", "compact", "thread-compact"], register);
+
+    expect(post).toHaveBeenCalledWith({ param: { id: "thread-compact" } });
+    expect(collectLogLines(vi.mocked(console.log))).toContain(
+      "Thread thread-compact context compacted",
+    );
+  });
+
   it.each([
     ["cancel-plan", "plan.cancel", "exited Plan mode"],
     ["clear-goal", "goal.clear", "cleared its Goal"],

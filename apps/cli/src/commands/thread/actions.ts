@@ -457,6 +457,21 @@ export function registerActionsCommands(
     );
 
   parent
+    .command("compact [id]")
+    .description("Compact an idle or errored thread's provider context")
+    .option("--self", "Target the current thread (from BB_THREAD_ID)")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (id: string | undefined, opts: ThreadStopCommandOptions) => {
+        const threadId = requireThreadIdOrSelf(id, opts);
+        const sdk = createCliBbSdk(getUrl());
+        await sdk.threads.compact({ threadId });
+        if (outputJson(opts, { ok: true, threadId })) return;
+        console.log(`Thread ${threadId} context compacted`);
+      }),
+    );
+
+  parent
     .command("cancel-plan [id]")
     .description("Ask the provider to exit the active Plan mode")
     .option("--self", "Target the current thread (from BB_THREAD_ID)")

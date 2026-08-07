@@ -218,6 +218,12 @@ const piCommandSchema = z.discriminatedUnion("method", [
       threadId: z.string(),
     }),
   }),
+  z.object({
+    method: z.literal("thread/compact"),
+    params: z.object({
+      threadId: z.string(),
+    }),
+  }),
 ]);
 
 export type PiCommand = z.infer<typeof piCommandSchema>;
@@ -399,7 +405,7 @@ function createOnPiEvent(
       method: "sdk/message",
       params: { threadId: args.threadId, message: event },
     });
-    if (event.type === "agent_end") {
+    if (event.type === "agent_end" || event.type === "compaction_end") {
       emitContextWindowUsage(args.threadId);
     }
   };
@@ -600,6 +606,9 @@ async function handleRequest(
     case "thread/stop":
       sendResult(request.id, await handleThreadStop(request.params));
       break;
+    case "thread/compact":
+      await handleThreadCompact(request.id, request.params);
+      break;
   }
 }
 
@@ -615,6 +624,10 @@ type ThreadForkParams = Extract<PiCommand, { method: "thread/fork" }>["params"];
 type TurnStartParams = Extract<PiCommand, { method: "turn/start" }>["params"];
 type TurnSteerParams = Extract<PiCommand, { method: "turn/steer" }>["params"];
 type ThreadStopParams = Extract<PiCommand, { method: "thread/stop" }>["params"];
+type ThreadCompactParams = Extract<
+  PiCommand,
+  { method: "thread/compact" }
+>["params"];
 type PiSessionParams =
   | ThreadStartParams
   | ThreadResumeParams
@@ -852,6 +865,28 @@ async function handleThreadStop(
     threadId: params.threadId,
   });
   return { ok: true };
+}
+
+async function handleThreadCompact(
+  id: string | number,
+  params: ThreadCompactParams,
+): Promise<void> {
+  const threadSession = sessions.get(params.threadId);
+  if (!threadSession || threadSession.stopping) {
+    sendError(id, -32000, "No active pi session");
+    return;
+  }
+  if (threadSession.session.getIsProcessing()) {
+    sendError(id, -32000, "Cannot compact context while a turn is active");
+    return;
+  }
+  try {
+    await threadSession.session.compact();
+    sendResult(id, { threadId: params.threadId });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    sendError(id, -32000, message);
+  }
 }
 
 interface ExtractedInput {

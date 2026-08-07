@@ -213,6 +213,32 @@ describe("createAgentRuntime command contracts", () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
+  it("dispatches manual compaction as a thread control without a user turn", async () => {
+    const events: ThreadEvent[] = [];
+    const runtime = createContractRuntime({
+      onEvent: (event) => events.push(event),
+      scriptPath,
+      workspacePath: tmpDir,
+    });
+
+    try {
+      await runtime.startThread({
+        environmentId: "env-1",
+        threadId: "t-compact",
+        projectId: "p1",
+        providerId: "fake",
+        options: fullRuntimeOptions,
+      });
+
+      await expect(
+        runtime.compactThread({ threadId: "t-compact" }),
+      ).resolves.toBeUndefined();
+      expect(events.some((event) => event.type === "turn/started")).toBe(false);
+    } finally {
+      await runtime.shutdown();
+    }
+  });
+
   it("passes runtime workspace-write roots to adapter construction", async () => {
     let capturedAdditionalWorkspaceWriteRoots: readonly string[] | undefined;
     const runtime = createAgentRuntimeWithAdapters({

@@ -1,5 +1,30 @@
 import { describe, expect, it } from "vitest";
-import { providerInfoSchema } from "../src/provider-types.js";
+import {
+  acpManualCompactionSchema,
+  providerInfoSchema,
+} from "../src/provider-types.js";
+
+describe("ACP manual compaction schema", () => {
+  it("accepts prompt and summarize-and-reseed strategies", () => {
+    expect(
+      acpManualCompactionSchema.parse({
+        method: "prompt",
+        prompt: "/compact",
+      }),
+    ).toEqual({ method: "prompt", prompt: "/compact" });
+    expect(
+      acpManualCompactionSchema.parse({
+        method: "summarize-and-reseed",
+        summaryPrompt: "Summarize.",
+        reseedPrompt: "Restore.",
+      }),
+    ).toEqual({
+      method: "summarize-and-reseed",
+      summaryPrompt: "Summarize.",
+      reseedPrompt: "Restore.",
+    });
+  });
+});
 
 describe("provider info schema", () => {
   const baseProviderInfo = {
@@ -8,6 +33,7 @@ describe("provider info schema", () => {
     logoUrl: null,
     capabilities: {
       supportsArchive: true,
+      supportsManualCompaction: true,
       supportsRename: true,
       supportsServiceTier: true,
       supportsUserQuestion: false,

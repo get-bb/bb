@@ -25,7 +25,11 @@ import {
   type SendMessageRequest,
 } from "@bb/server-contract";
 import type { Hono } from "hono";
-import type { Thread, ThreadQueuedMessage } from "@bb/domain";
+import {
+  isStandaloneBuiltinPromptCommand,
+  type Thread,
+  type ThreadQueuedMessage,
+} from "@bb/domain";
 import type { AppDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
 import { toThreadQueuedMessage } from "../../services/threads/thread-queued-messages.js";
@@ -52,6 +56,7 @@ import {
   buildThreadStopCommand,
   dispatchThreadUnarchiveCommand,
   prepareTurnSubmitCommandPayload,
+  providerSupportsManualCompaction,
 } from "../../services/threads/thread-commands.js";
 import { getLastProviderThreadId } from "../../services/threads/thread-events.js";
 import { requestThreadStopForCurrentState } from "../../services/threads/thread-lifecycle.js";
@@ -117,6 +122,61 @@ function toQueuedMessageOrderResponse(
         "Queued messages with different execution options cannot be grouped",
       );
   }
+}
+
+async function compactThreadContext(
+  deps: AppDeps,
+  thread: Thread,
+): Promise<void> {
+  ensureThreadIsWritable(thread);
+  if (!providerSupportsManualCompaction(deps, thread.providerId)) {
+    throw new ApiError(
+      409,
+      "invalid_request",
+      `Provider "${thread.providerId}" does not support manual context compaction`,
+    );
+  }
+  if (
+    thread.status === "starting" ||
+    thread.status === "active" ||
+    thread.status === "stopping"
+  ) {
+    throw new ApiError(
+      409,
+      "invalid_request",
+      "Context can only be compacted while the thread is idle or errored",
+    );
+  }
+
+  const environment = await requireThreadCommandEnvironment(deps, { thread });
+  const execution = await buildExecutionOptions(
+    deps,
+    {},
+    { threadId: thread.id },
+    "client/turn/requested",
+  );
+  const preparedRuntimeCommand = await prepareTurnSubmitCommandPayload(deps, {
+    environment,
+    execution,
+    input: [],
+    permissionEscalation: "deny",
+    target: { mode: "auto", expectedTurnId: null },
+    thread,
+  });
+  await runLiveHostCommand(deps, {
+    command: {
+      type: "thread.compact",
+      environmentId: environment.id,
+      threadId: thread.id,
+      options: preparedRuntimeCommand.options,
+      resumeContext: preparedRuntimeCommand.resumeContext,
+      ...(preparedRuntimeCommand.acpLaunchSpec !== undefined
+        ? { acpLaunchSpec: preparedRuntimeCommand.acpLaunchSpec }
+        : {}),
+    },
+    hostId: environment.hostId,
+    timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
+  });
 }
 
 function toQueuedMessageGroupBoundaryResponse(
@@ -278,6 +338,15 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
 
   post(routes.send, async (context, payload) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
+    if (
+      isStandaloneBuiltinPromptCommand(payload.input, {
+        trigger: "/",
+        name: "compact",
+      })
+    ) {
+      await compactThreadContext(deps, thread);
+      return context.json({ ok: true });
+    }
     if (payload.mode === "queue-if-active" && thread.status === "active") {
       ensureThreadIsNotAwaitingUserInteraction(deps, thread.id);
       await createQueuedMessageForThread(deps, {
@@ -441,6 +510,12 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
             thread,
           });
     requestThreadStopForCurrentState(deps, thread, environment);
+    return context.json({ ok: true });
+  });
+
+  post(routes.compact, async (context) => {
+    const thread = requirePublicThread(deps.db, context.req.param("id"));
+    await compactThreadContext(deps, thread);
     return context.json({ ok: true });
   });
 

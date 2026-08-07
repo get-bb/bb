@@ -19,6 +19,7 @@ export const KNOWN_ACP_AGENTS: readonly KnownAcpAgent[] = [
     command: "opencode",
     args: ["acp"],
     env: {},
+    manualCompaction: { method: "prompt", prompt: "/compact" },
     executableName: "opencode",
   },
   {
@@ -94,6 +95,7 @@ export function buildKnownAcpProviderInfo(agent: KnownAcpAgent): ProviderInfo {
     id: agent.id,
     displayName: agent.displayName,
     logoUrl: null,
+    supportsManualCompaction: agent.manualCompaction !== undefined,
   });
 }
 

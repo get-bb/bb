@@ -163,6 +163,7 @@ Messaging:
   bb thread retry [id]                     Continue a subscription-limited turn
     --self                                 Target current thread
     --request-id <id>                      Require an exact failed request id
+  bb thread compact [id]                   Compact an idle or errored thread's provider context
   bb thread cancel-plan [id]               Exit the provider's active Plan mode
   bb thread clear-goal [id]                Clear the provider's active Goal
     --self                                 Target current thread

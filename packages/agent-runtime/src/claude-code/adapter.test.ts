@@ -168,6 +168,7 @@ describe("claude-code provider adapter", () => {
     const adapter = createClaudeCodeProviderAdapter();
     expect(adapter.capabilities).toEqual({
       supportsArchive: false,
+      supportsManualCompaction: true,
       supportsRename: false,
       supportsServiceTier: false,
       supportsUserQuestion: true,
@@ -926,6 +927,21 @@ describe("claude-code provider adapter", () => {
       params: {
         threadId: "bb-thread-1",
       },
+    });
+  });
+
+  it("buildCommand thread/compact maps to the bridge compact command", () => {
+    const adapter = createClaudeCodeProviderAdapter();
+    expect(
+      adapter.buildCommandPlan({
+        type: "thread/compact",
+        threadId: "bb-thread-1",
+        providerThreadId: "claude-session-1",
+      }),
+    ).toEqual({
+      kind: "request",
+      method: "thread/compact",
+      params: { threadId: "bb-thread-1" },
     });
   });
 

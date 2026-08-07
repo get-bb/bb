@@ -159,6 +159,12 @@ const claudeCodeCommandSchema = z.discriminatedUnion("method", [
       threadId: z.string(),
     }),
   }),
+  z.object({
+    method: z.literal("thread/compact"),
+    params: z.object({
+      threadId: z.string(),
+    }),
+  }),
 ]);
 
 type ClaudeCodeCommand = z.infer<typeof claudeCodeCommandSchema>;

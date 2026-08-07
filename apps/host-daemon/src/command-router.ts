@@ -686,6 +686,7 @@ export class CommandRouter {
           ? this.getInFlightThreadStopProviderLane(command)
           : null;
       }
+      case "thread.compact":
       case "thread.goal.clear": {
         const session = this.options.runtimeManager
           .get(command.environmentId)

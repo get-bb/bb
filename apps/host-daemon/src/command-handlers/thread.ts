@@ -19,6 +19,7 @@ import { getProviderCliStatusForProvider } from "../provider-cli-health.js";
 type TurnSubmitCommand = CommandOf<"turn.submit">;
 type ExistingThreadRuntimeCommand =
   | TurnSubmitCommand
+  | CommandOf<"thread.compact">
   | CommandOf<"thread.goal.clear">;
 
 interface ResumeThreadRuntimeIfMissingArgs {

@@ -3199,6 +3199,37 @@ describe("bridge", () => {
     }
   });
 
+  it("forwards manual compaction as Claude's local slash control", async () => {
+    const threadId = "thread-compact";
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      queries.push(query);
+      return query;
+    });
+
+    try {
+      await startBridgeThread({ bridge, threadId });
+
+      bridge.sendRequest(2, "thread/compact", { threadId });
+      await bridge.flushWork();
+
+      expect(bridge.hasResponse(2)).toBe(false);
+      await expect(readNextPromptText(getLatestQueryCall())).resolves.toBe(
+        "/compact",
+      );
+      await expect(bridge.waitForResponse(2)).resolves.toMatchObject({
+        result: { threadId },
+      });
+
+      await stopBridgeThread({ bridge, queries, threadId });
+    } finally {
+      queries[0]?.finish();
+      bridge.restore();
+    }
+  });
+
   it("acknowledges grouped turn steer input after queuing SDK user messages", async () => {
     const threadId = "thread-grouped-steer-queued";
     const bridge = createBridgeJsonRpcTestHarness(handleLine);

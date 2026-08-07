@@ -53,4 +53,21 @@ describe("fingerprintAcpLaunchSpec", () => {
       fingerprintAcpLaunchSpec(fullAccess),
     );
   });
+
+  it("changes when manual compaction support changes", () => {
+    const base: HostDaemonAcpLaunchSpec = {
+      displayName: "Custom ACP",
+      command: "custom-agent",
+      args: ["agent", "stdio"],
+      env: {},
+    };
+    const compacting: HostDaemonAcpLaunchSpec = {
+      ...base,
+      manualCompaction: { method: "prompt", prompt: "/compact" },
+    };
+
+    expect(fingerprintAcpLaunchSpec(base)).not.toBe(
+      fingerprintAcpLaunchSpec(compacting),
+    );
+  });
 });

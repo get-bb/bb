@@ -356,6 +356,53 @@ function isSelectedPromptCommandMention(
   );
 }
 
+function isSelectedBuiltinPromptCommandMention(
+  mention: PromptTextMention,
+  selector: PromptCommandSelector,
+): boolean {
+  return (
+    isSelectedPromptCommandMention(mention, selector) &&
+    mention.resource.kind === "command" &&
+    mention.resource.source === "command" &&
+    mention.resource.origin === "builtin"
+  );
+}
+
+/**
+ * Whether input consists solely of one selected built-in command mention.
+ * Raw matching text and project/user commands intentionally do not qualify.
+ */
+export function isStandaloneBuiltinPromptCommand(
+  input: readonly PromptInput[],
+  selector: PromptCommandSelector,
+): boolean {
+  let mentionCount = 0;
+  for (const item of input) {
+    if (item.type !== "text") {
+      return false;
+    }
+    const ranges = item.mentions
+      .filter((mention) =>
+        isSelectedBuiltinPromptCommandMention(mention, selector),
+      )
+      .map((mention) => ({ start: mention.start, end: mention.end }))
+      .sort((left, right) => left.start - right.start || left.end - right.end);
+    mentionCount += ranges.length;
+
+    let remainingText = "";
+    let cursor = 0;
+    for (const range of ranges) {
+      remainingText += item.text.slice(cursor, range.start);
+      cursor = range.end;
+    }
+    remainingText += item.text.slice(cursor);
+    if (remainingText.trim() !== "") {
+      return false;
+    }
+  }
+  return mentionCount === 1;
+}
+
 export function promptInputHasCommandMention(
   input: readonly PromptInput[],
   selector: PromptCommandSelector,

@@ -114,6 +114,7 @@ export type ThreadRateLimitRecoveryResult = ProviderRateLimitRecoveryStatus;
 export type ThreadContinueAfterRateLimitResult =
   ContinueAfterProviderRateLimitResponse;
 export type ThreadStopResult = { ok: true };
+export type ThreadCompactResult = { ok: true };
 export type ThreadBannerActionResult = { ok: true };
 export type ThreadUnarchiveResult = { ok: true };
 export type ThreadArchiveAllResult = ThreadArchiveAllResponse;
@@ -420,6 +421,7 @@ export interface ThreadsArea {
   continueAfterRateLimit(
     args: ThreadContinueAfterRateLimitArgs,
   ): Promise<ThreadContinueAfterRateLimitResult>;
+  compact(args: ThreadActionArgs): Promise<ThreadCompactResult>;
   cancelPlan(args: ThreadActionArgs): Promise<ThreadBannerActionResult>;
   clearGoal(args: ThreadActionArgs): Promise<ThreadBannerActionResult>;
   conversationOutline(
@@ -1052,6 +1054,14 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
     async stop(input) {
       await transport.readVoid(
         transport.api.v1.threads[":id"].stop.$post({
+          param: { id: input.threadId },
+        }),
+      );
+      return { ok: true };
+    },
+    async compact(input) {
+      await transport.readVoid(
+        transport.api.v1.threads[":id"].compact.$post({
           param: { id: input.threadId },
         }),
       );

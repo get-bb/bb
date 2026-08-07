@@ -27,6 +27,7 @@ import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import {
+  type AcpManualCompaction,
   reasoningEffortsForLevels,
   type AvailableModel,
   type PromptInput,
@@ -52,6 +53,7 @@ import {
   acpPermissionResponseSchema,
   type AcpBridgeAgentCommand,
   type AcpBridgeCommand,
+  type AcpBridgeModelSelection,
   type AcpBridgeNativeReasoning,
   type AcpBridgePermissionCli,
   type AcpBridgeReasoningCli,
@@ -61,7 +63,9 @@ import {
 import {
   ACP_PROTOCOL_VERSION,
   type AcpConfigOption,
+  acpAgentMessageChunkUpdateSchema,
   acpConfigStateResultSchema,
+  extractAcpContentText,
   acpInitializeResultSchema,
   acpPromptResultSchema,
   acpReadTextFileParamsSchema,
@@ -124,8 +128,15 @@ interface AcpThreadSession {
   supportsImageInput: boolean;
   policy: AcpSessionPolicy;
   cwd: string;
+  instructions: string | undefined;
   pendingInstructions: string | undefined;
+  modelSelection: AcpBridgeModelSelection | undefined;
+  nativeReasoning: AcpBridgeNativeReasoning | undefined;
+  mcpServers: AcpMcpServerConfig[];
   promptActive: boolean;
+  activePromptSessionId: string | undefined;
+  compactionActive: boolean;
+  compactionOutput: string[] | null;
   queuedInputs: PromptInput[][];
   loading: boolean;
   loadingSessionId: string | undefined;
@@ -388,10 +399,7 @@ const AUTH_REQUIRED_MODEL_LIST_ERROR_MESSAGE =
 function reasoningSupportFromCli(
   reasoningCli: AcpBridgeReasoningCli | undefined,
 ):
-  | Pick<
-      AvailableModel,
-      "supportedReasoningEfforts" | "defaultReasoningEffort"
-    >
+  | Pick<AvailableModel, "supportedReasoningEfforts" | "defaultReasoningEffort">
   | undefined {
   if (reasoningCli === undefined) {
     return undefined;
@@ -413,10 +421,7 @@ function reasoningSupportFromCli(
 function reasoningSupportFromNativeHint(
   nativeReasoning: AcpBridgeNativeReasoning | undefined,
 ):
-  | Pick<
-      AvailableModel,
-      "supportedReasoningEfforts" | "defaultReasoningEffort"
-    >
+  | Pick<AvailableModel, "supportedReasoningEfforts" | "defaultReasoningEffort">
   | undefined {
   if (nativeReasoning === undefined) {
     return undefined;
@@ -509,8 +514,7 @@ function nativeReasoningLevelToValue(args: {
   nativeReasoning: AcpBridgeNativeReasoning;
   reasoningLevel: ReasoningLevel;
 }): string | undefined {
-  const override =
-    args.nativeReasoning.levelValues?.[args.reasoningLevel];
+  const override = args.nativeReasoning.levelValues?.[args.reasoningLevel];
   if (override !== undefined) {
     return override;
   }
@@ -575,7 +579,10 @@ function applyPermissionCliArgs(
   permissionCli: AcpBridgePermissionCli | undefined,
   permissionMode: AcpSessionPolicy["permissionMode"],
 ): string[] {
-  const permissionArgs = permissionCliArgsForMode(permissionCli, permissionMode);
+  const permissionArgs = permissionCliArgsForMode(
+    permissionCli,
+    permissionMode,
+  );
   if (permissionArgs.length === 0) {
     return [...agentArgs];
   }
@@ -1262,7 +1269,7 @@ function handlePermissionRequest(
     return;
   }
 
-  if (session.stopping) {
+  if (session.stopping || session.compactionActive) {
     responder.result({ outcome: { outcome: "cancelled" } });
     return;
   }
@@ -1509,8 +1516,15 @@ async function startAgentSession(
       workspaceWriteRoots: params.workspaceWriteRoots,
     },
     cwd: params.cwd,
+    instructions: params.instructions,
     pendingInstructions: params.instructions,
+    modelSelection: params.modelSelection,
+    nativeReasoning: params.nativeReasoning,
+    mcpServers: [],
     promptActive: false,
+    activePromptSessionId: undefined,
+    compactionActive: false,
+    compactionOutput: null,
     queuedInputs: [],
     loading: false,
     loadingSessionId: undefined,
@@ -1543,6 +1557,7 @@ async function startAgentSession(
     const supportsLoadSession =
       initializeResult.agentCapabilities?.loadSession ?? false;
     const mcpServers = await buildSessionMcpServers(params);
+    session.mcpServers = mcpServers;
 
     let sessionId: string | undefined;
     let loadedConfigOptions: readonly AcpConfigOption[] | undefined;
@@ -1643,7 +1658,7 @@ async function stopSession(session: AcpThreadSession): Promise<void> {
 
   if (session.promptActive && !session.connection.exited) {
     session.connection.notify("session/cancel", {
-      sessionId: session.providerThreadId,
+      sessionId: session.activePromptSessionId ?? session.providerThreadId,
     });
     if (session.turnSettled) {
       await Promise.race([
@@ -1672,6 +1687,7 @@ function runTurn(session: AcpThreadSession, firstInput: PromptInput[]): void {
     for (;;) {
       let stopReason: z.infer<typeof acpStopReasonSchema>;
       try {
+        session.activePromptSessionId = session.providerThreadId;
         const result = await session.connection.request({
           method: "session/prompt",
           params: {
@@ -1683,6 +1699,7 @@ function runTurn(session: AcpThreadSession, firstInput: PromptInput[]): void {
         stopReason = result.stopReason;
       } catch (error) {
         session.promptActive = false;
+        session.activePromptSessionId = undefined;
         session.queuedInputs = [];
         // An exited agent already produced an error notification from the
         // connection's exit handler; only report in-protocol prompt failures.
@@ -1705,6 +1722,7 @@ function runTurn(session: AcpThreadSession, firstInput: PromptInput[]): void {
       }
 
       session.promptActive = false;
+      session.activePromptSessionId = undefined;
       session.queuedInputs = [];
       sendNotification(ACP_TURN_COMPLETED_METHOD, {
         threadId: session.bbThreadId,
@@ -1713,6 +1731,134 @@ function runTurn(session: AcpThreadSession, firstInput: PromptInput[]): void {
       return;
     }
   })();
+}
+
+async function runCompactionPrompt(
+  session: AcpThreadSession,
+  args: {
+    captureOutput: boolean;
+    prompt: string;
+    sessionId: string;
+  },
+): Promise<string> {
+  session.activePromptSessionId = args.sessionId;
+  session.compactionOutput = args.captureOutput ? [] : null;
+  const request = session.connection.request({
+    method: "session/prompt",
+    params: {
+      sessionId: args.sessionId,
+      prompt: [{ type: "text", text: args.prompt }],
+    },
+    resultSchema: acpPromptResultSchema,
+  });
+  session.turnSettled = request.then(
+    () => undefined,
+    () => undefined,
+  );
+
+  try {
+    const result = await request;
+    if (result.stopReason === "cancelled") {
+      throw new Error("ACP context compaction was cancelled");
+    }
+    return session.compactionOutput?.join("").trim() ?? "";
+  } finally {
+    session.activePromptSessionId = undefined;
+    session.compactionOutput = null;
+    session.turnSettled = undefined;
+  }
+}
+
+function buildCompactionReseedPrompt(
+  session: AcpThreadSession,
+  reseedPrompt: string,
+  summary: string,
+): string {
+  return [
+    ...(session.instructions
+      ? [
+          `<system_instructions>\n${session.instructions}\n</system_instructions>`,
+        ]
+      : []),
+    reseedPrompt,
+    `<compacted_context>\n${summary}\n</compacted_context>`,
+  ].join("\n\n");
+}
+
+async function compactSession(
+  session: AcpThreadSession,
+  compaction: AcpManualCompaction,
+): Promise<void> {
+  if (session.promptActive) {
+    throw new Error("Cannot compact context while an ACP turn is active");
+  }
+
+  session.promptActive = true;
+  session.compactionActive = true;
+
+  try {
+    if (compaction.method === "prompt") {
+      await runCompactionPrompt(session, {
+        captureOutput: false,
+        prompt: compaction.prompt,
+        sessionId: session.providerThreadId,
+      });
+      return;
+    }
+
+    const summary = await runCompactionPrompt(session, {
+      captureOutput: true,
+      prompt: compaction.summaryPrompt,
+      sessionId: session.providerThreadId,
+    });
+    if (summary.length === 0) {
+      throw new Error("ACP agent returned an empty compaction summary");
+    }
+
+    const newSession = await session.connection.request({
+      method: "session/new",
+      params: { cwd: session.cwd, mcpServers: session.mcpServers },
+      resultSchema: acpSessionNewResultSchema,
+    });
+    await selectAcpNativeModel({
+      connection: session.connection,
+      sessionId: newSession.sessionId,
+      configOptions: newSession.configOptions,
+      models: newSession.models,
+      modelSelection: session.modelSelection,
+      nativeReasoning: session.nativeReasoning,
+    });
+    await runCompactionPrompt(session, {
+      captureOutput: false,
+      prompt: buildCompactionReseedPrompt(
+        session,
+        compaction.reseedPrompt,
+        summary,
+      ),
+      sessionId: newSession.sessionId,
+    });
+
+    const previousProviderThreadId = session.providerThreadId;
+    if (
+      bbThreadIdByProviderThreadId.get(previousProviderThreadId) ===
+      session.bbThreadId
+    ) {
+      bbThreadIdByProviderThreadId.delete(previousProviderThreadId);
+    }
+    session.providerThreadId = newSession.sessionId;
+    session.pendingInstructions = undefined;
+    bbThreadIdByProviderThreadId.set(newSession.sessionId, session.bbThreadId);
+    sendNotification("thread/identity", {
+      threadId: session.bbThreadId,
+      providerThreadId: newSession.sessionId,
+    });
+  } finally {
+    session.compactionActive = false;
+    session.promptActive = false;
+    session.activePromptSessionId = undefined;
+    session.compactionOutput = null;
+    session.turnSettled = undefined;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1763,6 +1909,20 @@ function handleAgentNotification(
       const usageUpdate = acpUsageUpdateSchema.safeParse(parsed.data.update);
       if (usageUpdate.success) {
         session.pendingLoadUsageUpdate = usageUpdate.data;
+      }
+    }
+    return;
+  }
+  if (session.compactionActive) {
+    if (session.compactionOutput !== null) {
+      const messageUpdate = acpAgentMessageChunkUpdateSchema.safeParse(
+        parsed.data.update,
+      );
+      const text = extractAcpContentText(
+        messageUpdate.success ? messageUpdate.data.content : undefined,
+      );
+      if (text !== undefined) {
+        session.compactionOutput.push(text);
       }
     }
     return;
@@ -1905,6 +2065,25 @@ async function handleRequest(
         await stopSession(session);
       }
       sendResult(request.id, { ok: true });
+      return;
+    }
+
+    case "thread/compact": {
+      const session = getSessionByProviderThreadId(request.params.threadId);
+      if (!session || session.stopping) {
+        sendError(request.id, -32000, "No active ACP session");
+        return;
+      }
+      try {
+        await compactSession(session, request.params.compaction);
+        sendResult(request.id, { threadId: request.params.threadId });
+      } catch (error) {
+        sendError(
+          request.id,
+          -32000,
+          error instanceof Error ? error.message : String(error),
+        );
+      }
       return;
     }
   }

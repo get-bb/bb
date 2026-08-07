@@ -544,6 +544,57 @@ describe("public project command typeahead route", () => {
     });
   });
 
+  it("advertises compact only for ACP agents with a declared strategy", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-commands-opencode",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/opencode-commands-env",
+      });
+      registerCommandRpc(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        commands: [],
+      });
+
+      const opencodeResponse = await harness.app.request(
+        `/api/v1/projects/${project.id}/commands?provider=acp-opencode&environmentId=${environment.id}`,
+      );
+      expect(opencodeResponse.status).toBe(200);
+      expect(
+        commandListResponseSchema
+          .parse(await readJson(opencodeResponse))
+          .commands.map((command) => command.name),
+      ).toEqual(["compact"]);
+
+      const cursorResponse = await harness.app.request(
+        `/api/v1/projects/${project.id}/commands?provider=acp-cursor&environmentId=${environment.id}`,
+      );
+      expect(cursorResponse.status).toBe(200);
+      expect(
+        commandListResponseSchema
+          .parse(await readJson(cursorResponse))
+          .commands.map((command) => command.name),
+      ).toEqual(["compact"]);
+
+      const grokResponse = await harness.app.request(
+        `/api/v1/projects/${project.id}/commands?provider=acp-grok&environmentId=${environment.id}`,
+      );
+      expect(grokResponse.status).toBe(200);
+      expect(
+        commandListResponseSchema
+          .parse(await readJson(grokResponse))
+          .commands.map((command) => command.name),
+      ).toEqual([]);
+    });
+  });
+
   it("falls back to the project source (cwd) with no environmentId and returns user-origin entries", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {

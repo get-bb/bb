@@ -58,6 +58,7 @@ function executionOptionsResponse(): SystemExecutionOptionsResponse {
         ],
         capabilities: {
           supportsArchive: true,
+          supportsManualCompaction: true,
           supportsRename: true,
           supportsServiceTier: true,
           supportsUserQuestion: true,
@@ -73,6 +74,7 @@ function executionOptionsResponse(): SystemExecutionOptionsResponse {
         composerActions: [{ kind: "skills", trigger: "/" }],
         capabilities: {
           supportsArchive: true,
+          supportsManualCompaction: true,
           supportsRename: true,
           supportsServiceTier: true,
           supportsUserQuestion: true,
@@ -124,6 +126,7 @@ function claudeExecutionOptionsResponse(): SystemExecutionOptionsResponse {
         composerActions: [],
         capabilities: {
           supportsArchive: true,
+          supportsManualCompaction: true,
           supportsRename: true,
           supportsServiceTier: true,
           supportsUserQuestion: true,

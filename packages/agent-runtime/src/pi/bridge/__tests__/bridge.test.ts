@@ -118,6 +118,7 @@ const originalPiBridgeSessionDir = process.env[PI_BRIDGE_SESSION_DIR_ENV];
 
 interface ControlledPiAgentSession {
   abort: ReturnType<typeof vi.fn>;
+  compact: ReturnType<typeof vi.fn>;
   dispose: ReturnType<typeof vi.fn>;
   emit(event: AgentSessionEvent): void;
   finishAbort(): void;
@@ -140,6 +141,7 @@ function createControlledPiAgentSession(): ControlledPiAgentSession {
   );
   return {
     abort,
+    compact: vi.fn(async () => undefined),
     dispose: vi.fn(),
     emit(event: AgentSessionEvent): void {
       for (const listener of [...listeners]) {
@@ -605,6 +607,33 @@ describe("pi bridge", () => {
         result: { ok: true },
       });
       expect(sessions[0]?.dispose).toHaveBeenCalledTimes(1);
+    } finally {
+      bridge.restore();
+    }
+  });
+
+  it("compacts an idle Pi SDK session without submitting a prompt", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const session = createControlledPiAgentSession();
+    mockCreateAgentSession.mockResolvedValue({ session });
+
+    try {
+      bridge.sendRequest(1, "thread/start", {
+        cwd: "/tmp/worktree",
+        threadId: "thread-compact",
+      });
+      await bridge.waitForResponse(1);
+
+      bridge.sendRequest(2, "thread/compact", {
+        threadId: "thread-compact",
+      });
+
+      await expect(bridge.waitForResponse(2)).resolves.toMatchObject({
+        id: 2,
+        result: { threadId: "thread-compact" },
+      });
+      expect(session.compact).toHaveBeenCalledOnce();
+      expect(session.prompt).not.toHaveBeenCalled();
     } finally {
       bridge.restore();
     }

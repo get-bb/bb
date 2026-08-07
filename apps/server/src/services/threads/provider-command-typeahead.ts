@@ -45,6 +45,7 @@ export function providerHasCommandSurface(providerId: string): boolean {
         id: providerId,
         displayName: providerId,
         logoUrl: null,
+        supportsManualCompaction: false,
       }).composerActions,
     );
   }
@@ -123,6 +124,7 @@ function compareCommands(a: ProviderCommand, b: ProviderCommand): number {
 
 export interface BuildCommandListResponseArgs {
   commands: HostProviderCommand[];
+  includeBuiltinCompact: boolean;
   skillCatalog: readonly ResolvedSkillCatalogEntry[];
 }
 
@@ -138,7 +140,7 @@ export function buildCommandListResponse(
 ): CommandListResponse {
   return {
     commands: dedupeBySourceAndName([
-      ...BUILT_IN_PROVIDER_COMMANDS,
+      ...(args.includeBuiltinCompact ? BUILT_IN_PROVIDER_COMMANDS : []),
       ...args.skillCatalog.map(toSkillCommand),
       ...args.commands.map(toProviderCommand),
     ]).sort(compareCommands),

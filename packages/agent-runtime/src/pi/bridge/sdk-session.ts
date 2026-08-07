@@ -313,6 +313,21 @@ export class PiSdkSession {
     }
   }
 
+  async compact(): Promise<void> {
+    if (!this.session) {
+      throw new Error("No active Pi SDK session");
+    }
+    if (this.isProcessing || this.session.isStreaming) {
+      throw new Error("Cannot compact context while Pi is processing a turn");
+    }
+    this.isProcessing = true;
+    try {
+      await this.session.compact();
+    } finally {
+      this.isProcessing = false;
+    }
+  }
+
   detach(): void {
     this.rejectPendingSteerConsumptions(
       "Pi SDK session detached before steer consumed",
@@ -365,7 +380,10 @@ export class PiSdkSession {
   }
 
   private trackProcessingState(event: AgentSessionEvent): void {
-    if (event.type === "agent_start") {
+    if (
+      event.type === "agent_start" ||
+      (event.type === "compaction_start" && event.reason === "manual")
+    ) {
       this.isProcessing = true;
     }
     if (event.type === "agent_end" && !event.willRetry) {
@@ -374,6 +392,9 @@ export class PiSdkSession {
       // ready for next input" — NOT session termination. The session stays
       // alive across multiple turns. onDone() is only called on fatal errors
       // (prompt() catch) or explicit stop().
+    }
+    if (event.type === "compaction_end" && event.reason === "manual") {
+      this.isProcessing = false;
     }
   }
 

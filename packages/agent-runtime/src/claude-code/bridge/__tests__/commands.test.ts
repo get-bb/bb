@@ -76,6 +76,23 @@ describe("decodeClaudeCodeJsonRpcRequest", () => {
     ).toEqual({ kind: "unknown_method", id: 3, method: "turn/teleport" });
   });
 
+  it("decodes the explicit thread compact command", () => {
+    expect(
+      decodeClaudeCodeJsonRpcRequest({
+        jsonrpc: "2.0",
+        id: 4,
+        method: "thread/compact",
+        params: { threadId: "bb-thread-1" },
+      }),
+    ).toMatchObject({
+      kind: "request",
+      request: {
+        method: "thread/compact",
+        params: { threadId: "bb-thread-1" },
+      },
+    });
+  });
+
   it("ignores lines that are not requests", () => {
     expect(
       decodeClaudeCodeJsonRpcRequest({ jsonrpc: "2.0", id: 4, result: {} }),

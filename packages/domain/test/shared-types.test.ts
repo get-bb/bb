@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  isStandaloneBuiltinPromptCommand,
   permissionModeInputSchema,
   permissionModeSchema,
   promptInputHasCommandMention,
@@ -155,6 +156,68 @@ describe("prompt mention command triggers", () => {
 });
 
 describe("prompt command input helpers", () => {
+  it("recognizes only a standalone selected built-in command", () => {
+    const builtinCompactInput = [
+      {
+        type: "text" as const,
+        text: " /compact ",
+        mentions: [
+          {
+            start: 1,
+            end: 9,
+            resource: {
+              kind: "command" as const,
+              trigger: "/" as const,
+              name: "compact",
+              source: "command" as const,
+              origin: "builtin" as const,
+              label: "compact",
+              argumentHint: null,
+            },
+          },
+        ],
+      },
+    ];
+
+    expect(
+      isStandaloneBuiltinPromptCommand(builtinCompactInput, {
+        trigger: "/",
+        name: "compact",
+      }),
+    ).toBe(true);
+    expect(
+      isStandaloneBuiltinPromptCommand(
+        [{ type: "text", text: "/compact", mentions: [] }],
+        { trigger: "/", name: "compact" },
+      ),
+    ).toBe(false);
+    expect(
+      isStandaloneBuiltinPromptCommand(
+        [
+          {
+            ...builtinCompactInput[0],
+            mentions: [
+              {
+                ...builtinCompactInput[0].mentions[0],
+                resource: {
+                  ...builtinCompactInput[0].mentions[0].resource,
+                  origin: "user" as const,
+                },
+              },
+            ],
+          },
+        ],
+        { trigger: "/", name: "compact" },
+      ),
+    ).toBe(false);
+    expect(
+      isStandaloneBuiltinPromptCommand(
+        [{ ...builtinCompactInput[0], text: " /compact now" }],
+        { trigger: "/", name: "compact" },
+      ),
+    ).toBe(false);
+  });
+
   it("detects and removes command mentions while preserving ordinary text", () => {
     const input = [
       {

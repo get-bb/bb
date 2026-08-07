@@ -1097,9 +1097,8 @@ describe("acp bridge", () => {
       configText.slice(configPrefix.length),
     ) as { env: { name: string; value: string }[] }[];
     expect(
-      mcpServerConfig?.env.find(
-        ({ name }) => name === "ELECTRON_RUN_AS_NODE",
-      )?.value,
+      mcpServerConfig?.env.find(({ name }) => name === "ELECTRON_RUN_AS_NODE")
+        ?.value,
     ).toBe("1");
 
     sendRequest("turn/start", {
@@ -1173,6 +1172,83 @@ describe("acp bridge", () => {
     });
     expect(notifications("acp/turn/started")).toHaveLength(1);
     expect(agentMessageTexts()).toContain("echo:hello there");
+  });
+
+  it("runs manual compaction as a silent provider-local maintenance prompt", async () => {
+    const promptLog = join(workspaceDir, "prompt-log.jsonl");
+    const { providerThreadId } = await startThread({
+      instructions: "Be terse.",
+      envVars: { FAKE_ACP_PROMPT_LOG: promptLog },
+    });
+
+    const compactId = sendRequest("thread/compact", {
+      threadId: providerThreadId,
+      compaction: { method: "prompt", prompt: "/compact" },
+    });
+    expect((await waitForResponse(compactId)).error).toBeUndefined();
+    expect(notifications("acp/turn/started")).toHaveLength(0);
+    expect(notifications("acp/turn/completed")).toHaveLength(0);
+    expect(agentMessageTexts()).toEqual([]);
+    expect(
+      readFileSync(promptLog, "utf8")
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line)),
+    ).toEqual(["/compact"]);
+
+    const turnId = sendRequest("turn/start", {
+      threadId: providerThreadId,
+      input: [{ type: "text", text: "hi", mentions: [] }],
+    });
+    await waitForResponse(turnId);
+    await waitForTurnCompleted();
+    expect(agentMessageTexts().at(-1)).toBe(
+      "echo:<system_instructions>\nBe terse.\n</system_instructions>\nhi",
+    );
+  });
+
+  it("silently summarizes and reseeds a fresh ACP session", async () => {
+    const promptLog = join(workspaceDir, "reseed-prompt-log.jsonl");
+    const { bbThreadId, providerThreadId } = await startThread({
+      instructions: "Be terse.",
+      envVars: { FAKE_ACP_PROMPT_LOG: promptLog },
+    });
+
+    const compactId = sendRequest("thread/compact", {
+      threadId: providerThreadId,
+      compaction: {
+        method: "summarize-and-reseed",
+        summaryPrompt: "Summarize context.",
+        reseedPrompt: "Restore context.",
+      },
+    });
+    expect((await waitForResponse(compactId)).error).toBeUndefined();
+    expect(notifications("acp/turn/started")).toHaveLength(0);
+    expect(notifications("acp/turn/completed")).toHaveLength(0);
+    expect(agentMessageTexts()).toEqual([]);
+
+    const compactedIdentity = notifications("thread/identity").at(-1);
+    expect(compactedIdentity?.params).toEqual({
+      threadId: bbThreadId,
+      providerThreadId: `${providerThreadId}-2`,
+    });
+    expect(
+      readFileSync(promptLog, "utf8")
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line)),
+    ).toEqual([
+      "Summarize context.",
+      "<system_instructions>\nBe terse.\n</system_instructions>\n\nRestore context.\n\n<compacted_context>\necho:Summarize context.\n</compacted_context>",
+    ]);
+
+    const turnId = sendRequest("turn/start", {
+      threadId: `${providerThreadId}-2`,
+      input: [{ type: "text", text: "hi", mentions: [] }],
+    });
+    await waitForResponse(turnId);
+    await waitForTurnCompleted();
+    expect(agentMessageTexts().at(-1)).toBe("echo:hi");
   });
 
   it("authenticates ACP sessions with cached tokens when advertised", async () => {

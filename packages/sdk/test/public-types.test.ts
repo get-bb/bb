@@ -351,6 +351,7 @@ type ExpectedThreadsKey =
   | "cancelPlan"
   | "childSummary"
   | "clearGoal"
+  | "compact"
   | "continueAfterRateLimit"
   | "conversationOutline"
   | "defaultExecutionOptions"

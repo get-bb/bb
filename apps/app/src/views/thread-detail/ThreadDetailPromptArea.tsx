@@ -6,7 +6,11 @@ import {
   getFollowUpPromptPlaceholder,
   getCompactFollowUpPromptPlaceholder,
 } from "@/components/promptbox/follow-up-placeholder";
-import { isPluginPendingInteraction, PERSONAL_PROJECT_ID } from "@bb/domain";
+import {
+  isPluginPendingInteraction,
+  isStandaloneBuiltinPromptCommand,
+  PERSONAL_PROJECT_ID,
+} from "@bb/domain";
 import type {
   EnvironmentStatus,
   PendingInteraction,
@@ -71,6 +75,7 @@ import {
   useCreateThreadQueuedMessage,
   useCancelThreadPlan,
   useClearThreadGoal,
+  useCompactThread,
   useStopThread,
 } from "@/hooks/mutations/thread-runtime-mutations";
 import { useUnarchiveThread } from "@/hooks/mutations/thread-state-mutations";
@@ -498,9 +503,11 @@ export function ThreadDetailPromptArea({
     createQueuedMessage.isPending ||
     queuedMessageActionPending ||
     isFollowUpShortcutSending;
+  const compactThread = useCompactThread();
   const isFollowUpSubmitting =
     sendMessage.isPending ||
     createQueuedMessage.isPending ||
+    compactThread.isPending ||
     isFollowUpShortcutSending;
   const handleStopThread = useCallback(() => {
     stopThread.mutate(thread.id);
@@ -661,10 +668,16 @@ export function ThreadDetailPromptArea({
   const handleSend = useCallback(async () => {
     const submittedDraft = currentPromptDraft;
     const submittedInput = currentPromptDraftInput;
+    const isCompactCommand = isStandaloneBuiltinPromptCommand(submittedInput, {
+      trigger: "/",
+      name: "compact",
+    });
     const isQueuingMessage = shouldQueueFollowUpMessage(runtimeDisplayStatus);
     if (
       submittedInput.length === 0 ||
-      (!isQueuingMessage && isDefaultExecutionOptionsLoading)
+      (!isCompactCommand &&
+        !isQueuingMessage &&
+        isDefaultExecutionOptionsLoading)
     ) {
       return;
     }
@@ -673,7 +686,9 @@ export function ThreadDetailPromptArea({
     setBottomAttachmentError(null);
 
     try {
-      if (isQueuingMessage) {
+      if (isCompactCommand) {
+        await compactThread.mutateAsync(thread.id);
+      } else if (isQueuingMessage) {
         const request = buildCreateQueuedFollowUpRequest({
           threadId: thread.id,
           input: submittedInput,
@@ -697,16 +712,23 @@ export function ThreadDetailPromptArea({
       appToast.error(
         getMutationErrorMessage({
           error: nextError,
-          fallbackMessage: isQueuingMessage
-            ? "Failed to queue message"
-            : "Failed to send message",
-          lifecycleOperation: isQueuingMessage
-            ? "queue_message"
-            : "send_message",
+          fallbackMessage: isCompactCommand
+            ? "Failed to compact context"
+            : isQueuingMessage
+              ? "Failed to queue message"
+              : "Failed to send message",
+          ...(!isCompactCommand
+            ? {
+                lifecycleOperation: isQueuingMessage
+                  ? ("queue_message" as const)
+                  : ("send_message" as const),
+              }
+            : {}),
         }),
       );
     }
   }, [
+    compactThread,
     createQueuedMessage,
     currentPromptDraft,
     currentPromptDraftInput,
@@ -725,6 +747,30 @@ export function ThreadDetailPromptArea({
 
     const submittedDraft = currentPromptDraft;
     const submittedInput = currentPromptDraftInput;
+    if (
+      isStandaloneBuiltinPromptCommand(submittedInput, {
+        trigger: "/",
+        name: "compact",
+      })
+    ) {
+      setIsFollowUpShortcutSending(true);
+      promptDraft.clearIfCurrentMatches(submittedDraft);
+      setBottomAttachmentError(null);
+      try {
+        await compactThread.mutateAsync(thread.id);
+      } catch (nextError) {
+        promptDraft.restoreIfEmpty(submittedDraft);
+        appToast.error(
+          getMutationErrorMessage({
+            error: nextError,
+            fallbackMessage: "Failed to compact context",
+          }),
+        );
+      } finally {
+        setIsFollowUpShortcutSending(false);
+      }
+      return;
+    }
     const shortcutRequest = buildFollowUpShortcutRequest({
       input: submittedInput,
       queuedMessages: queuedMessagesRef.current,
@@ -772,6 +818,7 @@ export function ThreadDetailPromptArea({
     }
   }, [
     canSubmitModifierShortcut,
+    compactThread,
     currentPromptDraft,
     currentPromptDraftInput,
     promptDraft,

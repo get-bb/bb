@@ -59,6 +59,7 @@ const STORY_PROVIDER_INFOS: ProviderInfo[] = STORY_PROVIDER_OPTIONS.map(
     ],
     capabilities: {
       supportsArchive: true,
+      supportsManualCompaction: true,
       supportsRename: true,
       supportsServiceTier: STORY_SERVICE_TIER_SUPPORT[provider.value] ?? false,
       supportsUserQuestion: true,

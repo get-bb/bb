@@ -9,6 +9,7 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import {
   getBuiltInAgentProviderInfo,
   isAgentProviderId,
+  supportsManualCompaction,
 } from "@bb/agent-providers";
 import {
   DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT,
@@ -187,6 +188,16 @@ function providerSupportsThreadArchiveForwarding(providerId: string): boolean {
   }
 
   return getBuiltInAgentProviderInfo(providerId).capabilities.supportsArchive;
+}
+
+export function providerSupportsManualCompaction(
+  deps: Pick<AppDeps, "config">,
+  providerId: string,
+): boolean {
+  return supportsManualCompaction(
+    providerId,
+    resolveAcpLaunchSpecForProviderId(deps, providerId)?.manualCompaction,
+  );
 }
 
 function resolveClaudeCodeMockCliTrafficConfig(

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type {
+  AcpManualCompaction,
   PermissionMode,
   ProviderCapabilities,
   ProviderComposerAction,
@@ -83,12 +84,14 @@ export interface BuildAcpProviderInfoArgs {
   displayName: string;
   id: string;
   logoUrl: string | null;
+  supportsManualCompaction: boolean;
 }
 
 type PiDefaultModelPerProvider = Partial<Record<string, string>>;
 
 const CODEX_CAPABILITIES: ProviderCapabilities = {
   supportsArchive: true,
+  supportsManualCompaction: true,
   supportsRename: true,
   supportsServiceTier: true,
   supportsUserQuestion: false,
@@ -98,6 +101,7 @@ const CODEX_CAPABILITIES: ProviderCapabilities = {
 
 const CLAUDE_CAPABILITIES: ProviderCapabilities = {
   supportsArchive: false,
+  supportsManualCompaction: true,
   supportsRename: false,
   supportsServiceTier: false,
   supportsUserQuestion: true,
@@ -107,6 +111,7 @@ const CLAUDE_CAPABILITIES: ProviderCapabilities = {
 
 const PI_CAPABILITIES: ProviderCapabilities = {
   supportsArchive: false,
+  supportsManualCompaction: true,
   supportsRename: false,
   supportsServiceTier: false,
   supportsUserQuestion: false,
@@ -144,15 +149,17 @@ const ACP_COMPOSER_ACTIONS: ProviderComposerAction[] = [
   { kind: "skills", trigger: "/" },
 ];
 
-// Shared by all ACP (Agent Client Protocol) providers: the external agent owns
+// Baseline for ACP (Agent Client Protocol) providers: the external agent owns
 // its own model selection, tool execution, and session naming, so BB-side
-// capabilities stay minimal. Permission modes are enforced cooperatively by
-// the ACP bridge (permission-request policy + client fs write policy).
+// capabilities stay minimal. Built-ins may override verified capabilities.
+// Permission modes are enforced cooperatively by the ACP bridge
+// (permission-request policy + client fs write policy).
 // Cursor exposes a `-fast` service tail per model; the bridge resolves it from
 // the serviceTier (the "Fast mode" toggle), so service tier is supported here
 // rather than fanning fast variants out as separate model-list entries.
 const ACP_CAPABILITIES: ProviderCapabilities = {
   supportsArchive: false,
+  supportsManualCompaction: false,
   supportsRename: false,
   supportsServiceTier: true,
   supportsUserQuestion: false,
@@ -160,6 +167,11 @@ const ACP_CAPABILITIES: ProviderCapabilities = {
   // so forks are blocked at the server boundary rather than failing at runtime.
   supportsFork: false,
   supportedPermissionModes: ["accept-edits", "full"],
+};
+
+const CURSOR_ACP_CAPABILITIES: ProviderCapabilities = {
+  ...ACP_CAPABILITIES,
+  supportsManualCompaction: true,
 };
 
 const CODEX_SERVER_CAPABILITIES: ProviderServerCapabilities = {
@@ -250,7 +262,7 @@ const BUILT_IN_AGENT_PROVIDER_CATALOG: BuiltInAgentProviderCatalogEntry[] = [
   {
     info: {
       available: true,
-      capabilities: ACP_CAPABILITIES,
+      capabilities: CURSOR_ACP_CAPABILITIES,
       composerActions: ACP_COMPOSER_ACTIONS,
       displayName: "Cursor",
       id: "acp-cursor",
@@ -290,6 +302,7 @@ function cloneCapabilities(
 ): ProviderCapabilities {
   return {
     supportsArchive: capabilities.supportsArchive,
+    supportsManualCompaction: capabilities.supportsManualCompaction,
     supportsRename: capabilities.supportsRename,
     supportsServiceTier: capabilities.supportsServiceTier,
     supportsUserQuestion: capabilities.supportsUserQuestion,
@@ -332,7 +345,10 @@ export function buildAcpProviderInfo(
   }
   return {
     available: true,
-    capabilities: cloneCapabilities(ACP_CAPABILITIES),
+    capabilities: {
+      ...cloneCapabilities(ACP_CAPABILITIES),
+      supportsManualCompaction: args.supportsManualCompaction,
+    },
     composerActions: ACP_COMPOSER_ACTIONS.map(cloneComposerAction),
     displayName: args.displayName,
     id: args.id,
@@ -355,6 +371,7 @@ export function getSupportedPermissionModes(
           id: providerId,
           displayName: providerId,
           logoUrl: null,
+          supportsManualCompaction: false,
         })
       : null;
   return provider?.capabilities.supportedPermissionModes ?? null;
@@ -391,6 +408,18 @@ export function supportsNativeFork(providerId: string): boolean {
     isAgentProviderId(providerId) &&
     getBuiltInAgentProviderInfo(providerId).capabilities.supportsFork
   );
+}
+
+/** Whether BB can explicitly request context compaction for this provider. */
+export function supportsManualCompaction(
+  providerId: string,
+  acpManualCompaction?: AcpManualCompaction,
+): boolean {
+  if (isAgentProviderId(providerId)) {
+    return getBuiltInAgentProviderInfo(providerId).capabilities
+      .supportsManualCompaction;
+  }
+  return isAcpProviderId(providerId) && acpManualCompaction !== undefined;
 }
 
 export function listBuiltInAgentProviderInfos(): BuiltInAgentProviderInfo[] {

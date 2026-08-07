@@ -98,6 +98,7 @@ function buildCustomAcpProviderInfo(agent: CustomAcpAgent): ProviderInfo {
       agent.logo === undefined
         ? null
         : `/api/v1/system/providers/${encodeURIComponent(providerId)}/logo`,
+    supportsManualCompaction: agent.manualCompaction !== undefined,
   });
 }
 

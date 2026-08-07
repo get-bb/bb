@@ -224,6 +224,10 @@ export interface StopThreadArgs {
   threadId: string;
 }
 
+export interface CompactThreadArgs {
+  threadId: string;
+}
+
 export interface AgentRuntimeProviderSession {
   providerId: string;
   providerThreadId: string;
@@ -294,6 +298,9 @@ export interface AgentRuntime {
    * `resumeThread`. The provider process keeps running for other threads.
    */
   stopThread(args: StopThreadArgs): Promise<void>;
+
+  /** Compact the provider session context without submitting user input. */
+  compactThread(args: CompactThreadArgs): Promise<void>;
 
   clearThreadGoal(args: ClearThreadGoalArgs): Promise<{ cleared: boolean }>;
 

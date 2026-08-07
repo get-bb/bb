@@ -28,6 +28,18 @@ function createAdapter(turnIdPrefix?: string): AcpProviderAdapter {
   });
 }
 
+function createCompactingAdapter(): AcpProviderAdapter {
+  return createAcpProviderAdapter({
+    profile: {
+      providerId: "acp-opencode",
+      displayName: "opencode",
+      agentCommand: { command: "opencode", args: ["acp"] },
+      manualCompaction: { method: "prompt", prompt: "/compact" },
+    },
+    additionalWorkspaceWriteRoots: [],
+  });
+}
+
 const CURSOR_LIST_COMMAND = {
   command: "cursor-agent",
   args: ["--list-models"],
@@ -74,6 +86,43 @@ describe("acp adapter command plans", () => {
       "accept-edits",
       "full",
     ]);
+  });
+
+  it("routes Cursor compaction through summarize-and-reseed", () => {
+    const adapter = createAdapter();
+    const compaction = getAcpAgentProfile("acp-cursor").manualCompaction;
+    expect(compaction).toMatchObject({ method: "summarize-and-reseed" });
+    expect(adapter.capabilities.supportsManualCompaction).toBe(true);
+    expect(
+      adapter.buildCommandPlan({
+        type: "thread/compact",
+        threadId: "thread-1",
+        providerThreadId: "sess-1",
+      }),
+    ).toEqual({
+      kind: "request",
+      method: "thread/compact",
+      params: { threadId: "sess-1", compaction },
+    });
+  });
+
+  it("routes configured ACP compaction through the provider-local prompt", () => {
+    const adapter = createCompactingAdapter();
+    expect(adapter.capabilities.supportsManualCompaction).toBe(true);
+    expect(
+      adapter.buildCommandPlan({
+        type: "thread/compact",
+        threadId: "thread-1",
+        providerThreadId: "sess-1",
+      }),
+    ).toEqual({
+      kind: "request",
+      method: "thread/compact",
+      params: {
+        threadId: "sess-1",
+        compaction: { method: "prompt", prompt: "/compact" },
+      },
+    });
   });
 
   it("rejects auto when an ACP command bypasses capability validation", () => {

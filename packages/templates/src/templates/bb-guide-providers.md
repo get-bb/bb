@@ -115,7 +115,14 @@ and run bb-app config refresh; there is no set/unset CLI surface for this list.
 Custom config wins if it uses the same provider id as a known ACP agent; for
 example, override acp-opencode with id opencode. Use modelCli for CLI model
 listing/selection, reasoningCli for launch-time reasoning flags, and
-nativeReasoning for ACP session/set_config_option reasoning. Optional logo
+nativeReasoning for ACP session/set_config_option reasoning. Set
+manualCompaction to { method: "prompt", prompt: "/compact" } only for agents
+that treat that exact ACP prompt as a compaction control. Agents without one
+may explicitly configure { method: "summarize-and-reseed", summaryPrompt,
+reseedPrompt }; bb captures the summary silently, starts a fresh ACP session,
+and seeds it with that context. acp-opencode declares the prompt strategy
+automatically, while acp-cursor declares summarize-and-reseed automatically.
+Optional logo
 accepts an SVG, PNG, or WebP path; relative paths resolve from the bb data dir.
 Use nativeSkillRoots to add native skills to the composer. User roots resolve
 from the target host home directory. Project roots resolve from the selected

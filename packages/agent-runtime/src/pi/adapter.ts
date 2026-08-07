@@ -281,12 +281,16 @@ const piAgentEndEventSchema = z
 const piCompactionStartEventSchema = z
   .object({
     type: z.literal("compaction_start"),
+    reason: z.enum(["manual", "threshold", "overflow"]),
   })
   .passthrough();
 
 const piCompactionEndEventSchema = z
   .object({
     type: z.literal("compaction_end"),
+    reason: z.enum(["manual", "threshold", "overflow"]),
+    aborted: z.boolean(),
+    errorMessage: z.string().optional(),
   })
   .passthrough();
 
@@ -933,10 +937,14 @@ export function createPiProviderAdapter(
       }
 
       case "compaction_start": {
-        if (!piCompactionStartEventSchema.safeParse(event).success) {
+        const parsed = piCompactionStartEventSchema.safeParse(event);
+        if (!parsed.success) {
           return buildUnexpectedEvent(event);
         }
-        const turnId = turnState.getCurrentOrLastTurnId({ state });
+        const turnId =
+          parsed.data.reason === "manual"
+            ? ensurePiTurnStarted({ events, state, threadId })
+            : turnState.getCurrentOrLastTurnId({ state });
         if (turnId.length === 0) {
           return buildUnexpectedEvent(event);
         }
@@ -954,7 +962,8 @@ export function createPiProviderAdapter(
       }
 
       case "compaction_end": {
-        if (!piCompactionEndEventSchema.safeParse(event).success) {
+        const parsed = piCompactionEndEventSchema.safeParse(event);
+        if (!parsed.success) {
           return buildUnexpectedEvent(event);
         }
         const turnId = turnState.getCurrentOrLastTurnId({ state });
@@ -967,6 +976,23 @@ export function createPiProviderAdapter(
           providerThreadId: "",
           scope: turnScope(turnId),
         });
+        if (parsed.data.reason === "manual" && state.currentTurnId === turnId) {
+          events.push({
+            type: "turn/completed",
+            threadId,
+            providerThreadId: "",
+            scope: turnScope(turnId),
+            status: parsed.data.aborted
+              ? "interrupted"
+              : parsed.data.errorMessage
+                ? "failed"
+                : "completed",
+            ...(parsed.data.errorMessage
+              ? { error: { message: parsed.data.errorMessage } }
+              : {}),
+          });
+          turnState.finishTurn({ state, threadId: stateKey });
+        }
         break;
       }
 
@@ -1448,6 +1474,12 @@ export function createPiProviderAdapter(
             params: {
               threadId: command.providerThreadId,
             },
+          };
+        case "thread/compact":
+          return {
+            kind: "request",
+            method: "thread/compact",
+            params: { threadId: command.providerThreadId },
           };
         case "thread/goal/clear":
           return { kind: "noop", reason: "goals unsupported" };

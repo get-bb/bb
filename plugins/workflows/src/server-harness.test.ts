@@ -97,6 +97,7 @@ describe("workflows plugin", () => {
               available: true,
               capabilities: {
                 supportsArchive: true,
+                supportsManualCompaction: true,
                 supportsRename: true,
                 supportsServiceTier: true,
                 supportsUserQuestion: false,
@@ -818,6 +819,7 @@ describe("workflow resume cache integration", () => {
               available: true,
               capabilities: {
                 supportsArchive: true,
+                supportsManualCompaction: true,
                 supportsRename: true,
                 supportsServiceTier: true,
                 supportsUserQuestion: false,

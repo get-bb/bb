@@ -16,6 +16,7 @@ import {
 import {
   useCancelThreadPlan,
   useClearThreadGoal,
+  useCompactThread,
   useCreateThreadQueuedMessage,
   useDeleteThreadQueuedMessage,
   useSetThreadQueuedMessageGroupBoundary,
@@ -30,6 +31,7 @@ vi.mock("@/lib/sdk", async (importOriginal) => {
       threads: {
         cancelPlan: vi.fn(),
         clearGoal: vi.fn(),
+        compact: vi.fn(),
         queuedMessages: {
           create: vi.fn(),
           delete: vi.fn(),
@@ -115,6 +117,7 @@ const executionInputSources = {
 beforeEach(() => {
   vi.mocked(sdk.threads.cancelPlan).mockResolvedValue({ ok: true });
   vi.mocked(sdk.threads.clearGoal).mockResolvedValue({ ok: true });
+  vi.mocked(sdk.threads.compact).mockResolvedValue({ ok: true });
   vi.mocked(sdk.threads.send).mockResolvedValue({ ok: true });
   vi.mocked(sdk.threads.queuedMessages.create).mockResolvedValue(
     makeQueuedMessage(),
@@ -129,6 +132,21 @@ afterEach(() => {
 });
 
 describe("thread runtime mutations", () => {
+  it("compacts through the dedicated endpoint and refreshes thread state", async () => {
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
+    const { result } = renderHook(() => useCompactThread(), { wrapper });
+
+    await act(async () => {
+      await result.current.mutateAsync("thread-1");
+    });
+
+    expect(sdk.threads.compact).toHaveBeenCalledWith({
+      threadId: "thread-1",
+    });
+    expect(invalidateQueries).toHaveBeenCalled();
+  });
+
   it.each([
     ["Plan", useCancelThreadPlan, () => sdk.threads.cancelPlan],
     ["Goal", useClearThreadGoal, () => sdk.threads.clearGoal],

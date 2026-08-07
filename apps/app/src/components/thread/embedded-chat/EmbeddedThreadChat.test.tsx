@@ -219,6 +219,10 @@ vi.mock("@/hooks/queries/system-queries", () => ({
 }));
 
 vi.mock("@/hooks/mutations/thread-runtime-mutations", () => ({
+  useCompactThread: () => ({
+    mutateAsync: vi.fn(),
+    isPending: false,
+  }),
   useCreateThreadQueuedMessage: () => ({
     mutateAsync: mocks.createQueuedMessageMutateAsync,
     mutate: vi.fn(),

@@ -19,6 +19,7 @@ export {
   listBuiltInAgentProviderInfos,
   PI_DEFAULT_MODEL_PER_PROVIDER,
   resolvePiDefaultModelId,
+  supportsManualCompaction,
   supportsNativeFork,
 } from "./catalog.js";
 export type {

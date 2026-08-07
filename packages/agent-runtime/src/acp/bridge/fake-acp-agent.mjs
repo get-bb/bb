@@ -31,6 +31,7 @@
  * - FAKE_ACP_WRITE_PATH      → target path for the "write-file" prompt
  * - FAKE_ACP_LAUNCH_LOG      → append one line per process launch (used to
  *                              count model-discovery spawns in cache/TTL tests)
+ * - FAKE_ACP_PROMPT_LOG      → append one JSON-encoded prompt text per request
  */
 
 import { createInterface } from "node:readline";
@@ -53,18 +54,19 @@ const authMethods = (process.env.FAKE_ACP_AUTH_METHODS ?? "")
   .split(",")
   .map((method) => method.trim())
   .filter(Boolean);
-const newSessionId = `fake-sess-${process.pid}`;
+const sessionIdPrefix = `fake-sess-${process.pid}`;
 const fakeModels = [
   { value: "fake/default", name: "Fake Default" },
   { value: "fake/strong", name: "Fake Strong" },
 ];
 
 let activePromptId = null;
+let sessionCount = 0;
 let nextAgentRequestId = 1000;
 let selectedModel = "fake/default";
 let selectedEffort = "none";
 let authenticatedMethod = null;
-let activeSessionId = newSessionId;
+let activeSessionId = sessionIdPrefix;
 const pendingClientRequests = new Map();
 let currentMcpServers = [];
 
@@ -225,6 +227,12 @@ function captureMcpServers(message) {
 async function handlePrompt(message) {
   activePromptId = message.id;
   const text = promptText(message.params?.prompt);
+  if (process.env.FAKE_ACP_PROMPT_LOG) {
+    appendFileSync(
+      process.env.FAKE_ACP_PROMPT_LOG,
+      `${JSON.stringify(text)}\n`,
+    );
+  }
 
   if (text.includes("request-permission")) {
     notifyUpdate({
@@ -364,13 +372,17 @@ async function handleMessage(message) {
       if (!requireAuthenticated(message)) {
         return;
       }
+      sessionCount += 1;
+      activeSessionId =
+        sessionCount === 1
+          ? sessionIdPrefix
+          : `${sessionIdPrefix}-${sessionCount}`;
       captureMcpServers(message);
-      activeSessionId = newSessionId;
       send({
         jsonrpc: "2.0",
         id: message.id,
         result: {
-          sessionId: newSessionId,
+          sessionId: activeSessionId,
           ...configState(),
         },
       });

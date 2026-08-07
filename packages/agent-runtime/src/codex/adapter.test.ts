@@ -322,6 +322,7 @@ describe("codex provider adapter", () => {
     const adapter = createCodexProviderAdapter();
     expect(adapter.capabilities).toEqual({
       supportsArchive: true,
+      supportsManualCompaction: true,
       supportsRename: true,
       supportsServiceTier: true,
       supportsUserQuestion: false,
@@ -1950,6 +1951,21 @@ describe("codex provider adapter", () => {
     ).toEqual({
       kind: "request",
       method: "thread/goal/clear",
+      params: { threadId: "codex-thread-1" },
+    });
+  });
+
+  it("buildCommand thread/compact maps to the native compact request", () => {
+    const adapter = createCodexProviderAdapter();
+    expect(
+      adapter.buildCommandPlan({
+        type: "thread/compact",
+        threadId: "bb-t1",
+        providerThreadId: "codex-thread-1",
+      }),
+    ).toEqual({
+      kind: "request",
+      method: "thread/compact/start",
       params: { threadId: "codex-thread-1" },
     });
   });

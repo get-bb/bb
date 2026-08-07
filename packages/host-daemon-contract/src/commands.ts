@@ -1,4 +1,5 @@
 import {
+  acpManualCompactionSchema,
   acpPermissionCliSchema,
   acpNativeReasoningSchema,
   acpReasoningCliSchema,
@@ -177,6 +178,7 @@ export const hostDaemonAcpLaunchSpecSchema = z
     nativeReasoning: acpNativeReasoningSchema.optional(),
     nativeSkillRoots: providerNativeSkillRootsSchema.optional(),
     permissionCli: acpPermissionCliSchema.optional(),
+    manualCompaction: acpManualCompactionSchema.optional(),
   })
   .strict();
 export type HostDaemonAcpLaunchSpec = z.infer<
@@ -197,6 +199,7 @@ export function normalizeHostDaemonAcpLaunchSpec(
     nativeReasoning,
     nativeSkillRoots,
     permissionCli,
+    manualCompaction,
   } = spec;
   const permissionCliHasMode =
     permissionCli?.full !== undefined ||
@@ -217,6 +220,7 @@ export function normalizeHostDaemonAcpLaunchSpec(
     ...(permissionCli !== undefined && permissionCliHasMode
       ? { permissionCli }
       : {}),
+    ...(manualCompaction !== undefined ? { manualCompaction } : {}),
   };
 }
 
@@ -361,6 +365,15 @@ const turnSubmitCommandSchema = hostDaemonThreadTargetSchema
 export const threadStopCommandSchema = hostDaemonThreadTargetSchema
   .extend({
     type: z.literal("thread.stop"),
+  })
+  .strict();
+
+const threadCompactCommandSchema = hostDaemonThreadTargetSchema
+  .extend({
+    type: z.literal("thread.compact"),
+    options: runtimeThreadExecutionOptionsSchema,
+    acpLaunchSpec: hostDaemonAcpLaunchSpecSchema.optional(),
+    resumeContext: turnResumeContextSchema,
   })
   .strict();
 
@@ -1583,6 +1596,15 @@ export const hostDaemonCommandRegistry = {
     retryable: false,
     flushEventsBeforeResult: true,
     envLane: null,
+  }),
+  "thread.compact": defineHostDaemonCommandDescriptor({
+    type: "thread.compact",
+    schema: threadCompactCommandSchema,
+    resultSchema: emptyCommandResultSchema,
+    transport: "settled",
+    retryable: false,
+    flushEventsBeforeResult: true,
+    envLane: "read",
   }),
   "thread.goal.clear": defineHostDaemonCommandDescriptor({
     type: "thread.goal.clear",

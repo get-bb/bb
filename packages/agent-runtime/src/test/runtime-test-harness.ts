@@ -207,6 +207,7 @@ export function createWarningEventAdapter(scriptPath: string): ProviderAdapter {
     displayName: "Warning Fake",
     capabilities: {
       supportsArchive: false,
+      supportsManualCompaction: false,
       supportsRename: false,
       supportsServiceTier: false,
       supportsUserQuestion: false,
@@ -251,6 +252,7 @@ export function createWarningEventAdapter(scriptPath: string): ProviderAdapter {
         case "skills/configure":
         case "turn/steer":
         case "thread/stop":
+        case "thread/compact":
         case "thread/goal/clear":
         case "thread/name/set":
         case "thread/archive":
@@ -319,6 +321,7 @@ export function createStartedEventAdapter(scriptPath: string): ProviderAdapter {
     displayName: "Started Fake",
     capabilities: {
       supportsArchive: false,
+      supportsManualCompaction: false,
       supportsRename: false,
       supportsServiceTier: false,
       supportsUserQuestion: false,
@@ -356,6 +359,7 @@ export function createStartedEventAdapter(scriptPath: string): ProviderAdapter {
         case "turn/start":
         case "turn/steer":
         case "thread/stop":
+        case "thread/compact":
         case "thread/goal/clear":
         case "thread/name/set":
         case "thread/archive":

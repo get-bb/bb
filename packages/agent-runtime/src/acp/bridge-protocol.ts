@@ -8,6 +8,7 @@
  */
 
 import {
+  acpManualCompactionSchema,
   acpPermissionCliSchema as acpBridgePermissionCliSchema,
   acpNativeReasoningSchema as acpBridgeNativeReasoningSchema,
   acpReasoningCliSchema as acpBridgeReasoningCliSchema,
@@ -43,9 +44,7 @@ export type AcpBridgeAgentCommand = z.infer<typeof acpBridgeAgentCommandSchema>;
  */
 export const ACP_DEFAULT_MODEL_ID = "acp-default";
 
-export type AcpBridgeReasoningCli = z.infer<
-  typeof acpBridgeReasoningCliSchema
->;
+export type AcpBridgeReasoningCli = z.infer<typeof acpBridgeReasoningCliSchema>;
 
 export type AcpBridgeNativeReasoning = z.infer<
   typeof acpBridgeNativeReasoningSchema
@@ -166,6 +165,11 @@ export const acpBridgeThreadStopParamsSchema = z.object({
   threadId: z.string().min(1),
 });
 
+export const acpBridgeThreadCompactParamsSchema = z.object({
+  threadId: z.string().min(1),
+  compaction: acpManualCompactionSchema,
+});
+
 export const acpBridgeCommandSchema = z.discriminatedUnion("method", [
   z.object({
     method: z.literal("initialize"),
@@ -196,6 +200,10 @@ export const acpBridgeCommandSchema = z.discriminatedUnion("method", [
   z.object({
     method: z.literal("thread/stop"),
     params: acpBridgeThreadStopParamsSchema,
+  }),
+  z.object({
+    method: z.literal("thread/compact"),
+    params: acpBridgeThreadCompactParamsSchema,
   }),
 ]);
 export type AcpBridgeCommand = z.infer<typeof acpBridgeCommandSchema>;
