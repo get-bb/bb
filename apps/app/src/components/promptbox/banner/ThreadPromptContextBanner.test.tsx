@@ -100,8 +100,9 @@ describe("ThreadPromptContextBanner", () => {
       />,
     );
 
-    expect(markup).toContain("Environment is unavailable");
-    expect(markup).toContain("This thread can&#x27;t run any more work.");
+    expect(markup).toContain("Environment archived");
+    expect(markup).toContain("This environment has been archived.");
+    expect(markup).not.toContain("to keep working");
     expect(markup).toContain('role="status"');
     expect(markup).not.toContain("<button");
     expect(markup).not.toContain("Provision");
@@ -115,10 +116,10 @@ describe("ThreadPromptContextBanner", () => {
       expectedLabel: "Thread is archived",
     },
     {
-      label: "environment gone",
+      label: "environment archived",
       archivedSection: null,
       environmentGoneSection: { status: "destroyed" as const },
-      expectedLabel: "Environment is unavailable",
+      expectedLabel: "Environment archived",
     },
   ])(
     "keeps the $label read-only status visible in compact mode",
@@ -169,6 +170,9 @@ describe("ThreadPromptContextBanner", () => {
     );
 
     expect(markup).toContain("Continue in new thread");
+    expect(markup).toContain(
+      "This environment has been archived. Continue in a new thread to keep working.",
+    );
     expect(markup).toContain("<button");
     expect(markup).not.toContain('disabled=""');
   });
@@ -191,9 +195,12 @@ describe("ThreadPromptContextBanner", () => {
       />,
     );
 
-    expect(markup).toContain("Cleaning up...");
+    expect(markup).toContain("Archiving environment...");
+    expect(markup).toContain("Continue in new thread");
+    expect(markup).toContain(
+      "This environment is being archived. Continue in a new thread when cleanup finishes.",
+    );
     expect(markup).toContain('disabled=""');
-    expect(markup).not.toContain("Continue in new thread");
   });
 
   it("prioritizes destroyed-environment handoff over unarchiving", () => {
@@ -220,7 +227,7 @@ describe("ThreadPromptContextBanner", () => {
       </MemoryRouter>,
     );
 
-    expect(markup).toContain("Environment is unavailable");
+    expect(markup).toContain("Environment archived");
     expect(markup).toContain("Continue in new thread");
     expect(markup).not.toContain("Thread is archived");
     expect(markup).not.toContain(">Unarchive<");

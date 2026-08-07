@@ -120,9 +120,9 @@ export interface ThreadPromptEnvironmentGoneSection {
   status: Extract<EnvironmentStatus, "destroying" | "destroyed">;
   /**
    * Hands the surviving thread context off to a new thread. Enabled once the old
-   * workspace is fully gone (`destroyed`); while `destroying` the action shows a
-   * disabled "Cleaning up…" state. Omitted when no safe environment target can
-   * be derived.
+   * environment is fully gone (`destroyed`); while `destroying` the action shows
+   * a disabled "Continue in new thread" state. Omitted when no safe environment
+   * target can be derived.
    */
   onHandoff?: () => void;
 }
@@ -200,9 +200,22 @@ const KIND_PREFIX: Record<WorkspaceChangedFilesSection["kind"], string> = {
 };
 
 const ARCHIVED_THREAD_STATUS_LABEL = "Thread is archived";
-const ENVIRONMENT_GONE_STATUS_LABEL = "Environment is unavailable";
-const ENVIRONMENT_GONE_ARIA_LABEL =
-  "Environment is unavailable. This thread can't run any more work.";
+const ENVIRONMENT_GONE_STATUS_COPY: Record<
+  ThreadPromptEnvironmentGoneSection["status"],
+  { ariaLabel: string; handoffInstruction: string; label: string }
+> = {
+  destroying: {
+    ariaLabel: "This environment is being archived.",
+    handoffInstruction:
+      "Continue in a new thread when cleanup finishes.",
+    label: "Archiving environment...",
+  },
+  destroyed: {
+    ariaLabel: "This environment has been archived.",
+    handoffInstruction: "Continue in a new thread to keep working.",
+    label: "Environment archived",
+  },
+};
 const PROMPT_BANNER_ACTION_FILL_CLASS = "bg-background shadow-xs";
 const PROMPT_BANNER_ACTION_INTERACTIVE_CLASS =
   "cursor-pointer text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60";
@@ -538,7 +551,6 @@ function EnvironmentHandoffTextAction({
   onHandoff: () => void;
 }) {
   const cleaningUp = status === "destroying";
-  const label = cleaningUp ? "Cleaning up..." : "Continue in new thread";
   return (
     <button
       type="button"
@@ -546,7 +558,7 @@ function EnvironmentHandoffTextAction({
       disabled={cleaningUp}
       className="rounded px-1 py-0.5 text-xs text-muted-foreground underline underline-offset-2 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
     >
-      {label}
+      Continue in new thread
     </button>
   );
 }
@@ -885,18 +897,24 @@ export function ThreadPromptContextBanner({
 }: ThreadPromptContextBannerProps) {
   if (archivedSection || environmentGoneSection) {
     const environmentGone = environmentGoneSection !== null;
+    const environmentGoneCopy = environmentGoneSection
+      ? ENVIRONMENT_GONE_STATUS_COPY[environmentGoneSection.status]
+      : null;
+    const environmentGoneAriaLabel = environmentGoneCopy
+      ? `${environmentGoneCopy.ariaLabel}${
+          environmentGoneSection?.onHandoff
+            ? ` ${environmentGoneCopy.handoffInstruction}`
+            : ""
+        }`
+      : null;
     return (
       <ReadOnlyContextBanner
         iconName={environmentGone ? "CircleX" : "Archive"}
         statusAriaLabel={
-          environmentGone
-            ? ENVIRONMENT_GONE_ARIA_LABEL
-            : ARCHIVED_THREAD_STATUS_LABEL
+          environmentGoneAriaLabel ?? ARCHIVED_THREAD_STATUS_LABEL
         }
         statusLabel={
-          environmentGone
-            ? ENVIRONMENT_GONE_STATUS_LABEL
-            : ARCHIVED_THREAD_STATUS_LABEL
+          environmentGoneCopy?.label ?? ARCHIVED_THREAD_STATUS_LABEL
         }
         statusAction={
           environmentGoneSection?.onHandoff ? (
