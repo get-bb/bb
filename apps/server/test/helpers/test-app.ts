@@ -68,6 +68,8 @@ export type TestAppCreateOptions = {
 
 export type TestAppHarnessConfigOverrides = Partial<ServerRuntimeConfig> & {
   appVersionService?: AppVersionService;
+  /** Test-only durable SQLite path used by restart/reopen integration tests. */
+  databasePath?: string;
 };
 
 export const testLogger = {
@@ -116,9 +118,9 @@ export function createTestDaemonHostKey(
 export async function createTestAppHarness(
   overrides: TestAppHarnessConfigOverrides = {},
 ): Promise<TestAppHarness> {
-  const { appVersionService, ...configOverrides } = overrides;
+  const { appVersionService, databasePath, ...configOverrides } = overrides;
   const dataDir = await mkdtemp(join(tmpdir(), "bb-server-test-"));
-  const db = initDb(":memory:");
+  const db = initDb(databasePath ?? ":memory:");
   const hub = new NotificationHubImpl();
   const watchInterests = new WatchInterestCoordinator({ db, hub });
   const sharedPorts = new HostSharedPortCoordinator({ db, hub });
@@ -224,6 +226,7 @@ export async function createTestAppHarness(
     pluginService,
     pluginCatalogService,
     async cleanup(): Promise<void> {
+      db.$client.close();
       await rm(dataDir, { recursive: true, force: true });
     },
   };

@@ -1,4 +1,7 @@
 import { randomUUID } from "node:crypto";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import {
   createHostId,
@@ -12,6 +15,7 @@ import {
   createWorkTogetherRoomResourceProvisioner,
   WorkTogetherRoomProvisioningConflictError,
   WorkTogetherRoomProvisioningUnavailableError,
+  type WorkTogetherRoomResourceProvisioner,
   type WorkTogetherRoomResourceRegistry,
   type WorkTogetherRoomResourceTarget,
 } from "../../src/room-distribution/room-resource-provisioner.js";
@@ -20,7 +24,7 @@ import {
   waitForQueuedCommand,
 } from "../helpers/commands.js";
 import { seedHostSession } from "../helpers/seed.js";
-import { withTestHarness } from "../helpers/test-app.js";
+import { createTestAppHarness, withTestHarness } from "../helpers/test-app.js";
 
 const PRINCIPAL = Object.freeze({
   id: "user_room_owner",
@@ -135,6 +139,61 @@ describe("Work Together Room resource provisioner", () => {
         }),
       ).toHaveLength(1);
     });
+  });
+
+  it("reopens the durable reservation after a server harness restart without duplicating resources", async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), "bb-room-restart-"));
+    const databasePath = join(dataDir, "bb.sqlite");
+    const candidateHostId = randomUUID();
+    const providerRepositoryId = "4242";
+    const exactLaunch = launch(candidateHostId, providerRepositoryId);
+    let target: WorkTogetherRoomResourceTarget;
+    let firstResult: Awaited<ReturnType<WorkTogetherRoomResourceProvisioner["provision"]>>;
+    const first = await createTestAppHarness({ dataDir, databasePath });
+    try {
+      const { host } = seedHostSession(first.deps, { id: createHostId() });
+      target = {
+        bbHostId: host.id,
+        projectName: "Restart-safe Room Repository",
+        providerId: "codex",
+        sourcePath: "/srv/work-together/restart-safe",
+      };
+      firstResult = await createWorkTogetherRoomResourceProvisioner(
+        first.deps,
+        registryFor(candidateHostId, providerRepositoryId, target),
+      ).provision({ principal: PRINCIPAL, launch: exactLaunch });
+      expect(firstResult.state).toBe("provisioning");
+    } finally {
+      await first.cleanup();
+    }
+
+    const restarted = await createTestAppHarness({ dataDir, databasePath });
+    try {
+      const replay = await createWorkTogetherRoomResourceProvisioner(
+        restarted.deps,
+        registryFor(candidateHostId, providerRepositoryId, target!),
+      ).provision({ principal: PRINCIPAL, launch: exactLaunch });
+      expect(replay).toEqual(firstResult!);
+      expect(listProjects(restarted.db).filter((project) =>
+        project.id === replay.projectId)).toHaveLength(1);
+      expect(listThreads(restarted.db, {
+        includeHidden: true,
+        projectId: replay.projectId,
+      })).toHaveLength(1);
+      expect(
+        getWorkTogetherRoomResourceReservation(
+          restarted.db,
+          exactLaunch.bindingId,
+        ),
+      ).toMatchObject({
+        projectId: replay.projectId,
+        environmentId: replay.environmentId,
+        primaryThreadId: replay.primaryThreadId,
+      });
+    } finally {
+      await restarted.cleanup();
+      await rm(dataDir, { recursive: true, force: true });
+    }
   });
 
   it("fails before reservation when no operator registry target exists", async () => {
