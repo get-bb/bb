@@ -48,6 +48,7 @@ export function PluginPanelHeaderCenter({
       <PluginIcon
         pluginId={panel.pluginId}
         icon={panel.icon}
+        preferContributionIcon
         className="text-muted-foreground"
       />
       <p className="truncate text-sm font-semibold">{panel.title}</p>

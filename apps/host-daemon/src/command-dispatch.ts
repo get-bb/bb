@@ -70,6 +70,7 @@ import {
 } from "./command-handlers/thread.js";
 import { WorkspaceError } from "@bb/host-workspace";
 import { squashMerge } from "./command-handlers/workspace.js";
+import { listWorkspaceDirectory } from "./command-handlers/workspace-directory.js";
 import {
   cloneProject,
   inspectProjectPath,
@@ -403,6 +404,13 @@ const commandHandlers: CommandHandlerMap = {
       workspaceContext: command.workspaceContext,
     });
     switch (command.operation) {
+      case "create":
+        await entry.workspace.runPullRequestAction({
+          operation: "create",
+          baseBranch: command.baseBranch,
+          draft: command.draft,
+        });
+        break;
       case "ready":
         await entry.workspace.runPullRequestAction({ operation: "ready" });
         break;
@@ -508,6 +516,7 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
       };
     }
   },
+  "workspace.list_directory": listWorkspaceDirectory,
   "workspace.diff": async (command, options) => {
     const resolution = await resolveWorkspaceForCommand({
       dataDir: options.dataDir,

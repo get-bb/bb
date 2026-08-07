@@ -1,6 +1,7 @@
 import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import type {
   TerminalSessionCloseReason,
+  TerminalSessionPurpose,
   TerminalSessionStatus,
 } from "@bb/domain";
 import type { DbConnection, DbTransaction } from "../connection.js";
@@ -19,6 +20,7 @@ export interface CreateTerminalSessionInput {
   hostId: string;
   initialCwd: string;
   now?: number;
+  purpose?: TerminalSessionPurpose | null;
   rows: number;
   status: TerminalSessionStatus;
   threadId: string | null;
@@ -170,6 +172,7 @@ export function createTerminalSession(
       hostId: input.hostId,
       daemonSessionId: input.daemonSessionId,
       title: input.title,
+      purpose: input.purpose ?? null,
       initialCwd: input.initialCwd,
       cols: input.cols,
       rows: input.rows,

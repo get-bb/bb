@@ -67,6 +67,8 @@ import type {
   EnvironmentArchiveThreadsResponse,
   EnvironmentDiffBranchesQuery,
   EnvironmentDiffBranchesResponse,
+  EnvironmentDirectoryQuery,
+  EnvironmentDirectoryResponse,
   EnvironmentDiffFileQuery,
   EnvironmentDiffFileResponse,
   EnvironmentDiffFilesResponse,
@@ -117,6 +119,7 @@ import type {
   ProjectListQuery,
   ProjectPathsQuery,
   ProjectResponse,
+  ProjectWorkspaceSettingsResponse,
   ProjectSkillsQuery,
   DeleteSkillRequest,
   SkillListResponse,
@@ -125,6 +128,7 @@ import type {
   SkillContentResponse,
   SkillFilesResponse,
   UpdateSkillRequest,
+  UpdateProjectWorkspaceSettingsRequest,
   ProjectWithThreadsResponse,
   PromptHistoryQuery,
   PromptHistoryResponse,
@@ -232,6 +236,7 @@ import {
   deleteThreadRequestSchema,
   environmentActionRequestSchema,
   environmentDiffBranchesQuerySchema,
+  environmentDirectoryQuerySchema,
   environmentDiffFileQuerySchema,
   environmentDiffPatchRequestSchema,
   environmentDiffQuerySchema,
@@ -257,6 +262,7 @@ import {
   projectFilesQuerySchema,
   projectListQuerySchema,
   projectPathsQuerySchema,
+  updateProjectWorkspaceSettingsRequestSchema,
   projectSkillsQuerySchema,
   deleteSkillRequestSchema,
   projectSkillContentQuerySchema,
@@ -374,6 +380,21 @@ export const publicApiRoutes = {
         projectDefaultExecutionOptionsQuerySchema,
       ),
       response: jsonResponse<ProjectExecutionDefaults | null>(),
+    }),
+    workspaceSettings: defineRoute({
+      path: "/projects/:id/workspace-settings",
+      method: "get",
+      request: noRequest<PathProjectId>(),
+      response: jsonResponse<ProjectWorkspaceSettingsResponse>(),
+    }),
+    updateWorkspaceSettings: defineRoute({
+      path: "/projects/:id/workspace-settings",
+      method: "patch",
+      request: jsonRequest<
+        PathProjectId,
+        UpdateProjectWorkspaceSettingsRequest
+      >(updateProjectWorkspaceSettingsRequestSchema),
+      response: jsonResponse<ProjectWorkspaceSettingsResponse>(),
     }),
     promptHistory: defineRoute({
       path: "/projects/:id/prompt-history",
@@ -770,6 +791,14 @@ export const publicApiRoutes = {
         environmentStatusQuerySchema,
       ),
       response: jsonResponse<EnvironmentStatusResponse>(),
+    }),
+    directory: defineRoute({
+      path: "/environments/:id/directory",
+      method: "get",
+      request: optionalQueryRequest<PathId, EnvironmentDirectoryQuery>(
+        environmentDirectoryQuerySchema,
+      ),
+      response: jsonResponse<EnvironmentDirectoryResponse>(),
     }),
     pullRequest: defineRoute({
       path: "/environments/:id/pull-request",

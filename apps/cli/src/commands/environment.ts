@@ -25,6 +25,11 @@ interface EnvironmentShowCommandOptions {
   json?: boolean;
 }
 
+interface EnvironmentPullRequestCreateCommandOptions {
+  draft?: boolean;
+  json?: boolean;
+}
+
 interface EnvironmentStatusCommandOptions {
   json?: boolean;
   mergeBaseBranch?: string;
@@ -42,6 +47,13 @@ interface EnvironmentPathsCommandOptions {
   json?: boolean;
   limit?: string;
   query?: string;
+}
+
+interface EnvironmentDirectoryCommandOptions {
+  cursor?: string;
+  json?: boolean;
+  limit?: string;
+  path?: string;
 }
 
 interface EnvironmentDiffCommandOptions {
@@ -436,6 +448,36 @@ export function registerEnvironmentCommands(
     );
 
   environment
+    .command("directory <id>")
+    .description("List one literal workspace directory")
+    .option("--path <path>", "Workspace-relative directory path")
+    .option("--cursor <cursor>", "Continue after a previous page")
+    .option("--limit <count>", "Maximum direct entries")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (id: string, opts: EnvironmentDirectoryCommandOptions) => {
+        validateLimit(opts.limit);
+        const result = await createCliBbSdk(getUrl()).environments.directory({
+          environmentId: id,
+          ...(opts.path !== undefined ? { path: opts.path } : {}),
+          ...(opts.cursor !== undefined ? { cursor: opts.cursor } : {}),
+          ...(opts.limit !== undefined ? { limit: opts.limit } : {}),
+        });
+        if (outputJson(opts, result)) return;
+        if (result.outcome === "unavailable") {
+          console.log(`Directory unavailable: ${result.failure.message}`);
+          return;
+        }
+        for (const entry of result.entries) {
+          console.log(`${entry.kind}\t${entry.path}`);
+        }
+        if (result.nextCursor) {
+          console.log(`Next cursor: ${result.nextCursor}`);
+        }
+      }),
+    );
+
+  environment
     .command("diff <id>")
     .description("Show an environment's git diff")
     .requiredOption(
@@ -698,6 +740,29 @@ export function registerEnvironmentCommands(
   const pullRequest = environment
     .command("pull-request")
     .description("Inspect and manage an environment's pull request");
+
+  pullRequest
+    .command("create <id>")
+    .description("Create a pull request for an environment")
+    .option("--draft", "Create a draft pull request")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(
+        async (
+          id: string,
+          opts: EnvironmentPullRequestCreateCommandOptions,
+        ) => {
+          const result = await createCliBbSdk(
+            getUrl(),
+          ).environments.createPullRequest({
+            environmentId: id,
+            draft: Boolean(opts.draft),
+          });
+          if (outputJson(opts, result)) return;
+          console.log(result.message);
+        },
+      ),
+    );
 
   pullRequest
     .command("show <id>")

@@ -295,6 +295,24 @@ describe("workspace provisioning", () => {
     ).rejects.toThrow(/timed out/u);
   });
 
+  it("runs a configured project setup command instead of the fallback file", async () => {
+    const workspacePath = await makeTempDir("bb-configured-setup-");
+    await fs.writeFile(
+      path.join(workspacePath, DEFAULT_ENV_SETUP_SCRIPT_NAME),
+      "echo fallback\n",
+      "utf8",
+    );
+
+    const result = await runSetupScript({
+      workspacePath,
+      timeoutMs: 900000,
+      setupScript: "echo configured",
+    });
+
+    expect(result).toMatchObject({ ran: true, exitCode: 0 });
+    expect(result.output).toBe("configured\n");
+  });
+
   it("aborts setup scripts and emits cancellation progress", async () => {
     const workspacePath = await makeTempDir("bb-setup-abort-");
     const markerDir = await makeTempDir("bb-setup-abort-markers-");

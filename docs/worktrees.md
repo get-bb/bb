@@ -76,11 +76,33 @@ Contract:
 - Large directories such as `node_modules` are copied file by file, which is
   slow. Install dependencies in `.bb-env-setup.sh` instead.
 
-## Run setup with `.bb-env-setup.sh`
+## Configure project scripts
 
-Drop a file named `.bb-env-setup.sh` at the root of your project. If bb finds
-one when it creates a worktree, it runs the script inside the new worktree
-before handing the thread to the agent.
+Open **Project settings → Workspace scripts** to set a Setup command and a Run
+command for the project. The Setup command runs once while bb provisions each
+new managed worktree. It takes precedence over `.bb-env-setup.sh` and keeps the
+same 15-minute timeout and rollback behaviour.
+
+The Run command does not start automatically. In an agent thread, select
+**Run** in the lower workspace sidebar and select **Start**. BB keeps Setup,
+Run, and interactive Terminal sessions attached to their environment, so a
+live process returns after the view remounts. Run output that contains a local
+HTTP or HTTPS URL enables **Open preview** in BB's embedded browser.
+
+The project settings are also available through the SDK and CLI:
+
+```bash
+bb project workspace-settings show <project-id>
+bb project workspace-settings set <project-id> \
+  --setup-script "corepack pnpm install" \
+  --run-script "corepack pnpm dev"
+```
+
+## Use the `.bb-env-setup.sh` fallback
+
+If the project has no configured Setup command, place `.bb-env-setup.sh` at the
+project root. If bb finds it when it creates a worktree, it runs the script
+inside the new worktree before it hands the thread to the agent.
 
 Use it for anything the agent will need in a fresh checkout — install
 dependencies, sync local state, generate tokens, etc. To bring local files in
@@ -95,7 +117,8 @@ pnpm install
 
 Contract:
 
-- The script runs with `env bash`, working directory set to the new worktree.
+- A configured command runs through the platform shell. The fallback file runs
+  with `env bash`. Both use the new worktree as the working directory.
 - stdin is closed. stdout and stderr stream into the thread's provisioning
   transcript in the app.
 - A non-zero exit, a signal, or a timeout (15 minutes) fails provisioning and

@@ -760,6 +760,16 @@ export const tasksRpcContract = defineRpcContract({
       })
       .strict(),
   },
+  dailySummary: {
+    input: z.object({ date: dueDateSchema }).strict(),
+    output: z
+      .object({
+        dueToday: z.number().int().nonnegative(),
+        inProgress: z.number().int().nonnegative(),
+        overdue: z.number().int().nonnegative(),
+      })
+      .strict(),
+  },
   sidebarSummary: {
     input: z.null(),
     output: z
@@ -784,6 +794,9 @@ export type Project = z.infer<typeof projectSchema>;
 export type Task = z.infer<typeof taskSchema>;
 export type TaskStatus = (typeof TASK_STATUSES)[number];
 export type TaskPriority = (typeof TASK_PRIORITIES)[number];
+export type DailySummary = z.infer<
+  (typeof tasksRpcContract)["dailySummary"]["output"]
+>;
 export type Label = z.infer<typeof labelSchema>;
 export type Comment = z.infer<typeof commentSchema>;
 export type CommentProvider = z.infer<typeof commentProviderSchema>;

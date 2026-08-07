@@ -87,7 +87,7 @@ export function GitDiffCardImageSizeStat({
   stat,
 }: GitDiffCardImageSizeStatProps) {
   return (
-    <span className="flex shrink-0 items-center gap-1 whitespace-nowrap text-xs tabular-nums">
+    <span className="flex shrink-0 items-center gap-1 whitespace-nowrap text-[13px] font-normal tabular-nums">
       {stat.addedBytes !== null ? (
         <span className="text-diff-added">{`+${formatByteSize(stat.addedBytes)}`}</span>
       ) : null}
@@ -102,6 +102,48 @@ export interface GitDiffCardRawToggleProps {
   fileLabel: string;
   isRaw: boolean;
   onToggle: () => void;
+}
+
+interface GitDiffChangeIconProps {
+  changeKind: GitDiffFileChangeKind;
+}
+
+/**
+ * Mirrors the 16px change-state symbols used by Pierre's default file header.
+ * BB keeps a custom header for collapse and file actions, so the library cannot
+ * render this symbol for us when `disableFileHeader` is enabled.
+ */
+function GitDiffChangeIcon({ changeKind }: GitDiffChangeIconProps) {
+  const isAdded = changeKind === "added";
+  const isDeleted = changeKind === "deleted";
+  const isMoved = changeKind === "renamed" || changeKind === "copied";
+
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 16 16"
+      data-diff-change-icon={changeKind}
+      className={cn(
+        "size-4 shrink-0 fill-current",
+        isAdded
+          ? "text-diff-added"
+          : isDeleted
+            ? "text-diff-removed"
+            : "text-[var(--diff-view-modified)]",
+      )}
+    >
+      <path d="M1.788 4.296c.196-.88.478-1.381.802-1.706s.826-.606 1.706-.802C5.194 1.588 6.387 1.5 8 1.5s2.806.088 3.704.288c.88.196 1.381.478 1.706.802s.607.826.802 1.706c.2.898.288 2.091.288 3.704s-.088 2.806-.288 3.704c-.195.88-.478 1.381-.802 1.706s-.826.607-1.706.802c-.898.2-2.091.288-3.704.288s-2.806-.088-3.704-.288c-.88-.195-1.381-.478-1.706-.802s-.606-.826-.802-1.706C1.588 10.806 1.5 9.613 1.5 8s.088-2.806.288-3.704M8 0C1.412 0 0 1.412 0 8s1.412 8 8 8 8-1.412 8-8-1.412-8-8-8" />
+      {isAdded ? (
+        <path d="M8 4a.75.75 0 0 1 .75.75v2.5h2.5a.75.75 0 0 1 0 1.5h-2.5v2.5a.75.75 0 0 1-1.5 0v-2.5h-2.5a.75.75 0 0 1 0-1.5h2.5v-2.5A.75.75 0 0 1 8 4" />
+      ) : isDeleted ? (
+        <path d="M4 8a.75.75 0 0 1 .75-.75h6.5a.75.75 0 0 1 0 1.5h-6.5A.75.75 0 0 1 4 8" />
+      ) : isMoved ? (
+        <path d="M8.495 4.695a.75.75 0 0 0-.05 1.06L10.486 8l-2.041 2.246a.75.75 0 0 0 1.11 1.008l2.5-2.75a.75.75 0 0 0 0-1.008l-2.5-2.75a.75.75 0 0 0-1.06-.051m-4 0a.75.75 0 0 0-.05 1.06l2.044 2.248-1.796 1.995a.75.75 0 0 0 1.114 1.004l2.25-2.5a.75.75 0 0 0-.002-1.007l-2.5-2.75a.75.75 0 0 0-1.06-.05" />
+      ) : (
+        <circle cx="8" cy="8" r="3" />
+      )}
+    </svg>
+  );
 }
 
 export function GitDiffCardRawToggle({
@@ -173,8 +215,8 @@ export function GitDiffCardHeader({
     isCollapsed !== undefined && onToggleCollapsed !== undefined;
 
   return (
-    <div className="flex w-full min-w-0 items-center justify-between gap-2">
-      <span className="flex min-w-0 items-center">
+    <div className="flex h-full w-full min-w-0 items-center justify-between gap-2">
+      <span className="flex h-full min-w-0 items-center">
         {supportsCollapse ? (
           <button
             type="button"
@@ -207,7 +249,7 @@ export function GitDiffCardHeader({
         ) : null}
         <span
           className={cn(
-            "flex min-w-0 items-center gap-1.5",
+            "flex min-w-0 items-center gap-2",
             // Mirror the diff body's `[data-column-content] { padding-inline:
             // 1ch }` so the file name is offset from the card's left edge by the
             // same gutter the diff body uses between its column boundary and the
@@ -215,9 +257,10 @@ export function GitDiffCardHeader({
             "pl-[1ch]",
           )}
         >
+          <GitDiffChangeIcon changeKind={model.changeKind} />
           {renameInfo ? (
             <TruncateStart
-              className="min-w-0 font-mono text-xs leading-5 text-muted-foreground"
+              className="min-w-0 font-sans text-[13px] font-normal leading-5 text-muted-foreground"
               title={renameInfo.from}
             >
               {renameInfo.from}
@@ -238,7 +281,7 @@ export function GitDiffCardHeader({
                 ? () => onOpenFilePreview(openablePath)
                 : undefined
             }
-            className="font-mono font-medium text-foreground"
+            className="font-sans text-[13px] font-normal text-foreground"
           />
           {copyablePath ? (
             <CopyButton
@@ -255,14 +298,14 @@ export function GitDiffCardHeader({
           ) : null}
         </span>
       </span>
-      <span className="flex shrink-0 items-center gap-1">
+      <span className="flex shrink-0 items-center gap-1 font-mono text-[13px] font-normal">
         {actionSlot}
         {statSlot ?? (
           <DiffStatsTally
             insertions={headerInsertions}
             deletions={headerDeletions}
             hideZero={hideEmptyHeaderStats}
-            className="text-xs"
+            className="font-mono text-[13px] font-normal"
           />
         )}
       </span>
@@ -275,7 +318,7 @@ const GIT_DIFF_CARD_HEADER_WRAPPER_BASE_CLASS =
   // (`--diffs-gap-inline` defaults to `--diffs-gap-fallback: 8px` in the lib's
   // style.js). The header's collapse chevron sits at the same X as the expand
   // chevrons the library renders between hunks below.
-  "rounded-lg bg-background py-1.5 pl-2 pr-3 text-xs font-medium text-foreground";
+  "flex h-10 shrink-0 items-center rounded-lg bg-background py-0 pl-2 pr-4 font-sans text-[13px] font-normal text-foreground";
 
 export interface GitDiffCardHeaderWrapperClassArgs {
   stickyHeader: boolean;

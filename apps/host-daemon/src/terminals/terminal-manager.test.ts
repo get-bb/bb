@@ -1062,6 +1062,7 @@ describe("TerminalManager", () => {
       chunk: {
         seq: 0,
         dataBase64: Buffer.from("hello\n", "utf8").toString("base64"),
+        dimensions: { cols: 100, rows: 30 },
       },
     });
     expect(harness.messages).toContainEqual({
@@ -1072,6 +1073,7 @@ describe("TerminalManager", () => {
         {
           seq: 0,
           dataBase64: Buffer.from("hello\n", "utf8").toString("base64"),
+          dimensions: { cols: 100, rows: 30 },
         },
       ],
       nextSeq: 1,
@@ -1093,10 +1095,20 @@ describe("TerminalManager", () => {
       cols: 120,
       rows: 40,
     });
+    pty.emitData("after resize\n");
 
     expect(pty.writeCalls).toHaveLength(1);
     expect(pty.writeCalls[0]).toBe("pwd\n");
     expect(pty.resizeCalls).toEqual([{ cols: 120, rows: 40 }]);
+    expect(harness.messages).toContainEqual({
+      type: "terminal.output",
+      terminalId: "term-1",
+      chunk: {
+        seq: 0,
+        dataBase64: Buffer.from("after resize\n", "utf8").toString("base64"),
+        dimensions: { cols: 120, rows: 40 },
+      },
+    });
   });
 
   it("kills a terminal and emits exactly one user exit", async () => {

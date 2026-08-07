@@ -1,12 +1,14 @@
 import type { QueryClient } from "@tanstack/react-query";
 import type {
   ProjectResponse,
+  ProjectWorkspaceSettingsResponse,
   ProjectWithThreadsResponse,
   ReorderProjectRequest,
   SidebarBootstrapResponse,
 } from "@bb/server-contract";
 import { applyNeighborReorder } from "@/lib/neighbor-reorder";
 import {
+  projectWorkspaceSettingsQueryKey,
   projectsQueryKey,
   sidebarNavigationQueryKey,
 } from "../queries/query-keys";
@@ -44,9 +46,26 @@ interface ApplyProjectDeleteResultArgs {
   queryClient: QueryClient;
 }
 
+interface ApplyProjectWorkspaceSettingsResultArgs {
+  projectId: string;
+  queryClient: QueryClient;
+  settings: ProjectWorkspaceSettingsResponse;
+}
+
 export interface ReorderProjectTransaction {
   previousProjects: ProjectResponse[] | undefined;
   previousSidebarNavigation: SidebarBootstrapResponse | undefined;
+}
+
+export function applyProjectWorkspaceSettingsResult({
+  projectId,
+  queryClient,
+  settings,
+}: ApplyProjectWorkspaceSettingsResultArgs): void {
+  queryClient.setQueryData(
+    projectWorkspaceSettingsQueryKey(projectId),
+    settings,
+  );
 }
 
 function applyProjectOrderToProjectList(

@@ -19,6 +19,13 @@ The core entities and how they relate:
 
 **Environment**: the execution context for a thread. It binds a workspace (a directory on disk) to a host. An environment can be **unmanaged** (point at an existing directory), or **managed**. Environments managed by bb will be cleaned up when there are no longer any unarchived threads using it. Multiple threads can share an environment.
 
+**Thread workspace**: the desktop agent-thread surface. Its main area owns Chat,
+editable file, diff, and browser tabs. A fixed right sidebar owns a literal,
+on-demand worktree tree, changed files, pull-request checks, and three
+environment-scoped xterm sessions for Setup, Run, and Terminal. File saves use
+the host file API with a SHA-256 compare-and-swap guard. The tree includes
+hidden and ignored paths but does not traverse directory symlinks.
+
 **Host**: a long-lived daemon identity for a machine that runs work. A server has a primary host and can enroll additional remote hosts; project sources and environments retain the host boundary.
 
 **Commands and events**: the server talks to daemons over the active daemon WebSocket with host RPC requests. Lifecycle work such as provisioning an environment, starting a thread, or stopping a thread can run asynchronously from the API caller's perspective, and the server settles command side effects when the daemon returns an RPC result. Daemons separately post provider and thread progress as event batches.

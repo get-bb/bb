@@ -35,7 +35,7 @@ import {
   providerCliStatusResponseSchema,
 } from "./local.js";
 
-export const HOST_DAEMON_PROTOCOL_VERSION = 75 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 78 as const;
 
 export {
   BRANCH_LIST_LIMIT_MAX,
@@ -948,6 +948,8 @@ const managedEnvironmentProvisionFieldsSchema = z.object({
   baseBranch: gitBranchNameSchema.nullable(),
   /** Maximum time in ms to wait for the setup script */
   setupTimeoutMs: z.number().int().positive(),
+  /** Project-configured setup command. Null or omission keeps the fallback. */
+  setupScript: z.string().trim().min(1).max(10_000).nullable().optional(),
 });
 
 const managedWorktreeEnvironmentProvisionCommandSchema =
@@ -1016,6 +1018,17 @@ const workspaceStatusCommandSchema = hostDaemonWorkspaceTargetSchema.extend({
   mergeBaseBranch: gitBranchNameSchema.optional(),
 });
 
+export const WORKSPACE_DIRECTORY_PAGE_LIMIT_MAX = 500;
+
+const workspaceListDirectoryCommandSchema = hostDaemonWorkspaceTargetSchema
+  .extend({
+    type: z.literal("workspace.list_directory"),
+    path: z.string().max(4096),
+    cursor: z.string().max(8192).optional(),
+    limit: z.number().int().positive().max(WORKSPACE_DIRECTORY_PAGE_LIMIT_MAX),
+  })
+  .strict();
+
 const workspaceDiffCommandSchema = hostDaemonWorkspaceTargetSchema.extend({
   type: z.literal("workspace.diff"),
   target: workspaceDiffTargetSchema,
@@ -1044,6 +1057,15 @@ const workspacePullRequestCommandSchema =
 
 const pullRequestMergeMethodSchema = z.enum(["merge", "squash", "rebase"]);
 
+const workspacePullRequestCreateCommandSchema = hostDaemonWorkspaceTargetSchema
+  .extend({
+    type: z.literal("workspace.pull_request_action"),
+    operation: z.literal("create"),
+    baseBranch: z.string().min(1).optional(),
+    draft: z.boolean(),
+  })
+  .strict();
+
 const workspacePullRequestReadyCommandSchema = hostDaemonWorkspaceTargetSchema
   .extend({
     type: z.literal("workspace.pull_request_action"),
@@ -1069,6 +1091,7 @@ const workspacePullRequestMergeCommandSchema = hostDaemonWorkspaceTargetSchema
 const workspacePullRequestActionCommandSchema = z.discriminatedUnion(
   "operation",
   [
+    workspacePullRequestCreateCommandSchema,
     workspacePullRequestReadyCommandSchema,
     workspacePullRequestDraftCommandSchema,
     workspacePullRequestMergeCommandSchema,
@@ -1131,6 +1154,44 @@ const workspaceStatusResultSchema = z.discriminatedUnion("outcome", [
     .object({
       outcome: z.literal("available"),
       workspaceStatus: workspaceStatusSchema,
+    })
+    .strict(),
+  z
+    .object({
+      outcome: z.literal("unavailable"),
+      failure: workspaceResolutionFailureSchema,
+    })
+    .strict(),
+]);
+
+export const workspaceDirectoryEntryKindSchema = z.enum([
+  "directory",
+  "file",
+  "symlink",
+  "other",
+]);
+export type WorkspaceDirectoryEntryKind = z.infer<
+  typeof workspaceDirectoryEntryKindSchema
+>;
+
+export const workspaceDirectoryEntrySchema = z
+  .object({
+    kind: workspaceDirectoryEntryKindSchema,
+    name: z.string().min(1),
+    path: z.string().min(1),
+  })
+  .strict();
+export type WorkspaceDirectoryEntry = z.infer<
+  typeof workspaceDirectoryEntrySchema
+>;
+
+const workspaceListDirectoryResultSchema = z.discriminatedUnion("outcome", [
+  z
+    .object({
+      outcome: z.literal("available"),
+      directory: z.string(),
+      entries: z.array(workspaceDirectoryEntrySchema),
+      nextCursor: z.string().nullable(),
     })
     .strict(),
   z
@@ -1972,6 +2033,15 @@ export const hostDaemonCommandRegistry = {
     type: "workspace.status",
     schema: workspaceStatusCommandSchema,
     resultSchema: workspaceStatusResultSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: "read",
+  }),
+  "workspace.list_directory": defineHostDaemonCommandDescriptor({
+    type: "workspace.list_directory",
+    schema: workspaceListDirectoryCommandSchema,
+    resultSchema: workspaceListDirectoryResultSchema,
     transport: "onlineRpc",
     retryable: true,
     flushEventsBeforeResult: false,

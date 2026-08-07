@@ -179,7 +179,10 @@ export function GitDiffToolbar({
   });
 
   return (
-    <div ref={rootRef} className="px-4 pb-3 pt-3">
+    <div
+      ref={rootRef}
+      className="border-b border-border-seam bg-background px-2 py-2"
+    >
       <div className="flex min-w-0 items-center gap-3">
         <div className="min-w-0 flex-1">
           <GitDiffSelector

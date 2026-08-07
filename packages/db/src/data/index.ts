@@ -56,6 +56,15 @@ export {
   listProjectExecutionDefaultsByProjectIds,
   upsertProjectExecutionDefaults,
 } from "./project-execution-defaults.js";
+
+export {
+  getProjectWorkspaceSettings,
+  upsertProjectWorkspaceSettings,
+} from "./project-workspace-settings.js";
+export type {
+  ProjectWorkspaceSettings,
+  UpsertProjectWorkspaceSettingsArgs,
+} from "./project-workspace-settings.js";
 export type {
   GetProjectExecutionDefaultsArgs,
   ListProjectExecutionDefaultsByProjectIdsArgs,
@@ -260,6 +269,7 @@ export {
   createEnvironment,
   getEnvironment,
   findEnvironmentByHostPath,
+  listActiveManagedWorktreeNames,
   listEnvironments,
   listEnvironmentsByIds,
   listRetiredLoadedEnvironmentIdsOnHost,

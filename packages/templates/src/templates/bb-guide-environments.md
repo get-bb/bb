@@ -75,6 +75,11 @@ Making your repo work with bb:
     --files                               Include only files unless combined with --directories
     --directories                         Include only directories unless combined with --files
 
+  bb environment directory <id>           List every direct child of a workspace directory
+    --path <path>                         Relative directory path; omit for the workspace root
+    --cursor <cursor>                     Continue a previous directory page
+    --limit <count>                       Maximum entries in this page
+
   bb environment diff <id>                Show file summary and full git diff
   bb environment diff-files <id>          List changed-file metadata
     --target <target>                     uncommitted, branch_committed, all, or commit (required)
@@ -114,7 +119,8 @@ Making your repo work with bb:
     --method <method>                     merge, squash, or rebase
 
 Every inspection command accepts an arbitrary environment ID and supports
-`--json`. Non-git status/diff responses are reported explicitly. `diff-file`
+`--json`. `directory` includes dotfiles, ignored files, and generated
+directories without filtering them. Non-git status/diff responses are reported explicitly. `diff-file`
 prints UTF-8 content directly and labels base64 binary content; diff and patch
 truncation markers are preserved.
 

@@ -441,6 +441,43 @@ describe("public terminal routes", () => {
     expect(threadList.sessions).toEqual([]);
   });
 
+  it("reattaches to one live reserved terminal for an environment", async () => {
+    const fixture = await createTerminalRouteFixture();
+    harnesses.push(fixture.harness);
+    const request = () =>
+      fixture.harness.app.request("/api/v1/terminals", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          cols: 100,
+          rows: 30,
+          purpose: "run",
+          start: { mode: "command", command: "corepack pnpm dev" },
+          target: {
+            kind: "environment",
+            environmentId: fixture.environment.id,
+          },
+          title: "Run",
+        }),
+      });
+
+    const firstResponsePromise = Promise.resolve(request());
+    const openMessage = await waitForDaemonMessage(fixture.socket);
+    if (openMessage.type !== "terminal.open") {
+      throw new Error(`Expected terminal.open, received ${openMessage.type}`);
+    }
+    acknowledgeTerminalOpen(fixture, openMessage);
+    const first = terminalSessionSchema.parse(
+      await readJson(await firstResponsePromise),
+    );
+    const secondResponse = await request();
+    const second = terminalSessionSchema.parse(await readJson(secondResponse));
+
+    expect(first).toMatchObject({ purpose: "run", threadId: null });
+    expect(second.id).toBe(first.id);
+    expect(fixture.socket.sentMessages).toHaveLength(1);
+  });
+
   it("creates and lists terminal sessions for a host path without an environment", async () => {
     const fixture = await createTerminalRouteFixture();
     harnesses.push(fixture.harness);
@@ -605,7 +642,9 @@ describe("public terminal routes", () => {
       terminalId: stored.id,
     });
     if (attachMessage.type !== "terminal.attach") {
-      throw new Error(`Expected terminal.attach, received ${attachMessage.type}`);
+      throw new Error(
+        `Expected terminal.attach, received ${attachMessage.type}`,
+      );
     }
 
     fixture.harness.deps.terminalSessions.handleDaemonTerminalMessage({
@@ -667,18 +706,15 @@ describe("public terminal routes", () => {
       status: "idle",
     });
 
-    const response = await harness.app.request(
-      "/api/v1/terminals",
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          cols: 80,
-          rows: 24,
-          target: { kind: "thread", threadId: thread.id },
-        }),
-      },
-    );
+    const response = await harness.app.request("/api/v1/terminals", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        cols: 80,
+        rows: 24,
+        target: { kind: "thread", threadId: thread.id },
+      }),
+    });
 
     expect(response.status).toBe(409);
     expect(apiErrorSchema.parse(await readJson(response))).toMatchObject({
@@ -694,18 +730,15 @@ describe("public terminal routes", () => {
     const fixture = await createTerminalRouteFixture();
     harnesses.push(fixture.harness);
 
-    const responsePromise = fixture.harness.app.request(
-      "/api/v1/terminals",
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          cols: 100,
-          rows: 30,
-          target: { kind: "thread", threadId: fixture.thread.id },
-        }),
-      },
-    );
+    const responsePromise = fixture.harness.app.request("/api/v1/terminals", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        cols: 100,
+        rows: 30,
+        target: { kind: "thread", threadId: fixture.thread.id },
+      }),
+    });
     const openMessage = await waitForDaemonMessage(fixture.socket);
     if (openMessage.type !== "terminal.open") {
       throw new Error(`Expected terminal.open, received ${openMessage.type}`);
@@ -752,19 +785,16 @@ describe("public terminal routes", () => {
     const fixture = await createTerminalRouteFixture();
     harnesses.push(fixture.harness);
 
-    const responsePromise = fixture.harness.app.request(
-      "/api/v1/terminals",
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          cols: 100,
-          rows: 30,
-          start: { mode: "command", command: "pnpm dev" },
-          target: { kind: "thread", threadId: fixture.thread.id },
-        }),
-      },
-    );
+    const responsePromise = fixture.harness.app.request("/api/v1/terminals", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        cols: 100,
+        rows: 30,
+        start: { mode: "command", command: "pnpm dev" },
+        target: { kind: "thread", threadId: fixture.thread.id },
+      }),
+    });
     const openMessage = await waitForDaemonMessage(fixture.socket);
     if (openMessage.type !== "terminal.open") {
       throw new Error(`Expected terminal.open, received ${openMessage.type}`);
@@ -908,10 +938,12 @@ describe("public terminal routes", () => {
           {
             seq: 2,
             dataBase64: Buffer.from("old", "utf8").toString("base64"),
+            dimensions: { cols: 100, rows: 30 },
           },
           {
             seq: 3,
             dataBase64: Buffer.from("new", "utf8").toString("base64"),
+            dimensions: { cols: 80, rows: 24 },
           },
         ],
         nextSeq: 4,
@@ -927,6 +959,7 @@ describe("public terminal routes", () => {
         {
           seq: 3,
           dataBase64: Buffer.from("new", "utf8").toString("base64"),
+          dimensions: { cols: 80, rows: 24 },
         },
       ],
       nextSeq: 4,
@@ -1071,18 +1104,15 @@ describe("public terminal routes", () => {
     const fixture = await createTerminalRouteFixture();
     harnesses.push(fixture.harness);
 
-    const response = await fixture.harness.app.request(
-      "/api/v1/terminals",
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          cols: 80,
-          rows: 24,
-          target: { kind: "thread", threadId: fixture.thread.id },
-        }),
-      },
-    );
+    const response = await fixture.harness.app.request("/api/v1/terminals", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        cols: 80,
+        rows: 24,
+        target: { kind: "thread", threadId: fixture.thread.id },
+      }),
+    });
 
     expect(response.status).toBe(504);
     expect(apiErrorSchema.parse(await readJson(response))).toMatchObject({
@@ -1572,6 +1602,7 @@ describe("public terminal routes", () => {
     const replayChunk = {
       seq: 0,
       dataBase64: Buffer.from("hello\n", "utf8").toString("base64"),
+      dimensions: { cols: 100, rows: 30 },
     };
     fixture.harness.deps.terminalSessions.handleDaemonTerminalMessage({
       hostId: fixture.host.id,
@@ -1596,6 +1627,7 @@ describe("public terminal routes", () => {
     const liveChunk = {
       seq: 1,
       dataBase64: Buffer.from("world\n", "utf8").toString("base64"),
+      dimensions: { cols: 80, rows: 24 },
     };
     fixture.harness.deps.terminalSessions.handleDaemonTerminalMessage({
       hostId: fixture.host.id,

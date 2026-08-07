@@ -416,6 +416,8 @@ interface PluginNavPanelRegistration {
     icon: string;
     /** URL segment under `/plugins/<pluginId>/`; letters, digits, `-`, `_`. */
     path: string;
+    /** Pin this panel at the start of plugin navigation, below New Thread. */
+    sidebarPlacement?: "top";
     component: ComponentType<PluginNavPanelProps>;
     /**
      * Optional component rendered on the right side of the shared title bar

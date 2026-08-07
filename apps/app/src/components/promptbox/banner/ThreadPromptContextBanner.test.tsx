@@ -31,6 +31,8 @@ const pullRequestFixture: ThreadPullRequest = {
     failedCount: 0,
     pendingCount: 0,
   },
+  checkItems: [],
+  comments: [],
   review: {
     state: "none",
     reviewRequestCount: 0,

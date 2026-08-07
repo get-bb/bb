@@ -3,6 +3,7 @@ import {
   arrangePluginNavPanels,
   getPluginNavPanelKey,
   reorderPluginNavPanels,
+  pinLeadingNavPanelKeys,
   seedLeadingNavPanelKeys,
 } from "./pluginNavSidebarOrder";
 
@@ -180,5 +181,21 @@ describe("seedLeadingNavPanelKeys", () => {
         ["__builtin__/tools"],
       ),
     ).toEqual(["github/pulls", "__builtin__/tools"]);
+  });
+});
+
+describe("pinLeadingNavPanelKeys", () => {
+  it("moves top-placement panels ahead of saved rows", () => {
+    expect(
+      pinLeadingNavPanelKeys(
+        ["github/pulls", "tasks/board", "tasks/home", "__builtin__/tools"],
+        ["tasks/home", "__builtin__/tools"],
+      ),
+    ).toEqual([
+      "tasks/home",
+      "__builtin__/tools",
+      "github/pulls",
+      "tasks/board",
+    ]);
   });
 });

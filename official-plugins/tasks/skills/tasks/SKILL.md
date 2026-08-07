@@ -8,6 +8,10 @@ description: Use when asked to work on or track a task in the Tasks plugin, when
 Use the `bb tasks` CLI to understand the assigned task, keep its record useful,
 and report the outcome where the work is tracked.
 
+Use `bb tasks summary` for the same due-today, in-progress, and overdue view
+shown on Home. Pass `--date YYYY-MM-DD` when the relevant day is not today,
+and add `--json` when the values will drive another command.
+
 Delegation presets are user-defined; Tasks ships with none. Before dispatching
 work, use `bb tasks preset list` and create a preset if the required one does
 not already exist. Dispatch requires an existing preset.

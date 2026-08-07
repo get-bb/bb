@@ -138,6 +138,18 @@ export function looksLikeUrl(input: string): boolean {
   return normalizeUrl(trimmed) !== null;
 }
 
+export function isLoopbackBrowserUrl(input: string): boolean {
+  try {
+    const url = new URL(input);
+    return (
+      (url.protocol === "http:" || url.protocol === "https:") &&
+      isBareLoopbackHost(normalizeParsedHost(url.hostname))
+    );
+  } catch {
+    return false;
+  }
+}
+
 function buildSearchUrl(query: string): string {
   return `${SEARCH_ENGINE_URL}?q=${encodeURIComponent(query)}`;
 }

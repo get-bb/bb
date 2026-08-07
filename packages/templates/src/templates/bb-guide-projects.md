@@ -31,6 +31,20 @@ A project maps to a code repository. All threads belong to a project.
   bb project delete <id>                  Delete project and all threads
     --yes                                 Skip confirmation
 
+Workspace scripts:
+
+  bb project workspace-settings show <id>
+                                          Show Setup and Run scripts
+  bb project workspace-settings set <id>
+    --setup-script <script>               Set the per-worktree Setup script
+    --run-script <script>                 Set the development Run script
+    --clear-setup                         Clear the Setup script
+    --clear-run                           Clear the Run script
+
+  An empty Setup script falls back to the tracked `.bb-env-setup.sh` file when
+  the project provides one. Setup runs once for each worktree. Run starts the
+  project's main development server in the active worktree.
+
 Discovery:
 
   bb project branches <id> --host <id>   List branches for a machine source

@@ -56,9 +56,7 @@ import {
 import { requireWorkspaceCommandTarget } from "../environments/workspace-command-target.js";
 
 const DEFAULT_TERMINAL_OPEN_TIMEOUT_MS = 10_000;
-const DEFAULT_TERMINAL_START: NonNullable<
-  CreateTerminalRequest["start"]
-> = {
+const DEFAULT_TERMINAL_START: NonNullable<CreateTerminalRequest["start"]> = {
   mode: "shell",
 };
 const HOST_HOME_INITIAL_CWD = "~";
@@ -199,10 +197,7 @@ type TerminalDaemonOpenTarget = Extract<
   HostDaemonServerWsMessage,
   { type: "terminal.open" }
 >["target"];
-type TerminalLaunchTarget = Exclude<
-  TerminalCreateTarget,
-  { kind: "thread" }
->;
+type TerminalLaunchTarget = Exclude<TerminalCreateTarget, { kind: "thread" }>;
 
 interface ResolvedTerminalLaunchTarget {
   daemonTarget: TerminalDaemonOpenTarget;
@@ -313,6 +308,7 @@ interface GetTerminalArgs {
 
 interface TerminalCreatePayload {
   cols: number;
+  purpose?: CreateTerminalRequest["purpose"];
   rows: number;
   start?: NonNullable<CreateTerminalRequest["start"]>;
   title?: string;
@@ -322,6 +318,7 @@ interface CreateTerminalForTargetArgs {
   payload: TerminalCreatePayload;
   target: TerminalLaunchTarget;
   threadId: string | null;
+  purpose: CreateTerminalRequest["purpose"] | null;
   title: string;
 }
 
@@ -373,6 +370,9 @@ function toTerminalOutputChunk(
   return {
     seq: chunk.seq,
     dataBase64: chunk.dataBase64,
+    ...(chunk.dimensions === undefined
+      ? {}
+      : { dimensions: chunk.dimensions }),
   };
 }
 
@@ -468,6 +468,7 @@ export function toTerminalSession(row: TerminalSessionRow): TerminalSession {
     environmentId: row.environmentId,
     hostId: row.hostId,
     title: row.title,
+    purpose: row.purpose,
     initialCwd: row.initialCwd,
     cols: row.cols,
     rows: row.rows,
@@ -552,6 +553,25 @@ export class TerminalSessionLifecycle {
 
   async createTerminal(args: CreateTerminalArgs): Promise<TerminalSession> {
     const { target } = args.payload;
+    if (args.payload.purpose) {
+      if (target.kind !== "environment") {
+        throw new ApiError(
+          400,
+          "terminal_purpose_requires_environment",
+          "A reserved terminal purpose requires an environment target",
+        );
+      }
+      const existing = listVisibleThreadlessTerminalSessionsByEnvironment(
+        this.options.db,
+        target.environmentId,
+      )
+        .slice()
+        .reverse()
+        .find((session) => session.purpose === args.payload.purpose);
+      if (existing) {
+        return toTerminalSession(existing);
+      }
+    }
     const existingSessionCount = this.countExistingSessionsForTarget(target);
     const launchTarget =
       target.kind === "thread"
@@ -560,7 +580,11 @@ export class TerminalSessionLifecycle {
     return this.createTerminalForTarget({
       payload: args.payload,
       target: launchTarget,
-      threadId: target.kind === "thread" ? target.threadId : null,
+      threadId:
+        args.payload.purpose === undefined && target.kind === "thread"
+          ? target.threadId
+          : null,
+      purpose: args.payload.purpose ?? null,
       title: initialTitleForTerminal(args.payload, existingSessionCount),
     });
   }
@@ -615,6 +639,7 @@ export class TerminalSessionLifecycle {
       hostId: launchTarget.hostId,
       initialCwd: launchTarget.initialCwd,
       rows: args.payload.rows,
+      purpose: args.purpose,
       status: "starting",
       threadId: args.threadId,
       title: args.title,
@@ -797,7 +822,9 @@ export class TerminalSessionLifecycle {
     });
   }
 
-  private closeTerminalSession(args: CloseTerminalSessionArgs): TerminalSession {
+  private closeTerminalSession(
+    args: CloseTerminalSessionArgs,
+  ): TerminalSession {
     const current = args.current;
     if (current.status === "exited") {
       return toTerminalSession(current);

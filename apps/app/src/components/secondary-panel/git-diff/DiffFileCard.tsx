@@ -350,11 +350,7 @@ export const DiffFileCard = memo(function DiffFileCard({
   const isHeaderStuck = !isIntersecting;
 
   return (
-    // `overflow-clip` clips the header/body to the card's rounded shape so a
-    // short file's square-bottomed sticky header can't poke its corners past the
-    // card's rounded bottom. `clip` (unlike `hidden`) is NOT a scroll container,
-    // so it doesn't capture the sticky header — it still pins to the panel.
-    <div className="overflow-clip rounded-lg border border-border bg-background">
+    <div className="overflow-clip bg-background">
       <div ref={stickySentinelRef} className="h-0" />
       <div
         className={cn(
@@ -364,7 +360,7 @@ export const DiffFileCard = memo(function DiffFileCard({
             isStuck: isHeaderStuck,
             showStuckHeaderEdge: false,
           }),
-          "-mt-px border-t border-border",
+          "rounded-none border-y border-border-seam",
         )}
       >
         <GitDiffCardHeader
@@ -651,6 +647,7 @@ function DiffFileCardRenderedBody({
         diffViewOptions={diffViewOptions}
         svgDisplayMode={svgDisplayMode}
         reservesCollapseGutter
+        flushEdges
         onSelectionAddToChat={onSelectionAddToChat}
       />
       {truncated ? (

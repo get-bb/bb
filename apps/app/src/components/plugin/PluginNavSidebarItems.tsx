@@ -57,6 +57,7 @@ import {
   getPluginNavPanelKey,
   havePluginNavPanelOrdersDiverged,
   hidePluginNavPanel,
+  pinLeadingNavPanelKeys,
   reorderPluginNavPanels,
   seedLeadingNavPanelKeys,
   showPluginNavPanel,
@@ -131,8 +132,15 @@ export function PluginNavSidebarItems({
       title: panel.title,
       panel,
     }));
-    if (toolsRoutePath === undefined) return pluginRows;
+    const topRows = pluginRows.filter(
+      (row) => row.kind === "plugin" && row.panel.sidebarPlacement === "top",
+    );
+    const standardRows = pluginRows.filter(
+      (row) => row.kind !== "plugin" || row.panel.sidebarPlacement !== "top",
+    );
+    if (toolsRoutePath === undefined) return [...topRows, ...standardRows];
     return [
+      ...topRows,
       {
         kind: "tools",
         pluginId: BUILTIN_NAV_ROW_PLUGIN_ID,
@@ -140,7 +148,7 @@ export function PluginNavSidebarItems({
         title: "Extensions",
         routePath: toolsRoutePath,
       },
-      ...pluginRows,
+      ...standardRows,
     ];
   }, [navPanels, toolsRoutePath]);
   // Router hooks live in the inner component so hosts without a Router
@@ -167,12 +175,20 @@ function PluginNavSidebarItemList({
     // Users who customized their plugin order before the Extensions row joined
     // the list keep it on top instead of finding it at the bottom. Seed only
     // while the row exists, so a build without it saves no key for it.
-    const leadingKeys = rows.some((row) => row.kind === "tools")
+    const topPanelKeys = rows
+      .filter(
+        (row) => row.kind === "plugin" && row.panel.sidebarPlacement === "top",
+      )
+      .map(getPluginNavPanelKey);
+    const builtInLeadingKeys = rows.some((row) => row.kind === "tools")
       ? [TOOLS_NAV_ROW_KEY]
       : [];
     return arrangePluginNavPanels({
       panels: rows,
-      storedOrder: seedLeadingNavPanelKeys(storedOrder, leadingKeys),
+      storedOrder: pinLeadingNavPanelKeys(
+        seedLeadingNavPanelKeys(storedOrder, builtInLeadingKeys),
+        topPanelKeys,
+      ),
       hiddenKeys,
     });
   }, [hiddenKeys, rows, storedOrder]);
@@ -185,10 +201,19 @@ function PluginNavSidebarItemList({
     setStoredOrder(normalizedOrder);
   }, [normalizedOrder, setStoredOrder, storedOrder]);
 
-  const visibleKeys = useMemo(
-    () => visible.map(getPluginNavPanelKey),
-    [visible],
-  );
+  const { topVisible, reorderableVisible, visibleKeys } = useMemo(() => {
+    const top = visible.filter(
+      (row) => row.kind === "plugin" && row.panel.sidebarPlacement === "top",
+    );
+    const reorderable = visible.filter(
+      (row) => row.kind !== "plugin" || row.panel.sidebarPlacement !== "top",
+    );
+    return {
+      topVisible: top,
+      reorderableVisible: reorderable,
+      visibleKeys: reorderable.map(getPluginNavPanelKey),
+    };
+  }, [visible]);
 
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
@@ -226,7 +251,7 @@ function PluginNavSidebarItemList({
     [setHiddenKeys],
   );
 
-  const reorderDisabled = visible.length < 2;
+  const reorderDisabled = reorderableVisible.length < 2;
   const rowProps = {
     onNavigate,
     pathname: location.pathname,
@@ -241,12 +266,20 @@ function PluginNavSidebarItemList({
       data-testid="plugin-nav-sidebar-items"
       onClickCapture={onClickCapture}
     >
+      {topVisible.map((row) => (
+        <SidebarNavRowItem
+          key={getPluginNavPanelKey(row)}
+          row={row}
+          onHide={handleHide}
+          {...rowProps}
+        />
+      ))}
       <DndContext {...dndContextProps}>
         <SortableContext
           items={visibleKeys}
           strategy={verticalListSortingStrategy}
         >
-          {visible.map((row) => (
+          {reorderableVisible.map((row) => (
             <SortableSidebarNavRow
               key={getPluginNavPanelKey(row)}
               row={row}
@@ -453,7 +486,13 @@ function PluginNavSidebarItem({
       {...props}
       rowKey={getPluginNavPanelKey(row)}
       title={panel.title}
-      icon={<PluginIcon pluginId={panel.pluginId} icon={panel.icon} />}
+      icon={
+        <PluginIcon
+          pluginId={panel.pluginId}
+          icon={panel.icon}
+          preferContributionIcon
+        />
+      }
       isActive={pathname === path || pathname.startsWith(`${path}/`)}
       splitMiniMap={splitIndicator.miniMap}
       // Split-drag initiator; engages only when the pointer leaves the

@@ -37,7 +37,7 @@ function renderCard({
   onRequestFileContents?: RequestDiffFileContents;
   patchState?: DiffPatchState;
 }) {
-  render(
+  return render(
     <DiffFileCard
       entry={entry}
       diffViewOptions={{}}
@@ -56,6 +56,24 @@ afterEach(() => {
 });
 
 describe("DiffFileCard", () => {
+  it("fills its parent without an outer card frame", () => {
+    const view = renderCard({ entry: buildEntry() });
+    const card = view.container.firstElementChild;
+
+    expect(card?.classList.contains("border")).toBe(false);
+    expect(card?.classList.contains("rounded-lg")).toBe(false);
+  });
+
+  it("renders added and removed counts at the same explicit weight", () => {
+    const view = renderCard({ entry: buildEntry() });
+
+    expect(screen.getByText("+1").classList.contains("font-normal")).toBe(true);
+    expect(screen.getByText("-1").classList.contains("font-normal")).toBe(true);
+    expect(
+      view.container.querySelector('[data-diff-change-icon="modified"]'),
+    ).not.toBeNull();
+  });
+
   it("previews on-demand binary images without loading the binary patch", async () => {
     const imageResult: DiffFileContentsResult = {
       kind: "image",

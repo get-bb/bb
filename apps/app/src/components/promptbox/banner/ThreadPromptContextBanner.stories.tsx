@@ -388,6 +388,8 @@ function buildPullRequestFixture(
       failedCount: 1,
       pendingCount: 1,
     },
+    checkItems: [],
+    comments: [],
     review: {
       state: "review_requested",
       reviewRequestCount: 1,
@@ -403,6 +405,8 @@ function buildPullRequestFixture(
   return {
     ...base,
     ...overrides,
+    checkItems: overrides.checkItems ?? base.checkItems,
+    comments: overrides.comments ?? base.comments,
     checks: overrides.checks
       ? { ...base.checks, ...overrides.checks }
       : base.checks,

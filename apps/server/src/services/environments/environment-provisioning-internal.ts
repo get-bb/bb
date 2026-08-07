@@ -6,6 +6,7 @@ import {
   type DbQueryConnection,
   type DbTransaction,
   getEnvironment,
+  getProjectWorkspaceSettings,
   getThread,
   listStoredThreadProvisioningRowsByProvisioningId,
   threads,
@@ -604,13 +605,11 @@ export function settleEnvironmentProvisionCommandResult(
         ...resolveProvisionedEnvironmentBranchMetadata(args.command),
       },
     );
-    const provisionedOutcome = applyLoggedEnvironmentLifecycleEventInTransaction(
-      args.deps,
-      {
+    const provisionedOutcome =
+      applyLoggedEnvironmentLifecycleEventInTransaction(args.deps, {
         environmentId: args.command.environmentId,
         event: { type: "provision.succeeded" },
-      },
-    );
+      });
     if (provisionedOutcome.applied) {
       args.deps.hub.notifyEnvironment(
         args.command.environmentId,
@@ -1089,8 +1088,8 @@ export async function dispatchManagedEnvironmentReprovision(
             args.environment.path ??
             resolveManagedTargetPath({
               dataDir: hostSession.dataDir,
-              environmentId: args.environment.id,
               sourcePath: source.path,
+              worktreeName: args.environment.name ?? args.environment.id,
             });
           const branchName =
             args.environment.branchName ??
@@ -1108,6 +1107,8 @@ export async function dispatchManagedEnvironmentReprovision(
             targetPath,
             workspaceProvisionType: provisionType,
             setupTimeoutMs: SETUP_TIMEOUT_MS,
+            setupScript: getProjectWorkspaceSettings(deps.db, args.projectId)
+              .setupScript,
           });
         })();
 

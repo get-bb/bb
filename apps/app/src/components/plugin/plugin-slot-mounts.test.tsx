@@ -21,6 +21,10 @@ import {
   type PluginRegistrationSet,
 } from "@/lib/plugin-slots";
 import {
+  resetPluginLogoStoreForTest,
+  setPluginLogoUrls,
+} from "@/lib/plugin-logos";
+import {
   AUTOMATIONS_PLUGIN_ID,
   PLUGIN_PANEL_ROUTE_PATH,
   AUTOMATIONS_PLUGIN_PANEL_PATH,
@@ -81,6 +85,7 @@ function registrationSet(
 afterEach(() => {
   cleanup();
   resetPluginSlotStoreForTest();
+  resetPluginLogoStoreForTest();
   resetAllCrashedPluginSlotsForTest();
   vi.restoreAllMocks();
 });
@@ -1472,6 +1477,29 @@ describe("plugin panel shared title bar and full-bleed body", () => {
     expect(
       screen.getByRole("button", { name: "Toggle sidebar" }),
     ).toBeDefined();
+  });
+
+  it("uses the panel icon in the shared page header", () => {
+    setPluginLogoUrls(
+      new Map([
+        [
+          "demo",
+          {
+            displayName: "Demo",
+            icon: "ListTodo",
+            compactIconUrl: null,
+            logoUrl: null,
+            logoDarkUrl: null,
+          },
+        ],
+      ]),
+    );
+
+    const view = render(
+      <PluginPanelHeaderCenter panel={panelSlot({ icon: "Home" })} />,
+    );
+    expect(view.container.querySelector("[data-icon=Home]")).toBeTruthy();
+    expect(view.container.querySelector("[data-icon=ListTodo]")).toBeNull();
   });
 
   it("gives the component a zero-padding full-bleed body", () => {

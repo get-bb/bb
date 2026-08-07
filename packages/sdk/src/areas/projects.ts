@@ -9,6 +9,7 @@ import type {
   ProjectFileContentQuery,
   ProjectFilesQuery,
   ProjectResponse,
+  ProjectWorkspaceSettingsResponse,
   ProjectWithThreadsResponse,
   ProjectListQuery,
   ProjectPathsQuery,
@@ -16,6 +17,7 @@ import type {
   PromptHistoryQuery,
   ReorderProjectRequest,
   UpdateProjectRequest,
+  UpdateProjectWorkspaceSettingsRequest,
   UpdateProjectSourceRequest,
   UploadedPromptAttachment,
   WorkspacePathListResponse,
@@ -94,6 +96,15 @@ export interface ProjectBranchesArgs extends ProjectBranchesQuery {
 export interface ProjectDefaultExecutionOptionsArgs {
   projectId: string;
   signal?: AbortSignal;
+}
+
+export interface ProjectWorkspaceSettingsArgs {
+  projectId: string;
+  signal?: AbortSignal;
+}
+
+export interface ProjectWorkspaceSettingsUpdateArgs extends UpdateProjectWorkspaceSettingsRequest {
+  projectId: string;
 }
 
 export interface ProjectAttachmentFileLike {
@@ -185,6 +196,7 @@ export type ProjectSourceAddResult = ProjectSource;
 export type ProjectSourceDeleteResult = { ok: true };
 export type ProjectSourceUpdateResult = ProjectSource;
 export type ProjectUpdateResult = ProjectResponse;
+export type ProjectWorkspaceSettingsResult = ProjectWorkspaceSettingsResponse;
 
 export interface ProjectSourcesArea {
   add(args: ProjectSourceAddArgs): Promise<ProjectSourceAddResult>;
@@ -220,6 +232,12 @@ export interface ProjectsArea {
   reorder(args: ProjectReorderArgs): Promise<ProjectReorderResult>;
   sources: ProjectSourcesArea;
   update(args: ProjectUpdateArgs): Promise<ProjectUpdateResult>;
+  workspaceSettings(
+    args: ProjectWorkspaceSettingsArgs,
+  ): Promise<ProjectWorkspaceSettingsResult>;
+  updateWorkspaceSettings(
+    args: ProjectWorkspaceSettingsUpdateArgs,
+  ): Promise<ProjectWorkspaceSettingsResult>;
 }
 
 function projectUpdateJson(args: ProjectUpdateArgs): UpdateProjectRequest {
@@ -559,6 +577,23 @@ export function createProjectsArea(args: CreateSdkAreaArgs): ProjectsArea {
         transport.api.v1.projects[":id"].$patch({
           param: { id: input.projectId },
           json: projectUpdateJson(input),
+        }),
+      );
+    },
+    async workspaceSettings(input) {
+      return transport.readJson(
+        transport.api.v1.projects[":id"]["workspace-settings"].$get(
+          { param: { id: input.projectId } },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+    },
+    async updateWorkspaceSettings(input) {
+      const { projectId, ...json } = input;
+      return transport.readJson(
+        transport.api.v1.projects[":id"]["workspace-settings"].$patch({
+          param: { id: projectId },
+          json,
         }),
       );
     },

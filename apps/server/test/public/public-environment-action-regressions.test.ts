@@ -26,6 +26,7 @@ function rawPullRequest(
     headRefName: "bb/pr-actions",
     updatedAt: "2026-06-16T12:30:00Z",
     checks: [],
+    comments: [],
     reviewDecision: null,
     reviewRequestCount: 0,
     mergeStateStatus: "CLEAN",
@@ -299,6 +300,68 @@ describe("public environment action regressions", () => {
     });
   });
 
+  it("creates a draft pull request through the environment action route", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-pr-create",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        managed: true,
+        workspaceProvisionType: "managed-worktree",
+        path: "/tmp/pr-create-env",
+        mergeBaseBranch: "main",
+      });
+
+      const responsePromise = harness.app.request(
+        `/api/v1/environments/${environment.id}/actions`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            action: "pull_request_create",
+            options: { draft: true },
+          }),
+        },
+      );
+
+      const pullRequestCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "workspace.pull_request" &&
+          command.environmentId === environment.id,
+      );
+      await reportQueuedCommandSuccess(harness, pullRequestCommand, {
+        outcome: "absent",
+      });
+
+      const createCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "workspace.pull_request_action" &&
+          command.environmentId === environment.id,
+      );
+      expect(createCommand.command).toMatchObject({
+        operation: "create",
+        baseBranch: "main",
+        draft: true,
+      });
+      await reportQueuedCommandSuccess(harness, createCommand, {});
+
+      const response = await responsePromise;
+      expect(response.status).toBe(200);
+      await expect(readJson(response)).resolves.toMatchObject({
+        action: "pull_request_create",
+        draft: true,
+        ok: true,
+      });
+    });
+  });
+
   it("converts open pull requests back to draft through the environment action route", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
@@ -467,5 +530,4 @@ describe("public environment action regressions", () => {
       });
     });
   });
-
 });

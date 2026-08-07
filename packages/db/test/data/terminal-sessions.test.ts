@@ -119,6 +119,24 @@ function createStartingThreadlessTerminal(fixture: TerminalSessionFixture) {
 }
 
 describe("terminal sessions", () => {
+  it("persists a reserved environment terminal purpose", () => {
+    const fixture = setup();
+    const terminal = createTerminalSession(fixture.db, {
+      cols: 80,
+      daemonSessionId: fixture.session.id,
+      environmentId: fixture.environment.id,
+      hostId: fixture.host.id,
+      initialCwd: "/tmp/workspace",
+      purpose: "run",
+      rows: 24,
+      status: "starting",
+      threadId: null,
+      title: "Run",
+    });
+
+    expect(terminal.purpose).toBe("run");
+  });
+
   it("keeps threadless environment terminals out of thread terminal queries", () => {
     const fixture = setup();
     const threadTerminal = createStartingTerminal(fixture);

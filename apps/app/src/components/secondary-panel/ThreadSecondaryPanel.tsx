@@ -238,6 +238,8 @@ export interface ThreadSecondaryPanelProps {
   showGitDiffTab?: boolean;
   showInfoTab?: boolean;
   showNewTabButton?: boolean;
+  /** Hide this panel's tab chrome when an outer workspace tab strip owns it. */
+  hideChrome?: boolean;
   /**
    * How the panel's own inline hide control (top chrome, trailing edge) renders
    * on the wide layout:
@@ -333,6 +335,7 @@ export function ThreadSecondaryPanel({
   showGitDiffTab = true,
   showInfoTab = true,
   showNewTabButton = true,
+  hideChrome = false,
   inlinePanelToggle = "button",
   resizablePanelId = "thread-detail-secondary-panel",
   onPanelFocus,
@@ -620,6 +623,7 @@ export function ThreadSecondaryPanel({
           className={cn(
             CHROME_ROW_CLASS,
             "min-w-0 justify-between gap-2 px-4",
+            hideChrome && "hidden",
             usesDesktopChrome && MACOS_WINDOW_DRAG_CLASS,
             usesDesktopChrome && MACOS_CHROME_CONTROL_AXIS_CLASS,
           )}

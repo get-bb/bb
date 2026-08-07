@@ -5,10 +5,12 @@ import {
   resolveEnvironmentWorkspaceDisplayKind,
   type Environment,
   type ThreadPullRequest,
+  resolveEnvironmentMergeBaseBranch,
 } from "@bb/domain";
 import {
   publicApiRoutes,
   typedRoutes,
+  WORKSPACE_DIRECTORY_PAGE_LIMIT_MAX,
   type DiffPatchEntry,
   type EnvironmentDiffFileQuery,
   type EnvironmentDiffQuery,
@@ -38,6 +40,7 @@ import {
 } from "./branch-list-query.js";
 import { parseFileListLimit } from "./file-list-query.js";
 import { parsePathKindInclusion } from "./path-list-inclusion.js";
+import { parseBoundedPositiveOptionalInteger } from "../services/lib/validation.js";
 import { requireWorkspaceCommandTarget } from "../services/environments/workspace-command-target.js";
 import { callEnvironmentWorkspaceStatus } from "../services/environments/workspace-status.js";
 import { assembleThreadPullRequest } from "../services/environments/pull-request.js";
@@ -57,6 +60,31 @@ const PRE_MERGE_COMMIT_MESSAGE = "bb: pre-merge commit";
 /** Caps for diffs sent to the inference model for commit message generation. */
 const AI_MAX_DIFF_BYTES = 32_000;
 const AI_MAX_FILE_LIST_BYTES = 4_000;
+const WORKSPACE_DIRECTORY_PAGE_LIMIT_DEFAULT = 200;
+
+function parseWorkspaceDirectoryPath(value: string | undefined): string {
+  const relativePath = value ?? "";
+  if (
+    relativePath.includes("\0") ||
+    relativePath.includes("\\") ||
+    path.posix.isAbsolute(relativePath) ||
+    /^[A-Za-z]:/u.test(relativePath)
+  ) {
+    throw new ApiError(400, "invalid_request", "Path must be relative");
+  }
+  if (
+    relativePath !== "" &&
+    relativePath
+      .split("/")
+      .some(
+        (segment) =>
+          segment.length === 0 || segment === "." || segment === "..",
+      )
+  ) {
+    throw new ApiError(400, "invalid_request", "Path must be relative");
+  }
+  return relativePath;
+}
 
 interface AssertSquashMergeTargetIsLocalArgs {
   selectedBranch: GitBranchRefClassification | null;
@@ -163,7 +191,17 @@ async function getPullRequestForWorkspaceTarget(
   deps: AppDeps,
   target: ReturnType<typeof requireWorkspaceCommandTarget>,
 ): Promise<ThreadPullRequest | null> {
-  const result = await callHostRetryableOnlineRpc(deps, {
+  const result = await getPullRequestLookupForWorkspaceTarget(deps, target);
+  return result.outcome === "available"
+    ? assembleThreadPullRequest(result.pullRequest)
+    : null;
+}
+
+function getPullRequestLookupForWorkspaceTarget(
+  deps: AppDeps,
+  target: ReturnType<typeof requireWorkspaceCommandTarget>,
+) {
+  return callHostRetryableOnlineRpc(deps, {
     hostId: target.hostId,
     timeoutMs: COMMAND_TIMEOUT_MS,
     command: {
@@ -172,23 +210,35 @@ async function getPullRequestForWorkspaceTarget(
       workspaceContext: target.workspaceContext,
     },
   });
-  return result.outcome === "available"
-    ? assembleThreadPullRequest(result.pullRequest)
-    : null;
+}
+
+function assertCanCreatePullRequest(
+  lookup: Awaited<ReturnType<typeof getPullRequestLookupForWorkspaceTarget>>,
+): void {
+  if (lookup.outcome === "unavailable") {
+    throw new ApiError(409, "pull_request_unavailable", lookup.message);
+  }
+  if (lookup.outcome === "available") {
+    throw new ApiError(
+      409,
+      "invalid_request",
+      `Pull request #${lookup.pullRequest.number} already exists`,
+    );
+  }
 }
 
 function assertCanMarkPullRequestReady(
   pullRequest: ThreadPullRequest | null,
 ): void {
   if (!pullRequest) {
-    throw new ApiError(409, "pull_request_unavailable", "No pull request found");
-  }
-  if (pullRequest.state !== "draft") {
     throw new ApiError(
       409,
-      "invalid_request",
-      "Pull request is not a draft",
+      "pull_request_unavailable",
+      "No pull request found",
     );
+  }
+  if (pullRequest.state !== "draft") {
+    throw new ApiError(409, "invalid_request", "Pull request is not a draft");
   }
 }
 
@@ -196,14 +246,14 @@ function assertCanConvertPullRequestToDraft(
   pullRequest: ThreadPullRequest | null,
 ): void {
   if (!pullRequest) {
-    throw new ApiError(409, "pull_request_unavailable", "No pull request found");
-  }
-  if (pullRequest.state !== "open") {
     throw new ApiError(
       409,
-      "invalid_request",
-      "Pull request is not open",
+      "pull_request_unavailable",
+      "No pull request found",
     );
+  }
+  if (pullRequest.state !== "open") {
+    throw new ApiError(409, "invalid_request", "Pull request is not open");
   }
 }
 
@@ -211,7 +261,11 @@ function assertCanMergePullRequest(
   pullRequest: ThreadPullRequest | null,
 ): void {
   if (!pullRequest) {
-    throw new ApiError(409, "pull_request_unavailable", "No pull request found");
+    throw new ApiError(
+      409,
+      "pull_request_unavailable",
+      "No pull request found",
+    );
   }
   if (
     pullRequest.state !== "open" ||
@@ -420,10 +474,7 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
   });
 
   get(routes.diffFiles, async (context, query) => {
-    const target = resolveGitDiffWorkspaceTarget(
-      deps,
-      context.req.param("id"),
-    );
+    const target = resolveGitDiffWorkspaceTarget(deps, context.req.param("id"));
     if (target === null) {
       return context.json(NON_GIT_DIFF_NOT_APPLICABLE);
     }
@@ -484,10 +535,7 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
   });
 
   post(routes.diffPatch, async (context, payload) => {
-    const target = resolveGitDiffWorkspaceTarget(
-      deps,
-      context.req.param("id"),
-    );
+    const target = resolveGitDiffWorkspaceTarget(deps, context.req.param("id"));
     if (target === null) {
       return context.json(NON_GIT_DIFF_NOT_APPLICABLE);
     }
@@ -609,6 +657,32 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
       }
       throw error;
     }
+  });
+
+  get(routes.directory, async (context, query) => {
+    const environment = requireReadyEnvironment(
+      deps.db,
+      context.req.param("id"),
+    );
+    const target = requireWorkspaceCommandTarget(environment);
+    const result = await callHostRetryableOnlineRpc(deps, {
+      hostId: target.hostId,
+      timeoutMs: COMMAND_TIMEOUT_MS,
+      command: {
+        type: "workspace.list_directory",
+        environmentId: target.environmentId,
+        workspaceContext: target.workspaceContext,
+        path: parseWorkspaceDirectoryPath(query.path),
+        ...(query.cursor === undefined ? {} : { cursor: query.cursor }),
+        limit: parseBoundedPositiveOptionalInteger({
+          defaultValue: WORKSPACE_DIRECTORY_PAGE_LIMIT_DEFAULT,
+          max: WORKSPACE_DIRECTORY_PAGE_LIMIT_MAX,
+          name: "limit",
+          value: query.limit,
+        }),
+      },
+    });
+    return context.json(result);
   });
 
   post(routes.actions, async (context, payload) => {
@@ -775,6 +849,45 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
           message: "Squash merge completed",
           commitSha: result.commitSha,
           commitSubject: result.commitSubject,
+        });
+      }
+      case "pull_request_create": {
+        if (!environment.isGitRepo) {
+          throw new ApiError(
+            409,
+            "invalid_request",
+            "Pull request actions require a git environment",
+          );
+        }
+        const target = requireWorkspaceCommandTarget(environment);
+        const lookup = await getPullRequestLookupForWorkspaceTarget(
+          deps,
+          target,
+        );
+        assertCanCreatePullRequest(lookup);
+        const baseBranch = resolveEnvironmentMergeBaseBranch(environment);
+
+        await mapPullRequestActionFailureTo409(() =>
+          runLiveCommandAndWait(deps, {
+            hostId: target.hostId,
+            timeoutMs: COMMAND_TIMEOUT_MS,
+            command: {
+              type: "workspace.pull_request_action",
+              operation: "create",
+              environmentId: target.environmentId,
+              workspaceContext: target.workspaceContext,
+              draft: payload.options.draft,
+              ...(baseBranch ? { baseBranch } : {}),
+            },
+          }),
+        );
+        return context.json({
+          ok: true,
+          action: "pull_request_create",
+          draft: payload.options.draft,
+          message: payload.options.draft
+            ? "Draft pull request created"
+            : "Pull request created",
         });
       }
       case "pull_request_ready": {

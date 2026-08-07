@@ -5,6 +5,7 @@ import {
   type GitHostPullRequestCheck,
   type GitHostPullRequestCheckConclusion,
   type GitHostPullRequestCheckStatus,
+  type GitHostPullRequestComment,
   type GitHostPullRequestMergeStateStatus,
   type GitHostPullRequestMergeable,
   type GitHostPullRequestReviewDecision,
@@ -27,6 +28,9 @@ const GH_PR_VIEW_TIMEOUT_MS = 10_000;
 const GH_PR_VIEW_MAX_BUFFER_BYTES = 16 * 1024 * 1024;
 const GH_PR_ACTION_TIMEOUT_MS = 60_000;
 const GH_PR_ACTION_MAX_BUFFER_BYTES = 16 * 1024 * 1024;
+export const GIT_HOST_PULL_REQUEST_CHECK_LIMIT = 50;
+export const GIT_HOST_PULL_REQUEST_COMMENT_LIMIT = 20;
+export const GIT_HOST_PULL_REQUEST_COMMENT_SUMMARY_LIMIT = 600;
 
 const GH_PR_VIEW_JSON_FIELDS = [
   "number",
@@ -38,6 +42,7 @@ const GH_PR_VIEW_JSON_FIELDS = [
   "headRefName",
   "updatedAt",
   "statusCheckRollup",
+  "comments",
   "reviewDecision",
   "reviewRequests",
   "mergeStateStatus",
@@ -52,6 +57,7 @@ interface GetPullRequestForBranchArgs {
 export type GitHostPullRequestMergeMethod = "merge" | "squash" | "rebase";
 
 export type GitHostPullRequestAction =
+  | { operation: "create"; baseBranch?: string; draft: boolean }
   | { operation: "ready" }
   | { operation: "draft" }
   | { operation: "merge"; method: GitHostPullRequestMergeMethod };
@@ -243,7 +249,37 @@ function normalizeChecks(value: unknown): GitHostPullRequestCheck[] {
         getNullableUrl(object, "targetUrl"),
     });
   }
-  return checks;
+  return checks.slice(0, GIT_HOST_PULL_REQUEST_CHECK_LIMIT);
+}
+
+function truncateSummary(value: string): string {
+  if (value.length <= GIT_HOST_PULL_REQUEST_COMMENT_SUMMARY_LIMIT) return value;
+  return value.slice(0, GIT_HOST_PULL_REQUEST_COMMENT_SUMMARY_LIMIT);
+}
+
+function normalizeComments(value: unknown): GitHostPullRequestComment[] {
+  if (!Array.isArray(value)) return [];
+  const comments: GitHostPullRequestComment[] = [];
+  for (const item of value) {
+    const object = asObject(item);
+    if (!object) continue;
+    const author = asObject(object.author);
+    const authorLogin = author ? getString(author, "login")?.trim() : null;
+    const body = getString(object, "body");
+    const createdAt = getString(object, "createdAt");
+    if (!authorLogin || body === null || createdAt === null) continue;
+    comments.push({
+      authorLogin,
+      authorAvatarUrl: author ? getNullableUrl(author, "avatarUrl") : null,
+      bodySummary: truncateSummary(body),
+      createdAt,
+      url: getNullableUrl(object, "url"),
+    });
+  }
+  return comments
+    .filter((comment) => !Number.isNaN(Date.parse(comment.createdAt)))
+    .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+    .slice(0, GIT_HOST_PULL_REQUEST_COMMENT_LIMIT);
 }
 
 function getArrayLength(value: unknown): number {
@@ -267,6 +303,7 @@ function normalizeGitHubPullRequestView(
     headRefName: getString(object, "headRefName"),
     updatedAt: getString(object, "updatedAt"),
     checks: normalizeChecks(object.statusCheckRollup),
+    comments: normalizeComments(object.comments),
     reviewDecision: normalizeReviewDecision(object.reviewDecision),
     reviewRequestCount: getArrayLength(object.reviewRequests),
     mergeStateStatus: normalizeMergeStateStatus(object.mergeStateStatus),
@@ -292,6 +329,12 @@ function buildPullRequestActionArgs(
   branch: string,
 ): string[] {
   switch (action.operation) {
+    case "create": {
+      const args = ["pr", "create", "--fill", "--head", branch];
+      if (action.baseBranch) args.push("--base", action.baseBranch);
+      if (action.draft) args.push("--draft");
+      return args;
+    }
     case "ready":
       return ["pr", "ready", "--", branch];
     case "draft":
@@ -310,6 +353,7 @@ function trimGhOutput(value: unknown): string {
 }
 
 function createGitHostCommandFailedError(
+  command: "gh" | "git",
   args: string[],
   error: unknown,
 ): WorkspaceError {
@@ -317,7 +361,7 @@ function createGitHostCommandFailedError(
   if (execError?.code === "ENOENT") {
     return new WorkspaceError(
       "git_host_cli_unavailable",
-      "GitHub CLI is not available",
+      command === "gh" ? "GitHub CLI is not available" : "Git is not available",
       { cause: error },
     );
   }
@@ -328,8 +372,8 @@ function createGitHostCommandFailedError(
   return new WorkspaceError(
     "git_host_command_failed",
     detail
-      ? `gh ${args.join(" ")} failed: ${detail}`
-      : `gh ${args.join(" ")} failed`,
+      ? `${command} ${args.join(" ")} failed: ${detail}`
+      : `${command} ${args.join(" ")} failed`,
     { cause: error },
   );
 }
@@ -450,6 +494,20 @@ export async function runPullRequestActionForBranch(
 ): Promise<void> {
   const ghArgs = buildPullRequestActionArgs(args.action, args.branch);
   try {
+    if (args.action.operation === "create") {
+      const pushArgs = ["push", "--set-upstream", "origin", args.branch];
+      try {
+        await execFileAsync("git", pushArgs, {
+          cwd: args.cwd,
+          encoding: "utf8",
+          env: sanitizeInheritedChildProcessEnv({ env: process.env }),
+          timeout: GH_PR_ACTION_TIMEOUT_MS,
+          maxBuffer: GH_PR_ACTION_MAX_BUFFER_BYTES,
+        });
+      } catch (error) {
+        throw createGitHostCommandFailedError("git", pushArgs, error);
+      }
+    }
     await execFileAsync("gh", ghArgs, {
       cwd: args.cwd,
       encoding: "utf8",
@@ -458,6 +516,7 @@ export async function runPullRequestActionForBranch(
       maxBuffer: GH_PR_ACTION_MAX_BUFFER_BYTES,
     });
   } catch (error) {
-    throw createGitHostCommandFailedError(ghArgs, error);
+    if (error instanceof WorkspaceError) throw error;
+    throw createGitHostCommandFailedError("gh", ghArgs, error);
   }
 }

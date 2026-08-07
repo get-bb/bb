@@ -113,6 +113,7 @@ describe("workspace command dispatch", () => {
       headRefName: "bb/timeline-polish",
       updatedAt: "2026-06-16T12:30:00Z",
       checks: [],
+      comments: [],
       reviewDecision: null,
       reviewRequestCount: 0,
       mergeStateStatus: "CLEAN",
@@ -181,6 +182,7 @@ describe("workspace command dispatch", () => {
       headRefName: "bb/hidden-pr",
       updatedAt: "2026-06-16T12:30:00Z",
       checks: [],
+      comments: [],
       reviewDecision: null,
       reviewRequestCount: 0,
       mergeStateStatus: "CLEAN",
@@ -211,6 +213,28 @@ describe("workspace command dispatch", () => {
     await harness.manager.ensureEnvironment({
       environmentId: "env-1",
       workspacePath: "/tmp/env-1",
+    });
+
+    await expect(
+      dispatchCommand(
+        {
+          type: "workspace.pull_request_action",
+          operation: "create",
+          baseBranch: "main",
+          draft: true,
+          environmentId: "env-1",
+          workspaceContext: {
+            workspacePath: "/tmp/env-1",
+            workspaceProvisionType: "managed-worktree",
+          },
+        },
+        harness.dispatchOptions(),
+      ),
+    ).resolves.toEqual({});
+    expect(harness.workspaceState.lastPullRequestAction).toEqual({
+      operation: "create",
+      baseBranch: "main",
+      draft: true,
     });
 
     await expect(

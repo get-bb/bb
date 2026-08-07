@@ -256,6 +256,7 @@ function dropRewindAddedTables(db: DbConnection): void {
   db.$client.prepare("DROP TABLE IF EXISTS plugin_kv").run();
   db.$client.prepare("DROP TABLE IF EXISTS plugin_settings").run();
   db.$client.prepare("DROP TABLE IF EXISTS plugin_schedules").run();
+  db.$client.prepare("DROP TABLE IF EXISTS project_workspace_settings").run();
   db.$client
     .prepare("ALTER TABLE hosts DROP COLUMN last_rejected_protocol_version")
     .run();
@@ -605,6 +606,7 @@ function dropPost0023Tables(db: DbConnection): void {
     "project_workflow_policies",
     "system_experiments",
     "event_large_values",
+    "project_workspace_settings",
   ]) {
     db.$client.prepare(`DROP TABLE IF EXISTS ${table}`).run();
   }

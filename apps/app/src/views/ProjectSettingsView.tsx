@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import {
   findLocalPathProjectSourceForHost,
@@ -7,6 +7,8 @@ import {
   type LocalPathProjectSource,
 } from "@bb/domain";
 import { Button } from "@bb/shared-ui/button";
+import { Label } from "@bb/shared-ui/label";
+import { Textarea } from "@bb/shared-ui/textarea";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -33,6 +35,7 @@ import {
   useAddLocalProjectSource,
   useDeleteLocalProjectSource,
   useUpdateLocalProjectSource,
+  useUpdateProjectWorkspaceSettings,
 } from "@/hooks/mutations/project-mutations";
 import {
   isHostPathMissing,
@@ -44,6 +47,7 @@ import {
   type LocalPathSubmitParams,
 } from "@/hooks/useLocalPathPicker";
 import { stripProjectThreads } from "@/hooks/queries/project-queries";
+import { useProjectWorkspaceSettings } from "@/hooks/queries/project-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 
 export function ProjectSettingsView() {
@@ -66,6 +70,34 @@ export function ProjectSettingsView() {
   const deleteSource = useDeleteLocalProjectSource();
   const addLocalSource = useAddLocalProjectSource();
   const updateLocalSource = useUpdateLocalProjectSource();
+  const workspaceSettingsQuery = useProjectWorkspaceSettings(projectId);
+  const updateWorkspaceSettings = useUpdateProjectWorkspaceSettings();
+  const [setupScript, setSetupScript] = useState("");
+  const [runScript, setRunScript] = useState("");
+  const workspaceDraftProjectIdRef = useRef<string | undefined>(undefined);
+
+  const savedSetupScript = workspaceSettingsQuery.data?.setupScript ?? "";
+  const savedRunScript = workspaceSettingsQuery.data?.runScript ?? "";
+  const workspaceScriptsDirty =
+    setupScript !== savedSetupScript || runScript !== savedRunScript;
+
+  useEffect(() => {
+    if (!workspaceSettingsQuery.data) return;
+    if (
+      workspaceDraftProjectIdRef.current === projectId &&
+      workspaceScriptsDirty
+    ) {
+      return;
+    }
+    workspaceDraftProjectIdRef.current = projectId;
+    setSetupScript(savedSetupScript);
+    setRunScript(savedRunScript);
+  }, [
+    savedRunScript,
+    savedSetupScript,
+    workspaceScriptsDirty,
+    workspaceSettingsQuery.data,
+  ]);
 
   const project = projects?.find((p) => p.id === projectId);
   const projectSources = project?.sources;
@@ -281,6 +313,83 @@ export function ProjectSettingsView() {
               {addSourceButtons}
             </div>
           )}
+        </SettingsSection>
+
+        <SettingsSection title="Workspace Scripts">
+          <div className="space-y-5">
+            <div className="space-y-2">
+              <Label htmlFor="project-setup-script">Setup</Label>
+              <Textarea
+                id="project-setup-script"
+                className="min-h-28 font-mono text-xs"
+                disabled={workspaceSettingsQuery.isLoading}
+                placeholder="corepack pnpm install"
+                value={setupScript}
+                onChange={(event) => setSetupScript(event.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Runs once for each worktree. If this field is empty, BB uses
+                .bb-env-setup.sh when the project provides it.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="project-run-script">Run</Label>
+              <Textarea
+                id="project-run-script"
+                className="min-h-28 font-mono text-xs"
+                disabled={workspaceSettingsQuery.isLoading}
+                placeholder="corepack pnpm dev"
+                value={runScript}
+                onChange={(event) => setRunScript(event.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Starts the project's main development server in the active
+                worktree.
+              </p>
+            </div>
+
+            {workspaceSettingsQuery.isError ? (
+              <p className="text-sm text-destructive">
+                Failed to load workspace scripts.
+              </p>
+            ) : null}
+            {updateWorkspaceSettings.isError ? (
+              <p className="text-sm text-destructive">
+                {updateWorkspaceSettings.error instanceof Error
+                  ? updateWorkspaceSettings.error.message
+                  : "Failed to save workspace scripts."}
+              </p>
+            ) : null}
+
+            <Button
+              size="sm"
+              disabled={
+                !projectId ||
+                !workspaceScriptsDirty ||
+                updateWorkspaceSettings.isPending
+              }
+              onClick={() => {
+                if (!projectId) return;
+                updateWorkspaceSettings.mutate(
+                  {
+                    projectId,
+                    runScript: runScript.trim().length === 0 ? null : runScript,
+                    setupScript:
+                      setupScript.trim().length === 0 ? null : setupScript,
+                  },
+                  {
+                    onSuccess: (settings) => {
+                      setRunScript(settings.runScript ?? "");
+                      setSetupScript(settings.setupScript ?? "");
+                    },
+                  },
+                );
+              }}
+            >
+              {updateWorkspaceSettings.isPending ? "Saving…" : "Save scripts"}
+            </Button>
+          </div>
         </SettingsSection>
       </div>
 

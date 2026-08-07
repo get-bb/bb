@@ -14,8 +14,9 @@ official plugin bundled with the app:
 bb plugin install tasks
 ```
 
-The plugin adds the Tasks sidebar panel, the `bb tasks` command, and an agent
-skill that teaches workers how to report progress back to tasks.
+The plugin adds Home and Tasks sidebar panels, the `bb tasks` command, and an
+agent skill that teaches workers how to report progress back to tasks.
+Home uses a house icon and stays directly below New Thread.
 
 ## Quick start
 
@@ -70,6 +71,7 @@ target another enrolled machine.
 | Command                                        | Purpose                                                                                                                             |
 | ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
 | `bb tasks status`                              | Show the installed Tasks plugin name and version.                                                                                   |
+| `bb tasks summary`                             | Show due-today, in-progress, and overdue counts for today or `--date YYYY-MM-DD`.                                                   |
 | `bb tasks project create\|list\|show\|update`  | Manage tracker projects, folders, colors, prefixes, and bb-project links.                                                           |
 | `bb tasks folder create\|list\|update`         | Organize tracker projects into nested folders.                                                                                      |
 | `bb tasks create`                              | Create a task with description, priority, labels, due date, optional parent, and file attachments (repeatable `--attach <path>`).   |

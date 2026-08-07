@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { TerminalSession } from "@bb/server-contract";
+import type {
+  CreateTerminalRequest,
+  TerminalSession,
+} from "@bb/server-contract";
 import {
   useCloseTerminal,
   useCloseEnvironmentTerminal,
@@ -39,8 +42,12 @@ export type ThreadTerminalTarget =
 
 export interface ThreadTerminalControllerArgs {
   canCreateTerminal: boolean;
+  forceOpen?: boolean;
   panelStateId?: string;
+  purpose?: NonNullable<TerminalSession["purpose"]>;
+  start?: CreateTerminalRequest["start"];
   target: ThreadTerminalTarget;
+  title?: string;
 }
 
 export interface ThreadTerminalController {
@@ -146,8 +153,12 @@ export function terminalStatusLabel(session: TerminalSession): string {
 
 export function useThreadTerminalController({
   canCreateTerminal,
+  forceOpen = false,
   panelStateId,
+  purpose,
+  start,
   target,
+  title,
 }: ThreadTerminalControllerArgs): ThreadTerminalController {
   const terminalTargetKind = target.kind;
   const terminalTargetId =
@@ -166,7 +177,7 @@ export function useThreadTerminalController({
     fixedPanelStateId,
     fixedPanelSyncThreadId,
   );
-  const isRightPanelOpen = fixedPanelTabsState.secondary.isOpen;
+  const isRightPanelOpen = forceOpen || fixedPanelTabsState.secondary.isOpen;
   const activeFixedTerminalId = useActiveFixedRightTerminalId(
     fixedPanelStateId,
     fixedPanelSyncThreadId,
@@ -251,17 +262,17 @@ export function useThreadTerminalController({
   const sessions = useMemo(() => {
     const currentSessions =
       terminalsQuery.data?.sessions ?? EMPTY_TERMINAL_SESSIONS;
-    if (target.kind !== "host_path") {
-      return currentSessions;
-    }
-    return currentSessions.filter(
-      (session) =>
+    return currentSessions.filter((session) => {
+      if (purpose !== undefined && session.purpose !== purpose) return false;
+      if (target.kind !== "host_path") return true;
+      return (
         session.threadId === null &&
         session.environmentId === null &&
         session.hostId === target.hostId &&
-        (target.cwd === null || session.initialCwd === target.cwd),
-    );
-  }, [target, terminalsQuery.data?.sessions]);
+        (target.cwd === null || session.initialCwd === target.cwd)
+      );
+    });
+  }, [purpose, target, terminalsQuery.data?.sessions]);
   const visibleSessions = useMemo(
     () =>
       sessions.filter((session) =>
@@ -335,6 +346,9 @@ export function useThreadTerminalController({
     const request = {
       cols: DEFAULT_TERMINAL_COLS,
       rows: DEFAULT_TERMINAL_ROWS,
+      ...(purpose === undefined ? {} : { purpose }),
+      ...(start === undefined ? {} : { start }),
+      ...(title === undefined ? {} : { title }),
     };
     const created =
       target.kind === "thread"
@@ -368,7 +382,10 @@ export function useThreadTerminalController({
     createThreadTerminal,
     isCreateTerminalPending,
     setActiveFixedTerminal,
+    purpose,
+    start,
     target,
+    title,
   ]);
 
   const closeTerminal = useCallback(

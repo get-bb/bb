@@ -3,6 +3,7 @@ import type {
   CommandListResponse,
   ProjectBranchesResponse,
   ProjectWithThreadsResponse,
+  ProjectWorkspaceSettingsResponse,
   PromptHistoryResponse,
   WorkspacePathListResponse,
 } from "@bb/server-contract";
@@ -19,6 +20,7 @@ import {
   projectFilePreviewQueryKey,
   projectPathsQueryKey,
   projectPromptHistoryQueryKey,
+  projectWorkspaceSettingsQueryKey,
   projectSourceBranchesQueryKey,
 } from "./query-keys";
 import { resolveProjectSourceBranchesPlaceholder } from "./query-placeholders";
@@ -99,6 +101,24 @@ export function stripProjectThreads(
 ): SidebarProject {
   const { threads, ...rest } = project;
   return rest;
+}
+
+export function useProjectWorkspaceSettings(
+  projectId: string | undefined,
+  options?: QueryOptions,
+) {
+  const enabled = (options?.enabled ?? true) && Boolean(projectId);
+  useProjectDetailRealtimeSubscription(projectId, { enabled });
+  return useQuery<ProjectWorkspaceSettingsResponse>({
+    queryKey: projectWorkspaceSettingsQueryKey(projectId),
+    queryFn: ({ signal }) =>
+      sdk.projects.workspaceSettings({
+        projectId: requireProjectId(projectId, "useProjectWorkspaceSettings"),
+        signal,
+      }),
+    enabled,
+    ...FAST_FOCUS_OWNED_LIVE_QUERY_POLICY,
+  });
 }
 
 export function useProjectSourceBranches(

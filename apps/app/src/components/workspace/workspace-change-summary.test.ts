@@ -1,7 +1,4 @@
-import type {
-  WorkspaceCommitSummary,
-  WorkspaceFileStatus,
-} from "@bb/domain";
+import type { WorkspaceCommitSummary, WorkspaceFileStatus } from "@bb/domain";
 import {
   makeWorkspaceMergeBase,
   makeWorkspaceStatus,

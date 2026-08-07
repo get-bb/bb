@@ -104,6 +104,47 @@ describe("bb tasks CLI", () => {
     await harness.dispose();
   });
 
+  it("reports the same daily activity summary available to the Home panel", async () => {
+    const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
+    await plugin(bb);
+    const store = createStore(bb);
+    const project = store.tasks.createProject({
+      name: "Daily summary",
+      prefix: "DAY",
+      color: "blue",
+    });
+    for (const [title, status, dueDate] of [
+      ["Due today", "todo", "2026-08-06"],
+      ["Moving", "in_progress", "2026-08-08"],
+      ["Late", "backlog", "2026-08-05"],
+    ] as const) {
+      store.tasks.createTask({
+        projectId: project.id,
+        title,
+        status,
+        dueDate,
+      });
+    }
+
+    expect(
+      stdout(await harness.runCli(["summary", "--date", "2026-08-06"])),
+    ).toBe("Due today    1\nIn progress  1\nOverdue      1");
+    expect(
+      JSON.parse(
+        stdout(
+          await harness.runCli(["summary", "--date", "2026-08-06", "--json"]),
+        ),
+      ),
+    ).toEqual({
+      date: "2026-08-06",
+      dueToday: 1,
+      inProgress: 1,
+      overdue: 1,
+    });
+
+    await harness.dispose();
+  });
+
   it("runs create, list, show, update, and comment through case-insensitive key addressing", async () => {
     const { bb, harness } = createFakePluginHost({
       pluginId: "tasks",

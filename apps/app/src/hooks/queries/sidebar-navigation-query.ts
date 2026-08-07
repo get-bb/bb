@@ -74,3 +74,23 @@ export function useProjectDisplayName(
   }
   return data.projects.find((project) => project.id === projectId)?.name;
 }
+
+/** Read a project's Git remote without creating a second project request. */
+export function useProjectGitRemoteUrl(
+  projectId: string | undefined,
+): string | null | undefined {
+  const { data } = useQuery<SidebarBootstrapResponse>({
+    queryKey: sidebarNavigationQueryKey(),
+    queryFn: ({ signal }) => fetchSidebarNavigation(signal),
+    ...REALTIME_OWNED_STATIC_CACHE_QUERY_POLICY,
+    enabled: Boolean(projectId),
+  });
+  if (!data || !projectId) {
+    return undefined;
+  }
+  if (projectId === PERSONAL_PROJECT_ID) {
+    return data.personalProject.gitRemoteUrl;
+  }
+  return data.projects.find((project) => project.id === projectId)
+    ?.gitRemoteUrl;
+}

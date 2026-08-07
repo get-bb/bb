@@ -212,6 +212,10 @@ status|install` to inspect or install provider CLIs on a selected machine.
   CLI machine fallback (normally the primary machine).
 - `bb project list` preserves the ordinary-project-only default. Pass
   `--include-personal` when the singleton personal project must be discoverable.
+- Use `bb project workspace-settings show <project-id>` to inspect the Setup
+  and Run scripts. Use `workspace-settings set` with `--setup-script`,
+  `--run-script`, `--clear-setup`, or `--clear-run` to change them. An empty
+  Setup script falls back to the project's `.bb-env-setup.sh` file.
 - Use `bb project source add <project-id> --machine <id-or-name> --path <path>`
   to register a path on another connected machine. It uses the same selector
   resolution and fallback as project create. Use `--clone` instead of `--path`
@@ -223,6 +227,10 @@ status|install` to inspect or install provider CLIs on a selected machine.
   project source; omitting both intentionally uses the primary machine source.
   `bb project content --json` returns UTF-8 text or base64 binary content with
   an explicit `contentEncoding`.
+- Use `bb environment directory <environment-id>` to list every direct child
+  of a workspace directory, including dotfiles, ignored files, and generated
+  directories. Pass `--path` to expand a relative directory and use the
+  returned cursor with `--cursor` for the next page.
 - Use `bb project attachment upload <project-id> --client-file <path>` when the
   bytes live on the CLI machine, including when the CLI and bb server are on
   different hosts. It reads locally and sends multipart bytes through the

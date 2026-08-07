@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { ApiError } from "../../src/errors.js";
-import { deriveRepoDirName } from "../../src/services/threads/worktree-paths.js";
+import {
+  allocateCapitalCityWorktreeName,
+  deriveRepoDirName,
+  resolveManagedTargetPath,
+} from "../../src/services/threads/worktree-paths.js";
 
 describe("deriveRepoDirName", () => {
   it.each([
@@ -37,5 +41,57 @@ describe("deriveRepoDirName", () => {
     ],
   ])("rejects %s", (_label, input) => {
     expect(() => deriveRepoDirName(input)).toThrowError(ApiError);
+  });
+});
+
+describe("allocateCapitalCityWorktreeName", () => {
+  it("returns a stable capital-city name for the same seed", () => {
+    const first = allocateCapitalCityWorktreeName({
+      seed: "thr_abc123",
+      usedNames: [],
+    });
+    const second = allocateCapitalCityWorktreeName({
+      seed: "thr_abc123",
+      usedNames: [],
+    });
+
+    expect(first).toBe(second);
+    expect(first).toMatch(/^[a-z]+(?:-[a-z]+)*$/u);
+  });
+
+  it("selects another city when the preferred name is already in use", () => {
+    const preferred = allocateCapitalCityWorktreeName({
+      seed: "thr_abc123",
+      usedNames: [],
+    });
+
+    expect(
+      allocateCapitalCityWorktreeName({
+        seed: "thr_abc123",
+        usedNames: [preferred],
+      }),
+    ).not.toBe(preferred);
+  });
+
+  it("uses a numeric suffix when all capital names are in use", () => {
+    expect(
+      allocateCapitalCityWorktreeName({
+        seed: "thr_abc123",
+        usedNames: ["perth", "perth-2"],
+        capitalNames: ["perth"],
+      }),
+    ).toBe("perth-3");
+  });
+});
+
+describe("resolveManagedTargetPath", () => {
+  it("uses the capital-city identity as the worktree directory", () => {
+    expect(
+      resolveManagedTargetPath({
+        dataDir: "/var/lib/bb",
+        worktreeName: "wellington",
+        sourcePath: "https://github.com/example/bb.git",
+      }),
+    ).toBe("/var/lib/bb/worktrees/wellington/bb");
   });
 });

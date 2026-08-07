@@ -195,6 +195,19 @@ export type GitHostPullRequestCheck = z.infer<
   typeof gitHostPullRequestCheckSchema
 >;
 
+export const gitHostPullRequestCommentSchema = z
+  .object({
+    authorLogin: z.string().min(1),
+    authorAvatarUrl: z.string().url().nullable(),
+    bodySummary: z.string(),
+    createdAt: z.string().datetime(),
+    url: z.string().url().nullable(),
+  })
+  .strict();
+export type GitHostPullRequestComment = z.infer<
+  typeof gitHostPullRequestCommentSchema
+>;
+
 export const gitHostPullRequestReviewDecisionSchema = z.enum([
   "APPROVED",
   "CHANGES_REQUESTED",
@@ -243,6 +256,7 @@ export const gitHostPullRequestSchema = z
     headRefName: z.string(),
     updatedAt: z.string().datetime(),
     checks: z.array(gitHostPullRequestCheckSchema),
+    comments: z.array(gitHostPullRequestCommentSchema),
     reviewDecision: gitHostPullRequestReviewDecisionSchema.nullable(),
     reviewRequestCount: z.number().int().nonnegative(),
     mergeStateStatus: gitHostPullRequestMergeStateStatusSchema.nullable(),
@@ -358,6 +372,8 @@ export const threadPullRequestSchema = z
     headRefName: z.string(),
     updatedAt: z.string().datetime(),
     checks: threadPullRequestChecksSchema,
+    checkItems: z.array(gitHostPullRequestCheckSchema),
+    comments: z.array(gitHostPullRequestCommentSchema),
     review: threadPullRequestReviewSchema,
     mergeability: threadPullRequestMergeabilitySchema,
     attention: threadPullRequestAttentionStateSchema,

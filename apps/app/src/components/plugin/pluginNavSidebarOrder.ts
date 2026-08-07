@@ -27,7 +27,9 @@ interface ArrangePluginNavPanelsArgs<TPanel extends PluginNavPanelIdentity> {
   hiddenKeys: readonly string[];
 }
 
-export interface ArrangedPluginNavPanels<TPanel extends PluginNavPanelIdentity> {
+export interface ArrangedPluginNavPanels<
+  TPanel extends PluginNavPanelIdentity,
+> {
   /** Panels rendered in the sidebar proper, in user order. */
   visible: TPanel[];
   /** Panels parked in the "More" disclosure, in user order. */
@@ -140,6 +142,15 @@ export function seedLeadingNavPanelKeys(
   return missing.length === 0 ? next : [...missing, ...next];
 }
 
+/** Keeps host or plugin rows fixed at the start of a saved sidebar order. */
+export function pinLeadingNavPanelKeys(
+  order: readonly string[],
+  leadingKeys: readonly string[],
+): string[] {
+  const leadingSet = new Set(leadingKeys);
+  return [...leadingKeys, ...order.filter((key) => !leadingSet.has(key))];
+}
+
 export function hidePluginNavPanel(
   hiddenKeys: readonly string[],
   key: string,
@@ -159,6 +170,7 @@ export function havePluginNavPanelOrdersDiverged(
   right: readonly string[],
 ): boolean {
   return (
-    left.length !== right.length || left.some((key, index) => key !== right[index])
+    left.length !== right.length ||
+    left.some((key, index) => key !== right[index])
   );
 }

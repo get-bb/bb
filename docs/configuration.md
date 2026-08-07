@@ -356,6 +356,18 @@ No agent loads `.bb/AGENTS.md` natively, and provider-native instruction files
 provider-specific. bb reads the files above itself and injects them, so use them
 for guidance you want every bb thread to receive regardless of provider.
 
+## Project workspace scripts
+
+Each standard project can store a Setup script and a Run script in Settings →
+Project. Setup runs once for each worktree. If Setup is empty, bb uses the
+tracked `<workspace>/.bb-env-setup.sh` file when it exists. Run starts the
+project's main development server in the active worktree.
+
+Use `bb project workspace-settings show <project-id>` to read these values.
+Use `bb project workspace-settings set <project-id> --setup-script <script>
+--run-script <script>` to update them, or use `--clear-setup` and `--clear-run`
+to remove an override.
+
 ## Skills
 
 User-level bb skills live under `<dataDir>/skills/<name>/SKILL.md`; for the

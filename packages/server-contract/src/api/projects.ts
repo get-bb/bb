@@ -253,6 +253,40 @@ export type PromptHistoryResponse = z.infer<typeof promptHistoryResponseSchema>;
 
 export type ProjectAttachmentUploadForm = Record<"file", Blob>;
 
+export const PROJECT_WORKSPACE_SCRIPT_MAX_LENGTH = 20_000;
+
+export const projectWorkspaceSettingsResponseSchema = z
+  .object({
+    runScript: z.string().max(PROJECT_WORKSPACE_SCRIPT_MAX_LENGTH).nullable(),
+    setupScript: z.string().max(PROJECT_WORKSPACE_SCRIPT_MAX_LENGTH).nullable(),
+  })
+  .strict();
+export type ProjectWorkspaceSettingsResponse = z.infer<
+  typeof projectWorkspaceSettingsResponseSchema
+>;
+
+const projectWorkspaceScriptInputSchema = z
+  .string()
+  .max(PROJECT_WORKSPACE_SCRIPT_MAX_LENGTH)
+  .nullable()
+  .transform((value) =>
+    typeof value === "string" && value.trim().length === 0 ? null : value,
+  );
+
+export const updateProjectWorkspaceSettingsRequestSchema = z
+  .object({
+    runScript: projectWorkspaceScriptInputSchema.optional(),
+    setupScript: projectWorkspaceScriptInputSchema.optional(),
+  })
+  .strict()
+  .refine(
+    (value) => value.runScript !== undefined || value.setupScript !== undefined,
+    "At least one field must be provided",
+  );
+export type UpdateProjectWorkspaceSettingsRequest = z.infer<
+  typeof updateProjectWorkspaceSettingsRequestSchema
+>;
+
 export const updateProjectRequestSchema = z
   .object({
     name: z.string().min(1),

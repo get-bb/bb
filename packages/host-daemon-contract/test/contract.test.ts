@@ -192,6 +192,15 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
     ],
     truncated: false,
   },
+  "workspace.list_directory": {
+    outcome: "available",
+    directory: "",
+    entries: [
+      { kind: "directory", name: ".git", path: ".git" },
+      { kind: "file", name: "README.md", path: "README.md" },
+    ],
+    nextCursor: null,
+  },
   "host.mkdir": { ok: true },
   "host.move_path": { ok: true },
   "host.remove_path": { ok: true },
@@ -470,6 +479,15 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
           url: null,
         },
       ],
+      comments: [
+        {
+          authorLogin: "octocat",
+          authorAvatarUrl: null,
+          bodySummary: "Looks good.",
+          createdAt: "2026-06-16T13:00:00Z",
+          url: "https://github.com/acme/bb/pull/42#issuecomment-1",
+        },
+      ],
       reviewDecision: "APPROVED",
       reviewRequestCount: 0,
       mergeStateStatus: "CLEAN",
@@ -702,12 +720,18 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "ACP permission CLI config only needs args for modes that differ from the agent default.",
   "hostDaemonCommandSchema.acpLaunchSpec.permissionCli.insertAfterArgs":
     "ACP permission CLI config omits insertAfterArgs when permission args should be inserted before all configured agent args.",
+  "hostDaemonCommandSchema.baseBranch":
+    "pull-request creation omits the base branch when the environment has no known merge base, so GitHub uses the repository default.",
   "hostDaemonCommandSchema.checkout":
     "environment.provision only includes checkout instructions for unmanaged workspaces that requested a branch mutation.",
+  "hostDaemonCommandSchema.setupScript":
+    "older queued environment.provision commands omit the project setup command and retain the .bb-env-setup.sh fallback.",
   "hostDaemonCommandSchema.targetPath":
     "project.clone omits targetPath when the daemon should derive its default checkout location for the project.",
   "hostDaemonOnlineRpcCommandSchema.expectedSha256":
     "host.write_file may omit expectedSha256 for unconditional writes; a hash is the compare-and-swap guard and null means create-only.",
+  "hostDaemonOnlineRpcCommandSchema.cursor":
+    "workspace.list_directory omits cursor for the first lexical page.",
   "hostDaemonOnlineRpcCommandSchema.mode":
     "host.write_file may omit mode to preserve existing permissions; when present it only controls newly created files.",
   "hostDaemonOnlineRpcCommandSchema.mergeBaseBranch":
@@ -1036,13 +1060,15 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  // Version 75 makes Claude's sandbox network prompt grantable. A daemon on 74
-  // drops the "localSettings" suggestion that carries the grant, so it sends a
-  // permission_grant subject with an empty profile and the user cannot allow
-  // the prompt. The fix lives in the daemon's Claude bridge, so the bump is
-  // what moves an enrolled machine onto it.
-  it("uses protocol version 75 for grantable sandbox network prompts", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(75);
+  // Version 78 adds pull-request creation. Version 77 adds project-configured
+  // setup commands. Version 76 adds detailed pull-request checks and comments.
+  // Version 75 adds the literal, paged workspace directory command and makes
+  // Claude's sandbox network prompt grantable. An older
+  // daemon cannot serve the All files tree safely, so the version must force
+  // an update before the server exposes that endpoint or relies on the newer
+  // permission-grant payload.
+  it("uses protocol version 78 for pull-request creation", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(78);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {
@@ -1249,6 +1275,25 @@ describe("host-daemon command schemas", () => {
     ).toMatchObject({
       type: "workspace.commit",
       environmentId: "env_123",
+    });
+
+    expect(
+      hostDaemonCommandSchema.parse({
+        type: "workspace.pull_request_action",
+        operation: "create",
+        baseBranch: "main",
+        draft: true,
+        environmentId: "env_123",
+        workspaceContext: {
+          workspacePath: "/tmp/workspace",
+          workspaceProvisionType: "unmanaged",
+        },
+      }),
+    ).toMatchObject({
+      type: "workspace.pull_request_action",
+      operation: "create",
+      baseBranch: "main",
+      draft: true,
     });
 
     expect(
@@ -3563,8 +3608,16 @@ describe("host-daemon session schemas", () => {
       hostDaemonTerminalOutputChunkSchema.safeParse({
         seq: 0,
         dataBase64: maxPayload,
+        dimensions: { cols: 80, rows: 24 },
       }).success,
     ).toBe(true);
+    expect(
+      hostDaemonTerminalOutputChunkSchema.safeParse({
+        seq: 0,
+        dataBase64: maxPayload,
+        dimensions: { cols: 0, rows: 24 },
+      }).success,
+    ).toBe(false);
     expect(
       hostDaemonDaemonWsMessageSchema.safeParse({
         type: "terminal.replay",

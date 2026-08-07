@@ -177,6 +177,7 @@ describe("collectPluginAppRegistrations", () => {
         title: "Board",
         icon: "columns",
         path: "board",
+        sidebarPlacement: "top",
         component: Component,
       });
       app.slots.threadPanelAction({
@@ -236,6 +237,7 @@ describe("collectPluginAppRegistrations", () => {
         title: "Board",
         icon: "columns",
         path: "board",
+        sidebarPlacement: "top",
         component: Component,
       },
     ]);
@@ -534,6 +536,21 @@ describe("collectPluginAppRegistrations", () => {
           });
         }),
       /"path" must match/,
+    ],
+    [
+      "nav panel with an invalid sidebar placement",
+      () =>
+        definePluginApp((app) => {
+          app.slots.navPanel({
+            id: "x",
+            title: "X",
+            icon: "columns",
+            path: "x",
+            sidebarPlacement: "bottom",
+            component: Component,
+          } as never);
+        }),
+      /"sidebarPlacement" must be "top"/,
     ],
     [
       "file opener with no extensions",

@@ -382,6 +382,7 @@
   --success: oklch(0.7 0.15 155);
   --success-foreground: color-mix(in oklch, var(--success) 45%, var(--ink));
   --diff-added: oklch(0.4 0.13 163);
+  --diff-view-modified: #009fff;
   --pr-merged: oklch(0.53 0.2 295);
   --diff-removed: oklch(0.4 0.17 28);
   --border: color-mix(in oklch, var(--ink) 14%, var(--canvas));
@@ -624,6 +625,7 @@
   --success: oklch(0.74 0.15 155);
   --success-foreground: color-mix(in oklch, var(--success) 45%, var(--ink));
   --diff-added: oklch(0.77 0.17 163);
+  --diff-view-modified: #69b1ff;
   --diff-removed: oklch(0.72 0.19 22);
   --pr-merged: oklch(0.68 0.18 295);
   --border: color-mix(in oklch, var(--ink) 19.4%, var(--canvas));
@@ -775,6 +777,22 @@
   --diffs-dark: var(--foreground);
   --diffs-dark-addition-color: var(--diff-added);
   --diffs-dark-deletion-color: var(--diff-removed);
+}
+
+@layer components {
+  .git-diff-view,
+  .workspace-file-editor {
+    --diffs-gap-style: 1px solid var(--border-seam);
+  }
+
+  :root:not(.dark) .git-diff-view,
+  :root:not(.dark) .workspace-file-editor {
+    --diffs-fg-number-override: color-mix(
+      in oklch,
+      var(--ink) 42%,
+      var(--canvas)
+    );
+  }
 }
 
 @layer base {

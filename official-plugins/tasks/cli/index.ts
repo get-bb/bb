@@ -32,6 +32,7 @@ import {
   type Task,
   type TaskMutationResult,
 } from "../shared/contract";
+import { localDateKey } from "../shared/date";
 import {
   TASK_SORTS,
   TASKS_PAGE_DEFAULT_LIMIT,
@@ -60,6 +61,7 @@ const ROOT_HELP = `Usage: bb tasks <command> [options]
 
 Commands:
   status                         Show plugin status
+  summary                        Show today's task activity summary
   project create|list|show|update
   folder create|list|update
   create                         Create a task
@@ -91,6 +93,7 @@ const FOLDER_HELP = `Usage:
 const CREATE_HELP =
   "Usage: bb tasks create [--project <prefix-or-id>] --title <title> [--description <markdown> | --description-file <path>] [--priority <priority>] [--label <name>]... [--due YYYY-MM-DD] [--parent <key-or-id>] [--attach <path>]... [--machine <id-or-name>] [--json]";
 const LIST_HELP = `Usage: bb tasks list [--project <prefix-or-id>] [--status <status>]... [--priority <priority>]... [--label <name>]... [--active] [--search <query>] [--sort manual|priority|due] [--limit <1-${TASKS_PAGE_MAX_LIMIT}>] [--cursor <opaque>] [--json]`;
+const SUMMARY_HELP = "Usage: bb tasks summary [--date YYYY-MM-DD] [--json]";
 const SHOW_HELP = "Usage: bb tasks show <key-or-id> [--json]";
 const UPDATE_HELP =
   "Usage: bb tasks update <key-or-id> [--status <status>] [--priority <priority>] [--title <title>] [--description <markdown> | --description-file <path>] [--due YYYY-MM-DD | --no-due] [--parent <key-or-id> | --no-parent] [--add-label <name>]... [--remove-label <name>]... [--machine <id-or-name>] [--json]";
@@ -1867,6 +1870,29 @@ function singleLine(value: string): string {
     .trim();
 }
 
+async function runSummary(
+  domain: TasksDomain,
+  argv: string[],
+): Promise<string> {
+  const args = parseArgs(argv);
+  if (args.flags.has("help")) return SUMMARY_HELP;
+  assertAllowed(args, ["date"]);
+  requirePositionals(args, 0, SUMMARY_HELP);
+  const date = option(args, "date") ?? localDateKey(new Date());
+  const summary = tasksRpcContract.dailySummary.output.parse(
+    await domain.dailySummary(
+      tasksRpcContract.dailySummary.input.parse({ date }),
+    ),
+  );
+  return args.flags.has("json")
+    ? json({ date, ...summary })
+    : detail([
+        ["Due today", summary.dueToday],
+        ["In progress", summary.inProgress],
+        ["Overdue", summary.overdue],
+      ]);
+}
+
 export function registerTasksCli(
   bb: BbPluginApi,
   store: TasksApiStore,
@@ -1882,6 +1908,11 @@ export function registerTasksCli(
         name: "status",
         summary: "Show the Tasks plugin name and version",
         usage: "bb tasks status [--json]",
+      },
+      {
+        name: "summary",
+        summary: "Show a daily task activity summary",
+        usage: SUMMARY_HELP,
       },
       {
         name: "project",
@@ -1971,6 +2002,9 @@ export function registerTasksCli(
               : `${status.name} ${status.version}`;
             break;
           }
+          case "summary":
+            stdout = await runSummary(domain, rest);
+            break;
           case "project":
             stdout = await runProject(bb, store, domain, rest);
             break;

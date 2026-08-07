@@ -4,7 +4,10 @@ import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PanelGroup } from "react-resizable-panels";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
-import { createThreadInfoFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
+import {
+  createGitDiffFixedPanelTab,
+  createThreadInfoFixedPanelTab,
+} from "@/lib/fixed-panel-tabs-state";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { ThreadSecondaryPanel } from "./ThreadSecondaryPanel";
 
@@ -13,6 +16,11 @@ afterEach(cleanup);
 const noop = () => {};
 
 function renderPanel(args: {
+  activeTab?:
+    | ReturnType<typeof createThreadInfoFixedPanelTab>
+    | ReturnType<typeof createGitDiffFixedPanelTab>;
+  canUseGitUi?: boolean;
+  hideChrome?: boolean;
   isConversationCollapsed: boolean;
   onToggleConversationCollapse: () => void;
 }) {
@@ -22,8 +30,8 @@ function renderPanel(args: {
       <TooltipProvider>
         <PanelGroup direction="horizontal">
           <ThreadSecondaryPanel
-            activeTab={createThreadInfoFixedPanelTab()}
-            canUseGitUi={false}
+            activeTab={args.activeTab ?? createThreadInfoFixedPanelTab()}
+            canUseGitUi={args.canUseGitUi ?? false}
             isOpen
             metadataContent={null}
             onClose={noop}
@@ -89,5 +97,20 @@ describe("ThreadSecondaryPanel full-screen control", () => {
 
     fireEvent.click(control);
     expect(onToggleConversationCollapse).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps diff controls visible when the workspace hides navigation chrome", () => {
+    const view = renderPanel({
+      activeTab: createGitDiffFixedPanelTab(),
+      canUseGitUi: true,
+      hideChrome: true,
+      isConversationCollapsed: false,
+      onToggleConversationCollapse: noop,
+    });
+
+    expect(view.getByRole("tablist", { name: "Diff view mode" })).toBeTruthy();
+    expect(
+      view.getByTestId("thread-secondary-panel-top-chrome").className,
+    ).toContain("hidden");
   });
 });

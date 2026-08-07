@@ -5,12 +5,14 @@ import type {
   ProjectResponse,
   ReorderProjectRequest,
   UpdateProjectRequest,
+  UpdateProjectWorkspaceSettingsRequest,
   UploadedPromptAttachment,
 } from "@bb/server-contract";
 import { sdk } from "@/lib/sdk";
 import {
   applyProjectCreateResult,
   applyProjectDeleteResult,
+  applyProjectWorkspaceSettingsResult,
   applyReorderProjectResult,
   beginReorderProjectTransaction,
   rollbackReorderProjectTransaction,
@@ -50,6 +52,29 @@ interface ReorderProjectMutationRequest extends ReorderProjectRequest {
 interface UploadPromptAttachmentRequest {
   projectId: string;
   file: File;
+}
+
+interface UpdateProjectWorkspaceSettingsMutationRequest extends UpdateProjectWorkspaceSettingsRequest {
+  projectId: string;
+}
+
+export function useUpdateProjectWorkspaceSettings() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    meta: {
+      errorMessage: "Failed to update workspace scripts.",
+      showErrorToast: false,
+    },
+    mutationFn: (request: UpdateProjectWorkspaceSettingsMutationRequest) =>
+      sdk.projects.updateWorkspaceSettings(request),
+    onSuccess: (settings, variables) => {
+      applyProjectWorkspaceSettingsResult({
+        projectId: variables.projectId,
+        queryClient,
+        settings,
+      });
+    },
+  });
 }
 
 export function useCreateProject() {

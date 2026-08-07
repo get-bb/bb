@@ -574,6 +574,14 @@ describe("public terminal contracts", () => {
       }).success,
     ).toBe(false);
     expect(
+      createTerminalRequestSchema.safeParse({
+        cols: 80,
+        rows: 24,
+        purpose: "run",
+        target: { kind: "thread", threadId: "thr_123" },
+      }).success,
+    ).toBe(false);
+    expect(
       terminalClientMessageSchema.safeParse({
         type: "resize",
         cols: TERMINAL_COLS_MAX,
@@ -601,8 +609,16 @@ describe("public terminal contracts", () => {
       terminalOutputChunkSchema.safeParse({
         seq: 0,
         dataBase64: maxPayload,
+        dimensions: { cols: 80, rows: 24 },
       }).success,
     ).toBe(true);
+    expect(
+      terminalOutputChunkSchema.safeParse({
+        seq: 0,
+        dataBase64: maxPayload,
+        dimensions: { cols: 0, rows: 24 },
+      }).success,
+    ).toBe(false);
     expect(
       terminalClientMessageSchema.safeParse({
         type: "input",
@@ -917,6 +933,16 @@ describe("server-contract canonical schemas", () => {
       }),
     ).toMatchObject({
       action: "commit",
+    });
+
+    expect(
+      environmentActionRequestSchema.parse({
+        action: "pull_request_create",
+        options: { draft: true },
+      }),
+    ).toMatchObject({
+      action: "pull_request_create",
+      options: { draft: true },
     });
 
     expect(

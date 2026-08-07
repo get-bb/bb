@@ -240,11 +240,13 @@ type ExpectedRealtimeKey = "subscribe";
 type ExpectedEnvironmentsKey =
   | "archiveThreads"
   | "commit"
+  | "createPullRequest"
   | "diff"
   | "diffBranches"
   | "diffFile"
   | "diffFiles"
   | "diffPatch"
+  | "directory"
   | "get"
   | "markPullRequestDraft"
   | "markPullRequestReady"
@@ -315,7 +317,9 @@ type ExpectedProjectsKey =
   | "promptHistory"
   | "reorder"
   | "sources"
-  | "update";
+  | "update"
+  | "updateWorkspaceSettings"
+  | "workspaceSettings";
 
 type ExpectedProjectSourcesKey = "add" | "delete" | "update";
 type ExpectedProjectAttachmentsKey = "copy" | "read" | "upload";

@@ -25,6 +25,7 @@ import {
   type TaskStatus,
   type CommentsChangedEvent,
   type CommentProvider,
+  type DailySummary,
 } from "../shared/contract";
 
 type PluginDatabase = ReturnType<BbPluginApi["storage"]["database"]>;
@@ -48,6 +49,12 @@ interface SummaryRow {
   active_agent_count: number;
 }
 
+interface DailySummaryRow {
+  due_today: number;
+  in_progress: number;
+  overdue: number;
+}
+
 const PRESET_REASONING_LEVELS = [
   "low",
   "medium",
@@ -64,6 +71,7 @@ export interface TasksApiStore {
   taskLabelIds(taskIds: readonly string[]): Map<string, string[]>;
   projectTaskCount(projectId: string): number;
   projectPrefixExists(prefix: string, excludingProjectId: string): boolean;
+  dailySummary(date: string): DailySummary;
   sidebarSummary(): SidebarProjectSummary[];
 }
 
@@ -121,6 +129,29 @@ export function createStore(bb: BbPluginApi): TasksApiStore {
           )
           .get(prefix, excludingProjectId),
       );
+    },
+    dailySummary(date: string): DailySummary {
+      const row = database
+        .prepare<[string, string], DailySummaryRow>(
+          `
+            SELECT
+              COALESCE(SUM(CASE WHEN due_date = ? THEN 1 ELSE 0 END), 0)
+                AS due_today,
+              COALESCE(SUM(CASE
+                WHEN status IN ('in_progress', 'in_review') THEN 1 ELSE 0
+              END), 0) AS in_progress,
+              COALESCE(SUM(CASE WHEN due_date < ? THEN 1 ELSE 0 END), 0)
+                AS overdue
+            FROM tasks
+            WHERE status NOT IN ('done', 'canceled')
+          `,
+        )
+        .get(date, date);
+      return {
+        dueToday: row?.due_today ?? 0,
+        inProgress: row?.in_progress ?? 0,
+        overdue: row?.overdue ?? 0,
+      };
     },
     sidebarSummary(): SidebarProjectSummary[] {
       return database
@@ -1095,6 +1126,9 @@ export function registerHandlers(
           name: project.name,
         })),
       };
+    },
+    dailySummary(input) {
+      return store.dailySummary(input.date);
     },
     sidebarSummary() {
       return { projects: store.sidebarSummary() };

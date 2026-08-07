@@ -12,8 +12,9 @@ export function pluginIconName(icon: string | null): IconName {
 /**
  * Compact identity for plugin-contributed chrome (sidebar rows, thread
  * actions, command/mention menu rows, panel title bars). Prefer a
- * plugin-owned, path-shaped `bb.branding.icon` SVG, then a named manifest
- * icon, then the contribution's local icon hint, then Zap. Rich
+ * plugin-owned, path-shaped `bb.branding.icon` SVG, then named icon hints,
+ * then Zap. Callers can prefer a contribution's icon over the manifest icon.
+ * Rich
  * image logos remain reserved for roomy `PluginLogo` surfaces such as
  * installed-plugin rows and cards. Size defaults to the standard icon box;
  * pass className to match the surrounding surface (e.g. `size-3.5` in menus).
@@ -22,6 +23,7 @@ export function PluginIcon({
   pluginId,
   icon,
   compactIconUrl: compactIconUrlProp,
+  preferContributionIcon = false,
   className,
 }: {
   pluginId: string;
@@ -29,6 +31,8 @@ export function PluginIcon({
   icon: string | null;
   /** Explicit inventory URL for callers that already own the plugin DTO. */
   compactIconUrl?: string | null;
+  /** Use a surface-specific icon hint before the plugin's general icon. */
+  preferContributionIcon?: boolean;
   className?: string;
 }) {
   const branding = usePluginCompactBranding(pluginId);
@@ -58,7 +62,11 @@ export function PluginIcon({
   }
   return (
     <Icon
-      name={pluginIconName(branding?.icon ?? icon)}
+      name={pluginIconName(
+        preferContributionIcon
+          ? (icon ?? branding?.icon ?? null)
+          : (branding?.icon ?? icon),
+      )}
       className={cn("size-4 shrink-0", className)}
       aria-hidden="true"
     />

@@ -1,4 +1,8 @@
 import type { MarkdownPreviewLinkHandler } from "@/components/ui/markdown-link";
+import type {
+  CreateTerminalRequest,
+  TerminalSession,
+} from "@bb/server-contract";
 import { ThreadTerminalContent } from "./ThreadTerminalContent";
 import {
   useThreadTerminalController,
@@ -7,23 +11,35 @@ import {
 
 interface ThreadTerminalPanelProps {
   canCreateTerminal: boolean;
+  forceOpen?: boolean;
   onOpenLink?: MarkdownPreviewLinkHandler;
   onSelectionAddToChat?: (text: string) => void;
   panelStateId?: string;
+  purpose?: NonNullable<TerminalSession["purpose"]>;
+  start?: CreateTerminalRequest["start"];
   target: ThreadTerminalTarget;
+  title?: string;
 }
 
 export function ThreadTerminalPanel({
   canCreateTerminal,
+  forceOpen,
   onOpenLink,
   onSelectionAddToChat,
   panelStateId,
+  purpose,
+  start,
   target,
+  title,
 }: ThreadTerminalPanelProps) {
   const terminalController = useThreadTerminalController({
     canCreateTerminal,
+    forceOpen,
     panelStateId,
+    purpose,
+    start,
     target,
+    title,
   });
 
   return (

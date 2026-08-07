@@ -612,6 +612,12 @@ function collectRegistrations(
           );
         }
         if (
+          registration.sidebarPlacement !== undefined &&
+          registration.sidebarPlacement !== "top"
+        ) {
+          throw new Error(`${kind}: "sidebarPlacement" must be "top" when set`);
+        }
+        if (
           registration.headerContent !== undefined &&
           typeof registration.headerContent !== "function"
         ) {
@@ -624,6 +630,9 @@ function collectRegistrations(
           title: requireNonEmptyString(kind, "title", registration.title),
           icon: requireNonEmptyString(kind, "icon", registration.icon),
           path,
+          ...(registration.sidebarPlacement === "top"
+            ? { sidebarPlacement: "top" as const }
+            : {}),
           component: requireComponent(kind, registration.component),
           ...(registration.headerContent !== undefined
             ? { headerContent: registration.headerContent }

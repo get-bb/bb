@@ -1018,7 +1018,11 @@ Slot props contracts (versioned, additive-only):
   `useBbNavigate().toPluginPanel(path, { subPath, replace? })` — browser
   back/forward then walks panel-internal history (prefer this over hash
   routing).
-  Registration: `{ id, title, icon, path, component, headerContent? }`.
+  Registration:
+  `{ id, title, icon, path, sidebarPlacement?, component, headerContent? }`.
+  Set `sidebarPlacement: "top"` only for a primary panel that must stay at the
+  start of plugin navigation, directly below New Thread. Top panels are not
+  drag-reorderable.
   The host renders your compact plugin icon + `title` into the SHARED app
   header (the same title bar as Settings pages) with your optional
   `headerContent` component as the header actions on the right — so do NOT

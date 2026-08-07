@@ -10,6 +10,44 @@ import { tasksRpcContract } from "../shared/contract";
 import { createComment, createStore, registerTasksApi } from ".";
 
 describe("Tasks RPC domain API", () => {
+  it("summarises unfinished work for the requested local date", async () => {
+    const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
+    const store = createStore(bb);
+    registerTasksApi(bb, store);
+    const project = store.tasks.createProject({
+      name: "Daily summary",
+      prefix: "DAY",
+      color: "blue",
+    });
+    for (const [title, status, dueDate] of [
+      ["Due one", "todo", "2026-08-06"],
+      ["Due two", "backlog", "2026-08-06"],
+      ["Due and moving", "in_progress", "2026-08-06"],
+      ["In review", "in_review", "2026-08-08"],
+      ["Late", "todo", "2026-08-05"],
+      ["Already done", "done", "2026-08-06"],
+      ["Cancelled", "canceled", "2026-08-04"],
+    ] as const) {
+      store.tasks.createTask({
+        projectId: project.id,
+        title,
+        status,
+        dueDate,
+      });
+    }
+
+    const summary = tasksRpcContract.dailySummary.output.parse(
+      await harness.callRpc("dailySummary", { date: "2026-08-06" }),
+    );
+
+    expect(summary).toEqual({
+      dueToday: 3,
+      inProgress: 2,
+      overdue: 1,
+    });
+    await harness.dispose();
+  });
+
   it("deletes through the typed RPC policy and rejects saved-description references", async () => {
     const { bb, harness } = createFakePluginHost({ pluginId: "tasks" });
     const store = createStore(bb);

@@ -139,7 +139,9 @@ export function useDiffFilesCollapseControls(
         }
         return files.every((entry) =>
           resolveCardCollapsed(
-            get(diffFileCardStateAtomFamily({ diffIdentity, path: entry.path })),
+            get(
+              diffFileCardStateAtomFamily({ diffIdentity, path: entry.path }),
+            ),
             entry,
             files.length,
           ),
@@ -200,7 +202,7 @@ export function clearDiffFileCardStates(activeDiffIdentity: string): void {
  * floor for collapsed / zero-change rows.
  */
 export const DIFF_CARD_HEADER_HEIGHT_PX = 40;
-const DIFF_CARD_LINE_HEIGHT_PX = 18;
+const DIFF_CARD_LINE_HEIGHT_PX = 20;
 const DIFF_CARD_BODY_PADDING_PX = 16;
 const DIFF_CARD_MAX_ESTIMATED_LINES = 80;
 
