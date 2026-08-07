@@ -20,8 +20,15 @@ export function getPiModelRuntime(cwd = process.cwd()): Promise<ModelRuntime> {
       // every provider it did load, so report the problem and list those
       // models. Thread start keeps failing on the same configuration, so the
       // user still learns about it before a run uses a partial setup.
-      for (const configError of configErrors) {
-        process.stderr.write(`pi bridge: ${configError}\n`);
+      if (configErrors.length > 0) {
+        for (const configError of configErrors) {
+          process.stderr.write(`pi bridge: ${configError}\n`);
+        }
+        // This runtime is missing whatever failed to load, so it must not
+        // outlive the broken configuration. Drop the memo and reload on the
+        // next call, which picks the repaired extension up without a restart
+        // of the long-lived bridge.
+        modelRuntimePromises.delete(resolvedCwd);
       }
       return services.modelRuntime;
     })

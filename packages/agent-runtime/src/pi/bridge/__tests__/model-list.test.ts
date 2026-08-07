@@ -114,6 +114,35 @@ describe("pi bridge model list", () => {
     );
   });
 
+  // `id` is equally extension-supplied. Without it the list builder called
+  // `id.endsWith()` and threw, which dropped every other provider's models.
+  it("skips a model without an id and keeps the rest", async () => {
+    const write = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
+    getAvailable.mockResolvedValue([
+      { input: ["text"], name: "Nameless", provider: "commandcode" },
+      {
+        id: "claude-sonnet-5",
+        input: ["text"],
+        name: "Claude Sonnet 5",
+        provider: "anthropic",
+        reasoning: false,
+      },
+    ]);
+    getSupportedThinkingLevels.mockReturnValue(["off"]);
+
+    const result = await listPiBridgeModels(modelRuntime);
+
+    expect(result.models.map((model) => model.id)).toEqual([
+      "anthropic/claude-sonnet-5",
+    ]);
+    expect(write).toHaveBeenCalledWith(
+      'pi bridge: skipped an incomplete model from provider "commandcode"\n',
+    );
+    write.mockRestore();
+  });
+
   it("preserves Pi's provider-verified thinking-level holes", async () => {
     getAvailable.mockResolvedValue([
       {

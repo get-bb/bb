@@ -79,6 +79,34 @@ describe("Pi bridge model runtime", () => {
     write.mockRestore();
   });
 
+  // The bridge outlives the broken configuration, so a memoized partial
+  // runtime would hide the repaired extension until the process restarts.
+  it("reloads after a partial load so a repaired extension appears", async () => {
+    const write = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
+    loadConfiguredPiServices.mockResolvedValueOnce({
+      configErrors: ['Failed to load Pi extension "broken.ts": boom'],
+      services: { modelRuntime: secondRuntime },
+    });
+
+    await expect(getPiModelRuntime("/tmp/project-one")).resolves.toBe(
+      secondRuntime,
+    );
+    await expect(getPiModelRuntime("/tmp/project-one")).resolves.toBe(
+      firstRuntime,
+    );
+    expect(loadConfiguredPiServices).toHaveBeenCalledTimes(2);
+    write.mockRestore();
+  });
+
+  it("keeps the memo when the configuration is clean", async () => {
+    await getPiModelRuntime("/tmp/project-one");
+    await getPiModelRuntime("/tmp/project-one");
+
+    expect(loadConfiguredPiServices).toHaveBeenCalledOnce();
+  });
+
   it("drops the memo when the services fail to build", async () => {
     loadConfiguredPiServices.mockRejectedValueOnce(new Error("no agent dir"));
 
