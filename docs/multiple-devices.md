@@ -16,25 +16,29 @@ Connect (or `bb connect --code ... --server
 ...`), then open its getbb.app URL. The server owns the tunnel and reconnects
 after restart.
 
-For a private network route, install Tailscale on the server machine and browser
-devices, then configure the URL they will open:
-
-```bash
-npx bb-app config set BB_APP_URL http://<machine>.<tailnet>.ts.net:38886
-```
-
-Start bb with `npx bb-app` and open that URL. A Tailscale IP works in place of
-MagicDNS. For microphone and clipboard APIs, put bb behind Tailscale Serve and
-use HTTPS:
+For a private tailnet route, keep bb on its loopback default and publish it
+through Tailscale Serve:
 
 ```bash
 tailscale serve --bg --https=443 http://127.0.0.1:38886
 npx bb-app config set BB_APP_URL https://<machine>.<tailnet>.ts.net
 ```
 
-Tailscale ACLs are the access boundary for this route; do not expose the server
-through Funnel or the public internet. bb connect URLs require the paired
-account owner's session.
+Start bb with `npx bb-app` and open the HTTPS URL. Tailscale ACLs are the access
+boundary for this route; do not expose the server through Funnel or the public
+internet. bb connect URLs require the paired account owner's session.
+
+Existing remote host daemons that target a direct tailnet IP or
+`http://<machine>.<tailnet>.ts.net:38886` must migrate before restarting an
+upgraded server. Prefer pairing bb connect and re-adding the machine from
+Settings → Machines so its installer records the account-gated route. The
+private alternative is to open bb through the Tailscale Serve URL and re-run
+the Add machine installer from there.
+
+For compatibility only, `npx bb-app --server-bind-host 0.0.0.0` restores direct
+IPv4 network access. The public API is unauthenticated and permits command
+execution and file reads, so use wildcard binding only behind a trusted network
+boundary and never through Funnel or the public internet.
 
 If a browser on another computer should open work-host files in its local
 editor, run bb's local helper there, verify `ssh <work-host>` succeeds, and map
@@ -69,7 +73,9 @@ Open Settings → Machines and choose Add machine. Run the generated one-line
 installer on the computer that should
 execute work. It installs and enrolls a host daemon; when bb connect is paired,
 the installer also configures the machine credential used to reach the server
-through the account gate.
+through the account gate. Without bb connect, open the server through a
+Tailscale Serve URL before generating the installer; the loopback listener is
+not directly reachable from another machine.
 
 The installer always installs the exact `bb-app` package exposed by that
 server at `/install/bb-app.tgz`; a `bb-app` already on PATH is reused, and the

@@ -7,7 +7,7 @@ client SSH target mappings under `~/.bb/client.json`.
 Use `bb-app config` for non-secret bb settings:
 
 ```bash
-npx bb-app config set BB_APP_URL http://<machine>.<tailnet>.ts.net:38886
+npx bb-app config set BB_APP_URL https://<machine>.<tailnet>.ts.net
 npx bb-app config set BB_INFERENCE codex/gpt-5.6-luna
 npx bb-app config set BB_TRANSCRIPTION codex/gpt-transcribe
 npx bb-app config list
@@ -49,7 +49,8 @@ npx bb-app client ssh-target remove https://bb.example.test
 
 Configuration is resolved in this order:
 
-1. Explicit launcher flags, such as `--data-dir` or `--server-port`.
+1. Explicit launcher flags, such as `--data-dir`, `--server-port`, or
+   `--server-bind-host`.
 2. Persistent `bb-app config`, `bb-app env`, and client values.
 3. Ambient shell environment.
 4. Built-in defaults.
@@ -73,8 +74,8 @@ When targeting a non-default running instance, pass the same `--data-dir` and
 `--server-port` to `bb-app config` or `bb-app env` commands so they write the
 right file and refresh the right server.
 
-Startup settings such as data directory and ports still apply when the process
-starts.
+Startup settings such as data directory, ports, and the server bind host still
+apply when the process starts.
 
 ## Stopping A Running bb
 
@@ -94,14 +95,15 @@ signal it, so a stale file left by a crash cannot stop an unrelated process.
 
 ## Common Keys
 
-| Key                | Command         | When to set             | Used for                                                                                                                                       |
-| ------------------ | --------------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `BB_APP_URL`       | `bb-app config` | Optional for remote use | Human-facing app URL used for generated links and allowed browser origins. Leave empty for local-only use.                                     |
-| `BB_INFERENCE`     | `bb-app config` | Optional                | Server-side helper model in `provider/model` format. Defaults to `codex/gpt-5.6-luna`; the Codex helper route uses no reasoning.               |
-| `BB_TRANSCRIPTION` | `bb-app config` | Optional                | Voice transcription model in `provider/model` format. Defaults to `codex/gpt-transcribe`.                                                      |
-| `BB_SERVER_URL`    | `bb-app config` | Remote CLI/host use     | Server URL for standalone `bb` CLI and `host-daemon` commands on the current machine. The CLI defaults to `http://127.0.0.1:38886` when unset. |
-| `BB_LOG_LEVEL`     | `bb-app config` | Debugging               | Log level for the next bb start: `trace`, `debug`, `info`, `warn`, `error`, or `fatal`.                                                        |
-| `OPENAI_API_KEY`   | `bb-app env`    | OpenAI opt-in routes    | Required only when selecting explicit OpenAI provider routes such as `openai/gpt-4o-mini` or `openai/gpt-transcribe`.                          |
+| Key                   | Command                             | When to set             | Used for                                                                                                                                       |
+| --------------------- | ----------------------------------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BB_APP_URL`          | `bb-app config`                     | Optional for remote use | Human-facing app URL used for generated links and allowed browser origins. Leave empty for local-only use.                                     |
+| `BB_INFERENCE`        | `bb-app config`                     | Optional                | Server-side helper model in `provider/model` format. Defaults to `codex/gpt-5.6-luna`; the Codex helper route uses no reasoning.               |
+| `BB_TRANSCRIPTION`    | `bb-app config`                     | Optional                | Voice transcription model in `provider/model` format. Defaults to `codex/gpt-transcribe`.                                                      |
+| `BB_SERVER_URL`       | `bb-app config`                     | Remote CLI/host use     | Server URL for standalone `bb` CLI and `host-daemon` commands on the current machine. The CLI defaults to `http://127.0.0.1:38886` when unset. |
+| `BB_SERVER_BIND_HOST` | `bb-app env`, environment, or `--server-bind-host` | Startup-only            | Server listener host. Defaults to `127.0.0.1`; accepts only `127.0.0.1` or `0.0.0.0`. Persist it with `bb-app env set BB_SERVER_BIND_HOST <host>` and remove it with `bb-app env unset BB_SERVER_BIND_HOST`. This is not a `bb-app config` key.                       |
+| `BB_LOG_LEVEL`        | `bb-app config`                     | Debugging               | Log level for the next bb start: `trace`, `debug`, `info`, `warn`, `error`, or `fatal`.                                                        |
+| `OPENAI_API_KEY`      | `bb-app env`                        | OpenAI opt-in routes    | Required only when selecting explicit OpenAI provider routes such as `openai/gpt-4o-mini` or `openai/gpt-transcribe`.                          |
 
 By default, helper inference and voice transcription use Codex credentials from
 the host daemon. Run `codex login` on the host for the default path. Set
@@ -630,6 +632,14 @@ Use launcher flags for per-run startup details:
 npx bb-app --data-dir ~/.bb-test --server-port 48886 --host-daemon-port 48887
 ```
 
+The server listens on `127.0.0.1` by default. Set
+`--server-bind-host 0.0.0.0` (or `BB_SERVER_BIND_HOST=0.0.0.0`) only when a
+trusted network boundary must reach the listener directly. The public API is
+unauthenticated and permits command execution and file reads, so never expose a
+wildcard-bound server to an untrusted network. The only accepted bind hosts are
+`127.0.0.1` and `0.0.0.0`; this startup-only setting is not available through
+`bb-app config`.
+
 The data directory is the root directory for all bb-managed state: the SQLite
 database, logs, host identity, thread storage, custom themes (`theme/`), and
 plugins. It defaults to `~/.bb/` for the packaged app. The `pnpm dev` source launcher derives an isolated data
@@ -662,7 +672,11 @@ applies to source development. `pnpm dev` loads `.env`, `.env.local`,
 `.env.development`, and `.env.development.local`, then overrides the instance
 selectors (`BB_DATA_DIR`, server URL/port, host-daemon local API port, and Vite
 port) with deterministic values derived from the checkout path. The SQLite
-database path is always derived from `BB_DATA_DIR`.
+database path is always derived from `BB_DATA_DIR`. Both the main server and
+Vite app bind to loopback by default; an explicit `BB_DEV_APP_HOST` still
+overrides the Vite listener. Remote HTTP dev via `BB_DEV_APP_HOST` also requires
+`BB_SERVER_BIND_HOST=0.0.0.0` for realtime updates; the Tailscale Serve HTTPS
+path avoids this because WebSocket traffic goes through the Vite proxy.
 `pnpm start` loads `.env`, `.env.local`, `.env.production`, and
 `.env.production.local`.
 

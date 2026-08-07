@@ -1,7 +1,10 @@
+import { once } from "node:events";
 import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { loadServerConfig } from "@bb/config/server";
 import { describe, expect, it } from "vitest";
+import { startHttpListener } from "../../src/start-server.js";
 
 const testDir = dirname(fileURLToPath(import.meta.url));
 
@@ -31,5 +34,37 @@ describe("server startup diagnostics", () => {
 
     expect(packageJson).toContain("--external ./start-server.js");
     expect(packageJson).toContain("src/start-server.ts dist/start-server.js");
+  });
+
+  it("binds the default server listener to IPv4 loopback", async () => {
+    const serverConfig = loadServerConfig({
+      env: {
+        BB_DATA_DIR: "/tmp/bb-server-listener-test",
+        BB_HOST_DAEMON_PORT: "49162",
+        BB_SERVER_PORT: "49161",
+        NODE_ENV: "development",
+      },
+    });
+    const server = startHttpListener({
+      fetch: () => new Response("ok"),
+      serverConfig: { ...serverConfig, BB_SERVER_PORT: 0 },
+    });
+
+    try {
+      if (!server.listening) {
+        await once(server, "listening");
+      }
+      expect(server.address()).toMatchObject({ address: "127.0.0.1" });
+    } finally {
+      await new Promise<void>((resolveClose, rejectClose) => {
+        server.close((error) => {
+          if (error) {
+            rejectClose(error);
+            return;
+          }
+          resolveClose();
+        });
+      });
+    }
   });
 });

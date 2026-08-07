@@ -103,15 +103,16 @@ sessions, checks dependencies and native modules, starts the source dev server,
 then opens the desktop shell against that dev app. The launcher prints the web
 URL but does not open a browser unless you pass `--open`.
 
-To use the dev app from another machine, for example over Tailscale, run:
+To use the dev app from another machine over Tailscale, run `pnpm dev`, note the
+printed app port, and publish the loopback Vite listener:
 
 ```bash
-pnpm dev
+tailscale serve --bg --https=443 http://127.0.0.1:<app-port>
 ```
 
-Then open `http://<remote-host-or-tailscale-ip>:<app-port>`. Source dev binds
-the browser app to all interfaces and uses the browser host for WebSockets by
-default.
+Then open `https://<machine>.<tailnet>.ts.net`. Source dev binds both the Vite
+app and main server to loopback by default; Vite continues to proxy API and
+WebSocket traffic.
 
 To use the component storybook from another machine, run:
 
@@ -119,8 +120,9 @@ To use the component storybook from another machine, run:
 pnpm storybook
 ```
 
-Ladle also binds to all interfaces and configures its HMR WebSocket to use the
-browser's current host instead of `localhost`.
+Ladle binds to all interfaces and configures its HMR WebSocket to use the
+browser's current host instead of `localhost`. Do not run `pnpm storybook` on an
+untrusted network.
 
 Development behavior is intentionally split:
 

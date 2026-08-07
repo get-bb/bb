@@ -10,6 +10,10 @@ Machine commands
 A machine is a host daemon that can run thread environments. Add remote
 machines under Settings → Machines.
 
+The server listens on loopback by default. Remote execution machines need the
+account-gated bb connect route or a private Tailscale Serve URL; generate their
+installer while using that reachable server URL.
+
 The Settings installer first uses the exact `bb-app` tarball served by that bb
 server at `/install/bb-app.tgz`; only servers that do not implement the route
 (HTTP 404) fall back to npm. Installed launchd/systemd services pass

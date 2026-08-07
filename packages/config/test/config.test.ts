@@ -312,6 +312,36 @@ describe("consumer-specific config", () => {
     });
   });
 
+  it("defaults the server bind host to loopback", () => {
+    const serverConfig = loadServerConfig({
+      env: createServerRuntimeEnv({
+        BB_SERVER_BIND_HOST: undefined,
+      }),
+    });
+
+    expect(serverConfig.BB_SERVER_BIND_HOST).toBe("127.0.0.1");
+  });
+
+  it("honors an explicit wildcard server bind host", () => {
+    const serverConfig = loadServerConfig({
+      env: createServerRuntimeEnv({
+        BB_SERVER_BIND_HOST: "0.0.0.0",
+      }),
+    });
+
+    expect(serverConfig.BB_SERVER_BIND_HOST).toBe("0.0.0.0");
+  });
+
+  it("rejects an unsupported server bind host", () => {
+    expect(() =>
+      loadServerConfig({
+        env: createServerRuntimeEnv({
+          BB_SERVER_BIND_HOST: "localhost",
+        }),
+      }),
+    ).toThrow(/BB_SERVER_BIND_HOST/u);
+  });
+
   it("parses the placeholder feature flag from env", () => {
     const serverConfig = loadServerConfig({
       env: createServerRuntimeEnv({
@@ -656,7 +686,7 @@ describe("consumer-specific config", () => {
   });
 
   it("builds app Vite dev config from the app dev entrypoint scope", () => {
-    const viteDevConfig = loadViteDevConfig({
+    const defaultViteDevConfig = loadViteDevConfig({
       env: {
         BB_DEV_APP_PORT: "4173",
         BB_SERVER_PORT: "4444",
@@ -664,8 +694,8 @@ describe("consumer-specific config", () => {
       },
     });
 
-    expect(viteDevConfig).toEqual({
-      appHost: "0.0.0.0",
+    expect(defaultViteDevConfig).toEqual({
+      appHost: "127.0.0.1",
       appPort: 4173,
       serverHttpOrigin: "http://localhost:4444",
       serverPort: 4444,
@@ -674,6 +704,17 @@ describe("consumer-specific config", () => {
         port: 4444,
       },
     });
+
+    const explicitViteDevConfig = loadViteDevConfig({
+      env: {
+        BB_DEV_APP_HOST: "0.0.0.0",
+        BB_DEV_APP_PORT: "4173",
+        BB_SERVER_PORT: "4444",
+        NODE_ENV: "development",
+      },
+    });
+
+    expect(explicitViteDevConfig.appHost).toBe("0.0.0.0");
   });
 
   it("requires the app dev port for Vite dev config", () => {

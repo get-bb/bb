@@ -15,7 +15,9 @@ import {
 } from "./inference-model.js";
 import { validateLogLevel } from "./log-level.js";
 import { validateOptionalUrl, validateRequiredUrl } from "./public-url.js";
-import { parsePortValue } from "./runtime.js";
+import { BB_LOOPBACK_HOST, parsePortValue } from "./runtime.js";
+
+export type ServerBindHost = "127.0.0.1" | "0.0.0.0";
 
 export function parseBooleanEnvValue(args: EnvVarParseArgs): boolean {
   const normalizedValue = args.value.trim().toLowerCase();
@@ -93,6 +95,19 @@ function parsePortEnvValue(args: EnvVarParseArgs): number {
   });
 }
 
+export function parseServerBindHost(value: string): ServerBindHost {
+  const trimmedValue = value.trim();
+  if (trimmedValue === "127.0.0.1" || trimmedValue === "0.0.0.0") {
+    return trimmedValue;
+  }
+
+  throw new Error('BB_SERVER_BIND_HOST must be "127.0.0.1" or "0.0.0.0"');
+}
+
+function parseServerBindHostEnvValue(args: EnvVarParseArgs): ServerBindHost {
+  return parseServerBindHost(args.value);
+}
+
 function parsePositiveIntegerEnvValue(args: EnvVarParseArgs): number {
   const parsed = Number(args.value);
   if (!Number.isInteger(parsed) || parsed <= 0) {
@@ -145,6 +160,12 @@ export const BB_SERVER_PORT_ENV = defineEnvVar<number>({
   description: "HTTP port for the server",
   name: "BB_SERVER_PORT",
   parse: parsePortEnvValue,
+});
+
+export const BB_SERVER_BIND_HOST_ENV = defineEnvVar<ServerBindHost>({
+  description: "HTTP bind host for the server",
+  name: "BB_SERVER_BIND_HOST",
+  parse: parseServerBindHostEnvValue,
 });
 
 export const BB_HOST_DAEMON_PORT_ENV = defineEnvVar<number>({
@@ -236,7 +257,7 @@ export const BB_FF_TIMELINE_WINDOW_EVENT_BUDGET_ENV = defineEnvVar<number>({
 
 export const BB_DEV_APP_HOST_ENV = defineEnvVar<string>({
   description:
-    "Development-only Vite bind host override for apps/app. Defaults to 0.0.0.0 when unset.",
+    "Development-only Vite bind host override for apps/app. Defaults to 127.0.0.1 when unset.",
   name: "BB_DEV_APP_HOST",
   parse: parseStringEnvValue,
 });
@@ -327,6 +348,7 @@ export const BB_HOST_TYPE_ENV = defineEnvVar<HostType | undefined>({
 export const DEFAULT_BB_APP_VERSION = DEFAULTS.appVersion;
 export const DEFAULT_BB_APP_SURFACE = DEFAULT_APP_SURFACE;
 export const DEFAULT_BB_APP_URL = "";
+export const DEFAULT_BB_SERVER_BIND_HOST: ServerBindHost = BB_LOOPBACK_HOST;
 export const DEFAULT_BB_EXTERNAL_URL = "";
 export const DEFAULT_OPENAI_API_KEY = "";
 // Public write-only PostHog ingestion key (these are safe to ship; they can

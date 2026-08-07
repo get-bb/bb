@@ -15,6 +15,8 @@ export default defineConfig({
     __BB_DEV_WS_BROWSER_HOST_PORT__: devWebSocketBrowserHostPortDefine,
   },
   server: {
+    // Allow Tailscale MagicDNS names when Vite is behind Tailscale Serve.
+    allowedHosts: [".ts.net"],
     host: viteDevConfig.appHost,
     port: viteDevConfig.appPort,
     proxy: {

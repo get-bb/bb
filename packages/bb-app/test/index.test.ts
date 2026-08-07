@@ -710,6 +710,39 @@ describe("bb-app launcher", () => {
     });
   });
 
+  it("passes the server bind host flag to the server environment", async () => {
+    const parsedArgs = parseLauncherArgs([
+      "--server-bind-host",
+      "0.0.0.0",
+    ]);
+    const dataDir = mkdtempSync(join(tmpdir(), "bb-app-bind-host-"));
+    const runtime = await resolveBbAppRuntimeState({
+      entrypointUrl: pathToFileURL("/repo/packages/bb-app/dist/bb-app.js").href,
+      env: { BB_DATA_DIR: dataDir },
+      homeDir: "/home/tester",
+      options: parsedArgs.options,
+      serverUrlMode: "local",
+    });
+
+    expect(parsedArgs.options.serverBindHost).toBe("0.0.0.0");
+    expect(runtime.serverEnv.BB_SERVER_BIND_HOST).toBe("0.0.0.0");
+  });
+
+  it("rejects an invalid server bind host before launcher startup", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "bb-app-invalid-bind-host-"));
+
+    await expect(
+      runBbApp([
+        "--data-dir",
+        dataDir,
+        "--server-bind-host",
+        "localhost",
+      ]),
+    ).rejects.toThrow(
+      'BB_SERVER_BIND_HOST must be "127.0.0.1" or "0.0.0.0"',
+    );
+  });
+
   it("uses a supplied join code without requesting a loopback enroll key", async () => {
     const dataDir = mkdtempSync(join(tmpdir(), "bb-app-remote-join-"));
     const context = { ...createTestStartContext(), dataDir };
@@ -1161,12 +1194,109 @@ describe("bb-app launcher", () => {
     expect(statSync(join(dataDir, "env.json")).mode & 0o777).toBe(0o600);
   });
 
+  it("rejects invalid server bind hosts before writing managed env", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "bb-app-invalid-bind-env-"));
+    const envPath = join(dataDir, "env.json");
+    const initialEnvFile = {
+      env: { ANTHROPIC_API_KEY: "test-anthropic-key" },
+    };
+    writeFileSync(envPath, JSON.stringify(initialEnvFile), "utf8");
+
+    await expect(
+      runBbApp([
+        "--data-dir",
+        dataDir,
+        "env",
+        "set",
+        "BB_SERVER_BIND_HOST",
+        "localhost",
+      ]),
+    ).rejects.toThrow(
+      'BB_SERVER_BIND_HOST must be "127.0.0.1" or "0.0.0.0"',
+    );
+
+    expect(JSON.parse(readFileSync(envPath, "utf8"))).toEqual(initialEnvFile);
+  });
+
+  it("unsets an invalid server bind host already in managed env", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "bb-app-recover-bind-env-"));
+    const envPath = join(dataDir, "env.json");
+    writeFileSync(
+      envPath,
+      JSON.stringify({ env: { BB_SERVER_BIND_HOST: "localhost" } }),
+      "utf8",
+    );
+
+    await runBbApp([
+      "--data-dir",
+      dataDir,
+      "env",
+      "unset",
+      "BB_SERVER_BIND_HOST",
+    ]);
+
+    expect(JSON.parse(readFileSync(envPath, "utf8"))).toEqual({});
+  });
+
+  it("names the env file when a persisted server bind host is invalid", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "bb-app-bad-bind-env-"));
+    const envPath = join(dataDir, "env.json");
+    writeFileSync(
+      envPath,
+      JSON.stringify({ env: { BB_SERVER_BIND_HOST: "localhost" } }),
+      "utf8",
+    );
+
+    await expect(runBbApp(["--data-dir", dataDir])).rejects.toThrow(envPath);
+  });
+
+  it("blames the flag, not the env file, for an invalid flag value", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "bb-app-bad-bind-flag-"));
+    const envPath = join(dataDir, "env.json");
+    writeFileSync(
+      envPath,
+      JSON.stringify({ env: { BB_SERVER_BIND_HOST: "localhost" } }),
+      "utf8",
+    );
+
+    const failure = await runBbApp([
+      "--data-dir",
+      dataDir,
+      "--server-bind-host",
+      "0.0.0.0.0",
+    ]).catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toContain("BB_SERVER_BIND_HOST");
+    expect((failure as Error).message).not.toContain(envPath);
+  });
+
   it("rejects invalid env key names", async () => {
     const dataDir = mkdtempSync(join(tmpdir(), "bb-app-invalid-env-"));
 
     await expect(
       runBbApp(["--data-dir", dataDir, "env", "set", "1BAD", "value"]),
     ).rejects.toThrow(/Invalid env key/u);
+  });
+
+  it("uses the explicit server bind host flag over managed env", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "bb-app-bind-host-env-"));
+    writeFileSync(
+      join(dataDir, "env.json"),
+      JSON.stringify({ env: { BB_SERVER_BIND_HOST: "0.0.0.0" } }),
+      "utf8",
+    );
+    const parsedArgs = parseLauncherArgs(["--server-bind-host", "127.0.0.1"]);
+
+    const runtime = await resolveBbAppRuntimeState({
+      entrypointUrl: pathToFileURL("/repo/packages/bb-app/dist/bb-app.js").href,
+      env: { BB_DATA_DIR: dataDir },
+      homeDir: "/home/tester",
+      options: parsedArgs.options,
+      serverUrlMode: "local",
+    });
+
+    expect(runtime.serverEnv.BB_SERVER_BIND_HOST).toBe("127.0.0.1");
   });
 
   it("unsets managed env values", async () => {
