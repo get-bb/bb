@@ -183,6 +183,14 @@ interface TerminalOutputWriteArgs {
   terminal: XTermTerminal;
 }
 
+interface ForwardTerminalDataArgs {
+  data: string;
+  onInput: (dataBase64: string) => void;
+  onUserInput?: () => void;
+  replayWriteState: TerminalReplayWriteState;
+  sessionStatus: TerminalSession["status"];
+}
+
 interface OpenTerminalWebLinkArgs {
   event: MouseEvent;
   onOpenLink: MarkdownPreviewLinkHandler;
@@ -233,6 +241,30 @@ export function encodeTerminalInputChunks(value: string): string[] {
     );
   }
   return chunks;
+}
+
+export function forwardTerminalData({
+  data,
+  onInput,
+  onUserInput,
+  replayWriteState,
+  sessionStatus,
+}: ForwardTerminalDataArgs): void {
+  // xterm emits terminal protocol replies (for example, cursor-position
+  // reports) through onData alongside user input. Replaying historical output
+  // can generate those replies again, so never forward onData while a replay
+  // write is still being parsed.
+  if (
+    replayWriteState.suppressedWriteCount > 0 ||
+    sessionStatus !== "running"
+  ) {
+    return;
+  }
+
+  onUserInput?.();
+  for (const dataBase64 of encodeTerminalInputChunks(data)) {
+    onInput(dataBase64);
+  }
 }
 
 export function decodeTerminalOutputBytes(value: string): Uint8Array {
@@ -363,7 +395,7 @@ function openTerminalWebLink({
   openUrlInExternalBrowser(uri);
 }
 
-function writeTerminalOutput({
+export function writeTerminalOutput({
   data,
   isReplay,
   replayWriteState,
@@ -716,14 +748,16 @@ export function ThreadTerminalView({
       transport = activeTransport;
       activeTransport.sendResize(activeTerminal.cols, activeTerminal.rows);
       activeTransport.start();
+      const sendTerminalInput = (dataBase64: string) =>
+        activeTransport.sendInput(dataBase64);
       activeTerminal.onData((data) => {
-        if (sessionStatusRef.current !== "running") {
-          return;
-        }
-        onUserInputRef.current?.();
-        for (const dataBase64 of encodeTerminalInputChunks(data)) {
-          activeTransport.sendInput(dataBase64);
-        }
+        forwardTerminalData({
+          data,
+          onInput: sendTerminalInput,
+          onUserInput: onUserInputRef.current,
+          replayWriteState,
+          sessionStatus: sessionStatusRef.current,
+        });
       });
       activeTerminal.onTitleChange((title) => {
         if (replayWriteState.suppressedWriteCount > 0) {
