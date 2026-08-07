@@ -691,6 +691,7 @@ function EmbeddedThreadChatWithComposer({
     promptDraft,
     sendOrQueueInput,
     setBottomAttachmentError,
+    threadId,
   ]);
 
   const isQueueMutationPending =
