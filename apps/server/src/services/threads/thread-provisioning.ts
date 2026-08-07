@@ -259,26 +259,48 @@ export function requestThreadProvision(
     args.startedOnBehalfOf?.initiator ?? "user";
   const senderThreadId = args.startedOnBehalfOf?.senderThreadId ?? null;
   const target: TurnRequestTarget = { kind: "thread-start" };
-  const request = appendClientTurnEvent(deps, {
-    actor: args.actor ?? SYSTEM_ACTOR_STAMP,
-    threadId: args.thread.id,
-    environmentId: args.thread.environmentId,
-    type: "client/turn/requested",
-    input: args.input,
-    execution: args.execution,
-    initiator,
-    senderThreadId,
-    requestMethod: "thread/start",
-    source: "spawn",
-    target,
-  });
-  recordAcceptedPromptHistoryEntry(deps, {
-    thread: args.thread,
-    input: args.input,
-    initiator,
-    target,
-    requestSequence: request.sequence,
-  });
+
+  // A non-fork start with empty input and no on-behalf attribution is a pure
+  // environment provision with no first turn (the Work Together room primary
+  // thread). Persisting a `client/turn/requested` + prompt-history anchor with
+  // empty input would create a phantom user turn and a project prompt-history
+  // row that fails its own `min(1)` input contract on read (dropped as
+  // malformed on every fetch). Provision the environment and settle the thread
+  // idle with no turn anchor; the first real `message.send` starts the first
+  // turn with real input. Forks (empty input allowed) and agent/system
+  // seed-without-run starts keep their anchors.
+  const provisionWithoutTurn =
+    args.fork === null &&
+    args.startedOnBehalfOf === null &&
+    args.input.length === 0;
+
+  let clientRequestId: ReturnType<typeof createClientTurnRequestId>;
+  if (provisionWithoutTurn) {
+    clientRequestId = createClientTurnRequestId();
+  } else {
+    const request = appendClientTurnEvent(deps, {
+      actor: args.actor ?? SYSTEM_ACTOR_STAMP,
+      threadId: args.thread.id,
+      environmentId: args.thread.environmentId,
+      type: "client/turn/requested",
+      input: args.input,
+      execution: args.execution,
+      initiator,
+      senderThreadId,
+      requestMethod: "thread/start",
+      source: "spawn",
+      target,
+    });
+    recordAcceptedPromptHistoryEntry(deps, {
+      thread: args.thread,
+      input: args.input,
+      initiator,
+      target,
+      requestSequence: request.sequence,
+    });
+    clientRequestId = request.requestId;
+  }
+
   appendClientTurnEvent(deps, {
     actor: args.actor ?? SYSTEM_ACTOR_STAMP,
     threadId: args.thread.id,
@@ -291,9 +313,9 @@ export function requestThreadProvision(
 
   const context = createMetadataPendingContext({
     ...args,
-    clientRequestId: request.requestId,
+    clientRequestId,
     input: args.providerInput ?? args.input,
-    seedWithoutRun: args.startedOnBehalfOf !== null,
+    seedWithoutRun: args.startedOnBehalfOf !== null || provisionWithoutTurn,
   });
   saveThreadProvisionContext({
     threadId: args.thread.id,
