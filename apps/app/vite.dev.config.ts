@@ -23,6 +23,11 @@ export default defineConfig({
         changeOrigin: true,
         xfwd: true,
       },
+      "/install": {
+        target: viteDevConfig.serverHttpOrigin,
+        changeOrigin: true,
+        xfwd: true,
+      },
       "/ws": {
         target: viteDevConfig.serverHttpOrigin,
         changeOrigin: true,
