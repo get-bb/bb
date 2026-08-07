@@ -785,7 +785,7 @@ export function registerPluginCommands(
           try {
             await promisify(execFile)(
               "npm",
-              ["install", "--no-fund", "--no-audit"],
+              ["install", "--include=dev", "--no-fund", "--no-audit"],
               { cwd: targetDir },
             );
             installed = true;
