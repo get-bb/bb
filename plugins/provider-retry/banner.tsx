@@ -45,7 +45,7 @@ export function ProviderRetryBannerView({
       className="grid grid-cols-[0.875rem_minmax(0,1fr)_auto] items-center gap-x-2 rounded-lg border border-warning/25 bg-warning/5 px-3 py-2 text-xs text-foreground"
     >
       <Icon name="Clock" className="size-3.5 text-warning-text" aria-hidden />
-      <p className="min-w-0 truncate leading-5">{description(view)}</p>
+      <p className="min-w-0 leading-5">{description(view)}</p>
       <Button
         type="button"
         variant="ghost"

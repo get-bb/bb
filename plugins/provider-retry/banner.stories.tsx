@@ -12,10 +12,12 @@ const CASES: readonly {
   hint: string;
   label: string;
   view: ProviderRetryView;
+  widthClassName: string;
 }[] = [
   {
     label: "With retry time",
     hint: "The provider reported an exact reset time.",
+    widthClassName: "max-w-2xl",
     view: {
       threadId: "thr_provider_retry_audit",
       providerId: "claude-code",
@@ -25,10 +27,21 @@ const CASES: readonly {
   {
     label: "Without retry time",
     hint: "An automatic retry is still pending without an exact time.",
+    widthClassName: "max-w-2xl",
     view: {
       threadId: "thr_provider_retry_audit",
       providerId: "codex",
       retryAtMs: null,
+    },
+  },
+  {
+    label: "Narrow composer",
+    hint: "The full message wraps while Cancel remains pinned to the right.",
+    widthClassName: "max-w-xs",
+    view: {
+      threadId: "thr_provider_retry_audit",
+      providerId: "claude-code",
+      retryAtMs: RETRY_AT_MS,
     },
   },
 ];
@@ -45,9 +58,9 @@ export function AllBanners() {
             The banner is shown only while an automatic retry is pending.
           </p>
         </div>
-        {CASES.map(({ hint, label, view }) => (
+        {CASES.map(({ hint, label, view, widthClassName }) => (
           <StoryRow key={label} label={label} hint={hint}>
-            <div className="w-full max-w-2xl">
+            <div className={`w-full ${widthClassName}`}>
               <ProviderRetryBannerView
                 cancelling={false}
                 onCancel={() => undefined}
