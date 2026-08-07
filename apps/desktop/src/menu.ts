@@ -140,6 +140,14 @@ export function buildApplicationMenuTemplate(
         {
           accelerator: args.accelerators.closeWindowOrSideTab,
           click(_menuItem, browserWindow) {
+            // Electron sends null here for native panels such as the About
+            // window. Its type defines only BaseWindow | undefined.
+            // These panels have no Electron BaseWindow, so use the native
+            // close action.
+            if (browserWindow === null) {
+              Menu.sendActionToFirstResponder("performClose:");
+              return;
+            }
             args.closeWindowOrSideTab(browserWindow);
           },
           label: CLOSE_WINDOW_MENU_LABEL,

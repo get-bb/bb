@@ -3,8 +3,10 @@ import type { BaseWindow, MenuItemConstructorOptions } from "electron";
 
 vi.mock("electron", () => ({
   app: { name: "bb" },
-  Menu: {},
+  Menu: { sendActionToFirstResponder: vi.fn() },
 }));
+
+import { Menu } from "electron";
 
 import {
   buildApplicationMenuTemplate,
@@ -49,6 +51,23 @@ function findServerSubmenu(
 }
 
 describe("application menu", () => {
+  it("closes a native panel when Electron omits its window", () => {
+    const closeWindowOrSideTab = vi.fn();
+    const template = buildApplicationMenuTemplate(
+      menuArgs(() => {}, { closeWindowOrSideTab }),
+    );
+    const fileMenu = template.find((item) => item.label === "File");
+    const submenu = fileMenu?.submenu as MenuItemConstructorOptions[];
+    const closeWindow = submenu.find((item) => item.label === "Close Window");
+
+    closeWindow?.click?.({} as never, null as never, {} as never);
+
+    expect(Menu.sendActionToFirstResponder).toHaveBeenCalledWith(
+      "performClose:",
+    );
+    expect(closeWindowOrSideTab).not.toHaveBeenCalled();
+  });
+
   it("shows reload shortcuts without globally stealing browser commands", () => {
     const reloadWindow = vi.fn();
     const template = buildApplicationMenuTemplate(menuArgs(reloadWindow));
