@@ -25,24 +25,56 @@ export function registerProviderRetryCli(
 ): void {
   bb.cli.register({
     name: "provider-retry",
-    summary: "Inspect pending automatic provider retries",
+    summary: "Manage pending automatic provider retries",
     commands: [
       {
         name: "status",
         summary: "Show pending automatic provider retries",
         usage: "bb provider-retry status [thread-id] [--json]",
       },
+      {
+        name: "cancel",
+        summary: "Cancel a pending automatic provider retry",
+        usage: "bb provider-retry cancel <thread-id> [--json]",
+      },
     ],
     run(argv, context) {
       const [command, ...args] = argv;
-      if (command !== "status") {
+      if (command !== "status" && command !== "cancel") {
         return {
           exitCode: 2,
-          stderr: "Usage: bb provider-retry status [thread-id] [--json]\n",
+          stderr:
+            "Usage: bb provider-retry <status|cancel> [thread-id] [--json]\n",
         };
       }
 
       const threadId = requestedThreadId(args, context);
+      if (command === "cancel") {
+        if (threadId === null) {
+          return {
+            exitCode: 2,
+            stderr:
+              "A thread id is required: bb provider-retry cancel <thread-id>\n",
+          };
+        }
+        const cancelled = service.cancel(threadId);
+        if (args.includes("--json")) {
+          return {
+            exitCode: cancelled ? 0 : 1,
+            stdout: `${JSON.stringify({ cancelled }, null, 2)}\n`,
+          };
+        }
+        return cancelled
+          ? {
+              exitCode: 0,
+              stdout: `Cancelled provider retry for ${threadId}.\n`,
+            }
+          : {
+              exitCode: 1,
+              stderr: `No pending provider retry exists for ${threadId}.\n`,
+            };
+      }
+
       const views =
         threadId === null
           ? service.list()

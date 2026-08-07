@@ -48,7 +48,11 @@ export function AllBanners() {
         {CASES.map(({ hint, label, view }) => (
           <StoryRow key={label} label={label} hint={hint}>
             <div className="w-full max-w-2xl">
-              <ProviderRetryBannerView view={view} />
+              <ProviderRetryBannerView
+                cancelling={false}
+                onCancel={() => undefined}
+                view={view}
+              />
             </div>
           </StoryRow>
         ))}

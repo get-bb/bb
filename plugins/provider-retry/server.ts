@@ -59,6 +59,9 @@ export default async function plugin(bb: BbPluginApi) {
   bb.onDispose(() => service.dispose());
 
   bb.rpc.register(providerRetryRpcContract, {
+    providerRetryCancel({ threadId }) {
+      return { cancelled: service.cancel(threadId) };
+    },
     providerRetryStatus({ threadId }) {
       return { view: service.status(threadId) };
     },

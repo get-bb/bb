@@ -1,3 +1,4 @@
+import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import type { ProviderRetryView } from "./src/contract.js";
 
@@ -29,7 +30,15 @@ function description(view: ProviderRetryView): string {
   return `${provider} usage limit reached. ${retry}`;
 }
 
-export function ProviderRetryBannerView({ view }: { view: ProviderRetryView }) {
+export function ProviderRetryBannerView({
+  cancelling,
+  onCancel,
+  view,
+}: {
+  cancelling: boolean;
+  onCancel: () => void | Promise<void>;
+  view: ProviderRetryView;
+}) {
   return (
     <section
       aria-label="Provider usage recovery"
@@ -40,7 +49,19 @@ export function ProviderRetryBannerView({ view }: { view: ProviderRetryView }) {
         className="mt-0.5 size-3.5 text-warning-text"
         aria-hidden
       />
-      <p className="min-w-0 leading-5">{description(view)}</p>
+      <div className="flex min-w-0 flex-col gap-2">
+        <p className="leading-5">{description(view)}</p>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-7 self-start px-2 text-xs text-muted-foreground"
+          disabled={cancelling}
+          onClick={() => void onCancel()}
+        >
+          Cancel
+        </Button>
+      </div>
     </section>
   );
 }

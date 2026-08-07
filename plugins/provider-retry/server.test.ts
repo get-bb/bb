@@ -94,7 +94,7 @@ afterEach(() => {
 });
 
 describe("provider retry scheduler", () => {
-  it("exposes only the maximum wait setting and status command", async () => {
+  it("exposes only the maximum wait setting and retry management commands", async () => {
     const host = createFakePluginHost({ pluginId: "provider-retry" });
     await plugin(host.bb);
 
@@ -110,7 +110,7 @@ describe("provider retry scheduler", () => {
     });
     expect(
       host.harness.registrations.cli?.commands.map((command) => command.name),
-    ).toEqual(["status"]);
+    ).toEqual(["status", "cancel"]);
     await host.harness.dispose();
   });
 
@@ -177,6 +177,47 @@ describe("provider retry scheduler", () => {
       threadId: "thread-b",
       failedRequestId: "request-thread-b",
     });
+    await host.harness.dispose();
+  });
+
+  it("cancels pending retries through RPC and CLI", async () => {
+    const continueAfterRateLimit = vi.fn();
+    const host = createFakePluginHost({
+      pluginId: "provider-retry",
+      sdk: {
+        threads: {
+          rateLimitRecovery: async ({ threadId }) => eligibleStatus(threadId),
+          continueAfterRateLimit,
+        },
+      },
+    });
+    await plugin(host.bb);
+    for (const threadId of ["thread-rpc", "thread-cli"]) {
+      await host.harness.emitThreadEvent("thread.failed", {
+        thread: makeThreadResponse({ id: threadId, status: "error" }),
+        error: "Usage limit reached",
+      });
+    }
+
+    await expect(
+      host.harness.callRpc("providerRetryCancel", {
+        threadId: "thread-rpc",
+      }),
+    ).resolves.toEqual({ cancelled: true });
+    await expect(
+      host.harness.runCli(["cancel", "thread-cli"]),
+    ).resolves.toMatchObject({
+      exitCode: 0,
+      stdout: "Cancelled provider retry for thread-cli.\n",
+    });
+    await expect(
+      host.harness.callRpc("providerRetryCancel", {
+        threadId: "thread-rpc",
+      }),
+    ).resolves.toEqual({ cancelled: false });
+
+    await vi.advanceTimersByTimeAsync(6 * 60 * 60 * 1_000);
+    expect(continueAfterRateLimit).not.toHaveBeenCalled();
     await host.harness.dispose();
   });
 

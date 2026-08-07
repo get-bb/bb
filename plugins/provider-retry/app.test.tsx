@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { loadPluginApp, renderSlot } from "@bb/plugin-sdk/testing/app";
 import type { ProviderRetryView } from "./src/contract.js";
@@ -26,24 +26,52 @@ describe("provider retry app", () => {
     ]);
   });
 
-  it("shows one automatic retry message without actions", async () => {
+  it("shows one automatic retry message with a cancel action", async () => {
     const slot = renderSlot(
       banner,
       {},
       {
         composer: { scope: { kind: "thread", threadId: "thread-one" } },
         rpc: {
+          providerRetryCancel: () => ({ cancelled: true }),
           providerRetryStatus: () => ({ view: waitingView }),
         },
       },
     );
 
     expect(
-      await slot.findByText(
-        /Claude Code usage limit reached\. Retrying/i,
-      ),
+      await slot.findByText(/Claude Code usage limit reached\. Retrying/i),
     ).toBeTruthy();
-    expect(slot.queryAllByRole("button")).toHaveLength(0);
+    expect(slot.getByRole("button", { name: "Cancel" })).toBeTruthy();
+  });
+
+  it("cancels a pending retry", async () => {
+    let current: ProviderRetryView | null = waitingView;
+    const slot = renderSlot(
+      banner,
+      {},
+      {
+        composer: { scope: { kind: "thread", threadId: "thread-one" } },
+        rpc: {
+          providerRetryCancel: () => {
+            current = null;
+            return { cancelled: true };
+          },
+          providerRetryStatus: () => ({ view: current }),
+        },
+      },
+    );
+
+    fireEvent.click(await slot.findByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(slot.container.childElementCount).toBe(0));
+    expect(slot.inspection.rpcCalls).toEqual(
+      expect.arrayContaining([
+        {
+          method: "providerRetryCancel",
+          input: { threadId: "thread-one" },
+        },
+      ]),
+    );
   });
 
   it("removes the banner when the retry is no longer pending", async () => {
@@ -54,6 +82,7 @@ describe("provider retry app", () => {
       {
         composer: { scope: { kind: "thread", threadId: "thread-one" } },
         rpc: {
+          providerRetryCancel: () => ({ cancelled: true }),
           providerRetryStatus: () => ({ view: current }),
         },
       },
@@ -72,6 +101,7 @@ describe("provider retry app", () => {
       {
         composer: { scope: { kind: "thread", threadId: "thread-one" } },
         rpc: {
+          providerRetryCancel: () => ({ cancelled: true }),
           providerRetryStatus: () => ({
             view: { ...waitingView, retryAtMs: null },
           }),

@@ -381,8 +381,9 @@ For review or fix pipelines, get the environment ID from
   not block recovery. Enable it with
   `bb plugin enable provider-retry` or under Extensions → Plugins. Its timers
   last only while the current bb server/plugin process is running. Inspect it
-  with `bb provider-retry status [thread-id]`. Automatic waits default to six
-  hours; configure longer waits with
+  with `bb provider-retry status [thread-id]`, or cancel one with
+  `bb provider-retry cancel <thread-id>`. Automatic waits default to six hours;
+  configure longer waits with
   `bb plugin config provider-retry set maximumWait "24 hours"` or select
   `No limit` in the plugin settings. Resets beyond the configured horizon are
   not scheduled.

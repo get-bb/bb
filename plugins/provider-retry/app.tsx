@@ -24,7 +24,10 @@ function ProviderRetryBanner() {
   const composerView = useComposerView();
   if (composerView.scope.kind !== "thread") return null;
   return (
-    <ProviderRetryBannerForThread threadId={composerView.scope.threadId} />
+    <ProviderRetryBannerForThread
+      key={composerView.scope.threadId}
+      threadId={composerView.scope.threadId}
+    />
   );
 }
 
@@ -32,12 +35,29 @@ function ProviderRetryBannerForThread({ threadId }: { threadId: string }) {
   const rpc = useRpc<typeof providerRetryRpcContract>();
   const connection = useRealtimeConnectionState();
   const previousConnection = useRef(connection);
+  const [cancelling, setCancelling] = useState(false);
   const [view, setView] = useState<ProviderRetryView | null>(null);
 
   const load = useCallback(async () => {
     const result = await rpc.call("providerRetryStatus", { threadId });
     setView(result.view);
   }, [rpc, threadId]);
+
+  const cancel = useCallback(async () => {
+    setCancelling(true);
+    try {
+      const result = await rpc.call("providerRetryCancel", { threadId });
+      if (result.cancelled) {
+        setView(null);
+      } else {
+        await load();
+      }
+    } catch {
+      await load().catch(() => undefined);
+    } finally {
+      setCancelling(false);
+    }
+  }, [load, rpc, threadId]);
 
   useEffect(() => {
     void load().catch(() => undefined);
@@ -62,7 +82,13 @@ function ProviderRetryBannerForThread({ threadId }: { threadId: string }) {
     if (reconnected) void load().catch(() => undefined);
   }, [connection, load]);
 
-  return view === null ? null : <ProviderRetryBannerView view={view} />;
+  return view === null ? null : (
+    <ProviderRetryBannerView
+      cancelling={cancelling}
+      onCancel={cancel}
+      view={view}
+    />
+  );
 }
 
 export default definePluginApp((app) => {

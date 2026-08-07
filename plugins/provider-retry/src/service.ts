@@ -132,6 +132,13 @@ export class ProviderRetryService {
     return entry === undefined ? null : toView(entry);
   }
 
+  cancel(threadId: string): boolean {
+    const entry = this.entries.get(threadId);
+    if (entry === undefined || entry.releasing) return false;
+    this.remove(threadId);
+    return true;
+  }
+
   async reconcile(threadId: string): Promise<ProviderRetryView | null> {
     const previous = this.reconcileLocks.get(threadId) ?? Promise.resolve();
     const next = previous

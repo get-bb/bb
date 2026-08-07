@@ -13,6 +13,10 @@ export type ProviderRetryView = z.infer<typeof providerRetryViewSchema>;
 const threadInput = z.object({ threadId: z.string().min(1) }).strict();
 
 export const providerRetryRpcContract = defineRpcContract({
+  providerRetryCancel: {
+    input: threadInput,
+    output: z.object({ cancelled: z.boolean() }).strict(),
+  },
   providerRetryStatus: {
     input: threadInput,
     output: z.object({ view: providerRetryViewSchema.nullable() }).strict(),

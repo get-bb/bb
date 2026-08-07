@@ -59,6 +59,7 @@ settings, or run:
   bb plugin config provider-retry set maximumWait "24 hours"
 
   bb provider-retry status [thread-id] [--json]    Inspect in-memory waits
+  bb provider-retry cancel <thread-id> [--json]    Cancel an automatic retry
   bb thread retry [id] [--request-id <id>]         Core continuation
 
 Timed waits exist only while the current bb server/plugin process remains
