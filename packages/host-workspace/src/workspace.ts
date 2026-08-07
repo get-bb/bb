@@ -10,8 +10,8 @@ import type {
 import os from "node:os";
 import path from "node:path";
 import {
-  getPullRequestForBranch,
-  runPullRequestActionForBranch,
+  getPullRequestForCurrentBranch,
+  runPullRequestActionForCurrentBranch,
   type GitHostPullRequestAction,
   type GitHostPullRequestLookup,
 } from "./git-host.js";
@@ -688,7 +688,7 @@ export class Workspace {
    * Raw `gh` pull request lookup for the workspace's current branch. A
    * detached HEAD has no branch and therefore no PR ("none"); lookup failures
    * surface as "unavailable". Never throws — see
-   * {@link getPullRequestForBranch}.
+   * {@link getPullRequestForCurrentBranch}.
    */
   async getPullRequest(): Promise<GitHostPullRequestLookup> {
     // A vanished workspace (deleted worktree dir) means the lookup cannot
@@ -704,7 +704,7 @@ export class Workspace {
     if (!branch) {
       return { outcome: "none" };
     }
-    return getPullRequestForBranch({ cwd: this.path, branch });
+    return getPullRequestForCurrentBranch({ cwd: this.path });
   }
 
   async runPullRequestAction(
@@ -717,7 +717,7 @@ export class Workspace {
         "Cannot update pull request from a detached workspace",
       );
     }
-    return runPullRequestActionForBranch({ cwd: this.path, branch, action });
+    return runPullRequestActionForCurrentBranch({ cwd: this.path, action });
   }
 
   async getStatus(options: StatusOptions = {}): Promise<WorkspaceStatus> {
