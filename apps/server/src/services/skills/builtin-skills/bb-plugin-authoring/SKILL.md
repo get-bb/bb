@@ -130,41 +130,23 @@ after configuring.
 
 ## Looking up the exact API
 
-This skill is a guide, not the contract. When you need an exact signature, a
-field name, or a symbol this skill does not cover, work down this list and
-stop at the first step that answers the question.
+This skill is a guide, not the contract. For an exact signature or a symbol it
+does not cover:
 
-1. **Run `bb plugin types` in the plugin directory.** It writes this bb's
-   `@bb/plugin-sdk` declarations into `types/`, creating the directory when it
-   is absent, and needs no running server. Do this before trusting an
-   unfamiliar checkout: `bb plugin new` seeds those files once, so a plugin
-   cloned from git or scaffolded against an older bb carries a frozen copy
-   that can be thousands of lines behind the API you are writing against.
-   `bb plugin build` and `bb plugin dev` refresh them too, and
-   `bb plugin types --check` reports staleness without writing.
-2. **Read `types/bb-plugin-sdk.d.ts`** (plus `types/bb-plugin-sdk-app.d.ts`
-   for frontend symbols). This is the authoritative, exhaustive surface —
-   roughly 13,000 lines of ordinary formatted declarations with doc comments.
-   It is source, not build output: open it and grep it. The scaffold's
-   `tsconfig.json` maps `@bb/plugin-sdk` to these files, so
-   `npm install && npx tsc --noEmit` typechecks anywhere with no bb checkout.
-3. **Clone the repo** when the declarations tell you _what_ but you need
-   _how_ — host behavior, a reference implementation, or an internal symbol
-   that never reaches the public surface:
+1. **`bb plugin types`** rewrites `types/*.d.ts` from the running bb (no
+   server needed). The scaffold seeds them once, so a cloned or older plugin
+   can be thousands of lines behind. `--check` reports staleness without
+   writing; `bb plugin build` and `bb plugin dev` refresh them too.
+2. **Read `types/bb-plugin-sdk.d.ts`** (`-app.d.ts` for frontend symbols) —
+   the authoritative surface, ~13,000 lines of readable declarations with doc
+   comments, and what the scaffold `tsconfig.json` maps `@bb/plugin-sdk` to.
+3. **`git clone --depth 1 https://github.com/get-bb/bb`** for host behavior or
+   a reference implementation: `packages/plugin-sdk/src/`,
+   `apps/server/src/services/plugins/`, `plugins/`.
 
-   ```sh
-   git clone --depth 1 https://github.com/get-bb/bb /tmp/bb
-   ```
-
-   Read `packages/plugin-sdk/src/` for the SDK itself,
-   `apps/server/src/services/plugins/` for the host that runs your factory,
-   and `plugins/` for the official plugins that use every surface here.
-
-**Never read a built bundle to answer an API question.** `dist/server.js`,
-`dist/app.js`, and the installed bb app's own JavaScript are minified build
-output: they burn context and answer worse than the declarations. If you find
-yourself grepping minified JavaScript for a plugin API detail, stop and go
-back to step 1.
+Never answer an API question from a built bundle — `dist/*.js` and the bb app's
+own JavaScript are minified. If you are grepping minified JavaScript, go back
+to step 1.
 
 ## Distributing a plugin
 
@@ -1634,7 +1616,6 @@ Remaining reference examples in `examples/plugins/`:
   `defineRpcContract` plus `PLUGIN_CLI_OUTPUT_MAX_BYTES`; validator imports are
   plugin dependencies. The
   scaffold tsconfig typechecks both `server.ts` and `app.tsx`.
-- `types/*.d.ts` is a per-plugin copy, not a live view of the SDK: it can be
-  thousands of lines behind in a cloned or older plugin. Run `bb plugin types`
-  before trusting it, and never fall back to reading a minified `dist/` bundle
-  — see "Looking up the exact API".
+- `types/*.d.ts` is a per-plugin copy, not a live view of the SDK: run
+  `bb plugin types` before trusting it, and never fall back to a minified
+  `dist/` bundle — see "Looking up the exact API".
