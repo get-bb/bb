@@ -12,10 +12,10 @@
 Use `scripts/bb-dev-app` when validating changes in the desktop dev app or helping QA from this checkout:
 
 - `pnpm dev:status` runs `scripts/bb-dev-app status` to print the active branch, dev URLs, data dir, and logs.
+- `pnpm dev:stop` stops the launcher-managed dev server and desktop.
 - `scripts/bb-dev-app current` restarts the dev server on the current branch.
 - `scripts/bb-dev-app main` fetches `origin/main`, fast-forwards `main`, and launches the dev server from this checkout.
 - `scripts/bb-dev-app branch <branch>` switches to a local branch, or creates it from `origin/<branch>`, then launches the dev server.
-- `pnpm dev:stop` runs `scripts/bb-dev-app stop` to stop the launcher-managed dev server and desktop.
 - `scripts/bb-dev-app logs dev` and `scripts/bb-dev-app logs desktop` follow logs.
 
 By default the launcher starts only the dev server (web frontend, server, host daemon) and prints the URL without opening a browser. Pass `--open` to open the browser after startup. Pass `--desktop` (e.g. `scripts/bb-dev-app current --desktop`) to also launch the Electron desktop shell — only do this when the user is testing a desktop-only change.
