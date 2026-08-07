@@ -138,18 +138,19 @@ export function registerSettingsCommands(
       action(async (opts: JsonOptions) => {
         const sdk = createCliBbSdk(getUrl());
         const config = await sdk.system.config();
+        let experiments = config.experiments;
         if (!config.experiments.newOnboarding) {
-          await sdk.system.updateExperiments({
+          experiments = await sdk.system.updateExperiments({
             ...config.experiments,
             newOnboarding: true,
           });
         }
-        const result = await sdk.system.updateGeneralSettings({
+        const generalSettings = await sdk.system.updateGeneralSettings({
           ...config.generalSettings,
           onboardingCompletedAt: null,
         });
-        if (outputJson(opts, result)) return;
-        console.log("Onboarding will show again");
+        if (outputJson(opts, { experiments, generalSettings })) return;
+        console.log("New onboarding is enabled; onboarding will show again");
       }),
     );
 

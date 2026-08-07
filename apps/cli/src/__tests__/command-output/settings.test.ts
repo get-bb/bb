@@ -111,6 +111,36 @@ describe("bb settings commands", () => {
     expect(updateGeneralSettings).toHaveBeenCalledWith({
       json: { ...defaultAppSettings, onboardingCompletedAt: null },
     });
+    expect(console.log).toHaveBeenCalledWith(
+      "New onboarding is enabled; onboarding will show again",
+    );
+  });
+
+  it("reports both replay side effects as JSON", async () => {
+    stubServerApi({
+      "v1.system.config.$get": vi.fn(async () => ({
+        generalSettings: defaultAppSettings,
+        experiments: defaultExperiments,
+      })),
+      "v1.settings.experiments.$put": vi.fn(async ({ json }) => json),
+      "v1.settings.general.$put": vi.fn(async ({ json }) => json),
+    });
+
+    await runCommand(["settings", "replay-onboarding", "--json"], register);
+
+    expect(console.log).toHaveBeenCalledWith(
+      JSON.stringify(
+        {
+          experiments: { ...defaultExperiments, newOnboarding: true },
+          generalSettings: {
+            ...defaultAppSettings,
+            onboardingCompletedAt: null,
+          },
+        },
+        null,
+        2,
+      ),
+    );
   });
 
   it("reads usage from a selected machine", async () => {
