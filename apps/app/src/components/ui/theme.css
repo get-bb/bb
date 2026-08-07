@@ -785,6 +785,10 @@
     --diffs-gap-style: 1px solid var(--border-seam);
   }
 
+  .workspace-file-editor {
+    min-height: 100%;
+  }
+
   :root:not(.dark) .git-diff-view,
   :root:not(.dark) .workspace-file-editor {
     --diffs-fg-number-override: color-mix(
