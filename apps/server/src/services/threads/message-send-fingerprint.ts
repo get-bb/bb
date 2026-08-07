@@ -1,14 +1,14 @@
-import { createHash } from "node:crypto";
-import {
-  parseThreadCommandRequestFingerprint,
-  THREAD_COMMAND_REQUEST_FINGERPRINT_PREFIX,
-  type CallerExecutionInputSource,
-  type PermissionMode,
-  type PromptInput,
-  type ReasoningLevel,
-  type ServiceTier,
-  type ThreadCommandRequestFingerprint,
+import type {
+  ApprovalPendingInteractionResolution,
+  CallerExecutionInputSource,
+  PermissionMode,
+  PromptInput,
+  ReasoningLevel,
+  ServiceTier,
+  ThreadCommandRequestFingerprint,
+  UserQuestionPendingInteractionResolution,
 } from "@bb/domain";
+import { hashCanonicalJsonFingerprint } from "./canonical-json-fingerprint.js";
 
 /**
  * Format version for the deterministic `message.send` request fingerprint.
@@ -26,6 +26,21 @@ export const MESSAGE_STEER_REQUEST_FINGERPRINT_FORMAT_VERSION = 1 as const;
  * Format version for deterministic `thread.interrupt` fingerprints.
  */
 export const THREAD_INTERRUPT_REQUEST_FINGERPRINT_FORMAT_VERSION = 1 as const;
+
+/**
+ * Format version for deterministic `interaction.answer` fingerprints.
+ */
+export const INTERACTION_ANSWER_REQUEST_FINGERPRINT_FORMAT_VERSION = 1 as const;
+
+/**
+ * Format version for deterministic `interaction.approve` fingerprints.
+ */
+export const INTERACTION_APPROVE_REQUEST_FINGERPRINT_FORMAT_VERSION = 1 as const;
+
+/**
+ * Format version for deterministic `read.mark` fingerprints.
+ */
+export const READ_MARK_REQUEST_FINGERPRINT_FORMAT_VERSION = 1 as const;
 
 /**
  * Client intent hashed for admission identity. Excludes actor, thread ID, and
@@ -56,70 +71,23 @@ export type ThreadInterruptRequestFingerprintIntent = {
   readonly expectedTurnId: string;
 };
 
-type JsonCanonical =
-  | null
-  | boolean
-  | number
-  | string
-  | JsonCanonical[]
-  | { readonly [key: string]: JsonCanonical };
+export type InteractionAnswerRequestFingerprintIntent = {
+  readonly interactionId: string;
+  readonly resolution: UserQuestionPendingInteractionResolution;
+};
 
-function omitUndefinedDeep(value: unknown): JsonCanonical | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-  if (value === null || typeof value !== "object") {
-    if (
-      typeof value === "string" ||
-      typeof value === "number" ||
-      typeof value === "boolean"
-    ) {
-      return value;
-    }
-    throw new Error(
-      `Unsupported value type in message.send fingerprint intent: ${typeof value}`,
-    );
-  }
-  if (Array.isArray(value)) {
-    return value.map((entry) => {
-      const normalized = omitUndefinedDeep(entry);
-      if (normalized === undefined) {
-        throw new Error(
-          "Undefined array entries are not allowed in message.send fingerprint intent",
-        );
-      }
-      return normalized;
-    });
-  }
-  const record: { [key: string]: JsonCanonical } = {};
-  for (const key of Object.keys(value as Record<string, unknown>).sort()) {
-    const normalized = omitUndefinedDeep(
-      (value as Record<string, unknown>)[key],
-    );
-    if (normalized !== undefined) {
-      record[key] = normalized;
-    }
-  }
-  // An object whose remaining fields were all undefined is equivalent to an
-  // omitted optional field (e.g. `executionInputSources: { model: undefined }`).
-  if (Object.keys(record).length === 0) {
-    return undefined;
-  }
-  return record;
-}
+export type InteractionApproveRequestFingerprintIntent = {
+  readonly interactionId: string;
+  readonly resolution: ApprovalPendingInteractionResolution;
+};
 
-function canonicalizeJson(value: JsonCanonical): string {
-  if (value === null || typeof value !== "object") {
-    return JSON.stringify(value);
-  }
-  if (Array.isArray(value)) {
-    return `[${value.map((entry) => canonicalizeJson(entry)).join(",")}]`;
-  }
-  const keys = Object.keys(value).sort();
-  return `{${keys
-    .map((key) => `${JSON.stringify(key)}:${canonicalizeJson(value[key]!)}`)
-    .join(",")}}`;
-}
+export type ReadMarkRequestFingerprintIntent = {
+  /**
+   * Exact event cursor from the Room `read.mark(requestId, eventCursor)`
+   * command. Must be present in the fingerprint payload.
+   */
+  readonly eventCursor: string;
+};
 
 /**
  * Builds a versioned SHA-256 fingerprint over normalized `message.send` client
@@ -129,34 +97,28 @@ function canonicalizeJson(value: JsonCanonical): string {
 export function fingerprintMessageSendRequest(
   intent: MessageSendRequestFingerprintIntent,
 ): ThreadCommandRequestFingerprint {
-  const normalized = omitUndefinedDeep({
-    fingerprintFormatVersion: MESSAGE_SEND_REQUEST_FINGERPRINT_FORMAT_VERSION,
-    input: intent.input,
-    ...(intent.model !== undefined ? { model: intent.model } : {}),
-    ...(intent.serviceTier !== undefined
-      ? { serviceTier: intent.serviceTier }
-      : {}),
-    ...(intent.reasoningLevel !== undefined
-      ? { reasoningLevel: intent.reasoningLevel }
-      : {}),
-    ...(intent.permissionMode !== undefined
-      ? { permissionMode: intent.permissionMode }
-      : {}),
-    ...(intent.executionInputSources !== undefined
-      ? { executionInputSources: intent.executionInputSources }
-      : {}),
-    ...(intent.senderThreadId !== undefined
-      ? { senderThreadId: intent.senderThreadId }
-      : {}),
-  });
-  if (normalized === undefined || typeof normalized !== "object") {
-    throw new Error("Failed to normalize message.send fingerprint intent");
-  }
-  const digest = createHash("sha256")
-    .update(canonicalizeJson(normalized), "utf8")
-    .digest("hex");
-  return parseThreadCommandRequestFingerprint(
-    `${THREAD_COMMAND_REQUEST_FINGERPRINT_PREFIX}${digest}`,
+  return hashCanonicalJsonFingerprint(
+    {
+      fingerprintFormatVersion: MESSAGE_SEND_REQUEST_FINGERPRINT_FORMAT_VERSION,
+      input: intent.input,
+      ...(intent.model !== undefined ? { model: intent.model } : {}),
+      ...(intent.serviceTier !== undefined
+        ? { serviceTier: intent.serviceTier }
+        : {}),
+      ...(intent.reasoningLevel !== undefined
+        ? { reasoningLevel: intent.reasoningLevel }
+        : {}),
+      ...(intent.permissionMode !== undefined
+        ? { permissionMode: intent.permissionMode }
+        : {}),
+      ...(intent.executionInputSources !== undefined
+        ? { executionInputSources: intent.executionInputSources }
+        : {}),
+      ...(intent.senderThreadId !== undefined
+        ? { senderThreadId: intent.senderThreadId }
+        : {}),
+    },
+    "message.send",
   );
 }
 
@@ -172,35 +134,29 @@ export function fingerprintMessageSteerRequest(
       "exact-steer fingerprint requires a non-empty expectedTurnId",
     );
   }
-  const normalized = omitUndefinedDeep({
-    fingerprintFormatVersion: MESSAGE_STEER_REQUEST_FINGERPRINT_FORMAT_VERSION,
-    expectedTurnId: intent.expectedTurnId,
-    input: intent.input,
-    ...(intent.model !== undefined ? { model: intent.model } : {}),
-    ...(intent.serviceTier !== undefined
-      ? { serviceTier: intent.serviceTier }
-      : {}),
-    ...(intent.reasoningLevel !== undefined
-      ? { reasoningLevel: intent.reasoningLevel }
-      : {}),
-    ...(intent.permissionMode !== undefined
-      ? { permissionMode: intent.permissionMode }
-      : {}),
-    ...(intent.executionInputSources !== undefined
-      ? { executionInputSources: intent.executionInputSources }
-      : {}),
-    ...(intent.senderThreadId !== undefined
-      ? { senderThreadId: intent.senderThreadId }
-      : {}),
-  });
-  if (normalized === undefined || typeof normalized !== "object") {
-    throw new Error("Failed to normalize message.steer fingerprint intent");
-  }
-  const digest = createHash("sha256")
-    .update(canonicalizeJson(normalized), "utf8")
-    .digest("hex");
-  return parseThreadCommandRequestFingerprint(
-    `${THREAD_COMMAND_REQUEST_FINGERPRINT_PREFIX}${digest}`,
+  return hashCanonicalJsonFingerprint(
+    {
+      fingerprintFormatVersion: MESSAGE_STEER_REQUEST_FINGERPRINT_FORMAT_VERSION,
+      expectedTurnId: intent.expectedTurnId,
+      input: intent.input,
+      ...(intent.model !== undefined ? { model: intent.model } : {}),
+      ...(intent.serviceTier !== undefined
+        ? { serviceTier: intent.serviceTier }
+        : {}),
+      ...(intent.reasoningLevel !== undefined
+        ? { reasoningLevel: intent.reasoningLevel }
+        : {}),
+      ...(intent.permissionMode !== undefined
+        ? { permissionMode: intent.permissionMode }
+        : {}),
+      ...(intent.executionInputSources !== undefined
+        ? { executionInputSources: intent.executionInputSources }
+        : {}),
+      ...(intent.senderThreadId !== undefined
+        ? { senderThreadId: intent.senderThreadId }
+        : {}),
+    },
+    "message.steer",
   );
 }
 
@@ -215,18 +171,80 @@ export function fingerprintThreadInterruptRequest(
       "thread.interrupt fingerprint requires a non-empty expectedTurnId",
     );
   }
-  const normalized = omitUndefinedDeep({
-    fingerprintFormatVersion:
-      THREAD_INTERRUPT_REQUEST_FINGERPRINT_FORMAT_VERSION,
-    expectedTurnId: intent.expectedTurnId,
-  });
-  if (normalized === undefined || typeof normalized !== "object") {
-    throw new Error("Failed to normalize thread.interrupt fingerprint intent");
+  return hashCanonicalJsonFingerprint(
+    {
+      fingerprintFormatVersion:
+        THREAD_INTERRUPT_REQUEST_FINGERPRINT_FORMAT_VERSION,
+      expectedTurnId: intent.expectedTurnId,
+    },
+    "thread.interrupt",
+  );
+}
+
+/**
+ * Builds a versioned SHA-256 fingerprint over `interaction.answer` intent:
+ * command kind/version + exact interactionId + user-answer resolution JSON.
+ */
+export function fingerprintInteractionAnswerRequest(
+  intent: InteractionAnswerRequestFingerprintIntent,
+): ThreadCommandRequestFingerprint {
+  if (intent.interactionId.length === 0) {
+    throw new Error(
+      "interaction.answer fingerprint requires a non-empty interactionId",
+    );
   }
-  const digest = createHash("sha256")
-    .update(canonicalizeJson(normalized), "utf8")
-    .digest("hex");
-  return parseThreadCommandRequestFingerprint(
-    `${THREAD_COMMAND_REQUEST_FINGERPRINT_PREFIX}${digest}`,
+  return hashCanonicalJsonFingerprint(
+    {
+      commandKind: "interaction.answer",
+      fingerprintFormatVersion:
+        INTERACTION_ANSWER_REQUEST_FINGERPRINT_FORMAT_VERSION,
+      interactionId: intent.interactionId,
+      resolution: intent.resolution,
+    },
+    "interaction.answer",
+  );
+}
+
+/**
+ * Builds a versioned SHA-256 fingerprint over `interaction.approve` intent:
+ * command kind/version + exact interactionId + approval resolution JSON.
+ */
+export function fingerprintInteractionApproveRequest(
+  intent: InteractionApproveRequestFingerprintIntent,
+): ThreadCommandRequestFingerprint {
+  if (intent.interactionId.length === 0) {
+    throw new Error(
+      "interaction.approve fingerprint requires a non-empty interactionId",
+    );
+  }
+  return hashCanonicalJsonFingerprint(
+    {
+      commandKind: "interaction.approve",
+      fingerprintFormatVersion:
+        INTERACTION_APPROVE_REQUEST_FINGERPRINT_FORMAT_VERSION,
+      interactionId: intent.interactionId,
+      resolution: intent.resolution,
+    },
+    "interaction.approve",
+  );
+}
+
+/**
+ * Builds a versioned SHA-256 fingerprint over `read.mark` intent: command
+ * kind/version + exact `eventCursor` (required by the Room command contract).
+ */
+export function fingerprintReadMarkRequest(
+  intent: ReadMarkRequestFingerprintIntent,
+): ThreadCommandRequestFingerprint {
+  if (intent.eventCursor.length === 0) {
+    throw new Error("read.mark fingerprint requires a non-empty eventCursor");
+  }
+  return hashCanonicalJsonFingerprint(
+    {
+      commandKind: "read.mark",
+      fingerprintFormatVersion: READ_MARK_REQUEST_FINGERPRINT_FORMAT_VERSION,
+      eventCursor: intent.eventCursor,
+    },
+    "read.mark",
   );
 }

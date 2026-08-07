@@ -10,6 +10,9 @@ export const threadCommandKindValues = [
   "message.send",
   "message.steer",
   "thread.interrupt",
+  "interaction.answer",
+  "interaction.approve",
+  "read.mark",
 ] as const;
 export const threadCommandKindSchema = z.enum(threadCommandKindValues);
 export type ThreadCommandKind = z.infer<typeof threadCommandKindSchema>;
@@ -30,6 +33,9 @@ export const threadCommandAdmissionDispositionValues = [
   "queued",
   "steered",
   "interrupted",
+  "answered",
+  "approved",
+  "marked",
 ] as const;
 export const threadCommandAdmissionDispositionSchema = z.enum(
   threadCommandAdmissionDispositionValues,
@@ -46,6 +52,14 @@ export const threadCommandAdmissionEventSequenceSchema = z
   .number()
   .int()
   .positive();
+
+export const threadCommandAdmissionInteractionIdSchema = z.string().min(1);
+
+/**
+ * Room-safe read cursor stored on a `read.mark` admission result. Opaque to
+ * the ledger: non-empty string only. Room command validation narrows further.
+ */
+export const threadCommandAdmissionReadCursorSchema = z.string().min(1);
 
 const threadCommandStartedResultSchema = z
   .object({
@@ -77,6 +91,27 @@ const threadCommandInterruptedResultSchema = z
   })
   .strict();
 
+const threadCommandAnsweredResultSchema = z
+  .object({
+    disposition: z.literal("answered"),
+    interactionId: threadCommandAdmissionInteractionIdSchema,
+  })
+  .strict();
+
+const threadCommandApprovedResultSchema = z
+  .object({
+    disposition: z.literal("approved"),
+    interactionId: threadCommandAdmissionInteractionIdSchema,
+  })
+  .strict();
+
+const threadCommandMarkedResultSchema = z
+  .object({
+    disposition: z.literal("marked"),
+    readCursor: threadCommandAdmissionReadCursorSchema,
+  })
+  .strict();
+
 export const threadCommandAdmissionResultSchema = z.discriminatedUnion(
   "disposition",
   [
@@ -84,6 +119,9 @@ export const threadCommandAdmissionResultSchema = z.discriminatedUnion(
     threadCommandQueuedResultSchema,
     threadCommandSteeredResultSchema,
     threadCommandInterruptedResultSchema,
+    threadCommandAnsweredResultSchema,
+    threadCommandApprovedResultSchema,
+    threadCommandMarkedResultSchema,
   ],
 );
 export type ThreadCommandAdmissionResult = z.infer<
@@ -112,6 +150,24 @@ export const threadCommandAdmissionCommandResultSchema = z.discriminatedUnion(
       .object({
         commandKind: z.literal("thread.interrupt"),
         result: threadCommandInterruptedResultSchema,
+      })
+      .strict(),
+    z
+      .object({
+        commandKind: z.literal("interaction.answer"),
+        result: threadCommandAnsweredResultSchema,
+      })
+      .strict(),
+    z
+      .object({
+        commandKind: z.literal("interaction.approve"),
+        result: threadCommandApprovedResultSchema,
+      })
+      .strict(),
+    z
+      .object({
+        commandKind: z.literal("read.mark"),
+        result: threadCommandMarkedResultSchema,
       })
       .strict(),
   ],

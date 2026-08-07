@@ -155,6 +155,9 @@ function receiptResult(
     case "queued":
     case "steered":
     case "interrupted":
+    case "answered":
+    case "approved":
+    case "marked":
       return { disposition: result.disposition };
   }
 }

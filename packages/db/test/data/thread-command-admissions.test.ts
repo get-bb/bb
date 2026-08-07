@@ -350,12 +350,332 @@ describe("admitThreadCommand", () => {
             resultEventSequence: 5,
             resultQueuedMessageId: null,
             resultExpectedTurnId: "turn_1",
+            resultInteractionId: null,
+            resultReadCursor: null,
             createdAt: 1_000,
             completedAt: 1_000,
           })
           .run(),
       ).toThrow(/thread_command_admissions_result_shape_check/u);
       expect(countAdmissionRows(db)).toBe(0);
+
+      expect(() =>
+        db
+          .insert(threadCommandAdmissions)
+          .values({
+            threadId: thread.id,
+            requestId: requestIdFor(42),
+            commandKind: "interaction.answer",
+            requestFingerprint: FINGERPRINT_A,
+            admissionSequence: 1,
+            actorPrincipalId: ALICE.principalId,
+            actorKind: ALICE.principalKind,
+            actorDisplayName: ALICE.displayName,
+            resultDisposition: "answered",
+            resultEventSequence: null,
+            resultQueuedMessageId: null,
+            resultExpectedTurnId: null,
+            resultInteractionId: "pi_1",
+            resultReadCursor: "evt_extra",
+            createdAt: 1_000,
+            completedAt: 1_000,
+          })
+          .run(),
+      ).toThrow(/thread_command_admissions_result_shape_check/u);
+
+      expect(() =>
+        db
+          .insert(threadCommandAdmissions)
+          .values({
+            threadId: thread.id,
+            requestId: requestIdFor(43),
+            commandKind: "read.mark",
+            requestFingerprint: FINGERPRINT_A,
+            admissionSequence: 1,
+            actorPrincipalId: ALICE.principalId,
+            actorKind: ALICE.principalKind,
+            actorDisplayName: ALICE.displayName,
+            resultDisposition: "marked",
+            resultEventSequence: null,
+            resultQueuedMessageId: null,
+            resultExpectedTurnId: null,
+            resultInteractionId: "pi_should_be_null",
+            resultReadCursor: "evt_1",
+            createdAt: 1_000,
+            completedAt: 1_000,
+          })
+          .run(),
+      ).toThrow(/thread_command_admissions_result_shape_check/u);
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("admits interaction.answer, interaction.approve, and read.mark with exact result columns", () => {
+    const { db, thread } = setup();
+    try {
+      const answer = admitArgs(db, {
+        threadId: thread.id,
+        requestId: requestIdFor(50),
+        commandKind: "interaction.answer",
+        execute: () => ({
+          disposition: "answered",
+          interactionId: "pi_answer_50",
+        }),
+      });
+      const approve = admitArgs(db, {
+        threadId: thread.id,
+        requestId: requestIdFor(51),
+        commandKind: "interaction.approve",
+        execute: () => ({
+          disposition: "approved",
+          interactionId: "pi_approve_51",
+        }),
+      });
+      const mark = admitArgs(db, {
+        threadId: thread.id,
+        requestId: requestIdFor(52),
+        commandKind: "read.mark",
+        execute: () => ({
+          disposition: "marked",
+          readCursor: "evt_cursor_52",
+        }),
+      });
+
+      expect(answer.outcome).toMatchObject({
+        kind: "accepted",
+        admission: {
+          commandKind: "interaction.answer",
+          admissionSequence: 1,
+          result: {
+            disposition: "answered",
+            interactionId: "pi_answer_50",
+          },
+        },
+      });
+      expect(approve.outcome).toMatchObject({
+        kind: "accepted",
+        admission: {
+          commandKind: "interaction.approve",
+          admissionSequence: 2,
+          result: {
+            disposition: "approved",
+            interactionId: "pi_approve_51",
+          },
+        },
+      });
+      expect(mark.outcome).toMatchObject({
+        kind: "accepted",
+        admission: {
+          commandKind: "read.mark",
+          admissionSequence: 3,
+          result: {
+            disposition: "marked",
+            readCursor: "evt_cursor_52",
+          },
+        },
+      });
+
+      const rows = db.select().from(threadCommandAdmissions).all();
+      const byRequest = new Map(rows.map((row) => [row.requestId, row]));
+      expect(byRequest.get(requestIdFor(50))).toMatchObject({
+        resultDisposition: "answered",
+        resultInteractionId: "pi_answer_50",
+        resultReadCursor: null,
+        resultEventSequence: null,
+        resultQueuedMessageId: null,
+        resultExpectedTurnId: null,
+      });
+      expect(byRequest.get(requestIdFor(51))).toMatchObject({
+        resultDisposition: "approved",
+        resultInteractionId: "pi_approve_51",
+        resultReadCursor: null,
+      });
+      expect(byRequest.get(requestIdFor(52))).toMatchObject({
+        resultDisposition: "marked",
+        resultReadCursor: "evt_cursor_52",
+        resultInteractionId: null,
+      });
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("replays and conflicts for interaction and read.mark admissions", () => {
+    const { db, thread } = setup();
+    try {
+      const requestId = requestIdFor(53);
+      const first = admitArgs(db, {
+        threadId: thread.id,
+        requestId,
+        commandKind: "interaction.answer",
+        execute: () => ({
+          disposition: "answered",
+          interactionId: "pi_answer_53",
+        }),
+      });
+      const replay = admitArgs(db, {
+        threadId: thread.id,
+        requestId,
+        commandKind: "interaction.answer",
+        execute: () => ({
+          disposition: "answered",
+          interactionId: "pi_should_not_run",
+        }),
+      });
+      const conflict = admitArgs(db, {
+        threadId: thread.id,
+        requestId,
+        commandKind: "read.mark",
+        requestFingerprint: FINGERPRINT_B,
+        execute: () => ({
+          disposition: "marked",
+          readCursor: "evt_conflict",
+        }),
+      });
+
+      expect(first.outcome.kind).toBe("accepted");
+      expect(replay.outcome.kind).toBe("replayed");
+      expect(replay.executeSpy).not.toHaveBeenCalled();
+      if (
+        first.outcome.kind === "accepted" &&
+        replay.outcome.kind === "replayed"
+      ) {
+        expect(replay.outcome.admission).toEqual(first.outcome.admission);
+      }
+      expect(conflict.outcome.kind).toBe("identity-conflict");
+      expect(conflict.executeSpy).not.toHaveBeenCalled();
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("rolls back mismatched interaction/read result dispositions without persisting", () => {
+    const { db, thread } = setup();
+    try {
+      expect(() =>
+        admitThreadCommand({
+          db,
+          threadId: thread.id,
+          requestId: requestIdFor(54),
+          commandKind: "interaction.answer",
+          requestFingerprint: FINGERPRINT_A,
+          actor: ALICE,
+          nowMs: 1_000,
+          execute: () => ({
+            disposition: "approved",
+            interactionId: "pi_wrong",
+          }),
+        }),
+      ).toThrow();
+      expect(() =>
+        admitThreadCommand({
+          db,
+          threadId: thread.id,
+          requestId: requestIdFor(55),
+          commandKind: "read.mark",
+          requestFingerprint: FINGERPRINT_A,
+          actor: ALICE,
+          nowMs: 1_000,
+          execute: () => ({
+            disposition: "answered",
+            interactionId: "pi_wrong",
+          }),
+        }),
+      ).toThrow();
+      expect(countAdmissionRows(db)).toBe(0);
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("preserves existing admissions across migration 0093 rebuild", () => {
+    const { db, thread } = setup();
+    try {
+      const requestId = requestIdFor(60);
+      const admitted = admitArgs(db, {
+        threadId: thread.id,
+        requestId,
+        execute: () => startedResult(77),
+      });
+      expect(admitted.outcome.kind).toBe("accepted");
+
+      const before = db.select().from(threadCommandAdmissions).all();
+      expect(before).toHaveLength(1);
+
+      // Rewind to the pre-0093 table shape, then re-apply the shipped migration.
+      db.$client.exec(`
+        PRAGMA foreign_keys=OFF;
+        DROP INDEX IF EXISTS thread_command_admissions_thread_sequence_idx;
+        CREATE TABLE __pre_0093_thread_command_admissions (
+          thread_id text NOT NULL,
+          request_id text NOT NULL,
+          command_kind text NOT NULL,
+          request_fingerprint text NOT NULL,
+          admission_sequence integer NOT NULL,
+          actor_principal_id text NOT NULL,
+          actor_kind text NOT NULL,
+          actor_display_name text NOT NULL,
+          result_disposition text NOT NULL,
+          result_event_sequence integer,
+          result_queued_message_id text,
+          result_expected_turn_id text,
+          created_at integer NOT NULL,
+          completed_at integer NOT NULL,
+          PRIMARY KEY(thread_id, request_id),
+          FOREIGN KEY (thread_id) REFERENCES threads(id) ON UPDATE no action ON DELETE cascade
+        );
+        INSERT INTO __pre_0093_thread_command_admissions
+          SELECT thread_id, request_id, command_kind, request_fingerprint,
+                 admission_sequence, actor_principal_id, actor_kind,
+                 actor_display_name, result_disposition, result_event_sequence,
+                 result_queued_message_id, result_expected_turn_id,
+                 created_at, completed_at
+          FROM thread_command_admissions;
+        DROP TABLE thread_command_admissions;
+        ALTER TABLE __pre_0093_thread_command_admissions RENAME TO thread_command_admissions;
+        CREATE UNIQUE INDEX thread_command_admissions_thread_sequence_idx
+          ON thread_command_admissions (thread_id, admission_sequence);
+        PRAGMA foreign_keys=ON;
+      `);
+
+      const migrationSql = readFileSync(
+        new URL(
+          "../../drizzle/0093_crazy_thing.sql",
+          import.meta.url,
+        ),
+        "utf8",
+      );
+      for (const statement of migrationSql
+        .split("--> statement-breakpoint")
+        .map((value) => value.trim())
+        .filter(Boolean)) {
+        db.$client.exec(statement);
+      }
+
+      const after = db.select().from(threadCommandAdmissions).all();
+      expect(after).toHaveLength(1);
+      expect(after[0]).toMatchObject({
+        threadId: thread.id,
+        requestId,
+        commandKind: "message.send",
+        requestFingerprint: FINGERPRINT_A,
+        admissionSequence: 1,
+        resultDisposition: "started",
+        resultEventSequence: 77,
+        resultQueuedMessageId: null,
+        resultExpectedTurnId: null,
+        resultInteractionId: null,
+        resultReadCursor: null,
+      });
+
+      const decoded = getThreadCommandAdmission(db, {
+        threadId: thread.id,
+        requestId,
+      });
+      expect(decoded).toMatchObject({
+        result: { disposition: "started", eventSequence: 77 },
+      });
     } finally {
       closeConnection(db);
     }

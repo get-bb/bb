@@ -96,6 +96,26 @@ function assertAdmitThreadCommandArgs(args: AdmitThreadCommandArgs): void {
   }
 }
 
+function assertNullResultColumns(
+  row: ThreadCommandAdmissionRow,
+  columns: ReadonlyArray<
+    | "resultEventSequence"
+    | "resultQueuedMessageId"
+    | "resultExpectedTurnId"
+    | "resultInteractionId"
+    | "resultReadCursor"
+  >,
+  context: string,
+): void {
+  for (const column of columns) {
+    if (row[column] !== null) {
+      throw new ThreadCommandAdmissionCorruptionError(
+        `Corrupt thread command admission: ${context} has unexpected ${column}`,
+      );
+    }
+  }
+}
+
 function decodeResultFromRow(
   row: ThreadCommandAdmissionRow,
 ): ThreadCommandAdmissionResult {
@@ -110,6 +130,16 @@ function decodeResultFromRow(
           "Corrupt thread command admission: started result missing event sequence",
         );
       }
+      assertNullResultColumns(
+        row,
+        [
+          "resultQueuedMessageId",
+          "resultExpectedTurnId",
+          "resultInteractionId",
+          "resultReadCursor",
+        ],
+        "started result",
+      );
       return parseThreadCommandAdmissionResultForKind("message.send", {
         disposition: "started",
         eventSequence: row.resultEventSequence,
@@ -121,6 +151,16 @@ function decodeResultFromRow(
           "Corrupt thread command admission: queued result missing queued message id",
         );
       }
+      assertNullResultColumns(
+        row,
+        [
+          "resultEventSequence",
+          "resultExpectedTurnId",
+          "resultInteractionId",
+          "resultReadCursor",
+        ],
+        "queued result",
+      );
       return parseThreadCommandAdmissionResultForKind("message.send", {
         disposition: "queued",
         queuedMessageId: row.resultQueuedMessageId,
@@ -135,6 +175,11 @@ function decodeResultFromRow(
           "Corrupt thread command admission: steered result missing event sequence or expected turn id",
         );
       }
+      assertNullResultColumns(
+        row,
+        ["resultQueuedMessageId", "resultInteractionId", "resultReadCursor"],
+        "steered result",
+      );
       return parseThreadCommandAdmissionResultForKind("message.steer", {
         disposition: "steered",
         eventSequence: row.resultEventSequence,
@@ -150,10 +195,78 @@ function decodeResultFromRow(
           "Corrupt thread command admission: interrupted result missing event sequence or expected turn id",
         );
       }
+      assertNullResultColumns(
+        row,
+        ["resultQueuedMessageId", "resultInteractionId", "resultReadCursor"],
+        "interrupted result",
+      );
       return parseThreadCommandAdmissionResultForKind("thread.interrupt", {
         disposition: "interrupted",
         eventSequence: row.resultEventSequence,
         expectedTurnId: row.resultExpectedTurnId,
+      });
+    }
+    case "answered": {
+      if (row.resultInteractionId === null) {
+        throw new ThreadCommandAdmissionCorruptionError(
+          "Corrupt thread command admission: answered result missing interaction id",
+        );
+      }
+      assertNullResultColumns(
+        row,
+        [
+          "resultEventSequence",
+          "resultQueuedMessageId",
+          "resultExpectedTurnId",
+          "resultReadCursor",
+        ],
+        "answered result",
+      );
+      return parseThreadCommandAdmissionResultForKind("interaction.answer", {
+        disposition: "answered",
+        interactionId: row.resultInteractionId,
+      });
+    }
+    case "approved": {
+      if (row.resultInteractionId === null) {
+        throw new ThreadCommandAdmissionCorruptionError(
+          "Corrupt thread command admission: approved result missing interaction id",
+        );
+      }
+      assertNullResultColumns(
+        row,
+        [
+          "resultEventSequence",
+          "resultQueuedMessageId",
+          "resultExpectedTurnId",
+          "resultReadCursor",
+        ],
+        "approved result",
+      );
+      return parseThreadCommandAdmissionResultForKind("interaction.approve", {
+        disposition: "approved",
+        interactionId: row.resultInteractionId,
+      });
+    }
+    case "marked": {
+      if (row.resultReadCursor === null) {
+        throw new ThreadCommandAdmissionCorruptionError(
+          "Corrupt thread command admission: marked result missing read cursor",
+        );
+      }
+      assertNullResultColumns(
+        row,
+        [
+          "resultEventSequence",
+          "resultQueuedMessageId",
+          "resultExpectedTurnId",
+          "resultInteractionId",
+        ],
+        "marked result",
+      );
+      return parseThreadCommandAdmissionResultForKind("read.mark", {
+        disposition: "marked",
+        readCursor: row.resultReadCursor,
       });
     }
     default: {
@@ -214,6 +327,8 @@ function encodeResultColumns(
   resultEventSequence: number | null;
   resultQueuedMessageId: string | null;
   resultExpectedTurnId: string | null;
+  resultInteractionId: string | null;
+  resultReadCursor: string | null;
 } {
   const parsed = parseThreadCommandAdmissionResultForKind(commandKind, result);
   switch (parsed.disposition) {
@@ -223,6 +338,8 @@ function encodeResultColumns(
         resultEventSequence: parsed.eventSequence,
         resultQueuedMessageId: null,
         resultExpectedTurnId: null,
+        resultInteractionId: null,
+        resultReadCursor: null,
       };
     case "queued":
       return {
@@ -230,6 +347,8 @@ function encodeResultColumns(
         resultEventSequence: null,
         resultQueuedMessageId: parsed.queuedMessageId,
         resultExpectedTurnId: null,
+        resultInteractionId: null,
+        resultReadCursor: null,
       };
     case "steered":
       return {
@@ -237,6 +356,8 @@ function encodeResultColumns(
         resultEventSequence: parsed.eventSequence,
         resultQueuedMessageId: null,
         resultExpectedTurnId: parsed.expectedTurnId,
+        resultInteractionId: null,
+        resultReadCursor: null,
       };
     case "interrupted":
       return {
@@ -244,6 +365,35 @@ function encodeResultColumns(
         resultEventSequence: parsed.eventSequence,
         resultQueuedMessageId: null,
         resultExpectedTurnId: parsed.expectedTurnId,
+        resultInteractionId: null,
+        resultReadCursor: null,
+      };
+    case "answered":
+      return {
+        resultDisposition: parsed.disposition,
+        resultEventSequence: null,
+        resultQueuedMessageId: null,
+        resultExpectedTurnId: null,
+        resultInteractionId: parsed.interactionId,
+        resultReadCursor: null,
+      };
+    case "approved":
+      return {
+        resultDisposition: parsed.disposition,
+        resultEventSequence: null,
+        resultQueuedMessageId: null,
+        resultExpectedTurnId: null,
+        resultInteractionId: parsed.interactionId,
+        resultReadCursor: null,
+      };
+    case "marked":
+      return {
+        resultDisposition: parsed.disposition,
+        resultEventSequence: null,
+        resultQueuedMessageId: null,
+        resultExpectedTurnId: null,
+        resultInteractionId: null,
+        resultReadCursor: parsed.readCursor,
       };
     default: {
       const _exhaustive: never = parsed;

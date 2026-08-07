@@ -60,6 +60,36 @@ describe("thread command admission schemas", () => {
       eventSequence: 3,
       expectedTurnId: "turn_123",
     });
+
+    expect(
+      threadCommandAdmissionResultSchema.parse({
+        disposition: "answered",
+        interactionId: "pi_answer_1",
+      }),
+    ).toEqual({
+      disposition: "answered",
+      interactionId: "pi_answer_1",
+    });
+
+    expect(
+      threadCommandAdmissionResultSchema.parse({
+        disposition: "approved",
+        interactionId: "pi_approve_1",
+      }),
+    ).toEqual({
+      disposition: "approved",
+      interactionId: "pi_approve_1",
+    });
+
+    expect(
+      threadCommandAdmissionResultSchema.parse({
+        disposition: "marked",
+        readCursor: "evt_cursor_1",
+      }),
+    ).toEqual({
+      disposition: "marked",
+      readCursor: "evt_cursor_1",
+    });
   });
 
   it("rejects malformed fingerprints and mixed pointer shapes", () => {
@@ -91,6 +121,31 @@ describe("thread command admission schemas", () => {
         eventSequence: 1,
       }).success,
     ).toBe(false);
+    expect(
+      threadCommandAdmissionResultSchema.safeParse({
+        disposition: "answered",
+        readCursor: "evt_cursor_1",
+      }).success,
+    ).toBe(false);
+    expect(
+      threadCommandAdmissionResultSchema.safeParse({
+        disposition: "approved",
+        interactionId: "pi_1",
+        eventSequence: 1,
+      }).success,
+    ).toBe(false);
+    expect(
+      threadCommandAdmissionResultSchema.safeParse({
+        disposition: "marked",
+        interactionId: "pi_1",
+      }).success,
+    ).toBe(false);
+    expect(
+      threadCommandAdmissionResultSchema.safeParse({
+        disposition: "marked",
+        readCursor: "",
+      }).success,
+    ).toBe(false);
   });
 
   it("rejects terminal results that do not match the admitted command kind", () => {
@@ -108,6 +163,42 @@ describe("thread command admission schemas", () => {
         disposition: "interrupted",
         eventSequence: 1,
         expectedTurnId: "turn_123",
+      }),
+    ).toThrow();
+    expect(
+      parseThreadCommandAdmissionResultForKind("interaction.answer", {
+        disposition: "answered",
+        interactionId: "pi_1",
+      }),
+    ).toEqual({ disposition: "answered", interactionId: "pi_1" });
+    expect(() =>
+      parseThreadCommandAdmissionResultForKind("interaction.answer", {
+        disposition: "approved",
+        interactionId: "pi_1",
+      }),
+    ).toThrow();
+    expect(
+      parseThreadCommandAdmissionResultForKind("interaction.approve", {
+        disposition: "approved",
+        interactionId: "pi_2",
+      }),
+    ).toEqual({ disposition: "approved", interactionId: "pi_2" });
+    expect(() =>
+      parseThreadCommandAdmissionResultForKind("interaction.approve", {
+        disposition: "answered",
+        interactionId: "pi_2",
+      }),
+    ).toThrow();
+    expect(
+      parseThreadCommandAdmissionResultForKind("read.mark", {
+        disposition: "marked",
+        readCursor: "evt_1",
+      }),
+    ).toEqual({ disposition: "marked", readCursor: "evt_1" });
+    expect(() =>
+      parseThreadCommandAdmissionResultForKind("read.mark", {
+        disposition: "answered",
+        interactionId: "pi_3",
       }),
     ).toThrow();
   });

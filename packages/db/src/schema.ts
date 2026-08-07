@@ -989,6 +989,8 @@ export const threadCommandAdmissions = sqliteTable(
     resultEventSequence: integer("result_event_sequence"),
     resultQueuedMessageId: text("result_queued_message_id"),
     resultExpectedTurnId: text("result_expected_turn_id"),
+    resultInteractionId: text("result_interaction_id"),
+    resultReadCursor: text("result_read_cursor"),
     createdAt: integer("created_at").notNull(),
     completedAt: integer("completed_at").notNull(),
   },
@@ -1001,13 +1003,19 @@ export const threadCommandAdmissions = sqliteTable(
     check(
       "thread_command_admissions_result_shape_check",
       sql`(
-        (${table.commandKind} = 'message.send' AND ${table.resultDisposition} = 'started' AND ${table.resultEventSequence} IS NOT NULL AND ${table.resultQueuedMessageId} IS NULL AND ${table.resultExpectedTurnId} IS NULL)
+        (${table.commandKind} = 'message.send' AND ${table.resultDisposition} = 'started' AND ${table.resultEventSequence} IS NOT NULL AND ${table.resultQueuedMessageId} IS NULL AND ${table.resultExpectedTurnId} IS NULL AND ${table.resultInteractionId} IS NULL AND ${table.resultReadCursor} IS NULL)
         OR
-        (${table.commandKind} = 'message.send' AND ${table.resultDisposition} = 'queued' AND ${table.resultQueuedMessageId} IS NOT NULL AND ${table.resultEventSequence} IS NULL AND ${table.resultExpectedTurnId} IS NULL)
+        (${table.commandKind} = 'message.send' AND ${table.resultDisposition} = 'queued' AND ${table.resultQueuedMessageId} IS NOT NULL AND ${table.resultEventSequence} IS NULL AND ${table.resultExpectedTurnId} IS NULL AND ${table.resultInteractionId} IS NULL AND ${table.resultReadCursor} IS NULL)
         OR
-        (${table.commandKind} = 'message.steer' AND ${table.resultDisposition} = 'steered' AND ${table.resultEventSequence} IS NOT NULL AND ${table.resultQueuedMessageId} IS NULL AND ${table.resultExpectedTurnId} IS NOT NULL)
+        (${table.commandKind} = 'message.steer' AND ${table.resultDisposition} = 'steered' AND ${table.resultEventSequence} IS NOT NULL AND ${table.resultQueuedMessageId} IS NULL AND ${table.resultExpectedTurnId} IS NOT NULL AND ${table.resultInteractionId} IS NULL AND ${table.resultReadCursor} IS NULL)
         OR
-        (${table.commandKind} = 'thread.interrupt' AND ${table.resultDisposition} = 'interrupted' AND ${table.resultEventSequence} IS NOT NULL AND ${table.resultQueuedMessageId} IS NULL AND ${table.resultExpectedTurnId} IS NOT NULL)
+        (${table.commandKind} = 'thread.interrupt' AND ${table.resultDisposition} = 'interrupted' AND ${table.resultEventSequence} IS NOT NULL AND ${table.resultQueuedMessageId} IS NULL AND ${table.resultExpectedTurnId} IS NOT NULL AND ${table.resultInteractionId} IS NULL AND ${table.resultReadCursor} IS NULL)
+        OR
+        (${table.commandKind} = 'interaction.answer' AND ${table.resultDisposition} = 'answered' AND ${table.resultInteractionId} IS NOT NULL AND ${table.resultEventSequence} IS NULL AND ${table.resultQueuedMessageId} IS NULL AND ${table.resultExpectedTurnId} IS NULL AND ${table.resultReadCursor} IS NULL)
+        OR
+        (${table.commandKind} = 'interaction.approve' AND ${table.resultDisposition} = 'approved' AND ${table.resultInteractionId} IS NOT NULL AND ${table.resultEventSequence} IS NULL AND ${table.resultQueuedMessageId} IS NULL AND ${table.resultExpectedTurnId} IS NULL AND ${table.resultReadCursor} IS NULL)
+        OR
+        (${table.commandKind} = 'read.mark' AND ${table.resultDisposition} = 'marked' AND ${table.resultReadCursor} IS NOT NULL AND ${table.resultEventSequence} IS NULL AND ${table.resultQueuedMessageId} IS NULL AND ${table.resultExpectedTurnId} IS NULL AND ${table.resultInteractionId} IS NULL)
       )`,
     ),
   ],

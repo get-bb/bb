@@ -16,7 +16,9 @@ import {
   threadChildOriginSchema,
   threadCommandAdmissionCommandResultSchema,
   threadCommandAdmissionEventSequenceSchema,
+  threadCommandAdmissionInteractionIdSchema,
   threadCommandAdmissionQueuedMessageIdSchema,
+  threadCommandAdmissionReadCursorSchema,
   threadCommandKindSchema,
   threadOriginKindSchema,
   threadListEntrySchema,
@@ -296,6 +298,27 @@ const threadCommandAdmissionInterruptedResultSchema = z
   })
   .strict();
 
+const threadCommandAdmissionAnsweredResultSchema = z
+  .object({
+    disposition: z.literal("answered"),
+    interactionId: threadCommandAdmissionInteractionIdSchema,
+  })
+  .strict();
+
+const threadCommandAdmissionApprovedResultSchema = z
+  .object({
+    disposition: z.literal("approved"),
+    interactionId: threadCommandAdmissionInteractionIdSchema,
+  })
+  .strict();
+
+const threadCommandAdmissionMarkedResultSchema = z
+  .object({
+    disposition: z.literal("marked"),
+    readCursor: threadCommandAdmissionReadCursorSchema,
+  })
+  .strict();
+
 export const threadCommandAdmissionReceiptResultSchema = z.discriminatedUnion(
   "disposition",
   [
@@ -303,6 +326,9 @@ export const threadCommandAdmissionReceiptResultSchema = z.discriminatedUnion(
     threadCommandAdmissionQueuedResultSchema,
     threadCommandAdmissionSteeredResultSchema,
     threadCommandAdmissionInterruptedResultSchema,
+    threadCommandAdmissionAnsweredResultSchema,
+    threadCommandAdmissionApprovedResultSchema,
+    threadCommandAdmissionMarkedResultSchema,
   ],
 );
 export type ThreadCommandAdmissionReceiptResult = z.infer<
