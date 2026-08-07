@@ -22,7 +22,9 @@ vi.mock("@/components/dialogs/RemotePathBrowser", () => ({
         onDirectoryChange(
           hostId === "host_kunst"
             ? "/Users/amadad/projects/reachy_mini"
-            : "/home/deploy/repos/givecare",
+            : hostId === "host_long"
+              ? `/home/deploy/repos/${"long-project-name-".repeat(20)}`
+              : "/home/deploy/repos/givecare",
         )
       }
     >
@@ -46,6 +48,7 @@ function host(overrides: Partial<Host> & Pick<Host, "id" | "name">): Host {
 
 const atum = host({ id: "host_atum", name: "atum" });
 const kunst = host({ id: "host_kunst", name: "Kunst" });
+const longNameHost = host({ id: "host_long", name: "Long name host" });
 const offline = host({
   id: "host_offline",
   name: "Offline Mac",
@@ -126,6 +129,34 @@ describe("ProjectPathDialog machine selection", () => {
       "/home/deploy/repos/givecare",
       "host_atum",
     );
+  });
+
+  it("constrains long project names to the dialog width", () => {
+    const longProjectName = "long-project-name-".repeat(20);
+    render(
+      <ProjectPathDialog
+        target={{ kind: "create" }}
+        platform="linux"
+        hostId={longNameHost.id}
+        hostName={longNameHost.name}
+        hosts={[longNameHost]}
+        onOpenChange={vi.fn()}
+        onSubmit={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Choose folder on host_long" }),
+    );
+
+    const dialog = screen.getByRole("dialog");
+    expect(dialog.className).toContain("grid-cols-[minmax(0,1fr)]");
+    expect(dialog.querySelector("form")?.className).toContain("min-w-0");
+
+    const projectName = screen.getByText(longProjectName);
+    expect(projectName.className).toContain("min-w-0");
+    expect(projectName.className).toContain("truncate");
+    expect(projectName.parentElement?.className).toContain("min-w-0");
   });
 
   // With machines listed but none selectable there is no host to resolve a

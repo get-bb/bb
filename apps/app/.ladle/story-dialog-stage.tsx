@@ -17,15 +17,12 @@ export interface DialogStageProps {
 // for dialogs that customize their own DialogContent (e.g. p-0 wrappers used
 // by GitAction). DialogPrimitive.Root supplies the Radix context required by
 // DialogTitle / DialogDescription / DialogClose.
-export function DialogStage({
-  className,
-  children,
-}: DialogStageProps) {
+export function DialogStage({ className, children }: DialogStageProps) {
   return (
     <DialogPrimitive.Root open onOpenChange={noop}>
       <div
         className={cn(
-          "relative grid w-full max-w-lg gap-4 rounded-lg border bg-background p-6 shadow-lg",
+          "relative grid w-full max-w-lg grid-cols-[minmax(0,1fr)] gap-4 rounded-lg border bg-background p-6 shadow-lg",
           className,
         )}
       >

@@ -1,7 +1,12 @@
+import { useMemo } from "react";
+import { QueryClientProvider } from "@tanstack/react-query";
+import type { HostDirectoryListing } from "@bb/server-contract";
 import {
   ProjectPathDialogContent,
   type ProjectPathDialogTarget,
 } from "./ProjectPathDialog";
+import { hostDirectoryQueryKey } from "@/hooks/queries/query-keys";
+import { createAppQueryClient } from "@/lib/query-client";
 import {
   HOST_IDS,
   HOST_NAMES,
@@ -41,7 +46,56 @@ const offlineMachine = makeHost({
 });
 const offlineLocalMachine = makeHost({ status: "disconnected" });
 
+const longNamesMachine = makeHost({
+  id: "host_long_names",
+  name: "sandbox",
+});
+const longProjectName = "long-project-name-".repeat(18);
+const longProjectPath = `/home/winter/${longProjectName}`;
+const longFileName = `${"appdata-buzz-pre-sandbox-migration-".repeat(8)}.tar.gz`;
+const longFolderName = "long-folder-name-without-natural-breaks-".repeat(8);
+
+function createLongNamesQueryClient() {
+  const queryClient = createAppQueryClient({
+    showMutationErrorToasts: false,
+    defaultOptions: {
+      mutations: { retry: false },
+      queries: {
+        gcTime: Infinity,
+        refetchOnWindowFocus: false,
+        retry: false,
+      },
+    },
+  });
+  queryClient.setQueryData<HostDirectoryListing>(
+    hostDirectoryQueryKey(longNamesMachine.id, null),
+    {
+      directory: longProjectPath,
+      parent: "/home/winter",
+      entries: [
+        {
+          kind: "directory",
+          name: longFolderName,
+          path: `${longProjectPath}/${longFolderName}`,
+        },
+        {
+          kind: "file",
+          name: longFileName,
+          path: `${longProjectPath}/${longFileName}`,
+        },
+        {
+          kind: "directory",
+          name: "src",
+          path: `${longProjectPath}/src`,
+        },
+      ],
+    },
+  );
+  return queryClient;
+}
+
 export function Overview() {
+  const queryClient = useMemo(() => createLongNamesQueryClient(), []);
   return (
     <StoryCard>
       <StoryRow
@@ -134,6 +188,24 @@ export function Overview() {
             onSubmit={noop}
           />
         </DialogStage>
+      </StoryRow>
+      <StoryRow
+        label="long names"
+        hint="regression for #1112 — long folder, file, breadcrumb, and project names stay within the dialog"
+      >
+        <QueryClientProvider client={queryClient}>
+          <DialogStage>
+            <ProjectPathDialogContent
+              target={createTarget}
+              pending={false}
+              platform="linux"
+              hostId={longNamesMachine.id}
+              hostName={longNamesMachine.name}
+              hosts={[longNamesMachine, offlineMachine]}
+              onSubmit={noop}
+            />
+          </DialogStage>
+        </QueryClientProvider>
       </StoryRow>
       <StoryRow
         label="machines all offline"
