@@ -562,6 +562,29 @@ describe("@bb/sdk", () => {
     ]);
   });
 
+  it("routes onboarding agent status through a reused environment", async () => {
+    const overview = { agents: [] };
+    const queue = createFetchQueue([{ body: overview }]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await expect(
+      sdk.system.onboardingAgents({ environmentId: "env_remote" }),
+    ).resolves.toEqual(overview);
+    expect(queue.requests).toEqual([
+      {
+        bodyText: undefined,
+        method: "GET",
+        url: "http://bb.test/api/v1/system/onboarding/agents?environmentId=env_remote",
+      },
+    ]);
+  });
+
   it("routes thread list calls through the HTTP transport", async () => {
     const queue = createFetchQueue([{ body: [] }]);
     const sdk = createBbSdk({

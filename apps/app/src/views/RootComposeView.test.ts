@@ -27,7 +27,7 @@ import {
   readRootComposeSectionTargetFromLocationState,
   readInitialPromptFromLocationState,
   requestRootComposePluginFocus,
-  resolveRootComposeInitialProvider,
+  resolveRootComposeProjectDefaultsState,
   restorePromptDraftAfterOptionChange,
   resolveRootComposePanelThreadId,
   shouldReplaceInitialPromptFromLocationState,
@@ -59,32 +59,65 @@ describe("requestRootComposePluginFocus", () => {
   });
 });
 
-describe("resolveRootComposeInitialProvider", () => {
-  it("marks the connected-agent fallback as a client preference", () => {
+describe("resolveRootComposeProjectDefaultsState", () => {
+  const storedDefaults = {
+    providerId: "codex",
+    model: "gpt-5.6-sol",
+    serviceTier: "default" as const,
+    reasoningLevel: "medium" as const,
+    permissionMode: "auto" as const,
+  };
+
+  it("keeps optimistic null defaults unresolved while the fallback query is pending", () => {
     expect(
-      resolveRootComposeInitialProvider({
-        connectedProviderId: "claude-code",
-        projectDefaultExecutionOptions: null,
+      resolveRootComposeProjectDefaultsState({
+        cachedDefaults: null,
+        projectFound: true,
+        queryData: undefined,
+        queryIsError: false,
+        queryIsPlaceholderData: false,
+        queryIsSuccess: false,
       }),
-    ).toEqual({
-      providerId: "claude-code",
-      source: "client-preference",
-    });
+    ).toEqual({ status: "pending" });
   });
 
-  it("leaves server-owned project defaults without client provenance", () => {
+  it("uses the authoritative saved defaults when the delayed query resolves", () => {
     expect(
-      resolveRootComposeInitialProvider({
-        connectedProviderId: "claude-code",
-        projectDefaultExecutionOptions: {
-          providerId: "codex",
-          model: "gpt-5.6-sol",
-          serviceTier: "default",
-          reasoningLevel: "medium",
-          permissionMode: "auto",
-        },
+      resolveRootComposeProjectDefaultsState({
+        cachedDefaults: null,
+        projectFound: true,
+        queryData: storedDefaults,
+        queryIsError: false,
+        queryIsPlaceholderData: false,
+        queryIsSuccess: true,
       }),
-    ).toEqual({ providerId: "codex", source: undefined });
+    ).toEqual({ status: "resolved", defaults: storedDefaults });
+  });
+
+  it("only confirms absence after the fallback query succeeds with null", () => {
+    expect(
+      resolveRootComposeProjectDefaultsState({
+        cachedDefaults: null,
+        projectFound: true,
+        queryData: null,
+        queryIsError: false,
+        queryIsPlaceholderData: false,
+        queryIsSuccess: true,
+      }),
+    ).toEqual({ status: "resolved", defaults: null });
+  });
+
+  it("does not treat a previous project's placeholder as authoritative", () => {
+    expect(
+      resolveRootComposeProjectDefaultsState({
+        cachedDefaults: null,
+        projectFound: true,
+        queryData: storedDefaults,
+        queryIsError: false,
+        queryIsPlaceholderData: true,
+        queryIsSuccess: true,
+      }),
+    ).toEqual({ status: "pending" });
   });
 });
 

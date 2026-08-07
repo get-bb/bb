@@ -1393,8 +1393,8 @@ export const publicApiRoutes = {
     onboardingAgents: defineRoute({
       path: "/system/onboarding/agents",
       method: "get",
-      request: optionalQueryRequest<EmptyInput, SystemOnboardingReposQuery>(
-        systemOnboardingReposQuerySchema,
+      request: optionalQueryRequest<EmptyInput, SystemProvidersQuery>(
+        systemProvidersQuerySchema,
       ),
       response: jsonResponse<OnboardingAgentOverview>(),
     }),

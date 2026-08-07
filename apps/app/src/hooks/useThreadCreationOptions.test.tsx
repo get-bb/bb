@@ -1,7 +1,10 @@
 // @vitest-environment jsdom
 
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
-import type { SystemExecutionOptionsResponse } from "@bb/server-contract";
+import type {
+  OnboardingAgentOverview,
+  SystemExecutionOptionsResponse,
+} from "@bb/server-contract";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
@@ -14,8 +17,29 @@ const GLOBAL_PROVIDER_ID = "global-provider";
 const PROJECT_PROVIDER_ID = "project-provider";
 
 vi.mock("@/lib/sdk", () => ({
-  sdk: { system: { executionOptions: vi.fn() } },
+  sdk: {
+    system: {
+      executionOptions: vi.fn(),
+      onboardingAgents: vi.fn(),
+    },
+  },
 }));
+
+function connectedAgentOverview(providerId: string): OnboardingAgentOverview {
+  return {
+    agents: [
+      {
+        providerId,
+        displayName: providerId,
+        status: "connected",
+        planLabel: null,
+        accountEmail: null,
+        canInstall: false,
+        loginCommand: null,
+      },
+    ],
+  };
+}
 
 function executionOptionsResponse(): SystemExecutionOptionsResponse {
   return {
@@ -162,6 +186,7 @@ beforeEach(() => {
   vi.mocked(sdk.system.executionOptions).mockResolvedValue(
     executionOptionsResponse(),
   );
+  vi.mocked(sdk.system.onboardingAgents).mockResolvedValue({ agents: [] });
 });
 
 afterEach(() => {
@@ -575,7 +600,7 @@ describe("useThreadCreationOptions", () => {
     });
   });
 
-  it("loads the product default provider before any persisted selection exists", async () => {
+  it("lets the server resolve the catalog default when no selection exists", async () => {
     const { wrapper } = createQueryClientTestHarness();
 
     renderHook(() => useThreadCreationOptions(), { wrapper });
@@ -585,34 +610,40 @@ describe("useThreadCreationOptions", () => {
         expect.objectContaining({
           environmentId: undefined,
           hostId: undefined,
-          providerId: "codex",
-        }),
-      );
-      expect(sdk.system.executionOptions).not.toHaveBeenCalledWith(
-        expect.objectContaining({
-          environmentId: undefined,
-          hostId: undefined,
           providerId: undefined,
         }),
       );
     });
   });
 
-  it("carries an initial client-selected provider into create provenance", async () => {
+  it("uses the connected provider from the selected machine as create provenance", async () => {
+    window.localStorage.setItem(
+      "bb.promptbox.environment",
+      "host:remote-host:local",
+    );
+    vi.mocked(sdk.system.onboardingAgents).mockImplementation(async (args) =>
+      args?.hostId === "remote-host"
+        ? connectedAgentOverview(PROJECT_PROVIDER_ID)
+        : connectedAgentOverview(GLOBAL_PROVIDER_ID),
+    );
     const { wrapper } = createQueryClientTestHarness();
     const { result } = renderHook(
       () =>
         useThreadCreationOptions({
           scope: "new-thread",
-          initialProviderId: GLOBAL_PROVIDER_ID,
-          initialProviderSource: "client-preference",
+          preferConnectedProviderWhenUnset: true,
         }),
       { wrapper },
     );
 
     await waitFor(() => {
-      expect(result.current.selectedProviderId).toBe(GLOBAL_PROVIDER_ID);
-      expect(result.current.selectedModel).toBe("global-model");
+      expect(sdk.system.onboardingAgents).toHaveBeenCalledWith({
+        environmentId: undefined,
+        hostId: "remote-host",
+        signal: expect.any(AbortSignal),
+      });
+      expect(result.current.selectedProviderId).toBe(PROJECT_PROVIDER_ID);
+      expect(result.current.isResolvingInitialProvider).toBe(false);
       expect(result.current.executionInputSources).toMatchObject({
         providerId: "client-preference",
       });
@@ -640,7 +671,7 @@ describe("useThreadCreationOptions", () => {
         expect.objectContaining({
           environmentId: "env-remote",
           hostId: undefined,
-          providerId: "codex",
+          providerId: undefined,
         }),
       );
       expect(result.current.executionOptionsRouting).toEqual({

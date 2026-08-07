@@ -1,6 +1,7 @@
 import {
   getAgentProviderServerCapabilities,
   getSupportedPermissionModes,
+  listBuiltInAgentProviderInfos,
 } from "@bb/agent-providers";
 import type {
   PermissionMode,
@@ -33,7 +34,18 @@ export function resolveWorkflowsEnabledPolicy(providerId: string): boolean {
   );
 }
 const DEFAULT_PERMISSION_MODE: PermissionMode = "auto";
-const PRODUCT_DEFAULT_PROVIDER_ID = "codex";
+
+/** Catalog order is the single source for both the model picker and the
+ * product fallback used when no caller or project has chosen a provider. */
+function requireProductDefaultProviderId(): string {
+  const providerId = listBuiltInAgentProviderInfos()[0]?.id;
+  if (providerId === undefined) {
+    throw new Error("Built-in agent provider catalog is empty");
+  }
+  return providerId;
+}
+
+const PRODUCT_DEFAULT_PROVIDER_ID = requireProductDefaultProviderId();
 
 export interface ResolveCreateThreadExecutionDefaultsArgs {
   requestedProviderId?: string;

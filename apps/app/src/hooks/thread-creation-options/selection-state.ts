@@ -34,9 +34,9 @@ export interface UsePromptModelReasoningOptions {
   scope?: ThreadCreationOptionsScope;
   resetKey?: string | number | null;
   initialProviderId?: string;
-  /** Source for an initial provider chosen by the client rather than loaded
-   * from server-owned project defaults. */
-  initialProviderSource?: ExecutionInputFieldSource;
+  /** When no project default or persisted choice exists, select the first
+   * connected provider reported by the routed machine. */
+  preferConnectedProviderWhenUnset?: boolean;
   initialModel?: string;
   initialServiceTier?: ServiceTier;
   initialReasoningLevel?: ReasoningLevel;

@@ -8,6 +8,7 @@ import type {
   OnboardingAgent,
   OnboardingTelemetryEvent,
   OnboardingAgentOverview,
+  SystemProvidersQuery,
   SystemOnboardingReposQuery,
 } from "@bb/server-contract";
 import type { AppDeps } from "../../types.js";
@@ -17,6 +18,7 @@ import {
   assertUsableHostId,
   requirePrimaryHostId,
 } from "../hosts/primary-host.js";
+import { resolveSystemLookupHostId } from "./host-lookup.js";
 import {
   KNOWN_ACP_AGENTS,
   listKnownAcpAgentExecutableQueries,
@@ -119,10 +121,9 @@ function resolveStatus(
 
 export async function getOnboardingAgentOverview(
   deps: AppDeps,
-  query: { hostId?: string },
+  query: SystemProvidersQuery,
 ): Promise<OnboardingAgentOverview> {
-  const hostId = query.hostId ?? requirePrimaryHostId(deps);
-  assertUsableHostId(deps, { hostId });
+  const hostId = resolveSystemLookupHostId(deps, query);
 
   const rpc = { hostId, timeoutMs: COMMAND_TIMEOUT_MS } as const;
 
