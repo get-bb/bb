@@ -82,6 +82,8 @@ function recoverableMessageKey(
       return "connect-tunnel.identity";
     case "environment-change":
       return `environment-change\u0000${message.environmentId}\u0000${message.change}`;
+    case "environment-metadata-change":
+      return `environment-metadata-change\u0000${message.environmentId}`;
     default:
       return null;
   }

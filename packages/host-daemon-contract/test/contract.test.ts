@@ -1036,13 +1036,10 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  // Version 75 makes Claude's sandbox network prompt grantable. A daemon on 74
-  // drops the "localSettings" suggestion that carries the grant, so it sends a
-  // permission_grant subject with an empty profile and the user cannot allow
-  // the prompt. The fix lives in the daemon's Claude bridge, so the bump is
-  // what moves an enrolled machine onto it.
-  it("uses protocol version 75 for grantable sandbox network prompts", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(75);
+  // Version 76 lets the daemon report a repository that appears after the
+  // server created the environment. Older daemons do not send that message.
+  it("uses protocol version 76 for live workspace metadata refresh", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(76);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {
@@ -3139,6 +3136,30 @@ describe("host-daemon session schemas", () => {
       type: "environment-change",
       environmentId: "env_123",
       change: "thread-storage-changed",
+    });
+
+    expect(
+      hostDaemonDaemonWsMessageSchema.parse({
+        type: "environment-metadata-change",
+        environmentId: "env_123",
+        workspace: {
+          path: "/tmp/workspace",
+          isGitRepo: true,
+          isWorktree: false,
+          branchName: "main",
+          defaultBranch: "main",
+        },
+      }),
+    ).toEqual({
+      type: "environment-metadata-change",
+      environmentId: "env_123",
+      workspace: {
+        path: "/tmp/workspace",
+        isGitRepo: true,
+        isWorktree: false,
+        branchName: "main",
+        defaultBranch: "main",
+      },
     });
 
     expect(

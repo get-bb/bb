@@ -394,6 +394,62 @@ afterEach(async () => {
 
 // These tests mutate shared module spies, so keep them out of Vitest parallelism.
 describe.sequential("watchWorkspaceStatus", () => {
+  it("starts watching before git init and promotes the repository watch", async () => {
+    const workspacePath = await makeTempDir("bb-workspace-plain-");
+    const workspaceRootCallbacks: ParcelWatcherCallback[] = [];
+    const workspaceRootOptions: ParcelWatcherSubscribeOptions[] = [];
+    const ready = createDeferredPromise<void>();
+    vi.spyOn(parcelWatcher, "subscribe").mockImplementation(
+      async (...watchArgs: ParcelWatcherSubscribeArgs) => {
+        const [rootPath, callback, options] = watchArgs;
+        if (
+          normalizeWatchPath(rootPath) === normalizeWatchPath(workspacePath)
+        ) {
+          workspaceRootCallbacks.push(callback);
+          workspaceRootOptions.push(options);
+          ready.resolve(undefined);
+        }
+        return createMockWatcherSubscription();
+      },
+    );
+    const calls: WorkspaceStatusChangeEvent[] = [];
+    const stopWatching = watchWorkspaceStatusImpl(workspacePath, {
+      onChange: (event) => calls.push(event),
+      onWatchError: ignoreWatchError,
+    });
+
+    try {
+      await ready.promise;
+      expect(workspaceRootOptions[0]?.ignore).toBeUndefined();
+
+      await runGit({ args: ["init", "-b", "main"], cwd: workspacePath });
+      const canonicalWorkspacePath = await fs.realpath(workspacePath);
+      workspaceRootCallbacks[0]?.(null, [
+        {
+          path: path.join(canonicalWorkspacePath, ".git"),
+          type: "create",
+        },
+      ]);
+
+      await waitForCallCount(() => calls.length, 1, WATCH_TEST_TIMEOUT_MS);
+      await waitForCallCount(
+        () => workspaceRootCallbacks.length,
+        2,
+        WATCH_TEST_TIMEOUT_MS,
+      );
+      expect(calls[0]).toEqual({
+        changedPaths: [path.join(canonicalWorkspacePath, ".git")],
+        changeKinds: [
+          "workspace-content-changed",
+          "workspace-git-repository-created",
+        ],
+      });
+      expect(workspaceRootOptions[1]?.ignore).toContain(".git");
+    } finally {
+      await stopWatching();
+    }
+  });
+
   it("watches workspace status changes without duplicate callbacks for the same burst", async () => {
     const repoPath = await initRepo();
     const { emitWorkspaceRootEvents, ready, watchWorkspaceStatus } =
@@ -546,6 +602,7 @@ describe.sequential("watchWorkspaceStatus", () => {
         changeKinds: [
           "workspace-content-changed",
           "workspace-git-changed",
+          "workspace-git-repository-created",
           "shared-git-refs-changed",
         ],
       };

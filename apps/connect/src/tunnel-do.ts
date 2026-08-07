@@ -483,6 +483,24 @@ export class TunnelDO {
     }
   }
 
+  private cancelHttpStream(streamId: number, message: string): void {
+    const entry = this.pendingHttp.get(streamId);
+    if (!entry) return;
+    this.pendingHttp.delete(streamId);
+    clearTimeout(entry.timeout);
+    const tunnel = this.tunnelSocket();
+    if (!tunnel) return;
+    this.trySend(
+      tunnel,
+      encodeFrame({
+        type: "close-stream",
+        streamId,
+        code: 1000,
+        reason: message,
+      }),
+    );
+  }
+
   webSocketMessage(ws: WebSocket, message: ArrayBuffer | string): void {
     const tags = this.state.getTags(ws);
     if (tags.includes(TUNNEL_TAG)) {
@@ -558,6 +576,12 @@ export class TunnelDO {
           return;
         }
         entry.writer = writable.getWriter();
+        void entry.writer.closed.catch(() => {
+          this.cancelHttpStream(
+            frame.streamId,
+            "visitor canceled response body",
+          );
+        });
         entry.resolve(response);
         return;
       }

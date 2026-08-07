@@ -466,6 +466,7 @@ export function createHarness(
   );
   workspace.getCurrentBranch = async () => args.currentBranch ?? "main";
   workspace.isWorktree = args.isWorktree ?? false;
+  let provisionedWorkspace: HostWorkspace = workspace;
   const { runtime, state: runtimeState, threadControls } = createFakeRuntime();
   const provisions: ProvisionWorkspaceArgs[] = [];
   const manager = new RuntimeManager({
@@ -474,7 +475,7 @@ export function createHarness(
       if ("path" in options && options.path !== workspace.path) {
         return createFakeWorkspace(options.path).workspace;
       }
-      return workspace;
+      return provisionedWorkspace;
     },
     createRuntime: () => runtime,
   });
@@ -487,6 +488,9 @@ export function createHarness(
     threadControls,
     workspaceState,
     workspace,
+    setProvisionedWorkspace(nextWorkspace: HostWorkspace): void {
+      provisionedWorkspace = nextWorkspace;
+    },
     /** Default dispatch options with threadStorageRootPath for tests. */
     dispatchOptions(
       overrides: { dataDir?: string; threadStorageRootPath?: string } = {},

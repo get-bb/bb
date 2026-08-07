@@ -155,7 +155,7 @@ function getProvisionWorkspacePath(args: ProvisionWorkspaceArgs): string {
   }
 }
 
-function createFakeWorkspace(path: string) {
+function createFakeWorkspace(path: string, isGitRepo = true) {
   const status: GetStatusResult = makeWorkspaceStatus({
     mergeBase: makeWorkspaceMergeBase(),
   });
@@ -173,7 +173,7 @@ function createFakeWorkspace(path: string) {
   const workspace = {
     path,
     managed: false,
-    isGitRepo: true,
+    isGitRepo,
     isWorktree: false,
     getDefaultBranch: vi.fn(async () => "main"),
     getCurrentBranch: vi.fn(async (..._args: GetCurrentBranchArgs) => "main"),
@@ -318,6 +318,37 @@ describe("RuntimeManager", () => {
     expect(provisionWorkspace).toHaveBeenCalledTimes(1);
     expect(createRuntime).toHaveBeenCalledTimes(1);
     expect(entry.path).toBe("/tmp/env-1");
+  });
+
+  it("refreshes the workspace on the resident runtime entry", async () => {
+    const plainWorkspace = createFakeWorkspace("/tmp/env-refresh", false);
+    const gitWorkspace = createFakeWorkspace("/tmp/env-refresh");
+    const provisionWorkspace = vi
+      .fn<(options: ProvisionWorkspaceArgs) => Promise<HostWorkspace>>()
+      .mockResolvedValueOnce(plainWorkspace)
+      .mockResolvedValueOnce(gitWorkspace);
+    const manager = new RuntimeManager({
+      provisionWorkspace,
+      createRuntime: () => createFakeRuntime(),
+    });
+    const entry = await manager.ensureEnvironment({
+      environmentId: "env-refresh",
+      workspacePath: "/tmp/env-refresh",
+    });
+
+    const refreshed = await manager.refreshEnvironmentWorkspace({
+      environmentId: "env-refresh",
+      provision: {
+        workspaceProvisionType: "unmanaged",
+        path: "/tmp/env-refresh",
+      },
+      workspacePath: "/tmp/env-refresh",
+    });
+
+    expect(refreshed).toBe(gitWorkspace);
+    expect(entry.workspace).toBe(gitWorkspace);
+    expect(manager.get("env-refresh")?.workspace).toBe(gitWorkspace);
+    expect(provisionWorkspace).toHaveBeenCalledTimes(2);
   });
 
   it("reaps idle provider sessions from loaded runtimes", async () => {

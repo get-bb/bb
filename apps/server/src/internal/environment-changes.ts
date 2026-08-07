@@ -1,5 +1,9 @@
-import type { HostDaemonEnvironmentChangePayload } from "@bb/host-daemon-contract";
+import type {
+  HostDaemonEnvironmentChangePayload,
+  HostDaemonEnvironmentMetadataChangePayload,
+} from "@bb/host-daemon-contract";
 import { getEnvironment, type DbNotifier } from "@bb/db";
+import { recordProvisionedEnvironmentWorkspace } from "@bb/db/internal-environment-lifecycle";
 import type { AppDeps } from "../types.js";
 
 interface EnvironmentChangeNotificationDeps {
@@ -7,6 +11,10 @@ interface EnvironmentChangeNotificationDeps {
 }
 
 interface NotifyDaemonEnvironmentChangeArgs extends HostDaemonEnvironmentChangePayload {
+  hostId: string;
+}
+
+interface RecordDaemonEnvironmentMetadataChangeArgs extends HostDaemonEnvironmentMetadataChangePayload {
   hostId: string;
 }
 
@@ -39,4 +47,26 @@ export function notifyDaemonEnvironmentChange(
   }
 
   deps.hub.notifyEnvironment(environment.id, [args.change]);
+}
+
+export function recordDaemonEnvironmentMetadataChange(
+  deps: Pick<AppDeps, "db" | "hub">,
+  args: RecordDaemonEnvironmentMetadataChangeArgs,
+): void {
+  const environment = getEnvironment(deps.db, args.environmentId);
+  if (
+    !environment ||
+    environment.hostId !== args.hostId ||
+    environment.status === "destroyed" ||
+    environment.path !== args.workspace.path
+  ) {
+    return;
+  }
+
+  recordProvisionedEnvironmentWorkspace(
+    deps.db,
+    deps.hub,
+    environment.id,
+    args.workspace,
+  );
 }

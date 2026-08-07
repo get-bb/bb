@@ -147,12 +147,19 @@ async function resolveWatchRootPath(rootPath: string): Promise<string> {
   }
 }
 
+function isPathInsideDotGit(cwd: string, candidatePath: string): boolean {
+  const relativePath = path.relative(cwd, candidatePath);
+  return relativePath === ".git" || relativePath.startsWith(`.git${path.sep}`);
+}
+
 export class WorkspaceStatusWatcher {
   private readonly changedPaths = new Set<string>();
   private readonly changeKinds = new Set<WorkspaceStatusWatchChangeKind>();
   private disposed = false;
+  private gitWorkspace = false;
   private metadataRetryAttempt = 0;
   private metadataStartRetryTimer: ReturnType<typeof setTimeout> | null = null;
+  private gitWorkspacePromotion: Promise<void> | null = null;
   private workspaceRootRetryAttempt = 0;
   private workspaceRootStartRetryTimer: ReturnType<typeof setTimeout> | null =
     null;
@@ -215,13 +222,20 @@ export class WorkspaceStatusWatcher {
   }
 
   private async startAsync(): Promise<void> {
-    if (!(await pathExists(path.join(this.args.cwd, ".git")))) {
-      return;
-    }
+    const rootPath = await resolveWatchRootPath(this.args.cwd);
     if (this.disposed) {
       return;
     }
-    const rootPath = await resolveWatchRootPath(this.args.cwd);
+    if (!(await pathExists(path.join(this.args.cwd, ".git")))) {
+      // A plain workspace can become a repository after `git init`. Watch the
+      // root without excluding `.git` until that marker appears.
+      this.startWatchSubscription({
+        kind: "workspace-root",
+        rootPath,
+      });
+      return;
+    }
+    this.gitWorkspace = true;
     this.startWorkspaceRootWatchSubscription(rootPath);
     this.startMetadataWatchSubscriptions();
   }
@@ -340,7 +354,50 @@ export class WorkspaceStatusWatcher {
     for (const changeKind of changeEvent.changeKinds) {
       this.changeKinds.add(changeKind);
     }
+    const repositoryCreated =
+      spec.kind === "workspace-root" &&
+      spec.options?.ignore?.includes(".git") !== true &&
+      changeEvent.changedPaths.some((changedPath) =>
+        isPathInsideDotGit(spec.rootPath, changedPath),
+      );
+    if (repositoryCreated) {
+      this.changeKinds.add("workspace-git-repository-created");
+      this.promoteToGitWorkspace(spec.rootPath);
+    }
     this.changeScheduler.schedule();
+  }
+
+  private promoteToGitWorkspace(rootPath: string): void {
+    if (
+      this.disposed ||
+      this.gitWorkspace ||
+      this.gitWorkspacePromotion !== null
+    ) {
+      return;
+    }
+    const promotion = this.promoteToGitWorkspaceAsync(rootPath).finally(() => {
+      if (this.gitWorkspacePromotion === promotion) {
+        this.gitWorkspacePromotion = null;
+      }
+    });
+    this.gitWorkspacePromotion = promotion;
+  }
+
+  private async promoteToGitWorkspaceAsync(rootPath: string): Promise<void> {
+    if (!(await pathExists(path.join(this.args.cwd, ".git")))) {
+      return;
+    }
+    const initialRootSubscription = this.subscriptions.get(rootPath);
+    if (initialRootSubscription) {
+      this.subscriptions.delete(rootPath);
+      await initialRootSubscription.dispose();
+    }
+    if (this.disposed) {
+      return;
+    }
+    this.gitWorkspace = true;
+    this.startWorkspaceRootWatchSubscription(rootPath);
+    this.startMetadataWatchSubscriptions();
   }
 
   private queueConservativeWorkspaceStatusChange(

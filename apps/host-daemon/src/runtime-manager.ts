@@ -179,6 +179,12 @@ export interface CancelEnvironmentProvisionResult {
   aborted: boolean;
 }
 
+export interface RefreshEnvironmentWorkspaceArgs {
+  environmentId: string;
+  provision: ProvisionWorkspaceArgs;
+  workspacePath: string;
+}
+
 export interface RuntimeManagerOptions {
   bridgeBundleDir?: AgentRuntimeOptions["bridgeBundleDir"];
   createRuntime?: (options: AgentRuntimeOptions) => AgentRuntime;
@@ -270,6 +276,10 @@ export class RuntimeManager {
   private readonly pendingEnvironmentProvisions = new Map<
     string,
     PendingEnvironmentProvision
+  >();
+  private readonly pendingWorkspaceRefreshes = new Map<
+    string,
+    Promise<HostWorkspace>
   >();
   private readonly inFlightThreadCommandsByEnvironmentId = new Map<
     string,
@@ -774,6 +784,45 @@ export class RuntimeManager {
     this.pendingEntries.set(args.environmentId, creation);
 
     return creation;
+  }
+
+  async refreshEnvironmentWorkspace(
+    args: RefreshEnvironmentWorkspaceArgs,
+  ): Promise<HostWorkspace> {
+    const pending = this.pendingWorkspaceRefreshes.get(args.environmentId);
+    if (pending) {
+      return pending;
+    }
+
+    const refresh = this.refreshEnvironmentWorkspaceOnce(args).finally(() => {
+      if (this.pendingWorkspaceRefreshes.get(args.environmentId) === refresh) {
+        this.pendingWorkspaceRefreshes.delete(args.environmentId);
+      }
+    });
+    this.pendingWorkspaceRefreshes.set(args.environmentId, refresh);
+    return refresh;
+  }
+
+  private async refreshEnvironmentWorkspaceOnce(
+    args: RefreshEnvironmentWorkspaceArgs,
+  ): Promise<HostWorkspace> {
+    const entry = await this.getOrAwait(args.environmentId);
+    if (entry && entry.path !== args.workspacePath) {
+      throw new Error(
+        `Cannot refresh environment ${args.environmentId} at ${args.workspacePath}; it is bound to ${entry.path}`,
+      );
+    }
+
+    const workspace = await this.provisionWorkspace(args.provision);
+    if (workspace.path !== args.workspacePath) {
+      throw new Error(
+        `Workspace refresh for ${args.environmentId} returned ${workspace.path}, not ${args.workspacePath}`,
+      );
+    }
+    if (entry) {
+      entry.workspace = workspace;
+    }
+    return workspace;
   }
 
   async cancelEnvironmentProvision(

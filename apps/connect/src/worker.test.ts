@@ -1364,6 +1364,87 @@ function openHttpStreamId(sent: Uint8Array[], index: number): number {
 }
 
 describe("TunnelDO response relay", () => {
+  it("closes the origin stream when the visitor cancels a response body", async () => {
+    const sent: Uint8Array[] = [];
+    const state = mockDoState({ protocolVersion: 1 });
+    const dob = new TunnelDO(state.api, makeDoEnv());
+    await state.restore;
+    const tunnel = fakeTunnelSocket(captureSent(sent));
+    state.addSocket(tunnel, ["tunnel"]);
+
+    const pending = dob.fetch(new Request("https://do.internal/slow"));
+    const streamId = openHttpStreamId(sent, 0);
+    dob.webSocketMessage(
+      tunnel,
+      frameBuffer({
+        type: "resp-head",
+        streamId,
+        status: 200,
+        headers: [["content-type", "text/plain"]],
+      }),
+    );
+    const response = await pending;
+
+    await response.body?.cancel("visitor left");
+    await vi.waitFor(() => {
+      const close = sent
+        .map(decodeFrame)
+        .find(
+          (frame) =>
+            frame.type === "close-stream" && frame.streamId === streamId,
+        );
+      expect(close).toMatchObject({
+        type: "close-stream",
+        streamId,
+        code: 1000,
+        reason: "visitor canceled response body",
+      });
+    });
+  });
+
+  it("keeps a streamed response body open after the response-head timeout window", async () => {
+    vi.useFakeTimers();
+    try {
+      const sent: Uint8Array[] = [];
+      const state = mockDoState({ protocolVersion: 1 });
+      const dob = new TunnelDO(state.api, makeDoEnv());
+      await state.restore;
+      const tunnel = fakeTunnelSocket(captureSent(sent));
+      state.addSocket(tunnel, ["tunnel"]);
+
+      const pending = dob.fetch(
+        new Request("https://do.internal/session/tool-call"),
+      );
+      const streamId = openHttpStreamId(sent, 0);
+      dob.webSocketMessage(
+        tunnel,
+        frameBuffer({
+          type: "resp-head",
+          streamId,
+          status: 200,
+          headers: [["content-type", "application/json"]],
+        }),
+      );
+      const response = await pending;
+
+      await vi.advanceTimersByTimeAsync(30_000);
+      dob.webSocketMessage(
+        tunnel,
+        frameBuffer({
+          type: "body-chunk",
+          streamId,
+          data: new TextEncoder().encode('{"answer":"ready"}'),
+        }),
+      );
+      dob.webSocketMessage(tunnel, frameBuffer({ type: "body-end", streamId }));
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({ answer: "ready" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("relays null-body statuses (304/204) bodiless instead of stranding the visitor", async () => {
     const sent: Uint8Array[] = [];
     const state = mockDoState({ protocolVersion: 1 });

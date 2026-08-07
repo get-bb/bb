@@ -7,7 +7,7 @@ import type {
 import type { HostWorkspace } from "@bb/host-workspace";
 import { makeWorkspaceMergeBase, makeWorkspaceStatus } from "@bb/test-helpers";
 import { describe, expect, it, vi } from "vitest";
-import { WatchManager } from "./watch-manager.js";
+import { WatchManager, type WatchManagerOptions } from "./watch-manager.js";
 
 type GetLocalStateFingerprintResult = Awaited<
   ReturnType<HostWorkspace["getLocalStateFingerprint"]>
@@ -37,7 +37,7 @@ function createDeferred<TValue>(): Deferred<TValue> {
   return { promise, resolve, reject };
 }
 
-function createFakeWorkspace(path: string) {
+function createFakeWorkspace(path: string, isGitRepo = true) {
   let localStateFingerprint: GetLocalStateFingerprintResult = `local:${path}:initial`;
   let localStateFingerprintError: Error | null = null;
   let sharedGitRefsFingerprint: GetSharedGitRefsFingerprintResult = `refs:${path}:initial`;
@@ -45,7 +45,7 @@ function createFakeWorkspace(path: string) {
   const workspace = {
     path,
     managed: false,
-    isGitRepo: true,
+    isGitRepo,
     isWorktree: false,
     getDefaultBranch: vi.fn(async () => "main"),
     getCurrentBranch: vi.fn(async () => "main"),
@@ -259,6 +259,92 @@ describe("WatchManager", () => {
       changeKinds: ["work-status-changed"],
       environmentId: "env-watch",
     });
+  });
+
+  it("refreshes workspace metadata when a plain workspace becomes a git repository", async () => {
+    let watchWorkspaceArgs: WatchWorkspaceArgs | undefined;
+    const plainWorkspace = createFakeWorkspace("/tmp/env-watch", false);
+    const gitWorkspace = createFakeWorkspace("/tmp/env-watch");
+    const provisionWorkspace = vi
+      .fn<NonNullable<WatchManagerOptions["provisionWorkspace"]>>()
+      .mockResolvedValue(plainWorkspace);
+    const refreshWorkspace = vi
+      .fn<NonNullable<WatchManagerOptions["refreshWorkspace"]>>()
+      .mockResolvedValue(gitWorkspace);
+    const { hostWatcher } = createFakeHostWatcher({
+      watchWorkspaceImplementation: (args) => {
+        watchWorkspaceArgs = args;
+        return () => undefined;
+      },
+    });
+    const onWorkspaceMetadataChanged = vi.fn();
+    const onWorkspaceStatusChanged = vi.fn();
+    const manager = new WatchManager({
+      hostWatcher,
+      provisionWorkspace,
+      refreshWorkspace,
+      onWorkspaceMetadataChanged,
+      onWorkspaceStatusChanged,
+    });
+
+    await manager.replaceWatchSet({
+      generation: 1,
+      workspaceTargets: [
+        {
+          environmentId: "env-watch",
+          workspaceContext: {
+            workspacePath: "/tmp/env-watch",
+            workspaceProvisionType: "unmanaged",
+          },
+        },
+      ],
+      threadStorageTargets: [],
+    });
+    watchWorkspaceArgs?.onChange({
+      changedPaths: ["/tmp/env-watch/file.txt"],
+      changeKinds: ["workspace-content-changed"],
+      kind: "workspace-status-changed",
+      environmentId: "env-watch",
+    });
+    await vi.waitFor(() => {
+      expect(onWorkspaceStatusChanged).toHaveBeenCalledWith({
+        changeKinds: ["work-status-changed"],
+        environmentId: "env-watch",
+      });
+    });
+    expect(provisionWorkspace).toHaveBeenCalledTimes(1);
+    expect(refreshWorkspace).not.toHaveBeenCalled();
+    expect(onWorkspaceMetadataChanged).not.toHaveBeenCalled();
+    onWorkspaceStatusChanged.mockClear();
+
+    watchWorkspaceArgs?.onChange({
+      changedPaths: ["/tmp/env-watch/.git"],
+      changeKinds: [
+        "workspace-content-changed",
+        "workspace-git-repository-created",
+      ],
+      kind: "workspace-status-changed",
+      environmentId: "env-watch",
+    });
+
+    await vi.waitFor(() => {
+      expect(onWorkspaceMetadataChanged).toHaveBeenCalledWith({
+        environmentId: "env-watch",
+        workspace: {
+          path: "/tmp/env-watch",
+          isGitRepo: true,
+          isWorktree: false,
+          branchName: "main",
+          defaultBranch: "main",
+        },
+      });
+      expect(onWorkspaceStatusChanged).toHaveBeenCalledWith({
+        changeKinds: ["work-status-changed"],
+        environmentId: "env-watch",
+      });
+    });
+    expect(provisionWorkspace).toHaveBeenCalledTimes(1);
+    expect(refreshWorkspace).toHaveBeenCalledTimes(1);
   });
 
   it("suppresses git metadata notifications when the local fingerprint is unchanged", async () => {

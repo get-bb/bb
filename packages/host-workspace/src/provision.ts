@@ -1,4 +1,4 @@
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir, realpath, rm } from "node:fs/promises";
 import path from "node:path";
 import type {
   ProvisioningTranscriptEntry,
@@ -28,7 +28,9 @@ import {
 import { createWorktree, removeWorktree } from "./provisioning.js";
 import {
   detectGitRepo,
+  getAbsoluteGitDir,
   getCheckoutRef,
+  getGitCommonDir,
   getWorkspaceGitOperation,
   hasUncommittedChanges,
   listBranches,
@@ -340,6 +342,32 @@ function isRelativeChildPath(relativePath: string): boolean {
     !relativePath.startsWith(`..${path.sep}`) &&
     relativePath !== ".." &&
     !path.isAbsolute(relativePath)
+  );
+}
+
+function isSamePathOrNestedUnder(
+  candidatePath: string,
+  rootPath: string,
+): boolean {
+  const relativePath = path.relative(rootPath, candidatePath);
+  return relativePath === "" || isRelativeChildPath(relativePath);
+}
+
+async function hasContainedPersonalGitMetadata(
+  targetPath: string,
+): Promise<boolean> {
+  const [resolvedTargetPath, gitDir, commonGitDir] = await Promise.all([
+    realpath(targetPath),
+    getAbsoluteGitDir(targetPath),
+    getGitCommonDir(targetPath),
+  ]);
+  const [resolvedGitDir, resolvedCommonGitDir] = await Promise.all([
+    realpath(gitDir),
+    realpath(commonGitDir),
+  ]);
+  return (
+    isSamePathOrNestedUnder(resolvedGitDir, resolvedTargetPath) &&
+    isSamePathOrNestedUnder(resolvedCommonGitDir, resolvedTargetPath)
   );
 }
 
@@ -718,11 +746,19 @@ async function provisionPersonalWorkspace(
     throw error;
   }
 
+  const detectedGitRepo = targetExisted
+    ? await detectGitRepo(targetPath)
+    : false;
+  const isGitRepo = detectedGitRepo
+    ? await hasContainedPersonalGitMetadata(targetPath)
+    : false;
+  const isWorktree = isGitRepo ? await detectWorktree(targetPath) : false;
+
   return new ProvisionedHostWorkspace({
     path: targetPath,
     managed: true,
-    isGitRepo: false,
-    isWorktree: false,
+    isGitRepo,
+    isWorktree,
     destroyFn: () => rm(targetPath, { recursive: true, force: true }),
   });
 }

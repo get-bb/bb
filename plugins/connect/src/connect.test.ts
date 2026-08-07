@@ -981,6 +981,88 @@ describe("TunnelSession routing", () => {
     );
   });
 
+  it("aborts the origin request when the relay closes an HTTP stream", async () => {
+    let originStarted = false;
+    let originClosed = false;
+    const origin = await listen((request, response) => {
+      originStarted = true;
+      request.once("aborted", () => {
+        originClosed = true;
+      });
+      response.once("close", () => {
+        originClosed = true;
+      });
+    });
+    cleanups.push(
+      () =>
+        new Promise<void>((resolve) => origin.server.close(() => resolve())),
+    );
+
+    const wss = new WebSocketServer({ port: 0, host: "127.0.0.1" });
+    await new Promise<void>((resolve) =>
+      wss.once("listening", () => resolve()),
+    );
+    const wssAddr = wss.address();
+    if (wssAddr === null || typeof wssAddr === "string") {
+      throw new Error("expected TCP address");
+    }
+    const relayReady = new Promise<NodeWebSocket>((resolve) => {
+      wss.on("connection", (socket) => resolve(socket));
+    });
+    const client = new NodeWebSocket(`ws://127.0.0.1:${wssAddr.port}`);
+    cleanups.push(async () => {
+      client.terminate();
+      await new Promise<void>((resolve) => wss.close(() => resolve()));
+    });
+    await waitForOpen(client);
+    const relay = await relayReady;
+
+    const session = new TunnelSession({
+      tunnel: client,
+      log: {
+        debug: () => {},
+        info: () => {},
+        warn: () => {},
+        error: () => {},
+      },
+      resolveOrigin: () => ({
+        kind: "ok",
+        resolved: {
+          origin: origin.origin,
+          publicOrigin: "https://sawyer.getbb.app",
+        },
+      }),
+    });
+    session.start();
+    cleanups.push(() => session.dispose());
+
+    relay.send(
+      Buffer.from(
+        encodeFrame({
+          type: "open-http",
+          streamId: 41,
+          method: "GET",
+          path: "/slow",
+          headers: [],
+          hasBody: false,
+        }),
+      ),
+    );
+    await waitFor(() => originStarted);
+
+    relay.send(
+      Buffer.from(
+        encodeFrame({
+          type: "close-stream",
+          streamId: 41,
+          code: 1000,
+          reason: "visitor canceled response body",
+        }),
+      ),
+    );
+    await waitFor(() => originClosed);
+  });
+
   it("preserves negotiated origin compression across the tunnel and relays 304 bodiless", async () => {
     const plainBody = "hello ".repeat(200);
     const gzippedBody = gzipSync(Buffer.from(plainBody));
