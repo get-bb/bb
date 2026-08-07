@@ -1,20 +1,34 @@
 import { getThreadCommandAdmission } from "@bb/db";
 import {
+  approvalPendingInteractionResolutionSchema,
   clientTurnRequestIdSchema,
+  isApprovalPendingInteractionPayload,
+  isUserQuestionPendingInteractionPayload,
+  userQuestionPendingInteractionResolutionSchema,
+  type ApprovalPendingInteractionResolution,
   type ClientTurnRequestId,
   type PersistedThreadCommandAdmission,
   type Principal,
   type Thread,
+  type UserQuestionPendingInteractionResolution,
 } from "@bb/domain";
 
 import { ApiError } from "../errors.js";
 import { actorStampFromPrincipal } from "../services/actor-stamp.js";
 import { admitQueueIfActiveSendMessage } from "../services/threads/admitted-send.js";
 import { admitExactInterrupt } from "../services/threads/admitted-interrupt.js";
+import {
+  admitInteractionAnswer,
+  admitInteractionApprove,
+} from "../services/threads/admitted-interaction-resolution.js";
+import { admitReadMark } from "../services/threads/admitted-read-mark.js";
 import { admitExactSteerMessage } from "../services/threads/admitted-steer.js";
 import {
+  fingerprintInteractionAnswerRequest,
+  fingerprintInteractionApproveRequest,
   fingerprintMessageSendRequest,
   fingerprintMessageSteerRequest,
+  fingerprintReadMarkRequest,
   fingerprintThreadInterruptRequest,
 } from "../services/threads/message-send-fingerprint.js";
 import { threadCommandAdmissionReceiptFromPersisted } from "../services/threads/thread-command-receipt.js";
@@ -28,7 +42,22 @@ import {
 } from "./room-distribution-port.js";
 
 const MAX_COMMAND_TEXT_BYTES = 65_536;
+const MAX_INTERACTION_PAYLOAD_BYTES = 64 * 1024;
 const MAX_TURN_ID_CODE_POINTS = 256;
+/** Opaque Room cursor grammar shared with child-stream selector validation. */
+const ROOM_EVENT_CURSOR_PATTERN = /^[A-Za-z0-9._~:%+-]{1,512}$/u;
+const PENDING_INTERACTION_ID_PATTERN =
+  /^pint_[23456789abcdefghijkmnpqrstuvwxyz]{10}$/;
+const FORBIDDEN_IDENTITY_KEY_TOKENS = new Set([
+  "actor",
+  "actorid",
+  "author",
+  "authorid",
+  "principal",
+  "principalid",
+  "userid",
+  "user",
+]);
 
 type RoomMessageSendCommand = Readonly<{
   kind: "message.send";
@@ -49,10 +78,33 @@ type RoomThreadInterruptCommand = Readonly<{
   requestId: ClientTurnRequestId;
 }>;
 
+type RoomInteractionAnswerCommand = Readonly<{
+  interactionId: string;
+  kind: "interaction.answer";
+  requestId: ClientTurnRequestId;
+  resolution: UserQuestionPendingInteractionResolution;
+}>;
+
+type RoomInteractionApproveCommand = Readonly<{
+  interactionId: string;
+  kind: "interaction.approve";
+  requestId: ClientTurnRequestId;
+  resolution: ApprovalPendingInteractionResolution;
+}>;
+
+type RoomReadMarkCommand = Readonly<{
+  eventCursor: string;
+  kind: "read.mark";
+  requestId: ClientTurnRequestId;
+}>;
+
 type SupportedRoomCommand =
   | RoomMessageSendCommand
   | RoomMessageSteerCommand
-  | RoomThreadInterruptCommand;
+  | RoomThreadInterruptCommand
+  | RoomInteractionAnswerCommand
+  | RoomInteractionApproveCommand
+  | RoomReadMarkCommand;
 
 type RoomCommandScope = Readonly<{
   bindingId: string;
@@ -61,6 +113,10 @@ type RoomCommandScope = Readonly<{
   thread: Thread;
   workspaceId: string;
 }>;
+
+type RoomCommandAuthority = Awaited<
+  ReturnType<WorkTogetherRoomCommandAuthorityPortV1["read"]>
+>;
 
 function unavailable(): never {
   throw new RoomDistributionUnavailableError("not_found");
@@ -76,6 +132,26 @@ function exactKeys(
     actual.length === sortedExpected.length &&
     actual.every((key, index) => key === sortedExpected[index])
   );
+}
+
+function rejectForbiddenIdentityKeys(value: unknown, depth = 0): void {
+  if (depth > 32) unavailable();
+  if (value === null || typeof value !== "object") {
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      rejectForbiddenIdentityKeys(item, depth + 1);
+    }
+    return;
+  }
+  for (const [key, item] of Object.entries(value)) {
+    const token = key.toLowerCase().replaceAll(/[-_]/gu, "");
+    if (FORBIDDEN_IDENTITY_KEY_TOKENS.has(token)) {
+      unavailable();
+    }
+    rejectForbiddenIdentityKeys(item, depth + 1);
+  }
 }
 
 function commandText(value: RoomJsonValue | undefined): string {
@@ -110,6 +186,78 @@ function expectedTurnId(value: RoomJsonValue | undefined): string {
   return value;
 }
 
+function interactionId(value: RoomJsonValue | undefined): string {
+  if (
+    typeof value !== "string" ||
+    !PENDING_INTERACTION_ID_PATTERN.test(value)
+  ) {
+    unavailable();
+  }
+  return value;
+}
+
+function eventCursor(value: RoomJsonValue | undefined): string {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    !ROOM_EVENT_CURSOR_PATTERN.test(value)
+  ) {
+    unavailable();
+  }
+  return value;
+}
+
+function boundJsonPayload(value: RoomJsonValue | undefined): unknown {
+  if (value === undefined) unavailable();
+  rejectForbiddenIdentityKeys(value);
+  let encoded: string;
+  try {
+    encoded = JSON.stringify(value);
+  } catch {
+    unavailable();
+  }
+  if (
+    encoded === undefined ||
+    Buffer.byteLength(encoded, "utf8") > MAX_INTERACTION_PAYLOAD_BYTES
+  ) {
+    unavailable();
+  }
+  return value;
+}
+
+function userAnswerResolution(
+  value: RoomJsonValue | undefined,
+): UserQuestionPendingInteractionResolution {
+  const payload = boundJsonPayload(value);
+  if (
+    payload !== null &&
+    typeof payload === "object" &&
+    !Array.isArray(payload) &&
+    "kind" in payload &&
+    (payload as { kind: unknown }).kind === "user_answer"
+  ) {
+    const parsed =
+      userQuestionPendingInteractionResolutionSchema.safeParse(payload);
+    if (!parsed.success) unavailable();
+    return parsed.data;
+  }
+  const parsed = userQuestionPendingInteractionResolutionSchema.safeParse({
+    kind: "user_answer",
+    answers: payload,
+  });
+  if (!parsed.success) unavailable();
+  return parsed.data;
+}
+
+function approvalResolution(
+  value: RoomJsonValue | undefined,
+): ApprovalPendingInteractionResolution {
+  const payload = boundJsonPayload(value);
+  const parsed = approvalPendingInteractionResolutionSchema.safeParse(payload);
+  if (!parsed.success) unavailable();
+  return parsed.data;
+}
+
 function decodeCommand(command: RoomJsonObject): SupportedRoomCommand {
   switch (command.kind) {
     case "message.send":
@@ -138,6 +286,44 @@ function decodeCommand(command: RoomJsonObject): SupportedRoomCommand {
       return Object.freeze({
         expectedTurnId: expectedTurnId(command.expectedTurnId),
         kind: "thread.interrupt",
+        requestId: requestId(command.requestId),
+      });
+    case "interaction.answer":
+      if (
+        !exactKeys(command, ["interactionId", "kind", "requestId", "value"])
+      ) {
+        unavailable();
+      }
+      return Object.freeze({
+        interactionId: interactionId(command.interactionId),
+        kind: "interaction.answer",
+        requestId: requestId(command.requestId),
+        resolution: userAnswerResolution(command.value),
+      });
+    case "interaction.approve":
+      if (
+        !exactKeys(command, [
+          "interactionId",
+          "kind",
+          "requestId",
+          "resolution",
+        ])
+      ) {
+        unavailable();
+      }
+      return Object.freeze({
+        interactionId: interactionId(command.interactionId),
+        kind: "interaction.approve",
+        requestId: requestId(command.requestId),
+        resolution: approvalResolution(command.resolution),
+      });
+    case "read.mark":
+      if (!exactKeys(command, ["eventCursor", "kind", "requestId"])) {
+        unavailable();
+      }
+      return Object.freeze({
+        eventCursor: eventCursor(command.eventCursor),
+        kind: "read.mark",
         requestId: requestId(command.requestId),
       });
     default:
@@ -203,6 +389,20 @@ function commandFingerprint(command: SupportedRoomCommand) {
       return fingerprintThreadInterruptRequest({
         expectedTurnId: command.expectedTurnId,
       });
+    case "interaction.answer":
+      return fingerprintInteractionAnswerRequest({
+        interactionId: command.interactionId,
+        resolution: command.resolution,
+      });
+    case "interaction.approve":
+      return fingerprintInteractionApproveRequest({
+        interactionId: command.interactionId,
+        resolution: command.resolution,
+      });
+    case "read.mark":
+      return fingerprintReadMarkRequest({
+        eventCursor: command.eventCursor,
+      });
   }
 }
 
@@ -251,17 +451,46 @@ function rejectionReason(error: ApiError): string {
       return "turn_mismatch";
     case "awaiting_user_interaction":
       return "awaiting_interaction";
+    case "pending_interaction_conflict":
+      return "interaction_conflict";
     default:
       return "unavailable";
   }
 }
 
+function canAnswerInteraction(authority: RoomCommandAuthority): boolean {
+  return authority.role === "owner" || authority.role === "member";
+}
+
+function canApproveInteraction(authority: RoomCommandAuthority): boolean {
+  return authority.role === "owner";
+}
+
+function hasPendingUserQuestion(deps: AppDeps, threadId: string): boolean {
+  return deps.pendingInteractions
+    .listPendingThreadInteractions(threadId)
+    .some(
+      (interaction) =>
+        interaction.status === "pending" &&
+        isUserQuestionPendingInteractionPayload(interaction.payload),
+    );
+}
+
+function hasPendingApproval(deps: AppDeps, threadId: string): boolean {
+  return deps.pendingInteractions
+    .listPendingThreadInteractions(threadId)
+    .some(
+      (interaction) =>
+        interaction.status === "pending" &&
+        isApprovalPendingInteractionPayload(interaction.payload),
+    );
+}
+
 function commandAvailable(
+  deps: AppDeps,
   command: SupportedRoomCommand,
   scope: RoomCommandScope,
-  authority: Awaited<
-    ReturnType<WorkTogetherRoomCommandAuthorityPortV1["read"]>
-  >,
+  authority: RoomCommandAuthority,
 ): boolean {
   switch (command.kind) {
     case "message.send":
@@ -274,6 +503,42 @@ function commandAvailable(
           scope.thread.status === "starting") &&
         (authority.role === "owner" || authority.isTaskAssignee)
       );
+    case "interaction.answer":
+      return (
+        canAnswerInteraction(authority) &&
+        hasPendingUserQuestion(deps, scope.thread.id)
+      );
+    case "interaction.approve":
+      return (
+        canApproveInteraction(authority) &&
+        hasPendingApproval(deps, scope.thread.id)
+      );
+    case "read.mark":
+      return true;
+  }
+}
+
+function statusCapabilities(
+  status: Thread["status"],
+  authority: RoomCommandAuthority,
+): string[] {
+  switch (status) {
+    case "idle":
+      return ["message.send"];
+    case "starting":
+      return authority.role === "owner" || authority.isTaskAssignee
+        ? ["thread.interrupt"]
+        : [];
+    case "active":
+      return [
+        "message.send",
+        "message.steer",
+        ...(authority.role === "owner" || authority.isTaskAssignee
+          ? ["thread.interrupt"]
+          : []),
+      ];
+    default:
+      return [];
   }
 }
 
@@ -297,24 +562,21 @@ export function createBindingBackedRoomCommandHandler(
   return Object.freeze({
     async capabilities(scope: RoomCommandScope): Promise<string[]> {
       const authority = await currentAuthority(scope);
-      switch (scope.thread.status) {
-        case "idle":
-          return ["message.send"];
-        case "starting":
-          return authority.role === "owner" || authority.isTaskAssignee
-            ? ["thread.interrupt"]
-            : [];
-        case "active":
-          return [
-            "message.send",
-            "message.steer",
-            ...(authority.role === "owner" || authority.isTaskAssignee
-              ? ["thread.interrupt"]
-              : []),
-          ];
-        default:
-          return [];
+      const capabilities = statusCapabilities(scope.thread.status, authority);
+      if (
+        canAnswerInteraction(authority) &&
+        hasPendingUserQuestion(deps, scope.thread.id)
+      ) {
+        capabilities.push("interaction.answer");
       }
+      if (
+        canApproveInteraction(authority) &&
+        hasPendingApproval(deps, scope.thread.id)
+      ) {
+        capabilities.push("interaction.approve");
+      }
+      capabilities.push("read.mark");
+      return capabilities;
     },
 
     async execute(
@@ -322,8 +584,33 @@ export function createBindingBackedRoomCommandHandler(
       rawCommand: RoomJsonObject,
     ): Promise<RoomDistributionCommandResultV1> {
       const command = decodeCommand(rawCommand);
+      // Exact replay / identity conflict are decided from the durable ledger
+      // before capability availability, so a resolved interaction or post-
+      // interrupt thread status cannot suppress already-accepted receipts.
+      const existingAdmission = getThreadCommandAdmission(deps.db, {
+        threadId: scope.thread.id,
+        requestId: command.requestId,
+      });
+      if (existingAdmission !== null) {
+        if (
+          existingAdmission.commandKind === commandKind(command) &&
+          existingAdmission.requestFingerprint ===
+            commandFingerprint(command) &&
+          existingAdmission.actor.principalId === scope.principal.id &&
+          existingAdmission.actor.principalKind === scope.principal.kind
+        ) {
+          return Object.freeze({
+            status: 200,
+            body: commandReceipt({
+              admission: existingAdmission,
+              kind: "replayed",
+            }),
+          });
+        }
+        return rejectedReceipt(command, "request_identity_conflict");
+      }
       const authority = await currentAuthority(scope);
-      if (!commandAvailable(command, scope, authority)) unavailable();
+      if (!commandAvailable(deps, command, scope, authority)) unavailable();
       const actor = actorStampFromPrincipal(scope.principal);
       let result;
       try {
@@ -355,6 +642,38 @@ export function createBindingBackedRoomCommandHandler(
               actor,
               payload: {
                 expectedTurnId: command.expectedTurnId,
+                requestId: command.requestId,
+              },
+              thread: scope.thread,
+            });
+            break;
+          case "interaction.answer":
+            result = await admitInteractionAnswer(deps, {
+              actor,
+              payload: {
+                interactionId: command.interactionId,
+                requestId: command.requestId,
+                resolution: command.resolution,
+              },
+              thread: scope.thread,
+            });
+            break;
+          case "interaction.approve":
+            result = await admitInteractionApprove(deps, {
+              actor,
+              payload: {
+                interactionId: command.interactionId,
+                requestId: command.requestId,
+                resolution: command.resolution,
+              },
+              thread: scope.thread,
+            });
+            break;
+          case "read.mark":
+            result = await admitReadMark(deps, {
+              actor,
+              payload: {
+                eventCursor: command.eventCursor,
                 requestId: command.requestId,
               },
               thread: scope.thread,

@@ -130,7 +130,7 @@ describe("binding-backed Work Together Room distribution", () => {
           bindingVersion: 3,
           generatedBranch: launch.generatedBranch,
         },
-        capabilities: [],
+        capabilities: ["read.mark"],
       });
       const ownerDistribution = createBindingBackedRoomDistributionV1(
         harness.deps,
@@ -140,7 +140,9 @@ describe("binding-backed Work Together Room distribution", () => {
       );
       await expect(
         ownerDistribution.bootstrap(context(launch.bindingId)),
-      ).resolves.toMatchObject({ capabilities: ["thread.interrupt"] });
+      ).resolves.toMatchObject({
+        capabilities: ["thread.interrupt", "read.mark"],
+      });
       expect(taskProjection.read).toHaveBeenCalledWith({
         bindingId: launch.bindingId,
         workspaceId: launch.workspaceId,
@@ -330,7 +332,7 @@ describe("binding-backed Work Together Room distribution", () => {
       await expect(
         distribution.bootstrap(context(launch.bindingId)),
       ).resolves.toMatchObject({
-        capabilities: ["message.send", "message.steer"],
+        capabilities: ["message.send", "message.steer", "read.mark"],
       });
 
       const accepted = await distribution.execute(
@@ -448,7 +450,9 @@ describe("binding-backed Work Together Room distribution", () => {
           result: { disposition: "interrupted" },
         },
       });
-      expect(commandAuthority.read).toHaveBeenCalledTimes(8);
+      // Replay and identity-conflict paths resolve from the durable ledger
+      // without re-reading current Room authority.
+      expect(commandAuthority.read).toHaveBeenCalledTimes(6);
 
       await expect(
         distribution.execute(context(launch.bindingId), {
