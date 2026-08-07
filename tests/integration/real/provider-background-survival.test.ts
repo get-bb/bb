@@ -1,15 +1,16 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { scaleTimeoutMs } from "../helpers/time.js";
 import {
   createRealThread,
   pathExists,
   REAL_POLL_INTERVAL_MS,
   sendAndWaitForIdle,
-  TEST_TIMEOUT_MS,
 } from "./provider-smoke-harness.js";
 
 const PROVIDER_ID = "claude-code";
+const BACKGROUND_SURVIVAL_TEST_TIMEOUT_MS = scaleTimeoutMs(240_000);
 
 async function waitForCondition(
   predicate: () => boolean | Promise<boolean>,
@@ -74,10 +75,15 @@ describe("real Claude background process integration", () => {
         await waitForCondition(
           () => {
             const sessionId = harness.daemonApp.connection.sessionId;
-            return sessionId !== null && sessionId !== previousSessionId;
+            return (
+              sessionId !== null &&
+              sessionId !== previousSessionId &&
+              harness.hub.getDaemonSessionIdForHost(harness.hostId) ===
+                sessionId
+            );
           },
           10_000,
-          "Daemon did not establish a replacement session",
+          "Daemon did not register the replacement session socket",
         );
 
         expect(
@@ -101,6 +107,6 @@ describe("real Claude background process integration", () => {
         await harness.cleanup();
       }
     },
-    TEST_TIMEOUT_MS,
+    BACKGROUND_SURVIVAL_TEST_TIMEOUT_MS,
   );
 });
