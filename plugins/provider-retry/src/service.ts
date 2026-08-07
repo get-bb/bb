@@ -100,17 +100,6 @@ function recoveryView(args: {
   };
 }
 
-function unsafeRecovery(status: RecoveryStatus): boolean {
-  return (
-    status.rateLimits?.status === "blocked" &&
-    [
-      "input-not-accepted",
-      "output-or-side-effect-observed",
-      "execution-unavailable",
-    ].includes(status.reason)
-  );
-}
-
 function refreshFailureMessage(usage: ProviderUsage): string | null {
   switch (usage.status) {
     case "ok":
@@ -276,20 +265,6 @@ export class ProviderRetryService {
     }
     const candidate = status.candidate;
     if (candidate === null) {
-      if (unsafeRecovery(status)) {
-        this.upsert(threadId, {
-          candidate: null,
-          firstObservedAtMs: existing?.firstObservedAtMs ?? this.sources.now(),
-          view: recoveryView({
-            candidate: null,
-            dueAtMs: null,
-            phase: "unsafe",
-            status,
-            threadId,
-          }),
-        });
-        return this.status(threadId);
-      }
       this.remove(threadId);
       return null;
     }

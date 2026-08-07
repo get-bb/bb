@@ -86,7 +86,7 @@ function ProviderRetryBannerForThread({ threadId }: { threadId: string }) {
             result.view?.phase !== "retry-failed" &&
             result.view?.phase !== "waiting-for-host"
           ) {
-            setActionError("This turn is no longer safe to continue.");
+            setActionError("This turn is no longer available to continue.");
           }
         } else {
           const result = await rpc.call("providerRetryRefresh", { threadId });

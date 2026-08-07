@@ -103,17 +103,6 @@ const PHASE_CASES = {
       recoveryReason: "no-reset-time",
     }),
   },
-  unsafe: {
-    label: "Unsafe to continue",
-    hint: "bb cannot prove an automatic continuation is safe and duplicate-free, so it will not start one.",
-    view: providerRetryView({
-      phase: "unsafe",
-      automatic: false,
-      dueAtMs: null,
-      recoveryReason: "output-or-side-effect-observed",
-      windowLabel: "Fable",
-    }),
-  },
 } satisfies Record<ProviderRetryPhase, BannerAuditCase>;
 
 interface BannerPresentationCase extends BannerAuditCase {

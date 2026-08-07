@@ -104,7 +104,7 @@ export function registerProviderRetryCli(
           stdout: started ? `Continued ${threadId}.\n` : "",
           stderr: started
             ? ""
-            : `Thread ${threadId} is not currently safe to continue.\n`,
+            : `Thread ${threadId} is not currently available to continue.\n`,
         };
       }
       if (command === "refresh") {

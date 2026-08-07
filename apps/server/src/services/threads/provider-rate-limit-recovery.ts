@@ -62,18 +62,6 @@ const CONTINUE_INPUT: PromptInput[] = [
   },
 ];
 
-const SAFE_EMPTY_TURN_EVENT_TYPES = new Set<ThreadEvent["type"]>([
-  "turn/started",
-  "turn/input/accepted",
-  "turn/completed",
-  "thread/tokenUsage/updated",
-  "thread/contextWindowUsage/updated",
-  "provider/error",
-  "provider/warning",
-  "provider/rateLimits/updated",
-  "system/error",
-]);
-
 interface InternalRecoveryCandidate {
   automatic: boolean;
   execution: ResolvedThreadExecutionOptions;
@@ -148,17 +136,6 @@ function recoveryResetAtMs(rateLimits: ProviderRateLimitState): number | null {
 
 function eventBelongsToTurn(event: ThreadEvent, turnId: string): boolean {
   return event.scope.kind === "turn" && event.scope.turnId === turnId;
-}
-
-function hasOutputOrSideEffect(
-  events: readonly ThreadEvent[],
-  turnId: string,
-): boolean {
-  return events.some(
-    (event) =>
-      eventBelongsToTurn(event, turnId) &&
-      !SAFE_EMPTY_TURN_EVENT_TYPES.has(event.type),
-  );
 }
 
 function inspectRecovery(args: InspectRecoveryArgs): RecoveryInspection {
@@ -256,14 +233,6 @@ function inspectRecovery(args: InspectRecoveryArgs): RecoveryInspection {
       turnRateLimits,
     );
   }
-  if (hasOutputOrSideEffect(events, turnId)) {
-    return emptyInspection(
-      args,
-      "output-or-side-effect-observed",
-      turnRateLimits,
-    );
-  }
-
   const execution = resolvedThreadExecutionOptionsSchema.safeParse(
     request.execution,
   );
@@ -316,7 +285,7 @@ function unavailableRecoveryError(status: ProviderRateLimitRecoveryStatus) {
   return new ApiError(
     409,
     "rate_limit_recovery_unavailable",
-    "This thread is no longer safe to continue after its provider rate limit.",
+    "This thread is no longer eligible to continue after its provider rate limit.",
     { details: status },
   );
 }

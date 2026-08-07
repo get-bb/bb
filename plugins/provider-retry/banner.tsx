@@ -26,9 +26,6 @@ function resetLabel(dueAtMs: number): string {
 function limitDescription(view: ProviderRetryView): string {
   const provider = providerLabel(view.providerId);
   const window = view.windowLabel ? ` ${view.windowLabel.toLowerCase()}` : "";
-  if (view.phase === "unsafe") {
-    return `${provider}${window} usage limit reached, but bb cannot safely continue this turn because output or other work may already have occurred.`;
-  }
   if (view.phase === "blocked") {
     const reason = view.reachedReason ?? view.overageReason;
     return `${provider} ${view.kind.replaceAll("-", " ")} limit reached${reason ? ` (${reason.replaceAll("_", " ")})` : ""}.`;

@@ -285,7 +285,7 @@ describe("bb thread action command output", () => {
     expect(stopPost).toHaveBeenCalledTimes(1);
   });
 
-  it("bb thread retry continues the current safe failed request", async () => {
+  it("bb thread retry continues the current eligible failed request", async () => {
     const statusGet = vi.fn(async () => ({
       reason: "eligible",
       scopeKey: "host-1:codex",
@@ -330,10 +330,10 @@ describe("bb thread action command output", () => {
     );
   });
 
-  it("bb thread retry fails closed when the server finds no safe candidate", async () => {
+  it("bb thread retry fails when the server finds no eligible candidate", async () => {
     stubServerApi({
       "v1.threads.:id.rate-limit-recovery.$get": vi.fn(async () => ({
-        reason: "output-or-side-effect-observed",
+        reason: "input-not-accepted",
         scopeKey: "host-1:codex",
         hostId: "host-1",
         rateLimits: null,
@@ -342,10 +342,10 @@ describe("bb thread action command output", () => {
     });
 
     await expect(
-      runCommand(["thread", "retry", "thread-unsafe"], register),
+      runCommand(["thread", "retry", "thread-ineligible"], register),
     ).rejects.toThrow("process.exit:1");
     expect(collectLogLines(vi.mocked(console.error))).toContain(
-      "Error: Thread thread-unsafe cannot be safely continued after a provider rate limit (output-or-side-effect-observed).",
+      "Error: Thread thread-ineligible cannot be continued after a provider rate limit (input-not-accepted).",
     );
   });
 

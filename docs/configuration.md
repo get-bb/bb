@@ -553,9 +553,10 @@ the plugin so it can be surfaced as needing attention.
 The builtin Provider retry plugin is disabled on fresh installations. Enable
 it under Extensions → Plugins or with `bb plugin enable provider-retry`. It
 automatically waits for structured Codex and Claude Code subscription-window
-resets only when the failed turn was accepted, the provider has stopped its own
-retries, and no output or possible side effects were observed. Recovery sends
-one agent-only `Please continue.` turn on the existing provider conversation.
+resets when the failed turn was accepted, the provider has stopped its own
+retries, and the original execution settings remain available. Prior output or
+tool activity does not block recovery. Recovery sends one agent-only
+`Please continue.` turn on the existing provider conversation.
 The `maximumWait` setting defaults to `6 hours`; resets beyond that horizon stay
 visible for manual retry instead of being scheduled. Choose `24 hours` or
 `No limit` under the plugin settings, or configure it from the CLI:
@@ -568,7 +569,7 @@ Pending waits are coordinated by machine/provider subscription and live only
 in the current server/plugin process. Restarting bb, reloading the plugin, or
 disabling it clears the timers without changing the original failed thread.
 Inspect or control them with `bb provider-retry status`, `refresh`, `now`, and
-`cancel`; `bb thread retry` remains the guarded manual recovery path. Credit or
+`cancel`; `bb thread retry` remains the manual recovery path. Credit or
 spend-control exhaustion without a reset time is never retried automatically.
 
 ### Workflows plugin

@@ -172,6 +172,37 @@ describe("provider retry scheduler", () => {
     await host.harness.dispose();
   });
 
+  it("cancels the pending continuation when the user starts another turn", async () => {
+    const continueAfterRateLimit = vi.fn();
+    const host = createFakePluginHost({
+      pluginId: "provider-retry",
+      sdk: {
+        threads: {
+          rateLimitRecovery: async ({ threadId }) => eligibleStatus(threadId),
+          continueAfterRateLimit,
+        },
+      },
+    });
+    await plugin(host.bb);
+    await host.harness.emitThreadEvent("thread.failed", {
+      thread: makeThreadResponse({ id: "thread-manual", status: "error" }),
+      error: "Usage limit reached",
+    });
+
+    await host.harness.emitThreadEvent("thread.active", {
+      thread: makeThreadResponse({ id: "thread-manual", status: "active" }),
+    });
+    await expect(
+      host.harness.callRpc("providerRetryStatus", {
+        threadId: "thread-manual",
+      }),
+    ).resolves.toEqual({ view: null });
+
+    await vi.advanceTimersByTimeAsync(5 * 60 * 60 * 1_000 + RESET_BUFFER_MS);
+    expect(continueAfterRateLimit).not.toHaveBeenCalled();
+    await host.harness.dispose();
+  });
+
   it("keeps resets beyond the maximum wait manual and applies changes live", async () => {
     const resetAtMs = NOW_MS + 7 * 60 * 60 * 1_000;
     const continueAfterRateLimit = vi.fn(async () => ({

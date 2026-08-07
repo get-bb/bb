@@ -8,7 +8,6 @@ export const providerRetryPhaseSchema = z.enum([
   "retry-failed",
   "releasing",
   "blocked",
-  "unsafe",
 ]);
 export type ProviderRetryPhase = z.infer<typeof providerRetryPhaseSchema>;
 

@@ -21,16 +21,17 @@ The builtin Custom instructions plugin adds a multiline editor under Settings
 → Custom instructions. Saved text is persisted on this bb host and included in
 agent task instructions; blank text contributes nothing.
 
-The opt-in builtin Provider retry plugin continues safe Codex and Claude Code
+The opt-in builtin Provider retry plugin continues Codex and Claude Code
 turns after a structured subscription window resets. Enable it under
 Extensions → Plugins or run `bb plugin enable provider-retry`. It keeps its
 timers in memory, coordinates waits by machine/provider subscription, and adds
 a composer banner with Refresh, Retry now, and Cancel controls. A server restart
 or plugin reload clears pending timers without changing the original failed
 thread. Inspect it with `bb provider-retry status`; use the `refresh`, `now`,
-and `cancel` subcommands to control it. See `bb guide providers` for the safety
-rules. Its `maximumWait` setting defaults to `6 hours`; choose `24 hours` or
-`No limit` from the plugin detail page, or configure it with
+and `cancel` subcommands to control it. See `bb guide providers` for the
+eligibility rules. Prior output or tool activity does not block recovery. Its
+`maximumWait` setting defaults to `6 hours`; choose `24 hours` or `No limit`
+from the plugin detail page, or configure it with
 `bb plugin config provider-retry set maximumWait <value>`.
 
 The builtin Workflows plugin runs durable provider-independent JavaScript

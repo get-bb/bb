@@ -258,7 +258,7 @@ describe("provider rate-limit recovery", () => {
     });
   });
 
-  it("fails closed after output and while the provider owns retries", async () => {
+  it("keeps output-bearing rate-limited turns eligible", async () => {
     await withTestHarness(async (harness) => {
       const outputFixture = seedFailedRateLimitedTurn(harness, {
         withOutput: true,
@@ -267,10 +267,15 @@ describe("provider rate-limit recovery", () => {
         getProviderRateLimitRecoveryStatus(harness.deps, {
           environment: outputFixture.environment,
           thread: outputFixture.thread,
-        }).reason,
-      ).toBe("output-or-side-effect-observed");
+        }),
+      ).toMatchObject({
+        reason: "eligible",
+        candidate: { failedRequestId: FAILED_REQUEST_ID },
+      });
     });
+  });
 
+  it("defers to provider-owned retries", async () => {
     await withTestHarness(async (harness) => {
       const retryFixture = seedFailedRateLimitedTurn(harness, {
         willRetry: true,
@@ -284,7 +289,7 @@ describe("provider rate-limit recovery", () => {
     });
   });
 
-  it("fails closed when a steer follows earlier output in the same turn", async () => {
+  it("continues from the latest accepted steer", async () => {
     await withTestHarness(async (harness) => {
       const fixture = seedFailedRateLimitedTurn(harness, {
         steeredAfterOutput: true,
@@ -294,8 +299,11 @@ describe("provider rate-limit recovery", () => {
         getProviderRateLimitRecoveryStatus(harness.deps, {
           environment: fixture.environment,
           thread: fixture.thread,
-        }).reason,
-      ).toBe("output-or-side-effect-observed");
+        }),
+      ).toMatchObject({
+        reason: "eligible",
+        candidate: { failedRequestId: STEER_REQUEST_ID },
+      });
     });
   });
 
@@ -381,9 +389,9 @@ describe("provider rate-limit recovery", () => {
     });
   });
 
-  it("starts one hidden system continuation with explicit lineage", async () => {
+  it("starts one hidden system continuation after prior output", async () => {
     await withTestHarness(async (harness) => {
-      const fixture = seedFailedRateLimitedTurn(harness);
+      const fixture = seedFailedRateLimitedTurn(harness, { withOutput: true });
       const response = await harness.app.request(
         `/api/v1/threads/${fixture.thread.id}/rate-limit-recovery/continue`,
         {

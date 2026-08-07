@@ -410,7 +410,7 @@ export function registerActionsCommands(
 
   parent
     .command("retry [id]")
-    .description("Continue a safe turn after a provider subscription limit")
+    .description("Continue a turn after a provider subscription limit")
     .option("--self", "Target the current thread (from BB_THREAD_ID)")
     .option(
       "--request-id <id>",
@@ -427,7 +427,7 @@ export function registerActionsCommands(
             opts.requestId ?? status.candidate?.failedRequestId;
           if (failedRequestId === undefined) {
             throw new Error(
-              `Thread ${threadId} cannot be safely continued after a provider rate limit (${status.reason}).`,
+              `Thread ${threadId} cannot be continued after a provider rate limit (${status.reason}).`,
             );
           }
           const result = await sdk.threads.continueAfterRateLimit({
