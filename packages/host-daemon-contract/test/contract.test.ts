@@ -1038,10 +1038,10 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  // Version 81 makes same-instance daemon session replacement reconnect-safe
-  // so enrolled daemons update before receiving the revised server behavior.
-  it("uses protocol version 81 for reconnect-safe session replacement", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(81);
+  // Version 82 changes how the Pi bridge resolves bare model ids. The bump
+  // updates enrolled daemons before they receive the revised model meaning.
+  it("uses protocol version 82 for authenticated Pi model resolution", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(82);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {

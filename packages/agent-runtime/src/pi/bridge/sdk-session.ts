@@ -622,8 +622,10 @@ type PiModel = NonNullable<ReturnType<ModelRuntime["getModel"]>>;
  * only when the first segment names no provider that serves the rest. CLI and
  * SDK callers type that form, and selections stored before bb applied the
  * provider prefix to aggregator models still use it. Two providers can list the
- * same id, and nothing in the string says which one was meant, so an ambiguous
- * match is an error rather than a guess.
+ * same id. When exactly one matching provider has configured credentials, that
+ * provider is the only usable match. Otherwise, nothing in the string says
+ * which provider was meant, so an ambiguous match is an error rather than a
+ * guess.
  */
 function resolveConfiguredModel(
   modelRuntime: ModelRuntime,
@@ -648,6 +650,12 @@ function resolveConfiguredModel(
     .getModels()
     .filter((candidate) => candidate.id === modelStr);
   if (bare.length > 1) {
+    const authenticated = bare.filter((candidate) =>
+      modelRuntime.hasConfiguredAuth(candidate.provider),
+    );
+    if (authenticated.length === 1) {
+      return authenticated[0];
+    }
     const providers = bare.map((candidate) => candidate.provider).join(", ");
     throw new Error(
       `Ambiguous Pi model "${modelStr}": served by ${providers}. Prefix it with the provider you want.`,
