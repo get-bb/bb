@@ -1,8 +1,8 @@
 # Workflows built-in plugin
 
-Workflows is an opt-in built-in plugin (`builtin:workflows`) and is disabled on
-fresh BB installations. It runs provider-independent JavaScript orchestration
-inside QuickJS while delegating actual reasoning to ordinary BB threads.
+Workflows is an enabled-by-default built-in plugin (`builtin:workflows`). It
+runs provider-independent JavaScript orchestration inside QuickJS while
+delegating actual reasoning to ordinary BB threads.
 
 The author-facing native surface is intentionally one tool:
 `bb_workflow_run`. Validation, inspection, listing, and cancellation use the

@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { registerPluginCatalogRoutes } from "../../../src/routes/plugin-catalog.js";
 import { createPluginCatalogService } from "../../../src/services/plugin-catalog/plugin-catalog-service.js";
+import { BUNDLED_PLUGINS } from "../../../src/services/plugins/builtin-registry.js";
 
 describe("plugin catalog routes", () => {
   let db: DbConnection;
@@ -30,9 +31,13 @@ describe("plugin catalog routes", () => {
     const status = await app.request("/plugin-catalog");
     await expect(status.json()).resolves.toMatchObject({
       catalog: {
-        pluginCount: 13,
-        includedPluginCount: 8,
-        optionalPluginCount: 5,
+        pluginCount: BUNDLED_PLUGINS.length,
+        includedPluginCount: BUNDLED_PLUGINS.filter(
+          (plugin) => plugin.autoInstall,
+        ).length,
+        optionalPluginCount: BUNDLED_PLUGINS.filter(
+          (plugin) => !plugin.autoInstall,
+        ).length,
       },
     });
     const search = await app.request("/plugin-catalog/search?q=memory");
