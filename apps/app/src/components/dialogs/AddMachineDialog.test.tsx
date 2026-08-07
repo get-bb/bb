@@ -63,7 +63,14 @@ describe("AddMachineDialog", () => {
     vi.mocked(sdk.hosts.list).mockResolvedValue([existingHost]);
 
     const { queryClient, wrapper } = createQueryClientTestHarness();
-    render(<AddMachineDialog open onOpenChange={vi.fn()} />, { wrapper });
+    render(
+      <AddMachineDialog
+        open
+        onOpenChange={vi.fn()}
+        serverUrl="http://direct.example.test:38886"
+      />,
+      { wrapper },
+    );
 
     const command = await screen.findByText(/--join-code jc_test123/);
     expect(sdk.plugins.callRpc).toHaveBeenCalledWith(
@@ -129,15 +136,24 @@ describe("AddMachineDialog", () => {
     ]);
 
     const { queryClient, wrapper } = createQueryClientTestHarness();
-    render(<AddMachineDialog open onOpenChange={vi.fn()} />, { wrapper });
+    render(
+      <AddMachineDialog
+        open
+        onOpenChange={vi.fn()}
+        serverUrl="http://direct.example.test:38886"
+      />,
+      { wrapper },
+    );
 
     // No machine code (not connect-paired): the direct/LAN command uses the
-    // browser origin and carries no --machine-code flag.
+    // server-reported URL and carries no --machine-code flag.
     const command = await screen.findByText(/--join-code jc_test123/);
     expect(command.textContent).toContain(
-      `curl -fsSL ${window.location.origin}/install.sh`,
+      "curl -fsSL http://direct.example.test:38886/install.sh",
     );
-    expect(command.textContent).toContain(`--server ${window.location.origin}`);
+    expect(command.textContent).toContain(
+      "--server http://direct.example.test:38886",
+    );
     expect(command.textContent).not.toContain("--machine-code");
 
     await waitFor(() => {

@@ -122,7 +122,11 @@ port_is_available() {
 daemon_status_matches() {
   node -e '
     const [port, expectedHostId, expectedServerUrl, requireConnected] = process.argv.slice(1);
-    const normalize = (value) => String(value).replace(/\/+$/u, "");
+    const normalize = (value) => {
+      const url = new URL(String(value));
+      if (url.hostname === "localhost") url.hostname = "127.0.0.1";
+      return url.href.replace(/\/$/u, "");
+    };
     void (async () => {
       const response = await fetch(`http://127.0.0.1:${port}/status`, {
         signal: AbortSignal.timeout(750),

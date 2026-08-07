@@ -66,6 +66,7 @@ function systemConfig(): SystemConfigResponse {
     pluginThemes: [],
     featureFlags: { placeholder: false, timelineWindowEventBudget: 1_500 },
     hostDaemonPort: null,
+    serverUrl: "http://localhost:38886",
     primaryHostId: "host_primary",
     primaryHostPlatform: "darwin",
     voiceTranscriptionEnabled: false,

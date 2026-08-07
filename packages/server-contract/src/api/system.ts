@@ -214,6 +214,8 @@ export const systemConfigResponseSchema = z.object({
   pluginThemes: z.array(pluginThemeMetaSchema),
   featureFlags: featureFlagsSchema,
   hostDaemonPort: z.number().nullable(),
+  /** Base URL external host daemons should use to reach this server. */
+  serverUrl: z.string().url(),
   /**
    * The server-resolved primary host (the machine running the server, or the
    * single known host). Null only on a fresh server where no host has ever

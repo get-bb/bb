@@ -116,6 +116,7 @@ function writeJoinedState(
 function createEnrollingBbAppScript(args: {
   hostId: string;
   invocationPath?: string;
+  statusServerUrl?: string;
 }): string {
   const recordInvocation =
     args.invocationPath === undefined
@@ -135,6 +136,7 @@ const dataDir = process.env.BB_DATA_DIR;
 const hostId = ${JSON.stringify(args.hostId)};
 const port = Number(option("--host-daemon-port"));
 const serverUrl = option("--server-url");
+const statusServerUrl = ${JSON.stringify(args.statusServerUrl)} ?? serverUrl;
 fs.writeFileSync(
   path.join(dataDir, "auth.json"),
   JSON.stringify({ hostId, hostKey: "secret", hostType: "persistent" }) + "\\n",
@@ -149,7 +151,7 @@ const server = http.createServer((request, response) => {
     return;
   }
   response.writeHead(200, { "content-type": "application/json" });
-  response.end(JSON.stringify({ connected: true, hostId, serverUrl }));
+  response.end(JSON.stringify({ connected: true, hostId, serverUrl: statusServerUrl }));
 });
 server.listen(port, "127.0.0.1");
 process.on("SIGTERM", () => server.close(() => process.exit(0)));
@@ -200,10 +202,11 @@ function writeEnrollingBbApp(
   fixture: ReturnType<typeof createFixture>,
   invocationPath: string,
   hostId = "host-test",
+  statusServerUrl?: string,
 ): void {
   writeExecutable(
     join(fixture.binDir, "bb-app"),
-    createEnrollingBbAppScript({ hostId, invocationPath }),
+    createEnrollingBbAppScript({ hostId, invocationPath, statusServerUrl }),
   );
 }
 
@@ -287,6 +290,36 @@ describe("machine install script", () => {
       "--server-url",
       "https://machine.getbb.app",
     ]);
+    const daemonPid = Number(
+      readFileSync(join(fixture.dataDir, "install-daemon.pid"), "utf8"),
+    );
+    process.kill(daemonPid, "SIGTERM");
+  });
+
+  it("accepts the daemon's normalized loopback server URL", () => {
+    const fixture = createFixture();
+    const invocationPath = join(fixture.dataDir, "invocation");
+    writeCurlArtifactMock(fixture, 404);
+    writeEnrollingBbApp(
+      fixture,
+      invocationPath,
+      "host-test",
+      "http://127.0.0.1:20101",
+    );
+    const result = runScript(
+      [
+        "--join-code",
+        "join-secret",
+        "--host-id",
+        "host-test",
+        "--server",
+        "http://localhost:20101",
+      ],
+      fixture,
+      { BB_INSTALL_SKIP_SERVICE: "1" },
+    );
+
+    expect(result.status, result.stderr).toBe(0);
     const daemonPid = Number(
       readFileSync(join(fixture.dataDir, "install-daemon.pid"), "utf8"),
     );

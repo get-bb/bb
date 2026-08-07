@@ -2045,7 +2045,9 @@ async function waitForHealth(args: WaitForHealthArgs): Promise<void> {
 }
 
 function normalizeServerUrlForComparison(serverUrl: string): string {
-  return serverUrl.replace(/\/+$/u, "");
+  const url = new URL(serverUrl);
+  if (url.hostname === "localhost") url.hostname = BB_LOOPBACK_HOST;
+  return url.href.replace(/\/$/u, "");
 }
 
 export async function waitForHostDaemonStatus(

@@ -448,7 +448,7 @@ describe("bb-app launcher", () => {
         JSON.stringify({
           connected: statusRequests >= 2,
           hostId: "host-expected",
-          serverUrl: "https://bb.example.test/",
+          serverUrl: "http://127.0.0.1:38886/",
         }),
       );
     });
@@ -465,7 +465,7 @@ describe("bb-app launcher", () => {
       await waitForHostDaemonStatus({
         childProcess: null,
         expectedHostId: "host-expected",
-        expectedServerUrl: "https://bb.example.test",
+        expectedServerUrl: "http://localhost:38886",
         port: address.port,
         timeoutMs: 1_000,
       });

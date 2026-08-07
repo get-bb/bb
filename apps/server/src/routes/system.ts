@@ -26,7 +26,7 @@ import {
   type PublicApiSchema,
 } from "@bb/server-contract";
 import type { Hono } from "hono";
-import type { ServerAppDeps } from "../types.js";
+import type { ServerAppDeps, ServerRuntimeConfig } from "../types.js";
 import type { PluginService } from "../services/plugins/plugin-service.js";
 import { ApiError } from "../errors.js";
 import {
@@ -64,6 +64,49 @@ const CUSTOM_ACP_LOGO_CONTENT_TYPES = {
   ".svg": "image/svg+xml",
   ".webp": "image/webp",
 } as const;
+
+interface SystemConfigRequest {
+  url: string;
+  header(name: string): string | undefined;
+}
+
+function firstForwardedValue(value: string | undefined): string | undefined {
+  return value?.split(",", 1)[0]?.trim() || undefined;
+}
+
+function effectivePort(url: URL): number | null {
+  if (url.port.length > 0) return Number(url.port);
+  if (url.protocol === "http:") return 80;
+  if (url.protocol === "https:") return 443;
+  return null;
+}
+
+function resolveSystemServerUrl(
+  request: SystemConfigRequest,
+  config: Pick<
+    ServerRuntimeConfig,
+    "appUrl" | "devAppPort" | "isDevelopment" | "serverPort"
+  >,
+): string {
+  if (config.appUrl !== undefined) return config.appUrl.replace(/\/+$/u, "");
+
+  const requestUrl = new URL(request.url);
+  const forwardedHost = firstForwardedValue(request.header("x-forwarded-host"));
+  if (forwardedHost === undefined) return requestUrl.origin;
+
+  const forwardedProtocol =
+    firstForwardedValue(request.header("x-forwarded-proto")) ??
+    requestUrl.protocol.replace(/:$/u, "");
+  const forwardedUrl = new URL(`${forwardedProtocol}://${forwardedHost}`);
+  if (
+    config.isDevelopment &&
+    config.devAppPort !== undefined &&
+    effectivePort(forwardedUrl) === config.devAppPort
+  ) {
+    forwardedUrl.port = String(config.serverPort);
+  }
+  return forwardedUrl.origin;
+}
 
 export function registerSystemRoutes(
   app: Hono,
@@ -103,7 +146,7 @@ export function registerSystemRoutes(
     return resolveAppTheme(themeRoot, themeId, faviconColor);
   }
 
-  async function buildSystemConfigResponse() {
+  async function buildSystemConfigResponse(serverUrl: string) {
     const keybindingOverrides = readAppKeybindingOverrides();
     const primaryHostId = resolvePrimaryHostId(deps);
     return {
@@ -123,6 +166,7 @@ export function registerSystemRoutes(
       pluginThemes: pluginService.listThemes(),
       featureFlags: deps.config.featureFlags,
       hostDaemonPort: deps.config.hostDaemonPort,
+      serverUrl,
       primaryHostId,
       primaryHostPlatform:
         primaryHostId === null
@@ -133,9 +177,10 @@ export function registerSystemRoutes(
     };
   }
 
-  get(routes.config, async (context) =>
-    context.json(await buildSystemConfigResponse()),
-  );
+  get(routes.config, async (context) => {
+    const serverUrl = resolveSystemServerUrl(context.req, deps.config);
+    return context.json(await buildSystemConfigResponse(serverUrl));
+  });
 
   put(routes.generalSettings, (context, payload) => {
     setAppSettings(deps.db, payload);
