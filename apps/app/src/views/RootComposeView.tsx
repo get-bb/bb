@@ -1446,10 +1446,17 @@ export function RootComposeView() {
     environmentValue: effectiveEnvironmentValue,
     projectId,
   });
-  const selectedBranch: RootComposeSelectedBranch | null =
+  const handoffRecoveryBranchName =
     handoffRecoveryTarget?.type === "managed-worktree"
-      ? { name: handoffRecoveryTarget.baseBranch, isNew: false }
-      : scopedSelectedBranch;
+      ? handoffRecoveryTarget.baseBranch
+      : null;
+  const selectedBranch = useMemo<RootComposeSelectedBranch | null>(
+    () =>
+      handoffRecoveryBranchName === null
+        ? scopedSelectedBranch
+        : { name: handoffRecoveryBranchName, isNew: false },
+    [handoffRecoveryBranchName, scopedSelectedBranch],
+  );
   const canChangeBranchSelection =
     projectId !== undefined && effectiveEnvironmentValue !== "";
   const selectedBranchName = selectedBranch?.name ?? "";
