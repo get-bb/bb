@@ -85,6 +85,12 @@ interface ThreadActionContext {
   childThreadCount: number;
 }
 
+/**
+ * Matches the server's managed-environment archive grace window. During this
+ * interval Undo revives a retiring environment without losing worktree state.
+ */
+const ARCHIVE_UNDO_TOAST_DURATION_MS = 10_000;
+
 export function ThreadActionsProvider({
   children,
 }: ThreadActionsProviderProps) {
@@ -343,7 +349,18 @@ export function ThreadActionsProvider({
                   appToast.dismiss(toastId);
                 }}
               />,
-              { id: toastId },
+              {
+                action: {
+                  label: "Undo",
+                  onClick: () => {
+                    for (const threadId of response.archivedThreadIds) {
+                      unarchiveMutate({ id: threadId });
+                    }
+                  },
+                },
+                duration: ARCHIVE_UNDO_TOAST_DURATION_MS,
+                id: toastId,
+              },
             );
           },
           onError: (error) => {
@@ -363,6 +380,7 @@ export function ThreadActionsProvider({
       closePanesForThreads,
       navigate,
       syncNavigationAfterClose,
+      unarchiveMutate,
     ],
   );
 

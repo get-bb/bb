@@ -6,7 +6,6 @@ import type {
   UpdateThreadRequest,
 } from "@bb/server-contract";
 import { sdk } from "@/lib/sdk";
-import { appToast } from "@/components/ui/app-toast";
 import type { LifecycleErrorOperation } from "@/lib/lifecycle-errors";
 import {
   applyReorderPinnedThreadResult,
@@ -38,15 +37,6 @@ import {
 interface ThreadMutationRequest {
   id: string;
 }
-
-/**
- * How long the "Thread archived — Undo" toast stays up. Matches the server's
- * archive grace window (`MANAGED_ENVIRONMENT_RETIRE_GRACE_MS`), within which an
- * Undo revives the environment losslessly (its worktree has not been destroyed
- * yet). After it elapses a destroyed managed environment can only be handed off
- * to a new thread from its surviving branch.
- */
-const ARCHIVE_UNDO_TOAST_DURATION_MS = 10_000;
 
 type UpdateThreadMutationRequest = ThreadMutationRequest & UpdateThreadRequest;
 type ReorderPinnedThreadMutationRequest = ThreadMutationRequest &
@@ -272,29 +262,6 @@ export function useArchiveThreadAndChildren() {
       }),
     onError: (_error, _variables, context) => {
       rollbackArchiveThreadsTransaction({ queryClient, transaction: context });
-    },
-    onSuccess: (data) => {
-      // Offer a quick, lossless Undo while the environment is still inside its
-      // grace window: un-archiving revives a retiring environment in place
-      // (retire.cancelled), so the worktree and uncommitted work are preserved.
-      const archivedThreadIds = data.archivedThreadIds;
-      appToast.message("Thread archived", {
-        action: {
-          label: "Undo",
-          onClick: () => {
-            void Promise.all(
-              archivedThreadIds.map((threadId) =>
-                sdk.threads.unarchive({ threadId }),
-              ),
-            ).then(() => {
-              for (const threadId of archivedThreadIds) {
-                settleThreadListMembershipMutation({ queryClient, threadId });
-              }
-            });
-          },
-        },
-        duration: ARCHIVE_UNDO_TOAST_DURATION_MS,
-      });
     },
     onSettled: (data, _error, _variables, context) => {
       settleArchiveThreadsTransaction({
