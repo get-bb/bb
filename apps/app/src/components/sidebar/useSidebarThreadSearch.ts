@@ -21,6 +21,8 @@ interface UseSidebarThreadSearchOptions {
   onOpenSidebar: () => void;
   /** Opens the thread behind a selected result. */
   onOpenThread: (item: SidebarThreadSearchNavigationItem) => void;
+  /** Runs after any sidebar thread opens; closes the mobile sidebar drawer. */
+  onThreadOpened: () => void;
 }
 
 export interface SidebarThreadSearchController {
@@ -32,6 +34,11 @@ export interface SidebarThreadSearchController {
   onActiveIndexChange: (index: number) => void;
   /** Clears the query and returns the sidebar to its pre-search state. */
   onClose: () => void;
+  /**
+   * Ends search after a thread opens outside the result list, such as from a
+   * plugin thread list that filters by the host query.
+   */
+  onExternalThreadOpen: () => void;
   onKeyDown: KeyboardEventHandler<HTMLDivElement>;
   onNavigationItemsChange: (
     items: readonly SidebarThreadSearchNavigationItem[],
@@ -50,6 +57,7 @@ export function useSidebarThreadSearch({
   isPointerCoarse,
   onOpenSidebar,
   onOpenThread,
+  onThreadOpened,
 }: UseSidebarThreadSearchOptions): SidebarThreadSearchController {
   const [isActive, setIsActive] = useState(false);
   const [query, setQuery] = useState("");
@@ -98,14 +106,21 @@ export function useSidebarThreadSearch({
     [],
   );
 
+  // Search is a transient mode over the thread list. Once a thread opens, the
+  // query has done its work, so drop it and show the list again. Every sidebar
+  // thread selection ends here: a result row, and a plugin list that filters by
+  // the host query.
+  const handleThreadOpened = useCallback(() => {
+    onThreadOpened();
+    handleClose();
+  }, [handleClose, onThreadOpened]);
+
   const handleSelectItem = useCallback(
     (item: SidebarThreadSearchNavigationItem) => {
       onOpenThread(item);
-      // Search is a transient mode over the thread list. Once the thread opens,
-      // the query has done its work, so drop it and show the list again.
-      handleClose();
+      handleThreadOpened();
     },
-    [handleClose, onOpenThread],
+    [handleThreadOpened, onOpenThread],
   );
 
   const handleKeyDown = useCallback<KeyboardEventHandler<HTMLDivElement>>(
@@ -178,6 +193,7 @@ export function useSidebarThreadSearch({
     onActivate: handleActivate,
     onActiveIndexChange: setActiveIndex,
     onClose: handleClose,
+    onExternalThreadOpen: handleThreadOpened,
     onKeyDown: handleKeyDown,
     onNavigationItemsChange: handleNavigationItemsChange,
     onQueryChange: setQuery,

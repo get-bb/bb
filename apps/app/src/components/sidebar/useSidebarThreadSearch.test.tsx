@@ -36,6 +36,7 @@ const SECOND_ITEM = createNavigationItem("thr_second");
 function renderSearch() {
   const onOpenSidebar = vi.fn();
   const onOpenThread = vi.fn();
+  const onThreadOpened = vi.fn();
   let controller: SidebarThreadSearchController | null = null;
 
   function Harness({
@@ -47,6 +48,7 @@ function renderSearch() {
       isPointerCoarse: false,
       onOpenSidebar,
       onOpenThread,
+      onThreadOpened,
     });
     // Publish the controller of every render, so each assertion reads the
     // state the sidebar currently shows.
@@ -81,7 +83,7 @@ function renderSearch() {
     return controller;
   };
 
-  return { getController, onOpenSidebar, onOpenThread };
+  return { getController, onOpenSidebar, onOpenThread, onThreadOpened };
 }
 
 function openSearchWithResults(
@@ -126,7 +128,7 @@ describe("useSidebarThreadSearch", () => {
   });
 
   it("clears the search state after a pointer click opens a thread", () => {
-    const { getController, onOpenThread } = renderSearch();
+    const { getController, onOpenThread, onThreadOpened } = renderSearch();
     openSearchWithResults(getController);
 
     act(() => {
@@ -134,6 +136,22 @@ describe("useSidebarThreadSearch", () => {
     });
 
     expect(onOpenThread).toHaveBeenCalledWith(FIRST_ITEM);
+    expect(onThreadOpened).toHaveBeenCalledTimes(1);
+    expectSearchIsReset(getController());
+  });
+
+  // A plugin thread list filters by the host query and opens threads itself, so
+  // its `onNavigate` must end search on every viewport, not only on mobile.
+  it("clears the search state when a plugin thread list opens a thread", () => {
+    const { getController, onOpenThread, onThreadOpened } = renderSearch();
+    openSearchWithResults(getController);
+
+    act(() => {
+      getController().onExternalThreadOpen();
+    });
+
+    expect(onThreadOpened).toHaveBeenCalledTimes(1);
+    expect(onOpenThread).not.toHaveBeenCalled();
     expectSearchIsReset(getController());
   });
 

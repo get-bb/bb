@@ -67,8 +67,9 @@ interface PluginThreadListProps {
   /** True on phone-width viewports and coarse pointers. */
   isCompactViewport: boolean;
   /**
-   * Call after the user opens a thread. It closes the mobile sidebar. It is
-   * a no-op on desktop, so always call it.
+   * Call after the user opens a thread. It closes the mobile sidebar, and it
+   * clears the host search field on every viewport. Always call it, or the
+   * sidebar stays in search mode after the thread opens.
    */
   onNavigate: () => void;
   /**

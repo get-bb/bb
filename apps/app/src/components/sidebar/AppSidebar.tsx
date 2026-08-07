@@ -135,24 +135,16 @@ export function AppSidebar({
             }
           : undefined,
       );
-      closeOnMobile();
     },
-    [closeOnMobile, navigate],
+    [navigate],
   );
 
   const threadSearch = useSidebarThreadSearch({
     isPointerCoarse,
     onOpenSidebar: openSidebarForThreadSearch,
     onOpenThread: openSearchedThread,
+    onThreadOpened: closeOnMobile,
   });
-  const closeThreadSearch = threadSearch.onClose;
-
-  // A plugin thread list reads the host search field, so opening a thread from
-  // it ends search the same way a built-in result row does.
-  const handlePluginThreadListNavigate = useCallback(() => {
-    closeOnMobile();
-    closeThreadSearch();
-  }, [closeOnMobile, closeThreadSearch]);
 
   const handleNewChat = useCallback(() => {
     closeOnMobile();
@@ -314,7 +306,7 @@ export function AppSidebar({
               slot={threadListProvider}
               builtInFallback={builtInThreadList}
               searchQuery={threadSearch.query}
-              onNavigate={handlePluginThreadListNavigate}
+              onNavigate={threadSearch.onExternalThreadOpen}
             />
           ) : (
             builtInThreadList
