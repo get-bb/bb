@@ -25,9 +25,6 @@ export function isTimelineUngroupableMessage(
   if (message.kind === "assistant-text") {
     return message.isLegacyUserMessage === true;
   }
-  if (message.kind === "operation" && message.opType === "compaction") {
-    return true;
-  }
   return message.kind === "debug/raw-event";
 }
 

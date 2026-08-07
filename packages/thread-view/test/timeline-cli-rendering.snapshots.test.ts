@@ -870,22 +870,6 @@ describe("timeline CLI rendering snapshots", () => {
     `);
   });
 
-  it("keeps completed context compaction visible outside a collapsed turn", () => {
-    const event = createTimelineEventFactory({ threadId: "thread-1" });
-    const timeline = renderIdleTimeline([
-      event.turnStarted(),
-      event.contextCompactionStarted(),
-      event.threadCompacted(),
-      event.turnCompleted(),
-    ]);
-
-    expect(timeline.turnRows).toHaveLength(0);
-    expect(messageKinds(timeline.messages)).toEqual(["operation"]);
-    expect(timeline.text).toMatchInlineSnapshot(`
-      "── Context compacted ───────────────────────────────────────"
-    `);
-  });
-
   it("keeps a finished-turn summary when work follows an assistant step", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
     const timeline = renderIdleTimeline([
