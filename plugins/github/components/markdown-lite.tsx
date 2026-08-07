@@ -1,5 +1,5 @@
 // A tiny zero-dependency markdown renderer for issue/comment bodies.
-// Supports: # headings, paragraphs, fenced code blocks, - lists,
+// Supports: # headings, paragraphs, fenced code blocks, - lists, GFM tables,
 // `inline code`, **bold**, *italic*, [links](url), ![images](url), and raw
 // `<img …>` tags (GitHub's attachment uploader emits HTML img tags, not
 // markdown). Everything is built as React elements — img attributes are
@@ -108,6 +108,111 @@ function renderInline(text: string): React.ReactNode[] {
   return nodes;
 }
 
+type TableAlignment = "left" | "center" | "right" | null;
+
+interface ParsedTable {
+  alignments: TableAlignment[];
+  header: string[];
+  rows: string[][];
+  nextLine: number;
+}
+
+function isEscaped(text: string, index: number): boolean {
+  let backslashes = 0;
+  for (let i = index - 1; i >= 0 && text[i] === "\\"; i--) {
+    backslashes++;
+  }
+  return backslashes % 2 === 1;
+}
+
+function hasUnescapedPipe(line: string): boolean {
+  for (let i = 0; i < line.length; i++) {
+    if (line[i] === "|" && !isEscaped(line, i)) return true;
+  }
+  return false;
+}
+
+/** Split a GFM table row while retaining escaped pipes inside cells. */
+function splitTableRow(line: string): string[] {
+  let row = line.trim();
+  if (row.startsWith("|")) row = row.slice(1);
+  if (row.endsWith("|") && !isEscaped(row, row.length - 1)) {
+    row = row.slice(0, -1);
+  }
+
+  const cells: string[] = [];
+  let cell = "";
+  for (let i = 0; i < row.length; i++) {
+    if (row[i] === "|" && !isEscaped(row, i)) {
+      cells.push(cell.trim());
+      cell = "";
+      continue;
+    }
+    if (row[i] === "|" && cell.endsWith("\\")) {
+      cell = cell.slice(0, -1);
+    }
+    cell += row[i];
+  }
+  cells.push(cell.trim());
+  return cells;
+}
+
+function parseTableAlignment(cell: string): TableAlignment | undefined {
+  if (!/^:?-+:?$/.test(cell)) return undefined;
+  const left = cell.startsWith(":");
+  const right = cell.endsWith(":");
+  if (left && right) return "center";
+  if (right) return "right";
+  if (left) return "left";
+  return null;
+}
+
+function parseTable(lines: string[], startLine: number): ParsedTable | null {
+  if (startLine + 1 >= lines.length) return null;
+  const headerLine = lines[startLine];
+  const delimiterLine = lines[startLine + 1];
+  if (!hasUnescapedPipe(headerLine) || !hasUnescapedPipe(delimiterLine)) {
+    return null;
+  }
+
+  const header = splitTableRow(headerLine);
+  const delimiterCells = splitTableRow(delimiterLine);
+  if (header.length !== delimiterCells.length) return null;
+
+  const alignments: TableAlignment[] = [];
+  for (const cell of delimiterCells) {
+    const alignment = parseTableAlignment(cell);
+    if (alignment === undefined) return null;
+    alignments.push(alignment);
+  }
+
+  const rows: string[][] = [];
+  let nextLine = startLine + 2;
+  while (
+    nextLine < lines.length &&
+    lines[nextLine].trim() !== "" &&
+    hasUnescapedPipe(lines[nextLine])
+  ) {
+    const cells = splitTableRow(lines[nextLine]).slice(0, header.length);
+    while (cells.length < header.length) cells.push("");
+    rows.push(cells);
+    nextLine++;
+  }
+
+  return { alignments, header, rows, nextLine };
+}
+
+function tableAlignmentClass(alignment: TableAlignment): string {
+  switch (alignment) {
+    case "center":
+      return "text-center";
+    case "right":
+      return "text-right";
+    default:
+      return "text-left";
+  }
+}
+
 const HEADING_CLASSES = [
   "text-lg font-semibold",
   "text-base font-semibold",
@@ -166,6 +271,49 @@ export function Markdown({
       i++;
       continue;
     }
+    const table = parseTable(lines, i);
+    if (table) {
+      blocks.push(
+        <div key={key++} className="overflow-x-auto">
+          <table className="w-max min-w-full border-collapse border border-border">
+            <thead className="bg-surface-recessed">
+              <tr>
+                {table.header.map((cell, column) => (
+                  <th
+                    key={column}
+                    className={cn(
+                      "border border-border px-2 py-1 font-medium",
+                      tableAlignmentClass(table.alignments[column]),
+                    )}
+                  >
+                    {renderInline(cell)}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {table.rows.map((row, rowIndex) => (
+                <tr key={rowIndex}>
+                  {row.map((cell, column) => (
+                    <td
+                      key={column}
+                      className={cn(
+                        "border border-border px-2 py-1",
+                        tableAlignmentClass(table.alignments[column]),
+                      )}
+                    >
+                      {renderInline(cell)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>,
+      );
+      i = table.nextLine;
+      continue;
+    }
     if (/^\s*-\s+/.test(line)) {
       const items: React.ReactNode[] = [];
       while (i < lines.length && /^\s*-\s+/.test(lines[i])) {
@@ -188,7 +336,8 @@ export function Markdown({
       lines[i].trim() !== "" &&
       !lines[i].startsWith("```") &&
       !/^(#{1,6})\s+/.test(lines[i]) &&
-      !/^\s*-\s+/.test(lines[i])
+      !/^\s*-\s+/.test(lines[i]) &&
+      parseTable(lines, i) === null
     ) {
       para.push(lines[i]);
       i++;
