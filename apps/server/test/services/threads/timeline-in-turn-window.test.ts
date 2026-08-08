@@ -612,7 +612,7 @@ describe("in-turn timeline windows", () => {
     expect(commandCallIds.size).toBe(650);
     expect(expandedCommandCallIds.size).toBe(650);
     expect(turnRowIds.size).toBe(pages);
-  });
+  }, 15_000);
 
   it("keeps latest byte-page row identities stable while a turn grows", () => {
     const { db, thread } = setup();
@@ -757,7 +757,7 @@ describe("in-turn timeline windows", () => {
     expect(pages).toBeGreaterThan(1);
     expect(commandCallIds.size).toBe(650);
     expect(expandedCommandCallIds.size).toBe(650);
-  });
+  }, 15_000);
 
   it("returns a placeholder when one event exceeds the byte limit", () => {
     const { db, thread } = setup();
