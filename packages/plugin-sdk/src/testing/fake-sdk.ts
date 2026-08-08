@@ -46,21 +46,21 @@ export interface FakeSdkHarness {
 }
 
 /**
- * Mirrors the server's `wrapSdkForPlugin`: `threads.spawn` defaults
- * `origin` to "plugin" and `originPluginId` to the plugin's id unless the
- * caller set them explicitly.
+ * Mirrors the server's `wrapSdkForPlugin`: thread creation (`threads.spawn`,
+ * `threads.fork`, `threads.import`) defaults `origin` to "plugin" and
+ * `originPluginId` to the plugin's id unless the caller set them explicitly.
  */
-function withSpawnAttribution(pluginId: string, args: unknown[]): unknown[] {
+function withPluginAttribution(pluginId: string, args: unknown[]): unknown[] {
   const [first, ...rest] = args;
   if (typeof first !== "object" || first === null) return args;
-  const spawnArgs = first as { origin?: string; originPluginId?: string };
-  const origin = spawnArgs.origin ?? "plugin";
+  const createArgs = first as { origin?: string; originPluginId?: string };
+  const origin = createArgs.origin ?? "plugin";
   return [
     {
-      ...spawnArgs,
+      ...createArgs,
       origin,
       ...(origin === "plugin"
-        ? { originPluginId: spawnArgs.originPluginId ?? pluginId }
+        ? { originPluginId: createArgs.originPluginId ?? pluginId }
         : {}),
     },
     ...rest,
@@ -88,8 +88,10 @@ export function createFakeSdk(options: {
 
   function invoke(path: string, rawArgs: unknown[]): unknown {
     const args =
-      path === "threads.spawn"
-        ? withSpawnAttribution(options.pluginId, rawArgs)
+      path === "threads.spawn" ||
+      path === "threads.fork" ||
+      path === "threads.import"
+        ? withPluginAttribution(options.pluginId, rawArgs)
         : rawArgs;
     calls.push({ path, args });
     const stub = stubs.get(path);

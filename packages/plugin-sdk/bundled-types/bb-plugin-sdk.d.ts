@@ -13058,8 +13058,9 @@ interface BbPluginApi {
      * server binds it before loading plugins, so it is available from the
      * moment factories run there — but isolated harnesses may not, so prefer
      * using it from handlers, services, and timers for portability.
-     * `threads.spawn` defaults `origin` to "plugin" and `originPluginId` to
-     * this plugin's id so spawned threads are attributed automatically.
+     * Thread creation (`threads.spawn`, `threads.fork`, `threads.import`)
+     * defaults `origin` to "plugin" and `originPluginId` to this plugin's id
+     * so created threads are attributed automatically.
      */
     readonly sdk: BbSdk;
     /**

@@ -52,7 +52,12 @@ import type {
   PluginUi,
   StandardSchemaV1,
 } from "@bb/plugin-sdk";
-import type { BbSdk, ThreadForkArgs, ThreadSpawnArgs } from "@bb/sdk";
+import type {
+  BbSdk,
+  ThreadForkArgs,
+  ThreadImportArgs,
+  ThreadSpawnArgs,
+} from "@bb/sdk";
 import type { ServerLogger } from "../../types.js";
 import type { PluginInteractionResult } from "../interactions/pending-interactions.js";
 import { appendPluginLogLine } from "./plugin-log.js";
@@ -485,6 +490,16 @@ function wrapSdkForPlugin(sdk: BbSdk, pluginId: string): BbSdk {
       fork(args: ThreadForkArgs) {
         const origin = args.origin ?? "plugin";
         return sdk.threads.fork({
+          ...args,
+          origin,
+          ...(origin === "plugin"
+            ? { originPluginId: args.originPluginId ?? pluginId }
+            : {}),
+        });
+      },
+      import(args: ThreadImportArgs) {
+        const origin = args.origin ?? "plugin";
+        return sdk.threads.import({
           ...args,
           origin,
           ...(origin === "plugin"

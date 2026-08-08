@@ -6,6 +6,7 @@ import {
   createConnection,
   getThread,
   migrate,
+  upsertProjectExecutionDefaults,
   type DbConnection,
 } from "@bb/db";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
@@ -324,6 +325,73 @@ describe("plugin bb.sdk against a running server", () => {
       await expect(
         api.sdk.threads.stop({ threadId: operable.id }),
       ).resolves.toEqual({ ok: true });
+    } finally {
+      await server.pluginService.stop();
+      await rm(workDir, { recursive: true, force: true });
+      await server.close();
+    }
+  });
+
+  it("attributes imported threads to the plugin unless it sets an explicit origin", async () => {
+    const server = await startTestServer();
+    const workDir = await mkdtemp(join(tmpdir(), "bb-plugin-sdk-import-"));
+    try {
+      const { host } = seedHostSession(server.deps);
+      const { project } = seedProjectWithSource(server.deps, {
+        hostId: host.id,
+        path: "/tmp/plugin-sdk-import-source",
+      });
+      seedEnvironment(server.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/plugin-sdk-import-source",
+      });
+      // Stored defaults keep the create flow off the live model-catalog probe.
+      upsertProjectExecutionDefaults(server.db, {
+        projectId: project.id,
+        providerId: "acp-omp",
+        model: "omp/default",
+        reasoningLevel: "medium",
+        permissionMode: "full",
+        serviceTier: "default",
+      });
+
+      server.pluginService.bindSdk({ baseUrl: server.baseUrl });
+      const rootDir = await writePlugin(workDir, {
+        name: "bb-plugin-importer",
+        serverSource: `export default function plugin() {}`,
+      });
+      const entry = await server.pluginService.installPath(rootDir);
+      expect(entry.status).toBe("running");
+      const api = requireApi(server.pluginService, "importer");
+
+      // Default: the plugin api must fill in origin "plugin" + its own id,
+      // exactly like spawn and fork.
+      const imported = await api.sdk.threads.import({
+        projectId: project.id,
+        providerId: "acp-omp",
+        providerSessionId: "plugin-import-default",
+        hostId: host.id,
+        cwd: "/tmp/plugin-sdk-import-source",
+      });
+      expect(imported.originPluginId).toBe("importer");
+      expect(getThread(server.db, imported.id)).toMatchObject({
+        originPluginId: "importer",
+      });
+
+      // An explicit non-plugin origin opts out of attribution entirely.
+      const unattributed = await api.sdk.threads.import({
+        projectId: project.id,
+        providerId: "acp-omp",
+        providerSessionId: "plugin-import-explicit",
+        hostId: host.id,
+        cwd: "/tmp/plugin-sdk-import-source",
+        origin: "sdk",
+      });
+      expect(unattributed.originPluginId).toBeNull();
+      expect(getThread(server.db, unattributed.id)).toMatchObject({
+        originPluginId: null,
+      });
     } finally {
       await server.pluginService.stop();
       await rm(workDir, { recursive: true, force: true });
