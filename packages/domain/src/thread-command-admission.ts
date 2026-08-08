@@ -13,6 +13,7 @@ export const threadCommandKindValues = [
   "interaction.answer",
   "interaction.approve",
   "read.mark",
+  "branch.publish",
 ] as const;
 export const threadCommandKindSchema = z.enum(threadCommandKindValues);
 export type ThreadCommandKind = z.infer<typeof threadCommandKindSchema>;
@@ -36,6 +37,7 @@ export const threadCommandAdmissionDispositionValues = [
   "answered",
   "approved",
   "marked",
+  "published",
 ] as const;
 export const threadCommandAdmissionDispositionSchema = z.enum(
   threadCommandAdmissionDispositionValues,
@@ -112,6 +114,16 @@ const threadCommandMarkedResultSchema = z
   })
   .strict();
 
+const threadCommandPublishedResultSchema = z
+  .object({
+    disposition: z.literal("published"),
+    provider: z.literal("github"),
+    prNumber: z.number().int().positive(),
+    prUrl: z.string().url(),
+    commitSha: z.string().min(1),
+  })
+  .strict();
+
 export const threadCommandAdmissionResultSchema = z.discriminatedUnion(
   "disposition",
   [
@@ -122,6 +134,7 @@ export const threadCommandAdmissionResultSchema = z.discriminatedUnion(
     threadCommandAnsweredResultSchema,
     threadCommandApprovedResultSchema,
     threadCommandMarkedResultSchema,
+    threadCommandPublishedResultSchema,
   ],
 );
 export type ThreadCommandAdmissionResult = z.infer<
@@ -168,6 +181,12 @@ export const threadCommandAdmissionCommandResultSchema = z.discriminatedUnion(
       .object({
         commandKind: z.literal("read.mark"),
         result: threadCommandMarkedResultSchema,
+      })
+      .strict(),
+    z
+      .object({
+        commandKind: z.literal("branch.publish"),
+        result: threadCommandPublishedResultSchema,
       })
       .strict(),
   ],

@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  BRANCH_PUBLISH_REQUEST_FINGERPRINT_FORMAT_VERSION,
+  fingerprintBranchPublishRequest,
   fingerprintInteractionAnswerRequest,
   fingerprintInteractionApproveRequest,
   fingerprintReadMarkRequest,
@@ -154,5 +156,34 @@ describe("fingerprintReadMarkRequest", () => {
     expect(() => fingerprintReadMarkRequest({ eventCursor: "" })).toThrow(
       /eventCursor/u,
     );
+  });
+});
+
+describe("fingerprintBranchPublishRequest", () => {
+  it("is stable for empty optional fields and key order", () => {
+    const emptyLeft = fingerprintBranchPublishRequest({});
+    const emptyRight = fingerprintBranchPublishRequest();
+    expect(emptyLeft).toBe(emptyRight);
+    expect(emptyLeft).toMatch(/^sha256:[a-f0-9]{64}$/u);
+    expect(BRANCH_PUBLISH_REQUEST_FINGERPRINT_FORMAT_VERSION).toBe(1);
+
+    const withFieldsLeft = fingerprintBranchPublishRequest({
+      body: "body",
+      title: "title",
+    });
+    const withFieldsRight = fingerprintBranchPublishRequest({
+      title: "title",
+      body: "body",
+    });
+    expect(withFieldsLeft).toBe(withFieldsRight);
+    expect(withFieldsLeft).not.toBe(emptyLeft);
+  });
+
+  it("conflicts when title or body changes", () => {
+    const base = fingerprintBranchPublishRequest({ title: "a" });
+    expect(fingerprintBranchPublishRequest({ title: "b" })).not.toBe(base);
+    expect(
+      fingerprintBranchPublishRequest({ title: "a", body: "x" }),
+    ).not.toBe(base);
   });
 });

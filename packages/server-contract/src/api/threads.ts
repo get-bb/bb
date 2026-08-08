@@ -319,6 +319,16 @@ const threadCommandAdmissionMarkedResultSchema = z
   })
   .strict();
 
+const threadCommandAdmissionPublishedResultSchema = z
+  .object({
+    disposition: z.literal("published"),
+    provider: z.literal("github"),
+    prNumber: z.number().int().positive(),
+    prUrl: z.string().url(),
+    commitSha: z.string().min(1),
+  })
+  .strict();
+
 export const threadCommandAdmissionReceiptResultSchema = z.discriminatedUnion(
   "disposition",
   [
@@ -329,6 +339,7 @@ export const threadCommandAdmissionReceiptResultSchema = z.discriminatedUnion(
     threadCommandAdmissionAnsweredResultSchema,
     threadCommandAdmissionApprovedResultSchema,
     threadCommandAdmissionMarkedResultSchema,
+    threadCommandAdmissionPublishedResultSchema,
   ],
 );
 export type ThreadCommandAdmissionReceiptResult = z.infer<

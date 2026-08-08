@@ -43,6 +43,11 @@ export const INTERACTION_APPROVE_REQUEST_FINGERPRINT_FORMAT_VERSION = 1 as const
 export const READ_MARK_REQUEST_FINGERPRINT_FORMAT_VERSION = 1 as const;
 
 /**
+ * Format version for deterministic `branch.publish` fingerprints.
+ */
+export const BRANCH_PUBLISH_REQUEST_FINGERPRINT_FORMAT_VERSION = 1 as const;
+
+/**
  * Client intent hashed for admission identity. Excludes actor, thread ID, and
  * request ID — those are separate admission identity fields. Computed before
  * plugin expansion or other volatile server context.
@@ -87,6 +92,19 @@ export type ReadMarkRequestFingerprintIntent = {
    * command. Must be present in the fingerprint payload.
    */
   readonly eventCursor: string;
+};
+
+export type BranchPublishRequestFingerprintIntent = {
+  /**
+   * Optional PR title from the Room command. Omitted when the client left the
+   * field off so defaults applied later do not change admission identity.
+   */
+  readonly title?: string;
+  /**
+   * Optional PR body from the Room command. Omitted when the client left the
+   * field off so defaults applied later do not change admission identity.
+   */
+  readonly body?: string;
 };
 
 /**
@@ -246,5 +264,23 @@ export function fingerprintReadMarkRequest(
       eventCursor: intent.eventCursor,
     },
     "read.mark",
+  );
+}
+
+/**
+ * Builds a versioned SHA-256 fingerprint over `branch.publish` intent: command
+ * kind/version plus only the optional title/body fields the client supplied.
+ */
+export function fingerprintBranchPublishRequest(
+  intent: BranchPublishRequestFingerprintIntent = {},
+): ThreadCommandRequestFingerprint {
+  return hashCanonicalJsonFingerprint(
+    {
+      commandKind: "branch.publish",
+      fingerprintFormatVersion: BRANCH_PUBLISH_REQUEST_FINGERPRINT_FORMAT_VERSION,
+      ...(intent.title !== undefined ? { title: intent.title } : {}),
+      ...(intent.body !== undefined ? { body: intent.body } : {}),
+    },
+    "branch.publish",
   );
 }

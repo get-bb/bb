@@ -90,6 +90,22 @@ describe("thread command admission schemas", () => {
       disposition: "marked",
       readCursor: "evt_cursor_1",
     });
+
+    expect(
+      threadCommandAdmissionResultSchema.parse({
+        disposition: "published",
+        provider: "github",
+        prNumber: 42,
+        prUrl: "https://github.com/org/repo/pull/42",
+        commitSha: "abc123def",
+      }),
+    ).toEqual({
+      disposition: "published",
+      provider: "github",
+      prNumber: 42,
+      prUrl: "https://github.com/org/repo/pull/42",
+      commitSha: "abc123def",
+    });
   });
 
   it("rejects malformed fingerprints and mixed pointer shapes", () => {
@@ -146,6 +162,24 @@ describe("thread command admission schemas", () => {
         readCursor: "",
       }).success,
     ).toBe(false);
+    expect(
+      threadCommandAdmissionResultSchema.safeParse({
+        disposition: "published",
+        provider: "gitlab",
+        prNumber: 1,
+        prUrl: "https://example.com/pr/1",
+        commitSha: "abc",
+      }).success,
+    ).toBe(false);
+    expect(
+      threadCommandAdmissionResultSchema.safeParse({
+        disposition: "published",
+        provider: "github",
+        prNumber: 0,
+        prUrl: "https://example.com/pr/1",
+        commitSha: "abc",
+      }).success,
+    ).toBe(false);
   });
 
   it("rejects terminal results that do not match the admitted command kind", () => {
@@ -199,6 +233,36 @@ describe("thread command admission schemas", () => {
       parseThreadCommandAdmissionResultForKind("read.mark", {
         disposition: "answered",
         interactionId: "pi_3",
+      }),
+    ).toThrow();
+    expect(
+      parseThreadCommandAdmissionResultForKind("branch.publish", {
+        disposition: "published",
+        provider: "github",
+        prNumber: 7,
+        prUrl: "https://github.com/org/repo/pull/7",
+        commitSha: "deadbeef",
+      }),
+    ).toEqual({
+      disposition: "published",
+      provider: "github",
+      prNumber: 7,
+      prUrl: "https://github.com/org/repo/pull/7",
+      commitSha: "deadbeef",
+    });
+    expect(() =>
+      parseThreadCommandAdmissionResultForKind("branch.publish", {
+        disposition: "marked",
+        readCursor: "evt_1",
+      }),
+    ).toThrow();
+    expect(() =>
+      parseThreadCommandAdmissionResultForKind("read.mark", {
+        disposition: "published",
+        provider: "github",
+        prNumber: 1,
+        prUrl: "https://github.com/org/repo/pull/1",
+        commitSha: "abc",
       }),
     ).toThrow();
   });

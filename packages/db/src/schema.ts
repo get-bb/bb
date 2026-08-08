@@ -991,6 +991,9 @@ export const threadCommandAdmissions = sqliteTable(
     resultExpectedTurnId: text("result_expected_turn_id"),
     resultInteractionId: text("result_interaction_id"),
     resultReadCursor: text("result_read_cursor"),
+    resultPrUrl: text("result_pr_url"),
+    resultPrNumber: integer("result_pr_number"),
+    resultCommitSha: text("result_commit_sha"),
     createdAt: integer("created_at").notNull(),
     completedAt: integer("completed_at").notNull(),
   },
@@ -1003,19 +1006,21 @@ export const threadCommandAdmissions = sqliteTable(
     check(
       "thread_command_admissions_result_shape_check",
       sql`(
-        (${table.commandKind} = 'message.send' AND ${table.resultDisposition} = 'started' AND ${table.resultEventSequence} IS NOT NULL AND ${table.resultQueuedMessageId} IS NULL AND ${table.resultExpectedTurnId} IS NULL AND ${table.resultInteractionId} IS NULL AND ${table.resultReadCursor} IS NULL)
+        (${table.commandKind} = 'message.send' AND ${table.resultDisposition} = 'started' AND ${table.resultEventSequence} IS NOT NULL AND ${table.resultQueuedMessageId} IS NULL AND ${table.resultExpectedTurnId} IS NULL AND ${table.resultInteractionId} IS NULL AND ${table.resultReadCursor} IS NULL AND ${table.resultPrUrl} IS NULL AND ${table.resultPrNumber} IS NULL AND ${table.resultCommitSha} IS NULL)
         OR
-        (${table.commandKind} = 'message.send' AND ${table.resultDisposition} = 'queued' AND ${table.resultQueuedMessageId} IS NOT NULL AND ${table.resultEventSequence} IS NULL AND ${table.resultExpectedTurnId} IS NULL AND ${table.resultInteractionId} IS NULL AND ${table.resultReadCursor} IS NULL)
+        (${table.commandKind} = 'message.send' AND ${table.resultDisposition} = 'queued' AND ${table.resultQueuedMessageId} IS NOT NULL AND ${table.resultEventSequence} IS NULL AND ${table.resultExpectedTurnId} IS NULL AND ${table.resultInteractionId} IS NULL AND ${table.resultReadCursor} IS NULL AND ${table.resultPrUrl} IS NULL AND ${table.resultPrNumber} IS NULL AND ${table.resultCommitSha} IS NULL)
         OR
-        (${table.commandKind} = 'message.steer' AND ${table.resultDisposition} = 'steered' AND ${table.resultEventSequence} IS NOT NULL AND ${table.resultQueuedMessageId} IS NULL AND ${table.resultExpectedTurnId} IS NOT NULL AND ${table.resultInteractionId} IS NULL AND ${table.resultReadCursor} IS NULL)
+        (${table.commandKind} = 'message.steer' AND ${table.resultDisposition} = 'steered' AND ${table.resultEventSequence} IS NOT NULL AND ${table.resultQueuedMessageId} IS NULL AND ${table.resultExpectedTurnId} IS NOT NULL AND ${table.resultInteractionId} IS NULL AND ${table.resultReadCursor} IS NULL AND ${table.resultPrUrl} IS NULL AND ${table.resultPrNumber} IS NULL AND ${table.resultCommitSha} IS NULL)
         OR
-        (${table.commandKind} = 'thread.interrupt' AND ${table.resultDisposition} = 'interrupted' AND ${table.resultEventSequence} IS NOT NULL AND ${table.resultQueuedMessageId} IS NULL AND ${table.resultExpectedTurnId} IS NOT NULL AND ${table.resultInteractionId} IS NULL AND ${table.resultReadCursor} IS NULL)
+        (${table.commandKind} = 'thread.interrupt' AND ${table.resultDisposition} = 'interrupted' AND ${table.resultEventSequence} IS NOT NULL AND ${table.resultQueuedMessageId} IS NULL AND ${table.resultExpectedTurnId} IS NOT NULL AND ${table.resultInteractionId} IS NULL AND ${table.resultReadCursor} IS NULL AND ${table.resultPrUrl} IS NULL AND ${table.resultPrNumber} IS NULL AND ${table.resultCommitSha} IS NULL)
         OR
-        (${table.commandKind} = 'interaction.answer' AND ${table.resultDisposition} = 'answered' AND ${table.resultInteractionId} IS NOT NULL AND ${table.resultEventSequence} IS NULL AND ${table.resultQueuedMessageId} IS NULL AND ${table.resultExpectedTurnId} IS NULL AND ${table.resultReadCursor} IS NULL)
+        (${table.commandKind} = 'interaction.answer' AND ${table.resultDisposition} = 'answered' AND ${table.resultInteractionId} IS NOT NULL AND ${table.resultEventSequence} IS NULL AND ${table.resultQueuedMessageId} IS NULL AND ${table.resultExpectedTurnId} IS NULL AND ${table.resultReadCursor} IS NULL AND ${table.resultPrUrl} IS NULL AND ${table.resultPrNumber} IS NULL AND ${table.resultCommitSha} IS NULL)
         OR
-        (${table.commandKind} = 'interaction.approve' AND ${table.resultDisposition} = 'approved' AND ${table.resultInteractionId} IS NOT NULL AND ${table.resultEventSequence} IS NULL AND ${table.resultQueuedMessageId} IS NULL AND ${table.resultExpectedTurnId} IS NULL AND ${table.resultReadCursor} IS NULL)
+        (${table.commandKind} = 'interaction.approve' AND ${table.resultDisposition} = 'approved' AND ${table.resultInteractionId} IS NOT NULL AND ${table.resultEventSequence} IS NULL AND ${table.resultQueuedMessageId} IS NULL AND ${table.resultExpectedTurnId} IS NULL AND ${table.resultReadCursor} IS NULL AND ${table.resultPrUrl} IS NULL AND ${table.resultPrNumber} IS NULL AND ${table.resultCommitSha} IS NULL)
         OR
-        (${table.commandKind} = 'read.mark' AND ${table.resultDisposition} = 'marked' AND ${table.resultReadCursor} IS NOT NULL AND ${table.resultEventSequence} IS NULL AND ${table.resultQueuedMessageId} IS NULL AND ${table.resultExpectedTurnId} IS NULL AND ${table.resultInteractionId} IS NULL)
+        (${table.commandKind} = 'read.mark' AND ${table.resultDisposition} = 'marked' AND ${table.resultReadCursor} IS NOT NULL AND ${table.resultEventSequence} IS NULL AND ${table.resultQueuedMessageId} IS NULL AND ${table.resultExpectedTurnId} IS NULL AND ${table.resultInteractionId} IS NULL AND ${table.resultPrUrl} IS NULL AND ${table.resultPrNumber} IS NULL AND ${table.resultCommitSha} IS NULL)
+        OR
+        (${table.commandKind} = 'branch.publish' AND ${table.resultDisposition} = 'published' AND ${table.resultPrUrl} IS NOT NULL AND ${table.resultPrNumber} IS NOT NULL AND ${table.resultCommitSha} IS NOT NULL AND ${table.resultEventSequence} IS NULL AND ${table.resultQueuedMessageId} IS NULL AND ${table.resultExpectedTurnId} IS NULL AND ${table.resultInteractionId} IS NULL AND ${table.resultReadCursor} IS NULL)
       )`,
     ),
   ],

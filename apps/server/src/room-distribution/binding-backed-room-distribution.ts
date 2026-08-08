@@ -242,6 +242,7 @@ export function createBindingBackedRoomDistributionV1(
   const commands = createBindingBackedRoomCommandHandler(
     deps,
     commandAuthority,
+    taskProjection,
   );
   function resolve(bindingId: string) {
     let reservation;

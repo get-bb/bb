@@ -21,9 +21,11 @@ import {
   admitInteractionAnswer,
   admitInteractionApprove,
 } from "../services/threads/admitted-interaction-resolution.js";
+import { admitBranchPublish } from "../services/threads/admitted-publish.js";
 import { admitReadMark } from "../services/threads/admitted-read-mark.js";
 import { admitExactSteerMessage } from "../services/threads/admitted-steer.js";
 import {
+  fingerprintBranchPublishRequest,
   fingerprintInteractionAnswerRequest,
   fingerprintInteractionApproveRequest,
   fingerprintMessageSendRequest,
@@ -98,13 +100,21 @@ type RoomReadMarkCommand = Readonly<{
   requestId: ClientTurnRequestId;
 }>;
 
+type RoomBranchPublishCommand = Readonly<{
+  body?: string;
+  kind: "branch.publish";
+  requestId: ClientTurnRequestId;
+  title?: string;
+}>;
+
 type SupportedRoomCommand =
   | RoomMessageSendCommand
   | RoomMessageSteerCommand
   | RoomThreadInterruptCommand
   | RoomInteractionAnswerCommand
   | RoomInteractionApproveCommand
-  | RoomReadMarkCommand;
+  | RoomReadMarkCommand
+  | RoomBranchPublishCommand;
 
 type RoomCommandScope = Readonly<{
   bindingId: string;
@@ -117,6 +127,19 @@ type RoomCommandScope = Readonly<{
 type RoomCommandAuthority = Awaited<
   ReturnType<WorkTogetherRoomCommandAuthorityPortV1["read"]>
 >;
+
+/**
+ * Minimal task projection surface used only to default PR titles for
+ * `branch.publish`. Matches `WorkTogetherRoomTaskProjectionPortV1.read`.
+ */
+type RoomTaskTitleSource = {
+  read(input: {
+    bindingId: string;
+    principal: Principal;
+    taskId: string;
+    workspaceId: string;
+  }): Promise<RoomJsonObject>;
+};
 
 function unavailable(): never {
   throw new RoomDistributionUnavailableError("not_found");
@@ -132,6 +155,41 @@ function exactKeys(
     actual.length === sortedExpected.length &&
     actual.every((key, index) => key === sortedExpected[index])
   );
+}
+
+/**
+ * Required keys must be present; optional keys may appear; no others allowed.
+ */
+function requiredAndOptionalKeys(
+  value: RoomJsonObject,
+  required: readonly string[],
+  optional: readonly string[],
+): boolean {
+  const actual = Object.keys(value);
+  const allowed = new Set([...required, ...optional]);
+  if (actual.some((key) => !allowed.has(key))) {
+    return false;
+  }
+  return required.every((key) =>
+    Object.prototype.hasOwnProperty.call(value, key),
+  );
+}
+
+function optionalCommandText(value: RoomJsonValue | undefined): string {
+  return commandText(value);
+}
+
+/**
+ * GitHub caps PR titles at 256 chars and disallows newlines; reject at decode so
+ * a bad title fails before the branch is pushed, not after.
+ */
+const MAX_PUBLISH_TITLE_LENGTH = 256;
+function publishTitleText(value: RoomJsonValue | undefined): string {
+  const text = commandText(value);
+  if (text.length > MAX_PUBLISH_TITLE_LENGTH || /[\r\n]/u.test(text)) {
+    unavailable();
+  }
+  return text;
 }
 
 function rejectForbiddenIdentityKeys(value: unknown, depth = 0): void {
@@ -326,6 +384,26 @@ function decodeCommand(command: RoomJsonObject): SupportedRoomCommand {
         kind: "read.mark",
         requestId: requestId(command.requestId),
       });
+    case "branch.publish":
+      if (
+        !requiredAndOptionalKeys(
+          command,
+          ["kind", "requestId"],
+          ["body", "title"],
+        )
+      ) {
+        unavailable();
+      }
+      return Object.freeze({
+        kind: "branch.publish",
+        requestId: requestId(command.requestId),
+        ...(command.title !== undefined
+          ? { title: publishTitleText(command.title) }
+          : {}),
+        ...(command.body !== undefined
+          ? { body: optionalCommandText(command.body) }
+          : {}),
+      });
     default:
       unavailable();
   }
@@ -345,6 +423,14 @@ function receiptResult(
     case "approved":
     case "marked":
       return { disposition: result.disposition };
+    case "published":
+      return {
+        disposition: result.disposition,
+        provider: result.provider,
+        prNumber: result.prNumber,
+        prUrl: result.prUrl,
+        commitSha: result.commitSha,
+      };
   }
 }
 
@@ -403,6 +489,11 @@ function commandFingerprint(command: SupportedRoomCommand) {
       return fingerprintReadMarkRequest({
         eventCursor: command.eventCursor,
       });
+    case "branch.publish":
+      return fingerprintBranchPublishRequest({
+        ...(command.title !== undefined ? { title: command.title } : {}),
+        ...(command.body !== undefined ? { body: command.body } : {}),
+      });
   }
 }
 
@@ -453,9 +544,15 @@ function rejectionReason(error: ApiError): string {
       return "awaiting_interaction";
     case "pending_interaction_conflict":
       return "interaction_conflict";
+    case "no_changes":
+      return "no_changes";
     default:
       return "unavailable";
   }
+}
+
+function canPublishBranch(authority: RoomCommandAuthority): boolean {
+  return authority.role === "owner";
 }
 
 function canAnswerInteraction(authority: RoomCommandAuthority): boolean {
@@ -515,6 +612,10 @@ function commandAvailable(
       );
     case "read.mark":
       return true;
+    case "branch.publish":
+      return (
+        canPublishBranch(authority) && scope.thread.status === "idle"
+      );
   }
 }
 
@@ -549,6 +650,7 @@ function statusCapabilities(
 export function createBindingBackedRoomCommandHandler(
   deps: AppDeps,
   authorityPort: WorkTogetherRoomCommandAuthorityPortV1,
+  taskProjection: RoomTaskTitleSource,
 ) {
   async function currentAuthority(scope: RoomCommandScope) {
     return authorityPort.read({
@@ -557,6 +659,23 @@ export function createBindingBackedRoomCommandHandler(
       taskId: scope.taskId,
       principal: scope.principal,
     });
+  }
+
+  async function defaultPublishTitle(scope: RoomCommandScope): Promise<string> {
+    const task = await taskProjection.read({
+      bindingId: scope.bindingId,
+      workspaceId: scope.workspaceId,
+      taskId: scope.taskId,
+      principal: scope.principal,
+    });
+    if (typeof task.title === "string" && task.title.length > 0) {
+      return task.title;
+    }
+    return (
+      scope.thread.title ??
+      scope.thread.titleFallback ??
+      "Room work"
+    );
   }
 
   return Object.freeze({
@@ -574,6 +693,12 @@ export function createBindingBackedRoomCommandHandler(
         hasPendingApproval(deps, scope.thread.id)
       ) {
         capabilities.push("interaction.approve");
+      }
+      if (
+        canPublishBranch(authority) &&
+        scope.thread.status === "idle"
+      ) {
+        capabilities.push("branch.publish");
       }
       capabilities.push("read.mark");
       return capabilities;
@@ -675,6 +800,20 @@ export function createBindingBackedRoomCommandHandler(
               payload: {
                 eventCursor: command.eventCursor,
                 requestId: command.requestId,
+              },
+              thread: scope.thread,
+            });
+            break;
+          case "branch.publish":
+            result = await admitBranchPublish(deps, {
+              actor,
+              defaultTitle: await defaultPublishTitle(scope),
+              payload: {
+                requestId: command.requestId,
+                ...(command.title !== undefined
+                  ? { title: command.title }
+                  : {}),
+                ...(command.body !== undefined ? { body: command.body } : {}),
               },
               thread: scope.thread,
             });

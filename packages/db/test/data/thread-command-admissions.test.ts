@@ -589,7 +589,7 @@ describe("admitThreadCommand", () => {
     }
   });
 
-  it("preserves existing admissions across migration 0093 rebuild", () => {
+  it("preserves existing admissions across the 0093/0094 rebuilds", () => {
     const { db, thread } = setup();
     try {
       const requestId = requestIdFor(60);
@@ -639,18 +639,19 @@ describe("admitThreadCommand", () => {
         PRAGMA foreign_keys=ON;
       `);
 
-      const migrationSql = readFileSync(
-        new URL(
-          "../../drizzle/0093_crazy_thing.sql",
-          import.meta.url,
-        ),
-        "utf8",
-      );
-      for (const statement of migrationSql
-        .split("--> statement-breakpoint")
-        .map((value) => value.trim())
-        .filter(Boolean)) {
-        db.$client.exec(statement);
+      // Re-apply the shipped rebuild migrations in order: 0093 (interaction
+      // columns) then 0094 (branch.publish result pointer columns).
+      for (const migration of ["0093_crazy_thing.sql", "0094_chilly_nitro.sql"]) {
+        const migrationSql = readFileSync(
+          new URL(`../../drizzle/${migration}`, import.meta.url),
+          "utf8",
+        );
+        for (const statement of migrationSql
+          .split("--> statement-breakpoint")
+          .map((value) => value.trim())
+          .filter(Boolean)) {
+          db.$client.exec(statement);
+        }
       }
 
       const after = db.select().from(threadCommandAdmissions).all();

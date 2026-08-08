@@ -104,6 +104,9 @@ function assertNullResultColumns(
     | "resultExpectedTurnId"
     | "resultInteractionId"
     | "resultReadCursor"
+    | "resultPrUrl"
+    | "resultPrNumber"
+    | "resultCommitSha"
   >,
   context: string,
 ): void {
@@ -115,6 +118,12 @@ function assertNullResultColumns(
     }
   }
 }
+
+const NON_PUBLISHED_RESULT_POINTER_COLUMNS = [
+  "resultPrUrl",
+  "resultPrNumber",
+  "resultCommitSha",
+] as const;
 
 function decodeResultFromRow(
   row: ThreadCommandAdmissionRow,
@@ -137,6 +146,7 @@ function decodeResultFromRow(
           "resultExpectedTurnId",
           "resultInteractionId",
           "resultReadCursor",
+          ...NON_PUBLISHED_RESULT_POINTER_COLUMNS,
         ],
         "started result",
       );
@@ -158,6 +168,7 @@ function decodeResultFromRow(
           "resultExpectedTurnId",
           "resultInteractionId",
           "resultReadCursor",
+          ...NON_PUBLISHED_RESULT_POINTER_COLUMNS,
         ],
         "queued result",
       );
@@ -177,7 +188,12 @@ function decodeResultFromRow(
       }
       assertNullResultColumns(
         row,
-        ["resultQueuedMessageId", "resultInteractionId", "resultReadCursor"],
+        [
+          "resultQueuedMessageId",
+          "resultInteractionId",
+          "resultReadCursor",
+          ...NON_PUBLISHED_RESULT_POINTER_COLUMNS,
+        ],
         "steered result",
       );
       return parseThreadCommandAdmissionResultForKind("message.steer", {
@@ -197,7 +213,12 @@ function decodeResultFromRow(
       }
       assertNullResultColumns(
         row,
-        ["resultQueuedMessageId", "resultInteractionId", "resultReadCursor"],
+        [
+          "resultQueuedMessageId",
+          "resultInteractionId",
+          "resultReadCursor",
+          ...NON_PUBLISHED_RESULT_POINTER_COLUMNS,
+        ],
         "interrupted result",
       );
       return parseThreadCommandAdmissionResultForKind("thread.interrupt", {
@@ -219,6 +240,7 @@ function decodeResultFromRow(
           "resultQueuedMessageId",
           "resultExpectedTurnId",
           "resultReadCursor",
+          ...NON_PUBLISHED_RESULT_POINTER_COLUMNS,
         ],
         "answered result",
       );
@@ -240,6 +262,7 @@ function decodeResultFromRow(
           "resultQueuedMessageId",
           "resultExpectedTurnId",
           "resultReadCursor",
+          ...NON_PUBLISHED_RESULT_POINTER_COLUMNS,
         ],
         "approved result",
       );
@@ -261,12 +284,42 @@ function decodeResultFromRow(
           "resultQueuedMessageId",
           "resultExpectedTurnId",
           "resultInteractionId",
+          ...NON_PUBLISHED_RESULT_POINTER_COLUMNS,
         ],
         "marked result",
       );
       return parseThreadCommandAdmissionResultForKind("read.mark", {
         disposition: "marked",
         readCursor: row.resultReadCursor,
+      });
+    }
+    case "published": {
+      if (
+        row.resultPrUrl === null ||
+        row.resultPrNumber === null ||
+        row.resultCommitSha === null
+      ) {
+        throw new ThreadCommandAdmissionCorruptionError(
+          "Corrupt thread command admission: published result missing PR or commit pointers",
+        );
+      }
+      assertNullResultColumns(
+        row,
+        [
+          "resultEventSequence",
+          "resultQueuedMessageId",
+          "resultExpectedTurnId",
+          "resultInteractionId",
+          "resultReadCursor",
+        ],
+        "published result",
+      );
+      return parseThreadCommandAdmissionResultForKind("branch.publish", {
+        disposition: "published",
+        provider: "github",
+        prNumber: row.resultPrNumber,
+        prUrl: row.resultPrUrl,
+        commitSha: row.resultCommitSha,
       });
     }
     default: {
@@ -329,6 +382,9 @@ function encodeResultColumns(
   resultExpectedTurnId: string | null;
   resultInteractionId: string | null;
   resultReadCursor: string | null;
+  resultPrUrl: string | null;
+  resultPrNumber: number | null;
+  resultCommitSha: string | null;
 } {
   const parsed = parseThreadCommandAdmissionResultForKind(commandKind, result);
   switch (parsed.disposition) {
@@ -340,6 +396,9 @@ function encodeResultColumns(
         resultExpectedTurnId: null,
         resultInteractionId: null,
         resultReadCursor: null,
+        resultPrUrl: null,
+        resultPrNumber: null,
+        resultCommitSha: null,
       };
     case "queued":
       return {
@@ -349,6 +408,9 @@ function encodeResultColumns(
         resultExpectedTurnId: null,
         resultInteractionId: null,
         resultReadCursor: null,
+        resultPrUrl: null,
+        resultPrNumber: null,
+        resultCommitSha: null,
       };
     case "steered":
       return {
@@ -358,6 +420,9 @@ function encodeResultColumns(
         resultExpectedTurnId: parsed.expectedTurnId,
         resultInteractionId: null,
         resultReadCursor: null,
+        resultPrUrl: null,
+        resultPrNumber: null,
+        resultCommitSha: null,
       };
     case "interrupted":
       return {
@@ -367,6 +432,9 @@ function encodeResultColumns(
         resultExpectedTurnId: parsed.expectedTurnId,
         resultInteractionId: null,
         resultReadCursor: null,
+        resultPrUrl: null,
+        resultPrNumber: null,
+        resultCommitSha: null,
       };
     case "answered":
       return {
@@ -376,6 +444,9 @@ function encodeResultColumns(
         resultExpectedTurnId: null,
         resultInteractionId: parsed.interactionId,
         resultReadCursor: null,
+        resultPrUrl: null,
+        resultPrNumber: null,
+        resultCommitSha: null,
       };
     case "approved":
       return {
@@ -385,6 +456,9 @@ function encodeResultColumns(
         resultExpectedTurnId: null,
         resultInteractionId: parsed.interactionId,
         resultReadCursor: null,
+        resultPrUrl: null,
+        resultPrNumber: null,
+        resultCommitSha: null,
       };
     case "marked":
       return {
@@ -394,6 +468,21 @@ function encodeResultColumns(
         resultExpectedTurnId: null,
         resultInteractionId: null,
         resultReadCursor: parsed.readCursor,
+        resultPrUrl: null,
+        resultPrNumber: null,
+        resultCommitSha: null,
+      };
+    case "published":
+      return {
+        resultDisposition: parsed.disposition,
+        resultEventSequence: null,
+        resultQueuedMessageId: null,
+        resultExpectedTurnId: null,
+        resultInteractionId: null,
+        resultReadCursor: null,
+        resultPrUrl: parsed.prUrl,
+        resultPrNumber: parsed.prNumber,
+        resultCommitSha: parsed.commitSha,
       };
     default: {
       const _exhaustive: never = parsed;
