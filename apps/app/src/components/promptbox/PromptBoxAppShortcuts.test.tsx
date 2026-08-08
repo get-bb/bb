@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 
-import { cleanup, render } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { defaultAppSettings, type AppShortcut } from "@bb/domain";
 import {
   AppCommandProvider,
   useAppCommandHandler,
+  useIsAppCommandModifierHeld,
 } from "@/components/commands/AppCommandProvider";
 import {
   INERT_TYPEAHEAD_COMMAND_CONFIG,
@@ -15,6 +16,8 @@ import {
 
 const testState = vi.hoisted(() => ({
   calls: [] as string[],
+  composerInputLocked: false,
+  sidebarHandlerResult: true,
   // The sidebar chord under test. Overridden per test to cover both a chord the
   // editor ignores and a chord the editor's own keymap claims.
   sidebarShortcut: {
@@ -47,19 +50,31 @@ vi.mock("@/lib/bb-desktop", () => ({
   getBbDesktopInfo: () => null,
 }));
 
+vi.mock("@/lib/plugin-sdk-hooks", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/plugin-sdk-hooks")>()),
+  useComposerInputLock: () => testState.composerInputLocked,
+}));
+
 function SidebarToggleHandler() {
   useAppCommandHandler("sidebar.toggle", () => {
     testState.calls.push("sidebar.toggle");
-    return true;
+    return testState.sidebarHandlerResult;
   });
   return null;
 }
 
-function renderComposer() {
+function ShortcutHintState() {
+  return (
+    <span>{useIsAppCommandModifierHeld() ? "hint-held" : "hint-released"}</span>
+  );
+}
+
+function renderComposer(extra: React.ReactNode = null) {
   render(
     <MemoryRouter>
       <AppCommandProvider>
         <SidebarToggleHandler />
+        {extra}
         <PromptBoxInternal
           value=""
           mentionRanges={[]}
@@ -79,7 +94,9 @@ function renderComposer() {
       </AppCommandProvider>
     </MemoryRouter>,
   );
-  const editor = document.querySelector<HTMLElement>('[contenteditable="true"]');
+  const editor = document.querySelector<HTMLElement>(
+    "[data-promptbox-editor-content] [contenteditable]",
+  );
   if (editor === null) throw new Error("prompt editor did not render");
   editor.focus();
   return editor;
@@ -101,6 +118,8 @@ function pressInEditor(
 afterEach(() => {
   cleanup();
   testState.calls.length = 0;
+  testState.composerInputLocked = false;
+  testState.sidebarHandlerResult = true;
   testState.sidebarShortcut = {
     key: "\\",
     mod: true,
@@ -146,6 +165,51 @@ describe("prompt editor app shortcuts", () => {
 
   it("releases composer focus on Escape", () => {
     const editor = renderComposer();
+    expect(document.activeElement).toBe(editor);
+
+    pressInEditor(editor, { key: "Escape" });
+
+    expect(document.activeElement).not.toBe(editor);
+  });
+
+  it("offers a declined chord to the handlers only once", () => {
+    // The editor dispatches first and leaves a declined event alone, so the
+    // window listener receives the same event. The handlers must not run twice.
+    testState.sidebarHandlerResult = false;
+    const editor = renderComposer();
+
+    const event = pressInEditor(editor, { ctrlKey: true, key: "\\" });
+
+    expect(testState.calls).toEqual(["sidebar.toggle"]);
+    expect(event.defaultPrevented).toBe(false);
+  });
+
+  it("clears the keyboard hint when the composer runs a shortcut", () => {
+    vi.useFakeTimers();
+    try {
+      const editor = renderComposer(<ShortcutHintState />);
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Control", ctrlKey: true }),
+      );
+      act(() => vi.advanceTimersByTime(700));
+      expect(screen.getByText("hint-held")).toBeDefined();
+
+      act(() => {
+        pressInEditor(editor, { ctrlKey: true, key: "\\" });
+      });
+
+      expect(testState.calls).toEqual(["sidebar.toggle"]);
+      expect(screen.getByText("hint-released")).toBeDefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("releases focus on Escape while a plugin locks the composer", () => {
+    testState.composerInputLocked = true;
+    const editor = renderComposer();
+    expect(editor.getAttribute("contenteditable")).toBe("false");
+    editor.focus();
     expect(document.activeElement).toBe(editor);
 
     pressInEditor(editor, { key: "Escape" });

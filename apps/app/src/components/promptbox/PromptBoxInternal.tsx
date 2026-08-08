@@ -1036,6 +1036,13 @@ export function suppressPromptEditorAnchorActivation(event: Event): boolean {
   return true;
 }
 
+// TipTap's `blur` command defers to the next animation frame, so blur the
+// editor DOM directly and drop the caret with it.
+function blurPromptEditor(editor: Editor | null | undefined): void {
+  editor?.view.dom.blur();
+  window.getSelection()?.removeAllRanges();
+}
+
 function focusEditorAtEnd(editor: Editor): void {
   const transaction = editor.state.tr
     .setSelection(TextSelection.atEnd(editor.state.doc))
@@ -2593,12 +2600,10 @@ export function PromptBoxInternal({
       // Escape releases the composer so the keyboard can reach the rest of the
       // app. Higher-priority Escape behavior still runs first: the typeahead
       // menu above dismisses itself, and voice recording cancels from a window
-      // capture listener that stops the event before the editor sees it.
-      // TipTap's `blur` command defers to the next animation frame, so blur the
-      // editor DOM directly and drop the caret with it.
+      // capture listener that stops the event before the editor sees it. A
+      // locked editor never reaches here — see the editor container below.
       if (event.key === "Escape") {
-        currentEditor?.view.dom.blur();
-        window.getSelection()?.removeAllRanges();
+        blurPromptEditor(currentEditor);
         return true;
       }
 
@@ -2926,6 +2931,16 @@ export function PromptBoxInternal({
               >
                 <EditorContent
                   editor={editor}
+                  // A plugin lock makes the editor non-editable, and
+                  // ProseMirror then skips its own key handlers — including the
+                  // Escape blur above. A lock applied to a focused composer
+                  // would otherwise strand focus there, so release it here.
+                  onKeyDown={(event) => {
+                    if (event.key !== "Escape") return;
+                    if (editor === null || editor.isEditable) return;
+                    event.preventDefault();
+                    blurPromptEditor(editor);
+                  }}
                   data-promptbox-editor-content=""
                   data-promptbox-compact-content={
                     showCompactLayout ? "" : undefined

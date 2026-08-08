@@ -112,6 +112,10 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
     new Map<AppCommandContextKey, Set<symbol>>(),
   );
   const sequenceRef = useRef(0);
+  // Key events already offered to the handlers, so a second delivery of the
+  // same event is a no-op. Weak so entries drop with the event.
+  const attemptedEventsRef = useRef(new WeakSet<KeyboardEvent>());
+  const clearShortcutHintHoldRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     if (!showKeyboardHints) return;
@@ -126,6 +130,9 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
       shortcutHintModifierHeldRef.current = false;
       setIsShortcutHintModifierHeld(false);
     };
+    // A widget that dispatches a chord itself stops the event before this
+    // listener sees it, so the dispatcher clears the hint through this ref.
+    clearShortcutHintHoldRef.current = clearModifierHold;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (!isShortcutHintModifier(event.key)) {
         if (
@@ -166,6 +173,7 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
     window.addEventListener("blur", handleBlur);
     return () => {
       clearModifierHold();
+      clearShortcutHintHoldRef.current = () => {};
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
       window.removeEventListener("blur", handleBlur);
@@ -277,6 +285,11 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
       if (event.defaultPrevented || event.isComposing || event.repeat) {
         return false;
       }
+      // A widget that dispatched first leaves the event alone when every
+      // handler declines, so the same event still reaches the window listener.
+      // Without this, those handlers would run a second time.
+      if (attemptedEventsRef.current.has(event)) return false;
+      attemptedEventsRef.current.add(event);
       const bindings = keybindingsRef.current;
       let context: AppCommandContext | null = null;
       const isMac = isMacKeyboardPlatform(browserPlatform());
@@ -292,6 +305,7 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
         context ??= currentContext(event.target);
         if (!matchesAppCommandContext(binding, context)) continue;
         if (!dispatch(binding.command, event.target)) return false;
+        clearShortcutHintHoldRef.current();
         event.preventDefault();
         event.stopPropagation();
         return true;
