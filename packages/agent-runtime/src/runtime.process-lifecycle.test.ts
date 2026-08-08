@@ -434,6 +434,38 @@ rl.on("line", (line) => {
     await runtime.shutdown();
   });
 
+  it("bounds provider stderr while data arrives without a newline", async () => {
+    const exitInfo = vi.fn<NonNullable<AgentRuntimeOptions["onProcessExit"]>>();
+    const stderrLines: string[] = [];
+    const crashScript = join(tmpDir, "large-stderr-provider.cjs");
+    writeFileSync(
+      crashScript,
+      `process.stderr.write("a".repeat(100_000) + "stderr-tail");
+      process.exit(42);`,
+    );
+    const manager = createProviderProcessManager({
+      onProcessExit: exitInfo,
+      onStderr: (line) => stderrLines.push(line),
+      scriptPath: crashScript,
+      workspacePath: tmpDir,
+    });
+
+    await manager.ensureProvider({ processKey: "fake", providerId: "fake" });
+    await waitForRuntimeState({
+      label: "bounded provider stderr exit callback",
+      predicate: () => exitInfo.mock.calls.length === 1,
+    });
+
+    const stderr = exitInfo.mock.calls[0]?.[0].stderr;
+    expect(Buffer.byteLength(stderr ?? "", "utf8")).toBeLessThanOrEqual(4_000);
+    expect(stderr?.endsWith("stderr-tail")).toBe(true);
+    expect(stderrLines).toHaveLength(1);
+    expect(Buffer.byteLength(stderrLines[0] ?? "", "utf8")).toBeLessThanOrEqual(
+      4_000,
+    );
+    await manager.shutdown();
+  });
+
   it("shutdown kills processes and rejects pending requests", async () => {
     const runtime = createAgentRuntimeWithAdapters({
       workspacePath: tmpDir,

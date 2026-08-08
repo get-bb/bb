@@ -246,6 +246,28 @@ describe("pi bridge", () => {
     }
   });
 
+  it("forwards redirected stderr backpressure through stdout", () => {
+    const stderrWrite = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => false);
+    const stdoutDrain = vi.fn();
+    process.stdout.once("drain", stdoutDrain);
+    takeOverPiBridgeStdout();
+
+    try {
+      expect(process.stdout.write("extension output")).toBe(false);
+      expect(stdoutDrain).not.toHaveBeenCalled();
+
+      process.stderr.emit("drain");
+
+      expect(stdoutDrain).toHaveBeenCalledOnce();
+    } finally {
+      restorePiBridgeStdout();
+      process.stdout.off("drain", stdoutDrain);
+      stderrWrite.mockRestore();
+    }
+  });
+
   afterEach(() => {
     if (originalPiBridgeSessionDir === undefined) {
       delete process.env[PI_BRIDGE_SESSION_DIR_ENV];

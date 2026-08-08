@@ -6,6 +6,7 @@ type RedirectedProcessWrite = (
 ) => boolean;
 
 interface PiBridgeStdoutTakeoverState {
+  forwardStderrDrain: (() => void) | undefined;
   originalStdoutWrite: typeof process.stdout.write;
   protocolStdoutWrite: (
     chunk: string,
@@ -28,27 +29,42 @@ export function takeOverPiBridgeStdout(): void {
   ) as RedirectedProcessWrite;
   const originalStdoutWrite = process.stdout.write;
 
+  stdoutTakeoverState = {
+    forwardStderrDrain: undefined,
+    originalStdoutWrite,
+    protocolStdoutWrite,
+  };
+
   process.stdout.write = ((
     chunk: string | Uint8Array,
     encodingOrCallback?: BufferEncoding | ProcessWriteCallback,
     callback?: ProcessWriteCallback,
   ): boolean => {
-    if (typeof encodingOrCallback === "function") {
-      return stderrWrite(chunk, encodingOrCallback);
-    }
-    if (encodingOrCallback !== undefined) {
-      return stderrWrite(chunk, encodingOrCallback, callback);
-    }
-    if (callback) {
-      return stderrWrite(chunk, callback);
-    }
-    return stderrWrite(chunk);
-  }) as typeof process.stdout.write;
+    const accepted =
+      typeof encodingOrCallback === "function"
+        ? stderrWrite(chunk, encodingOrCallback)
+        : encodingOrCallback !== undefined
+          ? stderrWrite(chunk, encodingOrCallback, callback)
+          : callback
+            ? stderrWrite(chunk, callback)
+            : stderrWrite(chunk);
 
-  stdoutTakeoverState = {
-    originalStdoutWrite,
-    protocolStdoutWrite,
-  };
+    const takeoverState = stdoutTakeoverState;
+    if (!accepted && takeoverState && !takeoverState.forwardStderrDrain) {
+      const forwardStderrDrain = (): void => {
+        const state = stdoutTakeoverState;
+        if (!state || state.forwardStderrDrain !== forwardStderrDrain) {
+          return;
+        }
+        state.forwardStderrDrain = undefined;
+        process.stdout.emit("drain");
+      };
+      takeoverState.forwardStderrDrain = forwardStderrDrain;
+      process.stderr.once("drain", forwardStderrDrain);
+    }
+
+    return accepted;
+  }) as typeof process.stdout.write;
 }
 
 export function restorePiBridgeStdout(): void {
@@ -56,7 +72,11 @@ export function restorePiBridgeStdout(): void {
     return;
   }
 
-  process.stdout.write = stdoutTakeoverState.originalStdoutWrite;
+  const { forwardStderrDrain, originalStdoutWrite } = stdoutTakeoverState;
+  if (forwardStderrDrain) {
+    process.stderr.off("drain", forwardStderrDrain);
+  }
+  process.stdout.write = originalStdoutWrite;
   stdoutTakeoverState = undefined;
 }
 
