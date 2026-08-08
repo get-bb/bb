@@ -62,10 +62,15 @@ export interface WriteSafeProcessDiagnosticReportArgs
   createReportId?: () => string;
 }
 
+const MAX_DIAGNOSTIC_ERROR_CAUSE_DEPTH = 8;
+
 interface SafeProcessDiagnosticError {
   name: string;
   message: string;
   stack?: string;
+  code?: string;
+  cause?: SafeProcessDiagnosticError;
+  truncationReason?: "cycle" | "depth";
 }
 
 interface SafeProcessDiagnosticReport {
@@ -192,16 +197,49 @@ function formatDiagnosticTimestamp(date: Date): string {
   return date.toISOString().replace(/[:.]/g, "-");
 }
 
+function createTruncatedDiagnosticError(
+  truncationReason: "cycle" | "depth",
+): SafeProcessDiagnosticError {
+  return {
+    name: "TruncatedErrorCause",
+    message:
+      truncationReason === "cycle"
+        ? "Error cause serialization stopped because the cause chain contains a cycle"
+        : `Error cause serialization stopped at the maximum depth of ${MAX_DIAGNOSTIC_ERROR_CAUSE_DEPTH}`,
+    truncationReason,
+  };
+}
+
 function serializeDiagnosticError(
   error: unknown,
+  seenErrors: Set<Error> = new Set(),
+  depth = 0,
 ): SafeProcessDiagnosticError {
   if (error instanceof Error) {
+    if (seenErrors.has(error)) {
+      return createTruncatedDiagnosticError("cycle");
+    }
+    if (depth >= MAX_DIAGNOSTIC_ERROR_CAUSE_DEPTH) {
+      return createTruncatedDiagnosticError("depth");
+    }
+    seenErrors.add(error);
+
     const serialized: SafeProcessDiagnosticError = {
       name: error.name,
       message: error.message,
     };
     if (error.stack !== undefined) {
       serialized.stack = error.stack;
+    }
+    if ("code" in error && typeof error.code === "string") {
+      serialized.code = error.code;
+    }
+    if (error.cause !== undefined) {
+      serialized.cause = serializeDiagnosticError(
+        error.cause,
+        seenErrors,
+        depth + 1,
+      );
     }
     return serialized;
   }
