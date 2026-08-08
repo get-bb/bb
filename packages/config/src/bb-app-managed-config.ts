@@ -75,6 +75,13 @@ const customAcpAgentModelCliSchema = z
     modelCli.listArgs.length > 0 ? modelCli : undefined,
   );
 
+const customAcpAgentNativeSkillRootsSchema = z
+  .object({
+    user: z.array(z.string().min(1)).optional(),
+    project: z.array(z.string().min(1)).optional(),
+  })
+  .strict();
+
 // One user-registered ACP agent. `id` is a slug; BB derives the runtime
 // provider id as `acp-<id>`.
 export const customAcpAgentSchema = z
@@ -96,6 +103,7 @@ export const customAcpAgentSchema = z
     modelCli: customAcpAgentModelCliSchema.optional(),
     reasoningCli: acpReasoningCliSchema.optional(),
     nativeReasoning: acpNativeReasoningSchema.optional(),
+    nativeSkillRoots: customAcpAgentNativeSkillRootsSchema.optional(),
   })
   .strict()
   .superRefine((agent, context) => {

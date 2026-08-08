@@ -82,5 +82,8 @@ and run bb-app config refresh; there is no set/unset CLI surface for this list.
 Custom config wins if it uses the same provider id as a known ACP agent; for
 example, override acp-opencode with id opencode. Use modelCli for CLI model
 listing/selection, reasoningCli for launch-time reasoning flags, and
-nativeReasoning for ACP session/set_config_option reasoning. Optional logo
-accepts an SVG, PNG, or WebP path; relative paths resolve from the bb data dir.
+nativeReasoning for ACP session/set_config_option reasoning. Use
+nativeSkillRoots.user for host-home skill directories and
+nativeSkillRoots.project for selected-workspace skill directories. Optional
+logo accepts an SVG, PNG, or WebP path; relative paths resolve from the bb data
+dir.

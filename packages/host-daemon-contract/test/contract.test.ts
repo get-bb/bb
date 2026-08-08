@@ -64,6 +64,10 @@ const ACP_LAUNCH_SPEC: HostDaemonAcpLaunchSpec = {
     supportedLevels: ["none", "low", "medium", "high", "xhigh", "max"],
     defaultLevel: "medium",
   },
+  nativeSkillRoots: {
+    user: [".amp/skills"],
+    project: [".amp/skills"],
+  },
   permissionCli: {
     full: ["--always-approve"],
     insertAfterArgs: 1,
@@ -692,6 +696,12 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "ACP native reasoning config may omit defaultLevel so the bridge uses medium when supported or the first supported level.",
   "hostDaemonCommandSchema.acpLaunchSpec.nativeReasoning.levelValues":
     "ACP native reasoning config only needs levelValues when bb reasoning levels differ from the agent's ACP config vocabulary.",
+  "hostDaemonCommandSchema.acpLaunchSpec.nativeSkillRoots":
+    "dynamic ACP agents may omit nativeSkillRoots when they do not expose provider-native skill discovery.",
+  "hostDaemonCommandSchema.acpLaunchSpec.nativeSkillRoots.user":
+    "ACP native skill roots may omit user roots when only project roots are needed.",
+  "hostDaemonCommandSchema.acpLaunchSpec.nativeSkillRoots.project":
+    "ACP native skill roots may omit project roots when only user roots are needed.",
   "hostDaemonCommandSchema.acpLaunchSpec.permissionCli":
     "dynamic ACP agents may omit permissionCli when their own prompt policy does not need launch-time permission flags.",
   "hostDaemonCommandSchema.acpLaunchSpec.permissionCli.full":
@@ -734,6 +744,12 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "ACP native reasoning config may omit defaultLevel so the bridge uses medium when supported or the first supported level.",
   "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.nativeReasoning.levelValues":
     "ACP native reasoning config only needs levelValues when bb reasoning levels differ from the agent's ACP config vocabulary.",
+  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.nativeSkillRoots":
+    "dynamic ACP agents may omit nativeSkillRoots when they do not expose provider-native skill discovery.",
+  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.nativeSkillRoots.user":
+    "ACP native skill roots may omit user roots when only project roots are needed.",
+  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.nativeSkillRoots.project":
+    "ACP native skill roots may omit project roots when only user roots are needed.",
   "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.permissionCli":
     "dynamic ACP agents may omit permissionCli when their own prompt policy does not need launch-time permission flags.",
   "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.permissionCli.full":
@@ -792,6 +808,12 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "resume-context ACP native reasoning config may omit defaultLevel so the bridge uses medium when supported or the first supported level.",
   "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.nativeReasoning.levelValues":
     "resume-context ACP native reasoning config only needs levelValues when bb reasoning levels differ from the agent's ACP config vocabulary.",
+  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.nativeSkillRoots":
+    "resume-context ACP launch specs may omit nativeSkillRoots when the agent does not expose provider-native skill discovery.",
+  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.nativeSkillRoots.user":
+    "resume-context ACP native skill roots may omit user roots when only project roots are needed.",
+  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.nativeSkillRoots.project":
+    "resume-context ACP native skill roots may omit project roots when only user roots are needed.",
   "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.permissionCli":
     "resume-context ACP launch specs may omit permissionCli when the agent's prompt policy does not need launch-time permission flags.",
   "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.permissionCli.full":
@@ -1108,6 +1130,9 @@ describe("host-daemon command schemas", () => {
           levelValues: { max: "high" },
           defaultLevel: "high",
         },
+        nativeSkillRoots: {
+          user: [".amp/skills"],
+        },
       }),
     ).toEqual({
       displayName: "Custom ACP",
@@ -1119,6 +1144,9 @@ describe("host-daemon command schemas", () => {
         supportedLevels: ["low", "medium", "high"],
         levelValues: { max: "high" },
         defaultLevel: "high",
+      },
+      nativeSkillRoots: {
+        user: [".amp/skills"],
       },
     });
   });

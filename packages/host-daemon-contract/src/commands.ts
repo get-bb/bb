@@ -167,6 +167,13 @@ export const hostDaemonAcpLaunchSpecSchema = z
     reasoningCli: acpReasoningCliSchema.optional(),
     nativeReasoning: acpNativeReasoningSchema.optional(),
     permissionCli: acpPermissionCliSchema.optional(),
+    nativeSkillRoots: z
+      .object({
+        user: z.array(z.string().min(1)).optional(),
+        project: z.array(z.string().min(1)).optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 export type HostDaemonAcpLaunchSpec = z.infer<
@@ -186,6 +193,7 @@ export function normalizeHostDaemonAcpLaunchSpec(
     reasoningCli,
     nativeReasoning,
     permissionCli,
+    nativeSkillRoots,
   } = spec;
   const permissionCliHasMode =
     permissionCli?.full !== undefined ||
@@ -205,6 +213,7 @@ export function normalizeHostDaemonAcpLaunchSpec(
     ...(permissionCli !== undefined && permissionCliHasMode
       ? { permissionCli }
       : {}),
+    ...(nativeSkillRoots !== undefined ? { nativeSkillRoots } : {}),
   };
 }
 
@@ -684,6 +693,7 @@ const hostListCommandsCommandSchema = z
     type: z.literal("host.list_commands"),
     providerId: z.string().min(1),
     cwd: z.string().min(1).nullable(),
+    acpLaunchSpec: hostDaemonAcpLaunchSpecSchema.optional(),
   })
   .strict();
 
@@ -730,6 +740,7 @@ const hostListSkillsCommandSchema = z.object({
   type: z.literal("host.list_skills"),
   providerId: z.string().min(1),
   cwd: z.string().min(1).nullable(),
+  acpLaunchSpec: hostDaemonAcpLaunchSpecSchema.optional(),
 });
 
 /** User-owned local skill scopes that can be deleted after path confinement. */

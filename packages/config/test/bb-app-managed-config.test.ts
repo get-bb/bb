@@ -194,6 +194,49 @@ describe("bbAppManagedConfigSchema", () => {
     });
   });
 
+  it("keeps custom ACP nativeSkillRoots config", () => {
+    const parsed = bbAppManagedConfigSchema.parse({
+      customAcpAgents: [
+        {
+          id: "my-agent",
+          displayName: "My Agent",
+          command: "my-agent",
+          nativeSkillRoots: {
+            user: [".amp/skills"],
+            project: [".amp/skills", ".config/amp/skills"],
+          },
+        },
+      ],
+    });
+
+    expect(parsed.customAcpAgents?.[0]).toEqual({
+      id: "my-agent",
+      displayName: "My Agent",
+      command: "my-agent",
+      args: [],
+      env: {},
+      nativeSkillRoots: {
+        user: [".amp/skills"],
+        project: [".amp/skills", ".config/amp/skills"],
+      },
+    });
+  });
+
+  it("rejects empty custom ACP native skill root entries", () => {
+    expect(
+      bbAppManagedConfigSchema.safeParse({
+        customAcpAgents: [
+          {
+            id: "my-agent",
+            displayName: "My Agent",
+            command: "my-agent",
+            nativeSkillRoots: { user: [""] },
+          },
+        ],
+      }).success,
+    ).toBe(false);
+  });
+
   it("rejects custom ACP reasoningCli defaults outside supported levels", () => {
     expect(
       bbAppManagedConfigSchema.safeParse({

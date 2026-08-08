@@ -3483,6 +3483,10 @@ declare const hostDaemonCommandRegistry: {
                 readonly: z$1.ZodOptional<z$1.ZodArray<z$1.ZodString>>;
                 insertAfterArgs: z$1.ZodOptional<z$1.ZodNumber>;
             }, z$1.core.$strict>>;
+            nativeSkillRoots: z$1.ZodOptional<z$1.ZodObject<{
+                user: z$1.ZodOptional<z$1.ZodArray<z$1.ZodString>>;
+                project: z$1.ZodOptional<z$1.ZodArray<z$1.ZodString>>;
+            }, z$1.core.$strict>>;
         }, z$1.core.$strict>>;
         options: z$1.ZodIntersection<z$1.ZodObject<{
             model: z$1.ZodString;
@@ -4034,6 +4038,10 @@ declare const hostDaemonCommandRegistry: {
                 readonly: z$1.ZodOptional<z$1.ZodArray<z$1.ZodString>>;
                 insertAfterArgs: z$1.ZodOptional<z$1.ZodNumber>;
             }, z$1.core.$strict>>;
+            nativeSkillRoots: z$1.ZodOptional<z$1.ZodObject<{
+                user: z$1.ZodOptional<z$1.ZodArray<z$1.ZodString>>;
+                project: z$1.ZodOptional<z$1.ZodArray<z$1.ZodString>>;
+            }, z$1.core.$strict>>;
         }, z$1.core.$strict>>;
         resumeContext: z$1.ZodObject<{
             workspaceContext: z$1.ZodObject<{
@@ -4140,6 +4148,10 @@ declare const hostDaemonCommandRegistry: {
                     workspaceWrite: z$1.ZodOptional<z$1.ZodArray<z$1.ZodString>>;
                     readonly: z$1.ZodOptional<z$1.ZodArray<z$1.ZodString>>;
                     insertAfterArgs: z$1.ZodOptional<z$1.ZodNumber>;
+                }, z$1.core.$strict>>;
+                nativeSkillRoots: z$1.ZodOptional<z$1.ZodObject<{
+                    user: z$1.ZodOptional<z$1.ZodArray<z$1.ZodString>>;
+                    project: z$1.ZodOptional<z$1.ZodArray<z$1.ZodString>>;
                 }, z$1.core.$strict>>;
             }, z$1.core.$strict>>;
             instructions: z$1.ZodString;
@@ -4330,6 +4342,10 @@ declare const hostDaemonCommandRegistry: {
                 readonly: z$1.ZodOptional<z$1.ZodArray<z$1.ZodString>>;
                 insertAfterArgs: z$1.ZodOptional<z$1.ZodNumber>;
             }, z$1.core.$strict>>;
+            nativeSkillRoots: z$1.ZodOptional<z$1.ZodObject<{
+                user: z$1.ZodOptional<z$1.ZodArray<z$1.ZodString>>;
+                project: z$1.ZodOptional<z$1.ZodArray<z$1.ZodString>>;
+            }, z$1.core.$strict>>;
         }, z$1.core.$strict>>;
         resumeContext: z$1.ZodObject<{
             workspaceContext: z$1.ZodObject<{
@@ -4436,6 +4452,10 @@ declare const hostDaemonCommandRegistry: {
                     workspaceWrite: z$1.ZodOptional<z$1.ZodArray<z$1.ZodString>>;
                     readonly: z$1.ZodOptional<z$1.ZodArray<z$1.ZodString>>;
                     insertAfterArgs: z$1.ZodOptional<z$1.ZodNumber>;
+                }, z$1.core.$strict>>;
+                nativeSkillRoots: z$1.ZodOptional<z$1.ZodObject<{
+                    user: z$1.ZodOptional<z$1.ZodArray<z$1.ZodString>>;
+                    project: z$1.ZodOptional<z$1.ZodArray<z$1.ZodString>>;
                 }, z$1.core.$strict>>;
             }, z$1.core.$strict>>;
             instructions: z$1.ZodString;
@@ -4845,6 +4865,102 @@ declare const hostDaemonCommandRegistry: {
         type: z$1.ZodLiteral<"host.list_commands">;
         providerId: z$1.ZodString;
         cwd: z$1.ZodNullable<z$1.ZodString>;
+        acpLaunchSpec: z$1.ZodOptional<z$1.ZodObject<{
+            displayName: z$1.ZodString;
+            command: z$1.ZodString;
+            args: z$1.ZodArray<z$1.ZodString>;
+            env: z$1.ZodRecord<z$1.ZodString, z$1.ZodString>;
+            cwd: z$1.ZodOptional<z$1.ZodString>;
+            modelCli: z$1.ZodOptional<z$1.ZodPipe<z$1.ZodObject<{
+                listArgs: z$1.ZodArray<z$1.ZodString>;
+                selectFlag: z$1.ZodOptional<z$1.ZodString>;
+                primaryModels: z$1.ZodArray<z$1.ZodString>;
+            }, z$1.core.$strict>, z$1.ZodTransform<{
+                listArgs: string[];
+                primaryModels: string[];
+                selectFlag?: string | undefined;
+            } | undefined, {
+                listArgs: string[];
+                primaryModels: string[];
+                selectFlag?: string | undefined;
+            }>>>;
+            reasoningCli: z$1.ZodOptional<z$1.ZodObject<{
+                flag: z$1.ZodString;
+                supportedLevels: z$1.ZodArray<z$1.ZodEnum<{
+                    none: "none";
+                    low: "low";
+                    medium: "medium";
+                    high: "high";
+                    xhigh: "xhigh";
+                    ultracode: "ultracode";
+                    max: "max";
+                    ultra: "ultra";
+                }>>;
+                levelValues: z$1.ZodOptional<z$1.ZodRecord<z$1.ZodEnum<{
+                    none: "none";
+                    low: "low";
+                    medium: "medium";
+                    high: "high";
+                    xhigh: "xhigh";
+                    ultracode: "ultracode";
+                    max: "max";
+                    ultra: "ultra";
+                }> & z$1.core.$partial, z$1.ZodString>>;
+                defaultLevel: z$1.ZodOptional<z$1.ZodEnum<{
+                    none: "none";
+                    low: "low";
+                    medium: "medium";
+                    high: "high";
+                    xhigh: "xhigh";
+                    ultracode: "ultracode";
+                    max: "max";
+                    ultra: "ultra";
+                }>>;
+            }, z$1.core.$strict>>;
+            nativeReasoning: z$1.ZodOptional<z$1.ZodObject<{
+                configId: z$1.ZodString;
+                supportedLevels: z$1.ZodArray<z$1.ZodEnum<{
+                    none: "none";
+                    low: "low";
+                    medium: "medium";
+                    high: "high";
+                    xhigh: "xhigh";
+                    ultracode: "ultracode";
+                    max: "max";
+                    ultra: "ultra";
+                }>>;
+                levelValues: z$1.ZodOptional<z$1.ZodRecord<z$1.ZodEnum<{
+                    none: "none";
+                    low: "low";
+                    medium: "medium";
+                    high: "high";
+                    xhigh: "xhigh";
+                    ultracode: "ultracode";
+                    max: "max";
+                    ultra: "ultra";
+                }> & z$1.core.$partial, z$1.ZodString>>;
+                defaultLevel: z$1.ZodOptional<z$1.ZodEnum<{
+                    none: "none";
+                    low: "low";
+                    medium: "medium";
+                    high: "high";
+                    xhigh: "xhigh";
+                    ultracode: "ultracode";
+                    max: "max";
+                    ultra: "ultra";
+                }>>;
+            }, z$1.core.$strict>>;
+            permissionCli: z$1.ZodOptional<z$1.ZodObject<{
+                full: z$1.ZodOptional<z$1.ZodArray<z$1.ZodString>>;
+                workspaceWrite: z$1.ZodOptional<z$1.ZodArray<z$1.ZodString>>;
+                readonly: z$1.ZodOptional<z$1.ZodArray<z$1.ZodString>>;
+                insertAfterArgs: z$1.ZodOptional<z$1.ZodNumber>;
+            }, z$1.core.$strict>>;
+            nativeSkillRoots: z$1.ZodOptional<z$1.ZodObject<{
+                user: z$1.ZodOptional<z$1.ZodArray<z$1.ZodString>>;
+                project: z$1.ZodOptional<z$1.ZodArray<z$1.ZodString>>;
+            }, z$1.core.$strict>>;
+        }, z$1.core.$strict>>;
     }, z$1.core.$strict>, z$1.ZodObject<{
         commands: z$1.ZodArray<z$1.ZodObject<{
             name: z$1.ZodString;
@@ -4864,6 +4980,102 @@ declare const hostDaemonCommandRegistry: {
         type: z$1.ZodLiteral<"host.list_skills">;
         providerId: z$1.ZodString;
         cwd: z$1.ZodNullable<z$1.ZodString>;
+        acpLaunchSpec: z$1.ZodOptional<z$1.ZodObject<{
+            displayName: z$1.ZodString;
+            command: z$1.ZodString;
+            args: z$1.ZodArray<z$1.ZodString>;
+            env: z$1.ZodRecord<z$1.ZodString, z$1.ZodString>;
+            cwd: z$1.ZodOptional<z$1.ZodString>;
+            modelCli: z$1.ZodOptional<z$1.ZodPipe<z$1.ZodObject<{
+                listArgs: z$1.ZodArray<z$1.ZodString>;
+                selectFlag: z$1.ZodOptional<z$1.ZodString>;
+                primaryModels: z$1.ZodArray<z$1.ZodString>;
+            }, z$1.core.$strict>, z$1.ZodTransform<{
+                listArgs: string[];
+                primaryModels: string[];
+                selectFlag?: string | undefined;
+            } | undefined, {
+                listArgs: string[];
+                primaryModels: string[];
+                selectFlag?: string | undefined;
+            }>>>;
+            reasoningCli: z$1.ZodOptional<z$1.ZodObject<{
+                flag: z$1.ZodString;
+                supportedLevels: z$1.ZodArray<z$1.ZodEnum<{
+                    none: "none";
+                    low: "low";
+                    medium: "medium";
+                    high: "high";
+                    xhigh: "xhigh";
+                    ultracode: "ultracode";
+                    max: "max";
+                    ultra: "ultra";
+                }>>;
+                levelValues: z$1.ZodOptional<z$1.ZodRecord<z$1.ZodEnum<{
+                    none: "none";
+                    low: "low";
+                    medium: "medium";
+                    high: "high";
+                    xhigh: "xhigh";
+                    ultracode: "ultracode";
+                    max: "max";
+                    ultra: "ultra";
+                }> & z$1.core.$partial, z$1.ZodString>>;
+                defaultLevel: z$1.ZodOptional<z$1.ZodEnum<{
+                    none: "none";
+                    low: "low";
+                    medium: "medium";
+                    high: "high";
+                    xhigh: "xhigh";
+                    ultracode: "ultracode";
+                    max: "max";
+                    ultra: "ultra";
+                }>>;
+            }, z$1.core.$strict>>;
+            nativeReasoning: z$1.ZodOptional<z$1.ZodObject<{
+                configId: z$1.ZodString;
+                supportedLevels: z$1.ZodArray<z$1.ZodEnum<{
+                    none: "none";
+                    low: "low";
+                    medium: "medium";
+                    high: "high";
+                    xhigh: "xhigh";
+                    ultracode: "ultracode";
+                    max: "max";
+                    ultra: "ultra";
+                }>>;
+                levelValues: z$1.ZodOptional<z$1.ZodRecord<z$1.ZodEnum<{
+                    none: "none";
+                    low: "low";
+                    medium: "medium";
+                    high: "high";
+                    xhigh: "xhigh";
+                    ultracode: "ultracode";
+                    max: "max";
+                    ultra: "ultra";
+                }> & z$1.core.$partial, z$1.ZodString>>;
+                defaultLevel: z$1.ZodOptional<z$1.ZodEnum<{
+                    none: "none";
+                    low: "low";
+                    medium: "medium";
+                    high: "high";
+                    xhigh: "xhigh";
+                    ultracode: "ultracode";
+                    max: "max";
+                    ultra: "ultra";
+                }>>;
+            }, z$1.core.$strict>>;
+            permissionCli: z$1.ZodOptional<z$1.ZodObject<{
+                full: z$1.ZodOptional<z$1.ZodArray<z$1.ZodString>>;
+                workspaceWrite: z$1.ZodOptional<z$1.ZodArray<z$1.ZodString>>;
+                readonly: z$1.ZodOptional<z$1.ZodArray<z$1.ZodString>>;
+                insertAfterArgs: z$1.ZodOptional<z$1.ZodNumber>;
+            }, z$1.core.$strict>>;
+            nativeSkillRoots: z$1.ZodOptional<z$1.ZodObject<{
+                user: z$1.ZodOptional<z$1.ZodArray<z$1.ZodString>>;
+                project: z$1.ZodOptional<z$1.ZodArray<z$1.ZodString>>;
+            }, z$1.core.$strict>>;
+        }, z$1.core.$strict>>;
     }, z$1.core.$strip>, z$1.ZodObject<{
         skills: z$1.ZodArray<z$1.ZodObject<{
             id: z$1.ZodString;
@@ -5160,6 +5372,10 @@ declare const hostDaemonCommandRegistry: {
                 workspaceWrite: z$1.ZodOptional<z$1.ZodArray<z$1.ZodString>>;
                 readonly: z$1.ZodOptional<z$1.ZodArray<z$1.ZodString>>;
                 insertAfterArgs: z$1.ZodOptional<z$1.ZodNumber>;
+            }, z$1.core.$strict>>;
+            nativeSkillRoots: z$1.ZodOptional<z$1.ZodObject<{
+                user: z$1.ZodOptional<z$1.ZodArray<z$1.ZodString>>;
+                project: z$1.ZodOptional<z$1.ZodArray<z$1.ZodString>>;
             }, z$1.core.$strict>>;
         }, z$1.core.$strict>>;
         cwd: z$1.ZodOptional<z$1.ZodString>;

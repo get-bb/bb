@@ -2,7 +2,10 @@ import type { Dirent } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { HostDaemonOnlineRpcResult } from "@bb/host-daemon-contract";
+import type {
+  HostDaemonAcpLaunchSpec,
+  HostDaemonOnlineRpcResult,
+} from "@bb/host-daemon-contract";
 import { z } from "zod";
 import {
   CommandDispatchError,
@@ -21,6 +24,7 @@ export interface CommandRootResolution {
   /** Codex user-home base (`$CODEX_HOME` or `~/.codex`). */
   codexHome: string;
   providerId: string;
+  acpLaunchSpec?: HostDaemonAcpLaunchSpec;
 }
 
 type ClaudePluginScope = "managed" | "project" | "local" | "user";
@@ -1112,6 +1116,18 @@ export function resolveCommandScanRoots(
   resolution: CommandRootResolution,
 ): CommandScanRoot[] {
   const roots: CommandScanRoot[] = [];
+  const addConfiguredNativeSkillRoot = (
+    rootPath: string,
+    origin: "project" | "user",
+  ): void => {
+    roots.push({
+      rootPath,
+      shape: "skill",
+      namePrefix: "",
+      source: "skill",
+      origin,
+    });
+  };
 
   if (resolution.providerId === "claude-code") {
     if (resolution.cwd !== null) {
@@ -1176,6 +1192,23 @@ export function resolveCommandScanRoots(
     return roots;
   }
 
+  for (const userRoot of resolution.acpLaunchSpec?.nativeSkillRoots?.user ??
+    []) {
+    addConfiguredNativeSkillRoot(
+      path.resolve(resolution.homeDir, userRoot),
+      "user",
+    );
+  }
+  if (resolution.cwd !== null) {
+    for (const projectRoot of resolution.acpLaunchSpec?.nativeSkillRoots
+      ?.project ?? []) {
+      addConfiguredNativeSkillRoot(
+        path.resolve(resolution.cwd, projectRoot),
+        "project",
+      );
+    }
+  }
+
   return roots;
 }
 
@@ -1191,6 +1224,9 @@ export async function listHostCommands(
     homeDir,
     codexHome: resolveCodexHome(homeDir),
     providerId: command.providerId,
+    ...(command.acpLaunchSpec !== undefined
+      ? { acpLaunchSpec: command.acpLaunchSpec }
+      : {}),
   });
   const commands = await discoverProviderCommands({ roots });
   return { commands };

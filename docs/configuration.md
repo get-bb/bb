@@ -287,6 +287,10 @@ Example:
         "configId": "reasoning_effort",
         "supportedLevels": ["none", "low", "medium", "high", "xhigh", "max"],
         "defaultLevel": "medium"
+      },
+      "nativeSkillRoots": {
+        "user": [".my-agent/skills"],
+        "project": [".my-agent/skills"]
       }
     }
   ]
@@ -339,6 +343,12 @@ option keep agent-managed reasoning unless the provider launch spec declares
 model ids discovered through `modelCli`, not in an ACP `thought_level` option.
 Grok Build is also separate: it uses `reasoningCli` to launch
 `grok --reasoning-effort <level> agent stdio`.
+
+`nativeSkillRoots` is optional. Use it for ACP agents that discover provider-
+native skills from agent-specific directories. `user` roots resolve relative to
+the target execution host home directory. `project` roots resolve relative to
+the selected workspace and are skipped when command discovery has no workspace.
+Each root is scanned as a skill directory containing `<name>/SKILL.md`.
 
 Custom ACP agents are supported only with the co-located daemon from the same
 machine as the server. A command path in server config is host-local and is not

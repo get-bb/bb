@@ -10,7 +10,10 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { HostProviderCommand } from "@bb/host-daemon-contract";
+import type {
+  HostDaemonAcpLaunchSpec,
+  HostProviderCommand,
+} from "@bb/host-daemon-contract";
 import { discoverProviderCommands } from "./command-discovery.js";
 import {
   listHostCommands,
@@ -82,6 +85,18 @@ function byName(
   name: string,
 ): HostProviderCommand | undefined {
   return commands.find((command) => command.name === name);
+}
+
+function acpLaunchSpec(
+  overrides: Partial<HostDaemonAcpLaunchSpec> = {},
+): HostDaemonAcpLaunchSpec {
+  return {
+    displayName: "Custom ACP",
+    command: "custom-acp",
+    args: [],
+    env: {},
+    ...overrides,
+  };
 }
 
 beforeEach(async () => {
@@ -1168,7 +1183,7 @@ describe("resolveCommandScanRoots", () => {
     expect(roots).toEqual([]);
   });
 
-  it("returns no provider-native roots for ACP providers", async () => {
+  it("returns no provider-native roots for ACP providers without configured roots", async () => {
     const fixture = await makeWorkspaceFixture();
     const roots = resolveCommandScanRoots({
       providerId: "acp-cursor",
@@ -1177,6 +1192,114 @@ describe("resolveCommandScanRoots", () => {
       codexHome: fixture.codexHome,
     });
     expect(roots).toEqual([]);
+  });
+
+  it("resolves configured ACP native skill roots from home and workspace", async () => {
+    const fixture = await makeWorkspaceFixture();
+    const roots = resolveCommandScanRoots({
+      providerId: "acp-custom",
+      cwd: fixture.cwd,
+      homeDir: fixture.homeDir,
+      codexHome: fixture.codexHome,
+      acpLaunchSpec: acpLaunchSpec({
+        nativeSkillRoots: {
+          user: [".custom-agent/skills"],
+          project: [".custom-agent/skills", ".config/custom-agent/skills"],
+        },
+      }),
+    });
+
+    expect(roots).toEqual([
+      {
+        rootPath: path.join(fixture.homeDir, ".custom-agent", "skills"),
+        shape: "skill",
+        namePrefix: "",
+        source: "skill",
+        origin: "user",
+      },
+      {
+        rootPath: path.join(fixture.cwd, ".custom-agent", "skills"),
+        shape: "skill",
+        namePrefix: "",
+        source: "skill",
+        origin: "project",
+      },
+      {
+        rootPath: path.join(fixture.cwd, ".config", "custom-agent", "skills"),
+        shape: "skill",
+        namePrefix: "",
+        source: "skill",
+        origin: "project",
+      },
+    ]);
+  });
+
+  it("discovers configured ACP native skills without provider special cases", async () => {
+    const fixture = await makeWorkspaceFixture();
+    await writeFileEnsuringDir(
+      path.join(fixture.homeDir, ".amp", "skills", "home-review", "SKILL.md"),
+      "---\nname: ignored\ndescription: Home review\n---\n",
+    );
+    await writeFileEnsuringDir(
+      path.join(fixture.cwd, ".amp", "skills", "project-build", "SKILL.md"),
+      "---\nname: ignored\ndescription: Project build\n---\n",
+    );
+
+    const commands = await discoverProviderCommands({
+      roots: await resolveProviderCommandScanRoots({
+        providerId: "acp-anything",
+        cwd: fixture.cwd,
+        homeDir: fixture.homeDir,
+        codexHome: fixture.codexHome,
+        acpLaunchSpec: acpLaunchSpec({
+          nativeSkillRoots: {
+            user: [".amp/skills"],
+            project: [".amp/skills"],
+          },
+        }),
+      }),
+    });
+
+    expect(byName(commands, "home-review")).toEqual({
+      name: "home-review",
+      source: "skill",
+      origin: "user",
+      description: "Home review",
+      argumentHint: null,
+    });
+    expect(byName(commands, "project-build")).toEqual({
+      name: "project-build",
+      source: "skill",
+      origin: "project",
+      description: "Project build",
+      argumentHint: null,
+    });
+  });
+
+  it("skips configured ACP project roots when cwd is null", async () => {
+    const fixture = await makeWorkspaceFixture();
+    const roots = resolveCommandScanRoots({
+      providerId: "acp-custom",
+      cwd: null,
+      homeDir: fixture.homeDir,
+      codexHome: fixture.codexHome,
+      acpLaunchSpec: acpLaunchSpec({
+        nativeSkillRoots: {
+          user: [".custom-agent/skills"],
+          project: [".custom-agent/skills"],
+        },
+      }),
+    });
+
+    expect(roots).toEqual([
+      {
+        rootPath: path.join(fixture.homeDir, ".custom-agent", "skills"),
+        shape: "skill",
+        namePrefix: "",
+        source: "skill",
+        origin: "user",
+      },
+    ]);
   });
 
   it("returns no roots for an unknown provider", async () => {
