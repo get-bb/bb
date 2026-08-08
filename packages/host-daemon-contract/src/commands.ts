@@ -167,13 +167,6 @@ export const hostDaemonAcpLaunchSpecSchema = z
     reasoningCli: acpReasoningCliSchema.optional(),
     nativeReasoning: acpNativeReasoningSchema.optional(),
     permissionCli: acpPermissionCliSchema.optional(),
-    nativeSkillRoots: z
-      .object({
-        user: z.array(z.string().min(1)).optional(),
-        project: z.array(z.string().min(1)).optional(),
-      })
-      .strict()
-      .optional(),
   })
   .strict();
 export type HostDaemonAcpLaunchSpec = z.infer<
@@ -193,7 +186,6 @@ export function normalizeHostDaemonAcpLaunchSpec(
     reasoningCli,
     nativeReasoning,
     permissionCli,
-    nativeSkillRoots,
   } = spec;
   const permissionCliHasMode =
     permissionCli?.full !== undefined ||
@@ -213,7 +205,6 @@ export function normalizeHostDaemonAcpLaunchSpec(
     ...(permissionCli !== undefined && permissionCliHasMode
       ? { permissionCli }
       : {}),
-    ...(nativeSkillRoots !== undefined ? { nativeSkillRoots } : {}),
   };
 }
 
@@ -681,6 +672,13 @@ export const hostProviderCommandSchema = z.object({
 });
 export type HostProviderCommand = z.infer<typeof hostProviderCommandSchema>;
 
+const nativeSkillRootsSchema = z
+  .object({
+    user: z.array(z.string().min(1)).optional(),
+    project: z.array(z.string().min(1)).optional(),
+  })
+  .strict();
+
 /**
  * List the provider's discoverable skills / legacy slash commands. The daemon
  * resolves provider-native user-home roots itself and scans provider-native
@@ -693,7 +691,7 @@ const hostListCommandsCommandSchema = z
     type: z.literal("host.list_commands"),
     providerId: z.string().min(1),
     cwd: z.string().min(1).nullable(),
-    acpLaunchSpec: hostDaemonAcpLaunchSpecSchema.optional(),
+    nativeSkillRoots: nativeSkillRootsSchema.optional(),
   })
   .strict();
 
@@ -733,14 +731,13 @@ export type DiscoveredSkill = z.infer<typeof discoveredSkillSchema>;
 
 /**
  * List discoverable skills (not legacy commands) for a provider, classified by
- * originating root. Same root-resolution rules as `host.list_commands`:
- * `cwd: null` skips the project roots and returns only user-home/bb scopes.
+ * originating root. `cwd: null` skips the built-in provider project roots and
+ * returns only user-home/bb scopes.
  */
 const hostListSkillsCommandSchema = z.object({
   type: z.literal("host.list_skills"),
   providerId: z.string().min(1),
   cwd: z.string().min(1).nullable(),
-  acpLaunchSpec: hostDaemonAcpLaunchSpecSchema.optional(),
 });
 
 /** User-owned local skill scopes that can be deleted after path confinement. */

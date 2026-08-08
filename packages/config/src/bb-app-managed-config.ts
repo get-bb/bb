@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { join, posix, win32 } from "node:path";
 import { agentProviderIdSchema, isAgentProviderId } from "@bb/agent-providers";
 import { acpNativeReasoningSchema, acpReasoningCliSchema } from "@bb/domain";
 import { z } from "zod";
@@ -75,10 +75,30 @@ const customAcpAgentModelCliSchema = z
     modelCli.listArgs.length > 0 ? modelCli : undefined,
   );
 
+function isPortableConfinedRelativePath(value: string): boolean {
+  if (
+    value.includes(String.fromCharCode(0)) ||
+    posix.isAbsolute(value) ||
+    win32.isAbsolute(value) ||
+    /^[A-Za-z]:/u.test(value)
+  ) {
+    return false;
+  }
+  const normalized = posix.normalize(value.replaceAll(win32.sep, "/"));
+  return normalized !== ".." && !normalized.startsWith("../");
+}
+
+const customAcpAgentNativeSkillRootSchema = z
+  .string()
+  .min(1)
+  .refine(isPortableConfinedRelativePath, {
+    message: "Native skill roots must be confined relative paths.",
+  });
+
 const customAcpAgentNativeSkillRootsSchema = z
   .object({
-    user: z.array(z.string().min(1)).optional(),
-    project: z.array(z.string().min(1)).optional(),
+    user: z.array(customAcpAgentNativeSkillRootSchema).optional(),
+    project: z.array(customAcpAgentNativeSkillRootSchema).optional(),
   })
   .strict();
 

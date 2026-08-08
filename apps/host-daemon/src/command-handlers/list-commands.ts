@@ -2,10 +2,7 @@ import type { Dirent } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type {
-  HostDaemonAcpLaunchSpec,
-  HostDaemonOnlineRpcResult,
-} from "@bb/host-daemon-contract";
+import type { HostDaemonOnlineRpcResult } from "@bb/host-daemon-contract";
 import { z } from "zod";
 import {
   CommandDispatchError,
@@ -24,7 +21,9 @@ export interface CommandRootResolution {
   /** Codex user-home base (`$CODEX_HOME` or `~/.codex`). */
   codexHome: string;
   providerId: string;
-  acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+  nativeSkillRoots?: NonNullable<
+    CommandOf<"host.list_commands">["nativeSkillRoots"]
+  >;
 }
 
 type ClaudePluginScope = "managed" | "project" | "local" | "user";
@@ -1110,8 +1109,36 @@ async function resolveCodexProjectSkillScanRoots(
  * roots are skipped when `cwd` is null; user-home roots are always included.
  * The daemon owns provider-native discovery only. The server adds its canonical
  * bb skill catalog to the final composer response.
- * Unknown provider ids yield an empty root set.
+ * Unknown provider ids yield an empty root set unless roots are supplied.
  */
+function resolveConfinedNativeSkillRoot(
+  basePath: string,
+  configuredPath: string,
+): string {
+  if (
+    configuredPath.includes(String.fromCharCode(0)) ||
+    path.isAbsolute(configuredPath)
+  ) {
+    throw new CommandDispatchError(
+      "invalid_path",
+      "native skill root must be relative",
+    );
+  }
+  const resolvedPath = path.resolve(basePath, configuredPath);
+  const relativePath = path.relative(basePath, resolvedPath);
+  if (
+    relativePath === ".." ||
+    relativePath.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(relativePath)
+  ) {
+    throw new CommandDispatchError(
+      "invalid_path",
+      "native skill root must remain within its base directory",
+    );
+  }
+  return resolvedPath;
+}
+
 export function resolveCommandScanRoots(
   resolution: CommandRootResolution,
 ): CommandScanRoot[] {
@@ -1192,20 +1219,23 @@ export function resolveCommandScanRoots(
     return roots;
   }
 
-  for (const userRoot of resolution.acpLaunchSpec?.nativeSkillRoots?.user ??
-    []) {
-    addConfiguredNativeSkillRoot(
-      path.resolve(resolution.homeDir, userRoot),
-      "user",
-    );
+  const userRootPaths = new Set(
+    (resolution.nativeSkillRoots?.user ?? []).map((configuredPath) =>
+      resolveConfinedNativeSkillRoot(resolution.homeDir, configuredPath),
+    ),
+  );
+  for (const rootPath of userRootPaths) {
+    addConfiguredNativeSkillRoot(rootPath, "user");
   }
-  if (resolution.cwd !== null) {
-    for (const projectRoot of resolution.acpLaunchSpec?.nativeSkillRoots
-      ?.project ?? []) {
-      addConfiguredNativeSkillRoot(
-        path.resolve(resolution.cwd, projectRoot),
-        "project",
-      );
+  const cwd = resolution.cwd;
+  if (cwd !== null) {
+    const projectRootPaths = new Set(
+      (resolution.nativeSkillRoots?.project ?? []).map((configuredPath) =>
+        resolveConfinedNativeSkillRoot(cwd, configuredPath),
+      ),
+    );
+    for (const rootPath of projectRootPaths) {
+      addConfiguredNativeSkillRoot(rootPath, "project");
     }
   }
 
@@ -1224,8 +1254,8 @@ export async function listHostCommands(
     homeDir,
     codexHome: resolveCodexHome(homeDir),
     providerId: command.providerId,
-    ...(command.acpLaunchSpec !== undefined
-      ? { acpLaunchSpec: command.acpLaunchSpec }
+    ...(command.nativeSkillRoots !== undefined
+      ? { nativeSkillRoots: command.nativeSkillRoots }
       : {}),
   });
   const commands = await discoverProviderCommands({ roots });

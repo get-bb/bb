@@ -472,15 +472,9 @@ describe("public project command typeahead route", () => {
         type: "host.list_commands",
         providerId: "acp-amp",
         cwd: "/tmp/custom-acp-commands-env",
-        acpLaunchSpec: {
-          displayName: "Amp",
-          command: "amp",
-          args: ["acp"],
-          env: {},
-          nativeSkillRoots: {
-            user: [".amp/skills"],
-            project: [".amp/skills"],
-          },
+        nativeSkillRoots: {
+          user: [".amp/skills"],
+          project: [".amp/skills"],
         },
       });
     });

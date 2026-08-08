@@ -294,7 +294,8 @@ environment pull-request show <id>`. Diff commands require an explicit target
   reasoning flags, and `nativeReasoning` for ACP `session/set_config_option`
   reasoning. `nativeSkillRoots.user` entries resolve relative to the target
   host home directory; `nativeSkillRoots.project` entries resolve relative to
-  the selected workspace and are scanned as provider-native skill directories.
+  the selected workspace. Roots must remain within those bases and are scanned
+  as provider-native skill directories.
 
 Give spawned threads clear prompts: objective, constraints, expected deliverable,
 validation to perform, and what to report back. Ask for outcome, changed files

@@ -222,7 +222,25 @@ describe("bbAppManagedConfigSchema", () => {
     });
   });
 
-  it("rejects empty custom ACP native skill root entries", () => {
+  it.each([
+    "",
+    "/tmp/skills",
+    "C:\skills",
+    "\\host\skills",
+    "../skills",
+    "foo/../../skills",
+    ["..", String.fromCharCode(92), "skills"].join(""),
+    [
+      "foo",
+      String.fromCharCode(92),
+      "..",
+      String.fromCharCode(92),
+      "..",
+      String.fromCharCode(92),
+      "skills",
+    ].join(""),
+    ["skill", String.fromCharCode(0), "root"].join(""),
+  ])("rejects unconfined custom ACP native skill root %j", (root) => {
     expect(
       bbAppManagedConfigSchema.safeParse({
         customAcpAgents: [
@@ -230,7 +248,7 @@ describe("bbAppManagedConfigSchema", () => {
             id: "my-agent",
             displayName: "My Agent",
             command: "my-agent",
-            nativeSkillRoots: { user: [""] },
+            nativeSkillRoots: { user: [root] },
           },
         ],
       }).success,

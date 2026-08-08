@@ -348,7 +348,8 @@ Grok Build is also separate: it uses `reasoningCli` to launch
 native skills from agent-specific directories. `user` roots resolve relative to
 the target execution host home directory. `project` roots resolve relative to
 the selected workspace and are skipped when command discovery has no workspace.
-Each root is scanned as a skill directory containing `<name>/SKILL.md`.
+Roots must be relative and remain within their home or workspace base. Each root
+is scanned as a skill directory containing `<name>/SKILL.md`.
 
 Custom ACP agents are supported only with the co-located daemon from the same
 machine as the server. A command path in server config is host-local and is not

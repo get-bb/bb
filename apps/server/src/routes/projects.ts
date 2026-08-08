@@ -1,8 +1,5 @@
 import path from "node:path";
-import {
-  formatCustomAcpAgentProviderId,
-  type CustomAcpAgent,
-} from "@bb/config/bb-app-managed-config";
+import { formatCustomAcpAgentProviderId } from "@bb/config/bb-app-managed-config";
 import {
   countProjectSources,
   createProject,
@@ -90,19 +87,8 @@ import {
   resolveProjectCommandWorkspace,
   resolveProjectWorkspaceTarget,
 } from "../services/projects/project-workspace.js";
-import { normalizeHostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
-import { findKnownAcpAgentForProviderId } from "../services/system/known-acp-agents.js";
 
 type ProjectResponseProjectFields = Omit<ProjectResponse, "sources">;
-
-function findCustomAcpAgentForProviderId(
-  customAcpAgents: readonly CustomAcpAgent[],
-  providerId: string,
-): CustomAcpAgent | undefined {
-  return customAcpAgents.find(
-    (agent) => formatCustomAcpAgentProviderId(agent.id) === providerId,
-  );
-}
 type ProjectResponseRow = ProjectResponseProjectFields;
 const PROJECT_CLONE_TIMEOUT_MS = 20 * 60 * 1000;
 
@@ -698,20 +684,9 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
         : {}),
       ...(query.hostId !== undefined ? { hostId: query.hostId } : {}),
     });
-    const customAcpAgent = findCustomAcpAgentForProviderId(
-      deps.config.customAcpAgents,
-      query.provider,
-    );
-    const knownAcpAgent =
-      customAcpAgent === undefined
-        ? findKnownAcpAgentForProviderId(query.provider)
-        : undefined;
-    const acpLaunchSpec =
-      customAcpAgent !== undefined
-        ? normalizeHostDaemonAcpLaunchSpec(customAcpAgent)
-        : knownAcpAgent !== undefined
-          ? normalizeHostDaemonAcpLaunchSpec(knownAcpAgent)
-          : undefined;
+    const nativeSkillRoots = deps.config.customAcpAgents.find(
+      (agent) => formatCustomAcpAgentProviderId(agent.id) === query.provider,
+    )?.nativeSkillRoots;
     const [result, projectSkillSources] = await Promise.all([
       callHostRetryableOnlineRpc(deps, {
         hostId: workspace.hostId,
@@ -720,7 +695,7 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
           type: "host.list_commands",
           providerId: query.provider,
           cwd: workspace.cwd,
-          ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
+          ...(nativeSkillRoots !== undefined ? { nativeSkillRoots } : {}),
         },
       }),
       workspace.cwd === null

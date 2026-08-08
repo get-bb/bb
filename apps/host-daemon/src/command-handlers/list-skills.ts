@@ -120,26 +120,6 @@ function classifySkillRoot(
       rootKind: "provider-user",
     };
   }
-  for (const userRoot of resolution.acpLaunchSpec?.nativeSkillRoots?.user ??
-    []) {
-    if (rootPath === path.resolve(resolution.homeDir, userRoot)) {
-      return {
-        identitySeed: `${resolution.providerId}:provider-user:${userRoot}`,
-        rootKind: "provider-user",
-      };
-    }
-  }
-  if (resolution.cwd !== null) {
-    for (const projectRoot of resolution.acpLaunchSpec?.nativeSkillRoots
-      ?.project ?? []) {
-      if (rootPath === path.resolve(resolution.cwd, projectRoot)) {
-        return {
-          identitySeed: `${resolution.providerId}:provider-project:${projectRoot}`,
-          rootKind: "provider-project",
-        };
-      }
-    }
-  }
   return null;
 }
 
@@ -176,9 +156,6 @@ export async function listHostSkills(
     homeDir,
     codexHome: resolveCodexHome(homeDir),
     providerId: command.providerId,
-    ...(command.acpLaunchSpec !== undefined
-      ? { acpLaunchSpec: command.acpLaunchSpec }
-      : {}),
   });
   const skills = await discoverSkills({ roots });
   return { skills };
