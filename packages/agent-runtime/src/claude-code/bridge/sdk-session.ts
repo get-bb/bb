@@ -8,6 +8,11 @@ import {
   type SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
 import type { ClaudePermissionMode } from "../interactive-contract.js";
+import {
+  isMissingClaudeCliMessage,
+  missingClaudeCliGuidance,
+  translateMissingClaudeCliError,
+} from "./missing-cli-error.js";
 
 export interface SdkSessionOptions {
   cwd: string;
@@ -75,7 +80,10 @@ function appendBoundedText(args: AppendBoundedTextArgs): string {
 }
 
 function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  const message = error instanceof Error ? error.message : String(error);
+  return isMissingClaudeCliMessage(message)
+    ? missingClaudeCliGuidance()
+    : message;
 }
 
 function buildSdkDoneErrorMessage(args: BuildSdkDoneErrorMessageArgs): string {
@@ -202,10 +210,14 @@ export class SdkSession {
       ...(this.options.settings ? { settings: this.options.settings } : {}),
     };
 
-    this.query = query({
-      prompt: this.createInputIterable(),
-      options: sdkOptions,
-    });
+    try {
+      this.query = query({
+        prompt: this.createInputIterable(),
+        options: sdkOptions,
+      });
+    } catch (error) {
+      throw translateMissingClaudeCliError(error);
+    }
 
     void this.consumeStream();
   }

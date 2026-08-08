@@ -148,10 +148,16 @@ agent or terminal with
 `bb settings general showUnhandledProviderEvents <true|false>`.
 
 The "Steer running threads on Enter" toggle in Settings → General changes the
-active-thread composer shortcuts. It defaults to off: Enter queues and
-Command+Enter steers. When enabled, Enter steers and Command+Enter queues. Set
-it with
+active-thread composer shortcuts when no typeahead suggestion is active. It
+defaults to off: Enter queues and Command+Enter steers. When enabled, Enter
+steers and Command+Enter queues. Set it with
 `bb settings general steerActiveThreadOnEnter <true|false>`.
+
+Outside an open typeahead menu, Shift+Enter inserts a newline. In zen mode,
+unmodified Enter also inserts a newline. On coarse-pointer touch devices, the
+software-keyboard Return path inserts a newline and the submit button sends.
+iPadOS WebKit additionally preserves the Enter and Command+Enter shortcuts
+above for a connected Magic Keyboard.
 
 ## Keyboard Shortcuts
 

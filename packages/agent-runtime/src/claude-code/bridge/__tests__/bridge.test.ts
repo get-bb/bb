@@ -1,4 +1,10 @@
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -726,6 +732,31 @@ describe("bridge", () => {
         permissionScope: "workspace",
       },
       { PATH: binDir },
+    );
+
+    expect(options.pathToClaudeCodeExecutable).toBe(executablePath);
+  });
+
+  it("falls back to well-known install locations when PATH discovery fails", () => {
+    const homeDir = mkdtempSync(join(tmpdir(), "bb-claude-home-"));
+    tempDirs.push(homeDir);
+    const localBinDir = join(homeDir, ".local", "bin");
+    mkdirSync(localBinDir, { recursive: true });
+    const executablePath = join(localBinDir, "claude");
+    writeFileSync(executablePath, "#!/bin/sh\nexit 0\n");
+    chmodSync(executablePath, 0o755);
+
+    const options = buildSessionOptions(
+      {
+        workflowsEnabled: false,
+        baseInstructions: "You are a coder.",
+        cwd: "/tmp/worktree",
+        instructionMode: "append",
+        permissionEscalation: "ask",
+        permissionMode: "default",
+        permissionScope: "workspace",
+      },
+      { HOME: homeDir, PATH: "/nonexistent-bb-test-dir" },
     );
 
     expect(options.pathToClaudeCodeExecutable).toBe(executablePath);

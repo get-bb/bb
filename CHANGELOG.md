@@ -1,5 +1,77 @@
 # Changelog
 
+## 0.36.0
+
+A faster web app, a more reliable terminal, steadier model catalogs, and a long list of fixes.
+
+### The server now default binds to loopback
+
+The server used to listen on every network interface, which exposed its unauthenticated API to any host that could reach the machine. It now binds `127.0.0.1`. Use `--server-bind-host 0.0.0.0` or `BB_SERVER_BIND_HOST` to opt back in, only behind a trusted network boundary.
+
+- **Action needed before you upgrade** if a browser or an enrolled machine reaches bb at a direct address such as `http://<LAN-IP>:38886` or `http://<machine>.<tailnet>.ts.net:38886`. Move the route first, then upgrade. This release also raises the host daemon protocol, so every enrolled daemon must update itself — and a daemon that lost its route cannot.
+- Move to bb connect, or put bb behind Tailscale Serve, then remove and re-add each machine in Settings → Machines so its installer records the new route. Setup steps: https://github.com/get-bb/bb/blob/main/docs/multiple-devices.md
+- The desktop app, the `bb` CLI, agents, plugins, and the host daemon on the same machine reach the server over loopback. They need no change.
+
+### Machines and threads
+
+- An enrolled host daemon no longer collides with another daemon over its local API port.
+- Background tasks survive a daemon reconnect.
+- Provider subscription rate limits now retry instead of failing the turn.
+- New threads pick up the connected provider defaults. A thread that names no model now resolves one from the provider catalog on the target host, instead of a hard-coded default. The thread fails to start when that host cannot list models.
+- Provider usage limits normalize correctly.
+
+### Pi and ACP
+
+- A broken extension no longer empties the Pi model list.
+- A bare Pi model name resolves through the sole authenticated provider.
+- An aggregator model ID keeps its provider prefix.
+- The bundled runtime loads your own Pi configuration.
+- ACP plugin tools work in packaged Electron builds.
+- An ACP agent may send a null model or config-option string without breaking the session.
+
+### Models
+
+- Codex re-reads its model list after a CLI update, and it finds project skills again.
+- Voice transcription moves to GPT Transcribe. Helper inference moves to GPT-5.6 Luna.
+
+### Performance
+
+- The web app boot payload is 60% smaller.
+- The built-in terminal is more reliable, replays faster over a remote connection, and the terminal panel loads faster.
+
+### Plugins and extensions
+
+- Official plugins now live with the rest of the plugins in one place.
+- Plugin installs report progress, the build toolchain downloads on demand, and git plugin dependencies install before bundling.
+- Plugin SDK type declarations stay current, so agents read the declarations instead of the bundles.
+- Browse is the default Extensions tab.
+- Interactive plugin tools stay alive past the Connect timeout.
+- The GitHub plugin syncs pull requests for repositories with Issues disabled, finds pull requests on fork branches, renders GFM tables in descriptions, and refreshes status when a turn completes.
+
+### Fixes and polish
+
+- New keyboard shortcuts cycle the model and the reasoning level.
+- A `.worktreeinclude` file controls what a new worktree copies in.
+- Sandbox network permission prompts are grantable.
+- App shortcuts and Escape work in the chat input, and sidebar search resets after you open a thread.
+- Cmd+W no longer crashes the About window.
+- Git status is correct for a newly initialized repository, and a workspace path claim is scoped to its project.
+- Long filenames fit in the Add Project dialog, tab overflow controls are back, and right panel resize is less sensitive.
+- File links work in side chat timelines.
+- The mobile PWA shell tracks the iOS keyboard, and mobile voice recording controls work again.
+- bb connect relays DELETE request bodies.
+- First-run onboarding is behind an experiment while it settles.
+- New `pnpm dev:status` command for source development.
+
+### Thanks
+
+Much of this release came from outside the core team. Thank you:
+
+- **@ben-vargas** reported the wildcard bind and shipped the loopback default, the `BB_SERVER_BIND_HOST` setting, and its migration guide.
+- **@Diffuzmetall** made the built-in terminal more reliable and much faster to replay over a remote connection.
+- **@kschrader** fixed GitHub pull request sync for a repository with Issues disabled.
+- **@toasterman234** helped cut the web app boot payload by 60%.
+
 ## 0.35.0
 
 Plugins ship in this release, enabled by default. Much of bb is already built with them — and an agent inside bb can now write one for you.

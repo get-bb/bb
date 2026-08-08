@@ -52,6 +52,7 @@ describe("pi bridge model list", () => {
           id: "anthropic/claude-sonnet-5",
           model: "anthropic/claude-sonnet-5",
           displayName: "Claude Sonnet 5",
+          routeProviderId: "anthropic",
           description: "Anthropic reasoning, multimodal model via Pi",
           supportedReasoningEfforts: [
             { reasoningEffort: "low", description: "Low reasoning effort" },

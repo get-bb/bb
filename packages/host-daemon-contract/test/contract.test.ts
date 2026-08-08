@@ -322,6 +322,7 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
         id: "codex/gpt-5",
         model: "gpt-5",
         displayName: "GPT-5",
+        routeProviderId: "openai-codex",
         description: "Test model",
         supportedReasoningEfforts: [
           {
@@ -1038,10 +1039,10 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  // Version 83 lets ACP model results contain no supported reasoning levels.
+  // Version 84 lets ACP model results contain no supported reasoning levels.
   // The bump updates enrolled daemons before the server uses this result.
-  it("uses protocol version 83 for empty ACP reasoning support", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(83);
+  it("uses protocol version 84 for empty ACP reasoning support", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(84);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {

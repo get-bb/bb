@@ -487,40 +487,50 @@ describe("FollowUpPromptBox", () => {
     expect(mocks.scrollToBottom).toHaveBeenCalledOnce();
   });
 
-  it("preserves scroll position after queueing a follow-up", () => {
-    const props = createFollowUpPromptBoxProps({
-      kind: "queue",
-      onStop: vi.fn(),
-    });
-    render(<FollowUpPromptBox {...props} />);
+  it.each([
+    {
+      setting: false,
+      primaryAction: "queue",
+      modifierAction: "steer",
+    },
+    {
+      setting: true,
+      primaryAction: "steer",
+      modifierAction: "queue",
+    },
+  ] as const)(
+    "routes Enter/click to $primaryAction and Command+Enter to $modifierAction when steer-on-Enter is $setting",
+    ({ setting, primaryAction, modifierAction }) => {
+      const props = createFollowUpPromptBoxProps({
+        kind: "queue",
+        onStop: vi.fn(),
+      });
+      if (!props.composer) {
+        throw new Error("Expected follow-up composer props");
+      }
+      props.composer.steerActiveThreadOnEnter = setting;
+      render(<FollowUpPromptBox {...props} />);
 
-    fireEvent.click(screen.getByText("Submit"));
+      fireEvent.click(screen.getByText("Submit"));
+      const expectedPrimary =
+        primaryAction === "queue"
+          ? props.composer.onSubmit
+          : props.composer.onModifierSubmit;
+      const expectedModifier =
+        modifierAction === "queue"
+          ? props.composer.onSubmit
+          : props.composer.onModifierSubmit;
+      expect(expectedPrimary).toHaveBeenCalledOnce();
+      expect(expectedModifier).not.toHaveBeenCalled();
+      expect(mocks.scrollToBottom).toHaveBeenCalledTimes(
+        primaryAction === "steer" ? 1 : 0,
+      );
 
-    expect(props.composer?.onSubmit).toHaveBeenCalledOnce();
-    expect(mocks.scrollToBottom).not.toHaveBeenCalled();
-  });
-
-  it("swaps Enter and modifier submit while steer-on-Enter is enabled", () => {
-    const props = createFollowUpPromptBoxProps({
-      kind: "queue",
-      onStop: vi.fn(),
-    });
-    if (!props.composer) {
-      throw new Error("Expected follow-up composer props");
-    }
-    props.composer.steerActiveThreadOnEnter = true;
-    render(<FollowUpPromptBox {...props} />);
-
-    fireEvent.click(screen.getByText("Submit"));
-    expect(props.composer.onModifierSubmit).toHaveBeenCalledOnce();
-    expect(props.composer.onSubmit).not.toHaveBeenCalled();
-    expect(mocks.scrollToBottom).toHaveBeenCalledOnce();
-
-    mocks.scrollToBottom.mockClear();
-    fireEvent.click(screen.getByText("Modifier submit"));
-    expect(props.composer.onSubmit).toHaveBeenCalledOnce();
-    expect(mocks.scrollToBottom).not.toHaveBeenCalled();
-  });
+      fireEvent.click(screen.getByText("Modifier submit"));
+      expect(expectedModifier).toHaveBeenCalledOnce();
+      expect(mocks.scrollToBottom).toHaveBeenCalledOnce();
+    },
+  );
 
   it("disables the permission picker while plan mode is active", () => {
     const props = createFollowUpPromptBoxProps({

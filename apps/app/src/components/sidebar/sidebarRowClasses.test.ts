@@ -9,4 +9,10 @@ describe("sidebar selected thread styling", () => {
     );
     expect(CONTEXT_SELECTION_SURFACE_CLASS).toBe("bg-state-active");
   });
+
+  it("marks the row for an opaque backing surface when it becomes sticky", () => {
+    expect(SIDEBAR_ROW_SELECTED_STATE_CLASS).toContain(
+      "bb-sidebar-selected-row",
+    );
+  });
 });
