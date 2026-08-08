@@ -43,6 +43,30 @@ function seedImportTarget(harness: TestAppHarness) {
   return { environment, host, project };
 }
 
+function seedSecondImportProject(
+  harness: TestAppHarness,
+  args: { hostId: string; path: string; providerId?: string; model?: string },
+) {
+  const { project } = seedProjectWithSource(harness.deps, {
+    hostId: args.hostId,
+    path: args.path,
+  });
+  seedEnvironment(harness.deps, {
+    hostId: args.hostId,
+    projectId: project.id,
+    path: args.path,
+  });
+  upsertProjectExecutionDefaults(harness.deps.db, {
+    projectId: project.id,
+    providerId: args.providerId ?? "acp-omp",
+    model: args.model ?? "omp/default",
+    reasoningLevel: "medium",
+    permissionMode: "full",
+    serviceTier: "default",
+  });
+  return { project };
+}
+
 async function postImport(
   harness: TestAppHarness,
   body: Record<string, unknown>,
@@ -213,6 +237,164 @@ describe("public thread import route", () => {
       const body = await readJson(secondResponse);
       expect(body).toMatchObject({ code: "provider_session_already_bound" });
       expect(JSON.stringify(body)).toContain(firstThread.id);
+    });
+  });
+
+  it("lets exactly one of two concurrent imports into different project workspaces claim a session", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, project } = seedImportTarget(harness);
+      const OTHER_SOURCE_PATH = "/tmp/public-thread-import-concurrent";
+      const { project: otherProject } = seedSecondImportProject(harness, {
+        hostId: host.id,
+        path: OTHER_SOURCE_PATH,
+      });
+      const providerSessionId = "external-omp-session-raced";
+
+      // Neither thread's start has completed, so no thread/identity event
+      // exists for either; the event-log reverse lookup alone would admit
+      // both. Only the reservation claimed inside the thread-create
+      // transaction serializes them.
+      const [first, second] = await Promise.all([
+        postImport(harness, {
+          projectId: project.id,
+          providerId: "acp-omp",
+          providerSessionId,
+          hostId: host.id,
+          cwd: SOURCE_PATH,
+        }),
+        postImport(harness, {
+          projectId: otherProject.id,
+          providerId: "acp-omp",
+          providerSessionId,
+          hostId: host.id,
+          cwd: OTHER_SOURCE_PATH,
+        }),
+      ]);
+
+      const statuses = [first.status, second.status].sort();
+      expect(statuses).toEqual([201, 409]);
+      const winner = first.status === 201 ? first : second;
+      const loser = first.status === 201 ? second : first;
+      const winnerThread = threadResponseSchema.parse(await readJson(winner));
+      const body = await readJson(loser);
+      expect(body).toMatchObject({ code: "provider_session_already_bound" });
+      expect(JSON.stringify(body)).toContain(winnerThread.id);
+    });
+  });
+
+  it("refuses a second import of a claimed session even before its start records identity", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, project } = seedImportTarget(harness);
+      const OTHER_SOURCE_PATH = "/tmp/public-thread-import-unstarted";
+      const { project: otherProject } = seedSecondImportProject(harness, {
+        hostId: host.id,
+        path: OTHER_SOURCE_PATH,
+      });
+      const providerSessionId = "external-omp-session-unstarted";
+
+      const firstResponse = await postImport(harness, {
+        projectId: project.id,
+        providerId: "acp-omp",
+        providerSessionId,
+        hostId: host.id,
+        cwd: SOURCE_PATH,
+      });
+      expect(firstResponse.status).toBe(201);
+      const firstThread = threadResponseSchema.parse(
+        await readJson(firstResponse),
+      );
+
+      // Deliberately no thread/identity event: the first thread's start is
+      // still in flight, which is exactly the window where the event-log
+      // check alone let a duplicate through.
+      const secondResponse = await postImport(harness, {
+        projectId: otherProject.id,
+        providerId: "acp-omp",
+        providerSessionId,
+        hostId: host.id,
+        cwd: OTHER_SOURCE_PATH,
+      });
+
+      expect(secondResponse.status).toBe(409);
+      const body = await readJson(secondResponse);
+      expect(body).toMatchObject({ code: "provider_session_already_bound" });
+      expect(JSON.stringify(body)).toContain(firstThread.id);
+    });
+  });
+
+  it("allows the same session id under a different provider on the same host", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, project } = seedImportTarget(harness);
+      const OTHER_SOURCE_PATH = "/tmp/public-thread-import-cross-provider";
+      const { project: otherProject } = seedSecondImportProject(harness, {
+        hostId: host.id,
+        path: OTHER_SOURCE_PATH,
+        providerId: "acp-opencode",
+        model: "opencode/default",
+      });
+      // Session ids live in a provider namespace: "abc" on acp-omp and "abc"
+      // on acp-opencode are unrelated sessions.
+      const providerSessionId = "abc";
+
+      const firstResponse = await postImport(harness, {
+        projectId: project.id,
+        providerId: "acp-omp",
+        providerSessionId,
+        hostId: host.id,
+        cwd: SOURCE_PATH,
+      });
+      expect(firstResponse.status).toBe(201);
+      const firstThread = threadResponseSchema.parse(
+        await readJson(firstResponse),
+      );
+
+      // Record the acp-omp binding the way the bridge does, so the
+      // event-log reverse lookup is exercised too, not just the reservation.
+      const startCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.start" &&
+          command.threadId === firstThread.id,
+      );
+      const sessionId = startCommand.row.sessionId;
+      if (!sessionId) {
+        throw new Error("Queued thread start is missing sessionId");
+      }
+      const eventResponse = await harness.app.request(
+        "/internal/session/events",
+        {
+          method: "POST",
+          headers: internalAuthHeaders(harness),
+          body: JSON.stringify({
+            sessionId,
+            eventGroups: groupHostDaemonEvents([
+              createTestDaemonEventEnvelope({
+                event: {
+                  type: "thread/identity",
+                  threadId: firstThread.id,
+                  providerThreadId: providerSessionId,
+                  scope: threadScope(),
+                },
+              }),
+            ]),
+          }),
+        },
+      );
+      expect(eventResponse.status).toBe(200);
+
+      const secondResponse = await postImport(harness, {
+        projectId: otherProject.id,
+        providerId: "acp-opencode",
+        providerSessionId,
+        hostId: host.id,
+        cwd: OTHER_SOURCE_PATH,
+      });
+
+      expect(secondResponse.status).toBe(201);
+      const secondThread = threadResponseSchema.parse(
+        await readJson(secondResponse),
+      );
+      expect(secondThread.providerId).toBe("acp-opencode");
     });
   });
 

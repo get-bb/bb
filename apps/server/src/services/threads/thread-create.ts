@@ -505,10 +505,30 @@ async function createProvisioningThread(
     environmentIntent: ThreadProvisionEnvironmentIntent;
   },
 ) {
+  // A session import must claim the external provider session inside the
+  // thread-create transaction: the event-log duplicate check in
+  // thread-import.ts only sees identity events a completed start already
+  // stored, so two concurrent imports (each environment owns a separate
+  // runtime) could otherwise both bind one session.
+  let providerSessionReservation: {
+    hostId: string;
+    providerSessionId: string;
+  } | null = null;
+  if (args.sessionImport !== null) {
+    const hostId = intentHostId(deps, args.environmentIntent);
+    if (hostId === null) {
+      throw new Error("Session import environment intent resolved no host");
+    }
+    providerSessionReservation = {
+      hostId,
+      providerSessionId: args.sessionImport.providerThreadId,
+    };
+  }
   const thread = createThreadRecord(deps, {
     request: args.request,
     environmentId: args.environmentId,
     status: "starting",
+    providerSessionReservation,
   });
   let execution: Awaited<ReturnType<typeof buildExecutionOptions>>;
   let context: ThreadProvisionContext;

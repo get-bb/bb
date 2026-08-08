@@ -4125,9 +4125,62 @@ describe("findLiveThreadIdByProviderThreadId", () => {
     expect(
       findLiveThreadIdByProviderThreadId(db, {
         hostId: host.id,
+        providerId: "codex",
         providerThreadId: "shared-provider-session",
       }),
     ).toBe(recentThread.id);
+  });
+
+  it("scopes the lookup to the provider that owns the session id", () => {
+    const db = createConnection(":memory:");
+    migrate(db);
+    const host = upsertHost(db, noopNotifier, {
+      name: "import-host",
+      type: "persistent",
+    });
+    const { project } = createProject(db, noopNotifier, {
+      name: "import-project",
+      source: { type: "local_path", hostId: host.id, path: "/tmp/test" },
+    });
+    const environment = createEnvironment(db, noopNotifier, {
+      projectId: project.id,
+      hostId: host.id,
+      workspaceProvisionType: "unmanaged",
+    });
+    const ompThread = createThread(db, noopNotifier, {
+      projectId: project.id,
+      environmentId: environment.id,
+      providerId: "acp-omp",
+    });
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: ompThread.id,
+        environmentId: environment.id,
+        sequence: 1,
+        ...threadEventFields,
+        type: "thread/identity",
+        providerThreadId: "abc",
+        data: "{}",
+        createdAt: 1_000,
+      },
+    ]);
+
+    // Session ids live in a provider namespace: session "abc" bound by an
+    // acp-omp thread must not block session "abc" on acp-opencode.
+    expect(
+      findLiveThreadIdByProviderThreadId(db, {
+        hostId: host.id,
+        providerId: "acp-omp",
+        providerThreadId: "abc",
+      }),
+    ).toBe(ompThread.id);
+    expect(
+      findLiveThreadIdByProviderThreadId(db, {
+        hostId: host.id,
+        providerId: "acp-opencode",
+        providerThreadId: "abc",
+      }),
+    ).toBeNull();
   });
 
   it("returns null when no live thread has recorded the provider session", () => {
@@ -4136,6 +4189,7 @@ describe("findLiveThreadIdByProviderThreadId", () => {
     expect(
       findLiveThreadIdByProviderThreadId(db, {
         hostId: "nonexistent-host",
+        providerId: "acp-omp",
         providerThreadId: "unbound-provider-session",
       }),
     ).toBeNull();

@@ -37,6 +37,7 @@ import type { DbNotifier } from "../notifier.js";
 import {
   environments,
   pendingInteractions,
+  providerSessionReservations,
   threadSearchSegments,
   threads,
 } from "../schema.js";
@@ -242,6 +243,49 @@ export function upsertThreadTitleSearchSegments(
   });
 }
 
+/** Another thread already reserved the provider session an import binds. */
+export class ProviderSessionReservedError extends Error {
+  readonly existingThreadId: string;
+  readonly providerSessionId: string;
+
+  constructor(args: { existingThreadId: string; providerSessionId: string }) {
+    super(
+      `Provider session ${args.providerSessionId} is already reserved by thread ${args.existingThreadId}`,
+    );
+    this.name = "ProviderSessionReservedError";
+    this.existingThreadId = args.existingThreadId;
+    this.providerSessionId = args.providerSessionId;
+  }
+}
+
+export interface FindProviderSessionReservationArgs {
+  hostId: string;
+  providerId: string;
+  providerSessionId: string;
+}
+
+/** Thread currently holding this external provider session, if any. */
+export function findProviderSessionReservationThreadId(
+  db: DbQueryConnection,
+  args: FindProviderSessionReservationArgs,
+): string | null {
+  const row = db
+    .select({ threadId: providerSessionReservations.threadId })
+    .from(providerSessionReservations)
+    .where(
+      and(
+        eq(providerSessionReservations.hostId, args.hostId),
+        eq(providerSessionReservations.providerId, args.providerId),
+        eq(
+          providerSessionReservations.providerSessionId,
+          args.providerSessionId,
+        ),
+      ),
+    )
+    .get();
+  return row?.threadId ?? null;
+}
+
 export interface CreateThreadInput {
   projectId: string;
   environmentId?: string | null;
@@ -258,6 +302,19 @@ export interface CreateThreadInput {
   /** Plugin attribution for create origin "plugin". */
   originPluginId?: string | null;
   visibility?: ThreadVisibility;
+  /**
+   * Session import only: atomically reserve the external provider session
+   * (keyed by host + this thread's providerId + session id) in the same
+   * transaction that creates the thread, so two concurrent imports cannot
+   * both bind one session. Throws ProviderSessionReservedError when another
+   * thread already holds it. The reservation row cascades away when the
+   * thread row is hard-deleted (failed creation rollback or permanent
+   * deletion).
+   */
+  providerSessionReservation?: {
+    hostId: string;
+    providerSessionId: string;
+  } | null;
 }
 
 export function createThread(
@@ -298,6 +355,32 @@ export function createThread(
         })
         .returning()
         .get();
+      const reservation = input.providerSessionReservation ?? null;
+      if (reservation !== null) {
+        // The immediate transaction serializes writers, so read-then-insert
+        // here is race-safe and yields the holder's thread id for the error;
+        // the unique index on (host, provider, session) stays as a backstop.
+        const holderThreadId = findProviderSessionReservationThreadId(tx, {
+          hostId: reservation.hostId,
+          providerId: input.providerId,
+          providerSessionId: reservation.providerSessionId,
+        });
+        if (holderThreadId !== null) {
+          throw new ProviderSessionReservedError({
+            existingThreadId: holderThreadId,
+            providerSessionId: reservation.providerSessionId,
+          });
+        }
+        tx.insert(providerSessionReservations)
+          .values({
+            threadId: createdThread.id,
+            hostId: reservation.hostId,
+            providerId: input.providerId,
+            providerSessionId: reservation.providerSessionId,
+            createdAt: now,
+          })
+          .run();
+      }
       upsertThreadTitleSearchSegments(tx, {
         threadId: createdThread.id,
         title: createdThread.title,

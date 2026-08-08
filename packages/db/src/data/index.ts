@@ -82,6 +82,8 @@ export type {
 export {
   createThread,
   countLiveThreadsInEnvironment,
+  findProviderSessionReservationThreadId,
+  ProviderSessionReservedError,
   countNonDeletedAssignedChildThreads,
   getThread,
   getThreadExecutionOverride,
@@ -127,6 +129,7 @@ export type {
   CountLiveThreadsInEnvironmentArgs,
   CountNonDeletedAssignedChildThreadsArgs,
   CreateThreadInput,
+  FindProviderSessionReservationArgs,
   HasLiveThreadAtHostPathArgs,
   HasNonTerminalThreadInEnvironmentArgs,
   ListNonDeletedChildThreadsArgs,

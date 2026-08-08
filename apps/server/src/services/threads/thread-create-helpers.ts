@@ -5,7 +5,9 @@ import {
   getProject,
   getThread,
   isSqliteForeignKeyConstraint,
+  ProviderSessionReservedError,
 } from "@bb/db";
+import type { CreateThreadInput } from "@bb/db";
 import type { DbNotifier } from "@bb/db";
 import type { HostDaemonCommand } from "@bb/host-daemon-contract";
 import type { LocalPathProjectSource } from "@bb/domain";
@@ -161,6 +163,7 @@ export function createThreadRecord(
     environmentId: string | null;
     request: ThreadCreateServiceRequest;
     status?: "starting";
+    providerSessionReservation?: CreateThreadInput["providerSessionReservation"];
   },
 ) {
   const sectionId = args.request.sectionId ?? null;
@@ -182,10 +185,20 @@ export function createThreadRecord(
       originPluginId: args.request.originPluginId ?? null,
       visibility: args.request.visibility,
       status: args.status ?? "starting",
+      providerSessionReservation: args.providerSessionReservation ?? null,
     });
     emitPluginThreadCreated(thread);
     return thread;
   } catch (error) {
+    if (error instanceof ProviderSessionReservedError) {
+      // Same shape as the pre-flight duplicate check in thread-import.ts; this
+      // is the race-safe backstop claimed inside the thread-create transaction.
+      throw new ApiError(
+        409,
+        "provider_session_already_bound",
+        `Provider session ${error.providerSessionId} is already bound to thread ${error.existingThreadId}`,
+      );
+    }
     if (
       sectionId !== null &&
       error instanceof Error &&

@@ -582,6 +582,38 @@ export const threadTabs = sqliteTable("thread_tabs", {
   updatedAt: integer("updated_at").notNull(),
 });
 
+// One row per external provider session a bb thread has adopted via session
+// import. Claimed in the same transaction that creates the thread so two
+// concurrent imports cannot both bind one session (the event-log reverse
+// lookup only sees identity events a completed start already stored, and each
+// environment owns a separate runtime, so no process-local guard covers this
+// race). Released by cascade when the thread row is hard-deleted: failed
+// creation rollback and permanent deletion, the two paths that call
+// deleteThread.
+export const providerSessionReservations = sqliteTable(
+  "provider_session_reservations",
+  {
+    threadId: text("thread_id")
+      .primaryKey()
+      .references(() => threads.id, { onDelete: "cascade" }),
+    hostId: text("host_id")
+      .notNull()
+      .references(() => hosts.id, { onDelete: "cascade" }),
+    providerId: text("provider_id").notNull(),
+    providerSessionId: text("provider_session_id").notNull(),
+    createdAt: integer("created_at").notNull(),
+  },
+  (table) => [
+    // Provider session ids live in a provider namespace: session "abc" on
+    // acp-omp must not block session "abc" on acp-opencode on the same host.
+    uniqueIndex("provider_session_reservations_session_idx").on(
+      table.hostId,
+      table.providerId,
+      table.providerSessionId,
+    ),
+  ],
+);
+
 export const threadSections = sqliteTable(
   "thread_sections",
   {

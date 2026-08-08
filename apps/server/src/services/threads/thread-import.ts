@@ -1,6 +1,7 @@
 import {
   findLiveThreadIdByProviderThreadId,
   findProjectEnvironmentByHostPath,
+  findProviderSessionReservationThreadId,
 } from "@bb/db";
 import { normalizeProjectPathInput } from "@bb/domain";
 import {
@@ -98,16 +99,24 @@ async function requireImportCapableProvider(
  * turns by provider session id (packages/agent-runtime/src/acp/bridge/bridge.ts).
  * Binding a second bb thread to a provider session another live thread
  * already binds would make the bridge misroute turns between the two, so
- * refuse it up front.
+ * refuse it up front. Two sources cover the two ways a session gets bound:
+ * the reservation table holds sessions other imports claimed (including ones
+ * whose start has not completed yet), and the event-log reverse lookup holds
+ * sessions a plain thread start/resume already recorded. This pre-flight
+ * check is best-effort; the race-safe guard is the reservation claimed
+ * inside the thread-create transaction (packages/db createThread).
  */
 function requireUnboundProviderSession(
   deps: Pick<ThreadImportDeps, "db">,
-  args: { hostId: string; providerSessionId: string },
+  args: { hostId: string; providerId: string; providerSessionId: string },
 ): void {
-  const existingThreadId = findLiveThreadIdByProviderThreadId(deps.db, {
-    hostId: args.hostId,
-    providerThreadId: args.providerSessionId,
-  });
+  const existingThreadId =
+    findProviderSessionReservationThreadId(deps.db, args) ??
+    findLiveThreadIdByProviderThreadId(deps.db, {
+      hostId: args.hostId,
+      providerId: args.providerId,
+      providerThreadId: args.providerSessionId,
+    });
   if (existingThreadId !== null) {
     throw new ApiError(
       409,
@@ -169,6 +178,7 @@ export async function createThreadImportFromRequest(
   });
   requireUnboundProviderSession(deps, {
     hostId,
+    providerId: request.providerId,
     providerSessionId: request.providerSessionId,
   });
   const source = requireSourceForHost(deps, request.projectId, hostId);

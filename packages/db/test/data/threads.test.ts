@@ -6,6 +6,8 @@ import type { DbNotifier } from "../../src/notifier.js";
 import {
   createThread,
   countLiveThreadsInEnvironment,
+  findProviderSessionReservationThreadId,
+  ProviderSessionReservedError,
   countNonDeletedAssignedChildThreads,
   getThread,
   getThreadExecutionOverride,
@@ -1645,5 +1647,112 @@ describe("thread originKind compatibility", () => {
     });
 
     expect(own.map((thread) => thread.id)).toEqual([ownFork.id]);
+  });
+});
+
+describe("provider session reservations", () => {
+  it("claims the session with the thread and refuses a second claim", () => {
+    const { db, host, project } = setup();
+    const first = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "acp-omp",
+      providerSessionReservation: {
+        hostId: host.id,
+        providerSessionId: "shared-session",
+      },
+    });
+
+    expect(
+      findProviderSessionReservationThreadId(db, {
+        hostId: host.id,
+        providerId: "acp-omp",
+        providerSessionId: "shared-session",
+      }),
+    ).toBe(first.id);
+
+    expect(() =>
+      createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "acp-omp",
+        providerSessionReservation: {
+          hostId: host.id,
+          providerSessionId: "shared-session",
+        },
+      }),
+    ).toThrow(ProviderSessionReservedError);
+    // The failed claim rolls the whole thread-create transaction back.
+    expect(listThreads(db, { projectId: project.id }).map((t) => t.id)).toEqual(
+      [first.id],
+    );
+  });
+
+  it("scopes reservations to the provider namespace", () => {
+    const { db, host, project } = setup();
+    const omp = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "acp-omp",
+      providerSessionReservation: {
+        hostId: host.id,
+        providerSessionId: "abc",
+      },
+    });
+    // Session "abc" on acp-omp must not block session "abc" on acp-opencode.
+    const opencode = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "acp-opencode",
+      providerSessionReservation: {
+        hostId: host.id,
+        providerSessionId: "abc",
+      },
+    });
+
+    expect(
+      findProviderSessionReservationThreadId(db, {
+        hostId: host.id,
+        providerId: "acp-omp",
+        providerSessionId: "abc",
+      }),
+    ).toBe(omp.id);
+    expect(
+      findProviderSessionReservationThreadId(db, {
+        hostId: host.id,
+        providerId: "acp-opencode",
+        providerSessionId: "abc",
+      }),
+    ).toBe(opencode.id);
+  });
+
+  it("holds the reservation through soft delete and releases it on hard delete", () => {
+    const { db, host, project } = setup();
+    const reservation = {
+      hostId: host.id,
+      providerSessionId: "released-session",
+    };
+    const thread = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "acp-omp",
+      providerSessionReservation: reservation,
+    });
+    const lookup = {
+      hostId: host.id,
+      providerId: "acp-omp",
+      providerSessionId: "released-session",
+    };
+
+    // Soft delete keeps the row, so the session stays bound until the thread
+    // is permanently deleted.
+    markThreadDeleted(db, noopNotifier, { threadId: thread.id });
+    expect(findProviderSessionReservationThreadId(db, lookup)).toBe(thread.id);
+
+    // Hard delete (failed creation rollback / permanent deletion) cascades the
+    // reservation away, freeing the session for a new import.
+    deleteThread(db, noopNotifier, thread.id);
+    expect(findProviderSessionReservationThreadId(db, lookup)).toBeNull();
+    const again = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "acp-omp",
+      providerSessionReservation: reservation,
+    });
+    expect(findProviderSessionReservationThreadId(db, lookup)).toBe(again.id);
   });
 });

@@ -2570,11 +2570,13 @@ export function getStoredProviderThreadIdAtOrBeforeSequence(
  * providerThreadId (via thread/identity or any provider-scoped event). Used
  * to refuse importing an external ACP session that another live bb thread
  * already binds, since the ACP bridge routes by provider session id and a
- * second binding would misroute turns between the two threads.
+ * second binding would misroute turns between the two threads. Session ids
+ * live in a provider namespace, so the lookup is provider-scoped: session
+ * "abc" on one provider must not shadow session "abc" on another.
  */
 export function findLiveThreadIdByProviderThreadId(
   db: DbQueryConnection,
-  args: { hostId: string; providerThreadId: string },
+  args: { hostId: string; providerId: string; providerThreadId: string },
 ): string | null {
   const row = db
     .select({ threadId: events.threadId })
@@ -2584,6 +2586,7 @@ export function findLiveThreadIdByProviderThreadId(
     .where(
       and(
         eq(events.providerThreadId, args.providerThreadId),
+        eq(threads.providerId, args.providerId),
         eq(environments.hostId, args.hostId),
         isNull(threads.deletedAt),
       ),
