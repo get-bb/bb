@@ -54,6 +54,7 @@ interface CreateTurnSubmitCommandArgs {
 }
 
 interface CreateRouterArgs {
+  eventSink?: CommandRouterOptions["eventSink"];
   logger?: CommandRouterOptions["logger"];
   runtimeManager?: RuntimeManager;
 }
@@ -91,7 +92,7 @@ function createRouter(
 ): CommandRouter {
   return new CommandRouter({
     dataDir: "/tmp/bb-router-test-data",
-    eventSink: noopEventSink,
+    eventSink: args.eventSink ?? noopEventSink,
     fetchProjectAttachment: unexpectedProjectAttachmentFetch,
     logger: {
       debug: () => undefined,
@@ -391,5 +392,37 @@ describe("CommandRouter", () => {
     releaseStop.resolve();
     const stopResponse = await stopTask;
     expect(stopResponse.ok).toBe(true);
+  });
+
+  it("flushes buffered events before reporting a thread.start failure", async () => {
+    const harness = createHarness({ workspacePath: "/tmp/env-router" });
+    await harness.manager.ensureEnvironment({
+      environmentId: "env-router",
+      workspacePath: "/tmp/env-router",
+    });
+    harness.runtime.startThread = async () => {
+      throw new Error("provider session/load timed out");
+    };
+    const flush = vi.fn(async () => undefined);
+    const router = createRouter(harness, {
+      eventSink: { emit: vi.fn(), flush },
+    });
+
+    const response = await runRouterCommand({
+      command: createThreadStartCommand(),
+      requestId: "start-flush-on-failure",
+      router,
+    });
+
+    expect(response).toMatchObject({
+      ok: false,
+      errorMessage: "provider session/load timed out",
+    });
+    // thread.start declares flushEventsBeforeResult: true; a late-arriving
+    // thread/identity buffered before the failure must still reach the
+    // server, or a caller inferring "bind never completed" from the event
+    // log (releaseFailedSessionImportReservationInTransaction) can race
+    // ahead of it.
+    expect(flush).toHaveBeenCalledTimes(1);
   });
 });

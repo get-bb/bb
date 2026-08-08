@@ -238,11 +238,23 @@ export class CommandRouter {
   private async executeLiveDaemonCommandBody(
     command: HostDaemonCommand,
   ): Promise<HostDaemonCommandResultForCommand> {
-    const result = await dispatchCommand(command, this.createDispatchOptions());
-    // Commands that emit thread events before completing preserve the previous
-    // event-before-result ordering under live RPC.
-    if (shouldFlushEventsBeforeReportingCommandResult(command)) {
-      await this.options.eventSink.flush();
+    // Commands that emit thread events before completing preserve the
+    // previous event-before-result ordering under live RPC. The flush runs
+    // in `finally`, not only on success: events already emitted before a
+    // failure (e.g. a thread/identity from a bind that completed just
+    // before dispatch threw, such as a session/load timeout) must still
+    // reach the server before the failure result settles, or a caller
+    // inferring "bind never completed" from the server event log
+    // (releaseFailedSessionImportReservationInTransaction) can race ahead
+    // of them.
+    const shouldFlush = shouldFlushEventsBeforeReportingCommandResult(command);
+    let result: Awaited<ReturnType<typeof dispatchCommand>>;
+    try {
+      result = await dispatchCommand(command, this.createDispatchOptions());
+    } finally {
+      if (shouldFlush) {
+        await this.options.eventSink.flush();
+      }
     }
     return parseHostDaemonCommandResultForCommand(command, result);
   }
