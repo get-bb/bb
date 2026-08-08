@@ -671,6 +671,11 @@ export const events = sqliteTable(
       table.itemKind,
       table.sequence,
     ),
+    // The thread list checks all visible threads. Background-task events are
+    // rare, so this partial index keeps the cold read set small.
+    index("events_background_task_thread_type_item_sequence_idx")
+      .on(table.threadId, table.type, table.itemId, table.sequence)
+      .where(sql`${table.itemKind} = 'backgroundTask'`),
     index("events_thread_type_sequence_idx").on(
       table.threadId,
       table.type,

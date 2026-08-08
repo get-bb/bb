@@ -624,6 +624,13 @@
       "when": 1786223263495,
       "tag": "0088_narrow_kronos",
       "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "6",
+      "when": 1786228557657,
+      "tag": "0089_chemical_darwin",
+      "breakpoints": true
     }
   ]
 }

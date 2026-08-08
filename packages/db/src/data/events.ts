@@ -53,6 +53,16 @@ import {
 } from "./threads.js";
 
 const STORED_EVENT_SEQUENCE_LOOKUP_CHUNK_SIZE = 250;
+// SQLite accepts 32,766 variables. This query binds each thread ID twice and
+// also binds 11 fixed values.
+const SQLITE_MAX_VARIABLE_NUMBER = 32_766;
+const ACTIVE_BACKGROUND_TASK_FIXED_PARAMETER_COUNT = 11;
+const ACTIVE_BACKGROUND_TASK_THREAD_ID_PARAMETER_COUNT = 2;
+const ACTIVE_BACKGROUND_TASK_THREAD_ID_CHUNK_SIZE = Math.floor(
+  (SQLITE_MAX_VARIABLE_NUMBER -
+    ACTIVE_BACKGROUND_TASK_FIXED_PARAMETER_COUNT) /
+    ACTIVE_BACKGROUND_TASK_THREAD_ID_PARAMETER_COUNT,
+);
 
 const isRootTurnStartedEventData = sql`COALESCE(json_extract(${events.data}, '$.parentToolCallId'), '') = ''`;
 const isNotNestedTurnUsageEvent = sql`NOT EXISTS (
@@ -1859,11 +1869,49 @@ export function listActiveBackgroundTaskCountsByThreadIds(
     return [];
   }
 
+  const threadIds = [...new Set(args.threadIds)];
+  const rows: ActiveBackgroundTaskCountRow[] = [];
+
+  for (
+    let offset = 0;
+    offset < threadIds.length;
+    offset += ACTIVE_BACKGROUND_TASK_THREAD_ID_CHUNK_SIZE
+  ) {
+    rows.push(
+      ...listActiveBackgroundTaskCountsByThreadIdsChunk(
+        db,
+        threadIds.slice(
+          offset,
+          offset + ACTIVE_BACKGROUND_TASK_THREAD_ID_CHUNK_SIZE,
+        ),
+      ),
+    );
+  }
+
+  return rows.sort((left, right) =>
+    left.threadId < right.threadId
+      ? -1
+      : left.threadId > right.threadId
+        ? 1
+        : 0,
+  );
+}
+
+function listActiveBackgroundTaskCountsByThreadIdsChunk(
+  db: DbQueryConnection,
+  threadIds: readonly string[],
+): ActiveBackgroundTaskCountRow[] {
   const startedType = "item/started" satisfies ThreadEventType;
   const progressType =
     "item/backgroundTask/progress" satisfies ThreadEventType;
   const completedType =
     "item/backgroundTask/completed" satisfies ThreadEventType;
+  const backgroundTaskItemKind =
+    "backgroundTask" satisfies ThreadEventItemType;
+  // SQLite requires a literal predicate to use the matching partial index.
+  const backgroundTaskItemKindPredicate = sql.raw(
+    `= '${backgroundTaskItemKind}'`,
+  );
 
   return db.all<ActiveBackgroundTaskCountRow>(sql`
     WITH latest_background_task_activity AS (
@@ -1871,9 +1919,9 @@ export function listActiveBackgroundTaskCountsByThreadIds(
         ${events.threadId} AS thread_id,
         ${events.itemId} AS item_id,
         MAX(${events.sequence}) AS sequence
-      FROM ${events}
-      WHERE ${inArray(events.threadId, [...args.threadIds])}
-        AND ${eq(events.itemKind, "backgroundTask")}
+      FROM ${events} INDEXED BY events_background_task_thread_type_item_sequence_idx
+      WHERE ${inArray(events.threadId, [...threadIds])}
+        AND ${events.itemKind} ${backgroundTaskItemKindPredicate}
         AND ${inArray(events.type, [startedType, progressType])}
         AND ${isNotNull(events.itemId)}
       GROUP BY ${events.threadId}, ${events.itemId}
@@ -1882,9 +1930,9 @@ export function listActiveBackgroundTaskCountsByThreadIds(
       SELECT DISTINCT
         ${events.threadId} AS thread_id,
         ${events.itemId} AS item_id
-      FROM ${events}
-      WHERE ${inArray(events.threadId, [...args.threadIds])}
-        AND ${eq(events.itemKind, "backgroundTask")}
+      FROM ${events} INDEXED BY events_background_task_thread_type_item_sequence_idx
+      WHERE ${inArray(events.threadId, [...threadIds])}
+        AND ${events.itemKind} ${backgroundTaskItemKindPredicate}
         AND ${eq(events.type, completedType)}
         AND ${isNotNull(events.itemId)}
     )

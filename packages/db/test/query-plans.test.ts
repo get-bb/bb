@@ -14,6 +14,7 @@ import {
 } from "../src/data/pending-interactions.js";
 import {
   insertEvents,
+  listActiveBackgroundTaskCountsByThreadIds,
   listLatestGoalEventRowsByThreadIds,
   listLatestOpenBackgroundTaskStateRowsForThread,
   listStoredConversationOutlineEventRows,
@@ -212,6 +213,33 @@ function assertEmittedQueryPlanUsesIndex(
 }
 
 describe("slow query index plans", () => {
+  it("pins active background-task scans to the partial index", () => {
+    const { db, thread } = setup();
+
+    const captured = captureStatements(db, () => {
+      listActiveBackgroundTaskCountsByThreadIds(db, {
+        threadIds: [thread.id],
+      });
+    });
+    const query = captured.find((entry) =>
+      entry.sql.includes("latest_background_task_activity"),
+    );
+    if (!query) {
+      throw new Error("Expected the active background-task count SQL");
+    }
+    expect(query.params).toHaveLength(13);
+    const details = queryPlanDetails({
+      db,
+      params: query.params,
+      sql: query.sql,
+    });
+    expect(
+      details.match(/events_background_task_thread_type_item_sequence_idx/gu),
+    ).toHaveLength(2);
+
+    db.$client.close();
+  });
+
   it("uses selective indexes for conversation-outline events", () => {
     const { db, logger, thread } = setup();
 
@@ -280,7 +308,7 @@ describe("slow query index plans", () => {
     assertEmittedQueryPlanUsesIndex({
       db,
       debugLog,
-      indexName: "events_thread_type_item_kind_sequence_idx",
+      indexName: "events_background_task_thread_type_item_sequence_idx",
       params,
     });
 
