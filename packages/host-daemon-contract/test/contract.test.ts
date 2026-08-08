@@ -1039,11 +1039,10 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  // Version 85 includes accepted turns that await their first event in the
-  // active-thread session report. The bump updates enrolled daemons before
-  // the server depends on the revised report meaning during reconciliation.
-  it("uses protocol version 85 for pending-turn session reports", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(85);
+  // Version 86 protects the Pi bridge JSON-RPC channel from stdout writes by
+  // user extensions, restoring terminal turn events for affected sessions.
+  it("uses protocol version 86 for guarded Pi bridge output", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(86);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {

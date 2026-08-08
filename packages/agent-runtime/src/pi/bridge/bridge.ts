@@ -42,6 +42,10 @@ import {
 } from "./tool-proxy.js";
 import { listPiBridgeModels } from "./model-list.js";
 import { getPiModelRuntime } from "./model-runtime.js";
+import {
+  takeOverPiBridgeStdout,
+  writePiBridgeProtocol,
+} from "./output-guard.js";
 
 // ---------------------------------------------------------------------------
 // Command schema — defines what JSON-RPC requests this bridge accepts
@@ -304,7 +308,7 @@ function send(
     | BridgeEventNotification
     | BridgeToolCallRequest,
 ): void {
-  process.stdout.write(JSON.stringify(msg) + "\n");
+  writePiBridgeProtocol(JSON.stringify(msg) + "\n");
 }
 
 function sendResult(id: string | number, result: unknown): void {
@@ -959,6 +963,7 @@ function isMainModule(): boolean {
 }
 
 if (isMainModule()) {
+  takeOverPiBridgeStdout();
   const rl = createInterface({ input: process.stdin, terminal: false });
   rl.on("line", handleLine);
   rl.on("close", () => {
