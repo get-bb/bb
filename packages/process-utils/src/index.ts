@@ -63,6 +63,7 @@ export interface WriteSafeProcessDiagnosticReportArgs
 }
 
 const MAX_DIAGNOSTIC_ERROR_CAUSE_DEPTH = 8;
+const MAX_DIAGNOSTIC_AGGREGATE_ERRORS = 8;
 
 interface SafeProcessDiagnosticError {
   name: string;
@@ -70,6 +71,8 @@ interface SafeProcessDiagnosticError {
   stack?: string;
   code?: string;
   cause?: SafeProcessDiagnosticError;
+  errors?: SafeProcessDiagnosticError[];
+  errorsTruncated?: number;
   truncationReason?: "cycle" | "depth";
 }
 
@@ -241,6 +244,20 @@ function serializeDiagnosticError(
         depth + 1,
       );
     }
+    if (error instanceof AggregateError) {
+      const aggregateErrors = error.errors.slice(
+        0,
+        MAX_DIAGNOSTIC_AGGREGATE_ERRORS,
+      );
+      serialized.errors = aggregateErrors.map((aggregateError) =>
+        serializeDiagnosticError(aggregateError, seenErrors, depth + 1),
+      );
+      const errorsTruncated = error.errors.length - aggregateErrors.length;
+      if (errorsTruncated > 0) {
+        serialized.errorsTruncated = errorsTruncated;
+      }
+    }
+    seenErrors.delete(error);
     return serialized;
   }
 

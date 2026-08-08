@@ -202,6 +202,33 @@ describe("process utils", () => {
     expect(reportText).not.toContain("cause-31");
   });
 
+  it("writes bounded AggregateError details", () => {
+    const logsDir = join(
+      mkdtempSync(join(tmpdir(), "bb-process-utils-report-")),
+      "logs",
+    );
+    const connectionErrors = Array.from({ length: 10 }, (_, index) => {
+      const error = new Error(`connect ECONNREFUSED address-${index}`);
+      Object.defineProperty(error, "code", { value: "ECONNREFUSED" });
+      return error;
+    });
+    const reportPath = writeSafeProcessDiagnosticReport({
+      kind: "startupFailure",
+      logsDir,
+      processName: "host-daemon",
+      error: new AggregateError(connectionErrors, "fetch failed"),
+      now: () => new Date("2026-06-01T12:00:00.000Z"),
+      createReportId: () => "report-id",
+    });
+    const reportText = readFileSync(reportPath, "utf8");
+
+    expect(reportText).toContain('"errors"');
+    expect(reportText).toContain('"code": "ECONNREFUSED"');
+    expect(reportText).toContain("connect ECONNREFUSED address-7");
+    expect(reportText).toContain('"errorsTruncated": 2');
+    expect(reportText).not.toContain("connect ECONNREFUSED address-8");
+  });
+
   it("spawns a process with piped stdio", async () => {
     await expect(readProcessOutput()).resolves.toEqual({
       exitCode: 0,
