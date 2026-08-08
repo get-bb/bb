@@ -20,6 +20,10 @@ interface TimelineTestRowArgs {
   sequence: number;
 }
 
+interface TimelineTurnTestRowArgs extends TimelineTestRowArgs {
+  children?: TimelineRow[];
+}
+
 function timelineCursor(args: TimelineTestRowArgs): TimelinePaginationCursor {
   return {
     anchorSeq: args.sequence,
@@ -73,7 +77,7 @@ function commandRow(args: TimelineTestRowArgs): TimelineCommandWorkRow {
   };
 }
 
-function turnSummaryRow(args: TimelineTestRowArgs): TimelineTurnRow {
+function turnSummaryRow(args: TimelineTurnTestRowArgs): TimelineTurnRow {
   return {
     id: args.id,
     threadId: "thread-1",
@@ -86,7 +90,7 @@ function turnSummaryRow(args: TimelineTestRowArgs): TimelineTurnRow {
     status: "completed",
     summaryCount: 1,
     completedAt: args.sequence,
-    children: null,
+    children: args.children ?? null,
   };
 }
 
@@ -161,6 +165,44 @@ describe("timeline page row merging", () => {
       "worked-for-summary",
       "latest-user",
     ]);
+  });
+
+  it("keeps distinct byte-budget slices of one finished turn", () => {
+    const olderCommands = [
+      commandRow({ id: "command-1", sequence: 10 }),
+      commandRow({ id: "command-2", sequence: 11 }),
+    ];
+    const latestCommands = [
+      commandRow({ id: "command-3", sequence: 20 }),
+      commandRow({ id: "command-4", sequence: 21 }),
+    ];
+    const olderSlice = turnSummaryRow({
+      id: "turn-1:sequence-page:10",
+      sequence: 10,
+      children: olderCommands,
+    });
+    const latestSlice = turnSummaryRow({
+      id: "turn-1:sequence-page:20",
+      sequence: 20,
+      children: latestCommands,
+    });
+
+    const rows = prependOlderTimelineRows({
+      olderRows: [olderSlice],
+      loadedRows: [latestSlice],
+    });
+
+    expect(rows.map((row) => row.id)).toEqual([
+      "turn-1:sequence-page:10",
+      "turn-1:sequence-page:20",
+    ]);
+    expect(
+      rows.flatMap((row) =>
+        row.kind === "turn" && row.children !== null
+          ? row.children.map((child) => child.id)
+          : [],
+      ),
+    ).toEqual(["command-1", "command-2", "command-3", "command-4"]);
   });
 
   it("replaces the overlapping latest tail while preserving loaded history", () => {

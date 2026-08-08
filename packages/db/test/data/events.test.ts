@@ -3867,23 +3867,32 @@ describe("timeline read-boundary output truncation", () => {
         ...args,
         maxDataBytes: newestTwoBytes,
       }),
-    ).toEqual({ kind: "floor", sequenceStart: 2 });
+    ).toEqual({
+      eventDataBytes: newestTwoBytes,
+      kind: "floor",
+      sequenceStart: 2,
+    });
     expect(
       findStoredTimelineWindowByteBudgetFloor(db, {
         ...args,
         maxDataBytes: getStoredTimelineWindowEventDataBytes(db, args),
       }),
-    ).toEqual({ kind: "fits" });
+    ).toEqual({
+      eventDataBytes: getStoredTimelineWindowEventDataBytes(db, args),
+      kind: "fits",
+    });
     expect(
       findStoredTimelineWindowByteBudgetFloor(db, {
         ...args,
         maxDataBytes: (rowBytes.get(3) ?? 0) - 1,
       }),
-    ).toEqual({
+    ).toEqual(expect.objectContaining({
       eventDataBytes: rowBytes.get(3),
+      hasOlderRows: true,
       kind: "single-event-too-large",
       sequenceStart: 3,
-    });
+      turnId: null,
+    }));
   });
 
   it("shortens an oversized text output and leaves the rest of the payload alone", () => {

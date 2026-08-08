@@ -18,19 +18,26 @@ export type ThreadTimelinePageKind = "latest" | "older";
  * `sourceSeqStart` would send the next page past everything in between.
  */
 export interface TimelineSequenceWindowStart {
+  /** Why this page starts inside a segment. */
+  kind: "byte" | "event";
   /** First event sequence this window covers. */
   sequenceStart: number;
   threadId: string;
 }
 
-// Keep the old opaque cursor value so clients can continue pagination across a
-// server update. The cursor now also represents byte-budget sequence cuts.
+// Keep the old opaque cursor value for event-budget cuts. A distinct value lets
+// older pages preserve byte-window projection and parent-read limits.
 const SEQUENCE_CURSOR_ANCHOR_ID_SEPARATOR = ":in-turn:";
+const BYTE_CURSOR_ANCHOR_ID_SEPARATOR = ":byte-window:";
 
 export function buildSequenceCursorAnchorId(
   args: TimelineSequenceWindowStart,
 ): string {
-  return `${args.threadId}${SEQUENCE_CURSOR_ANCHOR_ID_SEPARATOR}${args.sequenceStart}`;
+  const separator =
+    args.kind === "byte"
+      ? BYTE_CURSOR_ANCHOR_ID_SEPARATOR
+      : SEQUENCE_CURSOR_ANCHOR_ID_SEPARATOR;
+  return `${args.threadId}${separator}${args.sequenceStart}`;
 }
 
 /**
@@ -39,11 +46,14 @@ export function buildSequenceCursorAnchorId(
  * which is the only self-consistency check available for a cursor that names no
  * stored row.
  */
-export function readSequenceCursorSequence(
+export function readSequenceCursor(
   cursor: TimelinePaginationCursor,
   threadId: string,
-): number | null {
-  const prefix = `${threadId}${SEQUENCE_CURSOR_ANCHOR_ID_SEPARATOR}`;
+): Pick<TimelineSequenceWindowStart, "kind" | "sequenceStart"> | null {
+  const eventPrefix = `${threadId}${SEQUENCE_CURSOR_ANCHOR_ID_SEPARATOR}`;
+  const bytePrefix = `${threadId}${BYTE_CURSOR_ANCHOR_ID_SEPARATOR}`;
+  const kind = cursor.anchorId.startsWith(bytePrefix) ? "byte" : "event";
+  const prefix = kind === "byte" ? bytePrefix : eventPrefix;
   if (!cursor.anchorId.startsWith(prefix)) {
     return null;
   }
@@ -57,7 +67,7 @@ export function readSequenceCursorSequence(
       "Timeline pagination cursor is no longer available",
     );
   }
-  return cursor.anchorSeq;
+  return { kind, sequenceStart: cursor.anchorSeq };
 }
 
 export interface LatestThreadTimelinePageRequest {

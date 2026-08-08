@@ -750,10 +750,12 @@ export interface ListStoredEventRowsInRangeArgs {
 }
 
 export interface ListStoredEventRowsByParentToolCallIdsArgs {
+  beforeSequence?: number;
   excludedTypes?: readonly ThreadEventType[];
   /** See {@link InlineOutputCharLimit}. */
   maxInlineOutputChars: InlineOutputCharLimit;
   parentToolCallIds: readonly string[];
+  sequenceStart?: number;
   threadId: string;
 }
 
@@ -828,6 +830,11 @@ export interface ListStoredTurnStartedRowsByTurnIdsUpToSequenceArgs {
   turnIds: readonly string[];
 }
 
+export interface ListStoredTurnCompletedRowsByTurnIdsArgs {
+  threadId: string;
+  turnIds: readonly string[];
+}
+
 export interface HasStoredTurnStartedArgs {
   threadId: string;
   turnId: string;
@@ -871,12 +878,15 @@ export interface FindStoredTimelineWindowByteBudgetFloorArgs
 }
 
 export type StoredTimelineWindowByteBudgetFloor =
-  | { kind: "fits" }
-  | { kind: "floor"; sequenceStart: number }
+  | { eventDataBytes: number; kind: "fits" }
+  | { eventDataBytes: number; kind: "floor"; sequenceStart: number }
   | {
+      createdAt: number;
       eventDataBytes: number;
+      hasOlderRows: boolean;
       kind: "single-event-too-large";
       sequenceStart: number;
+      turnId: string | null;
     };
 
 export interface ListContextWindowUsageRowsArgs {
@@ -1181,6 +1191,12 @@ export function listStoredEventRowsByParentToolCallIds(
   ];
   if (args.excludedTypes && args.excludedTypes.length > 0) {
     conditions.push(notInArray(events.type, [...args.excludedTypes]));
+  }
+  if (args.sequenceStart !== undefined) {
+    conditions.push(gte(events.sequence, args.sequenceStart));
+  }
+  if (args.beforeSequence !== undefined) {
+    conditions.push(lt(events.sequence, args.beforeSequence));
   }
 
   return db
@@ -1552,6 +1568,28 @@ export function listStoredTurnStartedRowsByTurnIdsUpToSequence(
         eq(events.type, "turn/started"),
         inArray(events.turnId, [...args.turnIds]),
         lte(events.sequence, args.sequenceCutoff),
+      ),
+    )
+    .orderBy(events.sequence)
+    .all();
+}
+
+export function listStoredTurnCompletedRowsByTurnIds(
+  db: DbConnection,
+  args: ListStoredTurnCompletedRowsByTurnIdsArgs,
+): StoredEventRow[] {
+  if (args.turnIds.length === 0) {
+    return [];
+  }
+
+  return db
+    .select(storedEventRowFields)
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        eq(events.type, "turn/completed"),
+        inArray(events.turnId, [...args.turnIds]),
       ),
     )
     .orderBy(events.sequence)
@@ -2377,9 +2415,11 @@ export function findStoredTimelineWindowByteBudgetFloor(
   const data = storedTimelineWindowDataColumn(args.maxInlineOutputChars);
   const query = db
     .select({
+      createdAt: events.createdAt,
       dataBytes:
         sql<number>`length(CAST(${data} AS BLOB))`.as("data_bytes"),
       sequence: events.sequence,
+      turnId: events.turnId,
     })
     .from(events)
     .where(and(...storedTimelineWindowConditions(args)))
@@ -2387,26 +2427,41 @@ export function findStoredTimelineWindowByteBudgetFloor(
     .toSQL();
   const statement = db.$client.prepare<
     unknown[],
-    { data_bytes: number; sequence: number }
+    {
+      created_at: number;
+      data_bytes: number;
+      sequence: number;
+      turn_id: string | null;
+    }
   >(query.sql);
+  const iterator = statement.iterate(...query.params)[Symbol.iterator]();
   let includedDataBytes = 0;
   let sequenceStart: number | null = null;
 
-  for (const row of statement.iterate(...query.params)) {
+  for (let next = iterator.next(); !next.done; next = iterator.next()) {
+    const row = next.value;
     if (includedDataBytes + row.data_bytes > args.maxDataBytes) {
-      return sequenceStart === null
-        ? {
-            eventDataBytes: row.data_bytes,
-            kind: "single-event-too-large",
-            sequenceStart: row.sequence,
-          }
-        : { kind: "floor", sequenceStart };
+      if (sequenceStart === null) {
+        return {
+          createdAt: row.created_at,
+          eventDataBytes: row.data_bytes,
+          hasOlderRows: !iterator.next().done,
+          kind: "single-event-too-large",
+          sequenceStart: row.sequence,
+          turnId: row.turn_id,
+        };
+      }
+      return {
+        eventDataBytes: includedDataBytes,
+        kind: "floor",
+        sequenceStart,
+      };
     }
     includedDataBytes += row.data_bytes;
     sequenceStart = row.sequence;
   }
 
-  return { kind: "fits" };
+  return { eventDataBytes: includedDataBytes, kind: "fits" };
 }
 
 export function listStoredTimelineWindowEventRows(

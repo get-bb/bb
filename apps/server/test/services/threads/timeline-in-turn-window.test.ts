@@ -384,6 +384,9 @@ function collectCommandCallIds(
     if (row.kind === "work" && row.workKind === "command") {
       target.add(row.callId);
     }
+    if (row.kind === "work" && row.workKind === "delegation") {
+      collectCommandCallIds(row.childRows, target);
+    }
     if (row.kind === "turn" && row.children !== null) {
       collectCommandCallIds(row.children, target);
     }
@@ -417,7 +420,10 @@ function walkAllPages(
       break;
     }
     const next = response.timelinePage.olderCursor;
-    expect(next, `page ${pages} claimed older rows with no cursor`).not.toBeNull();
+    expect(
+      next,
+      `page ${pages} claimed older rows with no cursor`,
+    ).not.toBeNull();
     const key = `${next!.anchorSeq}:${next!.anchorId}`;
     expect(seenCursors.has(key), `cursor loop at ${key}`).toBe(false);
     seenCursors.add(key);
@@ -493,13 +499,55 @@ describe("in-turn timeline windows", () => {
     });
 
     const commandCallIds = new Set<string>();
+    const turnRowIds = new Set<string>();
     let cursor: TimelinePaginationCursor | null = null;
     let pages = 0;
     for (;;) {
       const page = buildNestedPage(db, thread, LARGE_BUDGET, cursor);
       pages += 1;
       collectCommandCallIds(page.response.rows, commandCallIds);
-      expect(page.profile.eventDataBytes).toBeLessThanOrEqual(
+      for (const row of page.response.rows) {
+        if (row.kind !== "turn") {
+          continue;
+        }
+        expect(row.status).toBe("completed");
+        expect(turnRowIds.has(row.id)).toBe(false);
+        turnRowIds.add(row.id);
+      }
+      expect(page.profile.eventDataBytes, `page ${pages}`).toBeLessThanOrEqual(
+        THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT,
+      );
+      if (!page.response.timelinePage.hasOlderRows) {
+        break;
+      }
+      cursor = page.response.timelinePage.olderCursor;
+      expect(cursor).not.toBeNull();
+      expect(cursor?.anchorId).toContain(":byte-window:");
+      expect(pages).toBeLessThan(10);
+    }
+
+    expect(pages).toBeGreaterThan(1);
+    expect(commandCallIds.size).toBe(650);
+    expect(turnRowIds.size).toBe(pages);
+  });
+
+  it("bounds parented descendants on each byte-budget page", () => {
+    const { db, thread } = setup();
+    seedTurns(db, thread, {
+      commandChars: 25_000,
+      completeLastTurn: true,
+      delegateLastTurn: true,
+      itemsPerTurn: [650],
+    });
+
+    const commandCallIds = new Set<string>();
+    let cursor: TimelinePaginationCursor | null = null;
+    let pages = 0;
+    for (;;) {
+      const page = buildNestedPage(db, thread, LARGE_BUDGET, cursor);
+      pages += 1;
+      collectCommandCallIds(page.response.rows, commandCallIds);
+      expect(page.profile.eventDataBytes, `page ${pages}`).toBeLessThanOrEqual(
         THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT,
       );
       if (!page.response.timelinePage.hasOlderRows) {
@@ -514,28 +562,35 @@ describe("in-turn timeline windows", () => {
     expect(commandCallIds.size).toBe(650);
   });
 
-  it("rejects one event that exceeds the event-data byte limit", () => {
+  it("returns a placeholder when one event exceeds the byte limit", () => {
     const { db, thread } = setup();
-    seedTurns(db, thread, {
-      commandChars: THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT,
-      completeLastTurn: true,
-      itemsPerTurn: [1],
-    });
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 1,
+        type: "system/error",
+        scope: threadScope(),
+        itemId: null,
+        itemKind: null,
+        data: JSON.stringify({
+          message: "x".repeat(THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT),
+        }),
+      },
+    ]);
 
     const latest = buildPage(db, thread, LARGE_BUDGET, null);
-    expect(latest.response.timelinePage.hasOlderRows).toBe(true);
-    const cursor = latest.response.timelinePage.olderCursor;
-    expect(cursor).not.toBeNull();
-
-    expect(() => buildPage(db, thread, LARGE_BUDGET, cursor)).toThrowError(
+    expect(latest.response.timelinePage.hasOlderRows).toBe(false);
+    expect(latest.response.timelinePage.olderCursor).toBeNull();
+    expect(latest.response.rows).toEqual([
       expect.objectContaining({
-        body: expect.objectContaining({
-          code: "timeline_event_too_large",
-          retryable: false,
-        }),
-        status: 413,
+        kind: "system",
+        sourceSeqStart: 1,
+        status: "error",
+        systemKind: "error",
+        title: "Timeline event is too large to display",
       }),
-    );
+    ]);
+    expect(latest.profile.eventRowCount).toBe(0);
   });
 
   it("keeps a parented aggregate whole instead of bypassing the budget during closure", () => {
@@ -600,7 +655,10 @@ describe("in-turn timeline windows", () => {
     const { db, thread } = setup();
     // Two small turns behind one huge finished turn. The huge turn is the page
     // the cursor points at, and paging past it must not read it again.
-    seedTurns(db, thread, { completeLastTurn: true, itemsPerTurn: [5, 5, 400] });
+    seedTurns(db, thread, {
+      completeLastTurn: true,
+      itemsPerTurn: [5, 5, 400],
+    });
 
     const latest = buildPage(db, thread, 100, null);
     expect(latest.profile.eventRowCount).toBeGreaterThan(700);
@@ -751,7 +809,10 @@ describe("timeline inline output reads", () => {
     if (cappedRow?.kind !== "work" || uncappedRow?.kind !== "work") {
       throw new Error("expected work rows");
     }
-    if (cappedRow.workKind !== "command" || uncappedRow.workKind !== "command") {
+    if (
+      cappedRow.workKind !== "command" ||
+      uncappedRow.workKind !== "command"
+    ) {
       throw new Error("expected command rows");
     }
     expect(uncappedRow.output).toBe(output);
@@ -902,9 +963,7 @@ describe("in-turn windows and items that only stream", () => {
     const refreshedAssistant = refreshed.response.rows.find(
       (row) => row.kind === "conversation" && row.role === "assistant",
     );
-    expect(refreshedAssistant?.text).toBe(
-      [...chunks, ...laterChunks].join(""),
-    );
+    expect(refreshedAssistant?.text).toBe([...chunks, ...laterChunks].join(""));
     const unbudgeted = buildPage(db, thread, LARGE_BUDGET, null);
     expect(walkAllPages(db, thread, 100).rows).toEqual(
       unbudgeted.response.rows.map((row) => JSON.stringify(row)),
