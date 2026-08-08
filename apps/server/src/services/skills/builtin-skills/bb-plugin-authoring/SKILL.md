@@ -291,6 +291,31 @@ portability.
 that need the singleton personal project use
 `bb.sdk.projects.list({ includePersonal: true })`.
 
+**Area map.** Every area below is reachable from `bb.sdk`. This lists the
+methods, not their arguments — read `types/bb-plugin-sdk.d.ts` for exact
+signatures.
+
+| Area | Methods |
+| --- | --- |
+| `threads` | `list` `get` `search` `spawn` `fork` `send` `update` `delete` `stop` `wait` `open` `output` `timeline` `conversationOutline` `promptHistory` `archive` `archiveAll` `unarchive` `pin` `unpin` `reorderPinned` `markRead` `markUnread` `childSummary` `paneAction` `timelineTurnSummaryDetails` `storageFiles` `storagePaths` `cancelPlan` `clearGoal` `continueAfterRateLimit` `rateLimitRecovery` `defaultExecutionOptions`; sub-areas `events` (`list` `wait`), `interactions` (`get` `list` `cancel` `resolve` `respond`), `queuedMessages` (`create` `list` `update` `delete` `send` `reorder` `setGroupBoundary`), `tabs` (`get` `update`) |
+| `threadSections` | `list` `create` `update` `delete` |
+| `projects` | `list` `get` `create` `update` `delete` `reorder` `paths` `files` `fileContent` `branches` `commands` `defaultExecutionOptions` `promptHistory`; sub-areas `attachments` (`upload` `read` `copy`), `sources` (`add` `update` `delete`) |
+| `environments` | `get` `update` `status` `paths` `commit` `archiveThreads` `diff` `diffFile` `diffFiles` `diffBranches` `diffPatch` `pullRequest` `markPullRequestDraft` `markPullRequestReady` `mergePullRequest` `squashMerge` |
+| `hosts` | `list` `get` `update` `delete` `directory` `pathsExist` `pickFolder` `cloneDefaultPath` `createJoinCode` `retryUpdate` `providerCliStatus` `installProviderCli` |
+| `files` | `read` `write` `list` `listPaths` `mkdir` `move` `remove` `createPreview` |
+| `terminals` | `list` `create` `get` `input` `output` `resize` `rename` `restart` `close` |
+| `providers` | `list` `models` |
+| `skills` | `list` `listFiles` `getContent` `update` `remove`; sub-area `registry` (`search` `get` `detail` `install` `repositoryStars`) |
+| `plugins` | `list` `install` `remove` `enable` `disable` `reload` `token` `callRpc` `getSource` `getSettings` `updateSettings` `checkUpdates` `listUpdateResults` `applyUpdate`; sub-area `catalog` (`search` `status` `install`) |
+| `theme` | `get` `catalog` `set` |
+| `status` | `get` |
+| `system` | `version` `config` `reloadConfig` `attention` `usageLimits` `executionOptions` `transcribeVoice` `updateGeneralSettings` `updateKeyboardSettings` `updateExperiments` `cliSkillsStatus` `installCliSkills` `onboardingAgents` `onboardingRepos` `onboardingEvent` |
+| `guide` | `render` (the `bb guide` text; local, no request) |
+
+Prefer your own `bb.settings` and `bb.storage` over `sdk.system` and
+`sdk.plugins` for your plugin's own configuration. The `system` and `plugins`
+areas write app-wide state that the user owns.
+
 ```ts
 const thread = await bb.sdk.threads.spawn({
   projectId,
@@ -306,6 +331,23 @@ inputs) — never both. Attribution is auto-filled: `origin: "plugin"` and
 `originPluginId: <your id>` unless you set them. `bb.sdk.threads.send({
 threadId, mode: "auto", input: [...] })` starts a turn on an idle thread or
 queues/steers a running one.
+
+Read and edit existing threads with the same area — you do not need a
+sidebar panel or a spawned thread to reach them:
+
+```ts
+const { threads } = await bb.sdk.threads.list({ projectId, limit: 50 });
+const thread = await bb.sdk.threads.get({ threadId });
+const timeline = await bb.sdk.threads.timeline({ threadId });
+await bb.sdk.threads.update({ threadId, title: "Fix the flaky test" });
+```
+
+`threads.list` filters on `projectId`, `parentThreadId`, `sourceThreadId`,
+`sectionId`, `originKind`, `originPluginId`, `archived`, `unsectioned`,
+`hasParent`, and `includeHidden`, and it pages with `limit` and `offset`.
+`threads.update` writes `title`, `sectionId`, `parentThreadId`, `model`,
+`reasoningLevel`, and `visibility`. Use `threads.timeline` (or
+`threads.output` for the last assistant text) to read a thread's messages.
 
 Use `visibility: "hidden"` for background workers. Hidden threads stay
 out of sidebar organization and do not contribute unread/pending favicon
@@ -402,6 +444,13 @@ and counted in the plugin's handler stats (`bb plugin list`).
 
 Lifecycle events are broadcast to all loaded plugins regardless of sidebar
 visibility.
+
+`thread.created` fires on row creation, so the first user message is not
+always in the timeline yet. To react to a thread's content, listen on
+`thread.active` or `thread.idle`, then read the messages with
+`bb.sdk.threads.timeline`. Because handlers are fire-and-forget, work you do
+in a handler — including `bb.sdk.threads.update({ threadId, title })` —
+cannot delay or interrupt the thread's turn.
 
 ### bb.http — HTTP routes
 
