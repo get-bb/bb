@@ -710,8 +710,8 @@ export type StoredEventRow = Pick<
  * Character cap for the inline outputs a timeline read may return, or `null` to
  * return every payload as stored. See {@link truncatedEventDataColumn}: the cap
  * exists so a window never pays to read output it is going to shorten anyway.
- * `null` is the deliberate choice of the turn-details route, whose whole purpose
- * is to serve the full text.
+ * The turn-details route uses `null` only when the complete selected slice fits
+ * its byte limit.
  */
 export type InlineOutputCharLimit = number | null;
 
@@ -758,6 +758,9 @@ export interface ListStoredEventRowsByParentToolCallIdsArgs {
   sequenceStart?: number;
   threadId: string;
 }
+
+export type GetStoredEventRowsByParentToolCallIdsDataBytesArgs =
+  ListStoredEventRowsByParentToolCallIdsArgs;
 
 export interface ListStoredEventRowsByThreadIdsAndTypesArgs {
   threadIds: readonly string[];
@@ -1173,11 +1176,27 @@ export function listStoredEventRowsByParentToolCallIds(
   db: DbConnection,
   args: ListStoredEventRowsByParentToolCallIdsArgs,
 ): StoredEventRow[] {
+  const conditions = storedEventRowsByParentToolCallIdsConditions(args);
+  if (conditions === null) {
+    return [];
+  }
+
+  return db
+    .select(storedEventRowFieldsWithInlineOutputLimit(args.maxInlineOutputChars))
+    .from(events)
+    .where(and(...conditions))
+    .orderBy(events.sequence)
+    .all();
+}
+
+function storedEventRowsByParentToolCallIdsConditions(
+  args: ListStoredEventRowsByParentToolCallIdsArgs,
+): SQL[] | null {
   const parentToolCallIds = [...new Set(args.parentToolCallIds)].filter(
     (parentToolCallId) => parentToolCallId.length > 0,
   );
   if (parentToolCallIds.length === 0) {
-    return [];
+    return null;
   }
 
   const eventParentToolCallId = sql<string>`json_extract(${events.data}, '$.parentToolCallId')`;
@@ -1199,12 +1218,26 @@ export function listStoredEventRowsByParentToolCallIds(
     conditions.push(lt(events.sequence, args.beforeSequence));
   }
 
-  return db
-    .select(storedEventRowFieldsWithInlineOutputLimit(args.maxInlineOutputChars))
+  return conditions;
+}
+
+export function getStoredEventRowsByParentToolCallIdsDataBytes(
+  db: DbConnection,
+  args: GetStoredEventRowsByParentToolCallIdsDataBytesArgs,
+): number {
+  const conditions = storedEventRowsByParentToolCallIdsConditions(args);
+  if (conditions === null) {
+    return 0;
+  }
+  const data = storedTimelineWindowDataColumn(args.maxInlineOutputChars);
+  const row = db
+    .select({
+      dataBytes: sql<number>`COALESCE(SUM(length(CAST(${data} AS BLOB))), 0)`,
+    })
     .from(events)
     .where(and(...conditions))
-    .orderBy(events.sequence)
-    .all();
+    .get();
+  return row?.dataBytes ?? 0;
 }
 
 export function listStoredToolCallRowsByItemIds(
@@ -2434,33 +2467,49 @@ export function findStoredTimelineWindowByteBudgetFloor(
       turn_id: string | null;
     }
   >(query.sql);
-  const iterator = statement.iterate(...query.params)[Symbol.iterator]();
   let includedDataBytes = 0;
   let sequenceStart: number | null = null;
+  let result: StoredTimelineWindowByteBudgetFloor | null = null;
+  let oversizedEvent: Extract<
+    StoredTimelineWindowByteBudgetFloor,
+    { kind: "single-event-too-large" }
+  > | null = null;
 
-  for (let next = iterator.next(); !next.done; next = iterator.next()) {
-    const row = next.value;
+  for (const row of statement.iterate(...query.params)) {
+    if (oversizedEvent !== null) {
+      oversizedEvent.hasOlderRows = true;
+      result = oversizedEvent;
+      break;
+    }
     if (includedDataBytes + row.data_bytes > args.maxDataBytes) {
       if (sequenceStart === null) {
-        return {
+        oversizedEvent = {
           createdAt: row.created_at,
           eventDataBytes: row.data_bytes,
-          hasOlderRows: !iterator.next().done,
+          hasOlderRows: false,
           kind: "single-event-too-large",
           sequenceStart: row.sequence,
           turnId: row.turn_id,
         };
+        continue;
       }
-      return {
+      result = {
         eventDataBytes: includedDataBytes,
         kind: "floor",
         sequenceStart,
       };
+      break;
     }
     includedDataBytes += row.data_bytes;
     sequenceStart = row.sequence;
   }
 
+  if (result !== null) {
+    return result;
+  }
+  if (oversizedEvent !== null) {
+    return oversizedEvent;
+  }
   return { eventDataBytes: includedDataBytes, kind: "fits" };
 }
 

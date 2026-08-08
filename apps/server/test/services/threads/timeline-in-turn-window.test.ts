@@ -9,6 +9,7 @@ import {
   createConnection,
   createProject,
   createThread,
+  getLatestThreadSequence,
   insertEvents,
   migrate,
   noopNotifier,
@@ -22,6 +23,7 @@ import type {
 } from "@bb/server-contract";
 import {
   buildThreadTimeline,
+  buildTimelineTurnSummaryDetails,
   buildThreadTimelineWithProfile,
   THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT,
 } from "../../../src/services/threads/timeline.js";
@@ -100,6 +102,8 @@ interface SeedOptions {
    * end of the turn, so the item spans a large sequence range.
    */
   longRunningItemIndexes?: readonly number[];
+  /** Character count for each completed command output. */
+  outputChars?: number;
   /**
    * Emit an output delta for each long-running item after every other item, so
    * the item's presence in a mid-turn window is deltas rather than lifecycle
@@ -293,7 +297,10 @@ function seedTurns(
             status: "completed",
             approvalStatus: null,
             exitCode: 0,
-            aggregatedOutput: `output ${item}`,
+            aggregatedOutput:
+              options.outputChars === undefined
+                ? `output ${item}`
+                : "o".repeat(options.outputChars),
           },
         }),
       });
@@ -319,7 +326,10 @@ function seedTurns(
             status: "completed",
             approvalStatus: null,
             exitCode: 0,
-            aggregatedOutput: `late output ${item}`,
+            aggregatedOutput:
+              options.outputChars === undefined
+                ? `late output ${item}`
+                : "o".repeat(options.outputChars),
           },
         }),
       });
@@ -337,6 +347,61 @@ function seedTurns(
     }
   });
 
+  insertEvents(db, noopNotifier, events);
+}
+
+function appendCommandItems(
+  db: DbConnection,
+  thread: Thread,
+  args: { commandChars: number; count: number; itemStart: number },
+): void {
+  let sequence = getLatestThreadSequence(db, { threadId: thread.id });
+  const events: EventInput[] = [];
+  const push = (event: Omit<EventInput, "sequence" | "threadId">): void => {
+    sequence += 1;
+    events.push({ ...event, sequence, threadId: thread.id });
+  };
+  for (let offset = 0; offset < args.count; offset += 1) {
+    const item = args.itemStart + offset;
+    const itemId = `turn-1-item-${item}`;
+    const command = "x".repeat(args.commandChars);
+    push({
+      type: "item/started",
+      scope: turnScope("turn-1"),
+      providerThreadId,
+      itemId,
+      itemKind: "commandExecution",
+      data: JSON.stringify({
+        item: {
+          type: "commandExecution",
+          id: itemId,
+          command,
+          cwd: "/tmp/test",
+          status: "pending",
+          approvalStatus: null,
+        },
+      }),
+    });
+    push({
+      type: "item/completed",
+      scope: turnScope("turn-1"),
+      providerThreadId,
+      itemId,
+      itemKind: "commandExecution",
+      data: JSON.stringify({
+        item: {
+          type: "commandExecution",
+          id: itemId,
+          command,
+          cwd: "/tmp/test",
+          status: "completed",
+          approvalStatus: null,
+          exitCode: 0,
+          aggregatedOutput: `output ${item}`,
+        },
+      }),
+    });
+  }
   insertEvents(db, noopNotifier, events);
 }
 
@@ -499,6 +564,7 @@ describe("in-turn timeline windows", () => {
     });
 
     const commandCallIds = new Set<string>();
+    const expandedCommandCallIds = new Set<string>();
     const turnRowIds = new Set<string>();
     let cursor: TimelinePaginationCursor | null = null;
     let pages = 0;
@@ -513,6 +579,19 @@ describe("in-turn timeline windows", () => {
         expect(row.status).toBe("completed");
         expect(turnRowIds.has(row.id)).toBe(false);
         turnRowIds.add(row.id);
+        const details = buildTimelineTurnSummaryDetails(db, thread, {
+          includeProviderUnhandledOperations: false,
+          sourceSeqEnd: row.sourceSeqEnd,
+          sourceSeqStart: row.sourceSeqStart,
+          turnId: row.turnId,
+        });
+        const pageDetailCallIds = new Set<string>();
+        collectCommandCallIds(details.rows, pageDetailCallIds);
+        expect(pageDetailCallIds.size).toBeGreaterThan(0);
+        expect(pageDetailCallIds.size).toBeLessThan(650);
+        for (const callId of pageDetailCallIds) {
+          expandedCommandCallIds.add(callId);
+        }
       }
       expect(page.profile.eventDataBytes, `page ${pages}`).toBeLessThanOrEqual(
         THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT,
@@ -528,7 +607,97 @@ describe("in-turn timeline windows", () => {
 
     expect(pages).toBeGreaterThan(1);
     expect(commandCallIds.size).toBe(650);
+    expect(expandedCommandCallIds.size).toBe(650);
     expect(turnRowIds.size).toBe(pages);
+  });
+
+  it("keeps latest byte-page row identities stable while a turn grows", () => {
+    const { db, thread } = setup();
+    seedTurns(db, thread, {
+      commandChars: 25_000,
+      completeLastTurn: false,
+      itemsPerTurn: [75],
+    });
+
+    const first = buildPage(db, thread, LARGE_BUDGET, null).response;
+    appendCommandItems(db, thread, {
+      commandChars: 25_000,
+      count: 20,
+      itemStart: 75,
+    });
+    const second = buildPage(db, thread, LARGE_BUDGET, null).response;
+    appendCommandItems(db, thread, {
+      commandChars: 25_000,
+      count: 10,
+      itemStart: 95,
+    });
+    const third = buildPage(db, thread, LARGE_BUDGET, null).response;
+
+    expect(first.timelinePage.olderCursor?.anchorSeq).not.toBe(
+      second.timelinePage.olderCursor?.anchorSeq,
+    );
+    expect(second.timelinePage.olderCursor?.anchorSeq).not.toBe(
+      third.timelinePage.olderCursor?.anchorSeq,
+    );
+    for (const [previous, next] of [
+      [first, second],
+      [second, third],
+    ] as const) {
+      const previousIdsByCall = new Map(
+        previous.rows.flatMap((row) =>
+          row.kind === "work" && row.workKind === "command"
+            ? [[row.callId, row.id] as const]
+            : [],
+        ),
+      );
+      const sharedRows = next.rows.flatMap((row) =>
+        row.kind === "work" &&
+        row.workKind === "command" &&
+        previousIdsByCall.has(row.callId)
+          ? [[row.callId, row.id] as const]
+          : [],
+      );
+
+      expect(sharedRows.length).toBeGreaterThan(0);
+      for (const [callId, id] of sharedRows) {
+        expect(id).toBe(previousIdsByCall.get(callId));
+        expect(id).not.toContain(":sequence-page:");
+      }
+    }
+  });
+
+  it("caps stored outputs before it expands a byte-budget slice", () => {
+    const { db, thread } = setup();
+    seedTurns(db, thread, {
+      completeLastTurn: true,
+      itemsPerTurn: [150],
+      outputChars: 50_000,
+    });
+
+    const latest = buildNestedPage(db, thread, LARGE_BUDGET, null).response;
+    const turnRow = latest.rows.find((row) => row.kind === "turn");
+    expect(turnRow?.kind).toBe("turn");
+    if (turnRow?.kind !== "turn") {
+      throw new Error("expected a turn row");
+    }
+    const details = buildTimelineTurnSummaryDetails(db, thread, {
+      includeProviderUnhandledOperations: false,
+      sourceSeqEnd: turnRow.sourceSeqEnd,
+      sourceSeqStart: turnRow.sourceSeqStart,
+      turnId: turnRow.turnId,
+    });
+    const commandOutputs = details.rows.flatMap((row) =>
+      row.kind === "work" && row.workKind === "command" ? [row.output] : [],
+    );
+
+    expect(commandOutputs.length).toBeGreaterThan(0);
+    expect(commandOutputs.length).toBeLessThan(150);
+    expect(commandOutputs.every((output) => output.length < 33_000)).toBe(true);
+    expect(
+      commandOutputs.some((output) =>
+        output.includes("more characters truncated"),
+      ),
+    ).toBe(true);
   });
 
   it("bounds parented descendants on each byte-budget page", () => {
@@ -541,12 +710,30 @@ describe("in-turn timeline windows", () => {
     });
 
     const commandCallIds = new Set<string>();
+    const expandedCommandCallIds = new Set<string>();
     let cursor: TimelinePaginationCursor | null = null;
     let pages = 0;
     for (;;) {
       const page = buildNestedPage(db, thread, LARGE_BUDGET, cursor);
       pages += 1;
       collectCommandCallIds(page.response.rows, commandCallIds);
+      for (const row of page.response.rows) {
+        if (row.kind !== "turn") {
+          continue;
+        }
+        const details = buildTimelineTurnSummaryDetails(db, thread, {
+          includeProviderUnhandledOperations: false,
+          sourceSeqEnd: row.sourceSeqEnd,
+          sourceSeqStart: row.sourceSeqStart,
+          turnId: row.turnId,
+        });
+        const pageDetailCallIds = new Set<string>();
+        collectCommandCallIds(details.rows, pageDetailCallIds);
+        expect(pageDetailCallIds.size).toBeLessThan(650);
+        for (const callId of pageDetailCallIds) {
+          expandedCommandCallIds.add(callId);
+        }
+      }
       expect(page.profile.eventDataBytes, `page ${pages}`).toBeLessThanOrEqual(
         THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT,
       );
@@ -560,6 +747,7 @@ describe("in-turn timeline windows", () => {
 
     expect(pages).toBeGreaterThan(1);
     expect(commandCallIds.size).toBe(650);
+    expect(expandedCommandCallIds.size).toBe(650);
   });
 
   it("returns a placeholder when one event exceeds the byte limit", () => {
@@ -817,7 +1005,7 @@ describe("timeline inline output reads", () => {
     }
     expect(uncappedRow.output).toBe(output);
     expect(cappedRow.output).toBe(
-      `${"x".repeat(32_000)}\n…[18,000 more characters truncated — open the turn to view the full output]`,
+      `${"x".repeat(32_000)}\n…[18,000 more characters truncated]`,
     );
   });
 });

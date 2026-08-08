@@ -205,6 +205,30 @@ describe("timeline page row merging", () => {
     ).toEqual(["command-1", "command-2", "command-3", "command-4"]);
   });
 
+  it("replaces a byte-cut latest page while an unfinished turn grows", () => {
+    const loadedRows = [15, 16, 17, 18].map((sequence) =>
+      commandRow({
+        id: `command-${sequence}`,
+        sequence,
+      }),
+    );
+    const latestRows = [15, 16, 17, 18, 19, 20].map((sequence) =>
+      commandRow({
+        id: `command-${sequence}`,
+        sequence,
+      }),
+    );
+
+    const merge = mergeLatestTimelineRows({ loadedRows, latestRows });
+    const callIds = merge.rows.flatMap((row) =>
+      row.kind === "work" && row.workKind === "command" ? [row.callId] : [],
+    );
+
+    expect(merge.hasLatestOverlap).toBe(true);
+    expect(merge.rows).toHaveLength(6);
+    expect(new Set(callIds).size).toBe(6);
+  });
+
   it("replaces the overlapping latest tail while preserving loaded history", () => {
     const olderUser = userRow({ id: "older-user", sequence: 1 });
     const oldTail = userRow({ id: "live-tail", sequence: 20 });

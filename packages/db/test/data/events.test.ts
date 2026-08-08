@@ -3895,6 +3895,56 @@ describe("timeline read-boundary output truncation", () => {
     }));
   });
 
+  it.each(["floor", "single-event-too-large"] as const)(
+    "releases its statement after a %s byte-cut result",
+    (expectedKind) => {
+      const { db, thread } = setup();
+      insertEvents(
+        db,
+        noopNotifier,
+        [100, 200].map((messageChars, index) => ({
+          threadId: thread.id,
+          sequence: index + 1,
+          type: "system/error" as const,
+          ...threadEventFields,
+          itemId: null,
+          itemKind: null,
+          data: JSON.stringify({ message: "x".repeat(messageChars) }),
+        })),
+      );
+      const args = {
+        maxInlineOutputChars: null,
+        sequenceStart: 0,
+        threadId: thread.id,
+      };
+      const newestRow = listStoredTimelineWindowEventRows(db, args).at(-1);
+      if (!newestRow) {
+        throw new Error("expected a newest event row");
+      }
+      const newestRowBytes = Buffer.byteLength(newestRow.data);
+
+      expect(
+        findStoredTimelineWindowByteBudgetFloor(db, {
+          ...args,
+          maxDataBytes:
+            expectedKind === "floor" ? newestRowBytes : newestRowBytes - 1,
+        }).kind,
+      ).toBe(expectedKind);
+      insertEvents(db, noopNotifier, [
+        {
+          threadId: thread.id,
+          sequence: 3,
+          type: "system/error",
+          ...threadEventFields,
+          itemId: null,
+          itemKind: null,
+          data: JSON.stringify({ message: "write after byte-cut read" }),
+        },
+      ]);
+      expect(getLatestThreadSequence(db, { threadId: thread.id })).toBe(3);
+    },
+  );
+
   it("shortens an oversized text output and leaves the rest of the payload alone", () => {
     const { db, thread } = setup();
     const output = "x".repeat(maxInlineOutputChars + 2_345);
@@ -3931,7 +3981,7 @@ describe("timeline read-boundary output truncation", () => {
     // Byte-identical to what the response-level truncator would produce, so a
     // reader cannot tell which layer shortened the value.
     expect(cappedItem.aggregatedOutput).toBe(
-      `${"x".repeat(maxInlineOutputChars)}\n\u2026[2,345 more characters truncated \u2014 open the turn to view the full output]`,
+      `${"x".repeat(maxInlineOutputChars)}\n\u2026[2,345 more characters truncated]`,
     );
     expect({ ...cappedItem, aggregatedOutput: null }).toEqual({
       ...storedItem,

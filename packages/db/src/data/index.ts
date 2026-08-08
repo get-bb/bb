@@ -319,6 +319,7 @@ export {
   findTimelineSegmentAnchorSequenceAfter,
   findTimelineWindowBudgetFloorSequence,
   findStoredTimelineWindowByteBudgetFloor,
+  getStoredEventRowsByParentToolCallIdsDataBytes,
   findUnfinishedTurnCoveringSequence,
   hasParentedEventCrossingSequence,
   getTimelineSegmentAnchorAtSequence,
