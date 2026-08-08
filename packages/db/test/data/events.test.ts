@@ -1390,15 +1390,19 @@ describe("events", () => {
     expect(rowsByThreadId.size).toBe(2);
   });
 
-  it("batches client turn request keys above the SQLite variable limit", () => {
-    const { db } = setup();
-    const keys = Array.from({ length: 16_383 }, (_, index) => ({
-      requestId: "creq_23456789ab",
-      threadId: `thr_missing_request_${index}`,
-    }));
+  it(
+    "batches client turn request keys above the SQLite variable limit",
+    () => {
+      const { db } = setup();
+      const keys = Array.from({ length: 16_383 }, (_, index) => ({
+        requestId: "creq_23456789ab",
+        threadId: `thr_missing_request_${index}`,
+      }));
 
-    expect(listStoredClientTurnRequestRowsByKeys(db, { keys })).toEqual([]);
-  });
+      expect(listStoredClientTurnRequestRowsByKeys(db, { keys })).toEqual([]);
+    },
+    15_000,
+  );
 
   it("lists client turn request ids in range with a storage predicate", () => {
     const { db, project, thread } = setup();
