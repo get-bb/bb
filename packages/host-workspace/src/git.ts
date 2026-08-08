@@ -142,6 +142,9 @@ function resolveGitProcessEnv(
 ): NodeJS.ProcessEnv {
   return {
     ...sanitizeInheritedChildProcessEnv({ env: process.env }),
+    // Never hang waiting for interactive credentials (https remotes without
+    // stored auth, credential helpers that prompt, etc.).
+    GIT_TERMINAL_PROMPT: "0",
     ...args.env,
   };
 }

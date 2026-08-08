@@ -755,6 +755,73 @@ describe("Workspace", () => {
     expect(typeof commit.commitSha).toBe("string");
   });
 
+  it("pushes a branch with commits and treats tip-equals as idempotent success", async () => {
+    const repoPath = await initRepo();
+    const barePath = await initBareRemoteFrom(repoPath);
+    const workspace = new Workspace(repoPath);
+
+    // main is already pushed and in sync with origin/main: idempotent success
+    // (still runs push; does not error as no_changes). Upstream was set by
+    // initBareRemoteFrom's initial `push -u`.
+    const mainPush = await workspace.pushBranch({ branch: "main" });
+    expect(mainPush).toEqual({
+      pushedBranch: "main",
+      remote: "origin",
+      upstreamSet: false,
+      alreadyUpToDate: true,
+    });
+
+    await runGit(["checkout", "-b", "rooms/candidate-1"], { cwd: repoPath });
+    await fs.writeFile(
+      path.join(repoPath, "feature.txt"),
+      "candidate work\n",
+      "utf8",
+    );
+    await runGit(["add", "feature.txt"], { cwd: repoPath });
+    await runGit(["commit", "-m", "candidate commit"], { cwd: repoPath });
+
+    const push = await workspace.pushBranch({ branch: "rooms/candidate-1" });
+    expect(push).toEqual({
+      pushedBranch: "rooms/candidate-1",
+      remote: "origin",
+      upstreamSet: true,
+      alreadyUpToDate: false,
+    });
+
+    // Second push with no new commits: tip matches remote-tracking → success
+    // with alreadyUpToDate (still runs push; remote tip unchanged).
+    const secondPush = await workspace.pushBranch({
+      branch: "rooms/candidate-1",
+    });
+    expect(secondPush).toEqual({
+      pushedBranch: "rooms/candidate-1",
+      remote: "origin",
+      upstreamSet: false,
+      alreadyUpToDate: true,
+    });
+    const remoteTip = (
+      await runGit(["ls-remote", barePath, "refs/heads/rooms/candidate-1"], {
+        cwd: repoPath,
+      })
+    ).stdout.trim();
+    expect(remoteTip.length).toBeGreaterThan(0);
+  });
+
+  it("rejects push when the branch has no unique commits vs default", async () => {
+    const repoPath = await initRepo();
+    await initBareRemoteFrom(repoPath);
+    const workspace = new Workspace(repoPath);
+
+    // Branch tip equals default with no remote-tracking for this branch name.
+    await runGit(["checkout", "-b", "rooms/empty"], { cwd: repoPath });
+    await expect(
+      workspace.pushBranch({ branch: "rooms/empty" }),
+    ).rejects.toMatchObject({
+      name: "WorkspaceError",
+      code: "no_changes",
+    });
+  });
+
   it("throws a typed no_changes error when squash-merging a branch with nothing to merge", async () => {
     const repoPath = await initRepo();
     // A feature branch with no commits ahead of main: the squash collapses

@@ -5,7 +5,11 @@ import type {
   WorkspaceWatchError,
 } from "@bb/host-watcher";
 import type { HostWorkspace } from "@bb/host-workspace";
-import { makeWorkspaceMergeBase, makeWorkspaceStatus } from "@bb/test-helpers";
+import {
+  makeFakeHostWorkspace,
+  makeWorkspaceMergeBase,
+  makeWorkspaceStatus,
+} from "@bb/test-helpers";
 import { describe, expect, it, vi } from "vitest";
 import { WatchManager } from "./watch-manager.js";
 
@@ -43,60 +47,31 @@ function createFakeWorkspace(path: string) {
   let sharedGitRefsFingerprint: GetSharedGitRefsFingerprintResult = `refs:${path}:initial`;
   let sharedGitRefsFingerprintError: Error | null = null;
   const workspace = {
-    path,
-    managed: false,
-    isGitRepo: true,
-    isWorktree: false,
-    getDefaultBranch: vi.fn(async () => "main"),
-    getCurrentBranch: vi.fn(async () => "main"),
-    getHeadSha: vi.fn(async () => "commit-1"),
-    getLocalStateFingerprint: vi.fn(async () => {
-      if (localStateFingerprintError) {
-        throw localStateFingerprintError;
-      }
-      return localStateFingerprint;
-    }),
-    getSharedGitRefsFingerprint: vi.fn(async () => {
-      if (sharedGitRefsFingerprintError) {
-        throw sharedGitRefsFingerprintError;
-      }
-      return sharedGitRefsFingerprint;
-    }),
-    getAdditionalWorkspaceWriteRoots: vi.fn(async () => []),
-    getStatus: vi.fn(async () =>
-      makeWorkspaceStatus({
-        mergeBase: makeWorkspaceMergeBase(),
+    ...makeFakeHostWorkspace({
+      path,
+      getLocalStateFingerprint: vi.fn(async () => {
+        if (localStateFingerprintError) {
+          throw localStateFingerprintError;
+        }
+        return localStateFingerprint;
       }),
-    ),
-    getDiff: vi.fn(async () => ({
-      diff: "",
-      truncated: false,
-      shortstat: "",
-      files: "",
-      mergeBaseRef: null,
-    })),
-    diffFiles: vi.fn(async () => ({
-      files: [],
-      shortstat: "",
-      mergeBaseRef: null,
-    })),
-    diffPatch: vi.fn(async () => []),
-    getPullRequest: vi.fn(async () => ({ outcome: "none" as const })),
-    runPullRequestAction: vi.fn(async () => undefined),
-    listBranches: vi.fn(async () => ["main"]),
-    listFiles: vi.fn(async () => []),
-    commit: vi.fn(async () => ({
-      commitSha: "commit-1",
-      commitSubject: "commit",
-    })),
-    reset: vi.fn(async () => undefined),
-    fetch: vi.fn(async () => undefined),
-    squashMerge: vi.fn(async () => ({
-      merged: true,
-      commitSha: "commit-1",
-      commitSubject: "commit",
-      targetBranch: "main",
-    })),
+      getSharedGitRefsFingerprint: vi.fn(async () => {
+        if (sharedGitRefsFingerprintError) {
+          throw sharedGitRefsFingerprintError;
+        }
+        return sharedGitRefsFingerprint;
+      }),
+      getStatus: vi.fn(async () =>
+        makeWorkspaceStatus({
+          mergeBase: makeWorkspaceMergeBase(),
+        }),
+      ),
+      getDefaultBranch: vi.fn(async () => "main"),
+      getCurrentBranch: vi.fn(async () => "main"),
+      getHeadSha: vi.fn(async () => "commit-1"),
+      getAdditionalWorkspaceWriteRoots: vi.fn(async () => []),
+      destroy: vi.fn(async () => undefined),
+    }),
     setLocalStateFingerprint(value: GetLocalStateFingerprintResult) {
       localStateFingerprint = value;
     },
@@ -109,14 +84,6 @@ function createFakeWorkspace(path: string) {
     setSharedGitRefsFingerprintError(error: Error | null) {
       sharedGitRefsFingerprintError = error;
     },
-    destroy: vi.fn(async () => undefined),
-  } satisfies HostWorkspace & {
-    setLocalStateFingerprint: (value: GetLocalStateFingerprintResult) => void;
-    setLocalStateFingerprintError: (error: Error | null) => void;
-    setSharedGitRefsFingerprint: (
-      value: GetSharedGitRefsFingerprintResult,
-    ) => void;
-    setSharedGitRefsFingerprintError: (error: Error | null) => void;
   };
 
   return workspace;

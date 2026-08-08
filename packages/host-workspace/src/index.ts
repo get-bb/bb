@@ -18,10 +18,14 @@ export type {
 export type {
   CommitOptions,
   CommitResult,
+  CreatePullRequestOptions,
+  CreatePullRequestResult,
   DiffOptions,
   DiffResult,
   FetchOptions,
   PullRequestActionOptions,
+  PushBranchOptions,
+  PushBranchResult,
   SquashMergeOptions,
   SquashMergeResult,
   StatusOptions,
@@ -51,7 +55,10 @@ export type {
 } from "./git.js";
 
 export {
+  createPullRequestForBranch,
   getPullRequestForBranch,
+  isPullRequestFound,
   parseGitHostPullRequest,
+  type CreatedPullRequest,
   type GitHostPullRequestLookup,
 } from "./git-host.js";

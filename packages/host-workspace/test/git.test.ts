@@ -251,6 +251,17 @@ describe("getWorkspaceGitOperation", () => {
 });
 
 describe("command timeouts", () => {
+  it("disables interactive credential prompts in the git process env", async () => {
+    const repoPath = await initEmptyRepo();
+
+    // Shell out via a git alias so we observe the env resolveGitProcessEnv sets.
+    const result = await runGit(
+      ["-c", "alias.bb-env=!printenv GIT_TERMINAL_PROMPT", "bb-env"],
+      { cwd: repoPath },
+    );
+    expect(result.stdout.trim()).toBe("0");
+  });
+
   it("classifies git command timeouts as hard failures when allowFailure is true", async () => {
     const repoPath = await initEmptyRepo();
 

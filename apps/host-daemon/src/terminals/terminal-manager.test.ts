@@ -4,7 +4,7 @@ import path from "node:path";
 import type { AgentRuntime } from "@bb/agent-runtime";
 import type { HostDaemonDaemonWsMessage } from "@bb/host-daemon-contract";
 import type { HostWorkspace } from "@bb/host-workspace";
-import { makeWorkspaceMergeBase, makeWorkspaceStatus } from "@bb/test-helpers";
+import { makeFakeHostWorkspace } from "@bb/test-helpers";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { HostDaemonLogger } from "../logger.js";
 import { RuntimeManager } from "../runtime-manager.js";
@@ -235,53 +235,7 @@ function createFakeRuntime(): AgentRuntime {
 }
 
 function createFakeWorkspace(path: string): HostWorkspace {
-  return {
-    path,
-    managed: false,
-    isGitRepo: true,
-    isWorktree: false,
-    getCurrentBranch: vi.fn(async () => "main"),
-    getHeadSha: vi.fn(async () => "commit-1"),
-    getLocalStateFingerprint: vi.fn(async () => "local-1"),
-    getSharedGitRefsFingerprint: vi.fn(async () => "refs-1"),
-    getAdditionalWorkspaceWriteRoots: vi.fn(async () => []),
-    getStatus: vi.fn(async () =>
-      makeWorkspaceStatus({
-        mergeBase: makeWorkspaceMergeBase(),
-      }),
-    ),
-    getDefaultBranch: vi.fn(async () => "main"),
-    getDiff: vi.fn(async () => ({
-      diff: "",
-      files: "",
-      mergeBaseRef: null,
-      shortstat: "",
-      truncated: false,
-    })),
-    diffFiles: vi.fn(async () => ({
-      files: [],
-      shortstat: "",
-      mergeBaseRef: null,
-    })),
-    diffPatch: vi.fn(async () => []),
-    getPullRequest: vi.fn(async () => ({ outcome: "none" as const })),
-    listBranches: vi.fn(async () => ["main"]),
-    listFiles: vi.fn(async () => []),
-    commit: vi.fn(async () => ({
-      commitSha: "commit-1",
-      commitSubject: "commit",
-    })),
-    reset: vi.fn(async () => undefined),
-    fetch: vi.fn(async () => undefined),
-    squashMerge: vi.fn(async () => ({
-      commitSha: "commit-1",
-      commitSubject: "commit",
-      merged: true,
-      targetBranch: "main",
-    })),
-    runPullRequestAction: vi.fn(async () => undefined),
-    destroy: vi.fn(async () => undefined),
-  };
+  return makeFakeHostWorkspace({ path }) as HostWorkspace;
 }
 
 function createHarness(): TerminalManagerHarness {

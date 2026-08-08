@@ -16,11 +16,17 @@ import type {
   PromptInput,
 } from "@bb/domain";
 import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
-import { makeWorkspaceMergeBase, makeWorkspaceStatus } from "@bb/test-helpers";
+import {
+  makeFakeHostWorkspace,
+  makeWorkspaceMergeBase,
+  makeWorkspaceStatus,
+} from "@bb/test-helpers";
 import type {
+  CreatePullRequestOptions,
   HostWorkspace,
   ProvisionWorkspaceArgs,
   PullRequestActionOptions,
+  PushBranchOptions,
 } from "@bb/host-workspace";
 import { RuntimeManager } from "../../src/runtime-manager.js";
 import { listFilesRecursively } from "../../src/command-handlers/file-list.js";
@@ -50,8 +56,10 @@ type FakeWorkspaceDiffTarget =
 interface FakeWorkspaceState {
   destroyed: boolean;
   lastCommitMessage: string | undefined;
+  lastCreatePullRequest: CreatePullRequestOptions | undefined;
   lastDiffTarget: FakeWorkspaceDiffTarget | undefined;
   lastPullRequestAction: PullRequestActionOptions | undefined;
+  lastPushBranch: PushBranchOptions | undefined;
   listedModelsProviderId: string | undefined;
   listedModelsAcpLaunchSpec: HostDaemonAcpLaunchSpec | undefined;
   pullRequest: GitHostPullRequest | null;
@@ -128,6 +136,8 @@ export function createFakeWorkspace(pathname: string) {
     statusReads: 0,
     lastDiffTarget: undefined,
     lastCommitMessage: undefined,
+    lastCreatePullRequest: undefined,
+    lastPushBranch: undefined,
     resetCount: 0,
     destroyed: false,
     listedModelsProviderId: undefined,
@@ -136,20 +146,8 @@ export function createFakeWorkspace(pathname: string) {
     pullRequest: null,
     pullRequestLookupError: null,
   };
-  const workspace: FakeHostWorkspace = {
+  const workspace = makeFakeHostWorkspace({
     path: pathname,
-    managed: false,
-    isGitRepo: true,
-    isWorktree: false,
-    async getDefaultBranch() {
-      return "main";
-    },
-    async getCurrentBranch() {
-      return "main";
-    },
-    async getHeadSha() {
-      return "commit-1";
-    },
     async getLocalStateFingerprint() {
       return JSON.stringify({
         currentBranch: "main",
@@ -168,9 +166,6 @@ export function createFakeWorkspace(pathname: string) {
         refs: ["refs/heads/main\u0000commit-1"],
         remoteHead: "refs/remotes/origin/main",
       });
-    },
-    async getAdditionalWorkspaceWriteRoots() {
-      return [];
     },
     async getStatus(options?: { mergeBaseBranch?: string }) {
       state.statusReads += 1;
@@ -199,16 +194,6 @@ export function createFakeWorkspace(pathname: string) {
         mergeBaseRef: null,
       };
     },
-    async diffFiles() {
-      return {
-        files: [],
-        shortstat: "",
-        mergeBaseRef: null,
-      };
-    },
-    async diffPatch() {
-      return [];
-    },
     async getPullRequest() {
       if (state.pullRequestLookupError !== null) {
         return {
@@ -218,13 +203,23 @@ export function createFakeWorkspace(pathname: string) {
       }
       return state.pullRequest === null
         ? { outcome: "none" as const }
-        : { outcome: "found" as const, pullRequest: state.pullRequest };
+        : state.pullRequest.state === "OPEN"
+          ? { outcome: "found-open" as const, pullRequest: state.pullRequest }
+          : {
+              outcome: "found-closed" as const,
+              pullRequest: state.pullRequest,
+            };
     },
-    async runPullRequestAction(action) {
+    async runPullRequestAction(action: PullRequestActionOptions) {
       state.lastPullRequestAction = action;
     },
-    async listBranches() {
-      return ["main"];
+    async createPullRequest(options: CreatePullRequestOptions) {
+      state.lastCreatePullRequest = options;
+      return {
+        provider: "github" as const,
+        number: 42,
+        url: "https://github.com/bb/bb/pull/42",
+      };
     },
     async listFiles() {
       return listFilesRecursively(pathname, pathname);
@@ -236,10 +231,18 @@ export function createFakeWorkspace(pathname: string) {
         commitSubject: options.message,
       };
     },
+    async pushBranch(options: PushBranchOptions) {
+      state.lastPushBranch = options;
+      return {
+        pushedBranch: options.branch,
+        remote: options.remote ?? "origin",
+        upstreamSet: true,
+        alreadyUpToDate: false,
+      };
+    },
     async reset() {
       state.resetCount += 1;
     },
-    async fetch() {},
     async squashMerge(options: {
       targetBranch: string;
       commitMessage: string;
@@ -254,7 +257,7 @@ export function createFakeWorkspace(pathname: string) {
     async destroy() {
       state.destroyed = true;
     },
-  };
+  }) as FakeHostWorkspace;
 
   return { workspace, state };
 }

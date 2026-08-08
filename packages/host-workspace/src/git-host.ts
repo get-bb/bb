@@ -62,6 +62,24 @@ interface RunPullRequestActionForBranchArgs {
   action: GitHostPullRequestAction;
 }
 
+interface CreatePullRequestForBranchArgs {
+  cwd: string;
+  base: string;
+  head: string;
+  title: string;
+  body?: string;
+}
+
+export interface CreatedPullRequest {
+  provider: "github";
+  number: number;
+  url: string;
+}
+
+/** `gh pr create` stderr when a PR for the head branch already exists. */
+const GH_PR_ALREADY_EXISTS_PATTERN =
+  /a pull request for branch .* already exists/iu;
+
 type JsonObject = Record<string, unknown>;
 
 function asObject(value: unknown): JsonObject | null {
@@ -357,15 +375,29 @@ export function parseGitHostPullRequest(
 }
 
 /**
- * Structured result of a pull-request detection attempt. "none" is a real
- * answer (`gh` ran and reported no PR for the branch); "unavailable" means the
- * lookup could not produce an answer (gh missing, not authenticated, timeout,
- * unparseable output), so callers must not treat it as "no PR exists".
+ * Structured result of a pull-request detection attempt.
+ * - `found-open` / `found-closed`: `gh` returned a PR. Closed includes both
+ *   CLOSED and MERGED. Only `found-open` is a reusable PR for create flows;
+ *   display callers may still surface `found-closed` for the sidebar.
+ * - `none`: real answer (`gh` ran and reported no PR for the branch).
+ * - `unavailable`: lookup could not produce an answer (gh missing, not
+ *   authenticated, timeout, unparseable output); do not treat as "no PR".
  */
 export type GitHostPullRequestLookup =
-  | { outcome: "found"; pullRequest: GitHostPullRequest }
+  | { outcome: "found-open"; pullRequest: GitHostPullRequest }
+  | { outcome: "found-closed"; pullRequest: GitHostPullRequest }
   | { outcome: "none" }
   | { outcome: "unavailable"; message: string };
+
+/** True when the lookup found any PR (open or closed/merged). */
+export function isPullRequestFound(
+  lookup: GitHostPullRequestLookup,
+): lookup is Extract<
+  GitHostPullRequestLookup,
+  { outcome: "found-open" | "found-closed" }
+> {
+  return lookup.outcome === "found-open" || lookup.outcome === "found-closed";
+}
 
 /** `gh pr view` stderr for a branch that genuinely has no pull request. */
 const GH_NO_PULL_REQUEST_PATTERN = /no pull requests found for branch/iu;
@@ -438,7 +470,12 @@ export async function getPullRequestForBranch(
       message: "gh pr view returned unparseable output",
     };
   }
-  return { outcome: "found", pullRequest };
+  // Only OPEN PRs are reusable for create. CLOSED/MERGED still surface for
+  // display so the sidebar can show the branch's most-relevant historical PR.
+  if (pullRequest.state === "OPEN") {
+    return { outcome: "found-open", pullRequest };
+  }
+  return { outcome: "found-closed", pullRequest };
 }
 
 /**
@@ -460,4 +497,128 @@ export async function runPullRequestActionForBranch(
   } catch (error) {
     throw createGitHostCommandFailedError(ghArgs, error);
   }
+}
+
+function createdPullRequestFromLookup(
+  lookup: GitHostPullRequestLookup,
+): CreatedPullRequest | null {
+  // Only an OPEN PR is reusable. A MERGED/CLOSED prior PR for the same branch
+  // must not short-circuit create (republish after merge needs a new PR).
+  if (lookup.outcome !== "found-open") {
+    return null;
+  }
+  return {
+    provider: "github",
+    number: lookup.pullRequest.number,
+    url: lookup.pullRequest.url,
+  };
+}
+
+function parseCreatedPullRequestFromStdout(
+  stdout: string,
+): CreatedPullRequest | null {
+  const url = stdout
+    .trim()
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .at(-1);
+  if (!url) {
+    return null;
+  }
+  const match = url.match(/\/pull\/(\d+)\s*$/u);
+  if (!match) {
+    return null;
+  }
+  const number = Number.parseInt(match[1], 10);
+  if (!Number.isFinite(number) || number <= 0) {
+    return null;
+  }
+  try {
+    // Validate URL shape the same way the contract result schema does.
+    new URL(url);
+  } catch {
+    return null;
+  }
+  return { provider: "github", number, url };
+}
+
+/**
+ * Create a GitHub pull request for `head` → `base` via `gh pr create`. If a PR
+ * already exists for the head branch, returns that PR instead of erroring.
+ * Reuses the same inherited env as {@link getPullRequestForBranch} so `gh`
+ * auth resolves the same way it would in the user's shell.
+ */
+export async function createPullRequestForBranch(
+  args: CreatePullRequestForBranchArgs,
+): Promise<CreatedPullRequest> {
+  const existing = await getPullRequestForBranch({
+    cwd: args.cwd,
+    branch: args.head,
+  });
+  const existingResult = createdPullRequestFromLookup(existing);
+  if (existingResult) {
+    return existingResult;
+  }
+
+  const ghArgs = [
+    "pr",
+    "create",
+    "--base",
+    args.base,
+    "--head",
+    args.head,
+    "--title",
+    args.title,
+    "--body",
+    args.body ?? "",
+  ];
+  let stdout: string;
+  try {
+    ({ stdout } = await execFileAsync("gh", ghArgs, {
+      cwd: args.cwd,
+      encoding: "utf8",
+      env: sanitizeInheritedChildProcessEnv({ env: process.env }),
+      timeout: GH_PR_ACTION_TIMEOUT_MS,
+      maxBuffer: GH_PR_ACTION_MAX_BUFFER_BYTES,
+    }));
+  } catch (error) {
+    // Race: a PR may have been opened between our lookup and create. Return
+    // the existing PR rather than surfacing a create failure.
+    const detail =
+      trimGhOutput(getExecFileException(error)?.stderr) ||
+      trimGhOutput(getExecFileException(error)?.stdout) ||
+      (error instanceof Error ? error.message : "");
+    if (GH_PR_ALREADY_EXISTS_PATTERN.test(detail)) {
+      const raced = await getPullRequestForBranch({
+        cwd: args.cwd,
+        branch: args.head,
+      });
+      const racedResult = createdPullRequestFromLookup(raced);
+      if (racedResult) {
+        return racedResult;
+      }
+    }
+    throw createGitHostCommandFailedError(ghArgs, error);
+  }
+
+  const fromStdout = parseCreatedPullRequestFromStdout(stdout);
+  if (fromStdout) {
+    return fromStdout;
+  }
+
+  // Fallback when create stdout is not a bare URL (gh version / locale).
+  const afterCreate = await getPullRequestForBranch({
+    cwd: args.cwd,
+    branch: args.head,
+  });
+  const afterCreateResult = createdPullRequestFromLookup(afterCreate);
+  if (afterCreateResult) {
+    return afterCreateResult;
+  }
+
+  throw new WorkspaceError(
+    "git_host_command_failed",
+    "gh pr create succeeded but the created pull request could not be resolved",
+  );
 }

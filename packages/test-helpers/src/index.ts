@@ -12,6 +12,7 @@ export {
   waitForSetupMarkerCount,
 } from "./setup-markers.js";
 export type { WaitForSetupMarkerCountArgs } from "./setup-markers.js";
+export { makeFakeHostWorkspace } from "./host-workspace.js";
 export {
   makeWorkspaceMergeBase,
   makeWorkspaceStatus,

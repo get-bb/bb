@@ -69,7 +69,11 @@ import {
   submitTurn,
 } from "./command-handlers/thread.js";
 import { WorkspaceError } from "@bb/host-workspace";
-import { squashMerge } from "./command-handlers/workspace.js";
+import {
+  createPullRequest,
+  pushBranch,
+  squashMerge,
+} from "./command-handlers/workspace.js";
 import {
   cloneProject,
   inspectProjectPath,
@@ -414,7 +418,9 @@ const commandHandlers: CommandHandlerMap = {
       noVerify: true,
     });
   },
+  "workspace.push": pushBranch,
   "workspace.squash_merge": squashMerge,
+  "workspace.pull_request_create": createPullRequest,
   "workspace.pull_request_action": async (command, options) => {
     const entry = await requireResolvedWorkspaceForCommand({
       dataDir: options.dataDir,
@@ -640,7 +646,9 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
     }
     const lookup = await resolution.entry.workspace.getPullRequest();
     switch (lookup.outcome) {
-      case "found":
+      case "found-open":
+      case "found-closed":
+        // Display both open and closed/merged PRs; only create reuses open.
         return { outcome: "available", pullRequest: lookup.pullRequest };
       case "none":
         return { outcome: "absent" };

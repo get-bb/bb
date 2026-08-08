@@ -73,6 +73,7 @@ describe("non-fork empty-input start provisions idle without a turn", () => {
       // No malformed (min(1)-violating) project prompt-history row was written.
       const history = listProjectPromptHistory(harness.deps, {
         projectId: project.id,
+        limit: 100,
       });
       expect(history).toHaveLength(0);
     });

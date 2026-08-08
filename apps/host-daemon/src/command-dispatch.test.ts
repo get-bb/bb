@@ -8,6 +8,7 @@ import type {
   ProviderCliStatus,
 } from "@bb/host-daemon-contract";
 import type { HostWorkspace } from "@bb/host-workspace";
+import { makeFakeHostWorkspace } from "@bb/test-helpers";
 import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 import {
   dispatchCommand,
@@ -135,11 +136,9 @@ async function unexpectedWorkspaceCall(): Promise<never> {
 }
 
 function createWorkspace(): HostWorkspace {
-  return {
+  return makeFakeHostWorkspace({
     path: WORKSPACE_PATH,
-    managed: false,
     isGitRepo: false,
-    isWorktree: false,
     getDefaultBranch: unexpectedWorkspaceCall,
     getCurrentBranch: unexpectedWorkspaceCall,
     getHeadSha: unexpectedWorkspaceCall,
@@ -152,14 +151,16 @@ function createWorkspace(): HostWorkspace {
     diffPatch: unexpectedWorkspaceCall,
     getPullRequest: unexpectedWorkspaceCall,
     runPullRequestAction: unexpectedWorkspaceCall,
+    createPullRequest: unexpectedWorkspaceCall,
     listBranches: unexpectedWorkspaceCall,
     listFiles: unexpectedWorkspaceCall,
     commit: unexpectedWorkspaceCall,
+    pushBranch: unexpectedWorkspaceCall,
     reset: unexpectedWorkspaceCall,
     fetch: unexpectedWorkspaceCall,
     squashMerge: unexpectedWorkspaceCall,
     destroy: vi.fn(async () => undefined),
-  };
+  }) as HostWorkspace;
 }
 
 interface FakeDispatchRuntime extends AgentRuntime {

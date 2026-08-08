@@ -45,6 +45,77 @@ type CommandResultOwnerRegistry = {
   [TType in ParsedCommandType]?: CommandResultOwner<TType>;
 };
 
+/** Workspace mutations that should notify clients of work-status changes. */
+type WorkspaceMutationCommandType =
+  | "workspace.commit"
+  | "workspace.push"
+  | "workspace.squash_merge"
+  | "workspace.pull_request_action"
+  | "workspace.pull_request_create";
+
+function notifyWorkspaceMutationSideEffects(args: {
+  deps: Parameters<typeof notifyWorkspaceMutationResult>[0];
+  environmentId: string;
+  ok: boolean;
+}): void {
+  notifyWorkspaceMutationResult(args.deps, {
+    environmentId: args.environmentId,
+    ok: args.ok,
+  });
+}
+
+// Required mapped type so a new workspace mutation without a notify arm is a
+// compile error (the outer registry is Partial and would not catch misses).
+const workspaceMutationResultOwners: {
+  [TType in WorkspaceMutationCommandType]: CommandResultOwner<TType>;
+} = {
+  "workspace.commit": {
+    applySideEffects: ({ deps, command, report }) => {
+      notifyWorkspaceMutationSideEffects({
+        deps,
+        environmentId: command.environmentId,
+        ok: report.ok,
+      });
+    },
+  },
+  "workspace.push": {
+    applySideEffects: ({ deps, command, report }) => {
+      notifyWorkspaceMutationSideEffects({
+        deps,
+        environmentId: command.environmentId,
+        ok: report.ok,
+      });
+    },
+  },
+  "workspace.squash_merge": {
+    applySideEffects: ({ deps, command, report }) => {
+      notifyWorkspaceMutationSideEffects({
+        deps,
+        environmentId: command.environmentId,
+        ok: report.ok,
+      });
+    },
+  },
+  "workspace.pull_request_action": {
+    applySideEffects: ({ deps, command, report }) => {
+      notifyWorkspaceMutationSideEffects({
+        deps,
+        environmentId: command.environmentId,
+        ok: report.ok,
+      });
+    },
+  },
+  "workspace.pull_request_create": {
+    applySideEffects: ({ deps, command, report }) => {
+      notifyWorkspaceMutationSideEffects({
+        deps,
+        environmentId: command.environmentId,
+        ok: report.ok,
+      });
+    },
+  },
+};
+
 const commandResultOwners: CommandResultOwnerRegistry = {
   "environment.destroy": {
     applySideEffects: settleEnvironmentDestroyCommandResult,
@@ -78,30 +149,7 @@ const commandResultOwners: CommandResultOwnerRegistry = {
   "turn.submit": {
     applySideEffects: settleTurnSubmitCommandResult,
   },
-  "workspace.commit": {
-    applySideEffects: ({ deps, command, report }) => {
-      notifyWorkspaceMutationResult(deps, {
-        environmentId: command.environmentId,
-        ok: report.ok,
-      });
-    },
-  },
-  "workspace.squash_merge": {
-    applySideEffects: ({ deps, command, report }) => {
-      notifyWorkspaceMutationResult(deps, {
-        environmentId: command.environmentId,
-        ok: report.ok,
-      });
-    },
-  },
-  "workspace.pull_request_action": {
-    applySideEffects: ({ deps, command, report }) => {
-      notifyWorkspaceMutationResult(deps, {
-        environmentId: command.environmentId,
-        ok: report.ok,
-      });
-    },
-  },
+  ...workspaceMutationResultOwners,
 } satisfies CommandResultOwnerRegistry;
 
 function getCommandResultOwner<TType extends ParsedCommandType>(

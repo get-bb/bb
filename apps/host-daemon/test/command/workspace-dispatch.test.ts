@@ -94,6 +94,55 @@ describe("workspace command dispatch", () => {
     });
     expect(harness.workspaceState.statusReads).toBe(1);
     expect(harness.workspaceState.lastCommitMessage).toBe("Commit message");
+
+    const pushResult = await dispatchCommand(
+      {
+        type: "workspace.push",
+        environmentId: "env-1",
+        workspaceContext: {
+          workspacePath: "/tmp/env-1",
+          workspaceProvisionType: "unmanaged",
+        },
+        branch: "rooms/candidate-1",
+      },
+      harness.dispatchOptions(),
+    );
+    expect(pushResult).toEqual({
+      pushedBranch: "rooms/candidate-1",
+      remote: "origin",
+      upstreamSet: true,
+      alreadyUpToDate: false,
+    });
+    expect(harness.workspaceState.lastPushBranch).toEqual({
+      branch: "rooms/candidate-1",
+    });
+
+    const createPrResult = await dispatchCommand(
+      {
+        type: "workspace.pull_request_create",
+        environmentId: "env-1",
+        workspaceContext: {
+          workspacePath: "/tmp/env-1",
+          workspaceProvisionType: "unmanaged",
+        },
+        base: "main",
+        head: "rooms/candidate-1",
+        title: "Ship candidate",
+        body: "Notes",
+      },
+      harness.dispatchOptions(),
+    );
+    expect(createPrResult).toEqual({
+      provider: "github",
+      number: 42,
+      url: "https://github.com/bb/bb/pull/42",
+    });
+    expect(harness.workspaceState.lastCreatePullRequest).toEqual({
+      base: "main",
+      head: "rooms/candidate-1",
+      title: "Ship candidate",
+      body: "Notes",
+    });
   });
 
   it("covers workspace.pull_request", async () => {

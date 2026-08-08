@@ -35,7 +35,7 @@ import {
   providerCliStatusResponseSchema,
 } from "./local.js";
 
-export const HOST_DAEMON_PROTOCOL_VERSION = 76 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 77 as const;
 
 export {
   BRANCH_LIST_LIMIT_MAX,
@@ -1097,11 +1097,28 @@ const workspaceCommitCommandSchema = hostDaemonWorkspaceTargetSchema
   })
   .strict();
 
+const workspacePushCommandSchema = hostDaemonWorkspaceTargetSchema
+  .extend({
+    type: z.literal("workspace.push"),
+    branch: gitBranchNameSchema,
+  })
+  .strict();
+
 const workspaceSquashMergeCommandSchema = hostDaemonWorkspaceTargetSchema
   .extend({
     type: z.literal("workspace.squash_merge"),
     targetBranch: gitBranchNameSchema,
     commitMessage: z.string().min(1),
+  })
+  .strict();
+
+const workspacePullRequestCreateCommandSchema = hostDaemonWorkspaceTargetSchema
+  .extend({
+    type: z.literal("workspace.pull_request_create"),
+    base: gitBranchNameSchema,
+    head: gitBranchNameSchema,
+    title: z.string().min(1),
+    body: z.string().optional(),
   })
   .strict();
 
@@ -1370,10 +1387,21 @@ const workspaceCommitResultSchema = z.object({
   commitSha: z.string().min(1),
   commitSubject: z.string().min(1),
 });
+const workspacePushResultSchema = z.object({
+  pushedBranch: z.string().min(1),
+  remote: z.string().min(1),
+  upstreamSet: z.boolean(),
+  alreadyUpToDate: z.boolean(),
+});
 const workspaceSquashMergeResultSchema = workspaceCommitResultSchema.extend({
   merged: z.boolean(),
 });
 const workspacePullRequestActionResultSchema = z.object({}).strict();
+const workspacePullRequestCreateResultSchema = z.object({
+  provider: z.literal("github"),
+  number: z.number().int().positive(),
+  url: z.string().url(),
+});
 // ---------------------------------------------------------------------------
 // Provider usage limits (live read from the host's provider credentials)
 // ---------------------------------------------------------------------------
@@ -1695,6 +1723,15 @@ export const hostDaemonCommandRegistry = {
     flushEventsBeforeResult: false,
     envLane: "write",
   }),
+  "workspace.push": defineHostDaemonCommandDescriptor({
+    type: "workspace.push",
+    schema: workspacePushCommandSchema,
+    resultSchema: workspacePushResultSchema,
+    transport: "settled",
+    retryable: false,
+    flushEventsBeforeResult: false,
+    envLane: "write",
+  }),
   "workspace.squash_merge": defineHostDaemonCommandDescriptor({
     type: "workspace.squash_merge",
     schema: workspaceSquashMergeCommandSchema,
@@ -1708,6 +1745,15 @@ export const hostDaemonCommandRegistry = {
     type: "workspace.pull_request_action",
     schema: workspacePullRequestActionCommandSchema,
     resultSchema: workspacePullRequestActionResultSchema,
+    transport: "settled",
+    retryable: false,
+    flushEventsBeforeResult: false,
+    envLane: "write",
+  }),
+  "workspace.pull_request_create": defineHostDaemonCommandDescriptor({
+    type: "workspace.pull_request_create",
+    schema: workspacePullRequestCreateCommandSchema,
+    resultSchema: workspacePullRequestCreateResultSchema,
     transport: "settled",
     retryable: false,
     flushEventsBeforeResult: false,

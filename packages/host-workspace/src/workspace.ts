@@ -9,6 +9,7 @@ import type {
 } from "@bb/domain";
 import path from "node:path";
 import {
+  createPullRequestForBranch,
   getPullRequestForBranch,
   runPullRequestActionForBranch,
   type GitHostPullRequestAction,
@@ -69,6 +70,24 @@ export interface CommitResult {
   commitSubject: string;
 }
 
+export interface PushBranchOptions {
+  branch: string;
+  remote?: string;
+}
+
+export interface PushBranchResult {
+  pushedBranch: string;
+  remote: string;
+  /** True when this push established upstream tracking that was not set before. */
+  upstreamSet: boolean;
+  /**
+   * True when the local tip already matched the remote-tracking tip before
+   * push ran. Push still executes (idempotent; recreates a deleted remote
+   * branch / establishes `-u`) so callers get success rather than `no_changes`.
+   */
+  alreadyUpToDate: boolean;
+}
+
 export interface FetchOptions {
   remote?: string;
   branch?: string;
@@ -87,6 +106,19 @@ export interface SquashMergeResult {
 }
 
 export type PullRequestActionOptions = GitHostPullRequestAction;
+
+export interface CreatePullRequestOptions {
+  base: string;
+  head: string;
+  title: string;
+  body?: string;
+}
+
+export interface CreatePullRequestResult {
+  provider: "github";
+  number: number;
+  url: string;
+}
 
 type DiffSummary = {
   diff: string;
@@ -233,6 +265,8 @@ interface ListWorkspaceFilesRecursivelyArgs {
 
 const UNTRACKED_DIFF_BATCH_SIZE = 10;
 const WORKSPACE_STATUS_GIT_TIMEOUT_MS = 15_000;
+/** Network-bound push; same cap as `gh` PR actions so the mutation lock cannot hang forever. */
+const GIT_PUSH_TIMEOUT_MS = 60_000;
 
 function parseWorktreeList(porcelainOutput: string): WorktreeEntry[] {
   const entries: WorktreeEntry[] = [];
@@ -664,6 +698,18 @@ export class Workspace {
     return runPullRequestActionForBranch({ cwd: this.path, branch, action });
   }
 
+  async createPullRequest(
+    options: CreatePullRequestOptions,
+  ): Promise<CreatePullRequestResult> {
+    return createPullRequestForBranch({
+      cwd: this.path,
+      base: options.base,
+      head: options.head,
+      title: options.title,
+      body: options.body,
+    });
+  }
+
   async getStatus(options: StatusOptions = {}): Promise<WorkspaceStatus> {
     await ensureGitRepo(this.path, {
       timeoutMs: WORKSPACE_STATUS_GIT_TIMEOUT_MS,
@@ -1001,6 +1047,113 @@ export class Workspace {
 
       return { commitSha, commitSubject };
     });
+  }
+
+  /**
+   * Push a local branch to `origin` (or an explicit remote) with upstream
+   * tracking (`git push -u`). Branches with no commits ahead of their base
+   * (remote tracking branch when present, otherwise the default branch) are
+   * rejected as a typed `no_changes` condition rather than a no-op push.
+   */
+  async pushBranch(options: PushBranchOptions): Promise<PushBranchResult> {
+    await ensureGitRepo(this.path);
+
+    const remote = options.remote ?? "origin";
+    const branch = options.branch;
+
+    return this.withMutation(async () => {
+      if (!(await hasRef(this.path, `refs/heads/${branch}`))) {
+        throw new WorkspaceError(
+          "branch_not_found",
+          `Branch does not exist: ${branch}`,
+        );
+      }
+
+      const pushBase = await this.resolvePushBase({ branch, remote });
+      if (pushBase.aheadCount === 0 && !pushBase.matchedRemoteTracking) {
+        // No unique commits vs default (and no remote-tracking tip for this
+        // branch): nothing to publish.
+        throw new WorkspaceError("no_changes", "No commits to push");
+      }
+
+      const upstreamCheck = await runGit(
+        ["rev-parse", "--abbrev-ref", `${branch}@{upstream}`],
+        { cwd: this.path, allowFailure: true },
+      );
+      const hadUpstream =
+        upstreamCheck.exitCode === 0 &&
+        upstreamCheck.stdout.trim().length > 0;
+
+      // Cap push so a missing-creds / wedged remote cannot hold the checkout
+      // mutation lock forever (parity with gh PR action timeout).
+      await runGit(["push", "-u", remote, branch], {
+        cwd: this.path,
+        timeoutMs: GIT_PUSH_TIMEOUT_MS,
+      });
+
+      return {
+        pushedBranch: branch,
+        remote,
+        upstreamSet: !hadUpstream,
+        // Tips already matched local remote-tracking: push still ran
+        // (idempotent; recreates a deleted remote branch / sets `-u`).
+        alreadyUpToDate:
+          pushBase.aheadCount === 0 && pushBase.matchedRemoteTracking,
+      };
+    });
+  }
+
+  /**
+   * How many local commits on `branch` are not yet on the push base. Prefer
+   * the remote tracking branch when it exists so an already-pushed tip is an
+   * idempotent success (still runs `git push`); otherwise compare against the
+   * default branch (local or remote) so a fresh room branch with no unique
+   * commits is rejected as `no_changes`.
+   */
+  private async resolvePushBase(args: {
+    branch: string;
+    remote: string;
+  }): Promise<{ aheadCount: number; matchedRemoteTracking: boolean }> {
+    const remoteBranchRef = `refs/remotes/${args.remote}/${args.branch}`;
+    let baseRef: string | null = null;
+    let matchedRemoteTracking = false;
+    if (await hasRef(this.path, remoteBranchRef)) {
+      baseRef = `${args.remote}/${args.branch}`;
+      matchedRemoteTracking = true;
+    } else {
+      const defaultBranch = await readDefaultBranch(this.path);
+      if (defaultBranch) {
+        if (
+          await hasRef(
+            this.path,
+            `refs/remotes/${args.remote}/${defaultBranch}`,
+          )
+        ) {
+          baseRef = `${args.remote}/${defaultBranch}`;
+        } else if (await hasRef(this.path, `refs/heads/${defaultBranch}`)) {
+          baseRef = defaultBranch;
+        }
+      }
+    }
+
+    if (!baseRef) {
+      // No comparable base: treat the branch tip as having work to publish
+      // (a brand-new repo / branch with no remote default).
+      return { aheadCount: 1, matchedRemoteTracking: false };
+    }
+
+    const countResult = await runGit(
+      ["rev-list", "--count", `${baseRef}..${args.branch}`],
+      { cwd: this.path, allowFailure: true },
+    );
+    if (countResult.exitCode !== 0) {
+      return { aheadCount: 1, matchedRemoteTracking: false };
+    }
+    const aheadCount = Number.parseInt(countResult.stdout.trim(), 10);
+    return {
+      aheadCount: Number.isFinite(aheadCount) ? aheadCount : 1,
+      matchedRemoteTracking,
+    };
   }
 
   async reset(): Promise<void> {

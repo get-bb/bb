@@ -527,12 +527,23 @@ const SETTLED_RESPONSE_RESULT_FIXTURES: SettledResponseResultFixtures = {
     commitSha: "abcdef123456",
     commitSubject: "Checkpoint work",
   },
+  "workspace.push": {
+    pushedBranch: "rooms/candidate-1",
+    remote: "origin",
+    upstreamSet: true,
+    alreadyUpToDate: false,
+  },
   "workspace.squash_merge": {
     commitSha: "abcdef123456",
     commitSubject: "Merge feature",
     merged: true,
   },
   "workspace.pull_request_action": {},
+  "workspace.pull_request_create": {
+    provider: "github",
+    number: 42,
+    url: "https://github.com/acme/bb/pull/42",
+  },
 };
 
 const WORKSPACE_DIFF_FILES_AVAILABLE_RESULT: JsonObject = {
@@ -702,6 +713,8 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "ACP permission CLI config only needs args for modes that differ from the agent default.",
   "hostDaemonCommandSchema.acpLaunchSpec.permissionCli.insertAfterArgs":
     "ACP permission CLI config omits insertAfterArgs when permission args should be inserted before all configured agent args.",
+  "hostDaemonCommandSchema.body":
+    "workspace.pull_request_create may omit body when the PR description is intentionally empty.",
   "hostDaemonCommandSchema.checkout":
     "environment.provision only includes checkout instructions for unmanaged workspaces that requested a branch mutation.",
   "hostDaemonCommandSchema.targetPath":
@@ -1038,11 +1051,10 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  // Version 76 adds exact-steer turn.submit targets and optional
-  // expectedTurnId on thread.stop so admitted interrupt cannot stop a
-  // different/newer turn.
-  it("uses protocol version 76 for exact-steer and expected-turn stop", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(76);
+  // Version 77 adds workspace.push and workspace.pull_request_create so the
+  // daemon can publish a branch and open a PR without room-facing routes.
+  it("uses protocol version 77 for workspace push and PR create", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(77);
   });
 
   it("parses exact-steer targets and optional expectedTurnId on thread.stop", () => {
@@ -1347,6 +1359,59 @@ describe("host-daemon command schemas", () => {
     ).toMatchObject({
       type: "workspace.commit",
       environmentId: "env_123",
+    });
+
+    expect(
+      hostDaemonCommandSchema.parse({
+        type: "workspace.push",
+        environmentId: "env_123",
+        workspaceContext: {
+          workspacePath: "/tmp/workspace",
+          workspaceProvisionType: "unmanaged",
+        },
+        branch: "rooms/candidate-1",
+      }),
+    ).toMatchObject({
+      type: "workspace.push",
+      branch: "rooms/candidate-1",
+    });
+
+    expect(
+      hostDaemonCommandSchema.parse({
+        type: "workspace.pull_request_create",
+        environmentId: "env_123",
+        workspaceContext: {
+          workspacePath: "/tmp/workspace",
+          workspaceProvisionType: "unmanaged",
+        },
+        base: "main",
+        head: "rooms/candidate-1",
+        title: "Ship candidate",
+        body: "Description",
+      }),
+    ).toMatchObject({
+      type: "workspace.pull_request_create",
+      base: "main",
+      head: "rooms/candidate-1",
+      title: "Ship candidate",
+      body: "Description",
+    });
+
+    expect(
+      hostDaemonCommandSchema.parse({
+        type: "workspace.pull_request_create",
+        environmentId: "env_123",
+        workspaceContext: {
+          workspacePath: "/tmp/workspace",
+          workspaceProvisionType: "unmanaged",
+        },
+        base: "main",
+        head: "rooms/candidate-1",
+        title: "Ship candidate",
+      }),
+    ).toMatchObject({
+      type: "workspace.pull_request_create",
+      title: "Ship candidate",
     });
 
     expect(

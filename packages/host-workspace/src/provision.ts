@@ -7,6 +7,8 @@ import type {
 import type {
   CommitOptions,
   CommitResult,
+  CreatePullRequestOptions,
+  CreatePullRequestResult,
   DiffOptions,
   DiffResult,
   DiffFilesArgs,
@@ -15,6 +17,8 @@ import type {
   DiffPatchEntry,
   FetchOptions,
   PullRequestActionOptions,
+  PushBranchOptions,
+  PushBranchResult,
   StatusOptions,
   SquashMergeOptions,
   SquashMergeResult,
@@ -156,11 +160,15 @@ export interface HostWorkspace {
   diffPatch(args: DiffPatchArgs): Promise<DiffPatchEntry[]>;
   getPullRequest(): Promise<GitHostPullRequestLookup>;
   runPullRequestAction(action: PullRequestActionOptions): Promise<void>;
+  createPullRequest(
+    options: CreatePullRequestOptions,
+  ): Promise<CreatePullRequestResult>;
   listBranches(): Promise<string[]>;
   listFiles(): Promise<string[]>;
 
   // Git mutations
   commit(options: CommitOptions): Promise<CommitResult>;
+  pushBranch(options: PushBranchOptions): Promise<PushBranchResult>;
   reset(): Promise<void>;
   fetch(options?: FetchOptions): Promise<void>;
   squashMerge(options: SquashMergeOptions): Promise<SquashMergeResult>;
@@ -272,6 +280,12 @@ class ProvisionedHostWorkspace implements HostWorkspace {
     return this.ws.runPullRequestAction(action);
   }
 
+  createPullRequest(
+    options: CreatePullRequestOptions,
+  ): Promise<CreatePullRequestResult> {
+    return this.ws.createPullRequest(options);
+  }
+
   listBranches(): Promise<string[]> {
     return this.ws.getBranches();
   }
@@ -282,6 +296,10 @@ class ProvisionedHostWorkspace implements HostWorkspace {
 
   commit(options: CommitOptions): Promise<CommitResult> {
     return this.ws.commit(options);
+  }
+
+  pushBranch(options: PushBranchOptions): Promise<PushBranchResult> {
+    return this.ws.pushBranch(options);
   }
 
   reset(): Promise<void> {
