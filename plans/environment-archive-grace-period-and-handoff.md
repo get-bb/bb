@@ -5,9 +5,10 @@ Status: implemented 2026-06-17; simplified 2026-08-07.
 ## Outcome
 
 Archiving the last live thread in a managed environment now has a durable
-five-minute grace window. The archive toast offers **Undo** during that window;
-unarchiving sends the existing `retire.cancelled` lifecycle event and preserves
-the intact worktree, including uncommitted work.
+five-minute grace window. The archive toast offers **Undo** for 10 seconds; the
+thread's normal **Unarchive** action remains available for the rest of the grace
+window. Unarchiving sends the existing `retire.cancelled` lifecycle event and
+preserves the intact worktree, including uncommitted work.
 
 Once cleanup has started, a destroyed environment remains terminal and its
 thread remains archived and read-only. The recovery action is **Continue in new
@@ -47,8 +48,9 @@ Orphaned `destroying` recovery remains the slower backstop.
 ### Accidental archive, still inside grace
 
 1. Archiving the last live thread moves the environment to `retiring`.
-2. The toast remains visible for the grace duration and offers **Undo**.
-3. Undo unarchives the thread and emits `retire.cancelled`.
+2. The toast remains visible for 10 seconds and offers **Undo**.
+3. Toast Undo or the archived thread's **Unarchive** action unarchives the
+   thread and emits `retire.cancelled` during the five-minute grace window.
 4. The same environment and intact worktree return to `ready`.
 
 ### Cleanup already finished

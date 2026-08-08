@@ -86,10 +86,11 @@ interface ThreadActionContext {
 }
 
 /**
- * Matches the server's managed-environment archive grace window. During this
- * interval Undo revives a retiring environment without losing worktree state.
+ * Keeps immediate archive feedback actionable without pinning a toast for the
+ * full server-side recovery window. The archived thread's normal Unarchive
+ * action remains available while its environment is still retiring.
  */
-const ARCHIVE_UNDO_TOAST_DURATION_MS = 5 * 60_000;
+const ARCHIVE_UNDO_TOAST_DURATION_MS = 10_000;
 
 export function ThreadActionsProvider({
   children,
