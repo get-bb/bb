@@ -40,6 +40,11 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
       ),
       command("thread.rename", "Rename thread", "Rename the focused thread."),
       command(
+        "thread.archive",
+        "Archive thread",
+        "Archive the focused thread.",
+      ),
+      command(
         "thread.previous",
         "Previous thread",
         "Open the previous visible sidebar thread.",

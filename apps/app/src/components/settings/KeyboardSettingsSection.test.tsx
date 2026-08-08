@@ -46,6 +46,12 @@ const testState = vi.hoisted(() => ({
       when: { all: ["mainSurface"], none: ["modalOpen"] },
     },
     {
+      command: "thread.archive",
+      desktopOnly: false,
+      shortcut: null,
+      when: { all: ["mainSurface"], none: ["modalOpen"] },
+    },
+    {
       command: "thread.jump.1",
       desktopOnly: false,
       shortcut: {

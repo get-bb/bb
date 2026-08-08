@@ -230,6 +230,7 @@ import {
 import { useRouteState } from "@/hooks/useRouteState";
 import { useAppCommandHandler } from "@/components/commands/AppCommandProvider";
 import { DefaultPaneContextProvider, usePaneContext } from "./PaneContext";
+import { ThreadArchiveCommandHandler } from "./ThreadArchiveCommandHandler";
 import { ThreadRenameCommandHandler } from "./ThreadRenameCommandHandler";
 
 const EMPTY_PARENT_THREADS: readonly ThreadListEntry[] = [];
@@ -2658,6 +2659,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   );
   return (
     <>
+      <ThreadArchiveCommandHandler thread={thread} />
       <ThreadRenameCommandHandler thread={thread} />
       <PluginThreadPanelNavigationProvider
         openThreadPanel={handleOpenTimelinePluginPanel}
