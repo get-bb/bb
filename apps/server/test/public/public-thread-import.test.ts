@@ -631,9 +631,10 @@ describe("public thread import route", () => {
           providerId: "acp-pinnedcwd",
           providerSessionId: "external-pinnedcwd-session",
           hostId: host.id,
-          // The caller's assertion matches the project source; the agent's
-          // configured pin does not, and must still be refused.
-          cwd: SOURCE_PATH,
+          // The caller's assertion matches the agent's configured pin, so
+          // the mismatch check passes and the pin itself is validated
+          // against the project, which must still be refused.
+          cwd: "/tmp/pinnedcwd-agent-outside-project",
         });
 
         expect(response.status).toBe(400);
@@ -642,6 +643,77 @@ describe("public thread import route", () => {
         expect(JSON.stringify(body)).toContain(
           "does not match the project source",
         );
+      },
+    );
+  });
+
+  it("rejects an import when the asserted cwd does not match a custom ACP agent's configured cwd pin", async () => {
+    await withTestHarness(
+      {
+        customAcpAgents: [
+          {
+            id: "pinnedcwd",
+            displayName: "Pinned Cwd Agent",
+            command: "pinnedcwd-agent",
+            args: ["acp"],
+            env: {},
+            cwd: SOURCE_PATH,
+          },
+        ],
+      },
+      async (harness) => {
+        const { host, project } = seedImportTarget(harness);
+
+        const response = await postImport(harness, {
+          projectId: project.id,
+          providerId: "acp-pinnedcwd",
+          providerSessionId: "external-pinnedcwd-session-mismatch",
+          hostId: host.id,
+          cwd: "/tmp/totally-unrelated-directory",
+        });
+
+        expect(response.status).toBe(400);
+        const body = await readJson(response);
+        expect(body).toMatchObject({ code: "invalid_request" });
+        expect(JSON.stringify(body)).toContain(
+          "does not match the directory",
+        );
+      },
+    );
+  });
+
+  it("imports when the asserted cwd matches a custom ACP agent's configured cwd pin", async () => {
+    await withTestHarness(
+      {
+        customAcpAgents: [
+          {
+            id: "pinnedcwd",
+            displayName: "Pinned Cwd Agent",
+            command: "pinnedcwd-agent",
+            args: ["acp"],
+            env: {},
+            cwd: SOURCE_PATH,
+          },
+        ],
+      },
+      async (harness) => {
+        const { host, project } = seedImportTarget(harness);
+
+        const response = await postImport(harness, {
+          projectId: project.id,
+          providerId: "acp-pinnedcwd",
+          providerSessionId: "external-pinnedcwd-session-match",
+          hostId: host.id,
+          cwd: SOURCE_PATH,
+        });
+
+        expect(response.status).toBe(201);
+        const thread = threadResponseSchema.parse(await readJson(response));
+        expect(thread).toMatchObject({
+          projectId: project.id,
+          providerId: "acp-pinnedcwd",
+          status: "starting",
+        });
       },
     );
   });

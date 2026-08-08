@@ -212,7 +212,22 @@ export async function createThreadImportFromRequest(
   // adapter resolves `profile.cwd ?? command.cwd` identically for import,
   // start, and resume), so validate that effective directory instead of the
   // raw request — otherwise a pinned agent could pass this check on an
-  // asserted cwd it will never actually load from.
+  // asserted cwd it will never actually load from. `cwd` is a required,
+  // contract-documented assertion ("an import can never silently bind to
+  // the wrong directory by omission"), so a pin that disagrees with it must
+  // be refused rather than silently overriding it.
+  if (
+    acpLaunchSpec?.cwd !== undefined &&
+    normalizeProjectPathInput(request.cwd) !==
+      normalizeProjectPathInput(acpLaunchSpec.cwd)
+  ) {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      `Requested cwd ${request.cwd} does not match the directory ` +
+        `${acpLaunchSpec.cwd} configured for agent ${request.providerId}`,
+    );
+  }
   const cwd = resolveImportCwd(deps, {
     hostId,
     projectId: request.projectId,

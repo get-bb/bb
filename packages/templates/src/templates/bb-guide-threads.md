@@ -99,9 +99,11 @@ Importing:
   required: it is your assertion of the working directory the session ran
   in (bb cannot read this back from the external session itself) and must
   match the project source path or an existing workspace already attached
-  to the project — anything else is refused. A cwd the agent itself detects
-  as wrong surfaces as a thread start failure. Importing a provider session
-  another live thread already binds is refused.
+  to the project — anything else is refused. If the provider resolves to a
+  configured custom ACP agent that pins its own cwd, --cwd must match that
+  pinned directory exactly, or the import is refused. A cwd the agent itself
+  detects as wrong surfaces as a thread start failure. Importing a provider
+  session another live thread already binds is refused.
 
 Listing:
 

@@ -39,7 +39,9 @@ export function registerImportCommand(
     .requiredOption(
       "--cwd <path>",
       "Working directory the session ran in; must match the project source " +
-        "path or an existing workspace of the project",
+        "path or an existing workspace of the project. If the provider is a " +
+        "configured custom ACP agent that pins its own cwd, this must match " +
+        "that pinned directory exactly",
     )
     .option("--title <title>", "Thread title")
     .option("--permission-mode <mode>", PERMISSION_MODE_HELP)

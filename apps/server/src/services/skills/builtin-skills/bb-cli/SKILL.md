@@ -170,7 +170,10 @@ isolated|reuse`, or anchor with `--source-seq-end`. Permission mode inherits
   the working directory the session ran in (bb has no way to read this back
   from the external session), and must match the project source path or an
   existing workspace already attached to the project — anything else is
-  refused. Pass `--host` when the session lives on a non-primary machine.
+  refused. If the provider resolves to a configured custom ACP agent that
+  pins its own cwd, `--cwd` must match that pinned directory exactly, or the
+  import is refused. Pass `--host` when the session lives on a non-primary
+  machine.
 - Pass `--visibility hidden` for background/plugin workers that should remain
   out of sidebar organization without contributing unread/pending favicon
   attention. `bb thread list` excludes them by

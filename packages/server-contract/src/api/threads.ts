@@ -221,7 +221,11 @@ export const importThreadRequestSchema = z
      * not independently verified — only checked against the project source
      * path or the path of an existing workspace already attached to the
      * project; anything else is refused. Required so an import can never
-     * silently bind to the wrong directory by omission.
+     * silently bind to the wrong directory by omission. If the resolved
+     * provider is a configured custom ACP agent that pins its own cwd, this
+     * must match that pinned directory exactly — the pin always wins at
+     * runtime, so a mismatched assertion is refused rather than silently
+     * overridden.
      */
     cwd: z.string().min(1),
     title: z.string().min(1).optional(),
