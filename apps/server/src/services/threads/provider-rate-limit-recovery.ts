@@ -344,6 +344,9 @@ export async function continueThreadAfterProviderRateLimit(
     },
     projectId: args.thread.projectId,
     providerId: args.thread.providerId,
+    // Rate-limit recovery continues an existing thread, so it never adopts an
+    // external provider session.
+    sessionImport: null,
     syncGeneratedTitle: false,
   });
 

@@ -1,6 +1,6 @@
 import {
-  findEnvironmentByHostPath,
   findLiveThreadIdByProviderThreadId,
+  findProjectEnvironmentByHostPath,
 } from "@bb/db";
 import { normalizeProjectPathInput } from "@bb/domain";
 import {
@@ -140,8 +140,13 @@ function resolveImportCwd(
   if (cwd === normalizeProjectPathInput(args.sourcePath)) {
     return cwd;
   }
-  const environment = findEnvironmentByHostPath(deps.db, args.hostId, cwd);
-  if (environment && environment.projectId === args.projectId) {
+  const environment = findProjectEnvironmentByHostPath(
+    deps.db,
+    args.projectId,
+    args.hostId,
+    cwd,
+  );
+  if (environment) {
     return cwd;
   }
   throw new ApiError(
