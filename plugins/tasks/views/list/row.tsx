@@ -112,6 +112,8 @@ function LabelChips({
 export interface TaskRowProps {
   /** Task with any pending optimistic edit already applied. */
   task: Task;
+  /** Zero for a root result; one for a child rendered beneath its parent. */
+  depth: 0 | 1;
   meta: TaskRowMeta | undefined;
   project: Project | undefined;
   showProject: boolean;
@@ -134,6 +136,7 @@ export interface TaskRowProps {
  */
 export function TaskRow({
   task,
+  depth,
   meta,
   project,
   showProject,
@@ -149,6 +152,7 @@ export function TaskRow({
     <TaskContextMenu task={task} onEdit={onEdit} projectLabels={projectLabels}>
       <div
         data-task-key={task.key}
+        data-task-depth={depth}
         aria-busy={pending || undefined}
         className={cn(
           // Narrow containers get a two-line hierarchy: status + full-width
@@ -158,9 +162,17 @@ export function TaskRow({
           // keeps its exact 34px rows.
           "relative grid w-full grid-cols-[auto_auto_minmax(0,1fr)] items-center gap-x-2 gap-y-1 border-b border-border-hairline px-3.5 py-1.5 text-left transition-opacity hover:bg-state-hover",
           "@md:flex @md:h-[34px] @md:py-0",
+          depth === 1 && "pl-8",
           pending && "opacity-70",
         )}
       >
+        {depth === 1 ? (
+          <Icon
+            name="CornerDownRight"
+            aria-hidden
+            className="pointer-events-none absolute left-3.5 top-2 size-3 text-subtle-foreground @md:top-1/2 @md:-translate-y-1/2"
+          />
+        ) : null}
         <button
           type="button"
           aria-label={`Open ${task.key}: ${task.title}`}

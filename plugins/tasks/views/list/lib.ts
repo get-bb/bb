@@ -35,6 +35,16 @@ export interface StatusGroup {
   tasks: Task[];
 }
 
+export interface HierarchicalTask {
+  task: Task;
+  depth: 0 | 1;
+}
+
+export interface HierarchicalStatusGroup {
+  status: TaskStatus;
+  entries: HierarchicalTask[];
+}
+
 /**
  * Buckets tasks into canonical status order, dropping empty groups. Within a
  * group the incoming order is preserved, so callers control ordering by
@@ -50,6 +60,50 @@ export function groupTasksByStatus(tasks: readonly Task[]): StatusGroup[] {
   return TASK_STATUSES.flatMap((status) => {
     const bucket = byStatus.get(status);
     return bucket ? [{ status, tasks: bucket }] : [];
+  });
+}
+
+/**
+ * Builds the list presentation from an already-sorted task set. Roots keep
+ * their incoming order, while matching children move directly beneath their
+ * parent and keep their incoming sibling order. A child whose parent is not
+ * in the filtered result remains a root, so filtering never hides a match.
+ *
+ * Children inherit their parent's presentation group even when their own
+ * status differs; the row still renders the child's status editor. This keeps
+ * the parent/child relationship intact while preserving canonical root status
+ * groups and the caller's selected sort.
+ */
+export function groupTaskHierarchyByStatus(
+  tasks: readonly Task[],
+): HierarchicalStatusGroup[] {
+  const taskIds = new Set(tasks.map((task) => task.id));
+  const childrenByParentId = new Map<string, Task[]>();
+  const roots: Task[] = [];
+
+  for (const task of tasks) {
+    if (task.parentTaskId !== null && taskIds.has(task.parentTaskId)) {
+      const children = childrenByParentId.get(task.parentTaskId);
+      if (children) children.push(task);
+      else childrenByParentId.set(task.parentTaskId, [task]);
+    } else {
+      roots.push(task);
+    }
+  }
+
+  const byStatus = new Map<TaskStatus, HierarchicalTask[]>();
+  for (const root of roots) {
+    const entries = byStatus.get(root.status) ?? [];
+    entries.push({ task: root, depth: 0 });
+    for (const child of childrenByParentId.get(root.id) ?? []) {
+      entries.push({ task: child, depth: 1 });
+    }
+    byStatus.set(root.status, entries);
+  }
+
+  return TASK_STATUSES.flatMap((status) => {
+    const entries = byStatus.get(status);
+    return entries ? [{ status, entries }] : [];
   });
 }
 
@@ -97,9 +151,7 @@ export function formatDueDate(dueDate: string, today = new Date()): string {
   return date.toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
-    ...(date.getFullYear() === today.getFullYear()
-      ? {}
-      : { year: "numeric" }),
+    ...(date.getFullYear() === today.getFullYear() ? {} : { year: "numeric" }),
   });
 }
 

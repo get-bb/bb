@@ -18,10 +18,7 @@ export interface ListTaskFilters {
   labelIds: readonly string[] | null;
 }
 
-/**
- * Server-side filtered task list. Subtasks are excluded (parentTaskId: null),
- * matching the design mock — they surface on their parent's detail page.
- */
+/** Server-side filtered task list, including matching parent and child tasks. */
 export function useListTasks(
   projectId: string | null,
   activeOnly: boolean,
@@ -41,7 +38,6 @@ export function useListTasks(
           ? { labelIds: [...filters.labelIds] }
           : {}),
         activeOnly,
-        parentTaskId: null,
       }),
     ["tasks:changed", "threads:changed"],
     [
