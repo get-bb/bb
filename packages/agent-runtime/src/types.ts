@@ -280,6 +280,12 @@ export interface ListModelsArgs {
   providerId: string;
   acpLaunchSpec?: HostDaemonAcpLaunchSpec;
   cwd?: string;
+  /**
+   * ACP only: await the live session/load capability probe instead of only
+   * answering from the capability cache. Set only by the session-import flow,
+   * which needs a fresh answer; every other caller leaves this unset.
+   */
+  probeSessionImport?: boolean;
 }
 
 export interface AgentRuntime {

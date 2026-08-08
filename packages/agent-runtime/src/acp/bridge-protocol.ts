@@ -79,6 +79,15 @@ const acpBridgeModelListParamsSchema = z.object({
   primaryModels: z.array(z.string()).default([]),
   reasoningCli: acpBridgeReasoningCliSchema.optional(),
   nativeReasoning: acpBridgeNativeReasoningSchema.optional(),
+  /**
+   * Await the live session/load capability probe (spawns an extra agent
+   * process when the CLI catalog already satisfies the request) instead of
+   * only answering from whatever the capability cache already holds. Set
+   * only by the caller that actually needs a fresh answer — thread/import's
+   * own model/list call — so a normal picker open or default-model
+   * resolution never pays the extra spawn+initialize latency.
+   */
+  probeSessionImport: z.boolean().optional(),
 });
 
 /**

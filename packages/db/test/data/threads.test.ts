@@ -6,6 +6,7 @@ import type { DbNotifier } from "../../src/notifier.js";
 import {
   createThread,
   countLiveThreadsInEnvironment,
+  deleteProviderSessionReservation,
   findProviderSessionReservationThreadId,
   ProviderSessionReservedError,
   countNonDeletedAssignedChildThreads,
@@ -1748,6 +1749,42 @@ describe("provider session reservations", () => {
     // reservation away, freeing the session for a new import.
     deleteThread(db, noopNotifier, thread.id);
     expect(findProviderSessionReservationThreadId(db, lookup)).toBeNull();
+    const again = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "acp-omp",
+      providerSessionReservation: reservation,
+    });
+    expect(findProviderSessionReservationThreadId(db, lookup)).toBe(again.id);
+  });
+
+  it("releases the reservation directly without deleting the thread row", () => {
+    // The third release path (alongside the two hard-delete paths above): a
+    // thread whose import bind never completed (e.g. an async thread.start
+    // failure) keeps its row but must free the reservation so a retried
+    // import of the same session isn't blocked forever.
+    const { db, host, project } = setup();
+    const reservation = {
+      hostId: host.id,
+      providerSessionId: "unbound-session",
+    };
+    const thread = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "acp-omp",
+      providerSessionReservation: reservation,
+    });
+    const lookup = {
+      hostId: host.id,
+      providerId: "acp-omp",
+      providerSessionId: "unbound-session",
+    };
+    expect(findProviderSessionReservationThreadId(db, lookup)).toBe(
+      thread.id,
+    );
+
+    deleteProviderSessionReservation(db, thread.id);
+
+    expect(findProviderSessionReservationThreadId(db, lookup)).toBeNull();
+    expect(getThread(db, thread.id)).not.toBeNull();
     const again = createThread(db, noopNotifier, {
       projectId: project.id,
       providerId: "acp-omp",

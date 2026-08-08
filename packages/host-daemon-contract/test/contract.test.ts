@@ -717,6 +717,8 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "provider.list_models includes an ACP launch spec only for dynamic ACP providers; built-ins resolve from daemon-side profiles.",
   "hostDaemonOnlineRpcCommandSchema.cwd":
     "provider.list_models may omit cwd when only user-level provider configuration applies.",
+  "hostDaemonOnlineRpcCommandSchema.probeSessionImport":
+    "provider.list_models omits probeSessionImport for ordinary model-list callers; only the session-import flow sets it to force a live capability probe.",
   "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.cwd":
     "dynamic ACP launch specs may omit cwd so the daemon uses the caller's workspace cwd.",
   "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.modelCli":

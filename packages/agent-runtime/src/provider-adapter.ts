@@ -139,7 +139,18 @@ export type AdapterCommand =
       type: "skills/configure";
       skillRoots: readonly AgentRuntimeSkillRoot[];
     }
-  | { type: "model/list"; cwd?: string }
+  | {
+      type: "model/list";
+      cwd?: string;
+      /**
+       * ACP only: await the live session/load capability probe instead of
+       * only answering from the capability cache. Set by callers that need a
+       * fresh answer (thread/import's own model/list call); every other
+       * caller leaves this unset so a normal picker open never pays the
+       * extra agent spawn.
+       */
+      probeSessionImport?: boolean;
+    }
   | {
       type: "thread/start";
       threadId: string;

@@ -52,6 +52,7 @@ export interface CommandDispatchOptions {
     providerId: string;
     acpLaunchSpec?: HostDaemonAcpLaunchSpec;
     cwd?: string;
+    probeSessionImport?: boolean;
   }) => Promise<{
     models: AvailableModel[];
     selectedOnlyModels: AvailableModel[];
@@ -117,7 +118,11 @@ export async function shutdownDefaultListModelsRuntimes(): Promise<void> {
 }
 
 export async function defaultListModels(
-  args: { providerId: string; acpLaunchSpec?: HostDaemonAcpLaunchSpec },
+  args: {
+    providerId: string;
+    acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+    probeSessionImport?: boolean;
+  },
   options: { bridgeBundleDir?: AgentRuntimeOptions["bridgeBundleDir"] } = {},
 ): Promise<{
   models: AvailableModel[];

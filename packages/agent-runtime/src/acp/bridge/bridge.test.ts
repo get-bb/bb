@@ -440,7 +440,8 @@ describe("acp bridge", () => {
     // An agent with a CLI model list (e.g. acp-grok) never runs the
     // session-discovery path below (the catalog already satisfies the
     // request), so the capability must be probed separately or it never gets
-    // learned for these agents.
+    // learned for these agents. The probe is opt-in (probeSessionImport),
+    // set only by the caller that needs a fresh answer.
     const modelListId = sendRequest("model/list", {
       listCommand: {
         command: process.execPath,
@@ -452,12 +453,46 @@ describe("acp bridge", () => {
         envVars: { FAKE_ACP_LOAD_SESSION: "1" },
       },
       primaryModels: [],
+      probeSessionImport: true,
     });
 
     expect((await waitForResponse(modelListId)).result).toMatchObject({
       models: [{ id: "cli-model", displayName: "CLI Model", isDefault: true }],
       supportsSessionImport: true,
     });
+  });
+
+  it("does not probe the live loadSession handshake for a CLI model-list agent when not requested", async () => {
+    // Every model/list caller other than thread/import's own probe (e.g. the
+    // model picker, default-model resolution) must not pay the extra agent
+    // spawn+initialize latency; supportsSessionImport is simply absent until
+    // something opts into the probe. A distinct envVars value (not shared
+    // with any other test's agent) keeps this out of the capability cache
+    // populated elsewhere for the same agent launch.
+    const modelListId = sendRequest("model/list", {
+      listCommand: {
+        command: process.execPath,
+        args: ["-e", 'console.log("cli-model-unprobed - CLI Model Unprobed")'],
+      },
+      agent: {
+        command: process.execPath,
+        args: [FAKE_AGENT_PATH],
+        envVars: { FAKE_ACP_LOAD_SESSION: "1", FAKE_ACP_UNPROBED: "1" },
+      },
+      primaryModels: [],
+    });
+
+    const result = (await waitForResponse(modelListId)).result;
+    expect(result).toMatchObject({
+      models: [
+        {
+          id: "cli-model-unprobed",
+          displayName: "CLI Model Unprobed",
+          isDefault: true,
+        },
+      ],
+    });
+    expect(result).not.toHaveProperty("supportsSessionImport");
   });
 
   it("discovers ACP-native models from session models state", async () => {

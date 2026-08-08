@@ -1611,7 +1611,7 @@ function createAgentRuntimeInternal(
       });
     },
 
-    async listModels({ providerId, acpLaunchSpec, cwd }) {
+    async listModels({ providerId, acpLaunchSpec, cwd, probeSessionImport }) {
       await runtime.ensureProvider({
         providerId,
         ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
@@ -1628,6 +1628,7 @@ function createAgentRuntimeInternal(
         plan: proc.adapter.buildCommandPlan({
           type: "model/list",
           ...(cwd !== undefined ? { cwd } : {}),
+          ...(probeSessionImport ? { probeSessionImport: true } : {}),
         }),
         providerId,
       });

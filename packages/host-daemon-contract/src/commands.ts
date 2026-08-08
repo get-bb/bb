@@ -887,6 +887,14 @@ const providerListModelsCommandSchema = z.object({
   providerId: z.string().min(1),
   acpLaunchSpec: hostDaemonAcpLaunchSpecSchema.optional(),
   cwd: z.string().min(1).optional(),
+  /**
+   * ACP only: await the live session/load capability probe (spawns an extra
+   * agent process) instead of only answering from the capability cache. Set
+   * only by the session-import flow, which needs a fresh answer before
+   * binding a thread to an external session; every other model/list caller
+   * (e.g. the model picker, default-model resolution) leaves this unset.
+   */
+  probeSessionImport: z.boolean().optional(),
 });
 
 const knownAcpAgentExecutableQuerySchema = z

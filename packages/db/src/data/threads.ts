@@ -286,6 +286,23 @@ export function findProviderSessionReservationThreadId(
   return row?.threadId ?? null;
 }
 
+/**
+ * Releases a thread's provider session reservation without deleting the
+ * thread itself. The primary release path is cascade-on-delete (a failed
+ * creation rollback or permanent deletion); this is the third path, for a
+ * thread whose row survives but whose import bind never completed (e.g. an
+ * async thread.start failure) — without this, retrying the same import 409s
+ * against a reservation nothing will ever finish claiming.
+ */
+export function deleteProviderSessionReservation(
+  db: ThreadWriteConnection,
+  threadId: string,
+): void {
+  db.delete(providerSessionReservations)
+    .where(eq(providerSessionReservations.threadId, threadId))
+    .run();
+}
+
 export interface CreateThreadInput {
   projectId: string;
   environmentId?: string | null;

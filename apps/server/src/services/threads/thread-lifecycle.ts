@@ -10,6 +10,7 @@ import {
   sql,
 } from "drizzle-orm";
 import {
+  deleteProviderSessionReservation,
   deleteThread,
   environments,
   events,
@@ -747,6 +748,34 @@ function recordEmptyThreadStartProviderSessionInTransaction(
   });
 }
 
+/**
+ * An import's provider session reservation (packages/db schema.ts,
+ * providerSessionReservations) is claimed synchronously inside the
+ * thread-create transaction, before the daemon's async thread.start ever
+ * runs. When that start fails, the bind never completed, so the reservation
+ * must not outlive it — otherwise retrying the identical import 409s against
+ * a reservation nothing will ever finish claiming. Gated on the thread never
+ * having recorded a provider identity: thread/identity is only emitted after
+ * the bridge successfully binds the external session
+ * (packages/agent-runtime/src/acp/bridge/bridge.ts), so its absence means the
+ * bind truly never completed.
+ */
+function releaseFailedSessionImportReservationInTransaction(
+  deps: ThreadCommandResultSettlementDeps,
+  command: ThreadFailureCommand,
+): void {
+  if (
+    command.type !== "thread.start" ||
+    command.sessionImport === undefined
+  ) {
+    return;
+  }
+  if (getLastProviderThreadId(deps, command.threadId) !== null) {
+    return;
+  }
+  deleteProviderSessionReservation(deps.db, command.threadId);
+}
+
 function settleThreadCommandFailure(
   args: SettleThreadCommandFailureArgs,
 ): CommandResultSideEffectsResult {
@@ -758,6 +787,7 @@ function settleThreadCommandFailure(
   if (hasExpectedTurnCompletedEvent(args.deps, args.command)) {
     return emptyCommandResultSideEffects();
   }
+  releaseFailedSessionImportReservationInTransaction(args.deps, args.command);
   appendSystemErrorEventInTransaction(args.deps, {
     threadId: thread.id,
     environmentId: thread.environmentId,

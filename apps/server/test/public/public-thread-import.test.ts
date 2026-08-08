@@ -1,4 +1,4 @@
-import { upsertProjectExecutionDefaults } from "@bb/db";
+import { getThread, upsertProjectExecutionDefaults } from "@bb/db";
 import { threadScope } from "@bb/domain";
 import { groupHostDaemonEvents } from "@bb/host-daemon-contract";
 import { threadResponseSchema } from "@bb/server-contract";
@@ -7,6 +7,7 @@ import {
   clearTestProviderSupportsSessionImportOverrides,
   createTestDaemonEventEnvelope,
   internalAuthHeaders,
+  reportQueuedCommandError,
   setTestProviderSupportsSessionImport,
   waitForQueuedCommand,
 } from "../helpers/commands.js";
@@ -521,5 +522,106 @@ describe("public thread import route", () => {
         "does not match the project source",
       );
     });
+  });
+
+  it("releases the provider session reservation when the import's thread.start fails, so retrying the identical import succeeds", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, project } = seedImportTarget(harness);
+      const providerSessionId = "external-omp-session-failed-start";
+
+      const firstResponse = await postImport(harness, {
+        projectId: project.id,
+        providerId: "acp-omp",
+        providerSessionId,
+        hostId: host.id,
+        cwd: SOURCE_PATH,
+      });
+      expect(firstResponse.status).toBe(201);
+      const firstThread = threadResponseSchema.parse(
+        await readJson(firstResponse),
+      );
+
+      const startCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.start" &&
+          command.threadId === firstThread.id,
+      );
+
+      // While the first start is still in flight, the reservation still
+      // blocks a duplicate import of the same provider session.
+      const raceResponse = await postImport(harness, {
+        projectId: project.id,
+        providerId: "acp-omp",
+        providerSessionId,
+        hostId: host.id,
+        cwd: SOURCE_PATH,
+      });
+      expect(raceResponse.status).toBe(409);
+
+      // The bind never completed (no thread/identity event was ever
+      // recorded), so the failed start must release the reservation instead
+      // of leaving it to 409 every future retry.
+      await reportQueuedCommandError(harness, startCommand, {
+        errorCode: "test_import_start_failed",
+        errorMessage: "Test import thread.start failure",
+      });
+      expect(getThread(harness.db, firstThread.id)?.status).toBe("error");
+
+      const retryResponse = await postImport(harness, {
+        projectId: project.id,
+        providerId: "acp-omp",
+        providerSessionId,
+        hostId: host.id,
+        cwd: SOURCE_PATH,
+      });
+      expect(retryResponse.status).toBe(201);
+      const retryThread = threadResponseSchema.parse(
+        await readJson(retryResponse),
+      );
+      expect(retryThread.id).not.toBe(firstThread.id);
+    });
+  });
+
+  it("rejects an import when a custom ACP agent's configured cwd does not match the project source or an attached workspace", async () => {
+    // The configured pin (not the caller's asserted cwd) is the directory
+    // session/load will actually run in on every future start/resume
+    // (packages/agent-runtime/src/acp/adapter.ts resolves `profile.cwd ??
+    // command.cwd` identically for import/start/resume), so it is the pin
+    // that must be validated against the project.
+    await withTestHarness(
+      {
+        customAcpAgents: [
+          {
+            id: "pinnedcwd",
+            displayName: "Pinned Cwd Agent",
+            command: "pinnedcwd-agent",
+            args: ["acp"],
+            env: {},
+            cwd: "/tmp/pinnedcwd-agent-outside-project",
+          },
+        ],
+      },
+      async (harness) => {
+        const { host, project } = seedImportTarget(harness);
+
+        const response = await postImport(harness, {
+          projectId: project.id,
+          providerId: "acp-pinnedcwd",
+          providerSessionId: "external-pinnedcwd-session",
+          hostId: host.id,
+          // The caller's assertion matches the project source; the agent's
+          // configured pin does not, and must still be refused.
+          cwd: SOURCE_PATH,
+        });
+
+        expect(response.status).toBe(400);
+        const body = await readJson(response);
+        expect(body).toMatchObject({ code: "invalid_request" });
+        expect(JSON.stringify(body)).toContain(
+          "does not match the project source",
+        );
+      },
+    );
   });
 });

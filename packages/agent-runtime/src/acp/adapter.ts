@@ -1366,15 +1366,12 @@ export function createAcpProviderAdapter(
     >,
   ): Record<string, unknown> {
     const instructions = buildAcpSessionInstructions(command.options);
-    // A configured profile directory pins start/resume by design, but an
-    // import's cwd is the directory the server already validated against the
-    // project (source path or attached workspace); letting profile.cwd win
-    // would attach the thread to one project while session/load replays
-    // another directory.
-    const cwd =
-      command.type === "thread/import"
-        ? command.cwd
-        : profile.cwd ?? command.cwd;
+    // A configured profile directory pins start/resume/import alike: the
+    // server validates this same effective directory (profile.cwd when set,
+    // else the caller-asserted cwd) against the project before importing, so
+    // a configured pin can never diverge from the directory session/load
+    // replays on a later resume.
+    const cwd = profile.cwd ?? command.cwd;
     const envVars = {
       ...(profile.env ?? {}),
       ...(command.options.envVars ?? {}),
@@ -1491,6 +1488,7 @@ export function createAcpProviderAdapter(
               primaryModels: [...(profile.modelCli?.primaryModels ?? [])],
               ...buildReasoningCliParam(),
               ...buildNativeReasoningParam(),
+              ...(command.probeSessionImport ? { probeSessionImport: true } : {}),
             },
           };
         case "skills/configure":

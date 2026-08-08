@@ -464,6 +464,9 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
       ...(command.acpLaunchSpec !== undefined
         ? { acpLaunchSpec: command.acpLaunchSpec }
         : {}),
+      ...(command.probeSessionImport !== undefined
+        ? { probeSessionImport: command.probeSessionImport }
+        : {}),
     }),
   "known_acp_agents.status": async (command) =>
     getKnownAcpAgentsStatus({ agents: command.agents }),

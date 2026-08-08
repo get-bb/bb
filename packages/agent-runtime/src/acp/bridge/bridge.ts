@@ -2068,12 +2068,17 @@ async function handleRequest(
       // independent. Without the probe, an agent with a CLI model list would
       // never reach the session-discovery code below (the catalog already
       // satisfies the request) and so would never get its live
-      // supportsSessionImport learned.
+      // supportsSessionImport learned. Only await the probe (spawn + initialize
+      // an extra agent process) when the caller actually needs a fresh answer;
+      // every other model/list caller still gets whatever the capability cache
+      // already holds, populated the next time the import path asks.
       const [catalog] = await Promise.all([
         request.params.listCommand
           ? loadAgentModelCatalog(request.params.listCommand)
           : Promise.resolve(null),
-        request.params.listCommand && request.params.agent
+        request.params.probeSessionImport &&
+        request.params.listCommand &&
+        request.params.agent
           ? probeAcpAgentSupportsSessionImportOnly(request.params.agent)
           : Promise.resolve(),
       ]);

@@ -206,7 +206,7 @@ describe("acp adapter command plans", () => {
     });
   });
 
-  it("keeps the server-validated cwd for thread/import when a custom agent pins a directory", () => {
+  it("resolves import, start, and resume to the same pinned cwd when a custom agent pins a directory", () => {
     const adapter = createAcpProviderAdapter({
       profile: {
         providerId: "acp-custom",
@@ -217,9 +217,11 @@ describe("acp adapter command plans", () => {
       additionalWorkspaceWriteRoots: [],
     });
 
-    // The server validated command.cwd against the project (source path or
-    // attached workspace) and bound the thread environment to it; the
-    // configured profile directory must not redirect session/load elsewhere.
+    // The server validates the effective launch directory (the profile pin,
+    // when configured) against the project before importing, so import must
+    // load the session from the same directory start/resume will use later —
+    // otherwise a later resume would replay the session from a different
+    // directory than the one the import bound the thread to.
     const importPlan = adapter.buildCommandPlan({
       type: "thread/import",
       threadId: "thread-1",
@@ -233,12 +235,11 @@ describe("acp adapter command plans", () => {
       method: "thread/import",
       params: {
         providerThreadId: "sess-1",
-        cwd: "/workspace",
-        workspaceWriteRoots: ["/workspace"],
+        cwd: "/custom-cwd",
+        workspaceWriteRoots: ["/custom-cwd"],
       },
     });
 
-    // Start and resume keep honoring the profile pin by design.
     const startPlan = adapter.buildCommandPlan({
       type: "thread/start",
       threadId: "thread-1",

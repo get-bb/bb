@@ -8,6 +8,7 @@ import {
   isAcpProviderId,
   supportsProviderSessionImport,
 } from "@bb/agent-providers";
+import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
 import type { ImportThreadRequest } from "@bb/server-contract";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
@@ -42,13 +43,13 @@ type ThreadImportDeps = LoggedPendingInteractionWorkSessionDeps;
  */
 async function probeAcpSupportsSessionImport(
   deps: ThreadImportDeps,
-  args: { hostId: string; providerId: string },
+  args: {
+    hostId: string;
+    providerId: string;
+    acpLaunchSpec: HostDaemonAcpLaunchSpec | undefined;
+  },
 ): Promise<boolean | undefined> {
-  const acpLaunchSpec = buildAcpLaunchSpecForProviderId(
-    deps.config.customAcpAgents,
-    args.providerId,
-  );
-  if (!acpLaunchSpec) {
+  if (!args.acpLaunchSpec) {
     return undefined;
   }
   try {
@@ -58,7 +59,11 @@ async function probeAcpSupportsSessionImport(
       command: {
         type: "provider.list_models",
         providerId: args.providerId,
-        acpLaunchSpec,
+        acpLaunchSpec: args.acpLaunchSpec,
+        // This is the one caller of model/list that needs a live answer
+        // before binding a thread to an external session; every other
+        // model/list caller leaves this unset and answers from the cache.
+        probeSessionImport: true,
       },
     });
     return result.supportsSessionImport;
@@ -69,7 +74,11 @@ async function probeAcpSupportsSessionImport(
 
 async function requireImportCapableProvider(
   deps: ThreadImportDeps,
-  args: { hostId: string; providerId: string },
+  args: {
+    hostId: string;
+    providerId: string;
+    acpLaunchSpec: HostDaemonAcpLaunchSpec | undefined;
+  },
 ): Promise<void> {
   if (!supportsProviderSessionImport(args.providerId)) {
     throw new ApiError(
@@ -127,9 +136,15 @@ function requireUnboundProviderSession(
 }
 
 /**
- * Validate the caller-asserted working directory the imported session ran
- * in. bb cannot read this back from the external session itself (ACP has no
- * such query), so `requestedCwd` is an assertion, not a verified fact: it
+ * Validate the effective working directory the imported session will load
+ * from. When the resolved agent (a configured custom ACP agent) pins its own
+ * cwd, that pin always wins over the caller's assertion — the adapter
+ * resolves `profile.cwd ?? command.cwd` identically for thread/import,
+ * thread/start, and thread/resume (packages/agent-runtime/src/acp/adapter.ts),
+ * so validating anything else here would let an import bind to one directory
+ * while a later restart resumes the same provider session from another. bb
+ * cannot read the directory back from the external session itself (ACP has
+ * no such query), so `requestedCwd` is an assertion, not a verified fact: it
  * must match the project source path or an existing workspace already
  * attached to this project; anything else is refused so the imported
  * conversation cannot be bound to an unrelated project. A mismatch the
@@ -172,9 +187,20 @@ export async function createThreadImportFromRequest(
 ) {
   requirePublicProjectForThreadCreate(deps, request.projectId);
   const hostId = request.hostId ?? requireConnectedPrimaryHostId(deps);
+  // Resolved the exact same way thread.start does (buildAcpLaunchSpecForProviderId:
+  // a configured custom ACP agent shadows a built-in known agent sharing its
+  // provider id), so a pinned cwd here is the directory that will actually
+  // serve the thread on every future start/resume, not just this import.
+  const acpLaunchSpec = isAcpProviderId(request.providerId)
+    ? buildAcpLaunchSpecForProviderId(
+        deps.config.customAcpAgents,
+        request.providerId,
+      )
+    : undefined;
   await requireImportCapableProvider(deps, {
     hostId,
     providerId: request.providerId,
+    acpLaunchSpec,
   });
   requireUnboundProviderSession(deps, {
     hostId,
@@ -182,10 +208,15 @@ export async function createThreadImportFromRequest(
     providerSessionId: request.providerSessionId,
   });
   const source = requireSourceForHost(deps, request.projectId, hostId);
+  // A configured agent cwd always wins over the caller's assertion (the
+  // adapter resolves `profile.cwd ?? command.cwd` identically for import,
+  // start, and resume), so validate that effective directory instead of the
+  // raw request — otherwise a pinned agent could pass this check on an
+  // asserted cwd it will never actually load from.
   const cwd = resolveImportCwd(deps, {
     hostId,
     projectId: request.projectId,
-    requestedCwd: request.cwd,
+    requestedCwd: acpLaunchSpec?.cwd ?? request.cwd,
     sourcePath: source.path,
   });
 
