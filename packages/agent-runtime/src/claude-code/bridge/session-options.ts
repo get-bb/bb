@@ -205,6 +205,23 @@ function resolveExecutableOnPath(
   return null;
 }
 
+// The login-shell PATH probe can miss user-level install directories (slow
+// shell startup, PATH exports the probe does not source), so common Claude
+// install locations are checked before falling back to the SDK's bundled
+// binary, which packaged bb builds do not ship.
+function wellKnownClaudeExecutablePaths(env: NodeJS.ProcessEnv): string[] {
+  const candidatePaths: string[] = [];
+  const home = env.HOME?.trim();
+  if (home) {
+    candidatePaths.push(
+      join(home, ".local", "bin", "claude"),
+      join(home, ".claude", "local", "claude"),
+    );
+  }
+  candidatePaths.push("/opt/homebrew/bin/claude", "/usr/local/bin/claude");
+  return candidatePaths;
+}
+
 export function resolveClaudeCodeExecutable(
   args: ResolveClaudeCodeExecutableArgs,
 ): string | null {
@@ -223,10 +240,24 @@ export function resolveClaudeCodeExecutable(
 
   // Bundled bridge files cannot rely on the SDK's package-relative CLI
   // resolution, so pass the host's Claude CLI path explicitly when available.
-  return resolveExecutableOnPath({
+  const executableOnPath = resolveExecutableOnPath({
     executableName: "claude",
     pathEnv: args.env.PATH,
   });
+  if (executableOnPath) {
+    return executableOnPath;
+  }
+
+  for (const candidate of wellKnownClaudeExecutablePaths(args.env)) {
+    try {
+      accessSync(candidate, constants.X_OK);
+      return candidate;
+    } catch {
+      continue;
+    }
+  }
+
+  return null;
 }
 
 export function buildSessionOptions(
