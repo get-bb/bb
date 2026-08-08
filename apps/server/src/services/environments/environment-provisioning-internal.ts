@@ -1,5 +1,6 @@
 import { and, desc, eq, isNull } from "drizzle-orm";
 import {
+  deleteProviderSessionReservation,
   events,
   type DbConnection,
   type DbNotifier,
@@ -27,6 +28,7 @@ import {
   appendSystemErrorEventInTransaction,
   appendThreadProvisioningEventInTransaction,
   buildCwdBranchEntries,
+  getLastProviderThreadId,
 } from "../threads/thread-events.js";
 import {
   buildEnvironmentProvisionCommand,
@@ -556,6 +558,19 @@ function recordEnvironmentProvisioningFailureInTransaction(
     });
     if (outcome.applied) {
       deps.hub.notifyThread(thread.id, ["status-changed"]);
+    }
+    // An import's provider session reservation is claimed synchronously
+    // when the thread is created, before provisioning ever runs. If
+    // provisioning fails before thread.start is ever dispatched (this
+    // path), the import's bind never completed, so the reservation must
+    // not outlive it (see failThreadProvisioning in
+    // thread-provisioning-environment.ts for the sibling path, and
+    // releaseFailedSessionImportReservationInTransaction in
+    // thread-lifecycle.ts for the async thread.start-failure path). Gated
+    // on the thread never having recorded a provider identity, which makes
+    // this a no-op for threads that were never an import.
+    if (getLastProviderThreadId(deps, thread.id) === null) {
+      deleteProviderSessionReservation(deps.db, thread.id);
     }
   }
 

@@ -1,5 +1,6 @@
 import {
   createEnvironment,
+  deleteProviderSessionReservation,
   getEnvironment,
   getThread,
   type CreateEnvironmentInput,
@@ -29,6 +30,7 @@ import {
   appendSystemErrorEvent,
   appendThreadProvisioningEvent,
   appendThreadProvisioningEventInTransaction,
+  getLastProviderThreadId,
 } from "./thread-events.js";
 import {
   baseBranchSpecToStoredName,
@@ -402,6 +404,16 @@ export function failThreadProvisioning(
     event: { type: "run.failed" },
     threadId: args.thread.id,
   });
+  // An import's provider session reservation is claimed synchronously when
+  // the thread is created, before provisioning ever runs. If provisioning
+  // fails here, the import's bind never completed, so the reservation must
+  // not outlive it (see releaseFailedSessionImportReservationInTransaction
+  // in thread-lifecycle.ts for the sibling thread.start-failure path). Gated
+  // on the thread never having recorded a provider identity, which makes
+  // this a no-op for threads that were never an import.
+  if (getLastProviderThreadId(deps, args.thread.id) === null) {
+    deleteProviderSessionReservation(deps.db, args.thread.id);
+  }
 }
 
 function hasActiveEnvironmentProvision(environment: Environment): boolean {

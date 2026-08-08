@@ -44,6 +44,27 @@ function seedImportTarget(harness: TestAppHarness) {
   return { environment, host, project };
 }
 
+// Unlike seedImportTarget, this seeds no environment at SOURCE_PATH, so an
+// import against it takes the direct-unmanaged intent and must provision a
+// brand-new environment (dispatching environment.provision) instead of
+// reusing a ready one.
+function seedImportTargetWithoutEnvironment(harness: TestAppHarness) {
+  const { host } = seedHostSession(harness.deps);
+  const { project } = seedProjectWithSource(harness.deps, {
+    hostId: host.id,
+    path: SOURCE_PATH,
+  });
+  upsertProjectExecutionDefaults(harness.deps.db, {
+    projectId: project.id,
+    providerId: "acp-omp",
+    model: "omp/default",
+    reasoningLevel: "medium",
+    permissionMode: "full",
+    serviceTier: "default",
+  });
+  return { host, project };
+}
+
 function seedSecondImportProject(
   harness: TestAppHarness,
   args: { hostId: string; path: string; providerId?: string; model?: string },
@@ -623,5 +644,65 @@ describe("public thread import route", () => {
         );
       },
     );
+  });
+
+  it("releases the provider session reservation when the import's environment.provision fails before thread.start is dispatched, so retrying the identical import succeeds", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, project } = seedImportTargetWithoutEnvironment(harness);
+      const providerSessionId = "external-omp-session-failed-provision";
+
+      const firstResponse = await postImport(harness, {
+        projectId: project.id,
+        providerId: "acp-omp",
+        providerSessionId,
+        hostId: host.id,
+        cwd: SOURCE_PATH,
+      });
+      expect(firstResponse.status).toBe(201);
+      const firstThread = threadResponseSchema.parse(
+        await readJson(firstResponse),
+      );
+
+      const provisionCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "environment.provision" &&
+          command.initiator?.threadId === firstThread.id,
+      );
+
+      // While the first import's environment is still provisioning, the
+      // reservation still blocks a duplicate import of the same provider
+      // session.
+      const raceResponse = await postImport(harness, {
+        projectId: project.id,
+        providerId: "acp-omp",
+        providerSessionId,
+        hostId: host.id,
+        cwd: SOURCE_PATH,
+      });
+      expect(raceResponse.status).toBe(409);
+
+      // The bind never completed (thread.start was never even dispatched),
+      // so the failed provisioning must release the reservation instead of
+      // leaving it to 409 every future retry.
+      await reportQueuedCommandError(harness, provisionCommand, {
+        errorCode: "test_import_provision_failed",
+        errorMessage: "Test import environment.provision failure",
+      });
+      expect(getThread(harness.db, firstThread.id)?.status).toBe("error");
+
+      const retryResponse = await postImport(harness, {
+        projectId: project.id,
+        providerId: "acp-omp",
+        providerSessionId,
+        hostId: host.id,
+        cwd: SOURCE_PATH,
+      });
+      expect(retryResponse.status).toBe(201);
+      const retryThread = threadResponseSchema.parse(
+        await readJson(retryResponse),
+      );
+      expect(retryThread.id).not.toBe(firstThread.id);
+    });
   });
 });
