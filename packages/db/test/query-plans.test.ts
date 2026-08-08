@@ -14,6 +14,7 @@ import {
 } from "../src/data/pending-interactions.js";
 import {
   insertEvents,
+  listLatestGoalEventRowsByThreadIds,
   listLatestOpenBackgroundTaskStateRowsForThread,
   listStoredConversationOutlineEventRows,
   pruneContextWindowUsageEventsBeforeSequence,
@@ -28,7 +29,10 @@ import { getDatabaseMaintenanceActivity } from "../src/data/maintenance.js";
 import { openSession } from "../src/data/sessions.js";
 import { upsertHost } from "../src/data/hosts.js";
 import { createProject } from "../src/data/projects.js";
-import { createThread } from "../src/data/threads.js";
+import {
+  createThread,
+  listThreadsWithPendingInteractionState,
+} from "../src/data/threads.js";
 
 type SqliteParameter = string | number | bigint | Buffer | null;
 type LoggedSqlPredicate = (fields: SlowDbQueryLogFields) => boolean;
@@ -142,6 +146,47 @@ function findOnlyDebugLog(args: FindOnlyDebugLogArgs): LoggedDebug {
     throw new Error("Expected one matching SQL debug log");
   }
   return debugLog;
+}
+
+interface CapturedStatement {
+  params: SqliteParameter[];
+  sql: string;
+}
+
+// Captures the exact prepared SQL and bindings. The slow-query log is not
+// usable here: it redacts string literals and truncates long SQL, and both
+// would change the plan under EXPLAIN (a redacted literal no longer implies a
+// partial-index predicate, so an INDEXED BY pin stops preparing).
+function captureStatements(
+  db: DbConnection,
+  run: () => void,
+): CapturedStatement[] {
+  const captured: CapturedStatement[] = [];
+  const raw = db.$client;
+  const originalPrepare = raw.prepare.bind(raw);
+  Object.defineProperty(raw, "prepare", {
+    configurable: true,
+    writable: true,
+    value: (source: string) => {
+      const statement = originalPrepare(source);
+      const originalAll = statement.all.bind(statement);
+      statement.all = (...params: unknown[]) => {
+        captured.push({ params: params as SqliteParameter[], sql: source });
+        return originalAll(...params);
+      };
+      return statement;
+    },
+  });
+  try {
+    run();
+  } finally {
+    Object.defineProperty(raw, "prepare", {
+      configurable: true,
+      writable: true,
+      value: originalPrepare,
+    });
+  }
+  return captured;
 }
 
 function queryPlanDetails(args: QueryPlanDetailsArgs): string {
@@ -593,6 +638,80 @@ describe("slow query index plans", () => {
     expect(completedLookupPlan).not.toContain(
       "events_thread_turn_type_item_kind_item_idx",
     );
+
+    db.$client.close();
+  });
+
+  it("pins the latest-goal lookup to the partial goal index with no temp sort", () => {
+    const { db, thread } = setup();
+    insertEvents(db, noopNotifier, [
+      {
+        data: JSON.stringify({ goal: "guard the query plan" }),
+        itemId: null,
+        itemKind: null,
+        scope: threadScope(),
+        sequence: 1,
+        threadId: thread.id,
+        type: "thread/goal/updated",
+      },
+    ]);
+
+    const captured = captureStatements(db, () => {
+      expect(
+        listLatestGoalEventRowsByThreadIds(db, { threadIds: [thread.id] }),
+      ).toHaveLength(1);
+    });
+    const statement = captured.find((entry) =>
+      entry.sql.includes("latest_goal"),
+    );
+    if (!statement) {
+      throw new Error("Expected the latest-goal lookup SQL");
+    }
+
+    // The #1131 cold stall: with an ORDER BY present, the stats-less planner
+    // served this filter from events_thread_sequence_idx and fetched every
+    // event row of every listed thread. The contract is one probe of the tiny
+    // partial index for the candidate list and one for the per-thread MAX —
+    // never a full-size events index, never a temporary sort.
+    const details = queryPlanDetails({
+      db,
+      params: statement.params,
+      sql: statement.sql,
+    });
+    expect(details.match(/events_goal_thread_sequence_idx/gu)).toHaveLength(2);
+    expect(details).not.toContain("USING INDEX events_thread_sequence_idx");
+    expect(details).not.toContain("USE TEMP B-TREE");
+
+    db.$client.close();
+  });
+
+  it("serves the thread-list pending probe from its covering index without a GROUP BY sort", () => {
+    const { db } = setup();
+
+    const captured = captureStatements(db, () => {
+      listThreadsWithPendingInteractionState(db, { includeHidden: false });
+    });
+    const statement = captured.find(
+      (entry) =>
+        entry.sql.includes('from "threads"') &&
+        entry.sql.includes("pending_interactions"),
+    );
+    if (!statement) {
+      throw new Error("Expected the thread-list SQL");
+    }
+
+    const details = queryPlanDetails({
+      db,
+      params: statement.params,
+      sql: statement.sql,
+    });
+    expect(details).toContain(
+      "USING COVERING INDEX pending_interactions_thread_status_created_idx",
+    );
+    // The correlated EXISTS replaced a pending_interactions join with
+    // GROUP BY threads.id; a reintroduced GROUP BY brings back the temp
+    // B-tree materialization of the whole joined result.
+    expect(details).not.toContain("USE TEMP B-TREE FOR GROUP BY");
 
     db.$client.close();
   });
