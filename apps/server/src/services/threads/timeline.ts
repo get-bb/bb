@@ -233,7 +233,6 @@ interface BuildThreadTimelineInternalOptions extends BuildThreadTimelineOptions 
 
 interface TimelineEventRowSelection {
   byteWindowSequenceEnd: number | null;
-  byteWindowSourceSequenceStart: number | null;
   byteWindowSequenceStart: number | null;
   contextOnlyToolCallIds: Set<string>;
   /** See {@link paginateTimelineRows}. */
@@ -642,7 +641,6 @@ function selectFullTimelineEventRows(
 ): TimelineEventRowSelection {
   return {
     byteWindowSequenceEnd: null,
-    byteWindowSourceSequenceStart: null,
     byteWindowSequenceStart: null,
     contextOnlyToolCallIds: new Set(),
     sequenceWindowStart: null,
@@ -1395,10 +1393,6 @@ function selectStandardTimelineEventRows(
         ? null
         : (wholeItemWindowRows.at(-1)?.sequence ??
           window.byteWindowSequenceStart),
-    byteWindowSourceSequenceStart:
-      window.byteWindowSequenceStart === null
-        ? null
-        : (wholeItemWindowRows[0]?.sequence ?? window.byteWindowSequenceStart),
     byteWindowSequenceStart: window.byteWindowSequenceStart,
     contextOnlyToolCallIds:
       window.byteWindowSequenceStart === null
@@ -1466,13 +1460,13 @@ function buildSequencePageTimelineRows(
     if (
       row.kind !== "turn" ||
       selection.byteWindowSequenceEnd === null ||
-      selection.byteWindowSourceSequenceStart === null
+      selection.byteWindowSequenceStart === null
     ) {
       return { ...row, id: `${row.id}${suffix}` };
     }
     const sourceSeqStart = Math.max(
       row.sourceSeqStart,
-      selection.byteWindowSourceSequenceStart,
+      selection.byteWindowSequenceStart,
     );
     const sourceSeqEnd = Math.min(
       row.sourceSeqEnd,

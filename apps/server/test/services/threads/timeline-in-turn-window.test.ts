@@ -209,23 +209,6 @@ function seedTurns(
           },
         }),
       });
-      push({
-        type: "item/completed",
-        scope: turnScope(turnId),
-        providerThreadId,
-        itemId: parentToolCallId,
-        itemKind: "toolCall",
-        data: JSON.stringify({
-          item: {
-            type: "toolCall",
-            id: parentToolCallId,
-            tool: "Agent",
-            arguments: { prompt: "Do the long task." },
-            result: "",
-            status: "completed",
-          },
-        }),
-      });
     }
 
     const longRunning = new Set(
@@ -330,6 +313,26 @@ function seedTurns(
               options.outputChars === undefined
                 ? `late output ${item}`
                 : "o".repeat(options.outputChars),
+          },
+        }),
+      });
+    }
+
+    if (parentToolCallId !== null) {
+      push({
+        type: "item/completed",
+        scope: turnScope(turnId),
+        providerThreadId,
+        itemId: parentToolCallId,
+        itemKind: "toolCall",
+        data: JSON.stringify({
+          item: {
+            type: "toolCall",
+            id: parentToolCallId,
+            tool: "Agent",
+            arguments: { prompt: "Do the long task." },
+            result: "",
+            status: "completed",
           },
         }),
       });
@@ -700,7 +703,7 @@ describe("in-turn timeline windows", () => {
     ).toBe(true);
   });
 
-  it("bounds parented descendants on each byte-budget page", () => {
+  it("expands each delegated byte-budget slice with realistic parent ordering", () => {
     const { db, thread } = setup();
     seedTurns(db, thread, {
       commandChars: 25_000,
@@ -720,6 +723,12 @@ describe("in-turn timeline windows", () => {
       for (const row of page.response.rows) {
         if (row.kind !== "turn") {
           continue;
+        }
+        if (pages === 1) {
+          // The delegate parent starts near the turn start and completes after
+          // every child. Its closure row must not widen the newest details
+          // range below the byte floor.
+          expect(row.sourceSeqStart).toBeGreaterThan(4);
         }
         const details = buildTimelineTurnSummaryDetails(db, thread, {
           includeProviderUnhandledOperations: false,
