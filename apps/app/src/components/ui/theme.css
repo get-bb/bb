@@ -202,6 +202,16 @@
     height: var(--bb-sidebar-sticky-tier-shield-bottom-height, 0);
   }
 
+  /* The shared active-context surface is translucent so it can tint tabs and
+     other content surfaces. A sticky sidebar row needs an opaque sidebar layer
+     beneath that tint, or scrolled descendant text paints through the row. */
+  [data-sidebar-sticky-stack]
+    [data-sidebar-sticky-tier].bb-sidebar-selected-row {
+    background-image:
+      linear-gradient(var(--state-active), var(--state-active)),
+      linear-gradient(var(--sidebar), var(--sidebar));
+  }
+
   .bb-sidebar-hover-actions {
     pointer-events: none;
     opacity: 0;
