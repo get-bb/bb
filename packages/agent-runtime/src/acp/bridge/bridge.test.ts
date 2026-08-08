@@ -984,6 +984,34 @@ describe("acp bridge", () => {
     ).toEqual([{ reasoningEffort: "medium", description: expect.any(String) }]);
   });
 
+  it("keeps reasoning empty when an ACP-native model advertises only unmapped thought levels", async () => {
+    const modelListId = sendRequest("model/list", {
+      agent: {
+        command: process.execPath,
+        args: [FAKE_AGENT_PATH],
+        envVars: {
+          FAKE_ACP_MODEL_CONFIG: "1",
+          FAKE_ACP_UNMAPPED_REASONING_CONFIG: "1",
+        },
+      },
+      primaryModels: [],
+    });
+
+    const response = await waitForResponse(modelListId);
+    const models = (
+      response.result as {
+        models: {
+          id: string;
+          supportedReasoningEfforts: { reasoningEffort: string }[];
+        }[];
+      }
+    ).models;
+    expect(
+      models.find((model) => model.id === "fake/strong")
+        ?.supportedReasoningEfforts,
+    ).toEqual([]);
+  });
+
   it("shows configured native reasoning for ACP-native models without thought_level", async () => {
     const modelListId = sendRequest("model/list", {
       agent: {

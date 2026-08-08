@@ -1038,10 +1038,10 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  // Version 82 changes how the Pi bridge resolves bare model ids. The bump
-  // updates enrolled daemons before they receive the revised model meaning.
-  it("uses protocol version 82 for authenticated Pi model resolution", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(82);
+  // Version 83 lets ACP model results contain no supported reasoning levels.
+  // The bump updates enrolled daemons before the server uses this result.
+  it("uses protocol version 83 for empty ACP reasoning support", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(83);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {

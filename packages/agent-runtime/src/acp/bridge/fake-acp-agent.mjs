@@ -13,6 +13,8 @@
  * - FAKE_ACP_MODELS_FIELD=1  → advertise legacy ACP models state
  * - FAKE_ACP_THOUGHT_LEVEL_CONFIG=1
  *                            → advertise per-model effort configOptions
+ * - FAKE_ACP_UNMAPPED_REASONING_CONFIG=1
+ *                            → advertise unmapped thought_level values
  * - FAKE_ACP_ACCEPT_NATIVE_REASONING=1
  *                            → accept reasoning_effort config updates without
  *                              advertising a thought_level config option
@@ -34,6 +36,8 @@ const loadSession = process.env.FAKE_ACP_LOAD_SESSION === "1";
 const modelConfig = process.env.FAKE_ACP_MODEL_CONFIG === "1";
 const modelsField = process.env.FAKE_ACP_MODELS_FIELD === "1";
 const thoughtLevelConfig = process.env.FAKE_ACP_THOUGHT_LEVEL_CONFIG === "1";
+const unmappedReasoningConfig =
+  process.env.FAKE_ACP_UNMAPPED_REASONING_CONFIG === "1";
 const acceptNativeReasoning =
   process.env.FAKE_ACP_ACCEPT_NATIVE_REASONING === "1";
 const setConfigModelError = process.env.FAKE_ACP_SET_CONFIG_MODEL_ERROR === "1";
@@ -102,6 +106,16 @@ function messageChunk(text) {
 }
 
 function effortOptionForModel(model) {
+  if (unmappedReasoningConfig) {
+    return {
+      id: "effort",
+      name: "Effort",
+      category: "thought_level",
+      type: "select",
+      currentValue: "smart",
+      options: [{ value: "smart" }, { value: "fast" }],
+    };
+  }
   const efforts = thoughtLevelConfig ? effortsByModel.get(model) : undefined;
   if (!efforts) {
     return undefined;

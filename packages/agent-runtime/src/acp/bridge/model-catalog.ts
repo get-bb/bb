@@ -233,7 +233,10 @@ export function buildAcpNativeReasoningSupport(
   );
   if (supportedReasoningEfforts.length === 0) {
     return {
-      supportedReasoningEfforts: ACP_NATIVE_REASONING_EFFORTS,
+      // An omitted option preserves the legacy agent-managed fallback. A
+      // declared option is authoritative, even when bb cannot map its values.
+      supportedReasoningEfforts:
+        thoughtLevelOption === undefined ? ACP_NATIVE_REASONING_EFFORTS : [],
       defaultReasoningEffort: "medium",
     };
   }
