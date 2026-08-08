@@ -1039,10 +1039,11 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  // Version 84 lets ACP model results contain no supported reasoning levels.
-  // The bump updates enrolled daemons before the server uses this result.
-  it("uses protocol version 84 for empty ACP reasoning support", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(84);
+  // Version 85 includes accepted turns that await their first event in the
+  // active-thread session report. The bump updates enrolled daemons before
+  // the server depends on the revised report meaning during reconciliation.
+  it("uses protocol version 85 for pending-turn session reports", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(85);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {

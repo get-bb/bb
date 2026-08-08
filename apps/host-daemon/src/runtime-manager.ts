@@ -397,7 +397,7 @@ export class RuntimeManager {
   listActiveThreads(): HostDaemonActiveThread[] {
     const activeThreads: HostDaemonActiveThread[] = [];
     for (const entry of this.entries.values()) {
-      for (const threadId of entry.runtime.getActiveThreadIds()) {
+      for (const threadId of entry.runtime.getLiveThreadIds()) {
         activeThreads.push({
           threadId,
         });
@@ -485,8 +485,7 @@ export class RuntimeManager {
   private entryHasActiveRuntimeWork(entry: RuntimeEntry): boolean {
     return (
       entry.terminals.size > 0 ||
-      entry.runtime.getActiveThreadIds().length > 0 ||
-      entry.runtime.hasPendingTurnStart() ||
+      entry.runtime.getLiveThreadIds().length > 0 ||
       entry.runtime.hasOpenBackgroundWork()
     );
   }

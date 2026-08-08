@@ -339,11 +339,8 @@ export interface AgentRuntime {
   /** Whether the runtime currently hosts the thread (turns can run on it). */
   hasThread(threadId: string): boolean;
 
-  /** Thread ids with an active turn. */
-  getActiveThreadIds(): string[];
-
-  /** Whether a turn-start command was accepted but no first turn event arrived. */
-  hasPendingTurnStart(): boolean;
+  /** Thread ids with an active turn or an accepted turn awaiting its first event. */
+  getLiveThreadIds(): string[];
 
   /**
    * Whether any hosted thread still has an open background task (a workflow or

@@ -245,13 +245,13 @@ interface FakeAgentRuntime extends AgentRuntime {
   endActiveTurn: (threadId: string) => void;
   setActiveTurn: (threadId: string, turnId: string) => void;
   setOpenBackgroundWork: (hasOpenWork: boolean) => void;
-  setPendingTurnStart: (hasPending: boolean) => void;
+  setPendingTurnStart: (threadId: string, hasPending: boolean) => void;
 }
 
 function createFakeRuntime() {
   const activeTurnsByThreadId = new Map<string, string>();
   let openBackgroundWork = false;
-  let pendingTurnStart = false;
+  const pendingTurnStartThreadIds = new Set<string>();
   return {
     ensureProvider: vi.fn(async (_args: EnsureProviderArgs) => undefined),
     startThread: vi.fn(async (_args: StartThreadArgs) => ({
@@ -282,8 +282,12 @@ function createFakeRuntime() {
       async () => ({ reapedSessions: [] }),
     ),
     hasThread: (threadId) => activeTurnsByThreadId.has(threadId),
-    getActiveThreadIds: () => [...activeTurnsByThreadId.keys()],
-    hasPendingTurnStart: () => pendingTurnStart,
+    getLiveThreadIds: () => [
+      ...new Set([
+        ...activeTurnsByThreadId.keys(),
+        ...pendingTurnStartThreadIds,
+      ]),
+    ],
     hasOpenBackgroundWork: () => openBackgroundWork,
     shutdown: vi.fn(async () => undefined),
     endActiveTurn: (threadId) => {
@@ -295,8 +299,12 @@ function createFakeRuntime() {
     setOpenBackgroundWork: (hasOpenWork) => {
       openBackgroundWork = hasOpenWork;
     },
-    setPendingTurnStart: (hasPending) => {
-      pendingTurnStart = hasPending;
+    setPendingTurnStart: (threadId, hasPending) => {
+      if (hasPending) {
+        pendingTurnStartThreadIds.add(threadId);
+      } else {
+        pendingTurnStartThreadIds.delete(threadId);
+      }
     },
   } satisfies FakeAgentRuntime;
 }
@@ -1429,7 +1437,7 @@ describe("RuntimeManager", () => {
       environmentId: "env-1",
       workspacePath: "/tmp/env-1",
     });
-    runtime.setPendingTurnStart(true);
+    runtime.setPendingTurnStart("thread-1", true);
 
     await manager.replaceBaseShellEnv({
       PATH: "/tmp/fnm_multishells/second/bin:/usr/bin",
@@ -1438,7 +1446,7 @@ describe("RuntimeManager", () => {
     expect(manager.get("env-1")?.runtime).toBe(runtime);
     expect(runtime.shutdown).not.toHaveBeenCalled();
 
-    runtime.setPendingTurnStart(false);
+    runtime.setPendingTurnStart("thread-1", false);
     await manager.replaceBaseShellEnv({
       PATH: "/tmp/fnm_multishells/third/bin:/usr/bin",
     });
@@ -1597,7 +1605,7 @@ describe("RuntimeManager", () => {
     expect(hostWatcher.watchThreadStorageRoot).not.toHaveBeenCalled();
   });
 
-  it("lists the runtimes' active threads for session reconciliation", async () => {
+  it("lists live threads for session reconciliation before the first turn event", async () => {
     const runtime = createFakeRuntime();
     const manager = new RuntimeManager({
       provisionWorkspace: createProvisionWorkspaceMock("/tmp/env-1"),
@@ -1610,13 +1618,18 @@ describe("RuntimeManager", () => {
     });
 
     runtime.setActiveTurn("thread-1", "turn-1");
+    runtime.setPendingTurnStart("thread-2", true);
     expect(manager.listActiveThreads()).toEqual([
       {
         threadId: "thread-1",
       },
+      {
+        threadId: "thread-2",
+      },
     ]);
 
     runtime.endActiveTurn("thread-1");
+    runtime.setPendingTurnStart("thread-2", false);
     expect(manager.listActiveThreads()).toEqual([]);
   });
 

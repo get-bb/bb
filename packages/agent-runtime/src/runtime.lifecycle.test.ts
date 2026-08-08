@@ -1086,8 +1086,7 @@ rl.on("line", (line) => {
 
       await expect(pendingTurnId).resolves.toBe("turn-1");
       expect(runtime.getActiveTurnId("t1")).toBe("turn-1");
-      expect(runtime.getActiveThreadIds()).toEqual(["t1"]);
-      expect(runtime.hasPendingTurnStart()).toBe(false);
+      expect(runtime.getLiveThreadIds()).toEqual(["t1"]);
       await runtime.shutdown();
     });
 
@@ -1152,8 +1151,7 @@ rl.on("line", (line) => {
         });
 
         expect(runtime.getActiveTurnId("t1")).toBeNull();
-        expect(runtime.getActiveThreadIds()).toEqual([]);
-        expect(runtime.hasPendingTurnStart()).toBe(true);
+        expect(runtime.getLiveThreadIds()).toEqual(["t1"]);
       } finally {
         await runtime.shutdown();
       }
