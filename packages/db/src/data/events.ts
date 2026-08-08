@@ -862,6 +862,23 @@ export interface ListStoredTimelineWindowEventRowsArgs {
   threadId: string;
 }
 
+export type GetStoredTimelineWindowEventDataBytesArgs =
+  ListStoredTimelineWindowEventRowsArgs;
+
+export interface FindStoredTimelineWindowByteBudgetFloorArgs
+  extends ListStoredTimelineWindowEventRowsArgs {
+  maxDataBytes: number;
+}
+
+export type StoredTimelineWindowByteBudgetFloor =
+  | { kind: "fits" }
+  | { kind: "floor"; sequenceStart: number }
+  | {
+      eventDataBytes: number;
+      kind: "single-event-too-large";
+      sequenceStart: number;
+    };
+
 export interface ListContextWindowUsageRowsArgs {
   threadId: string;
 }
@@ -2304,10 +2321,9 @@ export function getTimelineSegmentAnchorAtSequence(
     .get();
 }
 
-export function listStoredTimelineWindowEventRows(
-  db: DbConnection,
+function storedTimelineWindowConditions(
   args: ListStoredTimelineWindowEventRowsArgs,
-): StoredEventRow[] {
+): SQL[] {
   const conditions: SQL[] = [
     eq(events.threadId, args.threadId),
     gte(events.sequence, args.sequenceStart),
@@ -2318,11 +2334,89 @@ export function listStoredTimelineWindowEventRows(
   if (args.excludedTypes && args.excludedTypes.length > 0) {
     conditions.push(notInArray(events.type, [...args.excludedTypes]));
   }
+  return conditions;
+}
 
+function storedTimelineWindowDataColumn(
+  maxInlineOutputChars: InlineOutputCharLimit,
+) {
+  return maxInlineOutputChars === null
+    ? events.data
+    : truncatedEventDataColumn(maxInlineOutputChars);
+}
+
+/**
+ * Exact UTF-8 bytes the matching timeline read will materialize after its SQL
+ * output truncation. This query returns one number instead of every payload,
+ * so callers can bound a window before better-sqlite3 builds it.
+ */
+export function getStoredTimelineWindowEventDataBytes(
+  db: DbConnection,
+  args: GetStoredTimelineWindowEventDataBytesArgs,
+): number {
+  const data = storedTimelineWindowDataColumn(args.maxInlineOutputChars);
+  const row = db
+    .select({
+      dataBytes: sql<number>`COALESCE(SUM(length(CAST(${data} AS BLOB))), 0)`,
+    })
+    .from(events)
+    .where(and(...storedTimelineWindowConditions(args)))
+    .get();
+  return row?.dataBytes ?? 0;
+}
+
+/**
+ * Finds the oldest row in the newest suffix that fits the byte budget.
+ * Iteration returns only a sequence and a byte count for each row, and stops
+ * before SQLite or V8 materializes the excluded event payloads.
+ */
+export function findStoredTimelineWindowByteBudgetFloor(
+  db: DbConnection,
+  args: FindStoredTimelineWindowByteBudgetFloorArgs,
+): StoredTimelineWindowByteBudgetFloor {
+  const data = storedTimelineWindowDataColumn(args.maxInlineOutputChars);
+  const query = db
+    .select({
+      dataBytes:
+        sql<number>`length(CAST(${data} AS BLOB))`.as("data_bytes"),
+      sequence: events.sequence,
+    })
+    .from(events)
+    .where(and(...storedTimelineWindowConditions(args)))
+    .orderBy(desc(events.sequence))
+    .toSQL();
+  const statement = db.$client.prepare<
+    unknown[],
+    { data_bytes: number; sequence: number }
+  >(query.sql);
+  let includedDataBytes = 0;
+  let sequenceStart: number | null = null;
+
+  for (const row of statement.iterate(...query.params)) {
+    if (includedDataBytes + row.data_bytes > args.maxDataBytes) {
+      return sequenceStart === null
+        ? {
+            eventDataBytes: row.data_bytes,
+            kind: "single-event-too-large",
+            sequenceStart: row.sequence,
+          }
+        : { kind: "floor", sequenceStart };
+    }
+    includedDataBytes += row.data_bytes;
+    sequenceStart = row.sequence;
+  }
+
+  return { kind: "fits" };
+}
+
+export function listStoredTimelineWindowEventRows(
+  db: DbConnection,
+  args: ListStoredTimelineWindowEventRowsArgs,
+): StoredEventRow[] {
   return db
     .select(storedEventRowFieldsWithInlineOutputLimit(args.maxInlineOutputChars))
     .from(events)
-    .where(and(...conditions))
+    .where(and(...storedTimelineWindowConditions(args)))
     .orderBy(events.sequence)
     .all();
 }

@@ -16,10 +16,14 @@ import {
 } from "@bb/db";
 import { LOCAL_WORKFLOW_TASK_TYPE } from "@bb/domain";
 import type { DbConnection } from "@bb/db";
-import type { TimelinePaginationCursor } from "@bb/server-contract";
+import type {
+  TimelinePaginationCursor,
+  TimelineRow,
+} from "@bb/server-contract";
 import {
   buildThreadTimeline,
   buildThreadTimelineWithProfile,
+  THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT,
 } from "../../../src/services/threads/timeline.js";
 
 /** Larger than any thread these tests build, so the budget never binds. */
@@ -89,6 +93,8 @@ interface SeedOptions {
   delegateLastTurn?: boolean;
   /** Emit `turn/completed` for the last turn. */
   completeLastTurn: boolean;
+  /** Character count for each seeded command, when testing byte limits. */
+  commandChars?: number;
   /**
    * Item indexes in the last turn whose `item/completed` is deferred to the very
    * end of the turn, so the item spans a large sequence range.
@@ -224,6 +230,10 @@ function seedTurns(
     const deferred: number[] = [];
     for (let item = 0; item < items; item += 1) {
       const itemId = `${turnId}-item-${item}`;
+      const command =
+        options.commandChars === undefined
+          ? `echo ${item}`
+          : "x".repeat(options.commandChars);
       push({
         type: "item/started",
         scope: turnScope(turnId),
@@ -234,7 +244,7 @@ function seedTurns(
           item: {
             type: "commandExecution",
             id: itemId,
-            command: `echo ${item}`,
+            command,
             cwd: "/tmp/test",
             ...(parentToolCallId === null ? {} : { parentToolCallId }),
             status: "pending",
@@ -277,7 +287,7 @@ function seedTurns(
           item: {
             type: "commandExecution",
             id: itemId,
-            command: `echo ${item}`,
+            command,
             cwd: "/tmp/test",
             ...(parentToolCallId === null ? {} : { parentToolCallId }),
             status: "completed",
@@ -300,7 +310,10 @@ function seedTurns(
           item: {
             type: "commandExecution",
             id: itemId,
-            command: `echo ${item}`,
+            command:
+              options.commandChars === undefined
+                ? `echo ${item}`
+                : "x".repeat(options.commandChars),
             cwd: "/tmp/test",
             ...(parentToolCallId === null ? {} : { parentToolCallId }),
             status: "completed",
@@ -343,6 +356,38 @@ function buildPage(
       ? { kind: "older", beforeCursor: cursor, segmentLimit: 20 }
       : { kind: "latest", segmentLimit: 20 },
   });
+}
+
+function buildNestedPage(
+  db: DbConnection,
+  thread: Thread,
+  eventBudget: number,
+  cursor: TimelinePaginationCursor | null,
+) {
+  return buildThreadTimelineWithProfile(db, thread, {
+    eventBudget,
+    includeProviderUnhandledOperations: false,
+    includeNestedRows: true,
+    maxInlineOutputChars: 32_000,
+    maxSeq: 0,
+    page: cursor
+      ? { kind: "older", beforeCursor: cursor, segmentLimit: 20 }
+      : { kind: "latest", segmentLimit: 20 },
+  });
+}
+
+function collectCommandCallIds(
+  rows: readonly TimelineRow[],
+  target: Set<string>,
+): void {
+  for (const row of rows) {
+    if (row.kind === "work" && row.workKind === "command") {
+      target.add(row.callId);
+    }
+    if (row.kind === "turn" && row.children !== null) {
+      collectCommandCallIds(row.children, target);
+    }
+  }
 }
 
 interface WalkResult {
@@ -424,19 +469,72 @@ describe("in-turn timeline windows", () => {
     );
   });
 
-  it("keeps a finished oversized turn whole", () => {
+  it("keeps a finished turn whole under the event-count budget", () => {
     const { db, thread } = setup();
     seedTurns(db, thread, { completeLastTurn: true, itemsPerTurn: [300] });
 
     const budgeted = buildPage(db, thread, 100, null);
 
-    // A finished turn projects into one summary row covering the entire turn.
-    // Two pages cannot each own that row, so the budget must not cut it — this
-    // page costs what it costs.
+    // The event-count budget keeps the completed summary whole. The separate
+    // byte budget can still cut it when its stored source data is too large.
     expect(budgeted.response.timelinePage.hasOlderRows).toBe(false);
     expect(budgeted.response.timelinePage.olderCursor).toBeNull();
     expect(budgeted.response.rows).toEqual(
       buildPage(db, thread, LARGE_BUDGET, null).response.rows,
+    );
+  });
+
+  it("pages through a finished turn that exceeds the event-data byte limit", () => {
+    const { db, thread } = setup();
+    seedTurns(db, thread, {
+      commandChars: 25_000,
+      completeLastTurn: true,
+      itemsPerTurn: [650],
+    });
+
+    const commandCallIds = new Set<string>();
+    let cursor: TimelinePaginationCursor | null = null;
+    let pages = 0;
+    for (;;) {
+      const page = buildNestedPage(db, thread, LARGE_BUDGET, cursor);
+      pages += 1;
+      collectCommandCallIds(page.response.rows, commandCallIds);
+      expect(page.profile.eventDataBytes).toBeLessThanOrEqual(
+        THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT,
+      );
+      if (!page.response.timelinePage.hasOlderRows) {
+        break;
+      }
+      cursor = page.response.timelinePage.olderCursor;
+      expect(cursor).not.toBeNull();
+      expect(pages).toBeLessThan(10);
+    }
+
+    expect(pages).toBeGreaterThan(1);
+    expect(commandCallIds.size).toBe(650);
+  });
+
+  it("rejects one event that exceeds the event-data byte limit", () => {
+    const { db, thread } = setup();
+    seedTurns(db, thread, {
+      commandChars: THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT,
+      completeLastTurn: true,
+      itemsPerTurn: [1],
+    });
+
+    const latest = buildPage(db, thread, LARGE_BUDGET, null);
+    expect(latest.response.timelinePage.hasOlderRows).toBe(true);
+    const cursor = latest.response.timelinePage.olderCursor;
+    expect(cursor).not.toBeNull();
+
+    expect(() => buildPage(db, thread, LARGE_BUDGET, cursor)).toThrowError(
+      expect.objectContaining({
+        body: expect.objectContaining({
+          code: "timeline_event_too_large",
+          retryable: false,
+        }),
+        status: 413,
+      }),
     );
   });
 
@@ -482,7 +580,7 @@ describe("in-turn timeline windows", () => {
     expect(matches[0]).toContain("late output 0");
   });
 
-  it("rejects an in-turn cursor whose id and sequence disagree", () => {
+  it("rejects a sequence cursor whose id and sequence disagree", () => {
     const { db, thread } = setup();
     seedTurns(db, thread, { completeLastTurn: false, itemsPerTurn: [300] });
 

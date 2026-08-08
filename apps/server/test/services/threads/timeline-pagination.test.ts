@@ -57,7 +57,7 @@ describe("paginateTimelineRows", () => {
     ];
 
     const page = paginateTimelineRows({
-      inTurnWindowStart: null,
+      sequenceWindowStart: null,
       knownHasOlderSegments: null,
       page: { kind: "latest", segmentLimit: 2 },
       rows,

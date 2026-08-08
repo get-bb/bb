@@ -16,7 +16,9 @@ import type {
   TimelineTurnSummaryDetailsResponse,
 } from "@bb/server-contract";
 import {
+  findStoredTimelineWindowByteBudgetFloor,
   findTimelineWindowBudgetFloorSequence,
+  getStoredTimelineWindowEventDataBytes,
   getEnvironment,
   findUnfinishedTurnCoveringSequence,
   hasParentedEventCrossingSequence,
@@ -52,10 +54,10 @@ import { roundDurationMs } from "../lib/duration.js";
 import { parseStoredEvent } from "./thread-data.js";
 import {
   paginateTimelineRows,
-  readInTurnCursorSequence,
+  readSequenceCursorSequence,
   type ThreadTimelinePageKind,
   type ThreadTimelinePageRequest,
-  type TimelineInTurnWindowStart,
+  type TimelineSequenceWindowStart,
 } from "./timeline-pagination.js";
 
 export type {
@@ -151,6 +153,12 @@ export const THREAD_TIMELINE_DEFAULT_SEGMENT_LIMIT = 20;
 
 export const THREAD_TIMELINE_SEGMENT_LIMIT_MAX = 100;
 
+/**
+ * Driver rows and decoded events can use several times their stored JSON size.
+ * Bound each page before either representation enters the V8 heap.
+ */
+export const THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT = 4 * 1024 * 1024;
+
 export type ThreadTimelineBuildProfileStage =
   | "event-query"
   | "accepted-client-request-context-query"
@@ -223,7 +231,7 @@ interface BuildThreadTimelineInternalOptions extends BuildThreadTimelineOptions 
 interface TimelineEventRowSelection {
   contextOnlyToolCallIds: Set<string>;
   /** See {@link paginateTimelineRows}. */
-  inTurnWindowStart: TimelineInTurnWindowStart | null;
+  sequenceWindowStart: TimelineSequenceWindowStart | null;
   /** See {@link paginateTimelineRows}. */
   knownHasOlderSegments: boolean | null;
   paginationPage: ThreadTimelinePageRequest;
@@ -604,7 +612,7 @@ function selectFullTimelineEventRows(
 ): TimelineEventRowSelection {
   return {
     contextOnlyToolCallIds: new Set(),
-    inTurnWindowStart: null,
+    sequenceWindowStart: null,
     knownHasOlderSegments: null,
     paginationPage: page,
     responsePageKind: page.kind,
@@ -669,7 +677,7 @@ function ensureTimelineWindowTurnStartedRows(
   return mergeStoredEventRowsById([...turnStartedRows, ...args.rows]);
 }
 
-interface InTurnWindowItemRowsArgs extends TimelineWindowRowsArgs {
+interface SequenceWindowItemRowsArgs extends TimelineWindowRowsArgs {
   /** Exclusive upper bound of the window, or undefined for the latest page. */
   beforeSequence: number | undefined;
   /** See {@link InlineOutputCharLimit}. */
@@ -679,7 +687,7 @@ interface InTurnWindowItemRowsArgs extends TimelineWindowRowsArgs {
 }
 
 /**
- * Makes a window cut inside a turn own whole items rather than halves of them.
+ * Makes a sequence-cut window own whole items rather than halves of them.
  *
  * A cut on a user message never lands inside an item. A cut on the event budget
  * does: an `npm run dev` that starts at sequence 2,706 and fails at 5,450
@@ -694,9 +702,9 @@ interface InTurnWindowItemRowsArgs extends TimelineWindowRowsArgs {
  * {@link ensureTimelineWindowBackgroundTaskStateRows} already carries their
  * current state forward.
  */
-function ensureInTurnWindowWholeItemRows(
+function ensureSequenceWindowWholeItemRows(
   db: DbConnection,
-  args: InTurnWindowItemRowsArgs,
+  args: SequenceWindowItemRowsArgs,
 ): StoredEventRow[] {
   const windowItemIds = new Set<string>();
   for (const row of args.rows) {
@@ -880,18 +888,73 @@ interface ResolveTimelineSegmentWindowArgs {
 interface ResolvedTimelineSegmentWindow {
   beforeSequence: number | undefined;
   /**
-   * Whether either boundary of this window falls inside a turn rather than on a
-   * user message. See {@link ensureInTurnWindowWholeItemRows}.
+   * Whether the window boundary needs whole-item lifecycle closure.
+   * See {@link ensureSequenceWindowWholeItemRows}.
    */
-  cutsInsideTurn: boolean;
+  requiresWholeItemClosure: boolean;
   /** Segments this page will actually return; ≤ `page.segmentLimit`. */
   effectiveSegmentLimit: number;
   hasAnchors: boolean;
-  /** See {@link paginateTimelineRows}; non-null for a window cut inside a turn. */
-  inTurnWindowStart: TimelineInTurnWindowStart | null;
+  /** See {@link paginateTimelineRows}; non-null for a sequence-cut window. */
+  sequenceWindowStart: TimelineSequenceWindowStart | null;
   /** See {@link paginateTimelineRows}; null when the sentinel infers it. */
   knownHasOlderSegments: boolean | null;
   sequenceStart: number;
+}
+
+function applyTimelineWindowByteBudget(
+  db: DbConnection,
+  args: {
+    maxInlineOutputChars: InlineOutputCharLimit;
+    threadId: string;
+    window: ResolvedTimelineSegmentWindow;
+  },
+): ResolvedTimelineSegmentWindow {
+  const windowArgs = {
+    beforeSequence: args.window.beforeSequence,
+    excludedTypes: THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
+    maxInlineOutputChars: args.maxInlineOutputChars,
+    sequenceStart: args.window.sequenceStart,
+    threadId: args.threadId,
+  };
+  const eventDataBytes = getStoredTimelineWindowEventDataBytes(db, windowArgs);
+  if (eventDataBytes <= THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT) {
+    return args.window;
+  }
+
+  const floor = findStoredTimelineWindowByteBudgetFloor(db, {
+    ...windowArgs,
+    maxDataBytes: THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT,
+  });
+  if (floor.kind === "single-event-too-large") {
+    throw new ApiError(
+      413,
+      "timeline_event_too_large",
+      "One timeline event contains too much data to display safely.",
+      {
+        details: {
+          eventDataByteLimit: THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT,
+          eventDataBytes: floor.eventDataBytes,
+          sequence: floor.sequenceStart,
+        },
+        retryable: false,
+      },
+    );
+  }
+  if (floor.kind === "fits") {
+    return args.window;
+  }
+
+  return {
+    ...args.window,
+    requiresWholeItemClosure: true,
+    sequenceWindowStart: {
+      sequenceStart: floor.sequenceStart,
+      threadId: args.threadId,
+    },
+    knownHasOlderSegments: true,
+    sequenceStart: floor.sequenceStart,
+  };
 }
 
 interface ResolveTimelineWindowBoundsArgs {
@@ -904,7 +967,7 @@ interface ResolveTimelineWindowBoundsArgs {
 /**
  * Number of leading (newest) anchors whose segments fit inside the event
  * budget. Zero means the newest turn on its own is larger than the whole
- * budget, which is what forces the in-turn window below.
+ * budget, which can force a sequence-cut window below.
  */
 function countAffordableAnchors(
   anchors: readonly { sequence: number }[],
@@ -932,11 +995,9 @@ function countAffordableAnchors(
  * window starts at the budget floor instead, mid-turn, and pages backwards from
  * there.
  *
- * Only while the turn is unfinished. A finished turn collapses into one summary
- * row spanning the whole turn, and two pages cannot each own that row; an
- * unfinished turn projects its work as ordinary top-level rows that page and
- * merge like any others. So a finished oversized turn keeps the old behaviour:
- * one segment, whole turn, however much that costs.
+ * This event-count pass cuts only an unfinished turn. A finished turn collapses
+ * into one summary row. The later byte-budget pass can cut either turn state.
+ * The memory limit must take priority over the summary boundary.
  *
  * One row is still turn-scoped rather than per-item across an unfinished turn:
  * the context-compaction banner is keyed by turn id, deliberately, so a
@@ -958,7 +1019,7 @@ function resolveTimelineWindowBounds(
   args: ResolveTimelineWindowBoundsArgs,
 ): Pick<
   ResolvedTimelineSegmentWindow,
-  "effectiveSegmentLimit" | "inTurnWindowStart" | "sequenceStart"
+  "effectiveSegmentLimit" | "sequenceStart" | "sequenceWindowStart"
 > & { affordableAnchorCount: number } {
   const { anchors, budgetFloorSequence, segmentLimit, threadId } = args;
   const affordable = countAffordableAnchors(
@@ -985,7 +1046,7 @@ function resolveTimelineWindowBounds(
     return {
       affordableAnchorCount: 0,
       effectiveSegmentLimit: segmentLimit,
-      inTurnWindowStart: { sequenceStart: budgetFloorSequence, threadId },
+      sequenceWindowStart: { sequenceStart: budgetFloorSequence, threadId },
       sequenceStart: budgetFloorSequence,
     };
   }
@@ -996,7 +1057,7 @@ function resolveTimelineWindowBounds(
   return {
     affordableAnchorCount: segmentCount,
     effectiveSegmentLimit: segmentCount,
-    inTurnWindowStart: null,
+    sequenceWindowStart: null,
     sequenceStart: anchors[segmentCount - 1]?.sequence ?? 0,
   };
 }
@@ -1021,18 +1082,18 @@ function resolveTimelineSegmentWindow(
   const { eventBudget, page, threadId } = args;
   const noAnchors: ResolvedTimelineSegmentWindow = {
     beforeSequence: undefined,
-    cutsInsideTurn: false,
+    requiresWholeItemClosure: false,
     effectiveSegmentLimit: page.segmentLimit,
     hasAnchors: false,
-    inTurnWindowStart: null,
+    sequenceWindowStart: null,
     knownHasOlderSegments: null,
     sequenceStart: 0,
   };
 
   if (page.kind === "older") {
     const cursor = page.beforeCursor;
-    const inTurnCursorSequence = readInTurnCursorSequence(cursor, threadId);
-    if (inTurnCursorSequence === null) {
+    const sequenceCursorSequence = readSequenceCursorSequence(cursor, threadId);
+    if (sequenceCursorSequence === null) {
       const cursorAnchor = getTimelineSegmentAnchorAtSequence(db, {
         sequence: cursor.anchorSeq,
         threadId,
@@ -1068,11 +1129,11 @@ function resolveTimelineSegmentWindow(
       }
     } else if (
       !isTimelineCursorSequencePresent(db, {
-        sequence: inTurnCursorSequence,
+        sequence: sequenceCursorSequence,
         threadId,
       })
     ) {
-      // An in-turn cursor names no stored row, so this is the only check that it
+      // A sequence cursor names no stored row, so this is the only check that it
       // came from a page rather than from a client picking a number.
       throw new ApiError(
         400,
@@ -1104,11 +1165,11 @@ function resolveTimelineSegmentWindow(
       // on a thread with a 3,900-event turn, 5,513 events against a budget of
       // 1,500, all to discard the surplus.
       beforeSequence: cursor.anchorSeq,
-      cutsInsideTurn:
-        inTurnCursorSequence !== null || bounds.inTurnWindowStart !== null,
+      requiresWholeItemClosure:
+        sequenceCursorSequence !== null || bounds.sequenceWindowStart !== null,
       effectiveSegmentLimit: bounds.effectiveSegmentLimit,
       hasAnchors: true,
-      inTurnWindowStart: bounds.inTurnWindowStart,
+      sequenceWindowStart: bounds.sequenceWindowStart,
       knownHasOlderSegments:
         precedingAnchors.length > bounds.affordableAnchorCount,
       sequenceStart: bounds.sequenceStart,
@@ -1134,10 +1195,10 @@ function resolveTimelineSegmentWindow(
   });
   return {
     beforeSequence: undefined,
-    cutsInsideTurn: bounds.inTurnWindowStart !== null,
+    requiresWholeItemClosure: bounds.sequenceWindowStart !== null,
     effectiveSegmentLimit: bounds.effectiveSegmentLimit,
     hasAnchors: true,
-    inTurnWindowStart: bounds.inTurnWindowStart,
+    sequenceWindowStart: bounds.sequenceWindowStart,
     // Budgeted windows read exactly the segments they return, so "is there
     // more" comes from the anchor list rather than an over-read segment.
     knownHasOlderSegments:
@@ -1153,12 +1214,19 @@ function selectStandardTimelineEventRows(
   eventBudget: number,
   maxInlineOutputChars: InlineOutputCharLimit,
 ): TimelineEventRowSelection {
-  const window = resolveTimelineSegmentWindow(db, {
-    eventBudget,
-    page,
-    threadId: thread.id,
-  });
-  if (!window.hasAnchors) {
+  const window = applyTimelineWindowByteBudget(
+    db,
+    {
+      maxInlineOutputChars,
+      threadId: thread.id,
+      window: resolveTimelineSegmentWindow(db, {
+        eventBudget,
+        page,
+        threadId: thread.id,
+      }),
+    },
+  );
+  if (!window.hasAnchors && window.sequenceWindowStart === null) {
     return selectFullTimelineEventRows(
       db,
       thread,
@@ -1170,15 +1238,16 @@ function selectStandardTimelineEventRows(
   const beforeSequence = window.beforeSequence;
   const sequenceStart = window.sequenceStart;
 
-  const windowRows = listStoredTimelineWindowEventRows(db, {
+  const windowArgs = {
     beforeSequence,
     excludedTypes: THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
     maxInlineOutputChars,
     sequenceStart,
     threadId: thread.id,
-  });
-  const wholeItemWindowRows = window.cutsInsideTurn
-    ? ensureInTurnWindowWholeItemRows(db, {
+  };
+  const windowRows = listStoredTimelineWindowEventRows(db, windowArgs);
+  const wholeItemWindowRows = window.requiresWholeItemClosure
+    ? ensureSequenceWindowWholeItemRows(db, {
         beforeSequence,
         maxInlineOutputChars,
         rows: windowRows,
@@ -1218,7 +1287,7 @@ function selectStandardTimelineEventRows(
   return {
     contextOnlyToolCallIds:
       selectedRowsWithParentedContext.contextOnlyToolCallIds,
-    inTurnWindowStart: window.inTurnWindowStart,
+    sequenceWindowStart: window.sequenceWindowStart,
     knownHasOlderSegments: window.knownHasOlderSegments,
     paginationPage:
       page.kind === "older"
@@ -1434,7 +1503,7 @@ function buildThreadTimelineInternal(
     "pagination-segmentation",
     () =>
       paginateTimelineRows({
-        inTurnWindowStart: eventSelection.inTurnWindowStart,
+        sequenceWindowStart: eventSelection.sequenceWindowStart,
         knownHasOlderSegments: eventSelection.knownHasOlderSegments,
         page: eventSelection.paginationPage,
         rows: timeline.rows,
