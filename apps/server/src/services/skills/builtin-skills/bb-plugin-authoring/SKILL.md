@@ -887,8 +887,8 @@ interface PluginThreadListProps {
   activeThreadId: string | null;
   activeProjectId: string | null;
   isCompactViewport: boolean;
-  /** Closes the mobile drawer; no-op on desktop. Always call it after opening
-      a thread. */
+  /** Closes the mobile drawer and clears the host search field. Always call it
+      after opening a thread, or the sidebar stays in search mode. */
   onNavigate: () => void;
   /** The host search field's text; "" when the field is closed. The host owns
       that field — filter by this rather than shipping a second one. */

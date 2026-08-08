@@ -2882,8 +2882,8 @@ declare const environmentDiffFileResponseSchema: z$1.ZodObject<{
     path: z$1.ZodString;
     content: z$1.ZodString;
     contentEncoding: z$1.ZodEnum<{
-        utf8: "utf8";
         base64: "base64";
+        utf8: "utf8";
     }>;
     mimeType: z$1.ZodOptional<z$1.ZodString>;
     sizeBytes: z$1.ZodNumber;
@@ -10100,8 +10100,9 @@ interface PluginThreadListProps {
     /** True on phone-width viewports and coarse pointers. */
     isCompactViewport: boolean;
     /**
-     * Call after the user opens a thread. Closes the mobile sidebar drawer and
-     * is a no-op on desktop, so always call it.
+     * Call after the user opens a thread. It closes the mobile sidebar drawer,
+     * and it clears the host search field on every viewport. Always call it, or
+     * the sidebar stays in search mode after the thread opens.
      */
     onNavigate: () => void;
     /**
