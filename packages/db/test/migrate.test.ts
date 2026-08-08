@@ -508,6 +508,9 @@ function dropSteerActiveThreadOnEnterColumn(db: DbConnection): void {
 // Journal `when` for 0085, used to rewind exactly that migration.
 const onboardingMigrationWhen = 1785947206119;
 
+// Journal `when` for 0087, used to rewind exactly that migration.
+const newOnboardingMigrationWhen = 1786043536668;
+
 // Migration 0085 adds the onboarding completion timestamp. Rewind scenarios
 // that clear its migration row must drop the column before replay, for the same
 // reason as the preference column above: ALTER TABLE ADD is not re-appliable.
@@ -3830,6 +3833,43 @@ describe("migrate", () => {
       expect(readLatestAppliedMigrationCreatedAt(db)).toBe(latestMigrationWhen);
       expect(readTableNames(db)).not.toContain("event_large_values");
       expectEventLargeValuesInline(db, values);
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("replays published migrations skipped behind a newer branch-local migration row", () => {
+    const db = createConnection(":memory:");
+
+    try {
+      migrate(db);
+      dropNewOnboardingExperimentColumn(db);
+      db.$client
+        .prepare<DeleteMigrationParameters>(
+          `
+            DELETE FROM __drizzle_migrations
+            WHERE created_at = ?
+          `,
+        )
+        .run(newOnboardingMigrationWhen);
+      db.$client
+        .prepare<InsertMigrationParameters>(
+          `
+            INSERT INTO __drizzle_migrations (hash, created_at)
+            VALUES (?, ?)
+          `,
+        )
+        .run("branch-local-hash", newOnboardingMigrationWhen + 60_000);
+
+      expect(() => migrate(db)).not.toThrow();
+      expect(readAppliedMigrationCreatedAts(db)).toContain(
+        newOnboardingMigrationWhen,
+      );
+      const experimentColumns = db.$client
+        .prepare<[], TableInfoRow>("PRAGMA table_info(system_experiments)")
+        .all()
+        .map((column) => column.name);
+      expect(experimentColumns).toContain("new_onboarding");
     } finally {
       closeConnection(db);
     }

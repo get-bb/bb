@@ -1368,6 +1368,39 @@ function repairBranchLocalThreadTabsBeforePendingInteractionsMigration(
   applyMigrationStatements(db, pendingInteractionsMigration);
 }
 
+// Drizzle only applies journal entries whose timestamp is newer than the
+// ledger's max created_at, so a single branch-local migration row with a newer
+// timestamp makes it skip every pending published migration and startup then
+// fails validation. Replay the journal migrations that follow the newest
+// applied journal entry; gaps older than that are left for
+// validateAppliedMigrationHistory to report.
+function replayMigrationsSkippedByNewerAppliedRows(
+  db: DbConnection,
+  migrationsFolder: string,
+): void {
+  if (!tableExists(db, "__drizzle_migrations")) {
+    return;
+  }
+
+  const expectedMigrations = readExpectedAppliedMigrations(migrationsFolder);
+  const appliedCreatedAts = readAppliedMigrationCreatedAts(db);
+  const latestAppliedJournalCreatedAt = Math.max(
+    ...expectedMigrations
+      .filter((migration) => appliedCreatedAts.has(migration.createdAt))
+      .map((migration) => migration.createdAt),
+  );
+  for (const migration of expectedMigrations) {
+    if (
+      appliedCreatedAts.has(migration.createdAt) ||
+      migration.createdAt < latestAppliedJournalCreatedAt
+    ) {
+      continue;
+    }
+
+    applyMigrationStatements(db, migration);
+  }
+}
+
 function warnAboutFutureAppliedMigrations(
   db: DbConnection,
   options: MigrateOptions,
@@ -1503,6 +1536,7 @@ export function migrate(db: DbConnection, options: MigrateOptions = {}): void {
       if (stagedConnectMachineId) restoreStagedConnectMachineIdColumn(db);
     }
     applyReorderedCleanupMigrations(db, migrationsFolder);
+    replayMigrationsSkippedByNewerAppliedRows(db, migrationsFolder);
     applyQueuedMessageGroupingSchema(db);
   } finally {
     sqlite.pragma("foreign_keys = ON");
