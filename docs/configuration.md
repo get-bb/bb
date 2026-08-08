@@ -346,6 +346,11 @@ model ids discovered through `modelCli`, not in an ACP `thought_level` option.
 Grok Build is also separate: it uses `reasoningCli` to launch
 `grok --reasoning-effort <level> agent stdio`.
 
+When an agent declares `thought_level` with no options, bb hides the reasoning
+control. bb also hides it when none of the declared values map to a supported bb
+reasoning level. Omitting `thought_level` keeps the agent-managed reasoning
+fallback for agents that do not advertise this capability.
+
 Custom ACP agents are supported only with the co-located daemon from the same
 machine as the server. A command path in server config is host-local and is not
 meaningful for a remote daemon.
