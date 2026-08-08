@@ -386,6 +386,29 @@ describe("thread runtime display", () => {
     ] satisfies ThreadRuntimeState[]);
   });
 
+  it("builds active list entries above the SQLite variable limit", () => {
+    const { db, hostId, hub } = setup();
+    const { thread } = createThreadWithEnvironment({ db, hostId });
+    const template = createThreadListEntry({
+      environmentHostId: null,
+      thread,
+    });
+    const threads = Array.from({ length: 32_767 }, (_, index) => ({
+      ...template,
+      id: `thr_variable_limit_${index}`,
+    }));
+
+    expect(
+      toThreadListEntryResponses(
+        { db, hub },
+        {
+          now: 1_000,
+          threads,
+        },
+      ),
+    ).toHaveLength(32_767);
+  });
+
   it("marks list entries active when the prompt banner would show plan or goal state", () => {
     const { db, hostId, hub } = setup();
     const activePlan = createThreadWithEnvironment({ db, hostId });

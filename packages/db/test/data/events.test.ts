@@ -1273,6 +1273,16 @@ describe("events", () => {
     expect(rowsByThreadId.get(otherThread.id)?.sequence).toBe(1);
   });
 
+  it("batches latest goal lookups above the SQLite variable limit", () => {
+    const { db } = setup();
+    const threadIds = Array.from(
+      { length: 32_767 },
+      (_, index) => `thr_missing_goal_${index}`,
+    );
+
+    expect(listLatestGoalEventRowsByThreadIds(db, { threadIds })).toEqual([]);
+  });
+
   it("lists only open accepted turn inputs after the latest interruption", () => {
     const { db, project, thread } = setup();
     const otherThread = createThread(db, noopNotifier, {
@@ -1378,6 +1388,16 @@ describe("events", () => {
     expect(rowsByThreadId.get(thread.id)?.sequence).toBe(1);
     expect(rowsByThreadId.get(otherThread.id)?.sequence).toBe(1);
     expect(rowsByThreadId.size).toBe(2);
+  });
+
+  it("batches client turn request keys above the SQLite variable limit", () => {
+    const { db } = setup();
+    const keys = Array.from({ length: 16_383 }, (_, index) => ({
+      requestId: "creq_23456789ab",
+      threadId: `thr_missing_request_${index}`,
+    }));
+
+    expect(listStoredClientTurnRequestRowsByKeys(db, { keys })).toEqual([]);
   });
 
   it("lists client turn request ids in range with a storage predicate", () => {
