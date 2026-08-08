@@ -391,6 +391,14 @@ export function prepareRuntimeShellEnv(
         ? undefined
         : String(options.hostDaemonPort),
   });
+  // Provider process spawning strips inherited BB_* variables, so the
+  // documented Claude CLI override must be forwarded explicitly for the
+  // bridge to see it.
+  assignIfDefined({
+    key: "BB_CLAUDE_CODE_EXECUTABLE",
+    target: shellEnv,
+    value: process.env.BB_CLAUDE_CODE_EXECUTABLE,
+  });
 
   return shellEnv;
 }

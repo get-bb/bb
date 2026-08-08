@@ -263,7 +263,16 @@ function shellEnvEquals(
 function providerProcessEnvFromShellEnv(
   shellEnv: NonNullable<AgentRuntimeOptions["shellEnv"]>,
 ): Record<string, string> | null {
-  return shellEnv.PATH ? { PATH: shellEnv.PATH } : null;
+  const env: Record<string, string> = {};
+  if (shellEnv.PATH) {
+    env.PATH = shellEnv.PATH;
+  }
+  // The Claude bridge resolves the CLI from its own process env; forward the
+  // documented override past the BB_* spawn sanitization.
+  if (shellEnv.BB_CLAUDE_CODE_EXECUTABLE) {
+    env.BB_CLAUDE_CODE_EXECUTABLE = shellEnv.BB_CLAUDE_CODE_EXECUTABLE;
+  }
+  return Object.keys(env).length > 0 ? env : null;
 }
 
 export class RuntimeManager {

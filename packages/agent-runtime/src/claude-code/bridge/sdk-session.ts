@@ -8,6 +8,11 @@ import {
   type SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
 import type { ClaudePermissionMode } from "../interactive-contract.js";
+import {
+  isMissingClaudeCliMessage,
+  missingClaudeCliGuidance,
+  translateMissingClaudeCliError,
+} from "./missing-cli-error.js";
 
 export interface SdkSessionOptions {
   cwd: string;
@@ -74,25 +79,10 @@ function appendBoundedText(args: AppendBoundedTextArgs): string {
   return next.slice(next.length - SDK_STDERR_TAIL_MAX_CHARS);
 }
 
-// The Agent SDK throws this when it falls back to its bundled CLI binary and
-// cannot resolve the platform package. Packaged bb builds never ship that
-// package (the bridge bundle inlines the SDK), so the SDK's "reinstall"
-// guidance is wrong for bb users; point them at the real remedies instead.
-const MISSING_NATIVE_CLI_PATTERN = /Native CLI binary for .+ not found/;
-const MISSING_CLAUDE_CLI_GUIDANCE =
-  "bb could not find the Claude Code CLI on this machine. Install Claude Code (https://claude.com/claude-code), or set BB_CLAUDE_CODE_EXECUTABLE to the full path of the claude binary, then restart bb.";
-
-function translateMissingClaudeCliError(error: unknown): unknown {
-  if (error instanceof Error && MISSING_NATIVE_CLI_PATTERN.test(error.message)) {
-    return new Error(MISSING_CLAUDE_CLI_GUIDANCE, { cause: error });
-  }
-  return error;
-}
-
 function getErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
-  return MISSING_NATIVE_CLI_PATTERN.test(message)
-    ? MISSING_CLAUDE_CLI_GUIDANCE
+  return isMissingClaudeCliMessage(message)
+    ? missingClaudeCliGuidance()
     : message;
 }
 

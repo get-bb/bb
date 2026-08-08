@@ -1,4 +1,4 @@
-import { accessSync, constants } from "node:fs";
+import { accessSync, constants, statSync } from "node:fs";
 import { delimiter, join } from "node:path";
 import type { Options, Settings } from "@anthropic-ai/claude-agent-sdk";
 import type {
@@ -182,6 +182,17 @@ function buildWorkspaceWriteSandbox(
   };
 }
 
+// X_OK alone also passes for searchable directories, so require a regular
+// file (following symlinks) before treating a candidate as the Claude CLI.
+function isExecutableFile(candidatePath: string): boolean {
+  try {
+    accessSync(candidatePath, constants.X_OK);
+    return statSync(candidatePath).isFile();
+  } catch {
+    return false;
+  }
+}
+
 function resolveExecutableOnPath(
   args: ResolveExecutableOnPathArgs,
 ): string | null {
@@ -194,11 +205,8 @@ function resolveExecutableOnPath(
       continue;
     }
     const candidate = join(searchDir, args.executableName);
-    try {
-      accessSync(candidate, constants.X_OK);
+    if (isExecutableFile(candidate)) {
       return candidate;
-    } catch {
-      continue;
     }
   }
 
@@ -210,6 +218,11 @@ function resolveExecutableOnPath(
 // install locations are checked before falling back to the SDK's bundled
 // binary, which packaged bb builds do not ship.
 function wellKnownClaudeExecutablePaths(env: NodeJS.ProcessEnv): string[] {
+  // Under elevated privileges a user-writable binary must never be picked up
+  // implicitly; root operators can still set BB_CLAUDE_CODE_EXECUTABLE.
+  if (process.getuid?.() === 0) {
+    return [];
+  }
   const candidatePaths: string[] = [];
   const home = env.HOME?.trim();
   if (home) {
@@ -249,11 +262,8 @@ export function resolveClaudeCodeExecutable(
   }
 
   for (const candidate of wellKnownClaudeExecutablePaths(args.env)) {
-    try {
-      accessSync(candidate, constants.X_OK);
+    if (isExecutableFile(candidate)) {
       return candidate;
-    } catch {
-      continue;
     }
   }
 
