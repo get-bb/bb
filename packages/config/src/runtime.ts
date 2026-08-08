@@ -194,7 +194,7 @@ export function resolveDevInstanceConfig(
   const instanceId = resolveInstanceId(args);
   const dataDir = join(args.homeDir, BB_DEV_DATA_ROOT_DIR, instanceId);
   const ports = resolvePorts(args.repoRoot);
-  const serverUrl = `http://localhost:${ports.serverPort}`;
+  const serverUrl = `http://${BB_LOOPBACK_HOST}:${ports.serverPort}`;
   return {
     dataDir,
     homeDir: args.homeDir,

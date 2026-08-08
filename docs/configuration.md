@@ -73,8 +73,7 @@ you need a live change.
 `BB_LOG_LEVEL` is the startup-only `bb-app config` key. The complete current
 set of startup-only server or launcher env entries is:
 
-- `BB_APP_SURFACE`, `BB_APP_URL`, `BB_DATA_DIR`, `BB_DEV_APP_HOST`, and
-  `BB_DEV_APP_PORT`
+- `BB_APP_SURFACE`, `BB_APP_URL`, `BB_DATA_DIR`, and `BB_DEV_APP_PORT`
 - `BB_EXTERNAL_URL`, `BB_HOST_DAEMON_PORT`, `BB_INFERENCE`, and
   `BB_INHERITED_SKILLS_ROOTS`
 - `BB_LOG_LEVEL`, `BB_MANAGED_DEV_BUILTIN_PLUGIN_HOT_RELOAD`,

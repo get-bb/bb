@@ -58,7 +58,7 @@ message agents, or inspect projects, providers, and environments.
   `bb-app config set BB_TRANSCRIPTION <provider/model>`.
 - `bb-app config` and `bb-app env` reload runtime settings in a running server,
   but the CLI identifies server and launcher settings that are startup-only,
-  including binding/ports, data and dev-app settings, telemetry, inherited skill
+  including binding/ports, data and the dev-app port, telemetry, inherited skill
   roots, and `BB_FF_*` flags. `BB_LOG_LEVEL` is also startup-only. Use
   `bb-app config`, not `bb-app env`, to change `BB_APP_URL`, `BB_INFERENCE`, or
   `BB_TRANSCRIPTION` live. After a startup-only change, run

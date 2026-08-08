@@ -39,7 +39,7 @@ export function loadViteDevConfig(
   return {
     appHost: resolveViteDevAppHost(devAppConfig.BB_DEV_APP_HOST),
     appPort,
-    serverHttpOrigin: `http://localhost:${serverPort}`,
+    serverHttpOrigin: `http://${BB_LOOPBACK_HOST}:${serverPort}`,
     serverPort,
     serverWsOrigin: {
       kind: "browser-host",

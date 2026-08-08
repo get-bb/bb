@@ -69,5 +69,5 @@ export function expectedDevDataDir(args: ExpectedDevInstanceArgs): string {
 }
 
 export function expectedDevServerUrl(repoRoot: string): string {
-  return `http://localhost:${expectedDevPorts(repoRoot).serverPort}`;
+  return `http://127.0.0.1:${expectedDevPorts(repoRoot).serverPort}`;
 }

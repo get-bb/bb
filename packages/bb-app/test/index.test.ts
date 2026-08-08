@@ -151,7 +151,6 @@ const startupOnlyManagedEnvCases: StartupOnlyManagedEnvCase[] = [
   { key: "BB_APP_SURFACE", value: "desktop" },
   { key: "BB_APP_URL", value: "https://app.example.test" },
   { key: "BB_DATA_DIR", value: "/tmp/bb-managed-data" },
-  { key: "BB_DEV_APP_HOST", value: "127.0.0.1" },
   { key: "BB_DEV_APP_PORT", value: "4173" },
   { key: "BB_EXTERNAL_URL", value: "https://external.example.test" },
   { key: "BB_FF_PLACEHOLDER", value: "true" },

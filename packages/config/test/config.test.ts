@@ -697,7 +697,7 @@ describe("consumer-specific config", () => {
     expect(defaultViteDevConfig).toEqual({
       appHost: "127.0.0.1",
       appPort: 4173,
-      serverHttpOrigin: "http://localhost:4444",
+      serverHttpOrigin: "http://127.0.0.1:4444",
       serverPort: 4444,
       serverWsOrigin: {
         kind: "browser-host",
