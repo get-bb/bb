@@ -88,8 +88,20 @@ export async function confirmDestructiveAction(
 }
 
 export function getErrorMessage(err: unknown): string {
-  if (err instanceof Error) return err.message;
-  return String(err);
+  if (!(err instanceof Error)) return String(err);
+  // Unwrap the cause chain: Node's fetch always says "fetch failed" and keeps
+  // the actionable error (e.g. connect EPERM/ECONNREFUSED) on `cause`.
+  const seen = new Set<Error>([err]);
+  const messages = [err.message];
+  for (
+    let cause = err.cause;
+    cause instanceof Error && !seen.has(cause);
+    cause = cause.cause
+  ) {
+    seen.add(cause);
+    messages.push(cause.message);
+  }
+  return messages.join(": ");
 }
 
 export function parseReasoningLevel(
