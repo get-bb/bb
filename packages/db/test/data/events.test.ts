@@ -1390,19 +1390,30 @@ describe("events", () => {
     expect(rowsByThreadId.size).toBe(2);
   });
 
-  it(
-    "batches client turn request keys above the SQLite variable limit",
-    () => {
-      const { db } = setup();
-      const keys = Array.from({ length: 16_383 }, (_, index) => ({
-        requestId: "creq_23456789ab",
+  it("batches client turn request keys above the expression-depth limit", () => {
+    const { db, thread } = setup();
+    const requestId = "creq_23456789ab";
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 1,
+        type: "client/turn/requested",
+        ...threadEventFields,
+        data: clientTurnRequestData(requestId, "second batch"),
+      },
+    ]);
+    const keys = [
+      ...Array.from({ length: 995 }, (_, index) => ({
+        requestId,
         threadId: `thr_missing_request_${index}`,
-      }));
+      })),
+      { requestId, threadId: thread.id },
+    ];
 
-      expect(listStoredClientTurnRequestRowsByKeys(db, { keys })).toEqual([]);
-    },
-    15_000,
-  );
+    expect(listStoredClientTurnRequestRowsByKeys(db, { keys })).toEqual([
+      expect.objectContaining({ sequence: 1, threadId: thread.id }),
+    ]);
+  });
 
   it("lists client turn request ids in range with a storage predicate", () => {
     const { db, project, thread } = setup();
