@@ -97,6 +97,7 @@ describe("official plugin registry invariants", () => {
       "provider-retry": "Agent interaction",
       secrets: "Developer tools",
       "side-chat": "Agent interaction",
+      "system-monitor": "Host access",
       tasks: "Workflow management",
       workflows: "Workflow management",
     };

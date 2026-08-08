@@ -634,7 +634,7 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
   (except `side-chat`, which is gated by the **"Side chat plugin"**
   experiment); official plugins install from the bundled store on demand.
 - **BB Official plugins** (store under `/api/v1/plugin-catalog`):
-  - BB's official plugins (GitHub, Docs, Memory, and Tasks) ship
+  - BB's official plugins (GitHub, Docs, Memory, Tasks, and System Monitor) ship
     bundled inside the app and install from the local copy — no network. Installed official
     plugins are pinned to the bundled copy and update with BB app releases.
   - `bb plugin search <query> [--json]` — search the official plugins by id,
@@ -642,7 +642,7 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     requires newer bb.
 - Commands:
   - `bb plugin install <src>` — official plugin name (github, docs, memory,
-    tasks), local path, `builtin:<name>`,
+    tasks, system-monitor), local path, `builtin:<name>`,
     `git:<url>@<ref>`, or `npm:<package>[@<version|tag|range>]` (npm on PATH
     required for `npm:`). Prefixes `path:` / `npm:` / `git:` / `builtin:` skip
     official-plugin resolution. To pin or range an npm package, install with
@@ -658,6 +658,10 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     npm packages must. Managed git/npm installs refuse `engines.bb` /
     `engines.bbPluginSdk` mismatches, manifest vs. artifact identity mismatches,
     and ids reserved by bundled plugins.
+  - The official System Monitor plugin contributes `bb system-monitor` (`show`
+    and `--json` are supported) and a live sidebar panel for CPU, memory, disk,
+    load-average, CPU-speed, and uptime metrics. It observes the host running
+    the bb server, not a separately enrolled execution machine.
   - `bb plugin outdated` — check installed plugins for compatible updates
     (table; `--json` for raw results). Shows latest compatible candidate and
     any blocked incompatible newer release. Dev builds (bb `0.0.0`) annotate

@@ -1,0 +1,57 @@
+{
+  "name": "bb-plugin-system-monitor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Live CPU, memory, disk, load, and uptime metrics for the bb server host.",
+  "license": "MIT",
+  "homepage": "https://github.com/get-bb/bb#readme",
+  "bugs": {
+    "url": "https://github.com/get-bb/bb/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/get-bb/bb.git",
+    "directory": "plugins/system-monitor"
+  },
+  "files": [
+    "dist",
+    "server.ts",
+    "app.tsx",
+    "README.md"
+  ],
+  "engines": {
+    "bb": ">=0.0",
+    "bbPluginSdk": "^0.4.1"
+  },
+  "bb": {
+    "name": "System Monitor",
+    "description": "Live CPU, memory, disk, load, and uptime statistics for the bb server host.",
+    "branding": {
+      "icon": "ChartColumn"
+    },
+    "server": "./server.ts",
+    "app": "./app.tsx"
+  },
+  "keywords": [
+    "bb-plugin",
+    "system-monitor",
+    "system-metrics"
+  ],
+  "scripts": {
+    "build": "node --conditions=source --import tsx ../../scripts/build-official-plugins.mjs system-monitor",
+    "test": "vitest run --config vitest.config.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@bb/plugin-sdk": "workspace:*",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "react": "^19.0.0",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "vitest": "^4.1.1"
+  }
+}

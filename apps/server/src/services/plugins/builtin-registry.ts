@@ -132,6 +132,12 @@ export const OFFICIAL_PLUGINS = [
     defaultEnabled: true,
     category: "Workflow management",
   },
+  {
+    name: "system-monitor",
+    pluginId: "system-monitor",
+    defaultEnabled: true,
+    category: "Host access",
+  },
 ].map(
   (plugin): BundledPluginDefinition => ({
     ...plugin,

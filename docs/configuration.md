@@ -528,8 +528,8 @@ Plugin state lives under the data dir:
                                    commands, injected into agent threads)
 ```
 
-BB's official plugins (GitHub, Docs, Memory, and Tasks) ship bundled
-inside the app and install from the local bundled copy — no network, no remote catalog.
+BB's official plugins (GitHub, Docs, Memory, Tasks, and System Monitor) ship
+bundled inside the app and install from the local bundled copy — no network, no remote catalog.
 Discover them with `bb plugin search` or Extensions → Plugins → Browse; users
 cannot add, remove, or configure the official plugin set. Installed official
 plugins are pinned to the bundled copy and update with BB app releases. Local
@@ -605,12 +605,11 @@ track the tag, and exact versions are pinned. `git:<url>@<ref>` requires `git`;
 branches track their head while tags and commits are pinned. Local
 path installs register the directory in place and never delete it. Builtin
 plugins use `builtin:<name>` and ship with bb unless removed. Managed
-(`git:`/`npm:`) installs
-refuse plugins whose optional `engines.bb` or `engines.bbPluginSdk` ranges
+(`git:`/`npm:`) installs refuse plugins whose optional `engines.bb` or
+`engines.bbPluginSdk` ranges
 do not match the running bb/SDK, or whose `dist/*.meta.json` plugin identity
-does not match the package manifest; installing a non-builtin source whose
-derived id collides with a builtin name (automations, connect,
-custom-instructions, inline-vis, secrets, workflows) is also refused.
+does not match the package manifest; installing a non-bundled source whose
+derived id collides with any bundled plugin id is also refused.
 
 The same tracking intent drives updates: `bb plugin outdated` checks for
 compatible candidates (and reports blocked incompatible newer releases);

@@ -152,7 +152,8 @@ added/updated/unchanged counts.
   bb plugin search <query>       Search BB's official plugins (bundled with
                                  the app)
   bb plugin install <entry>      Install a bundled official plugin by name
-                                 (github, docs, memory, tasks), a local
+                                 (github, docs, memory, tasks,
+                                 system-monitor), a local
                                  path, builtin:<name>,
                                  git:<url>@<ref>, or
                                  npm:<package>[@<version|tag|range>]
@@ -211,13 +212,24 @@ added/updated/unchanged counts.
 
 BB Official plugins
 
-BB's official plugins — GitHub, Docs, Memory, and Tasks — ship bundled inside
-the app itself. They appear in Extensions → Plugins → Browse
+BB's official plugins — GitHub, Docs, Memory, Tasks, and System Monitor — ship
+bundled inside the app itself. They appear in Extensions → Plugins → Browse
 and install with one click from the local bundled copy: no network, no
 download, no separate release. Install from the CLI by bare name
 (`bb plugin install github`, `bb plugin install docs`, `bb plugin install
-memory`, or `bb plugin install tasks`). Installed official plugins are pinned
-to the bundled copy and update automatically when the BB app updates.
+memory`, `bb plugin install tasks`, or `bb plugin install system-monitor`).
+Installed official plugins are pinned to the bundled copy and update
+automatically when the BB app updates.
+
+System Monitor
+
+The official System Monitor plugin shows live CPU, memory, disk, load-average,
+CPU-speed, and uptime metrics in a sidebar panel. Its values describe the host
+running the bb server, not a separately enrolled execution machine. Install it
+with `bb plugin install system-monitor`, then query the same snapshot from an
+agent or shell:
+
+  bb system-monitor [show] [--json]
 
 For direct git:/npm: installs, updates are manual: `bb plugin outdated`
 checks tracking sources and `bb plugin update` applies compatible candidates.
@@ -446,7 +458,7 @@ in a checkout). The builtin `inline-vis` plugin renders
 path-shaped, sandboxed worktree HTML iframe preview; `height` is optional.
 Its card header includes an open-in-sidebar action for the source HTML file.
 The `plugins/` directory contains every bundled plugin: the auto-installed
-builtins and the store-only BB Official GitHub, Docs, Memory, and Tasks
-plugins. The `examples/plugins/` reference plugins cover slack-bot (webhook
+builtins and the store-only BB Official GitHub, Docs, Memory, Tasks, and System
+Monitor plugins. The `examples/plugins/` reference plugins cover slack-bot (webhook
 bot), agent-enrichment (agent surfaces), composer-customization (all composer
 regions), and t3sidebar (a replacement sidebar thread list).
