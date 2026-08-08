@@ -988,27 +988,49 @@ export function listLatestGoalEventRowsByThreadIds(
     return [];
   }
 
+  // This runs over every listed thread on each sidebar bootstrap, so it must
+  // stay proportional to the number of goal events, not the number of events.
+  // Three deliberate choices make that hold on a stats-less database:
+  //   - The goal-type list is spelled as SQL literals matching the WHERE
+  //     clause of events_goal_thread_sequence_idx exactly; SQLite only uses a
+  //     partial index when the query predicate provably implies the index
+  //     predicate at prepare time, which a bound parameter never does.
+  //   - INDEXED BY pins the tiny partial index. Without ANALYZE data the
+  //     planner assumes every index is table-sized: it previously served an
+  //     ORDER BY from events_thread_sequence_idx and walked every event row
+  //     of every listed thread — a full-file read on a grown events table
+  //     (issue #1131).
+  //   - No ORDER BY: sequence is unique per thread, so this returns at most
+  //     one row per thread and callers do not depend on row order.
   const goalTypes = [
     "thread/goal/updated",
     "thread/goal/cleared",
-  ] satisfies ThreadEventType[];
+  ] as const satisfies readonly ThreadEventType[];
+  const goalTypesPredicate = sql.raw(
+    `IN (${goalTypes.map((type) => `'${type}'`).join(", ")})`,
+  );
+  const threadIdList = sql.join(
+    args.threadIds.map((threadId) => sql`${threadId}`),
+    sql`, `,
+  );
 
   return db
     .select(storedEventRowFields)
     .from(events)
     .where(
-      and(
-        inArray(events.threadId, [...args.threadIds]),
-        inArray(events.type, goalTypes),
-        sql`${events.sequence} = (
-          SELECT MAX(latest.sequence)
-          FROM events latest
-          WHERE latest.thread_id = ${events.threadId}
-            AND latest.type IN (${goalTypes[0]}, ${goalTypes[1]})
-        )`,
-      ),
+      sql`${events}.rowid IN (
+        SELECT latest_goal.rowid
+        FROM ${events} AS latest_goal INDEXED BY events_goal_thread_sequence_idx
+        WHERE latest_goal.thread_id IN (${threadIdList})
+          AND latest_goal.type ${goalTypesPredicate}
+          AND latest_goal.sequence = (
+            SELECT MAX(candidate.sequence)
+            FROM ${events} AS candidate INDEXED BY events_goal_thread_sequence_idx
+            WHERE candidate.thread_id = latest_goal.thread_id
+              AND candidate.type ${goalTypesPredicate}
+          )
+      )`,
     )
-    .orderBy(events.threadId, events.sequence)
     .all();
 }
 

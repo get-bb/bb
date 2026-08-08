@@ -617,6 +617,13 @@
       "when": 1786043536668,
       "tag": "0087_brief_khan",
       "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "6",
+      "when": 1786223263495,
+      "tag": "0088_narrow_kronos",
+      "breakpoints": true
     }
   ]
 }

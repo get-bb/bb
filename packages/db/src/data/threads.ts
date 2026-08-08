@@ -471,6 +471,12 @@ export function listActiveVisiblePinnedThreadRoots(
 }
 
 function threadWithPendingInteractionBaseQuery(db: DbConnection) {
+  // A correlated EXISTS instead of a pending_interactions join with
+  // GROUP BY threads.id: the grouped form forces SQLite to either sort the
+  // whole joined result into a temp B-tree or walk the threads table in
+  // id-index order, which costs one random page read per thread on a cold
+  // cache (issue #1131). The probe is served by
+  // pending_interactions_thread_status_created_idx.
   return db
     .select({
       ...getTableColumns(threads),
@@ -479,17 +485,10 @@ function threadWithPendingInteractionBaseQuery(db: DbConnection) {
       environmentIsWorktree: environments.isWorktree,
       environmentName: environments.name,
       environmentWorkspaceProvisionType: environments.workspaceProvisionType,
-      pendingInteractionCount: count(pendingInteractions.id),
+      hasPendingInteraction: sql<number>`EXISTS (SELECT 1 FROM ${pendingInteractions} WHERE ${pendingInteractions.threadId} = ${threads.id} AND ${pendingInteractions.status} = 'pending')`,
     })
     .from(threads)
-    .leftJoin(environments, eq(threads.environmentId, environments.id))
-    .leftJoin(
-      pendingInteractions,
-      and(
-        eq(pendingInteractions.threadId, threads.id),
-        eq(pendingInteractions.status, "pending"),
-      ),
-    );
+    .leftJoin(environments, eq(threads.environmentId, environments.id));
 }
 
 export function listActiveVisiblePinnedThreadRootsWithPendingInteractionState(
@@ -497,7 +496,6 @@ export function listActiveVisiblePinnedThreadRootsWithPendingInteractionState(
 ): ThreadWithPendingInteractionState[] {
   const pinnedThreads = threadWithPendingInteractionBaseQuery(db)
     .where(and(pinnedThreadWhere(), isNull(threads.archivedAt)))
-    .groupBy(threads.id)
     .orderBy(asc(threads.pinSortKey), asc(threads.id))
     .all()
     .map(toThreadWithPendingInteractionState);
@@ -535,7 +533,7 @@ interface ThreadWithPendingInteractionStateRow extends ThreadRow {
   environmentIsWorktree: boolean | null;
   environmentName: string | null;
   environmentWorkspaceProvisionType: WorkspaceProvisionType | null;
-  pendingInteractionCount: number;
+  hasPendingInteraction: number;
 }
 
 export interface CountLiveThreadsInEnvironmentArgs {
@@ -717,7 +715,7 @@ function toThreadWithPendingInteractionState(
     environmentBranchName,
     environmentHostId,
     environmentName,
-    pendingInteractionCount,
+    hasPendingInteraction,
     ...thread
   } = row;
   return {
@@ -731,7 +729,7 @@ function toThreadWithPendingInteractionState(
         workspaceProvisionType: environmentWorkspaceProvisionType,
       },
     }),
-    hasPendingInteraction: pendingInteractionCount > 0,
+    hasPendingInteraction: hasPendingInteraction > 0,
   };
 }
 
@@ -1017,7 +1015,6 @@ function hydrateThreadSearchGroup(
   const threadsById = new Map(
     threadWithPendingInteractionBaseQuery(db)
       .where(and(inArray(threads.id, threadIds), isNull(threads.deletedAt)))
-      .groupBy(threads.id)
       .all()
       .map(toThreadWithPendingInteractionState)
       .map((thread) => [thread.id, thread]),
@@ -1098,7 +1095,6 @@ export function listThreadsWithPendingInteractionState(
 ): ThreadWithPendingInteractionState[] {
   let query = threadWithPendingInteractionBaseQuery(db)
     .where(and(...buildListThreadsFilters(options)))
-    .groupBy(threads.id)
     .orderBy(...buildListThreadsOrderBy(options))
     .$dynamic();
   if (options.limit !== undefined) {
@@ -1158,7 +1154,6 @@ export function listThreadsWithPendingInteractionStateForProjects(
 
   const rows = threadWithPendingInteractionBaseQuery(db)
     .where(and(...buildListThreadsForProjectsFilters(options)))
-    .groupBy(threads.id)
     .orderBy(...buildListThreadsForProjectsOrderBy(options))
     .all();
 

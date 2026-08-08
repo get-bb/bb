@@ -687,6 +687,15 @@ export const events = sqliteTable(
     index("events_completed_item_truncation_idx")
       .on(table.itemKind, table.createdAt, table.id)
       .where(sql`${table.type} = 'item/completed'`),
+    // Latest-goal lookup (listLatestGoalEventRowsByThreadIds) runs over every
+    // listed thread on each sidebar bootstrap. Goal events are rare, so this
+    // partial index stays tiny; the query must spell the same type list as
+    // literals for SQLite to accept the partial index.
+    index("events_goal_thread_sequence_idx")
+      .on(table.threadId, table.sequence)
+      .where(
+        sql`${table.type} IN ('thread/goal/updated', 'thread/goal/cleared')`,
+      ),
     check(
       "events_scope_shape_check",
       sql`(
