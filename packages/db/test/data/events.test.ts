@@ -58,7 +58,10 @@ import {
 } from "../../src/data/events.js";
 import { createEnvironment } from "../../src/data/environments.js";
 import { createProject } from "../../src/data/projects.js";
-import { createThread } from "../../src/data/threads.js";
+import {
+  createThread,
+  findProviderSessionReservationThreadId,
+} from "../../src/data/threads.js";
 import { upsertHost } from "../../src/data/hosts.js";
 
 function setup() {
@@ -4193,6 +4196,127 @@ describe("findLiveThreadIdByProviderThreadId", () => {
         providerThreadId: "unbound-provider-session",
       }),
     ).toBeNull();
+  });
+
+  it("ignores a session the thread has since rebound away from", () => {
+    // A resume whose session/load fails falls back to a fresh provider
+    // session, but the bridge still forwards a thread/identity for it
+    // (bridge.ts sendNotification("thread/identity", ...) fires
+    // unconditionally). The old session id must stop being "live" once a
+    // later identity event supersedes it, or the thread that abandoned it
+    // would block every future re-import of that session forever.
+    const db = createConnection(":memory:");
+    migrate(db);
+    const host = upsertHost(db, noopNotifier, {
+      name: "import-host",
+      type: "persistent",
+    });
+    const { project } = createProject(db, noopNotifier, {
+      name: "import-project",
+      source: { type: "local_path", hostId: host.id, path: "/tmp/test" },
+    });
+    const environment = createEnvironment(db, noopNotifier, {
+      projectId: project.id,
+      hostId: host.id,
+      workspaceProvisionType: "unmanaged",
+    });
+    const thread = createThread(db, noopNotifier, {
+      projectId: project.id,
+      environmentId: environment.id,
+      providerId: "acp-omp",
+      providerSessionReservation: {
+        hostId: host.id,
+        providerSessionId: "original-session",
+      },
+    });
+
+    db.transaction(
+      (tx) =>
+        appendDaemonEventsInTransaction(tx, [
+          {
+            threadId: thread.id,
+            type: "thread/identity",
+            ...daemonThreadEventFields,
+            environmentId: environment.id,
+            providerThreadId: "original-session",
+            data: "{}",
+          },
+        ]),
+      { behavior: "immediate" },
+    );
+
+    const lookup = {
+      hostId: host.id,
+      providerId: "acp-omp",
+    };
+    // Still live and still reserved right after the import bind completes.
+    expect(
+      findLiveThreadIdByProviderThreadId(db, {
+        ...lookup,
+        providerThreadId: "original-session",
+      }),
+    ).toBe(thread.id);
+    expect(
+      findProviderSessionReservationThreadId(db, {
+        ...lookup,
+        providerSessionId: "original-session",
+      }),
+    ).toBe(thread.id);
+
+    // A resume falls back to a fresh session; the bridge still emits a
+    // thread/identity for it.
+    db.transaction(
+      (tx) =>
+        appendDaemonEventsInTransaction(tx, [
+          {
+            threadId: thread.id,
+            type: "thread/identity",
+            ...daemonThreadEventFields,
+            environmentId: environment.id,
+            providerThreadId: "fallback-session",
+            data: "{}",
+          },
+        ]),
+      { behavior: "immediate" },
+    );
+
+    // The old session is no longer this thread's current identity, so it
+    // must read as unbound on both guards...
+    expect(
+      findLiveThreadIdByProviderThreadId(db, {
+        ...lookup,
+        providerThreadId: "original-session",
+      }),
+    ).toBeNull();
+    expect(
+      findProviderSessionReservationThreadId(db, {
+        ...lookup,
+        providerSessionId: "original-session",
+      }),
+    ).toBeNull();
+    // ...while the new session now reads as this thread's live binding.
+    expect(
+      findLiveThreadIdByProviderThreadId(db, {
+        ...lookup,
+        providerThreadId: "fallback-session",
+      }),
+    ).toBe(thread.id);
+
+    // Re-importing the freed original session into a new thread succeeds.
+    const reimported = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "acp-omp",
+      providerSessionReservation: {
+        hostId: host.id,
+        providerSessionId: "original-session",
+      },
+    });
+    expect(
+      findProviderSessionReservationThreadId(db, {
+        ...lookup,
+        providerSessionId: "original-session",
+      }),
+    ).toBe(reimported.id);
   });
 });
 

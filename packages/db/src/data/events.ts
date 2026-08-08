@@ -49,6 +49,7 @@ import { createEventId } from "../ids.js";
 import { truncatedEventDataColumn } from "./event-output-truncation.js";
 import { deriveStoredEventItemFieldsFromSource } from "../stored-event-item-fields.js";
 import {
+  releaseStaleProviderSessionReservationInTransaction,
   upsertThreadSearchSegments,
   type UpsertThreadSearchSegmentInput,
 } from "./threads.js";
@@ -521,6 +522,16 @@ export function appendDaemonEventsInTransaction(
     };
     acceptedEvents.push(acceptedEvent);
     insertedInputIndexes.push(index);
+    if (input.type === "thread/identity" && input.providerThreadId !== null) {
+      // A rebind (e.g. resume falling back to a fresh provider session after
+      // an import's original session/load target went stale) must not leave
+      // the import reservation pointing at a session this thread no longer
+      // holds — see releaseStaleProviderSessionReservationInTransaction.
+      releaseStaleProviderSessionReservationInTransaction(db, {
+        threadId: input.threadId,
+        providerThreadId: input.providerThreadId,
+      });
+    }
     if (input.type === "turn/started") {
       const turnId = getThreadEventScopeTurnId(input.scope);
       if (turnId !== undefined) {
@@ -2564,21 +2575,31 @@ export function getStoredProviderThreadIdAtOrBeforeSequence(
   return row?.providerThreadId ?? null;
 }
 
+// Caps the number of distinct candidate threads findLiveThreadIdByProviderThreadId
+// re-checks for current binding. The partial index on non-null
+// providerThreadId keeps the candidate scan itself cheap; this only bounds
+// how many distinct threads get a follow-up getLastStoredProviderThreadId
+// check when older candidates turn out to have since rebound elsewhere.
+const LIVE_THREAD_BY_PROVIDER_THREAD_ID_CANDIDATE_LIMIT = 20;
+
 /**
  * Reverse lookup for provider-session uniqueness: the most recently touched
- * non-deleted thread on this host whose event log has ever recorded this
- * providerThreadId (via thread/identity or any provider-scoped event). Used
- * to refuse importing an external ACP session that another live bb thread
- * already binds, since the ACP bridge routes by provider session id and a
- * second binding would misroute turns between the two threads. Session ids
- * live in a provider namespace, so the lookup is provider-scoped: session
- * "abc" on one provider must not shadow session "abc" on another.
+ * non-deleted thread on this host that is *currently* bound to this
+ * providerThreadId — i.e. it is the thread's latest recorded identity, not
+ * merely one it has ever recorded (a thread can rebind to a different
+ * provider session, e.g. a resume whose session/load fell back to a fresh
+ * session, stranding the old id in its event log). Used to refuse importing
+ * an external ACP session that another live bb thread already binds, since
+ * the ACP bridge routes by provider session id and a second binding would
+ * misroute turns between the two threads. Session ids live in a provider
+ * namespace, so the lookup is provider-scoped: session "abc" on one provider
+ * must not shadow session "abc" on another.
  */
 export function findLiveThreadIdByProviderThreadId(
   db: DbQueryConnection,
   args: { hostId: string; providerId: string; providerThreadId: string },
 ): string | null {
-  const row = db
+  const candidateRows = db
     .select({ threadId: events.threadId })
     .from(events)
     .innerJoin(threads, eq(threads.id, events.threadId))
@@ -2598,9 +2619,22 @@ export function findLiveThreadIdByProviderThreadId(
     // random suffix, not time-sortable) only breaks exact-timestamp ties
     // deterministically.
     .orderBy(desc(events.createdAt), desc(events.id))
-    .limit(1)
-    .get();
-  return row?.threadId ?? null;
+    .limit(LIVE_THREAD_BY_PROVIDER_THREAD_ID_CANDIDATE_LIMIT)
+    .all();
+
+  const checkedThreadIds = new Set<string>();
+  for (const row of candidateRows) {
+    if (checkedThreadIds.has(row.threadId)) {
+      continue;
+    }
+    checkedThreadIds.add(row.threadId);
+    if (
+      getLastStoredProviderThreadId(db, row.threadId) === args.providerThreadId
+    ) {
+      return row.threadId;
+    }
+  }
+  return null;
 }
 
 export function listThreadTurnInterruptionEventStates(

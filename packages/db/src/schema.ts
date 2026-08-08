@@ -587,15 +587,19 @@ export const threadTabs = sqliteTable("thread_tabs", {
 // concurrent imports cannot both bind one session (the event-log reverse
 // lookup only sees identity events a completed start already stored, and each
 // environment owns a separate runtime, so no process-local guard covers this
-// race). Released four ways: by cascade when the thread row is hard-deleted
+// race). Released five ways: by cascade when the thread row is hard-deleted
 // (failed creation rollback and permanent deletion, the two paths that call
-// deleteThread), and directly via deleteProviderSessionReservation when the
+// deleteThread); directly via deleteProviderSessionReservation when the
 // thread row survives but the import's bind never completed — either an
 // async thread.start failure (settleThreadCommandFailure in
 // thread-lifecycle.ts) or a provisioning failure before thread.start is ever
-// dispatched (failThreadProvisioning in thread-provisioning-environment.ts).
-// Without those two paths the reservation would outlive the thread and every
-// retry of the same import would 409 forever.
+// dispatched (failThreadProvisioning in thread-provisioning-environment.ts);
+// and via releaseStaleProviderSessionReservationInTransaction when a later
+// thread/identity event shows the thread rebound to a different provider
+// session (e.g. a resume whose session/load fell back to a fresh session),
+// which would otherwise leave the reservation pointing at a session the
+// thread no longer holds. Without these paths the reservation would outlive
+// its binding and every retry of the same import would 409 forever.
 export const providerSessionReservations = sqliteTable(
   "provider_session_reservations",
   {

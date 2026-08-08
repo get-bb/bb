@@ -84,6 +84,7 @@ export {
   countLiveThreadsInEnvironment,
   deleteProviderSessionReservation,
   findProviderSessionReservationThreadId,
+  releaseStaleProviderSessionReservationInTransaction,
   ProviderSessionReservedError,
   countNonDeletedAssignedChildThreads,
   getThread,

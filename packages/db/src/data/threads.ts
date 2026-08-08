@@ -303,6 +303,31 @@ export function deleteProviderSessionReservation(
     .run();
 }
 
+/**
+ * Releases a thread's provider session reservation when a newly recorded
+ * thread/identity event shows the thread is no longer bound to the session
+ * the reservation named — e.g. a resume whose session/load failed and fell
+ * back to a fresh provider session. Once a real identity event exists for a
+ * provider session, findLiveThreadIdByProviderThreadId's event-log guard
+ * protects that binding, so a reservation naming the thread's old (now
+ * unbound) session id is redundant, and leaving it in place would 409 every
+ * future re-import of that old session forever. A no-op when the thread has
+ * no reservation or the recorded identity still matches it.
+ */
+export function releaseStaleProviderSessionReservationInTransaction(
+  db: DbTransaction,
+  args: { threadId: string; providerThreadId: string },
+): void {
+  db.delete(providerSessionReservations)
+    .where(
+      and(
+        eq(providerSessionReservations.threadId, args.threadId),
+        ne(providerSessionReservations.providerSessionId, args.providerThreadId),
+      ),
+    )
+    .run();
+}
+
 export interface CreateThreadInput {
   projectId: string;
   environmentId?: string | null;
