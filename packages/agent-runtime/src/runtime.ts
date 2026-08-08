@@ -1671,6 +1671,10 @@ function createAgentRuntimeInternal(
       return turnState.getActiveThreadIds();
     },
 
+    hasPendingTurnStart() {
+      return pendingTurnStartThreadIds.size > 0;
+    },
+
     hasOpenBackgroundWork() {
       return backgroundWorkState.hasOpenWork();
     },

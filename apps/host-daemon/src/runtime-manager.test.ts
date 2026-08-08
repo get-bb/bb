@@ -245,11 +245,13 @@ interface FakeAgentRuntime extends AgentRuntime {
   endActiveTurn: (threadId: string) => void;
   setActiveTurn: (threadId: string, turnId: string) => void;
   setOpenBackgroundWork: (hasOpenWork: boolean) => void;
+  setPendingTurnStart: (hasPending: boolean) => void;
 }
 
 function createFakeRuntime() {
   const activeTurnsByThreadId = new Map<string, string>();
   let openBackgroundWork = false;
+  let pendingTurnStart = false;
   return {
     ensureProvider: vi.fn(async (_args: EnsureProviderArgs) => undefined),
     startThread: vi.fn(async (_args: StartThreadArgs) => ({
@@ -281,6 +283,7 @@ function createFakeRuntime() {
     ),
     hasThread: (threadId) => activeTurnsByThreadId.has(threadId),
     getActiveThreadIds: () => [...activeTurnsByThreadId.keys()],
+    hasPendingTurnStart: () => pendingTurnStart,
     hasOpenBackgroundWork: () => openBackgroundWork,
     shutdown: vi.fn(async () => undefined),
     endActiveTurn: (threadId) => {
@@ -291,6 +294,9 @@ function createFakeRuntime() {
     },
     setOpenBackgroundWork: (hasOpenWork) => {
       openBackgroundWork = hasOpenWork;
+    },
+    setPendingTurnStart: (hasPending) => {
+      pendingTurnStart = hasPending;
     },
   } satisfies FakeAgentRuntime;
 }
@@ -1402,6 +1408,39 @@ describe("RuntimeManager", () => {
     release();
     await manager.replaceBaseShellEnv({
       PATH: "/newer/bin:/usr/bin",
+    });
+
+    expect(manager.get("env-1")).toBeUndefined();
+    expect(runtime.shutdown).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps an environment runtime while an accepted turn awaits its first event", async () => {
+    const provisionWorkspace = createProvisionWorkspaceMock("/tmp/env-1");
+    const runtime = createFakeRuntime();
+    const manager = new RuntimeManager({
+      provisionWorkspace,
+      createRuntime: () => runtime,
+      shellEnv: {
+        PATH: "/tmp/fnm_multishells/first/bin:/usr/bin",
+      },
+    });
+
+    await manager.ensureEnvironment({
+      environmentId: "env-1",
+      workspacePath: "/tmp/env-1",
+    });
+    runtime.setPendingTurnStart(true);
+
+    await manager.replaceBaseShellEnv({
+      PATH: "/tmp/fnm_multishells/second/bin:/usr/bin",
+    });
+
+    expect(manager.get("env-1")?.runtime).toBe(runtime);
+    expect(runtime.shutdown).not.toHaveBeenCalled();
+
+    runtime.setPendingTurnStart(false);
+    await manager.replaceBaseShellEnv({
+      PATH: "/tmp/fnm_multishells/third/bin:/usr/bin",
     });
 
     expect(manager.get("env-1")).toBeUndefined();

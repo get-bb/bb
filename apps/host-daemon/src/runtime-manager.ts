@@ -486,6 +486,7 @@ export class RuntimeManager {
     return (
       entry.terminals.size > 0 ||
       entry.runtime.getActiveThreadIds().length > 0 ||
+      entry.runtime.hasPendingTurnStart() ||
       entry.runtime.hasOpenBackgroundWork()
     );
   }

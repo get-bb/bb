@@ -281,6 +281,9 @@ function createFakeRuntime(): AgentRuntime {
     getActiveThreadIds() {
       return [];
     },
+    hasPendingTurnStart() {
+      return false;
+    },
     hasOpenBackgroundWork() {
       return false;
     },

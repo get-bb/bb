@@ -206,6 +206,7 @@ function createRuntime(): FakeDispatchRuntime {
     reapIdleProviderSessions: vi.fn(async () => ({ reapedSessions: [] })),
     hasThread: (threadId) => hostedThreadIds.has(threadId),
     getActiveThreadIds: () => [...activeTurnsByThreadId.keys()],
+    hasPendingTurnStart: () => false,
     hasOpenBackgroundWork: () => false,
     shutdown: vi.fn(async () => undefined),
     setActiveTurn: (threadId, turnId) => {

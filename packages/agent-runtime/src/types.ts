@@ -342,6 +342,9 @@ export interface AgentRuntime {
   /** Thread ids with an active turn. */
   getActiveThreadIds(): string[];
 
+  /** Whether a turn-start command was accepted but no first turn event arrived. */
+  hasPendingTurnStart(): boolean;
+
   /**
    * Whether any hosted thread still has an open background task (a workflow or
    * backgrounded command). These outlive their spawning turn, so a runtime with

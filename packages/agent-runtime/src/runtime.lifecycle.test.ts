@@ -1087,7 +1087,76 @@ rl.on("line", (line) => {
       await expect(pendingTurnId).resolves.toBe("turn-1");
       expect(runtime.getActiveTurnId("t1")).toBe("turn-1");
       expect(runtime.getActiveThreadIds()).toEqual(["t1"]);
+      expect(runtime.hasPendingTurnStart()).toBe(false);
       await runtime.shutdown();
+    });
+
+    it("reports pending work before an accepted turn emits its first event", async () => {
+      const pendingTurnScriptPath = join(tmpDir, "pending-turn-provider.cjs");
+      writeFileSync(
+        pendingTurnScriptPath,
+        `
+const readline = require("node:readline");
+
+function send(message) {
+  process.stdout.write(JSON.stringify(message) + "\\n");
+}
+
+const rl = readline.createInterface({ input: process.stdin });
+rl.on("line", (line) => {
+  const message = JSON.parse(line);
+  if (message.method === "initialize") {
+    send({ jsonrpc: "2.0", id: message.id, result: {} });
+    return;
+  }
+
+  if (message.method === "thread/start") {
+    send({
+      jsonrpc: "2.0",
+      id: message.id,
+      result: { providerThreadId: "prov-pending-turn" },
+    });
+    return;
+  }
+
+  if (message.method === "turn/start") {
+    send({ jsonrpc: "2.0", id: message.id, result: {} });
+  }
+});
+`,
+        "utf8",
+      );
+      const runtime = createAgentRuntimeWithAdapters({
+        workspacePath: tmpDir,
+        onEvent: () => {},
+        onToolCall: async () => ({
+          contentItems: [{ type: "inputText", text: "ok" }],
+          success: true,
+        }),
+        adapterFactory: () => createFakeAdapter(pendingTurnScriptPath),
+      });
+
+      try {
+        await runtime.startThread({
+          environmentId: "env-1",
+          threadId: "t1",
+          projectId: "p1",
+          providerId: "fake",
+          options: fullRuntimeOptions,
+        });
+        await runtime.runTurn({
+          clientRequestId: "creq_222222223u",
+          threadId: "t1",
+          input: [promptTextInput({ text: "wait for first event" })],
+          options: fullRuntimeOptions,
+        });
+
+        expect(runtime.getActiveTurnId("t1")).toBeNull();
+        expect(runtime.getActiveThreadIds()).toEqual([]);
+        expect(runtime.hasPendingTurnStart()).toBe(true);
+      } finally {
+        await runtime.shutdown();
+      }
     });
 
     it("resolves pending waitForActiveTurn waiters with null when the provider crashes", async () => {

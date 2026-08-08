@@ -431,6 +431,9 @@ export function createFakeRuntime() {
     getActiveThreadIds() {
       return [...activeTurnsByThreadId.keys()];
     },
+    hasPendingTurnStart() {
+      return false;
+    },
     hasOpenBackgroundWork() {
       return false;
     },
