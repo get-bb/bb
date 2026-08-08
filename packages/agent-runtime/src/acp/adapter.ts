@@ -1366,7 +1366,15 @@ export function createAcpProviderAdapter(
     >,
   ): Record<string, unknown> {
     const instructions = buildAcpSessionInstructions(command.options);
-    const cwd = profile.cwd ?? command.cwd;
+    // A configured profile directory pins start/resume by design, but an
+    // import's cwd is the directory the server already validated against the
+    // project (source path or attached workspace); letting profile.cwd win
+    // would attach the thread to one project while session/load replays
+    // another directory.
+    const cwd =
+      command.type === "thread/import"
+        ? command.cwd
+        : profile.cwd ?? command.cwd;
     const envVars = {
       ...(profile.env ?? {}),
       ...(command.options.envVars ?? {}),

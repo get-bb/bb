@@ -206,6 +206,58 @@ describe("acp adapter command plans", () => {
     });
   });
 
+  it("keeps the server-validated cwd for thread/import when a custom agent pins a directory", () => {
+    const adapter = createAcpProviderAdapter({
+      profile: {
+        providerId: "acp-custom",
+        displayName: "Custom ACP",
+        agentCommand: { command: "custom-acp", args: ["serve"] },
+        cwd: "/custom-cwd",
+      },
+      additionalWorkspaceWriteRoots: [],
+    });
+
+    // The server validated command.cwd against the project (source path or
+    // attached workspace) and bound the thread environment to it; the
+    // configured profile directory must not redirect session/load elsewhere.
+    const importPlan = adapter.buildCommandPlan({
+      type: "thread/import",
+      threadId: "thread-1",
+      providerThreadId: "sess-1",
+      cwd: "/workspace",
+      options: fullProviderExecutionContext,
+      instructionMode: "append",
+    });
+    expect(importPlan).toMatchObject({
+      kind: "request",
+      method: "thread/import",
+      params: {
+        providerThreadId: "sess-1",
+        cwd: "/workspace",
+        workspaceWriteRoots: ["/workspace"],
+      },
+    });
+
+    // Start and resume keep honoring the profile pin by design.
+    const startPlan = adapter.buildCommandPlan({
+      type: "thread/start",
+      threadId: "thread-1",
+      cwd: "/workspace",
+      options: fullProviderExecutionContext,
+      instructionMode: "append",
+    });
+    expect(startPlan).toMatchObject({ params: { cwd: "/custom-cwd" } });
+    const resumePlan = adapter.buildCommandPlan({
+      type: "thread/resume",
+      threadId: "thread-1",
+      providerThreadId: "sess-1",
+      cwd: "/workspace",
+      options: fullProviderExecutionContext,
+      instructionMode: "append",
+    });
+    expect(resumePlan).toMatchObject({ params: { cwd: "/custom-cwd" } });
+  });
+
   it("adds ACP skill instructions to thread/resume", () => {
     const adapter = createAdapter();
     const plan = adapter.buildCommandPlan({
