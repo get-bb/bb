@@ -1219,24 +1219,23 @@ export function resolveCommandScanRoots(
     return roots;
   }
 
-  const userRootPaths = new Set(
-    (resolution.nativeSkillRoots?.user ?? []).map((configuredPath) =>
+  const configuredRootOrigins = new Map<string, "project" | "user">();
+  for (const configuredPath of resolution.nativeSkillRoots?.user ?? []) {
+    configuredRootOrigins.set(
       resolveConfinedNativeSkillRoot(resolution.homeDir, configuredPath),
-    ),
-  );
-  for (const rootPath of userRootPaths) {
-    addConfiguredNativeSkillRoot(rootPath, "user");
+      "user",
+    );
   }
   const cwd = resolution.cwd;
   if (cwd !== null) {
-    const projectRootPaths = new Set(
-      (resolution.nativeSkillRoots?.project ?? []).map((configuredPath) =>
-        resolveConfinedNativeSkillRoot(cwd, configuredPath),
-      ),
-    );
-    for (const rootPath of projectRootPaths) {
-      addConfiguredNativeSkillRoot(rootPath, "project");
+    for (const configuredPath of resolution.nativeSkillRoots?.project ?? []) {
+      const rootPath = resolveConfinedNativeSkillRoot(cwd, configuredPath);
+      configuredRootOrigins.delete(rootPath);
+      configuredRootOrigins.set(rootPath, "project");
     }
+  }
+  for (const [rootPath, origin] of configuredRootOrigins) {
+    addConfiguredNativeSkillRoot(rootPath, origin);
   }
 
   return roots;

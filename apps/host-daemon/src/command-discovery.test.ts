@@ -1215,6 +1215,27 @@ describe("resolveCommandScanRoots", () => {
         origin: "project",
       },
     ]);
+
+    expect(
+      resolveCommandScanRoots({
+        providerId: "acp-custom",
+        cwd: fixture.homeDir,
+        homeDir: fixture.homeDir,
+        codexHome: fixture.codexHome,
+        nativeSkillRoots: {
+          user: [".shared/skills"],
+          project: [".shared/skills"],
+        },
+      }),
+    ).toEqual([
+      {
+        rootPath: path.join(fixture.homeDir, ".shared", "skills"),
+        shape: "skill",
+        namePrefix: "",
+        source: "skill",
+        origin: "project",
+      },
+    ]);
   });
 
   it("skips configured ACP project roots when cwd is null", async () => {
