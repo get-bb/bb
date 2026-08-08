@@ -362,6 +362,28 @@ function ChevronDownIcon() {
   );
 }
 
+function RefreshIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d="M21 12a9 9 0 0 0-15.2-6.5L3 8" />
+      <path d="M3 3v5h5" />
+      <path d="M3 12a9 9 0 0 0 15.2 6.5L21 16" />
+      <path d="M16 16h5v5" />
+    </svg>
+  );
+}
+
 function stateDotClass(kind: "issue" | "pr", state: string): string {
   if (state === "OPEN") return "bg-green-500";
   if (kind === "pr" && state === "MERGED") return "bg-purple-500";
@@ -779,11 +801,11 @@ function FilterBar({
 
 // Shared column widths so the header row lines up with item rows.
 const COL = {
-  id: "w-12 shrink-0",
+  id: "shrink-0 sm:w-12",
   assignee: "hidden w-28 shrink-0 lg:block",
-  status: "w-28 shrink-0",
+  status: "shrink-0 sm:w-28",
   updated: "hidden w-16 shrink-0 text-right md:block",
-  actions: "flex w-32 shrink-0 items-center justify-end gap-1",
+  actions: "ml-auto flex shrink-0 items-center justify-end gap-1 sm:ml-0 sm:w-32",
 } as const;
 
 function AssigneeCell({ assignees }: { assignees: string[] }) {
@@ -920,40 +942,44 @@ function ItemRow({
   const busy = spawningKey === `${item.repo}#${item.number}`;
   return (
     <div
-      className="flex cursor-pointer items-center gap-3 px-3 py-2 hover:bg-accent/50"
+      className="grid cursor-pointer grid-cols-1 gap-y-2 px-3 py-3 hover:bg-accent/50 sm:flex sm:items-center sm:gap-3 sm:py-2"
       onClick={onOpen}
     >
-      <span className={`${COL.id} font-mono text-xs text-muted-foreground`}>
-        #{item.number}
-      </span>
-      <span className="flex min-w-0 flex-1 items-center gap-2">
-        <span className="min-w-0 truncate text-sm text-foreground">{item.title}</span>
+      <span className="flex min-w-0 flex-col items-start gap-1.5 sm:order-2 sm:flex-1 sm:flex-row sm:items-center sm:gap-2">
+        <span className="min-w-0 flex-1 line-clamp-3 text-sm font-medium leading-snug text-foreground sm:line-clamp-1 sm:leading-normal">
+          {item.title}
+        </span>
         <LabelChips labels={item.labels} className="hidden shrink-0 xl:flex" />
         <ThreadPills links={links} />
       </span>
-      <span className={`${COL.assignee} text-xs text-muted-foreground`}>
-        <AssigneeCell assignees={item.assignees} />
-      </span>
-      <span className={COL.status}>
-        <StatusCell item={item} />
-      </span>
-      <span className={`${COL.updated} text-xs text-muted-foreground`}>
-        {relativeTime(item.updatedAt)}
-      </span>
-      <span className={COL.actions}>
-        <Button
-          size="sm"
-          variant="outline"
-          className="h-7"
-          disabled={spawningKey !== null}
-          onClick={(event) => {
-            event.stopPropagation();
-            spawn(item.kind === "issue" ? "startWork" : "startReview", item.repo, item.number);
-          }}
-        >
-          {busy ? "…" : item.kind === "issue" ? "Start" : "Review"}
-        </Button>
-        <RowMenu item={item} />
+      <span className="flex min-w-0 items-center gap-2 sm:contents">
+        <span className={`${COL.id} font-mono text-xs text-muted-foreground sm:order-1`}>
+          #{item.number}
+        </span>
+        <span className={`${COL.assignee} text-xs text-muted-foreground sm:order-3`}>
+          <AssigneeCell assignees={item.assignees} />
+        </span>
+        <span className={`${COL.status} sm:order-4`}>
+          <StatusCell item={item} />
+        </span>
+        <span className={`${COL.updated} text-xs text-muted-foreground sm:order-5`}>
+          {relativeTime(item.updatedAt)}
+        </span>
+        <span className={`${COL.actions} sm:order-6`}>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7"
+            disabled={spawningKey !== null}
+            onClick={(event) => {
+              event.stopPropagation();
+              spawn(item.kind === "issue" ? "startWork" : "startReview", item.repo, item.number);
+            }}
+          >
+            {busy ? "…" : item.kind === "issue" ? "Start" : "Review"}
+          </Button>
+          <RowMenu item={item} />
+        </span>
       </span>
     </div>
   );
@@ -963,12 +989,28 @@ function TableSkeleton() {
   return (
     <div className="divide-y divide-border">
       {[0, 1, 2, 3].map((row) => (
-        <div key={row} className="flex items-center gap-3 px-3 py-3">
-          <Skeleton className="h-3 w-10" />
-          <Skeleton className="h-3 flex-1" />
-          <Skeleton className="hidden h-3 w-24 lg:block" />
-          <Skeleton className="h-3 w-24" />
-          <Skeleton className="hidden h-3 w-12 md:block" />
+        <div
+          key={row}
+          className="grid grid-cols-1 gap-y-3 px-3 py-3 sm:flex sm:items-center sm:gap-3"
+        >
+          <Skeleton className="h-3 w-4/5 sm:order-2 sm:flex-1" />
+          <span className="flex items-center gap-2 sm:contents">
+            <span className={`${COL.id} sm:order-1`}>
+              <Skeleton className="h-3 w-10" />
+            </span>
+            <span className={`${COL.assignee} sm:order-3`}>
+              <Skeleton className="h-3 w-24" />
+            </span>
+            <span className={`${COL.status} sm:order-4`}>
+              <Skeleton className="h-3 w-24" />
+            </span>
+            <span className={`${COL.updated} sm:order-5`}>
+              <Skeleton className="ml-auto h-3 w-12" />
+            </span>
+            <span className={`${COL.actions} sm:order-6`}>
+              <Skeleton className="h-7 w-20" />
+            </span>
+          </span>
         </div>
       ))}
     </div>
@@ -1022,7 +1064,7 @@ function ItemsTable({
 
   return (
     <div className="overflow-hidden rounded-lg border border-border bg-card">
-      <div className="flex items-center gap-3 border-b border-border bg-muted/50 px-3 py-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+      <div className="hidden items-center gap-3 border-b border-border bg-muted/50 px-3 py-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground sm:flex">
         <span className={COL.id}>ID</span>
         <span className="min-w-0 flex-1">Title</span>
         <span className={COL.assignee}>Assignee</span>
@@ -2187,7 +2229,7 @@ function PanelHeader() {
   }, [rpc]);
   return (
     <>
-      <span className="text-xs text-muted-foreground">
+      <span className="hidden text-xs text-muted-foreground sm:inline">
         {failed
           ? "Sync failed — check `gh auth status`"
           : status === null
@@ -2198,8 +2240,16 @@ function PanelHeader() {
                 }`
               : "GitHub CLI not authenticated"}
       </span>
-      <Button size="sm" variant="outline" disabled={syncing} onClick={refresh}>
-        {syncing ? "Syncing…" : "Refresh"}
+      <Button
+        size="sm"
+        variant="outline"
+        className="size-8 gap-1.5 px-0 sm:h-8 sm:w-auto sm:px-3"
+        disabled={syncing}
+        onClick={refresh}
+        aria-label={syncing ? "Syncing GitHub data" : "Refresh GitHub data"}
+      >
+        <RefreshIcon className={syncing ? "animate-spin" : undefined} />
+        <span className="hidden sm:inline">{syncing ? "Syncing…" : "Refresh"}</span>
       </Button>
     </>
   );
@@ -2228,7 +2278,7 @@ function GithubPanel({ subPath }: PluginNavPanelProps) {
   }, []);
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-5">
+    <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-4 md:p-5">
       <PageBody className="max-w-5xl">
         <GithubPanelBody
           route={route}
