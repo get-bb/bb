@@ -20,14 +20,14 @@ const faviconColorValues = {
 };
 
 const icons = [
-  { file: "icon-192.png", mode: "tile" },
-  { file: "icon-512.png", mode: "tile" },
-  { file: "icon-192-maskable.png", mode: "tile" },
-  { file: "icon-512-maskable.png", mode: "tile" },
+  "icon-192.png",
+  "icon-512.png",
+  "icon-192-maskable.png",
+  "icon-512-maskable.png",
   // Opaque white tile: iOS renders transparency in touch icons as black,
   // and the system's dark/tinted home-screen treatments need a full-bleed
   // opaque source.
-  { file: "apple-touch-icon.png", mode: "tile" },
+  "apple-touch-icon.png",
 ];
 
 // Monochrome manifest icons (purpose: "monochrome") are alpha masks — the
@@ -77,29 +77,12 @@ function tintTileIcon(data, colorRgb) {
   return output;
 }
 
-function tintGlyphIcon(data, colorRgb) {
-  const output = Buffer.from(data);
-  for (let index = 0; index < output.length; index += 4) {
-    const alpha = data[index + 3];
-    if (alpha === 0) continue;
-    output[index] = colorRgb[0];
-    output[index + 1] = colorRgb[1];
-    output[index + 2] = colorRgb[2];
-    output[index + 3] = alpha;
-  }
-  return output;
-}
-
-async function generatedPng(icon, color, hex) {
-  const { data, info } = await sharp(join(publicDir, icon.file))
+async function generatedPng(file, hex) {
+  const { data, info } = await sharp(join(publicDir, file))
     .ensureAlpha()
     .raw()
     .toBuffer({ resolveWithObject: true });
-  const colorRgb = parseHex(hex);
-  const output =
-    icon.mode === "glyph"
-      ? tintGlyphIcon(data, colorRgb)
-      : tintTileIcon(data, colorRgb);
+  const output = tintTileIcon(data, parseHex(hex));
 
   return sharp(output, {
     raw: { width: info.width, height: info.height, channels: 4 },
@@ -190,10 +173,10 @@ for (const monochromeIcon of monochromeIcons) {
 }
 
 for (const [color, hex] of Object.entries(faviconColorValues)) {
-  for (const icon of icons) {
+  for (const file of icons) {
     await writeOrCheck(
-      outputFileName(icon.file, color),
-      await generatedPng(icon, color, hex),
+      outputFileName(file, color),
+      await generatedPng(file, hex),
     );
   }
 
