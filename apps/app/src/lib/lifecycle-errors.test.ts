@@ -4,7 +4,6 @@ import { HttpError } from "./api";
 import {
   describeLifecycleError,
   formatLifecycleErrorDescription,
-  isEnvironmentProvisioningError,
   parseLifecycleError,
   type LifecycleErrorDescription,
   type LifecycleErrorOperation,
@@ -598,38 +597,6 @@ describe("parseLifecycleError", () => {
 
     expect(parseLifecycleError(new Error("Nope"))).toBeNull();
     expect(parseLifecycleError(genericError)).toBeNull();
-  });
-});
-
-describe("isEnvironmentProvisioningError", () => {
-  it("recognizes a provisioning lifecycle error", () => {
-    expect(
-      isEnvironmentProvisioningError(
-        httpError({
-          code: "environment_not_ready",
-          message: "Environment unavailable",
-          details: {
-            environmentStatus: "provisioning",
-            hasPath: false,
-          },
-        }),
-      ),
-    ).toBe(true);
-  });
-
-  it("rejects non-provisioning lifecycle errors", () => {
-    expect(
-      isEnvironmentProvisioningError(
-        httpError({
-          code: "environment_not_ready",
-          message: "Environment unavailable",
-          details: {
-            environmentStatus: "error",
-            hasPath: false,
-          },
-        }),
-      ),
-    ).toBe(false);
   });
 });
 
