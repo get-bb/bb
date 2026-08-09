@@ -447,6 +447,34 @@ function fileEditMessageKey(
   return `${callId}:${fileEditChangeIdentity(change)}`;
 }
 
+interface ResolveScopedFileEditMessageKeyArgs {
+  baseKey: string;
+  foreignMessageIds: ReadonlySet<string>;
+  scopeFields: EventProjectionMessageScopeFields;
+  threadId: string;
+}
+
+/**
+ * A call id reused across scopes must still mint distinct message ids, so fall
+ * back to a scope-qualified key when the plain key is already taken by a
+ * foreign-scope row.
+ */
+function resolveScopedFileEditMessageKey(
+  args: ResolveScopedFileEditMessageKeyArgs,
+): string {
+  if (
+    args.foreignMessageIds.size === 0 ||
+    !args.foreignMessageIds.has(
+      messageId(args.threadId, "file-edit", args.baseKey),
+    )
+  ) {
+    return args.baseKey;
+  }
+  const scope = args.scopeFields.scope;
+  const scopeDiscriminator = scope.kind === "turn" ? scope.turnId : "thread";
+  return `${scopeDiscriminator}:${args.baseKey}`;
+}
+
 function buildFileEditChangeEntries(
   callId: string,
   changes: readonly EventProjectionFileEditChange[],
@@ -615,6 +643,20 @@ export function upsertFileEdit(
     ? eventProjectionMessageTurnScopeFields(turnId)
     : eventProjectionMessageThreadScopeFields();
   const existingRows = state.fileEditsByCallId.get(partial.callId) ?? [];
+  // Providers can reuse call ids across scopes (e.g. resumed ACP sessions
+  // restart their synthetic id counters). Merge only rows from a compatible
+  // scope and leave foreign-scope rows untouched, so each scope keeps its own
+  // file-edit message instead of failing the whole projection.
+  const compatibleRows: EventProjectionFileEditMessage[] = [];
+  const foreignRows: EventProjectionFileEditMessage[] = [];
+  for (const row of existingRows) {
+    if (haveCompatibleEventProjectionMessageScope(row, scopeFields)) {
+      compatibleRows.push(row);
+    } else {
+      foreignRows.push(row);
+    }
+  }
+  const foreignMessageIds = new Set(foreignRows.map((row) => row.id));
   const stdoutBuffer =
     state.fileEditStdoutBuffersByCallId.get(partial.callId) ??
     createVisibleTextBuffer();
@@ -643,7 +685,7 @@ export function upsertFileEdit(
     // A later change list is authoritative for the call: rows absent from the
     // new list are dropped so stale split file-edit rows do not linger.
     const existingRowsByMatchKey =
-      groupFileEditRowsByChangeMatchKey(existingRows);
+      groupFileEditRowsByChangeMatchKey(compatibleRows);
     const usedRowIds = new Set<string>();
     const nextRows: EventProjectionFileEditMessage[] = [];
     for (const entry of buildFileEditChangeEntries(
@@ -672,7 +714,12 @@ export function upsertFileEdit(
         createFileEditMessage({
           callId: partial.callId,
           change: entry.change,
-          messageKey: entry.messageKey,
+          messageKey: resolveScopedFileEditMessageKey({
+            baseKey: entry.messageKey,
+            foreignMessageIds,
+            scopeFields,
+            threadId,
+          }),
           meta,
           partial,
           scopeFields,
@@ -682,18 +729,19 @@ export function upsertFileEdit(
       );
     }
 
-    replaceFileEditMessagesForCall(state, partial.callId, nextRows);
-    state.fileEditsByCallId.set(partial.callId, nextRows);
+    const allRows = [...foreignRows, ...nextRows];
+    replaceFileEditMessagesForCall(state, partial.callId, allRows);
+    state.fileEditsByCallId.set(partial.callId, allRows);
     return;
   }
 
   const changes =
-    existingRows.length > 0
-        ? existingRows.map(() => null)
-        : [null];
+    compatibleRows.length > 0
+      ? compatibleRows.map(() => null)
+      : [null];
 
   for (const [changeIndex, change] of changes.entries()) {
-    const existing = existingRows[changeIndex];
+    const existing = compatibleRows[changeIndex];
     if (existing) {
       updateFileEditMessage(
         existing,
@@ -709,18 +757,26 @@ export function upsertFileEdit(
     const message = createFileEditMessage({
       callId: partial.callId,
       change,
-      messageKey: fileEditMessageKey(partial.callId, change, changeIndex),
+      messageKey: resolveScopedFileEditMessageKey({
+        baseKey: fileEditMessageKey(partial.callId, change, changeIndex),
+        foreignMessageIds,
+        scopeFields,
+        threadId,
+      }),
       meta,
       partial,
       scopeFields,
       stdout,
       threadId,
     });
-    existingRows.push(message);
+    compatibleRows.push(message);
     state.messages.push(message);
   }
 
-  state.fileEditsByCallId.set(partial.callId, existingRows);
+  state.fileEditsByCallId.set(partial.callId, [
+    ...foreignRows,
+    ...compatibleRows,
+  ]);
 }
 
 export function onCompactionBegin(

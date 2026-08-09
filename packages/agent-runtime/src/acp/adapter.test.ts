@@ -20,10 +20,11 @@ const fullProviderExecutionContext = {
 
 type AcpProviderAdapter = ReturnType<typeof createAcpProviderAdapter>;
 
-function createAdapter(): AcpProviderAdapter {
+function createAdapter(turnIdPrefix?: string): AcpProviderAdapter {
   return createAcpProviderAdapter({
     profile: getAcpAgentProfile("acp-cursor"),
     additionalWorkspaceWriteRoots: ["/extra-root"],
+    ...(turnIdPrefix !== undefined ? { turnIdPrefix } : {}),
   });
 }
 
@@ -964,7 +965,7 @@ describe("acp adapter event translation", () => {
         scope: turnScope("turn-1"),
         item: {
           type: "fileChange",
-          id: "acp-fs-write-1",
+          id: "acp-fs-write-turn-1-1",
           changes: [
             {
               path: "/workspace/new.ts",
@@ -977,6 +978,35 @@ describe("acp adapter event translation", () => {
         },
       },
     ]);
+  });
+
+  it("mints distinct fs write ids across resumed sessions", () => {
+    const fsWrite = {
+      jsonrpc: "2.0" as const,
+      method: "acp/fs/write",
+      params: {
+        threadId: "thread-1",
+        path: "/workspace/new.ts",
+        kind: "add",
+      },
+    };
+    const firstSession = createAdapter("turn_first_");
+    startTurn(firstSession);
+    const secondSession = createAdapter("turn_second_");
+    startTurn(secondSession);
+
+    const firstEvents = firstSession.translateEvent(fsWrite, THREAD_CONTEXT);
+    const secondEvents = secondSession.translateEvent(fsWrite, THREAD_CONTEXT);
+
+    const firstId =
+      firstEvents[0]?.type === "item/completed" ? firstEvents[0].item.id : "";
+    const secondId =
+      secondEvents[0]?.type === "item/completed"
+        ? secondEvents[0].item.id
+        : "";
+    expect(firstId).toBe("acp-fs-write-turn_first_1-1");
+    expect(secondId).toBe("acp-fs-write-turn_second_1-1");
+    expect(firstId).not.toBe(secondId);
   });
 
   it("translates bridge warnings", () => {

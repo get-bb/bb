@@ -2350,6 +2350,67 @@ describe("buildThreadTimelineFromEvents", () => {
     expect(finalRows.map((row) => row.change.path)).toEqual(["src/a.ts"]);
   });
 
+  it("keeps file changes from different turns that reuse the same item id", () => {
+    const turn2Started: ThreadEventWithMeta = {
+      event: {
+        type: "turn/started",
+        threadId: "thread-1",
+        providerThreadId: "provider-thread-1",
+        scope: turnScope("turn-2"),
+      },
+      meta: { id: "event-2", seq: 2, createdAt: 2 },
+    };
+    const turn2FileChange: ThreadEventWithMeta = {
+      event: {
+        type: "item/completed",
+        threadId: "thread-1",
+        providerThreadId: "provider-thread-1",
+        scope: turnScope("turn-2"),
+        item: {
+          type: "fileChange",
+          id: "file-edit-1",
+          changes: [
+            {
+              path: "src/a.ts",
+              kind: "update",
+              diff: "@@ -1 +1 @@\n-old a\n+turn 2 a",
+            },
+          ],
+          status: "completed",
+          approvalStatus: null,
+        },
+      },
+      meta: { id: "event-3", seq: 3, createdAt: 3 },
+    };
+
+    const rows = collectFileChangeRows(
+      buildTimelineRows([
+        turnStartedEvent({ seq: 0 }),
+        fileChangeItemEvent({
+          changes: [
+            {
+              path: "src/a.ts",
+              kind: "update",
+              diff: "@@ -1 +1 @@\n-old a\n+turn 1 a",
+            },
+          ],
+          itemId: "file-edit-1",
+          seq: 1,
+          type: "item/completed",
+        }),
+        turn2Started,
+        turn2FileChange,
+      ]),
+    );
+
+    expect(rows).toHaveLength(2);
+    expect(new Set(rows.map((row) => row.id)).size).toBe(2);
+    expect(rows.map((row) => row.change.diff)).toEqual([
+      "@@ -1 +1 @@\n-old a\n+turn 1 a",
+      "@@ -1 +1 @@\n-old a\n+turn 2 a",
+    ]);
+  });
+
   it("keeps file-change row identity stable when movePath appears later", () => {
     const startedEvent = fileChangeItemEvent({
       changes: [

@@ -1168,7 +1168,9 @@ export function createAcpProviderAdapter(
           scope: turnScope(turnId),
           item: {
             type: "fileChange",
-            id: `acp-fs-write-${state.fsWriteCounter}`,
+            // Include the turn id: resumed sessions restart the counter, so a
+            // bare counter would reuse ids already persisted in earlier turns.
+            id: `acp-fs-write-${turnId}-${state.fsWriteCounter}`,
             changes: [
               {
                 path: params.data.path,
