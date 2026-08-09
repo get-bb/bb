@@ -71,9 +71,6 @@ function resolveForkEnvironment(
   if (args.workspace === "reuse") {
     return { type: "reuse", environmentId: sourceEnvironment.id };
   }
-  // An isolated personal fork needs a new personal workspace. Reusing the
-  // source's unmanaged path here would make the fork look like a new root
-  // thread while bypassing the personal-workspace boundary.
   if (
     args.projectId === PERSONAL_PROJECT_ID ||
     sourceEnvironment.workspaceProvisionType === "personal"
@@ -149,8 +146,6 @@ export async function createThreadForkFromRequest(
       visibility: request.visibility,
     },
     {
-      // Eligibility uses this exact id to allow only source-derived reuse of
-      // a switched unmanaged personal environment.
       forkSourceEnvironmentId: sourceEnvironment.id,
       ...(isSeedOnlyIdleFork ? { providerInput: [] } : {}),
     },

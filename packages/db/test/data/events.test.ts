@@ -1668,8 +1668,6 @@ describe("events", () => {
         },
       },
     });
-    // The directory update itself must not invalidate the provider session;
-    // this is the exact boundary that previously caused the transcript reset.
     expect(getLastStoredProviderThreadId(db, thread.id)).toBe("provider_old");
     appendStoredThreadEvent(db, noopNotifier, {
       threadId: thread.id,

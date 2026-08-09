@@ -230,8 +230,6 @@ function shouldInvalidateProviderMaintenanceRuntimeAfterProviderCliInstall(args:
 
 const commandHandlers: CommandHandlerMap = {
   "thread.start": async (command, options) => {
-    // Registration is ordered with handoffs; complete it before start work can
-    // be reaped or superseded by a directory switch.
     const release =
       await options.runtimeManager.retainEnvironmentForThreadCommand(
         command.environmentId,
@@ -244,8 +242,6 @@ const commandHandlers: CommandHandlerMap = {
     }
   },
   "turn.submit": async (command, options) => {
-    // A submit can be the first command after a directory switch, so it uses
-    // the same awaited ownership barrier as thread.start.
     const release =
       await options.runtimeManager.retainEnvironmentForThreadCommand(
         command.environmentId,
@@ -263,8 +259,6 @@ const commandHandlers: CommandHandlerMap = {
       command.environmentId,
       options.runtimeManager,
     );
-    // A moved thread may still be resident in another runtime. Make this
-    // environment the sole provider owner before lifecycle operations run.
     await options.runtimeManager.releaseThreadFromOtherEnvironments({
       environmentId: command.environmentId,
       threadId: command.threadId,
@@ -298,8 +292,6 @@ const commandHandlers: CommandHandlerMap = {
       command.environmentId,
       options.runtimeManager,
     );
-    // Provider lifecycle operations must target the current environment too;
-    // cancel may otherwise stop a stale runtime owner.
     await options.runtimeManager.releaseThreadFromOtherEnvironments({
       environmentId: command.environmentId,
       threadId: command.threadId,
@@ -326,8 +318,6 @@ const commandHandlers: CommandHandlerMap = {
     if (!entry) {
       return {};
     }
-    // Provider lifecycle operations must target the current environment too;
-    // rename may otherwise mutate a stale runtime owner.
     await options.runtimeManager.releaseThreadFromOtherEnvironments({
       environmentId: command.environmentId,
       threadId: command.threadId,
@@ -345,8 +335,6 @@ const commandHandlers: CommandHandlerMap = {
       runtimeManager: options.runtimeManager,
       workspaceContext: command.workspaceContext,
     });
-    // Provider lifecycle operations must target the current environment too;
-    // archive may otherwise mutate a stale runtime owner.
     await options.runtimeManager.releaseThreadFromOtherEnvironments({
       environmentId: command.environmentId,
       threadId: command.threadId,

@@ -313,8 +313,6 @@ describe("idle cold-start activation", () => {
         path: "/tmp/send-dispatch-switched",
         status: "ready",
       });
-      // Use the real directory-update handler so the regression covers the
-      // event and environment transition, not just a manually moved thread.
       seedTurnStarted(harness.deps, {
         environmentId: environment.id,
         providerThreadId: "provider-send-dispatch-4",

@@ -418,9 +418,6 @@ describe("CommandRouter", () => {
     });
     await flushAsyncWork();
 
-    // The environment lanes are intentionally distinct after a directory
-    // switch; the thread lane must keep the new retain from entering the
-    // handoff barrier until the old command has released its ownership.
     expect(retainEnvironment).toHaveBeenCalledTimes(1);
     expect(newResumeThread).not.toHaveBeenCalled();
     releaseOldRun.resolve();

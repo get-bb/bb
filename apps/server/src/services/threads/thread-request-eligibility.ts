@@ -94,9 +94,6 @@ function assertReuseWorkspaceProjectCompatibility(
     environment.workspaceProvisionType === "personal";
   const environmentIsUnmanaged =
     environment.workspaceProvisionType === "unmanaged";
-  // The exception is intentionally identity-scoped: a personal fork may
-  // follow its source across a directory switch, but must not gain arbitrary
-  // access to another unmanaged personal environment.
   if (
     projectIsPersonal &&
     !environmentIsPersonal &&

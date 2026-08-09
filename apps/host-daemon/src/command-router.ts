@@ -138,9 +138,6 @@ export class CommandRouter {
   // while session lanes serialize commands for one provider thread/session.
   private readonly providerProcessLanes = new Map<string, ReadWriteLaneState>();
   private readonly providerSessionLaneTails = new Map<string, Promise<void>>();
-  // Environment ids change when a thread's working directory changes. Keep
-  // starts/submits on a thread-global lane as well, otherwise two environment
-  // lanes can each wait for the other's RuntimeManager handoff to finish.
   private readonly threadTurnLaneTails = new Map<string, Promise<void>>();
   private readonly inFlightThreadProviderLanes = new Map<
     string,
@@ -298,8 +295,6 @@ export class CommandRouter {
     if (command.type !== "thread.start" && command.type !== "turn.submit") {
       return work();
     }
-    // Keep the lane around the full dispatch body, including its finally
-    // release, so the next environment cannot retain ownership early.
     return this.runInSerialLane({
       key: command.threadId,
       lanes: this.threadTurnLaneTails,

@@ -588,10 +588,7 @@ export async function createThreadFromRequest(
   options: {
     /** Provider-facing input when it differs from the persisted start seed. */
     providerInput?: ThreadCreateServiceRequestInput["input"];
-    /**
-     * Exact source environment selected by a fork route; this narrowly scopes
-     * the unmanaged personal-project reuse exception.
-     */
+    /** Source environment selected by the public fork route. */
     forkSourceEnvironmentId?: string;
   } = {},
 ) {
@@ -684,10 +681,6 @@ export async function createThreadFromRequest(
       "originKind requires a sourceThreadId",
     );
   }
-  // A switched personal directory is reusable only by a fork of that source.
-  // Carry the exact environment through both fork entry points so eligibility
-  // can reject a different unmanaged environment instead of broadening the
-  // personal-project reuse rule.
   const forkSourceEnvironmentId =
     options.forkSourceEnvironmentId ??
     (originKind === "fork" &&
