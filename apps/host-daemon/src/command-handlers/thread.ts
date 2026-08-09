@@ -251,6 +251,8 @@ export async function ensureThreadRuntime(
     workspaceContext: resumeContext.workspaceContext,
   });
 
+  // Resolve the destination entry first, then transfer provider ownership
+  // before resuming the persisted session in that environment.
   await options.runtimeManager.releaseThreadFromOtherEnvironments({
     environmentId: command.environmentId,
     threadId: command.threadId,

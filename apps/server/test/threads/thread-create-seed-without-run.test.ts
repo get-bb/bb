@@ -862,6 +862,8 @@ describe("thread creation child-thread boundary validation", () => {
         id: "host-personal-fork-source-environment",
       });
       ensurePersonalProject(harness.db);
+      // Model the environment left behind when a personal thread changes its
+      // working directory; this is the only unmanaged reuse exception.
       const sourceEnvironment = seedEnvironment(harness.deps, {
         hostId: host.id,
         path: "/tmp/personal-fork-source",

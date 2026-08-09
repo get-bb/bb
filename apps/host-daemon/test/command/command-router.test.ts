@@ -386,6 +386,10 @@ describe("CommandRouter", () => {
     const originalNewResumeThread = newRuntime.resumeThread.bind(newRuntime);
     const newResumeThread = vi.fn(originalNewResumeThread);
     newRuntime.resumeThread = newResumeThread;
+    const retainEnvironment = vi.spyOn(
+      runtimeManager,
+      "retainEnvironmentForThreadCommand",
+    );
 
     const router = createRouter(harness, { runtimeManager });
     const oldTask = runRouterCommand({
@@ -414,12 +418,21 @@ describe("CommandRouter", () => {
     });
     await flushAsyncWork();
 
+    // The environment lanes are intentionally distinct after a directory
+    // switch; the thread lane must keep the new retain from entering the
+    // handoff barrier until the old command has released its ownership.
+    expect(retainEnvironment).toHaveBeenCalledTimes(1);
     expect(newResumeThread).not.toHaveBeenCalled();
     releaseOldRun.resolve();
     const [oldResponse, newResponse] = await Promise.all([oldTask, newTask]);
 
     expect(oldResponse.ok).toBe(true);
     expect(newResponse.ok).toBe(true);
+    expect(retainEnvironment).toHaveBeenNthCalledWith(
+      2,
+      "env-router-new",
+      "thread-moved",
+    );
     expect(oldStopThread).toHaveBeenCalledWith({
       threadId: "thread-moved",
     });

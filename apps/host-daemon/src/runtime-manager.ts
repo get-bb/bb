@@ -290,6 +290,9 @@ export class RuntimeManager {
     string,
     Promise<HostWorkspace>
   >();
+  // The count prevents environment reaping while a start/submit crosses the
+  // provider boundary. The completion promises below additionally let a
+  // cross-environment handoff wait for that command's finally block.
   private readonly inFlightThreadCommandsByEnvironmentId = new Map<
     string,
     Map<string, number>
@@ -298,6 +301,8 @@ export class RuntimeManager {
     string,
     Map<string, Set<Promise<void>>>
   >();
+  // Serialize ownership barriers per thread so retain/release cannot observe
+  // one another halfway through a handoff; resume waits on the release.
   private readonly threadControlTails = new Map<string, Promise<void>>();
   private providerMaintenanceRuntime: AgentRuntime | null = null;
   private pendingProviderMaintenanceRuntime: PendingProviderMaintenanceRuntime | null =
@@ -345,6 +350,11 @@ export class RuntimeManager {
     return undefined;
   }
 
+  /**
+   * Lifecycle operations are serialized per thread, while provider turns can
+   * continue independently. A settled tail deliberately swallows a previous
+   * cleanup failure so one failed handoff does not strand later commands.
+   */
   private enqueueThreadControl<T>(
     threadId: string,
     work: () => T | PromiseLike<T>,
@@ -369,6 +379,8 @@ export class RuntimeManager {
    * still resident in the old environment runtime. Release that old runtime
    * before the new environment resumes the persisted provider thread, so two
    * runtime processes never own the same provider session at once.
+   * Provider lifecycle commands use the same handoff before operating on a
+   * thread, because stop/cancel/rename/archive can otherwise hit a stale owner.
    */
   async releaseThreadFromOtherEnvironments(args: {
     environmentId: string;
@@ -382,6 +394,9 @@ export class RuntimeManager {
           ? []
           : [...(commandsByThreadId.get(args.threadId) ?? [])],
       );
+      // A command may have retained the old runtime before its provider turn
+      // became observable. Wait for its release callback, not just runtime
+      // state, so stopping the stale owner cannot race start/submit.
       await Promise.all(inFlightOldCommands);
       await this.releaseThreadFromOtherEnvironmentsOnce(args);
     });
@@ -435,6 +450,8 @@ export class RuntimeManager {
         commandsByThreadId,
       );
 
+      // The reaping count keeps the entry loaded; this separate promise lets
+      // a move wait until the command's finally block has actually released it.
       let resolveCompletion!: () => void;
       const completion = new Promise<void>((resolve) => {
         resolveCompletion = resolve;
@@ -487,6 +504,8 @@ export class RuntimeManager {
             environmentId,
           );
         }
+        // Remove both guards before waking a waiting handoff; it should see
+        // the old command as fully released when it resumes.
         resolveCompletion();
       };
     });

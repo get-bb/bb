@@ -66,6 +66,8 @@ function seedForkSource(
 function seedPersonalDirectoryForkSource(harness: TestAppHarness) {
   const { host } = seedHostSession(harness.deps);
   ensurePersonalProject(harness.db);
+  // This is the persisted state after update_environment_directory: the
+  // personal thread follows an unmanaged path rather than a personal workspace.
   const environment = seedEnvironment(harness.deps, {
     hostId: host.id,
     path: "/tmp/personal-switched-directory",
@@ -163,6 +165,8 @@ describe("public thread fork route", () => {
       if (queued.command.workspaceProvisionType !== "personal") {
         throw new Error("Expected personal environment.provision");
       }
+      // Complete provisioning so the test can inspect the subsequent
+      // thread.start handoff rather than stopping at the queued command.
       await reportQueuedCommandSuccess(harness, queued, {
         path: queued.command.targetPath,
         branchName: "main",

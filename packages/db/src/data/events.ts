@@ -2820,6 +2820,8 @@ export function getLastStoredProviderThreadId(
   db: DbQueryConnection,
   threadId: string,
 ): string | null {
+  // Directory switches are system operations, not provider identity changes;
+  // intentionally do not gate this on a newer thread/identity event.
   const latestProviderRow = db
     .select({ providerThreadId: events.providerThreadId })
     .from(events)
