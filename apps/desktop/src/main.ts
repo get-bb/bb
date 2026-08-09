@@ -2052,7 +2052,16 @@ async function runDesktopApp(): Promise<void> {
   });
   assertPathExists({ label: "app icon", path: iconPath });
 
-  if (process.platform === "darwin" && app.dock !== undefined) {
+  // Packaged builds must not call dock.setIcon: it replaces the bundle icon
+  // (already channel-correct via electron-builder) with a raw NSImage that
+  // bypasses the macOS appearance pipeline, so dark mode shows the light
+  // rendering. Dev runs still need it to show icon-dev.png instead of the
+  // stock Electron icon.
+  if (
+    process.platform === "darwin" &&
+    app.dock !== undefined &&
+    !paths.isPackaged
+  ) {
     app.dock.setIcon(iconPath);
   }
   await reapStaleOwnedRuntime({
