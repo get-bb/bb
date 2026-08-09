@@ -349,6 +349,7 @@ function createAgentRuntimeInternal(
       options.bridgeNodeExecutablePath ?? process.execPath,
     captureThreadExitState: (threadId) => ({
       activeTurnId: turnState.getActiveTurnId(threadId),
+      pendingTurnStart: pendingTurnStartThreadIds.has(threadId),
       providerThreadId:
         threadIdentityRegistry.getProviderThreadId(threadId) ?? null,
       threadId,

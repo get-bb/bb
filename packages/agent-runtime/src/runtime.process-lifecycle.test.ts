@@ -72,6 +72,7 @@ describe("createAgentRuntime process lifecycle", () => {
       bridgeBundleDir: undefined,
       captureThreadExitState: (threadId) => ({
         activeTurnId: null,
+        pendingTurnStart: false,
         providerThreadId:
           identityRegistry.getProviderThreadId(threadId) ?? null,
         threadId,
@@ -1870,6 +1871,7 @@ rl.on("line", (line) => {
       });`,
     );
 
+    const exitInfo = vi.fn<NonNullable<AgentRuntimeOptions["onProcessExit"]>>();
     const runtime = createAgentRuntimeWithAdapters({
       workspacePath: tmpDir,
       onEvent: () => {},
@@ -1877,6 +1879,7 @@ rl.on("line", (line) => {
         contentItems: [{ type: "inputText", text: "ok" }],
         success: true,
       }),
+      onProcessExit: exitInfo,
       adapterFactory: () => createFakeAdapter(crashDuringTurnScript),
     });
 
@@ -1897,6 +1900,18 @@ rl.on("line", (line) => {
         options: fullRuntimeOptions,
       }),
     ).rejects.toThrow(/exited unexpectedly/i);
+    expect(exitInfo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        threads: [
+          expect.objectContaining({
+            activeTurnId: null,
+            pendingTurnStart: true,
+            providerThreadId: "prov-mid",
+            threadId: "t1",
+          }),
+        ],
+      }),
+    );
     await runtime.shutdown();
   });
 

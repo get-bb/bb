@@ -61,6 +61,7 @@ export type AgentRuntimeSkillRoot =
  */
 export interface AgentRuntimeProcessExitThreadState {
   activeTurnId: string | null;
+  pendingTurnStart: boolean;
   providerThreadId: string | null;
   threadId: string;
 }
