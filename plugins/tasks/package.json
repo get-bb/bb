@@ -19,8 +19,6 @@
     "server.ts",
     "app.tsx",
     "skills",
-    "logo.svg",
-    "logo-dark.svg",
     "README.md"
   ],
   "engines": {
@@ -31,11 +29,7 @@
     "name": "Tasks",
     "description": "Plan and track work in BB, delegate tasks to agents, and keep task context connected to worker threads.",
     "branding": {
-      "icon": "ListTodo",
-      "logo": {
-        "light": "./logo.svg",
-        "dark": "./logo-dark.svg"
-      }
+      "icon": "ListTodo"
     },
     "server": "./server.ts",
     "app": "./app.tsx",

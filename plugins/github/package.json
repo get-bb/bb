@@ -19,8 +19,6 @@
     "server.ts",
     "app.tsx",
     "components",
-    "logo.svg",
-    "logo-dark.svg",
     "README.md"
   ],
   "engines": {
@@ -31,11 +29,7 @@
     "name": "GitHub",
     "description": "Browse GitHub issues and pull requests in BB, then send them to agents.",
     "branding": {
-      "icon": "Github",
-      "logo": {
-        "light": "./logo.svg",
-        "dark": "./logo-dark.svg"
-      }
+      "icon": "Github"
     },
     "server": "./server.ts",
     "app": "./app.tsx"
