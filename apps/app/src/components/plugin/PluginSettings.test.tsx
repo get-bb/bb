@@ -97,6 +97,79 @@ describe("PluginSettingsForm", () => {
     });
   });
 
+  it("renders a multiline string in a textarea and saves embedded newlines", async () => {
+    const view = {
+      ok: true,
+      schema: {
+        preamble: { type: "string", label: "Preamble", multiline: true },
+      },
+      values: { preamble: "first\nsecond" },
+    };
+    const requests: RecordedRequest[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        requests.push({ url, init });
+        return jsonOk(view);
+      }),
+    );
+
+    const { wrapper } = createQueryClientTestHarness();
+    render(<PluginSettingsForm pluginId="demo" />, { wrapper });
+
+    const preamble = (await screen.findByLabelText(
+      "Preamble",
+    )) as HTMLTextAreaElement;
+    expect(preamble.tagName).toBe("TEXTAREA");
+    expect(preamble.value).toBe("first\nsecond");
+
+    fireEvent.change(preamble, { target: { value: "first\nsecond\nthird" } });
+    fireEvent.click(screen.getByRole("button", { name: /save settings/i }));
+
+    const put = await vi.waitFor(() => {
+      const found = requests.find((request) => request.init?.method === "PUT");
+      expect(found).toBeDefined();
+      return found;
+    });
+    expect(JSON.parse(String(put?.init?.body))).toEqual({
+      values: { preamble: "first\nsecond\nthird" },
+    });
+  });
+
+  it("renders a secret multiline setting write-only and unmasked", async () => {
+    const view = {
+      ok: true,
+      schema: {
+        signingKey: {
+          type: "string",
+          label: "Signing key",
+          secret: true,
+          multiline: true,
+        },
+      },
+      values: { signingKey: { set: true } },
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => jsonOk(view)),
+    );
+
+    const { wrapper } = createQueryClientTestHarness();
+    render(<PluginSettingsForm pluginId="demo" />, { wrapper });
+
+    const key = (await screen.findByLabelText(
+      "Signing key",
+    )) as HTMLTextAreaElement;
+    expect(key.tagName).toBe("TEXTAREA");
+    // Write-only: the server sends `{ set }`, never the value.
+    expect(key.value).toBe("");
+    expect(key.placeholder).toBe("[set]");
+    // No password mode exists for a textarea, so browser leaks are closed off
+    // explicitly instead.
+    expect(key.getAttribute("spellcheck")).toBe("false");
+    expect(key.getAttribute("autocomplete")).toBe("off");
+  });
+
   it("never sends an untouched secret and includes a typed one", async () => {
     const requests: RecordedRequest[] = [];
     vi.stubGlobal(

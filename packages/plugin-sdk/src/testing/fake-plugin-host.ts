@@ -283,7 +283,6 @@ export interface FakeAgentToolRecord {
   ): PluginAgentToolResult | Promise<PluginAgentToolResult>;
 }
 
-
 export interface FakeMentionProviderRecord {
   id: string;
   label: string;
@@ -501,6 +500,7 @@ const settingDescriptorSchema = z.discriminatedUnion("type", [
       type: z.literal("string"),
       ...settingsBaseFields,
       secret: z.literal(true).optional(),
+      multiline: z.literal(true).optional(),
       default: z.string().optional(),
     })
     .strict(),

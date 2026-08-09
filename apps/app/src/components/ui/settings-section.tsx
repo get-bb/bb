@@ -70,6 +70,12 @@ export interface SettingsWithControlProps {
   label: string;
   labelBadge?: string;
   description?: string;
+  /**
+   * "stacked" puts the control on its own full-width row beneath the label.
+   * Use it for controls that need the width — a textarea is unreadable in the
+   * narrow right-hand column an inline row gives it. Defaults to "inline".
+   */
+  layout?: "inline" | "stacked";
   children: ReactNode;
 }
 
@@ -85,16 +91,19 @@ export function SettingsWithControl({
   label,
   labelBadge,
   description,
+  layout = "inline",
   children,
 }: SettingsWithControlProps) {
+  const stacked = layout === "stacked";
   return (
     <div
       className={cn(
-        "flex flex-col gap-2.5 sm:flex-row sm:justify-between sm:gap-5",
-        description ? "sm:items-start" : "sm:items-center",
+        "flex flex-col gap-2.5",
+        !stacked && "sm:flex-row sm:justify-between sm:gap-5",
+        !stacked && (description ? "sm:items-start" : "sm:items-center"),
       )}
     >
-      <div className="min-w-0 flex-1">
+      <div className={cn("min-w-0", !stacked && "flex-1")}>
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
           <p className="min-w-0 text-sm font-normal text-foreground">{label}</p>
           {labelBadge ? <SettingsBadge>{labelBadge}</SettingsBadge> : null}
@@ -105,7 +114,9 @@ export function SettingsWithControl({
           </p>
         ) : null}
       </div>
-      <div className="shrink-0 sm:flex sm:justify-end">{children}</div>
+      <div className={stacked ? "min-w-0" : "shrink-0 sm:flex sm:justify-end"}>
+        {children}
+      </div>
     </div>
   );
 }

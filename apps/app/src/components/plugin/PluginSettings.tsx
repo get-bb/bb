@@ -13,6 +13,7 @@ import { Icon } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
 import { SettingsWithControl } from "@/components/ui/settings-section.js";
 import { Switch } from "@bb/shared-ui/switch";
+import { Textarea } from "@bb/shared-ui/textarea";
 import { ResourceDetailPanel } from "@bb/shared-ui/resource-list";
 import { applyPluginSettingsView } from "@/hooks/cache-owners/plugin-cache-owner";
 import {
@@ -177,6 +178,28 @@ function PluginSettingField({
       : !isSecret && typeof storedValue === "string"
         ? storedValue
         : "";
+  // A secret textarea is write-only like its input counterpart — the server
+  // only ever reports `{ set }`, so `value` is empty until the user types.
+  // It is deliberately not masked: there is no `type="password"` for a
+  // textarea, and masking a pasted PEM key would hide the one thing worth
+  // checking without protecting a value that is never rendered back. Browser
+  // spellcheck and autofill are turned off instead, so a pasted key is not
+  // shipped to a spellcheck service or offered as an autofill target.
+  if (descriptor.multiline === true) {
+    return (
+      <Textarea
+        value={value}
+        aria-label={descriptor.label}
+        placeholder={
+          isSecret ? (secretIsSet ? "[set]" : "[not set]") : undefined
+        }
+        spellCheck={isSecret ? false : undefined}
+        autoComplete={isSecret ? "off" : undefined}
+        onChange={(event) => onChange(event.target.value)}
+        className="min-h-24 w-full resize-y text-xs"
+      />
+    );
+  }
   return (
     <Input
       type={isSecret ? "password" : "text"}
@@ -241,6 +264,11 @@ export function PluginSettingsForm({ pluginId }: { pluginId: string }) {
             descriptor.type === "string" && descriptor.secret === true
               ? "secret"
               : undefined
+          }
+          layout={
+            descriptor.type === "string" && descriptor.multiline === true
+              ? "stacked"
+              : "inline"
           }
           {...(descriptor.description !== undefined
             ? { description: descriptor.description }

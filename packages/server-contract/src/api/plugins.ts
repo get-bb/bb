@@ -251,6 +251,7 @@ export const pluginSettingDescriptorSchema = z.discriminatedUnion("type", [
       ...pluginSettingBaseSchema,
       type: z.literal("string"),
       secret: z.literal(true).optional(),
+      multiline: z.literal(true).optional(),
       default: z.string().optional(),
     })
     .strict(),

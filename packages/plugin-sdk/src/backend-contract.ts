@@ -44,6 +44,14 @@ export type PluginSettingDescriptor =
       description?: string;
       /** Stored in a 0600 file under <dataDir>/plugins/<id>/secrets/, never in the db or sent to the frontend. */
       secret?: true;
+      /**
+       * Render the value in a textarea rather than a single-line input, for
+       * prose and other newline-bearing text. The stored value is still a
+       * plain string; only the control changes. Composes with `secret` —
+       * a pasted PEM key or service-account JSON needs the height, and the
+       * value is write-only either way.
+       */
+      multiline?: true;
       default?: string;
     }
   | { type: "boolean"; label: string; description?: string; default?: boolean }

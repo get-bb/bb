@@ -43,6 +43,7 @@ const descriptorSchema = z.discriminatedUnion("type", [
       type: z.literal("string"),
       ...baseFields,
       secret: z.literal(true).optional(),
+      multiline: z.literal(true).optional(),
       default: z.string().optional(),
     })
     .strict(),
@@ -182,7 +183,8 @@ export async function readPluginSettingsValues(
     ) {
       parsed = undefined;
     }
-    values[key] = (parsed as PluginSettingValue | undefined) ?? descriptor.default;
+    values[key] =
+      (parsed as PluginSettingValue | undefined) ?? descriptor.default;
   }
   return values;
 }

@@ -303,6 +303,73 @@ describe("plugin settings + storage", () => {
       expect(entry?.status).toBe("error");
       expect(entry?.statusDetail).toContain("broken");
     });
+
+    it("round-trips a multiline string with embedded newlines", async () => {
+      const rootDir = await writePlugin(workDir, {
+        name: "bb-plugin-prose",
+        serverSource: `
+          export default async function plugin(bb: any) {
+            const settings = bb.settings.define({
+              preamble: { type: "string", label: "Preamble", multiline: true, default: "" },
+            });
+            (globalThis as any).__prose = { settings };
+          }
+        `,
+      });
+      expect((await service.installPath(rootDir)).status).toBe("running");
+
+      const body = "first\nsecond\n\nfourth";
+      const view = await service.updateSettings("prose", { preamble: body });
+      expect(view?.values.preamble).toBe(body);
+      expect(view?.schema.preamble).toMatchObject({
+        type: "string",
+        multiline: true,
+      });
+
+      const prose = (globalThis as Record<string, unknown>).__prose as {
+        settings: { get(): Promise<Record<string, unknown>> };
+      };
+      expect((await prose.settings.get()).preamble).toBe(body);
+    });
+
+    it("keeps a secret multiline value in its 0600 file, newlines intact", async () => {
+      const rootDir = await writePlugin(workDir, {
+        name: "bb-plugin-keyholder",
+        serverSource: `
+          export default async function plugin(bb: any) {
+            const settings = bb.settings.define({
+              signingKey: { type: "string", label: "Signing key", secret: true, multiline: true },
+            });
+            (globalThis as any).__keyholder = { settings };
+          }
+        `,
+      });
+      expect((await service.installPath(rootDir)).status).toBe("running");
+
+      const pem =
+        "-----BEGIN PRIVATE KEY-----\nabc\ndef\n-----END PRIVATE KEY-----";
+      const view = await service.updateSettings("keyholder", {
+        signingKey: pem,
+      });
+
+      // Secret storage rules still apply: 0600 file, never on the wire.
+      const secretPath = join(
+        dataDir,
+        "plugins",
+        "keyholder",
+        "secrets",
+        "signingKey",
+      );
+      expect(await readFile(secretPath, "utf8")).toBe(pem);
+      expect((await stat(secretPath)).mode & 0o777).toBe(0o600);
+      expect(view?.values.signingKey).toEqual({ set: true });
+      expect(JSON.stringify(view)).not.toContain("BEGIN PRIVATE KEY");
+
+      const keyholder = (globalThis as Record<string, unknown>).__keyholder as {
+        settings: { get(): Promise<Record<string, unknown>> };
+      };
+      expect((await keyholder.settings.get()).signingKey).toBe(pem);
+    });
   });
 
   describe("kv storage", () => {
