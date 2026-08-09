@@ -398,7 +398,8 @@ function createProps({
     } as unknown as ThreadDetailSecondaryContentProps["timeline"],
     workspace: {
       canCreateTerminal: false,
-      onCreatePullRequest: noop,
+      onCommitAndPush: noop,
+      onStartPullRequestAgent: async () => {},
       onCreateThread: noop,
       onMergePullRequest: noop,
       onOpenBrowserUrl: noop,

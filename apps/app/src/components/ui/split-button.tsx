@@ -53,6 +53,8 @@ interface SplitButtonProps {
   primaryAction: SplitButtonAction;
   secondaryActions: SplitButtonAction[];
   disabled?: boolean;
+  /** Add a divider between the primary action and the menu trigger. */
+  showPrimaryDivider?: boolean;
   /** Escape hatch for targeted overrides (e.g. tighter padding for icon-only primaries). Applied to both buttons. */
   className?: string;
   triggerLabel?: string;
@@ -69,6 +71,7 @@ function SplitButton({
   primaryAction,
   secondaryActions,
   disabled = false,
+  showPrimaryDivider = false,
   className,
   triggerLabel = "More actions",
   primaryTooltip,
@@ -86,7 +89,13 @@ function SplitButton({
     <button
       type="button"
       disabled={disabled}
-      className={cn(base, "rounded-r-none border-r-0 pr-1 focus-visible:z-10")}
+      className={cn(
+        base,
+        "rounded-r-none focus-visible:z-10",
+        showPrimaryDivider
+          ? "border-r border-r-border pr-2"
+          : "border-r-0 pr-1",
+      )}
       aria-label={primaryAction.label}
       aria-keyshortcuts={primaryAction.ariaKeyshortcuts}
       onClick={primaryAction.onSelect}

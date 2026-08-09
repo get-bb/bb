@@ -46,6 +46,8 @@ import {
 
 interface QueryOptions {
   enabled?: boolean;
+  /** Keep checking while an active agent may create a PR outside the API. */
+  refetchWhenAbsent?: boolean;
 }
 
 interface EnvironmentQueryOptions extends QueryOptions {
@@ -160,9 +162,12 @@ export function getEnvironmentPullRequestStaleTime(
 
 export function getEnvironmentPullRequestRefetchInterval(
   pullRequest: ThreadPullRequest | null | undefined,
+  options?: { refetchWhenAbsent?: boolean },
 ): number | false {
   if (!pullRequest || pullRequest.state !== "open") {
-    return false;
+    return options?.refetchWhenAbsent && !pullRequest
+      ? ENVIRONMENT_ACTIVE_PULL_REQUEST_REFETCH_MS
+      : false;
   }
   if (
     pullRequest.checks.state === "pending" ||
@@ -196,6 +201,7 @@ export function useEnvironmentPullRequest(
     refetchInterval: (query) =>
       getEnvironmentPullRequestRefetchInterval(
         getEnvironmentPullRequestFromResponse(query.state.data),
+        { refetchWhenAbsent: options?.refetchWhenAbsent },
       ),
     staleTime: (query) =>
       getEnvironmentPullRequestStaleTime(

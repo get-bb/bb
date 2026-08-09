@@ -36,6 +36,7 @@ import {
   useUpdateThread,
 } from "../../hooks/mutations/thread-state-mutations";
 import {
+  useCreateThread,
   useCreateThreadQueuedMessage,
   useSendThreadMessage,
 } from "../../hooks/mutations/thread-runtime-mutations";
@@ -73,6 +74,7 @@ import {
 } from "@bb/core-ui";
 import { assertNever } from "@bb/thread-view";
 import { useCreateThreadInWorktree } from "@/hooks/useCreateThreadInWorktree";
+import { useThreadCreationOptions } from "@/hooks/useThreadCreationOptions";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
 import { selectPrimaryHost, useHosts } from "@/hooks/queries/host-queries";
@@ -95,6 +97,10 @@ import {
 import { getGitStatusDisplay } from "@/components/workspace/workspace-status";
 import { WorkspaceFileEditor } from "@/components/workspace/WorkspaceFileEditor";
 import { getGitHubRepositoryUrl } from "@/components/workspace/WorkspaceGitBar";
+import type {
+  StartPullRequestAgentRequest,
+  WorkspacePullRequestAgentConfig,
+} from "@/components/workspace/WorkspacePullRequestAgentDialog";
 import {
   selectWorkspaceChangedFilesSection,
   type WorkspaceChangedFileSelection,
@@ -815,6 +821,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     threadId: threadId ?? "",
   });
   const sendMessage = useSendThreadMessage();
+  const createThread = useCreateThread();
   const createQueuedMessage = useCreateThreadQueuedMessage();
   const requestEnvironmentAction = useRequestEnvironmentAction();
   const [pullRequestMergeMethod, setPullRequestMergeMethod] = useAtom(
@@ -1544,49 +1551,129 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     workStatusResponse?.outcome === "unavailable"
       ? workStatusResponse.failure
       : undefined;
+  const isPullRequestAgentRunning =
+    thread !== undefined &&
+    isRunningThreadRuntimeDisplayStatus(thread.runtime.displayStatus);
   const pullRequestQuery = useEnvironmentPullRequest(thread?.environmentId, {
     enabled: canUseGitUi && environment !== undefined,
+    refetchWhenAbsent: canUseGitUi && isPullRequestAgentRunning,
   });
   const refetchPullRequest = pullRequestQuery.refetch;
   const pullRequest = getEnvironmentPullRequestFromResponse(
     pullRequestQuery.data,
   );
   const [pullRequestPendingAction, setPullRequestPendingAction] = useState<
-    "create" | "merge" | null
+    "merge" | null
   >(null);
-  const handlePullRequestCreate = useCallback(
-    async (draft: boolean) => {
+  const pullRequestAgentOptions = useThreadCreationOptions({
+    enabled: canUseGitUi && Boolean(thread?.environmentId),
+    environmentId: thread?.environmentId ?? undefined,
+    initialEnvironmentSelectionValue: thread?.environmentId ?? undefined,
+    initialProviderId: thread?.providerId,
+    resetKey: thread?.id,
+    scope: "component-local",
+  });
+  const pullRequestAgentModel =
+    pullRequestAgentOptions.activeModel?.model ??
+    pullRequestAgentOptions.selectedModel;
+  const pullRequestAgentConfig =
+    useMemo<WorkspacePullRequestAgentConfig | null>(() => {
+      if (
+        !pullRequestAgentOptions.selectedProviderId ||
+        !pullRequestAgentModel
+      ) {
+        return null;
+      }
+      return {
+        execution: {
+          providerRouting: pullRequestAgentOptions.executionOptionsRouting,
+          provider: {
+            options: pullRequestAgentOptions.providerOptions,
+            selectedId: pullRequestAgentOptions.selectedProviderId,
+            onChange: pullRequestAgentOptions.setSelectedProviderId,
+            hasMultiple: pullRequestAgentOptions.hasMultipleProviders,
+            displayName: pullRequestAgentOptions.selectedProviderDisplayName,
+          },
+          model: {
+            active: { model: pullRequestAgentModel },
+            selected: pullRequestAgentOptions.selectedModel,
+            options: pullRequestAgentOptions.modelOptions,
+            moreOptions: pullRequestAgentOptions.moreModelOptions,
+            isLoading: pullRequestAgentOptions.isLoadingModels,
+            loadFailed: pullRequestAgentOptions.modelLoadFailed,
+            loadError: pullRequestAgentOptions.modelLoadError,
+            onChange: pullRequestAgentOptions.setSelectedModel,
+          },
+          serviceTier: {
+            value: pullRequestAgentOptions.serviceTier,
+            onChange: pullRequestAgentOptions.setServiceTier,
+            supported: pullRequestAgentOptions.supportsServiceTier,
+            supportByProvider:
+              pullRequestAgentOptions.serviceTierSupportByProvider,
+          },
+          reasoning: {
+            value: pullRequestAgentOptions.reasoningLevel,
+            options: pullRequestAgentOptions.reasoningOptions,
+            onChange: pullRequestAgentOptions.setReasoningLevel,
+          },
+        },
+        executionInputSources: pullRequestAgentOptions.executionInputSources,
+        model: pullRequestAgentModel,
+        permissionMode: pullRequestAgentOptions.permissionMode,
+        providerId: pullRequestAgentOptions.selectedProviderId,
+        reasoningLevel: pullRequestAgentOptions.reasoningLevel,
+        serviceTier: pullRequestAgentOptions.serviceTier,
+      };
+    }, [pullRequestAgentModel, pullRequestAgentOptions]);
+  const handleStartPullRequestAgent = useCallback(
+    async (request: StartPullRequestAgentRequest): Promise<void> => {
       const environmentId = thread?.environmentId;
-      if (!environmentId) return;
-      setPullRequestPendingAction("create");
-      const toastId = appToast.loading(
-        draft ? "Creating draft pull request" : "Creating pull request",
-      );
+      if (!thread || !environmentId) {
+        return;
+      }
+      const toastId = appToast.loading("Starting pull request agent");
       try {
-        const response = await requestEnvironmentAction.mutateAsync({
-          id: environmentId,
-          action: "pull_request_create",
-          options: { draft },
+        await createThread.mutateAsync({
+          projectId: thread.projectId,
+          providerId: request.providerId,
+          model: request.model,
+          serviceTier: request.serviceTier,
+          reasoningLevel: request.reasoningLevel,
+          permissionMode: request.permissionMode,
+          executionInputSources: request.executionInputSources,
+          environment: { type: "reuse", environmentId },
+          parentThreadId: thread.id,
+          input: [{ type: "text", text: request.prompt, mentions: [] }],
         });
-        if (response.action !== "pull_request_create") {
-          throw new Error("Expected pull request create action response.");
-        }
-        await refetchPullRequest();
-        appToast.success(response.message, { id: toastId });
+        appToast.success("Pull request agent started", { id: toastId });
       } catch (error) {
-        appToast.error("Failed to create pull request", {
+        appToast.error("Failed to start pull request agent", {
           id: toastId,
           description: getMutationErrorMessage({
             error,
-            fallbackMessage: "Pull request was not created",
+            fallbackMessage: "The agent was not started",
           }),
         });
-      } finally {
-        setPullRequestPendingAction(null);
+        throw error;
       }
     },
-    [refetchPullRequest, requestEnvironmentAction, thread?.environmentId],
+    [createThread, thread],
   );
+  const handleCommitAndPush = useCallback(() => {
+    if (!pullRequestAgentConfig) {
+      return;
+    }
+    void handleStartPullRequestAgent({
+      executionInputSources: pullRequestAgentConfig.executionInputSources,
+      model: pullRequestAgentConfig.model,
+      permissionMode: pullRequestAgentConfig.permissionMode,
+      prompt:
+        "Review the current workspace changes, create an appropriate commit, and push the current branch to its remote. Do not create a pull request or make unrelated changes.",
+      providerId: pullRequestAgentConfig.providerId,
+      reasoningLevel: pullRequestAgentConfig.reasoningLevel,
+      serviceTier: pullRequestAgentConfig.serviceTier,
+    }).catch(() => undefined);
+  }, [handleStartPullRequestAgent, pullRequestAgentConfig]);
   const handlePullRequestReady = useCallback(async () => {
     const environmentId = thread?.environmentId;
     if (!environmentId) {
@@ -2693,12 +2780,18 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
           }}
           workspace={{
             canCreateTerminal,
-            onCreatePullRequest: handlePullRequestCreate,
+            canSpawnPullRequestAgent:
+              canUseGitUi &&
+              Boolean(thread?.environmentId) &&
+              thread?.canSpawnChild === true,
+            onStartPullRequestAgent: handleStartPullRequestAgent,
+            onCommitAndPush: handleCommitAndPush,
             onCreateThread: onCreateNewThreadInWorktree,
             onMergePullRequest: handlePullRequestMerge,
             onOpenBrowserUrl: openBrowserTabAndReveal,
             onOpenChangedFile: openSecondaryPanelDiffFile,
             pullRequestPendingAction,
+            pullRequestAgentConfig,
             pullRequestResponse: pullRequestQuery.data,
             repositoryUrl: getGitHubRepositoryUrl(projectGitRemoteUrl),
             runScript: projectWorkspaceSettingsQuery.data?.runScript,

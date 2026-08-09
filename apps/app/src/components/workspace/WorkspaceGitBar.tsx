@@ -1,3 +1,4 @@
+import { forwardRef, useCallback, useImperativeHandle, useState } from "react";
 import type { WorkspaceStatus } from "@bb/domain";
 import type {
   EnvironmentPullRequestResponse,
@@ -6,17 +7,35 @@ import type {
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { SplitButton } from "@/components/ui/split-button.js";
+import {
+  DEFAULT_PULL_REQUEST_AGENT_PROMPT,
+  DEFAULT_DRAFT_PULL_REQUEST_AGENT_PROMPT,
+  WorkspacePullRequestAgentDialog,
+  type StartPullRequestAgentRequest,
+  type WorkspacePullRequestAgentConfig,
+  type WorkspacePullRequestDraft,
+} from "./WorkspacePullRequestAgentDialog";
 
-type PullRequestPendingAction = "create" | "merge" | null;
+type PullRequestPendingAction = "merge" | null;
+
+const PULL_REQUEST_ACTION_CLASS = "h-6 px-2 text-2xs";
+const PULL_REQUEST_SPLIT_BUTTON_CLASS = "h-6 px-1.5 text-2xs";
 
 interface WorkspacePullRequestButtonProps {
-  onCreate: (draft: boolean) => void;
+  canSpawnAgent: boolean;
   onMerge: (method: PullRequestMergeMethod) => void;
   onOpenUrl: (url: string) => void;
+  onStartAgent: (request: StartPullRequestAgentRequest) => Promise<void>;
   pendingAction: PullRequestPendingAction;
+  pullRequestDraft: WorkspacePullRequestDraft;
   pullRequestResponse: EnvironmentPullRequestResponse | undefined;
   repositoryUrl: string | null;
+  agentConfig: WorkspacePullRequestAgentConfig | null;
   workspaceStatus: WorkspaceStatus | undefined;
+}
+
+export interface WorkspacePullRequestButtonHandle {
+  openCreatePullRequest: () => void;
 }
 
 export function getGitHubRepositoryUrl(
@@ -63,7 +82,11 @@ function ActionContent({
   icon,
   label,
 }: {
-  icon: "ExternalLink" | "GitMerge" | "GitPullRequestArrow";
+  icon:
+    | "ExternalLink"
+    | "GitMerge"
+    | "GitPullRequestArrow"
+    | "GitPullRequestDraft";
   label: string;
 }) {
   return (
@@ -74,18 +97,74 @@ function ActionContent({
   );
 }
 
-export function WorkspacePullRequestButton({
-  onCreate,
-  onMerge,
-  onOpenUrl,
-  pendingAction,
-  pullRequestResponse,
-  repositoryUrl,
-  workspaceStatus,
-}: WorkspacePullRequestButtonProps) {
+export const WorkspacePullRequestButton = forwardRef<
+  WorkspacePullRequestButtonHandle,
+  WorkspacePullRequestButtonProps
+>(function WorkspacePullRequestButton(
+  {
+    agentConfig,
+    canSpawnAgent,
+    onMerge,
+    onOpenUrl,
+    onStartAgent,
+    pendingAction,
+    pullRequestDraft,
+    pullRequestResponse,
+    repositoryUrl,
+    workspaceStatus,
+  },
+  ref,
+) {
+  const [agentDialogOpen, setAgentDialogOpen] = useState(false);
+  const [isStartingAgent, setIsStartingAgent] = useState(false);
+  const [agentPrompt, setAgentPrompt] = useState<string | undefined>();
+  const handleStartAgent = async (
+    request: StartPullRequestAgentRequest,
+  ): Promise<void> => {
+    setIsStartingAgent(true);
+    try {
+      await onStartAgent(request);
+      setAgentDialogOpen(false);
+    } finally {
+      setIsStartingAgent(false);
+    }
+  };
+
+  const openAgentDialog = useCallback(
+    (prompt?: string) => {
+      const basePrompt = prompt ?? DEFAULT_PULL_REQUEST_AGENT_PROMPT;
+      const title = pullRequestDraft.title.trim();
+      const description = pullRequestDraft.description.trim();
+      const draftDetails = [
+        title ? `Title: ${title}` : null,
+        description ? `Description:\n${description}` : null,
+      ].filter((detail): detail is string => detail !== null);
+      setAgentPrompt(
+        draftDetails.length > 0
+          ? `${basePrompt}\n\nUse these PR details from the user:\n${draftDetails.join("\n")}`
+          : basePrompt,
+      );
+      setAgentDialogOpen(true);
+    },
+    [pullRequestDraft],
+  );
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      openCreatePullRequest: () => openAgentDialog(),
+    }),
+    [openAgentDialog],
+  );
+
   if (pullRequestResponse === undefined) {
     return (
-      <Button type="button" variant="outline" size="sm" disabled>
+      <Button
+        type="button"
+        variant="outline"
+        className={PULL_REQUEST_ACTION_CLASS}
+        disabled
+      >
         Checking…
       </Button>
     );
@@ -93,7 +172,12 @@ export function WorkspacePullRequestButton({
 
   if (pullRequestResponse.outcome === "unavailable") {
     return (
-      <Button type="button" variant="outline" size="sm" disabled>
+      <Button
+        type="button"
+        variant="outline"
+        className={PULL_REQUEST_ACTION_CLASS}
+        disabled
+      >
         Offline
       </Button>
     );
@@ -113,7 +197,7 @@ export function WorkspacePullRequestButton({
         <Button
           type="button"
           variant="outline"
-          size="sm"
+          className={PULL_REQUEST_ACTION_CLASS}
           onClick={() => onOpenUrl(pullRequest.url)}
         >
           <ActionContent icon="ExternalLink" label="View PR" />
@@ -124,7 +208,7 @@ export function WorkspacePullRequestButton({
     const label = pendingAction === "merge" ? "Merging…" : "Merge";
     return (
       <SplitButton
-        className="h-7 px-2 text-xs"
+        className={PULL_REQUEST_SPLIT_BUTTON_CLASS}
         disabled={pendingAction !== null}
         primaryAction={{
           label,
@@ -150,44 +234,99 @@ export function WorkspacePullRequestButton({
 
   if (!repositoryUrl || !workspaceStatus) {
     return (
-      <Button type="button" variant="outline" size="sm" disabled>
+      <Button
+        type="button"
+        variant="outline"
+        className={PULL_REQUEST_ACTION_CLASS}
+        disabled
+      >
         Offline
       </Button>
     );
   }
 
   const manualUrl = getManualPullRequestUrl(repositoryUrl, workspaceStatus);
-  const label = pendingAction === "create" ? "Creating…" : "Create PR";
-  return (
-    <SplitButton
-      className="h-7 px-2 text-xs"
-      disabled={pendingAction !== null}
-      primaryAction={{
-        label,
-        onSelect: () => onCreate(false),
-        content: <ActionContent icon="GitPullRequestArrow" label={label} />,
-      }}
-      secondaryActions={[
-        { label: "Create draft PR", onSelect: () => onCreate(true) },
-        ...(manualUrl
-          ? [
-              {
-                label: "Create PR manually",
-                onSelect: () => onOpenUrl(manualUrl),
-                content: (
-                  <ActionContent
-                    icon="ExternalLink"
-                    label="Create PR manually"
-                  />
-                ),
-              },
-            ]
-          : []),
-      ]}
-      triggerLabel="More pull request actions"
-      mobileTitle="Create pull request"
+  if (!canSpawnAgent) {
+    if (manualUrl) {
+      return (
+        <Button
+          type="button"
+          variant="outline"
+          className={PULL_REQUEST_ACTION_CLASS}
+          onClick={() => onOpenUrl(manualUrl)}
+        >
+          <ActionContent icon="ExternalLink" label="Create PR manually" />
+        </Button>
+      );
+    }
+    return (
+      <Button
+        type="button"
+        variant="outline"
+        className={PULL_REQUEST_ACTION_CLASS}
+        disabled
+      >
+        Agent unavailable
+      </Button>
+    );
+  }
+
+  const label = "Create PR";
+  const agentDialog = (
+    <WorkspacePullRequestAgentDialog
+      key={agentPrompt ?? "pull-request"}
+      agentConfig={agentConfig}
+      initialPrompt={agentPrompt}
+      isSubmitting={isStartingAgent}
+      onOpenChange={setAgentDialogOpen}
+      onSubmit={handleStartAgent}
+      open={agentDialogOpen}
     />
   );
-}
+  return (
+    <>
+      <SplitButton
+        className={PULL_REQUEST_SPLIT_BUTTON_CLASS}
+        disabled={pendingAction !== null}
+        showPrimaryDivider
+        primaryAction={{
+          label,
+          onSelect: () => openAgentDialog(),
+          content: <ActionContent icon="GitPullRequestArrow" label={label} />,
+        }}
+        secondaryActions={[
+          {
+            label: "Create draft PR",
+            onSelect: () =>
+              openAgentDialog(DEFAULT_DRAFT_PULL_REQUEST_AGENT_PROMPT),
+            content: (
+              <ActionContent
+                icon="GitPullRequestDraft"
+                label="Create draft PR"
+              />
+            ),
+          },
+          ...(manualUrl
+            ? [
+                {
+                  label: "Create PR manually",
+                  onSelect: () => onOpenUrl(manualUrl),
+                  content: (
+                    <ActionContent
+                      icon="ExternalLink"
+                      label="Create PR manually"
+                    />
+                  ),
+                },
+              ]
+            : []),
+        ]}
+        triggerLabel="More pull request actions"
+        mobileTitle="Create pull request"
+      />
+      {agentDialog}
+    </>
+  );
+});
 
 export type { PullRequestPendingAction };

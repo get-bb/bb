@@ -64,4 +64,21 @@ describe("SplitButton", () => {
         .hasAttribute("disabled"),
     ).toBe(true);
   });
+
+  it("can separate the primary action from the menu trigger", () => {
+    render(
+      <SplitButton
+        primaryAction={{ label: "Create PR", onSelect: vi.fn() }}
+        secondaryActions={[{ label: "Create draft PR", onSelect: vi.fn() }]}
+        showPrimaryDivider
+      />,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "Create PR" }).className,
+    ).toContain("border-r-border");
+    expect(
+      screen.getByRole("button", { name: "Create PR" }).className,
+    ).toContain("pr-2");
+  });
 });

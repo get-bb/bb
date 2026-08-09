@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type {
   GitHostPullRequestCheck,
   ThreadPullRequest,
@@ -8,20 +8,33 @@ import type {
 import type { EnvironmentPullRequestResponse } from "@bb/server-contract";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
+import { Input } from "@bb/shared-ui/input";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { Textarea } from "@bb/shared-ui/textarea";
+import type { WorkspacePullRequestDraft } from "./WorkspacePullRequestAgentDialog";
 import { selectWorkspaceChangedFilesSections } from "./workspace-change-summary";
 import { WorkspaceFileTree } from "./file-tree/WorkspaceFileTree";
 import { useWorkspaceFileTree } from "./file-tree/useWorkspaceFileTree";
 
 export type WorkspaceUpperTabId = "all-files" | "changes" | "checks";
 
+const GIT_STATUS_ACTION_CLASS =
+  "shrink-0 cursor-pointer text-xs text-muted-foreground/60 transition-colors duration-150 hover:text-foreground focus-visible:text-foreground focus-visible:underline focus-visible:outline-none";
+
 interface WorkspaceRepositoryPanelProps {
   activeTab: WorkspaceUpperTabId;
   environmentId: string | null | undefined;
+  onCommitAndPush: () => void;
+  onCreatePullRequest: () => void;
   onOpenAllChanges: () => void;
   onOpenChangedFile: (path: string) => void;
   onOpenFile: (path: string) => void;
   onOpenUrl: (url: string) => void;
+  onDiscardPullRequestDraft: () => void;
+  onPullRequestDraftChange: (draft: WorkspacePullRequestDraft) => void;
+  onSavePullRequestDraft: () => void;
+  pullRequestDraft: WorkspacePullRequestDraft;
+  pullRequestDraftIsDirty: boolean;
   pullRequestResponse: EnvironmentPullRequestResponse | undefined;
   workspaceStatus: WorkspaceStatus | undefined;
 }
@@ -197,63 +210,202 @@ function PullRequestChecks({
   );
 }
 
+function GitStatusRow({
+  action,
+  children,
+}: {
+  action?: string | { label: string; onClick: () => void };
+  children: ReactNode;
+}) {
+  const actionLabel = typeof action === "string" ? action : action?.label;
+  return (
+    <li className="flex min-h-8 items-center gap-2 text-sm">
+      <span
+        aria-hidden
+        className="size-3 shrink-0 rounded-full border border-muted-foreground"
+      />
+      <span className="min-w-0 flex-1 truncate">{children}</span>
+      {typeof action === "object" ? (
+        <button
+          type="button"
+          className={GIT_STATUS_ACTION_CLASS}
+          onClick={action.onClick}
+        >
+          {action.label}
+        </button>
+      ) : actionLabel ? (
+        <span className="shrink-0 text-xs text-muted-foreground">
+          {actionLabel}
+        </span>
+      ) : null}
+    </li>
+  );
+}
+
 function ChecksPanel({
+  onCommitAndPush,
+  onCreatePullRequest,
+  onDiscardPullRequestDraft,
   onOpenUrl,
+  onPullRequestDraftChange,
+  onSavePullRequestDraft,
+  pullRequestDraft,
+  pullRequestDraftIsDirty,
   pullRequestResponse,
   workspaceStatus,
 }: Pick<
   WorkspaceRepositoryPanelProps,
-  "onOpenUrl" | "pullRequestResponse" | "workspaceStatus"
+  | "onCommitAndPush"
+  | "onCreatePullRequest"
+  | "onDiscardPullRequestDraft"
+  | "onOpenUrl"
+  | "onPullRequestDraftChange"
+  | "onSavePullRequestDraft"
+  | "pullRequestDraft"
+  | "pullRequestDraftIsDirty"
+  | "pullRequestResponse"
+  | "workspaceStatus"
 >) {
-  const commits = workspaceStatus?.mergeBase?.commits ?? [];
-  const currentCommit = commits[commits.length - 1];
-  const branchName =
-    workspaceStatus?.checkout.kind === "branch"
-      ? workspaceStatus.checkout.branchName
-      : workspaceStatus?.checkout.kind === "detached"
-        ? "Detached HEAD"
-        : "No branch";
-  const checkoutSha =
-    workspaceStatus?.checkout.kind === "branch" ||
-    workspaceStatus?.checkout.kind === "detached"
-      ? workspaceStatus.checkout.headSha
-      : null;
-  const commitSha = currentCommit?.shortSha ?? checkoutSha?.slice(0, 8) ?? "—";
-  const gitStatus = workspaceStatus?.workingTree.hasUncommittedChanges
-    ? "Uncommitted changes"
-    : workspaceStatus
-      ? "Committed"
-      : "Git status unavailable";
+  const uncommittedChangeCount = workspaceStatus?.workingTree.files.length ?? 0;
+  const behindCount = workspaceStatus?.mergeBase?.behindCount ?? 0;
+  const mergeBaseBranch = workspaceStatus?.mergeBase?.mergeBaseBranch;
+
   return (
-    <div className="h-full overflow-y-auto p-2">
-      <div className="mb-3 border-b border-border-seam px-2 pb-2">
-        <h2 className="truncate text-xs font-semibold">
-          {currentCommit?.subject ?? "Current commit"}
-        </h2>
-        <dl className="mt-2 grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-1 text-2xs">
-          <dt className="text-muted-foreground">Branch</dt>
-          <dd className="truncate font-mono text-foreground">{branchName}</dd>
-          <dt className="text-muted-foreground">Commit</dt>
-          <dd className="font-mono text-foreground">{commitSha}</dd>
-          <dt className="text-muted-foreground">Status</dt>
-          <dd className="text-foreground">{gitStatus}</dd>
-        </dl>
-      </div>
-      {pullRequestResponse?.outcome === "unavailable" ? (
-        <p className="flex items-center gap-2 px-2 text-xs text-muted-foreground">
-          <Icon name="AlertCircle" className="size-3.5" />
-          Offline
+    <div className="h-full overflow-y-auto">
+      {pullRequestResponse?.outcome === "absent" ? (
+        <section
+          aria-label="Pull request preparation"
+          className="space-y-0.5 px-3 pb-3 pt-4"
+        >
+          <Input
+            aria-label="PR title"
+            className={cn(
+              "h-7 border-0 px-0 py-0 text-base shadow-none placeholder:text-muted-foreground/60 focus-visible:ring-0",
+              pullRequestDraft.title.trim().length > 0
+                ? "text-foreground"
+                : "text-muted-foreground/60",
+            )}
+            onChange={(event) =>
+              onPullRequestDraftChange({
+                ...pullRequestDraft,
+                title: event.target.value,
+              })
+            }
+            placeholder="PR title"
+            value={pullRequestDraft.title}
+          />
+          <Textarea
+            aria-label="PR description"
+            className="min-h-0 resize-none border-0 px-0 py-0 text-xs leading-5 text-muted-foreground/60 shadow-none placeholder:text-muted-foreground/60 focus-visible:ring-0"
+            onChange={(event) =>
+              onPullRequestDraftChange({
+                ...pullRequestDraft,
+                description: event.target.value,
+              })
+            }
+            placeholder="PR description"
+            rows={2}
+            value={pullRequestDraft.description}
+          />
+          <div
+            aria-label="Pull request draft actions"
+            className="flex h-8 items-start justify-end gap-1 pt-2"
+          >
+            {pullRequestDraftIsDirty ? (
+              <>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="h-6 px-2 text-2xs"
+                  onClick={onDiscardPullRequestDraft}
+                >
+                  Discard
+                </Button>
+                <Button
+                  type="button"
+                  className="h-6 px-2 text-2xs"
+                  onClick={onSavePullRequestDraft}
+                >
+                  Save
+                </Button>
+              </>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
+      <section className="px-3 py-3">
+        <p className="mb-3 text-sm font-medium text-muted-foreground">
+          Git status
         </p>
-      ) : pullRequestResponse?.outcome === "absent" ? (
-        <p className="px-2 text-xs text-muted-foreground">No pull request</p>
-      ) : pullRequestResponse?.outcome === "available" ? (
-        <PullRequestChecks
-          pullRequest={pullRequestResponse.pullRequest}
-          onOpenUrl={onOpenUrl}
-        />
-      ) : (
-        <p className="px-2 text-xs text-muted-foreground">Loading checks…</p>
-      )}
+        <ul className="space-y-2">
+          <li className="flex min-h-8 items-center gap-2 text-sm">
+            <span
+              aria-hidden
+              className={cn(
+                "size-3 shrink-0 rounded-full border",
+                pullRequestResponse?.outcome === "available"
+                  ? pullRequestResponse.pullRequest.state === "open"
+                    ? "border-success bg-success"
+                    : "border-muted-foreground"
+                  : "border-muted-foreground",
+              )}
+            />
+            <span className="min-w-0 flex-1 truncate">
+              {pullRequestResponse?.outcome === "unavailable" ? (
+                <span className="flex items-center gap-1.5 text-muted-foreground">
+                  <Icon name="AlertCircle" className="size-3.5" />
+                  Offline
+                </span>
+              ) : pullRequestResponse?.outcome === "available" ? (
+                <button
+                  type="button"
+                  className="min-w-0 max-w-full truncate text-left hover:underline"
+                  onClick={() => onOpenUrl(pullRequestResponse.pullRequest.url)}
+                >
+                  #{pullRequestResponse.pullRequest.number} ·{" "}
+                  {pullRequestResponse.pullRequest.title}
+                </button>
+              ) : pullRequestResponse?.outcome === "absent" ? (
+                "No PR open"
+              ) : (
+                <span className="text-muted-foreground">Checking PR…</span>
+              )}
+            </span>
+            {pullRequestResponse?.outcome === "absent" ? (
+              <button
+                type="button"
+                className={GIT_STATUS_ACTION_CLASS}
+                onClick={onCreatePullRequest}
+              >
+                Create PR
+              </button>
+            ) : null}
+          </li>
+          {uncommittedChangeCount > 0 ? (
+            <GitStatusRow
+              action={{ label: "Commit and push", onClick: onCommitAndPush }}
+            >
+              {uncommittedChangeCount} uncommitted change
+              {uncommittedChangeCount === 1 ? "" : "s"}
+            </GitStatusRow>
+          ) : null}
+          {behindCount > 0 && mergeBaseBranch ? (
+            <GitStatusRow action="Pull">
+              {behindCount} commit{behindCount === 1 ? "" : "s"} behind{" "}
+              {mergeBaseBranch}
+            </GitStatusRow>
+          ) : null}
+        </ul>
+      </section>
+
+      {pullRequestResponse?.outcome === "available" ? (
+        <div className="border-t border-border-seam px-2 py-3">
+          <PullRequestChecks
+            pullRequest={pullRequestResponse.pullRequest}
+            onOpenUrl={onOpenUrl}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -136,6 +136,19 @@ describe("useEnvironmentPullRequest", () => {
     ).toBe(ACTIVE_PULL_REQUEST_REFETCH_MS);
   });
 
+  it("can keep polling an absent PR while an agent is running", () => {
+    expect(
+      getEnvironmentPullRequestRefetchInterval(null, {
+        refetchWhenAbsent: true,
+      }),
+    ).toBe(ACTIVE_PULL_REQUEST_REFETCH_MS);
+    expect(
+      getEnvironmentPullRequestRefetchInterval(pullRequestFixture, {
+        refetchWhenAbsent: true,
+      }),
+    ).toBe(false);
+  });
+
   it("does not poll draft or settled pull requests", () => {
     expect(
       getEnvironmentPullRequestRefetchInterval({

@@ -42,8 +42,15 @@ import {
 } from "@/components/workspace/WorkspaceRepositoryPanel";
 import {
   WorkspacePullRequestButton,
+  type WorkspacePullRequestButtonHandle,
   type PullRequestPendingAction,
 } from "@/components/workspace/WorkspaceGitBar";
+import {
+  EMPTY_WORKSPACE_PULL_REQUEST_DRAFT,
+  type StartPullRequestAgentRequest,
+  type WorkspacePullRequestAgentConfig,
+  type WorkspacePullRequestDraft,
+} from "@/components/workspace/WorkspacePullRequestAgentDialog";
 import { WorkspaceProcessTerminal } from "@/components/workspace/terminals/WorkspaceProcessTerminal";
 import { useThreadTitleDisplayText } from "@/components/thread/ThreadTitleMentions";
 import { ThreadTimelinePane } from "./ThreadTimelinePane";
@@ -103,12 +110,17 @@ interface ThreadDetailSecondaryContentProps {
   timeline: ThreadTimelinePaneProps;
   workspace: {
     canCreateTerminal: boolean;
-    onCreatePullRequest: (draft: boolean) => void;
+    canSpawnPullRequestAgent?: boolean;
+    onCommitAndPush: () => void;
+    onStartPullRequestAgent: (
+      request: StartPullRequestAgentRequest,
+    ) => Promise<void>;
     onCreateThread?: () => void;
     onMergePullRequest: (method: PullRequestMergeMethod) => void;
     onOpenBrowserUrl: (url: string) => void;
     onOpenChangedFile: (path: string) => void;
     pullRequestPendingAction: PullRequestPendingAction;
+    pullRequestAgentConfig?: WorkspacePullRequestAgentConfig | null;
     pullRequestResponse: EnvironmentPullRequestResponse | undefined;
     repositoryUrl: string | null;
     runScript: string | null | undefined;
@@ -153,6 +165,26 @@ function ThreadDetailSecondaryContentBody({
   const [activeUpperTab, setActiveUpperTab] =
     useState<WorkspaceUpperTabId>("all-files");
   const [activeLowerTab, setActiveLowerTab] = useState("terminal");
+  const [pullRequestDraft, setPullRequestDraft] =
+    useState<WorkspacePullRequestDraft>(EMPTY_WORKSPACE_PULL_REQUEST_DRAFT);
+  const [savedPullRequestDraft, setSavedPullRequestDraft] =
+    useState<WorkspacePullRequestDraft>(EMPTY_WORKSPACE_PULL_REQUEST_DRAFT);
+  const pullRequestButtonRef = useRef<WorkspacePullRequestButtonHandle>(null);
+  const pullRequestDraftIsDirty =
+    pullRequestDraft.title !== savedPullRequestDraft.title ||
+    pullRequestDraft.description !== savedPullRequestDraft.description;
+  const handlePullRequestDraftChange = useCallback(
+    (draft: WorkspacePullRequestDraft) => {
+      setPullRequestDraft(draft);
+    },
+    [],
+  );
+  const handleSavePullRequestDraft = useCallback(() => {
+    setSavedPullRequestDraft(pullRequestDraft);
+  }, [pullRequestDraft]);
+  const handleDiscardPullRequestDraft = useCallback(() => {
+    setPullRequestDraft(savedPullRequestDraft);
+  }, [savedPullRequestDraft]);
   const persistedSecondaryWidthPercent = useAtomValue(
     secondaryPanelWidthPercentAtom,
   );
@@ -521,10 +553,14 @@ function ThreadDetailSecondaryContentBody({
           }
           upperTrailingContent={
             <WorkspacePullRequestButton
-              onCreate={workspace.onCreatePullRequest}
+              ref={pullRequestButtonRef}
+              agentConfig={workspace.pullRequestAgentConfig ?? null}
+              canSpawnAgent={workspace.canSpawnPullRequestAgent ?? false}
               onMerge={workspace.onMergePullRequest}
               onOpenUrl={workspace.onOpenBrowserUrl}
+              onStartAgent={workspace.onStartPullRequestAgent}
               pendingAction={workspace.pullRequestPendingAction}
+              pullRequestDraft={savedPullRequestDraft}
               pullRequestResponse={workspace.pullRequestResponse}
               repositoryUrl={workspace.repositoryUrl}
               workspaceStatus={stableMetadata.workspaceStatus}
@@ -534,6 +570,10 @@ function ThreadDetailSecondaryContentBody({
             <WorkspaceRepositoryPanel
               activeTab={activeUpperTab}
               environmentId={environmentId}
+              onCommitAndPush={workspace.onCommitAndPush}
+              onCreatePullRequest={() =>
+                pullRequestButtonRef.current?.openCreatePullRequest()
+              }
               onOpenAllChanges={() =>
                 threadSecondaryPanelProps.onPanelChange("git-diff")
               }
@@ -542,6 +582,11 @@ function ThreadDetailSecondaryContentBody({
                 threadSecondaryPanelProps.onOpenFilePreview?.(path)
               }
               onOpenUrl={workspace.onOpenBrowserUrl}
+              onDiscardPullRequestDraft={handleDiscardPullRequestDraft}
+              onPullRequestDraftChange={handlePullRequestDraftChange}
+              onSavePullRequestDraft={handleSavePullRequestDraft}
+              pullRequestDraft={pullRequestDraft}
+              pullRequestDraftIsDirty={pullRequestDraftIsDirty}
               pullRequestResponse={workspace.pullRequestResponse}
               workspaceStatus={stableMetadata.workspaceStatus}
             />

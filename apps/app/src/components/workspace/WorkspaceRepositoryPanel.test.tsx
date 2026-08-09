@@ -62,10 +62,17 @@ const pullRequest: ThreadPullRequest = {
 
 const commonProps = {
   environmentId: "env_1",
+  onCommitAndPush: vi.fn(),
+  onCreatePullRequest: vi.fn(),
+  onDiscardPullRequestDraft: vi.fn(),
   onOpenAllChanges: vi.fn(),
   onOpenChangedFile: vi.fn(),
   onOpenFile: vi.fn(),
   onOpenUrl: vi.fn(),
+  onPullRequestDraftChange: vi.fn(),
+  onSavePullRequestDraft: vi.fn(),
+  pullRequestDraft: { title: "", description: "" },
+  pullRequestDraftIsDirty: false,
 };
 
 describe("WorkspaceRepositoryPanel", () => {
@@ -165,10 +172,164 @@ describe("WorkspaceRepositoryPanel", () => {
         workspaceStatus={makeWorkspaceStatus()}
       />,
     );
-    expect(screen.getByText("No pull request")).toBeTruthy();
+    expect(screen.getByText("No PR open")).toBeTruthy();
   });
 
-  it("shows the branch and commit details in Checks", () => {
+  it("shows PR preparation placeholders when no PR is open", () => {
+    render(
+      <WorkspaceRepositoryPanel
+        {...commonProps}
+        activeTab="checks"
+        pullRequestResponse={{ outcome: "absent" }}
+        workspaceStatus={makeWorkspaceStatus()}
+      />,
+    );
+
+    const title = screen.getByPlaceholderText("PR title");
+    const description = screen.getByPlaceholderText("PR description");
+    expect(title.className).toContain("text-muted-foreground/60");
+    expect(description.className).toContain("text-muted-foreground/60");
+  });
+
+  it("keeps the draft action slot the same height when buttons are hidden", () => {
+    const view = render(
+      <WorkspaceRepositoryPanel
+        {...commonProps}
+        activeTab="checks"
+        pullRequestResponse={{ outcome: "absent" }}
+        workspaceStatus={makeWorkspaceStatus()}
+      />,
+    );
+
+    expect(
+      screen.getByLabelText("Pull request draft actions").className,
+    ).toContain("h-8");
+
+    view.rerender(
+      <WorkspaceRepositoryPanel
+        {...commonProps}
+        activeTab="checks"
+        pullRequestDraft={{ title: "Test", description: "Test description" }}
+        pullRequestDraftIsDirty
+        pullRequestResponse={{ outcome: "absent" }}
+        workspaceStatus={makeWorkspaceStatus()}
+      />,
+    );
+
+    expect(
+      screen.getByLabelText("Pull request draft actions").className,
+    ).toContain("h-8");
+  });
+
+  it("shows useful git status rows only when the workspace has them", () => {
+    const view = render(
+      <WorkspaceRepositoryPanel
+        {...commonProps}
+        activeTab="checks"
+        pullRequestResponse={{ outcome: "absent" }}
+        workspaceStatus={makeWorkspaceStatus({
+          workingTree: {
+            hasUncommittedChanges: true,
+            state: "dirty_uncommitted",
+            files: Array.from({ length: 6 }, (_, index) => ({
+              path: `file-${index}.ts`,
+              status: "M" as const,
+              insertions: 1,
+              deletions: 0,
+            })),
+            insertions: 6,
+            deletions: 0,
+          },
+          mergeBase: {
+            mergeBaseBranch: "main",
+            baseRef: "main",
+            aheadCount: 0,
+            behindCount: 1,
+            hasCommittedUnmergedChanges: false,
+            commits: [],
+            files: [],
+            insertions: 0,
+            deletions: 0,
+          },
+        })}
+      />,
+    );
+
+    expect(screen.getByText("Git status")).toBeTruthy();
+    expect(screen.getByText("6 uncommitted changes")).toBeTruthy();
+    expect(screen.getByText("Commit and push")).toBeTruthy();
+    expect(screen.getByText("1 commit behind main")).toBeTruthy();
+    expect(screen.getByText("Pull")).toBeTruthy();
+    const createPullRequestButton = screen.getByRole("button", {
+      name: "Create PR",
+    });
+    const commitAndPushButton = screen.getByRole("button", {
+      name: "Commit and push",
+    });
+    expect(createPullRequestButton.className).toContain(
+      "hover:text-foreground",
+    );
+    expect(createPullRequestButton.className).toContain(
+      "text-muted-foreground/60",
+    );
+    expect(commitAndPushButton.className).toContain("hover:text-foreground");
+    expect(commitAndPushButton.className).toContain("text-muted-foreground/60");
+    fireEvent.click(createPullRequestButton);
+    fireEvent.click(commitAndPushButton);
+    expect(commonProps.onCreatePullRequest).toHaveBeenCalledOnce();
+    expect(commonProps.onCommitAndPush).toHaveBeenCalledOnce();
+
+    view.rerender(
+      <WorkspaceRepositoryPanel
+        {...commonProps}
+        activeTab="checks"
+        pullRequestResponse={{ outcome: "absent" }}
+        workspaceStatus={makeWorkspaceStatus()}
+      />,
+    );
+
+    expect(screen.queryByText("uncommitted changes")).toBeNull();
+    expect(screen.queryByText("behind main")).toBeNull();
+  });
+
+  it("edits the PR draft and exposes save and discard actions", () => {
+    const onChange = vi.fn();
+    const onDiscard = vi.fn();
+    const onSave = vi.fn();
+    render(
+      <WorkspaceRepositoryPanel
+        {...commonProps}
+        activeTab="checks"
+        onDiscardPullRequestDraft={onDiscard}
+        onPullRequestDraftChange={onChange}
+        onSavePullRequestDraft={onSave}
+        pullRequestDraft={{ title: "Test", description: "Test description" }}
+        pullRequestDraftIsDirty
+        pullRequestResponse={{ outcome: "absent" }}
+        workspaceStatus={makeWorkspaceStatus()}
+      />,
+    );
+
+    expect(
+      screen.getByRole("textbox", { name: "PR title" }).className,
+    ).toContain("text-foreground");
+    expect(
+      screen.getByRole("textbox", { name: "PR description" }).className,
+    ).toContain("text-muted-foreground/60");
+    fireEvent.change(screen.getByRole("textbox", { name: "PR title" }), {
+      target: { value: "Updated title" },
+    });
+    expect(onChange).toHaveBeenCalledWith({
+      title: "Updated title",
+      description: "Test description",
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Discard" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(onDiscard).toHaveBeenCalledOnce();
+    expect(onSave).toHaveBeenCalledOnce();
+  });
+
+  it("keeps commit metadata out of Checks", () => {
     render(
       <WorkspaceRepositoryPanel
         {...commonProps}
@@ -203,9 +364,11 @@ describe("WorkspaceRepositoryPanel", () => {
       />,
     );
 
-    expect(screen.getByText("agent-thread-workspace-sidebar")).toBeTruthy();
-    expect(screen.getByText("01234567")).toBeTruthy();
-    expect(screen.getByText("Refine the workspace sidebar")).toBeTruthy();
+    expect(screen.getByText("Git status")).toBeTruthy();
+    expect(screen.queryByText("Current commit")).toBeNull();
+    expect(screen.queryByText("agent-thread-workspace-sidebar")).toBeNull();
+    expect(screen.queryByText("01234567")).toBeNull();
+    expect(screen.queryByText("Refine the workspace sidebar")).toBeNull();
   });
 
   it("refreshes visible files when the workspace changes", () => {
