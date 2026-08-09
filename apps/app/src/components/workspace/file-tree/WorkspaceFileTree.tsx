@@ -46,6 +46,7 @@ export function WorkspaceFileTree({ controller }: WorkspaceFileTreeProps) {
       <div className="min-h-0 flex-1 overflow-hidden">
         {controller.error ? (
           <EmptyState
+            className={isPreparingWorktree ? "p-3" : undefined}
             icon={isPreparingWorktree ? "Spinner" : undefined}
             iconClassName={isPreparingWorktree ? "animate-spin" : undefined}
             message={
