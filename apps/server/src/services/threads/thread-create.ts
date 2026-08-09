@@ -588,6 +588,8 @@ export async function createThreadFromRequest(
   options: {
     /** Provider-facing input when it differs from the persisted start seed. */
     providerInput?: ThreadCreateServiceRequestInput["input"];
+    /** Source environment selected by the public fork route. */
+    forkSourceEnvironmentId?: string;
   } = {},
 ) {
   const project = requirePublicProjectForThreadCreate(
@@ -679,6 +681,15 @@ export async function createThreadFromRequest(
       "originKind requires a sourceThreadId",
     );
   }
+  const forkSourceEnvironmentId =
+    options.forkSourceEnvironmentId ??
+    (originKind === "fork" &&
+    sourceThread !== null &&
+    sourceThread.environmentId !== null &&
+    requestInput.environment.type === "reuse" &&
+    requestInput.environment.environmentId === sourceThread.environmentId
+      ? sourceThread.environmentId
+      : undefined);
   // Provenance coherence + anti-forgery. The validated source/parent thread
   // anchors senderThreadId so a caller cannot claim a start on behalf of an
   // arbitrary or cross-project thread.
@@ -744,7 +755,13 @@ export async function createThreadFromRequest(
       requestedVisibility: requestInput.visibility,
     }),
     environment: resolveCreateThreadEnvironment({
-      parentThread: sourceThread ?? parentThread,
+      // Source-derived forks already resolve their environment before this
+      // call. Applying ordinary child defaults here would turn an isolated
+      // personal fork back into source reuse.
+      parentThread:
+        forkSourceEnvironmentId !== undefined
+          ? null
+          : (sourceThread ?? parentThread),
       projectId: requestInput.projectId,
       requestedEnvironment: requestInput.environment,
     }),
@@ -756,6 +773,7 @@ export async function createThreadFromRequest(
     }),
   };
   const resolvedEnvironment = resolveStableThreadRequestEnvironment(deps, {
+    allowUnmanagedPersonalProjectReuseEnvironmentId: forkSourceEnvironmentId,
     environment: request.environment,
     projectId: request.projectId,
   });
