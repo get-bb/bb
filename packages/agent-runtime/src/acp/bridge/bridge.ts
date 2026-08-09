@@ -1670,6 +1670,15 @@ function runTurn(session: AcpThreadSession, firstInput: PromptInput[]): void {
             message: error instanceof Error ? error.message : String(error),
           });
         }
+        // Always close the bb turn when the prompt fails. Leaving the turn
+        // open (promptActive=false, no acp/turn/completed) makes the server
+        // keep steering into "No active turn to steer" failures.
+        if (!session.stopping) {
+          sendNotification(ACP_TURN_COMPLETED_METHOD, {
+            threadId: session.bbThreadId,
+            stopReason: session.connection.exited ? "cancelled" : "refusal",
+          });
+        }
         return;
       }
 

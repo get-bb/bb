@@ -734,6 +734,24 @@ function createAgentRuntimeInternal(
     return message.includes("no archived rollout found for thread id");
   }
 
+  /**
+   * ACP (and similar) bridges reject turn/steer when their local prompt has
+   * already finished. That can race with bb still observing an active turn
+   * (completion notification not processed yet, or a prompt error that left
+   * the turn open). Map those rejections to stale so host-daemon can fall
+   * back to a new turn instead of failing turn.submit.
+   */
+  function isUnsteerableActiveTurnError(error: unknown): boolean {
+    if (!(error instanceof Error)) {
+      return false;
+    }
+    const message = error.message;
+    return (
+      message.includes("No active turn to steer") ||
+      message.includes("No active ACP session")
+    );
+  }
+
   async function archiveOrUnarchiveThread(
     args: ArchiveOrUnarchiveThreadArgs,
   ): Promise<void> {
@@ -1503,16 +1521,35 @@ function createAgentRuntimeInternal(
             plan: proc.adapter.buildCommandPlan(adapterCommand),
             providerId: pid,
           });
-          await sendCommand({
-            proc,
-            message: cmd,
-            resultSchema: ignoredJsonRpcResultSchema,
-            recovery: {
-              providerId: pid,
-              providerThreadId: adapterCommand.providerThreadId,
-              threadId,
-            },
-          });
+          try {
+            await sendCommand({
+              proc,
+              message: cmd,
+              resultSchema: ignoredJsonRpcResultSchema,
+              recovery: {
+                providerId: pid,
+                providerThreadId: adapterCommand.providerThreadId,
+                threadId,
+              },
+            });
+          } catch (error) {
+            if (isUnsteerableActiveTurnError(error)) {
+              options.onStderr?.(
+                `Steer for thread "${threadId}" on turn "${expectedTurnId}" was rejected (${error instanceof Error ? error.message : String(error)}); treating as stale.`,
+              );
+              // Bridge no longer has a prompt; drop local active-turn tracking
+              // so a follow-up auto/steer send can start cleanly if completion
+              // events are also lagging.
+              if (turnState.getActiveTurnId(threadId) === expectedTurnId) {
+                turnState.clearThread(threadId);
+              }
+              return {
+                status: "stale",
+                activeTurnId: turnState.getActiveTurnId(threadId),
+              };
+            }
+            throw error;
+          }
           emitAcceptedCommandEvents({
             command: adapterCommand,
             proc,

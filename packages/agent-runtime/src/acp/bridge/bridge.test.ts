@@ -1535,6 +1535,40 @@ describe("acp bridge", () => {
     expect(response.error?.message).toMatch(/No active turn/);
   });
 
+  it("closes the turn when session/prompt fails in-protocol", async () => {
+    const { bbThreadId, providerThreadId } = await startThread();
+    const turnId = sendRequest("turn/start", {
+      threadId: providerThreadId,
+      input: [{ type: "text", text: "prompt-error", mentions: [] }],
+    });
+    await waitForResponse(turnId);
+
+    const completed = await waitForTurnCompleted();
+    expect(completed.params).toEqual({
+      threadId: bbThreadId,
+      stopReason: "refusal",
+    });
+    expect(
+      notifications("error").some(
+        (entry) =>
+          entry.params &&
+          typeof entry.params === "object" &&
+          "message" in entry.params &&
+          String(entry.params.message).includes("simulated prompt failure"),
+      ),
+    ).toBe(true);
+
+    // After a failed prompt the turn is closed, so a late steer is rejected
+    // rather than queued into a zombie active turn.
+    const steerId = sendRequest("turn/steer", {
+      threadId: providerThreadId,
+      expectedTurnId: "turn-1",
+      input: [{ type: "text", text: "late", mentions: [] }],
+    });
+    const steerResponse = await waitForResponse(steerId);
+    expect(steerResponse.error?.message).toMatch(/No active turn/);
+  });
+
   it("cancels the active turn on thread/stop", async () => {
     const { bbThreadId, providerThreadId } = await startThread();
     const turnId = sendRequest("turn/start", {

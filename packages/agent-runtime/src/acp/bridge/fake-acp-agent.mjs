@@ -265,6 +265,16 @@ async function handlePrompt(message) {
   } else if (text.includes("hang")) {
     // Stay pending until the client sends session/cancel.
     return;
+  } else if (text.includes("prompt-error")) {
+    if (activePromptId === message.id) {
+      activePromptId = null;
+      send({
+        jsonrpc: "2.0",
+        id: message.id,
+        error: { code: -32000, message: "simulated prompt failure" },
+      });
+    }
+    return;
   } else if (text.includes("die")) {
     process.exit(7);
   } else if (text.includes("slow")) {

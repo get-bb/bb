@@ -994,6 +994,114 @@ rl.on("line", (line) => {
       await runtime.shutdown();
     });
 
+    it("treats provider 'No active turn to steer' rejections as stale", async () => {
+      const events: ThreadEvent[] = [];
+      const rejectSteerScriptPath = join(tmpDir, "reject-steer-provider.cjs");
+      writeFileSync(
+        rejectSteerScriptPath,
+        `
+const readline = require("node:readline");
+
+function send(message) {
+  process.stdout.write(JSON.stringify(message) + "\\n");
+}
+
+const rl = readline.createInterface({ input: process.stdin });
+rl.on("line", (line) => {
+  const message = JSON.parse(line);
+  if (message.method === "initialize") {
+    send({ jsonrpc: "2.0", id: message.id, result: { ok: true } });
+    return;
+  }
+  if (message.method === "thread/start") {
+    send({
+      jsonrpc: "2.0",
+      id: message.id,
+      result: { providerThreadId: "prov-reject-steer" },
+    });
+    send({
+      jsonrpc: "2.0",
+      method: "thread/identity",
+      params: {
+        threadId: message.params.threadId,
+        providerThreadId: "prov-reject-steer",
+      },
+    });
+    return;
+  }
+  if (message.method === "turn/start") {
+    const threadId = message.params.threadId;
+    send({ jsonrpc: "2.0", id: message.id, result: { ok: true } });
+    send({
+      jsonrpc: "2.0",
+      method: "turn/started",
+      params: { threadId, turnId: "turn-1" },
+    });
+    return;
+  }
+  if (message.method === "turn/steer") {
+    send({
+      jsonrpc: "2.0",
+      id: message.id,
+      error: { code: -32000, message: "No active turn to steer" },
+    });
+    return;
+  }
+  if (message.id !== undefined) {
+    send({ jsonrpc: "2.0", id: message.id, result: { ok: true } });
+  }
+});
+`,
+      );
+
+      const runtime = createAgentRuntimeWithAdapters({
+        workspacePath: tmpDir,
+        onEvent: (event) => events.push(event),
+        onToolCall: async () => ({
+          contentItems: [{ type: "inputText", text: "ok" }],
+          success: true,
+        }),
+        adapterFactory: () => createFakeAdapter(rejectSteerScriptPath),
+      });
+
+      await runtime.startThread({
+        environmentId: "env-1",
+        threadId: "t1",
+        projectId: "p1",
+        providerId: "fake",
+        options: fullRuntimeOptions,
+      });
+      await runtime.runTurn({
+        clientRequestId: "creq_222222224a",
+        threadId: "t1",
+        input: [promptTextInput({ text: "first" })],
+        options: fullRuntimeOptions,
+      });
+      await waitForThreadTurnStarted({
+        events,
+        providerId: "fake",
+        runtime,
+        threadId: "t1",
+        turnId: "turn-1",
+      });
+
+      await expect(
+        runtime.steerTurn({
+          clientRequestId: "creq_222222224b",
+          threadId: "t1",
+          expectedTurnId: "turn-1",
+          input: [promptTextInput({ text: "steer after bridge idle" })],
+          options: fullRuntimeOptions,
+        }),
+      ).resolves.toEqual({
+        status: "stale",
+        activeTurnId: null,
+      });
+      expect(runtime.getActiveTurnId("t1")).toBeNull();
+
+      await runtime.shutdown();
+    });
+
     it("keeps the provider running after thread stop", async () => {
       const events: ThreadEvent[] = [];
       const adapter = createFakeAdapter(scriptPath);
