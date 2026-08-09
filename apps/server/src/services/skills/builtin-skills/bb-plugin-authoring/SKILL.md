@@ -614,9 +614,10 @@ Agents discover plugin commands through the server-generated
 The host rejects a larger result atomically as `plugin_cli_output_too_large`;
 it never clips it. Page growing collections, cap verbose fields, and use
 file/streaming commands for large content. Caveat: under the workspace
-sandbox (Accept Edits / Approve for me) some provider sandboxes block
-loopback network for sandboxed commands, so `bb` CLI calls (including
-plugin commands) may need escalation approval or a Full Access thread.
+sandbox (Accept Edits / Approve for me), Claude's macOS sandbox permits
+loopback, so `bb` CLI calls (including plugin commands) work sandboxed;
+Linux and other provider sandboxes may still block loopback, in which case
+those calls need escalation approval.
 
 **Multi-machine rule: `run` executes on the server, so a path argument names
 a file on the INVOKING machine, not on `run`'s filesystem.** Never open a
@@ -1649,7 +1650,8 @@ Remaining reference examples in `examples/plugins/`:
 - CLI `run(argv)` argv excludes the command name; core bb command names
   are reserved; workspace-sandboxed agent threads (Accept Edits / Approve
   for me) may fail to reach the bb CLI when the provider sandbox blocks
-  loopback network.
+  loopback network (Claude's macOS sandbox permits it; Linux and other
+  providers may not).
 - Mention `search` is 2s-time-boxed; mention `resolve` runs at send time
   and a throw blocks the send.
 - Agent tool changes apply on the next session start, not mid-session;

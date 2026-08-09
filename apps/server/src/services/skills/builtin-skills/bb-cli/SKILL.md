@@ -272,8 +272,9 @@ environment pull-request show <id>`. Diff commands require an explicit target
   provider's automatic reviewer. `full` explicitly bypasses sandbox and
   approval protections. Plan mode remains separate. The product default is
   `auto` when no inherited or project default applies.
-- When spawning a subagent, pass `--permission-mode full` unless the user or
-  task explicitly requests restricted access.
+- Subagents inherit the parent's permission mode by default; pass
+  `--permission-mode full` only when the user or task needs unsandboxed
+  execution.
 - Use `--parent-self` inside a thread to parent the new thread to the current
   thread.
 - Use `--parent-thread <thread-id>` to choose another specific parent.
