@@ -40,6 +40,7 @@ interface ThreadTableOfContentsProps {
   loadOlderTimelineRows: () => void | Promise<void>;
 }
 
+// Matches `@container scroll-overlay (min-width: 56rem)` in app.css.
 const TOC_MIN_VISIBLE_WIDTH_PX = 56 * 16;
 const TOC_BOTTOM_ACTIVE_THRESHOLD_PX = 4;
 // Only worth showing once the conversation has enough user turns to navigate.
@@ -272,6 +273,21 @@ function useConversationTocItems({
   return outlineTocItems ?? timelineTocItems;
 }
 
+/**
+ * Returns the width a container query sees for `host`.
+ *
+ * An inline-size container query resolves against the content box, but
+ * `clientWidth` also counts horizontal padding. The scroll overlay pads itself,
+ * so the raw `clientWidth` would report the TOC as visible for a padding-wide
+ * band below the CSS breakpoint.
+ */
+function containerInlineSize(host: HTMLElement): number {
+  const style = window.getComputedStyle(host);
+  const paddingLeft = Number.parseFloat(style.paddingLeft) || 0;
+  const paddingRight = Number.parseFloat(style.paddingRight) || 0;
+  return host.clientWidth - paddingLeft - paddingRight;
+}
+
 function useThreadTocVisible(rootElement: HTMLElement | null): boolean {
   const [visible, setVisible] = useState(
     () => typeof ResizeObserver === "undefined",
@@ -292,7 +308,7 @@ function useThreadTocVisible(rootElement: HTMLElement | null): boolean {
     let frame: number | null = null;
     const measure = () => {
       frame = null;
-      setVisible(host.clientWidth >= TOC_MIN_VISIBLE_WIDTH_PX);
+      setVisible(containerInlineSize(host) >= TOC_MIN_VISIBLE_WIDTH_PX);
     };
     const scheduleMeasure = () => {
       if (frame !== null) return;

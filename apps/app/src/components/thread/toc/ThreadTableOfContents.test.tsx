@@ -76,12 +76,15 @@ function userConversationRow(index = 1): TimelineRow {
 
 function TocHost({
   hasOlderTimelineRows = false,
+  hostPaddingX = 0,
   hostWidth = 1_200,
   loadOlderTimelineRows = () => {},
   threadId = "thr_toc_test",
   timelineRows,
 }: {
   hasOlderTimelineRows?: boolean;
+  /** Horizontal padding on each side, as the real scroll overlay has. */
+  hostPaddingX?: number;
   hostWidth?: number;
   loadOlderTimelineRows?: () => void | Promise<void>;
   threadId?: string;
@@ -97,6 +100,10 @@ function TocHost({
         });
       }}
       data-scroll-overlay=""
+      style={{
+        paddingLeft: `${hostPaddingX}px`,
+        paddingRight: `${hostPaddingX}px`,
+      }}
     >
       <ThreadTableOfContents
         threadId={threadId}
@@ -376,6 +383,38 @@ describe("ThreadTableOfContents", () => {
     expect(useThreadConversationOutline).toHaveBeenLastCalledWith(
       "thr_toc_test",
       { enabled: false },
+    );
+  });
+
+  // The overlay pads itself, so `clientWidth` runs 24px ahead of the content
+  // box the `@container` rule measures. Both boundaries must agree with CSS.
+  it("does not request the outline when padding hides the TOC", () => {
+    render(
+      <TocHost
+        hostPaddingX={12}
+        hostWidth={900}
+        timelineRows={[userConversationRow(1)]}
+      />,
+    );
+
+    expect(useThreadConversationOutline).toHaveBeenLastCalledWith(
+      "thr_toc_test",
+      { enabled: false },
+    );
+  });
+
+  it("requests the outline once the padded content box reaches the breakpoint", () => {
+    render(
+      <TocHost
+        hostPaddingX={12}
+        hostWidth={920}
+        timelineRows={[userConversationRow(1)]}
+      />,
+    );
+
+    expect(useThreadConversationOutline).toHaveBeenLastCalledWith(
+      "thr_toc_test",
+      { enabled: true },
     );
   });
 
