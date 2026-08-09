@@ -31,9 +31,9 @@ import {
   listStoredClientTurnRequestIdsInRange,
   listStoredEventRowsByParentToolCallIds,
   isTimelineCursorSequencePresent,
-  listItemEventSpansByItemIds,
-  listStoredBufferedTextDeltaRowsByItemIds,
-  listStoredItemLifecycleRowsByItemIds,
+  listItemEventSpansByItems,
+  listStoredBufferedTextDeltaRowsByItems,
+  listStoredItemLifecycleRowsByItems,
   listLatestBackgroundTaskStateRowsByItemIds,
   listLatestGoalEventRowsByThreadIds,
   listLatestOpenBackgroundTaskStateRowsForThread,
@@ -44,10 +44,12 @@ import {
   listStoredTurnInputAcceptedRowsByClientRequestIds,
   listStoredTurnStartedRowsByTurnIdsUpToSequence,
   listTimelineSegmentAnchorsDescending,
+  scopedItemRefKey,
 } from "@bb/db";
 import type {
   DbConnection,
   InlineOutputCharLimit,
+  ScopedItemRef,
   StandardTimelineSegmentAnchorRow,
   StoredEventRow,
 } from "@bb/db";
@@ -740,6 +742,18 @@ function ensureSequenceWindowTurnCompletedRows(
     : mergeStoredEventRowsById([...args.rows, ...completedRows]);
 }
 
+/**
+ * The scoped identity of the item a row belongs to. Callers must have checked
+ * that the row carries an item id.
+ */
+function storedEventRowItemRef(row: StoredEventRow): ScopedItemRef {
+  return {
+    itemId: row.itemId ?? "",
+    scopeKind: row.scopeKind,
+    turnId: row.turnId,
+  };
+}
+
 interface SequenceWindowItemRowsArgs extends TimelineWindowRowsArgs {
   /** Exclusive upper bound of the window, or undefined for the latest page. */
   beforeSequence: number | undefined;
@@ -769,17 +783,21 @@ function ensureSequenceWindowWholeItemRows(
   db: DbConnection,
   args: SequenceWindowItemRowsArgs,
 ): StoredEventRow[] {
-  const windowItemIds = new Set<string>();
+  // Keyed by scoped identity, not by item id: providers reuse item ids across
+  // turns (a resumed ACP session restarts its synthetic id counter), and a
+  // thread-wide span for such an id makes every window disown the item.
+  const windowItems = new Map<string, ScopedItemRef>();
   for (const row of args.rows) {
     if (
       row.itemId !== null &&
       row.itemKind !== "backgroundTask" &&
       row.sequence >= args.sequenceStart
     ) {
-      windowItemIds.add(row.itemId);
+      const ref = storedEventRowItemRef(row);
+      windowItems.set(scopedItemRefKey(ref), ref);
     }
   }
-  if (windowItemIds.size === 0) {
+  if (windowItems.size === 0) {
     return [...args.rows];
   }
 
@@ -787,29 +805,38 @@ function ensureSequenceWindowWholeItemRows(
   // output deltas, reasoning text, tool progress — and an unfinished item has
   // no end at all, so "does this item reach past the cut" cannot be answered
   // from `item/started` and `item/completed`.
-  const spans = listItemEventSpansByItemIds(db, {
-    itemIds: [...windowItemIds],
+  const spans = listItemEventSpansByItems(db, {
+    items: [...windowItems.values()],
     threadId: args.threadId,
   });
-  const itemIdsOwnedByNewerWindow = new Set<string>();
-  const itemIdsStartingBeforeWindow = new Set<string>();
+  const itemKeysOwnedByNewerWindow = new Set<string>();
+  const itemsStartingBeforeWindow = new Map<string, ScopedItemRef>();
   for (const span of spans) {
+    const key = scopedItemRefKey(span);
     if (
       args.beforeSequence !== undefined &&
       span.maxSequence >= args.beforeSequence
     ) {
-      itemIdsOwnedByNewerWindow.add(span.itemId);
+      itemKeysOwnedByNewerWindow.add(key);
       continue;
     }
     if (span.minSequence < args.sequenceStart) {
-      itemIdsStartingBeforeWindow.add(span.itemId);
+      itemsStartingBeforeWindow.set(key, {
+        itemId: span.itemId,
+        scopeKind: span.scopeKind,
+        turnId: span.turnId,
+      });
     }
   }
 
   const rows = args.rows.filter(
-    (row) => row.itemId === null || !itemIdsOwnedByNewerWindow.has(row.itemId),
+    (row) =>
+      row.itemId === null ||
+      !itemKeysOwnedByNewerWindow.has(
+        scopedItemRefKey(storedEventRowItemRef(row)),
+      ),
   );
-  if (itemIdsStartingBeforeWindow.size === 0) {
+  if (itemsStartingBeforeWindow.size === 0) {
     return rows;
   }
 
@@ -824,37 +851,40 @@ function ensureSequenceWindowWholeItemRows(
   // snapshot of the message, so dropping the prefix would make text disappear
   // as the event-budget floor advances. Carry that one item's prefix into the
   // owning page until item/completed supplies the canonical final text.
-  const backfillRows = listStoredItemLifecycleRowsByItemIds(db, {
-    itemIds: [...itemIdsStartingBeforeWindow],
+  const backfillRows = listStoredItemLifecycleRowsByItems(db, {
+    items: [...itemsStartingBeforeWindow.values()],
     maxInlineOutputChars: args.maxInlineOutputChars,
     threadId: args.threadId,
   }).filter((row) => row.sequence < args.sequenceStart);
 
-  const completedItemIds = new Set<string>();
+  const completedItemKeys = new Set<string>();
   for (const row of [...rows, ...backfillRows]) {
     if (row.type === "item/completed" && row.itemId !== null) {
-      completedItemIds.add(row.itemId);
+      completedItemKeys.add(scopedItemRefKey(storedEventRowItemRef(row)));
     }
   }
   // Delta rows are stored with a null itemKind, and an item that started below
   // the cut has only delta rows inside the window — so the kind must be read
   // from the backfilled item/started row, never from the in-window rows.
-  const bufferedTextItemIds = new Set<string>();
+  const bufferedTextItems = new Map<string, ScopedItemRef>();
   for (const row of backfillRows) {
+    if (row.type !== "item/started" || row.itemId === null) {
+      continue;
+    }
+    const ref = storedEventRowItemRef(row);
+    const key = scopedItemRefKey(ref);
     if (
-      row.type === "item/started" &&
-      row.itemId !== null &&
-      !completedItemIds.has(row.itemId) &&
+      !completedItemKeys.has(key) &&
       (row.itemKind === "agentMessage" ||
         row.itemKind === "plan" ||
         row.itemKind === "reasoning")
     ) {
-      bufferedTextItemIds.add(row.itemId);
+      bufferedTextItems.set(key, ref);
     }
   }
-  const bufferedTextRows = listStoredBufferedTextDeltaRowsByItemIds(db, {
+  const bufferedTextRows = listStoredBufferedTextDeltaRowsByItems(db, {
     beforeSequence: args.sequenceStart,
-    itemIds: [...bufferedTextItemIds],
+    items: [...bufferedTextItems.values()],
     threadId: args.threadId,
   });
   const prefixRows = [...backfillRows, ...bufferedTextRows];

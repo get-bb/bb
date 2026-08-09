@@ -37,7 +37,8 @@ import {
 export interface OperationProjectionState {
   messages: EventProjectionMessage[];
   fileEditsByCallId: Map<string, EventProjectionFileEditMessage[]>;
-  fileEditStdoutBuffersByCallId: Map<string, VisibleTextBuffer>;
+  /** Keyed by {@link scopedFileEditCallKey}, never by the bare call id. */
+  fileEditStdoutBuffersByScopedCallKey: Map<string, VisibleTextBuffer>;
   openCompactionsByKey: Map<string, EventProjectionOperationMessage>;
   finalizedCompactionKeys: Set<string>;
   provisioningOperationsByKey: Map<string, EventProjectionOperationMessage>;
@@ -64,7 +65,7 @@ export function createOperationProjectionState(
     userQuestionsByInteractionId: new Map(),
     threadOperationsById: new Map(),
     fileEditsByCallId: new Map(),
-    fileEditStdoutBuffersByCallId: new Map(),
+    fileEditStdoutBuffersByScopedCallKey: new Map(),
   };
 }
 
@@ -364,13 +365,27 @@ function isTerminalFileEditStatus(
 export function flushPendingFileEditOutput(
   state: OperationProjectionState,
 ): void {
+  // Rows for one call id can sit in different scopes, and each scope owns its
+  // own output buffer, so resolve the buffer from the row's own scope. Each
+  // buffer flushes once, and every row of that scope then takes its text.
+  const flushedBufferByScopedCallKey = new Map<
+    string,
+    VisibleTextBuffer | null
+  >();
   for (const [callId, fileEdits] of state.fileEditsByCallId.entries()) {
-    const buffer = state.fileEditStdoutBuffersByCallId.get(callId);
-    if (!buffer || !flushVisibleTextBuffer(buffer)) {
-      continue;
-    }
     for (const fileEdit of fileEdits) {
-      fileEdit.stdout = getVisibleTextBufferText(buffer);
+      const scopedCallKey = scopedFileEditCallKey(callId, fileEdit);
+      let flushedBuffer = flushedBufferByScopedCallKey.get(scopedCallKey);
+      if (flushedBuffer === undefined) {
+        const buffer =
+          state.fileEditStdoutBuffersByScopedCallKey.get(scopedCallKey);
+        flushedBuffer =
+          buffer && flushVisibleTextBuffer(buffer) ? buffer : null;
+        flushedBufferByScopedCallKey.set(scopedCallKey, flushedBuffer);
+      }
+      if (flushedBuffer !== null) {
+        fileEdit.stdout = getVisibleTextBufferText(flushedBuffer);
+      }
     }
   }
 }
@@ -447,6 +462,26 @@ function fileEditMessageKey(
   return `${callId}:${fileEditChangeIdentity(change)}`;
 }
 
+function fileEditScopeDiscriminator(
+  scopeFields: EventProjectionMessageScopeFields,
+): string {
+  const scope = scopeFields.scope;
+  return scope.kind === "turn" ? scope.turnId : "thread";
+}
+
+/**
+ * The identity a file-edit call really has. A provider can reuse one call id
+ * across scopes (a resumed ACP session restarts its synthetic id counter), so
+ * per-call projection state must be keyed by scope as well, or two unrelated
+ * calls share it.
+ */
+function scopedFileEditCallKey(
+  callId: string,
+  scopeFields: EventProjectionMessageScopeFields,
+): string {
+  return `${fileEditScopeDiscriminator(scopeFields)}:${callId}`;
+}
+
 interface ResolveScopedFileEditMessageKeyArgs {
   baseKey: string;
   foreignMessageIds: ReadonlySet<string>;
@@ -470,9 +505,7 @@ function resolveScopedFileEditMessageKey(
   ) {
     return args.baseKey;
   }
-  const scope = args.scopeFields.scope;
-  const scopeDiscriminator = scope.kind === "turn" ? scope.turnId : "thread";
-  return `${scopeDiscriminator}:${args.baseKey}`;
+  return `${fileEditScopeDiscriminator(args.scopeFields)}:${args.baseKey}`;
 }
 
 function buildFileEditChangeEntries(
@@ -657,12 +690,14 @@ export function upsertFileEdit(
     }
   }
   const foreignMessageIds = new Set(foreignRows.map((row) => row.id));
+  const scopedCallKey = scopedFileEditCallKey(partial.callId, scopeFields);
   const stdoutBuffer =
-    state.fileEditStdoutBuffersByCallId.get(partial.callId) ??
+    state.fileEditStdoutBuffersByScopedCallKey.get(scopedCallKey) ??
     createVisibleTextBuffer();
   // Provider stdout is per call, so split file-edit rows for the same call
-  // intentionally share one buffer.
-  state.fileEditStdoutBuffersByCallId.set(partial.callId, stdoutBuffer);
+  // intentionally share one buffer — but only within one scope, so a reused
+  // call id cannot leak an earlier turn's output into a later turn's rows.
+  state.fileEditStdoutBuffersByScopedCallKey.set(scopedCallKey, stdoutBuffer);
 
   const partialStdout = fileEditPartialStdout(partial);
   if (partialStdout) {
@@ -736,9 +771,7 @@ export function upsertFileEdit(
   }
 
   const changes =
-    compatibleRows.length > 0
-      ? compatibleRows.map(() => null)
-      : [null];
+    compatibleRows.length > 0 ? compatibleRows.map(() => null) : [null];
 
   for (const [changeIndex, change] of changes.entries()) {
     const existing = compatibleRows[changeIndex];

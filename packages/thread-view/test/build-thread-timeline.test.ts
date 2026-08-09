@@ -2411,6 +2411,97 @@ describe("buildThreadTimelineFromEvents", () => {
     ]);
   });
 
+  it("keeps file-change output separate across turns that reuse the same item id", () => {
+    function reusedIdFileChangeEvents(
+      turnId: string,
+      startSeq: number,
+      output: string,
+    ): ThreadEventWithMeta[] {
+      const scope = turnScope(turnId);
+      const change = {
+        path: "src/a.ts",
+        kind: "update" as const,
+        diff: `@@ -1 +1 @@\n-old a\n+${turnId} a`,
+      };
+      return [
+        {
+          event: {
+            type: "turn/started",
+            threadId: "thread-1",
+            providerThreadId: "provider-thread-1",
+            scope,
+          },
+          meta: { id: `event-${startSeq}`, seq: startSeq, createdAt: startSeq },
+        },
+        {
+          event: {
+            type: "item/started",
+            threadId: "thread-1",
+            providerThreadId: "provider-thread-1",
+            scope,
+            item: {
+              type: "fileChange",
+              id: "file-edit-1",
+              changes: [change],
+              status: "pending",
+              approvalStatus: null,
+            },
+          },
+          meta: {
+            id: `event-${startSeq + 1}`,
+            seq: startSeq + 1,
+            createdAt: startSeq + 1,
+          },
+        },
+        {
+          event: {
+            type: "item/fileChange/outputDelta",
+            threadId: "thread-1",
+            providerThreadId: "provider-thread-1",
+            scope,
+            itemId: "file-edit-1",
+            delta: output,
+          },
+          meta: {
+            id: `event-${startSeq + 2}`,
+            seq: startSeq + 2,
+            createdAt: startSeq + 2,
+          },
+        },
+        {
+          event: {
+            type: "item/completed",
+            threadId: "thread-1",
+            providerThreadId: "provider-thread-1",
+            scope,
+            item: {
+              type: "fileChange",
+              id: "file-edit-1",
+              changes: [change],
+              status: "completed",
+              approvalStatus: null,
+            },
+          },
+          meta: {
+            id: `event-${startSeq + 3}`,
+            seq: startSeq + 3,
+            createdAt: startSeq + 3,
+          },
+        },
+      ];
+    }
+
+    const rows = collectFileChangeRows(
+      buildTimelineRows([
+        ...reusedIdFileChangeEvents("turn-1", 0, "one-output"),
+        ...reusedIdFileChangeEvents("turn-2", 4, "two-output"),
+      ]),
+    );
+
+    expect(rows).toHaveLength(2);
+    expect(rows.map((row) => row.stdout)).toEqual(["one-output", "two-output"]);
+  });
+
   it("keeps file-change row identity stable when movePath appears later", () => {
     const startedEvent = fileChangeItemEvent({
       changes: [

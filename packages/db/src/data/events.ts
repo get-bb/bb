@@ -6,6 +6,7 @@ import {
   gte,
   inArray,
   isNotNull,
+  isNull,
   lt,
   lte,
   max,
@@ -1389,14 +1390,70 @@ export function isTimelineCursorSequencePresent(
   return row !== undefined;
 }
 
+/**
+ * One item's identity inside a thread.
+ *
+ * The item id alone is not that identity. A provider can mint the same item id
+ * in two different turns — a resumed ACP session restarts its synthetic id
+ * counter — and reading those rows as one item makes an item appear to span
+ * every turn between them.
+ */
+export interface ScopedItemRef {
+  itemId: string;
+  scopeKind: ThreadEventScopeKind;
+  turnId: string | null;
+}
+
+export function scopedItemRefKey(ref: ScopedItemRef): string {
+  return `${ref.scopeKind} ${ref.turnId ?? ""} ${ref.itemId}`;
+}
+
+function dedupeScopedItemRefs(
+  items: readonly ScopedItemRef[],
+): ScopedItemRef[] {
+  const byKey = new Map<string, ScopedItemRef>();
+  for (const item of items) {
+    if (item.itemId.length === 0) {
+      continue;
+    }
+    byKey.set(scopedItemRefKey(item), item);
+  }
+  return [...byKey.values()];
+}
+
+/**
+ * Restrict a read to exactly the given item identities.
+ *
+ * The `item_id` list is kept as its own predicate so the query still narrows
+ * through the item-id index; the scope disjunction then drops the rows that
+ * belong to a different turn's reuse of the same id.
+ */
+function scopedItemRefsPredicate(
+  items: readonly ScopedItemRef[],
+): SQL | undefined {
+  const itemIds = [...new Set(items.map((item) => item.itemId))];
+  const scopePredicates = items.map((item) =>
+    and(
+      eq(events.itemId, item.itemId),
+      eq(events.scopeKind, item.scopeKind),
+      item.turnId === null
+        ? isNull(events.turnId)
+        : eq(events.turnId, item.turnId),
+    ),
+  );
+  return and(inArray(events.itemId, itemIds), or(...scopePredicates));
+}
+
 export interface ItemEventSpanRow {
   itemId: string;
   maxSequence: number;
   minSequence: number;
+  scopeKind: ThreadEventScopeKind;
+  turnId: string | null;
 }
 
-export interface ListItemEventSpansByItemIdsArgs {
-  itemIds: readonly string[];
+export interface ListItemEventSpansByItemsArgs {
+  items: readonly ScopedItemRef[];
   threadId: string;
 }
 
@@ -1413,14 +1470,12 @@ export interface ListItemEventSpansByItemIdsArgs {
  * Metadata only: no `data` column, so the cost is index reads rather than
  * payload.
  */
-export function listItemEventSpansByItemIds(
+export function listItemEventSpansByItems(
   db: DbConnection,
-  args: ListItemEventSpansByItemIdsArgs,
+  args: ListItemEventSpansByItemsArgs,
 ): ItemEventSpanRow[] {
-  const itemIds = [...new Set(args.itemIds)].filter(
-    (itemId) => itemId.length > 0,
-  );
-  if (itemIds.length === 0) {
+  const items = dedupeScopedItemRefs(args.items);
+  if (items.length === 0) {
     return [];
   }
 
@@ -1429,17 +1484,17 @@ export function listItemEventSpansByItemIds(
       itemId: sql<string>`${events.itemId}`,
       maxSequence: sql<number>`MAX(${events.sequence})`,
       minSequence: sql<number>`MIN(${events.sequence})`,
+      scopeKind: events.scopeKind,
+      turnId: events.turnId,
     })
     .from(events)
-    .where(
-      and(eq(events.threadId, args.threadId), inArray(events.itemId, itemIds)),
-    )
-    .groupBy(events.itemId)
+    .where(and(eq(events.threadId, args.threadId), scopedItemRefsPredicate(items)))
+    .groupBy(events.scopeKind, events.turnId, events.itemId)
     .all();
 }
 
-export interface ListStoredItemLifecycleRowsByItemIdsArgs {
-  itemIds: readonly string[];
+export interface ListStoredItemLifecycleRowsByItemsArgs {
+  items: readonly ScopedItemRef[];
   /** See {@link InlineOutputCharLimit}. */
   maxInlineOutputChars: InlineOutputCharLimit;
   threadId: string;
@@ -1455,14 +1510,12 @@ export interface ListStoredItemLifecycleRowsByItemIdsArgs {
  * row id, one of them stuck "pending". This is how a window works out which
  * items it cut, so it can take whole items or none.
  */
-export function listStoredItemLifecycleRowsByItemIds(
+export function listStoredItemLifecycleRowsByItems(
   db: DbConnection,
-  args: ListStoredItemLifecycleRowsByItemIdsArgs,
+  args: ListStoredItemLifecycleRowsByItemsArgs,
 ): StoredEventRow[] {
-  const itemIds = [...new Set(args.itemIds)].filter(
-    (itemId) => itemId.length > 0,
-  );
-  if (itemIds.length === 0) {
+  const items = dedupeScopedItemRefs(args.items);
+  if (items.length === 0) {
     return [];
   }
 
@@ -1472,7 +1525,7 @@ export function listStoredItemLifecycleRowsByItemIds(
     .where(
       and(
         eq(events.threadId, args.threadId),
-        inArray(events.itemId, itemIds),
+        scopedItemRefsPredicate(items),
         inArray(events.type, ["item/started", "item/completed"]),
       ),
     )
@@ -1480,9 +1533,9 @@ export function listStoredItemLifecycleRowsByItemIds(
     .all();
 }
 
-export interface ListStoredBufferedTextDeltaRowsByItemIdsArgs {
+export interface ListStoredBufferedTextDeltaRowsByItemsArgs {
   beforeSequence: number;
-  itemIds: readonly string[];
+  items: readonly ScopedItemRef[];
   threadId: string;
 }
 
@@ -1494,14 +1547,12 @@ export interface ListStoredBufferedTextDeltaRowsByItemIdsArgs {
  * an item must carry its earlier deltas forward or every refresh would render
  * only the moving suffix that remains inside the event budget.
  */
-export function listStoredBufferedTextDeltaRowsByItemIds(
+export function listStoredBufferedTextDeltaRowsByItems(
   db: DbConnection,
-  args: ListStoredBufferedTextDeltaRowsByItemIdsArgs,
+  args: ListStoredBufferedTextDeltaRowsByItemsArgs,
 ): StoredEventRow[] {
-  const itemIds = [...new Set(args.itemIds)].filter(
-    (itemId) => itemId.length > 0,
-  );
-  if (itemIds.length === 0) {
+  const items = dedupeScopedItemRefs(args.items);
+  if (items.length === 0) {
     return [];
   }
 
@@ -1511,7 +1562,7 @@ export function listStoredBufferedTextDeltaRowsByItemIds(
     .where(
       and(
         eq(events.threadId, args.threadId),
-        inArray(events.itemId, itemIds),
+        scopedItemRefsPredicate(items),
         lt(events.sequence, args.beforeSequence),
         inArray(events.type, [
           "item/agentMessage/delta",

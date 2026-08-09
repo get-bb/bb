@@ -1039,12 +1039,12 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  // Version 88 switches the built-in Cursor profile from the generic `agent`
-  // executable to `cursor-agent`. Older daemons retain their local built-in
-  // profile, so they must update before connecting to avoid launching another
-  // provider's `agent` binary and losing Cursor model discovery.
-  it("uses protocol version 88 for the namespaced Cursor executable", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(88);
+  // Version 89 makes the ACP adapter mint turn-qualified fileChange item ids.
+  // An enrolled daemon on an older build still emits session-scoped counters
+  // that collide across resumed sessions, so it must update before it reports
+  // more file edits.
+  it("uses protocol version 89 for turn-qualified ACP fileChange item ids", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(89);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {

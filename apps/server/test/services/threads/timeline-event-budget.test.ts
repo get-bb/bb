@@ -137,6 +137,151 @@ function insertTurns(
   insertEvents(db, noopNotifier, events);
 }
 
+/**
+ * Builds `turnCount` turns that each end with a file change carrying the *same*
+ * item id. Providers really do this: a resumed ACP session restarts its
+ * synthetic `acp-fs-write-N` counter, so an id from an early turn comes back in
+ * a later one.
+ */
+function insertTurnsWithReusedFileChangeItemId(
+  db: DbConnection,
+  thread: Thread,
+  turnCount: number,
+  fillerItemsPerTurn: number,
+): void {
+  const reusedItemId = "acp-fs-write-1";
+  const events: Parameters<typeof insertEvents>[2] = [];
+  let sequence = 0;
+  const push = (
+    event: Omit<Parameters<typeof insertEvents>[2][number], "sequence">,
+  ): void => {
+    sequence += 1;
+    events.push({ ...event, sequence });
+  };
+
+  for (let turn = 1; turn <= turnCount; turn += 1) {
+    const turnId = `turn-${turn}`;
+    const clientRequestId = requestId(turn);
+    push({
+      threadId: thread.id,
+      type: "client/turn/requested",
+      scope: threadScope(),
+      itemId: null,
+      itemKind: null,
+      data: JSON.stringify({
+        direction: "outbound",
+        source: "tell",
+        initiator: "user",
+        request: { method: "turn/start", params: {} },
+        requestId: clientRequestId,
+        senderThreadId: null,
+        input: [{ type: "text", text: `User message ${turn}`, mentions: [] }],
+        target: turn === 1 ? { kind: "thread-start" } : { kind: "new-turn" },
+        execution,
+      }),
+    });
+    push({
+      threadId: thread.id,
+      type: "turn/started",
+      scope: turnScope(turnId),
+      providerThreadId,
+      itemId: null,
+      itemKind: null,
+      data: JSON.stringify({}),
+    });
+    push({
+      threadId: thread.id,
+      type: "turn/input/accepted",
+      scope: turnScope(turnId),
+      providerThreadId,
+      itemId: null,
+      itemKind: null,
+      data: JSON.stringify({ clientRequestId }),
+    });
+    for (let item = 0; item < fillerItemsPerTurn; item += 1) {
+      push({
+        threadId: thread.id,
+        type: "item/completed",
+        scope: turnScope(turnId),
+        providerThreadId,
+        itemId: `${turnId}-item-${item}`,
+        itemKind: "agentMessage",
+        data: JSON.stringify({
+          item: {
+            type: "agentMessage",
+            id: `${turnId}-item-${item}`,
+            text: `Turn ${turn} item ${item}`,
+          },
+        }),
+      });
+    }
+    const changes = [
+      {
+        path: "src/a.ts",
+        kind: "update",
+        diff: `@@ -1 +1 @@\n-old\n+${turnId}`,
+      },
+    ];
+    for (const type of ["item/started", "item/completed"] as const) {
+      push({
+        threadId: thread.id,
+        type,
+        scope: turnScope(turnId),
+        providerThreadId,
+        itemId: reusedItemId,
+        itemKind: "fileChange",
+        data: JSON.stringify({
+          item: {
+            type: "fileChange",
+            id: reusedItemId,
+            changes,
+            status: type === "item/completed" ? "completed" : "pending",
+            approvalStatus: null,
+          },
+        }),
+      });
+    }
+  }
+  insertEvents(db, noopNotifier, events);
+}
+
+/** Every file-change row the walk can reach, oldest page first. */
+function walkAllFileChangeDiffs(
+  db: DbConnection,
+  thread: Thread,
+  eventBudget: number,
+): string[] {
+  const diffsByPage: string[][] = [];
+  let cursor: TimelinePaginationCursor | null = null;
+  for (let page = 0; page < 200; page += 1) {
+    const response = buildThreadTimeline(db, thread, {
+      eventBudget,
+      includeProviderUnhandledOperations: false,
+      includeNestedRows: true,
+      maxInlineOutputChars: null,
+      maxSeq: 0,
+      page: cursor
+        ? { kind: "older", beforeCursor: cursor, segmentLimit: 20 }
+        : { kind: "latest", segmentLimit: 20 },
+    });
+    diffsByPage.push(
+      response.rows
+        .filter((row) => row.kind === "work" && row.workKind === "file-change")
+        .map((row) =>
+          row.kind === "work" && row.workKind === "file-change"
+            ? (row.change.diff ?? "")
+            : "",
+        ),
+    );
+    if (!response.timelinePage.hasOlderRows) {
+      break;
+    }
+    cursor = response.timelinePage.olderCursor;
+    expect(cursor).not.toBeNull();
+  }
+  return diffsByPage.reverse().flat();
+}
+
 interface WalkResult {
   pages: number;
   userMessages: string[];
@@ -261,6 +406,24 @@ describe("timeline event budget", () => {
     expect(walkAllPages(db, thread, 50).userMessages).toEqual(
       walkAllPages(db, thread, LARGE_BUDGET).userMessages,
     );
+  });
+
+  it("keeps one file change per turn when turns reuse a file-change item id", () => {
+    const { db, thread } = setup();
+    // 3 turns of 13 events against a budget of 10, so the cut lands inside a
+    // turn and whole-item closure runs. Read as one thread-wide item, the
+    // reused id spans every turn: the newest page backfills the oldest turn's
+    // lifecycle rows, and every older page disowns the item, so the earlier
+    // file changes vanish from the timeline entirely.
+    insertTurnsWithReusedFileChangeItemId(db, thread, 3, 8);
+
+    const unbudgeted = walkAllFileChangeDiffs(db, thread, LARGE_BUDGET);
+    expect(unbudgeted).toEqual([
+      "@@ -1 +1 @@\n-old\n+turn-1",
+      "@@ -1 +1 @@\n-old\n+turn-2",
+      "@@ -1 +1 @@\n-old\n+turn-3",
+    ]);
+    expect(walkAllFileChangeDiffs(db, thread, 10)).toEqual(unbudgeted);
   });
 
   it("leaves a thread that fits inside the budget byte-identical", () => {
