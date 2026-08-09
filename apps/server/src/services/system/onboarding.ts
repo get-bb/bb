@@ -67,7 +67,7 @@ const PLAN_CAPABLE_BY_PROVIDER_ID = new Map<string, PlanCapableAgentConfig>([
     "acp-cursor",
     {
       cliKey: "cursor",
-      loginCommand: "agent login",
+      loginCommand: "cursor-agent login",
     },
   ],
 ]);

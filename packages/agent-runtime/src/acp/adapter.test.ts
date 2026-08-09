@@ -27,7 +27,10 @@ function createAdapter(): AcpProviderAdapter {
   });
 }
 
-const CURSOR_LIST_COMMAND = { command: "agent", args: ["--list-models"] };
+const CURSOR_LIST_COMMAND = {
+  command: "cursor-agent",
+  args: ["--list-models"],
+};
 
 const THREAD_CONTEXT = { threadId: "thread-1" };
 
@@ -115,7 +118,7 @@ describe("acp adapter command plans", () => {
       params: {
         threadId: "thread-1",
         cwd: "/workspace",
-        agent: { command: "agent", args: ["acp"] },
+        agent: { command: "cursor-agent", args: ["acp"] },
         permissionMode: "accept-edits",
         permissionEscalation: "ask",
         workspaceWriteRoots: ["/workspace", "/extra-root"],
@@ -393,7 +396,7 @@ describe("acp adapter model cli", () => {
     });
     expect(plan).toMatchObject({
       params: {
-        agent: { command: "agent", args: ["acp"] },
+        agent: { command: "cursor-agent", args: ["acp"] },
         modelSelection: {
           listCommand: CURSOR_LIST_COMMAND,
           selectFlag: "--model",
@@ -530,7 +533,10 @@ describe("acp adapter model cli", () => {
     });
     const params = (plan as { params: Record<string, unknown> }).params;
     expect("modelSelection" in params).toBe(false);
-    expect(params.agent).toEqual({ command: "agent", args: ["acp"] });
+    expect(params.agent).toEqual({
+      command: "cursor-agent",
+      args: ["acp"],
+    });
   });
 });
 

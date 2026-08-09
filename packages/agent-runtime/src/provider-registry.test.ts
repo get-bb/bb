@@ -195,7 +195,7 @@ describe("provider registry", () => {
       kind: "request",
       method: "thread/start",
       params: {
-        agent: { command: "agent", args: ["acp"] },
+        agent: { command: "cursor-agent", args: ["acp"] },
       },
     });
   });

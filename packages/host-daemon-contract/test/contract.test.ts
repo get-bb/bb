@@ -1039,13 +1039,12 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  // Version 87 keeps the provider thread id across an environment directory
-  // switch. The server now sends `turn.submit` with that id where it sent
-  // `thread.start` before, and the daemon must release the old runtime owner
-  // first. A daemon without that release would own the same provider session
-  // twice, so an older daemon must update instead of connecting.
-  it("uses protocol version 87 for moved-thread session handoff", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(87);
+  // Version 88 switches the built-in Cursor profile from the generic `agent`
+  // executable to `cursor-agent`. Older daemons retain their local built-in
+  // profile, so they must update before connecting to avoid launching another
+  // provider's `agent` binary and losing Cursor model discovery.
+  it("uses protocol version 88 for the namespaced Cursor executable", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(88);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {

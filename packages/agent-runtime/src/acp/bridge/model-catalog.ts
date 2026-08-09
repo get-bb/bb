@@ -1,7 +1,8 @@
 /**
  * Agent CLI model catalog.
  *
- * Cursor's `agent --list-models` prints one `id - Display Name` line per model,
+ * Cursor's `cursor-agent --list-models` prints one
+ * `id - Display Name` line per model,
  * OpenCode's `opencode models` prints one bare id per line, and Grok's
  * `grok models` prints a bulleted list. These ids can encode reasoning effort:
  * `gpt-5.3-codex-low`, bare `gpt-5.3-codex` for medium, `gpt-5.5-extra-high`
