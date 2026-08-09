@@ -2,6 +2,7 @@ import { writeFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { threadScope } from "@bb/domain";
 import type { ThreadEvent } from "@bb/domain";
 import type {
   AdapterCommand,
@@ -495,6 +496,115 @@ rl.on("line", (line) => {
         BB_ENVIRONMENT_ID: "env-1",
       });
       expect(reconfigureCommand.cwd).toBe(tmpDir);
+
+      await runtime.shutdown();
+    });
+
+    it("defers an instruction-only reconfigure while background tasks are open", async () => {
+      const recordedCommands: AdapterCommand[] = [];
+      const pendingEvents: ThreadEvent[] = [];
+      const runtime = createAgentRuntimeWithAdapters({
+        workspacePath: tmpDir,
+        onEvent: () => undefined,
+        onToolCall: async () => ({
+          contentItems: [{ type: "inputText", text: "ok" }],
+          success: true,
+        }),
+        adapterFactory: () => {
+          const adapter = createRecordingAdapter({ recordedCommands, scriptPath });
+          return {
+            ...adapter,
+            translateAcceptedCommand(commandArgs) {
+              return [
+                ...adapter.translateAcceptedCommand(commandArgs),
+                ...pendingEvents.splice(0),
+              ];
+            },
+          };
+        },
+      });
+
+      const backgroundTaskItem = {
+        type: "backgroundTask" as const,
+        id: "task:bg1",
+        taskType: "local_bash",
+        description: "sleep 900",
+        status: "pending" as const,
+        taskStatus: "running" as const,
+        skipTranscript: false,
+      };
+      await runtime.startThread({
+        environmentId: "env-1",
+        threadId: "t1",
+        projectId: "p1",
+        providerId: "fake",
+        instructions: "Initial instructions",
+        options: fullRuntimeOptions,
+      });
+
+      pendingEvents.push({
+        type: "item/started",
+        threadId: "t1",
+        providerThreadId: "",
+        scope: threadScope(),
+        item: backgroundTaskItem,
+      });
+      await runtime.runTurn({
+        clientRequestId: "creq_2222222bg1",
+        threadId: "t1",
+        input: [promptTextInput({ text: "start background work" })],
+        instructions: "Initial instructions",
+        options: fullRuntimeOptions,
+      });
+
+      await runtime.runTurn({
+        clientRequestId: "creq_2222222bg2",
+        threadId: "t1",
+        input: [promptTextInput({ text: "is it still running?" })],
+        instructions: "Updated instructions",
+        options: fullRuntimeOptions,
+      });
+      expect(findLastRecordedCommand(recordedCommands, "thread/resume")).toBe(
+        undefined,
+      );
+
+      pendingEvents.push({
+        type: "item/backgroundTask/completed",
+        threadId: "t1",
+        providerThreadId: "",
+        scope: threadScope(),
+        item: {
+          ...backgroundTaskItem,
+          status: "completed",
+          taskStatus: "completed",
+        },
+      });
+      await runtime.runTurn({
+        clientRequestId: "creq_2222222bg3",
+        threadId: "t1",
+        input: [promptTextInput({ text: "done yet?" })],
+        instructions: "Updated instructions",
+        options: fullRuntimeOptions,
+      });
+      await runtime.runTurn({
+        clientRequestId: "creq_2222222bg4",
+        threadId: "t1",
+        input: [promptTextInput({ text: "follow up" })],
+        instructions: "Updated instructions",
+        options: fullRuntimeOptions,
+      });
+
+      const reconfigureCommand = findLastRecordedCommand(
+        recordedCommands,
+        "thread/resume",
+      );
+      expect(reconfigureCommand?.type).toBe("thread/resume");
+      if (!reconfigureCommand || reconfigureCommand.type !== "thread/resume") {
+        throw new Error("Expected thread/resume command");
+      }
+      expect(reconfigureCommand.options?.instructions).toBe(
+        "Updated instructions",
+      );
 
       await runtime.shutdown();
     });

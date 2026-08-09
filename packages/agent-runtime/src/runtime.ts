@@ -752,13 +752,21 @@ function createAgentRuntimeInternal(
     const nextOptions = args.options;
     const nextInstructions = args.instructions ?? currentConfig.instructions;
 
-    if (
-      sameExecutionSettings({
-        left: currentConfig.options,
-        right: nextOptions,
-      }) &&
-      currentConfig.instructions === nextInstructions
-    ) {
+    const sameSettings = sameExecutionSettings({
+      left: currentConfig.options,
+      right: nextOptions,
+    });
+    if (sameSettings && currentConfig.instructions === nextInstructions) {
+      return;
+    }
+
+    // Applying new instructions replaces the provider session, which kills
+    // any background tasks still running inside it. Server-side instruction
+    // drift (plugin contributions, AGENTS.md edits) is not worth destroying
+    // live work over: defer the instruction-only reconfigure — the stored
+    // config stays stale, so it retries once the tasks settle. Explicit
+    // settings changes (e.g. a model switch) still apply immediately.
+    if (sameSettings && backgroundWorkState.hasOpenWorkForThread(args.threadId)) {
       return;
     }
 
