@@ -1056,6 +1056,9 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
+  // Version 116 reports provider exits that happen while a turn start is
+  // pending. Older daemons can leave the server thread active until the live
+  // command timeout, so enrolled machines must update before handling turns.
   // Version 115 settles zero-work provider prompts with a complete synthetic
   // turn lifecycle. Older daemons can leave locally handled prompts active
   // indefinitely, so enrolled machines must update for reliable completion.
@@ -1064,8 +1067,8 @@ describe("host-daemon command schemas", () => {
   // against its Pi provider ladder, so enrolled machines must not run that
   // mixed version. Version 113 carried the Devin Desktop open target rename
   // and remains part of the protocol lineage.
-  it("uses protocol version 115 for zero-work provider turn completion", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(115);
+  it("uses protocol version 116 for pending turn-start exit reconciliation", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(116);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {
