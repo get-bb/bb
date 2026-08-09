@@ -294,6 +294,11 @@ export class RuntimeManager {
     string,
     Map<string, number>
   >();
+  private readonly inFlightThreadCommandCompletionsByEnvironmentId = new Map<
+    string,
+    Map<string, Set<Promise<void>>>
+  >();
+  private readonly threadControlTails = new Map<string, Promise<void>>();
   private providerMaintenanceRuntime: AgentRuntime | null = null;
   private pendingProviderMaintenanceRuntime: PendingProviderMaintenanceRuntime | null =
     null;
@@ -340,6 +345,65 @@ export class RuntimeManager {
     return undefined;
   }
 
+  private enqueueThreadControl<T>(
+    threadId: string,
+    work: () => T | PromiseLike<T>,
+  ): Promise<T> {
+    const previous = this.threadControlTails.get(threadId) ?? Promise.resolve();
+    const next = previous.catch(() => undefined).then(work);
+    const settled = next.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.threadControlTails.set(threadId, settled);
+    void settled.then(() => {
+      if (this.threadControlTails.get(threadId) === settled) {
+        this.threadControlTails.delete(threadId);
+      }
+    });
+    return next;
+  }
+
+  /**
+   * A thread can move between environments while its provider session is
+   * still resident in the old environment runtime. Release that old runtime
+   * before the new environment resumes the persisted provider thread, so two
+   * runtime processes never own the same provider session at once.
+   */
+  async releaseThreadFromOtherEnvironments(args: {
+    environmentId: string;
+    threadId: string;
+  }): Promise<void> {
+    await this.enqueueThreadControl(args.threadId, async () => {
+      const inFlightOldCommands = [
+        ...this.inFlightThreadCommandCompletionsByEnvironmentId.entries(),
+      ].flatMap(([environmentId, commandsByThreadId]) =>
+        environmentId === args.environmentId
+          ? []
+          : [...(commandsByThreadId.get(args.threadId) ?? [])],
+      );
+      await Promise.all(inFlightOldCommands);
+      await this.releaseThreadFromOtherEnvironmentsOnce(args);
+    });
+  }
+
+  private async releaseThreadFromOtherEnvironmentsOnce(args: {
+    environmentId: string;
+    threadId: string;
+  }): Promise<void> {
+    const staleEntries = [...this.entries.values()].filter(
+      (entry) =>
+        entry.environmentId !== args.environmentId &&
+        entry.runtime.hasThread(args.threadId),
+    );
+
+    await Promise.all(
+      staleEntries.map((entry) =>
+        entry.runtime.stopThread({ threadId: args.threadId }),
+      ),
+    );
+  }
+
   markTerminalActive(environmentId: string, terminalId: string): void {
     this.entries.get(environmentId)?.terminals.add(terminalId);
   }
@@ -354,44 +418,78 @@ export class RuntimeManager {
    * accepts the command, so it cannot by itself protect that short interval
    * from a concurrent shell-environment refresh.
    */
-  retainEnvironmentForThreadCommand(
+  async retainEnvironmentForThreadCommand(
     environmentId: string,
     threadId: string,
-  ): () => void {
-    const commandsByThreadId =
-      this.inFlightThreadCommandsByEnvironmentId.get(environmentId) ??
-      new Map<string, number>();
-    commandsByThreadId.set(
-      threadId,
-      (commandsByThreadId.get(threadId) ?? 0) + 1,
-    );
-    this.inFlightThreadCommandsByEnvironmentId.set(
-      environmentId,
-      commandsByThreadId,
-    );
+  ): Promise<() => void> {
+    return this.enqueueThreadControl(threadId, () => {
+      const commandsByThreadId =
+        this.inFlightThreadCommandsByEnvironmentId.get(environmentId) ??
+        new Map<string, number>();
+      commandsByThreadId.set(
+        threadId,
+        (commandsByThreadId.get(threadId) ?? 0) + 1,
+      );
+      this.inFlightThreadCommandsByEnvironmentId.set(
+        environmentId,
+        commandsByThreadId,
+      );
 
-    let released = false;
-    return () => {
-      if (released) {
-        return;
-      }
-      released = true;
+      let resolveCompletion!: () => void;
+      const completion = new Promise<void>((resolve) => {
+        resolveCompletion = resolve;
+      });
+      const completionsByThreadId =
+        this.inFlightThreadCommandCompletionsByEnvironmentId.get(
+          environmentId,
+        ) ?? new Map<string, Set<Promise<void>>>();
+      const completions =
+        completionsByThreadId.get(threadId) ?? new Set<Promise<void>>();
+      completions.add(completion);
+      completionsByThreadId.set(threadId, completions);
+      this.inFlightThreadCommandCompletionsByEnvironmentId.set(
+        environmentId,
+        completionsByThreadId,
+      );
 
-      const activeCommands =
-        this.inFlightThreadCommandsByEnvironmentId.get(environmentId);
-      if (!activeCommands) {
-        return;
-      }
-      const count = activeCommands.get(threadId) ?? 0;
-      if (count <= 1) {
-        activeCommands.delete(threadId);
-      } else {
-        activeCommands.set(threadId, count - 1);
-      }
-      if (activeCommands.size === 0) {
-        this.inFlightThreadCommandsByEnvironmentId.delete(environmentId);
-      }
-    };
+      let released = false;
+      return () => {
+        if (released) {
+          return;
+        }
+        released = true;
+
+        const activeCommands =
+          this.inFlightThreadCommandsByEnvironmentId.get(environmentId);
+        if (activeCommands) {
+          const count = activeCommands.get(threadId) ?? 0;
+          if (count <= 1) {
+            activeCommands.delete(threadId);
+          } else {
+            activeCommands.set(threadId, count - 1);
+          }
+          if (activeCommands.size === 0) {
+            this.inFlightThreadCommandsByEnvironmentId.delete(environmentId);
+          }
+        }
+
+        const activeCompletions =
+          this.inFlightThreadCommandCompletionsByEnvironmentId.get(
+            environmentId,
+          );
+        const threadCompletions = activeCompletions?.get(threadId);
+        threadCompletions?.delete(completion);
+        if (threadCompletions?.size === 0) {
+          activeCompletions?.delete(threadId);
+        }
+        if (activeCompletions?.size === 0) {
+          this.inFlightThreadCommandCompletionsByEnvironmentId.delete(
+            environmentId,
+          );
+        }
+        resolveCompletion();
+      };
+    });
   }
 
   listActiveThreads(): HostDaemonActiveThread[] {

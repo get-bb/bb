@@ -251,6 +251,10 @@ export async function ensureThreadRuntime(
     workspaceContext: resumeContext.workspaceContext,
   });
 
+  await options.runtimeManager.releaseThreadFromOtherEnvironments({
+    environmentId: command.environmentId,
+    threadId: command.threadId,
+  });
   await resumeThreadRuntimeIfMissing({ command, entry });
   return entry;
 }

@@ -97,7 +97,6 @@ const isNotNestedTurnUsageEvent = sql`NOT EXISTS (
     AND nested_turn_started.type = 'turn/started'
     AND COALESCE(json_extract(nested_turn_started.data, '$.parentToolCallId'), '') <> ''
 )`;
-const isEnvironmentDirectoryUpdateEventData = sql`json_extract(${events.data}, '$.operation') = 'environment_directory_update'`;
 
 export interface InsertEventInput {
   threadId: string;
@@ -2835,41 +2834,10 @@ export function getLastStoredProviderThreadId(
     return null;
   }
 
-  const latestIdentityRow = db
-    .select({ sequence: events.sequence })
-    .from(events)
-    .where(
-      and(
-        eq(events.threadId, threadId),
-        eq(events.type, "thread/identity"),
-        isNotNull(events.providerThreadId),
-      ),
-    )
-    .orderBy(desc(events.sequence))
-    .limit(1)
-    .get();
-  const latestEnvironmentDirectoryUpdateRow = db
-    .select({ sequence: events.sequence })
-    .from(events)
-    .where(
-      and(
-        eq(events.threadId, threadId),
-        eq(events.type, "system/operation"),
-        isEnvironmentDirectoryUpdateEventData,
-      ),
-    )
-    .orderBy(desc(events.sequence))
-    .limit(1)
-    .get();
-
-  if (
-    latestEnvironmentDirectoryUpdateRow &&
-    (!latestIdentityRow ||
-      latestIdentityRow.sequence < latestEnvironmentDirectoryUpdateRow.sequence)
-  ) {
-    return null;
-  }
-
+  // A directory switch changes the runtime cwd, not the provider thread's
+  // conversation identity. The host daemon releases the old runtime owner
+  // before the next turn is dispatched through `thread/resume` with the new
+  // workspace path, so keep the last provider id available across the switch.
   return latestProviderRow.providerThreadId;
 }
 

@@ -542,7 +542,7 @@ describe("RuntimeManager", () => {
       environmentId: "env-skills",
       workspacePath: "/tmp/env-1",
     });
-    const release = manager.retainEnvironmentForThreadCommand(
+    const release = await manager.retainEnvironmentForThreadCommand(
       "env-skills",
       "thread-1",
     );
@@ -1401,7 +1401,7 @@ describe("RuntimeManager", () => {
       environmentId: "env-1",
       workspacePath: "/tmp/env-1",
     });
-    const release = manager.retainEnvironmentForThreadCommand(
+    const release = await manager.retainEnvironmentForThreadCommand(
       "env-1",
       "thread-1",
     );
@@ -1420,6 +1420,38 @@ describe("RuntimeManager", () => {
 
     expect(manager.get("env-1")).toBeUndefined();
     expect(runtime.shutdown).toHaveBeenCalledTimes(1);
+  });
+
+  it("waits for an old-environment thread command before releasing a moved thread", async () => {
+    const oldRuntime = createFakeRuntime();
+    const manager = new RuntimeManager({
+      provisionWorkspace: createProvisionWorkspaceMock("/tmp/env-old"),
+      createRuntime: () => oldRuntime,
+    });
+
+    await manager.ensureEnvironment({
+      environmentId: "env-old",
+      workspacePath: "/tmp/env-old",
+    });
+    oldRuntime.setActiveTurn("thread-1", "turn-old");
+    const release = await manager.retainEnvironmentForThreadCommand(
+      "env-old",
+      "thread-1",
+    );
+    const handoff = manager.releaseThreadFromOtherEnvironments({
+      environmentId: "env-new",
+      threadId: "thread-1",
+    });
+
+    await Promise.resolve();
+    expect(oldRuntime.stopThread).not.toHaveBeenCalled();
+
+    release();
+    await handoff;
+
+    expect(oldRuntime.stopThread).toHaveBeenCalledWith({
+      threadId: "thread-1",
+    });
   });
 
   it("keeps an environment runtime while an accepted turn awaits its first event", async () => {

@@ -230,10 +230,11 @@ function shouldInvalidateProviderMaintenanceRuntimeAfterProviderCliInstall(args:
 
 const commandHandlers: CommandHandlerMap = {
   "thread.start": async (command, options) => {
-    const release = options.runtimeManager.retainEnvironmentForThreadCommand(
-      command.environmentId,
-      command.threadId,
-    );
+    const release =
+      await options.runtimeManager.retainEnvironmentForThreadCommand(
+        command.environmentId,
+        command.threadId,
+      );
     try {
       return await startThread(command, options);
     } finally {
@@ -241,10 +242,11 @@ const commandHandlers: CommandHandlerMap = {
     }
   },
   "turn.submit": async (command, options) => {
-    const release = options.runtimeManager.retainEnvironmentForThreadCommand(
-      command.environmentId,
-      command.threadId,
-    );
+    const release =
+      await options.runtimeManager.retainEnvironmentForThreadCommand(
+        command.environmentId,
+        command.threadId,
+      );
     try {
       const entry = await ensureThreadRuntime(command, options);
       return await submitTurn(command, entry, options);
@@ -257,6 +259,10 @@ const commandHandlers: CommandHandlerMap = {
       command.environmentId,
       options.runtimeManager,
     );
+    await options.runtimeManager.releaseThreadFromOtherEnvironments({
+      environmentId: command.environmentId,
+      threadId: command.threadId,
+    });
     if (entry.runtime.hasThread(command.threadId)) {
       // Stop can be dispatched while the start/submit RPC is still in flight
       // and the turn/started event has not been observed yet. Wait for the
@@ -286,6 +292,10 @@ const commandHandlers: CommandHandlerMap = {
       command.environmentId,
       options.runtimeManager,
     );
+    await options.runtimeManager.releaseThreadFromOtherEnvironments({
+      environmentId: command.environmentId,
+      threadId: command.threadId,
+    });
     if (!entry.runtime.hasThread(command.threadId)) {
       throw new ExpectedCommandDispatchError(
         "unknown_thread_runtime",
@@ -308,6 +318,10 @@ const commandHandlers: CommandHandlerMap = {
     if (!entry) {
       return {};
     }
+    await options.runtimeManager.releaseThreadFromOtherEnvironments({
+      environmentId: command.environmentId,
+      threadId: command.threadId,
+    });
     await entry.runtime.renameThread({
       threadId: command.threadId,
       title: command.title,
@@ -320,6 +334,10 @@ const commandHandlers: CommandHandlerMap = {
       environmentId: command.environmentId,
       runtimeManager: options.runtimeManager,
       workspaceContext: command.workspaceContext,
+    });
+    await options.runtimeManager.releaseThreadFromOtherEnvironments({
+      environmentId: command.environmentId,
+      threadId: command.threadId,
     });
     await entry.runtime.archiveThread({
       threadId: command.threadId,
