@@ -356,8 +356,10 @@ least `icon` or `logo.light`, `bb.server`
 into agent threads unless filtered by `bb.agents.configure`; default
 `skills/`), `engines.bb` (supported bb range),
 and optional `engines.bbPluginSdk` (supported plugin SDK range; scaffold
-writes `"^0.4.1"` for SDK 0.4.1). The plugin id is the package name minus
-`bb-plugin-`.
+writes `"^0.4.1"` for SDK 0.4.1). Plugin package names can be unscoped
+(`bb-plugin-hello`) or scoped (`@acme/bb-plugin-hello`). The plugin id is the
+final package-name component minus `bb-plugin-`, so both forms use the id
+`hello`.
 
 Plugins can contribute palettes with `bb.themes`: an array of
 `{ id, name, description?, css }`, where `css` is a plugin-relative `.css`

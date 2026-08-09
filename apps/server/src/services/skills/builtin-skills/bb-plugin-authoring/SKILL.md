@@ -110,11 +110,12 @@ The manifest is `package.json`:
   `builtWith: { bbVersion, pluginSdkVersion }`. Managed installs reject
   artifacts whose `pluginId`/`pluginVersion` disagree with the package
   manifest, or whose SDK major does not match the host.
-- The plugin id is the package name minus the `bb-plugin-` prefix
-  (`bb-plugin-hello` → `hello`); it namespaces routes, storage, settings,
-  and CLI commands. Ids reserved by builtins (`automations`, `connect`,
-  `custom-instructions`, `inline-vis`, `secrets`) cannot be
-  installed from a non-`builtin:` source — use `builtin:<name>` instead.
+- Plugin package names can be unscoped (`bb-plugin-hello`) or scoped
+  (`@acme/bb-plugin-hello`). The plugin id is the final package-name component
+  minus the `bb-plugin-` prefix, so both forms use `hello`; it namespaces
+  routes, storage, settings, and CLI commands. Builtin ids such as
+  `automations`, `connect`, `custom-instructions`, `inline-vis`, and `secrets`
+  cannot use a non-`builtin:` source — use `builtin:<name>` instead.
 
 Backend API imports normally stay type-only;
 the root runtime exports are `defineRpcContract`, supplied by BB for shared
