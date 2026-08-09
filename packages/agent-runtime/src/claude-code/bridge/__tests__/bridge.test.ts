@@ -150,6 +150,7 @@ interface StartBridgeThreadArgs {
 
 interface ResumeBridgeThreadArgs {
   bridge: BridgeJsonRpcTestHarness;
+  permissionEscalation?: "ask" | "deny";
   providerThreadId: string | null;
   requestId: number;
   threadId: string;
@@ -461,7 +462,7 @@ function sendResumeThread(args: ResumeBridgeThreadArgs): void {
     baseInstructions: "test",
     cwd: "/tmp/worktree",
     instructionMode: "append",
-    permissionEscalation: "ask",
+    permissionEscalation: args.permissionEscalation ?? "ask",
     permissionMode: "default",
     approvedPlanPermissionMode: "default",
     permissionScope: "workspace",
@@ -557,7 +558,7 @@ describe("bridge", () => {
         cwd: "/tmp/worktree",
         disallowedTools: ["ExitPlanMode", "NotebookEdit", "Task"],
         instructionMode: "replace",
-        permissionEscalation: "ask",
+        getPermissionEscalation: () => "ask",
         permissionMode: "default",
         permissionScope: "workspace",
       },
@@ -582,7 +583,7 @@ describe("bridge", () => {
         instructionMode: "append",
         reasoningLevel: "ultracode",
         workflowsEnabled: true,
-        permissionEscalation: "ask",
+        getPermissionEscalation: () => "ask",
         permissionMode: "default",
         permissionScope: "workspace",
       },
@@ -605,7 +606,7 @@ describe("bridge", () => {
         instructionMode: "append",
         reasoningLevel: "high",
         workflowsEnabled: true,
-        permissionEscalation: "ask",
+        getPermissionEscalation: () => "ask",
         permissionMode: "default",
         permissionScope: "workspace",
       },
@@ -627,7 +628,7 @@ describe("bridge", () => {
         cwd: "/tmp/worktree",
         instructionMode: "append",
         reasoningLevel: "xhigh",
-        permissionEscalation: "ask",
+        getPermissionEscalation: () => "ask",
         permissionMode: "default",
         permissionScope: "workspace",
       },
@@ -644,7 +645,7 @@ describe("bridge", () => {
         memoryEnabled: false,
         cwd: "/tmp/worktree",
         instructionMode: "append",
-        permissionEscalation: "ask",
+        getPermissionEscalation: () => "ask",
         permissionMode: "default",
         permissionScope: "workspace",
       },
@@ -662,7 +663,7 @@ describe("bridge", () => {
         cwd: "/tmp/worktree",
         instructionMode: "append",
         reasoningLevel: "xhigh",
-        permissionEscalation: "ask",
+        getPermissionEscalation: () => "ask",
         permissionMode: "default",
         permissionScope: "workspace",
       },
@@ -690,7 +691,7 @@ describe("bridge", () => {
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
         instructionMode: "append",
-        permissionEscalation: "ask",
+        getPermissionEscalation: () => "ask",
         permissionMode: "default",
         permissionScope: "workspace",
         plugins: [{ type: "local", path: "/tmp/bb-skills" }],
@@ -711,7 +712,7 @@ describe("bridge", () => {
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
         instructionMode: "append",
-        permissionEscalation: "deny",
+        getPermissionEscalation: () => "deny",
         permissionMode: "dontAsk",
         permissionScope: "workspace",
       },
@@ -729,7 +730,7 @@ describe("bridge", () => {
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
         instructionMode: "append",
-        permissionEscalation: "ask",
+        getPermissionEscalation: () => "ask",
         permissionMode: "default",
         permissionScope: "workspace",
       },
@@ -754,7 +755,7 @@ describe("bridge", () => {
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
         instructionMode: "append",
-        permissionEscalation: "ask",
+        getPermissionEscalation: () => "ask",
         permissionMode: "default",
         permissionScope: "workspace",
       },
@@ -772,7 +773,7 @@ describe("bridge", () => {
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
         instructionMode: "append",
-        permissionEscalation: "ask",
+        getPermissionEscalation: () => "ask",
         permissionMode: "default",
         permissionScope: "workspace",
       },
@@ -793,7 +794,7 @@ describe("bridge", () => {
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
         instructionMode: "append",
-        permissionEscalation: "ask",
+        getPermissionEscalation: () => "ask",
         permissionMode: "default",
         permissionScope: "workspace",
       },
@@ -818,7 +819,7 @@ describe("bridge", () => {
           baseInstructions: "You are a coder.",
           cwd: "/tmp/worktree",
           instructionMode: "append",
-          permissionEscalation: "ask",
+          getPermissionEscalation: () => "ask",
           permissionMode: "default",
           permissionScope: "workspace",
         },
@@ -837,7 +838,7 @@ describe("bridge", () => {
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
         instructionMode: "append",
-        permissionEscalation: "ask",
+        getPermissionEscalation: () => "ask",
         permissionMode: "acceptEdits",
         permissionScope: "workspace",
       },
@@ -849,7 +850,7 @@ describe("bridge", () => {
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
         instructionMode: "append",
-        permissionEscalation: "deny",
+        getPermissionEscalation: () => "deny",
         permissionMode: "auto",
         permissionScope: "workspace",
       },
@@ -869,7 +870,7 @@ describe("bridge", () => {
       enabled: true,
       failIfUnavailable: false,
       autoAllowBashIfSandboxed: true,
-      allowUnsandboxedCommands: false,
+      allowUnsandboxedCommands: true,
       network: { allowLocalBinding: true },
     });
   });
@@ -882,7 +883,7 @@ describe("bridge", () => {
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
         instructionMode: "append",
-        permissionEscalation: "ask",
+        getPermissionEscalation: () => "ask",
         permissionMode: "plan",
         permissionScope: "workspace",
       },
@@ -905,7 +906,7 @@ describe("bridge", () => {
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
         instructionMode: "append",
-        permissionEscalation: "deny",
+        getPermissionEscalation: () => "deny",
         permissionMode: "auto",
         permissionScope: "workspace",
       },
@@ -920,7 +921,7 @@ describe("bridge", () => {
       enabled: true,
       failIfUnavailable: false,
       autoAllowBashIfSandboxed: true,
-      allowUnsandboxedCommands: false,
+      allowUnsandboxedCommands: true,
       network: { allowLocalBinding: true },
       filesystem: {
         allowWrite: ["/repo/.git/worktrees/bb13", "/repo/.git/objects"],
@@ -935,7 +936,7 @@ describe("bridge", () => {
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
         instructionMode: "append",
-        permissionEscalation: "ask",
+        getPermissionEscalation: () => "ask",
         permissionMode: "default",
         permissionScope: "workspace",
       },
@@ -947,7 +948,7 @@ describe("bridge", () => {
         baseInstructions: "You are a coder.",
         cwd: "/tmp/worktree",
         instructionMode: "append",
-        permissionEscalation: "deny",
+        getPermissionEscalation: () => "deny",
         permissionMode: "dontAsk",
         permissionScope: "workspace",
       },
@@ -1243,6 +1244,23 @@ describe("bridge", () => {
         blockedPath: "/tmp/project",
         input: {
           command: "git status --short",
+          description: "Permission boundary test",
+        },
+        expected: {
+          behavior: "deny",
+          messageIncludes: "bb's workspace sandbox allows work inside",
+        },
+      },
+      {
+        id: "escalation-deny-unsandboxed-bash",
+        name: "escalation deny blocks unsandboxed Bash retry",
+        permissionMode: "auto",
+        permissionEscalation: "deny",
+        toolName: "Bash",
+        decisionReason: "dangerouslyDisableSandbox",
+        input: {
+          command: "echo hi",
+          dangerouslyDisableSandbox: true,
           description: "Permission boundary test",
         },
         expected: {
@@ -1786,6 +1804,7 @@ describe("bridge", () => {
       });
 
       bridge.sendRequest(collidingId, "turn/start", {
+        permissionEscalation: "ask",
         threadId,
         providerThreadId: null,
         input: [{ type: "text", text: "colliding turn", mentions: [] }],
@@ -1821,6 +1840,7 @@ describe("bridge", () => {
       // Any params mismatch used to be dropped without a reply, so the caller
       // learned nothing until its 30s timeout. The reply now names the field.
       bridge.sendRequest(11, "turn/start", {
+        permissionEscalation: "ask",
         threadId: "thread-invalid-params",
         providerThreadId: null,
         input: [{ type: "text", text: "hi", mentions: [] }],
@@ -2525,7 +2545,7 @@ describe("bridge", () => {
         sandbox: {
           enabled: true,
           autoAllowBashIfSandboxed: true,
-          allowUnsandboxedCommands: false,
+          allowUnsandboxedCommands: true,
         },
       });
 
@@ -2557,6 +2577,45 @@ describe("bridge", () => {
       await bridge.flushWork();
       queries[3]?.finish();
       await bridge.waitForResponse(5);
+    } finally {
+      queries.forEach((query) => query.finish());
+      bridge.restore();
+    }
+  });
+
+  it("keeps a live Claude session across an escalation-only resume change", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      queries.push(query);
+      return query;
+    });
+
+    try {
+      const threadId = "thread-resume-escalation-only";
+      const providerThreadId = "provider-thread-escalation-only";
+      sendResumeThread({ bridge, providerThreadId, requestId: 1, threadId });
+      await bridge.waitForResponse(1);
+
+      expect(queries).toHaveLength(1);
+
+      sendResumeThread({
+        bridge,
+        permissionEscalation: "deny",
+        providerThreadId,
+        requestId: 2,
+        threadId,
+      });
+      await bridge.waitForResponse(2);
+
+      expect(queries).toHaveLength(1);
+      expect(queries[0]?.close).not.toHaveBeenCalled();
+
+      bridge.sendRequest(3, "thread/stop", { threadId });
+      await bridge.flushWork();
+      queries[0]?.finish();
+      await bridge.waitForResponse(3);
     } finally {
       queries.forEach((query) => query.finish());
       bridge.restore();
@@ -2799,6 +2858,7 @@ describe("bridge", () => {
       ).toBe(true);
 
       bridge.sendRequest(2, "turn/start", {
+        permissionEscalation: "ask",
         input: [{ type: "text", text: inputText }],
         providerThreadId,
         threadId,
@@ -2854,6 +2914,7 @@ describe("bridge", () => {
       await bridge.flushWork();
 
       bridge.sendRequest(2, "turn/start", {
+        permissionEscalation: "ask",
         input: [{ type: "text", text: "" }],
         providerThreadId,
         threadId,
@@ -2901,6 +2962,7 @@ describe("bridge", () => {
       const providerThreadId = getProviderThreadIdFromResult(startResponse);
 
       bridge.sendRequest(2, "turn/start", {
+        permissionEscalation: "ask",
         input: [
           { type: "text", text: "First grouped input" },
           { type: "text", text: "\n\n" },
@@ -2951,6 +3013,7 @@ describe("bridge", () => {
       await startBridgeThread({ bridge, threadId });
 
       bridge.sendRequest(2, "turn/start", {
+        permissionEscalation: "ask",
         input: [
           { type: "text", text: "First grouped input" },
           { type: "text", text: "\n\n" },
@@ -3019,6 +3082,7 @@ describe("bridge", () => {
       });
 
       bridge.sendRequest(2, "turn/start", {
+        permissionEscalation: "ask",
         input: [{ type: "text", text: inputText }],
         providerThreadId: staleProviderThreadId,
         threadId,
@@ -3177,6 +3241,7 @@ describe("bridge", () => {
       await startBridgeThread({ bridge, threadId });
 
       bridge.sendRequest(2, "turn/steer", {
+        permissionEscalation: "ask",
         expectedTurnId: "turn-1",
         input: [{ type: "text", text: "Please account for the restart" }],
         providerThreadId: null,
@@ -3213,6 +3278,7 @@ describe("bridge", () => {
       await startBridgeThread({ bridge, threadId });
 
       bridge.sendRequest(2, "turn/steer", {
+        permissionEscalation: "ask",
         expectedTurnId: "turn-1",
         input: [
           { type: "text", text: "First grouped steer" },
@@ -3255,6 +3321,7 @@ describe("bridge", () => {
     ): Promise<string> {
       await startBridgeThread({ bridge, threadId });
       bridge.sendRequest(2, "turn/start", {
+        permissionEscalation: "ask",
         input,
         providerThreadId: null,
         threadId,

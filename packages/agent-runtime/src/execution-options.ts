@@ -23,6 +23,7 @@ interface ToProviderExecutionContextArgs {
 interface SameExecutionSettingsArgs {
   left: AgentRuntimeExecutionOptions;
   right: AgentRuntimeExecutionOptions;
+  ignorePermissionEscalation: boolean;
 }
 
 export function assertProviderSupportsExecutionOptions(
@@ -82,7 +83,8 @@ export function sameExecutionSettings(
     args.left.permissionMode === args.right.permissionMode &&
     args.left.permissionScope === args.right.permissionScope &&
     args.left.approvalReviewer === args.right.approvalReviewer &&
-    args.left.permissionEscalation === args.right.permissionEscalation
+    (args.ignorePermissionEscalation ||
+      args.left.permissionEscalation === args.right.permissionEscalation)
   );
 }
 

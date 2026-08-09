@@ -1042,6 +1042,7 @@ export function createClaudeCodeProviderAdapter(
     id: providerInfo.id,
     displayName: providerInfo.displayName,
     capabilities,
+    appliesPermissionEscalationPerTurn: true,
     process: {
       command: opts?.bridgeNodeExecutablePath ?? "node",
       args: resolveBridgeProcessArgs({
@@ -1240,6 +1241,7 @@ export function createClaudeCodeProviderAdapter(
               ...(command.options?.model
                 ? { model: command.options.model }
                 : {}),
+              permissionEscalation: command.options.permissionEscalation,
             },
           };
         case "turn/steer":
@@ -1261,6 +1263,7 @@ export function createClaudeCodeProviderAdapter(
                     ),
                   }
                 : {}),
+              permissionEscalation: command.options.permissionEscalation,
             },
           };
         case "thread/fork": {

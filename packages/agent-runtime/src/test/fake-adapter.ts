@@ -471,6 +471,7 @@ export function createFakeAdapter(
       supportsFork: true,
       supportedPermissionModes: ["accept-edits", "auto", "full"],
     },
+    appliesPermissionEscalationPerTurn: false,
     decodeToolCallRequest,
     decodeInteractiveRequest: supportsUserQuestion
       ? decodeInteractiveRequest

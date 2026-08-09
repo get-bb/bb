@@ -233,7 +233,10 @@ interface SessionConstructionConfig {
   claudeCodeMockCliTraffic: ThreadResumeParams["claudeCodeMockCliTraffic"];
   config: ThreadResumeParams["config"];
   dynamicTools: ThreadResumeParams["dynamicTools"];
-  sessionOptions: BuildSessionOptionsArgs;
+  // Escalation is per-turn state, so it is not part of the comparable
+  // construction config: two configs differing only in escalation must reuse
+  // the live session instead of replacing it (killing its background tasks).
+  sessionOptions: Omit<BuildSessionOptionsArgs, "getPermissionEscalation">;
 }
 
 type SessionConstructionParams =
@@ -478,13 +481,23 @@ function toSessionConstructionConfig(
       instructionMode: params.instructionMode,
       memoryEnabled: params.memoryEnabled,
       model: params.model,
-      permissionEscalation: params.permissionEscalation,
       permissionMode: params.permissionMode,
       permissionScope: params.permissionScope,
       plugins: params.plugins,
       reasoningLevel: params.reasoningLevel,
       workflowsEnabled: params.workflowsEnabled,
     },
+  };
+}
+
+function withLivePermissionEscalation(
+  params: SessionConstructionParams,
+  threadIdRef: ThreadIdRef,
+): BuildSessionOptionsArgs {
+  return {
+    ...toSessionConstructionConfig(params).sessionOptions,
+    getPermissionEscalation: () =>
+      sessions.get(threadIdRef.current)?.permissionEscalation ?? null,
   };
 }
 
@@ -1181,6 +1194,24 @@ function createCanUseTool(threadIdRef: ThreadIdRef): CanUseTool {
     const requestedPermissions =
       toPendingInteractionPermissionProfile(requestContext);
     if (
+      toolName === "Bash" &&
+      shouldAutoDenyInteractiveRequest(threadSession) &&
+      typeof input === "object" &&
+      input !== null &&
+      (input as { dangerouslyDisableSandbox?: unknown })
+        .dangerouslyDisableSandbox === true
+    ) {
+      // With `allowUnsandboxedCommands` permanently enabled, this deny is the
+      // only gate on the unsandboxed retry for escalation-denied turns. It must
+      // run before the session-grant shortcut: grants survive escalation flips
+      // now that an escalation-only change reuses the session.
+      return {
+        behavior: "deny",
+        message: buildWorkspaceWriteDenialMessage(),
+        toolUseID: options.toolUseID,
+      };
+    }
+    if (
       hasClaudeSessionPermissionGrant({
         grants: threadSession.sessionPermissionGrants,
         permissions: requestedPermissions,
@@ -1309,7 +1340,10 @@ async function handleThreadStart(
   }
 
   const preparedEnv = await prepareSessionEnv(params);
-  const sessionOptions = buildSessionOptions(params, preparedEnv.env);
+  const sessionOptions = buildSessionOptions(
+    withLivePermissionEscalation(params, threadIdRef),
+    preparedEnv.env,
+  );
   const providerThreadId = randomUUID();
   sessionOptions.sessionId = providerThreadId;
   sessionOptions.canUseTool = createCanUseTool(threadIdRef);
@@ -1360,6 +1394,7 @@ async function handleThreadResume(
       sessionConstructionConfig,
     )
   ) {
+    existing.permissionEscalation = params.permissionEscalation;
     sendResult(id, {
       threadId,
       providerThreadId: requestedProviderThreadId,
@@ -1377,7 +1412,10 @@ async function handleThreadResume(
 
   const preparedEnv = await prepareSessionEnv(params);
   const threadIdRef = { current: threadId };
-  const sessionOptions = buildSessionOptions(params, preparedEnv.env);
+  const sessionOptions = buildSessionOptions(
+    withLivePermissionEscalation(params, threadIdRef),
+    preparedEnv.env,
+  );
   sessionOptions.canUseTool = createCanUseTool(threadIdRef);
   if (params.dynamicTools && params.dynamicTools.length > 0) {
     const mcpServer = buildBridgeMcpServer(
@@ -1438,7 +1476,10 @@ async function handleThreadFork(
 
   const preparedEnv = await prepareSessionEnv(params);
   const threadIdRef = { current: threadId };
-  const sessionOptions = buildSessionOptions(params, preparedEnv.env);
+  const sessionOptions = buildSessionOptions(
+    withLivePermissionEscalation(params, threadIdRef),
+    preparedEnv.env,
+  );
   sessionOptions.canUseTool = createCanUseTool(threadIdRef);
   if (params.dynamicTools && params.dynamicTools.length > 0) {
     const mcpServer = buildBridgeMcpServer(
@@ -1498,6 +1539,7 @@ async function handleTurnStart(
     return;
   }
 
+  threadSession.permissionEscalation = params.permissionEscalation;
   queuePromptInputs(threadSession, inputs);
   sendResult(id, { threadId: params.threadId });
 }
@@ -1518,6 +1560,7 @@ async function handleTurnSteer(
     return;
   }
 
+  threadSession.permissionEscalation = params.permissionEscalation;
   if (inputs.length > 1) {
     queuePromptInputs(threadSession, inputs);
     sendResult(id, { threadId: params.threadId });

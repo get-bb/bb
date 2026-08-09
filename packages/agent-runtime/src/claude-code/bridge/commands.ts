@@ -141,6 +141,7 @@ const claudeCodeCommandSchema = z.discriminatedUnion("method", [
       inputGroups: z.array(z.array(z.unknown()).min(1)).optional(),
       model: z.string().optional(),
       config: z.record(z.string(), z.unknown()).optional(),
+      permissionEscalation: bridgePermissionEscalationSchema,
     }),
   }),
   z.object({
@@ -151,6 +152,7 @@ const claudeCodeCommandSchema = z.discriminatedUnion("method", [
       expectedTurnId: z.string(),
       input: z.array(z.unknown()),
       inputGroups: z.array(z.array(z.unknown()).min(1)).optional(),
+      permissionEscalation: bridgePermissionEscalationSchema,
     }),
   }),
   z.object({

@@ -253,6 +253,12 @@ export interface ProviderAdapter {
   id: string;
   displayName: string;
   capabilities: ProviderCapabilities;
+  /**
+   * The adapter applies `permissionEscalation` from each turn command, so the
+   * runtime must not replace the session (killing its background tasks) over
+   * an escalation-only change.
+   */
+  appliesPermissionEscalationPerTurn: boolean;
   process: { command: string; args: string[]; env?: Record<string, string> };
 
   buildCommandPlan(command: AdapterCommand): ProviderCommandPlan;

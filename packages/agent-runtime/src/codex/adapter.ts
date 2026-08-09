@@ -1792,6 +1792,7 @@ export function createCodexProviderAdapter(
     id: providerInfo.id,
     displayName: providerInfo.displayName,
     capabilities,
+    appliesPermissionEscalationPerTurn: false,
     // Codex app-server connections are owned by the runtime process manager.
     // BB runs live Codex threads on thread-scoped app-server processes, while
     // provider-only probes can still use a provider-scoped maintenance process.

@@ -1298,6 +1298,7 @@ export function createPiProviderAdapter(
     id: providerInfo.id,
     displayName: providerInfo.displayName,
     capabilities,
+    appliesPermissionEscalationPerTurn: false,
     process: {
       command: opts?.bridgeNodeExecutablePath ?? "node",
       args: resolveBridgeProcessArgs({

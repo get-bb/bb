@@ -1426,6 +1426,7 @@ export function createAcpProviderAdapter(
     id: providerInfo.id,
     displayName: providerInfo.displayName,
     capabilities: providerInfo.capabilities,
+    appliesPermissionEscalationPerTurn: false,
     process: {
       command: opts.bridgeNodeExecutablePath ?? "node",
       args: resolveBridgeProcessArgs({

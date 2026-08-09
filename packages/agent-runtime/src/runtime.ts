@@ -819,19 +819,27 @@ function createAgentRuntimeInternal(
     // instructions) must never force a thread/resume, because a resume can
     // replace the live CLI session and kill its running background tasks.
     // Fresh instructions apply when the next session is constructed.
-    if (
-      sameExecutionSettings({
-        left: currentConfig.options,
-        right: nextOptions,
-      })
-    ) {
-      return;
-    }
-
     const proc = requireProviderProcess({
       processKey: currentConfig.processKey,
       providerId: currentConfig.providerId,
     });
+    if (
+      sameExecutionSettings({
+        left: currentConfig.options,
+        right: nextOptions,
+        ignorePermissionEscalation:
+          proc.adapter.appliesPermissionEscalationPerTurn,
+      })
+    ) {
+      // Escalation rides on each turn command; record it without replacing
+      // the session (which would kill its background tasks).
+      setThreadRuntimeConfig(args.threadId, {
+        ...currentConfig,
+        options: nextOptions,
+      });
+      return;
+    }
+
     const providerSkillRoots = currentConfig.skillRoots;
     const envVars = buildThreadShellEnvironment({
       baseShellEnv: options.shellEnv,

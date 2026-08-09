@@ -499,6 +499,57 @@ rl.on("line", (line) => {
       await runtime.shutdown();
     });
 
+    it("skips session reconfigure for an escalation-only change when the adapter applies escalation per turn", async () => {
+      const recordedCommands: AdapterCommand[] = [];
+      const runtime = createAgentRuntimeWithAdapters({
+        workspacePath: tmpDir,
+        onEvent: () => undefined,
+        onToolCall: async () => ({
+          contentItems: [{ type: "inputText", text: "ok" }],
+          success: true,
+        }),
+        adapterFactory: () => ({
+          ...createRecordingAdapter({ recordedCommands, scriptPath }),
+          appliesPermissionEscalationPerTurn: true,
+        }),
+      });
+
+      await runtime.startThread({
+        environmentId: "env-1",
+        threadId: "t1",
+        projectId: "p1",
+        providerId: "fake",
+        instructions: "Initial instructions",
+        options: {
+          ...fullRuntimeOptions,
+          permissionMode: "auto",
+          permissionScope: "workspace",
+          approvalReviewer: "automatic",
+          permissionEscalation: "ask",
+        },
+      });
+
+      await runtime.runTurn({
+        clientRequestId: "creq_222222224h",
+        threadId: "t1",
+        input: [promptTextInput({ text: "follow up" })],
+        instructions: "Initial instructions",
+        options: {
+          ...fullRuntimeOptions,
+          permissionMode: "auto",
+          permissionScope: "workspace",
+          approvalReviewer: "automatic",
+          permissionEscalation: "deny",
+        },
+      });
+
+      expect(
+        recordedCommands.some((command) => command.type === "thread/resume"),
+      ).toBe(false);
+
+      await runtime.shutdown();
+    });
+
     it("passes the workspace cwd when resuming a thread", async () => {
       const recordedCommands: AdapterCommand[] = [];
       const runtime = createAgentRuntimeWithAdapters({

@@ -213,6 +213,7 @@ export function createWarningEventAdapter(scriptPath: string): ProviderAdapter {
       supportsFork: false,
       supportedPermissionModes: ["accept-edits", "auto", "full"],
     },
+    appliesPermissionEscalationPerTurn: false,
     process: {
       command: "node",
       args: buildNodeScriptArgs(scriptPath),
@@ -325,6 +326,7 @@ export function createStartedEventAdapter(scriptPath: string): ProviderAdapter {
       supportsFork: false,
       supportedPermissionModes: ["accept-edits", "auto", "full"],
     },
+    appliesPermissionEscalationPerTurn: false,
     process: {
       command: "node",
       args: buildNodeScriptArgs(scriptPath),

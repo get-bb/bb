@@ -18,7 +18,11 @@ export interface BuildSessionOptionsArgs {
   disallowedTools?: readonly string[];
   instructionMode: InstructionMode;
   model?: string;
-  permissionEscalation: PermissionEscalation | null;
+  /**
+   * Escalation changes per turn without replacing the session, so hook
+   * closures must read it at call time instead of capturing a value.
+   */
+  getPermissionEscalation: () => PermissionEscalation | null;
   permissionMode: ClaudePermissionMode;
   permissionScope: RuntimePermissionScope;
   plugins?: Options["plugins"];
@@ -47,6 +51,8 @@ const READONLY_ALLOWED_TOOLS = new Set([
   "TodoRead",
 ]);
 const READONLY_BASH_TOOL_NAME = "Bash";
+const READONLY_ASK_REASON =
+  "bb readonly mode requires approval before using tools that can modify state, run commands, access network, or perform non-read actions.";
 const SUMMARIZED_ADAPTIVE_THINKING = {
   type: "adaptive",
   display: "summarized",
@@ -97,12 +103,7 @@ function buildReadonlyHooks(
     return undefined;
   }
 
-  const permissionDecision =
-    params.permissionEscalation === "deny" ? "deny" : "ask";
-  const permissionDecisionReason =
-    permissionDecision === "deny"
-      ? buildReadonlyDenialMessage()
-      : "bb readonly mode requires approval before using tools that can modify state, run commands, access network, or perform non-read actions.";
+  const getPermissionEscalation = params.getPermissionEscalation;
 
   return {
     PreToolUse: [
@@ -131,12 +132,17 @@ function buildReadonlyHooks(
               }
             }
 
+            const permissionDecision =
+              getPermissionEscalation() === "deny" ? "deny" : "ask";
             return {
               continue: true,
               hookSpecificOutput: {
                 hookEventName: "PreToolUse",
                 permissionDecision,
-                permissionDecisionReason,
+                permissionDecisionReason:
+                  permissionDecision === "deny"
+                    ? buildReadonlyDenialMessage()
+                    : READONLY_ASK_REASON,
               },
             };
           },
@@ -175,7 +181,10 @@ function buildWorkspaceWriteSandbox(
     // back to bb's own `canUseTool` gating instead of running wide open.
     failIfUnavailable: false,
     autoAllowBashIfSandboxed: true,
-    allowUnsandboxedCommands: params.permissionEscalation === "ask",
+    // Sandbox settings are session-fixed while escalation changes per turn;
+    // the unsandboxed retry stays enabled and `canUseTool` auto-denies it on
+    // escalation-denied turns.
+    allowUnsandboxedCommands: true,
     // The bb CLI needs loopback to reach the local server, and
     // escalation-denied turns have no unsandboxed-retry path around a block.
     // macOS-only and coarse (all localhost ports, binding on all interfaces);
