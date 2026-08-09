@@ -860,6 +860,7 @@ describe("bridge", () => {
       failIfUnavailable: false,
       autoAllowBashIfSandboxed: true,
       allowUnsandboxedCommands: true,
+      network: { allowLocalBinding: true },
     });
     expect(denyOptions.permissionMode).toBe("auto");
     expect(denyOptions.sandbox).toEqual({
@@ -867,6 +868,7 @@ describe("bridge", () => {
       failIfUnavailable: false,
       autoAllowBashIfSandboxed: true,
       allowUnsandboxedCommands: false,
+      network: { allowLocalBinding: true },
     });
   });
 
@@ -917,6 +919,7 @@ describe("bridge", () => {
       failIfUnavailable: false,
       autoAllowBashIfSandboxed: true,
       allowUnsandboxedCommands: false,
+      network: { allowLocalBinding: true },
       filesystem: {
         allowWrite: ["/repo/.git/worktrees/bb13", "/repo/.git/objects"],
       },

@@ -176,6 +176,10 @@ function buildWorkspaceWriteSandbox(
     failIfUnavailable: false,
     autoAllowBashIfSandboxed: true,
     allowUnsandboxedCommands: params.permissionEscalation === "ask",
+    // Loopback must stay reachable from inside the sandbox: the bb CLI talks
+    // to the local bb server, and escalation-denied turns (system-initiated
+    // turns, child threads) have no unsandboxed-retry path around a block.
+    network: { allowLocalBinding: true },
     ...(allowWrite.length > 0
       ? { filesystem: { allowWrite: [...allowWrite] } }
       : {}),
