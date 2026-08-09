@@ -272,7 +272,7 @@ function useConversationTocItems({
   return outlineTocItems ?? timelineTocItems;
 }
 
-function useThreadTocVisible(rootElement: HTMLDivElement | null): boolean {
+function useThreadTocVisible(rootElement: HTMLElement | null): boolean {
   const [visible, setVisible] = useState(
     () => typeof ResizeObserver === "undefined",
   );
@@ -493,20 +493,19 @@ export function ThreadTableOfContents({
   loadOlderTimelineRows,
 }: ThreadTableOfContentsProps) {
   const bottomAnchor = useBottomAnchoredScroll();
-  // The outline is secondary to the latest timeline. Waiting for that first
-  // window prevents a long outline projection from occupying the synchronous
-  // server before the conversation can paint. Do not gate on `tocVisible`: the
-  // minimum-message early return can unmount the root before it is measured.
+  const [rootElement, setRootElement] = useState<HTMLElement | null>(null);
+  const tocVisible = useThreadTocVisible(rootElement);
+  // The full-thread outline exists only for the wide-layout TOC. Waiting for
+  // both its visible container and the first timeline window keeps compact
+  // clients from rebuilding an invisible outline on every appended-event batch.
   const outlineQuery = useThreadConversationOutline(threadId, {
-    enabled: timelineRows.length > 0,
+    enabled: tocVisible && timelineRows.length > 0,
   });
   const senderThreadMetadataById = useSenderThreadMetadataById();
   const { agentItems, userItems } = useConversationTocItems({
     outlineItems: outlineQuery.data?.items,
     timelineRows,
   });
-  const [rootElement, setRootElement] = useState<HTMLDivElement | null>(null);
-  const tocVisible = useThreadTocVisible(rootElement);
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<TocTab>("user");
   const [activeUserId, setActiveUserId] = useState<string | null>(null);
@@ -677,7 +676,9 @@ export function ThreadTableOfContents({
     [bottomAnchor],
   );
 
-  if (userItems.length < TOC_MIN_USER_MESSAGES) return null;
+  if (userItems.length < TOC_MIN_USER_MESSAGES) {
+    return <span ref={setRootElement} aria-hidden className="hidden" />;
+  }
 
   return (
     <div

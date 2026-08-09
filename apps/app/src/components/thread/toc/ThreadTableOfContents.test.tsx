@@ -76,11 +76,13 @@ function userConversationRow(index = 1): TimelineRow {
 
 function TocHost({
   hasOlderTimelineRows = false,
+  hostWidth = 1_200,
   loadOlderTimelineRows = () => {},
   threadId = "thr_toc_test",
   timelineRows,
 }: {
   hasOlderTimelineRows?: boolean;
+  hostWidth?: number;
   loadOlderTimelineRows?: () => void | Promise<void>;
   threadId?: string;
   timelineRows: readonly TimelineRow[];
@@ -91,7 +93,7 @@ function TocHost({
         if (!node) return;
         Object.defineProperty(node, "clientWidth", {
           configurable: true,
-          value: 1_200,
+          value: hostWidth,
         });
       }}
       data-scroll-overlay=""
@@ -365,6 +367,15 @@ describe("ThreadTableOfContents", () => {
     expect(useThreadConversationOutline).toHaveBeenLastCalledWith(
       "thr_toc_test",
       { enabled: true },
+    );
+  });
+
+  it("does not request the hidden outline in a compact thread pane", () => {
+    render(<TocHost hostWidth={400} timelineRows={[userConversationRow(1)]} />);
+
+    expect(useThreadConversationOutline).toHaveBeenLastCalledWith(
+      "thr_toc_test",
+      { enabled: false },
     );
   });
 
