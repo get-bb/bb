@@ -207,20 +207,6 @@ function isMessageOnlyAcpAuthRequiredError(error: unknown): boolean {
   );
 }
 
-export async function requireExistingEnvironment(
-  environmentId: string,
-  runtimeManager: RuntimeManager,
-): Promise<RuntimeEntry> {
-  const entry = await runtimeManager.getOrAwait(environmentId);
-  if (!entry) {
-    throw new CommandDispatchError(
-      "unknown_environment",
-      `No runtime exists for environment ${environmentId}`,
-    );
-  }
-  return entry;
-}
-
 export async function requireWorkspaceEnvironment(
   args: {
     dataDir?: string;

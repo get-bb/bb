@@ -228,6 +228,19 @@ export interface RuntimeManagerReapIdleProviderSessionsResult {
   reapedSessions: RuntimeManagerReapedIdleProviderSession[];
 }
 
+/**
+ * `interrupt` stops an old runtime even while it runs a turn. `keep` leaves
+ * that turn alone and reports its environment to the caller.
+ */
+export type ReleaseThreadActiveTurnPolicy = "interrupt" | "keep";
+
+export interface ReleaseThreadFromOtherEnvironmentsResult {
+  /** Environments that still run a turn for the thread under `keep`. */
+  activeTurnEnvironmentIds: string[];
+  /** Environments whose runtime released the thread. */
+  releasedEnvironmentIds: string[];
+}
+
 interface RuntimeWorkspaceWriteRootsArgs {
   threadStorageRootPath: string | null | undefined;
   workspaceRoots: readonly string[];
@@ -369,12 +382,33 @@ export class RuntimeManager {
    * still resident in the old environment runtime. Release that old runtime
    * before the new environment resumes the persisted provider thread, so two
    * runtime processes never own the same provider session at once.
+   *
+   * `activeTurn` selects what happens when an old runtime still runs a turn.
+   * Turn dispatch and stop controls own the session, so they interrupt it.
+   * Other controls keep it and report the environment back to their caller.
    */
   async releaseThreadFromOtherEnvironments(args: {
+    activeTurn: ReleaseThreadActiveTurnPolicy;
+    environmentId: string;
+    threadId: string;
+  }): Promise<ReleaseThreadFromOtherEnvironmentsResult> {
+    // Wait outside the control lane. An in-flight thread command takes this
+    // same lane for its own release step, so a wait inside the lane can hold
+    // the lane against the command it waits for and deadlock the thread.
+    await this.waitForThreadCommandsInOtherEnvironments(args);
+    return this.enqueueThreadControl(args.threadId, () =>
+      this.releaseThreadFromOtherEnvironmentsOnce(args),
+    );
+  }
+
+  private async waitForThreadCommandsInOtherEnvironments(args: {
     environmentId: string;
     threadId: string;
   }): Promise<void> {
-    await this.enqueueThreadControl(args.threadId, async () => {
+    // A command can register while an earlier one settles, so drain until no
+    // other environment holds a thread command. Each pass awaits real command
+    // completions, so this cannot spin.
+    for (;;) {
       const inFlightOldCommands = [
         ...this.inFlightThreadCommandCompletionsByEnvironmentId.entries(),
       ].flatMap(([environmentId, commandsByThreadId]) =>
@@ -382,25 +416,55 @@ export class RuntimeManager {
           ? []
           : [...(commandsByThreadId.get(args.threadId) ?? [])],
       );
+      if (inFlightOldCommands.length === 0) {
+        return;
+      }
       await Promise.all(inFlightOldCommands);
-      await this.releaseThreadFromOtherEnvironmentsOnce(args);
-    });
+    }
   }
 
   private async releaseThreadFromOtherEnvironmentsOnce(args: {
+    activeTurn: ReleaseThreadActiveTurnPolicy;
     environmentId: string;
     threadId: string;
-  }): Promise<void> {
+  }): Promise<ReleaseThreadFromOtherEnvironmentsResult> {
     const staleEntries = [...this.entries.values()].filter(
       (entry) =>
         entry.environmentId !== args.environmentId &&
         entry.runtime.hasThread(args.threadId),
     );
+    const keptEntries =
+      args.activeTurn === "interrupt"
+        ? []
+        : staleEntries.filter(
+            (entry) => entry.runtime.getActiveTurnId(args.threadId) !== null,
+          );
+    const releasedEntries = staleEntries.filter(
+      (entry) => !keptEntries.includes(entry),
+    );
 
     await Promise.all(
-      staleEntries.map((entry) =>
+      releasedEntries.map((entry) =>
         entry.runtime.stopThread({ threadId: args.threadId }),
       ),
+    );
+    return {
+      activeTurnEnvironmentIds: keptEntries.map((entry) => entry.environmentId),
+      releasedEnvironmentIds: releasedEntries.map(
+        (entry) => entry.environmentId,
+      ),
+    };
+  }
+
+  /**
+   * Every loaded runtime that still holds the thread, in any environment. A
+   * moved thread can keep its provider session in the environment it left,
+   * so controls that act on the live session must look past the command's
+   * own environment.
+   */
+  listThreadOwnerEntries(threadId: string): RuntimeEntry[] {
+    return [...this.entries.values()].filter((entry) =>
+      entry.runtime.hasThread(threadId),
     );
   }
 

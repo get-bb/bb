@@ -9,10 +9,10 @@ import {
   HostDaemonSettledCommandType,
 } from "@bb/host-daemon-contract";
 import {
+  CommandDispatchError,
   defaultListModels,
   ExpectedCommandDispatchError,
   type CommandOf,
-  requireExistingEnvironment,
   type CommandDispatchOptions,
 } from "./command-dispatch-support.js";
 import {
@@ -255,14 +255,28 @@ const commandHandlers: CommandHandlerMap = {
     }
   },
   "thread.stop": async (command, options) => {
-    const entry = await requireExistingEnvironment(
+    // Release before the target runtime lookup. A moved thread often has no
+    // runtime in its new environment yet, and the old owner must still stop.
+    const released =
+      await options.runtimeManager.releaseThreadFromOtherEnvironments({
+        activeTurn: "interrupt",
+        environmentId: command.environmentId,
+        threadId: command.threadId,
+      });
+    const entry = await options.runtimeManager.getOrAwait(
       command.environmentId,
-      options.runtimeManager,
     );
-    await options.runtimeManager.releaseThreadFromOtherEnvironments({
-      environmentId: command.environmentId,
-      threadId: command.threadId,
-    });
+    if (!entry) {
+      if (released.releasedEnvironmentIds.length === 0) {
+        throw new CommandDispatchError(
+          "unknown_environment",
+          `No runtime exists for environment ${command.environmentId}`,
+        );
+      }
+      // The old owner stopped, so the stop reached the running turn.
+      await options.eventSink.flush();
+      return {};
+    }
     if (entry.runtime.hasThread(command.threadId)) {
       // Stop can be dispatched while the start/submit RPC is still in flight
       // and the turn/started event has not been observed yet. Wait for the
@@ -288,26 +302,26 @@ const commandHandlers: CommandHandlerMap = {
     return result;
   },
   "thread.plan.cancel": async (command, options) => {
-    const entry = await requireExistingEnvironment(
-      command.environmentId,
-      options.runtimeManager,
+    // A moved thread keeps its turn in the environment it left, and the new
+    // environment may hold no runtime yet. Cancel where the turn runs.
+    const owners = options.runtimeManager.listThreadOwnerEntries(
+      command.threadId,
     );
-    await options.runtimeManager.releaseThreadFromOtherEnvironments({
-      environmentId: command.environmentId,
-      threadId: command.threadId,
-    });
-    if (!entry.runtime.hasThread(command.threadId)) {
+    if (owners.length === 0) {
       throw new ExpectedCommandDispatchError(
         "unknown_thread_runtime",
         `No provider runtime available for thread ${command.threadId}`,
       );
     }
-    if (
-      entry.runtime.getActiveTurnId(command.threadId) !== command.expectedTurnId
-    ) {
+    const owner = owners.find(
+      (entry) =>
+        entry.runtime.getActiveTurnId(command.threadId) ===
+        command.expectedTurnId,
+    );
+    if (!owner) {
       return { cancelled: false };
     }
-    await entry.runtime.stopThread({ threadId: command.threadId });
+    await owner.runtime.stopThread({ threadId: command.threadId });
     await options.eventSink.flush();
     return { cancelled: true };
   },
@@ -318,10 +332,8 @@ const commandHandlers: CommandHandlerMap = {
     if (!entry) {
       return {};
     }
-    await options.runtimeManager.releaseThreadFromOtherEnvironments({
-      environmentId: command.environmentId,
-      threadId: command.threadId,
-    });
+    // Rename does not move the provider session, so it must not stop a turn
+    // that still runs in the environment the thread left.
     await entry.runtime.renameThread({
       threadId: command.threadId,
       title: command.title,
@@ -335,10 +347,8 @@ const commandHandlers: CommandHandlerMap = {
       runtimeManager: options.runtimeManager,
       workspaceContext: command.workspaceContext,
     });
-    await options.runtimeManager.releaseThreadFromOtherEnvironments({
-      environmentId: command.environmentId,
-      threadId: command.threadId,
-    });
+    // Archive works on stored provider state, not on the live session, so it
+    // must not stop a turn in the environment the thread left.
     await entry.runtime.archiveThread({
       threadId: command.threadId,
       providerId: command.providerId,

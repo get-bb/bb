@@ -1039,10 +1039,13 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  // Version 86 protects the Pi bridge JSON-RPC channel from stdout writes by
-  // user extensions, restoring terminal turn events for affected sessions.
-  it("uses protocol version 86 for guarded Pi bridge output", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(86);
+  // Version 87 keeps the provider thread id across an environment directory
+  // switch. The server now sends `turn.submit` with that id where it sent
+  // `thread.start` before, and the daemon must release the old runtime owner
+  // first. A daemon without that release would own the same provider session
+  // twice, so an older daemon must update instead of connecting.
+  it("uses protocol version 87 for moved-thread session handoff", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(87);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {

@@ -251,10 +251,22 @@ export async function ensureThreadRuntime(
     workspaceContext: resumeContext.workspaceContext,
   });
 
-  await options.runtimeManager.releaseThreadFromOtherEnvironments({
-    environmentId: command.environmentId,
-    threadId: command.threadId,
-  });
+  // A new turn owns the provider session, so it interrupts an old turn that
+  // the thread left behind. A goal clear does not own it, so it waits for
+  // that turn instead of stopping it.
+  const released =
+    await options.runtimeManager.releaseThreadFromOtherEnvironments({
+      activeTurn: command.type === "turn.submit" ? "interrupt" : "keep",
+      environmentId: command.environmentId,
+      threadId: command.threadId,
+    });
+  const [busyEnvironmentId] = released.activeTurnEnvironmentIds;
+  if (busyEnvironmentId !== undefined) {
+    throw new ExpectedCommandDispatchError(
+      "thread_busy_in_other_environment",
+      `Thread ${command.threadId} still runs a turn in environment ${busyEnvironmentId}`,
+    );
+  }
   await resumeThreadRuntimeIfMissing({ command, entry });
   return entry;
 }

@@ -1439,6 +1439,7 @@ describe("RuntimeManager", () => {
       "thread-1",
     );
     const handoff = manager.releaseThreadFromOtherEnvironments({
+      activeTurn: "interrupt",
       environmentId: "env-new",
       threadId: "thread-1",
     });
@@ -1452,6 +1453,76 @@ describe("RuntimeManager", () => {
     expect(oldRuntime.stopThread).toHaveBeenCalledWith({
       threadId: "thread-1",
     });
+  });
+
+  it("releases a moved thread while another environment control waits", async () => {
+    const oldRuntime = createFakeRuntime();
+    const manager = new RuntimeManager({
+      provisionWorkspace: createProvisionWorkspaceMock("/tmp/env-old"),
+      createRuntime: () => oldRuntime,
+    });
+
+    await manager.ensureEnvironment({
+      environmentId: "env-old",
+      workspacePath: "/tmp/env-old",
+    });
+    // A turn command for the new environment holds its retain while a control
+    // command for the old environment waits for that retain. The waiting
+    // command must not hold the thread control lane against it.
+    const release = await manager.retainEnvironmentForThreadCommand(
+      "env-new",
+      "thread-1",
+    );
+    const oldEnvironmentControl = manager.releaseThreadFromOtherEnvironments({
+      activeTurn: "interrupt",
+      environmentId: "env-old",
+      threadId: "thread-1",
+    });
+    await new Promise((resolve) => {
+      setTimeout(resolve, 0);
+    });
+
+    const turnHandoff = manager
+      .releaseThreadFromOtherEnvironments({
+        activeTurn: "interrupt",
+        environmentId: "env-new",
+        threadId: "thread-1",
+      })
+      .then(() => {
+        release();
+      });
+
+    await expect(
+      Promise.all([oldEnvironmentControl, turnHandoff]),
+    ).resolves.toBeDefined();
+    // A later turn on the same thread must still acquire the control lane.
+    await expect(
+      manager.retainEnvironmentForThreadCommand("env-new", "thread-1"),
+    ).resolves.toBeInstanceOf(Function);
+  });
+
+  it("keeps an old-environment turn when a control declines to interrupt it", async () => {
+    const oldRuntime = createFakeRuntime();
+    const manager = new RuntimeManager({
+      provisionWorkspace: createProvisionWorkspaceMock("/tmp/env-old"),
+      createRuntime: () => oldRuntime,
+    });
+
+    await manager.ensureEnvironment({
+      environmentId: "env-old",
+      workspacePath: "/tmp/env-old",
+    });
+    oldRuntime.setActiveTurn("thread-1", "turn-old");
+
+    const result = await manager.releaseThreadFromOtherEnvironments({
+      activeTurn: "keep",
+      environmentId: "env-new",
+      threadId: "thread-1",
+    });
+
+    expect(oldRuntime.stopThread).not.toHaveBeenCalled();
+    expect(result.activeTurnEnvironmentIds).toEqual(["env-old"]);
+    expect(result.releasedEnvironmentIds).toEqual([]);
   });
 
   it("keeps an environment runtime while an accepted turn awaits its first event", async () => {
