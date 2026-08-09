@@ -2,7 +2,10 @@ import { useMemo, type CSSProperties } from "react";
 import { FileTree } from "@pierre/trees/react";
 import { EmptyState } from "@bb/shared-ui/empty-state";
 import { usePreferredTheme } from "@/hooks/useTheme";
-import type { WorkspaceFileTreeController } from "./useWorkspaceFileTree";
+import {
+  isPreparingWorktreeError,
+  type WorkspaceFileTreeController,
+} from "./useWorkspaceFileTree";
 
 interface WorkspaceFileTreeProps {
   controller: WorkspaceFileTreeController;
@@ -32,6 +35,7 @@ const BASE_STYLE: FileTreeHostStyle = {
 
 export function WorkspaceFileTree({ controller }: WorkspaceFileTreeProps) {
   const preferredTheme = usePreferredTheme();
+  const isPreparingWorktree = isPreparingWorktreeError(controller.error);
   const style = useMemo<FileTreeHostStyle>(
     () => ({ ...BASE_STYLE, colorScheme: preferredTheme }),
     [preferredTheme],
@@ -42,8 +46,16 @@ export function WorkspaceFileTree({ controller }: WorkspaceFileTreeProps) {
       <div className="min-h-0 flex-1 overflow-hidden">
         {controller.error ? (
           <EmptyState
-            message={controller.error.message}
-            messageClassName="text-destructive"
+            icon={isPreparingWorktree ? "Spinner" : undefined}
+            iconClassName={isPreparingWorktree ? "animate-spin" : undefined}
+            message={
+              isPreparingWorktree
+                ? "Preparing worktree..."
+                : controller.error.message
+            }
+            messageClassName={
+              isPreparingWorktree ? undefined : "text-destructive"
+            }
           />
         ) : controller.isLoading && controller.model.getVisibleCount() === 0 ? (
           <EmptyState
