@@ -39,6 +39,7 @@ const WATCH_TARGET_ENVIRONMENT_CHANGE_KINDS = new Set<EnvironmentChangeKind>([
 ]);
 const WATCH_TARGET_THREAD_CHANGE_KINDS = new Set<ThreadChangeKind>([
   "archived-changed",
+  "dashboard-status-changed",
   "environment-changed",
   "status-changed",
   "thread-created",

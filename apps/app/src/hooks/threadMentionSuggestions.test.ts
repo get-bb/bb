@@ -28,6 +28,7 @@ function makeThread(options: ThreadFixtureOptions): Thread {
     title: options.title,
     titleFallback: options.titleFallback ?? null,
     sectionId: null,
+    dashboardStatus: "backlog",
     status: "idle",
     parentThreadId: options.parentThreadId ?? null,
     sourceThreadId: null,

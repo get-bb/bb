@@ -101,6 +101,7 @@ function makeThread(args: MakeThreadArgs): ThreadListEntry {
     title: args.id,
     titleFallback: args.id,
     sectionId: null,
+    dashboardStatus: "backlog",
     status: "idle",
     parentThreadId: null,
     sourceThreadId: null,

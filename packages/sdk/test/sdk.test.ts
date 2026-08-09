@@ -991,7 +991,7 @@ describe("@bb/sdk", () => {
     });
   });
 
-  it("forwards includeHidden list filtering and visibility updates", async () => {
+  it("forwards includeHidden list filtering, visibility, and dashboard updates", async () => {
     const queue = createFetchQueue([
       { body: [] },
       { body: { id: "thr_hidden", visibility: "hidden" } },
@@ -1008,6 +1008,7 @@ describe("@bb/sdk", () => {
     await sdk.threads.update({
       threadId: "thr_hidden",
       visibility: "hidden",
+      dashboardStatus: "in-review",
     });
 
     expect(queue.requests[0]?.url).toBe(
@@ -1015,6 +1016,7 @@ describe("@bb/sdk", () => {
     );
     expect(JSON.parse(queue.requests[1]?.bodyText ?? "{}")).toEqual({
       visibility: "hidden",
+      dashboardStatus: "in-review",
     });
   });
 

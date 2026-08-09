@@ -11,6 +11,7 @@ function makeThread(overrides: Partial<ThreadListEntry> = {}): ThreadListEntry {
     title: "A thread",
     titleFallback: "A thread",
     sectionId: null,
+    dashboardStatus: "backlog",
     status: "idle",
     parentThreadId: null,
     sourceThreadId: null,

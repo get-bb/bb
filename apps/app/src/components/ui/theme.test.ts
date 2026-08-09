@@ -274,6 +274,35 @@ describe("theme.css semantic update surfaces", () => {
   }
 });
 
+describe("theme.css Kanban state tokens", () => {
+  const tokens = [
+    "kanban-backlog",
+    "kanban-in-progress",
+    "kanban-in-review",
+    "kanban-done",
+    "kanban-canceled",
+  ] as const;
+
+  it("registers Kanban state colors with Tailwind", () => {
+    for (const token of tokens) {
+      expect(css).toMatch(
+        new RegExp(`--color-${token}:\\s*var\\(--${token}\\);`),
+      );
+    }
+  });
+
+  for (const mode of MODES) {
+    it(`defines customizable Kanban state colors in ${mode}`, () => {
+      const block = modeBlock(mode);
+      for (const token of tokens) {
+        expect(block).toMatch(new RegExp(`--${token}:\\s*[^;]+;`));
+      }
+      expect(variableValue(block, "kanban-in-progress")).toBe("var(--warning)");
+      expect(variableValue(block, "kanban-in-review")).toBe("var(--success)");
+    });
+  }
+});
+
 describe("theme.css desktop portal hit testing", () => {
   it("carves portaled overlays out of native window drag regions", () => {
     const rule = css.match(/\[data-bb-portaled-overlay\]\s*\{([^}]*)\}/)?.[1];

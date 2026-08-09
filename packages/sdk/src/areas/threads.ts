@@ -483,6 +483,7 @@ function updateJson(args: ThreadUpdateArgs): UpdateThreadRequest {
     model: args.model,
     reasoningLevel: args.reasoningLevel,
     visibility: args.visibility,
+    dashboardStatus: args.dashboardStatus,
   };
 }
 

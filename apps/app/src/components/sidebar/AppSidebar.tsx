@@ -7,7 +7,7 @@ import {
 } from "react";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { THREAD_JUMP_APP_COMMAND_IDS } from "@bb/domain";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, NavLink, useNavigate } from "react-router-dom";
 import { Icon } from "@bb/shared-ui/icon";
 import { COARSE_POINTER_CHILD_ICON_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
@@ -37,7 +37,11 @@ import {
   MACOS_WINDOW_DRAG_CLASS,
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
-import { getRootComposeRoutePath, getThreadRoutePath } from "@/lib/route-paths";
+import {
+  DASHBOARD_ROUTE_PATH,
+  getRootComposeRoutePath,
+  getThreadRoutePath,
+} from "@/lib/route-paths";
 import { useThreadSplitsEnabled } from "@/hooks/useThreadSplitsEnabled";
 import { usePaneContentSplitDrag } from "./usePaneContentSplitDrag";
 import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
@@ -421,6 +425,29 @@ export function AppSidebar({
             }}
           />
         </div>
+        <SidebarMenu
+          data-testid="app-sidebar-primary-navigation"
+          className="shrink-0 px-2 pb-2"
+        >
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild tooltip="Dashboard">
+              <NavLink
+                to={DASHBOARD_ROUTE_PATH}
+                end
+                onClick={closeOnMobile}
+                className={({ isActive }) =>
+                  cn(
+                    isActive &&
+                      "bg-sidebar-accent text-sidebar-accent-foreground",
+                  )
+                }
+              >
+                <Icon name="ChartColumn" />
+                <span>Dashboard</span>
+              </NavLink>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
         <PluginNavSidebarItems
           onNavigate={closeOnMobile}
           splitEnabled={threadSplitsEnabled}

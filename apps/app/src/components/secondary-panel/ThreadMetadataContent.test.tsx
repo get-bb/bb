@@ -19,6 +19,7 @@ function makeThread(overrides: Partial<Thread> = {}): Thread {
     title: null,
     titleFallback: null,
     sectionId: null,
+    dashboardStatus: "backlog",
     status: "idle",
     parentThreadId: null,
     sourceThreadId: null,

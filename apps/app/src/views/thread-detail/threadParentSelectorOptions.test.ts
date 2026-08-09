@@ -46,6 +46,7 @@ function makeThread(overrides: ThreadListEntryOverrides = {}): ThreadListEntry {
     title: "Thread",
     titleFallback: "Thread",
     sectionId: null,
+    dashboardStatus: "backlog",
     updatedAt: 1,
     ...overrides,
   };

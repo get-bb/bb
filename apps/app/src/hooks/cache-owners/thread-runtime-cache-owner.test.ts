@@ -63,6 +63,7 @@ function makeThreadListEntry(id = "thread-1"): ThreadListEntry {
     title: null,
     titleFallback: null,
     sectionId: null,
+    dashboardStatus: "backlog",
     status: "active",
     parentThreadId: null,
     sourceThreadId: null,

@@ -10,6 +10,7 @@ import {
 import { sql } from "drizzle-orm";
 import type { AnySQLiteColumn } from "drizzle-orm/sqlite-core";
 import { threadStatusValues } from "@bb/domain/thread-status";
+import { threadDashboardStatusValues } from "@bb/domain/thread-dashboard-status";
 import {
   threadChildOriginValues,
   threadOriginKindValues,
@@ -499,6 +500,11 @@ export const threads = sqliteTable(
     sectionId: text("section_id").references(() => threadSections.id, {
       onDelete: "set null",
     }),
+    dashboardStatus: text("dashboard_status", {
+      enum: threadDashboardStatusValues,
+    })
+      .notNull()
+      .default("backlog"),
     status: text("status", { enum: threadStatusValues })
       .notNull()
       .default("starting"),

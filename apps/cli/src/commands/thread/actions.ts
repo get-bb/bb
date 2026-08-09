@@ -1,9 +1,11 @@
 import { Command } from "commander";
 import {
+  threadDashboardStatusSchema,
   threadVisibilitySchema,
   type PermissionMode,
   type ReasoningLevel,
   type ServiceTier,
+  type ThreadDashboardStatus,
   type ThreadVisibility,
 } from "@bb/domain";
 import { action } from "../../action.js";
@@ -38,6 +40,7 @@ interface ThreadUpdateCommandOptions {
   model?: string;
   reasoningLevel?: string;
   visibility?: string;
+  dashboardStatus?: string;
 }
 
 interface ThreadArchiveCommandOptions {
@@ -107,6 +110,7 @@ interface ThreadUpdateBody {
   model?: string;
   reasoningLevel?: ReasoningLevel;
   visibility?: ThreadVisibility;
+  dashboardStatus?: ThreadDashboardStatus;
 }
 
 export function registerActionsCommands(
@@ -132,6 +136,10 @@ export function registerActionsCommands(
       "Set the sticky reasoning level applied on the thread's next turn: low, medium, high, xhigh, max (provider-dependent)",
     )
     .option("--visibility <visibility>", "Thread visibility: visible or hidden")
+    .option(
+      "--dashboard-status <status>",
+      "Set Kanban workflow state: backlog, in-progress, in-review, done, or canceled",
+    )
     .action(
       action(
         async (id: string | undefined, opts: ThreadUpdateCommandOptions) => {
@@ -148,6 +156,10 @@ export function registerActionsCommands(
             opts.visibility === undefined
               ? undefined
               : threadVisibilitySchema.parse(opts.visibility);
+          const dashboardStatus =
+            opts.dashboardStatus === undefined
+              ? undefined
+              : threadDashboardStatusSchema.parse(opts.dashboardStatus);
           if (
             !opts.parentThread &&
             !opts.clearParentThread &&
@@ -156,10 +168,11 @@ export function registerActionsCommands(
             !opts.title &&
             !opts.model &&
             !reasoningLevel &&
-            !visibility
+            !visibility &&
+            !dashboardStatus
           ) {
             throw new Error(
-              "No changes requested. Provide --title, --parent-thread, --clear-parent-thread, --section, --clear-section, --model, --reasoning-level, or --visibility.",
+              "No changes requested. Provide --title, --parent-thread, --clear-parent-thread, --section, --clear-section, --model, --reasoning-level, --visibility, or --dashboard-status.",
             );
           }
 
@@ -194,6 +207,9 @@ export function registerActionsCommands(
           if (visibility) {
             body.visibility = visibility;
           }
+          if (dashboardStatus) {
+            body.dashboardStatus = dashboardStatus;
+          }
 
           const sdk = createCliBbSdk(getUrl());
           const thread = await sdk.threads.update({ threadId, ...body });
@@ -222,6 +238,9 @@ export function registerActionsCommands(
           }
           if (visibility) {
             console.log(`Visibility: ${visibility}`);
+          }
+          if (dashboardStatus) {
+            console.log(`Dashboard status: ${dashboardStatus}`);
           }
         },
       ),

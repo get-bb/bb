@@ -291,6 +291,10 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
       dirtyThreadDetailQueries, // Detail headers and breadcrumbs render display title.
     ],
   },
+  "dashboard-status-changed": {
+    flush: "debounced",
+    dirty: [dirtyThreadListQueries, dirtyThreadDetailQueries],
+  },
   "queue-changed": {
     flush: "debounced",
     dirty: [

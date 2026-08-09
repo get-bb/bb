@@ -12,6 +12,7 @@ export const THREAD_CHANGE_KINDS = [
   "interactions-changed",
   "status-changed",
   "title-changed",
+  "dashboard-status-changed",
   "queue-changed",
   "archived-changed",
   "pin-state-changed",

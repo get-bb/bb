@@ -78,6 +78,7 @@ function createThreadListEntry({
     title,
     titleFallback: null,
     sectionId,
+    dashboardStatus: "backlog",
     updatedAt: 1000,
   };
 }

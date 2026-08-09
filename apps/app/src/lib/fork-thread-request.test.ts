@@ -27,6 +27,7 @@ function makeThread(overrides: Partial<Thread> = {}): Thread {
     title: "Investigate flaky test",
     titleFallback: null,
     sectionId: null,
+    dashboardStatus: "backlog",
     updatedAt: 1,
   };
   return { ...base, ...overrides };

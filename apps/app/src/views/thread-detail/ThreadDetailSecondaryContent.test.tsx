@@ -304,6 +304,7 @@ function makeThread(
     title: null,
     titleFallback: "Test thread",
     sectionId: null,
+    dashboardStatus: "backlog",
     updatedAt: 0,
   } as ThreadDetailSecondaryContentProps["metadata"]["thread"];
 }

@@ -1,0 +1,1 @@
+ALTER TABLE `threads` ADD `dashboard_status` text DEFAULT 'backlog' NOT NULL;

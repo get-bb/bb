@@ -15,6 +15,7 @@ function makeThread(overrides: Partial<ThreadListEntry> = {}): ThreadListEntry {
     title: "Mobile activity",
     titleFallback: "Mobile activity",
     sectionId: null,
+    dashboardStatus: "backlog",
     status: "active",
     parentThreadId: null,
     sourceThreadId: null,

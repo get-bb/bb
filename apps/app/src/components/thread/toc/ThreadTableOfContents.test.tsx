@@ -188,6 +188,7 @@ function threadWithRuntime(
     title: null,
     titleFallback: null,
     sectionId: null,
+    dashboardStatus: "backlog",
     status: "idle",
     parentThreadId: null,
     sourceThreadId: null,

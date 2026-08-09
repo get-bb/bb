@@ -3,6 +3,7 @@ import { matchPath } from "react-router-dom";
 
 export const APP_ROOT_ROUTE_PATH = "/";
 export const AUTH_CALLBACK_ROUTE_PATH = "/auth/callback";
+export const DASHBOARD_ROUTE_PATH = "/dashboard";
 export const SETTINGS_ROUTE_PATH = "/settings";
 // Settings buckets (general, files, …) plus legacy plugin routes that redirect
 // to the canonical Tools → Plugins surfaces. The static "plugins" segment must
@@ -259,6 +260,7 @@ export function getThreadRoutePath(args: ThreadRoutePathArgs): string {
 const baseRoutePatterns: readonly string[] = [
   APP_ROOT_ROUTE_PATH,
   AUTH_CALLBACK_ROUTE_PATH,
+  DASHBOARD_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
   SETTINGS_SECTION_ROUTE_PATH,
   SETTINGS_PLUGINS_ROUTE_PATH,

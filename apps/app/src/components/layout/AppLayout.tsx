@@ -66,6 +66,7 @@ import {
 import { useDesktopWindowState } from "@/hooks/useDesktopWindowState";
 import {
   getLegacyProjectComposeRoutePath,
+  DASHBOARD_ROUTE_PATH,
   getProjectSettingsRoutePath,
   getRootComposeRoutePath,
   getThreadRoutePath,
@@ -278,6 +279,7 @@ function SidebarTriggerOverlay({
 
 const routeTitles: Record<string, { title: string; subtitle?: string }> = {
   "/": { title: "bb" },
+  [DASHBOARD_ROUTE_PATH]: { title: "Dashboard" },
   "/settings": { title: "Settings" },
   "/automations": { title: "Automations" },
   "/skills": { title: "Skills" },
@@ -302,6 +304,7 @@ interface AppHeaderProps {
   usesProjectChromeStyle: boolean;
   usesDesktopChrome: boolean;
   isSettingsView: boolean;
+  isDashboardView: boolean;
   projectId?: string;
   project?: ProjectResponse;
   /** Registered navPanel when this is a plugin panel route (design §5.2):
@@ -321,6 +324,7 @@ function AppHeader({
   usesProjectChromeStyle,
   usesDesktopChrome,
   isSettingsView,
+  isDashboardView,
   projectId,
   project,
   pluginPanel,
@@ -358,6 +362,17 @@ function AppHeader({
     </div>
   ) : null;
 
+  const dashboardAction =
+    !pluginPanel && !isDashboardView ? (
+      <Link
+        to={DASHBOARD_ROUTE_PATH}
+        className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
+      >
+        <Icon name="ChartColumn" className="size-3.5" aria-hidden="true" />
+        <span>Dashboard</span>
+      </Link>
+    ) : null;
+
   const actions = pluginPanel ? (
     <PluginPanelHeaderActions
       panel={pluginPanel}
@@ -367,6 +382,7 @@ function AppHeader({
     projectId &&
     !isProjectlessProjectId(projectId) ? (
     <>
+      {dashboardAction}
       <Link
         to={getProjectSettingsRoutePath(projectId)}
         className={cn(
@@ -388,7 +404,9 @@ function AppHeader({
         />
       ) : null}
     </>
-  ) : null;
+  ) : (
+    dashboardAction
+  );
 
   return <AppPageHeader center={center} actions={actions} />;
 }
@@ -857,6 +875,9 @@ export function AppLayout({ children }: AppLayoutProps) {
                       usesDesktopChrome={usesDesktopChrome}
                       usesProjectChromeStyle={
                         isRootView || isArchivedView || isSettingsView
+                      }
+                      isDashboardView={
+                        location.pathname === DASHBOARD_ROUTE_PATH
                       }
                       isSettingsView={isSettingsView}
                       projectId={projectId}

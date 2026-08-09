@@ -335,6 +335,9 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
       }
       metadataUpdate.sectionId = sectionId;
     }
+    if ("dashboardStatus" in payload) {
+      metadataUpdate.dashboardStatus = payload.dashboardStatus;
+    }
     if ("parentThreadId" in payload) {
       metadataUpdate.parentThreadId = payload.parentThreadId;
     }

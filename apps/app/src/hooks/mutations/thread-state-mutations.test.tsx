@@ -34,6 +34,7 @@ function makeThreadWithRuntime(
     title: null,
     titleFallback: null,
     sectionId: null,
+    dashboardStatus: "backlog",
     status: "active",
     parentThreadId: null,
     sourceThreadId: null,
@@ -257,6 +258,75 @@ describe("thread state mutations", () => {
         makeThreadResponse({
           id: threadId,
           sectionId: "sec_personal",
+          updatedAt: 2,
+        }),
+      );
+    });
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+  });
+
+  it("optimistically moves a thread between dashboard states", async () => {
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    const threadId = "thread-1";
+    const thread = makeThreadWithRuntime({
+      id: threadId,
+      dashboardStatus: "backlog",
+    });
+    const listEntry = makeThreadListEntry({
+      id: threadId,
+      dashboardStatus: "backlog",
+    });
+    const threadListKey = threadListQueryKey({
+      archived: false,
+      projectId: "project-1",
+    });
+    let resolveUpdate: (updatedThread: ThreadResponse) => void = () => {};
+
+    queryClient.setQueryData(threadQueryKey(threadId), thread);
+    queryClient.setQueryData(threadListKey, [listEntry]);
+    queryClient.setQueryData(
+      sidebarNavigationQueryKey(),
+      makeSidebarNavigation([listEntry]),
+    );
+    vi.mocked(sdk.threads.update).mockImplementation(
+      () =>
+        new Promise<ThreadResponse>((resolve) => {
+          resolveUpdate = resolve;
+        }),
+    );
+
+    const { result } = renderHook(() => useUpdateThread(), { wrapper });
+
+    act(() => {
+      result.current.mutate({
+        id: threadId,
+        dashboardStatus: "in-review",
+      });
+    });
+
+    await waitFor(() => {
+      expect(
+        queryClient.getQueryData<ThreadWithRuntime>(threadQueryKey(threadId))
+          ?.dashboardStatus,
+      ).toBe("in-review");
+    });
+    expect(
+      queryClient.getQueryData<ThreadListEntry[]>(threadListKey)?.[0]
+        ?.dashboardStatus,
+    ).toBe("in-review");
+    expect(sdk.threads.update).toHaveBeenCalledWith({
+      threadId,
+      dashboardStatus: "in-review",
+    });
+
+    act(() => {
+      resolveUpdate(
+        makeThreadResponse({
+          id: threadId,
+          dashboardStatus: "in-review",
           updatedAt: 2,
         }),
       );

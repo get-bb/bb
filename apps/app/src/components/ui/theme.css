@@ -41,6 +41,11 @@
   --color-warning-text: var(--warning-text);
   --color-success: var(--success);
   --color-success-foreground: var(--success-foreground);
+  --color-kanban-backlog: var(--kanban-backlog);
+  --color-kanban-in-progress: var(--kanban-in-progress);
+  --color-kanban-in-review: var(--kanban-in-review);
+  --color-kanban-done: var(--kanban-done);
+  --color-kanban-canceled: var(--kanban-canceled);
   --color-diff-added: var(--diff-added);
   /* GitHub's merged-PR purple — the one chromatic exception in the PR state
    * dots, matching the universal merged-PR color language. */
@@ -381,6 +386,13 @@
   --warning-text: oklch(0.55 0.14 50);
   --success: oklch(0.7 0.15 155);
   --success-foreground: color-mix(in oklch, var(--success) 45%, var(--ink));
+  /* Dashboard state colors are semantic hooks. Built-in palettes inherit these
+   * defaults, while custom themes can override the five variables directly. */
+  --kanban-backlog: color-mix(in oklch, var(--ink) 35%, var(--canvas));
+  --kanban-in-progress: var(--warning);
+  --kanban-in-review: var(--success);
+  --kanban-done: color-mix(in oklch, var(--attention) 30%, var(--ink));
+  --kanban-canceled: color-mix(in oklch, var(--ink) 45%, var(--canvas));
   --diff-added: oklch(0.4 0.13 163);
   --diff-view-modified: #009fff;
   --pr-merged: oklch(0.53 0.2 295);
@@ -624,6 +636,13 @@
   --warning-text: oklch(0.75 0.16 50);
   --success: oklch(0.74 0.15 155);
   --success-foreground: color-mix(in oklch, var(--success) 45%, var(--ink));
+  /* Keep the same semantic hooks in dark mode; the referenced palette tokens
+   * carry the mode-specific contrast. */
+  --kanban-backlog: color-mix(in oklch, var(--ink) 35%, var(--canvas));
+  --kanban-in-progress: var(--warning);
+  --kanban-in-review: var(--success);
+  --kanban-done: color-mix(in oklch, var(--attention) 30%, var(--ink));
+  --kanban-canceled: color-mix(in oklch, var(--ink) 45%, var(--canvas));
   --diff-added: oklch(0.77 0.17 163);
   --diff-view-modified: #69b1ff;
   --diff-removed: oklch(0.72 0.19 22);

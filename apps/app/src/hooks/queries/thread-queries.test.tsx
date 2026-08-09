@@ -58,6 +58,7 @@ const THREAD_WITH_INCLUDES = {
   title: "Thread",
   titleFallback: "Thread",
   sectionId: null,
+  dashboardStatus: "backlog",
   status: "idle",
   parentThreadId: null,
   sourceThreadId: null,

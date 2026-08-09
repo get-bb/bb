@@ -83,6 +83,36 @@ describe("bb thread update command output", () => {
     );
   });
 
+  it("bb thread update changes the Kanban workflow state", async () => {
+    const thread = fixtures.makeThread({
+      id: "thread-update-dashboard-status",
+      projectId: "proj-1",
+      providerId: "codex",
+      dashboardStatus: "in-review",
+    });
+    const patch = vi.fn(async () => thread);
+    stubServerApi({ "v1.threads.:id.$patch": patch });
+
+    await runCommand(
+      [
+        "thread",
+        "update",
+        "thread-update-dashboard-status",
+        "--dashboard-status",
+        "in-review",
+      ],
+      register,
+    );
+
+    expect(patch).toHaveBeenCalledWith({
+      param: { id: "thread-update-dashboard-status" },
+      json: { dashboardStatus: "in-review" },
+    });
+    expect(collectLogLines(vi.mocked(console.log))).toContain(
+      "Dashboard status: in-review",
+    );
+  });
+
   it("bb thread update rejects invalid parent-thread values", async () => {
     const patch = vi.fn(async () =>
       fixtures.makeThread({

@@ -108,6 +108,7 @@ export function makeThread(overrides: MakeThreadArgs): Thread {
     title: null,
     titleFallback: null,
     sectionId: null,
+    dashboardStatus: "backlog",
     environmentId: null,
     parentThreadId: null,
     sourceThreadId: null,

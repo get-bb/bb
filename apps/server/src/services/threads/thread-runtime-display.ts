@@ -149,6 +149,7 @@ function toPublicThread(thread: Thread): Thread {
     title: thread.title,
     titleFallback: thread.titleFallback,
     sectionId: thread.sectionId,
+    dashboardStatus: thread.dashboardStatus,
     status: thread.status,
     parentThreadId: thread.parentThreadId,
     sourceThreadId: thread.sourceThreadId,

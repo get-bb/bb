@@ -18,6 +18,7 @@ import { usePluginFrontendBoot } from "./hooks/usePluginFrontendBoot";
 import { useWebSocket } from "./hooks/useWebSocket";
 import {
   AUTH_CALLBACK_ROUTE_PATH,
+  DASHBOARD_ROUTE_PATH,
   LEGACY_AUTOMATION_DETAIL_ROUTE_PATH,
   LEGACY_AUTOMATIONS_ROUTE_PATH,
   LEGACY_SKILLS_ROUTE_PATH,
@@ -73,6 +74,11 @@ const MachineSettingsView = lazy(() =>
 const ProjectSettingsView = lazy(() =>
   import("./views/ProjectSettingsView").then((m) => ({
     default: m.ProjectSettingsView,
+  })),
+);
+const DashboardView = lazy(() =>
+  import("./views/DashboardView").then((m) => ({
+    default: m.DashboardView,
   })),
 );
 const SplitWorkspaceRoute = lazy(() => import("./views/SplitWorkspaceRoute"));
@@ -168,6 +174,7 @@ function AppRoutes() {
             path={PROJECT_SETTINGS_ROUTE_PATH}
             element={<ProjectSettingsView />}
           />
+          <Route path={DASHBOARD_ROUTE_PATH} element={<DashboardView />} />
           <Route
             path={PROJECT_ARCHIVED_ROUTE_PATH}
             element={<Navigate to={getSettingsRoutePath("archived")} replace />}

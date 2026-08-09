@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   activeThinkingSchema,
   callerExecutionInputSourceSchema,
+  threadDashboardStatusSchema,
   environmentSchema,
   hostSchema,
   jsonValueSchema,
@@ -405,6 +406,7 @@ export const updateThreadRequestSchema = z
   .object({
     title: z.string().min(1).nullable(),
     sectionId: z.string().min(1).nullable(),
+    dashboardStatus: threadDashboardStatusSchema,
     parentThreadId: z.string().min(1).nullable(),
     // Sticky thread-level execution overrides applied on the next turn. `null`
     // clears the override; an omitted field is left unchanged. Settable
@@ -418,6 +420,7 @@ export const updateThreadRequestSchema = z
     (value) =>
       value.title !== undefined ||
       value.sectionId !== undefined ||
+      value.dashboardStatus !== undefined ||
       value.parentThreadId !== undefined ||
       value.model !== undefined ||
       value.reasoningLevel !== undefined ||

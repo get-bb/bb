@@ -66,11 +66,13 @@ interface BeginThreadReadStateTransactionArgs extends ThreadIdCacheArgs {
 }
 
 interface BeginThreadTitleTransactionArgs extends ThreadIdCacheArgs {
+  dashboardStatus?: ThreadWithRuntime["dashboardStatus"];
   sectionId?: string | null;
   title: string | null;
 }
 
 interface BeginThreadMetadataTransactionArgs extends ThreadIdCacheArgs {
+  dashboardStatus?: ThreadWithRuntime["dashboardStatus"];
   sectionId?: string | null;
   title?: string | null;
 }
@@ -396,12 +398,14 @@ export function beginThreadReadStateTransaction({
 }
 
 export function beginThreadTitleTransaction({
+  dashboardStatus,
   sectionId,
   queryClient,
   threadId,
   title,
 }: BeginThreadTitleTransactionArgs): Promise<ThreadListMutationTransaction> {
   return beginThreadMetadataTransaction({
+    dashboardStatus,
     sectionId,
     queryClient,
     threadId,
@@ -410,12 +414,14 @@ export function beginThreadTitleTransaction({
 }
 
 export function beginThreadMetadataTransaction({
+  dashboardStatus,
   sectionId,
   queryClient,
   threadId,
   title,
 }: BeginThreadMetadataTransactionArgs): Promise<ThreadListMutationTransaction> {
   const patch = {
+    ...(dashboardStatus !== undefined ? { dashboardStatus } : {}),
     ...(title !== undefined ? { title } : {}),
     ...(sectionId !== undefined ? { sectionId } : {}),
   };

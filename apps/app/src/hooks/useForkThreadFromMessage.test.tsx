@@ -60,6 +60,7 @@ function makeThread(overrides: Partial<Thread> = {}): Thread {
     title: null,
     titleFallback: "Fallback fork title",
     sectionId: null,
+    dashboardStatus: "backlog",
     updatedAt: 1,
   };
   return { ...base, ...overrides };

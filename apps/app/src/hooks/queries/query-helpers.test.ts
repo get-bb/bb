@@ -159,6 +159,7 @@ function makeThreadWithRuntime(
     title: null,
     titleFallback: null,
     sectionId: null,
+    dashboardStatus: "backlog",
     parentThreadId: null,
     sourceThreadId: null,
     originKind: null,

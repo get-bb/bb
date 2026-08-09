@@ -18,6 +18,7 @@ import type {
   ReasoningLevel,
   ThreadChangeKind,
   ThreadChildOrigin,
+  ThreadDashboardStatus,
   ThreadLifecycleEvent,
   ThreadLifecycleNoopReason,
   ThreadOriginKind,
@@ -1566,6 +1567,7 @@ export function reorderPinnedThread({
 }
 
 export interface UpdateThreadInput {
+  dashboardStatus?: ThreadDashboardStatus;
   environmentId?: string | null;
   sectionId?: string | null;
   lastReadAt?: number | null;
@@ -1587,6 +1589,12 @@ export function updateThread(
   }
   const changes: ThreadChangeKind[] = [];
   if ("title" in input || "sectionId" in input) changes.push("title-changed");
+  if (
+    "dashboardStatus" in input &&
+    input.dashboardStatus !== existing.dashboardStatus
+  ) {
+    changes.push("dashboard-status-changed");
+  }
   if ("lastReadAt" in input) changes.push("read-state-changed");
   if (
     "visibility" in input &&
@@ -1613,6 +1621,9 @@ export function updateThread(
   if ("title" in input) set.title = input.title;
   if ("sectionId" in input) {
     set.sectionId = input.sectionId;
+  }
+  if ("dashboardStatus" in input) {
+    set.dashboardStatus = input.dashboardStatus;
   }
   if ("environmentId" in input) set.environmentId = input.environmentId;
   if ("lastReadAt" in input) {

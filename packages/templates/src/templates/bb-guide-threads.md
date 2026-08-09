@@ -166,7 +166,7 @@ Messaging:
 
 Ownership:
 
-  bb thread update [id]                    Update thread metadata
+  bb thread update [id]                    Update thread metadata and workflow state
     --self                                 Target current thread
     --title <title>                        Set title
     --parent-thread <id>                   Assign to a parent thread
@@ -174,6 +174,7 @@ Ownership:
     --section <id>                         Move into a section
     --clear-section                        Remove section assignment
     --visibility <visibility>              Set visible or hidden
+    --dashboard-status <status>            Set backlog, in-progress, in-review, done, or canceled
 
   bb thread read [id]                      Mark read
   bb thread unread [id]                    Mark unread

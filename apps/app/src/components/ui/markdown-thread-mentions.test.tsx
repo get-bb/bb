@@ -48,6 +48,7 @@ function threadResponse(
     title: "Rebuild comments",
     titleFallback: "Rebuild comments",
     sectionId: null,
+    dashboardStatus: "backlog",
     status: "idle",
     parentThreadId: null,
     sourceThreadId: null,

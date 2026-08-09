@@ -324,6 +324,36 @@ describe("public thread data routes", () => {
     });
   });
 
+  it("updates a thread's dashboard workflow state", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+      });
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}`,
+        {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ dashboardStatus: "in-review" }),
+        },
+      );
+
+      expect(response.status).toBe(200);
+      await expect(readJson(response)).resolves.toMatchObject({
+        id: thread.id,
+        dashboardStatus: "in-review",
+      });
+      expect(getThread(harness.db, thread.id)?.dashboardStatus).toBe(
+        "in-review",
+      );
+    });
+  });
+
   it("embeds thread environment and host snapshots when requested", async () => {
     await withTestHarness(async (harness) => {
       const { host, environment, thread } = seedThreadFixture(harness, {

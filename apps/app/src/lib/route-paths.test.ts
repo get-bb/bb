@@ -13,6 +13,7 @@ import {
   getToolsRoutePath,
   isRoutePath,
   isProjectlessProjectId,
+  DASHBOARD_ROUTE_PATH,
   LEGACY_AUTOMATION_DETAIL_ROUTE_PATH,
   LEGACY_AUTOMATIONS_ROUTE_PATH,
   LEGACY_SKILLS_ROUTE_PATH,
@@ -58,6 +59,11 @@ describe("route path helpers", () => {
 
   it("recognizes the global settings route", () => {
     expect(isRoutePath({ path: "/settings" })).toBe(true);
+  });
+
+  it("recognizes the dashboard route", () => {
+    expect(DASHBOARD_ROUTE_PATH).toBe("/dashboard");
+    expect(isRoutePath({ path: "/dashboard?view=kanban" })).toBe(true);
   });
 
   it("builds and recognizes the Extensions routes", () => {

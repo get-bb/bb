@@ -40,6 +40,7 @@ export * from "./shared-types.js";
 export * from "./stored-thread-event.js";
 export * from "./terminal.js";
 export * from "./thread-dynamic-context.js";
+export * from "./thread-dashboard-status.js";
 export * from "./thread-event-scope.js";
 export * from "./thread-events.js";
 export * from "./thread-git-diff.js";

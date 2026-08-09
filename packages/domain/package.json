@@ -22,6 +22,11 @@
       "source": "./src/thread-visibility.ts",
       "types": "./src/thread-visibility.ts",
       "default": "./src/thread-visibility.ts"
+    },
+    "./thread-dashboard-status": {
+      "source": "./src/thread-dashboard-status.ts",
+      "types": "./src/thread-dashboard-status.ts",
+      "default": "./src/thread-dashboard-status.ts"
     }
   },
   "types": "./src/index.ts",
