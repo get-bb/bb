@@ -1758,6 +1758,7 @@ describe("codex provider adapter", () => {
         ],
       },
     });
+    expect(JSON.stringify(cmd)).not.toContain("persistExtendedHistory");
   });
 
   it("buildCommand maps max reasoning level through to Codex", () => {

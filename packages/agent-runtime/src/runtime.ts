@@ -372,11 +372,29 @@ function createAgentRuntimeInternal(
       options.onStderr?.(
         `Codex session "${recovery.providerThreadId}" is archived; unarchiving before retrying thread "${recovery.threadId}".`,
       );
-      await archiveOrUnarchiveThread({
-        commandType: "thread/unarchive",
-        ...recovery,
+      try {
+        await archiveOrUnarchiveThread({
+          commandType: "thread/unarchive",
+          ...recovery,
+        });
+      } catch (unarchiveError) {
+        // The archived-session error names the session and the CLI command
+        // that fixes it, so keep it as the reported failure and attach the
+        // recovery failure as the cause.
+        throw new Error(error.message, { cause: unarchiveError });
+      }
+
+      // Unarchiving can replace a dead provider process, so resolve the
+      // process again instead of writing to the captured child's stdin.
+      const retryProc = requireProviderProcess({
+        processKey: args.proc.processKey,
+        providerId: args.proc.providerId,
       });
-      return sendJsonRpcRequest(request);
+      return sendJsonRpcRequest({
+        ...request,
+        child: retryProc.child,
+        pending: retryProc.pending,
+      });
     }
   }
 
@@ -1151,6 +1169,17 @@ function createAgentRuntimeInternal(
             message: cmd,
             resultSchema: threadIdentityResultSchema,
             timeoutMs: THREAD_CREATION_REQUEST_TIMEOUT_MS,
+            // A fork reads the source session, so an archived source fails the
+            // same way a resume does. A plain start has no session to unarchive.
+            ...(fork
+              ? {
+                  recovery: {
+                    providerId,
+                    providerThreadId: fork.sourceProviderThreadId,
+                    threadId,
+                  },
+                }
+              : {}),
           });
           const providerThreadId = resolveThreadIdentityResult({
             result,
