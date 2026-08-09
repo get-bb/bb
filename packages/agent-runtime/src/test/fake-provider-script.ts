@@ -69,6 +69,9 @@ const defaultModelList = {
 // Test-only mode used by runtime command-contract coverage.
 const simulateArchivedSession = process.argv.includes("--archived-session");
 const failUnarchive = process.argv.includes("--unarchive-fails");
+// Exit right after reporting the archived error, so recovery has to work
+// against a replacement process.
+const exitAfterArchivedError = process.argv.includes("--exit-after-archived");
 const archivedSessionMethods = new Set([
   "thread/fork",
   "thread/resume",
@@ -123,6 +126,9 @@ function rejectArchivedSession(message: JsonRecord): boolean {
       message: `session ${providerThreadId} is archived. Run codex unarchive ${providerThreadId} to unarchive it first.`,
     },
   });
+  if (exitAfterArchivedError) {
+    process.exit(0);
+  }
   return true;
 }
 

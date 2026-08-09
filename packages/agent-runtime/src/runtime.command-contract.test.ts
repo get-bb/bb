@@ -1092,6 +1092,29 @@ rl.on("line", (line) => {
     }
   });
 
+  // A provider that dies while bb recovers cannot be unarchived or retried.
+  // The caller must still get the archived-session error, because it names the
+  // session and the CLI command that fixes it. A process-level error such as
+  // `Provider "codex" has exited` tells the user nothing actionable.
+  it("keeps the archived-session error when the provider exits mid-recovery", async () => {
+    const runtime = createArchivedSessionRuntime(["--exit-after-archived"]);
+
+    try {
+      await expect(
+        runtime.resumeThread({
+          environmentId: "env-1",
+          projectId: "p1",
+          providerId: "codex",
+          providerThreadId: "prov-exit-recovery",
+          threadId: "t-exit-recovery",
+          options: fullRuntimeOptions,
+        }),
+      ).rejects.toThrow(/session prov-exit-recovery is archived/);
+    } finally {
+      await runtime.shutdown();
+    }
+  });
+
   it("rejects turn steer when providerThreadId cannot be resolved", async () => {
     const events: ThreadEvent[] = [];
     const activeTurnScriptPath = join(tmpDir, "active-turn-provider.cjs");

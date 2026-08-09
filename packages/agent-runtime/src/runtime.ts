@@ -372,24 +372,25 @@ function createAgentRuntimeInternal(
       options.onStderr?.(
         `Codex session "${recovery.providerThreadId}" is archived; unarchiving before retrying thread "${recovery.threadId}".`,
       );
+      let retryProc: ProviderProcess;
       try {
         await archiveOrUnarchiveThread({
           commandType: "thread/unarchive",
           ...recovery,
         });
-      } catch (unarchiveError) {
+        // Unarchiving can replace an exited provider process, so resolve the
+        // process again instead of writing to the captured child's stdin.
+        retryProc = requireProviderProcess({
+          processKey: args.proc.processKey,
+          providerId: args.proc.providerId,
+        });
+      } catch (recoveryError) {
         // The archived-session error names the session and the CLI command
-        // that fixes it, so keep it as the reported failure and attach the
-        // recovery failure as the cause.
-        throw new Error(error.message, { cause: unarchiveError });
+        // that fixes it, so keep it as the reported failure whenever the
+        // recovery itself could not run.
+        throw new Error(error.message, { cause: recoveryError });
       }
 
-      // Unarchiving can replace a dead provider process, so resolve the
-      // process again instead of writing to the captured child's stdin.
-      const retryProc = requireProviderProcess({
-        processKey: args.proc.processKey,
-        providerId: args.proc.providerId,
-      });
       return sendJsonRpcRequest({
         ...request,
         child: retryProc.child,
