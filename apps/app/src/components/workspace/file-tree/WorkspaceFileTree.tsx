@@ -47,8 +47,6 @@ export function WorkspaceFileTree({ controller }: WorkspaceFileTreeProps) {
         {controller.error ? (
           <EmptyState
             className={isPreparingWorktree ? "p-3" : undefined}
-            icon={isPreparingWorktree ? "Spinner" : undefined}
-            iconClassName={isPreparingWorktree ? "animate-spin" : undefined}
             message={
               isPreparingWorktree
                 ? "Preparing worktree..."
