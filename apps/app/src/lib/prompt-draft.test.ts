@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { PromptMentionResource } from "@bb/domain";
 import {
+  appendDiffCommentToDraft,
   appendQuoteAndAttachmentsToDraft,
   appendQuoteToDraftText,
   emptyPromptDraftState,
@@ -337,6 +338,70 @@ describe("appendQuoteToDraftText", () => {
 
     expect(next.mentions).toEqual([mention]);
     expect(next.text.startsWith(text)).toBe(true);
+  });
+});
+
+describe("appendDiffCommentToDraft", () => {
+  it("adds a workspace file mention and line range to an empty draft", () => {
+    const next = appendDiffCommentToDraft(
+      emptyPromptDraftState(),
+      "Use a helper.",
+      {
+        filePath: "src/file.ts",
+        startLine: 12,
+        endLine: 14,
+      },
+    );
+
+    expect(next.text).toBe("@src/file.ts (lines 12-14)\nUse a helper.");
+    expect(next.mentions).toEqual([
+      {
+        start: 0,
+        end: "@src/file.ts".length,
+        resource: {
+          kind: "path",
+          source: "workspace",
+          entryKind: "file",
+          path: "src/file.ts",
+          label: "src/file.ts",
+        },
+      },
+    ]);
+  });
+
+  it("appends comments without changing existing mention offsets", () => {
+    const resource: PromptMentionResource = {
+      kind: "thread",
+      threadId: "thr_parent",
+      label: "Parent thread",
+    };
+    const base = {
+      text: "@thread",
+      mentions: [{ start: 0, end: 7, resource }],
+      attachments: [],
+    };
+
+    const next = appendDiffCommentToDraft(base, "Check this path.", {
+      filePath: "README.md",
+      startLine: 1,
+      endLine: 1,
+    });
+
+    expect(next.text).toBe("@thread\n\n@README.md (line 1)\nCheck this path.");
+    expect(next.mentions[0]).toEqual(base.mentions[0]);
+    expect(next.mentions[1]?.start).toBe("@thread\n\n".length);
+  });
+
+  it("ignores blank comments or file paths", () => {
+    const base = emptyPromptDraftState();
+    const target = { filePath: "src/file.ts", startLine: 1, endLine: 1 };
+    expect(appendDiffCommentToDraft(base, "  ", target)).toBe(base);
+    expect(
+      appendDiffCommentToDraft(base, "Comment", {
+        ...target,
+        filePath: " ",
+      }),
+    ).toBe(base);
   });
 });
 

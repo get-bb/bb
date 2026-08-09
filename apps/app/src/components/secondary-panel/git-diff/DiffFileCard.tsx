@@ -30,6 +30,7 @@ import { FilePathLink } from "@/components/ui/file-path-link.js";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import type { DiffPatchState } from "@/hooks/queries/use-environment-diff-patches";
 import { cn } from "@bb/shared-ui/lib/utils";
+import type { DiffCommentDraftTarget } from "@/lib/prompt-draft";
 
 /**
  * Build the file label for a TOC entry. Renames/copies read as `old -> new`;
@@ -135,6 +136,10 @@ export interface DiffFileCardProps {
   onOpenFilePreview?: (path: string) => void;
   onRequestFileContents?: RequestDiffFileContents;
   onSelectionAddToChat?: (text: string) => void;
+  onSubmitDiffComment?: (
+    comment: string,
+    target: DiffCommentDraftTarget,
+  ) => void;
 }
 
 /**
@@ -184,6 +189,7 @@ function areDiffFileCardPropsEqual(
     previous.onOpenFilePreview === next.onOpenFilePreview &&
     previous.onRequestFileContents === next.onRequestFileContents &&
     previous.onSelectionAddToChat === next.onSelectionAddToChat &&
+    previous.onSubmitDiffComment === next.onSubmitDiffComment &&
     arePatchStatesEqual(previous.patchState, next.patchState)
   );
 }
@@ -286,6 +292,7 @@ export const DiffFileCard = memo(function DiffFileCard({
   onOpenFilePreview,
   onRequestFileContents,
   onSelectionAddToChat,
+  onSubmitDiffComment,
 }: DiffFileCardProps) {
   const headerModel = useMemo(() => buildDiffEntryHeaderModel(entry), [entry]);
   // The single file's patch, parsed only once it has loaded. The patch hook
@@ -409,6 +416,7 @@ export const DiffFileCard = memo(function DiffFileCard({
           onOpenFilePreview={onOpenFilePreview}
           onRequestFileContents={onRequestFileContents}
           onSelectionAddToChat={onSelectionAddToChat}
+          onSubmitDiffComment={onSubmitDiffComment}
           binaryImagePreviewState={
             shouldDirectlyPreviewBinaryImage
               ? binaryImagePreviewState
@@ -432,6 +440,10 @@ interface DiffFileCardBodyProps {
   onOpenFilePreview?: (path: string) => void;
   onRequestFileContents?: RequestDiffFileContents;
   onSelectionAddToChat?: (text: string) => void;
+  onSubmitDiffComment?: (
+    comment: string,
+    target: DiffCommentDraftTarget,
+  ) => void;
   binaryImagePreviewState?: BinaryImagePreviewState;
 }
 
@@ -492,6 +504,7 @@ function DiffFileCardBody({
   onOpenFilePreview,
   onRequestFileContents,
   onSelectionAddToChat,
+  onSubmitDiffComment,
   binaryImagePreviewState,
 }: DiffFileCardBodyProps) {
   if (binaryImagePreviewState !== undefined) {
@@ -603,6 +616,7 @@ function DiffFileCardBody({
       onOpenFilePreview={onOpenFilePreview}
       onRequestFileContents={onRequestFileContents}
       onSelectionAddToChat={onSelectionAddToChat}
+      onSubmitDiffComment={onSubmitDiffComment}
     />
   );
 }
@@ -617,6 +631,10 @@ interface DiffFileCardRenderedBodyProps {
   onOpenFilePreview?: (path: string) => void;
   onRequestFileContents?: RequestDiffFileContents;
   onSelectionAddToChat?: (text: string) => void;
+  onSubmitDiffComment?: (
+    comment: string,
+    target: DiffCommentDraftTarget,
+  ) => void;
 }
 
 /**
@@ -636,6 +654,7 @@ function DiffFileCardRenderedBody({
   onOpenFilePreview,
   onRequestFileContents,
   onSelectionAddToChat,
+  onSubmitDiffComment,
 }: DiffFileCardRenderedBodyProps) {
   const bodyState = useGitDiffCardBody({
     fileDiff: parsedFile,
@@ -652,6 +671,7 @@ function DiffFileCardRenderedBody({
         svgDisplayMode={svgDisplayMode}
         reservesCollapseGutter
         onSelectionAddToChat={onSelectionAddToChat}
+        onSubmitDiffComment={onSubmitDiffComment}
       />
       {truncated ? (
         <div className={DIFF_FILE_CARD_NOTICE_CLASS}>

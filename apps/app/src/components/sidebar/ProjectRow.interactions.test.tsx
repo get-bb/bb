@@ -36,6 +36,10 @@ vi.mock("@/hooks/useThreadSplitsEnabled", () => ({
   useThreadSplitsEnabled: () => false,
 }));
 
+vi.mock("@/hooks/queries/environment-queries", () => ({
+  useEnvironmentWorkStatus: () => ({ data: undefined }),
+}));
+
 vi.mock("@/hooks/mutations/environment-mutations", () => ({
   useArchiveEnvironmentThreads: () => ({
     isPending: false,

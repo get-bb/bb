@@ -1,5 +1,6 @@
 import {
   promptTextMentionSchema,
+  type PromptMentionResource,
   type PromptInput,
   type PromptTextMention,
 } from "@bb/domain";
@@ -125,6 +126,64 @@ export function appendQuoteAndAttachmentsToDraft(
   }
 
   return { ...quotedState, attachments: mergedAttachments };
+}
+
+export interface DiffCommentDraftTarget {
+  filePath: string;
+  startLine: number;
+  endLine: number;
+}
+
+function formatDiffCommentLineReference({
+  startLine,
+  endLine,
+}: DiffCommentDraftTarget): string {
+  return startLine === endLine
+    ? ` (line ${startLine})`
+    : ` (lines ${startLine}-${endLine})`;
+}
+
+/**
+ * Append a diff comment and its workspace-file mention to the thread draft.
+ * The file mention uses the same offset contract as the prompt editor, so the
+ * composer renders it as a file pill and keeps the line reference visible.
+ */
+export function appendDiffCommentToDraft(
+  state: PromptDraftState,
+  comment: string,
+  target: DiffCommentDraftTarget,
+): PromptDraftState {
+  const trimmedComment = comment.trim();
+  const filePath = target.filePath.trim();
+  if (trimmedComment === "" || filePath === "") {
+    return state;
+  }
+
+  const separator = state.text.length > 0 ? "\n\n" : "";
+  const fileReference = `@${filePath}`;
+  const lineReference = formatDiffCommentLineReference(target);
+  const nextText = `${state.text}${separator}${fileReference}${lineReference}\n${trimmedComment}`;
+  const mentionStart = state.text.length + separator.length;
+  const fileResource: PromptMentionResource = {
+    kind: "path",
+    source: "workspace",
+    entryKind: "file",
+    path: filePath,
+    label: filePath,
+  };
+
+  return {
+    ...state,
+    text: nextText,
+    mentions: [
+      ...state.mentions,
+      {
+        start: mentionStart,
+        end: mentionStart + fileReference.length,
+        resource: fileResource,
+      },
+    ],
+  };
 }
 
 export function isPromptDraftEmpty(draft: PromptDraftState): boolean {

@@ -25,6 +25,7 @@ import {
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { ThreadStatusGlyph } from "./ThreadRow";
+import { ThreadDiffStatsLabel } from "./ThreadDiffStatsLabel";
 import { isSidebarThreadTitleMatch } from "./sidebarThreadSearch";
 import { usePromptDraftHasInput } from "@/hooks/usePromptDraftStorage";
 import {
@@ -220,6 +221,10 @@ function ThreadSearchResultRowComponent({
             <Icon name="Folder" className="size-3.5 shrink-0" aria-hidden />
           ) : null}
           <span className="min-w-0 truncate">{metadataText}</span>
+          <ThreadDiffStatsLabel
+            environmentId={thread.environmentId}
+            className="ml-auto"
+          />
         </span>
       </span>
       {indicatorKind !== "none" ? (

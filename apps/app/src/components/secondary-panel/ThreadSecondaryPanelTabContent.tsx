@@ -22,6 +22,7 @@ import type {
   FilePreviewLineRange,
   WorkspaceFilePreviewStatusLabel,
 } from "@/lib/file-preview";
+import type { DiffCommentDraftTarget } from "@/lib/prompt-draft";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { DiffFilesPanel } from "./git-diff/DiffFilesPanel";
 import { clearDiffFileCardStates } from "./git-diff/diffFilesStore";
@@ -49,6 +50,10 @@ export interface GitDiffTabContentProps {
   onOpenFileInEditor?: (path: string) => void;
   onOpenFilePreview?: (path: string) => void;
   onSelectionAddToChat?: (text: string) => void;
+  onSubmitDiffComment?: (
+    comment: string,
+    target: DiffCommentDraftTarget,
+  ) => void;
   workspaceRootPath?: string | null;
 }
 
@@ -148,6 +153,7 @@ export function GitDiffTabContent({
   onOpenFileInEditor,
   onOpenFilePreview,
   onSelectionAddToChat,
+  onSubmitDiffComment,
   workspaceRootPath,
 }: GitDiffTabContentProps) {
   const isQueryEnabled =
@@ -293,6 +299,7 @@ export function GitDiffTabContent({
       onOpenFilePreview={onOpenFilePreview}
       onRequestFileContents={onRequestFileContents}
       onSelectionAddToChat={onSelectionAddToChat}
+      onSubmitDiffComment={onSubmitDiffComment}
     />
   );
 }

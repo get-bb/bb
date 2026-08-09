@@ -82,6 +82,7 @@ import type { AppShortcutPresentation } from "@/lib/app-keybindings";
 import { TabPill } from "@/components/ui/tab-pill";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { dispatchBrowserViewBoundsSync } from "@/lib/browser-view-bounds-sync";
+import type { DiffCommentDraftTarget } from "@/lib/prompt-draft";
 export type {
   GitDiffDisplayMode,
   GitDiffSelectionOption,
@@ -274,6 +275,10 @@ export interface ThreadSecondaryPanelProps {
   onOpenFileInEditor?: (path: string) => void;
   onOpenFilePreview?: (path: string) => void;
   onSelectionAddToChat?: (text: string) => void;
+  onSubmitDiffComment?: (
+    comment: string,
+    target: DiffCommentDraftTarget,
+  ) => void;
   /**
    * When true the conversation pane is collapsed: this panel expands to fill
    * the content area (its max size is lifted). Always false in the
@@ -348,6 +353,7 @@ export function ThreadSecondaryPanel({
   onOpenFileInEditor,
   onOpenFilePreview,
   onSelectionAddToChat,
+  onSubmitDiffComment,
   isConversationCollapsed,
   onToggleConversationCollapse,
   renderAsDrawer,
@@ -820,6 +826,7 @@ export function ThreadSecondaryPanel({
             onOpenFileInEditor={onOpenFileInEditor}
             onOpenFilePreview={onOpenFilePreview}
             onSelectionAddToChat={onSelectionAddToChat}
+            onSubmitDiffComment={onSubmitDiffComment}
             workspaceRootPath={workspaceRootPath}
           />
         ) : (

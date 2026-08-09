@@ -8,7 +8,9 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
-import type { SelectedLineRange } from "@pierre/diffs";
+import type { DiffLineAnnotation, SelectedLineRange } from "@pierre/diffs";
+import { Button } from "@bb/shared-ui/button";
+import { Textarea } from "@bb/shared-ui/textarea";
 import {
   anchorPointFromMouseEvent,
   selectionAnchorFromPointerRelease,
@@ -17,6 +19,7 @@ import {
   type SelectionAnchorPoint,
   type SelectionAnchorSide,
 } from "@/components/thread/timeline/SelectableMessageProse.js";
+import type { DiffCommentDraftTarget } from "@/lib/prompt-draft";
 import { TimelineSelectionMenu } from "@/components/thread/timeline/TimelineSelectionMenu.js";
 
 const LINE_SELECTION_MENU_INLINE_OFFSET_PX = 72;
@@ -26,6 +29,11 @@ let documentPointerReleaseAnchor: SelectionAnchor | null = null;
 
 export type PierreLineSelectionAnchorPoint = SelectionAnchorPoint;
 
+export interface PierreDiffCommentOptions {
+  filePath: string;
+  onSubmit: (comment: string, target: DiffCommentDraftTarget) => void;
+}
+
 export interface UsePierreLineSelectionActionsArgs {
   buildFallbackSelectionText?: (args: {
     containerElement: HTMLElement | null;
@@ -33,6 +41,7 @@ export interface UsePierreLineSelectionActionsArgs {
   }) => string | null;
   buildSelectionText: (range: SelectedLineRange) => string | null;
   containerRef: RefObject<HTMLElement | null>;
+  diffComment?: PierreDiffCommentOptions;
   enabled: boolean;
   onSelectionAddToChat?: (text: string) => void;
   resolveAnchorPoint?: (args: {
@@ -44,6 +53,8 @@ export interface UsePierreLineSelectionActionsArgs {
 }
 
 export interface PierreLineSelectionActions {
+  commentAnnotation: DiffLineAnnotation | null;
+  commentInput: ReactNode;
   menu: ReactNode;
   onLineSelectionChange: (range: SelectedLineRange | null) => void;
   onLineSelectionEnd: (range: SelectedLineRange | null) => void;
@@ -53,6 +64,76 @@ export interface PierreLineSelectionActions {
   onPointerMoveCapture: (event: ReactPointerEvent<HTMLElement>) => void;
   onPointerUpCapture: (event: ReactPointerEvent<HTMLElement>) => void;
   selectedRange: SelectedLineRange | null;
+}
+
+function InlineDiffCommentInput({
+  onCancel,
+  onSubmit,
+  range,
+}: {
+  onCancel: () => void;
+  onSubmit: (comment: string) => void;
+  range: SelectedLineRange;
+}) {
+  const [text, setText] = useState("");
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const startLine = Math.min(range.start, range.end);
+  const endLine = Math.max(range.start, range.end);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  return (
+    <div
+      className="border-y border-border bg-background px-6 py-4 font-sans text-foreground"
+      data-diff-comment-input="true"
+    >
+      <form
+        className="flex flex-col gap-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          const comment = text.trim();
+          if (comment.length === 0) {
+            return;
+          }
+          onSubmit(comment);
+        }}
+      >
+        <div className="font-mono text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          Lines {startLine}–{endLine}
+        </div>
+        <Textarea
+          ref={inputRef}
+          aria-label="Diff comment"
+          rows={4}
+          value={text}
+          onChange={(event) => setText(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+              event.preventDefault();
+              event.currentTarget.form?.requestSubmit();
+            }
+          }}
+          placeholder="Add a comment for the AI"
+          className="min-h-24 resize-y bg-background text-sm"
+        />
+        <div className="flex justify-end gap-2 pt-2">
+          <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            variant="secondary"
+            size="sm"
+            disabled={text.trim().length === 0}
+          >
+            Comment <span aria-hidden="true">↵</span>
+          </Button>
+        </div>
+      </form>
+    </div>
+  );
 }
 
 function fallbackAnchorPoint(
@@ -284,6 +365,7 @@ export function usePierreLineSelectionActions({
   buildFallbackSelectionText,
   buildSelectionText,
   containerRef,
+  diffComment,
   enabled,
   onSelectionAddToChat,
   resolveAnchorPoint,
@@ -296,6 +378,8 @@ export function usePierreLineSelectionActions({
   );
   const [activeSelection, setActiveSelection] =
     useState<MessageProseSelection | null>(null);
+  const [inlineCommentRange, setInlineCommentRange] =
+    useState<SelectedLineRange | null>(null);
   const pointerStartPointRef = useRef<SelectionAnchorPoint | null>(null);
   const lastPointerReleaseAnchorRef = useRef<SelectionAnchor | null>(null);
   const lastLineSelectionAnchorRef = useRef<SelectionAnchor | null>(null);
@@ -453,6 +537,7 @@ export function usePierreLineSelectionActions({
     setActiveRange(null);
     setPreviewRange(null);
     setActiveSelection(null);
+    setInlineCommentRange(null);
     currentLineRangeRef.current = null;
     pointerStartPointRef.current = null;
     lastPointerReleaseAnchorRef.current = null;
@@ -463,19 +548,48 @@ export function usePierreLineSelectionActions({
     documentPointerReleaseAnchor = null;
   }, []);
 
+  const getSelectionText = useCallback(
+    (range: SelectedLineRange) =>
+      (
+        buildSelectionText(range) ??
+        buildFallbackSelectionText?.({
+          containerElement: containerRef.current,
+          range,
+        }) ??
+        ""
+      ).trim(),
+    [buildFallbackSelectionText, buildSelectionText, containerRef],
+  );
+
+  const handleOpenInlineComment = useCallback(
+    (range: SelectedLineRange) => {
+      if (diffComment === undefined) {
+        return;
+      }
+      if (getSelectionText(range) === "") {
+        dismissSelection();
+        return;
+      }
+      currentLineRangeRef.current = range;
+      setActiveRange(range);
+      setPreviewRange(range);
+      setActiveSelection(null);
+      setInlineCommentRange(range);
+    },
+    [diffComment, dismissSelection, getSelectionText],
+  );
+
   const handleGutterUtilityClick = useCallback(
     (range: SelectedLineRange) => {
       if (!enabled) {
         return;
       }
+      if (diffComment !== undefined) {
+        handleOpenInlineComment(range);
+        return;
+      }
       const containerElement = containerRef.current;
-      const selectionText =
-        buildSelectionText(range) ??
-        buildFallbackSelectionText?.({
-          containerElement,
-          range,
-        }) ??
-        "";
+      const selectionText = getSelectionText(range);
       const pointerAnchor =
         lastLineSelectionAnchorRef.current ??
         lastPointerReleaseAnchorRef.current ??
@@ -522,6 +636,7 @@ export function usePierreLineSelectionActions({
         setActiveRange(null);
         setPreviewRange(null);
         setActiveSelection(null);
+        setInlineCommentRange(null);
         currentLineRangeRef.current = null;
         return;
       }
@@ -532,10 +647,11 @@ export function usePierreLineSelectionActions({
       setActiveSelection(selection);
     },
     [
-      buildFallbackSelectionText,
-      buildSelectionText,
       containerRef,
+      diffComment,
       enabled,
+      getSelectionText,
+      handleOpenInlineComment,
       resolveAnchorPoint,
     ],
   );
@@ -551,6 +667,7 @@ export function usePierreLineSelectionActions({
       lineSelectionStartRangeRef.current = range;
       setActiveRange(null);
       setActiveSelection(null);
+      setInlineCommentRange(null);
       setPreviewRange(range);
     },
     [enabled],
@@ -591,8 +708,11 @@ export function usePierreLineSelectionActions({
         lastLineSelectionAnchorRef.current = pointerAnchor;
       }
       setPreviewRange(range);
+      if (range !== null && diffComment !== undefined) {
+        handleOpenInlineComment(range);
+      }
     },
-    [enabled],
+    [diffComment, enabled, handleOpenInlineComment],
   );
 
   const handleSelectionAddToChat = useCallback(
@@ -601,6 +721,21 @@ export function usePierreLineSelectionActions({
       dismissSelection();
     },
     [dismissSelection, onSelectionAddToChat],
+  );
+
+  const handleSubmitDiffComment = useCallback(
+    (comment: string) => {
+      if (diffComment === undefined || inlineCommentRange === null) {
+        return;
+      }
+      diffComment.onSubmit(comment, {
+        filePath: diffComment.filePath,
+        startLine: Math.min(inlineCommentRange.start, inlineCommentRange.end),
+        endLine: Math.max(inlineCommentRange.start, inlineCommentRange.end),
+      });
+      dismissSelection();
+    },
+    [diffComment, dismissSelection, inlineCommentRange],
   );
 
   const menu = useMemo(
@@ -626,6 +761,28 @@ export function usePierreLineSelectionActions({
   );
 
   return {
+    commentAnnotation:
+      inlineCommentRange === null
+        ? null
+        : {
+            lineNumber: Math.max(
+              inlineCommentRange.start,
+              inlineCommentRange.end,
+            ),
+            side:
+              inlineCommentRange.endSide ??
+              inlineCommentRange.side ??
+              "additions",
+          },
+    commentInput:
+      inlineCommentRange === null ? null : (
+        <InlineDiffCommentInput
+          key={`${inlineCommentRange.start}:${inlineCommentRange.end}:${inlineCommentRange.side ?? ""}:${inlineCommentRange.endSide ?? ""}`}
+          onCancel={dismissSelection}
+          onSubmit={handleSubmitDiffComment}
+          range={inlineCommentRange}
+        />
+      ),
     menu,
     onGutterUtilityClick: handleGutterUtilityClick,
     onLineSelectionChange: handleLineSelectionChange,

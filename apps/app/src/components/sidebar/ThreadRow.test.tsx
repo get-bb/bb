@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import { createStore, Provider } from "jotai";
 import type { ThreadListEntry } from "@bb/domain";
 import type { PluginComposerThreadRowStatus } from "@bb/plugin-sdk";
+import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ThreadRow, type ThreadRowOptions } from "./ThreadRow";
 import { SidebarThreadTitleMentionResourcesProvider } from "./SidebarThreadTitleMentions";
@@ -27,6 +28,34 @@ import { NO_COLLAPSED_CHILD_ACTIVITY } from "@/lib/thread-activity";
 
 vi.mock("@/hooks/useThreadSplitsEnabled", () => ({
   useThreadSplitsEnabled: () => true,
+}));
+
+vi.mock("@/hooks/queries/environment-queries", () => ({
+  useEnvironmentWorkStatus: (environmentId: string | null) => ({
+    data:
+      environmentId === null
+        ? undefined
+        : {
+            outcome: "available",
+            workspace: {
+              workingTree: {
+                state: "modified",
+                hasUncommittedChanges: true,
+                files: [
+                  {
+                    path: "src/example.ts",
+                    status: "M",
+                    insertions: 1_234,
+                    deletions: 12_345,
+                  },
+                ],
+                insertions: 1_234,
+                deletions: 12_345,
+              },
+              mergeBase: null,
+            },
+          },
+  }),
 }));
 
 vi.mock("@/components/thread/ThreadActionsMenu", () => ({
@@ -116,17 +145,19 @@ function ThreadRowTestHarness({
 
   return (
     <MemoryRouter>
-      <SidebarThreadShortcutKeysContext.Provider value={shortcutKeys}>
-        <ThreadRow
-          projectId={thread.projectId}
-          thread={thread}
-          isActive={isActive}
-          hasComposerDraft={hasComposerDraft}
-          options={options}
-          displayTitle={displayTitle}
-          accessibleTitle={accessibleTitle}
-        />
-      </SidebarThreadShortcutKeysContext.Provider>
+      <TooltipProvider>
+        <SidebarThreadShortcutKeysContext.Provider value={shortcutKeys}>
+          <ThreadRow
+            projectId={thread.projectId}
+            thread={thread}
+            isActive={isActive}
+            hasComposerDraft={hasComposerDraft}
+            options={options}
+            displayTitle={displayTitle}
+            accessibleTitle={accessibleTitle}
+          />
+        </SidebarThreadShortcutKeysContext.Provider>
+      </TooltipProvider>
     </MemoryRouter>
   );
 }
@@ -229,6 +260,21 @@ afterEach(() => {
 });
 
 describe("ThreadRow", () => {
+  it("renders compact added and removed line counts", () => {
+    renderThreadRow({
+      thread: createThread({
+        environmentId: "env_test",
+      }),
+    });
+
+    const stats = screen.getByLabelText(
+      "+1,234 lines added, -12,345 lines removed",
+    );
+    expect(stats.textContent).toBe("+1.2k -12k");
+    expect(stats.classList.contains("ml-auto")).toBe(true);
+    expect(stats.classList.contains("text-right")).toBe(true);
+  });
+
   const splitWorkingCases: Array<{
     label: string;
     pluginStatus?: PluginComposerThreadRowStatus;

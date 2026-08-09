@@ -97,7 +97,11 @@ import {
 } from "@/components/workspace/workspace-change-summary";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
-import type { PromptDraftAttachment } from "@/lib/prompt-draft";
+import {
+  appendDiffCommentToDraft,
+  type PromptDraftAttachment,
+  type DiffCommentDraftTarget,
+} from "@/lib/prompt-draft";
 import { createLocalStorageEnumStorage } from "@/lib/browser-storage";
 import {
   getProjectComposeRoutePath,
@@ -895,6 +899,8 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     threadId: thread?.id ?? "",
   });
   const addQuoteToComposer = selectionPromptDraft.addQuote;
+  const getCurrentPromptDraft = selectionPromptDraft.getCurrent;
+  const setPromptDraft = selectionPromptDraft.setDraft;
   // Desktop quote actions keep their existing focus handoff. Mobile web does
   // not focus inputs programmatically; see PromptBoxInternal.
   const [composerFocusRequestNonce, setComposerFocusRequestNonce] = useState(0);
@@ -914,6 +920,16 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       setComposerFocusRequestNonce((nonce) => nonce + 1);
     },
     [addQuoteToComposer, dismissCompactKeyboard],
+  );
+  const handleSubmitDiffComment = useCallback(
+    (comment: string, target: DiffCommentDraftTarget) => {
+      const currentDraft = getCurrentPromptDraft();
+      const nextDraft = appendDiffCommentToDraft(currentDraft, comment, target);
+      if (nextDraft !== currentDraft) {
+        setPromptDraft(nextDraft);
+      }
+    },
+    [getCurrentPromptDraft, setPromptDraft],
   );
   const sendSideChatMessageToMain =
     useCallback<ThreadTimelineSendToMainMessageHandler>(
@@ -2558,6 +2574,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
             onOpenNewTab: handleOpenNewTab,
             onOpenFilePreview: handleOpenFilePreview,
             onSelectionAddToChat: handleSelectionAddToChat,
+            onSubmitDiffComment: handleSubmitDiffComment,
             onPanelFocus: handleSecondaryPanelFocus,
             onPanelChange: handleSecondaryPanelChange,
             showGitDiffTab: canUseGitUi,

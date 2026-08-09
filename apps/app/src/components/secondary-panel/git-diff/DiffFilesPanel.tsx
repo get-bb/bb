@@ -4,6 +4,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import type { DiffFileEntry, DiffPatchEntry } from "@bb/server-contract";
 import type { WorkspaceDiffTarget } from "@bb/domain";
 import type { RequestDiffFileContents } from "@/components/git-diff/GitDiffCardBody";
+import type { DiffCommentDraftTarget } from "@/lib/prompt-draft";
 import {
   type DiffPatchState,
   type LoadDiffPatchPath,
@@ -62,6 +63,10 @@ export interface DiffFilesPanelProps {
   onOpenFilePreview?: (path: string) => void;
   onRequestFileContents?: RequestDiffFileContents;
   onSelectionAddToChat?: (text: string) => void;
+  onSubmitDiffComment?: (
+    comment: string,
+    target: DiffCommentDraftTarget,
+  ) => void;
 }
 
 /**
@@ -87,6 +92,7 @@ export function DiffFilesPanel({
   onOpenFilePreview,
   onRequestFileContents,
   onSelectionAddToChat,
+  onSubmitDiffComment,
 }: DiffFilesPanelProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const { requestPaths, getPatchState, retry, loadPath, seedInitialPatches } =
@@ -227,6 +233,7 @@ export function DiffFilesPanel({
                 onOpenFilePreview={onOpenFilePreview}
                 onRequestFileContents={onRequestFileContents}
                 onSelectionAddToChat={onSelectionAddToChat}
+                onSubmitDiffComment={onSubmitDiffComment}
               />
             </div>
           );
@@ -252,6 +259,10 @@ interface DiffFileRowProps {
   onOpenFilePreview?: (path: string) => void;
   onRequestFileContents?: RequestDiffFileContents;
   onSelectionAddToChat?: (text: string) => void;
+  onSubmitDiffComment?: (
+    comment: string,
+    target: DiffCommentDraftTarget,
+  ) => void;
 }
 
 function DiffFileRow({
@@ -267,6 +278,7 @@ function DiffFileRow({
   onOpenFilePreview,
   onRequestFileContents,
   onSelectionAddToChat,
+  onSubmitDiffComment,
 }: DiffFileRowProps) {
   const stateAtom = useMemo(
     () => diffFileCardStateAtomFamily({ diffIdentity, path: entry.path }),
@@ -305,6 +317,7 @@ function DiffFileRow({
       onOpenFilePreview={onOpenFilePreview}
       onRequestFileContents={onRequestFileContents}
       onSelectionAddToChat={onSelectionAddToChat}
+      onSubmitDiffComment={onSubmitDiffComment}
     />
   );
 }

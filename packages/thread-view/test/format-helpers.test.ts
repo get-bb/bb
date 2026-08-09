@@ -2,11 +2,32 @@ import { describe, expect, it } from "vitest";
 import {
   capitalize,
   durationToCompactString,
+  formatCompactDiffCount,
   getFirstStringField,
   getMessageStartedAt,
   messageId,
   plural,
 } from "../src/format-helpers.js";
+
+describe("formatCompactDiffCount", () => {
+  it("keeps counts below one thousand exact", () => {
+    expect(formatCompactDiffCount(0)).toBe("0");
+    expect(formatCompactDiffCount(999)).toBe("999");
+  });
+
+  it("rounds larger counts to two significant digits", () => {
+    expect(formatCompactDiffCount(1_100)).toBe("1.1k");
+    expect(formatCompactDiffCount(1_234)).toBe("1.2k");
+    expect(formatCompactDiffCount(12_345)).toBe("12k");
+    expect(formatCompactDiffCount(123_456)).toBe("120k");
+    expect(formatCompactDiffCount(1_234_567)).toBe("1.2M");
+    expect(formatCompactDiffCount(1_234_567_890)).toBe("1.2B");
+  });
+
+  it("carries rounded thousands into millions", () => {
+    expect(formatCompactDiffCount(999_500)).toBe("1M");
+  });
+});
 
 describe("durationToCompactString", () => {
   it("returns undefined for undefined input", () => {

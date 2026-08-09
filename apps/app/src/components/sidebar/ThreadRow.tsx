@@ -73,6 +73,7 @@ import { AppCommandShortcutPill } from "@/components/commands/AppCommandShortcut
 import { useThreadTitleDisplayText } from "@/components/thread/ThreadTitleMentions";
 import { pluginIconName } from "@/components/plugin/PluginIcon";
 import { usePluginThreadRowStatus } from "@/lib/plugin-thread-row-status";
+import { ThreadDiffStatsLabel } from "./ThreadDiffStatsLabel";
 
 interface ThreadRowBaseOptions {
   depth: number;
@@ -643,6 +644,10 @@ function ThreadRowComponent({
         <span className="min-w-0 truncate" title={labelTitle}>
           <SidebarThreadTitle title={visibleTitle} />
         </span>
+        <ThreadDiffStatsLabel
+          environmentId={thread.environmentId}
+          className="ml-auto text-right"
+        />
         {parentOptions && hasChildren ? (
           <SidebarChildToggleChevron
             isCollapsed={isParentCollapsed}
