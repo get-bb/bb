@@ -20,15 +20,71 @@ const CONTRIBUTIONS_TIMEOUT_MS = 2000;
 
 /**
  * Result of asking the server for plugin CLI contributions. "unreachable"
- * (fetch threw: server down, timeout) is distinguished from "invalid" (an
- * old server without the route, or a malformed payload) so unknown-command
- * handling can tell the user to start bb instead of printing a misleading
- * "unknown command" for a plugin command that would exist if bb were up.
+ * (fetch threw: server down, blocked, timeout) is distinguished from
+ * "invalid" (an old server without the route, or a malformed payload) so
+ * unknown-command handling can tell the user to start bb instead of printing
+ * a misleading "unknown command" for a plugin command that would exist if bb
+ * were up. The thrown error is kept: EPERM (blocked shell) and a timeout mean
+ * something very different from ECONNREFUSED (nothing listening).
  */
 export type PluginCliContributionsResult =
   | { outcome: "ok"; contributions: PluginCliContributionEntry[] }
-  | { outcome: "unreachable" }
+  | { outcome: "unreachable"; cause: unknown }
   | { outcome: "invalid" };
+
+/**
+ * Diagnose a failed probe of the server without overclaiming: only
+ * ECONNREFUSED is evidence that bb is not running. Blocked connections
+ * (sandboxed agent shells) and timeouts name the address and errno so the
+ * reader — often an agent — does not declare a running bb dead.
+ */
+export function describeUnreachableServer(
+  baseUrl: string,
+  cause: unknown,
+  timeoutMs: number = CONTRIBUTIONS_TIMEOUT_MS,
+): string {
+  let code: string | undefined;
+  let timedOut = false;
+  const messages: string[] = [];
+  const seen = new Set<object>();
+  for (
+    let current = cause;
+    typeof current === "object" && current !== null && !seen.has(current);
+    current = (current as { cause?: unknown }).cause
+  ) {
+    seen.add(current);
+    const record = current as {
+      code?: unknown;
+      name?: unknown;
+      message?: unknown;
+    };
+    if (code === undefined && typeof record.code === "string") {
+      code = record.code;
+    }
+    if (record.name === "TimeoutError") {
+      timedOut = true;
+    }
+    if (typeof record.message === "string" && record.message.length > 0) {
+      messages.push(record.message);
+    }
+  }
+
+  if (code === "ECONNREFUSED") {
+    return `bb is not running at ${baseUrl} — open the bb app, then re-run this command.`;
+  }
+  if (code === "EPERM" || code === "EACCES") {
+    return (
+      `Cannot reach bb at ${baseUrl}: ${code} — the connection was blocked. ` +
+      `bb may still be running; check sandbox or firewall rules for this shell.`
+    );
+  }
+  if (timedOut) {
+    return `bb did not respond at ${baseUrl} within ${timeoutMs}ms — it may be busy or unreachable.`;
+  }
+  return `Cannot reach bb at ${baseUrl}: ${
+    messages.length > 0 ? messages.join(": ") : String(cause)
+  }`;
+}
 
 /** Fetch plugin CLI contributions with a short timeout. */
 export async function fetchPluginCliContributions(
@@ -40,8 +96,8 @@ export async function fetchPluginCliContributions(
     response = await cliFetch(`${baseUrl}/api/v1/plugins/contributions`, {
       signal: AbortSignal.timeout(timeoutMs),
     });
-  } catch {
-    return { outcome: "unreachable" };
+  } catch (error) {
+    return { outcome: "unreachable", cause: error };
   }
   try {
     if (!response.ok) return { outcome: "invalid" };
