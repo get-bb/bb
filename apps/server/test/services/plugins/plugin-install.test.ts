@@ -279,7 +279,9 @@ describe("plugin install flows", () => {
     await rm(workDir, { recursive: true, force: true });
   });
 
-  describe.skipIf(!hasGit)("git sources", () => {
+  // Each test clones a repo and runs a full install (git subprocesses +
+  // esbuild build + plugin load); the 5s default flakes on loaded CI runners.
+  describe.skipIf(!hasGit)("git sources", { timeout: 30_000 }, () => {
     it("clones a pinned tag into its exact immutable cache dir and loads it", async () => {
       const repoDir = join(workDir, "repo");
       await writePluginFixture(repoDir, { name: "bb-plugin-gitty" });
