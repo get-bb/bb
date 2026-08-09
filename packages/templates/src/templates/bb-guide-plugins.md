@@ -357,9 +357,10 @@ into agent threads unless filtered by `bb.agents.configure`; default
 `skills/`), `engines.bb` (supported bb range),
 and optional `engines.bbPluginSdk` (supported plugin SDK range; scaffold
 writes `"^0.4.1"` for SDK 0.4.1). Plugin package names can be unscoped
-(`bb-plugin-hello`) or scoped (`@acme/bb-plugin-hello`). The plugin id is the
-final package-name component minus `bb-plugin-`, so both forms use the id
-`hello`.
+(`bb-plugin-hello`) or scoped (`@acme/bb-plugin-hello`). Use the unscoped form
+by default; use a scope when publishing under an npm user or organization, or
+when related plugins need an owner-specific namespace. The plugin id is the
+final package-name component minus `bb-plugin-`, so both forms use `hello`.
 
 Plugins can contribute palettes with `bb.themes`: an array of
 `{ id, name, description?, css }`, where `css` is a plugin-relative `.css`

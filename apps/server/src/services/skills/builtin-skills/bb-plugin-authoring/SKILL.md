@@ -111,9 +111,11 @@ The manifest is `package.json`:
   artifacts whose `pluginId`/`pluginVersion` disagree with the package
   manifest, or whose SDK major does not match the host.
 - Plugin package names can be unscoped (`bb-plugin-hello`) or scoped
-  (`@acme/bb-plugin-hello`). The plugin id is the final package-name component
-  minus the `bb-plugin-` prefix, so both forms use `hello`; it namespaces
-  routes, storage, settings, and CLI commands. Builtin ids such as
+  (`@acme/bb-plugin-hello`). Default to the unscoped form. Use a scope when
+  publishing under an npm user or organization, or when related plugins need
+  an owner-specific namespace. The plugin id is the final package-name
+  component minus the `bb-plugin-` prefix, so both forms use `hello`; it
+  namespaces routes, storage, settings, and CLI commands. Builtin ids such as
   `automations`, `connect`, `custom-instructions`, `inline-vis`, and `secrets`
   cannot use a non-`builtin:` source — use `builtin:<name>` instead.
 
