@@ -24,8 +24,36 @@ import {
 import type { PickerOption } from "./OptionPicker";
 import type { ModelPickerOption } from "./model-picker-option";
 
+type CapturedCommandHandler = (invocation: {
+  target: EventTarget | null;
+}) => boolean;
+
+const commandHandlers = vi.hoisted(
+  () => new Map<string, CapturedCommandHandler>(),
+);
+
 vi.mock("@/lib/sdk", () => ({
   sdk: { system: { executionOptions: vi.fn() } },
+}));
+
+vi.mock("@/components/commands/AppCommandProvider", () => ({
+  useAppCommandContext: () => undefined,
+  useAppCommandHandler: (command: string, handler: CapturedCommandHandler) => {
+    commandHandlers.set(command, handler);
+  },
+  useIndexedAppCommandHandlers: (
+    commands: readonly string[],
+    handler: (
+      index: number,
+      invocation: { target: EventTarget | null },
+    ) => boolean,
+  ) => {
+    commands.forEach((command, index) => {
+      commandHandlers.set(command, (invocation) => handler(index, invocation));
+    });
+  },
+  useAppCommandShortcut: () => null,
+  useIsAppCommandModifierHeld: () => false,
 }));
 
 const providerOptions: readonly PickerOption<string>[] = [
@@ -102,7 +130,7 @@ function renderPicker({
   selectedProviderId = "codex",
   compact = false,
 }: {
-  onSelectedProviderChange?: (value: string) => void;
+  onSelectedProviderChange?: ((value: string) => void) | null;
   onModelChange?: (value: string) => void;
   onReasoningChange?: (value: ReasoningLevel) => void;
   modelOptions?: readonly ModelPickerOption[];
@@ -132,24 +160,27 @@ function renderPicker({
   );
 
   const picker = (
-    <ModelReasoningPicker
-      providerOptions={pickerProviderOptions}
-      providerRouting={providerRouting}
-      selectedProviderId={selectedProviderId}
-      onSelectedProviderChange={onSelectedProviderChange}
-      hasMultipleProviders
-      modelValue={modelValue}
-      modelOptions={modelOptions}
-      moreModelOptions={moreModelOptions}
-      onModelChange={onModelChange}
-      reasoningValue="medium"
-      reasoningOptions={reasoningOptions}
-      onReasoningChange={onReasoningChange}
-      fastModeEnabled={false}
-      onFastModeChange={vi.fn()}
-      showFastModeToggle={false}
-      modal={false}
-    />
+    <div data-app-composer>
+      <ModelReasoningPicker
+        providerOptions={pickerProviderOptions}
+        providerRouting={providerRouting}
+        selectedProviderId={selectedProviderId}
+        onSelectedProviderChange={onSelectedProviderChange ?? undefined}
+        hasMultipleProviders
+        modelValue={modelValue}
+        modelOptions={modelOptions}
+        moreModelOptions={moreModelOptions}
+        onModelChange={onModelChange}
+        reasoningValue="medium"
+        reasoningOptions={reasoningOptions}
+        onReasoningChange={onReasoningChange}
+        fastModeEnabled={false}
+        onFastModeChange={vi.fn()}
+        showFastModeToggle={false}
+        modal={false}
+      />
+      <button type="button">Composer action</button>
+    </div>
   );
   render(
     compact ? (
@@ -167,10 +198,40 @@ function renderPicker({
 
 afterEach(() => {
   cleanup();
+  commandHandlers.clear();
   vi.clearAllMocks();
 });
 
 describe("ModelReasoningPicker", () => {
+  it("handles navigation commands from a Tab-focused composer control", () => {
+    const { onModelChange } = renderPicker({
+      modelOptions: [
+        { value: "gpt-5.5", label: "GPT-5.5" },
+        { value: "gpt-5.2", label: "GPT-5.2" },
+      ],
+    });
+    const target = screen.getByRole("button", {
+      name: "Composer action",
+    });
+
+    expect(commandHandlers.get("modelPicker.nextModel")?.({ target })).toBe(
+      true,
+    );
+    expect(onModelChange).toHaveBeenCalledWith("gpt-5.2");
+  });
+
+  it("declines provider cycling when provider switching is locked", () => {
+    renderPicker({ onSelectedProviderChange: null });
+    const lockedTarget = screen.getByRole("button", {
+      name: "Provider, model and reasoning",
+    });
+    expect(
+      commandHandlers.get("modelPicker.cycleProvider")?.({
+        target: lockedTarget,
+      }),
+    ).toBe(false);
+  });
+
   it("stays open while changing both the model and reasoning effort", () => {
     const { onModelChange, onReasoningChange } = renderPicker({
       modelOptions: [...codexModels, { value: "gpt-5.2", label: "GPT-5.2" }],

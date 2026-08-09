@@ -58,15 +58,21 @@ import {
   useAppCommandContext,
   useAppCommandHandler,
   useAppCommandShortcut,
+  useIndexedAppCommandHandlers,
 } from "@/components/commands/AppCommandProvider";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import { useOptionalPaneContext } from "@/views/thread-detail/PaneContext";
 import {
+  ownsClosedModelPickerNavigationChord,
   ownsModelPickerChord,
   resolveModelPickerToggle,
   type ModelPickerScope,
 } from "./modelPickerToggle";
-import { nextCycleValue } from "./modelPickerCycle";
+import {
+  adjacentReasoningValue,
+  nextCycleValue,
+  previousCycleValue,
+} from "./modelPickerCycle";
 
 interface ModelLabelParts {
   base: string;
@@ -74,6 +80,14 @@ interface ModelLabelParts {
 }
 
 const FAILED_TO_LOAD_MODELS_LABEL = "Failed to load models";
+const MODEL_NAVIGATION_COMMANDS = [
+  "modelPicker.previousModel",
+  "modelPicker.nextModel",
+] as const;
+const REASONING_NAVIGATION_COMMANDS = [
+  "modelPicker.decreaseReasoning",
+  "modelPicker.increaseReasoning",
+] as const;
 
 // Below this many models (primary + selected-only) the list is short enough to
 // scan by eye, so the search box is more clutter than help.
@@ -587,6 +601,11 @@ export function ModelReasoningPicker({
     [disabled, isFocusedPane, isSplitPane],
   );
   useAppCommandContext("modelPickerOpen", open && !disabled);
+  const ownsClosedNavigationChord = (target: EventTarget | null): boolean =>
+    ownsClosedModelPickerNavigationChord({
+      open,
+      ...resolveCommandScope(target),
+    });
   useAppCommandHandler(
     "modelPicker.toggle",
     ({ target }) => {
@@ -624,6 +643,39 @@ export function ModelReasoningPicker({
     },
     50,
   );
+  useIndexedAppCommandHandlers(
+    MODEL_NAVIGATION_COMMANDS,
+    (index, { target }) => {
+      if (!ownsClosedNavigationChord(target)) return false;
+      const next =
+        index === 0
+          ? previousCycleValue(modelOptions, modelValue)
+          : nextCycleValue(modelOptions, modelValue);
+      if (next === null) return false;
+      onModelChange(next);
+      setPreviewProviderId(null);
+      return true;
+    },
+    50,
+  );
+  useAppCommandHandler(
+    "modelPicker.cycleProvider",
+    ({ target }) => {
+      if (
+        !ownsClosedNavigationChord(target) ||
+        !canSwitchProviders ||
+        onSelectedProviderChange === undefined
+      ) {
+        return false;
+      }
+      const next = nextCycleValue(providerOptions, selectedProviderId);
+      if (next === null) return false;
+      onSelectedProviderChange(next);
+      setPreviewProviderId(null);
+      return true;
+    },
+    50,
+  );
   useAppCommandHandler(
     "modelPicker.cycleReasoning",
     ({ target }) => {
@@ -631,6 +683,25 @@ export function ModelReasoningPicker({
         return false;
       }
       const next = nextCycleValue(reasoningOptions, reasoningValue);
+      if (next !== null) {
+        onReasoningChange(next);
+        setPreviewProviderId(null);
+      }
+      return true;
+    },
+    50,
+  );
+  useIndexedAppCommandHandlers(
+    REASONING_NAVIGATION_COMMANDS,
+    (index, { target }) => {
+      if (!ownsClosedNavigationChord(target) || reasoningOptions.length < 2) {
+        return false;
+      }
+      const next = adjacentReasoningValue(
+        reasoningOptions,
+        reasoningValue,
+        index === 0 ? "decrease" : "increase",
+      );
       if (next !== null) {
         onReasoningChange(next);
         setPreviewProviderId(null);

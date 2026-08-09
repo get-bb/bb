@@ -59,6 +59,20 @@ export function ownsModelPickerChord(input: ModelPickerToggleInput): boolean {
 }
 
 /**
+ * Navigation-style model picker commands only act on the closed picker whose
+ * composer contains the keyboard event target. Unlike the toggle and cycle
+ * commands, they deliberately have no focused-pane fallback or open-picker
+ * behavior.
+ */
+export function ownsClosedModelPickerNavigationChord(
+  input: ModelPickerToggleInput,
+): boolean {
+  return (
+    !input.open && input.caretInThisComposer && ownsModelPickerChord(input)
+  );
+}
+
+/**
  * Decides what a single {@link ModelReasoningPicker} should do when the
  * `modelPicker.toggle` command (Cmd+Shift+M) fires. The cycle commands share
  * {@link ownsModelPickerChord} with it, so their scope rules cannot drift.

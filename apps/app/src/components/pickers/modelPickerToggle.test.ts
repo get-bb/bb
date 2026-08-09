@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  ownsClosedModelPickerNavigationChord,
   ownsModelPickerChord,
   resolveModelPickerToggle,
   type ModelPickerToggleInput,
@@ -133,5 +134,23 @@ describe("ownsModelPickerChord", () => {
     expect(
       ownsModelPickerChord({ ...base, open: true, isFocusedPane: false }),
     ).toBe(false);
+  });
+});
+
+describe("ownsClosedModelPickerNavigationChord", () => {
+  it("owns a closed picker when the event target is in its composer", () => {
+    expect(ownsClosedModelPickerNavigationChord(base)).toBe(true);
+  });
+
+  it("does not use the toggle fallback or claim an open picker", () => {
+    expect(
+      ownsClosedModelPickerNavigationChord({
+        ...base,
+        caretInThisComposer: false,
+      }),
+    ).toBe(false);
+    expect(ownsClosedModelPickerNavigationChord({ ...base, open: true })).toBe(
+      false,
+    );
   });
 });

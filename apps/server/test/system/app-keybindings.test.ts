@@ -156,7 +156,11 @@ describe("app keybindings", () => {
       // them and they shadow nothing.
       expect(
         assignedDefaultKeybindings
-          .filter((binding) => binding.command.startsWith("modelPicker.cycle"))
+          .filter(
+            (binding) =>
+              binding.command === "modelPicker.cycleModel" ||
+              binding.command === "modelPicker.cycleReasoning",
+          )
           .map((binding) => ({
             command: binding.command,
             shortcut: binding.shortcut,
@@ -220,8 +224,49 @@ describe("app keybindings", () => {
           when: { all: ["mainSurface", "modelPickerOpen"], none: [] },
         },
       ]);
-      // No other default binding may use Alt, so the cycle chords cannot be
-      // shadowed by an earlier binding for the same chord.
+      const navigationCommands = new Set([
+        "modelPicker.previousModel",
+        "modelPicker.nextModel",
+        "modelPicker.cycleProvider",
+        "modelPicker.decreaseReasoning",
+        "modelPicker.increaseReasoning",
+      ]);
+      const navigationBindings = config.defaultKeybindings.filter((binding) =>
+        navigationCommands.has(binding.command),
+      );
+      expect(
+        navigationBindings.map(({ command, shortcut }) => [
+          command,
+          shortcut.key,
+          shortcut.mod,
+          shortcut.alt,
+        ]),
+      ).toEqual([
+        ["modelPicker.previousModel", "ArrowLeft", true, false],
+        ["modelPicker.nextModel", "ArrowRight", true, false],
+        ["modelPicker.cycleProvider", "AltRight", true, true],
+        ["modelPicker.decreaseReasoning", "ArrowDown", true, false],
+        ["modelPicker.increaseReasoning", "ArrowUp", true, false],
+      ]);
+      const composerWhen = {
+        all: ["mainSurface", "promptAvailable"],
+        none: ["modalOpen", "terminalFocus", "browserFocus"],
+      };
+      expect(
+        navigationBindings
+          .filter((binding) => binding.command !== "modelPicker.cycleProvider")
+          .map((binding) => binding.when),
+      ).toEqual(Array.from({ length: 4 }, () => composerWhen));
+      expect(
+        navigationBindings.find(
+          (binding) => binding.command === "modelPicker.cycleProvider",
+        )?.when,
+      ).toEqual({
+        ...composerWhen,
+        all: [...composerWhen.all, "macPlatform"],
+      });
+      // Alt defaults remain confined to composer cycling commands, so unrelated
+      // actions cannot shadow these chords.
       expect(
         assignedDefaultKeybindings
           .filter((binding) => binding.shortcut.alt)
@@ -229,6 +274,7 @@ describe("app keybindings", () => {
       ).toEqual([
         "modelPicker.cycleModel",
         "modelPicker.cycleReasoning",
+        "modelPicker.cycleProvider",
         "modelPicker.cycleModel",
         "modelPicker.cycleReasoning",
       ]);

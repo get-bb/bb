@@ -61,7 +61,12 @@ export const APP_COMMAND_IDS = [
   "composer.focus",
   "modelPicker.toggle",
   "modelPicker.cycleModel",
+  "modelPicker.previousModel",
+  "modelPicker.nextModel",
+  "modelPicker.cycleProvider",
   "modelPicker.cycleReasoning",
+  "modelPicker.decreaseReasoning",
+  "modelPicker.increaseReasoning",
   "browser.focusLocation",
   "browser.reload",
   "workspace.openPreferred",
@@ -152,6 +157,12 @@ function isAsciiAlphanumeric(value: string): boolean {
 export function normalizeAppShortcutInputKey(input: AppShortcutInput): string {
   if (input.key === " " || input.key === "Spacebar") {
     return "Space";
+  }
+  // The built-in provider shortcut distinguishes the physical right Option
+  // key from the left one. `key` reports both as "Alt"; `code` preserves the
+  // side.
+  if (input.key === "Alt" && input.code === "AltRight") {
+    return input.code;
   }
   // macOS composes Option+<letter> into another character — Option+M reports
   // key "µ" — so an Alt chord could never be matched by `key` there. Fall back

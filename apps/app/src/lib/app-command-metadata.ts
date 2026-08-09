@@ -162,13 +162,38 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
       ),
       command(
         "modelPicker.cycleModel",
+        "Cycle model",
+        "Cycle through the models of the composer's provider.",
+      ),
+      command(
+        "modelPicker.previousModel",
+        "Previous model",
+        "Select the previous model of the composer's provider.",
+      ),
+      command(
+        "modelPicker.nextModel",
         "Next model",
         "Select the next model of the composer's provider.",
       ),
       command(
+        "modelPicker.cycleProvider",
+        "Cycle provider",
+        "Select the next provider for the composer.",
+      ),
+      command(
         "modelPicker.cycleReasoning",
-        "Next reasoning level",
-        "Select the next reasoning level of the composer's model.",
+        "Cycle reasoning effort",
+        "Cycle through the reasoning efforts of the composer's model.",
+      ),
+      command(
+        "modelPicker.decreaseReasoning",
+        "Decrease reasoning effort",
+        "Decrease the current composer reasoning effort.",
+      ),
+      command(
+        "modelPicker.increaseReasoning",
+        "Increase reasoning effort",
+        "Increase the current composer reasoning effort.",
       ),
     ],
   },
