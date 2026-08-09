@@ -423,6 +423,14 @@ export function parseLifecycleError(error: unknown): LifecycleApiError | null {
   return result.success ? result.data : null;
 }
 
+export function isEnvironmentProvisioningError(error: unknown): boolean {
+  const lifecycleError = parseLifecycleError(error);
+  return (
+    lifecycleError?.code === "environment_not_ready" &&
+    lifecycleError.details.environmentStatus === "provisioning"
+  );
+}
+
 export function formatLifecycleErrorDescription(
   description: LifecycleErrorDescription,
 ): string {

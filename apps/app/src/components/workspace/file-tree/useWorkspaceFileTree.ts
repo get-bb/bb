@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useFileTree, type UseFileTreeResult } from "@pierre/trees/react";
 import type { WorkspaceDirectoryEntry } from "@bb/host-daemon-contract";
-import { BbHttpError } from "@bb/sdk/browser";
-import { parseLifecycleError } from "@/lib/lifecycle-errors";
 import { sdk } from "@/lib/sdk";
 import { createProgressiveTreeAdapter } from "../pierre-tree";
 
@@ -24,16 +22,6 @@ export interface WorkspaceFileTreeController {
 
 export function workspaceEntryTreePath(entry: WorkspaceDirectoryEntry): string {
   return entry.kind === "directory" ? `${entry.path}/` : entry.path;
-}
-
-export function isPreparingWorktreeError(error: unknown): boolean {
-  if (!(error instanceof BbHttpError) || error.status !== 409) return false;
-
-  const lifecycleError = parseLifecycleError(error);
-  return (
-    lifecycleError?.code === "environment_not_ready" &&
-    lifecycleError.details.environmentStatus === "provisioning"
-  );
 }
 
 export function mergeWorkspaceDirectoryEntries(

@@ -8,7 +8,7 @@ import {
 import { appToast } from "@/components/ui/app-toast";
 import {
   describeLifecycleError,
-  parseLifecycleError,
+  isEnvironmentProvisioningError,
   type LifecycleErrorDescription,
 } from "@/lib/lifecycle-errors";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
@@ -213,11 +213,7 @@ export function useEnvironmentMergeBase({
             setSelectedMergeBaseBranch(
               environment.mergeBaseBranch ?? undefined,
             );
-            const lifecycleError = parseLifecycleError(error);
-            if (
-              lifecycleError?.code === "environment_not_ready" &&
-              lifecycleError.details.environmentStatus === "provisioning"
-            ) {
+            if (isEnvironmentProvisioningError(error)) {
               return;
             }
 

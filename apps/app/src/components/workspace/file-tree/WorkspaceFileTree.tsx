@@ -2,10 +2,8 @@ import { useMemo, type CSSProperties } from "react";
 import { FileTree } from "@pierre/trees/react";
 import { EmptyState } from "@bb/shared-ui/empty-state";
 import { usePreferredTheme } from "@/hooks/useTheme";
-import {
-  isPreparingWorktreeError,
-  type WorkspaceFileTreeController,
-} from "./useWorkspaceFileTree";
+import { isEnvironmentProvisioningError } from "@/lib/lifecycle-errors";
+import type { WorkspaceFileTreeController } from "./useWorkspaceFileTree";
 
 interface WorkspaceFileTreeProps {
   controller: WorkspaceFileTreeController;
@@ -35,7 +33,7 @@ const BASE_STYLE: FileTreeHostStyle = {
 
 export function WorkspaceFileTree({ controller }: WorkspaceFileTreeProps) {
   const preferredTheme = usePreferredTheme();
-  const isPreparingWorktree = isPreparingWorktreeError(controller.error);
+  const isPreparingWorktree = isEnvironmentProvisioningError(controller.error);
   const style = useMemo<FileTreeHostStyle>(
     () => ({ ...BASE_STYLE, colorScheme: preferredTheme }),
     [preferredTheme],
