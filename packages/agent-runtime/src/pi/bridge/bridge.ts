@@ -173,6 +173,10 @@ const piThreadForkParamsSchema = z
     piInstructionOverrideSchemaOptions,
   );
 
+const piThreadIdParamsSchema = z.object({
+  threadId: z.string(),
+});
+
 const piCommandSchema = z.discriminatedUnion("method", [
   z.object({
     method: z.literal("initialize"),
@@ -214,15 +218,11 @@ const piCommandSchema = z.discriminatedUnion("method", [
   }),
   z.object({
     method: z.literal("thread/stop"),
-    params: z.object({
-      threadId: z.string(),
-    }),
+    params: piThreadIdParamsSchema,
   }),
   z.object({
     method: z.literal("thread/compact"),
-    params: z.object({
-      threadId: z.string(),
-    }),
+    params: piThreadIdParamsSchema,
   }),
 ]);
 
@@ -630,11 +630,7 @@ type ThreadResumeParams = Extract<
 type ThreadForkParams = Extract<PiCommand, { method: "thread/fork" }>["params"];
 type TurnStartParams = Extract<PiCommand, { method: "turn/start" }>["params"];
 type TurnSteerParams = Extract<PiCommand, { method: "turn/steer" }>["params"];
-type ThreadStopParams = Extract<PiCommand, { method: "thread/stop" }>["params"];
-type ThreadCompactParams = Extract<
-  PiCommand,
-  { method: "thread/compact" }
->["params"];
+type ThreadIdParams = Extract<PiCommand, { method: "thread/stop" }>["params"];
 type PiSessionParams =
   | ThreadStartParams
   | ThreadResumeParams
@@ -870,7 +866,7 @@ async function handleTurnSteer(
 }
 
 async function handleThreadStop(
-  params: ThreadStopParams,
+  params: ThreadIdParams,
 ): Promise<PiThreadStopResult> {
   await closeThreadSession({
     message: "Pi thread stopped while tool call was pending",
@@ -881,7 +877,7 @@ async function handleThreadStop(
 
 function handleThreadCompact(
   id: string | number,
-  params: ThreadCompactParams,
+  params: ThreadIdParams,
 ): void {
   const threadSession = sessions.get(params.threadId);
   if (!threadSession || threadSession.stopping) {

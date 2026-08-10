@@ -160,7 +160,7 @@ export const acpBridgeTurnSteerParamsSchema = z.object({
   input: z.array(promptInputSchema),
 });
 
-export const acpBridgeThreadStopParamsSchema = z.object({
+const acpBridgeThreadIdParamsSchema = z.object({
   threadId: z.string().min(1),
 });
 
@@ -193,11 +193,11 @@ export const acpBridgeCommandSchema = z.discriminatedUnion("method", [
   }),
   z.object({
     method: z.literal("thread/stop"),
-    params: acpBridgeThreadStopParamsSchema,
+    params: acpBridgeThreadIdParamsSchema,
   }),
   z.object({
     method: z.literal("thread/compact"),
-    params: acpBridgeThreadStopParamsSchema,
+    params: acpBridgeThreadIdParamsSchema,
   }),
 ]);
 export type AcpBridgeCommand = z.infer<typeof acpBridgeCommandSchema>;

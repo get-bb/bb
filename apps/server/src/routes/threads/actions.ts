@@ -139,11 +139,7 @@ async function compactThreadContext(
       `Provider "${thread.providerId}" does not support manual context compaction`,
     );
   }
-  if (
-    thread.status === "starting" ||
-    thread.status === "active" ||
-    thread.status === "stopping"
-  ) {
+  if (thread.status !== "idle" && thread.status !== "error") {
     throw new ApiError(
       409,
       "invalid_request",

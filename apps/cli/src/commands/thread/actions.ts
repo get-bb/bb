@@ -72,16 +72,14 @@ interface ThreadTellCommandOptions {
   image?: string[];
 }
 
-interface ThreadStopCommandOptions {
+interface ThreadActionOptions {
   self?: boolean;
   json?: boolean;
 }
 
-interface ThreadRetryCommandOptions extends ThreadStopCommandOptions {
+interface ThreadRetryCommandOptions extends ThreadActionOptions {
   requestId?: string;
 }
-
-type ThreadBannerActionCommandOptions = ThreadStopCommandOptions;
 
 type ThreadTellDeliveryMode = "auto" | "queue" | "steer";
 
@@ -447,7 +445,7 @@ export function registerActionsCommands(
     .option("--self", "Target the current thread (from BB_THREAD_ID)")
     .option("--json", "Print machine-readable JSON output")
     .action(
-      action(async (id: string | undefined, opts: ThreadStopCommandOptions) => {
+      action(async (id: string | undefined, opts: ThreadActionOptions) => {
         const threadId = requireThreadIdOrSelf(id, opts);
         const sdk = createCliBbSdk(getUrl());
         await sdk.threads.stop({ threadId });
@@ -462,7 +460,7 @@ export function registerActionsCommands(
     .option("--self", "Target the current thread (from BB_THREAD_ID)")
     .option("--json", "Print machine-readable JSON output")
     .action(
-      action(async (id: string | undefined, opts: ThreadStopCommandOptions) => {
+      action(async (id: string | undefined, opts: ThreadActionOptions) => {
         const threadId = requireThreadIdOrSelf(id, opts);
         const sdk = createCliBbSdk(getUrl());
         await sdk.threads.compact({ threadId });
@@ -477,18 +475,13 @@ export function registerActionsCommands(
     .option("--self", "Target the current thread (from BB_THREAD_ID)")
     .option("--json", "Print machine-readable JSON output")
     .action(
-      action(
-        async (
-          id: string | undefined,
-          opts: ThreadBannerActionCommandOptions,
-        ) => {
-          const threadId = requireThreadIdOrSelf(id, opts);
-          const sdk = createCliBbSdk(getUrl());
-          await sdk.threads.cancelPlan({ threadId });
-          if (outputJson(opts, { ok: true, threadId })) return;
-          console.log(`Thread ${threadId} exited Plan mode`);
-        },
-      ),
+      action(async (id: string | undefined, opts: ThreadActionOptions) => {
+        const threadId = requireThreadIdOrSelf(id, opts);
+        const sdk = createCliBbSdk(getUrl());
+        await sdk.threads.cancelPlan({ threadId });
+        if (outputJson(opts, { ok: true, threadId })) return;
+        console.log(`Thread ${threadId} exited Plan mode`);
+      }),
     );
 
   parent
@@ -497,18 +490,13 @@ export function registerActionsCommands(
     .option("--self", "Target the current thread (from BB_THREAD_ID)")
     .option("--json", "Print machine-readable JSON output")
     .action(
-      action(
-        async (
-          id: string | undefined,
-          opts: ThreadBannerActionCommandOptions,
-        ) => {
-          const threadId = requireThreadIdOrSelf(id, opts);
-          const sdk = createCliBbSdk(getUrl());
-          await sdk.threads.clearGoal({ threadId });
-          if (outputJson(opts, { ok: true, threadId })) return;
-          console.log(`Thread ${threadId} cleared its Goal`);
-        },
-      ),
+      action(async (id: string | undefined, opts: ThreadActionOptions) => {
+        const threadId = requireThreadIdOrSelf(id, opts);
+        const sdk = createCliBbSdk(getUrl());
+        await sdk.threads.clearGoal({ threadId });
+        if (outputJson(opts, { ok: true, threadId })) return;
+        console.log(`Thread ${threadId} cleared its Goal`);
+      }),
     );
 }
 

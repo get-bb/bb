@@ -1208,17 +1208,11 @@ export function createAcpProviderAdapter(
           return [];
         }
         const events: ThreadEvent[] = [];
-        const itemStatus: ThreadEventItemStatus =
-          params.data.status === "completed"
-            ? "completed"
-            : params.data.status === "interrupted"
-              ? "interrupted"
-              : "failed";
         flushOpenTurnItems({
           events,
           parentToolCallId: context?.parentToolCallId,
           state,
-          status: itemStatus,
+          status: params.data.status,
           turnId,
         });
         if (params.data.status === "completed") {
