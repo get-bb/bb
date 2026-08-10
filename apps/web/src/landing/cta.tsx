@@ -5,7 +5,12 @@ import type { FormEvent, ReactNode } from "react";
 
 import { trackLandingEvent } from "./analytics";
 import type { CtaPlacement } from "./site";
-import { GITHUB_URL, SUBSCRIBE_PATH, downloadMacosHref } from "./site";
+import {
+  DISCORD_URL,
+  GITHUB_URL,
+  SUBSCRIBE_PATH,
+  downloadMacosHref,
+} from "./site";
 
 /* Marketing CTAs shared by the landing page and the changelog. */
 
@@ -34,6 +39,25 @@ export function GitHubLink({ placement, className, children }: CtaLinkProps) {
       onClick={() =>
         trackLandingEvent({
           name: "landing_github_clicked",
+          properties: { placement },
+        })
+      }
+    >
+      {children}
+    </a>
+  );
+}
+
+export function DiscordLink({ placement, className, children }: CtaLinkProps) {
+  return (
+    <a
+      className={className}
+      href={DISCORD_URL}
+      target="_blank"
+      rel="noreferrer"
+      onClick={() =>
+        trackLandingEvent({
+          name: "landing_discord_clicked",
           properties: { placement },
         })
       }

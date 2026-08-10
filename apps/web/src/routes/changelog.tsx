@@ -10,7 +10,12 @@ import { initAnalytics } from "../landing/analytics";
 import type { Release, ReleaseBlock } from "../landing/changelog";
 import { RELEASE_META, parseChangelog } from "../landing/changelog";
 import { ChangelogInline } from "../landing/changelog-inline";
-import { DownloadLink, EmailSignup, GitHubLink } from "../landing/cta";
+import {
+  DiscordLink,
+  DownloadLink,
+  EmailSignup,
+  GitHubLink,
+} from "../landing/cta";
 import { DASHBOARD_PATH } from "../lib/connect-return-to";
 import interWoff2 from "@fontsource-variable/inter/files/inter-latin-wght-normal.woff2?url";
 import landingCss from "../landing/landing.css?url";
@@ -223,6 +228,8 @@ function ChangelogPage() {
         <span>bb is free and open source (MIT)</span>
         <span>
           <GitHubLink placement="footer">GitHub</GitHubLink>
+          {" · "}
+          <DiscordLink placement="footer">Discord</DiscordLink>
           {" · "}
           <DownloadLink placement="footer">Download</DownloadLink>
         </span>

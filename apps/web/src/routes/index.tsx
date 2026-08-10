@@ -35,7 +35,12 @@ import bbIcon from "../assets/bb-icon.png";
 import hermesAvatar from "../assets/hermes-avatar.jpg";
 import vscodeIcon from "../assets/vscode.png";
 import { RELEASE_META, parseChangelog } from "../landing/changelog";
-import { DownloadLink, EmailSignup, GitHubLink } from "../landing/cta";
+import {
+  DiscordLink,
+  DownloadLink,
+  EmailSignup,
+  GitHubLink,
+} from "../landing/cta";
 import { DASHBOARD_PATH } from "../lib/connect-return-to";
 import {
   ClaudeIcon,
@@ -1786,6 +1791,8 @@ function LandingPage() {
           <a href="/changelog">Changelog</a>
           {" · "}
           <GitHubLink placement="footer">GitHub</GitHubLink>
+          {" · "}
+          <DiscordLink placement="footer">Discord</DiscordLink>
           {" · "}
           <DownloadLink placement="footer">Download</DownloadLink>
         </span>

@@ -1,4 +1,5 @@
 export const GITHUB_URL = "https://github.com/get-bb/bb";
+export const DISCORD_URL = "https://discord.gg/kvBU6tJhcJ";
 export const DOWNLOAD_MACOS_FALLBACK_URL =
   "https://github.com/get-bb/bb/releases/tag/desktop-latest";
 export const DOWNLOAD_MACOS_RELEASE_ASSET_BASE_URL =
