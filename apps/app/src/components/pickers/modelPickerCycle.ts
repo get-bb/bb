@@ -18,17 +18,16 @@ export function nextCycleValue<T extends string>(
   return next.value;
 }
 
-/** The value before `current`, wrapping at the start. */
+/**
+ * The value before `current`, wrapping at the start. "Previous over the list"
+ * is "next over the reversed list", so both directions share one policy for
+ * wrapping, absent values, and lists too short to move within.
+ */
 export function previousCycleValue<T extends string>(
   options: readonly PickerOption<T>[],
   current: T,
 ): T | null {
-  if (options.length === 0) return null;
-  const index = options.findIndex((option) => option.value === current);
-  const previousIndex = index < 0 ? options.length - 1 : index - 1;
-  const previous = options[(previousIndex + options.length) % options.length];
-  if (previous === undefined || previous.value === current) return null;
-  return previous.value;
+  return nextCycleValue([...options].reverse(), current);
 }
 
 /**

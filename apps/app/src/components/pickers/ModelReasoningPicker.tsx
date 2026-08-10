@@ -601,6 +601,8 @@ export function ModelReasoningPicker({
     [disabled, isFocusedPane, isSplitPane],
   );
   useAppCommandContext("modelPickerOpen", open && !disabled);
+  const ownsCycleChord = (target: EventTarget | null): boolean =>
+    ownsModelPickerChord({ open, ...resolveCommandScope(target) });
   const ownsClosedNavigationChord = (target: EventTarget | null): boolean =>
     ownsClosedModelPickerNavigationChord({
       open,
@@ -631,9 +633,7 @@ export function ModelReasoningPicker({
   useAppCommandHandler(
     "modelPicker.cycleModel",
     ({ target }) => {
-      if (!ownsModelPickerChord({ open, ...resolveCommandScope(target) })) {
-        return false;
-      }
+      if (!ownsCycleChord(target)) return false;
       const next = nextCycleValue(modelOptions, modelValue);
       if (next !== null) {
         onModelChange(next);
@@ -646,9 +646,7 @@ export function ModelReasoningPicker({
   useAppCommandHandler(
     "modelPicker.cycleProvider",
     ({ target }) => {
-      if (!ownsModelPickerChord({ open, ...resolveCommandScope(target) })) {
-        return false;
-      }
+      if (!ownsCycleChord(target)) return false;
       if (canSwitchProviders && onSelectedProviderChange !== undefined) {
         const next = nextCycleValue(providerOptions, selectedProviderId);
         if (next !== null) {
@@ -663,9 +661,7 @@ export function ModelReasoningPicker({
   useAppCommandHandler(
     "modelPicker.cycleReasoning",
     ({ target }) => {
-      if (!ownsModelPickerChord({ open, ...resolveCommandScope(target) })) {
-        return false;
-      }
+      if (!ownsCycleChord(target)) return false;
       const next = nextCycleValue(reasoningOptions, reasoningValue);
       if (next !== null) {
         onReasoningChange(next);
