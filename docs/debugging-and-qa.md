@@ -54,6 +54,5 @@ Local machine enrollment follows the same origin: local `http:` server URLs
 produce `ws:` machine tunnels and `http:` share URLs, while non-local machine
 enrollment remains HTTPS-only.
 
-To test the AI gateway, copy `apps/connect/.dev.vars.example` to the ignored
-`apps/connect/.dev.vars` and set `OPENAI_API_KEY`. Ctrl-C stops the local
-services. Local D1 state is kept under `.wrangler/cloud-dev`.
+Ctrl-C stops the local services. Local D1 state is kept under
+`.wrangler/cloud-dev`.

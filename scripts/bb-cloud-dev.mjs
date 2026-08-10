@@ -281,7 +281,6 @@ Claim a handle, generate a pairing code, and run the command shown in the
 dashboard against a bb started with pnpm dev. Local handles use:
   http://<handle>.${DEV_BASE_DOMAIN}:${ports.cloudPort}
 
-Set OPENAI_API_KEY in apps/connect/.dev.vars only when testing the AI gateway.
 Press Ctrl-C to stop local Cloud.
 `);
 
