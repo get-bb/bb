@@ -731,7 +731,9 @@ truncated to 4096 characters.
 
 Resolution happens for `thread.start` and `turn.submit`. A selected tool set
 takes effect only when the provider session is next started/resumed; BB never
-hot-mutates a running provider session. Instructions apply to the next turn.
+hot-mutates a running provider session. Instructions follow the same rule: a
+live provider session keeps the instructions it was constructed with, and
+changed instructions apply when the session is next constructed.
 Skill catalog changes follow the daemon's established runtime policy: a busy
 environment keeps its current staged catalog until a safe relaunch. Side chats
 evaluate `configure` with `sideChat: true`; returned tool, skill, and dynamic
@@ -1656,8 +1658,8 @@ Remaining reference examples in `examples/plugins/`:
   providers may not).
 - Mention `search` is 2s-time-boxed; mention `resolve` runs at send time
   and a throw blocks the send.
-- Agent tool changes apply on the next session start, not mid-session;
-  cross-plugin tool-name collisions drop the later registration.
+- Agent tool and instruction changes apply on the next session start, not
+  mid-session; cross-plugin tool-name collisions drop the later registration.
 - RPC results must be strict JSON values and pass their output schema;
   realtime payloads must survive JSON.stringify.
 - Handler stats shown by `bb plugin list` persist across reloads (reset on

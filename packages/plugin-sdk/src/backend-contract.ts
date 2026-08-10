@@ -504,7 +504,11 @@ export interface PluginAgents {
    * Contribute a dynamic section appended to thread instructions. The
    * provider runs when a thread's runtime command config is resolved
    * (thread.start / turn.submit); return null to contribute nothing for
-   * that resolution. Must be synchronous and fast — it sits on the
+   * that resolution. A live provider session keeps the instructions it was
+   * constructed with — a changed contribution takes effect when the
+   * provider session is next constructed (thread start or resume after a
+   * daemon restart, environment switch, or provider restart), never
+   * mid-session. Must be synchronous and fast — it sits on the
    * thread-start path. Output longer than 4096 characters is truncated; a
    * throwing provider is logged against the plugin and contributes nothing.
    * A repeated registration within one factory execution is rejected.

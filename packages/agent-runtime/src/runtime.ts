@@ -68,7 +68,6 @@ import {
 import { fingerprintAcpLaunchSpec } from "./acp-launch-spec-fingerprint.js";
 
 interface ReconfigureThreadIfNeededArgs {
-  instructions: string | undefined;
   options: AgentRuntimeExecutionOptions;
   threadId: string;
 }
@@ -155,6 +154,10 @@ interface ThreadRuntimeConfig {
   disallowedTools?: readonly string[];
   environmentId: string;
   instructionMode: InstructionMode;
+  /**
+   * The instructions the live provider session was constructed with. Frozen
+   * until the next session construction (start, resume, fork).
+   */
   instructions?: string;
   options: AgentRuntimeExecutionOptions;
   processKey: string;
@@ -810,14 +813,17 @@ function createAgentRuntimeInternal(
     }
 
     const nextOptions = args.options;
-    const nextInstructions = args.instructions ?? currentConfig.instructions;
 
+    // Instructions are frozen for the life of a provider session: drifted
+    // instructions (memory catalog, AGENTS.md edits, plugin dynamic
+    // instructions) must never force a thread/resume, because a resume can
+    // replace the live CLI session and kill its running background tasks.
+    // Fresh instructions apply when the next session is constructed.
     if (
       sameExecutionSettings({
         left: currentConfig.options,
         right: nextOptions,
-      }) &&
-      currentConfig.instructions === nextInstructions
+      })
     ) {
       return;
     }
@@ -846,7 +852,7 @@ function createAgentRuntimeInternal(
       options: toProviderExecutionContext({
         envVars,
         execOpts: nextOptions,
-        instructions: nextInstructions,
+        instructions: currentConfig.instructions,
         skillRoots: providerSkillRoots,
       }),
       dynamicTools: currentConfig.dynamicTools,
@@ -882,7 +888,6 @@ function createAgentRuntimeInternal(
 
     setThreadRuntimeConfig(args.threadId, {
       ...currentConfig,
-      instructions: nextInstructions,
       options: nextOptions,
     });
   }
@@ -1391,7 +1396,6 @@ function createAgentRuntimeInternal(
           await reconfigureThreadIfNeeded({
             threadId,
             options: execOpts,
-            instructions,
           });
 
           const adapterCommand: AdapterCommand = {
@@ -1481,7 +1485,6 @@ function createAgentRuntimeInternal(
           await reconfigureThreadIfNeeded({
             threadId,
             options: execOpts,
-            instructions,
           });
 
           const adapterCommand: AdapterCommand = {

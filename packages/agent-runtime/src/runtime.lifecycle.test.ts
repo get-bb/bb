@@ -474,8 +474,8 @@ rl.on("line", (line) => {
         clientRequestId: "creq_222222223h",
         threadId: "t1",
         input: [promptTextInput({ text: "follow up" })],
-        instructions: "Updated instructions",
-        options: fullRuntimeOptions,
+        instructions: "Initial instructions",
+        options: { ...fullRuntimeOptions, model: "test-model-2" },
       });
 
       const reconfigureCommand = findLastRecordedCommand(
@@ -1247,7 +1247,9 @@ rl.on("line", (line) => {
       expect(builtCommands[0]).toMatchObject({
         type: "thread/resume",
         options: {
-          instructions: "Updated instructions",
+          // The resume keeps the session's frozen instructions; drifted
+          // instructions apply only when the next session is constructed.
+          instructions: "Initial instructions",
           model: "fake-model-2",
         },
       });
@@ -1259,6 +1261,52 @@ rl.on("line", (line) => {
           model: "fake-model-2",
         },
       });
+      await runtime.shutdown();
+    });
+
+    it("does not resume the thread when only instructions change", async () => {
+      const builtCommands: AdapterCommand[] = [];
+      const baseAdapter = createFakeAdapter(scriptPath);
+      const runtime = createAgentRuntimeWithAdapters({
+        workspacePath: tmpDir,
+        onEvent: () => {},
+        onToolCall: async () => ({
+          contentItems: [{ type: "inputText", text: "ok" }],
+          success: true,
+        }),
+        adapterFactory: () => ({
+          ...baseAdapter,
+          buildCommandPlan(command) {
+            builtCommands.push(command);
+            return baseAdapter.buildCommandPlan(command);
+          },
+        }),
+      });
+
+      await runtime.startThread({
+        environmentId: "env-1",
+        threadId: "t1",
+        projectId: "p1",
+        providerId: "fake",
+        options: fullRuntimeOptions,
+        instructions: "Initial instructions",
+      });
+      builtCommands.length = 0;
+
+      await runtime.runTurn({
+        clientRequestId: "creq_222222223y",
+        threadId: "t1",
+        input: [promptTextInput({ text: "follow up" })],
+        options: fullRuntimeOptions,
+        instructions: "Updated instructions",
+      });
+
+      // A resume would replace the live provider session and kill its
+      // running background tasks, so instruction drift alone must not
+      // reconfigure the thread.
+      expect(builtCommands.map((command) => command.type)).toEqual([
+        "turn/start",
+      ]);
       await runtime.shutdown();
     });
 
@@ -1319,7 +1367,7 @@ rl.on("line", (line) => {
       expect(builtCommands[0]).toMatchObject({
         type: "thread/resume",
         options: {
-          instructions: "Updated instructions",
+          instructions: "Initial instructions",
           model: "fake-model-2",
         },
       });
