@@ -819,23 +819,65 @@ describe("FollowUpPromptBox", () => {
     );
   });
 
-  it("stays expanded when keyboard dismissal leaves no focus target", async () => {
+  it("collapses after the keyboard viewport settles with no next focus target", async () => {
     mocks.isCompactViewport = true;
-    render(
-      <FollowUpPromptBox
-        {...createFollowUpPromptBoxProps({ kind: "ready" })}
-      />,
+    mocks.isPointerCoarse = true;
+    const originalDescriptor = Object.getOwnPropertyDescriptor(
+      window,
+      "visualViewport",
     );
-    const input = screen.getByRole("textbox", { name: "Follow-up prompt" });
-    act(() => input.focus());
+    const visualViewport = Object.assign(new EventTarget(), { height: 500 });
+    Object.defineProperty(window, "visualViewport", {
+      configurable: true,
+      value: visualViewport,
+    });
 
-    act(() => input.blur());
+    try {
+      render(
+        <FollowUpPromptBox
+          {...createFollowUpPromptBoxProps({ kind: "ready" })}
+        />,
+      );
+      const input = screen.getByRole("textbox", { name: "Follow-up prompt" });
+      act(() => input.focus());
+      act(() => {
+        visualViewport.height = 300;
+        visualViewport.dispatchEvent(new Event("resize"));
+      });
+      await waitFor(() =>
+        expect(
+          screen.getByTestId("prompt-box").getAttribute("data-compact"),
+        ).toBe("false"),
+      );
 
-    await waitFor(() =>
+      act(() => input.blur());
       expect(
         screen.getByTestId("prompt-box").getAttribute("data-compact"),
-      ).toBe("false"),
-    );
+      ).toBe("false");
+
+      await act(
+        () =>
+          new Promise<void>((resolve) => {
+            window.requestAnimationFrame(() => resolve());
+          }),
+      );
+
+      act(() => {
+        visualViewport.height = 500;
+        visualViewport.dispatchEvent(new Event("resize"));
+      });
+      await waitFor(() =>
+        expect(
+          screen.getByTestId("prompt-box").getAttribute("data-compact"),
+        ).toBe("true"),
+      );
+    } finally {
+      if (originalDescriptor) {
+        Object.defineProperty(window, "visualViewport", originalDescriptor);
+      } else {
+        Reflect.deleteProperty(window, "visualViewport");
+      }
+    }
   });
 
   it("keeps the full composer visible on desktop", () => {

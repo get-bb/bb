@@ -119,6 +119,7 @@ const OPEN_COMPOSER_OVERLAY_TRIGGER_SELECTOR =
   '[aria-haspopup][aria-expanded="true"]';
 const MOBILE_KEYBOARD_VIEWPORT_MIN_DELTA_PX = 80;
 const MOBILE_FOCUS_EXPANSION_FALLBACK_MS = 350;
+const MOBILE_KEYBOARD_DISMISSAL_FALLBACK_MS = 750;
 const DEFAULT_FOLLOW_UP_COMPOSER_SCOPE = {
   kind: "new-thread",
   projectId: null,
@@ -370,7 +371,7 @@ function FollowUpPromptBoxWithComposer({
   const composerInteractionRef = useRef<HTMLDivElement>(null);
   const interactionExpandedRef = useRef(false);
   const pendingFocusExpansionCleanupRef = useRef<(() => void) | null>(null);
-  const pendingFocusLossFrameRef = useRef<number | null>(null);
+  const pendingFocusLossCleanupRef = useRef<(() => void) | null>(null);
   const [isInteractionExpanded, setIsInteractionExpanded] = useState(false);
   const isMobilePromptBoxCompact = isCompactViewport && !isInteractionExpanded;
   const compactConfig = useMemo(
@@ -398,9 +399,9 @@ function FollowUpPromptBoxWithComposer({
     pendingFocusExpansionCleanupRef.current = null;
   }, []);
   const cancelPendingFocusLoss = useCallback(() => {
-    if (pendingFocusLossFrameRef.current === null) return;
-    window.cancelAnimationFrame(pendingFocusLossFrameRef.current);
-    pendingFocusLossFrameRef.current = null;
+    const cleanup = pendingFocusLossCleanupRef.current;
+    pendingFocusLossCleanupRef.current = null;
+    cleanup?.();
   }, []);
   const handleComposerFocus = useCallback(
     (event: ReactFocusEvent) => {
@@ -472,47 +473,99 @@ function FollowUpPromptBoxWithComposer({
       setInteractionExpanded,
     ],
   );
-  const scheduleCollapseAfterFocusLoss = useCallback(() => {
-    cancelPendingFocusLoss();
-    pendingFocusLossFrameRef.current = window.requestAnimationFrame(() => {
-      pendingFocusLossFrameRef.current = null;
-      const composerElement = composerInteractionRef.current;
-      if (!composerElement) return;
+  const scheduleCollapseAfterFocusLoss = useCallback(
+    (event: ReactFocusEvent) => {
+      cancelPendingFocusLoss();
+      const dismissedKeyboard = isKeyboardFocusTarget(event.target);
+      const focusLossFrame = window.requestAnimationFrame(() => {
+        pendingFocusLossCleanupRef.current = null;
+        const composerElement = composerInteractionRef.current;
+        if (!composerElement) return;
 
-      // Focus events for the element losing focus run before the browser has
-      // assigned the next active element. Waiting one frame makes collapse a
-      // decision about settled focus state instead of pointer intent.
-      if (composerElement.contains(document.activeElement)) return;
+        // Focus events for the element losing focus run before the browser has
+        // assigned the next active element. Waiting one frame makes collapse a
+        // decision about settled focus state instead of pointer intent.
+        if (composerElement.contains(document.activeElement)) return;
 
-      // Pressing the software keyboard's dismiss button commonly leaves focus
-      // on the document body. Keep the composer expanded in that case, as it
-      // was before collapse became focus-driven; compact it only when focus
-      // actually moves to another control.
-      if (
-        document.activeElement === document.body ||
-        document.activeElement === document.documentElement
-      ) {
-        return;
-      }
+        // Responsive popovers and dropdowns portal their content outside the
+        // composer. Their shared trigger contract exposes open state through
+        // aria-haspopup + aria-expanded, so focus in an owned overlay must not
+        // collapse the composer behind it.
+        if (
+          composerElement.querySelector(OPEN_COMPOSER_OVERLAY_TRIGGER_SELECTOR)
+        ) {
+          return;
+        }
 
-      // Responsive popovers and dropdowns portal their content outside the
-      // composer. Their shared trigger contract exposes open state through
-      // aria-haspopup + aria-expanded, so focus in an owned overlay must not
-      // collapse the composer behind it.
-      if (
-        composerElement.querySelector(OPEN_COMPOSER_OVERLAY_TRIGGER_SELECTOR)
-      ) {
-        return;
-      }
+        const collapse = () => {
+          cancelPendingFocusExpansion();
+          setInteractionExpanded(false);
+        };
+        const focusSettledOnDocument =
+          document.activeElement === document.body ||
+          document.activeElement === document.documentElement;
+        const visualViewport = window.visualViewport;
+        if (
+          !dismissedKeyboard ||
+          !focusSettledOnDocument ||
+          !isCompactViewport ||
+          !isPointerCoarse ||
+          !visualViewport
+        ) {
+          collapse();
+          return;
+        }
 
-      cancelPendingFocusExpansion();
-      setInteractionExpanded(false);
-    });
-  }, [
-    cancelPendingFocusExpansion,
-    cancelPendingFocusLoss,
-    setInteractionExpanded,
-  ]);
+        // The software keyboard's dismiss control usually leaves focus on the
+        // document before the viewport grows. Keep the expanded composer
+        // stable during that native animation, then compact it as soon as the
+        // visible viewport reports the keyboard has actually closed.
+        const keyboardViewportHeight = visualViewport.height;
+        let fallbackTimeout: number | null = null;
+        let hasFinished = false;
+        const cleanup = () => {
+          visualViewport.removeEventListener("resize", handleViewportResize);
+          if (fallbackTimeout !== null) {
+            window.clearTimeout(fallbackTimeout);
+            fallbackTimeout = null;
+          }
+        };
+        const finishCollapse = () => {
+          if (hasFinished) return;
+          hasFinished = true;
+          cleanup();
+          pendingFocusLossCleanupRef.current = null;
+          collapse();
+        };
+        const handleViewportResize = () => {
+          if (
+            visualViewport.height - keyboardViewportHeight <
+            MOBILE_KEYBOARD_VIEWPORT_MIN_DELTA_PX
+          ) {
+            return;
+          }
+          finishCollapse();
+        };
+
+        visualViewport.addEventListener("resize", handleViewportResize);
+        fallbackTimeout = window.setTimeout(
+          finishCollapse,
+          MOBILE_KEYBOARD_DISMISSAL_FALLBACK_MS,
+        );
+        pendingFocusLossCleanupRef.current = cleanup;
+      });
+      pendingFocusLossCleanupRef.current = () => {
+        window.cancelAnimationFrame(focusLossFrame);
+      };
+    },
+    [
+      cancelPendingFocusExpansion,
+      cancelPendingFocusLoss,
+      isCompactViewport,
+      isPointerCoarse,
+      setInteractionExpanded,
+    ],
+  );
   useEffect(
     () => () => {
       cancelPendingFocusExpansion();
