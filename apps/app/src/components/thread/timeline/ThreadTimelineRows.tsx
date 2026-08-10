@@ -233,7 +233,6 @@ interface TimelineRendererStaticContextValue {
   resolveMentionLink: PromptMentionLinkResolver | undefined;
   resolveSegmentLinkHref: TimelineTitleLinkResolver | undefined;
   resolveUserAttachmentImageSrc: UserAttachmentImageSrcResolver | undefined;
-  senderThreadMetadataById: ReadonlyMap<string, SenderThreadMetadata>;
   themeType: ThreadTimelineTheme;
   threadId: string | undefined;
   workspaceRootPath: string | undefined;
@@ -397,6 +396,14 @@ interface ConversationRowProps {
 
 const TimelineRendererStaticContext =
   createContext<TimelineRendererStaticContextValue | null>(null);
+// Kept out of the static renderer context on purpose: the metadata map covers
+// every cached thread, so it changes on cache events unrelated to this
+// timeline. A dedicated context keeps those changes from re-rendering every
+// row and instead reaches only the conversation rows that resolve senders.
+const SenderThreadMetadataContext = createContext<ReadonlyMap<
+  string,
+  SenderThreadMetadata
+> | null>(null);
 const TimelineTurnStateContext =
   createContext<TimelineTurnStateContextValue | null>(null);
 const LatestActionableAssistantMessageIdContext = createContext<string | null>(
@@ -412,6 +419,17 @@ function useTimelineRendererStaticContext(): TimelineRendererStaticContextValue 
   const context = useContext(TimelineRendererStaticContext);
   if (!context) {
     throw new Error("Thread timeline renderer context is missing");
+  }
+  return context;
+}
+
+function useSenderThreadMetadataContext(): ReadonlyMap<
+  string,
+  SenderThreadMetadata
+> {
+  const context = useContext(SenderThreadMetadataContext);
+  if (!context) {
+    throw new Error("Thread timeline sender metadata context is missing");
   }
   return context;
 }
@@ -894,10 +912,10 @@ function ConversationRow({
     resolveMentionLink,
     resolveSegmentLinkHref,
     resolveUserAttachmentImageSrc,
-    senderThreadMetadataById,
     threadId,
     workspaceRootPath,
   } = useTimelineRendererStaticContext();
+  const senderThreadMetadataById = useSenderThreadMetadataContext();
   // The narrow, stable message reference plugin actions receive — sourced
   // from row fields, never the row object itself.
   const messageReference: ThreadChatMessageReference = {
@@ -2021,7 +2039,6 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
       resolveMentionLink: props.resolveMentionLink,
       resolveSegmentLinkHref,
       resolveUserAttachmentImageSrc: props.resolveUserAttachmentImageSrc,
-      senderThreadMetadataById,
       themeType,
       threadId: props.threadId,
       workspaceRootPath: props.workspaceRootPath,
@@ -2048,7 +2065,6 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
       props.resolveMentionLink,
       resolveSegmentLinkHref,
       props.resolveUserAttachmentImageSrc,
-      senderThreadMetadataById,
       props.threadId,
       props.workspaceRootPath,
       themeType,
@@ -2070,40 +2086,46 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
   return (
     <MessageDirectiveRegistryProvider registry={messageDirectiveRegistry}>
       <TimelineRendererStaticContext.Provider value={staticContextValue}>
-        <LatestActionableAssistantMessageIdContext.Provider
-          value={latestActionableAssistantMessageId}
-        >
-          <LatestActionableUserMessageIdContext.Provider
-            value={latestActionableUserMessageId}
+        <SenderThreadMetadataContext.Provider value={senderThreadMetadataById}>
+          <LatestActionableAssistantMessageIdContext.Provider
+            value={latestActionableAssistantMessageId}
           >
-            <TimelineTurnStateContext.Provider value={turnStateContextValue}>
-              <AutoHeightContainer>
-                <TimelineRowsList
-                  hasOlderTimelineRows={props.hasOlderTimelineRows}
-                  isLoadingOlderTimelineRows={props.isLoadingOlderTimelineRows}
-                  onLoadOlderRows={props.onLoadOlderRows}
-                  rows={rows}
-                  scopeActive={scopeActive}
-                  showAssistantMessageActions={true}
-                  compactActivityIntents={false}
-                  spacing="top-level"
-                  unreadDividerAutoScroll={
-                    props.unreadDividerAutoScroll ?? true
-                  }
-                  unreadDividerPlacement={props.unreadDividerPlacement ?? null}
-                />
-              </AutoHeightContainer>
-              {hasSelectionActions ? (
-                <TimelineSelectionMenu
-                  selection={activeSelection?.selection ?? null}
-                  onAddToChat={selectionAddToChatHandler}
-                  pluginActions={selectionPluginActions}
-                  onDismiss={dismissSelection}
-                />
-              ) : null}
-            </TimelineTurnStateContext.Provider>
-          </LatestActionableUserMessageIdContext.Provider>
-        </LatestActionableAssistantMessageIdContext.Provider>
+            <LatestActionableUserMessageIdContext.Provider
+              value={latestActionableUserMessageId}
+            >
+              <TimelineTurnStateContext.Provider value={turnStateContextValue}>
+                <AutoHeightContainer>
+                  <TimelineRowsList
+                    hasOlderTimelineRows={props.hasOlderTimelineRows}
+                    isLoadingOlderTimelineRows={
+                      props.isLoadingOlderTimelineRows
+                    }
+                    onLoadOlderRows={props.onLoadOlderRows}
+                    rows={rows}
+                    scopeActive={scopeActive}
+                    showAssistantMessageActions={true}
+                    compactActivityIntents={false}
+                    spacing="top-level"
+                    unreadDividerAutoScroll={
+                      props.unreadDividerAutoScroll ?? true
+                    }
+                    unreadDividerPlacement={
+                      props.unreadDividerPlacement ?? null
+                    }
+                  />
+                </AutoHeightContainer>
+                {hasSelectionActions ? (
+                  <TimelineSelectionMenu
+                    selection={activeSelection?.selection ?? null}
+                    onAddToChat={selectionAddToChatHandler}
+                    pluginActions={selectionPluginActions}
+                    onDismiss={dismissSelection}
+                  />
+                ) : null}
+              </TimelineTurnStateContext.Provider>
+            </LatestActionableUserMessageIdContext.Provider>
+          </LatestActionableAssistantMessageIdContext.Provider>
+        </SenderThreadMetadataContext.Provider>
       </TimelineRendererStaticContext.Provider>
     </MessageDirectiveRegistryProvider>
   );
