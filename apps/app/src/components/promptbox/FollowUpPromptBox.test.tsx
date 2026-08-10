@@ -731,7 +731,7 @@ describe("FollowUpPromptBox", () => {
     }
   });
 
-  it("collapses on an interaction outside the mobile composer", () => {
+  it("stays expanded during a timeline gesture and collapses when focus leaves", () => {
     mocks.isCompactViewport = true;
     render(
       <>
@@ -744,8 +744,15 @@ describe("FollowUpPromptBox", () => {
     const input = screen.getByRole("textbox", { name: "Follow-up prompt" });
     const outside = screen.getByRole("button", { name: "Outside composer" });
 
-    fireEvent.focus(input);
+    act(() => input.focus());
     fireEvent.pointerDown(outside);
+
+    expect(document.activeElement).toBe(input);
+    expect(screen.getByTestId("prompt-box").getAttribute("data-compact")).toBe(
+      "false",
+    );
+
+    act(() => outside.focus());
 
     expect(screen.getByTestId("prompt-box").getAttribute("data-compact")).toBe(
       "true",
@@ -769,10 +776,10 @@ describe("FollowUpPromptBox", () => {
     });
     trigger.setAttribute("aria-haspopup", "menu");
     trigger.setAttribute("aria-expanded", "true");
-    fireEvent.focus(input);
+    act(() => input.focus());
 
     fireEvent.pointerDown(portaledContent);
-    fireEvent.focusIn(portaledContent);
+    act(() => portaledContent.focus());
 
     expect(screen.getByTestId("prompt-box").getAttribute("data-compact")).toBe(
       "false",
@@ -795,7 +802,7 @@ describe("FollowUpPromptBox", () => {
     );
     render(<FollowUpPromptBox {...props} />);
     const input = screen.getByRole("textbox", { name: "Follow-up prompt" });
-    fireEvent.focus(input);
+    act(() => input.focus());
 
     fireEvent.pointerDown(
       screen.getByRole("button", { name: "Read only mode" }),
@@ -847,6 +854,9 @@ describe("FollowUpPromptBox", () => {
 
     fireEvent.pointerDown(
       screen.getByRole("button", { name: "Outside composer" }),
+    );
+    act(() =>
+      screen.getByRole("button", { name: "Outside composer" }).focus(),
     );
     expect(composer?.hasAttribute("data-follow-up-composer-expanded")).toBe(
       false,

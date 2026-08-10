@@ -460,6 +460,17 @@ function FollowUpPromptBoxWithComposer({
       ) {
         return;
       }
+      // A touch-scroll of the timeline starts with a pointerdown outside the
+      // composer, but mobile browsers can keep the editor and keyboard
+      // focused throughout the gesture. Focus moving outside will emit the
+      // focusin event this listener also handles; pointerdown alone must not
+      // create a focused-but-collapsed composer.
+      if (
+        event.type === "pointerdown" &&
+        composerElement.contains(document.activeElement)
+      ) {
+        return;
+      }
       cancelPendingFocusExpansion();
       setInteractionExpanded(false);
     };
