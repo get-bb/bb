@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -8,11 +9,16 @@ import {
   within,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { defaultAppSettings, type AppDefaultKeybindings } from "@bb/domain";
+import {
+  defaultAppSettings,
+  type AppCommandId,
+  type AppDefaultKeybindings,
+  type AppKeybindingOverrides,
+} from "@bb/domain";
 import { KeyboardSettingsSection } from "./KeyboardSettingsSection";
 
-const testState = vi.hoisted(() => ({
-  defaultKeybindings: [
+const testState = vi.hoisted(() => {
+  const defaultKeybindings = [
     {
       command: "thread.new",
       desktopOnly: false,
@@ -112,18 +118,31 @@ const testState = vi.hoisted(() => ({
         none: ["modalOpen", "editableFocus"],
       },
     },
-  ] as AppDefaultKeybindings,
-  generalMutate: vi.fn(),
-  isDesktop: false,
-  mutate: vi.fn(),
-}));
+  ] as AppDefaultKeybindings;
+  return {
+    defaultKeybindings,
+    generalMutate: vi.fn(),
+    initialDefaultKeybindings: defaultKeybindings,
+    isDesktop: false,
+    keybindingOverrides: [] as AppKeybindingOverrides,
+    keyboardPending: false,
+    metadataCalls: new Map<AppCommandId, number>(),
+    mutate:
+      vi.fn<
+        (
+          overrides: AppKeybindingOverrides,
+          options: { onError(): void },
+        ) => void
+      >(),
+  };
+});
 
 vi.mock("@/hooks/queries/system-queries", () => ({
   useSystemConfig: () => ({
     data: {
       defaultKeybindings: testState.defaultKeybindings,
       generalSettings: defaultAppSettings,
-      keybindingOverrides: [],
+      keybindingOverrides: testState.keybindingOverrides,
     },
   }),
 }));
@@ -134,10 +153,27 @@ vi.mock("@/hooks/mutations/settings-mutations", () => ({
     mutate: testState.generalMutate,
   }),
   useUpdateKeyboardSettings: () => ({
-    isPending: false,
+    isPending: testState.keyboardPending,
     mutate: testState.mutate,
   }),
 }));
+
+vi.mock("@/lib/app-command-metadata", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/app-command-metadata")>();
+  return {
+    ...actual,
+    // Each row reads its metadata while rendering, making this a focused
+    // render probe without adding test-only props to the production component.
+    getAppCommandMetadata: (command: AppCommandId) => {
+      testState.metadataCalls.set(
+        command,
+        (testState.metadataCalls.get(command) ?? 0) + 1,
+      );
+      return actual.getAppCommandMetadata(command);
+    },
+  };
+});
 
 vi.mock("@/lib/bb-desktop", () => ({
   getBbDesktopInfo: () => (testState.isDesktop ? {} : null),
@@ -147,7 +183,11 @@ afterEach(() => {
   cleanup();
   vi.clearAllMocks();
   vi.restoreAllMocks();
+  testState.defaultKeybindings = testState.initialDefaultKeybindings;
   testState.isDesktop = false;
+  testState.keybindingOverrides = [];
+  testState.keyboardPending = false;
+  testState.metadataCalls.clear();
 });
 
 describe("KeyboardSettingsSection", () => {
@@ -265,6 +305,135 @@ describe("KeyboardSettingsSection", () => {
       ],
       expect.objectContaining({ onError: expect.any(Function) }),
     );
+  });
+
+  it("renders only rows whose presentation changes during a settings transaction", () => {
+    const { rerender } = render(<KeyboardSettingsSection />);
+    const recorder = screen.getByRole("button", {
+      name: "Record shortcut for New thread, current shortcut Ctrl + Shift + O",
+    });
+
+    testState.metadataCalls.clear();
+    fireEvent.click(recorder);
+    expect(testState.metadataCalls.get("thread.new")).toBeGreaterThan(0);
+    expect(testState.metadataCalls.has("thread.jump.1")).toBe(false);
+
+    testState.metadataCalls.clear();
+    fireEvent.keyDown(recorder, {
+      key: "U",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+    expect(testState.metadataCalls.get("thread.new")).toBeGreaterThan(0);
+    expect(testState.metadataCalls.has("thread.jump.1")).toBe(false);
+
+    const assignedOverrides = testState.mutate.mock.lastCall?.[0];
+    if (assignedOverrides === undefined) {
+      throw new Error("Expected shortcut assignment mutation");
+    }
+
+    testState.metadataCalls.clear();
+    testState.keybindingOverrides = structuredClone(assignedOverrides);
+    testState.defaultKeybindings = structuredClone(
+      testState.defaultKeybindings,
+    );
+    rerender(<KeyboardSettingsSection />);
+    expect(testState.metadataCalls.size).toBe(0);
+
+    testState.keyboardPending = true;
+    rerender(<KeyboardSettingsSection />);
+    expect(testState.metadataCalls.size).toBe(0);
+    expect(recorder.matches(":disabled")).toBe(true);
+
+    testState.keyboardPending = false;
+    testState.keybindingOverrides = structuredClone(assignedOverrides);
+    testState.defaultKeybindings = structuredClone(
+      testState.defaultKeybindings,
+    );
+    rerender(<KeyboardSettingsSection />);
+    expect(testState.metadataCalls.size).toBe(0);
+    expect(recorder.matches(":disabled")).toBe(false);
+
+    testState.metadataCalls.clear();
+    testState.keybindingOverrides = [
+      ...assignedOverrides,
+      {
+        command: "thread.jump.1",
+        shortcut: {
+          key: "2",
+          mod: true,
+          meta: false,
+          control: false,
+          alt: false,
+          shift: true,
+        },
+      },
+    ];
+    rerender(<KeyboardSettingsSection />);
+    expect([...testState.metadataCalls.keys()]).toEqual(["thread.jump.1"]);
+    expect(
+      screen.getByRole("button", {
+        name: "Record shortcut for Open thread 1, current shortcut Ctrl + Shift + 2",
+      }),
+    ).toBeDefined();
+  });
+
+  it("updates conflict warnings on another customized row", () => {
+    render(<KeyboardSettingsSection />);
+    const newThreadRecorder = screen.getByRole("button", {
+      name: "Record shortcut for New thread, current shortcut Ctrl + Shift + O",
+    });
+    fireEvent.click(newThreadRecorder);
+    fireEvent.keyDown(newThreadRecorder, {
+      key: "U",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    const jumpRecorder = screen.getByRole("button", {
+      name: "Record shortcut for Open thread 1, current shortcut Ctrl + Shift + 1",
+    });
+    fireEvent.click(jumpRecorder);
+    fireEvent.keyDown(jumpRecorder, {
+      key: "U",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    expect(screen.getByText(/Also used by Open thread 1\./u)).toBeDefined();
+    expect(screen.getByText(/Also used by New thread\./u)).toBeDefined();
+    expect(testState.mutate.mock.lastCall?.[0]).toHaveLength(2);
+  });
+
+  it("rolls reset-all draft state back when the mutation fails", () => {
+    render(<KeyboardSettingsSection />);
+    const recorder = screen.getByRole("button", {
+      name: "Record shortcut for New thread, current shortcut Ctrl + Shift + O",
+    });
+    fireEvent.click(recorder);
+    fireEvent.keyDown(recorder, {
+      key: "U",
+      ctrlKey: true,
+      shiftKey: true,
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Reset all" }));
+    expect(testState.mutate.mock.lastCall?.[0]).toEqual([]);
+    expect(
+      screen.getByRole("button", {
+        name: "Record shortcut for New thread, current shortcut Ctrl + Shift + O",
+      }),
+    ).toBeDefined();
+
+    const rollback = testState.mutate.mock.lastCall?.[1].onError;
+    if (rollback === undefined) throw new Error("Expected rollback handler");
+    act(() => rollback());
+
+    expect(
+      screen.getByRole("button", {
+        name: "Record shortcut for New thread, current shortcut Ctrl + Shift + U",
+      }),
+    ).toBeDefined();
   });
 
   it("shows web and desktop defaults without OS-specific groups", () => {
