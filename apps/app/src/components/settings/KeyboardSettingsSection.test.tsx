@@ -367,6 +367,10 @@ describe("KeyboardSettingsSection", () => {
     rerender(<KeyboardSettingsSection />);
     expect(testState.metadataCalls.size).toBe(0);
     expect(recorder.matches(":disabled")).toBe(true);
+    expect(recorder.hasAttribute("disabled")).toBe(false);
+    expect(recorder.closest("fieldset")?.className).toContain(
+      "[&:disabled_button:not([disabled])]:opacity-100",
+    );
 
     testState.keyboardPending = false;
     testState.keybindingOverrides = structuredClone(assignedOverrides);
@@ -376,6 +380,9 @@ describe("KeyboardSettingsSection", () => {
     rerender(<KeyboardSettingsSection />);
     expect(testState.metadataCalls.size).toBe(0);
     expect(recorder.matches(":disabled")).toBe(false);
+    expect(recorder.closest("fieldset")?.className).not.toContain(
+      "[&:disabled_button:not([disabled])]:opacity-100",
+    );
 
     testState.metadataCalls.clear();
     testState.keybindingOverrides = [

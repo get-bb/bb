@@ -619,7 +619,13 @@ export function KeyboardSettingsSection() {
         />
         {/* Native disabled propagation keeps pending state out of every row. */}
         <fieldset
-          className="m-0 min-w-0 space-y-5 border-0 p-0"
+          className={cn(
+            "m-0 min-w-0 space-y-5 border-0 p-0",
+            // Preserve the interaction lock without visually flashing every
+            // otherwise-enabled row while a shortcut mutation is pending.
+            isKeyboardSettingsPending &&
+              "[&:disabled_button:not([disabled])]:opacity-100",
+          )}
           disabled={disabled}
         >
           {visibleGroups.map((group) => (
