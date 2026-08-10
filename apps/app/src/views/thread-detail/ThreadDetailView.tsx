@@ -80,7 +80,6 @@ import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { useConnectionAwareQueryState } from "@/hooks/queries/connection-aware-query-state";
 import {
   useCloseThreadTerminal,
-  useCreateThreadTerminal,
   useThreadTerminals,
 } from "@/hooks/queries/thread-terminal-queries";
 import { getEnvironmentWorkspaceLabelIconName } from "@/lib/environment-workspace-display";
@@ -212,15 +211,11 @@ import {
   useTouchFixedPanelTabsState,
   useUpdateFixedPanelTabsState,
 } from "@/lib/fixed-panel-tabs";
-import { createNewTabFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import { isRootThread } from "./threadParentSelectorOptions";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { ThreadTerminalPanel } from "@/components/thread/terminal/ThreadTerminalPanel";
-import {
-  DEFAULT_TERMINAL_COLS,
-  DEFAULT_TERMINAL_ROWS,
-  terminalStatusLabel,
-} from "@/components/thread/terminal/useThreadTerminalController";
+import { terminalStatusLabel } from "@/components/thread/terminal/useThreadTerminalController";
+import { getThreadBottomTerminalOpenAtom } from "@/components/thread/terminal/threadBottomTerminalPanelAtoms";
 import {
   getActiveFixedSecondaryTab,
   getOpenFixedSecondaryTab,
@@ -461,6 +456,11 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   useFixedPanelTabsStorageMaintenance(threadId);
   const systemConfigQuery = useSystemConfig();
   const fixedPanelTabsState = useFixedPanelTabsState(threadId, threadId);
+  const [isBottomTerminalOpen, setIsBottomTerminalOpen] = useAtom(
+    getThreadBottomTerminalOpenAtom(threadId),
+  );
+  const [terminalCreateRequestNonce, setTerminalCreateRequestNonce] =
+    useState(0);
   const isPersistedSecondaryPanelOpen = fixedPanelTabsState.secondary.isOpen;
   const activeFixedSecondaryTab = getActiveFixedSecondaryTab({
     fixedPanelTabsState,
@@ -586,7 +586,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     threadId,
   });
   const terminalsListQuery = useThreadTerminals(threadId ?? "", {
-    enabled: isSecondaryPanelOpen,
+    enabled: isSecondaryPanelOpen || isBottomTerminalOpen,
   });
   const {
     activeBrowserTab,
@@ -790,7 +790,6 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   const updateThread = useUpdateThread({
     errorMessage: "Failed to assign parent thread.",
   });
-  const createTerminal = useCreateThreadTerminal();
   const closeTerminal = useCloseThreadTerminal();
   const loadedTerminalSessions = terminalsListQuery.data?.sessions;
   const terminalSessions = loadedTerminalSessions ?? EMPTY_TERMINAL_SESSIONS;
@@ -1206,37 +1205,14 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     openBrowserTabAndReveal();
   }, [openBrowserTabAndReveal]);
   const handleStartTerminal = useCallback(() => {
-    if (!canCreateTerminal || createTerminal.isPending || !threadId) {
+    if (!canCreateTerminal || !threadId) {
       return;
     }
-    const newTab = createNewTabFixedPanelTab();
-    void createTerminal
-      .mutateAsync({
-        threadId,
-        cols: DEFAULT_TERMINAL_COLS,
-        rows: DEFAULT_TERMINAL_ROWS,
-      })
-      .then((session) => {
-        closeTab(newTab.id);
-        setActiveFixedTerminal(session.id);
-        openCompactDrawer();
-      })
-      .catch(() => undefined);
-  }, [
-    canCreateTerminal,
-    closeTab,
-    createTerminal,
-    openCompactDrawer,
-    setActiveFixedTerminal,
-    threadId,
-  ]);
+    setIsBottomTerminalOpen(true);
+    setTerminalCreateRequestNonce((current) => current + 1);
+  }, [canCreateTerminal, setIsBottomTerminalOpen, threadId]);
   useAppCommandHandler("terminal.open", () => {
-    if (
-      !isFocused ||
-      !canCreateTerminal ||
-      createTerminal.isPending ||
-      !threadId
-    ) {
+    if (!isFocused || !canCreateTerminal || !threadId) {
       return false;
     }
     handleStartTerminal();
@@ -2484,6 +2460,15 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
           isSecondaryPanelOpen={isSecondaryPanelOpen}
           isConversationCollapsed={isConversationCollapsed}
           isBoundedPane={isBoundedPane}
+          bottomTerminalPanel={{
+            canCreateTerminal,
+            createRequestNonce: terminalCreateRequestNonce,
+            isOpen: isBottomTerminalOpen,
+            onOpenChange: setIsBottomTerminalOpen,
+            onOpenLink: handleOpenTimelineLink,
+            onSelectionAddToChat: handleSelectionAddToChat,
+            threadId: thread.id,
+          }}
           onToggleSecondaryPanel={toggleSecondaryPanel}
           onToggleConversationCollapse={toggleConversationCollapse}
           renderHostedPanel={(panel) => (

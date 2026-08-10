@@ -46,6 +46,7 @@ export interface ThreadTerminalControllerArgs {
   isPanelOpen: boolean;
   isPanelPersistedOpen: boolean;
   panelStateId?: string;
+  syncThreadTabs?: boolean;
   target: ThreadTerminalTarget;
 }
 
@@ -166,6 +167,7 @@ export function useThreadTerminalController({
   isPanelOpen,
   isPanelPersistedOpen,
   panelStateId,
+  syncThreadTabs = true,
   target,
 }: ThreadTerminalControllerArgs): ThreadTerminalController {
   const queryClient = useQueryClient();
@@ -181,7 +183,7 @@ export function useThreadTerminalController({
     target.kind === "environment" ? target.environmentId : "";
   const fixedPanelStateId = panelStateId ?? terminalTargetId;
   const fixedPanelSyncThreadId =
-    target.kind === "thread" ? target.threadId : null;
+    syncThreadTabs && target.kind === "thread" ? target.threadId : null;
   const activeFixedTerminalId = useActiveFixedRightTerminalId(
     fixedPanelStateId,
     fixedPanelSyncThreadId,

@@ -20,9 +20,7 @@ import { DETAIL_GRID_CLASS } from "@/components/ui/detail-card.js";
 import { useAtomValue } from "jotai";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { ThreadSecondaryPanel } from "@/components/secondary-panel/ThreadSecondaryPanel";
-import {
-  secondaryPanelWidthPercentAtom,
-} from "@/components/secondary-panel/threadSecondaryPanelAtoms";
+import { secondaryPanelWidthPercentAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import {
   ThreadMetadataCard,
   ThreadMetadataContent,
@@ -42,6 +40,7 @@ import {
   PluginComposerHostScopeProvider,
   usePluginComposerHost,
 } from "@/components/plugin/plugin-composer-host";
+import { ThreadBottomTerminalPanel } from "@/components/thread/terminal/ThreadBottomTerminalPanel";
 
 const CLOSED_TIMELINE_PANEL_SIZE_PERCENT = 100;
 const COLLAPSED_TIMELINE_PANEL_SIZE_PERCENT = 0;
@@ -63,6 +62,10 @@ type ThreadSecondaryPanelProps = Omit<
     canShowNativeBrowserView: boolean;
   }) => ReactNode;
 };
+type ThreadBottomTerminalPanelProps = Omit<
+  ComponentProps<typeof ThreadBottomTerminalPanel>,
+  "children"
+>;
 
 interface ThreadDetailSecondaryContentProps {
   footer: ReactNode;
@@ -81,6 +84,7 @@ interface ThreadDetailSecondaryContentProps {
   onToggleSecondaryPanel: () => void;
   onToggleConversationCollapse: () => void;
   renderHostedPanel: (panel: ReactNode) => ReactNode;
+  bottomTerminalPanel: ThreadBottomTerminalPanelProps;
   metadata: ThreadMetadataContentProps;
   secondaryPanel: ThreadSecondaryPanelProps;
   timeline: ThreadTimelinePaneProps;
@@ -106,6 +110,7 @@ function ThreadDetailSecondaryContentBody({
   onToggleSecondaryPanel,
   onToggleConversationCollapse,
   renderHostedPanel,
+  bottomTerminalPanel,
   metadata,
   secondaryPanel,
   timeline,
@@ -344,20 +349,22 @@ function ThreadDetailSecondaryContentBody({
 
   if (secondaryPanelHost !== null) {
     return (
-      <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-clip">
-        {header}
-        <div
-          data-conversation-collapsed={isConversationCollapsedActive}
-          inert={isConversationCollapsedActive}
-          className={cn(
-            "flex min-h-0 min-w-0 flex-1 flex-col transition-opacity",
-            PANEL_COLLAPSE_TRANSITION_CLASS,
-            isConversationCollapsedActive && "opacity-0",
-          )}
-        >
-          <ThreadTimelinePane {...stableTimeline} footer={footer} />
+      <ThreadBottomTerminalPanel {...bottomTerminalPanel}>
+        <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-clip">
+          {header}
+          <div
+            data-conversation-collapsed={isConversationCollapsedActive}
+            inert={isConversationCollapsedActive}
+            className={cn(
+              "flex min-h-0 min-w-0 flex-1 flex-col transition-opacity",
+              PANEL_COLLAPSE_TRANSITION_CLASS,
+              isConversationCollapsedActive && "opacity-0",
+            )}
+          >
+            <ThreadTimelinePane {...stableTimeline} footer={footer} />
+          </div>
         </div>
-      </div>
+      </ThreadBottomTerminalPanel>
     );
   }
 
@@ -368,71 +375,73 @@ function ThreadDetailSecondaryContentBody({
         !isBoundedPane && "-mx-4 -mb-4 -mt-4 md:-mx-5 md:-mb-5 md:-mt-5",
       )}
     >
-      {/*
-        When collapsed we keep the resizable PanelGroup mounted: the timeline
-        lifts to 0% and the panel to 100% via the layout effect. Nothing
-        unmounts, so the secondary panel's content (live iframes, parsed diffs,
-        scroll position) is never torn down and re-created when toggling
-        collapse. The panel header's own toggle restores the conversation.
-      */}
-      {/* PanelGroup sets an inline `height: 100%`, so it needs this flex-sized
-          row to resolve against rather than the column that also holds the
-          header. */}
-      <div className="flex min-h-0 w-full min-w-0 flex-1">
-        <PanelGroup
-          // Thread-scoped panel state should mount at its saved size instead of
-          // animating from the previously selected thread's layout.
-          key={stableTimeline.threadId}
-          ref={horizontalPanelGroupRef}
-          direction="horizontal"
-          // Query container so the secondary panel can hold its content at the
-          // panel's open width in cqw and clip it into view instead of
-          // reflowing (see ThreadSecondaryPanel swipe mode).
-          className="@container h-full min-w-0 flex-1"
-          // react-resizable-panels sets an INLINE `overflow: hidden` on the group
-          // root, which is still programmatically scrollable. A `scrollIntoView`
-          // from the app-preview iframe (clicking an in-page `#anchor`) walks up
-          // and bumps this group's `scrollTop`, dragging the whole view out of
-          // place. `clip` makes it a non-scroll container.
-          style={{ overflow: "clip" }}
-        >
-          <Panel
-            id="thread-detail-timeline-panel"
-            collapsible
-            collapsedSize={COLLAPSED_TIMELINE_PANEL_SIZE_PERCENT}
-            defaultSize={
-              isConversationCollapsedActive
-                ? COLLAPSED_TIMELINE_PANEL_SIZE_PERCENT
-                : isSecondaryPanelOpen && !renderAsDrawer
-                  ? 100 - persistedSecondaryWidthPercent
-                  : CLOSED_TIMELINE_PANEL_SIZE_PERCENT
-            }
-            minSize={TIMELINE_PANEL_MIN_SIZE_PERCENT}
-            order={1}
-            className={cn(
-              "min-w-0 overflow-clip transition-[flex-grow,flex-basis]",
-              PANEL_COLLAPSE_TRANSITION_CLASS,
-            )}
+      <ThreadBottomTerminalPanel {...bottomTerminalPanel}>
+        {/*
+          When collapsed we keep the resizable PanelGroup mounted: the timeline
+          lifts to 0% and the panel to 100% via the layout effect. Nothing
+          unmounts, so the secondary panel's content (live iframes, parsed diffs,
+          scroll position) is never torn down and re-created when toggling
+          collapse. The panel header's own toggle restores the conversation.
+        */}
+        {/* PanelGroup sets an inline `height: 100%`, so it needs this flex-sized
+            row to resolve against rather than the column that also holds the
+            header. */}
+        <div className="flex h-full min-h-0 w-full min-w-0 flex-1">
+          <PanelGroup
+            // Thread-scoped panel state should mount at its saved size instead of
+            // animating from the previously selected thread's layout.
+            key={stableTimeline.threadId}
+            ref={horizontalPanelGroupRef}
+            direction="horizontal"
+            // Query container so the secondary panel can hold its content at the
+            // panel's open width in cqw and clip it into view instead of
+            // reflowing (see ThreadSecondaryPanel swipe mode).
+            className="@container h-full min-w-0 flex-1"
+            // react-resizable-panels sets an INLINE `overflow: hidden` on the group
+            // root, which is still programmatically scrollable. A `scrollIntoView`
+            // from the app-preview iframe (clicking an in-page `#anchor`) walks up
+            // and bumps this group's `scrollTop`, dragging the whole view out of
+            // place. `clip` makes it a non-scroll container.
+            style={{ overflow: "clip" }}
           >
-            <div
-              data-conversation-collapsed={isConversationCollapsedActive}
-              // `inert` removes the hidden conversation (header, timeline,
-              // composer) from the tab order and a11y tree and blocks pointer
-              // events, so keyboard focus can't land in the invisible pane.
-              inert={isConversationCollapsedActive}
+            <Panel
+              id="thread-detail-timeline-panel"
+              collapsible
+              collapsedSize={COLLAPSED_TIMELINE_PANEL_SIZE_PERCENT}
+              defaultSize={
+                isConversationCollapsedActive
+                  ? COLLAPSED_TIMELINE_PANEL_SIZE_PERCENT
+                  : isSecondaryPanelOpen && !renderAsDrawer
+                    ? 100 - persistedSecondaryWidthPercent
+                    : CLOSED_TIMELINE_PANEL_SIZE_PERCENT
+              }
+              minSize={TIMELINE_PANEL_MIN_SIZE_PERCENT}
+              order={1}
               className={cn(
-                "flex h-full min-h-0 min-w-0 flex-col transition-opacity",
+                "min-w-0 overflow-clip transition-[flex-grow,flex-basis]",
                 PANEL_COLLAPSE_TRANSITION_CLASS,
-                isConversationCollapsedActive && "opacity-0",
               )}
             >
-              {header}
-              <ThreadTimelinePane {...stableTimeline} footer={footer} />
-            </div>
-          </Panel>
-          {inlineSecondaryPanelContent}
-        </PanelGroup>
-      </div>
+              <div
+                data-conversation-collapsed={isConversationCollapsedActive}
+                // `inert` removes the hidden conversation (header, timeline,
+                // composer) from the tab order and a11y tree and blocks pointer
+                // events, so keyboard focus can't land in the invisible pane.
+                inert={isConversationCollapsedActive}
+                className={cn(
+                  "flex h-full min-h-0 min-w-0 flex-col transition-opacity",
+                  PANEL_COLLAPSE_TRANSITION_CLASS,
+                  isConversationCollapsedActive && "opacity-0",
+                )}
+              >
+                {header}
+                <ThreadTimelinePane {...stableTimeline} footer={footer} />
+              </div>
+            </Panel>
+            {inlineSecondaryPanelContent}
+          </PanelGroup>
+        </div>
+      </ThreadBottomTerminalPanel>
       {renderAsDrawer ? (
         <ResponsiveDrawerShell
           open={isSecondaryPanelOpen}

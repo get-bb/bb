@@ -41,6 +41,18 @@ vi.mock("@/components/ui/sidebar.js", () => ({
   useOptionalIsSidebarShowing: () => true,
 }));
 
+vi.mock("@/components/thread/terminal/ThreadBottomTerminalPanel", async () => {
+  const React = await import("react");
+  return {
+    ThreadBottomTerminalPanel: ({ children }: { children?: ReactNode }) =>
+      React.createElement(
+        "div",
+        { "data-testid": "bottom-terminal-layout" },
+        children,
+      ),
+  };
+});
+
 vi.mock("@/hooks/queries/thread-queries", () => ({
   useThreads: () => ({ data: [] }),
 }));
@@ -321,6 +333,13 @@ function createProps({
   "isCompactViewport"
 >): ThreadDetailSecondaryContentProps {
   return {
+    bottomTerminalPanel: {
+      canCreateTerminal: false,
+      createRequestNonce: 0,
+      isOpen: false,
+      onOpenChange: noop,
+      threadId,
+    },
     footer: <div data-testid="footer" />,
     header: <div data-testid="header" />,
     isBoundedPane: false,
