@@ -3,7 +3,10 @@
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { useRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useMobileVisualViewportHeight } from "./useMobileVisualViewportHeight";
+import {
+  shouldUseIOSVisualViewportFallback,
+  useMobileVisualViewportHeight,
+} from "./useMobileVisualViewportHeight";
 
 class FakeVisualViewport extends EventTarget implements VisualViewport {
   height = 500;
@@ -23,7 +26,6 @@ function VisualViewportShell({ enabled }: { enabled: boolean }) {
   return (
     <div ref={shellRef} data-testid="shell">
       <textarea data-testid="editor" />
-      <textarea data-testid="other-editor" />
     </div>
   );
 }
@@ -106,14 +108,13 @@ describe("useMobileVisualViewportHeight", () => {
     });
   });
 
-  it("restores the shell height as soon as focus leaves keyboard targets", async () => {
+  it("keeps the shell aligned until the viewport reports keyboard dismissal", async () => {
     const visualViewport = new FakeVisualViewport();
     visualViewport.offsetTop = 0;
     await withFakeVisualViewport(visualViewport, async () => {
       render(<VisualViewportShell enabled />);
       const shell = screen.getByTestId("shell");
       const editor = screen.getByTestId("editor");
-      const otherEditor = screen.getByTestId("other-editor");
 
       act(() => {
         visualViewport.height = 300;
@@ -121,23 +122,16 @@ describe("useMobileVisualViewportHeight", () => {
       });
       await waitFor(() => expect(shell.style.height).toBe("300px"));
 
-      // Focus moving between keyboard targets keeps the keyboard open, so
-      // the shell must stay aligned with the shortened viewport.
-      act(() => {
-        editor.dispatchEvent(
-          new FocusEvent("focusout", {
-            bubbles: true,
-            relatedTarget: otherEditor,
-          }),
-        );
-      });
+      act(() => editor.focus());
+      act(() => editor.blur());
       expect(shell.style.height).toBe("300px");
 
       act(() => {
-        editor.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+        visualViewport.height = 500;
+        visualViewport.dispatchEvent(new Event("resize"));
       });
-      expect(shell.style.top).toBe("");
-      expect(shell.style.height).toBe("");
+      await waitFor(() => expect(shell.style.height).toBe("500px"));
+      expect(shell.style.top).toBe("0px");
     });
   });
 
@@ -157,5 +151,45 @@ describe("useMobileVisualViewportHeight", () => {
       expect(shell.style.top).toBe("");
       expect(window.scrollTo).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe("shouldUseIOSVisualViewportFallback", () => {
+  it("recognizes iPhones and iPads using desktop-class browsing", () => {
+    expect(
+      shouldUseIOSVisualViewportFallback({
+        userAgent:
+          "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1",
+        platform: "iPhone",
+        maxTouchPoints: 5,
+      }),
+    ).toBe(true);
+    expect(
+      shouldUseIOSVisualViewportFallback({
+        userAgent:
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15) AppleWebKit/605.1.15 Version/18.0 Safari/605.1.15",
+        platform: "MacIntel",
+        maxTouchPoints: 5,
+      }),
+    ).toBe(true);
+  });
+
+  it("uses standards-based viewport resizing on Android and desktop", () => {
+    expect(
+      shouldUseIOSVisualViewportFallback({
+        userAgent:
+          "Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 Chrome/140.0.0.0 Mobile Safari/537.36",
+        platform: "Linux armv8l",
+        maxTouchPoints: 5,
+      }),
+    ).toBe(false);
+    expect(
+      shouldUseIOSVisualViewportFallback({
+        userAgent:
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15) AppleWebKit/605.1.15 Version/18.0 Safari/605.1.15",
+        platform: "MacIntel",
+        maxTouchPoints: 0,
+      }),
+    ).toBe(false);
   });
 });

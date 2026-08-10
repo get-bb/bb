@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
   type ComponentProps,
+  type FocusEvent as ReactFocusEvent,
   type ReactNode,
 } from "react";
 import type {
@@ -122,6 +123,16 @@ const DEFAULT_FOLLOW_UP_COMPOSER_SCOPE = {
   kind: "new-thread",
   projectId: null,
 } as const;
+
+function isKeyboardFocusTarget(target: EventTarget | null): boolean {
+  return (
+    target instanceof HTMLElement &&
+    (target.isContentEditable ||
+      target instanceof HTMLInputElement ||
+      target instanceof HTMLTextAreaElement ||
+      target instanceof HTMLSelectElement)
+  );
+}
 /**
  * Discriminated state for the composer's submit affordances. Replaces the
  * previous canSendFollowUp / canQueueFollowUp / canStopRuntime / onStop
@@ -359,6 +370,7 @@ function FollowUpPromptBoxWithComposer({
   const composerInteractionRef = useRef<HTMLDivElement>(null);
   const interactionExpandedRef = useRef(false);
   const pendingFocusExpansionCleanupRef = useRef<(() => void) | null>(null);
+  const pendingFocusLossFrameRef = useRef<number | null>(null);
   const [isInteractionExpanded, setIsInteractionExpanded] = useState(false);
   const isMobilePromptBoxCompact = isCompactViewport && !isInteractionExpanded;
   const compactConfig = useMemo(
@@ -385,106 +397,118 @@ function FollowUpPromptBoxWithComposer({
     pendingFocusExpansionCleanupRef.current?.();
     pendingFocusExpansionCleanupRef.current = null;
   }, []);
-  const handleComposerFocus = useCallback(() => {
-    if (interactionExpandedRef.current) return;
-    if (!isCompactViewport || !isPointerCoarse || !window.visualViewport) {
-      setInteractionExpanded(true);
-      return;
-    }
-    if (pendingFocusExpansionCleanupRef.current) return;
-
-    const visualViewport = window.visualViewport;
-    const initialViewportHeight = visualViewport.height;
-    let animationFrame: number | null = null;
-    let fallbackTimeout: number | null = null;
-    let hasFinished = false;
-    const removeSignals = () => {
-      visualViewport.removeEventListener("resize", handleViewportResize);
-      if (fallbackTimeout !== null) {
-        window.clearTimeout(fallbackTimeout);
-        fallbackTimeout = null;
-      }
-    };
-    const cleanup = () => {
-      removeSignals();
-      if (animationFrame !== null) {
-        window.cancelAnimationFrame(animationFrame);
-        animationFrame = null;
-      }
-    };
-    const finishExpansion = () => {
-      if (hasFinished) return;
-      hasFinished = true;
-      removeSignals();
-      // AppLayout updates its visual-viewport height in the same animation
-      // frame. Expanding here keeps the composer and keyboard on one paint.
-      animationFrame = window.requestAnimationFrame(() => {
-        animationFrame = null;
-        pendingFocusExpansionCleanupRef.current = null;
-        setInteractionExpanded(true);
-      });
-    };
-    const handleViewportResize = () => {
+  const cancelPendingFocusLoss = useCallback(() => {
+    if (pendingFocusLossFrameRef.current === null) return;
+    window.cancelAnimationFrame(pendingFocusLossFrameRef.current);
+    pendingFocusLossFrameRef.current = null;
+  }, []);
+  const handleComposerFocus = useCallback(
+    (event: ReactFocusEvent) => {
+      cancelPendingFocusLoss();
+      if (interactionExpandedRef.current) return;
       if (
-        initialViewportHeight - visualViewport.height <
-        MOBILE_KEYBOARD_VIEWPORT_MIN_DELTA_PX
+        !isCompactViewport ||
+        !isPointerCoarse ||
+        !isKeyboardFocusTarget(event.target) ||
+        !window.visualViewport
       ) {
+        setInteractionExpanded(true);
         return;
       }
-      finishExpansion();
-    };
+      if (pendingFocusExpansionCleanupRef.current) return;
 
-    visualViewport.addEventListener("resize", handleViewportResize);
-    fallbackTimeout = window.setTimeout(
-      finishExpansion,
-      MOBILE_FOCUS_EXPANSION_FALLBACK_MS,
-    );
-    pendingFocusExpansionCleanupRef.current = cleanup;
-  }, [isCompactViewport, isPointerCoarse, setInteractionExpanded]);
-  useEffect(
-    () => () => cancelPendingFocusExpansion(),
-    [cancelPendingFocusExpansion],
+      const visualViewport = window.visualViewport;
+      const initialViewportHeight = visualViewport.height;
+      let animationFrame: number | null = null;
+      let fallbackTimeout: number | null = null;
+      let hasFinished = false;
+      const removeSignals = () => {
+        visualViewport.removeEventListener("resize", handleViewportResize);
+        if (fallbackTimeout !== null) {
+          window.clearTimeout(fallbackTimeout);
+          fallbackTimeout = null;
+        }
+      };
+      const cleanup = () => {
+        removeSignals();
+        if (animationFrame !== null) {
+          window.cancelAnimationFrame(animationFrame);
+          animationFrame = null;
+        }
+      };
+      const finishExpansion = () => {
+        if (hasFinished) return;
+        hasFinished = true;
+        removeSignals();
+        // AppLayout updates its visual-viewport height in the same animation
+        // frame. Expanding here keeps the composer and keyboard on one paint.
+        animationFrame = window.requestAnimationFrame(() => {
+          animationFrame = null;
+          pendingFocusExpansionCleanupRef.current = null;
+          setInteractionExpanded(true);
+        });
+      };
+      const handleViewportResize = () => {
+        if (
+          initialViewportHeight - visualViewport.height <
+          MOBILE_KEYBOARD_VIEWPORT_MIN_DELTA_PX
+        ) {
+          return;
+        }
+        finishExpansion();
+      };
+
+      visualViewport.addEventListener("resize", handleViewportResize);
+      fallbackTimeout = window.setTimeout(
+        finishExpansion,
+        MOBILE_FOCUS_EXPANSION_FALLBACK_MS,
+      );
+      pendingFocusExpansionCleanupRef.current = cleanup;
+    },
+    [
+      cancelPendingFocusLoss,
+      isCompactViewport,
+      isPointerCoarse,
+      setInteractionExpanded,
+    ],
   );
-  useEffect(() => {
-    const handleDocumentInteraction = (event: Event) => {
+  const scheduleCollapseAfterFocusLoss = useCallback(() => {
+    cancelPendingFocusLoss();
+    pendingFocusLossFrameRef.current = window.requestAnimationFrame(() => {
+      pendingFocusLossFrameRef.current = null;
       const composerElement = composerInteractionRef.current;
-      const target = event.target;
-      if (!composerElement || !(target instanceof Node)) return;
-      if (composerElement.contains(target)) return;
+      if (!composerElement) return;
+
+      // Focus events for the element losing focus run before the browser has
+      // assigned the next active element. Waiting one frame makes collapse a
+      // decision about settled focus state instead of pointer intent.
+      if (composerElement.contains(document.activeElement)) return;
+
       // Responsive popovers and dropdowns portal their content outside the
       // composer. Their shared trigger contract exposes open state through
-      // aria-haspopup + aria-expanded, so interaction with an owned overlay
-      // must not collapse the composer behind it.
+      // aria-haspopup + aria-expanded, so focus in an owned overlay must not
+      // collapse the composer behind it.
       if (
         composerElement.querySelector(OPEN_COMPOSER_OVERLAY_TRIGGER_SELECTOR)
       ) {
         return;
       }
-      // A touch-scroll of the timeline starts with a pointerdown outside the
-      // composer, but mobile browsers can keep the editor and keyboard
-      // focused throughout the gesture. Focus moving outside will emit the
-      // focusin event this listener also handles; pointerdown alone must not
-      // create a focused-but-collapsed composer.
-      if (
-        event.type === "pointerdown" &&
-        composerElement.contains(document.activeElement)
-      ) {
-        return;
-      }
+
       cancelPendingFocusExpansion();
       setInteractionExpanded(false);
-    };
-    document.addEventListener("pointerdown", handleDocumentInteraction, true);
-    document.addEventListener("focusin", handleDocumentInteraction, true);
-    return () => {
-      document.removeEventListener(
-        "pointerdown",
-        handleDocumentInteraction,
-        true,
-      );
-      document.removeEventListener("focusin", handleDocumentInteraction, true);
-    };
-  }, [cancelPendingFocusExpansion, setInteractionExpanded]);
+    });
+  }, [
+    cancelPendingFocusExpansion,
+    cancelPendingFocusLoss,
+    setInteractionExpanded,
+  ]);
+  useEffect(
+    () => () => {
+      cancelPendingFocusExpansion();
+      cancelPendingFocusLoss();
+    },
+    [cancelPendingFocusExpansion, cancelPendingFocusLoss],
+  );
   const steerOnPrimarySubmit =
     submitMode.kind === "queue" && composer.steerActiveThreadOnEnter;
   const onPrimarySubmit = steerOnPrimarySubmit
@@ -596,6 +620,7 @@ function FollowUpPromptBoxWithComposer({
       className="relative z-20"
       data-follow-up-composer=""
       data-follow-up-composer-expanded={isInteractionExpanded ? "" : undefined}
+      onBlurCapture={scheduleCollapseAfterFocusLoss}
       onFocusCapture={handleComposerFocus}
     >
       <PromptBoxWithScrollAnchor

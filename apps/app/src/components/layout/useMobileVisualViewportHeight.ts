@@ -1,6 +1,22 @@
 import { useEffect, type RefObject } from "react";
 
 type AppShellElement = HTMLDivElement;
+type BrowserPlatform = Pick<
+  Navigator,
+  "maxTouchPoints" | "platform" | "userAgent"
+>;
+
+export function shouldUseIOSVisualViewportFallback({
+  maxTouchPoints,
+  platform,
+  userAgent,
+}: BrowserPlatform): boolean {
+  const isAppleWebKit = /\bAppleWebKit\//u.test(userAgent);
+  const isIOSDevice =
+    /\b(?:iPad|iPhone|iPod)\b/u.test(userAgent) ||
+    (platform === "MacIntel" && maxTouchPoints > 1);
+  return isAppleWebKit && isIOSDevice;
+}
 
 function getVisualViewportBottom(visualViewport: VisualViewport) {
   return Math.round(visualViewport.offsetTop + visualViewport.height);
@@ -8,16 +24,6 @@ function getVisualViewportBottom(visualViewport: VisualViewport) {
 
 function getVisualViewportPageTop(visualViewport: VisualViewport) {
   return Math.round(window.scrollY + visualViewport.offsetTop);
-}
-
-function isKeyboardFocusTarget(target: EventTarget | null): boolean {
-  return (
-    target instanceof HTMLElement &&
-    (target.isContentEditable ||
-      target instanceof HTMLInputElement ||
-      target instanceof HTMLTextAreaElement ||
-      target instanceof HTMLSelectElement)
-  );
 }
 
 /**
@@ -66,40 +72,15 @@ export function useMobileVisualViewportHeight(
       animationFrame = window.requestAnimationFrame(updateHeight);
     };
 
-    // iOS delivers the keyboard-hide resize event only after the hide
-    // animation settles, ~half a second after blur, which strands the
-    // shrunken shell (and the composer) mid-screen. Focus leaving every
-    // keyboard-driving element means the keyboard is about to close, so
-    // restore the stylesheet height immediately and let the eventual resize
-    // event reconcile.
-    const handleFocusOut = (event: FocusEvent) => {
-      if (!isKeyboardFocusTarget(event.target)) return;
-      if (isKeyboardFocusTarget(event.relatedTarget)) return;
-      if (animationFrame !== null) {
-        window.cancelAnimationFrame(animationFrame);
-        animationFrame = null;
-      }
-      shell.style.removeProperty("top");
-      shell.style.removeProperty("height");
-    };
-    const handleFocusIn = (event: FocusEvent) => {
-      if (!isKeyboardFocusTarget(event.target)) return;
-      scheduleUpdate();
-    };
-
     updateHeight();
     visualViewport.addEventListener("resize", scheduleUpdate);
     visualViewport.addEventListener("scroll", scheduleUpdate);
     window.addEventListener("resize", scheduleUpdate);
-    document.addEventListener("focusout", handleFocusOut);
-    document.addEventListener("focusin", handleFocusIn);
 
     return () => {
       visualViewport.removeEventListener("resize", scheduleUpdate);
       visualViewport.removeEventListener("scroll", scheduleUpdate);
       window.removeEventListener("resize", scheduleUpdate);
-      document.removeEventListener("focusout", handleFocusOut);
-      document.removeEventListener("focusin", handleFocusIn);
       if (animationFrame !== null) {
         window.cancelAnimationFrame(animationFrame);
       }
