@@ -45,6 +45,53 @@ function fireTouch(
   fireEvent(target, event);
 }
 
+function firePointer(
+  target: Element | Document | Window,
+  type: "pointerdown" | "pointermove",
+  clientX: number,
+  clientY: number,
+) {
+  const event = new Event(type, { bubbles: true, cancelable: true });
+  Object.defineProperties(event, {
+    pointerId: { value: 1 },
+    pointerType: { value: "touch" },
+    isPrimary: { value: true },
+    button: { value: 0 },
+    buttons: { value: 1 },
+    clientX: { value: clientX },
+    clientY: { value: clientY },
+  });
+  fireEvent(target, event);
+}
+
+function renderScrollerSwipeHarness() {
+  render(
+    <CompactViewportOverrideProvider isCompactViewport>
+      <SidebarProvider>
+        <Sidebar>Sidebar content</Sidebar>
+        <SidebarInset>
+          <div data-testid="scroller" style={{ overflowX: "auto" }}>
+            <div data-sidebar-swipe-selectable>Wide code block</div>
+          </div>
+        </SidebarInset>
+      </SidebarProvider>
+    </CompactViewportOverrideProvider>,
+  );
+  const scroller = screen.getByTestId("scroller");
+  let scrollWidthReads = 0;
+  Object.defineProperty(scroller, "scrollWidth", {
+    get: () => {
+      scrollWidthReads += 1;
+      return 500;
+    },
+  });
+  Object.defineProperty(scroller, "clientWidth", { get: () => 100 });
+  return {
+    prose: screen.getByText("Wide code block"),
+    getScrollWidthReads: () => scrollWidthReads,
+  };
+}
+
 function renderSelectableSwipeHarness() {
   render(
     <CompactViewportOverrideProvider isCompactViewport>
@@ -98,37 +145,44 @@ describe("mobile sidebar text-selection arbitration", () => {
   });
 
   it("defers the horizontal-scroll-region probe until horizontal intent", () => {
-    render(
-      <CompactViewportOverrideProvider isCompactViewport>
-        <SidebarProvider>
-          <Sidebar>Sidebar content</Sidebar>
-          <SidebarInset>
-            <div data-testid="scroller" style={{ overflowX: "auto" }}>
-              <div data-sidebar-swipe-selectable>Wide code block</div>
-            </div>
-          </SidebarInset>
-        </SidebarProvider>
-      </CompactViewportOverrideProvider>,
-    );
-    const scroller = screen.getByTestId("scroller");
-    let scrollWidthReads = 0;
-    Object.defineProperty(scroller, "scrollWidth", {
-      get: () => {
-        scrollWidthReads += 1;
-        return 500;
-      },
-    });
-    Object.defineProperty(scroller, "clientWidth", { get: () => 100 });
-    const prose = screen.getByText("Wide code block");
+    const { prose, getScrollWidthReads } = renderScrollerSwipeHarness();
 
     fireTouch(prose, "touchstart", createTouch(120, 160));
 
     // The tap path must stay free of forced layout reads (#1269).
-    expect(scrollWidthReads).toBe(0);
+    expect(getScrollWidthReads()).toBe(0);
 
     fireTouch(window, "touchmove", createTouch(260, 164));
+    fireTouch(window, "touchmove", createTouch(280, 164));
 
-    expect(scrollWidthReads).toBeGreaterThan(0);
+    // Exactly one probe per gesture, then the swipe cancels.
+    expect(getScrollWidthReads()).toBe(1);
+    expect(document.querySelector('[data-sidebar="panel"]')).toBeNull();
+  });
+
+  it("defers the probe on the pointer path as well", () => {
+    const { prose, getScrollWidthReads } = renderScrollerSwipeHarness();
+
+    firePointer(prose, "pointerdown", 120, 160);
+
+    expect(getScrollWidthReads()).toBe(0);
+
+    firePointer(window, "pointermove", 260, 164);
+    firePointer(window, "pointermove", 280, 164);
+
+    expect(getScrollWidthReads()).toBe(1);
+    expect(document.querySelector('[data-sidebar="panel"]')).toBeNull();
+  });
+
+  it("cancels a swipe whose start target detached before the probe", () => {
+    const { prose, getScrollWidthReads } = renderScrollerSwipeHarness();
+
+    fireTouch(prose, "touchstart", createTouch(120, 160));
+    prose.remove();
+    fireTouch(window, "touchmove", createTouch(260, 164));
+
+    // A detached target reports empty computed style; never probe or open.
+    expect(getScrollWidthReads()).toBe(0);
     expect(document.querySelector('[data-sidebar="panel"]')).toBeNull();
   });
 

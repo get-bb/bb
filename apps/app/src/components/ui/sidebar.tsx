@@ -886,9 +886,13 @@ const SidebarInset = React.forwardRef<
           return;
         }
 
+        // A live timeline update can detach the start target mid-gesture. A
+        // detached element reports empty computed style, so the probe below
+        // would wrongly pass; cancel the swipe instead of guessing.
         if (
           session.startTarget !== null &&
-          isInsideHorizontalScrollRegion(session.startTarget)
+          (!session.startTarget.isConnected ||
+            isInsideHorizontalScrollRegion(session.startTarget))
         ) {
           clearSidebarMobileDragStyles();
           clearSwipeSession();
