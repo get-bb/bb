@@ -3312,6 +3312,67 @@ describe("bridge", () => {
     }
   });
 
+  it("keeps the prior escalation when a turn steer fails to push input", async () => {
+    const threadId = "thread-steer-failed-escalation";
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      queries.push(query);
+      return query;
+    });
+
+    try {
+      bridge.sendRequest(1, "thread/start", {
+        workflowsEnabled: false,
+        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
+        baseInstructions: "test",
+        cwd: "/tmp/worktree",
+        instructionMode: "append",
+        permissionEscalation: "deny",
+        permissionMode: "auto",
+        approvedPlanPermissionMode: "auto",
+        permissionScope: "workspace",
+        threadId,
+      });
+      await bridge.waitForResponse(1);
+
+      await getLatestQueryCall().prompt[Symbol.asyncIterator]().return?.();
+
+      bridge.sendRequest(2, "turn/steer", {
+        permissionEscalation: "ask",
+        expectedTurnId: "turn-1",
+        input: [{ type: "text", text: "loosen permissions" }],
+        providerThreadId: null,
+        threadId,
+      });
+      await expect(bridge.waitForResponse(2)).resolves.toMatchObject({
+        error: { code: -32000 },
+      });
+
+      const canUseTool = getLastCanUseTool();
+      await expect(
+        canUseTool(
+          "Bash",
+          { command: "echo hi", dangerouslyDisableSandbox: true },
+          {
+            decisionReason: "dangerouslyDisableSandbox",
+            signal: new AbortController().signal,
+            toolUseID: "tool-steer-failed",
+          },
+        ),
+      ).resolves.toMatchObject({ behavior: "deny" });
+
+      bridge.sendRequest(3, "thread/stop", { threadId });
+      await bridge.flushWork();
+      queries[0]?.finish();
+      await bridge.waitForResponse(3);
+    } finally {
+      queries.forEach((query) => query.finish());
+      bridge.restore();
+    }
+  });
+
   describe("prompt attachment text markers", () => {
     async function sendTurnAndReadPrompt(
       bridge: BridgeJsonRpcTestHarness,

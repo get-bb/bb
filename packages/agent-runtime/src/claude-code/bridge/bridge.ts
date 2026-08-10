@@ -1560,8 +1560,8 @@ async function handleTurnSteer(
     return;
   }
 
-  threadSession.permissionEscalation = params.permissionEscalation;
   if (inputs.length > 1) {
+    threadSession.permissionEscalation = params.permissionEscalation;
     queuePromptInputs(threadSession, inputs);
     sendResult(id, { threadId: params.threadId });
     return;
@@ -1569,6 +1569,8 @@ async function handleTurnSteer(
 
   try {
     await threadSession.session.pushInput(inputs[0] ?? "");
+    // A failed steer must not change the running turn's escalation.
+    threadSession.permissionEscalation = params.permissionEscalation;
     sendResult(id, { threadId: params.threadId });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
