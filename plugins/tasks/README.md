@@ -7,8 +7,7 @@ subtasks, Markdown comments, attachments, agent presets, and a full CLI.
 
 ## Install
 
-Enable **Plugins** under Settings → Experiments, then install Tasks — an
-official plugin bundled with the app:
+Install Tasks from the official plugins that BB includes:
 
 ```sh
 bb plugin install tasks
@@ -19,10 +18,9 @@ skill that teaches workers how to report progress back to tasks.
 
 ## Quick start
 
-First enable **Plugins** under Settings → Experiments and install the plugin
-with `bb plugin install tasks`. Then use the `bb tasks` CLI to
-create a tracker project and link it to the bb project where delegated agents
-should run:
+Install the plugin with `bb plugin install tasks`. Then use the `bb tasks` CLI
+to create a tracker project. Link it to the bb project where delegated agents
+will run:
 
 ```sh
 bb tasks project create \
