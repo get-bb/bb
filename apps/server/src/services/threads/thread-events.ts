@@ -977,11 +977,15 @@ export function isManualCompactionActive(
         turnId: activeTurnId,
       }) ?? getLastStoredTurnRequestEvent(deps.db, thread.id))
     : getLastStoredTurnRequestEvent(deps.db, thread.id);
-  return requestRow
-    ? isStandaloneBuiltinCompactCommand(
-        parseStoredTurnRequestEvent(requestRow).input,
-      )
-    : false;
+  if (!requestRow) {
+    return false;
+  }
+
+  const request = parseStoredTurnRequestEvent(requestRow);
+  return (
+    request.target.kind === "new-turn" &&
+    isStandaloneBuiltinCompactCommand(request.input)
+  );
 }
 
 export function getLastProviderThreadId(

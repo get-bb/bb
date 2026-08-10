@@ -1,12 +1,17 @@
 import { eq } from "drizzle-orm";
 import { events, getThread, threads } from "@bb/db";
-import { threadScope, turnScope } from "@bb/domain";
+import {
+  createStandaloneBuiltinCompactCommandInput,
+  threadScope,
+  turnScope,
+} from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   appendClientTurnEvent,
   appendThreadEvent,
   appendThreadEventInTransaction,
   appendThreadEventsInTransaction,
+  isManualCompactionActive,
 } from "../../../src/services/threads/thread-events.js";
 import {
   seedEnvironment,
@@ -40,6 +45,91 @@ afterEach(() => {
 });
 
 describe("thread event appends", () => {
+  it("does not classify an accepted compact steer as manual compaction", async () => {
+    const { environment, harness, thread } =
+      await createThreadEventTestContext();
+    try {
+      harness.db
+        .update(threads)
+        .set({ status: "active" })
+        .where(eq(threads.id, thread.id))
+        .run();
+      const turnId = "turn-active";
+      const providerThreadId = "provider-thread-active";
+      const initialRequest = appendClientTurnEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        type: "client/turn/requested",
+        input: textInput("Keep working"),
+        target: { kind: "new-turn" },
+        execution: {
+          model: "gpt-5",
+          reasoningLevel: "medium",
+          permissionMode: "full",
+          serviceTier: "default",
+          source: "client/turn/requested",
+        },
+        initiator: "user",
+        senderThreadId: null,
+        requestMethod: "turn/start",
+        source: "tell",
+      });
+      appendThreadEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        type: "turn/started",
+        scope: turnScope(turnId),
+        data: { providerThreadId },
+      });
+      appendThreadEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        type: "turn/input/accepted",
+        scope: turnScope(turnId),
+        data: {
+          providerThreadId,
+          clientRequestId: initialRequest.requestId,
+        },
+      });
+      const compactSteer = appendClientTurnEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        type: "client/turn/requested",
+        input: createStandaloneBuiltinCompactCommandInput(),
+        target: { kind: "steer", expectedTurnId: turnId },
+        execution: {
+          model: "gpt-5",
+          reasoningLevel: "medium",
+          permissionMode: "full",
+          serviceTier: "default",
+          source: "client/turn/requested",
+        },
+        initiator: "user",
+        senderThreadId: null,
+        requestMethod: "turn/start",
+        source: "tell",
+      });
+      appendThreadEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        type: "turn/input/accepted",
+        scope: turnScope(turnId),
+        data: {
+          providerThreadId,
+          clientRequestId: compactSteer.requestId,
+        },
+      });
+
+      const activeThread = getThread(harness.db, thread.id);
+      if (!activeThread) {
+        throw new Error("Expected active thread");
+      }
+      expect(isManualCompactionActive(harness.deps, activeThread)).toBe(false);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
   it("rejects direct turn-scoped appends before turn/started is stored", async () => {
     const { environment, harness, thread } =
       await createThreadEventTestContext();

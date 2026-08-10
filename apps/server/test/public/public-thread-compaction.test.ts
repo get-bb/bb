@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { listQueuedThreadMessages } from "@bb/db";
-import { createStandaloneBuiltinCompactCommandInput } from "@bb/domain";
+import {
+  getLatestThreadSequence,
+  listQueuedThreadMessages,
+} from "@bb/db";
+import {
+  createStandaloneBuiltinCompactCommandInput,
+  turnScope,
+} from "@bb/domain";
+import type { ClientTurnRequestId } from "@bb/domain";
+import { applyTurnCompletedEvent } from "../../src/internal/turn-completed-events.js";
+import { sendNextQueuedMessageIfPresent } from "../../src/services/threads/queued-messages.js";
 import {
   registerHostRpcResponder,
   type HostRpcHandlerResult,
@@ -8,10 +17,12 @@ import {
 import { readJson } from "../helpers/json.js";
 import {
   seedEnvironment,
+  seedEvent,
   seedHostSession,
   seedProjectWithSource,
   seedThread,
   seedThreadRuntimeState,
+  seedTurnStarted,
 } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 
@@ -59,6 +70,37 @@ function registerSuccessfulTurnResponder(
         };
       }
       return { ok: true, result: { appliedAs: "new-turn" } };
+    },
+  });
+}
+
+function seedAcceptedProviderTurn(
+  harness: TestAppHarness,
+  args: {
+    clientRequestId: ClientTurnRequestId;
+    environmentId: string;
+    providerThreadId: string;
+    threadId: string;
+    turnId: string;
+  },
+): void {
+  seedTurnStarted(harness.deps, {
+    environmentId: args.environmentId,
+    providerThreadId: args.providerThreadId,
+    threadId: args.threadId,
+    turnId: args.turnId,
+  });
+  seedEvent(harness.deps, {
+    threadId: args.threadId,
+    environmentId: args.environmentId,
+    providerThreadId: args.providerThreadId,
+    sequence:
+      getLatestThreadSequence(harness.db, { threadId: args.threadId }) + 1,
+    type: "turn/input/accepted",
+    scope: turnScope(args.turnId),
+    data: {
+      providerThreadId: args.providerThreadId,
+      clientRequestId: args.clientRequestId,
     },
   });
 }
@@ -115,6 +157,23 @@ describe("public thread compaction", () => {
         { method: "POST" },
       );
       expect(compactResponse.status).toBe(200);
+      const compactRequest = responder.requests.find(
+        ({ command }) => command.type === "turn.submit",
+      );
+      if (!compactRequest || compactRequest.command.type !== "turn.submit") {
+        throw new Error("Expected compaction turn.submit request");
+      }
+      if (!thread.environmentId) {
+        throw new Error("Expected compactable thread environment");
+      }
+      const compactionTurnId = "turn-manual-compaction";
+      seedAcceptedProviderTurn(harness, {
+        clientRequestId: compactRequest.command.requestId,
+        environmentId: thread.environmentId,
+        providerThreadId: "provider-thread-queue",
+        threadId: thread.id,
+        turnId: compactionTurnId,
+      });
 
       const sendResponse = await harness.app.request(
         `/api/v1/threads/${thread.id}/send`,
@@ -148,6 +207,47 @@ describe("public thread compaction", () => {
           ({ command }) => command.type === "turn.submit",
         ),
       ).toHaveLength(1);
+
+      expect(
+        await sendNextQueuedMessageIfPresent(harness.deps, {
+          threadId: thread.id,
+        }),
+      ).toBe(false);
+      expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(1);
+
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: thread.environmentId,
+        providerThreadId: "provider-thread-queue",
+        sequence:
+          getLatestThreadSequence(harness.db, { threadId: thread.id }) + 1,
+        type: "turn/completed",
+        scope: turnScope(compactionTurnId),
+        data: {
+          providerThreadId: "provider-thread-queue",
+          status: "completed",
+        },
+      });
+      const completion = applyTurnCompletedEvent(harness.deps, {
+        threadId: thread.id,
+        providerThreadId: "provider-thread-queue",
+        type: "turn/completed",
+        scope: turnScope(compactionTurnId),
+        status: "completed",
+      });
+      expect(completion.nextStatus).toBe("idle");
+      expect(
+        await sendNextQueuedMessageIfPresent(harness.deps, {
+          threadId: thread.id,
+        }),
+      ).toBe(true);
+      expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(0);
+      await expect.poll(
+        () =>
+          responder.requests.filter(
+            ({ command }) => command.type === "turn.submit",
+          ).length,
+      ).toBe(2);
     });
   });
 

@@ -106,6 +106,17 @@ interface QueuedMessageAutoSendRequestArgs {
   threadId: string;
 }
 
+function isQueuedMessageAutoSendCandidate(
+  thread: Thread | null,
+): thread is QueuedMessageThread {
+  return (
+    thread !== null &&
+    thread.archivedAt === null &&
+    thread.deletedAt === null &&
+    thread.status !== "stopping"
+  );
+}
+
 interface FormatQueuedMessageInputForSenderArgs {
   input: PromptInput[];
   senderThreadId: string | null;
@@ -495,13 +506,7 @@ export async function sendNextQueuedMessageIfPresent(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: { threadId: string },
 ): Promise<boolean> {
-  const thread = getThread(deps.db, args.threadId);
-  if (
-    !thread ||
-    thread.archivedAt !== null ||
-    thread.deletedAt !== null ||
-    thread.status === "stopping"
-  ) {
+  if (!isQueuedMessageAutoSendCandidate(getThread(deps.db, args.threadId))) {
     return false;
   }
 
@@ -511,6 +516,15 @@ export async function sendNextQueuedMessageIfPresent(
     args.threadId,
   );
   if (!nextQueuedMessages) {
+    return false;
+  }
+
+  const thread = getThread(deps.db, args.threadId);
+  if (
+    !isQueuedMessageAutoSendCandidate(thread) ||
+    isManualCompactionActive(deps, thread)
+  ) {
+    releaseQueuedMessageClaims(deps, nextQueuedMessages);
     return false;
   }
 

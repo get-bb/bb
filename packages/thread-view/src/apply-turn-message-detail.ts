@@ -105,12 +105,15 @@ function applyTurnMessageDetail(
     withChildProjectionDetail(message),
   );
   const terminalMessage = findProjectionTerminalMessage(messages);
+  const summaryMessages = terminalMessage
+    ? messages.slice(0, messages.indexOf(terminalMessage))
+    : messages;
   const summaryCount = getProjectionSummaryCount(messages, terminalMessage);
   const includeMessages =
     turn.status === "pending" ||
     turnMessageDetail === "full" ||
     (turn.externalUserBoundarySeqs?.length ?? 0) > 0 ||
-    isSingletonContextCompaction(messages) ||
+    isSingletonContextCompaction(summaryMessages) ||
     shouldIncludeSummaryTurnMessages(messages, terminalMessage);
 
   const detailedTurn: EventProjectionTurn = {

@@ -876,6 +876,10 @@ describe("timeline CLI rendering snapshots", () => {
       events: [
         event.turnStarted(),
         event.contextCompactionStarted(),
+        event.assistantCompleted({
+          itemId: "assistant-after-compaction",
+          text: "Compaction finished.",
+        }),
         event.threadCompacted(),
         event.turnCompleted(),
       ],
@@ -888,6 +892,7 @@ describe("timeline CLI rendering snapshots", () => {
 
     expect(timeline.turnRows).toHaveLength(0);
     expect(timeline.text).toContain("Context compacted");
+    expect(timeline.text).toContain("Compaction finished.");
     expect(timeline.text).not.toContain("Worked for");
   });
 
@@ -897,6 +902,10 @@ describe("timeline CLI rendering snapshots", () => {
       events: [
         event.turnStarted(),
         event.contextCompactionStarted(),
+        event.providerError({
+          message: "Provider error",
+          detail: "Nothing to compact",
+        }),
         event.turnCompleted({ status: "failed" }),
       ],
       includeNestedRows: false,
