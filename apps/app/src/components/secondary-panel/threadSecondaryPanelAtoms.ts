@@ -116,9 +116,3 @@ export function getThreadConversationCollapsedAtom(
     ? threadConversationCollapsedAtomFamily(threadId)
     : disabledThreadConversationCollapsedAtom;
 }
-
-/** Set by openDiffFile (prompt banner), consumed by useGitDiffPanelState to reset the diff to all-changes so the opened file is in the slice. */
-export const pendingGitDiffScrollPathAtom = atom<string | null>(null);
-
-/** Set by openCommitDiff (info tab Commits row), consumed by useGitDiffPanelState to scope the diff to a commit. */
-export const pendingGitDiffCommitShaAtom = atom<string | null>(null);

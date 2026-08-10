@@ -1,108 +1,243 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { Provider as JotaiProvider } from "jotai";
-import { useEffect, useRef, useState } from "react";
-import { expect, it, vi } from "vitest";
-import { shouldSyncSelectedMergeBaseBranch } from "./useEnvironmentMergeBase";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { Environment } from "@bb/domain";
+import { StrictMode, useState, type ReactNode } from "react";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { useUpdateEnvironment } from "@/hooks/mutations/environment-mutations";
+import { useEnvironmentMergeBase } from "./useEnvironmentMergeBase";
 import { useGitDiffPanel } from "./useGitDiffPanel";
+import { useGitDiffPanelState } from "./useGitDiffPanelState";
 
-const requestedBranches = vi.hoisted(
-  () => new Map<string, string | undefined>(),
-);
+interface MergeBaseBranchRequest {
+  environmentId: string;
+  selectedBranch?: string;
+}
+
+const mergeBaseBranchRequests = vi.hoisted((): MergeBaseBranchRequest[] => []);
 
 vi.mock("../../../hooks/queries/environment-queries", () => ({
   useEnvironmentMergeBaseBranches: (
     environmentId: string,
     options?: { selectedBranch?: string },
   ) => {
-    requestedBranches.set(environmentId, options?.selectedBranch);
+    mergeBaseBranchRequests.push({
+      environmentId,
+      selectedBranch: options?.selectedBranch,
+    });
     return { data: undefined, isFetching: false };
   },
+  useEnvironmentWorkStatus: () => ({
+    data: {
+      outcome: "available",
+      workspace: {
+        mergeBase: {
+          commits: [
+            { sha: "sha-left", shortSha: "sha-lef", subject: "Left commit" },
+            {
+              sha: "sha-right",
+              shortSha: "sha-rig",
+              subject: "Right commit",
+            },
+          ],
+        },
+        workingTree: { files: [] },
+      },
+    },
+  }),
 }));
 
 const noop = () => undefined;
 
-function MergeBaseOwner({
-  environmentId,
-  persistedBranch,
-}: {
-  environmentId: string;
-  persistedBranch: string;
-}) {
-  const stateKeyRef = useRef<string | undefined>(undefined);
-  const syncCountRef = useRef(0);
-  const { selectedMergeBaseBranch, setSelectedMergeBaseBranch } =
-    useGitDiffPanel({
-      activeSecondaryTab: null,
-      clearActiveFileTabs: noop,
-      environmentId,
-      mergeBaseBranchOptionsEnabled: true,
-      setThreadSecondaryPanel: noop,
-    });
+function makeEnvironment(id: string, mergeBaseBranch: string): Environment {
+  return {
+    baseBranch: null,
+    branchName: `bb/${id}`,
+    createdAt: 1,
+    defaultBranch: "main",
+    hostId: "host-1",
+    id,
+    name: null,
+    isGitRepo: true,
+    isWorktree: true,
+    managed: true,
+    mergeBaseBranch,
+    path: `/tmp/${id}`,
+    projectId: "project-1",
+    status: "ready",
+    updatedAt: 1,
+    workspaceProvisionType: "managed-worktree",
+  };
+}
 
-  useEffect(() => {
-    if (
-      !shouldSyncSelectedMergeBaseBranch({
-        previousStateKey: stateKeyRef.current,
-        nextStateKey: environmentId,
-        persistedMergeBaseBranch: persistedBranch,
-        selectedMergeBaseBranch,
-        updatePending: false,
-      })
-    ) {
-      return;
-    }
-    syncCountRef.current += 1;
-    if (syncCountRef.current > 10) {
-      throw new Error("Merge-base owner did not settle independently");
-    }
-    stateKeyRef.current = environmentId;
-    setSelectedMergeBaseBranch(persistedBranch);
-  }, [
-    environmentId,
-    persistedBranch,
-    selectedMergeBaseBranch,
-    setSelectedMergeBaseBranch,
-  ]);
-
+function TestRoot({ children }: { children: ReactNode }) {
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: {
+          mutations: { retry: false },
+          queries: { retry: false },
+        },
+      }),
+  );
   return (
-    <output data-testid={environmentId}>
-      {selectedMergeBaseBranch ?? "unset"}
-    </output>
+    <StrictMode>
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    </StrictMode>
   );
 }
 
-function TwoOwnerHarness() {
-  const [leftBranch, setLeftBranch] = useState("main");
-  return (
-    <JotaiProvider>
-      <MergeBaseOwner environmentId="env-left" persistedBranch={leftBranch} />
-      <MergeBaseOwner environmentId="env-right" persistedBranch="release" />
-      <button type="button" onClick={() => setLeftBranch("feature-left")}>
-        Change left branch
-      </button>
-    </JotaiProvider>
-  );
+function useMergeBaseOwner(environment: Environment, threadId: string) {
+  const updateEnvironment = useUpdateEnvironment();
+  const panel = useGitDiffPanel({
+    activeSecondaryTab: null,
+    clearActiveFileTabs: noop,
+    defaultMergeBaseBranch:
+      environment.mergeBaseBranch ?? environment.defaultBranch ?? undefined,
+    environmentId: environment.id,
+    mergeBaseBranchOptionsEnabled: true,
+    setThreadSecondaryPanel: noop,
+    threadId,
+  });
+  const { effectiveMergeBaseBranch } = useEnvironmentMergeBase({
+    environment,
+    selectedMergeBaseBranch: panel.selectedMergeBaseBranch,
+    setSelectedMergeBaseBranch: panel.setSelectedMergeBaseBranch,
+    updateEnvironment,
+  });
+  const diffState = useGitDiffPanelState({
+    defaultMergeBaseBranch: effectiveMergeBaseBranch,
+    environmentId: environment.id,
+    isDiffPanelActive: true,
+    onClearPendingGitDiffIntent: panel.clearPendingGitDiffIntent,
+    pendingGitDiffCommitSha: panel.pendingGitDiffCommitSha,
+    pendingGitDiffScrollPath: panel.pendingGitDiffScrollPath,
+  });
+  return { ...diffState, ...panel, effectiveMergeBaseBranch };
 }
 
-it("keeps simultaneous merge-base owners and queries independent", async () => {
-  requestedBranches.clear();
-  render(<TwoOwnerHarness />);
+beforeEach(() => {
+  mergeBaseBranchRequests.length = 0;
+});
+
+afterEach(cleanup);
+
+it("keeps production merge-base owners independent through close and reopen", async () => {
+  const leftEnvironment = makeEnvironment("env-left", "main");
+  const rightEnvironment = makeEnvironment("env-right", "release");
+  const left = renderHook(() => useMergeBaseOwner(leftEnvironment, "left"), {
+    wrapper: TestRoot,
+  });
+  const right = renderHook(() => useMergeBaseOwner(rightEnvironment, "right"), {
+    wrapper: TestRoot,
+  });
 
   await waitFor(() => {
-    expect(screen.getByTestId("env-left").textContent).toBe("main");
-    expect(screen.getByTestId("env-right").textContent).toBe("release");
+    expect(left.result.current.effectiveMergeBaseBranch).toBe("main");
+    expect(right.result.current.effectiveMergeBaseBranch).toBe("release");
   });
-  expect(requestedBranches.get("env-left")).toBe("main");
-  expect(requestedBranches.get("env-right")).toBe("release");
 
-  fireEvent.click(screen.getByRole("button", { name: "Change left branch" }));
+  right.unmount();
+  expect(left.result.current.effectiveMergeBaseBranch).toBe("main");
 
+  const reopenedRight = renderHook(
+    () => useMergeBaseOwner(rightEnvironment, "right"),
+    { wrapper: TestRoot },
+  );
   await waitFor(() => {
-    expect(screen.getByTestId("env-left").textContent).toBe("feature-left");
-    expect(requestedBranches.get("env-left")).toBe("feature-left");
+    expect(left.result.current.effectiveMergeBaseBranch).toBe("main");
+    expect(reopenedRight.result.current.effectiveMergeBaseBranch).toBe(
+      "release",
+    );
   });
-  expect(screen.getByTestId("env-right").textContent).toBe("release");
-  expect(requestedBranches.get("env-right")).toBe("release");
+
+  expect(
+    mergeBaseBranchRequests
+      .filter(({ environmentId }) => environmentId === "env-left")
+      .every(({ selectedBranch }) => selectedBranch === "main"),
+  ).toBe(true);
+  expect(
+    mergeBaseBranchRequests
+      .filter(({ environmentId }) => environmentId === "env-right")
+      .every(({ selectedBranch }) => selectedBranch === "release"),
+  ).toBe(true);
+});
+
+it("never queries a new environment with the previous environment branch", async () => {
+  const environmentA = makeEnvironment("env-a", "branch-a");
+  const environmentB = makeEnvironment("env-b", "branch-b");
+  const owner = renderHook(
+    ({ environment }) => useMergeBaseOwner(environment, "switching"),
+    { initialProps: { environment: environmentA }, wrapper: TestRoot },
+  );
+  await waitFor(() =>
+    expect(owner.result.current.effectiveMergeBaseBranch).toBe("branch-a"),
+  );
+
+  mergeBaseBranchRequests.length = 0;
+  owner.rerender({ environment: environmentB });
+
+  await waitFor(() =>
+    expect(owner.result.current.effectiveMergeBaseBranch).toBe("branch-b"),
+  );
+  const environmentBRequests = mergeBaseBranchRequests.filter(
+    ({ environmentId }) => environmentId === "env-b",
+  );
+  expect(environmentBRequests.length).toBeGreaterThan(0);
+  expect(
+    environmentBRequests.every(
+      ({ selectedBranch }) => selectedBranch === "branch-b",
+    ),
+  ).toBe(true);
+});
+
+it("does not revive an unconsumed file intent after navigating away and back", () => {
+  const environmentA = makeEnvironment("env-a", "branch-a");
+  const environmentB = makeEnvironment("env-b", "branch-b");
+  const owner = renderHook(
+    ({ environment, threadId }) => useMergeBaseOwner(environment, threadId),
+    {
+      initialProps: { environment: environmentA, threadId: "thread-a" },
+      wrapper: TestRoot,
+    },
+  );
+
+  act(() => owner.result.current.openDiffFile("left.ts"));
+  expect(owner.result.current.pendingGitDiffScrollPath).toBe("left.ts");
+
+  owner.rerender({ environment: environmentB, threadId: "thread-b" });
+  expect(owner.result.current.pendingGitDiffScrollPath).toBeNull();
+
+  owner.rerender({ environment: environmentA, threadId: "thread-a" });
+  expect(owner.result.current.pendingGitDiffScrollPath).toBeNull();
+});
+
+it("keeps delayed file and commit intents with the owner that requested them", async () => {
+  const left = renderHook(
+    () => useMergeBaseOwner(makeEnvironment("env-left", "main"), "left"),
+    { wrapper: TestRoot },
+  );
+  const right = renderHook(
+    () => useMergeBaseOwner(makeEnvironment("env-right", "release"), "right"),
+    { wrapper: TestRoot },
+  );
+
+  act(() => left.result.current.openDiffFile("left.ts"));
+  expect(left.result.current.pendingGitDiffScrollPath).toBe("left.ts");
+  expect(right.result.current.pendingGitDiffScrollPath).toBeNull();
+
+  act(() => right.result.current.clearPendingGitDiffIntent());
+  expect(left.result.current.pendingGitDiffScrollPath).toBe("left.ts");
+
+  act(() => left.result.current.clearPendingGitDiffIntent());
+  expect(left.result.current.pendingGitDiffScrollPath).toBeNull();
+
+  act(() => left.result.current.openCommitDiff("sha-left"));
+  await waitFor(() => {
+    expect(left.result.current.gitDiffSelectValue).toBe("sha-left");
+    expect(left.result.current.pendingGitDiffCommitSha).toBeNull();
+  });
+  expect(right.result.current.gitDiffSelectValue).toBe("all");
+  expect(right.result.current.pendingGitDiffCommitSha).toBeNull();
 });

@@ -952,6 +952,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   const environmentMergeBaseBranch =
     resolveEnvironmentMergeBaseBranch(environment);
   const {
+    clearPendingGitDiffIntent,
     closeThreadSecondaryPanel,
     isLoadingMergeBaseBranchOptions,
     mergeBaseBranchOptions,
@@ -960,6 +961,9 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     openDiffFile: openPersistedDiffFile,
     openThreadDiffPanel: openPersistedDiffPanel,
     openThreadSecondaryPanel: openPersistedSecondaryPanel,
+    pendingGitDiffCommitSha,
+    pendingGitDiffScrollPath,
+    requestedMergeBaseBranch,
     selectedMergeBaseBranch,
     selectedMergeBaseBranchRef,
     setMergeBaseBranchSearchQuery,
@@ -973,6 +977,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       : undefined,
     mergeBaseBranchOptionsEnabled: hasRequestedMergeBaseOptions,
     setThreadSecondaryPanel: setThreadSecondaryPanelForSurface,
+    threadId,
   });
   const {
     closePanel: closeSecondaryPanel,
@@ -1479,8 +1484,6 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     syncedOrderedSecondaryFileTabs,
     terminalsById,
   ]);
-  const requestedMergeBaseBranch =
-    selectedMergeBaseBranch ?? environmentMergeBaseBranch;
   const workStatusQuery = useEnvironmentWorkStatus(
     thread?.environmentId,
     requestedMergeBaseBranch,
@@ -2552,11 +2555,14 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
             isOpen: isSecondaryPanelOpen,
             onClose: closeSecondaryPanel,
             onCollapse: closeSecondaryPanel,
+            onClearPendingGitDiffIntent: clearPendingGitDiffIntent,
             onOpenFileInEditor: handleOpenFileInEditor,
             onFileTabReorder: reorderFileTab,
             onOpenNewTab: handleOpenNewTab,
             onOpenFilePreview: handleOpenFilePreview,
             onSelectionAddToChat: handleSelectionAddToChat,
+            pendingGitDiffCommitSha,
+            pendingGitDiffScrollPath,
             onPanelFocus: handleSecondaryPanelFocus,
             onPanelChange: handleSecondaryPanelChange,
             showGitDiffTab: canUseGitUi,

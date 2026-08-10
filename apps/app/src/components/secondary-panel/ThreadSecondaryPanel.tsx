@@ -269,7 +269,10 @@ export interface ThreadSecondaryPanelProps {
   onPanelChange: (panel: ThreadSecondaryPanelTab) => void;
   onCollapse: () => void;
   onClose: () => void;
+  onClearPendingGitDiffIntent?: () => void;
   onOpenNewTab: () => void;
+  pendingGitDiffCommitSha?: string | null;
+  pendingGitDiffScrollPath?: string | null;
   workspaceRootPath?: string | null;
   onOpenFileInEditor?: (path: string) => void;
   onOpenFilePreview?: (path: string) => void;
@@ -343,7 +346,10 @@ export function ThreadSecondaryPanel({
   onPanelChange,
   onCollapse,
   onClose,
+  onClearPendingGitDiffIntent,
   onOpenNewTab,
+  pendingGitDiffCommitSha,
+  pendingGitDiffScrollPath,
   workspaceRootPath,
   onOpenFileInEditor,
   onOpenFilePreview,
@@ -466,6 +472,9 @@ export function ThreadSecondaryPanel({
     environmentId,
     isDiffPanelActive,
     defaultMergeBaseBranch,
+    onClearPendingGitDiffIntent,
+    pendingGitDiffCommitSha,
+    pendingGitDiffScrollPath,
   });
   // Share the diff tab's table of contents with the body: React Query dedupes
   // this against GitDiffTabContent's own fetch (same key), so the toolbar reads
@@ -817,9 +826,11 @@ export function ThreadSecondaryPanel({
             target={gitDiffTarget}
             isDiffPanelActive={isDiffPanelActive}
             gitDiffViewOptions={gitDiffViewOptions}
+            onClearPendingGitDiffIntent={onClearPendingGitDiffIntent}
             onOpenFileInEditor={onOpenFileInEditor}
             onOpenFilePreview={onOpenFilePreview}
             onSelectionAddToChat={onSelectionAddToChat}
+            pendingGitDiffScrollPath={pendingGitDiffScrollPath}
             workspaceRootPath={workspaceRootPath}
           />
         ) : (
