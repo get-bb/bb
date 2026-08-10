@@ -20,6 +20,7 @@ import {
   createDesktopSessionCookie,
   listAccountServers,
   resolveAccountUserId,
+  revokeServerCredential,
   verifyDesktopSessionCookie,
   verifyServerCredential,
 } from "./servers.js";
@@ -219,6 +220,50 @@ describe("verifyServerCredential / resolveAccountUserId", () => {
 
     expect(await verifyServerCredential(plaintext, db)).toBe("acct-a");
     expect(await verifyServerCredential("wrong", db)).toBeNull();
+  });
+
+  it("revokes only the row authenticated by the presenting server", async () => {
+    seedUser("acct-a");
+    const plaintext = "bbcred_revoke_this_server";
+    seedServer({
+      id: "s1",
+      userId: "acct-a",
+      name: "default",
+      subdomain: "sawyer",
+      credentialHash: await sha256Hex(plaintext),
+    });
+    seedServer({
+      id: "s2",
+      userId: "acct-a",
+      name: "desktop",
+      subdomain: "sawyer-desktop",
+      credentialHash: await sha256Hex("bbcred_keep_this_server"),
+    });
+
+    // Prime the warm-isolate credential cache before revoking.
+    expect(await verifyServerCredential(plaintext, db)).toBe("acct-a");
+    await expect(revokeServerCredential(plaintext, db)).resolves.toEqual({
+      subdomain: "sawyer",
+    });
+
+    const rows = await db
+      .select({
+        id: server.id,
+        credentialHash: server.credentialHash,
+        revokedAt: server.revokedAt,
+      })
+      .from(server)
+      .all();
+    expect(rows.find((row) => row.id === "s1")).toMatchObject({
+      credentialHash: null,
+      revokedAt: expect.any(Date),
+    });
+    expect(rows.find((row) => row.id === "s2")).toMatchObject({
+      credentialHash: await sha256Hex("bbcred_keep_this_server"),
+      revokedAt: null,
+    });
+    await expect(verifyServerCredential(plaintext, db)).resolves.toBeNull();
+    await expect(revokeServerCredential(plaintext, db)).resolves.toBeNull();
   });
 
   it("authenticates a machine credential and isolates cross-account rows", async () => {

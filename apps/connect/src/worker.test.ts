@@ -115,6 +115,7 @@ vi.mock("./session.js", () => ({
 
 vi.mock("./servers.js", () => ({
   handleCreateDesktopSession: vi.fn(),
+  handleDisconnectServer: vi.fn(),
   handleListAccountServers: vi.fn(),
   verifyDesktopSessionCookie: vi.fn(),
 }));
@@ -154,6 +155,7 @@ import {
 } from "./session.js";
 import {
   handleCreateDesktopSession,
+  handleDisconnectServer,
   handleListAccountServers,
   verifyDesktopSessionCookie,
 } from "./servers.js";
@@ -171,6 +173,7 @@ const mockVerifySession = vi.mocked(verifySessionCookie);
 const mockServeWithCache = vi.mocked(serveWithCache);
 const mockHandleListAccountServers = vi.mocked(handleListAccountServers);
 const mockHandleCreateDesktopSession = vi.mocked(handleCreateDesktopSession);
+const mockHandleDisconnectServer = vi.mocked(handleDisconnectServer);
 const mockVerifyDesktopSession = vi.mocked(verifyDesktopSessionCookie);
 const mockHandleAssignMachineLabel = vi.mocked(handleAssignMachineLabel);
 
@@ -323,6 +326,27 @@ describe("POST /api/connect/desktop-session", () => {
     );
     expect(response.status).toBe(200);
     expect(mockHandleCreateDesktopSession).toHaveBeenCalledTimes(1);
+    expect(captured).toHaveLength(0);
+  });
+});
+
+describe("POST /api/connect/disconnect", () => {
+  it("intercepts self-revocation before tunnel routing", async () => {
+    mockHandleDisconnectServer.mockResolvedValue(Response.json({ ok: true }));
+    const { env, ctx, captured } = makeEnv(() => new Response("origin"));
+    const request = visitorRequest(
+      "sawyer.getbb.app",
+      "/api/connect/disconnect",
+      {
+        method: "POST",
+        headers: { "x-bb-connect-machine": "paired" },
+      },
+    );
+    const response = await worker.fetch(request, env as never, ctx);
+
+    expect(response.status).toBe(200);
+    expect(mockHandleDisconnectServer).toHaveBeenCalledWith(request, env);
+    expect(mockResolveLabel).not.toHaveBeenCalled();
     expect(captured).toHaveLength(0);
   });
 });

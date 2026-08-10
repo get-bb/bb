@@ -43,6 +43,24 @@ import {
 import type { ShareHost } from "./hosts.js";
 import type { ConnectStateName, ConnectStatus } from "./types.js";
 
+const DISCONNECT_TIMEOUT_MS = 5_000;
+
+async function notifyCloudOfDisconnect(
+  credential: ConnectCredential,
+): Promise<void> {
+  const response = await fetch(
+    new URL("/api/connect/disconnect", credential.serverUrl),
+    {
+      method: "POST",
+      headers: { "x-bb-connect-machine": credential.credential },
+      signal: AbortSignal.timeout(DISCONNECT_TIMEOUT_MS),
+    },
+  );
+  if (!response.ok && response.status !== 401 && response.status !== 403) {
+    throw new Error(`Cloud returned HTTP ${response.status}`);
+  }
+}
+
 export interface ConnectTunnelOptions {
   store: CredentialStore;
   shares: ShareRegistry;
@@ -152,13 +170,24 @@ export class ConnectTunnel {
   }
 
   async disconnect(): Promise<ConnectStatus> {
-    this.shareActivationEpoch += 1;
+    const credential = this.credential;
+    this.teardown();
     await this.options.store.clear();
     this.options.shares.clearMachineDeclarations();
     this.credential = null;
-    this.teardown();
     this.lastError = null;
     this.publish();
+    if (credential !== null) {
+      try {
+        await notifyCloudOfDisconnect(credential);
+      } catch (error) {
+        this.options.log.warn(
+          `Cloud disconnect could not be confirmed: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    }
     return this.status();
   }
 

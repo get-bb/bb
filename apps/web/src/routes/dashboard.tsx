@@ -27,6 +27,11 @@ import {
 import type { IssuedCode, MachineSummary, ServerSummary } from "@/server/api";
 import bbIcon from "../assets/bb-icon.png";
 import { DASHBOARD_PATH, connectReturnTo } from "@/lib/connect-return-to";
+import {
+  dashboardRefreshIntervalMs,
+  visibleServerPanel,
+  type ServerPanel,
+} from "@/lib/dashboard-live-state";
 
 interface DashboardSearch {
   returnTo?: string;
@@ -903,10 +908,11 @@ function ServerRow({
 }) {
   // A connected row toggles the re-pair panel; a never-paired row toggles its
   // setup panel. `panel` tracks which (if any) is showing under this row.
-  const [panel, setPanel] = useState<"none" | "setup" | "repair">(
+  const [panel, setPanel] = useState<ServerPanel>(
     autoPair && !server.connected ? "setup" : "none",
   );
   const [confirm, setConfirm] = useState<"disconnect" | "remove" | null>(null);
+  const visiblePanel = visibleServerPanel(server.connected, panel);
 
   const url = server.serverUrl;
   const copyUrl = () => void navigator.clipboard.writeText(url).catch(() => {});
@@ -963,7 +969,7 @@ function ServerRow({
             <>
               Not set up ·{" "}
               <span className="text-foreground underline underline-offset-2">
-                {panel === "setup" ? "hide code" : "get connect code"}
+                {visiblePanel === "setup" ? "hide code" : "get connect code"}
               </span>
             </>
           )}
@@ -1014,9 +1020,9 @@ function ServerRow({
         </div>
       )}
 
-      {panel !== "none" && (
+      {visiblePanel !== "none" && (
         <div className="mb-2 ml-9 mr-2 rounded-[10px] border border-border bg-surface-recessed p-3.5">
-          {panel === "setup" ? (
+          {visiblePanel === "setup" ? (
             <SetupCodePanel
               serverId={server.id}
               compact
@@ -1168,17 +1174,15 @@ function AccountDashboard({ state }: { state: ServerState }) {
   const [pendingId, setPendingId] = useState<string | null>(null);
 
   const single = state.servers.length === 1;
-  // Poll whenever any bb is still unpaired (first run, or a just-claimed row
-  // waiting for its machine) so the row flips to Online without a manual reload.
-  const waiting =
-    state.servers.some((s: ServerSummary) => !s.connected) ||
-    (connectOpen && pendingId != null);
+  const refreshIntervalMs = dashboardRefreshIntervalMs(
+    state.servers,
+    pendingId,
+  );
 
   useEffect(() => {
-    if (!waiting) return;
-    const id = setInterval(() => void router.invalidate(), 3000);
+    const id = setInterval(() => void router.invalidate(), refreshIntervalMs);
     return () => clearInterval(id);
-  }, [waiting, router]);
+  }, [refreshIntervalMs, router]);
 
   // Self-close the connect dialog once the new server pairs.
   useEffect(() => {

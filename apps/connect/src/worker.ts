@@ -10,6 +10,7 @@ import {
 } from "./session.js";
 import {
   handleCreateDesktopSession,
+  handleDisconnectServer,
   handleListAccountServers,
   verifyDesktopSessionCookie,
 } from "./servers.js";
@@ -279,6 +280,9 @@ export default {
     // machine/server credential or owner session — see servers.ts.
     if (url.pathname === "/api/connect/servers") {
       return handleListAccountServers(request, env);
+    }
+    if (url.pathname === "/api/connect/disconnect") {
+      return handleDisconnectServer(request, env);
     }
     if (url.pathname === "/api/connect/desktop-session") {
       return handleCreateDesktopSession(request, env);

@@ -1555,19 +1555,62 @@ describe("connect plugin", () => {
     expect(exposed.url).toBe("http://sawyer-desktop--8000.localhost:59332");
   });
 
-  it("disconnect clears the stored credential", async () => {
+  it("disconnect revokes the Cloud credential and clears it locally", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).endsWith("/api/connect/redeem")) {
+        return Response.json({
+          credential: "bbcred_x",
+          handle: "sawyer",
+        });
+      }
+      return Response.json({ ok: true });
+    });
+    vi.stubGlobal("fetch", fetchMock);
     const { bb, harness } = await loadPlugin();
-    // Seed a stored credential (as if paired before this load).
-    await bb.storage.kv.set(CREDENTIAL_KV_KEY, {
-      serverUrl: "http://127.0.0.1:59322",
-      handle: "sawyer",
-      credential: "bbcred_x",
+    await harness.callRpc("pair", {
+      code: "ABCD",
+      server: "http://127.0.0.1:59322",
+      baseUrl: "https://getbb.app",
     });
 
     const after = (await harness.callRpc("disconnect")) as ConnectStatus;
     expect(after.paired).toBe(false);
     expect(after.state).toBe("disconnected");
     expect(await bb.storage.kv.get(CREDENTIAL_KV_KEY)).toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledWith(
+      new URL("http://127.0.0.1:59322/api/connect/disconnect"),
+      expect.objectContaining({
+        method: "POST",
+        headers: { "x-bb-connect-machine": "bbcred_x" },
+      }),
+    );
+  });
+
+  it("still disconnects locally when Cloud cannot be reached", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).endsWith("/api/connect/redeem")) {
+        return Response.json({
+          credential: "bbcred_offline",
+          handle: "sawyer",
+        });
+      }
+      throw new Error("network unavailable");
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { bb, harness } = await loadPlugin();
+    await harness.callRpc("pair", {
+      code: "ABCD",
+      server: "http://127.0.0.1:59323",
+      baseUrl: "https://getbb.app",
+    });
+
+    const after = (await harness.callRpc("disconnect")) as ConnectStatus;
+    expect(after.paired).toBe(false);
+    expect(await bb.storage.kv.get(CREDENTIAL_KV_KEY)).toBeUndefined();
+    expect(harness.logEntries).toContainEqual({
+      level: "warn",
+      message: "Cloud disconnect could not be confirmed: network unavailable",
+    });
   });
 
   it("maps a redeem failure to a typed code (no wire text) and does not persist", async () => {
