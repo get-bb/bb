@@ -42,6 +42,7 @@ import {
   flattenPromptInputGroups,
   noPreparedProviderCommandDispatch,
 } from "../provider-adapter.js";
+import { classifySessionExecutionSettingsChange } from "../execution-options.js";
 import { ProviderResponseEncodeError } from "../runtime-json-rpc.js";
 import type {
   ProviderInboundRequest,
@@ -1426,7 +1427,7 @@ export function createAcpProviderAdapter(
     id: providerInfo.id,
     displayName: providerInfo.displayName,
     capabilities: providerInfo.capabilities,
-    appliesPermissionEscalationPerTurn: false,
+    classifyExecutionSettingsChange: classifySessionExecutionSettingsChange,
     process: {
       command: opts.bridgeNodeExecutablePath ?? "node",
       args: resolveBridgeProcessArgs({

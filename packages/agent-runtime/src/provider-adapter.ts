@@ -10,6 +10,7 @@ import type {
   ProviderCapabilities,
   ReasoningLevel,
   RuntimePermissionPolicy,
+  RuntimeThreadExecutionOptions,
   ServiceTier,
   ThreadEvent,
 } from "@bb/domain";
@@ -245,6 +246,13 @@ export function noPreparedProviderCommandDispatch(
   return null;
 }
 
+export type ProviderExecutionSettingsChange = "unchanged" | "live" | "session";
+
+export interface ClassifyProviderExecutionSettingsChangeArgs {
+  current: RuntimeThreadExecutionOptions;
+  next: RuntimeThreadExecutionOptions;
+}
+
 // ---------------------------------------------------------------------------
 // ProviderAdapter — internal extension contract
 // ---------------------------------------------------------------------------
@@ -254,11 +262,13 @@ export interface ProviderAdapter {
   displayName: string;
   capabilities: ProviderCapabilities;
   /**
-   * The adapter applies `permissionEscalation` from each turn command, so the
-   * runtime must not replace the session (killing its background tasks) over
-   * an escalation-only change.
+   * Classifies execution-setting drift for this provider. `live` settings are
+   * carried by the next turn command; `session` settings require rebuilding
+   * the provider session.
    */
-  appliesPermissionEscalationPerTurn: boolean;
+  classifyExecutionSettingsChange(
+    args: ClassifyProviderExecutionSettingsChangeArgs,
+  ): ProviderExecutionSettingsChange;
   process: { command: string; args: string[]; env?: Record<string, string> };
 
   buildCommandPlan(command: AdapterCommand): ProviderCommandPlan;

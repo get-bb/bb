@@ -9,7 +9,11 @@ import type {
 } from "@bb/domain";
 import type { ClaudePermissionMode } from "../interactive-contract.js";
 import { buildReadonlyBashUpdatedInput } from "./readonly-bash-policy.js";
-import type { SdkSessionOptions } from "./sdk-session.js";
+import type {
+  ClaudeMutableFlagSettings,
+  ClaudeSdkReasoningEffort,
+  SdkSessionOptions,
+} from "./sdk-session.js";
 
 export interface BuildSessionOptionsArgs {
   additionalWorkspaceWriteRoots?: readonly string[];
@@ -74,9 +78,9 @@ const CLAUDE_CODE_EXECUTABLE_ENV = "BB_CLAUDE_CODE_EXECUTABLE";
  * dynamic-workflow orchestration). The SDK Settings flag tier is otherwise
  * unused by BB, so it is owned entirely here.
  */
-function toSdkEffort(
+export function toSdkEffort(
   reasoningLevel: ReasoningLevel,
-): Exclude<Options["effort"], undefined> {
+): ClaudeSdkReasoningEffort {
   if (reasoningLevel === "ultracode") return "xhigh";
   // "none" (thinking-off) is a Cursor-only level; Claude Code models never
   // expose it, so this is a defensive floor that reconciliation never reaches.
@@ -89,8 +93,23 @@ function toSdkEffort(
 function buildFlagSettings(params: BuildSessionOptionsArgs): Settings {
   return {
     autoMemoryEnabled: params.memoryEnabled ?? true,
-    ...(params.workflowsEnabled ? { enableWorkflows: true } : {}),
-    ...(params.reasoningLevel === "ultracode" ? { ultracode: true } : {}),
+    enableWorkflows: params.workflowsEnabled,
+    ultracode: params.reasoningLevel === "ultracode",
+  };
+}
+
+export function buildMutableFlagSettings(args: {
+  memoryEnabled: boolean;
+  reasoningLevel: ReasoningLevel | undefined;
+  workflowsEnabled: boolean;
+}): ClaudeMutableFlagSettings {
+  return {
+    autoMemoryEnabled: args.memoryEnabled,
+    enableWorkflows: args.workflowsEnabled,
+    ...(args.reasoningLevel !== undefined
+      ? { effortLevel: toSdkEffort(args.reasoningLevel) }
+      : {}),
+    ultracode: args.reasoningLevel === "ultracode",
   };
 }
 

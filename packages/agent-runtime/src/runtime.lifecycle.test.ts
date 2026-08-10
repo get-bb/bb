@@ -9,6 +9,7 @@ import type {
 } from "./provider-adapter.js";
 import { promptTextInput } from "./test/prompt-input.js";
 import { createAgentRuntimeWithAdapters } from "./runtime.js";
+import { classifyClaudeExecutionSettingsChange } from "./execution-options.js";
 import { fakeProviderScriptPath } from "./test/index.js";
 import {
   createFakeAdapter,
@@ -499,7 +500,7 @@ rl.on("line", (line) => {
       await runtime.shutdown();
     });
 
-    it("skips session reconfigure for an escalation-only change when the adapter applies escalation per turn", async () => {
+    it("skips session reconfigure when the adapter classifies settings as live", async () => {
       const recordedCommands: AdapterCommand[] = [];
       const runtime = createAgentRuntimeWithAdapters({
         workspacePath: tmpDir,
@@ -510,7 +511,8 @@ rl.on("line", (line) => {
         }),
         adapterFactory: () => ({
           ...createRecordingAdapter({ recordedCommands, scriptPath }),
-          appliesPermissionEscalationPerTurn: true,
+          classifyExecutionSettingsChange:
+            classifyClaudeExecutionSettingsChange,
         }),
       });
 
@@ -522,10 +524,12 @@ rl.on("line", (line) => {
         instructions: "Initial instructions",
         options: {
           ...fullRuntimeOptions,
+          memoryEnabled: true,
           permissionMode: "auto",
           permissionScope: "workspace",
           approvalReviewer: "automatic",
           permissionEscalation: "ask",
+          providerSubagentsEnabled: true,
         },
       });
 
@@ -536,16 +540,33 @@ rl.on("line", (line) => {
         instructions: "Initial instructions",
         options: {
           ...fullRuntimeOptions,
+          memoryEnabled: false,
+          model: "test-model-2",
           permissionMode: "auto",
           permissionScope: "workspace",
           approvalReviewer: "automatic",
           permissionEscalation: "deny",
+          providerSubagentsEnabled: false,
+          reasoningLevel: "high",
+          workflowsEnabled: true,
         },
       });
 
       expect(
         recordedCommands.some((command) => command.type === "thread/resume"),
       ).toBe(false);
+      expect(
+        findLastRecordedCommand(recordedCommands, "turn/start"),
+      ).toMatchObject({
+        options: {
+          memoryEnabled: false,
+          model: "test-model-2",
+          permissionEscalation: "deny",
+          providerSubagentsEnabled: false,
+          reasoningLevel: "high",
+          workflowsEnabled: true,
+        },
+      });
 
       await runtime.shutdown();
     });

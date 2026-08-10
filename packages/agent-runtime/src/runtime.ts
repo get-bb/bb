@@ -19,7 +19,6 @@ import type {
 } from "./provider-adapter.js";
 import {
   assertProviderSupportsExecutionOptions,
-  sameExecutionSettings,
   toProviderExecutionContext,
 } from "./execution-options.js";
 import {
@@ -823,16 +822,13 @@ function createAgentRuntimeInternal(
       processKey: currentConfig.processKey,
       providerId: currentConfig.providerId,
     });
-    if (
-      sameExecutionSettings({
-        left: currentConfig.options,
-        right: nextOptions,
-        ignorePermissionEscalation:
-          proc.adapter.appliesPermissionEscalationPerTurn,
-      })
-    ) {
-      // Escalation rides on each turn command; record it without replacing
-      // the session (which would kill its background tasks).
+    const settingsChange = proc.adapter.classifyExecutionSettingsChange({
+      current: currentConfig.options,
+      next: nextOptions,
+    });
+    if (settingsChange !== "session") {
+      // Live settings ride on the next turn command; record them without
+      // replacing the session (which would kill its background tasks).
       setThreadRuntimeConfig(args.threadId, {
         ...currentConfig,
         options: nextOptions,

@@ -92,11 +92,14 @@ interface CanUseToolPolicyCase {
 }
 
 interface ControlledClaudeQuery {
+  applyFlagSettings: ReturnType<typeof vi.fn>;
   close: ReturnType<typeof vi.fn>;
   emit(message: SDKMessage): void;
   fail(error: Error): void;
   finish(): void;
   initializationResult: ReturnType<typeof vi.fn>;
+  setModel: ReturnType<typeof vi.fn>;
+  setPermissionMode: ReturnType<typeof vi.fn>;
   [Symbol.asyncIterator](): AsyncIterator<SDKMessage>;
 }
 
@@ -336,6 +339,7 @@ function createControlledClaudeQuery(): ControlledClaudeQuery {
     },
   };
   return {
+    applyFlagSettings: vi.fn().mockResolvedValue(undefined),
     close: vi.fn(() => {
       pushResult({ value: undefined, done: true });
     }),
@@ -349,6 +353,8 @@ function createControlledClaudeQuery(): ControlledClaudeQuery {
       pushResult({ value: undefined, done: true });
     },
     initializationResult: vi.fn(),
+    setModel: vi.fn().mockResolvedValue(undefined),
+    setPermissionMode: vi.fn().mockResolvedValue(undefined),
     [Symbol.asyncIterator]() {
       return iterator;
     },
@@ -644,6 +650,7 @@ describe("bridge", () => {
     expect(options.settings).toEqual({
       autoMemoryEnabled: true,
       enableWorkflows: true,
+      ultracode: false,
     });
   });
 
@@ -662,7 +669,11 @@ describe("bridge", () => {
       {},
     );
 
-    expect(options.settings).toEqual({ autoMemoryEnabled: true });
+    expect(options.settings).toEqual({
+      autoMemoryEnabled: true,
+      enableWorkflows: false,
+      ultracode: false,
+    });
   });
 
   it("disables Claude auto-memory reads and writes", () => {
@@ -679,7 +690,11 @@ describe("bridge", () => {
       {},
     );
 
-    expect(options.settings).toEqual({ autoMemoryEnabled: false });
+    expect(options.settings).toEqual({
+      autoMemoryEnabled: false,
+      enableWorkflows: false,
+      ultracode: false,
+    });
   });
 
   it("leaves standard sessions on the default Claude tool preset", () => {
@@ -2493,7 +2508,7 @@ describe("bridge", () => {
     }
   });
 
-  it("rebuilds a live Claude session when enforcement options change", async () => {
+  it("rebuilds for enforcement changes but applies model changes live", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
     const queries: ControlledClaudeQuery[] = [];
     queryMock.mockImplementation(() => {
@@ -2592,17 +2607,13 @@ describe("bridge", () => {
       });
       await bridge.waitForResponse(4);
 
-      expect(queries).toHaveLength(4);
-      expect(queries[2]?.close).toHaveBeenCalledTimes(1);
-      expect(getLatestQueryOptions()).toMatchObject({
-        model: "claude-opus-4-1",
-        permissionMode: "auto",
-        resume: providerThreadId,
-      });
+      expect(queries).toHaveLength(3);
+      expect(queries[2]?.close).not.toHaveBeenCalled();
+      expect(queries[2]?.setModel).toHaveBeenCalledWith("claude-opus-4-1");
 
       bridge.sendRequest(5, "thread/stop", { threadId });
       await bridge.flushWork();
-      queries[3]?.finish();
+      queries[2]?.finish();
       await bridge.waitForResponse(5);
     } finally {
       queries.forEach((query) => query.finish());
@@ -2643,6 +2654,182 @@ describe("bridge", () => {
       await bridge.flushWork();
       queries[0]?.finish();
       await bridge.waitForResponse(3);
+    } finally {
+      queries.forEach((query) => query.finish());
+      bridge.restore();
+    }
+  });
+
+  it("applies turn model, reasoning, memory, workflow, and subagent settings live", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      queries.push(query);
+      return query;
+    });
+
+    try {
+      const threadId = "thread-live-settings";
+      bridge.sendRequest(1, "thread/start", {
+        workflowsEnabled: false,
+        memoryEnabled: true,
+        providerSubagentsEnabled: true,
+        reasoningLevel: "low",
+        model: "claude-haiku-4-5",
+        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
+        baseInstructions: "test",
+        cwd: "/tmp/worktree",
+        instructionMode: "append",
+        permissionEscalation: "ask",
+        permissionMode: "default",
+        approvedPlanPermissionMode: "default",
+        permissionScope: "workspace",
+        threadId,
+      });
+      await bridge.waitForResponse(1);
+
+      const query = queries[0];
+      const call = getLatestQueryCall();
+      const hooks = call.options.hooks;
+      if (!query || !hooks) {
+        throw new Error("Expected live Claude query and hooks");
+      }
+
+      bridge.sendRequest(2, "turn/start", {
+        workflowsEnabled: true,
+        memoryEnabled: false,
+        providerSubagentsEnabled: false,
+        reasoningLevel: "max",
+        model: "claude-opus-5[1m]",
+        permissionEscalation: "ask",
+        input: [{ type: "text", text: "Use the new live settings" }],
+        providerThreadId: null,
+        threadId,
+      });
+      await bridge.waitForResponse(2);
+      await readNextPrompt(call);
+
+      expect(queries).toHaveLength(1);
+      expect(query.close).not.toHaveBeenCalled();
+      expect(query.setModel).toHaveBeenCalledWith("claude-opus-5[1m]");
+      expect(query.applyFlagSettings).toHaveBeenLastCalledWith({
+        autoMemoryEnabled: false,
+        enableWorkflows: true,
+        effortLevel: "max",
+        ultracode: false,
+      });
+
+      for (const toolName of ["Agent", "Task"]) {
+        const toolUseId = `tool-disabled-${toolName.toLowerCase()}`;
+        const disabledSubagentOutputs = await invokeBridgeHooks(
+          hooks.PreToolUse,
+          {
+            hook_event_name: "PreToolUse",
+            tool_name: toolName,
+            tool_input: {},
+            tool_use_id: toolUseId,
+            session_id: "session-1",
+            transcript_path: "/tmp/transcript.jsonl",
+            cwd: "/tmp/worktree",
+          },
+          toolUseId,
+        );
+        expect(disabledSubagentOutputs).toContainEqual(
+          expect.objectContaining({
+            hookSpecificOutput: expect.objectContaining({
+              permissionDecision: "deny",
+            }),
+          }),
+        );
+      }
+      const enabledWorkflowOutputs = await invokeBridgeHooks(
+        hooks.PreToolUse,
+        {
+          hook_event_name: "PreToolUse",
+          tool_name: "Workflow",
+          tool_input: {},
+          tool_use_id: "tool-enabled-workflow",
+          session_id: "session-1",
+          transcript_path: "/tmp/transcript.jsonl",
+          cwd: "/tmp/worktree",
+        },
+        "tool-enabled-workflow",
+      );
+      expect(enabledWorkflowOutputs).not.toContainEqual(
+        expect.objectContaining({
+          hookSpecificOutput: expect.objectContaining({
+            permissionDecision: "deny",
+          }),
+        }),
+      );
+
+      bridge.sendRequest(3, "turn/start", {
+        workflowsEnabled: false,
+        memoryEnabled: true,
+        providerSubagentsEnabled: true,
+        reasoningLevel: "xhigh",
+        model: "claude-opus-5[1m]",
+        permissionEscalation: "ask",
+        input: [{ type: "text", text: "Flip the live feature settings" }],
+        providerThreadId: null,
+        threadId,
+      });
+      await bridge.waitForResponse(3);
+      await readNextPrompt(call);
+
+      expect(queries).toHaveLength(1);
+      expect(query.applyFlagSettings).toHaveBeenLastCalledWith({
+        autoMemoryEnabled: true,
+        enableWorkflows: false,
+        effortLevel: "xhigh",
+        ultracode: false,
+      });
+      const enabledSubagentOutputs = await invokeBridgeHooks(
+        hooks.PreToolUse,
+        {
+          hook_event_name: "PreToolUse",
+          tool_name: "Agent",
+          tool_input: {},
+          tool_use_id: "tool-enabled-agent",
+          session_id: "session-1",
+          transcript_path: "/tmp/transcript.jsonl",
+          cwd: "/tmp/worktree",
+        },
+        "tool-enabled-agent",
+      );
+      expect(enabledSubagentOutputs).not.toContainEqual(
+        expect.objectContaining({
+          hookSpecificOutput: expect.objectContaining({
+            permissionDecision: "deny",
+          }),
+        }),
+      );
+      const disabledWorkflowOutputs = await invokeBridgeHooks(
+        hooks.PreToolUse,
+        {
+          hook_event_name: "PreToolUse",
+          tool_name: "Workflow",
+          tool_input: {},
+          tool_use_id: "tool-disabled-workflow",
+          session_id: "session-1",
+          transcript_path: "/tmp/transcript.jsonl",
+          cwd: "/tmp/worktree",
+        },
+        "tool-disabled-workflow",
+      );
+      expect(disabledWorkflowOutputs).toContainEqual(
+        expect.objectContaining({
+          hookSpecificOutput: expect.objectContaining({
+            permissionDecision: "deny",
+          }),
+        }),
+      );
+
+      bridge.sendRequest(4, "thread/stop", { threadId });
+      await bridge.flushWork();
+      query.finish();
+      await bridge.waitForResponse(4);
     } finally {
       queries.forEach((query) => query.finish());
       bridge.restore();
@@ -3514,8 +3701,7 @@ describe("bridge", () => {
       try {
         bridge.sendRequest(1, "thread/start", {
           workflowsEnabled: false,
-          claudeCodeMockCliTraffic:
-            DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
+          claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
           baseInstructions: "test",
           cwd: "/tmp/worktree",
           instructionMode: "append",

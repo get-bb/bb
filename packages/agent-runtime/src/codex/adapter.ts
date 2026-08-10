@@ -56,6 +56,7 @@ import type {
   ProviderExecutionContext,
 } from "../provider-adapter.js";
 import { flattenPromptInputGroups } from "../provider-adapter.js";
+import { classifySessionExecutionSettingsChange } from "../execution-options.js";
 import type {
   JsonRpcMessage,
   ProviderInboundRequest,
@@ -1792,7 +1793,7 @@ export function createCodexProviderAdapter(
     id: providerInfo.id,
     displayName: providerInfo.displayName,
     capabilities,
-    appliesPermissionEscalationPerTurn: false,
+    classifyExecutionSettingsChange: classifySessionExecutionSettingsChange,
     // Codex app-server connections are owned by the runtime process manager.
     // BB runs live Codex threads on thread-scoped app-server processes, while
     // provider-only probes can still use a provider-scoped maintenance process.

@@ -30,6 +30,7 @@ import type {
 } from "../runtime-json-rpc.js";
 import { ProviderResponseEncodeError } from "../runtime-json-rpc.js";
 import { parseAvailableModelList } from "../shared/available-models.js";
+import { classifySessionExecutionSettingsChange } from "../execution-options.js";
 import { decodeNormalizedProviderToolCallRequest } from "../shared/provider-tool-call-contract.js";
 
 type FakeUserQuestionCapability = ProviderCapabilities["supportsUserQuestion"];
@@ -471,7 +472,7 @@ export function createFakeAdapter(
       supportsFork: true,
       supportedPermissionModes: ["accept-edits", "auto", "full"],
     },
-    appliesPermissionEscalationPerTurn: false,
+    classifyExecutionSettingsChange: classifySessionExecutionSettingsChange,
     decodeToolCallRequest,
     decodeInteractiveRequest: supportsUserQuestion
       ? decodeInteractiveRequest

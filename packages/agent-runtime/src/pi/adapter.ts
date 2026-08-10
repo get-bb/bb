@@ -28,6 +28,7 @@ import {
 } from "@bb/domain";
 import { decodeNormalizedProviderToolCallRequest } from "../shared/provider-tool-call-contract.js";
 import { resolveBridgeProcessArgs } from "../shared/bridge-path.js";
+import { classifySessionExecutionSettingsChange } from "../execution-options.js";
 import { bashArgsSchema, textBlockSchema } from "../shared/tool-arg-schemas.js";
 import {
   buildEditDiff,
@@ -1298,7 +1299,7 @@ export function createPiProviderAdapter(
     id: providerInfo.id,
     displayName: providerInfo.displayName,
     capabilities,
-    appliesPermissionEscalationPerTurn: false,
+    classifyExecutionSettingsChange: classifySessionExecutionSettingsChange,
     process: {
       command: opts?.bridgeNodeExecutablePath ?? "node",
       args: resolveBridgeProcessArgs({

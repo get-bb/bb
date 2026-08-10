@@ -7,6 +7,7 @@ import type {
   ProviderCommandPlan,
 } from "../provider-adapter.js";
 import { noPreparedProviderCommandDispatch } from "../provider-adapter.js";
+import { classifySessionExecutionSettingsChange } from "../execution-options.js";
 import { ProviderRequestDecodeError } from "../runtime-json-rpc.js";
 import { parseAvailableModelList } from "../shared/available-models.js";
 import type { AgentRuntimeExecutionOptions } from "../types.js";
@@ -213,7 +214,7 @@ export function createWarningEventAdapter(scriptPath: string): ProviderAdapter {
       supportsFork: false,
       supportedPermissionModes: ["accept-edits", "auto", "full"],
     },
-    appliesPermissionEscalationPerTurn: false,
+    classifyExecutionSettingsChange: classifySessionExecutionSettingsChange,
     process: {
       command: "node",
       args: buildNodeScriptArgs(scriptPath),
@@ -326,7 +327,7 @@ export function createStartedEventAdapter(scriptPath: string): ProviderAdapter {
       supportsFork: false,
       supportedPermissionModes: ["accept-edits", "auto", "full"],
     },
-    appliesPermissionEscalationPerTurn: false,
+    classifyExecutionSettingsChange: classifySessionExecutionSettingsChange,
     process: {
       command: "node",
       args: buildNodeScriptArgs(scriptPath),

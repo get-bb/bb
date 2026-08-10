@@ -6,8 +6,11 @@ import type {
 } from "@anthropic-ai/claude-agent-sdk";
 
 const mockQueryInstance = {
+  applyFlagSettings: vi.fn(),
   close: vi.fn(),
   interrupt: vi.fn(),
+  setModel: vi.fn(),
+  setPermissionMode: vi.fn(),
   [Symbol.asyncIterator]: vi.fn(),
 };
 const { queryMock } = vi.hoisted(() => ({
@@ -34,7 +37,9 @@ interface RejectSdkStreamArgs {
   error: Error;
 }
 
-function isClaudeQueryPromptCall(value: unknown): value is ClaudeQueryPromptCall {
+function isClaudeQueryPromptCall(
+  value: unknown,
+): value is ClaudeQueryPromptCall {
   return (
     value !== null &&
     typeof value === "object" &&
@@ -81,6 +86,9 @@ describe("SdkSession", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     queryMock.mockImplementation(() => mockQueryInstance);
+    mockQueryInstance.applyFlagSettings.mockResolvedValue(undefined);
+    mockQueryInstance.setModel.mockResolvedValue(undefined);
+    mockQueryInstance.setPermissionMode.mockResolvedValue(undefined);
     // Make the query async iterable return immediately
     mockQueryInstance[Symbol.asyncIterator].mockReturnValue({
       next: vi.fn().mockResolvedValue({ value: undefined, done: true }),
@@ -98,6 +106,32 @@ describe("SdkSession", () => {
     const session = new SdkSession(defaultOptions, onMessage, onDone);
     expect(session.getSessionId()).toBeUndefined();
     expect(session.getIsProcessing()).toBe(false);
+  });
+
+  it("applies model and mutable flag settings to the live query", async () => {
+    keepSdkStreamOpen();
+    const session = new SdkSession(defaultOptions, vi.fn(), vi.fn());
+    session.start();
+
+    await session.setModel("claude-sonnet-5");
+    await session.applyMutableSettings({
+      effort: "max",
+      settings: {
+        autoMemoryEnabled: false,
+        enableWorkflows: true,
+        effortLevel: "max",
+        ultracode: false,
+      },
+    });
+
+    expect(mockQueryInstance.setModel).toHaveBeenCalledWith("claude-sonnet-5");
+    expect(mockQueryInstance.applyFlagSettings).toHaveBeenCalledWith({
+      autoMemoryEnabled: false,
+      enableWorkflows: true,
+      effortLevel: "max",
+      ultracode: false,
+    });
+    session.stop();
   });
 
   it("resolves pushed input after the SDK prompt iterator yields it", async () => {

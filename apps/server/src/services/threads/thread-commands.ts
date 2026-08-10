@@ -220,18 +220,6 @@ function resolveProviderSubagentsEnabled(
   return true;
 }
 
-function resolveProviderDisallowedTools(
-  deps: Pick<AppDeps, "db">,
-  providerId: string,
-): string[] | undefined {
-  if (providerId !== "claude-code") return undefined;
-  const settings = getAppSettings(deps.db);
-  const disallowedTools: string[] = [];
-  if (settings.claudeCodeSubagentsDisabled) disallowedTools.push("Task");
-  if (settings.claudeCodeWorkflowsDisabled) disallowedTools.push("Workflow");
-  return disallowedTools.length > 0 ? disallowedTools : undefined;
-}
-
 function resolveProviderWorkflowsEnabled(
   deps: Pick<AppDeps, "db">,
   providerId: string,
@@ -359,7 +347,6 @@ export async function buildThreadStartCommand(
     }),
     instructions: runtimeContext.instructions,
     dynamicTools: runtimeContext.dynamicTools,
-    disallowedTools: resolveProviderDisallowedTools(deps, args.providerId),
     injectedSkillSources: runtimeContext.injectedSkillSources,
     instructionMode: runtimeContext.instructionMode,
     threadStoragePath: runtimeContext.threadStoragePath,
@@ -413,10 +400,6 @@ function buildPreparedTurnSubmitCommandPayload(
       providerThreadId: args.providerThreadId,
       instructions: args.runtimeContext.instructions,
       dynamicTools: args.runtimeContext.dynamicTools,
-      disallowedTools: resolveProviderDisallowedTools(
-        args.deps,
-        args.runtimeContext.providerId,
-      ),
       injectedSkillSources: args.runtimeContext.injectedSkillSources,
       instructionMode: args.runtimeContext.instructionMode,
     },
