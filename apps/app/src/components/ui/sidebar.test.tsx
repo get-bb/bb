@@ -133,6 +133,24 @@ describe("SidebarTrigger", () => {
   });
 });
 
+describe("Sidebar", () => {
+  it("keeps regular viewport content inside the safe area", () => {
+    render(
+      <CompactViewportOverrideProvider isCompactViewport={false}>
+        <SidebarProvider>
+          <Sidebar>Sidebar content</Sidebar>
+        </SidebarProvider>
+      </CompactViewportOverrideProvider>,
+    );
+
+    const sidebar = screen
+      .getByText("Sidebar content")
+      .closest('[data-sidebar="sidebar"]');
+
+    expect(sidebar?.className).toContain("pt-[env(safe-area-inset-top)]");
+  });
+});
+
 describe("mobile sidebar text-selection arbitration", () => {
   it("opens from a right swipe that starts over selectable message prose", () => {
     renderSelectableSwipeHarness();
