@@ -538,7 +538,16 @@ function FollowUpPromptBoxWithComposer({
     ],
   );
   const stackRef = useRef<HTMLDivElement>(null);
+  const lastStackHeightRef = useRef(0);
   const [stackHeight, setStackHeight] = useState(0);
+  const measureStackHeight = useCallback(() => {
+    const element = stackRef.current;
+    if (!element) return;
+    const measured = element.offsetHeight;
+    if (lastStackHeightRef.current === measured) return;
+    lastStackHeightRef.current = measured;
+    setStackHeight(measured);
+  }, []);
   // Measure the stack synchronously after every render. useLayoutEffect runs
   // post-DOM-commit and pre-paint, so when a React commit adds the banner
   // (e.g. workspace status arrives and the git section becomes non-empty),
@@ -547,26 +556,17 @@ function FollowUpPromptBoxWithComposer({
   // browser paints. Without this, the banner appears at 32px while the
   // textarea is still 100px for one frame — the timeline visibly shifts up
   // then back down as the elastic compensation catches up.
-  useLayoutEffect(() => {
-    const element = stackRef.current;
-    if (!element) return;
-    const measured = element.offsetHeight;
-    setStackHeight((prev) => (prev === measured ? prev : measured));
-  }, [stack]);
+  useLayoutEffect(measureStackHeight, [measureStackHeight, stack]);
   // ResizeObserver catches changes that happen outside a React render —
   // banner sections expanding via CSS animation, window resize affecting
   // markdown line-wrapping inside the stack, etc.
   useEffect(() => {
     const element = stackRef.current;
     if (!element || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver((entries) => {
-      const entry = entries[0];
-      if (!entry) return;
-      setStackHeight(entry.contentRect.height);
-    });
+    const observer = new ResizeObserver(measureStackHeight);
     observer.observe(element);
     return () => observer.disconnect();
-  }, []);
+  }, [measureStackHeight]);
   // The elastic pre-size keeps the prompt area's total height constant as the
   // stack (context banner + queued messages) mounts/unmounts so the timeline
   // doesn't shift. Callers that need the main-thread prompt height should pass
