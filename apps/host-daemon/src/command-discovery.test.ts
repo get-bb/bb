@@ -1140,6 +1140,64 @@ describe("discoverProviderCommands (codex)", () => {
 });
 
 describe("resolveCommandScanRoots", () => {
+  it("discovers configured ACP user and project skill roots", async () => {
+    const fixture = await makeWorkspaceFixture();
+    await writeFileEnsuringDir(
+      path.join(fixture.homeDir, ".agents", "skills", "user-amp", "SKILL.md"),
+      "---\nname: user-amp\ndescription: User Amp skill\n---\n",
+    );
+    await writeFileEnsuringDir(
+      path.join(fixture.cwd, ".amp", "skills", "project-amp", "SKILL.md"),
+      "---\nname: project-amp\ndescription: Project Amp skill\n---\n",
+    );
+
+    const commands = await discoverProviderCommands({
+      roots: await resolveProviderCommandScanRoots({
+        providerId: "acp-amp",
+        cwd: fixture.cwd,
+        homeDir: fixture.homeDir,
+        codexHome: fixture.codexHome,
+        nativeSkillRoots: {
+          user: [".agents/skills"],
+          project: [".amp/skills"],
+        },
+      }),
+    });
+
+    expect(commands).toEqual([
+      {
+        name: "project-amp",
+        source: "skill",
+        origin: "project",
+        description: "Project Amp skill",
+        argumentHint: null,
+      },
+      {
+        name: "user-amp",
+        source: "skill",
+        origin: "user",
+        description: "User Amp skill",
+        argumentHint: null,
+      },
+    ]);
+  });
+
+  it("skips configured ACP project roots without a workspace", async () => {
+    const fixture = await makeWorkspaceFixture();
+    const roots = await resolveProviderCommandScanRoots({
+      providerId: "acp-amp",
+      cwd: null,
+      homeDir: fixture.homeDir,
+      codexHome: fixture.codexHome,
+      nativeSkillRoots: {
+        user: [".agents/skills"],
+        project: [".amp/skills"],
+      },
+    });
+
+    expect(roots.map((root) => root.origin)).toEqual(["user"]);
+  });
+
   it("does not accept synchronized bb skills", async () => {
     const sourceRootPath = path.join(tempRoot, "server-skill", "synced-skill");
     const skillFilePath = path.join(sourceRootPath, "SKILL.md");

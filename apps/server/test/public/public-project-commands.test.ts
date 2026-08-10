@@ -86,6 +86,55 @@ function legacyCommand(
 }
 
 describe("public project command typeahead route", () => {
+  it("passes custom ACP native skill roots to the target host", async () => {
+    await withTestHarness(
+      {
+        customAcpAgents: [
+          {
+            id: "amp",
+            displayName: "Amp",
+            command: "amp-acp",
+            args: [],
+            env: {},
+            nativeSkillRoots: {
+              user: [".agents/skills"],
+              project: [".agents/skills"],
+            },
+          },
+        ],
+      },
+      async (harness) => {
+        const { host, session } = seedHostSession(harness.deps, {
+          id: "host-custom-acp-skills",
+        });
+        const { project } = seedProjectWithSource(harness.deps, {
+          hostId: host.id,
+          path: "/tmp/custom-acp-skills",
+        });
+        const stub = registerCommandRpc(harness, {
+          hostId: host.id,
+          sessionId: session.id,
+          commands: [],
+        });
+
+        const response = await harness.app.request(
+          `/api/v1/projects/${project.id}/commands?provider=acp-amp`,
+        );
+
+        expect(response.status).toBe(200);
+        expect(stub.requests[0]?.command).toEqual({
+          type: "host.list_commands",
+          providerId: "acp-amp",
+          cwd: "/tmp/custom-acp-skills",
+          nativeSkillRoots: {
+            user: [".agents/skills"],
+            project: [".agents/skills"],
+          },
+        });
+      },
+    );
+  });
+
   it("uses the server skill catalog when discovery targets another machine", async () => {
     await withTestHarness(async (harness) => {
       const primaryHost = seedHost(harness.deps, {

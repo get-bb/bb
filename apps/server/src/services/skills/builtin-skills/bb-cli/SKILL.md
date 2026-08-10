@@ -297,7 +297,9 @@ environment pull-request show <id>`. Diff commands require an explicit target
   relative paths resolve from the bb data dir. Custom ACP agents can use
   `modelCli` for CLI model listing/selection, `reasoningCli` for launch-time
   reasoning flags, and `nativeReasoning` for ACP `session/set_config_option`
-  reasoning.
+  reasoning. Optional `nativeSkillRoots.user` paths resolve from the target
+  host home directory. Optional `nativeSkillRoots.project` paths resolve from
+  the selected workspace. The composer lists skills from these roots.
 
 Give spawned threads clear prompts: objective, constraints, expected deliverable,
 validation to perform, and what to report back. Ask for outcome, changed files

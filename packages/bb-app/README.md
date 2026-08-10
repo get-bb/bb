@@ -150,6 +150,9 @@ Custom ACP agents can be configured through `customAcpAgents` in
 `~/.bb/config.json`; see the configuration docs for optional `modelCli` and
 `reasoningCli` or `nativeReasoning` reasoning settings. A `logo`
 field accepts an SVG, PNG, or WebP path for the provider picker icon.
+The optional `nativeSkillRoots` field adds provider-native skills to the
+composer. Its `user` paths resolve from the target host home directory. Its
+`project` paths resolve from the selected workspace.
 
 ## Configuration
 

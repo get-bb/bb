@@ -82,6 +82,7 @@ import { parseSafeRelativeRoutePath } from "./relative-route-path.js";
 import { resolveSkillCatalog } from "../services/skills/skill-catalog.js";
 import { resolveWorkspaceProjectSkills } from "../services/skills/workspace-skills.js";
 import { assertUsableHostId } from "../services/hosts/primary-host.js";
+import { resolveAcpLaunchSpecForProviderId } from "../services/system/acp-launch-spec.js";
 import {
   resolveProjectCommandWorkspace,
   resolveProjectWorkspaceTarget,
@@ -683,6 +684,10 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
         : {}),
       ...(query.hostId !== undefined ? { hostId: query.hostId } : {}),
     });
+    const acpLaunchSpec = resolveAcpLaunchSpecForProviderId(
+      deps,
+      query.provider,
+    );
     const [result, projectSkillSources] = await Promise.all([
       callHostRetryableOnlineRpc(deps, {
         hostId: workspace.hostId,
@@ -691,6 +696,9 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
           type: "host.list_commands",
           providerId: query.provider,
           cwd: workspace.cwd,
+          ...(acpLaunchSpec?.nativeSkillRoots !== undefined
+            ? { nativeSkillRoots: acpLaunchSpec.nativeSkillRoots }
+            : {}),
         },
       }),
       workspace.cwd === null

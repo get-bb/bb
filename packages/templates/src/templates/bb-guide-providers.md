@@ -84,3 +84,6 @@ example, override acp-opencode with id opencode. Use modelCli for CLI model
 listing/selection, reasoningCli for launch-time reasoning flags, and
 nativeReasoning for ACP session/set_config_option reasoning. Optional logo
 accepts an SVG, PNG, or WebP path; relative paths resolve from the bb data dir.
+Use nativeSkillRoots to add native skills to the composer. User roots resolve
+from the target host home directory. Project roots resolve from the selected
+workspace. Each root must use a relative path without dot segments.

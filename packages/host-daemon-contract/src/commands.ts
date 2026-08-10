@@ -20,6 +20,7 @@ import {
   clientTurnRequestIdSchema,
   gitBranchNameSchema,
   jsonObjectSchema,
+  providerNativeSkillRootsSchema,
   BRANCH_LIST_LIMIT_MAX,
   BRANCH_LIST_QUERY_MAX_LENGTH,
   FILE_LIST_LIMIT_MAX,
@@ -35,7 +36,7 @@ import {
   providerCliStatusResponseSchema,
 } from "./local.js";
 
-export const HOST_DAEMON_PROTOCOL_VERSION = 91 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 92 as const;
 
 export {
   BRANCH_LIST_LIMIT_MAX,
@@ -166,6 +167,7 @@ export const hostDaemonAcpLaunchSpecSchema = z
       .optional(),
     reasoningCli: acpReasoningCliSchema.optional(),
     nativeReasoning: acpNativeReasoningSchema.optional(),
+    nativeSkillRoots: providerNativeSkillRootsSchema.optional(),
     permissionCli: acpPermissionCliSchema.optional(),
   })
   .strict();
@@ -185,6 +187,7 @@ export function normalizeHostDaemonAcpLaunchSpec(
     modelCli,
     reasoningCli,
     nativeReasoning,
+    nativeSkillRoots,
     permissionCli,
   } = spec;
   const permissionCliHasMode =
@@ -202,6 +205,7 @@ export function normalizeHostDaemonAcpLaunchSpec(
       : {}),
     ...(reasoningCli !== undefined ? { reasoningCli } : {}),
     ...(nativeReasoning !== undefined ? { nativeReasoning } : {}),
+    ...(nativeSkillRoots !== undefined ? { nativeSkillRoots } : {}),
     ...(permissionCli !== undefined && permissionCliHasMode
       ? { permissionCli }
       : {}),
@@ -684,6 +688,7 @@ const hostListCommandsCommandSchema = z
     type: z.literal("host.list_commands"),
     providerId: z.string().min(1),
     cwd: z.string().min(1).nullable(),
+    nativeSkillRoots: providerNativeSkillRootsSchema.optional(),
   })
   .strict();
 

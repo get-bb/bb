@@ -64,6 +64,10 @@ const ACP_LAUNCH_SPEC: HostDaemonAcpLaunchSpec = {
     supportedLevels: ["none", "low", "medium", "high", "xhigh", "max"],
     defaultLevel: "medium",
   },
+  nativeSkillRoots: {
+    user: [".agents/skills"],
+    project: [".agents/skills"],
+  },
   permissionCli: {
     full: ["--always-approve"],
     insertAfterArgs: 1,
@@ -693,6 +697,8 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "ACP native reasoning config may omit defaultLevel so the bridge uses medium when supported or the first supported level.",
   "hostDaemonCommandSchema.acpLaunchSpec.nativeReasoning.levelValues":
     "ACP native reasoning config only needs levelValues when bb reasoning levels differ from the agent's ACP config vocabulary.",
+  "hostDaemonCommandSchema.acpLaunchSpec.nativeSkillRoots":
+    "dynamic ACP agents may omit nativeSkillRoots when they do not expose provider-native skills.",
   "hostDaemonCommandSchema.acpLaunchSpec.permissionCli":
     "dynamic ACP agents may omit permissionCli when their own prompt policy does not need launch-time permission flags.",
   "hostDaemonCommandSchema.acpLaunchSpec.permissionCli.full":
@@ -735,6 +741,8 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "ACP native reasoning config may omit defaultLevel so the bridge uses medium when supported or the first supported level.",
   "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.nativeReasoning.levelValues":
     "ACP native reasoning config only needs levelValues when bb reasoning levels differ from the agent's ACP config vocabulary.",
+  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.nativeSkillRoots":
+    "dynamic ACP agents may omit nativeSkillRoots when they do not expose provider-native skills.",
   "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.permissionCli":
     "dynamic ACP agents may omit permissionCli when their own prompt policy does not need launch-time permission flags.",
   "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.permissionCli.full":
@@ -755,6 +763,8 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "host.read_file and host.file_metadata may omit rootPath only for explicit absolute disk reads; ref-based reads still require it.",
   "hostDaemonOnlineRpcCommandSchema.selectedBranch":
     "host.list_branches may omit exact selected-branch classification when the caller only needs a branch option page.",
+  "hostDaemonOnlineRpcCommandSchema.nativeSkillRoots":
+    "host.list_commands may omit nativeSkillRoots for providers with daemon-owned discovery rules.",
   "hostDaemonCommandSchema.threadStoragePath":
     "thread.start may include a storage path so the daemon creates the directory before the agent starts.",
   "hostDaemonCommandSchema.fork":
@@ -793,6 +803,8 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "resume-context ACP native reasoning config may omit defaultLevel so the bridge uses medium when supported or the first supported level.",
   "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.nativeReasoning.levelValues":
     "resume-context ACP native reasoning config only needs levelValues when bb reasoning levels differ from the agent's ACP config vocabulary.",
+  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.nativeSkillRoots":
+    "resume-context ACP launch specs may omit nativeSkillRoots when the agent does not expose provider-native skills.",
   "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.permissionCli":
     "resume-context ACP launch specs may omit permissionCli when the agent's prompt policy does not need launch-time permission flags.",
   "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.permissionCli.full":
@@ -1039,13 +1051,10 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  // Version 91 freezes thread instructions for the life of a provider
-  // session: the daemon no longer treats drifted `resumeContext.instructions`
-  // as a reason to resume the thread. A version-90 daemon still resumes on
-  // drift, which replaces the live CLI session and kills its running
-  // background tasks, so it must update rather than connect.
-  it("uses protocol version 91 for session-frozen instructions", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(91);
+  // Version 92 lets the server send custom ACP native skill roots to the host.
+  // An older daemon rejects this field, so it must update before discovery.
+  it("uses protocol version 92 for custom ACP native skill roots", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(92);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {
@@ -1344,13 +1353,21 @@ describe("host-daemon command schemas", () => {
     expect(
       hostDaemonOnlineRpcCommandSchema.parse({
         type: "host.list_commands",
-        providerId: "claude-code",
+        providerId: "acp-amp",
         cwd: "/tmp/workspace",
+        nativeSkillRoots: {
+          user: [".agents/skills"],
+          project: [".amp/skills"],
+        },
       }),
     ).toMatchObject({
       type: "host.list_commands",
-      providerId: "claude-code",
+      providerId: "acp-amp",
       cwd: "/tmp/workspace",
+      nativeSkillRoots: {
+        user: [".agents/skills"],
+        project: [".amp/skills"],
+      },
     });
 
     expect(
