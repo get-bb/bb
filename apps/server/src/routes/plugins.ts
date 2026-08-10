@@ -1,5 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { readFile } from "node:fs/promises";
+import { promisify } from "node:util";
+import { brotliCompress, constants as zlibConstants, gzip } from "node:zlib";
 import type { Context, Hono } from "hono";
 import type { ServerRuntimeConfig } from "../types.js";
 import {
@@ -12,6 +14,7 @@ import type {
 } from "../services/plugins/plugin-service.js";
 import type { PluginMentionTrigger } from "../services/plugins/plugin-api.js";
 import { PluginSettingsValidationError } from "../services/plugins/plugin-settings.js";
+import { rankAcceptedAssetEncodings } from "../asset-content-encoding.js";
 import {
   pluginApplyUpdateRequestSchema,
   pluginInstallRequestSchema,
@@ -27,6 +30,56 @@ export interface PluginRoutesDeps {
 }
 
 type WireAuthProblem = BrowserRequestProblem | { status: 401; error: string };
+
+const compressBrotli = promisify(brotliCompress);
+const compressGzip = promisify(gzip);
+const MIN_COMPRESSED_APP_ASSET_BYTES = 1_024;
+const APP_ASSET_ENCODINGS = [
+  {
+    encoding: "br",
+    compress: (bytes: Buffer) =>
+      compressBrotli(bytes, {
+        params: {
+          // Compression happens in the request path, so use a moderate level
+          // rather than the slower quality 10 used for build-time sidecars.
+          [zlibConstants.BROTLI_PARAM_QUALITY]: 6,
+        },
+      }),
+  },
+  {
+    encoding: "gzip",
+    compress: (bytes: Buffer) => compressGzip(bytes),
+  },
+] as const;
+
+async function appAssetResponse(
+  context: Context,
+  bytes: Buffer,
+  headers: { cacheControl: string; contentType: string },
+): Promise<Response> {
+  const responseHeaders: Record<string, string> = {
+    "cache-control": headers.cacheControl,
+    "content-length": String(bytes.length),
+    "content-type": headers.contentType,
+  };
+  if (bytes.length < MIN_COMPRESSED_APP_ASSET_BYTES) {
+    return context.body(new Uint8Array(bytes), 200, responseHeaders);
+  }
+
+  responseHeaders.vary = "Accept-Encoding";
+  const candidate = rankAcceptedAssetEncodings(
+    context.req.header("accept-encoding"),
+    APP_ASSET_ENCODINGS,
+  )[0];
+  if (candidate === undefined) {
+    return context.body(new Uint8Array(bytes), 200, responseHeaders);
+  }
+
+  const compressed = await candidate.compress(bytes);
+  responseHeaders["content-encoding"] = candidate.encoding;
+  responseHeaders["content-length"] = String(compressed.length);
+  return context.body(new Uint8Array(compressed), 200, responseHeaders);
+}
 
 function parsePluginMentionTrigger(
   value: string | undefined,
@@ -266,9 +319,9 @@ export function registerPluginRoutes(
       context.req.query("h") === asset.hash
         ? "public, max-age=31536000, immutable"
         : "no-store";
-    return context.body(new Uint8Array(bytes), 200, {
-      "content-type": spec.contentType,
-      "cache-control": cacheControl,
+    return appAssetResponse(context, bytes, {
+      contentType: spec.contentType,
+      cacheControl,
     });
   });
 
