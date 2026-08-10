@@ -140,9 +140,11 @@ bb uses whichever providers you have configured. Common providers:
 
 BB indexes the documented native skill roots for Codex, Claude Code, Pi,
 Cursor, OpenCode, omp, Grok Build, and Hermes Agent. It includes user roots,
-project roots, and compatibility roots such as `.agents/skills`. BB keeps these
-provider skills read-only. BB also reads configured Pi, omp, Grok, and Hermes
-skill directories, plus enabled provider plugin skills.
+project roots, and compatibility roots such as `.agents/skills`. These skills
+appear in the selected provider's `/` command menu. The Skills page and
+`bb skill list` show native skills for Claude Code, Codex, and Cursor. BB also
+reads configured Pi, omp, Grok, and Hermes skill directories, plus enabled
+provider plugin skills.
 
 BB reads Pi's global `~/.pi/agent` files and each workspace's `.pi` files.
 This includes settings, credentials, models, packages, extensions, skills,

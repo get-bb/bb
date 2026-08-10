@@ -378,6 +378,9 @@ describe("resolveSkillScanRoots + discoverSkills (acp-cursor)", () => {
       }),
     });
 
+    expect(skills.filter((skill) => skill.name === "impeccable")).toHaveLength(
+      1,
+    );
     expect(byName(skills, "impeccable")).toMatchObject({
       rootKind: "provider-project",
       linked: true,

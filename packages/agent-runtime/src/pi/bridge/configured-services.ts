@@ -37,6 +37,26 @@ function resolveProjectTrusted(
   return settingsManager.getDefaultProjectTrust() === "always";
 }
 
+/** Build Pi settings with the same saved and default project-trust policy. */
+export function createConfiguredPiSettingsManager(
+  cwd: string,
+  agentDir: string,
+): SettingsManager {
+  const resolvedCwd = resolve(cwd);
+  const resolvedAgentDir = resolve(agentDir);
+  const settingsManager = SettingsManager.create(
+    resolvedCwd,
+    resolvedAgentDir,
+    {
+      projectTrusted: false,
+    },
+  );
+  settingsManager.setProjectTrusted(
+    resolveProjectTrusted(resolvedCwd, resolvedAgentDir, settingsManager),
+  );
+  return settingsManager;
+}
+
 function formatResourceErrors(
   resourceType: string,
   diagnostics: ResourceDiagnostic[],
@@ -103,12 +123,7 @@ export async function loadConfiguredPiServices(
 ): Promise<LoadedPiServices> {
   const cwd = resolve(options.cwd);
   const agentDir = resolve(options.agentDir ?? getAgentDir());
-  const settingsManager = SettingsManager.create(cwd, agentDir, {
-    projectTrusted: false,
-  });
-  settingsManager.setProjectTrusted(
-    resolveProjectTrusted(cwd, agentDir, settingsManager),
-  );
+  const settingsManager = createConfiguredPiSettingsManager(cwd, agentDir);
 
   const services = await createAgentSessionServices({
     ...options,

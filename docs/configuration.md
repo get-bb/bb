@@ -408,8 +408,9 @@ in an installed plugin (relocatable via the manifest's `bb.skills` field) is
 auto-imported while the plugin is loaded — overridden by project and user
 skills by name, overriding built-ins.
 
-bb also indexes each provider's native skill roots. `bb skill list` and the
-Skills page show these read-only provider skills.
+bb indexes each provider's native skill roots for that provider's `/` command
+menu. The Skills page and `bb skill list` show native skills for Claude Code,
+Codex, and Cursor.
 
 | Provider     | User roots                                                                                               | Project roots                                                                                                |
 | ------------ | -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |

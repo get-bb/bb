@@ -81,8 +81,9 @@ Cursor, OpenCode, omp, Grok Build, and Hermes Agent. This includes compatibility
 roots such as .agents/skills and .claude/skills when the provider supports them.
 It also includes project ancestor roots for providers that search to the Git
 repository root. Configured Pi, omp, Grok, and Hermes directories are included.
-Enabled provider plugins also contribute skills. Use `bb skill list` to inspect
-the combined skill catalog.
+Enabled provider plugins also contribute skills to the selected provider's `/`
+command menu. `bb skill list` shows native skills for Claude Code, Codex, and
+Cursor.
 
 Custom ACP agents are configured in the app data-dir config.json under
 customAcpAgents. bb derives provider id acp-<id> from each slug id. Edit the JSON

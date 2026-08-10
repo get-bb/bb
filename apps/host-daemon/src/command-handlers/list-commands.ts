@@ -4,10 +4,8 @@ import os from "node:os";
 import path from "node:path";
 import type { HostDaemonOnlineRpcResult } from "@bb/host-daemon-contract";
 import type { ProviderNativeSkillRoots } from "@bb/domain";
-import {
-  DefaultPackageManager,
-  SettingsManager,
-} from "@earendil-works/pi-coding-agent";
+import { createConfiguredPiSettingsManager } from "@bb/agent-runtime";
+import { DefaultPackageManager } from "@earendil-works/pi-coding-agent";
 import { parse as parseToml } from "smol-toml";
 import { parse as parseYaml } from "yaml";
 import { z } from "zod";
@@ -93,6 +91,7 @@ interface AddClaudePluginComponentRootsArgs {
 }
 
 interface AddPluginDirectoryRootsArgs {
+  boundaryPath?: string;
   namePrefix: string;
   origin: ClaudePluginOrigin;
   pluginRootPath: string;
@@ -840,6 +839,9 @@ async function addPluginSkillPathRoots(
       namePrefix: args.namePrefix,
       source: "skill",
       origin: args.origin,
+      ...(args.boundaryPath === undefined
+        ? {}
+        : { boundaryPath: args.boundaryPath }),
     });
   }
 }
@@ -1206,6 +1208,7 @@ function resolveConfiguredPath(args: {
 }
 
 function configuredSkillPathRoot(args: {
+  boundaryPath?: string;
   identity: string;
   origin: "project" | "user";
   providerId: string;
@@ -1224,6 +1227,9 @@ function configuredSkillPathRoot(args: {
     };
   }
   return skillScanRoot({
+    ...(args.boundaryPath === undefined
+      ? {}
+      : { boundaryPath: args.boundaryPath }),
     identity: args.identity,
     origin: args.origin,
     providerId: args.providerId,
@@ -1238,9 +1244,7 @@ async function resolvePiConfiguredSkillScanRoots(
   const cwd = resolution.cwd ?? resolution.homeDir;
   try {
     const agentDir = resolvePiAgentDir(resolution.homeDir);
-    const settingsManager = SettingsManager.create(cwd, agentDir, {
-      projectTrusted: resolution.cwd !== null,
-    });
+    const settingsManager = createConfiguredPiSettingsManager(cwd, agentDir);
     const packageManager = new DefaultPackageManager({
       agentDir,
       cwd,
@@ -1287,7 +1291,13 @@ async function resolveOmpConfiguredSkillScanRoots(
       }),
     ),
   ];
+  const projectRootPath =
+    resolution.cwd === null
+      ? null
+      : (await resolveProjectAncestorDirectories(resolution.cwd))
+          .projectRootPath;
   let customDirectories: string[] = [];
+  let customOrigin: "project" | "user" = "user";
   for (const configPath of userConfigPaths) {
     const config = await readParsedFile(
       configPath,
@@ -1307,12 +1317,17 @@ async function resolveOmpConfiguredSkillScanRoots(
     );
     if (config?.skills?.customDirectories !== undefined) {
       customDirectories = config.skills.customDirectories;
+      customOrigin =
+        projectRootPath !== null &&
+        isPathWithinDirectory(projectRootPath, configPath)
+          ? "project"
+          : "user";
     }
   }
   return customDirectories.map((configuredPath, index) =>
     configuredSkillPathRoot({
       identity: `omp-custom:${index}:${configuredPath}`,
-      origin: "user",
+      origin: customOrigin,
       providerId: resolution.providerId,
       recursive: false,
       skillPath: resolveConfiguredPath({
@@ -1376,6 +1391,9 @@ async function resolveGrokConfiguredSkillScanRoots(
         ? "project"
         : "user";
     return configuredSkillPathRoot({
+      ...(origin === "project" && projectRootPath !== null
+        ? { boundaryPath: projectRootPath }
+        : {}),
       identity: `grok-config:${index}:${configuredPath}`,
       origin,
       providerId: resolution.providerId,
@@ -1423,6 +1441,7 @@ async function childDirectoryPaths(directoryPath: string): Promise<string[]> {
 
 async function addGrokPluginSkillRoots(args: {
   autoEnabled: boolean;
+  boundaryPath?: string;
   config: z.infer<typeof grokSkillConfigSchema> | null;
   origin: "project" | "user";
   pluginRootPath: string;
@@ -1444,6 +1463,9 @@ async function addGrokPluginSkillRoots(args: {
       ? ["skills"]
       : normalizePluginPathList(manifest.skills);
   await addPluginSkillPathRoots({
+    ...(args.boundaryPath === undefined
+      ? {}
+      : { boundaryPath: args.boundaryPath }),
     entries,
     namePrefix: `${pluginName}:`,
     origin: args.origin,
@@ -1462,13 +1484,13 @@ async function resolveGrokPluginSkillScanRoots(
   const roots: CommandScanRoot[] = [];
   const candidates: Array<{
     autoEnabled: boolean;
+    boundaryPath?: string;
     origin: "project" | "user";
     pluginRootPath: string;
   }> = [];
   if (resolution.cwd !== null) {
-    const { directories } = await resolveProjectAncestorDirectories(
-      resolution.cwd,
-    );
+    const { directories, projectRootPath } =
+      await resolveProjectAncestorDirectories(resolution.cwd);
     for (const directoryPath of directories) {
       for (const pluginDirectoryName of [GROK_DIR_NAME, CLAUDE_DIR_NAME]) {
         for (const pluginRootPath of await childDirectoryPaths(
@@ -1476,6 +1498,7 @@ async function resolveGrokPluginSkillScanRoots(
         )) {
           candidates.push({
             autoEnabled: false,
+            boundaryPath: projectRootPath,
             origin: "project",
             pluginRootPath,
           });
@@ -1658,6 +1681,7 @@ async function resolveProjectAncestorDirectories(cwd: string): Promise<{
 }
 
 function skillScanRoot(args: {
+  boundaryPath?: string;
   identity: string | null;
   origin: "project" | "user";
   providerId: string;
@@ -1665,6 +1689,9 @@ function skillScanRoot(args: {
   rootPath: string;
 }): CommandScanRoot {
   return {
+    ...(args.boundaryPath === undefined
+      ? {}
+      : { boundaryPath: args.boundaryPath }),
     rootPath: args.rootPath,
     shape: args.recursive ? "skill-recursive" : "skill",
     namePrefix: "",
@@ -1865,14 +1892,16 @@ function resolveNativeSkillScanRoots(
     }),
   );
   if (resolution.cwd !== null) {
+    const cwd = resolution.cwd;
     roots.unshift(
       ...(spec.projectDirectories ?? []).map((relativePath) =>
         skillScanRoot({
+          boundaryPath: cwd,
           identity: spec.unseededProject ? null : path.dirname(relativePath),
           origin: "project",
           providerId: resolution.providerId,
           recursive: spec.recursive,
-          rootPath: path.join(resolution.cwd ?? "", relativePath),
+          rootPath: path.join(cwd, relativePath),
         }),
       ),
     );
@@ -1902,6 +1931,7 @@ async function resolveParentSkillScanRoots(
     .flatMap((relativePath) =>
       directories.map((directoryPath) =>
         skillScanRoot({
+          boundaryPath: projectRootPath,
           identity: `${path.dirname(relativePath)}:${path.relative(projectRootPath, directoryPath).split(path.sep).join("/")}`,
           origin: "project",
           providerId: resolution.providerId,

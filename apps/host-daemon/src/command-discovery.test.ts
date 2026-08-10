@@ -303,10 +303,10 @@ describe("discoverProviderCommands (claude-code)", () => {
     );
   });
 
-  it("enforces the file-count cap", async () => {
+  it("enforces the entry-count cap", async () => {
     const fixture = await makeWorkspaceFixture();
     const commandsRoot = path.join(fixture.cwd, ".claude", "commands");
-    const fileCount = 1_050; // > MAX_SCAN_FILE_COUNT (1000)
+    const fileCount = 1_050; // > MAX_SCAN_ENTRY_COUNT (1000)
     await Promise.all(
       Array.from({ length: fileCount }, (_, index) =>
         writeFileEnsuringDir(
@@ -346,6 +346,69 @@ describe("discoverProviderCommands (claude-code)", () => {
     expect(byName(commands, "real")).toBeDefined();
     expect(byName(commands, "linked")).toBeUndefined();
     expect(byName(commands, "linked-dir:secret")).toBeUndefined();
+  });
+
+  it("shares the entry-count cap across recursive roots", async () => {
+    const fixture = await makeWorkspaceFixture();
+    const fullRoot = path.join(fixture.cwd, "full-root");
+    const secondRoot = path.join(fixture.cwd, "second-root");
+    await Promise.all(
+      Array.from({ length: 1_000 }, (_, index) =>
+        writeFileEnsuringDir(path.join(fullRoot, `entry-${index}.txt`), ""),
+      ),
+    );
+    await writeFileEnsuringDir(
+      path.join(secondRoot, "late", "SKILL.md"),
+      "---\nname: late\ndescription: late\n---\n",
+    );
+
+    const commands = await discoverProviderCommands({
+      roots: [
+        {
+          rootPath: fullRoot,
+          shape: "skill-recursive",
+          namePrefix: "",
+          source: "skill",
+          origin: "project",
+        },
+        {
+          rootPath: secondRoot,
+          shape: "skill-recursive",
+          namePrefix: "",
+          source: "skill",
+          origin: "project",
+        },
+      ],
+    });
+
+    expect(byName(commands, "late")).toBeUndefined();
+  });
+
+  it("rejects a recursive project root linked outside its boundary", async () => {
+    const fixture = await makeWorkspaceFixture();
+    const outsideRoot = path.join(tempRoot, "outside-recursive-root");
+    const linkedRoot = path.join(fixture.cwd, ".cursor", "skills");
+    await writeFileEnsuringDir(
+      path.join(outsideRoot, "leaked", "SKILL.md"),
+      "---\nname: leaked\ndescription: leaked\n---\n",
+    );
+    await mkdir(path.dirname(linkedRoot), { recursive: true });
+    await symlink(outsideRoot, linkedRoot, "dir");
+
+    const commands = await discoverProviderCommands({
+      roots: [
+        {
+          boundaryPath: fixture.cwd,
+          rootPath: linkedRoot,
+          shape: "skill-recursive",
+          namePrefix: "",
+          source: "skill",
+          origin: "project",
+        },
+      ],
+    });
+
+    expect(commands).toEqual([]);
   });
 
   it("does not follow project-origin symlinked skill directories or skill files", async () => {
@@ -1384,6 +1447,55 @@ describe("resolveCommandScanRoots", () => {
       });
       expect(byName(commands, entry.name)).toMatchObject({ source: "skill" });
     }
+  });
+
+  it("marks an omp project configuration skill as project-origin", async () => {
+    const fixture = await makeWorkspaceFixture();
+    const skillRoot = path.join(fixture.cwd, "team-skills");
+    await mkdir(path.join(fixture.cwd, ".git"), { recursive: true });
+    await writeFileEnsuringDir(
+      path.join(fixture.cwd, ".omp", "config.yml"),
+      `skills:\n  customDirectories:\n    - ${skillRoot}\n`,
+    );
+    await writeFileEnsuringDir(
+      path.join(skillRoot, "release", "SKILL.md"),
+      "---\nname: release\ndescription: Release\n---\n",
+    );
+
+    const commands = await discoverProviderCommands({
+      roots: await resolveProviderCommandScanRoots({
+        providerId: "acp-omp",
+        cwd: fixture.cwd,
+        homeDir: fixture.homeDir,
+        codexHome: fixture.codexHome,
+      }),
+    });
+
+    expect(byName(commands, "release")).toMatchObject({ origin: "project" });
+  });
+
+  it("does not read configured Pi project skills before trust", async () => {
+    const fixture = await makeWorkspaceFixture();
+    const skillRoot = path.join(tempRoot, "untrusted-pi-skills");
+    await writeFileEnsuringDir(
+      path.join(fixture.cwd, ".pi", "settings.json"),
+      JSON.stringify({ skills: [skillRoot] }),
+    );
+    await writeFileEnsuringDir(
+      path.join(skillRoot, "untrusted", "SKILL.md"),
+      "---\nname: untrusted\ndescription: Untrusted\n---\n",
+    );
+
+    const commands = await discoverProviderCommands({
+      roots: await resolveProviderCommandScanRoots({
+        providerId: "pi",
+        cwd: fixture.cwd,
+        homeDir: fixture.homeDir,
+        codexHome: fixture.codexHome,
+      }),
+    });
+
+    expect(byName(commands, "untrusted")).toBeUndefined();
   });
 
   it("honors disabled Grok compatibility skill roots", async () => {
