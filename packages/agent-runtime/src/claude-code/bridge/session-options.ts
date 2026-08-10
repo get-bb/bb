@@ -19,16 +19,25 @@ export interface BuildSessionOptionsArgs {
   instructionMode: InstructionMode;
   model?: string;
   /**
-   * Escalation changes per turn without replacing the session, so hook
-   * closures must read it at call time instead of capturing a value.
+   * Escalation changes per turn without replacing the session. Hook closures
+   * resolve the originating prompt or subagent at call time, falling back to
+   * the current turn when Claude provides no correlation metadata.
    */
-  getPermissionEscalation: () => PermissionEscalation | null;
+  getPermissionEscalation: (
+    context: PermissionEscalationWorkContext,
+  ) => PermissionEscalation | null;
   permissionMode: ClaudePermissionMode;
   permissionScope: RuntimePermissionScope;
   plugins?: Options["plugins"];
   reasoningLevel?: ReasoningLevel;
   workflowsEnabled: boolean;
   memoryEnabled?: boolean;
+}
+
+export interface PermissionEscalationWorkContext {
+  agentId?: string;
+  promptId?: string;
+  toolUseId?: string;
 }
 
 interface ResolveExecutableOnPathArgs {
@@ -133,7 +142,17 @@ function buildReadonlyHooks(
             }
 
             const permissionDecision =
-              getPermissionEscalation() === "deny" ? "deny" : "ask";
+              getPermissionEscalation({
+                ...(input.agent_id !== undefined
+                  ? { agentId: input.agent_id }
+                  : {}),
+                ...(input.prompt_id !== undefined
+                  ? { promptId: input.prompt_id }
+                  : {}),
+                toolUseId: input.tool_use_id,
+              }) === "deny"
+                ? "deny"
+                : "ask";
             return {
               continue: true,
               hookSpecificOutput: {

@@ -103,6 +103,7 @@ interface ControlledClaudeQuery {
 interface ClaudeQueryCallOptions {
   canUseTool?: CanUseTool;
   env?: Record<string, string | undefined>;
+  hooks?: BridgeSessionHooks;
   model?: string;
   permissionMode?: ClaudePermissionMode;
   resume?: string;
@@ -354,16 +355,42 @@ function createControlledClaudeQuery(): ControlledClaudeQuery {
   };
 }
 
-async function readNextPromptText(call: ClaudeQueryCall): Promise<string> {
+async function readNextPrompt(call: ClaudeQueryCall): Promise<SDKUserMessage> {
   const result = await call.prompt[Symbol.asyncIterator]().next();
   if (result.done) {
     throw new Error("Expected Claude prompt input");
   }
-  const content = result.value.message.content;
+  return result.value;
+}
+
+async function readNextPromptText(call: ClaudeQueryCall): Promise<string> {
+  const content = (await readNextPrompt(call)).message.content;
   if (typeof content !== "string") {
     throw new Error("Expected Claude prompt text content");
   }
   return content;
+}
+
+async function invokeBridgeHooks(
+  matchers:
+    | readonly {
+        hooks: readonly BridgePreToolUseHook[];
+      }[]
+    | undefined,
+  input: Parameters<BridgePreToolUseHook>[0],
+  toolUseId?: string,
+): Promise<Awaited<ReturnType<BridgePreToolUseHook>>[]> {
+  const outputs: Awaited<ReturnType<BridgePreToolUseHook>>[] = [];
+  for (const matcher of matchers ?? []) {
+    for (const hook of matcher.hooks) {
+      outputs.push(
+        await hook(input, toolUseId, {
+          signal: new AbortController().signal,
+        }),
+      );
+    }
+  }
+  return outputs;
 }
 
 function createResultUsage(): SdkResultUsage {
@@ -2622,6 +2649,162 @@ describe("bridge", () => {
     }
   });
 
+  it("keeps background subagents on their originating prompt escalation", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      queries.push(query);
+      return query;
+    });
+
+    try {
+      const threadId = "thread-background-escalation";
+      bridge.sendRequest(1, "thread/start", {
+        workflowsEnabled: false,
+        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
+        baseInstructions: "test",
+        cwd: "/tmp/worktree",
+        instructionMode: "append",
+        permissionEscalation: "deny",
+        permissionMode: "default",
+        approvedPlanPermissionMode: "default",
+        permissionScope: "workspace",
+        threadId,
+      });
+      await bridge.waitForResponse(1);
+
+      const call = getLatestQueryCall();
+      const hooks = call.options.hooks;
+      if (!hooks) {
+        throw new Error("Expected Claude SDK hooks");
+      }
+
+      bridge.sendRequest(2, "turn/start", {
+        permissionEscalation: "deny",
+        input: [{ type: "text", text: "Start denied background work" }],
+        providerThreadId: null,
+        threadId,
+      });
+      await bridge.waitForResponse(2);
+      const deniedPrompt = await readNextPrompt(call);
+      if (!deniedPrompt.uuid) {
+        throw new Error("Expected denied prompt UUID");
+      }
+
+      bridge.sendRequest(3, "turn/start", {
+        permissionEscalation: "ask",
+        input: [{ type: "text", text: "Start interactive background work" }],
+        providerThreadId: null,
+        threadId,
+      });
+      await bridge.waitForResponse(3);
+      const askPrompt = await readNextPrompt(call);
+      if (!askPrompt.uuid) {
+        throw new Error("Expected ask prompt UUID");
+      }
+
+      await invokeBridgeHooks(hooks.SubagentStart, {
+        hook_event_name: "SubagentStart",
+        agent_id: "agent-deny",
+        agent_type: "general-purpose",
+        prompt_id: deniedPrompt.uuid,
+        session_id: "session-1",
+        transcript_path: "/tmp/transcript.jsonl",
+        cwd: "/tmp/worktree",
+      });
+
+      const denyToolUseId = "tool-background-deny";
+      const deniedOutputs = await invokeBridgeHooks(
+        hooks.PreToolUse,
+        {
+          hook_event_name: "PreToolUse",
+          agent_id: "agent-deny",
+          prompt_id: askPrompt.uuid,
+          tool_name: "Bash",
+          tool_input: { command: "git reset -- package.json" },
+          tool_use_id: denyToolUseId,
+          session_id: "session-1",
+          transcript_path: "/tmp/transcript.jsonl",
+          cwd: "/tmp/worktree",
+        },
+        denyToolUseId,
+      );
+      expect(deniedOutputs).toContainEqual(
+        expect.objectContaining({
+          hookSpecificOutput: expect.objectContaining({
+            hookEventName: "PreToolUse",
+            permissionDecision: "deny",
+          }),
+        }),
+      );
+      await expect(
+        getLastCanUseTool()(
+          "Bash",
+          { command: "echo hi", dangerouslyDisableSandbox: true },
+          {
+            agentID: "agent-deny",
+            decisionReason: "dangerouslyDisableSandbox",
+            signal: new AbortController().signal,
+            toolUseID: denyToolUseId,
+          },
+        ),
+      ).resolves.toMatchObject({ behavior: "deny" });
+
+      bridge.sendRequest(4, "turn/start", {
+        permissionEscalation: "deny",
+        input: [{ type: "text", text: "Return to denied work" }],
+        providerThreadId: null,
+        threadId,
+      });
+      await bridge.waitForResponse(4);
+      const latestPrompt = await readNextPrompt(call);
+
+      await invokeBridgeHooks(hooks.SubagentStart, {
+        hook_event_name: "SubagentStart",
+        agent_id: "agent-ask",
+        agent_type: "general-purpose",
+        prompt_id: askPrompt.uuid,
+        session_id: "session-1",
+        transcript_path: "/tmp/transcript.jsonl",
+        cwd: "/tmp/worktree",
+      });
+
+      const askToolUseId = "tool-background-ask";
+      const askOutputs = await invokeBridgeHooks(
+        hooks.PreToolUse,
+        {
+          hook_event_name: "PreToolUse",
+          agent_id: "agent-ask",
+          prompt_id: latestPrompt.uuid,
+          tool_name: "Bash",
+          tool_input: { command: "git reset -- package.json" },
+          tool_use_id: askToolUseId,
+          session_id: "session-1",
+          transcript_path: "/tmp/transcript.jsonl",
+          cwd: "/tmp/worktree",
+        },
+        askToolUseId,
+      );
+      expect(askOutputs).toContainEqual(
+        expect.objectContaining({
+          hookSpecificOutput: expect.objectContaining({
+            hookEventName: "PreToolUse",
+            permissionDecision: "ask",
+          }),
+        }),
+      );
+
+      bridge.sendRequest(5, "thread/stop", { threadId });
+      await bridge.flushWork();
+      queries[0]?.finish();
+      await bridge.waitForResponse(5);
+    } finally {
+      queries.forEach((query) => query.finish());
+      bridge.restore();
+    }
+  });
+
   it("replaces a live thread/resume session when the provider thread differs", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
     const queries: ControlledClaudeQuery[] = [];
@@ -3312,66 +3495,83 @@ describe("bridge", () => {
     }
   });
 
-  it("keeps the prior escalation when a turn steer fails to push input", async () => {
-    const threadId = "thread-steer-failed-escalation";
-    const bridge = createBridgeJsonRpcTestHarness(handleLine);
-    const queries: ControlledClaudeQuery[] = [];
-    queryMock.mockImplementation(() => {
-      const query = createControlledClaudeQuery();
-      queries.push(query);
-      return query;
-    });
-
-    try {
-      bridge.sendRequest(1, "thread/start", {
-        workflowsEnabled: false,
-        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
-        baseInstructions: "test",
-        cwd: "/tmp/worktree",
-        instructionMode: "append",
-        permissionEscalation: "deny",
-        permissionMode: "auto",
-        approvedPlanPermissionMode: "auto",
-        permissionScope: "workspace",
-        threadId,
-      });
-      await bridge.waitForResponse(1);
-
-      await getLatestQueryCall().prompt[Symbol.asyncIterator]().return?.();
-
-      bridge.sendRequest(2, "turn/steer", {
-        permissionEscalation: "ask",
-        expectedTurnId: "turn-1",
-        input: [{ type: "text", text: "loosen permissions" }],
-        providerThreadId: null,
-        threadId,
-      });
-      await expect(bridge.waitForResponse(2)).resolves.toMatchObject({
-        error: { code: -32000 },
+  it.each([
+    { grouped: false, method: "turn/start", name: "turn start" },
+    { grouped: false, method: "turn/steer", name: "single turn steer" },
+    { grouped: true, method: "turn/steer", name: "grouped turn steer" },
+  ] as const)(
+    "keeps the prior escalation when a rejected $name cannot push input",
+    async (testCase) => {
+      const threadId = `thread-rejected-${testCase.name.replaceAll(" ", "-")}`;
+      const bridge = createBridgeJsonRpcTestHarness(handleLine);
+      const queries: ControlledClaudeQuery[] = [];
+      queryMock.mockImplementation(() => {
+        const query = createControlledClaudeQuery();
+        queries.push(query);
+        return query;
       });
 
-      const canUseTool = getLastCanUseTool();
-      await expect(
-        canUseTool(
-          "Bash",
-          { command: "echo hi", dangerouslyDisableSandbox: true },
-          {
-            decisionReason: "dangerouslyDisableSandbox",
-            signal: new AbortController().signal,
-            toolUseID: "tool-steer-failed",
-          },
-        ),
-      ).resolves.toMatchObject({ behavior: "deny" });
+      try {
+        bridge.sendRequest(1, "thread/start", {
+          workflowsEnabled: false,
+          claudeCodeMockCliTraffic:
+            DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
+          baseInstructions: "test",
+          cwd: "/tmp/worktree",
+          instructionMode: "append",
+          permissionEscalation: "deny",
+          permissionMode: "auto",
+          approvedPlanPermissionMode: "auto",
+          permissionScope: "workspace",
+          threadId,
+        });
+        await bridge.waitForResponse(1);
 
-      bridge.sendRequest(3, "thread/stop", { threadId });
-      await bridge.flushWork();
-      queries[0]?.finish();
-      await bridge.waitForResponse(3);
-    } finally {
-      queries.forEach((query) => query.finish());
-      bridge.restore();
-    }
-  });
+        await getLatestQueryCall().prompt[Symbol.asyncIterator]().return?.();
+
+        bridge.sendRequest(2, testCase.method, {
+          permissionEscalation: "ask",
+          ...(testCase.method === "turn/steer"
+            ? { expectedTurnId: "turn-1" }
+            : {}),
+          input: [{ type: "text", text: "loosen permissions" }],
+          ...(testCase.grouped
+            ? {
+                inputGroups: [
+                  [{ type: "text", text: "first grouped input" }],
+                  [{ type: "text", text: "second grouped input" }],
+                ],
+              }
+            : {}),
+          providerThreadId: null,
+          threadId,
+        });
+        await expect(bridge.waitForResponse(2)).resolves.toMatchObject({
+          error: { code: -32000 },
+        });
+
+        await expect(
+          getLastCanUseTool()(
+            "Bash",
+            { command: "echo hi", dangerouslyDisableSandbox: true },
+            {
+              decisionReason: "dangerouslyDisableSandbox",
+              signal: new AbortController().signal,
+              toolUseID: `tool-rejected-${testCase.method}`,
+            },
+          ),
+        ).resolves.toMatchObject({ behavior: "deny" });
+
+        bridge.sendRequest(3, "thread/stop", { threadId });
+        await bridge.flushWork();
+        queries[0]?.finish();
+        await bridge.waitForResponse(3);
+      } finally {
+        queries.forEach((query) => query.finish());
+        bridge.restore();
+      }
+    },
+  );
 
   describe("prompt attachment text markers", () => {
     async function sendTurnAndReadPrompt(

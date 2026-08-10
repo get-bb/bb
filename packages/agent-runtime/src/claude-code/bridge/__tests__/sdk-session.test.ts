@@ -103,9 +103,11 @@ describe("SdkSession", () => {
   it("resolves pushed input after the SDK prompt iterator yields it", async () => {
     keepSdkStreamOpen();
     const session = new SdkSession(defaultOptions, vi.fn(), vi.fn());
+    const promptId = "00000000-0000-0000-0000-000000000001";
 
     session.start();
-    const consumed = session.pushInput("hello");
+    expect(session.canPushInput()).toBe(true);
+    const consumed = session.pushInput("hello", promptId);
     let consumedResolved = false;
     void consumed.then(() => {
       consumedResolved = true;
@@ -116,6 +118,7 @@ describe("SdkSession", () => {
     const result = await getLatestPrompt()[Symbol.asyncIterator]().next();
     expect(result.done).toBe(false);
     expect(result.value?.message.content).toBe("hello");
+    expect(result.value?.uuid).toBe(promptId);
     await consumed;
     expect(consumedResolved).toBe(true);
     session.stop();
@@ -126,6 +129,7 @@ describe("SdkSession", () => {
     const consumed = session.pushInput("hello");
 
     session.stop();
+    expect(session.canPushInput()).toBe(false);
 
     await expect(consumed).rejects.toThrow(
       "Claude SDK session stopped before input consumed",

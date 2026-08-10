@@ -29,6 +29,7 @@ import {
 import {
   forkSession,
   type CanUseTool,
+  type HookCallback,
   type PermissionResult,
   type SDKMessage,
 } from "@anthropic-ai/claude-agent-sdk";
@@ -57,6 +58,7 @@ import {
   buildSessionOptions,
   buildWorkspaceWriteDenialMessage,
   type BuildSessionOptionsArgs,
+  type PermissionEscalationWorkContext,
 } from "./session-options.js";
 import {
   startClaudeCodeMockCliTrafficProxy,
@@ -197,7 +199,15 @@ interface ThreadSession {
   mockCliTrafficProxy: ClaudeCodeMockCliTrafficProxy | null;
   pendingToolCalls: Map<string | number, PendingToolCall>;
   pendingInteractiveRequests: Map<string | number, PendingInteractiveRequest>;
+  /** Current-turn fallback when Claude supplies no originating-work metadata. */
   permissionEscalation: PermissionEscalation | null;
+  permissionEscalationByAgentId: Map<string, PermissionEscalation | null>;
+  /**
+   * Retained for the session lifetime because background work can wake after
+   * multiple newer prompts have run.
+   */
+  permissionEscalationByPromptId: Map<string, PermissionEscalation | null>;
+  permissionEscalationByToolUseId: Map<string, PermissionEscalation | null>;
   permissionMode: ClaudePermissionMode;
   /** Mode to return to once the user approves a plan. See commands.ts. */
   approvedPlanPermissionMode: ClaudePermissionMode;
@@ -433,13 +443,36 @@ function ignoreInputConsumption(promise: Promise<void>): void {
   void promise.catch(() => {});
 }
 
+function pushPromptInput(
+  threadSession: ThreadSession,
+  input: string,
+  permissionEscalation: PermissionEscalation | null,
+): Promise<void> {
+  const promptId = randomUUID();
+  threadSession.permissionEscalationByPromptId.set(
+    promptId,
+    permissionEscalation,
+  );
+  return threadSession.session.pushInput(input, promptId).catch((error) => {
+    threadSession.permissionEscalationByPromptId.delete(promptId);
+    throw error;
+  });
+}
+
 function queuePromptInputs(
   threadSession: ThreadSession,
   inputs: readonly string[],
-): void {
-  for (const input of inputs) {
-    ignoreInputConsumption(threadSession.session.pushInput(input));
+  permissionEscalation: PermissionEscalation | null,
+): boolean {
+  if (!threadSession.session.canPushInput()) {
+    return false;
   }
+  for (const input of inputs) {
+    ignoreInputConsumption(
+      pushPromptInput(threadSession, input, permissionEscalation),
+    );
+  }
+  return true;
 }
 
 function sendSdkMessage(threadId: string, message: SDKMessage): void {
@@ -490,14 +523,18 @@ function toSessionConstructionConfig(
   };
 }
 
-function withLivePermissionEscalation(
+function withTrackedPermissionEscalation(
   params: SessionConstructionParams,
   threadIdRef: ThreadIdRef,
 ): BuildSessionOptionsArgs {
   return {
     ...toSessionConstructionConfig(params).sessionOptions,
-    getPermissionEscalation: () =>
-      sessions.get(threadIdRef.current)?.permissionEscalation ?? null,
+    getPermissionEscalation: (context) => {
+      const threadSession = sessions.get(threadIdRef.current);
+      return threadSession
+        ? resolvePermissionEscalationForWork(threadSession, context)
+        : null;
+    },
   };
 }
 
@@ -526,6 +563,9 @@ function createThreadSession(args: CreateThreadSessionArgs): ThreadSession {
     pendingToolCalls: new Map(),
     pendingInteractiveRequests: new Map(),
     permissionEscalation: args.permissionEscalation,
+    permissionEscalationByAgentId: new Map(),
+    permissionEscalationByPromptId: new Map(),
+    permissionEscalationByToolUseId: new Map(),
     permissionMode: args.permissionMode,
     approvedPlanPermissionMode: args.approvedPlanPermissionMode,
     ...(args.providerThreadId
@@ -534,6 +574,169 @@ function createThreadSession(args: CreateThreadSessionArgs): ThreadSession {
     sessionPermissionGrants: [...(args.sessionPermissionGrants ?? [])],
     threadIdRef: args.threadIdRef,
   };
+}
+
+function getTrackedPermissionEscalation(
+  values: Map<string, PermissionEscalation | null>,
+  key: string | undefined,
+): PermissionEscalation | null | undefined {
+  if (key === undefined || !values.has(key)) {
+    return undefined;
+  }
+  return values.get(key) ?? null;
+}
+
+function resolvePermissionEscalationForWork(
+  threadSession: ThreadSession,
+  context: PermissionEscalationWorkContext,
+): PermissionEscalation | null {
+  const toolPermissionEscalation = getTrackedPermissionEscalation(
+    threadSession.permissionEscalationByToolUseId,
+    context.toolUseId,
+  );
+  if (toolPermissionEscalation !== undefined) {
+    return toolPermissionEscalation;
+  }
+
+  const agentPermissionEscalation = getTrackedPermissionEscalation(
+    threadSession.permissionEscalationByAgentId,
+    context.agentId,
+  );
+  if (agentPermissionEscalation !== undefined) {
+    return agentPermissionEscalation;
+  }
+
+  const promptPermissionEscalation = getTrackedPermissionEscalation(
+    threadSession.permissionEscalationByPromptId,
+    context.promptId,
+  );
+  return promptPermissionEscalation === undefined
+    ? threadSession.permissionEscalation
+    : promptPermissionEscalation;
+}
+
+function buildPermissionEscalationTrackingHooks(
+  threadIdRef: ThreadIdRef,
+): NonNullable<SdkSessionOptions["hooks"]> {
+  const trackPreToolUse: HookCallback = async (input) => {
+    if (input.hook_event_name !== "PreToolUse") {
+      return { continue: true };
+    }
+    const threadSession = sessions.get(threadIdRef.current);
+    if (threadSession) {
+      threadSession.permissionEscalationByToolUseId.set(
+        input.tool_use_id,
+        resolvePermissionEscalationForWork(threadSession, {
+          ...(input.agent_id !== undefined
+            ? { agentId: input.agent_id }
+            : {}),
+          ...(input.prompt_id !== undefined
+            ? { promptId: input.prompt_id }
+            : {}),
+        }),
+      );
+    }
+    return { continue: true };
+  };
+
+  const trackSubagentStart: HookCallback = async (input) => {
+    if (input.hook_event_name !== "SubagentStart") {
+      return { continue: true };
+    }
+    const threadSession = sessions.get(threadIdRef.current);
+    if (threadSession) {
+      threadSession.permissionEscalationByAgentId.set(
+        input.agent_id,
+        resolvePermissionEscalationForWork(threadSession, {
+          ...(input.prompt_id !== undefined
+            ? { promptId: input.prompt_id }
+            : {}),
+        }),
+      );
+    }
+    return { continue: true };
+  };
+
+  const clearSubagent: HookCallback = async (input) => {
+    if (input.hook_event_name === "SubagentStop") {
+      sessions
+        .get(threadIdRef.current)
+        ?.permissionEscalationByAgentId.delete(input.agent_id);
+    }
+    return { continue: true };
+  };
+
+  const clearToolUse: HookCallback = async (input) => {
+    if (
+      input.hook_event_name === "PostToolUse" ||
+      input.hook_event_name === "PostToolUseFailure" ||
+      input.hook_event_name === "PermissionDenied"
+    ) {
+      sessions
+        .get(threadIdRef.current)
+        ?.permissionEscalationByToolUseId.delete(input.tool_use_id);
+    }
+    return { continue: true };
+  };
+
+  return {
+    PermissionDenied: [{ hooks: [clearToolUse] }],
+    PostToolUse: [{ hooks: [clearToolUse] }],
+    PostToolUseFailure: [{ hooks: [clearToolUse] }],
+    PreToolUse: [{ hooks: [trackPreToolUse] }],
+    SubagentStart: [{ hooks: [trackSubagentStart] }],
+    SubagentStop: [{ hooks: [clearSubagent] }],
+  };
+}
+
+function addPermissionEscalationTrackingHooks(
+  sessionOptions: SdkSessionOptions,
+  threadIdRef: ThreadIdRef,
+): void {
+  const existingHooks = sessionOptions.hooks;
+  const trackingHooks = buildPermissionEscalationTrackingHooks(threadIdRef);
+  // PreToolUse tracking must run before enforcement hooks so those hooks can
+  // resolve the tool ID back to the prompt or subagent that originated it.
+  sessionOptions.hooks = {
+    ...existingHooks,
+    PermissionDenied: [
+      ...(trackingHooks.PermissionDenied ?? []),
+      ...(existingHooks?.PermissionDenied ?? []),
+    ],
+    PostToolUse: [
+      ...(trackingHooks.PostToolUse ?? []),
+      ...(existingHooks?.PostToolUse ?? []),
+    ],
+    PostToolUseFailure: [
+      ...(trackingHooks.PostToolUseFailure ?? []),
+      ...(existingHooks?.PostToolUseFailure ?? []),
+    ],
+    PreToolUse: [
+      ...(trackingHooks.PreToolUse ?? []),
+      ...(existingHooks?.PreToolUse ?? []),
+    ],
+    SubagentStart: [
+      ...(trackingHooks.SubagentStart ?? []),
+      ...(existingHooks?.SubagentStart ?? []),
+    ],
+    SubagentStop: [
+      ...(trackingHooks.SubagentStop ?? []),
+      ...(existingHooks?.SubagentStop ?? []),
+    ],
+  };
+}
+
+function buildTrackedSessionOptions(
+  params: SessionConstructionParams,
+  env: NodeJS.ProcessEnv,
+  threadIdRef: ThreadIdRef,
+): SdkSessionOptions {
+  const sessionOptions = buildSessionOptions(
+    withTrackedPermissionEscalation(params, threadIdRef),
+    env,
+  );
+  addPermissionEscalationTrackingHooks(sessionOptions, threadIdRef);
+  return sessionOptions;
 }
 
 function replaceThreadSession(args: ReplaceThreadSessionArgs): void {
@@ -1181,6 +1384,15 @@ function createCanUseTool(threadIdRef: ThreadIdRef): CanUseTool {
       });
     }
 
+    const interactiveRequestPolicy = {
+      permissionEscalation: resolvePermissionEscalationForWork(threadSession, {
+        ...(options.agentID !== undefined
+          ? { agentId: options.agentID }
+          : {}),
+        toolUseId: options.toolUseID,
+      }),
+    };
+
     const suggestions = parseClaudeSuggestedPermissionUpdates(
       options.suggestions,
     );
@@ -1195,7 +1407,7 @@ function createCanUseTool(threadIdRef: ThreadIdRef): CanUseTool {
       toPendingInteractionPermissionProfile(requestContext);
     if (
       toolName === "Bash" &&
-      shouldAutoDenyInteractiveRequest(threadSession) &&
+      shouldAutoDenyInteractiveRequest(interactiveRequestPolicy) &&
       typeof input === "object" &&
       input !== null &&
       (input as { dangerouslyDisableSandbox?: unknown })
@@ -1265,7 +1477,7 @@ function createCanUseTool(threadIdRef: ThreadIdRef): CanUseTool {
     }
 
     if (
-      shouldAutoDenyInteractiveRequest(threadSession) ||
+      shouldAutoDenyInteractiveRequest(interactiveRequestPolicy) ||
       threadSession.permissionMode === "dontAsk"
     ) {
       const policyMessage =
@@ -1340,9 +1552,10 @@ async function handleThreadStart(
   }
 
   const preparedEnv = await prepareSessionEnv(params);
-  const sessionOptions = buildSessionOptions(
-    withLivePermissionEscalation(params, threadIdRef),
+  const sessionOptions = buildTrackedSessionOptions(
+    params,
     preparedEnv.env,
+    threadIdRef,
   );
   const providerThreadId = randomUUID();
   sessionOptions.sessionId = providerThreadId;
@@ -1412,9 +1625,10 @@ async function handleThreadResume(
 
   const preparedEnv = await prepareSessionEnv(params);
   const threadIdRef = { current: threadId };
-  const sessionOptions = buildSessionOptions(
-    withLivePermissionEscalation(params, threadIdRef),
+  const sessionOptions = buildTrackedSessionOptions(
+    params,
     preparedEnv.env,
+    threadIdRef,
   );
   sessionOptions.canUseTool = createCanUseTool(threadIdRef);
   if (params.dynamicTools && params.dynamicTools.length > 0) {
@@ -1476,9 +1690,10 @@ async function handleThreadFork(
 
   const preparedEnv = await prepareSessionEnv(params);
   const threadIdRef = { current: threadId };
-  const sessionOptions = buildSessionOptions(
-    withLivePermissionEscalation(params, threadIdRef),
+  const sessionOptions = buildTrackedSessionOptions(
+    params,
     preparedEnv.env,
+    threadIdRef,
   );
   sessionOptions.canUseTool = createCanUseTool(threadIdRef);
   if (params.dynamicTools && params.dynamicTools.length > 0) {
@@ -1539,8 +1754,11 @@ async function handleTurnStart(
     return;
   }
 
+  if (!queuePromptInputs(threadSession, inputs, params.permissionEscalation)) {
+    sendError(id, -32000, "Claude SDK input stream is closed");
+    return;
+  }
   threadSession.permissionEscalation = params.permissionEscalation;
-  queuePromptInputs(threadSession, inputs);
   sendResult(id, { threadId: params.threadId });
 }
 
@@ -1561,14 +1779,21 @@ async function handleTurnSteer(
   }
 
   if (inputs.length > 1) {
+    if (!queuePromptInputs(threadSession, inputs, params.permissionEscalation)) {
+      sendError(id, -32000, "Claude SDK input stream is closed");
+      return;
+    }
     threadSession.permissionEscalation = params.permissionEscalation;
-    queuePromptInputs(threadSession, inputs);
     sendResult(id, { threadId: params.threadId });
     return;
   }
 
   try {
-    await threadSession.session.pushInput(inputs[0] ?? "");
+    await pushPromptInput(
+      threadSession,
+      inputs[0] ?? "",
+      params.permissionEscalation,
+    );
     // A failed steer must not change the running turn's escalation.
     threadSession.permissionEscalation = params.permissionEscalation;
     sendResult(id, { threadId: params.threadId });

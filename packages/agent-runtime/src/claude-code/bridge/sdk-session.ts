@@ -148,6 +148,10 @@ export class SdkSession {
     return this.isProcessing;
   }
 
+  canPushInput(): boolean {
+    return !this.inputDone;
+  }
+
   /**
    * Change the permission mode of the live session. Used to leave Plan mode
    * once the user approves a plan. The new mode is also recorded on the
@@ -237,12 +241,16 @@ export class SdkSession {
     void this.consumeStream();
   }
 
-  pushInput(text: string): Promise<void> {
+  pushInput(
+    text: string,
+    promptId?: NonNullable<SDKUserMessage["uuid"]>,
+  ): Promise<void> {
     const message: SDKUserMessage = {
       type: "user",
       message: { role: "user", content: text },
       parent_tool_use_id: null,
       session_id: this.sessionId ?? "",
+      ...(promptId !== undefined ? { uuid: promptId } : {}),
     };
 
     if (this.inputDone) {
