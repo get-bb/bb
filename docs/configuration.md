@@ -213,13 +213,12 @@ delayed shortcut badges without disabling any shortcuts.
 | Composer  | Focus composer                | `Mod+Shift+C`                     | All clients              |
 | Composer  | Toggle model picker           | `Mod+Shift+M`                     | All clients              |
 | Composer  | Cycle model                   | `Alt+M`                           | All clients              |
+| Composer  | Cycle provider                | `Alt+P`                           | All clients              |
 | Composer  | Cycle reasoning effort        | `Alt+T`                           | All clients              |
+| Composer  | Previous / next model         | `Mod+←` / `Mod+→`                 | All clients              |
+| Composer  | Decrease / increase reasoning | `Mod+↓` / `Mod+↑`                 | All clients              |
 | Browser   | Focus location / reload       | `Mod+L` / `Mod+R`                 | Desktop embedded browser |
 | Questions | Choose visible answer 1–9     | `1` … `9`                         | While a question is open |
-
-With focus anywhere in a composer, `Mod+ArrowLeft` / `Mod+ArrowRight` selects
-the previous / next model and `Mod+ArrowDown` / `Mod+ArrowUp` decreases /
-increases reasoning effort. On macOS, `Command+Right Option` cycles providers.
 
 The desktop application menu uses the same resolved bindings for New Thread,
 New Window, New Tab, Close, and Settings. There is no separate menu shortcut

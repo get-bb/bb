@@ -197,36 +197,31 @@ export const DEFAULT_APP_KEYBINDINGS: AppDefaultKeybindings = [
     all: ["mainSurface", "modelPickerOpen"],
     none: [],
   }),
-  // Rotate the composer's model and reasoning level without opening the picker,
-  // scoped exactly like `modelPicker.toggle` above. Alt is otherwise unused by
-  // bb, the browser, and both desktop menus, so these chords shadow nothing.
-  // macOS composes Option+<letter> into another character, so they match on the
-  // physical key — see `normalizeAppShortcutInputKey` in @bb/domain.
+  // Rotate the composer's provider, model, and reasoning level without opening
+  // the picker, scoped exactly like `modelPicker.toggle` above. Alt is otherwise
+  // unused by bb, the browser, and both desktop menus, so these chords shadow
+  // nothing. macOS composes Option+<letter> into another character, so they
+  // match on the physical key — see `normalizeAppShortcutInputKey` in @bb/domain.
   binding("modelPicker.cycleModel", "m", { alt: true }, composerWithoutModal),
+  binding("modelPicker.cycleProvider", "p", { alt: true }, composerWithoutModal),
   binding("modelPicker.cycleReasoning", "t", { alt: true }, composerWithoutModal),
   // Navigation-style chords apply while the editor or any control in that
   // composer is focused. Their handlers enforce that ownership at the
   // individual picker level; `editableFocus` would reject Tab-focused buttons
-  // before those handlers can identify their composer.
+  // before those handlers can identify their composer. They only act on a
+  // closed picker, so they intentionally have no `modelPickerOpen` copies below.
   binding("modelPicker.previousModel", "ArrowLeft", { mod: true }, composerWithoutModal),
   binding("modelPicker.nextModel", "ArrowRight", { mod: true }, composerWithoutModal),
-  binding(
-    "modelPicker.cycleProvider",
-    "AltRight",
-    { mod: true, alt: true },
-    {
-      ...composerWithoutModal,
-      all: [...composerWithoutModal.all, "macPlatform"],
-    },
-  ),
-  // Directional reasoning changes stay closed and clamp at either end, so they
-  // intentionally have no `modelPickerOpen` copies below.
   binding("modelPicker.decreaseReasoning", "ArrowDown", { mod: true }, composerWithoutModal),
   binding("modelPicker.increaseReasoning", "ArrowUp", { mod: true }, composerWithoutModal),
   // The picker popover is itself modal, so the cycle bindings above stop the
   // moment it opens. These later, scoped copies keep cycling available while it
   // is open — the same escape hatch `modelPicker.toggle` uses to close itself.
   binding("modelPicker.cycleModel", "m", { alt: true }, {
+    all: ["mainSurface", "modelPickerOpen"],
+    none: [],
+  }),
+  binding("modelPicker.cycleProvider", "p", { alt: true }, {
     all: ["mainSurface", "modelPickerOpen"],
     none: [],
   }),

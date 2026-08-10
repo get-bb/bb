@@ -159,6 +159,7 @@ describe("app keybindings", () => {
           .filter(
             (binding) =>
               binding.command === "modelPicker.cycleModel" ||
+              binding.command === "modelPicker.cycleProvider" ||
               binding.command === "modelPicker.cycleReasoning",
           )
           .map((binding) => ({
@@ -171,6 +172,21 @@ describe("app keybindings", () => {
           command: "modelPicker.cycleModel",
           shortcut: {
             key: "m",
+            mod: false,
+            meta: false,
+            control: false,
+            alt: true,
+            shift: false,
+          },
+          when: {
+            all: ["mainSurface", "promptAvailable"],
+            none: ["modalOpen", "terminalFocus", "browserFocus"],
+          },
+        },
+        {
+          command: "modelPicker.cycleProvider",
+          shortcut: {
+            key: "p",
             mod: false,
             meta: false,
             control: false,
@@ -212,6 +228,18 @@ describe("app keybindings", () => {
           when: { all: ["mainSurface", "modelPickerOpen"], none: [] },
         },
         {
+          command: "modelPicker.cycleProvider",
+          shortcut: {
+            key: "p",
+            mod: false,
+            meta: false,
+            control: false,
+            alt: true,
+            shift: false,
+          },
+          when: { all: ["mainSurface", "modelPickerOpen"], none: [] },
+        },
+        {
           command: "modelPicker.cycleReasoning",
           shortcut: {
             key: "t",
@@ -227,7 +255,6 @@ describe("app keybindings", () => {
       const navigationCommands = new Set([
         "modelPicker.previousModel",
         "modelPicker.nextModel",
-        "modelPicker.cycleProvider",
         "modelPicker.decreaseReasoning",
         "modelPicker.increaseReasoning",
       ]);
@@ -244,7 +271,6 @@ describe("app keybindings", () => {
       ).toEqual([
         ["modelPicker.previousModel", "ArrowLeft", true, false],
         ["modelPicker.nextModel", "ArrowRight", true, false],
-        ["modelPicker.cycleProvider", "AltRight", true, true],
         ["modelPicker.decreaseReasoning", "ArrowDown", true, false],
         ["modelPicker.increaseReasoning", "ArrowUp", true, false],
       ]);
@@ -252,19 +278,9 @@ describe("app keybindings", () => {
         all: ["mainSurface", "promptAvailable"],
         none: ["modalOpen", "terminalFocus", "browserFocus"],
       };
-      expect(
-        navigationBindings
-          .filter((binding) => binding.command !== "modelPicker.cycleProvider")
-          .map((binding) => binding.when),
-      ).toEqual(Array.from({ length: 4 }, () => composerWhen));
-      expect(
-        navigationBindings.find(
-          (binding) => binding.command === "modelPicker.cycleProvider",
-        )?.when,
-      ).toEqual({
-        ...composerWhen,
-        all: [...composerWhen.all, "macPlatform"],
-      });
+      expect(navigationBindings.map((binding) => binding.when)).toEqual(
+        Array.from({ length: 4 }, () => composerWhen),
+      );
       // Alt defaults remain confined to composer cycling commands, so unrelated
       // actions cannot shadow these chords.
       expect(
@@ -273,9 +289,10 @@ describe("app keybindings", () => {
           .map((binding) => binding.command),
       ).toEqual([
         "modelPicker.cycleModel",
-        "modelPicker.cycleReasoning",
         "modelPicker.cycleProvider",
+        "modelPicker.cycleReasoning",
         "modelPicker.cycleModel",
+        "modelPicker.cycleProvider",
         "modelPicker.cycleReasoning",
       ]);
       expect(

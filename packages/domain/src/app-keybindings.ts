@@ -158,12 +158,6 @@ export function normalizeAppShortcutInputKey(input: AppShortcutInput): string {
   if (input.key === " " || input.key === "Spacebar") {
     return "Space";
   }
-  // The built-in provider shortcut distinguishes the physical right Option
-  // key from the left one. `key` reports both as "Alt"; `code` preserves the
-  // side.
-  if (input.key === "Alt" && input.code === "AltRight") {
-    return input.code;
-  }
   // macOS composes Option+<letter> into another character — Option+M reports
   // key "µ" — so an Alt chord could never be matched by `key` there. Fall back
   // to the physical key only when the composed character is NOT a plain letter

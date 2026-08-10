@@ -220,16 +220,32 @@ describe("ModelReasoningPicker", () => {
     expect(onModelChange).toHaveBeenCalledWith("gpt-5.2");
   });
 
-  it("declines provider cycling when provider switching is locked", () => {
+  it("swallows the provider cycle chord when provider switching is locked", () => {
     renderPicker({ onSelectedProviderChange: null });
     const lockedTarget = screen.getByRole("button", {
       name: "Provider, model and reasoning",
     });
+    // Owning the chord with nowhere to rotate is the correct no-op. Returning
+    // false lets the command provider skip `preventDefault()`, and macOS would
+    // then insert the composed Option+P character into the prompt.
     expect(
       commandHandlers.get("modelPicker.cycleProvider")?.({
         target: lockedTarget,
       }),
-    ).toBe(false);
+    ).toBe(true);
+  });
+
+  it("cycles the provider while the picker popover is open", () => {
+    const { onSelectedProviderChange } = renderPicker();
+    const trigger = screen.getByRole("button", {
+      name: "Provider, model and reasoning",
+    });
+    fireEvent.click(trigger);
+
+    expect(
+      commandHandlers.get("modelPicker.cycleProvider")?.({ target: trigger }),
+    ).toBe(true);
+    expect(onSelectedProviderChange).toHaveBeenCalledWith("claude-code");
   });
 
   it("stays open while changing both the model and reasoning effort", () => {

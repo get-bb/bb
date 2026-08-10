@@ -64,17 +64,13 @@ export function formatAppShortcut(
   const useMetaForMod = isMacKeyboardPlatform(platform);
   const showMeta = shortcut.meta || (shortcut.mod && useMetaForMod);
   const showControl = shortcut.control || (shortcut.mod && !useMetaForMod);
-  const isRightOption = shortcut.key === "AltRight";
-  const key = isRightOption
-    ? `Right ${useMetaForMod ? "⌥" : "Alt"}`
-    : shortcut.key.length === 1
-      ? shortcut.key.toUpperCase()
-      : shortcut.key;
+  const key =
+    shortcut.key.length === 1 ? shortcut.key.toUpperCase() : shortcut.key;
 
   if (useMetaForMod) {
     const parts: string[] = [];
     if (showControl) parts.push("⌃");
-    if (shortcut.alt && !isRightOption) parts.push("⌥");
+    if (shortcut.alt) parts.push("⌥");
     if (shortcut.shift) parts.push("⇧");
     if (showMeta) parts.push("⌘");
     parts.push(key);
@@ -83,7 +79,7 @@ export function formatAppShortcut(
 
   const parts: string[] = [];
   if (showControl) parts.push("Ctrl");
-  if (shortcut.alt && !isRightOption) parts.push("Alt");
+  if (shortcut.alt) parts.push("Alt");
   if (shortcut.shift) parts.push("Shift");
   if (showMeta) parts.push("Meta");
   parts.push(key);
@@ -95,7 +91,6 @@ export function formatAppShortcutAria(
   platform: string,
 ): string {
   const useMetaForMod = isMacKeyboardPlatform(platform);
-  const isRightOption = shortcut.key === "AltRight";
   const parts: string[] = [];
   if (shortcut.control || (shortcut.mod && !useMetaForMod)) {
     parts.push("Control");
@@ -103,10 +98,8 @@ export function formatAppShortcutAria(
   if (shortcut.alt) parts.push("Alt");
   if (shortcut.shift) parts.push("Shift");
   if (shortcut.meta || (shortcut.mod && useMetaForMod)) parts.push("Meta");
-  if (!isRightOption) {
-    parts.push(
-      shortcut.key.length === 1 ? shortcut.key.toUpperCase() : shortcut.key,
-    );
-  }
+  parts.push(
+    shortcut.key.length === 1 ? shortcut.key.toUpperCase() : shortcut.key,
+  );
   return parts.join("+");
 }

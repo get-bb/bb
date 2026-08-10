@@ -24,9 +24,9 @@ const MOD_N: AppShortcut = {
   shift: false,
 };
 
-const COMMAND_RIGHT_OPTION: AppShortcut = {
-  key: "AltRight",
-  mod: true,
+const ALT_P: AppShortcut = {
+  key: "p",
+  mod: false,
   meta: false,
   control: false,
   alt: true,
@@ -159,25 +159,6 @@ describe("app keybindings", () => {
     ).toBe(false);
   });
 
-  it("distinguishes the right Option key from the left Option key", () => {
-    const input = {
-      key: "Alt",
-      code: "AltRight",
-      metaKey: true,
-      ctrlKey: false,
-      altKey: true,
-      shiftKey: false,
-    };
-    expect(matchesAppShortcut(input, COMMAND_RIGHT_OPTION, true)).toBe(true);
-    expect(
-      matchesAppShortcut(
-        { ...input, code: "AltLeft" },
-        COMMAND_RIGHT_OPTION,
-        true,
-      ),
-    ).toBe(false);
-  });
-
   it("requires every positive context and excludes every negative context", () => {
     const binding: AppKeybinding = {
       command: "diff.toggle",
@@ -266,11 +247,8 @@ describe("app keybindings", () => {
     expect(formatAppShortcutAria(MOD_N, "MacIntel")).toBe("Meta+N");
     expect(formatAppShortcutAria(MOD_N, "Win32")).toBe("Control+N");
 
-    expect(formatAppShortcut(COMMAND_RIGHT_OPTION, "MacIntel")).toBe(
-      "⌘ Right ⌥",
-    );
-    expect(formatAppShortcutAria(COMMAND_RIGHT_OPTION, "MacIntel")).toBe(
-      "Alt+Meta",
-    );
+    expect(formatAppShortcut(ALT_P, "MacIntel")).toBe("⌥ P");
+    expect(formatAppShortcut(ALT_P, "Win32")).toBe("Alt + P");
+    expect(formatAppShortcutAria(ALT_P, "MacIntel")).toBe("Alt+P");
   });
 });

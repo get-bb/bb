@@ -619,10 +619,10 @@ export function ModelReasoningPicker({
     },
     50,
   );
-  // Both cycle chords rotate the COMMITTED provider's lists, never a previewed
-  // tab's, so the shortcut means the same thing whether the popover is open or
-  // shut. A preview in progress is dropped so the visible tab keeps matching the
-  // committed selection.
+  // The cycle chords rotate the COMMITTED provider and its lists, never a
+  // previewed tab's, so the shortcut means the same thing whether the popover is
+  // open or shut. A preview in progress is dropped so the visible tab keeps
+  // matching the committed selection.
   //
   // An in-scope chord ALWAYS returns true, even with nowhere to rotate to. A
   // false result makes the command provider bail before `preventDefault()`, and
@@ -643,35 +643,19 @@ export function ModelReasoningPicker({
     },
     50,
   );
-  useIndexedAppCommandHandlers(
-    MODEL_NAVIGATION_COMMANDS,
-    (index, { target }) => {
-      if (!ownsClosedNavigationChord(target)) return false;
-      const next =
-        index === 0
-          ? previousCycleValue(modelOptions, modelValue)
-          : nextCycleValue(modelOptions, modelValue);
-      if (next === null) return false;
-      onModelChange(next);
-      setPreviewProviderId(null);
-      return true;
-    },
-    50,
-  );
   useAppCommandHandler(
     "modelPicker.cycleProvider",
     ({ target }) => {
-      if (
-        !ownsClosedNavigationChord(target) ||
-        !canSwitchProviders ||
-        onSelectedProviderChange === undefined
-      ) {
+      if (!ownsModelPickerChord({ open, ...resolveCommandScope(target) })) {
         return false;
       }
-      const next = nextCycleValue(providerOptions, selectedProviderId);
-      if (next === null) return false;
-      onSelectedProviderChange(next);
-      setPreviewProviderId(null);
+      if (canSwitchProviders && onSelectedProviderChange !== undefined) {
+        const next = nextCycleValue(providerOptions, selectedProviderId);
+        if (next !== null) {
+          onSelectedProviderChange(next);
+          setPreviewProviderId(null);
+        }
+      }
       return true;
     },
     50,
@@ -687,6 +671,23 @@ export function ModelReasoningPicker({
         onReasoningChange(next);
         setPreviewProviderId(null);
       }
+      return true;
+    },
+    50,
+  );
+  // The navigation chords are scoped to the CLOSED picker of the composer that
+  // holds the caret, so they share none of the cycle chords' fallbacks.
+  useIndexedAppCommandHandlers(
+    MODEL_NAVIGATION_COMMANDS,
+    (index, { target }) => {
+      if (!ownsClosedNavigationChord(target)) return false;
+      const next =
+        index === 0
+          ? previousCycleValue(modelOptions, modelValue)
+          : nextCycleValue(modelOptions, modelValue);
+      if (next === null) return false;
+      onModelChange(next);
+      setPreviewProviderId(null);
       return true;
     },
     50,
