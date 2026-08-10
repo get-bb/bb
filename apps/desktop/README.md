@@ -82,6 +82,28 @@ machines with no keychain identity (or with `CSC_IDENTITY_AUTO_DISCOVERY=false`,
 as CI sets for workflow-artifact-only builds), artifacts remain unsigned and
 macOS shows the normal Gatekeeper warning on first launch.
 
+## Local install
+
+Build a stable desktop release, produce a `.dmg`, and replace `/Applications/bb.app`
+with the freshly built bundle:
+
+```bash
+pnpm desktop:install
+```
+
+This is macOS Apple Silicon only. The script installs workspace dependencies when
+needed, builds via `desktop:dist:local` (no publish), and copies from
+`apps/desktop/release/mac-arm64/bb.app`. The `.dmg` remains under
+`apps/desktop/release/` for sharing or testing. Unsigned local builds may still
+show Gatekeeper on first launch.
+
+Options:
+
+```bash
+scripts/desktop-build-install.sh --skip-build   # install existing release artifacts
+scripts/desktop-build-install.sh --no-quit      # skip quitting a running bb app
+```
+
 ## Releasing
 
 `bb-app` and `@bb/desktop` versions are LOCKED in lockstep. The desktop package
