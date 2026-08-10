@@ -627,6 +627,88 @@ describe("acp adapter event translation", () => {
     ]);
   });
 
+  it("translates ACP usage updates into exact context-window usage", () => {
+    const adapter = createAdapter();
+    startTurn(adapter);
+
+    expect(
+      adapter.translateEvent(
+        updateNotification({
+          sessionUpdate: "usage_update",
+          used: 32_768,
+          size: 200_000,
+          cost: { amount: 0.42, currency: "USD" },
+        }),
+        THREAD_CONTEXT,
+      ),
+    ).toEqual([
+      {
+        type: "thread/contextWindowUsage/updated",
+        threadId: "",
+        providerThreadId: "",
+        scope: turnScope("turn-1"),
+        contextWindowUsage: {
+          usedTokens: 32_768,
+          modelContextWindow: 200_000,
+          estimated: false,
+        },
+      },
+    ]);
+  });
+
+  it("reports ACP usage before a turn without creating a synthetic turn", () => {
+    const adapter = createAdapter();
+
+    expect(
+      adapter.translateEvent(
+        updateNotification({
+          sessionUpdate: "usage_update",
+          used: 65_536,
+          size: 1_000_000,
+        }),
+        THREAD_CONTEXT,
+      ),
+    ).toEqual([
+      {
+        type: "thread/contextWindowUsage/updated",
+        threadId: "",
+        providerThreadId: "",
+        scope: threadScope(),
+        contextWindowUsage: {
+          usedTokens: 65_536,
+          modelContextWindow: 1_000_000,
+          estimated: false,
+        },
+      },
+    ]);
+  });
+
+  it("ignores malformed ACP usage updates", () => {
+    const adapter = createAdapter();
+    startTurn(adapter);
+
+    expect(
+      adapter.translateEvent(
+        updateNotification({
+          sessionUpdate: "usage_update",
+          used: -1,
+          size: 200_000,
+        }),
+        THREAD_CONTEXT,
+      ),
+    ).toEqual([]);
+    expect(
+      adapter.translateEvent(
+        updateNotification({
+          sessionUpdate: "usage_update",
+          used: 1,
+          size: "200000",
+        }),
+        THREAD_CONTEXT,
+      ),
+    ).toEqual([]);
+  });
+
   it("accumulates thought chunks into a reasoning item", () => {
     const adapter = createAdapter();
     startTurn(adapter);

@@ -119,7 +119,11 @@ export const threadEventScopeDefinitionByType = {
       "Terminal task state can arrive turns after the spawning turn completed; thread scope avoids appending into a closed turn's sequence range.",
   },
   "thread/tokenUsage/updated": { policy: "turn" },
-  "thread/contextWindowUsage/updated": { policy: "turn" },
+  "thread/contextWindowUsage/updated": {
+    policy: "thread-or-turn",
+    rationale:
+      "Context usage is session state; providers can report it before, during, or after a turn.",
+  },
   "turn/plan/updated": { policy: "turn" },
   "turn/diff/updated": { policy: "turn" },
   "provider/error": {

@@ -106,6 +106,7 @@ import {
   acpAgentThoughtChunkUpdateSchema,
   acpPlanUpdateSchema,
   acpToolCallUpdateEventSchema,
+  acpUsageUpdateSchema,
   extractAcpContentText,
   type AcpSessionUpdate,
   type AcpStopReason,
@@ -990,6 +991,28 @@ export function createAcpProviderAdapter(
           plan,
         });
         return events;
+      }
+
+      case "usage_update": {
+        const parsed = acpUsageUpdateSchema.safeParse(update);
+        if (!parsed.success) {
+          return [];
+        }
+        return [
+          {
+            type: "thread/contextWindowUsage/updated",
+            threadId: UNSTAMPED_THREAD_ID,
+            providerThreadId: "",
+            scope: state.currentTurnId
+              ? turnScope(state.currentTurnId)
+              : threadScope(),
+            contextWindowUsage: {
+              usedTokens: parsed.data.used,
+              modelContextWindow: parsed.data.size,
+              estimated: false,
+            },
+          },
+        ];
       }
 
       default:

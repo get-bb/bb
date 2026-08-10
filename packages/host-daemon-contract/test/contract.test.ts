@@ -1051,10 +1051,10 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  // Version 94 adds Cursor skill scopes to the delete command contract.
-  // An older daemon rejects these scopes, so it must update before deletion.
-  it("uses protocol version 94 for Cursor skill scopes", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(94);
+  // Version 95 lets ACP sessions send context-window usage outside a turn.
+  // An older daemon omits these events, so it must update before connecting.
+  it("uses protocol version 95 for ACP context-window usage", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(95);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {

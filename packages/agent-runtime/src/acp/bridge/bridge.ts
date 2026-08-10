@@ -1726,11 +1726,14 @@ function handleAgentNotification(
   if (method !== "session/update") {
     return;
   }
-  if (session.loading || session.stopping) {
+  if (session.stopping) {
     return;
   }
   const parsed = acpSessionNotificationParamsSchema.safeParse(params);
   if (!parsed.success) {
+    return;
+  }
+  if (session.loading && parsed.data.update.sessionUpdate !== "usage_update") {
     return;
   }
   sendNotification(ACP_UPDATE_METHOD, {
