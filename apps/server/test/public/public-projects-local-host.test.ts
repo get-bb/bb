@@ -1,17 +1,23 @@
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
-import { listPublicProjects, setExperiments } from "@bb/db";
-import { defaultExperiments } from "@bb/domain";
+import {
+  ensurePersonalProject,
+  listPublicProjects,
+  setExperiments,
+} from "@bb/db";
+import { defaultExperiments, PERSONAL_PROJECT_ID } from "@bb/domain";
 import {
   reportQueuedCommandSuccess,
   waitForQueuedCommand,
 } from "../helpers/commands.js";
 import { readJson } from "../helpers/json.js";
 import {
+  seedEnvironment,
   seedHost,
   seedHostSession,
   seedPrimaryHost,
   seedProjectWithSource,
+  seedThread,
 } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
 
@@ -27,6 +33,48 @@ const projectResponseSchema = z.object({
 });
 
 describe("public project local host routes", () => {
+  it("creates a project when a personal thread already uses its folder", async () => {
+    await withTestHarness(async (harness) => {
+      const offlinePrimary = seedHost(harness.deps, {
+        id: "host-personal-folder-project",
+      });
+      seedPrimaryHost(harness.deps, offlinePrimary.id);
+      // Threads created without a selected project belong to Personal. After
+      // changing directories, their target path is stored as an environment.
+      ensurePersonalProject(harness.db);
+      const personalEnvironment = seedEnvironment(harness.deps, {
+        hostId: offlinePrimary.id,
+        projectId: PERSONAL_PROJECT_ID,
+        path: "/tmp/personal-thread-folder",
+      });
+      seedThread(harness.deps, {
+        projectId: PERSONAL_PROJECT_ID,
+        environmentId: personalEnvironment.id,
+        status: "idle",
+      });
+
+      const response = await harness.app.request("/api/v1/projects", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          name: "Personal Thread Folder",
+          source: {
+            type: "local_path",
+            hostId: offlinePrimary.id,
+            path: "/tmp/personal-thread-folder",
+          },
+        }),
+      });
+
+      expect(response.status).toBe(201);
+      const project = projectResponseSchema.parse(await readJson(response));
+      expect(project.id).not.toBe(PERSONAL_PROJECT_ID);
+      expect(listPublicProjects(harness.db)).toEqual([
+        expect.objectContaining({ id: project.id }),
+      ]);
+    });
+  });
+
   it("returns the existing project when its local folder is added again", async () => {
     await withTestHarness(async (harness) => {
       const offlinePrimary = seedHost(harness.deps, {
