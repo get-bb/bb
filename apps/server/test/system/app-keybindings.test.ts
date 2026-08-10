@@ -151,106 +151,50 @@ describe("app keybindings", () => {
           none: ["modalOpen", "terminalFocus", "browserFocus"],
         },
       });
+      const composerWhen = {
+        all: ["mainSurface", "promptAvailable"],
+        none: ["modalOpen", "terminalFocus", "browserFocus"],
+      };
+      const pickerOpenWhen = {
+        all: ["mainSurface", "modelPickerOpen"],
+        none: [],
+      };
+      const altChord = (
+        command: string,
+        key: string,
+        when: { all: string[]; none: string[] },
+      ) => ({
+        command,
+        shortcut: {
+          key,
+          mod: false,
+          meta: false,
+          control: false,
+          alt: true,
+          shift: false,
+        },
+        when,
+      });
       // The cycle chords must stay on plain Alt and share the scope of
       // `modelPicker.toggle`. Alt is unused elsewhere in bb, so nothing shadows
       // them and they shadow nothing.
       expect(
         assignedDefaultKeybindings
-          .filter(
-            (binding) =>
-              binding.command === "modelPicker.cycleModel" ||
-              binding.command === "modelPicker.cycleProvider" ||
-              binding.command === "modelPicker.cycleReasoning",
-          )
+          .filter((binding) => binding.command.startsWith("modelPicker.cycle"))
           .map((binding) => ({
             command: binding.command,
             shortcut: binding.shortcut,
             when: binding.when,
           })),
       ).toEqual([
-        {
-          command: "modelPicker.cycleModel",
-          shortcut: {
-            key: "m",
-            mod: false,
-            meta: false,
-            control: false,
-            alt: true,
-            shift: false,
-          },
-          when: {
-            all: ["mainSurface", "promptAvailable"],
-            none: ["modalOpen", "terminalFocus", "browserFocus"],
-          },
-        },
-        {
-          command: "modelPicker.cycleProvider",
-          shortcut: {
-            key: "p",
-            mod: false,
-            meta: false,
-            control: false,
-            alt: true,
-            shift: false,
-          },
-          when: {
-            all: ["mainSurface", "promptAvailable"],
-            none: ["modalOpen", "terminalFocus", "browserFocus"],
-          },
-        },
-        {
-          command: "modelPicker.cycleReasoning",
-          shortcut: {
-            key: "t",
-            mod: false,
-            meta: false,
-            control: false,
-            alt: true,
-            shift: false,
-          },
-          when: {
-            all: ["mainSurface", "promptAvailable"],
-            none: ["modalOpen", "terminalFocus", "browserFocus"],
-          },
-        },
+        altChord("modelPicker.cycleModel", "m", composerWhen),
+        altChord("modelPicker.cycleProvider", "p", composerWhen),
+        altChord("modelPicker.cycleReasoning", "t", composerWhen),
         // The picker popover is modal, so a second scoped copy of each chord
         // keeps cycling alive while it is open.
-        {
-          command: "modelPicker.cycleModel",
-          shortcut: {
-            key: "m",
-            mod: false,
-            meta: false,
-            control: false,
-            alt: true,
-            shift: false,
-          },
-          when: { all: ["mainSurface", "modelPickerOpen"], none: [] },
-        },
-        {
-          command: "modelPicker.cycleProvider",
-          shortcut: {
-            key: "p",
-            mod: false,
-            meta: false,
-            control: false,
-            alt: true,
-            shift: false,
-          },
-          when: { all: ["mainSurface", "modelPickerOpen"], none: [] },
-        },
-        {
-          command: "modelPicker.cycleReasoning",
-          shortcut: {
-            key: "t",
-            mod: false,
-            meta: false,
-            control: false,
-            alt: true,
-            shift: false,
-          },
-          when: { all: ["mainSurface", "modelPickerOpen"], none: [] },
-        },
+        altChord("modelPicker.cycleModel", "m", pickerOpenWhen),
+        altChord("modelPicker.cycleProvider", "p", pickerOpenWhen),
+        altChord("modelPicker.cycleReasoning", "t", pickerOpenWhen),
       ]);
       const navigationCommands = new Set([
         "modelPicker.previousModel",
@@ -258,29 +202,28 @@ describe("app keybindings", () => {
         "modelPicker.decreaseReasoning",
         "modelPicker.increaseReasoning",
       ]);
-      const navigationBindings = config.defaultKeybindings.filter((binding) =>
-        navigationCommands.has(binding.command),
-      );
       expect(
-        navigationBindings.map(({ command, shortcut }) => [
-          command,
-          shortcut.key,
-          shortcut.mod,
-          shortcut.alt,
-        ]),
+        config.defaultKeybindings
+          .filter((binding) => navigationCommands.has(binding.command))
+          .map(({ command, shortcut, when }) => [
+            command,
+            shortcut.key,
+            shortcut.mod,
+            shortcut.alt,
+            when,
+          ]),
       ).toEqual([
-        ["modelPicker.previousModel", "ArrowLeft", true, false],
-        ["modelPicker.nextModel", "ArrowRight", true, false],
-        ["modelPicker.decreaseReasoning", "ArrowDown", true, false],
-        ["modelPicker.increaseReasoning", "ArrowUp", true, false],
+        ["modelPicker.previousModel", "ArrowLeft", true, false, composerWhen],
+        ["modelPicker.nextModel", "ArrowRight", true, false, composerWhen],
+        [
+          "modelPicker.decreaseReasoning",
+          "ArrowDown",
+          true,
+          false,
+          composerWhen,
+        ],
+        ["modelPicker.increaseReasoning", "ArrowUp", true, false, composerWhen],
       ]);
-      const composerWhen = {
-        all: ["mainSurface", "promptAvailable"],
-        none: ["modalOpen", "terminalFocus", "browserFocus"],
-      };
-      expect(navigationBindings.map((binding) => binding.when)).toEqual(
-        Array.from({ length: 4 }, () => composerWhen),
-      );
       // Alt defaults remain confined to composer cycling commands, so unrelated
       // actions cannot shadow these chords.
       expect(
