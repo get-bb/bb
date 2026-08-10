@@ -74,99 +74,121 @@ function presentShortcut(
   };
 }
 
+function areNullableAppShortcutsEqual(
+  left: AppShortcut | null,
+  right: AppShortcut | null,
+): boolean {
+  return (
+    left === right ||
+    (left !== null && right !== null && areAppShortcutsEqual(left, right))
+  );
+}
+
 interface ShortcutRecorderProps {
   command: AppCommandId;
   disabled: boolean;
-  onChange(shortcut: AppShortcut): void;
+  onChange(command: AppCommandId, shortcut: AppShortcut): void;
   onRecordingChange(command: AppCommandId | null): void;
   recording: boolean;
   shortcut: AppShortcut | null;
 }
 
-function ShortcutRecorder({
-  command,
-  disabled,
-  onChange,
-  onRecordingChange,
-  recording,
-  shortcut,
-}: ShortcutRecorderProps) {
-  const platform = browserPlatform();
-  const [error, setError] = useState<string | null>(null);
-  const shortcutPresentation =
-    shortcut === null ? null : presentShortcut(shortcut, platform);
-  const formattedShortcut = shortcutPresentation?.label ?? "unassigned";
+const ShortcutRecorder = memo(
+  function ShortcutRecorder({
+    command,
+    disabled,
+    onChange,
+    onRecordingChange,
+    recording,
+    shortcut,
+  }: ShortcutRecorderProps) {
+    const platform = browserPlatform();
+    const [error, setError] = useState<string | null>(null);
+    const shortcutPresentation =
+      shortcut === null ? null : presentShortcut(shortcut, platform);
+    const formattedShortcut = shortcutPresentation?.label ?? "unassigned";
 
-  function handleKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
-    if (!recording) return;
-    event.preventDefault();
-    event.stopPropagation();
-    if (event.key === "Escape") {
+    function handleKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
+      if (!recording) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.key === "Escape") {
+        setError(null);
+        onRecordingChange(null);
+        return;
+      }
+      const next = appShortcutFromInput(event, platform);
+      if (next === null) {
+        setError("Press a non-modifier key.");
+        return;
+      }
+      if (!canAssignAppShortcut(command, next)) {
+        setError("Use Command, Control, or Alt with a key.");
+        return;
+      }
       setError(null);
+      onChange(command, next);
       onRecordingChange(null);
-      return;
     }
-    const next = appShortcutFromInput(event, platform);
-    if (next === null) {
-      setError("Press a non-modifier key.");
-      return;
-    }
-    if (!canAssignAppShortcut(command, next)) {
-      setError("Use Command, Control, or Alt with a key.");
-      return;
-    }
-    setError(null);
-    onChange(next);
-    onRecordingChange(null);
-  }
 
-  return (
-    <div className="flex flex-col items-end gap-1">
-      <Button
-        aria-label={
-          recording
-            ? `Recording shortcut for ${getAppCommandMetadata(command).label}. Press keys or Escape to cancel.`
-            : `Record shortcut for ${getAppCommandMetadata(command).label}, current shortcut ${formattedShortcut}`
-        }
-        aria-pressed={recording}
-        className={cn(
-          "h-7 min-w-24 px-2 text-xs",
-          recording && "border-ring text-foreground",
-        )}
-        disabled={disabled}
-        onBlur={() => {
-          setError(null);
-          onRecordingChange(null);
-        }}
-        onClick={() => {
-          if (recording) return;
-          setError(null);
-          onRecordingChange(command);
-        }}
-        onKeyDown={handleKeyDown}
-        size="sm"
-        type="button"
-        variant="outline"
-      >
-        {recording ? (
-          "Press keys"
-        ) : shortcutPresentation === null ? (
-          "Unassigned"
-        ) : (
-          <AppCommandShortcutPill
-            className={SETTINGS_SHORTCUT_PILL_CLASS}
-            shortcut={shortcutPresentation}
-          />
-        )}
-      </Button>
-      {error ? (
-        <p className="text-xs text-destructive" role="alert">
-          {error}
-        </p>
-      ) : null}
-    </div>
-  );
-}
+    return (
+      <div className="flex flex-col items-end gap-1">
+        <Button
+          aria-label={
+            recording
+              ? `Recording shortcut for ${getAppCommandMetadata(command).label}. Press keys or Escape to cancel.`
+              : `Record shortcut for ${getAppCommandMetadata(command).label}, current shortcut ${formattedShortcut}`
+          }
+          aria-pressed={recording}
+          className={cn(
+            "h-7 min-w-24 px-2 text-xs",
+            recording && "border-ring text-foreground",
+          )}
+          disabled={disabled}
+          onBlur={() => {
+            setError(null);
+            onRecordingChange(null);
+          }}
+          onClick={() => {
+            if (recording) return;
+            setError(null);
+            onRecordingChange(command);
+          }}
+          onKeyDown={handleKeyDown}
+          size="sm"
+          type="button"
+          variant="outline"
+        >
+          {recording ? (
+            "Press keys"
+          ) : shortcutPresentation === null ? (
+            "Unassigned"
+          ) : (
+            <AppCommandShortcutPill
+              className={SETTINGS_SHORTCUT_PILL_CLASS}
+              shortcut={shortcutPresentation}
+            />
+          )}
+        </Button>
+        {error ? (
+          <p className="text-xs text-destructive" role="alert">
+            {error}
+          </p>
+        ) : null}
+      </div>
+    );
+  },
+  function areShortcutRecorderPropsEqual(left, right) {
+    return (
+      left.command === right.command &&
+      left.disabled === right.disabled &&
+      left.onChange === right.onChange &&
+      left.onRecordingChange === right.onRecordingChange &&
+      left.recording === right.recording &&
+      areNullableAppShortcutsEqual(left.shortcut, right.shortcut)
+    );
+  },
+);
 
 interface KeyboardCommandRowProps {
   model: KeyboardCommandRowModel;
@@ -253,16 +275,6 @@ function buildKeyboardCommandRowModel({
     shortcut,
     webDefaultShortcut,
   };
-}
-
-function areNullableAppShortcutsEqual(
-  left: AppShortcut | null,
-  right: AppShortcut | null,
-): boolean {
-  return (
-    left === right ||
-    (left !== null && right !== null && areAppShortcutsEqual(left, right))
-  );
 }
 
 function areCommandListsEqual(
@@ -389,7 +401,7 @@ const KeyboardCommandRow = memo(
           <ShortcutRecorder
             command={command}
             disabled={!availableOnClient}
-            onChange={(next) => onChange(command, next)}
+            onChange={onChange}
             onRecordingChange={onRecordingChange}
             recording={recording}
             shortcut={shortcut}

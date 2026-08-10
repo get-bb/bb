@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { createElement, type ComponentProps } from "react";
 import {
   act,
   cleanup,
@@ -127,6 +128,7 @@ const testState = vi.hoisted(() => {
     keybindingOverrides: [] as AppKeybindingOverrides,
     keyboardPending: false,
     metadataCalls: new Map<AppCommandId, number>(),
+    recorderButtonCalls: new Map<string, number>(),
     mutate:
       vi.fn<
         (
@@ -158,6 +160,26 @@ vi.mock("@/hooks/mutations/settings-mutations", () => ({
   }),
 }));
 
+vi.mock("@bb/shared-ui/button", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@bb/shared-ui/button")>();
+  return {
+    ...actual,
+    Button: (props: ComponentProps<typeof actual.Button>) => {
+      const label = props["aria-label"];
+      if (
+        typeof label === "string" &&
+        label.startsWith("Record shortcut for ")
+      ) {
+        testState.recorderButtonCalls.set(
+          label,
+          (testState.recorderButtonCalls.get(label) ?? 0) + 1,
+        );
+      }
+      return createElement(actual.Button, props);
+    },
+  };
+});
+
 vi.mock("@/lib/app-command-metadata", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("@/lib/app-command-metadata")>();
@@ -188,6 +210,7 @@ afterEach(() => {
   testState.keybindingOverrides = [];
   testState.keyboardPending = false;
   testState.metadataCalls.clear();
+  testState.recorderButtonCalls.clear();
 });
 
 describe("KeyboardSettingsSection", () => {
@@ -394,6 +417,7 @@ describe("KeyboardSettingsSection", () => {
       name: "Record shortcut for Open thread 1, current shortcut Ctrl + Shift + 1",
     });
     fireEvent.click(jumpRecorder);
+    testState.recorderButtonCalls.clear();
     fireEvent.keyDown(jumpRecorder, {
       key: "U",
       ctrlKey: true,
@@ -403,6 +427,16 @@ describe("KeyboardSettingsSection", () => {
     expect(screen.getByText(/Also used by Open thread 1\./u)).toBeDefined();
     expect(screen.getByText(/Also used by New thread\./u)).toBeDefined();
     expect(testState.mutate.mock.lastCall?.[0]).toHaveLength(2);
+    expect(
+      [...testState.recorderButtonCalls.keys()].filter((label) =>
+        label.includes("New thread"),
+      ),
+    ).toEqual([]);
+    expect(
+      [...testState.recorderButtonCalls.keys()].filter((label) =>
+        label.includes("Open thread 1"),
+      ),
+    ).toHaveLength(1);
   });
 
   it("rolls reset-all draft state back when the mutation fails", () => {
