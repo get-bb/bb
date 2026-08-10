@@ -7,12 +7,12 @@ import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
-import { createProxyServer } from "http-proxy-3";
 import { resolveCurrentDevInstanceConfig } from "../packages/config/src/runtime.ts";
 import {
   CLOUD_DEV_HOST_HEADER,
   waitForCloudService,
 } from "../apps/connect/src/cloud-dev.ts";
+import { createCloudDevProxy } from "./lib/cloud-dev-proxy.mjs";
 
 const REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -176,7 +176,7 @@ run([
   STATE_DIR,
 ]);
 
-const proxy = createProxyServer({ ws: true });
+const proxy = createCloudDevProxy();
 gateway = createServer((request, response) => {
   const route = routeRequest(request);
   if (route === null) {
