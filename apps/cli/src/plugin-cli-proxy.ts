@@ -33,33 +33,45 @@ export type PluginCliContributionsResult =
   | { outcome: "invalid" };
 
 /**
- * Diagnose a failed probe of the server without overclaiming: only
- * ECONNREFUSED is evidence that bb is not running. Blocked connections
- * (sandboxed agent shells) and timeouts name the address and errno so the
- * reader — often an agent — does not declare a running bb dead.
+ * Diagnose a failed probe of the server without overclaiming: only when every
+ * connection attempt reports ECONNREFUSED is there evidence that bb is not
+ * running. Blocked connections (sandboxed agent shells) and timeouts name the
+ * address and errno so the reader — often an agent — does not declare a
+ * running bb dead.
  */
 export function describeUnreachableServer(
   baseUrl: string,
   cause: unknown,
   timeoutMs: number = CONTRIBUTIONS_TIMEOUT_MS,
 ): string {
-  let code: string | undefined;
+  let blockedCode: "EPERM" | "EACCES" | undefined;
   let timedOut = false;
   const messages: string[] = [];
+  const terminalCodes: Array<string | undefined> = [];
   const seen = new Set<object>();
-  for (
-    let current = cause;
-    typeof current === "object" && current !== null && !seen.has(current);
-    current = (current as { cause?: unknown }).cause
-  ) {
+  const pending: unknown[] = [cause];
+
+  while (pending.length > 0) {
+    const current = pending.pop();
+    if (typeof current !== "object" || current === null) {
+      terminalCodes.push(undefined);
+      continue;
+    }
+    if (seen.has(current)) {
+      terminalCodes.push(undefined);
+      continue;
+    }
     seen.add(current);
     const record = current as {
+      cause?: unknown;
       code?: unknown;
+      errors?: unknown;
       name?: unknown;
       message?: unknown;
     };
-    if (code === undefined && typeof record.code === "string") {
-      code = record.code;
+    const code = typeof record.code === "string" ? record.code : undefined;
+    if (code === "EPERM" || code === "EACCES") {
+      blockedCode ??= code;
     }
     if (record.name === "TimeoutError") {
       timedOut = true;
@@ -67,19 +79,37 @@ export function describeUnreachableServer(
     if (typeof record.message === "string" && record.message.length > 0) {
       messages.push(record.message);
     }
+
+    const children: unknown[] = [];
+    if (record.cause !== undefined && record.cause !== null) {
+      children.push(record.cause);
+    }
+    if (Array.isArray(record.errors)) {
+      children.push(...record.errors);
+    }
+    if (children.length === 0) {
+      terminalCodes.push(code);
+      continue;
+    }
+    for (let index = children.length - 1; index >= 0; index -= 1) {
+      pending.push(children[index]);
+    }
   }
 
-  if (code === "ECONNREFUSED") {
-    return `bb is not running at ${baseUrl} — open the bb app, then re-run this command.`;
-  }
-  if (code === "EPERM" || code === "EACCES") {
+  if (blockedCode !== undefined) {
     return (
-      `Cannot reach bb at ${baseUrl}: ${code} — the connection was blocked. ` +
+      `Cannot reach bb at ${baseUrl}: ${blockedCode} — the connection was blocked. ` +
       `bb may still be running; check sandbox or firewall rules for this shell.`
     );
   }
   if (timedOut) {
     return `bb did not respond at ${baseUrl} within ${timeoutMs}ms — it may be busy or unreachable.`;
+  }
+  if (
+    terminalCodes.length > 0 &&
+    terminalCodes.every((code) => code === "ECONNREFUSED")
+  ) {
+    return `bb is not running at ${baseUrl} — open the bb app, then re-run this command.`;
   }
   return `Cannot reach bb at ${baseUrl}: ${
     messages.length > 0 ? messages.join(": ") : String(cause)

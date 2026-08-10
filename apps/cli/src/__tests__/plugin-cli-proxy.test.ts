@@ -190,10 +190,44 @@ describe("describeUnreachableServer", () => {
     });
   }
 
+  function aggregateFetchFailed(codes: string[]): Error {
+    const errors = codes.map((code, index) =>
+      Object.assign(new Error(`connect ${code} address-${index + 1}:38886`), {
+        code,
+      }),
+    );
+    return new TypeError("fetch failed", {
+      // NodeAggregateError exposes the first attempt's code on the aggregate,
+      // even when later attempts failed for a different reason.
+      cause: Object.assign(new AggregateError(errors), {
+        code: errors[0]?.code,
+      }),
+    });
+  }
+
   it("says bb is not running only on ECONNREFUSED", () => {
     expect(describeUnreachableServer(url, fetchFailed("ECONNREFUSED"))).toBe(
       `bb is not running at ${url} — open the bb app, then re-run this command.`,
     );
+  });
+
+  it("requires every aggregate connection attempt to be refused", () => {
+    expect(
+      describeUnreachableServer(
+        url,
+        aggregateFetchFailed(["ECONNREFUSED", "ECONNREFUSED"]),
+      ),
+    ).toBe(
+      `bb is not running at ${url} — open the bb app, then re-run this command.`,
+    );
+
+    const mixedMessage = describeUnreachableServer(
+      url,
+      aggregateFetchFailed(["ECONNREFUSED", "EPERM"]),
+    );
+    expect(mixedMessage).toContain(`Cannot reach bb at ${url}: EPERM`);
+    expect(mixedMessage).toContain("bb may still be running");
+    expect(mixedMessage).not.toContain("not running at");
   });
 
   it("reports a blocked connection without declaring bb down", () => {
