@@ -256,6 +256,10 @@ export function toThreadResponseFromThread(
   });
   return {
     ...threadWithRuntime,
+    activeBackgroundAgentCount:
+      listActiveBackgroundTaskCountsByThreadIds(deps.db, {
+        threadIds: [args.thread.id],
+      })[0]?.activeBackgroundAgentCount ?? 0,
     canSpawnChild: canThreadSpawnChild(deps, { thread: args.thread }),
   };
 }

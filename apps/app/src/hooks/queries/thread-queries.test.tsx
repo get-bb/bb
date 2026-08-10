@@ -76,6 +76,7 @@ const THREAD_WITH_INCLUDES = {
     displayStatus: "idle",
     hostReconnectGraceExpiresAt: null,
   },
+  activeBackgroundAgentCount: 0,
   canSpawnChild: true,
   environment: null,
   host: null,

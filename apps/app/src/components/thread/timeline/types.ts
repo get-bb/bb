@@ -35,6 +35,8 @@ export type ThreadTimelineForkMessageHandler = (
 ) => void;
 
 export interface ThreadTimelineEditMessageTarget {
+  /** Stable id of the specific rendered user bubble being edited. */
+  messageId: string;
   /** Event sequence of the user request the edit would replace. */
   expectedRequestSequence: number;
   /** User-visible input reconstructed from the unchanged timeline row. */
@@ -52,7 +54,7 @@ export type ThreadTimelineEditMessageHandler = (
 
 /** Client-local editor mounted in place of one user conversation row. */
 export interface ThreadTimelineInlineMessageEditor {
-  expectedRequestSequence: number;
+  messageId: string;
   onHostElementChange: (element: HTMLDivElement | null) => void;
 }
 

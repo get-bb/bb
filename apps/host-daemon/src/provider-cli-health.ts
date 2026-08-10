@@ -22,7 +22,7 @@ const NPM_VIEW_TIMEOUT_MS = 15_000;
 const NPM_INSTALL_STATE_TIMEOUT_MS = 5_000;
 const CLAUDE_CODE_INSTALL_SCRIPT_URL = "https://claude.ai/install.sh";
 const CURSOR_INSTALL_SCRIPT_URL = "https://cursor.com/install";
-export const CODEX_MINIMUM_SUPPORTED_VERSION = "0.143.0";
+export const CODEX_MINIMUM_SUPPORTED_VERSION = "0.136.0";
 const providerCliNodePtyLogger: HostDaemonLogger = {
   debug() {},
   info() {},

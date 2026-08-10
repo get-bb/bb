@@ -66,12 +66,26 @@ describe("prepareThreadRewind", () => {
         }),
       ]);
       expect(events).toEqual([]);
+      expect(runtime.hasThread("thread-1:rewind:edit-op-1")).toBe(true);
       await expect(
         runtime.prepareThreadRewind({
           ...request,
           retainThroughProviderCheckpoint: "different-turn",
         }),
       ).rejects.toThrow("reused with different input");
+      await runtime.discardThreadRewind({
+        operationId: "edit-op-1",
+        threadId: "thread-1",
+      });
+      expect(
+        commands.filter((command) => command.type === "thread/discard"),
+      ).toEqual([
+        expect.objectContaining({
+          providerThreadId: results[0]?.providerThreadId,
+          threadId: "thread-1:rewind:edit-op-1",
+        }),
+      ]);
+      expect(runtime.hasThread("thread-1:rewind:edit-op-1")).toBe(false);
     } finally {
       await runtime.shutdown();
     }

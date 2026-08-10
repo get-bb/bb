@@ -1385,6 +1385,12 @@ export function createClaudeCodeProviderAdapter(
               threadId: command.threadId,
             },
           };
+        case "thread/discard":
+          return {
+            kind: "request",
+            method: "thread/stop",
+            params: { threadId: command.threadId },
+          };
         case "thread/goal/clear":
           return { kind: "noop", reason: "goals unsupported" };
         case "thread/name/set":

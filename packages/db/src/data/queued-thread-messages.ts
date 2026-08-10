@@ -562,7 +562,10 @@ export function getQueuedThreadMessage(db: DbConnection, id: string) {
   );
 }
 
-export function listQueuedThreadMessages(db: DbConnection, threadId: string) {
+export function listQueuedThreadMessages(
+  db: DbQueryConnection,
+  threadId: string,
+) {
   return listUnclaimedQueuedThreadMessages(db, threadId);
 }
 

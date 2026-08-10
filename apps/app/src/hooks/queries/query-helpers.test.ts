@@ -246,6 +246,7 @@ describe("resolveThreadPlaceholder", () => {
   it("reuses previous thread data only for the same thread query", () => {
     const previousThread: ThreadResponse = {
       ...makeThreadWithRuntime({ id: "thread-1" }),
+      activeBackgroundAgentCount: 0,
       canSpawnChild: false,
     };
 

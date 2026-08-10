@@ -44,6 +44,7 @@ function storyThread(id: string, title: string): ThreadResponse {
       displayStatus: "idle",
       hostReconnectGraceExpiresAt: null,
     },
+    activeBackgroundAgentCount: 0,
     canSpawnChild: false,
   };
 }

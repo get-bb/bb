@@ -462,7 +462,7 @@ export function getEnvironmentActionInvalidationQueryKeys({
 export function getCachedThreadListPlaceholder(
   queryClient: QueryClient,
   threadId: string,
-): ThreadWithRuntime | undefined {
+): ThreadListEntry | undefined {
   if (!threadId) {
     return undefined;
   }

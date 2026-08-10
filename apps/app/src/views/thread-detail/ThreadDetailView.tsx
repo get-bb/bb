@@ -26,6 +26,7 @@ import {
 import type {
   PullRequestMergeMethod,
   TerminalSession,
+  TimelineRow,
 } from "@bb/server-contract";
 import type { WorkspaceOpenTarget } from "@bb/host-daemon-contract";
 import { appToast } from "@/components/ui/app-toast";
@@ -287,6 +288,19 @@ interface SentMessageEditSession {
   operationId: string;
   target: ThreadTimelineEditMessageTarget;
   threadId: string;
+}
+
+function hasTimelineRowId(
+  rows: readonly TimelineRow[],
+  rowId: string,
+): boolean {
+  return rows.some(
+    (row) =>
+      row.id === rowId ||
+      (row.kind === "turn" &&
+        row.children !== null &&
+        hasTimelineRowId(row.children, rowId)),
+  );
 }
 
 function getPullRequestMergeLoadingTitle(
@@ -949,6 +963,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   const canEditSentMessages =
     thread !== undefined &&
     canStartSentMessageEdit({
+      activeBackgroundAgentCount: thread.activeBackgroundAgentCount,
       activeBackgroundCommandCount: activeBackgroundCommands.length,
       activeWorkflowCount: activeWorkflows.length,
       archivedAt: thread.archivedAt,
@@ -983,6 +998,55 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     },
     [canEditSentMessages, thread],
   );
+  const sentMessageEditThreadId = sentMessageEditSession?.threadId ?? null;
+  const sentMessageEditTargetMessageId =
+    sentMessageEditSession?.target.messageId ?? null;
+  useEffect(() => {
+    if (
+      sentMessageEditThreadId === null ||
+      sentMessageEditTargetMessageId === null
+    ) {
+      return;
+    }
+    const sessionStillEligible =
+      thread !== undefined &&
+      thread.id === sentMessageEditThreadId &&
+      canStartSentMessageEdit({
+        activeBackgroundAgentCount: thread.activeBackgroundAgentCount,
+        activeBackgroundCommandCount: activeBackgroundCommands.length,
+        activeWorkflowCount: activeWorkflows.length,
+        archivedAt: thread.archivedAt,
+        deletedAt: thread.deletedAt,
+        hasPendingInteraction,
+        isExperimentEnabled:
+          systemConfigQuery.data?.experiments.editMessages ?? false,
+        isEditSessionActive: false,
+        isMutationPending: false,
+        isTimelinePending: timelineLoading && timelineRows.length === 0,
+        queuedMessageCount: queuedMessagesForEditEligibility.length,
+        providerId: thread.providerId,
+        runtimeDisplayStatus: thread.runtime.displayStatus,
+      });
+    const targetStillPresent = hasTimelineRowId(
+      timelineRows,
+      sentMessageEditTargetMessageId,
+    );
+    if (!sessionStillEligible || (!timelineLoading && !targetStillPresent)) {
+      setSentMessageEditHostElement(null);
+      setSentMessageEditSession(null);
+    }
+  }, [
+    activeBackgroundCommands.length,
+    activeWorkflows.length,
+    hasPendingInteraction,
+    queuedMessagesForEditEligibility.length,
+    sentMessageEditTargetMessageId,
+    sentMessageEditThreadId,
+    systemConfigQuery.data?.experiments.editMessages,
+    thread,
+    timelineLoading,
+    timelineRows,
+  ]);
   const handleEditSentMessage = useCallback<ThreadTimelineEditMessageHandler>(
     (target) => {
       if (!canEditSentMessages) {
@@ -1088,13 +1152,18 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     ThreadTimelineInlineMessageEditor | undefined
   >(
     () =>
-      sentMessageEditRequestSequence !== null
+      sentMessageEditRequestSequence !== null &&
+      sentMessageEditTargetMessageId !== null
         ? {
-            expectedRequestSequence: sentMessageEditRequestSequence,
+            messageId: sentMessageEditTargetMessageId,
             onHostElementChange: handleSentMessageEditHostElementChange,
           }
         : undefined,
-    [handleSentMessageEditHostElementChange, sentMessageEditRequestSequence],
+    [
+      handleSentMessageEditHostElementChange,
+      sentMessageEditRequestSequence,
+      sentMessageEditTargetMessageId,
+    ],
   );
   const sentMessageEdit = useMemo<ThreadDetailSentMessageEdit | undefined>(
     () =>

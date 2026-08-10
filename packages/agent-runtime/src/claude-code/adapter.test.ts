@@ -950,6 +950,21 @@ describe("claude-code provider adapter", () => {
     });
   });
 
+  it("buildCommand thread/discard closes the staged bridge session", () => {
+    const adapter = createClaudeCodeProviderAdapter();
+    expect(
+      adapter.buildCommandPlan({
+        type: "thread/discard",
+        threadId: "bb-staging",
+        providerThreadId: "claude-staging",
+      }),
+    ).toEqual({
+      kind: "request",
+      method: "thread/stop",
+      params: { threadId: "bb-staging" },
+    });
+  });
+
   it("decodeToolCallRequest preserves string request ids", () => {
     const adapter = createClaudeCodeProviderAdapter();
     expect(
@@ -2051,6 +2066,52 @@ describe("claude-code provider adapter", () => {
         type: "turn/completed",
         status: "completed",
         providerCheckpointId: "assistant-message-42",
+      }),
+    );
+  });
+
+  it("does not replace the root checkpoint with a sidechain assistant UUID", () => {
+    const adapter = createClaudeCodeProviderAdapter();
+    adapter.translateEvent(
+      {
+        type: "assistant",
+        uuid: "root-assistant-message",
+        message: {
+          id: "root-message",
+          role: "assistant",
+          content: [{ type: "text", text: "Root response" }],
+        },
+        session_id: "sess-1",
+      },
+      { threadId: "bb-thread-1" },
+    );
+    adapter.translateEvent(
+      {
+        type: "assistant",
+        uuid: "sidechain-assistant-message",
+        message: {
+          id: "sidechain-message",
+          role: "assistant",
+          content: [{ type: "text", text: "Subagent response" }],
+        },
+        session_id: "sess-1",
+      },
+      { threadId: "bb-thread-1", parentToolCallId: "tool-subagent" },
+    );
+
+    const events = adapter.translateEvent(
+      {
+        type: "result",
+        subtype: "success",
+        session_id: "sess-1",
+      },
+      { threadId: "bb-thread-1" },
+    );
+
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "turn/completed",
+        providerCheckpointId: "root-assistant-message",
       }),
     );
   });

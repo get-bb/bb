@@ -176,6 +176,31 @@ describe("bb thread action command output", () => {
     });
   });
 
+  it("bb thread edit-message rejects a partially numeric request sequence", async () => {
+    const submitEdit = vi.fn();
+    stubServerApi({ "v1.threads.:id.edit-message.$post": submitEdit });
+
+    await expect(
+      runCommand(
+        [
+          "thread",
+          "edit-message",
+          "thread-edit-1",
+          "--message",
+          "Replacement",
+          "--expected-request-sequence",
+          "41abc",
+        ],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:1");
+
+    expect(submitEdit).not.toHaveBeenCalled();
+    expect(collectLogLines(vi.mocked(console.error))).toContain(
+      "Error: --expected-request-sequence must be a non-negative integer.",
+    );
+  });
+
   it("bb thread pin sends the thread id from args", async () => {
     const pinnedThread = fixtures.makeThread({
       id: "thread-pin-1",

@@ -387,7 +387,7 @@ export function registerActionsCommands(
           const requestedSequence =
             opts.expectedRequestSequence === undefined
               ? undefined
-              : Number.parseInt(opts.expectedRequestSequence, 10);
+              : Number(opts.expectedRequestSequence);
           if (
             requestedSequence !== undefined &&
             (!Number.isInteger(requestedSequence) || requestedSequence < 0)

@@ -570,6 +570,21 @@ describe("pi provider adapter", () => {
     });
   });
 
+  it("buildCommand thread/discard maps to destructive bridge cleanup", () => {
+    const adapter = createPiProviderAdapter();
+    expect(
+      adapter.buildCommandPlan({
+        type: "thread/discard",
+        threadId: "bb-staging",
+        providerThreadId: "pi-staging",
+      }),
+    ).toEqual({
+      kind: "request",
+      method: "thread/discard",
+      params: { threadId: "pi-staging" },
+    });
+  });
+
   it("buildCommand turn/start includes input", () => {
     const adapter = createPiProviderAdapter();
     const cmd = adapter.buildCommandPlan({

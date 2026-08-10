@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AgentSessionEvent } from "@earendil-works/pi-coding-agent";
@@ -449,8 +455,9 @@ describe("pi bridge", () => {
 
   it("forks source history through a checkpoint into the deterministic file", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const forkedSession = createControlledPiAgentSession();
     mockCreateAgentSession.mockImplementation(async () => ({
-      session: createControlledPiAgentSession(),
+      session: forkedSession,
     }));
 
     const sessionDir = mkdtempSync(join(tmpdir(), "pi-fork-test-"));
@@ -547,6 +554,15 @@ describe("pi bridge", () => {
           },
         }),
       );
+      bridge.sendRequest(42, "thread/discard", { threadId: targetThreadId });
+      await bridge.flushWork();
+      forkedSession.finishAbort();
+      await expect(bridge.waitForResponse(42)).resolves.toMatchObject({
+        id: 42,
+        result: { ok: true },
+      });
+      expect(existsSync(targetFile)).toBe(false);
+      expect(readFileSync(sourceFile, "utf8")).toBe(sourceContent);
     } finally {
       bridge.restore();
       rmSync(sessionDir, { recursive: true, force: true });

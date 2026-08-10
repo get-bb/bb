@@ -192,6 +192,11 @@ export interface PrepareThreadRewindResult {
   providerThreadId: string;
 }
 
+export interface DiscardThreadRewindArgs {
+  operationId: string;
+  threadId: string;
+}
+
 export interface ResumeThreadArgs {
   acpLaunchSpec?: HostDaemonAcpLaunchSpec;
   environmentId: string;
@@ -304,6 +309,8 @@ export interface AgentRuntime {
   prepareThreadRewind(
     args: PrepareThreadRewindArgs,
   ): Promise<PrepareThreadRewindResult>;
+
+  discardThreadRewind(args: DiscardThreadRewindArgs): Promise<void>;
 
   resumeThread(args: ResumeThreadArgs): Promise<ResumeThreadResult>;
 

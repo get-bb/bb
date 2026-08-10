@@ -225,6 +225,12 @@ const piCommandSchema = z.discriminatedUnion("method", [
     method: z.literal("thread/compact"),
     params: piThreadIdParamsSchema,
   }),
+  z.object({
+    method: z.literal("thread/discard"),
+    params: z.object({
+      threadId: z.string(),
+    }),
+  }),
 ]);
 
 export type PiCommand = z.infer<typeof piCommandSchema>;
@@ -627,6 +633,9 @@ async function handleRequest(
     case "thread/compact":
       handleThreadCompact(request.id, request.params);
       break;
+    case "thread/discard":
+      sendResult(request.id, await handleThreadDiscard(request.params));
+      break;
   }
 }
 
@@ -642,6 +651,10 @@ type ThreadForkParams = Extract<PiCommand, { method: "thread/fork" }>["params"];
 type TurnStartParams = Extract<PiCommand, { method: "turn/start" }>["params"];
 type TurnSteerParams = Extract<PiCommand, { method: "turn/steer" }>["params"];
 type ThreadIdParams = Extract<PiCommand, { method: "thread/stop" }>["params"];
+type ThreadDiscardParams = Extract<
+  PiCommand,
+  { method: "thread/discard" }
+>["params"];
 type PiSessionParams =
   | ThreadStartParams
   | ThreadResumeParams
@@ -911,6 +924,20 @@ function handleThreadCompact(
     });
   });
   sendResult(id, { threadId: params.threadId });
+}
+
+async function handleThreadDiscard(
+  params: ThreadDiscardParams,
+): Promise<PiThreadStopResult> {
+  await closeThreadSession({
+    message: "Pi staged thread discarded while tool call was pending",
+    threadId: params.threadId,
+  });
+  rmSync(
+    resolvePiSessionFilePath({ env: process.env, threadId: params.threadId }),
+    { force: true },
+  );
+  return { ok: true };
 }
 
 interface ExtractedInput {

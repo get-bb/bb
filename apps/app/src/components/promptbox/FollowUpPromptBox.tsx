@@ -718,23 +718,25 @@ function FollowUpPromptBoxWithComposer({
             composer.isFollowUpSubmitting ||
             (steerOnPrimarySubmit && !composer.canModifierSubmit),
           onModifierSubmit,
-          title:
-            composer.submitTitle ??
-            (canQueueFollowUp
-              ? steerOnPrimarySubmit
-                ? "Steer current run (Enter)"
-                : "Queue follow-up (Enter)"
-              : isStopping
-                ? "Stopping run..."
-                : isLoadingExecutionOptions
-                  ? "Loading models..."
-                  : isLoadingPendingInteractions
-                    ? "Checking pending interactions..."
-                    : isProvisioning
-                      ? "Provisioning..."
-                      : isUnavailable
-                        ? "Unavailable"
-                        : "Submit (Enter)"),
+          title: composer.isFollowUpSubmitting
+            ? "Submitting..."
+            : canSubmit && composer.submitTitle !== undefined
+              ? composer.submitTitle
+              : canQueueFollowUp
+                ? steerOnPrimarySubmit
+                  ? "Steer current run (Enter)"
+                  : "Queue follow-up (Enter)"
+                : isStopping
+                  ? "Stopping run..."
+                  : isLoadingExecutionOptions
+                    ? "Loading models..."
+                    : isLoadingPendingInteractions
+                      ? "Checking pending interactions..."
+                      : isProvisioning
+                        ? "Provisioning..."
+                        : isUnavailable
+                          ? "Unavailable"
+                          : "Submit (Enter)",
           isRunning: canStopRuntime,
         }}
         typeahead={typeahead}

@@ -2256,6 +2256,21 @@ describe("codex provider adapter", () => {
     });
   });
 
+  it("buildCommand thread/discard archives the staged provider thread", () => {
+    const adapter = createCodexProviderAdapter();
+    expect(
+      adapter.buildCommandPlan({
+        type: "thread/discard",
+        threadId: "bb-staging",
+        providerThreadId: "codex-staging",
+      }),
+    ).toEqual({
+      kind: "request",
+      method: "thread/archive",
+      params: { threadId: "codex-staging" },
+    });
+  });
+
   it("buildCommand thread/unarchive routes to provider thread id", () => {
     const adapter = createCodexProviderAdapter();
     const cmd = adapter.buildCommandPlan({

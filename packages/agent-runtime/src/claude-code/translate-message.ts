@@ -678,7 +678,10 @@ export function translateClaudeSdkMessage(
         });
       }
       const message = parsedMessage.data;
-      const providerCheckpointId = message.uuid;
+      // Sidechain assistant messages belong to subagents/tools, not the root
+      // conversation lineage that thread/fork can retain through.
+      const providerCheckpointId =
+        parentToolCallId === undefined ? message.uuid : undefined;
       // Claude sends this model transition before it begins streaming from the
       // fallback model. Its richer system/model_* duplicate arrives only after
       // the response, so emit now and deduplicate that later event.

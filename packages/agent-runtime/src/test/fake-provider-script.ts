@@ -643,6 +643,15 @@ function handleMessage(message: JsonRecord): void {
     return;
   }
 
+  if (method === "thread/discard") {
+    send({
+      jsonrpc: "2.0",
+      id: getJsonRpcId(message.id) ?? 0,
+      result: { ok: true },
+    });
+    return;
+  }
+
   if (method === "thread/goal/clear") {
     const params = getParams(message);
     const providerThreadId = getString(

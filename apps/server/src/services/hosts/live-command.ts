@@ -47,6 +47,7 @@ export interface StartLiveHostCommandArgs<
 > extends RunLiveHostCommandArgs<TType> {
   onError?: LiveHostCommandErrorHandler<TType>;
   onExpectedError?: LiveHostCommandErrorHandler<TType>;
+  onSettled?: () => void | Promise<void>;
 }
 
 type LiveHostCommandResultReportForType<
@@ -267,28 +268,39 @@ export function startLiveHostCommand<
 ): void {
   const execution =
     args.execution ?? createLiveHostCommandExecution(args.hostId);
-  void runLiveHostCommand(deps, { ...args, execution }).catch((error) => {
-    const normalized =
-      error instanceof Error ? error : new Error(String(error));
-    const handlerArgs: LiveHostCommandErrorHandlerArgs<TType> = {
-      command: args.command,
-      error: normalized,
-      execution,
-      hostId: args.hostId,
-    };
-    const expectedErrorFields =
-      expectedLiveHostCommandErrorLogFields(normalized);
-    if (expectedErrorFields !== null) {
-      deps.logger.debug(
-        {
-          ...liveHostCommandBaseLogFields(handlerArgs),
-          ...expectedErrorFields,
-        },
-        "Expected live host command failure",
-      );
-      args.onExpectedError?.(handlerArgs);
-      return;
-    }
-    args.onError?.(handlerArgs);
-  });
+  void runLiveHostCommand(deps, { ...args, execution })
+    .catch((error) => {
+      const normalized =
+        error instanceof Error ? error : new Error(String(error));
+      const handlerArgs: LiveHostCommandErrorHandlerArgs<TType> = {
+        command: args.command,
+        error: normalized,
+        execution,
+        hostId: args.hostId,
+      };
+      const expectedErrorFields =
+        expectedLiveHostCommandErrorLogFields(normalized);
+      if (expectedErrorFields !== null) {
+        deps.logger.debug(
+          {
+            ...liveHostCommandBaseLogFields(handlerArgs),
+            ...expectedErrorFields,
+          },
+          "Expected live host command failure",
+        );
+        args.onExpectedError?.(handlerArgs);
+        return;
+      }
+      args.onError?.(handlerArgs);
+    })
+    .finally(async () => {
+      try {
+        await args.onSettled?.();
+      } catch (error) {
+        deps.logger.error(
+          { err: error, commandType: args.command.type },
+          "Live command settled callback failed",
+        );
+      }
+    });
 }

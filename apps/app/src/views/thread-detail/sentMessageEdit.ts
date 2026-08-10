@@ -1,6 +1,7 @@
 import type { ThreadRuntimeDisplayStatus } from "@bb/domain";
 
 export interface SentMessageEditAvailability {
+  activeBackgroundAgentCount: number;
   activeBackgroundCommandCount: number;
   activeWorkflowCount: number;
   archivedAt: number | null;
@@ -20,6 +21,7 @@ export interface SentMessageEditAvailability {
  * must repeat the full eligibility check on the server before changing state.
  */
 export function canStartSentMessageEdit({
+  activeBackgroundAgentCount,
   activeBackgroundCommandCount,
   activeWorkflowCount,
   archivedAt,
@@ -47,6 +49,7 @@ export function canStartSentMessageEdit({
     !isTimelinePending &&
     queuedMessageCount === 0 &&
     activeWorkflowCount === 0 &&
+    activeBackgroundAgentCount === 0 &&
     activeBackgroundCommandCount === 0
   );
 }

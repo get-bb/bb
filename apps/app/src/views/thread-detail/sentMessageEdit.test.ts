@@ -5,6 +5,7 @@ import {
 } from "./sentMessageEdit";
 
 const ELIGIBLE_STATE: SentMessageEditAvailability = {
+  activeBackgroundAgentCount: 0,
   activeBackgroundCommandCount: 0,
   activeWorkflowCount: 0,
   archivedAt: null,
@@ -31,6 +32,7 @@ describe("canStartSentMessageEdit", () => {
     ["an archived thread", { archivedAt: 1 }],
     ["a pending interaction", { hasPendingInteraction: true }],
     ["an active workflow", { activeWorkflowCount: 1 }],
+    ["an active background agent", { activeBackgroundAgentCount: 1 }],
     ["an active background command", { activeBackgroundCommandCount: 1 }],
     ["an existing edit session", { isEditSessionActive: true }],
     ["another message mutation", { isMutationPending: true }],

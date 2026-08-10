@@ -354,6 +354,7 @@ export function createFakeRuntime() {
         providerThreadId: `provider-rewind-${args.threadId}-${args.operationId}`,
       };
     },
+    async discardThreadRewind() {},
     async resumeThread(args) {
       state.resumedAcpLaunchSpec = args.acpLaunchSpec;
       state.resumedEnvironmentId = args.environmentId;

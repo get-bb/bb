@@ -1541,6 +1541,8 @@ export function createAcpProviderAdapter(
             method: "thread/stop",
             params: { threadId: command.providerThreadId },
           };
+        case "thread/discard":
+          return { kind: "noop", reason: "discard unsupported" };
         case "thread/goal/clear":
           return { kind: "noop", reason: "goals unsupported" };
         case "thread/name/set":

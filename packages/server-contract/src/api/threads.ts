@@ -415,6 +415,7 @@ export type ThreadSearchResponse = z.infer<typeof threadSearchResponseSchema>;
 // be created under it. Computed on the server so clients never recompute the
 // depth cap.
 export const threadResponseSchema = threadWithRuntimeSchema.extend({
+  activeBackgroundAgentCount: z.number().int().nonnegative(),
   canSpawnChild: z.boolean(),
 });
 export type ThreadResponse = z.infer<typeof threadResponseSchema>;

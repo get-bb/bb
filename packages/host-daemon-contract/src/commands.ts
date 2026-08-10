@@ -36,7 +36,7 @@ import {
   providerCliStatusResponseSchema,
 } from "./local.js";
 
-export const HOST_DAEMON_PROTOCOL_VERSION = 100 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 101 as const;
 
 export {
   BRANCH_LIST_LIMIT_MAX,
@@ -332,6 +332,13 @@ export const threadRewindPrepareCommandSchema = hostDaemonThreadTargetSchema
     operationId: z.string().min(1),
     sourceProviderThreadId: z.string().min(1),
     retainThroughProviderCheckpoint: z.string().min(1),
+  })
+  .strict();
+
+export const threadRewindDiscardCommandSchema = hostDaemonThreadTargetSchema
+  .extend({
+    type: z.literal("thread.rewind.discard"),
+    operationId: z.string().min(1),
   })
   .strict();
 
@@ -1570,6 +1577,15 @@ function defineHostDaemonCommandDescriptor<
 }
 
 export const hostDaemonCommandRegistry = {
+  "thread.rewind.discard": defineHostDaemonCommandDescriptor({
+    type: "thread.rewind.discard",
+    schema: threadRewindDiscardCommandSchema,
+    resultSchema: emptyCommandResultSchema,
+    transport: "settled",
+    retryable: false,
+    flushEventsBeforeResult: true,
+    envLane: "read",
+  }),
   "thread.rewind.prepare": defineHostDaemonCommandDescriptor({
     type: "thread.rewind.prepare",
     schema: threadRewindPrepareCommandSchema,

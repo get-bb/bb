@@ -2028,6 +2028,15 @@ export function createCodexProviderAdapter(
               turnId: command.activeTurnId,
             },
           };
+        case "thread/discard":
+          if (!capabilities.supportsArchive) {
+            return { kind: "noop", reason: "archive unsupported" };
+          }
+          return {
+            kind: "request",
+            method: "thread/archive",
+            params: { threadId: command.providerThreadId },
+          };
         case "thread/goal/clear":
           return {
             kind: "request",

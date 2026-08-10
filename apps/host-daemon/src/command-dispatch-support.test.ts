@@ -51,6 +51,7 @@ function makeRuntime(args: MakeRuntimeArgs): AgentRuntime {
     async prepareThreadRewind() {
       return { providerThreadId: "provider-thread-rewind-test" };
     },
+    async discardThreadRewind() {},
     async resumeThread() {
       return { providerThreadId: "provider-thread-test" };
     },

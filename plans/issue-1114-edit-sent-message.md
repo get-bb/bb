@@ -19,11 +19,13 @@ Status (2026-08-10): the functional prototype is implemented behind the
 default-off `editMessages` experiment. It includes arbitrary-message timeline
 actions, the shared inline editor, provider checkpoints for Codex, Claude Code,
 and Pi, atomic event-suffix replacement, realtime invalidation, SDK and CLI
-surfaces, and generated database migration `0088_acoustic_celestials.sql`.
+surfaces, staged-provider cleanup, and generated daemon-contract artifacts. The
+experiment uses the existing keyed
+`system_experiments` table, so no schema migration is required.
 
-The remaining work is validation: focused automated tests, full typecheck and
-lint, and real-provider smoke tests proving that each replacement turn cannot
-see the removed suffix.
+Focused and package-wide automated validation is complete. The remaining work
+before broadening the experiment is real-provider smoke testing proving that
+each replacement turn cannot see the removed suffix.
 
 ## Product Contract
 
@@ -34,7 +36,7 @@ When `editMessages` is enabled:
   inline editor. All later messages remain visible until submission succeeds.
 - The editor reuses the queued-message editor frame and follow-up composer,
   labels the action **Submit edit**, uses the short header **Editing message**,
-  and selects all text when it opens.
+  and focuses the editor when it opens.
 - Cancel is client-local and confirms only when it would discard changes.
 - Submit atomically replaces the selected request and every later conversation
   event, then starts the edited turn.
@@ -49,6 +51,7 @@ This version does not provide:
 - editing while a root turn, workflow, background agent, or background command
   is active;
 - editing turns containing a steer or multiple accepted requests;
+- editing one message inside a grouped multi-message request;
 - ACP, OpenCode, or other provider support;
 - filesystem or external-side-effect rollback;
 - a generic history-truncation or plugin API.
@@ -56,8 +59,8 @@ This version does not provide:
 ## Experiment
 
 `editMessages` is a required server-backed experiment field with a default of
-`false`. It is persisted in `system_experiments.edit_messages` and is exposed
-through:
+`false`. It is persisted as the `editMessages` key in the existing
+`system_experiments` key/value table and is exposed through:
 
 - Settings → Experiments → **Edit messages**;
 - `bb settings experiment editMessages <true|false>`;
@@ -77,7 +80,7 @@ Selecting **Edit message**:
 2. Creates a separate in-memory edit session from the timeline row's visible
    `PromptInput[]` and request event sequence.
 3. Leaves the ordinary persisted follow-up draft mounted and unchanged.
-4. Replaces the selected bubble with the inline editor and selects its text.
+4. Replaces the selected bubble with the inline editor and focuses it.
 5. Keeps the selected turn's response and the entire later timeline visible.
 
 Remote image inputs that cannot be faithfully restored remain ineligible.
@@ -110,7 +113,9 @@ The server is authoritative. A selected request is editable only when:
 - the provider is `codex`, `claude-code`, or `pi`;
 - the request is user-initiated and targets a root thread start or root turn;
 - exactly one `turn/input/accepted` event links the request to its root turn;
-- that root turn completed and contains no accepted steer or additional input;
+- that root turn completed successfully and contains no accepted steer or
+  additional input;
+- the request is not a grouped multi-message request;
 - there is no queued message, pending interaction, workflow, background agent,
   or background command;
 - the replacement provider history can be staged through the root turn
@@ -126,11 +131,11 @@ Editing an earlier message needs a provider-native transcript boundary for the
 turn immediately before it. bb stores that opaque boundary on
 `turn/completed.providerCheckpointId`:
 
-| Provider    | Persisted checkpoint              | Rewind implementation                           |
-| ----------- | --------------------------------- | ----------------------------------------------- |
-| Codex       | bb root turn id                   | `thread/fork.lastTurnId`                        |
-| Claude Code | latest `SDKAssistantMessage.uuid` | `forkSession(..., { upToMessageId })`           |
-| Pi          | session manager leaf entry id     | `SessionManager.createBranchedSession(entryId)` |
+| Provider    | Persisted checkpoint                   | Rewind implementation                           |
+| ----------- | -------------------------------------- | ----------------------------------------------- |
+| Codex       | bb root turn id                        | `thread/fork.lastTurnId`                        |
+| Claude Code | latest root `SDKAssistantMessage.uuid` | `forkSession(..., { upToMessageId })`           |
+| Pi          | session manager leaf entry id          | `SessionManager.createBranchedSession(entryId)` |
 
 Editing the first root turn needs no retained checkpoint and starts a fresh
 provider session. For an existing Claude Code or Pi thread created before
@@ -149,9 +154,12 @@ The server sends only opaque provider checkpoints across the daemon boundary:
 }
 ```
 
-The runtime stages a detached provider fork and returns its provider thread id.
-The source provider session remains untouched until the database commit. This
-wire change requires `HOST_DAEMON_PROTOCOL_VERSION = 79`.
+The runtime stages an event-suppressed provider fork and returns its provider
+thread id. After the replacement fork settles, bb closes/removes the staged
+Claude Code or Pi session and archives the staged Codex fork; a daemon-side TTL
+cleans up abandoned preparations. The source provider session remains untouched
+until the database commit. The prepare/discard wire contract requires
+`HOST_DAEMON_PROTOCOL_VERSION = 97`.
 
 ## API, SDK, And CLI
 
@@ -223,7 +231,7 @@ Automated coverage must prove:
 - the experiment defaults off, persists, renders in Settings, and gates both UI
   and server;
 - actions appear on every eligible accepted user request, not only the latest;
-- opening/cancelling is non-destructive and selects the complete editor text;
+- opening/cancelling is non-destructive and focuses the editor;
 - submitting an earlier request removes its turn and every later turn;
 - suffix deletion also clears search, prompt-history, and dynamic-context state
   while preserving monotonic sequences;

@@ -91,9 +91,13 @@ function normalizeExecutionOptions(args: {
 }
 
 interface PreparedThreadRewind {
+  cleanupTimer: ReturnType<typeof setTimeout>;
+  processKey: string;
+  providerId: string;
   sourceProviderCheckpointId: string;
   providerThreadId: string;
   sourceProviderThreadId: string;
+  stagingThreadId: string;
 }
 
 interface PreparingThreadRewind {
@@ -167,6 +171,7 @@ type ProviderProcess = RuntimeProviderProcess;
 
 const threadGoalClearResultSchema = z.object({ cleared: z.boolean() }).strict();
 const THREAD_GOAL_CLEAR_EVENT_TIMEOUT_MS = 5_000;
+const PREPARED_THREAD_REWIND_TTL_MS = 5 * 60_000;
 
 interface ThreadRuntimeConfig {
   dynamicTools?: DynamicTool[];
@@ -267,7 +272,6 @@ function createAgentRuntimeInternal(
   const preparedThreadRewinds = new Map<string, PreparedThreadRewind>();
   const preparingThreadRewinds = new Map<string, PreparingThreadRewind>();
   const suppressedThreadEventIds = new Set<string>();
-  const detachedProviderThreadIds = new Set<string>();
   const threadGoalState = new RuntimeThreadGoalState();
   const turnState = new RuntimeTurnState();
   const backgroundWorkState = new RuntimeBackgroundWorkState();
@@ -1030,7 +1034,7 @@ function createAgentRuntimeInternal(
     const sourceThreadId = getJsonRpcStringParam(args.parsed, "threadId");
     if (
       sourceThreadId !== undefined &&
-      detachedProviderThreadIds.has(sourceThreadId)
+      suppressedThreadEventIds.has(sourceThreadId)
     ) {
       return;
     }
@@ -1095,6 +1099,55 @@ function createAgentRuntimeInternal(
   // -------------------------------------------------------------------------
   // Public API
   // -------------------------------------------------------------------------
+
+  async function discardPreparedThreadRewind(args: {
+    operationId: string;
+    threadId: string;
+  }): Promise<void> {
+    const rewindKey = `${args.threadId}\0${args.operationId}`;
+    const pending = preparingThreadRewinds.get(rewindKey);
+    if (pending !== undefined) {
+      try {
+        await pending.promise;
+      } catch {
+        return;
+      }
+    }
+    const prepared = preparedThreadRewinds.get(rewindKey);
+    if (prepared === undefined) {
+      return;
+    }
+    preparedThreadRewinds.delete(rewindKey);
+    clearTimeout(prepared.cleanupTimer);
+    try {
+      const proc = requireProviderProcess({
+        processKey: prepared.processKey,
+        providerId: prepared.providerId,
+      });
+      const adapterCommand: AdapterCommand = {
+        type: "thread/discard",
+        threadId: prepared.stagingThreadId,
+        providerThreadId: prepared.providerThreadId,
+      };
+      const command = proc.adapter.buildCommandPlan(adapterCommand);
+      if (command.kind === "request") {
+        await sendCommand({
+          proc,
+          message: command,
+          resultSchema: ignoredJsonRpcResultSchema,
+        });
+      }
+      forgetThreadRuntimeState(proc, prepared.stagingThreadId);
+      await shutdownThreadScopedCodexProcessIfIdle(proc);
+    } catch (error) {
+      threadIdentityRegistry.clearThread(prepared.stagingThreadId);
+      options.onStderr?.(
+        `Failed to discard staged rewind ${args.operationId}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    } finally {
+      suppressedThreadEventIds.delete(prepared.stagingThreadId);
+    }
+  }
 
   const runtime: AgentRuntime = {
     async ensureProvider({ providerId, forThreadId, acpLaunchSpec }) {
@@ -1360,6 +1413,7 @@ function createAgentRuntimeInternal(
             shouldWaitForProviderIdentity: true,
             threadId: stagingThreadId,
           });
+          let retainedForDiscard = false;
           try {
             const envVars = buildThreadShellEnvironment({
               baseShellEnv: options.shellEnv,
@@ -1407,19 +1461,37 @@ function createAgentRuntimeInternal(
                 `${providerId} did not return a provider thread for rewind operation ${operationId}`,
               );
             }
-            detachedProviderThreadIds.add(providerThreadId);
+            recordProviderThreadIdentity(
+              proc,
+              stagingThreadId,
+              providerThreadId,
+            );
+            const cleanupTimer = setTimeout(() => {
+              void discardPreparedThreadRewind({
+                operationId,
+                threadId,
+              });
+            }, PREPARED_THREAD_REWIND_TTL_MS);
+            cleanupTimer.unref?.();
             preparedThreadRewinds.set(rewindKey, {
+              cleanupTimer,
+              processKey,
+              providerId,
               sourceProviderCheckpointId: retainThroughProviderCheckpoint,
               providerThreadId,
               sourceProviderThreadId,
+              stagingThreadId,
             });
+            retainedForDiscard = true;
             return { providerThreadId };
           } finally {
-            suppressedThreadEventIds.delete(stagingThreadId);
-            threadIdentityRegistry.forgetThread({
-              providerState: proc.identity,
-              threadId: stagingThreadId,
-            });
+            if (!retainedForDiscard) {
+              suppressedThreadEventIds.delete(stagingThreadId);
+              threadIdentityRegistry.forgetThread({
+                providerState: proc.identity,
+                threadId: stagingThreadId,
+              });
+            }
           }
         },
       });
@@ -1436,6 +1508,10 @@ function createAgentRuntimeInternal(
           preparingThreadRewinds.delete(rewindKey);
         }
       }
+    },
+
+    async discardThreadRewind({ threadId, operationId }) {
+      await discardPreparedThreadRewind({ threadId, operationId });
     },
 
     async resumeThread({
@@ -1993,6 +2069,15 @@ function createAgentRuntimeInternal(
     },
 
     async shutdown() {
+      await Promise.all(
+        [...preparedThreadRewinds.keys()].map((rewindKey) => {
+          const separatorIndex = rewindKey.indexOf("\0");
+          return discardPreparedThreadRewind({
+            threadId: rewindKey.slice(0, separatorIndex),
+            operationId: rewindKey.slice(separatorIndex + 1),
+          });
+        }),
+      );
       idleProviderSessionSinceMsByThreadId.clear();
       pendingTurnStartThreadIds.clear();
       threadOperationCounts.clear();

@@ -209,7 +209,7 @@ interface TimelineRendererStaticContextValue {
   onForkMessage: ThreadTimelineForkMessageHandler | undefined;
   onEditMessage: ThreadTimelineEditMessageHandler | undefined;
   inlineMessageEditorHostRef: RefCallback<HTMLDivElement> | undefined;
-  inlineMessageEditorRequestSequence: number | null;
+  inlineMessageEditorMessageId: string | null;
   onMessageAddToChat: ThreadTimelineAddToChatHandler | undefined;
   onSendToMainMessage: ThreadTimelineSendToMainMessageHandler | undefined;
   onSelectionAddToChat: ThreadTimelineAddToChatHandler | undefined;
@@ -910,7 +910,7 @@ function ConversationRow({
   const {
     canSpawnChild,
     inlineMessageEditorHostRef,
-    inlineMessageEditorRequestSequence,
+    inlineMessageEditorMessageId,
     onEditMessage,
     onForkMessage,
     onMessageAddToChat,
@@ -932,10 +932,7 @@ function ConversationRow({
     workspaceRootPath,
   } = useTimelineRendererStaticContext();
   const senderThreadMetadataById = useSenderThreadMetadataContext();
-  if (
-    row.role === "user" &&
-    inlineMessageEditorRequestSequence === row.sourceSeqStart
-  ) {
+  if (row.role === "user" && inlineMessageEditorMessageId === row.id) {
     return (
       <div className="ml-auto w-full max-w-[70%] max-md:max-w-full">
         <div
@@ -996,9 +993,6 @@ function ConversationRow({
               mentions: [...row.mentions],
             });
           }
-          for (const url of row.attachments?.imageUrls ?? []) {
-            input.push({ type: "image", url });
-          }
           for (const path of row.attachments?.localImagePaths ?? []) {
             input.push({ type: "localImage", path });
           }
@@ -1006,6 +1000,7 @@ function ConversationRow({
             input.push({ type: "localFile", path });
           }
           onEditMessage({
+            messageId: row.id,
             expectedRequestSequence: row.sourceSeqStart,
             input,
           });
@@ -2083,8 +2078,8 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
       onEditMessage: props.onEditMessage,
       inlineMessageEditorHostRef:
         props.inlineMessageEditor?.onHostElementChange,
-      inlineMessageEditorRequestSequence:
-        props.inlineMessageEditor?.expectedRequestSequence ?? null,
+      inlineMessageEditorMessageId:
+        props.inlineMessageEditor?.messageId ?? null,
       onMessageAddToChat: props.onMessageAddToChat,
       onSendToMainMessage: props.onSendToMainMessage,
       onSelectionAddToChat: selectionAddToChatHandler,

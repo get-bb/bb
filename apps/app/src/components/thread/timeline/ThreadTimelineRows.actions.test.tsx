@@ -361,12 +361,14 @@ describe("ThreadTimelineRows actions", () => {
     expect(editButtons).toHaveLength(2);
     fireEvent.click(editButtons[0]!);
     expect(onEditMessage).toHaveBeenNthCalledWith(1, {
+      messageId: "earlier_user_message",
       expectedRequestSequence: 3,
       input: [{ type: "text", text: "An earlier request.", mentions: [] }],
     });
 
     fireEvent.click(editButtons[1]!);
     expect(onEditMessage).toHaveBeenCalledWith({
+      messageId: "latest_user_message",
       expectedRequestSequence: 7,
       input: [
         { type: "text", text: "The latest request.", mentions: [] },
@@ -388,6 +390,12 @@ describe("ThreadTimelineRows actions", () => {
             sourceSeqStart: 7,
           }),
           conversationRow({
+            id: "same_request_sibling",
+            role: "user",
+            text: "A grouped sibling remains visible.",
+            sourceSeqStart: 7,
+          }),
+          conversationRow({
             id: "assistant_response",
             role: "assistant",
             text: "The existing response remains visible.",
@@ -395,7 +403,7 @@ describe("ThreadTimelineRows actions", () => {
           }),
         ]}
         inlineMessageEditor={{
-          expectedRequestSequence: 7,
+          messageId: "edited_user_message",
           onHostElementChange,
         }}
         threadRuntimeDisplayStatus="idle"
@@ -409,6 +417,7 @@ describe("ThreadTimelineRows actions", () => {
     expect(host).not.toBeNull();
     expect(onHostElementChange).toHaveBeenCalledWith(host);
     expect(screen.queryByText("The original request.")).toBeNull();
+    expect(screen.getByText("A grouped sibling remains visible.")).toBeTruthy();
     expect(
       screen.getByText("The existing response remains visible."),
     ).toBeTruthy();
@@ -463,6 +472,7 @@ describe("ThreadTimelineRows actions", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Edit message" }));
     expect(onEditMessage).toHaveBeenCalledWith({
+      messageId: expect.any(String),
       expectedRequestSequence: 11,
       input: [{ type: "localImage", path: "uploads/screenshot.png" }],
     });

@@ -243,6 +243,7 @@ function createFakeRuntime(): AgentRuntime {
     async prepareThreadRewind() {
       return { providerThreadId: "provider-thread-rewind-app-test" };
     },
+    async discardThreadRewind() {},
     async resumeThread() {
       return { providerThreadId: "provider-thread-app-test" };
     },

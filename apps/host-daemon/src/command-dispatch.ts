@@ -64,6 +64,7 @@ import {
   streamProviderCliInstall,
 } from "./provider-cli-health.js";
 import {
+  discardThreadRewind,
   ensureThreadRuntime,
   prepareThreadRewind,
   startThread,
@@ -230,6 +231,18 @@ function shouldInvalidateProviderMaintenanceRuntimeAfterProviderCliInstall(args:
 }
 
 const commandHandlers: CommandHandlerMap = {
+  "thread.rewind.discard": async (command, options) => {
+    const release =
+      await options.runtimeManager.retainEnvironmentForThreadCommand(
+        command.environmentId,
+        command.threadId,
+      );
+    try {
+      return await discardThreadRewind(command, options);
+    } finally {
+      release();
+    }
+  },
   "thread.rewind.prepare": async (command, options) => {
     const release =
       await options.runtimeManager.retainEnvironmentForThreadCommand(

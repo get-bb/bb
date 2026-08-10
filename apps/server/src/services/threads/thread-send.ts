@@ -78,6 +78,7 @@ export interface SendThreadMessageArgs {
    */
   historyReplacement?: {
     forkSourceProviderThreadId: string | null;
+    onCommandSettled?: () => void | Promise<void>;
     requestTargetKind: "new-turn" | "thread-start";
   };
   payload: SendThreadMessagePayload;
@@ -601,6 +602,9 @@ export async function sendThreadMessage(
       command: command.command,
       hostId: readyEnvironment.hostId,
       timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
+      ...(args.historyReplacement?.onCommandSettled !== undefined
+        ? { onSettled: args.historyReplacement.onCommandSettled }
+        : {}),
       onError: ({ error }) => {
         deps.logger.warn(
           { err: error, threadId: thread.id },

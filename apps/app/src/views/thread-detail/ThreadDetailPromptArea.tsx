@@ -1572,28 +1572,31 @@ export function ThreadDetailPromptArea({
       />
     );
     return (
-      <div className="space-y-2">
-        {activePromptMode ? activePromptModeCard : null}
-        {goal ? activeGoalCard : null}
-        <PluginComposerHostProvider value={normalPluginComposerHost}>
-          <PluginComposerBanners
-            view={{
-              scope: normalPluginComposerHost.scope,
-              layout: "expanded",
-              draft: {
-                text: normalPluginComposerHost.draft.text,
-                isEmpty:
-                  normalPluginComposerHost.draft.text.trim().length === 0 &&
-                  normalPluginComposerHost.draft.attachments.length === 0,
-                attachmentCount:
-                  normalPluginComposerHost.draft.attachments.length,
-              },
-              run: { isRunning: false, isSubmitting: false },
-            }}
-          />
-        </PluginComposerHostProvider>
-        {pendingInteractionComposer}
-      </div>
+      <>
+        {sentMessageEditorPortal}
+        <div className="space-y-2">
+          {activePromptMode ? activePromptModeCard : null}
+          {goal ? activeGoalCard : null}
+          <PluginComposerHostProvider value={normalPluginComposerHost}>
+            <PluginComposerBanners
+              view={{
+                scope: normalPluginComposerHost.scope,
+                layout: "expanded",
+                draft: {
+                  text: normalPluginComposerHost.draft.text,
+                  isEmpty:
+                    normalPluginComposerHost.draft.text.trim().length === 0 &&
+                    normalPluginComposerHost.draft.attachments.length === 0,
+                  attachmentCount:
+                    normalPluginComposerHost.draft.attachments.length,
+                },
+                run: { isRunning: false, isSubmitting: false },
+              }}
+            />
+          </PluginComposerHostProvider>
+          {pendingInteractionComposer}
+        </div>
+      </>
     );
   }
 

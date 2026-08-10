@@ -101,6 +101,11 @@ The `toolsHub` experiment exposes Extensions for managing skills and plugins.
 Automations stays in the Plugins section beside threads. It does not enable or
 disable installed skills, automation execution, plugin runtimes, CLI commands,
 or backend APIs.
+The `editMessages` experiment enables editing eligible, successfully completed
+root user messages in idle Codex, Claude Code, and Pi threads. Opening the
+editor is client-local; submitting replaces the selected turn and all later
+conversation history while retaining workspace side effects. Grouped
+multi-message requests are not yet editable.
 
 Thread timeline windows are bounded by event count as well as user-message
 count (`BB_FF_TIMELINE_WINDOW_EVENT_BUDGET`, default 1500), so a long thread
