@@ -79,6 +79,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     isDevelopment: !isProduction,
     openAiApiKey: serverConfig.OPENAI_API_KEY,
     serverPort: serverConfig.BB_SERVER_PORT,
+    sharedSkillRoots: { user: [], project: [] },
     threadStorageRootPath,
     transcriptionModel: serverConfig.BB_TRANSCRIPTION,
   };

@@ -87,3 +87,8 @@ accepts an SVG, PNG, or WebP path; relative paths resolve from the bb data dir.
 Use nativeSkillRoots to add native skills to the composer. User roots resolve
 from the target host home directory. Project roots resolve from the selected
 workspace. Each root must use a relative path without dot segments.
+
+Use top-level sharedSkillRoots for one provider-neutral skill collection. The
+user and project paths use the same relative-path rules. bb indexes these roots
+as read-only sources. It then injects the selected skills into all providers.
+The bb user and project roots keep higher precedence than matching shared roots.

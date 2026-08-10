@@ -6,11 +6,13 @@ import {
   resolveSkillCatalogEntries,
   type ProjectInjectedSkillSource,
   type ResolvedSkillCatalogEntry,
+  type SharedInjectedSkillSource,
 } from "./injected-skills.js";
 
 interface ResolveSkillCatalogSourcesArgs {
   pluginSkillSelections?: ReadonlyMap<string, ReadonlySet<string>>;
   projectSkillSources?: readonly ProjectInjectedSkillSource[];
+  sharedSkillSources?: readonly SharedInjectedSkillSource[];
 }
 
 /**
@@ -42,6 +44,9 @@ export function resolveSkillCatalog(
       : {}),
     ...(args.projectSkillSources !== undefined
       ? { projectSkillSources: args.projectSkillSources }
+      : {}),
+    ...(args.sharedSkillSources !== undefined
+      ? { sharedSkillSources: args.sharedSkillSources }
       : {}),
     skillTreeRegistry: deps.skillTreeRegistry,
   });

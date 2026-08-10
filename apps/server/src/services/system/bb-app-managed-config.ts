@@ -105,6 +105,8 @@ export function applyBbAppManagedConfig(
     args.managedConfig.customAcpAgents ?? args.baseConfig.customAcpAgents;
   args.targetConfig.customModels =
     args.managedConfig.customModels ?? args.baseConfig.customModels;
+  args.targetConfig.sharedSkillRoots =
+    args.managedConfig.sharedSkillRoots ?? args.baseConfig.sharedSkillRoots;
   args.targetConfig.inferenceModel =
     managedConfig.BB_INFERENCE !== undefined
       ? validateInferenceModel(managedConfig.BB_INFERENCE)

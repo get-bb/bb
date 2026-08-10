@@ -74,6 +74,7 @@ function createRuntimeConfig(): ServerRuntimeConfig {
     isDevelopment: false,
     openAiApiKey: "ambient-openai-key",
     serverPort: 38886,
+    sharedSkillRoots: { user: [], project: [] },
     threadStorageRootPath: "/tmp/bb-test/thread-storage",
     transcriptionModel: "openai/gpt-4o-transcribe",
   };
@@ -164,6 +165,28 @@ describe("bb-app managed config", () => {
         displayName: "Example Preview (1M)",
       },
     ]);
+  });
+
+  it("applies shared skill roots over the ambient runtime config", () => {
+    const baseConfig = createRuntimeConfig();
+    const targetConfig = createRuntimeConfig();
+
+    applyBbAppManagedConfig({
+      baseConfig,
+      managedConfig: {
+        sharedSkillRoots: {
+          user: [".agents/skills"],
+          project: [".agents/skills"],
+        },
+      },
+      managedEnvFile: {},
+      targetConfig,
+    });
+
+    expect(targetConfig.sharedSkillRoots).toEqual({
+      user: [".agents/skills"],
+      project: [".agents/skills"],
+    });
   });
 
   it("applies custom ACP agents over the ambient runtime config", () => {

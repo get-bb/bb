@@ -764,7 +764,7 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
   "hostDaemonOnlineRpcCommandSchema.selectedBranch":
     "host.list_branches may omit exact selected-branch classification when the caller only needs a branch option page.",
   "hostDaemonOnlineRpcCommandSchema.nativeSkillRoots":
-    "host.list_commands may omit nativeSkillRoots for providers with daemon-owned discovery rules.",
+    "host skill discovery may omit nativeSkillRoots for providers with daemon-owned discovery rules.",
   "hostDaemonCommandSchema.threadStoragePath":
     "thread.start may include a storage path so the daemon creates the directory before the agent starts.",
   "hostDaemonCommandSchema.fork":
@@ -1051,10 +1051,10 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  // Version 92 lets the server send custom ACP native skill roots to the host.
-  // An older daemon rejects this field, so it must update before discovery.
-  it("uses protocol version 92 for custom ACP native skill roots", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(92);
+  // Version 93 lets the server send shared roots and host paths to the daemon.
+  // An older daemon rejects these fields, so it must update before discovery.
+  it("uses protocol version 93 for shared skill roots", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(93);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {
@@ -1367,6 +1367,25 @@ describe("host-daemon command schemas", () => {
       nativeSkillRoots: {
         user: [".agents/skills"],
         project: [".amp/skills"],
+      },
+    });
+
+    expect(
+      hostDaemonOnlineRpcCommandSchema.parse({
+        type: "host.list_skills",
+        providerId: "bb-shared",
+        cwd: "/tmp/workspace",
+        nativeSkillRoots: {
+          user: [".agents/skills"],
+          project: [".agents/skills"],
+        },
+      }),
+    ).toMatchObject({
+      type: "host.list_skills",
+      providerId: "bb-shared",
+      nativeSkillRoots: {
+        user: [".agents/skills"],
+        project: [".agents/skills"],
       },
     });
 
@@ -2194,6 +2213,15 @@ describe("host-daemon command schemas", () => {
         skillFilePath: "/workspace/.bb/skills/workflow-help/SKILL.md",
       }),
     ).toMatchObject({ kind: "workspace-path", sourceType: "project" });
+    expect(
+      hostDaemonInjectedSkillSourceSchema.parse({
+        ...base,
+        kind: "host-path",
+        sourceType: "shared-user",
+        sourceRootPath: "/home/user/.agents/skills/workflow-help",
+        skillFilePath: "/home/user/.agents/skills/workflow-help/SKILL.md",
+      }),
+    ).toMatchObject({ kind: "host-path", sourceType: "shared-user" });
 
     expect(() =>
       hostDaemonInjectedSkillSourceSchema.parse({

@@ -287,6 +287,74 @@ describe("resolveSkillScanRoots + discoverSkills (codex)", () => {
   });
 });
 
+describe("resolveSkillScanRoots + discoverSkills (shared roots)", () => {
+  it("classifies configured shared user and project roots", async () => {
+    const fixture = await makeWorkspaceFixture();
+    await writeSkill(
+      path.join(
+        fixture.homeDir,
+        ".agents",
+        "skills",
+        "user-shared",
+        "SKILL.md",
+      ),
+      "user-shared",
+    );
+    await writeSkill(
+      path.join(fixture.cwd, ".agents", "skills", "project-shared", "SKILL.md"),
+      "project-shared",
+    );
+
+    const skills = await discoverSkills({
+      roots: await resolveSkillScanRoots({
+        providerId: "bb-shared",
+        cwd: fixture.cwd,
+        homeDir: fixture.homeDir,
+        codexHome: fixture.codexHome,
+        nativeSkillRoots: {
+          user: [".agents/skills"],
+          project: [".agents/skills"],
+        },
+      }),
+    });
+
+    expect(byName(skills, "project-shared")?.rootKind).toBe("shared-project");
+    expect(byName(skills, "user-shared")?.rootKind).toBe("shared-user");
+  });
+
+  it("discovers a project skill through a symlinked shared root", async () => {
+    const fixture = await makeWorkspaceFixture();
+    await writeSkill(
+      path.join(fixture.cwd, ".agents", "skills", "linked-root", "SKILL.md"),
+      "linked-root",
+    );
+    await mkdir(path.join(fixture.cwd, ".shared"), { recursive: true });
+    await symlink(
+      path.join("..", ".agents", "skills"),
+      path.join(fixture.cwd, ".shared", "skills"),
+      "dir",
+    );
+
+    const skills = await discoverSkills({
+      roots: await resolveSkillScanRoots({
+        providerId: "bb-shared",
+        cwd: fixture.cwd,
+        homeDir: fixture.homeDir,
+        codexHome: fixture.codexHome,
+        nativeSkillRoots: {
+          user: [],
+          project: [".shared/skills"],
+        },
+      }),
+    });
+
+    expect(byName(skills, "linked-root")).toMatchObject({
+      rootKind: "shared-project",
+      linked: false,
+    });
+  });
+});
+
 describe("deleteHostSkill", () => {
   it("deletes a bb-user skill directory", async () => {
     const fixture = await makeWorkspaceFixture();

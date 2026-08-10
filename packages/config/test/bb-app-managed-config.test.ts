@@ -6,6 +6,20 @@ import {
 } from "../src/bb-app-managed-config.js";
 
 describe("bbAppManagedConfigSchema", () => {
+  it("parses shared user and project skill roots", () => {
+    expect(
+      parseBbAppManagedConfig({
+        sharedSkillRoots: {
+          user: [".agents/skills"],
+          project: [".agents/skills"],
+        },
+      }).sharedSkillRoots,
+    ).toEqual({
+      user: [".agents/skills"],
+      project: [".agents/skills"],
+    });
+  });
+
   it("parses custom models with a known provider", () => {
     const parsed = bbAppManagedConfigSchema.parse({
       customModels: [

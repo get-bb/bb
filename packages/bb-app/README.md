@@ -153,6 +153,10 @@ field accepts an SVG, PNG, or WebP path for the provider picker icon.
 The optional `nativeSkillRoots` field adds provider-native skills to the
 composer. Its `user` paths resolve from the target host home directory. Its
 `project` paths resolve from the selected workspace.
+Top-level `sharedSkillRoots` uses the same `user` and `project` path format.
+BB lists these sources as read-only skills. BB injects them into Codex, Claude,
+Pi, and ACP threads. This permits one physical skill collection for BB and a
+standalone provider CLI.
 
 ## Configuration
 

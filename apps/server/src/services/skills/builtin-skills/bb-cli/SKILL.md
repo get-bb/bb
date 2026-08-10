@@ -300,6 +300,9 @@ environment pull-request show <id>`. Diff commands require an explicit target
   reasoning. Optional `nativeSkillRoots.user` paths resolve from the target
   host home directory. Optional `nativeSkillRoots.project` paths resolve from
   the selected workspace. The composer lists skills from these roots.
+- Top-level `sharedSkillRoots` uses the same relative `user` and `project`
+  paths. bb lists these skills as read-only. bb injects them into each provider,
+  so one physical skill collection can support bb and standalone provider CLIs.
 
 Give spawned threads clear prompts: objective, constraints, expected deliverable,
 validation to perform, and what to report back. Ask for outcome, changed files

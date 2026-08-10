@@ -381,6 +381,8 @@ export const skillScopeSchema = z.enum([
   "claude-project",
   "codex-user",
   "codex-project",
+  "shared-user",
+  "shared-project",
   "plugin",
 ]);
 export type SkillScope = z.infer<typeof skillScopeSchema>;

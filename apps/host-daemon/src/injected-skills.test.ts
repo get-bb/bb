@@ -577,6 +577,44 @@ describe("injected skill staging", () => {
     });
   });
 
+  it("stages a read-only shared host path for every provider", async () => {
+    const dataDir = await makeTempDir();
+    const sourceRoot = await makeTempDir();
+    const skillRootPath = await writeSkill({
+      rootPath: sourceRoot,
+      name: "shared-review",
+    });
+
+    const staged = await stageInjectedSkillSources({
+      dataDir,
+      injectedSkillSources: [
+        {
+          kind: "host-path",
+          sourceType: "shared-user",
+          name: "shared-review",
+          description: "Use shared-review when host staging tests run.",
+          sourceRootPath: skillRootPath,
+          skillFilePath: path.join(skillRootPath, "SKILL.md"),
+        },
+      ],
+    });
+
+    expect(staged.skillRoots.map((root) => root.providerId)).toEqual([
+      "codex",
+      "claude-code",
+      "pi",
+      "acp",
+    ]);
+    const piRoot = staged.skillRoots.find(isPiSkillRoot);
+    if (!piRoot) throw new Error("Expected Pi skill root");
+    await expect(
+      readFile(
+        path.join(piRoot.skillDirectoryRootPath, "shared-review", "SKILL.md"),
+        "utf8",
+      ),
+    ).resolves.toContain("name: shared-review");
+  });
+
   it("changes the catalog hash when skill content changes", async () => {
     const dataDir = await makeTempDir();
     const sourceRootPath = path.join(dataDir, "source-skills");

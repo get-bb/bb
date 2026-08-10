@@ -21,6 +21,7 @@ import type { ProjectCommandWorkspace as CommandWorkspace } from "../projects/pr
 import { resolveServerOwnedSkillCatalogEntries } from "./injected-skills.js";
 import { resolveSkillCatalog } from "./skill-catalog.js";
 import { readRegistrySkillProvenance } from "./registry-skill-provenance.js";
+import { resolveSharedSkills } from "./shared-skills.js";
 
 const SKILL_FILE_NAME = "SKILL.md";
 const SERVER_SKILL_FILE_LIMIT = 200;
@@ -40,6 +41,8 @@ const SKILL_SCOPE_ORDER: readonly SkillScope[] = [
   "bb-project",
   "bb-user",
   "bb-builtin",
+  "shared-project",
+  "shared-user",
   "claude-project",
   "claude-user",
   "codex-project",
@@ -101,6 +104,10 @@ export function mapSkillScope(
       return provider === "claude-code"
         ? { scope: "claude-user", provider, manageable: true }
         : { scope: "codex-user", provider, manageable: true };
+    case "shared-project":
+      return { scope: "shared-project", provider: null, manageable: false };
+    case "shared-user":
+      return { scope: "shared-user", provider: null, manageable: false };
     case "plugin":
       return { scope: "plugin", provider, manageable: false };
   }
@@ -233,24 +240,31 @@ export async function listProjectSkills(
   deps: AppDeps,
   args: { workspace: CommandWorkspace },
 ): Promise<SkillSummary[]> {
-  const perProvider = await Promise.all(
-    SKILL_COMMAND_SURFACE_PROVIDERS.map(
-      async (provider): Promise<ProviderSkillDiscovery> => {
-        const result = await callHostRetryableOnlineRpc(deps, {
-          hostId: args.workspace.hostId,
-          timeoutMs: COMMAND_TIMEOUT_MS,
-          command: {
-            type: "host.list_skills",
-            providerId: provider,
-            cwd: args.workspace.cwd,
-          },
-        });
-        return { provider, skills: result.skills };
-      },
+  const [perProvider, sharedSkills] = await Promise.all([
+    Promise.all(
+      SKILL_COMMAND_SURFACE_PROVIDERS.map(
+        async (provider): Promise<ProviderSkillDiscovery> => {
+          const result = await callHostRetryableOnlineRpc(deps, {
+            hostId: args.workspace.hostId,
+            timeoutMs: COMMAND_TIMEOUT_MS,
+            command: {
+              type: "host.list_skills",
+              providerId: provider,
+              cwd: args.workspace.cwd,
+            },
+          });
+          return { provider, skills: result.skills };
+        },
+      ),
     ),
-  );
+    resolveSharedSkills(deps, {
+      hostId: args.workspace.hostId,
+      cwd: args.workspace.cwd,
+    }),
+  ]);
   return [
     ...assembleSkillList(perProvider),
+    ...sharedSkills.summaries,
     ...listServerOwnedSkills(deps),
     ...listBbPluginSkills(deps),
   ].sort(compareSkillSummaries);

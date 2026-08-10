@@ -233,6 +233,7 @@ async function startIntegrationServer(
     openAiApiKey: process.env.OPENAI_API_KEY ?? "test-openai-key",
     appUrl: "https://bb.example.test",
     serverPort: 0,
+    sharedSkillRoots: { user: [], project: [] },
     threadStorageRootPath,
     transcriptionModel: "test/mock-transcription",
     isDevelopment: false,

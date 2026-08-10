@@ -232,6 +232,65 @@ async function writePluginSkillFixture(rootPath: string): Promise<{
 }
 
 describe("public project skills route", () => {
+  it("lists configured shared roots as read-only provider-neutral skills", async () => {
+    await withTestHarness(
+      {
+        sharedSkillRoots: {
+          user: [".agents/skills"],
+          project: [".agents/skills"],
+        },
+      },
+      async (harness) => {
+        const { host, session } = seedHostSession(harness.deps, {
+          id: "host-shared-skill-list",
+        });
+        const { project } = seedProjectWithSource(harness.deps, {
+          hostId: host.id,
+          path: "/tmp/shared-skill-list",
+        });
+        const environment = seedEnvironment(harness.deps, {
+          hostId: host.id,
+          projectId: project.id,
+          path: "/tmp/shared-skill-list",
+        });
+        registerSkillRpc(harness, {
+          hostId: host.id,
+          sessionId: session.id,
+          skillsByProvider: {
+            "bb-shared": [
+              discovered(
+                "portable-review",
+                "shared-project",
+                "/tmp/shared-skill-list/.agents/skills/portable-review/SKILL.md",
+              ),
+            ],
+          },
+        });
+
+        const response = await harness.app.request(
+          `/api/v1/projects/${project.id}/skills?environmentId=${environment.id}`,
+        );
+        expect(response.status).toBe(200);
+        const body = skillListResponseSchema.parse(await readJson(response));
+
+        expect(body.skills).toContainEqual({
+          id: skillId(
+            "/tmp/shared-skill-list/.agents/skills/portable-review/SKILL.md",
+          ),
+          name: "portable-review",
+          description: "portable-review skill",
+          provider: null,
+          scope: "shared-project",
+          pluginId: null,
+          filePath:
+            "/tmp/shared-skill-list/.agents/skills/portable-review/SKILL.md",
+          manageable: false,
+          registrySkillId: null,
+        });
+      },
+    );
+  });
+
   it("paginates the supported registry set before slicing pages", async () => {
     await withTestHarness(async (harness) => {
       vi.stubEnv("VERCEL_OIDC_TOKEN", "");

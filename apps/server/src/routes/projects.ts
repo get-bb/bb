@@ -81,6 +81,7 @@ import { parseFileListLimit } from "./file-list-query.js";
 import { parseSafeRelativeRoutePath } from "./relative-route-path.js";
 import { resolveSkillCatalog } from "../services/skills/skill-catalog.js";
 import { resolveWorkspaceProjectSkills } from "../services/skills/workspace-skills.js";
+import { resolveSharedSkills } from "../services/skills/shared-skills.js";
 import { assertUsableHostId } from "../services/hosts/primary-host.js";
 import { resolveAcpLaunchSpecForProviderId } from "../services/system/acp-launch-spec.js";
 import {
@@ -688,7 +689,7 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
       deps,
       query.provider,
     );
-    const [result, projectSkillSources] = await Promise.all([
+    const [result, projectSkillSources, sharedSkills] = await Promise.all([
       callHostRetryableOnlineRpc(deps, {
         hostId: workspace.hostId,
         timeoutMs: COMMAND_TIMEOUT_MS,
@@ -707,8 +708,15 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
             hostId: workspace.hostId,
             workspacePath: workspace.cwd,
           }),
+      resolveSharedSkills(deps, {
+        hostId: workspace.hostId,
+        cwd: workspace.cwd,
+      }),
     ]);
-    const skillCatalog = resolveSkillCatalog(deps, { projectSkillSources });
+    const skillCatalog = resolveSkillCatalog(deps, {
+      projectSkillSources,
+      sharedSkillSources: sharedSkills.runtimeSources,
+    });
     return context.json(
       buildCommandListResponse({
         commands: result.commands,

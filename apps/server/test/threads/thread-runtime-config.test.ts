@@ -14,6 +14,7 @@ import {
   defaultExperiments,
   encodeClientTurnRequestIdNumber,
 } from "@bb/domain";
+import type { DiscoveredSkill } from "@bb/host-daemon-contract";
 import { setPluginAgentContributions } from "../../src/services/plugins/plugin-agent-contributions.js";
 import { readSkillTreeManifest } from "../../src/services/skills/injected-skills.js";
 import type { PluginAgentToolContribution } from "../../src/services/plugins/plugin-service.js";
@@ -96,6 +97,7 @@ function registerRemoteRuntimeFileResponder(
     files: ReadonlyMap<string, string>;
     hostId: string;
     sessionId: string;
+    sharedSkills?: DiscoveredSkill[];
   },
 ): HostRpcResponder {
   return registerHostRpcResponder(harness, {
@@ -138,6 +140,12 @@ function registerRemoteRuntimeFileResponder(
             sha256: createHash("sha256").update(bytes).digest("hex"),
             sizeBytes: bytes.length,
           },
+        };
+      }
+      if (command.type === "host.list_skills") {
+        return {
+          ok: true,
+          result: { skills: args.sharedSkills ?? [] },
         };
       }
       throw new Error(`Unexpected remote runtime RPC ${command.type}`);
@@ -1451,6 +1459,73 @@ describe("thread runtime config", () => {
         ]),
       );
     });
+  });
+
+  it("injects shared host skills into thread runtime configuration", async () => {
+    await withTestHarness(
+      {
+        sharedSkillRoots: {
+          user: [".agents/skills"],
+          project: [".agents/skills"],
+        },
+      },
+      async (harness) => {
+        const { host, session } = seedHostSession(harness.deps, {
+          id: "host-runtime-shared-skills",
+        });
+        const workspacePath = "/remote/runtime-shared-skills";
+        const skillFilePath = path.join(
+          workspacePath,
+          ".agents",
+          "skills",
+          "portable-review",
+          "SKILL.md",
+        );
+        registerRemoteRuntimeFileResponder(harness, {
+          hostId: host.id,
+          sessionId: session.id,
+          files: new Map(),
+          sharedSkills: [
+            {
+              id: `skill_${"b".repeat(64)}`,
+              name: "portable-review",
+              description: "Review code from one shared source.",
+              filePath: skillFilePath,
+              rootKind: "shared-project",
+              linked: false,
+            },
+          ],
+        });
+        const { project } = seedProjectWithSource(harness.deps, {
+          hostId: host.id,
+          path: workspacePath,
+        });
+        const environment = seedEnvironment(harness.deps, {
+          hostId: host.id,
+          projectId: project.id,
+          path: workspacePath,
+        });
+        const thread = seedThread(harness.deps, {
+          environmentId: environment.id,
+          projectId: project.id,
+          providerId: "claude-code",
+        });
+
+        const runtimeConfig = await resolveThreadRuntimeCommandConfig(
+          harness.deps,
+          { thread, environment, model: "test-model" },
+        );
+
+        expect(runtimeConfig.injectedSkillSources).toContainEqual({
+          kind: "host-path",
+          sourceType: "shared-project",
+          name: "portable-review",
+          description: "Review code from one shared source.",
+          sourceRootPath: path.dirname(skillFilePath),
+          skillFilePath,
+        });
+      },
+    );
   });
 
   it("appends data-dir AGENTS.md instructions before workspace instructions", async () => {
