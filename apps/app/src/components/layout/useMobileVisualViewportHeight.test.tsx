@@ -26,6 +26,7 @@ function VisualViewportShell({ enabled }: { enabled: boolean }) {
   return (
     <div ref={shellRef} data-testid="shell">
       <textarea data-testid="editor" />
+      <textarea data-testid="other-editor" />
     </div>
   );
 }
@@ -108,7 +109,7 @@ describe("useMobileVisualViewportHeight", () => {
     });
   });
 
-  it("keeps the shell aligned until the viewport reports keyboard dismissal", async () => {
+  it("restores the shell immediately when keyboard focus leaves", async () => {
     const visualViewport = new FakeVisualViewport();
     visualViewport.offsetTop = 0;
     await withFakeVisualViewport(visualViewport, async () => {
@@ -124,7 +125,8 @@ describe("useMobileVisualViewportHeight", () => {
 
       act(() => editor.focus());
       act(() => editor.blur());
-      expect(shell.style.height).toBe("300px");
+      expect(shell.style.height).toBe("");
+      expect(shell.style.top).toBe("");
 
       act(() => {
         visualViewport.height = 500;
@@ -132,6 +134,29 @@ describe("useMobileVisualViewportHeight", () => {
       });
       await waitFor(() => expect(shell.style.height).toBe("500px"));
       expect(shell.style.top).toBe("0px");
+    });
+  });
+
+  it("keeps the shortened shell when focus moves between keyboard targets", async () => {
+    const visualViewport = new FakeVisualViewport();
+    visualViewport.offsetTop = 0;
+    await withFakeVisualViewport(visualViewport, async () => {
+      render(<VisualViewportShell enabled />);
+      const shell = screen.getByTestId("shell");
+      const editor = screen.getByTestId("editor");
+      const otherEditor = screen.getByTestId("other-editor");
+
+      act(() => {
+        visualViewport.height = 300;
+        visualViewport.dispatchEvent(new Event("resize"));
+      });
+      await waitFor(() => expect(shell.style.height).toBe("300px"));
+
+      act(() => editor.focus());
+      act(() => otherEditor.focus());
+
+      expect(shell.style.height).toBe("300px");
+      expect(shell.style.transition).toBe("");
     });
   });
 

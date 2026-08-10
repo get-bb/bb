@@ -484,6 +484,17 @@ function FollowUpPromptBoxWithComposer({
       // decision about settled focus state instead of pointer intent.
       if (composerElement.contains(document.activeElement)) return;
 
+      // Pressing the software keyboard's dismiss button commonly leaves focus
+      // on the document body. Keep the composer expanded in that case, as it
+      // was before collapse became focus-driven; compact it only when focus
+      // actually moves to another control.
+      if (
+        document.activeElement === document.body ||
+        document.activeElement === document.documentElement
+      ) {
+        return;
+      }
+
       // Responsive popovers and dropdowns portal their content outside the
       // composer. Their shared trigger contract exposes open state through
       // aria-haspopup + aria-expanded, so focus in an owned overlay must not

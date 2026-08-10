@@ -26,6 +26,16 @@ function getVisualViewportPageTop(visualViewport: VisualViewport) {
   return Math.round(window.scrollY + visualViewport.offsetTop);
 }
 
+function isKeyboardFocusTarget(target: EventTarget | null): boolean {
+  return (
+    target instanceof HTMLElement &&
+    (target.isContentEditable ||
+      target instanceof HTMLInputElement ||
+      target instanceof HTMLTextAreaElement ||
+      target instanceof HTMLSelectElement)
+  );
+}
+
 /**
  * iOS keeps the layout viewport at its original height when the software
  * keyboard opens, even though the visible viewport becomes shorter. Keep the
@@ -72,15 +82,38 @@ export function useMobileVisualViewportHeight(
       animationFrame = window.requestAnimationFrame(updateHeight);
     };
 
+    // Safari with its bottom toolbar visible does not update the visual
+    // viewport until the keyboard animation ends. Restore the normal shell
+    // immediately on keyboard dismissal instead of inventing intermediate
+    // geometry that can drift out of phase with the native animation.
+    const handleFocusOut = (event: FocusEvent) => {
+      if (!isKeyboardFocusTarget(event.target)) return;
+      if (isKeyboardFocusTarget(event.relatedTarget)) return;
+      if (animationFrame !== null) {
+        window.cancelAnimationFrame(animationFrame);
+        animationFrame = null;
+      }
+      shell.style.removeProperty("top");
+      shell.style.removeProperty("height");
+    };
+    const handleFocusIn = (event: FocusEvent) => {
+      if (!isKeyboardFocusTarget(event.target)) return;
+      scheduleUpdate();
+    };
+
     updateHeight();
     visualViewport.addEventListener("resize", scheduleUpdate);
     visualViewport.addEventListener("scroll", scheduleUpdate);
     window.addEventListener("resize", scheduleUpdate);
+    document.addEventListener("focusout", handleFocusOut);
+    document.addEventListener("focusin", handleFocusIn);
 
     return () => {
       visualViewport.removeEventListener("resize", scheduleUpdate);
       visualViewport.removeEventListener("scroll", scheduleUpdate);
       window.removeEventListener("resize", scheduleUpdate);
+      document.removeEventListener("focusout", handleFocusOut);
+      document.removeEventListener("focusin", handleFocusIn);
       if (animationFrame !== null) {
         window.cancelAnimationFrame(animationFrame);
       }

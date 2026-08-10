@@ -819,7 +819,7 @@ describe("FollowUpPromptBox", () => {
     );
   });
 
-  it("collapses after the editor blurs without a new focus target", async () => {
+  it("stays expanded when keyboard dismissal leaves no focus target", async () => {
     mocks.isCompactViewport = true;
     render(
       <FollowUpPromptBox
@@ -834,7 +834,7 @@ describe("FollowUpPromptBox", () => {
     await waitFor(() =>
       expect(
         screen.getByTestId("prompt-box").getAttribute("data-compact"),
-      ).toBe("true"),
+      ).toBe("false"),
     );
   });
 
