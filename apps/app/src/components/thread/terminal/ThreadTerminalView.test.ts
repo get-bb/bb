@@ -8,11 +8,80 @@ import {
   forwardTerminalData,
   loadOptionalTerminalWebglAddon,
   loadTerminalWebglRenderer,
+  shouldFocusTerminalAfterAsyncMount,
   TERMINAL_ALLOW_PROPOSED_API,
   TERMINAL_FONT_FAMILY,
   TERMINAL_UNICODE_VERSION,
   writeTerminalOutput,
 } from "./ThreadTerminalView";
+
+describe("terminal async mount focus", () => {
+  it("preserves focus that moved to the composer while xterm loaded", () => {
+    expect(
+      shouldFocusTerminalAfterAsyncMount({
+        currentFocusIsAvailable: true,
+        hasExplicitFocusRequest: false,
+        focusMovedDuringMount: true,
+        isPanelOpen: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("does not let an explicit request override a newer focus target", () => {
+    expect(
+      shouldFocusTerminalAfterAsyncMount({
+        currentFocusIsAvailable: true,
+        hasExplicitFocusRequest: true,
+        focusMovedDuringMount: true,
+        isPanelOpen: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("focuses an opened terminal when focus stayed on its trigger", () => {
+    expect(
+      shouldFocusTerminalAfterAsyncMount({
+        currentFocusIsAvailable: true,
+        hasExplicitFocusRequest: true,
+        focusMovedDuringMount: false,
+        isPanelOpen: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("preserves a composer that was focused before xterm started mounting", () => {
+    expect(
+      shouldFocusTerminalAfterAsyncMount({
+        currentFocusIsAvailable: true,
+        hasExplicitFocusRequest: false,
+        focusMovedDuringMount: false,
+        isPanelOpen: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("focuses the terminal when its initiating trigger unmounted", () => {
+    expect(
+      shouldFocusTerminalAfterAsyncMount({
+        currentFocusIsAvailable: false,
+        hasExplicitFocusRequest: false,
+        focusMovedDuringMount: true,
+        isPanelOpen: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("does not focus a terminal after its panel closes", () => {
+    expect(
+      shouldFocusTerminalAfterAsyncMount({
+        currentFocusIsAvailable: false,
+        hasExplicitFocusRequest: true,
+        focusMovedDuringMount: false,
+        isPanelOpen: false,
+      }),
+    ).toBe(false);
+  });
+});
 
 describe("terminal output encoding", () => {
   it("splits large paste input at the wire limit without losing UTF-8 bytes", () => {

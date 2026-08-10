@@ -1976,6 +1976,13 @@ export function RootComposeView() {
     ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
     null,
   );
+  // Route-driven panel remounts are passive. Explicit terminal actions keep
+  // this request pending until the asynchronously mounted xterm handles it.
+  const [shouldAutoFocusTerminal, setShouldAutoFocusTerminal] = useState(false);
+  const handleTerminalAutoFocusHandled = useCallback(
+    () => setShouldAutoFocusTerminal(false),
+    [],
+  );
   const removeFixedTerminalTab = useRemoveFixedRightTerminalTab(
     ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
     null,
@@ -2514,6 +2521,7 @@ export function RootComposeView() {
     void createTerminal
       .then((session) => {
         closeTab(newTab.id);
+        setShouldAutoFocusTerminal(true);
         setActiveFixedTerminal(session.id);
         openCompactDrawer();
       })
@@ -2542,6 +2550,7 @@ export function RootComposeView() {
   });
   const handleActivateTerminalTab = useCallback(
     (terminalId: string) => {
+      setShouldAutoFocusTerminal(true);
       setActiveFixedTerminal(terminalId);
       openCompactDrawer();
     },
@@ -2985,9 +2994,11 @@ export function RootComposeView() {
   const fileTabContent: ReactNode =
     activeTerminalId && rootPanelTerminalTarget ? (
       <ThreadTerminalPanel
+        autoFocus={shouldAutoFocusTerminal}
         canCreateTerminal={canCreateRootTerminal}
         isPanelOpen={isSecondaryPanelOpen}
         isPanelPersistedOpen={isPersistedSecondaryPanelOpen}
+        onAutoFocusHandled={handleTerminalAutoFocusHandled}
         onOpenLink={handleOpenPanelLink}
         onSelectionAddToChat={handleRootPanelSelectionAddToChat}
         panelStateId={ROOT_COMPOSE_FIXED_PANEL_STATE_ID}

@@ -6,7 +6,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ThreadTerminalContent } from "./ThreadTerminalContent";
 import type { ThreadTerminalController } from "./useThreadTerminalController";
 
-const threadTerminalView = vi.hoisted(() => vi.fn(() => null));
+const threadTerminalView = vi.hoisted(() =>
+  vi.fn((_props: { autoFocus: boolean; isPanelOpen: boolean }) => null),
+);
 
 vi.mock("./ThreadTerminalView", () => ({
   ThreadTerminalView: threadTerminalView,
@@ -62,16 +64,23 @@ afterEach(() => {
 describe("ThreadTerminalContent", () => {
   it("does not mount the terminal view until the panel opens", () => {
     const rendered = render(
-      <ThreadTerminalContent controller={controller(false)} />,
+      <ThreadTerminalContent
+        autoFocus={false}
+        controller={controller(false)}
+      />,
     );
 
     expect(threadTerminalView).not.toHaveBeenCalled();
     expect(rendered.container.firstChild).toBeNull();
 
     rendered.rerender(
-      <ThreadTerminalContent controller={controller(true)} />,
+      <ThreadTerminalContent autoFocus controller={controller(true)} />,
     );
 
     expect(threadTerminalView).toHaveBeenCalledOnce();
+    expect(threadTerminalView.mock.calls[0]?.[0]).toMatchObject({
+      autoFocus: true,
+      isPanelOpen: true,
+    });
   });
 });

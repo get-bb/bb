@@ -38,6 +38,28 @@ const TERMINAL_SELECTION_DRAG_DIRECTION_THRESHOLD_PX = 4;
 
 type TerminalFitScheduler = () => void;
 
+interface ShouldFocusTerminalAfterAsyncMountArgs {
+  currentFocusIsAvailable: boolean;
+  hasExplicitFocusRequest: boolean;
+  focusMovedDuringMount: boolean;
+  isPanelOpen: boolean;
+}
+
+export function shouldFocusTerminalAfterAsyncMount({
+  currentFocusIsAvailable,
+  hasExplicitFocusRequest,
+  focusMovedDuringMount,
+  isPanelOpen,
+}: ShouldFocusTerminalAfterAsyncMountArgs): boolean {
+  if (!isPanelOpen) {
+    return false;
+  }
+  if (focusMovedDuringMount && currentFocusIsAvailable) {
+    return false;
+  }
+  return hasExplicitFocusRequest || !currentFocusIsAvailable;
+}
+
 interface WebglRendererAddon extends ITerminalAddon {
   onContextLoss: (listener: () => void) => IDisposable;
 }
@@ -154,7 +176,9 @@ function buildTerminalTheme(): ITheme {
 }
 
 interface ThreadTerminalViewProps {
+  autoFocus: boolean;
   isPanelOpen: boolean;
+  onAutoFocusHandled?: () => void;
   onOpenLink?: MarkdownPreviewLinkHandler;
   onSelectionAddToChat?: (text: string) => void;
   onSessionChange?: (session: TerminalSession) => void;
@@ -458,7 +482,9 @@ function handleTerminalServerMessage({
 }
 
 export function ThreadTerminalView({
+  autoFocus,
   isPanelOpen,
+  onAutoFocusHandled,
   onOpenLink,
   onSelectionAddToChat,
   onSessionChange,
@@ -484,6 +510,10 @@ export function ThreadTerminalView({
     onTitleChange,
   );
   const onUserInputRef = useRef<(() => void) | undefined>(onUserInput);
+  const onAutoFocusHandledRef = useRef<(() => void) | undefined>(
+    onAutoFocusHandled,
+  );
+  const autoFocusRef = useRef(autoFocus);
   const isPanelOpenRef = useRef(isPanelOpen);
   const sessionStatusRef = useRef<TerminalSession["status"]>(session.status);
   const sessionRef = useRef(session);
@@ -501,9 +531,11 @@ export function ThreadTerminalView({
   const effectiveOnOpenLink = onOpenLink ?? handleOpenLinkByPreference;
   const onOpenLinkRef = useRef<MarkdownPreviewLinkHandler>(effectiveOnOpenLink);
 
+  autoFocusRef.current = autoFocus;
   isPanelOpenRef.current = isPanelOpen;
   sessionStatusRef.current = session.status;
   sessionRef.current = session;
+  onAutoFocusHandledRef.current = onAutoFocusHandled;
   onOpenLinkRef.current = effectiveOnOpenLink;
   onSessionChangeRef.current = onSessionChange;
   onTitleChangeRef.current = onTitleChange;
@@ -583,6 +615,8 @@ export function ThreadTerminalView({
     if (!container) {
       return;
     }
+
+    const activeElementAtMount = document.activeElement;
 
     let disposed = false;
     let transport: TerminalWebSocketTransport | null = null;
@@ -679,8 +713,24 @@ export function ThreadTerminalView({
       };
       fitTerminal();
       scheduleFitRef.current = scheduleFit;
-      if (isPanelOpenRef.current) {
+      const currentActiveElement = document.activeElement;
+      // A terminal can mount after either an explicit terminal action or a
+      // passive panel swap during navigation. Only the explicit action may
+      // replace an existing focus owner, and neither path may override focus
+      // that moved elsewhere while xterm's modules were loading.
+      if (
+        shouldFocusTerminalAfterAsyncMount({
+          currentFocusIsAvailable:
+            currentActiveElement !== null &&
+            currentActiveElement !== document.body &&
+            currentActiveElement.isConnected,
+          hasExplicitFocusRequest: autoFocusRef.current,
+          focusMovedDuringMount: currentActiveElement !== activeElementAtMount,
+          isPanelOpen: isPanelOpenRef.current,
+        })
+      ) {
         terminal.focus();
+        onAutoFocusHandledRef.current?.();
       }
 
       const activeTerminal = terminal;
@@ -815,12 +865,16 @@ export function ThreadTerminalView({
   }, [reportTerminalSelection, session.id, session.threadId]);
 
   useEffect(() => {
-    if (!isPanelOpen) {
+    if (!isPanelOpen || !autoFocus) {
       return;
     }
-    terminalRef.current?.focus();
+    const terminal = terminalRef.current;
+    if (terminal !== null) {
+      terminal.focus();
+      onAutoFocusHandledRef.current?.();
+    }
     scheduleFitRef.current?.();
-  }, [isPanelOpen]);
+  }, [autoFocus, isPanelOpen]);
 
   useEffect(() => {
     const terminal = terminalRef.current;

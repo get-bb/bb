@@ -491,6 +491,13 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     threadId,
     threadId,
   );
+  // Route-driven panel remounts are passive. Explicit terminal actions keep
+  // this request pending until the asynchronously mounted xterm handles it.
+  const [shouldAutoFocusTerminal, setShouldAutoFocusTerminal] = useState(false);
+  const handleTerminalAutoFocusHandled = useCallback(
+    () => setShouldAutoFocusTerminal(false),
+    [],
+  );
   const removeFixedTerminalTab = useRemoveFixedRightTerminalTab(
     threadId,
     threadId,
@@ -1222,6 +1229,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       })
       .then((session) => {
         closeTab(newTab.id);
+        setShouldAutoFocusTerminal(true);
         setActiveFixedTerminal(session.id);
         openCompactDrawer();
       })
@@ -1248,6 +1256,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   });
   const handleActivateTerminalTab = useCallback(
     (terminalId: string) => {
+      setShouldAutoFocusTerminal(true);
       setActiveFixedTerminal(terminalId);
       openCompactDrawer();
     },
@@ -2406,9 +2415,11 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   });
   const fileTabContent = activeTerminalId ? (
     <ThreadTerminalPanel
+      autoFocus={shouldAutoFocusTerminal}
       canCreateTerminal={canCreateTerminal}
       isPanelOpen={isSecondaryPanelOpen}
       isPanelPersistedOpen={isPersistedSecondaryPanelOpen}
+      onAutoFocusHandled={handleTerminalAutoFocusHandled}
       onOpenLink={handleOpenTimelineLink}
       onSelectionAddToChat={handleSelectionAddToChat}
       target={{ kind: "thread", threadId: thread.id }}
