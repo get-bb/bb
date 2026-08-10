@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useAtomValue, useSetAtom } from "jotai";
+import { useSetAtom } from "jotai";
 import { useEnvironmentMergeBaseBranches } from "../../../hooks/queries/environment-queries";
 import type { SecondaryFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import type { ThreadSecondaryPanel as ThreadSecondaryPanelTab } from "@/lib/thread-secondary-panel";
 import {
   pendingGitDiffCommitShaAtom,
   pendingGitDiffScrollPathAtom,
-  selectedMergeBaseBranchAtom,
 } from "../threadSecondaryPanelAtoms";
 
 type ThreadSecondaryPanelSetter = (
@@ -30,8 +29,8 @@ export function useGitDiffPanel({
   mergeBaseBranchOptionsEnabled = false,
   setThreadSecondaryPanel,
 }: UseGitDiffPanelParams) {
-  const selectedMergeBaseBranch = useAtomValue(selectedMergeBaseBranchAtom);
-  const setSelectedMergeBaseBranch = useSetAtom(selectedMergeBaseBranchAtom);
+  const [selectedMergeBaseBranch, setSelectedMergeBaseBranch] =
+    useState<string>();
   const setPendingGitDiffScrollPath = useSetAtom(pendingGitDiffScrollPathAtom);
   const setPendingGitDiffCommitSha = useSetAtom(pendingGitDiffCommitShaAtom);
   const [mergeBaseBranchSearchQuery, setMergeBaseBranchSearchQuery] =
@@ -120,7 +119,6 @@ export function useGitDiffPanel({
 
   return {
     closeThreadSecondaryPanel,
-    defaultMergeBaseBranch,
     isLoadingMergeBaseBranchOptions,
     mergeBaseBranchOptions,
     mergeBaseBranchOptionsTruncated,

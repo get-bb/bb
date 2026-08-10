@@ -4,7 +4,6 @@ import { useEnvironmentWorkStatus } from "../../../hooks/queries/environment-que
 import {
   pendingGitDiffCommitShaAtom,
   pendingGitDiffScrollPathAtom,
-  selectedMergeBaseBranchAtom,
 } from "../threadSecondaryPanelAtoms";
 import { type GitDiffSelectionOption } from "../ThreadSecondaryPanel";
 import {
@@ -38,7 +37,6 @@ export function useGitDiffPanelState({
   isDiffPanelActive,
   defaultMergeBaseBranch,
 }: UseGitDiffPanelStateParams) {
-  const selectedMergeBaseBranch = useAtomValue(selectedMergeBaseBranchAtom);
   const pendingGitDiffScrollPath = useAtomValue(pendingGitDiffScrollPathAtom);
   const setPendingGitDiffScrollPath = useSetAtom(pendingGitDiffScrollPathAtom);
   const pendingGitDiffCommitSha = useAtomValue(pendingGitDiffCommitShaAtom);
@@ -46,8 +44,7 @@ export function useGitDiffPanelState({
   const [selectedGitDiffSelection, setSelectedGitDiffSelection] =
     useState<GitDiffSelectionValue>(null);
 
-  const effectiveMergeBaseBranch =
-    selectedMergeBaseBranch ?? defaultMergeBaseBranch;
+  const effectiveMergeBaseBranch = defaultMergeBaseBranch;
   const gitDiffTarget = useMemo(
     () =>
       buildGitDiffTarget(selectedGitDiffSelection, effectiveMergeBaseBranch),

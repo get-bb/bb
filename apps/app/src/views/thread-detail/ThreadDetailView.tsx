@@ -953,7 +953,6 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     resolveEnvironmentMergeBaseBranch(environment);
   const {
     closeThreadSecondaryPanel,
-    defaultMergeBaseBranch: resolvedDefaultMergeBaseBranch,
     isLoadingMergeBaseBranchOptions,
     mergeBaseBranchOptions,
     mergeBaseRemoteBranchOptions,
@@ -2536,7 +2535,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
           secondaryPanel={{
             activeTab: activeFixedSecondaryTab,
             canUseGitUi,
-            defaultMergeBaseBranch: resolvedDefaultMergeBaseBranch,
+            defaultMergeBaseBranch: requestedMergeBaseBranch,
             environmentId: thread.environmentId ?? undefined,
             workspaceRootPath: environment?.path,
             fileTabs,
