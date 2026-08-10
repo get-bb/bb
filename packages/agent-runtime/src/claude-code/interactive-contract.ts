@@ -13,6 +13,31 @@ export const CLAUDE_PERMISSION_REQUEST_APPROVAL_METHOD =
   "item/permissions/requestApproval";
 export const CLAUDE_USER_QUESTION_TOOL_NAME = "AskUserQuestion";
 export const CLAUDE_USER_QUESTION_REQUEST_METHOD = "item/userQuestion/request";
+export const CLAUDE_EXIT_PLAN_MODE_TOOL_NAME = "ExitPlanMode";
+
+// Claude calls ExitPlanMode with no blockedPath, no decisionReason and no
+// permission suggestions, so the generic approval gate reads it as a request
+// that needs no user decision and allows it. Plan mode then ends and the SDK
+// tells the model the user approved a plan the user never saw. The tool needs
+// its own branch, above every auto-allow, for the same reason AskUserQuestion
+// does: the tool call *is* the prompt, not a guard on one.
+export const claudeExitPlanModeInputSchema = z.object({
+  plan: z.string().min(1),
+  planFilePath: z.string().min(1).optional(),
+});
+export type ClaudeExitPlanModeInput = z.infer<
+  typeof claudeExitPlanModeInputSchema
+>;
+
+/**
+ * Sent back to the model when the user rejects a plan. The turn stays open and
+ * the session stays in plan mode, so the message has to stop the model from
+ * proposing the same plan again in a loop. It points at AskUserQuestion because
+ * that is the one channel bb can show the user mid-turn.
+ */
+export function buildClaudePlanRejectionMessage(): string {
+  return "The user rejected this plan. Do not call ExitPlanMode again with the same plan. Use AskUserQuestion to find out what they want changed, revise the plan, and only then propose it again.";
+}
 
 export const claudePermissionModeSchema = z.enum([
   "default",

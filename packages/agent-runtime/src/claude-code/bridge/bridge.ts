@@ -76,9 +76,11 @@ import {
   type ClaudeSuggestedPermissionUpdate,
   type ClaudeUserQuestionInput,
   type ClaudeUserQuestionRequestParams,
+  CLAUDE_EXIT_PLAN_MODE_TOOL_NAME,
   CLAUDE_PERMISSION_REQUEST_APPROVAL_METHOD,
   CLAUDE_USER_QUESTION_REQUEST_METHOD,
   CLAUDE_USER_QUESTION_TOOL_NAME,
+  claudeExitPlanModeInputSchema,
   claudeInteractiveResponseSchema,
   claudeSuggestedPermissionUpdateSchema,
   claudeUserQuestionInputSchema,
@@ -1101,6 +1103,32 @@ function createCanUseTool(threadIdRef: ThreadIdRef): CanUseTool {
         providerThreadId: threadSession.providerThreadId ?? threadIdRef.current,
         toolUseId: options.toolUseID,
         input: parsedInput.data,
+        signal: options.signal,
+      });
+    }
+
+    // Like AskUserQuestion, this tool call is the prompt itself rather than a
+    // guard on a side effect, so it must reach the user before any of the
+    // policy shortcuts below. `/plan` also overrides the session permission
+    // mode, so a "full" preset does not mean the user waived plan review.
+    if (toolName === CLAUDE_EXIT_PLAN_MODE_TOOL_NAME) {
+      if (!claudeExitPlanModeInputSchema.safeParse(input).success) {
+        return {
+          behavior: "deny",
+          message: "Invalid ExitPlanMode input",
+          toolUseID: options.toolUseID,
+        };
+      }
+      return forwardInteractiveRequest({
+        threadId: threadIdRef.current,
+        providerThreadId: threadSession.providerThreadId ?? threadIdRef.current,
+        toolName,
+        toolUseId: options.toolUseID,
+        input,
+        decisionReason: undefined,
+        promptText: undefined,
+        blockedPath: undefined,
+        suggestions: undefined,
         signal: options.signal,
       });
     }

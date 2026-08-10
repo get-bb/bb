@@ -393,6 +393,11 @@ declare const providerPendingInteractionSchema: z$1.ZodObject<{
                     write: z$1.ZodArray<z$1.ZodString>;
                 }, z$1.core.$strip>>;
             }, z$1.core.$strict>;
+        }, z$1.core.$strip>, z$1.ZodObject<{
+            kind: z$1.ZodLiteral<"plan">;
+            itemId: z$1.ZodString;
+            plan: z$1.ZodString;
+            planFilePath: z$1.ZodNullable<z$1.ZodString>;
         }, z$1.core.$strip>], "kind">;
         reason: z$1.ZodNullable<z$1.ZodString>;
         availableDecisions: z$1.ZodArray<z$1.ZodEnum<{
@@ -9184,6 +9189,11 @@ declare const threadPendingInteractionsResponseSchema: z$1.ZodArray<z$1.ZodUnion
                     write: z$1.ZodArray<z$1.ZodString>;
                 }, z$1.core.$strip>>;
             }, z$1.core.$strict>;
+        }, z$1.core.$strip>, z$1.ZodObject<{
+            kind: z$1.ZodLiteral<"plan">;
+            itemId: z$1.ZodString;
+            plan: z$1.ZodString;
+            planFilePath: z$1.ZodNullable<z$1.ZodString>;
         }, z$1.core.$strip>], "kind">;
         reason: z$1.ZodNullable<z$1.ZodString>;
         availableDecisions: z$1.ZodArray<z$1.ZodEnum<{

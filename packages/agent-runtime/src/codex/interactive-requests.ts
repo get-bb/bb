@@ -255,6 +255,11 @@ export function buildCodexInteractiveResponse(
       };
       return response;
     }
+    // Plan review is Claude's ExitPlanMode approval; Codex never raises one.
+    case "plan":
+      throw new ProviderResponseEncodeError(
+        "Codex plan-review interactive requests are unsupported",
+      );
     default:
       return assertNever(args.request.payload.subject);
   }

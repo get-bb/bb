@@ -49,6 +49,8 @@ export function formatPendingInteractionSummary(
       return interaction.payload.subject.command;
     case "file_change":
       return "File changes pending approval";
+    case "plan":
+      return "Plan ready for review";
     case "permission_grant":
       break;
     default:

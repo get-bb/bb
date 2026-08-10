@@ -1547,6 +1547,128 @@ describe("bridge", () => {
     }
   });
 
+  // Regression: ExitPlanMode reaches canUseTool with no blockedPath, no
+  // decisionReason and no suggestions, so the generic approval gate read it as
+  // "nothing to ask about" and allowed it. The SDK then told the model the user
+  // had approved a plan the user never saw, and plan mode ended silently.
+  it.each([
+    { permissionMode: "plan", label: "plan mode" },
+    // `/plan` overrides the preset, but a bypassPermissions session must not be
+    // able to auto-approve a plan through the blanket allow either.
+    { permissionMode: "bypassPermissions", label: "bypassPermissions" },
+  ])(
+    "forwards ExitPlanMode for user approval in $label",
+    async ({ permissionMode }) => {
+      const bridge = createBridgeJsonRpcTestHarness(handleLine);
+      const queries: ControlledClaudeQuery[] = [];
+      queryMock.mockImplementation(() => {
+        const query = createControlledClaudeQuery();
+        queries.push(query);
+        return query;
+      });
+
+      try {
+        const threadId = `thread-exit-plan-${permissionMode}`;
+        const toolUseID = "tool-exit-plan-1";
+        const input = {
+          plan: "# Plan\n\nDo the thing.",
+          planFilePath: "/tmp/plans/do-the-thing.md",
+        };
+
+        bridge.sendRequest(1, "thread/start", {
+          workflowsEnabled: false,
+          claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
+          baseInstructions: "test",
+          cwd: "/tmp/worktree",
+          instructionMode: "append",
+          permissionEscalation: "ask",
+          permissionMode,
+          permissionScope: "workspace",
+          threadId,
+        });
+        await bridge.waitForResponse(1);
+
+        const canUseTool = getLastCanUseTool();
+        const resultPromise = canUseTool("ExitPlanMode", input, {
+          signal: new AbortController().signal,
+          toolUseID,
+        });
+        await bridge.flushWork();
+
+        const approvalRequest = bridge.messages.find(
+          (message) =>
+            message.method === CLAUDE_PERMISSION_REQUEST_APPROVAL_METHOD,
+        );
+        if (approvalRequest?.id === undefined) {
+          throw new Error("Expected ExitPlanMode to request user approval");
+        }
+        expect(approvalRequest).toMatchObject({
+          params: {
+            threadId,
+            itemId: toolUseID,
+            toolName: "ExitPlanMode",
+            input,
+          },
+        });
+
+        handleLine(
+          JSON.stringify({
+            jsonrpc: "2.0",
+            id: approvalRequest.id,
+            result: {
+              kind: "permission_request",
+              behavior: "deny",
+              message: "The user rejected this plan.",
+            },
+          }),
+        );
+
+        await expect(resultPromise).resolves.toMatchObject({
+          behavior: "deny",
+          message: "The user rejected this plan.",
+        });
+
+        await stopBridgeThread({ bridge, queries, threadId });
+      } finally {
+        bridge.restore();
+      }
+    },
+  );
+
+  it("denies ExitPlanMode without prompting when the plan is missing", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      queries.push(query);
+      return query;
+    });
+
+    try {
+      const threadId = "thread-exit-plan-invalid";
+      await startBridgeThread({ bridge, threadId });
+
+      const canUseTool = getLastCanUseTool();
+      const result = await canUseTool(
+        "ExitPlanMode",
+        { plan: "" },
+        { signal: new AbortController().signal, toolUseID: "tool-bad-plan" },
+      );
+
+      expect(result).toMatchObject({ behavior: "deny" });
+      expect(
+        bridge.messages.some(
+          (message) =>
+            message.method === CLAUDE_PERMISSION_REQUEST_APPROVAL_METHOD,
+        ),
+      ).toBe(false);
+
+      await stopBridgeThread({ bridge, queries, threadId });
+    } finally {
+      bridge.restore();
+    }
+  });
+
   // Both directions number their outgoing requests with a counter from 1, so a
   // daemon request id routinely matches one the bridge is still waiting on. The
   // `method` field is what separates them; without that check the request was

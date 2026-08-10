@@ -132,6 +132,8 @@ function formatInteractionKind(interaction: PendingInteraction): string {
       return "file-change";
     case "permission_grant":
       return "permission";
+    case "plan":
+      return "plan";
     default:
       return assertNever(interaction.payload.subject);
   }
@@ -239,6 +241,15 @@ function printApprovalInteraction(
         console.log(`  Tool: ${interaction.payload.subject.toolName}`);
       }
       printRequestedPermissions(interaction.payload.subject.permissions);
+      break;
+    case "plan":
+      if (interaction.payload.subject.planFilePath) {
+        console.log(`  Plan file: ${interaction.payload.subject.planFilePath}`);
+      }
+      console.log("  Plan:");
+      for (const line of interaction.payload.subject.plan.split("\n")) {
+        console.log(`    ${line}`);
+      }
       break;
     default:
       assertNever(interaction.payload.subject);
@@ -431,7 +442,9 @@ function validateAnswerText(
     throw new Error(`Question '${question.id}' free text cannot be empty.`);
   }
   if (answer.freeText !== undefined) {
-    throw new Error(`Question '${question.id}' has multiple free-text answers.`);
+    throw new Error(
+      `Question '${question.id}' has multiple free-text answers.`,
+    );
   }
   return trimmed;
 }
@@ -537,16 +550,18 @@ async function resolveInteraction(args: ResolveInteractionArgs): Promise<void> {
   });
   const resolution = args.buildResolution(interaction);
   const sdk = createCliBbSdk(args.getUrl());
-  const updated = await sdk.threads.interactions.resolve({
-    interactionId: args.interactionId,
-    resolution,
-    threadId: args.threadId,
-  }).catch((error: unknown) => {
-    throw prependErrorContext(
-      `Failed to ${args.failureAction} interaction ${args.interactionId}`,
-      error,
-    );
-  });
+  const updated = await sdk.threads.interactions
+    .resolve({
+      interactionId: args.interactionId,
+      resolution,
+      threadId: args.threadId,
+    })
+    .catch((error: unknown) => {
+      throw prependErrorContext(
+        `Failed to ${args.failureAction} interaction ${args.interactionId}`,
+        error,
+      );
+    });
 
   if (args.json) {
     outputJson({ json: args.json }, updated);
@@ -740,7 +755,9 @@ export function registerInteractionCommands(
 
   interactions
     .command("approve <interactionId> [id]")
-    .description("Approve a command or file-change interaction for this turn")
+    .description(
+      "Approve a command, file-change, or plan interaction for this turn",
+    )
     .option("--self", "Target the current thread (from BB_THREAD_ID)")
     .option("--json", "Print machine-readable JSON output")
     .action(
@@ -853,7 +870,7 @@ export function registerInteractionCommands(
 
   interactions
     .command("deny <interactionId> [id]")
-    .description("Deny a command, file-change, or permission interaction")
+    .description("Deny a command, file-change, plan, or permission interaction")
     .option("--self", "Target the current thread (from BB_THREAD_ID)")
     .option("--json", "Print machine-readable JSON output")
     .action(

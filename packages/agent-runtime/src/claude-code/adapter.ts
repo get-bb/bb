@@ -88,9 +88,12 @@ import {
 } from "../runtime-json-rpc.js";
 import type { AgentRuntimeSkillRoot } from "../types.js";
 import {
+  buildClaudePlanRejectionMessage,
   buildClaudeSessionPermissionUpdates,
+  CLAUDE_EXIT_PLAN_MODE_TOOL_NAME,
   CLAUDE_PERMISSION_REQUEST_APPROVAL_METHOD,
   CLAUDE_USER_QUESTION_REQUEST_METHOD,
+  claudeExitPlanModeInputSchema,
   isClaudeConcreteFileChangeToolName,
   type ClaudeUserQuestion,
   type ClaudeUserQuestionOutput,
@@ -284,6 +287,10 @@ function hasClaudeSessionPermissionUpdate(
 function buildClaudeApprovalAvailableDecisions(
   args: ClaudePermissionRequestApprovalParams,
 ): PendingInteractionApprovalDecision[] {
+  // A plan verdict is not a grant, so "allow for session" has nothing to mean.
+  if (args.toolName === CLAUDE_EXIT_PLAN_MODE_TOOL_NAME) {
+    return ["allow_once", "deny"];
+  }
   return hasClaudeSessionPermissionUpdate(args)
     ? ["allow_once", "allow_for_session", "deny"]
     : ["allow_once", "deny"];
@@ -292,6 +299,18 @@ function buildClaudeApprovalAvailableDecisions(
 function buildClaudeApprovalSubject(
   args: ClaudePermissionRequestApprovalParams,
 ): PendingInteractionApprovalSubject {
+  if (args.toolName === CLAUDE_EXIT_PLAN_MODE_TOOL_NAME) {
+    const parsed = claudeExitPlanModeInputSchema.safeParse(args.input);
+    if (parsed.success) {
+      return {
+        kind: "plan",
+        itemId: args.itemId,
+        plan: parsed.data.plan,
+        planFilePath: parsed.data.planFilePath ?? null,
+      };
+    }
+  }
+
   if (args.toolName === "Bash") {
     const bashCommand = parseClaudeBashCommand(args.input);
     if (bashCommand) {
@@ -493,6 +512,9 @@ function getClaudePermissionUpdateToolName(
       return null;
     case "permission_grant":
       return payload.subject.toolName;
+    // A plan verdict grants nothing, so it never reaches a session update.
+    case "plan":
+      return null;
   }
 }
 
@@ -1508,7 +1530,10 @@ export function createClaudeCodeProviderAdapter(
         return {
           kind: "permission_request",
           behavior: "deny",
-          message: "Permission request denied",
+          message:
+            args.request.payload.subject.kind === "plan"
+              ? buildClaudePlanRejectionMessage()
+              : "Permission request denied",
           decisionClassification: "user_reject",
         };
       }

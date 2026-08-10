@@ -11,12 +11,14 @@ import {
   type ApprovalPendingInteractionPayload,
   type PendingInteraction,
   type PendingInteractionApprovalDecision,
+  type PendingInteractionApprovalSubject,
   type PendingInteractionResolution,
   type UserQuestionPendingInteractionPayload,
 } from "@bb/domain";
 import { Button } from "@bb/shared-ui/button";
 import { ExpandableLine } from "@/components/ui/expandable-line.js";
 import { Icon } from "@bb/shared-ui/icon";
+import { MarkdownPreview } from "@/components/ui/markdown-preview.js";
 import { getDetailScrollMaxHeightClass } from "@/components/ui/detail-scroll-size.js";
 import { UserQuestionAnswerForm } from "@/components/thread/user-questions/UserQuestionInteractionContent.js";
 import { useResolveThreadPendingInteraction } from "@/hooks/mutations/thread-interaction-mutations";
@@ -168,6 +170,7 @@ function ApprovalPendingInteractionBanner({
           disabled={submitDisabled}
           isLoading={isResolving && submittedDecision === decision}
           onClick={() => submitDecision(decision)}
+          subjectKind={payload.subject.kind}
         />
       ))}
     >
@@ -202,6 +205,7 @@ interface ApprovalDecisionButtonProps {
   disabled: boolean;
   isLoading: boolean;
   onClick: () => void;
+  subjectKind: PendingInteractionApprovalSubject["kind"];
 }
 
 function ApprovalDecisionButton({
@@ -209,6 +213,7 @@ function ApprovalDecisionButton({
   disabled,
   isLoading,
   onClick,
+  subjectKind,
 }: ApprovalDecisionButtonProps) {
   return (
     <Button
@@ -221,7 +226,7 @@ function ApprovalDecisionButton({
       {isLoading ? (
         <Icon name="Spinner" className="size-3 animate-spin" />
       ) : null}
-      {labelForApprovalDecision(decision)}
+      {labelForApprovalDecision(decision, subjectKind)}
     </Button>
   );
 }
@@ -325,6 +330,29 @@ function buildApprovalSubject({
           ) : null,
       };
     }
+    case "plan": {
+      const { plan, planFilePath } = payload.subject;
+      return {
+        title: payload.reason ?? "Ready to code?",
+        body: (
+          <div className="overflow-hidden rounded-lg border border-border bg-card">
+            <div
+              className={cn(
+                getDetailScrollMaxHeightClass("base"),
+                "overflow-auto px-3 py-2",
+              )}
+            >
+              <MarkdownPreview content={plan} className="text-xs" />
+            </div>
+            {planFilePath ? (
+              <p className="truncate border-t border-border px-3 py-2 font-mono text-xs text-muted-foreground">
+                {planFilePath}
+              </p>
+            ) : null}
+          </div>
+        ),
+      };
+    }
     default:
       return assertNever(payload.subject);
   }
@@ -332,7 +360,13 @@ function buildApprovalSubject({
 
 function labelForApprovalDecision(
   decision: PendingInteractionApprovalDecision,
+  subjectKind: PendingInteractionApprovalSubject["kind"],
 ): string {
+  // A plan verdict decides whether the work starts, not what the agent may
+  // touch, so the permission vocabulary would misdescribe both buttons.
+  if (subjectKind === "plan") {
+    return decision === "deny" ? "Keep planning" : "Approve plan";
+  }
   switch (decision) {
     case "allow_once":
       return "Allow once";

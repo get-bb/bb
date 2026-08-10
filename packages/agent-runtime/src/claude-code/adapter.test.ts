@@ -1137,6 +1137,75 @@ describe("claude-code provider adapter", () => {
     });
   });
 
+  it("decodes ExitPlanMode approvals into a plan review the user can judge", () => {
+    const adapter = createClaudeCodeProviderAdapter();
+
+    expect(
+      adapter.decodeInteractiveRequest?.({
+        id: "req-plan",
+        method: CLAUDE_PERMISSION_REQUEST_APPROVAL_METHOD,
+        params: {
+          threadId: "thr_1",
+          providerThreadId: "claude-session-1",
+          turnId: "turn-plan",
+          itemId: "toolu_plan",
+          toolName: "ExitPlanMode",
+          input: {
+            plan: "# Plan\n\nShip it.",
+            planFilePath: "/tmp/plans/ship-it.md",
+          },
+          reason: null,
+          permissions: { network: null, fileSystem: null },
+        },
+      }),
+    ).toMatchObject({
+      payload: {
+        kind: "approval",
+        // A plan verdict grants nothing, so "allow for session" must not appear.
+        availableDecisions: ["allow_once", "deny"],
+        subject: {
+          kind: "plan",
+          itemId: "toolu_plan",
+          plan: "# Plan\n\nShip it.",
+          planFilePath: "/tmp/plans/ship-it.md",
+        },
+      },
+    });
+  });
+
+  it("tells the model to gather feedback when the user rejects a plan", () => {
+    const adapter = createClaudeCodeProviderAdapter();
+
+    const response = adapter.buildInteractiveResponse?.({
+      request: {
+        requestId: "req-plan",
+        method: CLAUDE_PERMISSION_REQUEST_APPROVAL_METHOD,
+        threadId: "thr_1",
+        providerThreadId: "claude-session-1",
+        turnId: "turn-plan",
+        payload: {
+          kind: "approval",
+          reason: null,
+          availableDecisions: ["allow_once", "deny"],
+          subject: {
+            kind: "plan",
+            itemId: "toolu_plan",
+            plan: "# Plan",
+            planFilePath: null,
+          },
+        },
+      },
+      resolution: { decision: "deny" },
+    });
+
+    // A bare "denied" leaves the model free to re-propose the same plan, and
+    // the SDK keeps the session in plan mode, so it loops.
+    expect(response).toMatchObject({
+      behavior: "deny",
+      message: expect.stringContaining("AskUserQuestion"),
+    });
+  });
+
   it("decodes Claude Edit approvals with file-change execution scope", () => {
     const adapter = createClaudeCodeProviderAdapter();
 
