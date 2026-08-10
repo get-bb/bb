@@ -72,6 +72,7 @@ export interface WatchWorkspaceArgs {
   environmentId: string;
   workspacePath: string;
   onChange: (event: WorkspaceObservedChange) => void;
+  onReady: () => void;
   onWatchError: (error: WorkspaceWatchError) => void;
 }
 

@@ -455,15 +455,20 @@ describe.sequential("watchWorkspaceStatus", () => {
     const { emitWorkspaceRootEvents, ready, watchWorkspaceStatus } =
       await importWatchWorkspaceStatusWithManualWorkspaceEvents(repoPath);
     const calls: number[] = [];
+    const onReady = vi.fn();
     const stopWatching = watchWorkspaceStatus(repoPath, {
       onChange: () => {
         calls.push(Date.now());
       },
+      onReady,
       onWatchError: ignoreWatchError,
     });
 
     try {
       await ready;
+      await vi.waitFor(() => {
+        expect(onReady).toHaveBeenCalledTimes(1);
+      });
       emitWorkspaceRootEvents([
         {
           path: path.join(repoPath, "README.md"),
@@ -735,7 +740,7 @@ describe.sequential("watchWorkspaceStatus", () => {
     }
   });
 
-  it("reports and retries when Git ignored directory discovery fails", async () => {
+  it("falls back to a live root watch when Git ignored directory discovery fails", async () => {
     const repoPath = await initRepo();
     await fs.rm(path.join(repoPath, ".git"), { force: true, recursive: true });
     await fs.writeFile(
@@ -744,10 +749,13 @@ describe.sequential("watchWorkspaceStatus", () => {
       "utf8",
     );
     const subscribedRoots: string[] = [];
+    const subscribedOptions: Array<ParcelWatcherSubscribeOptions | undefined> =
+      [];
     const mockSubscribe = async (
       ...watchArgs: ParcelWatcherSubscribeArgs
     ): Promise<ParcelWatcherSubscribeResult> => {
       subscribedRoots.push(watchArgs[0]);
+      subscribedOptions.push(watchArgs[2]);
       return createMockWatcherSubscription();
     };
     vi.spyOn(parcelWatcher, "subscribe").mockImplementation(mockSubscribe);
@@ -765,13 +773,19 @@ describe.sequential("watchWorkspaceStatus", () => {
         1,
         WATCH_TEST_TIMEOUT_MS,
       );
-      await ensureCallCountStays(() => subscribedRoots.length, 0, 600);
+      await waitForCallCount(
+        () => subscribedRoots.length,
+        1,
+        WATCH_TEST_TIMEOUT_MS,
+      );
 
       const ignoreDiscoveryErrors = watchErrors.filter((error) =>
         error.includes("Workspace root ignore discovery failed:"),
       );
       expect(ignoreDiscoveryErrors).toHaveLength(1);
       expect(ignoreDiscoveryErrors[0]).toContain(normalizeWatchPath(repoPath));
+      expect(subscribedRoots).toEqual([normalizeWatchPath(repoPath)]);
+      expect(subscribedOptions[0]?.ignore).toEqual([".git"]);
     } finally {
       await stopWatching();
     }

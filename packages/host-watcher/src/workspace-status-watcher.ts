@@ -25,10 +25,10 @@ const WORKSPACE_STATUS_WATCH_DEBOUNCE_MS = 75;
 const WORKSPACE_STATUS_WATCH_MAX_WAIT_MS = 500;
 const WORKSPACE_STATUS_WATCH_RETRY_DELAY_MS = 250;
 const WORKSPACE_STATUS_WATCH_MAX_RETRY_DELAY_MS = 30_000;
-// Setup runs `git` (ignore discovery, metadata resolution). When a worktree is
-// deleted out from under us, that git command fails every time, so without a
-// cap we re-spawn git forever. Give up after a bounded number of attempts; the
-// server recreates this watch (resetting the count) when the watch set changes.
+// Metadata setup runs `git`. When a worktree is deleted out from under us,
+// that command fails every time, so without a cap we re-spawn git forever.
+// Give up after a bounded number of attempts; the server recreates this watch
+// (resetting the count) when the watch set changes.
 const WORKSPACE_STATUS_WATCH_MAX_SETUP_RETRY_ATTEMPTS = 10;
 const WORKSPACE_ROOT_ALWAYS_IGNORED_PATHS = [".git"];
 const WORKSPACE_ROOT_IGNORE_STATUS_TIMEOUT_MS = 5_000;
@@ -160,10 +160,6 @@ export class WorkspaceStatusWatcher {
   private metadataRetryAttempt = 0;
   private metadataStartRetryTimer: ReturnType<typeof setTimeout> | null = null;
   private gitWorkspacePromotion: Promise<void> | null = null;
-  private workspaceRootRetryAttempt = 0;
-  private workspaceRootStartRetryTimer: ReturnType<typeof setTimeout> | null =
-    null;
-  private workspaceRootSetupWarned = false;
   private readonly subscriptions = new Map<string, RootSubscription>();
   private readonly changeScheduler;
 
@@ -209,10 +205,6 @@ export class WorkspaceStatusWatcher {
       clearTimeout(this.metadataStartRetryTimer);
       this.metadataStartRetryTimer = null;
     }
-    if (this.workspaceRootStartRetryTimer !== null) {
-      clearTimeout(this.workspaceRootStartRetryTimer);
-      this.workspaceRootStartRetryTimer = null;
-    }
     await Promise.all(
       [...this.subscriptions.values()].map((subscription) =>
         subscription.dispose(),
@@ -244,42 +236,10 @@ export class WorkspaceStatusWatcher {
     rootPath: string,
     error: unknown,
   ): void {
-    if (this.workspaceRootSetupWarned) {
-      return;
-    }
-    this.workspaceRootSetupWarned = true;
     this.args.onWatchError({
       message: `Workspace root ignore discovery failed: ${toWatchErrorMessage(error)}`,
       rootPath,
     });
-  }
-
-  private scheduleWorkspaceRootWatchRetry(rootPath: string): void {
-    if (this.disposed || this.workspaceRootStartRetryTimer !== null) {
-      return;
-    }
-    if (
-      this.workspaceRootRetryAttempt >=
-      WORKSPACE_STATUS_WATCH_MAX_SETUP_RETRY_ATTEMPTS
-    ) {
-      this.args.onWatchError({
-        message: `Workspace root watch setup failed ${this.workspaceRootRetryAttempt} times (the worktree may have been deleted); giving up until the watch is reconfigured`,
-        rootPath,
-      });
-      return;
-    }
-    this.workspaceRootRetryAttempt += 1;
-    this.workspaceRootStartRetryTimer = setTimeout(
-      () => {
-        this.workspaceRootStartRetryTimer = null;
-        this.startWorkspaceRootWatchSubscription(rootPath);
-      },
-      calculateExponentialBackoffDelay({
-        attempt: this.workspaceRootRetryAttempt,
-        baseDelayMs: this.args.retryDelayMs,
-        maxDelayMs: this.args.maxRetryDelayMs,
-      }),
-    );
   }
 
   private startWorkspaceRootWatchSubscription(rootPath: string): void {
@@ -300,15 +260,20 @@ export class WorkspaceStatusWatcher {
       if (this.disposed) {
         return;
       }
-      this.workspaceRootRetryAttempt = 0;
-      this.workspaceRootSetupWarned = false;
       this.startWatchSubscription(spec);
     } catch (error) {
       if (this.disposed) {
         return;
       }
       this.reportWorkspaceRootSetupError(rootPath, error);
-      this.scheduleWorkspaceRootWatchRetry(rootPath);
+      // Ignore discovery is an optimization, not a correctness gate. Keep the
+      // workspace live with the mandatory `.git` exclusion even when Git is
+      // too slow or its metadata is temporarily unavailable.
+      this.startWatchSubscription({
+        kind: "workspace-root",
+        options: { ignore: [...WORKSPACE_ROOT_ALWAYS_IGNORED_PATHS] },
+        rootPath,
+      });
     }
   }
 
@@ -324,6 +289,7 @@ export class WorkspaceStatusWatcher {
       onEvents: (events) => {
         this.handleWorkspaceEvents(spec, events);
       },
+      onReady: spec.kind === "workspace-root" ? this.args.onReady : undefined,
       onDroppedEvents: () => {
         // Dropped events are recoverable for workspace status: conservatively
         // mark the whole spec changed so consumers re-read current state.
@@ -479,6 +445,7 @@ export function createWorkspaceStatusWatcher(
     maxRetryDelayMs: WORKSPACE_STATUS_WATCH_MAX_RETRY_DELAY_MS,
     maxWaitMs: WORKSPACE_STATUS_WATCH_MAX_WAIT_MS,
     onChange: args.onChange,
+    onReady: args.onReady,
     onWatchError: args.onWatchError,
     retryDelayMs: WORKSPACE_STATUS_WATCH_RETRY_DELAY_MS,
   });

@@ -27,5 +27,6 @@ export type WorkspaceStatusWatchErrorCallback = (
 
 export interface WorkspaceStatusWatchArgs {
   onChange: WorkspaceStatusChangeCallback;
+  onReady?: () => void;
   onWatchError: WorkspaceStatusWatchErrorCallback;
 }

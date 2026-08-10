@@ -244,13 +244,18 @@ export class WatchManager {
           workspaceContext: target.workspaceContext,
         }),
       );
-      const watchState = await this.createWorkspaceWatchState(workspace);
       const entry: WorkspaceWatchEntry = {
         stopWatchingStatus: STOP_WATCHING,
         target,
-        watchState,
+        watchState: {
+          lastLocalFingerprint: null,
+          lastSharedRefsFingerprint: null,
+          pendingKinds: new Set(),
+          processing: null,
+        },
         workspace,
       };
+      this.workspaceEntries.set(target.environmentId, entry);
       entry.stopWatchingStatus = this.hostWatcher.watchWorkspace({
         environmentId: target.environmentId,
         workspacePath: workspace.path,
@@ -260,12 +265,22 @@ export class WatchManager {
             entry,
           });
         },
+        // Parcel subscriptions are established asynchronously. Reconcile once
+        // the workspace-root subscription is live so an edit made between the
+        // initial preview fetch and watcher readiness cannot remain stale.
+        onReady: () => {
+          this.queueWorkspaceWatchChange({
+            changeKinds: ["workspace-content-changed"],
+            entry,
+          });
+        },
         onWatchError: (error) => {
           this.options.onWorkspaceStatusWatchError?.({ error });
         },
       });
-      this.workspaceEntries.set(target.environmentId, entry);
+      void this.initializeWorkspaceWatchFingerprints(entry);
     } catch (error) {
+      this.workspaceEntries.delete(target.environmentId);
       this.options.onWorkspaceStatusWatchError?.({
         error: {
           environmentId: target.environmentId,
@@ -280,36 +295,49 @@ export class WatchManager {
     }
   }
 
-  private async createWorkspaceWatchState(
-    workspace: HostWorkspace,
-  ): Promise<WorkspaceWatchState> {
-    if (!workspace.isGitRepo) {
-      return {
-        lastLocalFingerprint: null,
-        lastSharedRefsFingerprint: null,
-        pendingKinds: new Set(),
-        processing: null,
-      };
+  private async initializeWorkspaceWatchFingerprints(
+    entry: WorkspaceWatchEntry,
+  ): Promise<void> {
+    if (!entry.workspace.isGitRepo) {
+      return;
     }
-
-    const [lastLocalFingerprint, lastSharedRefsFingerprint] = await Promise.all(
-      [
-        workspace.getLocalStateFingerprint(),
-        workspace.getSharedGitRefsFingerprint(),
-      ],
-    );
-    return {
-      lastLocalFingerprint,
-      lastSharedRefsFingerprint,
-      pendingKinds: new Set(),
-      processing: null,
-    };
+    try {
+      const [lastLocalFingerprint, lastSharedRefsFingerprint] =
+        await Promise.all([
+          entry.workspace.getLocalStateFingerprint(),
+          entry.workspace.getSharedGitRefsFingerprint(),
+        ]);
+      if (this.workspaceEntries.get(entry.target.environmentId) !== entry) {
+        return;
+      }
+      entry.watchState.lastLocalFingerprint = lastLocalFingerprint;
+      entry.watchState.lastSharedRefsFingerprint = lastSharedRefsFingerprint;
+    } catch (error) {
+      if (this.workspaceEntries.get(entry.target.environmentId) !== entry) {
+        return;
+      }
+      this.reportWorkspaceWatchError(entry, error);
+    }
   }
 
   private queueWorkspaceWatchChange(args: {
     changeKinds: readonly WorkspaceStatusWatchChangeKind[];
     entry: WorkspaceWatchEntry;
   }): void {
+    if (
+      this.workspaceEntries.get(args.entry.target.environmentId) !== args.entry
+    ) {
+      return;
+    }
+    if (args.changeKinds.includes("workspace-content-changed")) {
+      // The filesystem event itself is sufficient evidence that live content
+      // is stale. Notify before any Git fingerprint work: large diffs can make
+      // status/numstat slow or fail, but previews must still refresh.
+      this.options.onWorkspaceStatusChanged?.({
+        changeKinds: ["work-status-changed"],
+        environmentId: args.entry.target.environmentId,
+      });
+    }
     for (const changeKind of args.changeKinds) {
       args.entry.watchState.pendingKinds.add(changeKind);
     }
@@ -348,22 +376,13 @@ export class WatchManager {
         ) {
           await this.refreshGitWorkspaceMetadata(args.entry);
         }
-        // A real workspace file event must reach live content consumers even
-        // when the git-status summary is unchanged. For example, replacing one
-        // line with another repeatedly produces the same path/status/numstat
-        // fingerprint, but open file previews and diffs still need to refetch.
         const workspaceContentChanged = pendingKinds.includes(
           "workspace-content-changed",
         );
-        if (!args.entry.workspace.isGitRepo) {
-          if (workspaceContentChanged) {
-            changeKinds.push("work-status-changed");
-          }
-        } else {
+        if (args.entry.workspace.isGitRepo && !workspaceContentChanged) {
           const nextLocalFingerprint =
             await args.entry.workspace.getLocalStateFingerprint();
           if (
-            workspaceContentChanged ||
             args.entry.watchState.lastLocalFingerprint !== nextLocalFingerprint
           ) {
             args.entry.watchState.lastLocalFingerprint = nextLocalFingerprint;
@@ -394,18 +413,25 @@ export class WatchManager {
         environmentId: args.entry.target.environmentId,
       });
     } catch (error) {
-      this.options.onWorkspaceStatusWatchError?.({
-        error: {
-          environmentId: args.entry.target.environmentId,
-          kind: "workspace-watch-error",
-          message:
-            error instanceof Error
-              ? toErrorMessage(error)
-              : "Unknown workspace watch error",
-          rootPath: args.entry.target.workspaceContext.workspacePath,
-        },
-      });
+      this.reportWorkspaceWatchError(args.entry, error);
     }
+  }
+
+  private reportWorkspaceWatchError(
+    entry: WorkspaceWatchEntry,
+    error: unknown,
+  ): void {
+    this.options.onWorkspaceStatusWatchError?.({
+      error: {
+        environmentId: entry.target.environmentId,
+        kind: "workspace-watch-error",
+        message:
+          error instanceof Error
+            ? toErrorMessage(error)
+            : "Unknown workspace watch error",
+        rootPath: entry.target.workspaceContext.workspacePath,
+      },
+    });
   }
 
   private async refreshGitWorkspaceMetadata(
