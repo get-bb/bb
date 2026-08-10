@@ -7,7 +7,6 @@ import type { FollowUpComposerProps } from "@/components/promptbox/FollowUpPromp
 import { EmbeddedThreadChat } from "./EmbeddedThreadChat";
 
 const mocks = vi.hoisted(() => ({
-  compactThreadMutateAsync: vi.fn(),
   createQueuedMessageMutateAsync: vi.fn(),
   markThreadReadMutate: vi.fn(),
   onOpenLink: vi.fn(),
@@ -21,7 +20,6 @@ const mocks = vi.hoisted(() => ({
   readTrackingThreads: [] as Array<unknown>,
   sendThreadMessageMutateAsync: vi.fn(),
   threadRuntimeDisplayStatus: "idle" as string,
-  toastError: vi.fn(),
   // Stands in for the realtime-updated timeline query cache: rows appended here
   // while the component is unmounted must appear after a remount.
   timelineRows: [] as Array<{ text: string }>,
@@ -47,29 +45,7 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
       <input
         data-testid="embedded-chat-composer"
         value={composer.message}
-        onChange={(event) => {
-          const text = event.target.value;
-          composer.onChangeMessage(
-            text,
-            text === "/compact"
-              ? [
-                  {
-                    start: 0,
-                    end: 8,
-                    resource: {
-                      kind: "command",
-                      trigger: "/",
-                      name: "compact",
-                      source: "command",
-                      origin: "builtin",
-                      label: "compact",
-                      argumentHint: null,
-                    },
-                  },
-                ]
-              : [],
-          );
-        }}
+        onChange={(event) => composer.onChangeMessage(event.target.value, [])}
       />
       <button type="button" onClick={composer.onSubmit}>
         Send
@@ -136,7 +112,7 @@ vi.mock("@/components/thread/timeline", () => ({
 }));
 
 vi.mock("@/components/ui/app-toast", () => ({
-  appToast: { error: mocks.toastError },
+  appToast: { error: vi.fn() },
 }));
 
 vi.mock("@/hooks/useThreadCreationOptions", () => ({
@@ -243,10 +219,6 @@ vi.mock("@/hooks/queries/system-queries", () => ({
 }));
 
 vi.mock("@/hooks/mutations/thread-runtime-mutations", () => ({
-  useCompactThread: () => ({
-    mutateAsync: mocks.compactThreadMutateAsync,
-    isPending: false,
-  }),
   useCreateThreadQueuedMessage: () => ({
     mutateAsync: mocks.createQueuedMessageMutateAsync,
     mutate: vi.fn(),
@@ -341,7 +313,6 @@ function renderEmbeddedChat({
 describe("EmbeddedThreadChat", () => {
   beforeEach(() => {
     window.localStorage.clear();
-    mocks.compactThreadMutateAsync.mockReset().mockResolvedValue({});
     mocks.createQueuedMessageMutateAsync.mockReset().mockResolvedValue({});
     mocks.sendThreadMessageMutateAsync.mockReset().mockResolvedValue({});
     mocks.markThreadReadMutate.mockReset();
@@ -351,7 +322,6 @@ describe("EmbeddedThreadChat", () => {
     mocks.queuedMessages = [];
     mocks.readTrackingThreads = [];
     mocks.threadRuntimeDisplayStatus = "idle";
-    mocks.toastError.mockReset();
     mocks.timelineRows = [];
     mocks.injectedTimelineProps = [];
     mocks.timelinePanelProps = [];
@@ -468,26 +438,6 @@ describe("EmbeddedThreadChat", () => {
         input: [{ type: "text", text: "Send me", mentions: [] }],
       }),
     );
-  });
-
-  it("restores a compact command when the request is rejected", async () => {
-    mocks.compactThreadMutateAsync.mockRejectedValueOnce(
-      new Error("Provider rejected compact"),
-    );
-    renderEmbeddedChat();
-    fireEvent.change(screen.getByTestId("embedded-chat-composer"), {
-      target: { value: "/compact" },
-    });
-
-    fireEvent.click(screen.getByText("Send"));
-
-    await vi.waitFor(() => {
-      expect(mocks.toastError).toHaveBeenCalled();
-    });
-    expect(mocks.compactThreadMutateAsync).toHaveBeenCalledWith("thr_child");
-    expect(
-      screen.getByTestId<HTMLInputElement>("embedded-chat-composer").value,
-    ).toBe("/compact");
   });
 
   it("tracks read state only while active", () => {

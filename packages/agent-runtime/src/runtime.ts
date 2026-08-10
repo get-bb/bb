@@ -1569,34 +1569,6 @@ function createAgentRuntimeInternal(
       });
     },
 
-    async compactThread({ threadId }) {
-      return runThreadOperation({
-        threadId,
-        work: async () => {
-          if (turnState.getActiveTurnId(threadId) !== null) {
-            throw new Error("Cannot compact context while a turn is active");
-          }
-          const pid = resolveProviderForThread(threadId);
-          const proc = requireProviderProcessForThread(threadId);
-          const adapterCommand: AdapterCommand = {
-            type: "thread/compact",
-            threadId,
-            providerThreadId: requireProviderThreadId(threadId),
-          };
-          const cmd = requireProviderRequestPlan({
-            commandType: adapterCommand.type,
-            plan: proc.adapter.buildCommandPlan(adapterCommand),
-            providerId: pid,
-          });
-          await sendCommand({
-            proc,
-            message: cmd,
-            resultSchema: ignoredJsonRpcResultSchema,
-          });
-        },
-      });
-    },
-
     async clearThreadGoal({ threadId }) {
       return runThreadOperation({
         threadId,

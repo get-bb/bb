@@ -3,6 +3,7 @@ import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
+  createStandaloneBuiltinCompactCommandInput,
   DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
   threadScope,
   turnScope,
@@ -530,13 +531,16 @@ describe("pi provider adapter", () => {
     });
   });
 
-  it("buildCommand thread/compact maps to the bridge compact command", () => {
+  it("maps the selected compact command turn to the bridge compact command", () => {
     const adapter = createPiProviderAdapter();
     expect(
       adapter.buildCommandPlan({
-        type: "thread/compact",
+        type: "turn/start",
+        clientRequestId: "creq_222222228c",
         threadId: "bb-t1",
         providerThreadId: "pi-session-1",
+        input: createStandaloneBuiltinCompactCommandInput(),
+        options: fullProviderExecutionContext,
       }),
     ).toEqual({
       kind: "request",
@@ -833,26 +837,21 @@ describe("pi provider adapter", () => {
       aborted: false,
     });
 
-    expect(started).toContainEqual(
-      expect.objectContaining({
-        type: "turn/started",
-        threadId: "",
-        scope: turnScope("turn-1"),
-      }),
-    );
-    expect(completed).toContainEqual(
+    expect(started.map((event) => event.type)).toEqual([
+      "turn/started",
+      "item/started",
+    ]);
+    expect(completed).toEqual([
       expect.objectContaining({
         type: "thread/compacted",
         scope: turnScope("turn-1"),
       }),
-    );
-    expect(completed).toContainEqual(
       expect.objectContaining({
         type: "turn/completed",
         scope: turnScope("turn-1"),
         status: "completed",
       }),
-    );
+    ]);
   });
 
   it.each([
@@ -879,16 +878,13 @@ describe("pi provider adapter", () => {
     "translateEvent $label manual compaction does not report success",
     ({ args, expected }) => {
       const { completed } = translateManualCompaction(args);
-      expect(completed).not.toContainEqual(
-        expect.objectContaining({ type: "thread/compacted" }),
-      );
-      expect(completed).toContainEqual(
+      expect(completed).toEqual([
         expect.objectContaining({
           type: "turn/completed",
           scope: turnScope("turn-1"),
           ...expected,
         }),
-      );
+      ]);
     },
   );
 

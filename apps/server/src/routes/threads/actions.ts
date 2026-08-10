@@ -25,7 +25,12 @@ import {
   type SendMessageRequest,
 } from "@bb/server-contract";
 import type { Hono } from "hono";
-import { type Thread, type ThreadQueuedMessage } from "@bb/domain";
+import {
+  createStandaloneBuiltinCompactCommandInput,
+  type Thread,
+  type ThreadQueuedMessage,
+} from "@bb/domain";
+import { supportsManualCompaction } from "@bb/agent-providers";
 import type { AppDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
 import { toThreadQueuedMessage } from "../../services/threads/thread-queued-messages.js";
@@ -52,7 +57,6 @@ import {
   buildThreadStopCommand,
   dispatchThreadUnarchiveCommand,
   prepareTurnSubmitCommandPayload,
-  providerSupportsManualCompaction,
 } from "../../services/threads/thread-commands.js";
 import { getLastProviderThreadId } from "../../services/threads/thread-events.js";
 import { requestThreadStopForCurrentState } from "../../services/threads/thread-lifecycle.js";
@@ -120,34 +124,12 @@ function toQueuedMessageOrderResponse(
   }
 }
 
-async function prepareThreadMaintenanceRuntimeCommand(
-  deps: AppDeps,
-  thread: Thread,
-) {
-  const environment = await requireThreadCommandEnvironment(deps, { thread });
-  const execution = await buildExecutionOptions(
-    deps,
-    {},
-    { threadId: thread.id },
-    "client/turn/requested",
-  );
-  const payload = await prepareTurnSubmitCommandPayload(deps, {
-    environment,
-    execution,
-    input: [],
-    permissionEscalation: "deny",
-    target: { mode: "auto", expectedTurnId: null },
-    thread,
-  });
-  return { environment, payload };
-}
-
 async function compactThreadContext(
   deps: AppDeps,
   thread: Thread,
 ): Promise<void> {
   ensureThreadIsWritable(thread);
-  if (!providerSupportsManualCompaction(deps, thread.providerId)) {
+  if (!supportsManualCompaction(thread.providerId)) {
     throw new ApiError(
       409,
       "invalid_request",
@@ -166,23 +148,15 @@ async function compactThreadContext(
     );
   }
 
-  const { environment, payload } = await prepareThreadMaintenanceRuntimeCommand(
-    deps,
-    thread,
-  );
-  await runLiveHostCommand(deps, {
-    command: {
-      type: "thread.compact",
-      environmentId: environment.id,
-      threadId: thread.id,
-      options: payload.options,
-      resumeContext: payload.resumeContext,
-      ...(payload.acpLaunchSpec !== undefined
-        ? { acpLaunchSpec: payload.acpLaunchSpec }
-        : {}),
+  const environment = await requireThreadCommandEnvironment(deps, { thread });
+  await sendThreadMessage(deps, {
+    environment,
+    payload: {
+      input: createStandaloneBuiltinCompactCommandInput(),
+      mode: "start",
     },
-    hostId: environment.hostId,
-    timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
+    thread,
+    trigger: "user",
   });
 }
 
@@ -573,17 +547,32 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
     if (activity.activeGoalCount === 0) {
       throw new ApiError(409, "invalid_request", "No active Goal to clear");
     }
-    const { environment, payload } =
-      await prepareThreadMaintenanceRuntimeCommand(deps, thread);
+    const environment = await requireThreadCommandEnvironment(deps, {
+      thread,
+    });
+    const execution = await buildExecutionOptions(
+      deps,
+      {},
+      { threadId: thread.id },
+      "client/turn/requested",
+    );
+    const preparedRuntimeCommand = await prepareTurnSubmitCommandPayload(deps, {
+      environment,
+      execution,
+      input: [],
+      permissionEscalation: "deny",
+      target: { mode: "auto", expectedTurnId: null },
+      thread,
+    });
     const result = await runLiveHostCommand(deps, {
       command: {
         type: "thread.goal.clear",
         environmentId: environment.id,
         threadId: thread.id,
-        options: payload.options,
-        resumeContext: payload.resumeContext,
-        ...(payload.acpLaunchSpec !== undefined
-          ? { acpLaunchSpec: payload.acpLaunchSpec }
+        options: preparedRuntimeCommand.options,
+        resumeContext: preparedRuntimeCommand.resumeContext,
+        ...(preparedRuntimeCommand.acpLaunchSpec !== undefined
+          ? { acpLaunchSpec: preparedRuntimeCommand.acpLaunchSpec }
           : {}),
       },
       hostId: environment.hostId,

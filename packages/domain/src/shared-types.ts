@@ -356,68 +356,70 @@ function isSelectedPromptCommandMention(
   );
 }
 
-function isSelectedBuiltinPromptCommandMention(
-  mention: PromptTextMention,
-  selector: PromptCommandSelector,
-): boolean {
-  return (
-    isSelectedPromptCommandMention(mention, selector) &&
-    mention.resource.kind === "command" &&
-    mention.resource.source === "command" &&
-    mention.resource.origin === "builtin"
-  );
-}
+const BUILTIN_COMPACT_COMMAND = { trigger: "/", name: "compact" } as const;
 
 /**
- * Whether input consists solely of one selected built-in command mention.
+ * Whether input consists solely of one selected built-in `/compact` mention.
  * Raw matching text and project/user commands intentionally do not qualify.
  */
-export function isStandaloneBuiltinPromptCommand(
-  input: readonly PromptInput[],
-  selector: PromptCommandSelector,
-): boolean {
-  let mentionCount = 0;
-  for (const item of input) {
-    if (item.type !== "text") {
-      return false;
-    }
-    const ranges = item.mentions
-      .filter((mention) =>
-        isSelectedBuiltinPromptCommandMention(mention, selector),
-      )
-      .map((mention) => ({ start: mention.start, end: mention.end }))
-      .sort((left, right) => left.start - right.start || left.end - right.end);
-    mentionCount += ranges.length;
-
-    let remainingText = "";
-    let cursor = 0;
-    for (const range of ranges) {
-      if (
-        range.start >= range.end ||
-        range.end > item.text.length ||
-        item.text.slice(range.start, range.end) !==
-          `${selector.trigger}${selector.name}`
-      ) {
-        return false;
-      }
-      remainingText += item.text.slice(cursor, range.start);
-      cursor = range.end;
-    }
-    remainingText += item.text.slice(cursor);
-    if (remainingText.trim() !== "") {
-      return false;
-    }
-  }
-  return mentionCount === 1;
-}
-
 export function isStandaloneBuiltinCompactCommand(
   input: readonly PromptInput[],
 ): boolean {
-  return isStandaloneBuiltinPromptCommand(input, {
-    trigger: "/",
-    name: "compact",
-  });
+  const selected = input.flatMap((item) =>
+    item.type === "text"
+      ? item.mentions
+          .filter((mention) =>
+            isSelectedPromptCommandMention(mention, BUILTIN_COMPACT_COMMAND),
+          )
+          .map((mention) => ({ mention, text: item.text }))
+      : [],
+  );
+  const standalone = selected[0];
+  if (
+    selected.length !== 1 ||
+    !standalone ||
+    input.some((item) => item.type !== "text")
+  ) {
+    return false;
+  }
+  const { mention, text } = standalone;
+  if (
+    mention.resource.kind !== "command" ||
+    mention.resource.source !== "command" ||
+    mention.resource.origin !== "builtin" ||
+    text.slice(mention.start, mention.end) !== "/compact"
+  ) {
+    return false;
+  }
+  return removeCommandMentionsFromPromptInput(
+    input,
+    BUILTIN_COMPACT_COMMAND,
+  ).every((item) => item.type === "text" && item.text.trim() === "");
+}
+
+/** Structured prompt input for the selected built-in `/compact` command. */
+export function createStandaloneBuiltinCompactCommandInput(): PromptInput[] {
+  return [
+    {
+      type: "text",
+      text: "/compact",
+      mentions: [
+        {
+          start: 0,
+          end: "/compact".length,
+          resource: {
+            kind: "command",
+            trigger: "/",
+            name: "compact",
+            source: "command",
+            origin: "builtin",
+            label: "compact",
+            argumentHint: null,
+          },
+        },
+      ],
+    },
+  ];
 }
 
 export function promptInputHasCommandMention(

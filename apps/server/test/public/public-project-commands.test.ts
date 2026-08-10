@@ -544,43 +544,6 @@ describe("public project command typeahead route", () => {
     });
   });
 
-  it("advertises compact only for ACP agents with a provider-local prompt", async () => {
-    await withTestHarness(async (harness) => {
-      const { host, session } = seedHostSession(harness.deps, {
-        id: "host-commands-opencode",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-        path: "/tmp/opencode-commands-env",
-      });
-      registerCommandRpc(harness, {
-        hostId: host.id,
-        sessionId: session.id,
-        commands: [],
-      });
-
-      for (const [providerId, expectedNames] of [
-        ["acp-opencode", ["compact"]],
-        ["acp-cursor", []],
-        ["acp-grok", []],
-      ] as const) {
-        const response = await harness.app.request(
-          `/api/v1/projects/${project.id}/commands?provider=${providerId}&environmentId=${environment.id}`,
-        );
-        expect(response.status).toBe(200);
-        expect(
-          commandListResponseSchema
-            .parse(await readJson(response))
-            .commands.map((command) => command.name),
-        ).toEqual(expectedNames);
-      }
-    });
-  });
-
   it("falls back to the project source (cwd) with no environmentId and returns user-origin entries", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {

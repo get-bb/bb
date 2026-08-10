@@ -1,6 +1,5 @@
 import { z } from "zod";
 import type {
-  AcpManualCompaction,
   PermissionMode,
   ProviderCapabilities,
   ProviderComposerAction,
@@ -56,8 +55,6 @@ export interface ProviderServerCapabilities {
    * Providers without verified in-place swap require respawning the thread.
    */
   supportsExecutionOverride: boolean;
-  /** Whether BB can explicitly request provider context compaction. */
-  supportsManualCompaction: boolean;
   /**
    * Whether this provider backs host-daemon-routed AI services (voice
    * transcription and structured inference) via its `*.voice.transcribe` /
@@ -147,11 +144,10 @@ const ACP_COMPOSER_ACTIONS: ProviderComposerAction[] = [
   { kind: "skills", trigger: "/" },
 ];
 
-// Baseline for ACP (Agent Client Protocol) providers: the external agent owns
+// Shared by all ACP (Agent Client Protocol) providers: the external agent owns
 // its own model selection, tool execution, and session naming, so BB-side
-// capabilities stay minimal. Built-ins may override verified capabilities.
-// Permission modes are enforced cooperatively by the ACP bridge
-// (permission-request policy + client fs write policy).
+// capabilities stay minimal. Permission modes are enforced cooperatively by
+// the ACP bridge (permission-request policy + client fs write policy).
 // Cursor exposes a `-fast` service tail per model; the bridge resolves it from
 // the serviceTier (the "Fast mode" toggle), so service tier is supported here
 // rather than fanning fast variants out as separate model-list entries.
@@ -169,7 +165,6 @@ const ACP_CAPABILITIES: ProviderCapabilities = {
 const CODEX_SERVER_CAPABILITIES: ProviderServerCapabilities = {
   supportsWorkflows: false,
   supportsExecutionOverride: false,
-  supportsManualCompaction: true,
   backsHostDaemonAiServices: true,
   // Per-model list from app-server is authoritative; this ladder is the
   // fallback for custom models / missing catalogs. "ultra" is Codex-only.
@@ -179,7 +174,6 @@ const CODEX_SERVER_CAPABILITIES: ProviderServerCapabilities = {
 const CLAUDE_SERVER_CAPABILITIES: ProviderServerCapabilities = {
   supportsWorkflows: true,
   supportsExecutionOverride: true,
-  supportsManualCompaction: true,
   backsHostDaemonAiServices: false,
   reasoningLevels: ["low", "medium", "high", "xhigh", "ultracode", "max"],
 };
@@ -187,7 +181,6 @@ const CLAUDE_SERVER_CAPABILITIES: ProviderServerCapabilities = {
 const PI_SERVER_CAPABILITIES: ProviderServerCapabilities = {
   supportsWorkflows: false,
   supportsExecutionOverride: false,
-  supportsManualCompaction: true,
   backsHostDaemonAiServices: false,
   reasoningLevels: ["low", "medium", "high", "xhigh", "max"],
 };
@@ -197,7 +190,6 @@ const PI_SERVER_CAPABILITIES: ProviderServerCapabilities = {
 const ACP_SERVER_CAPABILITIES: ProviderServerCapabilities = {
   supportsWorkflows: false,
   supportsExecutionOverride: false,
-  supportsManualCompaction: false,
   backsHostDaemonAiServices: false,
   // Cursor encodes reasoning effort in its model ids (`gpt-5.3-codex-high`);
   // the ACP bridge resolves (model, level) to the exact variant id at session
@@ -215,8 +207,7 @@ const ACP_SERVER_CAPABILITIES: ProviderServerCapabilities = {
  *   3. `info.composerActions` (wire-facing composer affordances): skills,
  *      plan, goal, or an explicit empty array.
  *   4. `serverCapabilities` (`ProviderServerCapabilities`, backend-only):
- *      workflows, execution override, manual compaction, host-daemon AI
- *      services, reasoning ladder.
+ *      workflows, execution override, host-daemon AI services, reasoning ladder.
  *   5. Its adapter + factory in `@bb/agent-runtime` (`provider-registry.ts`).
  * Host-local specifics stay with the daemon: provider CLI executable/install
  * metadata (`provider-cli-health.ts`) and injected-skill root layout
@@ -403,18 +394,8 @@ export function supportsNativeFork(providerId: string): boolean {
 }
 
 /** Whether BB can explicitly request context compaction for this provider. */
-export function supportsManualCompaction(
-  providerId: string,
-  acpManualCompaction?: AcpManualCompaction,
-): boolean {
-  const builtInSupport = isAgentProviderId(providerId)
-    ? getBuiltInAgentProviderServerCapabilities(providerId)
-        .supportsManualCompaction
-    : false;
-  return (
-    builtInSupport ||
-    (isAcpProviderId(providerId) && acpManualCompaction !== undefined)
-  );
+export function supportsManualCompaction(providerId: string): boolean {
+  return ["codex", "claude-code", "pi", "acp-opencode"].includes(providerId);
 }
 
 export function listBuiltInAgentProviderInfos(): BuiltInAgentProviderInfo[] {

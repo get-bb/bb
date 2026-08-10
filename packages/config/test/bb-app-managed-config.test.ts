@@ -169,24 +169,6 @@ describe("bbAppManagedConfigSchema", () => {
     });
   });
 
-  it("keeps an explicit custom ACP manual compaction prompt", () => {
-    const parsed = bbAppManagedConfigSchema.parse({
-      customAcpAgents: [
-        {
-          id: "my-agent",
-          displayName: "My Agent",
-          command: "my-agent",
-          manualCompaction: { method: "prompt", prompt: "/compact" },
-        },
-      ],
-    });
-
-    expect(parsed.customAcpAgents?.[0]?.manualCompaction).toEqual({
-      method: "prompt",
-      prompt: "/compact",
-    });
-  });
-
   it("keeps a supported custom ACP logo path", () => {
     const parsed = bbAppManagedConfigSchema.parse({
       customAcpAgents: [

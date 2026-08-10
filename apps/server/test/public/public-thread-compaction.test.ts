@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createStandaloneBuiltinCompactCommandInput } from "@bb/domain";
 import {
   registerHostRpcResponder,
   type HostRpcHandlerResult,
@@ -39,88 +40,55 @@ function seedCompactableThread(
   return { host, session, thread };
 }
 
-const compactionCases = [
-  {
-    label: "Pi",
-    providerId: "pi",
-    providerThreadId: "provider-thread-1",
-    expectedCommand: {
-      resumeContext: {
+describe("public thread compaction", () => {
+  it("dispatches the same structured /compact turn as the composer", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session, thread } = seedCompactableThread(harness, {
         providerId: "pi",
         providerThreadId: "provider-thread-1",
-      },
-    },
-  },
-  {
-    label: "OpenCode ACP",
-    providerId: "acp-opencode",
-    providerThreadId: "opencode-session-1",
-    expectedCommand: {
-      acpLaunchSpec: {
-        command: "opencode",
-        args: ["acp"],
-        manualCompaction: { method: "prompt", prompt: "/compact" },
-      },
-      resumeContext: {
-        providerId: "acp-opencode",
-        providerThreadId: "opencode-session-1",
-        acpLaunchSpec: {
-          manualCompaction: { method: "prompt", prompt: "/compact" },
-        },
-      },
-    },
-  },
-] as const;
-
-describe("public thread compaction", () => {
-  it.each(compactionCases)(
-    "dispatches $label compaction through the explicit route",
-    async ({ expectedCommand, providerId, providerThreadId }) => {
-      await withTestHarness(async (harness) => {
-        const { host, session, thread } = seedCompactableThread(harness, {
-          providerId,
-          providerThreadId,
-        });
-        const responder = registerHostRpcResponder(harness, {
-          hostId: host.id,
-          sessionId: session.id,
-          handle: ({ command }): HostRpcHandlerResult => {
-            if (command.type === "host.list_files") {
-              return { ok: true, result: { files: [], truncated: false } };
-            }
-            if (command.type === "host.read_file") {
-              return {
-                ok: false,
-                errorCode: "ENOENT",
-                errorMessage: `Path does not exist: ${command.path}`,
-              };
-            }
-            expect(command).toMatchObject({
-              type: "thread.compact",
-              threadId: thread.id,
-              ...expectedCommand,
-            });
-            return { ok: true, result: {} };
-          },
-        });
-
-        const response = await harness.app.request(
-          `/api/v1/threads/${thread.id}/compact`,
-          { method: "POST" },
-        );
-        expect(
-          response.status,
-          JSON.stringify(await readJson(response.clone())),
-        ).toBe(200);
-
-        expect(
-          responder.requests.filter(
-            ({ command }) => command.type === "thread.compact",
-          ),
-        ).toHaveLength(1);
       });
-    },
-  );
+      const responder = registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: ({ command }): HostRpcHandlerResult => {
+          if (command.type === "host.list_files") {
+            return { ok: true, result: { files: [], truncated: false } };
+          }
+          if (command.type === "host.read_file") {
+            return {
+              ok: false,
+              errorCode: "ENOENT",
+              errorMessage: `Path does not exist: ${command.path}`,
+            };
+          }
+          expect(command).toMatchObject({
+            type: "turn.submit",
+            threadId: thread.id,
+            input: createStandaloneBuiltinCompactCommandInput(),
+            resumeContext: {
+              providerId: "pi",
+              providerThreadId: "provider-thread-1",
+            },
+          });
+          return { ok: true, result: { appliedAs: "new-turn" } };
+        },
+      });
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}/compact`,
+        { method: "POST" },
+      );
+      expect(
+        response.status,
+        JSON.stringify(await readJson(response.clone())),
+      ).toBe(200);
+      expect(
+        responder.requests.filter(
+          ({ command }) => command.type === "turn.submit",
+        ),
+      ).toHaveLength(1);
+    });
+  });
 
   it("rejects manual compaction for unsupported providers and active threads", async () => {
     await withTestHarness(async (harness) => {

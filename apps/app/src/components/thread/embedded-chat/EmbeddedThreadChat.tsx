@@ -9,7 +9,6 @@ import {
 } from "react";
 import {
   defaultAppSettings,
-  isStandaloneBuiltinCompactCommand,
   type PermissionMode,
   type PromptInput,
   type ReasoningLevel,
@@ -63,7 +62,6 @@ import { useThreadDefaultExecutionOptions } from "@/hooks/queries/thread-default
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import {
   useCreateThreadQueuedMessage,
-  useCompactThread,
   useSendThreadMessage,
   useStopThread,
 } from "@/hooks/mutations/thread-runtime-mutations";
@@ -326,7 +324,6 @@ function EmbeddedThreadChatWithComposer({
   const surfaceKey = threadId ?? surfaceFallbackKey ?? "embedded-thread-chat";
   const markThreadRead = useMarkThreadRead();
   const stopThread = useStopThread();
-  const compactThread = useCompactThread();
   const sendThreadMessage = useSendThreadMessage();
   const createQueuedMessage = useCreateThreadQueuedMessage();
   const threadQuery = useThread(threadId ?? "", {
@@ -638,15 +635,10 @@ function EmbeddedThreadChatWithComposer({
     promptDraft.clearIfCurrentMatches(submittedDraft);
     setBottomAttachmentError(null);
     setIsTurnSubmitting(true);
-    const isCompactCommand = isStandaloneBuiltinCompactCommand(submittedInput);
     void (
-      isCompactCommand
-        ? threadId === null
-          ? Promise.reject(new Error("No thread to compact yet."))
-          : compactThread.mutateAsync(threadId)
-        : sendOrQueueInput
-          ? sendOrQueueInput(submittedInput, executionContext)
-          : defaultSendOrQueueInput(submittedInput)
+      sendOrQueueInput
+        ? sendOrQueueInput(submittedInput, executionContext)
+        : defaultSendOrQueueInput(submittedInput)
     )
       .catch((error) => {
         if (!isMountedRef.current) {
@@ -657,16 +649,10 @@ function EmbeddedThreadChatWithComposer({
         appToast.error(
           getMutationErrorMessage({
             error,
-            fallbackMessage: isCompactCommand
-              ? "Failed to compact context"
-              : labels.sendError,
-            ...(!isCompactCommand
-              ? {
-                  lifecycleOperation: shouldQueueFollowUpMessage(displayStatus)
-                    ? ("queue_message" as const)
-                    : ("send_message" as const),
-                }
-              : {}),
+            fallbackMessage: labels.sendError,
+            lifecycleOperation: shouldQueueFollowUpMessage(displayStatus)
+              ? "queue_message"
+              : "send_message",
           }),
         );
       })
@@ -676,7 +662,6 @@ function EmbeddedThreadChatWithComposer({
         }
       });
   }, [
-    compactThread,
     currentPromptDraft,
     currentPromptDraftInput,
     defaultSendOrQueueInput,
@@ -689,7 +674,6 @@ function EmbeddedThreadChatWithComposer({
     promptDraft,
     sendOrQueueInput,
     setBottomAttachmentError,
-    threadId,
   ]);
 
   const isQueueMutationPending =
@@ -723,16 +707,12 @@ function EmbeddedThreadChatWithComposer({
     promptDraft.clearIfCurrentMatches(submittedDraft);
     setBottomAttachmentError(null);
     setIsTurnSubmitting(true);
-    const isCompactCommand = isStandaloneBuiltinCompactCommand(submittedInput);
-    void (
-      isCompactCommand
-        ? compactThread.mutateAsync(threadId)
-        : sendThreadMessage.mutateAsync({
-            id: threadId,
-            input: submittedInput,
-            mode: "steer-if-active",
-          })
-    )
+    void sendThreadMessage
+      .mutateAsync({
+        id: threadId,
+        input: submittedInput,
+        mode: "steer-if-active",
+      })
       .catch((error) => {
         if (!isMountedRef.current) {
           return;
@@ -741,12 +721,8 @@ function EmbeddedThreadChatWithComposer({
         appToast.error(
           getMutationErrorMessage({
             error,
-            fallbackMessage: isCompactCommand
-              ? "Failed to compact context"
-              : labels.sendError,
-            ...(!isCompactCommand
-              ? { lifecycleOperation: "send_message" as const }
-              : {}),
+            fallbackMessage: labels.sendError,
+            lifecycleOperation: "send_message",
           }),
         );
       })
@@ -757,7 +733,6 @@ function EmbeddedThreadChatWithComposer({
       });
   }, [
     canSubmitModifierShortcut,
-    compactThread,
     currentPromptDraft,
     currentPromptDraftInput,
     handleSendQueuedImmediately,

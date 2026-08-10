@@ -25,14 +25,6 @@ export const availableModelSchema = z.object({
 });
 export type AvailableModel = z.infer<typeof availableModelSchema>;
 
-export const acpManualCompactionSchema = z
-  .object({
-    method: z.literal("prompt"),
-    prompt: z.string().min(1),
-  })
-  .strict();
-export type AcpManualCompaction = z.infer<typeof acpManualCompactionSchema>;
-
 export const providerCapabilitiesSchema = z.object({
   supportsArchive: z.boolean(),
   supportsRename: z.boolean(),
@@ -45,10 +37,7 @@ export type ProviderCapabilities = z.infer<typeof providerCapabilitiesSchema>;
 
 export const providerComposerCommandSchema = z.object({
   trigger: promptMentionCommandTriggerSchema,
-  name: z
-    .string()
-    .min(1)
-    .regex(/^[^\s/$]+$/u),
+  name: z.string().min(1).regex(/^[^\s/$]+$/u),
   trailingText: z.string().regex(/^\s*$/u),
 });
 export type ProviderComposerCommand = z.infer<

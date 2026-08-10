@@ -8,7 +8,6 @@
  */
 
 import {
-  acpManualCompactionSchema,
   acpPermissionCliSchema as acpBridgePermissionCliSchema,
   acpNativeReasoningSchema as acpBridgeNativeReasoningSchema,
   acpReasoningCliSchema as acpBridgeReasoningCliSchema,
@@ -165,11 +164,6 @@ export const acpBridgeThreadStopParamsSchema = z.object({
   threadId: z.string().min(1),
 });
 
-export const acpBridgeThreadCompactParamsSchema = z.object({
-  threadId: z.string().min(1),
-  compaction: acpManualCompactionSchema,
-});
-
 export const acpBridgeCommandSchema = z.discriminatedUnion("method", [
   z.object({
     method: z.literal("initialize"),
@@ -203,7 +197,7 @@ export const acpBridgeCommandSchema = z.discriminatedUnion("method", [
   }),
   z.object({
     method: z.literal("thread/compact"),
-    params: acpBridgeThreadCompactParamsSchema,
+    params: acpBridgeThreadStopParamsSchema,
   }),
 ]);
 export type AcpBridgeCommand = z.infer<typeof acpBridgeCommandSchema>;
@@ -230,12 +224,6 @@ export const acpTurnCompletedNotificationParamsSchema = z
   .object({
     threadId: z.string().min(1),
     stopReason: acpStopReasonSchema,
-  })
-  .passthrough();
-
-export const acpCompactionStartedNotificationParamsSchema = z
-  .object({
-    threadId: z.string().min(1),
   })
   .passthrough();
 

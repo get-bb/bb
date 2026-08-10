@@ -72,7 +72,6 @@ const ACP_LAUNCH_SPEC: HostDaemonAcpLaunchSpec = {
     full: ["--always-approve"],
     insertAfterArgs: 1,
   },
-  manualCompaction: { method: "prompt", prompt: "/compact" },
 };
 
 type OnlineRpcResponseResultFixtures = Record<
@@ -492,7 +491,6 @@ const SETTLED_RESPONSE_RESULT_FIXTURES: SettledResponseResultFixtures = {
     appliedAs: "new-turn",
   },
   "thread.stop": {},
-  "thread.compact": {},
   "thread.goal.clear": { cleared: true },
   "thread.plan.cancel": { cancelled: true },
   "thread.rename": {},
@@ -703,8 +701,6 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "dynamic ACP agents may omit nativeSkillRoots when they do not expose provider-native skills.",
   "hostDaemonCommandSchema.acpLaunchSpec.permissionCli":
     "dynamic ACP agents may omit permissionCli when their own prompt policy does not need launch-time permission flags.",
-  "hostDaemonCommandSchema.acpLaunchSpec.manualCompaction":
-    "dynamic ACP agents may omit manualCompaction when they expose no verified provider-local compaction prompt.",
   "hostDaemonCommandSchema.acpLaunchSpec.permissionCli.full":
     "ACP permission CLI config only needs args for modes that differ from the agent default.",
   "hostDaemonCommandSchema.acpLaunchSpec.permissionCli.workspaceWrite":
@@ -749,8 +745,6 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "dynamic ACP agents may omit nativeSkillRoots when they do not expose provider-native skills.",
   "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.permissionCli":
     "dynamic ACP agents may omit permissionCli when their own prompt policy does not need launch-time permission flags.",
-  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.manualCompaction":
-    "dynamic ACP agents may omit manualCompaction when they expose no verified provider-local compaction prompt.",
   "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.permissionCli.full":
     "ACP permission CLI config only needs args for modes that differ from the agent default.",
   "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.permissionCli.workspaceWrite":
@@ -813,8 +807,6 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "resume-context ACP launch specs may omit nativeSkillRoots when the agent does not expose provider-native skills.",
   "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.permissionCli":
     "resume-context ACP launch specs may omit permissionCli when the agent's prompt policy does not need launch-time permission flags.",
-  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.manualCompaction":
-    "resume-context ACP launch specs may omit manualCompaction when the agent exposes no verified provider-local compaction prompt.",
   "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.permissionCli.full":
     "resume-context ACP permission CLI config only needs args for modes that differ from the agent default.",
   "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.permissionCli.workspaceWrite":
@@ -1129,7 +1121,6 @@ describe("host-daemon command schemas", () => {
           levelValues: { max: "high" },
           defaultLevel: "high",
         },
-        manualCompaction: { method: "prompt", prompt: "/compact" },
       }),
     ).toEqual({
       displayName: "Custom ACP",
@@ -1142,7 +1133,6 @@ describe("host-daemon command schemas", () => {
         levelValues: { max: "high" },
         defaultLevel: "high",
       },
-      manualCompaction: { method: "prompt", prompt: "/compact" },
     });
   });
 

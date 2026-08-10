@@ -477,9 +477,10 @@ export class RuntimeManager {
   }
 
   /**
-   * Keeps an environment runtime alive while a provider-bound thread command
-   * is being prepared and accepted. Runtime turn state cannot protect that
-   * interval from a concurrent shell-environment refresh.
+   * Keeps an environment runtime alive while a thread command is preparing a
+   * start or submit. Runtime turn state becomes active only after the provider
+   * accepts the command, so it cannot by itself protect that short interval
+   * from a concurrent shell-environment refresh.
    */
   async retainEnvironmentForThreadCommand(
     environmentId: string,

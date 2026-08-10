@@ -56,7 +56,6 @@ function makeRuntime(args: MakeRuntimeArgs): AgentRuntime {
       return { status: "steered" };
     },
     async stopThread() {},
-    async compactThread() {},
     async clearThreadGoal() {
       return { cleared: true };
     },

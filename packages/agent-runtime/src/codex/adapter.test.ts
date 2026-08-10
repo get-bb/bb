@@ -1954,21 +1954,6 @@ describe("codex provider adapter", () => {
     });
   });
 
-  it("buildCommand thread/compact maps to the native compact request", () => {
-    const adapter = createCodexProviderAdapter();
-    expect(
-      adapter.buildCommandPlan({
-        type: "thread/compact",
-        threadId: "bb-t1",
-        providerThreadId: "codex-thread-1",
-      }),
-    ).toEqual({
-      kind: "request",
-      method: "thread/compact/start",
-      params: { threadId: "codex-thread-1" },
-    });
-  });
-
   it("buildCommand turn/start includes input and sandbox policy", () => {
     const adapter = createCodexProviderAdapter();
     const cmd = adapter.buildCommandPlan({

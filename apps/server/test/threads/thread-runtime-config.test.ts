@@ -170,7 +170,6 @@ describe("thread runtime config", () => {
               selectFlag: "--model",
               primaryModels: ["model-a"],
             },
-            manualCompaction: { method: "prompt", prompt: "/summarize" },
           },
         ],
       },
@@ -214,7 +213,6 @@ describe("thread runtime config", () => {
             selectFlag: "--model",
             primaryModels: ["model-a"],
           },
-          manualCompaction: { method: "prompt", prompt: "/summarize" },
         };
 
         const startCommand = await buildThreadStartCommand(harness.deps, {
@@ -271,7 +269,6 @@ describe("thread runtime config", () => {
         command: "opencode",
         args: ["acp"],
         env: {},
-        manualCompaction: { method: "prompt", prompt: "/compact" },
       },
       providerId: "acp-opencode",
       requestedModel: "opencode/default",

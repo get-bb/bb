@@ -491,20 +491,6 @@ export function useStopThread() {
   });
 }
 
-export function useCompactThread() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    meta: { errorMessage: "Failed to compact context." },
-    mutationFn: async (threadId: string) => {
-      await sdk.threads.compact({ threadId });
-    },
-    onSuccess: (_data, threadId) => {
-      invalidateThreadBannerQueries({ queryClient, threadId });
-    },
-  });
-}
-
 export function useCancelThreadPlan() {
   const queryClient = useQueryClient();
 

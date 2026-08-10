@@ -187,7 +187,6 @@ function createRuntime(): FakeDispatchRuntime {
       activeTurnsByThreadId.delete(args.threadId);
       hostedThreadIds.delete(args.threadId);
     }),
-    compactThread: vi.fn(async () => undefined),
     clearThreadGoal: vi.fn(async () => ({ cleared: true })),
     renameThread: vi.fn(async () => undefined),
     archiveThread: vi.fn(async () => undefined),
@@ -449,72 +448,6 @@ describe("dispatchCommand", () => {
     expect(runtime.clearThreadGoal).toHaveBeenCalledWith({
       threadId: "thread-1",
     });
-    expect(flush).toHaveBeenCalledOnce();
-  });
-
-  it("resumes a reaped provider runtime before compacting its context", async () => {
-    const runtime = createRuntime();
-    const manager = new RuntimeManager({
-      createRuntime: () => runtime,
-      provisionWorkspace: async () => createWorkspace(),
-    });
-    const releaseRuntime = vi.fn();
-    const retainRuntime = vi
-      .spyOn(manager, "retainEnvironmentForThreadCommand")
-      .mockResolvedValue(releaseRuntime);
-    const flush = vi.fn(async () => undefined);
-    const command: CommandOf<"thread.compact"> = {
-      type: "thread.compact",
-      environmentId: "env-1",
-      threadId: "thread-1",
-      options: {
-        model: "gpt-5",
-        serviceTier: "default",
-        reasoningLevel: "medium",
-        workflowsEnabled: false,
-        permissionMode: "full",
-        permissionScope: "full",
-        approvalReviewer: null,
-        permissionEscalation: null,
-      },
-      resumeContext: {
-        workspaceContext: {
-          workspacePath: WORKSPACE_PATH,
-          workspaceProvisionType: "unmanaged",
-        },
-        projectId: "proj-1",
-        providerId: "pi",
-        providerThreadId: "provider-thread-1",
-        instructions: "Be concise.",
-        dynamicTools: [],
-        injectedSkillSources: [],
-        instructionMode: "append",
-      },
-    };
-
-    const result = await dispatchCommand(command, {
-      dataDir: "/tmp/bb-data",
-      eventSink: { emit: vi.fn(), flush },
-      fetchProjectAttachment: async () => {
-        throw new Error("Unexpected project attachment fetch");
-      },
-      runtimeManager: manager,
-      threadStorageRootPath: "/tmp/bb-thread-storage",
-    });
-
-    expect(result).toEqual({});
-    expect(runtime.resumeThread).toHaveBeenCalledWith(
-      expect.objectContaining({
-        providerId: "pi",
-        providerThreadId: "provider-thread-1",
-        threadId: "thread-1",
-      }),
-    );
-    expect(runtime.compactThread).toHaveBeenCalledWith({
-      threadId: "thread-1",
-    });
-    expect(retainRuntime).toHaveBeenCalledWith("env-1", "thread-1");
-    expect(releaseRuntime).toHaveBeenCalledOnce();
     expect(flush).toHaveBeenCalledOnce();
   });
 
@@ -845,6 +778,7 @@ describe("dispatchCommand", () => {
     expect(oldRuntime.stopThread).not.toHaveBeenCalled();
     expect(newRuntime.clearThreadGoal).not.toHaveBeenCalled();
   });
+
   it("treats thread.rename as best-effort when the runtime is not loaded", async () => {
     const runtime = createRuntime();
     const manager = new RuntimeManager({

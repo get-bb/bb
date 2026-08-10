@@ -1,28 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  acpManualCompactionSchema,
-  providerInfoSchema,
-} from "../src/provider-types.js";
-
-describe("ACP manual compaction schema", () => {
-  it("accepts a provider-local prompt", () => {
-    expect(
-      acpManualCompactionSchema.parse({
-        method: "prompt",
-        prompt: "/compact",
-      }),
-    ).toEqual({ method: "prompt", prompt: "/compact" });
-  });
-
-  it("rejects non-provider compaction strategies", () => {
-    expect(() =>
-      acpManualCompactionSchema.parse({
-        method: "client-side",
-        prompt: "/compact",
-      }),
-    ).toThrow();
-  });
-});
+import { providerInfoSchema } from "../src/provider-types.js";
 
 describe("provider info schema", () => {
   const baseProviderInfo = {

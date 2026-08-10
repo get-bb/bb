@@ -27,7 +27,6 @@ import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import {
-  type AcpManualCompaction,
   reasoningEffortsForLevels,
   type AvailableModel,
   type PromptInput,
@@ -1718,10 +1717,7 @@ function runTurn(session: AcpThreadSession, firstInput: PromptInput[]): void {
   })();
 }
 
-function startCompaction(
-  session: AcpThreadSession,
-  compaction: AcpManualCompaction,
-): void {
+function startCompaction(session: AcpThreadSession): void {
   if (session.activePromptKind !== null) {
     throw new Error("Cannot compact context while an ACP turn is active");
   }
@@ -1735,7 +1731,7 @@ function startCompaction(
     method: "session/prompt",
     params: {
       sessionId: session.providerThreadId,
-      prompt: [{ type: "text", text: compaction.prompt }],
+      prompt: [{ type: "text", text: "/compact" }],
     },
     resultSchema: acpPromptResultSchema,
   });
@@ -1743,8 +1739,7 @@ function startCompaction(
     .then((result) => {
       sendNotification(ACP_COMPACTION_COMPLETED_METHOD, {
         threadId: session.bbThreadId,
-        status:
-          result.stopReason === "cancelled" ? "interrupted" : "completed",
+        status: result.stopReason === "cancelled" ? "interrupted" : "completed",
       });
     })
     .catch((error: unknown) => {
@@ -1771,17 +1766,6 @@ function handleAgentRequest(
   params: unknown,
   responder: AcpAgentRequestResponder,
 ): void {
-  if (
-    session.activePromptKind === "compaction" &&
-    (method === "fs/read_text_file" || method === "fs/write_text_file")
-  ) {
-    responder.error(
-      -32000,
-      "File operations are unavailable during context compaction",
-    );
-    return;
-  }
-
   switch (method) {
     case "session/request_permission":
       handlePermissionRequest(session, params, responder);
@@ -1822,9 +1806,6 @@ function handleAgentNotification(
         session.pendingLoadUsageUpdate = usageUpdate.data;
       }
     }
-    return;
-  }
-  if (session.activePromptKind === "compaction") {
     return;
   }
   if (
@@ -1975,7 +1956,7 @@ async function handleRequest(
         return;
       }
       try {
-        startCompaction(session, request.params.compaction);
+        startCompaction(session);
         sendResult(request.id, { threadId: request.params.threadId });
       } catch (error) {
         sendError(

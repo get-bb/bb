@@ -24,6 +24,7 @@ import type {
 import {
   isApprovalPendingInteractionPayload,
   isApprovalPendingInteractionResolution,
+  isStandaloneBuiltinCompactCommand,
   threadScope,
   turnScope,
 } from "@bb/domain";
@@ -92,7 +93,6 @@ import {
   ACP_UPDATE_METHOD,
   ACP_WARNING_METHOD,
   acpCompactionCompletedNotificationParamsSchema,
-  acpCompactionStartedNotificationParamsSchema,
   acpFsWriteNotificationParamsSchema,
   acpPermissionRequestParamsSchema,
   acpTurnCompletedNotificationParamsSchema,
@@ -1160,7 +1160,7 @@ export function createAcpProviderAdapter(
       }
 
       case ACP_COMPACTION_STARTED_METHOD: {
-        const params = acpCompactionStartedNotificationParamsSchema.safeParse(
+        const params = acpTurnStartedNotificationParamsSchema.safeParse(
           envelope.data.params,
         );
         if (!params.success) {
@@ -1474,18 +1474,30 @@ export function createAcpProviderAdapter(
             },
           };
         }
-        case "turn/start":
+        case "turn/start": {
+          const input = flattenPromptInputGroups(
+            command.input,
+            command.inputGroups,
+          );
+          if (
+            profile.providerId === "acp-opencode" &&
+            isStandaloneBuiltinCompactCommand(input)
+          ) {
+            return {
+              kind: "request",
+              method: "thread/compact",
+              params: { threadId: command.providerThreadId },
+            };
+          }
           return {
             kind: "request",
             method: "turn/start",
             params: {
               threadId: command.providerThreadId,
-              input: flattenPromptInputGroups(
-                command.input,
-                command.inputGroups,
-              ),
+              input,
             },
           };
+        }
         case "turn/steer":
           return {
             kind: "request",
@@ -1509,17 +1521,6 @@ export function createAcpProviderAdapter(
             method: "thread/stop",
             params: { threadId: command.providerThreadId },
           };
-        case "thread/compact":
-          return profile.manualCompaction === undefined
-            ? { kind: "noop", reason: "manual compaction unsupported" }
-            : {
-                kind: "request",
-                method: "thread/compact",
-                params: {
-                  threadId: command.providerThreadId,
-                  compaction: profile.manualCompaction,
-                },
-              };
         case "thread/goal/clear":
           return { kind: "noop", reason: "goals unsupported" };
         case "thread/name/set":

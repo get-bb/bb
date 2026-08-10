@@ -19,9 +19,6 @@ export const KNOWN_ACP_AGENTS: readonly KnownAcpAgent[] = [
     command: "opencode",
     args: ["acp"],
     env: {},
-    // OpenCode recognizes this provider-local control even though current
-    // releases do not include it in available_commands_update.
-    manualCompaction: { method: "prompt", prompt: "/compact" },
     executableName: "opencode",
   },
   {

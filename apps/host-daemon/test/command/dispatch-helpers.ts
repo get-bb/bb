@@ -390,7 +390,6 @@ export function createFakeRuntime() {
       activeTurnsByThreadId.delete(args.threadId);
       providerSessionsByThreadId.delete(args.threadId);
     },
-    async compactThread() {},
     async clearThreadGoal() {
       return { cleared: true };
     },

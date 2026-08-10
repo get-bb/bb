@@ -303,10 +303,6 @@ Example:
         "configId": "reasoning_effort",
         "supportedLevels": ["none", "low", "medium", "high", "xhigh", "max"],
         "defaultLevel": "medium"
-      },
-      "manualCompaction": {
-        "method": "prompt",
-        "prompt": "/compact"
       }
     }
   ]
@@ -350,16 +346,6 @@ during model discovery. `configId` is the ACP config id to set,
 picker default, and `levelValues` maps bb reasoning levels to the agent's ACP
 config vocabulary when they differ. Hermes Agent uses this with
 `configId: "reasoning_effort"`.
-
-`manualCompaction` is optional. Declare `{ "method": "prompt", "prompt":
-"/compact" }` only when the ACP agent handles that exact provider-local prompt
-as a compaction control rather than an ordinary user turn. bb sends it as a
-silent maintenance prompt and keeps it out of the bb transcript. The known
-`acp-opencode` agent declares `/compact` automatically even though OpenCode does
-not currently advertise it through `available_commands_update`. Cursor ACP does
-not support manual compaction because Cursor's interactive `/compress` command
-is not interpreted by its ACP server. Other custom ACP agents must opt in
-explicitly.
 
 For ACP-native agents, bb also uses a protocol `thought_level` config option
 when the selected model advertises one. The selected reasoning level is applied

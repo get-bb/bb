@@ -1,5 +1,4 @@
 import {
-  acpManualCompactionSchema,
   acpPermissionCliSchema,
   acpNativeReasoningSchema,
   acpReasoningCliSchema,
@@ -178,7 +177,6 @@ export const hostDaemonAcpLaunchSpecSchema = z
     nativeReasoning: acpNativeReasoningSchema.optional(),
     nativeSkillRoots: providerNativeSkillRootsSchema.optional(),
     permissionCli: acpPermissionCliSchema.optional(),
-    manualCompaction: acpManualCompactionSchema.optional(),
   })
   .strict();
 export type HostDaemonAcpLaunchSpec = z.infer<
@@ -199,7 +197,6 @@ export function normalizeHostDaemonAcpLaunchSpec(
     nativeReasoning,
     nativeSkillRoots,
     permissionCli,
-    manualCompaction,
   } = spec;
   const permissionCliHasMode =
     permissionCli?.full !== undefined ||
@@ -220,7 +217,6 @@ export function normalizeHostDaemonAcpLaunchSpec(
     ...(permissionCli !== undefined && permissionCliHasMode
       ? { permissionCli }
       : {}),
-    ...(manualCompaction !== undefined ? { manualCompaction } : {}),
   };
 }
 
@@ -368,23 +364,12 @@ export const threadStopCommandSchema = hostDaemonThreadTargetSchema
   })
   .strict();
 
-const resumableThreadMaintenanceCommandSchema = hostDaemonThreadTargetSchema
+const threadGoalClearCommandSchema = hostDaemonThreadTargetSchema
   .extend({
+    type: z.literal("thread.goal.clear"),
     options: runtimeThreadExecutionOptionsSchema,
     acpLaunchSpec: hostDaemonAcpLaunchSpecSchema.optional(),
     resumeContext: turnResumeContextSchema,
-  })
-  .strict();
-
-const threadCompactCommandSchema = resumableThreadMaintenanceCommandSchema
-  .extend({
-    type: z.literal("thread.compact"),
-  })
-  .strict();
-
-const threadGoalClearCommandSchema = resumableThreadMaintenanceCommandSchema
-  .extend({
-    type: z.literal("thread.goal.clear"),
   })
   .strict();
 
@@ -1598,15 +1583,6 @@ export const hostDaemonCommandRegistry = {
     retryable: false,
     flushEventsBeforeResult: true,
     envLane: null,
-  }),
-  "thread.compact": defineHostDaemonCommandDescriptor({
-    type: "thread.compact",
-    schema: threadCompactCommandSchema,
-    resultSchema: emptyCommandResultSchema,
-    transport: "settled",
-    retryable: false,
-    flushEventsBeforeResult: true,
-    envLane: "read",
   }),
   "thread.goal.clear": defineHostDaemonCommandDescriptor({
     type: "thread.goal.clear",

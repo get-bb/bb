@@ -34,10 +34,6 @@ type EnvironmentProvisionCommand = Extract<
 type RouterHarness = ReturnType<typeof createHarness>;
 type TextPromptInput = Extract<PromptInput, { type: "text" }>;
 type ThreadStartCommand = Extract<HostDaemonCommand, { type: "thread.start" }>;
-type ThreadCompactCommand = Extract<
-  HostDaemonCommand,
-  { type: "thread.compact" }
->;
 type TurnSubmitCommand = Extract<HostDaemonCommand, { type: "turn.submit" }>;
 
 interface Deferred<T> {
@@ -175,19 +171,6 @@ function createThreadStartCommand(): ThreadStartCommand {
     dynamicTools: [],
     injectedSkillSources: [],
     instructionMode: "append",
-  };
-}
-
-function createThreadCompactCommand(
-  args: CreateTurnSubmitCommandArgs = {},
-): ThreadCompactCommand {
-  const submit = createTurnSubmitCommand(args);
-  return {
-    type: "thread.compact",
-    environmentId: submit.environmentId,
-    threadId: submit.threadId,
-    options: submit.options,
-    resumeContext: submit.resumeContext,
   };
 }
 
@@ -517,58 +500,5 @@ describe("CommandRouter", () => {
     releaseStop.resolve();
     const stopResponse = await stopTask;
     expect(stopResponse.ok).toBe(true);
-  });
-
-  it("does not block another shared-provider session during compaction", async () => {
-    const harness = createHarness({ workspacePath: "/tmp/env-router" });
-    await harness.manager.ensureEnvironment({
-      environmentId: "env-router",
-      workspacePath: "/tmp/env-router",
-    });
-    harness.threadControls.setProviderSession("thread-pi-compact", {
-      providerId: "pi",
-      providerThreadId: "provider-pi-compact",
-    });
-    harness.threadControls.setProviderSession("thread-pi-turn", {
-      providerId: "pi",
-      providerThreadId: "provider-pi-turn",
-    });
-
-    const compactEntered = createDeferred<void>();
-    const releaseCompact = createDeferred<void>();
-    harness.runtime.compactThread = async () => {
-      compactEntered.resolve();
-      await releaseCompact.promise;
-    };
-
-    const router = createRouter(harness);
-    const compactTask = runRouterCommand({
-      command: createThreadCompactCommand({
-        providerId: "pi",
-        providerThreadId: "provider-pi-compact",
-        threadId: "thread-pi-compact",
-      }),
-      requestId: "compact-pi-thread",
-      router,
-    });
-    await compactEntered.promise;
-
-    const turnTask = runRouterCommand({
-      command: createTurnSubmitCommand({
-        providerId: "pi",
-        providerThreadId: "provider-pi-turn",
-        text: "pi other thread",
-        threadId: "thread-pi-turn",
-      }),
-      requestId: "turn-pi-other-thread",
-      router,
-    });
-    await flushAsyncWork();
-
-    expect(harness.runtimeState.ranTurnText).toBe("pi other thread");
-    await expect(turnTask).resolves.toMatchObject({ ok: true });
-
-    releaseCompact.resolve();
-    await expect(compactTask).resolves.toMatchObject({ ok: true });
   });
 });

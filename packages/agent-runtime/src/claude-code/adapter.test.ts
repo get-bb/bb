@@ -929,21 +929,6 @@ describe("claude-code provider adapter", () => {
     });
   });
 
-  it("buildCommand thread/compact maps to the bridge compact command", () => {
-    const adapter = createClaudeCodeProviderAdapter();
-    expect(
-      adapter.buildCommandPlan({
-        type: "thread/compact",
-        threadId: "bb-thread-1",
-        providerThreadId: "claude-session-1",
-      }),
-    ).toEqual({
-      kind: "request",
-      method: "thread/compact",
-      params: { threadId: "bb-thread-1" },
-    });
-  });
-
   it("decodeToolCallRequest preserves string request ids", () => {
     const adapter = createClaudeCodeProviderAdapter();
     expect(

@@ -13,6 +13,7 @@ import path from "node:path";
 import { getBuiltInAgentProviderInfo } from "@bb/agent-providers";
 import {
   getThreadEventScopeTurnId,
+  isStandaloneBuiltinCompactCommand,
   jsonValueSchema,
   requireThreadEventScopeTurnId,
   turnScope,
@@ -21,7 +22,6 @@ import type {
   ClientTurnRequestId,
   PermissionEscalation,
   PromptInput,
-  PromptTextMention,
   ReasoningLevel,
   ServiceTier,
   ThreadEvent,
@@ -694,64 +694,6 @@ function toCodexUserInput(input: PromptInput[]): CodexUserInput[] {
         };
     }
   });
-}
-
-type TextPromptInput = Extract<PromptInput, { type: "text" }>;
-
-function isBuiltinCompactCommandMention(mention: PromptTextMention): boolean {
-  const resource = mention.resource;
-  return (
-    resource.kind === "command" &&
-    resource.trigger === "/" &&
-    resource.name === "compact" &&
-    resource.source === "command" &&
-    resource.origin === "builtin"
-  );
-}
-
-function stripBuiltinCompactCommandMentions(input: TextPromptInput): {
-  mentionCount: number;
-  text: string;
-} {
-  const ranges = input.mentions
-    .filter(isBuiltinCompactCommandMention)
-    .map((mention) => ({
-      start: mention.start,
-      end:
-        mention.end < input.text.length && input.text[mention.end] === " "
-          ? mention.end + 1
-          : mention.end,
-    }))
-    .sort((left, right) => left.start - right.start || left.end - right.end);
-
-  if (ranges.length === 0) {
-    return { mentionCount: 0, text: input.text };
-  }
-
-  let text = "";
-  let cursor = 0;
-  for (const range of ranges) {
-    text += input.text.slice(cursor, range.start);
-    cursor = range.end;
-  }
-  text += input.text.slice(cursor);
-
-  return { mentionCount: ranges.length, text };
-}
-
-function isStandaloneBuiltinCompactCommandInput(input: PromptInput[]): boolean {
-  let mentionCount = 0;
-  for (const chunk of input) {
-    if (chunk.type !== "text") {
-      return false;
-    }
-    const stripped = stripBuiltinCompactCommandMentions(chunk);
-    mentionCount += stripped.mentionCount;
-    if (stripped.text.trim() !== "") {
-      return false;
-    }
-  }
-  return mentionCount === 1;
 }
 
 function buildCodexConfig(
@@ -1989,7 +1931,7 @@ export function createCodexProviderAdapter(
             command.input,
             command.inputGroups,
           );
-          if (isStandaloneBuiltinCompactCommandInput(input)) {
+          if (isStandaloneBuiltinCompactCommand(input)) {
             const params: ThreadCompactStartParams = {
               threadId: command.providerThreadId,
             };
@@ -2078,12 +2020,6 @@ export function createCodexProviderAdapter(
               threadId: command.providerThreadId,
               turnId: command.activeTurnId,
             },
-          };
-        case "thread/compact":
-          return {
-            kind: "request",
-            method: "thread/compact/start",
-            params: { threadId: command.providerThreadId },
           };
         case "thread/goal/clear":
           return {

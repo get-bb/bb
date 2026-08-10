@@ -248,7 +248,6 @@ function createFakeRuntime(): AgentRuntime {
       return { status: "steered" };
     },
     async stopThread() {},
-    async compactThread() {},
     async clearThreadGoal() {
       return { cleared: true };
     },

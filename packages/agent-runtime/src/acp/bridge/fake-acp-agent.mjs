@@ -29,8 +29,6 @@
  * - FAKE_ACP_AUTH_METHODS    → comma-separated auth method ids to advertise;
  *                              session creation requires authenticate first
  * - FAKE_ACP_WRITE_PATH      → target path for the "write-file" prompt
- * - FAKE_ACP_READ_PATH       → source path for the "file-ops" prompt
- * - FAKE_ACP_FS_RESULT_LOG   → append client fs outcomes for bridge tests
  * - FAKE_ACP_LAUNCH_LOG      → append one line per process launch (used to
  *                              count model-discovery spawns in cache/TTL tests)
  * - FAKE_ACP_PROMPT_LOG      → append one JSON-encoded prompt text per request
@@ -57,19 +55,18 @@ const authMethods = (process.env.FAKE_ACP_AUTH_METHODS ?? "")
   .split(",")
   .map((method) => method.trim())
   .filter(Boolean);
-const sessionIdPrefix = `fake-sess-${process.pid}`;
+const sessionId = `fake-sess-${process.pid}`;
 const fakeModels = [
   { value: "fake/default", name: "Fake Default" },
   { value: "fake/strong", name: "Fake Strong" },
 ];
 
 let activePromptId = null;
-let sessionCount = 0;
 let nextAgentRequestId = 1000;
 let selectedModel = "fake/default";
 let selectedEffort = "none";
 let authenticatedMethod = null;
-let activeSessionId = sessionIdPrefix;
+let activeSessionId = sessionId;
 const pendingClientRequests = new Map();
 let currentMcpServers = [];
 
@@ -247,7 +244,9 @@ async function handlePrompt(message) {
     return;
   }
 
-  if (text.includes("request-permission")) {
+  if (text === "/compact") {
+    // OpenCode treats this exact prompt as a provider-local control.
+  } else if (text.includes("request-permission")) {
     notifyUpdate({
       sessionUpdate: "tool_call",
       toolCallId: "perm-tool-1",
@@ -280,34 +279,6 @@ async function handlePrompt(message) {
       outcome = "error";
     }
     notifyUpdate(messageChunk(`permission:${outcome}`));
-  } else if (text.includes("file-ops")) {
-    const outcomes = [];
-    try {
-      await requestClient("fs/read_text_file", {
-        sessionId,
-        path: process.env.FAKE_ACP_READ_PATH,
-      });
-      outcomes.push("read:ok");
-    } catch {
-      outcomes.push("read:denied");
-    }
-    try {
-      await requestClient("fs/write_text_file", {
-        sessionId,
-        path: process.env.FAKE_ACP_WRITE_PATH,
-        content: "hello from agent\n",
-      });
-      outcomes.push("write:ok");
-    } catch {
-      outcomes.push("write:denied");
-    }
-    if (process.env.FAKE_ACP_FS_RESULT_LOG) {
-      appendFileSync(
-        process.env.FAKE_ACP_FS_RESULT_LOG,
-        `${outcomes.join(",")}\n`,
-      );
-    }
-    notifyUpdate(messageChunk(outcomes.join(",")));
   } else if (text.includes("write-file")) {
     try {
       await requestClient("fs/write_text_file", {
@@ -413,11 +384,7 @@ async function handleMessage(message) {
       if (!requireAuthenticated(message)) {
         return;
       }
-      sessionCount += 1;
-      activeSessionId =
-        sessionCount === 1
-          ? sessionIdPrefix
-          : `${sessionIdPrefix}-${sessionCount}`;
+      activeSessionId = sessionId;
       captureMcpServers(message);
       send({
         jsonrpc: "2.0",

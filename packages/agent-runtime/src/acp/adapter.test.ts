@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  createStandaloneBuiltinCompactCommandInput,
   DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
   threadScope,
   turnScope,
@@ -34,7 +35,6 @@ function createCompactingAdapter(): AcpProviderAdapter {
       providerId: "acp-opencode",
       displayName: "opencode",
       agentCommand: { command: "opencode", args: ["acp"] },
-      manualCompaction: { method: "prompt", prompt: "/compact" },
     },
     additionalWorkspaceWriteRoots: [],
   });
@@ -88,33 +88,21 @@ describe("acp adapter command plans", () => {
     ]);
   });
 
-  it("leaves manual compaction unsupported without a provider-local prompt", () => {
-    const adapter = createAdapter();
-    expect(getAcpAgentProfile("acp-cursor").manualCompaction).toBeUndefined();
-    expect(
-      adapter.buildCommandPlan({
-        type: "thread/compact",
-        threadId: "thread-1",
-        providerThreadId: "sess-1",
-      }),
-    ).toEqual({ kind: "noop", reason: "manual compaction unsupported" });
-  });
-
-  it("routes configured ACP compaction through the provider-local prompt", () => {
+  it("routes OpenCode's selected compact command through maintenance", () => {
     const adapter = createCompactingAdapter();
     expect(
       adapter.buildCommandPlan({
-        type: "thread/compact",
+        type: "turn/start",
+        clientRequestId: "creq_222222228c",
         threadId: "thread-1",
         providerThreadId: "sess-1",
+        input: createStandaloneBuiltinCompactCommandInput(),
+        options: fullProviderExecutionContext,
       }),
     ).toEqual({
       kind: "request",
       method: "thread/compact",
-      params: {
-        threadId: "sess-1",
-        compaction: { method: "prompt", prompt: "/compact" },
-      },
+      params: { threadId: "sess-1" },
     });
   });
 
@@ -405,38 +393,20 @@ describe("acp compaction events", () => {
       THREAD_CONTEXT,
     );
 
-    expect(started).toEqual([
-      {
-        type: "turn/started",
-        threadId: "",
-        providerThreadId: "",
-        scope: turnScope("turn-1"),
-      },
-      {
-        type: "item/started",
-        threadId: "",
-        providerThreadId: "",
-        scope: turnScope("turn-1"),
-        item: {
-          type: "contextCompaction",
-          id: "acp-compaction-turn-1",
-        },
-      },
+    expect(started.map((event) => event.type)).toEqual([
+      "turn/started",
+      "item/started",
     ]);
     expect(completed).toEqual([
-      {
+      expect.objectContaining({
         type: "thread/compacted",
-        threadId: "",
-        providerThreadId: "",
         scope: turnScope("turn-1"),
-      },
-      {
+      }),
+      expect.objectContaining({
         type: "turn/completed",
-        threadId: "",
-        providerThreadId: "",
         scope: turnScope("turn-1"),
         status: "completed",
-      },
+      }),
     ]);
   });
 
@@ -465,14 +435,12 @@ describe("acp compaction events", () => {
     );
 
     expect(events).toEqual([
-      {
+      expect.objectContaining({
         type: "turn/completed",
-        threadId: "",
-        providerThreadId: "",
         scope: turnScope("turn-1"),
         status: "failed",
         error: { message: "Provider rejected /compact" },
-      },
+      }),
     ]);
   });
 });

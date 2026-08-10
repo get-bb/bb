@@ -28,12 +28,7 @@ describe("agent provider catalog", () => {
     expect(supportsManualCompaction("pi")).toBe(true);
     expect(supportsManualCompaction("acp-cursor")).toBe(false);
     expect(supportsManualCompaction("acp-custom")).toBe(false);
-    expect(
-      supportsManualCompaction("acp-opencode", {
-        method: "prompt",
-        prompt: "/compact",
-      }),
-    ).toBe(true);
+    expect(supportsManualCompaction("acp-opencode")).toBe(true);
   });
 
   it("synthesizes dynamic ACP provider metadata with shared ACP policy", () => {
@@ -62,7 +57,6 @@ describe("agent provider catalog", () => {
     expect(getAcpProviderServerCapabilities("acp-my-agent")).toEqual({
       supportsWorkflows: false,
       supportsExecutionOverride: false,
-      supportsManualCompaction: false,
       backsHostDaemonAiServices: false,
       reasoningLevels: ["low", "medium", "high", "xhigh", "max"],
     });

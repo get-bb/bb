@@ -304,12 +304,7 @@ environment pull-request show <id>`. Diff commands require an explicit target
   relative paths resolve from the bb data dir. Custom ACP agents can use
   `modelCli` for CLI model listing/selection, `reasoningCli` for launch-time
   reasoning flags, and `nativeReasoning` for ACP `session/set_config_option`
-  reasoning. `manualCompaction: { "method": "prompt", "prompt": "/compact" }`
-  opts an agent into silent provider-local prompt compaction; only configure it
-  when the agent treats that exact prompt as a control. `acp-opencode` declares
-  `/compact` automatically even though OpenCode does not currently advertise
-  it. Cursor ACP does not support manual compaction because its interactive
-  `/compress` command is not interpreted by its ACP server. Optional
+  reasoning. Optional
   `nativeSkillRoots.user` paths resolve from the target
   host home directory. Optional `nativeSkillRoots.project` paths resolve from
   the selected workspace. The composer lists skills from these roots.
@@ -442,7 +437,7 @@ For review or fix pipelines, get the environment ID from
 - For interrupted or stopped threads, inspect first. If the user stopped the
   thread, treat that as intentional unless they ask you to continue.
 - Use `bb thread stop <id>` when a thread is stuck or no longer needed.
-- Use `bb thread compact <id>` to request manual compaction of an idle or errored thread's provider context. Completion or failure appears in the thread timeline. Codex, Claude Code, Pi, OpenCode ACP, and explicitly configured custom ACP agents support this operation. Cursor ACP and other agents without a verified provider-local compaction prompt remain unsupported. OpenCode invokes its `/compact` control through ACP `session/prompt`.
+- Use `bb thread compact <id>` to send the built-in `/compact` command to an idle or errored thread. Completion or failure appears in the timeline. Codex, Claude Code, Pi, and OpenCode ACP support it; Cursor ACP does not expose compatible compaction through ACP.
 - Use `bb thread cancel-plan <id>` to exit an active Plan turn without
   optimistically clearing its banner. Use `bb thread clear-goal <id>` to clear
   a Codex thread's durable active Goal. Both wait for provider confirmation.

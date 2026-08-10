@@ -115,13 +115,7 @@ and run bb-app config refresh; there is no set/unset CLI surface for this list.
 Custom config wins if it uses the same provider id as a known ACP agent; for
 example, override acp-opencode with id opencode. Use modelCli for CLI model
 listing/selection, reasoningCli for launch-time reasoning flags, and
-nativeReasoning for ACP session/set_config_option reasoning. Set
-manualCompaction to { method: "prompt", prompt: "/compact" } only for agents
-that treat that exact ACP prompt as a compaction control. acp-opencode declares
-the /compact prompt automatically even though OpenCode does not currently
-advertise it. Cursor ACP does not support manual compaction because its
-interactive /compress command is not interpreted by its ACP server.
-Optional logo
+nativeReasoning for ACP session/set_config_option reasoning. Optional logo
 accepts an SVG, PNG, or WebP path; relative paths resolve from the bb data dir.
 Use nativeSkillRoots to add native skills to the composer. User roots resolve
 from the target host home directory. Project roots resolve from the selected
@@ -131,3 +125,6 @@ Use top-level sharedSkillRoots for one provider-neutral skill collection. The
 user and project paths use the same relative-path rules. bb indexes these roots
 as read-only sources. It then injects the selected skills into all providers.
 The bb user and project roots keep higher precedence than matching shared roots.
+
+OpenCode ACP supports the built-in /compact command. Cursor ACP does not expose
+compatible manual compaction through ACP.

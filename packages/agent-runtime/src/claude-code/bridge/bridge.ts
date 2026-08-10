@@ -1290,9 +1290,6 @@ async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
     case "thread/stop":
       sendResult(request.id, await handleThreadStop(request.params));
       break;
-    case "thread/compact":
-      await handleThreadCompact(request.id, request.params);
-      break;
   }
 }
 
@@ -1545,30 +1542,6 @@ async function handleThreadStop(
     threadId: params.threadId,
   });
   return { ok: true };
-}
-
-async function handleThreadCompact(
-  id: string | number,
-  params: { threadId: string },
-): Promise<void> {
-  const threadSession = getWritableThreadSession(params.threadId);
-  if (!threadSession) {
-    sendError(id, -32000, "No active session");
-    return;
-  }
-  if (threadSession.session.getIsProcessing()) {
-    sendError(id, -32000, "Cannot compact context while a turn is active");
-    return;
-  }
-  try {
-    // Input consumption is Claude's acceptance boundary. Completion and any
-    // later failure remain provider lifecycle events, like Pi and ACP.
-    await threadSession.session.pushInput("/compact");
-    sendResult(id, { threadId: params.threadId });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    sendError(id, -32000, message);
-  }
 }
 
 function localAttachmentMarker(args: {

@@ -286,7 +286,6 @@ describe("resolveSystemExecutionOptions", () => {
           command: "opencode",
           args: ["acp"],
           env: {},
-          manualCompaction: { method: "prompt", prompt: "/compact" },
         },
       });
     });
@@ -919,7 +918,6 @@ describe("resolveSystemExecutionOptions", () => {
               selectFlag: "--model",
               primaryModels: ["example/default"],
             },
-            manualCompaction: { method: "prompt", prompt: "/summarize" },
           },
         ],
       },
@@ -981,7 +979,6 @@ describe("resolveSystemExecutionOptions", () => {
               selectFlag: "--model",
               primaryModels: ["example/default"],
             },
-            manualCompaction: { method: "prompt", prompt: "/summarize" },
           },
         });
       },

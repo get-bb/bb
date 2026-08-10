@@ -105,20 +105,6 @@ export function filterCommandSuggestions(
     });
 }
 
-export function commandSuggestionIsAvailableInScope(
-  suggestion: ProviderCommandSuggestion,
-  commandScope: UseCommandSuggestionsArgs["commandScope"],
-): boolean {
-  return (
-    commandScope === "thread" ||
-    !(
-      suggestion.source === "command" &&
-      suggestion.origin === "builtin" &&
-      suggestion.name === "compact"
-    )
-  );
-}
-
 export function promptActionCommandSuggestions({
   promptActions,
   query,
@@ -221,8 +207,12 @@ export function useCommandSuggestions(
     const discoveredSuggestions = filterCommandSuggestions(
       (commandsQuery.data?.commands ?? [])
         .map(toProviderCommandSuggestion)
-        .filter((suggestion) =>
-          commandSuggestionIsAvailableInScope(suggestion, args.commandScope),
+        .filter(
+          (suggestion) =>
+            args.commandScope === "thread" ||
+            suggestion.source !== "command" ||
+            suggestion.origin !== "builtin" ||
+            suggestion.name !== "compact",
         ),
       trimmedQuery,
     );

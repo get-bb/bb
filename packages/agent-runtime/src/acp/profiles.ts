@@ -19,9 +19,6 @@ export type AcpAgentNativeReasoning = NonNullable<
 export type AcpAgentPermissionCli = NonNullable<
   HostDaemonAcpLaunchSpec["permissionCli"]
 >;
-export type AcpAgentManualCompaction = NonNullable<
-  HostDaemonAcpLaunchSpec["manualCompaction"]
->;
 
 /**
  * Launch profile for a built-in ACP (Agent Client Protocol) provider. The
@@ -38,7 +35,6 @@ export interface AcpAgentProfile {
   reasoningCli?: AcpAgentReasoningCli;
   nativeReasoning?: AcpAgentNativeReasoning;
   permissionCli?: AcpAgentPermissionCli;
-  manualCompaction?: AcpAgentManualCompaction;
 }
 
 interface BuiltInAcpAgentProfile extends AcpAgentProfile {

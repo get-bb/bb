@@ -1,7 +1,6 @@
 import { join } from "node:path";
 import { agentProviderIdSchema, isAgentProviderId } from "@bb/agent-providers";
 import {
-  acpManualCompactionSchema,
   acpNativeReasoningSchema,
   acpReasoningCliSchema,
   providerNativeSkillRootsSchema,
@@ -112,7 +111,6 @@ export const customAcpAgentSchema = z
     reasoningCli: acpReasoningCliSchema.optional(),
     nativeReasoning: acpNativeReasoningSchema.optional(),
     nativeSkillRoots: providerNativeSkillRootsSchema.optional(),
-    manualCompaction: acpManualCompactionSchema.optional(),
   })
   .strict()
   .superRefine((agent, context) => {

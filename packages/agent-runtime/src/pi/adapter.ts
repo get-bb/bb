@@ -20,7 +20,12 @@ import type {
   ThreadEventTokenUsage,
   ThreadEventTokenUsageBreakdown,
 } from "@bb/domain";
-import { threadScope, toPositiveNumber, turnScope } from "@bb/domain";
+import {
+  isStandaloneBuiltinCompactCommand,
+  threadScope,
+  toPositiveNumber,
+  turnScope,
+} from "@bb/domain";
 import { decodeNormalizedProviderToolCallRequest } from "../shared/provider-tool-call-contract.js";
 import { resolveBridgeProcessArgs } from "../shared/bridge-path.js";
 import { bashArgsSchema, textBlockSchema } from "../shared/tool-arg-schemas.js";
@@ -1389,21 +1394,30 @@ export function createPiProviderAdapter(
             },
           };
         }
-        case "turn/start":
+        case "turn/start": {
+          const input = flattenPromptInputGroups(
+            command.input,
+            command.inputGroups,
+          );
+          if (isStandaloneBuiltinCompactCommand(input)) {
+            return {
+              kind: "request",
+              method: "thread/compact",
+              params: { threadId: command.providerThreadId },
+            };
+          }
           return {
             kind: "request",
             method: "turn/start",
             params: {
               threadId: command.providerThreadId,
-              input: flattenPromptInputGroups(
-                command.input,
-                command.inputGroups,
-              ),
+              input,
               ...(command.options?.model
                 ? { model: command.options.model }
                 : {}),
             },
           };
+        }
         case "turn/steer":
           return {
             kind: "request",
@@ -1476,12 +1490,6 @@ export function createPiProviderAdapter(
             params: {
               threadId: command.providerThreadId,
             },
-          };
-        case "thread/compact":
-          return {
-            kind: "request",
-            method: "thread/compact",
-            params: { threadId: command.providerThreadId },
           };
         case "thread/goal/clear":
           return { kind: "noop", reason: "goals unsupported" };
