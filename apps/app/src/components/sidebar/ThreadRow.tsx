@@ -654,10 +654,7 @@ function ThreadRowComponent({
         ) : null}
       </span>
       <span className="flex shrink-0 items-center gap-0.5">
-        {shortcut &&
-        trailingIndicatorKind === "none" &&
-        pluginThreadRowStatus === null &&
-        splitIndicator.miniMap === null ? (
+        {shortcut ? (
           <AppCommandShortcutPill shortcut={shortcut} />
         ) : (
           <span

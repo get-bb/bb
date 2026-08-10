@@ -16,6 +16,7 @@ import {
 } from "@/lib/thread-activity";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
+import { SidebarThreadShortcutKeysContext } from "./sidebarThreadShortcuts";
 
 const childActivity = (
   overrides: Partial<CollapsedChildActivity> = {},
@@ -765,6 +766,87 @@ export function ActiveWorkflow() {
         </SidebarStage>
       </StoryRow>
     </StoryCard>
+  );
+}
+
+const MODIFIER_SHORTCUTS = new Map([
+  ["thr_shortcut_idle", { ariaKeyshortcuts: "Meta+1", label: "⌘1" }],
+  ["thr_shortcut_runtime", { ariaKeyshortcuts: "Meta+2", label: "⌘2" }],
+  ["thr_shortcut_pending", { ariaKeyshortcuts: "Meta+3", label: "⌘3" }],
+  ["thr_shortcut_draft", { ariaKeyshortcuts: "Meta+4", label: "⌘4" }],
+]);
+
+export function ModifierShortcuts() {
+  return (
+    <SidebarThreadShortcutKeysContext.Provider value={MODIFIER_SHORTCUTS}>
+      <StoryCard>
+        <StoryRow label="idle" hint="shortcut hint in an idle row">
+          <SidebarStage>
+            <StoryThreadRow
+              projectId="proj_demo"
+              thread={makeThread({
+                id: "thr_shortcut_idle",
+                title: "Idle thread",
+                titleFallback: "Idle thread",
+                lastReadAt: 200,
+                latestAttentionAt: 200,
+              })}
+              isActive={false}
+              options={defaultOption}
+            />
+          </SidebarStage>
+        </StoryRow>
+        <StoryRow label="runtime" hint="shortcut hint while the agent works">
+          <SidebarStage>
+            <StoryThreadRow
+              projectId="proj_demo"
+              thread={makeThread({
+                id: "thr_shortcut_runtime",
+                title: "Agent working",
+                titleFallback: "Agent working",
+                status: "active",
+                runtime: {
+                  displayStatus: "active",
+                  hostReconnectGraceExpiresAt: null,
+                },
+              })}
+              isActive={false}
+              options={defaultOption}
+            />
+          </SidebarStage>
+        </StoryRow>
+        <StoryRow label="pending" hint="shortcut hint when input is needed">
+          <SidebarStage>
+            <StoryThreadRow
+              projectId="proj_demo"
+              thread={makeThread({
+                id: "thr_shortcut_pending",
+                title: "Waiting for input",
+                titleFallback: "Waiting for input",
+                hasPendingInteraction: true,
+              })}
+              isActive={false}
+              options={defaultOption}
+            />
+          </SidebarStage>
+        </StoryRow>
+        <StoryRow label="draft" hint="shortcut hint over the draft indicator">
+          <SidebarStage>
+            <StoryThreadRow
+              projectId="proj_demo"
+              thread={makeThread({
+                id: "thr_shortcut_draft",
+                title: "Saved follow-up draft",
+                titleFallback: "Saved follow-up draft",
+              })}
+              hasComposerDraft
+              isActive={false}
+              options={defaultOption}
+            />
+          </SidebarStage>
+        </StoryRow>
+      </StoryCard>
+    </SidebarThreadShortcutKeysContext.Provider>
   );
 }
 
