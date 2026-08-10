@@ -107,12 +107,12 @@ function useMergeBaseOwner(environment: Environment, threadId: string) {
     updateEnvironment,
   });
   const diffState = useGitDiffPanelState({
-    defaultMergeBaseBranch: effectiveMergeBaseBranch,
     environmentId: environment.id,
     isDiffPanelActive: true,
     onClearPendingGitDiffIntent: panel.clearPendingGitDiffIntent,
     pendingGitDiffCommitSha: panel.pendingGitDiffCommitSha,
     pendingGitDiffScrollPath: panel.pendingGitDiffScrollPath,
+    requestedMergeBaseBranch: effectiveMergeBaseBranch,
   });
   return { ...diffState, ...panel, effectiveMergeBaseBranch };
 }

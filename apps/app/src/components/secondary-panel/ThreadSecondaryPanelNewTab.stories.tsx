@@ -538,7 +538,7 @@ function NewTabPanelStory({
       <ThreadSecondaryPanel
         activeTab={activeTab}
         canUseGitUi
-        defaultMergeBaseBranch="main"
+        requestedMergeBaseBranch="main"
         environmentId={ENVIRONMENT_ID}
         fileTabs={fileTabs}
         fileTabContent={content}

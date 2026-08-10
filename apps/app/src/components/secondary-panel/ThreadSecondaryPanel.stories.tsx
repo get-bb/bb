@@ -211,7 +211,7 @@ function ShellRow({
           <ThreadSecondaryPanel
             activeTab={createStoryFixedPanelTab(panel)}
             canUseGitUi={canUseGitUi}
-            defaultMergeBaseBranch="main"
+            requestedMergeBaseBranch="main"
             environmentId={undefined}
             isOpen
             metadataContent={<RepresentativeInfoContent />}
@@ -332,7 +332,7 @@ function FileTabsShellInner({
       <ThreadSecondaryPanel
         activeTab={activeTab}
         canUseGitUi
-        defaultMergeBaseBranch="main"
+        requestedMergeBaseBranch="main"
         environmentId={undefined}
         isOpen
         metadataContent={<RepresentativeInfoContent />}
@@ -439,7 +439,7 @@ function TerminalTabsShellInner({
       <ThreadSecondaryPanel
         activeTab={activeTab}
         canUseGitUi
-        defaultMergeBaseBranch="main"
+        requestedMergeBaseBranch="main"
         environmentId={undefined}
         isOpen
         metadataContent={<RepresentativeInfoContent />}

@@ -212,7 +212,7 @@ export function resolveSecondaryPanelHideControl() {
 export interface ThreadSecondaryPanelProps {
   activeTab: SecondaryFixedPanelTab | null;
   canUseGitUi: boolean;
-  defaultMergeBaseBranch?: string;
+  requestedMergeBaseBranch?: string;
   environmentId?: string;
   metadataContent: ReactNode;
   fileTabs?: SecondaryPanelFileTab[];
@@ -325,7 +325,7 @@ function resolveActiveFixedPanel({
 export function ThreadSecondaryPanel({
   activeTab,
   canUseGitUi,
-  defaultMergeBaseBranch,
+  requestedMergeBaseBranch,
   environmentId,
   metadataContent,
   fileTabs,
@@ -471,7 +471,7 @@ export function ThreadSecondaryPanel({
   } = useGitDiffPanelState({
     environmentId,
     isDiffPanelActive,
-    defaultMergeBaseBranch,
+    requestedMergeBaseBranch,
     onClearPendingGitDiffIntent,
     pendingGitDiffCommitSha,
     pendingGitDiffScrollPath,

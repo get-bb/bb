@@ -2538,7 +2538,6 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
           secondaryPanel={{
             activeTab: activeFixedSecondaryTab,
             canUseGitUi,
-            defaultMergeBaseBranch: requestedMergeBaseBranch,
             environmentId: thread.environmentId ?? undefined,
             workspaceRootPath: environment?.path,
             fileTabs,
@@ -2563,6 +2562,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
             onSelectionAddToChat: handleSelectionAddToChat,
             pendingGitDiffCommitSha,
             pendingGitDiffScrollPath,
+            requestedMergeBaseBranch,
             onPanelFocus: handleSecondaryPanelFocus,
             onPanelChange: handleSecondaryPanelChange,
             showGitDiffTab: canUseGitUi,

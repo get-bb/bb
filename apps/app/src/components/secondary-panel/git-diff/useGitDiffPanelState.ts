@@ -12,19 +12,19 @@ import {
 interface UseGitDiffPanelStateParams {
   environmentId?: string;
   isDiffPanelActive: boolean;
-  defaultMergeBaseBranch?: string;
+  requestedMergeBaseBranch?: string;
   onClearPendingGitDiffIntent?: () => void;
   pendingGitDiffCommitSha?: string | null;
   pendingGitDiffScrollPath?: string | null;
 }
 
 /**
- * Owns the diff tab's *target selection* — the merge-base branch and the chosen
- * selection (all changes / committed changes / uncommitted changes / a specific
- * commit) — and the derived {@link buildGitDiffTarget} that the TOC + patch
- * fetches key on. The diff body ({@link GitDiffTabContent}) and the per-file
- * cards do all diff fetching, parsing, virtualization, and collapse state
- * themselves; this hook holds none of that. It reacts to the info-tab /
+ * Owns the diff tab's *target selection* — the requested merge-base branch and
+ * the chosen selection (all changes / committed changes / uncommitted changes /
+ * a specific commit) — and the derived {@link buildGitDiffTarget} that the TOC +
+ * patch fetches key on. The diff body ({@link GitDiffTabContent}) and the
+ * per-file cards do all diff fetching, parsing, virtualization, and collapse
+ * state themselves; this hook holds none of that. It reacts to the info-tab /
  * prompt-banner intents (`pendingGitDiffCommitSha` to scope to a commit,
  * `pendingGitDiffScrollPath` to reset the diff to all-changes so the opened file
  * is in the slice) and resets a stale selection when the workspace's commit list
@@ -33,7 +33,7 @@ interface UseGitDiffPanelStateParams {
 export function useGitDiffPanelState({
   environmentId,
   isDiffPanelActive,
-  defaultMergeBaseBranch,
+  requestedMergeBaseBranch,
   onClearPendingGitDiffIntent,
   pendingGitDiffCommitSha,
   pendingGitDiffScrollPath,
@@ -42,16 +42,17 @@ export function useGitDiffPanelState({
     useState<GitDiffSelectionValue>(null);
 
   const gitDiffTarget = useMemo(
-    () => buildGitDiffTarget(selectedGitDiffSelection, defaultMergeBaseBranch),
-    [defaultMergeBaseBranch, selectedGitDiffSelection],
+    () =>
+      buildGitDiffTarget(selectedGitDiffSelection, requestedMergeBaseBranch),
+    [requestedMergeBaseBranch, selectedGitDiffSelection],
   );
   const { data: gitDiffWorkspaceStatus } = useEnvironmentWorkStatus(
     environmentId ?? "",
-    defaultMergeBaseBranch,
+    requestedMergeBaseBranch,
     {
       enabled:
         Boolean(environmentId) &&
-        Boolean(defaultMergeBaseBranch) &&
+        Boolean(requestedMergeBaseBranch) &&
         isDiffPanelActive,
     },
   );
