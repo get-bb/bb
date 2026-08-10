@@ -1039,12 +1039,13 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  // Version 90 adds the `plan` approval subject that carries a Claude plan to
-  // the user for review. An enrolled daemon on an older build cannot raise one,
-  // so it silently leaves Plan mode instead of asking, and it would reject the
-  // subject if the server sent one back.
-  it("uses protocol version 90 for plan-review approvals", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(90);
+  // Version 91 freezes thread instructions for the life of a provider
+  // session: the daemon no longer treats drifted `resumeContext.instructions`
+  // as a reason to resume the thread. A version-90 daemon still resumes on
+  // drift, which replaces the live CLI session and kills its running
+  // background tasks, so it must update rather than connect.
+  it("uses protocol version 91 for session-frozen instructions", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(91);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {

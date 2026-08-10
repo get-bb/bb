@@ -459,8 +459,10 @@ export interface PluginAgents {
    * or more than 256 tool/skill ids fails closed for this plugin only.
    *
    * Tools take effect when the provider session is next started or resumed;
-   * an already-running session is not hot-mutated. Instructions are resolved
-   * for the next turn. Skill changes follow BB's environment runtime policy:
+   * an already-running session is not hot-mutated. Instructions follow the
+   * same boundary: a live provider session keeps the instructions it was
+   * constructed with, and a changed selection applies when the session is
+   * next constructed. Skill changes follow BB's environment runtime policy:
    * a busy runtime keeps its current catalog until a safe relaunch. Side chats
    * are ordinary plugin-owned forks here — read `origin` to detect them — and
    * their returned tool, skill, and dynamic-instruction selections apply at the
