@@ -21,11 +21,12 @@ export interface NewTabPageProps extends NewTabPageFileSearchProps {
  * overlays that can be occluded by native browser/webview surfaces.
  */
 export function NewTabPage({
+  autoFocus,
   currentThreadId,
   environmentId,
   hostId,
-  focusRequest,
   initialQuery,
+  onAutoFocusHandled,
   onOpenBrowser,
   onSelect,
   onStartTerminal,
@@ -41,7 +42,7 @@ export function NewTabPage({
         environmentId={environmentId}
         hostId={hostId}
         currentThreadId={currentThreadId}
-        focusRequest={focusRequest}
+        autoFocus={autoFocus}
         idleActions={
           <NewTabActions
             onOpenBrowser={onOpenBrowser}
@@ -50,6 +51,7 @@ export function NewTabPage({
           />
         }
         initialQuery={initialQuery}
+        onAutoFocusHandled={onAutoFocusHandled}
         onSelect={onSelect}
         recentItemsThreadId={recentItemsThreadId}
         showFileSearch={showFileSearch}

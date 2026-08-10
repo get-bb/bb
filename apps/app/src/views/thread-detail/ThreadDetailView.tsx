@@ -576,7 +576,11 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   });
   const [hasRequestedMergeBaseOptions, setHasRequestedMergeBaseOptions] =
     useState(false);
-  const [newTabFocusRequest, setNewTabFocusRequest] = useState(0);
+  const [shouldAutoFocusNewTab, setShouldAutoFocusNewTab] = useState(false);
+  const handleNewTabAutoFocusHandled = useCallback(
+    () => setShouldAutoFocusNewTab(false),
+    [],
+  );
   const [browserAddressFocusRequest, setBrowserAddressFocusRequest] =
     useState<BrowserAddressFocusRequest | null>(null);
   const shouldLoadThreadStorageFiles = thread !== undefined;
@@ -1187,7 +1191,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   const handleOpenNewTab = useCallback(() => {
     openNewTab();
     openCompactDrawer();
-    setNewTabFocusRequest((current) => current + 1);
+    setShouldAutoFocusNewTab(true);
   }, [openCompactDrawer, openNewTab]);
   useAppCommandHandler("panel.newTab", () => {
     if (!isFocused) return false;
@@ -2426,10 +2430,11 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     />
   ) : isNewTabActive ? (
     <NewTabPage
+      autoFocus={shouldAutoFocusNewTab}
       projectId={projectId ?? undefined}
       environmentId={thread.environmentId ?? null}
       currentThreadId={thread.id}
-      focusRequest={newTabFocusRequest}
+      onAutoFocusHandled={handleNewTabAutoFocusHandled}
       onSelect={handleSelectFileSearchResult}
       onOpenBrowser={handleOpenBrowser}
       onStartTerminal={canCreateTerminal ? handleStartTerminal : undefined}

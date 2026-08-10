@@ -2112,7 +2112,11 @@ export function RootComposeView() {
     () => new Map(terminalSessions.map((session) => [session.id, session])),
     [terminalSessions],
   );
-  const [newTabFocusRequest, setNewTabFocusRequest] = useState(0);
+  const [shouldAutoFocusNewTab, setShouldAutoFocusNewTab] = useState(false);
+  const handleNewTabAutoFocusHandled = useCallback(
+    () => setShouldAutoFocusNewTab(false),
+    [],
+  );
   const [browserAddressFocusRequest, setBrowserAddressFocusRequest] =
     useState<BrowserAddressFocusRequest | null>(null);
   const { threadPanelActions: rootPanelThreadPanelActions } = usePluginSlots();
@@ -2463,7 +2467,7 @@ export function RootComposeView() {
   const handleOpenNewTab = useCallback(() => {
     openTab({ kind: "new-tab" });
     openCompactDrawer();
-    setNewTabFocusRequest((current) => current + 1);
+    setShouldAutoFocusNewTab(true);
   }, [openCompactDrawer, openTab]);
   useAppCommandHandler("panel.newTab", () => {
     if (!isFocusedPane) return false;
@@ -3006,11 +3010,12 @@ export function RootComposeView() {
       />
     ) : isNewTabActive ? (
       <NewTabPage
+        autoFocus={shouldAutoFocusNewTab}
         projectId={isProjectless ? undefined : projectId}
         environmentId={rootPanelEnvironmentId}
         hostId={rootProjectHostId}
         currentThreadId={rootPanelThreadId ?? ""}
-        focusRequest={newTabFocusRequest}
+        onAutoFocusHandled={handleNewTabAutoFocusHandled}
         onSelect={handleSelectFileSearchResult}
         recentItemsThreadId={ROOT_COMPOSE_FIXED_PANEL_STATE_ID}
         onOpenBrowser={rootPanelThreadId ? handleOpenBrowser : undefined}
