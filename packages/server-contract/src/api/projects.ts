@@ -381,6 +381,8 @@ export const skillScopeSchema = z.enum([
   "claude-project",
   "codex-user",
   "codex-project",
+  "cursor-user",
+  "cursor-project",
   "shared-user",
   "shared-project",
   "plugin",
@@ -388,7 +390,11 @@ export const skillScopeSchema = z.enum([
 export type SkillScope = z.infer<typeof skillScopeSchema>;
 
 /** Command-surface provider a skill is discovered under. */
-export const skillProviderSchema = z.enum(["claude-code", "codex"]);
+export const skillProviderSchema = z.enum([
+  "claude-code",
+  "codex",
+  "acp-cursor",
+]);
 export type SkillProvider = z.infer<typeof skillProviderSchema>;
 
 /** Opaque, deterministic identity issued by authoritative host discovery. */
@@ -448,6 +454,8 @@ export const editableSkillScopeSchema = z.enum([
   "claude-project",
   "codex-user",
   "codex-project",
+  "cursor-user",
+  "cursor-project",
 ]);
 export type EditableSkillScope = z.infer<typeof editableSkillScopeSchema>;
 

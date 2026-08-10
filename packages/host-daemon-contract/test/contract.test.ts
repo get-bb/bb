@@ -1051,10 +1051,10 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  // Version 93 lets the server send shared roots and host paths to the daemon.
-  // An older daemon rejects these fields, so it must update before discovery.
-  it("uses protocol version 93 for shared skill roots", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(93);
+  // Version 94 adds Cursor skill scopes to the delete command contract.
+  // An older daemon rejects these scopes, so it must update before deletion.
+  it("uses protocol version 94 for Cursor skill scopes", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(94);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {

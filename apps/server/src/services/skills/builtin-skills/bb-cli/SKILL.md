@@ -287,6 +287,9 @@ environment pull-request show <id>`. Diff commands require an explicit target
   host; for example `opencode`, `omp`, Grok Build's `grok` CLI, or Hermes'
   `hermes` CLI on PATH appears as provider `acp-opencode`, `acp-omp`,
   `acp-grok`, or `acp-hermes-agent`.
+- Cursor ACP threads discover project skills from `.cursor/skills`. This root
+  can link to `.agents/skills`. `bb skill list` shows linked Cursor skills under
+  `cursor-project` and keeps them read-only.
 - Custom ACP agents can be registered in the app data-dir `config.json` under
   `customAcpAgents`. The user supplies a slug `id`; bb exposes it as provider
   id `acp-<id>`. Custom config wins if it uses the same provider id as a known

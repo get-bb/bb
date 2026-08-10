@@ -512,6 +512,7 @@ async function scanSkillRootForSkills(
     return [];
   }
   const records: DiscoveredSkill[] = [];
+  const rootLinked = await isSymbolicLinkPath(root.rootPath);
   for (const entry of entries) {
     const skillDirPath = path.join(root.rootPath, entry.name);
     if (!(await isSkillDirectory({ entry, entryPath: skillDirPath, root }))) {
@@ -531,7 +532,9 @@ async function scanSkillRootForSkills(
         skillFilePath,
         entry.name,
         frontmatter,
-        entry.isSymbolicLink() || (await isSymbolicLinkPath(skillFilePath)),
+        rootLinked ||
+          entry.isSymbolicLink() ||
+          (await isSymbolicLinkPath(skillFilePath)),
       ),
     );
   }

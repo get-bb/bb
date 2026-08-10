@@ -1226,15 +1226,52 @@ describe("resolveCommandScanRoots", () => {
     expect(roots).toEqual([]);
   });
 
-  it("returns no provider-native roots for ACP providers", async () => {
+  it("returns the Cursor project skill root for acp-cursor", async () => {
     const fixture = await makeWorkspaceFixture();
     const roots = resolveCommandScanRoots({
       providerId: "acp-cursor",
-      cwd: null,
+      cwd: fixture.cwd,
       homeDir: fixture.homeDir,
       codexHome: fixture.codexHome,
     });
-    expect(roots).toEqual([]);
+    expect(roots).toEqual([
+      expect.objectContaining({
+        rootPath: path.join(fixture.cwd, ".cursor", "skills"),
+        origin: "project",
+        source: "skill",
+      }),
+    ]);
+  });
+
+  it("discovers Cursor skills through a .cursor/skills root symlink", async () => {
+    const fixture = await makeWorkspaceFixture();
+    await writeFileEnsuringDir(
+      path.join(fixture.cwd, ".agents", "skills", "impeccable", "SKILL.md"),
+      "---\nname: impeccable\ndescription: Improve interface quality\n---\n",
+    );
+    await mkdir(path.join(fixture.cwd, ".cursor"), { recursive: true });
+    await symlink(
+      path.join("..", ".agents", "skills"),
+      path.join(fixture.cwd, ".cursor", "skills"),
+      "dir",
+    );
+
+    const commands = await discoverProviderCommands({
+      roots: await resolveProviderCommandScanRoots({
+        providerId: "acp-cursor",
+        cwd: fixture.cwd,
+        homeDir: fixture.homeDir,
+        codexHome: fixture.codexHome,
+      }),
+    });
+
+    expect(byName(commands, "impeccable")).toEqual({
+      name: "impeccable",
+      source: "skill",
+      origin: "project",
+      description: "Improve interface quality",
+      argumentHint: null,
+    });
   });
 
   it("returns no roots for an unknown provider", async () => {

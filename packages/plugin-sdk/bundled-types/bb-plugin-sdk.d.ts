@@ -306,8 +306,8 @@ declare const providerPendingInteractionSchema: z$1.ZodObject<{
     id: z$1.ZodString;
     threadId: z$1.ZodString;
     status: z$1.ZodEnum<{
-        interrupted: "interrupted";
         pending: "pending";
+        interrupted: "interrupted";
         resolving: "resolving";
         resolved: "resolved";
     }>;
@@ -449,8 +449,8 @@ declare const pluginPendingInteractionSchema: z$1.ZodObject<{
     id: z$1.ZodString;
     threadId: z$1.ZodString;
     status: z$1.ZodEnum<{
-        interrupted: "interrupted";
         pending: "pending";
+        interrupted: "interrupted";
         resolving: "resolving";
         resolved: "resolved";
     }>;
@@ -697,8 +697,8 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
     providerThreadId: z$1.ZodString;
     objective: z$1.ZodString;
     status: z$1.ZodEnum<{
-        active: "active";
         paused: "paused";
+        active: "active";
         budgetLimited: "budgetLimited";
         complete: "complete";
     }>;
@@ -742,10 +742,10 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         command: z$1.ZodString;
         cwd: z$1.ZodString;
         status: z$1.ZodEnum<{
+            pending: "pending";
             completed: "completed";
             failed: "failed";
             interrupted: "interrupted";
-            pending: "pending";
         }>;
         approvalStatus: z$1.ZodNullable<z$1.ZodEnum<{
             waiting_for_approval: "waiting_for_approval";
@@ -789,10 +789,10 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
             diff: z$1.ZodOptional<z$1.ZodString>;
         }, z$1.core.$strip>>;
         status: z$1.ZodEnum<{
+            pending: "pending";
             completed: "completed";
             failed: "failed";
             interrupted: "interrupted";
-            pending: "pending";
         }>;
         approvalStatus: z$1.ZodNullable<z$1.ZodEnum<{
             waiting_for_approval: "waiting_for_approval";
@@ -829,10 +829,10 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
             completed: z$1.ZodString;
         }, z$1.core.$strip>>;
         status: z$1.ZodEnum<{
+            pending: "pending";
             completed: "completed";
             failed: "failed";
             interrupted: "interrupted";
-            pending: "pending";
         }>;
         result: z$1.ZodOptional<z$1.ZodUnknown>;
         error: z$1.ZodOptional<z$1.ZodString>;
@@ -879,17 +879,17 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         taskType: z$1.ZodString;
         description: z$1.ZodString;
         status: z$1.ZodEnum<{
+            pending: "pending";
             completed: "completed";
             failed: "failed";
             interrupted: "interrupted";
-            pending: "pending";
         }>;
         taskStatus: z$1.ZodEnum<{
-            completed: "completed";
-            failed: "failed";
-            paused: "paused";
             pending: "pending";
             running: "running";
+            paused: "paused";
+            completed: "completed";
+            failed: "failed";
             killed: "killed";
             stopped: "stopped";
         }>;
@@ -905,8 +905,8 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
                 index: z$1.ZodNumber;
                 label: z$1.ZodString;
                 state: z$1.ZodEnum<{
-                    failed: "failed";
                     running: "running";
+                    failed: "failed";
                     queued: "queued";
                     done: "done";
                     skipped: "skipped";
@@ -974,10 +974,10 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         command: z$1.ZodString;
         cwd: z$1.ZodString;
         status: z$1.ZodEnum<{
+            pending: "pending";
             completed: "completed";
             failed: "failed";
             interrupted: "interrupted";
-            pending: "pending";
         }>;
         approvalStatus: z$1.ZodNullable<z$1.ZodEnum<{
             waiting_for_approval: "waiting_for_approval";
@@ -1021,10 +1021,10 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
             diff: z$1.ZodOptional<z$1.ZodString>;
         }, z$1.core.$strip>>;
         status: z$1.ZodEnum<{
+            pending: "pending";
             completed: "completed";
             failed: "failed";
             interrupted: "interrupted";
-            pending: "pending";
         }>;
         approvalStatus: z$1.ZodNullable<z$1.ZodEnum<{
             waiting_for_approval: "waiting_for_approval";
@@ -1061,10 +1061,10 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
             completed: z$1.ZodString;
         }, z$1.core.$strip>>;
         status: z$1.ZodEnum<{
+            pending: "pending";
             completed: "completed";
             failed: "failed";
             interrupted: "interrupted";
-            pending: "pending";
         }>;
         result: z$1.ZodOptional<z$1.ZodUnknown>;
         error: z$1.ZodOptional<z$1.ZodString>;
@@ -1111,17 +1111,17 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         taskType: z$1.ZodString;
         description: z$1.ZodString;
         status: z$1.ZodEnum<{
+            pending: "pending";
             completed: "completed";
             failed: "failed";
             interrupted: "interrupted";
-            pending: "pending";
         }>;
         taskStatus: z$1.ZodEnum<{
-            completed: "completed";
-            failed: "failed";
-            paused: "paused";
             pending: "pending";
             running: "running";
+            paused: "paused";
+            completed: "completed";
+            failed: "failed";
             killed: "killed";
             stopped: "stopped";
         }>;
@@ -1137,8 +1137,8 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
                 index: z$1.ZodNumber;
                 label: z$1.ZodString;
                 state: z$1.ZodEnum<{
-                    failed: "failed";
                     running: "running";
+                    failed: "failed";
                     queued: "queued";
                     done: "done";
                     skipped: "skipped";
@@ -1240,17 +1240,17 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         taskType: z$1.ZodString;
         description: z$1.ZodString;
         status: z$1.ZodEnum<{
+            pending: "pending";
             completed: "completed";
             failed: "failed";
             interrupted: "interrupted";
-            pending: "pending";
         }>;
         taskStatus: z$1.ZodEnum<{
-            completed: "completed";
-            failed: "failed";
-            paused: "paused";
             pending: "pending";
             running: "running";
+            paused: "paused";
+            completed: "completed";
+            failed: "failed";
             killed: "killed";
             stopped: "stopped";
         }>;
@@ -1266,8 +1266,8 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
                 index: z$1.ZodNumber;
                 label: z$1.ZodString;
                 state: z$1.ZodEnum<{
-                    failed: "failed";
                     running: "running";
+                    failed: "failed";
                     queued: "queued";
                     done: "done";
                     skipped: "skipped";
@@ -1312,17 +1312,17 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         taskType: z$1.ZodString;
         description: z$1.ZodString;
         status: z$1.ZodEnum<{
+            pending: "pending";
             completed: "completed";
             failed: "failed";
             interrupted: "interrupted";
-            pending: "pending";
         }>;
         taskStatus: z$1.ZodEnum<{
-            completed: "completed";
-            failed: "failed";
-            paused: "paused";
             pending: "pending";
             running: "running";
+            paused: "paused";
+            completed: "completed";
+            failed: "failed";
             killed: "killed";
             stopped: "stopped";
         }>;
@@ -1338,8 +1338,8 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
                 index: z$1.ZodNumber;
                 label: z$1.ZodString;
                 state: z$1.ZodEnum<{
-                    failed: "failed";
                     running: "running";
+                    failed: "failed";
                     queued: "queued";
                     done: "done";
                     skipped: "skipped";
@@ -1411,10 +1411,10 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
     plan: z$1.ZodArray<z$1.ZodObject<{
         step: z$1.ZodString;
         status: z$1.ZodOptional<z$1.ZodEnum<{
+            pending: "pending";
             completed: "completed";
             failed: "failed";
             active: "active";
-            pending: "pending";
         }>>;
     }, z$1.core.$strip>>;
     explanation: z$1.ZodOptional<z$1.ZodString>;
@@ -1856,8 +1856,8 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
     providerId: z$1.ZodString;
     providerRequestId: z$1.ZodString;
     status: z$1.ZodEnum<{
-        interrupted: "interrupted";
         pending: "pending";
+        interrupted: "interrupted";
         resolving: "resolving";
         resolved: "resolved";
     }>;
@@ -1908,8 +1908,8 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
     providerId: z$1.ZodString;
     providerRequestId: z$1.ZodString;
     status: z$1.ZodEnum<{
-        interrupted: "interrupted";
         pending: "pending";
+        interrupted: "interrupted";
         resolving: "resolving";
         resolved: "resolved";
     }>;
@@ -2078,8 +2078,8 @@ declare const threadTimelinePendingTodosSchema: z$1.ZodObject<{
         id: z$1.ZodString;
         text: z$1.ZodString;
         status: z$1.ZodEnum<{
-            completed: "completed";
             pending: "pending";
+            completed: "completed";
             in_progress: "in_progress";
         }>;
     }, z$1.core.$strip>>;
@@ -2533,8 +2533,9 @@ declare const skillListResponseSchema: z$1.ZodObject<{
         name: z$1.ZodString;
         description: z$1.ZodNullable<z$1.ZodString>;
         provider: z$1.ZodNullable<z$1.ZodEnum<{
-            codex: "codex";
             "claude-code": "claude-code";
+            codex: "codex";
+            "acp-cursor": "acp-cursor";
         }>>;
         scope: z$1.ZodEnum<{
             plugin: "plugin";
@@ -2545,6 +2546,8 @@ declare const skillListResponseSchema: z$1.ZodObject<{
             "claude-project": "claude-project";
             "codex-user": "codex-user";
             "codex-project": "codex-project";
+            "cursor-user": "cursor-user";
+            "cursor-project": "cursor-project";
             "shared-user": "shared-user";
             "shared-project": "shared-project";
         }>;
@@ -2568,8 +2571,8 @@ type SkillFilesResponse = z$1.infer<typeof skillFilesResponseSchema>;
 declare const projectResponseSchema: z$1.ZodObject<{
     id: z$1.ZodString;
     kind: z$1.ZodEnum<{
-        personal: "personal";
         standard: "standard";
+        personal: "personal";
     }>;
     name: z$1.ZodString;
     gitRemoteUrl: z$1.ZodNullable<z$1.ZodString>;
@@ -2590,8 +2593,8 @@ type ProjectResponse = z$1.infer<typeof projectResponseSchema>;
 declare const projectWithThreadsResponseSchema: z$1.ZodObject<{
     id: z$1.ZodString;
     kind: z$1.ZodEnum<{
-        personal: "personal";
         standard: "standard";
+        personal: "personal";
     }>;
     name: z$1.ZodString;
     gitRemoteUrl: z$1.ZodNullable<z$1.ZodString>;
@@ -2691,8 +2694,8 @@ declare const projectWithThreadsResponseSchema: z$1.ZodObject<{
             ultra: "ultra";
         }>;
         permissionMode: z$1.ZodEnum<{
-            auto: "auto";
             "accept-edits": "accept-edits";
+            auto: "auto";
             full: "full";
         }>;
     }, z$1.core.$strip>>;
@@ -3111,8 +3114,8 @@ declare const environmentPullRequestResponseSchema: z$1.ZodDiscriminatedUnion<[z
             }>>;
         }, z$1.core.$strict>;
         attention: z$1.ZodEnum<{
-            blocked: "blocked";
             none: "none";
+            blocked: "blocked";
             merged: "merged";
             draft: "draft";
             closed: "closed";
@@ -4949,6 +4952,8 @@ declare const hostDaemonCommandRegistry: {
             "claude-project": "claude-project";
             "codex-user": "codex-user";
             "codex-project": "codex-project";
+            "cursor-user": "cursor-user";
+            "cursor-project": "cursor-project";
         }>;
         name: z$1.ZodString;
         cwd: z$1.ZodNullable<z$1.ZodString>;
@@ -6462,8 +6467,8 @@ declare const systemExecutionOptionsResponseSchema: z$1.ZodObject<{
             supportsUserQuestion: z$1.ZodBoolean;
             supportsFork: z$1.ZodBoolean;
             supportedPermissionModes: z$1.ZodArray<z$1.ZodEnum<{
-                auto: "auto";
                 "accept-edits": "accept-edits";
+                auto: "auto";
                 full: "full";
             }>>;
         }, z$1.core.$strip>;
@@ -6494,8 +6499,8 @@ declare const systemExecutionOptionsResponseSchema: z$1.ZodObject<{
         available: z$1.ZodBoolean;
     }, z$1.core.$strip>>;
     permissionCeiling: z$1.ZodEnum<{
-        auto: "auto";
         "accept-edits": "accept-edits";
+        auto: "auto";
         full: "full";
     }>;
     models: z$1.ZodArray<z$1.ZodObject<{
@@ -7015,8 +7020,8 @@ declare const systemCliSkillsStatusResponseSchema: z$1.ZodObject<{
         hostName: z$1.ZodString;
         status: z$1.ZodEnum<{
             unknown: "unknown";
-            installed: "installed";
             missing: "missing";
+            installed: "installed";
             outdated: "outdated";
         }>;
     }, z$1.core.$strip>>;
@@ -7938,10 +7943,10 @@ declare const createThreadRequestSchema: z$1.ZodObject<{
         ultra: "ultra";
     }>>;
     permissionMode: z$1.ZodOptional<z$1.ZodPipe<z$1.ZodUnion<readonly [z$1.ZodEnum<{
-        auto: "auto";
         "accept-edits": "accept-edits";
+        auto: "auto";
         full: "full";
-    }>, z$1.ZodLiteral<"workspace-write">]>, z$1.ZodTransform<"auto" | "accept-edits" | "full", "auto" | "accept-edits" | "full" | "workspace-write">>>;
+    }>, z$1.ZodLiteral<"workspace-write">]>, z$1.ZodTransform<"accept-edits" | "auto" | "full", "accept-edits" | "auto" | "full" | "workspace-write">>>;
     executionInputSources: z$1.ZodOptional<z$1.ZodObject<{
         providerId: z$1.ZodOptional<z$1.ZodEnum<{
             explicit: "explicit";
@@ -8182,10 +8187,10 @@ declare const forkThreadRequestSchema: z$1.ZodObject<{
     }, z$1.core.$strip>>>>;
     title: z$1.ZodOptional<z$1.ZodString>;
     permissionMode: z$1.ZodOptional<z$1.ZodPipe<z$1.ZodUnion<readonly [z$1.ZodEnum<{
-        auto: "auto";
         "accept-edits": "accept-edits";
+        auto: "auto";
         full: "full";
-    }>, z$1.ZodLiteral<"workspace-write">]>, z$1.ZodTransform<"auto" | "accept-edits" | "full", "auto" | "accept-edits" | "full" | "workspace-write">>>;
+    }>, z$1.ZodLiteral<"workspace-write">]>, z$1.ZodTransform<"accept-edits" | "auto" | "full", "accept-edits" | "auto" | "full" | "workspace-write">>>;
     visibility: z$1.ZodDefault<z$1.ZodEnum<{
         visible: "visible";
         hidden: "hidden";
@@ -8301,10 +8306,10 @@ declare const sendMessageRequestSchema: z$1.ZodObject<{
         ultra: "ultra";
     }>>;
     permissionMode: z$1.ZodOptional<z$1.ZodPipe<z$1.ZodUnion<readonly [z$1.ZodEnum<{
-        auto: "auto";
         "accept-edits": "accept-edits";
+        auto: "auto";
         full: "full";
-    }>, z$1.ZodLiteral<"workspace-write">]>, z$1.ZodTransform<"auto" | "accept-edits" | "full", "auto" | "accept-edits" | "full" | "workspace-write">>>;
+    }>, z$1.ZodLiteral<"workspace-write">]>, z$1.ZodTransform<"accept-edits" | "auto" | "full", "accept-edits" | "auto" | "full" | "workspace-write">>>;
     executionInputSources: z$1.ZodOptional<z$1.ZodObject<{
         model: z$1.ZodOptional<z$1.ZodEnum<{
             explicit: "explicit";
@@ -8528,10 +8533,10 @@ declare const createQueuedMessageRequestSchema: z$1.ZodObject<{
         ultra: "ultra";
     }>>;
     permissionMode: z$1.ZodOptional<z$1.ZodPipe<z$1.ZodUnion<readonly [z$1.ZodEnum<{
-        auto: "auto";
         "accept-edits": "accept-edits";
+        auto: "auto";
         full: "full";
-    }>, z$1.ZodLiteral<"workspace-write">]>, z$1.ZodTransform<"auto" | "accept-edits" | "full", "auto" | "accept-edits" | "full" | "workspace-write">>>;
+    }>, z$1.ZodLiteral<"workspace-write">]>, z$1.ZodTransform<"accept-edits" | "auto" | "full", "accept-edits" | "auto" | "full" | "workspace-write">>>;
     executionInputSources: z$1.ZodOptional<z$1.ZodObject<{
         model: z$1.ZodOptional<z$1.ZodEnum<{
             explicit: "explicit";
@@ -8753,8 +8758,8 @@ declare const sendQueuedMessageResponseSchema: z$1.ZodObject<{
             ultra: "ultra";
         }>;
         permissionMode: z$1.ZodEnum<{
-            auto: "auto";
             "accept-edits": "accept-edits";
+            auto: "auto";
             full: "full";
         }>;
         serviceTier: z$1.ZodEnum<{
@@ -9123,9 +9128,9 @@ declare const threadWithIncludesResponseSchema: z$1.ZodObject<{
         isGitRepo: z$1.ZodBoolean;
         isWorktree: z$1.ZodBoolean;
         workspaceProvisionType: z$1.ZodEnum<{
-            unmanaged: "unmanaged";
-            "managed-worktree": "managed-worktree";
             personal: "personal";
+            "managed-worktree": "managed-worktree";
+            unmanaged: "unmanaged";
         }>;
         branchName: z$1.ZodNullable<z$1.ZodString>;
         baseBranch: z$1.ZodNullable<z$1.ZodString>;
@@ -9153,8 +9158,8 @@ declare const threadWithIncludesResponseSchema: z$1.ZodObject<{
             connected: "connected";
         }>;
         maxPermissionMode: z$1.ZodEnum<{
-            auto: "auto";
             "accept-edits": "accept-edits";
+            auto: "auto";
             full: "full";
         }>;
         lastSeenAt: z$1.ZodNullable<z$1.ZodNumber>;
@@ -9429,8 +9434,8 @@ declare const threadQueuedMessageListResponseSchema: z$1.ZodArray<z$1.ZodObject<
         ultra: "ultra";
     }>;
     permissionMode: z$1.ZodEnum<{
-        auto: "auto";
         "accept-edits": "accept-edits";
+        auto: "auto";
         full: "full";
     }>;
     serviceTier: z$1.ZodEnum<{
@@ -9606,8 +9611,8 @@ declare const threadTimelineResponseSchema: z$1.ZodObject<{
     activePromptMode: z$1.ZodNullable<z$1.ZodObject<{
         mode: z$1.ZodLiteral<"plan">;
         providerId: z$1.ZodEnum<{
-            codex: "codex";
             "claude-code": "claude-code";
+            codex: "codex";
         }>;
         prompt: z$1.ZodString;
     }, z$1.core.$strict>>;
@@ -9798,8 +9803,8 @@ declare const threadTimelineResponseSchema: z$1.ZodObject<{
         originalModel: z$1.ZodString;
         fallbackModel: z$1.ZodString;
         reason: z$1.ZodEnum<{
-            refusal: "refusal";
             provider: "provider";
+            refusal: "refusal";
         }>;
         message: z$1.ZodString;
     }, z$1.core.$strip>>;

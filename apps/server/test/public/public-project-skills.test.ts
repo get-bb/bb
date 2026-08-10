@@ -879,6 +879,16 @@ describe("public project skills route", () => {
               "/home/.codex/skills/cx/SKILL.md",
             ),
           ],
+          "acp-cursor": [
+            {
+              ...discovered(
+                "impeccable",
+                "provider-project",
+                "/cwd/.cursor/skills/impeccable/SKILL.md",
+              ),
+              linked: true,
+            },
+          ],
         },
       });
 
@@ -933,12 +943,24 @@ describe("public project skills route", () => {
           manageable: true,
           registrySkillId: null,
         },
+        {
+          id: skillId("/cwd/.cursor/skills/impeccable/SKILL.md"),
+          name: "impeccable",
+          description: "impeccable skill",
+          provider: "acp-cursor",
+          scope: "cursor-project",
+          pluginId: null,
+          filePath: "/cwd/.cursor/skills/impeccable/SKILL.md",
+          manageable: false,
+          registrySkillId: null,
+        },
       ]);
       // Queried once per command-surface provider, with the env workspace cwd.
       const listed = stub.requests
         .map((request) => request.command)
         .filter((command) => command.type === "host.list_skills");
       expect(listed.map((command) => command.providerId).sort()).toEqual([
+        "acp-cursor",
         "claude-code",
         "codex",
       ]);

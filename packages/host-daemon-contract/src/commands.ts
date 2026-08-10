@@ -36,7 +36,7 @@ import {
   providerCliStatusResponseSchema,
 } from "./local.js";
 
-export const HOST_DAEMON_PROTOCOL_VERSION = 93 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 94 as const;
 
 export {
   BRANCH_LIST_LIMIT_MAX,
@@ -758,6 +758,8 @@ export const deletableSkillScopeSchema = z.enum([
   "claude-project",
   "codex-user",
   "codex-project",
+  "cursor-user",
+  "cursor-project",
 ]);
 export type DeletableSkillScope = z.infer<typeof deletableSkillScopeSchema>;
 

@@ -73,6 +73,20 @@ describe("mapSkillScope", () => {
       manageable: true,
     },
     {
+      provider: "acp-cursor",
+      rootKind: "provider-project",
+      scope: "cursor-project",
+      listedProvider: "acp-cursor",
+      manageable: true,
+    },
+    {
+      provider: "acp-cursor",
+      rootKind: "provider-user",
+      scope: "cursor-user",
+      listedProvider: "acp-cursor",
+      manageable: true,
+    },
+    {
       provider: "claude-code",
       rootKind: "plugin",
       scope: "plugin",
@@ -180,6 +194,28 @@ describe("assembleSkillList", () => {
       ["claude-user", "zed"],
       ["codex-user", "zed"],
     ]);
+  });
+
+  it("protects a Cursor skill discovered through a symlinked root", () => {
+    const cursor = {
+      ...discovered(
+        "impeccable",
+        "provider-project",
+        "/cwd/.cursor/skills/impeccable/SKILL.md",
+      ),
+      linked: true,
+    };
+
+    expect(
+      assembleSkillList([{ provider: "acp-cursor", skills: [cursor] }]),
+    ).toContainEqual(
+      expect.objectContaining({
+        name: "impeccable",
+        scope: "cursor-project",
+        provider: "acp-cursor",
+        manageable: false,
+      }),
+    );
   });
 
   it("keeps linked provider user skills visible but not manageable", () => {

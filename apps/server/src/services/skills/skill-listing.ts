@@ -34,6 +34,7 @@ const SERVER_SKILL_CONTENT_LIMIT_BYTES = 25 * 1024 * 1024;
 export const SKILL_COMMAND_SURFACE_PROVIDERS: readonly SkillProvider[] = [
   "claude-code",
   "codex",
+  "acp-cursor",
 ];
 
 /** Deterministic page grouping order; also keeps listing output test-stable. */
@@ -47,6 +48,8 @@ const SKILL_SCOPE_ORDER: readonly SkillScope[] = [
   "claude-user",
   "codex-project",
   "codex-user",
+  "cursor-project",
+  "cursor-user",
   "plugin",
 ];
 
@@ -92,18 +95,27 @@ export function mapSkillScope(
     case "bb-builtin":
       return { scope: "bb-builtin", provider: null, manageable: false };
     case "provider-project":
-      return provider === "claude-code"
-        ? { scope: "claude-project", provider, manageable: true }
-        : { scope: "codex-project", provider, manageable: true };
+      if (provider === "claude-code") {
+        return { scope: "claude-project", provider, manageable: true };
+      }
+      return provider === "codex"
+        ? { scope: "codex-project", provider, manageable: true }
+        : { scope: "cursor-project", provider, manageable: true };
     case "provider-user":
       if (isBundledProviderSkill(filePath)) {
-        return provider === "claude-code"
-          ? { scope: "claude-user", provider, manageable: false }
-          : { scope: "codex-user", provider, manageable: false };
+        if (provider === "claude-code") {
+          return { scope: "claude-user", provider, manageable: false };
+        }
+        return provider === "codex"
+          ? { scope: "codex-user", provider, manageable: false }
+          : { scope: "cursor-user", provider, manageable: false };
       }
-      return provider === "claude-code"
-        ? { scope: "claude-user", provider, manageable: true }
-        : { scope: "codex-user", provider, manageable: true };
+      if (provider === "claude-code") {
+        return { scope: "claude-user", provider, manageable: true };
+      }
+      return provider === "codex"
+        ? { scope: "codex-user", provider, manageable: true }
+        : { scope: "cursor-user", provider, manageable: true };
     case "shared-project":
       return { scope: "shared-project", provider: null, manageable: false };
     case "shared-user":

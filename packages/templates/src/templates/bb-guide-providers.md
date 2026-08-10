@@ -76,6 +76,10 @@ host. For example, opencode, omp, Grok Build's grok CLI, or Hermes' hermes CLI
 on PATH appears as provider acp-opencode, acp-omp, acp-grok, or
 acp-hermes-agent.
 
+Cursor ACP threads discover project skills from .cursor/skills. This root can
+be a symlink to another skill root such as .agents/skills. bb shows a skill
+through a symlinked root as read-only under the Cursor project scope.
+
 Custom ACP agents are configured in the app data-dir config.json under
 customAcpAgents. bb derives provider id acp-<id> from each slug id. Edit the JSON
 and run bb-app config refresh; there is no set/unset CLI surface for this list.

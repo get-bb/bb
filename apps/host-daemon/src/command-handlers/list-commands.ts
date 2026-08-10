@@ -119,6 +119,7 @@ const CODEX_PLUGIN_MANIFEST_FILE_NAME = "plugin.json";
 const CODEX_CONFIG_FILE_NAME = "config.toml";
 const AGENTS_DIR_NAME = ".agents";
 const CLAUDE_DIR_NAME = ".claude";
+const CURSOR_DIR_NAME = ".cursor";
 const CLAUDE_PLUGIN_DIR_NAME = ".claude-plugin";
 const CLAUDE_PLUGIN_MANIFEST_FILE_NAME = "plugin.json";
 const CLAUDE_PLUGIN_INSTALLED_FILE_NAME = "installed_plugins.json";
@@ -1210,6 +1211,20 @@ export function resolveCommandScanRoots(
       source: "skill",
       origin: "user",
     });
+    return roots;
+  }
+
+  if (resolution.providerId === "acp-cursor") {
+    if (resolution.cwd !== null) {
+      roots.push({
+        rootPath: path.join(resolution.cwd, CURSOR_DIR_NAME, "skills"),
+        shape: "skill",
+        namePrefix: "",
+        source: "skill",
+        origin: "project",
+        skillIdentitySeed: "acp-cursor:provider-project:.cursor",
+      });
+    }
     return roots;
   }
 

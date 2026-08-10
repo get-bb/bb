@@ -23,8 +23,7 @@ function toSharedSkill(
 ): { runtimeSource: SharedInjectedSkillSource; summary: SkillSummary } | null {
   if (
     (skill.rootKind !== "shared-user" && skill.rootKind !== "shared-project") ||
-    skill.description === null ||
-    skill.linked
+    skill.description === null
   ) {
     deps.logger.warn(
       {
@@ -33,9 +32,7 @@ function toSharedSkill(
         reason:
           skill.description === null
             ? "Shared skill description is missing"
-            : skill.linked
-              ? "Shared skill directory or SKILL.md is a symlink"
-              : `Unexpected shared skill root kind ${skill.rootKind}`,
+            : `Unexpected shared skill root kind ${skill.rootKind}`,
       },
       "Skipping invalid shared skill",
     );

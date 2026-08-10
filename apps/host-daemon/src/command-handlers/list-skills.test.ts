@@ -350,7 +350,44 @@ describe("resolveSkillScanRoots + discoverSkills (shared roots)", () => {
 
     expect(byName(skills, "linked-root")).toMatchObject({
       rootKind: "shared-project",
-      linked: false,
+      linked: true,
+    });
+  });
+});
+
+describe("resolveSkillScanRoots + discoverSkills (acp-cursor)", () => {
+  it("classifies a skill through a symlinked .cursor/skills root", async () => {
+    const fixture = await makeWorkspaceFixture();
+    await writeSkill(
+      path.join(fixture.cwd, ".agents", "skills", "impeccable", "SKILL.md"),
+      "impeccable",
+    );
+    await mkdir(path.join(fixture.cwd, ".cursor"), { recursive: true });
+    await symlink(
+      path.join("..", ".agents", "skills"),
+      path.join(fixture.cwd, ".cursor", "skills"),
+      "dir",
+    );
+
+    const skills = await discoverSkills({
+      roots: await resolveSkillScanRoots({
+        providerId: "acp-cursor",
+        cwd: fixture.cwd,
+        homeDir: fixture.homeDir,
+        codexHome: fixture.codexHome,
+      }),
+    });
+
+    expect(byName(skills, "impeccable")).toMatchObject({
+      rootKind: "provider-project",
+      linked: true,
+      filePath: path.join(
+        fixture.cwd,
+        ".cursor",
+        "skills",
+        "impeccable",
+        "SKILL.md",
+      ),
     });
   });
 });
