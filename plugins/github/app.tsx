@@ -799,13 +799,14 @@ function FilterBar({
 // The list: a column-headed table.
 // ---------------------------------------------------------------------------
 
-// Shared column widths so the header row lines up with item rows.
+// Shared column widths so the header row lines up with item rows. The table
+// switches modes against its own width, not the browser viewport.
 const COL = {
-  id: "shrink-0 @[52rem]:w-12",
-  assignee: "flex shrink-0 @[52rem]:w-28",
-  status: "shrink-0 @[52rem]:w-28",
-  updated: "hidden w-16 shrink-0 text-right @[52rem]:block",
-  actions: "ml-auto flex shrink-0 items-center justify-end gap-1 @[52rem]:ml-0 @[52rem]:w-32",
+  id: "shrink-0 @[48rem]:w-12",
+  assignee: "shrink-0 @[48rem]:w-20",
+  status: "shrink-0 @[48rem]:w-24",
+  updated: "hidden w-14 shrink-0 text-right @[48rem]:block",
+  actions: "ml-auto flex shrink-0 items-center justify-end gap-1 @[48rem]:ml-0 @[48rem]:w-24",
 } as const;
 
 function AssigneeCell({ assignees }: { assignees: string[] }) {
@@ -844,13 +845,13 @@ function StatusCell({ item }: { item: Item }) {
         <Button
           size="sm"
           variant="ghost"
-          className="size-7 gap-0 p-0 text-xs font-normal @[52rem]:h-7 @[52rem]:w-auto @[52rem]:gap-1.5 @[52rem]:px-2"
+          className="h-7 gap-1.5 px-2 text-xs font-normal"
           onClick={(event) => event.stopPropagation()}
           aria-label={`Change issue #${item.number} state, currently ${item.state.toLowerCase()}`}
           aria-busy={pending}
         >
           <StateDot kind="issue" state={item.state} />
-          <span className="hidden @[52rem]:inline">{pending ? "…" : item.state.toLowerCase()}</span>
+          <span>{pending ? "…" : item.state.toLowerCase()}</span>
           <ChevronDownIcon />
         </Button>
       </DropdownMenuTrigger>
@@ -944,30 +945,32 @@ function ItemRow({
   const busy = spawningKey === `${item.repo}#${item.number}`;
   return (
     <div
-      className="grid cursor-pointer grid-cols-1 gap-y-2 px-3 py-3 hover:bg-accent/50 @[52rem]:flex @[52rem]:items-center @[52rem]:gap-3 @[52rem]:py-2"
+      className="grid cursor-pointer grid-cols-1 gap-y-2 px-3 py-3 hover:bg-accent/50 @[48rem]:flex @[48rem]:items-center @[48rem]:gap-3 @[48rem]:py-2"
       onClick={onOpen}
     >
-      <span className="flex min-w-0 flex-col items-start gap-1.5 @[52rem]:order-2 @[52rem]:flex-1 @[52rem]:flex-row @[52rem]:items-center @[52rem]:gap-2">
-        <span className="min-w-0 flex-1 line-clamp-3 text-sm font-medium leading-snug text-foreground @[52rem]:line-clamp-1 @[52rem]:leading-normal">
+      <span className="flex min-w-0 flex-col items-start gap-1.5 @[48rem]:order-2 @[48rem]:flex-1 @[48rem]:flex-row @[48rem]:items-center @[48rem]:gap-2">
+        <span className="min-w-0 flex-1 line-clamp-3 text-sm font-medium leading-snug text-foreground @[48rem]:line-clamp-1 @[48rem]:leading-normal">
           {item.title}
         </span>
-        <LabelChips labels={item.labels} className="hidden shrink-0 xl:flex" />
+        <LabelChips labels={item.labels} className="hidden shrink-0 @[60rem]:flex" />
         <ThreadPills links={links} />
       </span>
-      <span className="flex min-w-0 items-center gap-2 @[52rem]:contents">
-        <span className={`${COL.id} font-mono text-xs text-muted-foreground @[52rem]:order-1`}>
+      <span className="flex min-w-0 items-center gap-2 @[48rem]:contents">
+        <span className={`${COL.id} font-mono text-xs text-muted-foreground @[48rem]:order-1`}>
           #{item.number}
         </span>
-        <span className={`${COL.assignee} text-xs text-muted-foreground @[52rem]:order-3`}>
+        <span
+          className={`${COL.assignee} ${item.assignees.length === 0 ? "hidden @[48rem]:flex" : "flex"} text-xs text-muted-foreground @[48rem]:order-3`}
+        >
           <AssigneeCell assignees={item.assignees} />
         </span>
-        <span className={`${COL.status} @[52rem]:order-4`}>
+        <span className={`${COL.status} @[48rem]:order-4`}>
           <StatusCell item={item} />
         </span>
-        <span className={`${COL.updated} text-xs text-muted-foreground @[52rem]:order-5`}>
+        <span className={`${COL.updated} text-xs text-muted-foreground @[48rem]:order-5`}>
           {relativeTime(item.updatedAt)}
         </span>
-        <span className={`${COL.actions} @[52rem]:order-6`}>
+        <span className={`${COL.actions} @[48rem]:order-6`}>
           <Button
             size="sm"
             variant="outline"
@@ -993,23 +996,23 @@ function TableSkeleton() {
       {[0, 1, 2, 3].map((row) => (
         <div
           key={row}
-          className="grid grid-cols-1 gap-y-3 px-3 py-3 @[52rem]:flex @[52rem]:items-center @[52rem]:gap-3"
+          className="grid grid-cols-1 gap-y-3 px-3 py-3 @[48rem]:flex @[48rem]:items-center @[48rem]:gap-3"
         >
-          <Skeleton className="h-3 w-4/5 @[52rem]:order-2 @[52rem]:flex-1" />
-          <span className="flex items-center gap-2 @[52rem]:contents">
-            <span className={`${COL.id} @[52rem]:order-1`}>
+          <Skeleton className="h-3 w-4/5 @[48rem]:order-2 @[48rem]:flex-1" />
+          <span className="flex items-center gap-2 @[48rem]:contents">
+            <span className={`${COL.id} @[48rem]:order-1`}>
               <Skeleton className="h-3 w-10" />
             </span>
-            <span className={`${COL.assignee} @[52rem]:order-3`}>
-              <Skeleton className="size-5 rounded-full @[52rem]:h-3 @[52rem]:w-24" />
+            <span className={`${COL.assignee} flex @[48rem]:order-3`}>
+              <Skeleton className="size-5 rounded-full @[48rem]:h-3 @[48rem]:w-16" />
             </span>
-            <span className={`${COL.status} @[52rem]:order-4`}>
-              <Skeleton className="h-3 w-24" />
+            <span className={`${COL.status} @[48rem]:order-4`}>
+              <Skeleton className="h-3 w-16" />
             </span>
-            <span className={`${COL.updated} @[52rem]:order-5`}>
+            <span className={`${COL.updated} @[48rem]:order-5`}>
               <Skeleton className="ml-auto h-3 w-12" />
             </span>
-            <span className={`${COL.actions} @[52rem]:order-6`}>
+            <span className={`${COL.actions} @[48rem]:order-6`}>
               <Skeleton className="h-7 w-20" />
             </span>
           </span>
@@ -1066,7 +1069,7 @@ function ItemsTable({
 
   return (
     <div className="@container overflow-hidden rounded-lg border border-border bg-card">
-      <div className="hidden items-center gap-3 border-b border-border bg-muted/50 px-3 py-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground @[52rem]:flex">
+      <div className="hidden items-center gap-3 border-b border-border bg-muted/50 px-3 py-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground @[48rem]:flex">
         <span className={COL.id}>ID</span>
         <span className="min-w-0 flex-1">Title</span>
         <span className={COL.assignee}>Assignee</span>
