@@ -6,6 +6,7 @@ import { getProjectionSummaryCount } from "./apply-turn-message-detail.js";
 import { getMessageStartedAt } from "./format-helpers.js";
 import {
   findLastTerminalTimelineMessage,
+  isSingletonContextCompaction,
   isTimelineUngroupableMessage,
 } from "./timeline-message-helpers.js";
 
@@ -53,15 +54,18 @@ function unwrapSingletonCompactionGroups(
   items: readonly CompletedTurnSummaryItem[],
 ): CompletedTurnSummaryItem[] {
   return items.map((item) => {
-    if (item.kind !== "summary" || item.sourceMessages.length !== 1) {
+    if (
+      item.kind !== "summary" ||
+      !isSingletonContextCompaction(item.sourceMessages)
+    ) {
       return item;
     }
 
     const onlyMessage = item.sourceMessages[0];
-    return onlyMessage?.kind === "operation" &&
-      onlyMessage.opType === "compaction"
-      ? { kind: "ungrouped-message", message: onlyMessage }
-      : item;
+    if (!onlyMessage) {
+      throw new Error("Singleton compaction group has no message");
+    }
+    return { kind: "ungrouped-message", message: onlyMessage };
   });
 }
 
