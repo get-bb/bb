@@ -97,6 +97,41 @@ describe("mobile sidebar text-selection arbitration", () => {
     expect(document.querySelector('[data-sidebar="panel"]')).not.toBeNull();
   });
 
+  it("defers the horizontal-scroll-region probe until horizontal intent", () => {
+    render(
+      <CompactViewportOverrideProvider isCompactViewport>
+        <SidebarProvider>
+          <Sidebar>Sidebar content</Sidebar>
+          <SidebarInset>
+            <div data-testid="scroller" style={{ overflowX: "auto" }}>
+              <div data-sidebar-swipe-selectable>Wide code block</div>
+            </div>
+          </SidebarInset>
+        </SidebarProvider>
+      </CompactViewportOverrideProvider>,
+    );
+    const scroller = screen.getByTestId("scroller");
+    let scrollWidthReads = 0;
+    Object.defineProperty(scroller, "scrollWidth", {
+      get: () => {
+        scrollWidthReads += 1;
+        return 500;
+      },
+    });
+    Object.defineProperty(scroller, "clientWidth", { get: () => 100 });
+    const prose = screen.getByText("Wide code block");
+
+    fireTouch(prose, "touchstart", createTouch(120, 160));
+
+    // The tap path must stay free of forced layout reads (#1269).
+    expect(scrollWidthReads).toBe(0);
+
+    fireTouch(window, "touchmove", createTouch(260, 164));
+
+    expect(scrollWidthReads).toBeGreaterThan(0);
+    expect(document.querySelector('[data-sidebar="panel"]')).toBeNull();
+  });
+
   it("cancels a pending prose swipe when native text selection begins", () => {
     let hasSelection = false;
     let selectionNode: Node | null = null;

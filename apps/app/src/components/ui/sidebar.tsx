@@ -52,6 +52,7 @@ type SidebarInsetSwipeSession = {
   velocityX: number;
   isDragging: boolean;
   selectionRoot: Element | null;
+  startTarget: Element | null;
 };
 
 const sidebarMobileWidthStyle: SidebarMobileWidthStyle = {
@@ -154,12 +155,14 @@ function createSidebarInsetSwipeSession({
   startX,
   startY,
   selectionRoot,
+  startTarget,
 }: {
   kind: "pointer" | "touch";
   id: number;
   startX: number;
   startY: number;
   selectionRoot: Element | null;
+  startTarget: Element | null;
 }): SidebarInsetSwipeSession {
   const nowMs = Date.now();
   return {
@@ -174,6 +177,7 @@ function createSidebarInsetSwipeSession({
     velocityX: 0,
     isDragging: false,
     selectionRoot,
+    startTarget,
   };
 }
 
@@ -205,6 +209,13 @@ function isHorizontallyScrollableElement(element: Element): boolean {
   return element.scrollWidth > element.clientWidth + 1;
 }
 
+/**
+ * Each ancestor probe pairs `getComputedStyle` with a `scrollWidth` read, so a
+ * call forces a synchronous style + layout pass of the document. Never call
+ * this from a per-tap listener (`pointerdown`/`touchstart`): on a large
+ * timeline that flush can block a mobile main thread for seconds (#1269).
+ * Callers must defer it until a gesture shows real horizontal intent.
+ */
 function isInsideHorizontalScrollRegion(target: Element): boolean {
   let element: Element | null = target;
   while (element !== null) {
@@ -267,14 +278,9 @@ function shouldIgnoreSidebarSwipeTarget(target: EventTarget | null): boolean {
   }
 
   const selectionRoot = getSidebarSwipeSelectionRoot(target);
-  if (
-    selectionRoot !== null &&
-    hasExpandedTextSelectionWithin(selectionRoot)
-  ) {
-    return true;
-  }
-
-  return isInsideHorizontalScrollRegion(target);
+  return (
+    selectionRoot !== null && hasExpandedTextSelectionWithin(selectionRoot)
+  );
 }
 
 function isSidebarInsetSwipeTarget(target: EventTarget | null): boolean {
@@ -880,6 +886,15 @@ const SidebarInset = React.forwardRef<
           return;
         }
 
+        if (
+          session.startTarget !== null &&
+          isInsideHorizontalScrollRegion(session.startTarget)
+        ) {
+          clearSidebarMobileDragStyles();
+          clearSwipeSession();
+          return;
+        }
+
         session.isDragging = true;
         clearMobileDragSettleTimeout();
         flushSync(() => {
@@ -1035,6 +1050,7 @@ const SidebarInset = React.forwardRef<
         startX: touch.clientX,
         startY: touch.clientY,
         selectionRoot: getSidebarSwipeSelectionRoot(event.target),
+        startTarget: event.target instanceof Element ? event.target : null,
       });
 
       const removeListeners = () => {
@@ -1080,6 +1096,7 @@ const SidebarInset = React.forwardRef<
         startX: event.clientX,
         startY: event.clientY,
         selectionRoot: getSidebarSwipeSelectionRoot(event.target),
+        startTarget: event.target instanceof Element ? event.target : null,
       });
 
       const removeListeners = () => {
@@ -1150,6 +1167,13 @@ const SidebarInset = React.forwardRef<
       if (
         absDeltaX < SIDEBAR_MOBILE_SWIPE_OPEN_INTENT_PX ||
         absDeltaX <= absDeltaY * 1.25
+      ) {
+        return;
+      }
+
+      if (
+        event.target instanceof Element &&
+        isInsideHorizontalScrollRegion(event.target)
       ) {
         return;
       }
