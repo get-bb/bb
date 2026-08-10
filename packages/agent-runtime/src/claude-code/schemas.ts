@@ -349,6 +349,7 @@ export const claudeAssistantMessageSchema = z
   .object({
     type: z.literal("assistant"),
     message: z.unknown(),
+    uuid: z.string().min(1).optional(),
   })
   .passthrough();
 export type ClaudeAssistantMessage = z.infer<

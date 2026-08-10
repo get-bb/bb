@@ -14,6 +14,7 @@ import { z } from "zod";
  */
 export const experimentKeys = [
   "claudeCodeMockCliTraffic",
+  "editMessages",
   "newOnboarding",
   "toolsHub",
 ] as const;

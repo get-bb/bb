@@ -74,18 +74,21 @@ const {
     mockCreateAgentSession: vi.fn(),
     mockCreateAgentSessionServices,
     mockInMemory: vi.fn((cwd?: string) => ({ kind: "in-memory", cwd })),
-    mockOpen: vi.fn((path: string) => ({ kind: "open", path })),
+    mockOpen: vi.fn(),
     mockResourceLoaders,
     mockGetPiModelRuntime: vi.fn(async () => mockModelRuntime),
   };
 });
 
 vi.mock("@earendil-works/pi-coding-agent", async (importOriginal) => {
-  // Keep the real SessionManager.forkFrom so the fork test exercises genuine
-  // session-file materialization on disk; only the agent-session and resume/open
-  // entry points are mocked away from the real SDK runtime.
+  // Keep the real SessionManager file operations so fork tests exercise
+  // genuine full-history and checkpointed materialization on disk.
   const actual =
     await importOriginal<typeof import("@earendil-works/pi-coding-agent")>();
+  mockOpen.mockImplementation(
+    (path: string, sessionDir?: string, cwdOverride?: string) =>
+      actual.SessionManager.open(path, sessionDir, cwdOverride),
+  );
   return {
     createAgentSessionFromServices: mockCreateAgentSession,
     createAgentSessionServices: mockCreateAgentSessionServices,
@@ -126,6 +129,7 @@ interface ControlledPiAgentSession {
   getContextUsage: ReturnType<typeof vi.fn>;
   isStreaming: boolean;
   prompt: ReturnType<typeof vi.fn>;
+  sessionManager: { getLeafId: ReturnType<typeof vi.fn> };
   setActiveToolsByName: ReturnType<typeof vi.fn>;
   subscribe: ReturnType<typeof vi.fn>;
 }
@@ -159,6 +163,7 @@ function createControlledPiAgentSession(): ControlledPiAgentSession {
     getContextUsage: vi.fn(() => undefined),
     isStreaming: false,
     prompt: vi.fn(async () => {}),
+    sessionManager: { getLeafId: vi.fn(() => "pi-entry-checkpoint") },
     setActiveToolsByName: vi.fn(),
     subscribe: vi.fn((listener: ControlledPiAgentSessionListener) => {
       listeners.push(listener);
@@ -237,7 +242,10 @@ describe("pi bridge", () => {
           method: "sdk/message",
           params: {
             threadId: "thread-extension-stdout",
-            message: createAgentEndEvent(),
+            message: {
+              ...createAgentEndEvent(),
+              providerCheckpointId: "pi-entry-checkpoint",
+            },
           },
         }),
       );
@@ -439,7 +447,7 @@ describe("pi bridge", () => {
     }
   });
 
-  it("forks the source session history into the new thread's deterministic file", async () => {
+  it("forks source history through a checkpoint into the deterministic file", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
     mockCreateAgentSession.mockImplementation(async () => ({
       session: createControlledPiAgentSession(),
@@ -477,6 +485,23 @@ describe("pi bridge", () => {
           content: [{ type: "text", text: "noted: 42" }],
         },
       }),
+      JSON.stringify({
+        type: "message",
+        id: "e3",
+        parentId: "e2",
+        timestamp: "2026-06-15T00:00:03.000Z",
+        message: { role: "user", content: "forget 42" },
+      }),
+      JSON.stringify({
+        type: "message",
+        id: "e4",
+        parentId: "e3",
+        timestamp: "2026-06-15T00:00:04.000Z",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "forgotten" }],
+        },
+      }),
     ].join("\n")}\n`;
     writeFileSync(sourceFile, sourceContent);
 
@@ -486,19 +511,26 @@ describe("pi bridge", () => {
     try {
       bridge.sendRequest(40, "thread/fork", {
         cwd: "/tmp/worktree",
+        providerCheckpointId: "e2",
         threadId: targetThreadId,
         sourceProviderThreadId: sourceThreadId,
       });
-      await expect(bridge.waitForResponse(40)).resolves.toMatchObject({
+      const response = await bridge.waitForResponse(40);
+      if (response.error !== undefined) {
+        throw new Error(JSON.stringify(response.error));
+      }
+      expect(response).toMatchObject({
         id: 40,
         result: { threadId: targetThreadId },
       });
 
       // The forked session is materialized at the NEW thread's deterministic
-      // path, carrying the source history plus parentSession lineage.
+      // path, carrying the retained source path plus parentSession lineage.
       const forkedContent = readFileSync(targetFile, "utf8");
       expect(forkedContent).toContain("remember 42");
       expect(forkedContent).toContain("noted: 42");
+      expect(forkedContent).not.toContain("forget 42");
+      expect(forkedContent).not.toContain("forgotten");
       expect(forkedContent).toContain(`"parentSession":"${sourceFile}"`);
       // Source file is left untouched by the fork.
       expect(readFileSync(sourceFile, "utf8")).toBe(sourceContent);
@@ -790,6 +822,17 @@ describe("pi bridge", () => {
       await bridge.flushWork();
       await bridge.flushWork();
 
+      expect(bridge.messages).toContainEqual(
+        expect.objectContaining({
+          method: "sdk/message",
+          params: expect.objectContaining({
+            message: expect.objectContaining({
+              providerCheckpointId: "pi-entry-checkpoint",
+              type: "agent_end",
+            }),
+          }),
+        }),
+      );
       expect(bridge.messages).toContainEqual(
         expect.objectContaining({
           method: "error",

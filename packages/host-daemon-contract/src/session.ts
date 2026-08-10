@@ -440,6 +440,7 @@ const hostDaemonOnlineRpcResponseSuccessSchema = z.discriminatedUnion(
     onlineRpcResponseSuccessSchemaFor("workspace.diffFiles"),
     onlineRpcResponseSuccessSchemaFor("workspace.diffPatch"),
     onlineRpcResponseSuccessSchemaFor("workspace.pull_request"),
+    commandRpcResponseSuccessSchemaFor("thread.rewind.prepare"),
     commandRpcResponseSuccessSchemaFor("thread.start"),
     commandRpcResponseSuccessSchemaFor("turn.submit"),
     commandRpcResponseSuccessSchemaFor("thread.stop"),

@@ -1790,6 +1790,20 @@ describe("buildThreadTimelineFromEvents", () => {
     expect(collectSystemRows(rows)).toEqual([]);
   });
 
+  it("suppresses the internal message-edit commit marker", () => {
+    const rows = buildTimelineRows([
+      systemOperationEvent({
+        message: "Message edited",
+        operation: "edit_message",
+        operationId: "edit-op-test",
+        seq: 1,
+        status: "completed",
+      }),
+    ]);
+
+    expect(collectSystemRows(rows)).toEqual([]);
+  });
+
   it.each([
     {
       expectedRowStatus: "pending",

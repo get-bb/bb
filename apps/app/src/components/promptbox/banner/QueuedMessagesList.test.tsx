@@ -387,6 +387,9 @@ describe("QueuedMessagesList", () => {
       ),
     ).toBe(true);
     const editingLabel = getByText(/Editing queued message/u);
+    expect(
+      editingLabel.closest('[data-inline-message-editor-frame="embedded"]'),
+    ).not.toBeNull();
     const dismissButton = getByRole("button", {
       name: "Stop editing queued message",
     });

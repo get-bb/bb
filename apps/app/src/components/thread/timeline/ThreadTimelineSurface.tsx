@@ -20,6 +20,8 @@ import type { TimelineTitleActionResolver } from "./TimelineTitleView.js";
 import { TimelineWorkingIndicator } from "./TimelineWorkingIndicator.js";
 import type {
   ThreadTimelineForkMessageHandler,
+  ThreadTimelineEditMessageHandler,
+  ThreadTimelineInlineMessageEditor,
   ThreadTimelineAddToChatHandler,
   ThreadTimelineSendToMainMessageHandler,
   ThreadTimelineConsumerMessageAction,
@@ -46,6 +48,8 @@ export interface ThreadTimelineSurfaceProps {
   loadingContent?: ReactNode;
   leadingContent?: ReactNode;
   onForkMessage?: ThreadTimelineForkMessageHandler;
+  onEditMessage?: ThreadTimelineEditMessageHandler;
+  inlineMessageEditor?: ThreadTimelineInlineMessageEditor;
   onMessageAddToChat?: ThreadTimelineAddToChatHandler;
   onSendToMainMessage?: ThreadTimelineSendToMainMessageHandler;
   onSelectionAddToChat?: ThreadTimelineAddToChatHandler;
@@ -147,6 +151,8 @@ export function ThreadTimelineSurface({
   loadingContent,
   leadingContent,
   onForkMessage,
+  onEditMessage,
+  inlineMessageEditor,
   onMessageAddToChat,
   onSendToMainMessage,
   onSelectionAddToChat,
@@ -218,6 +224,8 @@ export function ThreadTimelineSurface({
           canSpawnChild={canSpawnChild}
           threadChildOrigin={threadChildOrigin}
           onForkMessage={onForkMessage}
+          onEditMessage={onEditMessage}
+          inlineMessageEditor={inlineMessageEditor}
           onMessageAddToChat={onMessageAddToChat}
           onSendToMainMessage={onSendToMainMessage}
           onSelectionAddToChat={onSelectionAddToChat}

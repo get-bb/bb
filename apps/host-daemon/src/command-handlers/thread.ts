@@ -43,7 +43,7 @@ interface StagedThreadCommandInput {
 }
 
 interface RequireSupportedProviderCliArgs {
-  command: CommandOf<"thread.start">;
+  command: CommandOf<"thread.start"> | CommandOf<"thread.rewind.prepare">;
   options: CommandDispatchOptions;
 }
 
@@ -235,6 +235,38 @@ export async function startThread(
     await cleanupAfterPostStagingFailure(staged.cleanup);
     throw error;
   }
+}
+
+export async function prepareThreadRewind(
+  command: CommandOf<"thread.rewind.prepare">,
+  options: CommandDispatchOptions,
+): Promise<HostDaemonCommandResult<"thread.rewind.prepare">> {
+  await requireSupportedProviderCliForThreadStart({ command, options });
+  const entry = await requireResolvedWorkspaceForCommand({
+    dataDir: options.dataDir,
+    environmentId: command.environmentId,
+    injectedSkillSources: command.injectedSkillSources,
+    runtimeManager: options.runtimeManager,
+    targetThreadId: command.threadId,
+    workspaceContext: command.workspaceContext,
+  });
+  return entry.runtime.prepareThreadRewind({
+    ...(command.acpLaunchSpec !== undefined
+      ? { acpLaunchSpec: command.acpLaunchSpec }
+      : {}),
+    environmentId: command.environmentId,
+    threadId: command.threadId,
+    operationId: command.operationId,
+    projectId: command.projectId,
+    providerId: command.providerId,
+    sourceProviderThreadId: command.sourceProviderThreadId,
+    retainThroughProviderCheckpoint: command.retainThroughProviderCheckpoint,
+    options: command.options,
+    instructions: command.instructions,
+    dynamicTools: command.dynamicTools,
+    disallowedTools: command.disallowedTools,
+    instructionMode: command.instructionMode,
+  });
 }
 
 export async function ensureThreadRuntime(

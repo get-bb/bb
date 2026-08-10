@@ -4,6 +4,9 @@ import { useAtom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import {
   isRunningThreadRuntimeDisplayStatus,
+  type ThreadTimelineEditMessageHandler,
+  type ThreadTimelineEditMessageTarget,
+  type ThreadTimelineInlineMessageEditor,
   type ThreadTimelineForkMessageHandler,
   type ThreadTimelineSendToMainMessageHandler,
   type ThreadTimelineLinkHandler,
@@ -37,6 +40,7 @@ import {
 } from "../../hooks/mutations/thread-state-mutations";
 import {
   useCreateThreadQueuedMessage,
+  useEditThreadMessage,
   useSendThreadMessage,
 } from "../../hooks/mutations/thread-runtime-mutations";
 import { useUpdateEnvironment } from "../../hooks/mutations/environment-mutations";
@@ -53,6 +57,7 @@ import {
   useThread,
   useThreadDetailBootstrap,
   useThreadPendingInteractions,
+  useThreadQueuedMessages,
   type ProjectThreadSubsetFilters,
 } from "../../hooks/queries/thread-queries";
 import { isTransientReadError } from "@/hooks/queries/query-helpers";
@@ -97,7 +102,12 @@ import {
 } from "@/components/workspace/workspace-change-summary";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
-import type { PromptDraftAttachment } from "@/lib/prompt-draft";
+import {
+  arePromptDraftStatesEqual,
+  promptInputToDraft,
+  type PromptDraftAttachment,
+  type PromptDraftState,
+} from "@/lib/prompt-draft";
 import { createLocalStorageEnumStorage } from "@/lib/browser-storage";
 import {
   getProjectComposeRoutePath,
@@ -107,7 +117,11 @@ import {
 } from "@/lib/route-paths";
 import { useGitDiffPanel } from "@/components/secondary-panel/git-diff/useGitDiffPanel";
 import { ThreadDetailHeader } from "./ThreadDetailHeader";
-import { ThreadDetailPromptArea } from "./ThreadDetailPromptArea";
+import {
+  ThreadDetailPromptArea,
+  type ThreadDetailSentMessageEdit,
+} from "./ThreadDetailPromptArea";
+import { canStartSentMessageEdit } from "./sentMessageEdit";
 import {
   type ContextBannerMergeBaseConfig,
   isThreadDisplayStatusBannerActive,
@@ -266,6 +280,14 @@ type OpenInEditorHandler = NonNullable<
   ReturnType<typeof buildOpenInEditorHandler>
 >;
 type OpenFilePreviewHandler = (relativePath: string) => void;
+
+interface SentMessageEditSession {
+  draft: PromptDraftState;
+  originalDraft: PromptDraftState;
+  operationId: string;
+  target: ThreadTimelineEditMessageTarget;
+  threadId: string;
+}
 
 function getPullRequestMergeLoadingTitle(
   method: PullRequestMergeMethod,
@@ -572,6 +594,10 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     (pendingInteractionsQuery.isLoading || pendingInteractionsQuery.isFetching);
   const hasPendingInteraction =
     getLatestPendingInteraction(pendingInteractions) !== null;
+  const { data: queuedMessagesForEditEligibility = [] } =
+    useThreadQueuedMessages(thread?.id ?? "", {
+      enabled: threadQueryState.status === "ready" && Boolean(thread?.id),
+    });
   const unreadDividerState = useThreadUnreadDividerState({
     routeThreadId: threadId,
     thread,
@@ -793,6 +819,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     threadId: threadId ?? "",
   });
   const sendMessage = useSendThreadMessage();
+  const editMessage = useEditThreadMessage();
   const createQueuedMessage = useCreateThreadQueuedMessage();
   const requestEnvironmentAction = useRequestEnvironmentAction();
   const [pullRequestMergeMethod, setPullRequestMergeMethod] = useAtom(
@@ -911,6 +938,188 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   // Desktop quote actions keep their existing focus handoff. Mobile web does
   // not focus inputs programmatically; see PromptBoxInternal.
   const [composerFocusRequestNonce, setComposerFocusRequestNonce] = useState(0);
+  const [sentMessageEditSession, setSentMessageEditSession] =
+    useState<SentMessageEditSession | null>(null);
+  const [sentMessageEditHostElement, setSentMessageEditHostElement] =
+    useState<HTMLDivElement | null>(null);
+  const activeSentMessageEditSession =
+    sentMessageEditSession?.threadId === thread?.id
+      ? sentMessageEditSession
+      : null;
+  const canEditSentMessages =
+    thread !== undefined &&
+    canStartSentMessageEdit({
+      activeBackgroundCommandCount: activeBackgroundCommands.length,
+      activeWorkflowCount: activeWorkflows.length,
+      archivedAt: thread.archivedAt,
+      deletedAt: thread.deletedAt,
+      hasPendingInteraction,
+      isExperimentEnabled:
+        systemConfigQuery.data?.experiments.editMessages ?? false,
+      isEditSessionActive: activeSentMessageEditSession !== null,
+      isMutationPending:
+        sendMessage.isPending ||
+        createQueuedMessage.isPending ||
+        editMessage.isPending,
+      isTimelinePending: timelineLoading && timelineRows.length === 0,
+      queuedMessageCount: queuedMessagesForEditEligibility.length,
+      providerId: thread.providerId,
+      runtimeDisplayStatus: thread.runtime.displayStatus,
+    });
+  const enterSentMessageEdit = useCallback(
+    (target: ThreadTimelineEditMessageTarget) => {
+      if (!thread || !canEditSentMessages) {
+        return;
+      }
+      const editDraft = promptInputToDraft(target.input);
+      setSentMessageEditHostElement(null);
+      setSentMessageEditSession({
+        draft: editDraft,
+        originalDraft: editDraft,
+        operationId: crypto.randomUUID(),
+        target,
+        threadId: thread.id,
+      });
+    },
+    [canEditSentMessages, thread],
+  );
+  const handleEditSentMessage = useCallback<ThreadTimelineEditMessageHandler>(
+    (target) => {
+      if (!canEditSentMessages) {
+        return;
+      }
+      enterSentMessageEdit(target);
+    },
+    [canEditSentMessages, enterSentMessageEdit],
+  );
+  const activeSentMessageEditOperationId =
+    activeSentMessageEditSession?.operationId ?? null;
+  const updateSentMessageEditDraft = useCallback(
+    (update: (current: PromptDraftState) => PromptDraftState) => {
+      setSentMessageEditSession((current) =>
+        current?.operationId === activeSentMessageEditOperationId
+          ? { ...current, draft: update(current.draft) }
+          : current,
+      );
+    },
+    [activeSentMessageEditOperationId],
+  );
+  const finishCancelSentMessageEdit = useCallback((operationId: string) => {
+    setSentMessageEditSession((current) =>
+      current?.operationId === operationId ? null : current,
+    );
+  }, []);
+  const cancelSentMessageEdit = useCallback(() => {
+    const current = activeSentMessageEditSession;
+    if (!current) {
+      return;
+    }
+    if (arePromptDraftStatesEqual(current.draft, current.originalDraft)) {
+      finishCancelSentMessageEdit(current.operationId);
+      return;
+    }
+    appToast.warning("Discard this message edit?", {
+      description:
+        "The sent message and conversation are still unchanged. Your follow-up draft is unaffected.",
+      action: {
+        label: "Discard edit",
+        onClick: () => finishCancelSentMessageEdit(current.operationId),
+      },
+      cancel: { label: "Keep editing", onClick: () => {} },
+    });
+  }, [activeSentMessageEditSession, finishCancelSentMessageEdit]);
+  const submitSentMessageEdit = useCallback<
+    ThreadDetailSentMessageEdit["onSubmit"]
+  >(
+    (target) => {
+      if (
+        !activeSentMessageEditSession ||
+        target.expectedRequestSequence !==
+          activeSentMessageEditSession.target.expectedRequestSequence
+      ) {
+        return;
+      }
+      const session = activeSentMessageEditSession;
+      const execution = target.execution;
+      void editMessage
+        .mutateAsync({
+          id: session.threadId,
+          operationId: session.operationId,
+          expectedRequestSequence: target.expectedRequestSequence,
+          input: target.input,
+          ...(execution
+            ? {
+                model: execution.model,
+                permissionMode: execution.permissionMode,
+                reasoningLevel: execution.reasoningLevel,
+                executionInputSources: execution.executionInputSources,
+                ...(execution.supportsServiceTier && execution.serviceTier
+                  ? { serviceTier: execution.serviceTier }
+                  : {}),
+              }
+            : {}),
+        })
+        .then(() => {
+          setSentMessageEditSession((current) =>
+            current?.operationId === session.operationId ? null : current,
+          );
+        })
+        .catch((error) => {
+          appToast.error(
+            getMutationErrorMessage({
+              error,
+              fallbackMessage: "Failed to edit the message",
+              lifecycleOperation: "edit_message",
+            }),
+          );
+        });
+    },
+    [activeSentMessageEditSession, editMessage],
+  );
+  const handleSentMessageEditHostElementChange = useCallback(
+    (element: HTMLDivElement | null) => {
+      setSentMessageEditHostElement(element);
+    },
+    [],
+  );
+  const sentMessageEditRequestSequence =
+    activeSentMessageEditSession?.target.expectedRequestSequence ?? null;
+  const inlineMessageEditor = useMemo<
+    ThreadTimelineInlineMessageEditor | undefined
+  >(
+    () =>
+      sentMessageEditRequestSequence !== null
+        ? {
+            expectedRequestSequence: sentMessageEditRequestSequence,
+            onHostElementChange: handleSentMessageEditHostElementChange,
+          }
+        : undefined,
+    [handleSentMessageEditHostElementChange, sentMessageEditRequestSequence],
+  );
+  const sentMessageEdit = useMemo<ThreadDetailSentMessageEdit | undefined>(
+    () =>
+      activeSentMessageEditSession
+        ? {
+            draft: activeSentMessageEditSession.draft,
+            expectedRequestSequence:
+              activeSentMessageEditSession.target.expectedRequestSequence,
+            hostElement: sentMessageEditHostElement,
+            isSubmitting: editMessage.isPending,
+            operationId: activeSentMessageEditSession.operationId,
+            onCancel: cancelSentMessageEdit,
+            onSubmit: submitSentMessageEdit,
+            updateDraft: updateSentMessageEditDraft,
+          }
+        : undefined,
+    [
+      activeSentMessageEditSession,
+      cancelSentMessageEdit,
+      editMessage.isPending,
+      sentMessageEditHostElement,
+      submitSentMessageEdit,
+      updateSentMessageEditDraft,
+    ],
+  );
   // Plugin useComposer() writes ride the focus bus (they can't reach this
   // view's local nonce); same storage key = same draft the composer shows.
   useEffect(
@@ -2397,6 +2606,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       }
       composerFocusRequestNonce={composerFocusRequestNonce}
       sendMessage={sendMessage}
+      sentMessageEdit={sentMessageEdit}
       steerActiveThreadOnEnter={
         systemConfigQuery.data?.generalSettings.steerActiveThreadOnEnter ??
         defaultAppSettings.steerActiveThreadOnEnter
@@ -2595,6 +2805,10 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
             isThreadTimelinePending,
             timelineError: Boolean(timelineError),
             onForkMessage: isForkAvailable ? handleForkMessage : undefined,
+            onEditMessage: canEditSentMessages
+              ? handleEditSentMessage
+              : undefined,
+            inlineMessageEditor,
             onMessageAddToChat: handleSelectionAddToChat,
             onSendToMainMessage: handleSendToMainMessage,
             onSelectionAddToChat: handleSelectionAddToChat,

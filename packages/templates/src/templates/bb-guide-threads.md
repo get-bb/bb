@@ -77,6 +77,18 @@ Forking:
   create a fresh managed worktree (or personal workspace for personal threads);
   reuse attaches the source environment. Omit --prompt to create an idle fork.
 
+Editing a sent message (requires the `editMessages` experiment):
+
+  bb thread edit-message <id> --message "Replacement text"
+    --self                              Target the current thread (BB_THREAD_ID)
+    --expected-request-sequence <seq>   Select the message and reject a stale target
+
+  Without --expected-request-sequence, the latest eligible message is edited.
+  Codex, Claude Code, and Pi threads are supported. The original conversation
+  remains unchanged until the provider prepares the replacement history.
+  Submitting replaces that turn and every later turn while retaining workspace
+  changes.
+
 Listing:
 
   bb thread list                           List threads

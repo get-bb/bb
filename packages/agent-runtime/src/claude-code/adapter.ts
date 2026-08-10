@@ -875,6 +875,7 @@ export function createClaudeCodeProviderAdapter(
         reasoningOutputTokens: 0,
       },
       latestRequestContextTokens: undefined,
+      latestProviderCheckpointId: undefined,
       lastModelFallback: undefined,
       openAssistantMessageIdsByScope: new Map(),
       openCompaction: undefined,
@@ -906,6 +907,7 @@ export function createClaudeCodeProviderAdapter(
     const hadOpenTurn = args.state.currentTurnId !== undefined;
     if (!hadOpenTurn) {
       args.state.latestRequestContextTokens = undefined;
+      args.state.latestProviderCheckpointId = undefined;
     }
     const turnId = turnState.ensureTurnStarted(args);
     if (!hadOpenTurn) {
@@ -1331,6 +1333,12 @@ export function createClaudeCodeProviderAdapter(
               threadId: command.threadId,
               cwd: command.cwd,
               sourceProviderThreadId: command.sourceProviderThreadId,
+              ...(command.sourceProviderCheckpointId !== undefined
+                ? {
+                    sourceProviderCheckpointId:
+                      command.sourceProviderCheckpointId,
+                  }
+                : {}),
               instructionMode: command.instructionMode,
               claudeCodeMockCliTraffic:
                 command.options.claudeCodeMockCliTraffic,

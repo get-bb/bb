@@ -1,0 +1,79 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
+import type { ThreadEvent } from "@bb/domain";
+import type { AdapterCommand } from "./provider-adapter.js";
+import { createAgentRuntimeWithAdapters } from "./runtime.js";
+import {
+  createRecordingAdapter,
+  fullRuntimeOptions,
+} from "./test/runtime-test-harness.js";
+import { fakeProviderScriptPath } from "./test/index.js";
+
+const temporaryDirectories: string[] = [];
+
+afterEach(() => {
+  for (const directory of temporaryDirectories.splice(0)) {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+describe("prepareThreadRewind", () => {
+  it("deduplicates concurrent operation retries and suppresses staging events", async () => {
+    const workspacePath = mkdtempSync(join(tmpdir(), "bb-runtime-rewind-"));
+    temporaryDirectories.push(workspacePath);
+    const commands: AdapterCommand[] = [];
+    const events: ThreadEvent[] = [];
+    const runtime = createAgentRuntimeWithAdapters({
+      workspacePath,
+      onEvent: (event) => events.push(event),
+      onToolCall: async () => ({
+        contentItems: [{ type: "inputText", text: "ok" }],
+        success: true,
+      }),
+      adapterFactory: () =>
+        createRecordingAdapter({
+          recordedCommands: commands,
+          scriptPath: fakeProviderScriptPath,
+        }),
+    });
+    const request = {
+      environmentId: "env-1",
+      threadId: "thread-1",
+      operationId: "edit-op-1",
+      projectId: "project-1",
+      providerId: "codex",
+      sourceProviderThreadId: "provider-source-1",
+      retainThroughProviderCheckpoint: "turn-before-edit",
+      options: fullRuntimeOptions,
+      instructionMode: "append" as const,
+    };
+
+    try {
+      const results = await Promise.all([
+        runtime.prepareThreadRewind(request),
+        runtime.prepareThreadRewind(request),
+      ]);
+
+      expect(results[0]).toEqual(results[1]);
+      expect(
+        commands.filter((command) => command.type === "thread/fork"),
+      ).toEqual([
+        expect.objectContaining({
+          sourceProviderCheckpointId: "turn-before-edit",
+          sourceProviderThreadId: "provider-source-1",
+        }),
+      ]);
+      expect(events).toEqual([]);
+      await expect(
+        runtime.prepareThreadRewind({
+          ...request,
+          retainThroughProviderCheckpoint: "different-turn",
+        }),
+      ).rejects.toThrow("reused with different input");
+    } finally {
+      await runtime.shutdown();
+    }
+  });
+});

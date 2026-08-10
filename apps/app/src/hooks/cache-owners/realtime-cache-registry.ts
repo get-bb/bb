@@ -269,6 +269,18 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
       dirtyThreadPromptHistoryQueriesForTurnRequests, // Follow-up recall is built from client turn requests.
     ],
   },
+  "history-rewritten": {
+    flush: "immediate",
+    dirty: [
+      dirtyThreadListQueries,
+      dirtyThreadDetailQueries,
+      dirtyThreadSearchQueries,
+      dirtyThreadTimelineRewriteQueries,
+      dirtyThreadQueueContentQueries,
+      dirtyProjectPromptHistoryQueries,
+      dirtyThreadPendingInteractionQueries,
+    ],
+  },
   "interactions-changed": {
     flush: "debounced",
     dirty: [
@@ -671,6 +683,12 @@ function dirtyThreadTimelineQueries({
     queryClient,
     queryKeys: getThreadTimelineWindowInvalidationQueryKeys({ threadId }),
   });
+}
+
+function dirtyThreadTimelineRewriteQueries({
+  threadId,
+}: ThreadRealtimeDirtyContext): QueryKey[] {
+  return getThreadTimelineInvalidationQueryKeys({ threadId });
 }
 
 function dirtyThreadQueueContentQueries({

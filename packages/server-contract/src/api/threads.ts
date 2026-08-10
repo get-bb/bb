@@ -272,6 +272,34 @@ export type ContinueAfterProviderRateLimitResponse = z.infer<
   typeof continueAfterProviderRateLimitResponseSchema
 >;
 
+export const editMessageRequestSchema = sendMessageRequestSchema
+  .omit({ mode: true, senderThreadId: true })
+  .extend({
+    operationId: z.string().min(1),
+    expectedRequestSequence: z.number().int().nonnegative(),
+  })
+  .strict();
+export type EditMessageRequest = z.infer<typeof editMessageRequestSchema>;
+
+export const editMessageResponseSchema = z
+  .object({
+    ok: z.literal(true),
+    operationId: z.string().min(1),
+    requestSequence: z.number().int().nonnegative(),
+  })
+  .strict();
+export type EditMessageResponse = z.infer<typeof editMessageResponseSchema>;
+
+export const latestMessageEditResponseSchema = z
+  .object({
+    expectedRequestSequence: z.number().int().nonnegative(),
+    input: z.array(promptInputSchema).min(1),
+  })
+  .strict();
+export type LatestMessageEditResponse = z.infer<
+  typeof latestMessageEditResponseSchema
+>;
+
 export const sendQueuedMessageModeSchema = z.enum(["auto", "steer"]);
 export type SendQueuedMessageMode = z.infer<typeof sendQueuedMessageModeSchema>;
 

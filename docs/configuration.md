@@ -585,6 +585,10 @@ The `toolsHub` experiment exposes Extensions for managing skills and plugins,
 while Automations stays in the Plugins section beside threads. The `toolsHub`
 gate only controls the UI. Installed skills, automation execution, plugin
 runtimes, CLI commands, and backend APIs keep working while it is off.
+The `editMessages` experiment enables replacing any completed user message in
+an idle Codex, Claude Code, or Pi thread. Opening the editor does not change
+history; submission atomically replaces that message and every later turn while
+keeping workspace changes.
 
 ## Thread Timeline Window
 

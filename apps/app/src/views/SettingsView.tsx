@@ -211,8 +211,10 @@ export interface ExperimentsSettingsSectionProps {
   /** True while the config query hasn't loaded or a toggle write is in flight. */
   disabled: boolean;
   claudeCodeMockCliTrafficEnabled: boolean;
+  editMessagesEnabled: boolean;
   newOnboardingEnabled: boolean;
   onClaudeCodeMockCliTrafficEnabledChange: (enabled: boolean) => void;
+  onEditMessagesEnabledChange: (enabled: boolean) => void;
   onNewOnboardingEnabledChange: (enabled: boolean) => void;
   onToolsHubEnabledChange: (enabled: boolean) => void;
   toolsHubEnabled: boolean;
@@ -953,13 +955,16 @@ export function ProviderSettingsSection({
 }
 
 const CLAUDE_CODE_MOCK_CLI_TRAFFIC_EXPERIMENT_LABEL = "Mock CLI Traffic";
+const EDIT_MESSAGES_EXPERIMENT_LABEL = "Edit messages";
 const NEW_ONBOARDING_EXPERIMENT_LABEL = "New onboarding";
 const EXTENSIONS_EXPERIMENT_LABEL = "Extensions";
 export function ExperimentsSettingsSection({
   claudeCodeMockCliTrafficEnabled,
   disabled,
+  editMessagesEnabled,
   newOnboardingEnabled,
   onClaudeCodeMockCliTrafficEnabledChange,
+  onEditMessagesEnabledChange,
   onNewOnboardingEnabledChange,
   onToolsHubEnabledChange,
   toolsHubEnabled,
@@ -980,6 +985,18 @@ export function ExperimentsSettingsSection({
             disabled={disabled}
             onCheckedChange={onClaudeCodeMockCliTrafficEnabledChange}
             aria-label={CLAUDE_CODE_MOCK_CLI_TRAFFIC_EXPERIMENT_LABEL}
+          />
+        </SettingsWithControl>
+
+        <SettingsWithControl
+          label={EDIT_MESSAGES_EXPERIMENT_LABEL}
+          description="Edit a sent message and replace the conversation from that point. Workspace changes are kept."
+        >
+          <Switch
+            checked={editMessagesEnabled}
+            disabled={disabled}
+            onCheckedChange={onEditMessagesEnabledChange}
+            aria-label={EDIT_MESSAGES_EXPERIMENT_LABEL}
           />
         </SettingsWithControl>
 
@@ -1161,6 +1178,13 @@ export function SettingsView() {
           updateExperimentsMutation.mutate({
             ...experiments,
             claudeCodeMockCliTraffic: enabled,
+          })
+        }
+        editMessagesEnabled={experiments.editMessages}
+        onEditMessagesEnabledChange={(enabled) =>
+          updateExperimentsMutation.mutate({
+            ...experiments,
+            editMessages: enabled,
           })
         }
         newOnboardingEnabled={experiments.newOnboarding}

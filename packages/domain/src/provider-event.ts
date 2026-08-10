@@ -409,6 +409,8 @@ const unscopedProviderEventSchema = z.discriminatedUnion("type", [
     providerThreadId: z.string().nullable(),
     status: threadEventTurnStatusSchema,
     error: z.object({ message: z.string() }).optional(),
+    /** Provider-native point through which a replacement branch should retain history. */
+    providerCheckpointId: z.string().min(1).optional(),
   }),
   z
     .object({

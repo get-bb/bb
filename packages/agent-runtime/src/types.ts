@@ -172,6 +172,26 @@ export interface StartThreadResult {
   providerThreadId: string;
 }
 
+export interface PrepareThreadRewindArgs {
+  acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+  environmentId: string;
+  threadId: string;
+  operationId: string;
+  projectId: string;
+  providerId: string;
+  sourceProviderThreadId: string;
+  retainThroughProviderCheckpoint: string;
+  options: AgentRuntimeExecutionOptions;
+  instructions?: string;
+  dynamicTools?: DynamicTool[];
+  disallowedTools?: readonly string[];
+  instructionMode?: InstructionMode;
+}
+
+export interface PrepareThreadRewindResult {
+  providerThreadId: string;
+}
+
 export interface ResumeThreadArgs {
   acpLaunchSpec?: HostDaemonAcpLaunchSpec;
   environmentId: string;
@@ -280,6 +300,10 @@ export interface AgentRuntime {
   ensureProvider(args: EnsureProviderArgs): Promise<void>;
 
   startThread(args: StartThreadArgs): Promise<StartThreadResult>;
+
+  prepareThreadRewind(
+    args: PrepareThreadRewindArgs,
+  ): Promise<PrepareThreadRewindResult>;
 
   resumeThread(args: ResumeThreadArgs): Promise<ResumeThreadResult>;
 

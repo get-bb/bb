@@ -11,6 +11,10 @@ export {
   type InlineQueuedMessageEditState,
 } from "./useInlineQueuedMessageEditing";
 export { useActiveComposerDraft } from "./useActiveComposerDraft";
-export { useComposerAttachmentUploads } from "./useComposerAttachmentUploads";
+export {
+  useComposerAttachmentUploads,
+  useDraftAttachmentUploads,
+  type DraftAttachmentUploadTarget,
+} from "./useComposerAttachmentUploads";
 export { useComposerTypeahead } from "./useComposerTypeahead";
 export { useQueuedMessageActions } from "./useQueuedMessageActions";

@@ -341,11 +341,18 @@ function ExperimentsStory() {
         state.experiments.claudeCodeMockCliTraffic
       }
       disabled={false}
+      editMessagesEnabled={state.experiments.editMessages}
       newOnboardingEnabled={state.experiments.newOnboarding}
       onClaudeCodeMockCliTrafficEnabledChange={(enabled) =>
         state.setExperiments((current) => ({
           ...current,
           claudeCodeMockCliTraffic: enabled,
+        }))
+      }
+      onEditMessagesEnabledChange={(enabled) =>
+        state.setExperiments((current) => ({
+          ...current,
+          editMessages: enabled,
         }))
       }
       onNewOnboardingEnabledChange={(enabled) =>

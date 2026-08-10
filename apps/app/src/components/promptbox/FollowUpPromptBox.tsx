@@ -168,6 +168,8 @@ export interface FollowUpComposerProps {
   onChangeMessage: (value: string, mentionRanges: PromptTextMention[]) => void;
   onModifierSubmit: () => void;
   onSubmit: () => void;
+  /** Accessible label and tooltip for the primary submit action. */
+  submitTitle?: string;
   compactPromptPlaceholder: string;
   promptPlaceholder: string;
   canModifierSubmit: boolean;
@@ -716,21 +718,23 @@ function FollowUpPromptBoxWithComposer({
             composer.isFollowUpSubmitting ||
             (steerOnPrimarySubmit && !composer.canModifierSubmit),
           onModifierSubmit,
-          title: canQueueFollowUp
-            ? steerOnPrimarySubmit
-              ? "Steer current run (Enter)"
-              : "Queue follow-up (Enter)"
-            : isStopping
-              ? "Stopping run..."
-              : isLoadingExecutionOptions
-                ? "Loading models..."
-                : isLoadingPendingInteractions
-                  ? "Checking pending interactions..."
-                  : isProvisioning
-                    ? "Provisioning..."
-                    : isUnavailable
-                      ? "Unavailable"
-                      : "Submit (Enter)",
+          title:
+            composer.submitTitle ??
+            (canQueueFollowUp
+              ? steerOnPrimarySubmit
+                ? "Steer current run (Enter)"
+                : "Queue follow-up (Enter)"
+              : isStopping
+                ? "Stopping run..."
+                : isLoadingExecutionOptions
+                  ? "Loading models..."
+                  : isLoadingPendingInteractions
+                    ? "Checking pending interactions..."
+                    : isProvisioning
+                      ? "Provisioning..."
+                      : isUnavailable
+                        ? "Unavailable"
+                        : "Submit (Enter)"),
           isRunning: canStopRuntime,
         }}
         typeahead={typeahead}

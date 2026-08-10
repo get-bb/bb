@@ -212,6 +212,10 @@ export class PiSdkSession {
     return this.session?.getContextUsage();
   }
 
+  getProviderCheckpointId(): string | undefined {
+    return this.session?.sessionManager.getLeafId() ?? undefined;
+  }
+
   async start(): Promise<void> {
     assertExclusivePiPromptOverrides(this.options);
 

@@ -99,6 +99,83 @@ describe("bb thread action command output", () => {
     );
   });
 
+  it("bb thread edit-message resolves the current target and submits one atomic edit", async () => {
+    const getEdit = vi.fn(async () => ({
+      expectedRequestSequence: 41,
+      input: [{ type: "text", text: "Original", mentions: [] }],
+    }));
+    const submitEdit = vi.fn(async () => ({
+      ok: true,
+      operationId: "edit-op-server",
+      requestSequence: 43,
+    }));
+    stubServerApi({
+      "v1.threads.:id.latest-message-edit.$get": getEdit,
+      "v1.threads.:id.edit-message.$post": submitEdit,
+    });
+
+    await runCommand(
+      ["thread", "edit-message", "thread-edit-1", "--message", "Replacement"],
+      register,
+    );
+
+    expect(getEdit).toHaveBeenCalledWith({
+      param: { id: "thread-edit-1" },
+    });
+    expect(submitEdit).toHaveBeenCalledWith({
+      param: { id: "thread-edit-1" },
+      json: {
+        operationId: expect.any(String),
+        expectedRequestSequence: 41,
+        input: [{ type: "text", text: "Replacement", mentions: [] }],
+      },
+    });
+    expect(collectLogLines(vi.mocked(console.log))).toContain(
+      "Thread thread-edit-1 message replaced; workspace changes were kept",
+    );
+  });
+
+  it("bb thread edit-message accepts an explicit stale-edit guard", async () => {
+    vi.stubEnv("BB_THREAD_ID", "thread-edit-self");
+    const getEdit = vi.fn();
+    const submitEdit = vi.fn(async () => ({
+      ok: true,
+      operationId: "edit-op-server",
+      requestSequence: 43,
+    }));
+    stubServerApi({
+      "v1.threads.:id.latest-message-edit.$get": getEdit,
+      "v1.threads.:id.edit-message.$post": submitEdit,
+    });
+
+    await runCommand(
+      [
+        "thread",
+        "edit-message",
+        "--self",
+        "--message",
+        "Replacement",
+        "--expected-request-sequence",
+        "41",
+        "--json",
+      ],
+      register,
+    );
+
+    expect(getEdit).not.toHaveBeenCalled();
+    expect(submitEdit).toHaveBeenCalledWith({
+      param: { id: "thread-edit-self" },
+      json: expect.objectContaining({ expectedRequestSequence: 41 }),
+    });
+    expect(
+      JSON.parse(collectLogLines(vi.mocked(console.log)).join("\n")),
+    ).toMatchObject({
+      threadId: "thread-edit-self",
+      ok: true,
+      requestSequence: 43,
+    });
+  });
+
   it("bb thread pin sends the thread id from args", async () => {
     const pinnedThread = fixtures.makeThread({
       id: "thread-pin-1",

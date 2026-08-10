@@ -23,6 +23,7 @@ import { ApiError } from "../../errors.js";
 import {
   addRequestIdToTurnSubmitCommandPayload,
   buildExecutionOptions,
+  buildThreadStartCommand,
   prepareTurnSubmitCommandPayload,
 } from "./thread-commands.js";
 import {
@@ -71,6 +72,14 @@ type SendThreadMessagePayload = SendMessageRequest & {
 export interface SendThreadMessageArgs {
   beforeAppendInTransaction?: SendThreadMessageTransactionPreflight;
   environment: Environment;
+  /**
+   * Internal edit-message path. Presence forces a new provider session;
+   * a string forks from a staged provider session and null starts fresh.
+   */
+  historyReplacement?: {
+    forkSourceProviderThreadId: string | null;
+    requestTargetKind: "new-turn" | "thread-start";
+  };
   payload: SendThreadMessagePayload;
   thread: Thread;
   trigger: SendThreadMessageTrigger;
@@ -489,7 +498,9 @@ export async function sendThreadMessage(
   );
   let target: TurnRequestTarget;
   if (mode === "start") {
-    target = { kind: "new-turn" };
+    target = {
+      kind: args.historyReplacement?.requestTargetKind ?? "new-turn",
+    };
   } else {
     target = {
       kind: mode,
@@ -500,10 +511,10 @@ export async function sendThreadMessage(
   const requestId = createClientTurnRequestId();
 
   if (mode === "start") {
-    const command = await prepareReadyThreadTurnCommand(deps, {
+    const commandArgs = {
       thread,
-      // A send/steer always targets an already-started thread; forking only
-      // happens at create time.
+      // Normal sends target the existing provider session. A history
+      // replacement deliberately starts from a staged provider fork instead.
       fork: null,
       input,
       ...(inputGroups !== undefined ? { inputGroups } : {}),
@@ -520,7 +531,23 @@ export async function sendThreadMessage(
       projectId: thread.projectId,
       providerId: thread.providerId,
       syncGeneratedTitle: false,
-    });
+    };
+    const command = args.historyReplacement
+      ? {
+          command: await buildThreadStartCommand(deps, {
+            ...commandArgs,
+            fork:
+              args.historyReplacement.forkSourceProviderThreadId === null
+                ? null
+                : {
+                    sourceProviderThreadId:
+                      args.historyReplacement.forkSourceProviderThreadId,
+                  },
+          }),
+          mode: "thread.start" as const,
+          sessionId: "history-replacement",
+        }
+      : await prepareReadyThreadTurnCommand(deps, commandArgs);
     const queuedRequest = appendAndQueueSendThreadMessageInTransaction({
       beforeAppendInTransaction: ({ tx }) => {
         args.beforeAppendInTransaction?.({ tx });

@@ -1,0 +1,542 @@
+import { createHash } from "node:crypto";
+import { and, desc, eq, lt, sql } from "drizzle-orm";
+import {
+  deleteThreadEventSuffixInTransaction,
+  events,
+  getExperiments,
+  getHighWaterMarks,
+  getLastStoredProviderThreadId,
+  getThread,
+  listActiveBackgroundTaskCountsByThreadIds,
+  listQueuedThreadMessages,
+  type DbQueryConnection,
+} from "@bb/db";
+import { threadScope, type Thread } from "@bb/domain";
+import type {
+  EditMessageRequest,
+  EditMessageResponse,
+  LatestMessageEditResponse,
+} from "@bb/server-contract";
+import type {
+  HostDaemonCommand,
+  HostDaemonCommandResult,
+} from "@bb/host-daemon-contract";
+import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
+import { ApiError } from "../../errors.js";
+import {
+  appendThreadEventInTransaction,
+  createClientTurnRequestId,
+  parseStoredTurnRequestEvent,
+} from "./thread-events.js";
+import {
+  buildExecutionOptions,
+  buildThreadStartCommand,
+} from "./thread-commands.js";
+import { resolvePermissionEscalation } from "./thread-runtime-config.js";
+import { requireReadyThreadEnvironment } from "./thread-turn-dispatch.js";
+import { ensureHostSessionReadyForWork } from "../hosts/host-lifecycle.js";
+import {
+  LIVE_DAEMON_COMMAND_TIMEOUT_MS,
+  runLiveHostCommand,
+} from "../hosts/live-command.js";
+import { sendThreadMessage } from "./thread-send.js";
+
+type ThreadRewindPrepareCommand = Extract<
+  HostDaemonCommand,
+  { type: "thread.rewind.prepare" }
+>;
+
+interface EditableTurn {
+  currentTurnId: string;
+  oldMaxSequence: number;
+  precedingProviderCheckpoint: string | null;
+  requestSequence: number;
+  sourceProviderThreadId: string;
+  visibleInput: ReturnType<typeof parseStoredTurnRequestEvent>["input"];
+}
+
+function conflict(message: string): never {
+  throw new ApiError(409, "invalid_request", message);
+}
+
+function requestFingerprint(payload: EditMessageRequest): string {
+  return createHash("sha256")
+    .update(
+      JSON.stringify({
+        expectedRequestSequence: payload.expectedRequestSequence,
+        executionInputSources: payload.executionInputSources,
+        input: payload.input,
+        model: payload.model,
+        permissionMode: payload.permissionMode,
+        reasoningLevel: payload.reasoningLevel,
+        serviceTier: payload.serviceTier,
+      }),
+    )
+    .digest("hex");
+}
+
+function findCommittedOperation(
+  db: DbQueryConnection,
+  args: { operationId: string; threadId: string },
+): { fingerprint: string; requestSequence: number } | null {
+  const row = db
+    .select({ data: events.data })
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        eq(events.type, "system/operation"),
+        sql`json_extract(${events.data}, '$.operation') = 'edit_message'`,
+        sql`json_extract(${events.data}, '$.operationId') = ${args.operationId}`,
+      ),
+    )
+    .limit(1)
+    .get();
+  if (!row) return null;
+  let data: unknown;
+  try {
+    data = JSON.parse(row.data);
+  } catch {
+    return null;
+  }
+  if (typeof data !== "object" || data === null || !("metadata" in data)) {
+    return null;
+  }
+  const metadata = data.metadata;
+  if (typeof metadata !== "object" || metadata === null) return null;
+  const fingerprint = Reflect.get(metadata, "fingerprint");
+  const requestSequence = Reflect.get(metadata, "requestSequence");
+  return typeof fingerprint === "string" && typeof requestSequence === "number"
+    ? { fingerprint, requestSequence }
+    : null;
+}
+
+const EDIT_MESSAGE_PROVIDER_IDS = new Set(["claude-code", "codex", "pi"]);
+
+function storedProviderCheckpoint(data: string): string | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(data);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== "object" || parsed === null) return null;
+  const checkpoint = Reflect.get(parsed, "providerCheckpointId");
+  return typeof checkpoint === "string" && checkpoint.length > 0
+    ? checkpoint
+    : null;
+}
+
+function resolveEditableTurn(
+  db: DbQueryConnection,
+  thread: Thread,
+  requestSequence?: number,
+): EditableTurn {
+  if (!EDIT_MESSAGE_PROVIDER_IDS.has(thread.providerId)) {
+    conflict(`Editing messages is not supported for ${thread.providerId}`);
+  }
+  if (thread.archivedAt !== null || thread.deletedAt !== null) {
+    conflict("The thread is not writable");
+  }
+  if (thread.status !== "idle") {
+    conflict("The thread must be idle before a message can be edited");
+  }
+  const backgroundActivity = listActiveBackgroundTaskCountsByThreadIds(db, {
+    threadIds: [thread.id],
+  })[0];
+  if (
+    backgroundActivity &&
+    (backgroundActivity.activeBackgroundAgentCount > 0 ||
+      backgroundActivity.activeBackgroundCommandCount > 0 ||
+      backgroundActivity.activeWorkflowCount > 0)
+  ) {
+    conflict("Wait for background work to finish before editing the message");
+  }
+  const requestRow =
+    requestSequence === undefined
+      ? (db
+          .select({
+            data: events.data,
+            sequence: events.sequence,
+            threadId: events.threadId,
+            type: events.type,
+          })
+          .from(events)
+          .where(
+            and(
+              eq(events.threadId, thread.id),
+              eq(events.type, "client/turn/requested"),
+              sql`json_extract(${events.data}, '$.initiator') = 'user'`,
+              sql`json_extract(${events.data}, '$.senderThreadId') IS NULL`,
+              sql`json_extract(${events.data}, '$.target.kind') IN ('new-turn', 'thread-start')`,
+            ),
+          )
+          .orderBy(desc(events.sequence))
+          .limit(1)
+          .get() ?? null)
+      : (db
+          .select({
+            data: events.data,
+            sequence: events.sequence,
+            threadId: events.threadId,
+            type: events.type,
+          })
+          .from(events)
+          .where(
+            and(
+              eq(events.threadId, thread.id),
+              eq(events.sequence, requestSequence),
+              eq(events.type, "client/turn/requested"),
+            ),
+          )
+          .limit(1)
+          .get() ?? null);
+  if (!requestRow) conflict("The thread has no editable user message");
+  const request = parseStoredTurnRequestEvent(requestRow);
+  if (
+    request.initiator !== "user" ||
+    request.senderThreadId !== null ||
+    (request.target.kind !== "new-turn" &&
+      request.target.kind !== "thread-start")
+  ) {
+    conflict("The selected request is not an editable user turn");
+  }
+
+  const acceptedRows = db
+    .select({ sequence: events.sequence, turnId: events.turnId })
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, thread.id),
+        eq(events.type, "turn/input/accepted"),
+        sql`json_extract(${events.data}, '$.clientRequestId') = ${request.requestId}`,
+      ),
+    )
+    .orderBy(events.sequence)
+    .all();
+  const accepted = acceptedRows.length === 1 ? acceptedRows[0] : undefined;
+  if (!accepted?.turnId) {
+    conflict("The selected request was not accepted into exactly one turn");
+  }
+
+  const rootTurn = db
+    .select({ turnId: events.turnId })
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, thread.id),
+        eq(events.type, "turn/started"),
+        eq(events.turnId, accepted.turnId),
+        sql`COALESCE(json_extract(${events.data}, '$.parentToolCallId'), '') = ''`,
+      ),
+    )
+    .limit(1)
+    .get();
+  if (!rootTurn) {
+    conflict("The selected message does not belong to a root turn");
+  }
+  const turnAcceptedCount = db
+    .select({ count: sql<number>`COUNT(*)` })
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, thread.id),
+        eq(events.type, "turn/input/accepted"),
+        eq(events.turnId, accepted.turnId),
+      ),
+    )
+    .get()?.count;
+  if (turnAcceptedCount !== 1) {
+    conflict(
+      "A turn containing steers or multiple accepted messages cannot be edited",
+    );
+  }
+  const completion = db
+    .select({ sequence: events.sequence })
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, thread.id),
+        eq(events.type, "turn/completed"),
+        eq(events.turnId, accepted.turnId),
+      ),
+    )
+    .limit(1)
+    .get();
+  if (!completion) conflict("The selected turn has not completed");
+
+  const precedingTurn = db
+    .select({ turnId: events.turnId })
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, thread.id),
+        eq(events.type, "turn/started"),
+        lt(events.sequence, requestRow.sequence),
+        sql`COALESCE(json_extract(${events.data}, '$.parentToolCallId'), '') = ''`,
+      ),
+    )
+    .orderBy(desc(events.sequence))
+    .limit(1)
+    .get();
+  const sourceProviderThreadId = getLastStoredProviderThreadId(db, thread.id);
+  if (!sourceProviderThreadId) {
+    conflict("The provider session is unavailable");
+  }
+  const precedingTurnId = precedingTurn?.turnId ?? null;
+  const precedingProviderCheckpoint =
+    precedingTurnId === null
+      ? null
+      : thread.providerId === "codex"
+        ? precedingTurnId
+        : (() => {
+            const precedingCompletion = db
+              .select({ data: events.data })
+              .from(events)
+              .where(
+                and(
+                  eq(events.threadId, thread.id),
+                  eq(events.type, "turn/completed"),
+                  eq(events.turnId, precedingTurnId),
+                ),
+              )
+              .limit(1)
+              .get();
+            const checkpoint = precedingCompletion
+              ? storedProviderCheckpoint(precedingCompletion.data)
+              : null;
+            if (!checkpoint) {
+              conflict(
+                "This earlier provider turn has no editable history checkpoint",
+              );
+            }
+            return checkpoint;
+          })();
+  return {
+    currentTurnId: accepted.turnId,
+    oldMaxSequence: getHighWaterMarks(db, [thread.id])[thread.id] ?? 0,
+    precedingProviderCheckpoint,
+    requestSequence: requestRow.sequence,
+    sourceProviderThreadId,
+    visibleInput: request.input.filter(
+      (part) => part.visibility !== "agent-only",
+    ),
+  };
+}
+
+export function getLatestThreadMessageEdit(
+  deps: LoggedPendingInteractionWorkSessionDeps,
+  thread: Thread,
+): LatestMessageEditResponse {
+  if (!getExperiments(deps.db).editMessages) {
+    conflict("Enable the Edit messages experiment before editing a message");
+  }
+  if (deps.pendingInteractions.hasPendingThreadInteraction(thread.id)) {
+    conflict("Resolve the pending interaction before editing the message");
+  }
+  if (listQueuedThreadMessages(deps.db, thread.id).length > 0) {
+    conflict("Send or remove queued messages before editing a message");
+  }
+  const target = resolveEditableTurn(deps.db, thread);
+  if (target.visibleInput.length === 0) {
+    conflict("The message has no user-visible input to edit");
+  }
+  return {
+    expectedRequestSequence: target.requestSequence,
+    input: target.visibleInput,
+  };
+}
+
+function rewindPrepareCommandFromStart(
+  start: Extract<HostDaemonCommand, { type: "thread.start" }>,
+  args: {
+    operationId: string;
+    retainThroughProviderCheckpoint: string;
+    sourceProviderThreadId: string;
+  },
+): ThreadRewindPrepareCommand {
+  return {
+    type: "thread.rewind.prepare",
+    environmentId: start.environmentId,
+    threadId: start.threadId,
+    workspaceContext: start.workspaceContext,
+    projectId: start.projectId,
+    providerId: start.providerId,
+    ...(start.acpLaunchSpec !== undefined
+      ? { acpLaunchSpec: start.acpLaunchSpec }
+      : {}),
+    options: start.options,
+    instructions: start.instructions,
+    dynamicTools: start.dynamicTools,
+    injectedSkillSources: start.injectedSkillSources,
+    ...(start.disallowedTools !== undefined
+      ? { disallowedTools: start.disallowedTools }
+      : {}),
+    instructionMode: start.instructionMode,
+    operationId: args.operationId,
+    sourceProviderThreadId: args.sourceProviderThreadId,
+    retainThroughProviderCheckpoint: args.retainThroughProviderCheckpoint,
+  };
+}
+
+export async function editThreadMessage(
+  deps: LoggedPendingInteractionWorkSessionDeps,
+  args: {
+    environment: Parameters<typeof requireReadyThreadEnvironment>[0];
+    payload: EditMessageRequest;
+    thread: Thread;
+  },
+): Promise<EditMessageResponse> {
+  if (!getExperiments(deps.db).editMessages) {
+    conflict("Enable the Edit messages experiment before editing a message");
+  }
+  const fingerprint = requestFingerprint(args.payload);
+  const committed = findCommittedOperation(deps.db, {
+    operationId: args.payload.operationId,
+    threadId: args.thread.id,
+  });
+  if (committed) {
+    if (committed.fingerprint !== fingerprint) {
+      conflict("The edit operation id was already used for different input");
+    }
+    return {
+      ok: true,
+      operationId: args.payload.operationId,
+      requestSequence: committed.requestSequence,
+    };
+  }
+  if (deps.pendingInteractions.hasPendingThreadInteraction(args.thread.id)) {
+    conflict("Resolve the pending interaction before editing the message");
+  }
+  if (listQueuedThreadMessages(deps.db, args.thread.id).length > 0) {
+    conflict("Send or remove queued messages before editing a message");
+  }
+
+  const target = resolveEditableTurn(
+    deps.db,
+    args.thread,
+    args.payload.expectedRequestSequence,
+  );
+  const readyEnvironment = requireReadyThreadEnvironment(args.environment);
+  await ensureHostSessionReadyForWork(deps, {
+    hostId: readyEnvironment.hostId,
+  });
+  const execution = await buildExecutionOptions(
+    deps,
+    args.payload,
+    { threadId: args.thread.id },
+    "client/turn/requested",
+  );
+
+  let stagedProviderThreadId: string | null = null;
+  if (target.precedingProviderCheckpoint !== null) {
+    const startCommand = await buildThreadStartCommand(deps, {
+      thread: args.thread,
+      fork: null,
+      input: [],
+      requestId: createClientTurnRequestId(),
+      execution,
+      permissionEscalation: resolvePermissionEscalation({
+        thread: args.thread,
+        initiator: "user",
+      }),
+      environment: readyEnvironment,
+      projectId: args.thread.projectId,
+      providerId: args.thread.providerId,
+      syncGeneratedTitle: false,
+    });
+    const prepared: HostDaemonCommandResult<"thread.rewind.prepare"> =
+      await runLiveHostCommand(deps, {
+        command: rewindPrepareCommandFromStart(startCommand, {
+          operationId: args.payload.operationId,
+          retainThroughProviderCheckpoint: target.precedingProviderCheckpoint,
+          sourceProviderThreadId: target.sourceProviderThreadId,
+        }),
+        hostId: readyEnvironment.hostId,
+        timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
+      });
+    stagedProviderThreadId = prepared.providerThreadId;
+  }
+
+  const requestSequence = target.oldMaxSequence + 2;
+  await sendThreadMessage(deps, {
+    beforeAppendInTransaction: ({ tx }) => {
+      const currentThread = getThread(tx, args.thread.id);
+      if (!currentThread) conflict("Thread not found");
+      const currentTarget = resolveEditableTurn(
+        tx,
+        currentThread,
+        target.requestSequence,
+      );
+      if (
+        currentTarget.requestSequence !== target.requestSequence ||
+        currentTarget.oldMaxSequence !== target.oldMaxSequence ||
+        currentTarget.currentTurnId !== target.currentTurnId
+      ) {
+        conflict("The thread changed while the edit was being prepared");
+      }
+      appendThreadEventInTransaction(tx, {
+        threadId: args.thread.id,
+        environmentId: args.thread.environmentId,
+        type: "system/operation",
+        scope: threadScope(),
+        data: {
+          operation: "edit_message",
+          status: "completed",
+          message: "Message edited",
+          operationId: args.payload.operationId,
+          metadata: {
+            cutoffSequence: target.requestSequence,
+            oldMaxSequence: target.oldMaxSequence,
+            removedTurnId: target.currentTurnId,
+            replacementProviderThreadId: stagedProviderThreadId,
+            fingerprint,
+            requestSequence,
+          },
+        },
+      });
+      deleteThreadEventSuffixInTransaction(tx, {
+        cutoffSequence: target.requestSequence,
+        oldMaxSequence: target.oldMaxSequence,
+        threadId: args.thread.id,
+      });
+    },
+    environment: args.environment,
+    historyReplacement: {
+      forkSourceProviderThreadId: stagedProviderThreadId,
+      requestTargetKind:
+        target.precedingProviderCheckpoint === null
+          ? "thread-start"
+          : "new-turn",
+    },
+    payload: {
+      input: args.payload.input,
+      mode: "start",
+      ...(args.payload.model !== undefined
+        ? { model: args.payload.model }
+        : {}),
+      ...(args.payload.serviceTier !== undefined
+        ? { serviceTier: args.payload.serviceTier }
+        : {}),
+      ...(args.payload.reasoningLevel !== undefined
+        ? { reasoningLevel: args.payload.reasoningLevel }
+        : {}),
+      ...(args.payload.permissionMode !== undefined
+        ? { permissionMode: args.payload.permissionMode }
+        : {}),
+      ...(args.payload.executionInputSources !== undefined
+        ? { executionInputSources: args.payload.executionInputSources }
+        : {}),
+    },
+    thread: args.thread,
+    trigger: "user",
+  });
+  deps.hub.notifyThread(args.thread.id, ["history-rewritten"], {
+    projectId: args.thread.projectId,
+  });
+  return {
+    ok: true,
+    operationId: args.payload.operationId,
+    requestSequence,
+  };
+}

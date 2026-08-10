@@ -1054,6 +1054,60 @@ describe("@bb/sdk", () => {
     ]);
   });
 
+  it("reads and submits an atomic message edit", async () => {
+    const queue = createFetchQueue([
+      {
+        body: {
+          expectedRequestSequence: 41,
+          input: [{ type: "text", text: "Original", mentions: [] }],
+        },
+      },
+      {
+        body: {
+          ok: true,
+          operationId: "edit-op-1",
+          requestSequence: 43,
+        },
+      },
+    ]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await expect(
+      sdk.threads.getLatestMessageEdit({ threadId: "thr_edit" }),
+    ).resolves.toMatchObject({ expectedRequestSequence: 41 });
+    await expect(
+      sdk.threads.editMessage({
+        threadId: "thr_edit",
+        operationId: "edit-op-1",
+        expectedRequestSequence: 41,
+        input: [{ type: "text", text: "Replacement", mentions: [] }],
+      }),
+    ).resolves.toMatchObject({ requestSequence: 43 });
+
+    expect(queue.requests).toEqual([
+      {
+        bodyText: undefined,
+        method: "GET",
+        url: "http://bb.test/api/v1/threads/thr_edit/latest-message-edit",
+      },
+      {
+        bodyText: JSON.stringify({
+          operationId: "edit-op-1",
+          expectedRequestSequence: 41,
+          input: [{ type: "text", text: "Replacement", mentions: [] }],
+        }),
+        method: "POST",
+        url: "http://bb.test/api/v1/threads/thr_edit/edit-message",
+      },
+    ]);
+  });
+
   it("preserves explicit thread spawn origin for CLI callers", async () => {
     const queue = createFetchQueue([{ body: { id: "thr_1" }, status: 201 }]);
     const sdk = createBbSdk({

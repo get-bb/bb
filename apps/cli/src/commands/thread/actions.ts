@@ -1,4 +1,5 @@
 import { Command } from "commander";
+import { randomUUID } from "node:crypto";
 import {
   threadVisibilitySchema,
   type PermissionMode,
@@ -80,6 +81,15 @@ interface ThreadActionOptions {
 interface ThreadRetryCommandOptions extends ThreadActionOptions {
   requestId?: string;
 }
+
+interface ThreadEditMessageCommandOptions {
+  expectedRequestSequence?: string;
+  json?: boolean;
+  message: string;
+  self?: boolean;
+}
+
+type ThreadBannerActionCommandOptions = ThreadActionOptions;
 
 type ThreadTellDeliveryMode = "auto" | "queue" | "steer";
 
@@ -354,6 +364,54 @@ export function registerActionsCommands(
         if (outputJson(opts, { ok: true, threadId: id })) return;
         console.log(`Thread ${id} deleted`);
       }),
+    );
+
+  parent
+    .command("edit-message [id]")
+    .description("Replace a completed user message and rerun from that point")
+    .requiredOption("--message <text>", "Replacement message text")
+    .option("--self", "Target the current thread (from BB_THREAD_ID)")
+    .option(
+      "--expected-request-sequence <sequence>",
+      "Fail if the editable message no longer has this event sequence",
+    )
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(
+        async (
+          id: string | undefined,
+          opts: ThreadEditMessageCommandOptions,
+        ) => {
+          const threadId = requireThreadIdOrSelf(id, opts);
+          const sdk = createCliBbSdk(getUrl());
+          const requestedSequence =
+            opts.expectedRequestSequence === undefined
+              ? undefined
+              : Number.parseInt(opts.expectedRequestSequence, 10);
+          if (
+            requestedSequence !== undefined &&
+            (!Number.isInteger(requestedSequence) || requestedSequence < 0)
+          ) {
+            throw new Error(
+              "--expected-request-sequence must be a non-negative integer.",
+            );
+          }
+          const expectedRequestSequence =
+            requestedSequence ??
+            (await sdk.threads.getLatestMessageEdit({ threadId }))
+              .expectedRequestSequence;
+          const result = await sdk.threads.editMessage({
+            threadId,
+            operationId: randomUUID(),
+            expectedRequestSequence,
+            input: buildPromptInputs({ message: opts.message }),
+          });
+          if (outputJson(opts, { threadId, ...result })) return;
+          console.log(
+            `Thread ${threadId} message replaced; workspace changes were kept`,
+          );
+        },
+      ),
     );
 
   parent

@@ -6,6 +6,7 @@ import { ExperimentsSettingsSection } from "./SettingsView";
 afterEach(cleanup);
 
 function renderSection(overrides?: {
+  onEditMessagesEnabledChange?: (enabled: boolean) => void;
   onNewOnboardingEnabledChange?: (enabled: boolean) => void;
   onToolsHubEnabledChange?: (enabled: boolean) => void;
 }) {
@@ -13,8 +14,12 @@ function renderSection(overrides?: {
     <ExperimentsSettingsSection
       claudeCodeMockCliTrafficEnabled={false}
       disabled={false}
+      editMessagesEnabled={false}
       newOnboardingEnabled={false}
       onClaudeCodeMockCliTrafficEnabledChange={vi.fn()}
+      onEditMessagesEnabledChange={
+        overrides?.onEditMessagesEnabledChange ?? vi.fn()
+      }
       onNewOnboardingEnabledChange={
         overrides?.onNewOnboardingEnabledChange ?? vi.fn()
       }
@@ -25,6 +30,13 @@ function renderSection(overrides?: {
 }
 
 describe("ExperimentsSettingsSection", () => {
+  it("reports edit-message changes", () => {
+    const onChange = vi.fn();
+    renderSection({ onEditMessagesEnabledChange: onChange });
+    fireEvent.click(screen.getByLabelText("Edit messages"));
+    expect(onChange).toHaveBeenCalledWith(true);
+  });
+
   it("reports new onboarding changes", () => {
     const onChange = vi.fn();
     renderSection({ onNewOnboardingEnabledChange: onChange });

@@ -160,6 +160,7 @@ export type AdapterCommand =
       threadId: string;
       cwd: string;
       sourceProviderThreadId: string;
+      sourceProviderCheckpointId?: string;
       options: ProviderExecutionContext;
       dynamicTools?: DynamicTool[];
       disallowedTools?: readonly string[];

@@ -152,6 +152,7 @@ const piThreadForkParamsSchema = z
     threadId: z.string(),
     sourceProviderThreadId: z.string(),
     cwd: z.string(),
+    providerCheckpointId: z.string().min(1).optional(),
     additionalSkillPaths: piAdditionalSkillPathsSchema,
     baseInstructions: z.string().optional(),
     appendSystemPrompt: z.string().optional(),
@@ -400,10 +401,20 @@ function createOnPiEvent(
       threadId: args.threadId,
     });
     if (!threadSession) return;
+    const providerCheckpointId =
+      event.type === "agent_end"
+        ? threadSession.session.getProviderCheckpointId()
+        : undefined;
     send({
       jsonrpc: "2.0",
       method: "sdk/message",
-      params: { threadId: args.threadId, message: event },
+      params: {
+        threadId: args.threadId,
+        message:
+          providerCheckpointId === undefined
+            ? event
+            : { ...event, providerCheckpointId },
+      },
     });
     if (event.type === "agent_end" || event.type === "compaction_end") {
       emitContextWindowUsage(args.threadId);
@@ -773,12 +784,14 @@ async function handleThreadFork(
   });
 
   const bridgeSessionDir = resolvePiBridgeSessionDir({ env: process.env });
-  const forked = SessionManager.forkFrom(
-    sourceSessionFile,
-    params.cwd,
-    bridgeSessionDir,
-  );
-  const forkedFile = forked.getSessionFile();
+  const forked =
+    params.providerCheckpointId === undefined
+      ? SessionManager.forkFrom(sourceSessionFile, params.cwd, bridgeSessionDir)
+      : SessionManager.open(sourceSessionFile, bridgeSessionDir, params.cwd);
+  const forkedFile =
+    params.providerCheckpointId === undefined
+      ? forked.getSessionFile()
+      : forked.createBranchedSession(params.providerCheckpointId);
   if (!forkedFile) {
     sendError(id, -32000, "Cannot fork: forked pi session was not persisted");
     return;

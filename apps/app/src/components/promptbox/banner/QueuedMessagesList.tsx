@@ -54,6 +54,7 @@ import { Icon } from "@bb/shared-ui/icon";
 import { PromptStackCard } from "@/components/promptbox/banner/PromptStackCard";
 import { useScrollOverflowState } from "@/components/thread/timeline/useScrollOverflowState";
 import { OverflowFade } from "@/components/ui/overflow-fade";
+import { InlineMessageEditorFrame } from "@/components/promptbox/InlineMessageEditorFrame";
 import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-body";
 import {
   Tooltip,
@@ -936,23 +937,13 @@ function QueuedMessageInlineEditorSlot({
       className="relative z-10 border-b border-border/35 px-2.5 py-1 last:border-b-0"
     >
       <OverflowFade placement="above" tone="surface-raised" className="z-10" />
-      <div className="relative z-20">
-        <div className="mb-1.5 flex min-h-7 items-center gap-1.5 pl-1 text-xs text-subtle-foreground">
-          <Icon name="Edit" className="size-3.5" aria-hidden />
-          <span>Editing queued message {editor.queuedMessageIndex + 1}</span>
-          <Button
-            type="button"
-            size="icon"
-            variant="ghost"
-            className="ml-auto size-6 text-subtle-foreground"
-            onClick={editor.onDismiss}
-            aria-label="Stop editing queued message"
-          >
-            <Icon name="X" className="size-3" aria-hidden />
-          </Button>
-        </div>
+      <InlineMessageEditorFrame
+        cancelLabel="Stop editing queued message"
+        label={`Editing queued message ${editor.queuedMessageIndex + 1}`}
+        onCancel={editor.onDismiss}
+      >
         {editor.content}
-      </div>
+      </InlineMessageEditorFrame>
       <OverflowFade placement="below" tone="surface-raised" className="z-10" />
     </li>
   );

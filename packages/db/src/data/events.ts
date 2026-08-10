@@ -44,7 +44,14 @@ import type {
 } from "../connection.js";
 import { alias, unionAll } from "drizzle-orm/sqlite-core";
 import type { DbNotifier } from "../notifier.js";
-import { environments, events, threads } from "../schema.js";
+import {
+  environments,
+  events,
+  promptHistoryEntries,
+  threadDynamicContextFileStates,
+  threadSearchSegments,
+  threads,
+} from "../schema.js";
 import { createEventId } from "../ids.js";
 import { truncatedEventDataColumn } from "./event-output-truncation.js";
 import { deriveStoredEventItemFieldsFromSource } from "../stored-event-item-fields.js";
@@ -186,6 +193,62 @@ export interface StoredTurnRequestEventRow {
 export interface CompletedStoredTurnRow {
   threadId: string;
   turnId: string;
+}
+
+export interface DeleteThreadEventSuffixArgs {
+  cutoffSequence: number;
+  oldMaxSequence: number;
+  threadId: string;
+}
+
+export interface DeleteThreadEventSuffixResult {
+  deletedEventCount: number;
+}
+
+/**
+ * Deletes one conversation suffix and its sequence-scoped projections.
+ * Callers append a marker above oldMaxSequence first so sequence numbers are
+ * never reused after the rewrite.
+ */
+export function deleteThreadEventSuffixInTransaction(
+  db: DbTransaction,
+  args: DeleteThreadEventSuffixArgs,
+): DeleteThreadEventSuffixResult {
+  db.delete(promptHistoryEntries)
+    .where(
+      and(
+        eq(promptHistoryEntries.threadId, args.threadId),
+        gte(promptHistoryEntries.requestSequence, args.cutoffSequence),
+        lte(promptHistoryEntries.requestSequence, args.oldMaxSequence),
+      ),
+    )
+    .run();
+  db.delete(threadSearchSegments)
+    .where(
+      and(
+        eq(threadSearchSegments.threadId, args.threadId),
+        gte(threadSearchSegments.sourceSeq, args.cutoffSequence),
+        lte(threadSearchSegments.sourceSeq, args.oldMaxSequence),
+      ),
+    )
+    .run();
+  // Dynamic-context state is not sequence-addressable. Clearing it is safe:
+  // the next turn may re-send unchanged context, while retaining it could hide
+  // context that only the removed turn had observed.
+  db.delete(threadDynamicContextFileStates)
+    .where(eq(threadDynamicContextFileStates.threadId, args.threadId))
+    .run();
+  const result = db
+    .delete(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        gte(events.sequence, args.cutoffSequence),
+        lte(events.sequence, args.oldMaxSequence),
+      ),
+    )
+    .run();
+  return { deletedEventCount: result.changes };
 }
 
 export interface ListThreadIdsWithLatestHostDaemonRestartInterruptionArgs {

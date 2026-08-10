@@ -9,13 +9,17 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import type { ReactNode } from "react";
+import type { ReactNode, RefCallback } from "react";
 import { useLocation } from "react-router-dom";
 import {
   isBackgroundAgentTaskType,
   isBackgroundCommandTaskType,
 } from "@bb/domain";
-import type { ThreadChildOrigin, ThreadRuntimeDisplayStatus } from "@bb/domain";
+import type {
+  PromptInput,
+  ThreadChildOrigin,
+  ThreadRuntimeDisplayStatus,
+} from "@bb/domain";
 import type {
   TimelineActivityIntent,
   TimelineParentChange,
@@ -48,6 +52,8 @@ import {
 import { isRunningThreadRuntimeDisplayStatus } from "./thread-runtime-status.js";
 import type {
   ThreadTimelineAddToChatHandler,
+  ThreadTimelineEditMessageHandler,
+  ThreadTimelineInlineMessageEditor,
   ThreadTimelineForkMessageHandler,
   ThreadTimelineSendToMainMessageHandler,
   ThreadTimelineLinkHandler,
@@ -132,6 +138,10 @@ export interface ThreadTimelineRowsProps {
   threadChildOrigin?: ThreadChildOrigin | null;
   /** Fork the rendered thread from a specific agent message. */
   onForkMessage?: ThreadTimelineForkMessageHandler;
+  /** Stage an edit of an eligible user request in the host composer. */
+  onEditMessage?: ThreadTimelineEditMessageHandler;
+  /** Mount a client-local editor in place of its matching user request. */
+  inlineMessageEditor?: ThreadTimelineInlineMessageEditor;
   /** Add a complete agent message to the composer draft. */
   onMessageAddToChat?: ThreadTimelineAddToChatHandler;
   /** Open a side chat anchored on a specific agent message. */
@@ -197,6 +207,9 @@ interface TimelineRendererStaticContextValue {
   canSpawnChild: boolean;
   getViewRows: GetTimelineViewRows;
   onForkMessage: ThreadTimelineForkMessageHandler | undefined;
+  onEditMessage: ThreadTimelineEditMessageHandler | undefined;
+  inlineMessageEditorHostRef: RefCallback<HTMLDivElement> | undefined;
+  inlineMessageEditorRequestSequence: number | null;
   onMessageAddToChat: ThreadTimelineAddToChatHandler | undefined;
   onSendToMainMessage: ThreadTimelineSendToMainMessageHandler | undefined;
   onSelectionAddToChat: ThreadTimelineAddToChatHandler | undefined;
@@ -896,6 +909,9 @@ function ConversationRow({
   );
   const {
     canSpawnChild,
+    inlineMessageEditorHostRef,
+    inlineMessageEditorRequestSequence,
+    onEditMessage,
     onForkMessage,
     onMessageAddToChat,
     onSendToMainMessage,
@@ -916,6 +932,19 @@ function ConversationRow({
     workspaceRootPath,
   } = useTimelineRendererStaticContext();
   const senderThreadMetadataById = useSenderThreadMetadataContext();
+  if (
+    row.role === "user" &&
+    inlineMessageEditorRequestSequence === row.sourceSeqStart
+  ) {
+    return (
+      <div className="ml-auto w-full max-w-[70%] max-md:max-w-full">
+        <div
+          ref={inlineMessageEditorHostRef}
+          data-sent-message-inline-editor-host=""
+        />
+      </div>
+    );
+  }
   // The narrow, stable message reference plugin actions receive — sourced
   // from row fields, never the row object itself.
   const messageReference: ThreadChatMessageReference = {
@@ -951,6 +980,37 @@ function ConversationRow({
     // anchor (thread-start) row — pass null for every other generated row so a
     // later cross-thread agent message in a forked thread keeps its own icon.
     const childOrigin = isForkSeedAnchorRow(row) ? threadChildOrigin : null;
+    const canEditMessage =
+      onEditMessage !== undefined &&
+      row.initiator === "user" &&
+      row.turnRequest.kind === "message" &&
+      row.turnRequest.status === "accepted" &&
+      (row.attachments?.imageUrls.length ?? 0) === 0;
+    const onEdit = canEditMessage
+      ? () => {
+          const input: PromptInput[] = [];
+          if (row.text.trim().length > 0) {
+            input.push({
+              type: "text",
+              text: row.text,
+              mentions: [...row.mentions],
+            });
+          }
+          for (const url of row.attachments?.imageUrls ?? []) {
+            input.push({ type: "image", url });
+          }
+          for (const path of row.attachments?.localImagePaths ?? []) {
+            input.push({ type: "localImage", path });
+          }
+          for (const path of row.attachments?.localFilePaths ?? []) {
+            input.push({ type: "localFile", path });
+          }
+          onEditMessage({
+            expectedRequestSequence: row.sourceSeqStart,
+            input,
+          });
+        }
+      : undefined;
     return (
       <ConversationMessageContent
         attachments={row.attachments}
@@ -961,6 +1021,7 @@ function ConversationRow({
           row.id === latestActionableUserMessageId ? "inline" : "overflow"
         }
         onAddToChat={onSelectionAddToChat}
+        onEdit={onEdit}
         onOpenLink={onOpenLink}
         onOpenLocalFileLink={onOpenLocalFileLink}
         projectId={projectId}
@@ -1873,9 +1934,10 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
     () =>
       findLastActionableUserMessageId(
         rows,
-        props.onSelectionAddToChat !== undefined,
+        props.onSelectionAddToChat !== undefined ||
+          props.onEditMessage !== undefined,
       ),
-    [props.onSelectionAddToChat, rows],
+    [props.onEditMessage, props.onSelectionAddToChat, rows],
   );
   const scopeActive = isRunningThreadRuntimeDisplayStatus(
     props.threadRuntimeDisplayStatus,
@@ -2018,6 +2080,11 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
       canSpawnChild: props.canSpawnChild ?? false,
       getViewRows,
       onForkMessage: props.onForkMessage,
+      onEditMessage: props.onEditMessage,
+      inlineMessageEditorHostRef:
+        props.inlineMessageEditor?.onHostElementChange,
+      inlineMessageEditorRequestSequence:
+        props.inlineMessageEditor?.expectedRequestSequence ?? null,
       onMessageAddToChat: props.onMessageAddToChat,
       onSendToMainMessage: props.onSendToMainMessage,
       onSelectionAddToChat: selectionAddToChatHandler,
@@ -2047,6 +2114,8 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
       props.canSpawnChild,
       getViewRows,
       props.onForkMessage,
+      props.onEditMessage,
+      props.inlineMessageEditor,
       props.onMessageAddToChat,
       props.onSendToMainMessage,
       selectionAddToChatHandler,

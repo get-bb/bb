@@ -70,6 +70,22 @@ describe("MessageActionBar", () => {
     expect(onSendToMain).toHaveBeenCalledTimes(1);
   });
 
+  it("renders edit as a native action and fires its handler", () => {
+    const onEdit = vi.fn();
+    render(
+      <MessageActionBar
+        messageText="A sent request."
+        alignment="end"
+        mobileActionDisplay="inline"
+        onEdit={onEdit}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit message" }));
+
+    expect(onEdit).toHaveBeenCalledTimes(1);
+  });
+
   it("orders agent actions as copy, add, then fork", () => {
     const { container } = render(
       <MessageActionBar
@@ -109,6 +125,29 @@ describe("MessageActionBar", () => {
         .getAllByRole("button")
         .map((button) => button.textContent),
     ).toEqual(["Copy message", "Add to chat", "Fork into new thread"]);
+  });
+
+  it("includes edit in the compact mobile overflow", () => {
+    mockMobileCoarsePointer();
+    const onEdit = vi.fn();
+    render(
+      <MessageActionBar
+        messageText="A sent request."
+        alignment="end"
+        mobileActionDisplay="overflow"
+        onEdit={onEdit}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Message actions" }));
+    const content =
+      document.body.querySelector<HTMLElement>('[data-side="top"]');
+    if (!content) throw new Error("Missing mobile message action menu");
+    fireEvent.click(
+      within(content).getByRole("button", { name: "Edit message" }),
+    );
+
+    expect(onEdit).toHaveBeenCalledTimes(1);
   });
 
   it("renders plugin actions after the native ones and fires their handlers", () => {

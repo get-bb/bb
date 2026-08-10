@@ -3,7 +3,11 @@
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { InlineQueuedMessageEditState } from "./useInlineQueuedMessageEditing";
-import { useComposerAttachmentUploads } from "./useComposerAttachmentUploads";
+import type { PromptDraftAttachment } from "@/lib/prompt-draft";
+import {
+  useComposerAttachmentUploads,
+  useDraftAttachmentUploads,
+} from "./useComposerAttachmentUploads";
 
 const mocks = vi.hoisted(() => ({
   upload: vi.fn(),
@@ -149,5 +153,57 @@ describe("useComposerAttachmentUploads", () => {
     expect(result.current.isAttachingInlineFiles).toBe(false);
     expect(result.current.inlineAttachmentError).toBeNull();
     expect(commitInlineQueuedMessage).not.toHaveBeenCalled();
+  });
+
+  it("does not leak a dismissed upload into a later independent draft", async () => {
+    const oldUpload = deferred<PromptDraftAttachment>();
+    mocks.upload.mockReturnValueOnce(oldUpload.promise);
+    const addFirstAttachment = vi.fn();
+    const addSecondAttachment = vi.fn();
+    const { result, rerender } = renderHook(
+      ({ target }) =>
+        useDraftAttachmentUploads({
+          projectId: "proj_1",
+          target,
+        }),
+      {
+        initialProps: {
+          target: {
+            key: "edit-1",
+            addAttachment: addFirstAttachment,
+          } as {
+            key: string;
+            addAttachment: (attachment: PromptDraftAttachment) => void;
+          } | null,
+        },
+      },
+    );
+
+    let uploadPromise!: Promise<void>;
+    act(() => {
+      uploadPromise = result.current.handleAttachFiles([
+        new File(["old"], "old.txt"),
+      ]);
+    });
+    expect(result.current.isAttachingFiles).toBe(true);
+
+    rerender({ target: null });
+    rerender({
+      target: { key: "edit-2", addAttachment: addSecondAttachment },
+    });
+    await act(async () => {
+      oldUpload.resolve({
+        type: "localFile",
+        path: "uploads/old.txt",
+        name: "old.txt",
+        sizeBytes: 3,
+      });
+      await uploadPromise;
+    });
+
+    expect(addFirstAttachment).not.toHaveBeenCalled();
+    expect(addSecondAttachment).not.toHaveBeenCalled();
+    expect(result.current.attachmentError).toBeNull();
+    expect(result.current.isAttachingFiles).toBe(false);
   });
 });

@@ -257,6 +257,9 @@ function createFakeRuntime() {
     startThread: vi.fn(async (_args: StartThreadArgs) => ({
       providerThreadId: "provider-1",
     })),
+    prepareThreadRewind: vi.fn(async () => ({
+      providerThreadId: "provider-rewind-1",
+    })),
     resumeThread: vi.fn(async (_args: ResumeThreadArgs) => ({
       providerThreadId: "provider-1",
     })),

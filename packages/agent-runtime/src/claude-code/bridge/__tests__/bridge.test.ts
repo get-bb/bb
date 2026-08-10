@@ -19,12 +19,14 @@ import {
   type PermissionEscalation,
 } from "@bb/domain";
 
-const { queryMock } = vi.hoisted(() => ({
+const { forkSessionMock, queryMock } = vi.hoisted(() => ({
+  forkSessionMock: vi.fn(),
   queryMock: vi.fn(),
 }));
 
 vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
   query: queryMock,
+  forkSession: forkSessionMock,
   createSdkMcpServer: vi.fn(() => ({})),
   tool: vi.fn((_name, _desc, _schema, handler) => handler),
 }));
@@ -578,6 +580,7 @@ async function forwardAskUserQuestion({
 describe("bridge", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    forkSessionMock.mockResolvedValue({ sessionId: "forked-session-1" });
     queryMock.mockReturnValue({
       initializationResult: vi.fn().mockResolvedValue({
         account: {},
@@ -618,6 +621,51 @@ describe("bridge", () => {
   afterEach(() => {
     for (const tempDir of tempDirs.splice(0)) {
       rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("forks a Claude session through the requested provider checkpoint", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      queries.push(query);
+      return query;
+    });
+
+    try {
+      bridge.sendRequest(1, "thread/fork", {
+        approvedPlanPermissionMode: "default",
+        workflowsEnabled: false,
+        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
+        baseInstructions: "test",
+        cwd: "/tmp/worktree",
+        instructionMode: "append",
+        permissionEscalation: "ask",
+        permissionMode: "default",
+        permissionScope: "workspace",
+        sourceProviderCheckpointId: "assistant-message-42",
+        sourceProviderThreadId: "source-session-1",
+        threadId: "forked-thread-1",
+      });
+
+      await expect(bridge.waitForResponse(1)).resolves.toMatchObject({
+        result: {
+          providerThreadId: "forked-session-1",
+          threadId: "forked-thread-1",
+        },
+      });
+      expect(forkSessionMock).toHaveBeenCalledWith("source-session-1", {
+        dir: "/tmp/worktree",
+        upToMessageId: "assistant-message-42",
+      });
+    } finally {
+      await stopBridgeThread({
+        bridge,
+        queries,
+        threadId: "forked-thread-1",
+      });
+      bridge.restore();
     }
   });
 

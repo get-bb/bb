@@ -531,7 +531,12 @@ export function parseOperationMessage(
     // Plugin interaction lifecycle events drive composer/realtime state, but
     // their generic operation rows duplicate the plugin form and briefly
     // linger as "Plugin interaction pending" after submission.
-    if (decoded.operation === "plugin_interaction") return null;
+    if (
+      decoded.operation === "plugin_interaction" ||
+      decoded.operation === "edit_message"
+    ) {
+      return null;
+    }
 
     const threadOperation = createThreadOperationMetadata(decoded);
     const title = threadOperationTitle(threadOperation, threadName);

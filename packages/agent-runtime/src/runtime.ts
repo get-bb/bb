@@ -90,6 +90,18 @@ function normalizeExecutionOptions(args: {
   return args.adapter.normalizeExecutionOptions?.(args.options) ?? args.options;
 }
 
+interface PreparedThreadRewind {
+  sourceProviderCheckpointId: string;
+  providerThreadId: string;
+  sourceProviderThreadId: string;
+}
+
+interface PreparingThreadRewind {
+  sourceProviderCheckpointId: string;
+  promise: Promise<{ providerThreadId: string }>;
+  sourceProviderThreadId: string;
+}
+
 interface ReapIdleProviderSessionCandidate {
   idleSinceMs: number;
   providerThreadId: string;
@@ -252,6 +264,10 @@ function createAgentRuntimeInternal(
   const idleProviderSessionSinceMsByThreadId = new Map<string, number>();
   const pendingTurnStartThreadIds = new Set<string>();
   const threadOperationCounts = new Map<string, number>();
+  const preparedThreadRewinds = new Map<string, PreparedThreadRewind>();
+  const preparingThreadRewinds = new Map<string, PreparingThreadRewind>();
+  const suppressedThreadEventIds = new Set<string>();
+  const detachedProviderThreadIds = new Set<string>();
   const threadGoalState = new RuntimeThreadGoalState();
   const turnState = new RuntimeTurnState();
   const backgroundWorkState = new RuntimeBackgroundWorkState();
@@ -958,6 +974,9 @@ function createAgentRuntimeInternal(
       }
 
       for (const targetThreadId of targetThreadIds) {
+        if (suppressedThreadEventIds.has(targetThreadId)) {
+          continue;
+        }
         const stampedEvent = stampThreadEventScope({
           event,
           providerThreadId:
@@ -1009,6 +1028,12 @@ function createAgentRuntimeInternal(
 
   function handleProviderNotification(args: RuntimeParsedMessageArgs): void {
     const sourceThreadId = getJsonRpcStringParam(args.parsed, "threadId");
+    if (
+      sourceThreadId !== undefined &&
+      detachedProviderThreadIds.has(sourceThreadId)
+    ) {
+      return;
+    }
     emitTranslatedEvents({
       events: args.proc.adapter.translateEvent(args.parsed, {
         threadId: sourceThreadId,
@@ -1252,6 +1277,165 @@ function createAgentRuntimeInternal(
           return { providerThreadId: resolved };
         },
       });
+    },
+
+    async prepareThreadRewind({
+      environmentId,
+      threadId,
+      operationId,
+      projectId,
+      providerId,
+      sourceProviderThreadId,
+      retainThroughProviderCheckpoint,
+      acpLaunchSpec,
+      options: execOpts,
+      instructions,
+      dynamicTools,
+      disallowedTools,
+      instructionMode = "append",
+    }) {
+      if (
+        providerId !== CODEX_PROVIDER_ID &&
+        providerId !== "claude-code" &&
+        providerId !== "pi"
+      ) {
+        throw new Error(
+          `Preparing a thread rewind is not supported by ${providerId}`,
+        );
+      }
+      const rewindKey = `${threadId}\0${operationId}`;
+      const existing = preparedThreadRewinds.get(rewindKey);
+      if (existing !== undefined) {
+        if (
+          existing.sourceProviderThreadId !== sourceProviderThreadId ||
+          existing.sourceProviderCheckpointId !==
+            retainThroughProviderCheckpoint
+        ) {
+          throw new Error(
+            `Prepared rewind operation ${operationId} was reused with different input`,
+          );
+        }
+        return { providerThreadId: existing.providerThreadId };
+      }
+
+      const pending = preparingThreadRewinds.get(rewindKey);
+      if (pending !== undefined) {
+        if (
+          pending.sourceProviderThreadId !== sourceProviderThreadId ||
+          pending.sourceProviderCheckpointId !== retainThroughProviderCheckpoint
+        ) {
+          throw new Error(
+            `Prepared rewind operation ${operationId} was reused with different input`,
+          );
+        }
+        return pending.promise;
+      }
+
+      const preparation = runThreadOperation({
+        threadId,
+        work: async () => {
+          const processKey = resolveProviderProcessKey({
+            ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
+            providerId,
+            threadId,
+          });
+          await runtime.ensureProvider({
+            providerId,
+            forThreadId: threadId,
+            ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
+          });
+          const proc = requireProviderProcess({ processKey, providerId });
+          const providerSkillRoots = skillRootsForProvider(providerId);
+          assertProviderSupportsExecutionOptions({
+            adapter: proc.adapter,
+            options: execOpts,
+            providerId,
+          });
+
+          const stagingThreadId = `${threadId}:rewind:${operationId}`;
+          suppressedThreadEventIds.add(stagingThreadId);
+          threadIdentityRegistry.registerThreadProvider({
+            providerId,
+            providerState: proc.identity,
+            shouldWaitForProviderIdentity: true,
+            threadId: stagingThreadId,
+          });
+          try {
+            const envVars = buildThreadShellEnvironment({
+              baseShellEnv: options.shellEnv,
+              environmentId,
+              projectId,
+              threadStoragePath: resolveThreadStoragePath({
+                options,
+                threadId,
+              }),
+              threadId,
+            });
+            const adapterCommand: AdapterCommand = {
+              type: "thread/fork",
+              threadId: stagingThreadId,
+              cwd: options.workspacePath,
+              sourceProviderThreadId,
+              sourceProviderCheckpointId: retainThroughProviderCheckpoint,
+              options: toProviderExecutionContext({
+                envVars,
+                execOpts,
+                instructions,
+                skillRoots: providerSkillRoots,
+              }),
+              dynamicTools,
+              disallowedTools,
+              instructionMode,
+            };
+            const command = requireProviderRequestPlan({
+              commandType: adapterCommand.type,
+              plan: proc.adapter.buildCommandPlan(adapterCommand),
+              providerId,
+            });
+            const result = await sendCommand({
+              proc,
+              message: command,
+              resultSchema: threadIdentityResultSchema,
+              timeoutMs: THREAD_CREATION_REQUEST_TIMEOUT_MS,
+            });
+            const providerThreadId = resolveThreadIdentityResult({
+              result,
+              threadId: stagingThreadId,
+            });
+            if (!providerThreadId) {
+              throw new Error(
+                `${providerId} did not return a provider thread for rewind operation ${operationId}`,
+              );
+            }
+            detachedProviderThreadIds.add(providerThreadId);
+            preparedThreadRewinds.set(rewindKey, {
+              sourceProviderCheckpointId: retainThroughProviderCheckpoint,
+              providerThreadId,
+              sourceProviderThreadId,
+            });
+            return { providerThreadId };
+          } finally {
+            suppressedThreadEventIds.delete(stagingThreadId);
+            threadIdentityRegistry.forgetThread({
+              providerState: proc.identity,
+              threadId: stagingThreadId,
+            });
+          }
+        },
+      });
+      preparingThreadRewinds.set(rewindKey, {
+        sourceProviderCheckpointId: retainThroughProviderCheckpoint,
+        promise: preparation,
+        sourceProviderThreadId,
+      });
+      try {
+        return await preparation;
+      } finally {
+        const current = preparingThreadRewinds.get(rewindKey);
+        if (current?.promise === preparation) {
+          preparingThreadRewinds.delete(rewindKey);
+        }
+      }
     },
 
     async resumeThread({

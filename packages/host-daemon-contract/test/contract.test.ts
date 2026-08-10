@@ -484,6 +484,9 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
 };
 
 const SETTLED_RESPONSE_RESULT_FIXTURES: SettledResponseResultFixtures = {
+  "thread.rewind.prepare": {
+    providerThreadId: "provider-thread-rewind",
+  },
   "thread.start": {
     providerThreadId: "provider-thread-123",
   },

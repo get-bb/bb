@@ -308,6 +308,27 @@ describe("claude-code provider adapter", () => {
     });
   });
 
+  it("buildCommand thread/fork forwards the provider checkpoint", () => {
+    const adapter = createClaudeCodeProviderAdapter();
+    const cmd = adapter.buildCommandPlan({
+      type: "thread/fork",
+      cwd: "/tmp/worktree",
+      threadId: "bb-thread-1",
+      sourceProviderThreadId: "claude-session-1",
+      sourceProviderCheckpointId: "assistant-message-42",
+      instructionMode: "append",
+      options: fullProviderExecutionContext,
+    });
+
+    expect(cmd).toMatchObject({
+      method: "thread/fork",
+      params: {
+        sourceProviderCheckpointId: "assistant-message-42",
+        sourceProviderThreadId: "claude-session-1",
+      },
+    });
+  });
+
   it("buildCommand passes workflowsEnabled through explicitly on thread/start and thread/resume", () => {
     const adapter = createClaudeCodeProviderAdapter();
     const start = adapter.buildCommandPlan({
@@ -2002,6 +2023,34 @@ describe("claude-code provider adapter", () => {
           id: "msg-1",
           text: "Hello world",
         }),
+      }),
+    );
+  });
+
+  it("records the latest Claude assistant message as the turn checkpoint", () => {
+    const adapter = createClaudeCodeProviderAdapter();
+    adapter.translateEvent({
+      type: "assistant",
+      uuid: "assistant-message-42",
+      message: {
+        id: "msg-1",
+        role: "assistant",
+        content: [{ type: "text", text: "Done" }],
+      },
+      session_id: "sess-1",
+    });
+
+    const events = adapter.translateEvent({
+      type: "result",
+      subtype: "success",
+      session_id: "sess-1",
+    });
+
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "turn/completed",
+        status: "completed",
+        providerCheckpointId: "assistant-message-42",
       }),
     );
   });

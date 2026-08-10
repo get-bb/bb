@@ -322,6 +322,152 @@ describe("ThreadTimelineRows actions", () => {
     ).toContain("max-md:pointer-coarse:size-7");
   });
 
+  it("offers edit on every accepted user message, including the first turn", () => {
+    const onEditMessage = vi.fn();
+    renderWithRouter(
+      <ThreadTimelineRows
+        timelineRows={[
+          conversationRow({
+            id: "earlier_user_message",
+            role: "user",
+            text: "An earlier request.",
+            sourceSeqStart: 3,
+            turnId: null,
+          }),
+          conversationRow({
+            id: "latest_user_message",
+            role: "user",
+            text: "The latest request.",
+            sourceSeqStart: 7,
+            attachments: {
+              webImages: 0,
+              localImages: 1,
+              localFiles: 1,
+              imageUrls: [],
+              localImagePaths: ["uploads/screenshot.png"],
+              localFilePaths: ["uploads/spec.md"],
+            },
+          }),
+        ]}
+        onEditMessage={onEditMessage}
+        threadRuntimeDisplayStatus="idle"
+        workspaceRootPath={undefined}
+      />,
+    );
+
+    const editButtons = screen.getAllByRole("button", {
+      name: "Edit message",
+    });
+    expect(editButtons).toHaveLength(2);
+    fireEvent.click(editButtons[0]!);
+    expect(onEditMessage).toHaveBeenNthCalledWith(1, {
+      expectedRequestSequence: 3,
+      input: [{ type: "text", text: "An earlier request.", mentions: [] }],
+    });
+
+    fireEvent.click(editButtons[1]!);
+    expect(onEditMessage).toHaveBeenCalledWith({
+      expectedRequestSequence: 7,
+      input: [
+        { type: "text", text: "The latest request.", mentions: [] },
+        { type: "localImage", path: "uploads/screenshot.png" },
+        { type: "localFile", path: "uploads/spec.md" },
+      ],
+    });
+  });
+
+  it("replaces the matching sent message with an inline editor host", () => {
+    const onHostElementChange = vi.fn();
+    const view = renderWithRouter(
+      <ThreadTimelineRows
+        timelineRows={[
+          conversationRow({
+            id: "edited_user_message",
+            role: "user",
+            text: "The original request.",
+            sourceSeqStart: 7,
+          }),
+          conversationRow({
+            id: "assistant_response",
+            role: "assistant",
+            text: "The existing response remains visible.",
+            sourceSeqStart: 8,
+          }),
+        ]}
+        inlineMessageEditor={{
+          expectedRequestSequence: 7,
+          onHostElementChange,
+        }}
+        threadRuntimeDisplayStatus="idle"
+        workspaceRootPath={undefined}
+      />,
+    );
+
+    const host = view.container.querySelector<HTMLDivElement>(
+      "[data-sent-message-inline-editor-host]",
+    );
+    expect(host).not.toBeNull();
+    expect(onHostElementChange).toHaveBeenCalledWith(host);
+    expect(screen.queryByText("The original request.")).toBeNull();
+    expect(
+      screen.getByText("The existing response remains visible."),
+    ).toBeTruthy();
+
+    view.unmount();
+    expect(onHostElementChange.mock.calls.at(-1)?.[0]).toBeNull();
+  });
+
+  it("does not offer edit for a steer request", () => {
+    const markup = toMarkup(
+      <ThreadTimelineRows
+        timelineRows={[
+          conversationRow({
+            role: "user",
+            text: "Change direction.",
+            turnRequest: { kind: "steer", status: "accepted" },
+          }),
+        ]}
+        onEditMessage={vi.fn()}
+        threadRuntimeDisplayStatus="idle"
+        workspaceRootPath={undefined}
+      />,
+    );
+
+    expect(markup).not.toContain('aria-label="Edit message"');
+  });
+
+  it("offers edit for an attachment-only request without requiring add-to-chat", () => {
+    const onEditMessage = vi.fn();
+    renderWithRouter(
+      <ThreadTimelineRows
+        timelineRows={[
+          conversationRow({
+            role: "user",
+            text: "",
+            sourceSeqStart: 11,
+            attachments: {
+              webImages: 0,
+              localImages: 1,
+              localFiles: 0,
+              imageUrls: [],
+              localImagePaths: ["uploads/screenshot.png"],
+              localFilePaths: [],
+            },
+          }),
+        ]}
+        onEditMessage={onEditMessage}
+        threadRuntimeDisplayStatus="idle"
+        workspaceRootPath={undefined}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit message" }));
+    expect(onEditMessage).toHaveBeenCalledWith({
+      expectedRequestSequence: 11,
+      input: [{ type: "localImage", path: "uploads/screenshot.png" }],
+    });
+  });
+
   it("keeps the last real user action footer inline when a remote-image-only row follows", () => {
     const { container } = renderWithRouter(
       <ThreadTimelineRows
