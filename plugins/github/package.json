@@ -1,6 +1,6 @@
 {
   "name": "bb-plugin-github",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Browse GitHub issues and pull requests in BB, then send them to agents.",
   "private": true,
   "license": "MIT",
