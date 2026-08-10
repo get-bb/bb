@@ -17,7 +17,9 @@ import { serveWithCache } from "./cache.js";
 import { BB_ICON_DATA_URI } from "./bb-icon.js";
 import { handleAssignMachineLabel } from "./machine-label.js";
 import {
+  publicConnectOrigin,
   resolveConnectRequestHost,
+  resolveConnectRequestUrl,
   resolveConnectRuntime,
   stripCloudDevHeader,
 } from "./cloud-dev.js";
@@ -200,13 +202,15 @@ export function offlinePage(
 export function machinePage(
   label: string,
   accountHandle: string,
-  baseDomain: string,
+  runtime: ReturnType<typeof resolveConnectRuntime>,
 ): Response {
-  const appHost = `${accountHandle}.${baseDomain}`;
+  const appOrigin = publicConnectOrigin(accountHandle, runtime);
+  const appHost = new URL(appOrigin).host;
+  const baseHost = new URL(runtime.accountAppUrl).host;
   return gatePage(
     `<h1><code>${escapeHtml(label)}</code> is a machine</h1>
-     <p>This machine is on <code>${escapeHtml(accountHandle)}</code>'s account. Its shares appear at <code>${escapeHtml(label)}--&lt;port&gt;.${escapeHtml(baseDomain)}</code>.</p>
-     <a class="btn primary" href="https://${escapeHtml(appHost)}">Open the bb app at ${escapeHtml(appHost)}</a>`,
+     <p>This machine is on <code>${escapeHtml(accountHandle)}</code>'s account. Its shares appear at <code>${escapeHtml(label)}--&lt;port&gt;.${escapeHtml(baseHost)}</code>.</p>
+     <a class="btn primary" href="${escapeHtml(appOrigin)}">Open the bb app at ${escapeHtml(appHost)}</a>`,
     200,
   );
 }
@@ -268,8 +272,8 @@ export default {
     env: Env,
     ctx: ExecutionContext,
   ): Promise<Response> {
-    const url = new URL(request.url);
     const runtime = resolveConnectRuntime(env);
+    const url = resolveConnectRequestUrl(request.url, request.headers, runtime);
     // Account-scoped APIs are handled on the gate before host/label routing so
     // they never proxy through a tunnel to a local bb origin. Auth is
     // machine/server credential or owner session — see servers.ts.
@@ -360,7 +364,7 @@ export default {
     // Machine labels route only explicit `<label>--<port>` shares. The bare
     // label is an informational gate page and never reaches the machine DO.
     if (resolved.kind === "machine" && target === null) {
-      return machinePage(label, resolved.accountHandle, env.BASE_DOMAIN);
+      return machinePage(label, resolved.accountHandle, runtime);
     }
 
     // The bootstrap script and its server-matched package must be reachable

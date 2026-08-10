@@ -11,6 +11,7 @@ import { WebSocket, WebSocketServer, type RawData } from "ws";
 import type { HostDaemonConnectTunnelIdentity } from "@bb/host-daemon-contract";
 import type { HostDaemonLogger } from "../logger.js";
 import {
+  buildMachineSharePublicOrigin,
   buildMachineTunnelUrl,
   ConnectTunnelClient,
   resolveTrustedConnectGate,
@@ -125,18 +126,25 @@ describe("ConnectTunnelClient", () => {
     ).toEqual({
       apiOrigin: "http://owner.bb.localhost:42745",
       baseDomain: "bb.localhost:42745",
-      protocol: "http:",
     });
     expect(
       buildMachineTunnelUrl({
         label: "sawyer-air",
         baseDomain: "bb.localhost:42745",
-        protocol: "http:",
       }),
     ).toBe("ws://sawyer-air.bb.localhost:42745/__tunnel?v=1");
+    expect(
+      buildMachineSharePublicOrigin(
+        { label: "sawyer-air", baseDomain: "bb.localhost:42745" },
+        4173,
+      ),
+    ).toBe("http://sawyer-air--4173.bb.localhost:42745");
     expect(() => resolveTrustedConnectGate("http://owner.getbb.app")).toThrow(
-      "HTTPS or a local *.localhost",
+      "require HTTPS",
     );
+    expect(() =>
+      resolveTrustedConnectGate("https://owner.bb.localhost:42745"),
+    ).toThrow("HTTP for a local *.localhost");
   });
 
   it("assigns its own label at the enrolled gate, dials on first share, and closes on the last", async () => {
@@ -174,11 +182,7 @@ describe("ConnectTunnelClient", () => {
       },
     ]);
     expect(identities).toEqual([
-      {
-        label: "sawyer-air",
-        baseDomain: "getbb.app",
-        protocol: "https:",
-      },
+      { label: "sawyer-air", baseDomain: "getbb.app" },
     ]);
     // The share declaration supplied only a port. The credential destination
     // is derived exclusively from the daemon's enrollment server.

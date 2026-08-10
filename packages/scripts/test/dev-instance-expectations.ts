@@ -28,19 +28,17 @@ function expectedPortOffset(repoRoot: string): number {
   );
 }
 
-function skipPackagedAppPorts(port: number): number {
-  let availablePort = port;
-  for (const reservedPort of [38_886, 38_887]) {
-    if (availablePort >= reservedPort) availablePort += 1;
-  }
-  return availablePort;
+function reservePackagedAppPorts(port: number): number {
+  if (port === 38_886) return 59_000;
+  if (port === 38_887) return 59_001;
+  return port;
 }
 
 export function expectedDevPorts(repoRoot: string): ExpectedDevPortSet {
   const offset = expectedPortOffset(repoRoot);
   return {
     appPort: 11_000 + offset,
-    cloudPort: skipPackagedAppPorts(35_000 + offset),
+    cloudPort: reservePackagedAppPorts(35_000 + offset),
     cloudWorkerPort: 43_000 + offset,
     hostDaemonPort: 27_000 + offset,
     serverPort: 19_000 + offset,

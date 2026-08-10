@@ -24,6 +24,7 @@
   "dependencies": {
     "@bb/agent-runtime": "workspace:*",
     "@bb/cli": "workspace:*",
+    "@bb/connect-client": "workspace:*",
     "@bb/config": "workspace:*",
     "@bb/domain": "workspace:*",
     "@bb/fuzzy-match": "workspace:*",

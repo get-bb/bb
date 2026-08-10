@@ -253,17 +253,11 @@ describe("HostSharedPortCoordinator", () => {
       sharedPorts.recordTunnelIdentity(host.id, {
         label: "sawyer-air",
         baseDomain: "getbb.app",
-        protocol: "https:",
       }),
-    ).toEqual({
-      label: "sawyer-air",
-      baseDomain: "getbb.app",
-      protocol: "https:",
-    });
+    ).toEqual({ label: "sawyer-air", baseDomain: "getbb.app" });
     expect(sharedPorts.getTunnelIdentity(host.id)).toEqual({
       label: "sawyer-air",
       baseDomain: "getbb.app",
-      protocol: "https:",
     });
   });
 });
@@ -383,17 +377,12 @@ describe("daemon session connect shares", () => {
         socket: daemonSocket,
         raw: JSON.stringify({
           type: "connect-tunnel.identity",
-          identity: {
-            label: "sawyer-air",
-            baseDomain: "getbb.app",
-            protocol: "https:",
-          },
+          identity: { label: "sawyer-air", baseDomain: "getbb.app" },
         }),
       });
       expect(harness.deps.sharedPorts.getTunnelIdentity("host-1")).toEqual({
         label: "sawyer-air",
         baseDomain: "getbb.app",
-        protocol: "https:",
       });
     });
   });

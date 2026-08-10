@@ -1855,10 +1855,7 @@ describe("connect plugin", () => {
 
   it("uses machine tunnel identity and declares per-host port sets", async () => {
     host = createConnectFakeHost({
-      remoteIdentity: {
-        label: "sawyer-air",
-        baseDomain: "getbb.app",
-      },
+      remoteIdentity: { label: "sawyer-air", baseDomain: "getbb.app" },
     });
     await plugin(host.bb as unknown as Parameters<typeof plugin>[0]);
     vi.stubGlobal(
@@ -2010,10 +2007,7 @@ describe("connect plugin", () => {
 
   it("empties machine declarations when the pairing is disconnected", async () => {
     host = createConnectFakeHost({
-      remoteIdentity: {
-        label: "sawyer-air",
-        baseDomain: "getbb.app",
-      },
+      remoteIdentity: { label: "sawyer-air", baseDomain: "getbb.app" },
     });
     await plugin(host.bb as unknown as Parameters<typeof plugin>[0]);
     vi.stubGlobal(
@@ -2544,10 +2538,7 @@ describe("connect CLI", () => {
 
   it("resolves the thread host, honors --host, and defaults no-context calls to the server host", async () => {
     host = createConnectFakeHost({
-      remoteIdentity: {
-        label: "sawyer-air",
-        baseDomain: "getbb.app",
-      },
+      remoteIdentity: { label: "sawyer-air", baseDomain: "getbb.app" },
     });
     await plugin(host.bb as unknown as Parameters<typeof plugin>[0]);
     host.harness.sdk.stub(

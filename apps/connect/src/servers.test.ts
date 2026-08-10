@@ -28,6 +28,7 @@ import {
   assignMachineLabelForCredential,
   sanitizeMachineLabelBase,
 } from "./machine-label.js";
+import { SECURE_SESSION_COOKIE } from "./cloud-dev.js";
 import { verifyMachineCredential } from "./session.js";
 
 // Real in-memory SQLite (never mock the DB). Same harness as session.test.ts.
@@ -254,7 +255,12 @@ describe("verifyServerCredential / resolveAccountUserId", () => {
     const req = new Request("https://sawyer.getbb.app/api/connect/servers", {
       headers: { "x-bb-connect-machine": machinePlain },
     });
-    const userId = await resolveAccountUserId(req, "secret", db);
+    const userId = await resolveAccountUserId(
+      req,
+      "secret",
+      db,
+      SECURE_SESSION_COOKIE,
+    );
     expect(userId).toBe("acct-a");
     const listed = await listAccountServers(db, userId!, now.getTime());
     expect(listed.map((s) => s.handle)).toEqual(["sawyer"]);
@@ -262,7 +268,9 @@ describe("verifyServerCredential / resolveAccountUserId", () => {
 
   it("returns null (unauthorized) when no credential or session is presented", async () => {
     const req = new Request("https://sawyer.getbb.app/api/connect/servers");
-    expect(await resolveAccountUserId(req, "secret", db)).toBeNull();
+    expect(
+      await resolveAccountUserId(req, "secret", db, SECURE_SESSION_COOKIE),
+    ).toBeNull();
   });
 
   it("accepts a valid owner session cookie", async () => {
@@ -303,7 +311,9 @@ describe("verifyServerCredential / resolveAccountUserId", () => {
         cookie: `__Secure-better-auth.session_token=${cookieValue}`,
       },
     });
-    expect(await resolveAccountUserId(req, secret, db)).toBe("acct-a");
+    expect(
+      await resolveAccountUserId(req, secret, db, SECURE_SESSION_COOKIE),
+    ).toBe("acct-a");
 
     const localRequest = new Request(
       "http://sawyer.bb.localhost:8787/api/connect/servers",

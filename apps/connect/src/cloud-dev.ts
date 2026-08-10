@@ -13,6 +13,17 @@ export interface ConnectRuntime {
   desktopSessionCookieName: string;
 }
 
+function resolveCloudDevLabel(
+  headers: Headers,
+  runtime: ConnectRuntime,
+): string | null {
+  if (!runtime.localCloud) return null;
+  const label = headers.get(CLOUD_DEV_HOST_HEADER)?.trim().toLowerCase();
+  return label && !label.includes(".") && /^[a-z0-9-]+$/u.test(label)
+    ? label
+    : null;
+}
+
 /** Resolve the small, fail-closed set of overrides used by local Cloud. */
 export function resolveConnectRuntime(env: {
   ACCOUNT_APP_URL?: string;
@@ -68,43 +79,34 @@ export function resolveConnectRequestHost(
   runtime: ConnectRuntime,
 ): string {
   const ordinaryHost = headers.get("host") ?? "";
-  if (!runtime.localCloud) return ordinaryHost;
-  const label = headers.get(CLOUD_DEV_HOST_HEADER)?.trim().toLowerCase();
-  if (!label || label.includes(".") || !/^[a-z0-9-]+$/u.test(label)) {
-    return ordinaryHost;
-  }
-  return `${label}.${runtime.baseDomain}`;
+  const label = resolveCloudDevLabel(headers, runtime);
+  return label === null ? ordinaryHost : `${label}.${runtime.baseDomain}`;
+}
+
+export function publicConnectOrigin(
+  label: string,
+  runtime: Pick<ConnectRuntime, "accountAppUrl" | "baseDomain">,
+): string {
+  const url = new URL(runtime.accountAppUrl);
+  url.hostname = `${label}.${runtime.baseDomain}`;
+  return url.origin;
+}
+
+export function resolveConnectRequestUrl(
+  requestUrl: string,
+  headers: Headers,
+  runtime: ConnectRuntime,
+): URL {
+  const parsed = new URL(requestUrl);
+  const label = resolveCloudDevLabel(headers, runtime);
+  if (label === null) return parsed;
+  const publicUrl = new URL(publicConnectOrigin(label, runtime));
+  publicUrl.pathname = parsed.pathname;
+  publicUrl.search = parsed.search;
+  publicUrl.hash = parsed.hash;
+  return publicUrl;
 }
 
 export function stripCloudDevHeader(headers: Headers): void {
   headers.delete(CLOUD_DEV_HOST_HEADER);
-}
-
-export async function waitForCloudService(args: {
-  url: string;
-  host: string;
-  serviceExited: () => boolean;
-  timeoutMs?: number;
-  retryDelayMs?: number;
-  fetchImpl?: typeof fetch;
-}): Promise<void> {
-  const deadline = Date.now() + (args.timeoutMs ?? 30_000);
-  const retryDelayMs = args.retryDelayMs ?? 250;
-  const fetchImpl = args.fetchImpl ?? fetch;
-  while (Date.now() < deadline) {
-    if (args.serviceExited()) throw new Error("Cloud service exited early");
-    try {
-      const response = await fetchImpl(args.url, {
-        headers: { host: args.host },
-        signal: AbortSignal.timeout(1_000),
-      });
-      const ready = response.status < 500;
-      await response.body?.cancel();
-      if (ready) return;
-    } catch {
-      // Retry transport failures until the shared startup deadline.
-    }
-    await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
-  }
-  throw new Error(`timed out waiting for ${args.host}`);
 }

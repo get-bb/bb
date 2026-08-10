@@ -8,11 +8,9 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { resolveCurrentDevInstanceConfig } from "../packages/config/src/runtime.ts";
-import {
-  CLOUD_DEV_HOST_HEADER,
-  waitForCloudService,
-} from "../apps/connect/src/cloud-dev.ts";
+import { CLOUD_DEV_HOST_HEADER } from "../apps/connect/src/cloud-dev.ts";
 import { createCloudDevProxy } from "./lib/cloud-dev-proxy.mjs";
+import { waitForCloudService } from "./lib/cloud-dev-readiness.mjs";
 
 const REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -114,6 +112,7 @@ function stop(exitCode = 0) {
 
 process.on("SIGINT", () => void stop(0));
 process.on("SIGTERM", () => void stop(0));
+process.on("SIGHUP", () => void stop(0));
 
 function assertPortAvailable(port, label) {
   return new Promise((resolve, reject) => {

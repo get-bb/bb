@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   ConnectListError,
   ConnectMachineRedeemError,
+  connectPublicProtocol,
   deriveConnectBaseUrl,
   listAccountServers,
   redeemMachineCredential,
@@ -26,6 +27,8 @@ describe("connect URL helpers", () => {
     expect(deriveConnectBaseUrl("https://laptop.bb.example:8443")).toBe(
       "https://bb.example:8443",
     );
+    expect(connectPublicProtocol("bb.localhost:42745")).toBe("http:");
+    expect(connectPublicProtocol("getbb.app")).toBe("https:");
   });
 });
 

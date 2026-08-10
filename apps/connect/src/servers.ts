@@ -11,14 +11,10 @@ import {
   verifyMachineCredential,
   verifySessionCookie,
 } from "./session.js";
-import {
-  resolveConnectRuntime,
-  SECURE_DESKTOP_SESSION_COOKIE,
-  SECURE_SESSION_COOKIE,
-} from "./cloud-dev.js";
+import { resolveConnectRuntime } from "./cloud-dev.js";
+import { MACHINE_CREDENTIAL_HEADER } from "./protocol-headers.js";
 import type { Env } from "./tunnel-do.js";
 
-export const DESKTOP_SESSION_COOKIE = SECURE_DESKTOP_SESSION_COOKIE;
 export const DESKTOP_SESSION_TTL_MS = 60 * 60 * 1000;
 
 function bytesToBase64Url(bytes: Uint8Array): string {
@@ -171,9 +167,9 @@ export async function resolveAccountUserId(
   request: Request,
   secret: string,
   db: ConnectDb,
-  sessionCookieName: string = SECURE_SESSION_COOKIE,
+  sessionCookieName: string,
 ): Promise<string | null> {
-  const presented = request.headers.get("x-bb-connect-machine") ?? "";
+  const presented = request.headers.get(MACHINE_CREDENTIAL_HEADER) ?? "";
   if (presented) {
     const machineUserId = await verifyMachineCredential(presented, db);
     if (machineUserId) return machineUserId;

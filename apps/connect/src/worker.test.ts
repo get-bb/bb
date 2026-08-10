@@ -114,7 +114,6 @@ vi.mock("./session.js", () => ({
 }));
 
 vi.mock("./servers.js", () => ({
-  DESKTOP_SESSION_COOKIE: "__Secure-bb-connect.desktop_session",
   handleCreateDesktopSession: vi.fn(),
   handleListAccountServers: vi.fn(),
   verifyDesktopSessionCookie: vi.fn(),
@@ -154,11 +153,11 @@ import {
   verifySessionCookie,
 } from "./session.js";
 import {
-  DESKTOP_SESSION_COOKIE,
   handleCreateDesktopSession,
   handleListAccountServers,
   verifyDesktopSessionCookie,
 } from "./servers.js";
+import { SECURE_DESKTOP_SESSION_COOKIE as DESKTOP_SESSION_COOKIE } from "./cloud-dev.js";
 import { handleAssignMachineLabel } from "./machine-label.js";
 import { serveWithCache } from "./cache.js";
 import worker, { offlinePage, relativeTime, wantsHtml } from "./worker.js";
@@ -379,7 +378,10 @@ describe("gate tunnel authentication", () => {
         "sawyer-air.getbb.app",
         "/__tunnel?v=1&serverId=victim-server&machineId=spoofed-machine",
         {
-          headers: { authorization: `Bearer ${credential}` },
+          headers: {
+            authorization: `Bearer ${credential}`,
+            "x-bb-cloud-dev-host": "smuggled",
+          },
         },
       ),
       env as never,
@@ -397,6 +399,7 @@ describe("gate tunnel authentication", () => {
       "machine-air",
     );
     expect(new URL(captured[0].url).searchParams.get("serverId")).toBeNull();
+    expect(captured[0].headers.get("x-bb-cloud-dev-host")).toBeNull();
   });
 
   it("dials immediately after a negative resolve and label assignment", async () => {
@@ -554,14 +557,20 @@ describe("machine gate auth", () => {
     const { env, ctx, captured } = makeEnv(() => new Response("origin"));
     const internal = await worker.fetch(
       visitorRequest("sawyer.getbb.app", "/internal/session/open", {
-        headers: { "x-bb-connect-machine": "bbcm_owner" },
+        headers: {
+          "x-bb-connect-machine": "bbcm_owner",
+          "x-bb-cloud-dev-host": "smuggled",
+        },
       }),
       env as never,
       ctx,
     );
     const api = await worker.fetch(
       visitorRequest("sawyer.getbb.app", "/api/v1/threads", {
-        headers: { "x-bb-connect-machine": "bbcm_owner" },
+        headers: {
+          "x-bb-connect-machine": "bbcm_owner",
+          "x-bb-cloud-dev-host": "smuggled",
+        },
       }),
       env as never,
       ctx,
@@ -572,6 +581,11 @@ describe("machine gate auth", () => {
     expect(
       captured.every(
         (request) => request.headers.get("x-bb-connect-machine") === null,
+      ),
+    ).toBe(true);
+    expect(
+      captured.every(
+        (request) => request.headers.get("x-bb-cloud-dev-host") === null,
       ),
     ).toBe(true);
     expect(
@@ -632,13 +646,16 @@ describe("machine gate auth", () => {
     async (path) => {
       const { env, ctx, captured } = makeEnv(() => new Response("artifact"));
       const response = await worker.fetch(
-        visitorRequest("sawyer.getbb.app", path),
+        visitorRequest("sawyer.getbb.app", path, {
+          headers: { "x-bb-cloud-dev-host": "smuggled" },
+        }),
         env as never,
         ctx,
       );
       expect(response.status).toBe(200);
       expect(await response.text()).toBe("artifact");
       expect(captured).toHaveLength(1);
+      expect(captured[0].headers.get("x-bb-cloud-dev-host")).toBeNull();
       expect(mockVerifyMachine).not.toHaveBeenCalled();
     },
   );
@@ -693,6 +710,30 @@ describe("gate worker share hosts", () => {
     expect(html).toContain("sawyer.getbb.app");
     expect(captured).toHaveLength(0);
     expect(mockVerifySession).not.toHaveBeenCalled();
+  });
+
+  it("renders local machine links with HTTP and the shared gateway port", async () => {
+    mockResolveLabel.mockResolvedValue(resolvedMachine());
+    const { env, ctx } = makeEnv(() => new Response("origin"));
+    Object.assign(env, {
+      ACCOUNT_APP_URL: "http://bb.localhost:42745",
+      BASE_DOMAIN: "bb.localhost",
+      CLOUD_DEV: "true",
+    });
+    const response = await worker.fetch(
+      new Request("http://127.0.0.1:50743/", {
+        headers: {
+          host: "127.0.0.1:50743",
+          "x-bb-cloud-dev-host": "sawyer-air",
+        },
+      }),
+      env as never,
+      ctx,
+    );
+
+    const html = await response.text();
+    expect(html).toContain("sawyer-air--&lt;port&gt;.bb.localhost:42745");
+    expect(html).toContain('href="http://sawyer.bb.localhost:42745"');
   });
 
   it("applies the same owner-session check to machine share hosts", async () => {
@@ -779,13 +820,17 @@ describe("gate worker share hosts", () => {
     const { env, ctx, captured } = makeEnv(() => new Response("ok"));
     await worker.fetch(
       visitorRequest("sawyer.getbb.app", "/", {
-        headers: { [TUNNEL_TARGET_HEADER]: "9999" },
+        headers: {
+          [TUNNEL_TARGET_HEADER]: "9999",
+          "x-bb-cloud-dev-host": "smuggled",
+        },
       }),
       env as never,
       ctx,
     );
     expect(captured).toHaveLength(1);
     expect(captured[0].headers.get(TUNNEL_TARGET_HEADER)).toBeNull();
+    expect(captured[0].headers.get("x-bb-cloud-dev-host")).toBeNull();
     expect(mockServeWithCache).toHaveBeenCalledWith(
       expect.any(Request),
       "sawyer",
@@ -848,6 +893,31 @@ describe("gate worker share hosts", () => {
     expect(html).toContain("Sign in");
     expect(html).toContain("sawyer");
     expect(captured).toHaveLength(0);
+  });
+
+  it("preserves the public local URL in the sign-in returnTo", async () => {
+    mockParseCookie.mockReturnValue(null);
+    const { env, ctx } = makeEnv(() => new Response("ok"));
+    Object.assign(env, {
+      ACCOUNT_APP_URL: "http://bb.localhost:42745",
+      BASE_DOMAIN: "bb.localhost",
+      CLOUD_DEV: "true",
+    });
+    const response = await worker.fetch(
+      new Request("http://127.0.0.1:50743/threads/thr_1?view=full", {
+        headers: {
+          host: "127.0.0.1:50743",
+          "x-bb-cloud-dev-host": "sawyer",
+        },
+      }),
+      env as never,
+      ctx,
+    );
+
+    expect(response.status).toBe(401);
+    expect(await response.text()).toContain(
+      "returnTo=http%3A%2F%2Fsawyer.bb.localhost%3A42745%2Fthreads%2Fthr_1%3Fview%3Dfull",
+    );
   });
 
   it("returns 403 when share host session is a different user", async () => {

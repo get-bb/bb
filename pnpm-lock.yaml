@@ -612,6 +612,9 @@ importers:
       '@bb/config':
         specifier: workspace:*
         version: link:../../packages/config
+      '@bb/connect-client':
+        specifier: workspace:*
+        version: link:../../packages/connect-client
       '@bb/domain':
         specifier: workspace:*
         version: link:../../packages/domain

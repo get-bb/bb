@@ -1,14 +1,11 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   CLOUD_DEV_HOST_HEADER,
+  publicConnectOrigin,
   resolveConnectRequestHost,
+  resolveConnectRequestUrl,
   resolveConnectRuntime,
-  waitForCloudService,
 } from "./cloud-dev.js";
-
-afterEach(() => {
-  vi.useRealTimers();
-});
 
 describe("local Cloud request routing", () => {
   it("accepts the launcher host and selects HTTP cookies only in local Cloud", () => {
@@ -26,6 +23,16 @@ describe("local Cloud request routing", () => {
     );
     expect(runtime.sessionCookieName).toBe("better-auth.session_token");
     expect(runtime.desktopSessionCookieName).toBe("bb-connect.desktop_session");
+    expect(publicConnectOrigin("sawyer--3000", runtime)).toBe(
+      "http://sawyer--3000.bb.localhost:8787",
+    );
+    expect(
+      resolveConnectRequestUrl(
+        "http://127.0.0.1:50743/threads/thr_1?view=full",
+        headers,
+        runtime,
+      ).toString(),
+    ).toBe("http://sawyer--3000.bb.localhost:8787/threads/thr_1?view=full");
   });
 
   it("ignores the launcher header in production", () => {
@@ -50,31 +57,5 @@ describe("local Cloud request routing", () => {
         CLOUD_DEV: "true",
       }),
     ).toThrow("only allowed for local Cloud development");
-  });
-
-  it("backs off after a 500 response and cancels its body", async () => {
-    vi.useFakeTimers();
-    const unavailable = new Response("starting", { status: 500 });
-    const cancel = vi.spyOn(unavailable.body!, "cancel");
-    const fetchImpl = vi
-      .fn<typeof fetch>()
-      .mockResolvedValueOnce(unavailable)
-      .mockResolvedValueOnce(new Response(null, { status: 204 }));
-
-    const ready = waitForCloudService({
-      url: "http://127.0.0.1:42745/dashboard",
-      host: "bb.localhost:42745",
-      serviceExited: () => false,
-      timeoutMs: 1_000,
-      retryDelayMs: 250,
-      fetchImpl,
-    });
-    await vi.advanceTimersByTimeAsync(249);
-    expect(fetchImpl).toHaveBeenCalledTimes(1);
-    await vi.advanceTimersByTimeAsync(1);
-    await ready;
-
-    expect(fetchImpl).toHaveBeenCalledTimes(2);
-    expect(cancel).toHaveBeenCalledOnce();
   });
 });

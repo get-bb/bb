@@ -26,7 +26,6 @@ import { generateConnectCode, generateToken, sha256Hex } from "./tokens.js";
  */
 export interface Deps {
   db: ConnectDb;
-  baseDomain: string;
   appUrl: string;
   serverUrlTemplate: string;
   closeTunnel?: (routingKey: string) => Promise<void>;
@@ -65,7 +64,6 @@ function serverUrlForLabel(label: string, template: string): string {
 export function depsFromEnv(env: Env): Deps {
   return {
     db: drizzle(env.DB),
-    baseDomain: env.BASE_DOMAIN,
     appUrl: env.APP_URL,
     serverUrlTemplate: resolveServerUrlTemplate(
       env.CONNECT_SERVER_URL_TEMPLATE,
@@ -114,7 +112,6 @@ export interface AccountState {
   /** Primary first, then oldest → newest. Empty until a handle is claimed. */
   servers: ServerSummary[];
   appUrl: string;
-  baseDomain: string;
   serverUrlTemplate: string;
   /** GitHub login for the account footer link; null for pre-column rows. */
   githubLogin: string | null;
@@ -201,7 +198,7 @@ export async function getAccountState(
   deps: Deps,
   userId: string,
 ): Promise<AccountState> {
-  const { db, baseDomain, serverUrlTemplate } = deps;
+  const { db, serverUrlTemplate } = deps;
   await retryPendingMachineRevocations(deps, userId);
   const prof = await db
     .select()
@@ -217,7 +214,6 @@ export async function getAccountState(
   const now = Date.now();
   const base = {
     appUrl: deps.appUrl,
-    baseDomain,
     serverUrlTemplate,
     githubLogin: userRow?.githubLogin ?? null,
     maxServers: MAX_SERVERS_PER_ACCOUNT,
@@ -241,8 +237,7 @@ export async function getAccountState(
         id: row.id,
         name: row.name,
         subdomain: row.subdomain,
-        online:
-          lastSeenMs != null && now - lastSeenMs < SERVER_OFFLINE_AFTER_MS,
+        online: lastSeenMs != null && now - lastSeenMs < SERVER_OFFLINE_AFTER_MS,
         lastSeenAt: lastSeenMs,
         createdAt: row.createdAt.getTime(),
       };

@@ -138,19 +138,17 @@ function resolvePortOffset(repoRootPath: string): number {
   return Number.parseInt(hash.slice(0, 8), 16) % DEV_PORT_BUCKETS;
 }
 
-function skipPackagedAppPorts(port: number): number {
-  let availablePort = port;
-  for (const reservedPort of [BB_PROD_SERVER_PORT, BB_PROD_HOST_DAEMON_PORT]) {
-    if (availablePort >= reservedPort) availablePort += 1;
-  }
-  return availablePort;
+function reservePackagedAppPorts(port: number): number {
+  if (port === BB_PROD_SERVER_PORT) return 59_000;
+  if (port === BB_PROD_HOST_DAEMON_PORT) return 59_001;
+  return port;
 }
 
 function resolvePorts(repoRootPath: string): DevPortSet {
   const offset = resolvePortOffset(repoRootPath);
   return {
     appPort: DEV_APP_PORT_BASE + offset,
-    cloudPort: skipPackagedAppPorts(DEV_CLOUD_PORT_BASE + offset),
+    cloudPort: reservePackagedAppPorts(DEV_CLOUD_PORT_BASE + offset),
     cloudWorkerPort: DEV_CLOUD_WORKER_PORT_BASE + offset,
     hostDaemonPort: DEV_HOST_DAEMON_PORT_BASE + offset,
     serverPort: DEV_SERVER_PORT_BASE + offset,
