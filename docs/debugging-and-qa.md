@@ -31,6 +31,20 @@ eval "$(scripts/bb-dev-app env)"
 pnpm bb:dev thread spawn --project proj_personal --provider codex --permission-mode accept-edits --title "Smoke test" --prompt "Reply only with ok." --json
 ```
 
+## Performance Fixture Database
+
+Use `pnpm seed:perf` to fill a dev database with a large, realistic fixture:
+many projects, ~1,200 threads, and ~400k event rows with production-like
+payloads. Use it to reproduce performance problems that only appear at scale.
+
+- Start the dev app once first (`scripts/bb-dev-app current`), then stop it and
+  seed. The fixture then attaches to the real local host, so agents still run.
+- By default the command seeds this checkout's dev data dir. Pass
+  `--data-dir <path>` for another target. The command refuses to touch `~/.bb`.
+- Scale flags: `--projects`, `--threads`, `--events`, `--seed`. `--reset`
+  deletes the database file first. Without `--reset` the fixture appends.
+- Example: `pnpm seed:perf -- --reset --events 400000`.
+
 ## Local Cloud
 
 Run the Cloud dashboard and Connect worker against one local D1 database:
