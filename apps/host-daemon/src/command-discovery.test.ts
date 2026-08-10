@@ -91,6 +91,10 @@ function rootPathForTest(root: {
   return root.rootPath ?? root.filePath;
 }
 
+function fromSlashPath(rootPath: string, relativePath: string): string {
+  return path.join(rootPath, ...relativePath.split("/"));
+}
+
 beforeEach(async () => {
   tempRoot = await mkdtemp(path.join(tmpdir(), "bb-command-discovery-"));
 });
@@ -1224,117 +1228,101 @@ describe("resolveCommandScanRoots", () => {
     expect(byName(result.commands, "synced-skill")).toBeUndefined();
   });
 
-  it("returns Pi project and user skill roots", async () => {
+  it("returns every provider-native project and user root", async () => {
     const fixture = await makeWorkspaceFixture();
-    const roots = resolveCommandScanRoots({
-      providerId: "pi",
-      cwd: fixture.cwd,
-      homeDir: fixture.homeDir,
-      codexHome: fixture.codexHome,
-    });
-    expect(roots.map(rootPathForTest)).toEqual([
-      path.join(fixture.cwd, ".pi", "skills"),
-      path.join(fixture.cwd, ".agents", "skills"),
-      path.join(fixture.homeDir, ".pi", "agent", "skills"),
-      path.join(fixture.homeDir, ".agents", "skills"),
-    ]);
-  });
+    const cases = [
+      {
+        providerId: "pi",
+        project: [".pi/skills", ".agents/skills"],
+        user: [".pi/agent/skills", ".agents/skills"],
+        shape: "skill",
+      },
+      {
+        providerId: "acp-cursor",
+        project: [
+          ".cursor/skills",
+          ".agents/skills",
+          ".claude/skills",
+          ".codex/skills",
+        ],
+        user: [
+          ".cursor/skills",
+          ".agents/skills",
+          ".claude/skills",
+          ".codex/skills",
+        ],
+        shape: "skill-recursive",
+      },
+      {
+        providerId: "acp-grok",
+        project: [
+          ".grok/skills",
+          ".agents/skills",
+          ".claude/skills",
+          ".cursor/skills",
+        ],
+        user: [
+          ".grok/skills",
+          ".agents/skills",
+          ".claude/skills",
+          ".cursor/skills",
+        ],
+        shape: "skill-recursive",
+      },
+    ] as const;
 
-  it("returns every Cursor project and user compatibility root", async () => {
-    const fixture = await makeWorkspaceFixture();
-    const roots = resolveCommandScanRoots({
-      providerId: "acp-cursor",
-      cwd: fixture.cwd,
-      homeDir: fixture.homeDir,
-      codexHome: fixture.codexHome,
-    });
-    expect(roots.map(rootPathForTest)).toEqual([
-      path.join(fixture.cwd, ".cursor", "skills"),
-      path.join(fixture.cwd, ".agents", "skills"),
-      path.join(fixture.cwd, ".claude", "skills"),
-      path.join(fixture.cwd, ".codex", "skills"),
-      path.join(fixture.homeDir, ".cursor", "skills"),
-      path.join(fixture.homeDir, ".agents", "skills"),
-      path.join(fixture.homeDir, ".claude", "skills"),
-      path.join(fixture.homeDir, ".codex", "skills"),
-    ]);
-    expect(roots.every((root) => root.shape === "skill-recursive")).toBe(true);
-  });
-
-  it("returns every Grok project and user compatibility root", async () => {
-    const fixture = await makeWorkspaceFixture();
-    const roots = resolveCommandScanRoots({
-      providerId: "acp-grok",
-      cwd: fixture.cwd,
-      homeDir: fixture.homeDir,
-      codexHome: fixture.codexHome,
-    });
-    expect(roots.map(rootPathForTest)).toEqual([
-      path.join(fixture.cwd, ".grok", "skills"),
-      path.join(fixture.cwd, ".agents", "skills"),
-      path.join(fixture.cwd, ".claude", "skills"),
-      path.join(fixture.cwd, ".cursor", "skills"),
-      path.join(fixture.homeDir, ".grok", "skills"),
-      path.join(fixture.homeDir, ".agents", "skills"),
-      path.join(fixture.homeDir, ".claude", "skills"),
-      path.join(fixture.homeDir, ".cursor", "skills"),
-    ]);
-    expect(roots.every((root) => root.shape === "skill-recursive")).toBe(true);
+    for (const entry of cases) {
+      const roots = resolveCommandScanRoots({
+        providerId: entry.providerId,
+        cwd: fixture.cwd,
+        homeDir: fixture.homeDir,
+        codexHome: fixture.codexHome,
+      });
+      expect(roots.map(rootPathForTest)).toEqual([
+        ...entry.project.map((root) => fromSlashPath(fixture.cwd, root)),
+        ...entry.user.map((root) => fromSlashPath(fixture.homeDir, root)),
+      ]);
+      expect(roots.every((root) => root.shape === entry.shape)).toBe(true);
+    }
   });
 
   it("uses provider configuration directories from the environment", async () => {
     const fixture = await makeWorkspaceFixture();
-    vi.stubEnv("CLAUDE_CONFIG_DIR", "custom-claude");
-    expect(
-      resolveCommandScanRoots({
-        providerId: "claude-code",
+    const cases = [
+      [
+        "CLAUDE_CONFIG_DIR",
+        "custom-claude",
+        "claude-code",
+        "custom-claude/skills",
+      ],
+      [
+        "OPENCODE_CONFIG_DIR",
+        "custom-opencode",
+        "acp-opencode",
+        "custom-opencode/skills",
+      ],
+      ["OMP_PROFILE", "work", "acp-omp", ".omp/profiles/work/agent/skills"],
+      ["GROK_HOME", "custom-grok", "acp-grok", "custom-grok/skills"],
+      [
+        "HERMES_HOME",
+        "custom-hermes",
+        "acp-hermes-agent",
+        "custom-hermes/skills",
+      ],
+    ] as const;
+    for (const [environmentName, value, providerId, expectedPath] of cases) {
+      vi.stubEnv(environmentName, value);
+      const roots = resolveCommandScanRoots({
+        providerId,
         cwd: null,
         homeDir: fixture.homeDir,
         codexHome: fixture.codexHome,
-      }).map(rootPathForTest),
-    ).toContain(path.join(fixture.homeDir, "custom-claude", "skills"));
-
-    vi.stubEnv("OPENCODE_CONFIG_DIR", "custom-opencode");
-    expect(
-      resolveCommandScanRoots({
-        providerId: "acp-opencode",
-        cwd: null,
-        homeDir: fixture.homeDir,
-        codexHome: fixture.codexHome,
-      }).map(rootPathForTest),
-    ).toContain(path.join(fixture.homeDir, "custom-opencode", "skills"));
-
-    vi.stubEnv("OMP_PROFILE", "work");
-    expect(
-      resolveCommandScanRoots({
-        providerId: "acp-omp",
-        cwd: null,
-        homeDir: fixture.homeDir,
-        codexHome: fixture.codexHome,
-      }).map(rootPathForTest),
-    ).toContain(
-      path.join(fixture.homeDir, ".omp", "profiles", "work", "agent", "skills"),
-    );
-
-    vi.stubEnv("GROK_HOME", "custom-grok");
-    expect(
-      resolveCommandScanRoots({
-        providerId: "acp-grok",
-        cwd: null,
-        homeDir: fixture.homeDir,
-        codexHome: fixture.codexHome,
-      }).map(rootPathForTest),
-    ).toContain(path.join(fixture.homeDir, "custom-grok", "skills"));
-
-    vi.stubEnv("HERMES_HOME", "custom-hermes");
-    expect(
-      resolveCommandScanRoots({
-        providerId: "acp-hermes-agent",
-        cwd: null,
-        homeDir: fixture.homeDir,
-        codexHome: fixture.codexHome,
-      }).map(rootPathForTest),
-    ).toContain(path.join(fixture.homeDir, "custom-hermes", "skills"));
+      });
+      expect(roots.map(rootPathForTest)).toContain(
+        fromSlashPath(fixture.homeDir, expectedPath),
+      );
+      vi.unstubAllEnvs();
+    }
   });
 
   it("discovers configured provider skill directories", async () => {
@@ -1456,66 +1444,39 @@ describe("resolveCommandScanRoots", () => {
     const cases = [
       {
         providerId: "acp-opencode",
-        filePath: path.join(
-          fixture.cwd,
-          ".opencode",
-          "skills",
-          "open-code-skill",
-          "SKILL.md",
-        ),
+        base: "cwd",
+        filePath: ".opencode/skills/open-code-skill/SKILL.md",
         name: "open-code-skill",
       },
       {
         providerId: "pi",
-        filePath: path.join(
-          fixture.homeDir,
-          ".pi",
-          "agent",
-          "skills",
-          "pi-skill",
-          "SKILL.md",
-        ),
+        base: "homeDir",
+        filePath: ".pi/agent/skills/pi-skill/SKILL.md",
         name: "pi-skill",
       },
       {
         providerId: "acp-omp",
-        filePath: path.join(
-          fixture.cwd,
-          ".omp",
-          "skills",
-          "omp-skill",
-          "SKILL.md",
-        ),
+        base: "cwd",
+        filePath: ".omp/skills/omp-skill/SKILL.md",
         name: "omp-skill",
       },
       {
         providerId: "acp-grok",
-        filePath: path.join(
-          fixture.homeDir,
-          ".grok",
-          "skills",
-          "grok-skill",
-          "SKILL.md",
-        ),
+        base: "homeDir",
+        filePath: ".grok/skills/grok-skill/SKILL.md",
         name: "grok-skill",
       },
       {
         providerId: "acp-hermes-agent",
-        filePath: path.join(
-          fixture.homeDir,
-          ".hermes",
-          "skills",
-          "software",
-          "hermes-skill",
-          "SKILL.md",
-        ),
+        base: "homeDir",
+        filePath: ".hermes/skills/software/hermes-skill/SKILL.md",
         name: "hermes-skill",
       },
     ] as const;
 
     for (const entry of cases) {
       await writeFileEnsuringDir(
-        entry.filePath,
+        fromSlashPath(fixture[entry.base], entry.filePath),
         `---\nname: ${entry.name}\ndescription: ${entry.name}\n---\n`,
       );
       const commands = await discoverProviderCommands({
