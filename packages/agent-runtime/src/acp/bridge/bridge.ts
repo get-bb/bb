@@ -68,8 +68,10 @@ import {
   acpRequestPermissionParamsSchema,
   acpSessionNewResultSchema,
   acpSessionNotificationParamsSchema,
+  acpUsageUpdateSchema,
   type AcpConfigStateResult,
   type AcpSessionModels,
+  type AcpUsageUpdate,
   acpStopReasonSchema,
   acpWriteTextFileParamsSchema,
   type AcpContentBlock,
@@ -126,6 +128,8 @@ interface AcpThreadSession {
   promptActive: boolean;
   queuedInputs: PromptInput[][];
   loading: boolean;
+  loadingSessionId: string | undefined;
+  pendingLoadUsageUpdate: AcpUsageUpdate | undefined;
   stopping: boolean;
   /** Resolves when the in-flight bb turn loop fully settles. */
   turnSettled: Promise<void> | undefined;
@@ -1509,6 +1513,8 @@ async function startAgentSession(
     promptActive: false,
     queuedInputs: [],
     loading: false,
+    loadingSessionId: undefined,
+    pendingLoadUsageUpdate: undefined,
     stopping: false,
     turnSettled: undefined,
     pendingPermissions: new Set(),
@@ -1543,6 +1549,8 @@ async function startAgentSession(
     let loadedModels: AcpSessionModels | undefined;
     if (request.kind === "resume" && supportsLoadSession) {
       session.loading = true;
+      session.loadingSessionId = request.params.providerThreadId;
+      session.pendingLoadUsageUpdate = undefined;
       try {
         const configState = await connection.request({
           method: "session/load",
@@ -1558,12 +1566,16 @@ async function startAgentSession(
         sessionId = request.params.providerThreadId;
       } catch {
         sessionId = undefined;
-      } finally {
         session.loading = false;
+        session.loadingSessionId = undefined;
+        session.pendingLoadUsageUpdate = undefined;
       }
     }
 
     if (sessionId === undefined) {
+      session.loading = false;
+      session.loadingSessionId = undefined;
+      session.pendingLoadUsageUpdate = undefined;
       const newSession = await connection.request({
         method: "session/new",
         params: { cwd: params.cwd, mcpServers },
@@ -1593,6 +1605,16 @@ async function startAgentSession(
         modelSelection: params.modelSelection,
         nativeReasoning: params.nativeReasoning,
       });
+      const loadUsageUpdate = session.pendingLoadUsageUpdate;
+      session.loading = false;
+      session.loadingSessionId = undefined;
+      session.pendingLoadUsageUpdate = undefined;
+      if (loadUsageUpdate) {
+        sendNotification(ACP_UPDATE_METHOD, {
+          threadId: session.bbThreadId,
+          update: loadUsageUpdate,
+        });
+      }
     }
 
     session.providerThreadId = sessionId;
@@ -1733,7 +1755,22 @@ function handleAgentNotification(
   if (!parsed.success) {
     return;
   }
-  if (session.loading && parsed.data.update.sessionUpdate !== "usage_update") {
+  if (session.loading) {
+    if (
+      parsed.data.sessionId === session.loadingSessionId &&
+      parsed.data.update.sessionUpdate === "usage_update"
+    ) {
+      const usageUpdate = acpUsageUpdateSchema.safeParse(parsed.data.update);
+      if (usageUpdate.success) {
+        session.pendingLoadUsageUpdate = usageUpdate.data;
+      }
+    }
+    return;
+  }
+  if (
+    session.providerThreadId !== "" &&
+    parsed.data.sessionId !== session.providerThreadId
+  ) {
     return;
   }
   sendNotification(ACP_UPDATE_METHOD, {

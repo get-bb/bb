@@ -162,6 +162,7 @@ export const acpUsageUpdateSchema = z
     size: z.number().int().nonnegative(),
   })
   .passthrough();
+export type AcpUsageUpdate = z.infer<typeof acpUsageUpdateSchema>;
 
 const acpOtherSessionUpdateSchema = z
   .object({
