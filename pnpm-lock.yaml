@@ -396,6 +396,9 @@ importers:
       eslint-plugin-react-hooks:
         specifier: ^7.0.1
         version: 7.0.1(eslint@9.39.3(jiti@2.7.0))
+      lightningcss:
+        specifier: ^1.32.0
+        version: 1.32.0
       mdast-util-to-hast:
         specifier: ^13.2.1
         version: 13.2.1

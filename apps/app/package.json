@@ -136,6 +136,7 @@
     "bb-plugin-automations": "workspace:*",
     "eslint": "^9.39.3",
     "eslint-plugin-react-hooks": "^7.0.1",
+    "lightningcss": "^1.32.0",
     "mdast-util-to-hast": "^13.2.1",
     "sharp": "^0.34.5",
     "tailwindcss": "^4.3.0",

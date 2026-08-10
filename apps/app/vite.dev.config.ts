@@ -9,6 +9,12 @@ const devWebSocketBrowserHostPortDefine = JSON.stringify(
 
 export default defineConfig({
   ...sharedViteConfig,
+  // Match the production CSS pipeline in dev. In particular, this lowers
+  // Tailwind's nested conditional rules for Safari versions that parse
+  // color-mix() but do not reliably apply nested @supports declarations.
+  css: {
+    transformer: "lightningcss",
+  },
   define: {
     // Connect directly to the server in dev because Vite's WS proxy does not
     // handle upstream server restarts reliably.
