@@ -67,6 +67,7 @@ const {
   mockSessionState,
   mockSessionEventListeners,
   mockAbort,
+  mockCompact,
   mockDispose,
   mockPrompt,
   mockGetModel,
@@ -89,6 +90,7 @@ const {
   const mockSessionState = { isStreaming: false };
   const mockPrompt = vi.fn();
   const mockAbort = vi.fn(async () => {});
+  const mockCompact = vi.fn(async () => {});
   const mockDispose = vi.fn();
   const mockGetSessionStats = vi.fn();
   const mockGetContextUsage = vi.fn();
@@ -122,6 +124,7 @@ const {
   const mockCreateAgentSession = vi.fn(async () => ({
     session: {
       abort: mockAbort,
+      compact: mockCompact,
       subscribe: mockSubscribe,
       prompt: mockPrompt,
       dispose: mockDispose,
@@ -177,6 +180,7 @@ const {
     mockSessionState,
     mockSessionEventListeners,
     mockAbort,
+    mockCompact,
     mockDispose,
     mockPrompt,
     mockGetModel,
@@ -272,6 +276,7 @@ describe("PiSdkSession", () => {
     mockSessionEventListeners.length = 0;
     mockGetActiveToolNames.mockReturnValue([]);
     mockAbort.mockResolvedValue(undefined);
+    mockCompact.mockResolvedValue(undefined);
     mockGetModel.mockImplementation((provider: string, modelId: string) => ({
       id: modelId,
       provider,
@@ -904,6 +909,55 @@ describe("PiSdkSession", () => {
 
     emitSessionEvent(createAgentEndEvent());
     expect(session.getIsProcessing()).toBe(false);
+  });
+
+  it("stays processing while Pi performs post-turn streaming work", async () => {
+    const session = new PiSdkSession({ cwd: "/tmp/project" }, vi.fn(), vi.fn());
+    await session.start();
+    await session.prompt("trigger auto compaction");
+
+    emitSessionEvent(createAgentEndEvent());
+    mockSessionState.isStreaming = true;
+
+    expect(session.getIsProcessing()).toBe(true);
+    await expect(session.compact()).rejects.toThrow(
+      "Cannot compact context while Pi is processing a turn",
+    );
+    expect(mockCompact).not.toHaveBeenCalled();
+  });
+
+  it("propagates compaction failures that emit no terminal event", async () => {
+    const error = new Error("Pi rejected compaction before it started");
+    mockCompact.mockRejectedValueOnce(error);
+    const session = new PiSdkSession({ cwd: "/tmp/project" }, vi.fn(), vi.fn());
+    await session.start();
+
+    await expect(session.compact()).rejects.toBe(error);
+    expect(session.getIsCompacting()).toBe(false);
+  });
+
+  it("uses the SDK terminal event as the compaction outcome", async () => {
+    const error = new Error("Pi reported compaction failure");
+    mockCompact.mockImplementationOnce(async () => {
+      emitSessionEvent({
+        type: "compaction_start",
+        reason: "manual",
+      });
+      emitSessionEvent({
+        type: "compaction_end",
+        reason: "manual",
+        result: undefined,
+        aborted: false,
+        willRetry: false,
+        errorMessage: error.message,
+      });
+      throw error;
+    });
+    const session = new PiSdkSession({ cwd: "/tmp/project" }, vi.fn(), vi.fn());
+    await session.start();
+
+    await expect(session.compact()).resolves.toBeUndefined();
+    expect(session.getIsCompacting()).toBe(false);
   });
 
   it("waits for abort before disposing during graceful close", async () => {

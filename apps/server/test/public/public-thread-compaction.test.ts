@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { listQueuedThreadMessages } from "@bb/db";
 import { createStandaloneBuiltinCompactCommandInput } from "@bb/domain";
 import {
   registerHostRpcResponder,
@@ -40,6 +41,28 @@ function seedCompactableThread(
   return { host, session, thread };
 }
 
+function registerSuccessfulTurnResponder(
+  harness: TestAppHarness,
+  args: { hostId: string; sessionId: string },
+) {
+  return registerHostRpcResponder(harness, {
+    ...args,
+    handle: ({ command }): HostRpcHandlerResult => {
+      if (command.type === "host.list_files") {
+        return { ok: true, result: { files: [], truncated: false } };
+      }
+      if (command.type === "host.read_file") {
+        return {
+          ok: false,
+          errorCode: "ENOENT",
+          errorMessage: `Path does not exist: ${command.path}`,
+        };
+      }
+      return { ok: true, result: { appliedAs: "new-turn" } };
+    },
+  });
+}
+
 describe("public thread compaction", () => {
   it("dispatches the same structured /compact turn as the composer", async () => {
     await withTestHarness(async (harness) => {
@@ -47,31 +70,9 @@ describe("public thread compaction", () => {
         providerId: "pi",
         providerThreadId: "provider-thread-1",
       });
-      const responder = registerHostRpcResponder(harness, {
+      const responder = registerSuccessfulTurnResponder(harness, {
         hostId: host.id,
         sessionId: session.id,
-        handle: ({ command }): HostRpcHandlerResult => {
-          if (command.type === "host.list_files") {
-            return { ok: true, result: { files: [], truncated: false } };
-          }
-          if (command.type === "host.read_file") {
-            return {
-              ok: false,
-              errorCode: "ENOENT",
-              errorMessage: `Path does not exist: ${command.path}`,
-            };
-          }
-          expect(command).toMatchObject({
-            type: "turn.submit",
-            threadId: thread.id,
-            input: createStandaloneBuiltinCompactCommandInput(),
-            resumeContext: {
-              providerId: "pi",
-              providerThreadId: "provider-thread-1",
-            },
-          });
-          return { ok: true, result: { appliedAs: "new-turn" } };
-        },
       });
 
       const response = await harness.app.request(
@@ -82,6 +83,66 @@ describe("public thread compaction", () => {
         response.status,
         JSON.stringify(await readJson(response.clone())),
       ).toBe(200);
+      const turnSubmitRequests = responder.requests.filter(
+        ({ command }) => command.type === "turn.submit",
+      );
+      expect(turnSubmitRequests).toHaveLength(1);
+      expect(turnSubmitRequests[0]?.command).toMatchObject({
+        type: "turn.submit",
+        threadId: thread.id,
+        input: createStandaloneBuiltinCompactCommandInput(),
+        resumeContext: {
+          providerId: "pi",
+          providerThreadId: "provider-thread-1",
+        },
+      });
+    });
+  });
+
+  it("queues sends and defers send-now while manual compaction is active", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session, thread } = seedCompactableThread(harness, {
+        providerId: "pi",
+        providerThreadId: "provider-thread-queue",
+      });
+      const responder = registerSuccessfulTurnResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+      });
+
+      const compactResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/compact`,
+        { method: "POST" },
+      );
+      expect(compactResponse.status).toBe(200);
+
+      const sendResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/send`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            mode: "steer",
+            input: [{ type: "text", text: "Send after compaction" }],
+          }),
+        },
+      );
+      expect(sendResponse.status).toBe(200);
+      const [queuedMessage] = listQueuedThreadMessages(harness.db, thread.id);
+      if (!queuedMessage) {
+        throw new Error("Expected the send to remain queued");
+      }
+
+      const sendNowResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/queued-messages/${queuedMessage.id}/send`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ mode: "steer" }),
+        },
+      );
+      expect(sendNowResponse.status).toBe(200);
+      expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(1);
       expect(
         responder.requests.filter(
           ({ command }) => command.type === "turn.submit",

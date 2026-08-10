@@ -982,6 +982,19 @@ export function createPiProviderAdapter(
             providerThreadId: "",
             scope: turnScope(turnId),
           });
+        } else if (parsed.data.reason !== "manual") {
+          events.push({
+            type: "provider/error",
+            threadId,
+            providerThreadId: "",
+            scope: turnScope(turnId),
+            message: parsed.data.aborted
+              ? "Context compaction interrupted"
+              : "Context compaction failed",
+            detail:
+              parsed.data.errorMessage ??
+              "Automatic context compaction was interrupted",
+          });
         }
         if (parsed.data.reason === "manual" && state.currentTurnId === turnId) {
           events.push({

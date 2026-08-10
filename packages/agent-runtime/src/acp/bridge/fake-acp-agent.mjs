@@ -33,6 +33,8 @@
  *                              count model-discovery spawns in cache/TTL tests)
  * - FAKE_ACP_PROMPT_LOG      → append one JSON-encoded prompt text per request
  * - FAKE_ACP_PROMPT_ERROR=1  → reject every session/prompt request
+ * - FAKE_ACP_COMPACT_STOP_REASON
+ *                            → stop reason returned for /compact
  */
 
 import { createInterface } from "node:readline";
@@ -329,10 +331,14 @@ async function handlePrompt(message) {
 
   if (activePromptId === message.id) {
     activePromptId = null;
+    const stopReason =
+      text === "/compact"
+        ? (process.env.FAKE_ACP_COMPACT_STOP_REASON ?? "end_turn")
+        : "end_turn";
     send({
       jsonrpc: "2.0",
       id: message.id,
-      result: { stopReason: "end_turn" },
+      result: { stopReason },
     });
   }
 }

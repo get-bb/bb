@@ -58,7 +58,10 @@ import {
   dispatchThreadUnarchiveCommand,
   prepareTurnSubmitCommandPayload,
 } from "../../services/threads/thread-commands.js";
-import { getLastProviderThreadId } from "../../services/threads/thread-events.js";
+import {
+  getLastProviderThreadId,
+  isManualCompactionActive,
+} from "../../services/threads/thread-events.js";
 import { requestThreadStopForCurrentState } from "../../services/threads/thread-lifecycle.js";
 import {
   getThreadPromptBannerActivity,
@@ -319,7 +322,11 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
 
   post(routes.send, async (context, payload) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
-    if (payload.mode === "queue-if-active" && thread.status === "active") {
+    const shouldQueue =
+      thread.status === "active" &&
+      (payload.mode === "queue-if-active" ||
+        (payload.mode !== "start" && isManualCompactionActive(deps, thread)));
+    if (shouldQueue) {
       ensureThreadIsNotAwaitingUserInteraction(deps, thread.id);
       await createQueuedMessageForThread(deps, {
         payload: queuedMessagePayloadFromSendRequest(payload),

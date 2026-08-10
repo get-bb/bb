@@ -416,20 +416,27 @@ function createOnSessionDone(
 ): (error?: unknown) => void {
   return (error?: unknown) => {
     if (!error) return;
-    const threadSession = getCurrentThreadSession({
-      sessionSerial: args.sessionSerial,
-      threadId: args.threadId,
-    });
-    if (!threadSession) return;
-
-    const message = error instanceof Error ? error.message : String(error);
-
-    send({
-      jsonrpc: "2.0",
-      method: "error",
-      params: { threadId: args.threadId, message },
-    });
+    reportSessionError({ ...args, error });
   };
+}
+
+function reportSessionError(
+  args: CreateSessionCallbackArgs & { error: unknown },
+): void {
+  const threadSession = getCurrentThreadSession({
+    sessionSerial: args.sessionSerial,
+    threadId: args.threadId,
+  });
+  if (!threadSession) return;
+
+  const message =
+    args.error instanceof Error ? args.error.message : String(args.error);
+
+  send({
+    jsonrpc: "2.0",
+    method: "error",
+    params: { threadId: args.threadId, message },
+  });
 }
 
 function createForwardToolCall(threadId: string): ToolCallForwarder {
@@ -845,6 +852,11 @@ async function handleTurnSteer(
     return;
   }
 
+  if (threadSession.session.getIsCompacting()) {
+    sendError(id, -32000, "Cannot steer while context compaction is active");
+    return;
+  }
+
   try {
     await threadSession.session.steer(
       text,
@@ -882,7 +894,13 @@ function handleThreadCompact(
   }
   // Pi reports the terminal outcome through compaction_end. The command result
   // only acknowledges that the validated maintenance operation was started.
-  void threadSession.session.compact().catch(() => undefined);
+  void threadSession.session.compact().catch((error: unknown) => {
+    reportSessionError({
+      error,
+      sessionSerial: threadSession.sessionSerial,
+      threadId: params.threadId,
+    });
+  });
   sendResult(id, { threadId: params.threadId });
 }
 

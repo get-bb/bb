@@ -1737,10 +1737,23 @@ function startCompaction(session: AcpThreadSession): void {
   });
   session.turnSettled = request
     .then((result) => {
-      sendNotification(ACP_COMPACTION_COMPLETED_METHOD, {
-        threadId: session.bbThreadId,
-        status: result.stopReason === "cancelled" ? "interrupted" : "completed",
-      });
+      if (result.stopReason === "end_turn") {
+        sendNotification(ACP_COMPACTION_COMPLETED_METHOD, {
+          threadId: session.bbThreadId,
+          status: "completed",
+        });
+      } else if (result.stopReason === "cancelled") {
+        sendNotification(ACP_COMPACTION_COMPLETED_METHOD, {
+          threadId: session.bbThreadId,
+          status: "interrupted",
+        });
+      } else {
+        sendNotification(ACP_COMPACTION_COMPLETED_METHOD, {
+          threadId: session.bbThreadId,
+          status: "failed",
+          error: `Agent stopped compaction: ${result.stopReason}`,
+        });
+      }
     })
     .catch((error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);

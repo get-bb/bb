@@ -443,6 +443,46 @@ describe("acp compaction events", () => {
       }),
     ]);
   });
+
+  it("completes streamed items before ending a compaction turn", () => {
+    const adapter = createCompactingAdapter();
+    adapter.translateEvent(
+      {
+        jsonrpc: "2.0",
+        method: "acp/compaction/started",
+        params: { threadId: "thread-1" },
+      },
+      THREAD_CONTEXT,
+    );
+    adapter.translateEvent(
+      updateNotification({
+        sessionUpdate: "agent_message_chunk",
+        content: { type: "text", text: "Compacted successfully" },
+      }),
+      THREAD_CONTEXT,
+    );
+
+    const events = adapter.translateEvent(
+      {
+        jsonrpc: "2.0",
+        method: "acp/compaction/completed",
+        params: { threadId: "thread-1", status: "completed" },
+      },
+      THREAD_CONTEXT,
+    );
+
+    expect(events.map((event) => event.type)).toEqual([
+      "item/completed",
+      "thread/compacted",
+      "turn/completed",
+    ]);
+    expect(events[0]).toMatchObject({
+      item: {
+        type: "agentMessage",
+        text: "Compacted successfully",
+      },
+    });
+  });
 });
 
 describe("acp adapter model cli", () => {

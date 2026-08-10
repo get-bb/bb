@@ -1250,6 +1250,24 @@ describe("acp bridge", () => {
     );
   });
 
+  it("does not report an ACP refusal as successful compaction", async () => {
+    const { providerThreadId } = await startThread({
+      envVars: { FAKE_ACP_COMPACT_STOP_REASON: "refusal" },
+    });
+
+    const compactId = sendRequest("thread/compact", {
+      threadId: providerThreadId,
+    });
+    await waitForResponse(compactId);
+
+    const completed = await waitForCompactionCompleted();
+    expect(completed.params).toEqual({
+      threadId: expect.any(String),
+      status: "failed",
+      error: "Agent stopped compaction: refusal",
+    });
+  });
+
   it("authenticates ACP sessions with cached tokens when advertised", async () => {
     const { providerThreadId } = await startThread({
       envVars: { FAKE_ACP_AUTH_METHODS: "cached_token" },

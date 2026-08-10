@@ -18,6 +18,7 @@ import {
   CLIENT_TURN_REQUEST_ID_SUFFIX_LENGTH,
   encodeClientTurnRequestIdAlphabetIndexes,
   getThreadEventScopeTurnId,
+  isStandaloneBuiltinCompactCommand,
   parseStoredThreadEvent,
   systemErrorEventDataSchema,
   threadScope,
@@ -43,6 +44,7 @@ import type {
   ThreadTurnInitiator,
   ThreadChangeKind,
   ThreadChangeMetadata,
+  Thread,
 } from "@bb/domain";
 import { ApiError, TurnStartGuardError } from "../../errors.js";
 import type { AppDeps } from "../../types.js";
@@ -958,6 +960,28 @@ export function getActiveTurnId(
   threadId: string,
 ): string | null {
   return getActiveStoredTurnId(deps.db, threadId);
+}
+
+export function isManualCompactionActive(
+  deps: ThreadEventReadDeps,
+  thread: Pick<Thread, "id" | "status">,
+): boolean {
+  if (thread.status !== "active") {
+    return false;
+  }
+
+  const activeTurnId = getActiveStoredTurnId(deps.db, thread.id);
+  const requestRow = activeTurnId
+    ? (getStoredTurnRequestEventForTurn(deps.db, {
+        threadId: thread.id,
+        turnId: activeTurnId,
+      }) ?? getLastStoredTurnRequestEvent(deps.db, thread.id))
+    : getLastStoredTurnRequestEvent(deps.db, thread.id);
+  return requestRow
+    ? isStandaloneBuiltinCompactCommand(
+        parseStoredTurnRequestEvent(requestRow).input,
+      )
+    : false;
 }
 
 export function getLastProviderThreadId(

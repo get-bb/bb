@@ -181,6 +181,8 @@ export class PiSdkSession {
   private session: AgentSession | undefined;
   private unsubscribe: (() => void) | undefined;
   private isProcessing = false;
+  private isCompacting = false;
+  private manualCompactionCompletionCount = 0;
   private readonly pendingSteerConsumptions: PendingSteerConsumption[] = [];
   private lastObservedSteeringQueue: string[] = [];
   private autoRetryInProgress = false;
@@ -195,7 +197,11 @@ export class PiSdkSession {
   ) {}
 
   getIsProcessing(): boolean {
-    return this.isProcessing;
+    return this.isProcessing || this.session?.isStreaming === true;
+  }
+
+  getIsCompacting(): boolean {
+    return this.isCompacting;
   }
 
   getSessionStats(): SessionStats | undefined {
@@ -320,11 +326,21 @@ export class PiSdkSession {
     if (this.isProcessing || this.session.isStreaming) {
       throw new Error("Cannot compact context while Pi is processing a turn");
     }
+    const completionCount = this.manualCompactionCompletionCount;
     this.isProcessing = true;
+    this.isCompacting = true;
     try {
       await this.session.compact();
+    } catch (error) {
+      // Pi emits compaction_end before rejecting for failures that occur after
+      // compaction starts. That event is the authoritative terminal outcome;
+      // only propagate errors for which the SDK emitted no terminal event.
+      if (this.manualCompactionCompletionCount === completionCount) {
+        throw error;
+      }
     } finally {
       this.isProcessing = false;
+      this.isCompacting = false;
     }
   }
 
@@ -337,6 +353,7 @@ export class PiSdkSession {
       this.unsubscribe = undefined;
     }
     this.isProcessing = false;
+    this.isCompacting = false;
   }
 
   stop(): void {
@@ -376,6 +393,7 @@ export class PiSdkSession {
         this.session = undefined;
       }
       this.isProcessing = false;
+      this.isCompacting = false;
     }
   }
 
@@ -394,6 +412,7 @@ export class PiSdkSession {
       // (prompt() catch) or explicit stop().
     }
     if (event.type === "compaction_end" && event.reason === "manual") {
+      this.manualCompactionCompletionCount += 1;
       this.isProcessing = false;
     }
   }

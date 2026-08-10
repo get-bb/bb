@@ -806,6 +806,48 @@ describe("pi provider adapter", () => {
     );
   });
 
+  it.each([
+    {
+      label: "failed",
+      end: {
+        aborted: false,
+        errorMessage: "Automatic compaction overflowed",
+      },
+      detail: "Automatic compaction overflowed",
+    },
+    {
+      label: "aborted",
+      end: { aborted: true },
+      detail: "Automatic context compaction was interrupted",
+    },
+  ])("terminates a $label automatic compaction", ({ end, detail }) => {
+    const adapter = createPiProviderAdapter();
+    adapter.translateEvent(loadFixture("agent-start.json"));
+    adapter.translateEvent({
+      type: "compaction_start",
+      reason: "threshold",
+    } satisfies AgentSessionEvent);
+
+    const events = adapter.translateEvent({
+      type: "compaction_end",
+      reason: "threshold",
+      result: undefined,
+      willRetry: false,
+      ...end,
+    } satisfies AgentSessionEvent);
+
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "provider/error",
+        scope: turnScope("turn-1"),
+        detail,
+      }),
+    );
+    expect(events.some((event) => event.type === "thread/compacted")).toBe(
+      false,
+    );
+  });
+
   function translateManualCompaction(args: {
     aborted: boolean;
     errorMessage?: string;

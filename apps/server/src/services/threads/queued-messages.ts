@@ -42,7 +42,10 @@ import {
 } from "./thread-commands.js";
 import { resolvePluginMentionContextInputs } from "../plugins/plugin-mentions.js";
 import { appendClientTurnEventInTransaction } from "./thread-events.js";
-import { getLastProviderThreadId } from "./thread-events.js";
+import {
+  getLastProviderThreadId,
+  isManualCompactionActive,
+} from "./thread-events.js";
 import { recoverThreadModelOverride } from "./thread-execution-override.js";
 import { ensureThreadCanStartRequest } from "./thread-lifecycle.js";
 import { requireReadyThreadEnvironment } from "./thread-turn-dispatch.js";
@@ -469,6 +472,11 @@ export async function sendQueuedMessage(
   args: SendQueuedMessageArgs,
 ): Promise<ThreadQueuedMessage> {
   const queuedMessages = claimQueuedThreadMessageForSend(deps, args);
+  const thread = getThread(deps.db, args.threadId);
+  if (thread && isManualCompactionActive(deps, thread)) {
+    releaseQueuedMessageClaims(deps, queuedMessages);
+    return toThreadQueuedMessage(queuedMessages[0]!);
+  }
   try {
     return await withActiveQueuedMessageClaims(queuedMessages, () =>
       sendClaimedQueuedMessage(deps, {

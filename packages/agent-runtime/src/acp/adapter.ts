@@ -794,6 +794,18 @@ export function createAcpProviderAdapter(
     args.state.toolCallEventsByCallId.clear();
   }
 
+  function flushOpenTurnItems(args: {
+    events: ThreadEvent[];
+    parentToolCallId: string | undefined;
+    state: AcpTurnState;
+    status: ThreadEventItemStatus;
+    turnId: string;
+  }): void {
+    flushOpenThoughtItem(args.events, args.state, args.parentToolCallId);
+    flushOpenAgentMessageItem(args.events, args.state, args.parentToolCallId);
+    completeOpenToolCallItems(args);
+  }
+
   function translateAcpUpdate(
     update: AcpSessionUpdate,
     state: AcpTurnState,
@@ -1044,15 +1056,13 @@ export function createAcpProviderAdapter(
       return [];
     }
     const events: ThreadEvent[] = [];
-    flushOpenThoughtItem(events, state, context?.parentToolCallId);
-    flushOpenAgentMessageItem(events, state, context?.parentToolCallId);
     const openToolCallStatus: ThreadEventItemStatus =
       stopReason === "end_turn"
         ? "completed"
         : stopReason === "cancelled"
           ? "interrupted"
           : "failed";
-    completeOpenToolCallItems({
+    flushOpenTurnItems({
       events,
       parentToolCallId: context?.parentToolCallId,
       state,
@@ -1198,6 +1208,19 @@ export function createAcpProviderAdapter(
           return [];
         }
         const events: ThreadEvent[] = [];
+        const itemStatus: ThreadEventItemStatus =
+          params.data.status === "completed"
+            ? "completed"
+            : params.data.status === "interrupted"
+              ? "interrupted"
+              : "failed";
+        flushOpenTurnItems({
+          events,
+          parentToolCallId: context?.parentToolCallId,
+          state,
+          status: itemStatus,
+          turnId,
+        });
         if (params.data.status === "completed") {
           events.push({
             type: "thread/compacted",

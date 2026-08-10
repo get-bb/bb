@@ -641,11 +641,32 @@ describe("pi bridge", () => {
       expect(session.compact).toHaveBeenCalledOnce();
       expect(session.prompt).not.toHaveBeenCalled();
 
+      bridge.sendRequest(3, "turn/steer", {
+        threadId: "thread-compact",
+        expectedTurnId: "turn-compact",
+        input: [{ type: "text", text: "wait for compaction", mentions: [] }],
+      });
+      await expect(bridge.waitForResponse(3)).resolves.toMatchObject({
+        id: 3,
+        error: {
+          message: "Cannot steer while context compaction is active",
+        },
+      });
+      expect(session.prompt).not.toHaveBeenCalled();
+
       rejectCompaction?.(new Error("Pi compaction failed"));
       await bridge.flushWork();
       expect(
         bridge.messages.filter((message) => message.id === 2),
       ).toHaveLength(1);
+      expect(bridge.messages).toContainEqual({
+        jsonrpc: "2.0",
+        method: "error",
+        params: {
+          threadId: "thread-compact",
+          message: "Pi compaction failed",
+        },
+      });
     } finally {
       bridge.restore();
     }
