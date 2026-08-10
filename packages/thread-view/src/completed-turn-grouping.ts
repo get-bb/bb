@@ -49,6 +49,22 @@ function isCompletedTurnSummaryGroup(
   return item.kind === "summary";
 }
 
+function unwrapSingletonCompactionGroups(
+  items: readonly CompletedTurnSummaryItem[],
+): CompletedTurnSummaryItem[] {
+  return items.map((item) => {
+    if (item.kind !== "summary" || item.sourceMessages.length !== 1) {
+      return item;
+    }
+
+    const onlyMessage = item.sourceMessages[0];
+    return onlyMessage?.kind === "operation" &&
+      onlyMessage.opType === "compaction"
+      ? { kind: "ungrouped-message", message: onlyMessage }
+      : item;
+  });
+}
+
 function getSummaryMessageBounds(
   sourceMessages: readonly EventProjectionMessage[],
 ): SummaryMessageBounds {
@@ -235,7 +251,9 @@ export function groupCompletedTurnMessages(
   const { summaryMessages, terminalMessages, trailingMessages } =
     splitCompletedTurnMessages(messages, turn.terminalMessage);
   return {
-    summaryItems: groupCompletedTurnSummaryMessages(turn, summaryMessages),
+    summaryItems: unwrapSingletonCompactionGroups(
+      groupCompletedTurnSummaryMessages(turn, summaryMessages),
+    ),
     terminalMessages,
     trailingMessages,
   };

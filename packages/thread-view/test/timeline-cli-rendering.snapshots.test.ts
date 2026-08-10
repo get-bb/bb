@@ -870,6 +870,43 @@ describe("timeline CLI rendering snapshots", () => {
     `);
   });
 
+  it("unwraps completed context compaction from a singleton turn summary", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const request = event.clientTurnRequested({ text: "/compact" });
+    const timeline = renderIdleTimeline([
+      request,
+      event.turnStarted(),
+      event.inputAccepted({ clientRequestId: request.data.requestId }),
+      event.contextCompactionStarted(),
+      event.threadCompacted(),
+      event.turnCompleted(),
+    ]);
+
+    expect(timeline.turnRows).toHaveLength(0);
+    expect(timeline.text).toContain("Context compacted");
+    expect(timeline.text).not.toContain("Worked for");
+  });
+
+  it("keeps context compaction grouped when the turn contains other work", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const timeline = renderIdleTimeline([
+      event.turnStarted(),
+      event.contextCompactionStarted(),
+      event.contextCompactionCompleted(),
+      event.commandCompleted({
+        itemId: "command-1",
+        command: "pnpm test",
+        aggregatedOutput: "Tests passed\n",
+        exitCode: 0,
+      }),
+      event.turnCompleted(),
+    ]);
+
+    expect(timeline.turnRows).toHaveLength(1);
+    expect(timeline.text).toContain("Worked for");
+    expect(timeline.text).toContain("Context compacted");
+  });
+
   it("keeps a finished-turn summary when work follows an assistant step", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
     const timeline = renderIdleTimeline([
