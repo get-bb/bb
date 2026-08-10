@@ -65,6 +65,7 @@ output.txt
 .codex
 .hermes/plans/
 .otto/
+.bb/
 
 # turborepo
 .turbo
