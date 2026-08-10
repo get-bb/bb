@@ -6,6 +6,7 @@ import { createInterface } from "node:readline/promises";
 import { setTimeout as sleep } from "node:timers/promises";
 import { Command } from "commander";
 import { z } from "zod";
+import { derivePluginId } from "@bb/domain";
 import type {
   InstalledPlugin as PluginEntry,
   PluginApplyUpdateResult,
@@ -31,6 +32,30 @@ import { resolveBbCliVersion } from "../version.js";
 
 import { outputJson, type JsonOutputOptions } from "./helpers.js";
 import { renderBorderlessTable } from "../table.js";
+
+export interface NewPluginTarget {
+  packageName: string;
+  directoryName: string;
+}
+
+export function resolveNewPluginTarget(name: string): NewPluginTarget | null {
+  const packageName = name.startsWith("@")
+    ? name
+    : name.startsWith("bb-plugin-")
+      ? name
+      : `bb-plugin-${name}`;
+  if (
+    !/^(?:@[a-z0-9][a-z0-9-]*\/)?bb-plugin-[a-z0-9][a-z0-9-]*$/.test(
+      packageName,
+    )
+  ) {
+    return null;
+  }
+  return {
+    packageName,
+    directoryName: `bb-plugin-${derivePluginId(packageName)}`,
+  };
+}
 
 /**
  * Where `bb plugin build`/`dev` cache the pinned esbuild/Tailwind set.
@@ -722,7 +747,7 @@ export function registerPluginCommands(
   plugin
     .command("new <name>")
     .description(
-      "Scaffold a new plugin in ./bb-plugin-<name> (no server required)",
+      "Scaffold a plugin in ./bb-plugin-<name>; accepts @scope/bb-plugin-<name>",
     )
     .option(
       "--app",
@@ -730,23 +755,22 @@ export function registerPluginCommands(
     )
     .action(
       action(async (name: string, opts: { app?: boolean }) => {
-        const packageName = name.startsWith("bb-plugin-")
-          ? name
-          : `bb-plugin-${name}`;
-        if (!/^bb-plugin-[a-z0-9][a-z0-9-]*$/.test(packageName)) {
+        const target = resolveNewPluginTarget(name);
+        if (target === null) {
           console.error(
-            `Invalid plugin name "${name}" — use lowercase letters, digits, and dashes.`,
+            `Invalid plugin name "${name}" — use name, bb-plugin-name, or @scope/bb-plugin-name.`,
           );
           process.exit(1);
         }
-        const targetDir = resolve(process.cwd(), packageName);
+        const { directoryName, packageName } = target;
+        const targetDir = resolve(process.cwd(), directoryName);
         await scaffoldPlugin({
           targetDir,
           packageName,
           bbVersion: resolveBbCliVersion(),
           app: opts.app ?? false,
         });
-        console.log(`Created ${packageName}/`);
+        console.log(`Created ${directoryName}/ (${packageName}).`);
         // App scaffolds vendor components whose npm deps must be installed
         // before `bb plugin build` bundles them. Best-effort: authors need
         // npm anyway (design §5.5); a failure here just surfaces the manual
@@ -770,7 +794,7 @@ export function registerPluginCommands(
           }
         }
         console.log("Next steps:");
-        console.log(`  cd ${packageName}`);
+        console.log(`  cd ${directoryName}`);
         if (opts.app && !installed) {
           console.log("  npm install");
         }

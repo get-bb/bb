@@ -8,7 +8,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative } from "node:path";
-import { PLUGIN_SDK_VERSION } from "@bb/domain";
+import { derivePluginId, PLUGIN_SDK_VERSION } from "@bb/domain";
 import {
   PLUGIN_SDK_APP_DTS,
   PLUGIN_SDK_DTS,
@@ -190,13 +190,8 @@ async function writeDeclarationAtomically(
   }
 }
 
-/** "bb-plugin-hello" → "hello" (mirrors the server's id derivation). */
-function pluginIdOf(packageName: string): string {
-  return packageName.replace(/^bb-plugin-/, "");
-}
-
 function pluginNameOf(packageName: string): string {
-  return pluginIdOf(packageName)
+  return derivePluginId(packageName)
     .split("-")
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
@@ -253,7 +248,7 @@ function componentsJsonSource(bbVersion: string): string {
 }
 
 function serverEntrySource(packageName: string): string {
-  const id = pluginIdOf(packageName);
+  const id = derivePluginId(packageName);
   return `// ${packageName} — a BB plugin backend entry.
 //
 // The default export is a factory that receives the plugin API. BB supplies
@@ -319,7 +314,7 @@ export default async function plugin(bb: BbPluginApi) {
 }
 
 function appEntrySource(packageName: string): string {
-  const id = pluginIdOf(packageName);
+  const id = derivePluginId(packageName);
   return `// ${packageName} — a BB plugin frontend entry.
 //
 // Compiled by \`bb plugin build\` into dist/app.js + dist/app.css. React and
@@ -444,7 +439,7 @@ Describe when to use this skill and the steps to follow.
 }
 
 function readmeSource(packageName: string, app: boolean): string {
-  const id = pluginIdOf(packageName);
+  const id = derivePluginId(packageName);
   const componentsSection = app
     ? `
 ## UI components
