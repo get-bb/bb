@@ -8,27 +8,21 @@ import { z } from "zod";
  *
  * Every experiment defaults to off — opting in is the point.
  */
-export const experimentsSchema = z.object({
-  /**
-   * Claude Code mock CLI traffic: routes Claude Code API requests through the
-   * local proxy so forwarded requests use CLI-shaped traffic.
-   */
-  claudeCodeMockCliTraffic: z.boolean(),
-  /**
-   * New onboarding: shows the first-run agent and project setup guide.
-   */
-  newOnboarding: z.boolean(),
-  /**
-   * Extensions: exposes skills and plugin management. Automations remain a
-   * plugin-owned page in the Plugins sidebar section. This is a presentation
-   * gate only; it does not load or unload extensions.
-   */
-  toolsHub: z.boolean(),
-});
+/**
+ * The complete experiment key list. Add an entry here without changing the
+ * database schema; experiment values use key/value persistence.
+ */
+export const experimentKeys = [
+  "claudeCodeMockCliTraffic",
+  "newOnboarding",
+  "toolsHub",
+] as const;
+export const experimentKeySchema = z.enum(experimentKeys);
+export type ExperimentKey = z.infer<typeof experimentKeySchema>;
+
+export const experimentsSchema = z.record(experimentKeySchema, z.boolean());
 export type Experiments = z.infer<typeof experimentsSchema>;
 
-export const defaultExperiments: Experiments = {
-  claudeCodeMockCliTraffic: false,
-  newOnboarding: false,
-  toolsHub: false,
-};
+export const defaultExperiments = experimentsSchema.parse(
+  Object.fromEntries(experimentKeys.map((key) => [key, false])),
+);

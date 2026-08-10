@@ -148,14 +148,8 @@ export const projectExecutionDefaults = sqliteTable(
 );
 
 export const systemExperiments = sqliteTable("system_experiments", {
-  id: text("id").primaryKey(),
-  claudeCodeMockCliTraffic: integer("claude_code_mock_cli_traffic", {
-    mode: "boolean",
-  }).notNull(),
-  newOnboarding: integer("new_onboarding", { mode: "boolean" })
-    .notNull()
-    .default(false),
-  toolsHub: integer("tools_hub", { mode: "boolean" }).notNull().default(false),
+  key: text("key").primaryKey(),
+  value: integer("value", { mode: "boolean" }).notNull(),
   updatedAt: integer("updated_at").notNull(),
 });
 

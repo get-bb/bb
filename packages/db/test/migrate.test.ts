@@ -142,6 +142,12 @@ interface MigratedEventDataRow {
   data: string;
 }
 
+interface MigratedExperimentRow {
+  key: string;
+  updatedAt: number;
+  value: number;
+}
+
 interface MigratedThreadSearchSegmentRow {
   threadId: string;
 }
@@ -236,6 +242,38 @@ const latestMigrationWhen = Math.max(
   ).entries.map((entry) => entry.when),
 );
 
+function restoreWideExperimentsTable(db: DbConnection): void {
+  const columns = db.$client
+    .prepare<[], TableInfoRow>("PRAGMA table_info(system_experiments)")
+    .all();
+  if (!columns.some((column) => column.name === "key")) return;
+
+  db.$client.exec(`
+    CREATE TABLE __wide_system_experiments (
+      id text PRIMARY KEY NOT NULL,
+      claude_code_mock_cli_traffic integer NOT NULL,
+      new_onboarding integer DEFAULT false NOT NULL,
+      tools_hub integer DEFAULT false NOT NULL,
+      updated_at integer NOT NULL
+    );
+    INSERT INTO __wide_system_experiments (
+      id,
+      claude_code_mock_cli_traffic,
+      new_onboarding,
+      tools_hub,
+      updated_at
+    ) VALUES (
+      'current',
+      COALESCE((SELECT value FROM system_experiments WHERE key = 'claudeCodeMockCliTraffic'), false),
+      COALESCE((SELECT value FROM system_experiments WHERE key = 'newOnboarding'), false),
+      COALESCE((SELECT value FROM system_experiments WHERE key = 'toolsHub'), false),
+      COALESCE((SELECT MAX(updated_at) FROM system_experiments), 0)
+    );
+    DROP TABLE system_experiments;
+    ALTER TABLE __wide_system_experiments RENAME TO system_experiments;
+  `);
+}
+
 function dropRewindAddedTables(db: DbConnection): void {
   // Several tests migrate to head, rewind the schema to a legacy state, then
   // re-apply forward. Tables added by recent migrations must be dropped as part
@@ -261,6 +299,7 @@ function dropRewindAddedTables(db: DbConnection): void {
     .run();
   dropHostMaxPermissionModeColumn(db);
   dropThreadSectionSchema(db);
+  restoreWideExperimentsTable(db);
   // system_experiments predates thread search, so the table itself isn't
   // rewound. Later migrations add plugins, bb_connect, multi_machine, and
   // thread_splits; the current schema has removed all four, so only drop a
@@ -375,6 +414,12 @@ const sideChatPluginOnlyMigrationPath = resolve(
   "..",
   "drizzle",
   "0084_side_chat_plugin_only.sql",
+);
+const experimentKeyValueMigrationPath = resolve(
+  __dirname,
+  "..",
+  "drizzle",
+  "0090_equal_reaper.sql",
 );
 const sidebarOrderingMigrationPath = resolve(
   __dirname,
@@ -1213,6 +1258,43 @@ function deleteDeferredCleanupMigrationRows(db: DbConnection): void {
 }
 
 describe("migrate", () => {
+  it("moves experiment columns into key/value rows without losing values", () => {
+    const db = createConnection(":memory:");
+
+    try {
+      db.$client.exec(`
+        CREATE TABLE system_experiments (
+          id text PRIMARY KEY NOT NULL,
+          claude_code_mock_cli_traffic integer NOT NULL,
+          new_onboarding integer DEFAULT false NOT NULL,
+          tools_hub integer DEFAULT false NOT NULL,
+          updated_at integer NOT NULL
+        );
+        INSERT INTO system_experiments VALUES ('current', true, false, true, 1234);
+      `);
+
+      runMigrationFile({ db, migrationPath: experimentKeyValueMigrationPath });
+
+      expect(
+        db.$client
+          .prepare<[], MigratedExperimentRow>(
+            `
+            SELECT key, value, updated_at AS updatedAt
+            FROM system_experiments
+            ORDER BY key
+          `,
+          )
+          .all(),
+      ).toEqual([
+        { key: "claudeCodeMockCliTraffic", updatedAt: 1234, value: 1 },
+        { key: "newOnboarding", updatedAt: 1234, value: 0 },
+        { key: "toolsHub", updatedAt: 1234, value: 1 },
+      ]);
+    } finally {
+      closeConnection(db);
+    }
+  });
+
   // Side chats used to be their own origin kind. 0084 hands every existing one
   // to the builtin side-chat plugin, so old side chats keep opening in the
   // plugin's panel instead of stranding on a removed origin kind.
@@ -1222,6 +1304,7 @@ describe("migrate", () => {
 
     // Rewind 0085 so it replays against an install that already has a project —
     // exactly what an upgrading user's database looks like.
+    restoreWideExperimentsTable(db);
     dropOnboardingCompletedAtColumn(db);
     dropNewOnboardingExperimentColumn(db);
     // Delete by the journal timestamp, not a hash substring: migration hashes
@@ -1499,6 +1582,7 @@ describe("migrate", () => {
       // Roll back from the permission-modes migration onward so it replays;
       // Drizzle only re-applies migrations newer than the latest applied row,
       // so every later row (0079) must be cleared with it.
+      restoreWideExperimentsTable(db);
       db.$client
         .prepare<DeleteMigrationParameters>(
           "DELETE FROM __drizzle_migrations WHERE created_at >= ?",
@@ -1886,6 +1970,7 @@ describe("migrate", () => {
     try {
       migrate(db);
       dropThreadSectionSchema(db);
+      restoreWideExperimentsTable(db);
       db.$client
         .prepare(
           "ALTER TABLE system_experiments ADD COLUMN thread_splits integer DEFAULT false NOT NULL",
@@ -1953,6 +2038,7 @@ describe("migrate", () => {
 
     try {
       migrate(db);
+      restoreWideExperimentsTable(db);
       db.$client.exec(`
         INSERT INTO projects (id, name, created_at, updated_at)
         VALUES ('proj_section_migration', 'Section migration', 1000, 1000);
