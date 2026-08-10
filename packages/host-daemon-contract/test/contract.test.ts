@@ -1055,10 +1055,14 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  // Version 101 builds on Codex inference deadlines in version 100 with
-  // provider-native history checkpointing and ownership-leased staged rewinds.
-  it("uses protocol version 101 for leased staged thread rewind cleanup", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(101);
+  // Version 102 stops the event sink from reposting a batch the server has
+  // permanently refused. An enrolled daemon on an older build retries such a
+  // batch forever, and because the queue is host-wide that stalls every thread
+  // on the machine until it restarts, so it must update before it delivers more
+  // events. It also stops scoping provider/unhandled events to turn ids that
+  // came from the provider rather than from bb.
+  it("uses protocol version 102 for non-repeating permanent event rejections", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(102);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {

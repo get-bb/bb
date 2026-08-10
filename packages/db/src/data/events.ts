@@ -383,11 +383,20 @@ function listStoredTurnStartedKeySet(
 // parent's session, which reports the parent's last-turn usage scoped to a turn
 // the forked thread never started. Dropping such an orphan snapshot is correct
 // and avoids wedging the whole event batch (which would otherwise roll back the
-// fork's identity + turn events and retry forever). Turn-content events still
-// require a stored turn/started, so genuine ordering bugs are still caught.
+// fork's identity + turn events and retry forever).
+//
+// provider/unhandled is here for the same reason: it is a diagnostic
+// passthrough for provider traffic bb has no translation for, and the provider
+// can label that traffic with a turn id of its own making (Codex tags
+// automatic-compaction events "auto-compact-N"). Losing one is a non-event;
+// failing the batch it rode in with is not.
+//
+// Turn-content events still require a stored turn/started, so genuine ordering
+// bugs are still caught.
 const ORPHAN_DROPPABLE_TURN_EVENT_TYPES: ReadonlySet<ThreadEventType> = new Set([
   "thread/tokenUsage/updated",
   "thread/contextWindowUsage/updated",
+  "provider/unhandled",
 ]);
 
 type DaemonTurnStartDisposition = "append" | "skip-orphan-snapshot";

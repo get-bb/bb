@@ -2697,13 +2697,18 @@ describe("codex provider adapter", () => {
       },
     });
 
+    // Thread scope, not turnScope("turn-1"): this notification failed schema
+    // parsing, so nothing here vouches for that turn id being one bb started.
+    // Turn-scoping an event whose turn/started the server never stored gets the
+    // event dropped; thread scope keeps it. Codex notifications bb *does* parse
+    // still carry turn scope — see the handled item/started cases above.
     expect(events).toContainEqual(
       expect.objectContaining({
         type: "provider/unhandled",
         providerId: "codex",
         rawType: "item/tool/requestUserInput",
         threadId: "t1",
-        scope: turnScope("turn-1"),
+        scope: threadScope(),
       }),
     );
   });

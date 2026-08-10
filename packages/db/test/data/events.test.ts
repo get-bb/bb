@@ -477,6 +477,56 @@ describe("events", () => {
     ).toEqual(["turn/started"]);
   });
 
+  it("drops orphan provider/unhandled events instead of failing the batch", () => {
+    const { db, thread } = setup();
+
+    // A provider can label its own internal traffic with a turn id bb never
+    // started (Codex tags automatic-compaction events "auto-compact-N"). An
+    // unhandled passthrough event is diagnostic only, so dropping it is always
+    // cheaper than rolling back the batch it rode in with — which the daemon
+    // would then repost forever, stalling every thread on the host.
+    const result = db.transaction(
+      (tx) =>
+        appendDaemonEventsInTransaction(tx, [
+          {
+            threadId: thread.id,
+            type: "provider/unhandled",
+            ...createTurnEventFields({ turnId: "auto-compact-1" }),
+            environmentId: null,
+            providerThreadId: "provider_thr_compacting",
+            data: JSON.stringify({
+              providerThreadId: "provider_thr_compacting",
+              providerId: "codex",
+              rawType: "sdk/custom",
+              rawEvent: {
+                jsonrpc: "2.0",
+                method: "sdk/message",
+                params: { turnId: "auto-compact-1" },
+              },
+            }),
+          },
+          {
+            threadId: thread.id,
+            type: "turn/started",
+            ...createTurnEventFields({ turnId: "turn_after_compaction" }),
+            environmentId: null,
+            providerThreadId: "provider_thr_compacting",
+            data: JSON.stringify({
+              providerThreadId: "provider_thr_compacting",
+              turnId: "turn_after_compaction",
+            }),
+          },
+        ]),
+      { behavior: "immediate" },
+    );
+
+    expect(result.skippedTurnUnstartedInputIndexes).toEqual([0]);
+    expect(result.insertedInputIndexes).toEqual([1]);
+    expect(
+      listEvents(db, { threadId: thread.id }).map((event) => event.type),
+    ).toEqual(["turn/started"]);
+  });
+
   it("accepts daemon turn-scoped events after earlier turn/started in the same batch", () => {
     const { db, thread } = setup();
 

@@ -61,19 +61,18 @@ function getThreadIdFromRawEvent(rawEvent: JsonRpcMessage): string {
   return getStringProperty(rawEvent.params, "threadId") ?? UNSTAMPED_THREAD_ID;
 }
 
-function getTurnIdFromRawEvent(rawEvent: JsonRpcMessage): string | undefined {
-  if (!isRecord(rawEvent.params)) {
-    return undefined;
-  }
-  return getStringProperty(rawEvent.params, "turnId");
-}
-
 export function createUnhandledProviderEvent(
   args: CreateUnhandledProviderEventArgs,
 ): ProviderUnhandledEvent {
   const threadId = args.threadId ?? getThreadIdFromRawEvent(args.rawEvent);
   const providerThreadId = args.providerThreadId ?? threadId;
-  const turnId = args.turnId ?? getTurnIdFromRawEvent(args.rawEvent);
+  // Only a turn id the caller vouched for — one bb itself opened and can
+  // therefore be trusted to have a stored turn/started — may scope this event.
+  // A provider labels its own internal traffic with turn ids of its own making
+  // (Codex tags automatic-compaction events "auto-compact-N"), and callers omit
+  // `turnId` precisely when bb has no active turn, so reading one out of the
+  // raw event would scope the event to a turn that never existed.
+  const turnId = args.turnId;
 
   return {
     type: "provider/unhandled",
