@@ -1039,12 +1039,12 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  // Version 89 makes the ACP adapter mint turn-qualified fileChange item ids.
-  // An enrolled daemon on an older build still emits session-scoped counters
-  // that collide across resumed sessions, so it must update before it reports
-  // more file edits.
-  it("uses protocol version 89 for turn-qualified ACP fileChange item ids", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(89);
+  // Version 90 adds the `plan` approval subject that carries a Claude plan to
+  // the user for review. An enrolled daemon on an older build cannot raise one,
+  // so it silently leaves Plan mode instead of asking, and it would reject the
+  // subject if the server sent one back.
+  it("uses protocol version 90 for plan-review approvals", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(90);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {
