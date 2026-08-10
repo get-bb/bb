@@ -489,9 +489,10 @@ const SidebarProvider = React.forwardRef<
               } as React.CSSProperties
             }
             className={cn(
-              // Fill the shell root instead of re-measuring the viewport.
-              // app.css owns the browser-mode-specific viewport unit and the
-              // descendants inherit that one authoritative height.
+              // Fill the shell root (html/body/#root are height:100%) instead of
+              // re-measuring the viewport. On iOS standalone, viewport units and
+              // the safe-area insets disagree, and app.css clips the difference
+              // into an unreachable band at the bottom of the screen.
               "group/sidebar-wrapper flex h-full min-h-0 w-full has-[[data-variant=inset]]:bg-sidebar",
               className,
             )}

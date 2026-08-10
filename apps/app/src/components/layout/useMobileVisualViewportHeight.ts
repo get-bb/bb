@@ -62,11 +62,16 @@ export function useMobileVisualViewportHeight(
       }
 
       const visualViewportHeight = Math.round(visualViewport.height);
-      const layoutViewportHeight = document.documentElement.clientHeight;
+      // `documentElement.clientHeight` is the visible viewport height for the
+      // root element, even when that root's actual CSS box extends behind an
+      // Android in-app browser toolbar. The body inherits the root box and
+      // therefore exposes the containing-block height the app shell really
+      // receives.
+      const shellContainingBlockHeight = document.body.clientHeight;
       const hasVisualViewportPan =
         visualViewport.offsetTop > 1 || window.scrollY > 0;
       if (
-        Math.abs(layoutViewportHeight - visualViewportHeight) <= 1 &&
+        Math.abs(shellContainingBlockHeight - visualViewportHeight) <= 1 &&
         !hasVisualViewportPan
       ) {
         // Avoid an unnecessary JS override when native layout resizing

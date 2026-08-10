@@ -72,28 +72,24 @@ function withFakeVisualViewport(
   }
 }
 
-function withDocumentClientHeight(
+function withElementClientHeight(
+  element: HTMLElement,
   getHeight: () => number,
   run: () => Promise<void> | void,
 ) {
-  const documentElement = document.documentElement;
   const originalDescriptor = Object.getOwnPropertyDescriptor(
-    documentElement,
+    element,
     "clientHeight",
   );
-  Object.defineProperty(documentElement, "clientHeight", {
+  Object.defineProperty(element, "clientHeight", {
     configurable: true,
     get: getHeight,
   });
   const restore = () => {
     if (originalDescriptor) {
-      Object.defineProperty(
-        documentElement,
-        "clientHeight",
-        originalDescriptor,
-      );
+      Object.defineProperty(element, "clientHeight", originalDescriptor);
     } else {
-      Reflect.deleteProperty(documentElement, "clientHeight");
+      Reflect.deleteProperty(element, "clientHeight");
     }
   };
   try {
@@ -141,40 +137,61 @@ describe("useMobileVisualViewportHeight", () => {
   it("corrects an embedded browser only when its layout fails to resize", async () => {
     const visualViewport = new FakeVisualViewport();
     visualViewport.offsetTop = 0;
-    let layoutViewportHeight = 500;
-    await withDocumentClientHeight(
-      () => layoutViewportHeight,
+    let shellContainingBlockHeight = 500;
+    await withElementClientHeight(
+      document.documentElement,
+      () => visualViewport.height,
       async () =>
-        withFakeVisualViewport(visualViewport, async () => {
-          render(
-            <VisualViewportShell
-              enabled
-              restoreImmediatelyOnKeyboardDismissal={false}
-            />,
-          );
-          const shell = screen.getByTestId("shell");
-          const editor = screen.getByTestId("editor");
-          expect(shell.style.top).toBe("");
-          expect(shell.style.height).toBe("");
+        withElementClientHeight(
+          document.body,
+          () => shellContainingBlockHeight,
+          async () =>
+            withFakeVisualViewport(visualViewport, async () => {
+              render(
+                <VisualViewportShell
+                  enabled
+                  restoreImmediatelyOnKeyboardDismissal={false}
+                />,
+              );
+              const shell = screen.getByTestId("shell");
+              const editor = screen.getByTestId("editor");
+              expect(shell.style.top).toBe("");
+              expect(shell.style.height).toBe("");
 
-          act(() => {
-            visualViewport.height = 300;
-            visualViewport.dispatchEvent(new Event("resize"));
-          });
-          await waitFor(() => expect(shell.style.height).toBe("300px"));
-          expect(shell.style.top).toBe("0px");
+              act(() => {
+                // Android's root clientHeight can equal the visible viewport
+                // while its actual body containing block remains taller.
+                shellContainingBlockHeight = 560;
+                window.dispatchEvent(new Event("resize"));
+              });
+              await waitFor(() => expect(shell.style.height).toBe("500px"));
+              expect(shell.style.top).toBe("0px");
 
-          act(() => editor.focus());
-          act(() => editor.blur());
-          expect(shell.style.height).toBe("300px");
+              act(() => {
+                shellContainingBlockHeight = 500;
+                window.dispatchEvent(new Event("resize"));
+              });
+              await waitFor(() => expect(shell.style.height).toBe(""));
 
-          act(() => {
-            layoutViewportHeight = 300;
-            window.dispatchEvent(new Event("resize"));
-          });
-          await waitFor(() => expect(shell.style.height).toBe(""));
-          expect(shell.style.top).toBe("");
-        }),
+              act(() => {
+                visualViewport.height = 300;
+                visualViewport.dispatchEvent(new Event("resize"));
+              });
+              await waitFor(() => expect(shell.style.height).toBe("300px"));
+              expect(shell.style.top).toBe("0px");
+
+              act(() => editor.focus());
+              act(() => editor.blur());
+              expect(shell.style.height).toBe("300px");
+
+              act(() => {
+                shellContainingBlockHeight = 300;
+                window.dispatchEvent(new Event("resize"));
+              });
+              await waitFor(() => expect(shell.style.height).toBe(""));
+              expect(shell.style.top).toBe("");
+            }),
+        ),
     );
   });
 
