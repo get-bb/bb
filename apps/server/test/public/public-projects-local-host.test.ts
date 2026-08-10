@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
-import { setExperiments } from "@bb/db";
+import { listPublicProjects, setExperiments } from "@bb/db";
 import { defaultExperiments } from "@bb/domain";
 import {
   reportQueuedCommandSuccess,
@@ -27,6 +27,49 @@ const projectResponseSchema = z.object({
 });
 
 describe("public project local host routes", () => {
+  it("returns the existing project when its local folder is added again", async () => {
+    await withTestHarness(async (harness) => {
+      const offlinePrimary = seedHost(harness.deps, {
+        id: "host-duplicate-project",
+      });
+      seedPrimaryHost(harness.deps, offlinePrimary.id);
+
+      const create = (name: string, path: string) =>
+        harness.app.request("/api/v1/projects", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            name,
+            source: {
+              type: "local_path",
+              hostId: offlinePrimary.id,
+              path,
+            },
+          }),
+        });
+
+      const firstResponse = await create(
+        "Original Project",
+        "/tmp/duplicate-project",
+      );
+      const repeatedResponse = await create(
+        "Duplicate Project",
+        "/tmp/duplicate-project/",
+      );
+
+      expect(firstResponse.status).toBe(201);
+      expect(repeatedResponse.status).toBe(201);
+      const firstProject = projectResponseSchema.parse(
+        await readJson(firstResponse),
+      );
+      const repeatedProject = projectResponseSchema.parse(
+        await readJson(repeatedResponse),
+      );
+      expect(repeatedProject.id).toBe(firstProject.id);
+      expect(listPublicProjects(harness.db)).toHaveLength(1);
+    });
+  });
+
   it("creates projects and local sources when inspection is unavailable", async () => {
     await withTestHarness(async (harness) => {
       const offlinePrimary = seedHost(harness.deps, {

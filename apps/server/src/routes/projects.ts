@@ -1,8 +1,9 @@
 import path from "node:path";
 import {
   countProjectSources,
-  createProject,
+  findOrCreateProjectByLocalPathSource,
   getPersonalProject,
+  getPublicProjectByLocalPathSource,
   createProjectSource,
   deleteProjectSource,
   getProjectSourceByHost,
@@ -355,11 +356,22 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
       requireNonDestroyedHostWithStatus(deps, source.hostId);
       assertUsableHostId(deps, { hostId: source.hostId });
     }
+    const existingProject = getPublicProjectByLocalPathSource(deps.db, source);
+    if (existingProject) {
+      return context.json(
+        buildProjectResponses(deps, existingProject.id)[0],
+        201,
+      );
+    }
     const gitRemoteUrl = await inspectProjectGitRemoteBestEffort(deps, source);
-    const { project } = createProject(deps.db, deps.hub, {
-      name: payload.name,
-      source,
-    });
+    const { project } = findOrCreateProjectByLocalPathSource(
+      deps.db,
+      deps.hub,
+      {
+        name: payload.name,
+        source,
+      },
+    );
     if (gitRemoteUrl !== null) {
       setProjectGitRemoteUrlIfMissing(
         deps.db,

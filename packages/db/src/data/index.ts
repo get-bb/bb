@@ -1,8 +1,10 @@
 export {
   createProject,
   ensurePersonalProject,
+  findOrCreateProjectByLocalPathSource,
   getPersonalProject,
   getProject,
+  getPublicProjectByLocalPathSource,
   listProjects,
   listPublicProjects,
   markProjectDeleted,
@@ -13,6 +15,7 @@ export {
 } from "./projects.js";
 export type {
   CreateProjectInput,
+  CreateProjectLocalPathSourceInput,
   ProjectRow,
   MarkProjectDeletedArgs,
   ReorderProjectArgs,
