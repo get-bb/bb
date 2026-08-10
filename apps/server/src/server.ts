@@ -134,6 +134,8 @@ const INSTALL_MACHINE_SCRIPT_PATH = fileURLToPath(
 );
 const THREAD_EVENT_WAIT_PATH_PATTERN =
   /^\/api\/v1\/threads\/[^/]+\/events\/wait$/u;
+const PLUGIN_APP_ASSET_PATH_PATTERN =
+  /^\/api\/v1\/plugins\/[^/]+\/assets\/app\.(?:js|css)$/u;
 const PRECOMPRESSED_STATIC_FILES = [
   { encoding: "br", extension: ".br" },
   { encoding: "gzip", extension: ".gz" },
@@ -294,7 +296,16 @@ export function createApp(
       },
     }),
   );
-  app.use("*", compress());
+  const compressResponse = compress();
+  app.use("*", (context, next) => {
+    // Plugin JS/CSS negotiates Brotli and gzip itself and caches immutable
+    // variants. Letting this outer middleware transform an identity fallback
+    // would also ignore explicit q=0 values in Hono's current parser.
+    if (PLUGIN_APP_ASSET_PATH_PATTERN.test(context.req.path)) {
+      return next();
+    }
+    return compressResponse(context, next);
+  });
   app.onError((error) => errorToResponse(error, deps.logger));
   app.get("/health", (context) => context.json({ ok: true }));
   app.get("/install.sh", async (context) => {

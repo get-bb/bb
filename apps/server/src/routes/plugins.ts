@@ -14,6 +14,10 @@ import type {
 } from "../services/plugins/plugin-service.js";
 import type { PluginMentionTrigger } from "../services/plugins/plugin-api.js";
 import { PluginSettingsValidationError } from "../services/plugins/plugin-settings.js";
+import {
+  createAppAssetCompressionCache,
+  type AppAssetCompressionCache,
+} from "../services/plugins/app-asset-compression-cache.js";
 import { rankAcceptedAssetEncodings } from "../asset-content-encoding.js";
 import {
   pluginApplyUpdateRequestSchema,
@@ -34,6 +38,7 @@ type WireAuthProblem = BrowserRequestProblem | { status: 401; error: string };
 const compressBrotli = promisify(brotliCompress);
 const compressGzip = promisify(gzip);
 const MIN_COMPRESSED_APP_ASSET_BYTES = 1_024;
+const MAX_CACHED_APP_ASSETS = 64;
 const APP_ASSET_ENCODINGS = [
   {
     encoding: "br",
@@ -55,12 +60,18 @@ const APP_ASSET_ENCODINGS = [
 async function appAssetResponse(
   context: Context,
   bytes: Buffer,
-  headers: { cacheControl: string; contentType: string },
+  args: {
+    assetKey: string;
+    cache: AppAssetCompressionCache;
+    cacheControl: string;
+    contentHash: string;
+    contentType: string;
+  },
 ): Promise<Response> {
   const responseHeaders: Record<string, string> = {
-    "cache-control": headers.cacheControl,
+    "cache-control": args.cacheControl,
     "content-length": String(bytes.length),
-    "content-type": headers.contentType,
+    "content-type": args.contentType,
   };
   if (bytes.length < MIN_COMPRESSED_APP_ASSET_BYTES) {
     return context.body(new Uint8Array(bytes), 200, responseHeaders);
@@ -75,7 +86,12 @@ async function appAssetResponse(
     return context.body(new Uint8Array(bytes), 200, responseHeaders);
   }
 
-  const compressed = await candidate.compress(bytes);
+  const compressed = await args.cache.getOrCreate({
+    assetKey: args.assetKey,
+    compress: () => candidate.compress(bytes),
+    encoding: candidate.encoding,
+    hash: args.contentHash,
+  });
   responseHeaders["content-encoding"] = candidate.encoding;
   responseHeaders["content-length"] = String(compressed.length);
   return context.body(new Uint8Array(compressed), 200, responseHeaders);
@@ -173,6 +189,10 @@ export function registerPluginRoutes(
   deps: PluginRoutesDeps,
   plugins: PluginService,
 ): void {
+  const appAssetCompressionCache = createAppAssetCompressionCache(
+    MAX_CACHED_APP_ASSETS,
+  );
+
   app.get("/plugins", (context) => context.json({ plugins: plugins.list() }));
 
   // Fast metadata for the bb CLI's help/proxy path and the app's
@@ -320,8 +340,11 @@ export function registerPluginRoutes(
         ? "public, max-age=31536000, immutable"
         : "no-store";
     return appAssetResponse(context, bytes, {
+      assetKey: `${context.req.param("id")}:${spec.kind}`,
+      cache: appAssetCompressionCache,
       contentType: spec.contentType,
       cacheControl,
+      contentHash: asset.hash,
     });
   });
 

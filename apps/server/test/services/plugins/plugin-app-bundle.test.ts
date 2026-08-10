@@ -166,6 +166,13 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
     expect(brotliJsBytes.length).toBeLessThan(Buffer.byteLength(jsText));
     expect(brotliDecompressSync(brotliJsBytes).toString()).toBe(jsText);
 
+    const rejectedCompression = await harness.app.request(
+      `${BASE}${bundle.jsUrl}`,
+      { headers: { "accept-encoding": "br;q=0, gzip;q=0" } },
+    );
+    expect(rejectedCompression.headers.get("content-encoding")).toBeNull();
+    expect(await rejectedCompression.text()).toBe(jsText);
+
     // HEAD carries the representation headers a GET would have returned,
     // without transferring the compressed body.
     const brotliJsHead = await harness.app.request(`${BASE}${bundle.jsUrl}`, {
