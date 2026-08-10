@@ -174,9 +174,7 @@ describe("SidebarUpdatesBadge", () => {
       ],
     });
 
-    expect(
-      screen.queryByTestId("sidebar-updates-badge-providers"),
-    ).toBeNull();
+    expect(screen.queryByTestId("sidebar-updates-badge-providers")).toBeNull();
     expect(screen.queryByTestId("sidebar-updates-badge-bb")).toBeNull();
   });
 
@@ -191,9 +189,7 @@ describe("SidebarUpdatesBadge", () => {
     });
 
     expect(screen.getByTestId("sidebar-updates-badge-bb")).toBeTruthy();
-    expect(
-      screen.queryByTestId("sidebar-updates-badge-providers"),
-    ).toBeNull();
+    expect(screen.queryByTestId("sidebar-updates-badge-providers")).toBeNull();
   });
 
   it("renders one mark per provider in a stable order when the same CLI is stale on several machines", () => {
