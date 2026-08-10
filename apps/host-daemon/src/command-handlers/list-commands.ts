@@ -4,6 +4,12 @@ import os from "node:os";
 import path from "node:path";
 import type { HostDaemonOnlineRpcResult } from "@bb/host-daemon-contract";
 import type { ProviderNativeSkillRoots } from "@bb/domain";
+import {
+  DefaultPackageManager,
+  SettingsManager,
+} from "@earendil-works/pi-coding-agent";
+import { parse as parseToml } from "smol-toml";
+import { parse as parseYaml } from "yaml";
 import { z } from "zod";
 import {
   CommandDispatchError,
@@ -90,6 +96,7 @@ interface AddPluginDirectoryRootsArgs {
   namePrefix: string;
   origin: ClaudePluginOrigin;
   pluginRootPath: string;
+  recursiveSkills?: boolean;
   rootSkillFallbackName: string;
   roots: CommandScanRoot[];
   seenRoots: Set<string>;
@@ -120,9 +127,15 @@ const CODEX_CONFIG_FILE_NAME = "config.toml";
 const AGENTS_DIR_NAME = ".agents";
 const CLAUDE_DIR_NAME = ".claude";
 const CURSOR_DIR_NAME = ".cursor";
+const GROK_DIR_NAME = ".grok";
+const HERMES_DIR_NAME = ".hermes";
+const OMP_DIR_NAME = ".omp";
+const OPENCODE_DIR_NAME = ".opencode";
+const PI_DIR_NAME = ".pi";
 const CLAUDE_PLUGIN_DIR_NAME = ".claude-plugin";
 const CLAUDE_PLUGIN_MANIFEST_FILE_NAME = "plugin.json";
 const CLAUDE_PLUGIN_INSTALLED_FILE_NAME = "installed_plugins.json";
+const OMP_PROFILE_NAME_PATTERN = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 
 const claudePluginScopeSchema = z.enum(["managed", "project", "local", "user"]);
 
@@ -148,6 +161,68 @@ const claudeInstalledPluginsFileSchema = z
 
 const claudePluginPathListSchema = z.union([z.string(), z.array(z.string())]);
 
+const ompSkillConfigSchema = z
+  .object({
+    skills: z
+      .object({ customDirectories: z.array(z.string()).optional() })
+      .passthrough()
+      .optional(),
+  })
+  .passthrough();
+
+const grokSkillConfigSchema = z
+  .object({
+    compat: z
+      .object({
+        claude: z.object({ skills: z.boolean().optional() }).optional(),
+        cursor: z.object({ skills: z.boolean().optional() }).optional(),
+      })
+      .passthrough()
+      .optional(),
+    plugins: z
+      .object({
+        disabled: z.array(z.string()).optional(),
+        enabled: z.array(z.string()).optional(),
+        install_dir: z.string().optional(),
+        paths: z.array(z.string()).optional(),
+      })
+      .passthrough()
+      .optional(),
+    skills: z
+      .object({ paths: z.array(z.string()).optional() })
+      .passthrough()
+      .optional(),
+  })
+  .passthrough();
+
+const grokInstalledPluginRegistrySchema = z
+  .object({
+    repos: z.record(
+      z.string(),
+      z
+        .object({
+          path: z.string(),
+          plugins: z.record(
+            z.string(),
+            z.object({ subdir: z.string().optional() }).passthrough(),
+          ),
+        })
+        .passthrough(),
+    ),
+  })
+  .passthrough();
+
+const hermesSkillConfigSchema = z
+  .object({
+    skills: z
+      .object({
+        external_dirs: z.union([z.string(), z.array(z.string())]).optional(),
+      })
+      .passthrough()
+      .optional(),
+  })
+  .passthrough();
+
 const codexPluginManifestSchema = z
   .object({
     name: z.string().min(1).optional(),
@@ -171,7 +246,56 @@ export function resolveCodexHome(homeDir: string): string {
 }
 
 function resolveClaudeDir(homeDir: string): string {
-  return path.join(homeDir, CLAUDE_DIR_NAME);
+  const configured = process.env.CLAUDE_CONFIG_DIR?.trim();
+  return configured
+    ? resolveStoredPath(homeDir, configured)
+    : path.join(homeDir, CLAUDE_DIR_NAME);
+}
+
+function resolveOpenCodeConfigDir(homeDir: string): string {
+  const xdgConfigHome = process.env.XDG_CONFIG_HOME?.trim();
+  return xdgConfigHome
+    ? path.join(resolveStoredPath(homeDir, xdgConfigHome), "opencode")
+    : path.join(homeDir, ".config", "opencode");
+}
+
+function resolveGrokDir(homeDir: string): string {
+  const configured = process.env.GROK_HOME?.trim();
+  return configured
+    ? resolveStoredPath(homeDir, configured)
+    : path.join(homeDir, GROK_DIR_NAME);
+}
+
+function resolveHermesDir(homeDir: string): string {
+  const configured = process.env.HERMES_HOME?.trim();
+  return configured
+    ? resolveStoredPath(homeDir, configured)
+    : path.join(homeDir, HERMES_DIR_NAME);
+}
+
+function resolvePiAgentDir(homeDir: string): string {
+  const configured = process.env.PI_CODING_AGENT_DIR?.trim();
+  return configured
+    ? resolveStoredPath(homeDir, configured)
+    : path.join(homeDir, PI_DIR_NAME, "agent");
+}
+
+function resolveOmpAgentDir(homeDir: string): string {
+  const profile =
+    process.env.OMP_PROFILE !== undefined
+      ? process.env.OMP_PROFILE.trim()
+      : process.env.PI_PROFILE?.trim();
+  if (
+    profile &&
+    profile !== "default" &&
+    OMP_PROFILE_NAME_PATTERN.test(profile)
+  ) {
+    return path.join(homeDir, OMP_DIR_NAME, "profiles", profile, "agent");
+  }
+  const configured = process.env.PI_CODING_AGENT_DIR?.trim();
+  return configured
+    ? resolveStoredPath(homeDir, configured)
+    : path.join(homeDir, OMP_DIR_NAME, "agent");
 }
 
 function resolveStoredPath(homeDir: string, storedPath: string): string {
@@ -205,6 +329,28 @@ async function readJsonFile<T>(
   }
 
   const parsed = schema.safeParse(parsedJson);
+  return parsed.success ? parsed.data : null;
+}
+
+async function readParsedFile<T>(
+  filePath: string,
+  parse: (content: string) => unknown,
+  schema: z.ZodType<T>,
+): Promise<T | null> {
+  let content: string;
+  try {
+    content = await fs.readFile(filePath, "utf8");
+  } catch {
+    return null;
+  }
+
+  let value: unknown;
+  try {
+    value = parse(content);
+  } catch {
+    return null;
+  }
+  const parsed = schema.safeParse(value);
   return parsed.success ? parsed.data : null;
 }
 
@@ -685,10 +831,12 @@ async function addPluginSkillPathRoots(
     }
     addRootOnce(args.roots, args.seenRoots, {
       rootPath: componentPath,
-      shape: await resolvePluginSkillRootShape({
-        componentPath,
-        origin: args.origin,
-      }),
+      shape: args.recursiveSkills
+        ? "skill-recursive"
+        : await resolvePluginSkillRootShape({
+            componentPath,
+            origin: args.origin,
+          }),
       namePrefix: args.namePrefix,
       source: "skill",
       origin: args.origin,
@@ -1031,6 +1179,399 @@ async function resolveClaudePluginCommandScanRoots(
   return roots;
 }
 
+function expandConfiguredPath(homeDir: string, value: string): string {
+  const expandedEnvironment = value.replace(
+    /\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))/g,
+    (match, bracedName: string | undefined, plainName: string | undefined) =>
+      process.env[bracedName ?? plainName ?? ""] ?? match,
+  );
+  if (expandedEnvironment === "~") {
+    return homeDir;
+  }
+  if (expandedEnvironment.startsWith("~/")) {
+    return path.join(homeDir, expandedEnvironment.slice(2));
+  }
+  return expandedEnvironment;
+}
+
+function resolveConfiguredPath(args: {
+  basePath: string;
+  homeDir: string;
+  value: string;
+}): string {
+  const expanded = expandConfiguredPath(args.homeDir, args.value.trim());
+  return path.isAbsolute(expanded)
+    ? expanded
+    : path.resolve(args.basePath, expanded);
+}
+
+function configuredSkillPathRoot(args: {
+  identity: string;
+  origin: "project" | "user";
+  providerId: string;
+  skillPath: string;
+  recursive: boolean;
+}): CommandScanRoot {
+  const identity = `${args.providerId}:provider-${args.origin}:${args.identity}`;
+  if (path.basename(args.skillPath) === "SKILL.md") {
+    return {
+      fallbackName: path.basename(path.dirname(args.skillPath)),
+      filePath: args.skillPath,
+      namePrefix: "",
+      origin: args.origin,
+      shape: "skill-file",
+      skillIdentitySeed: identity,
+      source: "skill",
+    };
+  }
+  return createSkillScanRoot({
+    identity,
+    origin: args.origin,
+    rootPath: args.skillPath,
+    shape: args.recursive ? "skill-recursive" : "skill",
+  });
+}
+
+async function resolvePiConfiguredSkillScanRoots(
+  resolution: CommandRootResolution,
+): Promise<CommandScanRoot[]> {
+  const cwd = resolution.cwd ?? resolution.homeDir;
+  try {
+    const agentDir = resolvePiAgentDir(resolution.homeDir);
+    const settingsManager = SettingsManager.create(cwd, agentDir, {
+      projectTrusted: resolution.cwd !== null,
+    });
+    const packageManager = new DefaultPackageManager({
+      agentDir,
+      cwd,
+      settingsManager,
+    });
+    const resolved = await packageManager.resolve(async () => "skip");
+    return resolved.skills
+      .filter((skill) => skill.enabled && skill.metadata.source !== "auto")
+      .map((skill) => {
+        const origin = skill.metadata.scope === "user" ? "user" : "project";
+        return configuredSkillPathRoot({
+          identity: `pi-config:${skill.metadata.source}:${skill.path}`,
+          origin,
+          providerId: resolution.providerId,
+          recursive: false,
+          skillPath: skill.path,
+        });
+      });
+  } catch {
+    return [];
+  }
+}
+
+async function resolveOmpConfiguredSkillScanRoots(
+  resolution: CommandRootResolution,
+): Promise<CommandScanRoot[]> {
+  const cwd = resolution.cwd ?? resolution.homeDir;
+  const agentDir = resolveOmpAgentDir(resolution.homeDir);
+  const userConfigPaths = [
+    path.join(agentDir, "config.yml"),
+    path.join(agentDir, "config.yaml"),
+  ];
+  const configPaths = [
+    ...(resolution.cwd === null
+      ? []
+      : [path.join(resolution.cwd, OMP_DIR_NAME, "config.yml")]),
+    ...(
+      process.env.PI_CONFIG_FILES?.split(path.delimiter).filter(Boolean) ?? []
+    ).map((filePath) =>
+      resolveConfiguredPath({
+        basePath: cwd,
+        homeDir: resolution.homeDir,
+        value: filePath,
+      }),
+    ),
+  ];
+  let customDirectories: string[] = [];
+  for (const configPath of userConfigPaths) {
+    const config = await readParsedFile(
+      configPath,
+      parseYaml,
+      ompSkillConfigSchema,
+    );
+    if (config !== null) {
+      customDirectories = config.skills?.customDirectories ?? [];
+      break;
+    }
+  }
+  for (const configPath of configPaths) {
+    const config = await readParsedFile(
+      configPath,
+      parseYaml,
+      ompSkillConfigSchema,
+    );
+    if (config?.skills?.customDirectories !== undefined) {
+      customDirectories = config.skills.customDirectories;
+    }
+  }
+  return customDirectories.map((configuredPath, index) =>
+    configuredSkillPathRoot({
+      identity: `omp-custom:${index}:${configuredPath}`,
+      origin: "user",
+      providerId: resolution.providerId,
+      recursive: false,
+      skillPath: resolveConfiguredPath({
+        basePath: cwd,
+        homeDir: resolution.homeDir,
+        value: configuredPath,
+      }),
+    }),
+  );
+}
+
+function grokCompatEnabled(
+  configured: boolean | undefined,
+  environmentName: "GROK_CLAUDE_SKILLS_ENABLED" | "GROK_CURSOR_SKILLS_ENABLED",
+): boolean {
+  const environmentValue = process.env[environmentName]?.trim().toLowerCase();
+  if (environmentValue === "true" || environmentValue === "1") {
+    return true;
+  }
+  if (environmentValue === "false" || environmentValue === "0") {
+    return false;
+  }
+  return configured ?? true;
+}
+
+async function readGrokSkillConfig(
+  homeDir: string,
+): Promise<z.infer<typeof grokSkillConfigSchema> | null> {
+  return readParsedFile(
+    path.join(resolveGrokDir(homeDir), "config.toml"),
+    parseToml,
+    grokSkillConfigSchema,
+  );
+}
+
+async function resolveGrokConfiguredSkillScanRoots(
+  resolution: CommandRootResolution,
+  config: z.infer<typeof grokSkillConfigSchema> | null,
+): Promise<CommandScanRoot[]> {
+  const cwd = resolution.cwd ?? resolution.homeDir;
+  const projectRootPath =
+    resolution.cwd === null
+      ? null
+      : (await resolveProjectAncestorDirectories(resolution.cwd))
+          .projectRootPath;
+  return (config?.skills?.paths ?? []).map((configuredPath, index) => {
+    const skillPath = resolveConfiguredPath({
+      basePath: cwd,
+      homeDir: resolution.homeDir,
+      value: configuredPath,
+    });
+    const projectRelativePath =
+      projectRootPath === null
+        ? null
+        : path.relative(projectRootPath, skillPath);
+    const origin =
+      projectRootPath !== null &&
+      projectRelativePath !== ".." &&
+      !projectRelativePath?.startsWith(`..${path.sep}`) &&
+      !path.isAbsolute(projectRelativePath ?? "")
+        ? "project"
+        : "user";
+    return configuredSkillPathRoot({
+      identity: `grok-config:${index}:${configuredPath}`,
+      origin,
+      providerId: resolution.providerId,
+      recursive: true,
+      skillPath,
+    });
+  });
+}
+
+async function readGrokPluginManifest(
+  pluginRootPath: string,
+): Promise<ClaudePluginManifest | null> {
+  for (const relativePath of [
+    "plugin.json",
+    path.join(".grok-plugin", "plugin.json"),
+    path.join(CLAUDE_PLUGIN_DIR_NAME, CLAUDE_PLUGIN_MANIFEST_FILE_NAME),
+  ]) {
+    const manifest = await readJsonFile(
+      path.join(pluginRootPath, relativePath),
+      claudePluginManifestSchema,
+    );
+    if (manifest !== null) {
+      return manifest;
+    }
+  }
+  return null;
+}
+
+function grokPluginListMatches(
+  entries: readonly string[],
+  name: string,
+): boolean {
+  return entries.some((entry) => entry === name || entry.endsWith(`/${name}`));
+}
+
+async function childDirectoryPaths(directoryPath: string): Promise<string[]> {
+  try {
+    return (await fs.readdir(directoryPath, { withFileTypes: true }))
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => path.join(directoryPath, entry.name));
+  } catch {
+    return [];
+  }
+}
+
+async function addGrokPluginSkillRoots(args: {
+  autoEnabled: boolean;
+  config: z.infer<typeof grokSkillConfigSchema> | null;
+  origin: "project" | "user";
+  pluginRootPath: string;
+  roots: CommandScanRoot[];
+}): Promise<void> {
+  const manifest = await readGrokPluginManifest(args.pluginRootPath);
+  const pluginName = manifest?.name ?? path.basename(args.pluginRootPath);
+  const enabled = args.config?.plugins?.enabled ?? [];
+  const disabled = args.config?.plugins?.disabled ?? [];
+  if (
+    grokPluginListMatches(disabled, pluginName) ||
+    (!args.autoEnabled && !grokPluginListMatches(enabled, pluginName))
+  ) {
+    return;
+  }
+
+  const entries =
+    manifest?.skills === undefined
+      ? ["skills"]
+      : normalizePluginPathList(manifest.skills);
+  await addPluginSkillPathRoots({
+    entries,
+    namePrefix: `${pluginName}:`,
+    origin: args.origin,
+    pluginRootPath: args.pluginRootPath,
+    recursiveSkills: true,
+    rootSkillFallbackName: pluginName,
+    roots: args.roots,
+    seenRoots: new Set(),
+  });
+}
+
+async function resolveGrokPluginSkillScanRoots(
+  resolution: CommandRootResolution,
+  config: z.infer<typeof grokSkillConfigSchema> | null,
+): Promise<CommandScanRoot[]> {
+  const roots: CommandScanRoot[] = [];
+  const candidates: Array<{
+    autoEnabled: boolean;
+    origin: "project" | "user";
+    pluginRootPath: string;
+  }> = [];
+  if (resolution.cwd !== null) {
+    const { directories } = await resolveProjectAncestorDirectories(
+      resolution.cwd,
+    );
+    for (const directoryPath of directories) {
+      for (const pluginDirectoryName of [GROK_DIR_NAME, CLAUDE_DIR_NAME]) {
+        for (const pluginRootPath of await childDirectoryPaths(
+          path.join(directoryPath, pluginDirectoryName, "plugins"),
+        )) {
+          candidates.push({
+            autoEnabled: false,
+            origin: "project",
+            pluginRootPath,
+          });
+        }
+      }
+    }
+  }
+  for (const pluginsPath of [
+    path.join(resolveGrokDir(resolution.homeDir), "plugins"),
+    path.join(resolution.homeDir, CLAUDE_DIR_NAME, "plugins"),
+  ]) {
+    for (const pluginRootPath of await childDirectoryPaths(pluginsPath)) {
+      candidates.push({
+        autoEnabled: false,
+        origin: "user",
+        pluginRootPath,
+      });
+    }
+  }
+
+  const cwd = resolution.cwd ?? resolution.homeDir;
+  for (const configuredPath of config?.plugins?.paths ?? []) {
+    candidates.push({
+      autoEnabled: true,
+      origin: "user",
+      pluginRootPath: resolveConfiguredPath({
+        basePath: cwd,
+        homeDir: resolution.homeDir,
+        value: configuredPath,
+      }),
+    });
+  }
+
+  const configuredInstallDirectory = config?.plugins?.install_dir;
+  const installDirectory = configuredInstallDirectory
+    ? resolveConfiguredPath({
+        basePath: cwd,
+        homeDir: resolution.homeDir,
+        value: configuredInstallDirectory,
+      })
+    : path.join(resolveGrokDir(resolution.homeDir), "installed-plugins");
+  const registry = await readJsonFile(
+    path.join(installDirectory, "registry.json"),
+    grokInstalledPluginRegistrySchema,
+  );
+  for (const repo of Object.values(registry?.repos ?? {})) {
+    for (const plugin of Object.values(repo.plugins)) {
+      candidates.push({
+        autoEnabled: false,
+        origin: "user",
+        pluginRootPath: plugin.subdir
+          ? path.join(repo.path, plugin.subdir)
+          : repo.path,
+      });
+    }
+  }
+
+  const seen = new Set<string>();
+  for (const candidate of candidates) {
+    const key = path.resolve(candidate.pluginRootPath);
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    await addGrokPluginSkillRoots({ ...candidate, config, roots });
+  }
+  return roots;
+}
+
+async function resolveHermesConfiguredSkillScanRoots(
+  resolution: CommandRootResolution,
+): Promise<CommandScanRoot[]> {
+  const hermesDir = resolveHermesDir(resolution.homeDir);
+  const config = await readParsedFile(
+    path.join(hermesDir, "config.yaml"),
+    parseYaml,
+    hermesSkillConfigSchema,
+  );
+  const configured = config?.skills?.external_dirs;
+  const externalDirectories =
+    typeof configured === "string" ? [configured] : (configured ?? []);
+  return externalDirectories.map((configuredPath, index) =>
+    configuredSkillPathRoot({
+      identity: `hermes-external:${index}:${configuredPath}`,
+      origin: "user",
+      providerId: resolution.providerId,
+      recursive: true,
+      skillPath: resolveConfiguredPath({
+        basePath: hermesDir,
+        homeDir: resolution.homeDir,
+        value: configuredPath,
+      }),
+    }),
+  );
+}
+
 export async function resolveProviderCommandScanRoots(
   resolution: CommandRootResolution,
 ): Promise<CommandScanRoot[]> {
@@ -1047,16 +1588,195 @@ export async function resolveProviderCommandScanRoots(
     );
     return roots;
   }
-  if (resolution.providerId !== "claude-code") {
+  if (resolution.providerId === "claude-code") {
+    if (resolution.cwd !== null) {
+      appendUniqueRoots(
+        roots,
+        await resolveAncestorProjectSkillScanRoots({
+          cwd: resolution.cwd,
+          providerId: resolution.providerId,
+          locations: [{ relativePath: path.join(CLAUDE_DIR_NAME, "skills") }],
+        }),
+      );
+    }
+    roots.push(
+      ...(await resolveClaudePluginCommandScanRoots({
+        cwd: resolution.cwd,
+        homeDir: resolution.homeDir,
+      })),
+    );
     return roots;
   }
-  roots.push(
-    ...(await resolveClaudePluginCommandScanRoots({
-      cwd: resolution.cwd,
-      homeDir: resolution.homeDir,
-    })),
+
+  if (resolution.providerId === "pi") {
+    appendUniqueRoots(
+      roots,
+      await resolvePiConfiguredSkillScanRoots(resolution),
+    );
+  }
+  if (resolution.providerId === "acp-omp") {
+    appendUniqueRoots(
+      roots,
+      await resolveOmpConfiguredSkillScanRoots(resolution),
+    );
+    appendUniqueRoots(
+      roots,
+      (
+        await resolveClaudePluginCommandScanRoots({
+          cwd: resolution.cwd,
+          homeDir: resolution.homeDir,
+        })
+      ).filter((root) => root.source === "skill"),
+    );
+  }
+  let grokConfig: z.infer<typeof grokSkillConfigSchema> | null = null;
+  if (resolution.providerId === "acp-grok") {
+    grokConfig = await readGrokSkillConfig(resolution.homeDir);
+    const claudeEnabled = grokCompatEnabled(
+      grokConfig?.compat?.claude?.skills,
+      "GROK_CLAUDE_SKILLS_ENABLED",
+    );
+    const cursorEnabled = grokCompatEnabled(
+      grokConfig?.compat?.cursor?.skills,
+      "GROK_CURSOR_SKILLS_ENABLED",
+    );
+    if (!claudeEnabled || !cursorEnabled) {
+      const disabledDirectoryNames = new Set([
+        ...(claudeEnabled ? [] : [CLAUDE_DIR_NAME]),
+        ...(cursorEnabled ? [] : [CURSOR_DIR_NAME]),
+      ]);
+      for (let index = roots.length - 1; index >= 0; index -= 1) {
+        const rootPath = rootPathForDeduplication(roots[index]);
+        const configDirectoryName = path.basename(path.dirname(rootPath));
+        if (disabledDirectoryNames.has(configDirectoryName)) {
+          roots.splice(index, 1);
+        }
+      }
+    }
+    appendUniqueRoots(
+      roots,
+      await resolveGrokConfiguredSkillScanRoots(resolution, grokConfig),
+    );
+    appendUniqueRoots(
+      roots,
+      await resolveGrokPluginSkillScanRoots(resolution, grokConfig),
+    );
+    if (claudeEnabled) {
+      appendUniqueRoots(
+        roots,
+        (
+          await resolveClaudePluginCommandScanRoots({
+            cwd: resolution.cwd,
+            homeDir: resolution.homeDir,
+          })
+        ).filter((root) => root.source === "skill"),
+      );
+    }
+  }
+  if (resolution.providerId === "acp-hermes-agent") {
+    appendUniqueRoots(
+      roots,
+      await resolveHermesConfiguredSkillScanRoots(resolution),
+    );
+  }
+
+  let ancestorLocations = ancestorSkillLocationsForProvider(
+    resolution.providerId,
   );
+  if (resolution.providerId === "acp-grok") {
+    const claudeEnabled = grokCompatEnabled(
+      grokConfig?.compat?.claude?.skills,
+      "GROK_CLAUDE_SKILLS_ENABLED",
+    );
+    const cursorEnabled = grokCompatEnabled(
+      grokConfig?.compat?.cursor?.skills,
+      "GROK_CURSOR_SKILLS_ENABLED",
+    );
+    ancestorLocations = ancestorLocations.filter(
+      (location) =>
+        (claudeEnabled || !location.relativePath.startsWith(CLAUDE_DIR_NAME)) &&
+        (cursorEnabled || !location.relativePath.startsWith(CURSOR_DIR_NAME)),
+    );
+  }
+  if (resolution.cwd !== null && ancestorLocations.length > 0) {
+    appendUniqueRoots(
+      roots,
+      await resolveAncestorProjectSkillScanRoots({
+        cwd: resolution.cwd,
+        providerId: resolution.providerId,
+        locations: ancestorLocations,
+      }),
+    );
+  }
   return roots;
+}
+
+function rootPathForDeduplication(root: CommandScanRoot): string {
+  return "rootPath" in root ? root.rootPath : root.filePath;
+}
+
+function appendUniqueRoots(
+  target: CommandScanRoot[],
+  candidates: readonly CommandScanRoot[],
+): void {
+  const seen = new Set(target.map(rootPathForDeduplication));
+  for (const candidate of candidates) {
+    const candidatePath = rootPathForDeduplication(candidate);
+    if (seen.has(candidatePath)) {
+      continue;
+    }
+    seen.add(candidatePath);
+    target.push(candidate);
+  }
+}
+
+function ancestorSkillLocationsForProvider(
+  providerId: string,
+): readonly ProjectSkillLocation[] {
+  switch (providerId) {
+    case "pi":
+      return [
+        { relativePath: path.join(PI_DIR_NAME, "skills") },
+        { relativePath: path.join(AGENTS_DIR_NAME, "skills") },
+      ];
+    case "acp-opencode":
+      return [
+        { relativePath: path.join(OPENCODE_DIR_NAME, "skills") },
+        { relativePath: path.join(CLAUDE_DIR_NAME, "skills") },
+        { relativePath: path.join(AGENTS_DIR_NAME, "skills") },
+      ];
+    case "acp-omp":
+      return [
+        { relativePath: path.join(OMP_DIR_NAME, "skills") },
+        { relativePath: path.join(PI_DIR_NAME, "skills") },
+        { relativePath: path.join(".agent", "skills") },
+        { relativePath: path.join(AGENTS_DIR_NAME, "skills") },
+        { relativePath: path.join(CLAUDE_DIR_NAME, "skills") },
+        { relativePath: path.join(".codex", "skills") },
+        { relativePath: path.join(OPENCODE_DIR_NAME, "skills") },
+      ];
+    case "acp-grok":
+      return [
+        {
+          relativePath: path.join(GROK_DIR_NAME, "skills"),
+          shape: "skill-recursive",
+        },
+        {
+          relativePath: path.join(AGENTS_DIR_NAME, "skills"),
+          shape: "skill-recursive",
+        },
+        {
+          relativePath: path.join(CLAUDE_DIR_NAME, "skills"),
+          shape: "skill-recursive",
+        },
+        {
+          relativePath: path.join(CURSOR_DIR_NAME, "skills"),
+          shape: "skill-recursive",
+        },
+      ];
+    default:
+      return [];
+  }
 }
 
 function resolveConfiguredSkillScanRoots(
@@ -1103,13 +1823,14 @@ async function hasProjectRootMarker(directoryPath: string): Promise<boolean> {
 }
 
 /**
- * Match Codex's default repository skill search. The nearest ancestor with a
- * `.git` entry is the repository root. Without that marker, Codex searches the
- * cwd only. Roots run from the repository root to the cwd.
+ * Find the repository ancestor chain used by native provider skill discovery.
+ * The nearest ancestor with a `.git` entry is the repository root. Without a
+ * marker, only the cwd is used. Results run from the repository root to cwd.
  */
-async function resolveCodexProjectSkillScanRoots(
-  cwd: string,
-): Promise<CommandScanRoot[]> {
+async function resolveProjectAncestorDirectories(cwd: string): Promise<{
+  directories: string[];
+  projectRootPath: string;
+}> {
   const directories: string[] = [];
   let directoryPath = cwd;
   while (true) {
@@ -1126,7 +1847,42 @@ async function resolveCodexProjectSkillScanRoots(
   }
 
   const projectRootPath = directories.at(-1) ?? cwd;
-  return directories.reverse().map((projectDirectoryPath) => ({
+  return { directories: directories.reverse(), projectRootPath };
+}
+
+interface ProjectSkillLocation {
+  relativePath: string;
+  shape?: "skill" | "skill-recursive";
+}
+
+async function resolveAncestorProjectSkillScanRoots(args: {
+  cwd: string;
+  locations: readonly ProjectSkillLocation[];
+  providerId: string;
+}): Promise<CommandScanRoot[]> {
+  const { directories, projectRootPath } =
+    await resolveProjectAncestorDirectories(args.cwd);
+  return args.locations.flatMap((location) =>
+    directories.map((projectDirectoryPath) => ({
+      rootPath: path.join(projectDirectoryPath, location.relativePath),
+      shape: location.shape ?? ("skill" as const),
+      namePrefix: "",
+      source: "skill" as const,
+      origin: "project" as const,
+      skillIdentitySeed: `${args.providerId}:provider-project:${location.relativePath}:${path
+        .relative(projectRootPath, projectDirectoryPath)
+        .split(path.sep)
+        .join("/")}`,
+    })),
+  );
+}
+
+async function resolveCodexProjectSkillScanRoots(
+  cwd: string,
+): Promise<CommandScanRoot[]> {
+  const { directories, projectRootPath } =
+    await resolveProjectAncestorDirectories(cwd);
+  return directories.map((projectDirectoryPath) => ({
     rootPath: path.join(projectDirectoryPath, AGENTS_DIR_NAME, "skills"),
     shape: "skill",
     namePrefix: "",
@@ -1136,6 +1892,87 @@ async function resolveCodexProjectSkillScanRoots(
       .relative(projectRootPath, projectDirectoryPath)
       .split(path.sep)
       .join("/")}`,
+  }));
+}
+
+function createSkillScanRoot(args: {
+  identity: string;
+  origin: "project" | "user";
+  rootPath: string;
+  shape?: "skill" | "skill-recursive";
+}): CommandScanRoot {
+  return {
+    rootPath: args.rootPath,
+    shape: args.shape ?? "skill",
+    namePrefix: "",
+    source: "skill",
+    origin: args.origin,
+    skillIdentitySeed: args.identity,
+  };
+}
+
+function userSkillRoot(
+  providerId: string,
+  identity: string,
+  rootPath: string,
+  shape?: "skill" | "skill-recursive",
+): CommandScanRoot {
+  return createSkillScanRoot({
+    identity: `${providerId}:provider-user:${identity}`,
+    origin: "user",
+    rootPath,
+    ...(shape ? { shape } : {}),
+  });
+}
+
+function projectSkillRoot(
+  providerId: string,
+  identity: string,
+  rootPath: string,
+  shape?: "skill" | "skill-recursive",
+): CommandScanRoot {
+  return createSkillScanRoot({
+    identity: `${providerId}:provider-project:${identity}`,
+    origin: "project",
+    rootPath,
+    ...(shape ? { shape } : {}),
+  });
+}
+
+interface NativeSkillRootLocation {
+  identity: string;
+  rootPath: string;
+  shape?: "skill" | "skill-recursive";
+}
+
+function appendNativeSkillRoots(
+  roots: CommandScanRoot[],
+  providerId: string,
+  origin: "project" | "user",
+  locations: readonly NativeSkillRootLocation[],
+): void {
+  for (const location of locations) {
+    const createRoot = origin === "project" ? projectSkillRoot : userSkillRoot;
+    roots.push(
+      createRoot(
+        providerId,
+        location.identity,
+        location.rootPath,
+        location.shape,
+      ),
+    );
+  }
+}
+
+function rootsBelowBase(
+  basePath: string,
+  directoryNames: readonly string[],
+  shape?: "skill" | "skill-recursive",
+): NativeSkillRootLocation[] {
+  return directoryNames.map((directoryName) => ({
+    identity: directoryName,
+    rootPath: path.join(basePath, directoryName, "skills"),
+    ...(shape ? { shape } : {}),
   }));
 }
 
@@ -1154,23 +1991,29 @@ export function resolveCommandScanRoots(
   if (resolution.providerId === "claude-code") {
     if (resolution.cwd !== null) {
       roots.push({
-        rootPath: path.join(resolution.cwd, ".claude", "skills"),
+        rootPath: path.join(resolution.cwd, CLAUDE_DIR_NAME, "skills"),
         shape: "skill",
         namePrefix: "",
         source: "skill",
         origin: "project",
       });
     }
+    const claudeDir = resolveClaudeDir(resolution.homeDir);
     roots.push({
-      rootPath: path.join(resolution.homeDir, ".claude", "skills"),
+      rootPath: path.join(claudeDir, "skills"),
       shape: "skill",
       namePrefix: "",
       source: "skill",
       origin: "user",
+      ...(claudeDir === path.join(resolution.homeDir, CLAUDE_DIR_NAME)
+        ? {}
+        : {
+            skillIdentitySeed: `${resolution.providerId}:provider-user:config-dir`,
+          }),
     });
     if (resolution.cwd !== null) {
       roots.push({
-        rootPath: path.join(resolution.cwd, ".claude", "commands"),
+        rootPath: path.join(resolution.cwd, CLAUDE_DIR_NAME, "commands"),
         shape: "command",
         namePrefix: "",
         source: "command",
@@ -1178,7 +2021,7 @@ export function resolveCommandScanRoots(
       });
     }
     roots.push({
-      rootPath: path.join(resolution.homeDir, ".claude", "commands"),
+      rootPath: path.join(resolveClaudeDir(resolution.homeDir), "commands"),
       shape: "command",
       namePrefix: "",
       source: "command",
@@ -1211,20 +2054,184 @@ export function resolveCommandScanRoots(
       source: "skill",
       origin: "user",
     });
+    roots.push(
+      userSkillRoot(
+        resolution.providerId,
+        "agents",
+        path.join(resolution.homeDir, AGENTS_DIR_NAME, "skills"),
+      ),
+    );
     return roots;
   }
 
   if (resolution.providerId === "acp-cursor") {
     if (resolution.cwd !== null) {
-      roots.push({
-        rootPath: path.join(resolution.cwd, CURSOR_DIR_NAME, "skills"),
-        shape: "skill",
-        namePrefix: "",
-        source: "skill",
-        origin: "project",
-        skillIdentitySeed: "acp-cursor:provider-project:.cursor",
-      });
+      appendNativeSkillRoots(
+        roots,
+        resolution.providerId,
+        "project",
+        rootsBelowBase(
+          resolution.cwd,
+          [CURSOR_DIR_NAME, AGENTS_DIR_NAME, CLAUDE_DIR_NAME, ".codex"],
+          "skill-recursive",
+        ),
+      );
     }
+    appendNativeSkillRoots(
+      roots,
+      resolution.providerId,
+      "user",
+      rootsBelowBase(
+        resolution.homeDir,
+        [CURSOR_DIR_NAME, AGENTS_DIR_NAME, CLAUDE_DIR_NAME, ".codex"],
+        "skill-recursive",
+      ),
+    );
+    return roots;
+  }
+
+  if (resolution.providerId === "pi") {
+    if (resolution.cwd !== null) {
+      appendNativeSkillRoots(
+        roots,
+        resolution.providerId,
+        "project",
+        rootsBelowBase(resolution.cwd, [PI_DIR_NAME, AGENTS_DIR_NAME]),
+      );
+    }
+    appendNativeSkillRoots(roots, resolution.providerId, "user", [
+      {
+        identity: PI_DIR_NAME,
+        rootPath: path.join(resolvePiAgentDir(resolution.homeDir), "skills"),
+      },
+      ...rootsBelowBase(resolution.homeDir, [AGENTS_DIR_NAME]),
+    ]);
+    return roots;
+  }
+
+  if (resolution.providerId === "acp-opencode") {
+    if (resolution.cwd !== null) {
+      appendNativeSkillRoots(
+        roots,
+        resolution.providerId,
+        "project",
+        rootsBelowBase(resolution.cwd, [
+          OPENCODE_DIR_NAME,
+          CLAUDE_DIR_NAME,
+          AGENTS_DIR_NAME,
+        ]),
+      );
+    }
+    appendNativeSkillRoots(roots, resolution.providerId, "user", [
+      {
+        identity: "opencode",
+        rootPath: path.join(
+          resolveOpenCodeConfigDir(resolution.homeDir),
+          "skills",
+        ),
+      },
+      ...rootsBelowBase(resolution.homeDir, [CLAUDE_DIR_NAME, AGENTS_DIR_NAME]),
+    ]);
+    const customConfigDir = process.env.OPENCODE_CONFIG_DIR?.trim();
+    if (customConfigDir) {
+      appendUniqueRoots(roots, [
+        userSkillRoot(
+          resolution.providerId,
+          "custom-config",
+          path.join(
+            resolveStoredPath(resolution.homeDir, customConfigDir),
+            "skills",
+          ),
+        ),
+      ]);
+    }
+    return roots;
+  }
+
+  if (resolution.providerId === "acp-omp") {
+    if (resolution.cwd !== null) {
+      appendNativeSkillRoots(
+        roots,
+        resolution.providerId,
+        "project",
+        rootsBelowBase(resolution.cwd, [
+          OMP_DIR_NAME,
+          PI_DIR_NAME,
+          ".agent",
+          AGENTS_DIR_NAME,
+          CLAUDE_DIR_NAME,
+          ".codex",
+          OPENCODE_DIR_NAME,
+        ]),
+      );
+    }
+    const ompAgentDir = resolveOmpAgentDir(resolution.homeDir);
+    appendNativeSkillRoots(roots, resolution.providerId, "user", [
+      { identity: "omp", rootPath: path.join(ompAgentDir, "skills") },
+      {
+        identity: "omp-managed",
+        rootPath: path.join(ompAgentDir, "managed-skills"),
+      },
+      {
+        identity: "pi",
+        rootPath: path.join(resolvePiAgentDir(resolution.homeDir), "skills"),
+      },
+      ...rootsBelowBase(resolution.homeDir, [
+        ".agent",
+        AGENTS_DIR_NAME,
+        CLAUDE_DIR_NAME,
+      ]),
+      {
+        identity: "codex",
+        rootPath: path.join(resolution.codexHome, "skills"),
+      },
+      {
+        identity: "opencode",
+        rootPath: path.join(
+          resolveOpenCodeConfigDir(resolution.homeDir),
+          "skills",
+        ),
+      },
+    ]);
+    return roots;
+  }
+
+  if (resolution.providerId === "acp-grok") {
+    if (resolution.cwd !== null) {
+      appendNativeSkillRoots(
+        roots,
+        resolution.providerId,
+        "project",
+        rootsBelowBase(
+          resolution.cwd,
+          [GROK_DIR_NAME, AGENTS_DIR_NAME, CLAUDE_DIR_NAME, CURSOR_DIR_NAME],
+          "skill-recursive",
+        ),
+      );
+    }
+    appendNativeSkillRoots(roots, resolution.providerId, "user", [
+      {
+        identity: GROK_DIR_NAME,
+        rootPath: path.join(resolveGrokDir(resolution.homeDir), "skills"),
+        shape: "skill-recursive",
+      },
+      ...rootsBelowBase(
+        resolution.homeDir,
+        [AGENTS_DIR_NAME, CLAUDE_DIR_NAME, CURSOR_DIR_NAME],
+        "skill-recursive",
+      ),
+    ]);
+    return roots;
+  }
+
+  if (resolution.providerId === "acp-hermes-agent") {
+    appendNativeSkillRoots(roots, resolution.providerId, "user", [
+      {
+        identity: HERMES_DIR_NAME,
+        rootPath: path.join(resolveHermesDir(resolution.homeDir), "skills"),
+        shape: "skill-recursive",
+      },
+    ]);
     return roots;
   }
 

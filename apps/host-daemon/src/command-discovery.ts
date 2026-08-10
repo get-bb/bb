@@ -26,6 +26,8 @@ const MAX_SCAN_FILE_COUNT = 1_000;
  *   parent directory name. User-origin skill entries/files may be symlinks
  *   because personal provider skill installs commonly use them; project-origin
  *   skill entry/file symlinks are skipped.
+ * - `skill-recursive`: every `SKILL.md` below `<root>`; the command name is the
+ *   name of the directory that contains the file. Symlinks are not followed.
  * - `skill-directory`: a single `<root>/SKILL.md` skill directory; the command
  *   name is the root directory name.
  * - `skill-file`: a single `SKILL.md`; the command name comes from frontmatter
@@ -38,6 +40,7 @@ const MAX_SCAN_FILE_COUNT = 1_000;
  */
 export type CommandScanShape =
   | "skill"
+  | "skill-recursive"
   | "skill-directory"
   | "skill-file"
   | "command"
@@ -55,7 +58,7 @@ interface CommandScanRootBase {
 export interface CommandScanDirectoryRoot extends CommandScanRootBase {
   /** Absolute directory to scan. Missing dir -> no records (no throw). */
   rootPath: string;
-  shape: "skill" | "skill-directory" | "command";
+  shape: "skill" | "skill-recursive" | "skill-directory" | "command";
 }
 
 export interface CommandScanFileRoot extends CommandScanRootBase {
@@ -96,6 +99,12 @@ interface WalkCommandTreeArgs {
   currentPath: string;
   depth: number;
   rootPath: string;
+  matchedFiles: string[];
+}
+
+interface WalkSkillTreeArgs {
+  currentPath: string;
+  depth: number;
   matchedFiles: string[];
 }
 
@@ -292,6 +301,62 @@ async function scanSkillRoot(
   return records;
 }
 
+/**
+ * Bounded recursive skill walk for providers that support category folders.
+ * Symlinks stay disabled because recursive symlink traversal can escape the
+ * declared root or form cycles. Direct user skill roots retain their existing
+ * one-level symlink support through the `skill` shape.
+ */
+async function walkSkillTree(args: WalkSkillTreeArgs): Promise<void> {
+  if (args.depth > MAX_SCAN_DEPTH) {
+    return;
+  }
+  const entries = await readDirEntries(args.currentPath);
+  if (entries === null) {
+    return;
+  }
+
+  for (const entry of entries) {
+    if (args.matchedFiles.length >= MAX_SCAN_FILE_COUNT) {
+      return;
+    }
+    if (entry.isSymbolicLink()) {
+      continue;
+    }
+    const entryPath = path.join(args.currentPath, entry.name);
+    if (entry.isDirectory()) {
+      await walkSkillTree({
+        currentPath: entryPath,
+        depth: args.depth + 1,
+        matchedFiles: args.matchedFiles,
+      });
+      continue;
+    }
+    if (entry.isFile() && entry.name === SKILL_FILE_NAME) {
+      args.matchedFiles.push(entryPath);
+    }
+  }
+}
+
+async function scanRecursiveSkillRoot(
+  args: ScanRootArgs,
+): Promise<HostProviderCommand[]> {
+  if (args.root.shape !== "skill-recursive") {
+    throw new Error("scanRecursiveSkillRoot requires a recursive skill root");
+  }
+  const matchedFiles: string[] = [];
+  await walkSkillTree({
+    currentPath: args.root.rootPath,
+    depth: 0,
+    matchedFiles,
+  });
+  return Promise.all(
+    matchedFiles.map((filePath) =>
+      buildRecord(args.root, filePath, path.basename(path.dirname(filePath))),
+    ),
+  );
+}
+
 async function scanSingleSkillDirectoryRoot(
   args: ScanRootArgs,
 ): Promise<HostProviderCommand[]> {
@@ -428,6 +493,8 @@ async function scanRoot(args: ScanRootArgs): Promise<HostProviderCommand[]> {
   switch (args.root.shape) {
     case "skill":
       return scanSkillRoot(args);
+    case "skill-recursive":
+      return scanRecursiveSkillRoot(args);
     case "skill-directory":
       return scanSingleSkillDirectoryRoot(args);
     case "skill-file":
@@ -541,6 +608,33 @@ async function scanSkillRootForSkills(
   return records;
 }
 
+async function scanRecursiveSkillRootForSkills(
+  root: SkillScanRoot,
+): Promise<DiscoveredSkill[]> {
+  if (root.shape !== "skill-recursive") {
+    throw new Error(
+      "scanRecursiveSkillRootForSkills requires a recursive skill root",
+    );
+  }
+  const matchedFiles: string[] = [];
+  await walkSkillTree({
+    currentPath: root.rootPath,
+    depth: 0,
+    matchedFiles,
+  });
+  return Promise.all(
+    matchedFiles.map(async (filePath) =>
+      buildSkillRecord(
+        root,
+        filePath,
+        path.basename(path.dirname(filePath)),
+        await parseFrontmatter(filePath),
+        await isSymbolicLinkPath(root.rootPath),
+      ),
+    ),
+  );
+}
+
 async function scanSingleSkillDirectoryForSkills(
   root: SkillScanRoot,
 ): Promise<DiscoveredSkill[]> {
@@ -602,6 +696,9 @@ export async function discoverSkills(
     switch (root.shape) {
       case "skill":
         records.push(...(await scanSkillRootForSkills(root)));
+        break;
+      case "skill-recursive":
+        records.push(...(await scanRecursiveSkillRootForSkills(root)));
         break;
       case "skill-directory":
         records.push(...(await scanSingleSkillDirectoryForSkills(root)));

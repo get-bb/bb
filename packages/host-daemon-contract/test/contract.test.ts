@@ -1051,10 +1051,10 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  // Version 95 lets ACP sessions send context-window usage outside a turn.
-  // An older daemon omits these events, so it must update before connecting.
-  it("uses protocol version 95 for ACP context-window usage", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(95);
+  // Version 96 adds provider-native skill discovery roots. An older daemon
+  // returns an incomplete skill catalog, so it must update before connecting.
+  it("uses protocol version 96 for provider-native skill discovery", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(96);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {

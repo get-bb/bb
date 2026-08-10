@@ -408,6 +408,32 @@ in an installed plugin (relocatable via the manifest's `bb.skills` field) is
 auto-imported while the plugin is loaded — overridden by project and user
 skills by name, overriding built-ins.
 
+bb also indexes each provider's native skill roots. `bb skill list` and the
+Skills page show these read-only provider skills.
+
+| Provider     | User roots                                                                                               | Project roots                                                                                                |
+| ------------ | -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| Codex        | `~/.agents/skills`, `$CODEX_HOME/skills`                                                                 | `.agents/skills` from the repository root to the current directory, plus `.codex/skills`                     |
+| Claude Code  | `$CLAUDE_CONFIG_DIR/skills` or `~/.claude/skills`, plus enabled plugin skills                            | `.claude/skills` from the repository root to the current directory, plus enabled plugin skills               |
+| Pi           | `~/.pi/agent/skills`, `~/.agents/skills`                                                                 | `.pi/skills` and `.agents/skills` from the repository root to the current directory                          |
+| Cursor       | `~/.cursor/skills`, `~/.agents/skills`, `~/.claude/skills`, `~/.codex/skills`                            | The same four roots in the workspace                                                                         |
+| OpenCode     | `~/.config/opencode/skills`, `~/.claude/skills`, `~/.agents/skills`                                      | `.opencode/skills`, `.claude/skills`, and `.agents/skills` from the repository root to the current directory |
+| omp          | The active `~/.omp/.../agent` roots and supported Pi, Agents, Claude, Codex, and OpenCode roots          | `.omp/skills` and the supported compatibility roots from the repository root to the current directory        |
+| Grok Build   | `$GROK_HOME/skills` or `~/.grok/skills`, plus `~/.agents/skills`, `~/.claude/skills`, `~/.cursor/skills` | The same four roots from the repository root to the current directory                                        |
+| Hermes Agent | `$HERMES_HOME/skills` or `~/.hermes/skills`                                                              | None                                                                                                         |
+
+OpenCode also uses `$OPENCODE_CONFIG_DIR/skills` when that variable exists.
+Pi and omp use `$PI_CODING_AGENT_DIR` when that variable exists. omp also uses
+`$OMP_PROFILE` or `$PI_PROFILE` to select its active profile root. Cursor and
+Hermes can organize skills in category directories. bb scans those roots
+recursively. Pi settings and packages can add skill paths. omp reads
+`skills.customDirectories` from its YAML configuration. Hermes reads
+`skills.external_dirs` from `config.yaml`.
+
+Grok reads recursive paths from `[skills].paths` in `config.toml`. It also reads
+enabled Grok and Claude-compatible plugin skills. Its Cursor and Claude
+compatibility roots follow the related config and environment switches.
+
 ## Multi-machine
 
 Settings → Machines can enroll,

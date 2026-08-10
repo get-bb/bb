@@ -88,10 +88,6 @@ function classifySkillRoot(
       rootKind: "plugin",
     };
   }
-  // All non-plugin skill base roots are directory-shaped.
-  if (root.shape !== "skill") {
-    return null;
-  }
   if (root.skillIdentitySeed !== undefined) {
     const shared = resolution.providerId === "bb-shared";
     return {
@@ -104,6 +100,10 @@ function classifySkillRoot(
           ? "provider-project"
           : "provider-user",
     };
+  }
+  // All remaining non-plugin skill base roots are directory-shaped.
+  if (root.shape !== "skill" && root.shape !== "skill-recursive") {
+    return null;
   }
   const { rootPath } = root;
   if (

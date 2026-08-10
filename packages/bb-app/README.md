@@ -138,9 +138,11 @@ bb uses whichever providers you have configured. Common providers:
 | `grok`         | Install [Grok Build](https://docs.x.ai/build/overview) and authenticate with `grok login` or `XAI_API_KEY`.                                                                               |
 | `hermes-agent` | Install [Hermes Agent](https://hermes-agent.nousresearch.com/docs/getting-started/installation), configure credentials with `hermes model`, then verify ACP with `hermes acp --check`.    |
 
-Cursor ACP threads discover project skills from `.cursor/skills`. The root can
-link to a shared location such as `.agents/skills`. BB lists skills through a
-linked root under `cursor-project` and keeps them read-only.
+BB indexes the documented native skill roots for Codex, Claude Code, Pi,
+Cursor, OpenCode, omp, Grok Build, and Hermes Agent. It includes user roots,
+project roots, and compatibility roots such as `.agents/skills`. BB keeps these
+provider skills read-only. BB also reads configured Pi, omp, Grok, and Hermes
+skill directories, plus enabled provider plugin skills.
 
 BB reads Pi's global `~/.pi/agent` files and each workspace's `.pi` files.
 This includes settings, credentials, models, packages, extensions, skills,
