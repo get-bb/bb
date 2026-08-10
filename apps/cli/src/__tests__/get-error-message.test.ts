@@ -12,6 +12,19 @@ describe("getErrorMessage", () => {
     );
   });
 
+  it("unwraps every connection error in an aggregate cause", () => {
+    const err = new TypeError("fetch failed", {
+      cause: new AggregateError([
+        new Error("connect EPERM ::1:38886"),
+        new Error("connect ECONNREFUSED 127.0.0.1:38886"),
+      ]),
+    });
+
+    expect(getErrorMessage(err)).toBe(
+      "fetch failed: connect EPERM ::1:38886: connect ECONNREFUSED 127.0.0.1:38886",
+    );
+  });
+
   it("returns the message unchanged without a cause", () => {
     expect(getErrorMessage(new Error("plain"))).toBe("plain");
   });

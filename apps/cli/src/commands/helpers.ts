@@ -89,17 +89,36 @@ export async function confirmDestructiveAction(
 
 export function getErrorMessage(err: unknown): string {
   if (!(err instanceof Error)) return String(err);
-  // Unwrap the cause chain: Node's fetch always says "fetch failed" and keeps
-  // the actionable error (e.g. connect EPERM/ECONNREFUSED) on `cause`.
-  const seen = new Set<Error>([err]);
-  const messages = [err.message];
-  for (
-    let cause = err.cause;
-    cause instanceof Error && !seen.has(cause);
-    cause = cause.cause
-  ) {
-    seen.add(cause);
-    messages.push(cause.message);
+  // Node's fetch says "fetch failed" and keeps the actionable socket errors
+  // under `cause`. Multi-address connections use an AggregateError, so walk
+  // both links while guarding against malformed cyclic error graphs.
+  const seen = new Set<Error>();
+  const messages: string[] = [];
+  const pending: Error[] = [err];
+
+  while (pending.length > 0) {
+    const current = pending.pop();
+    if (current === undefined || seen.has(current)) continue;
+    seen.add(current);
+
+    if (current.message.length > 0) {
+      messages.push(current.message);
+    }
+
+    const children: Error[] = [];
+    if (current.cause instanceof Error) {
+      children.push(current.cause);
+    }
+    if (current instanceof AggregateError) {
+      children.push(
+        ...current.errors.filter(
+          (nested): nested is Error => nested instanceof Error,
+        ),
+      );
+    }
+    for (let index = children.length - 1; index >= 0; index -= 1) {
+      pending.push(children[index]);
+    }
   }
   return messages.join(": ");
 }
