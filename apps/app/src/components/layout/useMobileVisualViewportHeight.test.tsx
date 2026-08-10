@@ -4,7 +4,7 @@ import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { useRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  shouldUseIOSVisualViewportFallback,
+  shouldRestoreIOSViewportOnKeyboardDismissal,
   useMobileVisualViewportHeight,
 } from "./useMobileVisualViewportHeight";
 
@@ -20,9 +20,19 @@ class FakeVisualViewport extends EventTarget implements VisualViewport {
   width = 390;
 }
 
-function VisualViewportShell({ enabled }: { enabled: boolean }) {
+function VisualViewportShell({
+  enabled,
+  restoreImmediatelyOnKeyboardDismissal = true,
+}: {
+  enabled: boolean;
+  restoreImmediatelyOnKeyboardDismissal?: boolean;
+}) {
   const shellRef = useRef<HTMLDivElement>(null);
-  useMobileVisualViewportHeight(shellRef, enabled);
+  useMobileVisualViewportHeight(
+    shellRef,
+    enabled,
+    restoreImmediatelyOnKeyboardDismissal,
+  );
   return (
     <div ref={shellRef} data-testid="shell">
       <textarea data-testid="editor" />
@@ -48,6 +58,42 @@ function withFakeVisualViewport(
       Object.defineProperty(window, "visualViewport", originalDescriptor);
     } else {
       Reflect.deleteProperty(window, "visualViewport");
+    }
+  };
+  try {
+    const result = run();
+    if (result instanceof Promise) {
+      return result.finally(restore);
+    }
+    restore();
+  } catch (error) {
+    restore();
+    throw error;
+  }
+}
+
+function withDocumentClientHeight(
+  getHeight: () => number,
+  run: () => Promise<void> | void,
+) {
+  const documentElement = document.documentElement;
+  const originalDescriptor = Object.getOwnPropertyDescriptor(
+    documentElement,
+    "clientHeight",
+  );
+  Object.defineProperty(documentElement, "clientHeight", {
+    configurable: true,
+    get: getHeight,
+  });
+  const restore = () => {
+    if (originalDescriptor) {
+      Object.defineProperty(
+        documentElement,
+        "clientHeight",
+        originalDescriptor,
+      );
+    } else {
+      Reflect.deleteProperty(documentElement, "clientHeight");
     }
   };
   try {
@@ -90,6 +136,46 @@ describe("useMobileVisualViewportHeight", () => {
       expect(shell.style.top).toBe("");
       expect(shell.style.height).toBe("");
     });
+  });
+
+  it("corrects an embedded browser only when its layout fails to resize", async () => {
+    const visualViewport = new FakeVisualViewport();
+    visualViewport.offsetTop = 0;
+    let layoutViewportHeight = 500;
+    await withDocumentClientHeight(
+      () => layoutViewportHeight,
+      async () =>
+        withFakeVisualViewport(visualViewport, async () => {
+          render(
+            <VisualViewportShell
+              enabled
+              restoreImmediatelyOnKeyboardDismissal={false}
+            />,
+          );
+          const shell = screen.getByTestId("shell");
+          const editor = screen.getByTestId("editor");
+          expect(shell.style.top).toBe("");
+          expect(shell.style.height).toBe("");
+
+          act(() => {
+            visualViewport.height = 300;
+            visualViewport.dispatchEvent(new Event("resize"));
+          });
+          await waitFor(() => expect(shell.style.height).toBe("300px"));
+          expect(shell.style.top).toBe("0px");
+
+          act(() => editor.focus());
+          act(() => editor.blur());
+          expect(shell.style.height).toBe("300px");
+
+          act(() => {
+            layoutViewportHeight = 300;
+            window.dispatchEvent(new Event("resize"));
+          });
+          await waitFor(() => expect(shell.style.height).toBe(""));
+          expect(shell.style.top).toBe("");
+        }),
+    );
   });
 
   it("compensates when Safari leaves the visual viewport panned", async () => {
@@ -172,17 +258,17 @@ describe("useMobileVisualViewportHeight", () => {
         visualViewport.offsetTop = 340;
         visualViewport.dispatchEvent(new Event("scroll"));
       });
-      await waitFor(() => expect(shell.style.height).toBe("840px"));
+      await waitFor(() => expect(shell.style.height).toBe(""));
       expect(shell.style.top).toBe("");
       expect(window.scrollTo).not.toHaveBeenCalled();
     });
   });
 });
 
-describe("shouldUseIOSVisualViewportFallback", () => {
+describe("shouldRestoreIOSViewportOnKeyboardDismissal", () => {
   it("recognizes iPhones and iPads using desktop-class browsing", () => {
     expect(
-      shouldUseIOSVisualViewportFallback({
+      shouldRestoreIOSViewportOnKeyboardDismissal({
         userAgent:
           "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1",
         platform: "iPhone",
@@ -190,7 +276,7 @@ describe("shouldUseIOSVisualViewportFallback", () => {
       }),
     ).toBe(true);
     expect(
-      shouldUseIOSVisualViewportFallback({
+      shouldRestoreIOSViewportOnKeyboardDismissal({
         userAgent:
           "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15) AppleWebKit/605.1.15 Version/18.0 Safari/605.1.15",
         platform: "MacIntel",
@@ -199,9 +285,9 @@ describe("shouldUseIOSVisualViewportFallback", () => {
     ).toBe(true);
   });
 
-  it("uses standards-based viewport resizing on Android and desktop", () => {
+  it("skips the Safari dismissal workaround on Android and desktop", () => {
     expect(
-      shouldUseIOSVisualViewportFallback({
+      shouldRestoreIOSViewportOnKeyboardDismissal({
         userAgent:
           "Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 Chrome/140.0.0.0 Mobile Safari/537.36",
         platform: "Linux armv8l",
@@ -209,7 +295,7 @@ describe("shouldUseIOSVisualViewportFallback", () => {
       }),
     ).toBe(false);
     expect(
-      shouldUseIOSVisualViewportFallback({
+      shouldRestoreIOSViewportOnKeyboardDismissal({
         userAgent:
           "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15) AppleWebKit/605.1.15 Version/18.0 Safari/605.1.15",
         platform: "MacIntel",

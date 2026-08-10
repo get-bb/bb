@@ -85,7 +85,7 @@ import {
 } from "@/components/commands/AppCommandProvider";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import {
-  shouldUseIOSVisualViewportFallback,
+  shouldRestoreIOSViewportOnKeyboardDismissal,
   useMobileVisualViewportHeight,
 } from "./useMobileVisualViewportHeight";
 import { wsManager } from "@/lib/ws";
@@ -407,13 +407,14 @@ export function AppLayout({ children }: AppLayoutProps) {
   const splitWorkspaceActive = useSplitWorkspaceActive();
   const store = useStore();
   const contentShellRef = useRef<HTMLDivElement>(null);
-  const useIOSViewportFallback = useMemo(
-    () => shouldUseIOSVisualViewportFallback(navigator),
+  const restoreIOSViewportOnKeyboardDismissal = useMemo(
+    () => shouldRestoreIOSViewportOnKeyboardDismissal(navigator),
     [],
   );
   useMobileVisualViewportHeight(
     contentShellRef,
-    isCompactViewport && useIOSViewportFallback,
+    isCompactViewport,
+    restoreIOSViewportOnKeyboardDismissal,
   );
   const location = useLocation();
   const [resourceRouteLabel, setResourceRouteLabel] = useAtom(
