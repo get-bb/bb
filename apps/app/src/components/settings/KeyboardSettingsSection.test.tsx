@@ -363,23 +363,36 @@ describe("KeyboardSettingsSection", () => {
     rerender(<KeyboardSettingsSection />);
     expect(testState.metadataCalls.size).toBe(0);
 
+    testState.metadataCalls.clear();
+    testState.recorderButtonCalls.clear();
     testState.keyboardPending = true;
     rerender(<KeyboardSettingsSection />);
-    expect(testState.metadataCalls.size).toBe(0);
+    expect([...testState.metadataCalls.keys()]).toEqual(["thread.new"]);
+    expect(testState.recorderButtonCalls.size).toBe(0);
     expect(recorder.matches(":disabled")).toBe(true);
     expect(recorder.hasAttribute("disabled")).toBe(false);
+    expect(recorder.closest('[aria-busy="true"]')?.className).toContain(
+      "opacity-50",
+    );
+    expect(
+      screen
+        .getByRole("button", { name: /^Record shortcut for Search threads/u })
+        .closest('[aria-busy="true"]'),
+    ).toBeNull();
     expect(recorder.closest("fieldset")?.className).toContain(
       "[&:disabled_button:not([disabled])]:opacity-100",
     );
 
+    testState.metadataCalls.clear();
     testState.keyboardPending = false;
     testState.keybindingOverrides = structuredClone(assignedOverrides);
     testState.defaultKeybindings = structuredClone(
       testState.defaultKeybindings,
     );
     rerender(<KeyboardSettingsSection />);
-    expect(testState.metadataCalls.size).toBe(0);
+    expect([...testState.metadataCalls.keys()]).toEqual(["thread.new"]);
     expect(recorder.matches(":disabled")).toBe(false);
+    expect(recorder.closest('[aria-busy="true"]')).toBeNull();
     expect(recorder.closest("fieldset")?.className).not.toContain(
       "[&:disabled_button:not([disabled])]:opacity-100",
     );

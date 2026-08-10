@@ -195,6 +195,7 @@ interface KeyboardCommandRowProps {
   onChange(command: AppCommandId, shortcut: AppShortcut | null): void;
   onReset(command: AppCommandId): void;
   onRecordingChange(command: AppCommandId | null): void;
+  pending: boolean;
   platform: string;
   recording: boolean;
 }
@@ -315,6 +316,7 @@ const KeyboardCommandRow = memo(
     onChange,
     onReset,
     onRecordingChange,
+    pending,
     platform,
     recording,
   }: KeyboardCommandRowProps) {
@@ -344,7 +346,13 @@ const KeyboardCommandRow = memo(
         : null;
 
     return (
-      <div className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:gap-5">
+      <div
+        aria-busy={pending || undefined}
+        className={cn(
+          "flex flex-col gap-2 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:gap-5",
+          pending && "opacity-50",
+        )}
+      >
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
             <p className="text-sm text-foreground">{metadata.label}</p>
@@ -437,6 +445,7 @@ const KeyboardCommandRow = memo(
       left.onChange === right.onChange &&
       left.onReset === right.onReset &&
       left.onRecordingChange === right.onRecordingChange &&
+      left.pending === right.pending &&
       left.platform === right.platform &&
       left.recording === right.recording &&
       areKeyboardCommandRowModelsEqual(left.model, right.model)
@@ -469,6 +478,7 @@ export function KeyboardSettingsSection() {
     null,
   );
   const [search, setSearch] = useState("");
+  const pendingCommandRef = useRef<AppCommandId | null>(null);
 
   const commandRowModels = useMemo(
     () =>
@@ -537,6 +547,7 @@ export function KeyboardSettingsSection() {
         current.isDesktop,
         current.platform,
       );
+      pendingCommandRef.current = command;
       setDraft({ sourceKey: current.serverOverridesKey, value: next });
       mutateKeyboardSettings(next, {
         onError: () =>
@@ -554,6 +565,7 @@ export function KeyboardSettingsSection() {
       const current = latestSettingsRef.current;
       const previous = current.overrides;
       const next = resetCommandShortcutOverride(current.overrides, command);
+      pendingCommandRef.current = command;
       setDraft({ sourceKey: current.serverOverridesKey, value: next });
       mutateKeyboardSettings(next, {
         onError: () =>
@@ -566,6 +578,9 @@ export function KeyboardSettingsSection() {
     [mutateKeyboardSettings],
   );
 
+  const pendingCommand = isKeyboardSettingsPending
+    ? pendingCommandRef.current
+    : null;
   const disabled = systemConfig.data === undefined || isKeyboardSettingsPending;
   const hasOverrides = overrides.length > 0;
 
@@ -576,6 +591,7 @@ export function KeyboardSettingsSection() {
           disabled={disabled || !hasOverrides}
           onClick={() => {
             const previous = overrides;
+            pendingCommandRef.current = null;
             setDraft({ sourceKey: serverOverridesKey, value: [] });
             mutateKeyboardSettings([], {
               onError: () =>
@@ -617,7 +633,7 @@ export function KeyboardSettingsSection() {
           placeholder="Search shortcuts"
           value={search}
         />
-        {/* Native disabled propagation keeps pending state out of every row. */}
+        {/* Native disabled propagation keeps pending state out of unrelated rows. */}
         <fieldset
           className={cn(
             "m-0 min-w-0 space-y-5 border-0 p-0",
@@ -644,6 +660,7 @@ export function KeyboardSettingsSection() {
                       onChange={updateCommand}
                       onReset={resetCommand}
                       onRecordingChange={setRecordingCommand}
+                      pending={pendingCommand === metadata.command}
                       platform={platform}
                       recording={recordingCommand === metadata.command}
                     />
