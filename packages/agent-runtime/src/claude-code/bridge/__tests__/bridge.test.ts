@@ -447,6 +447,7 @@ async function startBridgeThread(args: StartBridgeThreadArgs): Promise<void> {
     instructionMode: "append",
     permissionEscalation: "ask",
     permissionMode: "default",
+    approvedPlanPermissionMode: "default",
     permissionScope: "workspace",
     threadId: args.threadId,
   });
@@ -462,6 +463,7 @@ function sendResumeThread(args: ResumeBridgeThreadArgs): void {
     instructionMode: "append",
     permissionEscalation: "ask",
     permissionMode: "default",
+    approvedPlanPermissionMode: "default",
     permissionScope: "workspace",
     providerThreadId: args.providerThreadId,
     threadId: args.threadId,
@@ -1291,6 +1293,7 @@ describe("bridge", () => {
           instructionMode: "append",
           permissionEscalation: testCase.permissionEscalation,
           permissionMode: testCase.permissionMode,
+          approvedPlanPermissionMode: testCase.permissionMode,
           permissionScope:
             testCase.permissionMode === "bypassPermissions"
               ? "full"
@@ -1357,6 +1360,7 @@ describe("bridge", () => {
         instructionMode: "append",
         permissionEscalation: "ask",
         permissionMode: "auto",
+        approvedPlanPermissionMode: "auto",
         permissionScope: "workspace",
         threadId,
       });
@@ -1583,6 +1587,7 @@ describe("bridge", () => {
           instructionMode: "append",
           permissionEscalation: "ask",
           permissionMode,
+          approvedPlanPermissionMode: "bypassPermissions",
           permissionScope: "workspace",
           threadId,
         });
@@ -1634,6 +1639,86 @@ describe("bridge", () => {
       }
     },
   );
+
+  // Regression for #1259: `/plan` overrides the session permission mode, and
+  // `turn/start` carries no mode, so nothing used to restore the user's preset.
+  // A full-access thread was then asked to approve every edit after the plan
+  // was approved.
+  it("returns to the user's permission preset once a plan is approved", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      queries.push(query);
+      return query;
+    });
+
+    try {
+      const threadId = "thread-plan-restores-preset";
+      bridge.sendRequest(1, "thread/start", {
+        workflowsEnabled: false,
+        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
+        baseInstructions: "test",
+        cwd: "/tmp/worktree",
+        instructionMode: "append",
+        permissionEscalation: "ask",
+        permissionMode: "plan",
+        approvedPlanPermissionMode: "bypassPermissions",
+        permissionScope: "workspace",
+        threadId,
+      });
+      await bridge.waitForResponse(1);
+
+      const canUseTool = getLastCanUseTool();
+      const planPromise = canUseTool(
+        "ExitPlanMode",
+        { plan: "# Plan" },
+        { signal: new AbortController().signal, toolUseID: "tool-plan" },
+      );
+      await bridge.flushWork();
+      const approvalRequest = bridge.messages.find(
+        (message) =>
+          message.method === CLAUDE_PERMISSION_REQUEST_APPROVAL_METHOD,
+      );
+      if (approvalRequest?.id === undefined) {
+        throw new Error("Expected ExitPlanMode to request user approval");
+      }
+
+      handleLine(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: approvalRequest.id,
+          result: { kind: "permission_request", behavior: "allow" },
+        }),
+      );
+      await expect(planPromise).resolves.toMatchObject({ behavior: "allow" });
+      await bridge.flushWork();
+
+      // An edit that would otherwise prompt: full access must now allow it.
+      const editResult = await canUseTool(
+        "Edit",
+        { file_path: "/tmp/worktree/test.md", new_string: "hi" },
+        {
+          signal: new AbortController().signal,
+          toolUseID: "tool-edit",
+          blockedPath: "/tmp/worktree",
+          decisionReason: "Outside the sandbox",
+        },
+      );
+
+      expect(editResult).toMatchObject({ behavior: "allow" });
+      expect(
+        bridge.messages.filter(
+          (message) =>
+            message.method === CLAUDE_PERMISSION_REQUEST_APPROVAL_METHOD,
+        ),
+      ).toHaveLength(1);
+
+      await stopBridgeThread({ bridge, queries, threadId });
+    } finally {
+      bridge.restore();
+    }
+  });
 
   it("denies ExitPlanMode without prompting when the plan is missing", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
@@ -2020,6 +2105,7 @@ describe("bridge", () => {
         instructionMode: "append",
         permissionEscalation: "ask",
         permissionMode: "default",
+        approvedPlanPermissionMode: "default",
         permissionScope: "workspace",
         threadId: "thread-home-config",
       });
@@ -2068,6 +2154,7 @@ describe("bridge", () => {
         instructionMode: "append",
         permissionEscalation: "ask",
         permissionMode: "default",
+        approvedPlanPermissionMode: "default",
         permissionScope: "workspace",
         threadId,
       });
@@ -2117,6 +2204,7 @@ describe("bridge", () => {
         instructionMode: "append",
         permissionEscalation: "ask",
         permissionMode: "default",
+        approvedPlanPermissionMode: "default",
         permissionScope: "workspace",
         threadId: "thread-mock-cli-traffic",
       });
@@ -2163,6 +2251,7 @@ describe("bridge", () => {
         instructionMode: "append",
         permissionEscalation: "ask",
         permissionMode: "default",
+        approvedPlanPermissionMode: "default",
         permissionScope: "workspace",
         reasoningLevel: "max",
         threadId: "thread-reasoning",
@@ -2214,6 +2303,7 @@ describe("bridge", () => {
         instructionMode: "append",
         permissionEscalation: "deny",
         permissionMode: "acceptEdits",
+        approvedPlanPermissionMode: "acceptEdits",
         permissionScope: "workspace",
         threadId: "thread-roots",
       });
@@ -2268,6 +2358,7 @@ describe("bridge", () => {
         instructionMode: "append",
         permissionEscalation: "deny",
         permissionMode: "auto",
+        approvedPlanPermissionMode: "auto",
         permissionScope: "workspace",
         providerThreadId: "provider-thread-roots",
         threadId: "thread-resume-roots",
@@ -2374,6 +2465,7 @@ describe("bridge", () => {
         instructionMode: "append",
         permissionEscalation: null,
         permissionMode: "bypassPermissions",
+        approvedPlanPermissionMode: "bypassPermissions",
         permissionScope: "full",
         threadId,
       });
@@ -2391,6 +2483,7 @@ describe("bridge", () => {
         instructionMode: "append",
         permissionEscalation: "ask",
         permissionMode: "acceptEdits",
+        approvedPlanPermissionMode: "acceptEdits",
         permissionScope: "workspace",
         providerThreadId,
         threadId,
@@ -2417,6 +2510,7 @@ describe("bridge", () => {
         instructionMode: "append",
         permissionEscalation: "deny",
         permissionMode: "auto",
+        approvedPlanPermissionMode: "auto",
         permissionScope: "workspace",
         providerThreadId,
         threadId,
@@ -2444,6 +2538,7 @@ describe("bridge", () => {
         model: "claude-opus-4-1",
         permissionEscalation: "deny",
         permissionMode: "auto",
+        approvedPlanPermissionMode: "auto",
         permissionScope: "workspace",
         providerThreadId,
         threadId,
@@ -2683,6 +2778,7 @@ describe("bridge", () => {
         instructionMode: "append",
         permissionEscalation: "ask",
         permissionMode: "default",
+        approvedPlanPermissionMode: "default",
         permissionScope: "workspace",
         threadId,
       });
@@ -2747,6 +2843,7 @@ describe("bridge", () => {
         instructionMode: "append",
         permissionEscalation: "ask",
         permissionMode: "default",
+        approvedPlanPermissionMode: "default",
         permissionScope: "workspace",
         threadId,
       });
@@ -2796,6 +2893,7 @@ describe("bridge", () => {
         instructionMode: "append",
         permissionEscalation: "ask",
         permissionMode: "default",
+        approvedPlanPermissionMode: "default",
         permissionScope: "workspace",
         threadId,
       });
@@ -2906,6 +3004,7 @@ describe("bridge", () => {
         instructionMode: "append",
         permissionEscalation: "ask",
         permissionMode: "default",
+        approvedPlanPermissionMode: "default",
         permissionScope: "workspace",
         providerThreadId: staleProviderThreadId,
         threadId,
@@ -2971,6 +3070,7 @@ describe("bridge", () => {
         instructionMode: "append",
         permissionEscalation: "ask",
         permissionMode: "default",
+        approvedPlanPermissionMode: "default",
         permissionScope: "workspace",
         threadId: "thread-stop-waits",
       });
@@ -3014,6 +3114,7 @@ describe("bridge", () => {
         instructionMode: "append",
         permissionEscalation: "ask",
         permissionMode: "default",
+        approvedPlanPermissionMode: "default",
         permissionScope: "workspace",
         threadId: "thread-overlap",
       });
@@ -3031,6 +3132,7 @@ describe("bridge", () => {
         instructionMode: "append",
         permissionEscalation: "ask",
         permissionMode: "default",
+        approvedPlanPermissionMode: "default",
         permissionScope: "workspace",
         threadId: "thread-overlap",
       });

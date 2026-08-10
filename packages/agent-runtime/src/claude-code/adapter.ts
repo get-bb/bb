@@ -1117,6 +1117,8 @@ export function createClaudeCodeProviderAdapter(
               permissionMode: resolveClaudeSessionPermissionMode(
                 command.options,
               ),
+              approvedPlanPermissionMode:
+                toClaudePermissionMode(permissionPolicy),
               permissionScope: permissionPolicy.permissionScope,
               permissionEscalation: permissionPolicy.permissionEscalation,
               ...(additionalWorkspaceWriteRootsParams
@@ -1185,6 +1187,8 @@ export function createClaudeCodeProviderAdapter(
               permissionMode: resolveClaudeSessionPermissionMode(
                 command.options,
               ),
+              approvedPlanPermissionMode:
+                toClaudePermissionMode(permissionPolicy),
               permissionScope: permissionPolicy.permissionScope,
               permissionEscalation: permissionPolicy.permissionEscalation,
               ...(additionalWorkspaceWriteRootsParams
@@ -1303,6 +1307,8 @@ export function createClaudeCodeProviderAdapter(
               permissionMode: resolveClaudeSessionPermissionMode(
                 command.options,
               ),
+              approvedPlanPermissionMode:
+                toClaudePermissionMode(permissionPolicy),
               permissionScope: permissionPolicy.permissionScope,
               permissionEscalation: permissionPolicy.permissionEscalation,
               ...(additionalWorkspaceWriteRootsParams

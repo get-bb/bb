@@ -148,6 +148,19 @@ export class SdkSession {
     return this.isProcessing;
   }
 
+  /**
+   * Change the permission mode of the live session. Used to leave Plan mode
+   * once the user approves a plan. The new mode is also recorded on the
+   * session options so a later resume rebuilds the session with it.
+   *
+   * Only streaming-input sessions accept the control request, and only while
+   * the query is open, so a closed session records the mode and returns.
+   */
+  async setPermissionMode(mode: ClaudePermissionMode): Promise<void> {
+    this.options.permissionMode = mode;
+    await this.query?.setPermissionMode(mode);
+  }
+
   start(resumeSessionId?: string): void {
     if (resumeSessionId) {
       this.sessionId = resumeSessionId;
@@ -203,7 +216,9 @@ export class SdkSession {
         : {}),
       ...(this.options.effort ? { effort: this.options.effort } : {}),
       ...(this.options.pathToClaudeCodeExecutable
-        ? { pathToClaudeCodeExecutable: this.options.pathToClaudeCodeExecutable }
+        ? {
+            pathToClaudeCodeExecutable: this.options.pathToClaudeCodeExecutable,
+          }
         : {}),
       ...(this.options.plugins ? { plugins: this.options.plugins } : {}),
       ...(this.options.thinking ? { thinking: this.options.thinking } : {}),

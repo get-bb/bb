@@ -199,6 +199,8 @@ interface ThreadSession {
   pendingInteractiveRequests: Map<string | number, PendingInteractiveRequest>;
   permissionEscalation: PermissionEscalation | null;
   permissionMode: ClaudePermissionMode;
+  /** Mode to return to once the user approves a plan. See commands.ts. */
+  approvedPlanPermissionMode: ClaudePermissionMode;
   providerThreadId?: string;
   sessionPermissionGrants: ClaudeSessionPermissionGrant[];
   threadIdRef: ThreadIdRef;
@@ -214,6 +216,7 @@ interface CreateThreadSessionArgs {
   mockCliTrafficProxy: ClaudeCodeMockCliTrafficProxy | null;
   permissionEscalation: PermissionEscalation | null;
   permissionMode: ClaudePermissionMode;
+  approvedPlanPermissionMode: ClaudePermissionMode;
   providerThreadId?: string;
   sessionConstructionConfig: SessionConstructionConfig;
   sessionOptions: SdkSessionOptions;
@@ -511,6 +514,7 @@ function createThreadSession(args: CreateThreadSessionArgs): ThreadSession {
     pendingInteractiveRequests: new Map(),
     permissionEscalation: args.permissionEscalation,
     permissionMode: args.permissionMode,
+    approvedPlanPermissionMode: args.approvedPlanPermissionMode,
     ...(args.providerThreadId
       ? { providerThreadId: args.providerThreadId }
       : {}),
@@ -547,7 +551,10 @@ function replaceEndedThreadSession(
   const replacementSession = createThreadSession({
     mockCliTrafficProxy: args.threadSession.mockCliTrafficProxy,
     permissionEscalation: args.threadSession.permissionEscalation,
+    // Carries the live mode, so a session replaced after an approved plan
+    // keeps the restored preset instead of dropping back into Plan mode.
     permissionMode: args.threadSession.permissionMode,
+    approvedPlanPermissionMode: args.threadSession.approvedPlanPermissionMode,
     providerThreadId,
     sessionConstructionConfig: args.threadSession.sessionConstructionConfig,
     sessionOptions: args.threadSession.sessionOptions,
@@ -1073,6 +1080,34 @@ function createForwardUserQuestionRequest(
     });
 }
 
+/**
+ * Leave Plan mode once the user approves a plan.
+ *
+ * `/plan` overrides the session permission mode for the life of the session:
+ * `turn/start` carries no mode, so nothing restores the user's preset on a
+ * later turn. Without this the agent keeps Plan mode's gating after the plan
+ * is approved, and a full-access thread is asked to approve every edit it
+ * already allowed.
+ */
+function restoreApprovedPlanPermissionMode(threadSession: ThreadSession): void {
+  if (
+    threadSession.permissionMode === threadSession.approvedPlanPermissionMode
+  ) {
+    return;
+  }
+  threadSession.permissionMode = threadSession.approvedPlanPermissionMode;
+  void threadSession.session
+    .setPermissionMode(threadSession.approvedPlanPermissionMode)
+    .catch((error: unknown) => {
+      // bb's own canUseTool gate already follows the restored mode, so a
+      // refused control request costs the session Claude's native gating
+      // alignment, not the user's preset.
+      logBridgeError(
+        `Failed to leave Plan mode: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    });
+}
+
 function createCanUseTool(threadIdRef: ThreadIdRef): CanUseTool {
   const forwardInteractiveRequest =
     createForwardInteractiveRequest(threadIdRef);
@@ -1291,6 +1326,7 @@ async function handleThreadStart(
     mockCliTrafficProxy: preparedEnv.mockCliTrafficProxy,
     permissionEscalation: params.permissionEscalation,
     permissionMode: params.permissionMode,
+    approvedPlanPermissionMode: params.approvedPlanPermissionMode,
     providerThreadId,
     sessionConstructionConfig: toSessionConstructionConfig(params),
     sessionOptions,
@@ -1355,6 +1391,7 @@ async function handleThreadResume(
     mockCliTrafficProxy: preparedEnv.mockCliTrafficProxy,
     permissionEscalation: params.permissionEscalation,
     permissionMode: params.permissionMode,
+    approvedPlanPermissionMode: params.approvedPlanPermissionMode,
     ...(requestedProviderThreadId
       ? { providerThreadId: requestedProviderThreadId }
       : {}),
@@ -1415,6 +1452,7 @@ async function handleThreadFork(
     mockCliTrafficProxy: preparedEnv.mockCliTrafficProxy,
     permissionEscalation: params.permissionEscalation,
     permissionMode: params.permissionMode,
+    approvedPlanPermissionMode: params.approvedPlanPermissionMode,
     providerThreadId: forkedProviderThreadId,
     sessionConstructionConfig: toSessionConstructionConfig(params),
     sessionOptions,
@@ -1620,6 +1658,14 @@ export function handleLine(line: string): void {
         permissions: pending.permissions,
         toolName: pending.toolName,
       });
+    }
+
+    if (
+      pending.kind === "permission_request" &&
+      pending.toolName === CLAUDE_EXIT_PLAN_MODE_TOOL_NAME &&
+      interactiveResponse.behavior === "allow"
+    ) {
+      restoreApprovedPlanPermissionMode(threadSession);
     }
 
     pending.resolve(

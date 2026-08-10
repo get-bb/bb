@@ -55,6 +55,12 @@ const claudeCodeCommandSchema = z.discriminatedUnion("method", [
       additionalWorkspaceWriteRoots: bridgeAdditionalWorkspaceWriteRootsSchema,
       plugins: bridgeClaudePluginsSchema,
       permissionMode: claudePermissionModeSchema,
+      // The mode the session returns to once the user approves a plan. `/plan`
+      // overrides `permissionMode` for the whole session, so without this the
+      // thread would keep Plan mode's gating after the plan is approved and
+      // prompt for edits the user's preset already allows. Equal to
+      // `permissionMode` whenever the session does not start in Plan mode.
+      approvedPlanPermissionMode: claudePermissionModeSchema,
       permissionScope: bridgePermissionScopeSchema,
       permissionEscalation: bridgePermissionEscalationSchema,
       config: z.record(z.string(), z.unknown()).optional(),
@@ -78,6 +84,12 @@ const claudeCodeCommandSchema = z.discriminatedUnion("method", [
       additionalWorkspaceWriteRoots: bridgeAdditionalWorkspaceWriteRootsSchema,
       plugins: bridgeClaudePluginsSchema,
       permissionMode: claudePermissionModeSchema,
+      // The mode the session returns to once the user approves a plan. `/plan`
+      // overrides `permissionMode` for the whole session, so without this the
+      // thread would keep Plan mode's gating after the plan is approved and
+      // prompt for edits the user's preset already allows. Equal to
+      // `permissionMode` whenever the session does not start in Plan mode.
+      approvedPlanPermissionMode: claudePermissionModeSchema,
       permissionScope: bridgePermissionScopeSchema,
       permissionEscalation: bridgePermissionEscalationSchema,
       config: z.record(z.string(), z.unknown()).optional(),
@@ -101,6 +113,12 @@ const claudeCodeCommandSchema = z.discriminatedUnion("method", [
       additionalWorkspaceWriteRoots: bridgeAdditionalWorkspaceWriteRootsSchema,
       plugins: bridgeClaudePluginsSchema,
       permissionMode: claudePermissionModeSchema,
+      // The mode the session returns to once the user approves a plan. `/plan`
+      // overrides `permissionMode` for the whole session, so without this the
+      // thread would keep Plan mode's gating after the plan is approved and
+      // prompt for edits the user's preset already allows. Equal to
+      // `permissionMode` whenever the session does not start in Plan mode.
+      approvedPlanPermissionMode: claudePermissionModeSchema,
       permissionScope: bridgePermissionScopeSchema,
       permissionEscalation: bridgePermissionEscalationSchema,
       config: z.record(z.string(), z.unknown()).optional(),
