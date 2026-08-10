@@ -168,14 +168,6 @@ export function selectionAnchorFromPointerRelease(
   };
 }
 
-function isEventTargetWithinNode(
-  event: Event,
-  node: HTMLElement | null,
-): boolean {
-  if (node === null || !(event.target instanceof Node)) return false;
-  return node.contains(event.target);
-}
-
 function readSelectionWithinNode(
   node: HTMLElement | null,
   anchor: SelectionAnchor | null,
@@ -223,17 +215,36 @@ interface SelectableProseInstance {
   // Only emit `null` once, after this node had reported a real selection, so
   // N messages don't thrash a shared controller.
   hadSelection: boolean;
-  pointerStartedInNode: boolean;
   pendingReportAnchor: SelectionAnchor | null;
   lastPointerReleaseAnchor: SelectionAnchor | null;
   multiClickTimer: number | null;
 }
 
 const proseInstances = new Set<SelectableProseInstance>();
+const instanceByNode = new Map<HTMLElement, SelectableProseInstance>();
 let sharedFrame: number | null = null;
 let pointerIsDown = false;
 let pointerUsesLiveSelectionRange = false;
+// The instance whose node contained the current pointer-down target. At most
+// one instance can contain it (prose wrappers don't nest), so the registry
+// tracks it once instead of a per-instance flag.
+let pointerActiveInstance: SelectableProseInstance | null = null;
 let pointerStartPoint: SelectionAnchorPoint | null = null;
+
+function findInstanceContaining(
+  target: EventTarget | null,
+): SelectableProseInstance | null {
+  if (!(target instanceof Node)) return null;
+  let element = target instanceof Element ? target : target.parentElement;
+  // One walk up the ancestor chain replaces a `node.contains(target)` probe
+  // per mounted message on every pointerdown.
+  while (element !== null) {
+    const instance = instanceByNode.get(element as HTMLElement);
+    if (instance !== undefined) return instance;
+    element = element.parentElement;
+  }
+  return null;
+}
 
 function reportInstanceSelection(instance: SelectableProseInstance): void {
   const anchor = instance.pendingReportAnchor;
@@ -244,12 +255,37 @@ function reportInstanceSelection(instance: SelectableProseInstance): void {
   instance.onSelectRef.current?.(next);
 }
 
+function reportInstanceNull(instance: SelectableProseInstance): void {
+  instance.pendingReportAnchor = null;
+  if (!instance.hadSelection) return;
+  instance.hadSelection = false;
+  instance.onSelectRef.current?.(null);
+}
+
 function reportAllInstances(): void {
   sharedFrame = null;
+  // Read the live range once. An instance can only own or spill into the
+  // selection when the range intersects its node (both acceptance paths in
+  // readSelectionWithinNode require containment or intersection), so every
+  // other instance takes the cheap null path without its own selection read.
+  const selection = window.getSelection();
+  const range =
+    selection !== null && selection.rangeCount > 0
+      ? selection.getRangeAt(0)
+      : null;
+  const canPreFilter =
+    range !== null && typeof range.intersectsNode === "function";
   for (const instance of proseInstances) {
     // An instance inside its multi-click delay reports when its own timer
     // fires; interleaved global triggers must not read its selection early.
     if (instance.multiClickTimer !== null) continue;
+    if (
+      range === null ||
+      (canPreFilter && !range.intersectsNode(instance.node))
+    ) {
+      reportInstanceNull(instance);
+      continue;
+    }
     reportInstanceSelection(instance);
   }
 }
@@ -332,31 +368,26 @@ function handleSharedSelectionChange(): void {
 
 function handleSharedPointerDown(event: PointerEvent): void {
   cancelSharedFrame();
-  pointerStartPoint = null;
   for (const instance of proseInstances) {
     cancelMultiClickTimer(instance);
     instance.pendingReportAnchor = null;
-    instance.pointerStartedInNode = isEventTargetWithinNode(
-      event,
-      instance.node,
-    );
-    if (instance.pointerStartedInNode && pointerStartPoint === null) {
-      pointerStartPoint = anchorPointFromMouseEvent(event);
-    }
   }
+  pointerActiveInstance = findInstanceContaining(event.target);
+  pointerStartPoint =
+    pointerActiveInstance !== null ? anchorPointFromMouseEvent(event) : null;
   pointerUsesLiveSelectionRange = usesLiveSelectionRange(event.pointerType);
   pointerIsDown = true;
 }
 
 function handleSharedPointerRelease(event: PointerEvent | MouseEvent): void {
-  for (const instance of proseInstances) {
-    if (!instance.pointerStartedInNode) continue;
+  const instance = pointerActiveInstance;
+  pointerActiveInstance = null;
+  if (instance !== null) {
     const anchor = selectionAnchorFromPointerRelease(pointerStartPoint, event);
     if (anchor !== null) {
       instance.lastPointerReleaseAnchor = anchor;
       instance.pendingReportAnchor = anchor;
     }
-    instance.pointerStartedInNode = false;
   }
   pointerIsDown = false;
   pointerUsesLiveSelectionRange = false;
@@ -365,9 +396,7 @@ function handleSharedPointerRelease(event: PointerEvent | MouseEvent): void {
 }
 
 function handleSharedPointerCancel(): void {
-  for (const instance of proseInstances) {
-    instance.pointerStartedInNode = false;
-  }
+  pointerActiveInstance = null;
   pointerIsDown = false;
   pointerUsesLiveSelectionRange = false;
   pointerStartPoint = null;
@@ -403,13 +432,18 @@ function registerSelectableProseInstance(
     attachSharedDocumentListeners();
   }
   proseInstances.add(instance);
+  instanceByNode.set(instance.node, instance);
 }
 
 function unregisterSelectableProseInstance(
   instance: SelectableProseInstance,
 ): void {
   proseInstances.delete(instance);
+  instanceByNode.delete(instance.node);
   cancelMultiClickTimer(instance);
+  if (pointerActiveInstance === instance) {
+    pointerActiveInstance = null;
+  }
   if (proseInstances.size === 0) {
     detachSharedDocumentListeners();
     cancelSharedFrame();
@@ -442,7 +476,6 @@ export function SelectableMessageProse({
       node,
       onSelectRef,
       hadSelection: false,
-      pointerStartedInNode: false,
       pendingReportAnchor: null,
       lastPointerReleaseAnchor: null,
       multiClickTimer: null,
