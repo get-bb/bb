@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join, relative } from "node:path";
+import { dirname, extname, join, relative } from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import sharp from "sharp";
@@ -78,6 +78,13 @@ const pwaIconNames = [
 
 const mismatches = [];
 let writes = 0;
+
+// Sharp/libvips can round a handful of SVG-filter pixels one channel value
+// differently on arm64 and x64. Keep this tolerance deliberately tiny: it
+// accepts the architecture-only variance while still rejecting any visible or
+// widespread change to a generated PNG.
+const maxPngChannelDelta = 1;
+const maxPngDifferingChannels = 64;
 
 function generatedConnectIconModule() {
   const compactSvg = markSvg
@@ -236,6 +243,14 @@ async function writeOrCheck(filePath, content) {
   }
 
   if (existing?.equals(content)) return;
+  if (
+    checkOnly &&
+    existing &&
+    extname(filePath) === ".png" &&
+    (await pngsVisuallyEquivalent(existing, content))
+  ) {
+    return;
+  }
   if (checkOnly) {
     mismatches.push(relative(projectRoot, filePath));
     return;
@@ -244,6 +259,34 @@ async function writeOrCheck(filePath, content) {
   await mkdir(dirname(filePath), { recursive: true });
   await writeFile(filePath, content);
   writes += 1;
+}
+
+async function pngsVisuallyEquivalent(existing, generated) {
+  const [existingImage, generatedImage] = await Promise.all([
+    sharp(existing).ensureAlpha().raw().toBuffer({ resolveWithObject: true }),
+    sharp(generated).ensureAlpha().raw().toBuffer({ resolveWithObject: true }),
+  ]);
+
+  if (
+    existingImage.info.width !== generatedImage.info.width ||
+    existingImage.info.height !== generatedImage.info.height ||
+    existingImage.info.channels !== generatedImage.info.channels
+  ) {
+    return false;
+  }
+
+  let differingChannels = 0;
+  for (let index = 0; index < existingImage.data.length; index += 1) {
+    const delta = Math.abs(
+      existingImage.data[index] - generatedImage.data[index],
+    );
+    if (delta === 0) continue;
+    if (delta > maxPngChannelDelta) return false;
+    differingChannels += 1;
+    if (differingChannels > maxPngDifferingChannels) return false;
+  }
+
+  return true;
 }
 
 async function generateIcns(sourcePng) {
