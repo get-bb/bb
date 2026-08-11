@@ -593,10 +593,7 @@ export function useThreadCreationOptions(
     [rawServiceTier, supportsServiceTier],
   );
   const reasoningLevel = useMemo(() => {
-    const preferredLevel =
-      preferredReasoningLevel ??
-      activeModel?.defaultReasoningEffort ??
-      "medium";
+    const preferredLevel = preferredReasoningLevel ?? "medium";
     if (reasoningOptions.length === 0) {
       return preferredLevel;
     }
@@ -607,11 +604,7 @@ export function useThreadCreationOptions(
       preferredLevel,
       reasoningOptions.map((option) => option.value),
     );
-  }, [
-    activeModel?.defaultReasoningEffort,
-    preferredReasoningLevel,
-    reasoningOptions,
-  ]);
+  }, [preferredReasoningLevel, reasoningOptions]);
 
   const permissionMode = resolvePermissionModeSelection({
     rawPermissionMode,

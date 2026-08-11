@@ -128,10 +128,11 @@ function providerExecutionOptionsResponse(
         displayName: `${modelPrefix} default`,
         description: "",
         supportedReasoningEfforts: [
+          { reasoningEffort: "low", description: "" },
           { reasoningEffort: "medium", description: "" },
           { reasoningEffort: "high", description: "" },
         ],
-        defaultReasoningEffort: isProjectProvider ? "high" : "medium",
+        defaultReasoningEffort: isProjectProvider ? "high" : "low",
         isDefault: true,
       },
       {
@@ -233,6 +234,29 @@ afterEach(() => {
 });
 
 describe("useThreadCreationOptions", () => {
+  it("uses the medium product default for providers without reasoning history", async () => {
+    vi.mocked(sdk.system.executionOptions).mockImplementation(async (args) =>
+      providerExecutionOptionsResponse(args?.providerId),
+    );
+    const { result } = renderHook(
+      () => useThreadCreationOptions({ scope: "new-thread" }),
+      { wrapper: createQueryClientTestHarness().wrapper },
+    );
+
+    await waitFor(() => {
+      expect(result.current.selectedModel).toBe("global-default");
+      expect(result.current.reasoningLevel).toBe("medium");
+    });
+
+    act(() => {
+      result.current.setSelectedProviderId(PROJECT_PROVIDER_ID);
+    });
+    await waitFor(() => {
+      expect(result.current.selectedModel).toBe("project-default");
+      expect(result.current.reasoningLevel).toBe("medium");
+    });
+  });
+
   it("applies a fork provider, model, and reasoning seed atomically", async () => {
     window.localStorage.setItem("bb.promptbox.provider", GLOBAL_PROVIDER_ID);
     vi.mocked(sdk.system.executionOptions).mockImplementation(async (args) =>
@@ -301,7 +325,7 @@ describe("useThreadCreationOptions", () => {
     });
     await waitFor(() => {
       expect(result.current.selectedModel).toBe("project-default");
-      expect(result.current.reasoningLevel).toBe("high");
+      expect(result.current.reasoningLevel).toBe("medium");
     });
     expect(window.localStorage.getItem("bb.promptbox.model")).toBeNull();
 
@@ -341,7 +365,7 @@ describe("useThreadCreationOptions", () => {
     await waitFor(() => {
       expect(result.current.selectedProviderId).toBe(PROJECT_PROVIDER_ID);
       expect(result.current.selectedModel).toBe("project-default");
-      expect(result.current.reasoningLevel).toBe("high");
+      expect(result.current.reasoningLevel).toBe("medium");
     });
 
     act(() => {
@@ -413,7 +437,7 @@ describe("useThreadCreationOptions", () => {
 
     await waitFor(() => {
       expect(result.current.selectedModel).toBe("project-default");
-      expect(result.current.reasoningLevel).toBe("high");
+      expect(result.current.reasoningLevel).toBe("medium");
     });
     act(() => {
       result.current.setSelectedModel("project-remembered");
