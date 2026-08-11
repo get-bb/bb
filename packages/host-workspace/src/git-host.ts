@@ -213,6 +213,14 @@ function getNullableUrl(object: JsonObject, key: string): string | null {
   }
 }
 
+function getNullableDateTime(object: JsonObject, key: string): string | null {
+  const value = getString(object, key);
+  if (!value || Number.isNaN(Date.parse(value))) {
+    return null;
+  }
+  return value;
+}
+
 function normalizeCheckName(object: JsonObject): string {
   const explicitName = getString(object, "name");
   if (explicitName && explicitName.trim()) return explicitName.trim();
@@ -242,6 +250,12 @@ function normalizeChecks(value: unknown): GitHostPullRequestCheck[] {
       url:
         getNullableUrl(object, "detailsUrl") ??
         getNullableUrl(object, "targetUrl"),
+      // CheckRun exposes startedAt; StatusContext exposes the equivalent
+      // creation time. Preserve one comparable value so the server can apply
+      // latest-run rollup policy without depending on GitHub's array order.
+      startedAt:
+        getNullableDateTime(object, "startedAt") ??
+        getNullableDateTime(object, "createdAt"),
     });
   }
   return checks;

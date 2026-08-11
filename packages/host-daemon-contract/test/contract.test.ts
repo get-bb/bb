@@ -473,6 +473,7 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
           status: "completed",
           conclusion: "success",
           url: null,
+          startedAt: "2026-06-16T12:25:00Z",
         },
       ],
       reviewDecision: "APPROVED",
@@ -1055,14 +1056,10 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  // Version 102 stops the event sink from reposting a batch the server has
-  // permanently refused. An enrolled daemon on an older build retries such a
-  // batch forever, and because the queue is host-wide that stalls every thread
-  // on the machine until it restarts, so it must update before it delivers more
-  // events. It also stops scoping provider/unhandled events to turn ids that
-  // came from the provider rather than from bb.
-  it("uses protocol version 102 for non-repeating permanent event rejections", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(102);
+  // Version 103 timestamps pull request checks so the server can collapse
+  // superseded runs without relying on GitHub's unstable rollup array order.
+  it("uses protocol version 103 for timestamped pull request checks", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(103);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {

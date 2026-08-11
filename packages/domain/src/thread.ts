@@ -189,6 +189,7 @@ export const gitHostPullRequestCheckSchema = z
     status: gitHostPullRequestCheckStatusSchema,
     conclusion: gitHostPullRequestCheckConclusionSchema.nullable(),
     url: z.string().url().nullable(),
+    startedAt: z.string().datetime().nullable(),
   })
   .strict();
 export type GitHostPullRequestCheck = z.infer<
