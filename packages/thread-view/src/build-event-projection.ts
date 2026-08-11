@@ -92,6 +92,7 @@ import {
 } from "./event-projection-state.js";
 import { buildProjectionActiveThinking } from "./reasoning-lifecycle-projection.js";
 import { projectAssistantAndReasoningEvent } from "./assistant-event-projection.js";
+import { projectGeneratedImage } from "./generated-image-projection.js";
 
 // --- Projection state machine ---
 
@@ -187,6 +188,7 @@ function isEventProjectionCallMessage(
     case "assistant-text":
     case "debug/raw-event":
     case "error":
+    case "generated-image":
     case "operation":
     case "permission-grant-lifecycle":
     case "user":
@@ -682,6 +684,18 @@ function buildFlatProjectionData(
         state,
       })
     ) {
+      continue;
+    }
+
+    const generatedImage = projectGeneratedImage({
+      decoded,
+      eventParentToolCallId,
+      eventTurnId,
+      meta,
+    });
+    if (generatedImage) {
+      flushToolActivityBeforeNonToolMessage(state);
+      state.messages.push(generatedImage);
       continue;
     }
 

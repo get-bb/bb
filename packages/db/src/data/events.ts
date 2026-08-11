@@ -6,6 +6,7 @@ import {
   gte,
   inArray,
   isNotNull,
+  isNull,
   lt,
   lte,
   max,
@@ -35,6 +36,7 @@ import {
   getThreadEventScopeTurnId,
   parseStoredThreadEvent,
   systemThreadInterruptedReasonSchema,
+  threadEventImageGenerationItemSchema,
 } from "@bb/domain";
 import type {
   DbConnection,
@@ -43,7 +45,7 @@ import type {
 } from "../connection.js";
 import { alias, unionAll } from "drizzle-orm/sqlite-core";
 import type { DbNotifier } from "../notifier.js";
-import { environments, events, threads } from "../schema.js";
+import { environments, events, hosts, threads } from "../schema.js";
 import { createEventId } from "../ids.js";
 import { truncatedEventDataColumn } from "./event-output-truncation.js";
 import { deriveStoredEventItemFieldsFromSource } from "../stored-event-item-fields.js";
@@ -738,6 +740,17 @@ export interface FindStoredEventRowArgs {
   type: ThreadEventType;
 }
 
+export interface GetStoredGeneratedImageSourceArgs {
+  sequence: number;
+  threadId: string;
+}
+
+export interface StoredGeneratedImageSource {
+  environmentId: string;
+  hostId: string;
+  path: string;
+}
+
 export interface ListStoredEventRowsInRangeArgs {
   seqEnd: number;
   seqStart: number;
@@ -1097,6 +1110,57 @@ export function findStoredEventRow(
       .limit(1)
       .get() ?? null
   );
+}
+
+/**
+ * Resolves a saved generated image from its owning source event. The join is
+ * deliberate: if the persisted environment or host has gone away, the image
+ * is no longer authorised through another environment attached to the thread.
+ */
+export function getStoredGeneratedImageSource(
+  db: DbConnection,
+  args: GetStoredGeneratedImageSourceArgs,
+): StoredGeneratedImageSource | null {
+  const row = db
+    .select({
+      data: events.data,
+      environmentId: events.environmentId,
+      hostId: environments.hostId,
+    })
+    .from(events)
+    .innerJoin(environments, eq(events.environmentId, environments.id))
+    .innerJoin(hosts, eq(environments.hostId, hosts.id))
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        eq(events.sequence, args.sequence),
+        eq(events.type, "item/completed"),
+        eq(events.itemKind, "imageGeneration"),
+        isNull(hosts.destroyedAt),
+      ),
+    )
+    .limit(1)
+    .get();
+
+  if (!row?.environmentId) {
+    return null;
+  }
+
+  try {
+    const data: unknown = JSON.parse(row.data);
+    if (typeof data !== "object" || data === null || !("item" in data)) {
+      return null;
+    }
+    const item = threadEventImageGenerationItemSchema.safeParse(data.item);
+    if (!item.success || item.data.path.length === 0) return null;
+    return {
+      environmentId: row.environmentId,
+      hostId: row.hostId,
+      path: item.data.path,
+    };
+  } catch {
+    return null;
+  }
 }
 
 export function listStoredEventRowsInRange(

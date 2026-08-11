@@ -207,6 +207,12 @@ export interface EventProjectionImageViewMessage extends EventProjectionMessageB
   >;
 }
 
+export interface EventProjectionGeneratedImageMessage extends EventProjectionMessageBase {
+  kind: "generated-image";
+  itemId: string;
+  path: string;
+}
+
 export interface EventProjectionFileEditChange {
   path: string;
   kind?: string;
@@ -409,6 +415,7 @@ export type EventProjectionMessage =
   | EventProjectionWebSearchMessage
   | EventProjectionWebFetchMessage
   | EventProjectionImageViewMessage
+  | EventProjectionGeneratedImageMessage
   | EventProjectionFileEditMessage
   | EventProjectionOperationMessage
   | EventProjectionPermissionGrantLifecycleMessage

@@ -1,6 +1,7 @@
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { PassThrough, type Readable } from "node:stream";
 import { spawnPortableOutputProcess } from "@bb/process-utils";
+import { codexCompatibility } from "@bb/agent-runtime/codex-compatibility";
 import { spawn as spawnPty } from "node-pty";
 import semver from "semver";
 import { z } from "zod";
@@ -22,7 +23,8 @@ const NPM_VIEW_TIMEOUT_MS = 15_000;
 const NPM_INSTALL_STATE_TIMEOUT_MS = 5_000;
 const CLAUDE_CODE_INSTALL_SCRIPT_URL = "https://claude.ai/install.sh";
 const CURSOR_INSTALL_SCRIPT_URL = "https://cursor.com/install";
-export const CODEX_MINIMUM_SUPPORTED_VERSION = "0.136.0";
+export const CODEX_MINIMUM_SUPPORTED_VERSION =
+  codexCompatibility.minimumSupportedVersion;
 const providerCliNodePtyLogger: HostDaemonLogger = {
   debug() {},
   info() {},

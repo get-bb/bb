@@ -24,6 +24,7 @@ import {
   getLastStoredTurnRequestEvent,
   getLatestThreadOutputEventRow,
   getLatestThreadSequence,
+  getStoredGeneratedImageSource,
   insertEvents,
   listContextWindowUsageRows,
   listCompletedTurnsByThreadIds,
@@ -58,7 +59,7 @@ import {
 import { createEnvironment } from "../../src/data/environments.js";
 import { createProject } from "../../src/data/projects.js";
 import { createThread } from "../../src/data/threads.js";
-import { upsertHost } from "../../src/data/hosts.js";
+import { deleteHost, upsertHost } from "../../src/data/hosts.js";
 
 function setup() {
   const db = createConnection(":memory:");
@@ -75,8 +76,121 @@ function setup() {
     projectId: project.id,
     providerId: "codex",
   });
-  return { db, project, thread };
+  return { db, host, project, thread };
 }
+
+describe("getStoredGeneratedImageSource", () => {
+  it("derives the saved path and owner from one exact completed source event", () => {
+    const { db, host, project } = setup();
+    const environment = createEnvironment(db, noopNotifier, {
+      projectId: project.id,
+      hostId: host.id,
+      path: "/tmp/generated-source",
+      workspaceProvisionType: "unmanaged",
+    });
+    const thread = createThread(db, noopNotifier, {
+      projectId: project.id,
+      environmentId: environment.id,
+      providerId: "codex",
+    });
+    const otherThread = createThread(db, noopNotifier, {
+      projectId: project.id,
+      environmentId: environment.id,
+      providerId: "codex",
+    });
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        environmentId: environment.id,
+        sequence: 7,
+        scope: turnScope("turn-image"),
+        type: "item/completed",
+        itemId: "image-1",
+        itemKind: "imageGeneration",
+        data: JSON.stringify({
+          item: {
+            type: "imageGeneration",
+            id: "image-1",
+            path: "/tmp/generated-source/image.png",
+          },
+        }),
+      },
+    ]);
+
+    expect(
+      getStoredGeneratedImageSource(db, {
+        threadId: thread.id,
+        sequence: 7,
+      }),
+    ).toEqual({
+      environmentId: environment.id,
+      hostId: host.id,
+      path: "/tmp/generated-source/image.png",
+    });
+    expect(
+      getStoredGeneratedImageSource(db, {
+        threadId: otherThread.id,
+        sequence: 7,
+      }),
+    ).toBeNull();
+
+    deleteHost(db, noopNotifier, host.id);
+    expect(
+      getStoredGeneratedImageSource(db, {
+        threadId: thread.id,
+        sequence: 7,
+      }),
+    ).toBeNull();
+  });
+
+  it.each([
+    ["invalid JSON", "{"],
+    [
+      "the wrong item type",
+      JSON.stringify({
+        item: { type: "commandExecution", id: "not-an-image" },
+      }),
+    ],
+    [
+      "an empty saved path",
+      JSON.stringify({
+        item: { type: "imageGeneration", id: "image-empty", path: "" },
+      }),
+    ],
+  ])("rejects %s in the persisted source event", (_case, data) => {
+    const { db, host, project } = setup();
+    const environment = createEnvironment(db, noopNotifier, {
+      projectId: project.id,
+      hostId: host.id,
+      path: "/tmp/malformed-generated-source",
+      workspaceProvisionType: "unmanaged",
+    });
+    const thread = createThread(db, noopNotifier, {
+      projectId: project.id,
+      environmentId: environment.id,
+      providerId: "codex",
+    });
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        environmentId: environment.id,
+        sequence: 8,
+        scope: turnScope("turn-malformed-image"),
+        type: "item/completed",
+        itemId: "image-malformed",
+        itemKind: "imageGeneration",
+        data,
+      },
+    ]);
+
+    expect(
+      getStoredGeneratedImageSource(db, {
+        threadId: thread.id,
+        sequence: 8,
+      }),
+    ).toBeNull();
+  });
+});
 
 const emptyItemFields = {
   itemId: null,

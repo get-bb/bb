@@ -1422,6 +1422,12 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: ^1.29.0
         version: 1.29.0(zod@4.3.6)
+      ajv:
+        specifier: ^8.20.0
+        version: 8.20.0
+      json-schema-to-ts:
+        specifier: ^3.1.1
+        version: 3.1.1
       zod:
         specifier: 4.3.6
         version: 4.3.6

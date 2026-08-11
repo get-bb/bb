@@ -722,6 +722,18 @@ export type ThreadHostFileContentQuery = z.infer<
   typeof threadHostFileContentQuerySchema
 >;
 
+export const threadGeneratedImageContentQuerySchema = z
+  .object({
+    sourceSeq: z
+      .string()
+      .regex(/^\d+$/)
+      .refine((value) => Number.isSafeInteger(Number(value))),
+  })
+  .strict();
+export type ThreadGeneratedImageContentQuery = z.infer<
+  typeof threadGeneratedImageContentQuerySchema
+>;
+
 export const threadFilesRawQuerySchema = z.object({
   /** Absolute filesystem path of an HTML file on the thread's host. */
   path: z.string().min(1),

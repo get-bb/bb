@@ -77,4 +77,20 @@ describe("provider event schema", () => {
       parentToolCallId: "tool-call-123",
     });
   });
+
+  it("rejects generated images without a usable path", () => {
+    expect(() =>
+      threadEventSchema.parse({
+        type: "item/completed",
+        threadId: "thr_123",
+        providerThreadId: "provider-thread-123",
+        item: {
+          type: "imageGeneration",
+          id: "image-generation-123",
+          path: "",
+        },
+        scope: turnScope("turn_123"),
+      }),
+    ).toThrow();
+  });
 });

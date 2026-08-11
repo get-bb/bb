@@ -180,6 +180,7 @@ import type {
   ThreadFilesRawQuery,
   ThreadGetQuery,
   ThreadHostFileContentQuery,
+  ThreadGeneratedImageContentQuery,
   ThreadListQuery,
   ThreadListResponse,
   ThreadConversationOutlineResponse,
@@ -289,6 +290,7 @@ import {
   threadFilesRawQuerySchema,
   threadGetQuerySchema,
   threadHostFileContentQuerySchema,
+  threadGeneratedImageContentQuerySchema,
   threadListQuerySchema,
   threadOpenRequestSchema,
   threadPaneActionRequestSchema,
@@ -1292,6 +1294,14 @@ export const publicApiRoutes = {
       method: "get",
       request: queryRequest<PathId, ThreadHostFileContentQuery>(
         threadHostFileContentQuerySchema,
+      ),
+      response: binaryResponse<Uint8Array>(),
+    }),
+    generatedImageContent: defineRoute({
+      path: "/threads/:id/generated-images/content",
+      method: "get",
+      request: queryRequest<PathId, ThreadGeneratedImageContentQuery>(
+        threadGeneratedImageContentQuerySchema,
       ),
       response: binaryResponse<Uint8Array>(),
     }),

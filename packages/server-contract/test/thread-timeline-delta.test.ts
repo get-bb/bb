@@ -22,6 +22,24 @@ function row(id: string, sourceSeqStart: number, title = "t"): TimelineRow {
   };
 }
 
+function generatedImageRow(
+  itemId: string,
+  sourceSeqStart: number,
+): TimelineRow {
+  return {
+    id: `thr_x:generated-image:${itemId}`,
+    kind: "generated-image",
+    threadId: "thr_x",
+    turnId: "turn-1",
+    sourceSeqStart,
+    sourceSeqEnd: sourceSeqStart,
+    startedAt: sourceSeqStart,
+    createdAt: sourceSeqStart,
+    itemId,
+    path: `/tmp/${itemId}.png`,
+  };
+}
+
 describe("timeline delta", () => {
   it("round-trips an upsert + insert (compute then apply equals current)", () => {
     const prev = [row("a", 1), row("b", 2)];
@@ -48,6 +66,25 @@ describe("timeline delta", () => {
       computeTimelineRowDelta(prev, current),
     );
     expect(merged?.[0]).toBe(a);
+  });
+
+  it("inserts generated images without replacing an existing image row", () => {
+    const firstImage = generatedImageRow("image-1", 2);
+    const previous = [row("before", 1), firstImage, row("after", 4)];
+    const current = [
+      row("before", 1),
+      firstImage,
+      generatedImageRow("image-2", 3),
+      row("after", 4),
+    ];
+
+    const merged = applyTimelineDelta(
+      previous,
+      computeTimelineRowDelta(previous, current),
+    );
+
+    expect(merged).toEqual(current);
+    expect(merged?.[1]).toBe(firstImage);
   });
 
   it("omits row order when membership and ordering are unchanged", () => {

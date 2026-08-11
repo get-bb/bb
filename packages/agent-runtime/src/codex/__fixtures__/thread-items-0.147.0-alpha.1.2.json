@@ -1,0 +1,356 @@
+{
+  "codexVersion": "0.147.0-alpha.1.2",
+  "provenance": "Payload shapes are derived from the committed generated Codex app-server contract and existing bb adapter fixtures. This matrix is not an archived provider transcript.",
+  "cases": [
+    {
+      "name": "user content variants and nested defaults",
+      "item": {
+        "type": "userMessage",
+        "id": "user-generation",
+        "content": [
+          { "type": "text", "text": "hello" },
+          { "type": "image", "url": "https://example.test/image.png" },
+          { "type": "localImage", "path": "/tmp/input.png" },
+          { "type": "audio", "url": "https://example.test/audio.wav" },
+          { "type": "localAudio", "path": "/tmp/audio.wav" },
+          { "type": "skill", "name": "review", "path": "/tmp/SKILL.md" },
+          { "type": "mention", "name": "source", "path": "/tmp/source.ts" }
+        ]
+      },
+      "expectedItem": {
+        "type": "userMessage",
+        "id": "user-generation",
+        "content": [
+          { "type": "text", "text": "hello" },
+          { "type": "image", "url": "https://example.test/image.png" },
+          { "type": "localImage", "path": "/tmp/input.png" },
+          { "type": "text", "text": "[audio: https://example.test/audio.wav]" },
+          { "type": "text", "text": "[localAudio: /tmp/audio.wav]" },
+          { "type": "text", "text": "[skill: review]" },
+          { "type": "text", "text": "[mention: source]" }
+        ]
+      }
+    },
+    {
+      "name": "agent message",
+      "item": {
+        "type": "agentMessage",
+        "id": "agent-generation",
+        "text": "Hello"
+      },
+      "expectedItem": {
+        "type": "agentMessage",
+        "id": "agent-generation",
+        "text": "Hello"
+      }
+    },
+    {
+      "name": "plan",
+      "item": {
+        "type": "plan",
+        "id": "plan-generation",
+        "text": "Inspect then edit"
+      },
+      "expectedItem": {
+        "type": "plan",
+        "id": "plan-generation",
+        "text": "Inspect then edit"
+      }
+    },
+    {
+      "name": "reasoning defaults",
+      "item": { "type": "reasoning", "id": "reasoning-generation" },
+      "expectedItem": {
+        "type": "reasoning",
+        "id": "reasoning-generation",
+        "summary": [],
+        "content": []
+      }
+    },
+    {
+      "name": "command fields",
+      "item": {
+        "type": "commandExecution",
+        "id": "command-generation",
+        "command": "pwd",
+        "cwd": "/tmp",
+        "status": "completed",
+        "commandActions": [],
+        "aggregatedOutput": "/tmp\n",
+        "exitCode": 0,
+        "durationMs": 12
+      },
+      "expectedItem": {
+        "type": "commandExecution",
+        "id": "command-generation",
+        "command": "pwd",
+        "cwd": "/tmp",
+        "status": "completed",
+        "approvalStatus": null,
+        "aggregatedOutput": "/tmp\n",
+        "exitCode": 0,
+        "durationMs": 12
+      }
+    },
+    {
+      "name": "file change fields",
+      "item": {
+        "type": "fileChange",
+        "id": "file-generation",
+        "status": "completed",
+        "changes": [
+          { "path": "new.ts", "kind": { "type": "add" }, "diff": "+new" },
+          {
+            "path": "old.ts",
+            "kind": { "type": "update", "move_path": "moved.ts" },
+            "diff": "+updated"
+          },
+          { "path": "gone.ts", "kind": { "type": "delete" }, "diff": "-gone" }
+        ]
+      },
+      "expectedItem": {
+        "type": "fileChange",
+        "id": "file-generation",
+        "status": "completed",
+        "approvalStatus": null,
+        "changes": [
+          { "path": "new.ts", "kind": "add", "diff": "+new" },
+          {
+            "path": "old.ts",
+            "kind": "update",
+            "movePath": "moved.ts",
+            "diff": "+updated"
+          },
+          { "path": "gone.ts", "kind": "delete", "diff": "-gone" }
+        ]
+      }
+    },
+    {
+      "name": "MCP tool fields",
+      "item": {
+        "type": "mcpToolCall",
+        "id": "mcp-generation",
+        "server": "docs",
+        "tool": "search",
+        "status": "failed",
+        "arguments": { "query": "contracts" },
+        "error": { "message": "offline" },
+        "durationMs": 8
+      },
+      "expectedItem": {
+        "type": "toolCall",
+        "id": "mcp-generation",
+        "server": "docs",
+        "tool": "search",
+        "arguments": { "query": "contracts" },
+        "status": "failed",
+        "error": "offline",
+        "durationMs": 8
+      }
+    },
+    {
+      "name": "dynamic tool content variants",
+      "item": {
+        "type": "dynamicToolCall",
+        "id": "dynamic-generation",
+        "namespace": null,
+        "tool": "inspect",
+        "arguments": { "path": "README.md" },
+        "status": "failed",
+        "contentItems": [
+          { "type": "inputText", "text": "failed" },
+          {
+            "type": "inputImage",
+            "imageUrl": "https://example.test/output.png"
+          },
+          {
+            "type": "inputAudio",
+            "audioUrl": "https://example.test/output.wav"
+          }
+        ],
+        "success": false,
+        "durationMs": 9
+      },
+      "expectedItem": {
+        "type": "toolCall",
+        "id": "dynamic-generation",
+        "tool": "inspect",
+        "arguments": { "path": "README.md" },
+        "status": "failed",
+        "result": "failed\n[image: https://example.test/output.png]\n[audio: https://example.test/output.wav]",
+        "error": "failed\n[image: https://example.test/output.png]\n[audio: https://example.test/output.wav]",
+        "durationMs": 9
+      }
+    },
+    {
+      "name": "collaboration tool fields",
+      "item": {
+        "type": "collabAgentToolCall",
+        "id": "collab-generation",
+        "tool": "spawnAgent",
+        "status": "completed",
+        "senderThreadId": "root-thread",
+        "receiverThreadIds": ["child-thread"],
+        "prompt": "Inspect contracts",
+        "model": "gpt-5.6",
+        "reasoningEffort": "medium",
+        "agentsStates": {
+          "child-thread": { "status": "completed", "message": "done" }
+        }
+      },
+      "expectedItem": {
+        "type": "toolCall",
+        "id": "collab-generation",
+        "tool": "spawnAgent",
+        "arguments": {
+          "senderThreadId": "root-thread",
+          "receiverThreadIds": ["child-thread"],
+          "prompt": "Inspect contracts",
+          "model": "gpt-5.6",
+          "reasoningEffort": "medium"
+        },
+        "status": "completed",
+        "result": {
+          "child-thread": { "status": "completed", "message": "done" }
+        }
+      }
+    },
+    {
+      "name": "web search action",
+      "item": {
+        "type": "webSearch",
+        "id": "search-generation",
+        "query": "fallback query",
+        "action": {
+          "type": "search",
+          "query": "primary query",
+          "queries": ["first query"]
+        }
+      },
+      "expectedItem": {
+        "type": "webSearch",
+        "id": "search-generation",
+        "queries": ["first query", "primary query", "fallback query"],
+        "resultText": null
+      }
+    },
+    {
+      "name": "web open-page action",
+      "item": {
+        "type": "webSearch",
+        "id": "open-generation",
+        "query": "ignored",
+        "action": { "type": "openPage", "url": "https://example.test/page" }
+      },
+      "expectedItem": {
+        "type": "webFetch",
+        "id": "open-generation",
+        "url": "https://example.test/page",
+        "prompt": null,
+        "pattern": null,
+        "resultText": null
+      }
+    },
+    {
+      "name": "web find-in-page action",
+      "item": {
+        "type": "webSearch",
+        "id": "find-generation",
+        "query": "ignored",
+        "action": {
+          "type": "findInPage",
+          "url": "https://example.test/page",
+          "pattern": "contract"
+        }
+      },
+      "expectedItem": {
+        "type": "webFetch",
+        "id": "find-generation",
+        "url": "https://example.test/page",
+        "prompt": null,
+        "pattern": "contract",
+        "resultText": null
+      }
+    },
+    {
+      "name": "image view",
+      "item": {
+        "type": "imageView",
+        "id": "view-generation",
+        "path": "/tmp/view.png"
+      },
+      "expectedItem": {
+        "type": "imageView",
+        "id": "view-generation",
+        "path": "/tmp/view.png"
+      }
+    },
+    {
+      "name": "saved image generation",
+      "item": {
+        "type": "imageGeneration",
+        "id": "image-generation",
+        "status": "completed",
+        "revisedPrompt": null,
+        "result": "base64-result-is-not-forwarded",
+        "savedPath": "/tmp/generated.png"
+      },
+      "expectedItem": {
+        "type": "imageGeneration",
+        "id": "image-generation",
+        "path": "/tmp/generated.png"
+      }
+    },
+    {
+      "name": "context compaction",
+      "item": { "type": "contextCompaction", "id": "compaction-generation" },
+      "expectedItem": {
+        "type": "contextCompaction",
+        "id": "compaction-generation"
+      }
+    },
+    {
+      "name": "hook prompt remains provider-unhandled",
+      "item": {
+        "type": "hookPrompt",
+        "id": "hook-generation",
+        "fragments": [{ "text": "hook", "hookRunId": "run-1" }]
+      },
+      "expectedOutcome": "unhandled"
+    },
+    {
+      "name": "sleep remains provider-unhandled",
+      "item": { "type": "sleep", "id": "sleep-generation", "durationMs": 100 },
+      "expectedOutcome": "unhandled"
+    },
+    {
+      "name": "sub-agent activity is handled by the stateful adapter",
+      "item": {
+        "type": "subAgentActivity",
+        "id": "activity-generation",
+        "kind": "started",
+        "agentThreadId": "child-thread",
+        "agentPath": "/root/child"
+      },
+      "expectedOutcome": "ignored"
+    },
+    {
+      "name": "entered review mode remains provider-unhandled",
+      "item": {
+        "type": "enteredReviewMode",
+        "id": "review-enter-generation",
+        "review": "Review changes"
+      },
+      "expectedOutcome": "unhandled"
+    },
+    {
+      "name": "exited review mode remains provider-unhandled",
+      "item": {
+        "type": "exitedReviewMode",
+        "id": "review-exit-generation",
+        "review": "Review complete"
+      },
+      "expectedOutcome": "unhandled"
+    }
+  ]
+}

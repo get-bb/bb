@@ -246,6 +246,23 @@ function isSameTurnEntry(
   );
 }
 
+function preprocessGeneratedImageContexts(
+  contexts: SemanticMessageContext[],
+): SemanticMessageContext[] {
+  const seenGeneratedImageIds = new Set<string>();
+  return contexts.flatMap((context) => {
+    if (context.message.kind !== "generated-image") {
+      return [context];
+    }
+    if (seenGeneratedImageIds.has(context.message.id)) {
+      return [];
+    }
+    seenGeneratedImageIds.add(context.message.id);
+    const { parentToolCallId: _parentToolCallId, ...message } = context.message;
+    return [{ ...context, message }];
+  });
+}
+
 class SemanticProjectionBuilder {
   private readonly attachedMessageIds = new Set<string>();
   private readonly childrenByParentCallId = new Map<
@@ -267,8 +284,9 @@ class SemanticProjectionBuilder {
         .filter(isDelegationSourceMessage)
         .map((message) => message.callId),
     );
+    const rootOutputContexts = preprocessGeneratedImageContexts(contexts);
 
-    for (const context of contexts) {
+    for (const context of rootOutputContexts) {
       const parentToolCallId = context.message.parentToolCallId;
       if (!parentToolCallId || !delegationCallIds.has(parentToolCallId)) {
         continue;
@@ -280,7 +298,7 @@ class SemanticProjectionBuilder {
       this.attachedMessageIds.add(context.message.id);
     }
 
-    this.rootContexts = contexts.filter(
+    this.rootContexts = rootOutputContexts.filter(
       (context) =>
         !this.attachedMessageIds.has(context.message.id) &&
         !this.isRootSuppressedContext(context),

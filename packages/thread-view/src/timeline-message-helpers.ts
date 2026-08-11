@@ -25,7 +25,9 @@ export function isTimelineUngroupableMessage(
   if (message.kind === "assistant-text") {
     return message.isLegacyUserMessage === true;
   }
-  return message.kind === "debug/raw-event";
+  return (
+    message.kind === "debug/raw-event" || message.kind === "generated-image"
+  );
 }
 
 export function isTimelineSummaryCountedMessage(

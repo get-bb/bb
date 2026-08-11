@@ -69,6 +69,18 @@ export function buildThreadHostFileContentUrl(
   );
 }
 
+export function buildThreadGeneratedImageContentUrl(
+  threadId: string,
+  sourceSeq: number,
+): string {
+  return toRelativeUrl(
+    apiClient.threads[":id"]["generated-images"].content.$url({
+      param: { id: threadId },
+      query: { sourceSeq: String(sourceSeq) },
+    }),
+  );
+}
+
 export function buildRawFilesystemHtmlContentUrl(
   threadId: string,
   path: string,

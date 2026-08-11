@@ -22,16 +22,16 @@ import type {
 import {
   codexBridgeEnvelopeSchema,
   codexHandledEventSchema,
-  codexHandledThreadItemSchema,
+  codexSubAgentActivityItemSchema,
   isHandledCodexMethod,
-  type CodexDynamicToolCallContentItem,
   type CodexErrorInfo,
   type CodexHandledEvent,
-  type CodexHandledThreadItem,
-  type CodexItemStatus,
-  type CodexParsedUserInput,
   type CodexTurnStatus,
 } from "./schemas.js";
+import {
+  decodeCodexThreadItem,
+  type CodexThreadItem,
+} from "./runtime-contracts.js";
 import { codexVisibilityMetadata } from "./visibility.js";
 
 function assertNever(value: never, message?: string): never {
@@ -217,7 +217,19 @@ function toTurnStatus(status: CodexTurnStatus): ThreadEventTurnStatus {
   }
 }
 
-function toItemStatus(status: CodexItemStatus): ThreadEventItemStatus {
+type CodexCommandExecutionItem = Extract<
+  CodexThreadItem,
+  { type: "commandExecution" }
+>;
+type CodexDynamicToolCallItem = Extract<
+  CodexThreadItem,
+  { type: "dynamicToolCall" }
+>;
+type CodexUserMessageItem = Extract<CodexThreadItem, { type: "userMessage" }>;
+
+function toItemStatus(
+  status: CodexCommandExecutionItem["status"],
+): ThreadEventItemStatus {
   switch (status) {
     case "inProgress":
       return "pending";
@@ -233,7 +245,7 @@ function toItemStatus(status: CodexItemStatus): ThreadEventItemStatus {
 }
 
 function toApprovalStatus(
-  status: CodexItemStatus,
+  status: CodexCommandExecutionItem["status"],
   eventMethod: "item/started" | "item/completed",
 ): ThreadEventItemApprovalStatus {
   // A started event is not terminal even if Codex includes a terminal-looking
@@ -245,7 +257,7 @@ function toApprovalStatus(
 }
 
 function translateCodexUserContent(
-  content: CodexParsedUserInput,
+  content: CodexUserMessageItem["content"][number],
 ): ThreadEventUserContent {
   switch (content.type) {
     case "text":
@@ -254,6 +266,10 @@ function translateCodexUserContent(
       return { type: "image", url: content.url };
     case "localImage":
       return { type: "localImage", path: content.path };
+    case "audio":
+      return { type: "text", text: `[audio: ${content.url}]` };
+    case "localAudio":
+      return { type: "text", text: `[localAudio: ${content.path}]` };
     case "skill":
     case "mention":
       return { type: "text", text: `[${content.type}: ${content.name}]` };
@@ -263,7 +279,7 @@ function translateCodexUserContent(
 }
 
 function extractDynamicToolCallResult(
-  contentItems: CodexDynamicToolCallContentItem[] | null,
+  contentItems: CodexDynamicToolCallItem["contentItems"],
 ): unknown {
   if (!contentItems || contentItems.length === 0) {
     return undefined;
@@ -276,6 +292,8 @@ function extractDynamicToolCallResult(
           return contentItem.text;
         case "inputImage":
           return `[image: ${contentItem.imageUrl}]`;
+        case "inputAudio":
+          return `[audio: ${contentItem.audioUrl}]`;
       }
     })
     .filter((part) => part.trim().length > 0);
@@ -288,7 +306,7 @@ function extractDynamicToolCallResult(
 }
 
 function buildDynamicToolCallError(
-  success: boolean | null,
+  success: boolean | null | undefined,
   result: unknown,
 ): string | undefined {
   if (success !== false) {
@@ -341,7 +359,7 @@ function normalizeCodexUrl(args: CodexUrlArgs): string | null {
 }
 
 function normalizeCodexWebItem(
-  item: Extract<CodexHandledThreadItem, { type: "webSearch" }>,
+  item: Extract<CodexThreadItem, { type: "webSearch" }>,
 ): CodexNormalizedWebItem | null {
   if (!item.action) {
     return null;
@@ -400,21 +418,34 @@ function normalizeCodexWebItem(
 }
 
 function shouldIgnoreCodexWebItem(
-  item: Extract<CodexHandledThreadItem, { type: "webSearch" }>,
+  item: Extract<CodexThreadItem, { type: "webSearch" }>,
 ): boolean {
-  return item.action === null || item.action.type === "other";
+  return item.action == null || item.action.type === "other";
 }
 
 function translateCodexItem(
   item: unknown,
   eventMethod: "item/started" | "item/completed",
 ): CodexItemTranslationResult {
-  const parsed = codexHandledThreadItemSchema.safeParse(item);
-  if (!parsed.success) {
+  const isSubAgentActivity =
+    typeof item === "object" &&
+    item !== null &&
+    "type" in item &&
+    item.type === "subAgentActivity";
+  if (
+    isSubAgentActivity &&
+    codexSubAgentActivityItemSchema.safeParse(item).success
+  ) {
+    // The adapter translates this synthetic item statefully so it can
+    // correlate the activity with the child turn and close the delegation row.
+    return { kind: "ignored" };
+  }
+
+  const parsedItem = decodeCodexThreadItem(item);
+  if (!parsedItem) {
     return { kind: "unhandled" };
   }
 
-  const parsedItem: CodexHandledThreadItem = parsed.data;
   const isStartedEvent = eventMethod === "item/started";
   switch (parsedItem.type) {
     case "agentMessage":
@@ -521,10 +552,6 @@ function translateCodexItem(
           result: parsedItem.agentsStates,
         },
       };
-    case "subAgentActivity":
-      // The adapter translates this statefully so it can correlate the
-      // activity with the child turn and close the synthetic delegation row.
-      return { kind: "ignored" };
     case "webSearch": {
       if (shouldIgnoreCodexWebItem(parsedItem)) {
         return { kind: "ignored" };
@@ -543,6 +570,20 @@ function translateCodexItem(
           path: parsedItem.path,
         },
       };
+    case "imageGeneration":
+      if (isStartedEvent) {
+        return { kind: "ignored" };
+      }
+      return parsedItem.savedPath
+        ? {
+            kind: "translated",
+            item: {
+              type: "imageGeneration",
+              id: parsedItem.id,
+              path: parsedItem.savedPath,
+            },
+          }
+        : { kind: "ignored" };
     case "reasoning":
       return {
         kind: "translated",
@@ -570,6 +611,12 @@ function translateCodexItem(
           id: parsedItem.id,
         },
       };
+    case "hookPrompt":
+    case "sleep":
+    case "subAgentActivity":
+    case "enteredReviewMode":
+    case "exitedReviewMode":
+      return { kind: "unhandled" };
     default:
       return assertNever(parsedItem);
   }

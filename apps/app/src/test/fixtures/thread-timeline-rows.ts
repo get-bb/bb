@@ -11,6 +11,7 @@ import type {
   TimelineFileChange,
   TimelineFileChangeWorkRow,
   TimelineImageViewWorkRow,
+  TimelineGeneratedImageRow,
   TimelineParentChange,
   TimelineNonOperationSystemRow,
   TimelinePermissionGrantApprovalGrantScope,
@@ -150,6 +151,16 @@ export interface ImageViewRowArgs extends RowBaseOverrideArgs {
   sourceSeqEnd?: number;
   sourceSeqStart?: number;
   status?: TimelineRowStatus;
+  turnId?: string | null;
+}
+
+export interface GeneratedImageRowArgs extends RowBaseOverrideArgs {
+  id?: string;
+  itemId?: string;
+  path?: string;
+  seq?: number;
+  sourceSeqEnd?: number;
+  sourceSeqStart?: number;
   turnId?: string | null;
 }
 
@@ -303,6 +314,7 @@ const DEFAULT_TURN_ROW_ID = "turn-summary-1";
 const DEFAULT_WEB_FETCH_ID = "web-fetch-1";
 const DEFAULT_WEB_SEARCH_ID = "web-search-1";
 const DEFAULT_IMAGE_VIEW_ID = "image-view-1";
+const DEFAULT_GENERATED_IMAGE_ID = "generated-image-1";
 const DEFAULT_WORKFLOW_ID = "workflow-1";
 
 function rowSequence({ seq, sourceSeqStart }: RowSequenceArgs): number {
@@ -742,6 +754,35 @@ export function imageViewRow({
     callId: callId ?? id,
     path,
     completedAt: completedAtFromDuration(base.startedAt, durationMs),
+  };
+}
+
+export function generatedImageRow({
+  createdAt,
+  id = DEFAULT_GENERATED_IMAGE_ID,
+  itemId = "image-1",
+  path = "/tmp/generated-image.png",
+  seq,
+  sourceSeqEnd,
+  sourceSeqStart,
+  startedAt,
+  threadId,
+  turnId,
+}: GeneratedImageRowArgs = {}): TimelineGeneratedImageRow {
+  return {
+    ...baseRow({
+      createdAt,
+      id,
+      seq,
+      sourceSeqEnd,
+      sourceSeqStart,
+      startedAt,
+      threadId,
+      turnId,
+    }),
+    kind: "generated-image",
+    itemId,
+    path,
   };
 }
 

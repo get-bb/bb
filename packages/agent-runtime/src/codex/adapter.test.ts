@@ -2647,6 +2647,81 @@ describe("codex provider adapter", () => {
     );
   });
 
+  it("translateEvent item/started with imageGeneration waits for the saved image", () => {
+    const adapter = createCodexProviderAdapter();
+    const events = adapter.translateEvent(
+      codexEvent("item/started", {
+        threadId: "t1",
+        turnId: "turn-1",
+        startedAtMs: 0,
+        item: {
+          type: "imageGeneration",
+          id: "generated-image-1",
+          status: "in_progress",
+          revisedPrompt: null,
+          result: "",
+        },
+      }),
+    );
+
+    expect(events).toEqual([]);
+  });
+
+  it("translateEvent item/completed with imageGeneration maps the saved image without retaining base64", () => {
+    const adapter = createCodexProviderAdapter();
+    const events = adapter.translateEvent(
+      codexEvent("item/completed", {
+        threadId: "t1",
+        turnId: "turn-1",
+        completedAtMs: 0,
+        item: {
+          type: "imageGeneration",
+          id: "generated-image-1",
+          status: "completed",
+          revisedPrompt: "A ratings line graph",
+          result: "BASE64_IMAGE_DATA",
+          savedPath: "/tmp/generated-image.png",
+        },
+      }),
+    );
+
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "item/completed",
+        threadId: "t1",
+        providerThreadId: "t1",
+        scope: turnScope("turn-1"),
+        item: {
+          type: "imageGeneration",
+          id: "generated-image-1",
+          path: "/tmp/generated-image.png",
+        },
+      }),
+    );
+    expect(JSON.stringify(events)).not.toContain("BASE64_IMAGE_DATA");
+  });
+
+  it("translateEvent item/completed with an unsaved imageGeneration drops its base64 result", () => {
+    const adapter = createCodexProviderAdapter();
+    const events = adapter.translateEvent(
+      codexEvent("item/completed", {
+        threadId: "t1",
+        turnId: "turn-1",
+        completedAtMs: 0,
+        item: {
+          type: "imageGeneration",
+          id: "generated-image-1",
+          status: "completed",
+          revisedPrompt: null,
+          result: "BASE64_IMAGE_DATA",
+        },
+      }),
+    );
+
+    expect(events).toEqual([]);
+    expect(JSON.stringify(events)).not.toContain("BASE64_IMAGE_DATA");
+  });
+
   it("translateEvent unknown codex notifications fall back to provider/unhandled", () => {
     const adapter = createCodexProviderAdapter();
     const events = adapter.translateEvent({
@@ -2766,6 +2841,8 @@ describe("codex provider adapter", () => {
         item: {
           type: "commandExecution",
           id: "cmd-1",
+          pluginId: null,
+          scriptPath: null,
           command: "ls -la",
           cwd: "/tmp",
           processId: null,
@@ -2846,6 +2923,8 @@ describe("codex provider adapter", () => {
         item: {
           type: "commandExecution",
           id: "cmd-1",
+          pluginId: null,
+          scriptPath: null,
           command: "echo hi",
           cwd: "/tmp",
           processId: null,
@@ -2919,6 +2998,8 @@ describe("codex provider adapter", () => {
         item: {
           type: "commandExecution",
           id: "cmd-1",
+          pluginId: null,
+          scriptPath: null,
           command: "printf 'prefix\\nOutput:\\nsuffix\\n'",
           cwd: "/tmp",
           processId: null,
@@ -2987,6 +3068,8 @@ describe("codex provider adapter", () => {
           item: {
             type: "commandExecution",
             id: callId,
+            pluginId: null,
+            scriptPath: null,
             command: "echo alias",
             cwd: "/tmp",
             processId: null,
@@ -3052,6 +3135,8 @@ describe("codex provider adapter", () => {
         item: {
           type: "commandExecution",
           id: "cmd-1",
+          pluginId: null,
+          scriptPath: null,
           command: "printf 'Chunk ID: abc\\nactual stdout\\n'",
           cwd: "/tmp",
           processId: null,
@@ -3120,6 +3205,8 @@ describe("codex provider adapter", () => {
         item: {
           type: "commandExecution",
           id: "cmd-1",
+          pluginId: null,
+          scriptPath: null,
           command: "echo hi",
           cwd: "/tmp",
           processId: null,
@@ -3206,6 +3293,8 @@ describe("codex provider adapter", () => {
         item: {
           type: "commandExecution",
           id: "cmd-a",
+          pluginId: null,
+          scriptPath: null,
           command: "first",
           cwd: "/tmp",
           processId: null,
@@ -3226,6 +3315,8 @@ describe("codex provider adapter", () => {
         item: {
           type: "commandExecution",
           id: "cmd-b",
+          pluginId: null,
+          scriptPath: null,
           command: "second",
           cwd: "/tmp",
           processId: null,
@@ -3332,6 +3423,8 @@ describe("codex provider adapter", () => {
         item: {
           type: "commandExecution",
           id: "cmd-b",
+          pluginId: null,
+          scriptPath: null,
           command: "second",
           cwd: "/tmp",
           processId: null,
@@ -3402,6 +3495,8 @@ describe("codex provider adapter", () => {
         item: {
           type: "commandExecution",
           id: "cmd-a",
+          pluginId: null,
+          scriptPath: null,
           command: "echo hi",
           cwd: "/tmp",
           processId: null,
@@ -3440,6 +3535,8 @@ describe("codex provider adapter", () => {
         item: {
           type: "commandExecution",
           id: "cmd-1",
+          pluginId: null,
+          scriptPath: null,
           command: "ls -la",
           cwd: "/tmp",
           processId: null,
@@ -3479,6 +3576,8 @@ describe("codex provider adapter", () => {
         item: {
           type: "commandExecution",
           id: "cmd-1",
+          pluginId: null,
+          scriptPath: null,
           command: "ls -la",
           cwd: "/tmp",
           processId: null,
@@ -3565,6 +3664,7 @@ describe("codex provider adapter", () => {
           server: "myserver",
           tool: "search",
           pluginId: null,
+          appContext: null,
           status: "completed",
           arguments: { query: "test" },
           result: null,
@@ -3798,7 +3898,7 @@ describe("codex provider adapter", () => {
     );
   });
 
-  it("translateEvent item/completed with declined collabAgentToolCall maps to interrupted", () => {
+  it("rejects collabAgentToolCall statuses outside the generated Codex contract", () => {
     const adapter = createCodexProviderAdapter();
     const events = adapter.translateEvent({
       jsonrpc: "2.0",
@@ -3823,15 +3923,11 @@ describe("codex provider adapter", () => {
 
     expect(events).toContainEqual(
       expect.objectContaining({
-        type: "item/completed",
+        type: "provider/unhandled",
         threadId: "t1",
         providerThreadId: "t1",
         scope: turnScope("turn-1"),
-        item: expect.objectContaining({
-          type: "toolCall",
-          id: "collab-declined-1",
-          status: "interrupted",
-        }),
+        rawType: "item/completed",
       }),
     );
   });
@@ -4232,6 +4328,8 @@ describe("codex provider adapter", () => {
           item: {
             type: "commandExecution",
             id: "child-command",
+            pluginId: null,
+            scriptPath: null,
             command: "/bin/zsh -lc 'sleep 20; echo CHILD_REAL_PROVIDER_DONE'",
             cwd: "/tmp",
             processId: null,
@@ -4423,6 +4521,7 @@ describe("codex provider adapter", () => {
           id: "web-1",
           query: "react suspense",
           action: { type: "search", query: "react suspense", queries: null },
+          results: null,
         },
       }),
     );
@@ -4458,6 +4557,7 @@ describe("codex provider adapter", () => {
             query: "react suspense primary",
             queries: ["react suspense primary", "react suspense secondary"],
           },
+          results: null,
         },
       }),
     );
@@ -4494,6 +4594,7 @@ describe("codex provider adapter", () => {
           id: "web-open-start-1",
           query: "ignored fallback",
           action: { type: "openPage", url: "https://example.com" },
+          results: null,
         },
       }),
     );
@@ -4532,6 +4633,7 @@ describe("codex provider adapter", () => {
             url: "https://example.com",
             pattern: "Example Domain",
           },
+          results: null,
         },
       }),
     );
@@ -4566,6 +4668,7 @@ describe("codex provider adapter", () => {
           id: "web-open-1",
           query: "https://example.com",
           action: { type: "openPage", url: "https://example.com" },
+          results: null,
         },
       }),
     );
@@ -4609,6 +4712,7 @@ describe("codex provider adapter", () => {
             url: "https://example.com",
             pattern: "Example Domain",
           },
+          results: null,
         },
       }),
     );
@@ -4648,6 +4752,7 @@ describe("codex provider adapter", () => {
           id: "web-placeholder-1",
           query: "",
           action: { type: "other" },
+          results: null,
         },
       }),
     );
@@ -4667,6 +4772,7 @@ describe("codex provider adapter", () => {
           id: "web-placeholder-completed-1",
           query: "",
           action: null,
+          results: null,
         },
       }),
     );
@@ -4686,6 +4792,7 @@ describe("codex provider adapter", () => {
           id: "web-open-missing-url-1",
           query: "not-a-url",
           action: { type: "openPage", url: null },
+          results: null,
         },
       }),
     );
@@ -4731,6 +4838,35 @@ describe("codex provider adapter", () => {
           id: "reasoning-1",
           summary: ["Read the search flow"],
           content: ["Investigated the search sidebar state machine."],
+        },
+      }),
+    );
+  });
+
+  it("materializes Codex defaults before translating a reasoning item", () => {
+    const adapter = createCodexProviderAdapter();
+    const events = adapter.translateEvent({
+      jsonrpc: "2.0",
+      method: "item/completed",
+      params: {
+        threadId: "t1",
+        turnId: "turn-1",
+        completedAtMs: 0,
+        item: {
+          type: "reasoning",
+          id: "reasoning-defaults-1",
+        },
+      },
+    });
+
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "item/completed",
+        item: {
+          type: "reasoning",
+          id: "reasoning-defaults-1",
+          summary: [],
+          content: [],
         },
       }),
     );

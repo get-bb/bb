@@ -1,6 +1,11 @@
-import { useEffect, type CSSProperties } from "react";
+import { useEffect, type CSSProperties, type RefObject } from "react";
 import { Button } from "@bb/shared-ui/button";
-import { Dialog, DialogClose, DialogContent, DialogTitle } from "@bb/shared-ui/dialog";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogTitle,
+} from "@bb/shared-ui/dialog";
 import { Icon } from "@bb/shared-ui/icon";
 
 export const imageLightboxKeyActionValues = [
@@ -43,6 +48,7 @@ export interface ImageLightboxProps {
   onClose: () => void;
   onNext?: () => void;
   onPrevious?: () => void;
+  returnFocusRef?: RefObject<HTMLElement | null>;
   title: string;
 }
 
@@ -99,6 +105,7 @@ export function ImageLightbox({
   onClose,
   onNext,
   onPrevious,
+  returnFocusRef,
   title,
 }: ImageLightboxProps) {
   const hasNavigation =
@@ -156,6 +163,12 @@ export function ImageLightbox({
         onClick={(event) => {
           if (event.target === event.currentTarget) {
             onClose();
+          }
+        }}
+        onCloseAutoFocus={(event) => {
+          if (returnFocusRef?.current) {
+            event.preventDefault();
+            returnFocusRef.current.focus();
           }
         }}
       >

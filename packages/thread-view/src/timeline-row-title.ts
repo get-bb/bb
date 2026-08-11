@@ -1588,6 +1588,17 @@ export function buildTimelineRowTitle(
       return mapConversationTitle(row);
     case "system":
       return mapSystemTitle(row);
+    case "generated-image":
+      return makeTitle({
+        segments: [
+          segment("Generated image:"),
+          segment(fileNameFromPath(row.path), {
+            em: false,
+            plainText: row.path,
+            truncate: true,
+          }),
+        ],
+      });
     case "work":
       return mapWorkTitle(row, options);
     case "bundle-summary":

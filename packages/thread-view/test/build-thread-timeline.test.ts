@@ -14,6 +14,7 @@ import type {
   TimelineApprovalWorkRow,
   ThreadContextWindowUsage,
   TimelineFileChangeWorkRow,
+  TimelineGeneratedImageRow,
   TimelineImageViewWorkRow,
   TimelineParentChange,
   TimelineQuestionWorkRow,
@@ -65,6 +66,13 @@ interface ImageViewItemEventArgs {
   path?: string;
   seq: number;
   type: "item/completed" | "item/started";
+}
+
+interface ImageGenerationItemEventArgs {
+  itemId?: string;
+  parentToolCallId?: string;
+  path?: string;
+  seq: number;
 }
 
 interface PlanItemEventArgs {
@@ -332,6 +340,33 @@ function imageViewItemEvent({
         type: "imageView",
         id: itemId,
         path,
+      },
+    },
+    meta: {
+      id: `event-${seq}`,
+      seq,
+      createdAt: seq,
+    },
+  };
+}
+
+function imageGenerationItemEvent({
+  itemId = "image-generation-1",
+  parentToolCallId,
+  path = "/tmp/generated-image.png",
+  seq,
+}: ImageGenerationItemEventArgs): ThreadEventWithMeta {
+  return {
+    event: {
+      type: "item/completed",
+      threadId: "thread-1",
+      providerThreadId: "provider-thread-1",
+      scope: turnScope("turn-1"),
+      item: {
+        type: "imageGeneration",
+        id: itemId,
+        path,
+        ...(parentToolCallId ? { parentToolCallId } : {}),
       },
     },
     meta: {
@@ -863,6 +898,26 @@ function collectImageViewRows(
   return imageViewRows;
 }
 
+function collectImageGenerationRows(
+  rows: readonly TimelineRow[],
+): TimelineGeneratedImageRow[] {
+  const imageGenerationRows: TimelineGeneratedImageRow[] = [];
+  for (const row of rows) {
+    if (row.kind === "generated-image") {
+      imageGenerationRows.push(row);
+      continue;
+    }
+    if (row.kind === "turn" && row.children) {
+      imageGenerationRows.push(...collectImageGenerationRows(row.children));
+      continue;
+    }
+    if (row.kind === "work" && row.workKind === "delegation") {
+      imageGenerationRows.push(...collectImageGenerationRows(row.childRows));
+    }
+  }
+  return imageGenerationRows;
+}
+
 function collectConversationRows(
   rows: readonly TimelineRow[],
 ): TimelineConversationRow[] {
@@ -1283,6 +1338,167 @@ describe("buildThreadTimelineFromEvents", () => {
       status: "pending",
       completedAt: null,
     });
+  });
+
+  it("keeps generated images outside completed turn summaries", () => {
+    const rows = buildTimelineRows([
+      turnStartedEvent({ seq: 1 }),
+      imageGenerationItemEvent({ seq: 2 }),
+      turnCompletedEvent({ seq: 3 }),
+    ]);
+
+    expect(rows).toEqual([
+      expect.objectContaining({
+        kind: "generated-image",
+        itemId: "image-generation-1",
+        path: "/tmp/generated-image.png",
+      }),
+    ]);
+    expect(collectImageGenerationRows(rows)).toHaveLength(1);
+  });
+
+  it("projects consecutive generated images as separate source-ordered rows", () => {
+    const rows = buildTimelineRows([
+      turnStartedEvent({ seq: 1 }),
+      imageGenerationItemEvent({
+        seq: 2,
+        itemId: "image-1",
+        path: "/tmp/one.png",
+      }),
+      imageGenerationItemEvent({
+        seq: 3,
+        itemId: "image-2",
+        path: "/tmp/two.png",
+      }),
+      turnCompletedEvent({ seq: 4 }),
+    ]);
+
+    expect(collectImageGenerationRows(rows)).toMatchObject([
+      { kind: "generated-image", itemId: "image-1", path: "/tmp/one.png" },
+      { kind: "generated-image", itemId: "image-2", path: "/tmp/two.png" },
+    ]);
+  });
+
+  it("hoists nested delegation images once and excludes them from child rows", () => {
+    const event = createTimelineEventFactory({
+      threadId: "thread-1",
+      turnId: "turn-1",
+    });
+    const rows = buildTimelineRows([
+      ...fromRows([
+        event.turnStarted({ seq: 1 }),
+        event.toolCallStarted({
+          seq: 2,
+          itemId: "outer-agent",
+          tool: "Agent",
+          arguments: { description: "Outer", prompt: "Outer" },
+        }),
+        event.toolCallStarted({
+          seq: 3,
+          itemId: "inner-agent",
+          parentToolCallId: "outer-agent",
+          tool: "Agent",
+          arguments: { description: "Inner", prompt: "Inner" },
+        }),
+      ]),
+      imageGenerationItemEvent({
+        seq: 4,
+        itemId: "nested-image",
+        parentToolCallId: "inner-agent",
+      }),
+    ]);
+
+    expect(collectImageGenerationRows(rows)).toHaveLength(1);
+    const [outerDelegation] = collectDelegationRows(rows);
+    expect(outerDelegation).toBeDefined();
+    expect(
+      outerDelegation
+        ? collectImageGenerationRows(outerDelegation.childRows)
+        : [],
+    ).toEqual([]);
+  });
+
+  it("keeps a generated image visible when its delegation ancestor is outside the page", () => {
+    const rows = buildTimelineRows([
+      turnStartedEvent({ seq: 10 }),
+      imageGenerationItemEvent({
+        seq: 11,
+        itemId: "page-cut-image",
+        parentToolCallId: "missing-agent",
+      }),
+      turnCompletedEvent({ seq: 12 }),
+    ]);
+
+    expect(collectImageGenerationRows(rows)).toMatchObject([
+      { itemId: "page-cut-image" },
+    ]);
+  });
+
+  it("deduplicates a replayed generated image after delegation hoisting", () => {
+    const event = createTimelineEventFactory({
+      threadId: "thread-1",
+      turnId: "turn-1",
+    });
+    const rows = buildTimelineRows([
+      ...fromRows([
+        event.turnStarted({ seq: 1 }),
+        event.toolCallStarted({
+          seq: 2,
+          itemId: "agent-call",
+          tool: "Agent",
+          arguments: { description: "Agent", prompt: "Agent" },
+        }),
+      ]),
+      imageGenerationItemEvent({
+        seq: 3,
+        itemId: "replayed-image",
+        parentToolCallId: "agent-call",
+      }),
+      imageGenerationItemEvent({
+        seq: 4,
+        itemId: "replayed-image",
+        parentToolCallId: "agent-call",
+      }),
+    ]);
+
+    expect(collectImageGenerationRows(rows)).toMatchObject([
+      { itemId: "replayed-image" },
+    ]);
+  });
+
+  it("hoists a generated image once when delegation ancestry contains a cycle", () => {
+    const event = createTimelineEventFactory({
+      threadId: "thread-1",
+      turnId: "turn-1",
+    });
+    const rows = buildTimelineRows([
+      ...fromRows([
+        event.turnStarted({ seq: 1 }),
+        event.toolCallStarted({
+          seq: 2,
+          itemId: "outer-agent",
+          parentToolCallId: "inner-agent",
+          tool: "Agent",
+          arguments: { description: "Outer", prompt: "Outer" },
+        }),
+        event.toolCallStarted({
+          seq: 3,
+          itemId: "inner-agent",
+          parentToolCallId: "outer-agent",
+          tool: "Agent",
+          arguments: { description: "Inner", prompt: "Inner" },
+        }),
+      ]),
+      imageGenerationItemEvent({
+        seq: 4,
+        itemId: "cycle-image",
+        parentToolCallId: "inner-agent",
+      }),
+    ]);
+
+    expect(collectImageGenerationRows(rows)).toMatchObject([
+      { itemId: "cycle-image" },
+    ]);
   });
 
   it("interrupts a pending image view row when its turn is interrupted", () => {

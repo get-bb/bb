@@ -51,6 +51,7 @@ export function isWorkRowExpandable(row: TimelineViewWorkRow): boolean {
 export function isRowExpandable(row: ThreadTimelineViewRow): boolean {
   switch (row.kind) {
     case "conversation":
+    case "generated-image":
       return false;
     case "system":
       return row.detail !== null && row.detail.trim().length > 0;
@@ -100,6 +101,7 @@ function shouldAutoExpandLiveFrontierRow(row: ThreadTimelineViewRow): boolean {
         (row.workKind === "workflow" && row.status === "pending")
       );
     case "conversation":
+    case "generated-image":
     case "step-summary":
     case "turn":
       return false;

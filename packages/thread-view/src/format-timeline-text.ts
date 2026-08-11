@@ -458,6 +458,8 @@ function formatRow(
         .join("\n");
     case "work":
       return formatWorkRow(row, context);
+    case "generated-image":
+      return rowHeader(`Generated image: ${row.path}`, context);
     case "system":
       if (row.systemKind === "reconnect") {
         return rowHeader(row.title, context);

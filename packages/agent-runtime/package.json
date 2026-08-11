@@ -13,6 +13,10 @@
       "types": "./src/capture.ts",
       "default": "./src/capture.ts"
     },
+    "./codex-compatibility": {
+      "types": "./src/codex/codex-compatibility.d.mts",
+      "default": "./src/codex/codex-compatibility.mjs"
+    },
     "./shared/json-rpc-envelope": {
       "source": "./src/shared/json-rpc-envelope.ts",
       "types": "./src/shared/json-rpc-envelope.ts",
@@ -27,6 +31,7 @@
   "types": "./src/index.ts",
   "scripts": {
     "clean": "rimraf dist tsconfig.tsbuildinfo",
+    "generate:codex-contracts": "node scripts/generate-codex-contracts.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --config vitest.config.ts",
     "test:unit": "vitest run --config vitest.config.ts --exclude '**/integration/**'",
@@ -42,6 +47,8 @@
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@earendil-works/pi-ai": "^0.82.0",
     "@earendil-works/pi-coding-agent": "^0.82.0",
+    "ajv": "^8.20.0",
+    "json-schema-to-ts": "^3.1.1",
     "zod": "^4.3.6"
   },
   "devDependencies": {

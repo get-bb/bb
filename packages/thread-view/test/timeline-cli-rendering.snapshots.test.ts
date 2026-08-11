@@ -479,6 +479,44 @@ describe("timeline CLI rendering snapshots", () => {
     );
   });
 
+  it("formats generated images as direct timeline output", () => {
+    const text = formatThreadTimelineText(
+      [
+        {
+          id: "thread-1:generated-image:image-1",
+          threadId: "thread-1",
+          turnId: "turn-1",
+          sourceSeqStart: 2,
+          sourceSeqEnd: 2,
+          startedAt: 2,
+          createdAt: 2,
+          kind: "generated-image",
+          itemId: "image-1",
+          path: "/tmp/generated-one.png",
+        } satisfies TimelineRow,
+        {
+          id: "thread-1:generated-image:image-2",
+          threadId: "thread-1",
+          turnId: "turn-1",
+          sourceSeqStart: 3,
+          sourceSeqEnd: 3,
+          startedAt: 3,
+          createdAt: 3,
+          kind: "generated-image",
+          itemId: "image-2",
+          path: "/tmp/generated-two.png",
+        } satisfies TimelineRow,
+      ],
+      { color: false, verbose: false },
+    );
+
+    expect(text).toContain("Generated image: /tmp/generated-one.png");
+    expect(text).toContain("Generated image: /tmp/generated-two.png");
+    expect(text.indexOf("generated-one.png")).toBeLessThan(
+      text.indexOf("generated-two.png"),
+    );
+  });
+
   it("shows an unacknowledged active-turn steer from the client request", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
     const timeline = renderActiveTimeline([

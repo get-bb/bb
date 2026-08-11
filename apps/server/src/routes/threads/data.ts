@@ -7,6 +7,7 @@ import { formatCustomAcpAgentProviderId } from "@bb/config/bb-app-managed-config
 import {
   getAppSettings,
   getLatestThreadSequence,
+  getStoredGeneratedImageSource,
   listQueuedThreadMessages,
 } from "@bb/db";
 import type { Hono } from "hono";
@@ -38,6 +39,7 @@ import {
 import { callHostRetryableOnlineRpc } from "../../services/hosts/online-rpc.js";
 import {
   createDaemonFileContentResponse,
+  createGeneratedImageContentResponse,
   type DaemonFileReadResult,
   remapDaemonFileRouteError,
 } from "../../services/hosts/daemon-file-response.js";
@@ -735,6 +737,36 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
         },
       });
       return createDaemonFileContentResponse(result);
+    } catch (error) {
+      return remapDaemonFileRouteError(error);
+    }
+  });
+
+  get(routes.generatedImageContent, async (context, query) => {
+    const threadId = context.req.param("id");
+    requirePublicThread(deps.db, threadId);
+    const source = getStoredGeneratedImageSource(deps.db, {
+      threadId,
+      sequence: parseInteger(query.sourceSeq, "sourceSeq"),
+    });
+    if (!source) {
+      throw new ApiError(
+        404,
+        "generated_image_unavailable",
+        "Generated image is unavailable",
+      );
+    }
+
+    try {
+      const result = await callHostRetryableOnlineRpc(deps, {
+        hostId: source.hostId,
+        timeoutMs: COMMAND_TIMEOUT_MS,
+        command: {
+          type: "host.read_file",
+          path: source.path,
+        },
+      });
+      return createGeneratedImageContentResponse(result);
     } catch (error) {
       return remapDaemonFileRouteError(error);
     }

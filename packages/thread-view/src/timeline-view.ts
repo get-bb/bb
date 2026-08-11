@@ -4,6 +4,7 @@ import type {
   TimelineConversationRow,
   TimelineDelegationWorkRow,
   TimelineFileChangeWorkRow,
+  TimelineGeneratedImageRow,
   TimelineRow,
   TimelineRowBase,
   TimelineRowStatus,
@@ -31,9 +32,8 @@ export interface TimelineViewDelegationWorkRow extends Omit<
   /**
    * Set to `true` for the sole leaf of an already-closed step (assistant
    * message boundary follows). Multi-item closed steps wrap in `step-summary`;
-   * single-item closed steps stay bare and use this flag so the renderer can
-   * apply muted "closed-step" treatment. Absent or `false` means the row is in
-   * an open or active step.
+   * single-item closed steps stay bare and use this flag for muted treatment.
+   * Absent or `false` means the row is in an open or active step.
    *
    * View-only — set by `closeOpenStepAtBoundary` during `buildTimelineViewRows`,
    * never persisted on the wire.
@@ -68,7 +68,8 @@ export type TimelineViewWorkflowWorkRow = Extract<
 export type TimelineViewSourceRow =
   | TimelineConversationRow
   | TimelineViewWorkRow
-  | TimelineSystemRow;
+  | TimelineSystemRow
+  | TimelineGeneratedImageRow;
 
 export interface TimelineStepSummaryRow extends TimelineRowBase {
   kind: "step-summary";
@@ -912,6 +913,7 @@ function toTimelineViewRow(
 ): ThreadTimelineViewRow {
   switch (row.kind) {
     case "conversation":
+    case "generated-image":
     case "system":
       return row;
     case "work":

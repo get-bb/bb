@@ -676,6 +676,15 @@ function convertMessage(
           completedAt: message.completedAt,
         },
       ];
+    case "generated-image":
+      return [
+        {
+          ...buildTimelineRowBase(message, options.rowIdPrefix),
+          kind: "generated-image",
+          itemId: message.itemId,
+          path: message.path,
+        },
+      ];
     case "delegation": {
       const base = buildTimelineRowBase(message, options.rowIdPrefix);
       return [

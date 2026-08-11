@@ -4,6 +4,7 @@ import { groupCompletedTurnMessages } from "../src/completed-turn-grouping.js";
 import type { CompletedTurnMessageGroups } from "../src/completed-turn-grouping.js";
 import type {
   EventProjectionAssistantTextMessage,
+  EventProjectionGeneratedImageMessage,
   EventProjectionMessage,
   EventProjectionTurnRequest,
   EventProjectionTurn,
@@ -35,6 +36,17 @@ function assistantMessage(
     kind: "assistant-text",
     text: args.id,
     status: "completed",
+  };
+}
+
+function generatedImage(
+  args: MessageBaseArgs,
+): EventProjectionGeneratedImageMessage {
+  return {
+    ...messageBase(args),
+    kind: "generated-image",
+    itemId: args.id,
+    path: `/tmp/${args.id}.png`,
   };
 }
 
@@ -100,6 +112,24 @@ function summarySourceMessageIds(
 }
 
 describe("groupCompletedTurnMessages", () => {
+  it("splits summaries around generated images without counting the image", () => {
+    const messages = [
+      assistantMessage({ id: "before", seq: 1 }),
+      generatedImage({ id: "image", seq: 2 }),
+      assistantMessage({ id: "after", seq: 3 }),
+    ];
+    const groups = groupCompletedTurnMessages(
+      completedTurn(messages, undefined, 2),
+    );
+
+    expect(groups.summaryItems).toMatchObject([
+      { kind: "summary", summaryCount: 1 },
+      { kind: "ungrouped-message", message: { id: "image" } },
+      { kind: "summary", summaryCount: 1 },
+    ]);
+    expect(summarySourceMessageIds(groups)).toEqual([["before"], ["after"]]);
+  });
+
   it("uses one summary group when no messages are ungroupable", () => {
     const messages = [
       assistantMessage({ id: "assistant-1", seq: 1 }),

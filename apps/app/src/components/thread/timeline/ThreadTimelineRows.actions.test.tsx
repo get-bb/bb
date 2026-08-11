@@ -18,6 +18,7 @@ import type { PluginMessageActionRegistration } from "@bb/plugin-sdk";
 import {
   conversationRow,
   delegationRow,
+  generatedImageRow,
   turnRow,
 } from "@/test/fixtures/thread-timeline-rows";
 import {
@@ -457,6 +458,163 @@ describe("ThreadTimelineRows actions", () => {
     expect(markup).toContain("Worked for");
     expect(markup).toContain("Archived assistant response.");
     expect(markup).not.toContain('aria-label="Copy message"');
+  });
+
+  it("renders generated image output inline without disclosure interaction", () => {
+    const markup = toMarkup(
+      <ThreadTimelineRows
+        timelineRows={[
+          generatedImageRow({
+            path: "/tmp/generated-happy-place.png",
+            sourceSeqStart: 42,
+          }),
+        ]}
+        threadRuntimeDisplayStatus="idle"
+        workspaceRootPath={undefined}
+      />,
+    );
+
+    expect(markup).toContain(
+      "Open generated image preview: generated-happy-place.png",
+    );
+    expect(markup).toContain(
+      'src="/api/v1/threads/thread-1/generated-images/content?sourceSeq=42"',
+    );
+    expect(markup).not.toContain('src="/tmp/generated-happy-place.png"');
+  });
+
+  it("renders multiple generated images with reserved loading frames and accessible lightboxes", async () => {
+    const { container } = renderWithRouter(
+      <ThreadTimelineRows
+        threadId="thread-images"
+        timelineRows={[
+          generatedImageRow({
+            id: "generated-one",
+            itemId: "image-one",
+            path: "/tmp/one.png",
+            sourceSeqStart: 21,
+            threadId: "thread-images",
+          }),
+          generatedImageRow({
+            id: "generated-two",
+            itemId: "image-two",
+            path: "/tmp/two.png",
+            sourceSeqStart: 22,
+            threadId: "thread-images",
+          }),
+        ]}
+        threadRuntimeDisplayStatus="idle"
+        workspaceRootPath={undefined}
+      />,
+    );
+
+    const previews = screen.getAllByRole("button", {
+      name: /Open generated image preview:/,
+    });
+    expect(previews).toHaveLength(2);
+    expect(previews[0]?.getAttribute("aria-busy")).toBe("true");
+    expect(previews[0]?.className).toContain("aspect-square");
+    const images = container.querySelectorAll("img[loading='lazy']");
+    expect(images).toHaveLength(2);
+    expect(images[0]?.getAttribute("src")).toBe(
+      "/api/v1/threads/thread-images/generated-images/content?sourceSeq=21",
+    );
+    expect(images[0]?.getAttribute("src")).not.toContain("/tmp/one.png");
+
+    fireEvent.load(images[0]!);
+    expect(previews[0]?.getAttribute("aria-busy")).toBe("false");
+    fireEvent.click(previews[0]!);
+    expect(screen.getByText("Generated image: one.png")).toBeTruthy();
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => expect(document.activeElement).toBe(previews[0]));
+  });
+
+  it("resets generated-image failure state when its source identity changes", async () => {
+    const first = generatedImageRow({
+      id: "generated-image",
+      path: "/tmp/failed.png",
+      sourceSeqStart: 31,
+    });
+    const { container, rerender } = renderWithRouter(
+      <ThreadTimelineRows
+        timelineRows={[first]}
+        threadRuntimeDisplayStatus="idle"
+        workspaceRootPath={undefined}
+      />,
+    );
+    fireEvent.error(container.querySelector("img")!);
+    expect(screen.getByText("Generated image unavailable.")).toBeTruthy();
+    expect(screen.getByText("/tmp/failed.png")).toBeTruthy();
+
+    rerender(
+      <MemoryRouter>
+        <ThreadTimelineRows
+          timelineRows={[
+            generatedImageRow({
+              id: "generated-image",
+              path: "/tmp/retry.png",
+              sourceSeqStart: 32,
+            }),
+          ]}
+          threadRuntimeDisplayStatus="idle"
+          workspaceRootPath={undefined}
+        />
+      </MemoryRouter>,
+    );
+    await waitFor(() => {
+      const preview = screen.getByRole("button", {
+        name: "Open generated image preview: retry.png",
+      });
+      expect(preview.getAttribute("aria-busy")).toBe("true");
+    });
+  });
+
+  it("closes an open generated-image lightbox when its source identity changes", async () => {
+    const { container, rerender } = renderWithRouter(
+      <ThreadTimelineRows
+        timelineRows={[
+          generatedImageRow({
+            id: "generated-image",
+            path: "/tmp/original.png",
+            sourceSeqStart: 41,
+          }),
+        ]}
+        threadRuntimeDisplayStatus="idle"
+        workspaceRootPath={undefined}
+      />,
+    );
+    const originalPreview = screen.getByRole("button", {
+      name: "Open generated image preview: original.png",
+    });
+    fireEvent.load(container.querySelector("img")!);
+    fireEvent.click(originalPreview);
+    expect(screen.getByText("Generated image: original.png")).toBeTruthy();
+
+    rerender(
+      <MemoryRouter>
+        <ThreadTimelineRows
+          timelineRows={[
+            generatedImageRow({
+              id: "generated-image",
+              path: "/tmp/replacement.png",
+              sourceSeqStart: 42,
+            }),
+          ]}
+          threadRuntimeDisplayStatus="idle"
+          workspaceRootPath={undefined}
+        />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Generated image: original.png"),
+      ).toBeNull();
+      const replacementPreview = screen.getByRole("button", {
+        name: "Open generated image preview: replacement.png",
+      });
+      expect(replacementPreview.getAttribute("aria-busy")).toBe("true");
+    });
   });
 
   it("keeps assistant message actions visible inside pending turn rows", () => {

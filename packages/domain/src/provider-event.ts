@@ -142,6 +142,16 @@ export type ThreadEventImageViewItem = z.infer<
   typeof threadEventImageViewItemSchema
 >;
 
+export const threadEventImageGenerationItemSchema = z.object({
+  type: z.literal("imageGeneration"),
+  id: z.string(),
+  path: z.string().min(1),
+  parentToolCallId: z.string().optional(),
+});
+export type ThreadEventImageGenerationItem = z.infer<
+  typeof threadEventImageGenerationItemSchema
+>;
+
 export const threadEventTextTruncationSchema = z.object({
   originalLength: z.number(),
   retainedHeadLength: z.number(),
@@ -305,6 +315,7 @@ export const threadEventItemSchema = z.discriminatedUnion("type", [
   threadEventWebSearchItemSchema,
   threadEventWebFetchItemSchema,
   threadEventImageViewItemSchema,
+  threadEventImageGenerationItemSchema,
   z.object({
     type: z.literal("toolCall"),
     id: z.string(),

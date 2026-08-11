@@ -501,10 +501,20 @@ export const timelineTurnRowSchema: z.ZodType<TimelineTurnRow> = z.lazy(() =>
   }),
 );
 
+export const timelineGeneratedImageRowSchema = timelineRowBaseSchema.extend({
+  kind: z.literal("generated-image"),
+  itemId: z.string(),
+  path: z.string().min(1),
+});
+export type TimelineGeneratedImageRow = z.infer<
+  typeof timelineGeneratedImageRowSchema
+>;
+
 export type TimelineSourceRow =
   | TimelineConversationRow
   | TimelineWorkRow
-  | TimelineSystemRow;
+  | TimelineSystemRow
+  | TimelineGeneratedImageRow;
 
 export type TimelineRow = TimelineSourceRow | TimelineTurnRow;
 
@@ -513,6 +523,7 @@ export const timelineRowSchema: z.ZodType<TimelineRow> = z.lazy(() =>
     timelineConversationRowSchema,
     timelineWorkRowSchema,
     timelineSystemRowSchema,
+    timelineGeneratedImageRowSchema,
     timelineTurnRowSchema,
   ]),
 );

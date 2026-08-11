@@ -74,6 +74,7 @@ import {
   type TimelineTitleLinkResolver,
 } from "./TimelineTitleView.js";
 import { WorkRowBody } from "./TimelineRowDetails.js";
+import { GeneratedImageTimelineRow } from "./GeneratedImageTimelineRow.js";
 import { TimelineDetailScroll } from "./TimelineDetailScroll.js";
 import { Button } from "@bb/shared-ui/button";
 import { AutoHeightContainer } from "../../ui/height-transition.js";
@@ -1215,6 +1216,7 @@ function TimelineExpandableBody({
         />
       ) : null;
     case "conversation":
+    case "generated-image":
       return null;
     default:
       return assertNever(row);
@@ -1555,6 +1557,15 @@ function TimelineRowView({
       <ConversationRow
         row={row}
         showAssistantMessageActions={showAssistantMessageActions}
+      />
+    );
+  }
+
+  if (row.kind === "generated-image") {
+    return (
+      <GeneratedImageTimelineRow
+        key={`${row.sourceSeqStart}:${row.path}`}
+        row={row}
       />
     );
   }

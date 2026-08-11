@@ -1572,6 +1572,12 @@ describe("server-contract clients", () => {
         query: { path: "/Users/me/notes/plan.md" },
       }).pathname,
     ).toBe("/api/v1/threads/thr_123/host-files/content");
+    expect(
+      publicClient.threads[":id"]["generated-images"].content.$url({
+        param: { id: "thr_123" },
+        query: { sourceSeq: "42" },
+      }).pathname,
+    ).toBe("/api/v1/threads/thr_123/generated-images/content");
     // Path-suffix file routes: `:filePath{.+}` spans slashes and the caller
     // passes a pre-encoded value ($url substitutes params verbatim).
     expect(
@@ -1633,6 +1639,22 @@ describe("server-contract clients", () => {
         path: "/Users/me/notes/plan.md",
       }),
     ).toEqual({ path: "/Users/me/notes/plan.md" });
+    expect(
+      contract.threadGeneratedImageContentQuerySchema.parse({
+        sourceSeq: "42",
+      }),
+    ).toEqual({ sourceSeq: "42" });
+    expect(() =>
+      contract.threadGeneratedImageContentQuerySchema.parse({
+        sourceSeq: "-1",
+      }),
+    ).toThrow();
+    expect(() =>
+      contract.threadGeneratedImageContentQuerySchema.parse({
+        sourceSeq: "42",
+        path: "/tmp/not-authorised.png",
+      }),
+    ).toThrow();
   });
 
   it("keeps project command catalog queries snapshot-only", () => {

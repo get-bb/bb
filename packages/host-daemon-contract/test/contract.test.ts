@@ -1060,15 +1060,10 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  // Version 78 adds pull-request creation. Version 77 adds project-configured
-  // setup commands. Version 76 adds detailed pull-request checks and comments.
-  // Version 75 adds the literal, paged workspace directory command and makes
-  // Claude's sandbox network prompt grantable. An older
-  // daemon cannot serve the All files tree safely, so the version must force
-  // an update before the server exposes that endpoint or relies on the newer
-  // permission-grant payload.
-  it("uses protocol version 78 for pull-request creation", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(78);
+  // Version 79 adds translated Codex Imagegen output events. An older daemon
+  // must update before the server can rely on this wire event.
+  it("uses protocol version 79 for Codex image-generation events", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(79);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {

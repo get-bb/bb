@@ -4652,6 +4652,201 @@ describe("public thread data routes", () => {
     });
   });
 
+  it("serves a generated image from the source event environment instead of the thread's current environment", async () => {
+    await withTestHarness(async (harness) => {
+      const { host: sourceHost } = seedHostSession(harness.deps, {
+        id: "host-generated-image-source",
+      });
+      const { host: currentHost } = seedHostSession(harness.deps, {
+        id: "host-generated-image-current",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: sourceHost.id,
+      });
+      const sourceEnvironment = seedEnvironment(harness.deps, {
+        hostId: sourceHost.id,
+        projectId: project.id,
+        path: "/tmp/source-environment",
+      });
+      const currentEnvironment = seedEnvironment(harness.deps, {
+        hostId: currentHost.id,
+        projectId: project.id,
+        path: "/tmp/current-environment",
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: currentEnvironment.id,
+      });
+      const imagePath = "/tmp/source-environment/happy-place.png";
+      seedStoredEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: sourceEnvironment.id,
+        scope: turnScope("turn-generated-image"),
+        sequence: 41,
+        type: "item/completed",
+        itemId: "generated-image-1",
+        itemKind: "imageGeneration",
+        data: {
+          item: {
+            type: "imageGeneration",
+            id: "generated-image-1",
+            path: imagePath,
+          },
+        },
+      });
+      const pngBytes = Uint8Array.from([
+        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+      ]);
+
+      const imagePromise = harness.app.request(
+        `/api/v1/threads/${thread.id}/generated-images/content?sourceSeq=41`,
+      );
+      const imageCommand = await waitForQueuedCommand(
+        harness,
+        ({ command, row }) =>
+          row.hostId === sourceHost.id &&
+          command.type === "host.read_file" &&
+          command.path === imagePath,
+      );
+      await reportQueuedCommandSuccess(
+        harness,
+        imageCommand,
+        {
+          path: imagePath,
+          content: Buffer.from(pngBytes).toString("base64"),
+          contentEncoding: "base64",
+          mimeType: "image/png",
+          sizeBytes: pngBytes.byteLength,
+          sha256: "0".repeat(64),
+        },
+        { hostId: sourceHost.id },
+      );
+
+      const response = await imagePromise;
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-type")).toBe("image/png");
+      expect(response.headers.get("cache-control")).toBe("no-store");
+      expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+      expect(new Uint8Array(await response.arrayBuffer())).toEqual(pngBytes);
+    });
+  });
+
+  it("rejects missing, wrong-kind, and cross-thread generated image sources", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+      });
+      const otherThread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+      });
+      seedStoredEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        scope: turnScope("turn-wrong-kind"),
+        sequence: 10,
+        type: "item/completed",
+        itemId: "view-1",
+        itemKind: "imageView",
+        data: {
+          item: { type: "imageView", id: "view-1", path: "/tmp/view.png" },
+        },
+      });
+      seedStoredEvent(harness.deps, {
+        threadId: otherThread.id,
+        environmentId: environment.id,
+        scope: turnScope("turn-other"),
+        sequence: 11,
+        type: "item/completed",
+        itemId: "generated-other",
+        itemKind: "imageGeneration",
+        data: {
+          item: {
+            type: "imageGeneration",
+            id: "generated-other",
+            path: "/tmp/other.png",
+          },
+        },
+      });
+
+      for (const sourceSeq of [9, 10, 11]) {
+        const response = await harness.app.request(
+          `/api/v1/threads/${thread.id}/generated-images/content?sourceSeq=${sourceSeq}`,
+        );
+        expect(response.status).toBe(404);
+        await expect(readJson(response)).resolves.toMatchObject({
+          code: "generated_image_unavailable",
+        });
+      }
+
+      const extraRoutingInput = await harness.app.request(
+        `/api/v1/threads/${thread.id}/generated-images/content?sourceSeq=9&path=${encodeURIComponent("/tmp/not-authorised.png")}`,
+      );
+      expect(extraRoutingInput.status).toBe(400);
+    });
+  });
+
+  it("reports generated images as unavailable when their source host is offline or deleted", async () => {
+    await withTestHarness(async (harness) => {
+      const host = seedHost(harness.deps, {
+        id: "host-generated-image-offline",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+      });
+      seedStoredEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        scope: turnScope("turn-offline"),
+        sequence: 12,
+        type: "item/completed",
+        itemId: "generated-offline",
+        itemKind: "imageGeneration",
+        data: {
+          item: {
+            type: "imageGeneration",
+            id: "generated-offline",
+            path: "/tmp/offline.png",
+          },
+        },
+      });
+
+      const offlineResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/generated-images/content?sourceSeq=12`,
+      );
+      expect(offlineResponse.status).toBe(502);
+      await expect(readJson(offlineResponse)).resolves.toMatchObject({
+        code: "host_unavailable",
+      });
+
+      deleteHost(harness.db, harness.deps.hub, host.id);
+      const deletedResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/generated-images/content?sourceSeq=12`,
+      );
+      expect(deletedResponse.status).toBe(404);
+      await expect(readJson(deletedResponse)).resolves.toMatchObject({
+        code: "generated_image_unavailable",
+      });
+    });
+  });
+
   it("rejects host file content requests for threads without environments", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps);
