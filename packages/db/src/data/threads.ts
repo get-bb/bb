@@ -12,6 +12,7 @@ import {
   ne,
   or,
   sql,
+  type SQL,
 } from "drizzle-orm";
 import type {
   EnvironmentWorkspaceDisplayKind,
@@ -53,6 +54,34 @@ export const THREAD_SEARCH_LIMIT_PER_GROUP_MAX = 50;
 const THREAD_SEARCH_MATCHES_PER_THREAD = 3;
 const THREAD_SEARCH_QUERY_TOKEN_PATTERN = /[\p{L}\p{N}_]+/gu;
 const THREAD_SEARCH_HIGHLIGHT_RANGE_LIMIT = 8;
+
+type ThreadWhere = SQL | undefined;
+
+function nonDeletedThreads(...where: ThreadWhere[]): ThreadWhere {
+  return and(...where, isNull(threads.deletedAt));
+}
+
+function liveThreads(...where: ThreadWhere[]): ThreadWhere {
+  return nonDeletedThreads(...where, isNull(threads.archivedAt));
+}
+
+function countThreadsWhere(
+  db: ThreadWriteConnection,
+  where: ThreadWhere,
+): number {
+  return db.select({ count: count() }).from(threads).where(where).get()?.count ?? 0;
+}
+
+function listThreadsWhere(
+  db: ThreadWriteConnection,
+  where: ThreadWhere,
+): ThreadRow[] {
+  return db.select().from(threads).where(where).all();
+}
+
+function hasThreadWhere(db: ThreadWriteConnection, where: ThreadWhere): boolean {
+  return db.select({ id: threads.id }).from(threads).where(where).get() !== undefined;
+}
 
 export interface ThreadSearchHighlightRange {
   start: number;
@@ -424,8 +453,7 @@ export type ReorderPinnedThreadResult =
   | ReorderPinnedThreadInvalidNeighborOrder;
 
 function pinnedThreadWhere() {
-  return and(
-    isNull(threads.deletedAt),
+  return nonDeletedThreads(
     eq(threads.visibility, "visible"),
     isNotNull(threads.pinnedAt),
     isNotNull(threads.pinSortKey),
@@ -463,7 +491,7 @@ export function listActiveVisiblePinnedThreadRoots(
   const pinnedThreads = db
     .select()
     .from(threads)
-    .where(and(pinnedThreadWhere(), isNull(threads.archivedAt)))
+    .where(liveThreads(pinnedThreadWhere()))
     .orderBy(asc(threads.pinSortKey), asc(threads.id))
     .all();
 
@@ -495,7 +523,7 @@ export function listActiveVisiblePinnedThreadRootsWithPendingInteractionState(
   db: DbConnection,
 ): ThreadWithPendingInteractionState[] {
   const pinnedThreads = threadWithPendingInteractionBaseQuery(db)
-    .where(and(pinnedThreadWhere(), isNull(threads.archivedAt)))
+    .where(liveThreads(pinnedThreadWhere()))
     .orderBy(asc(threads.pinSortKey), asc(threads.id))
     .all()
     .map(toThreadWithPendingInteractionState);
@@ -633,7 +661,7 @@ function buildListThreadsFilters(options: ListThreadsOptions) {
     options.projectId ? eq(threads.projectId, options.projectId) : undefined,
     options.sectionId ? eq(threads.sectionId, options.sectionId) : undefined,
     options.unsectioned ? isNull(threads.sectionId) : undefined,
-    isNull(threads.deletedAt),
+    nonDeletedThreads(),
     options.includeHidden ? undefined : eq(threads.visibility, "visible"),
     options.parentThreadId
       ? eq(threads.parentThreadId, options.parentThreadId)
@@ -666,7 +694,7 @@ function buildListThreadsForProjectsFilters(
   return [
     inArray(threads.projectId, [...options.projectIds]),
     eq(threads.visibility, "visible"),
-    isNull(threads.deletedAt),
+    nonDeletedThreads(),
     options.archived === true
       ? isNotNull(threads.archivedAt)
       : options.archived === false
@@ -1018,7 +1046,7 @@ function hydrateThreadSearchGroup(
 
   const threadsById = new Map(
     threadWithPendingInteractionBaseQuery(db)
-      .where(and(inArray(threads.id, threadIds), isNull(threads.deletedAt)))
+      .where(nonDeletedThreads(inArray(threads.id, threadIds)))
       .all()
       .map(toThreadWithPendingInteractionState)
       .map((thread) => [thread.id, thread]),
@@ -1135,9 +1163,7 @@ export function hasActiveThreadAttention(db: DbConnection): boolean {
       ),
     )
     .where(
-      and(
-        isNull(threads.archivedAt),
-        isNull(threads.deletedAt),
+      liveThreads(
         eq(threads.visibility, "visible"),
         or(unreadThread, isNotNull(pendingInteractions.id)),
       ),
@@ -1168,20 +1194,13 @@ export function countLiveThreadsInEnvironment(
   db: ThreadWriteConnection,
   args: CountLiveThreadsInEnvironmentArgs,
 ): number {
-  const liveThreadCount = db
-    .select({ count: count() })
-    .from(threads)
-    .where(
-      and(
-        eq(threads.environmentId, args.environmentId),
-        isNull(threads.archivedAt),
-        isNull(threads.deletedAt),
-        args.excludeThreadId ? ne(threads.id, args.excludeThreadId) : undefined,
-      ),
-    )
-    .get();
-
-  return liveThreadCount?.count ?? 0;
+  return countThreadsWhere(
+    db,
+    liveThreads(
+      eq(threads.environmentId, args.environmentId),
+      args.excludeThreadId ? ne(threads.id, args.excludeThreadId) : undefined,
+    ),
+  );
 }
 
 /**
@@ -1196,20 +1215,13 @@ export function hasRevivableArchivedThreadInEnvironment(
   db: ThreadWriteConnection,
   args: HasRevivableArchivedThreadInEnvironmentArgs,
 ): boolean {
-  const row = db
-    .select({ id: threads.id })
-    .from(threads)
-    .where(
-      and(
-        eq(threads.environmentId, args.environmentId),
-        isNotNull(threads.archivedAt),
-        isNull(threads.deletedAt),
-      ),
-    )
-    .limit(1)
-    .get();
-
-  return row !== undefined;
+  return hasThreadWhere(
+    db,
+    nonDeletedThreads(
+      eq(threads.environmentId, args.environmentId),
+      isNotNull(threads.archivedAt),
+    ),
+  );
 }
 
 export function listLiveThreadsInEnvironment(
@@ -1219,13 +1231,7 @@ export function listLiveThreadsInEnvironment(
   return db
     .select()
     .from(threads)
-    .where(
-      and(
-        eq(threads.environmentId, args.environmentId),
-        isNull(threads.archivedAt),
-        isNull(threads.deletedAt),
-      ),
-    )
+    .where(liveThreads(eq(threads.environmentId, args.environmentId)))
     .orderBy(desc(threads.createdAt))
     .all();
 }
@@ -1234,35 +1240,20 @@ export function countNonDeletedAssignedChildThreads(
   db: DbConnection,
   args: CountNonDeletedAssignedChildThreadsArgs,
 ): number {
-  const assignedChildThreadCount = db
-    .select({ count: count() })
-    .from(threads)
-    .where(
-      and(
-        eq(threads.parentThreadId, args.parentThreadId),
-        isNull(threads.deletedAt),
-      ),
-    )
-    .get();
-
-  return assignedChildThreadCount?.count ?? 0;
+  return countThreadsWhere(
+    db,
+    nonDeletedThreads(eq(threads.parentThreadId, args.parentThreadId)),
+  );
 }
 
 export function listUnarchivedAssignedChildThreads(
   db: ThreadWriteConnection,
   args: ListUnarchivedAssignedChildThreadsArgs,
 ): ThreadRow[] {
-  return db
-    .select()
-    .from(threads)
-    .where(
-      and(
-        eq(threads.parentThreadId, args.parentThreadId),
-        isNull(threads.archivedAt),
-        isNull(threads.deletedAt),
-      ),
-    )
-    .all();
+  return listThreadsWhere(
+    db,
+    liveThreads(eq(threads.parentThreadId, args.parentThreadId)),
+  );
 }
 
 
@@ -1275,34 +1266,23 @@ export function listUnarchivedHiddenSourceThreads(
   db: ThreadWriteConnection,
   args: ListUnarchivedHiddenSourceThreadsArgs,
 ): ThreadRow[] {
-  return db
-    .select()
-    .from(threads)
-    .where(
-      and(
-        eq(threads.sourceThreadId, args.sourceThreadId),
-        eq(threads.visibility, "hidden"),
-        isNull(threads.archivedAt),
-        isNull(threads.deletedAt),
-      ),
-    )
-    .all();
+  return listThreadsWhere(
+    db,
+    liveThreads(
+      eq(threads.sourceThreadId, args.sourceThreadId),
+      eq(threads.visibility, "hidden"),
+    ),
+  );
 }
 
 export function listNonDeletedChildThreads(
   db: ThreadWriteConnection,
   args: ListNonDeletedChildThreadsArgs,
 ): ThreadRow[] {
-  return db
-    .select()
-    .from(threads)
-    .where(
-      and(
-        eq(threads.parentThreadId, args.parentThreadId),
-        isNull(threads.deletedAt),
-      ),
-    )
-    .all();
+  return listThreadsWhere(
+    db,
+    nonDeletedThreads(eq(threads.parentThreadId, args.parentThreadId)),
+  );
 }
 
 export function listThreadEnvironmentAssignmentsOnHost(
@@ -1351,8 +1331,9 @@ export function hasLiveThreadAtHostPath(
       and(
         eq(environments.hostId, args.hostId),
         eq(environments.path, args.path),
-        inArray(threads.status, [...NON_TERMINAL_THREAD_STATUSES]),
-        isNull(threads.deletedAt),
+        nonDeletedThreads(
+          inArray(threads.status, [...NON_TERMINAL_THREAD_STATUSES]),
+        ),
       ),
     )
     .get();
@@ -1393,8 +1374,7 @@ export function listTrackedThreadStorageTargetsOnHost(
       and(
         eq(environments.hostId, args.hostId),
         ne(environments.status, "destroyed"),
-        isNull(threads.archivedAt),
-        isNull(threads.deletedAt),
+        liveThreads(),
       ),
     )
     .all();
@@ -1422,19 +1402,13 @@ export function hasNonTerminalThreadInEnvironment(
   db: DbConnection,
   args: HasNonTerminalThreadInEnvironmentArgs,
 ): boolean {
-  const row = db
-    .select({ id: threads.id })
-    .from(threads)
-    .where(
-      and(
-        eq(threads.environmentId, args.environmentId),
-        inArray(threads.status, [...NON_TERMINAL_THREAD_STATUSES]),
-        isNull(threads.deletedAt),
-      ),
-    )
-    .get();
-
-  return row !== undefined;
+  return hasThreadWhere(
+    db,
+    nonDeletedThreads(
+      eq(threads.environmentId, args.environmentId),
+      inArray(threads.status, [...NON_TERMINAL_THREAD_STATUSES]),
+    ),
+  );
 }
 
 export function pinThread(
@@ -1467,7 +1441,7 @@ export function pinThread(
           pinSortKey,
           updatedAt: now,
         })
-        .where(and(eq(threads.id, args.threadId), isNull(threads.deletedAt)))
+        .where(nonDeletedThreads(eq(threads.id, args.threadId)))
         .returning()
         .get();
       return updated ? { changed: true, thread: updated } : null;
@@ -1507,7 +1481,7 @@ export function unpinThread(
           pinSortKey: null,
           updatedAt: Date.now(),
         })
-        .where(and(eq(threads.id, args.threadId), isNull(threads.deletedAt)))
+        .where(nonDeletedThreads(eq(threads.id, args.threadId)))
         .returning()
         .get();
       return updated ? { changed: true, thread: updated } : null;

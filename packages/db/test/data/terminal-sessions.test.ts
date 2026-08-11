@@ -4,17 +4,10 @@ import { migrate } from "../../src/migrate.js";
 import { noopNotifier } from "../../src/notifier.js";
 import {
   createTerminalSession,
-  getThreadlessTerminalSessionForEnvironment,
-  listThreadlessTerminalSessionsByEnvironment,
-  listTerminalSessionsByThread,
-  listVisibleTerminalSessionsByThread,
-  listVisibleThreadlessTerminalSessionsByEnvironment,
-  markDaemonTerminalSessionsDisconnected,
-  markEnvironmentTerminalSessionsExited,
-  markThreadlessTerminalSessionUserInput,
-  markTerminalSessionUserInput,
-  markTerminalSessionRunning,
-  markThreadTerminalSessionsExited,
+  getTerminalSession,
+  listTerminalSessions,
+  updateTerminalSession,
+  updateTerminalSessions,
 } from "../../src/data/terminal-sessions.js";
 import { createEnvironment } from "../../src/data/environments.js";
 import { upsertHost } from "../../src/data/hosts.js";
@@ -34,6 +27,151 @@ interface TerminalSessionFixture {
   host: TestHost;
   session: TestSession;
   thread: TestThread;
+}
+
+function listTerminalSessionsByThread(db: TestDb, threadId: string) {
+  return listTerminalSessions(db, {
+    scope: { kind: "thread", threadId },
+    visible: false,
+  });
+}
+
+function listVisibleTerminalSessionsByThread(db: TestDb, threadId: string) {
+  return listTerminalSessions(db, {
+    scope: { kind: "thread", threadId },
+    visible: true,
+  });
+}
+
+function listThreadlessTerminalSessionsByEnvironment(
+  db: TestDb,
+  environmentId: string,
+) {
+  return listTerminalSessions(db, {
+    scope: { environmentId, kind: "threadless-environment" },
+    visible: false,
+  });
+}
+
+function listVisibleThreadlessTerminalSessionsByEnvironment(
+  db: TestDb,
+  environmentId: string,
+) {
+  return listTerminalSessions(db, {
+    scope: { environmentId, kind: "threadless-environment" },
+    visible: true,
+  });
+}
+
+function getThreadlessTerminalSessionForEnvironment(
+  db: TestDb,
+  args: { environmentId: string; terminalId: string },
+) {
+  return getTerminalSession(db, {
+    ...args,
+    kind: "threadless-environment",
+  });
+}
+
+function markThreadlessTerminalSessionUserInput(
+  db: TestDb,
+  args: { environmentId: string; now: number; terminalId: string },
+) {
+  return updateTerminalSession(db, {
+    now: args.now,
+    scope: {
+      environmentId: args.environmentId,
+      kind: "threadless-environment",
+      terminalId: args.terminalId,
+    },
+    update: { kind: "user-input" },
+  });
+}
+
+function markTerminalSessionUserInput(
+  db: TestDb,
+  args: { now: number; terminalId: string; threadId: string },
+) {
+  return updateTerminalSession(db, {
+    now: args.now,
+    scope: {
+      kind: "thread",
+      terminalId: args.terminalId,
+      threadId: args.threadId,
+    },
+    update: { kind: "user-input" },
+  });
+}
+
+function markTerminalSessionRunning(
+  db: TestDb,
+  args: {
+    cols: number;
+    daemonSessionId: string;
+    initialCwd: string;
+    rows: number;
+    terminalId: string;
+    title: string;
+  },
+) {
+  return updateTerminalSession(db, {
+    scope: {
+      daemonSessionId: args.daemonSessionId,
+      kind: "daemon",
+      statuses: ["starting"],
+      terminalId: args.terminalId,
+    },
+    update: {
+      cols: args.cols,
+      daemonSessionId: args.daemonSessionId,
+      initialCwd: args.initialCwd,
+      kind: "running",
+      rows: args.rows,
+      title: args.title,
+    },
+  });
+}
+
+function markThreadTerminalSessionsExited(
+  db: TestDb,
+  args: { closeReason: "thread-deleted"; threadId: string },
+) {
+  return updateTerminalSessions(db, {
+    scope: {
+      kind: "thread",
+      statuses: ["starting", "running", "disconnected"],
+      threadId: args.threadId,
+    },
+    update: { closeReason: args.closeReason, kind: "exit" },
+  });
+}
+
+function markEnvironmentTerminalSessionsExited(
+  db: TestDb,
+  args: { closeReason: "environment-destroyed"; environmentId: string },
+) {
+  return updateTerminalSessions(db, {
+    scope: {
+      environmentId: args.environmentId,
+      kind: "environment",
+      statuses: ["starting", "running", "disconnected"],
+    },
+    update: { closeReason: args.closeReason, kind: "exit" },
+  });
+}
+
+function markDaemonTerminalSessionsDisconnected(
+  db: TestDb,
+  args: { daemonSessionId: string },
+) {
+  return updateTerminalSessions(db, {
+    scope: {
+      daemonSessionId: args.daemonSessionId,
+      kind: "daemon",
+      statuses: ["starting", "running"],
+    },
+    update: { kind: "disconnect" },
+  });
 }
 
 function openTestSession(db: TestDb, hostId: string): TestSession {
