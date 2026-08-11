@@ -2692,6 +2692,29 @@ describe("codex provider adapter", () => {
     expect(events).toEqual([]);
   });
 
+  it("translateEvent ignores Codex raw response completions", () => {
+    const adapter = createCodexProviderAdapter();
+    const events = adapter.translateEvent({
+      jsonrpc: "2.0",
+      method: "rawResponse/completed",
+      params: {
+        threadId: "t1",
+        turnId: "turn-1",
+        responseId: "response-1",
+        usage: {
+          totalTokens: 19_206,
+          inputTokens: 18_971,
+          cachedInputTokens: 11_008,
+          cacheWriteInputTokens: 0,
+          outputTokens: 235,
+          reasoningOutputTokens: 53,
+        },
+      },
+    });
+
+    expect(events).toEqual([]);
+  });
+
   it("translateEvent item/mcpToolCall/progress maps to shared tool progress", () => {
     const adapter = createCodexProviderAdapter();
     const events = adapter.translateEvent(

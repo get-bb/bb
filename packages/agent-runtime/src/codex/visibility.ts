@@ -12,7 +12,11 @@ import {
 } from "../shared/provider-visibility-helpers.js";
 import type { ServerNotification } from "./generated/codex-app-server/schema/ServerNotification.js";
 
-type CodexServerNotificationMethod = ServerNotification["method"];
+type CodexServerNotificationMethod =
+  | ServerNotification["method"]
+  // Visibility can lead the independently refreshed generated schema when a
+  // newer installed Codex starts emitting a notification.
+  | "rawResponse/completed";
 
 interface CodexNotificationRawEvent {
   kind: "notification";
@@ -80,6 +84,7 @@ const CODEX_SERVER_NOTIFICATION_METHODS = {
   "model/rerouted": true,
   "process/exited": true,
   "process/outputDelta": true,
+  "rawResponse/completed": true,
   "rawResponseItem/completed": true,
   "remoteControl/status/changed": true,
   "serverRequest/resolved": true,
@@ -158,6 +163,9 @@ const CODEX_NOTIFICATION_COVERAGE = {
   // there is nothing to surface — left "unknown" intentionally.
   "process/exited": "unknown",
   "process/outputDelta": "unknown",
+  // Internal per-response accounting; thread/tokenUsage/updated carries the
+  // user-facing token state.
+  "rawResponse/completed": "noise",
   "rawResponseItem/completed": "noise",
   "remoteControl/status/changed": "noise",
   "serverRequest/resolved": "noise",

@@ -1051,10 +1051,11 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  // Version 96 adds provider-native skill discovery roots. An older daemon
-  // returns an incomplete skill catalog, so it must update before connecting.
-  it("uses protocol version 96 for provider-native skill discovery", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(96);
+  // Version 97 suppresses Codex raw response completion notifications. An
+  // older daemon emits them as provider/unhandled, so it must update before
+  // connecting.
+  it("uses protocol version 97 for Codex raw response completion noise", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(97);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {
