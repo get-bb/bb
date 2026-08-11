@@ -256,25 +256,25 @@ function CollapsibleMessageText({
 
   const [isExpanded, setIsExpanded] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
-  // Cap before rendering so a megabyte paste can't dominate window-resize
-  // reflow. Unlike the prior plain-text path we hand the whole capped body to
-  // the markdown renderer and clamp it visually (markdown block content doesn't
-  // line-clamp cleanly), rather than slicing it by line per collapse state.
-  const isTruncated = bodyText.length > USER_MESSAGE_CHAR_CAP;
-  const cappedBody = isTruncated
-    ? bodyText.slice(0, USER_MESSAGE_CHAR_CAP)
-    : bodyText;
-  // Rebase mentions onto the prefix-stripped, char-capped body so their offsets
-  // index into the exact string handed to the markdown renderer (a mention
-  // straddling the cap is dropped, clipping the body to just before it).
+  // Keep collapsed previews bounded so a megabyte paste cannot dominate the
+  // initial timeline render. Expanding is an explicit request for the complete
+  // message, so only then hand the full body to the markdown renderer.
+  const exceedsCollapsedRenderCap = bodyText.length > USER_MESSAGE_CHAR_CAP;
+  const renderedBodyText =
+    !isExpanded && exceedsCollapsedRenderCap
+      ? bodyText.slice(0, USER_MESSAGE_CHAR_CAP)
+      : bodyText;
+  // Rebase mentions onto the prefix-stripped body currently being rendered. A
+  // mention straddling the collapsed cap is omitted from the preview and
+  // restored when the complete body is rendered after expansion.
   const body = useMemo(
     () =>
       clipMentionTextToVisibleRange({
         mentions,
         rangeStart: bodyOffset,
-        text: cappedBody,
+        text: renderedBodyText,
       }),
-    [mentions, bodyOffset, cappedBody],
+    [mentions, bodyOffset, renderedBodyText],
   );
   const promptMentions = useMemo<MarkdownPromptMentions>(
     () => ({
@@ -304,7 +304,8 @@ function CollapsibleMessageText({
     enabled: !isExpanded,
     measurementKey: body.text,
   });
-  const showToggle = isExpanded || isOverflowing;
+  const showToggle =
+    isExpanded || exceedsCollapsedRenderCap || isOverflowing;
 
   return (
     <>
@@ -332,9 +333,6 @@ function CollapsibleMessageText({
           threadMentions={rawThreadMentions}
           linkRouting={linkRouting}
         />
-        {isExpanded && isTruncated ? (
-          <span className="text-muted-foreground">[truncated]</span>
-        ) : null}
       </div>
       {showToggle ? (
         <ConversationMessageOverflowToggle

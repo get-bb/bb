@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { ThreadListEntry } from "@bb/domain";
 import { afterEach, describe, expect, it } from "vitest";
 import { MemoryRouter } from "react-router-dom";
@@ -11,6 +11,7 @@ import {
   type MessageDirectiveRegistry,
 } from "@/components/ui/markdown-message-directives";
 import { ConversationMessageContent } from "./ConversationMessageContent";
+import { USER_MESSAGE_CHAR_CAP } from "./conversation-message-limits";
 
 afterEach(cleanup);
 
@@ -141,6 +142,45 @@ describe("ConversationMessageContent assistant thread mentions", () => {
     });
     expect(mentionLink.getAttribute("href")).toBe("/threads/thr_xpxxt2ipz8");
     expect(screen.queryByText("@thread", { exact: false })).toBeNull();
+  });
+});
+
+describe("ConversationMessageContent long user messages", () => {
+  it("renders the complete message after expanding a capped preview", () => {
+    const hiddenTail = "FULL_MESSAGE_TAIL";
+    const text = `${"a".repeat(USER_MESSAGE_CHAR_CAP)}\n\n${hiddenTail}`;
+
+    render(
+      <MemoryRouter>
+        <RouteNavigationProvider>
+          <ConversationMessageContent
+            role="user"
+            attachments={null}
+            childOrigin={null}
+            initiator="user"
+            mentions={[]}
+            senderThreadId={null}
+            senderThreadTitle={null}
+            senderIsPluginSideChat={false}
+            systemMessageKind="unlabeled"
+            systemMessageSubject={null}
+            text={text}
+            turnRequest={{ kind: "message", status: "accepted" }}
+          />
+        </RouteNavigationProvider>
+      </MemoryRouter>,
+    );
+
+    expect(screen.queryByText(hiddenTail)).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Show more" }));
+
+    expect(screen.getByText(hiddenTail)).not.toBeNull();
+    expect(screen.queryByText("[truncated]")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Show less" }));
+
+    expect(screen.queryByText(hiddenTail)).toBeNull();
   });
 });
 
