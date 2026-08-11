@@ -77,7 +77,7 @@ Forking:
   create a fresh managed worktree (or personal workspace for personal threads);
   reuse attaches the source environment. Omit --prompt to create an idle fork.
 
-Editing a sent message (requires the `editMessages` experiment):
+Editing a sent message (requires the default-on `editMessages` experiment):
 
   bb thread edit-message <id> --message "Replacement text"
     --self                              Target the current thread (BB_THREAD_ID)

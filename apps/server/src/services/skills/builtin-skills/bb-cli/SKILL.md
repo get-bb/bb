@@ -105,7 +105,7 @@ message agents, or inspect projects, providers, and environments.
   project setup guide. Change it with
   `bb settings experiment newOnboarding <true|false>`. Use
   `bb settings replay-onboarding` to enable it and show the guide again.
-- The default-off `editMessages` experiment allows accepted root user messages
+- The default-on `editMessages` experiment allows accepted root user messages
   in Codex, Claude Code, and Pi threads to be replaced and rerun, including
   failed or incomplete turns. Submitting an edit to a running thread stops and
   settles the current turn first. Change it with:
