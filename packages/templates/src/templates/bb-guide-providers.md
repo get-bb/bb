@@ -99,13 +99,15 @@ agent (build, plan, or a custom primary agent such as an orchestrator) is a
 session mode, not a model. bb does not select OpenCode agents; configure the
 default agent in the OpenCode config and the ACP session uses it.
 
-If an ACP agent does not advertise a model, pin it with top-level customModels
-in the app data-dir config.json. Each entry has a providerId (a built-in
-provider id or any acp-* provider id, such as acp-opencode), a model id, and
-an optional displayName. bb skips an invalid entry with a warning. The entry
-then appears in bb provider models output and in the model picker. Like
-customAcpAgents, edit the JSON and run bb-app config refresh; there is no
-set/unset CLI surface.
+Top-level customModels in the app data-dir config.json adds extra picker
+entries. Each entry has a providerId (a built-in provider id or any acp-*
+provider id), a model id, and an optional displayName. bb skips an invalid
+entry with a warning. The entry then appears in bb provider models output and
+in the model picker, but the provider must still accept the id: claude-code
+and codex accept unlisted ids, while an ACP agent can reject an id it does
+not know at session start. OpenCode rejects unlisted ids, so add an OpenCode
+model to the OpenCode config instead. Like customAcpAgents, edit the JSON and
+run bb-app config refresh; there is no set/unset CLI surface.
 
 Custom ACP agents are configured in the app data-dir config.json under
 customAcpAgents. bb derives provider id acp-<id> from each slug id. Edit the JSON

@@ -373,18 +373,17 @@ boundary.
 ## Custom Models
 
 Register extra picker models by editing top-level `customModels` in
-`~/.bb/config.json`. Use this for a model the provider catalog does not
-advertise, such as a non-public preview id or an ACP agent model that the
-agent does not list. Like `customAcpAgents`, this list has no set/unset CLI
-surface: edit the JSON, then run `npx bb-app config refresh` or restart bb.
-`bb-app config list` prints the entries.
+`~/.bb/config.json`. Use this for a model the provider accepts but does not
+list, such as a non-public preview id. Like `customAcpAgents`, this list has
+no set/unset CLI surface: edit the JSON, then run `npx bb-app config refresh`
+or restart bb. `bb-app config list` prints the entries.
 
 ```json
 {
   "customModels": [
     { "providerId": "claude-code", "model": "claude-example-preview" },
     {
-      "providerId": "acp-opencode",
+      "providerId": "acp-my-agent",
       "model": "my-proxy/my-model",
       "displayName": "My Proxy Model"
     }
@@ -400,8 +399,14 @@ an invalid entry with a warning and keeps the rest of the config.
 
 Each entry appears in `bb provider models <providerId>` and in the model
 picker after the provider's own catalog. The provider catalog wins on a model
-id collision. For ACP agents such as OpenCode, models the agent already
-advertises need no entry: bb discovers them over the protocol.
+id collision.
+
+A `customModels` entry only makes the id selectable; the provider must still
+accept it. Built-in providers such as `claude-code` and `codex` accept
+unlisted ids. An ACP agent receives the id over the protocol at session start
+and can reject it. OpenCode rejects a model that is not in its own catalog,
+so do not pin OpenCode models here: add the model to the OpenCode config and
+bb discovers it automatically.
 
 An OpenCode "agent" (build, plan, or a custom primary agent) is a session
 mode, not a model, so it does not belong in `customModels`. bb does not select

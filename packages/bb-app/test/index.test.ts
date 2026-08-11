@@ -1087,6 +1087,41 @@ describe("bb-app launcher", () => {
     });
   });
 
+  it("preserves invalid customModels across managed config set writes", async () => {
+    const dataDir = mkdtempSync(
+      join(tmpdir(), "bb-app-config-invalid-custom-models-set-"),
+    );
+    const customModels = [
+      { providerId: "acp-opencode", model: "my-proxy/custom-model" },
+      { providerId: "not-a-provider", model: "typo-model" },
+    ];
+    writeFileSync(
+      join(dataDir, "config.json"),
+      `${JSON.stringify({ customModels })}\n`,
+      "utf8",
+    );
+
+    await runBbApp([
+      "--data-dir",
+      dataDir,
+      "config",
+      "set",
+      "BB_APP_URL",
+      "https://bb.example.test",
+    ]);
+
+    // The parser skips the invalid entry with a warning, but a config write
+    // must keep the user's raw file contents intact.
+    expect(
+      JSON.parse(readFileSync(join(dataDir, "config.json"), "utf8")),
+    ).toEqual({
+      config: {
+        BB_APP_URL: "https://bb.example.test",
+      },
+      customModels,
+    });
+  });
+
   it("preserves customAcpAgents across managed config writes", async () => {
     const dataDir = mkdtempSync(join(tmpdir(), "bb-app-config-custom-acp-"));
     const customAcpAgents = [

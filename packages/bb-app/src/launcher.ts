@@ -166,8 +166,15 @@ export type ManagedConfigValues = BbAppManagedConfigValues;
 export type ManagedEnvConfig = BbAppManagedEnvConfig;
 export type ManagedEnvFile = BbAppManagedEnvFile;
 export type ManagedConfig = BbAppManagedConfig;
-type ManagedConfigForWrite = Omit<ManagedConfig, "customAcpAgents"> & {
+// Write flows carry customAcpAgents and customModels as raw JSON: the parser
+// skips invalid entries with a warning, and a rewrite from the parsed view
+// would silently delete them from the user's file.
+type ManagedConfigForWrite = Omit<
+  ManagedConfig,
+  "customAcpAgents" | "customModels"
+> & {
   customAcpAgents?: unknown[];
+  customModels?: unknown[];
 };
 
 export interface HostEnrollKeyRequestBody {
@@ -918,13 +925,17 @@ async function readManagedConfigForWrite(
     const parsedConfig = parseBbAppManagedConfig(parsedJson, {
       logger: launcherConfigWarningLogger,
     });
-    if (isJsonObject(parsedJson) && Array.isArray(parsedJson.customAcpAgents)) {
-      return {
-        ...parsedConfig,
-        customAcpAgents: parsedJson.customAcpAgents,
-      };
+    if (!isJsonObject(parsedJson)) {
+      return parsedConfig;
     }
-    return parsedConfig;
+    const configForWrite: ManagedConfigForWrite = { ...parsedConfig };
+    if (Array.isArray(parsedJson.customAcpAgents)) {
+      configForWrite.customAcpAgents = parsedJson.customAcpAgents;
+    }
+    if (Array.isArray(parsedJson.customModels)) {
+      configForWrite.customModels = parsedJson.customModels;
+    }
+    return configForWrite;
   } catch (error) {
     if (error instanceof SyntaxError) {
       throw new Error(
