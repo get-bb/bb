@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 import {
+  getActiveStoredTurnId,
   getEnvironment,
   getLatestThreadSequence,
   getThread,
@@ -27,6 +28,7 @@ import {
   type RoomJsonValue,
   type WorkTogetherRoomDistributionV1,
 } from "./room-distribution-port.js";
+import { projectWorkTogetherRoomTimeline } from "./work-together-room-timeline-projection.js";
 
 const CURSOR = /^s\.([0-9]|[1-9][0-9]{0,15})$/u;
 const MAX_TASK_PROJECTION_BYTES = 131_072;
@@ -280,7 +282,7 @@ export function createBindingBackedRoomDistributionV1(
     const response = buildThreadTimeline(deps.db, thread, {
       eventBudget: deps.config.featureFlags.timelineWindowEventBudget,
       includeProviderUnhandledOperations: false,
-      includeNestedRows: false,
+      includeNestedRows: true,
       maxInlineOutputChars: DEFAULT_MAX_INLINE_OUTPUT_CHARS,
       maxSeq,
       page: { kind: "latest", segmentLimit: INITIAL_TIMELINE_SEGMENTS },
@@ -289,12 +291,15 @@ export function createBindingBackedRoomDistributionV1(
     });
     return {
       maxSeq,
-      projection: projectObject(response, {
+      projection: projectWorkTogetherRoomTimeline({
         bindingId,
-        threadId: thread.id,
-        publicThreadId,
-        environmentId: thread.environmentId ?? undefined,
+        privateThreadId: thread.id,
+        publicStreamId: publicThreadId,
+        environmentId: thread.environmentId ?? unavailable(),
         projectId: thread.projectId,
+        threadStatus: thread.status,
+        privateActiveTurnId: getActiveStoredTurnId(deps.db, thread.id),
+        timeline: response,
       }),
     };
   }

@@ -161,6 +161,7 @@ describe("binding-backed Work Together Room distribution", () => {
         cursor: "s.0",
       });
       expect(first.changed).toBe(true);
+      expect(first.timeline).toEqual(bootstrap.timeline);
       const cursor = first.cursor as string;
       await expect(
         distribution.events(context(launch.bindingId), {
@@ -329,11 +330,17 @@ describe("binding-backed Work Together Room distribution", () => {
         text: "Queue this exact message",
       } as const;
 
-      await expect(
-        distribution.bootstrap(context(launch.bindingId)),
-      ).resolves.toMatchObject({
+      const activeBootstrap = await distribution.bootstrap(
+        context(launch.bindingId),
+      );
+      expect(activeBootstrap).toMatchObject({
         capabilities: ["message.send", "message.steer", "read.mark"],
+        timeline: {
+          activeTurnId: expect.stringMatching(/^turn_[A-Za-z0-9_-]{43}$/u),
+          working: true,
+        },
       });
+      expect(JSON.stringify(activeBootstrap)).not.toContain(turnId);
 
       const accepted = await distribution.execute(
         context(launch.bindingId),
