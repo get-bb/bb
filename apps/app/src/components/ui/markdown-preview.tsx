@@ -11,8 +11,9 @@ import {
   type SetStateAction,
 } from "react";
 import {
+  Block,
   Streamdown,
-  defaultUrlTransform,
+  type BlockProps,
   type Components,
   type ExtraProps,
   type PluginConfig,
@@ -80,6 +81,11 @@ import {
 } from "./markdown-message-directives.js";
 import { normalizePromptBlockquoteBoundaries } from "./markdown-prompt-blockquote-boundaries.js";
 import { MarkdownMermaidDiagram } from "./markdown-mermaid-diagram.js";
+import { splitMarkdownStreamSegments } from "./markdown-stream-segments.js";
+import {
+  parseStaticMarkdownIntoBlocks,
+  safeMarkdownUrlTransform,
+} from "./markdown-streamdown.js";
 import type { PromptTextMention } from "@bb/domain";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import type { TimelineTitleLinkResolver } from "@/components/thread/timeline/TimelineTitleView.js";
@@ -127,6 +133,8 @@ export interface MarkdownPreviewProps {
    * Parsing is `remark-directive`; recognized ids mount via PluginSlotMount.
    */
   messageDirectives?: MarkdownMessageDirectives;
+  /** Assistant bodies use streaming mode for stable mounts; other surfaces are static. */
+  mode?: NonNullable<StreamdownProps["mode"]>;
   urlTransform?: UrlTransform;
 }
 
@@ -436,6 +444,7 @@ const areMarkdownPreviewPropsEqual: MarkdownPreviewPropsEqual = (
     next: next.messageDirectives,
     previous: previous.messageDirectives,
   }) &&
+  (previous.mode ?? "static") === (next.mode ?? "static") &&
   areMarkdownLinkRoutingsEqual({
     next: next.linkRouting,
     previous: previous.linkRouting,
@@ -523,7 +532,7 @@ function buildLocalAwareUrlTransform({
       }
     }
 
-    return (fallbackUrlTransform ?? defaultUrlTransform)(value, key, node);
+    return (fallbackUrlTransform ?? safeMarkdownUrlTransform)(value, key, node);
   };
 }
 
@@ -1212,6 +1221,16 @@ function MarkdownFrontmatter({ source }: { source: string }) {
 
 const STREAMDOWN_LINK_SAFETY_DISABLED = { enabled: false } as const;
 
+/** Restore the text junction that one full unified parse emits between blocks. */
+function MarkdownStreamingBlock(props: BlockProps) {
+  return (
+    <>
+      {props.index > 0 ? "\n" : null}
+      <Block {...props} />
+    </>
+  );
+}
+
 function MarkdownPreviewComponent({
   allowHtml = false,
   className,
@@ -1222,6 +1241,7 @@ function MarkdownPreviewComponent({
   threadMentions,
   promptMentions,
   messageDirectives,
+  mode = "static",
   urlTransform,
 }: MarkdownPreviewProps) {
   const preferredTheme = usePreferredTheme();
@@ -1280,7 +1300,7 @@ function MarkdownPreviewComponent({
             localFileRouting,
             localImageRouting,
           })
-        : urlTransform,
+        : (urlTransform ?? safeMarkdownUrlTransform),
     [localFileRouting, localImageRouting, urlTransform],
   );
   const messageDirectiveNames = useMemo(() => {
@@ -1379,12 +1399,20 @@ function MarkdownPreviewComponent({
           <MarkdownFrontmatter source={frontmatter} />
         ) : null}
         <Streamdown
-          className="contents space-y-0"
+          BlockComponent={
+            mode === "streaming" ? MarkdownStreamingBlock : undefined
+          }
+          className="contents space-y-0 ![white-space:inherit]"
           components={markdownComponents}
           controls={false}
           linkSafety={STREAMDOWN_LINK_SAFETY_DISABLED}
-          mode="static"
+          mode={mode}
           parseIncompleteMarkdown={false}
+          parseMarkdownIntoBlocksFn={
+            mode === "static"
+              ? parseStaticMarkdownIntoBlocks
+              : splitMarkdownStreamSegments
+          }
           plugins={streamdownRenderIdentity}
           rehypePlugins={rehypePlugins}
           remarkPlugins={remarkPlugins}

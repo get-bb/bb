@@ -1048,6 +1048,9 @@ describe("QueuedMessagesList", () => {
     expect(preview?.firstElementChild?.classList.contains("truncate")).toBe(
       true,
     );
+    const streamdownRoot = preview?.firstElementChild?.firstElementChild;
+    expect(streamdownRoot?.classList.contains("whitespace-nowrap")).toBe(true);
+    expect(streamdownRoot?.classList.contains("whitespace-normal")).toBe(false);
 
     fireEvent.click(getByRole("button", { name: "Expand queued messages" }));
     expect(preview?.firstElementChild?.classList.contains("truncate")).toBe(

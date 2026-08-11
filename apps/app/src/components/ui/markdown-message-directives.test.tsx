@@ -437,6 +437,7 @@ describe("MarkdownPreview message directives", () => {
     render(
       <MarkdownPreview
         content={lines.join("\n")}
+        mode="streaming"
         messageDirectives={{
           registry,
           message: MESSAGE,
@@ -475,6 +476,7 @@ describe("MarkdownPreview message directives", () => {
       <MarkdownPreview
         content={'::inline-vis{file="demo.html"}'}
         messageDirectives={messageDirectives}
+        mode="streaming"
       />,
     );
 
@@ -485,6 +487,7 @@ describe("MarkdownPreview message directives", () => {
       <MarkdownPreview
         content={'::inline-vis{file="demo.html"}\n\nLater streamed prose.'}
         messageDirectives={messageDirectives}
+        mode="streaming"
       />,
     );
 

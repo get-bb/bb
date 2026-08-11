@@ -79,6 +79,7 @@ import {
   substitutePromptMentions,
 } from "@/components/ui/markdown-prompt-mentions";
 import { normalizePromptBlockquoteBoundaries } from "@/components/ui/markdown-prompt-blockquote-boundaries";
+import { parseStaticMarkdownIntoBlocks } from "@/components/ui/markdown-streamdown";
 
 /** Which in-flight action the processing message is running, for its label. */
 export type QueuedMessageProcessingAction = "send" | "edit" | "delete";
@@ -285,11 +286,12 @@ function CompactQueuedMarkdownPreview({
   return (
     <div className={queuedMarkdownPreviewClass(compact)}>
       <Streamdown
-        className="contents space-y-0"
+        className="contents space-y-0 whitespace-nowrap"
         components={components}
         controls={false}
         linkSafety={QUEUED_MARKDOWN_LINK_SAFETY_DISABLED}
         mode="static"
+        parseMarkdownIntoBlocksFn={parseStaticMarkdownIntoBlocks}
         plugins={streamdownRenderIdentity}
         rehypePlugins={QUEUED_MARKDOWN_REHYPE_PLUGINS}
         remarkPlugins={QUEUED_MARKDOWN_REMARK_PLUGINS}

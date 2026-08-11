@@ -635,6 +635,7 @@ function AssistantConversationMessage({
           content={text}
           linkRouting={linkRouting}
           messageDirectives={messageDirectives}
+          mode="streaming"
           threadMentions={ASSISTANT_THREAD_MENTIONS}
         />
       </SelectableMessageProse>

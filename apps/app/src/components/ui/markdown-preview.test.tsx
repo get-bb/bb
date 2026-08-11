@@ -21,6 +21,15 @@ const workspaceLinkRouting = {
   },
 } satisfies MarkdownLinkRouting;
 
+const UNSAFE_MARKDOWN_HREFS = [
+  "javascript:alert%281%29",
+  "data:text/html,%3Cscript%3Ealert%281%29%3C/script%3E",
+  "file:///etc/passwd",
+  "tel:+15555550100",
+  "vbscript:msgbox%281%29",
+  "custom-app:open",
+] as const;
+
 afterEach(() => {
   cleanup();
   window.localStorage.clear();
@@ -178,6 +187,137 @@ describe("MarkdownPreview", () => {
 
     expect(screen.queryByRole("link", { name: "README.md" })).toBeNull();
     expect(screen.getByText("README.md").tagName).toBe("CODE");
+  });
+
+  it.each(["static", "streaming"] as const)(
+    "removes unsafe Markdown link URLs in %s mode",
+    (mode) => {
+      render(
+        <MarkdownPreview
+          content={UNSAFE_MARKDOWN_HREFS.map(
+            (href, index) => `[unsafe-${index}](${href})`,
+          ).join("\n\n")}
+          mode={mode}
+        />,
+      );
+
+      for (const index of UNSAFE_MARKDOWN_HREFS.keys()) {
+        expect(
+          screen
+            .getByText(`unsafe-${index}`)
+            .closest("a")
+            ?.getAttribute("href"),
+        ).toBe("");
+      }
+    },
+  );
+
+  it("keeps safe and relative Markdown link URLs", () => {
+    render(
+      <MarkdownPreview
+        content={[
+          "[web](https://example.com)",
+          "[email](mailto:hello@example.com)",
+          "[relative](docs/guide.md)",
+          "[fragment](#details)",
+        ].join(" ")}
+      />,
+    );
+
+    expect(screen.getByRole("link", { name: "web" }).getAttribute("href")).toBe(
+      "https://example.com",
+    );
+    expect(
+      screen.getByRole("link", { name: "email" }).getAttribute("href"),
+    ).toBe("mailto:hello@example.com");
+    expect(
+      screen.getByRole("link", { name: "relative" }).getAttribute("href"),
+    ).toBe("docs/guide.md");
+    expect(
+      screen.getByRole("link", { name: "fragment" }).getAttribute("href"),
+    ).toBe("#details");
+  });
+
+  it("rejects local files outside a contained workspace", () => {
+    render(
+      <MarkdownPreview
+        content="Open [inside](file:///workspace/README.md) and [outside](file:///etc/passwd)."
+        linkRouting={{
+          localFile: {
+            absoluteLinks: {
+              kind: "contained",
+              rootPath: "/workspace",
+            },
+            onOpenLink: vi.fn(() => true),
+          },
+        }}
+      />,
+    );
+
+    expect(
+      screen.getByRole("link", { name: /inside/ }).getAttribute("href"),
+    ).toBe("file:///workspace/README.md");
+    expect(screen.getByText("outside").closest("a")?.getAttribute("href")).toBe(
+      "",
+    );
+  });
+
+  it("removes unsafe Markdown image URLs", () => {
+    const { container } = render(
+      <MarkdownPreview content="![unsafe](data:image/svg+xml,%3Csvg%3E%3C/svg%3E)" />,
+    );
+
+    expect(container.querySelector("img")).toBeNull();
+  });
+
+  it("lets compact parents control white-space inheritance", () => {
+    const { container } = render(<MarkdownPreview content="One line" />);
+    const streamdownRoot = container.querySelector(
+      "[data-markdown-preview] > div",
+    );
+
+    expect(streamdownRoot?.classList.contains("![white-space:inherit]")).toBe(
+      true,
+    );
+  });
+
+  it("preserves document-wide references in streaming mode", () => {
+    const { container } = render(
+      <MarkdownPreview
+        content={[
+          "Read the [documentation][docs].",
+          "The result has a footnote.[^result]",
+          "[docs]: https://example.com/docs",
+          "[^result]: Verified output.",
+        ].join("\n\n")}
+        mode="streaming"
+      />,
+    );
+
+    expect(
+      screen.getByRole("link", { name: "documentation" }).getAttribute("href"),
+    ).toBe("https://example.com/docs");
+    expect(container.querySelector("[data-footnotes]")?.textContent).toContain(
+      "Verified output.",
+    );
+  });
+
+  it("matches full-document rendering across independent streaming blocks", () => {
+    const content = `${"Stable first paragraph. ".repeat(30)}\n\nSecond paragraph.`;
+    const staticView = render(<MarkdownPreview content={content} />);
+    const staticHtml = staticView.container.querySelector(
+      "[data-markdown-preview] > div",
+    )?.innerHTML;
+    staticView.unmount();
+
+    const streamingView = render(
+      <MarkdownPreview content={content} mode="streaming" />,
+    );
+    const streamingHtml = streamingView.container.querySelector(
+      "[data-markdown-preview] > div",
+    )?.innerHTML;
+
+    expect(streamingHtml).toBe(staticHtml);
   });
 
   it("routes local Markdown images through the configured content resolver", () => {
