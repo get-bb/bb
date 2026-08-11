@@ -242,7 +242,10 @@ function validateSourceBase(
 
 function hashPublicId(
   domain: "row" | "turn",
-  input: ProjectWorkTogetherRoomTimelineInput,
+  input: Pick<
+    ProjectWorkTogetherRoomTimelineInput,
+    "bindingId" | "publicStreamId"
+  >,
   privateIdentity: string,
 ): string {
   const prefix = domain === "row" ? "roomrow_" : "turn_";
@@ -254,6 +257,16 @@ function hashPublicId(
     .update("\0")
     .update(privateIdentity)
     .digest("base64url")}`;
+}
+
+export function deriveWorkTogetherRoomPublicTurnId(input: {
+  bindingId: string;
+  privateTurnId: string;
+  publicStreamId: string;
+}): string {
+  privateRowIdentity(input.bindingId);
+  privateRowIdentity(input.publicStreamId);
+  return hashPublicId("turn", input, privateRowIdentity(input.privateTurnId));
 }
 
 function rowId(
@@ -816,11 +829,11 @@ export function projectWorkTogetherRoomTimeline(
     activeTurnId:
       input.privateActiveTurnId === null
         ? null
-        : hashPublicId(
-            "turn",
-            input,
-            privateRowIdentity(input.privateActiveTurnId),
-          ),
+        : deriveWorkTogetherRoomPublicTurnId({
+            bindingId: input.bindingId,
+            privateTurnId: input.privateActiveTurnId,
+            publicStreamId: input.publicStreamId,
+          }),
   } satisfies RoomTimeline;
 
   let serialized: string;

@@ -1,4 +1,4 @@
-import { getThreadCommandAdmission } from "@bb/db";
+import { getActiveStoredTurnId, getThreadCommandAdmission } from "@bb/db";
 import {
   approvalPendingInteractionResolutionSchema,
   clientTurnRequestIdSchema,
@@ -36,6 +36,7 @@ import {
 import { threadCommandAdmissionReceiptFromPersisted } from "../services/threads/thread-command-receipt.js";
 import type { AppDeps } from "../types.js";
 import type { WorkTogetherRoomCommandAuthorityPortV1 } from "./work-together-room-command-authority.js";
+import { deriveWorkTogetherRoomPublicTurnId } from "./work-together-room-timeline-projection.js";
 import {
   RoomDistributionUnavailableError,
   type RoomDistributionCommandResultV1,
@@ -45,11 +46,11 @@ import {
 
 const MAX_COMMAND_TEXT_BYTES = 65_536;
 const MAX_INTERACTION_PAYLOAD_BYTES = 64 * 1024;
-const MAX_TURN_ID_CODE_POINTS = 256;
 /** Opaque Room cursor grammar shared with child-stream selector validation. */
 const ROOM_EVENT_CURSOR_PATTERN = /^[A-Za-z0-9._~:%+-]{1,512}$/u;
 const PENDING_INTERACTION_ID_PATTERN =
   /^pint_[23456789abcdefghijkmnpqrstuvwxyz]{10}$/;
+const PUBLIC_TURN_ID_PATTERN = /^turn_[A-Za-z0-9_-]{43}$/u;
 const FORBIDDEN_IDENTITY_KEY_TOKENS = new Set([
   "actor",
   "actorid",
@@ -119,6 +120,7 @@ type SupportedRoomCommand =
 type RoomCommandScope = Readonly<{
   bindingId: string;
   principal: Principal;
+  publicStreamId: string;
   taskId: string;
   thread: Thread;
   workspaceId: string;
@@ -232,16 +234,81 @@ function requestId(value: RoomJsonValue | undefined): ClientTurnRequestId {
 }
 
 function expectedTurnId(value: RoomJsonValue | undefined): string {
-  if (
-    typeof value !== "string" ||
-    value.length === 0 ||
-    value.normalize("NFC") !== value ||
-    [...value].length > MAX_TURN_ID_CODE_POINTS ||
-    /[\u0000-\u001f\u007f]/u.test(value)
-  ) {
+  if (typeof value !== "string" || !PUBLIC_TURN_ID_PATTERN.test(value)) {
     unavailable();
   }
   return value;
+}
+
+function withPrivateExpectedTurnId(
+  command: RoomMessageSteerCommand | RoomThreadInterruptCommand,
+  privateTurnId: string,
+): RoomMessageSteerCommand | RoomThreadInterruptCommand {
+  return Object.freeze({ ...command, expectedTurnId: privateTurnId });
+}
+
+function publicTurnId(scope: RoomCommandScope, privateTurnId: string): string {
+  return deriveWorkTogetherRoomPublicTurnId({
+    bindingId: scope.bindingId,
+    privateTurnId,
+    publicStreamId: scope.publicStreamId,
+  });
+}
+
+function executableTurnCommand(
+  deps: AppDeps,
+  scope: RoomCommandScope,
+  command: RoomMessageSteerCommand | RoomThreadInterruptCommand,
+): RoomMessageSteerCommand | RoomThreadInterruptCommand | null {
+  const privateTurnId = getActiveStoredTurnId(deps.db, scope.thread.id);
+  if (
+    privateTurnId === null ||
+    publicTurnId(scope, privateTurnId) !== command.expectedTurnId
+  ) {
+    return null;
+  }
+  return withPrivateExpectedTurnId(command, privateTurnId);
+}
+
+function replayTurnCommand(
+  scope: RoomCommandScope,
+  command: RoomMessageSteerCommand | RoomThreadInterruptCommand,
+  admission: PersistedThreadCommandAdmission,
+): RoomMessageSteerCommand | RoomThreadInterruptCommand | null {
+  const result = admission.result;
+  let privateTurnId: string;
+  switch (command.kind) {
+    case "message.steer":
+      if (result.disposition !== "steered") return null;
+      privateTurnId = result.expectedTurnId;
+      break;
+    case "thread.interrupt":
+      if (result.disposition !== "interrupted") return null;
+      privateTurnId = result.expectedTurnId;
+      break;
+  }
+  if (publicTurnId(scope, privateTurnId) !== command.expectedTurnId) {
+    return null;
+  }
+  return withPrivateExpectedTurnId(command, privateTurnId);
+}
+
+function replayCommand(
+  scope: RoomCommandScope,
+  command: SupportedRoomCommand,
+  admission: PersistedThreadCommandAdmission,
+): SupportedRoomCommand | null {
+  switch (command.kind) {
+    case "message.steer":
+    case "thread.interrupt":
+      return replayTurnCommand(scope, command, admission);
+    case "message.send":
+    case "interaction.answer":
+    case "interaction.approve":
+    case "read.mark":
+    case "branch.publish":
+      return command;
+  }
 }
 
 function interactionId(value: RoomJsonValue | undefined): string {
@@ -708,19 +775,20 @@ export function createBindingBackedRoomCommandHandler(
       scope: RoomCommandScope,
       rawCommand: RoomJsonObject,
     ): Promise<RoomDistributionCommandResultV1> {
-      const command = decodeCommand(rawCommand);
+      const publicCommand = decodeCommand(rawCommand);
       // Exact replay / identity conflict are decided from the durable ledger
       // before capability availability, so a resolved interaction or post-
       // interrupt thread status cannot suppress already-accepted receipts.
       const existingAdmission = getThreadCommandAdmission(deps.db, {
         threadId: scope.thread.id,
-        requestId: command.requestId,
+        requestId: publicCommand.requestId,
       });
       if (existingAdmission !== null) {
+        const replay = replayCommand(scope, publicCommand, existingAdmission);
         if (
-          existingAdmission.commandKind === commandKind(command) &&
-          existingAdmission.requestFingerprint ===
-            commandFingerprint(command) &&
+          replay !== null &&
+          existingAdmission.commandKind === commandKind(publicCommand) &&
+          existingAdmission.requestFingerprint === commandFingerprint(replay) &&
           existingAdmission.actor.principalId === scope.principal.id &&
           existingAdmission.actor.principalKind === scope.principal.kind
         ) {
@@ -732,10 +800,18 @@ export function createBindingBackedRoomCommandHandler(
             }),
           });
         }
-        return rejectedReceipt(command, "request_identity_conflict");
+        return rejectedReceipt(publicCommand, "request_identity_conflict");
       }
       const authority = await currentAuthority(scope);
-      if (!commandAvailable(deps, command, scope, authority)) unavailable();
+      if (!commandAvailable(deps, publicCommand, scope, authority)) unavailable();
+      const command =
+        publicCommand.kind === "message.steer" ||
+        publicCommand.kind === "thread.interrupt"
+          ? executableTurnCommand(deps, scope, publicCommand)
+          : publicCommand;
+      if (command === null) {
+        return rejectedReceipt(publicCommand, "turn_mismatch");
+      }
       const actor = actorStampFromPrincipal(scope.principal);
       let result;
       try {
@@ -828,10 +904,10 @@ export function createBindingBackedRoomCommandHandler(
           });
         }
         if (error instanceof ApiError) {
-          return rejectedReceipt(command, rejectionReason(error));
+          return rejectedReceipt(publicCommand, rejectionReason(error));
         }
         deps.logger.warn(
-          { err: error, commandKind: command.kind },
+          { err: error, commandKind: publicCommand.kind },
           "Room command outcome is indeterminate",
         );
         return Object.freeze({
@@ -839,8 +915,8 @@ export function createBindingBackedRoomCommandHandler(
           body: {
             schemaVersion: 1,
             outcome: "indeterminate",
-            requestId: command.requestId,
-            commandKind: command.kind,
+            requestId: publicCommand.requestId,
+            commandKind: publicCommand.kind,
           },
         });
       }

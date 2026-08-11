@@ -426,6 +426,7 @@ export function createBindingBackedRoomDistributionV1(
       const { reservation, thread, environment } = resolve(context.bindingId);
       const capabilities = await commands.capabilities({
         bindingId: context.bindingId,
+        publicStreamId: context.bindingId,
         workspaceId: reservation.workspaceId,
         taskId: reservation.taskId,
         principal: context.principal,
@@ -509,6 +510,7 @@ export function createBindingBackedRoomDistributionV1(
       return commands.execute(
         {
           bindingId: context.bindingId,
+          publicStreamId: context.bindingId,
           workspaceId: reservation.workspaceId,
           taskId: reservation.taskId,
           principal: context.principal,

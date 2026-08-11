@@ -25,6 +25,7 @@ import {
   RoomDistributionUnavailableError,
   type RoomDistributionContextV1,
 } from "../../src/room-distribution/room-distribution-port.js";
+import { deriveWorkTogetherRoomPublicTurnId } from "../../src/room-distribution/work-together-room-timeline-projection.js";
 import {
   createWorkTogetherRoomResourceProvisioner,
   type WorkTogetherRoomResourceTarget,
@@ -341,6 +342,18 @@ describe("binding-backed Work Together Room distribution", () => {
         },
       });
       expect(JSON.stringify(activeBootstrap)).not.toContain(turnId);
+      const publicTurnId = (
+        activeBootstrap.timeline as { activeTurnId: string }
+      ).activeTurnId;
+
+      await expect(
+        distribution.execute(context(launch.bindingId), {
+          kind: "message.steer",
+          requestId: "creq_23456789ag",
+          expectedTurnId: turnId,
+          text: "Reject a private turn identifier",
+        }),
+      ).rejects.toMatchObject({ kind: "not_found" });
 
       const accepted = await distribution.execute(
         context(launch.bindingId),
@@ -386,7 +399,7 @@ describe("binding-backed Work Together Room distribution", () => {
         distribution.execute(context(launch.bindingId), {
           kind: "message.steer",
           requestId: "creq_23456789ad",
-          expectedTurnId: turnId,
+          expectedTurnId: publicTurnId,
           text: "Steer this exact turn",
         }),
       ).resolves.toMatchObject({
@@ -397,11 +410,23 @@ describe("binding-backed Work Together Room distribution", () => {
           result: { disposition: "steered" },
         },
       });
+      expect(
+        getThreadCommandAdmission(harness.db, {
+          threadId: provisioned.primaryThreadId,
+          requestId: "creq_23456789ad",
+        }),
+      ).toMatchObject({
+        result: { disposition: "steered", expectedTurnId: turnId },
+      });
       await expect(
         distribution.execute(context(launch.bindingId), {
           kind: "message.steer",
           requestId: "creq_23456789af",
-          expectedTurnId: "turn_wrong",
+          expectedTurnId: deriveWorkTogetherRoomPublicTurnId({
+            bindingId: launch.bindingId,
+            privateTurnId: turnId,
+            publicStreamId: "wrong_child_stream",
+          }),
           text: "Do not leak the active turn",
         }),
       ).resolves.toEqual({
@@ -433,7 +458,7 @@ describe("binding-backed Work Together Room distribution", () => {
         distribution.execute(context(launch.bindingId), {
           kind: "thread.interrupt",
           requestId: "creq_23456789ac",
-          expectedTurnId: "turn_exact",
+          expectedTurnId: publicTurnId,
         }),
       ).rejects.toMatchObject({ kind: "not_found" });
       expect(
@@ -447,7 +472,7 @@ describe("binding-backed Work Together Room distribution", () => {
         distribution.execute(context(launch.bindingId), {
           kind: "thread.interrupt",
           requestId: "creq_23456789ae",
-          expectedTurnId: turnId,
+          expectedTurnId: publicTurnId,
         }),
       ).resolves.toMatchObject({
         status: 202,
@@ -455,6 +480,32 @@ describe("binding-backed Work Together Room distribution", () => {
           outcome: "accepted",
           commandKind: "thread.interrupt",
           result: { disposition: "interrupted" },
+        },
+      });
+      await expect(
+        distribution.execute(context(launch.bindingId), {
+          kind: "thread.interrupt",
+          requestId: "creq_23456789ae",
+          expectedTurnId: publicTurnId,
+        }),
+      ).resolves.toMatchObject({
+        status: 200,
+        body: {
+          outcome: "already-accepted",
+          commandKind: "thread.interrupt",
+        },
+      });
+      await expect(
+        distribution.execute(context(launch.bindingId), {
+          kind: "thread.interrupt",
+          requestId: "creq_23456789ae",
+          expectedTurnId: `turn_${"B".repeat(43)}`,
+        }),
+      ).resolves.toMatchObject({
+        status: 200,
+        body: {
+          outcome: "rejected",
+          reason: "request_identity_conflict",
         },
       });
       // Replay and identity-conflict paths resolve from the durable ledger
