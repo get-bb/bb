@@ -19,33 +19,73 @@ export interface PluginCliContributionEntry {
 const CONTRIBUTIONS_TIMEOUT_MS = 2000;
 
 /**
+ * The probe is retried on causes that mean "the server exists but did not
+ * answer in time" — a busy event loop, a dropped keep-alive socket. The
+ * server's contributions latency is sharply bimodal (single-digit ms at rest,
+ * hundreds of ms to seconds while it is under load), so a single 2s attempt
+ * turns an ordinary stall into a hard failure and the user's command never
+ * runs. Escalating the window rather than repeating it gives a server stalled
+ * mid-GC room to finish instead of re-hitting the same block.
+ *
+ * Not retried: ECONNREFUSED (nothing is listening — bb really is down, and
+ * waiting only delays a correct answer) and EPERM/EACCES (a sandbox or
+ * firewall is blocking this shell — no amount of waiting changes that).
+ */
+const CONTRIBUTIONS_TIMEOUT_MULTIPLIERS = [1, 2, 2] as const;
+const CONTRIBUTIONS_RETRY_DELAYS_MS = [150, 500] as const;
+
+/** Transport-level codes that mean "retry", not "give up". */
+const RETRYABLE_CODES = new Set([
+  "ECONNRESET",
+  "EPIPE",
+  "ETIMEDOUT",
+  "UND_ERR_SOCKET",
+  "UND_ERR_CONNECT_TIMEOUT",
+  "UND_ERR_HEADERS_TIMEOUT",
+  "UND_ERR_BODY_TIMEOUT",
+]);
+
+/**
  * Result of asking the server for plugin CLI contributions. "unreachable"
  * (fetch threw: server down, blocked, timeout) is distinguished from
  * "invalid" (an old server without the route, or a malformed payload) so
  * unknown-command handling can tell the user to start bb instead of printing
  * a misleading "unknown command" for a plugin command that would exist if bb
  * were up. The thrown error is kept: EPERM (blocked shell) and a timeout mean
- * something very different from ECONNREFUSED (nothing listening).
+ * something very different from ECONNREFUSED (nothing listening). `attempts`
+ * records how many probes were spent so the message can say so.
  */
 export type PluginCliContributionsResult =
   | { outcome: "ok"; contributions: PluginCliContributionEntry[] }
-  | { outcome: "unreachable"; cause: unknown }
+  | {
+      outcome: "unreachable";
+      cause: unknown;
+      attempts: number;
+      lastTimeoutMs: number;
+    }
   | { outcome: "invalid" };
 
+/** What a failed probe tells us about the server, independent of wording. */
+export interface UnreachableDiagnosis {
+  blockedCode: "EPERM" | "EACCES" | undefined;
+  timedOut: boolean;
+  refused: boolean;
+  retryable: boolean;
+  messages: string[];
+}
+
 /**
- * Diagnose a failed probe of the server without overclaiming: only when every
- * connection attempt reports ECONNREFUSED is there evidence that bb is not
- * running. Blocked connections (sandboxed agent shells) and timeouts name the
- * address and errno so the reader — often an agent — does not declare a
- * running bb dead.
+ * Walk the cause chain of a failed fetch — Node wraps the real errno in
+ * `TypeError: fetch failed`, and a multi-address connect wraps several in an
+ * AggregateError — and report every signal it carries. Kept separate from the
+ * wording so the retry decision and the message cannot drift apart.
  */
-export function describeUnreachableServer(
-  baseUrl: string,
+export function diagnoseUnreachableServer(
   cause: unknown,
-  timeoutMs: number = CONTRIBUTIONS_TIMEOUT_MS,
-): string {
+): UnreachableDiagnosis {
   let blockedCode: "EPERM" | "EACCES" | undefined;
   let timedOut = false;
+  let retryableCode = false;
   const messages: string[] = [];
   const terminalCodes: Array<string | undefined> = [];
   const seen = new Set<object>();
@@ -73,7 +113,10 @@ export function describeUnreachableServer(
     if (code === "EPERM" || code === "EACCES") {
       blockedCode ??= code;
     }
-    if (record.name === "TimeoutError") {
+    if (code !== undefined && RETRYABLE_CODES.has(code)) {
+      retryableCode = true;
+    }
+    if (record.name === "TimeoutError" || record.name === "AbortError") {
       timedOut = true;
     }
     if (typeof record.message === "string" && record.message.length > 0) {
@@ -96,39 +139,118 @@ export function describeUnreachableServer(
     }
   }
 
+  const refused =
+    terminalCodes.length > 0 &&
+    terminalCodes.every((code) => code === "ECONNREFUSED");
+
+  return {
+    blockedCode,
+    timedOut,
+    refused,
+    // A blocked connection is never retryable even if it also timed out:
+    // the sandbox rule that rejected it will reject the next probe too.
+    retryable:
+      blockedCode === undefined && !refused && (timedOut || retryableCode),
+    messages,
+  };
+}
+
+/**
+ * Diagnose a failed probe of the server without overclaiming: only when every
+ * connection attempt reports ECONNREFUSED is there evidence that bb is not
+ * running. Blocked connections (sandboxed agent shells) and timeouts name the
+ * address and errno so the reader — often an agent — does not declare a
+ * running bb dead.
+ */
+export function describeUnreachableServer(
+  baseUrl: string,
+  cause: unknown,
+  timeoutMs: number = CONTRIBUTIONS_TIMEOUT_MS,
+  attempts = 1,
+): string {
+  const { blockedCode, timedOut, refused, retryable, messages } =
+    diagnoseUnreachableServer(cause);
+
   if (blockedCode !== undefined) {
     return (
       `Cannot reach bb at ${baseUrl}: ${blockedCode} — the connection was blocked. ` +
       `bb may still be running; check sandbox or firewall rules for this shell.`
     );
   }
-  if (timedOut) {
-    return `bb did not respond at ${baseUrl} within ${timeoutMs}ms — it may be busy or unreachable.`;
-  }
-  if (
-    terminalCodes.length > 0 &&
-    terminalCodes.every((code) => code === "ECONNREFUSED")
-  ) {
+  if (refused) {
     return `bb is not running at ${baseUrl} — open the bb app, then re-run this command.`;
+  }
+  // A probe that connected but did not answer proves a listener exists, so bb
+  // is up and overloaded — never "not running". Say the command did not run
+  // and that retrying is the fix, because the reader is usually an agent that
+  // will otherwise record the write as impossible and silently drop it.
+  if (timedOut || retryable) {
+    const tried =
+      attempts > 1
+        ? ` after ${attempts} attempts (last window ${timeoutMs}ms)`
+        : ` within ${timeoutMs}ms`;
+    return (
+      `bb did not respond at ${baseUrl}${tried} — bb is running but too busy to answer. ` +
+      `Nothing was rejected and your command did not run; re-run it.`
+    );
   }
   return `Cannot reach bb at ${baseUrl}: ${
     messages.length > 0 ? messages.join(": ") : String(cause)
   }`;
 }
 
-/** Fetch plugin CLI contributions with a short timeout. */
+export interface FetchPluginCliContributionsOptions {
+  /** Injected so tests exercise the retry schedule without real delays. */
+  sleep?: (ms: number) => Promise<void>;
+}
+
+const defaultSleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Fetch plugin CLI contributions, retrying a server that is up but stalled.
+ *
+ * This probe gates every plugin-contributed command (`bb memory add`,
+ * `bb tasks ...`), so a false negative here does not merely misreport — it
+ * stops the command from running at all. Failing the whole invocation on one
+ * 2s window made a busy machine look like a stopped app; the work is retried
+ * instead, and only a genuinely refused or blocked connection fails fast.
+ */
 export async function fetchPluginCliContributions(
   baseUrl: string,
   timeoutMs: number = CONTRIBUTIONS_TIMEOUT_MS,
+  options: FetchPluginCliContributionsOptions = {},
 ): Promise<PluginCliContributionsResult> {
-  let response: Response;
-  try {
-    response = await cliFetch(`${baseUrl}/api/v1/plugins/contributions`, {
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-  } catch (error) {
-    return { outcome: "unreachable", cause: error };
+  const sleep = options.sleep ?? defaultSleep;
+  let response: Response | undefined;
+
+  for (
+    let attempt = 0;
+    attempt < CONTRIBUTIONS_TIMEOUT_MULTIPLIERS.length;
+    attempt += 1
+  ) {
+    const window = timeoutMs * CONTRIBUTIONS_TIMEOUT_MULTIPLIERS[attempt]!;
+    try {
+      response = await cliFetch(`${baseUrl}/api/v1/plugins/contributions`, {
+        signal: AbortSignal.timeout(window),
+      });
+      break;
+    } catch (error) {
+      const isLastAttempt =
+        attempt === CONTRIBUTIONS_TIMEOUT_MULTIPLIERS.length - 1;
+      if (isLastAttempt || !diagnoseUnreachableServer(error).retryable) {
+        return {
+          outcome: "unreachable",
+          cause: error,
+          attempts: attempt + 1,
+          lastTimeoutMs: window,
+        };
+      }
+      await sleep(CONTRIBUTIONS_RETRY_DELAYS_MS[attempt]!);
+    }
   }
+  if (response === undefined) return { outcome: "invalid" };
+
   try {
     if (!response.ok) return { outcome: "invalid" };
     const parsed = (await response.json()) as {
