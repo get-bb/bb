@@ -107,7 +107,10 @@ interface EnvironmentProvisionTransactionDeps extends EnvironmentProvisionWriteD
 }
 
 interface CompletePathlessDestroyInTransactionArgs {
-  environment: Pick<Environment, "path" | "status">;
+  environment: Pick<
+    NonNullable<ReturnType<typeof getEnvironment>>,
+    "destroyAttemptId" | "path" | "status"
+  >;
   environmentId: string;
 }
 
@@ -455,7 +458,10 @@ function completePathlessDestroyInTransaction(
     deps,
     {
       environmentId: args.environmentId,
-      event: { type: "destroy.completed" },
+      event: {
+        type: "destroy.completed",
+        destroyAttemptId: args.environment.destroyAttemptId,
+      },
     },
   );
   if (completedOutcome.applied) {

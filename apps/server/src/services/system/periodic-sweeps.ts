@@ -592,10 +592,14 @@ export async function runStartupRecoverySweep(
 ): Promise<void> {
   await runEnvironmentProvisioningSweep(deps);
   await runThreadLifecycleSweep(deps);
-  // On restart any lingering `destroying` row is presumed orphaned, so recover
-  // them regardless of age; advance retiring environments (the advance enforces
-  // the grace window, destroying only those whose window already elapsed).
-  recoverOrphanedEnvironmentDestroyRequests(deps, { updatedBefore: Date.now() });
+  // A daemon can reconnect and settle an in-flight destroy after the server
+  // restarts. Apply the same orphan timeout used by periodic recovery instead
+  // of immediately moving every `destroying` row to `error`; genuinely stale
+  // attempts are still recovered, and a matching late success can settle from
+  // `error` as a final backstop.
+  recoverOrphanedEnvironmentDestroyRequests(deps, {
+    updatedBefore: Date.now() - ORPHANED_ENVIRONMENT_DESTROY_RECOVERY_DELAY_MS,
+  });
   await advanceRetiringManagedEnvironments(deps);
 }
 

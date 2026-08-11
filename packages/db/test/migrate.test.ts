@@ -298,6 +298,7 @@ function dropRewindAddedTables(db: DbConnection): void {
     .prepare("ALTER TABLE hosts DROP COLUMN last_rejected_protocol_version")
     .run();
   dropHostMaxPermissionModeColumn(db);
+  dropEnvironmentRetireRequestedAtColumn(db);
   dropThreadSectionSchema(db);
   restoreWideExperimentsTable(db);
   // system_experiments predates thread search, so the table itself isn't
@@ -420,6 +421,12 @@ const experimentKeyValueMigrationPath = resolve(
   "..",
   "drizzle",
   "0090_equal_reaper.sql",
+);
+const retireRequestedAtMigrationPath = resolve(
+  __dirname,
+  "..",
+  "drizzle",
+  "0091_daffy_dark_phoenix.sql",
 );
 const sidebarOrderingMigrationPath = resolve(
   __dirname,
@@ -592,6 +599,19 @@ function dropEnvironmentDestroyAttemptIdColumn(db: DbConnection): void {
     .run();
 }
 
+// Migration 0091 adds the dedicated archive-grace clock. Rewind scenarios
+// that clear its journal row must remove the column before replaying the ADD.
+function dropEnvironmentRetireRequestedAtColumn(db: DbConnection): void {
+  const columns = db.$client
+    .prepare<[], TableInfoRow>("PRAGMA table_info(environments)")
+    .all();
+  if (columns.some((column) => column.name === "retire_requested_at")) {
+    db.$client
+      .prepare("ALTER TABLE environments DROP COLUMN retire_requested_at")
+      .run();
+  }
+}
+
 /**
  * cleanup_mode existed since the baseline and is dropped by 0033, so a forward
  * replay from before 0033 must first restore it for 0033's DROP COLUMN to apply
@@ -647,6 +667,7 @@ function dropQueuedMessageSenderThreadIdColumn(db: DbConnection): void {
 
 /** Tables created by migrations after 0023, dropped so migrate() re-applies. */
 function dropPost0023Tables(db: DbConnection): void {
+  dropEnvironmentRetireRequestedAtColumn(db);
   dropProjectGitRemoteUrlColumn(db);
   db.$client.prepare("DROP TABLE IF EXISTS thread_tabs").run();
   db.$client.exec(`
@@ -1258,6 +1279,46 @@ function deleteDeferredCleanupMigrationRows(db: DbConnection): void {
 }
 
 describe("migrate", () => {
+  it("backfills the retirement clock only for environments already retiring", () => {
+    const db = createConnection(":memory:");
+    try {
+      db.$client.exec(`
+        CREATE TABLE environments (
+          id text PRIMARY KEY NOT NULL,
+          status text NOT NULL,
+          updated_at integer NOT NULL
+        );
+        INSERT INTO environments (id, status, updated_at) VALUES
+          ('env_retiring', 'retiring', 1234),
+          ('env_ready', 'ready', 2345);
+      `);
+
+      runMigrationFile({
+        db,
+        migrationPath: retireRequestedAtMigrationPath,
+      });
+
+      expect(
+        db.$client
+          .prepare<[], { id: string; retireRequestedAt: number | null }>(
+            `
+              SELECT
+                id,
+                retire_requested_at AS retireRequestedAt
+              FROM environments
+              ORDER BY id
+            `,
+          )
+          .all(),
+      ).toEqual([
+        { id: "env_ready", retireRequestedAt: null },
+        { id: "env_retiring", retireRequestedAt: 1234 },
+      ]);
+    } finally {
+      closeConnection(db);
+    }
+  });
+
   it("moves experiment columns into key/value rows without losing values", () => {
     const db = createConnection(":memory:");
 
@@ -1307,6 +1368,7 @@ describe("migrate", () => {
     restoreWideExperimentsTable(db);
     dropOnboardingCompletedAtColumn(db);
     dropNewOnboardingExperimentColumn(db);
+    dropEnvironmentRetireRequestedAtColumn(db);
     // Delete by the journal timestamp, not a hash substring: migration hashes
     // are hex and can contain "0085" by coincidence.
     db.$client
@@ -1595,6 +1657,7 @@ describe("migrate", () => {
       dropOnboardingCompletedAtColumn(db);
       dropNewOnboardingExperimentColumn(db);
       dropHostMaxPermissionModeColumn(db);
+      dropEnvironmentRetireRequestedAtColumn(db);
 
       migrate(db);
 
@@ -1993,6 +2056,7 @@ describe("migrate", () => {
       dropOnboardingCompletedAtColumn(db);
       dropNewOnboardingExperimentColumn(db);
       dropHostMaxPermissionModeColumn(db);
+      dropEnvironmentRetireRequestedAtColumn(db);
 
       expect(
         db.$client
@@ -2088,6 +2152,7 @@ describe("migrate", () => {
       dropOnboardingCompletedAtColumn(db);
       dropNewOnboardingExperimentColumn(db);
       dropHostMaxPermissionModeColumn(db);
+      dropEnvironmentRetireRequestedAtColumn(db);
 
       expect(() => migrate(db)).not.toThrow();
 

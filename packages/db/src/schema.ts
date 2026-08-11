@@ -440,6 +440,9 @@ export const environments = sqliteTable(
     defaultBranch: text("default_branch"),
     mergeBaseBranch: text("merge_base_branch"),
     destroyAttemptId: text("destroy_attempt_id"),
+    // Durable product-policy clock. Unlike updatedAt, metadata polling cannot
+    // move the start of an accidental-archive recovery window.
+    retireRequestedAt: integer("retire_requested_at"),
     workspaceProvisionType: text("workspace_provision_type")
       .$type<WorkspaceProvisionType>()
       .notNull(),

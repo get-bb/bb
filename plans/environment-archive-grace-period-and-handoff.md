@@ -33,15 +33,19 @@ The existing environment state machine remains authoritative:
 `destroyed` remains terminal. A new thread gets a new environment row.
 
 The server's `managedEnvironmentRetireGraceMs` defaults to five minutes. Cleanup
-uses the retiring environment row's durable `updatedAt` value instead of an
-in-memory timer, so restart does not bypass the window. Grace applies only to a
+uses the retiring environment row's lifecycle-owned `retireRequestedAt` value
+instead of `updatedAt` or an in-memory timer, so metadata writes cannot extend
+the clock and restart does not bypass the window. Grace applies only to a
 path-bearing retiring environment with a non-deleted archived thread that could
 still be revived. Deleted/tombstoned-only environments are reclaimed without
 waiting.
 
 The periodic sweep evaluates retiring managed environments every tick. The
 cleanup advance owns the grace decision, keeping the policy in one place.
-Orphaned `destroying` recovery remains the slower backstop.
+Orphaned `destroying` recovery remains the slower backstop. Startup honors the
+same orphan timeout instead of immediately failing an in-flight daemon command.
+Destroy completion is correlated to its attempt id, so a matching late success
+can still converge `error` to terminal `destroyed` while a stale attempt cannot.
 
 ## User flows
 
@@ -80,7 +84,12 @@ the recovery action because there is no safe fresh-environment target to infer.
 - No public HTTP, SDK, CLI, or daemon contract is added for recovery.
 - The host daemon continues to receive ordinary new-worktree provision commands.
 - `HOST_DAEMON_PROTOCOL_VERSION` is unchanged.
-- No schema or migration is added. `updatedAt` is the durable grace clock.
+- A nullable `retireRequestedAt` column is the durable lifecycle-owned grace
+  clock; it is set on `retire.requested` and cleared when retirement ends.
+- Destroyed environment rows older than seven days are retained while a
+  non-deleted thread still references them, preserving the host/branch handoff
+  target. The removed workspace path is cleared on destroy completion. Rows
+  become pruneable once their threads are deleted.
 - The only new database query answers whether a retiring environment has a
   revivable archived thread; it is a targeted `WHERE` query.
 - The app-only handoff navigation seed is a discriminated environment target:

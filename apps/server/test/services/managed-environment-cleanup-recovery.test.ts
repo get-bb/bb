@@ -18,16 +18,15 @@ import {
   runStartupRecoverySweep,
 } from "../../src/services/system/periodic-sweeps.js";
 import { MANAGED_ENVIRONMENT_RETIRE_GRACE_MS } from "../../src/constants.js";
-import {
-  listQueuedEnvironmentCommands,
-} from "../helpers/commands.js";
+import { LIVE_DAEMON_COMMAND_TIMEOUT_MS } from "../../src/services/hosts/live-command.js";
+import { listQueuedEnvironmentCommands } from "../helpers/commands.js";
 import { seedHostSession, seedProjectWithSource } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
 
 const SWEEP_START_MS = 4_000_000_000_000;
 
 describe("managed environment cleanup recovery sweep", () => {
-  it("marks stale destroying cleanup requests as error without retrying blindly", async () => {
+  it("keeps a recent in-flight destroy recoverable across startup and accepts its success", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps);
       const { project } = seedProjectWithSource(harness.deps, {
@@ -37,24 +36,26 @@ describe("managed environment cleanup recovery sweep", () => {
         hostId: host.id,
         isGitRepo: false,
         managed: true,
-        path: "/tmp/stale-destroying-environment",
+        path: "/tmp/in-flight-destroying-environment",
         projectId: project.id,
         status: "destroying",
         workspaceProvisionType: "managed-worktree",
       });
-      const staleUpdatedAt = Date.now() - 1;
+      const recentUpdatedAt = Date.now() - 1;
       harness.db
         .update(environments)
         .set({
-          destroyAttemptId: "rpc-stale-destroying",
-          updatedAt: staleUpdatedAt,
+          destroyAttemptId: "rpc-in-flight-destroying",
+          updatedAt: recentUpdatedAt,
         })
         .where(eq(environments.id, environment.id))
         .run();
 
       await runStartupRecoverySweep(harness.deps);
 
-      expect(getEnvironment(harness.db, environment.id)?.status).toBe("error");
+      expect(getEnvironment(harness.db, environment.id)?.status).toBe(
+        "destroying",
+      );
       expect(
         listQueuedEnvironmentCommands(
           harness,
@@ -62,6 +63,101 @@ describe("managed environment cleanup recovery sweep", () => {
           environment.id,
         ),
       ).toHaveLength(0);
+
+      harness.db.transaction((tx) => {
+        settleEnvironmentDestroyCommandResult({
+          command: {
+            type: "environment.destroy",
+            environmentId: environment.id,
+            workspaceContext: {
+              workspacePath: "/tmp/in-flight-destroying-environment",
+              workspaceProvisionType: "managed-worktree",
+            },
+          },
+          deps: { ...harness.deps, db: tx, hub: harness.hub },
+          execution: {
+            createdAt: recentUpdatedAt,
+            hostId: host.id,
+            id: "rpc-in-flight-destroying",
+          },
+          report: {
+            completedAt: Date.now(),
+            executionId: "rpc-in-flight-destroying",
+            ok: true,
+            result: {},
+            type: "environment.destroy",
+          },
+        });
+      });
+
+      expect(getEnvironment(harness.db, environment.id)?.status).toBe(
+        "destroyed",
+      );
+    });
+  });
+
+  it("accepts a matching late success after stale startup recovery marks the destroy lost", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const workspacePath = "/tmp/stale-destroy-late-success";
+      const staleUpdatedAt = Date.now() - LIVE_DAEMON_COMMAND_TIMEOUT_MS - 1;
+      const environment = createEnvironment(harness.db, harness.hub, {
+        hostId: host.id,
+        isGitRepo: false,
+        managed: true,
+        path: workspacePath,
+        projectId: project.id,
+        status: "destroying",
+        workspaceProvisionType: "managed-worktree",
+      });
+      harness.db
+        .update(environments)
+        .set({
+          destroyAttemptId: "rpc-late-success",
+          updatedAt: staleUpdatedAt,
+        })
+        .where(eq(environments.id, environment.id))
+        .run();
+
+      await runStartupRecoverySweep(harness.deps);
+      expect(getEnvironment(harness.db, environment.id)).toMatchObject({
+        destroyAttemptId: "rpc-late-success",
+        status: "error",
+      });
+
+      harness.db.transaction((tx) => {
+        settleEnvironmentDestroyCommandResult({
+          command: {
+            type: "environment.destroy",
+            environmentId: environment.id,
+            workspaceContext: {
+              workspacePath,
+              workspaceProvisionType: "managed-worktree",
+            },
+          },
+          deps: { ...harness.deps, db: tx, hub: harness.hub },
+          execution: {
+            createdAt: staleUpdatedAt,
+            hostId: host.id,
+            id: "rpc-late-success",
+          },
+          report: {
+            completedAt: Date.now(),
+            executionId: "rpc-late-success",
+            ok: true,
+            result: {},
+            type: "environment.destroy",
+          },
+        });
+      });
+
+      expect(getEnvironment(harness.db, environment.id)).toMatchObject({
+        destroyAttemptId: null,
+        status: "destroyed",
+      });
     });
   });
 
@@ -72,7 +168,8 @@ describe("managed environment cleanup recovery sweep", () => {
         hostId: host.id,
       });
       const workspacePath = "/tmp/stale-failure-after-retry";
-      const oldExecutionCreatedAt = Date.now() - 10_000;
+      const oldExecutionCreatedAt =
+        Date.now() - LIVE_DAEMON_COMMAND_TIMEOUT_MS - 1;
       const environment = createEnvironment(harness.db, harness.hub, {
         hostId: host.id,
         isGitRepo: false,
@@ -295,7 +392,7 @@ describe("managed environment cleanup recovery sweep", () => {
         status: "destroying",
         workspaceProvisionType: "managed-worktree",
       });
-      const staleUpdatedAt = Date.now() - 1;
+      const staleUpdatedAt = Date.now() - LIVE_DAEMON_COMMAND_TIMEOUT_MS - 1;
       harness.db
         .update(environments)
         .set({
@@ -511,7 +608,10 @@ describe("managed environment cleanup recovery sweep", () => {
       // is not throttled, only the orphaned-destroy recovery is.
       harness.db
         .update(environments)
-        .set({ updatedAt: Date.now() - MANAGED_ENVIRONMENT_RETIRE_GRACE_MS - 1 })
+        .set({
+          retireRequestedAt:
+            Date.now() - MANAGED_ENVIRONMENT_RETIRE_GRACE_MS - 1,
+        })
         .where(eq(environments.id, environment.id))
         .run();
       await runManagedEnvironmentArchiveCleanupRecoverySweep(

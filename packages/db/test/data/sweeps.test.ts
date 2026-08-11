@@ -763,4 +763,52 @@ describe("pruneDestroyedEnvironments", () => {
     ).toBe("destroying");
     expect(spy.notifyEnvironment).not.toHaveBeenCalled();
   });
+
+  it("retains stale destroyed environment handoff metadata until its threads are deleted", () => {
+    const { db, host, project } = setup();
+    const now = Date.now();
+    const environment = createEnvironment(db, noopNotifier, {
+      projectId: project.id,
+      hostId: host.id,
+      path: "/tmp/referenced-destroyed",
+      branchName: "bb/recoverable-branch",
+      managed: true,
+      workspaceProvisionType: "managed-worktree",
+      status: "destroyed",
+    });
+    const thread = createThread(db, noopNotifier, {
+      projectId: project.id,
+      environmentId: environment.id,
+      providerId: "codex",
+    });
+    archiveThread(db, noopNotifier, thread.id);
+    db.update(environments)
+      .set({ updatedAt: now - 8 * 24 * 60 * 60_000 })
+      .where(eq(environments.id, environment.id))
+      .run();
+
+    expect(pruneDestroyedEnvironments(db, noopNotifier, now)).toEqual({
+      deleted: 0,
+    });
+    expect(
+      db
+        .select({ id: environments.id })
+        .from(environments)
+        .where(eq(environments.id, environment.id))
+        .get(),
+    ).toEqual({ id: environment.id });
+
+    markThreadDeleted(db, noopNotifier, { threadId: thread.id });
+
+    expect(pruneDestroyedEnvironments(db, noopNotifier, now)).toEqual({
+      deleted: 1,
+    });
+    expect(
+      db
+        .select({ id: environments.id })
+        .from(environments)
+        .where(eq(environments.id, environment.id))
+        .get(),
+    ).toBeUndefined();
+  });
 });
