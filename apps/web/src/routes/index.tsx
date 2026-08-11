@@ -48,7 +48,13 @@ import {
   PiIcon,
 } from "../landing/icons";
 import type { CtaPlacement } from "../landing/site";
-import { CLI_COMMAND, SITE_DESCRIPTION, SITE_TITLE } from "../landing/site";
+import {
+  CLI_COMMAND,
+  OG_DESCRIPTION,
+  SITE_DESCRIPTION,
+  SITE_TITLE,
+  unfurlMeta,
+} from "../landing/site";
 import interWoff2 from "@fontsource-variable/inter/files/inter-latin-wght-normal.woff2?url";
 import landingCss from "../landing/landing.css?url";
 
@@ -69,9 +75,9 @@ export const Route = createFileRoute("/")({
     meta: [
       { title: SITE_TITLE },
       { name: "description", content: SITE_DESCRIPTION },
-      { property: "og:title", content: SITE_TITLE },
-      { property: "og:description", content: SITE_DESCRIPTION },
-      { property: "og:type", content: "website" },
+      // Unfurl title is just "bb": the card image already carries the
+      // tagline, and platforms print the title right next to the image.
+      ...unfurlMeta("bb", OG_DESCRIPTION, "/"),
       { name: "theme-color", content: "#ffffff" },
     ],
     links: [
