@@ -307,6 +307,13 @@ environment pull-request show <id>`. Diff commands require an explicit target
   reasoning. Optional `nativeSkillRoots.user` paths resolve from the target
   host home directory. Optional `nativeSkillRoots.project` paths resolve from
   the selected workspace. The composer lists skills from these roots.
+- Top-level `customModels` in the same `config.json` registers extra picker
+  models. `providerId` accepts a built-in provider id or any `acp-*` provider
+  id (for example `acp-opencode`). Use it for a model the provider catalog
+  does not advertise; ACP-advertised models (including OpenCode custom models)
+  are discovered automatically. An OpenCode agent is a session mode, not a
+  model, and cannot be selected through bb. This list also has no set/unset
+  CLI surface; edit the JSON and run `bb-app config refresh` or restart bb.
 - Top-level `sharedSkillRoots` uses the same relative `user` and `project`
   paths. bb lists these skills as read-only. bb injects them into each provider,
   so one physical skill collection can support bb and standalone provider CLIs.

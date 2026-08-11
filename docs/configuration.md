@@ -370,6 +370,43 @@ can write `~/.bb/config.json` can cause bb to run that command as the local user
 when the provider is used. Treat `config.json` write access as the trust
 boundary.
 
+## Custom Models
+
+Register extra picker models by editing top-level `customModels` in
+`~/.bb/config.json`. Use this for a model the provider catalog does not
+advertise, such as a non-public preview id or an ACP agent model that the
+agent does not list. Like `customAcpAgents`, this list has no set/unset CLI
+surface: edit the JSON, then run `npx bb-app config refresh` or restart bb.
+`bb-app config list` prints the entries.
+
+```json
+{
+  "customModels": [
+    { "providerId": "claude-code", "model": "claude-example-preview" },
+    {
+      "providerId": "acp-opencode",
+      "model": "my-proxy/my-model",
+      "displayName": "My Proxy Model"
+    }
+  ]
+}
+```
+
+`providerId` accepts a built-in provider id (`codex`, `claude-code`, `pi`,
+`acp-cursor`) or any `acp-*` provider id: a known ACP agent such as
+`acp-opencode`, or a custom ACP agent's derived `acp-<id>`. `displayName` is
+optional; bb derives the label from the model id when it is omitted. bb skips
+an invalid entry with a warning and keeps the rest of the config.
+
+Each entry appears in `bb provider models <providerId>` and in the model
+picker after the provider's own catalog. The provider catalog wins on a model
+id collision. For ACP agents such as OpenCode, models the agent already
+advertises need no entry: bb discovers them over the protocol.
+
+An OpenCode "agent" (build, plan, or a custom primary agent) is a session
+mode, not a model, so it does not belong in `customModels`. bb does not select
+OpenCode agents; set the default agent in the OpenCode config instead.
+
 ## Agent Instructions
 
 bb can inject user-level and workspace-level agent instructions into every

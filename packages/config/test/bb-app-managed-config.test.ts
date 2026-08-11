@@ -37,6 +37,59 @@ describe("bbAppManagedConfigSchema", () => {
     expect(parsed.customModels?.[1]?.displayName).toBeUndefined();
   });
 
+  it("parses custom models with dynamic ACP provider ids", () => {
+    const parsed = bbAppManagedConfigSchema.parse({
+      customModels: [
+        {
+          providerId: "acp-opencode",
+          model: "my-proxy/custom-model",
+          displayName: "My Proxy Custom Model",
+        },
+        { providerId: "acp-my-agent", model: "provider/model" },
+      ],
+    });
+
+    expect(parsed.customModels).toHaveLength(2);
+    expect(parsed.customModels?.[0]?.providerId).toBe("acp-opencode");
+    expect(parsed.customModels?.[1]?.providerId).toBe("acp-my-agent");
+  });
+
+  it("rejects malformed acp-* custom model provider ids", () => {
+    for (const providerId of ["acp-", "acp-Bad-Agent", "acp--x"]) {
+      expect(
+        bbAppManagedConfigSchema.safeParse({
+          customModels: [{ providerId, model: "provider/model" }],
+        }).success,
+      ).toBe(false);
+    }
+  });
+
+  it("drops invalid custom model entries with warnings at the config boundary", () => {
+    const warnings: Record<string, unknown>[] = [];
+    const parsed = parseBbAppManagedConfig(
+      {
+        customModels: [
+          { providerId: "acp-opencode", model: "my-proxy/custom-model" },
+          { providerId: "not-a-provider", model: "other-model" },
+          { providerId: "claude-code", model: "" },
+        ],
+      },
+      {
+        logger: {
+          warn(fields): void {
+            warnings.push(fields);
+          },
+        },
+      },
+    );
+
+    expect(parsed.customModels).toEqual([
+      { providerId: "acp-opencode", model: "my-proxy/custom-model" },
+    ]);
+    expect(warnings).toHaveLength(2);
+    expect(warnings.map((warning) => warning.index)).toEqual([1, 2]);
+  });
+
   it("rejects custom models with an unknown provider", () => {
     const result = bbAppManagedConfigSchema.safeParse({
       customModels: [

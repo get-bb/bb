@@ -85,6 +85,28 @@ Enabled provider plugins also contribute skills to the selected provider's `/`
 command menu. `bb skill list` shows native skills for Claude Code, Codex, and
 Cursor.
 
+ACP providers discover models from the agent itself. For acp-opencode, the
+list mirrors the OpenCode catalog, so a custom model from the OpenCode config
+appears automatically. Discover and select one with:
+
+  bb provider models acp-opencode --environment "$BB_ENVIRONMENT_ID"
+  bb thread spawn --provider acp-opencode --model <provider/model>
+
+bb applies the selected model to the ACP session before the first prompt.
+
+An OpenCode model and an OpenCode agent are different selections. An OpenCode
+agent (build, plan, or a custom primary agent such as an orchestrator) is a
+session mode, not a model. bb does not select OpenCode agents; configure the
+default agent in the OpenCode config and the ACP session uses it.
+
+If an ACP agent does not advertise a model, pin it with top-level customModels
+in the app data-dir config.json. Each entry has a providerId (a built-in
+provider id or any acp-* provider id, such as acp-opencode), a model id, and
+an optional displayName. bb skips an invalid entry with a warning. The entry
+then appears in bb provider models output and in the model picker. Like
+customAcpAgents, edit the JSON and run bb-app config refresh; there is no
+set/unset CLI surface.
+
 Custom ACP agents are configured in the app data-dir config.json under
 customAcpAgents. bb derives provider id acp-<id> from each slug id. Edit the JSON
 and run bb-app config refresh; there is no set/unset CLI surface for this list.
