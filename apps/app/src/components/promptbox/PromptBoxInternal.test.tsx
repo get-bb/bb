@@ -935,6 +935,23 @@ describe("PromptBoxInternal controlled value sync", () => {
     }
   });
 
+  it("releases passive editor focus when autofocus becomes blocked", async () => {
+    const restoreMatchMedia = mockPointerCoarse(false);
+    try {
+      const baseProps = createPromptBoxProps();
+      const view = render(<PromptBoxInternal {...baseProps} />);
+
+      await waitForPromptFocus();
+      view.rerender(<PromptBoxInternal {...baseProps} autoFocus={false} />);
+
+      await waitFor(() =>
+        expect(document.activeElement).not.toBe(getPromptEditorElement()),
+      );
+    } finally {
+      restoreMatchMedia();
+    }
+  });
+
   it("does not honor focus-end requests on coarse pointers", async () => {
     const restoreMatchMedia = mockPointerCoarse(true);
     try {

@@ -340,6 +340,11 @@ export interface PromptBoxInternalProps {
   onChange: (value: string, mentionRanges: PromptTextMention[]) => void;
   onSubmit: () => void;
   placeholder?: string;
+  /**
+   * Whether the editor should take passive focus when it mounts or its history
+   * scope changes. Explicit clicks and focus commands remain available.
+   */
+  autoFocus?: boolean;
   className?: string;
   /** Plugin-owned whole-draft paint sources, in deterministic composition order. */
   textEffects?: readonly ComposerTextEffectSource[];
@@ -1090,6 +1095,7 @@ export function PromptBoxInternal({
   onChange,
   onSubmit,
   placeholder = "Ask anything. @ to mention files, folders, or sections",
+  autoFocus = true,
   className,
   textEffects,
   onComposerLayoutChange,
@@ -1731,8 +1737,14 @@ export function PromptBoxInternal({
   }, [editor, editorEnterKeyHint, effectivePlaceholder]);
 
   useEffect(() => {
-    if (shouldAvoidSoftKeyboardAutofocus) return;
     if (!editor) return;
+    if (!autoFocus) {
+      if (editor.view.dom.contains(document.activeElement)) {
+        blurPromptEditor(editor);
+      }
+      return;
+    }
+    if (shouldAvoidSoftKeyboardAutofocus) return;
 
     const focusEditor = () => {
       if (editor.isDestroyed) return;
@@ -1748,6 +1760,7 @@ export function PromptBoxInternal({
     const handle = window.requestAnimationFrame(focusEditor);
     return () => window.cancelAnimationFrame(handle);
   }, [
+    autoFocus,
     editor,
     focusScopeKey,
     scheduleRevealEditorSelection,

@@ -29,12 +29,11 @@ import {
   NewThreadPromptBox,
   type NewThreadProjectConfig,
 } from "@/components/promptbox/NewThreadPromptBox";
-import { PromptStackCard } from "@/components/promptbox/banner/PromptStackCard";
+import { CodexCliVersionBanner } from "@/components/promptbox/banner/CodexCliVersionBanner";
 import {
   buildProviderCliIssue,
   hasProviderCliAction,
   useProviderCliInstallRunner,
-  type ProviderCliActionableIssue,
 } from "@/components/provider-cli/provider-cli-install";
 import { providerCliJobKey } from "@/components/provider-cli/provider-cli-install-store";
 import { withAutomationPromptAction } from "@/components/promptbox/PromptBoxActionsMenu";
@@ -726,56 +725,6 @@ export function LegacyProjectComposeRedirect({
         Loading…
       </p>
     </PageShell>
-  );
-}
-
-interface CodexCliVersionBannerProps {
-  currentVersion: string | null;
-  minimumSupportedVersion: string | null;
-  issue: ProviderCliActionableIssue | null;
-  updating: boolean;
-  onUpdate: () => void;
-}
-
-function CodexCliVersionBanner({
-  currentVersion,
-  minimumSupportedVersion,
-  issue,
-  updating,
-  onUpdate,
-}: CodexCliVersionBannerProps) {
-  const minimumVersion = minimumSupportedVersion ?? "a newer version";
-  const versionCopy = currentVersion
-    ? `Installed ${currentVersion}; required ${minimumVersion} or newer.`
-    : `Required ${minimumVersion} or newer.`;
-  return (
-    <PromptStackCard
-      ariaLabel="Codex update needed"
-      className="overflow-hidden"
-    >
-      <div className="flex min-h-8 max-w-full items-center gap-2 px-2.5 py-1 text-xs text-muted-foreground">
-        <Icon
-          name="Info"
-          className="size-3.5 shrink-0 text-subtle-foreground"
-          aria-hidden
-        />
-        <span className="min-w-0 flex-1 truncate">
-          Update Codex to start this thread. {versionCopy}
-        </span>
-        {issue ? (
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            className="h-6 shrink-0 px-2 text-xs"
-            disabled={updating}
-            onClick={onUpdate}
-          >
-            {updating ? "Updating" : issue.action.label}
-          </Button>
-        ) : null}
-      </div>
-    </PromptStackCard>
   );
 }
 
@@ -3229,12 +3178,13 @@ export function RootComposeView() {
   // Focus the composer once it mounts in place of the welcome screen.
   useEffect(() => {
     if (!startedComposing) return;
+    if (isCodexCliVersionBlocked) return;
     if (isPointerCoarse) return;
     const handle = window.requestAnimationFrame(() => {
       promptBoxRef.current?.focusEnd();
     });
     return () => window.cancelAnimationFrame(handle);
-  }, [isPointerCoarse, startedComposing]);
+  }, [isCodexCliVersionBlocked, isPointerCoarse, startedComposing]);
   const [machineSetupTarget, setMachineSetupTarget] =
     useState<ProjectMachineSetupDialogTarget | null>(null);
   const currentProjectName = currentProject?.name ?? null;
@@ -3427,7 +3377,7 @@ export function RootComposeView() {
       <CodexCliVersionBanner
         currentVersion={codexCliStatus.currentVersion}
         minimumSupportedVersion={codexCliStatus.minimumSupportedVersion}
-        issue={codexCliIssue}
+        canUpdate={codexCliIssue !== null}
         updating={
           composeHostId !== null &&
           (runningJobKey === providerCliJobKey(composeHostId, "codex") ||
@@ -3487,6 +3437,7 @@ export function RootComposeView() {
       textEffects={promptTextEffects}
       isSubmitting={createThread.isPending}
       disabled={isSubmitDisabled}
+      autoFocus={!isCodexCliVersionBlocked}
       zenModeStorageKey={rootComposeZenModeStorageKey}
       history={historyConfig}
       typeahead={typeaheadConfig}
