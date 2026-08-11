@@ -785,6 +785,7 @@ const SidebarMobilePanel = React.forwardRef<
     ref,
   ) => {
     const panelRef = React.useRef<HTMLDivElement | null>(null);
+    const backdropRef = React.useRef<HTMLDivElement | null>(null);
     const setPanelRef = React.useCallback(
       (node: HTMLDivElement | null) => {
         panelRef.current = node;
@@ -839,20 +840,33 @@ const SidebarMobilePanel = React.forwardRef<
       };
       window.addEventListener("keydown", handleKeyDown);
 
-      // The drawer is modal: take the main content out of focus order and
-      // hit-testing while it is open. Portalled popovers (row context menus)
-      // render under document.body, so they stay interactive.
-      const inset = document.querySelector('[data-sidebar="inset"]');
-      const insetElement = inset instanceof HTMLElement ? inset : null;
-      const insetWasInert = insetElement?.inert ?? false;
-      if (insetElement) {
-        insetElement.inert = true;
+      // The drawer is modal: while it is open, every sibling of the panel
+      // (the inset, the pinned trigger overlay, and any other app chrome at
+      // that level) leaves focus order and hit-testing, so Tab cannot escape
+      // the drawer. Portalled popovers (row context menus) render under
+      // document.body, so they stay interactive. Attribute writes rather
+      // than the `inert` property, so the state is observable in tests.
+      const container = panelRef.current?.parentElement ?? null;
+      const inertedSiblings: HTMLElement[] = [];
+      if (container) {
+        for (const sibling of container.children) {
+          if (
+            sibling === panelRef.current ||
+            sibling === backdropRef.current ||
+            !(sibling instanceof HTMLElement) ||
+            sibling.hasAttribute("inert")
+          ) {
+            continue;
+          }
+          sibling.setAttribute("inert", "");
+          inertedSiblings.push(sibling);
+        }
       }
 
       return () => {
         window.removeEventListener("keydown", handleKeyDown);
-        if (insetElement && !insetWasInert) {
-          insetElement.inert = false;
+        for (const sibling of inertedSiblings) {
+          sibling.removeAttribute("inert");
         }
         const active = document.activeElement;
         if (active instanceof HTMLElement && panelRef.current?.contains(active)) {
@@ -1177,6 +1191,7 @@ const SidebarMobilePanel = React.forwardRef<
     return (
       <>
         <div
+          ref={backdropRef}
           data-sidebar-mobile-backdrop=""
           data-testid="sidebar-mobile-backdrop"
           data-state={open ? "open" : "closed"}

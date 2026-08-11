@@ -733,3 +733,71 @@ export function projectThreadItemContainsThread(
       );
   }
 }
+
+export interface ProjectThreadItemNavigationEntry {
+  threadId: string;
+  projectId: string;
+}
+
+function collectThreadNodeNavigationEntries(
+  node: ProjectThreadNode,
+  context: ProjectThreadItemRowCountContext,
+  entries: ProjectThreadItemNavigationEntry[],
+): void {
+  entries.push({
+    threadId: node.thread.id,
+    projectId: node.thread.projectId,
+  });
+  if (
+    node.children.length === 0 ||
+    context.collapsedThreadIds.has(node.thread.id)
+  ) {
+    return;
+  }
+  for (const child of node.children) {
+    collectProjectThreadItemNavigationEntriesInto(child, context, entries);
+  }
+}
+
+function collectProjectThreadItemNavigationEntriesInto(
+  item: ProjectThreadItem,
+  context: ProjectThreadItemRowCountContext,
+  entries: ProjectThreadItemNavigationEntry[],
+): void {
+  switch (item.kind) {
+    case "thread":
+      collectThreadNodeNavigationEntries(item.node, context, entries);
+      return;
+    case "environment":
+      if (context.collapsedEnvironmentIds.has(item.group.environmentId)) {
+        return;
+      }
+      for (const node of item.group.nodes) {
+        collectThreadNodeNavigationEntries(node, context, entries);
+      }
+      return;
+    case "section":
+      if (context.collapsedSectionKeys.has(item.group.key)) {
+        return;
+      }
+      for (const child of item.group.items) {
+        collectProjectThreadItemNavigationEntriesInto(child, context, entries);
+      }
+      return;
+  }
+}
+
+/**
+ * The threads an item's subtree renders, in visual order, respecting the
+ * current collapse state. Mirrors which rows would emit
+ * `data-sidebar-thread-shortcut-target` anchors when mounted, so a
+ * windowed-out placeholder can stand in for them during keyboard navigation.
+ */
+export function collectProjectThreadItemNavigationEntries(
+  item: ProjectThreadItem,
+  context: ProjectThreadItemRowCountContext,
+): ProjectThreadItemNavigationEntry[] {
+  const entries: ProjectThreadItemNavigationEntry[] = [];
+  collectProjectThreadItemNavigationEntriesInto(item, context, entries);
+  return entries;
+}

@@ -179,18 +179,36 @@ describe("mobile sidebar persistence", () => {
     expect(closedPanel?.dataset.state).toBe("closed");
     expect(closedPanel?.hasAttribute("inert")).toBe(true);
 
+    const inset = document.querySelector('[data-sidebar="inset"]');
+    expect(inset?.hasAttribute("inert")).toBe(false);
+
     fireEvent.click(screen.getByRole("button", { name: "Toggle Sidebar" }));
 
     const openPanel = getMobilePanel();
     expect(openPanel?.dataset.state).toBe("open");
     expect(openPanel?.hasAttribute("inert")).toBe(false);
 
-    fireEvent.click(screen.getByTestId("sidebar-mobile-backdrop"));
+    // The open drawer is modal: every sibling of the panel goes inert so
+    // Tab cannot reach outside controls, while the backdrop stays live for
+    // dismissal.
+    const panelParent = openPanel?.parentElement;
+    const backdrop = screen.getByTestId("sidebar-mobile-backdrop");
+    for (const sibling of panelParent?.children ?? []) {
+      if (sibling === openPanel || sibling === backdrop) {
+        expect(sibling.hasAttribute("inert")).toBe(false);
+      } else {
+        expect(sibling.hasAttribute("inert")).toBe(true);
+      }
+    }
+    expect(inset?.hasAttribute("inert")).toBe(true);
+
+    fireEvent.click(backdrop);
 
     const reclosedPanel = getMobilePanel();
     expect(reclosedPanel?.dataset.state).toBe("closed");
     expect(reclosedPanel?.hasAttribute("inert")).toBe(true);
     expect(reclosedPanel?.textContent).toContain("Sidebar content");
+    expect(inset?.hasAttribute("inert")).toBe(false);
   });
 });
 

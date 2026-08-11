@@ -179,7 +179,7 @@ export function AppSidebar({
     const target =
       targets[index] ??
       getSidebarThreadShortcutTargets(sidebarRef.current)[index];
-    if (!target) return false;
+    if (!target?.element) return false;
     target.element.click();
     return true;
   }, []);
@@ -197,10 +197,25 @@ export function AppSidebar({
             ? 0
             : targets.length - 1
           : (activeIndex + offset + targets.length) % targets.length;
-      targets[nextIndex]?.element.click();
+      const target = targets[nextIndex];
+      if (!target) return false;
+      if (target.element) {
+        target.element.click();
+        return true;
+      }
+      // The neighbor sits inside a windowed-out placeholder: there is no row
+      // to click, so navigate by id, matching what the row's link would do.
+      if (!target.projectId) return false;
+      closeOnMobile();
+      void navigate(
+        getThreadRoutePath({
+          projectId: target.projectId,
+          threadId: target.threadId,
+        }),
+      );
       return true;
     },
-    [activeThreadId],
+    [activeThreadId, closeOnMobile, navigate],
   );
 
   useAppCommandHandler("thread.search", () => {
