@@ -776,19 +776,28 @@ describe("generated managed branch names", () => {
     });
   });
 
-  it("renames an idle non-managed thread when its generated title lands late", async () => {
+  it("uses the fallback model and renames an idle non-managed thread", async () => {
     let resolveMetadata: (metadata: MockThreadMetadata) => void = () => {
       throw new Error("Metadata inference was not started");
     };
     piAiMocks.getModel.mockReturnValue({ provider: "test" });
-    piAiMocks.complete.mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          resolveMetadata = (metadata) => {
-            resolve(mockThreadMetadataCompletion(metadata));
-          };
-        }),
-    );
+    piAiMocks.complete
+      .mockRejectedValueOnce(
+        new ApiError(
+          502,
+          "codex_service_unavailable",
+          "Our servers are currently overloaded. Please try again later.",
+          false,
+        ),
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveMetadata = (metadata) => {
+              resolve(mockThreadMetadataCompletion(metadata));
+            };
+          }),
+      );
 
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {
@@ -884,7 +893,11 @@ describe("generated managed branch names", () => {
       expect(eventsResponse.status).toBe(200);
       expect(getThread(harness.db, thread.id)?.status).toBe("idle");
 
-      // The generated title lands only now, while the thread is idle.
+      await vi.waitFor(() => {
+        expect(piAiMocks.complete).toHaveBeenCalledTimes(2);
+      });
+
+      // The fallback title lands only now, while the thread is idle.
       resolveMetadata({ title: "Late Idle Title" });
 
       const rename = await waitForQueuedCommandAfter(
@@ -899,6 +912,16 @@ describe("generated managed branch names", () => {
         title: "Late Idle Title",
       });
       expect(getThread(harness.db, thread.id)?.title).toBe("Late Idle Title");
+      expect(piAiMocks.getModel).toHaveBeenNthCalledWith(
+        1,
+        "test",
+        "mock-model",
+      );
+      expect(piAiMocks.getModel).toHaveBeenNthCalledWith(
+        2,
+        "test",
+        "mock-fallback-model",
+      );
     });
   });
 

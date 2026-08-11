@@ -10,11 +10,12 @@ import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
 
 type ThreadMetadataInferenceDeps = LoggedWorkSessionDeps;
 
-// Luna commonly needs more than 2.5s for structured output. Two 5s attempts
-// let the first ordinary completion finish and still recover a transient
-// timeout or service-unavailable response.
-export const MANAGED_THREAD_METADATA_TIMEOUT_MS = 5_000;
-export const MANAGED_THREAD_METADATA_TIMEOUT_MAX_ATTEMPTS = 2;
+// Luna commonly needs more than 2.5s for structured output. Every thread title
+// gets one primary attempt and one fallback attempt after a transient failure.
+// Non-managed title generation remains asynchronous, so this retry budget does
+// not delay thread startup.
+const THREAD_METADATA_TIMEOUT_MS = 5_000;
+const THREAD_METADATA_TIMEOUT_MAX_ATTEMPTS = 2;
 
 export interface ThreadMetadataInferenceArgs {
   environmentId: string | null;
@@ -22,8 +23,6 @@ export interface ThreadMetadataInferenceArgs {
   generateTitle: boolean;
   input: PromptInput[];
   provisioningId: string | null;
-  timeoutMaxAttempts?: number;
-  timeoutMs?: number;
   threadId: string;
   writeTranscript: boolean;
 }
@@ -140,10 +139,8 @@ export async function inferThreadMetadata(
   const outcome = await generateThreadMetadataWithOutcome(deps, {
     input: args.input,
     threadId: args.threadId,
-    ...(args.timeoutMaxAttempts !== undefined
-      ? { timeoutMaxAttempts: args.timeoutMaxAttempts }
-      : {}),
-    ...(args.timeoutMs ? { timeoutMs: args.timeoutMs } : {}),
+    timeoutMaxAttempts: THREAD_METADATA_TIMEOUT_MAX_ATTEMPTS,
+    timeoutMs: THREAD_METADATA_TIMEOUT_MS,
   });
 
   if (transcriptEnvironmentId && provisioningId) {
