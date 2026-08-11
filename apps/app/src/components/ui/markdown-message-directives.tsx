@@ -21,17 +21,18 @@ import type { PluginMessageDirectiveSlot } from "@/lib/plugin-slots.js";
  * pipeline (via {@link MarkdownMessageDirectives}); user messages and generic
  * Markdown previews leave directives as ordinary text.
  *
- * Recognized mounts use an indexed custom HAST element (same pattern as prompt
- * mentions) so attributes stay in a host-owned table rather than DOM attrs.
+ * Recognized mounts use a custom HAST element with serialized directive data.
+ * The React component resolves the live plugin registry after parsing, so a
+ * cached unified processor never captures plugin components or message state.
  */
 
 /** Max plugin directive components mounted per message body. */
 export const MESSAGE_DIRECTIVE_MOUNT_LIMIT = 32;
 
 const MESSAGE_DIRECTIVE_HAST_NAME = "bb-message-directive";
-// hast property key — `mdast-util-to-hast` lowercases it into
-// `data-directive-index` for the component to read back.
-const MESSAGE_DIRECTIVE_INDEX_PROPERTY = "dataDirectiveIndex";
+const MESSAGE_DIRECTIVE_ATTRIBUTES_PROPERTY = "dataDirectiveAttributes";
+const MESSAGE_DIRECTIVE_NAME_PROPERTY = "dataDirectiveName";
+const MESSAGE_DIRECTIVE_SOURCE_PROPERTY = "dataDirectiveSource";
 
 export type MessageDirectiveRegistryEntry =
   | { status: "ok"; slot: PluginMessageDirectiveSlot }
@@ -42,13 +43,6 @@ export type MessageDirectiveRegistry = ReadonlyMap<
   string,
   MessageDirectiveRegistryEntry
 >;
-
-export interface MountedMessageDirective {
-  attributes: Readonly<Record<string, string>>;
-  index: number;
-  slot: PluginMessageDirectiveSlot;
-  source: string;
-}
 
 export interface MarkdownMessageDirectives {
   /** Pre-built registry from the timeline-level plugin-slot subscription. */
@@ -63,18 +57,6 @@ export type MarkdownMessageDirectiveOpenThreadPanel = (
     pluginId: string;
   },
 ) => boolean;
-
-/**
- * Resolved form held during a single MarkdownPreview render: registry + message
- * identity + the index-aligned mount table filled by the remark transform.
- */
-export interface ResolvedMessageDirectives {
-  mounts: MountedMessageDirective[];
-  message: PluginMessageDirectiveProps["message"];
-  openWorkspaceFile: PluginMessageDirectiveProps["openWorkspaceFile"];
-  openThreadPanel: MarkdownMessageDirectiveOpenThreadPanel | null;
-  registry: MessageDirectiveRegistry;
-}
 
 /**
  * `remark-directive` emits three node kinds from a single `:` grammar. Only the
@@ -109,7 +91,9 @@ interface RemarkMessageDirectiveFile {
 }
 
 interface MessageDirectiveElementProps {
-  "data-directive-index"?: string;
+  "data-directive-attributes"?: string;
+  "data-directive-name"?: string;
+  "data-directive-source"?: string;
 }
 
 declare module "react" {
@@ -227,15 +211,25 @@ function directiveSourceFromNode(
   return reconstructDirectiveSource(name, attributes, marker);
 }
 
-function messageDirectiveMountNode(index: number): RootContent {
-  // Block-level stand-in: empty paragraph rewritten to the custom element via
-  // `data.hName`, matching the prompt-mention indexed-sentinel pattern.
+function messageDirectiveMountNode({
+  attributes,
+  name,
+  source,
+}: {
+  attributes: Readonly<Record<string, string>>;
+  name: string;
+  source: string;
+}): RootContent {
   return {
     type: "paragraph",
     children: [],
     data: {
       hName: MESSAGE_DIRECTIVE_HAST_NAME,
-      hProperties: { [MESSAGE_DIRECTIVE_INDEX_PROPERTY]: index },
+      hProperties: {
+        [MESSAGE_DIRECTIVE_ATTRIBUTES_PROPERTY]: JSON.stringify(attributes),
+        [MESSAGE_DIRECTIVE_NAME_PROPERTY]: name,
+        [MESSAGE_DIRECTIVE_SOURCE_PROPERTY]: source,
+      },
     },
   };
 }
@@ -303,7 +297,7 @@ function asDirectiveNode(node: unknown): DirectiveNode | null {
 }
 
 /**
- * Remark transformer: rewrite recognized leaf directives (`::name`) into indexed
+ * Remark transformer: rewrite recognized leaf directives (`::name`) into
  * custom elements; leave unknown / collision / over-limit leaf directives as
  * literal source text. Text directives (`:name`) never mount and are always
  * rewritten to their literal source, so incidental prose colons (`13:30`,
@@ -311,20 +305,17 @@ function asDirectiveNode(node: unknown): DirectiveNode | null {
  * `mdast-util-to-hast`'s empty-`<div>` fallback. Container directives are not
  * touched. Must run after `remark-directive` has produced the directive nodes.
  *
- * Mutates `mounts` in document order so indices stay stable when later text
- * streams in after an already-complete directive.
+ * The options contain only directive names, so Streamdown can safely share a
+ * cached unified processor between messages with the same parser behavior.
  */
 export function remarkMessageDirectives(args: {
-  mounts: MountedMessageDirective[];
-  registry: MessageDirectiveRegistry;
+  directiveNames: readonly string[];
 }) {
-  const { mounts, registry } = args;
+  const directiveNames = new Set(args.directiveNames);
   return (tree: Nodes, file: RemarkMessageDirectiveFile): void => {
     const markdownSource =
       typeof file.value === "string" ? file.value : String(file.value ?? "");
-    // Each parse owns the mount table: clear so a re-transform with the same
-    // array reference does not accumulate duplicate indices.
-    mounts.length = 0;
+    let mountCount = 0;
     visit(tree, (node, index, parent: Parent | undefined) => {
       const directive = asDirectiveNode(node);
       if (directive === null || parent === undefined || index === undefined) {
@@ -356,57 +347,86 @@ export function remarkMessageDirectives(args: {
         return spliceLiteralDirective(parent, index, directive.type, source);
       }
 
-      const entry = registry.get(name);
-      if (entry === undefined || entry.status === "collision") {
+      if (!directiveNames.has(name)) {
         return spliceLiteralDirective(parent, index, directive.type, source);
       }
 
-      if (mounts.length >= MESSAGE_DIRECTIVE_MOUNT_LIMIT) {
+      if (mountCount >= MESSAGE_DIRECTIVE_MOUNT_LIMIT) {
         return spliceLiteralDirective(parent, index, directive.type, source);
       }
 
-      const mountIndex = mounts.length;
-      mounts.push({
-        attributes,
-        index: mountIndex,
-        slot: entry.slot,
-        source,
-      });
-      parent.children.splice(index, 1, messageDirectiveMountNode(mountIndex));
+      mountCount += 1;
+      parent.children.splice(
+        index,
+        1,
+        messageDirectiveMountNode({ attributes, name, source }),
+      );
       return index;
     });
   };
 }
 
 interface BuildMessageDirectiveComponentArgs {
-  mounts: readonly MountedMessageDirective[];
   message: PluginMessageDirectiveProps["message"];
   openWorkspaceFile: PluginMessageDirectiveProps["openWorkspaceFile"];
   openThreadPanel: MarkdownMessageDirectiveOpenThreadPanel | null;
+  registry: MessageDirectiveRegistry;
+}
+
+function parseSerializedDirectiveAttributes(
+  serialized: string,
+): Record<string, string> | null {
+  try {
+    const parsed: unknown = JSON.parse(serialized);
+    if (
+      typeof parsed !== "object" ||
+      parsed === null ||
+      Array.isArray(parsed)
+    ) {
+      return null;
+    }
+    const attributes: Record<string, string> = {};
+    for (const [key, value] of Object.entries(parsed)) {
+      if (typeof value !== "string") {
+        return null;
+      }
+      attributes[key] = value;
+    }
+    return attributes;
+  } catch {
+    return null;
+  }
 }
 
 /**
- * `components` renderer for the custom hast element. Looks the mount up by
- * sentinel index and wraps the plugin component in {@link PluginSlotMount}
- * so plugin context, scoped CSS, and crash isolation apply. Crash fallback is
- * the original directive source (not the generic crash chip).
+ * `components` renderer for the custom hast element. Resolves the live registry
+ * and wraps the plugin component in {@link PluginSlotMount} so plugin context,
+ * scoped CSS, and crash isolation apply. Crash fallback is the original
+ * directive source (not the generic crash chip).
  */
 export function buildMessageDirectiveComponent({
-  mounts,
   message,
   openWorkspaceFile,
   openThreadPanel,
+  registry,
 }: BuildMessageDirectiveComponentArgs): ComponentType<MessageDirectiveElementProps> {
   function MessageDirectiveElement(props: MessageDirectiveElementProps) {
-    const rawIndex = props["data-directive-index"];
-    if (rawIndex === undefined) {
+    const name = props["data-directive-name"];
+    const serializedAttributes = props["data-directive-attributes"];
+    const source = props["data-directive-source"];
+    if (
+      name === undefined ||
+      serializedAttributes === undefined ||
+      source === undefined
+    ) {
       return null;
     }
-    const mount = mounts[Number(rawIndex)];
-    if (mount === undefined) {
-      return null;
+    const entry = registry.get(name);
+    const attributes = parseSerializedDirectiveAttributes(serializedAttributes);
+    if (entry === undefined || entry.status !== "ok" || attributes === null) {
+      return source;
     }
-    const { slot, attributes, source } = mount;
+    const { slot } = entry;
     const Component = slot.component;
     return (
       <PluginSlotMount

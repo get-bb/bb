@@ -5,7 +5,7 @@ import {
 } from "./markdown-code-block";
 
 describe("getMarkdownCodeLanguage", () => {
-  it("reads the language class from a react-markdown code fence", () => {
+  it("reads the language class from a Markdown code fence", () => {
     expect(getMarkdownCodeLanguage({ className: "language-mermaid" })).toBe(
       "mermaid",
     );

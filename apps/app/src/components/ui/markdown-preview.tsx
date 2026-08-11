@@ -10,7 +10,15 @@ import {
   type MouseEvent as ReactMouseEvent,
   type SetStateAction,
 } from "react";
-import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
+import {
+  Streamdown,
+  defaultUrlTransform,
+  type Components,
+  type ExtraProps,
+  type PluginConfig,
+  type StreamdownProps,
+  type UrlTransform,
+} from "streamdown";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -21,12 +29,6 @@ import {
   ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from "@bb/shared-ui/context-menu";
-import type {
-  Components,
-  ExtraProps,
-  Options as ReactMarkdownOptions,
-  UrlTransform,
-} from "react-markdown";
 import rehypeKatex from "rehype-katex";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize from "rehype-sanitize";
@@ -75,7 +77,6 @@ import {
   buildMessageDirectiveComponent,
   remarkMessageDirectives,
   type MarkdownMessageDirectives,
-  type MountedMessageDirective,
 } from "./markdown-message-directives.js";
 import { normalizePromptBlockquoteBoundaries } from "./markdown-prompt-blockquote-boundaries.js";
 import { MarkdownMermaidDiagram } from "./markdown-mermaid-diagram.js";
@@ -152,18 +153,7 @@ interface BuildMarkdownComponentsArgs {
   setExpandedImageUrl: ExpandedImageUrlSetter;
   threadMentions?: MarkdownThreadMentions;
   promptMentions?: ResolvedPromptMentions;
-  messageDirectives?: ResolvedMessageDirectiveRender;
-}
-
-/**
- * Message-directive props after the remark transform has filled the mount table
- * for this render (indices match `data-directive-index` on the custom element).
- */
-interface ResolvedMessageDirectiveRender {
-  mounts: readonly MountedMessageDirective[];
-  message: MarkdownMessageDirectives["message"];
-  openWorkspaceFile: MarkdownMessageDirectives["openWorkspaceFile"];
-  openThreadPanel: MarkdownMessageDirectives["openThreadPanel"];
+  messageDirectives?: MarkdownMessageDirectives;
 }
 
 /**
@@ -272,7 +262,7 @@ type MarkdownTableCellProps = ComponentPropsWithoutRef<"td"> & ExtraProps;
 type MarkdownTableHeadProps = ComponentPropsWithoutRef<"thead"> & ExtraProps;
 type MarkdownTableHeaderProps = ComponentPropsWithoutRef<"th"> & ExtraProps;
 type MarkdownUnorderedListProps = ComponentPropsWithoutRef<"ul"> & ExtraProps;
-type MarkdownRehypePlugins = NonNullable<ReactMarkdownOptions["rehypePlugins"]>;
+type MarkdownRehypePlugins = NonNullable<StreamdownProps["rehypePlugins"]>;
 
 const MARKDOWN_TABLE_BREAKOUT_WIDTH = "max(100%, min(1100px, 100cqw - 2rem))";
 const MARKDOWN_CONTENT_WIDTH_VARIABLE = "--md-content-w";
@@ -1071,11 +1061,17 @@ function buildMarkdownComponents({
     ol: MarkdownOrderedList,
     p: MarkdownParagraph,
     pre: MarkdownPre,
+    section: "section",
     source: MarkdownSource,
+    strong: "strong",
+    sub: "sub",
+    sup: "sup",
     table: MarkdownTable,
+    tbody: "tbody",
     td: MarkdownTableCell,
     th: MarkdownTableHeader,
     thead: MarkdownTableHead,
+    tr: "tr",
     ul: MarkdownUnorderedList,
   };
 
@@ -1096,10 +1092,10 @@ function buildMarkdownComponents({
 
   if (messageDirectives !== undefined) {
     components["bb-message-directive"] = buildMessageDirectiveComponent({
-      mounts: messageDirectives.mounts,
       message: messageDirectives.message,
       openWorkspaceFile: messageDirectives.openWorkspaceFile,
       openThreadPanel: messageDirectives.openThreadPanel,
+      registry: messageDirectives.registry,
     });
   }
 
@@ -1157,7 +1153,7 @@ const FRONTMATTER_PATTERN =
 
 /**
  * Splits a leading YAML frontmatter block (`---` … `---` at the very start of
- * the document) from the markdown body. Without this, react-markdown renders
+ * the document) from the markdown body. Without this, Streamdown renders
  * the fences as two thematic breaks with the raw YAML as a paragraph between
  * them. Returns the inner frontmatter text (or null) and the remaining body.
  */
@@ -1213,6 +1209,8 @@ function MarkdownFrontmatter({ source }: { source: string }) {
     </div>
   );
 }
+
+const STREAMDOWN_LINK_SAFETY_DISABLED = { enabled: false } as const;
 
 function MarkdownPreviewComponent({
   allowHtml = false,
@@ -1274,98 +1272,6 @@ function MarkdownPreviewComponent({
     () => splitMarkdownFrontmatter(promptMarkdownContent),
     [promptMarkdownContent],
   );
-  // The remark transform fills this shared mount table on every parse. Keep it
-  // stable while assistant text streams so the custom React component type
-  // also stays stable and an already-complete directive does not remount when
-  // later prose arrives.
-  const messageDirectiveMounts = useMemo(() => {
-    if (messageDirectives === undefined) {
-      return null;
-    }
-    const mounts: MountedMessageDirective[] = [];
-    return {
-      mounts,
-      message: messageDirectives.message,
-      openWorkspaceFile: messageDirectives.openWorkspaceFile,
-      openThreadPanel: messageDirectives.openThreadPanel,
-      registry: messageDirectives.registry,
-    };
-  }, [messageDirectives]);
-  const markdownComponents = useMemo(
-    () =>
-      buildMarkdownComponents({
-        linkRouting,
-        preferredTheme,
-        rewriteLocalhostLinks,
-        setExpandedImageUrl,
-        threadMentions,
-        promptMentions: resolvedPromptMentions,
-        messageDirectives:
-          messageDirectiveMounts === null
-            ? undefined
-            : {
-                mounts: messageDirectiveMounts.mounts,
-                message: messageDirectiveMounts.message,
-                openWorkspaceFile: messageDirectiveMounts.openWorkspaceFile,
-                openThreadPanel: messageDirectiveMounts.openThreadPanel,
-              },
-      }),
-    [
-      linkRouting,
-      preferredTheme,
-      rewriteLocalhostLinks,
-      threadMentions,
-      resolvedPromptMentions,
-      messageDirectiveMounts,
-    ],
-  );
-  // A mention pipeline activates only when its prop is set. Generated thread
-  // bodies opt into `remark-breaks` so a single `\n` stays a line break;
-  // assistant thread mentions keep ordinary CommonMark soft breaks. Authored
-  // prompt mentions also preserve breaks to retain the editor's prior
-  // `whitespace-pre-wrap` behavior. User messages may enable both pipelines:
-  // offset substitution removes structured mentions before the raw-token pass,
-  // leaving only unstructured `@thread:<id>` tokens for that fallback.
-  //
-  // Message directives (assistant only) add `remark-directive` + a host
-  // transformer that rewrites recognized leaf directives into plugin mounts.
-  const remarkPlugins = useMemo((): NonNullable<
-    ReactMarkdownOptions["remarkPlugins"]
-  > => {
-    const plugins: NonNullable<ReactMarkdownOptions["remarkPlugins"]> = [
-      remarkGfm,
-      // `remark-math` with single-dollar math OFF: micromark pairs any two
-      // unescaped `$` on a line, so "$5 to $10" or "$HOME and $PATH" render the
-      // span between them as math — and literal dollars dominate chat (#511).
-      // Inline math needs `$$x$$`; `$$` on its own lines is still a block.
-      [remarkMath, { singleDollarTextMath: false }],
-    ];
-    if (
-      threadMentions?.preserveSoftBreaks === true ||
-      promptMentions !== undefined
-    ) {
-      plugins.push(remarkBreaks);
-    }
-    if (threadMentions !== undefined) {
-      plugins.push(remarkThreadMentions);
-    }
-    if (promptMentions !== undefined) {
-      plugins.push(remarkPromptMentions);
-    }
-    if (messageDirectiveMounts !== null) {
-      plugins.push(remarkDirective);
-      // Attacher + options: shared mount table is cleared/refilled each parse
-      // so indices stay aligned with the custom elements below.
-      plugins.push([
-        remarkMessageDirectives,
-        {
-          mounts: messageDirectiveMounts.mounts,
-          registry: messageDirectiveMounts.registry,
-        },
-      ]);
-    }
-    return plugins;
-  }, [threadMentions, promptMentions, messageDirectiveMounts]);
   const resolvedUrlTransform = useMemo(
     () =>
       localFileRouting || localImageRouting
@@ -1377,6 +1283,88 @@ function MarkdownPreviewComponent({
         : urlTransform,
     [localFileRouting, localImageRouting, urlTransform],
   );
+  const messageDirectiveNames = useMemo(() => {
+    if (messageDirectives === undefined) {
+      return null;
+    }
+    return [...messageDirectives.registry]
+      .filter(([, entry]) => entry.status === "ok")
+      .map(([name]) => name)
+      .sort();
+  }, [messageDirectives]);
+  const markdownComponents = useMemo(
+    () =>
+      buildMarkdownComponents({
+        linkRouting,
+        preferredTheme,
+        rewriteLocalhostLinks,
+        setExpandedImageUrl,
+        threadMentions,
+        promptMentions: resolvedPromptMentions,
+        messageDirectives,
+      }),
+    [
+      linkRouting,
+      preferredTheme,
+      rewriteLocalhostLinks,
+      setExpandedImageUrl,
+      threadMentions,
+      resolvedPromptMentions,
+      messageDirectives,
+    ],
+  );
+  const messageDirectivePluginOptions = useMemo(() => {
+    if (messageDirectiveNames === null) {
+      return null;
+    }
+    // Streamdown caches unified processors from serialized plugin options.
+    // Names contain all parser behavior; live plugin slots stay in React only.
+    return { directiveNames: messageDirectiveNames };
+  }, [messageDirectiveNames]);
+  // A mention pipeline activates only when its prop is set. Generated thread
+  // bodies opt into `remark-breaks` so a single `\n` stays a line break;
+  // assistant thread mentions keep ordinary CommonMark soft breaks. Authored
+  // prompt mentions also preserve breaks to retain the editor's prior
+  // `whitespace-pre-wrap` behavior.
+  const remarkPlugins = useMemo((): NonNullable<
+    StreamdownProps["remarkPlugins"]
+  > => {
+    const plugins: NonNullable<StreamdownProps["remarkPlugins"]> = [
+      remarkGfm,
+      // Inline math needs `$$x$$`; `$$` on its own lines is still a block.
+      // Single-dollar math would turn ordinary prices and shell vars into math.
+      [remarkMath, { singleDollarTextMath: false }],
+    ];
+    if (
+      threadMentions?.preserveSoftBreaks === true ||
+      resolvedPromptMentions !== undefined
+    ) {
+      plugins.push(remarkBreaks);
+    }
+    if (threadMentions !== undefined) {
+      plugins.push(remarkThreadMentions);
+    }
+    if (resolvedPromptMentions !== undefined) {
+      plugins.push(remarkPromptMentions);
+    }
+    if (messageDirectivePluginOptions !== null) {
+      plugins.push(remarkDirective);
+      plugins.push([remarkMessageDirectives, messageDirectivePluginOptions]);
+    }
+    return plugins;
+  }, [threadMentions, resolvedPromptMentions, messageDirectivePluginOptions]);
+  const rehypePlugins = allowHtml
+    ? MARKDOWN_HTML_REHYPE_PLUGINS
+    : MARKDOWN_MATH_REHYPE_PLUGINS;
+  // Streamdown's outer memo omits renderer extension props. This inert config
+  // token makes it observe any BB renderer change without altering behavior.
+  const streamdownRenderIdentity = useMemo<PluginConfig>(() => {
+    void markdownComponents;
+    void remarkPlugins;
+    void rehypePlugins;
+    void resolvedUrlTransform;
+    return {};
+  }, [markdownComponents, remarkPlugins, rehypePlugins, resolvedUrlTransform]);
 
   return (
     <>
@@ -1390,18 +1378,20 @@ function MarkdownPreviewComponent({
         {frontmatter !== null ? (
           <MarkdownFrontmatter source={frontmatter} />
         ) : null}
-        <ReactMarkdown
-          rehypePlugins={
-            allowHtml
-              ? MARKDOWN_HTML_REHYPE_PLUGINS
-              : MARKDOWN_MATH_REHYPE_PLUGINS
-          }
-          remarkPlugins={remarkPlugins}
+        <Streamdown
+          className="contents space-y-0"
           components={markdownComponents}
+          controls={false}
+          linkSafety={STREAMDOWN_LINK_SAFETY_DISABLED}
+          mode="static"
+          parseIncompleteMarkdown={false}
+          plugins={streamdownRenderIdentity}
+          rehypePlugins={rehypePlugins}
+          remarkPlugins={remarkPlugins}
           urlTransform={resolvedUrlTransform}
         >
           {body}
-        </ReactMarkdown>
+        </Streamdown>
       </div>
 
       <ImageLightbox

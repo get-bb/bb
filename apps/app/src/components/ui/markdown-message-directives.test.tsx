@@ -55,6 +55,10 @@ function InlineVis(props: PluginMessageDirectiveProps) {
   );
 }
 
+function AlternateVis(props: PluginMessageDirectiveProps) {
+  return <div data-testid="alternate-vis">alt:{props.attributes.file}</div>;
+}
+
 function CrashVis(_props: PluginMessageDirectiveProps): never {
   throw new Error("directive boom");
 }
@@ -163,6 +167,76 @@ describe("MarkdownPreview message directives", () => {
     expect(mount.getAttribute("data-project-id")).toBe("proj_1");
     expect(screen.getByText("Intro")).toBeTruthy();
     expect(screen.getByText("Outro")).toBeTruthy();
+  });
+
+  it("isolates directive processors between message registries", () => {
+    const firstRegistry = buildMessageDirectiveRegistry([
+      slot({ id: "inline-vis", pluginId: "first", component: InlineVis }),
+    ]);
+    const secondRegistry = buildMessageDirectiveRegistry([
+      slot({ id: "inline-vis", pluginId: "second", component: AlternateVis }),
+    ]);
+
+    render(
+      <>
+        <MarkdownPreview
+          content={'::inline-vis{file="first.html"}'}
+          messageDirectives={{
+            registry: firstRegistry,
+            message: MESSAGE,
+            openWorkspaceFile: null,
+          }}
+        />
+        <MarkdownPreview
+          content={'::inline-vis{file="second.html"}'}
+          messageDirectives={{
+            registry: secondRegistry,
+            message: { ...MESSAGE, id: "msg_2" },
+            openWorkspaceFile: null,
+          }}
+        />
+      </>,
+    );
+
+    expect(screen.getByTestId("inline-vis").textContent).toBe("vis:first.html");
+    expect(screen.getByTestId("alternate-vis").textContent).toBe(
+      "alt:second.html",
+    );
+  });
+
+  it("updates the directive renderer when the registry changes", () => {
+    const content = '::inline-vis{file="demo.html"}';
+    const firstRegistry = buildMessageDirectiveRegistry([
+      slot({ id: "inline-vis", pluginId: "first", component: InlineVis }),
+    ]);
+    const secondRegistry = buildMessageDirectiveRegistry([
+      slot({ id: "inline-vis", pluginId: "second", component: AlternateVis }),
+    ]);
+    const view = render(
+      <MarkdownPreview
+        content={content}
+        messageDirectives={{
+          registry: firstRegistry,
+          message: MESSAGE,
+          openWorkspaceFile: null,
+        }}
+      />,
+    );
+    expect(screen.getByTestId("inline-vis")).toBeTruthy();
+
+    view.rerender(
+      <MarkdownPreview
+        content={content}
+        messageDirectives={{
+          registry: secondRegistry,
+          message: MESSAGE,
+          openWorkspaceFile: null,
+        }}
+      />,
+    );
+
+    expect(screen.queryByTestId("inline-vis")).toBeNull();
+    expect(screen.getByTestId("alternate-vis")).toBeTruthy();
   });
 
   it("keeps directives in fenced code and inline code literal", () => {

@@ -232,7 +232,7 @@ interface ThreadMentionElementProps {
   "data-thread-id"?: string;
 }
 
-// `react-markdown`'s `Components` map is keyed by `JSX.IntrinsicElements`, so
+// Streamdown's `Components` map is keyed by `JSX.IntrinsicElements`, so
 // the custom element the remark plugin emits must be declared there for the
 // `components` entry to type-check. It is render-only (never authored as JSX).
 declare module "react" {

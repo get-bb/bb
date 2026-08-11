@@ -11,8 +11,12 @@ import {
   type ReactElement,
   type ReactNode,
 } from "react";
-import ReactMarkdown from "react-markdown";
-import type { Components } from "react-markdown";
+import {
+  Streamdown,
+  type Components,
+  type PluginConfig,
+  type StreamdownProps,
+} from "streamdown";
 import remarkGfm from "remark-gfm";
 import {
   DndContext,
@@ -185,6 +189,10 @@ function queuedMarkdownPreviewClass(compact: boolean): string {
 }
 
 const QUEUED_MARKDOWN_REMARK_PLUGINS = [remarkGfm, remarkPromptMentions];
+const QUEUED_MARKDOWN_REHYPE_PLUGINS: NonNullable<
+  StreamdownProps["rehypePlugins"]
+> = [];
+const QUEUED_MARKDOWN_LINK_SAFETY_DISABLED = { enabled: false } as const;
 
 function compactInline(children: ReactNode): ReactElement {
   return <span>{children} </span>;
@@ -221,11 +229,16 @@ const QUEUED_MARKDOWN_COMPONENTS: Components = {
   h6: ({ children }) => (
     <span className="font-semibold text-foreground">{children} </span>
   ),
+  hr: "hr",
   img: ({ alt }) => (alt ? <span>{alt}</span> : null),
   li: ({ children }) => <span>{children} </span>,
   ol: ({ children }) => <span>{children}</span>,
   p: ({ children }) => compactInline(children),
   pre: ({ children }) => <span>{children}</span>,
+  section: "section",
+  strong: "strong",
+  sub: "sub",
+  sup: "sup",
   table: ({ children }) => <span>{children}</span>,
   tbody: ({ children }) => <span>{children}</span>,
   td: ({ children }) => <span>{children} </span>,
@@ -263,16 +276,27 @@ function CompactQueuedMarkdownPreview({
     }),
     [promptMentionSubstitution.mentions, resolveMentionLink],
   );
+  const streamdownRenderIdentity = useMemo<PluginConfig>(() => {
+    // Streamdown's outer memo does not compare `components`.
+    void components;
+    return {};
+  }, [components]);
 
   return (
-    <span className={queuedMarkdownPreviewClass(compact)}>
-      <ReactMarkdown
+    <div className={queuedMarkdownPreviewClass(compact)}>
+      <Streamdown
+        className="contents space-y-0"
         components={components}
+        controls={false}
+        linkSafety={QUEUED_MARKDOWN_LINK_SAFETY_DISABLED}
+        mode="static"
+        plugins={streamdownRenderIdentity}
+        rehypePlugins={QUEUED_MARKDOWN_REHYPE_PLUGINS}
         remarkPlugins={QUEUED_MARKDOWN_REMARK_PLUGINS}
       >
         {markdownContent}
-      </ReactMarkdown>
-    </span>
+      </Streamdown>
+    </div>
   );
 }
 

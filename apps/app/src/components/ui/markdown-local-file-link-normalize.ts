@@ -453,7 +453,7 @@ function normalizeLocalFileMarkdownLinksInLine(line: string): string {
 
 // CommonMark requires angle brackets around link destinations with literal
 // spaces. Agents often emit local absolute paths without them, so repair only
-// those local destinations before react-markdown parses the message.
+// those local destinations before Streamdown parses the message.
 export function normalizeLocalFileMarkdownLinks(content: string): string {
   if (!content.includes(MARKDOWN_LINK_DESTINATION_OPEN)) {
     return content;
