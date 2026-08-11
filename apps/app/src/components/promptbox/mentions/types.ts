@@ -1,7 +1,9 @@
 import {
+  providerCommandSection,
   providerCommandSectionRank,
   type ProviderCommand,
   type ProviderCommandOrigin,
+  type ProviderCommandSection,
   type ProviderCommandSource,
 } from "@bb/server-contract";
 import type { PromptMentionCommandTrigger } from "@bb/domain";
@@ -109,7 +111,7 @@ export function toProviderCommandSuggestion(
 /** Every row the command typeahead menu can render. */
 export type ComposerCommandSuggestion = ProviderCommandSuggestion;
 
-export function compareCommandSuggestionSections(
+function compareCommandSuggestionSections(
   left: ComposerCommandSuggestion,
   right: ComposerCommandSuggestion,
 ): number {
@@ -117,14 +119,103 @@ export function compareCommandSuggestionSections(
 }
 
 /**
- * Put the flat command list in the same section order the menu renders. The
- * composer uses this exact array for keyboard navigation and Enter/Tab apply,
- * so visual grouping must never be the first place section ordering happens.
+ * The names a query can address a command by. A namespaced skill
+ * (`ottonomous:review`) also answers to its trailing segment, so typing the
+ * bare name still counts as naming that skill.
  */
-export function orderCommandSuggestionsBySection(
+function commandSuggestionSearchNames(
+  suggestion: ComposerCommandSuggestion,
+): string[] {
+  const name = suggestion.name.toLowerCase();
+  if (suggestion.source !== "skill") {
+    return [name];
+  }
+  const separatorIndex = name.lastIndexOf(":");
+  return separatorIndex < 0 ? [name] : [name, name.slice(separatorIndex + 1)];
+}
+
+/**
+ * Relevance order for a lowercased, trimmed query. Typing a command's whole
+ * name is an unambiguous request for that command, so an exact name match
+ * outranks every non-exact match no matter which section it lives in — a `/plan`
+ * user command must not sit below skills that merely mention "plan". Matches of
+ * equal quality keep the `PROVIDER_COMMAND_SECTIONS` order, and within a section
+ * a name-prefix match beats a description-only match. An empty query ties every
+ * row, leaving pure section order.
+ */
+export function compareCommandSuggestions(
+  left: ComposerCommandSuggestion,
+  right: ComposerCommandSuggestion,
+  normalizedQuery: string,
+): number {
+  const leftExact = isExactCommandNameMatch(left, normalizedQuery);
+  const rightExact = isExactCommandNameMatch(right, normalizedQuery);
+  if (leftExact !== rightExact) {
+    return leftExact ? -1 : 1;
+  }
+
+  const bySection = compareCommandSuggestionSections(left, right);
+  if (bySection !== 0) {
+    return bySection;
+  }
+
+  const leftPrefix = hasCommandNamePrefixMatch(left, normalizedQuery);
+  const rightPrefix = hasCommandNamePrefixMatch(right, normalizedQuery);
+  if (leftPrefix !== rightPrefix) {
+    return leftPrefix ? -1 : 1;
+  }
+  return 0;
+}
+
+function isExactCommandNameMatch(
+  suggestion: ComposerCommandSuggestion,
+  normalizedQuery: string,
+): boolean {
+  return commandSuggestionSearchNames(suggestion).includes(normalizedQuery);
+}
+
+function hasCommandNamePrefixMatch(
+  suggestion: ComposerCommandSuggestion,
+  normalizedQuery: string,
+): boolean {
+  return commandSuggestionSearchNames(suggestion).some((name) =>
+    name.startsWith(normalizedQuery),
+  );
+}
+
+/**
+ * Put the flat command list in the exact order the menu renders it: ranked by
+ * {@link compareCommandSuggestions}, then collapsed so every section's rows are
+ * contiguous, ordered by where that section first appears. The collapse is what
+ * keeps hoisting an exact match honest — the menu groups by section as it
+ * renders, so a section whose rows were scattered through the flat list would
+ * paint them in a different order than the composer walks them. The composer
+ * uses this exact array for keyboard navigation and Enter/Tab apply, so visual
+ * grouping must never be the first place ordering happens.
+ */
+export function orderCommandSuggestions(
   suggestions: readonly ComposerCommandSuggestion[],
+  query: string,
 ): ComposerCommandSuggestion[] {
-  return [...suggestions].sort(compareCommandSuggestionSections);
+  const normalizedQuery = query.trim().toLowerCase();
+  const ranked = [...suggestions].sort((left, right) =>
+    compareCommandSuggestions(left, right, normalizedQuery),
+  );
+
+  const bySection = new Map<
+    ProviderCommandSection,
+    ComposerCommandSuggestion[]
+  >();
+  for (const suggestion of ranked) {
+    const section = providerCommandSection(suggestion);
+    const existing = bySection.get(section);
+    if (existing) {
+      existing.push(suggestion);
+      continue;
+    }
+    bySection.set(section, [suggestion]);
+  }
+  return [...bySection.values()].flat();
 }
 
 /**

@@ -1,8 +1,8 @@
 import { useMemo } from "react";
 import type { PromptMentionCommandTrigger } from "@bb/domain";
 import {
-  compareCommandSuggestionSections,
-  orderCommandSuggestionsBySection,
+  compareCommandSuggestions,
+  orderCommandSuggestions,
   toProviderCommandSuggestion,
   type ProviderCommandSuggestion,
 } from "@/components/promptbox/mentions/types";
@@ -70,17 +70,6 @@ export function commandSuggestionMatchesQuery(
     .includes(query);
 }
 
-function commandSuggestionSearchNames(
-  suggestion: ProviderCommandSuggestion,
-): string[] {
-  const name = suggestion.name.toLowerCase();
-  if (suggestion.source !== "skill") {
-    return [name];
-  }
-  const separatorIndex = name.lastIndexOf(":");
-  return separatorIndex < 0 ? [name] : [name, name.slice(separatorIndex + 1)];
-}
-
 export function filterCommandSuggestions(
   suggestions: readonly ProviderCommandSuggestion[],
   query: string,
@@ -90,19 +79,9 @@ export function filterCommandSuggestions(
     .filter((suggestion) =>
       commandSuggestionMatchesQuery(suggestion, normalizedQuery),
     )
-    .sort((left, right) => {
-      const bySection = compareCommandSuggestionSections(left, right);
-      if (bySection !== 0) {
-        return bySection;
-      }
-      const leftPrefix = commandSuggestionSearchNames(left).some((name) =>
-        name.startsWith(normalizedQuery),
-      );
-      const rightPrefix = commandSuggestionSearchNames(right).some((name) =>
-        name.startsWith(normalizedQuery),
-      );
-      return leftPrefix === rightPrefix ? 0 : leftPrefix ? -1 : 1;
-    });
+    .sort((left, right) =>
+      compareCommandSuggestions(left, right, normalizedQuery),
+    );
 }
 
 export function promptActionCommandSuggestions({
@@ -216,8 +195,9 @@ export function useCommandSuggestions(
         ),
       trimmedQuery,
     );
-    return orderCommandSuggestionsBySection(
+    return orderCommandSuggestions(
       mergeCommandSuggestions(promptActionSuggestions, discoveredSuggestions),
+      trimmedQuery,
     );
   }, [
     commandsQuery.data?.commands,

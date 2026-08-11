@@ -3116,6 +3116,83 @@ describe("PromptBoxInternal command typeahead navigation", () => {
       name: "interview",
     });
   });
+
+  it("hoists an exactly-named user command above the skills section", async () => {
+    // Suggestions arrive in section order (skills first), the way the server
+    // hands them back — the exact-match hoist is PromptBoxInternal's job, so
+    // every composer that renders through it gets the same order.
+    const { changes, promptBoxRef } = renderPromptBox("/plan", {
+      commandSuggestions: [
+        {
+          kind: "command",
+          name: "planner",
+          source: "skill",
+          origin: "user",
+          description: null,
+          argumentHint: null,
+        },
+        {
+          kind: "command",
+          name: "planning-doc",
+          source: "skill",
+          origin: "user",
+          description: null,
+          argumentHint: null,
+        },
+        {
+          kind: "command",
+          name: "plan",
+          source: "command",
+          origin: "user",
+          description: null,
+          argumentHint: null,
+        },
+        {
+          kind: "command",
+          name: "plan-b",
+          source: "command",
+          origin: "user",
+          description: null,
+          argumentHint: null,
+        },
+      ],
+    });
+
+    await focusPromptEnd(promptBoxRef);
+    const sectionLabel = await screen.findByText("User commands");
+    const menu = sectionLabel.closest(".overflow-hidden");
+    if (!(menu instanceof HTMLElement)) {
+      throw new Error("Expected command menu");
+    }
+    // The exact match leads, and its section stays whole rather than splitting
+    // around the skills — one header per section keeps rendered order equal to
+    // the array Arrow/Enter walk.
+    expect(
+      within(menu)
+        .getAllByRole("button")
+        .map((button) => button.textContent),
+    ).toEqual(["plan", "plan-b", "planner", "planning-doc"]);
+    expect(
+      within(menu)
+        .getAllByText(/^(User commands|Skills)$/)
+        .map((label) => label.textContent),
+    ).toEqual(["User commands", "Skills"]);
+
+    await waitFor(() =>
+      expect(
+        within(menu).getByRole("button", { name: "plan" }).className,
+      ).toContain("bg-state-active"),
+    );
+
+    fireEvent.keyDown(getPromptEditorElement(), { key: "Enter" });
+
+    await waitFor(() => expect(latestValue(changes)).toBe("/plan "));
+    expect(latestChange(changes)?.mentions[0]?.resource).toMatchObject({
+      kind: "command",
+      name: "plan",
+      source: "command",
+    });
+  });
 });
 
 describe("voice recording escape", () => {

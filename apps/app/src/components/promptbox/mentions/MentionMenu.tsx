@@ -212,9 +212,10 @@ function getMentionKey(item: PromptMentionSuggestion, index: number): string {
 }
 
 // Command sections use the shared `providerCommandSection` mapping from
-// @bb/server-contract. PromptBoxInternal orders the flat suggestions with the
-// matching section rank before that same array reaches rendering, keyboard
-// navigation, and apply; the menu only adds human-readable labels.
+// @bb/server-contract. PromptBoxInternal runs `orderCommandSuggestions` — which
+// hoists exact name matches and hands back contiguous sections — before that
+// same array reaches rendering, keyboard navigation, and apply; the menu only
+// adds human-readable labels.
 type CommandSectionKind = ProviderCommandSection;
 
 function getCommandSectionKind(

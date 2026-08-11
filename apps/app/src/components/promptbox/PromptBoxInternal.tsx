@@ -24,7 +24,7 @@ import {
   type Ref,
 } from "react";
 import {
-  orderCommandSuggestionsBySection,
+  orderCommandSuggestions,
   type ActiveTrigger,
   type CommandMenuState,
   type ComposerCommandSuggestion,
@@ -1952,9 +1952,13 @@ export function PromptBoxInternal({
       isError: commandError,
       isLoadingMore: commandIsLoadingMore,
     });
+  // Ranked against the query the user can actually see in the composer, so the
+  // exact-name match this ordering hoists is the one the caret spells out.
+  const activeCommandQuery =
+    activeTrigger?.kind === "command" ? activeTrigger.query : "";
   const orderedCommandSuggestions = useMemo(
-    () => orderCommandSuggestionsBySection(commandSuggestions),
-    [commandSuggestions],
+    () => orderCommandSuggestions(commandSuggestions, activeCommandQuery),
+    [activeCommandQuery, commandSuggestions],
   );
   // The suggestion list driving keyboard nav + Enter/Tab apply for whichever
   // trigger is active. Empty when no trigger is open. Memoized so the keyboard
