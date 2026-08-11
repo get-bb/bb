@@ -30,8 +30,10 @@ import {
   validateOnceDefinition,
 } from "./schedule-helpers.js";
 import {
+  bbBinaryCandidates,
   isWakeAgentSuppressed,
   mapScriptResultToRun,
+  scriptPathEnv,
 } from "./script-runner.js";
 import { sweepDueAutomations } from "./sweep.js";
 import { createAutomationService } from "./service.js";
@@ -673,6 +675,48 @@ describe("automation service", () => {
     } finally {
       await rm(pluginDataDir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("bb CLI injection for script runs", () => {
+  it("prefers the env pointers over PATH and macOS install locations", () => {
+    expect(
+      bbBinaryCandidates({
+        BB_CLI: "/daemon/bundle/bb",
+        BB_CLI_DIR: "/other/dir",
+      })[0],
+    ).toBe("/daemon/bundle/bb");
+    // The server process gets BB_CLI_DIR, not BB_CLI, from the launcher.
+    expect(bbBinaryCandidates({ BB_CLI_DIR: "/daemon/bundle" })[0]).toBe(
+      "/daemon/bundle/bb",
+    );
+  });
+
+  it("still falls back to PATH and the macOS locations", () => {
+    expect(bbBinaryCandidates({})).toEqual([
+      "bb",
+      "/opt/homebrew/bin/bb",
+      "/usr/local/bin/bb",
+    ]);
+    // Blank env vars are ignored rather than becoming a "/bb" candidate.
+    expect(bbBinaryCandidates({ BB_CLI: "  ", BB_CLI_DIR: "" })).toEqual([
+      "bb",
+      "/opt/homebrew/bin/bb",
+      "/usr/local/bin/bb",
+    ]);
+  });
+
+  it("prepends bb's directory to PATH only when it is absolute", () => {
+    expect(scriptPathEnv("/daemon/bundle/bb", "/usr/bin:/bin")).toBe(
+      "/daemon/bundle:/usr/bin:/bin",
+    );
+    // A bare "bb" is already on PATH; dirname() would be "." and would put the
+    // scripts directory ahead of the system PATH.
+    expect(scriptPathEnv("bb", "/usr/bin:/bin")).toBe("/usr/bin:/bin");
+    expect(scriptPathEnv(null, "/usr/bin:/bin")).toBe("/usr/bin:/bin");
+    expect(scriptPathEnv("/daemon/bundle/bb", undefined)).toBe(
+      "/daemon/bundle",
+    );
   });
 });
 

@@ -2416,6 +2416,11 @@ function createServerEnv(args: CreateServerEnvArgs): NodeJS.ProcessEnv {
     ...args.env,
     BB_APP_VERSION: args.context.appVersion,
     [APP_SURFACE_ENV_NAME]: APP_SURFACE_WEB,
+    // The daemon bundle holds the bb CLI. Server-side features that shell out
+    // — script automations put it on the script's PATH — otherwise have no way
+    // to find it: bb lives in the bundle directory, which is on no shell PATH.
+    // Matches createDaemonEnv, which has always passed this through.
+    BB_CLI_DIR: args.context.daemonBundleDir,
     BB_DATA_DIR: args.context.dataDir,
     BB_HOST_DAEMON_PORT: String(args.context.daemonPort),
     BB_SERVER_PORT: String(args.context.serverPort),
