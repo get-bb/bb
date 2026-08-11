@@ -95,6 +95,23 @@ describe("bb plugin catalog", () => {
     expect(body.source).toMatch(/^path:.*\/linear$/);
   });
 
+  it("installs a pasted GitHub repository URL as a direct source", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      json({ ok: true, plugin: installedPlugin }),
+    );
+    const source = "https://github.com/acme/bb-plugin-linear";
+
+    await runCommand(["plugin", "install", source, "--yes"], register);
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(fetch).mock.calls[0]?.[0]).toBe(
+      "http://server/api/v1/plugins/install",
+    );
+    expect(
+      JSON.parse(String(vi.mocked(fetch).mock.calls[0]?.[1]?.body)),
+    ).toEqual({ source });
+  });
+
   it("keeps install --json free of human trust preamble output", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(
       json({ ok: true, plugin: installedPlugin }),
@@ -169,7 +186,7 @@ describe("bb plugin catalog", () => {
     expect(error).toContain("either a catalog plugin or a path on disk");
     expect(error).toContain("path:<path>");
     expect(error).toContain("npm:<package>");
-    expect(error).toContain("git:<url>@<ref>");
+    expect(error).toContain("Git repository URL");
   });
 
   it("no longer advertises the remote catalog command group", async () => {

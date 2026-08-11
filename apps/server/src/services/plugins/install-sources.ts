@@ -42,6 +42,7 @@ export type ParsedPluginSource =
     };
 
 const COMMIT_SHA_PATTERN = /^[0-9a-f]{7,40}$/i;
+export const DEFAULT_GIT_REF = "HEAD";
 // Loose npm package-name shape; enough to keep names safe as path segments.
 const NPM_NAME_PATTERN =
   /^(@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*$/;
@@ -64,13 +65,11 @@ function assertSafeSegments(value: string, label: string): void {
 
 function parseGitSource(spec: string): ParsedPluginSource {
   const at = spec.lastIndexOf("@");
-  if (at <= 0 || at === spec.length - 1) {
-    throw new Error(
-      "git installs must specify a ref: git:<url>@<ref> (branch, tag, or commit sha)",
-    );
+  if (at === spec.length - 1) {
+    throw new Error("git source has an empty ref");
   }
-  const urlish = spec.slice(0, at);
-  const ref = spec.slice(at + 1);
+  const urlish = at <= 0 ? spec : spec.slice(0, at);
+  const ref = at <= 0 ? DEFAULT_GIT_REF : spec.slice(at + 1);
   if (ref.startsWith("-") || ref.includes("..")) {
     throw new Error(`invalid git ref "${ref}"`);
   }
@@ -90,7 +89,7 @@ function parseGitSource(spec: string): ParsedPluginSource {
     const parsed = new URL(urlish);
     url = urlish;
     host = parsed.host;
-    repoPath = parsed.pathname.replace(/^\/+/, "").replace(/\.git$/, "");
+    repoPath = parsed.pathname.replace(/^\/+|\/+$/g, "").replace(/\.git$/, "");
   } else if (urlish.startsWith("/")) {
     // An on-disk repository (dev setups, tests). Grouped under "local".
     url = urlish;
@@ -156,11 +155,12 @@ function parseBuiltinSource(spec: string): ParsedPluginSource {
   return { kind: "builtin", name: spec };
 }
 
-/** Parse an install source spec. Bare strings are treated as local paths. */
+/** Parse an install source spec. Bare HTTP(S) URLs are managed Git sources. */
 export function parsePluginSource(source: string): ParsedPluginSource {
   if (source.startsWith("builtin:")) return parseBuiltinSource(source.slice(8));
   if (source.startsWith("git:")) return parseGitSource(source.slice(4));
   if (source.startsWith("npm:")) return parseNpmSource(source.slice(4));
+  if (/^https?:\/\//iu.test(source)) return parseGitSource(source);
   const path = source.startsWith("path:") ? source.slice(5) : source;
   if (path.length === 0) throw new Error("install source path is empty");
   return { kind: "path", path };

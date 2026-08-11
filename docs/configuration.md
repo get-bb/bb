@@ -717,10 +717,12 @@ then builds both their server and frontend bundles. `node_modules` is
 retained, because a dependency can load data files that bundling cannot
 inline. A committed `dist/` is always replaced by the bundles bb builds.
 Dependency resolution and bundling run on install and update-apply only —
-never on an update check, which reads the manifest and stops. An omitted npm spec tracks
-the newest compatible stable release, ranges track within the range, dist-tags
-track the tag, and exact versions are pinned. `git:<url>@<ref>` requires `git`;
-branches track their head while tags and commits are pinned. Local
+never on an update check, which reads the manifest and stops. An omitted npm
+spec tracks the newest compatible stable release, ranges track within the
+range, dist-tags track the tag, and exact versions are pinned. A bare HTTP(S)
+Git repository URL or `git:<url>[@<ref>]` requires `git`; an omitted ref tracks
+the repository's default branch, explicit branches track their head, and tags
+and commits are pinned. Local
 path installs register the directory in place and never delete it. Builtin
 plugins use `builtin:<name>` and ship with bb unless removed. Managed
 (`git:`/`npm:`) installs

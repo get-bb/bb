@@ -272,7 +272,7 @@ function formatAbsoluteDate(value: string | number | undefined): string {
 function dualInterpretationError(source: string): string {
   return (
     `Could not resolve "${source}" as either a catalog plugin or a path on disk. ` +
-    "Use path:<path>, npm:<package>, or git:<url>@<ref> to choose an interpretation explicitly."
+    "Use a Git repository URL, path:<path>, npm:<package>, or git:<url>[@<ref>] to choose an interpretation explicitly."
   );
 }
 
@@ -315,6 +315,9 @@ async function resolveInstallIntent(
         summary: `Installing ${path}`,
       };
     }
+    return { kind: "source", source: input, summary: `Installing ${input}` };
+  }
+  if (/^https?:\/\//iu.test(input)) {
     return { kind: "source", source: input, summary: `Installing ${input}` };
   }
   if (hasPathSyntax(input)) {
@@ -546,7 +549,7 @@ export function registerPluginCommands(
   plugin
     .command("install <source>")
     .description(
-      "Install a bundled official plugin by name, local path, builtin:<name>, git:<url>@<ref>, or npm:<name>@<version> (managed sources validate engines ranges and build artifacts; bundled plugin ids are reserved)",
+      "Install a bundled official plugin by name, Git repository URL, local path, builtin:<name>, git:<url>[@<ref>], or npm:<name>@<version> (managed sources validate engines ranges and build artifacts; bundled plugin ids are reserved)",
     )
     .option("--yes", "Skip the confirmation prompt")
     .option("--json", "Output JSON")

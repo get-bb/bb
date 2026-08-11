@@ -152,18 +152,18 @@ added/updated/unchanged counts.
   bb plugin search <query>       Search BB's official plugins (bundled with
                                  the app)
   bb plugin install <entry>      Install a bundled official plugin by name
-                                 (github, docs, memory, tasks), a local
-                                 path, builtin:<name>,
-                                 git:<url>@<ref>, or
+                                 (github, docs, memory, tasks), a Git repository
+                                 URL, local path, builtin:<name>,
+                                 git:<url>[@<ref>], or
                                  npm:<package>[@<version|tag|range>]
                                  (npm: needs npm on PATH; installs prompt —
                                  pass --yes to skip). Managed git:/npm:
                                  installs refuse engines.bb / engines.bbPluginSdk
                                  mismatches, manifest/artifact identity
                                  mismatches, and ids reserved by bundled plugins
-                                 Omitted npm specs, ranges, dist-tags, and git
-                                 branches track; exact npm versions, git tags,
-                                 and git commits are pinned
+                                 Omitted npm specs, ranges, dist-tags, omitted
+                                 Git refs, and Git branches track; exact npm
+                                 versions, Git tags, and Git commits are pinned
   bb plugin outdated             Check installed plugins for compatible
                                  updates (table; --json for raw results).
                                  Columns: installed, latest compatible,
@@ -225,13 +225,14 @@ Reinstalling an already-installed managed plugin is refused — use
 `bb plugin update`. A failed activation restores the pre-update snapshot and
 leaves the latest failure visible as needing attention. Exact npm versions,
 git tags and commits, path sources, and bundled official plugins are pinned;
-npm ranges/omitted specs/dist-tags and git branches track compatible updates.
+npm ranges/omitted specs/dist-tags, omitted Git refs (the repository default
+branch), and Git branches track compatible updates.
 
 `bb plugin search <query>` matches id, display name, description, and
 category across the bundled official plugins (status: installed / compatible
 / requires newer bb). Install an official plugin by its bare name. Direct
-`path:`, `npm:`, `git:`, and `builtin:` sources—and path-like
-syntax—continue to bypass official-plugin resolution.
+HTTP(S) Git repository URLs, `path:`, `npm:`, `git:`, and `builtin:`
+sources—and path-like syntax—continue to bypass official-plugin resolution.
 
 Builds are automatic once installed. Git installs run `npm install`
 (lifecycle scripts disabled), then compile both bundles — so a git plugin may

@@ -697,14 +697,15 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     requires newer bb.
 - Commands:
   - `bb plugin install <src>` — official plugin name (github, docs, memory,
-    tasks), local path, `builtin:<name>`,
-    `git:<url>@<ref>`, or `npm:<package>[@<version|tag|range>]` (npm on PATH
-    required for `npm:`). Prefixes `path:` / `npm:` / `git:` / `builtin:` skip
-    official-plugin resolution. To pin or range an npm package, install with
-    `npm:<package>@…`.
+    tasks), HTTP(S) Git repository URL, local path, `builtin:<name>`,
+    `git:<url>[@<ref>]`, or `npm:<package>[@<version|tag|range>]` (npm on PATH
+    required for `npm:`). Repository URLs and prefixes `path:` / `npm:` /
+    `git:` / `builtin:` skip official-plugin resolution. To pin or range an
+    npm package, install with `npm:<package>@…`.
     Omit the npm spec to track compatible stable releases; ranges and dist-tags
-    track, while exact versions are pinned. Git branches track;
-    tags and commits are pinned. Installs prompt for confirmation (plugins are full-trust code);
+    track, while exact versions are pinned. Omit the Git ref to track the
+    repository's default branch; explicit branches track, while tags and
+    commits are pinned. Installs prompt for confirmation (plugins are full-trust code);
     pass `--yes` to skip. Reinstalling an already-installed managed plugin is
     refused — use `bb plugin update`. Plugins that declare a frontend (`bb.app`)
     are built at install time for path sources and git sources without a

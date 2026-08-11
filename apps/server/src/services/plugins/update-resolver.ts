@@ -1,7 +1,11 @@
 import semver from "semver";
 import { z } from "zod";
 import { PLUGIN_SDK_VERSION } from "@bb/domain";
-import { isCommitSha, runInstallCommand } from "./install-sources.js";
+import {
+  DEFAULT_GIT_REF,
+  isCommitSha,
+  runInstallCommand,
+} from "./install-sources.js";
 
 export type NpmSpecKind = "default" | "exact" | "tag" | "range";
 export type GitRefKind = "branch" | "tag" | "commit";
@@ -445,6 +449,23 @@ export async function resolveGitRef(args: {
       refKind: "commit",
       commit: args.ref.toLowerCase(),
     };
+  }
+  if (args.ref === DEFAULT_GIT_REF) {
+    const output = await runInstallCommand(
+      "git",
+      ["ls-remote", args.url, DEFAULT_GIT_REF],
+      {
+        notFoundHint:
+          '"git" was not found on PATH — git plugin updates require git',
+      },
+    );
+    const commit = parseLsRemote(output).get(DEFAULT_GIT_REF);
+    return commit === undefined
+      ? {
+          outcome: "unavailable",
+          detail: `git default branch was not found in ${args.url}`,
+        }
+      : { outcome: "resolved", refKind: "branch", commit };
   }
   const output = await runInstallCommand(
     "git",

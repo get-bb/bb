@@ -159,8 +159,12 @@ or Git repository:
 ```sh
 bb plugin install ./bb-plugin-notes
 bb plugin install npm:bb-plugin-notes@^1.0.0
+bb plugin install https://github.com/acme/bb-plugin-notes
 bb plugin install git:https://github.com/acme/bb-plugin-notes.git@main
 ```
+
+A bare HTTP(S) repository URL tracks its default branch. Use the `git:` form
+with an explicit branch, tag, or commit when that tracking intent matters.
 
 BB has one maintained set of official plugins; users cannot add third-party
 catalogs. Official-plugin inclusion is a BB release decision, not part of the
