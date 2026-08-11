@@ -93,6 +93,28 @@ describe("provider visibility raw events", () => {
     });
   });
 
+  it("classifies Claude command lifecycle events as noise", () => {
+    expect(
+      claudeCodeVisibilityMetadata.describeRawEvent({
+        jsonrpc: "2.0",
+        method: "sdk/message",
+        params: {
+          threadId: "thread-1",
+          message: {
+            type: "command_lifecycle",
+            command_uuid: "command-1",
+            state: "started",
+            uuid: "message-1",
+            session_id: "session-1",
+          },
+        },
+      } satisfies JsonRpcMessage),
+    ).toEqual({
+      kind: "sdk/command_lifecycle",
+      coverage: "noise",
+    });
+  });
+
   it("classifies Claude thinking token system events as noise", () => {
     expect(
       claudeCodeVisibilityMetadata.describeRawEvent({

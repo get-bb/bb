@@ -94,6 +94,10 @@ interface ClaudeUnknownSdkRawEvent {
   sdkType?: string;
 }
 
+interface ClaudeCommandLifecycleRawEvent {
+  kind: "sdk/command_lifecycle";
+}
+
 interface ClaudeAssistantRawEvent {
   contentTypes: ClaudeMessageContentType[];
   kind: "sdk/assistant";
@@ -151,6 +155,7 @@ interface ClaudeSimpleStreamRawEvent {
 
 type ClaudeRawEvent =
   | ClaudeAssistantRawEvent
+  | ClaudeCommandLifecycleRawEvent
   | ClaudeErrorRawEvent
   | ClaudeNonSdkRawEvent
   | ClaudeRateLimitRawEvent
@@ -298,6 +303,9 @@ function parseClaudeRawEvent(event: JsonRpcMessage): ClaudeRawEvent {
         ),
       };
 
+    case "command_lifecycle":
+      return { kind: "sdk/command_lifecycle" };
+
     case "rate_limit_event":
       return { kind: "sdk/rate_limit_event" };
 
@@ -422,6 +430,11 @@ function describeParsedClaudeRawEvent(
       }
       return { kind, coverage: "unknown" };
     }
+
+    // Internal command queue telemetry used by remote Claude surfaces for
+    // lifecycle acknowledgements. It has no transcript or turn semantics.
+    case "sdk/command_lifecycle":
+      return { kind: "sdk/command_lifecycle", coverage: "noise" };
 
     case "sdk/user": {
       const kind = toClaudeMessageKind("sdk/user", event.contentTypes);

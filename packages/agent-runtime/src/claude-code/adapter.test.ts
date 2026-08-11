@@ -5632,4 +5632,24 @@ describe("claude-code provider adapter", () => {
     const events = adapter.translateEvent(loadFixture("system-init.json"));
     expect(events).toMatchObject([]);
   });
+
+  it("ignores Claude command lifecycle events", () => {
+    const adapter = createClaudeCodeProviderAdapter();
+    const events = adapter.translateEvent({
+      jsonrpc: "2.0",
+      method: "sdk/message",
+      params: {
+        threadId: "thread-1",
+        message: {
+          type: "command_lifecycle",
+          command_uuid: "command-1",
+          state: "started",
+          uuid: "message-1",
+          session_id: "session-1",
+        },
+      },
+    });
+
+    expect(events).toEqual([]);
+  });
 });
