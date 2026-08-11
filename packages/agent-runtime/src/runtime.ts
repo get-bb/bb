@@ -1527,6 +1527,7 @@ function createAgentRuntimeInternal(
             threadId: stagingThreadId,
           });
           let retainedForDiscard = false;
+          let providerThreadIdForCleanup: string | undefined;
           try {
             const envVars = buildThreadShellEnvironment({
               baseShellEnv: options.shellEnv,
@@ -1565,6 +1566,14 @@ function createAgentRuntimeInternal(
               resultSchema: threadIdentityResultSchema,
               timeoutMs: THREAD_CREATION_REQUEST_TIMEOUT_MS,
             });
+            // An ambiguous threadId is not sufficient to adopt a provider
+            // thread, but it is safe to use for best-effort cleanup because
+            // the BB staging id is unique to this rewind operation.
+            providerThreadIdForCleanup =
+              result.providerThreadId ??
+              result.thread?.id ??
+              result.threadId ??
+              undefined;
             const providerThreadId = resolveThreadIdentityResult({
               result,
               threadId: stagingThreadId,
@@ -1602,6 +1611,26 @@ function createAgentRuntimeInternal(
             return { providerThreadId };
           } finally {
             if (!retainedForDiscard) {
+              if (providerThreadIdForCleanup !== undefined) {
+                try {
+                  const cleanupCommand = proc.adapter.buildCommandPlan({
+                    type: "thread/discard",
+                    threadId: stagingThreadId,
+                    providerThreadId: providerThreadIdForCleanup,
+                  });
+                  if (cleanupCommand.kind === "request") {
+                    await sendCommand({
+                      proc,
+                      message: cleanupCommand,
+                      resultSchema: ignoredJsonRpcResultSchema,
+                    });
+                  }
+                } catch (error) {
+                  options.onStderr?.(
+                    `Failed to discard unretained staged rewind ${operationId}: ${error instanceof Error ? error.message : String(error)}`,
+                  );
+                }
+              }
               suppressedThreadEventIds.delete(stagingThreadId);
               threadIdentityRegistry.forgetThread({
                 providerState: proc.identity,

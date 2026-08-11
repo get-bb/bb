@@ -70,6 +70,9 @@ const defaultModelList = {
 const simulateArchivedSession = process.argv.includes("--archived-session");
 const failUnarchive = process.argv.includes("--unarchive-fails");
 let failNextDiscard = process.argv.includes("--discard-fails-once");
+const returnThreadIdAsProviderIdentity = process.argv.includes(
+  "--thread-id-provider-identity",
+);
 // Exit right after reporting the archived error, so recovery has to work
 // against a replacement process.
 const exitAfterArchivedError = process.argv.includes("--exit-after-archived");
@@ -439,8 +442,9 @@ function startOrResumeThread(
 ): void {
   const params = getParams(message);
   const threadId = getString(params.threadId, "unknown");
-  const providerThreadId =
-    mode === "resume"
+  const providerThreadId = returnThreadIdAsProviderIdentity
+    ? threadId
+    : mode === "resume"
       ? getString(params.providerThreadId) ||
         `resumed-${nextProviderThreadId++}`
       : `prov-${nextProviderThreadId++}`;
@@ -455,7 +459,9 @@ function startOrResumeThread(
   send({
     jsonrpc: "2.0",
     id: getJsonRpcId(message.id) ?? 0,
-    result: { providerThreadId },
+    result: returnThreadIdAsProviderIdentity
+      ? { threadId }
+      : { providerThreadId },
   });
 
   if (mode === "start" || mode === "fork") {

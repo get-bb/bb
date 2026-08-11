@@ -89,8 +89,6 @@ interface ThreadEditMessageCommandOptions {
   self?: boolean;
 }
 
-type ThreadBannerActionCommandOptions = ThreadActionOptions;
-
 type ThreadTellDeliveryMode = "auto" | "queue" | "steer";
 
 interface PostThreadMessageArgs {

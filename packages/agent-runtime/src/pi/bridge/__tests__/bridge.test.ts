@@ -528,7 +528,10 @@ describe("pi bridge", () => {
       }
       expect(response).toMatchObject({
         id: 40,
-        result: { threadId: targetThreadId },
+        result: {
+          providerThreadId: targetThreadId,
+          threadId: targetThreadId,
+        },
       });
 
       // The forked session is materialized at the NEW thread's deterministic

@@ -741,7 +741,10 @@ async function startPiThreadSession({
     throw error;
   }
 
-  sendResult(id, { threadId });
+  // Pi has no separately minted session id: its provider identity is the BB
+  // thread id. Return that identity synchronously so callers do not have to
+  // race the thread/identity notification emitted after start/fork.
+  sendResult(id, { threadId, providerThreadId: threadId });
 }
 
 async function handleThreadStart(

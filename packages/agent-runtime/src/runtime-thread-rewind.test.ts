@@ -168,4 +168,60 @@ describe("prepareThreadRewind", () => {
       await runtime.shutdown();
     }
   });
+
+  it("discards a staged fork when its response does not identify an adoptable provider thread", async () => {
+    const workspacePath = mkdtempSync(join(tmpdir(), "bb-runtime-rewind-"));
+    temporaryDirectories.push(workspacePath);
+    const commands: AdapterCommand[] = [];
+    const runtime = createAgentRuntimeWithAdapters({
+      workspacePath,
+      onEvent: () => undefined,
+      onToolCall: async () => ({
+        contentItems: [{ type: "inputText", text: "ok" }],
+        success: true,
+      }),
+      adapterFactory: () => {
+        const adapter = createRecordingAdapter({
+          recordedCommands: commands,
+          scriptPath: fakeProviderScriptPath,
+        });
+        return {
+          ...adapter,
+          process: {
+            ...adapter.process,
+            args: [...adapter.process.args, "--thread-id-provider-identity"],
+          },
+        };
+      },
+    });
+    const request = {
+      environmentId: "env-1",
+      threadId: "thread-1",
+      leaseId: "lease-1",
+      operationId: "edit-op-ambiguous-identity",
+      projectId: "project-1",
+      providerId: "pi",
+      sourceProviderThreadId: "provider-source-1",
+      retainThroughProviderCheckpoint: "turn-before-edit",
+      options: fullRuntimeOptions,
+      instructionMode: "append" as const,
+    };
+    const stagingThreadId = "thread-1:rewind:edit-op-ambiguous-identity";
+
+    try {
+      await expect(runtime.prepareThreadRewind(request)).rejects.toThrow(
+        "pi did not return a provider thread for rewind operation edit-op-ambiguous-identity",
+      );
+      expect(commands).toContainEqual(
+        expect.objectContaining({
+          type: "thread/discard",
+          providerThreadId: stagingThreadId,
+          threadId: stagingThreadId,
+        }),
+      );
+      expect(runtime.hasThread(stagingThreadId)).toBe(false);
+    } finally {
+      await runtime.shutdown();
+    }
+  });
 });
