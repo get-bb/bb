@@ -54,6 +54,17 @@
 - Only write high quality tests that verify where there could be potential bugs. Avoid testing trivial getters/setters, framework wiring, or other code that is unlikely to break.
 - Pipe slow test output to a file, then read the file. Example: `pnpm exec turbo run test --filter=@bb/integration-tests --force > /tmp/test-out.txt 2>&1`.
 
+## GitHub Issues And Pull Requests
+
+- When an agent creates a GitHub issue or pull request, add this line at the end of the body:
+
+  ```
+  > AGENT GENERATED: by <model>
+  ```
+
+- Replace `<model>` with the name of the model that writes the text, for example `Claude Opus 5`.
+- Add this line to each new issue and pull request. It shows the readers that an agent made the content.
+
 ## Debugging And QA
 
 - Do not assume. Inspect logs, query the database, call server APIs, or use the CLI to observe real state.
