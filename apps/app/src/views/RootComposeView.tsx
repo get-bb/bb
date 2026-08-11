@@ -1023,6 +1023,7 @@ export function RootComposeView() {
     executionOptionsRouting,
     selectedProviderId,
     setSelectedProviderId,
+    setProviderModelReasoning,
     providerOptions,
     hasMultipleProviders,
     selectedProviderComposerActions,
@@ -1185,9 +1186,7 @@ export function RootComposeView() {
     }
     if (nextForkSeed !== null && nextHandoffSeed === null) {
       setForkSeed(nextForkSeed);
-      setSelectedProviderId(nextForkSeed.providerId);
-      setSelectedModel(nextForkSeed.model);
-      setReasoningLevel(nextForkSeed.reasoningLevel);
+      setProviderModelReasoning(nextForkSeed);
       setPermissionMode(nextForkSeed.permissionMode);
       setServiceTier(nextForkSeed.serviceTier);
     }
@@ -1213,9 +1212,7 @@ export function RootComposeView() {
     seedHandoffPrompt,
     setEnvironmentSelectionValue,
     setPermissionMode,
-    setReasoningLevel,
-    setSelectedModel,
-    setSelectedProviderId,
+    setProviderModelReasoning,
     setRootComposeProjectId,
     setServiceTier,
   ]);

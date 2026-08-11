@@ -1,4 +1,4 @@
-import { atom, useAtom } from "jotai";
+import { atom, useAtom, useStore } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import { atomFamily } from "jotai-family";
 import { useCallback } from "react";
@@ -45,6 +45,12 @@ export interface PersistedReasoningLevelSelectionField {
 export interface PersistedPermissionModeSelectionField {
   setValue: StoredPermissionModeSetter;
   value: StoredPermissionMode;
+}
+
+export interface PromptBoxProviderModelReasoningPreference {
+  providerId: string;
+  model: string;
+  reasoningLevel: ReasoningLevel;
 }
 
 function isReasoningLevel(value: string): value is ReasoningLevel {
@@ -251,6 +257,20 @@ export function usePromptBoxReasoningLevelPreference(
     [setAtomValue],
   );
   return { setValue, value };
+}
+
+export function useSetPromptBoxProviderModelReasoningPreference(): (
+  preference: PromptBoxProviderModelReasoningPreference,
+) => void {
+  const store = useStore();
+  return useCallback(
+    ({ providerId, model, reasoningLevel }) => {
+      if (providerId.length === 0) return;
+      store.set(modelAtomFamily(providerId), model);
+      store.set(reasoningLevelAtomFamily(providerId), reasoningLevel);
+    },
+    [store],
+  );
 }
 
 export function usePromptBoxPermissionModePreference(): PersistedPermissionModeSelectionField {

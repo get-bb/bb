@@ -35,6 +35,7 @@ import {
   usePromptBoxProviderPreference,
   usePromptBoxReasoningLevelPreference,
   usePromptBoxServiceTierPreference,
+  useSetPromptBoxProviderModelReasoningPreference,
 } from "./thread-creation-options/persisted-selection-fields";
 import {
   buildExecutionInputSources,
@@ -67,15 +68,24 @@ type ReasoningLevelSelectionSetter = (value: ReasoningLevel) => void;
 type PermissionModeSelectionSetter = (value: PermissionMode) => void;
 type ClearSelectionHandler = () => void;
 
-interface ProviderModelReasoningSelection {
+interface ModelReasoningSelection {
   model: string;
   reasoningLevel: ReasoningLevel;
 }
+
+export interface ProviderModelReasoningSelection extends ModelReasoningSelection {
+  providerId: string;
+}
+
+type ProviderModelReasoningSelectionSetter = (
+  selection: ProviderModelReasoningSelection,
+) => void;
 
 export interface UseThreadCreationOptionsResult<TExecutionInputSources> {
   executionOptionsRouting: SystemProvidersQuery;
   selectedProviderId: string;
   setSelectedProviderId: StringSelectionSetter;
+  setProviderModelReasoning: ProviderModelReasoningSelectionSetter;
   providerOptions: PickerOption<string>[];
   hasMultipleProviders: boolean;
   selectedProviderDisplayName: string;
@@ -168,6 +178,8 @@ export function useThreadCreationOptions(
   } = options ?? {};
   const { setValue: setStoredProviderId, value: storedProviderId } =
     usePromptBoxProviderPreference();
+  const setStoredProviderModelReasoning =
+    useSetPromptBoxProviderModelReasoningPreference();
   const { setValue: setStoredServiceTier, value: storedServiceTier } =
     usePromptBoxServiceTierPreference();
   const { setValue: setStoredPermissionMode, value: storedPermissionMode } =
@@ -193,7 +205,7 @@ export function useThreadCreationOptions(
       }),
     );
   const localProviderSelectionsRef = useRef<
-    Map<string, ProviderModelReasoningSelection>
+    Map<string, ModelReasoningSelection>
   >(new Map());
   const [localProvidersUsingDefaults, setLocalProvidersUsingDefaults] =
     useState<ReadonlySet<string>>(() => new Set());
@@ -736,6 +748,69 @@ export function useThreadCreationOptions(
     ],
   );
 
+  const setProviderModelReasoning = useCallback(
+    ({
+      providerId,
+      model,
+      reasoningLevel: nextReasoningLevel,
+    }: ProviderModelReasoningSelection) => {
+      touchedThreadFieldsRef.current.add("selectedProviderId");
+      touchedThreadFieldsRef.current.add("selectedModel");
+      touchedThreadFieldsRef.current.add("reasoningLevel");
+      if (usesStoredCreateSelections) {
+        if (
+          effectiveProviderId.length > 0 &&
+          effectiveProviderId !== providerId
+        ) {
+          setStoredSelectedModel(selectedModel);
+          setStoredReasoningLevel(reasoningLevel);
+        }
+        setStoredProviderModelReasoning({
+          providerId,
+          model,
+          reasoningLevel: nextReasoningLevel,
+        });
+        setStoredProviderId(providerId);
+        return;
+      }
+      if (
+        effectiveProviderId.length > 0 &&
+        effectiveProviderId !== providerId
+      ) {
+        localProviderSelectionsRef.current.set(effectiveProviderId, {
+          model: selectedModel,
+          reasoningLevel,
+        });
+      }
+      localProviderSelectionsRef.current.set(providerId, {
+        model,
+        reasoningLevel: nextReasoningLevel,
+      });
+      setLocalProvidersUsingDefaults((current) => {
+        if (!current.has(providerId)) return current;
+        const next = new Set(current);
+        next.delete(providerId);
+        return next;
+      });
+      setThreadSelections((currentSelections) => ({
+        ...currentSelections,
+        selectedProviderId: providerId,
+        selectedModel: model,
+        reasoningLevel: nextReasoningLevel,
+      }));
+    },
+    [
+      effectiveProviderId,
+      reasoningLevel,
+      selectedModel,
+      setStoredProviderId,
+      setStoredProviderModelReasoning,
+      setStoredReasoningLevel,
+      setStoredSelectedModel,
+      usesStoredCreateSelections,
+    ],
+  );
+
   const setSelectedModel = useCallback(
     (value: string) => {
       touchedThreadFieldsRef.current.add("selectedModel");
@@ -869,6 +944,7 @@ export function useThreadCreationOptions(
     executionOptionsRouting,
     selectedProviderId: effectiveProviderId,
     setSelectedProviderId,
+    setProviderModelReasoning,
     providerOptions,
     hasMultipleProviders,
     selectedProviderDisplayName:

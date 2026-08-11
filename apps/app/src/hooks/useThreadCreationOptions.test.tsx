@@ -233,6 +233,54 @@ afterEach(() => {
 });
 
 describe("useThreadCreationOptions", () => {
+  it("applies a fork provider, model, and reasoning seed atomically", async () => {
+    window.localStorage.setItem("bb.promptbox.provider", GLOBAL_PROVIDER_ID);
+    vi.mocked(sdk.system.executionOptions).mockImplementation(async (args) =>
+      providerExecutionOptionsResponse(args?.providerId),
+    );
+    const { result } = renderHook(
+      () => useThreadCreationOptions({ scope: "new-thread" }),
+      { wrapper: createQueryClientTestHarness().wrapper },
+    );
+
+    await waitFor(() => {
+      expect(result.current.selectedModel).toBe("global-default");
+    });
+    act(() => {
+      result.current.setSelectedModel("global-remembered");
+      result.current.setReasoningLevel("medium");
+    });
+    act(() => {
+      result.current.setProviderModelReasoning({
+        providerId: PROJECT_PROVIDER_ID,
+        model: "project-remembered",
+        reasoningLevel: "high",
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.selectedProviderId).toBe(PROJECT_PROVIDER_ID);
+      expect(result.current.selectedModel).toBe("project-remembered");
+      expect(result.current.reasoningLevel).toBe("high");
+    });
+
+    act(() => {
+      result.current.setSelectedProviderId(GLOBAL_PROVIDER_ID);
+    });
+    await waitFor(() => {
+      expect(result.current.selectedModel).toBe("global-remembered");
+      expect(result.current.reasoningLevel).toBe("medium");
+    });
+
+    act(() => {
+      result.current.setSelectedProviderId(PROJECT_PROVIDER_ID);
+    });
+    await waitFor(() => {
+      expect(result.current.selectedModel).toBe("project-remembered");
+      expect(result.current.reasoningLevel).toBe("high");
+    });
+  });
+
   it("migrates legacy model preferences without leaking them to another provider", async () => {
     window.localStorage.setItem("bb.promptbox.provider", GLOBAL_PROVIDER_ID);
     window.localStorage.setItem("bb.promptbox.model", "global-remembered");
