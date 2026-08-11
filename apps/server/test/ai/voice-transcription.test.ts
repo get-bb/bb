@@ -58,8 +58,8 @@ async function createCodexTranscriptionHarness({
   handle,
 }: CreateCodexTranscriptionHarnessArgs): Promise<CodexTranscriptionHarness> {
   const harness = await createTestAppHarness({
-    inferenceFallbackModel: "codex/gpt-4o-transcribe-fallback",
-    transcriptionModel: "codex/gpt-4o-mini-transcribe",
+    inferenceFallbackModel: "codex/gpt-5.4-mini",
+    transcriptionModel: "codex/gpt-transcribe",
   });
   const { host, session } = seedHostSession(harness.deps);
   const responder = registerHostRpcResponder(harness, {
@@ -116,7 +116,7 @@ describe("voice transcription", () => {
     }
   });
 
-  it("switches to the fallback model after Codex service unavailability", async () => {
+  it("retries with the transcription model after Codex service unavailability", async () => {
     let requestCount = 0;
     const harness = await createCodexTranscriptionHarness({
       handle(request) {
@@ -144,12 +144,12 @@ describe("voice transcription", () => {
       ).resolves.toBe("hello world");
       expect(harness.requests).toHaveLength(2);
       expect(harness.requests[0]?.command).toMatchObject({
-        model: "gpt-4o-mini-transcribe",
+        model: "gpt-transcribe",
         timeoutMs: 10_000,
         type: "codex.voice.transcribe",
       });
       expect(harness.requests[1]?.command).toMatchObject({
-        model: "gpt-4o-transcribe-fallback",
+        model: "gpt-transcribe",
         timeoutMs: 10_000,
         type: "codex.voice.transcribe",
       });
