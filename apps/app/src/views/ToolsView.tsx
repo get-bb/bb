@@ -44,10 +44,10 @@ import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
 import {
   TOOLS_REGISTRY_SKILLS_ROUTE_PATH,
   TOOLS_SKILLS_ROUTE_PATH,
-  getPluginsRoutePath,
   getRootComposeRoutePath,
 } from "@/lib/route-paths";
 import {
+  getToolsOwnedCollectionRoutePath,
   resolveToolsSection,
   type ToolsSectionId,
 } from "@/components/tools/tools-navigation";
@@ -195,7 +195,7 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
           : "Plugin uninstalled",
       );
       setDeleteTarget(null);
-      navigate(getPluginsRoutePath());
+      navigate(getToolsOwnedCollectionRoutePath("plugins"));
       return listQuery.refetch();
     },
     onError: (error) => {

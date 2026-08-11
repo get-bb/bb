@@ -1,6 +1,9 @@
 import type {
   ProviderErrorCategory,
   ProviderErrorInfo,
+  ProviderRateLimitState,
+  ProviderRateLimitStatus,
+  ProviderRateLimitWindow,
   ThreadEvent,
   ThreadEventContextWindowUsage,
   ThreadEventWebFetchItem,
@@ -30,6 +33,8 @@ import {
   type CodexHandledThreadItem,
   type CodexItemStatus,
   type CodexParsedUserInput,
+  type CodexRateLimitSnapshot,
+  type CodexRateLimitSnapshotUpdate,
   type CodexTurnStatus,
 } from "./schemas.js";
 import { codexVisibilityMetadata } from "./visibility.js";
@@ -40,6 +45,159 @@ function assertNever(value: never, message?: string): never {
 
 interface CodexLastTokenUsage {
   totalTokens: number;
+}
+
+export interface CodexEventTranslationState {
+  rateLimits: CodexRateLimitSnapshot | null;
+}
+
+export function createCodexEventTranslationState(): CodexEventTranslationState {
+  return { rateLimits: null };
+}
+
+function clampRateLimitPercent(value: number): number {
+  return Math.min(100, Math.max(0, value));
+}
+
+function codexWindowStatus(usedPercent: number): ProviderRateLimitStatus {
+  if (usedPercent >= 100) return "blocked";
+  if (usedPercent >= 90) return "warning";
+  return "allowed";
+}
+
+function normalizeCodexRateLimitWindow(
+  key: "primary" | "secondary",
+  window: CodexRateLimitSnapshot["primary"],
+): ProviderRateLimitWindow | null {
+  if (!window) return null;
+  const usedPercent = clampRateLimitPercent(window.usedPercent);
+  return {
+    providerKey: key,
+    label: key === "primary" ? "Current session" : "Weekly limit",
+    status: codexWindowStatus(usedPercent),
+    resetsAtMs: window.resetsAt === null ? null : window.resetsAt * 1_000,
+  };
+}
+
+function codexReachedReasonIsActive(
+  snapshot: CodexRateLimitSnapshot,
+  reachedReason: string,
+): boolean {
+  if (reachedReason === "rate_limit_reached") {
+    return [snapshot.primary, snapshot.secondary].some(
+      (window) => window !== null && window.usedPercent >= 100,
+    );
+  }
+  if (reachedReason.includes("credits_depleted")) {
+    return (
+      snapshot.credits !== null &&
+      !snapshot.credits.unlimited &&
+      !snapshot.credits.hasCredits
+    );
+  }
+  if (reachedReason.includes("usage_limit_reached")) {
+    return (
+      snapshot.individualLimit !== null &&
+      snapshot.individualLimit.remainingPercent <= 0
+    );
+  }
+  return false;
+}
+
+function mergeCodexRateLimitSnapshot(
+  previous: CodexRateLimitSnapshot | null,
+  update: CodexRateLimitSnapshotUpdate,
+): CodexRateLimitSnapshot {
+  const merged: CodexRateLimitSnapshot = {
+    limitId: update.limitId ?? previous?.limitId ?? null,
+    limitName: update.limitName ?? previous?.limitName ?? null,
+    primary: update.primary ?? previous?.primary ?? null,
+    secondary: update.secondary ?? previous?.secondary ?? null,
+    credits: update.credits ?? previous?.credits ?? null,
+    individualLimit:
+      update.individualLimit ?? previous?.individualLimit ?? null,
+    planType: update.planType ?? previous?.planType ?? null,
+    rateLimitReachedType: update.rateLimitReachedType ?? null,
+  };
+  if (
+    merged.rateLimitReachedType === null &&
+    previous?.rateLimitReachedType !== null &&
+    previous?.rateLimitReachedType !== undefined &&
+    codexReachedReasonIsActive(merged, previous.rateLimitReachedType)
+  ) {
+    merged.rateLimitReachedType = previous.rateLimitReachedType;
+  }
+  return merged;
+}
+
+export function applyCodexRateLimitUpdate(
+  state: CodexEventTranslationState,
+  update: CodexRateLimitSnapshotUpdate,
+): CodexRateLimitSnapshot {
+  const rateLimits = mergeCodexRateLimitSnapshot(state.rateLimits, update);
+  state.rateLimits = rateLimits;
+  return rateLimits;
+}
+
+function normalizeCodexRateLimits(
+  snapshot: CodexRateLimitSnapshot,
+): ProviderRateLimitState {
+  const windows = [
+    normalizeCodexRateLimitWindow("primary", snapshot.primary),
+    normalizeCodexRateLimitWindow("secondary", snapshot.secondary),
+  ].filter((window): window is ProviderRateLimitWindow => window !== null);
+
+  if (snapshot.individualLimit) {
+    const usedPercent = clampRateLimitPercent(
+      100 - snapshot.individualLimit.remainingPercent,
+    );
+    windows.push({
+      providerKey: "individual-limit",
+      label: "Spend control",
+      status: codexWindowStatus(usedPercent),
+      resetsAtMs: snapshot.individualLimit.resetsAt * 1_000,
+    });
+  }
+
+  const reachedReason = snapshot.rateLimitReachedType;
+  const kind =
+    reachedReason === "rate_limit_reached"
+      ? "subscription-window"
+      : reachedReason?.includes("credits_depleted")
+        ? "credits"
+        : reachedReason?.includes("usage_limit_reached")
+          ? "spend-control"
+          : reachedReason !== null
+            ? "unknown"
+            : snapshot.credits !== null &&
+                !snapshot.credits.unlimited &&
+                !snapshot.credits.hasCredits
+              ? "credits"
+              : snapshot.individualLimit !== null
+                ? "spend-control"
+                : snapshot.primary !== null || snapshot.secondary !== null
+                  ? "subscription-window"
+                  : "unknown";
+  const status =
+    reachedReason !== null
+      ? "blocked"
+      : windows.some((window) => window.status === "blocked")
+        ? "blocked"
+        : windows.some((window) => window.status === "warning")
+          ? "warning"
+          : windows.length > 0 || snapshot.credits?.hasCredits === true
+            ? "allowed"
+            : "unknown";
+
+  return {
+    providerId: "codex",
+    status,
+    kind,
+    windows,
+    reachedReason,
+    overageStatus: null,
+    overageReason: null,
+  };
 }
 
 type CodexNormalizedWebItem =
@@ -577,6 +735,7 @@ function translateCodexItem(
 
 export function translateCodexEvent(
   event: ProviderRuntimeEvent,
+  state: CodexEventTranslationState,
 ): ThreadEvent[] {
   const envelope = codexBridgeEnvelopeSchema.safeParse(event);
   if (!envelope.success) {
@@ -598,6 +757,21 @@ export function translateCodexEvent(
 
   const handledEvent: CodexHandledEvent = parsed.data;
   switch (handledEvent.method) {
+    case "account/rateLimits/updated": {
+      const rateLimits = applyCodexRateLimitUpdate(
+        state,
+        handledEvent.params.rateLimits,
+      );
+      return [
+        {
+          type: "provider/rateLimits/updated",
+          threadId: UNSTAMPED_THREAD_ID,
+          providerThreadId: "",
+          scope: threadScope(),
+          rateLimits: normalizeCodexRateLimits(rateLimits),
+        },
+      ];
+    }
     case "turn/started":
       return [
         {

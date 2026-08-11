@@ -88,7 +88,7 @@ Keep summaries short and retrieval-oriented. Put exact commands, evidence,
 scope, and caveats in details. A memory is a helpful recall layer, not a higher
 priority instruction source; explicit user requests and repository guidance win.
 
-The CLI uses BB's loopback server. Under the workspace sandbox (Accept Edits /
-Approve for me), a provider may require escalation approval for loopback
-access; use Full Access when that access must be unrestricted. Do not claim a
+The CLI uses BB's loopback server, which Claude's macOS workspace sandbox
+(Accept Edits / Approve for me) permits; Linux and other provider sandboxes
+may still require escalation approval for loopback access. Do not claim a
 write succeeded unless the command returned success.

@@ -2,7 +2,6 @@
 import * as React from "react";
 import { flushSync } from "react-dom";
 import { Slot } from "@radix-ui/react-slot";
-import { Drawer as DrawerPrimitive } from "vaul";
 
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -31,6 +30,19 @@ const SIDEBAR_MOBILE_PANEL_SETTLE_TRANSITION = `transform ${SIDEBAR_MOBILE_DRAG_
 const SIDEBAR_MOBILE_BACKDROP_SETTLE_TRANSITION = `opacity ${SIDEBAR_MOBILE_DRAG_SETTLE_MS}ms ${SIDEBAR_MOBILE_DRAG_SETTLE_EASING}`;
 const SIDEBAR_MOBILE_WHEEL_SWIPE_OPEN_DISTANCE_PX = 90;
 const SIDEBAR_MOBILE_WHEEL_SWIPE_RESET_MS = 250;
+// Fraction of the panel width a drag must cover before release closes the
+// drawer (mirrors the old vaul closeThreshold).
+const SIDEBAR_MOBILE_DRAG_CLOSE_RATIO = 0.25;
+const SIDEBAR_MOBILE_DRAG_CLOSE_FLING_VELOCITY_PX_PER_SEC = 450;
+// The transitions below must match SIDEBAR_MOBILE_DRAG_SETTLE_MS /
+// SIDEBAR_MOBILE_DRAG_SETTLE_EASING; Tailwind arbitrary values cannot
+// interpolate the constants. The `visibility` leg keeps the closed panel out
+// of paint and hit-testing: it flips to hidden only after the slide-out
+// transform finishes, and back to visible immediately on open.
+const SIDEBAR_MOBILE_PANEL_TRANSITION_CLASS =
+  "[transition:transform_220ms_cubic-bezier(0.32,0.72,0,1),visibility_0s_linear_0s] data-[state=closed]:[transition:transform_220ms_cubic-bezier(0.32,0.72,0,1),visibility_0s_linear_220ms]";
+const SIDEBAR_MOBILE_BACKDROP_TRANSITION_CLASS =
+  "[transition:opacity_220ms_cubic-bezier(0.32,0.72,0,1),visibility_0s_linear_0s] data-[state=closed]:[transition:opacity_220ms_cubic-bezier(0.32,0.72,0,1),visibility_0s_linear_220ms]";
 const SIDEBAR_GROUP_LABEL_BASE_CLASS =
   "duration-200 flex shrink-0 items-center rounded-md px-1 text-xs font-medium text-sidebar-foreground/75 outline-none ring-sidebar-ring transition-[margin,opa] ease-linear focus-visible:ring-2 [&>svg]:size-4 [&>svg]:shrink-0";
 const SIDEBAR_GROUP_LABEL_COLLAPSED_CLASS =
@@ -52,6 +64,7 @@ type SidebarInsetSwipeSession = {
   velocityX: number;
   isDragging: boolean;
   selectionRoot: Element | null;
+  startTarget: Element | null;
 };
 
 const sidebarMobileWidthStyle: SidebarMobileWidthStyle = {
@@ -154,12 +167,14 @@ function createSidebarInsetSwipeSession({
   startX,
   startY,
   selectionRoot,
+  startTarget,
 }: {
   kind: "pointer" | "touch";
   id: number;
   startX: number;
   startY: number;
   selectionRoot: Element | null;
+  startTarget: Element | null;
 }): SidebarInsetSwipeSession {
   const nowMs = Date.now();
   return {
@@ -174,6 +189,7 @@ function createSidebarInsetSwipeSession({
     velocityX: 0,
     isDragging: false,
     selectionRoot,
+    startTarget,
   };
 }
 
@@ -205,6 +221,13 @@ function isHorizontallyScrollableElement(element: Element): boolean {
   return element.scrollWidth > element.clientWidth + 1;
 }
 
+/**
+ * Each ancestor probe pairs `getComputedStyle` with a `scrollWidth` read, so a
+ * call forces a synchronous style + layout pass of the document. Never call
+ * this from a per-tap listener (`pointerdown`/`touchstart`): on a large
+ * timeline that flush can block a mobile main thread for seconds (#1269).
+ * Callers must defer it until a gesture shows real horizontal intent.
+ */
 function isInsideHorizontalScrollRegion(target: Element): boolean {
   let element: Element | null = target;
   while (element !== null) {
@@ -267,14 +290,9 @@ function shouldIgnoreSidebarSwipeTarget(target: EventTarget | null): boolean {
   }
 
   const selectionRoot = getSidebarSwipeSelectionRoot(target);
-  if (
-    selectionRoot !== null &&
-    hasExpandedTextSelectionWithin(selectionRoot)
-  ) {
-    return true;
-  }
-
-  return isInsideHorizontalScrollRegion(target);
+  return (
+    selectionRoot !== null && hasExpandedTextSelectionWithin(selectionRoot)
+  );
 }
 
 function isSidebarInsetSwipeTarget(target: EventTarget | null): boolean {
@@ -341,6 +359,20 @@ type SidebarContext = {
 };
 
 const SidebarContext = React.createContext<SidebarContext | null>(null);
+
+const SidebarContentElementContext =
+  React.createContext<React.RefObject<HTMLDivElement | null> | null>(null);
+
+/**
+ * Ref object holding the sidebar's scrolling content element
+ * (`SidebarContent`). The windowed thread list reads `.current` inside
+ * effects to decide which rows sit near the scrollport. The ref object is
+ * stable, so consuming it never re-renders; returns null outside a
+ * `SidebarContent`.
+ */
+function useSidebarContentElementRef() {
+  return React.useContext(SidebarContentElementContext);
+}
 
 function useSidebar() {
   const context = React.useContext(SidebarContext);
@@ -559,6 +591,7 @@ const Sidebar = React.forwardRef<
               ? "translate3d(-100%, 0, 0)"
               : "translate3d(100%, 0, 0)",
           transition: "none",
+          visibility: "hidden",
         };
       }
 
@@ -572,6 +605,7 @@ const Sidebar = React.forwardRef<
           opacity: 0,
           pointerEvents: "none",
           transition: "none",
+          visibility: "hidden",
         };
       }
 
@@ -595,71 +629,27 @@ const Sidebar = React.forwardRef<
     }
 
     if (isCompactViewport) {
+      // The mobile drawer stays mounted across open/close (#1261). Closing
+      // translates the panel off-screen instead of unmounting it, so a
+      // reopen replays no mount work. While closed the panel is `inert` and
+      // `visibility: hidden` (after the slide-out finishes), so it takes no
+      // paint or hit-testing work and cannot trap focus or taps.
       return (
-        <DrawerPrimitive.Root
+        <SidebarMobilePanel
+          ref={ref}
+          side={side}
+          variant={variant}
           open={openMobile}
           onOpenChange={handleOpenMobileChange}
-          direction={side}
-          closeThreshold={0.25}
-          dismissible
-          modal
-          shouldScaleBackground={false}
+          suppressOpenAnimation={suppressMobileOpenAnimation}
+          panelMotionStyle={mobilePanelMotionStyle}
+          backdropStyle={mobileBackdropStyle}
+          className={className}
+          style={style}
+          {...props}
         >
-          <DrawerPrimitive.Portal>
-            <DrawerPrimitive.Overlay
-              data-sidebar-mobile-backdrop=""
-              data-testid="sidebar-mobile-backdrop"
-              data-sidebar-suppress-open-animation={
-                suppressMobileOpenAnimation ? "true" : undefined
-              }
-              className="fixed inset-0 z-40 bg-black/80 data-[state=closed]:pointer-events-none [&[data-sidebar-suppress-open-animation=true][data-state=open]]:![animation:none]"
-              style={mobileBackdropStyle}
-            />
-            <DrawerPrimitive.Content
-              ref={ref}
-              data-sidebar="panel"
-              data-sidebar-state={openMobile ? "expanded" : "collapsed"}
-              data-collapsible=""
-              data-variant={variant}
-              data-side={side}
-              data-sidebar-suppress-open-animation={
-                suppressMobileOpenAnimation ? "true" : undefined
-              }
-              className={cn(
-                // Fixed: a percentage height would resolve against the short
-                // initial containing block, so it reads the shell unit directly.
-                "group fixed inset-y-0 z-40 flex h-(--bb-shell-height) w-(--sidebar-width-mobile) flex-col bg-sidebar text-sidebar-foreground outline-none",
-                "[&[data-sidebar-suppress-open-animation=true][data-state=open]]:![animation:none]",
-                side === "left" ? "left-0" : "right-0",
-                variant === "floating" || variant === "inset"
-                  ? "p-2"
-                  : "border-border-seam data-[vaul-drawer-direction=left]:border-r data-[vaul-drawer-direction=right]:border-l",
-                className,
-              )}
-              style={
-                {
-                  ...sidebarMobileWidthStyle,
-                  ...style,
-                  ...mobilePanelMotionStyle,
-                } as SidebarMobileWidthStyle
-              }
-              {...props}
-            >
-              <DrawerPrimitive.Title className="sr-only">
-                Sidebar
-              </DrawerPrimitive.Title>
-              <DrawerPrimitive.Description className="sr-only">
-                Application navigation
-              </DrawerPrimitive.Description>
-              <div
-                data-sidebar="sidebar"
-                className="flex h-full w-full flex-col bg-sidebar pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:border group-data-[variant=floating]:border-sidebar-border group-data-[variant=floating]:shadow"
-              >
-                {children}
-              </div>
-            </DrawerPrimitive.Content>
-          </DrawerPrimitive.Portal>
-        </DrawerPrimitive.Root>
+          {children}
+        </SidebarMobilePanel>
       );
     }
 
@@ -689,7 +679,11 @@ const Sidebar = React.forwardRef<
           className={cn(
             // Fixed: a percentage height would resolve against the short
             // initial containing block, so it reads the shell unit directly.
-            "fixed inset-y-0 z-10 flex h-(--bb-shell-height) w-(--sidebar-width) flex-col bg-sidebar text-sidebar-foreground transition-[left,right,width] duration-200 ease-linear",
+            // The visibility leg hides the fully collapsed offcanvas panel
+            // after the slide-out so its mounted rows stop painting (#1261);
+            // the zero delay on expand shows it again immediately.
+            "fixed inset-y-0 z-10 flex h-(--bb-shell-height) w-(--sidebar-width) flex-col bg-sidebar text-sidebar-foreground [transition:left_200ms_linear,right_200ms_linear,width_200ms_linear,visibility_0s_linear_0s]",
+            "group-data-[collapsible=offcanvas]:invisible group-data-[collapsible=offcanvas]:[transition:left_200ms_linear,right_200ms_linear,width_200ms_linear,visibility_0s_linear_200ms]",
             side === "left"
               ? "left-0 group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)]"
               : "right-0 group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)]",
@@ -704,7 +698,7 @@ const Sidebar = React.forwardRef<
         >
           <div
             data-sidebar="sidebar"
-            className="flex h-full w-full flex-col bg-sidebar group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:border group-data-[variant=floating]:border-sidebar-border group-data-[variant=floating]:shadow"
+            className="flex h-full w-full flex-col bg-sidebar pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:border group-data-[variant=floating]:border-sidebar-border group-data-[variant=floating]:shadow"
           >
             {children}
           </div>
@@ -714,6 +708,557 @@ const Sidebar = React.forwardRef<
   },
 );
 Sidebar.displayName = "Sidebar";
+
+type SidebarPanelDragSession = {
+  kind: "pointer" | "touch";
+  id: number;
+  startX: number;
+  startY: number;
+  panelWidth: number;
+  lastProgress: number;
+  lastClientX: number;
+  lastTimeMs: number;
+  velocityX: number;
+  isDragging: boolean;
+  startTarget: Element | null;
+};
+
+function suppressNextSidebarPanelDragClick() {
+  const cleanup = () => {
+    window.removeEventListener("click", suppressClick, { capture: true });
+    window.clearTimeout(timeout);
+  };
+  const suppressClick = (event: MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    cleanup();
+  };
+  const timeout = window.setTimeout(cleanup, 400);
+  window.addEventListener("click", suppressClick, {
+    capture: true,
+    once: true,
+  });
+}
+
+interface SidebarMobilePanelProps extends React.ComponentProps<"div"> {
+  side: "left" | "right";
+  variant: "sidebar" | "floating" | "inset";
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  suppressOpenAnimation: boolean;
+  panelMotionStyle?: React.CSSProperties;
+  backdropStyle?: React.CSSProperties;
+}
+
+/**
+ * The persistent mobile sidebar drawer. Unlike the previous vaul drawer it
+ * never unmounts its children: closing translates the panel off-screen, then
+ * a delayed `visibility: hidden` plus `inert` take it out of paint,
+ * hit-testing, focus order, and the accessibility tree. Reopening therefore
+ * replays no mount cost (#1261).
+ *
+ * The DOM contract the swipe-open code in SidebarInset relies on is kept:
+ * `[data-sidebar="panel"][data-vaul-drawer-direction]` selects the panel,
+ * `[data-sidebar-mobile-backdrop]` the backdrop, and inline styles written by
+ * the shared drag helpers win over the class-driven state styles.
+ */
+const SidebarMobilePanel = React.forwardRef<
+  HTMLDivElement,
+  SidebarMobilePanelProps
+>(
+  (
+    {
+      side,
+      variant,
+      open,
+      onOpenChange,
+      suppressOpenAnimation,
+      panelMotionStyle,
+      backdropStyle,
+      className,
+      style,
+      children,
+      onPointerDown,
+      onTouchStart,
+      ...props
+    },
+    ref,
+  ) => {
+    const panelRef = React.useRef<HTMLDivElement | null>(null);
+    const backdropRef = React.useRef<HTMLDivElement | null>(null);
+    const setPanelRef = React.useCallback(
+      (node: HTMLDivElement | null) => {
+        panelRef.current = node;
+        if (typeof ref === "function") {
+          ref(node);
+        } else if (ref) {
+          ref.current = node;
+        }
+      },
+      [ref],
+    );
+    const dragSessionRef = React.useRef<SidebarPanelDragSession | null>(null);
+    const removeDragListenersRef = React.useRef<(() => void) | null>(null);
+    const settleTimeoutRef = React.useRef<number | null>(null);
+
+    const clearDragSession = React.useCallback(() => {
+      removeDragListenersRef.current?.();
+      removeDragListenersRef.current = null;
+      dragSessionRef.current = null;
+    }, []);
+
+    const clearSettleTimeout = React.useCallback(() => {
+      if (settleTimeoutRef.current !== null) {
+        window.clearTimeout(settleTimeoutRef.current);
+        settleTimeoutRef.current = null;
+      }
+    }, []);
+
+    // The drag helpers write inline transform/opacity/transition onto the
+    // persistent panel and backdrop. With vaul those nodes unmounted on
+    // close, so stale styles could never survive; now they must be cleared
+    // whenever the open state settles so class-driven styles take over.
+    React.useLayoutEffect(() => {
+      clearSidebarMobileDragStyles();
+    }, [open]);
+
+    React.useEffect(() => {
+      if (!open) {
+        return;
+      }
+
+      const previouslyFocused =
+        document.activeElement instanceof HTMLElement
+          ? document.activeElement
+          : null;
+      panelRef.current?.focus({ preventScroll: true });
+
+      const handleKeyDown = (event: KeyboardEvent) => {
+        if (event.key === "Escape" && !event.defaultPrevented) {
+          onOpenChange(false);
+        }
+      };
+      window.addEventListener("keydown", handleKeyDown);
+
+      // The drawer is modal: while it is open, every sibling of the panel
+      // (the inset, the pinned trigger overlay, and any other app chrome at
+      // that level) leaves focus order and hit-testing, so Tab cannot escape
+      // the drawer. Portalled popovers (row context menus) render under
+      // document.body, so they stay interactive. Attribute writes rather
+      // than the `inert` property, so the state is observable in tests.
+      const container = panelRef.current?.parentElement ?? null;
+      const inertedSiblings: HTMLElement[] = [];
+      if (container) {
+        for (const sibling of container.children) {
+          if (
+            sibling === panelRef.current ||
+            sibling === backdropRef.current ||
+            !(sibling instanceof HTMLElement) ||
+            sibling.hasAttribute("inert")
+          ) {
+            continue;
+          }
+          sibling.setAttribute("inert", "");
+          inertedSiblings.push(sibling);
+        }
+      }
+
+      return () => {
+        window.removeEventListener("keydown", handleKeyDown);
+        for (const sibling of inertedSiblings) {
+          sibling.removeAttribute("inert");
+        }
+        const active = document.activeElement;
+        if (active instanceof HTMLElement && panelRef.current?.contains(active)) {
+          active.blur();
+          previouslyFocused?.focus({ preventScroll: true });
+        }
+      };
+    }, [open, onOpenChange]);
+
+    React.useEffect(
+      () => () => {
+        clearDragSession();
+        clearSettleTimeout();
+        clearSidebarMobileDragStyles();
+      },
+      [clearDragSession, clearSettleTimeout],
+    );
+
+    // Drag-to-close, replacing vaul's dismissible drag: a horizontal touch
+    // drag toward the closed side follows the pointer; release settles by
+    // distance or fling velocity. Like SidebarInset's swipe-open, it runs a
+    // pointer path AND a native touch path: browsers cancel pointer events
+    // once they claim a pan for scrolling, so the touch path (non-passive,
+    // preventDefault once intent is horizontal) has to carry the gesture.
+    const restoreOpenAfterCancelledDrag = () => {
+      clearSettleTimeout();
+      applySidebarMobileDragStyles({ progress: 1, settling: true });
+      settleTimeoutRef.current = window.setTimeout(() => {
+        settleTimeoutRef.current = null;
+        clearSidebarMobileDragStyles();
+      }, SIDEBAR_MOBILE_DRAG_SETTLE_MS);
+    };
+
+    const continuePanelDrag = (
+      clientX: number,
+      clientY: number,
+      event: PointerEvent | TouchEvent,
+    ) => {
+      const session = dragSessionRef.current;
+      if (session === null) {
+        return;
+      }
+
+      const deltaX = clientX - session.startX;
+      const deltaY = clientY - session.startY;
+      const closeDelta = side === "left" ? -deltaX : deltaX;
+      const absDeltaX = Math.abs(deltaX);
+      const absDeltaY = Math.abs(deltaY);
+
+      if (!session.isDragging) {
+        if (
+          absDeltaY > SIDEBAR_MOBILE_SWIPE_OPEN_INTENT_PX &&
+          absDeltaY > absDeltaX * 1.15
+        ) {
+          // Vertical intent: this is a list scroll, not a dismissal.
+          clearDragSession();
+          return;
+        }
+        if (
+          closeDelta < SIDEBAR_MOBILE_SWIPE_OPEN_INTENT_PX ||
+          absDeltaX <= absDeltaY * 1.25
+        ) {
+          return;
+        }
+        if (
+          session.startTarget !== null &&
+          (!session.startTarget.isConnected ||
+            isInsideHorizontalScrollRegion(session.startTarget))
+        ) {
+          clearDragSession();
+          return;
+        }
+        session.isDragging = true;
+        clearSettleTimeout();
+      }
+
+      if (event.cancelable) {
+        event.preventDefault();
+      }
+
+      const nowMs = Date.now();
+      const elapsedMs = nowMs - session.lastTimeMs;
+      if (elapsedMs > 0) {
+        session.velocityX = ((clientX - session.lastClientX) / elapsedMs) * 1000;
+        session.lastClientX = clientX;
+        session.lastTimeMs = nowMs;
+      }
+      const progress = clampSidebarMobileSwipeProgress(
+        1 - closeDelta / session.panelWidth,
+      );
+      session.lastProgress = progress;
+      applySidebarMobileDragStyles({ progress, settling: false });
+    };
+
+    const finishPanelDrag = (event: PointerEvent | TouchEvent) => {
+      const session = dragSessionRef.current;
+      if (session === null) {
+        return;
+      }
+
+      clearDragSession();
+      if (!session.isDragging) {
+        return;
+      }
+      if (event.cancelable) {
+        event.preventDefault();
+      }
+      suppressNextSidebarPanelDragClick();
+
+      const closeVelocity =
+        side === "left" ? -session.velocityX : session.velocityX;
+      const shouldClose =
+        session.lastProgress <= 1 - SIDEBAR_MOBILE_DRAG_CLOSE_RATIO ||
+        (session.lastProgress <=
+          1 - SIDEBAR_MOBILE_SWIPE_OPEN_FLING_MIN_RATIO &&
+          closeVelocity >= SIDEBAR_MOBILE_DRAG_CLOSE_FLING_VELOCITY_PX_PER_SEC);
+
+      clearSettleTimeout();
+      applySidebarMobileDragStyles({
+        progress: shouldClose ? 0 : 1,
+        settling: true,
+      });
+      settleTimeoutRef.current = window.setTimeout(() => {
+        settleTimeoutRef.current = null;
+        if (shouldClose) {
+          // The panel already sits at the closed transform, so flipping the
+          // state transitions from -100% to -100%: no visible snap.
+          onOpenChange(false);
+        } else {
+          clearSidebarMobileDragStyles();
+        }
+      }, SIDEBAR_MOBILE_DRAG_SETTLE_MS);
+    };
+
+    const cancelPanelDrag = () => {
+      const wasDragging = dragSessionRef.current?.isDragging ?? false;
+      clearDragSession();
+      if (wasDragging) {
+        restoreOpenAfterCancelledDrag();
+      }
+    };
+
+    const isIgnoredPanelDragTarget = (target: EventTarget | null) =>
+      target instanceof Element &&
+      target.closest(
+        'input, textarea, select, [contenteditable="true"], [role="slider"], [data-vaul-no-drag], [data-no-sidebar-swipe]',
+      ) !== null;
+
+    const beginPanelDragSession = (
+      kind: "pointer" | "touch",
+      id: number,
+      clientX: number,
+      clientY: number,
+      target: EventTarget | null,
+    ) => {
+      dragSessionRef.current = {
+        kind,
+        id,
+        startX: clientX,
+        startY: clientY,
+        panelWidth: getSidebarMobilePanelWidth(),
+        lastProgress: 1,
+        lastClientX: clientX,
+        lastTimeMs: Date.now(),
+        velocityX: 0,
+        isDragging: false,
+        startTarget: target instanceof Element ? target : null,
+      };
+    };
+
+    const handlePanelPointerDown = (
+      event: React.PointerEvent<HTMLDivElement>,
+    ) => {
+      onPointerDown?.(event);
+      if (
+        !open ||
+        event.defaultPrevented ||
+        event.pointerType !== "touch" ||
+        event.button !== 0 ||
+        dragSessionRef.current !== null ||
+        isIgnoredPanelDragTarget(event.target)
+      ) {
+        return;
+      }
+
+      beginPanelDragSession(
+        "pointer",
+        event.pointerId,
+        event.clientX,
+        event.clientY,
+        event.target,
+      );
+
+      const handleMove = (moveEvent: PointerEvent) => {
+        const session = dragSessionRef.current;
+        if (
+          session?.kind !== "pointer" ||
+          moveEvent.pointerId !== session.id
+        ) {
+          return;
+        }
+        continuePanelDrag(moveEvent.clientX, moveEvent.clientY, moveEvent);
+      };
+      const handleEnd = (endEvent: PointerEvent) => {
+        const session = dragSessionRef.current;
+        if (session?.kind !== "pointer" || endEvent.pointerId !== session.id) {
+          return;
+        }
+        finishPanelDrag(endEvent);
+      };
+      const handleCancel = (cancelEvent: PointerEvent) => {
+        const session = dragSessionRef.current;
+        if (
+          session?.kind !== "pointer" ||
+          cancelEvent.pointerId !== session.id
+        ) {
+          return;
+        }
+        cancelPanelDrag();
+      };
+
+      const removeListeners = () => {
+        window.removeEventListener("pointermove", handleMove);
+        window.removeEventListener("pointerup", handleEnd);
+        window.removeEventListener("pointercancel", handleCancel);
+      };
+      window.addEventListener("pointermove", handleMove, { passive: false });
+      window.addEventListener("pointerup", handleEnd);
+      window.addEventListener("pointercancel", handleCancel);
+      removeDragListenersRef.current = removeListeners;
+    };
+
+    const handlePanelTouchStart = (
+      event: React.TouchEvent<HTMLDivElement>,
+    ) => {
+      onTouchStart?.(event);
+      if (
+        !open ||
+        event.defaultPrevented ||
+        event.touches.length !== 1 ||
+        isIgnoredPanelDragTarget(event.target)
+      ) {
+        return;
+      }
+      const currentSession = dragSessionRef.current;
+      if (currentSession !== null) {
+        if (currentSession.kind !== "pointer") {
+          return;
+        }
+        // The derived pointer session for this same touch gets cancelled the
+        // moment the browser claims the pan; hand the gesture to the touch
+        // path, which can preventDefault its way through.
+        clearDragSession();
+      }
+      const touch = event.touches.item(0);
+      if (touch === null) {
+        return;
+      }
+
+      beginPanelDragSession(
+        "touch",
+        touch.identifier,
+        touch.clientX,
+        touch.clientY,
+        event.target,
+      );
+
+      const handleTouchMove = (moveEvent: TouchEvent) => {
+        const session = dragSessionRef.current;
+        if (session?.kind !== "touch") {
+          return;
+        }
+        const trackedTouch = getTrackedSwipeTouch(moveEvent, session.id);
+        if (trackedTouch === null) {
+          return;
+        }
+        continuePanelDrag(
+          trackedTouch.clientX,
+          trackedTouch.clientY,
+          moveEvent,
+        );
+      };
+      const handleTouchEnd = (endEvent: TouchEvent) => {
+        const session = dragSessionRef.current;
+        if (
+          session?.kind !== "touch" ||
+          getTrackedSwipeTouch(endEvent, session.id) === null
+        ) {
+          return;
+        }
+        finishPanelDrag(endEvent);
+      };
+      const handleTouchCancel = (cancelEvent: TouchEvent) => {
+        const session = dragSessionRef.current;
+        if (
+          session?.kind !== "touch" ||
+          getTrackedSwipeTouch(cancelEvent, session.id) === null
+        ) {
+          return;
+        }
+        cancelPanelDrag();
+      };
+
+      const removeListeners = () => {
+        window.removeEventListener("touchmove", handleTouchMove);
+        window.removeEventListener("touchend", handleTouchEnd);
+        window.removeEventListener("touchcancel", handleTouchCancel);
+      };
+      window.addEventListener("touchmove", handleTouchMove, {
+        passive: false,
+      });
+      window.addEventListener("touchend", handleTouchEnd);
+      window.addEventListener("touchcancel", handleTouchCancel);
+      removeDragListenersRef.current = removeListeners;
+    };
+
+    const suppressedOpenTransitionStyle =
+      open && suppressOpenAnimation
+        ? ({ transition: "none" } satisfies React.CSSProperties)
+        : undefined;
+
+    return (
+      <>
+        <div
+          ref={backdropRef}
+          data-sidebar-mobile-backdrop=""
+          data-testid="sidebar-mobile-backdrop"
+          data-state={open ? "open" : "closed"}
+          className={cn(
+            "fixed inset-0 z-40 bg-black/80",
+            SIDEBAR_MOBILE_BACKDROP_TRANSITION_CLASS,
+            "data-[state=closed]:invisible data-[state=closed]:pointer-events-none data-[state=closed]:opacity-0",
+          )}
+          style={{ ...suppressedOpenTransitionStyle, ...backdropStyle }}
+          onClick={() => onOpenChange(false)}
+        />
+        <div
+          ref={setPanelRef}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Sidebar"
+          tabIndex={-1}
+          inert={!open}
+          data-sidebar="panel"
+          data-sidebar-state={open ? "expanded" : "collapsed"}
+          data-state={open ? "open" : "closed"}
+          data-collapsible=""
+          data-variant={variant}
+          data-side={side}
+          // Kept although vaul is gone: SidebarInset's swipe helpers and the
+          // swipe-target guards select the mobile panel by this attribute.
+          data-vaul-drawer-direction={side}
+          className={cn(
+            // Fixed: a percentage height would resolve against the short
+            // initial containing block, so it reads the shell unit directly.
+            // touch-pan-y hands horizontal touch moves to the drag-to-close
+            // handler while leaving vertical list scrolling native.
+            "group fixed inset-y-0 z-40 flex h-(--bb-shell-height) w-(--sidebar-width-mobile) touch-pan-y flex-col bg-sidebar text-sidebar-foreground outline-none",
+            SIDEBAR_MOBILE_PANEL_TRANSITION_CLASS,
+            "data-[state=closed]:invisible",
+            side === "left"
+              ? "left-0 data-[state=closed]:-translate-x-full"
+              : "right-0 data-[state=closed]:translate-x-full",
+            variant === "floating" || variant === "inset"
+              ? "p-2"
+              : "border-border-seam data-[side=left]:border-r data-[side=right]:border-l",
+            className,
+          )}
+          style={
+            {
+              ...sidebarMobileWidthStyle,
+              ...style,
+              ...suppressedOpenTransitionStyle,
+              ...panelMotionStyle,
+            } as SidebarMobileWidthStyle
+          }
+          onPointerDown={handlePanelPointerDown}
+          onTouchStart={handlePanelTouchStart}
+          {...props}
+        >
+          <div
+            data-sidebar="sidebar"
+            className="flex h-full w-full flex-col bg-sidebar pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:border group-data-[variant=floating]:border-sidebar-border group-data-[variant=floating]:shadow"
+          >
+            {children}
+          </div>
+        </div>
+      </>
+    );
+  },
+);
+SidebarMobilePanel.displayName = "SidebarMobilePanel";
 
 const SidebarTrigger = React.forwardRef<
   React.ComponentRef<typeof Button>,
@@ -880,6 +1425,19 @@ const SidebarInset = React.forwardRef<
           return;
         }
 
+        // A live timeline update can detach the start target mid-gesture. A
+        // detached element reports empty computed style, so the probe below
+        // would wrongly pass; cancel the swipe instead of guessing.
+        if (
+          session.startTarget !== null &&
+          (!session.startTarget.isConnected ||
+            isInsideHorizontalScrollRegion(session.startTarget))
+        ) {
+          clearSidebarMobileDragStyles();
+          clearSwipeSession();
+          return;
+        }
+
         session.isDragging = true;
         clearMobileDragSettleTimeout();
         flushSync(() => {
@@ -1035,6 +1593,7 @@ const SidebarInset = React.forwardRef<
         startX: touch.clientX,
         startY: touch.clientY,
         selectionRoot: getSidebarSwipeSelectionRoot(event.target),
+        startTarget: event.target instanceof Element ? event.target : null,
       });
 
       const removeListeners = () => {
@@ -1080,6 +1639,7 @@ const SidebarInset = React.forwardRef<
         startX: event.clientX,
         startY: event.clientY,
         selectionRoot: getSidebarSwipeSelectionRoot(event.target),
+        startTarget: event.target instanceof Element ? event.target : null,
       });
 
       const removeListeners = () => {
@@ -1150,6 +1710,13 @@ const SidebarInset = React.forwardRef<
       if (
         absDeltaX < SIDEBAR_MOBILE_SWIPE_OPEN_INTENT_PX ||
         absDeltaX <= absDeltaY * 1.25
+      ) {
+        return;
+      }
+
+      if (
+        event.target instanceof Element &&
+        isInsideHorizontalScrollRegion(event.target)
       ) {
         return;
       }
@@ -1259,17 +1826,34 @@ SidebarFooter.displayName = "SidebarFooter";
 const SidebarContent = React.forwardRef<
   HTMLDivElement,
   React.ComponentProps<"div">
->(({ className, ...props }, ref) => {
+>(({ className, children, ...props }, ref) => {
+  const contentRef = React.useRef<HTMLDivElement | null>(null);
+  const setContentRef = React.useCallback(
+    (node: HTMLDivElement | null) => {
+      contentRef.current = node;
+      if (typeof ref === "function") {
+        ref(node);
+      } else if (ref) {
+        ref.current = node;
+      }
+    },
+    [ref],
+  );
+
   return (
     <div
-      ref={ref}
+      ref={setContentRef}
       data-sidebar="content"
       className={cn(
         "flex min-h-0 flex-1 flex-col gap-2 overflow-auto group-data-[collapsible=icon]:overflow-hidden",
         className,
       )}
       {...props}
-    />
+    >
+      <SidebarContentElementContext.Provider value={contentRef}>
+        {children}
+      </SidebarContentElementContext.Provider>
+    </div>
   );
 });
 SidebarContent.displayName = "SidebarContent";
@@ -1517,4 +2101,5 @@ export {
   useIsSidebarShowing,
   useOptionalIsSidebarShowing,
   useSidebar,
+  useSidebarContentElementRef,
 };

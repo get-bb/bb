@@ -285,6 +285,70 @@ describe("bb thread action command output", () => {
     expect(stopPost).toHaveBeenCalledTimes(1);
   });
 
+  it("bb thread retry continues the current eligible failed request", async () => {
+    const statusGet = vi.fn(async () => ({
+      reason: "eligible",
+      scopeKey: "host-1:codex",
+      hostId: "host-1",
+      rateLimits: null,
+      candidate: {
+        failedRequestId: "request-failed-1",
+        turnId: "turn-failed-1",
+        automatic: true,
+        resetsAtMs: 123,
+        rateLimits: {
+          providerId: "codex",
+          status: "blocked",
+          kind: "subscription-window",
+          windows: [],
+          reachedReason: null,
+          overageStatus: null,
+          overageReason: null,
+        },
+      },
+    }));
+    const continuePost = vi.fn(async () => ({
+      ok: true,
+      requestId: "request-continuation-1",
+    }));
+    stubServerApi({
+      "v1.threads.:id.rate-limit-recovery.$get": statusGet,
+      "v1.threads.:id.rate-limit-recovery.continue.$post": continuePost,
+    });
+
+    await runCommand(["thread", "retry", "thread-retry-1"], register);
+
+    expect(statusGet).toHaveBeenCalledWith({
+      param: { id: "thread-retry-1" },
+    });
+    expect(continuePost).toHaveBeenCalledWith({
+      param: { id: "thread-retry-1" },
+      json: { failedRequestId: "request-failed-1" },
+    });
+    expect(collectLogLines(vi.mocked(console.log))).toContain(
+      "Thread thread-retry-1 continued after provider rate limit",
+    );
+  });
+
+  it("bb thread retry fails when the server finds no eligible candidate", async () => {
+    stubServerApi({
+      "v1.threads.:id.rate-limit-recovery.$get": vi.fn(async () => ({
+        reason: "input-not-accepted",
+        scopeKey: "host-1:codex",
+        hostId: "host-1",
+        rateLimits: null,
+        candidate: null,
+      })),
+    });
+
+    await expect(
+      runCommand(["thread", "retry", "thread-ineligible"], register),
+    ).rejects.toThrow("process.exit:1");
+    expect(collectLogLines(vi.mocked(console.error))).toContain(
+      "Error: Thread thread-ineligible cannot be continued after a provider rate limit (input-not-accepted).",
+    );
+  });
+
   it("bb thread stop lets the server no-op when the thread is in error", async () => {
     const get = vi.fn(async () =>
       fixtures.makeThread({
@@ -334,6 +398,18 @@ describe("bb thread action command output", () => {
       "Thread thread-stop-active stopped",
     );
     expect(stopPost).toHaveBeenCalledTimes(1);
+  });
+
+  it("bb thread compact calls the manual compaction endpoint", async () => {
+    const post = vi.fn(async () => ({ ok: true }));
+    stubServerApi({ "v1.threads.:id.compact.$post": post });
+
+    await runCommand(["thread", "compact", "thread-compact"], register);
+
+    expect(post).toHaveBeenCalledWith({ param: { id: "thread-compact" } });
+    expect(collectLogLines(vi.mocked(console.log))).toContain(
+      "Thread thread-compact context compaction requested",
+    );
   });
 
   it.each([

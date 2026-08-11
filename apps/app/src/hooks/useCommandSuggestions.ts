@@ -11,6 +11,8 @@ import { useProjectCommands } from "./queries/project-queries";
 export interface UseCommandSuggestionsArgs {
   projectId: string | undefined;
   providerId: string | undefined;
+  /** Composer surface used to exclude commands that require an existing thread. */
+  commandScope: "new-thread" | "thread";
   skillsTrigger: PromptMentionCommandTrigger | null;
   promptActions?: readonly CommandSuggestionPromptAction[];
   /**
@@ -203,7 +205,15 @@ export function useCommandSuggestions(
       return [];
     }
     const discoveredSuggestions = filterCommandSuggestions(
-      (commandsQuery.data?.commands ?? []).map(toProviderCommandSuggestion),
+      (commandsQuery.data?.commands ?? [])
+        .map(toProviderCommandSuggestion)
+        .filter(
+          (suggestion) =>
+            args.commandScope === "thread" ||
+            suggestion.source !== "command" ||
+            suggestion.origin !== "builtin" ||
+            suggestion.name !== "compact",
+        ),
       trimmedQuery,
     );
     return orderCommandSuggestionsBySection(
@@ -211,6 +221,7 @@ export function useCommandSuggestions(
     );
   }, [
     commandsQuery.data?.commands,
+    args.commandScope,
     isActive,
     promptActionSuggestions,
     trimmedQuery,

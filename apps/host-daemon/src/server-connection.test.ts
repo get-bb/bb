@@ -1,3 +1,4 @@
+import { Buffer } from "node:buffer";
 import type { HostDaemonSessionOpenResponse } from "@bb/host-daemon-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { HostDaemonLogger } from "./logger.js";
@@ -98,6 +99,7 @@ function createServerClientFixture(args: CreateServerClientFixtureArgs = {}) {
 
 function createWebSocketFixture(args: CreateWebSocketFixtureArgs = {}) {
   const sockets: ReconnectingWebSocketLike[] = [];
+  const bufferedAmounts = new Map<ReconnectingWebSocketLike, number>();
   const headers: Array<Record<string, string> | undefined> = [];
   const createWebSocket: CreateReconnectingWebSocket = (
     urlProvider,
@@ -106,6 +108,9 @@ function createWebSocketFixture(args: CreateWebSocketFixtureArgs = {}) {
     headers.push(options.headers);
     let readyState = 0;
     const socket: ReconnectingWebSocketLike = {
+      get bufferedAmount() {
+        return bufferedAmounts.get(socket) ?? 0;
+      },
       get readyState() {
         return readyState;
       },
@@ -135,6 +140,7 @@ function createWebSocketFixture(args: CreateWebSocketFixtureArgs = {}) {
       });
     }
 
+    bufferedAmounts.set(socket, 0);
     sockets.push(socket);
     void openSocket().catch((error) => socket.onerror?.(error));
     return socket;
@@ -143,6 +149,9 @@ function createWebSocketFixture(args: CreateWebSocketFixtureArgs = {}) {
   return {
     createWebSocket,
     headers,
+    setBufferedAmount(socket: ReconnectingWebSocketLike, bytes: number) {
+      bufferedAmounts.set(socket, bytes);
+    },
     sockets,
   };
 }
@@ -333,6 +342,70 @@ describe("ServerConnection", () => {
         }),
         "Host daemon heartbeat timer delayed",
       );
+    } finally {
+      await connection.shutdown();
+    }
+  });
+
+  it("queues output above high water and flushes it before lifecycle messages", async () => {
+    vi.useFakeTimers();
+    const { connection, webSocket } = createConnectionFixture();
+    try {
+      await connection.start();
+      const socket = webSocket.sockets[0];
+      if (!socket) {
+        throw new Error("Expected test socket");
+      }
+      webSocket.setBufferedAmount(socket, 2 * 1024 * 1024);
+      const output = {
+        type: "terminal.output" as const,
+        terminalId: "term-1",
+        chunk: {
+          seq: 0,
+          dataBase64: Buffer.from("hello").toString("base64"),
+        },
+      };
+      const exited = {
+        type: "terminal.exited" as const,
+        terminalId: "term-1",
+        exitCode: 0,
+        closeReason: "user" as const,
+      };
+
+      expect(connection.sendMessage(output)).toBe(true);
+      expect(socket.send).not.toHaveBeenCalled();
+
+      expect(connection.sendMessage(exited)).toBe(true);
+      expect(socket.send).toHaveBeenNthCalledWith(1, JSON.stringify(output));
+      expect(socket.send).toHaveBeenNthCalledWith(2, JSON.stringify(exited));
+    } finally {
+      await connection.shutdown();
+    }
+  });
+
+  it("closes the connection when a terminal websocket send throws", async () => {
+    const { connection, webSocket } = createConnectionFixture();
+    try {
+      await connection.start();
+      const socket = webSocket.sockets[0];
+      if (!socket) {
+        throw new Error("Expected test socket");
+      }
+      vi.mocked(socket.send).mockImplementation(() => {
+        throw new Error("send failed");
+      });
+
+      expect(
+        connection.sendMessage({
+          type: "terminal.output",
+          terminalId: "term-1",
+          chunk: {
+            seq: 0,
+            dataBase64: Buffer.from("hello").toString("base64"),
+          },
+        }),
+      ).toBe(false);
+      expect(socket.close).toHaveBeenCalledWith(1013, "send-failed");
     } finally {
       await connection.shutdown();
     }

@@ -1,6 +1,7 @@
 import type { Hono } from "hono";
 import { hc } from "hono/client";
 import {
+  discoveredWorkspacePropertiesSchema,
   ENVIRONMENT_CHANGE_KINDS,
   hostTypeSchema,
   pendingInteractionCreateSchema,
@@ -314,6 +315,16 @@ export type HostDaemonEnvironmentChangePayload = z.infer<
   typeof hostDaemonEnvironmentChangePayloadSchema
 >;
 
+export const hostDaemonEnvironmentMetadataChangePayloadSchema = z
+  .object({
+    environmentId: z.string().min(1),
+    workspace: discoveredWorkspacePropertiesSchema,
+  })
+  .strict();
+export type HostDaemonEnvironmentMetadataChangePayload = z.infer<
+  typeof hostDaemonEnvironmentMetadataChangePayloadSchema
+>;
+
 export const hostDaemonSessionCloseReasonSchema = z.enum([
   "replaced",
   "expired",
@@ -529,6 +540,11 @@ const hostDaemonTerminalAttachMessageSchema = z
     requestId: terminalRequestIdSchema,
     terminalId: terminalIdSchema,
     sinceSeq: z.number().int().nonnegative(),
+    tailBytes: z
+      .number()
+      .int()
+      .positive()
+      .max(4 * 1024 * 1024),
   })
   .strict();
 
@@ -590,6 +606,13 @@ const hostDaemonEnvironmentChangeMessageSchema =
     })
     .strict();
 
+const hostDaemonEnvironmentMetadataChangeMessageSchema =
+  hostDaemonEnvironmentMetadataChangePayloadSchema
+    .extend({
+      type: z.literal("environment-metadata-change"),
+    })
+    .strict();
+
 const hostDaemonConnectTunnelIdentityMessageSchema = z
   .object({
     type: z.literal("connect-tunnel.identity"),
@@ -627,6 +650,7 @@ const hostDaemonTerminalReplayMessageSchema = z
     requestId: terminalRequestIdSchema,
     terminalId: terminalIdSchema,
     chunks: z.array(hostDaemonTerminalOutputChunkSchema),
+    replayStartSeq: z.number().int().nonnegative(),
     nextSeq: z.number().int().nonnegative(),
   })
   .strict();
@@ -653,6 +677,7 @@ const hostDaemonTerminalErrorMessageSchema = z
 export const hostDaemonDaemonWsMessageSchema = z.union([
   hostDaemonHeartbeatMessageSchema,
   hostDaemonEnvironmentChangeMessageSchema,
+  hostDaemonEnvironmentMetadataChangeMessageSchema,
   hostDaemonConnectTunnelIdentityMessageSchema,
   hostDaemonTerminalOpenedMessageSchema,
   hostDaemonTerminalOutputMessageSchema,

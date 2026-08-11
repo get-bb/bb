@@ -9,6 +9,7 @@ import type {
 import type { SystemExecutionOptionsResponse } from "@bb/server-contract";
 import { systemExecutionOptionsQueryKey } from "../src/hooks/queries/query-keys";
 import type { PickerOption } from "../src/components/pickers/OptionPicker";
+import type { ModelPickerOption } from "../src/components/pickers/model-picker-option";
 import {
   STORY_CLAUDE_CODE_MORE_MODELS,
   STORY_CLAUDE_CODE_MODELS,
@@ -81,7 +82,7 @@ function makeAvailableModels({
   reasoningOptions,
   markFirstDefault = true,
 }: {
-  models: readonly PickerOption<string>[];
+  models: readonly ModelPickerOption[];
   reasoningOptions: readonly PickerOption<ReasoningLevel>[];
   markFirstDefault?: boolean;
 }): AvailableModel[] {
@@ -96,6 +97,9 @@ function makeAvailableModels({
     id: model.value,
     model: model.value,
     displayName: model.label,
+    ...(model.routeProviderId
+      ? { routeProviderId: model.routeProviderId }
+      : {}),
     description: "",
     supportedReasoningEfforts,
     defaultReasoningEffort,

@@ -4,7 +4,7 @@ export default defineWorkspaceTestConfig({
   test: {
     silent: "passed-only",
     name: "bb-plugin-github",
-    include: ["**/*.test.ts"],
+    include: ["**/*.test.{ts,tsx}"],
     exclude: ["node_modules/**"],
   },
 });

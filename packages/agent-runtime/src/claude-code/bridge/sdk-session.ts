@@ -8,6 +8,11 @@ import {
   type SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
 import type { ClaudePermissionMode } from "../interactive-contract.js";
+import {
+  isMissingClaudeCliMessage,
+  missingClaudeCliGuidance,
+  translateMissingClaudeCliError,
+} from "./missing-cli-error.js";
 
 export interface SdkSessionOptions {
   cwd: string;
@@ -30,6 +35,24 @@ export interface SdkSessionOptions {
   thinking?: Options["thinking"];
   /** Flag-tier settings (highest user-controlled tier); BB owns this layer. */
   settings?: Options["settings"];
+}
+
+export type ClaudeSdkReasoningEffort =
+  | "low"
+  | "medium"
+  | "high"
+  | "xhigh"
+  | "max";
+
+export interface ClaudeMutableFlagSettings {
+  autoMemoryEnabled: boolean;
+  enableWorkflows: boolean;
+  effortLevel?: ClaudeSdkReasoningEffort;
+  ultracode: boolean;
+}
+
+interface ClaudeMutableSettingsQueryBoundary {
+  applyFlagSettings(settings: ClaudeMutableFlagSettings): Promise<void>;
 }
 
 type SdkSessionMessageHandler = (message: SDKMessage) => void;
@@ -75,7 +98,10 @@ function appendBoundedText(args: AppendBoundedTextArgs): string {
 }
 
 function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  const message = error instanceof Error ? error.message : String(error);
+  return isMissingClaudeCliMessage(message)
+    ? missingClaudeCliGuidance()
+    : message;
 }
 
 function buildSdkDoneErrorMessage(args: BuildSdkDoneErrorMessageArgs): string {
@@ -140,6 +166,48 @@ export class SdkSession {
     return this.isProcessing;
   }
 
+  canPushInput(): boolean {
+    return !this.inputDone;
+  }
+
+  /**
+   * Change the permission mode of the live session. Used to leave Plan mode
+   * once the user approves a plan. The new mode is also recorded on the
+   * session options so a later resume rebuilds the session with it.
+   *
+   * Only streaming-input sessions accept the control request, and only while
+   * the query is open, so a closed session records the mode and returns.
+   */
+  async setPermissionMode(mode: ClaudePermissionMode): Promise<void> {
+    this.options.permissionMode = mode;
+    await this.query?.setPermissionMode(mode);
+  }
+
+  async setModel(model: string | undefined): Promise<void> {
+    await this.query?.setModel(model);
+    this.options.model = model;
+  }
+
+  async applyMutableSettings(args: {
+    effort: ClaudeSdkReasoningEffort | undefined;
+    settings: ClaudeMutableFlagSettings;
+  }): Promise<void> {
+    // Claude CLI accepts `max` through apply_flag_settings (and reports max
+    // from its hook context), but Agent SDK 0.3.197's Settings type omits it.
+    // Keep the compatibility assertion at this external SDK boundary.
+    await (
+      this.query as ClaudeMutableSettingsQueryBoundary | undefined
+    )?.applyFlagSettings(args.settings);
+    this.options.effort = args.effort;
+    const { effortLevel: _effortLevel, ...sessionSettings } = args.settings;
+    const currentSettings =
+      typeof this.options.settings === "object" ? this.options.settings : {};
+    this.options.settings = {
+      ...currentSettings,
+      ...sessionSettings,
+    };
+  }
+
   start(resumeSessionId?: string): void {
     if (resumeSessionId) {
       this.sessionId = resumeSessionId;
@@ -195,27 +263,37 @@ export class SdkSession {
         : {}),
       ...(this.options.effort ? { effort: this.options.effort } : {}),
       ...(this.options.pathToClaudeCodeExecutable
-        ? { pathToClaudeCodeExecutable: this.options.pathToClaudeCodeExecutable }
+        ? {
+            pathToClaudeCodeExecutable: this.options.pathToClaudeCodeExecutable,
+          }
         : {}),
       ...(this.options.plugins ? { plugins: this.options.plugins } : {}),
       ...(this.options.thinking ? { thinking: this.options.thinking } : {}),
       ...(this.options.settings ? { settings: this.options.settings } : {}),
     };
 
-    this.query = query({
-      prompt: this.createInputIterable(),
-      options: sdkOptions,
-    });
+    try {
+      this.query = query({
+        prompt: this.createInputIterable(),
+        options: sdkOptions,
+      });
+    } catch (error) {
+      throw translateMissingClaudeCliError(error);
+    }
 
     void this.consumeStream();
   }
 
-  pushInput(text: string): Promise<void> {
+  pushInput(
+    text: string,
+    promptId?: NonNullable<SDKUserMessage["uuid"]>,
+  ): Promise<void> {
     const message: SDKUserMessage = {
       type: "user",
       message: { role: "user", content: text },
       parent_tool_use_id: null,
       session_id: this.sessionId ?? "",
+      ...(promptId !== undefined ? { uuid: promptId } : {}),
     };
 
     if (this.inputDone) {

@@ -24,6 +24,7 @@ export interface BuildAcpMcpServerConfigArgs {
   dynamicTools: readonly DynamicTool[];
   host: string;
   port: number;
+  runtimeEnv: { name: string; value: string }[];
   threadId: string;
   token: string;
 }
@@ -73,6 +74,7 @@ export function buildAcpMcpServerConfig(
     command: args.command,
     args: args.bridgeArgs,
     env: [
+      ...args.runtimeEnv,
       { name: ENV_HOST, value: args.host },
       { name: ENV_PORT, value: String(args.port) },
       { name: ENV_TOKEN, value: args.token },

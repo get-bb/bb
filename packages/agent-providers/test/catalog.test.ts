@@ -7,6 +7,7 @@ import {
   getBuiltInAgentProviderServerCapabilities,
   isAcpAgentProviderId,
   isAcpProviderId,
+  supportsManualCompaction,
 } from "../src/index.js";
 
 describe("agent provider catalog", () => {
@@ -19,6 +20,15 @@ describe("agent provider catalog", () => {
     expect(isAcpProviderId("acp-cursor")).toBe(true);
     expect(isAcpProviderId("acp-my-agent")).toBe(true);
     expect(isAcpProviderId("codex")).toBe(false);
+  });
+
+  it("advertises manual compaction only for providers with a concrete control", () => {
+    expect(supportsManualCompaction("codex")).toBe(true);
+    expect(supportsManualCompaction("claude-code")).toBe(true);
+    expect(supportsManualCompaction("pi")).toBe(true);
+    expect(supportsManualCompaction("acp-cursor")).toBe(false);
+    expect(supportsManualCompaction("acp-custom")).toBe(false);
+    expect(supportsManualCompaction("acp-opencode")).toBe(true);
   });
 
   it("synthesizes dynamic ACP provider metadata with shared ACP policy", () => {

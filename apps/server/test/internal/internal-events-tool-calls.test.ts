@@ -1,3 +1,4 @@
+import { once } from "node:events";
 import { setTimeout as sleep } from "node:timers/promises";
 import { eq } from "drizzle-orm";
 import {
@@ -9,12 +10,13 @@ import {
   listQueuedThreadMessages,
   threads,
 } from "@bb/db";
-import { threadScope, turnScope } from "@bb/domain";
+import { threadScope, turnScope, type ToolCallResponse } from "@bb/domain";
 import {
   groupHostDaemonEvents,
   type HostDaemonEventEnvelope,
 } from "@bb/host-daemon-contract";
 import { describe, expect, it, vi } from "vitest";
+import { serve } from "@hono/node-server";
 import {
   internalAuthHeaders,
   listQueuedThreadCommands,
@@ -81,6 +83,95 @@ async function flushDeferredChildThreadNotifications(): Promise<void> {
 }
 
 describe("internal event and tool-call routes", () => {
+  it("returns the response head before a plugin tool completes", async () => {
+    await withTestHarness(async (harness) => {
+      const record = {
+        name: "wait_for_user",
+      } as PluginAgentToolRecord;
+      let completeTool!: (value: ToolCallResponse) => void;
+      const toolResult = new Promise<ToolCallResponse>((resolve) => {
+        completeTool = resolve;
+      });
+      setPluginAgentContributions({
+        listSkillRootContributions: () => [],
+        listAgentTools: () => [],
+        listInstructionContributions: () => [],
+        findAgentTool: (name) =>
+          name === record.name ? { pluginId: "fixture", record } : undefined,
+        invokeAgentTool: () => toolResult,
+        resolveMention: async () => ({ ok: false, error: "unused" }),
+      });
+
+      try {
+        const { host, session } = seedHostSession(harness.deps, {
+          id: "host-streaming-tool-call",
+        });
+        const { project } = seedProjectWithSource(harness.deps, {
+          hostId: host.id,
+        });
+        const environment = seedEnvironment(harness.deps, {
+          hostId: host.id,
+          projectId: project.id,
+        });
+        const thread = seedThread(harness.deps, {
+          projectId: project.id,
+          environmentId: environment.id,
+        });
+
+        const server = serve({
+          fetch: harness.app.fetch,
+          hostname: "127.0.0.1",
+          port: 0,
+        });
+        try {
+          if (!server.listening) await once(server, "listening");
+          const address = server.address();
+          if (address === null || typeof address === "string") {
+            throw new Error("Expected a TCP server address");
+          }
+          const responsePromise = fetch(
+            `http://127.0.0.1:${address.port}/internal/session/tool-call`,
+            {
+              method: "POST",
+              headers: internalAuthHeaders(harness),
+              body: JSON.stringify({
+                sessionId: session.id,
+                threadId: thread.id,
+                providerThreadId: "provider-tool-call",
+                turnId: "turn-tool-call",
+                callId: "call-tool-call",
+                tool: record.name,
+              }),
+            },
+          );
+          const earlyResponse = await Promise.race([
+            responsePromise,
+            sleep(1_000).then(() => null),
+          ]);
+
+          completeTool({
+            success: true,
+            contentItems: [{ type: "inputText", text: "answered" }],
+          });
+          const response = earlyResponse ?? (await responsePromise);
+
+          expect(earlyResponse).not.toBeNull();
+          expect(response.status).toBe(200);
+          await expect(readJson(response)).resolves.toEqual({
+            success: true,
+            contentItems: [{ type: "inputText", text: "answered" }],
+          });
+        } finally {
+          await new Promise<void>((resolve, reject) => {
+            server.close((error) => (error ? reject(error) : resolve()));
+          });
+        }
+      } finally {
+        setPluginAgentContributions(undefined);
+      }
+    });
+  });
+
   it("snapshots native plugin status labels into tool-call events", async () => {
     await withTestHarness(async (harness) => {
       const statusLabels = {

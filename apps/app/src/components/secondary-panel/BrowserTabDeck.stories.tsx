@@ -137,7 +137,7 @@ function BrowserTabStage({ tab, threadId, width }: BrowserTabStageProps) {
       <ThreadSecondaryPanel
         activeTab={tab}
         canUseGitUi={false}
-        defaultMergeBaseBranch="main"
+        requestedMergeBaseBranch="main"
         environmentId={undefined}
         fileTabs={fileTabs}
         fileTabContent={

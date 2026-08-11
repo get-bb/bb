@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  getPullRequestForBranch,
+  getPullRequestForCurrentBranch,
   parseGitHostPullRequest,
-  runPullRequestActionForBranch,
+  runPullRequestActionForCurrentBranch,
   type GitHostPullRequestAction,
 } from "../src/git-host.js";
 
@@ -179,71 +179,70 @@ describe("parseGitHostPullRequest", () => {
   });
 });
 
-describe("runPullRequestActionForBranch", () => {
+describe("runPullRequestActionForCurrentBranch", () => {
+  const actionArgs = {
+    cwd: "/tmp/workspace",
+    localBranch: "bb/pr-action",
+  };
+
   function mockGhSuccess(): void {
     execFileMock.mockImplementation(
       (
-        _file: string,
+        file: string,
         _args: readonly string[],
         _options: object,
         callback: (error: Error | null, stdout: string, stderr: string) => void,
       ) => {
+        if (file === "git") {
+          callback(null, "", "");
+          return;
+        }
         callback(null, "", "");
       },
     );
   }
 
   it.each([
-    [
-      "ready",
-      { operation: "ready" },
-      ["pr", "ready", "--", "bb/pr-actions"],
-    ],
-    [
-      "draft",
-      { operation: "draft" },
-      ["pr", "ready", "--undo", "--", "bb/pr-actions"],
-    ],
+    ["ready", { operation: "ready" }, ["pr", "ready"]],
+    ["draft", { operation: "draft" }, ["pr", "ready", "--undo"]],
     [
       "merge",
       { operation: "merge", method: "merge" },
-      ["pr", "merge", "--merge", "--", "bb/pr-actions"],
+      ["pr", "merge", "--merge"],
     ],
     [
       "squash",
       { operation: "merge", method: "squash" },
-      ["pr", "merge", "--squash", "--", "bb/pr-actions"],
+      ["pr", "merge", "--squash"],
     ],
     [
       "rebase",
       { operation: "merge", method: "rebase" },
-      ["pr", "merge", "--rebase", "--", "bb/pr-actions"],
+      ["pr", "merge", "--rebase"],
     ],
-  ] satisfies readonly [
-    string,
-    GitHostPullRequestAction,
-    readonly string[],
-  ][])("runs gh pr %s for the branch", async (_label, action, expectedArgs) => {
-    mockGhSuccess();
+  ] satisfies readonly [string, GitHostPullRequestAction, readonly string[]][])(
+    "runs gh pr %s without a target so gh can honor a fork upstream",
+    async (_label, action, expectedArgs) => {
+      mockGhSuccess();
 
-    await runPullRequestActionForBranch({
-      cwd: "/tmp/workspace",
-      branch: "bb/pr-actions",
-      action,
-    });
+      await runPullRequestActionForCurrentBranch({
+        ...actionArgs,
+        action,
+      });
 
-    expect(execFileMock).toHaveBeenCalledWith(
-      "gh",
-      expectedArgs,
-      expect.objectContaining({
-        cwd: "/tmp/workspace",
-        encoding: "utf8",
-        maxBuffer: 16 * 1024 * 1024,
-        timeout: 60_000,
-      }),
-      expect.any(Function),
-    );
-  });
+      expect(execFileMock).toHaveBeenCalledWith(
+        "gh",
+        expectedArgs,
+        expect.objectContaining({
+          cwd: "/tmp/workspace",
+          encoding: "utf8",
+          maxBuffer: 16 * 1024 * 1024,
+          timeout: 60_000,
+        }),
+        expect.any(Function),
+      );
+    },
+  );
 
   it("maps a missing gh executable to a workspace error", async () => {
     const error = Object.assign(new Error("spawn gh ENOENT"), {
@@ -251,19 +250,26 @@ describe("runPullRequestActionForBranch", () => {
     });
     execFileMock.mockImplementation(
       (
-        _file: string,
+        file: string,
         _args: readonly string[],
         _options: object,
-        callback: (error: Error) => void,
+        callback: (
+          error: Error | null,
+          stdout?: string,
+          stderr?: string,
+        ) => void,
       ) => {
+        if (file === "git") {
+          callback(null, "", "");
+          return;
+        }
         callback(error);
       },
     );
 
     await expect(
-      runPullRequestActionForBranch({
-        cwd: "/tmp/workspace",
-        branch: "bb/pr-actions",
+      runPullRequestActionForCurrentBranch({
+        ...actionArgs,
         action: { operation: "ready" },
       }),
     ).rejects.toMatchObject({
@@ -273,15 +279,24 @@ describe("runPullRequestActionForBranch", () => {
   });
 });
 
-describe("getPullRequestForBranch", () => {
+describe("getPullRequestForCurrentBranch", () => {
+  const lookupArgs = {
+    cwd: "/tmp/workspace",
+    localBranch: "bb/pr-lookup",
+  };
+
   function mockGhStdout(stdout: string): void {
     execFileMock.mockImplementation(
       (
-        _file: string,
+        file: string,
         _args: readonly string[],
         _options: object,
         callback: (error: Error | null, stdout: string, stderr: string) => void,
       ) => {
+        if (file === "git") {
+          callback(null, "", "");
+          return;
+        }
         callback(null, stdout, "");
       },
     );
@@ -290,24 +305,38 @@ describe("getPullRequestForBranch", () => {
   function mockGhFailure(error: Error): void {
     execFileMock.mockImplementation(
       (
-        _file: string,
+        file: string,
         _args: readonly string[],
         _options: object,
-        callback: (error: Error) => void,
+        callback: (
+          error: Error | null,
+          stdout?: string,
+          stderr?: string,
+        ) => void,
       ) => {
+        if (file === "git") {
+          callback(null, "", "");
+          return;
+        }
         callback(error);
       },
     );
   }
 
-  const lookupArgs = { cwd: "/tmp/workspace", branch: "bb/pr-lookup" };
-
-  it("returns found for a well-formed PR", async () => {
+  it("uses bare gh lookup when the branch has no differently named upstream", async () => {
     mockGhStdout(ghJson());
-    await expect(getPullRequestForBranch(lookupArgs)).resolves.toMatchObject({
+    await expect(
+      getPullRequestForCurrentBranch(lookupArgs),
+    ).resolves.toMatchObject({
       outcome: "found",
       pullRequest: { number: 42, state: "OPEN" },
     });
+    expect(execFileMock).toHaveBeenCalledWith(
+      "gh",
+      ["pr", "view", "--json", expect.any(String)],
+      expect.objectContaining({ cwd: "/tmp/workspace" }),
+      expect.any(Function),
+    );
   });
 
   it("returns none when gh reports the branch has no PR", async () => {
@@ -317,7 +346,7 @@ describe("getPullRequestForBranch", () => {
         stderr: 'no pull requests found for branch "bb/pr-lookup"',
       }),
     );
-    await expect(getPullRequestForBranch(lookupArgs)).resolves.toEqual({
+    await expect(getPullRequestForCurrentBranch(lookupArgs)).resolves.toEqual({
       outcome: "none",
     });
   });
@@ -326,7 +355,7 @@ describe("getPullRequestForBranch", () => {
     mockGhFailure(
       Object.assign(new Error("spawn gh ENOENT"), { code: "ENOENT" }),
     );
-    await expect(getPullRequestForBranch(lookupArgs)).resolves.toEqual({
+    await expect(getPullRequestForCurrentBranch(lookupArgs)).resolves.toEqual({
       outcome: "unavailable",
       message: "GitHub CLI is not available",
     });
@@ -336,11 +365,10 @@ describe("getPullRequestForBranch", () => {
     mockGhFailure(
       Object.assign(new Error("gh exited 4"), {
         code: 4,
-        stderr:
-          "gh: To get started with GitHub CLI, please run: gh auth login",
+        stderr: "gh: To get started with GitHub CLI, please run: gh auth login",
       }),
     );
-    const result = await getPullRequestForBranch(lookupArgs);
+    const result = await getPullRequestForCurrentBranch(lookupArgs);
     expect(result.outcome).toBe("unavailable");
     expect(result).toMatchObject({
       message: expect.stringContaining("gh auth login"),
@@ -351,7 +379,9 @@ describe("getPullRequestForBranch", () => {
     mockGhFailure(
       Object.assign(new Error("timed out"), { killed: true, code: null }),
     );
-    await expect(getPullRequestForBranch(lookupArgs)).resolves.toMatchObject({
+    await expect(
+      getPullRequestForCurrentBranch(lookupArgs),
+    ).resolves.toMatchObject({
       outcome: "unavailable",
       message: expect.stringContaining("timed out"),
     });
@@ -359,7 +389,7 @@ describe("getPullRequestForBranch", () => {
 
   it("returns unavailable for unparseable gh output", async () => {
     mockGhStdout("not json at all");
-    await expect(getPullRequestForBranch(lookupArgs)).resolves.toEqual({
+    await expect(getPullRequestForCurrentBranch(lookupArgs)).resolves.toEqual({
       outcome: "unavailable",
       message: "gh pr view returned unparseable output",
     });

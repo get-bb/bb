@@ -132,6 +132,7 @@ function watchWorkspace(args: WatchWorkspaceArgs): () => Promise<void> {
         environmentId: args.environmentId,
       });
     },
+    onReady: args.onReady,
     onWatchError: (error) => {
       args.onWatchError({
         kind: "workspace-watch-error",

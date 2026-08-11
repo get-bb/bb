@@ -2,6 +2,7 @@ import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type {
+  DiscoveredSkill,
   HostProviderCommand,
   HostDaemonOnlineRpcRequestMessage,
 } from "@bb/host-daemon-contract";
@@ -21,12 +22,14 @@ import { withTestHarness } from "../helpers/test-app.js";
 interface CommandRpcStub {
   commands: HostProviderCommand[];
   requests: HostDaemonOnlineRpcRequestMessage[];
+  skillRequests: HostDaemonOnlineRpcRequestMessage[];
 }
 
 interface RegisterCommandRpcArgs {
   hostId: string;
   sessionId: string;
   commands: HostProviderCommand[];
+  skills?: DiscoveredSkill[];
 }
 
 /**
@@ -37,7 +40,11 @@ function registerCommandRpc(
   harness: Parameters<typeof registerHostRpcResponder>[0],
   args: RegisterCommandRpcArgs,
 ): CommandRpcStub {
-  const stub: CommandRpcStub = { commands: args.commands, requests: [] };
+  const stub: CommandRpcStub = {
+    commands: args.commands,
+    requests: [],
+    skillRequests: [],
+  };
   registerHostRpcResponder(harness, {
     hostId: args.hostId,
     sessionId: args.sessionId,
@@ -48,6 +55,10 @@ function registerCommandRpc(
       if (request.command.type === "host.list_commands") {
         stub.requests.push(request);
         return { ok: true, result: { commands: stub.commands } };
+      }
+      if (request.command.type === "host.list_skills") {
+        stub.skillRequests.push(request);
+        return { ok: true, result: { skills: args.skills ?? [] } };
       }
       throw new Error(
         `Unexpected RPC command ${request.command.type} in command typeahead test`,
@@ -86,6 +97,113 @@ function legacyCommand(
 }
 
 describe("public project command typeahead route", () => {
+  it("adds configured shared skills to the provider-neutral catalog", async () => {
+    await withTestHarness(
+      {
+        sharedSkillRoots: {
+          user: [".agents/skills"],
+          project: [".agents/skills"],
+        },
+      },
+      async (harness) => {
+        const { host, session } = seedHostSession(harness.deps, {
+          id: "host-shared-skills",
+        });
+        const { project } = seedProjectWithSource(harness.deps, {
+          hostId: host.id,
+          path: "/tmp/shared-skills",
+        });
+        const stub = registerCommandRpc(harness, {
+          hostId: host.id,
+          sessionId: session.id,
+          commands: [],
+          skills: [
+            {
+              id: `skill_${"a".repeat(64)}`,
+              name: "portable-review",
+              description: "Review code from one shared source.",
+              filePath:
+                "/tmp/shared-skills/.agents/skills/portable-review/SKILL.md",
+              rootKind: "shared-project",
+              linked: false,
+            },
+          ],
+        });
+
+        const response = await harness.app.request(
+          `/api/v1/projects/${project.id}/commands?provider=pi`,
+        );
+        const body = commandListResponseSchema.parse(await readJson(response));
+
+        expect(body.commands).toContainEqual({
+          name: "portable-review",
+          source: "skill",
+          origin: "project",
+          description: "Review code from one shared source.",
+          argumentHint: null,
+        });
+        expect(stub.skillRequests[0]?.command).toEqual({
+          type: "host.list_skills",
+          providerId: "bb-shared",
+          cwd: "/tmp/shared-skills",
+          nativeSkillRoots: {
+            user: [".agents/skills"],
+            project: [".agents/skills"],
+          },
+        });
+      },
+    );
+  });
+
+  it("passes custom ACP native skill roots to the target host", async () => {
+    await withTestHarness(
+      {
+        customAcpAgents: [
+          {
+            id: "amp",
+            displayName: "Amp",
+            command: "amp-acp",
+            args: [],
+            env: {},
+            nativeSkillRoots: {
+              user: [".agents/skills"],
+              project: [".agents/skills"],
+            },
+          },
+        ],
+      },
+      async (harness) => {
+        const { host, session } = seedHostSession(harness.deps, {
+          id: "host-custom-acp-skills",
+        });
+        const { project } = seedProjectWithSource(harness.deps, {
+          hostId: host.id,
+          path: "/tmp/custom-acp-skills",
+        });
+        const stub = registerCommandRpc(harness, {
+          hostId: host.id,
+          sessionId: session.id,
+          commands: [],
+        });
+
+        const response = await harness.app.request(
+          `/api/v1/projects/${project.id}/commands?provider=acp-amp`,
+        );
+
+        expect(response.status).toBe(200);
+        expect(stub.requests[0]?.command).toEqual({
+          type: "host.list_commands",
+          providerId: "acp-amp",
+          cwd: "/tmp/custom-acp-skills",
+          nativeSkillRoots: {
+            user: [".agents/skills"],
+            project: [".agents/skills"],
+          },
+        });
+      },
+    );
+  });
+
   it("uses the server skill catalog when discovery targets another machine", async () => {
     await withTestHarness(async (harness) => {
       const primaryHost = seedHost(harness.deps, {

@@ -24,6 +24,7 @@ import {
   type CliRuntimeContext,
 } from "./context-env.js";
 import {
+  describeUnreachableServer,
   fetchPluginCliContributions,
   findDisabledPluginForCommand,
   findPluginCliCommand,
@@ -119,10 +120,9 @@ async function tryPluginCommandProxy(): Promise<void> {
   if (result.outcome === "unreachable") {
     // The candidate may be a plugin command (`bb connect` on a fresh
     // machine is the canonical case) — only the running server can say, so
-    // a dead server must not degrade into commander's "unknown command".
-    console.error(
-      "bb isn't running — open the bb app, then re-run this command.",
-    );
+    // an unreachable server must not degrade into commander's "unknown
+    // command".
+    console.error(describeUnreachableServer(getUrl(), result.cause));
     process.exit(1);
   }
   if (result.outcome === "invalid") return;

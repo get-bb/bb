@@ -190,9 +190,14 @@ describe("Plugin detail recipe", () => {
     expect(renderedRecipe(container).map(([kind]) => kind)).toContain(
       "overview",
     );
-    expect(
-      screen.getByText("This plugin does not describe itself."),
-    ).toBeTruthy();
+    const description = screen.getByText(
+      "This plugin does not describe itself.",
+    );
+    expect(description.className).not.toContain("max-w-prose");
+    expect(description.className).toContain("max-w-none");
+    expect(description.className).toContain("text-sm");
+    expect(description.className).toContain("leading-relaxed");
+    expect(description.className).toContain("text-muted-foreground");
   });
 
   it("lists declared capabilities without category chrome", () => {

@@ -8,10 +8,7 @@ import {
 import { type ThreadEventItemType } from "@bb/domain";
 import type { DbConnection } from "../connection.js";
 import type { DbNotifier } from "../notifier.js";
-import {
-  environments,
-  maintenanceScanCursors,
-} from "../schema.js";
+import { environments, maintenanceScanCursors } from "../schema.js";
 
 /** Destroyed environments are hard-deleted after 7 days. */
 const DESTROYED_ENVIRONMENT_TTL_MS = 7 * 24 * 60 * 60_000;
@@ -336,6 +333,13 @@ export function truncateCompletedEventItemOutputs(
  * Sweep retiring managed environments with zero non-archived threads.
  * Returns the list of environment records that are candidates for cleanup.
  * The caller decides what to do (e.g., queue destroy commands).
+ *
+ * The archive grace window (delay a retiring environment's destroy so an
+ * accidental archive can be undone) is enforced by the server in
+ * `advanceEnvironmentCleanup`, not here: this sweep returns a candidate as soon
+ * as it is retiring with no live threads, and the advance defers the actual
+ * destroy until the grace window elapses. Keeping the grace check in one place
+ * (the advance) avoids splitting the policy across the db query.
  */
 export function sweepManagedEnvironments(db: DbConnection) {
   const rows = db

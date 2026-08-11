@@ -6,7 +6,9 @@ import { ThreadTerminalView } from "./ThreadTerminalView";
 import type { ThreadTerminalController } from "./useThreadTerminalController";
 
 interface ThreadTerminalContentProps {
+  autoFocus?: boolean;
   controller: ThreadTerminalController;
+  onAutoFocusHandled?: () => void;
   onOpenLink?: MarkdownPreviewLinkHandler;
   onSelectionAddToChat?: (text: string) => void;
 }
@@ -55,7 +57,9 @@ function getInactiveTerminalContent({
 }
 
 export function ThreadTerminalContent({
+  autoFocus = false,
   controller,
+  onAutoFocusHandled,
   onOpenLink,
   onSelectionAddToChat,
 }: ThreadTerminalContentProps) {
@@ -126,9 +130,12 @@ export function ThreadTerminalContent({
 
   return (
     <ThreadTerminalView
+      autoFocus={autoFocus}
       isPanelOpen={controller.isPanelOpen}
+      onAutoFocusHandled={onAutoFocusHandled}
       onOpenLink={onOpenLink}
       onSelectionAddToChat={onSelectionAddToChat}
+      onSessionChange={controller.handleActiveTerminalSessionChange}
       onTitleChange={controller.handleActiveTerminalTitleChange}
       onUserInput={controller.handleActiveTerminalUserInput}
       session={controller.activeSession}

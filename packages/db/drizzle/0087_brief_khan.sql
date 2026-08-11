@@ -1,0 +1,1 @@
+ALTER TABLE `system_experiments` ADD `new_onboarding` integer DEFAULT false NOT NULL;

@@ -35,7 +35,13 @@ import bbIcon from "../assets/bb-icon.png";
 import hermesAvatar from "../assets/hermes-avatar.jpg";
 import vscodeIcon from "../assets/vscode.png";
 import { RELEASE_META, parseChangelog } from "../landing/changelog";
-import { DownloadLink, EmailSignup, GitHubLink } from "../landing/cta";
+import {
+  DiscordLink,
+  DownloadLink,
+  EmailSignup,
+  GitHubLink,
+  ProductHuntCallout,
+} from "../landing/cta";
 import { DASHBOARD_PATH } from "../lib/connect-return-to";
 import {
   ClaudeIcon,
@@ -51,6 +57,7 @@ import type { CtaPlacement } from "../landing/site";
 import {
   CLI_COMMAND,
   OG_DESCRIPTION,
+  PRODUCT_HUNT_LAUNCH_ACTIVE,
   SITE_DESCRIPTION,
   SITE_TITLE,
   unfurlMeta,
@@ -1690,11 +1697,17 @@ function LandingPage() {
       </nav>
 
       <header className="hero">
-        <a className="updates-callout" href={LATEST_RELEASE_URL}>
-          <span className="updates-label">New</span>
-          <span className="updates-title">{LATEST_RELEASE_META.headline}</span>
-          <span aria-hidden="true">→</span>
-        </a>
+        {PRODUCT_HUNT_LAUNCH_ACTIVE ? (
+          <ProductHuntCallout placement="hero" />
+        ) : (
+          <a className="updates-callout" href={LATEST_RELEASE_URL}>
+            <span className="updates-label">New</span>
+            <span className="updates-title">
+              {LATEST_RELEASE_META.headline}
+            </span>
+            <ChevronRight className="updates-arrow" />
+          </a>
+        )}
         <h1>The IDE that builds itself</h1>
         <p className="sub">
           bb can control, customize, and automate itself, laying the groundwork
@@ -1792,6 +1805,8 @@ function LandingPage() {
           <a href="/changelog">Changelog</a>
           {" · "}
           <GitHubLink placement="footer">GitHub</GitHubLink>
+          {" · "}
+          <DiscordLink placement="footer">Discord</DiscordLink>
           {" · "}
           <DownloadLink placement="footer">Download</DownloadLink>
         </span>

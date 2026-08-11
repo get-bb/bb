@@ -5,6 +5,7 @@ import type { CompletedTurnMessageGroups } from "../src/completed-turn-grouping.
 import type {
   EventProjectionAssistantTextMessage,
   EventProjectionMessage,
+  EventProjectionOperationMessage,
   EventProjectionTurnRequest,
   EventProjectionTurn,
   EventProjectionUserMessage,
@@ -69,6 +70,19 @@ function legacyUserMessage(
   };
 }
 
+function compactionMessage(
+  args: MessageBaseArgs,
+): EventProjectionOperationMessage {
+  return {
+    ...messageBase(args),
+    kind: "operation",
+    opType: "compaction",
+    title: "Context compacted",
+    status: "completed",
+    completedAt: args.seq,
+  };
+}
+
 function completedTurn(
   messages: EventProjectionMessage[],
   terminalMessage: EventProjectionMessage | undefined,
@@ -100,6 +114,21 @@ function summarySourceMessageIds(
 }
 
 describe("groupCompletedTurnMessages", () => {
+  it("unwraps a singleton compaction group after a user message", () => {
+    const user = userMessage({ id: "compact-request", seq: 1 });
+    const compaction = compactionMessage({ id: "compaction", seq: 2 });
+    const turn = completedTurn([user, compaction], undefined);
+    turn.externalUserBoundarySeqs = [0];
+    const groups = groupCompletedTurnMessages(turn);
+
+    expect(groups.summaryItems).toEqual([
+      { kind: "ungrouped-message", message: user },
+      { kind: "ungrouped-message", message: compaction },
+    ]);
+    expect(groups.terminalMessages).toEqual([]);
+    expect(groups.trailingMessages).toEqual([]);
+  });
+
   it("uses one summary group when no messages are ungroupable", () => {
     const messages = [
       assistantMessage({ id: "assistant-1", seq: 1 }),

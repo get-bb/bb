@@ -8,8 +8,10 @@ import {
 } from "../../src/command-dispatch.js";
 import {
   cleanupTempDirs,
+  createFakeWorkspace,
   createHarness,
   makeTempDir,
+  runGitCommand,
 } from "./dispatch-helpers.js";
 
 afterEach(cleanupTempDirs);
@@ -94,6 +96,37 @@ describe("workspace command dispatch", () => {
     });
     expect(harness.workspaceState.statusReads).toBe(1);
     expect(harness.workspaceState.lastCommitMessage).toBe("Commit message");
+  });
+
+  it("uses a repository added after the runtime cached a plain workspace", async () => {
+    const workspacePath = await makeTempDir("bb-runtime-late-git-");
+    const harness = createHarness({ workspacePath });
+    harness.workspace.isGitRepo = false;
+    await harness.manager.ensureEnvironment({
+      environmentId: "env-late-git",
+      workspacePath,
+    });
+    await runGitCommand(["init", "-b", "main"], { cwd: workspacePath });
+    const refreshed = createFakeWorkspace(workspacePath);
+    harness.setProvisionedWorkspace(refreshed.workspace);
+
+    const result = await dispatchOnlineRpcCommand(
+      {
+        type: "workspace.status",
+        environmentId: "env-late-git",
+        workspaceContext: {
+          workspacePath,
+          workspaceProvisionType: "unmanaged",
+        },
+      },
+      harness.dispatchOptions(),
+    );
+
+    expect(result.outcome).toBe("available");
+    expect(refreshed.state.statusReads).toBe(1);
+    expect(
+      harness.manager.get("env-late-git")?.workspace.isGitRepo,
+    ).toBe(true);
   });
 
   it("covers workspace.pull_request", async () => {

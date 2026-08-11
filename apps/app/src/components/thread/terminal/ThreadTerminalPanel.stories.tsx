@@ -76,6 +76,8 @@ function noopAction(): void {}
 
 function noopTerminalIdAction(_terminalId: string): void {}
 
+function noopSessionChange(_session: TerminalSession): void {}
+
 function noopTitleChange(_title: string): void {}
 
 function makeController({
@@ -98,6 +100,7 @@ function makeController({
     canCreateTerminal,
     closingTerminalId,
     emptyTerminalMessage,
+    handleActiveTerminalSessionChange: noopSessionChange,
     handleActiveTerminalTitleChange: noopTitleChange,
     handleActiveTerminalUserInput: noopAction,
     handleClosePanel: noopAction,
@@ -237,10 +240,7 @@ function RunningTerminalPreview() {
 export function Overview() {
   return (
     <StoryCard labelWidth="190px">
-      <StoryRow
-        label="disconnected"
-        hint="Replacement available."
-      >
+      <StoryRow label="disconnected" hint="Replacement available.">
         <TerminalContentStage controller={disconnectedController} />
       </StoryRow>
       <StoryRow
@@ -252,7 +252,10 @@ export function Overview() {
       <StoryRow label="starting" hint="Session exists but is not running yet.">
         <TerminalContentStage controller={startingController} />
       </StoryRow>
-      <StoryRow label="exited" hint="Terminal has ended and cannot accept input.">
+      <StoryRow
+        label="exited"
+        hint="Terminal has ended and cannot accept input."
+      >
         <TerminalContentStage controller={exitedController} />
       </StoryRow>
       <StoryRow label="empty" hint="Right panel tab with no visible sessions.">

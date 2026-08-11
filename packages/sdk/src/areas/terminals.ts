@@ -122,6 +122,8 @@ export interface TerminalsArea {
   rename(args: TerminalRenameArgs): Promise<TerminalRenameResult>;
   /**
    * Replace a terminal with a shell at the same scope, size, and title.
+   * The server serializes concurrent restarts and opens the replacement before
+   * closing the old session, so a failed open leaves the old terminal running.
    * The original command is not replayed because terminal sessions do not
    * persist launch commands. The replacement has a new terminal ID.
    */
@@ -196,23 +198,6 @@ function terminalOutputQuery(args: TerminalOutputArgs): TerminalOutputQuery {
     ...(args.limitChunks === undefined
       ? {}
       : { limitChunks: args.limitChunks }),
-  };
-}
-
-function restartScope(session: TerminalSession): TerminalCreateScope {
-  if (session.threadId !== null) {
-    return { kind: "thread", threadId: session.threadId };
-  }
-  if (session.environmentId !== null) {
-    return {
-      kind: "environment",
-      environmentId: session.environmentId,
-    };
-  }
-  return {
-    kind: "host_path",
-    hostId: session.hostId,
-    cwd: session.initialCwd,
   };
 }
 
@@ -291,20 +276,12 @@ export function createTerminalsArea(args: CreateSdkAreaArgs): TerminalsArea {
       );
     },
     async restart(input) {
-      const current = await get(input);
-      await transport.readJson(
-        transport.api.v1.terminals[":terminalId"].close.$post({
+      return transport.readJson(
+        transport.api.v1.terminals[":terminalId"].restart.$post({
           param: { terminalId: input.terminalId },
-          json: { mode: "force", reason: "user" },
+          json: {},
         }),
       );
-      return create({
-        cols: current.cols,
-        rows: current.rows,
-        scope: restartScope(current),
-        start: { mode: "shell" },
-        title: current.title,
-      });
     },
     async resize(input) {
       return transport.readJson(

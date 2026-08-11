@@ -27,9 +27,9 @@ function isGlobalSettingsRoute(pathname: string): boolean {
 }
 
 /**
- * Remembers the most recently visited core-app, Tools, and global Settings
- * routes while the app shell is mounted. Each focused sidebar can return to
- * the right parent context without resetting another surface to its root.
+ * Remembers the most recently visited core-app and global Settings routes
+ * while the app shell is mounted. Extensions route memory is intentionally
+ * scoped to its mounted sidebar; leaving Extensions resets its entry route.
  */
 export function useAppSettingsRouteMemory(): AppSettingsRouteMemory {
   const location = useLocation();
@@ -47,9 +47,6 @@ export function useAppSettingsRouteMemory(): AppSettingsRouteMemory {
   const lastSettingsRoutePathRef = useRef(
     isSettingsRoute ? currentRoutePath : SETTINGS_ROUTE_PATH,
   );
-  const lastToolsRoutePathRef = useRef(
-    isCurrentToolsRoute ? currentRoutePath : getPluginsRoutePath(),
-  );
 
   useEffect(() => {
     if (isSettingsRoute) {
@@ -58,7 +55,6 @@ export function useAppSettingsRouteMemory(): AppSettingsRouteMemory {
     }
     lastAppRoutePathRef.current = currentRoutePath;
     if (isCurrentToolsRoute) {
-      lastToolsRoutePathRef.current = currentRoutePath;
       return;
     }
     lastCoreAppRoutePathRef.current = currentRoutePath;
@@ -73,7 +69,7 @@ export function useAppSettingsRouteMemory(): AppSettingsRouteMemory {
       : lastSettingsRoutePathRef.current,
     toolsRoutePath: isCurrentToolsRoute
       ? currentRoutePath
-      : lastToolsRoutePathRef.current,
+      : getPluginsRoutePath(),
     toolsBackRoutePath: isCurrentToolsRoute
       ? lastCoreAppRoutePathRef.current
       : currentRoutePath,

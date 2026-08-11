@@ -57,9 +57,10 @@ export interface NewTabFileSearchProps {
   environmentId: string | null;
   hostId?: string | null;
   currentThreadId: string;
-  focusRequest: number;
+  autoFocus: boolean;
   idleActions: ReactNode;
   initialQuery?: string;
+  onAutoFocusHandled: () => void;
   onSelect: (selection: FileSearchSelection) => void;
   recentItemsThreadId?: string | null;
   showFileSearch?: boolean;
@@ -494,15 +495,17 @@ export function NewTabFileSearch({
   environmentId,
   hostId,
   currentThreadId,
-  focusRequest,
+  autoFocus,
   idleActions,
   initialQuery = "",
+  onAutoFocusHandled,
   onSelect,
   recentItemsThreadId,
   showFileSearch = true,
 }: NewTabFileSearchProps) {
   const quickOpenShortcut = useAppCommandShortcut("file.quickOpen");
   const inputRef = useRef<HTMLInputElement>(null);
+  const focusFrameRef = useRef<number | null>(null);
   const listboxId = useId();
   const isPointerCoarse = usePointerCoarse();
   const [query, setQuery] = useState(initialQuery);
@@ -576,8 +579,27 @@ export function NewTabFileSearch({
     [activeIndex, navigableEntries],
   );
 
+  useEffect(
+    () => () => {
+      if (focusFrameRef.current !== null) {
+        cancelAnimationFrame(focusFrameRef.current);
+      }
+    },
+    [],
+  );
+
   useEffect(() => {
-    if (isPointerCoarse) return;
+    if (!autoFocus) return;
+
+    if (focusFrameRef.current !== null) {
+      cancelAnimationFrame(focusFrameRef.current);
+      focusFrameRef.current = null;
+    }
+
+    if (isPointerCoarse) {
+      onAutoFocusHandled();
+      return;
+    }
 
     // Focus synchronously, then again on the next frame to win the focus race
     // against the panel/tab content mounting in the same commit, which can
@@ -586,11 +608,15 @@ export function NewTabFileSearch({
     // content is briefly wider than the panel, and a scroll there would shift the
     // whole panel content sideways.
     inputRef.current?.focus({ preventScroll: true });
-    const frame = requestAnimationFrame(() => {
+    focusFrameRef.current = requestAnimationFrame(() => {
+      focusFrameRef.current = null;
       inputRef.current?.focus({ preventScroll: true });
     });
-    return () => cancelAnimationFrame(frame);
-  }, [focusRequest, isPointerCoarse]);
+    // Consume the request immediately so a later passive remount does not
+    // interpret the previous explicit open as another focus request. The frame
+    // has separate unmount cleanup so this state update does not cancel it.
+    onAutoFocusHandled();
+  }, [autoFocus, isPointerCoarse, onAutoFocusHandled]);
 
   useEffect(() => {
     setActiveIndex(navigableEntries.length > 0 ? 0 : -1);

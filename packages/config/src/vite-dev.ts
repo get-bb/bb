@@ -1,5 +1,6 @@
 import { loadDevAppConfig } from "./dev-app.js";
 import { type EnvLoaderArgs } from "./env.js";
+import { BB_LOOPBACK_HOST } from "./runtime.js";
 import { loadServerPortConfig } from "./server-port.js";
 
 export type ViteDevServerWsOrigin = { kind: "browser-host"; port: number };
@@ -21,7 +22,7 @@ function resolveViteDevAppHost(configuredHost: string): string {
     return configuredHost;
   }
 
-  return "0.0.0.0";
+  return BB_LOOPBACK_HOST;
 }
 
 export function loadViteDevConfig(
@@ -38,7 +39,7 @@ export function loadViteDevConfig(
   return {
     appHost: resolveViteDevAppHost(devAppConfig.BB_DEV_APP_HOST),
     appPort,
-    serverHttpOrigin: `http://localhost:${serverPort}`,
+    serverHttpOrigin: `http://${BB_LOOPBACK_HOST}:${serverPort}`,
     serverPort,
     serverWsOrigin: {
       kind: "browser-host",

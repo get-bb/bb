@@ -100,8 +100,9 @@ describe("ThreadPromptContextBanner", () => {
       />,
     );
 
-    expect(markup).toContain("Environment is unavailable");
-    expect(markup).toContain("This thread can&#x27;t run any more work.");
+    expect(markup).toContain("Environment archived");
+    expect(markup).toContain("This environment has been archived.");
+    expect(markup).not.toContain("to keep working");
     expect(markup).toContain('role="status"');
     expect(markup).not.toContain("<button");
     expect(markup).not.toContain("Provision");
@@ -115,10 +116,10 @@ describe("ThreadPromptContextBanner", () => {
       expectedLabel: "Thread is archived",
     },
     {
-      label: "environment gone",
+      label: "environment archived",
       archivedSection: null,
       environmentGoneSection: { status: "destroyed" as const },
-      expectedLabel: "Environment is unavailable",
+      expectedLabel: "Environment archived",
     },
   ])(
     "keeps the $label read-only status visible in compact mode",
@@ -149,6 +150,35 @@ describe("ThreadPromptContextBanner", () => {
       );
     },
   );
+
+  it("prioritizes the archived-environment status over unarchiving", () => {
+    const markup = renderToStaticMarkup(
+      <MemoryRouter>
+        <ThreadPromptContextBanner
+          gitSection={null}
+          gitSectionPending={false}
+          archivedSection={{
+            archivedAt: 1_731_456_000_000,
+            onUnarchive: noop,
+          }}
+          environmentGoneSection={{ status: "destroyed" }}
+          parentThreadSection={{
+            parentThreadTitle: "Parent thread",
+            href: "/threads/thr_parent",
+            relationship: "parent",
+          }}
+          childThreadsSection={null}
+          pullRequestSection={null}
+          expandedSection={null}
+          onToggleSection={noop}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(markup).toContain("Environment archived");
+    expect(markup).not.toContain("Thread is archived");
+    expect(markup).not.toContain(">Unarchive<");
+  });
 
   it("labels a standalone pull request without non-actionable attention text", () => {
     const markup = renderToStaticMarkup(

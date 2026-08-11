@@ -29,27 +29,39 @@ function PluginSettingsSectionList({
 }) {
   return (
     <div className="space-y-6" data-testid="plugin-settings-sections">
-      {sections.map((section) => (
-        <ResourceDetailConfigurationSection
-          key={`${section.pluginId}/${section.id}/${section.generation}`}
-          label={section.title ?? "Plugin settings"}
-        >
-          <ResourceDetailPanel surface="recessed" className="px-3 py-3">
-            {section.description !== undefined ? (
-              <p className="mb-3 text-xs leading-snug text-subtle-foreground/75">
-                {section.description}
-              </p>
-            ) : null}
-            <PluginSlotMount
-              pluginId={section.pluginId}
-              slotKind="settingsSection"
-              slotId={section.id}
-            >
-              <section.component />
-            </PluginSlotMount>
-          </ResourceDetailPanel>
-        </ResourceDetailConfigurationSection>
-      ))}
+      {sections.map((section) => {
+        const key = `${section.pluginId}/${section.id}/${section.generation}`;
+        return section.title === undefined ? (
+          <PluginSettingsSectionPanel key={key} section={section} />
+        ) : (
+          <ResourceDetailConfigurationSection key={key} label={section.title}>
+            <PluginSettingsSectionPanel section={section} />
+          </ResourceDetailConfigurationSection>
+        );
+      })}
     </div>
+  );
+}
+
+function PluginSettingsSectionPanel({
+  section,
+}: {
+  section: PluginSettingsSectionSlot;
+}) {
+  return (
+    <ResourceDetailPanel surface="recessed" className="px-3 py-3">
+      {section.description !== undefined ? (
+        <p className="mb-3 text-xs leading-snug text-subtle-foreground/75">
+          {section.description}
+        </p>
+      ) : null}
+      <PluginSlotMount
+        pluginId={section.pluginId}
+        slotKind="settingsSection"
+        slotId={section.id}
+      >
+        <section.component />
+      </PluginSlotMount>
+    </ResourceDetailPanel>
   );
 }

@@ -66,6 +66,20 @@ const defaultModelList = {
   selectedOnlyModels: [],
 };
 
+// Test-only mode used by runtime command-contract coverage.
+const simulateArchivedSession = process.argv.includes("--archived-session");
+const failUnarchive = process.argv.includes("--unarchive-fails");
+// Exit right after reporting the archived error, so recovery has to work
+// against a replacement process.
+const exitAfterArchivedError = process.argv.includes("--exit-after-archived");
+const archivedSessionMethods = new Set([
+  "thread/fork",
+  "thread/resume",
+  "turn/start",
+  "turn/steer",
+]);
+const unarchivedProviderThreadIds = new Set<string>();
+
 function isJsonRecord(value: unknown): value is JsonRecord {
   return typeof value === "object" && value !== null;
 }
@@ -82,6 +96,40 @@ function getString(value: unknown, fallback = ""): string {
 
 function getParams(message: JsonRecord): JsonRecord {
   return isJsonRecord(message.params) ? message.params : {};
+}
+
+// A fork reads its source session, so the source id is the one that can be
+// archived. Every other method acts on the thread's own provider session.
+function archivedSessionKey(params: JsonRecord): string {
+  return getString(
+    params.sourceProviderThreadId,
+    getString(params.providerThreadId, getString(params.threadId, "unknown")),
+  );
+}
+
+function rejectArchivedSession(message: JsonRecord): boolean {
+  const method = getString(message.method);
+  if (!simulateArchivedSession || !archivedSessionMethods.has(method)) {
+    return false;
+  }
+
+  const providerThreadId = archivedSessionKey(getParams(message));
+  if (unarchivedProviderThreadIds.has(providerThreadId)) {
+    return false;
+  }
+
+  send({
+    jsonrpc: "2.0",
+    id: getJsonRpcId(message.id) ?? 0,
+    error: {
+      code: -32000,
+      message: `session ${providerThreadId} is archived. Run codex unarchive ${providerThreadId} to unarchive it first.`,
+    },
+  });
+  if (exitAfterArchivedError) {
+    process.exit(0);
+  }
+  return true;
 }
 
 function send(message: JsonRecord): void {
@@ -386,7 +434,7 @@ function startTurn(message: JsonRecord): void {
 
 function startOrResumeThread(
   message: JsonRecord,
-  mode: "resume" | "start",
+  mode: "fork" | "resume" | "start",
 ): void {
   const params = getParams(message);
   const threadId = getString(params.threadId, "unknown");
@@ -409,7 +457,7 @@ function startOrResumeThread(
     result: { providerThreadId },
   });
 
-  if (mode === "start") {
+  if (mode === "start" || mode === "fork") {
     send({
       jsonrpc: "2.0",
       method: "thread/identity",
@@ -523,6 +571,10 @@ function handleMessage(message: JsonRecord): void {
     return;
   }
 
+  if (rejectArchivedSession(message)) {
+    return;
+  }
+
   if (method === "thread/start") {
     startOrResumeThread(message, "start");
     return;
@@ -530,6 +582,29 @@ function handleMessage(message: JsonRecord): void {
 
   if (method === "thread/resume") {
     startOrResumeThread(message, "resume");
+    return;
+  }
+
+  if (method === "thread/fork") {
+    startOrResumeThread(message, "fork");
+    return;
+  }
+
+  if (method === "thread/unarchive") {
+    if (failUnarchive) {
+      send({
+        jsonrpc: "2.0",
+        id: getJsonRpcId(message.id) ?? 0,
+        error: { code: -32000, message: "unarchive is unavailable" },
+      });
+      return;
+    }
+    unarchivedProviderThreadIds.add(archivedSessionKey(getParams(message)));
+    send({
+      jsonrpc: "2.0",
+      id: getJsonRpcId(message.id) ?? 0,
+      result: { ok: true },
+    });
     return;
   }
 

@@ -168,14 +168,6 @@ export function selectionAnchorFromPointerRelease(
   };
 }
 
-function isEventTargetWithinNode(
-  event: Event,
-  node: HTMLElement | null,
-): boolean {
-  if (node === null || !(event.target instanceof Node)) return false;
-  return node.contains(event.target);
-}
-
 function readSelectionWithinNode(
   node: HTMLElement | null,
   anchor: SelectionAnchor | null,
@@ -207,6 +199,260 @@ function readSelectionWithinNode(
   return null;
 }
 
+// Every assistant message mounts one SelectableMessageProse, so per-instance
+// document listeners made each tap and selectionchange dispatch O(N messages)
+// handlers. The registry below keeps the per-message selection state machine
+// but shares one set of document listeners and one report frame across all
+// mounted instances. Node-scoped click/dblclick listeners stay per instance —
+// they only fire for their own message.
+interface SelectableProseInstance {
+  node: HTMLElement;
+  onSelectRef: {
+    readonly current:
+      | ((selection: MessageProseSelection | null) => void)
+      | undefined;
+  };
+  // Only emit `null` once, after this node had reported a real selection, so
+  // N messages don't thrash a shared controller.
+  hadSelection: boolean;
+  pendingReportAnchor: SelectionAnchor | null;
+  lastPointerReleaseAnchor: SelectionAnchor | null;
+  multiClickTimer: number | null;
+}
+
+const proseInstances = new Set<SelectableProseInstance>();
+const instanceByNode = new Map<HTMLElement, SelectableProseInstance>();
+let sharedFrame: number | null = null;
+let pointerIsDown = false;
+let pointerUsesLiveSelectionRange = false;
+// The instance whose node contained the current pointer-down target. At most
+// one instance can contain it (prose wrappers don't nest), so the registry
+// tracks it once instead of a per-instance flag.
+let pointerActiveInstance: SelectableProseInstance | null = null;
+let pointerStartPoint: SelectionAnchorPoint | null = null;
+
+function findInstanceContaining(
+  target: EventTarget | null,
+): SelectableProseInstance | null {
+  if (!(target instanceof Node)) return null;
+  let element = target instanceof Element ? target : target.parentElement;
+  // One walk up the ancestor chain replaces a `node.contains(target)` probe
+  // per mounted message on every pointerdown.
+  while (element !== null) {
+    const instance = instanceByNode.get(element as HTMLElement);
+    if (instance !== undefined) return instance;
+    element = element.parentElement;
+  }
+  return null;
+}
+
+function reportInstanceSelection(instance: SelectableProseInstance): void {
+  const anchor = instance.pendingReportAnchor;
+  instance.pendingReportAnchor = null;
+  const next = readSelectionWithinNode(instance.node, anchor);
+  if (next === null && !instance.hadSelection) return;
+  instance.hadSelection = next !== null;
+  instance.onSelectRef.current?.(next);
+}
+
+function reportInstanceNull(instance: SelectableProseInstance): void {
+  instance.pendingReportAnchor = null;
+  if (!instance.hadSelection) return;
+  instance.hadSelection = false;
+  instance.onSelectRef.current?.(null);
+}
+
+function reportAllInstances(): void {
+  sharedFrame = null;
+  // Read the live range once. An instance can only own or spill into the
+  // selection when the range intersects its node (both acceptance paths in
+  // readSelectionWithinNode require containment or intersection), so every
+  // other instance takes the cheap null path without its own selection read.
+  const selection = window.getSelection();
+  const range =
+    selection !== null && selection.rangeCount > 0
+      ? selection.getRangeAt(0)
+      : null;
+  const canPreFilter =
+    range !== null && typeof range.intersectsNode === "function";
+  for (const instance of proseInstances) {
+    // An instance inside its multi-click delay reports when its own timer
+    // fires; interleaved global triggers must not read its selection early.
+    if (instance.multiClickTimer !== null) continue;
+    if (
+      range === null ||
+      (canPreFilter && !range.intersectsNode(instance.node))
+    ) {
+      reportInstanceNull(instance);
+      continue;
+    }
+    reportInstanceSelection(instance);
+  }
+}
+
+function scheduleSharedReport(): void {
+  if (sharedFrame !== null || proseInstances.size === 0) return;
+  sharedFrame = window.requestAnimationFrame(reportAllInstances);
+}
+
+function cancelSharedFrame(): void {
+  if (sharedFrame === null) return;
+  window.cancelAnimationFrame(sharedFrame);
+  sharedFrame = null;
+}
+
+function cancelMultiClickTimer(instance: SelectableProseInstance): void {
+  if (instance.multiClickTimer === null) return;
+  window.clearTimeout(instance.multiClickTimer);
+  instance.multiClickTimer = null;
+}
+
+function scheduleInstanceWithAnchor(
+  instance: SelectableProseInstance,
+  anchor: SelectionAnchor | null,
+): void {
+  if (anchor !== null) {
+    instance.pendingReportAnchor = anchor;
+  }
+  scheduleSharedReport();
+}
+
+function scheduleInstanceAfterMultiClickDelay(
+  instance: SelectableProseInstance,
+  anchor: SelectionAnchor | null,
+): void {
+  cancelMultiClickTimer(instance);
+  instance.multiClickTimer = window.setTimeout(() => {
+    instance.multiClickTimer = null;
+    scheduleInstanceWithAnchor(instance, anchor);
+  }, MULTI_CLICK_SELECTION_REPORT_DELAY_MS);
+}
+
+function handleInstanceMultiClick(
+  instance: SelectableProseInstance,
+  event: MouseEvent,
+): void {
+  if (event.detail < 2) {
+    return;
+  }
+  const clickAnchor =
+    selectionAnchorFromPointerRelease(null, event) ??
+    instance.lastPointerReleaseAnchor;
+  if (event.detail === 2) {
+    scheduleInstanceAfterMultiClickDelay(instance, clickAnchor);
+    return;
+  }
+  // Multi-click selection can be finalized after pointerup. Replace any
+  // stale pointerup anchor with one explicitly tied to the completed click.
+  cancelMultiClickTimer(instance);
+  scheduleInstanceWithAnchor(instance, clickAnchor);
+}
+
+function handleInstanceDoubleClick(instance: SelectableProseInstance): void {
+  scheduleInstanceAfterMultiClickDelay(
+    instance,
+    instance.lastPointerReleaseAnchor,
+  );
+}
+
+function handleSharedSelectionChange(): void {
+  // Mouse drag selections wait for release so the menu does not chase the
+  // cursor. Mobile long-press selection is finalized while the touch is
+  // still down, and iOS may cancel rather than release that pointer, so
+  // read touch/pen ranges as soon as Selection reports them.
+  if (pointerIsDown && !pointerUsesLiveSelectionRange) {
+    return;
+  }
+  scheduleSharedReport();
+}
+
+function handleSharedPointerDown(event: PointerEvent): void {
+  cancelSharedFrame();
+  for (const instance of proseInstances) {
+    cancelMultiClickTimer(instance);
+    instance.pendingReportAnchor = null;
+  }
+  pointerActiveInstance = findInstanceContaining(event.target);
+  pointerStartPoint =
+    pointerActiveInstance !== null ? anchorPointFromMouseEvent(event) : null;
+  pointerUsesLiveSelectionRange = usesLiveSelectionRange(event.pointerType);
+  pointerIsDown = true;
+}
+
+function handleSharedPointerRelease(event: PointerEvent | MouseEvent): void {
+  const instance = pointerActiveInstance;
+  pointerActiveInstance = null;
+  if (instance !== null) {
+    const anchor = selectionAnchorFromPointerRelease(pointerStartPoint, event);
+    if (anchor !== null) {
+      instance.lastPointerReleaseAnchor = anchor;
+      instance.pendingReportAnchor = anchor;
+    }
+  }
+  pointerIsDown = false;
+  pointerUsesLiveSelectionRange = false;
+  pointerStartPoint = null;
+  scheduleSharedReport();
+}
+
+function handleSharedPointerCancel(): void {
+  pointerActiveInstance = null;
+  pointerIsDown = false;
+  pointerUsesLiveSelectionRange = false;
+  pointerStartPoint = null;
+  scheduleSharedReport();
+}
+
+function handleSharedKeyUp(): void {
+  scheduleSharedReport();
+}
+
+function attachSharedDocumentListeners(): void {
+  document.addEventListener("pointerdown", handleSharedPointerDown);
+  document.addEventListener("pointerup", handleSharedPointerRelease);
+  document.addEventListener("pointercancel", handleSharedPointerCancel);
+  document.addEventListener("mouseup", handleSharedPointerRelease);
+  document.addEventListener("selectionchange", handleSharedSelectionChange);
+  document.addEventListener("keyup", handleSharedKeyUp);
+}
+
+function detachSharedDocumentListeners(): void {
+  document.removeEventListener("pointerdown", handleSharedPointerDown);
+  document.removeEventListener("pointerup", handleSharedPointerRelease);
+  document.removeEventListener("pointercancel", handleSharedPointerCancel);
+  document.removeEventListener("mouseup", handleSharedPointerRelease);
+  document.removeEventListener("selectionchange", handleSharedSelectionChange);
+  document.removeEventListener("keyup", handleSharedKeyUp);
+}
+
+function registerSelectableProseInstance(
+  instance: SelectableProseInstance,
+): void {
+  if (proseInstances.size === 0) {
+    attachSharedDocumentListeners();
+  }
+  proseInstances.add(instance);
+  instanceByNode.set(instance.node, instance);
+}
+
+function unregisterSelectableProseInstance(
+  instance: SelectableProseInstance,
+): void {
+  proseInstances.delete(instance);
+  instanceByNode.delete(instance.node);
+  cancelMultiClickTimer(instance);
+  if (pointerActiveInstance === instance) {
+    pointerActiveInstance = null;
+  }
+  if (proseInstances.size === 0) {
+    detachSharedDocumentListeners();
+    cancelSharedFrame();
+    pointerIsDown = false;
+    pointerUsesLiveSelectionRange = false;
+    pointerStartPoint = null;
+  }
+}
+
 /**
  * Wraps agent prose and reports text selections whose endpoints both fall
  * inside the wrapped node. Selections that escape the node (or are collapsed)
@@ -223,147 +469,28 @@ export function SelectableMessageProse({
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-
-    let frame: number | null = null;
-    // Read pointer selections only after release so the floating menu does not
-    // block the cursor or chase the range while the user is still dragging.
-    // Only emit `null` once, after this node had reported a real selection, so
-    // N messages don't thrash a shared controller.
-    let hadSelection = false;
-    let pointerIsDown = false;
-    let pointerUsesLiveSelectionRange = false;
-    let pointerStartedInNode = false;
-    let pointerStartPoint: SelectionAnchorPoint | null = null;
-    let pendingReportAnchor: SelectionAnchor | null = null;
-    let lastPointerReleaseAnchor: SelectionAnchor | null = null;
-    let multiClickTimer: number | null = null;
-    const report = () => {
-      frame = null;
-      const anchor = pendingReportAnchor;
-      pendingReportAnchor = null;
-      const next = readSelectionWithinNode(nodeRef.current, anchor);
-      if (next === null && !hadSelection) return;
-      hadSelection = next !== null;
-      onSelectRef.current?.(next);
-    };
-    const cancelFrame = () => {
-      if (frame === null) return;
-      window.cancelAnimationFrame(frame);
-      frame = null;
-    };
-    const cancelMultiClickTimer = () => {
-      if (multiClickTimer === null) return;
-      window.clearTimeout(multiClickTimer);
-      multiClickTimer = null;
-    };
-    const schedule = () => {
-      if (frame !== null) return;
-      frame = window.requestAnimationFrame(report);
-    };
-    const scheduleWithAnchor = (anchor: SelectionAnchor | null) => {
-      if (anchor !== null) {
-        pendingReportAnchor = anchor;
-      }
-      schedule();
-    };
-    const scheduleFresh = (anchor: SelectionAnchor | null = null) => {
-      cancelMultiClickTimer();
-      cancelFrame();
-      scheduleWithAnchor(anchor);
-    };
-    const scheduleAfterMultiClickDelay = (
-      anchor: SelectionAnchor | null = null,
-    ) => {
-      cancelFrame();
-      cancelMultiClickTimer();
-      multiClickTimer = window.setTimeout(() => {
-        multiClickTimer = null;
-        scheduleWithAnchor(anchor);
-      }, MULTI_CLICK_SELECTION_REPORT_DELAY_MS);
-    };
-    const handleSelectionChange = () => {
-      // Mouse drag selections wait for release so the menu does not chase the
-      // cursor. Mobile long-press selection is finalized while the touch is
-      // still down, and iOS may cancel rather than release that pointer, so
-      // read touch/pen ranges as soon as Selection reports them.
-      if (pointerIsDown && !pointerUsesLiveSelectionRange) {
-        return;
-      }
-      if (multiClickTimer !== null) {
-        return;
-      }
-      schedule();
-    };
-    const handlePointerDown = (event: PointerEvent) => {
-      cancelMultiClickTimer();
-      cancelFrame();
-      pendingReportAnchor = null;
-      pointerStartedInNode = isEventTargetWithinNode(event, nodeRef.current);
-      pointerStartPoint = pointerStartedInNode
-        ? anchorPointFromMouseEvent(event)
-        : null;
-      pointerUsesLiveSelectionRange = usesLiveSelectionRange(event.pointerType);
-      pointerIsDown = true;
-    };
-    const handlePointerRelease = (event: PointerEvent | MouseEvent) => {
-      const anchor = pointerStartedInNode
-        ? selectionAnchorFromPointerRelease(pointerStartPoint, event)
-        : null;
-      if (anchor !== null) {
-        lastPointerReleaseAnchor = anchor;
-      }
-      pointerIsDown = false;
-      pointerUsesLiveSelectionRange = false;
-      pointerStartedInNode = false;
-      pointerStartPoint = null;
-      scheduleWithAnchor(anchor);
-    };
-    const handlePointerCancel = () => {
-      pointerIsDown = false;
-      pointerUsesLiveSelectionRange = false;
-      pointerStartedInNode = false;
-      pointerStartPoint = null;
-      schedule();
-    };
-    const handleMultiClick = (event: MouseEvent) => {
-      if (event.detail < 2) {
-        return;
-      }
-      const clickAnchor =
-        selectionAnchorFromPointerRelease(null, event) ??
-        lastPointerReleaseAnchor;
-      if (event.detail === 2) {
-        scheduleAfterMultiClickDelay(clickAnchor);
-        return;
-      }
-      // Multi-click selection can be finalized after pointerup. Replace any
-      // stale pointerup read with one explicitly tied to the completed click.
-      scheduleFresh(clickAnchor);
-    };
-    const handleDoubleClick = () => {
-      scheduleAfterMultiClickDelay(lastPointerReleaseAnchor);
-    };
     const node = nodeRef.current;
+    if (node === null) return;
 
-    document.addEventListener("pointerdown", handlePointerDown);
-    document.addEventListener("pointerup", handlePointerRelease);
-    document.addEventListener("pointercancel", handlePointerCancel);
-    document.addEventListener("mouseup", handlePointerRelease);
-    document.addEventListener("selectionchange", handleSelectionChange);
-    document.addEventListener("keyup", schedule);
-    node?.addEventListener("click", handleMultiClick);
-    node?.addEventListener("dblclick", handleDoubleClick);
+    const instance: SelectableProseInstance = {
+      node,
+      onSelectRef,
+      hadSelection: false,
+      pendingReportAnchor: null,
+      lastPointerReleaseAnchor: null,
+      multiClickTimer: null,
+    };
+    const handleMultiClick = (event: MouseEvent) =>
+      handleInstanceMultiClick(instance, event);
+    const handleDoubleClick = () => handleInstanceDoubleClick(instance);
+
+    registerSelectableProseInstance(instance);
+    node.addEventListener("click", handleMultiClick);
+    node.addEventListener("dblclick", handleDoubleClick);
     return () => {
-      if (frame !== null) window.cancelAnimationFrame(frame);
-      cancelMultiClickTimer();
-      document.removeEventListener("pointerdown", handlePointerDown);
-      document.removeEventListener("pointerup", handlePointerRelease);
-      document.removeEventListener("pointercancel", handlePointerCancel);
-      document.removeEventListener("mouseup", handlePointerRelease);
-      document.removeEventListener("selectionchange", handleSelectionChange);
-      document.removeEventListener("keyup", schedule);
-      node?.removeEventListener("click", handleMultiClick);
-      node?.removeEventListener("dblclick", handleDoubleClick);
+      node.removeEventListener("click", handleMultiClick);
+      node.removeEventListener("dblclick", handleDoubleClick);
+      unregisterSelectableProseInstance(instance);
     };
   }, []);
 

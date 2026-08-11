@@ -651,6 +651,60 @@ describe("provisionWorkspace", () => {
       await expect(fs.stat(targetPath)).rejects.toThrow();
     });
 
+    it("rediscovers git metadata in an existing personal workspace", async () => {
+      const parentDir = await makeTempDir("bb-personal-git-parent-");
+      const environmentId = "env_personal_git";
+      const personalWorkspaceRoot = path.join(parentDir, "personal-workspaces");
+      const targetPath = path.join(personalWorkspaceRoot, environmentId);
+      const initial = await provisionWorkspace({
+        workspaceProvisionType: "personal",
+        environmentId,
+        personalWorkspaceRoot,
+        targetPath,
+      });
+      expect(initial.isGitRepo).toBe(false);
+      await runGit(["init", "-b", "main"], { cwd: targetPath });
+
+      const refreshed = await provisionWorkspace({
+        workspaceProvisionType: "personal",
+        environmentId,
+        personalWorkspaceRoot,
+        targetPath,
+      });
+
+      expect(refreshed.isGitRepo).toBe(true);
+      expect(refreshed.isWorktree).toBe(false);
+      expect(await refreshed.getCurrentBranch()).toBe("main");
+    });
+
+    it("does not accept external git metadata in a personal workspace", async () => {
+      const parentDir = await makeTempDir("bb-personal-external-git-parent-");
+      const environmentId = "env_personal_external_git";
+      const personalWorkspaceRoot = path.join(parentDir, "personal-workspaces");
+      const targetPath = path.join(personalWorkspaceRoot, environmentId);
+      const externalGitDir = path.join(parentDir, "external-git-dir");
+      await provisionWorkspace({
+        workspaceProvisionType: "personal",
+        environmentId,
+        personalWorkspaceRoot,
+        targetPath,
+      });
+      await runGit(
+        ["init", "-b", "main", "--separate-git-dir", externalGitDir],
+        { cwd: targetPath },
+      );
+
+      const refreshed = await provisionWorkspace({
+        workspaceProvisionType: "personal",
+        environmentId,
+        personalWorkspaceRoot,
+        targetPath,
+      });
+
+      expect(refreshed.isGitRepo).toBe(false);
+      expect(refreshed.isWorktree).toBe(false);
+    });
+
     it("rejects personal target paths outside the personal workspace root", async () => {
       const parentDir = await makeTempDir("bb-personal-parent-");
       const environmentId = "env_personal";

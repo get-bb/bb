@@ -8,7 +8,8 @@
     "bb-script-request-dev-restart": "./dist/commands/request-dev-restart.js",
     "bb-script-reset-bb-data": "./dist/commands/reset-bb-data.js",
     "bb-script-run-cli": "./dist/commands/run-cli.js",
-    "bb-script-run-host-daemon": "./dist/commands/run-host-daemon.js"
+    "bb-script-run-host-daemon": "./dist/commands/run-host-daemon.js",
+    "bb-script-seed-perf-db": "./dist/commands/seed-perf-db.js"
   },
   "exports": {
     "./lib/run-dev-supervisor": {
@@ -35,6 +36,8 @@
   },
   "dependencies": {
     "@bb/config": "workspace:*",
+    "@bb/db": "workspace:*",
+    "@bb/domain": "workspace:*",
     "@bb/host-daemon-contract": "workspace:*",
     "@bb/process-utils": "workspace:*",
     "picocolors": "^1.1.1"

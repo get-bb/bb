@@ -26,7 +26,6 @@ import {
   type ContextUsage,
 } from "@earendil-works/pi-coding-agent";
 import type { ImageContent } from "@earendil-works/pi-ai";
-import { registerBunOAuthFlows } from "@earendil-works/pi-ai/bun-oauth";
 import {
   PiSdkSession,
   type PiSdkSessionOptions,
@@ -43,10 +42,10 @@ import {
 } from "./tool-proxy.js";
 import { listPiBridgeModels } from "./model-list.js";
 import { getPiModelRuntime } from "./model-runtime.js";
-
-// Pi normally loads OAuth flows through relative dynamic imports. This bridge
-// ships as one file, so register Pi's static loaders before auth is resolved.
-registerBunOAuthFlows();
+import {
+  takeOverPiBridgeStdout,
+  writePiBridgeProtocol,
+} from "./output-guard.js";
 
 // ---------------------------------------------------------------------------
 // Command schema — defines what JSON-RPC requests this bridge accepts
@@ -174,6 +173,10 @@ const piThreadForkParamsSchema = z
     piInstructionOverrideSchemaOptions,
   );
 
+const piThreadIdParamsSchema = z.object({
+  threadId: z.string(),
+});
+
 const piCommandSchema = z.discriminatedUnion("method", [
   z.object({
     method: z.literal("initialize"),
@@ -183,7 +186,7 @@ const piCommandSchema = z.discriminatedUnion("method", [
   }),
   z.object({
     method: z.literal("model/list"),
-    params: z.object({}),
+    params: z.object({ cwd: z.string().optional() }),
   }),
   z.object({
     method: z.literal("thread/start"),
@@ -215,9 +218,11 @@ const piCommandSchema = z.discriminatedUnion("method", [
   }),
   z.object({
     method: z.literal("thread/stop"),
-    params: z.object({
-      threadId: z.string(),
-    }),
+    params: piThreadIdParamsSchema,
+  }),
+  z.object({
+    method: z.literal("thread/compact"),
+    params: piThreadIdParamsSchema,
   }),
 ]);
 
@@ -309,7 +314,7 @@ function send(
     | BridgeEventNotification
     | BridgeToolCallRequest,
 ): void {
-  process.stdout.write(JSON.stringify(msg) + "\n");
+  writePiBridgeProtocol(JSON.stringify(msg) + "\n");
 }
 
 function sendResult(id: string | number, result: unknown): void {
@@ -400,7 +405,7 @@ function createOnPiEvent(
       method: "sdk/message",
       params: { threadId: args.threadId, message: event },
     });
-    if (event.type === "agent_end") {
+    if (event.type === "agent_end" || event.type === "compaction_end") {
       emitContextWindowUsage(args.threadId);
     }
   };
@@ -411,20 +416,27 @@ function createOnSessionDone(
 ): (error?: unknown) => void {
   return (error?: unknown) => {
     if (!error) return;
-    const threadSession = getCurrentThreadSession({
-      sessionSerial: args.sessionSerial,
-      threadId: args.threadId,
-    });
-    if (!threadSession) return;
-
-    const message = error instanceof Error ? error.message : String(error);
-
-    send({
-      jsonrpc: "2.0",
-      method: "error",
-      params: { threadId: args.threadId, message },
-    });
+    reportSessionError({ ...args, error });
   };
+}
+
+function reportSessionError(
+  args: CreateSessionCallbackArgs & { error: unknown },
+): void {
+  const threadSession = getCurrentThreadSession({
+    sessionSerial: args.sessionSerial,
+    threadId: args.threadId,
+  });
+  if (!threadSession) return;
+
+  const message =
+    args.error instanceof Error ? args.error.message : String(args.error);
+
+  send({
+    jsonrpc: "2.0",
+    method: "error",
+    params: { threadId: args.threadId, message },
+  });
 }
 
 function createForwardToolCall(threadId: string): ToolCallForwarder {
@@ -581,7 +593,7 @@ async function handleRequest(
       sendResult(request.id, { ok: true });
       break;
     case "model/list":
-      await handleModelList(request.id);
+      await handleModelList(request.id, request.params);
       break;
     case "thread/start":
       await handleThreadStart(request.id, request.params);
@@ -601,6 +613,9 @@ async function handleRequest(
     case "thread/stop":
       sendResult(request.id, await handleThreadStop(request.params));
       break;
+    case "thread/compact":
+      handleThreadCompact(request.id, request.params);
+      break;
   }
 }
 
@@ -615,7 +630,7 @@ type ThreadResumeParams = Extract<
 type ThreadForkParams = Extract<PiCommand, { method: "thread/fork" }>["params"];
 type TurnStartParams = Extract<PiCommand, { method: "turn/start" }>["params"];
 type TurnSteerParams = Extract<PiCommand, { method: "turn/steer" }>["params"];
-type ThreadStopParams = Extract<PiCommand, { method: "thread/stop" }>["params"];
+type ThreadIdParams = Extract<PiCommand, { method: "thread/stop" }>["params"];
 type PiSessionParams =
   | ThreadStartParams
   | ThreadResumeParams
@@ -643,9 +658,15 @@ function buildPiSessionParams(
   };
 }
 
-async function handleModelList(id: string | number): Promise<void> {
+async function handleModelList(
+  id: string | number,
+  params: { cwd?: string },
+): Promise<void> {
   try {
-    sendResult(id, await listPiBridgeModels(await getPiModelRuntime()));
+    sendResult(
+      id,
+      await listPiBridgeModels(await getPiModelRuntime(params.cwd)),
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     sendError(id, -32000, message);
@@ -676,7 +697,7 @@ async function startPiThreadSession({
 
   const sessionSerial = nextSessionSerial();
   const session = new PiSdkSession(
-    { ...sessionOptions, modelRuntime: await getPiModelRuntime() },
+    sessionOptions,
     createOnPiEvent({ sessionSerial, threadId }),
     createOnSessionDone({ sessionSerial, threadId }),
   );
@@ -827,6 +848,11 @@ async function handleTurnSteer(
     return;
   }
 
+  if (threadSession.session.getIsCompacting()) {
+    sendError(id, -32000, "Cannot steer while context compaction is active");
+    return;
+  }
+
   try {
     await threadSession.session.steer(
       text,
@@ -840,13 +866,38 @@ async function handleTurnSteer(
 }
 
 async function handleThreadStop(
-  params: ThreadStopParams,
+  params: ThreadIdParams,
 ): Promise<PiThreadStopResult> {
   await closeThreadSession({
     message: "Pi thread stopped while tool call was pending",
     threadId: params.threadId,
   });
   return { ok: true };
+}
+
+function handleThreadCompact(
+  id: string | number,
+  params: ThreadIdParams,
+): void {
+  const threadSession = sessions.get(params.threadId);
+  if (!threadSession || threadSession.stopping) {
+    sendError(id, -32000, "No active pi session");
+    return;
+  }
+  if (threadSession.session.getIsProcessing()) {
+    sendError(id, -32000, "Cannot compact context while a turn is active");
+    return;
+  }
+  // Pi reports the terminal outcome through compaction_end. The command result
+  // only acknowledges that the validated maintenance operation was started.
+  void threadSession.session.compact().catch((error: unknown) => {
+    reportSessionError({
+      error,
+      sessionSerial: threadSession.sessionSerial,
+      threadId: params.threadId,
+    });
+  });
+  sendResult(id, { threadId: params.threadId });
 }
 
 interface ExtractedInput {
@@ -958,6 +1009,7 @@ function isMainModule(): boolean {
 }
 
 if (isMainModule()) {
+  takeOverPiBridgeStdout();
   const rl = createInterface({ input: process.stdin, terminal: false });
   rl.on("line", handleLine);
   rl.on("close", () => {

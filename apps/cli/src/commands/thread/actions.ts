@@ -72,12 +72,14 @@ interface ThreadTellCommandOptions {
   image?: string[];
 }
 
-interface ThreadStopCommandOptions {
+interface ThreadActionOptions {
   self?: boolean;
   json?: boolean;
 }
 
-type ThreadBannerActionCommandOptions = ThreadStopCommandOptions;
+interface ThreadRetryCommandOptions extends ThreadActionOptions {
+  requestId?: string;
+}
 
 type ThreadTellDeliveryMode = "auto" | "queue" | "steer";
 
@@ -405,12 +407,45 @@ export function registerActionsCommands(
     );
 
   parent
+    .command("retry [id]")
+    .description("Continue a turn after a provider subscription limit")
+    .option("--self", "Target the current thread (from BB_THREAD_ID)")
+    .option(
+      "--request-id <id>",
+      "Require this failed client request id before continuing",
+    )
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(
+        async (id: string | undefined, opts: ThreadRetryCommandOptions) => {
+          const threadId = requireThreadIdOrSelf(id, opts);
+          const sdk = createCliBbSdk(getUrl());
+          const status = await sdk.threads.rateLimitRecovery({ threadId });
+          const failedRequestId =
+            opts.requestId ?? status.candidate?.failedRequestId;
+          if (failedRequestId === undefined) {
+            throw new Error(
+              `Thread ${threadId} cannot be continued after a provider rate limit (${status.reason}).`,
+            );
+          }
+          const result = await sdk.threads.continueAfterRateLimit({
+            threadId,
+            failedRequestId,
+          });
+          const output = { threadId, failedRequestId, ...result };
+          if (outputJson(opts, output)) return;
+          console.log(`Thread ${threadId} continued after provider rate limit`);
+        },
+      ),
+    );
+
+  parent
     .command("stop [id]")
     .description("Stop an active or starting thread")
     .option("--self", "Target the current thread (from BB_THREAD_ID)")
     .option("--json", "Print machine-readable JSON output")
     .action(
-      action(async (id: string | undefined, opts: ThreadStopCommandOptions) => {
+      action(async (id: string | undefined, opts: ThreadActionOptions) => {
         const threadId = requireThreadIdOrSelf(id, opts);
         const sdk = createCliBbSdk(getUrl());
         await sdk.threads.stop({ threadId });
@@ -420,23 +455,33 @@ export function registerActionsCommands(
     );
 
   parent
+    .command("compact [id]")
+    .description("Request compaction of an idle or errored thread's context")
+    .option("--self", "Target the current thread (from BB_THREAD_ID)")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (id: string | undefined, opts: ThreadActionOptions) => {
+        const threadId = requireThreadIdOrSelf(id, opts);
+        const sdk = createCliBbSdk(getUrl());
+        await sdk.threads.compact({ threadId });
+        if (outputJson(opts, { ok: true, threadId })) return;
+        console.log(`Thread ${threadId} context compaction requested`);
+      }),
+    );
+
+  parent
     .command("cancel-plan [id]")
     .description("Ask the provider to exit the active Plan mode")
     .option("--self", "Target the current thread (from BB_THREAD_ID)")
     .option("--json", "Print machine-readable JSON output")
     .action(
-      action(
-        async (
-          id: string | undefined,
-          opts: ThreadBannerActionCommandOptions,
-        ) => {
-          const threadId = requireThreadIdOrSelf(id, opts);
-          const sdk = createCliBbSdk(getUrl());
-          await sdk.threads.cancelPlan({ threadId });
-          if (outputJson(opts, { ok: true, threadId })) return;
-          console.log(`Thread ${threadId} exited Plan mode`);
-        },
-      ),
+      action(async (id: string | undefined, opts: ThreadActionOptions) => {
+        const threadId = requireThreadIdOrSelf(id, opts);
+        const sdk = createCliBbSdk(getUrl());
+        await sdk.threads.cancelPlan({ threadId });
+        if (outputJson(opts, { ok: true, threadId })) return;
+        console.log(`Thread ${threadId} exited Plan mode`);
+      }),
     );
 
   parent
@@ -445,18 +490,13 @@ export function registerActionsCommands(
     .option("--self", "Target the current thread (from BB_THREAD_ID)")
     .option("--json", "Print machine-readable JSON output")
     .action(
-      action(
-        async (
-          id: string | undefined,
-          opts: ThreadBannerActionCommandOptions,
-        ) => {
-          const threadId = requireThreadIdOrSelf(id, opts);
-          const sdk = createCliBbSdk(getUrl());
-          await sdk.threads.clearGoal({ threadId });
-          if (outputJson(opts, { ok: true, threadId })) return;
-          console.log(`Thread ${threadId} cleared its Goal`);
-        },
-      ),
+      action(async (id: string | undefined, opts: ThreadActionOptions) => {
+        const threadId = requireThreadIdOrSelf(id, opts);
+        const sdk = createCliBbSdk(getUrl());
+        await sdk.threads.clearGoal({ threadId });
+        if (outputJson(opts, { ok: true, threadId })) return;
+        console.log(`Thread ${threadId} cleared its Goal`);
+      }),
     );
 }
 

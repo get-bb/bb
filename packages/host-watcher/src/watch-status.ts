@@ -17,6 +17,7 @@ export function watchWorkspaceStatus(
   const watcher = createWorkspaceStatusWatcher({
     cwd,
     onChange: args.onChange,
+    onReady: args.onReady,
     onWatchError: args.onWatchError,
   });
   watcher.start();

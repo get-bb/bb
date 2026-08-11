@@ -458,6 +458,35 @@ describe("acp configOptions model catalog", () => {
     ).toBeUndefined();
   });
 
+  it("preserves an explicit empty thought_level option as no reasoning control", () => {
+    expect(
+      buildAcpNativeReasoningSupport({
+        id: "effort",
+        category: "thought_level",
+        type: "select",
+        options: [],
+      }),
+    ).toEqual({
+      supportedReasoningEfforts: [],
+      defaultReasoningEffort: "medium",
+    });
+  });
+
+  it("returns no reasoning control for declared values that bb cannot map", () => {
+    expect(
+      buildAcpNativeReasoningSupport({
+        id: "mode",
+        category: "thought_level",
+        type: "select",
+        currentValue: "smart",
+        options: [{ value: "smart" }, { value: "fast" }],
+      }),
+    ).toEqual({
+      supportedReasoningEfforts: [],
+      defaultReasoningEffort: "medium",
+    });
+  });
+
   it("maps Hermes-style ACP reasoning values", () => {
     const thoughtLevel = {
       id: "reasoning_effort",

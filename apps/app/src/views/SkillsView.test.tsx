@@ -10,6 +10,7 @@ import {
 } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
+import { focusManager } from "@tanstack/react-query";
 import type { SkillSummary } from "@bb/server-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
@@ -26,6 +27,7 @@ import {
 } from "./SkillsView";
 
 afterEach(() => {
+  focusManager.setFocused(undefined);
   cleanup();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
@@ -392,7 +394,9 @@ describe("SkillsOverview", () => {
 
     // Groups combine as AND: narrowing Provider to Claude Code drops the
     // codex-scoped skill while the User type selection still holds.
-    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Claude Code" }));
+    fireEvent.click(
+      screen.getByRole("menuitemcheckbox", { name: "Claude Code" }),
+    );
     expect(await screen.findByText("claude-authored")).toBeTruthy();
     expect(screen.queryByText("codex-authored")).toBeNull();
     expect(screen.queryByText("official-skill")).toBeNull();
@@ -777,13 +781,13 @@ describe("SkillsLibrary registry detail lifecycle", () => {
     ).toBeNull();
   });
 
-  it("opens the composer from a registry card with the reference prompt", async () => {
+  it("opens on Browse before Library and can start a skill from the registry", async () => {
     const registrySkill = makeRegistrySkill();
     vi.spyOn(sdk.skills, "list").mockResolvedValue({ skills: [] });
     const fetchMock = stubRegistryFetch(registrySkill, { list: true });
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     renderDom(
-      <MemoryRouter initialEntries={["/tools/skills?view=browse"]}>
+      <MemoryRouter initialEntries={["/tools/skills"]}>
         <QueryClientWrapper>
           <Routes>
             <Route path="/tools/skills" element={<SkillsLibrary />} />
@@ -793,11 +797,31 @@ describe("SkillsLibrary registry detail lifecycle", () => {
       </MemoryRouter>,
     );
 
-    fireEvent.click(
-      await screen.findByRole("button", {
-        name: "Fork Useful skill into a new bb skill",
-      }),
-    );
+    let forkButton = await screen.findByRole("button", {
+      name: "Fork Useful skill into a new bb skill",
+    });
+    const tabs = screen.getAllByRole("tab");
+    expect(tabs[0]).toBe(screen.getByRole("tab", { name: "Browse" }));
+    expect(tabs[1]).toBe(screen.getByRole("tab", { name: /Library/ }));
+    expect(tabs[0]?.className).toContain("bg-accent");
+    const registryListRequests = () =>
+      fetchMock.mock.calls.filter(([input]) =>
+        requestPath(input).startsWith("/api/v1/skills-registry?"),
+      );
+    expect(registryListRequests()).toHaveLength(1);
+
+    focusManager.setFocused(false);
+    focusManager.setFocused(true);
+    await waitFor(() => expect(registryListRequests()).toHaveLength(1));
+
+    fireEvent.click(screen.getByRole("tab", { name: /Library/ }));
+    fireEvent.click(screen.getByRole("tab", { name: "Browse" }));
+    forkButton = await screen.findByRole("button", {
+      name: "Fork Useful skill into a new bb skill",
+    });
+    expect(registryListRequests()).toHaveLength(1);
+
+    fireEvent.click(forkButton);
 
     const state = JSON.parse(
       (await screen.findByTestId("location-state")).textContent ?? "null",

@@ -116,6 +116,11 @@ export const closeTerminalRequestSchema = z
   .strict();
 export type CloseTerminalRequest = z.infer<typeof closeTerminalRequestSchema>;
 
+export const restartTerminalRequestSchema = z.object({}).strict();
+export type RestartTerminalRequest = z.infer<
+  typeof restartTerminalRequestSchema
+>;
+
 export const updateTerminalRequestSchema = z
   .object({
     title: z.string().trim().min(1).max(200),
@@ -159,6 +164,15 @@ export const terminalOutputQuerySchema = z
   })
   .strict();
 export type TerminalOutputQuery = z.infer<typeof terminalOutputQuerySchema>;
+
+export const terminalWebSocketQuerySchema = z
+  .object({
+    sinceSeq: z.coerce.number().int().nonnegative().default(0),
+  })
+  .strict();
+export type TerminalWebSocketQuery = z.infer<
+  typeof terminalWebSocketQuerySchema
+>;
 
 export const terminalOutputResponseSchema = z
   .object({
@@ -204,6 +218,7 @@ export const terminalServerMessageSchema = z.discriminatedUnion("type", [
     .object({
       type: z.literal("attached"),
       session: terminalSessionSchema,
+      replayStartSeq: z.number().int().nonnegative(),
       nextSeq: z.number().int().nonnegative(),
     })
     .strict(),

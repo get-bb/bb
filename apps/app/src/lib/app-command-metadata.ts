@@ -38,6 +38,12 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
         "Search threads",
         "Focus the sidebar thread search.",
       ),
+      command("thread.rename", "Rename thread", "Rename the focused thread."),
+      command(
+        "thread.archive",
+        "Archive thread",
+        "Archive the focused thread.",
+      ),
       command(
         "thread.previous",
         "Previous thread",

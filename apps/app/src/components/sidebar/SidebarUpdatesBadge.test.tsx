@@ -52,6 +52,34 @@ function providerIssue(
   };
 }
 
+function missingInstallIssue(
+  provider: ProviderCliKey,
+  displayName: string,
+): ProviderCliIssue {
+  return {
+    provider,
+    status: {
+      displayName,
+      executableName: provider,
+      executablePath: null,
+      installed: false,
+      installSource: "notInstalled",
+      currentVersion: null,
+      latestVersion: "1.1.0",
+      minimumSupportedVersion: null,
+      npmPackageName: `@example/${provider}`,
+      npmGlobalPackageVersion: null,
+      installAction: null,
+      needsUpdate: false,
+      versionUnsupported: false,
+    },
+    action: null,
+    title: `${displayName} CLI not installed`,
+    description: `Install ${displayName} so bb can start ${displayName} sessions.`,
+    fingerprint: `${provider}:missing:1.1.0`,
+  };
+}
+
 function host(id: string): Host {
   return {
     id,
@@ -135,6 +163,33 @@ describe("SidebarUpdatesBadge", () => {
         .getByTestId("sidebar-updates-badge-providers")
         .getAttribute("aria-label"),
     ).toBe("Claude Code update available");
+  });
+
+  it("renders no provider chip when a CLI is not installed", () => {
+    renderBadge({
+      machines: [
+        machine({
+          issues: [missingInstallIssue("claudeCode", "Claude Code")],
+        }),
+      ],
+    });
+
+    expect(screen.queryByTestId("sidebar-updates-badge-providers")).toBeNull();
+    expect(screen.queryByTestId("sidebar-updates-badge-bb")).toBeNull();
+  });
+
+  it("still shows the bb chip when the only provider issue is a missing CLI", () => {
+    renderBadge({
+      appUpdateAvailable: true,
+      machines: [
+        machine({
+          issues: [missingInstallIssue("codex", "Codex")],
+        }),
+      ],
+    });
+
+    expect(screen.getByTestId("sidebar-updates-badge-bb")).toBeTruthy();
+    expect(screen.queryByTestId("sidebar-updates-badge-providers")).toBeNull();
   });
 
   it("renders one mark per provider in a stable order when the same CLI is stale on several machines", () => {

@@ -20,6 +20,7 @@ import { TerminalSessionLifecycle } from "../../src/services/terminals/terminal-
 import { resolveThreadStorageRootPath } from "../../src/services/threads/thread-storage.js";
 import { createLifecycleDedupers } from "../../src/lifecycle-dedupers.js";
 import type { ServerAppDeps, ServerRuntimeConfig } from "../../src/types.js";
+import { MANAGED_ENVIRONMENT_RETIRE_GRACE_MS } from "../../src/constants.js";
 import type { NotificationHub } from "../../src/ws/hub.js";
 import { NotificationHub as NotificationHubImpl } from "../../src/ws/hub.js";
 import { WatchInterestCoordinator } from "../../src/ws/watch-interests.js";
@@ -130,10 +131,13 @@ export async function createTestAppHarness(
     featureFlags: defaultFeatureFlags,
     hostDaemonPort: 3001,
     inheritedSkillsRootPaths: [],
+    inferenceFallbackModel: "test/mock-fallback-model",
     inferenceModel: "test/mock-model",
     isDevelopment: true,
+    managedEnvironmentRetireGraceMs: MANAGED_ENVIRONMENT_RETIRE_GRACE_MS,
     openAiApiKey: "test-openai-key",
     serverPort: 3334,
+    sharedSkillRoots: { user: [], project: [] },
     threadStorageRootPath: resolveThreadStorageRootPath({
       dataDir,
       env: {},

@@ -1,8 +1,10 @@
 export {
   connectCredentialSchema,
+  connectPublicProtocol,
   deriveConnectBaseUrl,
   serverUrlForHandle,
   type ConnectCredential,
+  type ConnectPublicProtocol,
 } from "./credential.js";
 export {
   ConnectListError,

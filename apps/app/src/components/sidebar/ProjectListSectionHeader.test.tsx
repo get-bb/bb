@@ -1,18 +1,68 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { createStore, Provider } from "jotai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { NO_COLLAPSED_CHILD_ACTIVITY } from "@/lib/thread-activity";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import { SPLIT_LAYOUT_STORAGE_KEY } from "@/lib/split-layout/persistence";
-import { TopLevelSidebarSection } from "./ProjectList";
+import {
+  ProjectListSectionIconButton,
+  TopLevelSidebarSection,
+} from "./ProjectList";
 
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
   window.localStorage.removeItem(SPLIT_LAYOUT_STORAGE_KEY);
   window.sessionStorage.removeItem(SPLIT_LAYOUT_STORAGE_KEY);
+});
+
+describe("ProjectListSectionIconButton", () => {
+  it("drops pointer focus before a section action opens a picker", () => {
+    let triggerWasFocused = true;
+    render(
+      <TooltipProvider>
+        <ProjectListSectionIconButton
+          ariaLabel="New project"
+          icon={<span aria-hidden>+</span>}
+          title="New project"
+          onClick={() => {
+            triggerWasFocused =
+              document.activeElement ===
+              screen.getByRole("button", { name: "New project" });
+          }}
+        />
+      </TooltipProvider>,
+    );
+    const trigger = screen.getByRole("button", { name: "New project" });
+    trigger.focus();
+
+    fireEvent.click(trigger, { detail: 1 });
+
+    expect(triggerWasFocused).toBe(false);
+    expect(document.activeElement).not.toBe(trigger);
+  });
+
+  it("retains section-action focus for keyboard activation", () => {
+    render(
+      <TooltipProvider>
+        <ProjectListSectionIconButton
+          ariaLabel="New project"
+          icon={<span aria-hidden>+</span>}
+          title="New project"
+          onClick={vi.fn()}
+        />
+      </TooltipProvider>,
+    );
+    const trigger = screen.getByRole("button", { name: "New project" });
+    trigger.focus();
+
+    fireEvent.click(trigger, { detail: 0 });
+
+    expect(document.activeElement).toBe(trigger);
+  });
 });
 
 describe("TopLevelSidebarSection", () => {

@@ -21,6 +21,20 @@ The builtin Custom instructions plugin adds a multiline editor under Settings
 → Custom instructions. Saved text is persisted on this bb host and included in
 agent task instructions; blank text contributes nothing.
 
+The opt-in builtin Provider retry plugin continues Codex and Claude Code
+turns after a structured subscription window resets. Enable it under
+Extensions → Plugins or run `bb plugin enable provider-retry`. It keeps its
+timers in memory, coordinates waits by machine/provider subscription, and adds
+a composer banner with a Cancel action while an automatic retry is pending.
+The banner disappears when the retry starts, is cancelled, or the user
+continues the thread. A server restart or plugin reload clears pending timers
+without changing the original failed thread. Inspect it with
+`bb provider-retry status`. See `bb guide providers` for the eligibility rules.
+Prior output or tool activity does not block recovery. Its `maximumWait`
+setting defaults to `6 hours`; choose `24 hours` or `No limit` from the plugin
+detail page, or configure it with
+`bb plugin config provider-retry set maximumWait <value>`.
+
 The builtin Workflows plugin runs durable provider-independent JavaScript
 orchestration. It is disabled on fresh installations; enable `workflows` under
 Extensions → Plugins or run `bb plugin enable workflows` before using:
@@ -138,8 +152,7 @@ added/updated/unchanged counts.
   bb plugin search <query>       Search BB's official plugins (bundled with
                                  the app)
   bb plugin install <entry>      Install a bundled official plugin by name
-                                 (github, docs, memory, tasks,
-                                 t3sidebar), a local
+                                 (github, docs, memory, tasks), a local
                                  path, builtin:<name>,
                                  git:<url>@<ref>, or
                                  npm:<package>[@<version|tag|range>]
@@ -180,6 +193,9 @@ added/updated/unchanged counts.
   bb plugin new <name> [--app]   Scaffold a new plugin (no server required;
                                  --app adds a frontend entry, app.tsx, plus a
                                  typecheck-only tsconfig.json)
+  bb plugin types [path]         Write this bb's @bb/plugin-sdk declarations
+                                 into the plugin's types/ (default: cwd);
+                                 --check reports staleness and writes nothing
   bb plugin build [path]         Compile the plugin into dist/ — the backend
                                  bundle (server.js, server.meta.json) and,
                                  when bb.app is declared, the frontend bundle
@@ -195,14 +211,13 @@ added/updated/unchanged counts.
 
 BB Official plugins
 
-BB's official plugins — GitHub, Docs, Memory, Tasks, and T3 Sidebar — ship
-bundled inside the app itself. They appear in Extensions → Plugins → Browse
+BB's official plugins — GitHub, Docs, Memory, and Tasks — ship bundled inside
+the app itself. They appear in Extensions → Plugins → Browse
 and install with one click from the local bundled copy: no network, no
 download, no separate release. Install from the CLI by bare name
-(`bb plugin install github`, `bb plugin install docs`,
-`bb plugin install memory`, `bb plugin install tasks`, or
-`bb plugin install t3sidebar`). Installed official plugins are pinned to the
-bundled copy and update automatically when the BB app updates.
+(`bb plugin install github`, `bb plugin install docs`, `bb plugin install
+memory`, or `bb plugin install tasks`). Installed official plugins are pinned
+to the bundled copy and update automatically when the BB app updates.
 
 For direct git:/npm: installs, updates are manual: `bb plugin outdated`
 checks tracking sources and `bb plugin update` applies compatible candidates.
@@ -341,8 +356,10 @@ least `icon` or `logo.light`, `bb.server`
 into agent threads unless filtered by `bb.agents.configure`; default
 `skills/`), `engines.bb` (supported bb range),
 and optional `engines.bbPluginSdk` (supported plugin SDK range; scaffold
-writes `"^0.4.1"` for SDK 0.4.1). The plugin id is the package name minus
-`bb-plugin-`.
+writes `"^0.4.1"` for SDK 0.4.1). Use `bb-plugin-hello` for the package name by
+default. Scoped names such as `@acme/bb-plugin-hello` are also supported. The
+plugin id is the final package-name component minus `bb-plugin-`, so both forms
+use `hello`.
 
 Plugins can contribute palettes with `bb.themes`: an array of
 `{ id, name, description?, css }`, where `css` is a plugin-relative `.css`
@@ -374,8 +391,12 @@ The backend entry default-exports a factory receiving the full plugin API:
 The import is type-only and erased at load; the scaffold ships the full API
 as bundled .d.ts in types/ (tsconfig maps @bb/plugin-sdk to them), so
 `npm install && npx tsc --noEmit` typechecks anywhere — no bb checkout
-needed. Confused, or need a symbol the types don't explain? Clone the repo:
-https://github.com/get-bb/bb. The API in
+needed. Those files are ordinary readable declarations, not a minified
+bundle: read them for an exact signature. The SDK surface grows every
+release, so `bb plugin types` rewrites them from the running bb — run it in a
+cloned or older plugin, and `bb plugin types --check` in CI. `bb plugin
+build` and `bb plugin dev` refresh them for you. Need a symbol the types
+don't explain? Clone the repo: https://github.com/get-bb/bb. The API in
 one line each — bb.log (plugin-scoped logger behind `bb plugin logs`);
 bb.settings.define (declarative settings incl. secrets, editable via
 `bb plugin config`); bb.storage.kv (JSON rows ≤256KB) and
@@ -427,7 +448,7 @@ in a checkout). The builtin `inline-vis` plugin renders
 path-shaped, sandboxed worktree HTML iframe preview; `height` is optional.
 Its card header includes an open-in-sidebar action for the source HTML file.
 The `plugins/` directory contains every bundled plugin: the auto-installed
-builtins and the store-only BB Official GitHub, Docs, Memory, Tasks, and T3
-Sidebar plugins. The `examples/plugins/` reference plugins
-cover slack-bot (webhook bot), agent-enrichment (agent surfaces), and
-composer-customization (all composer regions).
+builtins and the store-only BB Official GitHub, Docs, Memory, and Tasks
+plugins. The `examples/plugins/` reference plugins cover slack-bot (webhook
+bot), agent-enrichment (agent surfaces), composer-customization (all composer
+regions), and t3sidebar (a replacement sidebar thread list).

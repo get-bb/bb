@@ -216,7 +216,7 @@ const CLAUDE_CODE_DEFINITION: ProviderCliDefinition = {
 const CURSOR_DEFINITION: ProviderCliDefinition = {
   key: "cursor",
   displayName: "Cursor",
-  executableName: "agent",
+  executableName: "cursor-agent",
   npmPackageName: null,
   minimumSupportedVersion: null,
   installCommand: {
@@ -225,8 +225,8 @@ const CURSOR_DEFINITION: ProviderCliDefinition = {
   },
   updateCommand: {
     commandKind: "exec",
-    displayCommand: "agent update",
-    command: "agent",
+    displayCommand: "cursor-agent update",
+    command: "cursor-agent",
     args: ["update"],
   },
 };
@@ -280,8 +280,12 @@ function installMissingClaudeCommands(
 function installMissingCursorCommands(
   runner: FakeProviderCliCommandRunner,
 ): void {
-  runner.setExit("which", ["agent"], 1, "agent not found");
-  runner.setSpawnError("agent", ["--version"], "spawn agent ENOENT");
+  runner.setExit("which", ["cursor-agent"], 1, "cursor-agent not found");
+  runner.setSpawnError(
+    "cursor-agent",
+    ["--version"],
+    "spawn cursor-agent ENOENT",
+  );
   runner.setSuccess("npm", ["prefix", "-g"], "/usr/local\n");
 }
 
@@ -342,8 +346,12 @@ function installCurrentClaudeCommands(
 function installCurrentCursorCommands(
   runner: FakeProviderCliCommandRunner,
 ): void {
-  runner.setSuccess("which", ["agent"], "/Users/me/.local/bin/agent\n");
-  runner.setSuccess("agent", ["--version"], "agent 1.2.3\n");
+  runner.setSuccess(
+    "which",
+    ["cursor-agent"],
+    "/Users/me/.local/bin/cursor-agent\n",
+  );
+  runner.setSuccess("cursor-agent", ["--version"], "cursor-agent 1.2.3\n");
   runner.setSuccess("npm", ["prefix", "-g"], "/usr/local\n");
 }
 
@@ -442,7 +450,7 @@ describe("provider CLI health", () => {
 
     expect(status).toEqual({
       displayName: "Cursor",
-      executableName: "agent",
+      executableName: "cursor-agent",
       executablePath: null,
       installed: false,
       installSource: "notInstalled",
@@ -568,7 +576,7 @@ describe("provider CLI health", () => {
     expect(runner.commandLines()).toContain(
       "npm view @anthropic-ai/claude-code version",
     );
-    expect(runner.commandLines()).toContain("which agent");
+    expect(runner.commandLines()).toContain("which cursor-agent");
     expect(runner.commandLines()).not.toContain("npm view cursor version");
   });
 
@@ -607,14 +615,14 @@ describe("provider CLI health", () => {
     ]);
   });
 
-  it("checks Cursor installation using its agent executable", async () => {
+  it("checks Cursor installation using its namespaced executable", async () => {
     const runner = new FakeProviderCliCommandRunner();
-    runner.setExit("which", ["agent"], 1, "agent not found");
+    runner.setExit("which", ["cursor-agent"], 1, "cursor-agent not found");
 
-    await expect(
-      isProviderCliInstalled("cursor", { runner }),
-    ).resolves.toBe(false);
-    expect(runner.commandLines()).toEqual(["which agent"]);
+    await expect(isProviderCliInstalled("cursor", { runner })).resolves.toBe(
+      false,
+    );
+    expect(runner.commandLines()).toEqual(["which cursor-agent"]);
   });
 
   it("streams failed npm installs without hiding the exit status", async () => {

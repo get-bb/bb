@@ -142,6 +142,21 @@ describe("provider registry", () => {
     expect(existsSync(provider.process.args.at(-1) ?? "")).toBe(true);
   });
 
+  it("passes the requested workspace to Pi model listing", () => {
+    const provider = createProviderForId("pi");
+
+    expect(
+      provider.buildCommandPlan({
+        type: "model/list",
+        cwd: "/tmp/project",
+      }),
+    ).toEqual({
+      kind: "request",
+      method: "model/list",
+      params: { cwd: "/tmp/project" },
+    });
+  });
+
   it("creates the acp cursor provider with the bridge process config", () => {
     const provider = createProviderForId("acp-cursor");
     expect(provider.id).toBe("acp-cursor");
@@ -180,7 +195,7 @@ describe("provider registry", () => {
       kind: "request",
       method: "thread/start",
       params: {
-        agent: { command: "agent", args: ["acp"] },
+        agent: { command: "cursor-agent", args: ["acp"] },
       },
     });
   });

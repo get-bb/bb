@@ -1,5 +1,6 @@
 import {
   createTerminalSession,
+  getTerminalSession,
   getTerminalSessionForThread,
   getThreadlessTerminalSessionForEnvironment,
   listTerminalSessionsByThread,
@@ -108,6 +109,14 @@ function readBrowserMessages(
 ): TerminalServerMessage[] {
   return socket.sentMessages.map((message) =>
     terminalServerMessageSchema.parse(JSON.parse(message)),
+  );
+}
+
+function readDaemonMessages(
+  socket: FakeDaemonSocket,
+): HostDaemonServerWsMessage[] {
+  return socket.sentMessages.map((message) =>
+    hostDaemonServerWsMessageSchema.parse(JSON.parse(message)),
   );
 }
 
@@ -596,6 +605,7 @@ describe("public terminal routes", () => {
 
     fixture.harness.deps.terminalSessions.attachBrowserTerminal({
       socket: browserSocket,
+      sinceSeq: 0,
       terminalId: stored.id,
       threadId: null,
     });
@@ -603,9 +613,13 @@ describe("public terminal routes", () => {
     expect(attachMessage).toMatchObject({
       type: "terminal.attach",
       terminalId: stored.id,
+      sinceSeq: 0,
+      tailBytes: 512 * 1024,
     });
     if (attachMessage.type !== "terminal.attach") {
-      throw new Error(`Expected terminal.attach, received ${attachMessage.type}`);
+      throw new Error(
+        `Expected terminal.attach, received ${attachMessage.type}`,
+      );
     }
 
     fixture.harness.deps.terminalSessions.handleDaemonTerminalMessage({
@@ -616,6 +630,7 @@ describe("public terminal routes", () => {
         requestId: attachMessage.requestId,
         terminalId: stored.id,
         chunks: [],
+        replayStartSeq: 0,
         nextSeq: 0,
       },
     });
@@ -667,18 +682,15 @@ describe("public terminal routes", () => {
       status: "idle",
     });
 
-    const response = await harness.app.request(
-      "/api/v1/terminals",
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          cols: 80,
-          rows: 24,
-          target: { kind: "thread", threadId: thread.id },
-        }),
-      },
-    );
+    const response = await harness.app.request("/api/v1/terminals", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        cols: 80,
+        rows: 24,
+        target: { kind: "thread", threadId: thread.id },
+      }),
+    });
 
     expect(response.status).toBe(409);
     expect(apiErrorSchema.parse(await readJson(response))).toMatchObject({
@@ -694,18 +706,15 @@ describe("public terminal routes", () => {
     const fixture = await createTerminalRouteFixture();
     harnesses.push(fixture.harness);
 
-    const responsePromise = fixture.harness.app.request(
-      "/api/v1/terminals",
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          cols: 100,
-          rows: 30,
-          target: { kind: "thread", threadId: fixture.thread.id },
-        }),
-      },
-    );
+    const responsePromise = fixture.harness.app.request("/api/v1/terminals", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        cols: 100,
+        rows: 30,
+        target: { kind: "thread", threadId: fixture.thread.id },
+      }),
+    });
     const openMessage = await waitForDaemonMessage(fixture.socket);
     if (openMessage.type !== "terminal.open") {
       throw new Error(`Expected terminal.open, received ${openMessage.type}`);
@@ -752,19 +761,16 @@ describe("public terminal routes", () => {
     const fixture = await createTerminalRouteFixture();
     harnesses.push(fixture.harness);
 
-    const responsePromise = fixture.harness.app.request(
-      "/api/v1/terminals",
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          cols: 100,
-          rows: 30,
-          start: { mode: "command", command: "pnpm dev" },
-          target: { kind: "thread", threadId: fixture.thread.id },
-        }),
-      },
-    );
+    const responsePromise = fixture.harness.app.request("/api/v1/terminals", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        cols: 100,
+        rows: 30,
+        start: { mode: "command", command: "pnpm dev" },
+        target: { kind: "thread", threadId: fixture.thread.id },
+      }),
+    });
     const openMessage = await waitForDaemonMessage(fixture.socket);
     if (openMessage.type !== "terminal.open") {
       throw new Error(`Expected terminal.open, received ${openMessage.type}`);
@@ -895,6 +901,7 @@ describe("public terminal routes", () => {
     expect(attachMessage).toMatchObject({
       terminalId: session.id,
       sinceSeq: 2,
+      tailBytes: 3,
     });
 
     fixture.harness.deps.terminalSessions.handleDaemonTerminalMessage({
@@ -914,6 +921,7 @@ describe("public terminal routes", () => {
             dataBase64: Buffer.from("new", "utf8").toString("base64"),
           },
         ],
+        replayStartSeq: 2,
         nextSeq: 4,
       },
     });
@@ -1071,18 +1079,15 @@ describe("public terminal routes", () => {
     const fixture = await createTerminalRouteFixture();
     harnesses.push(fixture.harness);
 
-    const response = await fixture.harness.app.request(
-      "/api/v1/terminals",
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          cols: 80,
-          rows: 24,
-          target: { kind: "thread", threadId: fixture.thread.id },
-        }),
-      },
-    );
+    const response = await fixture.harness.app.request("/api/v1/terminals", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        cols: 80,
+        rows: 24,
+        target: { kind: "thread", threadId: fixture.thread.id },
+      }),
+    });
 
     expect(response.status).toBe(504);
     expect(apiErrorSchema.parse(await readJson(response))).toMatchObject({
@@ -1432,6 +1437,126 @@ describe("public terminal routes", () => {
     );
   });
 
+  it("serializes concurrent restarts and keeps the old terminal until replacement opens", async () => {
+    const fixture = await createTerminalRouteFixture();
+    harnesses.push(fixture.harness);
+    const stored = createTerminalSession(fixture.harness.db, {
+      cols: 100,
+      daemonSessionId: fixture.session.id,
+      environmentId: fixture.environment.id,
+      hostId: fixture.host.id,
+      initialCwd: "/tmp/terminal-workspace",
+      rows: 30,
+      status: "running",
+      threadId: fixture.thread.id,
+      title: "Terminal 1",
+    });
+    const restartRequest = () =>
+      fixture.harness.app.request(`/api/v1/terminals/${stored.id}/restart`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({}),
+      });
+
+    const firstResponsePromise = restartRequest();
+    const secondResponsePromise = restartRequest();
+    const openMessage = await waitForDaemonMessage(fixture.socket);
+    if (openMessage.type !== "terminal.open") {
+      throw new Error(`Expected terminal.open, received ${openMessage.type}`);
+    }
+    expect(
+      getTerminalSession(fixture.harness.db, { terminalId: stored.id }),
+    ).toMatchObject({ status: "running" });
+    acknowledgeTerminalOpen(fixture, openMessage);
+
+    const closeMessage = await waitForDaemonMessage(fixture.socket, 1);
+    expect(closeMessage).toMatchObject({
+      type: "terminal.close",
+      terminalId: stored.id,
+      reason: "user",
+    });
+    fixture.harness.deps.terminalSessions.handleDaemonTerminalMessage({
+      hostId: fixture.host.id,
+      sessionId: fixture.session.id,
+      message: {
+        type: "terminal.exited",
+        terminalId: stored.id,
+        exitCode: 0,
+        closeReason: "user",
+      },
+    });
+
+    const [firstResponse, secondResponse] = await Promise.all([
+      firstResponsePromise,
+      secondResponsePromise,
+    ]);
+    expect(firstResponse.status).toBe(201);
+    expect(secondResponse.status).toBe(201);
+    const firstReplacement = terminalSessionSchema.parse(
+      await readJson(firstResponse),
+    );
+    const secondReplacement = terminalSessionSchema.parse(
+      await readJson(secondResponse),
+    );
+    expect(firstReplacement.id).toBe(openMessage.terminalId);
+    expect(secondReplacement.id).toBe(openMessage.terminalId);
+    expect(
+      readDaemonMessages(fixture.socket).filter(
+        (message) => message.type === "terminal.open",
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("preserves the old terminal when restart cannot open a replacement", async () => {
+    const fixture = await createTerminalRouteFixture();
+    harnesses.push(fixture.harness);
+    const stored = createTerminalSession(fixture.harness.db, {
+      cols: 100,
+      daemonSessionId: fixture.session.id,
+      environmentId: fixture.environment.id,
+      hostId: fixture.host.id,
+      initialCwd: "/tmp/terminal-workspace",
+      rows: 30,
+      status: "running",
+      threadId: fixture.thread.id,
+      title: "Terminal 1",
+    });
+    const responsePromise = fixture.harness.app.request(
+      `/api/v1/terminals/${stored.id}/restart`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({}),
+      },
+    );
+    const openMessage = await waitForDaemonMessage(fixture.socket);
+    if (openMessage.type !== "terminal.open") {
+      throw new Error(`Expected terminal.open, received ${openMessage.type}`);
+    }
+    fixture.harness.deps.terminalSessions.handleDaemonTerminalMessage({
+      hostId: fixture.host.id,
+      sessionId: fixture.session.id,
+      message: {
+        type: "terminal.error",
+        requestId: openMessage.requestId,
+        terminalId: openMessage.terminalId,
+        code: "terminal_open_failed",
+        message: "spawn failed",
+      },
+    });
+
+    const response = await responsePromise;
+    expect(response.status).toBe(502);
+    expect(
+      getTerminalSession(fixture.harness.db, { terminalId: stored.id }),
+    ).toMatchObject({ status: "running" });
+    expect(
+      readDaemonMessages(fixture.socket).filter(
+        (message) => message.type === "terminal.close",
+      ),
+    ).toEqual([]);
+  });
+
   it("closes a clean terminal through the public route when if-clean mode is requested", async () => {
     const fixture = await createTerminalRouteFixture();
     harnesses.push(fixture.harness);
@@ -1447,7 +1572,7 @@ describe("public terminal routes", () => {
       title: "Terminal 1",
     });
 
-    const response = await fixture.harness.app.request(
+    const responsePromise = fixture.harness.app.request(
       `/api/v1/terminals/${stored.id}/close`,
       {
         method: "POST",
@@ -1456,6 +1581,24 @@ describe("public terminal routes", () => {
       },
     );
 
+    const closeMessage = await waitForDaemonMessage(fixture.socket);
+    expect(closeMessage).toMatchObject({
+      type: "terminal.close",
+      terminalId: stored.id,
+      reason: "user",
+    });
+    fixture.harness.deps.terminalSessions.handleDaemonTerminalMessage({
+      hostId: fixture.host.id,
+      sessionId: fixture.session.id,
+      message: {
+        type: "terminal.exited",
+        terminalId: stored.id,
+        exitCode: 0,
+        closeReason: "user",
+      },
+    });
+
+    const response = await responsePromise;
     expect(response.status).toBe(200);
     expect(terminalSessionSchema.parse(await readJson(response))).toMatchObject(
       {
@@ -1464,12 +1607,6 @@ describe("public terminal routes", () => {
         status: "exited",
       },
     );
-    const closeMessage = await waitForDaemonMessage(fixture.socket);
-    expect(closeMessage).toMatchObject({
-      type: "terminal.close",
-      terminalId: stored.id,
-      reason: "user",
-    });
   });
 
   it("does not close a dirty terminal unless force mode is requested", async () => {
@@ -1511,7 +1648,7 @@ describe("public terminal routes", () => {
     );
     expect(fixture.socket.sentMessages).toEqual([]);
 
-    const forceResponse = await fixture.harness.app.request(
+    const forceResponsePromise = fixture.harness.app.request(
       `/api/v1/terminals/${stored.id}/close`,
       {
         method: "POST",
@@ -1520,6 +1657,24 @@ describe("public terminal routes", () => {
       },
     );
 
+    const closeMessage = await waitForDaemonMessage(fixture.socket);
+    expect(closeMessage).toMatchObject({
+      type: "terminal.close",
+      terminalId: stored.id,
+      reason: "user",
+    });
+    fixture.harness.deps.terminalSessions.handleDaemonTerminalMessage({
+      hostId: fixture.host.id,
+      sessionId: fixture.session.id,
+      message: {
+        type: "terminal.exited",
+        terminalId: stored.id,
+        exitCode: 0,
+        closeReason: "user",
+      },
+    });
+
+    const forceResponse = await forceResponsePromise;
     expect(forceResponse.status).toBe(200);
     expect(
       terminalSessionSchema.parse(await readJson(forceResponse)),
@@ -1529,11 +1684,84 @@ describe("public terminal routes", () => {
       lastUserInputAt: 10,
       status: "exited",
     });
-    const closeMessage = await waitForDaemonMessage(fixture.socket);
-    expect(closeMessage).toMatchObject({
-      type: "terminal.close",
+  });
+
+  it("restores resize ownership when a newer browser attach fails", async () => {
+    const fixture = await createTerminalRouteFixture();
+    harnesses.push(fixture.harness);
+    const stored = createTerminalSession(fixture.harness.db, {
+      cols: 80,
+      daemonSessionId: fixture.session.id,
+      environmentId: fixture.environment.id,
+      hostId: fixture.host.id,
+      initialCwd: "/tmp/terminal-workspace",
+      rows: 24,
+      status: "running",
+      threadId: fixture.thread.id,
+      title: "Terminal 1",
+    });
+    const firstSocket = createFakeBrowserSocket();
+    const secondSocket = createFakeBrowserSocket();
+
+    fixture.harness.deps.terminalSessions.attachBrowserTerminal({
+      threadId: fixture.thread.id,
       terminalId: stored.id,
-      reason: "user",
+      socket: firstSocket,
+      sinceSeq: 0,
+    });
+    const firstAttach = await waitForDaemonMessage(fixture.socket, 0);
+    if (firstAttach.type !== "terminal.attach") {
+      throw new Error(`Expected terminal.attach, received ${firstAttach.type}`);
+    }
+    fixture.harness.deps.terminalSessions.handleDaemonTerminalMessage({
+      hostId: fixture.host.id,
+      sessionId: fixture.session.id,
+      message: {
+        type: "terminal.replay",
+        requestId: firstAttach.requestId,
+        terminalId: stored.id,
+        chunks: [],
+        replayStartSeq: 0,
+        nextSeq: 0,
+      },
+    });
+
+    fixture.harness.deps.terminalSessions.attachBrowserTerminal({
+      threadId: fixture.thread.id,
+      terminalId: stored.id,
+      socket: secondSocket,
+      sinceSeq: 0,
+    });
+    const secondAttach = await waitForDaemonMessage(fixture.socket, 1);
+    if (secondAttach.type !== "terminal.attach") {
+      throw new Error(
+        `Expected terminal.attach, received ${secondAttach.type}`,
+      );
+    }
+    fixture.harness.deps.terminalSessions.handleDaemonTerminalMessage({
+      hostId: fixture.host.id,
+      sessionId: fixture.session.id,
+      message: {
+        type: "terminal.error",
+        requestId: secondAttach.requestId,
+        terminalId: stored.id,
+        code: "terminal_attach_failed",
+        message: "attach failed",
+      },
+    });
+
+    fixture.harness.deps.terminalSessions.handleBrowserTerminalMessage({
+      threadId: fixture.thread.id,
+      terminalId: stored.id,
+      socket: firstSocket,
+      message: { type: "resize", cols: 120, rows: 40 },
+    });
+
+    expect(await waitForDaemonMessage(fixture.socket, 2)).toMatchObject({
+      type: "terminal.resize",
+      terminalId: stored.id,
+      cols: 120,
+      rows: 40,
     });
   });
 
@@ -1557,6 +1785,7 @@ describe("public terminal routes", () => {
       threadId: fixture.thread.id,
       terminalId: stored.id,
       socket: browserSocket,
+      sinceSeq: 0,
     });
     const attachMessage = await waitForDaemonMessage(fixture.socket);
     if (attachMessage.type !== "terminal.attach") {
@@ -1567,6 +1796,7 @@ describe("public terminal routes", () => {
     expect(attachMessage).toMatchObject({
       terminalId: stored.id,
       sinceSeq: 0,
+      tailBytes: 512 * 1024,
     });
 
     const replayChunk = {
@@ -1577,16 +1807,29 @@ describe("public terminal routes", () => {
       hostId: fixture.host.id,
       sessionId: fixture.session.id,
       message: {
+        type: "terminal.output",
+        terminalId: stored.id,
+        chunk: replayChunk,
+      },
+    });
+    expect(readBrowserMessages(browserSocket)).toEqual([]);
+
+    fixture.harness.deps.terminalSessions.handleDaemonTerminalMessage({
+      hostId: fixture.host.id,
+      sessionId: fixture.session.id,
+      message: {
         type: "terminal.replay",
         requestId: attachMessage.requestId,
         terminalId: stored.id,
         chunks: [replayChunk],
+        replayStartSeq: 0,
         nextSeq: 1,
       },
     });
     expect(readBrowserMessages(browserSocket)).toEqual([
       expect.objectContaining({
         type: "attached",
+        replayStartSeq: 0,
         nextSeq: 1,
         session: expect.objectContaining({ id: stored.id }),
       }),
@@ -1685,7 +1928,32 @@ describe("public terminal routes", () => {
       terminalId: stored.id,
       reason: "user",
     });
-    expect(readBrowserMessages(browserSocket)).toContainEqual(
+    const finalChunk = {
+      seq: 2,
+      dataBase64: Buffer.from("final output\n", "utf8").toString("base64"),
+    };
+    fixture.harness.deps.terminalSessions.handleDaemonTerminalMessage({
+      hostId: fixture.host.id,
+      sessionId: fixture.session.id,
+      message: {
+        type: "terminal.output",
+        terminalId: stored.id,
+        chunk: finalChunk,
+      },
+    });
+    fixture.harness.deps.terminalSessions.handleDaemonTerminalMessage({
+      hostId: fixture.host.id,
+      sessionId: fixture.session.id,
+      message: {
+        type: "terminal.exited",
+        terminalId: stored.id,
+        exitCode: 0,
+        closeReason: "user",
+      },
+    });
+    const closingMessages = readBrowserMessages(browserSocket).slice(-2);
+    expect(closingMessages).toEqual([
+      { type: "output", chunk: finalChunk },
       expect.objectContaining({
         type: "exited",
         session: expect.objectContaining({
@@ -1694,6 +1962,22 @@ describe("public terminal routes", () => {
           status: "exited",
         }),
       }),
+    ]);
+
+    fixture.harness.deps.terminalSessions.handleDaemonTerminalMessage({
+      hostId: fixture.host.id,
+      sessionId: fixture.session.id,
+      message: {
+        type: "terminal.output",
+        terminalId: stored.id,
+        chunk: {
+          seq: 3,
+          dataBase64: Buffer.from("stale", "utf8").toString("base64"),
+        },
+      },
+    });
+    expect(readBrowserMessages(browserSocket).slice(-2)).toEqual(
+      closingMessages,
     );
   });
 });

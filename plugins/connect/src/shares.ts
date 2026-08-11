@@ -12,6 +12,7 @@ import {
   type ShareHostResolver,
 } from "./hosts.js";
 import {
+  connectPublicProtocol,
   deriveConnectBaseUrl,
   type ConnectCredential,
 } from "@bb/connect-client";
@@ -91,7 +92,7 @@ export function machineSharePublicUrl(
   identity: { label: string; baseDomain: string },
   port: number,
 ): string {
-  return `https://${identity.label}--${port}.${identity.baseDomain}`;
+  return `${connectPublicProtocol(identity.baseDomain)}//${identity.label}--${port}.${identity.baseDomain}`;
 }
 
 export function shareLoopbackOrigin(port: number): string {

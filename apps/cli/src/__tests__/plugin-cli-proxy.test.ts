@@ -12,6 +12,7 @@ import { registerStatusCommand } from "../commands/status.js";
 import { registerThemeCommands } from "../commands/theme.js";
 import { registerThreadCommands } from "../commands/thread/index.js";
 import {
+  describeUnreachableServer,
   fetchPluginCliContributions,
   findDisabledPluginForCommand,
   findPluginCliCommand,
@@ -119,17 +120,20 @@ describe("fetchPluginCliContributions", () => {
   });
 
   it("distinguishes an unreachable server from an old/invalid one", async () => {
-    // Unreachable (server down): fetch rejects → tell the user to start bb.
+    // Unreachable (server down): fetch rejects → keep the thrown error so
+    // the caller can diagnose refused vs blocked vs timed out.
+    const thrown = new Error("ECONNREFUSED");
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => {
-        throw new Error("ECONNREFUSED");
+        throw thrown;
       }),
     );
     await expect(
       fetchPluginCliContributions("http://localhost"),
     ).resolves.toEqual({
       outcome: "unreachable",
+      cause: thrown,
     });
 
     // Old server without the route: silent fallback to commander's error.
@@ -172,6 +176,85 @@ describe("fetchPluginCliContributions", () => {
         { pluginId: "connect", name: "connect", summary: "s", commands: [] },
       ],
     });
+  });
+});
+
+describe("describeUnreachableServer", () => {
+  const url = "http://127.0.0.1:38886";
+
+  function fetchFailed(code: string): Error {
+    return new TypeError("fetch failed", {
+      cause: Object.assign(new Error(`connect ${code} 127.0.0.1:38886`), {
+        code,
+      }),
+    });
+  }
+
+  function aggregateFetchFailed(codes: string[]): Error {
+    const errors = codes.map((code, index) =>
+      Object.assign(new Error(`connect ${code} address-${index + 1}:38886`), {
+        code,
+      }),
+    );
+    return new TypeError("fetch failed", {
+      // NodeAggregateError exposes the first attempt's code on the aggregate,
+      // even when later attempts failed for a different reason.
+      cause: Object.assign(new AggregateError(errors), {
+        code: errors[0]?.code,
+      }),
+    });
+  }
+
+  it("says bb is not running only on ECONNREFUSED", () => {
+    expect(describeUnreachableServer(url, fetchFailed("ECONNREFUSED"))).toBe(
+      `bb is not running at ${url} — open the bb app, then re-run this command.`,
+    );
+  });
+
+  it("requires every aggregate connection attempt to be refused", () => {
+    expect(
+      describeUnreachableServer(
+        url,
+        aggregateFetchFailed(["ECONNREFUSED", "ECONNREFUSED"]),
+      ),
+    ).toBe(
+      `bb is not running at ${url} — open the bb app, then re-run this command.`,
+    );
+
+    const mixedMessage = describeUnreachableServer(
+      url,
+      aggregateFetchFailed(["ECONNREFUSED", "EPERM"]),
+    );
+    expect(mixedMessage).toContain(`Cannot reach bb at ${url}: EPERM`);
+    expect(mixedMessage).toContain("bb may still be running");
+    expect(mixedMessage).not.toContain("not running at");
+  });
+
+  it("reports a blocked connection without declaring bb down", () => {
+    for (const code of ["EPERM", "EACCES"]) {
+      const message = describeUnreachableServer(url, fetchFailed(code));
+      expect(message).toContain(`Cannot reach bb at ${url}: ${code}`);
+      expect(message).toContain("bb may still be running");
+      expect(message).not.toContain("not running at");
+    }
+  });
+
+  it("reports a timeout with the probe window", () => {
+    const timeout = Object.assign(new Error("The operation timed out"), {
+      name: "TimeoutError",
+    });
+    expect(describeUnreachableServer(url, timeout, 2000)).toBe(
+      `bb did not respond at ${url} within 2000ms — it may be busy or unreachable.`,
+    );
+  });
+
+  it("falls back to the unwrapped cause chain", () => {
+    const err = new TypeError("fetch failed", {
+      cause: new Error("getaddrinfo ENOTFOUND example.invalid"),
+    });
+    expect(describeUnreachableServer(url, err)).toBe(
+      `Cannot reach bb at ${url}: fetch failed: getaddrinfo ENOTFOUND example.invalid`,
+    );
   });
 });
 

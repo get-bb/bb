@@ -12,11 +12,15 @@ import type {
   ThreadConversationOutlineResponse,
   TimelineConversationAttachments,
   ThreadConversationOutlineAttachmentSummary,
+  TimelineRow,
+  TimelineSystemRow,
   ThreadTimelineResponse,
   TimelineTurnSummaryDetailsResponse,
 } from "@bb/server-contract";
 import {
+  findStoredTimelineWindowByteBudgetFloor,
   findTimelineWindowBudgetFloorSequence,
+  getStoredEventRowsByParentToolCallIdsDataBytes,
   getEnvironment,
   findUnfinishedTurnCoveringSequence,
   hasParentedEventCrossingSequence,
@@ -26,24 +30,26 @@ import {
   listStoredConversationOutlineEventRows,
   listStoredClientTurnRequestIdsInRange,
   listStoredEventRowsByParentToolCallIds,
-  listStoredEventRowsInRange,
   isTimelineCursorSequencePresent,
-  listItemEventSpansByItemIds,
-  listStoredBufferedTextDeltaRowsByItemIds,
-  listStoredItemLifecycleRowsByItemIds,
+  listItemEventSpansByItems,
+  listStoredBufferedTextDeltaRowsByItems,
+  listStoredItemLifecycleRowsByItems,
   listLatestBackgroundTaskStateRowsByItemIds,
   listLatestGoalEventRowsByThreadIds,
   listLatestOpenBackgroundTaskStateRowsForThread,
   listStoredTimelineWindowEventRows,
   listTodoSnapshotEventRowsForThread,
   listStoredToolCallRowsByItemIds,
+  listStoredTurnCompletedRowsByTurnIds,
   listStoredTurnInputAcceptedRowsByClientRequestIds,
   listStoredTurnStartedRowsByTurnIdsUpToSequence,
   listTimelineSegmentAnchorsDescending,
+  scopedItemRefKey,
 } from "@bb/db";
 import type {
   DbConnection,
   InlineOutputCharLimit,
+  ScopedItemRef,
   StandardTimelineSegmentAnchorRow,
   StoredEventRow,
 } from "@bb/db";
@@ -52,11 +58,12 @@ import { roundDurationMs } from "../lib/duration.js";
 import { parseStoredEvent } from "./thread-data.js";
 import {
   paginateTimelineRows,
-  readInTurnCursorSequence,
+  readSequenceCursor,
   type ThreadTimelinePageKind,
   type ThreadTimelinePageRequest,
-  type TimelineInTurnWindowStart,
+  type TimelineSequenceWindowStart,
 } from "./timeline-pagination.js";
+import { DEFAULT_MAX_INLINE_OUTPUT_CHARS } from "./timeline-output-truncation.js";
 
 export type {
   LatestThreadTimelinePageRequest,
@@ -151,6 +158,12 @@ export const THREAD_TIMELINE_DEFAULT_SEGMENT_LIMIT = 20;
 
 export const THREAD_TIMELINE_SEGMENT_LIMIT_MAX = 100;
 
+/**
+ * Driver rows and decoded events can use several times their stored JSON size.
+ * Bound each page before either representation enters the V8 heap.
+ */
+export const THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT = 4 * 1024 * 1024;
+
 export type ThreadTimelineBuildProfileStage =
   | "event-query"
   | "accepted-client-request-context-query"
@@ -221,13 +234,16 @@ interface BuildThreadTimelineInternalOptions extends BuildThreadTimelineOptions 
 }
 
 interface TimelineEventRowSelection {
+  byteWindowSequenceEnd: number | null;
+  byteWindowSequenceStart: number | null;
   contextOnlyToolCallIds: Set<string>;
   /** See {@link paginateTimelineRows}. */
-  inTurnWindowStart: TimelineInTurnWindowStart | null;
+  sequenceWindowStart: TimelineSequenceWindowStart | null;
   /** See {@link paginateTimelineRows}. */
   knownHasOlderSegments: boolean | null;
   paginationPage: ThreadTimelinePageRequest;
   responsePageKind: ThreadTimelinePageKind;
+  oversizedEventPlaceholder: TimelineSystemRow | null;
   rows: StoredEventRow[];
   strategy: ThreadTimelineEventSelectionStrategy;
 }
@@ -245,6 +261,12 @@ interface TimelineWindowParentedRowsArgs extends TimelineWindowRowsArgs {
   includeParentContext?: boolean;
   /** See {@link InlineOutputCharLimit}. */
   maxInlineOutputChars: InlineOutputCharLimit;
+  /** Extra byte budget for child rows outside `sequenceBounds`. */
+  outOfBoundsChildDataByteLimit?: number;
+  sequenceBounds: {
+    beforeSequence: number | undefined;
+    sequenceStart: number;
+  } | null;
 }
 
 interface TimelineWindowParentedRowsResult {
@@ -413,6 +435,7 @@ function ensureTimelineWindowParentedRows(
   const rowIds = new Set(rows.map((row) => row.id));
   const visibleToolCallIds = new Set(collectStoredToolCallItemIds(rows));
   const fetchedChildToolCallIds = new Set<string>();
+  let outOfBoundsChildDataBytesRemaining = args.outOfBoundsChildDataByteLimit;
 
   while (true) {
     const toolCallIdsToFetch = [...visibleToolCallIds].filter(
@@ -425,10 +448,26 @@ function ensureTimelineWindowParentedRows(
       fetchedChildToolCallIds.add(toolCallId);
     }
 
+    let childSequenceBounds = args.sequenceBounds;
+    if (outOfBoundsChildDataBytesRemaining !== undefined) {
+      const unboundedChildDataBytes =
+        getStoredEventRowsByParentToolCallIdsDataBytes(db, {
+          excludedTypes: THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
+          maxInlineOutputChars: args.maxInlineOutputChars,
+          parentToolCallIds: toolCallIdsToFetch,
+          threadId: args.threadId,
+        });
+      if (unboundedChildDataBytes <= outOfBoundsChildDataBytesRemaining) {
+        childSequenceBounds = null;
+        outOfBoundsChildDataBytesRemaining -= unboundedChildDataBytes;
+      }
+    }
     const childRows = listStoredEventRowsByParentToolCallIds(db, {
+      beforeSequence: childSequenceBounds?.beforeSequence,
       excludedTypes: THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
       maxInlineOutputChars: args.maxInlineOutputChars,
       parentToolCallIds: toolCallIdsToFetch,
+      sequenceStart: childSequenceBounds?.sequenceStart,
       threadId: args.threadId,
     });
     const newChildRows = childRows.filter((row) => !rowIds.has(row.id));
@@ -603,11 +642,14 @@ function selectFullTimelineEventRows(
   maxInlineOutputChars: InlineOutputCharLimit,
 ): TimelineEventRowSelection {
   return {
+    byteWindowSequenceEnd: null,
+    byteWindowSequenceStart: null,
     contextOnlyToolCallIds: new Set(),
-    inTurnWindowStart: null,
+    sequenceWindowStart: null,
     knownHasOlderSegments: null,
     paginationPage: page,
     responsePageKind: page.kind,
+    oversizedEventPlaceholder: null,
     rows: listRecentStoredEventRows(db, {
       threadId: thread.id,
       excludedTypes: THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
@@ -669,7 +711,50 @@ function ensureTimelineWindowTurnStartedRows(
   return mergeStoredEventRowsById([...turnStartedRows, ...args.rows]);
 }
 
-interface InTurnWindowItemRowsArgs extends TimelineWindowRowsArgs {
+function ensureSequenceWindowTurnCompletedRows(
+  db: DbConnection,
+  args: TimelineWindowRowsArgs,
+): StoredEventRow[] {
+  const completedTurnIds = new Set<string>();
+  const selectedTurnIds = new Set<string>();
+  for (const row of args.rows) {
+    if (row.scopeKind !== "turn" || row.turnId === null) {
+      continue;
+    }
+    selectedTurnIds.add(row.turnId);
+    if (row.type === "turn/completed") {
+      completedTurnIds.add(row.turnId);
+    }
+  }
+  const missingTurnIds = [...selectedTurnIds].filter(
+    (turnId) => !completedTurnIds.has(turnId),
+  );
+  if (missingTurnIds.length === 0) {
+    return [...args.rows];
+  }
+
+  const completedRows = listStoredTurnCompletedRowsByTurnIds(db, {
+    threadId: args.threadId,
+    turnIds: missingTurnIds,
+  });
+  return completedRows.length === 0
+    ? [...args.rows]
+    : mergeStoredEventRowsById([...args.rows, ...completedRows]);
+}
+
+/**
+ * The scoped identity of the item a row belongs to. Callers must have checked
+ * that the row carries an item id.
+ */
+function storedEventRowItemRef(row: StoredEventRow): ScopedItemRef {
+  return {
+    itemId: row.itemId ?? "",
+    scopeKind: row.scopeKind,
+    turnId: row.turnId,
+  };
+}
+
+interface SequenceWindowItemRowsArgs extends TimelineWindowRowsArgs {
   /** Exclusive upper bound of the window, or undefined for the latest page. */
   beforeSequence: number | undefined;
   /** See {@link InlineOutputCharLimit}. */
@@ -679,7 +764,7 @@ interface InTurnWindowItemRowsArgs extends TimelineWindowRowsArgs {
 }
 
 /**
- * Makes a window cut inside a turn own whole items rather than halves of them.
+ * Makes a sequence-cut window own whole items rather than halves of them.
  *
  * A cut on a user message never lands inside an item. A cut on the event budget
  * does: an `npm run dev` that starts at sequence 2,706 and fails at 5,450
@@ -694,21 +779,25 @@ interface InTurnWindowItemRowsArgs extends TimelineWindowRowsArgs {
  * {@link ensureTimelineWindowBackgroundTaskStateRows} already carries their
  * current state forward.
  */
-function ensureInTurnWindowWholeItemRows(
+function ensureSequenceWindowWholeItemRows(
   db: DbConnection,
-  args: InTurnWindowItemRowsArgs,
+  args: SequenceWindowItemRowsArgs,
 ): StoredEventRow[] {
-  const windowItemIds = new Set<string>();
+  // Keyed by scoped identity, not by item id: providers reuse item ids across
+  // turns (a resumed ACP session restarts its synthetic id counter), and a
+  // thread-wide span for such an id makes every window disown the item.
+  const windowItems = new Map<string, ScopedItemRef>();
   for (const row of args.rows) {
     if (
       row.itemId !== null &&
       row.itemKind !== "backgroundTask" &&
       row.sequence >= args.sequenceStart
     ) {
-      windowItemIds.add(row.itemId);
+      const ref = storedEventRowItemRef(row);
+      windowItems.set(scopedItemRefKey(ref), ref);
     }
   }
-  if (windowItemIds.size === 0) {
+  if (windowItems.size === 0) {
     return [...args.rows];
   }
 
@@ -716,29 +805,38 @@ function ensureInTurnWindowWholeItemRows(
   // output deltas, reasoning text, tool progress — and an unfinished item has
   // no end at all, so "does this item reach past the cut" cannot be answered
   // from `item/started` and `item/completed`.
-  const spans = listItemEventSpansByItemIds(db, {
-    itemIds: [...windowItemIds],
+  const spans = listItemEventSpansByItems(db, {
+    items: [...windowItems.values()],
     threadId: args.threadId,
   });
-  const itemIdsOwnedByNewerWindow = new Set<string>();
-  const itemIdsStartingBeforeWindow = new Set<string>();
+  const itemKeysOwnedByNewerWindow = new Set<string>();
+  const itemsStartingBeforeWindow = new Map<string, ScopedItemRef>();
   for (const span of spans) {
+    const key = scopedItemRefKey(span);
     if (
       args.beforeSequence !== undefined &&
       span.maxSequence >= args.beforeSequence
     ) {
-      itemIdsOwnedByNewerWindow.add(span.itemId);
+      itemKeysOwnedByNewerWindow.add(key);
       continue;
     }
     if (span.minSequence < args.sequenceStart) {
-      itemIdsStartingBeforeWindow.add(span.itemId);
+      itemsStartingBeforeWindow.set(key, {
+        itemId: span.itemId,
+        scopeKind: span.scopeKind,
+        turnId: span.turnId,
+      });
     }
   }
 
   const rows = args.rows.filter(
-    (row) => row.itemId === null || !itemIdsOwnedByNewerWindow.has(row.itemId),
+    (row) =>
+      row.itemId === null ||
+      !itemKeysOwnedByNewerWindow.has(
+        scopedItemRefKey(storedEventRowItemRef(row)),
+      ),
   );
-  if (itemIdsStartingBeforeWindow.size === 0) {
+  if (itemsStartingBeforeWindow.size === 0) {
     return rows;
   }
 
@@ -753,37 +851,40 @@ function ensureInTurnWindowWholeItemRows(
   // snapshot of the message, so dropping the prefix would make text disappear
   // as the event-budget floor advances. Carry that one item's prefix into the
   // owning page until item/completed supplies the canonical final text.
-  const backfillRows = listStoredItemLifecycleRowsByItemIds(db, {
-    itemIds: [...itemIdsStartingBeforeWindow],
+  const backfillRows = listStoredItemLifecycleRowsByItems(db, {
+    items: [...itemsStartingBeforeWindow.values()],
     maxInlineOutputChars: args.maxInlineOutputChars,
     threadId: args.threadId,
   }).filter((row) => row.sequence < args.sequenceStart);
 
-  const completedItemIds = new Set<string>();
+  const completedItemKeys = new Set<string>();
   for (const row of [...rows, ...backfillRows]) {
     if (row.type === "item/completed" && row.itemId !== null) {
-      completedItemIds.add(row.itemId);
+      completedItemKeys.add(scopedItemRefKey(storedEventRowItemRef(row)));
     }
   }
   // Delta rows are stored with a null itemKind, and an item that started below
   // the cut has only delta rows inside the window — so the kind must be read
   // from the backfilled item/started row, never from the in-window rows.
-  const bufferedTextItemIds = new Set<string>();
+  const bufferedTextItems = new Map<string, ScopedItemRef>();
   for (const row of backfillRows) {
+    if (row.type !== "item/started" || row.itemId === null) {
+      continue;
+    }
+    const ref = storedEventRowItemRef(row);
+    const key = scopedItemRefKey(ref);
     if (
-      row.type === "item/started" &&
-      row.itemId !== null &&
-      !completedItemIds.has(row.itemId) &&
+      !completedItemKeys.has(key) &&
       (row.itemKind === "agentMessage" ||
         row.itemKind === "plan" ||
         row.itemKind === "reasoning")
     ) {
-      bufferedTextItemIds.add(row.itemId);
+      bufferedTextItems.set(key, ref);
     }
   }
-  const bufferedTextRows = listStoredBufferedTextDeltaRowsByItemIds(db, {
+  const bufferedTextRows = listStoredBufferedTextDeltaRowsByItems(db, {
     beforeSequence: args.sequenceStart,
-    itemIds: [...bufferedTextItemIds],
+    items: [...bufferedTextItems.values()],
     threadId: args.threadId,
   });
   const prefixRows = [...backfillRows, ...bufferedTextRows];
@@ -879,19 +980,89 @@ interface ResolveTimelineSegmentWindowArgs {
 
 interface ResolvedTimelineSegmentWindow {
   beforeSequence: number | undefined;
+  byteWindowSequenceStart: number | null;
   /**
-   * Whether either boundary of this window falls inside a turn rather than on a
-   * user message. See {@link ensureInTurnWindowWholeItemRows}.
+   * Whether the window boundary needs whole-item lifecycle closure.
+   * See {@link ensureSequenceWindowWholeItemRows}.
    */
-  cutsInsideTurn: boolean;
+  requiresWholeItemClosure: boolean;
   /** Segments this page will actually return; ≤ `page.segmentLimit`. */
   effectiveSegmentLimit: number;
   hasAnchors: boolean;
-  /** See {@link paginateTimelineRows}; non-null for a window cut inside a turn. */
-  inTurnWindowStart: TimelineInTurnWindowStart | null;
+  /** See {@link paginateTimelineRows}; non-null for a sequence-cut window. */
+  sequenceWindowStart: TimelineSequenceWindowStart | null;
   /** See {@link paginateTimelineRows}; null when the sentinel infers it. */
   knownHasOlderSegments: boolean | null;
+  oversizedEventPlaceholder: TimelineSystemRow | null;
   sequenceStart: number;
+}
+
+function applyTimelineWindowByteBudget(
+  db: DbConnection,
+  args: {
+    maxInlineOutputChars: InlineOutputCharLimit;
+    threadId: string;
+    window: ResolvedTimelineSegmentWindow;
+  },
+): ResolvedTimelineSegmentWindow {
+  const windowArgs = {
+    beforeSequence: args.window.beforeSequence,
+    excludedTypes: THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
+    maxInlineOutputChars: args.maxInlineOutputChars,
+    sequenceStart: args.window.sequenceStart,
+    threadId: args.threadId,
+  };
+  const floor = findStoredTimelineWindowByteBudgetFloor(db, {
+    ...windowArgs,
+    maxDataBytes: THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT,
+  });
+  if (floor.kind === "single-event-too-large") {
+    const hasOlderRows =
+      floor.hasOlderRows || args.window.knownHasOlderSegments === true;
+    return {
+      ...args.window,
+      byteWindowSequenceStart: floor.sequenceStart,
+      knownHasOlderSegments: hasOlderRows,
+      oversizedEventPlaceholder: {
+        id: `${args.threadId}:oversized-event:${floor.sequenceStart}`,
+        threadId: args.threadId,
+        turnId: floor.turnId,
+        sourceSeqStart: floor.sequenceStart,
+        sourceSeqEnd: floor.sequenceStart,
+        startedAt: floor.createdAt,
+        createdAt: floor.createdAt,
+        kind: "system",
+        systemKind: "error",
+        title: "Timeline event is too large to display",
+        detail: `Event ${floor.sequenceStart} contains ${floor.eventDataBytes} bytes. BB omitted its content to keep this thread available.`,
+        status: "error",
+      },
+      sequenceStart: floor.sequenceStart + 1,
+      sequenceWindowStart: hasOlderRows
+        ? {
+            kind: "byte",
+            sequenceStart: floor.sequenceStart,
+            threadId: args.threadId,
+          }
+        : null,
+    };
+  }
+  if (floor.kind === "fits") {
+    return args.window;
+  }
+
+  return {
+    ...args.window,
+    byteWindowSequenceStart: floor.sequenceStart,
+    requiresWholeItemClosure: true,
+    sequenceWindowStart: {
+      kind: "byte",
+      sequenceStart: floor.sequenceStart,
+      threadId: args.threadId,
+    },
+    knownHasOlderSegments: true,
+    sequenceStart: floor.sequenceStart,
+  };
 }
 
 interface ResolveTimelineWindowBoundsArgs {
@@ -904,7 +1075,7 @@ interface ResolveTimelineWindowBoundsArgs {
 /**
  * Number of leading (newest) anchors whose segments fit inside the event
  * budget. Zero means the newest turn on its own is larger than the whole
- * budget, which is what forces the in-turn window below.
+ * budget, which can force a sequence-cut window below.
  */
 function countAffordableAnchors(
   anchors: readonly { sequence: number }[],
@@ -932,11 +1103,9 @@ function countAffordableAnchors(
  * window starts at the budget floor instead, mid-turn, and pages backwards from
  * there.
  *
- * Only while the turn is unfinished. A finished turn collapses into one summary
- * row spanning the whole turn, and two pages cannot each own that row; an
- * unfinished turn projects its work as ordinary top-level rows that page and
- * merge like any others. So a finished oversized turn keeps the old behaviour:
- * one segment, whole turn, however much that costs.
+ * This event-count pass cuts only an unfinished turn. A finished turn collapses
+ * into one summary row. The later byte-budget pass can cut either turn state.
+ * The memory limit must take priority over the summary boundary.
  *
  * One row is still turn-scoped rather than per-item across an unfinished turn:
  * the context-compaction banner is keyed by turn id, deliberately, so a
@@ -958,7 +1127,7 @@ function resolveTimelineWindowBounds(
   args: ResolveTimelineWindowBoundsArgs,
 ): Pick<
   ResolvedTimelineSegmentWindow,
-  "effectiveSegmentLimit" | "inTurnWindowStart" | "sequenceStart"
+  "effectiveSegmentLimit" | "sequenceStart" | "sequenceWindowStart"
 > & { affordableAnchorCount: number } {
   const { anchors, budgetFloorSequence, segmentLimit, threadId } = args;
   const affordable = countAffordableAnchors(
@@ -985,7 +1154,11 @@ function resolveTimelineWindowBounds(
     return {
       affordableAnchorCount: 0,
       effectiveSegmentLimit: segmentLimit,
-      inTurnWindowStart: { sequenceStart: budgetFloorSequence, threadId },
+      sequenceWindowStart: {
+        kind: "event",
+        sequenceStart: budgetFloorSequence,
+        threadId,
+      },
       sequenceStart: budgetFloorSequence,
     };
   }
@@ -996,7 +1169,7 @@ function resolveTimelineWindowBounds(
   return {
     affordableAnchorCount: segmentCount,
     effectiveSegmentLimit: segmentCount,
-    inTurnWindowStart: null,
+    sequenceWindowStart: null,
     sequenceStart: anchors[segmentCount - 1]?.sequence ?? 0,
   };
 }
@@ -1021,18 +1194,20 @@ function resolveTimelineSegmentWindow(
   const { eventBudget, page, threadId } = args;
   const noAnchors: ResolvedTimelineSegmentWindow = {
     beforeSequence: undefined,
-    cutsInsideTurn: false,
+    byteWindowSequenceStart: null,
+    requiresWholeItemClosure: false,
     effectiveSegmentLimit: page.segmentLimit,
     hasAnchors: false,
-    inTurnWindowStart: null,
+    sequenceWindowStart: null,
     knownHasOlderSegments: null,
+    oversizedEventPlaceholder: null,
     sequenceStart: 0,
   };
 
   if (page.kind === "older") {
     const cursor = page.beforeCursor;
-    const inTurnCursorSequence = readInTurnCursorSequence(cursor, threadId);
-    if (inTurnCursorSequence === null) {
+    const sequenceCursor = readSequenceCursor(cursor, threadId);
+    if (sequenceCursor === null) {
       const cursorAnchor = getTimelineSegmentAnchorAtSequence(db, {
         sequence: cursor.anchorSeq,
         threadId,
@@ -1068,11 +1243,11 @@ function resolveTimelineSegmentWindow(
       }
     } else if (
       !isTimelineCursorSequencePresent(db, {
-        sequence: inTurnCursorSequence,
+        sequence: sequenceCursor.sequenceStart,
         threadId,
       })
     ) {
-      // An in-turn cursor names no stored row, so this is the only check that it
+      // A sequence cursor names no stored row, so this is the only check that it
       // came from a page rather than from a client picking a number.
       throw new ApiError(
         400,
@@ -1104,13 +1279,16 @@ function resolveTimelineSegmentWindow(
       // on a thread with a 3,900-event turn, 5,513 events against a budget of
       // 1,500, all to discard the surplus.
       beforeSequence: cursor.anchorSeq,
-      cutsInsideTurn:
-        inTurnCursorSequence !== null || bounds.inTurnWindowStart !== null,
+      byteWindowSequenceStart:
+        sequenceCursor?.kind === "byte" ? bounds.sequenceStart : null,
+      requiresWholeItemClosure:
+        sequenceCursor !== null || bounds.sequenceWindowStart !== null,
       effectiveSegmentLimit: bounds.effectiveSegmentLimit,
       hasAnchors: true,
-      inTurnWindowStart: bounds.inTurnWindowStart,
+      sequenceWindowStart: bounds.sequenceWindowStart,
       knownHasOlderSegments:
         precedingAnchors.length > bounds.affordableAnchorCount,
+      oversizedEventPlaceholder: null,
       sequenceStart: bounds.sequenceStart,
     };
   }
@@ -1134,14 +1312,15 @@ function resolveTimelineSegmentWindow(
   });
   return {
     beforeSequence: undefined,
-    cutsInsideTurn: bounds.inTurnWindowStart !== null,
+    byteWindowSequenceStart: null,
+    requiresWholeItemClosure: bounds.sequenceWindowStart !== null,
     effectiveSegmentLimit: bounds.effectiveSegmentLimit,
     hasAnchors: true,
-    inTurnWindowStart: bounds.inTurnWindowStart,
+    sequenceWindowStart: bounds.sequenceWindowStart,
     // Budgeted windows read exactly the segments they return, so "is there
     // more" comes from the anchor list rather than an over-read segment.
-    knownHasOlderSegments:
-      newestAnchors.length > bounds.affordableAnchorCount,
+    knownHasOlderSegments: newestAnchors.length > bounds.affordableAnchorCount,
+    oversizedEventPlaceholder: null,
     sequenceStart: bounds.sequenceStart,
   };
 }
@@ -1153,32 +1332,36 @@ function selectStandardTimelineEventRows(
   eventBudget: number,
   maxInlineOutputChars: InlineOutputCharLimit,
 ): TimelineEventRowSelection {
-  const window = resolveTimelineSegmentWindow(db, {
-    eventBudget,
-    page,
+  const window = applyTimelineWindowByteBudget(db, {
+    maxInlineOutputChars,
     threadId: thread.id,
-  });
-  if (!window.hasAnchors) {
-    return selectFullTimelineEventRows(
-      db,
-      thread,
+    window: resolveTimelineSegmentWindow(db, {
+      eventBudget,
       page,
-      maxInlineOutputChars,
-    );
+      threadId: thread.id,
+    }),
+  });
+  if (
+    !window.hasAnchors &&
+    window.sequenceWindowStart === null &&
+    window.byteWindowSequenceStart === null
+  ) {
+    return selectFullTimelineEventRows(db, thread, page, maxInlineOutputChars);
   }
 
   const beforeSequence = window.beforeSequence;
   const sequenceStart = window.sequenceStart;
 
-  const windowRows = listStoredTimelineWindowEventRows(db, {
+  const windowArgs = {
     beforeSequence,
     excludedTypes: THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
     maxInlineOutputChars,
     sequenceStart,
     threadId: thread.id,
-  });
-  const wholeItemWindowRows = window.cutsInsideTurn
-    ? ensureInTurnWindowWholeItemRows(db, {
+  };
+  const windowRows = listStoredTimelineWindowEventRows(db, windowArgs);
+  const wholeItemWindowRows = window.requiresWholeItemClosure
+    ? ensureSequenceWindowWholeItemRows(db, {
         beforeSequence,
         maxInlineOutputChars,
         rows: windowRows,
@@ -1186,13 +1369,21 @@ function selectStandardTimelineEventRows(
         threadId: thread.id,
       })
     : windowRows;
+  const selectedRowsWithTurnStarts = ensureTimelineWindowTurnStartedRows(db, {
+    threadId: thread.id,
+    rows: wholeItemWindowRows,
+  });
+  const selectedRowsWithTurnLifecycle =
+    window.byteWindowSequenceStart === null
+      ? selectedRowsWithTurnStarts
+      : ensureSequenceWindowTurnCompletedRows(db, {
+          threadId: thread.id,
+          rows: selectedRowsWithTurnStarts,
+        });
   const selectedRowsWithInWindowTaskState =
     ensureTimelineWindowBackgroundTaskStateRows(db, {
       threadId: thread.id,
-      rows: ensureTimelineWindowTurnStartedRows(db, {
-        threadId: thread.id,
-        rows: wholeItemWindowRows,
-      }),
+      rows: selectedRowsWithTurnLifecycle,
     });
   const selectedRows =
     page.kind === "latest"
@@ -1206,6 +1397,10 @@ function selectStandardTimelineEventRows(
       : selectedRowsWithInWindowTaskState;
   const selectedRowsWithParentedContext = ensureTimelineWindowParentedRows(db, {
     maxInlineOutputChars,
+    sequenceBounds:
+      window.byteWindowSequenceStart === null
+        ? null
+        : { beforeSequence, sequenceStart },
     threadId: thread.id,
     rows: selectedRows,
   });
@@ -1214,11 +1409,26 @@ function selectStandardTimelineEventRows(
       threadId: thread.id,
       rows: selectedRowsWithParentedContext.rows,
     });
+  const selectedRowsWithParentedTurnLifecycle =
+    window.byteWindowSequenceStart === null
+      ? selectedRowsWithParentedTurnStarts
+      : ensureSequenceWindowTurnCompletedRows(db, {
+          threadId: thread.id,
+          rows: selectedRowsWithParentedTurnStarts,
+        });
 
   return {
+    byteWindowSequenceEnd:
+      window.byteWindowSequenceStart === null
+        ? null
+        : (wholeItemWindowRows.at(-1)?.sequence ??
+          window.byteWindowSequenceStart),
+    byteWindowSequenceStart: window.byteWindowSequenceStart,
     contextOnlyToolCallIds:
-      selectedRowsWithParentedContext.contextOnlyToolCallIds,
-    inTurnWindowStart: window.inTurnWindowStart,
+      window.byteWindowSequenceStart === null
+        ? selectedRowsWithParentedContext.contextOnlyToolCallIds
+        : new Set(),
+    sequenceWindowStart: window.sequenceWindowStart,
     knownHasOlderSegments: window.knownHasOlderSegments,
     paginationPage:
       page.kind === "older"
@@ -1228,7 +1438,8 @@ function selectStandardTimelineEventRows(
             segmentLimit: window.effectiveSegmentLimit,
           },
     responsePageKind: page.kind,
-    rows: selectedRowsWithParentedTurnStarts,
+    oversizedEventPlaceholder: window.oversizedEventPlaceholder,
+    rows: selectedRowsWithParentedTurnLifecycle,
     strategy:
       sequenceStart === 0 && beforeSequence === undefined
         ? "full"
@@ -1256,6 +1467,50 @@ function byteLengthOfStoredEventRows(rows: readonly StoredEventRow[]): number {
     byteLength += Buffer.byteLength(row.data, "utf8");
   }
   return byteLength;
+}
+
+function buildSequencePageTimelineRows(
+  rows: readonly TimelineRow[],
+  selection: TimelineEventRowSelection,
+): TimelineRow[] {
+  const rowsWithPlaceholder = selection.oversizedEventPlaceholder
+    ? [...rows, selection.oversizedEventPlaceholder].sort(
+        (left, right) => left.sourceSeqStart - right.sourceSeqStart,
+      )
+    : [...rows];
+  if (selection.byteWindowSequenceStart === null) {
+    return rowsWithPlaceholder;
+  }
+
+  const suffix =
+    selection.responsePageKind === "latest"
+      ? ""
+      : `:sequence-page:${selection.byteWindowSequenceStart}`;
+  return rowsWithPlaceholder.map((row): TimelineRow => {
+    if (
+      row.kind !== "turn" ||
+      selection.byteWindowSequenceEnd === null ||
+      selection.byteWindowSequenceStart === null
+    ) {
+      return { ...row, id: `${row.id}${suffix}` };
+    }
+    const sourceSeqStart = Math.max(
+      row.sourceSeqStart,
+      selection.byteWindowSequenceStart,
+    );
+    const sourceSeqEnd = Math.min(
+      row.sourceSeqEnd,
+      selection.byteWindowSequenceEnd,
+    );
+    return sourceSeqStart <= sourceSeqEnd
+      ? {
+          ...row,
+          id: `${row.id}${suffix}`,
+          sourceSeqEnd,
+          sourceSeqStart,
+        }
+      : { ...row, id: `${row.id}${suffix}` };
+  });
 }
 
 function createThreadTimelineBuildProfileAccumulator(): ThreadTimelineBuildProfileAccumulator {
@@ -1426,18 +1681,22 @@ function buildThreadTimelineInternal(
         },
       }),
   );
+  const projectedTimelineRows = buildSequencePageTimelineRows(
+    timeline.rows,
+    eventSelection,
+  );
   if (profile) {
-    profile.projectedRowCount = timeline.rows.length;
+    profile.projectedRowCount = projectedTimelineRows.length;
   }
   const paginatedTimeline = measureThreadTimelineStage(
     profile,
     "pagination-segmentation",
     () =>
       paginateTimelineRows({
-        inTurnWindowStart: eventSelection.inTurnWindowStart,
+        sequenceWindowStart: eventSelection.sequenceWindowStart,
         knownHasOlderSegments: eventSelection.knownHasOlderSegments,
         page: eventSelection.paginationPage,
-        rows: timeline.rows,
+        rows: projectedTimelineRows,
       }),
   );
   if (profile) {
@@ -1629,10 +1888,38 @@ export function buildTimelineTurnSummaryDetails(
 
   const includeProviderUnhandledOperations =
     options.includeProviderUnhandledOperations;
-  const exactEventRows = listStoredEventRowsInRange(db, {
+  const detailsWindow = {
+    beforeSequence: options.sourceSeqEnd + 1,
+    excludedTypes: THREAD_TIMELINE_EXCLUDED_EVENT_TYPES,
+    sequenceStart: options.sourceSeqStart,
     threadId: thread.id,
-    seqStart: options.sourceSeqStart,
-    seqEnd: options.sourceSeqEnd,
+  };
+  const fullDetailsFloor = findStoredTimelineWindowByteBudgetFloor(db, {
+    ...detailsWindow,
+    maxDataBytes: THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT,
+    maxInlineOutputChars: null,
+  });
+  let detailsEventDataBytes = fullDetailsFloor.eventDataBytes;
+  let detailsInlineOutputLimit: InlineOutputCharLimit = null;
+  if (fullDetailsFloor.kind !== "fits") {
+    detailsInlineOutputLimit = DEFAULT_MAX_INLINE_OUTPUT_CHARS;
+    const cappedDetailsFloor = findStoredTimelineWindowByteBudgetFloor(db, {
+      ...detailsWindow,
+      maxDataBytes: THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT,
+      maxInlineOutputChars: detailsInlineOutputLimit,
+    });
+    if (cappedDetailsFloor.kind !== "fits") {
+      throw new ApiError(
+        413,
+        "timeline_window_too_large",
+        "Timeline turn details exceed the safe response limit",
+      );
+    }
+    detailsEventDataBytes = cappedDetailsFloor.eventDataBytes;
+  }
+  const exactEventRows = listStoredTimelineWindowEventRows(db, {
+    ...detailsWindow,
+    maxInlineOutputChars: detailsInlineOutputLimit,
   });
   const clientRequestIds = listStoredClientTurnRequestIdsInRange(db, {
     threadId: thread.id,
@@ -1709,10 +1996,13 @@ export function buildTimelineTurnSummaryDetails(
     useExactEventRowBounds: exactEventRowsForRequestedTurn.removedRows,
   });
   const eventRowsWithParentedChildren = ensureTimelineWindowParentedRows(db, {
-    includeParentContext: false,
-    // This route is what "open the turn to view the full output" opens, so it
-    // is the one read that must never shorten a payload.
-    maxInlineOutputChars: null,
+    maxInlineOutputChars: detailsInlineOutputLimit,
+    outOfBoundsChildDataByteLimit:
+      THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT - detailsEventDataBytes,
+    sequenceBounds: {
+      beforeSequence: detailsWindow.beforeSequence,
+      sequenceStart: detailsWindow.sequenceStart,
+    },
     threadId: thread.id,
     rows: mergeStoredEventRowsById([...requestedTurnStartedRows, ...eventRows]),
   }).rows;
@@ -1725,6 +2015,13 @@ export function buildTimelineTurnSummaryDetails(
       threadId: thread.id,
       rows: eventRowsWithTurnStarts,
     });
+  const projectionSourceSeqStart = eventRowsWithTurnStarts.reduce(
+    (sourceSeqStart, row) =>
+      row.type === "turn/started" && row.turnId === options.turnId
+        ? Math.min(sourceSeqStart, row.sequence)
+        : sourceSeqStart,
+    sourceRange.sourceSeqStart,
+  );
   const children = buildThreadTimelineTurnDetailsFromEvents({
     events: eventRowsWithBackgroundTaskState.map((row) =>
       toThreadEventWithMeta(row),
@@ -1732,7 +2029,7 @@ export function buildTimelineTurnSummaryDetails(
     options: {
       includeProviderUnhandledOperations,
       sourceSeqEnd: sourceRange.sourceSeqEnd,
-      sourceSeqStart: sourceRange.sourceSeqStart,
+      sourceSeqStart: projectionSourceSeqStart,
       providerDisplayName: options.providerDisplayName,
       threadStatus: thread.status,
       threadName: thread.title ?? thread.titleFallback ?? "",

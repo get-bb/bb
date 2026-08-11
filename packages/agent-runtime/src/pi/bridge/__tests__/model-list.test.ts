@@ -52,6 +52,7 @@ describe("pi bridge model list", () => {
           id: "anthropic/claude-sonnet-5",
           model: "anthropic/claude-sonnet-5",
           displayName: "Claude Sonnet 5",
+          routeProviderId: "anthropic",
           description: "Anthropic reasoning, multimodal model via Pi",
           supportedReasoningEfforts: [
             { reasoningEffort: "low", description: "Low reasoning effort" },
@@ -80,6 +81,67 @@ describe("pi bridge model list", () => {
       signal: expect.any(AbortSignal),
     });
     expect(getAvailable).toHaveBeenCalledOnce();
+  });
+
+  // An extension registers its models from plain JavaScript, so Pi's required
+  // `input` can be missing at runtime. Reading it blindly threw and dropped
+  // every other provider's models with it.
+  it("lists an extension model that omits its input types", async () => {
+    getAvailable.mockResolvedValue([
+      {
+        id: "deepseek-v4",
+        name: "DeepSeek V4",
+        provider: "commandcode",
+        reasoning: false,
+      },
+      {
+        id: "claude-sonnet-5",
+        input: ["text", "image"],
+        name: "Claude Sonnet 5",
+        provider: "anthropic",
+        reasoning: false,
+      },
+    ]);
+    getSupportedThinkingLevels.mockReturnValue(["off"]);
+
+    const result = await listPiBridgeModels(modelRuntime);
+
+    expect(result.models.map((model) => model.id)).toEqual([
+      "commandcode/deepseek-v4",
+      "anthropic/claude-sonnet-5",
+    ]);
+    expect(result.models[0]?.description).toBe(
+      "Commandcode non-reasoning model via Pi",
+    );
+  });
+
+  // `id` is equally extension-supplied. Without it the list builder called
+  // `id.endsWith()` and threw, which dropped every other provider's models.
+  it("skips a model without an id and keeps the rest", async () => {
+    const write = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
+    getAvailable.mockResolvedValue([
+      { input: ["text"], name: "Nameless", provider: "commandcode" },
+      {
+        id: "claude-sonnet-5",
+        input: ["text"],
+        name: "Claude Sonnet 5",
+        provider: "anthropic",
+        reasoning: false,
+      },
+    ]);
+    getSupportedThinkingLevels.mockReturnValue(["off"]);
+
+    const result = await listPiBridgeModels(modelRuntime);
+
+    expect(result.models.map((model) => model.id)).toEqual([
+      "anthropic/claude-sonnet-5",
+    ]);
+    expect(write).toHaveBeenCalledWith(
+      'pi bridge: skipped an incomplete model from provider "commandcode"\n',
+    );
+    write.mockRestore();
   });
 
   it("preserves Pi's provider-verified thinking-level holes", async () => {

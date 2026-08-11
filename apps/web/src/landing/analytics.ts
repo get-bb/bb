@@ -21,11 +21,19 @@ export type LandingEvent =
       properties: { placement: CtaPlacement };
     }
   | {
+      name: "landing_discord_clicked";
+      properties: { placement: CtaPlacement };
+    }
+  | {
       name: "landing_cli_command_copied";
       properties: { placement: CtaPlacement; command: string };
     }
   | {
       name: "landing_email_subscribed";
+      properties: { placement: CtaPlacement };
+    }
+  | {
+      name: "landing_product_hunt_clicked";
       properties: { placement: CtaPlacement };
     };
 

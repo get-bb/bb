@@ -179,6 +179,12 @@ function parseJson(text: string, path: string): JsonValue {
   }
 }
 
+function normalizeWholeOutputJsonFence(text: string): string {
+  const trimmed = text.trim();
+  const fenced = /^```(?:json)?[\t ]*\r?\n([\s\S]*)\r?\n```$/i.exec(trimmed);
+  return fenced?.[1] ?? trimmed;
+}
+
 function assertBoundedJson(
   value: unknown,
   path: string,
@@ -925,7 +931,10 @@ export function createWorkflowService(
       };
       if (output !== null) {
         try {
-          const value = parseJson(output, "worker JSON response");
+          const value = parseJson(
+            normalizeWholeOutputJsonFence(output),
+            "worker JSON response",
+          );
           const resolved = resolveStructuredValue(options.outputSchema, value);
           fallback = {
             parsed: true,
@@ -980,6 +989,9 @@ export function createWorkflowService(
             },
           ],
         });
+        // The corrective turn is still part of this call. A later idle event
+        // or result-tool submission settles it and wakes the existing waiter.
+        return;
       } catch (error) {
         const correctionError = `Could not request structured-output correction: ${message(error)}`;
         settleCall(db, {

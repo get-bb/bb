@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   appSettingsSchema,
+  appDefaultKeybindingsSchema,
   appKeybindingOverridesSchema,
   appKeybindingsSchema,
   appThemeSchema,
@@ -198,7 +199,7 @@ export const systemConfigResponseSchema = z.object({
   /** Server-resolved keyboard bindings shared by every connected app window. */
   keybindings: appKeybindingsSchema,
   /** Server defaults, before the user's per-command overrides are applied. */
-  defaultKeybindings: appKeybindingsSchema,
+  defaultKeybindings: appDefaultKeybindingsSchema,
   /** Sparse per-command customizations; null shortcuts explicitly disable commands. */
   keybindingOverrides: appKeybindingOverridesSchema,
   /** User-opt-in experiments (Settings → Experiments), persisted server-side. */
@@ -214,6 +215,8 @@ export const systemConfigResponseSchema = z.object({
   pluginThemes: z.array(pluginThemeMetaSchema),
   featureFlags: featureFlagsSchema,
   hostDaemonPort: z.number().nullable(),
+  /** Base URL external host daemons should use to reach this server. */
+  serverUrl: z.string().url(),
   /**
    * The server-resolved primary host (the machine running the server, or the
    * single known host). Null only on a fresh server where no host has ever

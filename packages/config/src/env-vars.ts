@@ -10,12 +10,15 @@ import {
   type AppSurface,
 } from "./app-surface.js";
 import {
+  validateInferenceFallbackModel,
   validateInferenceModel,
   validateTranscriptionModel,
 } from "./inference-model.js";
 import { validateLogLevel } from "./log-level.js";
 import { validateOptionalUrl, validateRequiredUrl } from "./public-url.js";
-import { parsePortValue } from "./runtime.js";
+import { BB_LOOPBACK_HOST, parsePortValue } from "./runtime.js";
+
+export type ServerBindHost = "127.0.0.1" | "0.0.0.0";
 
 export function parseBooleanEnvValue(args: EnvVarParseArgs): boolean {
   const normalizedValue = args.value.trim().toLowerCase();
@@ -93,6 +96,19 @@ function parsePortEnvValue(args: EnvVarParseArgs): number {
   });
 }
 
+export function parseServerBindHost(value: string): ServerBindHost {
+  const trimmedValue = value.trim();
+  if (trimmedValue === "127.0.0.1" || trimmedValue === "0.0.0.0") {
+    return trimmedValue;
+  }
+
+  throw new Error('BB_SERVER_BIND_HOST must be "127.0.0.1" or "0.0.0.0"');
+}
+
+function parseServerBindHostEnvValue(args: EnvVarParseArgs): ServerBindHost {
+  return parseServerBindHost(args.value);
+}
+
 function parsePositiveIntegerEnvValue(args: EnvVarParseArgs): number {
   const parsed = Number(args.value);
   if (!Number.isInteger(parsed) || parsed <= 0) {
@@ -115,6 +131,10 @@ function parseLogLevelValue(args: EnvVarParseArgs): string {
 
 function parseInferenceModelValue(args: EnvVarParseArgs): string {
   return validateInferenceModel(args.value);
+}
+
+function parseInferenceFallbackModelValue(args: EnvVarParseArgs): string {
+  return validateInferenceFallbackModel(args.value);
 }
 
 function parseTranscriptionModelValue(args: EnvVarParseArgs): string {
@@ -145,6 +165,12 @@ export const BB_SERVER_PORT_ENV = defineEnvVar<number>({
   description: "HTTP port for the server",
   name: "BB_SERVER_PORT",
   parse: parsePortEnvValue,
+});
+
+export const BB_SERVER_BIND_HOST_ENV = defineEnvVar<ServerBindHost>({
+  description: "HTTP bind host for the server",
+  name: "BB_SERVER_BIND_HOST",
+  parse: parseServerBindHostEnvValue,
 });
 
 export const BB_HOST_DAEMON_PORT_ENV = defineEnvVar<number>({
@@ -193,6 +219,13 @@ export const BB_INFERENCE_ENV = defineEnvVar<string>({
   parse: parseInferenceModelValue,
 });
 
+export const BB_INFERENCE_FALLBACK_ENV = defineEnvVar<string>({
+  description:
+    "Fallback inference model used after a transient server-side completion failure",
+  name: "BB_INFERENCE_FALLBACK",
+  parse: parseInferenceFallbackModelValue,
+});
+
 export const BB_TRANSCRIPTION_ENV = defineEnvVar<string>({
   description: "Speech-to-text model used for voice transcription",
   name: "BB_TRANSCRIPTION",
@@ -236,7 +269,7 @@ export const BB_FF_TIMELINE_WINDOW_EVENT_BUDGET_ENV = defineEnvVar<number>({
 
 export const BB_DEV_APP_HOST_ENV = defineEnvVar<string>({
   description:
-    "Development-only Vite bind host override for apps/app. Defaults to 0.0.0.0 when unset.",
+    "Development-only Vite bind host override for apps/app. Defaults to 127.0.0.1 when unset.",
   name: "BB_DEV_APP_HOST",
   parse: parseStringEnvValue,
 });
@@ -327,6 +360,7 @@ export const BB_HOST_TYPE_ENV = defineEnvVar<HostType | undefined>({
 export const DEFAULT_BB_APP_VERSION = DEFAULTS.appVersion;
 export const DEFAULT_BB_APP_SURFACE = DEFAULT_APP_SURFACE;
 export const DEFAULT_BB_APP_URL = "";
+export const DEFAULT_BB_SERVER_BIND_HOST: ServerBindHost = BB_LOOPBACK_HOST;
 export const DEFAULT_BB_EXTERNAL_URL = "";
 export const DEFAULT_OPENAI_API_KEY = "";
 // Public write-only PostHog ingestion key (these are safe to ship; they can
@@ -337,6 +371,7 @@ export const DEFAULT_BB_POSTHOG_API_KEY =
 export const DEFAULT_BB_TELEMETRY = true;
 export const DEFAULT_BB_DEV_APP_HOST = "";
 export const DEFAULT_BB_INFERENCE = DEFAULTS.inferenceModel;
+export const DEFAULT_BB_INFERENCE_FALLBACK = DEFAULTS.inferenceFallbackModel;
 export const DEFAULT_BB_TRANSCRIPTION = DEFAULTS.transcriptionModel;
 export const DEFAULT_BB_FF_PLACEHOLDER = defaultFeatureFlags.placeholder;
 export const DEFAULT_BB_FF_TIMELINE_WINDOW_EVENT_BUDGET =

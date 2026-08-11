@@ -728,63 +728,80 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
           </span>
         ) : (
           <>
-            <div
-              data-queued-message-actions=""
-              className={cn(
-                QUEUED_MESSAGE_ACTION_TAKEOVER_CLASS,
-                "pointer-events-none absolute right-2.5 top-1/2 hidden -translate-y-1/2 items-center gap-0.5 rounded-md opacity-0 transition-opacity duration-[120ms] ease-out md:flex",
-                "group-hover/row:pointer-events-auto group-hover/row:opacity-100",
-                "group-focus-within/row:pointer-events-auto group-focus-within/row:opacity-100",
-              )}
-            >
-              <Button
-                type="button"
-                size="icon"
-                variant="ghost"
+            <TooltipProvider delayDuration={300}>
+              <div
+                data-queued-message-actions=""
                 className={cn(
-                  "shrink-0 text-muted-foreground",
-                  compact ? "size-7" : "size-8",
+                  QUEUED_MESSAGE_ACTION_TAKEOVER_CLASS,
+                  "pointer-events-none absolute right-2.5 top-1/2 hidden -translate-y-1/2 items-center gap-0.5 rounded-md opacity-0 transition-opacity duration-[120ms] ease-out md:flex",
+                  "group-hover/row:pointer-events-auto group-hover/row:opacity-100",
+                  "group-focus-within/row:pointer-events-auto group-focus-within/row:opacity-100",
                 )}
-                disabled={actionDisabled || sendDisabled}
-                onClick={() => onSendImmediately(queuedMessage.id)}
-                aria-label={`Send queued message ${index + 1} now`}
               >
-                <Icon name="Sent" className="size-4" aria-hidden />
-              </Button>
-              <Button
-                type="button"
-                size="icon"
-                variant="ghost"
-                className={cn(
-                  "shrink-0 text-muted-foreground",
-                  compact ? "size-7" : "size-8",
-                )}
-                disabled={actionDisabled}
-                onClick={() =>
-                  onEdit({
-                    queuedMessageId: queuedMessage.id,
-                    queuedMessageIndex: index,
-                  })
-                }
-                aria-label={`Edit queued message ${index + 1}`}
-              >
-                <Icon name="Edit" className="size-4" aria-hidden />
-              </Button>
-              <Button
-                type="button"
-                size="icon"
-                variant="ghost"
-                className={cn(
-                  "shrink-0 text-muted-foreground hover:text-destructive",
-                  compact ? "size-7" : "size-8",
-                )}
-                disabled={actionDisabled}
-                onClick={() => onDelete(queuedMessage.id)}
-                aria-label={`Delete queued message ${index + 1}`}
-              >
-                <Icon name="Trash2" className="size-4" aria-hidden />
-              </Button>
-            </div>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      className={cn(
+                        "shrink-0 text-muted-foreground",
+                        compact ? "size-7" : "size-8",
+                      )}
+                      disabled={actionDisabled || sendDisabled}
+                      onClick={() => onSendImmediately(queuedMessage.id)}
+                      aria-label={`Send queued message ${index + 1} now`}
+                    >
+                      <Icon name="Sent" className="size-4" aria-hidden />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Send now</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      className={cn(
+                        "shrink-0 text-muted-foreground",
+                        compact ? "size-7" : "size-8",
+                      )}
+                      disabled={actionDisabled}
+                      onClick={() =>
+                        onEdit({
+                          queuedMessageId: queuedMessage.id,
+                          queuedMessageIndex: index,
+                        })
+                      }
+                      aria-label={`Edit queued message ${index + 1}`}
+                    >
+                      <Icon name="Edit" className="size-4" aria-hidden />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Edit</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      className={cn(
+                        "shrink-0 text-muted-foreground hover:text-destructive",
+                        compact ? "size-7" : "size-8",
+                      )}
+                      disabled={actionDisabled}
+                      onClick={() => onDelete(queuedMessage.id)}
+                      aria-label={`Delete queued message ${index + 1}`}
+                    >
+                      <Icon name="Trash2" className="size-4" aria-hidden />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Delete</TooltipContent>
+                </Tooltip>
+              </div>
+            </TooltipProvider>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button

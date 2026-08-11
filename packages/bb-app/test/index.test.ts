@@ -15,7 +15,7 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import {
   createHostEnrollKeyRequestBody,
@@ -35,6 +35,7 @@ import {
   readBbAppPackageVersion,
   superviseFullStackProcesses,
   terminateManagedFullStackProcesses,
+  waitForHostDaemonStatus,
   waitForProcessExit,
 } from "../src/launcher.js";
 import type { BbAppStartContext } from "../src/index.js";
@@ -84,6 +85,11 @@ interface InvalidConfigCommandCase {
   value: string;
 }
 
+interface StartupOnlyManagedEnvCase {
+  key: string;
+  value: string;
+}
+
 type DelayResult = "timeout";
 type ResolveFakeManagedProcessExit = (result: NamedProcessExitResult) => void;
 type StartFakeManagedProcess = () => Promise<ManagedProcessRun>;
@@ -120,6 +126,11 @@ const invalidConfigCommandCases: InvalidConfigCommandCase[] = [
     value: "gpt-4o-mini",
   },
   {
+    expectedError: /BB_INFERENCE_FALLBACK must use provider\/model format/u,
+    key: "BB_INFERENCE_FALLBACK",
+    value: "gpt-5.4-mini",
+  },
+  {
     expectedError: /BB_TRANSCRIPTION must use provider\/model format/u,
     key: "BB_TRANSCRIPTION",
     value: "gpt-4o-mini-transcribe",
@@ -139,6 +150,30 @@ const invalidConfigCommandCases: InvalidConfigCommandCase[] = [
     key: "BB_LOG_LEVEL",
     value: "bogus",
   },
+];
+
+const startupOnlyManagedEnvCases: StartupOnlyManagedEnvCase[] = [
+  { key: "BB_APP_SURFACE", value: "desktop" },
+  { key: "BB_APP_URL", value: "https://app.example.test" },
+  { key: "BB_DATA_DIR", value: "/tmp/bb-managed-data" },
+  { key: "BB_DEV_APP_PORT", value: "4173" },
+  { key: "BB_EXTERNAL_URL", value: "https://external.example.test" },
+  { key: "BB_FF_PLACEHOLDER", value: "true" },
+  { key: "BB_FF_TIMELINE_WINDOW_EVENT_BUDGET", value: "2000" },
+  { key: "BB_HOST_DAEMON_PORT", value: "48887" },
+  { key: "BB_INFERENCE", value: "codex/test-inference" },
+  {
+    key: "BB_INFERENCE_FALLBACK",
+    value: "codex/test-inference-fallback",
+  },
+  { key: "BB_INHERITED_SKILLS_ROOTS", value: "/tmp/bb-skills" },
+  { key: "BB_LOG_LEVEL", value: "debug" },
+  { key: "BB_MANAGED_DEV_BUILTIN_PLUGIN_HOT_RELOAD", value: "1" },
+  { key: "BB_POSTHOG_API_KEY", value: "test-posthog-key" },
+  { key: "BB_SERVER_BIND_HOST", value: "127.0.0.1" },
+  { key: "BB_SERVER_PORT", value: "48886" },
+  { key: "BB_TELEMETRY", value: "false" },
+  { key: "BB_TRANSCRIPTION", value: "codex/test-transcription" },
 ];
 
 const packageMetadataSchema = z.object({
@@ -433,7 +468,104 @@ function expectedConfigReloadRequest(
   };
 }
 
+async function captureStdout(run: () => Promise<void>): Promise<string> {
+  const chunks: string[] = [];
+  const write = vi
+    .spyOn(process.stdout, "write")
+    .mockImplementation((chunk) => {
+      chunks.push(typeof chunk === "string" ? chunk : chunk.toString());
+      return true;
+    });
+  try {
+    await run();
+  } finally {
+    write.mockRestore();
+  }
+  return chunks.join("");
+}
+
 describe("bb-app launcher", () => {
+  it("waits for the expected host daemon identity and connection", async () => {
+    let statusRequests = 0;
+    const server = createServer((request, response) => {
+      if (request.url !== "/status") {
+        response.writeHead(404).end();
+        return;
+      }
+      statusRequests += 1;
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(
+        JSON.stringify({
+          connected: statusRequests >= 2,
+          hostId: "host-expected",
+          serverUrl: "http://127.0.0.1:38886/",
+        }),
+      );
+    });
+    await new Promise<void>((resolvePromise, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", resolvePromise);
+    });
+    const address = server.address();
+    if (address === null || typeof address === "string") {
+      throw new Error("Expected status test server to have a TCP address");
+    }
+
+    try {
+      await waitForHostDaemonStatus({
+        childProcess: null,
+        expectedHostId: "host-expected",
+        expectedServerUrl: "http://localhost:38886",
+        port: address.port,
+        timeoutMs: 1_000,
+      });
+      expect(statusRequests).toBeGreaterThanOrEqual(2);
+    } finally {
+      await new Promise<void>((resolvePromise, reject) => {
+        server.close((error) => (error ? reject(error) : resolvePromise()));
+      });
+    }
+  });
+
+  it("does not accept another daemon's successful health response", async () => {
+    const server = createServer((request, response) => {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(
+        request.url === "/health"
+          ? JSON.stringify({ ok: true })
+          : JSON.stringify({
+              connected: true,
+              hostId: "host-other",
+              serverUrl: "https://other.example.test",
+            }),
+      );
+    });
+    await new Promise<void>((resolvePromise, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", resolvePromise);
+    });
+    const address = server.address();
+    if (address === null || typeof address === "string") {
+      throw new Error("Expected status test server to have a TCP address");
+    }
+
+    try {
+      await expect(
+        waitForHostDaemonStatus({
+          childProcess: null,
+          expectedHostId: "host-expected",
+          expectedServerUrl: "https://bb.example.test",
+          port: address.port,
+          timeoutMs: 25,
+        }),
+      ).rejects.toThrow("Timed out waiting for host daemon host-expected");
+    } finally {
+      await new Promise<void>((resolvePromise, reject) => {
+        server.close((error) => (error ? reject(error) : resolvePromise()));
+      });
+    }
+  });
+
   it("resolves production defaults for npx startup", () => {
     const context = resolveBbAppStartContext({
       entrypointUrl: pathToFileURL("/repo/packages/bb-app/dist/bb-app.js").href,
@@ -626,6 +758,29 @@ describe("bb-app launcher", () => {
       },
       positionals: ["host-daemon", "join"],
     });
+  });
+
+  it("passes the server bind host flag to the server environment", async () => {
+    const parsedArgs = parseLauncherArgs(["--server-bind-host", "0.0.0.0"]);
+    const dataDir = mkdtempSync(join(tmpdir(), "bb-app-bind-host-"));
+    const runtime = await resolveBbAppRuntimeState({
+      entrypointUrl: pathToFileURL("/repo/packages/bb-app/dist/bb-app.js").href,
+      env: { BB_DATA_DIR: dataDir },
+      homeDir: "/home/tester",
+      options: parsedArgs.options,
+      serverUrlMode: "local",
+    });
+
+    expect(parsedArgs.options.serverBindHost).toBe("0.0.0.0");
+    expect(runtime.serverEnv.BB_SERVER_BIND_HOST).toBe("0.0.0.0");
+  });
+
+  it("rejects an invalid server bind host before launcher startup", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "bb-app-invalid-bind-host-"));
+
+    await expect(
+      runBbApp(["--data-dir", dataDir, "--server-bind-host", "localhost"]),
+    ).rejects.toThrow('BB_SERVER_BIND_HOST must be "127.0.0.1" or "0.0.0.0"');
   });
 
   it("uses a supplied join code without requesting a loopback enroll key", async () => {
@@ -826,6 +981,14 @@ describe("bb-app launcher", () => {
     await runBbApp([
       "--data-dir",
       dataDir,
+      "config",
+      "set",
+      "BB_INFERENCE_FALLBACK",
+      "codex/gpt-5.4-mini",
+    ]);
+    await runBbApp([
+      "--data-dir",
+      dataDir,
       "env",
       "set",
       "OPENAI_API_KEY",
@@ -838,6 +1001,7 @@ describe("bb-app launcher", () => {
       config: {
         BB_APP_URL: "https://bb.example.test",
         BB_INFERENCE: "anthropic/claude-sonnet-4-5",
+        BB_INFERENCE_FALLBACK: "codex/gpt-5.4-mini",
       },
     });
     expect(JSON.parse(readFileSync(join(dataDir, "env.json"), "utf8"))).toEqual(
@@ -931,6 +1095,41 @@ describe("bb-app launcher", () => {
       "https://bb.example.test",
     ]);
 
+    expect(
+      JSON.parse(readFileSync(join(dataDir, "config.json"), "utf8")),
+    ).toEqual({
+      config: {
+        BB_APP_URL: "https://bb.example.test",
+      },
+      customModels,
+    });
+  });
+
+  it("preserves invalid customModels across managed config set writes", async () => {
+    const dataDir = mkdtempSync(
+      join(tmpdir(), "bb-app-config-invalid-custom-models-set-"),
+    );
+    const customModels = [
+      { providerId: "acp-opencode", model: "my-proxy/custom-model" },
+      { providerId: "not-a-provider", model: "typo-model" },
+    ];
+    writeFileSync(
+      join(dataDir, "config.json"),
+      `${JSON.stringify({ customModels })}\n`,
+      "utf8",
+    );
+
+    await runBbApp([
+      "--data-dir",
+      dataDir,
+      "config",
+      "set",
+      "BB_APP_URL",
+      "https://bb.example.test",
+    ]);
+
+    // The parser skips the invalid entry with a warning, but a config write
+    // must keep the user's raw file contents intact.
     expect(
       JSON.parse(readFileSync(join(dataDir, "config.json"), "utf8")),
     ).toEqual({
@@ -1079,12 +1278,107 @@ describe("bb-app launcher", () => {
     expect(statSync(join(dataDir, "env.json")).mode & 0o777).toBe(0o600);
   });
 
+  it("rejects invalid server bind hosts before writing managed env", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "bb-app-invalid-bind-env-"));
+    const envPath = join(dataDir, "env.json");
+    const initialEnvFile = {
+      env: { ANTHROPIC_API_KEY: "test-anthropic-key" },
+    };
+    writeFileSync(envPath, JSON.stringify(initialEnvFile), "utf8");
+
+    await expect(
+      runBbApp([
+        "--data-dir",
+        dataDir,
+        "env",
+        "set",
+        "BB_SERVER_BIND_HOST",
+        "localhost",
+      ]),
+    ).rejects.toThrow('BB_SERVER_BIND_HOST must be "127.0.0.1" or "0.0.0.0"');
+
+    expect(JSON.parse(readFileSync(envPath, "utf8"))).toEqual(initialEnvFile);
+  });
+
+  it("unsets an invalid server bind host already in managed env", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "bb-app-recover-bind-env-"));
+    const envPath = join(dataDir, "env.json");
+    writeFileSync(
+      envPath,
+      JSON.stringify({ env: { BB_SERVER_BIND_HOST: "localhost" } }),
+      "utf8",
+    );
+
+    await runBbApp([
+      "--data-dir",
+      dataDir,
+      "env",
+      "unset",
+      "BB_SERVER_BIND_HOST",
+    ]);
+
+    expect(JSON.parse(readFileSync(envPath, "utf8"))).toEqual({});
+  });
+
+  it("names the env file when a persisted server bind host is invalid", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "bb-app-bad-bind-env-"));
+    const envPath = join(dataDir, "env.json");
+    writeFileSync(
+      envPath,
+      JSON.stringify({ env: { BB_SERVER_BIND_HOST: "localhost" } }),
+      "utf8",
+    );
+
+    await expect(runBbApp(["--data-dir", dataDir])).rejects.toThrow(envPath);
+  });
+
+  it("blames the flag, not the env file, for an invalid flag value", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "bb-app-bad-bind-flag-"));
+    const envPath = join(dataDir, "env.json");
+    writeFileSync(
+      envPath,
+      JSON.stringify({ env: { BB_SERVER_BIND_HOST: "localhost" } }),
+      "utf8",
+    );
+
+    const failure = await runBbApp([
+      "--data-dir",
+      dataDir,
+      "--server-bind-host",
+      "0.0.0.0.0",
+    ]).catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toContain("BB_SERVER_BIND_HOST");
+    expect((failure as Error).message).not.toContain(envPath);
+  });
+
   it("rejects invalid env key names", async () => {
     const dataDir = mkdtempSync(join(tmpdir(), "bb-app-invalid-env-"));
 
     await expect(
       runBbApp(["--data-dir", dataDir, "env", "set", "1BAD", "value"]),
     ).rejects.toThrow(/Invalid env key/u);
+  });
+
+  it("uses the explicit server bind host flag over managed env", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "bb-app-bind-host-env-"));
+    writeFileSync(
+      join(dataDir, "env.json"),
+      JSON.stringify({ env: { BB_SERVER_BIND_HOST: "0.0.0.0" } }),
+      "utf8",
+    );
+    const parsedArgs = parseLauncherArgs(["--server-bind-host", "127.0.0.1"]);
+
+    const runtime = await resolveBbAppRuntimeState({
+      entrypointUrl: pathToFileURL("/repo/packages/bb-app/dist/bb-app.js").href,
+      env: { BB_DATA_DIR: dataDir },
+      homeDir: "/home/tester",
+      options: parsedArgs.options,
+      serverUrlMode: "local",
+    });
+
+    expect(runtime.serverEnv.BB_SERVER_BIND_HOST).toBe("127.0.0.1");
   });
 
   it("unsets managed env values", async () => {
@@ -1142,6 +1436,193 @@ describe("bb-app launcher", () => {
       }
 
       expect(server.reloadCount()).toBe(0);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("prints a restart notice when setting a startup-only config key", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "bb-app-startup-config-set-"));
+    const server = await startConfigReloadTestServer();
+
+    try {
+      const output = await captureStdout(() =>
+        runBbApp([
+          "--data-dir",
+          dataDir,
+          "--server-port",
+          String(server.port),
+          "config",
+          "set",
+          "BB_LOG_LEVEL",
+          "debug",
+        ]),
+      );
+
+      expect(output).toContain(
+        "BB_LOG_LEVEL is startup-only. The running process keeps its current value; a full bb-app restart is required to apply this change. Run `bb-app stop && bb-app start`, or restart the desktop app.",
+      );
+      expect(output).not.toContain("Reloaded running bb server config.");
+      expect(server.reloadRequests()).toEqual([
+        expectedConfigReloadRequest(server),
+      ]);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("prints restart notices for every server startup-only managed env key", async () => {
+    const server = await startConfigReloadTestServer();
+
+    try {
+      for (const testCase of startupOnlyManagedEnvCases) {
+        const dataDir = mkdtempSync(join(tmpdir(), "bb-app-startup-env-set-"));
+        const output = await captureStdout(() =>
+          runBbApp([
+            "--data-dir",
+            dataDir,
+            "--server-port",
+            String(server.port),
+            "env",
+            "set",
+            testCase.key,
+            testCase.value,
+          ]),
+        );
+
+        expect(output).toContain(
+          `${testCase.key} is startup-only. The running process keeps its current value; a full bb-app restart is required to apply this change.`,
+        );
+        expect(output).not.toContain("Reloaded running bb server config.");
+      }
+      expect(server.reloadCount()).toBe(startupOnlyManagedEnvCases.length);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("warns that wildcard exposure remains after unsetting the server bind host", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "bb-app-startup-bind-unset-"));
+    writeFileSync(
+      join(dataDir, "env.json"),
+      JSON.stringify({ env: { BB_SERVER_BIND_HOST: "0.0.0.0" } }),
+      "utf8",
+    );
+    const server = await startConfigReloadTestServer();
+
+    try {
+      const output = await captureStdout(() =>
+        runBbApp([
+          "--data-dir",
+          dataDir,
+          "--server-port",
+          String(server.port),
+          "env",
+          "unset",
+          "BB_SERVER_BIND_HOST",
+        ]),
+      );
+
+      expect(output).toContain(
+        "BB_SERVER_BIND_HOST is startup-only. The running process keeps its current value; a full bb-app restart is required to apply this change. Run `bb-app stop && bb-app start`, or restart the desktop app.",
+      );
+      expect(output).toContain(
+        "Until then, the server keeps its previous bind address. If it was bound to 0.0.0.0, that network exposure remains open.",
+      );
+      expect(output).not.toContain("Reloaded running bb server config.");
+      expect(server.reloadRequests()).toEqual([
+        expectedConfigReloadRequest(server),
+      ]);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("keeps the reload confirmation for reloadable keys", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "bb-app-reloadable-env-set-"));
+    const server = await startConfigReloadTestServer();
+
+    try {
+      const output = await captureStdout(() =>
+        runBbApp([
+          "--data-dir",
+          dataDir,
+          "--server-port",
+          String(server.port),
+          "env",
+          "set",
+          "OPENAI_API_KEY",
+          "test-openai-key",
+        ]),
+      );
+
+      expect(output).toContain("Reloaded running bb server config.");
+      expect(output).not.toContain("is startup-only");
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("reports that startup-only config will apply on next start without a running server", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "bb-app-startup-next-start-"));
+    const unavailableServer = await startConfigReloadTestServer();
+    const unavailablePort = unavailableServer.port;
+    await unavailableServer.close();
+
+    const output = await captureStdout(() =>
+      runBbApp([
+        "--data-dir",
+        dataDir,
+        "--server-port",
+        String(unavailablePort),
+        "env",
+        "set",
+        "BB_SERVER_BIND_HOST",
+        "0.0.0.0",
+      ]),
+    );
+
+    expect(output).toContain("config will apply on next start.");
+    expect(output).not.toContain("is startup-only");
+  });
+
+  it("notes configured startup-only keys after explicit refresh", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "bb-app-startup-refresh-"));
+    writeFileSync(
+      join(dataDir, "config.json"),
+      JSON.stringify({ config: { BB_LOG_LEVEL: "debug" } }),
+      "utf8",
+    );
+    writeFileSync(
+      join(dataDir, "env.json"),
+      JSON.stringify({
+        env: {
+          BB_FF_PLACEHOLDER: "true",
+          BB_SERVER_BIND_HOST: "0.0.0.0",
+          BB_SERVER_PORT: "48886",
+          BB_TELEMETRY: "false",
+        },
+      }),
+      "utf8",
+    );
+    const server = await startConfigReloadTestServer();
+
+    try {
+      const output = await captureStdout(() =>
+        runBbApp([
+          "--data-dir",
+          dataDir,
+          "--server-port",
+          String(server.port),
+          "config",
+          "refresh",
+        ]),
+      );
+
+      expect(output).toContain("Reloaded running bb server config.");
+      expect(output).toContain(
+        "Startup-only settings currently configured (BB_FF_PLACEHOLDER, BB_LOG_LEVEL, BB_SERVER_BIND_HOST, BB_SERVER_PORT, BB_TELEMETRY) apply on the next full bb-app restart.",
+      );
     } finally {
       await server.close();
     }

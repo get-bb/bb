@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   activeThinkingSchema,
+  clientTurnRequestIdSchema,
   callerExecutionInputSourceSchema,
   environmentSchema,
   hostSchema,
@@ -9,6 +10,7 @@ import {
   pendingInteractionSchema,
   permissionModeInputSchema,
   promptInputSchema,
+  providerRateLimitStateSchema,
   reasoningLevelSchema,
   resolvedThreadExecutionOptionsSchema,
   serviceTierSchema,
@@ -215,6 +217,60 @@ export const sendMessageRequestSchema = z.object({
   senderThreadId: z.string().min(1).optional(),
 });
 export type SendMessageRequest = z.infer<typeof sendMessageRequestSchema>;
+
+export const providerRateLimitRecoveryReasonSchema = z.enum([
+  "eligible",
+  "thread-not-failed",
+  "no-failed-turn",
+  "input-not-accepted",
+  "no-rate-limit-state",
+  "no-terminal-rate-limit-error",
+  "provider-will-retry",
+  "manual-only",
+  "output-or-side-effect-observed",
+  "superseded",
+  "execution-unavailable",
+]);
+export type ProviderRateLimitRecoveryReason = z.infer<
+  typeof providerRateLimitRecoveryReasonSchema
+>;
+
+export const providerRateLimitRecoveryCandidateSchema = z.object({
+  failedRequestId: clientTurnRequestIdSchema,
+  turnId: z.string().min(1),
+  automatic: z.boolean(),
+  resetsAtMs: z.number().int().nonnegative().nullable(),
+  rateLimits: providerRateLimitStateSchema,
+});
+export type ProviderRateLimitRecoveryCandidate = z.infer<
+  typeof providerRateLimitRecoveryCandidateSchema
+>;
+
+export const providerRateLimitRecoveryStatusSchema = z.object({
+  reason: providerRateLimitRecoveryReasonSchema,
+  scopeKey: z.string().min(1),
+  hostId: z.string().min(1),
+  rateLimits: providerRateLimitStateSchema.nullable(),
+  candidate: providerRateLimitRecoveryCandidateSchema.nullable(),
+});
+export type ProviderRateLimitRecoveryStatus = z.infer<
+  typeof providerRateLimitRecoveryStatusSchema
+>;
+
+export const continueAfterProviderRateLimitRequestSchema = z
+  .object({ failedRequestId: clientTurnRequestIdSchema })
+  .strict();
+export type ContinueAfterProviderRateLimitRequest = z.infer<
+  typeof continueAfterProviderRateLimitRequestSchema
+>;
+
+export const continueAfterProviderRateLimitResponseSchema = z.object({
+  ok: z.literal(true),
+  requestId: clientTurnRequestIdSchema,
+});
+export type ContinueAfterProviderRateLimitResponse = z.infer<
+  typeof continueAfterProviderRateLimitResponseSchema
+>;
 
 export const sendQueuedMessageModeSchema = z.enum(["auto", "steer"]);
 export type SendQueuedMessageMode = z.infer<typeof sendQueuedMessageModeSchema>;

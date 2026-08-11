@@ -38,6 +38,23 @@ export interface SidebarThreadSearchPanelController {
   query: string;
 }
 
+/**
+ * The sidebar-wide key handler only owns keys typed in the search field or on a
+ * result row. Every other sidebar control keeps its own key behavior.
+ */
+export function isThreadSearchKeyboardEventTarget(
+  target: EventTarget | null,
+  input: HTMLInputElement | null,
+): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+  if (target === input) {
+    return true;
+  }
+  return target.closest('[role="option"]') !== null;
+}
+
 export function getSidebarThreadSearchOptionId(rowId: string): string {
   return `${SIDEBAR_THREAD_SEARCH_LISTBOX_ID}-option-${rowId}`;
 }

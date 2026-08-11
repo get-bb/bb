@@ -12,6 +12,7 @@ import {
   RegistrySkillDetailView,
   RegistrySkillsBrowsePage,
 } from "@/components/tools/SkillsBrowse";
+import { getToolsOwnedCollectionRoutePath } from "@/components/tools/tools-navigation";
 import {
   SkillDetailDialogView,
   SkillsOverview,
@@ -51,6 +52,7 @@ const EMPTY_REGISTRY_PAGINATION: RegistryPagination = {
   total: 0,
   hasMore: false,
 };
+const REGISTRY_LIST_STALE_TIME_MS = 30 * 60_000;
 
 type SkillsCollectionMode = "library" | "browse";
 
@@ -143,7 +145,8 @@ export function SkillsLibrary() {
     skillsQuery.isFetching && skillsQuery.data === undefined && !hasError;
   const isRegistryBrowseRoute =
     location.pathname === getRegistrySkillsRoutePath() ||
-    new URLSearchParams(location.search).get("view") === "browse";
+    (location.pathname === getSkillsRoutePath() &&
+      new URLSearchParams(location.search).get("view") !== "library");
   const registryRequestPage =
     isRegistryBrowseRoute || routeRegistrySkillId !== undefined
       ? registryPage
@@ -158,7 +161,8 @@ export function SkillsLibrary() {
         signal,
       }),
     enabled: isRegistryBrowseRoute,
-    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+    staleTime: REGISTRY_LIST_STALE_TIME_MS,
   });
   const registryRepositorySources = useMemo(() => {
     const sources = new Map<string, string>();
@@ -373,15 +377,15 @@ export function SkillsLibrary() {
     (mode: SkillsCollectionMode) => {
       if (mode === "browse") {
         setRegistryPage(0);
-        navigate(`${getSkillsRoutePath()}?view=browse`);
+        navigate(getSkillsRoutePath());
         return;
       }
-      navigate(getSkillsRoutePath());
+      navigate(getToolsOwnedCollectionRoutePath("skills"));
     },
     [navigate],
   );
   const closeSkillDetail = useCallback(() => {
-    navigate(getSkillsRoutePath());
+    navigate(getToolsOwnedCollectionRoutePath("skills"));
   }, [navigate]);
   // Create via prompt: open the composer seeded with the bb-skill prompt; the
   // spawned thread authors the SKILL.md.

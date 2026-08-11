@@ -300,7 +300,11 @@ export function MachinesSettingsSection() {
         )}
       </SettingsSection>
 
-      <AddMachineDialog open={addDialogOpen} onOpenChange={setAddDialogOpen} />
+      <AddMachineDialog
+        open={addDialogOpen}
+        onOpenChange={setAddDialogOpen}
+        serverUrl={systemConfig.data?.serverUrl ?? null}
+      />
 
       <MachineRenameDialog
         target={renameTarget}

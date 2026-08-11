@@ -432,6 +432,8 @@ export async function createHostDaemonApp(
   watchManager = new WatchManager({
     dataDir: options.dataDir,
     hostWatcher: options.hostWatcher,
+    refreshWorkspace: (args) =>
+      runtimeManager.refreshEnvironmentWorkspace(args),
     threadStorageRootPath,
     onThreadStorageChanged: ({ environmentId }) => {
       sendServerMessage({
@@ -458,6 +460,13 @@ export async function createHostDaemonApp(
           change,
         });
       }
+    },
+    onWorkspaceMetadataChanged: ({ environmentId, workspace }) => {
+      sendServerMessage({
+        type: "environment-metadata-change",
+        environmentId,
+        workspace,
+      });
     },
     onWorkspaceStatusWatchError: ({ error }) => {
       options.logger.warn(

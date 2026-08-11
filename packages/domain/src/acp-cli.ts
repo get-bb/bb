@@ -1,6 +1,44 @@
 import { z } from "zod";
 import { reasoningLevelSchema } from "./shared-types.js";
 
+const providerSkillRootPathSchema = z
+  .string()
+  .min(1)
+  .refine((value) => {
+    const normalized = value.replaceAll("\\", "/");
+    return (
+      !normalized.startsWith("/") &&
+      !/^[a-zA-Z]:\//u.test(normalized) &&
+      normalized
+        .split("/")
+        .every(
+          (segment) => segment !== "" && segment !== "." && segment !== "..",
+        )
+    );
+  }, "Skill roots must be relative paths without dot segments");
+
+const uniqueProviderSkillRootPathsSchema = z
+  .array(providerSkillRootPathSchema)
+  .superRefine((paths, context) => {
+    if (new Set(paths).size !== paths.length) {
+      context.addIssue({
+        code: "custom",
+        message: "Skill roots must not contain duplicates",
+      });
+    }
+  });
+
+/** Provider-native skill roots relative to the target host or workspace. */
+export const providerNativeSkillRootsSchema = z
+  .object({
+    user: uniqueProviderSkillRootPathsSchema.default([]),
+    project: uniqueProviderSkillRootPathsSchema.default([]),
+  })
+  .strict();
+export type ProviderNativeSkillRoots = z.infer<
+  typeof providerNativeSkillRootsSchema
+>;
+
 export const acpReasoningCliLevelValueOverridesSchema = z.partialRecord(
   reasoningLevelSchema,
   z.string().min(1),

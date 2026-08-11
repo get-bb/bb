@@ -33,6 +33,7 @@ import {
 } from "@/hooks/cache-owners/plugin-cache-owner";
 import {
   removePlugin,
+  setPluginEnabled,
   updatePluginSettings,
   usePluginList,
   usePluginSettingsView,
@@ -58,7 +59,6 @@ import { InstalledPluginsTab } from "./plugins/InstalledPluginsTab";
 import {
   PluginUpdateBanner,
   PluginUpdatesSourceCard,
-  pluginHasUpdateSurfaces,
 } from "./plugins/PluginUpdatesCard";
 
 /**
@@ -545,119 +545,131 @@ function RemovePluginSection({ plugin }: { plugin: PluginListItem }) {
 
 /** Exported for tests (status gating of the settings form). */
 export function PluginSettingsDetail({ plugin }: { plugin: PluginListItem }) {
+  const queryClient = useQueryClient();
   const { settingsSections } = usePluginSlots();
+  const name = plugin.name ?? plugin.id;
+  const toggle = useMutation({
+    mutationFn: (enabled: boolean) =>
+      setPluginEnabled(fetch, plugin.id, enabled),
+    onError: (error, enabled) => {
+      appToast.error(`${enabled ? "Enabling" : "Disabling"} ${name} failed`, {
+        description: pluginAdminErrorMessage(error),
+      });
+    },
+    onSettled: () => invalidatePluginList({ queryClient }),
+  });
+  const enabled = toggle.isPending ? toggle.variables : plugin.enabled;
   const hasSettingsSections = settingsSections.some(
     (section) => section.pluginId === plugin.id,
   );
-  const settingsAvailable =
-    plugin.enabled && PLUGIN_STATUSES_WITH_SETTINGS.includes(plugin.status);
-  const showDeclarativeSettingsCard =
-    plugin.hasSettings || !settingsAvailable || !hasSettingsSections;
-  const name = plugin.name ?? plugin.id;
-  const isRunning = plugin.status === "running";
-  const hasUpdateSurfaces = pluginHasUpdateSurfaces(plugin);
+  const settingsContentVisible = enabled && plugin.enabled;
+  const pluginSurfacesAvailable =
+    settingsContentVisible &&
+    PLUGIN_STATUSES_WITH_SETTINGS.includes(plugin.status);
   const frontendDiagnostics = useSyncExternalStore(
     subscribePluginFrontendDiagnostics,
     getPluginFrontendDiagnostics,
     getPluginFrontendDiagnostics,
   );
-  const frontendFailure = frontendDiagnostics.get(plugin.id)?.lastFailure;
-  // A running plugin whose only surface is a settingsSection lets that
-  // section own the chrome (its own SettingsSection title + description), so
-  // the diagnostic header (version + status pill + manifest description)
-  // doesn't stack a second heading above it — unless the plugin update
-  // surfaces render here too, which need the header for context.
-  const sectionOwnsHeader =
-    isRunning &&
-    hasSettingsSections &&
-    !plugin.hasSettings &&
-    !hasUpdateSurfaces;
+  const frontendDiagnostic = frontendDiagnostics.get(plugin.id);
+  const frontendFailure = frontendDiagnostic?.lastFailure;
+  const frontendSettingsPending =
+    plugin.status === "running" &&
+    plugin.app.bundle !== null &&
+    frontendDiagnostic === undefined;
   const provenanceLine =
     plugin.provenance === "catalog"
-      ? `v${plugin.version} · official catalog`
+      ? "official catalog"
       : plugin.provenance === "direct"
-        ? `v${plugin.version} · direct install`
+        ? "direct install"
         : null;
+  const lifecycleControl = (
+    <Switch
+      checked={enabled}
+      disabled={toggle.isPending}
+      aria-label={`${enabled ? "Disable" : "Enable"} ${name}`}
+      onCheckedChange={(next) => toggle.mutate(next)}
+    />
+  );
   return (
     <div className="space-y-6" data-testid={`plugin-detail-${plugin.id}`}>
-      {frontendFailure !== null && frontendFailure !== undefined ? (
-        <div
-          className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-xs text-destructive"
-          role="alert"
-        >
-          Frontend {frontendFailure.phase} failure
-          {frontendFailure.scriptId === null
-            ? ""
-            : ` in content script “${frontendFailure.scriptId}”`}
-          : {frontendFailure.message}
-        </div>
-      ) : null}
-      {sectionOwnsHeader ? null : (
-        <div className="space-y-3">
-          <div>
+      <div className="space-y-3">
+        <div>
+          <div className="flex min-w-0 items-start justify-between gap-3">
             <div className="flex min-w-0 flex-wrap items-center gap-2">
               <PluginIcon pluginId={plugin.id} icon={plugin.icon} />
               <h2 className="text-sm font-semibold text-foreground">{name}</h2>
-              {/* The version + status pills read as diagnostics; a running,
-                  configurable plugin doesn't need them on its settings page. */}
-              {!isRunning ? (
-                <>
-                  <span className="text-xs text-muted-foreground">
-                    v{plugin.version}
-                  </span>
-                  <Pill variant={statusPillVariant(plugin.status)} size="sm">
-                    {plugin.status}
-                  </Pill>
-                  {!plugin.enabled ? (
-                    <Pill variant="outline" size="sm">
-                      disabled
-                    </Pill>
-                  ) : null}
-                </>
-              ) : null}
-            </div>
-            {isRunning && provenanceLine !== null ? (
-              <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
-                {provenanceLine}
-              </p>
-            ) : null}
-            {!isRunning &&
-            plugin.description !== null &&
-            plugin.description.length > 0 ? (
-              <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
-                {plugin.description}
-              </p>
-            ) : null}
-            {plugin.statusDetail !== null && plugin.statusDetail.length > 0 ? (
-              <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
-                {plugin.statusDetail}
-              </p>
-            ) : null}
-          </div>
-          <PluginUpdateBanner plugin={plugin} />
-          <PluginUpdatesSourceCard plugin={plugin} />
-          {showDeclarativeSettingsCard ? (
-            <div className="rounded-lg border border-border bg-card px-4 py-3.5">
-              {settingsAvailable ? (
-                plugin.hasSettings ? (
-                  <PluginSettingsForm pluginId={plugin.id} />
-                ) : (
-                  <p className="text-xs text-muted-foreground">
-                    This plugin declares no settings.
-                  </p>
-                )
-              ) : (
-                <p className="text-xs text-muted-foreground">
-                  {plugin.enabled
-                    ? `Settings are unavailable while the plugin is ${plugin.status}.`
-                    : "Enable this plugin to edit its settings."}
-                </p>
+              <span className="text-xs text-muted-foreground">
+                v{plugin.version}
+              </span>
+              {plugin.status === "running" ? null : (
+                <Pill variant={statusPillVariant(plugin.status)} size="sm">
+                  {plugin.status}
+                </Pill>
               )}
             </div>
+            {lifecycleControl}
+          </div>
+          {provenanceLine !== null ? (
+            <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
+              {provenanceLine}
+            </p>
+          ) : null}
+          {plugin.description !== null && plugin.description.length > 0 ? (
+            <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
+              {plugin.description}
+            </p>
+          ) : null}
+          {plugin.statusDetail !== null && plugin.statusDetail.length > 0 ? (
+            <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
+              {plugin.statusDetail}
+            </p>
           ) : null}
         </div>
-      )}
-      {settingsAvailable ? (
+        {settingsContentVisible ? (
+          <>
+            {frontendFailure !== null && frontendFailure !== undefined ? (
+              <div
+                className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-xs text-destructive"
+                role="alert"
+              >
+                Frontend {frontendFailure.phase} failure
+                {frontendFailure.scriptId === null
+                  ? ""
+                  : ` in content script “${frontendFailure.scriptId}”`}
+                : {frontendFailure.message}
+              </div>
+            ) : null}
+            <PluginUpdateBanner plugin={plugin} />
+            <PluginUpdatesSourceCard plugin={plugin} />
+            {!pluginSurfacesAvailable ? (
+              <div className="rounded-lg border border-border bg-card px-4 py-3.5">
+                <p className="text-xs text-muted-foreground">
+                  Settings are unavailable while the plugin is {plugin.status}.
+                </p>
+              </div>
+            ) : plugin.hasSettings ? (
+              <div className="rounded-lg border border-border bg-card px-4 py-3.5">
+                <PluginSettingsForm pluginId={plugin.id} />
+              </div>
+            ) : frontendFailure !== null && frontendFailure !== undefined ? (
+              <div className="rounded-lg border border-border bg-card px-4 py-3.5">
+                <p className="text-xs text-muted-foreground">
+                  Plugin settings are unavailable because its frontend did not
+                  load.
+                </p>
+              </div>
+            ) : !hasSettingsSections && !frontendSettingsPending ? (
+              <div className="rounded-lg border border-border bg-card px-4 py-3.5">
+                <p className="text-xs text-muted-foreground">
+                  This plugin declares no settings.
+                </p>
+              </div>
+            ) : null}
+          </>
+        ) : null}
+      </div>
+      {pluginSurfacesAvailable ? (
         <PluginSettingsSections pluginId={plugin.id} />
       ) : null}
       {plugin.provenance !== "builtin" || plugin.isOrphanedBuiltin ? (

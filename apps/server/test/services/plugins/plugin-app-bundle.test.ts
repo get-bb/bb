@@ -5,6 +5,7 @@ import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { promisify } from "node:util";
+import { brotliDecompressSync, gunzipSync } from "node:zlib";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { upsertInstalledPlugin } from "@bb/db";
 import { PLUGIN_SDK_MAJOR, PLUGIN_SDK_VERSION } from "@bb/domain";
@@ -59,6 +60,9 @@ const SERVER_SOURCE = `export default function plugin(bb: any) { bb.log.info("lo
 // Minimal real frontend entry: the automatic JSX transform exercises the
 // react/jsx-runtime shim, and the utility class exercises the Tailwind pass.
 const APP_SOURCE = `export default function App() {\n  return <div className="line-clamp-2">hi</div>;\n}\n`;
+const COMPRESSIBLE_APP_SOURCE = `const payload = ${JSON.stringify(
+  "compressible plugin bundle payload ".repeat(200),
+)};\nexport default function App() {\n  return <div className="line-clamp-2" data-payload={payload}>hi</div>;\n}\n`;
 
 async function writeAppPluginFixture(
   rootDir: string,
@@ -107,7 +111,10 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
 
   it("builds path installs at install time and serves hash-cached assets", async () => {
     const rootDir = join(harness.config.dataDir, "fixtures", "bb-plugin-appy");
-    await writeAppPluginFixture(rootDir, { name: "bb-plugin-appy" });
+    await writeAppPluginFixture(rootDir, {
+      name: "bb-plugin-appy",
+      appSource: COMPRESSIBLE_APP_SOURCE,
+    });
 
     const entry = await harness.pluginService.installPath(rootDir);
     expect(entry.status).toBe("running");
@@ -135,7 +142,48 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
     expect(js.headers.get("cache-control")).toBe(
       "public, max-age=31536000, immutable",
     );
-    expect(await js.text()).toContain("__bbPluginRuntime");
+    const jsText = await js.text();
+    expect(jsText).toContain("__bbPluginRuntime");
+    expect(js.headers.get("content-encoding")).toBeNull();
+    expect(js.headers.get("content-length")).toBe(
+      String(Buffer.byteLength(jsText)),
+    );
+
+    const brotliJs = await harness.app.request(`${BASE}${bundle.jsUrl}`, {
+      headers: { "accept-encoding": "br, gzip" },
+    });
+    expect(brotliJs.headers.get("content-encoding")).toBe("br");
+    expect(
+      brotliJs.headers
+        .get("vary")
+        ?.split(",")
+        .map((value) => value.trim()),
+    ).toContain("Accept-Encoding");
+    expect(brotliJs.headers.get("cache-control")).toBe(
+      "public, max-age=31536000, immutable",
+    );
+    const brotliJsBytes = Buffer.from(await brotliJs.arrayBuffer());
+    expect(brotliJsBytes.length).toBeLessThan(Buffer.byteLength(jsText));
+    expect(brotliDecompressSync(brotliJsBytes).toString()).toBe(jsText);
+
+    const rejectedCompression = await harness.app.request(
+      `${BASE}${bundle.jsUrl}`,
+      { headers: { "accept-encoding": "br;q=0, gzip;q=0" } },
+    );
+    expect(rejectedCompression.headers.get("content-encoding")).toBeNull();
+    expect(await rejectedCompression.text()).toBe(jsText);
+
+    // HEAD carries the representation headers a GET would have returned,
+    // without transferring the compressed body.
+    const brotliJsHead = await harness.app.request(`${BASE}${bundle.jsUrl}`, {
+      method: "HEAD",
+      headers: { "accept-encoding": "br, gzip" },
+    });
+    expect(brotliJsHead.headers.get("content-encoding")).toBe("br");
+    expect(brotliJsHead.headers.get("content-length")).toBe(
+      String(brotliJsBytes.length),
+    );
+    expect((await brotliJsHead.arrayBuffer()).byteLength).toBe(0);
 
     const css = await harness.app.request(`${BASE}${bundle.cssUrl}`);
     expect(css.status).toBe(200);
@@ -157,6 +205,14 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
     );
     // And no utility rule sits in the utilities layer outside that scope.
     expect(cssText).not.toMatch(/@layer utilities \{\s*\./);
+
+    const gzipCss = await harness.app.request(`${BASE}${bundle.cssUrl}`, {
+      headers: { "accept-encoding": "br;q=0, gzip;q=1" },
+    });
+    expect(gzipCss.headers.get("content-encoding")).toBe("gzip");
+    const gzipCssBytes = Buffer.from(await gzipCss.arrayBuffer());
+    expect(gzipCssBytes.length).toBeLessThan(Buffer.byteLength(cssText));
+    expect(gunzipSync(gzipCssBytes).toString()).toBe(cssText);
 
     // Wrong/absent hash still serves current bytes, but uncached.
     const staleHash = await harness.app.request(

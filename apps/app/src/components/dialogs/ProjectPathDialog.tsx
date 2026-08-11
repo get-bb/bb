@@ -252,7 +252,7 @@ export function ProjectPathDialogContent({
               : copy.description}
         </DialogDescription>
       </DialogHeader>
-      <form className="space-y-4" onSubmit={handleSubmit}>
+      <form className="min-w-0 space-y-4" onSubmit={handleSubmit}>
         {showMachinePicker ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild disabled={pending}>
@@ -347,9 +347,9 @@ export function ProjectPathDialogContent({
         validationMessage ? (
           <div className="space-y-1">
             {target.kind === "create" && derivedProjectName ? (
-              <p className="text-sm text-muted-foreground">
-                Project name:{" "}
-                <span className="font-medium text-foreground">
+              <p className="flex min-w-0 gap-1 text-sm text-muted-foreground">
+                <span className="shrink-0">Project name:</span>
+                <span className="min-w-0 truncate font-medium text-foreground">
                   {derivedProjectName}
                 </span>
               </p>

@@ -18,6 +18,7 @@ import type {
   SystemInstallCliSkillsResponse,
   OnboardingAgentOverview,
   OnboardingTelemetryEvent,
+  SystemProvidersQuery,
   SystemOnboardingReposQuery,
   SystemUsageLimitsQuery,
   SystemVersionQuery,
@@ -71,7 +72,10 @@ export type SystemUpdateExperimentsResult = Experiments;
 export type SystemUpdateGeneralSettingsResult = AppSettings;
 export type SystemUpdateKeyboardSettingsResult = AppKeybindingOverrides;
 export type SystemUsageLimitsResult = ProviderUsageResponse;
-export interface SystemOnboardingArgs extends SystemOnboardingReposQuery {
+export interface SystemOnboardingArgs extends SystemProvidersQuery {
+  signal?: AbortSignal;
+}
+export interface SystemOnboardingReposArgs extends SystemOnboardingReposQuery {
   signal?: AbortSignal;
 }
 export type SystemOnboardingAgentsResult = OnboardingAgentOverview;
@@ -115,7 +119,7 @@ export interface SystemArea {
   ): Promise<SystemOnboardingAgentsResult>;
   /** Candidate projects discovered on the host, ranked for onboarding. */
   onboardingRepos(
-    args?: SystemOnboardingArgs,
+    args?: SystemOnboardingReposArgs,
   ): Promise<SystemOnboardingReposResult>;
   usageLimits(args?: SystemUsageLimitsArgs): Promise<SystemUsageLimitsResult>;
   version(args?: SystemVersionArgs): Promise<SystemVersionResult>;
@@ -223,7 +227,12 @@ export function createSystemArea(args: CreateSdkAreaArgs): SystemArea {
     async onboardingAgents(input = {}) {
       return transport.readJson(
         transport.api.v1.system.onboarding.agents.$get(
-          { query: { hostId: input.hostId } },
+          {
+            query: {
+              environmentId: input.environmentId,
+              hostId: input.hostId,
+            },
+          },
           ...signalRequestArgs(input.signal),
         ),
       );

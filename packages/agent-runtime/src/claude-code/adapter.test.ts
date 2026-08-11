@@ -1137,6 +1137,75 @@ describe("claude-code provider adapter", () => {
     });
   });
 
+  it("decodes ExitPlanMode approvals into a plan review the user can judge", () => {
+    const adapter = createClaudeCodeProviderAdapter();
+
+    expect(
+      adapter.decodeInteractiveRequest?.({
+        id: "req-plan",
+        method: CLAUDE_PERMISSION_REQUEST_APPROVAL_METHOD,
+        params: {
+          threadId: "thr_1",
+          providerThreadId: "claude-session-1",
+          turnId: "turn-plan",
+          itemId: "toolu_plan",
+          toolName: "ExitPlanMode",
+          input: {
+            plan: "# Plan\n\nShip it.",
+            planFilePath: "/tmp/plans/ship-it.md",
+          },
+          reason: null,
+          permissions: { network: null, fileSystem: null },
+        },
+      }),
+    ).toMatchObject({
+      payload: {
+        kind: "approval",
+        // A plan verdict grants nothing, so "allow for session" must not appear.
+        availableDecisions: ["allow_once", "deny"],
+        subject: {
+          kind: "plan",
+          itemId: "toolu_plan",
+          plan: "# Plan\n\nShip it.",
+          planFilePath: "/tmp/plans/ship-it.md",
+        },
+      },
+    });
+  });
+
+  it("tells the model to gather feedback when the user rejects a plan", () => {
+    const adapter = createClaudeCodeProviderAdapter();
+
+    const response = adapter.buildInteractiveResponse?.({
+      request: {
+        requestId: "req-plan",
+        method: CLAUDE_PERMISSION_REQUEST_APPROVAL_METHOD,
+        threadId: "thr_1",
+        providerThreadId: "claude-session-1",
+        turnId: "turn-plan",
+        payload: {
+          kind: "approval",
+          reason: null,
+          availableDecisions: ["allow_once", "deny"],
+          subject: {
+            kind: "plan",
+            itemId: "toolu_plan",
+            plan: "# Plan",
+            planFilePath: null,
+          },
+        },
+      },
+      resolution: { decision: "deny" },
+    });
+
+    // A bare "denied" leaves the model free to re-propose the same plan, and
+    // the SDK keeps the session in plan mode, so it loops.
+    expect(response).toMatchObject({
+      behavior: "deny",
+      message: expect.stringContaining("AskUserQuestion"),
+    });
+  });
+
   it("decodes Claude Edit approvals with file-change execution scope", () => {
     const adapter = createClaudeCodeProviderAdapter();
 
@@ -2496,7 +2565,7 @@ describe("claude-code provider adapter", () => {
     );
   });
 
-  it("translateEvent ignores rate limit events", () => {
+  it("translateEvent preserves unknown Claude rate limit window keys", () => {
     const adapter = createClaudeCodeProviderAdapter();
 
     const events = adapter.translateEvent({
@@ -2508,7 +2577,7 @@ describe("claude-code provider adapter", () => {
           type: "rate_limit_event",
           rate_limit_info: {
             status: "allowed",
-            rateLimitType: "five_hour",
+            rateLimitType: "seven_day_fable",
             overageStatus: "rejected",
             overageDisabledReason: "out_of_credits",
           },
@@ -2516,10 +2585,25 @@ describe("claude-code provider adapter", () => {
       },
     });
 
-    expect(events).toMatchObject([]);
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: "provider/rateLimits/updated",
+        scope: threadScope(),
+        rateLimits: expect.objectContaining({
+          providerId: "claude-code",
+          status: "allowed",
+          windows: [
+            expect.objectContaining({
+              providerKey: "seven_day_fable",
+              label: null,
+            }),
+          ],
+        }),
+      }),
+    ]);
   });
 
-  it("translateEvent ignores primary rate limit rejections when overage is allowed", () => {
+  it("translateEvent keeps overage-covered rejections nonterminal", () => {
     const adapter = createClaudeCodeProviderAdapter();
 
     const events = adapter.translateEvent({
@@ -2539,7 +2623,22 @@ describe("claude-code provider adapter", () => {
       },
     });
 
-    expect(events).toEqual([]);
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: "provider/rateLimits/updated",
+        rateLimits: expect.objectContaining({
+          status: "allowed",
+          overageStatus: "allowed",
+          windows: [
+            expect.objectContaining({
+              providerKey: "five_hour",
+              status: "blocked",
+              resetsAtMs: 1_781_120_400_000,
+            }),
+          ],
+        }),
+      }),
+    ]);
   });
 
   it("translateEvent ignores task-updated system events from the SDK envelope", () => {
@@ -2915,6 +3014,22 @@ describe("claude-code provider adapter", () => {
       },
     });
 
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "provider/rateLimits/updated",
+        rateLimits: expect.objectContaining({
+          status: "blocked",
+          kind: "subscription-window",
+          reachedReason: "five_hour",
+          windows: [
+            expect.objectContaining({
+              providerKey: "five_hour",
+              resetsAtMs: 12_345_000,
+            }),
+          ],
+        }),
+      }),
+    );
     expect(events).toContainEqual(
       expect.objectContaining({
         type: "provider/error",
@@ -5516,5 +5631,25 @@ describe("claude-code provider adapter", () => {
     const adapter = createClaudeCodeProviderAdapter();
     const events = adapter.translateEvent(loadFixture("system-init.json"));
     expect(events).toMatchObject([]);
+  });
+
+  it("ignores Claude command lifecycle events", () => {
+    const adapter = createClaudeCodeProviderAdapter();
+    const events = adapter.translateEvent({
+      jsonrpc: "2.0",
+      method: "sdk/message",
+      params: {
+        threadId: "thread-1",
+        message: {
+          type: "command_lifecycle",
+          command_uuid: "command-1",
+          state: "started",
+          uuid: "message-1",
+          session_id: "session-1",
+        },
+      },
+    });
+
+    expect(events).toEqual([]);
   });
 });

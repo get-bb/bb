@@ -26,6 +26,7 @@ import {
   getAccountState,
   redeemConnectCode,
   redeemMachineCode,
+  resolveServerUrlTemplate,
   revokeMachineForServerCredential,
   revokeMachine,
 } from "./api.js";
@@ -53,10 +54,30 @@ beforeEach(() => {
   closeTunnel = vi.fn<(subdomain: string) => Promise<void>>(async () => {});
   deps = {
     db,
-    baseDomain: "getbb.app",
     appUrl: "https://getbb.app",
+    serverUrlTemplate: "https://{label}.getbb.app",
     closeTunnel,
   };
+});
+
+describe("resolveServerUrlTemplate", () => {
+  it("accepts the local HTTP port without changing production defaults", () => {
+    expect(resolveServerUrlTemplate(undefined, "getbb.app")).toBe(
+      "https://{label}.getbb.app",
+    );
+    expect(
+      resolveServerUrlTemplate(
+        "http://{label}.bb.localhost:8787",
+        "bb.localhost",
+      ),
+    ).toBe("http://{label}.bb.localhost:8787");
+    expect(() =>
+      resolveServerUrlTemplate("https://example.com/{label}", "example.com"),
+    ).toThrow("under BASE_DOMAIN");
+    expect(() =>
+      resolveServerUrlTemplate("https://{label}.attacker.example", "getbb.app"),
+    ).toThrow("under BASE_DOMAIN");
+  });
 });
 
 afterEach(() => {
@@ -307,6 +328,25 @@ describe("redeemConnectCode (multi-server routing label)", () => {
     // Primary server: subdomain === account handle — byte-identical pre-fix behavior.
     expect(result.handle).toBe("sawyer");
     expect(result.tunnelUrl).toBe("wss://sawyer.getbb.app/__tunnel");
+  });
+
+  it("returns a ws tunnel URL for local Cloud", async () => {
+    deps.serverUrlTemplate = "http://{label}.bb.localhost:42745";
+    seedUser("u1");
+    await claimHandle(deps, "u1", "sawyer");
+    const primary = db
+      .select()
+      .from(server)
+      .where(eq(server.subdomain, "sawyer"))
+      .get();
+    const minted = await createConnectCode(deps, "u1", {
+      serverId: primary!.id,
+    });
+    if ("error" in minted) throw new Error(minted.error);
+
+    const result = await redeemConnectCode(deps, minted.code);
+    if ("error" in result) throw new Error(result.error);
+    expect(result.tunnelUrl).toBe("ws://sawyer.bb.localhost:42745/__tunnel");
   });
 });
 

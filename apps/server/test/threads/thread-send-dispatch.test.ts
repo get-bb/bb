@@ -4,17 +4,12 @@ import {
   getThread,
   listQueuedThreadMessages,
   markThreadDeleted,
-  updateThread,
 } from "@bb/db";
-import {
-  threadScope,
-  turnScope,
-  type Environment,
-  type Thread,
-} from "@bb/domain";
+import { turnScope, type Environment, type Thread } from "@bb/domain";
 import { describe, expect, it, vi } from "vitest";
 import type { TelemetryService } from "../../src/services/system/telemetry.js";
 import { sendQueuedMessage } from "../../src/services/threads/queued-messages.js";
+import { handleUpdateEnvironmentDirectoryToolCall } from "../../src/services/threads/thread-environment-directory.js";
 import { sendThreadMessage } from "../../src/services/threads/thread-send.js";
 import {
   listQueuedThreadCommands,
@@ -29,6 +24,7 @@ import {
   seedStoredEvent,
   seedThread,
   seedThreadRuntimeState,
+  seedTurnStarted,
 } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 
@@ -305,7 +301,7 @@ describe("idle cold-start activation", () => {
     });
   });
 
-  it("cold-starts after an environment directory update resets provider continuity", async () => {
+  it("resumes provider continuity after an environment directory update", async () => {
     await withTestHarness(async (harness) => {
       const { environment, thread } = seedIdleProviderThreadFixture({
         harness,
@@ -317,33 +313,31 @@ describe("idle cold-start activation", () => {
         path: "/tmp/send-dispatch-switched",
         status: "ready",
       });
-      updateThread(harness.db, harness.hub, thread.id, {
-        environmentId: targetEnvironment.id,
-      });
-      seedStoredEvent(harness.deps, {
-        threadId: thread.id,
-        environmentId: targetEnvironment.id,
+      seedTurnStarted(harness.deps, {
+        environmentId: environment.id,
+        providerThreadId: "provider-send-dispatch-4",
         sequence: 3,
-        type: "system/operation",
-        scope: threadScope(),
-        data: {
-          operation: "environment_directory_update",
-          operationId: "evt_send_dispatch_switch",
-          status: "completed",
-          message: "Updated environment directory",
-          metadata: {
-            nextEnvironmentId: targetEnvironment.id,
-            nextPath: targetEnvironment.path,
-            previousEnvironmentId: environment.id,
-            previousPath: environment.path,
-          },
+        threadId: thread.id,
+        turnId: "turn_before_switch",
+      });
+      const updateResult = await handleUpdateEnvironmentDirectoryToolCall(
+        harness.deps,
+        {
+          currentEnvironment: environment,
+          input: { path: targetEnvironment.path },
+          thread,
+          turnId: "turn_before_switch",
         },
+      );
+      expect(updateResult).toMatchObject({ success: true });
+      expect(getThread(harness.db, thread.id)).toMatchObject({
+        environmentId: targetEnvironment.id,
       });
       seedStoredEvent(harness.deps, {
         threadId: thread.id,
         environmentId: targetEnvironment.id,
         providerThreadId: `provider-send-dispatch-4`,
-        sequence: 4,
+        sequence: 5,
         type: "turn/completed",
         scope: turnScope("turn_after_switch"),
         data: {
@@ -373,14 +367,27 @@ describe("idle cold-start activation", () => {
       await waitForQueuedCommand(
         harness,
         (queued) =>
-          queued.command.type === "thread.start" &&
+          queued.command.type === "turn.submit" &&
           queued.command.threadId === thread.id,
       );
+      const turnSubmitCommands = listQueuedThreadCommands(
+        harness,
+        "turn.submit",
+        thread.id,
+      );
+      expect(turnSubmitCommands).toHaveLength(1);
+      expect(turnSubmitCommands[0]).toMatchObject({
+        type: "turn.submit",
+        environmentId: targetEnvironment.id,
+        resumeContext: {
+          providerThreadId: "provider-send-dispatch-4",
+          workspaceContext: {
+            workspacePath: targetEnvironment.path,
+          },
+        },
+      });
       expect(
         listQueuedThreadCommands(harness, "thread.start", thread.id),
-      ).toHaveLength(1);
-      expect(
-        listQueuedThreadCommands(harness, "turn.submit", thread.id),
       ).toHaveLength(0);
     });
   });

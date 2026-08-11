@@ -7,8 +7,9 @@ client SSH target mappings under `~/.bb/client.json`.
 Use `bb-app config` for non-secret bb settings:
 
 ```bash
-npx bb-app config set BB_APP_URL http://<machine>.<tailnet>.ts.net:38886
+npx bb-app config set BB_APP_URL https://<machine>.<tailnet>.ts.net
 npx bb-app config set BB_INFERENCE codex/gpt-5.6-luna
+npx bb-app config set BB_INFERENCE_FALLBACK codex/gpt-5.4-mini
 npx bb-app config set BB_TRANSCRIPTION codex/gpt-transcribe
 npx bb-app config list
 npx bb-app config unset BB_APP_URL
@@ -49,7 +50,8 @@ npx bb-app client ssh-target remove https://bb.example.test
 
 Configuration is resolved in this order:
 
-1. Explicit launcher flags, such as `--data-dir` or `--server-port`.
+1. Explicit launcher flags, such as `--data-dir`, `--server-port`, or
+   `--server-bind-host`.
 2. Persistent `bb-app config`, `bb-app env`, and client values.
 3. Ambient shell environment.
 4. Built-in defaults.
@@ -58,23 +60,48 @@ For the packaged app, prefer `bb-app config`, `bb-app env`, and launcher flags
 over shell variables. The environment remains the internal and deployment
 substrate, and source-development commands still load `.env` files.
 
+For source development, `pnpm dev` automatically injects
+`BB_DEV_CONNECT_BASE_URL=http://bb.localhost:<worktree-cloud-port>`. The
+Connect plugin accepts this loopback origin only when `NODE_ENV=development`
+and uses it only as the unpaired default. Explicit `bb connect --server ...`
+or `--base-url ...` targets take precedence, and packaged/production bb keeps
+the `https://getbb.app` default. This value is launcher-managed, not a
+`bb-app config` setting.
+
 After `bb-app config` writes `~/.bb/config.json` or `bb-app env` writes
 `~/.bb/env.json`, it asks the running local server to reload. If bb is not
 running, the new values apply on the next start. If you edit either file by
 hand, run `npx bb-app config refresh` to apply the files to a running server.
 
-The live reload applies runtime keys such as `BB_APP_URL`, `BB_INFERENCE`,
-`BB_TRANSCRIPTION`, and provider env values like `OPENAI_API_KEY`. Startup-only
-values such as `BB_LOG_LEVEL` apply the next time bb starts. Feature flags
-remain source/deployment environment variables rather than `bb-app config`
-keys.
+The live reload applies config keys such as `BB_APP_URL`, `BB_INFERENCE`,
+`BB_INFERENCE_FALLBACK`, and `BB_TRANSCRIPTION`, plus env values explicitly
+consumed at runtime such as `OPENAI_API_KEY`. If one of those config keys is
+stored with `bb-app env` instead, it is startup-only; use `bb-app config` when
+you need a live change.
+
+`BB_LOG_LEVEL` is the startup-only `bb-app config` key. The complete current
+set of startup-only server or launcher env entries is:
+
+- `BB_APP_SURFACE`, `BB_APP_URL`, `BB_DATA_DIR`, and `BB_DEV_APP_PORT`
+- `BB_EXTERNAL_URL`, `BB_HOST_DAEMON_PORT`, `BB_INFERENCE`,
+  `BB_INFERENCE_FALLBACK`, and `BB_INHERITED_SKILLS_ROOTS`
+- `BB_LOG_LEVEL`, `BB_MANAGED_DEV_BUILTIN_PLUGIN_HOT_RELOAD`,
+  `BB_POSTHOG_API_KEY`, and `BB_TELEMETRY`
+- `BB_SERVER_BIND_HOST`, `BB_SERVER_PORT`, `BB_TRANSCRIPTION`, and all
+  `BB_FF_*` feature flags
+
+Setting or unsetting one still runs the reload for any other pending changes,
+but the running processes keep their current values. Apply it with a full
+launcher restart (`bb-app stop && bb-app start`) or by restarting the desktop
+app. In particular, changing or unsetting `BB_SERVER_BIND_HOST` does not close
+an existing `0.0.0.0` listener until that restart.
+
+`bb-app config refresh` also notes any startup-only keys currently present in
+`config.json` or `env.json`; those values apply on the next full restart.
 
 When targeting a non-default running instance, pass the same `--data-dir` and
 `--server-port` to `bb-app config` or `bb-app env` commands so they write the
 right file and refresh the right server.
-
-Startup settings such as data directory and ports still apply when the process
-starts.
 
 ## Stopping A Running bb
 
@@ -94,14 +121,18 @@ signal it, so a stale file left by a crash cannot stop an unrelated process.
 
 ## Common Keys
 
-| Key                | Command         | When to set             | Used for                                                                                                                                       |
-| ------------------ | --------------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `BB_APP_URL`       | `bb-app config` | Optional for remote use | Human-facing app URL used for generated links and allowed browser origins. Leave empty for local-only use.                                     |
-| `BB_INFERENCE`     | `bb-app config` | Optional                | Server-side helper model in `provider/model` format. Defaults to `codex/gpt-5.6-luna`; the Codex helper route uses no reasoning.               |
-| `BB_TRANSCRIPTION` | `bb-app config` | Optional                | Voice transcription model in `provider/model` format. Defaults to `codex/gpt-transcribe`.                                                      |
-| `BB_SERVER_URL`    | `bb-app config` | Remote CLI/host use     | Server URL for standalone `bb` CLI and `host-daemon` commands on the current machine. The CLI defaults to `http://127.0.0.1:38886` when unset. |
-| `BB_LOG_LEVEL`     | `bb-app config` | Debugging               | Log level for the next bb start: `trace`, `debug`, `info`, `warn`, `error`, or `fatal`.                                                        |
-| `OPENAI_API_KEY`   | `bb-app env`    | OpenAI opt-in routes    | Required only when selecting explicit OpenAI provider routes such as `openai/gpt-4o-mini` or `openai/gpt-transcribe`.                          |
+| Key                     | Command                                            | When to set             | Used for                                                                                                                                                                                                                                |
+| ----------------------- | -------------------------------------------------- | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BB_APP_URL`            | `bb-app config`                                    | Optional for remote use | Human-facing app URL used for generated links and allowed browser origins. Leave empty for local-only use.                                                                                                                              |
+| `BB_INFERENCE`          | `bb-app config`                                    | Optional                | Primary server-side helper model in `provider/model` format. Defaults to `codex/gpt-5.6-luna`; the Codex helper route uses no reasoning.                                                                                                |
+| `BB_INFERENCE_FALLBACK` | `bb-app config`                                    | Optional                | Helper model used after a transient primary timeout, rate limit, or service-unavailable failure. Defaults to `codex/gpt-5.4-mini`.                                                                                                      |
+| `BB_TRANSCRIPTION`      | `bb-app config`                                    | Optional                | Voice transcription model in `provider/model` format. Defaults to `codex/gpt-transcribe`.                                                                                                                                               |
+| `BB_SERVER_URL`         | `bb-app config`                                    | Remote CLI/host use     | Server URL for standalone `bb` CLI and `host-daemon` commands on the current machine. The CLI defaults to `http://127.0.0.1:38886` when unset.                                                                                          |
+| `BB_SERVER_BIND_HOST`   | `bb-app env`, environment, or `--server-bind-host` | Startup-only            | Server listener host. Defaults to `127.0.0.1`; accepts only `127.0.0.1` or `0.0.0.0`. A full launcher or desktop app restart is required; until then, a previous `0.0.0.0` listener remains exposed. This is not a `bb-app config` key. |
+| `BB_SERVER_PORT`        | `bb-app env`, environment, or `--server-port`      | Startup-only            | HTTP listener port. Defaults to `38886`. A full launcher or desktop app restart is required after a persistent set or unset.                                                                                                            |
+| `BB_HOST_DAEMON_PORT`   | `bb-app env`, environment, or `--host-daemon-port` | Startup-only            | Local host-daemon API port. Defaults to `38887`. A full launcher or desktop app restart is required after a persistent set or unset.                                                                                                    |
+| `BB_LOG_LEVEL`          | `bb-app config`                                    | Startup-only debugging  | Log level: `trace`, `debug`, `info`, `warn`, `error`, or `fatal`. A full launcher or desktop app restart is required.                                                                                                                   |
+| `OPENAI_API_KEY`        | `bb-app env`                                       | OpenAI opt-in routes    | Required only when selecting explicit OpenAI provider routes such as `openai/gpt-4o-mini` or `openai/gpt-transcribe`.                                                                                                                   |
 
 By default, helper inference and voice transcription use Codex credentials from
 the host daemon. Run `codex login` on the host for the default path. Set
@@ -127,10 +158,16 @@ agent or terminal with
 `bb settings general showUnhandledProviderEvents <true|false>`.
 
 The "Steer running threads on Enter" toggle in Settings → General changes the
-active-thread composer shortcuts. It defaults to off: Enter queues and
-Command+Enter steers. When enabled, Enter steers and Command+Enter queues. Set
-it with
+active-thread composer shortcuts when no typeahead suggestion is active. It
+defaults to off: Enter queues and Command+Enter steers. When enabled, Enter
+steers and Command+Enter queues. Set it with
 `bb settings general steerActiveThreadOnEnter <true|false>`.
+
+Outside an open typeahead menu, Shift+Enter inserts a newline. In zen mode,
+unmodified Enter also inserts a newline. On coarse-pointer touch devices, the
+software-keyboard Return path inserts a newline and the submit button sends.
+iPadOS WebKit additionally preserves the Enter and Command+Enter shortcuts
+above for a connected Magic Keyboard.
 
 ## Keyboard Shortcuts
 
@@ -158,6 +195,8 @@ delayed shortcut badges without disabling any shortcuts.
 | --------- | ----------------------------- | --------------------------------- | ------------------------ |
 | Threads   | New thread                    | `Mod+N` / `Mod+Shift+O`           | Desktop / web            |
 | Threads   | Search threads                | `Mod+K`                           | All clients              |
+| Threads   | Rename focused thread         | Unassigned                        | Thread view              |
+| Threads   | Archive focused thread        | Unassigned                        | Thread view              |
 | Threads   | Previous / next thread        | `Mod+Shift+[/]` / `Mod+Shift+↑/↓` | Desktop / web            |
 | Threads   | Open visible thread 1–9       | Platform defaults above           | Web / desktop            |
 | Layout    | Previous / next chat pane     | `Mod+Shift+[/]`                   | While split              |
@@ -319,6 +358,11 @@ model ids discovered through `modelCli`, not in an ACP `thought_level` option.
 Grok Build is also separate: it uses `reasoningCli` to launch
 `grok --reasoning-effort <level> agent stdio`.
 
+When an agent declares `thought_level` with no options, bb hides the reasoning
+control. bb also hides it when none of the declared values map to a supported bb
+reasoning level. Omitting `thought_level` keeps the agent-managed reasoning
+fallback for agents that do not advertise this capability.
+
 Custom ACP agents are supported only with the co-located daemon from the same
 machine as the server. A command path in server config is host-local and is not
 meaningful for a remote daemon.
@@ -327,6 +371,48 @@ Security note: `command` is arbitrary local code execution by design. Anyone who
 can write `~/.bb/config.json` can cause bb to run that command as the local user
 when the provider is used. Treat `config.json` write access as the trust
 boundary.
+
+## Custom Models
+
+Register extra picker models by editing top-level `customModels` in
+`~/.bb/config.json`. Use this for a model the provider accepts but does not
+list, such as a non-public preview id. Like `customAcpAgents`, this list has
+no set/unset CLI surface: edit the JSON, then run `npx bb-app config refresh`
+or restart bb. `bb-app config list` prints the entries.
+
+```json
+{
+  "customModels": [
+    { "providerId": "claude-code", "model": "claude-example-preview" },
+    {
+      "providerId": "acp-my-agent",
+      "model": "my-proxy/my-model",
+      "displayName": "My Proxy Model"
+    }
+  ]
+}
+```
+
+`providerId` accepts a built-in provider id (`codex`, `claude-code`, `pi`,
+`acp-cursor`) or any `acp-*` provider id: a known ACP agent such as
+`acp-opencode`, or a custom ACP agent's derived `acp-<id>`. `displayName` is
+optional; bb derives the label from the model id when it is omitted. bb skips
+an invalid entry with a warning and keeps the rest of the config.
+
+Each entry appears in `bb provider models <providerId>` and in the model
+picker after the provider's own catalog. The provider catalog wins on a model
+id collision.
+
+A `customModels` entry only makes the id selectable; the provider must still
+accept it. Built-in providers such as `claude-code` and `codex` accept
+unlisted ids. An ACP agent receives the id over the protocol at session start
+and can reject it. OpenCode rejects a model that is not in its own catalog,
+so do not pin OpenCode models here: add the model to the OpenCode config and
+bb discovers it automatically.
+
+An OpenCode "agent" (build, plan, or a custom primary agent) is a session
+mode, not a model, so it does not belong in `customModels`. bb does not select
+OpenCode agents; set the default agent in the OpenCode config instead.
 
 ## Agent Instructions
 
@@ -365,6 +451,33 @@ skills. Running plugins contribute a third tier: every `skills/<name>/SKILL.md`
 in an installed plugin (relocatable via the manifest's `bb.skills` field) is
 auto-imported while the plugin is loaded — overridden by project and user
 skills by name, overriding built-ins.
+
+bb indexes each provider's native skill roots for that provider's `/` command
+menu. The Skills page and `bb skill list` show native skills for Claude Code,
+Codex, and Cursor.
+
+| Provider     | User roots                                                                                               | Project roots                                                                                                |
+| ------------ | -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| Codex        | `~/.agents/skills`, `$CODEX_HOME/skills`                                                                 | `.agents/skills` from the repository root to the current directory, plus `.codex/skills`                     |
+| Claude Code  | `$CLAUDE_CONFIG_DIR/skills` or `~/.claude/skills`, plus enabled plugin skills                            | `.claude/skills` from the repository root to the current directory, plus enabled plugin skills               |
+| Pi           | `~/.pi/agent/skills`, `~/.agents/skills`                                                                 | `.pi/skills` and `.agents/skills` from the repository root to the current directory                          |
+| Cursor       | `~/.cursor/skills`, `~/.agents/skills`, `~/.claude/skills`, `~/.codex/skills`                            | The same four roots in the workspace                                                                         |
+| OpenCode     | `~/.config/opencode/skills`, `~/.claude/skills`, `~/.agents/skills`                                      | `.opencode/skills`, `.claude/skills`, and `.agents/skills` from the repository root to the current directory |
+| omp          | The active `~/.omp/.../agent` roots and supported Pi, Agents, Claude, Codex, and OpenCode roots          | `.omp/skills` and the supported compatibility roots from the repository root to the current directory        |
+| Grok Build   | `$GROK_HOME/skills` or `~/.grok/skills`, plus `~/.agents/skills`, `~/.claude/skills`, `~/.cursor/skills` | The same four roots from the repository root to the current directory                                        |
+| Hermes Agent | `$HERMES_HOME/skills` or `~/.hermes/skills`                                                              | None                                                                                                         |
+
+OpenCode also uses `$OPENCODE_CONFIG_DIR/skills` when that variable exists.
+Pi and omp use `$PI_CODING_AGENT_DIR` when that variable exists. omp also uses
+`$OMP_PROFILE` or `$PI_PROFILE` to select its active profile root. Cursor and
+Hermes can organize skills in category directories. bb scans those roots
+recursively. Pi settings and packages can add skill paths. omp reads
+`skills.customDirectories` from its YAML configuration. Hermes reads
+`skills.external_dirs` from `config.yaml`.
+
+Grok reads recursive paths from `[skills].paths` in `config.toml`. It also reads
+enabled Grok and Claude-compatible plugin skills. Its Cursor and Claude
+compatibility roots follow the related config and environment switches.
 
 ## Multi-machine
 
@@ -466,11 +579,12 @@ ports).
 ## Experiments
 
 Experimental surfaces are off by default and can be changed in Settings →
-Experiments or with `bb settings experiment <key> <true|false>`. The `toolsHub`
-experiment exposes Extensions for managing skills and plugins, while
-Automations stays in the Plugins section beside threads. It is a UI-only gate:
-installed skills, automation execution, plugin runtimes, CLI commands, and
-backend APIs keep working while the experiment is off.
+Experiments or with `bb settings experiment <key> <true|false>`. The
+`newOnboarding` experiment exposes the first-run agent and project setup guide.
+The `toolsHub` experiment exposes Extensions for managing skills and plugins,
+while Automations stays in the Plugins section beside threads. The `toolsHub`
+gate only controls the UI. Installed skills, automation execution, plugin
+runtimes, CLI commands, and backend APIs keep working while it is off.
 
 ## Thread Timeline Window
 
@@ -527,7 +641,7 @@ Plugin state lives under the data dir:
                                    commands, injected into agent threads)
 ```
 
-BB's official plugins (GitHub, Docs, Memory, Tasks, T3 Sidebar) ship bundled
+BB's official plugins (GitHub, Docs, Memory, and Tasks) ship bundled
 inside the app and install from the local bundled copy — no network, no remote catalog.
 Discover them with `bb plugin search` or Extensions → Plugins → Browse; users
 cannot add, remove, or configure the official plugin set. Installed official
@@ -546,6 +660,31 @@ refused — use `bb plugin update`. Before activation bb snapshots the plugin
 database, host-managed settings/storage/schedules, secrets, and registration.
 A failed activation restores that snapshot and records the latest failure on
 the plugin so it can be surfaced as needing attention.
+
+### Provider retry plugin
+
+The builtin Provider retry plugin is disabled on fresh installations. Enable
+it under Extensions → Plugins or with `bb plugin enable provider-retry`. It
+automatically waits for structured Codex and Claude Code subscription-window
+resets when the failed turn was accepted, the provider has stopped its own
+retries, and the original execution settings remain available. Prior output or
+tool activity does not block recovery. Recovery sends one agent-only
+`Please continue.` turn on the existing provider conversation.
+The `maximumWait` setting defaults to `6 hours`; resets beyond that horizon are
+not scheduled. Choose `24 hours` or `No limit` under the plugin settings, or
+configure it from the CLI:
+
+```bash
+bb plugin config provider-retry set maximumWait "24 hours"
+```
+
+Pending waits are coordinated by machine/provider subscription and live only
+in the current server/plugin process. Restarting bb, reloading the plugin, or
+disabling it clears the timers without changing the original failed thread.
+Inspect them with `bb provider-retry status`, or cancel one from its composer
+banner or with `bb provider-retry cancel <thread-id>`. `bb thread retry`
+remains the manual recovery path. Credit or spend-control exhaustion without a
+reset time is ignored by the plugin.
 
 ### Workflows plugin
 
@@ -604,6 +743,14 @@ Use launcher flags for per-run startup details:
 npx bb-app --data-dir ~/.bb-test --server-port 48886 --host-daemon-port 48887
 ```
 
+The server listens on `127.0.0.1` by default. Set
+`--server-bind-host 0.0.0.0` (or `BB_SERVER_BIND_HOST=0.0.0.0`) only when a
+trusted network boundary must reach the listener directly. The public API is
+unauthenticated and permits command execution and file reads, so never expose a
+wildcard-bound server to an untrusted network. The only accepted bind hosts are
+`127.0.0.1` and `0.0.0.0`; this startup-only setting is not available through
+`bb-app config`.
+
 The data directory is the root directory for all bb-managed state: the SQLite
 database, logs, host identity, thread storage, custom themes (`theme/`), and
 plugins. It defaults to `~/.bb/` for the packaged app. The `pnpm dev` source launcher derives an isolated data
@@ -618,6 +765,13 @@ If the default ports are already in use, set explicit ports before starting:
 npx bb-app --server-port 48886 --host-daemon-port 48887
 ```
 
+The Settings → Machines installer assigns every enrolled standalone host daemon
+a stable local API port so it can coexist with the desktop app and with daemons
+enrolled to other servers. Atomic reservations under
+`~/.bb-machines/host-daemon-ports/` cover both default and custom
+`BB_DATA_DIR` locations. Its generated command accepts `--host-daemon-port
+<port>` when an explicit port is required.
+
 ## Source Development
 
 For source development only, `pnpm dev` and `pnpm start` load the repo-root
@@ -629,7 +783,11 @@ applies to source development. `pnpm dev` loads `.env`, `.env.local`,
 `.env.development`, and `.env.development.local`, then overrides the instance
 selectors (`BB_DATA_DIR`, server URL/port, host-daemon local API port, and Vite
 port) with deterministic values derived from the checkout path. The SQLite
-database path is always derived from `BB_DATA_DIR`.
+database path is always derived from `BB_DATA_DIR`. Both the main server and
+Vite app bind to loopback by default; an explicit `BB_DEV_APP_HOST` still
+overrides the Vite listener. Remote HTTP dev via `BB_DEV_APP_HOST` also requires
+`BB_SERVER_BIND_HOST=0.0.0.0` for realtime updates; the Tailscale Serve HTTPS
+path avoids this because WebSocket traffic goes through the Vite proxy.
 `pnpm start` loads `.env`, `.env.local`, `.env.production`, and
 `.env.production.local`.
 

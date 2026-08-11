@@ -562,6 +562,29 @@ describe("@bb/sdk", () => {
     ]);
   });
 
+  it("routes onboarding agent status through a reused environment", async () => {
+    const overview = { agents: [] };
+    const queue = createFetchQueue([{ body: overview }]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await expect(
+      sdk.system.onboardingAgents({ environmentId: "env_remote" }),
+    ).resolves.toEqual(overview);
+    expect(queue.requests).toEqual([
+      {
+        bodyText: undefined,
+        method: "GET",
+        url: "http://bb.test/api/v1/system/onboarding/agents?environmentId=env_remote",
+      },
+    ]);
+  });
+
   it("routes thread list calls through the HTTP transport", async () => {
     const queue = createFetchQueue([{ body: [] }]);
     const sdk = createBbSdk({
@@ -739,20 +762,8 @@ describe("@bb/sdk", () => {
   });
 
   it("restarts a terminal without requiring its scope from the caller", async () => {
-    const current = makeTerminalSession({
-      id: "term_old",
-      threadId: null,
-      environmentId: null,
-      hostId: "host_remote",
-      initialCwd: "/srv/app",
-      title: "Server",
-    });
     const replacement = makeTerminalSession({ id: "term_new" });
-    const queue = createFetchQueue([
-      { body: current },
-      { body: { ...current, status: "exited", closeReason: "user" } },
-      { body: replacement, status: 201 },
-    ]);
+    const queue = createFetchQueue([{ body: replacement, status: 201 }]);
     const sdk = createBbSdk({
       transport: createHttpTransport({
         baseUrl: "http://bb.test",
@@ -766,29 +777,9 @@ describe("@bb/sdk", () => {
     ).resolves.toMatchObject({ id: "term_new" });
     expect(queue.requests).toEqual([
       {
-        bodyText: undefined,
-        method: "GET",
-        url: "http://bb.test/api/v1/terminals/term_old",
-      },
-      {
-        bodyText: JSON.stringify({ mode: "force", reason: "user" }),
+        bodyText: JSON.stringify({}),
         method: "POST",
-        url: "http://bb.test/api/v1/terminals/term_old/close",
-      },
-      {
-        bodyText: JSON.stringify({
-          cols: 100,
-          rows: 30,
-          start: { mode: "shell" },
-          target: {
-            kind: "host_path",
-            hostId: "host_remote",
-            cwd: "/srv/app",
-          },
-          title: "Server",
-        }),
-        method: "POST",
-        url: "http://bb.test/api/v1/terminals",
+        url: "http://bb.test/api/v1/terminals/term_old/restart",
       },
     ]);
   });

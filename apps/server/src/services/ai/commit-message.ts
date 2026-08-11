@@ -1,7 +1,12 @@
 import { renderTemplate } from "@bb/templates";
 import type { LoggedWorkSessionDeps } from "../../types.js";
 import { Type } from "@earendil-works/pi-ai";
-import { InferenceTimeoutError, inferenceComplete } from "./inference.js";
+import { ApiError } from "../../errors.js";
+import {
+  InferenceTimeoutError,
+  inferenceComplete,
+  isTransientInferenceError,
+} from "./inference.js";
 import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
 
 const commitMessageSchema = Type.Object({
@@ -26,8 +31,7 @@ interface CommitMessageGenerationOutcome {
 }
 
 const COMMIT_MESSAGE_TIMEOUT_MS = 5_000;
-// Two 5s attempts preserve the previous 10s worst-case fallback budget while
-// recovering transient provider stalls.
+// The primary and fallback models each receive one bounded attempt.
 const COMMIT_MESSAGE_TIMEOUT_MAX_ATTEMPTS = 2;
 
 async function generateCommitMessageWithOutcome(
@@ -58,8 +62,13 @@ async function generateCommitMessageWithOutcome(
     attempt <= COMMIT_MESSAGE_TIMEOUT_MAX_ATTEMPTS;
     attempt += 1
   ) {
+    const model =
+      attempt === 1
+        ? deps.config.inferenceModel
+        : deps.config.inferenceFallbackModel;
     try {
       const result = await inferenceComplete(deps, {
+        model,
         prompt,
         schema: commitMessageSchema,
         timeoutMs: COMMIT_MESSAGE_TIMEOUT_MS,
@@ -85,10 +94,11 @@ async function generateCommitMessageWithOutcome(
             attempts: outcome.attempts,
             durationMs: outcome.durationMs,
             maxAttempts: COMMIT_MESSAGE_TIMEOUT_MAX_ATTEMPTS,
-            reason: "timeout",
+            model,
+            reason: "transient-failure",
             timeoutMs: COMMIT_MESSAGE_TIMEOUT_MS,
           },
-          "Commit message inference completed after timeout retry",
+          "Commit message inference completed with fallback model",
         );
       }
       return outcome;
@@ -97,32 +107,40 @@ async function generateCommitMessageWithOutcome(
         error instanceof Error
           ? error
           : new Error("Non-Error thrown during commit message generation");
-      if (err instanceof InferenceTimeoutError) {
+      if (isTransientInferenceError(err)) {
         if (attempt < COMMIT_MESSAGE_TIMEOUT_MAX_ATTEMPTS) {
           deps.logger.info(
             {
               attempt,
+              errorCode: err instanceof ApiError ? err.body.code : "timeout",
+              fallbackModel: deps.config.inferenceFallbackModel,
               maxAttempts: COMMIT_MESSAGE_TIMEOUT_MAX_ATTEMPTS,
-              reason: "timeout",
-              timeoutMs: err.timeoutMs,
+              model,
+              reason: "transient-failure",
+              ...(err instanceof InferenceTimeoutError
+                ? { timeoutMs: err.timeoutMs }
+                : {}),
             },
-            "Commit message inference timed out; retrying",
+            "Commit message inference failed transiently; using fallback model",
           );
           continue;
         }
 
-        const outcome = complete(null, attempt, "timeout");
-        deps.logger.info(
-          {
-            attempts: outcome.attempts,
-            durationMs: outcome.durationMs,
-            maxAttempts: COMMIT_MESSAGE_TIMEOUT_MAX_ATTEMPTS,
-            reason: outcome.reason,
-            timeoutMs: err.timeoutMs,
-          },
-          "Commit message inference timed out",
-        );
-        return outcome;
+        if (err instanceof InferenceTimeoutError) {
+          const outcome = complete(null, attempt, "timeout");
+          deps.logger.info(
+            {
+              attempts: outcome.attempts,
+              durationMs: outcome.durationMs,
+              maxAttempts: COMMIT_MESSAGE_TIMEOUT_MAX_ATTEMPTS,
+              model,
+              reason: outcome.reason,
+              timeoutMs: err.timeoutMs,
+            },
+            "Commit message inference timed out",
+          );
+          return outcome;
+        }
       }
 
       const reason: CommitMessageGenerationReason = "failed";

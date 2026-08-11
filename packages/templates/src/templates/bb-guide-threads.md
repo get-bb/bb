@@ -43,7 +43,7 @@ Spawning:
   accept-edits uses workspace sandboxing with user-reviewed escalation. auto uses
   the same workspace sandbox with provider-native automatic review. full is the
   explicit sandbox and approval bypass. Plan mode is separate from permissions.
-  When spawning a subagent, pass --permission-mode full unless the user or task explicitly requests restricted access.
+  Subagents inherit the parent's permission mode by default; pass --permission-mode full only when the user or task needs unsandboxed execution.
   Parenting is opt-in. Inside a thread, pass --parent-self to parent the new thread to the current thread.
   Hidden threads are for plugin/background workers. They remain addressable by
   ID while staying out of sidebar organization and unread/pending favicon
@@ -160,9 +160,24 @@ Messaging:
   is free.
 
   bb thread stop [id]                      Stop an active or provisioning thread
+  bb thread retry [id]                     Continue a subscription-limited turn
+    --self                                 Target current thread
+    --request-id <id>                      Require an exact failed request id
+  bb thread compact [id]                   Request compaction of an idle or errored thread's context
   bb thread cancel-plan [id]               Exit the provider's active Plan mode
   bb thread clear-goal [id]                Clear the provider's active Goal
     --self                                 Target current thread
+
+  `thread compact` enqueues the same structured /compact turn used by the
+  composer. Follow the thread timeline for the eventual compaction result.
+
+  `thread retry` is only for a terminal provider subscription-limit failure.
+  The server requires accepted input, available execution settings, no newer
+  request, and no provider-owned retry. Prior output or tool activity does not
+  disqualify the turn. It starts an agent-only system turn containing `Please
+  continue.` on the existing provider conversation; it does not resend the
+  original prompt or create another user message. When enabled, the Provider
+  retry plugin invokes this continuation automatically for timed limits.
 
 Ownership:
 

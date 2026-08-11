@@ -78,6 +78,42 @@ export const providerErrorInfoSchema = z.object({
 });
 export type ProviderErrorInfo = z.infer<typeof providerErrorInfoSchema>;
 
+export const providerRateLimitStatusSchema = z.enum([
+  "allowed",
+  "warning",
+  "blocked",
+  "unknown",
+]);
+export type ProviderRateLimitStatus = z.infer<
+  typeof providerRateLimitStatusSchema
+>;
+
+export const providerRateLimitWindowSchema = z.object({
+  /** Opaque provider-issued key. New provider windows must not break parsing. */
+  providerKey: z.string().min(1).nullable(),
+  label: z.string().min(1).nullable(),
+  status: providerRateLimitStatusSchema,
+  resetsAtMs: z.number().int().nonnegative().nullable(),
+});
+export type ProviderRateLimitWindow = z.infer<
+  typeof providerRateLimitWindowSchema
+>;
+
+export const providerRateLimitStateSchema = z.object({
+  providerId: z.string().min(1),
+  status: providerRateLimitStatusSchema,
+  kind: z.enum(["subscription-window", "credits", "spend-control", "unknown"]),
+  windows: z.array(providerRateLimitWindowSchema),
+  reachedReason: z.string().min(1).nullable(),
+  overageStatus: z
+    .enum(["allowed", "warning", "rejected", "unavailable"])
+    .nullable(),
+  overageReason: z.string().min(1).nullable(),
+});
+export type ProviderRateLimitState = z.infer<
+  typeof providerRateLimitStateSchema
+>;
+
 export const threadEventFileChangeKindSchema = z.enum([
   "add",
   "delete",
@@ -540,6 +576,12 @@ const unscopedProviderEventSchema = z.discriminatedUnion("type", [
     detail: z.string().optional(),
     willRetry: z.boolean().optional(),
     errorInfo: providerErrorInfoSchema.optional(),
+  }),
+  z.object({
+    type: z.literal("provider/rateLimits/updated"),
+    threadId: z.string(),
+    providerThreadId: z.string(),
+    rateLimits: providerRateLimitStateSchema,
   }),
   z.object({
     type: z.literal("provider/warning"),

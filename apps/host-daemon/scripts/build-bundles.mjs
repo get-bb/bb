@@ -5,6 +5,7 @@ import { build } from "esbuild";
 import { bundleTargets } from "./bundle-manifest.mjs";
 import {
   createNativeExternalPatterns,
+  externalPackagePatterns,
   generateTemplatesIfRequested,
 } from "../../../scripts/build-utils.mjs";
 
@@ -25,9 +26,12 @@ async function main() {
       bundle: true,
       conditions: ["source"],
       entryPoints: [target.entryPoint],
-      external: createNativeExternalPatterns({
-        bundledPackages: target.bundledPackages,
-      }),
+      external: [
+        ...createNativeExternalPatterns({
+          bundledPackages: target.bundledPackages,
+        }),
+        ...externalPackagePatterns(target.externalPackages ?? []),
+      ],
       format: "esm",
       legalComments: "none",
       minify: true,

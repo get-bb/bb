@@ -4,6 +4,7 @@ import { performance } from "node:perf_hooks";
 import { extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Hono } from "hono";
+import { terminalWebSocketQuerySchema } from "@bb/server-contract";
 import { compress } from "hono/compress";
 import { cors } from "hono/cors";
 import {
@@ -72,6 +73,7 @@ import {
 } from "./services/plugin-catalog/plugin-catalog-service.js";
 import { callHostRetryableOnlineRpc } from "./services/hosts/online-rpc.js";
 import { browserRequestProblem } from "./browser-request-guard.js";
+import { rankAcceptedAssetEncodings } from "./asset-content-encoding.js";
 
 export type CloseWebSockets = () => Promise<void>;
 type NodeWebSocketServer = ReturnType<typeof createNodeWebSocket>["wss"];
@@ -132,6 +134,8 @@ const INSTALL_MACHINE_SCRIPT_PATH = fileURLToPath(
 );
 const THREAD_EVENT_WAIT_PATH_PATTERN =
   /^\/api\/v1\/threads\/[^/]+\/events\/wait$/u;
+const PLUGIN_APP_ASSET_PATH_PATTERN =
+  /^\/api\/v1\/plugins\/[^/]+\/assets\/app\.(?:js|css)$/u;
 const PRECOMPRESSED_STATIC_FILES = [
   { encoding: "br", extension: ".br" },
   { encoding: "gzip", extension: ".gz" },
@@ -169,36 +173,6 @@ function createStaticResponseHeaders(args: StaticResponseHeadersArgs): Headers {
   return headers;
 }
 
-function acceptedEncodingQuality(
-  acceptEncodingHeader: string | undefined,
-  encoding: string,
-): number {
-  if (acceptEncodingHeader === undefined) {
-    return 0;
-  }
-  let wildcardQuality = 0;
-  for (const part of acceptEncodingHeader.split(",")) {
-    const [rawName, ...rawParams] = part.trim().split(";");
-    const name = rawName?.trim().toLowerCase();
-    const qParam = rawParams
-      .map((param) => param.trim().toLowerCase())
-      .find((param) => param.startsWith("q="));
-    const quality =
-      qParam === undefined
-        ? 1
-        : Number.isNaN(Number(qParam.slice(2)))
-          ? 1
-          : Number(qParam.slice(2));
-    if (name === encoding) {
-      return quality;
-    }
-    if (name === "*") {
-      wildcardQuality = quality;
-    }
-  }
-  return wildcardQuality;
-}
-
 function canServePrecompressedStaticFile(contentType: string): boolean {
   return (
     contentType.startsWith("text/") ||
@@ -224,20 +198,10 @@ async function findPrecompressedStaticFile(args: {
     return null;
   }
 
-  const candidates = PRECOMPRESSED_STATIC_FILES.map((candidate, index) => ({
-    ...candidate,
-    index,
-    quality: acceptedEncodingQuality(
-      args.acceptEncodingHeader,
-      candidate.encoding,
-    ),
-  }))
-    .filter((candidate) => candidate.quality > 0)
-    .sort(
-      (left, right) => right.quality - left.quality || left.index - right.index,
-    );
-
-  for (const candidate of candidates) {
+  for (const candidate of rankAcceptedAssetEncodings(
+    args.acceptEncodingHeader,
+    PRECOMPRESSED_STATIC_FILES,
+  )) {
     const encodedFilePath = `${args.filePath}${candidate.extension}`;
     try {
       const encodedStat = await stat(encodedFilePath);
@@ -332,7 +296,16 @@ export function createApp(
       },
     }),
   );
-  app.use("*", compress());
+  const compressResponse = compress();
+  app.use("*", (context, next) => {
+    // Plugin JS/CSS negotiates Brotli and gzip itself and caches immutable
+    // variants. Letting this outer middleware transform an identity fallback
+    // would also ignore explicit q=0 values in Hono's current parser.
+    if (PLUGIN_APP_ASSET_PATH_PATTERN.test(context.req.path)) {
+      return next();
+    }
+    return compressResponse(context, next);
+  });
   app.onError((error) => errorToResponse(error, deps.logger));
   app.get("/health", (context) => context.json({ ok: true }));
   app.get("/install.sh", async (context) => {
@@ -502,10 +475,21 @@ export function createApp(
         );
       }
       const terminalId = context.req.param("terminalId");
+      const query = terminalWebSocketQuerySchema.safeParse({
+        sinceSeq: context.req.query("sinceSeq"),
+      });
+      if (!query.success) {
+        throw new ApiError(
+          400,
+          "invalid_terminal_socket_query",
+          "Terminal websocket sinceSeq must be a non-negative integer",
+        );
+      }
       return {
         onOpen: (_event, socket) =>
           onTerminalSocketOpen(deps, {
             socket,
+            sinceSeq: query.data.sinceSeq,
             terminalId,
             threadId: null,
           }),

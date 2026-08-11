@@ -5,13 +5,15 @@ import { machine } from "@bb/connect-db";
 import { cacheKey } from "./cache";
 import { parseClientProtocolVersion } from "./tunnel-do";
 import {
-  GATE_AUTH_HEADER,
-  GATE_MACHINE_ID_HEADER,
-  TUNNEL_TARGET_HEADER,
   cacheNamespace,
   dashboardSignInUrl,
   requestForTunnelDo,
 } from "./worker";
+import {
+  GATE_AUTH_HEADER,
+  GATE_MACHINE_ID_HEADER,
+  TUNNEL_TARGET_HEADER,
+} from "./protocol-headers";
 
 // ── pure helpers ────────────────────────────────────────────────────────────
 
@@ -112,8 +114,8 @@ vi.mock("./session.js", () => ({
 }));
 
 vi.mock("./servers.js", () => ({
-  DESKTOP_SESSION_COOKIE: "__Secure-bb-connect.desktop_session",
   handleCreateDesktopSession: vi.fn(),
+  handleDisconnectServer: vi.fn(),
   handleListAccountServers: vi.fn(),
   verifyDesktopSessionCookie: vi.fn(),
 }));
@@ -152,11 +154,12 @@ import {
   verifySessionCookie,
 } from "./session.js";
 import {
-  DESKTOP_SESSION_COOKIE,
   handleCreateDesktopSession,
+  handleDisconnectServer,
   handleListAccountServers,
   verifyDesktopSessionCookie,
 } from "./servers.js";
+import { SECURE_DESKTOP_SESSION_COOKIE as DESKTOP_SESSION_COOKIE } from "./cloud-dev.js";
 import { handleAssignMachineLabel } from "./machine-label.js";
 import { serveWithCache } from "./cache.js";
 import worker, { offlinePage, relativeTime, wantsHtml } from "./worker.js";
@@ -170,6 +173,7 @@ const mockVerifySession = vi.mocked(verifySessionCookie);
 const mockServeWithCache = vi.mocked(serveWithCache);
 const mockHandleListAccountServers = vi.mocked(handleListAccountServers);
 const mockHandleCreateDesktopSession = vi.mocked(handleCreateDesktopSession);
+const mockHandleDisconnectServer = vi.mocked(handleDisconnectServer);
 const mockVerifyDesktopSession = vi.mocked(verifyDesktopSessionCookie);
 const mockHandleAssignMachineLabel = vi.mocked(handleAssignMachineLabel);
 
@@ -326,6 +330,27 @@ describe("POST /api/connect/desktop-session", () => {
   });
 });
 
+describe("POST /api/connect/disconnect", () => {
+  it("intercepts self-revocation before tunnel routing", async () => {
+    mockHandleDisconnectServer.mockResolvedValue(Response.json({ ok: true }));
+    const { env, ctx, captured } = makeEnv(() => new Response("origin"));
+    const request = visitorRequest(
+      "sawyer.getbb.app",
+      "/api/connect/disconnect",
+      {
+        method: "POST",
+        headers: { "x-bb-connect-machine": "paired" },
+      },
+    );
+    const response = await worker.fetch(request, env as never, ctx);
+
+    expect(response.status).toBe(200);
+    expect(mockHandleDisconnectServer).toHaveBeenCalledWith(request, env);
+    expect(mockResolveLabel).not.toHaveBeenCalled();
+    expect(captured).toHaveLength(0);
+  });
+});
+
 describe("POST /api/connect/machine-label", () => {
   it("intercepts machine-authenticated assignment before label routing", async () => {
     mockHandleAssignMachineLabel.mockResolvedValue(
@@ -377,7 +402,10 @@ describe("gate tunnel authentication", () => {
         "sawyer-air.getbb.app",
         "/__tunnel?v=1&serverId=victim-server&machineId=spoofed-machine",
         {
-          headers: { authorization: `Bearer ${credential}` },
+          headers: {
+            authorization: `Bearer ${credential}`,
+            "x-bb-cloud-dev-host": "smuggled",
+          },
         },
       ),
       env as never,
@@ -395,6 +423,7 @@ describe("gate tunnel authentication", () => {
       "machine-air",
     );
     expect(new URL(captured[0].url).searchParams.get("serverId")).toBeNull();
+    expect(captured[0].headers.get("x-bb-cloud-dev-host")).toBeNull();
   });
 
   it("dials immediately after a negative resolve and label assignment", async () => {
@@ -552,14 +581,20 @@ describe("machine gate auth", () => {
     const { env, ctx, captured } = makeEnv(() => new Response("origin"));
     const internal = await worker.fetch(
       visitorRequest("sawyer.getbb.app", "/internal/session/open", {
-        headers: { "x-bb-connect-machine": "bbcm_owner" },
+        headers: {
+          "x-bb-connect-machine": "bbcm_owner",
+          "x-bb-cloud-dev-host": "smuggled",
+        },
       }),
       env as never,
       ctx,
     );
     const api = await worker.fetch(
       visitorRequest("sawyer.getbb.app", "/api/v1/threads", {
-        headers: { "x-bb-connect-machine": "bbcm_owner" },
+        headers: {
+          "x-bb-connect-machine": "bbcm_owner",
+          "x-bb-cloud-dev-host": "smuggled",
+        },
       }),
       env as never,
       ctx,
@@ -570,6 +605,11 @@ describe("machine gate auth", () => {
     expect(
       captured.every(
         (request) => request.headers.get("x-bb-connect-machine") === null,
+      ),
+    ).toBe(true);
+    expect(
+      captured.every(
+        (request) => request.headers.get("x-bb-cloud-dev-host") === null,
       ),
     ).toBe(true);
     expect(
@@ -630,13 +670,16 @@ describe("machine gate auth", () => {
     async (path) => {
       const { env, ctx, captured } = makeEnv(() => new Response("artifact"));
       const response = await worker.fetch(
-        visitorRequest("sawyer.getbb.app", path),
+        visitorRequest("sawyer.getbb.app", path, {
+          headers: { "x-bb-cloud-dev-host": "smuggled" },
+        }),
         env as never,
         ctx,
       );
       expect(response.status).toBe(200);
       expect(await response.text()).toBe("artifact");
       expect(captured).toHaveLength(1);
+      expect(captured[0].headers.get("x-bb-cloud-dev-host")).toBeNull();
       expect(mockVerifyMachine).not.toHaveBeenCalled();
     },
   );
@@ -691,6 +734,30 @@ describe("gate worker share hosts", () => {
     expect(html).toContain("sawyer.getbb.app");
     expect(captured).toHaveLength(0);
     expect(mockVerifySession).not.toHaveBeenCalled();
+  });
+
+  it("renders local machine links with HTTP and the shared gateway port", async () => {
+    mockResolveLabel.mockResolvedValue(resolvedMachine());
+    const { env, ctx } = makeEnv(() => new Response("origin"));
+    Object.assign(env, {
+      ACCOUNT_APP_URL: "http://bb.localhost:42745",
+      BASE_DOMAIN: "bb.localhost",
+      CLOUD_DEV: "true",
+    });
+    const response = await worker.fetch(
+      new Request("http://127.0.0.1:50743/", {
+        headers: {
+          host: "127.0.0.1:50743",
+          "x-bb-cloud-dev-host": "sawyer-air",
+        },
+      }),
+      env as never,
+      ctx,
+    );
+
+    const html = await response.text();
+    expect(html).toContain("sawyer-air--&lt;port&gt;.bb.localhost:42745");
+    expect(html).toContain('href="http://sawyer.bb.localhost:42745"');
   });
 
   it("applies the same owner-session check to machine share hosts", async () => {
@@ -777,13 +844,17 @@ describe("gate worker share hosts", () => {
     const { env, ctx, captured } = makeEnv(() => new Response("ok"));
     await worker.fetch(
       visitorRequest("sawyer.getbb.app", "/", {
-        headers: { [TUNNEL_TARGET_HEADER]: "9999" },
+        headers: {
+          [TUNNEL_TARGET_HEADER]: "9999",
+          "x-bb-cloud-dev-host": "smuggled",
+        },
       }),
       env as never,
       ctx,
     );
     expect(captured).toHaveLength(1);
     expect(captured[0].headers.get(TUNNEL_TARGET_HEADER)).toBeNull();
+    expect(captured[0].headers.get("x-bb-cloud-dev-host")).toBeNull();
     expect(mockServeWithCache).toHaveBeenCalledWith(
       expect.any(Request),
       "sawyer",
@@ -846,6 +917,31 @@ describe("gate worker share hosts", () => {
     expect(html).toContain("Sign in");
     expect(html).toContain("sawyer");
     expect(captured).toHaveLength(0);
+  });
+
+  it("preserves the public local URL in the sign-in returnTo", async () => {
+    mockParseCookie.mockReturnValue(null);
+    const { env, ctx } = makeEnv(() => new Response("ok"));
+    Object.assign(env, {
+      ACCOUNT_APP_URL: "http://bb.localhost:42745",
+      BASE_DOMAIN: "bb.localhost",
+      CLOUD_DEV: "true",
+    });
+    const response = await worker.fetch(
+      new Request("http://127.0.0.1:50743/threads/thr_1?view=full", {
+        headers: {
+          host: "127.0.0.1:50743",
+          "x-bb-cloud-dev-host": "sawyer",
+        },
+      }),
+      env as never,
+      ctx,
+    );
+
+    expect(response.status).toBe(401);
+    expect(await response.text()).toContain(
+      "returnTo=http%3A%2F%2Fsawyer.bb.localhost%3A42745%2Fthreads%2Fthr_1%3Fview%3Dfull",
+    );
   });
 
   it("returns 403 when share host session is a different user", async () => {
@@ -1364,6 +1460,87 @@ function openHttpStreamId(sent: Uint8Array[], index: number): number {
 }
 
 describe("TunnelDO response relay", () => {
+  it("closes the origin stream when the visitor cancels a response body", async () => {
+    const sent: Uint8Array[] = [];
+    const state = mockDoState({ protocolVersion: 1 });
+    const dob = new TunnelDO(state.api, makeDoEnv());
+    await state.restore;
+    const tunnel = fakeTunnelSocket(captureSent(sent));
+    state.addSocket(tunnel, ["tunnel"]);
+
+    const pending = dob.fetch(new Request("https://do.internal/slow"));
+    const streamId = openHttpStreamId(sent, 0);
+    dob.webSocketMessage(
+      tunnel,
+      frameBuffer({
+        type: "resp-head",
+        streamId,
+        status: 200,
+        headers: [["content-type", "text/plain"]],
+      }),
+    );
+    const response = await pending;
+
+    await response.body?.cancel("visitor left");
+    await vi.waitFor(() => {
+      const close = sent
+        .map(decodeFrame)
+        .find(
+          (frame) =>
+            frame.type === "close-stream" && frame.streamId === streamId,
+        );
+      expect(close).toMatchObject({
+        type: "close-stream",
+        streamId,
+        code: 1000,
+        reason: "visitor canceled response body",
+      });
+    });
+  });
+
+  it("keeps a streamed response body open after the response-head timeout window", async () => {
+    vi.useFakeTimers();
+    try {
+      const sent: Uint8Array[] = [];
+      const state = mockDoState({ protocolVersion: 1 });
+      const dob = new TunnelDO(state.api, makeDoEnv());
+      await state.restore;
+      const tunnel = fakeTunnelSocket(captureSent(sent));
+      state.addSocket(tunnel, ["tunnel"]);
+
+      const pending = dob.fetch(
+        new Request("https://do.internal/session/tool-call"),
+      );
+      const streamId = openHttpStreamId(sent, 0);
+      dob.webSocketMessage(
+        tunnel,
+        frameBuffer({
+          type: "resp-head",
+          streamId,
+          status: 200,
+          headers: [["content-type", "application/json"]],
+        }),
+      );
+      const response = await pending;
+
+      await vi.advanceTimersByTimeAsync(30_000);
+      dob.webSocketMessage(
+        tunnel,
+        frameBuffer({
+          type: "body-chunk",
+          streamId,
+          data: new TextEncoder().encode('{"answer":"ready"}'),
+        }),
+      );
+      dob.webSocketMessage(tunnel, frameBuffer({ type: "body-end", streamId }));
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({ answer: "ready" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("relays null-body statuses (304/204) bodiless instead of stranding the visitor", async () => {
     const sent: Uint8Array[] = [];
     const state = mockDoState({ protocolVersion: 1 });

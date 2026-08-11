@@ -6,13 +6,18 @@ import { ExperimentsSettingsSection } from "./SettingsView";
 afterEach(cleanup);
 
 function renderSection(overrides?: {
+  onNewOnboardingEnabledChange?: (enabled: boolean) => void;
   onToolsHubEnabledChange?: (enabled: boolean) => void;
 }) {
   return render(
     <ExperimentsSettingsSection
       claudeCodeMockCliTrafficEnabled={false}
       disabled={false}
+      newOnboardingEnabled={false}
       onClaudeCodeMockCliTrafficEnabledChange={vi.fn()}
+      onNewOnboardingEnabledChange={
+        overrides?.onNewOnboardingEnabledChange ?? vi.fn()
+      }
       onToolsHubEnabledChange={overrides?.onToolsHubEnabledChange ?? vi.fn()}
       toolsHubEnabled={false}
     />,
@@ -20,6 +25,13 @@ function renderSection(overrides?: {
 }
 
 describe("ExperimentsSettingsSection", () => {
+  it("reports new onboarding changes", () => {
+    const onChange = vi.fn();
+    renderSection({ onNewOnboardingEnabledChange: onChange });
+    fireEvent.click(screen.getByLabelText("New onboarding"));
+    expect(onChange).toHaveBeenCalledWith(true);
+  });
+
   it("reports Extensions changes", () => {
     const onChange = vi.fn();
     renderSection({ onToolsHubEnabledChange: onChange });

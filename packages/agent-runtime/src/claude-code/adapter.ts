@@ -81,6 +81,10 @@ import type {
 } from "../provider-adapter.js";
 import { noPreparedProviderCommandDispatch } from "../provider-adapter.js";
 import {
+  classifyClaudeExecutionSettingsChange,
+  normalizeClaudeExecutionOptions,
+} from "../execution-options.js";
+import {
   type JsonRpcMessage,
   type ProviderInboundRequest,
   type ProviderRuntimeEvent,
@@ -88,9 +92,12 @@ import {
 } from "../runtime-json-rpc.js";
 import type { AgentRuntimeSkillRoot } from "../types.js";
 import {
+  buildClaudePlanRejectionMessage,
   buildClaudeSessionPermissionUpdates,
+  CLAUDE_EXIT_PLAN_MODE_TOOL_NAME,
   CLAUDE_PERMISSION_REQUEST_APPROVAL_METHOD,
   CLAUDE_USER_QUESTION_REQUEST_METHOD,
+  claudeExitPlanModeInputSchema,
   isClaudeConcreteFileChangeToolName,
   type ClaudeUserQuestion,
   type ClaudeUserQuestionOutput,
@@ -284,6 +291,10 @@ function hasClaudeSessionPermissionUpdate(
 function buildClaudeApprovalAvailableDecisions(
   args: ClaudePermissionRequestApprovalParams,
 ): PendingInteractionApprovalDecision[] {
+  // A plan verdict is not a grant, so "allow for session" has nothing to mean.
+  if (args.toolName === CLAUDE_EXIT_PLAN_MODE_TOOL_NAME) {
+    return ["allow_once", "deny"];
+  }
   return hasClaudeSessionPermissionUpdate(args)
     ? ["allow_once", "allow_for_session", "deny"]
     : ["allow_once", "deny"];
@@ -292,6 +303,18 @@ function buildClaudeApprovalAvailableDecisions(
 function buildClaudeApprovalSubject(
   args: ClaudePermissionRequestApprovalParams,
 ): PendingInteractionApprovalSubject {
+  if (args.toolName === CLAUDE_EXIT_PLAN_MODE_TOOL_NAME) {
+    const parsed = claudeExitPlanModeInputSchema.safeParse(args.input);
+    if (parsed.success) {
+      return {
+        kind: "plan",
+        itemId: args.itemId,
+        plan: parsed.data.plan,
+        planFilePath: parsed.data.planFilePath ?? null,
+      };
+    }
+  }
+
   if (args.toolName === "Bash") {
     const bashCommand = parseClaudeBashCommand(args.input);
     if (bashCommand) {
@@ -493,6 +516,9 @@ function getClaudePermissionUpdateToolName(
       return null;
     case "permission_grant":
       return payload.subject.toolName;
+    // A plan verdict grants nothing, so it never reaches a session update.
+    case "plan":
+      return null;
   }
 }
 
@@ -1020,6 +1046,9 @@ export function createClaudeCodeProviderAdapter(
     id: providerInfo.id,
     displayName: providerInfo.displayName,
     capabilities,
+    approvalRequestPolicy: "provider",
+    classifyExecutionSettingsChange: classifyClaudeExecutionSettingsChange,
+    normalizeExecutionOptions: normalizeClaudeExecutionOptions,
     process: {
       command: opts?.bridgeNodeExecutablePath ?? "node",
       args: resolveBridgeProcessArgs({
@@ -1095,6 +1124,8 @@ export function createClaudeCodeProviderAdapter(
               permissionMode: resolveClaudeSessionPermissionMode(
                 command.options,
               ),
+              approvedPlanPermissionMode:
+                toClaudePermissionMode(permissionPolicy),
               permissionScope: permissionPolicy.permissionScope,
               permissionEscalation: permissionPolicy.permissionEscalation,
               ...(additionalWorkspaceWriteRootsParams
@@ -1110,6 +1141,8 @@ export function createClaudeCodeProviderAdapter(
                 : {}),
               workflowsEnabled: command.options.workflowsEnabled,
               memoryEnabled: command.options.memoryEnabled,
+              providerSubagentsEnabled:
+                command.options.providerSubagentsEnabled,
               ...(dynamicTools && dynamicTools.length > 0
                 ? { dynamicTools }
                 : {}),
@@ -1163,6 +1196,8 @@ export function createClaudeCodeProviderAdapter(
               permissionMode: resolveClaudeSessionPermissionMode(
                 command.options,
               ),
+              approvedPlanPermissionMode:
+                toClaudePermissionMode(permissionPolicy),
               permissionScope: permissionPolicy.permissionScope,
               permissionEscalation: permissionPolicy.permissionEscalation,
               ...(additionalWorkspaceWriteRootsParams
@@ -1178,6 +1213,8 @@ export function createClaudeCodeProviderAdapter(
                 : {}),
               workflowsEnabled: command.options.workflowsEnabled,
               memoryEnabled: command.options.memoryEnabled,
+              providerSubagentsEnabled:
+                command.options.providerSubagentsEnabled,
               ...(dynamicTools && dynamicTools.length > 0
                 ? { dynamicTools }
                 : {}),
@@ -1214,6 +1251,14 @@ export function createClaudeCodeProviderAdapter(
               ...(command.options?.model
                 ? { model: command.options.model }
                 : {}),
+              ...(command.options?.reasoningLevel
+                ? { reasoningLevel: command.options.reasoningLevel }
+                : {}),
+              workflowsEnabled: command.options.workflowsEnabled,
+              memoryEnabled: command.options.memoryEnabled,
+              providerSubagentsEnabled:
+                command.options.providerSubagentsEnabled,
+              permissionEscalation: command.options.permissionEscalation,
             },
           };
         case "turn/steer":
@@ -1235,6 +1280,17 @@ export function createClaudeCodeProviderAdapter(
                     ),
                   }
                 : {}),
+              ...(command.options?.model
+                ? { model: command.options.model }
+                : {}),
+              ...(command.options?.reasoningLevel
+                ? { reasoningLevel: command.options.reasoningLevel }
+                : {}),
+              workflowsEnabled: command.options.workflowsEnabled,
+              memoryEnabled: command.options.memoryEnabled,
+              providerSubagentsEnabled:
+                command.options.providerSubagentsEnabled,
+              permissionEscalation: command.options.permissionEscalation,
             },
           };
         case "thread/fork": {
@@ -1281,6 +1337,8 @@ export function createClaudeCodeProviderAdapter(
               permissionMode: resolveClaudeSessionPermissionMode(
                 command.options,
               ),
+              approvedPlanPermissionMode:
+                toClaudePermissionMode(permissionPolicy),
               permissionScope: permissionPolicy.permissionScope,
               permissionEscalation: permissionPolicy.permissionEscalation,
               ...(additionalWorkspaceWriteRootsParams
@@ -1296,6 +1354,8 @@ export function createClaudeCodeProviderAdapter(
                 : {}),
               workflowsEnabled: command.options.workflowsEnabled,
               memoryEnabled: command.options.memoryEnabled,
+              providerSubagentsEnabled:
+                command.options.providerSubagentsEnabled,
               ...(dynamicTools && dynamicTools.length > 0
                 ? { dynamicTools }
                 : {}),
@@ -1508,7 +1568,10 @@ export function createClaudeCodeProviderAdapter(
         return {
           kind: "permission_request",
           behavior: "deny",
-          message: "Permission request denied",
+          message:
+            args.request.payload.subject.kind === "plan"
+              ? buildClaudePlanRejectionMessage()
+              : "Permission request denied",
           decisionClassification: "user_reject",
         };
       }

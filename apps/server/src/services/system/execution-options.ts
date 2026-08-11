@@ -26,6 +26,7 @@ import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import { ApiError } from "../../errors.js";
 import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
 import { getHostPermissionCeiling } from "../hosts/permission-ceiling.js";
+import { requireEnvironment } from "../lib/entity-lookup.js";
 import { getSupportedReasoningLevelsForProvider } from "../threads/thread-reasoning-policy.js";
 import { resolveSystemLookupHostId } from "./host-lookup.js";
 import {
@@ -43,6 +44,7 @@ interface BuildModelLoadErrorArgs {
 }
 
 export interface ResolveSystemProviderModelsArgs {
+  cwd?: string;
   hostId: string;
   providerId: string;
 }
@@ -303,6 +305,7 @@ export async function resolveSystemProviderModels(
   }
 
   const result = await loadSystemProviderModels(deps, {
+    ...(args.cwd !== undefined ? { cwd: args.cwd } : {}),
     hostId: args.hostId,
     provider,
   });
@@ -393,6 +396,10 @@ export async function resolveSystemExecutionOptions(
   deps: LoggedWorkSessionDeps,
   query: SystemExecutionOptionsRequest,
 ): Promise<SystemExecutionOptionsResponse> {
+  const cwd =
+    query.environmentId === undefined
+      ? undefined
+      : (requireEnvironment(deps.db, query.environmentId).path ?? undefined);
   const { hostId, hostLookupError, providersPromise } =
     resolveSystemProviderInfosPlan(deps, query);
   const configuredRequestedProvider = query.providerId
@@ -403,6 +410,7 @@ export async function resolveSystemExecutionOptions(
   const earlyModelResultPromise =
     hostId !== null && configuredRequestedProvider
       ? loadSystemProviderModels(deps, {
+          ...(cwd !== undefined ? { cwd } : {}),
           hostId,
           provider: configuredRequestedProvider,
         })
@@ -461,6 +469,7 @@ export async function resolveSystemExecutionOptions(
     earlyModelResultPromise !== null
       ? await earlyModelResultPromise
       : await loadSystemProviderModels(deps, {
+          ...(cwd !== undefined ? { cwd } : {}),
           hostId,
           provider: modelsProvider,
         });
@@ -484,9 +493,11 @@ export async function resolveSystemExecutionOptions(
 async function loadSystemProviderModels(
   deps: LoggedWorkSessionDeps,
   {
+    cwd,
     hostId,
     provider,
   }: {
+    cwd?: string;
     hostId: string;
     provider: ProviderInfo;
   },
@@ -508,6 +519,7 @@ async function loadSystemProviderModels(
         command: {
           type: "provider.list_models",
           providerId: provider.id,
+          ...(cwd !== undefined ? { cwd } : {}),
           ...(customAcpAgent !== undefined
             ? {
                 acpLaunchSpec: normalizeHostDaemonAcpLaunchSpec(customAcpAgent),

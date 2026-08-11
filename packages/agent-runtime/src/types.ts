@@ -273,6 +273,7 @@ export interface UnarchiveThreadArgs {
 export interface ListModelsArgs {
   providerId: string;
   acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+  cwd?: string;
 }
 
 export interface AgentRuntime {
@@ -338,8 +339,8 @@ export interface AgentRuntime {
   /** Whether the runtime currently hosts the thread (turns can run on it). */
   hasThread(threadId: string): boolean;
 
-  /** Thread ids with an active turn. */
-  getActiveThreadIds(): string[];
+  /** Thread ids with an active turn or an accepted turn awaiting its first event. */
+  getLiveThreadIds(): string[];
 
   /**
    * Whether any hosted thread still has an open background task (a workflow or

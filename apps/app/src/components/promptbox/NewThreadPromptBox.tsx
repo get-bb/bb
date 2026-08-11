@@ -172,6 +172,8 @@ export interface NewThreadPromptBoxUIProps {
   promptBoxRef?: Ref<PromptBoxHandle>;
   isSubmitting: boolean;
   disabled: boolean;
+  /** Whether the editor should take passive focus when it mounts. */
+  autoFocus?: boolean;
   /** Active root-composer binding for plugin composer hooks and customizations. */
   pluginComposerHost?: PluginComposerHost | null;
   textEffects?: readonly ComposerTextEffectSource[];
@@ -225,6 +227,7 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
   promptBoxRef: externalPromptBoxRef,
   isSubmitting,
   disabled,
+  autoFocus,
   pluginComposerHost,
   textEffects,
   zenModeStorageKey,
@@ -332,6 +335,7 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
               disabled,
               title: submitTitle,
             }}
+            autoFocus={autoFocus}
             zenMode={{
               layout: "root-compose",
               storageKey: zenModeStorageKey,

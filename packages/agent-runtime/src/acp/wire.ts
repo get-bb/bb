@@ -155,6 +155,15 @@ export const acpPlanUpdateSchema = z
   })
   .passthrough();
 
+export const acpUsageUpdateSchema = z
+  .object({
+    sessionUpdate: z.literal("usage_update"),
+    used: z.number().int().nonnegative(),
+    size: z.number().int().nonnegative(),
+  })
+  .passthrough();
+export type AcpUsageUpdate = z.infer<typeof acpUsageUpdateSchema>;
+
 const acpOtherSessionUpdateSchema = z
   .object({
     sessionUpdate: z.string(),
@@ -166,6 +175,7 @@ export const acpSessionUpdateSchema = z.union([
   acpAgentThoughtChunkUpdateSchema,
   acpToolCallUpdateEventSchema,
   acpPlanUpdateSchema,
+  acpUsageUpdateSchema,
   acpOtherSessionUpdateSchema,
 ]);
 export type AcpSessionUpdate = z.infer<typeof acpSessionUpdateSchema>;

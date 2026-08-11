@@ -1,0 +1,99 @@
+import type { BbPluginApi, PluginCliContext } from "@bb/plugin-sdk";
+import type { ProviderRetryView } from "./contract.js";
+import type { ProviderRetryService } from "./service.js";
+
+function requestedThreadId(
+  argv: string[],
+  context: PluginCliContext,
+): string | null {
+  return (
+    argv.find((value) => !value.startsWith("--")) ?? context.threadId ?? null
+  );
+}
+
+function textView(view: ProviderRetryView): string {
+  const retry =
+    view.retryAtMs === null
+      ? "pending"
+      : `retrying ${new Date(view.retryAtMs).toISOString()}`;
+  return `${view.threadId}\t${view.providerId}\t${retry}`;
+}
+
+export function registerProviderRetryCli(
+  bb: BbPluginApi,
+  service: ProviderRetryService,
+): void {
+  bb.cli.register({
+    name: "provider-retry",
+    summary: "Manage pending automatic provider retries",
+    commands: [
+      {
+        name: "status",
+        summary: "Show pending automatic provider retries",
+        usage: "bb provider-retry status [thread-id] [--json]",
+      },
+      {
+        name: "cancel",
+        summary: "Cancel a pending automatic provider retry",
+        usage: "bb provider-retry cancel <thread-id> [--json]",
+      },
+    ],
+    run(argv, context) {
+      const [command, ...args] = argv;
+      if (command !== "status" && command !== "cancel") {
+        return {
+          exitCode: 2,
+          stderr:
+            "Usage: bb provider-retry <status|cancel> [thread-id] [--json]\n",
+        };
+      }
+
+      const threadId = requestedThreadId(args, context);
+      if (command === "cancel") {
+        if (threadId === null) {
+          return {
+            exitCode: 2,
+            stderr:
+              "A thread id is required: bb provider-retry cancel <thread-id>\n",
+          };
+        }
+        const cancelled = service.cancel(threadId);
+        if (args.includes("--json")) {
+          return {
+            exitCode: cancelled ? 0 : 1,
+            stdout: `${JSON.stringify({ cancelled }, null, 2)}\n`,
+          };
+        }
+        return cancelled
+          ? {
+              exitCode: 0,
+              stdout: `Cancelled provider retry for ${threadId}.\n`,
+            }
+          : {
+              exitCode: 1,
+              stderr: `No pending provider retry exists for ${threadId}.\n`,
+            };
+      }
+
+      const views =
+        threadId === null
+          ? service.list()
+          : [service.status(threadId)].filter(
+              (view): view is ProviderRetryView => view !== null,
+            );
+      if (args.includes("--json")) {
+        return {
+          exitCode: 0,
+          stdout: `${JSON.stringify({ retries: views }, null, 2)}\n`,
+        };
+      }
+      return {
+        exitCode: 0,
+        stdout:
+          views.length === 0
+            ? "No provider retries are pending.\n"
+            : `${views.map(textView).join("\n")}\n`,
+      };
+    },
+  });
+}

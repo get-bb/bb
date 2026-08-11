@@ -54,6 +54,26 @@ const connected = (overrides: Partial<ConnectStatus> = {}) =>
   });
 
 describe("connect settings section", () => {
+  it("uses the plugin page header instead of declaring a second title", () => {
+    expect(app.settingsSections[0]?.title).toBeUndefined();
+  });
+
+  it("uses the local Cloud dashboard supplied by the server", async () => {
+    const dashboardUrl = "http://bb.localhost:42745/dashboard";
+    const slot = renderSlot(
+      app.settingsSections[0]!,
+      {},
+      { rpc: { status: () => status({ dashboardUrl }) } },
+    );
+
+    const link = (await slot.findByRole("link", {
+      name: "Get a connect code",
+    })) as HTMLAnchorElement;
+    expect(link.href).toBe(dashboardUrl);
+    slot.getByText("you.bb.localhost:42745");
+    slot.getByText(/your bb\.localhost:42745 dashboard/);
+  });
+
   it("auto-submits a normalized 4-4 code and applies live paired status", async () => {
     let currentStatus = status();
     const slot = renderSlot(

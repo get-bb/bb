@@ -1,6 +1,8 @@
 import type {
   AppCommandContextKey,
   AppCommandId,
+  AppDefaultKeybinding,
+  AppDefaultKeybindings,
   AppKeybinding,
   AppKeybindings,
   AppShortcut,
@@ -46,6 +48,21 @@ function binding(
     command,
     desktopOnly: options.desktopOnly ?? false,
     shortcut: shortcut(key, modifiers),
+    when: {
+      all: [...(options.all ?? [])],
+      none: [...(options.none ?? [])],
+    },
+  };
+}
+
+function unassignedBinding(
+  command: AppCommandId,
+  options: BindingOptions = {},
+): AppDefaultKeybinding {
+  return {
+    command,
+    desktopOnly: options.desktopOnly ?? false,
+    shortcut: null,
     when: {
       all: [...(options.all ?? [])],
       none: [...(options.none ?? [])],
@@ -99,7 +116,7 @@ const splitWithoutModal = {
   none: ["modalOpen"],
 } as const;
 
-export const DEFAULT_APP_KEYBINDINGS: AppKeybindings = [
+export const DEFAULT_APP_KEYBINDINGS: AppDefaultKeybindings = [
   // Browsers reserve Mod+N before the page receives a key event. Keep the
   // t3code-style alias available in web clients while desktop retains Mod+N.
   binding("thread.new", "o", { mod: true, shift: true }, mainWithoutModal),
@@ -108,6 +125,8 @@ export const DEFAULT_APP_KEYBINDINGS: AppKeybindings = [
     desktopOnly: true,
   }),
   binding("thread.search", "k", { mod: true }, mainWithoutModal),
+  unassignedBinding("thread.rename", mainWithoutModal),
+  unassignedBinding("thread.archive", mainWithoutModal),
   binding("settings.open", ",", { mod: true }, mainWithoutModal),
   binding("sidebar.toggle", "\\", { mod: true }, mainWithoutModal),
   binding("thread.previous", "ArrowUp", { mod: true, shift: true }, mainWithoutModal),

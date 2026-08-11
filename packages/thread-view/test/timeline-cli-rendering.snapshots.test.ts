@@ -870,6 +870,82 @@ describe("timeline CLI rendering snapshots", () => {
     `);
   });
 
+  it("unwraps completed context compaction from a singleton turn summary", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const timeline = renderTimelineFixture({
+      events: [
+        event.turnStarted(),
+        event.contextCompactionStarted(),
+        event.assistantCompleted({
+          itemId: "assistant-after-compaction",
+          text: "Compaction finished.",
+        }),
+        event.threadCompacted(),
+        event.turnCompleted(),
+      ],
+      includeNestedRows: false,
+      projectionOptions: {
+        threadStatus: "idle",
+        turnMessageDetail: "summary",
+      },
+    });
+
+    expect(timeline.turnRows).toHaveLength(0);
+    expect(timeline.text).toContain("Context compacted");
+    expect(timeline.text).toContain("Compaction finished.");
+    expect(timeline.text).not.toContain("Worked for");
+  });
+
+  it("unwraps failed context compaction from a singleton turn summary", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const timeline = renderTimelineFixture({
+      events: [
+        event.turnStarted(),
+        event.contextCompactionStarted(),
+        event.providerError({
+          message: "Provider error",
+          detail: "Nothing to compact",
+        }),
+        event.turnCompleted({ status: "failed" }),
+      ],
+      includeNestedRows: false,
+      projectionOptions: {
+        threadStatus: "error",
+        turnMessageDetail: "summary",
+      },
+    });
+
+    expect(timeline.turnRows).toHaveLength(0);
+    expect(timeline.text).toContain("Context compaction failed");
+    expect(timeline.text).not.toContain("Worked for");
+  });
+
+  it("keeps context compaction grouped when the turn contains other work", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const timeline = renderTimelineFixture({
+      events: [
+        event.turnStarted(),
+        event.contextCompactionStarted(),
+        event.contextCompactionCompleted(),
+        event.commandCompleted({
+          itemId: "command-1",
+          command: "pnpm test",
+          aggregatedOutput: "Tests passed\n",
+          exitCode: 0,
+        }),
+        event.turnCompleted(),
+      ],
+      includeNestedRows: false,
+      projectionOptions: {
+        threadStatus: "idle",
+        turnMessageDetail: "summary",
+      },
+    });
+
+    expect(timeline.turnRows).toHaveLength(1);
+    expect(timeline.text).toContain("Worked for");
+  });
+
   it("keeps a finished-turn summary when work follows an assistant step", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
     const timeline = renderIdleTimeline([

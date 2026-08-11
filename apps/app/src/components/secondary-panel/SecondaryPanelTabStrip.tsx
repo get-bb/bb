@@ -27,6 +27,9 @@ import {
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { Button } from "@bb/shared-ui/button";
+import { COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
+import { Icon } from "@bb/shared-ui/icon";
 import {
   OverflowFade,
   type OverflowFadeTone,
@@ -34,14 +37,20 @@ import {
 import { TabPill } from "@/components/ui/tab-pill";
 import { useDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { MACOS_WINDOW_NO_DRAG_CLASS } from "@/lib/bb-desktop";
+import {
+  MACOS_APP_REGION_NO_DRAG_CLASS,
+  MACOS_WINDOW_NO_DRAG_CLASS,
+} from "@/lib/bb-desktop";
 import type {
   SecondaryPanelFileTab,
   SecondaryPanelTabReorderHandler,
 } from "./secondaryPanelFileTab";
 export type { SecondaryPanelFileTab } from "./secondaryPanelFileTab";
 
-// Slack so sub-pixel scroll offsets don't leave a fade stuck on at a hard edge.
+// Roughly one wide tab, so one click reveals the next tab without overshooting.
+const CHEVRON_SCROLL_STEP_PX = 140;
+
+// Slack so sub-pixel scroll offsets don't leave an overflow cue at a hard edge.
 const EDGE_EPSILON_PX = 1;
 
 export const SECONDARY_PANEL_TAB_STRIP_FADE_TONE: OverflowFadeTone = "sidebar";
@@ -78,8 +87,8 @@ interface SortableFileTabProps {
  *
  * Only the file tabs scroll; the leading Info/Diff controls and trailing
  * new-tab/panel controls stay anchored outside this component. Edge
- * fades appear only on a side that has more tabs, and the active tab is
- * auto-scrolled into view on mount and whenever it changes
+ * fades and scroll buttons appear only on a side that has more tabs, and the
+ * active tab is auto-scrolled into view on mount and whenever it changes
  * (covering pointer, keyboard, and programmatic selection).
  */
 export function SecondaryPanelTabStrip({
@@ -91,6 +100,8 @@ export function SecondaryPanelTabStrip({
   const viewportRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const activeTabRef = useRef<HTMLDivElement>(null);
+  const leftScrollButtonRef = useRef<HTMLButtonElement>(null);
+  const rightScrollButtonRef = useRef<HTMLButtonElement>(null);
   const [overflow, setOverflow] = useState<TabStripOverflowState>(
     INITIAL_OVERFLOW_STATE,
   );
@@ -215,6 +226,33 @@ export function SecondaryPanelTabStrip({
     activeTabElement.scrollIntoView({ inline: "nearest", block: "nearest" });
   }, [activeTabId]);
 
+  // A scroll button can reach its edge while it has keyboard focus. Move focus
+  // before the button becomes an invisible, aria-hidden control.
+  useLayoutEffect(() => {
+    const focusedElement = document.activeElement;
+    const activeTabButton =
+      activeTabRef.current?.querySelector<HTMLButtonElement>("button") ?? null;
+    if (
+      !overflow.canScrollLeft &&
+      focusedElement === leftScrollButtonRef.current
+    ) {
+      (overflow.canScrollRight
+        ? rightScrollButtonRef.current
+        : activeTabButton
+      )?.focus();
+      return;
+    }
+    if (
+      !overflow.canScrollRight &&
+      focusedElement === rightScrollButtonRef.current
+    ) {
+      (overflow.canScrollLeft
+        ? leftScrollButtonRef.current
+        : activeTabButton
+      )?.focus();
+    }
+  }, [overflow.canScrollLeft, overflow.canScrollRight]);
+
   // A plain mouse wheel over the strip should move it sideways. React registers
   // its onWheel listener as passive, so a synthetic handler can't call
   // preventDefault; attach a non-passive native listener instead. Only consume
@@ -263,6 +301,13 @@ export function SecondaryPanelTabStrip({
     };
   }, []);
 
+  const scrollByStep = useCallback((direction: -1 | 1) => {
+    viewportRef.current?.scrollBy({
+      left: direction * CHEVRON_SCROLL_STEP_PX,
+      behavior: "smooth",
+    });
+  }, []);
+
   const handleDragStart = useCallback(
     (event: DragStartEvent) => {
       setDraggingTabId(String(event.active.id));
@@ -302,9 +347,12 @@ export function SecondaryPanelTabStrip({
   );
 
   const noDragClass = usesDesktopChrome ? MACOS_WINDOW_NO_DRAG_CLASS : null;
+  const chevronNoDragClass = usesDesktopChrome
+    ? MACOS_APP_REGION_NO_DRAG_CLASS
+    : null;
   // Memoize the sortable tab tree so the overflow-flag state — which flips every
   // time you reach a scroll edge, i.e. constantly at narrow widths — re-renders
-  // only the edge fades, never the tabs. Without this, each edge
+  // only the edge controls, never the tabs. Without this, each edge
   // crossing reconciles the whole list and re-runs useSortable for every tab,
   // which is what kept narrow-width scrolling stuttery.
   const dndTabs = useMemo(
@@ -361,17 +409,16 @@ export function SecondaryPanelTabStrip({
 
   return (
     // Hugs its tabs (no `flex-1`) and shrinks (`min-w-0`) to scroll them under
-    // the edge fades when they overflow. The New Tab button follows this
+    // the edge controls when they overflow. The New Tab button follows this
     // viewport as an anchored sibling, so it stays visible at the trailing edge
     // while overflowing tabs scroll beneath the fades.
     <div
       data-testid="secondary-panel-tab-strip"
       className="group relative flex min-w-0 items-center"
     >
-      {/* Keep the overflow cue stationary. Overlay scroll buttons used to
-          animate above partially visible tabs, making the tab text and selected
-          fill look clipped while the strip moved. Native wheel, trackpad, and
-          active-tab scrolling already provide the interaction. */}
+      {/* Keep both overflow cues stationary while the tab content moves below
+          them. The buttons use the panel surface as a solid background, so tab
+          text cannot show through a button during a smooth scroll. */}
       <OverflowFade
         placement="left"
         tone={SECONDARY_PANEL_TAB_STRIP_FADE_TONE}
@@ -406,6 +453,20 @@ export function SecondaryPanelTabStrip({
           {dndTabs}
         </div>
       </div>
+      <TabStripScrollButton
+        buttonRef={leftScrollButtonRef}
+        direction="left"
+        canScroll={overflow.canScrollLeft}
+        className={chevronNoDragClass}
+        onClick={() => scrollByStep(-1)}
+      />
+      <TabStripScrollButton
+        buttonRef={rightScrollButtonRef}
+        direction="right"
+        canScroll={overflow.canScrollRight}
+        className={chevronNoDragClass}
+        onClick={() => scrollByStep(1)}
+      />
     </div>
   );
 }
@@ -455,6 +516,49 @@ function SortableFileTab({
     >
       <FileTab tab={tab} activeTreatment={activeTreatment} />
     </div>
+  );
+}
+
+interface TabStripScrollButtonProps {
+  buttonRef: RefObject<HTMLButtonElement | null>;
+  direction: "left" | "right";
+  canScroll: boolean;
+  className: string | null;
+  onClick: () => void;
+}
+
+function TabStripScrollButton({
+  buttonRef,
+  direction,
+  canScroll,
+  className,
+  onClick,
+}: TabStripScrollButtonProps) {
+  const label =
+    direction === "left" ? "Scroll tabs left" : "Scroll tabs right";
+  return (
+    <Button
+      ref={buttonRef}
+      type="button"
+      variant="ghost"
+      size="sm"
+      tabIndex={canScroll ? 0 : -1}
+      aria-hidden={!canScroll}
+      aria-label={label}
+      onClick={onClick}
+      className={cn(
+        "absolute z-20 shrink-0 bg-sidebar text-muted-foreground shadow-none hover:bg-surface-raised-solid hover:text-foreground focus-visible:bg-sidebar",
+        direction === "left" ? "left-0" : "right-0",
+        COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
+        "transition-opacity",
+        canScroll
+          ? "pointer-events-auto opacity-100"
+          : "pointer-events-none opacity-0",
+        className,
+      )}
+    >
+      <Icon name={direction === "left" ? "ChevronLeft" : "ChevronRight"} />
+    </Button>
   );
 }
 

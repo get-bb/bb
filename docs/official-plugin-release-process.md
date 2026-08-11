@@ -15,13 +15,12 @@ until a user installs them.
 
 The official plugins are:
 
-| Directory              | Package name             | Store entry | Plugin id      |
-| ---------------------- | ------------------------ | ----------- | -------------- |
-| `plugins/github`       | `bb-plugin-github`       | `github`    | `github`       |
-| `plugins/docs`         | `bb-plugin-simple-notes` | `docs`      | `simple-notes` |
-| `plugins/memory`       | `bb-plugin-memory`       | `memory`    | `memory`       |
-| `plugins/tasks`        | `bb-plugin-tasks`        | `tasks`     | `tasks`        |
-| `plugins/t3sidebar`    | `bb-plugin-t3sidebar`    | `t3sidebar` | `t3sidebar`    |
+| Directory        | Package name             | Store entry | Plugin id      |
+| ---------------- | ------------------------ | ----------- | -------------- |
+| `plugins/github` | `bb-plugin-github`       | `github`    | `github`       |
+| `plugins/docs`   | `bb-plugin-simple-notes` | `docs`      | `simple-notes` |
+| `plugins/memory` | `bb-plugin-memory`       | `memory`    | `memory`       |
+| `plugins/tasks`  | `bb-plugin-tasks`        | `tasks`     | `tasks`        |
 
 ## Releasing a change
 

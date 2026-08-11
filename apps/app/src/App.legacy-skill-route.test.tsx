@@ -3,16 +3,27 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
-import { ExtensionsLandingRedirect, LegacySkillDetailRedirect } from "./App";
+import {
+  ExtensionsLandingRedirect,
+  LegacyPluginBrowseRedirect,
+  LegacySkillDetailRedirect,
+} from "./App";
 import {
   LEGACY_TOOLS_SKILL_DETAIL_ROUTE_PATH,
+  TOOLS_PLUGIN_BROWSE_ROUTE_PATH,
   TOOLS_PLUGINS_ROUTE_PATH,
   TOOLS_ROUTE_PATH,
   TOOLS_SKILL_DETAIL_ROUTE_PATH,
 } from "./lib/route-paths";
 
 function LocationPath() {
-  return <span>{useLocation().pathname}</span>;
+  const location = useLocation();
+  return (
+    <span>
+      {location.pathname}
+      {location.search}
+    </span>
+  );
 }
 
 describe("LegacySkillDetailRedirect", () => {
@@ -48,6 +59,26 @@ describe("ExtensionsLandingRedirect", () => {
           <Route
             path={TOOLS_ROUTE_PATH}
             element={<ExtensionsLandingRedirect />}
+          />
+          <Route path={TOOLS_PLUGINS_ROUTE_PATH} element={<LocationPath />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText(TOOLS_PLUGINS_ROUTE_PATH)).toBeTruthy();
+  });
+});
+
+describe("LegacyPluginBrowseRedirect", () => {
+  afterEach(cleanup);
+
+  it("redirects the old Browse path to the canonical bare Plugins route", () => {
+    render(
+      <MemoryRouter initialEntries={[TOOLS_PLUGIN_BROWSE_ROUTE_PATH]}>
+        <Routes>
+          <Route
+            path={TOOLS_PLUGIN_BROWSE_ROUTE_PATH}
+            element={<LegacyPluginBrowseRedirect />}
           />
           <Route path={TOOLS_PLUGINS_ROUTE_PATH} element={<LocationPath />} />
         </Routes>

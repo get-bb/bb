@@ -1,11 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useAtomValue, useSetAtom } from "jotai";
 import { useEnvironmentWorkStatus } from "../../../hooks/queries/environment-queries";
-import {
-  pendingGitDiffCommitShaAtom,
-  pendingGitDiffScrollPathAtom,
-  selectedMergeBaseBranchAtom,
-} from "../threadSecondaryPanelAtoms";
 import { type GitDiffSelectionOption } from "../ThreadSecondaryPanel";
 import {
   ALL_GIT_DIFF_SELECTION,
@@ -18,16 +12,19 @@ import {
 interface UseGitDiffPanelStateParams {
   environmentId?: string;
   isDiffPanelActive: boolean;
-  defaultMergeBaseBranch?: string;
+  requestedMergeBaseBranch?: string;
+  onClearPendingGitDiffIntent?: () => void;
+  pendingGitDiffCommitSha?: string | null;
+  pendingGitDiffScrollPath?: string | null;
 }
 
 /**
- * Owns the diff tab's *target selection* — the merge-base branch and the chosen
- * selection (all changes / committed changes / uncommitted changes / a specific
- * commit) — and the derived {@link buildGitDiffTarget} that the TOC + patch
- * fetches key on. The diff body ({@link GitDiffTabContent}) and the per-file
- * cards do all diff fetching, parsing, virtualization, and collapse state
- * themselves; this hook holds none of that. It reacts to the info-tab /
+ * Owns the diff tab's *target selection* — the requested merge-base branch and
+ * the chosen selection (all changes / committed changes / uncommitted changes /
+ * a specific commit) — and the derived {@link buildGitDiffTarget} that the TOC +
+ * patch fetches key on. The diff body ({@link GitDiffTabContent}) and the
+ * per-file cards do all diff fetching, parsing, virtualization, and collapse
+ * state themselves; this hook holds none of that. It reacts to the info-tab /
  * prompt-banner intents (`pendingGitDiffCommitSha` to scope to a commit,
  * `pendingGitDiffScrollPath` to reset the diff to all-changes so the opened file
  * is in the slice) and resets a stale selection when the workspace's commit list
@@ -36,30 +33,26 @@ interface UseGitDiffPanelStateParams {
 export function useGitDiffPanelState({
   environmentId,
   isDiffPanelActive,
-  defaultMergeBaseBranch,
+  requestedMergeBaseBranch,
+  onClearPendingGitDiffIntent,
+  pendingGitDiffCommitSha,
+  pendingGitDiffScrollPath,
 }: UseGitDiffPanelStateParams) {
-  const selectedMergeBaseBranch = useAtomValue(selectedMergeBaseBranchAtom);
-  const pendingGitDiffScrollPath = useAtomValue(pendingGitDiffScrollPathAtom);
-  const setPendingGitDiffScrollPath = useSetAtom(pendingGitDiffScrollPathAtom);
-  const pendingGitDiffCommitSha = useAtomValue(pendingGitDiffCommitShaAtom);
-  const setPendingGitDiffCommitSha = useSetAtom(pendingGitDiffCommitShaAtom);
   const [selectedGitDiffSelection, setSelectedGitDiffSelection] =
     useState<GitDiffSelectionValue>(null);
 
-  const effectiveMergeBaseBranch =
-    selectedMergeBaseBranch ?? defaultMergeBaseBranch;
   const gitDiffTarget = useMemo(
     () =>
-      buildGitDiffTarget(selectedGitDiffSelection, effectiveMergeBaseBranch),
-    [effectiveMergeBaseBranch, selectedGitDiffSelection],
+      buildGitDiffTarget(selectedGitDiffSelection, requestedMergeBaseBranch),
+    [requestedMergeBaseBranch, selectedGitDiffSelection],
   );
   const { data: gitDiffWorkspaceStatus } = useEnvironmentWorkStatus(
     environmentId ?? "",
-    effectiveMergeBaseBranch,
+    requestedMergeBaseBranch,
     {
       enabled:
         Boolean(environmentId) &&
-        Boolean(effectiveMergeBaseBranch) &&
+        Boolean(requestedMergeBaseBranch) &&
         isDiffPanelActive,
     },
   );
@@ -74,20 +67,11 @@ export function useGitDiffPanelState({
     setSelectedGitDiffSelection(null);
   }, [environmentId]);
 
-  useEffect(() => {
-    setPendingGitDiffScrollPath(null);
-  }, [environmentId, setPendingGitDiffScrollPath]);
-
-  useEffect(() => {
-    setPendingGitDiffCommitSha(null);
-  }, [environmentId, setPendingGitDiffCommitSha]);
-
   // --- Reset the diff to all-changes when an open-file intent arrives
   // (openDiffFile) so the opened file is in the slice. The scroll consumer
   // (DiffFilesPanel) clears `pendingGitDiffScrollPath` once it scrolls the file
-  // into view; that clear is also what lets re-opening the same path re-fire
-  // this effect — jotai primitive atoms bail on Object.is, so a repeat write of
-  // an uncleared path would be a no-op. ---
+  // into view. Clearing the intent also lets re-opening the same path re-fire
+  // this effect. ---
 
   useEffect(() => {
     if (pendingGitDiffScrollPath) {
@@ -100,9 +84,9 @@ export function useGitDiffPanelState({
   useEffect(() => {
     if (pendingGitDiffCommitSha) {
       setSelectedGitDiffSelection(pendingGitDiffCommitSha);
-      setPendingGitDiffCommitSha(null);
+      onClearPendingGitDiffIntent?.();
     }
-  }, [pendingGitDiffCommitSha, setPendingGitDiffCommitSha]);
+  }, [onClearPendingGitDiffIntent, pendingGitDiffCommitSha]);
 
   const hasUncommittedChanges =
     (workspaceStatus?.workingTree.files.length ?? 0) > 0;

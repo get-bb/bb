@@ -110,19 +110,15 @@ The manifest is `package.json`:
   `builtWith: { bbVersion, pluginSdkVersion }`. Managed installs reject
   artifacts whose `pluginId`/`pluginVersion` disagree with the package
   manifest, or whose SDK major does not match the host.
-- The plugin id is the package name minus the `bb-plugin-` prefix
-  (`bb-plugin-hello` → `hello`); it namespaces routes, storage, settings,
-  and CLI commands. Ids reserved by builtins (`automations`, `connect`,
-  `custom-instructions`, `inline-vis`, `secrets`) cannot be
-  installed from a non-`builtin:` source — use `builtin:<name>` instead.
+- Default to `bb-plugin-hello` for the package name. Scoped names such as
+  `@acme/bb-plugin-hello` are also supported. The plugin id is the final
+  package-name component minus the `bb-plugin-` prefix, so both forms use
+  `hello`; it namespaces routes, storage, settings, and CLI commands. Builtin
+  ids such as
+  `automations`, `connect`, `custom-instructions`, `inline-vis`, and `secrets`
+  cannot use a non-`builtin:` source — use `builtin:<name>` instead.
 
-The scaffold ships the full API as bundled type declarations in `types/`
-(`bb-plugin-sdk.d.ts`, plus `bb-plugin-sdk-app.d.ts` for `--app`); its
-`tsconfig.json` maps `@bb/plugin-sdk` to them, so `npm install && npx tsc
---noEmit` typechecks anywhere — no bb checkout required. Those `.d.ts` files
-are the authoritative, exhaustive surface: read them (or the source at
-<https://github.com/get-bb/bb>, cloned) when you need an exact signature or
-a symbol this skill doesn't cover. Backend API imports normally stay type-only;
+Backend API imports normally stay type-only;
 the root runtime exports are `defineRpcContract`, supplied by BB for shared
 schema contracts, and the numeric `PLUGIN_CLI_OUTPUT_MAX_BYTES` ceiling:
 `import { defineRpcContract, type BbPluginApi } from
@@ -133,6 +129,27 @@ On-disk state per plugin: `<dataDir>/plugins/<id>/data.db` (its SQLite),
 `secrets/` (secret settings + HTTP token), `logs/plugin.log` (JSONL,
 rotated at 5MB). Settings edits never auto-reload — `bb plugin reload <id>`
 after configuring.
+
+## Looking up the exact API
+
+This skill is a guide, not the contract. For an exact signature or a symbol it
+does not cover:
+
+1. **`bb plugin types`**, run in the plugin directory (or given its path),
+   rewrites that plugin's `types/*.d.ts` from the running bb — no server
+   needed. The scaffold seeds them once, so a cloned or older plugin can be
+   thousands of lines behind. `--check` reports staleness without writing;
+   `bb plugin build` and `bb plugin dev` refresh them too.
+2. **Read `types/bb-plugin-sdk.d.ts`** (`-app.d.ts` for frontend symbols) —
+   the authoritative surface, ~13,000 lines of readable declarations with doc
+   comments, and what the scaffold `tsconfig.json` maps `@bb/plugin-sdk` to.
+3. **`git clone --depth 1 https://github.com/get-bb/bb`** for host behavior or
+   a reference implementation: `packages/plugin-sdk/src/`,
+   `apps/server/src/services/plugins/`, `plugins/`.
+
+Never answer an API question from a built bundle — `dist/*.js` and the bb app's
+own JavaScript are minified. If you are grepping minified JavaScript, go back
+to step 1.
 
 ## Distributing a plugin
 
@@ -276,6 +293,31 @@ portability.
 that need the singleton personal project use
 `bb.sdk.projects.list({ includePersonal: true })`.
 
+**Area map.** Every area below is reachable from `bb.sdk`. This lists the
+methods, not their arguments — read `types/bb-plugin-sdk.d.ts` for exact
+signatures.
+
+| Area | Methods |
+| --- | --- |
+| `threads` | `list` `get` `search` `spawn` `fork` `send` `update` `delete` `stop` `compact` `wait` `open` `output` `timeline` `conversationOutline` `promptHistory` `archive` `archiveAll` `unarchive` `pin` `unpin` `reorderPinned` `markRead` `markUnread` `childSummary` `paneAction` `timelineTurnSummaryDetails` `storageFiles` `storagePaths` `cancelPlan` `clearGoal` `continueAfterRateLimit` `rateLimitRecovery` `defaultExecutionOptions`; sub-areas `events` (`list` `wait`), `interactions` (`get` `list` `cancel` `resolve` `respond`), `queuedMessages` (`create` `list` `update` `delete` `send` `reorder` `setGroupBoundary`), `tabs` (`get` `update`) |
+| `threadSections` | `list` `create` `update` `delete` |
+| `projects` | `list` `get` `create` `update` `delete` `reorder` `paths` `files` `fileContent` `branches` `commands` `defaultExecutionOptions` `promptHistory`; sub-areas `attachments` (`upload` `read` `copy`), `sources` (`add` `update` `delete`) |
+| `environments` | `get` `update` `status` `paths` `commit` `archiveThreads` `diff` `diffFile` `diffFiles` `diffBranches` `diffPatch` `pullRequest` `markPullRequestDraft` `markPullRequestReady` `mergePullRequest` `squashMerge` |
+| `hosts` | `list` `get` `update` `delete` `directory` `pathsExist` `pickFolder` `cloneDefaultPath` `createJoinCode` `retryUpdate` `providerCliStatus` `installProviderCli` |
+| `files` | `read` `write` `list` `listPaths` `mkdir` `move` `remove` `createPreview` |
+| `terminals` | `list` `create` `get` `input` `output` `resize` `rename` `restart` `close` |
+| `providers` | `list` `models` |
+| `skills` | `list` `listFiles` `getContent` `update` `remove`; sub-area `registry` (`search` `get` `detail` `install` `repositoryStars`) |
+| `plugins` | `list` `install` `remove` `enable` `disable` `reload` `token` `callRpc` `getSource` `getSettings` `updateSettings` `checkUpdates` `listUpdateResults` `applyUpdate`; sub-area `catalog` (`search` `status` `install`) |
+| `theme` | `get` `catalog` `set` |
+| `status` | `get` |
+| `system` | `version` `config` `reloadConfig` `attention` `usageLimits` `executionOptions` `transcribeVoice` `updateGeneralSettings` `updateKeyboardSettings` `updateExperiments` `cliSkillsStatus` `installCliSkills` `onboardingAgents` `onboardingRepos` `onboardingEvent` |
+| `guide` | `render` (the `bb guide` text; local, no request) |
+
+Prefer your own `bb.settings` and `bb.storage` over `sdk.system` and
+`sdk.plugins` for your plugin's own configuration. The `system` and `plugins`
+areas write app-wide state that the user owns.
+
 ```ts
 const thread = await bb.sdk.threads.spawn({
   projectId,
@@ -291,6 +333,23 @@ inputs) — never both. Attribution is auto-filled: `origin: "plugin"` and
 `originPluginId: <your id>` unless you set them. `bb.sdk.threads.send({
 threadId, mode: "auto", input: [...] })` starts a turn on an idle thread or
 queues/steers a running one.
+
+Read and edit existing threads with the same area — you do not need a
+sidebar panel or a spawned thread to reach them:
+
+```ts
+const { threads } = await bb.sdk.threads.list({ projectId, limit: 50 });
+const thread = await bb.sdk.threads.get({ threadId });
+const timeline = await bb.sdk.threads.timeline({ threadId });
+await bb.sdk.threads.update({ threadId, title: "Fix the flaky test" });
+```
+
+`threads.list` filters on `projectId`, `parentThreadId`, `sourceThreadId`,
+`sectionId`, `originKind`, `originPluginId`, `archived`, `unsectioned`,
+`hasParent`, and `includeHidden`, and it pages with `limit` and `offset`.
+`threads.update` writes `title`, `sectionId`, `parentThreadId`, `model`,
+`reasoningLevel`, and `visibility`. Use `threads.timeline` (or
+`threads.output` for the last assistant text) to read a thread's messages.
 
 Use `visibility: "hidden"` for background workers. Hidden threads stay
 out of sidebar organization and do not contribute unread/pending favicon
@@ -387,6 +446,13 @@ and counted in the plugin's handler stats (`bb plugin list`).
 
 Lifecycle events are broadcast to all loaded plugins regardless of sidebar
 visibility.
+
+`thread.created` fires on row creation, so the first user message is not
+always in the timeline yet. To react to a thread's content, listen on
+`thread.active` or `thread.idle`, then read the messages with
+`bb.sdk.threads.timeline`. Because handlers are fire-and-forget, work you do
+in a handler — including `bb.sdk.threads.update({ threadId, title })` —
+cannot delay or interrupt the thread's turn.
 
 ### bb.http — HTTP routes
 
@@ -550,9 +616,10 @@ Agents discover plugin commands through the server-generated
 The host rejects a larger result atomically as `plugin_cli_output_too_large`;
 it never clips it. Page growing collections, cap verbose fields, and use
 file/streaming commands for large content. Caveat: under the workspace
-sandbox (Accept Edits / Approve for me) some provider sandboxes block
-loopback network for sandboxed commands, so `bb` CLI calls (including
-plugin commands) may need escalation approval or a Full Access thread.
+sandbox (Accept Edits / Approve for me), Claude's macOS sandbox permits
+loopback, so `bb` CLI calls (including plugin commands) work sandboxed;
+Linux and other provider sandboxes may still block loopback, in which case
+those calls need escalation approval.
 
 **Multi-machine rule: `run` executes on the server, so a path argument names
 a file on the INVOKING machine, not on `run`'s filesystem.** Never open a
@@ -664,7 +731,9 @@ truncated to 4096 characters.
 
 Resolution happens for `thread.start` and `turn.submit`. A selected tool set
 takes effect only when the provider session is next started/resumed; BB never
-hot-mutates a running provider session. Instructions apply to the next turn.
+hot-mutates a running provider session. Instructions follow the same rule: a
+live provider session keeps the instructions it was constructed with, and
+changed instructions apply when the session is next constructed.
 Skill catalog changes follow the daemon's established runtime policy: a busy
 environment keeps its current staged catalog until a safe relaunch. Side chats
 evaluate `configure` with `sideChat: true`; returned tool, skill, and dynamic
@@ -872,8 +941,8 @@ interface PluginThreadListProps {
   activeThreadId: string | null;
   activeProjectId: string | null;
   isCompactViewport: boolean;
-  /** Closes the mobile drawer; no-op on desktop. Always call it after opening
-      a thread. */
+  /** Closes the mobile drawer and clears the host search field. Always call it
+      after opening a thread, or the sidebar stays in search mode. */
   onNavigate: () => void;
   /** The host search field's text; "" when the field is closed. The host owns
       that field — filter by this rather than shipping a second one. */
@@ -1559,6 +1628,8 @@ Remaining reference examples in `examples/plugins/`:
   `experimental_NewThreadComposer`, plus a thin index backend (kv layout
   state, background service + realtime), pure row projection, and a
   bare-letter keymap that coexists with a dozen live composers.
+- `t3sidebar` — an inbox-style replacement for the sidebar thread list, with
+  header chips for child threads and plugin-owned settled and snoozed state.
 
 ## Gotchas
 
@@ -1583,11 +1654,12 @@ Remaining reference examples in `examples/plugins/`:
 - CLI `run(argv)` argv excludes the command name; core bb command names
   are reserved; workspace-sandboxed agent threads (Accept Edits / Approve
   for me) may fail to reach the bb CLI when the provider sandbox blocks
-  loopback network.
+  loopback network (Claude's macOS sandbox permits it; Linux and other
+  providers may not).
 - Mention `search` is 2s-time-boxed; mention `resolve` runs at send time
   and a throw blocks the send.
-- Agent tool changes apply on the next session start, not mid-session;
-  cross-plugin tool-name collisions drop the later registration.
+- Agent tool and instruction changes apply on the next session start, not
+  mid-session; cross-plugin tool-name collisions drop the later registration.
 - RPC results must be strict JSON values and pass their output schema;
   realtime payloads must survive JSON.stringify.
 - Handler stats shown by `bb plugin list` persist across reloads (reset on
@@ -1600,3 +1672,6 @@ Remaining reference examples in `examples/plugins/`:
   `defineRpcContract` plus `PLUGIN_CLI_OUTPUT_MAX_BYTES`; validator imports are
   plugin dependencies. The
   scaffold tsconfig typechecks both `server.ts` and `app.tsx`.
+- `types/*.d.ts` is a per-plugin copy, not a live view of the SDK: run
+  `bb plugin types` before trusting it, and never fall back to a minified
+  `dist/` bundle — see "Looking up the exact API".

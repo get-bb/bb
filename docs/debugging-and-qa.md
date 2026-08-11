@@ -11,11 +11,11 @@
 
 Use `scripts/bb-dev-app` when validating changes in the desktop dev app or helping QA from this checkout:
 
-- `scripts/bb-dev-app status` prints the active branch, dev URLs, data dir, and logs.
+- `pnpm dev:status` runs `scripts/bb-dev-app status` to print the active branch, dev URLs, data dir, and logs.
 - `scripts/bb-dev-app current` restarts the dev server on the current branch.
 - `scripts/bb-dev-app main` fetches `origin/main`, fast-forwards `main`, and launches the dev server from this checkout.
 - `scripts/bb-dev-app branch <branch>` switches to a local branch, or creates it from `origin/<branch>`, then launches the dev server.
-- `scripts/bb-dev-app stop` stops the launcher-managed dev server and desktop.
+- `pnpm dev:stop` runs `scripts/bb-dev-app stop` to stop the launcher-managed dev server and desktop.
 - `scripts/bb-dev-app logs dev` and `scripts/bb-dev-app logs desktop` follow logs.
 
 By default the launcher starts only the dev server (web frontend, server, host daemon) and prints the URL without opening a browser. Pass `--open` to open the browser after startup. Pass `--desktop` (e.g. `scripts/bb-dev-app current --desktop`) to also launch the Electron desktop shell — only do this when the user is testing a desktop-only change.
@@ -30,3 +30,43 @@ Test agents with:
 eval "$(scripts/bb-dev-app env)"
 pnpm bb:dev thread spawn --project proj_personal --provider codex --permission-mode accept-edits --title "Smoke test" --prompt "Reply only with ok." --json
 ```
+
+## Performance Fixture Database
+
+Use `pnpm seed:perf` to fill a dev database with a large, realistic fixture:
+many projects, ~1,200 threads, and ~400k event rows with production-like
+payloads. Use it to reproduce performance problems that only appear at scale.
+
+- Start the dev app once first (`scripts/bb-dev-app current`), then stop it and
+  seed. The fixture then attaches to the real local host, so agents still run.
+- By default the command seeds this checkout's dev data dir. Pass
+  `--data-dir <path>` for another target. The command refuses to touch `~/.bb`.
+- Scale flags: `--projects`, `--threads`, `--events`, `--seed`. `--reset`
+  deletes the database file first. Without `--reset` the fixture appends.
+- Example: `pnpm seed:perf -- --reset --events 400000`.
+
+## Local Cloud
+
+Run the Cloud dashboard and Connect worker against one local D1 database:
+
+```bash
+pnpm cloud:dev
+```
+
+The command applies migrations and prints the dashboard URL. Create a local
+email/password account, claim a handle, create a pairing code, and run the
+displayed `bb connect` command against a bb started with `pnpm dev`. The same
+worktree-specific local origin serves the dashboard at `bb.localhost` and
+routes `<handle>.bb.localhost` through the Connect worker. Email/password auth
+is enabled only for this loopback workflow; production remains GitHub-only.
+`pnpm dev` automatically sets `BB_DEV_CONNECT_BASE_URL` to that worktree's
+local Cloud origin. While the bb is unpaired, Settings → Plugins → Connect
+therefore opens the local dashboard and a pasted code redeems locally. An
+explicit `bb connect --server ...` or `--base-url ...` still wins, so the dev bb
+can still pair with getbb.app.
+Local machine enrollment follows the same origin: local `http:` server URLs
+produce `ws:` machine tunnels and `http:` share URLs, while non-local machine
+enrollment remains HTTPS-only.
+
+Ctrl-C stops the local services. Local D1 state is kept under
+`.wrangler/cloud-dev`.

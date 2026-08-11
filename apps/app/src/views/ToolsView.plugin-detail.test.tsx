@@ -124,9 +124,14 @@ describe("PluginDetail official catalog lifecycle", () => {
     expect(screen.getByRole("heading", { name: "GitHub" })).toBeTruthy();
     expect(screen.getByText("BB Official")).toBeTruthy();
     expect(screen.getByText("Developer tools")).toBeTruthy();
-    expect(
-      screen.getByText("Browse GitHub issues and pull requests in BB."),
-    ).toBeTruthy();
+    const description = screen.getByText(
+      "Browse GitHub issues and pull requests in BB.",
+    );
+    expect(description.className).not.toContain("max-w-prose");
+    expect(description.className).toContain("max-w-none");
+    expect(description.className).toContain("text-sm");
+    expect(description.className).toContain("leading-relaxed");
+    expect(description.className).toContain("text-muted-foreground");
     expect(screen.queryByText("Capabilities")).toBeNull();
     expect(container.querySelector('[data-icon="Github"]')).not.toBeNull();
 

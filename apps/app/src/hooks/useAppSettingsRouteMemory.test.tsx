@@ -68,7 +68,7 @@ describe("useAppSettingsRouteMemory", () => {
     );
   });
 
-  it("keeps a Tools sub-route while Back to app returns to core app context", () => {
+  it("resets Extensions after Back to app returns to core app context", () => {
     render(
       <MemoryRouter
         initialEntries={[
@@ -93,15 +93,7 @@ describe("useAppSettingsRouteMemory", () => {
     );
 
     fireEvent.click(screen.getByRole("link", { name: "Tools" }));
-    expect(screen.getByTestId("location").textContent).toBe(
-      "/tools/plugins/ui-patterns?tab=settings#source",
-    );
-
-    fireEvent.click(screen.getByRole("link", { name: "Settings" }));
-    fireEvent.click(screen.getByRole("link", { name: "App" }));
-    expect(screen.getByTestId("location").textContent).toBe(
-      "/tools/plugins/ui-patterns?tab=settings#source",
-    );
+    expect(screen.getByTestId("location").textContent).toBe("/tools/plugins");
   });
 
   it.each([
@@ -120,9 +112,7 @@ describe("useAppSettingsRouteMemory", () => {
       );
 
       fireEvent.click(screen.getByRole("link", { name: "Tools" }));
-      expect(screen.getByTestId("location").textContent).toBe(
-        "/tools/plugins",
-      );
+      expect(screen.getByTestId("location").textContent).toBe("/tools/plugins");
     },
   );
 });

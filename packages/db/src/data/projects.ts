@@ -106,6 +106,77 @@ function getPublicProjectForMutation(
   );
 }
 
+function getPublicProjectWithLocalPathSource(
+  db: DbQueryConnection,
+  source: CreateProjectLocalPathSourceInput,
+) {
+  return (
+    db
+      .select({ project: projects, source: projectSources })
+      .from(projects)
+      .innerJoin(projectSources, eq(projectSources.projectId, projects.id))
+      .where(
+        and(
+          publicProjectFilter(),
+          eq(projectSources.type, source.type),
+          eq(projectSources.hostId, source.hostId),
+          eq(projectSources.path, source.path),
+        ),
+      )
+      .orderBy(asc(projects.sortKey), asc(projects.id))
+      .limit(1)
+      .get() ?? null
+  );
+}
+
+export function getPublicProjectByLocalPathSource(
+  db: DbQueryConnection,
+  source: CreateProjectLocalPathSourceInput,
+): ProjectRow | null {
+  return getPublicProjectWithLocalPathSource(db, source)?.project ?? null;
+}
+
+function insertProject(tx: DbTransaction, input: CreateProjectInput) {
+  const now = Date.now();
+  const projectId = createProjectId();
+  const sourceId = createProjectSourceId();
+  const lastProject = getLastPublicProject(tx);
+  const sortKey = lastProject
+    ? createOrderKeyAfter({ previousKey: lastProject.sortKey })
+    : createOrderKeyBetween({ previousKey: null, nextKey: null });
+  const project = tx
+    .insert(projects)
+    .values({
+      id: projectId,
+      name: input.name,
+      sortKey,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .returning()
+    .get();
+  const source = tx
+    .insert(projectSources)
+    .values({
+      id: sourceId,
+      projectId,
+      type: input.source.type,
+      hostId: input.source.hostId,
+      path: input.source.path,
+      isDefault: true,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .returning()
+    .get();
+  return { project, source };
+}
+
+function notifyProjectCreated(notifier: DbNotifier, projectId: string): void {
+  notifier.notifyProject(projectId, ["project-created"]);
+  notifier.notifyProject(projectId, ["project-sources-changed"]);
+}
+
 function resolveProjectNeighbor(
   db: DbQueryConnection,
   args: ResolveProjectNeighborArgs,
@@ -125,45 +196,30 @@ export function createProject(
   notifier: DbNotifier,
   input: CreateProjectInput,
 ) {
-  const now = Date.now();
-  const projectId = createProjectId();
-  const sourceId = createProjectSourceId();
+  const { project, source } = db.transaction((tx) => insertProject(tx, input));
+  notifyProjectCreated(notifier, project.id);
+  return { project, source: toProjectSource(source) };
+}
 
-  const { project, source } = db.transaction((tx) => {
-    const lastProject = getLastPublicProject(tx);
-    const sortKey = lastProject
-      ? createOrderKeyAfter({ previousKey: lastProject.sortKey })
-      : createOrderKeyBetween({ previousKey: null, nextKey: null });
-    const p = tx
-      .insert(projects)
-      .values({
-        id: projectId,
-        name: input.name,
-        sortKey,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .returning()
-      .get();
-    const s = tx
-      .insert(projectSources)
-      .values({
-        id: sourceId,
-        projectId,
-        type: input.source.type,
-        hostId: input.source.hostId,
-        path: input.source.path,
-        isDefault: true,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .returning()
-      .get();
-    return { project: p, source: s };
-  });
+export function findOrCreateProjectByLocalPathSource(
+  db: DbConnection,
+  notifier: DbNotifier,
+  input: CreateProjectInput,
+) {
+  const { created, project, source } = db.transaction(
+    (tx) => {
+      const existing = getPublicProjectWithLocalPathSource(tx, input.source);
+      if (existing) {
+        return { created: false, ...existing };
+      }
+      return { created: true, ...insertProject(tx, input) };
+    },
+    { behavior: "immediate" },
+  );
 
-  notifier.notifyProject(projectId, ["project-created"]);
-  notifier.notifyProject(projectId, ["project-sources-changed"]);
+  if (created) {
+    notifyProjectCreated(notifier, project.id);
+  }
   return { project, source: toProjectSource(source) };
 }
 

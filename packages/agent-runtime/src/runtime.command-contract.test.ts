@@ -478,6 +478,11 @@ rl.on("line", (line) => {
     return;
   }
 
+  if (message.method === "account/rateLimits/read") {
+    send({ jsonrpc: "2.0", id: message.id, result: { rateLimits: {} } });
+    return;
+  }
+
   if (message.method === "thread/start") {
     send({
       jsonrpc: "2.0",
@@ -570,6 +575,10 @@ rl.on("line", (line) => {
   const message = JSON.parse(line);
   if (message.method === "initialize") {
     send({ jsonrpc: "2.0", id: message.id, result: {} });
+    return;
+  }
+  if (message.method === "account/rateLimits/read") {
+    send({ jsonrpc: "2.0", id: message.id, result: { rateLimits: {} } });
     return;
   }
   if (message.method === "thread/start") {
@@ -794,6 +803,10 @@ rl.on("line", (line) => {
     send({ jsonrpc: "2.0", id: message.id, result: {} });
     return;
   }
+  if (message.method === "account/rateLimits/read") {
+    send({ jsonrpc: "2.0", id: message.id, result: { rateLimits: {} } });
+    return;
+  }
   if (message.method === "thread/start") {
     send({
       jsonrpc: "2.0",
@@ -990,6 +1003,129 @@ rl.on("line", (line) => {
       providerThreadId: "provider-explicit",
     });
     await runtime.shutdown();
+  });
+
+  function createArchivedSessionRuntime(extraArgs: string[] = []) {
+    return createAgentRuntimeWithAdapters({
+      workspacePath: tmpDir,
+      onEvent: () => {},
+      onToolCall: async () => ({
+        contentItems: [{ type: "inputText", text: "ok" }],
+        success: true,
+      }),
+      adapterFactory: () => {
+        const adapter = createFakeAdapter(scriptPath);
+        return {
+          ...adapter,
+          id: "codex",
+          process: {
+            ...adapter.process,
+            args: [...adapter.process.args, "--archived-session", ...extraArgs],
+          },
+        };
+      },
+    });
+  }
+
+  it("unarchives Codex sessions before retrying a turn", async () => {
+    const runtime = createArchivedSessionRuntime();
+
+    try {
+      await runtime.startThread({
+        environmentId: "env-1",
+        projectId: "p1",
+        providerId: "codex",
+        threadId: "t-archived",
+        options: fullRuntimeOptions,
+      });
+      await runtime.runTurn({
+        clientRequestId: "creq_222222224u",
+        input: [promptTextInput({ text: "continue" })],
+        options: fullRuntimeOptions,
+        threadId: "t-archived",
+      });
+    } finally {
+      await runtime.shutdown();
+    }
+  });
+
+  // The fake keys its archived set on the exact provider thread id it was
+  // asked to unarchive, so a call that succeeds proves bb unarchived the
+  // right session before it retried.
+  it("unarchives Codex sessions before retrying a resume", async () => {
+    const runtime = createArchivedSessionRuntime();
+
+    try {
+      await runtime.resumeThread({
+        environmentId: "env-1",
+        projectId: "p1",
+        providerId: "codex",
+        providerThreadId: "prov-archived-resume",
+        threadId: "t-archived-resume",
+        options: fullRuntimeOptions,
+      });
+    } finally {
+      await runtime.shutdown();
+    }
+  });
+
+  it("unarchives an archived Codex source session before retrying a fork", async () => {
+    const runtime = createArchivedSessionRuntime();
+
+    try {
+      await runtime.startThread({
+        environmentId: "env-1",
+        fork: { sourceProviderThreadId: "prov-archived-source" },
+        projectId: "p1",
+        providerId: "codex",
+        threadId: "t-archived-fork",
+        options: fullRuntimeOptions,
+      });
+    } finally {
+      await runtime.shutdown();
+    }
+  });
+
+  it("reports the archived-session error when unarchiving fails", async () => {
+    const runtime = createArchivedSessionRuntime(["--unarchive-fails"]);
+
+    try {
+      await expect(
+        runtime.resumeThread({
+          environmentId: "env-1",
+          projectId: "p1",
+          providerId: "codex",
+          providerThreadId: "prov-unarchive-fails",
+          threadId: "t-unarchive-fails",
+          options: fullRuntimeOptions,
+        }),
+      ).rejects.toThrow(/is archived/);
+    } finally {
+      await runtime.shutdown();
+    }
+  });
+
+  // A provider that dies while bb recovers cannot be unarchived or retried.
+  // The caller must still get the archived-session error, because it names the
+  // session and the CLI command that fixes it. A process-level error such as
+  // `Provider "codex" has exited` tells the user nothing actionable.
+  it("keeps the archived-session error when the provider exits mid-recovery", async () => {
+    const runtime = createArchivedSessionRuntime(["--exit-after-archived"]);
+
+    try {
+      await expect(
+        runtime.resumeThread({
+          environmentId: "env-1",
+          projectId: "p1",
+          providerId: "codex",
+          providerThreadId: "prov-exit-recovery",
+          threadId: "t-exit-recovery",
+          options: fullRuntimeOptions,
+        }),
+      ).rejects.toThrow(/session prov-exit-recovery is archived/);
+    } finally {
+      await runtime.shutdown();
+    }
   });
 
   it("rejects turn steer when providerThreadId cannot be resolved", async () => {

@@ -356,6 +356,72 @@ function isSelectedPromptCommandMention(
   );
 }
 
+const BUILTIN_COMPACT_COMMAND = { trigger: "/", name: "compact" } as const;
+
+/**
+ * Whether input consists solely of one selected built-in `/compact` mention.
+ * Raw matching text and project/user commands intentionally do not qualify.
+ */
+export function isStandaloneBuiltinCompactCommand(
+  input: readonly PromptInput[],
+): boolean {
+  const selected = input.flatMap((item) =>
+    item.type === "text"
+      ? item.mentions
+          .filter((mention) =>
+            isSelectedPromptCommandMention(mention, BUILTIN_COMPACT_COMMAND),
+          )
+          .map((mention) => ({ mention, text: item.text }))
+      : [],
+  );
+  const standalone = selected[0];
+  if (
+    selected.length !== 1 ||
+    !standalone ||
+    input.some((item) => item.type !== "text")
+  ) {
+    return false;
+  }
+  const { mention, text } = standalone;
+  if (
+    mention.resource.kind !== "command" ||
+    mention.resource.source !== "command" ||
+    mention.resource.origin !== "builtin" ||
+    text.slice(mention.start, mention.end) !== "/compact"
+  ) {
+    return false;
+  }
+  return removeCommandMentionsFromPromptInput(
+    input,
+    BUILTIN_COMPACT_COMMAND,
+  ).every((item) => item.type === "text" && item.text.trim() === "");
+}
+
+/** Structured prompt input for the selected built-in `/compact` command. */
+export function createStandaloneBuiltinCompactCommandInput(): PromptInput[] {
+  return [
+    {
+      type: "text",
+      text: "/compact",
+      mentions: [
+        {
+          start: 0,
+          end: "/compact".length,
+          resource: {
+            kind: "command",
+            trigger: "/",
+            name: "compact",
+            source: "command",
+            origin: "builtin",
+            label: "compact",
+            argumentHint: null,
+          },
+        },
+      ],
+    },
+  ];
+}
+
 export function promptInputHasCommandMention(
   input: readonly PromptInput[],
   selector: PromptCommandSelector,

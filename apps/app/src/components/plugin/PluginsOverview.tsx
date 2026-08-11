@@ -60,8 +60,8 @@ function isPluginTypeFilter(value: string): value is PluginTypeFilter {
 }
 
 function modeFromSearchParams(value: string | null): PluginsCollectionMode {
-  if (value === "browse") return value;
-  return "installed";
+  if (value === "installed") return value;
+  return "browse";
 }
 
 /**
@@ -94,6 +94,7 @@ export function PluginsOverview() {
   }>({ open: false, initial: null });
 
   const modes: readonly ResourceCollectionMode<PluginsCollectionMode>[] = [
+    { id: "browse" as const, label: "Browse" },
     {
       id: "installed",
       label: "Installed",
@@ -102,7 +103,6 @@ export function PluginsOverview() {
         plugins.length === 1 ? "plugin" : "plugins"
       }`,
     },
-    { id: "browse" as const, label: "Browse" },
   ];
   const normalizedInstalledQuery = installedQuery.trim().toLowerCase();
   const visiblePlugins = useMemo(
@@ -164,7 +164,7 @@ export function PluginsOverview() {
     setSearchParams(
       (current) => {
         const next = new URLSearchParams(current);
-        if (mode === "installed") next.delete("view");
+        if (mode === "browse") next.delete("view");
         else next.set("view", mode);
         return next;
       },

@@ -87,10 +87,19 @@ export async function handleHostSessionOpened(
     args.previousSession &&
     args.previousSession.id !== args.openedSession.id
   ) {
+    const sameDaemonInstance =
+      args.previousSession.instanceId === args.openedSession.instanceId;
     deps.hub.cancelPendingDaemonDisconnect(args.previousSession.id);
 
     if (args.previousSession.status === "active") {
-      deps.hub.closeDaemonSession(args.previousSession.id, "replaced");
+      if (sameDaemonInstance) {
+        // A reconnect opens the replacement session before its new WebSocket.
+        // Close only the superseded socket: sending session-close would make
+        // this same daemon shut down every resident provider runtime.
+        deps.hub.closeDaemonSessionSocket(args.previousSession.id, "replaced");
+      } else {
+        deps.hub.closeDaemonSession(args.previousSession.id, "replaced");
+      }
       deps.terminalSessions.handleDaemonSessionClosed({
         sessionId: args.previousSession.id,
       });
@@ -98,13 +107,12 @@ export async function handleHostSessionOpened(
 
     interruptPendingInteractionsForHostThreads(deps, {
       hostId: args.hostId,
-      reason:
-        args.previousSession.instanceId === args.openedSession.instanceId
-          ? DAEMON_DISCONNECTED_PENDING_INTERACTION_REASON
-          : DAEMON_RESTARTED_PENDING_INTERACTION_REASON,
+      reason: sameDaemonInstance
+        ? DAEMON_DISCONNECTED_PENDING_INTERACTION_REASON
+        : DAEMON_RESTARTED_PENDING_INTERACTION_REASON,
     });
 
-    if (args.previousSession.instanceId !== args.openedSession.instanceId) {
+    if (!sameDaemonInstance) {
       interruptActiveThreadsForHost(deps, {
         hostId: args.hostId,
         reason: "host-daemon-restarted",

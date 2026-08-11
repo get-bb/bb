@@ -46,11 +46,13 @@ export const ACP_AGENT_PROFILES: readonly BuiltInAcpAgentProfile[] = [
   {
     providerId: "acp-cursor",
     displayName: "Cursor",
-    // Cursor CLI installs its agent binary as `agent` (cursor.com/docs/cli);
-    // `cursor` is the editor's shell launcher and does not speak ACP.
-    agentCommand: { command: "agent", args: ["acp"] },
+    // Cursor installs both `cursor-agent` and the generic `agent` alias. Use
+    // the namespaced executable so another provider's `agent` binary earlier
+    // on PATH cannot silently replace Cursor and collapse model discovery to
+    // the synthetic fallback.
+    agentCommand: { command: "cursor-agent", args: ["acp"] },
     // Global flags must precede the `acp` subcommand, matching the documented
-    // `agent --api-key ... acp` form.
+    // `cursor-agent --api-key ... acp` form.
     modelCli: {
       listArgs: ["--list-models"],
       selectFlag: "--model",

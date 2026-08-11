@@ -15,6 +15,7 @@ import {
 import { deriveConnectBaseUrl, serverUrlForHandle } from "@bb/connect-client";
 import {
   parseSharePort,
+  machineSharePublicUrl,
   SharePortError,
   ShareRegistry,
   sharePublicUrl,
@@ -24,6 +25,10 @@ import {
 import { CREDENTIAL_KV_KEY } from "./credential.js";
 import plugin from "./server.js";
 import { ConnectTunnel } from "./tunnel.js";
+import {
+  DEFAULT_CONNECT_BASE_URL,
+  resolveDefaultConnectBaseUrl,
+} from "./redeem.js";
 import type { ConnectStatus } from "./types.js";
 import { ShareHostResolver } from "./hosts.js";
 
@@ -81,6 +86,44 @@ describe("deriveConnectBaseUrl", () => {
     expect(deriveConnectBaseUrl("https://my-box.vibecodethis.site/")).toBe(
       "https://vibecodethis.site",
     );
+  });
+});
+
+describe("resolveDefaultConnectBaseUrl", () => {
+  it("uses the local Cloud origin only in development", () => {
+    expect(
+      resolveDefaultConnectBaseUrl({
+        NODE_ENV: "development",
+        BB_DEV_CONNECT_BASE_URL: "http://bb.localhost:42745/",
+      }),
+    ).toBe("http://bb.localhost:42745");
+    expect(
+      resolveDefaultConnectBaseUrl({
+        NODE_ENV: "production",
+        BB_DEV_CONNECT_BASE_URL: "http://bb.localhost:42745",
+      }),
+    ).toBe(DEFAULT_CONNECT_BASE_URL);
+    expect(resolveDefaultConnectBaseUrl({ NODE_ENV: "development" })).toBe(
+      DEFAULT_CONNECT_BASE_URL,
+    );
+  });
+
+  it("rejects non-local or non-origin development values", () => {
+    for (const value of [
+      "https://bb.localhost:42745",
+      "http://getbb.app:42745",
+      "http://bb.localhost:42745/dashboard",
+      "not a url",
+    ]) {
+      expect(() =>
+        resolveDefaultConnectBaseUrl({
+          NODE_ENV: "development",
+          BB_DEV_CONNECT_BASE_URL: value,
+        }),
+      ).toThrow(
+        "BB_DEV_CONNECT_BASE_URL must be an http://bb.localhost:<port> origin",
+      );
+    }
   });
 });
 
@@ -161,6 +204,15 @@ describe("sharePublicUrl", () => {
         8000,
       ),
     ).toBe("https://sawyer-desktop--8000.getbb.app");
+  });
+
+  it("uses HTTP and the local port for machine shares in local Cloud", () => {
+    expect(
+      machineSharePublicUrl(
+        { label: "sawyer-air", baseDomain: "bb.localhost:42745" },
+        8000,
+      ),
+    ).toBe("http://sawyer-air--8000.bb.localhost:42745");
   });
 });
 
@@ -680,6 +732,7 @@ describe("ConnectTunnel share activation", () => {
         clear: async () => {},
       },
       shares,
+      defaultBaseUrl: DEFAULT_CONNECT_BASE_URL,
       getLoopbackBaseUrl: () => "http://127.0.0.1:38886",
       log: pluginBb.log,
     });
@@ -740,6 +793,7 @@ describe("ConnectTunnel share activation", () => {
         clear: async () => {},
       },
       shares,
+      defaultBaseUrl: DEFAULT_CONNECT_BASE_URL,
       getLoopbackBaseUrl: () => "http://127.0.0.1:38886",
       log: pluginBb.log,
     });
@@ -979,6 +1033,88 @@ describe("TunnelSession routing", () => {
     expect(frames.some((f) => f.type === "body-end" && f.streamId === 3)).toBe(
       true,
     );
+  });
+
+  it("aborts the origin request when the relay closes an HTTP stream", async () => {
+    let originStarted = false;
+    let originClosed = false;
+    const origin = await listen((request, response) => {
+      originStarted = true;
+      request.once("aborted", () => {
+        originClosed = true;
+      });
+      response.once("close", () => {
+        originClosed = true;
+      });
+    });
+    cleanups.push(
+      () =>
+        new Promise<void>((resolve) => origin.server.close(() => resolve())),
+    );
+
+    const wss = new WebSocketServer({ port: 0, host: "127.0.0.1" });
+    await new Promise<void>((resolve) =>
+      wss.once("listening", () => resolve()),
+    );
+    const wssAddr = wss.address();
+    if (wssAddr === null || typeof wssAddr === "string") {
+      throw new Error("expected TCP address");
+    }
+    const relayReady = new Promise<NodeWebSocket>((resolve) => {
+      wss.on("connection", (socket) => resolve(socket));
+    });
+    const client = new NodeWebSocket(`ws://127.0.0.1:${wssAddr.port}`);
+    cleanups.push(async () => {
+      client.terminate();
+      await new Promise<void>((resolve) => wss.close(() => resolve()));
+    });
+    await waitForOpen(client);
+    const relay = await relayReady;
+
+    const session = new TunnelSession({
+      tunnel: client,
+      log: {
+        debug: () => {},
+        info: () => {},
+        warn: () => {},
+        error: () => {},
+      },
+      resolveOrigin: () => ({
+        kind: "ok",
+        resolved: {
+          origin: origin.origin,
+          publicOrigin: "https://sawyer.getbb.app",
+        },
+      }),
+    });
+    session.start();
+    cleanups.push(() => session.dispose());
+
+    relay.send(
+      Buffer.from(
+        encodeFrame({
+          type: "open-http",
+          streamId: 41,
+          method: "GET",
+          path: "/slow",
+          headers: [],
+          hasBody: false,
+        }),
+      ),
+    );
+    await waitFor(() => originStarted);
+
+    relay.send(
+      Buffer.from(
+        encodeFrame({
+          type: "close-stream",
+          streamId: 41,
+          code: 1000,
+          reason: "visitor canceled response body",
+        }),
+      ),
+    );
+    await waitFor(() => originClosed);
   });
 
   it("preserves negotiated origin compression across the tunnel and relays 304 bodiless", async () => {
@@ -1226,6 +1362,7 @@ describe("connect plugin", () => {
       host = undefined;
     }
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
   });
 
   it("starts unpaired — a healthy state, not needs-configuration", async () => {
@@ -1246,6 +1383,56 @@ describe("connect plugin", () => {
     expect(status.dashboardUrl).toBe("https://getbb.app/dashboard");
     expect(status.nextRetryAt).toBeNull();
     expect(harness.needsConfigurationMessages).toEqual([]);
+  });
+
+  it("uses the worktree-local Cloud for unpaired development", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+    vi.stubEnv("BB_DEV_CONNECT_BASE_URL", "http://bb.localhost:59329");
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({ credential: "bbcred_local", handle: "sawyer" }),
+          { status: 200 },
+        ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { harness } = await loadPlugin();
+
+    const before = (await harness.callRpc("status")) as ConnectStatus;
+    expect(before.dashboardUrl).toBe("http://bb.localhost:59329/dashboard");
+
+    const after = (await harness.callRpc("pair", {
+      code: "ABCD",
+    })) as ConnectStatus;
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://bb.localhost:59329/api/connect/redeem",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(after.url).toBe("http://sawyer.bb.localhost:59329");
+  });
+
+  it("lets an explicit production server override the development default", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+    vi.stubEnv("BB_DEV_CONNECT_BASE_URL", "http://bb.localhost:59329");
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ error: "invalid-code" }), {
+          status: 404,
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { harness } = await loadPlugin();
+
+    await expect(
+      harness.callRpc("pair", {
+        code: "ABCD",
+        server: "https://sawyer.getbb.app",
+      }),
+    ).rejects.toThrow("invalid_code");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://getbb.app/api/connect/redeem",
+      expect.objectContaining({ method: "POST" }),
+    );
   });
 
   it("registers contributeInstructions", async () => {
@@ -1368,19 +1555,62 @@ describe("connect plugin", () => {
     expect(exposed.url).toBe("http://sawyer-desktop--8000.localhost:59332");
   });
 
-  it("disconnect clears the stored credential", async () => {
+  it("disconnect revokes the Cloud credential and clears it locally", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).endsWith("/api/connect/redeem")) {
+        return Response.json({
+          credential: "bbcred_x",
+          handle: "sawyer",
+        });
+      }
+      return Response.json({ ok: true });
+    });
+    vi.stubGlobal("fetch", fetchMock);
     const { bb, harness } = await loadPlugin();
-    // Seed a stored credential (as if paired before this load).
-    await bb.storage.kv.set(CREDENTIAL_KV_KEY, {
-      serverUrl: "http://127.0.0.1:59322",
-      handle: "sawyer",
-      credential: "bbcred_x",
+    await harness.callRpc("pair", {
+      code: "ABCD",
+      server: "http://127.0.0.1:59322",
+      baseUrl: "https://getbb.app",
     });
 
     const after = (await harness.callRpc("disconnect")) as ConnectStatus;
     expect(after.paired).toBe(false);
     expect(after.state).toBe("disconnected");
     expect(await bb.storage.kv.get(CREDENTIAL_KV_KEY)).toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledWith(
+      new URL("http://127.0.0.1:59322/api/connect/disconnect"),
+      expect.objectContaining({
+        method: "POST",
+        headers: { "x-bb-connect-machine": "bbcred_x" },
+      }),
+    );
+  });
+
+  it("still disconnects locally when Cloud cannot be reached", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).endsWith("/api/connect/redeem")) {
+        return Response.json({
+          credential: "bbcred_offline",
+          handle: "sawyer",
+        });
+      }
+      throw new Error("network unavailable");
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { bb, harness } = await loadPlugin();
+    await harness.callRpc("pair", {
+      code: "ABCD",
+      server: "http://127.0.0.1:59323",
+      baseUrl: "https://getbb.app",
+    });
+
+    const after = (await harness.callRpc("disconnect")) as ConnectStatus;
+    expect(after.paired).toBe(false);
+    expect(await bb.storage.kv.get(CREDENTIAL_KV_KEY)).toBeUndefined();
+    expect(harness.logEntries).toContainEqual({
+      level: "warn",
+      message: "Cloud disconnect could not be confirmed: network unavailable",
+    });
   });
 
   it("maps a redeem failure to a typed code (no wire text) and does not persist", async () => {
@@ -2071,6 +2301,51 @@ describe("connect plugin", () => {
         method: "POST",
         signal: expect.any(AbortSignal),
       }),
+    );
+  });
+
+  it("routes local machine creation and revocation through the unified Cloud origin", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/api/connect/redeem")) {
+        return Response.json({
+          credential: "bbcred_local",
+          handle: "sawyer",
+        });
+      }
+      if (url === "http://bb.localhost:59330/api/connect/machine-code") {
+        return Response.json({
+          code: "ABCD-EFGH",
+          expiresInMs: 600_000,
+          serverUrl: "http://sawyer.bb.localhost:59330",
+        });
+      }
+      if (url === "http://bb.localhost:59330/api/connect/revoke-machine") {
+        return Response.json({ ok: true });
+      }
+      return new Response("not found", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { harness } = await loadPlugin();
+    await harness.callRpc("pair", {
+      code: "ABCD",
+      server: "http://sawyer.bb.localhost:59330",
+    });
+
+    await expect(harness.callRpc("createMachineCode")).resolves.toMatchObject({
+      code: "ABCD-EFGH",
+      serverUrl: "http://sawyer.bb.localhost:59330",
+    });
+    await expect(
+      harness.callRpc("revokeMachine", { machineId: "machine-local" }),
+    ).resolves.toEqual({ ok: true });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://bb.localhost:59330/api/connect/machine-code",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://bb.localhost:59330/api/connect/revoke-machine",
+      expect.objectContaining({ method: "POST" }),
     );
   });
 

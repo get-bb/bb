@@ -64,6 +64,10 @@ const ACP_LAUNCH_SPEC: HostDaemonAcpLaunchSpec = {
     supportedLevels: ["none", "low", "medium", "high", "xhigh", "max"],
     defaultLevel: "medium",
   },
+  nativeSkillRoots: {
+    user: [".agents/skills"],
+    project: [".agents/skills"],
+  },
   permissionCli: {
     full: ["--always-approve"],
     insertAfterArgs: 1,
@@ -322,6 +326,7 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
         id: "codex/gpt-5",
         model: "gpt-5",
         displayName: "GPT-5",
+        routeProviderId: "openai-codex",
         description: "Test model",
         supportedReasoningEfforts: [
           {
@@ -692,6 +697,8 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "ACP native reasoning config may omit defaultLevel so the bridge uses medium when supported or the first supported level.",
   "hostDaemonCommandSchema.acpLaunchSpec.nativeReasoning.levelValues":
     "ACP native reasoning config only needs levelValues when bb reasoning levels differ from the agent's ACP config vocabulary.",
+  "hostDaemonCommandSchema.acpLaunchSpec.nativeSkillRoots":
+    "dynamic ACP agents may omit nativeSkillRoots when they do not expose provider-native skills.",
   "hostDaemonCommandSchema.acpLaunchSpec.permissionCli":
     "dynamic ACP agents may omit permissionCli when their own prompt policy does not need launch-time permission flags.",
   "hostDaemonCommandSchema.acpLaunchSpec.permissionCli.full":
@@ -714,6 +721,8 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "workspace.status may omit mergeBaseBranch when the caller only needs working-tree state.",
   "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec":
     "provider.list_models includes an ACP launch spec only for dynamic ACP providers; built-ins resolve from daemon-side profiles.",
+  "hostDaemonOnlineRpcCommandSchema.cwd":
+    "provider.list_models may omit cwd when only user-level provider configuration applies.",
   "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.cwd":
     "dynamic ACP launch specs may omit cwd so the daemon uses the caller's workspace cwd.",
   "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.modelCli":
@@ -732,6 +741,8 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "ACP native reasoning config may omit defaultLevel so the bridge uses medium when supported or the first supported level.",
   "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.nativeReasoning.levelValues":
     "ACP native reasoning config only needs levelValues when bb reasoning levels differ from the agent's ACP config vocabulary.",
+  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.nativeSkillRoots":
+    "dynamic ACP agents may omit nativeSkillRoots when they do not expose provider-native skills.",
   "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.permissionCli":
     "dynamic ACP agents may omit permissionCli when their own prompt policy does not need launch-time permission flags.",
   "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.permissionCli.full":
@@ -752,6 +763,8 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "host.read_file and host.file_metadata may omit rootPath only for explicit absolute disk reads; ref-based reads still require it.",
   "hostDaemonOnlineRpcCommandSchema.selectedBranch":
     "host.list_branches may omit exact selected-branch classification when the caller only needs a branch option page.",
+  "hostDaemonOnlineRpcCommandSchema.nativeSkillRoots":
+    "host skill discovery may omit nativeSkillRoots for providers with daemon-owned discovery rules.",
   "hostDaemonCommandSchema.threadStoragePath":
     "thread.start may include a storage path so the daemon creates the directory before the agent starts.",
   "hostDaemonCommandSchema.fork":
@@ -790,6 +803,8 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "resume-context ACP native reasoning config may omit defaultLevel so the bridge uses medium when supported or the first supported level.",
   "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.nativeReasoning.levelValues":
     "resume-context ACP native reasoning config only needs levelValues when bb reasoning levels differ from the agent's ACP config vocabulary.",
+  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.nativeSkillRoots":
+    "resume-context ACP launch specs may omit nativeSkillRoots when the agent does not expose provider-native skills.",
   "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.permissionCli":
     "resume-context ACP launch specs may omit permissionCli when the agent's prompt policy does not need launch-time permission flags.",
   "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.permissionCli.full":
@@ -1036,13 +1051,12 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  // Version 75 makes Claude's sandbox network prompt grantable. A daemon on 74
-  // drops the "localSettings" suggestion that carries the grant, so it sends a
-  // permission_grant subject with an empty profile and the user cannot allow
-  // the prompt. The fix lives in the daemon's Claude bridge, so the bump is
-  // what moves an enrolled machine onto it.
-  it("uses protocol version 75 for grantable sandbox network prompts", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(75);
+  // Version 100 makes Codex inference timeoutMs an end-to-end daemon deadline
+  // and classifies streamed service-unavailable failures for bounded retries.
+  // An older daemon can outlive the server's wait or hide a retryable failure,
+  // so it must update before connecting.
+  it("uses protocol version 100 for Codex inference deadlines", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(100);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {
@@ -1341,13 +1355,40 @@ describe("host-daemon command schemas", () => {
     expect(
       hostDaemonOnlineRpcCommandSchema.parse({
         type: "host.list_commands",
-        providerId: "claude-code",
+        providerId: "acp-amp",
         cwd: "/tmp/workspace",
+        nativeSkillRoots: {
+          user: [".agents/skills"],
+          project: [".amp/skills"],
+        },
       }),
     ).toMatchObject({
       type: "host.list_commands",
-      providerId: "claude-code",
+      providerId: "acp-amp",
       cwd: "/tmp/workspace",
+      nativeSkillRoots: {
+        user: [".agents/skills"],
+        project: [".amp/skills"],
+      },
+    });
+
+    expect(
+      hostDaemonOnlineRpcCommandSchema.parse({
+        type: "host.list_skills",
+        providerId: "bb-shared",
+        cwd: "/tmp/workspace",
+        nativeSkillRoots: {
+          user: [".agents/skills"],
+          project: [".agents/skills"],
+        },
+      }),
+    ).toMatchObject({
+      type: "host.list_skills",
+      providerId: "bb-shared",
+      nativeSkillRoots: {
+        user: [".agents/skills"],
+        project: [".agents/skills"],
+      },
     });
 
     expect(
@@ -2046,6 +2087,7 @@ describe("host-daemon command schemas", () => {
       type: "provider.list_models",
       providerId: "acp-local",
       acpLaunchSpec: ACP_LAUNCH_SPEC,
+      cwd: "/tmp/workspace",
     };
     const providerListModelsRoundTrip = JSON.parse(
       JSON.stringify(providerListModelsCommand),
@@ -2173,6 +2215,15 @@ describe("host-daemon command schemas", () => {
         skillFilePath: "/workspace/.bb/skills/workflow-help/SKILL.md",
       }),
     ).toMatchObject({ kind: "workspace-path", sourceType: "project" });
+    expect(
+      hostDaemonInjectedSkillSourceSchema.parse({
+        ...base,
+        kind: "host-path",
+        sourceType: "shared-user",
+        sourceRootPath: "/home/user/.agents/skills/workflow-help",
+        skillFilePath: "/home/user/.agents/skills/workflow-help/SKILL.md",
+      }),
+    ).toMatchObject({ kind: "host-path", sourceType: "shared-user" });
 
     expect(() =>
       hostDaemonInjectedSkillSourceSchema.parse({
@@ -3142,6 +3193,30 @@ describe("host-daemon session schemas", () => {
     });
 
     expect(
+      hostDaemonDaemonWsMessageSchema.parse({
+        type: "environment-metadata-change",
+        environmentId: "env_123",
+        workspace: {
+          path: "/tmp/workspace",
+          isGitRepo: true,
+          isWorktree: false,
+          branchName: "main",
+          defaultBranch: "main",
+        },
+      }),
+    ).toEqual({
+      type: "environment-metadata-change",
+      environmentId: "env_123",
+      workspace: {
+        path: "/tmp/workspace",
+        isGitRepo: true,
+        isWorktree: false,
+        branchName: "main",
+        defaultBranch: "main",
+      },
+    });
+
+    expect(
       hostDaemonInteractiveRequestSchema.parse({
         sessionId: "session_123",
         interaction: {
@@ -3554,6 +3629,23 @@ describe("host-daemon session schemas", () => {
 
     expect(
       hostDaemonServerWsMessageSchema.safeParse({
+        type: "terminal.attach",
+        requestId: "request-1",
+        terminalId: "term_123",
+        sinceSeq: 12,
+        tailBytes: 512 * 1024,
+      }).success,
+    ).toBe(true);
+    expect(
+      hostDaemonServerWsMessageSchema.safeParse({
+        type: "terminal.attach",
+        requestId: "request-1",
+        terminalId: "term_123",
+        sinceSeq: 12,
+      }).success,
+    ).toBe(false);
+    expect(
+      hostDaemonServerWsMessageSchema.safeParse({
         type: "terminal.input",
         terminalId: "term_123",
         dataBase64: maxPayload,
@@ -3576,6 +3668,7 @@ describe("host-daemon session schemas", () => {
             dataBase64: oversizedDecodedPayload,
           },
         ],
+        replayStartSeq: 0,
         nextSeq: 1,
       }).success,
     ).toBe(false);

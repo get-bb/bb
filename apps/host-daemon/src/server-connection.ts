@@ -1,3 +1,4 @@
+import { Buffer } from "node:buffer";
 import {
   HOST_DAEMON_PROTOCOL_VERSION,
   buildHostDaemonWebSocketAuthorizationHeader,
@@ -65,6 +66,16 @@ export interface HandleServerSessionInvalidatedArgs {
 }
 
 const SERVER_MESSAGE_PAYLOAD_PREVIEW_CHARS = 512;
+const TERMINAL_SOCKET_HIGH_WATER_BYTES = 1024 * 1024;
+// A 16 MiB raw burst expands to about 21.4 MiB as base64 + JSON. Keep
+// enough bounded headroom for that workload while preventing unbounded growth.
+const TERMINAL_SOCKET_MAX_QUEUE_BYTES = 32 * 1024 * 1024;
+const TERMINAL_SOCKET_DRAIN_POLL_MS = 10;
+
+interface PendingTerminalSocketPayload {
+  bytes: number;
+  payload: string;
+}
 
 /**
  * Returns the dedup key for messages that survive a disconnect, or null for
@@ -82,8 +93,30 @@ function recoverableMessageKey(
       return "connect-tunnel.identity";
     case "environment-change":
       return `environment-change\u0000${message.environmentId}\u0000${message.change}`;
+    case "environment-metadata-change":
+      return `environment-metadata-change\u0000${message.environmentId}`;
     default:
       return null;
+  }
+}
+
+function isTerminalDaemonOutputMessage(
+  message: HostDaemonDaemonWsMessage,
+): boolean {
+  return message.type === "terminal.output";
+}
+
+function isTerminalDaemonLifecycleMessage(
+  message: HostDaemonDaemonWsMessage,
+): boolean {
+  switch (message.type) {
+    case "terminal.error":
+    case "terminal.exited":
+    case "terminal.opened":
+    case "terminal.replay":
+      return true;
+    default:
+      return false;
   }
 }
 
@@ -121,6 +154,11 @@ export class ServerConnection {
   private fatalConnectError: ServerResponseError | null = null;
   private protocolMismatchObserved = false;
   private sessionInvalidationInProgress = false;
+  private pendingTerminalSocketBytes = 0;
+  private readonly pendingTerminalSocketPayloads: PendingTerminalSocketPayload[] =
+    [];
+  private terminalSocketDrainTimeout: ReturnType<typeof setTimeout> | null =
+    null;
   private readonly pendingRecoverableMessages = new Map<
     string,
     HostDaemonDaemonWsMessage
@@ -174,19 +212,132 @@ export class ServerConnection {
   }
 
   sendMessage(message: HostDaemonDaemonWsMessage): boolean {
-    const payload = hostDaemonDaemonWsMessageSchema.parse(message);
-    const recoverableKey = recoverableMessageKey(payload);
-    if (!this.websocket || this.websocket.readyState !== OPEN_READY_STATE) {
+    const parsed = hostDaemonDaemonWsMessageSchema.parse(message);
+    const recoverableKey = recoverableMessageKey(parsed);
+    const websocket = this.websocket;
+    if (!websocket || websocket.readyState !== OPEN_READY_STATE) {
       if (recoverableKey !== null) {
-        this.pendingRecoverableMessages.set(recoverableKey, payload);
+        this.pendingRecoverableMessages.set(recoverableKey, parsed);
       }
       return false;
     }
-    this.websocket.send(JSON.stringify(payload));
+
+    const payload = JSON.stringify(parsed);
+    if (
+      isTerminalDaemonOutputMessage(parsed) &&
+      (this.pendingTerminalSocketPayloads.length > 0 ||
+        (websocket.bufferedAmount ?? 0) > TERMINAL_SOCKET_HIGH_WATER_BYTES)
+    ) {
+      return this.enqueueTerminalSocketPayload(payload);
+    }
+    if (
+      isTerminalDaemonLifecycleMessage(parsed) &&
+      this.pendingTerminalSocketPayloads.length > 0
+    ) {
+      // Lifecycle replies cannot survive a daemon-session replacement. Push
+      // bounded output into the WebSocket's own ordered buffer before sending
+      // opened/replay/exited, rather than acknowledging an in-memory queue
+      // that would be discarded on reconnect.
+      this.flushTerminalSocketPayloads(true);
+      if (
+        this.pendingTerminalSocketPayloads.length > 0 ||
+        websocket.readyState !== OPEN_READY_STATE
+      ) {
+        return false;
+      }
+    }
+    try {
+      websocket.send(payload);
+    } catch (error) {
+      this.options.logger.warn(
+        { ...runtimeErrorLogFields(error), type: parsed.type },
+        "Failed to send websocket message",
+      );
+      websocket.close(1013, "send-failed");
+      return false;
+    }
     if (recoverableKey !== null) {
       this.pendingRecoverableMessages.delete(recoverableKey);
     }
     return true;
+  }
+
+  private enqueueTerminalSocketPayload(payload: string): boolean {
+    const bytes = Buffer.byteLength(payload, "utf8");
+    if (
+      this.pendingTerminalSocketBytes + bytes >
+      TERMINAL_SOCKET_MAX_QUEUE_BYTES
+    ) {
+      this.options.logger.warn(
+        {
+          maxQueueBytes: TERMINAL_SOCKET_MAX_QUEUE_BYTES,
+          pendingBytes: this.pendingTerminalSocketBytes,
+        },
+        "Terminal websocket output queue exceeded its limit",
+      );
+      this.clearTerminalSocketPayloads();
+      this.websocket?.close(1013, "terminal-backpressure");
+      return false;
+    }
+    this.pendingTerminalSocketPayloads.push({ bytes, payload });
+    this.pendingTerminalSocketBytes += bytes;
+    this.scheduleTerminalSocketDrain();
+    return true;
+  }
+
+  private scheduleTerminalSocketDrain(): void {
+    if (this.terminalSocketDrainTimeout !== null) {
+      return;
+    }
+    this.terminalSocketDrainTimeout = this.setTimeoutFn(() => {
+      this.terminalSocketDrainTimeout = null;
+      this.flushTerminalSocketPayloads(false);
+    }, TERMINAL_SOCKET_DRAIN_POLL_MS);
+  }
+
+  private flushTerminalSocketPayloads(ignoreHighWater: boolean): void {
+    const websocket = this.websocket;
+    if (!websocket || websocket.readyState !== OPEN_READY_STATE) {
+      this.clearTerminalSocketPayloads();
+      return;
+    }
+    while (
+      this.pendingTerminalSocketPayloads.length > 0 &&
+      (ignoreHighWater ||
+        (websocket.bufferedAmount ?? 0) <= TERMINAL_SOCKET_HIGH_WATER_BYTES)
+    ) {
+      const pending = this.pendingTerminalSocketPayloads[0];
+      if (!pending) {
+        break;
+      }
+      try {
+        websocket.send(pending.payload);
+      } catch (error) {
+        this.options.logger.warn(
+          { ...runtimeErrorLogFields(error) },
+          "Failed to drain terminal websocket output",
+        );
+        websocket.close(1013, "send-failed");
+        this.clearTerminalSocketPayloads();
+        return;
+      }
+      this.pendingTerminalSocketPayloads.shift();
+      this.pendingTerminalSocketBytes -= pending.bytes;
+    }
+    if (this.pendingTerminalSocketPayloads.length === 0) {
+      this.clearTerminalSocketPayloads();
+      return;
+    }
+    this.scheduleTerminalSocketDrain();
+  }
+
+  private clearTerminalSocketPayloads(): void {
+    if (this.terminalSocketDrainTimeout !== null) {
+      this.clearTimeoutFn(this.terminalSocketDrainTimeout);
+      this.terminalSocketDrainTimeout = null;
+    }
+    this.pendingTerminalSocketPayloads.length = 0;
+    this.pendingTerminalSocketBytes = 0;
   }
 
   setSessionCloseHandler(
@@ -636,6 +787,7 @@ export class ServerConnection {
   }
 
   private clearSession(): void {
+    this.clearTerminalSocketPayloads();
     if (!this.session) {
       return;
     }

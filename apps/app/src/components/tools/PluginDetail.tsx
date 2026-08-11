@@ -150,7 +150,7 @@ export function CatalogPluginDetail({
     >
       <ResourceDetailStack>
         <ResourceDetailOverviewSection label="About">
-          <p className="max-w-prose text-sm leading-relaxed text-muted-foreground">
+          <p className="max-w-none text-sm leading-relaxed text-muted-foreground">
             {entry.description.length > 0
               ? entry.description
               : "This plugin does not describe itself."}
@@ -388,7 +388,7 @@ export function PluginDetail({
     >
       <ResourceDetailStack>
         <ResourceDetailOverviewSection label="About">
-          <p className="max-w-prose text-sm leading-relaxed text-muted-foreground">
+          <p className="max-w-none text-sm leading-relaxed text-muted-foreground">
             {plugin.description ?? "This plugin does not describe itself."}
           </p>
         </ResourceDetailOverviewSection>

@@ -105,11 +105,23 @@ describe("thread execution plan input sources", () => {
           providerId: "pi",
         },
       );
+      const clientPreferredProvider = resolveProjectExecutionDefaultsForCreate(
+        harness.deps,
+        {
+          executionInputSources: { providerId: "client-preference" },
+          model: "openai-codex/gpt-5.4",
+          projectId: project.id,
+          providerId: "pi",
+        },
+      );
 
       expect(ignoredDisplayedValue.providerId).toBe("codex");
       expect(ignoredDisplayedValue.executionDefaults?.model).toBe("gpt-5");
       expect(legacyExplicitValue.providerId).toBe("pi");
       expect(legacyExplicitValue.executionDefaults).toBeNull();
+      expect(clientPreferredProvider.providerId).toBe("pi");
+      expect(clientPreferredProvider.executionDefaults).toBeNull();
+      expect(clientPreferredProvider.requestedModel).toBeNull();
     });
   });
 

@@ -20,55 +20,65 @@ interface MockPiResourceLoaderOptions {
 
 interface MockPiResourceLoader {
   options: MockPiResourceLoaderOptions;
-  reload: ReturnType<typeof vi.fn>;
+}
+
+interface MockCreateAgentSessionServicesOptions {
+  agentDir: string;
+  cwd: string;
+  modelRuntime?: object;
+  resourceLoaderOptions: MockPiResourceLoaderOptions;
 }
 
 const {
   mockCreateAgentSession,
-  mockDefaultResourceLoader,
+  mockCreateAgentSessionServices,
   mockInMemory,
   mockOpen,
   mockResourceLoaders,
-  mockSettingsInMemory,
-  mockModelRuntime,
-  oauthRegistrationState,
+  mockGetPiModelRuntime,
 } = vi.hoisted(() => {
   const mockResourceLoaders: MockPiResourceLoader[] = [];
-
-  const mockDefaultResourceLoader = vi.fn(function defaultResourceLoader(
-    options: MockPiResourceLoaderOptions,
-  ): MockPiResourceLoader {
-    const resourceLoader = {
-      options,
-      reload: vi.fn(async () => {}),
-    };
-    mockResourceLoaders.push(resourceLoader);
-    return resourceLoader;
-  });
+  const mockSettingsManager = {
+    getShellCommandPrefix: vi.fn(() => undefined),
+    getShellPath: vi.fn(() => undefined),
+  };
+  const mockModelRuntime = {
+    getAvailable: vi.fn(async () => []),
+    getModel: vi.fn(() => undefined),
+    getModels: vi.fn(() => []),
+    hasConfiguredAuth: vi.fn(() => false),
+    refresh: vi.fn(async () => ({ aborted: false, errors: new Map() })),
+  };
+  const mockCreateAgentSessionServices = vi.fn(
+    async (options: MockCreateAgentSessionServicesOptions) => {
+      const resourceLoader = {
+        options: {
+          agentDir: options.agentDir,
+          cwd: options.cwd,
+          ...options.resourceLoaderOptions,
+        },
+      };
+      mockResourceLoaders.push(resourceLoader);
+      return {
+        agentDir: options.agentDir,
+        cwd: options.cwd,
+        diagnostics: [],
+        modelRuntime: options.modelRuntime ?? mockModelRuntime,
+        resourceLoader,
+        settingsManager: mockSettingsManager,
+      };
+    },
+  );
 
   return {
     mockCreateAgentSession: vi.fn(),
-    mockDefaultResourceLoader,
+    mockCreateAgentSessionServices,
     mockInMemory: vi.fn((cwd?: string) => ({ kind: "in-memory", cwd })),
     mockOpen: vi.fn((path: string) => ({ kind: "open", path })),
     mockResourceLoaders,
-    mockSettingsInMemory: vi.fn(() => ({ kind: "settings" })),
-    mockModelRuntime: {
-      getAvailable: vi.fn(async () => []),
-      getModel: vi.fn(() => undefined),
-      getModels: vi.fn(() => []),
-      hasConfiguredAuth: vi.fn(() => false),
-      refresh: vi.fn(async () => ({ aborted: false, errors: new Map() })),
-    },
-    oauthRegistrationState: { registered: false },
+    mockGetPiModelRuntime: vi.fn(async () => mockModelRuntime),
   };
 });
-
-vi.mock("@earendil-works/pi-ai/bun-oauth", () => ({
-  registerBunOAuthFlows: () => {
-    oauthRegistrationState.registered = true;
-  },
-}));
 
 vi.mock("@earendil-works/pi-coding-agent", async (importOriginal) => {
   // Keep the real SessionManager.forkFrom so the fork test exercises genuine
@@ -77,25 +87,30 @@ vi.mock("@earendil-works/pi-coding-agent", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("@earendil-works/pi-coding-agent")>();
   return {
-    createAgentSession: mockCreateAgentSession,
-    DefaultResourceLoader: mockDefaultResourceLoader,
+    createAgentSessionFromServices: mockCreateAgentSession,
+    createAgentSessionServices: mockCreateAgentSessionServices,
     getAgentDir: vi.fn(() => "/tmp/pi-agent"),
     SessionManager: {
       forkFrom: actual.SessionManager.forkFrom.bind(actual.SessionManager),
       open: mockOpen,
       inMemory: mockInMemory,
     },
-    SettingsManager: {
-      inMemory: mockSettingsInMemory,
-    },
   };
 });
 
+vi.mock("../configured-services.js", () => ({
+  createConfiguredPiServices: mockCreateAgentSessionServices,
+}));
+
 vi.mock("../model-runtime.js", () => ({
-  getPiModelRuntime: vi.fn(async () => mockModelRuntime),
+  getPiModelRuntime: mockGetPiModelRuntime,
 }));
 
 import { handleLine } from "../bridge.js";
+import {
+  restorePiBridgeStdout,
+  takeOverPiBridgeStdout,
+} from "../output-guard.js";
 import { PI_BRIDGE_SESSION_DIR_ENV } from "../session-paths.js";
 import { createBridgeJsonRpcTestHarness } from "../../../test/bridge-json-rpc-test-helpers.js";
 
@@ -103,6 +118,7 @@ const originalPiBridgeSessionDir = process.env[PI_BRIDGE_SESSION_DIR_ENV];
 
 interface ControlledPiAgentSession {
   abort: ReturnType<typeof vi.fn>;
+  compact: ReturnType<typeof vi.fn>;
   dispose: ReturnType<typeof vi.fn>;
   emit(event: AgentSessionEvent): void;
   finishAbort(): void;
@@ -125,6 +141,7 @@ function createControlledPiAgentSession(): ControlledPiAgentSession {
   );
   return {
     abort,
+    compact: vi.fn(async () => undefined),
     dispose: vi.fn(),
     emit(event: AgentSessionEvent): void {
       for (const listener of [...listeners]) {
@@ -174,14 +191,83 @@ function createAgentEndEvent(): AgentSessionEvent {
 }
 
 describe("pi bridge", () => {
-  it("registers static OAuth loaders for the standalone Pi bundle", () => {
-    expect(oauthRegistrationState.registered).toBe(true);
-  });
-
   beforeEach(() => {
     vi.clearAllMocks();
     mockResourceLoaders.length = 0;
     delete process.env[PI_BRIDGE_SESSION_DIR_ENV];
+  });
+
+  it("uses the requested project path for model listing", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+
+    try {
+      bridge.sendRequest(99, "model/list", { cwd: "/tmp/project-models" });
+      await bridge.waitForResponse(99);
+
+      expect(mockGetPiModelRuntime).toHaveBeenCalledWith("/tmp/project-models");
+    } finally {
+      bridge.restore();
+    }
+  });
+
+  it("keeps extension stdout out of the JSON-RPC protocol channel", async () => {
+    const stderrWrite = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const piSession = createControlledPiAgentSession();
+    mockCreateAgentSession.mockResolvedValue({ session: piSession });
+    takeOverPiBridgeStdout();
+
+    try {
+      bridge.sendRequest(100, "thread/start", {
+        cwd: "/tmp/worktree",
+        threadId: "thread-extension-stdout",
+      });
+      await bridge.waitForResponse(100);
+
+      const terminalNotification = "\u001b]777;notify;π;done\u0007";
+      process.stdout.write(terminalNotification);
+      piSession.emit(createAgentEndEvent());
+      await bridge.flushWork();
+
+      expect(stderrWrite).toHaveBeenCalledWith(terminalNotification);
+      expect(bridge.messages).toContainEqual(
+        expect.objectContaining({
+          method: "sdk/message",
+          params: {
+            threadId: "thread-extension-stdout",
+            message: createAgentEndEvent(),
+          },
+        }),
+      );
+    } finally {
+      restorePiBridgeStdout();
+      bridge.restore();
+      stderrWrite.mockRestore();
+    }
+  });
+
+  it("forwards redirected stderr backpressure through stdout", () => {
+    const stderrWrite = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => false);
+    const stdoutDrain = vi.fn();
+    process.stdout.once("drain", stdoutDrain);
+    takeOverPiBridgeStdout();
+
+    try {
+      expect(process.stdout.write("extension output")).toBe(false);
+      expect(stdoutDrain).not.toHaveBeenCalled();
+
+      process.stderr.emit("drain");
+
+      expect(stdoutDrain).toHaveBeenCalledOnce();
+    } finally {
+      restorePiBridgeStdout();
+      process.stdout.off("drain", stdoutDrain);
+      stderrWrite.mockRestore();
+    }
   });
 
   afterEach(() => {
@@ -209,7 +295,6 @@ describe("pi bridge", () => {
       expect(mockResourceLoaders).toHaveLength(1);
       expect(mockResourceLoaders[0]?.options).toMatchObject({
         cwd: "/tmp/worktree",
-        agentDir: "/tmp/pi-agent",
       });
       expect(mockResourceLoaders[0]?.options.systemPrompt).toBeUndefined();
       expect(mockResourceLoaders[0]?.options.noSkills).toBeUndefined();
@@ -240,7 +325,6 @@ describe("pi bridge", () => {
       expect(mockResourceLoaders).toHaveLength(1);
       expect(mockResourceLoaders[0]?.options).toMatchObject({
         cwd: "/tmp/worktree",
-        agentDir: "/tmp/pi-agent",
         additionalSkillPaths: ["/tmp/bb-skills", "/tmp/repo-skills"],
       });
       expect(mockResourceLoaders[0]?.options.noSkills).toBeUndefined();
@@ -266,13 +350,12 @@ describe("pi bridge", () => {
       expect(mockResourceLoaders).toHaveLength(1);
       expect(mockResourceLoaders[0]?.options).toMatchObject({
         cwd: "/tmp/worktree",
-        agentDir: "/tmp/pi-agent",
         systemPrompt: "Replacement prompt",
-        noExtensions: true,
-        noSkills: true,
-        noPromptTemplates: true,
-        noThemes: true,
       });
+      expect(mockResourceLoaders[0]?.options.noExtensions).toBeUndefined();
+      expect(mockResourceLoaders[0]?.options.noSkills).toBeUndefined();
+      expect(mockResourceLoaders[0]?.options.noPromptTemplates).toBeUndefined();
+      expect(mockResourceLoaders[0]?.options.noThemes).toBeUndefined();
       expect(
         mockResourceLoaders[0]?.options.appendSystemPromptOverride,
       ).toBeUndefined();
@@ -524,6 +607,66 @@ describe("pi bridge", () => {
         result: { ok: true },
       });
       expect(sessions[0]?.dispose).toHaveBeenCalledTimes(1);
+    } finally {
+      bridge.restore();
+    }
+  });
+
+  it("acknowledges Pi compaction before the SDK reports its outcome", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const session = createControlledPiAgentSession();
+    let rejectCompaction: ((error: Error) => void) | undefined;
+    session.compact.mockReturnValueOnce(
+      new Promise<void>((_resolve, reject) => {
+        rejectCompaction = reject;
+      }),
+    );
+    mockCreateAgentSession.mockResolvedValue({ session });
+
+    try {
+      bridge.sendRequest(1, "thread/start", {
+        cwd: "/tmp/worktree",
+        threadId: "thread-compact",
+      });
+      await bridge.waitForResponse(1);
+
+      bridge.sendRequest(2, "thread/compact", {
+        threadId: "thread-compact",
+      });
+
+      await expect(bridge.waitForResponse(2)).resolves.toMatchObject({
+        id: 2,
+        result: { threadId: "thread-compact" },
+      });
+      expect(session.compact).toHaveBeenCalledOnce();
+      expect(session.prompt).not.toHaveBeenCalled();
+
+      bridge.sendRequest(3, "turn/steer", {
+        threadId: "thread-compact",
+        expectedTurnId: "turn-compact",
+        input: [{ type: "text", text: "wait for compaction", mentions: [] }],
+      });
+      await expect(bridge.waitForResponse(3)).resolves.toMatchObject({
+        id: 3,
+        error: {
+          message: "Cannot steer while context compaction is active",
+        },
+      });
+      expect(session.prompt).not.toHaveBeenCalled();
+
+      rejectCompaction?.(new Error("Pi compaction failed"));
+      await bridge.flushWork();
+      expect(
+        bridge.messages.filter((message) => message.id === 2),
+      ).toHaveLength(1);
+      expect(bridge.messages).toContainEqual({
+        jsonrpc: "2.0",
+        method: "error",
+        params: {
+          threadId: "thread-compact",
+          message: "Pi compaction failed",
+        },
+      });
     } finally {
       bridge.restore();
     }

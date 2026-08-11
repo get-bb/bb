@@ -471,6 +471,12 @@ export function listActiveVisiblePinnedThreadRoots(
 }
 
 function threadWithPendingInteractionBaseQuery(db: DbConnection) {
+  // A correlated EXISTS instead of a pending_interactions join with
+  // GROUP BY threads.id: the grouped form forces SQLite to either sort the
+  // whole joined result into a temp B-tree or walk the threads table in
+  // id-index order, which costs one random page read per thread on a cold
+  // cache (issue #1131). The probe is served by
+  // pending_interactions_thread_status_created_idx.
   return db
     .select({
       ...getTableColumns(threads),
@@ -479,17 +485,10 @@ function threadWithPendingInteractionBaseQuery(db: DbConnection) {
       environmentIsWorktree: environments.isWorktree,
       environmentName: environments.name,
       environmentWorkspaceProvisionType: environments.workspaceProvisionType,
-      pendingInteractionCount: count(pendingInteractions.id),
+      hasPendingInteraction: sql<number>`EXISTS (SELECT 1 FROM ${pendingInteractions} WHERE ${pendingInteractions.threadId} = ${threads.id} AND ${pendingInteractions.status} = 'pending')`,
     })
     .from(threads)
-    .leftJoin(environments, eq(threads.environmentId, environments.id))
-    .leftJoin(
-      pendingInteractions,
-      and(
-        eq(pendingInteractions.threadId, threads.id),
-        eq(pendingInteractions.status, "pending"),
-      ),
-    );
+    .leftJoin(environments, eq(threads.environmentId, environments.id));
 }
 
 export function listActiveVisiblePinnedThreadRootsWithPendingInteractionState(
@@ -497,7 +496,6 @@ export function listActiveVisiblePinnedThreadRootsWithPendingInteractionState(
 ): ThreadWithPendingInteractionState[] {
   const pinnedThreads = threadWithPendingInteractionBaseQuery(db)
     .where(and(pinnedThreadWhere(), isNull(threads.archivedAt)))
-    .groupBy(threads.id)
     .orderBy(asc(threads.pinSortKey), asc(threads.id))
     .all()
     .map(toThreadWithPendingInteractionState);
@@ -535,7 +533,7 @@ interface ThreadWithPendingInteractionStateRow extends ThreadRow {
   environmentIsWorktree: boolean | null;
   environmentName: string | null;
   environmentWorkspaceProvisionType: WorkspaceProvisionType | null;
-  pendingInteractionCount: number;
+  hasPendingInteraction: number;
 }
 
 export interface CountLiveThreadsInEnvironmentArgs {
@@ -544,6 +542,10 @@ export interface CountLiveThreadsInEnvironmentArgs {
 }
 
 export interface ListLiveThreadsInEnvironmentArgs {
+  environmentId: string;
+}
+
+export interface HasRevivableArchivedThreadInEnvironmentArgs {
   environmentId: string;
 }
 
@@ -717,7 +719,7 @@ function toThreadWithPendingInteractionState(
     environmentBranchName,
     environmentHostId,
     environmentName,
-    pendingInteractionCount,
+    hasPendingInteraction,
     ...thread
   } = row;
   return {
@@ -731,7 +733,7 @@ function toThreadWithPendingInteractionState(
         workspaceProvisionType: environmentWorkspaceProvisionType,
       },
     }),
-    hasPendingInteraction: pendingInteractionCount > 0,
+    hasPendingInteraction: hasPendingInteraction > 0,
   };
 }
 
@@ -1017,7 +1019,6 @@ function hydrateThreadSearchGroup(
   const threadsById = new Map(
     threadWithPendingInteractionBaseQuery(db)
       .where(and(inArray(threads.id, threadIds), isNull(threads.deletedAt)))
-      .groupBy(threads.id)
       .all()
       .map(toThreadWithPendingInteractionState)
       .map((thread) => [thread.id, thread]),
@@ -1098,7 +1099,6 @@ export function listThreadsWithPendingInteractionState(
 ): ThreadWithPendingInteractionState[] {
   let query = threadWithPendingInteractionBaseQuery(db)
     .where(and(...buildListThreadsFilters(options)))
-    .groupBy(threads.id)
     .orderBy(...buildListThreadsOrderBy(options))
     .$dynamic();
   if (options.limit !== undefined) {
@@ -1158,7 +1158,6 @@ export function listThreadsWithPendingInteractionStateForProjects(
 
   const rows = threadWithPendingInteractionBaseQuery(db)
     .where(and(...buildListThreadsForProjectsFilters(options)))
-    .groupBy(threads.id)
     .orderBy(...buildListThreadsForProjectsOrderBy(options))
     .all();
 
@@ -1183,6 +1182,34 @@ export function countLiveThreadsInEnvironment(
     .get();
 
   return liveThreadCount?.count ?? 0;
+}
+
+/**
+ * Whether the environment has a thread that is archived but not deleted — i.e. a
+ * thread that could still be unarchived. The archive grace window (which delays
+ * destroying a retiring environment's worktree so an accidental archive can be
+ * undone) only applies when such a revivable thread exists; an environment left
+ * retiring solely by deleted/tombstoned threads has nothing to undo and is
+ * cleaned up immediately.
+ */
+export function hasRevivableArchivedThreadInEnvironment(
+  db: ThreadWriteConnection,
+  args: HasRevivableArchivedThreadInEnvironmentArgs,
+): boolean {
+  const row = db
+    .select({ id: threads.id })
+    .from(threads)
+    .where(
+      and(
+        eq(threads.environmentId, args.environmentId),
+        isNotNull(threads.archivedAt),
+        isNull(threads.deletedAt),
+      ),
+    )
+    .limit(1)
+    .get();
+
+  return row !== undefined;
 }
 
 export function listLiveThreadsInEnvironment(

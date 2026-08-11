@@ -55,8 +55,9 @@ next turn.
 
 ## Limitations
 
-- CLI calls require loopback access and therefore do not work in read-only
-  sandboxed threads.
+- CLI calls require loopback access to the local server. Claude's macOS
+  workspace sandbox permits this; Linux and other provider sandboxes may
+  still block it.
 - Retrieval is FTS5 keyword search in this first version; embeddings and
   background reflection are deliberately deferred.
 - The safety scanner is a guardrail, not a substitute for avoiding sensitive

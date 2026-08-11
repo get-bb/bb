@@ -7,8 +7,8 @@ import { ApiError } from "../../errors.js";
 export type ThreadTimelinePageKind = "latest" | "older";
 
 /**
- * Marks a window that had to start inside a turn rather than on a user message,
- * because that one turn is larger than the whole event budget.
+ * Marks a window that had to start at an event sequence rather than on a user
+ * message because an event-count or byte budget cut the selected segment.
  *
  * A window is normally identified by the user message it begins at, and the
  * pagination cursor names that anchor. Inside a turn there is no anchor to
@@ -17,31 +17,43 @@ export type ThreadTimelinePageKind = "latest" | "older";
  * turn's `turn/started` row from far below the cut and the first row's
  * `sourceSeqStart` would send the next page past everything in between.
  */
-export interface TimelineInTurnWindowStart {
+export interface TimelineSequenceWindowStart {
+  /** Why this page starts inside a segment. */
+  kind: "byte" | "event";
   /** First event sequence this window covers. */
   sequenceStart: number;
   threadId: string;
 }
 
-const IN_TURN_CURSOR_ANCHOR_ID_SEPARATOR = ":in-turn:";
+// Keep the old opaque cursor value for event-budget cuts. A distinct value lets
+// older pages preserve byte-window projection and parent-read limits.
+const SEQUENCE_CURSOR_ANCHOR_ID_SEPARATOR = ":in-turn:";
+const BYTE_CURSOR_ANCHOR_ID_SEPARATOR = ":byte-window:";
 
-export function buildInTurnCursorAnchorId(
-  args: TimelineInTurnWindowStart,
+export function buildSequenceCursorAnchorId(
+  args: TimelineSequenceWindowStart,
 ): string {
-  return `${args.threadId}${IN_TURN_CURSOR_ANCHOR_ID_SEPARATOR}${args.sequenceStart}`;
+  const separator =
+    args.kind === "byte"
+      ? BYTE_CURSOR_ANCHOR_ID_SEPARATOR
+      : SEQUENCE_CURSOR_ANCHOR_ID_SEPARATOR;
+  return `${args.threadId}${separator}${args.sequenceStart}`;
 }
 
 /**
- * The sequence an in-turn cursor points at, or null when the cursor names a
+ * The sequence a sequence cursor points at, or null when the cursor names a
  * user-message anchor instead. Rejects a cursor whose id and sequence disagree,
  * which is the only self-consistency check available for a cursor that names no
  * stored row.
  */
-export function readInTurnCursorSequence(
+export function readSequenceCursor(
   cursor: TimelinePaginationCursor,
   threadId: string,
-): number | null {
-  const prefix = `${threadId}${IN_TURN_CURSOR_ANCHOR_ID_SEPARATOR}`;
+): Pick<TimelineSequenceWindowStart, "kind" | "sequenceStart"> | null {
+  const eventPrefix = `${threadId}${SEQUENCE_CURSOR_ANCHOR_ID_SEPARATOR}`;
+  const bytePrefix = `${threadId}${BYTE_CURSOR_ANCHOR_ID_SEPARATOR}`;
+  const kind = cursor.anchorId.startsWith(bytePrefix) ? "byte" : "event";
+  const prefix = kind === "byte" ? bytePrefix : eventPrefix;
   if (!cursor.anchorId.startsWith(prefix)) {
     return null;
   }
@@ -55,7 +67,7 @@ export function readInTurnCursorSequence(
       "Timeline pagination cursor is no longer available",
     );
   }
-  return cursor.anchorSeq;
+  return { kind, sequenceStart: cursor.anchorSeq };
 }
 
 export interface LatestThreadTimelinePageRequest {
@@ -141,13 +153,11 @@ function buildTimelineLogicalSegments(
 
 export interface PaginateTimelineRowsArgs {
   /**
-   * Non-null only for a window cut inside a turn. Such a window is already
-   * bounded by event sequence, so segment trimming would only discard rows the
-   * read already paid for, and the older cursor has to name the cut rather than
-   * be derived from the oldest row. There is always more to load before it: at
-   * minimum the start of the turn it sits inside.
+   * Non-null only for a sequence-budgeted window. Such a window is already
+   * bounded by event sequence, so segment trimming would discard selected
+   * rows. The older cursor must name the cut rather than the oldest row.
    */
-  inTurnWindowStart: TimelineInTurnWindowStart | null;
+  sequenceWindowStart: TimelineSequenceWindowStart | null;
   /**
    * `hasOlderRows` is normally inferred by over-reading one segment past the
    * page and noticing it was dropped. An event-budgeted window cannot afford
@@ -163,15 +173,15 @@ export interface PaginateTimelineRowsArgs {
 export function paginateTimelineRows(
   args: PaginateTimelineRowsArgs,
 ): PaginatedTimelineRowsResult {
-  const { inTurnWindowStart, knownHasOlderSegments, page, rows } = args;
+  const { knownHasOlderSegments, page, rows, sequenceWindowStart } = args;
   const segments = buildTimelineLogicalSegments(rows);
-  if (inTurnWindowStart !== null) {
+  if (sequenceWindowStart !== null) {
     return {
       hasOlderRows: true,
       kind: page.kind,
       olderCursor: {
-        anchorSeq: inTurnWindowStart.sequenceStart,
-        anchorId: buildInTurnCursorAnchorId(inTurnWindowStart),
+        anchorSeq: sequenceWindowStart.sequenceStart,
+        anchorId: buildSequenceCursorAnchorId(sequenceWindowStart),
       },
       returnedSegmentCount: segments.length,
       rows: [...rows],

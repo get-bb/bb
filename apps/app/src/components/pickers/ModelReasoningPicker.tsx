@@ -49,6 +49,7 @@ import {
   OPTION_TRIGGER_CONTENT_CLASS_NAME,
   type PickerOption,
 } from "./OptionPicker";
+import type { ModelPickerOption } from "./model-picker-option";
 import {
   formatModelLoadErrorText,
   ModelLoadErrorMessage,
@@ -122,10 +123,10 @@ function fuzzyFilter<T>(
 // the model. Filtering on the raw label would match brand words that were
 // stripped from the rendered row, surprising the user.
 function modelSearchText(
-  option: PickerOption<string>,
+  option: ModelPickerOption,
   providerId: string,
 ): string {
-  return `${stripModelBrandPrefix(option.label, providerId)} ${option.value}`;
+  return `${stripModelBrandPrefix(option.label, providerId)} ${option.routeProviderId ?? ""} ${option.value}`;
 }
 
 /**
@@ -137,7 +138,7 @@ function modelSearchText(
  * flattened inline instead, keeping every match reachable from the keyboard.
  */
 export type ModelNavRow =
-  | { kind: "model"; option: PickerOption<string> }
+  | { kind: "model"; option: ModelPickerOption }
   | { kind: "more-toggle" };
 
 export function buildModelNavRows({
@@ -147,8 +148,8 @@ export function buildModelNavRows({
   isSearching,
   showMoreModels,
 }: {
-  modelOptions: readonly PickerOption<string>[];
-  moreModelOptions: readonly PickerOption<string>[];
+  modelOptions: readonly ModelPickerOption[];
+  moreModelOptions: readonly ModelPickerOption[];
   isCompactViewport: boolean;
   isSearching: boolean;
   showMoreModels: boolean;
@@ -190,9 +191,9 @@ interface ModelReasoningPickerProps {
   hasMultipleProviders: boolean;
   // Model state
   modelValue: string;
-  modelOptions: readonly PickerOption<string>[];
+  modelOptions: readonly ModelPickerOption[];
   /** Models rendered behind a collapsed "More models" row. */
-  moreModelOptions?: readonly PickerOption<string>[];
+  moreModelOptions?: readonly ModelPickerOption[];
   modelIsLoading?: boolean;
   modelLoadFailed?: boolean;
   modelLoadError?: SystemExecutionOptionsModelLoadError | null;
@@ -360,7 +361,7 @@ export function ModelReasoningPicker({
     providerId: isPreviewing ? previewProviderId : undefined,
   });
 
-  const previewModelOptions = useMemo((): readonly PickerOption<string>[] => {
+  const previewModelOptions = useMemo((): readonly ModelPickerOption[] => {
     if (!isPreviewing) return modelOptions;
     const models = previewQuery.data?.models;
     if (!models || models.length === 0) return [];
@@ -369,25 +370,30 @@ export function ModelReasoningPicker({
       label: formatModelLabel
         ? formatModelLabel(model.displayName || model.model)
         : model.displayName || model.model,
+      ...(model.routeProviderId
+        ? { routeProviderId: model.routeProviderId }
+        : {}),
     }));
   }, [isPreviewing, modelOptions, previewQuery.data?.models, formatModelLabel]);
-  const previewMoreModelOptions =
-    useMemo((): readonly PickerOption<string>[] => {
-      if (!isPreviewing) return moreModelOptions;
-      const models = previewQuery.data?.selectedOnlyModels;
-      if (!models || models.length === 0) return [];
-      return models.map((model) => ({
-        value: model.model,
-        label: formatModelLabel
-          ? formatModelLabel(model.displayName || model.model)
-          : model.displayName || model.model,
-      }));
-    }, [
-      isPreviewing,
-      moreModelOptions,
-      previewQuery.data?.selectedOnlyModels,
-      formatModelLabel,
-    ]);
+  const previewMoreModelOptions = useMemo((): readonly ModelPickerOption[] => {
+    if (!isPreviewing) return moreModelOptions;
+    const models = previewQuery.data?.selectedOnlyModels;
+    if (!models || models.length === 0) return [];
+    return models.map((model) => ({
+      value: model.model,
+      label: formatModelLabel
+        ? formatModelLabel(model.displayName || model.model)
+        : model.displayName || model.model,
+      ...(model.routeProviderId
+        ? { routeProviderId: model.routeProviderId }
+        : {}),
+    }));
+  }, [
+    isPreviewing,
+    moreModelOptions,
+    previewQuery.data?.selectedOnlyModels,
+    formatModelLabel,
+  ]);
   // While previewing, the reasoning levels belong to the previewed provider's
   // default model (each provider exposes its own set), so the section reflects
   // the tab on screen rather than the committed model.
@@ -979,6 +985,7 @@ export function ModelReasoningPicker({
                         option.label,
                         activeProviderId,
                       )}
+                      qualifier={option.routeProviderId}
                       selected={!isPreviewing && option.value === modelValue}
                       onClick={() => handleModelSelect(option.value)}
                     />
@@ -1176,7 +1183,7 @@ function MoreModelsSubmenu({
   activeProviderId: string;
   isPreviewing: boolean;
   modelValue: string;
-  options: readonly PickerOption<string>[];
+  options: readonly ModelPickerOption[];
   onSelect: (value: string) => void;
 }) {
   const { isLastHovered, hoverProps } = useMenuItemHover();
@@ -1265,6 +1272,7 @@ function MoreModelsSubmenu({
             <MenuRowButton
               key={option.value}
               label={stripModelBrandPrefix(option.label, activeProviderId)}
+              qualifier={option.routeProviderId}
               selected={!isPreviewing && option.value === modelValue}
               onClick={() => onSelect(option.value)}
             />
@@ -1287,6 +1295,7 @@ function ResetBrowseStateOnUnmount({ onReset }: { onReset: () => void }) {
 
 function MenuRowButton({
   label,
+  qualifier,
   selected,
   onClick,
   isActive,
@@ -1296,6 +1305,7 @@ function MenuRowButton({
   onKeyDown: callerKeyDown,
 }: {
   label: string;
+  qualifier?: string;
   selected: boolean;
   onClick: () => void;
   isActive?: boolean;
@@ -1329,10 +1339,16 @@ function MenuRowButton({
       )}
       {...hoverProps}
     >
-      <span className="truncate" title={label}>
+      <span
+        className="truncate"
+        title={qualifier ? `${label} · ${qualifier}` : label}
+      >
         {base}
         {tag ? (
           <span className="ml-1.5 text-subtle-foreground">{tag}</span>
+        ) : null}
+        {qualifier ? (
+          <span className="ml-1.5 text-subtle-foreground">{qualifier}</span>
         ) : null}
       </span>
       <span className="flex shrink-0 items-center gap-1.5">

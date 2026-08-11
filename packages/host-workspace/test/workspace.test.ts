@@ -504,18 +504,30 @@ describe("Workspace", () => {
     const repoPath = await makeTempDir("bb-workspace-unborn-repo-");
     await runGit(["init", "-b", "main"], { cwd: repoPath });
     await fs.writeFile(
+      path.join(repoPath, "staged.txt"),
+      "staged pending\n",
+      "utf8",
+    );
+    await runGit(["add", "staged.txt"], { cwd: repoPath });
+    await fs.writeFile(
       path.join(repoPath, "notes.txt"),
       "untracked pending\n",
       "utf8",
     );
 
     const workspace = new Workspace(repoPath);
-    const status = await workspace.getStatus();
+    const status = await workspace.getStatus({ mergeBaseBranch: "main" });
 
-    expect(status.workingTree.state).toBe("untracked");
+    expect(status.workingTree.state).toBe("dirty_uncommitted");
     expect(status.branch.currentBranch).toBe("main");
     expect(status.checkout).toEqual({ kind: "unborn", branchName: "main" });
     expect(status.workingTree.files).toEqual([
+      {
+        path: "staged.txt",
+        status: "A",
+        insertions: 1,
+        deletions: 0,
+      },
       {
         path: "notes.txt",
         status: "??",
@@ -523,8 +535,19 @@ describe("Workspace", () => {
         deletions: 0,
       },
     ]);
-    expect(status.workingTree.insertions).toBe(1);
+    expect(status.workingTree.insertions).toBe(2);
     expect(status.workingTree.deletions).toBe(0);
+    expect(status.mergeBase).toEqual({
+      mergeBaseBranch: "main",
+      baseRef: null,
+      aheadCount: 0,
+      behindCount: 0,
+      hasCommittedUnmergedChanges: false,
+      commits: [],
+      files: [],
+      insertions: 0,
+      deletions: 0,
+    });
   });
 
   it("returns diff content for each supported target", async () => {

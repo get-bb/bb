@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { pluginSdkAppImplementation } from "@/lib/plugin-sdk-app-impl";
+import { ThreadTimelineNavigationProvider } from "@/components/thread/timeline/ThreadTimelineNavigationContext";
 import { PluginSlotMount } from "./PluginSlotMount";
 
 const mocks = vi.hoisted(() => ({
@@ -167,6 +168,61 @@ describe("PluginThreadChat", () => {
     expect(mocks.embeddedChatProps.at(-1)!.composer).toEqual(
       expect.objectContaining({ permissionPolicy: "editable" }),
     );
+  });
+
+  it("uses the surrounding thread detail navigation for timeline links", async () => {
+    const { wrapper: Wrapper } = createQueryClientTestHarness();
+    const onOpenLink = vi.fn(() => true);
+    const onOpenLocalFileLink = vi.fn(() => true);
+    const workspaceMentionHandler = vi.fn();
+    const resolveMentionLink = vi.fn(() => workspaceMentionHandler);
+
+    render(
+      <Wrapper>
+        <MemoryRouter>
+          <ThreadTimelineNavigationProvider
+            environmentId={null}
+            onOpenLink={onOpenLink}
+            onOpenLocalFileLink={onOpenLocalFileLink}
+            resolveMentionLink={resolveMentionLink}
+            workspaceRootPath="/workspace"
+          >
+            <DemoPluginPage threadId="thr_demo" />
+          </ThreadTimelineNavigationProvider>
+        </MemoryRouter>
+      </Wrapper>,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByTestId("embedded-thread-chat")).toBeTruthy(),
+    );
+    const props = mocks.embeddedChatProps.at(-1)!;
+    expect(props).toEqual(
+      expect.objectContaining({
+        onOpenLink,
+        onOpenLocalFileLink,
+        workspaceRootPath: "/workspace",
+      }),
+    );
+
+    const embeddedResolveMentionLink = props.resolveMentionLink as (resource: {
+      kind: "path";
+      source: "workspace";
+      entryKind: "file";
+      path: string;
+      label: string;
+    }) => (() => void) | null;
+    const workspaceMention = {
+      kind: "path" as const,
+      source: "workspace" as const,
+      entryKind: "file" as const,
+      path: "README.md",
+      label: "README.md",
+    };
+    expect(embeddedResolveMentionLink(workspaceMention)).toBe(
+      workspaceMentionHandler,
+    );
+    expect(resolveMentionLink).toHaveBeenCalledWith(workspaceMention);
   });
 
   it("maps variant timeline to a composer-less transcript", async () => {

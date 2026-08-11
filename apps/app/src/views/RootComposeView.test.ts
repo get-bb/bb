@@ -27,6 +27,7 @@ import {
   readRootComposeSectionTargetFromLocationState,
   readInitialPromptFromLocationState,
   requestRootComposePluginFocus,
+  resolveRootComposeProjectDefaultsState,
   restorePromptDraftAfterOptionChange,
   resolveRootComposePanelThreadId,
   shouldReplaceInitialPromptFromLocationState,
@@ -55,6 +56,68 @@ describe("requestRootComposePluginFocus", () => {
 
     expect(focusRequests).toBe(1);
     unsubscribe();
+  });
+});
+
+describe("resolveRootComposeProjectDefaultsState", () => {
+  const storedDefaults = {
+    providerId: "codex",
+    model: "gpt-5.6-sol",
+    serviceTier: "default" as const,
+    reasoningLevel: "medium" as const,
+    permissionMode: "auto" as const,
+  };
+
+  it("keeps optimistic null defaults unresolved while the fallback query is pending", () => {
+    expect(
+      resolveRootComposeProjectDefaultsState({
+        cachedDefaults: null,
+        projectFound: true,
+        queryData: undefined,
+        queryIsError: false,
+        queryIsPlaceholderData: false,
+        queryIsSuccess: false,
+      }),
+    ).toEqual({ status: "pending" });
+  });
+
+  it("uses the authoritative saved defaults when the delayed query resolves", () => {
+    expect(
+      resolveRootComposeProjectDefaultsState({
+        cachedDefaults: null,
+        projectFound: true,
+        queryData: storedDefaults,
+        queryIsError: false,
+        queryIsPlaceholderData: false,
+        queryIsSuccess: true,
+      }),
+    ).toEqual({ status: "resolved", defaults: storedDefaults });
+  });
+
+  it("only confirms absence after the fallback query succeeds with null", () => {
+    expect(
+      resolveRootComposeProjectDefaultsState({
+        cachedDefaults: null,
+        projectFound: true,
+        queryData: null,
+        queryIsError: false,
+        queryIsPlaceholderData: false,
+        queryIsSuccess: true,
+      }),
+    ).toEqual({ status: "resolved", defaults: null });
+  });
+
+  it("does not treat a previous project's placeholder as authoritative", () => {
+    expect(
+      resolveRootComposeProjectDefaultsState({
+        cachedDefaults: null,
+        projectFound: true,
+        queryData: storedDefaults,
+        queryIsError: false,
+        queryIsPlaceholderData: true,
+        queryIsSuccess: true,
+      }),
+    ).toEqual({ status: "pending" });
   });
 });
 

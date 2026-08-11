@@ -17,6 +17,8 @@ import {
 import { noopEventSink } from "../../src/command-dispatch-support.js";
 import {
   createHarness,
+  createFakeRuntime,
+  createFakeWorkspace,
   unexpectedProjectAttachmentFetch,
 } from "./dispatch-helpers.js";
 import { RuntimeManager } from "../../src/runtime-manager.js";
@@ -47,8 +49,10 @@ interface RunRouterCommandArgs {
 }
 
 interface CreateTurnSubmitCommandArgs {
+  environmentId?: string;
   providerId?: string;
   providerThreadId?: string;
+  workspacePath?: string;
   text?: string;
   threadId?: string;
 }
@@ -106,9 +110,10 @@ function createRouter(
 function createTurnSubmitCommand(
   args: CreateTurnSubmitCommandArgs = {},
 ): TurnSubmitCommand {
+  const workspacePath = args.workspacePath ?? "/tmp/env-router";
   return {
     type: "turn.submit",
-    environmentId: "env-router",
+    environmentId: args.environmentId ?? "env-router",
     threadId: args.threadId ?? "thread-router",
     requestId: createClientRequestId(),
     input: [textPromptInput(args.text ?? "after destroy")],
@@ -124,7 +129,7 @@ function createTurnSubmitCommand(
     },
     resumeContext: {
       workspaceContext: {
-        workspacePath: "/tmp/env-router",
+        workspacePath,
         workspaceProvisionType: "unmanaged",
       },
       projectId: "project-router",
@@ -334,6 +339,110 @@ describe("CommandRouter", () => {
     expect(stopResponse.ok).toBe(true);
     expect(harness.runtimeState.stoppedThreadId).toBe("thread-router-start");
     expect(harness.runtime.hasThread("thread-router-start")).toBe(false);
+  });
+
+  it("waits for an old-environment turn before resuming the moved thread", async () => {
+    const harness = createHarness({ workspacePath: "/tmp/env-router" });
+    const oldHarness = createFakeRuntime();
+    const newHarness = createFakeRuntime();
+    const oldRuntime = oldHarness.runtime;
+    const newRuntime = newHarness.runtime;
+    const runtimes = [oldRuntime, newRuntime];
+    const runtimeManager = new RuntimeManager({
+      createRuntime: () => {
+        const runtime = runtimes.shift();
+        if (!runtime) {
+          throw new Error("Unexpected runtime creation");
+        }
+        return runtime;
+      },
+      provisionWorkspace: async (options) =>
+        createFakeWorkspace(
+          "path" in options ? options.path : options.targetPath,
+        ).workspace,
+    });
+    await runtimeManager.ensureEnvironment({
+      environmentId: "env-router-old",
+      workspacePath: "/tmp/env-router-old",
+    });
+    // The old environment still owns the provider session while its in-flight
+    // turn settles, which is the handoff race this barrier protects.
+    oldHarness.threadControls.setProviderSession("thread-moved", {
+      providerId: "fake",
+      providerThreadId: "provider-moved",
+    });
+
+    const oldRunEntered = createDeferred<void>();
+    const releaseOldRun = createDeferred<void>();
+    const originalOldRunTurn = oldRuntime.runTurn.bind(oldRuntime);
+    oldRuntime.runTurn = async (args) => {
+      oldRunEntered.resolve();
+      await releaseOldRun.promise;
+      return originalOldRunTurn(args);
+    };
+    const originalOldStopThread = oldRuntime.stopThread.bind(oldRuntime);
+    const oldStopThread = vi.fn(originalOldStopThread);
+    oldRuntime.stopThread = oldStopThread;
+    const originalNewResumeThread = newRuntime.resumeThread.bind(newRuntime);
+    const newResumeThread = vi.fn(originalNewResumeThread);
+    newRuntime.resumeThread = newResumeThread;
+    const retainEnvironment = vi.spyOn(
+      runtimeManager,
+      "retainEnvironmentForThreadCommand",
+    );
+
+    const router = createRouter(harness, { runtimeManager });
+    const oldTask = runRouterCommand({
+      command: createTurnSubmitCommand({
+        environmentId: "env-router-old",
+        providerThreadId: "provider-moved",
+        threadId: "thread-moved",
+        workspacePath: "/tmp/env-router-old",
+        text: "old turn",
+      }),
+      requestId: "old-moved-turn",
+      router,
+    });
+    await oldRunEntered.promise;
+
+    const newTask = runRouterCommand({
+      command: createTurnSubmitCommand({
+        environmentId: "env-router-new",
+        providerThreadId: "provider-moved",
+        threadId: "thread-moved",
+        workspacePath: "/tmp/env-router-new",
+        text: "new turn",
+      }),
+      requestId: "new-moved-turn",
+      router,
+    });
+    await flushAsyncWork();
+
+    expect(retainEnvironment).toHaveBeenCalledTimes(1);
+    expect(newResumeThread).not.toHaveBeenCalled();
+    releaseOldRun.resolve();
+    const [oldResponse, newResponse] = await Promise.all([oldTask, newTask]);
+
+    expect(oldResponse.ok).toBe(true);
+    expect(newResponse.ok).toBe(true);
+    expect(retainEnvironment).toHaveBeenNthCalledWith(
+      2,
+      "env-router-new",
+      "thread-moved",
+    );
+    expect(oldStopThread).toHaveBeenCalledWith({
+      threadId: "thread-moved",
+    });
+    expect(newResumeThread).toHaveBeenCalledWith(
+      expect.objectContaining({
+        providerThreadId: "provider-moved",
+        threadId: "thread-moved",
+      }),
+    );
+    expect(oldStopThread.mock.invocationCallOrder[0]).toBeLessThan(
+      newResumeThread.mock.invocationCallOrder[0],
+    );
+    await runtimeManager.shutdownAll();
   });
 
   it("does not route separate codex threads through one provider process lane", async () => {

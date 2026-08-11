@@ -133,6 +133,19 @@ function contrastRatio(foreground: OklchColor, background: OklchColor): number {
 }
 
 describe("theme.css neutral ramp", () => {
+  it("backs selected sticky sidebar rows with an opaque sidebar layer", () => {
+    const rule = css.match(
+      /\[data-sidebar-sticky-tier\]\.bb-sidebar-selected-row\s*\{([^}]*)\}/s,
+    )?.[1];
+
+    expect(rule).toContain(
+      "linear-gradient(var(--state-active), var(--state-active))",
+    );
+    expect(rule).toContain(
+      "linear-gradient(var(--sidebar), var(--sidebar))",
+    );
+  });
+
   for (const mode of MODES) {
     describe(mode, () => {
       const block = modeBlock(mode);

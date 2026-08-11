@@ -60,6 +60,8 @@ describe("system provider host routing", () => {
       const remote = seedHostSession(harness.deps, {
         id: "host-provider-remote",
       });
+      const remoteModelCommands: HostDaemonOnlineRpcRequestMessage["command"][] =
+        [];
       seedPrimaryHost(harness.deps, primary.host.id);
 
       registerHostRpcResponder(harness, {
@@ -71,8 +73,12 @@ describe("system provider host routing", () => {
       registerHostRpcResponder(harness, {
         hostId: remote.host.id,
         sessionId: remote.session.id,
-        handle: (request) =>
-          providerHostResponse(request, "acp-omp", "remote-model"),
+        handle: (request) => {
+          if (request.command.type === "provider.list_models") {
+            remoteModelCommands.push(request.command);
+          }
+          return providerHostResponse(request, "acp-omp", "remote-model");
+        },
       });
 
       const { project } = seedProjectWithSource(harness.deps, {
@@ -136,6 +142,14 @@ describe("system provider host routing", () => {
       );
       expect(environmentModels.models.map((model) => model.model)).toEqual([
         "remote-model",
+      ]);
+      expect(remoteModelCommands).toEqual([
+        { type: "provider.list_models", providerId: "codex" },
+        {
+          type: "provider.list_models",
+          providerId: "codex",
+          cwd: "/tmp/test-environment",
+        },
       ]);
     });
   });

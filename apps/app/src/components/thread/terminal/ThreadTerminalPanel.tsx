@@ -6,9 +6,11 @@ import {
 } from "./useThreadTerminalController";
 
 interface ThreadTerminalPanelProps {
+  autoFocus?: boolean;
   canCreateTerminal: boolean;
   isPanelOpen: boolean;
   isPanelPersistedOpen: boolean;
+  onAutoFocusHandled?: () => void;
   onOpenLink?: MarkdownPreviewLinkHandler;
   onSelectionAddToChat?: (text: string) => void;
   panelStateId?: string;
@@ -16,9 +18,11 @@ interface ThreadTerminalPanelProps {
 }
 
 export function ThreadTerminalPanel({
+  autoFocus = false,
   canCreateTerminal,
   isPanelOpen,
   isPanelPersistedOpen,
+  onAutoFocusHandled,
   onOpenLink,
   onSelectionAddToChat,
   panelStateId,
@@ -40,7 +44,9 @@ export function ThreadTerminalPanel({
     >
       <div className="min-h-0 flex-1 overflow-hidden bg-sidebar">
         <ThreadTerminalContent
+          autoFocus={autoFocus}
           controller={terminalController}
+          onAutoFocusHandled={onAutoFocusHandled}
           onOpenLink={onOpenLink}
           onSelectionAddToChat={onSelectionAddToChat}
         />

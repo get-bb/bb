@@ -15,6 +15,7 @@ const unavailableSystemConfig: SystemConfigResponse = {
   keybindingOverrides: [],
   experiments: {
     claudeCodeMockCliTraffic: false,
+    newOnboarding: false,
     toolsHub: false,
   },
   appearance: defaultAppTheme,
@@ -22,6 +23,7 @@ const unavailableSystemConfig: SystemConfigResponse = {
   pluginThemes: [],
   featureFlags: { placeholder: false, timelineWindowEventBudget: 1_500 },
   hostDaemonPort: null,
+  serverUrl: "",
   primaryHostId: null,
   primaryHostPlatform: null,
   voiceTranscriptionEnabled: false,

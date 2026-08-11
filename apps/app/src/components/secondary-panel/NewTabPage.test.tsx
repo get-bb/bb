@@ -15,9 +15,10 @@ describe("NewTabPage", () => {
   it("uses the themeable sidebar surface on the new-thread panel", () => {
     const { container } = render(
       <NewTabPage
+        autoFocus={false}
         currentThreadId=""
         environmentId={null}
-        focusRequest={0}
+        onAutoFocusHandled={() => undefined}
         onSelect={() => undefined}
         projectId={undefined}
       />,

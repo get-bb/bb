@@ -37,25 +37,30 @@ type ReadOverflowBehavior = "throw" | "truncate";
 type CodexRequestOperation = "inference" | "transcription";
 
 interface TimeoutFetchArgs {
-  timeoutMs: number;
+  deadline: CodexRequestDeadline;
   work: (signal: AbortSignal) => Promise<Response>;
 }
 
+interface CodexRequestDeadline {
+  expiresAt: number;
+  timeoutMs: number;
+}
+
 interface ReadChunkWithTimeoutArgs {
-  readTimeoutMs: number;
+  deadline: CodexRequestDeadline;
   reader: ReadableStreamDefaultReader<Uint8Array>;
 }
 
 interface ReadLimitedResponseTextArgs {
+  deadline: CodexRequestDeadline;
   maxBytes: number;
   overflowBehavior: ReadOverflowBehavior;
-  readTimeoutMs: number;
 }
 
 interface ReadResponseTextFromSseArgs {
+  deadline: CodexRequestDeadline;
   maxBytes: number;
   maxEventChars: number;
-  readTimeoutMs: number;
 }
 
 interface ChatGptFetchArgs {
@@ -66,40 +71,46 @@ interface ChatGptFetchArgs {
 interface ResponsesFetchArgs {
   auth: CodexAuthCredentials;
   command: InferenceCompleteCommand;
+  deadline: CodexRequestDeadline;
   request: CodexResponsesRequest;
 }
 
 interface ChatGptResponsesFetchArgs {
   auth: CodexChatGptAuthCredentials;
   command: InferenceCompleteCommand;
+  deadline: CodexRequestDeadline;
   request: CodexResponsesRequest;
 }
 
 interface OpenAiResponsesFetchArgs {
   auth: CodexOpenAiApiKeyCredentials;
   command: InferenceCompleteCommand;
+  deadline: CodexRequestDeadline;
   request: CodexResponsesRequest;
 }
 
 interface TranscriptionFetchArgs {
   auth: CodexAuthCredentials;
   command: VoiceTranscribeCommand;
+  deadline: CodexRequestDeadline;
 }
 
 interface ChatGptTranscriptionFetchArgs {
   auth: CodexChatGptAuthCredentials;
   command: VoiceTranscribeCommand;
+  deadline: CodexRequestDeadline;
 }
 
 interface OpenAiTranscriptionFetchArgs {
   auth: CodexOpenAiApiKeyCredentials;
   command: VoiceTranscribeCommand;
+  deadline: CodexRequestDeadline;
 }
 
 interface CodexHttpErrorArgs {
+  deadline: CodexRequestDeadline;
   operation: CodexRequestOperation;
   response: Response;
-  readTimeoutMs: number;
 }
 
 interface CodexResponseFormat {
@@ -134,8 +145,13 @@ interface CodexInputContent {
 }
 
 interface ResponseTextResult {
+  failure: CodexStreamFailure | null;
   text: string;
-  failedMessage: string | null;
+}
+
+interface CodexStreamFailure {
+  code: string | null;
+  message: string;
 }
 
 function jsonObject(value: JsonValue): JsonObject | null {
@@ -192,17 +208,35 @@ function createOpenAiResponsesHeaders(
   return headers;
 }
 
+function createCodexRequestDeadline(timeoutMs: number): CodexRequestDeadline {
+  return {
+    expiresAt: performance.now() + timeoutMs,
+    timeoutMs,
+  };
+}
+
+function remainingCodexRequestTimeoutMs(
+  deadline: CodexRequestDeadline,
+): number {
+  const remainingMs = Math.ceil(deadline.expiresAt - performance.now());
+  if (remainingMs <= 0) {
+    throw codexRequestTimeoutError(deadline.timeoutMs);
+  }
+  return remainingMs;
+}
+
 async function runWithTimeout(args: TimeoutFetchArgs): Promise<Response> {
   const abortController = new AbortController();
+  const timeoutMs = remainingCodexRequestTimeoutMs(args.deadline);
   const timeout = setTimeout(() => {
     abortController.abort();
-  }, args.timeoutMs);
+  }, timeoutMs);
   timeout.unref();
   try {
     return await args.work(abortController.signal);
   } catch (error) {
     if (abortController.signal.aborted) {
-      throw codexRequestTimeoutError(args.timeoutMs);
+      throw codexRequestTimeoutError(args.deadline.timeoutMs);
     }
     throw error;
   } finally {
@@ -227,19 +261,20 @@ function codexResponseTooLargeError(): ExpectedCommandDispatchError {
 }
 
 async function readChunkWithTimeout({
+  deadline,
   reader,
-  readTimeoutMs,
 }: ReadChunkWithTimeoutArgs): ReturnType<
   ReadableStreamDefaultReader<Uint8Array>["read"]
 > {
   let timeout: ReturnType<typeof setTimeout> | null = null;
+  const timeoutMs = remainingCodexRequestTimeoutMs(deadline);
   try {
     return await Promise.race([
       reader.read(),
       new Promise<never>((_, reject) => {
         timeout = setTimeout(() => {
-          reject(codexRequestTimeoutError(readTimeoutMs));
-        }, readTimeoutMs);
+          reject(codexRequestTimeoutError(deadline.timeoutMs));
+        }, timeoutMs);
         timeout.unref();
       }),
     ]);
@@ -277,8 +312,8 @@ async function readLimitedResponseText(
   try {
     while (true) {
       const chunk = await readChunkWithTimeout({
+        deadline: args.deadline,
         reader,
-        readTimeoutMs: args.readTimeoutMs,
       });
       if (chunk.done) {
         break;
@@ -293,9 +328,11 @@ async function readLimitedResponseText(
         }
         const allowedBytes = value.byteLength - (totalBytes - args.maxBytes);
         if (allowedBytes > 0) {
-          chunks.push(decoder.decode(value.slice(0, allowedBytes), {
-            stream: true,
-          }));
+          chunks.push(
+            decoder.decode(value.slice(0, allowedBytes), {
+              stream: true,
+            }),
+          );
         }
         truncated = true;
         await cancelReaderBestEffort(reader);
@@ -334,12 +371,12 @@ async function fetchChatGpt(args: ChatGptFetchArgs): Promise<Response> {
 
 async function readErrorText(
   response: Response,
-  readTimeoutMs: number,
+  deadline: CodexRequestDeadline,
 ): Promise<string> {
   const text = await readLimitedResponseText(response, {
+    deadline,
     maxBytes: CODEX_ERROR_TEXT_MAX_BYTES,
     overflowBehavior: "truncate",
-    readTimeoutMs,
   }).catch(() => "");
   return text.length > 400 ? `${text.slice(0, 400)}...` : text;
 }
@@ -351,7 +388,25 @@ function codexRequestErrorCode(status: number): string {
   if (status === 429) {
     return "codex_rate_limited";
   }
+  if (status >= 500) {
+    return "codex_service_unavailable";
+  }
   return "codex_request_failed";
+}
+
+const CODEX_SERVICE_UNAVAILABLE_PATTERN =
+  /\b(?:overloaded|temporarily unavailable|try again later)\b/iu;
+
+function codexStreamFailureErrorCode(failure: CodexStreamFailure): string {
+  if (failure.code === "server_error") {
+    return "codex_service_unavailable";
+  }
+  if (failure.code === "rate_limit_exceeded") {
+    return "codex_rate_limited";
+  }
+  return CODEX_SERVICE_UNAVAILABLE_PATTERN.test(failure.message)
+    ? "codex_service_unavailable"
+    : "codex_request_failed";
 }
 
 function extractJsonErrorMessage(value: JsonValue): string | null {
@@ -402,12 +457,12 @@ function extractProviderErrorMessage(rawText: string): string | null {
 }
 
 async function createCodexHttpError({
+  deadline,
   operation,
   response,
-  readTimeoutMs,
 }: CodexHttpErrorArgs): Promise<ExpectedCommandDispatchError> {
   const providerMessage = extractProviderErrorMessage(
-    await readErrorText(response, readTimeoutMs),
+    await readErrorText(response, deadline),
   );
   const details = providerMessage ? `: ${providerMessage}` : "";
   return new ExpectedCommandDispatchError(
@@ -444,56 +499,65 @@ function getCodexResponseText(response: JsonObject): string | null {
   return null;
 }
 
-function getCodexFailureMessage(response: JsonObject): string | null {
+function getCodexFailure(response: JsonObject): CodexStreamFailure | null {
   const error = response.error ? jsonObject(response.error) : null;
   if (!error) {
     return null;
   }
-  return optionalString(error.message) ?? optionalString(error.code);
+  const code = optionalString(error.code);
+  return {
+    code,
+    message: optionalString(error.message) ?? code ?? "Codex response failed",
+  };
 }
 
 function extractTextFromSseEvent(event: JsonObject): ResponseTextResult {
   const type = optionalString(event.type);
   if (type === "error") {
+    const code = optionalString(event.code);
     return {
+      failure: {
+        code,
+        message:
+          optionalString(event.message) ?? code ?? "Codex response failed",
+      },
       text: "",
-      failedMessage:
-        optionalString(event.message) ??
-        optionalString(event.code) ??
-        "Codex response failed",
     };
   }
 
   if (type === "response.failed") {
     const response = event.response ? jsonObject(event.response) : null;
     return {
+      failure: response
+        ? (getCodexFailure(response) ?? {
+            code: null,
+            message: "Codex response failed",
+          })
+        : { code: null, message: "Codex response failed" },
       text: "",
-      failedMessage: response
-        ? (getCodexFailureMessage(response) ?? "Codex response failed")
-        : "Codex response failed",
     };
   }
 
   if (type === "response.output_text.delta") {
     return {
+      failure: null,
       text: optionalString(event.delta) ?? "",
-      failedMessage: null,
     };
   }
 
   if (type === "response.completed" || type === "response.done") {
     const response = event.response ? jsonObject(event.response) : null;
     const text = response ? getCodexResponseText(response) : null;
-    const failedMessage = response ? getCodexFailureMessage(response) : null;
+    const failure = response ? getCodexFailure(response) : null;
     return {
+      failure,
       text: text ?? "",
-      failedMessage,
     };
   }
 
   return {
+    failure: null,
     text: "",
-    failedMessage: null,
   };
 }
 
@@ -524,14 +588,13 @@ async function readResponseTextFromSse(
   let buffer = "";
   let deltaText = "";
   let finalText: string | null = null;
-  let failedMessage: string | null = null;
   let totalBytes = 0;
 
   try {
     while (true) {
       const chunk = await readChunkWithTimeout({
+        deadline: args.deadline,
         reader,
-        readTimeoutMs: args.readTimeoutMs,
       });
       if (chunk.done) {
         break;
@@ -565,8 +628,11 @@ async function readResponseTextFromSse(
           const event = jsonObject(eventValue);
           if (event) {
             const result = extractTextFromSseEvent(event);
-            if (result.failedMessage) {
-              failedMessage = result.failedMessage;
+            if (result.failure) {
+              throw new ExpectedCommandDispatchError(
+                codexStreamFailureErrorCode(result.failure),
+                result.failure.message,
+              );
             }
             if (result.text) {
               if (
@@ -587,13 +653,6 @@ async function readResponseTextFromSse(
   } catch (error) {
     await cancelReaderBestEffort(reader);
     throw error;
-  }
-
-  if (failedMessage) {
-    throw new ExpectedCommandDispatchError(
-      "codex_request_failed",
-      failedMessage,
-    );
   }
 
   const text = finalText ?? deltaText;
@@ -713,7 +772,7 @@ async function fetchChatGptResponses(
   args: ChatGptResponsesFetchArgs,
 ): Promise<Response> {
   return runWithTimeout({
-    timeoutMs: args.command.timeoutMs,
+    deadline: args.deadline,
     work: (signal) =>
       fetchChatGpt({
         url: CODEX_RESPONSES_URL,
@@ -731,7 +790,7 @@ async function fetchOpenAiResponses(
   args: OpenAiResponsesFetchArgs,
 ): Promise<Response> {
   return runWithTimeout({
-    timeoutMs: args.command.timeoutMs,
+    deadline: args.deadline,
     work: (signal) =>
       fetch(OPENAI_RESPONSES_URL, {
         method: "POST",
@@ -747,11 +806,13 @@ async function fetchResponses(args: ResponsesFetchArgs): Promise<Response> {
     ? fetchChatGptResponses({
         auth: args.auth,
         command: args.command,
+        deadline: args.deadline,
         request: args.request,
       })
     : fetchOpenAiResponses({
         auth: args.auth,
         command: args.command,
+        deadline: args.deadline,
         request: args.request,
       });
 }
@@ -759,22 +820,23 @@ async function fetchResponses(args: ResponsesFetchArgs): Promise<Response> {
 export async function completeCodexInference(
   command: InferenceCompleteCommand,
 ): Promise<HostDaemonCommandResult<"codex.inference.complete">> {
+  const deadline = createCodexRequestDeadline(command.timeoutMs);
   const auth = await readCodexAuthCredentials();
   const request = buildCodexResponsesRequest(command);
-  const response = await fetchResponses({ auth, command, request });
+  const response = await fetchResponses({ auth, command, deadline, request });
 
   if (!response.ok) {
     throw await createCodexHttpError({
+      deadline,
       operation: "inference",
       response,
-      readTimeoutMs: command.timeoutMs,
     });
   }
 
   const rawText = await readResponseTextFromSse(response, {
+    deadline,
     maxBytes: CODEX_SSE_RESPONSE_MAX_BYTES,
     maxEventChars: CODEX_SSE_EVENT_MAX_CHARS,
-    readTimeoutMs: command.timeoutMs,
   });
   return {
     model: command.model,
@@ -826,7 +888,7 @@ async function fetchChatGptTranscription(
   args: ChatGptTranscriptionFetchArgs,
 ): Promise<Response> {
   return runWithTimeout({
-    timeoutMs: args.command.timeoutMs,
+    deadline: args.deadline,
     work: (signal) =>
       fetchChatGpt({
         url: CHATGPT_TRANSCRIBE_URL,
@@ -844,7 +906,7 @@ async function fetchOpenAiTranscription(
   args: OpenAiTranscriptionFetchArgs,
 ): Promise<Response> {
   return runWithTimeout({
-    timeoutMs: args.command.timeoutMs,
+    deadline: args.deadline,
     work: (signal) =>
       fetch(OPENAI_TRANSCRIBE_URL, {
         method: "POST",
@@ -862,31 +924,34 @@ async function fetchTranscription(
     ? fetchChatGptTranscription({
         auth: args.auth,
         command: args.command,
+        deadline: args.deadline,
       })
     : fetchOpenAiTranscription({
         auth: args.auth,
         command: args.command,
+        deadline: args.deadline,
       });
 }
 
 export async function transcribeCodexVoice(
   command: VoiceTranscribeCommand,
 ): Promise<HostDaemonCommandResult<"codex.voice.transcribe">> {
+  const deadline = createCodexRequestDeadline(command.timeoutMs);
   const auth = await readCodexAuthCredentials();
-  const response = await fetchTranscription({ auth, command });
+  const response = await fetchTranscription({ auth, command, deadline });
 
   if (!response.ok) {
     throw await createCodexHttpError({
+      deadline,
       operation: "transcription",
       response,
-      readTimeoutMs: command.timeoutMs,
     });
   }
 
   const responseText = await readLimitedResponseText(response, {
+    deadline,
     maxBytes: CODEX_TRANSCRIPTION_RESPONSE_MAX_BYTES,
     overflowBehavior: "throw",
-    readTimeoutMs: command.timeoutMs,
   });
 
   return {

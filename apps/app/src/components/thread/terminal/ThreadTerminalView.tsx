@@ -13,11 +13,11 @@ import type {
   Terminal as XTermTerminal,
 } from "@xterm/xterm";
 import type { FitAddon } from "@xterm/addon-fit";
+import { TERMINAL_DATA_MAX_BYTES } from "@bb/domain";
 import type {
   TerminalServerMessage,
   TerminalSession,
 } from "@bb/server-contract";
-import { terminalServerMessageSchema } from "@bb/server-contract";
 import { useAppThemeEpoch } from "@/hooks/useAppTheme";
 import { usePreferredTheme } from "@/hooks/useTheme";
 import type { MarkdownPreviewLinkHandler } from "@/components/ui/markdown-link";
@@ -28,12 +28,37 @@ import {
 import type { MessageProseSelection } from "@/components/thread/timeline/SelectableMessageProse.js";
 import { TimelineSelectionMenu } from "@/components/thread/timeline/TimelineSelectionMenu.js";
 import { buildTerminalWebSocketUrl } from "./terminal-websocket-url";
+import { TerminalWebSocketTransport } from "./terminal-websocket-transport";
 
-const TERMINAL_FONT_FAMILY =
-  "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace";
+export const TERMINAL_FONT_FAMILY =
+  '"JetBrainsMono Nerd Font Mono", "MesloLGS NF", "Symbols Nerd Font Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace';
+export const TERMINAL_UNICODE_VERSION = "11";
+export const TERMINAL_ALLOW_PROPOSED_API = true;
 const TERMINAL_SELECTION_DRAG_DIRECTION_THRESHOLD_PX = 4;
 
 type TerminalFitScheduler = () => void;
+
+interface ShouldFocusTerminalAfterAsyncMountArgs {
+  currentFocusIsAvailable: boolean;
+  hasExplicitFocusRequest: boolean;
+  focusMovedDuringMount: boolean;
+  isPanelOpen: boolean;
+}
+
+export function shouldFocusTerminalAfterAsyncMount({
+  currentFocusIsAvailable,
+  hasExplicitFocusRequest,
+  focusMovedDuringMount,
+  isPanelOpen,
+}: ShouldFocusTerminalAfterAsyncMountArgs): boolean {
+  if (!isPanelOpen) {
+    return false;
+  }
+  if (focusMovedDuringMount && currentFocusIsAvailable) {
+    return false;
+  }
+  return hasExplicitFocusRequest || !currentFocusIsAvailable;
+}
 
 interface WebglRendererAddon extends ITerminalAddon {
   onContextLoss: (listener: () => void) => IDisposable;
@@ -151,20 +176,18 @@ function buildTerminalTheme(): ITheme {
 }
 
 interface ThreadTerminalViewProps {
+  autoFocus: boolean;
   isPanelOpen: boolean;
+  onAutoFocusHandled?: () => void;
   onOpenLink?: MarkdownPreviewLinkHandler;
   onSelectionAddToChat?: (text: string) => void;
+  onSessionChange?: (session: TerminalSession) => void;
   onTitleChange?: TerminalTitleChangeHandler;
   onUserInput?: () => void;
   session: TerminalSession;
 }
 
 type TerminalTitleChangeHandler = (title: string) => void;
-
-interface SendTerminalResizeArgs {
-  socket: WebSocket;
-  terminal: XTermTerminal;
-}
 
 interface WriteTerminalStatusArgs {
   terminal: XTermTerminal;
@@ -178,10 +201,18 @@ interface WriteTerminalSessionStatusNoticeArgs {
 }
 
 interface TerminalOutputWriteArgs {
+  data: string | Uint8Array;
   isReplay: boolean;
   replayWriteState: TerminalReplayWriteState;
   terminal: XTermTerminal;
-  text: string;
+}
+
+interface ForwardTerminalDataArgs {
+  data: string;
+  onInput: (dataBase64: string) => void;
+  onUserInput?: () => void;
+  replayWriteState: TerminalReplayWriteState;
+  sessionStatus: TerminalSession["status"];
 }
 
 interface OpenTerminalWebLinkArgs {
@@ -201,14 +232,14 @@ type TerminalSessionStatusNoticeRef = {
 
 interface HandleTerminalServerMessageArgs {
   message: TerminalServerMessage;
+  onSessionChange?: (session: TerminalSession) => void;
   replayNextSeq: number | null;
   replayWriteState: TerminalReplayWriteState;
   setReplayNextSeq: (nextSeq: number) => void;
   terminal: XTermTerminal;
 }
 
-function encodeUtf8Base64(value: string): string {
-  const bytes = new TextEncoder().encode(value);
+function encodeBytesBase64(bytes: Uint8Array): string {
   let binary = "";
   for (const byte of bytes) {
     binary += String.fromCharCode(byte);
@@ -216,29 +247,57 @@ function encodeUtf8Base64(value: string): string {
   return btoa(binary);
 }
 
-function decodeUtf8Base64(value: string): string {
+export function encodeTerminalInputChunks(value: string): string[] {
+  const bytes = new TextEncoder().encode(value);
+  const chunks: string[] = [];
+  for (
+    let offset = 0;
+    offset < bytes.byteLength;
+    offset += TERMINAL_DATA_MAX_BYTES
+  ) {
+    chunks.push(
+      encodeBytesBase64(
+        bytes.subarray(
+          offset,
+          Math.min(offset + TERMINAL_DATA_MAX_BYTES, bytes.byteLength),
+        ),
+      ),
+    );
+  }
+  return chunks;
+}
+
+export function forwardTerminalData({
+  data,
+  onInput,
+  onUserInput,
+  replayWriteState,
+  sessionStatus,
+}: ForwardTerminalDataArgs): void {
+  // xterm emits terminal protocol replies (for example, cursor-position
+  // reports) through onData alongside user input. Replaying historical output
+  // can generate those replies again, so never forward onData while a replay
+  // write is still being parsed.
+  if (
+    replayWriteState.suppressedWriteCount > 0 ||
+    sessionStatus !== "running"
+  ) {
+    return;
+  }
+
+  onUserInput?.();
+  for (const dataBase64 of encodeTerminalInputChunks(data)) {
+    onInput(dataBase64);
+  }
+}
+
+export function decodeTerminalOutputBytes(value: string): Uint8Array {
   const binary = atob(value);
   const bytes = new Uint8Array(binary.length);
   for (let index = 0; index < binary.length; index += 1) {
     bytes[index] = binary.charCodeAt(index);
   }
-  return new TextDecoder().decode(bytes);
-}
-
-function sendTerminalResize({
-  socket,
-  terminal,
-}: SendTerminalResizeArgs): void {
-  if (socket.readyState !== WebSocket.OPEN) {
-    return;
-  }
-  socket.send(
-    JSON.stringify({
-      type: "resize",
-      cols: terminal.cols,
-      rows: terminal.rows,
-    }),
-  );
+  return bytes;
 }
 
 function hasVisibleTerminalSize({
@@ -360,25 +419,26 @@ function openTerminalWebLink({
   openUrlInExternalBrowser(uri);
 }
 
-function writeTerminalOutput({
+export function writeTerminalOutput({
+  data,
   isReplay,
   replayWriteState,
   terminal,
-  text,
 }: TerminalOutputWriteArgs): void {
   if (!isReplay) {
-    terminal.write(text);
+    terminal.write(data);
     return;
   }
 
   replayWriteState.suppressedWriteCount += 1;
-  terminal.write(text, () => {
+  terminal.write(data, () => {
     replayWriteState.suppressedWriteCount -= 1;
   });
 }
 
 function handleTerminalServerMessage({
   message,
+  onSessionChange,
   replayNextSeq,
   replayWriteState,
   setReplayNextSeq,
@@ -386,17 +446,20 @@ function handleTerminalServerMessage({
 }: HandleTerminalServerMessageArgs): void {
   switch (message.type) {
     case "attached":
+      onSessionChange?.(message.session);
       setReplayNextSeq(message.nextSeq);
       return;
     case "pong":
+      return;
     case "session-updated":
+      onSessionChange?.(message.session);
       return;
     case "output":
       writeTerminalOutput({
+        data: decodeTerminalOutputBytes(message.chunk.dataBase64),
         isReplay: replayNextSeq !== null && message.chunk.seq < replayNextSeq,
         replayWriteState,
         terminal,
-        text: decodeUtf8Base64(message.chunk.dataBase64),
       });
       return;
     case "error":
@@ -406,6 +469,7 @@ function handleTerminalServerMessage({
       });
       return;
     case "exited":
+      onSessionChange?.(message.session);
       writeTerminalStatus({
         terminal,
         text:
@@ -418,9 +482,12 @@ function handleTerminalServerMessage({
 }
 
 export function ThreadTerminalView({
+  autoFocus,
   isPanelOpen,
+  onAutoFocusHandled,
   onOpenLink,
   onSelectionAddToChat,
+  onSessionChange,
   onTitleChange,
   onUserInput,
   session,
@@ -436,10 +503,17 @@ export function ThreadTerminalView({
   const lastPointerReleaseAnchorRef = useRef<TerminalSelectionAnchor | null>(
     null,
   );
+  const onSessionChangeRef = useRef<
+    ((session: TerminalSession) => void) | undefined
+  >(onSessionChange);
   const onTitleChangeRef = useRef<TerminalTitleChangeHandler | undefined>(
     onTitleChange,
   );
   const onUserInputRef = useRef<(() => void) | undefined>(onUserInput);
+  const onAutoFocusHandledRef = useRef<(() => void) | undefined>(
+    onAutoFocusHandled,
+  );
+  const autoFocusRef = useRef(autoFocus);
   const isPanelOpenRef = useRef(isPanelOpen);
   const sessionStatusRef = useRef<TerminalSession["status"]>(session.status);
   const sessionRef = useRef(session);
@@ -457,10 +531,13 @@ export function ThreadTerminalView({
   const effectiveOnOpenLink = onOpenLink ?? handleOpenLinkByPreference;
   const onOpenLinkRef = useRef<MarkdownPreviewLinkHandler>(effectiveOnOpenLink);
 
+  autoFocusRef.current = autoFocus;
   isPanelOpenRef.current = isPanelOpen;
   sessionStatusRef.current = session.status;
   sessionRef.current = session;
+  onAutoFocusHandledRef.current = onAutoFocusHandled;
   onOpenLinkRef.current = effectiveOnOpenLink;
+  onSessionChangeRef.current = onSessionChange;
   onTitleChangeRef.current = onTitleChange;
   onUserInputRef.current = onUserInput;
 
@@ -539,8 +616,10 @@ export function ThreadTerminalView({
       return;
     }
 
+    const activeElementAtMount = document.activeElement;
+
     let disposed = false;
-    let socket: WebSocket | null = null;
+    let transport: TerminalWebSocketTransport | null = null;
     let terminal: XTermTerminal | null = null;
     let fitAddon: FitAddon | null = null;
     let replayNextSeq: number | null = null;
@@ -559,19 +638,24 @@ export function ThreadTerminalView({
         import("@xterm/xterm"),
         import("@xterm/addon-fit"),
         import("@xterm/addon-web-links"),
+        import("@xterm/addon-unicode11"),
       ]);
       const webglAddonModulePromise = loadOptionalTerminalWebglAddon(
         () => import("@xterm/addon-webgl"),
       );
-      const [{ Terminal }, { FitAddon: LoadedFitAddon }, { WebLinksAddon }] =
-        await requiredModulesPromise;
+      const [
+        { Terminal },
+        { FitAddon: LoadedFitAddon },
+        { WebLinksAddon },
+        { Unicode11Addon },
+      ] = await requiredModulesPromise;
       const webglAddonModule = await webglAddonModulePromise;
       if (disposed) {
         return;
       }
 
       terminal = new Terminal({
-        allowProposedApi: false,
+        allowProposedApi: TERMINAL_ALLOW_PROPOSED_API,
         convertEol: true,
         cursorBlink: true,
         fontFamily: TERMINAL_FONT_FAMILY,
@@ -582,6 +666,8 @@ export function ThreadTerminalView({
       terminalRef.current = terminal;
       fitAddon = new LoadedFitAddon();
       terminal.loadAddon(fitAddon);
+      terminal.loadAddon(new Unicode11Addon());
+      terminal.unicode.activeVersion = TERMINAL_UNICODE_VERSION;
       terminal.loadAddon(
         new WebLinksAddon((event, uri) => {
           openTerminalWebLink({
@@ -614,12 +700,7 @@ export function ThreadTerminalView({
           return;
         }
         fitAddon.fit();
-        if (socket) {
-          sendTerminalResize({
-            socket,
-            terminal,
-          });
-        }
+        transport?.sendResize(terminal.cols, terminal.rows);
       };
       const scheduleFit: TerminalFitScheduler = () => {
         if (resizeAnimationFrame !== null) {
@@ -632,71 +713,101 @@ export function ThreadTerminalView({
       };
       fitTerminal();
       scheduleFitRef.current = scheduleFit;
-      if (isPanelOpenRef.current) {
+      const currentActiveElement = document.activeElement;
+      // A terminal can mount after either an explicit terminal action or a
+      // passive panel swap during navigation. Only the explicit action may
+      // replace an existing focus owner, and neither path may override focus
+      // that moved elsewhere while xterm's modules were loading.
+      if (
+        shouldFocusTerminalAfterAsyncMount({
+          currentFocusIsAvailable:
+            currentActiveElement !== null &&
+            currentActiveElement !== document.body &&
+            currentActiveElement.isConnected,
+          hasExplicitFocusRequest: autoFocusRef.current,
+          focusMovedDuringMount: currentActiveElement !== activeElementAtMount,
+          isPanelOpen: isPanelOpenRef.current,
+        })
+      ) {
         terminal.focus();
+        onAutoFocusHandledRef.current?.();
       }
 
-      socket = new WebSocket(
-        buildTerminalWebSocketUrl({ terminalId: session.id }),
-      );
-      const activeSocket = socket;
       const activeTerminal = terminal;
-
-      activeSocket.onopen = () => {
-        sendTerminalResize({
-          socket: activeSocket,
-          terminal: activeTerminal,
-        });
-      };
-      activeSocket.onmessage = (event) => {
-        if (typeof event.data !== "string") {
-          return;
-        }
-        let parsedMessage: unknown;
-        try {
-          parsedMessage = JSON.parse(event.data);
-        } catch {
-          return;
-        }
-        const result = terminalServerMessageSchema.safeParse(parsedMessage);
-        if (!result.success) {
-          return;
-        }
-        handleTerminalServerMessage({
-          message: result.data,
-          replayNextSeq,
-          replayWriteState,
-          setReplayNextSeq: (nextSeq) => {
-            replayNextSeq = nextSeq;
-          },
-          terminal: activeTerminal,
-        });
-      };
-      activeSocket.onclose = () => {
-        if (!disposed) {
+      let hasOpened = false;
+      let reconnectNoticeVisible = false;
+      const activeTransport = new TerminalWebSocketTransport({
+        onConnectionState: (state) => {
+          if (disposed) {
+            return;
+          }
+          if (state === "reconnecting" && !reconnectNoticeVisible) {
+            reconnectNoticeVisible = true;
+            writeTerminalStatus({
+              terminal: activeTerminal,
+              text: "Terminal connection lost; reconnecting...",
+            });
+            return;
+          }
+          if (state === "open") {
+            if (hasOpened && reconnectNoticeVisible) {
+              writeTerminalStatus({
+                terminal: activeTerminal,
+                text: "Terminal reconnected",
+              });
+            }
+            hasOpened = true;
+            reconnectNoticeVisible = false;
+          }
+        },
+        onInputOverflow: (maxBytes) => {
           writeTerminalStatus({
             terminal: activeTerminal,
-            text: "Terminal connection closed",
+            text: `Terminal input queue is full (${maxBytes} bytes); input was not sent`,
           });
-        }
-      };
+        },
+        onInvalidMessage: () => {
+          writeTerminalStatus({
+            terminal: activeTerminal,
+            text: "Terminal received an invalid server message",
+          });
+        },
+        onMessage: (message) => {
+          handleTerminalServerMessage({
+            message,
+            onSessionChange: onSessionChangeRef.current,
+            replayNextSeq,
+            replayWriteState,
+            setReplayNextSeq: (nextSeq) => {
+              replayNextSeq = nextSeq;
+            },
+            terminal: activeTerminal,
+          });
+        },
+        onSequenceGap: () => {
+          activeTerminal.reset();
+          writeTerminalStatus({
+            terminal: activeTerminal,
+            text: "Some terminal output was unavailable after reconnect",
+          });
+        },
+        shouldReconnect: () =>
+          !disposed && sessionStatusRef.current === "running",
+        url: buildTerminalWebSocketUrl({ terminalId: session.id }),
+      });
+      transport = activeTransport;
+      activeTransport.sendResize(activeTerminal.cols, activeTerminal.rows);
+      activeTransport.start();
+      const sendTerminalInput = (dataBase64: string) =>
+        activeTransport.sendInput(dataBase64);
       activeTerminal.onData((data) => {
-        if (replayWriteState.suppressedWriteCount > 0) {
-          return;
-        }
-        if (sessionStatusRef.current !== "running") {
-          return;
-        }
-        if (activeSocket.readyState !== WebSocket.OPEN) {
-          return;
-        }
-        onUserInputRef.current?.();
-        activeSocket.send(
-          JSON.stringify({
-            type: "input",
-            dataBase64: encodeUtf8Base64(data),
-          }),
-        );
+        forwardTerminalData({
+          data,
+          onInput: sendTerminalInput,
+          onUserInput: onUserInputRef.current,
+          replayWriteState,
+          sessionStatus: sessionStatusRef.current,
+        });
       });
       activeTerminal.onTitleChange((title) => {
         if (replayWriteState.suppressedWriteCount > 0) {
@@ -746,7 +857,7 @@ export function ThreadTerminalView({
       }
       resizeObserver?.disconnect();
       selectionChangeDisposable?.dispose();
-      socket?.close();
+      transport?.dispose();
       terminal?.dispose();
       terminalRef.current = null;
       scheduleFitRef.current = null;
@@ -754,12 +865,16 @@ export function ThreadTerminalView({
   }, [reportTerminalSelection, session.id, session.threadId]);
 
   useEffect(() => {
-    if (!isPanelOpen) {
+    if (!isPanelOpen || !autoFocus) {
       return;
     }
-    terminalRef.current?.focus();
+    const terminal = terminalRef.current;
+    if (terminal !== null) {
+      terminal.focus();
+      onAutoFocusHandledRef.current?.();
+    }
     scheduleFitRef.current?.();
-  }, [isPanelOpen]);
+  }, [autoFocus, isPanelOpen]);
 
   useEffect(() => {
     const terminal = terminalRef.current;

@@ -16,6 +16,7 @@ import {
   defaultExperiments,
 } from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { focusManager } from "@tanstack/react-query";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { PluginsOverview } from "./PluginsOverview";
 
@@ -38,6 +39,7 @@ function systemConfig(): SystemConfigResponse {
     pluginThemes: [],
     featureFlags: { placeholder: false, timelineWindowEventBudget: 1_500 },
     hostDaemonPort: null,
+    serverUrl: "http://localhost:38886",
     primaryHostId: null,
     primaryHostPlatform: null,
     voiceTranscriptionEnabled: false,
@@ -172,13 +174,14 @@ function LocationPath() {
 }
 
 afterEach(() => {
+  focusManager.setFocused(undefined);
   cleanup();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
 describe("PluginsOverview", () => {
-  it("renders Installed and Browse as real collection projections", async () => {
+  it("opens on Browse and renders it before Installed", async () => {
     installFetch();
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     render(
@@ -189,7 +192,15 @@ describe("PluginsOverview", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText("Automations")).toBeTruthy();
+    expect(await screen.findByText("GitHub")).toBeTruthy();
+    const tabs = screen.getAllByRole("tab");
+    expect(tabs[0]).toBe(screen.getByRole("tab", { name: "Browse" }));
+    expect(tabs[1]).toBe(
+      screen.getByRole("tab", { name: "Installed, 1 plugin" }),
+    );
+    expect(screen.getByRole("tab", { name: "Browse" }).className).toContain(
+      "bg-accent",
+    );
     const installedTab = screen.getByRole("tab", {
       name: "Installed, 1 plugin",
     });
@@ -201,11 +212,32 @@ describe("PluginsOverview", () => {
     ).toBeTruthy();
     expect(screen.queryByRole("tab", { name: /Marketplaces/ })).toBeNull();
 
+    const catalogRequests = () =>
+      vi.mocked(fetch).mock.calls.filter(([input]) => {
+        const rawUrl =
+          typeof input === "string"
+            ? input
+            : input instanceof URL
+              ? input.href
+              : input.url;
+        return (
+          new URL(rawUrl, "http://localhost").pathname ===
+          "/api/v1/plugin-catalog/search"
+        );
+      });
+    expect(catalogRequests()).toHaveLength(1);
+
+    act(() => focusManager.setFocused(false));
+    act(() => focusManager.setFocused(true));
+    await waitFor(() => expect(catalogRequests()).toHaveLength(1));
+
+    fireEvent.click(installedTab);
+    expect(await screen.findByText("Automations")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Type" })).toBeTruthy();
+
     fireEvent.click(screen.getByRole("tab", { name: "Browse" }));
     expect(await screen.findByText("GitHub")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Category" })).toBeTruthy();
-    expect(screen.queryByText("BB Official plugins")).toBeNull();
-    expect(screen.getByRole("button", { name: "New plugin" })).toBeTruthy();
+    expect(catalogRequests()).toHaveLength(1);
   });
 
   it("shows category filters only in Browse", async () => {
@@ -231,15 +263,8 @@ describe("PluginsOverview", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText("Automations")).toBeTruthy();
-    expect(screen.getByText("Docs")).toBeTruthy();
-    // Installed offers Type, not Category.
-    expect(screen.queryByRole("button", { name: "Category" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Type" })).toBeTruthy();
-
-    fireEvent.click(screen.getByRole("tab", { name: "Browse" }));
+    expect(await screen.findByText("GitHub")).toBeTruthy();
     // Wait for the catalog so the Category menu has options to offer.
-    await screen.findByText("GitHub");
     const categoryTrigger = screen.getByRole("button", { name: "Category" });
     expect(screen.queryByRole("button", { name: "Type" })).toBeNull();
     fireEvent.pointerDown(categoryTrigger);
@@ -249,6 +274,10 @@ describe("PluginsOverview", () => {
     fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.getByText("Docs")).toBeTruthy();
     expect(screen.queryByText("GitHub")).toBeNull();
+
+    fireEvent.click(screen.getByRole("tab", { name: /Installed/ }));
+    expect(screen.queryByRole("button", { name: "Category" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Type" })).toBeTruthy();
   });
 
   it("keeps Browse filters in the toolbar rather than a separate pill band", async () => {
@@ -285,7 +314,7 @@ describe("PluginsOverview", () => {
     installFetch();
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     render(
-      <MemoryRouter initialEntries={["/tools/plugins"]}>
+      <MemoryRouter initialEntries={["/tools/plugins?view=installed"]}>
         <QueryClientWrapper>
           <Routes>
             <Route path="/tools/plugins" element={<PluginsOverview />} />
@@ -345,7 +374,7 @@ describe("PluginsOverview", () => {
     installFetch(plugins);
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     render(
-      <MemoryRouter initialEntries={["/tools/plugins"]}>
+      <MemoryRouter initialEntries={["/tools/plugins?view=installed"]}>
         <QueryClientWrapper>
           <PluginsOverview />
         </QueryClientWrapper>
@@ -437,7 +466,7 @@ describe("PluginsOverview", () => {
       installFetch(plugins);
       const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
       render(
-        <MemoryRouter initialEntries={["/tools/plugins"]}>
+        <MemoryRouter initialEntries={["/tools/plugins?view=installed"]}>
           <QueryClientWrapper>
             <PluginsOverview />
           </QueryClientWrapper>
@@ -524,7 +553,7 @@ describe("PluginsOverview", () => {
     ]);
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     render(
-      <MemoryRouter initialEntries={["/tools/plugins"]}>
+      <MemoryRouter initialEntries={["/tools/plugins?view=installed"]}>
         <QueryClientWrapper>
           <PluginsOverview />
         </QueryClientWrapper>
@@ -612,7 +641,7 @@ describe("PluginsOverview", () => {
     ]);
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     render(
-      <MemoryRouter initialEntries={["/tools/plugins"]}>
+      <MemoryRouter initialEntries={["/tools/plugins?view=installed"]}>
         <QueryClientWrapper>
           <PluginsOverview />
         </QueryClientWrapper>
@@ -696,7 +725,7 @@ describe("PluginsOverview", () => {
     ]);
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     render(
-      <MemoryRouter initialEntries={["/tools/plugins"]}>
+      <MemoryRouter initialEntries={["/tools/plugins?view=installed"]}>
         <QueryClientWrapper>
           <PluginsOverview />
         </QueryClientWrapper>
@@ -730,7 +759,7 @@ describe("PluginsOverview", () => {
     ]);
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     render(
-      <MemoryRouter initialEntries={["/tools/plugins"]}>
+      <MemoryRouter initialEntries={["/tools/plugins?view=installed"]}>
         <QueryClientWrapper>
           <PluginsOverview />
         </QueryClientWrapper>

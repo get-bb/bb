@@ -80,7 +80,7 @@ export function createLogger(options: CreateLoggerOptions): Logger {
         ignore: "pid,hostname,component",
         messageFormat: "[{component}] {msg}",
         singleLine: true,
-        translateTime: "HH:mm:ss",
+        translateTime: "SYS:HH:MM:ss",
       },
       level: loggerConfig.BB_LOG_LEVEL,
     });

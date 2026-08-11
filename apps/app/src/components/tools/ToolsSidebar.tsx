@@ -1,4 +1,4 @@
-import type { MouseEvent as ReactMouseEvent } from "react";
+import { useState, type MouseEvent as ReactMouseEvent } from "react";
 import { useLocation } from "react-router-dom";
 import {
   SectionSidebar,
@@ -6,7 +6,12 @@ import {
   SectionSidebarLabel,
   SectionSidebarRow,
 } from "@/components/sidebar/SectionSidebar";
-import { TOOLS_NAV_ITEMS, resolveToolsSection } from "./tools-navigation";
+import {
+  TOOLS_NAV_ITEMS,
+  TOOLS_SECTIONS,
+  resolveToolsSection,
+  type ToolsSectionId,
+} from "./tools-navigation";
 
 export function ToolsSidebar({
   appRoutePath,
@@ -21,6 +26,13 @@ export function ToolsSidebar({
 }) {
   const location = useLocation();
   const activeSection = resolveToolsSection(location.pathname);
+  const [sectionRoutePaths, setSectionRoutePaths] = useState<
+    Record<ToolsSectionId, string>
+  >({
+    plugins: TOOLS_SECTIONS.plugins.to,
+    skills: TOOLS_SECTIONS.skills.to,
+  });
+  const currentRoutePath = `${location.pathname}${location.search}${location.hash}`;
 
   return (
     <SectionSidebar
@@ -34,19 +46,32 @@ export function ToolsSidebar({
       <SectionSidebarLabel>Extensions</SectionSidebarLabel>
       <div className="mt-1 space-y-0.5">
         {TOOLS_NAV_ITEMS.map((item) => (
-          <SectionSidebarRow
+          <div
             key={item.id}
-            active={activeSection === item.id}
-            current={
-              location.pathname === item.to && location.search === ""
-                ? "page"
-                : "location"
-            }
-            label={item.label}
-            to={item.to}
+            onClick={() => {
+              if (item.id === activeSection) return;
+              setSectionRoutePaths((current) =>
+                current[activeSection] === currentRoutePath
+                  ? current
+                  : { ...current, [activeSection]: currentRoutePath },
+              );
+            }}
           >
-            <SectionSidebarIcon name={item.icon} />
-          </SectionSidebarRow>
+            <SectionSidebarRow
+              active={activeSection === item.id}
+              current={
+                location.pathname === item.to && location.search === ""
+                  ? "page"
+                  : "location"
+              }
+              label={item.label}
+              to={
+                item.id === activeSection ? item.to : sectionRoutePaths[item.id]
+              }
+            >
+              <SectionSidebarIcon name={item.icon} />
+            </SectionSidebarRow>
+          </div>
         ))}
       </div>
     </SectionSidebar>

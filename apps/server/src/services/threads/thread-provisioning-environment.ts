@@ -38,11 +38,7 @@ import {
   type UnmanagedCheckoutCommand,
 } from "./thread-create-helpers.js";
 import { dispatchThreadRenameCommand } from "./thread-commands.js";
-import {
-  inferThreadMetadata,
-  MANAGED_THREAD_METADATA_TIMEOUT_MAX_ATTEMPTS,
-  MANAGED_THREAD_METADATA_TIMEOUT_MS,
-} from "./thread-metadata-inference.js";
+import { inferThreadMetadata } from "./thread-metadata-inference.js";
 import { deriveBranchSlugFromTitle } from "./title-generation.js";
 import {
   attachedEnvironmentIdForContext,
@@ -437,8 +433,6 @@ async function resolveMetadataIfNeeded(
       input: args.context.request.input,
       provisioningId: args.context.state.provisioningId,
       threadId: args.thread.id,
-      timeoutMaxAttempts: MANAGED_THREAD_METADATA_TIMEOUT_MAX_ATTEMPTS,
-      timeoutMs: MANAGED_THREAD_METADATA_TIMEOUT_MS,
       writeTranscript: true,
     });
 
@@ -540,8 +534,6 @@ async function resolveMetadataIfNeeded(
     input: args.context.request.input,
     provisioningId: args.context.state.provisioningId,
     threadId: args.thread.id,
-    timeoutMaxAttempts: MANAGED_THREAD_METADATA_TIMEOUT_MAX_ATTEMPTS,
-    timeoutMs: MANAGED_THREAD_METADATA_TIMEOUT_MS,
     writeTranscript: false,
   });
 

@@ -9,11 +9,13 @@ import type {
 } from "@bb/domain";
 import type {
   CreateExecutionInputSources,
+  ExecutionInputFieldSource,
   ExistingThreadExecutionInputSources,
   SystemExecutionOptionsModelLoadError,
   SystemProvidersQuery,
 } from "@bb/server-contract";
 import type { PickerOption } from "@/components/pickers/OptionPicker";
+import type { ModelPickerOption } from "@/components/pickers/model-picker-option";
 import { parseEnvironmentValue } from "@/components/pickers/environment-picker-value";
 import { PERMISSION_MODE_OPTIONS } from "@/lib/permission-mode-options";
 import { useRootComposeReuseEnvironment } from "@/lib/root-compose-selection";
@@ -22,6 +24,7 @@ import { REASONING_LABELS } from "@/lib/reasoning-labels";
 import { permissionModeRank, reconcileReasoningLevel } from "@bb/domain";
 import { selectPrimaryHost, useHosts } from "./queries/host-queries";
 import {
+  useOnboardingAgents,
   useSystemConfig,
   useSystemExecutionOptions,
 } from "./queries/system-queries";
@@ -52,8 +55,6 @@ export { formatModelLabel, resolvePermissionModeSelection };
 
 const EMPTY_PROVIDERS: ProviderInfo[] = [];
 const EMPTY_COMPOSER_ACTIONS: ProviderComposerAction[] = [];
-
-const PRODUCT_DEFAULT_PROVIDER_ID = "codex";
 
 const DEFAULT_SUPPORTED_PERMISSION_MODES: readonly PermissionMode[] = ["full"];
 
@@ -86,9 +87,10 @@ export interface UseThreadCreationOptionsResult<TExecutionInputSources> {
   setEnvironmentSelectionValue: StringSelectionSetter;
   clearReuseEnvironment: ClearSelectionHandler;
   activeModel: AvailableModel | undefined;
-  modelOptions: PickerOption<string>[];
-  moreModelOptions: PickerOption<string>[];
+  modelOptions: ModelPickerOption[];
+  moreModelOptions: ModelPickerOption[];
   isLoadingModels: boolean;
+  isResolvingInitialProvider: boolean;
   modelLoadFailed: boolean;
   modelLoadError: SystemExecutionOptionsModelLoadError | null;
   reasoningOptions: PickerOption<ReasoningLevel>[];
@@ -153,6 +155,7 @@ export function useThreadCreationOptions(
     initialPermissionMode,
     initialReasoningLevel,
     initialServiceTier,
+    preferConnectedProviderWhenUnset = false,
     preferenceProjectId,
     resolveProviderRouting,
     resetKey,
@@ -236,7 +239,7 @@ export function useThreadCreationOptions(
     usesLocalThreadSelections,
   ]);
 
-  const rawSelectedProviderId = usesStoredCreateSelections
+  const selectedProviderIdBeforeConnectedFallback = usesStoredCreateSelections
     ? storedProviderId || renderedThreadSelections.selectedProviderId
     : renderedThreadSelections.selectedProviderId;
   const rawSelectedModel = usesStoredCreateSelections
@@ -266,8 +269,27 @@ export function useThreadCreationOptions(
         environmentSelectionValue: rawEnvironmentSelectionValue,
         scope,
       });
+  const shouldResolveConnectedProvider =
+    executionOptionsQueryEnabled &&
+    scope === "new-thread" &&
+    preferConnectedProviderWhenUnset &&
+    selectedProviderIdBeforeConnectedFallback.length === 0;
+  const connectedAgentsQuery = useOnboardingAgents({
+    enabled: shouldResolveConnectedProvider,
+    ...executionOptionsRouting,
+    poll: false,
+  });
+  const connectedProviderId = shouldResolveConnectedProvider
+    ? connectedAgentsQuery.data?.agents.find(
+        (agent) => agent.status === "connected",
+      )?.providerId
+    : undefined;
+  const rawSelectedProviderId =
+    selectedProviderIdBeforeConnectedFallback || connectedProviderId || "";
+  // Omission delegates the no-selection fallback to the server, whose product
+  // default comes from the same provider catalog that orders the picker.
   const executionOptionsProviderId = executionOptionsQueryEnabled
-    ? rawSelectedProviderId || PRODUCT_DEFAULT_PROVIDER_ID
+    ? rawSelectedProviderId || undefined
     : undefined;
   const executionOptionsQuery = useSystemExecutionOptions({
     enabled: executionOptionsQueryEnabled,
@@ -279,6 +301,8 @@ export function useThreadCreationOptions(
   const providers = executionOptionsQuery.data?.providers ?? EMPTY_PROVIDERS;
   const isLoadingModels =
     executionOptionsQueryEnabled && executionOptionsQuery.isLoading;
+  const isResolvingInitialProvider =
+    shouldResolveConnectedProvider && connectedAgentsQuery.isPending;
   const modelLoadError =
     executionOptionsQuery.data?.modelLoadError ?? NO_MODEL_LOAD_ERROR;
   const modelLoadFailed =
@@ -466,10 +490,13 @@ export function useThreadCreationOptions(
     selectedModel !== rawSelectedModel;
 
   const modelOptions = useMemo(
-    (): PickerOption<string>[] =>
+    (): ModelPickerOption[] =>
       availableModels.map((model) => ({
         value: model.model,
         label: formatModelLabel(model.displayName || model.model),
+        ...(model.routeProviderId
+          ? { routeProviderId: model.routeProviderId }
+          : {}),
       })),
     [availableModels],
   );
@@ -478,7 +505,7 @@ export function useThreadCreationOptions(
   // current selection already lives in `availableModels`, so it is excluded
   // here rather than listed twice.
   const moreModelOptions = useMemo(
-    (): PickerOption<string>[] =>
+    (): ModelPickerOption[] =>
       (executionOptionsQuery.data?.selectedOnlyModels ?? [])
         .filter(
           (model) =>
@@ -487,6 +514,9 @@ export function useThreadCreationOptions(
         .map((model) => ({
           value: model.model,
           label: formatModelLabel(model.displayName || model.model),
+          ...(model.routeProviderId
+            ? { routeProviderId: model.routeProviderId }
+            : {}),
         })),
     [executionOptionsQuery.data?.selectedOnlyModels, availableModels],
   );
@@ -557,6 +587,12 @@ export function useThreadCreationOptions(
   // stale explicit provenance.
   const touchedFieldsPendingReset =
     usesLocalThreadSelections && threadResetKeyRef.current !== resetKey;
+  const effectiveInitialProviderSource: ExecutionInputFieldSource | undefined =
+    shouldResolveConnectedProvider &&
+    connectedProviderId !== undefined &&
+    effectiveProviderId === connectedProviderId
+      ? "client-preference"
+      : undefined;
   const executionInputSources = useMemo(
     () =>
       buildExecutionInputSources({
@@ -568,6 +604,7 @@ export function useThreadCreationOptions(
           permissionMode,
         },
         forceExplicitModel: isUnavailableModelRecovery,
+        initialProviderSource: effectiveInitialProviderSource,
         scope,
         storedValues: {
           selectedProviderId: storedProviderId,
@@ -582,6 +619,7 @@ export function useThreadCreationOptions(
       }),
     [
       effectiveProviderId,
+      effectiveInitialProviderSource,
       isUnavailableModelRecovery,
       permissionMode,
       reasoningLevel,
@@ -760,6 +798,7 @@ export function useThreadCreationOptions(
     modelOptions,
     moreModelOptions,
     isLoadingModels,
+    isResolvingInitialProvider,
     modelLoadFailed,
     modelLoadError,
     reasoningOptions,

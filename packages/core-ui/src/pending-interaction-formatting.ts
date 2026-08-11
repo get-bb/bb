@@ -179,6 +179,13 @@ export function formatPendingInteractionSubjectDetailLines(
         ...permissions.map((permission) => `Permission: ${permission}`),
       ];
     }
+    case "plan": {
+      // The plan body is the subject, not a detail line. Surfaces render it
+      // themselves so they can keep its Markdown; this only names the file.
+      return interaction.payload.subject.planFilePath
+        ? [`Plan file: ${interaction.payload.subject.planFilePath}`]
+        : [];
+    }
     default:
       return assertNever(interaction.payload.subject);
   }
@@ -235,6 +242,7 @@ function resolveGrantedPermissionsForApproval(
     return interaction.payload.subject.sessionGrant;
   }
 
+  // A plan verdict carries no grant.
   return null;
 }
 

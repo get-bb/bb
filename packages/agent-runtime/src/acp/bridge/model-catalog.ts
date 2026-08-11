@@ -1,7 +1,8 @@
 /**
  * Agent CLI model catalog.
  *
- * Cursor's `agent --list-models` prints one `id - Display Name` line per model,
+ * Cursor's `cursor-agent --list-models` prints one
+ * `id - Display Name` line per model,
  * OpenCode's `opencode models` prints one bare id per line, and Grok's
  * `grok models` prints a bulleted list. These ids can encode reasoning effort:
  * `gpt-5.3-codex-low`, bare `gpt-5.3-codex` for medium, `gpt-5.5-extra-high`
@@ -233,7 +234,10 @@ export function buildAcpNativeReasoningSupport(
   );
   if (supportedReasoningEfforts.length === 0) {
     return {
-      supportedReasoningEfforts: ACP_NATIVE_REASONING_EFFORTS,
+      // An omitted option preserves the legacy agent-managed fallback. A
+      // declared option is authoritative, even when bb cannot map its values.
+      supportedReasoningEfforts:
+        thoughtLevelOption === undefined ? ACP_NATIVE_REASONING_EFFORTS : [],
       defaultReasoningEffort: "medium",
     };
   }

@@ -49,13 +49,6 @@ function jsonOk(body: unknown): Response {
   });
 }
 
-function responseJson(body: unknown): Response {
-  return new Response(JSON.stringify(body), {
-    status: 200,
-    headers: { "content-type": "application/json" },
-  });
-}
-
 function systemConfig(): SystemConfigResponse {
   return {
     generalSettings: defaultAppSettings,
@@ -68,6 +61,7 @@ function systemConfig(): SystemConfigResponse {
     pluginThemes: [],
     featureFlags: { placeholder: false, timelineWindowEventBudget: 1_500 },
     hostDaemonPort: null,
+    serverUrl: "http://localhost:38886",
     primaryHostId: null,
     primaryHostPlatform: null,
     voiceTranscriptionEnabled: false,
@@ -263,6 +257,145 @@ function rowPlugin(
 }
 
 describe("PluginSettingsDetail settings gating", () => {
+  it("keeps a no-settings plugin's identity stable while enabling it", async () => {
+    const requests: RecordedRequest[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        requests.push({ url, init });
+        return jsonOk({
+          ok: true,
+          plugin: serverPlugin({ enabled: true, status: "running" }),
+        });
+      }),
+    );
+    const { wrapper } = createQueryClientTestHarness();
+    const description = "Continues safe turns after provider limits reset.";
+    const { rerender } = render(
+      <MemoryRouter>
+        <PluginSettingsDetail
+          plugin={{
+            ...rowPlugin("disabled"),
+            description,
+            enabled: false,
+            hasSettings: false,
+          }}
+        />
+      </MemoryRouter>,
+      { wrapper },
+    );
+
+    expect(screen.getAllByText("disabled")).toHaveLength(1);
+    expect(screen.getByText("v0.1.0")).toBeDefined();
+    expect(screen.getByText(description)).toBeDefined();
+    expect(
+      screen.queryByText("Enable this plugin to edit its settings."),
+    ).toBeNull();
+    expect(screen.queryByText("This plugin declares no settings.")).toBeNull();
+    const toggle = screen.getByRole("switch", { name: "Enable linear" });
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
+    fireEvent.click(toggle);
+
+    await vi.waitFor(() => {
+      expect(requests).toContainEqual({
+        url: "/api/v1/plugins/linear/enable",
+        init: expect.objectContaining({ method: "POST" }),
+      });
+    });
+
+    rerender(
+      <MemoryRouter>
+        <PluginSettingsDetail
+          plugin={{
+            ...rowPlugin("running"),
+            description,
+            hasSettings: false,
+          }}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText("v0.1.0")).toBeDefined();
+    expect(screen.queryByText("running")).toBeNull();
+    expect(screen.getByText(description)).toBeDefined();
+    expect(screen.getByText("This plugin declares no settings.")).toBeDefined();
+  });
+
+  it("hides declared settings while disabled", () => {
+    const fetchSpy = vi.fn(() => Promise.resolve(jsonOk(SETTINGS_VIEW)));
+    vi.stubGlobal("fetch", fetchSpy);
+    const { wrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter>
+        <PluginSettingsDetail
+          plugin={{ ...rowPlugin("disabled"), enabled: false }}
+        />
+      </MemoryRouter>,
+      { wrapper },
+    );
+
+    expect(screen.queryByLabelText("Greeting")).toBeNull();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("waits for an enabled frontend bundle before declaring that it has no settings", () => {
+    const { wrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter>
+        <PluginSettingsDetail
+          plugin={{
+            ...rowPlugin("running"),
+            hasSettings: false,
+            app: {
+              hasApp: true,
+              bundle: {
+                jsUrl: "/api/v1/plugins/linear/app.js",
+                cssUrl: null,
+                hash: "linear-app",
+                sdkMajor: 0,
+                sdkVersion: "0.4.1",
+                compatible: true,
+              },
+            },
+          }}
+        />
+      </MemoryRouter>,
+      { wrapper },
+    );
+
+    expect(screen.getByText("v0.1.0")).toBeDefined();
+    expect(screen.queryByText("This plugin declares no settings.")).toBeNull();
+  });
+
+  it("disables a running plugin from its detail page", async () => {
+    const requests: RecordedRequest[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        requests.push({ url, init });
+        return jsonOk({
+          ok: true,
+          plugin: serverPlugin({ enabled: false, status: "disabled" }),
+        });
+      }),
+    );
+    const { wrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter>
+        <PluginSettingsDetail plugin={rowPlugin("running")} />
+      </MemoryRouter>,
+      { wrapper },
+    );
+
+    fireEvent.click(screen.getByRole("switch", { name: "Disable linear" }));
+
+    await vi.waitFor(() => {
+      expect(requests).toContainEqual({
+        url: "/api/v1/plugins/linear/disable",
+        init: expect.objectContaining({ method: "POST" }),
+      });
+    });
+  });
+
   it("renders the settings form for a needs-configuration plugin (regression: the plugin that most needs configuring must be configurable)", async () => {
     vi.stubGlobal(
       "fetch",
@@ -278,19 +411,112 @@ describe("PluginSettingsDetail settings gating", () => {
     expect(await screen.findByLabelText("Greeting")).toBeTruthy();
   });
 
-  it("renders no form for an errored plugin (no schema exists server-side)", () => {
+  it("shows unavailable settings for an enabled errored plugin", () => {
     const fetchSpy = vi.fn(() => Promise.resolve(jsonOk(SETTINGS_VIEW)));
     vi.stubGlobal("fetch", fetchSpy);
     const { wrapper } = createQueryClientTestHarness();
     render(
       <MemoryRouter>
-        <PluginSettingsDetail plugin={rowPlugin("error")} />
+        <PluginSettingsDetail
+          plugin={{
+            ...rowPlugin("error"),
+            hasSettings: false,
+            app: {
+              hasApp: true,
+              bundle: {
+                jsUrl: "/api/v1/plugins/linear/app.js",
+                cssUrl: null,
+                hash: "stale-linear-app",
+                sdkMajor: 0,
+                sdkVersion: "0.4.1",
+                compatible: true,
+              },
+            },
+          }}
+        />
       </MemoryRouter>,
       { wrapper },
     );
     expect(screen.queryByLabelText("Greeting")).toBeNull();
+    expect(
+      screen.getByText("Settings are unavailable while the plugin is error."),
+    ).toBeDefined();
+    expect(screen.queryByText("This plugin declares no settings.")).toBeNull();
     expect(screen.queryByRole("button", { name: "Remove" })).toBeNull();
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("keeps the optimistic toggle state until the plugin list refetches", async () => {
+    const requests: RecordedRequest[] = [];
+    let finishListRefetch: (response: Response) => void = () => {
+      throw new Error("Plugin list refetch did not start");
+    };
+    const listRefetch = new Promise<Response>((resolve) => {
+      finishListRefetch = resolve;
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        requests.push({ url, init });
+        if (init?.method === "POST") {
+          return jsonOk({
+            ok: true,
+            plugin: serverPlugin({ enabled: true, status: "running" }),
+          });
+        }
+        return listRefetch;
+      }),
+    );
+    const { wrapper, queryClient } = createQueryClientTestHarness();
+    queryClient.setQueryData(pluginListQueryKey(true), {
+      plugins: [
+        {
+          ...rowPlugin("disabled"),
+          enabled: false,
+          hasSettings: false,
+        },
+      ],
+    });
+    render(
+      <MemoryRouter>
+        <PluginSettingsDetailSection pluginId="linear" />
+      </MemoryRouter>,
+      { wrapper },
+    );
+
+    fireEvent.click(screen.getByRole("switch", { name: "Enable linear" }));
+    await vi.waitFor(() => {
+      expect(requests.some((request) => request.init?.method === "POST")).toBe(
+        true,
+      );
+      expect(
+        requests.some((request) => request.init?.method !== "POST"),
+      ).toBe(true);
+    });
+
+    const pendingSwitch = screen.getByRole("switch", {
+      name: "Disable linear",
+    });
+    expect(pendingSwitch.getAttribute("aria-checked")).toBe("true");
+    expect((pendingSwitch as HTMLButtonElement).disabled).toBe(true);
+
+    finishListRefetch(
+      jsonOk({
+        plugins: [
+          serverPlugin({
+            enabled: true,
+            status: "running",
+            hasSettings: false,
+          }),
+        ],
+      }),
+    );
+    await vi.waitFor(() => {
+      const settledSwitch = screen.getByRole("switch", {
+        name: "Disable linear",
+      });
+      expect((settledSwitch as HTMLButtonElement).disabled).toBe(false);
+    });
   });
 
   it("removes a stale builtin plugin from its detail page", async () => {
@@ -329,14 +555,18 @@ describe("PluginSettingsDetail settings gating", () => {
     });
   });
 
-  it("renders a slot-only settings page", async () => {
+  it("shows a slot-only settings section beneath the stable header only while enabled", () => {
     function ConnectSettings() {
       return <div>Custom connect settings</div>;
     }
     setPluginSlotRegistrations("connect", {
       homepageSections: [],
       settingsSections: [
-        { id: "remote", title: "Remote access", component: ConnectSettings },
+        {
+          id: "remote",
+          description: "Configure remote access.",
+          component: ConnectSettings,
+        },
       ],
       navPanels: [],
       threadPanelActions: [],
@@ -344,38 +574,53 @@ describe("PluginSettingsDetail settings gating", () => {
       fileOpeners: [],
       messageDirectives: [],
     });
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: RequestInfo | URL) => {
-        const rawUrl =
-          typeof input === "string"
-            ? input
-            : input instanceof URL
-              ? input.href
-              : input.url;
-        const path = new URL(rawUrl, "http://localhost").pathname;
-        if (path === "/api/v1/system/config") {
-          return responseJson(systemConfig());
-        }
-        if (path === "/api/v1/plugins") {
-          return responseJson({
-            plugins: [serverPlugin({ id: "connect", hasSettings: false })],
-          });
-        }
-        return new Response("not found", { status: 404 });
-      }),
-    );
-
     const { wrapper } = createQueryClientTestHarness();
-    render(
+    const description = "Give this host remote access.";
+    const { rerender } = render(
       <MemoryRouter>
-        <PluginSettingsDetailSection pluginId="connect" />
+        <PluginSettingsDetail
+          plugin={{
+            ...rowPlugin("disabled"),
+            id: "connect",
+            enabled: false,
+            hasSettings: false,
+            description,
+          }}
+        />
       </MemoryRouter>,
       { wrapper },
     );
 
-    expect(await screen.findByText("Remote access")).toBeDefined();
+    expect(screen.getByText("connect")).toBeDefined();
+    expect(screen.getByText("v0.1.0")).toBeDefined();
+    expect(screen.getByText(description)).toBeDefined();
+    expect(screen.queryByText("Remote access")).toBeNull();
+    expect(screen.queryByText("Custom connect settings")).toBeNull();
+    expect(screen.queryByText("This plugin declares no settings.")).toBeNull();
+
+    rerender(
+      <MemoryRouter>
+        <PluginSettingsDetail
+          plugin={{
+            ...rowPlugin("running"),
+            id: "connect",
+            hasSettings: false,
+            description,
+          }}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("connect")).toBeDefined();
+    expect(screen.getByText("v0.1.0")).toBeDefined();
+    expect(screen.getByText(description)).toBeDefined();
+    expect(screen.queryByText("Remote access")).toBeNull();
+    expect(screen.queryByText("Plugin settings")).toBeNull();
+    expect(screen.getByText("Configure remote access.")).toBeDefined();
     expect(screen.getByText("Custom connect settings")).toBeDefined();
+    expect(
+      screen.getByRole("switch", { name: "Disable connect" }),
+    ).toBeDefined();
     expect(screen.queryByText("This plugin declares no settings.")).toBeNull();
   });
 });

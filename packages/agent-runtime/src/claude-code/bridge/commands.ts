@@ -55,6 +55,12 @@ const claudeCodeCommandSchema = z.discriminatedUnion("method", [
       additionalWorkspaceWriteRoots: bridgeAdditionalWorkspaceWriteRootsSchema,
       plugins: bridgeClaudePluginsSchema,
       permissionMode: claudePermissionModeSchema,
+      // The mode the session returns to once the user approves a plan. `/plan`
+      // overrides `permissionMode` for the whole session, so without this the
+      // thread would keep Plan mode's gating after the plan is approved and
+      // prompt for edits the user's preset already allows. Equal to
+      // `permissionMode` whenever the session does not start in Plan mode.
+      approvedPlanPermissionMode: claudePermissionModeSchema,
       permissionScope: bridgePermissionScopeSchema,
       permissionEscalation: bridgePermissionEscalationSchema,
       config: z.record(z.string(), z.unknown()).optional(),
@@ -63,6 +69,7 @@ const claudeCodeCommandSchema = z.discriminatedUnion("method", [
       reasoningLevel: bridgeReasoningLevelSchema.optional(),
       workflowsEnabled: z.boolean(),
       memoryEnabled: z.boolean().optional(),
+      providerSubagentsEnabled: z.boolean().optional(),
       instructionMode: bridgeInstructionModeSchema,
       dynamicTools: z.array(dynamicToolSchema).optional(),
       disallowedTools: z.array(z.string()).optional(),
@@ -78,6 +85,12 @@ const claudeCodeCommandSchema = z.discriminatedUnion("method", [
       additionalWorkspaceWriteRoots: bridgeAdditionalWorkspaceWriteRootsSchema,
       plugins: bridgeClaudePluginsSchema,
       permissionMode: claudePermissionModeSchema,
+      // The mode the session returns to once the user approves a plan. `/plan`
+      // overrides `permissionMode` for the whole session, so without this the
+      // thread would keep Plan mode's gating after the plan is approved and
+      // prompt for edits the user's preset already allows. Equal to
+      // `permissionMode` whenever the session does not start in Plan mode.
+      approvedPlanPermissionMode: claudePermissionModeSchema,
       permissionScope: bridgePermissionScopeSchema,
       permissionEscalation: bridgePermissionEscalationSchema,
       config: z.record(z.string(), z.unknown()).optional(),
@@ -86,6 +99,7 @@ const claudeCodeCommandSchema = z.discriminatedUnion("method", [
       reasoningLevel: bridgeReasoningLevelSchema.optional(),
       workflowsEnabled: z.boolean(),
       memoryEnabled: z.boolean().optional(),
+      providerSubagentsEnabled: z.boolean().optional(),
       instructionMode: bridgeInstructionModeSchema,
       dynamicTools: z.array(dynamicToolSchema).optional(),
       disallowedTools: z.array(z.string()).optional(),
@@ -101,6 +115,12 @@ const claudeCodeCommandSchema = z.discriminatedUnion("method", [
       additionalWorkspaceWriteRoots: bridgeAdditionalWorkspaceWriteRootsSchema,
       plugins: bridgeClaudePluginsSchema,
       permissionMode: claudePermissionModeSchema,
+      // The mode the session returns to once the user approves a plan. `/plan`
+      // overrides `permissionMode` for the whole session, so without this the
+      // thread would keep Plan mode's gating after the plan is approved and
+      // prompt for edits the user's preset already allows. Equal to
+      // `permissionMode` whenever the session does not start in Plan mode.
+      approvedPlanPermissionMode: claudePermissionModeSchema,
       permissionScope: bridgePermissionScopeSchema,
       permissionEscalation: bridgePermissionEscalationSchema,
       config: z.record(z.string(), z.unknown()).optional(),
@@ -109,6 +129,7 @@ const claudeCodeCommandSchema = z.discriminatedUnion("method", [
       reasoningLevel: bridgeReasoningLevelSchema.optional(),
       workflowsEnabled: z.boolean(),
       memoryEnabled: z.boolean().optional(),
+      providerSubagentsEnabled: z.boolean().optional(),
       instructionMode: bridgeInstructionModeSchema,
       dynamicTools: z.array(dynamicToolSchema).optional(),
       disallowedTools: z.array(z.string()).optional(),
@@ -122,7 +143,12 @@ const claudeCodeCommandSchema = z.discriminatedUnion("method", [
       input: z.array(z.unknown()),
       inputGroups: z.array(z.array(z.unknown()).min(1)).optional(),
       model: z.string().optional(),
+      reasoningLevel: bridgeReasoningLevelSchema.optional(),
+      workflowsEnabled: z.boolean().optional(),
+      memoryEnabled: z.boolean().optional(),
+      providerSubagentsEnabled: z.boolean().optional(),
       config: z.record(z.string(), z.unknown()).optional(),
+      permissionEscalation: bridgePermissionEscalationSchema,
     }),
   }),
   z.object({
@@ -133,6 +159,12 @@ const claudeCodeCommandSchema = z.discriminatedUnion("method", [
       expectedTurnId: z.string(),
       input: z.array(z.unknown()),
       inputGroups: z.array(z.array(z.unknown()).min(1)).optional(),
+      model: z.string().optional(),
+      reasoningLevel: bridgeReasoningLevelSchema.optional(),
+      workflowsEnabled: z.boolean().optional(),
+      memoryEnabled: z.boolean().optional(),
+      providerSubagentsEnabled: z.boolean().optional(),
+      permissionEscalation: bridgePermissionEscalationSchema,
     }),
   }),
   z.object({

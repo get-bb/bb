@@ -11,12 +11,15 @@ import {
   type HeaderPair,
 } from "@bb/tunnel-contract";
 import { relayedResponse } from "./response-encoding.js";
+import { TUNNEL_TARGET_HEADER } from "./protocol-headers.js";
 
 export interface Env {
   TUNNEL_DO: DurableObjectNamespace;
   DB: D1Database;
   BASE_DOMAIN: string;
   BETTER_AUTH_SECRET: string;
+  ACCOUNT_APP_URL?: string;
+  CLOUD_DEV?: string;
 }
 
 const TUNNEL_TAG = "tunnel";
@@ -25,9 +28,6 @@ const RESP_HEAD_TIMEOUT_MS = 30_000;
 // dashboard shows accurate presence. Alarm-driven (auto-response pings don't
 // run JS), kept under the 90s offline window.
 const PRESENCE_INTERVAL_MS = 50_000;
-
-/** Gate → DO header carrying a share target; never forwarded to the origin. */
-const TUNNEL_TARGET_HEADER = "x-bb-tunnel-target";
 
 // Standard WebSocket readyState numbering (workerd's READY_STATE_OPEN; the
 // constant itself is Cloudflare-only, so tests in Node use the number).
@@ -483,6 +483,24 @@ export class TunnelDO {
     }
   }
 
+  private cancelHttpStream(streamId: number, message: string): void {
+    const entry = this.pendingHttp.get(streamId);
+    if (!entry) return;
+    this.pendingHttp.delete(streamId);
+    clearTimeout(entry.timeout);
+    const tunnel = this.tunnelSocket();
+    if (!tunnel) return;
+    this.trySend(
+      tunnel,
+      encodeFrame({
+        type: "close-stream",
+        streamId,
+        code: 1000,
+        reason: message,
+      }),
+    );
+  }
+
   webSocketMessage(ws: WebSocket, message: ArrayBuffer | string): void {
     const tags = this.state.getTags(ws);
     if (tags.includes(TUNNEL_TAG)) {
@@ -558,6 +576,12 @@ export class TunnelDO {
           return;
         }
         entry.writer = writable.getWriter();
+        void entry.writer.closed.catch(() => {
+          this.cancelHttpStream(
+            frame.streamId,
+            "visitor canceled response body",
+          );
+        });
         entry.resolve(response);
         return;
       }

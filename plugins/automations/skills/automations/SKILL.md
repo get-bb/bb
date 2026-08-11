@@ -71,9 +71,12 @@ BB_SERVER_URL          The bb server API base URL
 BB_PROJECT_ID          The automation's project
 BB_AUTOMATION_ID       The automation id
 BB_AUTOMATION_RUN_ID   This run id
+BB_CLI                 Absolute path to the bb CLI, when it could be resolved
 ```
 
-`BB_ENVIRONMENT_ID` and `BB_HOST_DAEMON_PORT` are intentionally not injected by the plugin. The plugin resolves `bb` and prepends its directory to `PATH` so scripts can call the CLI.
+`BB_ENVIRONMENT_ID` and `BB_HOST_DAEMON_PORT` are intentionally not injected by the plugin. The plugin resolves `bb` and prepends its directory to `PATH` so scripts can call the CLI. It looks at `BB_CLI`, then `BB_CLI_DIR`, then `PATH`, then the common macOS install paths.
+
+If `bb` cannot be found, the script still runs. The run output starts with a `[bb] warning:` line, and a script that calls `bb` fails on that line rather than before its first line.
 
 Managing:
 

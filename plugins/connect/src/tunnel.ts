@@ -30,11 +30,7 @@ import {
 } from "@bb/connect-client";
 import type { CredentialStore } from "./credential.js";
 import { fetchMachineCode, MachineCodeError } from "./machine-code.js";
-import {
-  asConnectPairError,
-  DEFAULT_CONNECT_BASE_URL,
-  redeemConnectCode,
-} from "./redeem.js";
+import { asConnectPairError, redeemConnectCode } from "./redeem.js";
 import { revokeMachine } from "./revoke-machine.js";
 import {
   ShareRegistry,
@@ -47,9 +43,29 @@ import {
 import type { ShareHost } from "./hosts.js";
 import type { ConnectStateName, ConnectStatus } from "./types.js";
 
+const DISCONNECT_TIMEOUT_MS = 5_000;
+
+async function notifyCloudOfDisconnect(
+  credential: ConnectCredential,
+): Promise<void> {
+  const response = await fetch(
+    new URL("/api/connect/disconnect", credential.serverUrl),
+    {
+      method: "POST",
+      headers: { "x-bb-connect-machine": credential.credential },
+      signal: AbortSignal.timeout(DISCONNECT_TIMEOUT_MS),
+    },
+  );
+  if (!response.ok && response.status !== 401 && response.status !== 403) {
+    throw new Error(`Cloud returned HTTP ${response.status}`);
+  }
+}
+
 export interface ConnectTunnelOptions {
   store: CredentialStore;
   shares: ShareRegistry;
+  /** Connect apex used only while unpaired and when pair has no target. */
+  defaultBaseUrl: string;
   /**
    * The server's own loopback base URL, read lazily (bb.server is
    * bind-gated; the tunnel only needs it once a socket opens).
@@ -117,7 +133,7 @@ export class ConnectTunnel {
       args.baseUrl ??
       (args.serverUrl !== undefined
         ? deriveConnectBaseUrl(args.serverUrl)
-        : DEFAULT_CONNECT_BASE_URL);
+        : this.options.defaultBaseUrl);
     this.pairing = true;
     this.publish();
     try {
@@ -154,13 +170,24 @@ export class ConnectTunnel {
   }
 
   async disconnect(): Promise<ConnectStatus> {
-    this.shareActivationEpoch += 1;
+    const credential = this.credential;
+    this.teardown();
     await this.options.store.clear();
     this.options.shares.clearMachineDeclarations();
     this.credential = null;
-    this.teardown();
     this.lastError = null;
     this.publish();
+    if (credential !== null) {
+      try {
+        await notifyCloudOfDisconnect(credential);
+      } catch (error) {
+        this.options.log.warn(
+          `Cloud disconnect could not be confirmed: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    }
     return this.status();
   }
 
@@ -245,12 +272,12 @@ export class ConnectTunnel {
     };
   }
 
-  /** getbb.app dashboard URL, derived from the paired base (or the apex). */
+  /** Dashboard URL, derived from the paired base (or the unpaired default). */
   private dashboardUrl(): string {
     const base =
       this.credential !== null
         ? deriveConnectBaseUrl(this.credential.serverUrl)
-        : DEFAULT_CONNECT_BASE_URL;
+        : this.options.defaultBaseUrl;
     return `${base.replace(/\/$/, "")}/dashboard`;
   }
 

@@ -57,6 +57,7 @@ export function createEnvironment(
       mergeBaseBranch: input.mergeBaseBranch ?? null,
       workspaceProvisionType: input.workspaceProvisionType,
       status: input.status ?? "provisioning",
+      retireRequestedAt: input.status === "retiring" ? now : null,
       createdAt: now,
       updatedAt: now,
     })
@@ -434,18 +435,35 @@ function applyEnvironmentLifecycleEventRecord(
     };
   }
 
+  const now = Date.now();
   const set: Partial<typeof environments.$inferInsert> = {
     status: evaluation.to,
-    updatedAt: Date.now(),
+    updatedAt: now,
   };
+  if (args.event.type === "retire.requested") {
+    set.retireRequestedAt = now;
+  } else if (
+    evaluation.to === "ready" ||
+    evaluation.to === "provisioning" ||
+    evaluation.to === "destroyed"
+  ) {
+    set.retireRequestedAt = null;
+  }
   if (args.event.type === "destroy.started") {
     set.destroyAttemptId = args.event.destroyAttemptId;
   }
-  if (args.event.type === "destroy.failed" || args.event.type === "destroy.lost") {
+  if (
+    args.event.type === "destroy.failed" ||
+    evaluation.to === "ready" ||
+    evaluation.to === "provisioning"
+  ) {
     set.destroyAttemptId = null;
   }
   if (evaluation.to === "destroyed") {
     set.destroyAttemptId = null;
+    // The workspace no longer exists. Release its path claim and avoid
+    // retaining stale host-local filesystem data on the terminal row.
+    set.path = null;
   }
 
   // Compare-and-set on the loaded status: belt-and-braces under

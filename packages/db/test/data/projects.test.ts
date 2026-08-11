@@ -6,6 +6,7 @@ import { noopNotifier } from "../../src/notifier.js";
 import {
   createProject,
   ensurePersonalProject,
+  findOrCreateProjectByLocalPathSource,
   getProject,
   listProjects,
   listPublicProjects,
@@ -26,6 +27,58 @@ function setup() {
 }
 
 describe("projects", () => {
+  it("returns the existing project when the same host path is added again", () => {
+    const { db, host } = setup();
+    const first = findOrCreateProjectByLocalPathSource(db, noopNotifier, {
+      name: "first-name",
+      source: {
+        type: "local_path",
+        hostId: host.id,
+        path: "/tmp/same-project",
+      },
+    });
+
+    const repeated = findOrCreateProjectByLocalPathSource(db, noopNotifier, {
+      name: "second-name",
+      source: {
+        type: "local_path",
+        hostId: host.id,
+        path: "/tmp/same-project",
+      },
+    });
+
+    expect(repeated).toEqual(first);
+    expect(listPublicProjects(db)).toEqual([first.project]);
+  });
+
+  it("allows the same path on different hosts", () => {
+    const { db, host } = setup();
+    const otherHost = upsertHost(db, noopNotifier, {
+      name: "other-projects-host",
+      type: "persistent",
+    });
+
+    const first = findOrCreateProjectByLocalPathSource(db, noopNotifier, {
+      name: "first-host-project",
+      source: {
+        type: "local_path",
+        hostId: host.id,
+        path: "/tmp/shared-path",
+      },
+    });
+    const second = findOrCreateProjectByLocalPathSource(db, noopNotifier, {
+      name: "second-host-project",
+      source: {
+        type: "local_path",
+        hostId: otherHost.id,
+        path: "/tmp/shared-path",
+      },
+    });
+
+    expect(second.project.id).not.toBe(first.project.id);
+    expect(listPublicProjects(db)).toHaveLength(2);
+  });
+
   it("sets a git remote anchor only while it is missing", () => {
     const { db, host } = setup();
     const { project } = createProject(db, noopNotifier, {

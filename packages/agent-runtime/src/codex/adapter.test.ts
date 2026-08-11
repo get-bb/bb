@@ -592,9 +592,11 @@ describe("codex provider adapter", () => {
         approvalsReviewer: "user",
         sandbox: "danger-full-access",
         cwd: "/tmp/worktree",
+        ephemeral: false,
         experimentalRawEvents: true,
       },
     });
+    expect(JSON.stringify(cmd)).not.toContain("persistExtendedHistory");
     expect(JSON.stringify(cmd)).not.toContain("baseInstructions");
     expect(JSON.stringify(cmd)).not.toContain("developerInstructions");
   });
@@ -1756,6 +1758,7 @@ describe("codex provider adapter", () => {
         ],
       },
     });
+    expect(JSON.stringify(cmd)).not.toContain("persistExtendedHistory");
   });
 
   it("buildCommand maps max reasoning level through to Codex", () => {
@@ -1871,6 +1874,7 @@ describe("codex provider adapter", () => {
         cwd: "/tmp/worktree",
       },
     });
+    expect(JSON.stringify(cmd)).not.toContain("persistExtendedHistory");
     expect(JSON.stringify(cmd)).not.toContain("baseInstructions");
     expect(JSON.stringify(cmd)).not.toContain("developerInstructions");
   });
@@ -2681,6 +2685,29 @@ describe("codex provider adapter", () => {
           generation: {},
           tool_call: {},
           tool_response: {},
+        },
+      },
+    });
+
+    expect(events).toEqual([]);
+  });
+
+  it("translateEvent ignores Codex raw response completions", () => {
+    const adapter = createCodexProviderAdapter();
+    const events = adapter.translateEvent({
+      jsonrpc: "2.0",
+      method: "rawResponse/completed",
+      params: {
+        threadId: "t1",
+        turnId: "turn-1",
+        responseId: "response-1",
+        usage: {
+          totalTokens: 19_206,
+          inputTokens: 18_971,
+          cachedInputTokens: 11_008,
+          cacheWriteInputTokens: 0,
+          outputTokens: 235,
+          reasoningOutputTokens: 53,
         },
       },
     });
@@ -5033,25 +5060,169 @@ describe("codex provider adapter", () => {
     expect(readyEvents).toEqual([]);
   });
 
-  // -- translateEvent: unknown events --------------------------------------
+  // -- translateEvent: account events --------------------------------------
 
-  it("translateEvent returns empty for unhandled codex events", () => {
+  it("translateEvent preserves Codex subscription rate limits", () => {
     const adapter = createCodexProviderAdapter();
     const events = adapter.translateEvent(
       codexEvent("account/rateLimits/updated", {
         rateLimits: {
-          limitId: null,
-          limitName: null,
-          primary: null,
+          limitId: "codex",
+          limitName: "Codex",
+          primary: {
+            usedPercent: 100,
+            windowDurationMins: 300,
+            resetsAt: 1_781_120_400,
+          },
           secondary: null,
           credits: null,
           individualLimit: null,
           planType: null,
-          rateLimitReachedType: null,
+          rateLimitReachedType: "rate_limit_reached",
         },
       }),
     );
-    expect(events).toMatchObject([]);
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: "provider/rateLimits/updated",
+        scope: threadScope(),
+        rateLimits: expect.objectContaining({
+          providerId: "codex",
+          status: "blocked",
+          kind: "subscription-window",
+          reachedReason: "rate_limit_reached",
+          windows: [
+            {
+              providerKey: "primary",
+              label: "Current session",
+              status: "blocked",
+              resetsAtMs: 1_781_120_400_000,
+            },
+          ],
+        }),
+      }),
+    ]);
+  });
+
+  it("uses Codex's reached reason before credit and spend metadata", () => {
+    const adapter = createCodexProviderAdapter();
+    const [event] = adapter.translateEvent(
+      codexEvent("account/rateLimits/updated", {
+        rateLimits: {
+          limitId: "codex",
+          limitName: "Codex",
+          primary: {
+            usedPercent: 100,
+            windowDurationMins: 300,
+            resetsAt: 1_781_120_400,
+          },
+          secondary: null,
+          credits: {
+            hasCredits: false,
+            unlimited: false,
+            balance: "0",
+          },
+          individualLimit: {
+            limit: "100",
+            used: "100",
+            remainingPercent: 0,
+            resetsAt: 1_781_120_400,
+          },
+          planType: "pro",
+          rateLimitReachedType: "rate_limit_reached",
+        },
+      }),
+    );
+
+    expect(event).toMatchObject({
+      type: "provider/rateLimits/updated",
+      rateLimits: {
+        status: "blocked",
+        kind: "subscription-window",
+        reachedReason: "rate_limit_reached",
+      },
+    });
+  });
+
+  it("hydrates Codex rate limits before merging truly sparse rolling updates", () => {
+    const adapter = createCodexProviderAdapter();
+    const requests = adapter.buildPostInitializeRequests?.() ?? [];
+    expect(requests).toHaveLength(1);
+    const [rateLimitRead] = requests;
+    if (rateLimitRead === undefined) {
+      throw new Error("Expected a Codex rate-limit hydration request");
+    }
+    expect(rateLimitRead).toMatchObject({
+      plan: { kind: "request", method: "account/rateLimits/read" },
+      required: false,
+    });
+    rateLimitRead.onResult({
+      rateLimits: {
+        limitId: "codex",
+        limitName: "Codex",
+        primary: {
+          usedPercent: 20,
+          resetsAt: 1_781_120_400,
+        },
+        secondary: {
+          usedPercent: 100,
+          windowDurationMins: 10_080,
+          resetsAt: 1_781_720_400,
+        },
+        planType: "pro",
+        rateLimitReachedType: "rate_limit_reached",
+      },
+    });
+
+    const [sparseEvent] = adapter.translateEvent({
+      jsonrpc: "2.0",
+      method: "account/rateLimits/updated",
+      params: {
+        rateLimits: {
+          primary: {
+            usedPercent: 25,
+            resetsAt: 1_781_120_400,
+          },
+        },
+      },
+    });
+    expect(sparseEvent).toMatchObject({
+      type: "provider/rateLimits/updated",
+      rateLimits: {
+        status: "blocked",
+        kind: "subscription-window",
+        reachedReason: "rate_limit_reached",
+        windows: [
+          { providerKey: "primary", status: "allowed" },
+          {
+            providerKey: "secondary",
+            status: "blocked",
+            resetsAtMs: 1_781_720_400_000,
+          },
+        ],
+      },
+    });
+
+    const [resetEvent] = adapter.translateEvent({
+      jsonrpc: "2.0",
+      method: "account/rateLimits/updated",
+      params: {
+        rateLimits: {
+          secondary: {
+            usedPercent: 30,
+            resetsAt: 1_781_720_400,
+          },
+        },
+      },
+    });
+    expect(resetEvent).toMatchObject({
+      type: "provider/rateLimits/updated",
+      rateLimits: {
+        status: "allowed",
+        kind: "subscription-window",
+        reachedReason: null,
+      },
+    });
   });
 
   it("translateEvent ignores remote control status changes", () => {

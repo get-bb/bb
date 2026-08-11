@@ -4,7 +4,7 @@ import type {
 } from "@bb/config/bb-app-managed-config";
 import type { AppSurface } from "@bb/config/app-surface";
 import type { DbConnection } from "@bb/db";
-import type { FeatureFlags } from "@bb/domain";
+import type { FeatureFlags, ProviderNativeSkillRoots } from "@bb/domain";
 import type { Logger } from "@bb/logger";
 import type { PendingInteractionLifecycle } from "./services/interactions/pending-interactions.js";
 import type { MachineAuthService } from "./services/machine-auth.js";
@@ -30,10 +30,19 @@ export interface ServerRuntimeConfig {
   featureFlags: FeatureFlags;
   hostDaemonPort: number;
   inheritedSkillsRootPaths: string[];
+  inferenceFallbackModel: string;
   inferenceModel: string;
   isDevelopment: boolean;
+  /**
+   * Grace window (ms) after the last live thread in a managed environment is
+   * archived before its worktree is destroyed, during which an accidental
+   * archive can be undone losslessly. Defaults to
+   * {@link MANAGED_ENVIRONMENT_RETIRE_GRACE_MS}; set to 0 to destroy immediately.
+   */
+  managedEnvironmentRetireGraceMs: number;
   openAiApiKey: string;
   serverPort: number;
+  sharedSkillRoots: ProviderNativeSkillRoots;
   threadStorageRootPath: string;
   transcriptionModel: string;
   appUrl?: string;

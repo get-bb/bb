@@ -5,13 +5,14 @@ import type {
   WorkspaceResolutionFailureCode,
 } from "@bb/host-daemon-contract";
 import { workspaceResolutionFailureCodeSchema } from "@bb/host-daemon-contract";
-import { WorkspaceError } from "@bb/host-workspace";
+import { getPersonalWorkspaceRoot, WorkspaceError } from "@bb/host-workspace";
 import type { RuntimeEntry, RuntimeManager } from "./runtime-manager.js";
 import {
   CommandDispatchError,
   ExpectedCommandDispatchError,
   requireWorkspaceEnvironment,
 } from "./command-dispatch-support.js";
+import { reconnectProvisionArgsFromWorkspaceContext } from "./workspace-provision-target.js";
 
 const WORKSPACE_RESOLUTION_FAILURE_CODES: readonly WorkspaceResolutionFailureCode[] =
   workspaceResolutionFailureCodeSchema.options;
@@ -144,14 +145,29 @@ export async function resolveWorkspaceForCommand(
       args.runtimeManager,
     );
     if (args.requireGit === true && !entry.workspace.isGitRepo) {
-      return {
-        ok: false,
-        failure: buildWorkspaceResolutionFailure({
-          code: "not_git_repo",
-          message: `Path is not a git repository: ${entry.workspace.path}`,
-          workspacePath: entry.workspace.path,
+      const workspace = await args.runtimeManager.refreshEnvironmentWorkspace({
+        environmentId: args.environmentId,
+        provision: reconnectProvisionArgsFromWorkspaceContext({
+          environmentId: args.environmentId,
+          ...(args.dataDir
+            ? {
+                personalWorkspaceRoot: getPersonalWorkspaceRoot(args.dataDir),
+              }
+            : {}),
+          workspaceContext: args.workspaceContext,
         }),
-      };
+        workspacePath: args.workspaceContext.workspacePath,
+      });
+      if (!workspace.isGitRepo) {
+        return {
+          ok: false,
+          failure: buildWorkspaceResolutionFailure({
+            code: "not_git_repo",
+            message: `Path is not a git repository: ${entry.workspace.path}`,
+            workspacePath: entry.workspace.path,
+          }),
+        };
+      }
     }
     if (
       args.requireManagedWorktree === true &&

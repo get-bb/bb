@@ -1,8 +1,9 @@
 import path from "node:path";
 import {
   countProjectSources,
-  createProject,
+  findOrCreateProjectByLocalPathSource,
   getPersonalProject,
+  getPublicProjectByLocalPathSource,
   createProjectSource,
   deleteProjectSource,
   getProjectSourceByHost,
@@ -30,6 +31,7 @@ import {
   type PublicApiSchema,
 } from "@bb/server-contract";
 import type { Hono } from "hono";
+import { supportsManualCompaction } from "@bb/agent-providers";
 import type { AppDeps } from "../types.js";
 import { COMMAND_TIMEOUT_MS } from "../constants.js";
 import { ApiError } from "../errors.js";
@@ -81,7 +83,9 @@ import { parseFileListLimit } from "./file-list-query.js";
 import { parseSafeRelativeRoutePath } from "./relative-route-path.js";
 import { resolveSkillCatalog } from "../services/skills/skill-catalog.js";
 import { resolveWorkspaceProjectSkills } from "../services/skills/workspace-skills.js";
+import { resolveSharedSkills } from "../services/skills/shared-skills.js";
 import { assertUsableHostId } from "../services/hosts/primary-host.js";
+import { resolveAcpLaunchSpecForProviderId } from "../services/system/acp-launch-spec.js";
 import {
   resolveProjectCommandWorkspace,
   resolveProjectWorkspaceTarget,
@@ -355,11 +359,22 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
       requireNonDestroyedHostWithStatus(deps, source.hostId);
       assertUsableHostId(deps, { hostId: source.hostId });
     }
+    const existingProject = getPublicProjectByLocalPathSource(deps.db, source);
+    if (existingProject) {
+      return context.json(
+        buildProjectResponses(deps, existingProject.id)[0],
+        201,
+      );
+    }
     const gitRemoteUrl = await inspectProjectGitRemoteBestEffort(deps, source);
-    const { project } = createProject(deps.db, deps.hub, {
-      name: payload.name,
-      source,
-    });
+    const { project } = findOrCreateProjectByLocalPathSource(
+      deps.db,
+      deps.hub,
+      {
+        name: payload.name,
+        source,
+      },
+    );
     if (gitRemoteUrl !== null) {
       setProjectGitRemoteUrlIfMissing(
         deps.db,
@@ -683,7 +698,11 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
         : {}),
       ...(query.hostId !== undefined ? { hostId: query.hostId } : {}),
     });
-    const [result, projectSkillSources] = await Promise.all([
+    const acpLaunchSpec = resolveAcpLaunchSpecForProviderId(
+      deps,
+      query.provider,
+    );
+    const [result, projectSkillSources, sharedSkills] = await Promise.all([
       callHostRetryableOnlineRpc(deps, {
         hostId: workspace.hostId,
         timeoutMs: COMMAND_TIMEOUT_MS,
@@ -691,6 +710,9 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
           type: "host.list_commands",
           providerId: query.provider,
           cwd: workspace.cwd,
+          ...(acpLaunchSpec?.nativeSkillRoots !== undefined
+            ? { nativeSkillRoots: acpLaunchSpec.nativeSkillRoots }
+            : {}),
         },
       }),
       workspace.cwd === null
@@ -699,11 +721,19 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
             hostId: workspace.hostId,
             workspacePath: workspace.cwd,
           }),
+      resolveSharedSkills(deps, {
+        hostId: workspace.hostId,
+        cwd: workspace.cwd,
+      }),
     ]);
-    const skillCatalog = resolveSkillCatalog(deps, { projectSkillSources });
+    const skillCatalog = resolveSkillCatalog(deps, {
+      projectSkillSources,
+      sharedSkillSources: sharedSkills.runtimeSources,
+    });
     return context.json(
       buildCommandListResponse({
         commands: result.commands,
+        includeBuiltinCompact: supportsManualCompaction(query.provider),
         skillCatalog,
       }),
     );

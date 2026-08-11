@@ -737,7 +737,77 @@ function createCodexEventSchema<
   });
 }
 
+const codexRateLimitWindowSchema = z
+  .object({
+    usedPercent: z.number(),
+    windowDurationMins: z.number().nullable().optional(),
+    resetsAt: z.number().nullable().optional(),
+  })
+  .passthrough()
+  .transform((window) => ({
+    usedPercent: window.usedPercent,
+    windowDurationMins: window.windowDurationMins ?? null,
+    resetsAt: window.resetsAt ?? null,
+  }));
+
+const codexCreditsSnapshotSchema = z
+  .object({
+    hasCredits: z.boolean(),
+    unlimited: z.boolean(),
+    balance: z.string().nullable().optional(),
+  })
+  .passthrough()
+  .transform((credits) => ({
+    hasCredits: credits.hasCredits,
+    unlimited: credits.unlimited,
+    balance: credits.balance ?? null,
+  }));
+
+const codexSpendControlLimitSnapshotSchema = z
+  .object({
+    limit: z.string(),
+    used: z.string(),
+    remainingPercent: z.number(),
+    resetsAt: z.number(),
+  })
+  .passthrough();
+
+export const codexRateLimitSnapshotUpdateSchema = z
+  .object({
+    limitId: z.string().nullable().optional(),
+    limitName: z.string().nullable().optional(),
+    primary: codexRateLimitWindowSchema.nullable().optional(),
+    secondary: codexRateLimitWindowSchema.nullable().optional(),
+    credits: codexCreditsSnapshotSchema.nullable().optional(),
+    individualLimit: codexSpendControlLimitSnapshotSchema.nullable().optional(),
+    planType: z.string().nullable().optional(),
+    rateLimitReachedType: z.string().nullable().optional(),
+  })
+  .passthrough();
+export type CodexRateLimitSnapshotUpdate = z.infer<
+  typeof codexRateLimitSnapshotUpdateSchema
+>;
+
+export interface CodexRateLimitSnapshot {
+  limitId: string | null;
+  limitName: string | null;
+  primary: z.output<typeof codexRateLimitWindowSchema> | null;
+  secondary: z.output<typeof codexRateLimitWindowSchema> | null;
+  credits: z.output<typeof codexCreditsSnapshotSchema> | null;
+  individualLimit: z.output<typeof codexSpendControlLimitSnapshotSchema> | null;
+  planType: string | null;
+  rateLimitReachedType: string | null;
+}
+
+export const codexRateLimitReadResponseSchema = z
+  .object({ rateLimits: codexRateLimitSnapshotUpdateSchema })
+  .passthrough();
+
 export const codexHandledEventSchema = z.discriminatedUnion("method", [
+  createCodexEventSchema(
+    "account/rateLimits/updated",
+    z.object({ rateLimits: codexRateLimitSnapshotUpdateSchema }).passthrough(),
+  ),
   createCodexEventSchema(
     "turn/started",
     z
