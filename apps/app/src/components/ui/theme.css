@@ -879,16 +879,6 @@ body.sidebar-resizing [data-sidebar="panel"] {
     --shine-icon-edge-opacity: 0.93;
   }
 
-  /* Empty-state bb mark: a clean foreground-colored silhouette. Its parent
-     applies the specular gloss filter, which derives the moving highlight from
-     this glyph's alpha — so the mark themes itself and carries no baked-in
-     reflection patches. */
-  .bb-mark-fill {
-    -webkit-mask: url(/bb-mark.svg) center / contain no-repeat;
-    mask: url(/bb-mark.svg) center / contain no-repeat;
-    background-color: var(--foreground);
-  }
-
   /*
    * Indeterminate progress sweep. Used while a plugin installs: the server does
    * the work behind one blocking request, so the client can say that work is

@@ -1,0 +1,110 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-8 -8 507 405" role="img" aria-labelledby="title desc">
+  <title id="title">bb</title>
+  <desc id="desc">The bb mark rendered as a dimensional woven graphite ribbon.</desc>
+  <defs>
+    <path id="mark" fill-rule="evenodd" d="M243.173 132.901C209.16 110.325 161.732 109.355 117.39 127.537L138.53 49.419C143.962 29.344 132.062 8.673 111.974 3.291 91.943-2.077 71.348 9.793 65.95 29.816L8.449 243.115 8.431 243.11C-5.35 287.398 2.824 332.057 34.741 360.27 81.38 401.497 162.048 392.94 221.66 343.061 226.111 349.8 231.053 354.963 237.39 360.565 287.404 404.775 376.886 391.327 437.242 330.885 497.598 270.443 506.288 185.578 456.275 141.368 422.463 111.479 370.582 107.952 321.904 127.469L342.81 49.115C348.113 29.238 336.312 8.822 316.441 3.498 296.555-1.831 276.113 9.971 270.785 29.857L243.173 132.901ZM279.815 258.612C282.467 247.201 289.832 224.61 297.282 213.521 323.555 175.201 369.028 158.632 398.847 176.515 428.666 194.398 431.54 239.961 405.266 278.281L404.647 279.174C378.283 316.857 333.288 333.029 303.702 315.286 285.262 304.227 277.126 282.582 279.815 258.612ZM219.168 226.258C218.73 242.98 212.813 261.289 201.226 278.189L200.608 279.083C174.244 316.766 129.249 332.936 99.663 315.193 70.077 297.449 67.626 251.559 93.243 213.428 119.516 175.108 164.988 158.541 194.807 176.423 210.476 185.82 218.698 206.643 219.168 226.258Z"/>
+    <path id="upper-seam" d="M243.173 132.901 219.168 226.258"/>
+    <path id="lower-seam" d="M221.66 343.061C247.234 321.797 270.309 286.682 279.815 258.612"/>
+    <path id="upper-shadow-path" d="M240.292 144.104 224.449 205.719"/>
+    <path id="lower-shadow-path" d="M228.5 335.5C245.5 320.5 263 294 274.5 270.5"/>
+
+    <clipPath id="mark-clip">
+      <use href="#mark" clip-rule="evenodd"/>
+    </clipPath>
+
+    <!-- Only the left bowl may receive the right stem's cast shadow. -->
+    <clipPath id="upper-underlap">
+      <path d="M-40-40H243.173L219.168 226.258-40 440Z"/>
+    </clipPath>
+
+    <!-- Only the right bowl may receive the left bowl's cast shadow. -->
+    <clipPath id="lower-underlap">
+      <path d="M221.66 343.061C247.234 321.797 270.309 286.682 279.815 258.612L540-40V440H-40Z"/>
+    </clipPath>
+
+    <linearGradient id="graphite" x1="42" y1="10" x2="444" y2="382" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0b0b0b"/>
+      <stop offset=".2" stop-color="#333"/>
+      <stop offset=".41" stop-color="#101010"/>
+      <stop offset=".61" stop-color="#393939"/>
+      <stop offset=".81" stop-color="#151515"/>
+      <stop offset="1" stop-color="#292929"/>
+    </linearGradient>
+    <linearGradient id="edge" x1="44" y1="12" x2="440" y2="380" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#8a8a8a" stop-opacity=".5"/>
+      <stop offset=".34" stop-color="#242424" stop-opacity=".75"/>
+      <stop offset=".57" stop-color="#a0a0a0" stop-opacity=".34"/>
+      <stop offset=".8" stop-color="#090909" stop-opacity=".8"/>
+      <stop offset="1" stop-color="#747474" stop-opacity=".38"/>
+    </linearGradient>
+    <radialGradient id="surface-light">
+      <stop stop-color="#fff" stop-opacity=".32"/>
+      <stop offset=".34" stop-color="#fff" stop-opacity=".13"/>
+      <stop offset=".76" stop-color="#fff" stop-opacity=".025"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="surface-dark">
+      <stop stop-color="#000" stop-opacity=".7"/>
+      <stop offset=".58" stop-color="#000" stop-opacity=".22"/>
+      <stop offset="1" stop-color="#000" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- The seam gradients taper to transparent, preventing endpoint blobs. -->
+    <linearGradient id="upper-shadow" x1="240.292" y1="144.104" x2="224.449" y2="205.719" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#000" stop-opacity="0"/>
+      <stop offset=".24" stop-color="#000" stop-opacity=".48"/>
+      <stop offset=".74" stop-color="#000" stop-opacity=".5"/>
+      <stop offset="1" stop-color="#000" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="lower-shadow" x1="228.5" y1="335.5" x2="274.5" y2="270.5" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#000" stop-opacity="0"/>
+      <stop offset=".24" stop-color="#000" stop-opacity=".5"/>
+      <stop offset=".74" stop-color="#000" stop-opacity=".54"/>
+      <stop offset="1" stop-color="#000" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="upper-rim" x1="243.173" y1="132.901" x2="219.168" y2="226.258" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fff" stop-opacity="0"/>
+      <stop offset=".12" stop-color="#fff" stop-opacity=".28"/>
+      <stop offset=".84" stop-color="#fff" stop-opacity=".18"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="lower-rim" x1="221.66" y1="343.061" x2="279.815" y2="258.612" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fff" stop-opacity="0"/>
+      <stop offset=".14" stop-color="#fff" stop-opacity=".22"/>
+      <stop offset=".82" stop-color="#fff" stop-opacity=".16"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+
+    <filter id="blur-2" x="-40%" y="-40%" width="180%" height="180%" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="2"/>
+    </filter>
+  </defs>
+
+  <use href="#mark" fill="url(#graphite)" fill-rule="evenodd"/>
+
+  <g clip-path="url(#mark-clip)">
+    <!-- Broad surface reflections model the rounded ribbon without defining topology. -->
+    <ellipse cx="94" cy="102" rx="58" ry="163" transform="rotate(15 94 102)" fill="url(#surface-light)" opacity=".48"/>
+    <ellipse cx="294" cy="101" rx="51" ry="153" transform="rotate(15 294 101)" fill="url(#surface-light)" opacity=".4"/>
+    <ellipse cx="145" cy="260" rx="174" ry="70" transform="rotate(-24 145 260)" fill="url(#surface-light)" opacity=".44"/>
+    <ellipse cx="367" cy="270" rx="167" ry="67" transform="rotate(-23 367 270)" fill="url(#surface-light)" opacity=".35"/>
+    <ellipse cx="252" cy="385" rx="232" ry="68" transform="rotate(-8 252 385)" fill="url(#surface-dark)" opacity=".42"/>
+
+  </g>
+
+  <!-- One-sided, tapered cast shadow from the foreground right stem. -->
+  <g clip-path="url(#upper-underlap)">
+    <use href="#upper-shadow-path" transform="translate(-2 -.5)" fill="none" stroke="url(#upper-shadow)" stroke-width="9" stroke-linecap="butt" filter="url(#blur-2)"/>
+  </g>
+
+  <!-- One-sided, tapered cast shadow from the foreground left bowl. -->
+  <g clip-path="url(#lower-underlap)">
+    <use href="#lower-shadow-path" transform="translate(2 1.5)" fill="none" stroke="url(#lower-shadow)" stroke-width="11" stroke-linecap="butt" filter="url(#blur-2)"/>
+  </g>
+
+  <!-- Only the foreground edge receives the fine reflected rim. -->
+  <use href="#upper-seam" fill="none" stroke="url(#upper-rim)" stroke-width=".9" stroke-linecap="butt"/>
+  <use href="#lower-seam" fill="none" stroke="url(#lower-rim)" stroke-width=".9" stroke-linecap="butt"/>
+
+  <use href="#mark" fill="none" stroke="url(#edge)" stroke-width=".9" stroke-linejoin="round" fill-rule="evenodd"/>
+</svg>
