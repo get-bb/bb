@@ -74,6 +74,28 @@ async function createTrackedForkWorkspace(
   return workspacePath;
 }
 
+async function createManagedBaseTrackedWorkspace(): Promise<string> {
+  const workspacePath = await makeTempDir("bb-pr-base-upstream-workspace-");
+  await runGit(["init", "-b", localBranch], { cwd: workspacePath });
+  await runGit(["config", "user.name", "BB Tests"], { cwd: workspacePath });
+  await runGit(["config", "user.email", "bb@example.com"], {
+    cwd: workspacePath,
+  });
+  await fs.writeFile(path.join(workspacePath, "README.md"), "test\n", "utf8");
+  await runGit(["add", "README.md"], { cwd: workspacePath });
+  await runGit(["commit", "-m", "Initial commit"], { cwd: workspacePath });
+  await runGit(["remote", "add", "origin", "git@github.com:acme/bb.git"], {
+    cwd: workspacePath,
+  });
+  await runGit(["update-ref", "refs/remotes/origin/main", "HEAD"], {
+    cwd: workspacePath,
+  });
+  await runGit(["branch", "--set-upstream-to", "origin/main", localBranch], {
+    cwd: workspacePath,
+  });
+  return workspacePath;
+}
+
 async function installFakeGh(mode: "found" | "none" | "auth"): Promise<{
   logPath: string;
 }> {
@@ -146,6 +168,38 @@ afterEach(async () => {
 });
 
 describe("pull request lookup for differently named upstream branches", () => {
+  it("uses the managed local branch when it tracks the origin base branch", async () => {
+    const workspacePath = await createManagedBaseTrackedWorkspace();
+    const { logPath } = await installFakeGh("found");
+    const workspace = new Workspace(workspacePath);
+
+    await expect(workspace.getPullRequest()).resolves.toMatchObject({
+      outcome: "found",
+      pullRequest: { number: 1236 },
+    });
+    await workspace.runPullRequestAction({ operation: "ready" });
+
+    const calls = await readGhCalls(logPath);
+    expect(calls).toHaveLength(2);
+    expect(calls[0]?.slice(0, 3)).toEqual(["pr", "view", "--json"]);
+    expect(calls[1]).toEqual(["pr", "ready"]);
+  });
+
+  it("uses the local branch when a differently named remote aliases origin", async () => {
+    const workspacePath = await createTrackedForkWorkspace(
+      "git@github.com:acme/bb.git",
+    );
+    const { logPath } = await installFakeGh("found");
+
+    await expect(
+      new Workspace(workspacePath).getPullRequest(),
+    ).resolves.toMatchObject({ outcome: "found" });
+
+    const calls = await readGhCalls(logPath);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.slice(0, 3)).toEqual(["pr", "view", "--json"]);
+  });
+
   it("qualifies the real tracked fork branch instead of the managed local branch", async () => {
     const workspacePath = await createTrackedForkWorkspace();
     const { logPath } = await installFakeGh("found");

@@ -549,6 +549,13 @@ async function getPullRequestTarget(
     return { outcome: "current-branch" };
   }
 
+  // Managed worktrees intentionally track the base branch on origin so Git
+  // can report ahead/behind state. That is not the PR head: a pushed PR still
+  // uses the managed local branch name, which bare `gh pr view` resolves.
+  if (remote === "origin") {
+    return { outcome: "current-branch" };
+  }
+
   const originRepository = parseGitRemoteRepository(
     config.get("remote.origin.url") ?? "",
   );
@@ -569,6 +576,16 @@ async function getPullRequestTarget(
     };
   }
 
+  // A differently named branch on an alias of the origin repository is base
+  // or integration tracking, not a fork PR head. Only substitute the tracked
+  // branch when the remote belongs to another GitHub owner.
+  if (
+    originRepository.owner.toLowerCase() ===
+    upstreamRepository.owner.toLowerCase()
+  ) {
+    return { outcome: "current-branch" };
+  }
+
   return {
     outcome: "upstream-branch",
     selector: `${upstreamRepository.owner}:${upstreamBranch}`,
@@ -579,10 +596,11 @@ async function getPullRequestTarget(
  * Detect the open/most-relevant GitHub pull request for the branch checked out
  * in `cwd` by shelling out to the host `gh` CLI. Bare `gh pr view` correctly
  * resolves the configured upstream owner, but combines it with the local branch
- * name. When Git tracks a differently named upstream branch, parse the owner
- * locally from a same-host upstream and pass the fully qualified
- * `owner:branch` selector. Configured URLs are never passed to `gh`, which
- * inherits user auth tokens.
+ * name. When Git tracks a differently named branch on a different-owner fork,
+ * parse the owner locally from a same-host upstream and pass the fully
+ * qualified `owner:branch` selector. Base-branch tracking on origin continues
+ * to use the managed local branch name. Configured URLs are never passed to
+ * `gh`, which inherits user auth tokens.
  *
  * Never throws: a branch with no PR is `outcome: "none"`, while every lookup
  * failure (`gh` not installed, not authenticated, no GitHub remote, a timeout,
