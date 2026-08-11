@@ -40,7 +40,9 @@ async function makeTempDir(prefix: string): Promise<string> {
   return directory;
 }
 
-async function createTrackedForkWorkspace(): Promise<string> {
+async function createTrackedForkWorkspace(
+  remoteUrl = forkRemoteUrl,
+): Promise<string> {
   const workspacePath = await makeTempDir("bb-pr-upstream-workspace-");
   await runGit(["init", "-b", localBranch], { cwd: workspacePath });
   await runGit(["config", "user.name", "BB Tests"], { cwd: workspacePath });
@@ -53,7 +55,7 @@ async function createTrackedForkWorkspace(): Promise<string> {
   await runGit(["remote", "add", "origin", "git@github.com:acme/bb.git"], {
     cwd: workspacePath,
   });
-  await runGit(["remote", "add", forkRemote, forkRemoteUrl], {
+  await runGit(["remote", "add", forkRemote, remoteUrl], {
     cwd: workspacePath,
   });
   await runGit(
@@ -93,16 +95,15 @@ async function installFakeGh(mode: "found" | "none" | "auth"): Promise<{
       '  printf "%s\\n" "gh: To get started with GitHub CLI, please run: gh auth login" >&2',
       "  exit 4",
       "fi",
-      'if [ "$1" = "repo" ] && [ "$2" = "view" ]; then',
-      '  printf "%s\\n" \'{"nameWithOwner":"fork-owner/bb"}\'',
-      "  exit 0",
-      "fi",
-      'if [ "$1" = "pr" ] && [ "$2" = "view" ] && [ "$3" = "$TEST_GH_QUALIFIED_HEAD" ]; then',
+      'if [ "$1" = "pr" ] && [ "$2" = "view" ]; then',
       '  if [ "$TEST_GH_MODE" = "none" ]; then',
       '    printf "no pull requests found for branch \\"%s\\"\\n" "$3" >&2',
       "    exit 1",
       "  fi",
       '  printf "%s\\n" "$TEST_GH_PR_JSON"',
+      "  exit 0",
+      "fi",
+      'if [ "$1" = "pr" ] && { [ "$2" = "ready" ] || [ "$2" = "merge" ]; }; then',
       "  exit 0",
       "fi",
       'printf "unexpected gh arguments: %s\\n" "$*" >&2',
@@ -115,17 +116,24 @@ async function installFakeGh(mode: "found" | "none" | "auth"): Promise<{
 
   vi.stubEnv("TEST_GH_LOG", logPath);
   vi.stubEnv("TEST_GH_MODE", mode);
-  vi.stubEnv("TEST_GH_QUALIFIED_HEAD", qualifiedUpstream);
   vi.stubEnv("TEST_GH_PR_JSON", pullRequestJson());
   vi.stubEnv("PATH", `${binPath}${path.delimiter}${process.env.PATH ?? ""}`);
   return { logPath };
 }
 
 async function readGhCalls(logPath: string): Promise<string[][]> {
-  return (await fs.readFile(logPath, "utf8"))
-    .trim()
-    .split("\n")
-    .map((line) => line.split("\t"));
+  try {
+    return (await fs.readFile(logPath, "utf8"))
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => line.split("\t"));
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      return [];
+    }
+    throw error;
+  }
 }
 
 afterEach(async () => {
@@ -153,19 +161,71 @@ describe("pull request lookup for differently named upstream branches", () => {
     });
 
     const calls = await readGhCalls(logPath);
-    expect(calls).toHaveLength(2);
-    expect(calls[0]).toEqual([
-      "repo",
-      "view",
-      forkRemoteUrl,
-      "--json",
-      "nameWithOwner",
-    ]);
-    expect(calls[1]?.slice(0, 4)).toEqual([
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.slice(0, 4)).toEqual([
       "pr",
       "view",
       qualifiedUpstream,
       "--json",
+    ]);
+  });
+
+  it("never passes an untrusted upstream URL to gh", async () => {
+    const workspacePath = await createTrackedForkWorkspace(
+      "https://httpbin.org/fork-owner/bb.git",
+    );
+    const { logPath } = await installFakeGh("found");
+    vi.stubEnv("GH_ENTERPRISE_TOKEN", "dummy-enterprise-token");
+
+    await expect(
+      new Workspace(workspacePath).getPullRequest(),
+    ).resolves.toEqual({
+      outcome: "unavailable",
+      message:
+        "Configured upstream remote host does not match the origin GitHub host",
+    });
+    expect(await readGhCalls(logPath)).toEqual([]);
+  });
+
+  it("uses a changed remote URL on the next lookup", async () => {
+    const workspacePath = await createTrackedForkWorkspace();
+    const { logPath } = await installFakeGh("found");
+    const workspace = new Workspace(workspacePath);
+
+    await expect(workspace.getPullRequest()).resolves.toMatchObject({
+      outcome: "found",
+    });
+    await runGit(
+      ["remote", "set-url", forkRemote, "git@github.com:other-owner/bb.git"],
+      { cwd: workspacePath },
+    );
+    await expect(workspace.getPullRequest()).resolves.toMatchObject({
+      outcome: "found",
+    });
+
+    const calls = await readGhCalls(logPath);
+    expect(calls.map((call) => call[2])).toEqual([
+      qualifiedUpstream,
+      `other-owner:${upstreamBranch}`,
+    ]);
+  });
+
+  it("uses the qualified upstream target for ready, draft, and merge actions", async () => {
+    const workspacePath = await createTrackedForkWorkspace();
+    const { logPath } = await installFakeGh("found");
+    const workspace = new Workspace(workspacePath);
+
+    await workspace.runPullRequestAction({ operation: "ready" });
+    await workspace.runPullRequestAction({ operation: "draft" });
+    await workspace.runPullRequestAction({
+      operation: "merge",
+      method: "squash",
+    });
+
+    expect(await readGhCalls(logPath)).toEqual([
+      ["pr", "ready", qualifiedUpstream],
+      ["pr", "ready", qualifiedUpstream, "--undo"],
+      ["pr", "merge", qualifiedUpstream, "--squash"],
     ]);
   });
 

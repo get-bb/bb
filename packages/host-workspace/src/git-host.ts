@@ -44,7 +44,6 @@ const GH_PR_VIEW_JSON_FIELDS = [
   "mergeStateStatus",
   "mergeable",
 ].join(",");
-const GH_REPO_VIEW_JSON_FIELDS = "nameWithOwner";
 
 interface GetPullRequestForCurrentBranchArgs {
   cwd: string;
@@ -60,6 +59,7 @@ export type GitHostPullRequestAction =
 
 interface RunPullRequestActionForCurrentBranchArgs {
   cwd: string;
+  localBranch: string;
   action: GitHostPullRequestAction;
 }
 
@@ -290,14 +290,16 @@ function getMergeMethodFlag(method: GitHostPullRequestMergeMethod): string {
 
 function buildPullRequestActionArgs(
   action: GitHostPullRequestAction,
+  selector: string | null,
 ): string[] {
+  const target = selector ? [selector] : [];
   switch (action.operation) {
     case "ready":
-      return ["pr", "ready"];
+      return ["pr", "ready", ...target];
     case "draft":
-      return ["pr", "ready", "--undo"];
+      return ["pr", "ready", ...target, "--undo"];
     case "merge":
-      return ["pr", "merge", getMergeMethodFlag(action.method)];
+      return ["pr", "merge", ...target, getMergeMethodFlag(action.method)];
   }
 }
 
@@ -375,6 +377,11 @@ type PullRequestTargetLookup =
   | { outcome: "upstream-branch"; selector: string }
   | Extract<GitHostPullRequestLookup, { outcome: "unavailable" }>;
 
+interface GitRemoteRepository {
+  host: string;
+  owner: string;
+}
+
 function ghCommandUnavailable(
   ghArgs: string[],
   error: unknown,
@@ -425,17 +432,90 @@ function gitUpstreamLookupUnavailable(
   };
 }
 
+function escapeGitConfigRegexp(value: string): string {
+  return value.replace(/[\\^$.*+?()[\]{}|]/gu, "\\$&");
+}
+
+function parseNullTerminatedGitConfig(stdout: string): Map<string, string> {
+  const values = new Map<string, string>();
+  for (const record of stdout.split("\0")) {
+    const separator = record.indexOf("\n");
+    if (separator <= 0) continue;
+    const key = record.slice(0, separator);
+    if (!values.has(key)) {
+      values.set(key, record.slice(separator + 1));
+    }
+  }
+  return values;
+}
+
+const GIT_REMOTE_OWNER_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9-]*$/u;
+const GIT_REMOTE_REPOSITORY_PATTERN = /^[a-zA-Z0-9._-]+$/u;
+
+/**
+ * Parse a GitHub-style remote locally. The URL is never passed to `gh`: Git
+ * config is workspace-controlled, while `gh` inherits the user's auth tokens.
+ */
+function parseGitRemoteRepository(
+  remoteUrl: string,
+): GitRemoteRepository | null {
+  const trimmed = remoteUrl.trim();
+  let host: string;
+  let repositoryPath: string;
+
+  if (trimmed.includes("://")) {
+    let url: URL;
+    try {
+      url = new URL(trimmed);
+    } catch {
+      return null;
+    }
+    if (!["git:", "http:", "https:", "ssh:"].includes(url.protocol)) {
+      return null;
+    }
+    host = url.hostname;
+    repositoryPath = url.pathname;
+  } else {
+    const scpStyle = /^(?:[^@/:\s]+@)?([^/:\s]+):(.+)$/u.exec(trimmed);
+    if (!scpStyle?.[1] || !scpStyle[2]) {
+      return null;
+    }
+    host = scpStyle[1];
+    repositoryPath = scpStyle[2];
+  }
+
+  const pathSegments = repositoryPath
+    .replace(/^\/+|\/+$/gu, "")
+    .replace(/\.git$/u, "")
+    .split("/");
+  const owner = pathSegments[0] ?? "";
+  const repository = pathSegments[1] ?? "";
+  if (
+    !host ||
+    pathSegments.length !== 2 ||
+    !GIT_REMOTE_OWNER_PATTERN.test(owner) ||
+    !GIT_REMOTE_REPOSITORY_PATTERN.test(repository) ||
+    repository === "." ||
+    repository === ".."
+  ) {
+    return null;
+  }
+  return { host: host.toLowerCase(), owner };
+}
+
 async function getPullRequestTarget(
   args: GetPullRequestForCurrentBranchArgs,
 ): Promise<PullRequestTargetLookup> {
-  const localRef = `refs/heads/${args.localBranch}`;
-  let upstreamResult: GitCommandResult;
+  const branchConfigPrefix = `branch.${args.localBranch}`;
+  const escapedBranch = escapeGitConfigRegexp(args.localBranch);
+  let configResult: GitCommandResult;
   try {
-    upstreamResult = await runGit(
+    configResult = await runGit(
       [
-        "for-each-ref",
-        "--format=%(refname)%00%(upstream:remotename)%00%(upstream:remoteref)",
-        localRef,
+        "config",
+        "--null",
+        "--get-regexp",
+        `^(branch\\.${escapedBranch}\\.(remote|merge)|remote\\..*\\.url)$`,
       ],
       {
         cwd: args.cwd,
@@ -449,20 +529,16 @@ async function getPullRequestTarget(
       error instanceof Error ? error.message : "",
     );
   }
-  if (upstreamResult.exitCode !== 0) {
+  if (configResult.exitCode !== 0 && configResult.exitCode !== 1) {
     return gitUpstreamLookupUnavailable(
       "Could not inspect the current branch's configured upstream",
-      upstreamResult.stderr.trim(),
+      configResult.stderr.trim(),
     );
   }
 
-  const upstreamEntry = upstreamResult.stdout
-    .trimEnd()
-    .split("\n")
-    .map((line) => line.split("\0"))
-    .find(([ref]) => ref === localRef);
-  const remote = upstreamEntry?.[1] ?? "";
-  const remoteRef = upstreamEntry?.[2] ?? "";
+  const config = parseNullTerminatedGitConfig(configResult.stdout);
+  const remote = config.get(`${branchConfigPrefix}.remote`) ?? "";
+  const remoteRef = config.get(`${branchConfigPrefix}.merge`) ?? "";
   const remoteBranchPrefix = "refs/heads/";
   if (!remote || remote === "." || !remoteRef.startsWith(remoteBranchPrefix)) {
     return { outcome: "current-branch" };
@@ -473,69 +549,29 @@ async function getPullRequestTarget(
     return { outcome: "current-branch" };
   }
 
-  let remoteUrlResult: GitCommandResult;
-  try {
-    remoteUrlResult = await runGit(["remote", "get-url", remote], {
-      cwd: args.cwd,
-      allowFailure: true,
-      timeoutMs: GIT_UPSTREAM_LOOKUP_TIMEOUT_MS,
-    });
-  } catch (error) {
+  const originRepository = parseGitRemoteRepository(
+    config.get("remote.origin.url") ?? "",
+  );
+  const upstreamRepository = parseGitRemoteRepository(
+    config.get(`remote.${remote}.url`) ?? "",
+  );
+  if (!originRepository || !upstreamRepository) {
     return gitUpstreamLookupUnavailable(
-      `Could not resolve URL for Git remote ${remote}`,
-      error instanceof Error ? error.message : "",
+      "Could not safely resolve the configured upstream repository",
+      "origin and upstream must use supported GitHub remote URLs",
     );
   }
-  const remoteUrl = remoteUrlResult.stdout.trim();
-  if (remoteUrlResult.exitCode !== 0 || !remoteUrl) {
-    return gitUpstreamLookupUnavailable(
-      `Could not resolve URL for Git remote ${remote}`,
-      remoteUrlResult.stderr.trim(),
-    );
-  }
-
-  const repoViewArgs = [
-    "repo",
-    "view",
-    remoteUrl,
-    "--json",
-    GH_REPO_VIEW_JSON_FIELDS,
-  ];
-  let repoViewStdout: string;
-  try {
-    ({ stdout: repoViewStdout } = await execFileAsync("gh", repoViewArgs, {
-      cwd: args.cwd,
-      encoding: "utf8",
-      env: sanitizeInheritedChildProcessEnv({ env: process.env }),
-      timeout: GH_PR_VIEW_TIMEOUT_MS,
-      maxBuffer: GH_PR_VIEW_MAX_BUFFER_BYTES,
-    }));
-  } catch (error) {
-    return ghCommandUnavailable(repoViewArgs, error);
-  }
-
-  let nameWithOwner: string | null = null;
-  try {
-    const repoView = asObject(JSON.parse(repoViewStdout));
-    nameWithOwner = repoView ? getString(repoView, "nameWithOwner") : null;
-  } catch {
-    // Handled by the unavailable result below.
-  }
-  const repositoryParts = nameWithOwner?.split("/") ?? [];
-  if (
-    repositoryParts.length !== 2 ||
-    !repositoryParts[0] ||
-    !repositoryParts[1]
-  ) {
+  if (originRepository.host !== upstreamRepository.host) {
     return {
       outcome: "unavailable",
-      message: "gh repo view returned unparseable output",
+      message:
+        "Configured upstream remote host does not match the origin GitHub host",
     };
   }
 
   return {
     outcome: "upstream-branch",
-    selector: `${repositoryParts[0]}:${upstreamBranch}`,
+    selector: `${upstreamRepository.owner}:${upstreamBranch}`,
   };
 }
 
@@ -543,8 +579,10 @@ async function getPullRequestTarget(
  * Detect the open/most-relevant GitHub pull request for the branch checked out
  * in `cwd` by shelling out to the host `gh` CLI. Bare `gh pr view` correctly
  * resolves the configured upstream owner, but combines it with the local branch
- * name. When Git tracks a differently named upstream branch, resolve the
- * upstream remote owner and pass the fully qualified `owner:branch` selector.
+ * name. When Git tracks a differently named upstream branch, parse the owner
+ * locally from a same-host upstream and pass the fully qualified
+ * `owner:branch` selector. Configured URLs are never passed to `gh`, which
+ * inherits user auth tokens.
  *
  * Never throws: a branch with no PR is `outcome: "none"`, while every lookup
  * failure (`gh` not installed, not authenticated, no GitHub remote, a timeout,
@@ -590,15 +628,21 @@ export async function getPullRequestForCurrentBranch(
 }
 
 /**
- * Mutate the GitHub pull request for the branch checked out in `cwd`. Omitting
- * a positional target lets `gh` honor a fork branch's configured upstream.
- * Unlike pull-request detection, mutation failures are meaningful and are
- * surfaced to the caller.
+ * Mutate the GitHub pull request for the branch checked out in `cwd`. Uses the
+ * same qualified upstream target as detection when the tracked branch has a
+ * different name. Mutation failures are meaningful and surface to the caller.
  */
 export async function runPullRequestActionForCurrentBranch(
   args: RunPullRequestActionForCurrentBranchArgs,
 ): Promise<void> {
-  const ghArgs = buildPullRequestActionArgs(args.action);
+  const target = await getPullRequestTarget(args);
+  if (target.outcome === "unavailable") {
+    throw new WorkspaceError("git_host_command_failed", target.message);
+  }
+  const ghArgs = buildPullRequestActionArgs(
+    args.action,
+    target.outcome === "upstream-branch" ? target.selector : null,
+  );
   try {
     await execFileAsync("gh", ghArgs, {
       cwd: args.cwd,

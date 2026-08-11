@@ -720,7 +720,11 @@ export class Workspace {
         "Cannot update pull request from a detached workspace",
       );
     }
-    return runPullRequestActionForCurrentBranch({ cwd: this.path, action });
+    return runPullRequestActionForCurrentBranch({
+      cwd: this.path,
+      localBranch: branch,
+      action,
+    });
   }
 
   async getStatus(options: StatusOptions = {}): Promise<WorkspaceStatus> {

@@ -180,14 +180,23 @@ describe("parseGitHostPullRequest", () => {
 });
 
 describe("runPullRequestActionForCurrentBranch", () => {
+  const actionArgs = {
+    cwd: "/tmp/workspace",
+    localBranch: "bb/pr-action",
+  };
+
   function mockGhSuccess(): void {
     execFileMock.mockImplementation(
       (
-        _file: string,
+        file: string,
         _args: readonly string[],
         _options: object,
         callback: (error: Error | null, stdout: string, stderr: string) => void,
       ) => {
+        if (file === "git") {
+          callback(null, "", "");
+          return;
+        }
         callback(null, "", "");
       },
     );
@@ -217,7 +226,7 @@ describe("runPullRequestActionForCurrentBranch", () => {
       mockGhSuccess();
 
       await runPullRequestActionForCurrentBranch({
-        cwd: "/tmp/workspace",
+        ...actionArgs,
         action,
       });
 
@@ -241,18 +250,26 @@ describe("runPullRequestActionForCurrentBranch", () => {
     });
     execFileMock.mockImplementation(
       (
-        _file: string,
+        file: string,
         _args: readonly string[],
         _options: object,
-        callback: (error: Error) => void,
+        callback: (
+          error: Error | null,
+          stdout?: string,
+          stderr?: string,
+        ) => void,
       ) => {
+        if (file === "git") {
+          callback(null, "", "");
+          return;
+        }
         callback(error);
       },
     );
 
     await expect(
       runPullRequestActionForCurrentBranch({
-        cwd: "/tmp/workspace",
+        ...actionArgs,
         action: { operation: "ready" },
       }),
     ).rejects.toMatchObject({
@@ -277,7 +294,7 @@ describe("getPullRequestForCurrentBranch", () => {
         callback: (error: Error | null, stdout: string, stderr: string) => void,
       ) => {
         if (file === "git") {
-          callback(null, `refs/heads/${lookupArgs.localBranch}\0\0\0\n`, "");
+          callback(null, "", "");
           return;
         }
         callback(null, stdout, "");
@@ -298,7 +315,7 @@ describe("getPullRequestForCurrentBranch", () => {
         ) => void,
       ) => {
         if (file === "git") {
-          callback(null, `refs/heads/${lookupArgs.localBranch}\0\0\0\n`, "");
+          callback(null, "", "");
           return;
         }
         callback(error);
