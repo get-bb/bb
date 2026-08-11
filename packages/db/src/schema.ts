@@ -610,7 +610,10 @@ export const threadSearchSegments = sqliteTable(
       table.sourceKind,
       table.sourceKey,
     ),
-    index("thread_search_segments_thread_idx").on(table.threadId),
+    index("thread_search_segments_thread_source_seq_idx").on(
+      table.threadId,
+      table.sourceSeq,
+    ),
   ],
 );
 

@@ -3,6 +3,7 @@ import { and, desc, eq, lt, sql } from "drizzle-orm";
 import {
   deleteThreadEventSuffixInTransaction,
   events,
+  getActivePendingInteractionForThread,
   getExperiments,
   getHighWaterMarks,
   getThread,
@@ -38,7 +39,10 @@ import {
   LIVE_DAEMON_COMMAND_TIMEOUT_MS,
   runLiveHostCommand,
 } from "../hosts/live-command.js";
-import { sendThreadMessage } from "./thread-send.js";
+import {
+  resolveMessageSenderThreadId,
+  sendThreadMessage,
+} from "./thread-send.js";
 
 type ThreadRewindPrepareCommand = Extract<
   HostDaemonCommand,
@@ -68,6 +72,7 @@ function requestFingerprint(payload: EditMessageRequest): string {
         model: payload.model,
         permissionMode: payload.permissionMode,
         reasoningLevel: payload.reasoningLevel,
+        senderThreadId: payload.senderThreadId,
         serviceTier: payload.serviceTier,
       }),
     )
@@ -480,6 +485,11 @@ export async function editThreadMessage(
   if (hasQueuedThreadMessages(deps.db, args.thread.id)) {
     conflict("Send or remove queued messages before editing a message");
   }
+  const senderThreadId = resolveMessageSenderThreadId(deps, {
+    senderThreadId: args.payload.senderThreadId,
+    targetThread: args.thread,
+  });
+  const initiator = senderThreadId === null ? "user" : "agent";
 
   const target = resolveEditableTurn(
     deps.db,
@@ -512,7 +522,7 @@ export async function editThreadMessage(
       execution,
       permissionEscalation: resolvePermissionEscalation({
         thread: args.thread,
-        initiator: "user",
+        initiator,
       }),
       environment: readyEnvironment,
       projectId: args.thread.projectId,
@@ -560,6 +570,11 @@ export async function editThreadMessage(
   try {
     await sendThreadMessage(deps, {
       beforeAppendInTransaction: ({ tx }) => {
+        if (getActivePendingInteractionForThread(tx, args.thread.id)) {
+          conflict(
+            "Resolve the pending interaction before editing the message",
+          );
+        }
         if (hasQueuedThreadMessages(tx, args.thread.id)) {
           conflict("Send or remove queued messages before editing a message");
         }
@@ -632,6 +647,7 @@ export async function editThreadMessage(
         ...(args.payload.executionInputSources !== undefined
           ? { executionInputSources: args.payload.executionInputSources }
           : {}),
+        ...(senderThreadId !== null ? { senderThreadId } : {}),
       },
       thread: args.thread,
       trigger: "user",

@@ -1,5 +1,6 @@
 import {
   claimQueuedThreadMessage,
+  createPendingInteraction,
   createPromptHistoryEntry,
   getThread,
   listEvents,
@@ -14,7 +15,7 @@ import {
   turnScope,
   type PromptInput,
 } from "@bb/domain";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   editThreadMessage,
   getLatestThreadMessageEdit,
@@ -225,6 +226,84 @@ function seedEditableThread(
 }
 
 describe("editThreadMessage", () => {
+  it("preserves an agent caller and applies agent permission policy", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedEditableThread(harness, {
+        includeSecondTurn: false,
+      });
+      const senderThread = seedThread(harness.deps, {
+        environmentId: environment.id,
+        projectId: thread.projectId,
+        providerId: "codex",
+        status: "active",
+      });
+
+      await expect(
+        editThreadMessage(harness.deps, {
+          environment,
+          thread,
+          payload: {
+            operationId: "edit-op-agent-caller",
+            expectedRequestSequence: 2,
+            input: [
+              { type: "text", text: "Replacement by agent", mentions: [] },
+            ],
+            permissionMode: "accept-edits",
+            senderThreadId: senderThread.id,
+          },
+        }),
+      ).resolves.toMatchObject({ ok: true, requestSequence: 8 });
+
+      const replacement = listEvents(harness.db, { threadId: thread.id }).find(
+        (event) => event.sequence === 8,
+      );
+      expect(JSON.parse(replacement?.data ?? "null")).toMatchObject({
+        initiator: "agent",
+        senderThreadId: senderThread.id,
+        execution: {
+          permissionMode: "accept-edits",
+        },
+        input: [
+          expect.objectContaining({
+            type: "text",
+            text: expect.stringContaining("Replacement by agent"),
+          }),
+        ],
+      });
+      const start = await waitForQueuedCommand(
+        harness,
+        (queued) =>
+          queued.command.type === "thread.start" &&
+          queued.command.threadId === thread.id,
+      );
+      expect(start.command).toMatchObject({
+        options: { permissionEscalation: "deny" },
+      });
+    });
+  });
+
+  it("rejects an unknown agent caller before rewriting history", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedEditableThread(harness, {
+        includeSecondTurn: false,
+      });
+
+      await expect(
+        editThreadMessage(harness.deps, {
+          environment,
+          thread,
+          payload: {
+            operationId: "edit-op-unknown-agent",
+            expectedRequestSequence: 2,
+            input: [{ type: "text", text: "Replacement", mentions: [] }],
+            senderThreadId: "thread-does-not-exist",
+          },
+        }),
+      ).rejects.toThrow("Sender thread is invalid");
+      expect(listEvents(harness.db, { threadId: thread.id })).toHaveLength(6);
+    });
+  });
+
   it("resolves the latest user message when a later turn was agent-initiated", async () => {
     await withTestHarness(async (harness) => {
       const { thread } = seedEditableThread(harness);
@@ -750,6 +829,66 @@ describe("editThreadMessage", () => {
       await reportQueuedCommandSuccess(harness, discard, {});
       await rejectedEdit;
       expect(listEvents(harness.db, { threadId: thread.id })).toHaveLength(11);
+    });
+  });
+
+  it("rechecks pending interactions in the edit commit transaction", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedEditableThread(harness);
+      let pendingInteractionChecks = 0;
+      const originalHasPendingInteraction =
+        harness.deps.pendingInteractions.hasPendingThreadInteraction.bind(
+          harness.deps.pendingInteractions,
+        );
+      const pendingInteractionSpy = vi
+        .spyOn(harness.deps.pendingInteractions, "hasPendingThreadInteraction")
+        .mockImplementation((threadId) => {
+          pendingInteractionChecks += 1;
+          if (pendingInteractionChecks === 2) {
+            createPendingInteraction(harness.db, {
+              originKind: "plugin",
+              pluginId: "plugin-edit-race",
+              rendererId: "renderer-edit-race",
+              threadId,
+              turnId: null,
+              payload: JSON.stringify({ kind: "plugin", title: "Confirm" }),
+            });
+            return false;
+          }
+          return originalHasPendingInteraction(threadId);
+        });
+      try {
+        const editPromise = editThreadMessage(harness.deps, {
+          environment,
+          thread,
+          payload: {
+            operationId: "edit-op-interaction-race",
+            expectedRequestSequence: 7,
+            input: [{ type: "text", text: "Replacement", mentions: [] }],
+          },
+        });
+        const rewind = await waitForQueuedCommand(
+          harness,
+          (queued) => queued.command.type === "thread.rewind.prepare",
+        );
+        const rejectedEdit = expect(editPromise).rejects.toThrow(
+          "Resolve the pending interaction before editing the message",
+        );
+        await reportQueuedCommandSuccess(harness, rewind, {
+          providerThreadId: "provider-staged-interaction-race",
+        });
+        const discard = await waitForQueuedCommand(
+          harness,
+          (queued) => queued.command.type === "thread.rewind.discard",
+        );
+        await reportQueuedCommandSuccess(harness, discard, {});
+        await rejectedEdit;
+        expect(listEvents(harness.db, { threadId: thread.id })).toHaveLength(
+          11,
+        );
+      } finally {
+        pendingInteractionSpy.mockRestore();
+      }
     });
   });
 

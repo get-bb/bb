@@ -87,7 +87,8 @@ Editing a sent message (requires the `editMessages` experiment):
   Codex, Claude Code, and Pi threads are supported. The original conversation
   remains unchanged until the provider prepares the replacement history.
   Submitting replaces that turn and every later turn while retaining workspace
-  changes.
+  changes. From an agent thread, the command carries `BB_THREAD_ID` so the
+  replacement runs under agent permission policy.
 
 Listing:
 

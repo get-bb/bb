@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import path from "node:path";
 import { z } from "zod";
 import {
@@ -179,6 +180,16 @@ const threadGoalClearResultSchema = z.object({ cleared: z.boolean() }).strict();
 const THREAD_GOAL_CLEAR_EVENT_TIMEOUT_MS = 5_000;
 const PREPARED_THREAD_REWIND_TTL_MS = 5 * 60_000;
 const PREPARED_THREAD_REWIND_RETRY_MS = 30_000;
+
+function preparedThreadRewindStagingThreadId(
+  threadId: string,
+  operationId: string,
+): string {
+  const operationDigest = createHash("sha256")
+    .update(operationId)
+    .digest("hex");
+  return `${threadId}:rewind:${operationDigest}`;
+}
 
 interface ThreadRuntimeConfig {
   dynamicTools?: DynamicTool[];
@@ -1518,7 +1529,14 @@ function createAgentRuntimeInternal(
             providerId,
           });
 
-          const stagingThreadId = `${threadId}:rewind:${operationId}`;
+          // Provider adapters may turn this identity into a filesystem key.
+          // Hash the external idempotency key so distinct unsafe characters
+          // cannot collapse onto the same provider session path (Pi replaces
+          // each unsafe character with an underscore).
+          const stagingThreadId = preparedThreadRewindStagingThreadId(
+            threadId,
+            operationId,
+          );
           suppressedThreadEventIds.add(stagingThreadId);
           threadIdentityRegistry.registerThreadProvider({
             providerId,

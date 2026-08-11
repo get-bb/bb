@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAtom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
@@ -984,9 +984,12 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       providerId: thread.providerId,
       runtimeDisplayStatus: thread.runtime.displayStatus,
     });
-  const enterSentMessageEdit = useCallback(
+  const sentMessageEditEntryRef = useRef({ canEditSentMessages, thread });
+  sentMessageEditEntryRef.current = { canEditSentMessages, thread };
+  const handleEditSentMessage = useCallback<ThreadTimelineEditMessageHandler>(
     (target: ThreadTimelineEditMessageTarget) => {
-      if (!thread || !canEditSentMessages) {
+      const current = sentMessageEditEntryRef.current;
+      if (!current.thread || !current.canEditSentMessages) {
         return;
       }
       const editDraft = promptInputToDraft(target.input);
@@ -996,10 +999,10 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
         originalDraft: editDraft,
         operationId: crypto.randomUUID(),
         target,
-        threadId: thread.id,
+        threadId: current.thread.id,
       });
     },
-    [canEditSentMessages, thread],
+    [],
   );
   const sentMessageEditThreadId = sentMessageEditSession?.threadId ?? null;
   const sentMessageEditTargetMessageId =
@@ -1024,15 +1027,6 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     setSentMessageEditSession(null);
     appToast.warning("The message being edited is no longer available.");
   }, [shouldDiscardMissingSentMessageEdit]);
-  const handleEditSentMessage = useCallback<ThreadTimelineEditMessageHandler>(
-    (target) => {
-      if (!canEditSentMessages) {
-        return;
-      }
-      enterSentMessageEdit(target);
-    },
-    [canEditSentMessages, enterSentMessageEdit],
-  );
   const activeSentMessageEditOperationId =
     activeSentMessageEditSession?.operationId ?? null;
   const updateSentMessageEditDraft = useCallback(

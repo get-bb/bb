@@ -527,6 +527,28 @@ describe("slow query index plans", () => {
     db.$client.close();
   });
 
+  it("uses the thread and sequence index for search segment suffix deletes", () => {
+    const { db } = setup();
+
+    const details = queryPlanDetails({
+      db,
+      params: ["thread-query-plan", 10, 20],
+      sql: `
+        DELETE FROM thread_search_segments
+        WHERE thread_id = ?
+          AND source_seq >= ?
+          AND source_seq <= ?
+      `,
+    });
+
+    expect(details).toMatch(
+      /USING (?:COVERING )?INDEX thread_search_segments_thread_source_seq_idx/,
+    );
+    expect(details).not.toContain("SCAN thread_search_segments");
+
+    db.$client.close();
+  });
+
   it("uses the completed item truncation partial index for emitted cursor scans", () => {
     const { db, logger, thread } = setup();
     const createdBefore = Date.now();

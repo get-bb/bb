@@ -135,6 +135,38 @@ describe("bb thread action command output", () => {
     );
   });
 
+  it("bb thread edit-message preserves an agent caller when targeting another thread", async () => {
+    vi.stubEnv("BB_THREAD_ID", "thread-agent-caller");
+    const submitEdit = vi.fn(async () => ({
+      ok: true,
+      operationId: "edit-op-server",
+      requestSequence: 43,
+    }));
+    stubServerApi({
+      "v1.threads.:id.edit-message.$post": submitEdit,
+    });
+
+    await runCommand(
+      [
+        "thread",
+        "edit-message",
+        "thread-edit-target",
+        "--message",
+        "Replacement",
+        "--expected-request-sequence",
+        "41",
+      ],
+      register,
+    );
+
+    expect(submitEdit).toHaveBeenCalledWith({
+      param: { id: "thread-edit-target" },
+      json: expect.objectContaining({
+        senderThreadId: "thread-agent-caller",
+      }),
+    });
+  });
+
   it("bb thread edit-message accepts an explicit stale-edit guard", async () => {
     vi.stubEnv("BB_THREAD_ID", "thread-edit-self");
     const getEdit = vi.fn();

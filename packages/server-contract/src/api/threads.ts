@@ -273,7 +273,7 @@ export type ContinueAfterProviderRateLimitResponse = z.infer<
 >;
 
 export const editMessageRequestSchema = sendMessageRequestSchema
-  .omit({ mode: true, senderThreadId: true })
+  .omit({ mode: true })
   .extend({
     operationId: z.string().min(1),
     expectedRequestSequence: z.number().int().nonnegative(),

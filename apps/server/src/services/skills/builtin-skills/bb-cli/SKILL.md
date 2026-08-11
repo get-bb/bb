@@ -347,7 +347,9 @@ or artifacts, validation performed, and blockers.
   the latest completed user message in an idle Codex, Claude Code, or Pi thread.
   Pass `--expected-request-sequence <sequence>` to select an earlier message.
   Opening edit mode in the app is non-destructive; history changes only when the
-  edit is submitted successfully, and workspace changes remain.
+  edit is submitted successfully, and workspace changes remain. When an agent
+  edits another thread, the CLI carries its `BB_THREAD_ID` so the replacement
+  runs under agent permission policy.
 - `bb thread tell` steers by default, delivering the message immediately into
   the active turn. Use `--mode queue` when the message is non-urgent and the
   agent can finish its current work first. Steer is especially important for a

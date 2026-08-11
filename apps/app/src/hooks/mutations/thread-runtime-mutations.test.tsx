@@ -8,6 +8,7 @@ import type {
 } from "@bb/server-contract";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BbHttpError, sdk } from "@/lib/sdk";
+import { wsManager } from "@/lib/ws";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import {
   threadQueuedMessagesQueryKey,
@@ -115,6 +116,7 @@ const executionInputSources = {
 } satisfies ExistingThreadExecutionInputSources;
 
 beforeEach(() => {
+  vi.mocked(wsManager.getConnectionState).mockReturnValue("connected");
   vi.mocked(sdk.threads.cancelPlan).mockResolvedValue({ ok: true });
   vi.mocked(sdk.threads.clearGoal).mockResolvedValue({ ok: true });
   vi.mocked(sdk.threads.editMessage).mockResolvedValue({
@@ -136,7 +138,7 @@ afterEach(() => {
 });
 
 describe("thread runtime mutations", () => {
-  it("keeps the existing timeline while an edit is pending and invalidates it after success", async () => {
+  it("keeps the existing timeline while an edit is pending and lets connected realtime own success", async () => {
     const { queryClient, wrapper } = createQueryClientTestHarness();
     const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
     const edit = deferred<{
@@ -180,6 +182,24 @@ describe("thread runtime mutations", () => {
       expectedRequestSequence: 41,
       input: [{ type: "text", text: "Replacement", mentions: [] }],
     });
+    expect(invalidateQueries).not.toHaveBeenCalled();
+  });
+
+  it("invalidates rewritten history after edit success when realtime is disconnected", async () => {
+    vi.mocked(wsManager.getConnectionState).mockReturnValue("reconnecting");
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
+    const { result } = renderHook(() => useEditThreadMessage(), { wrapper });
+
+    await act(async () => {
+      await result.current.mutateAsync({
+        id: "thread-1",
+        operationId: "edit-op-disconnected",
+        expectedRequestSequence: 41,
+        input: [{ type: "text", text: "Replacement", mentions: [] }],
+      });
+    });
+
     expect(invalidateQueries).toHaveBeenCalledWith(
       expect.objectContaining({ queryKey: threadTimelineQueryKey("thread-1") }),
     );

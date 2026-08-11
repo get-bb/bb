@@ -94,6 +94,43 @@ function SameThreadSearchNavigationHarness() {
   );
 }
 
+function EditActionAvailabilityHarness({
+  onEditMessage,
+}: {
+  onEditMessage: NonNullable<
+    ComponentProps<typeof ThreadTimelineRows>["onEditMessage"]
+  >;
+}) {
+  const [isIdle, setIsIdle] = useState(false);
+  const [rows] = useState(() => [
+    conversationRow({
+      id: "earlier_user_message",
+      role: "user",
+      text: "An earlier request.",
+      sourceSeqStart: 3,
+    }),
+    conversationRow({
+      id: "latest_user_message",
+      role: "user",
+      text: "The latest request.",
+      sourceSeqStart: 7,
+    }),
+  ]);
+  return (
+    <>
+      <button type="button" onClick={() => setIsIdle(true)}>
+        Complete turn
+      </button>
+      <ThreadTimelineRows
+        timelineRows={rows}
+        onEditMessage={isIdle ? onEditMessage : undefined}
+        threadRuntimeDisplayStatus={isIdle ? "idle" : "active"}
+        workspaceRootPath={undefined}
+      />
+    </>
+  );
+}
+
 function SearchOlderRowsHarness({
   onLoadOlderRows,
 }: {
@@ -376,6 +413,27 @@ describe("ThreadTimelineRows actions", () => {
         { type: "localFile", path: "uploads/spec.md" },
       ],
     });
+  });
+
+  it("restores edit actions on every cached message after an active turn becomes idle", () => {
+    const onEditMessage = vi.fn();
+    renderWithRouter(
+      <EditActionAvailabilityHarness onEditMessage={onEditMessage} />,
+    );
+    expect(
+      screen.queryAllByRole("button", { name: "Edit message" }),
+    ).toHaveLength(0);
+
+    fireEvent.click(screen.getByRole("button", { name: "Complete turn" }));
+
+    const editButtons = screen.getAllByRole("button", {
+      name: "Edit message",
+    });
+    expect(editButtons).toHaveLength(2);
+    fireEvent.click(editButtons[0]!);
+    expect(onEditMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ messageId: "earlier_user_message" }),
+    );
   });
 
   it("replaces the matching sent message with an inline editor host", () => {

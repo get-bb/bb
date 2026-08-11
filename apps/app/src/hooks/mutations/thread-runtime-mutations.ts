@@ -226,6 +226,9 @@ export function useEditThreadMessage() {
     mutationFn: ({ id, ...request }: EditMessageMutationRequest) =>
       sdk.threads.editMessage({ threadId: id, ...request }),
     onSuccess: (_result, variables) => {
+      if (wsManager.getConnectionState() === "connected") {
+        return;
+      }
       invalidateThreadHistoryRewriteQueries({
         queryClient,
         threadId: variables.id,

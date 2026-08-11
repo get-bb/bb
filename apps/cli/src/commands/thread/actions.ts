@@ -398,11 +398,13 @@ export function registerActionsCommands(
             requestedSequence ??
             (await sdk.threads.getLatestMessageEdit({ threadId }))
               .expectedRequestSequence;
+          const senderThreadId = resolveSenderThreadId(threadId);
           const result = await sdk.threads.editMessage({
             threadId,
             operationId: randomUUID(),
             expectedRequestSequence,
             input: buildPromptInputs({ message: opts.message }),
+            ...(senderThreadId !== undefined ? { senderThreadId } : {}),
           });
           if (
             outputJson(opts, {
