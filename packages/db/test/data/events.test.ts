@@ -1261,7 +1261,7 @@ describe("events", () => {
 
     const rowsByThreadId = new Map(
       listLatestGoalEventRowsByThreadIds(db, {
-        threadIds: [thread.id, otherThread.id],
+        threadIds: [thread.id, otherThread.id, thread.id],
       }).map((row) => [row.threadId, row]),
     );
 
@@ -1337,7 +1337,7 @@ describe("events", () => {
 
     const rowsByThreadId = new Map(
       listOpenTurnInputAcceptedRowsByThreadIds(db, {
-        threadIds: [thread.id, otherThread.id],
+        threadIds: [thread.id, otherThread.id, thread.id],
       }).map((row) => [row.threadId, row]),
     );
 
@@ -1381,6 +1381,7 @@ describe("events", () => {
         keys: [
           { threadId: thread.id, requestId: "creq_23456789aa" },
           { threadId: otherThread.id, requestId: "creq_23456789aa" },
+          { threadId: thread.id, requestId: "creq_23456789aa" },
         ],
       }).map((row) => [row.threadId, row]),
     );
@@ -3581,7 +3582,7 @@ describe("events", () => {
 
     const countsByThreadId = new Map(
       listActiveBackgroundTaskCountsByThreadIds(db, {
-        threadIds: [thread.id],
+        threadIds: [thread.id, thread.id],
       }).map((row) => [row.threadId, row]),
     );
 

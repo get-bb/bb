@@ -67,6 +67,7 @@ const SQLITE_MAX_VARIABLE_NUMBER = 32_766;
 const CLIENT_TURN_REQUEST_KEY_BATCH_SIZE = 995;
 
 interface QueryInSqliteVariableBatchesArgs<TValue, TRow> {
+  dedupeKey: (value: TValue) => string;
   fixedVariableCount: number;
   maximumValueCount?: number;
   queryBatch: (values: readonly TValue[]) => readonly TRow[];
@@ -77,6 +78,12 @@ interface QueryInSqliteVariableBatchesArgs<TValue, TRow> {
 function queryInSqliteVariableBatches<TValue, TRow>(
   args: QueryInSqliteVariableBatchesArgs<TValue, TRow>,
 ): TRow[] {
+  const values = [
+    ...new Map(args.values.map((value) => [args.dedupeKey(value), value])).values(),
+  ];
+  if (values.length === 0) {
+    return [];
+  }
   const variableBatchSize = Math.floor(
     (SQLITE_MAX_VARIABLE_NUMBER - args.fixedVariableCount) /
       args.variableCountPerValue,
@@ -90,8 +97,8 @@ function queryInSqliteVariableBatches<TValue, TRow>(
   }
 
   const rows: TRow[] = [];
-  for (let offset = 0; offset < args.values.length; offset += batchSize) {
-    rows.push(...args.queryBatch(args.values.slice(offset, offset + batchSize)));
+  for (let offset = 0; offset < values.length; offset += batchSize) {
+    rows.push(...args.queryBatch(values.slice(offset, offset + batchSize)));
   }
   return rows;
 }
@@ -1111,54 +1118,30 @@ export function listLatestGoalEventRowsByThreadIds(
   db: DbQueryConnection,
   args: ListLatestGoalEventRowsByThreadIdsArgs,
 ): StoredEventRow[] {
-  if (args.threadIds.length === 0) {
-    return [];
-  }
-
   return queryInSqliteVariableBatches({
+    dedupeKey: (threadId) => threadId,
     fixedVariableCount: 0,
-    queryBatch: (threadIds) =>
-      listLatestGoalEventRowsByThreadIdsBatch(db, threadIds),
-    values: [...new Set(args.threadIds)],
-    variableCountPerValue: 1,
-  });
-}
-
-function listLatestGoalEventRowsByThreadIdsBatch(
-  db: DbQueryConnection,
-  threadIds: readonly string[],
-): StoredEventRow[] {
-  // This runs over every listed thread on each sidebar bootstrap, so it must
-  // stay proportional to the number of goal events, not the number of events.
-  // Three deliberate choices make that hold on a stats-less database:
-  //   - The goal-type list is spelled as SQL literals matching the WHERE
-  //     clause of events_goal_thread_sequence_idx exactly; SQLite only uses a
-  //     partial index when the query predicate provably implies the index
-  //     predicate at prepare time, which a bound parameter never does.
-  //   - INDEXED BY pins the tiny partial index. Without ANALYZE data the
-  //     planner assumes every index is table-sized: it previously served an
-  //     ORDER BY from events_thread_sequence_idx and walked every event row
-  //     of every listed thread — a full-file read on a grown events table
-  //     (issue #1131).
-  //   - No ORDER BY: sequence is unique per thread, so this returns at most
-  //     one row per thread and callers do not depend on row order.
-  const goalTypes = [
-    "thread/goal/updated",
-    "thread/goal/cleared",
-  ] as const satisfies readonly ThreadEventType[];
-  const goalTypesPredicate = sql.raw(
-    `IN (${goalTypes.map((type) => `'${type}'`).join(", ")})`,
-  );
-  const threadIdList = sql.join(
-    threadIds.map((threadId) => sql`${threadId}`),
-    sql`, `,
-  );
-
-  return db
-    .select(storedEventRowFields)
-    .from(events)
-    .where(
-      sql`${events}.rowid IN (
+    queryBatch: (threadIds) => {
+      // This runs over every listed thread on each sidebar bootstrap, so it
+      // must stay proportional to goal events, not all events. Literal goal
+      // types imply the partial-index predicate at prepare time; INDEXED BY
+      // prevents a stats-less planner from walking the full thread index; and
+      // no ORDER BY is needed because sequence is unique per thread (#1131).
+      const goalTypes = [
+        "thread/goal/updated",
+        "thread/goal/cleared",
+      ] as const satisfies readonly ThreadEventType[];
+      const goalTypesPredicate = sql.raw(
+        `IN (${goalTypes.map((type) => `'${type}'`).join(", ")})`,
+      );
+      const threadIdList = sql.join(
+        threadIds.map((threadId) => sql`${threadId}`),
+        sql`, `,
+      );
+      return db
+        .select(storedEventRowFields)
+        .from(events)
+        .where(sql`${events}.rowid IN (
         SELECT latest_goal.rowid
         FROM ${events} AS latest_goal INDEXED BY events_goal_thread_sequence_idx
         WHERE latest_goal.thread_id IN (${threadIdList})
@@ -1169,24 +1152,59 @@ function listLatestGoalEventRowsByThreadIdsBatch(
             WHERE candidate.thread_id = latest_goal.thread_id
               AND candidate.type ${goalTypesPredicate}
           )
-      )`,
-    )
-    .all();
+      )`)
+        .all();
+    },
+    values: args.threadIds,
+    variableCountPerValue: 1,
+  });
 }
 
 export function listOpenTurnInputAcceptedRowsByThreadIds(
   db: DbQueryConnection,
   args: ListOpenTurnInputAcceptedRowsByThreadIdsArgs,
 ): StoredEventRow[] {
-  if (args.threadIds.length === 0) {
-    return [];
-  }
-
   const rows = queryInSqliteVariableBatches({
+    dedupeKey: (threadId) => threadId,
     fixedVariableCount: 3,
-    queryBatch: (threadIds) =>
-      listOpenTurnInputAcceptedRowsByThreadIdsBatch(db, threadIds),
-    values: [...new Set(args.threadIds)],
+    queryBatch: (threadIds) => {
+      const acceptedType = "turn/input/accepted" satisfies ThreadEventType;
+      const completedType = "turn/completed" satisfies ThreadEventType;
+      const interruptedType =
+        "system/thread/interrupted" satisfies ThreadEventType;
+      const completed = alias(events, "completed_turn_for_accepted_input");
+      return db
+        .select(storedEventRowFields)
+        .from(events)
+        .where(
+          and(
+            inArray(events.threadId, [...threadIds]),
+            eq(events.type, acceptedType),
+            isNotNull(events.turnId),
+            sql`${events.sequence} > COALESCE((
+          SELECT MAX(interrupted.sequence)
+          FROM events interrupted
+          WHERE interrupted.thread_id = ${events.threadId}
+            AND interrupted.type = ${interruptedType}
+        ), -1)`,
+            notExists(
+              db
+                .select({ one: sql`1` })
+                .from(completed)
+                .where(
+                  and(
+                    eq(completed.threadId, events.threadId),
+                    eq(completed.turnId, events.turnId),
+                    eq(completed.type, completedType),
+                  ),
+                ),
+            ),
+          ),
+        )
+        .orderBy(events.threadId, events.sequence)
+        .all();
+    },
+    values: args.threadIds,
     variableCountPerValue: 1,
   });
   return rows.sort(
@@ -1196,65 +1214,30 @@ export function listOpenTurnInputAcceptedRowsByThreadIds(
   );
 }
 
-function listOpenTurnInputAcceptedRowsByThreadIdsBatch(
-  db: DbQueryConnection,
-  threadIds: readonly string[],
-): StoredEventRow[] {
-  const acceptedType = "turn/input/accepted" satisfies ThreadEventType;
-  const completedType = "turn/completed" satisfies ThreadEventType;
-  const interruptedType = "system/thread/interrupted" satisfies ThreadEventType;
-  const completed = alias(events, "completed_turn_for_accepted_input");
-
-  return db
-    .select(storedEventRowFields)
-    .from(events)
-    .where(
-      and(
-        inArray(events.threadId, [...threadIds]),
-        eq(events.type, acceptedType),
-        isNotNull(events.turnId),
-        sql`${events.sequence} > COALESCE((
-          SELECT MAX(interrupted.sequence)
-          FROM events interrupted
-          WHERE interrupted.thread_id = ${events.threadId}
-            AND interrupted.type = ${interruptedType}
-        ), -1)`,
-        notExists(
-          db
-            .select({ one: sql`1` })
-            .from(completed)
-            .where(
-              and(
-                eq(completed.threadId, events.threadId),
-                eq(completed.turnId, events.turnId),
-                eq(completed.type, completedType),
-              ),
-            ),
-        ),
-      ),
-    )
-    .orderBy(events.threadId, events.sequence)
-    .all();
-}
-
 export function listStoredClientTurnRequestRowsByKeys(
   db: DbQueryConnection,
   args: ListStoredClientTurnRequestRowsByKeysArgs,
 ): StoredEventRow[] {
-  const uniqueKeys = [
-    ...new Map(
-      args.keys.map((key) => [`${key.threadId}\0${key.requestId}`, key]),
-    ).values(),
-  ];
-  if (uniqueKeys.length === 0) {
-    return [];
-  }
-
   const rows = queryInSqliteVariableBatches({
+    dedupeKey: (key) => `${key.threadId}\0${key.requestId}`,
     fixedVariableCount: 1,
     maximumValueCount: CLIENT_TURN_REQUEST_KEY_BATCH_SIZE,
-    queryBatch: (keys) => listStoredClientTurnRequestRowsByKeysBatch(db, keys),
-    values: uniqueKeys,
+    queryBatch: (keys) => {
+      const requestType = "client/turn/requested" satisfies ThreadEventType;
+      const keyConditions = keys.map((key) =>
+        and(
+          eq(events.threadId, key.threadId),
+          sql`json_extract(${events.data}, '$.requestId') = ${key.requestId}`,
+        ),
+      );
+      return db
+        .select(storedEventRowFields)
+        .from(events)
+        .where(and(eq(events.type, requestType), or(...keyConditions)))
+        .orderBy(events.threadId, events.sequence)
+        .all();
+    },
+    values: args.keys,
     variableCountPerValue: 2,
   });
   return rows.sort(
@@ -1262,26 +1245,6 @@ export function listStoredClientTurnRequestRowsByKeys(
       left.threadId.localeCompare(right.threadId) ||
       left.sequence - right.sequence,
   );
-}
-
-function listStoredClientTurnRequestRowsByKeysBatch(
-  db: DbQueryConnection,
-  keys: readonly ThreadClientTurnRequestKey[],
-): StoredEventRow[] {
-  const requestType = "client/turn/requested" satisfies ThreadEventType;
-  const keyConditions = keys.map((key) =>
-    and(
-      eq(events.threadId, key.threadId),
-      sql`json_extract(${events.data}, '$.requestId') = ${key.requestId}`,
-    ),
-  );
-
-  return db
-    .select(storedEventRowFields)
-    .from(events)
-    .where(and(eq(events.type, requestType), or(...keyConditions)))
-    .orderBy(events.threadId, events.sequence)
-    .all();
 }
 
 export function findStoredEventRow(
@@ -2051,45 +2014,23 @@ export function listActiveBackgroundTaskCountsByThreadIds(
   db: DbQueryConnection,
   args: ListActiveBackgroundTaskCountsByThreadIdsArgs,
 ): ActiveBackgroundTaskCountRow[] {
-  if (args.threadIds.length === 0) {
-    return [];
-  }
-
   // The query binds each thread ID twice and also binds 11 fixed values.
   const rows = queryInSqliteVariableBatches({
+    dedupeKey: (threadId) => threadId,
     fixedVariableCount: 11,
-    queryBatch: (threadIds) =>
-      listActiveBackgroundTaskCountsByThreadIdsBatch(db, threadIds),
-    values: [...new Set(args.threadIds)],
-    variableCountPerValue: 2,
-  });
-
-  return rows.sort((left, right) =>
-    left.threadId < right.threadId
-      ? -1
-      : left.threadId > right.threadId
-        ? 1
-        : 0,
-  );
-}
-
-function listActiveBackgroundTaskCountsByThreadIdsBatch(
-  db: DbQueryConnection,
-  threadIds: readonly string[],
-): ActiveBackgroundTaskCountRow[] {
-  const startedType = "item/started" satisfies ThreadEventType;
-  const progressType =
-    "item/backgroundTask/progress" satisfies ThreadEventType;
-  const completedType =
-    "item/backgroundTask/completed" satisfies ThreadEventType;
-  const backgroundTaskItemKind =
-    "backgroundTask" satisfies ThreadEventItemType;
-  // SQLite requires a literal predicate to use the matching partial index.
-  const backgroundTaskItemKindPredicate = sql.raw(
-    `= '${backgroundTaskItemKind}'`,
-  );
-
-  return db.all<ActiveBackgroundTaskCountRow>(sql`
+    queryBatch: (threadIds) => {
+      const startedType = "item/started" satisfies ThreadEventType;
+      const progressType =
+        "item/backgroundTask/progress" satisfies ThreadEventType;
+      const completedType =
+        "item/backgroundTask/completed" satisfies ThreadEventType;
+      const backgroundTaskItemKind =
+        "backgroundTask" satisfies ThreadEventItemType;
+      // SQLite requires a literal predicate to use the matching partial index.
+      const backgroundTaskItemKindPredicate = sql.raw(
+        `= '${backgroundTaskItemKind}'`,
+      );
+      return db.all<ActiveBackgroundTaskCountRow>(sql`
     WITH latest_background_task_activity AS (
       SELECT
         ${events.threadId} AS thread_id,
@@ -2162,6 +2103,18 @@ function listActiveBackgroundTaskCountsByThreadIdsBatch(
     GROUP BY active_event.thread_id
     ORDER BY active_event.thread_id
   `);
+    },
+    values: args.threadIds,
+    variableCountPerValue: 2,
+  });
+
+  return rows.sort((left, right) =>
+    left.threadId < right.threadId
+      ? -1
+      : left.threadId > right.threadId
+        ? 1
+        : 0,
+  );
 }
 
 function listStoredTurnStartedKeysChunk(
