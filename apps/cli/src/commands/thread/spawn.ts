@@ -36,7 +36,6 @@ interface ThreadSpawnCommandOptions {
   environment?: string;
   newEnvironment?: string;
   baseBranch?: string;
-  mergeBaseBranch?: string;
   parentThread?: string;
   provider?: string;
   model?: string;
@@ -104,12 +103,10 @@ export function buildSpawnEnvironment(args: {
   newEnvironmentKind?: string;
   hostId: string | null;
   baseBranch?: string;
-  mergeBaseBranch?: string;
 }): EnvironmentArgs {
   const environmentValue = args.environmentValue?.trim();
   const newEnvironmentKind = args.newEnvironmentKind?.trim();
   const trimmedBaseBranch = args.baseBranch?.trim();
-  const trimmedMergeBaseBranch = args.mergeBaseBranch?.trim();
   const baseBranch: BaseBranchSpec = trimmedBaseBranch
     ? { kind: "named", name: trimmedBaseBranch }
     : { kind: "default" };
@@ -120,21 +117,12 @@ export function buildSpawnEnvironment(args: {
   if (trimmedBaseBranch && newEnvironmentKind !== "worktree") {
     throw new Error("--base-branch requires --new-environment worktree.");
   }
-  if (trimmedMergeBaseBranch && newEnvironmentKind !== "worktree") {
-    throw new Error("--merge-base-branch requires --new-environment worktree.");
-  }
   if (newEnvironmentKind) {
     if (newEnvironmentKind === "worktree") {
       return {
         type: "host",
         hostId: requireHostId(args.hostId),
-        workspace: {
-          type: "managed-worktree",
-          baseBranch,
-          ...(trimmedMergeBaseBranch
-            ? { mergeBaseBranch: trimmedMergeBaseBranch }
-            : {}),
-        },
+        workspace: { type: "managed-worktree", baseBranch },
       };
     }
     throw new Error(
@@ -191,10 +179,6 @@ export function registerSpawnCommand(
     .option(
       "--base-branch <branch>",
       "Base branch for new managed worktrees. Omit to let bb choose the project's default worktree base.",
-    )
-    .option(
-      "--merge-base-branch <branch>",
-      "Comparison target for a new managed worktree. Omit to compare with its base branch.",
     )
     .option(
       "--machine <id-or-name>",
@@ -280,7 +264,6 @@ export function registerSpawnCommand(
           newEnvironmentKind: opts.newEnvironment,
           hostId,
           baseBranch: opts.baseBranch,
-          mergeBaseBranch: opts.mergeBaseBranch,
         });
         const reasoningLevel = parseReasoningLevel(opts.reasoningLevel);
         const serviceTier = parseServiceTier(opts.serviceTier);

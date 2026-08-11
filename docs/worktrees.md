@@ -42,10 +42,6 @@ When you omit `--base-branch`, bb chooses the project's default worktree base,
 preferring the origin default branch when safe. Pass `--base-branch <name>`
 only when you need a specific base.
 
-The worktree normally uses that same branch as its comparison target. For
-recovery or continuation workflows that start from an existing work branch but
-should retain an earlier merge target, add `--merge-base-branch <name>`.
-
 ## Copy local files with `.worktreeinclude`
 
 A new worktree checks out tracked files only. Your `.env`, your local

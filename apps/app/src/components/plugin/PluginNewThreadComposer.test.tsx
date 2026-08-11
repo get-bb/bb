@@ -250,7 +250,6 @@ const STORED_REQUEST: NewThreadRequest = {
     workspace: {
       type: "managed-worktree",
       baseBranch: { kind: "named", name: "release" },
-      mergeBaseBranch: "main",
     },
   },
   input: [{ type: "text", text: "review every PR for slop", mentions: [] }],

@@ -160,10 +160,6 @@ message agents, or inspect projects, providers, and environments.
   attachments, and `--section <id>` to add the new thread to a section. These
   flags pass host-readable absolute paths (or relative server-upload tokens)
   through to the runtime; they do not read files on the CLI machine.
-- For a new managed worktree, `--base-branch <branch>` selects the checkout
-  source. Add `--merge-base-branch <branch>` only when its diffs should compare
-  against a different target, such as continuing an archived branch while
-  preserving its original merge base.
 - Spawn creates a root thread unless you pass `--parent-thread`.
 - Use `bb thread fork <source-thread-id>` to clone a provider session. It
   creates an idle fork by default; add `--prompt`, select `--workspace

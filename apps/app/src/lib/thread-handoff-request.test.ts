@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildEnvironmentRecoveryHandoffTarget,
   buildThreadHandoffLocationState,
   buildThreadHandoffPromptDraft,
   readThreadHandoffCreateSeedFromLocationState,
@@ -9,67 +8,17 @@ import {
 } from "./thread-handoff-request";
 
 const SEED: ThreadHandoffCreateSeed = {
-  environmentTarget: { type: "reuse", environmentId: "env_source" },
+  environmentId: "env_source",
   projectId: "proj_source",
   sourceThreadId: "thr_source",
   sourceThreadTitle: "Source thread",
 };
 
 describe("thread handoff request", () => {
-  it("derives fresh managed and personal recovery targets", () => {
-    expect(
-      buildEnvironmentRecoveryHandoffTarget({
-        baseBranch: "main",
-        branchName: "bb/source-work",
-        defaultBranch: "main",
-        hostId: "host_source",
-        mergeBaseBranch: "release",
-        workspaceProvisionType: "managed-worktree",
-      }),
-    ).toEqual({
-      type: "managed-worktree",
-      hostId: "host_source",
-      baseBranch: "bb/source-work",
-      mergeBaseBranch: "release",
-    });
-    expect(
-      buildEnvironmentRecoveryHandoffTarget({
-        baseBranch: null,
-        branchName: null,
-        defaultBranch: null,
-        hostId: "host_source",
-        mergeBaseBranch: null,
-        workspaceProvisionType: "personal",
-      }),
-    ).toEqual({ type: "personal", hostId: "host_source" });
-  });
-
-  it("does not invent a recovery target for unmanaged or branchless workspaces", () => {
-    expect(
-      buildEnvironmentRecoveryHandoffTarget({
-        baseBranch: null,
-        branchName: null,
-        defaultBranch: "main",
-        hostId: "host_source",
-        mergeBaseBranch: null,
-        workspaceProvisionType: "unmanaged",
-      }),
-    ).toBeNull();
-    expect(
-      buildEnvironmentRecoveryHandoffTarget({
-        baseBranch: null,
-        branchName: null,
-        defaultBranch: "main",
-        hostId: "host_source",
-        mergeBaseBranch: null,
-        workspaceProvisionType: "managed-worktree",
-      }),
-    ).toBeNull();
-  });
-
-  it("builds location state that focuses compose and carries its environment target", () => {
+  it("builds location state that focuses compose and reuses the source environment", () => {
     expect(buildThreadHandoffLocationState(SEED)).toEqual({
       focusPrompt: true,
+      reuseEnvironmentId: "env_source",
       [THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY]: SEED,
     });
   });
@@ -114,71 +63,5 @@ describe("thread handoff request", () => {
         },
       }),
     ).toBeNull();
-    expect(
-      readThreadHandoffCreateSeedFromLocationState({
-        [THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY]: {
-          ...SEED,
-          environmentTarget: {
-            type: "managed-worktree",
-            hostId: "host_source",
-            baseBranch: "",
-          },
-        },
-      }),
-    ).toBeNull();
-    expect(
-      readThreadHandoffCreateSeedFromLocationState({
-        [THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY]: {
-          ...SEED,
-          environmentTarget: {
-            type: "managed-worktree",
-            hostId: "host_source",
-            baseBranch: "bb/source-work",
-            mergeBaseBranch: "",
-          },
-        },
-      }),
-    ).toBeNull();
-  });
-
-  it("reads a managed-worktree recovery target", () => {
-    const environmentTarget = {
-      type: "managed-worktree" as const,
-      hostId: "host_source",
-      baseBranch: "bb/source-work",
-      mergeBaseBranch: "main",
-    };
-
-    expect(
-      readThreadHandoffCreateSeedFromLocationState({
-        [THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY]: {
-          ...SEED,
-          environmentTarget,
-        },
-      }),
-    ).toEqual({ ...SEED, environmentTarget });
-  });
-
-  it("fills a missing recovery merge base for older navigation state", () => {
-    expect(
-      readThreadHandoffCreateSeedFromLocationState({
-        [THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY]: {
-          ...SEED,
-          environmentTarget: {
-            type: "managed-worktree",
-            hostId: "host_source",
-            baseBranch: "bb/source-work",
-          },
-        },
-      }),
-    ).toEqual({
-      ...SEED,
-      environmentTarget: {
-        type: "managed-worktree",
-        hostId: "host_source",
-        baseBranch: "bb/source-work",
-        mergeBaseBranch: null,
-      },
-    });
   });
 });

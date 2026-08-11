@@ -1,26 +1,11 @@
-import {
-  resolveEnvironmentMergeBaseBranch,
-  type Environment,
-  type PromptTextMention,
-} from "@bb/domain";
+import type { PromptTextMention } from "@bb/domain";
 import type { PromptDraftState } from "@/lib/prompt-draft";
 
 export const THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY =
   "threadHandoffCreateSeed";
 
-export type ThreadHandoffEnvironmentTarget =
-  | { type: "project-default" }
-  | { type: "reuse"; environmentId: string }
-  | {
-      type: "managed-worktree";
-      hostId: string;
-      baseBranch: string;
-      mergeBaseBranch: string | null;
-    }
-  | { type: "personal"; hostId: string };
-
 export interface ThreadHandoffCreateSeed {
-  environmentTarget: ThreadHandoffEnvironmentTarget;
+  environmentId: string | null;
   projectId: string;
   sourceThreadId: string;
   sourceThreadTitle: string;
@@ -28,6 +13,7 @@ export interface ThreadHandoffCreateSeed {
 
 export interface ThreadHandoffLocationState {
   focusPrompt: true;
+  reuseEnvironmentId?: string;
   [THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY]: ThreadHandoffCreateSeed;
 }
 
@@ -36,85 +22,11 @@ export function buildThreadHandoffLocationState(
 ): ThreadHandoffLocationState {
   return {
     focusPrompt: true,
+    ...(seed.environmentId !== null
+      ? { reuseEnvironmentId: seed.environmentId }
+      : {}),
     [THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY]: seed,
   };
-}
-
-export function buildEnvironmentRecoveryHandoffTarget(
-  environment: Pick<
-    Environment,
-    | "baseBranch"
-    | "branchName"
-    | "defaultBranch"
-    | "hostId"
-    | "mergeBaseBranch"
-    | "workspaceProvisionType"
-  >,
-): ThreadHandoffEnvironmentTarget | null {
-  if (
-    environment.workspaceProvisionType === "managed-worktree" &&
-    environment.branchName
-  ) {
-    return {
-      type: "managed-worktree",
-      hostId: environment.hostId,
-      baseBranch: environment.branchName,
-      mergeBaseBranch: resolveEnvironmentMergeBaseBranch(environment) ?? null,
-    };
-  }
-  if (environment.workspaceProvisionType === "personal") {
-    return { type: "personal", hostId: environment.hostId };
-  }
-  return null;
-}
-
-function readNonEmptyString(value: unknown): string | null {
-  return typeof value === "string" && value.length > 0 ? value : null;
-}
-
-function readEnvironmentTarget(
-  value: unknown,
-): ThreadHandoffEnvironmentTarget | null {
-  if (!value || typeof value !== "object") return null;
-  const candidate = value as Record<string, unknown>;
-  switch (candidate.type) {
-    case "project-default":
-      return { type: "project-default" };
-    case "reuse": {
-      const environmentId = readNonEmptyString(candidate.environmentId);
-      return environmentId ? { type: "reuse", environmentId } : null;
-    }
-    case "managed-worktree": {
-      const hostId = readNonEmptyString(candidate.hostId);
-      const baseBranch = readNonEmptyString(candidate.baseBranch);
-      const mergeBaseBranch =
-        candidate.mergeBaseBranch === undefined ||
-        candidate.mergeBaseBranch === null
-          ? null
-          : readNonEmptyString(candidate.mergeBaseBranch);
-      if (
-        candidate.mergeBaseBranch !== undefined &&
-        candidate.mergeBaseBranch !== null &&
-        mergeBaseBranch === null
-      ) {
-        return null;
-      }
-      return hostId && baseBranch
-        ? {
-            type: "managed-worktree",
-            hostId,
-            baseBranch,
-            mergeBaseBranch,
-          }
-        : null;
-    }
-    case "personal": {
-      const hostId = readNonEmptyString(candidate.hostId);
-      return hostId ? { type: "personal", hostId } : null;
-    }
-    default:
-      return null;
-  }
 }
 
 export function readThreadHandoffCreateSeedFromLocationState(
@@ -126,9 +38,7 @@ export function readThreadHandoffCreateSeedFromLocationState(
   ];
   if (!candidate || typeof candidate !== "object") return null;
   const value = candidate as Record<string, unknown>;
-  const environmentTarget = readEnvironmentTarget(value.environmentTarget);
   if (
-    environmentTarget === null ||
     typeof value.projectId !== "string" ||
     value.projectId.length === 0 ||
     typeof value.sourceThreadId !== "string" ||
@@ -138,8 +48,21 @@ export function readThreadHandoffCreateSeedFromLocationState(
   ) {
     return null;
   }
+  if (
+    value.environmentId !== undefined &&
+    value.environmentId !== null &&
+    typeof value.environmentId !== "string"
+  ) {
+    return null;
+  }
+
+  const environmentId =
+    typeof value.environmentId === "string" && value.environmentId.length > 0
+      ? value.environmentId
+      : null;
+
   return {
-    environmentTarget,
+    environmentId,
     projectId: value.projectId,
     sourceThreadId: value.sourceThreadId,
     sourceThreadTitle: value.sourceThreadTitle.trim(),

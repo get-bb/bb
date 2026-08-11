@@ -151,59 +151,7 @@ describe("ThreadPromptContextBanner", () => {
     },
   );
 
-  it("renders an enabled handoff action once the environment is destroyed", () => {
-    const markup = renderToStaticMarkup(
-      <ThreadPromptContextBanner
-        gitSection={null}
-        gitSectionPending={false}
-        archivedSection={null}
-        environmentGoneSection={{
-          status: "destroyed",
-          onHandoff: noop,
-        }}
-        parentThreadSection={null}
-        childThreadsSection={null}
-        pullRequestSection={null}
-        expandedSection={null}
-        onToggleSection={noop}
-      />,
-    );
-
-    expect(markup).toContain("Continue in new thread");
-    expect(markup).toContain(
-      "This environment has been archived. Continue in a new thread to keep working.",
-    );
-    expect(markup).toContain("<button");
-    expect(markup).not.toContain('disabled=""');
-  });
-
-  it("shows a disabled handoff action while the environment is destroying", () => {
-    const markup = renderToStaticMarkup(
-      <ThreadPromptContextBanner
-        gitSection={null}
-        gitSectionPending={false}
-        archivedSection={null}
-        environmentGoneSection={{
-          status: "destroying",
-          onHandoff: noop,
-        }}
-        parentThreadSection={null}
-        childThreadsSection={null}
-        pullRequestSection={null}
-        expandedSection={null}
-        onToggleSection={noop}
-      />,
-    );
-
-    expect(markup).toContain("Archiving environment...");
-    expect(markup).toContain("Continue in new thread");
-    expect(markup).toContain(
-      "This environment is being archived. Continue in a new thread when cleanup finishes.",
-    );
-    expect(markup).toContain('disabled=""');
-  });
-
-  it("prioritizes destroyed-environment handoff over unarchiving", () => {
+  it("prioritizes the archived-environment status over unarchiving", () => {
     const markup = renderToStaticMarkup(
       <MemoryRouter>
         <ThreadPromptContextBanner
@@ -213,7 +161,7 @@ describe("ThreadPromptContextBanner", () => {
             archivedAt: 1_731_456_000_000,
             onUnarchive: noop,
           }}
-          environmentGoneSection={{ status: "destroyed", onHandoff: noop }}
+          environmentGoneSection={{ status: "destroyed" }}
           parentThreadSection={{
             parentThreadTitle: "Parent thread",
             href: "/threads/thr_parent",
@@ -228,7 +176,6 @@ describe("ThreadPromptContextBanner", () => {
     );
 
     expect(markup).toContain("Environment archived");
-    expect(markup).toContain("Continue in new thread");
     expect(markup).not.toContain("Thread is archived");
     expect(markup).not.toContain(">Unarchive<");
   });

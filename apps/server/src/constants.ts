@@ -7,11 +7,10 @@ export const DAEMON_ACTIVE_WORK_DISCONNECT_GRACE_MS = LEASE_TIMEOUT_MS;
  * Grace window after the last live thread in a managed environment is archived
  * before its worktree is destroyed. The environment stays `retiring` (revivable
  * via unarchive → `retire.cancelled`, worktree intact) for this long so an
- * accidental archive can be undone losslessly. The destroy is gated on the
- * environment's `updatedAt` (the retire-requested time), so the window is
- * durable across restart. UI affordances may be shorter-lived than this
- * server-side recovery window. The destroy gate uses the lifecycle-owned
- * `retireRequestedAt` timestamp, so metadata updates cannot move the clock.
+ * accidental archive can be undone losslessly. UI affordances may be
+ * shorter-lived than this server-side recovery window. The destroy gate uses
+ * the lifecycle-owned `retireRequestedAt` timestamp, so metadata updates cannot
+ * move the clock and the window remains durable across restart.
  */
 export const MANAGED_ENVIRONMENT_RETIRE_GRACE_MS = 5 * 60_000;
 export const WORKSPACE_DIFF_MAX_DIFF_BYTES = 2 * 1024 * 1024;

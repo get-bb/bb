@@ -8,16 +8,9 @@ import {
 import { type ThreadEventItemType } from "@bb/domain";
 import type { DbConnection } from "../connection.js";
 import type { DbNotifier } from "../notifier.js";
-import {
-  environments,
-  maintenanceScanCursors,
-  threads,
-} from "../schema.js";
+import { environments, maintenanceScanCursors } from "../schema.js";
 
-/**
- * Unreferenced destroyed environments are hard-deleted after 7 days. A
- * non-deleted thread keeps its small terminal row as durable handoff metadata.
- */
+/** Destroyed environments are hard-deleted after 7 days. */
 const DESTROYED_ENVIRONMENT_TTL_MS = 7 * 24 * 60 * 60_000;
 
 /** Closed daemon session rows are retained briefly for debugging/history. */
@@ -382,11 +375,6 @@ export function pruneDestroyedEnvironments(
       and(
         eq(environments.status, "destroyed"),
         lt(environments.updatedAt, currentTime - DESTROYED_ENVIRONMENT_TTL_MS),
-        sql`NOT EXISTS (
-          SELECT 1 FROM ${threads}
-          WHERE ${threads.environmentId} = ${environments.id}
-          AND ${threads.deletedAt} IS NULL
-        )`,
       ),
     )
     .all()

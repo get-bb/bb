@@ -118,13 +118,6 @@ export interface ThreadPromptArchivedSection {
  */
 export interface ThreadPromptEnvironmentGoneSection {
   status: Extract<EnvironmentStatus, "destroying" | "destroyed">;
-  /**
-   * Hands the surviving thread context off to a new thread. Enabled once the old
-   * environment is fully gone (`destroyed`); while `destroying` the action shows
-   * a disabled "Continue in new thread" state. Omitted when no safe environment
-   * target can be derived.
-   */
-  onHandoff?: () => void;
 }
 
 /**
@@ -202,17 +195,14 @@ const KIND_PREFIX: Record<WorkspaceChangedFilesSection["kind"], string> = {
 const ARCHIVED_THREAD_STATUS_LABEL = "Thread is archived";
 const ENVIRONMENT_GONE_STATUS_COPY: Record<
   ThreadPromptEnvironmentGoneSection["status"],
-  { ariaLabel: string; handoffInstruction: string; label: string }
+  { ariaLabel: string; label: string }
 > = {
   destroying: {
     ariaLabel: "This environment is being archived.",
-    handoffInstruction:
-      "Continue in a new thread when cleanup finishes.",
     label: "Archiving environment...",
   },
   destroyed: {
     ariaLabel: "This environment has been archived.",
-    handoffInstruction: "Continue in a new thread to keep working.",
     label: "Environment archived",
   },
 };
@@ -305,7 +295,8 @@ function SectionToggleButton({
         // icon — the icons' own internal padding provides enough separation,
         // and a gap here makes the pair look untethered.
         label !== null && label !== undefined ? "gap-1.5" : "gap-0",
-        !active && (isExpanded ? "text-foreground" : "text-muted-foreground"),
+        !active &&
+          (isExpanded ? "text-foreground" : "text-muted-foreground"),
       )}
     >
       {icon}
@@ -336,7 +327,9 @@ function SectionToggleButton({
       <Icon
         name="ChevronDown"
         className={cn(
-          active ? activityIconClass("active") : "text-subtle-foreground",
+          active
+            ? activityIconClass("active")
+            : "text-subtle-foreground",
           "size-3.5 shrink-0 transition-transform duration-200",
           isExpanded && "rotate-180",
         )}
@@ -540,26 +533,6 @@ function PullRequestReadyTextAction({
     >
       {disabled ? "Marking..." : "Mark ready"}
     </PromptBannerActionButton>
-  );
-}
-
-function EnvironmentHandoffTextAction({
-  status,
-  onHandoff,
-}: {
-  status: Extract<EnvironmentStatus, "destroying" | "destroyed">;
-  onHandoff: () => void;
-}) {
-  const cleaningUp = status === "destroying";
-  return (
-    <button
-      type="button"
-      onClick={onHandoff}
-      disabled={cleaningUp}
-      className="rounded px-1 py-0.5 text-xs text-muted-foreground underline underline-offset-2 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
-    >
-      Continue in new thread
-    </button>
   );
 }
 
@@ -808,7 +781,8 @@ function ReadOnlyContextBanner({
 }: ReadOnlyContextBannerProps) {
   const isParentThreadExpanded =
     expandedSection === "parentThread" && parentThreadSection !== null;
-  const showStatusAction = statusAction !== null;
+  const hasMultipleSegments = parentThreadSection !== null;
+  const showStatusAction = statusAction !== null && !hasMultipleSegments;
   return (
     <PromptStackCard
       ariaLabel="Thread context before sending"
@@ -851,7 +825,10 @@ function ReadOnlyContextBanner({
             className="size-3.5 shrink-0"
             aria-hidden="true"
           />
-          <span className="min-w-0 truncate" aria-hidden="true">
+          <span
+            className="min-w-0 truncate"
+            aria-hidden="true"
+          >
             {statusLabel}
           </span>
         </div>
@@ -900,29 +877,17 @@ export function ThreadPromptContextBanner({
     const environmentGoneCopy = environmentGoneSection
       ? ENVIRONMENT_GONE_STATUS_COPY[environmentGoneSection.status]
       : null;
-    const environmentGoneAriaLabel = environmentGoneCopy
-      ? `${environmentGoneCopy.ariaLabel}${
-          environmentGoneSection?.onHandoff
-            ? ` ${environmentGoneCopy.handoffInstruction}`
-            : ""
-        }`
-      : null;
     return (
       <ReadOnlyContextBanner
         iconName={environmentGone ? "CircleX" : "Archive"}
         statusAriaLabel={
-          environmentGoneAriaLabel ?? ARCHIVED_THREAD_STATUS_LABEL
+          environmentGoneCopy?.ariaLabel ?? ARCHIVED_THREAD_STATUS_LABEL
         }
         statusLabel={
           environmentGoneCopy?.label ?? ARCHIVED_THREAD_STATUS_LABEL
         }
         statusAction={
-          environmentGoneSection?.onHandoff ? (
-            <EnvironmentHandoffTextAction
-              status={environmentGoneSection.status}
-              onHandoff={environmentGoneSection.onHandoff}
-            />
-          ) : archivedSection?.onUnarchive && !environmentGone ? (
+          archivedSection?.onUnarchive && !environmentGone ? (
             <ThreadUnarchiveTextAction
               isPending={archivedSection.unarchivePending}
               onUnarchive={archivedSection.onUnarchive}
@@ -1019,7 +984,8 @@ export function ThreadPromptContextBanner({
   // inline as "Parent <name>" with the name as a link. There's no other
   // context to compete for the row, so the icon-only toggle would be a strict
   // downgrade in legibility.
-  const isParentThreadOnly = showParentThread && !showGit && !showPullRequest;
+  const isParentThreadOnly =
+    showParentThread && !showGit && !showPullRequest;
 
   const pullRequest = pullRequestSection?.pullRequest ?? null;
   const showPullRequestLabel =

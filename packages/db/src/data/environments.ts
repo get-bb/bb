@@ -462,8 +462,7 @@ function applyEnvironmentLifecycleEventRecord(
   if (evaluation.to === "destroyed") {
     set.destroyAttemptId = null;
     // The workspace no longer exists. Release its path claim and avoid
-    // retaining host-local filesystem data while keeping the host, workspace
-    // type, and branch metadata needed by archived-thread handoff.
+    // retaining stale host-local filesystem data on the terminal row.
     set.path = null;
   }
 

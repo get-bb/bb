@@ -163,25 +163,6 @@ describe("buildSpawnEnvironment", () => {
     });
   });
 
-  it("keeps worktree creation and comparison branches distinct", () => {
-    const result = buildSpawnEnvironment({
-      defaultPersonalWorkspace: false,
-      newEnvironmentKind: "worktree",
-      hostId: HOST_ID,
-      baseBranch: "bb/archived-work",
-      mergeBaseBranch: "main",
-    });
-    expect(result).toEqual({
-      type: "host",
-      hostId: HOST_ID,
-      workspace: {
-        type: "managed-worktree",
-        baseBranch: { kind: "named", name: "bb/archived-work" },
-        mergeBaseBranch: "main",
-      },
-    });
-  });
-
   it("throws for --new-environment worktree when host is null", () => {
     expect(() =>
       buildSpawnEnvironment({
@@ -221,16 +202,6 @@ describe("buildSpawnEnvironment", () => {
         hostId: HOST_ID,
       }),
     ).toThrow("--base-branch requires --new-environment worktree");
-  });
-
-  it("throws when --merge-base-branch would otherwise be ignored", () => {
-    expect(() =>
-      buildSpawnEnvironment({
-        defaultPersonalWorkspace: false,
-        mergeBaseBranch: "main",
-        hostId: HOST_ID,
-      }),
-    ).toThrow("--merge-base-branch requires --new-environment worktree");
   });
 
   it("returns unmanaged host with path for path-like --environment", () => {

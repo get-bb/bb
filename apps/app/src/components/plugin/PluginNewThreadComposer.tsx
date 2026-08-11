@@ -379,12 +379,6 @@ export function PluginNewThreadComposer({
     effectiveEnvironmentValue === environmentSeed.selectionValue
       ? environmentSeed.branch
       : null);
-  const managedWorktreeMergeBaseBranch =
-    !branchSeedOverridden &&
-    environmentSeed !== null &&
-    effectiveEnvironmentValue === environmentSeed.selectionValue
-      ? environmentSeed.managedWorktreeMergeBaseBranch
-      : undefined;
   const handleBranchChange = useCallback(
     (name: string) => {
       setBranchSeedOverridden(true);
@@ -506,7 +500,6 @@ export function PluginNewThreadComposer({
         defaultWorktreeBaseBranch:
           branchesQuery.data?.defaultWorktreeBaseBranch,
         environmentValue: effectiveEnvironmentValue,
-        managedWorktreeMergeBaseBranch,
         projectId,
         selectedBranch,
       }),
@@ -514,7 +507,6 @@ export function PluginNewThreadComposer({
       branchesQuery.data?.defaultBranch,
       branchesQuery.data?.defaultWorktreeBaseBranch,
       effectiveEnvironmentValue,
-      managedWorktreeMergeBaseBranch,
       projectId,
       selectedBranch,
     ],

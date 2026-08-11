@@ -24,7 +24,6 @@ Spawning:
     --environment <id-or-path>     Attach to an existing environment (ID or workspace path)
     --new-environment <kind>       Create a new environment (worktree)
     --base-branch <branch>         Base branch for a new managed worktree
-    --merge-base-branch <branch>   Comparison target for a new managed worktree
     --machine <id-or-name>         Run on a machine (--host is an alias)
     --service-tier <tier>          Service tier: fast, default
     --permission-mode <mode>       Permission mode: accept-edits, auto, or full
@@ -35,10 +34,6 @@ Spawning:
     --origin-kind <kind>           Create a fork thread
     --source-thread <id>           Source thread for a fork
     --source-seq-end <seq>         Last included source event sequence
-
-  By default a new managed worktree compares against its base branch. Pass
-  --merge-base-branch only when the new branch must start from one branch but
-  retain another comparison target, such as an archived-environment handoff.
 
   Execution defaults resolve from explicit flags, live parent execution, and
   remembered project defaults. With no remembered model, bb uses the explicitly

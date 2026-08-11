@@ -237,7 +237,6 @@ interface ManagedEnvironmentPlanArgs {
   hostId: string;
   sourcePath: string;
   baseBranch: BaseBranchSpec;
-  mergeBaseBranch: string | null;
   thread: Thread;
   workspaceProvisionType: "managed-worktree";
 }
@@ -843,7 +842,6 @@ function buildManagedEnvironmentPlan(
       managed: true,
       workspaceProvisionType: args.workspaceProvisionType,
       baseBranch: baseBranchSpecToStoredName(args.baseBranch),
-      mergeBaseBranch: args.mergeBaseBranch,
       status: "provisioning",
     },
     buildRequest: ({ context, environment }) => {
@@ -927,7 +925,6 @@ async function resolveEnvironmentCreationPlan(
         hostId: args.intent.hostId,
         sourcePath: args.intent.sourcePath,
         baseBranch: args.intent.baseBranch,
-        mergeBaseBranch: args.intent.mergeBaseBranch,
         thread: args.thread,
         workspaceProvisionType: args.intent.workspaceProvisionType,
       });

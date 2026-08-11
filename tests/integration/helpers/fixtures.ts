@@ -5,7 +5,6 @@ import {
   createProject,
   createReuseThread,
   getEnvironment,
-  type CreateHostThreadOptions,
   type ThreadExecutionRequestOptions,
 } from "./api.js";
 import { waitForEnvironmentStatus, waitForThreadStatus } from "./assertions.js";
@@ -28,7 +27,9 @@ export interface ReadyHostThreadOptions {
   providerId?: string;
   timeoutMs?: number;
   title?: string;
-  workspace: CreateHostThreadOptions["workspace"];
+  workspace:
+    | { type: "managed-worktree" }
+    | { path: string | null; type: "unmanaged" };
 }
 
 export interface ReadyReuseThreadOptions {

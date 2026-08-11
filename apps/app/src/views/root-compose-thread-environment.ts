@@ -11,7 +11,6 @@ export interface ResolveRootComposeThreadEnvironmentArgs {
   defaultBranch: string | null | undefined;
   defaultWorktreeBaseBranch: string | null | undefined;
   environmentValue: string;
-  managedWorktreeMergeBaseBranch?: string;
   projectId: string | undefined;
   selectedBranch: RootComposeSelectedBranch | null;
 }
@@ -73,9 +72,6 @@ export function resolveRootComposeThreadEnvironment(
             defaultWorktreeBaseBranch: args.defaultWorktreeBaseBranch,
             selectedBranch: args.selectedBranch,
           }),
-          ...(args.managedWorktreeMergeBaseBranch
-            ? { mergeBaseBranch: args.managedWorktreeMergeBaseBranch }
-            : {}),
         },
       };
     }

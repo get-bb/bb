@@ -280,7 +280,6 @@ describe("generated managed branch names", () => {
           hostId: host.id,
           sourcePath: source.path,
           baseBranch: { kind: "default" },
-          mergeBaseBranch: null,
           workspaceProvisionType: "managed-worktree",
         },
         execution: THREAD_START_EXECUTION,
