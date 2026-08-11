@@ -15,12 +15,9 @@ import {
   type SidebarWindowedNavigationEntry,
 } from "./sidebarThreadShortcuts";
 
-// Below this count the windowing bookkeeping costs more than the rows it
-// could skip, so short lists render exactly as before.
-const WINDOW_MIN_ITEMS = 8;
 // Items within this distance of the scrollport stay mounted, so scrolling
 // promotes rows before they become visible.
-const WINDOW_VIEWPORT_MARGIN_PX = 480;
+const WINDOW_VIEWPORT_MARGIN_PX = 240;
 // Fallback placeholder row height until a real row height has been measured.
 const DEFAULT_ROW_HEIGHT_PX = 30;
 
@@ -83,8 +80,11 @@ export function SidebarWindowedItems({
   renderItem,
 }: SidebarWindowedItemsProps) {
   const scrollElementRef = useSidebarContentElementRef();
+  // A sidebar can contain many short sibling lists. Rendering each short list
+  // in full makes their aggregate offscreen subtree large, so every non-empty
+  // list participates in the shared-scrollport window.
   const windowingEnabled =
-    itemKeys.length >= WINDOW_MIN_ITEMS && scrollElementRef !== null;
+    itemKeys.length > 0 && scrollElementRef !== null;
 
   const [realizedKeys, setRealizedKeys] = useState<ReadonlySet<string>>(
     EMPTY_KEY_SET,
@@ -224,7 +224,7 @@ export function SidebarWindowedItems({
 
     const observer = new IntersectionObserver(
       (entries) => {
-        // Scroll-driven promotion runs 480px ahead of the viewport, so it
+        // Scroll-driven promotion runs 240px ahead of the viewport, so it
         // can afford to be interruptible: a transition lets React slice the
         // row mounts across frames instead of blocking the scroll.
         startTransition(() =>

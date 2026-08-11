@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import type { ComponentProps, ReactNode } from "react";
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import {
@@ -349,18 +349,33 @@ describe("RootComposeSecondaryContent desktop layout", () => {
   });
 
   it("leaves the panel group alone while the root panel renders as a drawer", () => {
-    const view = renderRootCompose({
-      isCompactViewport: true,
-      isSecondaryPanelOpen: false,
-    });
+    vi.useFakeTimers();
+    try {
+      const view = renderRootCompose({
+        isCompactViewport: true,
+        isSecondaryPanelOpen: false,
+      });
 
-    expect(panelGroupState.setLayout).not.toHaveBeenCalled();
+      expect(panelGroupState.setLayout).not.toHaveBeenCalled();
 
-    view.rerenderWith({ isSecondaryPanelOpen: true });
+      view.rerenderWith({ isSecondaryPanelOpen: true });
 
-    expect(panelGroupState.setLayout).not.toHaveBeenCalled();
-    expect(
-      screen.getByTestId("drawer-secondary-panel").getAttribute("data-open"),
-    ).toBe("true");
+      expect(panelGroupState.setLayout).not.toHaveBeenCalled();
+      // The panel mounts only after the drawer settles; a skeleton fills
+      // the sheet during the entrance so the mount cannot block it. The
+      // fallback timer stands in for the animation-end signal here.
+      expect(screen.queryByTestId("drawer-secondary-panel")).toBeNull();
+      expect(
+        screen.queryByTestId("drawer-panel-loading-skeleton"),
+      ).not.toBeNull();
+      act(() => {
+        vi.advanceTimersByTime(700);
+      });
+      expect(
+        screen.getByTestId("drawer-secondary-panel").getAttribute("data-open"),
+      ).toBe("true");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

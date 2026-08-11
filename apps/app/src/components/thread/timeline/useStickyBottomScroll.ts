@@ -39,15 +39,11 @@ function getMaxScrollOffset(element: HTMLElement): number {
   return Math.max(0, element.scrollHeight - element.clientHeight);
 }
 
-function isNearBottom(element: HTMLElement): boolean {
-  return (
-    getMaxScrollOffset(element) - element.scrollTop <=
-    STICKY_BOTTOM_THRESHOLD_PX
-  );
-}
-
-function scrollToBottom(element: HTMLElement, smooth: boolean): void {
-  const top = getMaxScrollOffset(element);
+function scrollToBottom(
+  element: HTMLElement,
+  top: number,
+  smooth: boolean,
+): void {
   if (smooth) {
     element.scrollTo({ top, behavior: "smooth" });
   } else {
@@ -66,6 +62,26 @@ export function useStickyBottomScroll<TElement extends HTMLElement>({
   const lastScrollAtRef = useRef(0);
   const isFirstScrollRef = useRef(true);
   const wasStreamingRef = useRef(streaming);
+  const maxScrollOffsetRef = useRef(0);
+
+  const refreshMaxScrollOffset = useCallback((element: TElement): number => {
+    const nextOffset = getMaxScrollOffset(element);
+    maxScrollOffsetRef.current = nextOffset;
+    return nextOffset;
+  }, []);
+
+  useEffect(() => {
+    const element = scrollRef.current;
+    if (!element) return;
+    refreshMaxScrollOffset(element);
+    if (typeof ResizeObserver === "undefined") return;
+
+    const observer = new ResizeObserver(() => {
+      refreshMaxScrollOffset(element);
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [refreshMaxScrollOffset]);
 
   useEffect(() => {
     const wasStreaming = wasStreamingRef.current;
@@ -89,10 +105,10 @@ export function useStickyBottomScroll<TElement extends HTMLElement>({
     const smooth =
       !isFirstScrollRef.current &&
       now - lastScrollAtRef.current >= SMOOTH_SCROLL_MIN_GAP_MS;
-    scrollToBottom(element, smooth);
+    scrollToBottom(element, refreshMaxScrollOffset(element), smooth);
     lastScrollAtRef.current = now;
     isFirstScrollRef.current = false;
-  }, [contentKey, streaming]);
+  }, [contentKey, refreshMaxScrollOffset, streaming]);
 
   const markUserScrollIntent = useCallback(() => {
     userScrollIntentUntilRef.current =
@@ -108,7 +124,13 @@ export function useStickyBottomScroll<TElement extends HTMLElement>({
   }, []);
 
   const onScroll = useCallback<UIEventHandler<TElement>>((event) => {
-    if (isNearBottom(event.currentTarget)) {
+    // `scrollHeight` and `clientHeight` force layout in WebKit. Cache their
+    // difference on content and box-size changes, then read only scrollTop in
+    // this high-frequency handler.
+    if (
+      maxScrollOffsetRef.current - event.currentTarget.scrollTop <=
+      STICKY_BOTTOM_THRESHOLD_PX
+    ) {
       shouldStickToBottomRef.current = true;
       return;
     }

@@ -641,33 +641,36 @@ function FollowUpPromptBoxWithComposer({
   const stackRef = useRef<HTMLDivElement>(null);
   const lastStackHeightRef = useRef(0);
   const [stackHeight, setStackHeight] = useState(0);
-  const measureStackHeight = useCallback(() => {
-    const element = stackRef.current;
-    if (!element) return;
-    const measured = element.offsetHeight;
+  const applyStackHeight = useCallback((measured: number) => {
     if (lastStackHeightRef.current === measured) return;
     lastStackHeightRef.current = measured;
     setStackHeight(measured);
   }, []);
-  // Measure the stack synchronously after every render. useLayoutEffect runs
-  // post-DOM-commit and pre-paint, so when a React commit adds the banner
-  // (e.g. workspace status arrives and the git section becomes non-empty),
-  // we read the new stack height and the resulting `setStackHeight` triggers
-  // a synchronous re-render that updates the textarea's minHeight before the
-  // browser paints. Without this, the banner appears at 32px while the
-  // textarea is still 100px for one frame — the timeline visibly shifts up
-  // then back down as the elastic compensation catches up.
-  useLayoutEffect(measureStackHeight, [measureStackHeight, stack]);
-  // ResizeObserver catches changes that happen outside a React render —
-  // banner sections expanding via CSS animation, window resize affecting
-  // markdown line-wrapping inside the stack, etc.
+
+  // Take one initial border-box measurement before paint. Later measurements
+  // use ResizeObserver's supplied border-box size, which avoids a synchronous
+  // offsetHeight read after each timeline or composer render.
+  useLayoutEffect(() => {
+    const element = stackRef.current;
+    if (element) {
+      applyStackHeight(element.offsetHeight);
+    }
+  }, [applyStackHeight]);
+
   useEffect(() => {
     const element = stackRef.current;
     if (!element || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(measureStackHeight);
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries.find((candidate) => candidate.target === element);
+      if (!entry) return;
+      const borderBoxSize = Array.isArray(entry.borderBoxSize)
+        ? entry.borderBoxSize[0]
+        : entry.borderBoxSize;
+      applyStackHeight(borderBoxSize?.blockSize ?? entry.contentRect.height);
+    });
     observer.observe(element);
     return () => observer.disconnect();
-  }, [measureStackHeight]);
+  }, [applyStackHeight]);
   // The elastic pre-size keeps the prompt area's total height constant as the
   // stack (context banner + queued messages) mounts/unmounts so the timeline
   // doesn't shift. Callers that need the main-thread prompt height should pass

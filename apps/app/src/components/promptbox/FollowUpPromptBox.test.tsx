@@ -278,7 +278,11 @@ describe("FollowUpPromptBox", () => {
     });
     let commitsAfterSynchronousSignal = -1;
     const resizeEntries = [
-      { contentRect: { height: 24 } } as ResizeObserverEntry,
+      {
+        target: stackElement,
+        borderBoxSize: [{ blockSize: 24 }],
+        contentRect: { height: 999 },
+      } as unknown as ResizeObserverEntry,
     ];
 
     act(() => {
@@ -351,7 +355,13 @@ describe("FollowUpPromptBox", () => {
 
     act(() => {
       resizeObserverCallback?.(
-        [{ contentRect: { height: 999 } } as ResizeObserverEntry],
+        [
+          {
+            target: stackElement,
+            borderBoxSize: [{ blockSize: 24 }],
+            contentRect: { height: 999 },
+          } as unknown as ResizeObserverEntry,
+        ],
         {} as ResizeObserver,
       );
       resizeObserverCallback?.([], {} as ResizeObserver);
