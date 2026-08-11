@@ -145,8 +145,13 @@ interface CodexInputContent {
 }
 
 interface ResponseTextResult {
+  failure: CodexStreamFailure | null;
   text: string;
-  failedMessage: string | null;
+}
+
+interface CodexStreamFailure {
+  code: string | null;
+  message: string;
 }
 
 function jsonObject(value: JsonValue): JsonObject | null {
@@ -392,8 +397,14 @@ function codexRequestErrorCode(status: number): string {
 const CODEX_SERVICE_UNAVAILABLE_PATTERN =
   /\b(?:overloaded|temporarily unavailable|try again later)\b/iu;
 
-function codexStreamFailureErrorCode(message: string): string {
-  return CODEX_SERVICE_UNAVAILABLE_PATTERN.test(message)
+function codexStreamFailureErrorCode(failure: CodexStreamFailure): string {
+  if (failure.code === "server_error") {
+    return "codex_service_unavailable";
+  }
+  if (failure.code === "rate_limit_exceeded") {
+    return "codex_rate_limited";
+  }
+  return CODEX_SERVICE_UNAVAILABLE_PATTERN.test(failure.message)
     ? "codex_service_unavailable"
     : "codex_request_failed";
 }
@@ -488,56 +499,65 @@ function getCodexResponseText(response: JsonObject): string | null {
   return null;
 }
 
-function getCodexFailureMessage(response: JsonObject): string | null {
+function getCodexFailure(response: JsonObject): CodexStreamFailure | null {
   const error = response.error ? jsonObject(response.error) : null;
   if (!error) {
     return null;
   }
-  return optionalString(error.message) ?? optionalString(error.code);
+  const code = optionalString(error.code);
+  return {
+    code,
+    message: optionalString(error.message) ?? code ?? "Codex response failed",
+  };
 }
 
 function extractTextFromSseEvent(event: JsonObject): ResponseTextResult {
   const type = optionalString(event.type);
   if (type === "error") {
+    const code = optionalString(event.code);
     return {
+      failure: {
+        code,
+        message:
+          optionalString(event.message) ?? code ?? "Codex response failed",
+      },
       text: "",
-      failedMessage:
-        optionalString(event.message) ??
-        optionalString(event.code) ??
-        "Codex response failed",
     };
   }
 
   if (type === "response.failed") {
     const response = event.response ? jsonObject(event.response) : null;
     return {
+      failure: response
+        ? (getCodexFailure(response) ?? {
+            code: null,
+            message: "Codex response failed",
+          })
+        : { code: null, message: "Codex response failed" },
       text: "",
-      failedMessage: response
-        ? (getCodexFailureMessage(response) ?? "Codex response failed")
-        : "Codex response failed",
     };
   }
 
   if (type === "response.output_text.delta") {
     return {
+      failure: null,
       text: optionalString(event.delta) ?? "",
-      failedMessage: null,
     };
   }
 
   if (type === "response.completed" || type === "response.done") {
     const response = event.response ? jsonObject(event.response) : null;
     const text = response ? getCodexResponseText(response) : null;
-    const failedMessage = response ? getCodexFailureMessage(response) : null;
+    const failure = response ? getCodexFailure(response) : null;
     return {
+      failure,
       text: text ?? "",
-      failedMessage,
     };
   }
 
   return {
+    failure: null,
     text: "",
-    failedMessage: null,
   };
 }
 
@@ -568,7 +588,6 @@ async function readResponseTextFromSse(
   let buffer = "";
   let deltaText = "";
   let finalText: string | null = null;
-  let failedMessage: string | null = null;
   let totalBytes = 0;
 
   try {
@@ -609,8 +628,11 @@ async function readResponseTextFromSse(
           const event = jsonObject(eventValue);
           if (event) {
             const result = extractTextFromSseEvent(event);
-            if (result.failedMessage) {
-              failedMessage = result.failedMessage;
+            if (result.failure) {
+              throw new ExpectedCommandDispatchError(
+                codexStreamFailureErrorCode(result.failure),
+                result.failure.message,
+              );
             }
             if (result.text) {
               if (
@@ -631,13 +653,6 @@ async function readResponseTextFromSse(
   } catch (error) {
     await cancelReaderBestEffort(reader);
     throw error;
-  }
-
-  if (failedMessage) {
-    throw new ExpectedCommandDispatchError(
-      codexStreamFailureErrorCode(failedMessage),
-      failedMessage,
-    );
   }
 
   const text = finalText ?? deltaText;
