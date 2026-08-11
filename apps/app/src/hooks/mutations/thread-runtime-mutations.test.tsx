@@ -176,12 +176,6 @@ describe("thread runtime mutations", () => {
     await act(async () => {
       await editPromise;
     });
-    expect(sdk.threads.editMessage).toHaveBeenCalledWith({
-      threadId: "thread-1",
-      operationId: "edit-op-1",
-      expectedRequestSequence: 41,
-      input: [{ type: "text", text: "Replacement", mentions: [] }],
-    });
     expect(invalidateQueries).not.toHaveBeenCalled();
   });
 

@@ -329,8 +329,8 @@ export const threadRewindPrepareCommandSchema = hostDaemonThreadTargetSchema
   .merge(hostDaemonThreadRuntimeContextSchema)
   .extend({
     type: z.literal("thread.rewind.prepare"),
+    /** Server-minted per-attempt staging id; each lease owns one staged fork. */
     leaseId: z.string().min(1),
-    operationId: z.string().min(1),
     sourceProviderThreadId: z.string().min(1),
     retainThroughProviderCheckpoint: z.string().min(1),
   })
@@ -340,7 +340,6 @@ export const threadRewindDiscardCommandSchema = hostDaemonThreadTargetSchema
   .extend({
     type: z.literal("thread.rewind.discard"),
     leaseId: z.string().min(1),
-    operationId: z.string().min(1),
   })
   .strict();
 

@@ -20,7 +20,7 @@ afterEach(() => {
 });
 
 describe("prepareThreadRewind", () => {
-  it("deduplicates concurrent operation retries and suppresses staging events", async () => {
+  it("stages one independently discardable fork per lease and suppresses staging events", async () => {
     const workspacePath = mkdtempSync(join(tmpdir(), "bb-runtime-rewind-"));
     temporaryDirectories.push(workspacePath);
     const commands: AdapterCommand[] = [];
@@ -42,7 +42,6 @@ describe("prepareThreadRewind", () => {
       environmentId: "env-1",
       threadId: "thread-1",
       leaseId: "lease-1",
-      operationId: "edit-op-1",
       projectId: "project-1",
       providerId: "codex",
       sourceProviderThreadId: "provider-source-1",
@@ -52,56 +51,47 @@ describe("prepareThreadRewind", () => {
     };
 
     try {
-      const results = await Promise.all([
-        runtime.prepareThreadRewind(request),
-        runtime.prepareThreadRewind({ ...request, leaseId: "lease-2" }),
-      ]);
+      const first = await runtime.prepareThreadRewind(request);
+      // A replay of the same lease returns the staged fork without forking
+      // again; a different lease stages its own independent fork.
+      const replay = await runtime.prepareThreadRewind(request);
+      expect(replay).toEqual(first);
+      await runtime.prepareThreadRewind({ ...request, leaseId: "lease-2" });
 
-      expect(results[0]).toEqual(results[1]);
-      expect(
-        commands.filter((command) => command.type === "thread/fork"),
-      ).toEqual([
+      const forkCommands = commands.filter(
+        (command) => command.type === "thread/fork",
+      );
+      expect(forkCommands).toEqual([
         expect.objectContaining({
           sourceProviderCheckpointId: "turn-before-edit",
           sourceProviderThreadId: "provider-source-1",
+          threadId: "thread-1:rewind:lease-1",
+        }),
+        expect.objectContaining({
+          sourceProviderCheckpointId: "turn-before-edit",
+          sourceProviderThreadId: "provider-source-1",
+          threadId: "thread-1:rewind:lease-2",
         }),
       ]);
-      const stagingThreadId = commands.find(
-        (command) => command.type === "thread/fork",
-      )?.threadId;
-      expect(stagingThreadId).toMatch(/^thread-1:rewind:[a-f0-9]{64}$/);
       expect(events).toEqual([]);
-      expect(runtime.hasThread(stagingThreadId!)).toBe(true);
-      await expect(
-        runtime.prepareThreadRewind({
-          ...request,
-          leaseId: "lease-3",
-          retainThroughProviderCheckpoint: "different-turn",
-        }),
-      ).rejects.toThrow("reused with different input");
-      await runtime.discardThreadRewind({
-        leaseId: "lease-1",
-        operationId: "edit-op-1",
-        threadId: "thread-1",
-      });
-      expect(
-        commands.filter((command) => command.type === "thread/discard"),
-      ).toEqual([]);
-      expect(runtime.hasThread(stagingThreadId!)).toBe(true);
-      await runtime.discardThreadRewind({
-        leaseId: "lease-2",
-        operationId: "edit-op-1",
-        threadId: "thread-1",
-      });
+      expect(runtime.hasThread("thread-1:rewind:lease-1")).toBe(true);
+      expect(runtime.hasThread("thread-1:rewind:lease-2")).toBe(true);
+
+      // Discarding one lease leaves the other attempt's fork untouched.
+      await runtime.discardThreadRewind({ leaseId: "lease-1" });
       expect(
         commands.filter((command) => command.type === "thread/discard"),
       ).toEqual([
         expect.objectContaining({
-          providerThreadId: results[0]?.providerThreadId,
-          threadId: stagingThreadId,
+          providerThreadId: first.providerThreadId,
+          threadId: "thread-1:rewind:lease-1",
         }),
       ]);
-      expect(runtime.hasThread(stagingThreadId!)).toBe(false);
+      expect(runtime.hasThread("thread-1:rewind:lease-1")).toBe(false);
+      expect(runtime.hasThread("thread-1:rewind:lease-2")).toBe(true);
+
+      await runtime.discardThreadRewind({ leaseId: "lease-2" });
+      expect(runtime.hasThread("thread-1:rewind:lease-2")).toBe(false);
     } finally {
       await runtime.shutdown();
     }
@@ -137,8 +127,7 @@ describe("prepareThreadRewind", () => {
     const request = {
       environmentId: "env-1",
       threadId: "thread-1",
-      leaseId: "lease-1",
-      operationId: "edit-op-retry-cleanup",
+      leaseId: "lease-retry-cleanup",
       projectId: "project-1",
       providerId: "codex",
       sourceProviderThreadId: "provider-source-1",
@@ -149,26 +138,15 @@ describe("prepareThreadRewind", () => {
 
     try {
       await runtime.prepareThreadRewind(request);
-      const stagingThreadId = commands.find(
-        (command) => command.type === "thread/fork",
-      )?.threadId;
-      expect(stagingThreadId).toMatch(/^thread-1:rewind:[a-f0-9]{64}$/);
-      await runtime.discardThreadRewind({
-        leaseId: request.leaseId,
-        operationId: request.operationId,
-        threadId: request.threadId,
-      });
-      expect(runtime.hasThread(stagingThreadId!)).toBe(true);
+      const stagingThreadId = "thread-1:rewind:lease-retry-cleanup";
+      await runtime.discardThreadRewind({ leaseId: request.leaseId });
+      expect(runtime.hasThread(stagingThreadId)).toBe(true);
       expect(stderr).toEqual([
         expect.stringContaining("discard is temporarily unavailable"),
       ]);
 
-      await runtime.discardThreadRewind({
-        leaseId: request.leaseId,
-        operationId: request.operationId,
-        threadId: request.threadId,
-      });
-      expect(runtime.hasThread(stagingThreadId!)).toBe(false);
+      await runtime.discardThreadRewind({ leaseId: request.leaseId });
+      expect(runtime.hasThread(stagingThreadId)).toBe(false);
     } finally {
       await runtime.shutdown();
     }
@@ -202,8 +180,7 @@ describe("prepareThreadRewind", () => {
     const request = {
       environmentId: "env-1",
       threadId: "thread-1",
-      leaseId: "lease-1",
-      operationId: "edit-op-ambiguous-identity",
+      leaseId: "lease-ambiguous-identity",
       projectId: "project-1",
       providerId: "pi",
       sourceProviderThreadId: "provider-source-1",
@@ -213,12 +190,15 @@ describe("prepareThreadRewind", () => {
     };
     try {
       await expect(runtime.prepareThreadRewind(request)).rejects.toThrow(
-        "pi did not return a provider thread for rewind operation edit-op-ambiguous-identity",
+        "pi did not return a provider thread for rewind lease lease-ambiguous-identity",
       );
-      const stagingThreadId = commands.find(
-        (command) => command.type === "thread/fork",
-      )?.threadId;
-      expect(stagingThreadId).toMatch(/^thread-1:rewind:[a-f0-9]{64}$/);
+      const stagingThreadId = "thread-1:rewind:lease-ambiguous-identity";
+      expect(commands).toContainEqual(
+        expect.objectContaining({
+          type: "thread/fork",
+          threadId: stagingThreadId,
+        }),
+      );
       expect(commands).toContainEqual(
         expect.objectContaining({
           type: "thread/discard",
@@ -226,76 +206,7 @@ describe("prepareThreadRewind", () => {
           threadId: stagingThreadId,
         }),
       );
-      expect(runtime.hasThread(stagingThreadId!)).toBe(false);
-    } finally {
-      await runtime.shutdown();
-    }
-  });
-
-  it("keeps Pi staging sessions distinct when external operation ids sanitize alike", async () => {
-    const workspacePath = mkdtempSync(join(tmpdir(), "bb-runtime-rewind-"));
-    temporaryDirectories.push(workspacePath);
-    const commands: AdapterCommand[] = [];
-    const runtime = createAgentRuntimeWithAdapters({
-      workspacePath,
-      onEvent: () => undefined,
-      onToolCall: async () => ({
-        contentItems: [{ type: "inputText", text: "ok" }],
-        success: true,
-      }),
-      adapterFactory: () =>
-        createRecordingAdapter({
-          recordedCommands: commands,
-          scriptPath: fakeProviderScriptPath,
-        }),
-    });
-    const baseRequest = {
-      environmentId: "env-1",
-      threadId: "thread-1",
-      projectId: "project-1",
-      providerId: "pi",
-      sourceProviderThreadId: "provider-source-1",
-      options: fullRuntimeOptions,
-      instructionMode: "append" as const,
-    };
-
-    try {
-      await runtime.prepareThreadRewind({
-        ...baseRequest,
-        leaseId: "lease-slash",
-        operationId: "a/b",
-        retainThroughProviderCheckpoint: "checkpoint-slash",
-      });
-      await runtime.prepareThreadRewind({
-        ...baseRequest,
-        leaseId: "lease-question",
-        operationId: "a?b",
-        retainThroughProviderCheckpoint: "checkpoint-question",
-      });
-
-      const stagingThreadIds = commands
-        .filter((command) => command.type === "thread/fork")
-        .map((command) => command.threadId);
-      expect(stagingThreadIds).toHaveLength(2);
-      expect(new Set(stagingThreadIds).size).toBe(2);
-      expect(
-        new Set(
-          stagingThreadIds.map((threadId) =>
-            threadId.replace(/[^A-Za-z0-9._-]/g, "_"),
-          ),
-        ).size,
-      ).toBe(2);
-
-      await runtime.discardThreadRewind({
-        leaseId: "lease-slash",
-        operationId: "a/b",
-        threadId: "thread-1",
-      });
-      await runtime.discardThreadRewind({
-        leaseId: "lease-question",
-        operationId: "a?b",
-        threadId: "thread-1",
-      });
+      expect(runtime.hasThread(stagingThreadId)).toBe(false);
     } finally {
       await runtime.shutdown();
     }

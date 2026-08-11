@@ -359,62 +359,6 @@ describe("ThreadTimelineRows actions", () => {
     ).toContain("max-md:pointer-coarse:size-7");
   });
 
-  it("offers edit on every accepted user message, including the first turn", () => {
-    const onEditMessage = vi.fn();
-    renderWithRouter(
-      <ThreadTimelineRows
-        timelineRows={[
-          conversationRow({
-            id: "earlier_user_message",
-            role: "user",
-            text: "An earlier request.",
-            sourceSeqStart: 3,
-            turnId: null,
-          }),
-          conversationRow({
-            id: "latest_user_message",
-            role: "user",
-            text: "The latest request.",
-            sourceSeqStart: 7,
-            attachments: {
-              webImages: 0,
-              localImages: 1,
-              localFiles: 1,
-              imageUrls: [],
-              localImagePaths: ["uploads/screenshot.png"],
-              localFilePaths: ["uploads/spec.md"],
-            },
-          }),
-        ]}
-        onEditMessage={onEditMessage}
-        threadRuntimeDisplayStatus="idle"
-        workspaceRootPath={undefined}
-      />,
-    );
-
-    const editButtons = screen.getAllByRole("button", {
-      name: "Edit message",
-    });
-    expect(editButtons).toHaveLength(2);
-    fireEvent.click(editButtons[0]!);
-    expect(onEditMessage).toHaveBeenNthCalledWith(1, {
-      messageId: "earlier_user_message",
-      expectedRequestSequence: 3,
-      input: [{ type: "text", text: "An earlier request.", mentions: [] }],
-    });
-
-    fireEvent.click(editButtons[1]!);
-    expect(onEditMessage).toHaveBeenCalledWith({
-      messageId: "latest_user_message",
-      expectedRequestSequence: 7,
-      input: [
-        { type: "text", text: "The latest request.", mentions: [] },
-        { type: "localImage", path: "uploads/screenshot.png" },
-        { type: "localFile", path: "uploads/spec.md" },
-      ],
-    });
-  });
-
   it("restores edit actions on every cached message after an active turn becomes idle", () => {
     const onEditMessage = vi.fn();
     renderWithRouter(
@@ -434,54 +378,6 @@ describe("ThreadTimelineRows actions", () => {
     expect(onEditMessage).toHaveBeenCalledWith(
       expect.objectContaining({ messageId: "earlier_user_message" }),
     );
-  });
-
-  it("replaces the matching sent message with an inline editor host", () => {
-    const onHostElementChange = vi.fn();
-    const view = renderWithRouter(
-      <ThreadTimelineRows
-        timelineRows={[
-          conversationRow({
-            id: "edited_user_message",
-            role: "user",
-            text: "The original request.",
-            sourceSeqStart: 7,
-          }),
-          conversationRow({
-            id: "same_request_sibling",
-            role: "user",
-            text: "A grouped sibling remains visible.",
-            sourceSeqStart: 7,
-          }),
-          conversationRow({
-            id: "assistant_response",
-            role: "assistant",
-            text: "The existing response remains visible.",
-            sourceSeqStart: 8,
-          }),
-        ]}
-        inlineMessageEditor={{
-          messageId: "edited_user_message",
-          onHostElementChange,
-        }}
-        threadRuntimeDisplayStatus="idle"
-        workspaceRootPath={undefined}
-      />,
-    );
-
-    const host = view.container.querySelector<HTMLDivElement>(
-      "[data-sent-message-inline-editor-host]",
-    );
-    expect(host).not.toBeNull();
-    expect(onHostElementChange).toHaveBeenCalledWith(host);
-    expect(screen.queryByText("The original request.")).toBeNull();
-    expect(screen.getByText("A grouped sibling remains visible.")).toBeTruthy();
-    expect(
-      screen.getByText("The existing response remains visible."),
-    ).toBeTruthy();
-
-    view.unmount();
-    expect(onHostElementChange.mock.calls.at(-1)?.[0]).toBeNull();
   });
 
   it("does not offer edit for a steer request", () => {

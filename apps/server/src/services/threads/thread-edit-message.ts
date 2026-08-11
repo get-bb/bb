@@ -107,7 +107,6 @@ function findCommittedOperation(
 }
 
 const EDIT_MESSAGE_PROVIDER_IDS = new Set(["claude-code", "codex", "pi"]);
-const EDITABLE_TURN_CANDIDATE_PAGE_SIZE = 25;
 
 function getTurnCompletion(
   db: DbQueryConnection,
@@ -294,48 +293,37 @@ function resolveEditableTurn(
     conflict("The thread has no editable user message");
   }
 
-  let beforeSequence: number | null = null;
-  while (true) {
-    const requestRows = db
-      .select({
-        data: events.data,
-        sequence: events.sequence,
-        threadId: events.threadId,
-        type: events.type,
-      })
-      .from(events)
-      .where(
-        and(
-          eq(events.threadId, thread.id),
-          eq(events.type, "client/turn/requested"),
-          sql`json_extract(${events.data}, '$.initiator') = 'user'`,
-          sql`json_extract(${events.data}, '$.senderThreadId') IS NULL`,
-          sql`json_extract(${events.data}, '$.target.kind') IN ('new-turn', 'thread-start')`,
-          beforeSequence === null
-            ? undefined
-            : lt(events.sequence, beforeSequence),
-        ),
-      )
-      .orderBy(desc(events.sequence))
-      .limit(EDITABLE_TURN_CANDIDATE_PAGE_SIZE)
-      .all();
-    for (const requestRow of requestRows) {
-      try {
-        return resolveEditableTurnCandidate(db, thread, requestRow);
-      } catch (error) {
-        if (
-          !(error instanceof ApiError) ||
-          error.status !== 409 ||
-          error.body.code !== "invalid_request"
-        ) {
-          throw error;
-        }
+  const requestRows = db
+    .select({
+      data: events.data,
+      sequence: events.sequence,
+      threadId: events.threadId,
+      type: events.type,
+    })
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, thread.id),
+        eq(events.type, "client/turn/requested"),
+        sql`json_extract(${events.data}, '$.initiator') = 'user'`,
+        sql`json_extract(${events.data}, '$.senderThreadId') IS NULL`,
+        sql`json_extract(${events.data}, '$.target.kind') IN ('new-turn', 'thread-start')`,
+      ),
+    )
+    .orderBy(desc(events.sequence))
+    .all();
+  for (const requestRow of requestRows) {
+    try {
+      return resolveEditableTurnCandidate(db, thread, requestRow);
+    } catch (error) {
+      if (
+        !(error instanceof ApiError) ||
+        error.status !== 409 ||
+        error.body.code !== "invalid_request"
+      ) {
+        throw error;
       }
     }
-    if (requestRows.length < EDITABLE_TURN_CANDIDATE_PAGE_SIZE) {
-      break;
-    }
-    beforeSequence = requestRows.at(-1)?.sequence ?? null;
   }
   conflict("The thread has no editable user message");
 }
@@ -343,7 +331,6 @@ function resolveEditableTurn(
 function rewindPrepareCommandFromStart(
   start: Extract<HostDaemonCommand, { type: "thread.start" }>,
   args: {
-    operationId: string;
     leaseId: string;
     retainThroughProviderCheckpoint: string;
     sourceProviderThreadId: string;
@@ -443,7 +430,6 @@ export async function editThreadMessage(
       await runLiveHostCommand(deps, {
         command: rewindPrepareCommandFromStart(startCommand, {
           leaseId: rewindLeaseId,
-          operationId: args.payload.operationId,
           retainThroughProviderCheckpoint: target.precedingProviderCheckpoint,
           sourceProviderThreadId: target.sourceProviderThreadId,
         }),
@@ -465,7 +451,6 @@ export async function editThreadMessage(
                 environmentId: readyEnvironment.id,
                 threadId: args.thread.id,
                 leaseId: rewindLeaseId,
-                operationId: args.payload.operationId,
               },
               hostId: readyEnvironment.hostId,
               timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,

@@ -272,7 +272,6 @@ export async function prepareThreadRewind(
     environmentId: command.environmentId,
     threadId: command.threadId,
     leaseId: command.leaseId,
-    operationId: command.operationId,
     projectId: command.projectId,
     providerId: command.providerId,
     sourceProviderThreadId: command.sourceProviderThreadId,
@@ -293,11 +292,7 @@ export async function discardThreadRewind(
   if (!entry) {
     return {};
   }
-  await entry.runtime.discardThreadRewind({
-    leaseId: command.leaseId,
-    operationId: command.operationId,
-    threadId: command.threadId,
-  });
+  await entry.runtime.discardThreadRewind({ leaseId: command.leaseId });
   return {};
 }
 

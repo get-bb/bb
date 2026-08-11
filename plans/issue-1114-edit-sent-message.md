@@ -153,17 +153,17 @@ The server sends only opaque provider checkpoints across the daemon boundary:
   sourceProviderThreadId: string;
   retainThroughProviderCheckpoint: string;
   leaseId: string;
-  operationId: string;
 }
 ```
 
 The runtime stages an event-suppressed provider fork and returns its provider
-thread id. After the replacement fork settles, bb closes/removes the staged
+thread id. The server mints a fresh `leaseId` per edit attempt and each lease
+owns exactly one staged fork, so overlapping attempts can never discard each
+other's fork. After the replacement fork settles, bb closes/removes the staged
 Claude Code or Pi session and archives the staged Codex fork; a daemon-side TTL
 cleans up abandoned preparations. The source provider session remains untouched
 until the database commit. The prepare/discard wire contract requires
-`HOST_DAEMON_PROTOCOL_VERSION = 98` (the staged rewind commands now carry an
-ownership lease so overlapping edits cannot discard each other's fork).
+`HOST_DAEMON_PROTOCOL_VERSION = 100`.
 
 ## API, SDK, And CLI
 

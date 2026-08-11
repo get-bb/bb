@@ -351,7 +351,7 @@ export function createFakeRuntime() {
     },
     async prepareThreadRewind(args) {
       return {
-        providerThreadId: `provider-rewind-${args.threadId}-${args.operationId}`,
+        providerThreadId: `provider-rewind-${args.threadId}-${args.leaseId}`,
       };
     },
     async discardThreadRewind() {},

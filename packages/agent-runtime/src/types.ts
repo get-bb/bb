@@ -177,7 +177,6 @@ export interface PrepareThreadRewindArgs {
   environmentId: string;
   threadId: string;
   leaseId: string;
-  operationId: string;
   projectId: string;
   providerId: string;
   sourceProviderThreadId: string;
@@ -195,8 +194,6 @@ export interface PrepareThreadRewindResult {
 
 export interface DiscardThreadRewindArgs {
   leaseId: string;
-  operationId: string;
-  threadId: string;
 }
 
 export interface ResumeThreadArgs {

@@ -856,7 +856,7 @@ describe("ThreadDetailPromptArea", () => {
 
     const inlineEditor = within(hostElement);
     expect(inlineEditor.getByTestId("submit-mode").textContent).toBe(
-      "blocked:editing-requires-idle",
+      "blocked:unavailable",
     );
     fireEvent.click(
       inlineEditor.getByRole("button", { name: "Submit composer" }),

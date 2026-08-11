@@ -962,7 +962,6 @@ describe("dispatchCommand", () => {
       projectId: "proj_1",
       providerId: "codex",
       leaseId: "lease-1",
-      operationId: "edit-op-1",
       sourceProviderThreadId: "provider-source-1",
       retainThroughProviderCheckpoint: "turn-before-edit",
       options: {
@@ -1013,7 +1012,7 @@ describe("dispatchCommand", () => {
     ).resolves.toEqual({ providerThreadId: "provider-thread-rewind-1" });
     expect(runtime.prepareThreadRewind).toHaveBeenCalledWith(
       expect.objectContaining({
-        operationId: "edit-op-1",
+        leaseId: "lease-1",
         sourceProviderThreadId: "provider-source-1",
         retainThroughProviderCheckpoint: "turn-before-edit",
         threadId: "thread-1",
@@ -1021,7 +1020,7 @@ describe("dispatchCommand", () => {
     );
     await expect(
       dispatchCommand(
-        { ...command, operationId: "edit-op-old-codex" },
+        { ...command, leaseId: "lease-old-codex" },
         {
           dataDir: "/tmp/bb-data",
           eventSink: {
@@ -1050,7 +1049,6 @@ describe("dispatchCommand", () => {
           environmentId: "env-1",
           threadId: "thread-1",
           leaseId: "lease-1",
-          operationId: "edit-op-1",
         },
         {
           dataDir: "/tmp/bb-data",
@@ -1068,8 +1066,6 @@ describe("dispatchCommand", () => {
     ).resolves.toEqual({});
     expect(runtime.discardThreadRewind).toHaveBeenCalledWith({
       leaseId: "lease-1",
-      operationId: "edit-op-1",
-      threadId: "thread-1",
     });
   });
 

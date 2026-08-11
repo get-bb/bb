@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import path from "node:path";
 import { z } from "zod";
 import {
@@ -92,26 +91,28 @@ function normalizeExecutionOptions(args: {
 }
 
 interface PreparedThreadRewind {
+  state: "prepared";
   cleanupPromise: Promise<void> | null;
   cleanupTimer: ReturnType<typeof setTimeout> | null;
-  leaseIds: Set<string>;
-  operationId: string;
   processKey: string;
   providerId: string;
   providerState: RuntimeProviderProcess["identity"];
-  sourceProviderCheckpointId: string;
   providerThreadId: string;
-  sourceProviderThreadId: string;
   stagingThreadId: string;
   threadId: string;
 }
 
 interface PreparingThreadRewind {
-  leaseIds: Set<string>;
-  sourceProviderCheckpointId: string;
+  state: "preparing";
   promise: Promise<{ providerThreadId: string }>;
-  sourceProviderThreadId: string;
 }
+
+/**
+ * A staged rewind fork, keyed by the server-minted per-attempt lease id.
+ * Each attempt owns exactly one staged fork; there is no cross-attempt
+ * sharing, so discarding a lease can never affect another attempt.
+ */
+type StagedThreadRewind = PreparingThreadRewind | PreparedThreadRewind;
 
 interface ReapIdleProviderSessionCandidate {
   idleSinceMs: number;
@@ -180,16 +181,6 @@ const threadGoalClearResultSchema = z.object({ cleared: z.boolean() }).strict();
 const THREAD_GOAL_CLEAR_EVENT_TIMEOUT_MS = 5_000;
 const PREPARED_THREAD_REWIND_TTL_MS = 5 * 60_000;
 const PREPARED_THREAD_REWIND_RETRY_MS = 30_000;
-
-function preparedThreadRewindStagingThreadId(
-  threadId: string,
-  operationId: string,
-): string {
-  const operationDigest = createHash("sha256")
-    .update(operationId)
-    .digest("hex");
-  return `${threadId}:rewind:${operationDigest}`;
-}
 
 interface ThreadRuntimeConfig {
   dynamicTools?: DynamicTool[];
@@ -287,8 +278,7 @@ function createAgentRuntimeInternal(
   const idleProviderSessionSinceMsByThreadId = new Map<string, number>();
   const pendingTurnStartThreadIds = new Set<string>();
   const threadOperationCounts = new Map<string, number>();
-  const preparedThreadRewinds = new Map<string, PreparedThreadRewind>();
-  const preparingThreadRewinds = new Map<string, PreparingThreadRewind>();
+  const stagedThreadRewinds = new Map<string, StagedThreadRewind>();
   const suppressedThreadEventIds = new Set<string>();
   const threadGoalState = new RuntimeThreadGoalState();
   const turnState = new RuntimeTurnState();
@@ -1126,6 +1116,7 @@ function createAgentRuntimeInternal(
   // -------------------------------------------------------------------------
 
   function schedulePreparedThreadRewindCleanup(
+    leaseId: string,
     prepared: PreparedThreadRewind,
     delayMs: number,
   ): void {
@@ -1133,64 +1124,56 @@ function createAgentRuntimeInternal(
       clearTimeout(prepared.cleanupTimer);
     }
     prepared.cleanupTimer = setTimeout(() => {
-      void discardPreparedThreadRewind({
-        force: true,
-        operationId: prepared.operationId,
-        threadId: prepared.threadId,
-      });
+      void discardStagedThreadRewind(leaseId);
     }, delayMs);
     prepared.cleanupTimer.unref?.();
   }
 
   function finishPreparedThreadRewindCleanup(
-    rewindKey: string,
+    leaseId: string,
     prepared: PreparedThreadRewind,
   ): void {
     if (prepared.cleanupTimer !== null) {
       clearTimeout(prepared.cleanupTimer);
       prepared.cleanupTimer = null;
     }
-    if (preparedThreadRewinds.get(rewindKey) === prepared) {
-      preparedThreadRewinds.delete(rewindKey);
+    if (stagedThreadRewinds.get(leaseId) === prepared) {
+      stagedThreadRewinds.delete(leaseId);
     }
     suppressedThreadEventIds.delete(prepared.stagingThreadId);
   }
 
-  async function discardPreparedThreadRewind(
-    args:
-      | {
-          force: true;
-          operationId: string;
-          threadId: string;
-        }
-      | {
-          force?: false;
-          leaseId: string;
-          operationId: string;
-          threadId: string;
-        },
+  async function sendStagedThreadDiscard(
+    proc: ProviderProcess,
+    stagingThreadId: string,
+    providerThreadId: string,
   ): Promise<void> {
-    const rewindKey = `${args.threadId}\0${args.operationId}`;
-    const pending = preparingThreadRewinds.get(rewindKey);
-    if (pending !== undefined) {
-      if (!args.force) {
-        pending.leaseIds.delete(args.leaseId);
-      }
+    const command = proc.adapter.buildCommandPlan({
+      type: "thread/discard",
+      threadId: stagingThreadId,
+      providerThreadId,
+    });
+    if (command.kind === "request") {
+      await sendCommand({
+        proc,
+        message: command,
+        resultSchema: ignoredJsonRpcResultSchema,
+      });
+    }
+  }
+
+  async function discardStagedThreadRewind(leaseId: string): Promise<void> {
+    const staged = stagedThreadRewinds.get(leaseId);
+    if (staged?.state === "preparing") {
       try {
-        await pending.promise;
+        await staged.promise;
       } catch {
         return;
       }
     }
-    const prepared = preparedThreadRewinds.get(rewindKey);
-    if (prepared === undefined) {
+    const prepared = stagedThreadRewinds.get(leaseId);
+    if (prepared === undefined || prepared.state !== "prepared") {
       return;
-    }
-    if (!args.force) {
-      prepared.leaseIds.delete(args.leaseId);
-      if (prepared.leaseIds.size > 0) {
-        return;
-      }
     }
     if (prepared.cleanupPromise !== null) {
       await prepared.cleanupPromise;
@@ -1209,42 +1192,35 @@ function createAgentRuntimeInternal(
           prepared.providerState,
           prepared.stagingThreadId,
         );
-        finishPreparedThreadRewindCleanup(rewindKey, prepared);
+        finishPreparedThreadRewindCleanup(leaseId, prepared);
         return;
       }
 
       try {
-        const adapterCommand: AdapterCommand = {
-          type: "thread/discard",
-          threadId: prepared.stagingThreadId,
-          providerThreadId: prepared.providerThreadId,
-        };
-        const command = proc.adapter.buildCommandPlan(adapterCommand);
-        if (command.kind === "request") {
-          await sendCommand({
-            proc,
-            message: command,
-            resultSchema: ignoredJsonRpcResultSchema,
-          });
-        }
+        await sendStagedThreadDiscard(
+          proc,
+          prepared.stagingThreadId,
+          prepared.providerThreadId,
+        );
       } catch (error) {
         schedulePreparedThreadRewindCleanup(
+          leaseId,
           prepared,
           PREPARED_THREAD_REWIND_RETRY_MS,
         );
         options.onStderr?.(
-          `Failed to discard staged rewind ${args.operationId}; retrying: ${error instanceof Error ? error.message : String(error)}`,
+          `Failed to discard staged rewind ${leaseId}; retrying: ${error instanceof Error ? error.message : String(error)}`,
         );
         return;
       }
 
       forgetThreadRuntimeState(proc, prepared.stagingThreadId);
-      finishPreparedThreadRewindCleanup(rewindKey, prepared);
+      finishPreparedThreadRewindCleanup(leaseId, prepared);
       try {
         await shutdownThreadScopedCodexProcessIfIdle(proc);
       } catch (error) {
         options.onStderr?.(
-          `Failed to stop the idle provider after discarding staged rewind ${args.operationId}: ${error instanceof Error ? error.message : String(error)}`,
+          `Failed to stop the idle provider after discarding staged rewind ${leaseId}: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
     })();
@@ -1253,7 +1229,7 @@ function createAgentRuntimeInternal(
       await cleanup;
     } finally {
       if (
-        preparedThreadRewinds.get(rewindKey) === prepared &&
+        stagedThreadRewinds.get(leaseId) === prepared &&
         prepared.cleanupPromise === cleanup
       ) {
         prepared.cleanupPromise = null;
@@ -1448,7 +1424,6 @@ function createAgentRuntimeInternal(
       environmentId,
       threadId,
       leaseId,
-      operationId,
       projectId,
       providerId,
       sourceProviderThreadId,
@@ -1460,54 +1435,15 @@ function createAgentRuntimeInternal(
       disallowedTools,
       instructionMode = "append",
     }) {
-      if (
-        providerId !== CODEX_PROVIDER_ID &&
-        providerId !== "claude-code" &&
-        providerId !== "pi"
-      ) {
-        throw new Error(
-          `Preparing a thread rewind is not supported by ${providerId}`,
-        );
-      }
-      const rewindKey = `${threadId}\0${operationId}`;
-      let existing = preparedThreadRewinds.get(rewindKey);
-      while (existing?.cleanupPromise) {
-        await existing.cleanupPromise;
-        existing = preparedThreadRewinds.get(rewindKey);
-      }
+      const existing = stagedThreadRewinds.get(leaseId);
       if (existing !== undefined) {
-        if (
-          existing.sourceProviderThreadId !== sourceProviderThreadId ||
-          existing.sourceProviderCheckpointId !==
-            retainThroughProviderCheckpoint
-        ) {
-          throw new Error(
-            `Prepared rewind operation ${operationId} was reused with different input`,
-          );
-        }
-        existing.leaseIds.add(leaseId);
-        schedulePreparedThreadRewindCleanup(
-          existing,
-          PREPARED_THREAD_REWIND_TTL_MS,
-        );
-        return { providerThreadId: existing.providerThreadId };
+        // The server mints a fresh lease per attempt, so a duplicate can only
+        // be a replay of this exact request; return the same staged fork.
+        return existing.state === "preparing"
+          ? existing.promise
+          : { providerThreadId: existing.providerThreadId };
       }
 
-      const pending = preparingThreadRewinds.get(rewindKey);
-      if (pending !== undefined) {
-        if (
-          pending.sourceProviderThreadId !== sourceProviderThreadId ||
-          pending.sourceProviderCheckpointId !== retainThroughProviderCheckpoint
-        ) {
-          throw new Error(
-            `Prepared rewind operation ${operationId} was reused with different input`,
-          );
-        }
-        pending.leaseIds.add(leaseId);
-        return pending.promise;
-      }
-
-      const leaseIds = new Set([leaseId]);
       const preparation = runThreadOperation({
         threadId,
         work: async () => {
@@ -1522,6 +1458,11 @@ function createAgentRuntimeInternal(
             ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
           });
           const proc = requireProviderProcess({ processKey, providerId });
+          if (!proc.adapter.capabilities.supportsFork) {
+            throw new Error(
+              `Preparing a thread rewind is not supported by ${providerId}`,
+            );
+          }
           const providerSkillRoots = skillRootsForProvider(providerId);
           assertProviderSupportsExecutionOptions({
             adapter: proc.adapter,
@@ -1529,14 +1470,9 @@ function createAgentRuntimeInternal(
             providerId,
           });
 
-          // Provider adapters may turn this identity into a filesystem key.
-          // Hash the external idempotency key so distinct unsafe characters
-          // cannot collapse onto the same provider session path (Pi replaces
-          // each unsafe character with an underscore).
-          const stagingThreadId = preparedThreadRewindStagingThreadId(
-            threadId,
-            operationId,
-          );
+          // The lease id is a server-minted UUID, so it is safe inside
+          // identities that provider adapters may turn into filesystem keys.
+          const stagingThreadId = `${threadId}:rewind:${leaseId}`;
           suppressedThreadEventIds.add(stagingThreadId);
           threadIdentityRegistry.registerThreadProvider({
             providerId,
@@ -1598,7 +1534,7 @@ function createAgentRuntimeInternal(
             });
             if (!providerThreadId) {
               throw new Error(
-                `${providerId} did not return a provider thread for rewind operation ${operationId}`,
+                `${providerId} did not return a provider thread for rewind lease ${leaseId}`,
               );
             }
             recordProviderThreadIdentity(
@@ -1607,21 +1543,19 @@ function createAgentRuntimeInternal(
               providerThreadId,
             );
             const prepared: PreparedThreadRewind = {
+              state: "prepared",
               cleanupPromise: null,
               cleanupTimer: null,
-              leaseIds,
-              operationId,
               processKey,
               providerId,
               providerState: proc.identity,
-              sourceProviderCheckpointId: retainThroughProviderCheckpoint,
               providerThreadId,
-              sourceProviderThreadId,
               stagingThreadId,
               threadId,
             };
-            preparedThreadRewinds.set(rewindKey, prepared);
+            stagedThreadRewinds.set(leaseId, prepared);
             schedulePreparedThreadRewindCleanup(
+              leaseId,
               prepared,
               PREPARED_THREAD_REWIND_TTL_MS,
             );
@@ -1631,21 +1565,14 @@ function createAgentRuntimeInternal(
             if (!retainedForDiscard) {
               if (providerThreadIdForCleanup !== undefined) {
                 try {
-                  const cleanupCommand = proc.adapter.buildCommandPlan({
-                    type: "thread/discard",
-                    threadId: stagingThreadId,
-                    providerThreadId: providerThreadIdForCleanup,
-                  });
-                  if (cleanupCommand.kind === "request") {
-                    await sendCommand({
-                      proc,
-                      message: cleanupCommand,
-                      resultSchema: ignoredJsonRpcResultSchema,
-                    });
-                  }
+                  await sendStagedThreadDiscard(
+                    proc,
+                    stagingThreadId,
+                    providerThreadIdForCleanup,
+                  );
                 } catch (error) {
                   options.onStderr?.(
-                    `Failed to discard unretained staged rewind ${operationId}: ${error instanceof Error ? error.message : String(error)}`,
+                    `Failed to discard unretained staged rewind ${leaseId}: ${error instanceof Error ? error.message : String(error)}`,
                   );
                 }
               }
@@ -1658,24 +1585,23 @@ function createAgentRuntimeInternal(
           }
         },
       });
-      preparingThreadRewinds.set(rewindKey, {
-        leaseIds,
-        sourceProviderCheckpointId: retainThroughProviderCheckpoint,
+      stagedThreadRewinds.set(leaseId, {
+        state: "preparing",
         promise: preparation,
-        sourceProviderThreadId,
       });
       try {
         return await preparation;
-      } finally {
-        const current = preparingThreadRewinds.get(rewindKey);
-        if (current?.promise === preparation) {
-          preparingThreadRewinds.delete(rewindKey);
+      } catch (error) {
+        const current = stagedThreadRewinds.get(leaseId);
+        if (current?.state === "preparing" && current.promise === preparation) {
+          stagedThreadRewinds.delete(leaseId);
         }
+        throw error;
       }
     },
 
-    async discardThreadRewind({ threadId, leaseId, operationId }) {
-      await discardPreparedThreadRewind({ threadId, leaseId, operationId });
+    async discardThreadRewind({ leaseId }) {
+      await discardStagedThreadRewind(leaseId);
     },
 
     async resumeThread({
@@ -2234,14 +2160,9 @@ function createAgentRuntimeInternal(
 
     async shutdown() {
       await Promise.all(
-        [...preparedThreadRewinds.keys()].map((rewindKey) => {
-          const separatorIndex = rewindKey.indexOf("\0");
-          return discardPreparedThreadRewind({
-            force: true,
-            threadId: rewindKey.slice(0, separatorIndex),
-            operationId: rewindKey.slice(separatorIndex + 1),
-          });
-        }),
+        [...stagedThreadRewinds.keys()].map((leaseId) =>
+          discardStagedThreadRewind(leaseId),
+        ),
       );
       idleProviderSessionSinceMsByThreadId.clear();
       pendingTurnStartThreadIds.clear();

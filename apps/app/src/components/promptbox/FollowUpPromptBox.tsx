@@ -142,8 +142,6 @@ function isKeyboardFocusTarget(target: EventTarget | null): boolean {
  * render submit/queue/stop affordances.
  */
 export type FollowUpBlockedReason =
-  | "empty-message"
-  | "editing-requires-idle"
   | "loading-execution-options"
   | "loading-pending-interactions"
   | "pending-interaction"
@@ -327,11 +325,6 @@ function FollowUpPromptBoxWithComposer({
   const canSubmit = submitMode.kind === "ready" || submitMode.kind === "queue";
   const isStopping =
     submitMode.kind === "blocked" && submitMode.reason === "stopping";
-  const isEmptyMessage =
-    submitMode.kind === "blocked" && submitMode.reason === "empty-message";
-  const isEditingRequiringIdle =
-    submitMode.kind === "blocked" &&
-    submitMode.reason === "editing-requires-idle";
   const isLoadingExecutionOptions =
     submitMode.kind === "blocked" &&
     submitMode.reason === "loading-execution-options";
@@ -735,19 +728,15 @@ function FollowUpPromptBoxWithComposer({
                   : "Queue follow-up (Enter)"
                 : isStopping
                   ? "Stopping run..."
-                  : isEmptyMessage
-                    ? "Enter a message"
-                    : isEditingRequiringIdle
-                      ? "Wait for the thread to become idle"
-                      : isLoadingExecutionOptions
-                        ? "Loading models..."
-                        : isLoadingPendingInteractions
-                          ? "Checking pending interactions..."
-                          : isProvisioning
-                            ? "Provisioning..."
-                            : isUnavailable
-                              ? "Unavailable"
-                              : "Submit (Enter)",
+                  : isLoadingExecutionOptions
+                    ? "Loading models..."
+                    : isLoadingPendingInteractions
+                      ? "Checking pending interactions..."
+                      : isProvisioning
+                        ? "Provisioning..."
+                        : isUnavailable
+                          ? "Unavailable"
+                          : "Submit (Enter)",
           isRunning: canStopRuntime,
         }}
         typeahead={typeahead}

@@ -528,7 +528,10 @@ describe("editThreadMessage", () => {
         (queued) => queued.command.type === "thread.rewind.discard",
       );
       expect(discard.command).toMatchObject({
-        operationId: payload.operationId,
+        leaseId:
+          rewind.command.type === "thread.rewind.prepare"
+            ? rewind.command.leaseId
+            : undefined,
         threadId: thread.id,
       });
       await reportQueuedCommandSuccess(harness, discard, {});
@@ -735,24 +738,21 @@ describe("editThreadMessage", () => {
     });
   });
 
-  it("finds an eligible message beyond one bounded candidate page", async () => {
+  it("resolves the latest edit past ineligible candidates", async () => {
     await withTestHarness(async (harness) => {
       const { environment, thread } = seedEditableThread(harness);
-      for (let index = 0; index < 26; index += 1) {
-        const requestSequence = 12 + index * 5;
-        seedCompletedTurn(harness, {
-          inputGroups: [
-            [{ type: "text", text: `Grouped ${index}a`, mentions: [] }],
-            [{ type: "text", text: `Grouped ${index}b`, mentions: [] }],
-          ],
-          providerCheckpointId: `checkpoint-grouped-${index}`,
-          providerThreadId: "provider-original",
-          requestSequence,
-          text: `Grouped request ${index}`,
-          threadId: thread.id,
-          turnId: `turn-grouped-${index}`,
-        });
-      }
+      seedCompletedTurn(harness, {
+        inputGroups: [
+          [{ type: "text", text: "Grouped a", mentions: [] }],
+          [{ type: "text", text: "Grouped b", mentions: [] }],
+        ],
+        providerCheckpointId: "checkpoint-grouped",
+        providerThreadId: "provider-original",
+        requestSequence: 12,
+        text: "Grouped request",
+        threadId: thread.id,
+        turnId: "turn-grouped",
+      });
 
       const editPromise = editThreadMessage(harness.deps, {
         environment,
@@ -768,8 +768,8 @@ describe("editThreadMessage", () => {
         harness,
         (queued) => queued.command.type === "thread.rewind.prepare",
       );
-      // Resolving past 26 ineligible grouped candidates lands on sequence 7,
-      // whose preceding root turn is turn-first.
+      // Resolving skips the ineligible grouped candidate and lands on
+      // sequence 7, whose preceding root turn is turn-first.
       expect(rewind.command).toMatchObject({
         retainThroughProviderCheckpoint: "turn-first",
       });

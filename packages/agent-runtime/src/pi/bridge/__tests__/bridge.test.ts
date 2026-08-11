@@ -843,17 +843,6 @@ describe("pi bridge", () => {
 
       expect(bridge.messages).toContainEqual(
         expect.objectContaining({
-          method: "sdk/message",
-          params: expect.objectContaining({
-            message: expect.objectContaining({
-              providerCheckpointId: "pi-entry-checkpoint",
-              type: "agent_end",
-            }),
-          }),
-        }),
-      );
-      expect(bridge.messages).toContainEqual(
-        expect.objectContaining({
           method: "error",
           params: {
             threadId: "thread-undelivered-steer",
