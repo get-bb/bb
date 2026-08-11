@@ -228,6 +228,7 @@ async function startIntegrationServer(
     dataDir: serverDataDir,
     featureFlags: defaultFeatureFlags,
     hostDaemonPort: 3001,
+    inferenceFallbackModel: "test/mock-fallback-model",
     inferenceModel: "test/mock-model",
     inheritedSkillsRootPaths: [],
     openAiApiKey: process.env.OPENAI_API_KEY ?? "test-openai-key",
