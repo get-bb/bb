@@ -7,15 +7,9 @@ import {
   type ThreadMetadataGenerationOutcome,
 } from "./title-generation.js";
 import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
+import { INFERENCE_POLICY } from "../ai/inference.js";
 
 type ThreadMetadataInferenceDeps = LoggedWorkSessionDeps;
-
-// Luna commonly needs more than 2.5s for structured output. Every thread title
-// gets one primary attempt and one fallback attempt after a transient failure.
-// Non-managed title generation remains asynchronous, so this retry budget does
-// not delay thread startup.
-const THREAD_METADATA_TIMEOUT_MS = 5_000;
-const THREAD_METADATA_TIMEOUT_MAX_ATTEMPTS = 2;
 
 export interface ThreadMetadataInferenceArgs {
   environmentId: string | null;
@@ -139,8 +133,8 @@ export async function inferThreadMetadata(
   const outcome = await generateThreadMetadataWithOutcome(deps, {
     input: args.input,
     threadId: args.threadId,
-    timeoutMaxAttempts: THREAD_METADATA_TIMEOUT_MAX_ATTEMPTS,
-    timeoutMs: THREAD_METADATA_TIMEOUT_MS,
+    timeoutMaxAttempts: INFERENCE_POLICY.threadMetadata.maxAttempts,
+    timeoutMs: INFERENCE_POLICY.threadMetadata.timeoutMs,
   });
 
   if (transcriptEnvironmentId && provisioningId) {

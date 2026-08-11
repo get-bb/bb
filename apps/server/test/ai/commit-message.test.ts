@@ -248,7 +248,7 @@ describe("commit message generation", () => {
           err: expect.any(Error),
           reason: "failed",
         }),
-        "Failed to generate commit message",
+        "Commit message inference failed",
       );
     } finally {
       await cleanup();

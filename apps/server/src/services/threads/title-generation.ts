@@ -1,21 +1,17 @@
-import { setTimeout as delay } from "node:timers/promises";
 import { renderTemplate } from "@bb/templates";
 import { getThread, updateThread } from "@bb/db";
 import type { PromptInput } from "@bb/domain";
 import type { AppDeps, LoggedWorkSessionDeps } from "../../types.js";
 import { Type } from "@earendil-works/pi-ai";
-import { ApiError } from "../../errors.js";
 import {
+  INFERENCE_POLICY,
   InferenceTimeoutError,
-  inferenceComplete,
-  isTransientInferenceError,
+  inferenceCompleteWithFallback,
 } from "../ai/inference.js";
-import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
 
 const MIN_TITLE_GENERATION_WORDS = 5;
 const MAX_GENERATED_TITLE_WORDS = 5;
 const MAX_BRANCH_SLUG_LENGTH = 48;
-const THREAD_METADATA_RETRY_DELAY_MS = 250;
 
 type ThreadMetadataGenerationDeps = LoggedWorkSessionDeps;
 type ThreadTitleApplyDeps = Pick<AppDeps, "db" | "hub">;
@@ -158,83 +154,24 @@ export async function generateThreadMetadataWithOutcome(
   });
   const maxAttempts = Math.max(1, args.timeoutMaxAttempts ?? 1);
 
-  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    const model =
-      attempt === 1
-        ? deps.config.inferenceModel
-        : deps.config.inferenceFallbackModel;
-    try {
-      const parsed = await inferenceComplete(deps, {
-        model,
-        prompt,
-        schema: threadMetadataSchema,
-        ...(args.timeoutMs ? { timeoutMs: args.timeoutMs } : {}),
-      });
-
-      const metadata = normalizeGeneratedThreadMetadata(parsed);
-      if (attempt > 1) {
-        deps.logger.info(
-          {
-            attempts: attempt,
-            durationMs: Date.now() - startedAt,
-            model,
-            threadId: args.threadId,
-          },
-          "Thread metadata inference completed after transient retry",
-        );
-      }
-      return complete(metadata, metadata ? undefined : "inference-unavailable");
-    } catch (error) {
-      const err =
-        error instanceof Error
-          ? error
-          : new Error("Non-Error thrown during thread metadata generation");
-      if (isTransientInferenceError(err)) {
-        if (attempt < maxAttempts) {
-          deps.logger.info(
-            {
-              attempt,
-              errorCode: err instanceof ApiError ? err.body.code : "timeout",
-              fallbackModel: deps.config.inferenceFallbackModel,
-              maxAttempts,
-              model,
-              threadId: args.threadId,
-              ...(err instanceof InferenceTimeoutError
-                ? { timeoutMs: err.timeoutMs }
-                : {}),
-            },
-            "Thread metadata inference failed transiently; retrying",
-          );
-          await delay(THREAD_METADATA_RETRY_DELAY_MS);
-          continue;
-        }
-
-        if (err instanceof InferenceTimeoutError) {
-          deps.logger.info(
-            {
-              attempts: maxAttempts,
-              model,
-              threadId: args.threadId,
-              timeoutMs: err.timeoutMs,
-            },
-            "Thread metadata inference timed out",
-          );
-          return complete(null, "timeout");
-        }
-      }
-
-      deps.logger.warn(
-        {
-          threadId: args.threadId,
-          ...runtimeErrorLogFields(deps.config, err),
-        },
-        "Failed to generate thread metadata",
-      );
-      return complete(null, "failed");
-    }
+  try {
+    const inference = await inferenceCompleteWithFallback(deps, {
+      label: "Thread metadata inference",
+      logContext: { threadId: args.threadId },
+      maxAttempts,
+      prompt,
+      retryDelayMs: INFERENCE_POLICY.threadMetadata.retryDelayMs,
+      schema: threadMetadataSchema,
+      timeoutMs: args.timeoutMs ?? INFERENCE_POLICY.threadMetadata.timeoutMs,
+    });
+    const metadata = normalizeGeneratedThreadMetadata(inference);
+    return complete(metadata, metadata ? undefined : "inference-unavailable");
+  } catch (error) {
+    return complete(
+      null,
+      error instanceof InferenceTimeoutError ? "timeout" : "failed",
+    );
   }
-
-  return complete(null, "failed");
 }
 
 export function applyGeneratedThreadTitle(

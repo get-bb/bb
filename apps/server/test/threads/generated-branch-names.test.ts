@@ -1260,14 +1260,14 @@ describe("generated managed branch names", () => {
           threadId: "thr_retry_timeout",
           timeoutMs: 1,
         }),
-        "Thread metadata inference failed transiently; retrying",
+        "Thread metadata inference failed transiently; using fallback model",
       );
       expect(infoSpy).toHaveBeenCalledWith(
         expect.objectContaining({
           attempts: 2,
           threadId: "thr_retry_timeout",
         }),
-        "Thread metadata inference completed after transient retry",
+        "Thread metadata inference completed with fallback model",
       );
     } finally {
       infoSpy.mockRestore();
