@@ -151,6 +151,49 @@ describe("Sidebar", () => {
   });
 });
 
+function getMobilePanel(): HTMLElement | null {
+  const panel = document.querySelector('[data-sidebar="panel"]');
+  return panel instanceof HTMLElement ? panel : null;
+}
+
+describe("mobile sidebar persistence", () => {
+  it("keeps closed drawer content mounted but inert and hidden from input", () => {
+    render(
+      <CompactViewportOverrideProvider isCompactViewport>
+        <SidebarProvider>
+          <Sidebar>Sidebar content</Sidebar>
+          <SidebarInset>
+            <SidebarTrigger />
+            Main content
+          </SidebarInset>
+        </SidebarProvider>
+      </CompactViewportOverrideProvider>,
+    );
+
+    // The rows stay mounted while the drawer is closed, so reopening
+    // replays no mount cost (#1261) — but the closed panel must not be
+    // reachable by taps or focus.
+    const closedPanel = getMobilePanel();
+    expect(closedPanel).not.toBeNull();
+    expect(closedPanel?.textContent).toContain("Sidebar content");
+    expect(closedPanel?.dataset.state).toBe("closed");
+    expect(closedPanel?.hasAttribute("inert")).toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "Toggle Sidebar" }));
+
+    const openPanel = getMobilePanel();
+    expect(openPanel?.dataset.state).toBe("open");
+    expect(openPanel?.hasAttribute("inert")).toBe(false);
+
+    fireEvent.click(screen.getByTestId("sidebar-mobile-backdrop"));
+
+    const reclosedPanel = getMobilePanel();
+    expect(reclosedPanel?.dataset.state).toBe("closed");
+    expect(reclosedPanel?.hasAttribute("inert")).toBe(true);
+    expect(reclosedPanel?.textContent).toContain("Sidebar content");
+  });
+});
+
 describe("mobile sidebar text-selection arbitration", () => {
   it("opens from a right swipe that starts over selectable message prose", () => {
     renderSelectableSwipeHarness();
@@ -159,7 +202,7 @@ describe("mobile sidebar text-selection arbitration", () => {
     fireTouch(prose, "touchstart", createTouch(120, 160));
     fireTouch(window, "touchmove", createTouch(260, 164));
 
-    expect(document.querySelector('[data-sidebar="panel"]')).not.toBeNull();
+    expect(getMobilePanel()?.dataset.state).toBe("open");
   });
 
   it("defers the horizontal-scroll-region probe until horizontal intent", () => {
@@ -175,7 +218,7 @@ describe("mobile sidebar text-selection arbitration", () => {
 
     // Exactly one probe per gesture, then the swipe cancels.
     expect(getScrollWidthReads()).toBe(1);
-    expect(document.querySelector('[data-sidebar="panel"]')).toBeNull();
+    expect(getMobilePanel()?.dataset.state).toBe("closed");
   });
 
   it("defers the probe on the pointer path as well", () => {
@@ -189,7 +232,7 @@ describe("mobile sidebar text-selection arbitration", () => {
     firePointer(window, "pointermove", 280, 164);
 
     expect(getScrollWidthReads()).toBe(1);
-    expect(document.querySelector('[data-sidebar="panel"]')).toBeNull();
+    expect(getMobilePanel()?.dataset.state).toBe("closed");
   });
 
   it("cancels a swipe whose start target detached before the probe", () => {
@@ -201,7 +244,7 @@ describe("mobile sidebar text-selection arbitration", () => {
 
     // A detached target reports empty computed style; never probe or open.
     expect(getScrollWidthReads()).toBe(0);
-    expect(document.querySelector('[data-sidebar="panel"]')).toBeNull();
+    expect(getMobilePanel()?.dataset.state).toBe("closed");
   });
 
   it("cancels a pending prose swipe when native text selection begins", () => {
@@ -225,6 +268,6 @@ describe("mobile sidebar text-selection arbitration", () => {
     fireEvent(document, new Event("selectionchange"));
     fireTouch(window, "touchmove", createTouch(260, 164));
 
-    expect(document.querySelector('[data-sidebar="panel"]')).toBeNull();
+    expect(getMobilePanel()?.dataset.state).toBe("closed");
   });
 });

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { THREAD_JUMP_APP_COMMAND_IDS } from "@bb/domain";
 import { Link, useNavigate } from "react-router-dom";
@@ -222,6 +222,29 @@ export function AppSidebar({
     hideThreadShortcuts();
   }, [hideThreadShortcuts, isAppCommandModifierHeld, showThreadShortcuts]);
 
+  // Keep this object identity stable across unrelated re-renders (opening
+  // the mobile drawer flips useSidebar context and re-renders AppSidebar):
+  // a fresh object here would defeat ProjectList's memo and re-render every
+  // thread group on each drawer toggle.
+  const threadSearchPanelController = useMemo(
+    () => ({
+      activeIndex: threadSearch.activeIndex,
+      isActive: threadSearch.isActive,
+      onActiveIndexChange: threadSearch.onActiveIndexChange,
+      onNavigationItemsChange: threadSearch.onNavigationItemsChange,
+      onSelectItem: threadSearch.onSelectItem,
+      query: threadSearch.query,
+    }),
+    [
+      threadSearch.activeIndex,
+      threadSearch.isActive,
+      threadSearch.onActiveIndexChange,
+      threadSearch.onNavigationItemsChange,
+      threadSearch.onSelectItem,
+      threadSearch.query,
+    ],
+  );
+
   const builtInThreadList = (
     <ProjectList
       onNewProject={
@@ -231,14 +254,7 @@ export function AppSidebar({
       }
       onProjectSelect={closeOnMobile}
       isCreatingProject={quickCreateProject.isCreating}
-      threadSearch={{
-        activeIndex: threadSearch.activeIndex,
-        isActive: threadSearch.isActive,
-        onActiveIndexChange: threadSearch.onActiveIndexChange,
-        onNavigationItemsChange: threadSearch.onNavigationItemsChange,
-        onSelectItem: threadSearch.onSelectItem,
-        query: threadSearch.query,
-      }}
+      threadSearch={threadSearchPanelController}
     />
   );
 

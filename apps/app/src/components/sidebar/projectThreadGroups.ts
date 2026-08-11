@@ -651,3 +651,85 @@ function bucketIntoSections(
   const orderedLooseItems = orderSiblingItems(looseItems, compareThreads);
   return [...sectionItems, ...orderedLooseItems];
 }
+
+export interface ProjectThreadItemRowCountContext {
+  collapsedThreadIds: ReadonlySet<string>;
+  collapsedEnvironmentIds: ReadonlySet<string>;
+  collapsedSectionKeys: ReadonlySet<string>;
+}
+
+function countThreadNodeRows(
+  node: ProjectThreadNode,
+  context: ProjectThreadItemRowCountContext,
+): number {
+  if (
+    node.children.length === 0 ||
+    context.collapsedThreadIds.has(node.thread.id)
+  ) {
+    return 1;
+  }
+  return node.children.reduce(
+    (total, child) => total + countProjectThreadItemRows(child, context),
+    1,
+  );
+}
+
+/**
+ * Count of the rows an item renders under the current collapse state. Drives
+ * placeholder-height estimates in the windowed sidebar thread list; exactness
+ * is not required because measured heights replace the estimate once an item
+ * has been on screen.
+ */
+export function countProjectThreadItemRows(
+  item: ProjectThreadItem,
+  context: ProjectThreadItemRowCountContext,
+): number {
+  switch (item.kind) {
+    case "thread":
+      return countThreadNodeRows(item.node, context);
+    case "environment":
+      if (context.collapsedEnvironmentIds.has(item.group.environmentId)) {
+        return 1;
+      }
+      return item.group.nodes.reduce(
+        (total, node) => total + countThreadNodeRows(node, context),
+        1,
+      );
+    case "section":
+      if (context.collapsedSectionKeys.has(item.group.key)) {
+        return 1;
+      }
+      return item.group.items.reduce(
+        (total, child) => total + countProjectThreadItemRows(child, context),
+        1,
+      );
+  }
+}
+
+/** True when the item's subtree renders a row for the given thread. */
+export function projectThreadItemContainsThread(
+  item: ProjectThreadItem,
+  threadId: string,
+): boolean {
+  switch (item.kind) {
+    case "thread":
+      return (
+        item.node.thread.id === threadId ||
+        item.node.children.some((child) =>
+          projectThreadItemContainsThread(child, threadId),
+        )
+      );
+    case "environment":
+      return item.group.nodes.some(
+        (node) =>
+          node.thread.id === threadId ||
+          node.children.some((child) =>
+            projectThreadItemContainsThread(child, threadId),
+          ),
+      );
+    case "section":
+      return item.group.items.some((child) =>
+        projectThreadItemContainsThread(child, threadId),
+      );
+  }
+}
