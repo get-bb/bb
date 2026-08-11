@@ -110,7 +110,24 @@ describe("commandSuggestionMatchesQuery", () => {
     ]);
   });
 
-  it("keeps menu sections primary when ranking non-exact matches", () => {
+  it("keeps menu sections primary when matches are equally direct", () => {
+    const names = filterCommandSuggestions(
+      [
+        {
+          ...pluginSkill,
+          name: "deploy-service",
+          source: "command",
+          origin: "user",
+        },
+        { ...pluginSkill, name: "deploy-helper" },
+      ],
+      "deploy",
+    ).map((suggestion) => suggestion.name);
+
+    expect(names).toEqual(["deploy-helper", "deploy-service"]);
+  });
+
+  it("ranks a user-command name prefix above a skill matched by description", () => {
     const names = filterCommandSuggestions(
       [
         {
@@ -128,7 +145,7 @@ describe("commandSuggestionMatchesQuery", () => {
       "deploy",
     ).map((suggestion) => suggestion.name);
 
-    expect(names).toEqual(["review-helper", "deploy-service"]);
+    expect(names).toEqual(["deploy-service", "review-helper"]);
   });
 
   it("ranks an exact user-command name above skills from an earlier section", () => {

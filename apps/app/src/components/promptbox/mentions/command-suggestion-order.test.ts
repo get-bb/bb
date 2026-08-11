@@ -4,13 +4,16 @@ import {
   type ComposerCommandSuggestion,
 } from "./types";
 
-function skill(name: string): ComposerCommandSuggestion {
+function skill(
+  name: string,
+  description: string | null = null,
+): ComposerCommandSuggestion {
   return {
     kind: "command",
     name,
     source: "skill",
     origin: "user",
-    description: null,
+    description,
     argumentHint: null,
   };
 }
@@ -47,13 +50,35 @@ function orderedNames(
 }
 
 describe("orderCommandSuggestions", () => {
-  it("keeps section order when nothing matches the query exactly", () => {
+  it("keeps section order when every row matches the query as directly", () => {
     expect(
       orderedNames(
         [userCommand("plan"), skill("planner"), projectCommand("plan-review")],
         "pla",
       ),
     ).toEqual(["planner", "plan-review", "plan"]);
+  });
+
+  it("hoists a user-command name prefix above description-only matches", () => {
+    // `/pla` names the `plan` command more directly than skills that only
+    // mention "plan" in prose, so the partial query gets the same treatment as
+    // the full one.
+    expect(
+      orderedNames(
+        [
+          skill("sprint", "Plan a sprint"),
+          skill("scope", "Planning helper"),
+          userCommand("plan"),
+        ],
+        "pla",
+      ),
+    ).toEqual(["plan", "sprint", "scope"]);
+  });
+
+  it("ranks an exact match above a prefix match from an earlier section", () => {
+    expect(
+      orderedNames([skill("planner"), userCommand("plan")], "plan"),
+    ).toEqual(["plan", "planner"]);
   });
 
   it("hoists an exact user-command match above every non-exact match", () => {

@@ -135,63 +135,53 @@ function commandSuggestionSearchNames(
 }
 
 /**
- * Relevance order for a lowercased, trimmed query. Typing a command's whole
- * name is an unambiguous request for that command, so an exact name match
- * outranks every non-exact match no matter which section it lives in — a `/plan`
- * user command must not sit below skills that merely mention "plan". Matches of
- * equal quality keep the `PROVIDER_COMMAND_SECTIONS` order, and within a section
- * a name-prefix match beats a description-only match. An empty query ties every
- * row, leaving pure section order.
+ * How directly the query names a command. Lower wins: the whole name, then a
+ * name prefix, then a row that only matched through its description or argument
+ * hint. An empty query prefix-matches everything, so it ranks every row alike.
+ */
+function commandSuggestionMatchRank(
+  suggestion: ComposerCommandSuggestion,
+  normalizedQuery: string,
+): number {
+  const names = commandSuggestionSearchNames(suggestion);
+  if (names.includes(normalizedQuery)) {
+    return 0;
+  }
+  return names.some((name) => name.startsWith(normalizedQuery)) ? 1 : 2;
+}
+
+/**
+ * Relevance order for a lowercased, trimmed query. How directly the query names
+ * a command outranks which section that command lives in: typing `/plan` in full
+ * is an unambiguous request for the `plan` user command, and even a partial
+ * `/pla` names it more directly than a skill that merely mentions "plan" in its
+ * description. Matches of equal quality keep the `PROVIDER_COMMAND_SECTIONS`
+ * order, so an empty query — which prefix-matches every row — leaves pure
+ * section order.
  */
 export function compareCommandSuggestions(
   left: ComposerCommandSuggestion,
   right: ComposerCommandSuggestion,
   normalizedQuery: string,
 ): number {
-  const leftExact = isExactCommandNameMatch(left, normalizedQuery);
-  const rightExact = isExactCommandNameMatch(right, normalizedQuery);
-  if (leftExact !== rightExact) {
-    return leftExact ? -1 : 1;
-  }
-
-  const bySection = compareCommandSuggestionSections(left, right);
-  if (bySection !== 0) {
-    return bySection;
-  }
-
-  const leftPrefix = hasCommandNamePrefixMatch(left, normalizedQuery);
-  const rightPrefix = hasCommandNamePrefixMatch(right, normalizedQuery);
-  if (leftPrefix !== rightPrefix) {
-    return leftPrefix ? -1 : 1;
-  }
-  return 0;
-}
-
-function isExactCommandNameMatch(
-  suggestion: ComposerCommandSuggestion,
-  normalizedQuery: string,
-): boolean {
-  return commandSuggestionSearchNames(suggestion).includes(normalizedQuery);
-}
-
-function hasCommandNamePrefixMatch(
-  suggestion: ComposerCommandSuggestion,
-  normalizedQuery: string,
-): boolean {
-  return commandSuggestionSearchNames(suggestion).some((name) =>
-    name.startsWith(normalizedQuery),
-  );
+  const byMatch =
+    commandSuggestionMatchRank(left, normalizedQuery) -
+    commandSuggestionMatchRank(right, normalizedQuery);
+  return byMatch !== 0
+    ? byMatch
+    : compareCommandSuggestionSections(left, right);
 }
 
 /**
  * Put the flat command list in the exact order the menu renders it: ranked by
  * {@link compareCommandSuggestions}, then collapsed so every section's rows are
- * contiguous, ordered by where that section first appears. The collapse is what
- * keeps hoisting an exact match honest — the menu groups by section as it
- * renders, so a section whose rows were scattered through the flat list would
- * paint them in a different order than the composer walks them. The composer
- * uses this exact array for keyboard navigation and Enter/Tab apply, so visual
- * grouping must never be the first place ordering happens.
+ * contiguous, ordered by where that section first appears — which puts each
+ * section under its own best match. The collapse is what keeps hoisting a strong
+ * match honest: the menu groups by section as it renders, so a section whose
+ * rows were scattered through the flat list would paint them in a different
+ * order than the composer walks them. The composer uses this exact array for
+ * keyboard navigation and Enter/Tab apply, so visual grouping must never be the
+ * first place ordering happens.
  */
 export function orderCommandSuggestions(
   suggestions: readonly ComposerCommandSuggestion[],
