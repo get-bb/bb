@@ -11,12 +11,13 @@ import {
   gitHostPullRequestSchema,
 } from "@bb/domain";
 import { sanitizeInheritedChildProcessEnv } from "@bb/process-utils";
-import { WorkspaceError } from "./git.js";
+import { runGit, type GitCommandResult, WorkspaceError } from "./git.js";
 
 const execFileAsync = promisify(execFile);
 
 /** `gh` is a network round-trip; cap it so it never blocks a status poll. */
 const GH_PR_VIEW_TIMEOUT_MS = 10_000;
+const GIT_UPSTREAM_LOOKUP_TIMEOUT_MS = 10_000;
 
 /**
  * Explicit stdout cap rather than Node's 1 MB execFile default. The selected
@@ -43,9 +44,11 @@ const GH_PR_VIEW_JSON_FIELDS = [
   "mergeStateStatus",
   "mergeable",
 ].join(",");
+const GH_REPO_VIEW_JSON_FIELDS = "nameWithOwner";
 
 interface GetPullRequestForCurrentBranchArgs {
   cwd: string;
+  localBranch: string;
 }
 
 export type GitHostPullRequestMergeMethod = "merge" | "squash" | "rebase";
@@ -367,6 +370,36 @@ export type GitHostPullRequestLookup =
 /** `gh pr view` stderr for a branch that genuinely has no pull request. */
 const GH_NO_PULL_REQUEST_PATTERN = /no pull requests found for branch/iu;
 
+type PullRequestTargetLookup =
+  | { outcome: "current-branch" }
+  | { outcome: "upstream-branch"; selector: string }
+  | Extract<GitHostPullRequestLookup, { outcome: "unavailable" }>;
+
+function ghCommandUnavailable(
+  ghArgs: string[],
+  error: unknown,
+): Extract<GitHostPullRequestLookup, { outcome: "unavailable" }> {
+  const execError = getExecFileException(error);
+  if (execError?.code === "ENOENT") {
+    return { outcome: "unavailable", message: "GitHub CLI is not available" };
+  }
+  if (execError?.killed) {
+    return {
+      outcome: "unavailable",
+      message: `gh ${ghArgs.slice(0, 2).join(" ")} timed out after ${GH_PR_VIEW_TIMEOUT_MS}ms`,
+    };
+  }
+  const detail =
+    trimGhOutput(execError?.stderr) ||
+    trimGhOutput(execError?.stdout) ||
+    (error instanceof Error ? error.message : "");
+  const command = `gh ${ghArgs.slice(0, 2).join(" ")}`;
+  return {
+    outcome: "unavailable",
+    message: detail ? `${command} failed: ${detail}` : `${command} failed`,
+  };
+}
+
 /**
  * Classify a failed `gh pr view` invocation. Only the "no pull requests
  * found" answer is genuine absence; everything else (gh missing, auth
@@ -379,30 +412,139 @@ function classifyPullRequestViewError(
   if (GH_NO_PULL_REQUEST_PATTERN.test(trimGhOutput(execError?.stderr))) {
     return { outcome: "none" };
   }
-  if (execError?.code === "ENOENT") {
-    return { outcome: "unavailable", message: "GitHub CLI is not available" };
-  }
-  if (execError?.killed) {
-    return {
-      outcome: "unavailable",
-      message: `gh pr view timed out after ${GH_PR_VIEW_TIMEOUT_MS}ms`,
-    };
-  }
-  const detail =
-    trimGhOutput(execError?.stderr) ||
-    trimGhOutput(execError?.stdout) ||
-    (error instanceof Error ? error.message : "");
+  return ghCommandUnavailable(["pr", "view"], error);
+}
+
+function gitUpstreamLookupUnavailable(
+  message: string,
+  detail: string,
+): Extract<GitHostPullRequestLookup, { outcome: "unavailable" }> {
   return {
     outcome: "unavailable",
-    message: detail ? `gh pr view failed: ${detail}` : "gh pr view failed",
+    message: detail ? `${message}: ${detail}` : message,
+  };
+}
+
+async function getPullRequestTarget(
+  args: GetPullRequestForCurrentBranchArgs,
+): Promise<PullRequestTargetLookup> {
+  const localRef = `refs/heads/${args.localBranch}`;
+  let upstreamResult: GitCommandResult;
+  try {
+    upstreamResult = await runGit(
+      [
+        "for-each-ref",
+        "--format=%(refname)%00%(upstream:remotename)%00%(upstream:remoteref)",
+        localRef,
+      ],
+      {
+        cwd: args.cwd,
+        allowFailure: true,
+        timeoutMs: GIT_UPSTREAM_LOOKUP_TIMEOUT_MS,
+      },
+    );
+  } catch (error) {
+    return gitUpstreamLookupUnavailable(
+      "Could not inspect the current branch's configured upstream",
+      error instanceof Error ? error.message : "",
+    );
+  }
+  if (upstreamResult.exitCode !== 0) {
+    return gitUpstreamLookupUnavailable(
+      "Could not inspect the current branch's configured upstream",
+      upstreamResult.stderr.trim(),
+    );
+  }
+
+  const upstreamEntry = upstreamResult.stdout
+    .trimEnd()
+    .split("\n")
+    .map((line) => line.split("\0"))
+    .find(([ref]) => ref === localRef);
+  const remote = upstreamEntry?.[1] ?? "";
+  const remoteRef = upstreamEntry?.[2] ?? "";
+  const remoteBranchPrefix = "refs/heads/";
+  if (!remote || remote === "." || !remoteRef.startsWith(remoteBranchPrefix)) {
+    return { outcome: "current-branch" };
+  }
+
+  const upstreamBranch = remoteRef.slice(remoteBranchPrefix.length);
+  if (!upstreamBranch || upstreamBranch === args.localBranch) {
+    return { outcome: "current-branch" };
+  }
+
+  let remoteUrlResult: GitCommandResult;
+  try {
+    remoteUrlResult = await runGit(["remote", "get-url", remote], {
+      cwd: args.cwd,
+      allowFailure: true,
+      timeoutMs: GIT_UPSTREAM_LOOKUP_TIMEOUT_MS,
+    });
+  } catch (error) {
+    return gitUpstreamLookupUnavailable(
+      `Could not resolve URL for Git remote ${remote}`,
+      error instanceof Error ? error.message : "",
+    );
+  }
+  const remoteUrl = remoteUrlResult.stdout.trim();
+  if (remoteUrlResult.exitCode !== 0 || !remoteUrl) {
+    return gitUpstreamLookupUnavailable(
+      `Could not resolve URL for Git remote ${remote}`,
+      remoteUrlResult.stderr.trim(),
+    );
+  }
+
+  const repoViewArgs = [
+    "repo",
+    "view",
+    remoteUrl,
+    "--json",
+    GH_REPO_VIEW_JSON_FIELDS,
+  ];
+  let repoViewStdout: string;
+  try {
+    ({ stdout: repoViewStdout } = await execFileAsync("gh", repoViewArgs, {
+      cwd: args.cwd,
+      encoding: "utf8",
+      env: sanitizeInheritedChildProcessEnv({ env: process.env }),
+      timeout: GH_PR_VIEW_TIMEOUT_MS,
+      maxBuffer: GH_PR_VIEW_MAX_BUFFER_BYTES,
+    }));
+  } catch (error) {
+    return ghCommandUnavailable(repoViewArgs, error);
+  }
+
+  let nameWithOwner: string | null = null;
+  try {
+    const repoView = asObject(JSON.parse(repoViewStdout));
+    nameWithOwner = repoView ? getString(repoView, "nameWithOwner") : null;
+  } catch {
+    // Handled by the unavailable result below.
+  }
+  const repositoryParts = nameWithOwner?.split("/") ?? [];
+  if (
+    repositoryParts.length !== 2 ||
+    !repositoryParts[0] ||
+    !repositoryParts[1]
+  ) {
+    return {
+      outcome: "unavailable",
+      message: "gh repo view returned unparseable output",
+    };
+  }
+
+  return {
+    outcome: "upstream-branch",
+    selector: `${repositoryParts[0]}:${upstreamBranch}`,
   };
 }
 
 /**
  * Detect the open/most-relevant GitHub pull request for the branch checked out
- * in `cwd` by shelling out to the host `gh` CLI. The command deliberately has
- * no positional branch target: `gh` can then follow the branch's configured
- * upstream remote, which is required when the PR head belongs to a fork.
+ * in `cwd` by shelling out to the host `gh` CLI. Bare `gh pr view` correctly
+ * resolves the configured upstream owner, but combines it with the local branch
+ * name. When Git tracks a differently named upstream branch, resolve the
+ * upstream remote owner and pass the fully qualified `owner:branch` selector.
  *
  * Never throws: a branch with no PR is `outcome: "none"`, while every lookup
  * failure (`gh` not installed, not authenticated, no GitHub remote, a timeout,
@@ -414,19 +556,26 @@ function classifyPullRequestViewError(
 export async function getPullRequestForCurrentBranch(
   args: GetPullRequestForCurrentBranchArgs,
 ): Promise<GitHostPullRequestLookup> {
+  const target = await getPullRequestTarget(args);
+  if (target.outcome === "unavailable") {
+    return target;
+  }
+  const ghArgs = [
+    "pr",
+    "view",
+    ...(target.outcome === "upstream-branch" ? [target.selector] : []),
+    "--json",
+    GH_PR_VIEW_JSON_FIELDS,
+  ];
   let stdout: string;
   try {
-    ({ stdout } = await execFileAsync(
-      "gh",
-      ["pr", "view", "--json", GH_PR_VIEW_JSON_FIELDS],
-      {
-        cwd: args.cwd,
-        encoding: "utf8",
-        env: sanitizeInheritedChildProcessEnv({ env: process.env }),
-        timeout: GH_PR_VIEW_TIMEOUT_MS,
-        maxBuffer: GH_PR_VIEW_MAX_BUFFER_BYTES,
-      },
-    ));
+    ({ stdout } = await execFileAsync("gh", ghArgs, {
+      cwd: args.cwd,
+      encoding: "utf8",
+      env: sanitizeInheritedChildProcessEnv({ env: process.env }),
+      timeout: GH_PR_VIEW_TIMEOUT_MS,
+      maxBuffer: GH_PR_VIEW_MAX_BUFFER_BYTES,
+    }));
   } catch (error) {
     return classifyPullRequestViewError(error);
   }

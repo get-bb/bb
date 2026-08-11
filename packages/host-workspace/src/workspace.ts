@@ -704,7 +704,10 @@ export class Workspace {
     if (!branch) {
       return { outcome: "none" };
     }
-    return getPullRequestForCurrentBranch({ cwd: this.path });
+    return getPullRequestForCurrentBranch({
+      cwd: this.path,
+      localBranch: branch,
+    });
   }
 
   async runPullRequestAction(
