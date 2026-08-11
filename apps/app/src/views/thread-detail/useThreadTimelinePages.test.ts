@@ -49,7 +49,7 @@ function userRow(args: TimelineTestRowArgs): TimelineUserConversationRow {
     text: args.id,
     mentions: [],
     attachments: null,
-    turnRequest: { kind: "message", status: "accepted" },
+    turnRequest: { isGrouped: false, kind: "message", status: "accepted" },
   };
 }
 

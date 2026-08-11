@@ -980,6 +980,7 @@ function ConversationRow({
     const canEditMessage =
       onEditMessage !== undefined &&
       row.initiator === "user" &&
+      !row.turnRequest.isGrouped &&
       row.turnRequest.kind === "message" &&
       row.turnRequest.status === "accepted" &&
       (row.attachments?.imageUrls.length ?? 0) === 0;

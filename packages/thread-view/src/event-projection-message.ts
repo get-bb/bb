@@ -78,6 +78,7 @@ export type EventProjectionTurnRequestStatus =
   (typeof eventProjectionTurnRequestStatusValues)[number];
 
 export interface EventProjectionTurnRequest {
+  isGrouped: boolean;
   kind: EventProjectionTurnRequestKind;
   status: EventProjectionTurnRequestStatus;
 }

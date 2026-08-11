@@ -176,6 +176,7 @@ export interface PrepareThreadRewindArgs {
   acpLaunchSpec?: HostDaemonAcpLaunchSpec;
   environmentId: string;
   threadId: string;
+  leaseId: string;
   operationId: string;
   projectId: string;
   providerId: string;
@@ -193,6 +194,7 @@ export interface PrepareThreadRewindResult {
 }
 
 export interface DiscardThreadRewindArgs {
+  leaseId: string;
   operationId: string;
   threadId: string;
 }

@@ -92,6 +92,7 @@ export const timelineConversationTurnRequestStatusValues = [
   "accepted",
 ] as const;
 export const timelineConversationTurnRequestSchema = z.object({
+  isGrouped: z.boolean(),
   kind: z.enum(timelineConversationTurnRequestKindValues),
   status: z.enum(timelineConversationTurnRequestStatusValues),
 });

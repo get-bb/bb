@@ -69,6 +69,7 @@ const defaultModelList = {
 // Test-only mode used by runtime command-contract coverage.
 const simulateArchivedSession = process.argv.includes("--archived-session");
 const failUnarchive = process.argv.includes("--unarchive-fails");
+let failNextDiscard = process.argv.includes("--discard-fails-once");
 // Exit right after reporting the archived error, so recovery has to work
 // against a replacement process.
 const exitAfterArchivedError = process.argv.includes("--exit-after-archived");
@@ -644,6 +645,15 @@ function handleMessage(message: JsonRecord): void {
   }
 
   if (method === "thread/discard") {
+    if (failNextDiscard) {
+      failNextDiscard = false;
+      send({
+        jsonrpc: "2.0",
+        id: getJsonRpcId(message.id) ?? 0,
+        error: { code: -32000, message: "discard is temporarily unavailable" },
+      });
+      return;
+    }
     send({
       jsonrpc: "2.0",
       id: getJsonRpcId(message.id) ?? 0,

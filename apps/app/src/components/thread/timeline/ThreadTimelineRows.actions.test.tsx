@@ -433,7 +433,34 @@ describe("ThreadTimelineRows actions", () => {
           conversationRow({
             role: "user",
             text: "Change direction.",
-            turnRequest: { kind: "steer", status: "accepted" },
+            turnRequest: {
+              isGrouped: false,
+              kind: "steer",
+              status: "accepted",
+            },
+          }),
+        ]}
+        onEditMessage={vi.fn()}
+        threadRuntimeDisplayStatus="idle"
+        workspaceRootPath={undefined}
+      />,
+    );
+
+    expect(markup).not.toContain('aria-label="Edit message"');
+  });
+
+  it("does not offer edit for one bubble in a grouped request", () => {
+    const markup = toMarkup(
+      <ThreadTimelineRows
+        timelineRows={[
+          conversationRow({
+            role: "user",
+            text: "One message in a group.",
+            turnRequest: {
+              isGrouped: true,
+              kind: "message",
+              status: "accepted",
+            },
           }),
         ]}
         onEditMessage={vi.fn()}

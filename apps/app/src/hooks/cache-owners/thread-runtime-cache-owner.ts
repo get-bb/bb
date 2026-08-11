@@ -618,6 +618,7 @@ function buildOptimisticUserMessageRow({
     systemMessageKind: "unlabeled",
     systemMessageSubject: null,
     turnRequest: {
+      isGrouped: false,
       kind: optimisticTurnRequestKind({ mode, threadStatus }),
       status: "pending",
     },

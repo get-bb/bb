@@ -1,4 +1,5 @@
 import {
+  claimQueuedThreadMessage,
   createPromptHistoryEntry,
   getThread,
   listEvents,
@@ -520,6 +521,12 @@ describe("editThreadMessage", () => {
         providerThreadId: "provider-staged-overlap",
       });
 
+      const losingLeaseDiscard = await waitForQueuedCommand(
+        harness,
+        (queued) => queued.command.type === "thread.rewind.discard",
+      );
+      await reportQueuedCommandSuccess(harness, losingLeaseDiscard, {});
+
       await editsResult;
       await waitForQueuedCommand(
         harness,
@@ -640,6 +647,31 @@ describe("editThreadMessage", () => {
     });
   });
 
+  it("finds an eligible message beyond one bounded candidate page", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedEditableThread(harness);
+      for (let index = 0; index < 26; index += 1) {
+        const requestSequence = 12 + index * 5;
+        seedCompletedTurn(harness, {
+          inputGroups: [
+            [{ type: "text", text: `Grouped ${index}a`, mentions: [] }],
+            [{ type: "text", text: `Grouped ${index}b`, mentions: [] }],
+          ],
+          providerCheckpointId: `checkpoint-grouped-${index}`,
+          providerThreadId: "provider-original",
+          requestSequence,
+          text: `Grouped request ${index}`,
+          threadId: thread.id,
+          turnId: `turn-grouped-${index}`,
+        });
+      }
+
+      expect(getLatestThreadMessageEdit(harness.deps, thread)).toMatchObject({
+        expectedRequestSequence: 7,
+      });
+    });
+  });
+
   it("falls back past an unsuccessful turn and rejects it explicitly", async () => {
     await withTestHarness(async (harness) => {
       const { environment, thread } = seedEditableThread(harness);
@@ -670,7 +702,7 @@ describe("editThreadMessage", () => {
     });
   });
 
-  it("rechecks queued messages after rewind preparation", async () => {
+  it("rechecks claimed queued messages after rewind preparation", async () => {
     await withTestHarness(async (harness) => {
       const { environment, thread } = seedEditableThread(harness);
       const editPromise = editThreadMessage(harness.deps, {
@@ -686,20 +718,81 @@ describe("editThreadMessage", () => {
         harness,
         (queued) => queued.command.type === "thread.rewind.prepare",
       );
-      seedQueuedMessage(harness.deps, {
+      const queuedMessage = seedQueuedMessage(harness.deps, {
         content: [
           { type: "text", text: "Queued while preparing", mentions: [] },
         ],
         threadId: thread.id,
       });
+      expect(
+        claimQueuedThreadMessage(
+          harness.db,
+          harness.deps.hub,
+          queuedMessage.id,
+        ),
+      ).not.toBeNull();
       const rejectedEdit = expect(editPromise).rejects.toThrow(
         "Send or remove queued messages before editing a message",
       );
       await reportQueuedCommandSuccess(harness, rewind, {
         providerThreadId: "provider-staged-queue-race",
       });
+      const discard = await waitForQueuedCommand(
+        harness,
+        (queued) => queued.command.type === "thread.rewind.discard",
+      );
+      expect(discard.command).toMatchObject({
+        leaseId:
+          rewind.command.type === "thread.rewind.prepare"
+            ? rewind.command.leaseId
+            : undefined,
+      });
+      await reportQueuedCommandSuccess(harness, discard, {});
       await rejectedEdit;
       expect(listEvents(harness.db, { threadId: thread.id })).toHaveLength(11);
+    });
+  });
+
+  it("discards the staged rewind when the thread changes before commit", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedEditableThread(harness);
+      const editPromise = editThreadMessage(harness.deps, {
+        environment,
+        thread,
+        payload: {
+          operationId: "edit-op-high-water-race",
+          expectedRequestSequence: 7,
+          input: [{ type: "text", text: "Replacement", mentions: [] }],
+        },
+      });
+      const rewind = await waitForQueuedCommand(
+        harness,
+        (queued) => queued.command.type === "thread.rewind.prepare",
+      );
+      seedStoredEvent(harness.deps, {
+        data: { operation: "concurrent-change" },
+        sequence: 12,
+        scope: threadScope(),
+        threadId: thread.id,
+        type: "system/operation",
+      });
+      const rejectedEdit = expect(editPromise).rejects.toThrow(
+        "The thread changed while the edit was being prepared",
+      );
+      await reportQueuedCommandSuccess(harness, rewind, {
+        providerThreadId: "provider-staged-high-water-race",
+      });
+      const discard = await waitForQueuedCommand(
+        harness,
+        (queued) => queued.command.type === "thread.rewind.discard",
+      );
+      await reportQueuedCommandSuccess(harness, discard, {});
+      await rejectedEdit;
+      expect(
+        listEvents(harness.db, { threadId: thread.id }).map(
+          (event) => event.sequence,
+        ),
+      ).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
     });
   });
 

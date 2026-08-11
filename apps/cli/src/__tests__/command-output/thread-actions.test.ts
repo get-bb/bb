@@ -131,7 +131,7 @@ describe("bb thread action command output", () => {
       },
     });
     expect(collectLogLines(vi.mocked(console.log))).toContain(
-      "Thread thread-edit-1 message replaced; workspace changes were kept",
+      "Thread thread-edit-1 message at request sequence 41 replaced; workspace changes were kept",
     );
   });
 
@@ -172,6 +172,7 @@ describe("bb thread action command output", () => {
     ).toMatchObject({
       threadId: "thread-edit-self",
       ok: true,
+      replacedRequestSequence: 41,
       requestSequence: 43,
     });
   });

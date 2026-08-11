@@ -446,7 +446,11 @@ export function conversationRow({
             : null,
       systemMessageKind,
       systemMessageSubject,
-      turnRequest: turnRequest ?? { kind: "message", status: "accepted" },
+      turnRequest: turnRequest ?? {
+        isGrouped: false,
+        kind: "message",
+        status: "accepted",
+      },
     };
   }
   return {

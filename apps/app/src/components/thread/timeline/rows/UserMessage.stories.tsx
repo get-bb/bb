@@ -49,11 +49,20 @@ function resolveThreadLink(link: TimelineTitleLink): string | null {
 }
 
 const acceptedMessage = {
+  isGrouped: false,
   kind: "message" as const,
   status: "accepted" as const,
 };
-const pendingSteer = { kind: "steer" as const, status: "pending" as const };
-const acceptedSteer = { kind: "steer" as const, status: "accepted" as const };
+const pendingSteer = {
+  isGrouped: false,
+  kind: "steer" as const,
+  status: "pending" as const,
+};
+const acceptedSteer = {
+  isGrouped: false,
+  kind: "steer" as const,
+  status: "accepted" as const,
+};
 
 interface StoryMentionArgs {
   resource: PromptMentionResource;

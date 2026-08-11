@@ -31,6 +31,7 @@ function resolveThreadLink(link: TimelineTitleLink): string | null {
 }
 
 const acceptedMessage = {
+  isGrouped: false,
   kind: "message" as const,
   status: "accepted" as const,
 };

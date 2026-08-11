@@ -53,3 +53,17 @@ export function canStartSentMessageEdit({
     activeBackgroundCommandCount === 0
   );
 }
+
+export function shouldDiscardSentMessageEdit(args: {
+  currentThreadId: string | null;
+  editThreadId: string | null;
+  isTimelineLoading: boolean;
+  targetStillPresent: boolean;
+}): boolean {
+  return (
+    args.editThreadId !== null &&
+    args.editThreadId === args.currentThreadId &&
+    !args.isTimelineLoading &&
+    !args.targetStillPresent
+  );
+}

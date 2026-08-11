@@ -406,9 +406,17 @@ export function registerActionsCommands(
             expectedRequestSequence,
             input: buildPromptInputs({ message: opts.message }),
           });
-          if (outputJson(opts, { threadId, ...result })) return;
+          if (
+            outputJson(opts, {
+              threadId,
+              replacedRequestSequence: expectedRequestSequence,
+              ...result,
+            })
+          ) {
+            return;
+          }
           console.log(
-            `Thread ${threadId} message replaced; workspace changes were kept`,
+            `Thread ${threadId} message at request sequence ${expectedRequestSequence} replaced; workspace changes were kept`,
           );
         },
       ),

@@ -569,6 +569,21 @@ export function listQueuedThreadMessages(
   return listUnclaimedQueuedThreadMessages(db, threadId);
 }
 
+/** Includes messages currently claimed by the queue drain worker. */
+export function hasQueuedThreadMessages(
+  db: DbQueryConnection,
+  threadId: string,
+): boolean {
+  return (
+    db
+      .select({ id: queuedThreadMessages.id })
+      .from(queuedThreadMessages)
+      .where(eq(queuedThreadMessages.threadId, threadId))
+      .limit(1)
+      .get() !== undefined
+  );
+}
+
 export function listIdleThreadsWithQueuedMessages(
   db: DbConnection,
 ): QueuedMessageThreadRow[] {

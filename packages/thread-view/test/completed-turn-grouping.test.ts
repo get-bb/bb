@@ -53,6 +53,7 @@ function userMessage(args: UserMessageArgs): EventProjectionUserMessage {
     systemMessageKind: "unlabeled",
     systemMessageSubject: null,
     turnRequest: args.turnRequest ?? {
+      isGrouped: false,
       kind: "message",
       status: "accepted",
     },
@@ -162,11 +163,7 @@ describe("groupCompletedTurnMessages", () => {
       seq: 3,
     });
     const turn = completedTurn(
-      [
-        assistantBefore,
-        userMessage({ id: "user", seq: 2 }),
-        assistantAfter,
-      ],
+      [assistantBefore, userMessage({ id: "user", seq: 2 }), assistantAfter],
       assistantAfter,
     );
     const groups = groupCompletedTurnMessages(turn);
@@ -199,13 +196,13 @@ describe("groupCompletedTurnMessages", () => {
           id: "agent-steer",
           initiator: "agent",
           seq: 2,
-          turnRequest: { kind: "steer", status: "accepted" },
+          turnRequest: { isGrouped: false, kind: "steer", status: "accepted" },
         }),
         userMessage({
           id: "system-steer",
           initiator: "system",
           seq: 3,
-          turnRequest: { kind: "steer", status: "accepted" },
+          turnRequest: { isGrouped: false, kind: "steer", status: "accepted" },
         }),
         assistantMessage({ id: "assistant-after", seq: 4 }),
       ],

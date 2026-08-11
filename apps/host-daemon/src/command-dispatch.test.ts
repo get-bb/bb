@@ -961,6 +961,7 @@ describe("dispatchCommand", () => {
       },
       projectId: "proj_1",
       providerId: "codex",
+      leaseId: "lease-1",
       operationId: "edit-op-1",
       sourceProviderThreadId: "provider-source-1",
       retainThroughProviderCheckpoint: "turn-before-edit",
@@ -1048,6 +1049,7 @@ describe("dispatchCommand", () => {
           type: "thread.rewind.discard",
           environmentId: "env-1",
           threadId: "thread-1",
+          leaseId: "lease-1",
           operationId: "edit-op-1",
         },
         {
@@ -1065,6 +1067,7 @@ describe("dispatchCommand", () => {
       ),
     ).resolves.toEqual({});
     expect(runtime.discardThreadRewind).toHaveBeenCalledWith({
+      leaseId: "lease-1",
       operationId: "edit-op-1",
       threadId: "thread-1",
     });

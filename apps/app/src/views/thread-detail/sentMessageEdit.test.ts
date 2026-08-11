@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   canStartSentMessageEdit,
+  shouldDiscardSentMessageEdit,
   type SentMessageEditAvailability,
 } from "./sentMessageEdit";
 
@@ -41,5 +42,40 @@ describe("canStartSentMessageEdit", () => {
     expect(canStartSentMessageEdit({ ...ELIGIBLE_STATE, ...override })).toBe(
       false,
     );
+  });
+});
+
+describe("shouldDiscardSentMessageEdit", () => {
+  it("preserves a parked draft while another thread is open", () => {
+    expect(
+      shouldDiscardSentMessageEdit({
+        currentThreadId: "thread-2",
+        editThreadId: "thread-1",
+        isTimelineLoading: false,
+        targetStillPresent: false,
+      }),
+    ).toBe(false);
+  });
+
+  it("waits for the edited thread timeline before deciding the row is gone", () => {
+    expect(
+      shouldDiscardSentMessageEdit({
+        currentThreadId: "thread-1",
+        editThreadId: "thread-1",
+        isTimelineLoading: true,
+        targetStillPresent: false,
+      }),
+    ).toBe(false);
+  });
+
+  it("discards only after the target is absent from the loaded edited thread", () => {
+    expect(
+      shouldDiscardSentMessageEdit({
+        currentThreadId: "thread-1",
+        editThreadId: "thread-1",
+        isTimelineLoading: false,
+        targetStillPresent: false,
+      }),
+    ).toBe(true);
   });
 });

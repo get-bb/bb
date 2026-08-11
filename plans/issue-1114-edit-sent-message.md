@@ -87,11 +87,13 @@ Remote image inputs that cannot be faithfully restored remain ineligible.
 Agent-only context is excluded from the editor and is resolved again through
 the normal submit pipeline.
 
-### Cancel
+### Cancel And Navigation
 
-Cancel or navigation clears only the client edit session. No provider or server
-state changes. If the draft differs from the original, cancellation confirms
-before discarding it.
+Cancel clears only the client edit session. No provider or server state changes.
+If the draft differs from the original, cancellation confirms before discarding
+it. Navigating to another thread parks the edit session and restores it when the
+user returns; temporary eligibility blockers disable submission without losing
+the draft.
 
 ### Submit
 
@@ -150,6 +152,7 @@ The server sends only opaque provider checkpoints across the daemon boundary:
   type: "thread.rewind.prepare";
   sourceProviderThreadId: string;
   retainThroughProviderCheckpoint: string;
+  leaseId: string;
   operationId: string;
 }
 ```
@@ -159,7 +162,8 @@ thread id. After the replacement fork settles, bb closes/removes the staged
 Claude Code or Pi session and archives the staged Codex fork; a daemon-side TTL
 cleans up abandoned preparations. The source provider session remains untouched
 until the database commit. The prepare/discard wire contract requires
-`HOST_DAEMON_PROTOCOL_VERSION = 97`.
+`HOST_DAEMON_PROTOCOL_VERSION = 98` (the staged rewind commands now carry an
+ownership lease so overlapping edits cannot discard each other's fork).
 
 ## API, SDK, And CLI
 

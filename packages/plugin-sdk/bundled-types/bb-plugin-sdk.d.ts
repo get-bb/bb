@@ -2538,8 +2538,8 @@ declare const skillListResponseSchema: z$1.ZodObject<{
         name: z$1.ZodString;
         description: z$1.ZodNullable<z$1.ZodString>;
         provider: z$1.ZodNullable<z$1.ZodEnum<{
-            "claude-code": "claude-code";
             codex: "codex";
+            "claude-code": "claude-code";
             "acp-cursor": "acp-cursor";
         }>>;
         scope: z$1.ZodEnum<{
@@ -3390,6 +3390,7 @@ declare const hostDaemonCommandRegistry: {
         environmentId: z$1.ZodString;
         threadId: z$1.ZodString;
         type: z$1.ZodLiteral<"thread.rewind.discard">;
+        leaseId: z$1.ZodString;
         operationId: z$1.ZodString;
     }, z$1.core.$strict>, z$1.ZodObject<{}, z$1.core.$strip>, "settled", false>;
     "thread.rewind.prepare": HostDaemonCommandDescriptor<"thread.rewind.prepare", z$1.ZodObject<{
@@ -3583,10 +3584,11 @@ declare const hostDaemonCommandRegistry: {
         }, z$1.core.$strict>], "kind">>;
         disallowedTools: z$1.ZodOptional<z$1.ZodArray<z$1.ZodString>>;
         instructionMode: z$1.ZodEnum<{
-            replace: "replace";
             append: "append";
+            replace: "replace";
         }>;
         type: z$1.ZodLiteral<"thread.rewind.prepare">;
+        leaseId: z$1.ZodString;
         operationId: z$1.ZodString;
         sourceProviderThreadId: z$1.ZodString;
         retainThroughProviderCheckpoint: z$1.ZodString;
@@ -7450,6 +7452,7 @@ declare const timelineConversationRowSchema: z$1.ZodDiscriminatedUnion<[z$1.ZodO
         count: z$1.ZodNumber;
     }, z$1.core.$strip>], "kind">>;
     turnRequest: z$1.ZodObject<{
+        isGrouped: z$1.ZodBoolean;
         kind: z$1.ZodEnum<{
             message: "message";
             steer: "steer";
@@ -10047,8 +10050,8 @@ declare const threadTimelineResponseSchema: z$1.ZodObject<{
     activePromptMode: z$1.ZodNullable<z$1.ZodObject<{
         mode: z$1.ZodLiteral<"plan">;
         providerId: z$1.ZodEnum<{
-            "claude-code": "claude-code";
             codex: "codex";
+            "claude-code": "claude-code";
         }>;
         prompt: z$1.ZodString;
     }, z$1.core.$strict>>;

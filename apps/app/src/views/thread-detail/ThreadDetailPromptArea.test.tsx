@@ -652,6 +652,7 @@ function buildPromptAreaElement({
 }: RenderPromptAreaOptions = {}) {
   return (
     <ThreadDetailPromptArea
+      activeBackgroundAgentCount={0}
       activeBackgroundCommands={[]}
       activePromptMode={activePromptMode}
       activeWorkflows={activeWorkflows}
@@ -663,6 +664,7 @@ function buildPromptAreaElement({
       goal={goal}
       modelFallback={modelFallback}
       isEnvironmentActionPending={false}
+      isSentMessageEditExperimentEnabled
       onChangedFileClick={vi.fn()}
       openThreadDiffPanel={vi.fn()}
       parentThreadSection={null}
@@ -858,7 +860,7 @@ describe("ThreadDetailPromptArea", () => {
 
     const inlineEditor = within(hostElement);
     expect(inlineEditor.getByTestId("submit-mode").textContent).toBe(
-      "blocked:unavailable",
+      "blocked:editing-requires-idle",
     );
     fireEvent.click(
       inlineEditor.getByRole("button", { name: "Submit composer" }),

@@ -41,6 +41,7 @@ describe("prepareThreadRewind", () => {
     const request = {
       environmentId: "env-1",
       threadId: "thread-1",
+      leaseId: "lease-1",
       operationId: "edit-op-1",
       projectId: "project-1",
       providerId: "codex",
@@ -53,7 +54,7 @@ describe("prepareThreadRewind", () => {
     try {
       const results = await Promise.all([
         runtime.prepareThreadRewind(request),
-        runtime.prepareThreadRewind(request),
+        runtime.prepareThreadRewind({ ...request, leaseId: "lease-2" }),
       ]);
 
       expect(results[0]).toEqual(results[1]);
@@ -70,10 +71,21 @@ describe("prepareThreadRewind", () => {
       await expect(
         runtime.prepareThreadRewind({
           ...request,
+          leaseId: "lease-3",
           retainThroughProviderCheckpoint: "different-turn",
         }),
       ).rejects.toThrow("reused with different input");
       await runtime.discardThreadRewind({
+        leaseId: "lease-1",
+        operationId: "edit-op-1",
+        threadId: "thread-1",
+      });
+      expect(
+        commands.filter((command) => command.type === "thread/discard"),
+      ).toEqual([]);
+      expect(runtime.hasThread("thread-1:rewind:edit-op-1")).toBe(true);
+      await runtime.discardThreadRewind({
+        leaseId: "lease-2",
         operationId: "edit-op-1",
         threadId: "thread-1",
       });
@@ -86,6 +98,72 @@ describe("prepareThreadRewind", () => {
         }),
       ]);
       expect(runtime.hasThread("thread-1:rewind:edit-op-1")).toBe(false);
+    } finally {
+      await runtime.shutdown();
+    }
+  });
+
+  it("retains a staged rewind when provider cleanup fails so cleanup can retry", async () => {
+    const workspacePath = mkdtempSync(join(tmpdir(), "bb-runtime-rewind-"));
+    temporaryDirectories.push(workspacePath);
+    const stderr: string[] = [];
+    const runtime = createAgentRuntimeWithAdapters({
+      workspacePath,
+      onEvent: () => undefined,
+      onStderr: (line) => stderr.push(line),
+      onToolCall: async () => ({
+        contentItems: [{ type: "inputText", text: "ok" }],
+        success: true,
+      }),
+      adapterFactory: () => {
+        const adapter = createRecordingAdapter({
+          recordedCommands: [],
+          scriptPath: fakeProviderScriptPath,
+        });
+        return {
+          ...adapter,
+          process: {
+            ...adapter.process,
+            args: [...adapter.process.args, "--discard-fails-once"],
+          },
+        };
+      },
+    });
+    const request = {
+      environmentId: "env-1",
+      threadId: "thread-1",
+      leaseId: "lease-1",
+      operationId: "edit-op-retry-cleanup",
+      projectId: "project-1",
+      providerId: "codex",
+      sourceProviderThreadId: "provider-source-1",
+      retainThroughProviderCheckpoint: "turn-before-edit",
+      options: fullRuntimeOptions,
+      instructionMode: "append" as const,
+    };
+
+    try {
+      await runtime.prepareThreadRewind(request);
+      await runtime.discardThreadRewind({
+        leaseId: request.leaseId,
+        operationId: request.operationId,
+        threadId: request.threadId,
+      });
+      expect(runtime.hasThread("thread-1:rewind:edit-op-retry-cleanup")).toBe(
+        true,
+      );
+      expect(stderr).toEqual([
+        expect.stringContaining("discard is temporarily unavailable"),
+      ]);
+
+      await runtime.discardThreadRewind({
+        leaseId: request.leaseId,
+        operationId: request.operationId,
+        threadId: request.threadId,
+      });
+      expect(runtime.hasThread("thread-1:rewind:edit-op-retry-cleanup")).toBe(
+        false,
+      );
     } finally {
       await runtime.shutdown();
     }

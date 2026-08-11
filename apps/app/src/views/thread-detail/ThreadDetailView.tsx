@@ -122,7 +122,10 @@ import {
   ThreadDetailPromptArea,
   type ThreadDetailSentMessageEdit,
 } from "./ThreadDetailPromptArea";
-import { canStartSentMessageEdit } from "./sentMessageEdit";
+import {
+  canStartSentMessageEdit,
+  shouldDiscardSentMessageEdit,
+} from "./sentMessageEdit";
 import {
   type ContextBannerMergeBaseConfig,
   isThreadDisplayStatusBannerActive,
@@ -971,7 +974,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       hasPendingInteraction,
       isExperimentEnabled:
         systemConfigQuery.data?.experiments.editMessages ?? false,
-      isEditSessionActive: activeSentMessageEditSession !== null,
+      isEditSessionActive: sentMessageEditSession !== null,
       isMutationPending:
         sendMessage.isPending ||
         createQueuedMessage.isPending ||
@@ -1001,52 +1004,26 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   const sentMessageEditThreadId = sentMessageEditSession?.threadId ?? null;
   const sentMessageEditTargetMessageId =
     sentMessageEditSession?.target.messageId ?? null;
+  const currentThreadId = thread?.id ?? null;
+  const sentMessageEditTargetStillPresent =
+    sentMessageEditThreadId === currentThreadId &&
+    sentMessageEditTargetMessageId !== null
+      ? hasTimelineRowId(timelineRows, sentMessageEditTargetMessageId)
+      : true;
+  const shouldDiscardMissingSentMessageEdit = shouldDiscardSentMessageEdit({
+    currentThreadId,
+    editThreadId: sentMessageEditThreadId,
+    isTimelineLoading: timelineLoading,
+    targetStillPresent: sentMessageEditTargetStillPresent,
+  });
   useEffect(() => {
-    if (
-      sentMessageEditThreadId === null ||
-      sentMessageEditTargetMessageId === null
-    ) {
+    if (!shouldDiscardMissingSentMessageEdit) {
       return;
     }
-    const sessionStillEligible =
-      thread !== undefined &&
-      thread.id === sentMessageEditThreadId &&
-      canStartSentMessageEdit({
-        activeBackgroundAgentCount: thread.activeBackgroundAgentCount,
-        activeBackgroundCommandCount: activeBackgroundCommands.length,
-        activeWorkflowCount: activeWorkflows.length,
-        archivedAt: thread.archivedAt,
-        deletedAt: thread.deletedAt,
-        hasPendingInteraction,
-        isExperimentEnabled:
-          systemConfigQuery.data?.experiments.editMessages ?? false,
-        isEditSessionActive: false,
-        isMutationPending: false,
-        isTimelinePending: timelineLoading && timelineRows.length === 0,
-        queuedMessageCount: queuedMessagesForEditEligibility.length,
-        providerId: thread.providerId,
-        runtimeDisplayStatus: thread.runtime.displayStatus,
-      });
-    const targetStillPresent = hasTimelineRowId(
-      timelineRows,
-      sentMessageEditTargetMessageId,
-    );
-    if (!sessionStillEligible || (!timelineLoading && !targetStillPresent)) {
-      setSentMessageEditHostElement(null);
-      setSentMessageEditSession(null);
-    }
-  }, [
-    activeBackgroundCommands.length,
-    activeWorkflows.length,
-    hasPendingInteraction,
-    queuedMessagesForEditEligibility.length,
-    sentMessageEditTargetMessageId,
-    sentMessageEditThreadId,
-    systemConfigQuery.data?.experiments.editMessages,
-    thread,
-    timelineLoading,
-    timelineRows,
-  ]);
+    setSentMessageEditHostElement(null);
+    setSentMessageEditSession(null);
+    appToast.warning("The message being edited is no longer available.");
+  }, [shouldDiscardMissingSentMessageEdit]);
   const handleEditSentMessage = useCallback<ThreadTimelineEditMessageHandler>(
     (target) => {
       if (!canEditSentMessages) {
@@ -2627,6 +2604,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   );
   const composerFooter = (
     <ThreadDetailPromptArea
+      activeBackgroundAgentCount={thread.activeBackgroundAgentCount}
       canUseGitUi={canUseGitUi}
       contextWindowUsage={contextWindowUsage}
       environmentCheckout={threadCheckoutDisplay}
@@ -2676,6 +2654,9 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       composerFocusRequestNonce={composerFocusRequestNonce}
       sendMessage={sendMessage}
       sentMessageEdit={sentMessageEdit}
+      isSentMessageEditExperimentEnabled={
+        systemConfigQuery.data?.experiments.editMessages ?? false
+      }
       steerActiveThreadOnEnter={
         systemConfigQuery.data?.generalSettings.steerActiveThreadOnEnter ??
         defaultAppSettings.steerActiveThreadOnEnter

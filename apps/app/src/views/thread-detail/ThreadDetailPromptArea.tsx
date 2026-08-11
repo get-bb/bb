@@ -136,6 +136,7 @@ export const THREAD_DETAIL_COMPOSER_TEXTAREA_ID =
   "thread-detail-follow-up-composer";
 
 interface ThreadDetailPromptAreaProps {
+  activeBackgroundAgentCount: number;
   canUseGitUi: boolean;
   contextWindowUsage?: ThreadTimelineResponse["contextWindowUsage"];
   environmentCheckout?: WorkspaceCheckoutDisplay;
@@ -208,6 +209,7 @@ interface ThreadDetailPromptAreaProps {
   sendMessage: SendMessageMutationLike;
   /** Present only while a sent-message editor is mounted in the timeline. */
   sentMessageEdit?: ThreadDetailSentMessageEdit;
+  isSentMessageEditExperimentEnabled: boolean;
   steerActiveThreadOnEnter: boolean;
   /**
    * Bumped by the timeline host each time a quote is appended to the shared
@@ -219,6 +221,7 @@ interface ThreadDetailPromptAreaProps {
 }
 
 export function ThreadDetailPromptArea({
+  activeBackgroundAgentCount,
   canUseGitUi,
   contextWindowUsage,
   environmentCheckout,
@@ -253,6 +256,7 @@ export function ThreadDetailPromptArea({
   pullRequest,
   sendMessage,
   sentMessageEdit,
+  isSentMessageEditExperimentEnabled,
   steerActiveThreadOnEnter,
   composerFocusRequestNonce,
   thread,
@@ -1049,9 +1053,37 @@ export function ThreadDetailPromptArea({
     !isFollowUpSubmitting &&
     !isQueueMutationPending &&
     !sentMessageEdit.isSubmitting &&
+    isSentMessageEditExperimentEnabled &&
     queuedMessages.length === 0 &&
+    activeBackgroundAgentCount === 0 &&
     activeWorkflows.length === 0 &&
     activeBackgroundCommands.length === 0;
+  const sentMessageEditSubmitMode = useMemo<FollowUpSubmitMode>(
+    () =>
+      canSubmitSentMessageEdit
+        ? { kind: "ready" }
+        : sentMessageEditInput.length === 0
+          ? { kind: "blocked", reason: "empty-message" }
+          : submitMode.kind === "blocked"
+            ? submitMode
+            : runtimeDisplayStatus !== "idle" ||
+                queuedMessages.length > 0 ||
+                activeBackgroundAgentCount > 0 ||
+                activeWorkflows.length > 0 ||
+                activeBackgroundCommands.length > 0
+              ? { kind: "blocked", reason: "editing-requires-idle" }
+              : { kind: "blocked", reason: "unavailable" },
+    [
+      activeBackgroundAgentCount,
+      activeBackgroundCommands.length,
+      activeWorkflows.length,
+      canSubmitSentMessageEdit,
+      queuedMessages.length,
+      runtimeDisplayStatus,
+      sentMessageEditInput.length,
+      submitMode,
+    ],
+  );
   const handleSentMessageEditSubmit = useCallback(() => {
     if (!sentMessageEdit || !canSubmitSentMessageEdit) {
       return;
@@ -1099,9 +1131,7 @@ export function ThreadDetailPromptArea({
             promptPlaceholder: "Edit message",
             canModifierSubmit: canSubmitSentMessageEdit,
             steerActiveThreadOnEnter: false,
-            submitMode: canSubmitSentMessageEdit
-              ? { kind: "ready" }
-              : { kind: "blocked", reason: "unavailable" },
+            submitMode: sentMessageEditSubmitMode,
             threadRuntimeDisplayStatus: runtimeDisplayStatus,
           }
         : null,
@@ -1111,6 +1141,7 @@ export function ThreadDetailPromptArea({
       handleSentMessageEditSubmit,
       runtimeDisplayStatus,
       sentMessageEdit,
+      sentMessageEditSubmitMode,
       thread.id,
     ],
   );
