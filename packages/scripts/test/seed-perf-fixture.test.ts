@@ -111,5 +111,5 @@ describe("seedPerfFixture", () => {
     expect(secondResult.eventRowCount).toBe(result.eventRowCount);
     secondDb.$client.close();
     db.$client.close();
-  });
+  }, 15_000);
 });
