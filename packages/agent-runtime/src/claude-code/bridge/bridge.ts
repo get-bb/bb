@@ -213,6 +213,15 @@ interface ThreadSession {
    * multiple newer prompts have run.
    */
   permissionEscalationByPromptId: Map<string, PermissionEscalation | null>;
+  /**
+   * Retained for the session lifetime so SDK messages from background
+   * subagents can inherit the policy of the Agent/Task call that launched
+   * them, even after that parent tool call has completed.
+   */
+  permissionEscalationBySubagentParentToolUseId: Map<
+    string,
+    PermissionEscalation | null
+  >;
   permissionEscalationByToolUseId: Map<string, PermissionEscalation | null>;
   permissionMode: ClaudePermissionMode;
   liveSettings: ClaudeLiveSessionSettings;
@@ -644,6 +653,7 @@ function createThreadSession(args: CreateThreadSessionArgs): ThreadSession {
     permissionEscalation: args.permissionEscalation,
     permissionEscalationByAgentId: new Map(),
     permissionEscalationByPromptId: new Map(),
+    permissionEscalationBySubagentParentToolUseId: new Map(),
     permissionEscalationByToolUseId: new Map(),
     permissionMode: args.permissionMode,
     liveSettings: args.liveSettings,
@@ -695,17 +705,58 @@ function resolvePermissionEscalationForWork(
     : promptPermissionEscalation;
 }
 
+function trackSdkAssistantPermissionEscalation(
+  threadSession: ThreadSession,
+  message: SDKMessage,
+): void {
+  if (message.type !== "assistant") {
+    return;
+  }
+
+  const parentToolUseId = message.parent_tool_use_id ?? undefined;
+  const parentPermissionEscalation = getTrackedPermissionEscalation(
+    threadSession.permissionEscalationBySubagentParentToolUseId,
+    parentToolUseId,
+  );
+  const permissionEscalation =
+    parentPermissionEscalation === undefined
+      ? threadSession.permissionEscalation
+      : parentPermissionEscalation;
+
+  for (const content of message.message.content) {
+    if (content.type !== "tool_use") {
+      continue;
+    }
+    threadSession.permissionEscalationByToolUseId.set(
+      content.id,
+      permissionEscalation,
+    );
+    if (CLAUDE_PROVIDER_SUBAGENT_TOOL_NAMES.has(content.name)) {
+      threadSession.permissionEscalationBySubagentParentToolUseId.set(
+        content.id,
+        permissionEscalation,
+      );
+    }
+  }
+}
+
 function buildPermissionEscalationTrackingHooks(
   threadIdRef: ThreadIdRef,
 ): NonNullable<SdkSessionOptions["hooks"]> {
-  const trackPreToolUse: HookCallback = async (input) => {
-    if (input.hook_event_name !== "PreToolUse") {
+  const trackPermissionRequest: HookCallback = async (input, toolUseId) => {
+    if (
+      input.hook_event_name !== "PermissionRequest" ||
+      toolUseId === undefined
+    ) {
       return { continue: true };
     }
     const threadSession = sessions.get(threadIdRef.current);
     if (threadSession) {
+      // Claude can omit agentID from the later canUseTool callback. Preserve
+      // the work's provenance at the permission boundary, where the hook
+      // still carries its agent/prompt metadata.
       threadSession.permissionEscalationByToolUseId.set(
-        input.tool_use_id,
+        toolUseId,
         resolvePermissionEscalationForWork(threadSession, {
           ...(input.agent_id !== undefined ? { agentId: input.agent_id } : {}),
           ...(input.prompt_id !== undefined
@@ -713,6 +764,35 @@ function buildPermissionEscalationTrackingHooks(
             : {}),
         }),
       );
+    }
+    return { continue: true };
+  };
+
+  const trackPreToolUse: HookCallback = async (input) => {
+    if (input.hook_event_name !== "PreToolUse") {
+      return { continue: true };
+    }
+    const threadSession = sessions.get(threadIdRef.current);
+    if (threadSession) {
+      const permissionEscalation = resolvePermissionEscalationForWork(
+        threadSession,
+        {
+          ...(input.agent_id !== undefined ? { agentId: input.agent_id } : {}),
+          ...(input.prompt_id !== undefined
+            ? { promptId: input.prompt_id }
+            : {}),
+        },
+      );
+      threadSession.permissionEscalationByToolUseId.set(
+        input.tool_use_id,
+        permissionEscalation,
+      );
+      if (CLAUDE_PROVIDER_SUBAGENT_TOOL_NAMES.has(input.tool_name)) {
+        threadSession.permissionEscalationBySubagentParentToolUseId.set(
+          input.tool_use_id,
+          permissionEscalation,
+        );
+      }
       if (
         !threadSession.liveSettings.providerSubagentsEnabled &&
         CLAUDE_PROVIDER_SUBAGENT_TOOL_NAMES.has(input.tool_name)
@@ -787,6 +867,7 @@ function buildPermissionEscalationTrackingHooks(
 
   return {
     PermissionDenied: [{ hooks: [clearToolUse] }],
+    PermissionRequest: [{ hooks: [trackPermissionRequest] }],
     PostToolUse: [{ hooks: [clearToolUse] }],
     PostToolUseFailure: [{ hooks: [clearToolUse] }],
     PreToolUse: [{ hooks: [trackPreToolUse] }],
@@ -808,6 +889,10 @@ function addPermissionEscalationTrackingHooks(
     PermissionDenied: [
       ...(trackingHooks.PermissionDenied ?? []),
       ...(existingHooks?.PermissionDenied ?? []),
+    ],
+    PermissionRequest: [
+      ...(trackingHooks.PermissionRequest ?? []),
+      ...(existingHooks?.PermissionRequest ?? []),
     ],
     PostToolUse: [
       ...(trackingHooks.PostToolUse ?? []),
@@ -937,6 +1022,7 @@ function createOnSdkMessage(
       threadSession.providerThreadId = providerThreadId;
       sendThreadIdentity(args.threadIdRef.current, providerThreadId);
     }
+    trackSdkAssistantPermissionEscalation(threadSession, message);
     sendSdkMessage(args.threadIdRef.current, message);
   };
 }
@@ -1438,6 +1524,11 @@ function createCanUseTool(threadIdRef: ThreadIdRef): CanUseTool {
     createForwardUserQuestionRequest(threadIdRef);
 
   return async (toolName, input, options) => {
+    // Claude can dispatch canUseTool while the preceding assistant tool-use
+    // message is queued for the SDK async iterator. Give the stream consumer
+    // one turn to record its parent-tool provenance before resolving policy.
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
     const threadSession = sessions.get(threadIdRef.current);
     if (!threadSession) {
       return {
@@ -1497,7 +1588,6 @@ function createCanUseTool(threadIdRef: ThreadIdRef): CanUseTool {
         toolUseId: options.toolUseID,
       }),
     };
-
     const suggestions = parseClaudeSuggestedPermissionUpdates(
       options.suggestions,
     );

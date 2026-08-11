@@ -80,7 +80,10 @@ import type {
   ProviderAdapterFactoryOptions,
 } from "../provider-adapter.js";
 import { noPreparedProviderCommandDispatch } from "../provider-adapter.js";
-import { classifyClaudeExecutionSettingsChange } from "../execution-options.js";
+import {
+  classifyClaudeExecutionSettingsChange,
+  normalizeClaudeExecutionOptions,
+} from "../execution-options.js";
 import {
   type JsonRpcMessage,
   type ProviderInboundRequest,
@@ -1043,7 +1046,9 @@ export function createClaudeCodeProviderAdapter(
     id: providerInfo.id,
     displayName: providerInfo.displayName,
     capabilities,
+    approvalRequestPolicy: "provider",
     classifyExecutionSettingsChange: classifyClaudeExecutionSettingsChange,
+    normalizeExecutionOptions: normalizeClaudeExecutionOptions,
     process: {
       command: opts?.bridgeNodeExecutablePath ?? "node",
       args: resolveBridgeProcessArgs({

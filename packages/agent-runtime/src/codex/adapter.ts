@@ -1793,6 +1793,7 @@ export function createCodexProviderAdapter(
     id: providerInfo.id,
     displayName: providerInfo.displayName,
     capabilities,
+    approvalRequestPolicy: "runtime",
     classifyExecutionSettingsChange: classifySessionExecutionSettingsChange,
     // Codex app-server connections are owned by the runtime process manager.
     // BB runs live Codex threads on thread-scoped app-server processes, while

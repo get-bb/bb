@@ -262,6 +262,22 @@ export interface ProviderAdapter {
   displayName: string;
   capabilities: ProviderCapabilities;
   /**
+   * Selects where approval escalation is enforced. `runtime` adapters emit
+   * every approval request and rely on the runtime's current thread policy.
+   * `provider` adapters enforce the policy before forwarding a request, so a
+   * forwarded approval is already known to require user input and must not be
+   * reclassified against mutable thread settings.
+   */
+  approvalRequestPolicy: "runtime" | "provider";
+  /**
+   * Normalizes provider-specific execution options before validation,
+   * comparison, persistence, and command construction. Providers may use this
+   * to collapse accepted no-op values onto their effective setting.
+   */
+  normalizeExecutionOptions?(
+    options: RuntimeThreadExecutionOptions,
+  ): RuntimeThreadExecutionOptions;
+  /**
    * Classifies execution-setting drift for this provider. `live` settings are
    * carried by the next turn command; `session` settings require rebuilding
    * the provider session.

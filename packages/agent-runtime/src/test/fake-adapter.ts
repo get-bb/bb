@@ -463,6 +463,7 @@ export function createFakeAdapter(
   const supportsUserQuestion = options.supportsUserQuestion ?? false;
 
   return {
+    approvalRequestPolicy: "runtime",
     buildCommandPlan,
     capabilities: {
       supportsArchive: true,

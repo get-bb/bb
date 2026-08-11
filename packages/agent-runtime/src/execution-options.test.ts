@@ -3,6 +3,7 @@ import type { RuntimeThreadExecutionOptions } from "@bb/domain";
 import {
   classifyClaudeExecutionSettingsChange,
   classifySessionExecutionSettingsChange,
+  normalizeClaudeExecutionOptions,
 } from "./execution-options.js";
 
 const baseOptions = {
@@ -46,6 +47,16 @@ describe("execution setting classification", () => {
         next: { ...baseOptions, serviceTier: "fast" },
       }),
     ).toBe("unchanged");
+  });
+
+  it("normalizes Claude's unsupported fast service tier to default", () => {
+    expect(
+      normalizeClaudeExecutionOptions({
+        ...baseOptions,
+        serviceTier: "fast",
+      }),
+    ).toEqual(baseOptions);
+    expect(normalizeClaudeExecutionOptions(baseOptions)).toBe(baseOptions);
   });
 
   it("keeps Claude construction-time settings session-scoped", () => {

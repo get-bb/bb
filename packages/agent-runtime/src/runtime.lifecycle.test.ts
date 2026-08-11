@@ -9,7 +9,10 @@ import type {
 } from "./provider-adapter.js";
 import { promptTextInput } from "./test/prompt-input.js";
 import { createAgentRuntimeWithAdapters } from "./runtime.js";
-import { classifyClaudeExecutionSettingsChange } from "./execution-options.js";
+import {
+  classifyClaudeExecutionSettingsChange,
+  normalizeClaudeExecutionOptions,
+} from "./execution-options.js";
 import { fakeProviderScriptPath } from "./test/index.js";
 import {
   createFakeAdapter,
@@ -513,6 +516,7 @@ rl.on("line", (line) => {
           ...createRecordingAdapter({ recordedCommands, scriptPath }),
           classifyExecutionSettingsChange:
             classifyClaudeExecutionSettingsChange,
+          normalizeExecutionOptions: normalizeClaudeExecutionOptions,
         }),
       });
 
@@ -530,6 +534,7 @@ rl.on("line", (line) => {
           approvalReviewer: "automatic",
           permissionEscalation: "ask",
           providerSubagentsEnabled: true,
+          serviceTier: "fast",
         },
       });
 
@@ -548,6 +553,7 @@ rl.on("line", (line) => {
           permissionEscalation: "deny",
           providerSubagentsEnabled: false,
           reasoningLevel: "high",
+          serviceTier: "fast",
           workflowsEnabled: true,
         },
       });
@@ -555,6 +561,11 @@ rl.on("line", (line) => {
       expect(
         recordedCommands.some((command) => command.type === "thread/resume"),
       ).toBe(false);
+      expect(
+        findLastRecordedCommand(recordedCommands, "thread/start"),
+      ).toMatchObject({
+        options: { serviceTier: "default" },
+      });
       expect(
         findLastRecordedCommand(recordedCommands, "turn/start"),
       ).toMatchObject({
@@ -564,6 +575,7 @@ rl.on("line", (line) => {
           permissionEscalation: "deny",
           providerSubagentsEnabled: false,
           reasoningLevel: "high",
+          serviceTier: "default",
           workflowsEnabled: true,
         },
       });

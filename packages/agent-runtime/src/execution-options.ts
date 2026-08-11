@@ -142,6 +142,15 @@ export function classifyClaudeExecutionSettingsChange(
   return sameClaudeLiveSettings(args) ? "unchanged" : "live";
 }
 
+export function normalizeClaudeExecutionOptions(
+  options: AgentRuntimeExecutionOptions,
+): AgentRuntimeExecutionOptions {
+  if (options.serviceTier !== "fast") {
+    return options;
+  }
+  return { ...options, serviceTier: "default" };
+}
+
 export function toProviderExecutionContext(
   args: ToProviderExecutionContextArgs,
 ): ProviderExecutionContext {

@@ -55,8 +55,7 @@ export interface HandleRuntimeProviderRequestArgs extends RuntimeProviderRequest
   ) => string | null;
 }
 
-interface ResolveRuntimeProviderRequestTurnIdArgs
-  extends HandleRuntimeProviderRequestArgs {
+interface ResolveRuntimeProviderRequestTurnIdArgs extends HandleRuntimeProviderRequestArgs {
   requestKind: RuntimeProviderRequestKind;
   resolvedThreadId: string;
   turnId: string | null;
@@ -298,13 +297,17 @@ function handleInteractiveProviderRequest(
     payload: interactiveReq.payload,
   };
 
-  const executionOptions = args.getThreadExecutionOptions(resolvedThreadId);
   const isApprovalRequest = isApprovalPendingInteractionPayload(
     interactiveReq.payload,
   );
+  const runtimeOwnsApprovalPolicy =
+    args.providerProcess.adapter.approvalRequestPolicy === "runtime";
+  const executionOptions = runtimeOwnsApprovalPolicy
+    ? args.getThreadExecutionOptions(resolvedThreadId)
+    : undefined;
   const shouldAutoDenyApprovalRequest =
     isApprovalRequest &&
-    ((executionOptions
+    ((runtimeOwnsApprovalPolicy && executionOptions
       ? shouldAutoDenyInteractiveRequest(executionOptions)
       : false) ||
       !args.onInteractiveRequest);

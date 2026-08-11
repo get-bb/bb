@@ -1299,6 +1299,7 @@ export function createPiProviderAdapter(
     id: providerInfo.id,
     displayName: providerInfo.displayName,
     capabilities,
+    approvalRequestPolicy: "runtime",
     classifyExecutionSettingsChange: classifySessionExecutionSettingsChange,
     process: {
       command: opts?.bridgeNodeExecutablePath ?? "node",

@@ -65,6 +65,13 @@ interface DeniedReadonlyBashCase {
   command: string;
 }
 
+interface AssistantToolUseMessageArgs {
+  parentToolUseId: string | null;
+  toolInput: Record<string, unknown>;
+  toolName: string;
+  toolUseId: string;
+}
+
 interface CanUseToolPolicyAllowExpectation {
   behavior: "allow";
   updatedInput: Record<string, unknown>;
@@ -438,6 +445,37 @@ function createStaleResumeErrorMessage(
     errors: [`No conversation found with session ID: ${args.missingSessionId}`],
     uuid: "00000000-0000-4000-8000-000000000001",
     session_id: args.sessionId,
+  };
+}
+
+function createAssistantToolUseMessage(
+  args: AssistantToolUseMessageArgs,
+): SDKMessage {
+  return {
+    type: "assistant",
+    message: {
+      id: `message-${args.toolUseId}`,
+      type: "message",
+      role: "assistant",
+      container: null,
+      content: [
+        {
+          type: "tool_use",
+          id: args.toolUseId,
+          name: args.toolName,
+          input: args.toolInput,
+        },
+      ],
+      context_management: null,
+      model: "claude-sonnet-5",
+      stop_details: null,
+      stop_reason: "tool_use",
+      stop_sequence: null,
+      usage: createResultUsage(),
+    },
+    parent_tool_use_id: args.parentToolUseId,
+    uuid: `00000000-0000-4000-8000-${args.toolUseId}`,
+    session_id: "session-1",
   };
 }
 
@@ -2836,7 +2874,7 @@ describe("bridge", () => {
     }
   });
 
-  it("keeps background subagents on their originating prompt escalation", async () => {
+  it("keeps background subagents on their parent tool escalation when canUseTool omits agent metadata", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
     const queries: ControlledClaudeQuery[] = [];
     queryMock.mockImplementation(() => {
@@ -2854,8 +2892,8 @@ describe("bridge", () => {
         cwd: "/tmp/worktree",
         instructionMode: "append",
         permissionEscalation: "deny",
-        permissionMode: "default",
-        approvedPlanPermissionMode: "default",
+        permissionMode: "acceptEdits",
+        approvedPlanPermissionMode: "acceptEdits",
         permissionScope: "workspace",
         threadId,
       });
@@ -2879,6 +2917,17 @@ describe("bridge", () => {
         throw new Error("Expected denied prompt UUID");
       }
 
+      const denyParentToolUseId = "tool-agent-deny";
+      queries[0]?.emit(
+        createAssistantToolUseMessage({
+          parentToolUseId: null,
+          toolInput: { prompt: "Start denied background work" },
+          toolName: "Agent",
+          toolUseId: denyParentToolUseId,
+        }),
+      );
+      await bridge.flushWork();
+
       bridge.sendRequest(3, "turn/start", {
         permissionEscalation: "ask",
         input: [{ type: "text", text: "Start interactive background work" }],
@@ -2891,38 +2940,16 @@ describe("bridge", () => {
         throw new Error("Expected ask prompt UUID");
       }
 
-      await invokeBridgeHooks(hooks.SubagentStart, {
-        hook_event_name: "SubagentStart",
-        agent_id: "agent-deny",
-        agent_type: "general-purpose",
-        prompt_id: deniedPrompt.uuid,
-        session_id: "session-1",
-        transcript_path: "/tmp/transcript.jsonl",
-        cwd: "/tmp/worktree",
-      });
-
       const denyToolUseId = "tool-background-deny";
-      const deniedOutputs = await invokeBridgeHooks(
-        hooks.PreToolUse,
-        {
-          hook_event_name: "PreToolUse",
-          agent_id: "agent-deny",
-          prompt_id: askPrompt.uuid,
-          tool_name: "Bash",
-          tool_input: { command: "git reset -- package.json" },
-          tool_use_id: denyToolUseId,
-          session_id: "session-1",
-          transcript_path: "/tmp/transcript.jsonl",
-          cwd: "/tmp/worktree",
-        },
-        denyToolUseId,
-      );
-      expect(deniedOutputs).toContainEqual(
-        expect.objectContaining({
-          hookSpecificOutput: expect.objectContaining({
-            hookEventName: "PreToolUse",
-            permissionDecision: "deny",
-          }),
+      queries[0]?.emit(
+        createAssistantToolUseMessage({
+          parentToolUseId: denyParentToolUseId,
+          toolInput: {
+            command: "echo hi",
+            dangerouslyDisableSandbox: true,
+          },
+          toolName: "Bash",
+          toolUseId: denyToolUseId,
         }),
       );
       await expect(
@@ -2930,13 +2957,23 @@ describe("bridge", () => {
           "Bash",
           { command: "echo hi", dangerouslyDisableSandbox: true },
           {
-            agentID: "agent-deny",
             decisionReason: "dangerouslyDisableSandbox",
             signal: new AbortController().signal,
             toolUseID: denyToolUseId,
           },
         ),
       ).resolves.toMatchObject({ behavior: "deny" });
+
+      const askParentToolUseId = "tool-agent-ask";
+      queries[0]?.emit(
+        createAssistantToolUseMessage({
+          parentToolUseId: null,
+          toolInput: { prompt: "Start interactive background work" },
+          toolName: "Agent",
+          toolUseId: askParentToolUseId,
+        }),
+      );
+      await bridge.flushWork();
 
       bridge.sendRequest(4, "turn/start", {
         permissionEscalation: "deny",
@@ -2946,41 +2983,65 @@ describe("bridge", () => {
       });
       await bridge.waitForResponse(4);
       const latestPrompt = await readNextPrompt(call);
-
-      await invokeBridgeHooks(hooks.SubagentStart, {
-        hook_event_name: "SubagentStart",
-        agent_id: "agent-ask",
-        agent_type: "general-purpose",
-        prompt_id: askPrompt.uuid,
-        session_id: "session-1",
-        transcript_path: "/tmp/transcript.jsonl",
-        cwd: "/tmp/worktree",
-      });
+      if (!latestPrompt.uuid) {
+        throw new Error("Expected latest prompt UUID");
+      }
 
       const askToolUseId = "tool-background-ask";
-      const askOutputs = await invokeBridgeHooks(
-        hooks.PreToolUse,
-        {
-          hook_event_name: "PreToolUse",
-          agent_id: "agent-ask",
-          prompt_id: latestPrompt.uuid,
-          tool_name: "Bash",
-          tool_input: { command: "git reset -- package.json" },
-          tool_use_id: askToolUseId,
-          session_id: "session-1",
-          transcript_path: "/tmp/transcript.jsonl",
-          cwd: "/tmp/worktree",
-        },
-        askToolUseId,
-      );
-      expect(askOutputs).toContainEqual(
-        expect.objectContaining({
-          hookSpecificOutput: expect.objectContaining({
-            hookEventName: "PreToolUse",
-            permissionDecision: "ask",
-          }),
+      queries[0]?.emit(
+        createAssistantToolUseMessage({
+          parentToolUseId: askParentToolUseId,
+          toolInput: {
+            command: "echo hi",
+            dangerouslyDisableSandbox: true,
+          },
+          toolName: "Bash",
+          toolUseId: askToolUseId,
         }),
       );
+
+      const askResultPromise = getLastCanUseTool()(
+        "Bash",
+        { command: "echo hi", dangerouslyDisableSandbox: true },
+        {
+          decisionReason: "dangerouslyDisableSandbox",
+          signal: new AbortController().signal,
+          toolUseID: askToolUseId,
+        },
+      );
+      await bridge.flushWork();
+
+      const permissionRequest = bridge.messages.find(
+        (message) =>
+          message.method === CLAUDE_PERMISSION_REQUEST_APPROVAL_METHOD &&
+          isRecord(message.params) &&
+          message.params.itemId === askToolUseId,
+      );
+      if (permissionRequest?.id === undefined) {
+        throw new Error("Expected forwarded background permission request");
+      }
+      expect(permissionRequest.params).toMatchObject({
+        itemId: askToolUseId,
+        threadId,
+        toolName: "Bash",
+      });
+
+      handleLine(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: permissionRequest.id,
+          result: {
+            kind: "permission_request",
+            behavior: "deny",
+            message: "Denied by user",
+          },
+        }),
+      );
+      await expect(askResultPromise).resolves.toMatchObject({
+        behavior: "deny",
+        message: "Denied by user",
+        toolUseID: askToolUseId,
+      });
 
       bridge.sendRequest(5, "thread/stop", { threadId });
       await bridge.flushWork();
