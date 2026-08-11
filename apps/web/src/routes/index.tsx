@@ -82,9 +82,7 @@ export const Route = createFileRoute("/")({
     meta: [
       { title: SITE_TITLE },
       { name: "description", content: SITE_DESCRIPTION },
-      // Unfurl title is just "bb": the card image already carries the
-      // tagline, and platforms print the title right next to the image.
-      ...unfurlMeta("bb", OG_DESCRIPTION, "/"),
+      ...unfurlMeta(SITE_TITLE, OG_DESCRIPTION, "/"),
       { name: "theme-color", content: "#ffffff" },
     ],
     links: [
