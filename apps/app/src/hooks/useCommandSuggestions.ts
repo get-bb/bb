@@ -1,8 +1,6 @@
 import { useMemo } from "react";
 import type { PromptMentionCommandTrigger } from "@bb/domain";
 import {
-  compareCommandSuggestions,
-  orderCommandSuggestions,
   toProviderCommandSuggestion,
   type ProviderCommandSuggestion,
 } from "@/components/promptbox/mentions/types";
@@ -70,18 +68,18 @@ export function commandSuggestionMatchesQuery(
     .includes(query);
 }
 
+/**
+ * Filter the cached catalog without changing its order. PromptBoxInternal owns
+ * the single relevance-ordering pass because it has the query under the caret.
+ */
 export function filterCommandSuggestions(
   suggestions: readonly ProviderCommandSuggestion[],
   query: string,
 ): ProviderCommandSuggestion[] {
   const normalizedQuery = query.toLowerCase();
-  return suggestions
-    .filter((suggestion) =>
-      commandSuggestionMatchesQuery(suggestion, normalizedQuery),
-    )
-    .sort((left, right) =>
-      compareCommandSuggestions(left, right, normalizedQuery),
-    );
+  return suggestions.filter((suggestion) =>
+    commandSuggestionMatchesQuery(suggestion, normalizedQuery),
+  );
 }
 
 export function promptActionCommandSuggestions({
@@ -195,9 +193,9 @@ export function useCommandSuggestions(
         ),
       trimmedQuery,
     );
-    return orderCommandSuggestions(
-      mergeCommandSuggestions(promptActionSuggestions, discoveredSuggestions),
-      trimmedQuery,
+    return mergeCommandSuggestions(
+      promptActionSuggestions,
+      discoveredSuggestions,
     );
   }, [
     commandsQuery.data?.commands,

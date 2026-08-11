@@ -1755,12 +1755,14 @@ describe("public terminal routes", () => {
     const response = await responsePromise;
 
     expect(response.status).toBe(200);
-    expect(terminalSessionSchema.parse(await readJson(response))).toMatchObject({
-      id: stored.id,
-      closeReason: "user",
-      exitCode: null,
-      status: "exited",
-    });
+    expect(terminalSessionSchema.parse(await readJson(response))).toMatchObject(
+      {
+        id: stored.id,
+        closeReason: "user",
+        exitCode: null,
+        status: "exited",
+      },
+    );
     expect(
       getTerminalSessionForThread(fixture.harness.db, {
         terminalId: stored.id,
@@ -1770,6 +1772,81 @@ describe("public terminal routes", () => {
       closeReason: "user",
       daemonSessionId: null,
       exitCode: null,
+      status: "exited",
+    });
+  });
+
+  it("keeps an undeliverable terminal close available for reconnect cleanup", async () => {
+    const fixture = await createTerminalRouteFixture();
+    harnesses.push(fixture.harness);
+    const stored = createTerminalSession(fixture.harness.db, {
+      cols: 80,
+      daemonSessionId: fixture.session.id,
+      environmentId: fixture.environment.id,
+      hostId: fixture.host.id,
+      initialCwd: "/tmp/terminal-workspace",
+      rows: 24,
+      status: "running",
+      threadId: fixture.thread.id,
+      title: "zsh",
+    });
+    fixture.harness.hub.unregisterDaemon(fixture.session.id);
+
+    const response = await fixture.harness.app.request(
+      `/api/v1/terminals/${stored.id}/close`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ mode: "force", reason: "user" }),
+      },
+    );
+
+    expect(response.status).toBe(502);
+    expect(apiErrorSchema.parse(await readJson(response))).toMatchObject({
+      code: "host_disconnected",
+    });
+    expect(
+      getTerminalSessionForThread(fixture.harness.db, {
+        terminalId: stored.id,
+        threadId: fixture.thread.id,
+      }),
+    ).toMatchObject({
+      closeReason: null,
+      daemonSessionId: null,
+      status: "disconnected",
+    });
+
+    const replacementSession = seedSession(
+      fixture.harness.deps,
+      fixture.host.id,
+    );
+    const replacementSocket = createFakeDaemonSocket();
+    onDaemonSocketOpen(fixture.harness.deps, {
+      hostId: fixture.host.id,
+      sessionId: replacementSession.id,
+      socket: replacementSocket,
+    });
+
+    expect(await waitForDaemonMessage(replacementSocket)).toEqual({
+      type: "connect-shares.replace",
+      generation: 0,
+      ports: [],
+    });
+    await expect(
+      waitForDaemonMessage(replacementSocket, 1),
+    ).resolves.toMatchObject({
+      type: "terminal.close",
+      terminalId: stored.id,
+      reason: "daemon-disconnect",
+    });
+    expect(
+      getTerminalSessionForThread(fixture.harness.db, {
+        terminalId: stored.id,
+        threadId: fixture.thread.id,
+      }),
+    ).toMatchObject({
+      closeReason: "daemon-disconnect",
+      daemonSessionId: null,
       status: "exited",
     });
   });

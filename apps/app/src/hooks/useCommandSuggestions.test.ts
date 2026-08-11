@@ -93,24 +93,7 @@ describe("commandSuggestionMatchesQuery", () => {
     expect(commandSuggestionMatchesQuery(pluginSkill, "deploy")).toBe(false);
   });
 
-  it("ranks a namespaced skill by its direct name without another fetch", () => {
-    const names = filterCommandSuggestions(
-      [
-        { ...pluginSkill, name: "alpha-review-notes" },
-        { ...pluginSkill, name: "ottonomous:review" },
-        { ...pluginSkill, name: "zeta-review" },
-      ],
-      "review",
-    ).map((suggestion) => suggestion.name);
-
-    expect(names).toEqual([
-      "ottonomous:review",
-      "alpha-review-notes",
-      "zeta-review",
-    ]);
-  });
-
-  it("keeps menu sections primary when matches are equally direct", () => {
+  it("filters without taking ownership of suggestion ordering", () => {
     const names = filterCommandSuggestions(
       [
         {
@@ -120,52 +103,16 @@ describe("commandSuggestionMatchesQuery", () => {
           origin: "user",
         },
         { ...pluginSkill, name: "deploy-helper" },
-      ],
-      "deploy",
-    ).map((suggestion) => suggestion.name);
-
-    expect(names).toEqual(["deploy-helper", "deploy-service"]);
-  });
-
-  it("ranks a user-command name prefix above a skill matched by description", () => {
-    const names = filterCommandSuggestions(
-      [
         {
           ...pluginSkill,
           name: "review-helper",
           description: "Contains deploy guidance",
         },
-        {
-          ...pluginSkill,
-          name: "deploy-service",
-          source: "command",
-          origin: "user",
-        },
+        { ...pluginSkill, name: "review-helper", description: null },
       ],
       "deploy",
     ).map((suggestion) => suggestion.name);
 
-    expect(names).toEqual(["deploy-service", "review-helper"]);
-  });
-
-  it("ranks an exact user-command name above skills from an earlier section", () => {
-    const names = filterCommandSuggestions(
-      [
-        {
-          ...pluginSkill,
-          name: "deploy-review",
-          description: "Contains deploy guidance",
-        },
-        {
-          ...pluginSkill,
-          name: "deploy",
-          source: "command",
-          origin: "user",
-        },
-      ],
-      "deploy",
-    ).map((suggestion) => suggestion.name);
-
-    expect(names).toEqual(["deploy", "deploy-review"]);
+    expect(names).toEqual(["deploy-service", "deploy-helper", "review-helper"]);
   });
 });

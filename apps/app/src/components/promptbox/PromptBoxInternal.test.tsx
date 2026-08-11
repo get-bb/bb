@@ -3125,6 +3125,14 @@ describe("PromptBoxInternal command typeahead navigation", () => {
       commandSuggestions: [
         {
           kind: "command",
+          name: "plugin:plan",
+          source: "skill",
+          origin: "user",
+          description: null,
+          argumentHint: null,
+        },
+        {
+          kind: "command",
           name: "planner",
           source: "skill",
           origin: "user",
@@ -3171,7 +3179,7 @@ describe("PromptBoxInternal command typeahead navigation", () => {
       within(menu)
         .getAllByRole("button")
         .map((button) => button.textContent),
-    ).toEqual(["plan", "plan-b", "planner", "planning-doc"]);
+    ).toEqual(["plan", "plan-b", "plugin:plan", "planner", "planning-doc"]);
     expect(
       within(menu)
         .getAllByText(/^(User commands|Skills)$/)
