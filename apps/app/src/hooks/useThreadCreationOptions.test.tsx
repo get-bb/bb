@@ -113,6 +113,43 @@ function executionOptionsResponse(): SystemExecutionOptionsResponse {
   };
 }
 
+function providerExecutionOptionsResponse(
+  providerId: string | undefined,
+): SystemExecutionOptionsResponse {
+  const base = executionOptionsResponse();
+  const isProjectProvider = providerId === PROJECT_PROVIDER_ID;
+  const modelPrefix = isProjectProvider ? "project" : "global";
+  return {
+    ...base,
+    models: [
+      {
+        id: `${modelPrefix}-default`,
+        model: `${modelPrefix}-default`,
+        displayName: `${modelPrefix} default`,
+        description: "",
+        supportedReasoningEfforts: [
+          { reasoningEffort: "medium", description: "" },
+          { reasoningEffort: "high", description: "" },
+        ],
+        defaultReasoningEffort: isProjectProvider ? "high" : "medium",
+        isDefault: true,
+      },
+      {
+        id: `${modelPrefix}-remembered`,
+        model: `${modelPrefix}-remembered`,
+        displayName: `${modelPrefix} remembered`,
+        description: "",
+        supportedReasoningEfforts: [
+          { reasoningEffort: "medium", description: "" },
+          { reasoningEffort: "high", description: "" },
+        ],
+        defaultReasoningEffort: "medium",
+        isDefault: false,
+      },
+    ],
+  };
+}
+
 function claudeExecutionOptionsResponse(): SystemExecutionOptionsResponse {
   return {
     providers: [
@@ -196,6 +233,155 @@ afterEach(() => {
 });
 
 describe("useThreadCreationOptions", () => {
+  it("migrates legacy model preferences without leaking them to another provider", async () => {
+    window.localStorage.setItem("bb.promptbox.provider", GLOBAL_PROVIDER_ID);
+    window.localStorage.setItem("bb.promptbox.model", "global-remembered");
+    window.localStorage.setItem("bb.promptbox.reasoning", "medium");
+    vi.mocked(sdk.system.executionOptions).mockImplementation(async (args) =>
+      providerExecutionOptionsResponse(args?.providerId),
+    );
+    const { result } = renderHook(
+      () => useThreadCreationOptions({ scope: "new-thread" }),
+      { wrapper: createQueryClientTestHarness().wrapper },
+    );
+
+    await waitFor(() => {
+      expect(result.current.selectedModel).toBe("global-remembered");
+    });
+    act(() => {
+      result.current.setSelectedProviderId(PROJECT_PROVIDER_ID);
+    });
+    await waitFor(() => {
+      expect(result.current.selectedModel).toBe("project-default");
+      expect(result.current.reasoningLevel).toBe("high");
+    });
+    expect(window.localStorage.getItem("bb.promptbox.model")).toBeNull();
+
+    act(() => {
+      result.current.setSelectedProviderId(GLOBAL_PROVIDER_ID);
+    });
+    await waitFor(() => {
+      expect(result.current.selectedModel).toBe("global-remembered");
+      expect(result.current.reasoningLevel).toBe("medium");
+    });
+  });
+
+  it("restores each provider's model and reasoning selection", async () => {
+    window.localStorage.setItem("bb.promptbox.provider", GLOBAL_PROVIDER_ID);
+    vi.mocked(sdk.system.executionOptions).mockImplementation(async (args) =>
+      providerExecutionOptionsResponse(args?.providerId),
+    );
+    const { wrapper } = createQueryClientTestHarness();
+    const { result, unmount } = renderHook(
+      () => useThreadCreationOptions({ scope: "new-thread" }),
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(result.current.selectedModel).toBe("global-default");
+      expect(result.current.reasoningLevel).toBe("medium");
+    });
+
+    act(() => {
+      result.current.setSelectedModel("global-remembered");
+      result.current.setReasoningLevel("medium");
+    });
+    act(() => {
+      result.current.setSelectedProviderId(PROJECT_PROVIDER_ID);
+    });
+
+    await waitFor(() => {
+      expect(result.current.selectedProviderId).toBe(PROJECT_PROVIDER_ID);
+      expect(result.current.selectedModel).toBe("project-default");
+      expect(result.current.reasoningLevel).toBe("high");
+    });
+
+    act(() => {
+      result.current.setSelectedModel("project-remembered");
+      result.current.setReasoningLevel("medium");
+    });
+    act(() => {
+      result.current.setSelectedProviderId(GLOBAL_PROVIDER_ID);
+    });
+
+    await waitFor(() => {
+      expect(result.current.selectedModel).toBe("global-remembered");
+      expect(result.current.reasoningLevel).toBe("medium");
+    });
+
+    act(() => {
+      result.current.setSelectedProviderId(PROJECT_PROVIDER_ID);
+    });
+    await waitFor(() => {
+      expect(result.current.selectedModel).toBe("project-remembered");
+      expect(result.current.reasoningLevel).toBe("medium");
+    });
+
+    unmount();
+    const reloaded = renderHook(
+      () => useThreadCreationOptions({ scope: "new-thread" }),
+      { wrapper: createQueryClientTestHarness().wrapper },
+    );
+    await waitFor(() => {
+      expect(reloaded.result.current.selectedProviderId).toBe(
+        PROJECT_PROVIDER_ID,
+      );
+      expect(reloaded.result.current.selectedModel).toBe("project-remembered");
+      expect(reloaded.result.current.reasoningLevel).toBe("medium");
+    });
+    act(() => {
+      reloaded.result.current.setSelectedProviderId(GLOBAL_PROVIDER_ID);
+    });
+    await waitFor(() => {
+      expect(reloaded.result.current.selectedModel).toBe("global-remembered");
+      expect(reloaded.result.current.reasoningLevel).toBe("medium");
+    });
+  });
+
+  it("keeps provider selections local in component-local composers", async () => {
+    vi.mocked(sdk.system.executionOptions).mockImplementation(async (args) =>
+      providerExecutionOptionsResponse(args?.providerId),
+    );
+    const { wrapper } = createQueryClientTestHarness();
+    const { result } = renderHook(
+      () =>
+        useThreadCreationOptions({
+          scope: "component-local",
+          initialProviderId: GLOBAL_PROVIDER_ID,
+        }),
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(result.current.selectedModel).toBe("global-default");
+    });
+    act(() => {
+      result.current.setSelectedModel("global-remembered");
+      result.current.setReasoningLevel("medium");
+    });
+    act(() => {
+      result.current.setSelectedProviderId(PROJECT_PROVIDER_ID);
+    });
+
+    await waitFor(() => {
+      expect(result.current.selectedModel).toBe("project-default");
+      expect(result.current.reasoningLevel).toBe("high");
+    });
+    act(() => {
+      result.current.setSelectedModel("project-remembered");
+      result.current.setReasoningLevel("medium");
+    });
+    act(() => {
+      result.current.setSelectedProviderId(GLOBAL_PROVIDER_ID);
+    });
+
+    await waitFor(() => {
+      expect(result.current.selectedModel).toBe("global-remembered");
+      expect(result.current.reasoningLevel).toBe("medium");
+    });
+    expect(window.localStorage.getItem("bb.promptbox.model")).toBeNull();
+  });
+
   it("preserves a model's nested provider route for the picker", async () => {
     const response = executionOptionsResponse();
     const firstModel = response.models[0];

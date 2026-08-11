@@ -184,7 +184,7 @@ describe("ModelReasoningPicker", () => {
     ).toBe("");
   });
 
-  it("previews another provider's models without committing the provider", async () => {
+  it("commits a provider tab immediately and keeps its models selectable", async () => {
     const { onSelectedProviderChange, onModelChange } = renderPicker();
 
     fireEvent.click(
@@ -196,18 +196,18 @@ describe("ModelReasoningPicker", () => {
 
     fireEvent.click(screen.getByTitle("Claude Code"));
 
+    expect(onSelectedProviderChange).toHaveBeenCalledWith("claude-code");
     expect(await screen.findByText("Opus 4.7")).not.toBeNull();
     expect(screen.getAllByText("5.5")).toHaveLength(1);
-    expect(onSelectedProviderChange).not.toHaveBeenCalled();
     expect(onModelChange).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByText("Opus 4.7"));
 
-    expect(onSelectedProviderChange).toHaveBeenCalledWith("claude-code");
+    expect(onSelectedProviderChange).toHaveBeenCalledTimes(1);
     expect(onModelChange).toHaveBeenCalledWith("claude-opus-4-7");
   });
 
-  it("previews provider models on the compose-selected host", async () => {
+  it("loads provider models on the compose-selected host", async () => {
     renderPicker({ providerRouting: { hostId: "host-remote" } });
 
     fireEvent.click(

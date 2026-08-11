@@ -186,7 +186,7 @@ interface ModelReasoningPickerProps {
   providerRouting?: SystemProvidersQuery;
   providerOptions: readonly PickerOption<string>[];
   selectedProviderId: string;
-  /** Omit to render the provider as locked (tabs hidden, can't preview). */
+  /** Omit to render the provider as locked (tabs hidden, can't switch). */
   onSelectedProviderChange?: (value: string) => void;
   hasMultipleProviders: boolean;
   // Model state
@@ -199,9 +199,9 @@ interface ModelReasoningPickerProps {
   modelLoadError?: SystemExecutionOptionsModelLoadError | null;
   onModelChange: (value: string) => void;
   /**
-   * Optional case-normaliser for raw model names returned by a previewed
-   * provider. The picker itself drops the brand prefix at render — callers
-   * only need to pass this when the preview API returns un-cased ids.
+   * Optional case-normaliser for raw model names returned during a provider
+   * handoff. The picker itself drops the brand prefix at render — callers only
+   * need to pass this when the provider API returns un-cased ids.
    */
   formatModelLabel?: (displayName: string) => string;
   // Reasoning state — supported efforts are per-model, so callers derive
@@ -284,9 +284,9 @@ export function ModelReasoningPicker({
   const listboxId = `${navId}-listbox`;
   const optionDomId = (index: number) => `${navId}-opt-${index}`;
 
-  // While the popover is open, the user can browse other providers without
-  // committing. `previewProviderId` tracks which provider tab is active;
-  // null means "showing the committed provider".
+  // A controlled parent may need one render to apply a provider-tab change.
+  // Keep showing the clicked provider's cached/querying catalog during that
+  // handoff so the tab responds immediately without flashing the old models.
   const [previewProviderId, setPreviewProviderId] = useState<string | null>(
     null,
   );
@@ -350,9 +350,8 @@ export function ModelReasoningPicker({
     ? (selectedReasoningOption?.label ?? null)
     : null;
 
-  // Preview other providers without committing. Shares its cache key with the
-  // committed `useSystemExecutionOptions` call in the caller's hook so
-  // committing is a cache hit, not a refetch.
+  // Shares its cache key with the committed `useSystemExecutionOptions` call
+  // in the caller's hook, so the controlled-provider handoff is a cache hit.
   const isPreviewing =
     previewProviderId !== null && previewProviderId !== selectedProviderId;
   const previewQuery = useSystemExecutionOptions({
@@ -535,17 +534,11 @@ export function ModelReasoningPicker({
 
   const handleModelSelect = useCallback(
     (model: string) => {
-      // Commit the previewed provider if it differs from the current one.
-      // Preview is only reachable when the picker is unlocked, so onChange
-      // is guaranteed to be set when isPreviewing is true.
-      if (isPreviewing) {
-        onSelectedProviderChange?.(previewProviderId!);
-      }
       onModelChange(model);
       setMoreModelsOpen(false);
       setPreviewProviderId(null);
     },
-    [isPreviewing, onModelChange, onSelectedProviderChange, previewProviderId],
+    [onModelChange],
   );
 
   // Scope Cmd+Shift+M and the cycle chords to one composer of the focused pane.
@@ -642,11 +635,10 @@ export function ModelReasoningPicker({
   );
   const handleReasoningSelect = useCallback(
     (level: ReasoningLevel) => {
-      // While previewing, the listed levels are the previewed provider's, so
-      // picking one commits that provider's default model at the chosen level —
-      // symmetric with picking one of its models.
+      // A controlled parent that has not rendered the provider change yet
+      // still needs a concrete model when the user immediately picks one of
+      // the new provider's reasoning levels.
       if (isPreviewing && previewDefaultModel) {
-        onSelectedProviderChange?.(previewProviderId!);
         onModelChange(previewDefaultModel.model);
       }
       onReasoningChange(level);
@@ -655,14 +647,7 @@ export function ModelReasoningPicker({
       setPreviewProviderId(null);
       setMoreModelsOpen(false);
     },
-    [
-      isPreviewing,
-      previewDefaultModel,
-      previewProviderId,
-      onModelChange,
-      onReasoningChange,
-      onSelectedProviderChange,
-    ],
+    [isPreviewing, previewDefaultModel, onModelChange, onReasoningChange],
   );
 
   const handleFooterActionClick = useCallback(() => {
@@ -871,15 +856,14 @@ export function ModelReasoningPicker({
                   title={provider.label}
                   onClick={() => {
                     if (provider.value !== activeProviderId) {
+                      onSelectedProviderChange?.(provider.value);
                       setPreviewProviderId(
                         provider.value === selectedProviderId
                           ? null
                           : provider.value,
                       );
-                      // The new tab lists a different provider's models, so drop
-                      // the query and highlight from the previous tab. (Committing
-                      // a provider closes the popover, where resetBrowseState
-                      // clears these anyway.)
+                      // The new tab lists a different provider's models, so
+                      // drop the query and highlight from the previous tab.
                       setSearchQuery("");
                       setActiveIndex(-1);
                     }
