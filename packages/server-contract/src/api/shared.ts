@@ -87,6 +87,13 @@ export const managedWorktreeWorkspaceSchema = z.object({
   type: z.literal("managed-worktree"),
   /** Branch the new worktree should be based on. */
   baseBranch: baseBranchSpecSchema,
+  /**
+   * Optional comparison target for the created environment. Omission keeps the
+   * ordinary behavior where the worktree base also becomes the merge base.
+   * Recovery handoffs use this to branch from surviving work while preserving
+   * the archived environment's original comparison target.
+   */
+  mergeBaseBranch: gitBranchNameSchema.optional(),
 });
 
 export const personalWorkspaceSchema = z.object({

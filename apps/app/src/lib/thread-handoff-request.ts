@@ -1,4 +1,8 @@
-import type { Environment, PromptTextMention } from "@bb/domain";
+import {
+  resolveEnvironmentMergeBaseBranch,
+  type Environment,
+  type PromptTextMention,
+} from "@bb/domain";
 import type { PromptDraftState } from "@/lib/prompt-draft";
 
 export const THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY =
@@ -7,7 +11,12 @@ export const THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY =
 export type ThreadHandoffEnvironmentTarget =
   | { type: "project-default" }
   | { type: "reuse"; environmentId: string }
-  | { type: "managed-worktree"; hostId: string; baseBranch: string }
+  | {
+      type: "managed-worktree";
+      hostId: string;
+      baseBranch: string;
+      mergeBaseBranch: string | null;
+    }
   | { type: "personal"; hostId: string };
 
 export interface ThreadHandoffCreateSeed {
@@ -34,7 +43,12 @@ export function buildThreadHandoffLocationState(
 export function buildEnvironmentRecoveryHandoffTarget(
   environment: Pick<
     Environment,
-    "branchName" | "hostId" | "workspaceProvisionType"
+    | "baseBranch"
+    | "branchName"
+    | "defaultBranch"
+    | "hostId"
+    | "mergeBaseBranch"
+    | "workspaceProvisionType"
   >,
 ): ThreadHandoffEnvironmentTarget | null {
   if (
@@ -45,6 +59,7 @@ export function buildEnvironmentRecoveryHandoffTarget(
       type: "managed-worktree",
       hostId: environment.hostId,
       baseBranch: environment.branchName,
+      mergeBaseBranch: resolveEnvironmentMergeBaseBranch(environment) ?? null,
     };
   }
   if (environment.workspaceProvisionType === "personal") {
@@ -72,8 +87,25 @@ function readEnvironmentTarget(
     case "managed-worktree": {
       const hostId = readNonEmptyString(candidate.hostId);
       const baseBranch = readNonEmptyString(candidate.baseBranch);
+      const mergeBaseBranch =
+        candidate.mergeBaseBranch === undefined ||
+        candidate.mergeBaseBranch === null
+          ? null
+          : readNonEmptyString(candidate.mergeBaseBranch);
+      if (
+        candidate.mergeBaseBranch !== undefined &&
+        candidate.mergeBaseBranch !== null &&
+        mergeBaseBranch === null
+      ) {
+        return null;
+      }
       return hostId && baseBranch
-        ? { type: "managed-worktree", hostId, baseBranch }
+        ? {
+            type: "managed-worktree",
+            hostId,
+            baseBranch,
+            mergeBaseBranch,
+          }
         : null;
     }
     case "personal": {

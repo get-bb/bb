@@ -1704,6 +1704,13 @@ export function RootComposeView() {
         defaultWorktreeBaseBranch:
           activeBranchesQuery.data?.defaultWorktreeBaseBranch,
         environmentValue: effectiveEnvironmentValue,
+        ...(handoffRecoveryTarget?.type === "managed-worktree" &&
+        handoffRecoveryTarget.mergeBaseBranch
+          ? {
+              managedWorktreeMergeBaseBranch:
+                handoffRecoveryTarget.mergeBaseBranch,
+            }
+          : {}),
         projectId,
         selectedBranch,
       }),
@@ -1711,6 +1718,7 @@ export function RootComposeView() {
       activeBranchesQuery.data?.defaultBranch,
       activeBranchesQuery.data?.defaultWorktreeBaseBranch,
       effectiveEnvironmentValue,
+      handoffRecoveryTarget,
       projectId,
       selectedBranch,
     ],

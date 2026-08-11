@@ -10,6 +10,7 @@ import {
 } from "@bb/domain";
 import {
   baseBranchSpecSchema,
+  gitBranchNameSchema,
   unmanagedBranchSpecSchema,
 } from "@bb/server-contract";
 
@@ -34,6 +35,7 @@ const directManagedIntentSchema = z.object({
   hostId: z.string().min(1),
   sourcePath: z.string().min(1),
   baseBranch: baseBranchSpecSchema,
+  mergeBaseBranch: gitBranchNameSchema.nullable().default(null),
   workspaceProvisionType: z.literal("managed-worktree"),
 });
 

@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { resolveEnvironmentMergeBaseBranch } from "@bb/domain";
 import {
   archiveThread,
   getEnvironment,
@@ -112,8 +113,12 @@ describe.sequential(
         });
         const originalPath = environment.path;
         const branchName = environment.branchName;
-        if (!originalPath || !branchName) {
-          throw new Error("Managed worktree path/branch was not assigned");
+        const originalMergeBaseBranch =
+          resolveEnvironmentMergeBaseBranch(environment);
+        if (!originalPath || !branchName || !originalMergeBaseBranch) {
+          throw new Error(
+            "Managed worktree path, branch, or merge base was not assigned",
+          );
         }
 
         // Commit work in the worktree so there is recoverable history on the
@@ -156,12 +161,16 @@ describe.sequential(
           workspace: {
             type: "managed-worktree",
             baseBranch: { kind: "named", name: branchName },
+            mergeBaseBranch: originalMergeBaseBranch,
           },
         });
         expect(handedOff.thread.id).not.toBe(thread.id);
         expect(handedOff.environment.id).not.toBe(environment.id);
         expect(handedOff.environment.branchName).not.toBe(branchName);
         expect(handedOff.environment.baseBranch).toBe(branchName);
+        expect(handedOff.environment.mergeBaseBranch).toBe(
+          originalMergeBaseBranch,
+        );
         expect(handedOff.environment.path).toBeTruthy();
 
         const archivedSource = await getThread(harness.api, thread.id);
@@ -174,6 +183,11 @@ describe.sequential(
           "utf8",
         );
         expect(recovered).toBe("keep me\n");
+        const commitsAhead = await runGit({
+          cwd: handedOff.environment.path!,
+          args: ["rev-list", "--count", `${originalMergeBaseBranch}..HEAD`],
+        });
+        expect(commitsAhead.trim()).toBe("1");
       }));
 
     it("isolates concurrent work across separate environments", () =>

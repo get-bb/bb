@@ -14,6 +14,7 @@ import type { RootComposeSelectedBranch } from "@/views/root-compose-thread-envi
 export interface NewThreadEnvironmentSeed {
   selectionValue: string;
   branch: RootComposeSelectedBranch | null;
+  managedWorktreeMergeBaseBranch?: string;
 }
 
 /**
@@ -49,6 +50,9 @@ export function newThreadEnvironmentArgsToSeed(
         workspace.baseBranch.kind === "named"
           ? { name: workspace.baseBranch.name, isNew: false }
           : null,
+      ...(workspace.mergeBaseBranch
+        ? { managedWorktreeMergeBaseBranch: workspace.mergeBaseBranch }
+        : {}),
     };
   }
   // Unmanaged. `path` has no picker control — the composer always submits

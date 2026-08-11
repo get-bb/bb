@@ -67,6 +67,10 @@ export interface CreateHostThreadOptions {
           WorkspaceArgs,
           { type: "managed-worktree" }
         >["baseBranch"];
+        mergeBaseBranch?: Extract<
+          WorkspaceArgs,
+          { type: "managed-worktree" }
+        >["mergeBaseBranch"];
       }
     | { path: string | null; type: "unmanaged" };
 }

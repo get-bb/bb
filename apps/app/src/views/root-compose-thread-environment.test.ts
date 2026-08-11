@@ -121,6 +121,27 @@ describe("resolveRootComposeThreadEnvironment", () => {
     });
   });
 
+  it("applies a hidden recovery merge base without changing the branch pick", () => {
+    expect(
+      resolveRootComposeThreadEnvironment({
+        defaultBranch: "main",
+        defaultWorktreeBaseBranch: "main",
+        environmentValue: hostWorktreeEnvironmentValue,
+        managedWorktreeMergeBaseBranch: "main",
+        projectId,
+        selectedBranch: selectedBranch("bb/archived-work"),
+      }),
+    ).toEqual({
+      type: "host",
+      hostId: "host_123",
+      workspace: {
+        type: "managed-worktree",
+        baseBranch: { kind: "named", name: "bb/archived-work" },
+        mergeBaseBranch: "main",
+      },
+    });
+  });
+
   it("uses personal workspaces for the personal project", () => {
     expect(
       resolveRootComposeThreadEnvironment({

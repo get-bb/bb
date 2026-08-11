@@ -18,6 +18,7 @@ import {
   environmentActionRequestSchema,
   baseBranchSpecSchema,
   gitBranchNameSchema,
+  managedWorktreeWorkspaceSchema,
   reorderPinnedThreadRequestSchema,
   reorderQueuedMessageRequestSchema,
   resolvePendingInteractionRequestSchema,
@@ -58,6 +59,11 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
     reason:
       "Unmanaged workspaces may omit branch checkout intent when the daemon should leave HEAD untouched.",
     fields: ["createThreadRequestSchema.environment.workspace.branch"],
+  },
+  {
+    reason:
+      "Managed worktrees omit a merge-base override in the regular case; recovery handoffs supply one to preserve the source environment's comparison target.",
+    fields: ["createThreadRequestSchema.environment.workspace.mergeBaseBranch"],
   },
   {
     reason:
@@ -432,6 +438,20 @@ describe("git branch name contract", () => {
     expect(
       baseBranchSpecSchema.safeParse({ kind: "named", name: "-release" })
         .success,
+    ).toBe(false);
+    expect(
+      managedWorktreeWorkspaceSchema.safeParse({
+        type: "managed-worktree",
+        baseBranch: { kind: "named", name: "feature/recovery" },
+        mergeBaseBranch: "origin/main",
+      }).success,
+    ).toBe(true);
+    expect(
+      managedWorktreeWorkspaceSchema.safeParse({
+        type: "managed-worktree",
+        baseBranch: { kind: "named", name: "feature/recovery" },
+        mergeBaseBranch: "origin/main lock",
+      }).success,
     ).toBe(false);
     expect(
       unmanagedBranchSpecSchema.safeParse({

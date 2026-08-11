@@ -15,11 +15,13 @@ thread remains archived and read-only. The recovery action is **Continue in new
 thread**. It uses the ordinary new-thread flow, seeds a rich mention of the old
 thread, and creates a fresh managed worktree whose base is the destroyed
 environment's surviving branch. Committed work is therefore available on the
-new thread's newly named branch. Uncommitted and untracked work cannot be
-recovered after the old worktree has been removed.
+new thread's newly named branch. Its comparison target remains the original
+environment's merge base, so inherited commits stay visible as ahead-of-base
+work instead of being treated as the new baseline. Uncommitted and untracked
+work cannot be recovered after the old worktree has been removed.
 
-There is deliberately no restore route, SDK/CLI method, same-thread environment
-replacement, daemon protocol change, or special existing-branch checkout path.
+There is deliberately no restore route, same-thread environment replacement,
+daemon protocol change, or special existing-branch checkout path.
 
 ## Lifecycle
 
@@ -65,8 +67,9 @@ can still converge `error` to terminal `destroyed` while a stale attempt cannot.
    destruction finishes, the banner shows **Environment archived** and enables
    the action.
 3. Handoff opens new-thread compose in the source project, inserts `Continue
-from @thread:<id>`, selects the original host in managed-worktree mode, and
-   selects the old branch as the new worktree's base.
+   from @thread:<id>`, selects the original host in managed-worktree mode, and
+   selects the old branch as the new worktree's base while preserving the
+   original environment's merge base as the comparison target.
 4. Normal create-thread provisioning derives a new unique branch and worktree.
 
 The recovery seed is validated when read from navigation state. Compose stays
@@ -81,7 +84,10 @@ the recovery action because there is no safe fresh-environment target to infer.
 
 ## Boundaries and data model
 
-- No public HTTP, SDK, CLI, or daemon contract is added for recovery.
+- The ordinary create-thread HTTP/SDK contract accepts an optional managed
+  worktree `mergeBaseBranch`; `bb thread spawn --merge-base-branch` exposes the
+  same capability for agents. Recovery is still composed from normal creation
+  rather than a dedicated route or command.
 - The host daemon continues to receive ordinary new-worktree provision commands.
 - `HOST_DAEMON_PROTOCOL_VERSION` is unchanged.
 - A nullable `retireRequestedAt` column is the durable lifecycle-owned grace
@@ -93,8 +99,8 @@ the recovery action because there is no safe fresh-environment target to infer.
 - The only new database query answers whether a retiring environment has a
   revivable archived thread; it is a targeted `WHERE` query.
 - The app-only handoff navigation seed is a discriminated environment target:
-  project default, environment reuse, fresh managed worktree from a host/branch,
-  or fresh personal workspace on a host.
+  project default, environment reuse, fresh managed worktree from a host/base
+  branch/original merge base, or fresh personal workspace on a host.
 
 ## Verification
 
@@ -105,8 +111,8 @@ Tests cover:
 - destroyed-environment banner priority and handoff affordance;
 - handoff seed validation and rich thread mention construction;
 - normal new-thread provisioning from the destroyed environment's branch,
-  proving committed work is present while the source thread/environment remain
-  archived/destroyed.
+  proving committed work is present and compared with the original merge base
+  while the source thread/environment remain archived/destroyed.
 
 The integration harness keeps `managedEnvironmentRetireGraceMs: 0` because it
 has no periodic sweep or controlled clock; server-level lifecycle tests cover

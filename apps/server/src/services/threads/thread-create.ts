@@ -877,6 +877,7 @@ export async function createThreadFromRequest(
           hostId,
           sourcePath: managedSource.path,
         }),
+        mergeBaseBranch: workspace.mergeBaseBranch ?? null,
         workspaceProvisionType: workspace.type,
       };
       break;

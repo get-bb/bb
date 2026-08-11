@@ -18,6 +18,7 @@ function roundTrip(
     defaultBranch: "main",
     defaultWorktreeBaseBranch: null,
     environmentValue: seed.selectionValue,
+    managedWorktreeMergeBaseBranch: seed.managedWorktreeMergeBaseBranch,
     projectId: PROJECT_ID,
     selectedBranch: seed.branch,
   });
@@ -51,6 +52,19 @@ describe("newThreadEnvironmentArgsToSeed round trip", () => {
       workspace: {
         type: "managed-worktree",
         baseBranch: { kind: "default" },
+      },
+    };
+    expect(roundTrip(environment)).toEqual(environment);
+  });
+
+  it("managed worktree with a distinct comparison branch", () => {
+    const environment: CreateThreadEnvironmentArgs = {
+      type: "host",
+      hostId: "host_1",
+      workspace: {
+        type: "managed-worktree",
+        baseBranch: { kind: "named", name: "archived-thread-branch" },
+        mergeBaseBranch: "main",
       },
     };
     expect(roundTrip(environment)).toEqual(environment);
