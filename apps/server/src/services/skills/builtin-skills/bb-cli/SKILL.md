@@ -53,6 +53,10 @@ message agents, or inspect projects, providers, and environments.
   including thread titles and commit subjects. It defaults to
   `codex/gpt-5.6-luna`; set an override with
   `bb-app config set BB_INFERENCE <provider/model>`.
+- `BB_INFERENCE_FALLBACK` selects the helper model used after a transient
+  primary timeout, rate limit, or service-unavailable failure. It defaults to
+  `codex/gpt-5.4-mini`; set it with
+  `bb-app config set BB_INFERENCE_FALLBACK <provider/model>`.
 - `BB_TRANSCRIPTION` selects the voice transcription model. It defaults to
   `codex/gpt-transcribe`; set an override with
   `bb-app config set BB_TRANSCRIPTION <provider/model>`.
@@ -60,10 +64,10 @@ message agents, or inspect projects, providers, and environments.
   but the CLI identifies server and launcher settings that are startup-only,
   including binding/ports, data and the dev-app port, telemetry, inherited skill
   roots, and `BB_FF_*` flags. `BB_LOG_LEVEL` is also startup-only. Use
-  `bb-app config`, not `bb-app env`, to change `BB_APP_URL`, `BB_INFERENCE`, or
-  `BB_TRANSCRIPTION` live. After a startup-only change, run
-  `bb-app stop && bb-app start` or restart the desktop app. Until then, a server
-  previously bound to `0.0.0.0` remains exposed even if
+  `bb-app config`, not `bb-app env`, to change `BB_APP_URL`, `BB_INFERENCE`,
+  `BB_INFERENCE_FALLBACK`, or `BB_TRANSCRIPTION` live. After a startup-only
+  change, run `bb-app stop && bb-app start` or restart the desktop app. Until
+  then, a server previously bound to `0.0.0.0` remains exposed even if
   `BB_SERVER_BIND_HOST` was changed or unset.
 - Settings → General holds server-backed app-wide preferences, such as the
   macOS-only "Caffeinate" toggle. For details, read

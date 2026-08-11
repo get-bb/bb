@@ -29,11 +29,8 @@ function getInferenceModels(): InferenceModels {
 
 function getInferenceModel(
   deps: BaseInferenceDeps,
+  modelInfo: ProviderModelInfo,
 ): ReturnType<InferenceModels["getModel"]> | null {
-  const modelInfo = parseProviderModelConfig({
-    name: "BB_INFERENCE",
-    value: deps.config.inferenceModel,
-  });
   const model = getInferenceModels().getModel(
     modelInfo.provider,
     modelInfo.modelId,
@@ -56,6 +53,7 @@ const DEFAULT_INFERENCE_TIMEOUT_MS = 30_000;
 const CODEX_INFERENCE_HOST_RPC_GRACE_MS = 1_000;
 
 interface InferenceCompleteArgs<T extends TSchema> {
+  model?: string;
   prompt: string;
   schema: T;
   timeoutMs?: number;
@@ -120,6 +118,15 @@ function shouldTreatAsInferenceTimeout(error: Error): boolean {
   );
 }
 
+export function isTransientInferenceError(error: Error): boolean {
+  return (
+    error instanceof InferenceTimeoutError ||
+    (error instanceof ApiError &&
+      (error.body.code === "codex_rate_limited" ||
+        error.body.code === "codex_service_unavailable"))
+  );
+}
+
 async function completeWithCodexHostDaemon<T extends TSchema>(
   deps: InferenceCompleteDeps,
   modelInfo: ProviderModelInfo,
@@ -167,15 +174,17 @@ export async function inferenceComplete<T extends TSchema>(
   deps: InferenceCompleteDeps,
   args: InferenceCompleteArgs<T>,
 ): Promise<Static<T> | null> {
+  const configuredModel = args.model ?? deps.config.inferenceModel;
   const modelInfo = parseProviderModelConfig({
-    name: "BB_INFERENCE",
-    value: deps.config.inferenceModel,
+    name:
+      args.model === undefined ? "BB_INFERENCE" : "inference model override",
+    value: configuredModel,
   });
   if (backsHostDaemonAiServices(modelInfo.provider)) {
     return completeWithCodexHostDaemon(deps, modelInfo, args);
   }
 
-  const model = getInferenceModel(deps);
+  const model = getInferenceModel(deps, modelInfo);
   if (!model) {
     return null;
   }

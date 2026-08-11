@@ -30,6 +30,7 @@ export interface ServerRuntimeConfig {
   featureFlags: FeatureFlags;
   hostDaemonPort: number;
   inheritedSkillsRootPaths: string[];
+  inferenceFallbackModel: string;
   inferenceModel: string;
   isDevelopment: boolean;
   /**

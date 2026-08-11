@@ -10,6 +10,7 @@ import {
   type AppSurface,
 } from "./app-surface.js";
 import {
+  validateInferenceFallbackModel,
   validateInferenceModel,
   validateTranscriptionModel,
 } from "./inference-model.js";
@@ -132,6 +133,10 @@ function parseInferenceModelValue(args: EnvVarParseArgs): string {
   return validateInferenceModel(args.value);
 }
 
+function parseInferenceFallbackModelValue(args: EnvVarParseArgs): string {
+  return validateInferenceFallbackModel(args.value);
+}
+
 function parseTranscriptionModelValue(args: EnvVarParseArgs): string {
   return validateTranscriptionModel(args.value);
 }
@@ -212,6 +217,13 @@ export const BB_INFERENCE_ENV = defineEnvVar<string>({
   description: "Inference model used for server-side completions",
   name: "BB_INFERENCE",
   parse: parseInferenceModelValue,
+});
+
+export const BB_INFERENCE_FALLBACK_ENV = defineEnvVar<string>({
+  description:
+    "Fallback inference model used after a transient server-side completion failure",
+  name: "BB_INFERENCE_FALLBACK",
+  parse: parseInferenceFallbackModelValue,
 });
 
 export const BB_TRANSCRIPTION_ENV = defineEnvVar<string>({
@@ -359,6 +371,7 @@ export const DEFAULT_BB_POSTHOG_API_KEY =
 export const DEFAULT_BB_TELEMETRY = true;
 export const DEFAULT_BB_DEV_APP_HOST = "";
 export const DEFAULT_BB_INFERENCE = DEFAULTS.inferenceModel;
+export const DEFAULT_BB_INFERENCE_FALLBACK = DEFAULTS.inferenceFallbackModel;
 export const DEFAULT_BB_TRANSCRIPTION = DEFAULTS.transcriptionModel;
 export const DEFAULT_BB_FF_PLACEHOLDER = defaultFeatureFlags.placeholder;
 export const DEFAULT_BB_FF_TIMELINE_WINDOW_EVENT_BUDGET =

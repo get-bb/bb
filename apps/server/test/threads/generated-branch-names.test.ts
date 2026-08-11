@@ -1219,9 +1219,20 @@ describe("generated managed branch names", () => {
         },
       });
       expect(piAiMocks.complete).toHaveBeenCalledTimes(2);
+      expect(piAiMocks.getModel).toHaveBeenNthCalledWith(
+        1,
+        "test",
+        "mock-model",
+      );
+      expect(piAiMocks.getModel).toHaveBeenNthCalledWith(
+        2,
+        "test",
+        "mock-fallback-model",
+      );
       expect(infoSpy).toHaveBeenCalledWith(
         expect.objectContaining({
           attempt: 1,
+          fallbackModel: "test/mock-fallback-model",
           maxAttempts: 2,
           threadId: "thr_retry_timeout",
           timeoutMs: 1,
@@ -1273,6 +1284,16 @@ describe("generated managed branch names", () => {
         },
       });
       expect(piAiMocks.complete).toHaveBeenCalledTimes(2);
+      expect(piAiMocks.getModel).toHaveBeenNthCalledWith(
+        1,
+        "test",
+        "mock-model",
+      );
+      expect(piAiMocks.getModel).toHaveBeenNthCalledWith(
+        2,
+        "test",
+        "mock-fallback-model",
+      );
     });
   });
 

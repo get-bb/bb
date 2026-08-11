@@ -41,10 +41,19 @@ Packaged launcher settings
 but the CLI identifies server and launcher settings that are startup-only,
 including binding/ports, data and the dev-app port, telemetry, inherited skill
 roots, and `BB_FF_*` flags. `BB_LOG_LEVEL` is also startup-only. Use
-`bb-app config`, not `bb-app env`, to change `BB_APP_URL`, `BB_INFERENCE`, or
-`BB_TRANSCRIPTION` live. After a startup-only change, run `bb-app stop && bb-app
-start` or restart the desktop app. Until then, changing or unsetting
-`BB_SERVER_BIND_HOST` does not close a previous `0.0.0.0` listener.
+`bb-app config`, not `bb-app env`, to change `BB_APP_URL`, `BB_INFERENCE`,
+`BB_INFERENCE_FALLBACK`, or `BB_TRANSCRIPTION` live. After a startup-only
+change, run `bb-app stop && bb-app start` or restart the desktop app. Until
+then, changing or unsetting `BB_SERVER_BIND_HOST` does not close a previous
+`0.0.0.0` listener.
+
+Server helper completions use `BB_INFERENCE` first, then
+`BB_INFERENCE_FALLBACK` after a transient timeout, rate limit, or
+service-unavailable failure. Their defaults are `codex/gpt-5.6-luna` and
+`codex/gpt-5.4-mini`, respectively.
+
+  bb-app config set BB_INFERENCE <provider/model>
+  bb-app config set BB_INFERENCE_FALLBACK <provider/model>
 
 Server-backed General settings
 

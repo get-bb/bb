@@ -5,7 +5,11 @@ import type { PromptInput } from "@bb/domain";
 import type { AppDeps, LoggedWorkSessionDeps } from "../../types.js";
 import { Type } from "@earendil-works/pi-ai";
 import { ApiError } from "../../errors.js";
-import { InferenceTimeoutError, inferenceComplete } from "../ai/inference.js";
+import {
+  InferenceTimeoutError,
+  inferenceComplete,
+  isTransientInferenceError,
+} from "../ai/inference.js";
 import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
 
 const MIN_TITLE_GENERATION_WORDS = 5;
@@ -127,15 +131,6 @@ function normalizeGeneratedThreadMetadata(
   };
 }
 
-function isRetryableThreadMetadataError(error: Error): boolean {
-  return (
-    error instanceof InferenceTimeoutError ||
-    (error instanceof ApiError &&
-      (error.body.code === "codex_rate_limited" ||
-        error.body.code === "codex_service_unavailable"))
-  );
-}
-
 export async function generateThreadMetadataWithOutcome(
   deps: ThreadMetadataGenerationDeps,
   args: ThreadMetadataGenerationArgs,
@@ -164,8 +159,13 @@ export async function generateThreadMetadataWithOutcome(
   const maxAttempts = Math.max(1, args.timeoutMaxAttempts ?? 1);
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const model =
+      attempt === 1
+        ? deps.config.inferenceModel
+        : deps.config.inferenceFallbackModel;
     try {
       const parsed = await inferenceComplete(deps, {
+        model,
         prompt,
         schema: threadMetadataSchema,
         ...(args.timeoutMs ? { timeoutMs: args.timeoutMs } : {}),
@@ -177,6 +177,7 @@ export async function generateThreadMetadataWithOutcome(
           {
             attempts: attempt,
             durationMs: Date.now() - startedAt,
+            model,
             threadId: args.threadId,
           },
           "Thread metadata inference completed after transient retry",
@@ -188,13 +189,15 @@ export async function generateThreadMetadataWithOutcome(
         error instanceof Error
           ? error
           : new Error("Non-Error thrown during thread metadata generation");
-      if (isRetryableThreadMetadataError(err)) {
+      if (isTransientInferenceError(err)) {
         if (attempt < maxAttempts) {
           deps.logger.info(
             {
               attempt,
               errorCode: err instanceof ApiError ? err.body.code : "timeout",
+              fallbackModel: deps.config.inferenceFallbackModel,
               maxAttempts,
+              model,
               threadId: args.threadId,
               ...(err instanceof InferenceTimeoutError
                 ? { timeoutMs: err.timeoutMs }
@@ -210,6 +213,7 @@ export async function generateThreadMetadataWithOutcome(
           deps.logger.info(
             {
               attempts: maxAttempts,
+              model,
               threadId: args.threadId,
               timeoutMs: err.timeoutMs,
             },

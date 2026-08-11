@@ -173,6 +173,7 @@ Use `bb-app config` for persistent non-secret package settings under
 ```bash
 npx bb-app config set BB_APP_URL https://<machine>.<tailnet>.ts.net
 npx bb-app config set BB_INFERENCE codex/gpt-5.6-luna
+npx bb-app config set BB_INFERENCE_FALLBACK codex/gpt-5.4-mini
 npx bb-app config set BB_TRANSCRIPTION codex/gpt-transcribe
 npx bb-app config list
 npx bb-app config refresh

@@ -126,6 +126,11 @@ const invalidConfigCommandCases: InvalidConfigCommandCase[] = [
     value: "gpt-4o-mini",
   },
   {
+    expectedError: /BB_INFERENCE_FALLBACK must use provider\/model format/u,
+    key: "BB_INFERENCE_FALLBACK",
+    value: "gpt-5.4-mini",
+  },
+  {
     expectedError: /BB_TRANSCRIPTION must use provider\/model format/u,
     key: "BB_TRANSCRIPTION",
     value: "gpt-4o-mini-transcribe",
@@ -157,6 +162,10 @@ const startupOnlyManagedEnvCases: StartupOnlyManagedEnvCase[] = [
   { key: "BB_FF_TIMELINE_WINDOW_EVENT_BUDGET", value: "2000" },
   { key: "BB_HOST_DAEMON_PORT", value: "48887" },
   { key: "BB_INFERENCE", value: "codex/test-inference" },
+  {
+    key: "BB_INFERENCE_FALLBACK",
+    value: "codex/test-inference-fallback",
+  },
   { key: "BB_INHERITED_SKILLS_ROOTS", value: "/tmp/bb-skills" },
   { key: "BB_LOG_LEVEL", value: "debug" },
   { key: "BB_MANAGED_DEV_BUILTIN_PLUGIN_HOT_RELOAD", value: "1" },
@@ -972,6 +981,14 @@ describe("bb-app launcher", () => {
     await runBbApp([
       "--data-dir",
       dataDir,
+      "config",
+      "set",
+      "BB_INFERENCE_FALLBACK",
+      "codex/gpt-5.4-mini",
+    ]);
+    await runBbApp([
+      "--data-dir",
+      dataDir,
       "env",
       "set",
       "OPENAI_API_KEY",
@@ -984,6 +1001,7 @@ describe("bb-app launcher", () => {
       config: {
         BB_APP_URL: "https://bb.example.test",
         BB_INFERENCE: "anthropic/claude-sonnet-4-5",
+        BB_INFERENCE_FALLBACK: "codex/gpt-5.4-mini",
       },
     });
     expect(JSON.parse(readFileSync(join(dataDir, "env.json"), "utf8"))).toEqual(

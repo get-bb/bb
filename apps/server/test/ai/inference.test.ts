@@ -16,7 +16,6 @@ import { withTestHarness } from "../helpers/test-app.js";
 const titleSchema = Type.Object({
   title: Type.String(),
 });
-
 describe("inferenceComplete", () => {
   it("surfaces missing host for codex inference", async () => {
     await withTestHarness({
@@ -69,6 +68,36 @@ describe("inferenceComplete", () => {
       await expect(completion).resolves.toEqual({
         title: "Generated title",
       });
+    });
+  });
+
+  it("routes an explicit fallback model instead of the configured primary", async () => {
+    await withTestHarness({
+      inferenceModel: "codex/gpt-5.6-luna",
+    }, async (harness) => {
+      seedHostSession(harness.deps);
+      const completion = inferenceComplete(harness.deps, {
+        model: "codex/gpt-5.4-mini",
+        prompt: "Generate a title",
+        schema: titleSchema,
+        timeoutMs: 5000,
+      });
+
+      const queued = await waitForQueuedCommand(
+        harness,
+        ({ command }) => command.type === "codex.inference.complete",
+      );
+      expect(queued.command).toMatchObject({
+        model: "gpt-5.4-mini",
+        type: "codex.inference.complete",
+      });
+
+      await reportQueuedCommandSuccess(harness, queued, {
+        model: "gpt-5.4-mini",
+        value: { title: "Fallback title" },
+      });
+
+      await expect(completion).resolves.toEqual({ title: "Fallback title" });
     });
   });
 

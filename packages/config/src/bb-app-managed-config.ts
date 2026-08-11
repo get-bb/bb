@@ -13,12 +13,14 @@ export const BB_APP_ENV_FILE_NAME = "env.json";
 export type BbAppManagedConfigKey =
   | "BB_APP_URL"
   | "BB_INFERENCE"
+  | "BB_INFERENCE_FALLBACK"
   | "BB_LOG_LEVEL"
   | "BB_TRANSCRIPTION";
 
 export const BB_APP_MANAGED_CONFIG_KEYS: BbAppManagedConfigKey[] = [
   "BB_APP_URL",
   "BB_INFERENCE",
+  "BB_INFERENCE_FALLBACK",
   "BB_LOG_LEVEL",
   "BB_TRANSCRIPTION",
 ];
@@ -39,6 +41,7 @@ export const bbAppManagedConfigValuesSchema = z
   .object({
     BB_APP_URL: z.string().optional(),
     BB_INFERENCE: z.string().optional(),
+    BB_INFERENCE_FALLBACK: z.string().optional(),
     BB_LOG_LEVEL: z.string().optional(),
     BB_TRANSCRIPTION: z.string().optional(),
   })

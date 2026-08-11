@@ -292,6 +292,7 @@ describe("consumer-specific config", () => {
         BB_EXTERNAL_URL: undefined,
         BB_FF_PLACEHOLDER: undefined,
         BB_INFERENCE: undefined,
+        BB_INFERENCE_FALLBACK: undefined,
         BB_TRANSCRIPTION: undefined,
       }),
     });
@@ -304,6 +305,7 @@ describe("consumer-specific config", () => {
     expect(serverConfig.BB_APP_VERSION).toBe("0.0.0-dev");
     expect(serverConfig.BB_EXTERNAL_URL).toBe("");
     expect(serverConfig.BB_INFERENCE).toBe("codex/gpt-5.6-luna");
+    expect(serverConfig.BB_INFERENCE_FALLBACK).toBe("codex/gpt-5.4-mini");
     expect(serverConfig.BB_TRANSCRIPTION).toBe("codex/gpt-transcribe");
     expect(serverConfig.OPENAI_API_KEY).toBe("test-openai-key");
     expect(serverConfig.featureFlags).toEqual({
@@ -466,6 +468,28 @@ describe("consumer-specific config", () => {
         }),
       }),
     ).toThrow(/BB_INFERENCE/u);
+  });
+
+  it("requires provider/model format for BB_INFERENCE_FALLBACK", () => {
+    expect(() =>
+      loadServerConfig({
+        env: createServerRuntimeEnv({
+          BB_INFERENCE_FALLBACK: "gpt-5.4-mini",
+        }),
+      }),
+    ).toThrow(/BB_INFERENCE_FALLBACK/u);
+  });
+
+  it("loads an explicit inference fallback model", () => {
+    const serverConfig = loadServerConfig({
+      env: createServerRuntimeEnv({
+        BB_INFERENCE_FALLBACK: "anthropic/claude-haiku-4-5",
+      }),
+    });
+
+    expect(serverConfig.BB_INFERENCE_FALLBACK).toBe(
+      "anthropic/claude-haiku-4-5",
+    );
   });
 
   it("requires provider/model format for BB_TRANSCRIPTION", () => {

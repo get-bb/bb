@@ -70,6 +70,7 @@ function createRuntimeConfig(): ServerRuntimeConfig {
     featureFlags: defaultFeatureFlags,
     hostDaemonPort: 38887,
     inheritedSkillsRootPaths: [],
+    inferenceFallbackModel: "openai/gpt-4o-mini-fallback",
     inferenceModel: "openai/gpt-4o-mini",
     isDevelopment: false,
     managedEnvironmentRetireGraceMs: 5 * 60_000,
@@ -92,6 +93,7 @@ describe("bb-app managed config", () => {
         config: {
           BB_APP_URL: "https://stored-app.example.test",
           BB_INFERENCE: "anthropic/claude-sonnet-4-5",
+          BB_INFERENCE_FALLBACK: "openai/gpt-5.4-mini",
           BB_TRANSCRIPTION: "openai/gpt-4o-transcribe",
         },
       },
@@ -105,6 +107,7 @@ describe("bb-app managed config", () => {
 
     expect(targetConfig).toMatchObject({
       appUrl: "https://stored-app.example.test",
+      inferenceFallbackModel: "openai/gpt-5.4-mini",
       inferenceModel: "anthropic/claude-sonnet-4-5",
       openAiApiKey: "stored-openai-key",
       transcriptionModel: "openai/gpt-4o-transcribe",
@@ -294,6 +297,24 @@ describe("bb-app managed config", () => {
     ).toThrow(/BB_INFERENCE/u);
   });
 
+  it("rejects invalid inference fallback model config", () => {
+    const baseConfig = createRuntimeConfig();
+    const targetConfig = createRuntimeConfig();
+
+    expect(() =>
+      applyBbAppManagedConfig({
+        baseConfig,
+        managedConfig: {
+          config: {
+            BB_INFERENCE_FALLBACK: "gpt-5.4-mini",
+          },
+        },
+        managedEnvFile: {},
+        targetConfig,
+      }),
+    ).toThrow(/BB_INFERENCE_FALLBACK/u);
+  });
+
   it("reloads config file changes and notifies clients", async () => {
     const dataDir = mkdtempSync(join(tmpdir(), "bb-managed-config-"));
     const socket = createMockHubSocket();
@@ -312,12 +333,20 @@ describe("bb-app managed config", () => {
 
     try {
       writeFileSync(
+        formatBbAppConfigPath(dataDir),
+        `${JSON.stringify({
+          config: { BB_INFERENCE_FALLBACK: "codex/gpt-5.4-mini" },
+        })}\n`,
+        "utf8",
+      );
+      writeFileSync(
         formatBbAppEnvPath(dataDir),
         `${JSON.stringify({ env: { OPENAI_API_KEY: "live-openai-key" } })}\n`,
         "utf8",
       );
 
       await reloader.reload({ notify: true });
+      expect(config.inferenceFallbackModel).toBe("codex/gpt-5.4-mini");
       expect(config.openAiApiKey).toBe("live-openai-key");
       expect(
         socket.messages.some((message) => message.includes("config-changed")),
