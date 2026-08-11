@@ -10,9 +10,10 @@ import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
 
 type ThreadMetadataInferenceDeps = LoggedWorkSessionDeps;
 
-// Two 2.5s attempts preserve roughly the old 5s managed provisioning
-// blocking budget while recovering transient metadata inference timeouts.
-export const MANAGED_THREAD_METADATA_TIMEOUT_MS = 2_500;
+// Luna commonly needs more than 2.5s for structured output. Two 5s attempts
+// let the first ordinary completion finish and still recover a transient
+// timeout or service-unavailable response.
+export const MANAGED_THREAD_METADATA_TIMEOUT_MS = 5_000;
 export const MANAGED_THREAD_METADATA_TIMEOUT_MAX_ATTEMPTS = 2;
 
 export interface ThreadMetadataInferenceArgs {

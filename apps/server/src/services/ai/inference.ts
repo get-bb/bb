@@ -50,6 +50,10 @@ function getInferenceModel(
 
 const RESULT_TOOL_NAME = "result";
 const DEFAULT_INFERENCE_TIMEOUT_MS = 30_000;
+// The command timeout is enforced by the daemon around the provider request.
+// Leave enough time for its settled response to cross the host RPC boundary so
+// the server does not discard a useful timeout or completion as stale.
+const CODEX_INFERENCE_HOST_RPC_GRACE_MS = 1_000;
 
 interface InferenceCompleteArgs<T extends TSchema> {
   prompt: string;
@@ -126,7 +130,7 @@ async function completeWithCodexHostDaemon<T extends TSchema>(
   try {
     const result = await runLiveCommandAndWait(deps, {
       hostId,
-      timeoutMs,
+      timeoutMs: timeoutMs + CODEX_INFERENCE_HOST_RPC_GRACE_MS,
       command: {
         type: "codex.inference.complete",
         model: modelInfo.modelId,

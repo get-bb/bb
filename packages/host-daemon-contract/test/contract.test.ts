@@ -1051,10 +1051,12 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  // Version 99 moves Claude workflow/subagent enforcement from the session
-  // payload into live adapter controls, so an older daemon must update.
-  it("uses protocol version 99 for live Claude feature settings", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(99);
+  // Version 100 makes Codex inference timeoutMs an end-to-end daemon deadline
+  // and classifies streamed service-unavailable failures for bounded retries.
+  // An older daemon can outlive the server's wait or hide a retryable failure,
+  // so it must update before connecting.
+  it("uses protocol version 100 for Codex inference deadlines", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(100);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {

@@ -27,6 +27,7 @@ import {
   seedTurnStarted,
 } from "../helpers/seed.js";
 import { createTestAppHarness, withTestHarness } from "../helpers/test-app.js";
+import { ApiError } from "../../src/errors.js";
 import { InferenceTimeoutError } from "../../src/services/ai/inference.js";
 import { runEnvironmentProvisioningSweep } from "../../src/services/system/periodic-sweeps.js";
 import { createThreadFromRequest } from "../../src/services/threads/thread-create.js";
@@ -1225,14 +1226,14 @@ describe("generated managed branch names", () => {
           threadId: "thr_retry_timeout",
           timeoutMs: 1,
         }),
-        "Thread metadata inference timed out; retrying",
+        "Thread metadata inference failed transiently; retrying",
       );
       expect(infoSpy).toHaveBeenCalledWith(
         expect.objectContaining({
           attempts: 2,
           threadId: "thr_retry_timeout",
         }),
-        "Thread metadata inference completed after timeout retry",
+        "Thread metadata inference completed after transient retry",
       );
     } finally {
       infoSpy.mockRestore();
@@ -1240,7 +1241,42 @@ describe("generated managed branch names", () => {
     }
   });
 
-  it("does not retry non-timeout metadata inference failures", async () => {
+  it("retries transient Codex service failures", async () => {
+    piAiMocks.getModel.mockReturnValue({ provider: "test" });
+    piAiMocks.complete
+      .mockRejectedValueOnce(
+        new ApiError(
+          502,
+          "codex_service_unavailable",
+          "Our servers are currently overloaded. Please try again later.",
+          false,
+        ),
+      )
+      .mockResolvedValueOnce(
+        mockThreadMetadataCompletion({
+          title: "Recovered Metadata",
+        }),
+      );
+
+    await withTestHarness(async (harness) => {
+      await expect(
+        generateThreadMetadataWithOutcome(harness.deps, {
+          input: textInput("Recover transient metadata provider failures"),
+          threadId: "thr_retry_service_unavailable",
+          timeoutMaxAttempts: 2,
+          timeoutMs: 1_000,
+        }),
+      ).resolves.toMatchObject({
+        metadata: {
+          branchSlug: "recovered-metadata",
+          title: "Recovered Metadata",
+        },
+      });
+      expect(piAiMocks.complete).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it("does not retry non-transient metadata inference failures", async () => {
     piAiMocks.getModel.mockReturnValue({ provider: "test" });
     piAiMocks.complete.mockRejectedValue(new Error("metadata failed"));
     await withTestHarness(async (harness) => {

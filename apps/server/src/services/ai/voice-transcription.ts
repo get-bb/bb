@@ -22,6 +22,7 @@ type OptionalJsonValue = JsonValue | null | undefined;
 const OPENAI_TRANSCRIPTION_PROVIDER = "openai";
 const VOICE_TRANSCRIPTION_MAX_BYTES = 25 * 1024 * 1024;
 const CODEX_VOICE_TRANSCRIPTION_ATTEMPT_TIMEOUT_MS = 10_000;
+const CODEX_VOICE_TRANSCRIPTION_HOST_RPC_GRACE_MS = 1_000;
 const CODEX_VOICE_TRANSCRIPTION_MAX_ATTEMPTS = 2;
 const CODEX_VOICE_TRANSCRIPTION_RETRY_DELAY_MS = 250;
 const OPENAI_VOICE_TRANSCRIPTION_TIMEOUT_MS = 10_000;
@@ -149,7 +150,9 @@ async function transcribeWithCodexHostDaemon(
     try {
       const result = await runLiveCommandAndWait(deps, {
         hostId,
-        timeoutMs: CODEX_VOICE_TRANSCRIPTION_ATTEMPT_TIMEOUT_MS,
+        timeoutMs:
+          CODEX_VOICE_TRANSCRIPTION_ATTEMPT_TIMEOUT_MS +
+          CODEX_VOICE_TRANSCRIPTION_HOST_RPC_GRACE_MS,
         command: {
           type: "codex.voice.transcribe",
           model: modelInfo.modelId,

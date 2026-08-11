@@ -1,14 +1,17 @@
+import { setTimeout as delay } from "node:timers/promises";
 import { renderTemplate } from "@bb/templates";
 import { getThread, updateThread } from "@bb/db";
 import type { PromptInput } from "@bb/domain";
 import type { AppDeps, LoggedWorkSessionDeps } from "../../types.js";
 import { Type } from "@earendil-works/pi-ai";
+import { ApiError } from "../../errors.js";
 import { InferenceTimeoutError, inferenceComplete } from "../ai/inference.js";
 import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
 
 const MIN_TITLE_GENERATION_WORDS = 5;
 const MAX_GENERATED_TITLE_WORDS = 5;
 const MAX_BRANCH_SLUG_LENGTH = 48;
+const THREAD_METADATA_RETRY_DELAY_MS = 250;
 
 type ThreadMetadataGenerationDeps = LoggedWorkSessionDeps;
 type ThreadTitleApplyDeps = Pick<AppDeps, "db" | "hub">;
@@ -124,6 +127,15 @@ function normalizeGeneratedThreadMetadata(
   };
 }
 
+function isRetryableThreadMetadataError(error: Error): boolean {
+  return (
+    error instanceof InferenceTimeoutError ||
+    (error instanceof ApiError &&
+      (error.body.code === "codex_rate_limited" ||
+        error.body.code === "codex_service_unavailable"))
+  );
+}
+
 export async function generateThreadMetadataWithOutcome(
   deps: ThreadMetadataGenerationDeps,
   args: ThreadMetadataGenerationArgs,
@@ -167,40 +179,50 @@ export async function generateThreadMetadataWithOutcome(
             durationMs: Date.now() - startedAt,
             threadId: args.threadId,
           },
-          "Thread metadata inference completed after timeout retry",
+          "Thread metadata inference completed after transient retry",
         );
       }
       return complete(metadata, metadata ? undefined : "inference-unavailable");
     } catch (error) {
-      if (error instanceof InferenceTimeoutError) {
+      const err =
+        error instanceof Error
+          ? error
+          : new Error("Non-Error thrown during thread metadata generation");
+      if (isRetryableThreadMetadataError(err)) {
         if (attempt < maxAttempts) {
           deps.logger.info(
             {
               attempt,
+              errorCode: err instanceof ApiError ? err.body.code : "timeout",
               maxAttempts,
               threadId: args.threadId,
-              timeoutMs: error.timeoutMs,
+              ...(err instanceof InferenceTimeoutError
+                ? { timeoutMs: err.timeoutMs }
+                : {}),
             },
-            "Thread metadata inference timed out; retrying",
+            "Thread metadata inference failed transiently; retrying",
           );
+          await delay(THREAD_METADATA_RETRY_DELAY_MS);
           continue;
         }
 
-        deps.logger.info(
-          {
-            attempts: maxAttempts,
-            threadId: args.threadId,
-            timeoutMs: error.timeoutMs,
-          },
-          "Thread metadata inference timed out",
-        );
-        return complete(null, "timeout");
+        if (err instanceof InferenceTimeoutError) {
+          deps.logger.info(
+            {
+              attempts: maxAttempts,
+              threadId: args.threadId,
+              timeoutMs: err.timeoutMs,
+            },
+            "Thread metadata inference timed out",
+          );
+          return complete(null, "timeout");
+        }
       }
 
       deps.logger.warn(
         {
           threadId: args.threadId,
-          ...runtimeErrorLogFields(deps.config, error),
+          ...runtimeErrorLogFields(deps.config, err),
         },
         "Failed to generate thread metadata",
       );
