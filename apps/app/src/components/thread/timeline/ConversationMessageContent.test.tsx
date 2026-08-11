@@ -165,7 +165,11 @@ describe("ConversationMessageContent long user messages", () => {
             systemMessageKind="unlabeled"
             systemMessageSubject={null}
             text={text}
-            turnRequest={{ kind: "message", status: "accepted" }}
+            turnRequest={{
+              isGrouped: false,
+              kind: "message",
+              status: "accepted",
+            }}
           />
         </RouteNavigationProvider>
       </MemoryRouter>,
