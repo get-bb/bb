@@ -47,6 +47,7 @@ export interface RunningTestServer extends TestAppHarness {
 
 export type TestAppHarnessConfigOverrides = Partial<ServerRuntimeConfig> & {
   appVersionService?: AppVersionService;
+  terminalCloseTimeoutMs?: number;
 };
 
 export const testLogger = {
@@ -95,7 +96,8 @@ export function createTestDaemonHostKey(
 export async function createTestAppHarness(
   overrides: TestAppHarnessConfigOverrides = {},
 ): Promise<TestAppHarness> {
-  const { appVersionService, ...configOverrides } = overrides;
+  const { appVersionService, terminalCloseTimeoutMs, ...configOverrides } =
+    overrides;
   const dataDir = await mkdtemp(join(tmpdir(), "bb-server-test-"));
   const db = initDb(":memory:");
   const hub = new NotificationHubImpl();
@@ -148,6 +150,9 @@ export async function createTestAppHarness(
   };
   const terminalSessions = new TerminalSessionLifecycle({
     attachTimeoutMs: 50,
+    ...(terminalCloseTimeoutMs === undefined
+      ? {}
+      : { closeTimeoutMs: terminalCloseTimeoutMs }),
     config,
     db,
     hub,

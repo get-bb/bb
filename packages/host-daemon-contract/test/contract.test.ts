@@ -1056,10 +1056,12 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  // Version 103 timestamps pull request checks so the server can collapse
-  // superseded runs without relying on GitHub's unstable rollup array order.
-  it("uses protocol version 103 for timestamped pull request checks", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(103);
+  // Version 104 makes terminal.close idempotent in the daemon. An enrolled
+  // daemon on an older build silently ignores a close for a terminal missing
+  // from its in-memory map, leaving the server row running and the panel tab
+  // impossible to close, so enrolled machines must update for the new behavior.
+  it("uses protocol version 104 for idempotent terminal closes", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(104);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {

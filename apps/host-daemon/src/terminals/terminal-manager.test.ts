@@ -1195,6 +1195,25 @@ describe("TerminalManager", () => {
     expect(harness.runtime.shutdown).toHaveBeenCalledTimes(1);
   });
 
+  it("acknowledges closing a terminal that is already gone", async () => {
+    const harness = createHarness();
+
+    await harness.manager.handleMessage({
+      type: "terminal.close",
+      terminalId: "term-missing",
+      reason: "user",
+    });
+
+    expect(harness.messages).toEqual([
+      {
+        type: "terminal.exited",
+        terminalId: "term-missing",
+        exitCode: null,
+        closeReason: "user",
+      },
+    ]);
+  });
+
   it("force kills and cleans up a terminal when node-pty never emits exit", async () => {
     vi.useFakeTimers();
     const harness = createHarnessWithOptions({
