@@ -5,6 +5,8 @@ import {
   type DbNotifier,
   type DbQueryConnection,
   type DbTransaction,
+  countLiveThreadsInEnvironment,
+  deleteEnvironmentProvisionRequest,
   getEnvironment,
   getThread,
   listStoredThreadProvisioningRowsByProvisioningId,
@@ -113,6 +115,7 @@ interface CompletePathlessDestroyInTransactionArgs {
 
 interface AdvanceEnvironmentProvisioningArgs {
   environmentId: string | null | undefined;
+  onDispatchAdmitted?: () => void;
   request?: EnvironmentProvisionRequest | null;
 }
 
@@ -139,6 +142,7 @@ interface FailEnvironmentProvisioningDurablyArgs {
 
 interface StartTrackedEnvironmentProvisionCommandArgs {
   environment: Environment;
+  onDispatchAdmitted?: () => void;
   request: EnvironmentProvisionRequest;
 }
 
@@ -591,6 +595,7 @@ export function settleEnvironmentProvisionCommandResult(
     .all();
 
   if (args.report.ok) {
+    deleteEnvironmentProvisionRequest(args.deps.db, args.command.environmentId);
     recordProvisionedEnvironmentWorkspace(
       args.deps.db,
       args.deps.hub,
@@ -604,13 +609,11 @@ export function settleEnvironmentProvisionCommandResult(
         ...resolveProvisionedEnvironmentBranchMetadata(args.command),
       },
     );
-    const provisionedOutcome = applyLoggedEnvironmentLifecycleEventInTransaction(
-      args.deps,
-      {
+    const provisionedOutcome =
+      applyLoggedEnvironmentLifecycleEventInTransaction(args.deps, {
         environmentId: args.command.environmentId,
         event: { type: "provision.succeeded" },
-      },
-    );
+      });
     if (provisionedOutcome.applied) {
       args.deps.hub.notifyEnvironment(
         args.command.environmentId,
@@ -722,10 +725,20 @@ export function settleEnvironmentProvisionCommandResult(
       context: {
         environmentId: args.command.environmentId,
       },
-      run: (deps) =>
-        runEnvironmentCleanupAdvance(deps, {
+      run: (deps) => {
+        if (
+          countLiveThreadsInEnvironment(deps.db, {
+            environmentId: args.command.environmentId,
+          }) === 0
+        ) {
+          requestEnvironmentCleanup(deps, {
+            environmentId: args.command.environmentId,
+          });
+        }
+        return runEnvironmentCleanupAdvance(deps, {
           environmentId: args.command.environmentId,
-        }),
+        });
+      },
     });
     return { postCommitActions };
   }
@@ -909,6 +922,7 @@ export function interruptUnrecoverableEnvironmentProvisioning(
           },
         },
       );
+      deleteEnvironmentProvisionRequest(tx, args.environmentId);
     },
     { behavior: "immediate" },
   );
@@ -927,6 +941,9 @@ function startTrackedEnvironmentProvisionCommand(
     command: args.request.command,
     execution,
     hostId: args.environment.hostId,
+    ...(args.onDispatchAdmitted
+      ? { onDispatchAdmitted: args.onDispatchAdmitted }
+      : {}),
     timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
   })
     .catch((error) => {
@@ -995,6 +1012,9 @@ export async function advanceEnvironmentProvisioning(
   }
   startTrackedEnvironmentProvisionCommand(deps, {
     environment,
+    ...(args.onDispatchAdmitted
+      ? { onDispatchAdmitted: args.onDispatchAdmitted }
+      : {}),
     request: args.request,
   });
   return null;
@@ -1017,6 +1037,7 @@ interface ActiveManagedEnvironmentProvisionArgs {
 interface DispatchManagedEnvironmentReprovisionArgs {
   beforeProvisionCommandStart?: () => void;
   environment: Environment;
+  onDispatchAdmitted?: () => void;
   projectId: string;
   provisionEventSequence: number;
   provisioningId: string;
@@ -1118,6 +1139,9 @@ export async function dispatchManagedEnvironmentReprovision(
   });
   await advanceEnvironmentProvisioning(deps, {
     environmentId: args.environment.id,
+    ...(args.onDispatchAdmitted
+      ? { onDispatchAdmitted: args.onDispatchAdmitted }
+      : {}),
     request: buildDirectEnvironmentProvisionRequest({
       command,
       provisioningId: args.provisioningId,

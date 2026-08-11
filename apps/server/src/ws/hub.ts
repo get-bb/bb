@@ -634,6 +634,7 @@ export class NotificationHub implements DbNotifier {
   requestHostOnlineRpc(args: {
     hostId: string;
     message: HostDaemonOnlineRpcRequestMessage;
+    onRequestAdmitted?: () => void;
     timeoutMs: number;
   }): Promise<HostDaemonOnlineRpcResponseMessage> {
     const sessionId = this.daemonSessionIdsByHost.get(args.hostId);
@@ -662,7 +663,9 @@ export class NotificationHub implements DbNotifier {
         } catch (error) {
           this.deleteHostOnlineRpcWaiter(args.message.requestId, waiter);
           reject(error instanceof Error ? error : new Error(String(error)));
+          return;
         }
+        args.onRequestAdmitted?.();
       },
     );
   }

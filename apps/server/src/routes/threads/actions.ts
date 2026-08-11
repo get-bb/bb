@@ -76,6 +76,7 @@ import {
   continueThreadAfterProviderRateLimit,
   getProviderRateLimitRecoveryStatus,
 } from "../../services/threads/provider-rate-limit-recovery.js";
+import { acquireThreadOperation } from "../../services/threads/thread-operation-lock.js";
 
 function toQueuedMessageOrderResponse(
   result: ReorderQueuedThreadMessageResult,
@@ -608,48 +609,62 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
   });
 
   post(routes.archive, async (context) => {
-    const thread = requirePublicThread(deps.db, context.req.param("id"));
-    if (thread.archivedAt !== null) {
-      deps.terminalSessions.closeArchivedThreadTerminals({
-        threadId: thread.id,
+    const releaseOperation = await acquireThreadOperation(
+      context.req.param("id"),
+    );
+    try {
+      const thread = requirePublicThread(deps.db, context.req.param("id"));
+      if (thread.archivedAt !== null) {
+        deps.terminalSessions.closeArchivedThreadTerminals({
+          threadId: thread.id,
+        });
+        return context.json({ ok: true });
+      }
+      const shouldRequestCleanup = wouldCleanupEnvironment(deps, {
+        environmentId: thread.environmentId,
+        excludeThreadId: thread.id,
       });
+      const environment = requireThreadHostCommandEnvironment({
+        db: deps.db,
+        thread,
+      });
+      const archiveResult = archiveThreadAndHiddenSourceForks(deps, {
+        environment,
+        thread,
+      });
+      if (!archiveResult) {
+        throw new ApiError(404, "thread_not_found", "Thread not found");
+      }
+      if (shouldRequestCleanup) {
+        requestEnvironmentCleanup(deps, {
+          environmentId: thread.environmentId,
+        });
+        requestEnvironmentCleanupAdvance(deps, {
+          environmentId: thread.environmentId,
+        });
+      }
       return context.json({ ok: true });
+    } finally {
+      releaseOperation();
     }
-    const shouldRequestCleanup = wouldCleanupEnvironment(deps, {
-      environmentId: thread.environmentId,
-      excludeThreadId: thread.id,
-    });
-    const environment = requireThreadHostCommandEnvironment({
-      db: deps.db,
-      thread,
-    });
-    const archiveResult = archiveThreadAndHiddenSourceForks(deps, {
-      environment,
-      thread,
-    });
-    if (!archiveResult) {
-      throw new ApiError(404, "thread_not_found", "Thread not found");
-    }
-    if (shouldRequestCleanup) {
-      requestEnvironmentCleanup(deps, {
-        environmentId: thread.environmentId,
-      });
-      requestEnvironmentCleanupAdvance(deps, {
-        environmentId: thread.environmentId,
-      });
-    }
-    return context.json({ ok: true });
   });
 
-  post(routes.archiveAll, (context) => {
-    const thread = requirePublicThread(deps.db, context.req.param("id"));
-    const archivedThreadIds = archiveThreadAndChildren(deps, {
-      parentThread: thread,
-    });
-    return context.json({
-      ok: true,
-      archivedThreadIds,
-    });
+  post(routes.archiveAll, async (context) => {
+    const releaseOperation = await acquireThreadOperation(
+      context.req.param("id"),
+    );
+    try {
+      const thread = requirePublicThread(deps.db, context.req.param("id"));
+      const archivedThreadIds = archiveThreadAndChildren(deps, {
+        parentThread: thread,
+      });
+      return context.json({
+        ok: true,
+        archivedThreadIds,
+      });
+    } finally {
+      releaseOperation();
+    }
   });
 
   // Un-archive is a pure record op: it clears archivedAt and nothing else. It

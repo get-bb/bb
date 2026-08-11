@@ -54,6 +54,10 @@ const mocks = vi.hoisted(() => ({
     text: "",
   },
   queuedMessages: [] as ThreadQueuedMessage[],
+  sidebarProjects: [
+    { id: "proj_1", name: "Current project" },
+    { id: "proj_2", name: "Target project" },
+  ],
   reorderQueuedMessageMutateAsync: vi.fn(),
   sendQueuedMessageMutateAsync: vi.fn(),
   setQueuedMessageGroupBoundaryMutateAsync: vi.fn(),
@@ -62,6 +66,7 @@ const mocks = vi.hoisted(() => ({
   unarchiveThreadMutate: vi.fn(),
   uploadPromptAttachmentMutateAsync: vi.fn(),
   updateQueuedMessageMutateAsync: vi.fn(),
+  updateThreadMutate: vi.fn(),
   useThreadDefaultExecutionOptions: vi.fn(),
   useThreadCreationOptions: vi.fn(),
   useThreadPromptHistory: vi.fn(),
@@ -82,6 +87,7 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
     composer,
     execution,
     executionReadOnly,
+    environmentSummary,
     permission,
     permissionReadOnly,
     pluginComposerHost,
@@ -111,6 +117,7 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
       serviceTier?: { value?: string };
     };
     executionReadOnly?: boolean;
+    environmentSummary?: ReactNode;
     permission: { value?: string };
     permissionReadOnly?: boolean;
     pluginComposerHost?: PluginComposerHost | null;
@@ -122,7 +129,9 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
   }) => (
     <div data-testid="follow-up-prompt-box">
       <div data-testid="prompt-stack">{stack}</div>
-      <div data-testid="composer-boundary" />
+      <div data-testid="composer-boundary">
+        <div data-testid="environment-summary">{environmentSummary}</div>
+      </div>
       <div data-testid="submit-mode">
         {composer?.submitMode.kind}:{composer?.submitMode.reason ?? ""}
       </div>
@@ -231,7 +240,11 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
 }));
 
 vi.mock("@/components/promptbox/ThreadEnvironmentSummary", () => ({
-  ThreadEnvironmentSummary: () => <div />,
+  ThreadEnvironmentSummary: ({
+    projectControl,
+  }: {
+    projectControl?: ReactNode;
+  }) => <div>{projectControl}</div>,
 }));
 
 vi.mock("@/components/promptbox/banner/QueuedMessagesList", () => ({
@@ -486,10 +499,16 @@ vi.mock("@/hooks/mutations/thread-state-mutations", () => ({
     mutate: mocks.unarchiveThreadMutate,
     variables: null,
   }),
+  useUpdateThread: () => ({
+    isPending: false,
+    mutate: mocks.updateThreadMutate,
+    variables: null,
+  }),
 }));
 
 vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
   useProjectDisplayName: () => null,
+  useSidebarNavigation: () => ({ data: { projects: mocks.sidebarProjects } }),
 }));
 
 vi.mock("@/hooks/queries/thread-default-execution-options-query", () => ({
@@ -539,6 +558,7 @@ function makeThread(
     archivedAt: null,
     environmentId: null,
     id: "thr_1",
+    parentThreadId: null,
     projectId: "proj_1",
     providerId: "codex",
     runtime: { displayStatus: "idle" },
@@ -697,6 +717,11 @@ beforeEach(() => {
     text: mocks.promptDraft.text,
   }));
   mocks.queuedMessages = [];
+  mocks.updateThreadMutate.mockReset();
+  mocks.sidebarProjects = [
+    { id: "proj_1", name: "Current project" },
+    { id: "proj_2", name: "Target project" },
+  ];
   mocks.updateQueuedMessageMutateAsync.mockResolvedValue(undefined);
   mocks.useThreadCreationOptions.mockClear();
   mocks.useThreadDefaultExecutionOptions.mockClear();
@@ -711,6 +736,35 @@ afterEach(() => {
 });
 
 describe("ThreadDetailPromptArea", () => {
+  it("moves the thread from the project selector", () => {
+    mocks.updateThreadMutate.mockImplementation((_request, options) => {
+      options?.onSuccess?.(makeThread({ projectId: "proj_2" }));
+    });
+
+    renderPromptArea();
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Project" }), {
+      button: 0,
+    });
+    fireEvent.click(screen.getByRole("menuitem", { name: "Target project" }));
+
+    expect(mocks.updateThreadMutate).toHaveBeenCalledWith(
+      { id: "thr_1", projectId: "proj_2" },
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
+    );
+    expect(mocks.navigate).toHaveBeenCalledWith(
+      "/projects/proj_2/threads/thr_1",
+    );
+  });
+
+  it("disables the project selector for child threads", () => {
+    renderPromptArea({ thread: makeThread({ parentThreadId: "thr_parent" }) });
+
+    expect(
+      screen.getByRole("button", { name: "Project" }).hasAttribute("disabled"),
+    ).toBe(true);
+  });
+
   it("keeps the queued drawer adjacent to the bottom composer", () => {
     mocks.queuedMessages = [makeQueuedMessage()];
 

@@ -236,13 +236,21 @@ const latestMigrationWhen = Math.max(
   ).entries.map((entry) => entry.when),
 );
 
+function dropPost0090AddedTables(db: DbConnection): void {
+  db.$client
+    .prepare("DROP TABLE IF EXISTS environment_provision_requests")
+    .run();
+}
+
 function dropRewindAddedTables(db: DbConnection): void {
   // Several tests migrate to head, rewind the schema to a legacy state, then
   // re-apply forward. Tables added by recent migrations must be dropped as part
   // of that rewind so the forward re-migrate can re-create them: the automations
   // tables (added by 0039/0041), app_theme (added by 0042), the thread section
-  // schema (thread section columns + thread_sections table), thread tabs, and
-  // normalized plugin persistence tables.
+  // schema (thread section columns + thread_sections table), thread tabs,
+  // normalized plugin persistence tables, and durable environment provisioning
+  // plans.
+  dropPost0090AddedTables(db);
   db.$client.prepare("DROP TABLE IF EXISTS thread_tabs").run();
   db.$client.prepare("DROP TABLE IF EXISTS automation_runs").run();
   db.$client.prepare("DROP TABLE IF EXISTS automations").run();
@@ -1231,6 +1239,7 @@ describe("migrate", () => {
         [number]
       >("DELETE FROM __drizzle_migrations WHERE created_at >= ?")
       .run(onboardingMigrationWhen);
+    dropPost0090AddedTables(db);
     db.$client
       .prepare(
         "INSERT INTO projects (id, name, created_at, updated_at, sort_key, kind) VALUES ('proj_a','app',1,1,'V','standard')",
@@ -1504,6 +1513,7 @@ describe("migrate", () => {
           "DELETE FROM __drizzle_migrations WHERE created_at >= ?",
         )
         .run(permissionModesMigrationWhen);
+      dropPost0090AddedTables(db);
       dropSideChatPluginExperimentColumn(db);
       dropToolsHubExperimentColumn(db);
       restorePluginsExperimentColumn(db);
@@ -1908,6 +1918,7 @@ describe("migrate", () => {
       dropOnboardingCompletedAtColumn(db);
       dropNewOnboardingExperimentColumn(db);
       dropHostMaxPermissionModeColumn(db);
+      dropPost0090AddedTables(db);
 
       expect(
         db.$client
@@ -2002,6 +2013,7 @@ describe("migrate", () => {
       dropOnboardingCompletedAtColumn(db);
       dropNewOnboardingExperimentColumn(db);
       dropHostMaxPermissionModeColumn(db);
+      dropPost0090AddedTables(db);
 
       expect(() => migrate(db)).not.toThrow();
 

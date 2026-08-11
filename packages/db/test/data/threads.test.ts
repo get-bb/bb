@@ -39,7 +39,10 @@ import {
 } from "../../src/data/thread-sections.js";
 import { createProject } from "../../src/data/projects.js";
 import { upsertHost } from "../../src/data/hosts.js";
-import { createEnvironment } from "../../src/data/environments.js";
+import {
+  countInactiveThreadEnvironmentReferences,
+  createEnvironment,
+} from "../../src/data/environments.js";
 
 function setup() {
   const db = createConnection(":memory:");
@@ -1085,6 +1088,49 @@ describe("threads", () => {
     );
   });
 
+  it("updates a thread project and notifies both project lists", () => {
+    const { db, host, project } = setup();
+    const { project: targetProject } = createProject(db, noopNotifier, {
+      name: "target-project",
+      source: {
+        type: "local_path",
+        hostId: host.id,
+        path: "/tmp/target-project",
+      },
+    });
+    const spy: DbNotifier = {
+      notifyThread: vi.fn(),
+      notifyEnvironment: vi.fn(),
+      notifyHost: vi.fn(),
+      notifyProject: vi.fn(),
+      notifySystem: vi.fn(),
+    };
+    const thread = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+    });
+
+    const updated = updateThread(db, spy, thread.id, {
+      projectId: targetProject.id,
+    });
+
+    expect(updated?.projectId).toBe(targetProject.id);
+    expect(spy.notifyThread).toHaveBeenCalledWith(
+      thread.id,
+      ["project-changed"],
+      {
+        previousProjectId: project.id,
+        projectId: targetProject.id,
+      },
+    );
+    expect(spy.notifyProject).toHaveBeenCalledWith(project.id, [
+      "threads-changed",
+    ]);
+    expect(spy.notifyProject).toHaveBeenCalledWith(targetProject.id, [
+      "threads-changed",
+    ]);
+  });
+
   it("preserves read state when renaming a read thread", () => {
     vi.useFakeTimers();
     try {
@@ -1293,6 +1339,9 @@ describe("threads", () => {
         excludeThreadId: liveThread.id,
       }),
     ).toBe(0);
+    expect(
+      countInactiveThreadEnvironmentReferences(db, environment.id),
+    ).toBe(2);
   });
 
   it("lists canonical thread environments for a host", () => {

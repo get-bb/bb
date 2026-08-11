@@ -26,6 +26,7 @@ export interface RunLiveHostCommandArgs<
   command: Extract<HostDaemonCommand, { type: TType }>;
   execution?: HostDaemonCommandExecutionRecord;
   hostId: string;
+  onDispatchAdmitted?: () => void;
   timeoutMs: number;
 }
 
@@ -217,6 +218,9 @@ export async function runLiveHostCommand<
     const result = await callHostOnlineRpc(deps, {
       command: args.command,
       hostId: args.hostId,
+      ...(args.onDispatchAdmitted
+        ? { onRequestAdmitted: args.onDispatchAdmitted }
+        : {}),
       timeoutMs: args.timeoutMs,
     });
     await applyLiveHostCommandReport(deps, {

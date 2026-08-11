@@ -38,6 +38,7 @@ export interface ReadyThreadEnvironment extends Environment {
 
 export interface DispatchTurnDuringReprovisionArgs {
   beforeRequestAppendInTransaction?: (args: { tx: DbTransaction }) => void;
+  onDispatchAdmitted?: () => void;
   deps: LoggedPendingInteractionWorkSessionDeps;
   environment: Environment;
   execution: ResolvedThreadExecutionOptions;
@@ -187,6 +188,9 @@ export async function dispatchTurnDuringReprovision(
         });
       },
       environment: args.environment,
+      ...(args.onDispatchAdmitted
+        ? { onDispatchAdmitted: args.onDispatchAdmitted }
+        : {}),
       projectId: args.thread.projectId,
       provisionEventSequence,
       provisioningId,

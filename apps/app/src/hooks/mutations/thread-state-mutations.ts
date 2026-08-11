@@ -17,6 +17,7 @@ import {
   beginPinThreadTransaction,
   beginThreadReadStateTransaction,
   beginThreadMetadataTransaction,
+  beginThreadProjectTransaction,
   beginReorderPinnedThreadTransaction,
   beginUnarchiveThreadTransaction,
   beginUnpinAndMoveThreadTransaction,
@@ -59,6 +60,25 @@ interface DeleteThreadMutationRequest {
   childThreadsConfirmed: boolean;
 }
 
+let projectMoveMutationTail = Promise.resolve();
+
+async function acquireProjectMoveMutationTurn(): Promise<() => void> {
+  const previous = projectMoveMutationTail;
+  let resolveCurrent!: () => void;
+  const current = new Promise<void>((resolve) => {
+    resolveCurrent = resolve;
+  });
+  projectMoveMutationTail = current;
+  await previous;
+
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    resolveCurrent();
+  };
+}
+
 export function useUpdateThread(options?: UpdateThreadMutationOptions) {
   const queryClient = useQueryClient();
 
@@ -76,11 +96,28 @@ export function useUpdateThread(options?: UpdateThreadMutationOptions) {
     },
     mutationFn: ({ id, ...request }: UpdateThreadMutationRequest) =>
       sdk.threads.update({ threadId: id, ...request }),
-    onMutate: ({
+    onMutate: async ({
+      projectId,
       sectionId,
       id,
       title,
-    }): Promise<ThreadListMutationTransaction | undefined> | undefined => {
+    }): Promise<ThreadListMutationTransaction | undefined> => {
+      if (projectId !== undefined) {
+        const releaseProjectMove = await acquireProjectMoveMutationTurn();
+        try {
+          const transaction = await beginThreadProjectTransaction({
+            projectId,
+            queryClient,
+            sectionId,
+            threadId: id,
+            title,
+          });
+          return { ...transaction, releaseProjectMove };
+        } catch (error) {
+          releaseProjectMove();
+          throw error;
+        }
+      }
       if (title === undefined && sectionId === undefined) {
         return undefined;
       }
@@ -101,6 +138,9 @@ export function useUpdateThread(options?: UpdateThreadMutationOptions) {
     },
     onSuccess: (thread) => {
       applyThreadUpdateResult({ queryClient, thread });
+    },
+    onSettled: (_thread, _error, _variables, context) => {
+      context?.releaseProjectMove?.();
     },
   });
 }

@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import type { ReactNode } from "react";
 import { createStore, Provider } from "jotai";
@@ -412,6 +418,55 @@ describe("ThreadRow", () => {
     expect(screen.queryByLabelText("Thread has unsubmitted draft")).toBeNull();
     expect(screen.queryByLabelText("Unread thread succeeded")).toBeNull();
     expect(screen.queryByText("⌘3")).toBeNull();
+  });
+
+  it("keeps the project-move pointer listener when split dragging is enabled", () => {
+    const projectMovePointerDown = vi.fn();
+    const { container } = renderThreadRow({
+      options: {
+        ...DEFAULT_OPTIONS,
+        dragBindings: {
+          attributes: {
+            role: "button",
+            tabIndex: 0,
+            "aria-disabled": false,
+            "aria-pressed": false,
+            "aria-roledescription": "draggable",
+            "aria-describedby": "DndDescribedBy-0",
+          },
+          disabled: false,
+          listeners: { onPointerDown: projectMovePointerDown },
+          setActivatorNodeRef: vi.fn(),
+        },
+      },
+    });
+    const row = container.querySelector(
+      '[data-sidebar-thread-id="thr_test"]',
+    )?.parentElement;
+
+    expect(row).not.toBeNull();
+    fireEvent.pointerDown(row as HTMLElement, {
+      button: 0,
+      clientX: 20,
+      clientY: 20,
+    });
+
+    expect(projectMovePointerDown).toHaveBeenCalledTimes(1);
+
+    fireEvent.pointerUp(window, { clientX: 20, clientY: 20 });
+  });
+
+  it("dims the source row while a project move is active", () => {
+    const { container } = renderThreadRow({
+      options: { ...DEFAULT_OPTIONS, isProjectMoveSource: true },
+    });
+
+    const row = container.querySelector(
+      '[data-sidebar-project-move-source="true"]',
+    );
+
+    expect(row).not.toBeNull();
+    expect((row as HTMLElement).style.opacity).toBe("0.45");
   });
 
   it("replaces the draft icon with a plugin status and restores it when cleared", () => {

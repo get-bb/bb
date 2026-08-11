@@ -472,6 +472,23 @@ export const environments = sqliteTable(
   ],
 );
 
+/**
+ * Server-owned provisioning plans that must survive a response boundary or
+ * server restart. The payload is validated by the owning service; the DB
+ * keeps it opaque so it does not depend on host-daemon wire types.
+ */
+export const environmentProvisionRequests = sqliteTable(
+  "environment_provision_requests",
+  {
+    environmentId: text("environment_id")
+      .primaryKey()
+      .references(() => environments.id, { onDelete: "cascade" }),
+    requestJson: text("request_json").notNull(),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+);
+
 export const threads = sqliteTable(
   "threads",
   {

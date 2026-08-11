@@ -492,6 +492,7 @@ function listQuery(args: ThreadListArgs | undefined): ThreadListQuery {
 
 function updateJson(args: ThreadUpdateArgs): UpdateThreadRequest {
   return {
+    projectId: args.projectId,
     title: args.title,
     sectionId: args.sectionId,
     parentThreadId: args.parentThreadId,

@@ -180,6 +180,7 @@ async function resumeThreadRuntimeIfMissing(
     dynamicTools: resumeContext.dynamicTools,
     disallowedTools: resumeContext.disallowedTools,
     instructionMode: resumeContext.instructionMode,
+    skillRoots: entry.skillRoots,
   });
 }
 
@@ -276,6 +277,7 @@ async function runSubmittedTurn(
   entry: RuntimeEntry,
 ): Promise<HostDaemonCommandResult<"turn.submit">> {
   await entry.runtime.runTurn({
+    environmentId: command.environmentId,
     threadId: command.threadId,
     input: command.input,
     ...(command.inputGroups !== undefined
@@ -283,7 +285,12 @@ async function runSubmittedTurn(
       : {}),
     clientRequestId: command.requestId,
     options: command.options,
+    projectId: command.resumeContext.projectId,
     instructions: command.resumeContext.instructions,
+    dynamicTools: command.resumeContext.dynamicTools,
+    disallowedTools: command.resumeContext.disallowedTools,
+    instructionMode: command.resumeContext.instructionMode,
+    skillRoots: entry.skillRoots,
   });
   return { appliedAs: "new-turn" };
 }
@@ -294,6 +301,7 @@ async function steerSubmittedTurn(
   expectedTurnId: string,
 ): Promise<HostDaemonCommandResult<"turn.submit">> {
   const result = await entry.runtime.steerTurn({
+    environmentId: command.environmentId,
     threadId: command.threadId,
     expectedTurnId,
     input: command.input,
@@ -302,7 +310,12 @@ async function steerSubmittedTurn(
       : {}),
     clientRequestId: command.requestId,
     options: command.options,
+    projectId: command.resumeContext.projectId,
     instructions: command.resumeContext.instructions,
+    dynamicTools: command.resumeContext.dynamicTools,
+    disallowedTools: command.resumeContext.disallowedTools,
+    instructionMode: command.resumeContext.instructionMode,
+    skillRoots: entry.skillRoots,
   });
 
   if (result.status === "steered") {

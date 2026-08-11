@@ -22,9 +22,15 @@ import {
 } from "./mutation-cache-effects";
 import {
   applyToCachedThreadListsAndSidebarNavigation,
+  getCachedProjectMoveThreads,
+  getCachedThreadListEntryPlaceholder,
+  optimisticallyMoveThreadToProject,
   restoreCachedSidebarNavigation,
+  restoreCachedThreadDetails,
   snapshotCachedSidebarNavigation,
+  snapshotCachedThreadDetails,
   type CachedSidebarNavigationSnapshot,
+  type CachedThreadDetailSnapshot,
 } from "./query-cache";
 import {
   restoreCachedThreadLists,
@@ -71,6 +77,12 @@ interface BeginThreadTitleTransactionArgs extends ThreadIdCacheArgs {
 }
 
 interface BeginThreadMetadataTransactionArgs extends ThreadIdCacheArgs {
+  sectionId?: string | null;
+  title?: string | null;
+}
+
+interface BeginThreadProjectTransactionArgs extends ThreadIdCacheArgs {
+  projectId: string;
   sectionId?: string | null;
   title?: string | null;
 }
@@ -131,8 +143,10 @@ interface SettleDeleteThreadTransactionArgs extends ThreadIdCacheArgs {
 
 export interface ThreadListMutationTransaction {
   previousSidebarNavigation: CachedSidebarNavigationSnapshot;
+  previousThreadDetails: CachedThreadDetailSnapshot[];
   previousThread: ThreadWithRuntime | undefined;
   previousThreadLists: CachedThreadListSnapshot;
+  releaseProjectMove?: () => void;
 }
 
 export interface PinnedThreadOrderTransaction {
@@ -300,6 +314,7 @@ async function runOptimisticThreadFieldTransaction({
 
   return {
     previousSidebarNavigation,
+    previousThreadDetails: [],
     previousThread,
     previousThreadLists,
   };
@@ -432,6 +447,77 @@ export function beginThreadMetadataTransaction({
   });
 }
 
+export async function beginThreadProjectTransaction({
+  projectId,
+  queryClient,
+  sectionId,
+  threadId,
+  title,
+}: BeginThreadProjectTransactionArgs): Promise<ThreadListMutationTransaction> {
+  await queryClient.cancelQueries({ queryKey: threadQueryKey(threadId) });
+  await queryClient.cancelQueries({ queryKey: threadsQueryKey() });
+  await queryClient.cancelQueries({ queryKey: sidebarNavigationQueryKey() });
+
+  const cachedProjectMoveThreads = getCachedProjectMoveThreads(
+    queryClient,
+    threadId,
+  );
+  await Promise.all(
+    [...cachedProjectMoveThreads.threadIds].map((cachedThreadId) =>
+      queryClient.cancelQueries({ queryKey: threadQueryKey(cachedThreadId) }),
+    ),
+  );
+
+  const previousThread = queryClient.getQueryData<ThreadWithRuntime>(
+    threadQueryKey(threadId),
+  );
+  const previousThreadDetails = snapshotCachedThreadDetails(queryClient);
+  const previousThreadListEntry = getCachedThreadListEntryPlaceholder(
+    queryClient,
+    threadId,
+  );
+  const previousThreadLists = snapshotCachedThreadLists(queryClient, {
+    queryKey: threadsQueryKey(),
+  });
+  const previousSidebarNavigation =
+    snapshotCachedSidebarNavigation(queryClient);
+  const patch = {
+    projectId,
+    ...(sectionId !== undefined ? { sectionId } : {}),
+    ...(title !== undefined ? { title } : {}),
+  };
+
+  const movedThreads = new Map(cachedProjectMoveThreads.threadsById);
+
+  queryClient.setQueryData<ThreadWithRuntime>(
+    threadQueryKey(threadId),
+    (thread) => (thread ? { ...thread, ...patch } : thread),
+  );
+
+  const optimisticThread = previousThread
+    ? { ...previousThread, ...patch }
+    : previousThreadListEntry
+      ? { ...previousThreadListEntry, ...patch }
+      : undefined;
+  if (optimisticThread) {
+    movedThreads.set(threadId, optimisticThread);
+    optimisticallyMoveThreadToProject({
+      listEntry: previousThreadListEntry,
+      movedThreadIds: cachedProjectMoveThreads.threadIds,
+      movedThreads,
+      queryClient,
+      thread: optimisticThread,
+    });
+  }
+
+  return {
+    previousSidebarNavigation,
+    previousThreadDetails,
+    previousThread,
+    previousThreadLists,
+  };
+}
+
 export function rollbackThreadListMutationTransaction({
   queryClient,
   threadId,
@@ -445,6 +531,7 @@ export function rollbackThreadListMutationTransaction({
     threadQueryKey(threadId),
     transaction.previousThread,
   );
+  restoreCachedThreadDetails(queryClient, transaction.previousThreadDetails);
   restoreCachedThreadLists(queryClient, transaction.previousThreadLists);
   restoreCachedSidebarNavigation(
     queryClient,

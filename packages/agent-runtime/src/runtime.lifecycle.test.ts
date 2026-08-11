@@ -7,6 +7,7 @@ import type {
   AdapterCommand,
   ProviderCommandPlan,
 } from "./provider-adapter.js";
+import type { AgentRuntimeSkillRoot } from "./types.js";
 import { promptTextInput } from "./test/prompt-input.js";
 import { createAgentRuntimeWithAdapters } from "./runtime.js";
 import { fakeProviderScriptPath } from "./test/index.js";
@@ -499,6 +500,85 @@ rl.on("line", (line) => {
       await runtime.shutdown();
     });
 
+    it("reconfigures a resident thread when its project context changes", async () => {
+      const recordedCommands: AdapterCommand[] = [];
+      const movedSkillRoot: AgentRuntimeSkillRoot = {
+        id: "moved-project-skill",
+        providerId: "codex",
+        skillDirectoryRootPath: join(tmpDir, "moved-project-skills"),
+      };
+      const runtime = createAgentRuntimeWithAdapters({
+        workspacePath: tmpDir,
+        onEvent: () => undefined,
+        onToolCall: async () => ({
+          contentItems: [{ type: "inputText", text: "ok" }],
+          success: true,
+        }),
+        adapterFactory: () =>
+          createRecordingAdapter({ recordedCommands, scriptPath }),
+      });
+
+      await runtime.startThread({
+        environmentId: "env-original",
+        threadId: "t-project-move",
+        projectId: "p-original",
+        providerId: "codex",
+        options: fullRuntimeOptions,
+        dynamicTools: [
+          {
+            name: "old_project_tool",
+            description: "Old project tool",
+            inputSchema: { type: "object" },
+          },
+        ],
+      });
+
+      await runtime.runTurn({
+        clientRequestId: "creq_22222222move",
+        environmentId: "env-moved",
+        projectId: "p-moved",
+        threadId: "t-project-move",
+        input: [promptTextInput({ text: "after project move" })],
+        options: fullRuntimeOptions,
+        dynamicTools: [
+          {
+            name: "new_project_tool",
+            description: "New project tool",
+            inputSchema: { type: "object" },
+          },
+        ],
+        disallowedTools: ["OldProjectTool"],
+        instructionMode: "replace",
+        skillRoots: [movedSkillRoot],
+      });
+
+      const reconfigureCommand = findLastRecordedCommand(
+        recordedCommands,
+        "thread/resume",
+      );
+      if (!reconfigureCommand || reconfigureCommand.type !== "thread/resume") {
+        throw new Error("Expected thread/resume command");
+      }
+      expect(reconfigureCommand.cwd).toBe(tmpDir);
+      expect(reconfigureCommand.options?.envVars).toMatchObject({
+        BB_PROJECT_ID: "p-moved",
+        BB_ENVIRONMENT_ID: "env-moved",
+        BB_THREAD_ID: "t-project-move",
+      });
+      expect(reconfigureCommand.dynamicTools).toEqual([
+        {
+          name: "new_project_tool",
+          description: "New project tool",
+          inputSchema: { type: "object" },
+        },
+      ]);
+      expect(reconfigureCommand.disallowedTools).toEqual(["OldProjectTool"]);
+      expect(reconfigureCommand.instructionMode).toBe("replace");
+      expect(reconfigureCommand.options?.skillRoots).toEqual([movedSkillRoot]);
+
+      await runtime.shutdown();
+    });
+
     it("passes the workspace cwd when resuming a thread", async () => {
       const recordedCommands: AdapterCommand[] = [];
       const runtime = createAgentRuntimeWithAdapters({
@@ -545,6 +625,77 @@ rl.on("line", (line) => {
       expect(resumeCommand.cwd).toBe(tmpDir);
 
       await runtime.shutdown();
+    });
+
+    it("passes the new workspace cwd when resuming a moved persisted thread", async () => {
+      const movedWorkspace = mkdtempSync(
+        join(tmpdir(), "bb-runtime-moved-workspace-"),
+      );
+      const originalCommands: AdapterCommand[] = [];
+      const movedCommands: AdapterCommand[] = [];
+      const originalRuntime = createAgentRuntimeWithAdapters({
+        workspacePath: tmpDir,
+        onEvent: () => undefined,
+        onToolCall: async () => ({
+          contentItems: [{ type: "inputText", text: "ok" }],
+          success: true,
+        }),
+        adapterFactory: () =>
+          createRecordingAdapter({
+            recordedCommands: originalCommands,
+            scriptPath,
+          }),
+      });
+
+      try {
+        const { providerThreadId } = await originalRuntime.startThread({
+          environmentId: "env-original",
+          threadId: "t-moved",
+          projectId: "p-original",
+          providerId: "fake",
+          options: fullRuntimeOptions,
+        });
+        await originalRuntime.shutdown();
+
+        const movedRuntime = createAgentRuntimeWithAdapters({
+          workspacePath: movedWorkspace,
+          onEvent: () => undefined,
+          onToolCall: async () => ({
+            contentItems: [{ type: "inputText", text: "ok" }],
+            success: true,
+          }),
+          adapterFactory: () =>
+            createRecordingAdapter({
+              recordedCommands: movedCommands,
+              scriptPath,
+            }),
+        });
+
+        try {
+          await movedRuntime.resumeThread({
+            environmentId: "env-moved",
+            threadId: "t-moved",
+            projectId: "p-moved",
+            providerThreadId,
+            providerId: "fake",
+            options: fullRuntimeOptions,
+          });
+
+          const resumeCommand = findLastRecordedCommand(
+            movedCommands,
+            "thread/resume",
+          );
+          if (!resumeCommand || resumeCommand.type !== "thread/resume") {
+            throw new Error("Expected thread/resume command");
+          }
+          expect(resumeCommand.cwd).toBe(movedWorkspace);
+        } finally {
+          await movedRuntime.shutdown();
+        }
+      } finally {
+        await originalRuntime.shutdown();
+        rmSync(movedWorkspace, { recursive: true, force: true });
+      }
     });
 
     it("passes permission mode through to adapter commands", async () => {

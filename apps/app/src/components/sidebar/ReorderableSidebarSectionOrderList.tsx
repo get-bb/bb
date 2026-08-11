@@ -1,5 +1,11 @@
 import { useCallback, type ReactNode } from "react";
-import type { DragEndEvent } from "@dnd-kit/core";
+import type {
+  CollisionDetection,
+  DragEndEvent,
+  DragOverEvent,
+  DragStartEvent,
+  Modifier,
+} from "@dnd-kit/core";
 import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
 import type { SidebarSectionId } from "./sidebarCollapsedAtoms";
 import { SidebarSectionOrderList } from "./SidebarSectionOrderList";
@@ -11,19 +17,34 @@ interface ReorderableSidebarSectionOrderListProps {
     sectionId: SidebarSectionId,
     consumeClickSuppression: ConsumeDragClickSuppression,
   ) => ReactNode;
+  dragOverlay?: ReactNode;
   onOrderChange: (order: SidebarSectionId[]) => void;
   order: readonly SidebarSectionId[];
   reorderOrder?: readonly SidebarSectionId[];
+  onDragStart?: (event: DragStartEvent) => void;
+  onDragOver?: (event: DragOverEvent) => void;
+  onDragCancel?: () => void;
+  onDragEnd?: (event: DragEndEvent) => void;
+  collisionDetection?: CollisionDetection;
+  modifiers?: Modifier[];
 }
 
 export function ReorderableSidebarSectionOrderList({
   children,
+  dragOverlay,
   onOrderChange,
   order,
   reorderOrder = order,
+  onDragStart,
+  onDragOver,
+  onDragCancel,
+  onDragEnd,
+  collisionDetection,
+  modifiers,
 }: ReorderableSidebarSectionOrderListProps) {
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
+      onDragEnd?.(event);
       if (
         !event.over ||
         typeof event.active.id !== "string" ||
@@ -38,14 +59,23 @@ export function ReorderableSidebarSectionOrderList({
       });
       if (nextOrder) onOrderChange(nextOrder);
     },
-    [onOrderChange, reorderOrder],
+    [onDragEnd, onOrderChange, reorderOrder],
   );
   const { dndContextProps, consumeClickSuppression } = useSidebarReorderDnd({
     onDragEnd: handleDragEnd,
+    onDragStart,
+    onDragOver,
+    onDragCancel,
+    collisionDetection,
+    modifiers,
   });
 
   return (
-    <SidebarSectionOrderList order={order} dndContextProps={dndContextProps}>
+    <SidebarSectionOrderList
+      order={order}
+      dndContextProps={dndContextProps}
+      dragOverlay={dragOverlay}
+    >
       {(sectionId) => children(sectionId, consumeClickSuppression)}
     </SidebarSectionOrderList>
   );

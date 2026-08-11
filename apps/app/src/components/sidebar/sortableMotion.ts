@@ -1,9 +1,10 @@
-import { useMemo, type CSSProperties } from "react";
+import { useCallback, useMemo, type CSSProperties } from "react";
 import type {
   DraggableAttributes,
   DraggableSyntheticListeners,
   DropAnimation,
 } from "@dnd-kit/core";
+import { useDraggable } from "@dnd-kit/core";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
@@ -45,6 +46,38 @@ export interface SidebarSortableDragBindings {
   disabled: boolean;
   listeners: DraggableSyntheticListeners;
   setActivatorNodeRef: (element: HTMLElement | null) => void;
+}
+
+/**
+ * The same activator contract for drags whose destination is a project rather
+ * than a sortable sibling. Project moves deliberately use `useDraggable`: the
+ * project rows are the droppable containers, not a second sortable list.
+ */
+export function useSidebarDraggable({ id, disabled }: UseSidebarSortableArgs): {
+  dragBindings: SidebarSortableDragBindings;
+  isDragging: boolean;
+} {
+  const { attributes, isDragging, listeners, setActivatorNodeRef, setNodeRef } =
+    useDraggable({
+      id,
+      disabled,
+    });
+  const setDraggableRef = useCallback(
+    (element: HTMLElement | null) => {
+      setNodeRef(element);
+      setActivatorNodeRef(element);
+    },
+    [setActivatorNodeRef, setNodeRef],
+  );
+  return {
+    dragBindings: {
+      attributes,
+      disabled,
+      listeners,
+      setActivatorNodeRef: setDraggableRef,
+    },
+    isDragging,
+  };
 }
 
 interface UseSidebarSortableArgs {

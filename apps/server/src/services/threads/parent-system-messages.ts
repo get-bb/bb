@@ -45,6 +45,7 @@ import {
   LIVE_DAEMON_COMMAND_TIMEOUT_MS,
   startLiveHostCommand,
 } from "../hosts/live-command.js";
+import { acquireThreadOperation } from "./thread-operation-lock.js";
 
 const PARENT_SYSTEM_MESSAGE_SOURCE = "tell";
 
@@ -110,6 +111,7 @@ interface QueueReadyParentSystemMessageArgs extends ParentSystemMessageTaxonomy 
   environment: ReadyThreadEnvironment;
   execution: ResolvedThreadExecutionOptions;
   input: PromptInput[];
+  releaseOperation: () => void;
   thread: Thread;
 }
 
@@ -296,6 +298,7 @@ async function queueActiveParentSystemMessage(
     { behavior: "immediate" },
   );
   if (!queued.queued || !queued.command) {
+    args.releaseOperation();
     return false;
   }
 
@@ -303,15 +306,18 @@ async function queueActiveParentSystemMessage(
     eventTypes: ["client/turn/requested"],
   });
   startLiveHostCommand(deps, {
+    onDispatchAdmitted: args.releaseOperation,
     command: queued.command,
     hostId: args.environment.hostId,
-    timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
+    onExpectedError: () => args.releaseOperation(),
     onError: ({ error }) => {
+      args.releaseOperation();
       deps.logger.warn(
         { err: error, threadId: args.thread.id },
         "Live active parent system message command failed",
       );
     },
+    timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
   });
   return true;
 }
@@ -373,7 +379,7 @@ async function queueReadyParentSystemMessage(
         command,
         thread: args.thread,
       });
-      if (dispatchKind === "turn.submit") {
+      if (dispatchKind === "turn.submit" || dispatchKind === "thread.start") {
         requireThreadLifecycleEventApplied(
           applyLoggedThreadLifecycleEventInTransaction(
             { db: tx, logger: deps.logger },
@@ -389,15 +395,18 @@ async function queueReadyParentSystemMessage(
     eventTypes: ["client/turn/requested"],
   });
   startLiveHostCommand(deps, {
+    onDispatchAdmitted: args.releaseOperation,
     command: command.command,
     hostId: args.environment.hostId,
-    timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
+    onExpectedError: () => args.releaseOperation(),
     onError: ({ error }) => {
+      args.releaseOperation();
       deps.logger.warn(
         { err: error, threadId: args.thread.id },
         "Live parent system message command failed",
       );
     },
+    timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
   });
   if (transitioned) {
     deps.hub.notifyThread(args.thread.id, ["status-changed"], {
@@ -411,55 +420,68 @@ export async function queueParentSystemMessage(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: QueueParentSystemMessageArgs,
 ): Promise<boolean> {
-  const parentThread = getThread(deps.db, args.parentThreadId);
-  if (
-    !parentThread ||
-    parentThread.archivedAt !== null ||
-    parentThread.deletedAt !== null
-  ) {
-    return false;
-  }
-  if (deps.pendingInteractions.hasPendingThreadInteraction(parentThread.id)) {
-    return false;
-  }
+  const releaseOperation = await acquireThreadOperation(args.parentThreadId);
+  try {
+    // Re-read the parent while the move/send operation lock is held. Parent
+    // notifications can be queued from a stale child event after the parent
+    // has moved projects.
+    const parentThread = getThread(deps.db, args.parentThreadId);
+    if (
+      !parentThread ||
+      parentThread.archivedAt !== null ||
+      parentThread.deletedAt !== null
+    ) {
+      releaseOperation();
+      return false;
+    }
+    if (deps.pendingInteractions.hasPendingThreadInteraction(parentThread.id)) {
+      releaseOperation();
+      return false;
+    }
 
-  const { environment } = requireThreadEnvironment(
-    deps.db,
-    args.parentThreadId,
-  );
-  const execution = await buildExecutionOptions(
-    deps,
-    {},
-    {
-      threadId: parentThread.id,
-    },
-    "client/turn/requested",
-  );
-  if (
-    await dispatchTurnDuringReprovision({
+    const { environment } = requireThreadEnvironment(
+      deps.db,
+      args.parentThreadId,
+    );
+    const execution = await buildExecutionOptions(
       deps,
-      environment,
-      execution,
-      initiator: "system",
+      {},
+      {
+        threadId: parentThread.id,
+      },
+      "client/turn/requested",
+    );
+    if (
+      await dispatchTurnDuringReprovision({
+        onDispatchAdmitted: releaseOperation,
+        deps,
+        environment,
+        execution,
+        initiator: "system",
+        input: args.input,
+        senderThreadId: null,
+        systemMessageKind: args.systemMessageKind,
+        systemMessageSubject: args.systemMessageSubject,
+        thread: parentThread,
+      })
+    ) {
+      return true;
+    }
+
+    const readyEnvironment = requireReadyThreadEnvironment(
+      getEnvironment(deps.db, environment.id) ?? environment,
+    );
+    return await queueReadyParentSystemMessage(deps, {
+      thread: parentThread,
       input: args.input,
-      senderThreadId: null,
+      execution,
+      environment: readyEnvironment,
+      releaseOperation,
       systemMessageKind: args.systemMessageKind,
       systemMessageSubject: args.systemMessageSubject,
-      thread: parentThread,
-    })
-  ) {
-    return true;
+    });
+  } catch (error) {
+    releaseOperation();
+    throw error;
   }
-
-  const readyEnvironment = requireReadyThreadEnvironment(
-    getEnvironment(deps.db, environment.id) ?? environment,
-  );
-  return await queueReadyParentSystemMessage(deps, {
-    thread: parentThread,
-    input: args.input,
-    execution,
-    environment: readyEnvironment,
-    systemMessageKind: args.systemMessageKind,
-    systemMessageSubject: args.systemMessageSubject,
-  });
 }

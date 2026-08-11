@@ -54,6 +54,7 @@ export interface TopLevelSidebarSectionProps {
   sectionRef?: (element: HTMLDivElement | null) => void;
   sectionStyle?: CSSProperties;
   consumeClickSuppression?: ConsumeDragClickSuppression;
+  isDropTargetAvailable?: boolean;
   isDropTargetActive?: boolean;
 }
 
@@ -75,6 +76,7 @@ export function TopLevelSidebarSection({
   sectionRef,
   sectionStyle,
   consumeClickSuppression,
+  isDropTargetAvailable = false,
   isDropTargetActive = false,
 }: TopLevelSidebarSectionProps) {
   const threadSplitsEnabled = useThreadSplitsEnabled();
@@ -132,12 +134,23 @@ export function TopLevelSidebarSection({
       <SidebarStickyTier
         ref={dragBindings?.setActivatorNodeRef}
         tier="label"
+        data-sidebar-drop-target-state={
+          isDropTargetActive
+            ? "active"
+            : isDropTargetAvailable
+              ? "available"
+              : undefined
+        }
         className={cn(
           SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
           CHROME_SECTION_LABEL_CLASS,
           SIDEBAR_STANDARD_ROW_PADDING_CLASS,
           "rounded-md pr-0 transition-colors",
           dragBindings && !dragBindings.disabled && "select-none",
+          isDropTargetAvailable &&
+            "border border-dashed border-sidebar-border/80 bg-sidebar-accent/30",
+          isDropTargetActive &&
+            "border border-solid border-sidebar-border bg-sidebar-accent text-sidebar-accent-foreground",
         )}
         {...dragBindings?.attributes}
         {...(dragBindings?.listeners ?? {})}

@@ -9,6 +9,7 @@ import {
 } from "../queries/query-keys";
 import {
   beginThreadReadStateTransaction,
+  beginThreadProjectTransaction,
   beginThreadTitleTransaction,
   rollbackThreadListMutationTransaction,
 } from "./thread-state-cache-owner";
@@ -227,5 +228,92 @@ describe("thread state cache owner", () => {
         sidebarNavigationQueryKey(),
       )?.projects[0]?.threads[0]?.lastReadAt,
     ).toBe(10);
+  });
+
+  it("moves a cached thread subtree optimistically and rolls it back together", async () => {
+    const { queryClient } = createQueryClientTestHarness();
+    const rootId = "thread-root";
+    const childId = "thread-child";
+    const root = makeThreadWithRuntime({
+      id: rootId,
+      projectId: "project-1",
+    });
+    const child = makeThreadWithRuntime({
+      id: childId,
+      parentThreadId: rootId,
+      projectId: "project-1",
+    });
+    const rootEntry = makeThreadListEntry({
+      id: rootId,
+      projectId: "project-1",
+    });
+    const childEntry = makeThreadListEntry({
+      id: childId,
+      parentThreadId: rootId,
+      projectId: "project-1",
+    });
+    const sourceListKey = threadListQueryKey({
+      archived: false,
+      projectId: "project-1",
+    });
+    const targetListKey = threadListQueryKey({
+      archived: false,
+      projectId: "project-2",
+    });
+    const navigation = makeSidebarNavigation([rootEntry, childEntry]);
+    navigation.projects.push({
+      ...navigation.projects[0]!,
+      id: "project-2",
+      name: "Target",
+      threads: [],
+    });
+
+    queryClient.setQueryData(threadQueryKey(rootId), root);
+    queryClient.setQueryData(threadQueryKey(childId), child);
+    queryClient.setQueryData(sourceListKey, [rootEntry, childEntry]);
+    queryClient.setQueryData(targetListKey, []);
+    queryClient.setQueryData(sidebarNavigationQueryKey(), navigation);
+
+    const transaction = await beginThreadProjectTransaction({
+      projectId: "project-2",
+      queryClient,
+      threadId: rootId,
+    });
+
+    expect(queryClient.getQueryData<ThreadWithRuntime>(threadQueryKey(rootId)))
+      .toMatchObject({ projectId: "project-2" });
+    expect(queryClient.getQueryData<ThreadWithRuntime>(threadQueryKey(childId)))
+      .toMatchObject({ projectId: "project-2" });
+    expect(queryClient.getQueryData<ThreadListEntry[]>(sourceListKey)).toEqual(
+      [],
+    );
+    expect(
+      queryClient.getQueryData<ThreadListEntry[]>(targetListKey),
+    ).toMatchObject([{ id: rootId }, { id: childId }]);
+    const movedNavigation = queryClient.getQueryData<SidebarBootstrapResponse>(
+      sidebarNavigationQueryKey(),
+    );
+    expect(movedNavigation?.projects[0]?.threads).toEqual([]);
+    expect(movedNavigation?.projects[1]?.threads.map(({ id }) => id)).toEqual([
+      rootId,
+      childId,
+    ]);
+
+    rollbackThreadListMutationTransaction({
+      queryClient,
+      threadId: rootId,
+      transaction,
+    });
+
+    expect(queryClient.getQueryData<ThreadWithRuntime>(threadQueryKey(rootId)))
+      .toMatchObject({ projectId: "project-1" });
+    expect(queryClient.getQueryData<ThreadWithRuntime>(threadQueryKey(childId)))
+      .toMatchObject({ projectId: "project-1" });
+    expect(
+      queryClient.getQueryData<ThreadListEntry[]>(sourceListKey),
+    ).toMatchObject([{ id: rootId }, { id: childId }]);
+    expect(queryClient.getQueryData<ThreadListEntry[]>(targetListKey)).toEqual(
+      [],
+    );
   });
 });

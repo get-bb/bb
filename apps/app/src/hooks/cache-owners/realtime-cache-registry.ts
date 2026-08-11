@@ -319,6 +319,16 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
       dirtyThreadDetailQueries, // Detail metadata and parent UI render parentThreadId.
     ],
   },
+  "project-changed": {
+    flush: "debounced",
+    dirty: [
+      dirtyThreadProjectQueries, // A move removes the row from the old project and adds it to the new one.
+      dirtyThreadDetailQueries, // Route-scoped detail surfaces render the new project metadata.
+      dirtyThreadDefaultExecutionOptionsQueries, // Project defaults can change after a move.
+      dirtyThreadStorageQueriesForThread, // Storage is resolved through the moved environment/project.
+      dirtyProjectPromptHistoryQueriesForThreadProjectMove,
+    ],
+  },
   "environment-changed": {
     flush: "immediate",
     dirty: [
@@ -486,6 +496,8 @@ export interface ThreadRealtimeDirtyContext extends RealtimeDirtyContext {
   backgroundActivityChanged: boolean | undefined;
   eventTypes: readonly ThreadEventType[] | undefined;
   hasPendingInteraction: boolean | undefined;
+  previousProjectId: string | undefined;
+  previousProjectIds: readonly string[];
   projectId: string | undefined;
   threadId: string | undefined;
 }
@@ -609,6 +621,47 @@ function dirtyThreadListQueries({
     }
   }
   return getThreadListInvalidationQueryKeys({ projectId, queryClient });
+}
+
+function dirtyThreadProjectQueries(
+  context: ThreadRealtimeDirtyContext,
+): QueryKey[] {
+  const projectIds = Array.from(
+    new Set(
+      [
+        context.projectId,
+        ...context.previousProjectIds,
+        context.previousProjectId,
+      ].filter((projectId): projectId is string => projectId !== undefined),
+    ),
+  );
+  if (projectIds.length === 0) {
+    return dirtyThreadListQueries(context);
+  }
+
+  // A project move dirties the global lists once, even when a single debounced
+  // flush contains several project transitions for the same thread.
+  for (const queryKey of getCachedGlobalThreadListInvalidationQueryKeys({
+    queryClient: context.queryClient,
+  })) {
+    context.queryClient.invalidateQueries({ exact: true, queryKey });
+  }
+
+  const queryKeys = projectIds.flatMap((projectId) =>
+    getThreadListInvalidationQueryKeys({
+      projectId,
+      queryClient: context.queryClient,
+    }),
+  );
+  const seen = new Set<string>();
+  return queryKeys.filter((queryKey) => {
+    const key = JSON.stringify(queryKey);
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
 }
 
 function dirtyThreadListQueriesForBackgroundActivity(
@@ -742,6 +795,26 @@ function dirtyProjectPromptHistoryQueries({
   projectId,
 }: ProjectRealtimeDirtyContext | ThreadRealtimeDirtyContext): QueryKey[] {
   return getProjectPromptHistoryInvalidationQueryKeys({ projectId });
+}
+
+function dirtyProjectPromptHistoryQueriesForThreadProjectMove(
+  context: ThreadRealtimeDirtyContext,
+): QueryKey[] {
+  const projectIds = Array.from(
+    new Set(
+      [
+        context.projectId,
+        ...context.previousProjectIds,
+        context.previousProjectId,
+      ].filter((projectId): projectId is string => projectId !== undefined),
+    ),
+  );
+  if (projectIds.length === 0) {
+    return dirtyProjectPromptHistoryQueries(context);
+  }
+  return projectIds.flatMap((projectId) =>
+    getProjectPromptHistoryInvalidationQueryKeys({ projectId }),
+  );
 }
 
 function markThreadDetailQueryStale({

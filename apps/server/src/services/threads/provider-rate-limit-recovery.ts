@@ -52,6 +52,7 @@ import {
   ensureThreadIsWritable,
 } from "./thread-send.js";
 import { applyLoggedEnvironmentLifecycleEvent } from "../environments/lifecycle-outcome.js";
+import { acquireThreadOperation } from "./thread-operation-lock.js";
 
 const CONTINUE_INPUT: PromptInput[] = [
   {
@@ -298,132 +299,157 @@ export async function continueThreadAfterProviderRateLimit(
     thread: Thread;
   },
 ): Promise<ContinueAfterProviderRateLimitResponse> {
-  ensureThreadIsWritable(args.thread);
-  ensureThreadIsNotAwaitingUserInteraction(deps, args.thread.id);
-  const currentEnvironment =
-    getEnvironment(deps.db, args.environment.id) ?? args.environment;
-  if (currentEnvironment.status === "retiring") {
-    applyLoggedEnvironmentLifecycleEvent(deps, {
-      environmentId: currentEnvironment.id,
-      event: { type: "retire.cancelled" },
+  const releaseOperation = await acquireThreadOperation(args.thread.id);
+  try {
+    // Reload both records while the operation lock is held. Recovery requests
+    // can be emitted from a stale error response after a project move.
+    const thread = getThread(deps.db, args.thread.id);
+    if (!thread || thread.environmentId === null) {
+      throw new ApiError(
+        409,
+        "rate_limit_recovery_unavailable",
+        "This thread is no longer eligible to continue after its provider rate limit.",
+      );
+    }
+    ensureThreadIsWritable(thread);
+    ensureThreadIsNotAwaitingUserInteraction(deps, thread.id);
+    const environment = getEnvironment(deps.db, thread.environmentId);
+    if (!environment) {
+      throw new ApiError(
+        409,
+        "rate_limit_recovery_unavailable",
+        "This thread is no longer eligible to continue after its provider rate limit.",
+      );
+    }
+    if (environment.status === "retiring") {
+      applyLoggedEnvironmentLifecycleEvent(deps, {
+        environmentId: environment.id,
+        event: { type: "retire.cancelled" },
+      });
+    }
+    const readyEnvironment = requireReadyThreadEnvironment(
+      getEnvironment(deps.db, environment.id) ?? environment,
+    );
+    const initial = inspectRecovery({
+      db: deps.db,
+      environment: readyEnvironment,
+      thread,
     });
-  }
-  const readyEnvironment = requireReadyThreadEnvironment(
-    getEnvironment(deps.db, args.environment.id) ?? currentEnvironment,
-  );
-  const initial = inspectRecovery({
-    db: deps.db,
-    environment: readyEnvironment,
-    thread: args.thread,
-  });
-  if (
-    !initial.candidate ||
-    initial.candidate.failedRequestId !== args.failedRequestId
-  ) {
-    throw unavailableRecoveryError(initial.status);
-  }
+    if (
+      !initial.candidate ||
+      initial.candidate.failedRequestId !== args.failedRequestId
+    ) {
+      throw unavailableRecoveryError(initial.status);
+    }
 
-  const requestId = createClientTurnRequestId();
-  const permissionEscalation = resolvePermissionEscalation({
-    thread: args.thread,
-    initiator: "system",
-  });
-  const command = await prepareReadyThreadTurnCommand(deps, {
-    thread: args.thread,
-    fork: null,
-    input: CONTINUE_INPUT,
-    requestId,
-    execution: initial.candidate.execution,
-    permissionEscalation,
-    environment: {
-      id: readyEnvironment.id,
-      hostId: readyEnvironment.hostId,
-      path: readyEnvironment.path,
-      status: readyEnvironment.status,
-      workspaceProvisionType: readyEnvironment.workspaceProvisionType,
-    },
-    projectId: args.thread.projectId,
-    providerId: args.thread.providerId,
-    syncGeneratedTitle: false,
-  });
+    const requestId = createClientTurnRequestId();
+    const permissionEscalation = resolvePermissionEscalation({
+      thread,
+      initiator: "system",
+    });
+    const command = await prepareReadyThreadTurnCommand(deps, {
+      thread,
+      fork: null,
+      input: CONTINUE_INPUT,
+      requestId,
+      execution: initial.candidate.execution,
+      permissionEscalation,
+      environment: {
+        id: readyEnvironment.id,
+        hostId: readyEnvironment.hostId,
+        path: readyEnvironment.path,
+        status: readyEnvironment.status,
+        workspaceProvisionType: readyEnvironment.workspaceProvisionType,
+      },
+      projectId: thread.projectId,
+      providerId: thread.providerId,
+      syncGeneratedTitle: false,
+    });
 
-  deps.db.transaction(
-    (tx) => {
-      const currentThread = getThread(tx, args.thread.id);
-      const currentEnvironment = getEnvironment(tx, readyEnvironment.id);
-      if (!currentThread || !currentEnvironment) {
-        throw unavailableRecoveryError(initial.status);
-      }
-      requireReadyThreadEnvironment(currentEnvironment);
-      ensureThreadIsWritable(currentThread);
-      ensureThreadCanStartRequest(currentThread);
-      const current = inspectRecovery({
-        db: tx,
-        environment: currentEnvironment,
-        thread: currentThread,
-      });
-      if (
-        !current.candidate ||
-        current.candidate.failedRequestId !== args.failedRequestId
-      ) {
-        throw unavailableRecoveryError(current.status);
-      }
+    deps.db.transaction(
+      (tx) => {
+        const currentThread = getThread(tx, thread.id);
+        const currentEnvironment = getEnvironment(tx, readyEnvironment.id);
+        if (!currentThread || !currentEnvironment) {
+          throw unavailableRecoveryError(initial.status);
+        }
+        requireReadyThreadEnvironment(currentEnvironment);
+        ensureThreadIsWritable(currentThread);
+        ensureThreadCanStartRequest(currentThread);
+        const current = inspectRecovery({
+          db: tx,
+          environment: currentEnvironment,
+          thread: currentThread,
+        });
+        if (
+          !current.candidate ||
+          current.candidate.failedRequestId !== args.failedRequestId
+        ) {
+          throw unavailableRecoveryError(current.status);
+        }
 
-      appendPreparedClientTurnRequestedEventInTransaction(tx, {
-        threadId: currentThread.id,
-        environmentId: currentEnvironment.id,
-        type: "client/turn/requested",
-        continuationOfRequestId: args.failedRequestId,
-        input: CONTINUE_INPUT,
-        execution: current.candidate.execution,
-        initiator: "system",
-        senderThreadId: null,
-        requestMethod: "turn/start",
-        source: "tell",
-        target: { kind: "new-turn" },
-        requestId,
-      });
-      appendThreadEventInTransaction(tx, {
-        threadId: currentThread.id,
-        environmentId: currentEnvironment.id,
-        type: "system/operation",
-        scope: threadScope(),
-        data: {
-          operation: "provider_rate_limit_recovery",
-          operationId: `provider-rate-limit-recovery:${args.failedRequestId}`,
-          status: "completed",
-          message: "Continued after provider rate limit reset",
-          metadata: {
-            failedRequestId: args.failedRequestId,
-            continuationRequestId: requestId,
+        appendPreparedClientTurnRequestedEventInTransaction(tx, {
+          threadId: currentThread.id,
+          environmentId: currentEnvironment.id,
+          type: "client/turn/requested",
+          continuationOfRequestId: args.failedRequestId,
+          input: CONTINUE_INPUT,
+          execution: current.candidate.execution,
+          initiator: "system",
+          senderThreadId: null,
+          requestMethod: "turn/start",
+          source: "tell",
+          target: { kind: "new-turn" },
+          requestId,
+        });
+        appendThreadEventInTransaction(tx, {
+          threadId: currentThread.id,
+          environmentId: currentEnvironment.id,
+          type: "system/operation",
+          scope: threadScope(),
+          data: {
+            operation: "provider_rate_limit_recovery",
+            operationId: `provider-rate-limit-recovery:${args.failedRequestId}`,
+            status: "completed",
+            message: "Continued after provider rate limit reset",
+            metadata: {
+              failedRequestId: args.failedRequestId,
+              continuationRequestId: requestId,
+            },
           },
-        },
-      });
-      prepareReadyThreadTurnDispatch({ command, thread: currentThread });
-      requireThreadLifecycleEventApplied(
-        applyLoggedThreadLifecycleEventInTransaction(
-          { db: tx, logger: deps.logger },
-          { event: { type: "run.started" }, threadId: currentThread.id },
-        ),
-      );
-    },
-    { behavior: "immediate" },
-  );
+        });
+        prepareReadyThreadTurnDispatch({ command, thread: currentThread });
+        requireThreadLifecycleEventApplied(
+          applyLoggedThreadLifecycleEventInTransaction(
+            { db: tx, logger: deps.logger },
+            { event: { type: "run.started" }, threadId: currentThread.id },
+          ),
+        );
+      },
+      { behavior: "immediate" },
+    );
 
-  deps.hub.notifyThread(args.thread.id, ["events-appended", "status-changed"], {
-    eventTypes: ["client/turn/requested", "system/operation"],
-    projectId: args.thread.projectId,
-  });
-  startLiveHostCommand(deps, {
-    command: command.command,
-    hostId: readyEnvironment.hostId,
-    timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
-    onError: ({ error }) => {
-      deps.logger.warn(
-        { err: error, threadId: args.thread.id },
-        "Provider rate-limit continuation command failed",
-      );
-    },
-  });
-  return { ok: true, requestId };
+    deps.hub.notifyThread(thread.id, ["events-appended", "status-changed"], {
+      eventTypes: ["client/turn/requested", "system/operation"],
+      projectId: thread.projectId,
+    });
+    startLiveHostCommand(deps, {
+      onDispatchAdmitted: releaseOperation,
+      command: command.command,
+      hostId: readyEnvironment.hostId,
+      onExpectedError: () => releaseOperation(),
+      timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
+      onError: ({ error }) => {
+        releaseOperation();
+        deps.logger.warn(
+          { err: error, threadId: thread.id },
+          "Provider rate-limit continuation command failed",
+        );
+      },
+    });
+    return { ok: true, requestId };
+  } catch (error) {
+    releaseOperation();
+    throw error;
+  }
 }

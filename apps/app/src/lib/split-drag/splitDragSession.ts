@@ -1,4 +1,5 @@
 import { pickZone, zoneBox, type SplitZone, type ZoneDecision } from "./zones";
+import { THREAD_DRAG_GHOST_STYLE } from "@/lib/drag-ghost-style";
 
 /** Marks a pane's root element so the drag layer can hit-test it. */
 export const SPLIT_PANE_DATA_ATTR = "data-split-pane-id";
@@ -257,17 +258,7 @@ function createGhost(label: string): HTMLElement {
     pointerEvents: "none",
     left: "-9999px",
     top: "-9999px",
-    maxWidth: "260px",
-    padding: "6px 12px",
-    borderRadius: "10px",
-    fontSize: "12.5px",
-    whiteSpace: "nowrap",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    background: "var(--popover)",
-    color: "var(--popover-foreground)",
-    border: "1px solid var(--border)",
-    boxShadow: "0 6px 20px color-mix(in oklab, var(--ink) 22%, transparent)",
+    ...THREAD_DRAG_GHOST_STYLE,
   } satisfies Partial<CSSStyleDeclaration>);
   return ghost;
 }

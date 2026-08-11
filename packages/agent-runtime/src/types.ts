@@ -184,6 +184,7 @@ export interface ResumeThreadArgs {
   dynamicTools?: DynamicTool[];
   disallowedTools?: readonly string[];
   instructionMode?: InstructionMode;
+  skillRoots?: readonly AgentRuntimeSkillRoot[];
 }
 
 export interface ResumeThreadResult {
@@ -191,22 +192,34 @@ export interface ResumeThreadResult {
 }
 
 export interface RunTurnArgs {
+  environmentId?: string;
   threadId: string;
   input: PromptInput[];
   inputGroups?: PromptInput[][];
   clientRequestId: ClientTurnRequestId;
   options: AgentRuntimeExecutionOptions;
+  projectId?: string;
   instructions?: string;
+  dynamicTools?: DynamicTool[];
+  disallowedTools?: readonly string[];
+  instructionMode?: InstructionMode;
+  skillRoots?: readonly AgentRuntimeSkillRoot[];
 }
 
 export interface SteerTurnArgs {
+  environmentId?: string;
   threadId: string;
   expectedTurnId: string;
   input: PromptInput[];
   inputGroups?: PromptInput[][];
   clientRequestId: ClientTurnRequestId;
   options: AgentRuntimeExecutionOptions;
+  projectId?: string;
   instructions?: string;
+  dynamicTools?: DynamicTool[];
+  disallowedTools?: readonly string[];
+  instructionMode?: InstructionMode;
+  skillRoots?: readonly AgentRuntimeSkillRoot[];
 }
 
 export interface SteerTurnAppliedResult {

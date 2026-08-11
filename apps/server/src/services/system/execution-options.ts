@@ -36,7 +36,10 @@ import {
   type KnownAcpAgent,
 } from "./known-acp-agents.js";
 
-export type SystemExecutionOptionsRequest = SystemExecutionOptionsQuery;
+export type SystemExecutionOptionsRequest = SystemExecutionOptionsQuery & {
+  /** Internal CWD override used while validating a move before its env exists. */
+  cwd?: string;
+};
 
 interface BuildModelLoadErrorArgs {
   error: ApiError;
@@ -397,9 +400,10 @@ export async function resolveSystemExecutionOptions(
   query: SystemExecutionOptionsRequest,
 ): Promise<SystemExecutionOptionsResponse> {
   const cwd =
-    query.environmentId === undefined
+    query.cwd ??
+    (query.environmentId === undefined
       ? undefined
-      : (requireEnvironment(deps.db, query.environmentId).path ?? undefined);
+      : (requireEnvironment(deps.db, query.environmentId).path ?? undefined));
   const { hostId, hostLookupError, providersPromise } =
     resolveSystemProviderInfosPlan(deps, query);
   const configuredRequestedProvider = query.providerId

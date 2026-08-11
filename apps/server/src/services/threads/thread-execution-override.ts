@@ -38,9 +38,10 @@ function providerSupportsExecutionOverride(providerId: string): boolean {
 
 function listExecutionOverrideProviderIds(): string[] {
   return listBuiltInAgentProviderInfos()
-    .filter((info) =>
-      getBuiltInAgentProviderServerCapabilities(info.id)
-        .supportsExecutionOverride,
+    .filter(
+      (info) =>
+        getBuiltInAgentProviderServerCapabilities(info.id)
+          .supportsExecutionOverride,
     )
     .map((info) => info.id);
 }
@@ -75,6 +76,11 @@ export interface ApplyThreadExecutionOverrideArgs {
   patch: ThreadExecutionOverridePatch;
 }
 
+export interface PrepareThreadExecutionOverrideArgs extends ApplyThreadExecutionOverrideArgs {
+  /** Destination CWD when the target environment is created after validation. */
+  cwd?: string;
+}
+
 export interface RecoverThreadModelOverrideArgs {
   model: string | undefined;
   modelSource: CallerExecutionInputSource | undefined;
@@ -99,7 +105,9 @@ export function resolveThreadExecutionOverrideUpdate(
     if (patch.model === null || patch.model === undefined) {
       nextModel = null;
     } else {
-      const target = models.find((candidate) => candidate.model === patch.model);
+      const target = models.find(
+        (candidate) => candidate.model === patch.model,
+      );
       if (!target) {
         throw new ApiError(
           400,
@@ -136,7 +144,9 @@ export function resolveThreadExecutionOverrideUpdate(
           400,
           "invalid_request",
           `Reasoning level "${patch.reasoningLevel}" is not supported by ${
-            effectiveModel ? `model "${effectiveModel}"` : `provider ${providerId}`
+            effectiveModel
+              ? `model "${effectiveModel}"`
+              : `provider ${providerId}`
           }. Supported reasoning levels: ${supportedReasoning.join(", ")}.`,
         );
       }
@@ -168,8 +178,24 @@ export async function applyThreadExecutionOverride(
   deps: LoggedWorkSessionDeps,
   args: ApplyThreadExecutionOverrideArgs,
 ): Promise<void> {
-  const { thread, patch } = args;
+  const next = await prepareThreadExecutionOverride(deps, args);
+  setThreadExecutionOverride(deps.db, {
+    threadId: args.thread.id,
+    modelOverride: next.modelOverride,
+    reasoningLevelOverride: next.reasoningLevelOverride,
+  });
+}
 
+/**
+ * Validates an override without persisting it. Project moves use this two
+ * phase form so a later move conflict cannot leave the execution override
+ * committed on the source project.
+ */
+export async function prepareThreadExecutionOverride(
+  deps: LoggedWorkSessionDeps,
+  args: PrepareThreadExecutionOverrideArgs,
+): Promise<ThreadExecutionOverride> {
+  const { thread, patch } = args;
   if (!providerSupportsExecutionOverride(thread.providerId)) {
     throw new ApiError(
       400,
@@ -178,7 +204,7 @@ export async function applyThreadExecutionOverride(
     );
   }
 
-  const models = await loadThreadProviderModels(deps, thread);
+  const models = await loadThreadProviderModels(deps, thread, args.cwd);
   const existing = getThreadExecutionOverride(deps.db, thread.id) ?? {
     modelOverride: null,
     reasoningLevelOverride: null,
@@ -191,12 +217,7 @@ export async function applyThreadExecutionOverride(
     providerId: thread.providerId,
     fallbackModel: resolveFallbackModel(deps, thread),
   });
-
-  setThreadExecutionOverride(deps.db, {
-    threadId: thread.id,
-    modelOverride: next.modelOverride,
-    reasoningLevelOverride: next.reasoningLevelOverride,
-  });
+  return next;
 }
 
 /**
@@ -229,8 +250,10 @@ export async function recoverThreadModelOverride(
 async function loadThreadProviderModels(
   deps: LoggedWorkSessionDeps,
   thread: Thread,
+  cwd?: string,
 ): Promise<readonly AvailableModel[]> {
   const result = await resolveSystemExecutionOptions(deps, {
+    ...(cwd !== undefined ? { cwd } : {}),
     providerId: thread.providerId,
     ...(thread.environmentId !== null
       ? { environmentId: thread.environmentId }

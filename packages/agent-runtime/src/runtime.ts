@@ -68,8 +68,14 @@ import {
 import { fingerprintAcpLaunchSpec } from "./acp-launch-spec-fingerprint.js";
 
 interface ReconfigureThreadIfNeededArgs {
+  disallowedTools?: readonly string[];
+  dynamicTools?: DynamicTool[];
+  environmentId?: string;
+  instructionMode?: InstructionMode;
   instructions: string | undefined;
   options: AgentRuntimeExecutionOptions;
+  projectId?: string;
+  skillRoots?: readonly AgentRuntimeSkillRoot[];
   threadId: string;
 }
 
@@ -139,6 +145,10 @@ function defaultBridgeNodeEnv(): Record<string, string> | undefined {
     return undefined;
   }
   return { ELECTRON_RUN_AS_NODE: "1" };
+}
+
+function sameSerializedValue<T>(left: T, right: T): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
 }
 
 // ---------------------------------------------------------------------------
@@ -405,10 +415,11 @@ function createAgentRuntimeInternal(
 
   function skillRootsForProvider(
     providerId: string,
+    roots: readonly AgentRuntimeSkillRoot[] = skillRoots,
   ): readonly AgentRuntimeSkillRoot[] {
     return filterSkillRootsForProvider({
       providerId,
-      skillRoots,
+      skillRoots: roots,
     });
   }
 
@@ -721,6 +732,7 @@ function createAgentRuntimeInternal(
         ? { disallowedTools: currentConfig.disallowedTools }
         : {}),
       instructionMode: currentConfig.instructionMode,
+      skillRoots: currentConfig.skillRoots,
     });
   }
 
@@ -811,13 +823,41 @@ function createAgentRuntimeInternal(
 
     const nextOptions = args.options;
     const nextInstructions = args.instructions ?? currentConfig.instructions;
+    const nextDynamicTools = args.dynamicTools ?? currentConfig.dynamicTools;
+    const nextDisallowedTools =
+      args.disallowedTools ?? currentConfig.disallowedTools;
+    const nextInstructionMode =
+      args.instructionMode ?? currentConfig.instructionMode;
+    const nextEnvironmentId = args.environmentId ?? currentConfig.environmentId;
+    const nextProjectId = args.projectId ?? currentConfig.projectId;
+    const nextSkillRoots =
+      args.skillRoots === undefined
+        ? currentConfig.skillRoots
+        : skillRootsForProvider(currentConfig.providerId, args.skillRoots);
+    const runtimeContextChanged =
+      (args.environmentId !== undefined &&
+        currentConfig.environmentId !== nextEnvironmentId) ||
+      (args.projectId !== undefined &&
+        currentConfig.projectId !== nextProjectId) ||
+      (args.dynamicTools !== undefined &&
+        !sameSerializedValue(currentConfig.dynamicTools, nextDynamicTools)) ||
+      (args.disallowedTools !== undefined &&
+        !sameSerializedValue(
+          currentConfig.disallowedTools,
+          nextDisallowedTools,
+        )) ||
+      (args.instructionMode !== undefined &&
+        currentConfig.instructionMode !== nextInstructionMode) ||
+      (args.skillRoots !== undefined &&
+        !sameSerializedValue(currentConfig.skillRoots, nextSkillRoots));
 
     if (
       sameExecutionSettings({
         left: currentConfig.options,
         right: nextOptions,
       }) &&
-      currentConfig.instructions === nextInstructions
+      currentConfig.instructions === nextInstructions &&
+      !runtimeContextChanged
     ) {
       return;
     }
@@ -826,11 +866,10 @@ function createAgentRuntimeInternal(
       processKey: currentConfig.processKey,
       providerId: currentConfig.providerId,
     });
-    const providerSkillRoots = currentConfig.skillRoots;
     const envVars = buildThreadShellEnvironment({
       baseShellEnv: options.shellEnv,
-      environmentId: currentConfig.environmentId,
-      projectId: currentConfig.projectId,
+      environmentId: nextEnvironmentId,
+      projectId: nextProjectId,
       threadStoragePath: resolveThreadStoragePath({
         options,
         threadId: args.threadId,
@@ -847,11 +886,11 @@ function createAgentRuntimeInternal(
         envVars,
         execOpts: nextOptions,
         instructions: nextInstructions,
-        skillRoots: providerSkillRoots,
+        skillRoots: nextSkillRoots,
       }),
-      dynamicTools: currentConfig.dynamicTools,
-      disallowedTools: currentConfig.disallowedTools,
-      instructionMode: currentConfig.instructionMode,
+      dynamicTools: nextDynamicTools,
+      disallowedTools: nextDisallowedTools,
+      instructionMode: nextInstructionMode,
     };
     const plan = proc.adapter.buildCommandPlan(adapterCommand);
     if (plan.kind === "request") {
@@ -882,8 +921,14 @@ function createAgentRuntimeInternal(
 
     setThreadRuntimeConfig(args.threadId, {
       ...currentConfig,
+      environmentId: nextEnvironmentId,
+      dynamicTools: nextDynamicTools,
+      disallowedTools: nextDisallowedTools,
+      instructionMode: nextInstructionMode,
       instructions: nextInstructions,
       options: nextOptions,
+      projectId: nextProjectId,
+      skillRoots: nextSkillRoots,
     });
   }
 
@@ -1245,6 +1290,7 @@ function createAgentRuntimeInternal(
       dynamicTools,
       disallowedTools,
       instructionMode = "append",
+      skillRoots: requestedSkillRoots,
     }) {
       return runThreadOperation({
         threadId,
@@ -1261,7 +1307,10 @@ function createAgentRuntimeInternal(
           });
 
           const proc = requireProviderProcess({ processKey, providerId });
-          const providerSkillRoots = skillRootsForProvider(providerId);
+          const providerSkillRoots = skillRootsForProvider(
+            providerId,
+            requestedSkillRoots,
+          );
           assertProviderSupportsExecutionOptions({
             adapter: proc.adapter,
             options: execOpts,
@@ -1366,12 +1415,18 @@ function createAgentRuntimeInternal(
     },
 
     async runTurn({
+      environmentId,
       threadId,
       input,
       inputGroups,
       clientRequestId,
       options: execOpts,
+      projectId,
       instructions,
+      dynamicTools,
+      disallowedTools,
+      instructionMode,
+      skillRoots,
     }) {
       return runThreadOperation({
         threadId,
@@ -1389,8 +1444,14 @@ function createAgentRuntimeInternal(
             providerId: pid,
           });
           await reconfigureThreadIfNeeded({
+            disallowedTools,
+            dynamicTools,
+            environmentId,
+            instructionMode,
             threadId,
             options: execOpts,
+            projectId,
+            skillRoots,
             instructions,
           });
 
@@ -1443,13 +1504,19 @@ function createAgentRuntimeInternal(
     },
 
     async steerTurn({
+      environmentId,
       threadId,
       expectedTurnId,
       input,
       inputGroups,
       clientRequestId,
       options: execOpts,
+      projectId,
       instructions,
+      dynamicTools,
+      disallowedTools,
+      instructionMode,
+      skillRoots,
     }) {
       return runThreadOperation({
         threadId,
@@ -1479,8 +1546,14 @@ function createAgentRuntimeInternal(
             instructions,
           });
           await reconfigureThreadIfNeeded({
+            disallowedTools,
+            dynamicTools,
+            environmentId,
+            instructionMode,
             threadId,
             options: execOpts,
+            projectId,
+            skillRoots,
             instructions,
           });
 

@@ -4,6 +4,7 @@ import {
   applyToCachedThreadLists,
   getCachedThreadLists,
   iterateThreadListCacheEntries,
+  mapThreadListCacheData,
 } from "./thread-list-cache-data";
 import { bumpDiffPatchEvictionGeneration } from "./environment-diff-patch-cache-owner";
 import type {
@@ -23,6 +24,7 @@ import {
   environmentQueryKey,
   environmentWorkStatusQueryKey,
   environmentWorkStatusQueryKeyPrefix,
+  allThreadQueryKeyPrefix,
   sidebarNavigationQueryKey,
   THREADS_QUERY_KEY,
   threadQueryKey,
@@ -84,6 +86,73 @@ interface ApplyToCachedSidebarNavigationThreadsArgs {
 export type CachedSidebarNavigationSnapshot =
   | SidebarBootstrapResponse
   | undefined;
+
+export interface CachedThreadDetailSnapshot {
+  data: ThreadWithRuntime;
+  queryKey: QueryKey;
+}
+
+export function snapshotCachedThreadDetails(
+  queryClient: QueryClient,
+): CachedThreadDetailSnapshot[] {
+  return queryClient
+    .getQueriesData<ThreadWithRuntime>({
+      queryKey: allThreadQueryKeyPrefix(),
+    })
+    .flatMap(([queryKey, data]) => (data ? [{ data, queryKey }] : []));
+}
+
+export function restoreCachedThreadDetails(
+  queryClient: QueryClient,
+  snapshot: readonly CachedThreadDetailSnapshot[],
+): void {
+  for (const { data, queryKey } of snapshot) {
+    queryClient.setQueryData(queryKey, data);
+  }
+}
+
+interface CachedProjectMoveThreads {
+  threadIds: ReadonlySet<string>;
+  threadsById: ReadonlyMap<string, ThreadWithRuntime>;
+}
+
+export function getCachedProjectMoveThreads(
+  queryClient: QueryClient,
+  rootThreadId: string,
+): CachedProjectMoveThreads {
+  const threadsById = new Map<string, ThreadWithRuntime>();
+  for (const { data } of snapshotCachedThreadDetails(queryClient)) {
+    threadsById.set(data.id, data);
+  }
+  for (const { data } of getCachedThreadLists(queryClient, {
+    queryKey: threadsQueryKey(),
+  })) {
+    for (const thread of iterateThreadListCacheEntries(data)) {
+      threadsById.set(thread.id, thread);
+    }
+  }
+  for (const thread of getCachedSidebarNavigationThreads(queryClient)) {
+    threadsById.set(thread.id, thread);
+  }
+
+  const threadIds = new Set<string>([rootThreadId]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const thread of threadsById.values()) {
+      if (
+        thread.parentThreadId !== null &&
+        threadIds.has(thread.parentThreadId) &&
+        !threadIds.has(thread.id)
+      ) {
+        threadIds.add(thread.id);
+        changed = true;
+      }
+    }
+  }
+
+  return { threadIds, threadsById };
+}
 
 function getThreadListFiltersFromQueryKey(
   queryKey: QueryKey,
@@ -480,6 +549,25 @@ export function getCachedThreadListPlaceholder(
   return undefined;
 }
 
+export function getCachedThreadListEntryPlaceholder(
+  queryClient: QueryClient,
+  threadId: string,
+): ThreadListEntry | undefined {
+  for (const { data } of getCachedThreadLists(queryClient, {
+    queryKey: threadsQueryKey(),
+  })) {
+    for (const thread of iterateThreadListCacheEntries(data)) {
+      if (thread.id === threadId) {
+        return thread;
+      }
+    }
+  }
+
+  return getCachedSidebarNavigationThreads(queryClient).find(
+    (thread) => thread.id === threadId,
+  );
+}
+
 export function updateCachedThread(
   queryClient: QueryClient,
   threadId: string,
@@ -497,7 +585,7 @@ export function updateCachedThread(
   );
 }
 
-function threadMatchesListFilters(
+export function threadMatchesListFilters(
   thread: Thread,
   filters: ThreadListQueryFilters | undefined,
 ): boolean {
@@ -551,6 +639,176 @@ function threadMatchesListFilters(
   }
 
   return true;
+}
+
+function threadMatchesArchivedListFilters(
+  thread: Thread,
+  filters: ArchivedThreadsListFilters | undefined,
+): boolean {
+  if (!filters || thread.archivedAt === null) {
+    return false;
+  }
+  if (
+    filters.projectId !== undefined &&
+    thread.projectId !== filters.projectId
+  ) {
+    return false;
+  }
+  if (filters.kind === "root" && thread.parentThreadId !== null) {
+    return false;
+  }
+  if (filters.kind === "child" && thread.parentThreadId === null) {
+    return false;
+  }
+  return true;
+}
+
+interface OptimisticallyMoveThreadToProjectArgs {
+  listEntry: ThreadListEntry | undefined;
+  queryClient: QueryClient;
+  thread: ThreadWithRuntime;
+  movedThreadIds?: ReadonlySet<string>;
+  movedThreads?: ReadonlyMap<string, ThreadWithRuntime>;
+}
+
+export function optimisticallyMoveThreadToProject({
+  listEntry,
+  queryClient,
+  thread,
+  movedThreadIds = new Set([thread.id]),
+  movedThreads = new Map([[thread.id, thread]]),
+}: OptimisticallyMoveThreadToProjectArgs): void {
+  const cachedListEntry =
+    listEntry ?? getCachedThreadListEntryPlaceholder(queryClient, thread.id);
+  const cachedListEntries = new Map<string, ThreadListEntry>();
+  for (const { data } of getCachedThreadLists(queryClient, {
+    queryKey: threadsQueryKey(),
+  })) {
+    for (const entry of iterateThreadListCacheEntries(data)) {
+      cachedListEntries.set(entry.id, entry);
+    }
+  }
+  for (const entry of getCachedSidebarNavigationThreads(queryClient)) {
+    cachedListEntries.set(entry.id, entry);
+  }
+  if (cachedListEntry) {
+    cachedListEntries.set(thread.id, cachedListEntry);
+  }
+
+  const movedListEntries = [...movedThreadIds].flatMap((threadId) => {
+    const cachedEntry = cachedListEntries.get(threadId);
+    const movedThread = movedThreads.get(threadId);
+    if (!cachedEntry || !movedThread) {
+      return [];
+    }
+    return [{ ...cachedEntry, ...movedThread, projectId: thread.projectId }];
+  });
+
+  for (const [queryKey, data] of queryClient.getQueriesData<ThreadWithRuntime>({
+    queryKey: allThreadQueryKeyPrefix(),
+  })) {
+    if (!data || !movedThreadIds.has(data.id)) {
+      continue;
+    }
+    const movedThread = movedThreads.get(data.id);
+    if (movedThread) {
+      queryClient.setQueryData(queryKey, {
+        ...data,
+        ...movedThread,
+        projectId: thread.projectId,
+      });
+    }
+  }
+
+  for (const { data, queryKey } of getCachedThreadLists(queryClient, {
+    queryKey: threadsQueryKey(),
+  })) {
+    const activeFilters = getThreadListFiltersFromQueryKey(queryKey);
+    const archivedFilters = getArchivedThreadListFiltersFromQueryKey(queryKey);
+
+    if (Array.isArray(data)) {
+      const remaining = data.filter(
+        (candidate) => !movedThreadIds.has(candidate.id),
+      );
+      if (activeFilters) {
+        const movedEntries = movedListEntries.filter((entry) =>
+          threadMatchesListFilters(entry, activeFilters),
+        );
+        remaining.unshift(...movedEntries);
+      }
+      queryClient.setQueryData(queryKey, remaining);
+      continue;
+    }
+
+    let isFirstPage = true;
+    const nextData = mapThreadListCacheData(data, (page) => {
+      const remaining = page.filter(
+        (candidate) => !movedThreadIds.has(candidate.id),
+      );
+      if (isFirstPage && archivedFilters) {
+        const movedEntries = movedListEntries.filter((entry) =>
+          threadMatchesArchivedListFilters(entry, archivedFilters),
+        );
+        remaining.unshift(...movedEntries);
+      }
+      isFirstPage = false;
+      return remaining;
+    });
+    queryClient.setQueryData(queryKey, nextData);
+  }
+
+  if (movedListEntries.length === 0) {
+    return;
+  }
+
+  let shouldRefetchSidebar = false;
+  queryClient.setQueryData<SidebarBootstrapResponse>(
+    sidebarNavigationQueryKey(),
+    (currentNavigation) => {
+      if (!currentNavigation) {
+        return currentNavigation;
+      }
+
+      const targetProjectKnown =
+        currentNavigation.personalProject.id === thread.projectId ||
+        currentNavigation.projects.some(
+          (project) => project.id === thread.projectId,
+        );
+      if (!targetProjectKnown) {
+        // A stale sidebar snapshot may not know about a project created in
+        // another tab. Keep the source row visible until the refetch resolves
+        // instead of dropping it with nowhere to insert it.
+        shouldRefetchSidebar = true;
+        return currentNavigation;
+      }
+
+      const movedEntries = movedListEntries;
+      const updateProject = (project: SidebarNavigationProject) => {
+        const withoutMovedThreads = project.threads.filter(
+          (candidate) => !movedThreadIds.has(candidate.id),
+        );
+        if (project.id !== thread.projectId) {
+          return withoutMovedThreads.length === project.threads.length
+            ? project
+            : { ...project, threads: withoutMovedThreads };
+        }
+
+        return {
+          ...project,
+          threads: [...movedEntries, ...withoutMovedThreads],
+        };
+      };
+
+      return {
+        sections: currentNavigation.sections,
+        projects: currentNavigation.projects.map(updateProject),
+        personalProject: updateProject(currentNavigation.personalProject),
+      };
+    },
+  );
+  if (shouldRefetchSidebar) {
+    queryClient.invalidateQueries({ queryKey: sidebarNavigationQueryKey() });
+  }
 }
 
 export function optimisticallyInsertThread(

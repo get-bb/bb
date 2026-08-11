@@ -59,6 +59,7 @@ import {
 } from "../lib/lifecycle-api-errors.js";
 import { validatePromptAttachmentReferences } from "../projects/attachments.js";
 import { resolvePluginMentionContextInputs } from "../plugins/plugin-mentions.js";
+import { acquireThreadOperation } from "./thread-operation-lock.js";
 
 type SendThreadMessageMode = SendMessageRequest["mode"];
 type TextPromptInput = Extract<PromptInput, { type: "text" }>;
@@ -74,6 +75,10 @@ export interface SendThreadMessageArgs {
   payload: SendThreadMessagePayload;
   thread: Thread;
   trigger: SendThreadMessageTrigger;
+}
+
+interface SendThreadMessageAttemptArgs extends SendThreadMessageArgs {
+  releaseAfterHostAdmission: () => void;
 }
 
 export interface ResolveMessageSenderArgs {
@@ -379,6 +384,46 @@ export async function sendThreadMessage(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: SendThreadMessageArgs,
 ): Promise<void> {
+  const releaseOperation = await acquireThreadOperation(args.thread.id);
+  try {
+    const currentThread = getThread(deps.db, args.thread.id);
+    if (!currentThread) {
+      throw new ApiError(404, "thread_not_found", "Thread not found");
+    }
+    if (currentThread.environmentId === null) {
+      throw new ApiError(
+        409,
+        "invalid_request",
+        "Thread does not have a workspace available for sending.",
+      );
+    }
+    const currentEnvironment = getEnvironment(
+      deps.db,
+      currentThread.environmentId,
+    );
+    if (!currentEnvironment) {
+      throw new ApiError(
+        409,
+        "invalid_request",
+        "Thread workspace no longer exists.",
+      );
+    }
+    await sendThreadMessageAttempt(deps, {
+      ...args,
+      environment: currentEnvironment,
+      releaseAfterHostAdmission: releaseOperation,
+      thread: currentThread,
+    });
+  } catch (error) {
+    releaseOperation();
+    throw error;
+  }
+}
+
+async function sendThreadMessageAttempt(
+  deps: LoggedPendingInteractionWorkSessionDeps,
+  args: SendThreadMessageAttemptArgs,
+): Promise<void> {
   const { environment, payload, thread } = args;
   ensureThreadIsWritable(thread);
   if (args.trigger === "user") {
@@ -475,6 +520,7 @@ export async function sendThreadMessage(
       initiator,
       input,
       inputGroups,
+      onDispatchAdmitted: args.releaseAfterHostAdmission,
       senderThreadId,
       thread,
     })
@@ -571,10 +617,13 @@ export async function sendThreadMessage(
       queuedRequest.request.notificationMetadata,
     );
     startLiveHostCommand(deps, {
+      onDispatchAdmitted: args.releaseAfterHostAdmission,
       command: command.command,
       hostId: readyEnvironment.hostId,
+      onExpectedError: () => args.releaseAfterHostAdmission(),
       timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
       onError: ({ error }) => {
+        args.releaseAfterHostAdmission();
         deps.logger.warn(
           { err: error, threadId: thread.id },
           "Live ready turn command failed",
@@ -639,10 +688,13 @@ export async function sendThreadMessage(
     queuedRequest.request.notificationMetadata,
   );
   startLiveHostCommand(deps, {
+    onDispatchAdmitted: args.releaseAfterHostAdmission,
     command,
     hostId: readyEnvironment.hostId,
+    onExpectedError: () => args.releaseAfterHostAdmission(),
     timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
     onError: ({ error }) => {
+      args.releaseAfterHostAdmission();
       deps.logger.warn(
         { err: error, threadId: thread.id },
         "Live turn submit command failed",

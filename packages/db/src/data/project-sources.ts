@@ -1,6 +1,6 @@
 import { and, count, eq, inArray, ne } from "drizzle-orm";
 import type { ProjectSource } from "@bb/domain";
-import type { DbConnection } from "../connection.js";
+import type { DbConnection, DbTransaction } from "../connection.js";
 import type { DbNotifier } from "../notifier.js";
 import { projectSources } from "../schema.js";
 import { createProjectSourceId } from "../ids.js";
@@ -196,7 +196,7 @@ export function updateProjectSource(
 }
 
 export function getProjectSourceByHost(
-  db: DbConnection,
+  db: DbConnection | DbTransaction,
   projectId: string,
   hostId: string,
 ) {

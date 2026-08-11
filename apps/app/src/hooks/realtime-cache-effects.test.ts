@@ -357,6 +357,88 @@ describe("createRealtimeCacheEffects", () => {
     effects.dispose();
   });
 
+  it("invalidates both sides of a thread project move", () => {
+    vi.useFakeTimers();
+    const {
+      effects,
+      firstProjectHistoryKey,
+      queryClient,
+      secondProjectHistoryKey,
+    } = createRealtimeEffectsTestContext();
+    const firstProjectThreadListKey = threadListQueryKey({
+      archived: false,
+      projectId: "project-1",
+    });
+    const secondProjectThreadListKey = threadListQueryKey({
+      archived: false,
+      projectId: "project-2",
+    });
+    queryClient.setQueryData(firstProjectThreadListKey, []);
+    queryClient.setQueryData(secondProjectThreadListKey, []);
+
+    effects.handleChanged({
+      type: "changed",
+      entity: "thread",
+      id: "thr_1",
+      metadata: {
+        previousProjectId: "project-1",
+        projectId: "project-2",
+      },
+      changes: ["project-changed"],
+    });
+    vi.advanceTimersByTime(250);
+
+    expect(
+      queryClient.getQueryState(firstProjectThreadListKey)?.isInvalidated,
+    ).toBe(true);
+    expect(
+      queryClient.getQueryState(secondProjectThreadListKey)?.isInvalidated,
+    ).toBe(true);
+    expect(
+      queryClient.getQueryState(firstProjectHistoryKey)?.isInvalidated,
+    ).toBe(true);
+    expect(
+      queryClient.getQueryState(secondProjectHistoryKey)?.isInvalidated,
+    ).toBe(true);
+    effects.dispose();
+  });
+
+  it("invalidates every project touched by chained moves in one debounce window", () => {
+    vi.useFakeTimers();
+    const { effects, queryClient } = createRealtimeEffectsTestContext();
+    const projectKeys = ["project-a", "project-b", "project-c"].map(
+      (projectId) => threadListQueryKey({ archived: false, projectId }),
+    );
+    const historyKeys = ["project-a", "project-b", "project-c"].map(
+      (projectId) => projectPromptHistoryQueryKey(projectId),
+    );
+    for (const key of [...projectKeys, ...historyKeys]) {
+      queryClient.setQueryData(key, []);
+    }
+
+    effects.handleChanged({
+      type: "changed",
+      entity: "thread",
+      id: "thr_1",
+      metadata: { previousProjectId: "project-a", projectId: "project-b" },
+      changes: ["project-changed"],
+    });
+    effects.handleChanged({
+      type: "changed",
+      entity: "thread",
+      id: "thr_1",
+      metadata: { previousProjectId: "project-b", projectId: "project-c" },
+      changes: ["project-changed"],
+    });
+
+    vi.advanceTimersByTime(50);
+
+    for (const key of [...projectKeys, ...historyKeys]) {
+      expect(queryClient.getQueryState(key)?.isInvalidated).toBe(true);
+    }
+    effects.dispose();
+  });
+
   it("invalidates sidebar navigation for thread list changes", () => {
     vi.useFakeTimers();
     const { effects, queryClient } = createRealtimeEffectsTestContext();

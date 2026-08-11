@@ -107,6 +107,7 @@ import {
 } from "./sidebarRowClasses";
 import {
   SIDEBAR_DRAG_OVERLAY_DROP_ANIMATION,
+  useSidebarDraggable,
   useSidebarSortable,
   type SidebarSortableDragBindings,
 } from "./sortableMotion";
@@ -129,6 +130,11 @@ import {
   type BuiltInSidebarSectionOptionsById,
 } from "./BuiltInSidebarSection";
 import { SectionThreadDndProvider } from "./SectionThreadDndContext";
+import {
+  getProjectThreadDropTargetId,
+  getProjectThreadMoveId,
+  type ProjectThreadMoveDndState,
+} from "./useProjectThreadMoveDnd";
 
 // Pin the project row plus this many parent levels (parent threads,
 // worktree group headers); rows deeper than the cap render non-sticky so a deep
@@ -166,6 +172,7 @@ export interface ProjectRowProps {
   onToggleEnvironmentCollapsed: (environmentId: string) => void;
   consumeProjectClickSuppression?: ConsumeDragClickSuppression;
   projectDragBindings?: SidebarSortableDragBindings;
+  projectThreadMoveDnd?: ProjectThreadMoveDndState;
   projectRowRef?: (element: HTMLDivElement | null) => void;
   projectRowStyle?: CSSProperties;
 }
@@ -183,6 +190,7 @@ interface ProjectThreadTreeProps {
   onProjectSelect?: () => void;
   onToggleThreadCollapsed: (threadId: string) => void;
   onToggleEnvironmentCollapsed: (environmentId: string) => void;
+  projectThreadMoveDnd?: ProjectThreadMoveDndState;
 }
 
 interface SectionThreadTreeProps {
@@ -201,6 +209,7 @@ interface SectionThreadTreeProps {
   ) => TopLevelSectionHeaderActions;
   onToggleThreadCollapsed: (threadId: string) => void;
   onToggleEnvironmentCollapsed: (environmentId: string) => void;
+  projectThreadMoveDnd?: ProjectThreadMoveDndState;
 }
 
 interface TopLevelSectionHeaderActions {
@@ -277,6 +286,7 @@ interface ThreadTreeNodeRowProps {
   onProjectSelect?: () => void;
   onToggleThreadCollapsed: (threadId: string) => void;
   onToggleEnvironmentCollapsed: (environmentId: string) => void;
+  projectThreadMoveDnd?: ProjectThreadMoveDndState;
   consumeClickSuppression?: ConsumeDragClickSuppression;
   dragBindings?: SidebarSortableDragBindings;
   sortableRef?: (element: HTMLDivElement | null) => void;
@@ -298,6 +308,7 @@ interface ThreadTreeItemRowProps {
   renderTopLevelSectionHeaderActions?: SectionThreadTreeProps["renderTopLevelSectionHeaderActions"];
   onToggleThreadCollapsed: (threadId: string) => void;
   onToggleEnvironmentCollapsed: (environmentId: string) => void;
+  projectThreadMoveDnd?: ProjectThreadMoveDndState;
   consumeClickSuppression?: ConsumeDragClickSuppression;
   dragBindings?: SidebarSortableDragBindings;
   isDropTargetActive?: boolean;
@@ -320,6 +331,7 @@ interface SectionTreeItemRowProps {
   renderTopLevelSectionHeaderActions?: SectionThreadTreeProps["renderTopLevelSectionHeaderActions"];
   onToggleThreadCollapsed: (threadId: string) => void;
   onToggleEnvironmentCollapsed: (environmentId: string) => void;
+  projectThreadMoveDnd?: ProjectThreadMoveDndState;
   consumeClickSuppression?: ConsumeDragClickSuppression;
   dragBindings?: SidebarSortableDragBindings;
   isDropTargetActive?: boolean;
@@ -368,6 +380,7 @@ interface EnvironmentThreadGroupRowProps {
   onProjectSelect?: () => void;
   onToggleThreadCollapsed: (threadId: string) => void;
   onToggleEnvironmentCollapsed: (environmentId: string) => void;
+  projectThreadMoveDnd?: ProjectThreadMoveDndState;
 }
 
 interface ThreadTreeGroupLineProps {
@@ -516,6 +529,7 @@ function getThreadRowOptions({
   isCollapsed,
   isEnvGrouped,
   isParent,
+  isProjectMoveSource,
   nodeDepth,
   onToggleThreadCollapsed,
   stickyLevel,
@@ -525,6 +539,7 @@ function getThreadRowOptions({
   const baseOptions = {
     depth,
     isCompact: nodeDepth > 0 || isEnvGrouped,
+    isProjectMoveSource,
     ...(consumeClickSuppression ? { consumeClickSuppression } : {}),
     ...(dragBindings ? { dragBindings } : {}),
   };
@@ -555,6 +570,7 @@ interface GetThreadRowOptionsArgs {
   isCollapsed: boolean;
   isEnvGrouped: boolean;
   isParent: boolean;
+  isProjectMoveSource: boolean;
   depthOffset: number;
   nodeDepth: number;
   onToggleThreadCollapsed: (threadId: string) => void;
@@ -1053,6 +1069,7 @@ const EnvironmentThreadGroupRow = memo(function EnvironmentThreadGroupRow({
   collapsedEnvironmentIds,
   onToggleThreadCollapsed,
   onToggleEnvironmentCollapsed,
+  projectThreadMoveDnd,
 }: EnvironmentThreadGroupRowProps) {
   const { environmentId, nodes, stats } = environmentThreadGroup;
   const representativeNode = nodes[0];
@@ -1136,6 +1153,7 @@ const EnvironmentThreadGroupRow = memo(function EnvironmentThreadGroupRow({
                 onProjectSelect={onProjectSelect}
                 onToggleThreadCollapsed={onToggleThreadCollapsed}
                 onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
+                projectThreadMoveDnd={projectThreadMoveDnd}
               />
             ))}
           </div>
@@ -1167,6 +1185,7 @@ const ThreadTreeItemRow = memo(function ThreadTreeItemRow({
   renderTopLevelSectionHeaderActions,
   onToggleThreadCollapsed,
   onToggleEnvironmentCollapsed,
+  projectThreadMoveDnd,
   consumeClickSuppression,
   dragBindings,
   isDropTargetActive,
@@ -1190,6 +1209,7 @@ const ThreadTreeItemRow = memo(function ThreadTreeItemRow({
         renderTopLevelSectionHeaderActions={renderTopLevelSectionHeaderActions}
         onToggleThreadCollapsed={onToggleThreadCollapsed}
         onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
+        projectThreadMoveDnd={projectThreadMoveDnd}
         consumeClickSuppression={consumeClickSuppression}
         dragBindings={dragBindings}
         isDropTargetActive={isDropTargetActive}
@@ -1214,6 +1234,7 @@ const ThreadTreeItemRow = memo(function ThreadTreeItemRow({
         onProjectSelect={onProjectSelect}
         onToggleThreadCollapsed={onToggleThreadCollapsed}
         onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
+        projectThreadMoveDnd={projectThreadMoveDnd}
         consumeClickSuppression={consumeClickSuppression}
         dragBindings={dragBindings}
         sortableRef={sortableRef}
@@ -1235,6 +1256,7 @@ const ThreadTreeItemRow = memo(function ThreadTreeItemRow({
       onProjectSelect={onProjectSelect}
       onToggleThreadCollapsed={onToggleThreadCollapsed}
       onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
+      projectThreadMoveDnd={projectThreadMoveDnd}
     />
   );
 });
@@ -1311,6 +1333,7 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
   renderTopLevelSectionHeaderActions,
   onToggleThreadCollapsed,
   onToggleEnvironmentCollapsed,
+  projectThreadMoveDnd,
   consumeClickSuppression,
   dragBindings,
   isDropTargetActive = false,
@@ -1374,6 +1397,7 @@ const SectionTreeItemRow = memo(function SectionTreeItemRow({
               onRemoveSection={onRemoveSection}
               onToggleThreadCollapsed={onToggleThreadCollapsed}
               onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
+              projectThreadMoveDnd={projectThreadMoveDnd}
               sectionDnd={sectionDnd}
             />
           ))}
@@ -1553,6 +1577,7 @@ export const ThreadTreeNodeRow = memo(function ThreadTreeNodeRow({
   onProjectSelect,
   onToggleThreadCollapsed,
   onToggleEnvironmentCollapsed,
+  projectThreadMoveDnd,
   consumeClickSuppression,
   dragBindings,
   sortableRef,
@@ -1561,6 +1586,18 @@ export const ThreadTreeNodeRow = memo(function ThreadTreeNodeRow({
   const isCollapsed = collapsedThreadIds.has(node.thread.id);
   const hasChildren = node.children.length > 0;
   const isParent = hasChildren;
+  const projectMoveDraggable = useSidebarDraggable({
+    id: getProjectThreadMoveId(node.thread.id),
+    disabled:
+      projectThreadMoveDnd === undefined || node.thread.parentThreadId !== null,
+  });
+  const projectMoveDragBindings =
+    projectThreadMoveDnd && node.thread.parentThreadId === null
+      ? projectMoveDraggable.dragBindings
+      : undefined;
+  const effectiveConsumeClickSuppression =
+    consumeClickSuppression ?? projectThreadMoveDnd?.consumeClickSuppression;
+  const effectiveDragBindings = projectMoveDragBindings ?? dragBindings;
   const parentRowDepth = getThreadRowDepth({
     depthOffset,
     nodeDepth: node.depth,
@@ -1571,12 +1608,14 @@ export const ThreadTreeNodeRow = memo(function ThreadTreeNodeRow({
       getThreadRowOptions({
         childActivity: node.stats.childActivity,
         childCount: node.stats.childCount,
-        consumeClickSuppression,
-        dragBindings,
+        consumeClickSuppression: effectiveConsumeClickSuppression,
+        dragBindings: effectiveDragBindings,
         depthOffset,
         isCollapsed,
         isEnvGrouped,
         isParent,
+        isProjectMoveSource:
+          projectThreadMoveDnd?.activeThreadId === node.thread.id,
         nodeDepth: node.depth,
         onToggleThreadCollapsed,
         stickyLevel: hasChildren
@@ -1585,15 +1624,16 @@ export const ThreadTreeNodeRow = memo(function ThreadTreeNodeRow({
         variant,
       }),
     [
-      consumeClickSuppression,
+      effectiveConsumeClickSuppression,
       depthOffset,
-      dragBindings,
+      effectiveDragBindings,
       isCollapsed,
       isEnvGrouped,
       isParent,
       hasChildren,
       node,
       onToggleThreadCollapsed,
+      projectThreadMoveDnd?.activeThreadId,
       variant,
     ],
   );
@@ -1643,6 +1683,7 @@ export const ThreadTreeNodeRow = memo(function ThreadTreeNodeRow({
               onProjectSelect={onProjectSelect}
               onToggleThreadCollapsed={onToggleThreadCollapsed}
               onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
+              projectThreadMoveDnd={projectThreadMoveDnd}
             />
           ))}
         </div>
@@ -1680,6 +1721,7 @@ interface SectionThreadTreeItemsProps {
   onRenameSection?: (section: SidebarSectionDefinition) => void;
   onRemoveSection?: (section: SidebarSectionDefinition) => void;
   renderTopLevelSectionHeaderActions?: SectionThreadTreeProps["renderTopLevelSectionHeaderActions"];
+  projectThreadMoveDnd?: ProjectThreadMoveDndState;
 }
 
 // The one place that maps thread-tree items to rows. Every sidebar view
@@ -1702,6 +1744,7 @@ function SectionThreadTreeItems({
   onRenameSection,
   onRemoveSection,
   renderTopLevelSectionHeaderActions,
+  projectThreadMoveDnd,
 }: SectionThreadTreeItemsProps) {
   const rows = items.map((item) => (
     <SectionDndItemRow
@@ -1720,6 +1763,7 @@ function SectionThreadTreeItems({
       onRenameSection={onRenameSection}
       onRemoveSection={onRemoveSection}
       renderTopLevelSectionHeaderActions={renderTopLevelSectionHeaderActions}
+      projectThreadMoveDnd={projectThreadMoveDnd}
       sectionDnd={sectionDnd ?? undefined}
     />
   ));
@@ -1727,7 +1771,9 @@ function SectionThreadTreeItems({
   return (
     <ProjectThreadTreeGroup
       variant={variant}
-      onClickCapture={sectionDnd?.onClickCapture}
+      onClickCapture={
+        sectionDnd?.onClickCapture ?? projectThreadMoveDnd?.onClickCapture
+      }
     >
       {sortableParentKey !== undefined ? (
         <SectionDndSortableList
@@ -1754,6 +1800,7 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
   onProjectSelect,
   onToggleThreadCollapsed,
   onToggleEnvironmentCollapsed,
+  projectThreadMoveDnd,
 }: ProjectThreadTreeProps) {
   const projectThreads =
     threadListState.status === "ready"
@@ -1808,6 +1855,7 @@ export const ProjectThreadTree = memo(function ProjectThreadTree({
       selectedThreadId={selectedThreadId}
       collapsedThreadIds={collapsedThreadIds}
       collapsedEnvironmentIds={collapsedEnvironmentIds}
+      projectThreadMoveDnd={projectThreadMoveDnd}
       onProjectSelect={onProjectSelect}
       onToggleThreadCollapsed={onToggleThreadCollapsed}
       onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
@@ -2136,9 +2184,20 @@ function ProjectRowComponent({
   onToggleEnvironmentCollapsed,
   consumeProjectClickSuppression,
   projectDragBindings,
+  projectThreadMoveDnd,
   projectRowRef,
   projectRowStyle,
 }: ProjectRowProps) {
+  const projectDropTarget = useDroppable({
+    id: getProjectThreadDropTargetId(project.id),
+    disabled: projectThreadMoveDnd === undefined,
+  });
+  const isProjectThreadMoveActive =
+    projectThreadMoveDnd?.activeThreadId !== null &&
+    projectThreadMoveDnd?.activeThreadId !== undefined;
+  const isDropTargetAvailable =
+    isProjectThreadMoveActive &&
+    projectThreadMoveDnd?.sourceProjectId !== project.id;
   const [isDropdownActionsOpen, setIsDropdownActionsOpen] = useState(false);
   const [isContextActionsOpen, setIsContextActionsOpen] = useState(false);
   const isActionsOpen =
@@ -2244,7 +2303,10 @@ function ProjectRowComponent({
       project={project}
       onOpenChange={setIsContextActionsOpen}
     >
-      <div data-sidebar-sticky-project-item="">
+      <div
+        ref={projectDropTarget.setNodeRef}
+        data-sidebar-sticky-project-item=""
+      >
         <TopLevelSidebarSection
           label={project.name}
           actions={projectActions}
@@ -2261,6 +2323,10 @@ function ProjectRowComponent({
           dragBindings={projectDragBindings}
           sectionRef={projectRowRef}
           sectionStyle={projectRowStyle}
+          isDropTargetAvailable={isDropTargetAvailable}
+          isDropTargetActive={
+            projectThreadMoveDnd?.overProjectId === project.id
+          }
         >
           <ProjectThreadTree
             projectId={project.id}
@@ -2270,6 +2336,7 @@ function ProjectRowComponent({
             collapsedEnvironmentIds={collapsedEnvironmentIds}
             compareThreads={compareThreads}
             variant="section"
+            projectThreadMoveDnd={projectThreadMoveDnd}
             onProjectSelect={onProjectSelect}
             onToggleThreadCollapsed={onToggleThreadCollapsed}
             onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
@@ -2374,6 +2441,16 @@ function areProjectRowPropsEqual(
     prev.projectDragBindings !== next.projectDragBindings ||
     prev.projectRowRef !== next.projectRowRef ||
     prev.projectRowStyle !== next.projectRowStyle
+  ) {
+    return false;
+  }
+  if (
+    prev.projectThreadMoveDnd?.activeThreadId !==
+      next.projectThreadMoveDnd?.activeThreadId ||
+    prev.projectThreadMoveDnd?.sourceProjectId !==
+      next.projectThreadMoveDnd?.sourceProjectId ||
+    prev.projectThreadMoveDnd?.overProjectId !==
+      next.projectThreadMoveDnd?.overProjectId
   ) {
     return false;
   }

@@ -9,6 +9,8 @@ import {
   type ReactNode,
 } from "react";
 import { useNavigate } from "react-router-dom";
+import { createPortal } from "react-dom";
+import { DragOverlay, useDroppable } from "@dnd-kit/core";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import type {
   ProjectResponse,
@@ -27,7 +29,10 @@ import {
 import { isTransientReadError } from "@/hooks/queries/query-helpers";
 import { stripProjectThreads } from "@/hooks/queries/project-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
-import { useReorderPinnedThread } from "@/hooks/mutations/thread-state-mutations";
+import {
+  useReorderPinnedThread,
+  useUpdateThread,
+} from "@/hooks/mutations/thread-state-mutations";
 import {
   useCreateThreadSection,
   useDeleteThreadSection,
@@ -41,8 +46,9 @@ import { useHosts, usePrimaryHost } from "@/hooks/queries/host-queries";
 import { useDialogState } from "@/hooks/useDialogState";
 import { usePromptDraftInputThreadIds } from "@/hooks/usePromptDraftStorage";
 import { getCollapsedChildActivity } from "@/lib/thread-activity";
-import { getRootComposeRoutePath } from "@/lib/route-paths";
+import { getRootComposeRoutePath, getThreadRoutePath } from "@/lib/route-paths";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
+import { THREAD_DRAG_GHOST_STYLE } from "@/lib/drag-ghost-style";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import { BbHttpError } from "@bb/sdk/browser";
 import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
@@ -133,6 +139,7 @@ import {
   SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
   SIDEBAR_STANDARD_ROW_PADDING_CLASS,
 } from "./sidebarRowClasses";
+import { SIDEBAR_DRAG_OVERLAY_DROP_ANIMATION } from "./sortableMotion";
 export { TopLevelSidebarSection } from "./TopLevelSidebarSection";
 import {
   SIDEBAR_THREAD_SEARCH_LISTBOX_ID,
@@ -151,6 +158,12 @@ import {
 } from "./BuiltInSidebarSection";
 import { ReorderableSidebarSectionOrderList } from "./ReorderableSidebarSectionOrderList";
 import { useSidebarModeSectionOrder } from "./useSidebarModeSectionOrder";
+import {
+  getProjectThreadDropTargetId,
+  projectThreadMoveCollisionDetection,
+  projectThreadMoveModifiers,
+  useProjectThreadMoveDnd,
+} from "./useProjectThreadMoveDnd";
 import {
   resolveThreadTitleDisplayText,
   type ThreadTitleMentionResources,
@@ -989,6 +1002,36 @@ interface ProjectModeSectionsProps extends BuiltInSectionRenderState {
   threadsSection: Omit<BuiltInSidebarSectionOptions, "content">;
 }
 
+function ProjectThreadMoveDropTarget({
+  children,
+  disabled,
+}: {
+  children: ReactNode;
+  disabled: boolean;
+}) {
+  const { setNodeRef } = useDroppable({
+    id: getProjectThreadDropTargetId(PERSONAL_PROJECT_ID),
+    disabled,
+  });
+
+  return <div ref={setNodeRef}>{children}</div>;
+}
+
+function ProjectThreadMoveDragOverlay({ thread }: { thread: ThreadListEntry }) {
+  return (
+    <div
+      aria-hidden="true"
+      data-sidebar-project-thread-drag-overlay="true"
+      className="pointer-events-none"
+      style={{
+        ...THREAD_DRAG_GHOST_STYLE,
+      }}
+    >
+      {getThreadDisplayTitle(thread)}
+    </div>
+  );
+}
+
 function ProjectModeSections({
   collapsedEnvironmentIds,
   collapsedSectionIds,
@@ -1012,6 +1055,7 @@ function ProjectModeSections({
   threads,
   threadsSection,
 }: ProjectModeSectionsProps) {
+  const navigate = useNavigate();
   const [collapsedProjectIdList, setCollapsedProjectIdList] = useAtom(
     collapsedProjectIdsAtom,
   );
@@ -1115,12 +1159,78 @@ function ProjectModeSections({
   const personalThreads =
     threadsByProject.get(PERSONAL_PROJECT_ID)?.filter(isSidebarProjectThread) ??
     [];
+  const updateThread = useUpdateThread({
+    errorMessage: "Failed to move thread to project.",
+  });
+  const threadProjectIds = useMemo(
+    () => new Map(threads.map((thread) => [thread.id, thread.projectId])),
+    [threads],
+  );
+  const handleProjectThreadMove = useCallback(
+    (threadId: string, targetProjectId: string) => {
+      const movedThread = threads.find((thread) => thread.id === threadId);
+      if (!movedThread || movedThread.projectId === targetProjectId) {
+        return;
+      }
+
+      const threadById = new Map(threads.map((thread) => [thread.id, thread]));
+      const selectedThread = selectedThreadId
+        ? threadById.get(selectedThreadId)
+        : undefined;
+      const selectedThreadIsInMovedSubtree = (() => {
+        if (!selectedThread) return false;
+        let current: ThreadListEntry | undefined = selectedThread;
+        const seen = new Set<string>();
+        while (current && !seen.has(current.id)) {
+          if (current.id === movedThread.id) return true;
+          seen.add(current.id);
+          current = current.parentThreadId
+            ? threadById.get(current.parentThreadId)
+            : undefined;
+        }
+        return false;
+      })();
+
+      updateThread.mutate(
+        { id: movedThread.id, projectId: targetProjectId },
+        {
+          onSuccess: (updated) => {
+            if (!selectedThreadIsInMovedSubtree || !selectedThreadId) {
+              return;
+            }
+            navigate(
+              getThreadRoutePath({
+                projectId: updated.projectId,
+                threadId: selectedThreadId,
+              }),
+            );
+          },
+        },
+      );
+    },
+    [navigate, selectedThreadId, threads, updateThread],
+  );
+  const projectThreadMoveDnd = useProjectThreadMoveDnd({
+    onMove: handleProjectThreadMove,
+    threadProjectIds,
+  });
+  const activeProjectMoveThread =
+    projectThreadMoveDnd.activeThreadId === null
+      ? null
+      : (threads.find(
+          (thread) => thread.id === projectThreadMoveDnd.activeThreadId,
+        ) ?? null);
   const builtInSections: BuiltInSidebarSectionOptionsById = {
     pinned: pinnedSection,
     threads: {
       ...threadsSection,
       activity: getCollapsedChildActivity(personalThreads, draftThreadIds),
       collapsedThreads: personalThreads,
+      isDropTargetAvailable:
+        projectThreadMoveDnd.activeThreadId !== null &&
+        projectThreadMoveDnd.sourceProjectId !== PERSONAL_PROJECT_ID,
+      isDropTargetActive:
+        projectThreadMoveDnd.overProjectId === PERSONAL_PROJECT_ID,
       content: (
         <ProjectThreadTree
           projectId={PERSONAL_PROJECT_ID}
@@ -1133,6 +1243,7 @@ function ProjectModeSections({
           collapsedEnvironmentIds={collapsedEnvironmentIds}
           compareThreads={compareThreads}
           variant="section"
+          projectThreadMoveDnd={projectThreadMoveDnd}
           onProjectSelect={onProjectSelect}
           onToggleThreadCollapsed={onToggleThreadCollapsed}
           onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
@@ -1146,6 +1257,25 @@ function ProjectModeSections({
       order={order}
       reorderOrder={persistedOrder}
       onOrderChange={onOrderChange}
+      onDragStart={projectThreadMoveDnd.onDragStart}
+      onDragOver={projectThreadMoveDnd.onDragOver}
+      onDragCancel={projectThreadMoveDnd.onDragCancel}
+      onDragEnd={projectThreadMoveDnd.onDragEnd}
+      collisionDetection={projectThreadMoveCollisionDetection}
+      modifiers={projectThreadMoveModifiers}
+      dragOverlay={createPortal(
+        <DragOverlay
+          className="cursor-grabbing"
+          dropAnimation={
+            activeProjectMoveThread ? SIDEBAR_DRAG_OVERLAY_DROP_ANIMATION : null
+          }
+        >
+          {activeProjectMoveThread ? (
+            <ProjectThreadMoveDragOverlay thread={activeProjectMoveThread} />
+          ) : null}
+        </DragOverlay>,
+        document.body,
+      )}
     >
       {(sectionId, consumeClickSuppression) => {
         const builtInSection = renderBuiltInSidebarSection({
@@ -1157,7 +1287,21 @@ function ProjectModeSections({
           consumeClickSuppression,
           showPinnedSection,
         });
-        if (builtInSection !== undefined) return builtInSection;
+        if (builtInSection !== undefined) {
+          return sectionId === "threads" ? (
+            <ProjectThreadMoveDropTarget
+              key={sectionId}
+              disabled={
+                projectThreadMoveDnd.activeThreadId === null ||
+                projectThreadMoveDnd.sourceProjectId === PERSONAL_PROJECT_ID
+              }
+            >
+              {builtInSection}
+            </ProjectThreadMoveDropTarget>
+          ) : (
+            builtInSection
+          );
+        }
         const row = projectRowsBySectionId.get(sectionId);
         if (!row) return null;
         return (
@@ -1182,6 +1326,7 @@ function ProjectModeSections({
             onToggleEnvironmentCollapsed={onToggleEnvironmentCollapsed}
             reorderDisabled={reorderDisabled}
             consumeProjectClickSuppression={consumeClickSuppression}
+            projectThreadMoveDnd={projectThreadMoveDnd}
           />
         );
       }}

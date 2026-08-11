@@ -45,6 +45,7 @@ import {
   listProjectsPendingDeletion,
 } from "../projects/project-deletion.js";
 import { hasLiveThreadStartInFlight } from "../threads/thread-lifecycle.js";
+import { resumeManagedWorkspaceProvisioning } from "../threads/thread-project.js";
 import { advanceThreadProvisioning } from "../threads/thread-provisioning.js";
 import { runQueuedMessageAutoSendSweep } from "../threads/queued-messages.js";
 import { LIVE_DAEMON_COMMAND_TIMEOUT_MS } from "../hosts/live-command.js";
@@ -416,9 +417,10 @@ export async function runProjectDeletionSweep(
   }
 }
 
-// Provisioning has no host-command queue to resume here. This
-// sweep only re-enters server-owned provisioning state so orphaned in-process
-// advances can either continue from persisted resource state or fail cleanly.
+// Move-created managed-workspace plans are persisted with their provisioning
+// environment, so this sweep can recreate the host command after a response
+// boundary or server restart. Other provisioning rows retain the existing
+// recovery behavior below.
 export async function runEnvironmentProvisioningSweep(
   deps: LoggedPendingInteractionWorkSessionDeps,
 ): Promise<void> {
@@ -430,6 +432,13 @@ export async function runEnvironmentProvisioningSweep(
 
   for (const environment of provisioningEnvironments) {
     try {
+      if (
+        await resumeManagedWorkspaceProvisioning(deps, {
+          environmentId: environment.id,
+        })
+      ) {
+        continue;
+      }
       await advanceEnvironmentProvisioning(deps, {
         environmentId: environment.id,
       });

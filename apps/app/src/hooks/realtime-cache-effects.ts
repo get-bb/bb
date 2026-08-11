@@ -48,7 +48,12 @@ export interface RealtimeCacheEffectsOptions {
 interface ThreadChangeState {
   changedThreadKinds: Map<string, Set<ThreadChangeKind>>;
   globalChangeKinds: Set<ThreadChangeKind>;
-  metadataByThreadId: Map<string, ThreadChangeMetadata>;
+  metadataByThreadId: Map<string, MergedThreadChangeMetadata>;
+}
+
+interface MergedThreadChangeMetadata {
+  metadata: ThreadChangeMetadata;
+  previousProjectIds: readonly string[];
 }
 
 interface MergeThreadChangesArg {
@@ -80,15 +85,21 @@ function mergeEventTypes(
 }
 
 function mergeThreadChangeMetadata(
-  current: ThreadChangeMetadata | undefined,
+  current: MergedThreadChangeMetadata | undefined,
   next: ThreadChangeMetadata,
-): ThreadChangeMetadata {
-  const eventTypes = mergeEventTypes(current?.eventTypes, next.eventTypes);
+): MergedThreadChangeMetadata {
+  const eventTypes = mergeEventTypes(
+    current?.metadata.eventTypes,
+    next.eventTypes,
+  );
   const backgroundActivityChanged =
-    next.backgroundActivityChanged ?? current?.backgroundActivityChanged;
+    next.backgroundActivityChanged ??
+    current?.metadata.backgroundActivityChanged;
   const hasPendingInteraction =
-    next.hasPendingInteraction ?? current?.hasPendingInteraction;
-  const projectId = next.projectId ?? current?.projectId;
+    next.hasPendingInteraction ?? current?.metadata.hasPendingInteraction;
+  const previousProjectId =
+    next.previousProjectId ?? current?.metadata.previousProjectId;
+  const projectId = next.projectId ?? current?.metadata.projectId;
   const metadata: ThreadChangeMetadata = {};
   if (eventTypes) {
     metadata.eventTypes = eventTypes;
@@ -99,17 +110,28 @@ function mergeThreadChangeMetadata(
   if (hasPendingInteraction !== undefined) {
     metadata.hasPendingInteraction = hasPendingInteraction;
   }
+  if (previousProjectId !== undefined) {
+    metadata.previousProjectId = previousProjectId;
+  }
   if (projectId !== undefined) {
     metadata.projectId = projectId;
   }
-  return metadata;
+  return {
+    metadata,
+    previousProjectIds: Array.from(
+      new Set([
+        ...(current?.previousProjectIds ?? []),
+        ...(next.previousProjectId ? [next.previousProjectId] : []),
+      ]),
+    ),
+  };
 }
 
 function createThreadChangeState(): ThreadChangeState {
   return {
     changedThreadKinds: new Map<string, Set<ThreadChangeKind>>(),
     globalChangeKinds: new Set<ThreadChangeKind>(),
-    metadataByThreadId: new Map<string, ThreadChangeMetadata>(),
+    metadataByThreadId: new Map<string, MergedThreadChangeMetadata>(),
   };
 }
 
@@ -144,6 +166,8 @@ function flushThreadInvalidations(
         backgroundActivityChanged: undefined,
         eventTypes: undefined,
         hasPendingInteraction: undefined,
+        previousProjectId: undefined,
+        previousProjectIds: [],
         projectId: undefined,
         queryClient,
         threadId: undefined,
@@ -157,10 +181,13 @@ function flushThreadInvalidations(
     for (const changeKind of changeKinds) {
       executeRealtimeDirtyHandlers({
         context: {
-          backgroundActivityChanged: metadata?.backgroundActivityChanged,
-          hasPendingInteraction: metadata?.hasPendingInteraction,
-          eventTypes: metadata?.eventTypes,
-          projectId: metadata?.projectId,
+          backgroundActivityChanged:
+            metadata?.metadata.backgroundActivityChanged,
+          hasPendingInteraction: metadata?.metadata.hasPendingInteraction,
+          previousProjectId: metadata?.metadata.previousProjectId,
+          previousProjectIds: metadata?.previousProjectIds ?? [],
+          eventTypes: metadata?.metadata.eventTypes,
+          projectId: metadata?.metadata.projectId,
           queryClient,
           threadId,
         },

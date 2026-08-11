@@ -10,12 +10,14 @@ import type { SidebarReorderDndContextProps } from "./useSidebarReorderDnd";
 interface SidebarSectionOrderListProps {
   children: (sectionId: SidebarSectionId) => ReactNode;
   dndContextProps?: SidebarReorderDndContextProps;
+  dragOverlay?: ReactNode;
   order: readonly SidebarSectionId[];
 }
 
 export function SidebarSectionOrderList({
   children,
   dndContextProps,
+  dragOverlay,
   order,
 }: SidebarSectionOrderListProps) {
   const content = (
@@ -25,7 +27,10 @@ export function SidebarSectionOrderList({
   );
 
   return dndContextProps ? (
-    <DndContext {...dndContextProps}>{content}</DndContext>
+    <DndContext {...dndContextProps}>
+      {content}
+      {dragOverlay}
+    </DndContext>
   ) : (
     content
   );

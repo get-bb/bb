@@ -73,6 +73,8 @@ interface UseSidebarReorderDndArgs {
    * levels in one context. Ordinary one-level lists use the shared default.
    */
   collisionDetection?: CollisionDetection;
+  /** Modifies the drag transform; ordinary sidebar lists stay vertical-only. */
+  modifiers?: Modifier[];
 }
 
 export type SidebarReorderDndContextProps = Pick<
@@ -110,6 +112,7 @@ export function useSidebarReorderDnd({
   onDragOver,
   onDragCancel,
   collisionDetection = sidebarReorderCollisionDetection,
+  modifiers = SIDEBAR_REORDER_MODIFIERS,
 }: UseSidebarReorderDndArgs): UseSidebarReorderDndResult {
   const {
     beginDragClickSuppression,
@@ -185,7 +188,7 @@ export function useSidebarReorderDnd({
     () => ({
       sensors,
       collisionDetection,
-      modifiers: SIDEBAR_REORDER_MODIFIERS,
+      modifiers,
       onDragStart: handleDragStart,
       onDragOver,
       onDragCancel: handleDragCancel,
@@ -196,6 +199,7 @@ export function useSidebarReorderDnd({
       handleDragCancel,
       handleDragEnd,
       handleDragStart,
+      modifiers,
       onDragOver,
       sensors,
     ],

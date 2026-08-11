@@ -52,6 +52,7 @@ import { recordAcceptedPromptHistoryEntry } from "../prompt-history.js";
 import { requireThreadCommandEnvironment } from "./thread-command-environment.js";
 import { applyLoggedThreadLifecycleEventInTransaction } from "./lifecycle-outcome.js";
 import { applyLoggedEnvironmentLifecycleEvent } from "../environments/lifecycle-outcome.js";
+import { acquireThreadOperation } from "./thread-operation-lock.js";
 
 interface SendQueuedMessageArgs {
   mode: SendQueuedMessageMode;
@@ -256,168 +257,199 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: SendClaimedQueuedMessageForThreadArgs,
 ): Promise<ThreadQueuedMessage | null> {
-  if (args.mode !== "auto") {
-    return null;
-  }
+  const releaseOperation = await acquireThreadOperation(args.thread.id);
+  let operationReleased = false;
+  const release = () => {
+    if (operationReleased) {
+      return;
+    }
+    operationReleased = true;
+    releaseOperation();
+  };
 
-  const thread = args.thread;
-  if (thread.status !== "idle") {
-    return null;
-  }
-  const providerThreadId = getLastProviderThreadId(deps, thread.id);
-  if (!providerThreadId) {
-    return null;
-  }
+  try {
+    if (args.mode !== "auto") {
+      release();
+      return null;
+    }
 
-  const environment = await requireReadyQueuedMessageEnvironment(deps, thread);
-  const queuedMessages = queuedMessagesToThreadQueuedMessages(
-    args.queuedMessages,
-  );
-  const queuedMessage = queuedMessages[0]!;
-  ensureThreadCanStartRequest(thread);
+    const currentThread = getThread(deps.db, args.thread.id);
+    if (!currentThread) {
+      release();
+      throw new ApiError(404, "thread_not_found", "Thread not found");
+    }
+    const thread = currentThread;
+    if (thread.status !== "idle") {
+      release();
+      return null;
+    }
+    const providerThreadId = getLastProviderThreadId(deps, thread.id);
+    if (!providerThreadId) {
+      release();
+      return null;
+    }
 
-  const senderThreadId = args.queuedMessages[0]!.senderThreadId;
-  let inputGroups = args.queuedMessages.map((claimedQueuedMessage) =>
-    formatQueuedMessageInputForSender({
-      input: toThreadQueuedMessage(claimedQueuedMessage).content,
-      senderThreadId: claimedQueuedMessage.senderThreadId,
-    }),
-  );
-  let input = groupedInputForRuntime(inputGroups);
-  // Plugin mentions resolve once at send time (plugin design §4.9), exactly
-  // like the direct-send path in sendThreadMessage: this fast path dispatches
-  // straight to the daemon, so it must append the same agent-only context
-  // inputs itself. A resolve failure throws before the claim is consumed, so
-  // the message stays queued instead of silently losing its context.
-  const pluginMentionContext = await resolvePluginMentionContextInputs(input);
-  if (pluginMentionContext.length > 0) {
-    input = [...input, ...pluginMentionContext];
-    // Keep the grouped view aligned with the flat runtime input: the
-    // context rides the final group so a grouped send carries it too.
-    const lastGroup = inputGroups[inputGroups.length - 1]!;
-    inputGroups = [
-      ...inputGroups.slice(0, -1),
-      [...lastGroup, ...pluginMentionContext],
-    ];
-  }
-  const payload = sendQueuedMessagePayload(
-    { ...queuedMessage, content: input },
-    args.mode,
-    senderThreadId,
-  );
-  const initiator: ThreadTurnInitiator =
-    senderThreadId === null ? "user" : "agent";
-  if (initiator === "user") {
-    await recoverThreadModelOverride(deps, {
-      model: payload.model,
-      modelSource:
-        payload.executionInputSources === undefined
-          ? "explicit"
-          : payload.executionInputSources.model,
+    const environment = await requireReadyQueuedMessageEnvironment(
+      deps,
+      thread,
+    );
+    const queuedMessages = queuedMessagesToThreadQueuedMessages(
+      args.queuedMessages,
+    );
+    const queuedMessage = queuedMessages[0]!;
+    ensureThreadCanStartRequest(thread);
+
+    const senderThreadId = args.queuedMessages[0]!.senderThreadId;
+    let inputGroups = args.queuedMessages.map((claimedQueuedMessage) =>
+      formatQueuedMessageInputForSender({
+        input: toThreadQueuedMessage(claimedQueuedMessage).content,
+        senderThreadId: claimedQueuedMessage.senderThreadId,
+      }),
+    );
+    let input = groupedInputForRuntime(inputGroups);
+    // Plugin mentions resolve once at send time (plugin design §4.9), exactly
+    // like the direct-send path in sendThreadMessage: this fast path dispatches
+    // straight to the daemon, so it must append the same agent-only context
+    // inputs itself. A resolve failure throws before the claim is consumed, so
+    // the message stays queued instead of silently losing its context.
+    const pluginMentionContext = await resolvePluginMentionContextInputs(input);
+    if (pluginMentionContext.length > 0) {
+      input = [...input, ...pluginMentionContext];
+      // Keep the grouped view aligned with the flat runtime input: the
+      // context rides the final group so a grouped send carries it too.
+      const lastGroup = inputGroups[inputGroups.length - 1]!;
+      inputGroups = [
+        ...inputGroups.slice(0, -1),
+        [...lastGroup, ...pluginMentionContext],
+      ];
+    }
+    const payload = sendQueuedMessagePayload(
+      { ...queuedMessage, content: input },
+      args.mode,
+      senderThreadId,
+    );
+    const initiator: ThreadTurnInitiator =
+      senderThreadId === null ? "user" : "agent";
+    if (initiator === "user") {
+      await recoverThreadModelOverride(deps, {
+        model: payload.model,
+        modelSource:
+          payload.executionInputSources === undefined
+            ? "explicit"
+            : payload.executionInputSources.model,
+        thread,
+      });
+    }
+    const execution = await buildExecutionOptions(
+      deps,
+      payload,
+      { threadId: thread.id },
+      "client/turn/requested",
+    );
+    const permissionEscalation = resolvePermissionEscalation({
+      initiator,
       thread,
     });
-  }
-  const execution = await buildExecutionOptions(
-    deps,
-    payload,
-    { threadId: thread.id },
-    "client/turn/requested",
-  );
-  const permissionEscalation = resolvePermissionEscalation({
-    initiator,
-    thread,
-  });
-  await ensureHostSessionReadyForWork(deps, {
-    hostId: environment.hostId,
-  });
-  const preparedCommand = await prepareTurnSubmitCommandPayload(deps, {
-    environment,
-    execution,
-    input,
-    ...(inputGroups.length > 1 ? { inputGroups } : {}),
-    permissionEscalation,
-    providerThreadId,
-    target: { mode: "start" },
-    thread,
-  });
+    await ensureHostSessionReadyForWork(deps, {
+      hostId: environment.hostId,
+    });
+    const preparedCommand = await prepareTurnSubmitCommandPayload(deps, {
+      environment,
+      execution,
+      input,
+      ...(inputGroups.length > 1 ? { inputGroups } : {}),
+      permissionEscalation,
+      providerThreadId,
+      target: { mode: "start" },
+      thread,
+    });
 
-  const command = deps.db.transaction(
-    (tx) => {
-      const consumed = deleteClaimedQueuedThreadMessageBatchInTransaction(tx, {
-        queuedMessages: args.queuedMessages,
-      });
-      if (!consumed) {
-        throw createQueuedMessageClaimLostError();
-      }
-      const request = appendClientTurnEventInTransaction(tx, {
-        environmentId: thread.environmentId,
-        execution,
-        initiator,
-        input,
-        ...(inputGroups.length > 1 ? { inputGroups } : {}),
-        requestMethod: "turn/start",
-        senderThreadId,
-        source: "tell",
-        target: { kind: "new-turn" },
-        threadId: thread.id,
-        type: "client/turn/requested",
-      });
-      recordAcceptedPromptHistoryEntry(
-        { db: tx },
-        {
-          thread,
-          input,
+    const command = deps.db.transaction(
+      (tx) => {
+        const consumed = deleteClaimedQueuedThreadMessageBatchInTransaction(
+          tx,
+          {
+            queuedMessages: args.queuedMessages,
+          },
+        );
+        if (!consumed) {
+          throw createQueuedMessageClaimLostError();
+        }
+        const request = appendClientTurnEventInTransaction(tx, {
+          environmentId: thread.environmentId,
+          execution,
           initiator,
+          input,
+          ...(inputGroups.length > 1 ? { inputGroups } : {}),
+          requestMethod: "turn/start",
+          senderThreadId,
+          source: "tell",
           target: { kind: "new-turn" },
-          requestSequence: request.sequence,
-        },
-      );
-      const command = addRequestIdToTurnSubmitCommandPayload({
-        requestId: request.requestId,
-        preparedCommand,
-      });
-      const outcome = applyLoggedThreadLifecycleEventInTransaction(
-        { db: tx, logger: deps.logger },
-        { event: { type: "run.started" }, threadId: thread.id },
-      );
-      if (!outcome.applied) {
-        // The thread was deleted, archived, or began stopping in the race
-        // window between the auto-send entry guard and this dispatch:
-        // run.started is superseded by its notDeleted/notArchived
-        // predicate (and is structurally absent from `stopping`). Roll back
-        // the claim consumption and the queued client/turn/requested append
-        // so the message stays queued and no host command is sent — the entry
-        // guard skips the thread on the next sweep tick.
-        throw createQueuedMessageClaimLostError();
-      }
-      deps.hub.notifyThread(thread.id, ["status-changed"]);
-      return command;
-    },
-    { behavior: "immediate" },
-  );
-  if (!command) {
-    throw createQueuedMessageClaimLostError();
-  }
+          threadId: thread.id,
+          type: "client/turn/requested",
+        });
+        recordAcceptedPromptHistoryEntry(
+          { db: tx },
+          {
+            thread,
+            input,
+            initiator,
+            target: { kind: "new-turn" },
+            requestSequence: request.sequence,
+          },
+        );
+        const command = addRequestIdToTurnSubmitCommandPayload({
+          requestId: request.requestId,
+          preparedCommand,
+        });
+        const outcome = applyLoggedThreadLifecycleEventInTransaction(
+          { db: tx, logger: deps.logger },
+          { event: { type: "run.started" }, threadId: thread.id },
+        );
+        if (!outcome.applied) {
+          // The thread was deleted, archived, or began stopping in the race
+          // window between the auto-send entry guard and this dispatch:
+          // run.started is superseded by its notDeleted/notArchived
+          // predicate (and is structurally absent from `stopping`). Roll back
+          // the claim consumption and the queued client/turn/requested append
+          // so the message stays queued and no host command is sent — the entry
+          // guard skips the thread on the next sweep tick.
+          throw createQueuedMessageClaimLostError();
+        }
+        deps.hub.notifyThread(thread.id, ["status-changed"]);
+        return command;
+      },
+      { behavior: "immediate" },
+    );
+    if (!command) {
+      throw createQueuedMessageClaimLostError();
+    }
 
-  deps.hub.notifyThread(
-    thread.id,
-    ["events-appended", "queue-changed", "status-changed"],
-    {
-      eventTypes: ["client/turn/requested"],
-    },
-  );
-  startLiveHostCommand(deps, {
-    command,
-    hostId: environment.hostId,
-    timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
-    onError: ({ error }) => {
-      deps.logger.warn(
-        { err: error, threadId: thread.id },
-        "Live queued message command failed",
-      );
-    },
-  });
-  return queuedMessage;
+    deps.hub.notifyThread(
+      thread.id,
+      ["events-appended", "queue-changed", "status-changed"],
+      {
+        eventTypes: ["client/turn/requested"],
+      },
+    );
+    startLiveHostCommand(deps, {
+      onDispatchAdmitted: release,
+      command,
+      hostId: environment.hostId,
+      timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
+      onError: ({ error }) => {
+        release();
+        deps.logger.warn(
+          { err: error, threadId: thread.id },
+          "Live queued message command failed",
+        );
+      },
+    });
+    return queuedMessage;
+  } catch (error) {
+    release();
+    throw error;
+  }
 }
 
 async function sendClaimedQueuedMessageForThread(

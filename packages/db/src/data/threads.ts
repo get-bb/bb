@@ -1593,6 +1593,7 @@ export function reorderPinnedThread({
 
 export interface UpdateThreadInput {
   environmentId?: string | null;
+  projectId?: string;
   sectionId?: string | null;
   lastReadAt?: number | null;
   parentThreadId?: string | null;
@@ -1634,8 +1635,12 @@ export function updateThread(
   ) {
     changes.push("environment-changed");
   }
+  if ("projectId" in input && input.projectId !== existing.projectId) {
+    changes.push("project-changed");
+  }
 
   const set: Partial<typeof threads.$inferInsert> = { updatedAt: now };
+  if ("projectId" in input) set.projectId = input.projectId;
   if ("title" in input) set.title = input.title;
   if ("sectionId" in input) {
     set.sectionId = input.sectionId;
@@ -1662,9 +1667,18 @@ export function updateThread(
     });
   }
   if (updated && changes.length > 0) {
+    const projectChanged =
+      "projectId" in input && updated.projectId !== existing.projectId;
     notifier.notifyThread(id, changes, {
-      projectId: existing.projectId,
+      ...(projectChanged
+        ? { previousProjectId: existing.projectId }
+        : {}),
+      projectId: projectChanged ? updated.projectId : existing.projectId,
     });
+    if (projectChanged) {
+      notifier.notifyProject(existing.projectId, ["threads-changed"]);
+      notifier.notifyProject(updated.projectId, ["threads-changed"]);
+    }
   }
   return updated ?? null;
 }

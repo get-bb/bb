@@ -17,11 +17,10 @@ import { ensureHostSessionReadyForWork } from "./host-lifecycle.js";
 
 const HOST_DAEMON_REGISTRATION_WAIT_MS = 1_000;
 
-export interface CallHostOnlineRpcArgs<
-  TCommand extends HostDaemonRpcCommand,
-> {
+export interface CallHostOnlineRpcArgs<TCommand extends HostDaemonRpcCommand> {
   command: TCommand;
   hostId: string;
+  onRequestAdmitted?: () => void;
   timeoutMs: number;
 }
 
@@ -30,6 +29,7 @@ export interface CallHostRetryableOnlineRpcArgs<
 > {
   command: TCommand;
   hostId: string;
+  onRequestAdmitted?: () => void;
   timeoutMs: number;
 }
 
@@ -141,6 +141,9 @@ function requestHostOnlineRpcResponse(
       requestId: randomUUID(),
       command: args.command,
     },
+    ...(args.onRequestAdmitted
+      ? { onRequestAdmitted: args.onRequestAdmitted }
+      : {}),
     timeoutMs: args.timeoutMs,
   });
 }

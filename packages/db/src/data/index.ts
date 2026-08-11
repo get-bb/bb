@@ -260,13 +260,19 @@ export type {
 
 export {
   createEnvironment,
+  createEnvironmentProvisionRequest,
+  countInactiveThreadEnvironmentReferences,
+  countThreadEnvironmentReferences,
+  deleteEnvironmentProvisionRequest,
   getEnvironment,
+  getEnvironmentProvisionRequest,
   findProjectEnvironmentByHostPath,
   listEnvironments,
   findForeignManagedEnvironmentAtHostPath,
   listEnvironmentsByIds,
   listRetiredLoadedEnvironmentIdsOnHost,
   updateEnvironmentMetadata,
+  updateEnvironmentProject,
 } from "./environments.js";
 export type {
   CreateEnvironmentInput,

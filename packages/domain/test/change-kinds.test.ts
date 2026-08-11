@@ -37,6 +37,7 @@ const maximalThreadMetadata: ThreadChangeMetadata = {
   backgroundActivityChanged: true,
   eventTypes: [...threadEventTypeValues],
   hasPendingInteraction: true,
+  previousProjectId: "proj_previous",
   projectId: "proj_1",
 };
 

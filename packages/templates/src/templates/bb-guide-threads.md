@@ -179,6 +179,7 @@ Ownership:
 
   bb thread update [id]                    Update thread metadata
     --self                                 Target current thread
+    --project <id>                         Move to a project
     --title <title>                        Set title
     --parent-thread <id>                   Assign to a parent thread
     --clear-parent-thread                  Remove parent assignment

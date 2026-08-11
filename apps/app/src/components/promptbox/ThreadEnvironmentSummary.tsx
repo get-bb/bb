@@ -1,12 +1,8 @@
-import { memo } from "react";
+import { memo, type ReactNode } from "react";
 import { OptionDisplay } from "@/components/pickers/OptionPicker";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@bb/shared-ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import type { WorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
 
 const CHECKOUT_CHIP_BASE_CLASS_NAME =
@@ -16,6 +12,8 @@ const CHECKOUT_CHIP_BUTTON_CLASS_NAME = `${CHECKOUT_CHIP_BASE_CLASS_NAME} cursor
 export interface ThreadEnvironmentSummaryProps {
   /** Display name of the thread's project, shown alongside the environment. */
   projectName?: string;
+  /** Optional interactive project control for moving an existing thread. */
+  projectControl?: ReactNode;
   /** Full mode label used for the title (e.g. "Working locally" / "Worktree"). */
   environmentLabel?: string;
   /** Visible label used in the promptbox footer. */
@@ -33,7 +31,8 @@ export interface ThreadEnvironmentSummaryProps {
 /**
  * Inline strip shown in the follow-up composer that describes the thread's
  * current environment: label and (when on a worktree) a copy-branch button.
- * Read-only — environment editing happens elsewhere.
+ * The environment portion is read-only; callers may provide an interactive
+ * project control for changing the thread's project.
  *
  * Responsive behavior:
  * - The visible environment label always uses the compact display string.
@@ -44,45 +43,51 @@ export interface ThreadEnvironmentSummaryProps {
  */
 export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
   projectName,
+  projectControl,
   environmentLabel,
   environmentCompactLabel,
   environmentIcon,
   environmentCheckout,
   onCreateNewThreadInWorktree,
 }: ThreadEnvironmentSummaryProps) {
-  if (!environmentLabel) {
+  if (!environmentLabel && !projectControl) {
     return null;
   }
 
   const checkoutCopyValue = environmentCheckout?.copyValue ?? null;
-  const visibleEnvironmentLabel = environmentCompactLabel ?? environmentLabel;
+  const visibleEnvironmentLabel = environmentLabel
+    ? (environmentCompactLabel ?? environmentLabel)
+    : null;
 
   return (
     <div className="flex min-w-0 max-w-full items-center gap-2 pr-1.5">
-      {projectName ? (
+      {projectControl ??
+        (projectName ? (
+          <OptionDisplay
+            label="Project"
+            value={projectName}
+            compactValue={projectName}
+            leading={<Icon name="Folder" className="size-4 shrink-0" />}
+            className="h-6 max-w-[10rem] shrink-0"
+            title={`Project: ${projectName}`}
+            muted
+          />
+        ) : null)}
+      {environmentLabel && visibleEnvironmentLabel ? (
         <OptionDisplay
-          label="Project"
-          value={projectName}
-          compactValue={projectName}
-          leading={<Icon name="Folder" className="size-4 shrink-0" />}
+          label="Environment"
+          value={visibleEnvironmentLabel}
+          compactValue={visibleEnvironmentLabel}
+          leading={
+            environmentIcon ? (
+              <Icon name={environmentIcon} className="size-4 shrink-0" />
+            ) : null
+          }
           className="h-6 max-w-[10rem] shrink-0"
-          title={`Project: ${projectName}`}
+          title={`Environment: ${environmentLabel}`}
           muted
         />
       ) : null}
-      <OptionDisplay
-        label="Environment"
-        value={visibleEnvironmentLabel}
-        compactValue={visibleEnvironmentLabel}
-        leading={
-          environmentIcon ? (
-            <Icon name={environmentIcon} className="size-4 shrink-0" />
-          ) : null
-        }
-        className="h-6 max-w-[10rem] shrink-0"
-        title={`Environment: ${environmentLabel}`}
-        muted
-      />
       {environmentCheckout && checkoutCopyValue !== null ? (
         <button
           type="button"

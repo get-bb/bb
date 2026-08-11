@@ -4,6 +4,7 @@ import {
   useState,
   type CSSProperties,
   type MouseEventHandler,
+  type PointerEvent as ReactPointerEvent,
   type PointerEventHandler,
   type ReactNode,
 } from "react";
@@ -77,6 +78,7 @@ import { usePluginThreadRowStatus } from "@/lib/plugin-thread-row-status";
 interface ThreadRowBaseOptions {
   depth: number;
   isCompact: boolean;
+  isProjectMoveSource?: boolean;
   consumeClickSuppression?: ConsumeDragClickSuppression;
   dragBindings?: SidebarSortableDragBindings;
 }
@@ -115,6 +117,7 @@ interface ThreadRowContainerArgs {
   children: ReactNode;
   className: string;
   dragBindings?: SidebarSortableDragBindings;
+  isProjectMoveSource?: boolean;
   onClickCapture?: ThreadRowClickCaptureHandler;
   // Split-drag initiator; engages only when the pointer leaves the sidebar, so
   // it coexists with the dnd-kit reorder listeners in `dragBindings`.
@@ -204,13 +207,25 @@ function renderThreadRowContainer({
   children,
   className,
   dragBindings,
+  isProjectMoveSource = false,
   onClickCapture,
   onSplitDragPointerDown,
   stickyLevel,
   style,
 }: ThreadRowContainerArgs) {
-  // Never show a grab cursor on thread rows. Section DnD still works after the
-  // activation distance; the link still selects on click.
+  const handlePointerDown =
+    dragBindings?.listeners?.onPointerDown || onSplitDragPointerDown
+      ? (event: ReactPointerEvent<HTMLElement>) => {
+          dragBindings?.listeners?.onPointerDown?.(event);
+          onSplitDragPointerDown?.(event);
+        }
+      : undefined;
+  const sourceProps = isProjectMoveSource
+    ? { "data-sidebar-project-move-source": "true" }
+    : {};
+
+  // Keep the row's normal styling until a drag is active. Project moves dim the
+  // source row and render the same cursor-following ghost as split dragging.
   if (stickyLevel !== undefined) {
     return (
       <SidebarStickyTier
@@ -219,10 +234,11 @@ function renderThreadRowContainer({
         level={stickyLevel}
         className={className}
         style={style}
+        {...sourceProps}
         {...dragBindings?.attributes}
         {...(dragBindings?.listeners ?? {})}
         onClickCapture={onClickCapture}
-        onPointerDown={onSplitDragPointerDown}
+        onPointerDown={handlePointerDown}
       >
         {children}
       </SidebarStickyTier>
@@ -234,10 +250,11 @@ function renderThreadRowContainer({
       ref={dragBindings?.setActivatorNodeRef}
       className={className}
       style={style}
+      {...sourceProps}
       {...dragBindings?.attributes}
       {...(dragBindings?.listeners ?? {})}
       onClickCapture={onClickCapture}
-      onPointerDown={onSplitDragPointerDown}
+      onPointerDown={handlePointerDown}
     >
       {children}
     </div>
@@ -602,7 +619,10 @@ function ThreadRowComponent({
     !showActive && "has-[[data-state=open]]:bg-sidebar-accent",
     rowDragBindings && !rowDragBindings.disabled && "select-none",
   );
-  const rowStyle = getThreadRowStyle(options.depth);
+  const rowStyle = {
+    ...getThreadRowStyle(options.depth),
+    ...(options.isProjectMoveSource ? { opacity: 0.45 } : {}),
+  };
   const isActionsOpen = isDropdownActionsOpen || isContextActionsOpen;
   const handleRowClickCapture = useCallback<ThreadRowClickCaptureHandler>(
     (event) => {
@@ -735,6 +755,7 @@ function ThreadRowComponent({
     children: rowContent,
     className: rowClassName,
     dragBindings: rowDragBindings,
+    isProjectMoveSource: options.isProjectMoveSource,
     onClickCapture: options.consumeClickSuppression
       ? handleRowClickCapture
       : undefined,

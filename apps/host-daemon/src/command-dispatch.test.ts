@@ -14,6 +14,7 @@ import {
   dispatchOnlineRpcCommand,
 } from "./command-dispatch.js";
 import type { CommandOf } from "./command-dispatch-support.js";
+import { CommandRouter } from "./command-router.js";
 import { RuntimeManager } from "./runtime-manager.js";
 
 const WORKSPACE_PATH = "/tmp/bb-command-dispatch-test";
@@ -216,6 +217,45 @@ function createRuntime(): FakeDispatchRuntime {
       hostedThreadIds.add(threadId);
       activeTurnsByThreadId.delete(threadId);
     },
+  };
+}
+
+function createMovedTurnSubmitCommand(args: {
+  environmentId: string;
+  requestId: string;
+  workspacePath: string;
+}): CommandOf<"turn.submit"> {
+  return {
+    type: "turn.submit",
+    environmentId: args.environmentId,
+    threadId: "thread-1",
+    requestId: args.requestId,
+    input: [{ type: "text", text: "follow up", mentions: [] }],
+    options: {
+      model: "gpt-5",
+      serviceTier: "default",
+      reasoningLevel: "medium",
+      workflowsEnabled: false,
+      permissionMode: "full",
+      permissionScope: "full",
+      approvalReviewer: null,
+      permissionEscalation: null,
+    },
+    resumeContext: {
+      workspaceContext: {
+        workspacePath: args.workspacePath,
+        workspaceProvisionType: "unmanaged",
+      },
+      projectId: "project-moved",
+      providerId: "fake",
+      providerThreadId: "provider-thread-1",
+      instructions: "Be concise.",
+      dynamicTools: [],
+      disallowedTools: [],
+      injectedSkillSources: [],
+      instructionMode: "append",
+    },
+    target: { mode: "start" },
   };
 }
 
@@ -573,6 +613,117 @@ describe("dispatchCommand", () => {
       threadId: "thread-1",
     });
     expect(flush).toHaveBeenCalledOnce();
+  });
+
+  it("waits for a queued moved turn before reporting thread.stop", async () => {
+    const oldRuntime = createRuntime();
+    const maintenanceRuntime = createRuntime();
+    const newRuntime = createRuntime();
+    const createRuntimeSpy = vi
+      .fn<() => AgentRuntime>()
+      .mockReturnValueOnce(oldRuntime)
+      .mockReturnValueOnce(maintenanceRuntime)
+      .mockReturnValueOnce(newRuntime);
+    const manager = new RuntimeManager({
+      createRuntime: createRuntimeSpy,
+      provisionWorkspace: async (args) =>
+        createWorkspace("path" in args ? args.path : args.targetPath),
+    });
+    await manager.ensureEnvironment({
+      environmentId: "env-old",
+      workspacePath: "/tmp/bb-stop-queued-old",
+    });
+    oldRuntime.setActiveTurn("thread-1", "turn-old");
+
+    const unarchiveStarted = createDeferred<void>();
+    const releaseUnarchive = createDeferred<void>();
+    vi.mocked(maintenanceRuntime.unarchiveThread).mockImplementation(
+      async () => {
+        unarchiveStarted.resolve();
+        await releaseUnarchive.promise;
+      },
+    );
+
+    const router = new CommandRouter({
+      dataDir: "/tmp/bb-data",
+      fetchProjectAttachment: async () => {
+        throw new Error("Unexpected project attachment fetch");
+      },
+      runtimeManager: manager,
+      eventSink: { emit: vi.fn(), flush: vi.fn(async () => undefined) },
+      threadStorageRootPath: "/tmp/bb-thread-storage",
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+
+    const unarchivePromise = router.handleOnlineRpcRequest({
+      type: "host-rpc.request",
+      requestId: "unarchive-queued-stop",
+      command: {
+        type: "thread.unarchive",
+        environmentId: "env-old",
+        threadId: "thread-1",
+        providerId: "fake",
+        providerThreadId: "provider-thread-1",
+      },
+    });
+    await unarchiveStarted.promise;
+
+    const movedTurnPromise = router.handleOnlineRpcRequest({
+      type: "host-rpc.request",
+      requestId: "moved-turn-queued-stop",
+      command: createMovedTurnSubmitCommand({
+        environmentId: "env-new",
+        requestId: "creq_moved_queued_stop",
+        workspacePath: "/tmp/bb-stop-queued-new",
+      }),
+    });
+    let planCancelSettled = false;
+    const planCancelPromise = router
+      .handleOnlineRpcRequest({
+        type: "host-rpc.request",
+        requestId: "plan-cancel-queued-moved-turn",
+        command: {
+          type: "thread.plan.cancel",
+          environmentId: "env-new",
+          threadId: "thread-1",
+          expectedTurnId: "turn-old",
+        },
+      })
+      .then((response) => {
+        planCancelSettled = true;
+        return response;
+      });
+    let stopSettled = false;
+    const stopPromise = router
+      .handleOnlineRpcRequest({
+        type: "host-rpc.request",
+        requestId: "stop-queued-moved-turn",
+        command: {
+          type: "thread.stop",
+          environmentId: "env-new",
+          threadId: "thread-1",
+        },
+      })
+      .then((response) => {
+        stopSettled = true;
+        return response;
+      });
+
+    await Promise.resolve();
+    expect(stopSettled).toBe(false);
+    expect(planCancelSettled).toBe(false);
+
+    releaseUnarchive.resolve();
+    await expect(unarchivePromise).resolves.toMatchObject({ ok: true });
+    await expect(movedTurnPromise).resolves.toMatchObject({ ok: true });
+    await expect(stopPromise).resolves.toMatchObject({ ok: true });
+    await expect(planCancelPromise).resolves.toMatchObject({ ok: true });
+    expect(oldRuntime.stopThread).toHaveBeenCalledWith({
+      threadId: "thread-1",
+    });
+    expect(newRuntime.stopThread).toHaveBeenCalledWith({
+      threadId: "thread-1",
+    });
   });
 
   it("rejects thread.stop when no runtime holds the thread", async () => {

@@ -130,9 +130,10 @@ function elapsedMs(startedAtMs: number): number {
 export class CommandRouter {
   private readonly logger;
   private readonly environmentLanes = new Map<string, ReadWriteLaneState>();
-  // Per-thread barrier keyed by threadId. A turn submission
-  // (turn.submit/thread.start) waits for an in-flight thread.unarchive of the
-  // same thread so it cannot resume a still-archived provider session.
+  // Per-thread barrier keyed by threadId. Turn submissions and provider
+  // controls share this lane so a control cannot overtake a queued move turn.
+  // Turn submissions also wait for an in-flight thread.unarchive of the same
+  // thread before reaching the provider runtime.
   private readonly threadUnarchiveBarriers = new Map<string, Promise<void>>();
   // Provider process lanes protect commands that share one provider process,
   // while session lanes serialize commands for one provider thread/session.
@@ -226,8 +227,8 @@ export class CommandRouter {
   ): Promise<HostDaemonCommandResultForCommand> {
     const environmentLaneMode = this.getEnvironmentLaneMode(command);
     const providerLane = this.resolveProviderLane(command);
-    const task = this.runAfterThreadUnarchiveBarrier(command, () =>
-      this.runInThreadTurnLane(command, () =>
+    const task = this.runInThreadTurnLane(command, () =>
+      this.runAfterThreadUnarchiveBarrier(command, () =>
         this.runInExecutionLanes(
           command,
           environmentLaneMode,
@@ -292,9 +293,19 @@ export class CommandRouter {
     command: HostDaemonCommand,
     work: () => Promise<T>,
   ): Promise<T> {
-    if (command.type !== "thread.start" && command.type !== "turn.submit") {
+    if (
+      command.type !== "thread.start" &&
+      command.type !== "turn.submit" &&
+      command.type !== "thread.stop" &&
+      command.type !== "thread.plan.cancel" &&
+      command.type !== "thread.goal.clear"
+    ) {
       return work();
     }
+    // Stop, plan-cancel, and goal-clear must wait behind an accepted
+    // start/submit that is still queued for this thread. Their handlers still
+    // use the provider write lane, so a control action cannot overtake a
+    // moved-thread submit while the destination runtime is being configured.
     return this.runInSerialLane({
       key: command.threadId,
       lanes: this.threadTurnLaneTails,

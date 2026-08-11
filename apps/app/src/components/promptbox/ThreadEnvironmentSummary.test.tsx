@@ -6,6 +6,16 @@ import { describe, expect, it, vi } from "vitest";
 import { ThreadEnvironmentSummary } from "./ThreadEnvironmentSummary";
 
 describe("ThreadEnvironmentSummary", () => {
+  it("renders a project control even without an environment", () => {
+    render(
+      <ThreadEnvironmentSummary
+        projectControl={<button type="button">Project</button>}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Project" })).toBeTruthy();
+  });
+
   it("explains the create-thread action in a tooltip", async () => {
     render(
       <TooltipProvider delayDuration={0}>

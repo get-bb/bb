@@ -1,10 +1,6 @@
 import { and, asc, desc, eq, isNull } from "drizzle-orm";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
-import type {
-  DbConnection,
-  DbQueryConnection,
-  DbTransaction,
-} from "../connection.js";
+import type { DbConnection, DbQueryConnection, DbTransaction } from "../connection.js";
 import type { DbNotifier } from "../notifier.js";
 import { projects, projectSources } from "../schema.js";
 import { createProjectId, createProjectSourceId } from "../ids.js";
@@ -167,7 +163,7 @@ export function createProject(
   return { project, source: toProjectSource(source) };
 }
 
-export function getProject(db: DbConnection, id: string) {
+export function getProject(db: DbQueryConnection, id: string) {
   return db.select().from(projects).where(eq(projects.id, id)).get() ?? null;
 }
 

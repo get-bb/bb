@@ -1039,12 +1039,12 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  // Version 89 makes the ACP adapter mint turn-qualified fileChange item ids.
+  // Version 90 carries resident-runtime project/environment context updates.
   // An enrolled daemon on an older build still emits session-scoped counters
   // that collide across resumed sessions, so it must update before it reports
   // more file edits.
-  it("uses protocol version 89 for turn-qualified ACP fileChange item ids", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(89);
+  it("uses protocol version 90 for resident runtime context updates", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(90);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {

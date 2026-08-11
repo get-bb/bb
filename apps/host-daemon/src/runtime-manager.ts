@@ -134,6 +134,8 @@ export interface RuntimeEntry {
   environmentId: string;
   runtime: AgentRuntime;
   skillCatalogHash: string | null;
+  /** Skill roots staged for the latest thread command targeting this entry. */
+  skillRoots: readonly AgentRuntimeSkillRoot[];
   /**
    * Log-throttle state only: the last stale requested catalog hash this entry
    * warned about, so the deferral warn fires once per requested catalog
@@ -312,6 +314,8 @@ export class RuntimeManager {
     Map<string, Set<Promise<void>>>
   >();
   private readonly threadControlTails = new Map<string, Promise<void>>();
+  private readonly threadCommandTails = new Map<string, Promise<void>>();
+  private readonly environmentLifecycleTails = new Map<string, Promise<void>>();
   private providerMaintenanceRuntime: AgentRuntime | null = null;
   private pendingProviderMaintenanceRuntime: PendingProviderMaintenanceRuntime | null =
     null;
@@ -377,6 +381,35 @@ export class RuntimeManager {
     return next;
   }
 
+  private enqueueEnvironmentLifecycle<T>(
+    environmentId: string,
+    work: () => T | PromiseLike<T>,
+  ): Promise<T> {
+    const previous =
+      this.environmentLifecycleTails.get(environmentId) ?? Promise.resolve();
+    const next = previous.catch(() => undefined).then(work);
+    const settled = next.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.environmentLifecycleTails.set(environmentId, settled);
+    void settled.then(() => {
+      if (this.environmentLifecycleTails.get(environmentId) === settled) {
+        this.environmentLifecycleTails.delete(environmentId);
+      }
+    });
+    return next;
+  }
+
+  private async waitForOtherEnvironmentLifecycles(
+    environmentId: string,
+  ): Promise<void> {
+    const otherLifecycles = [...this.environmentLifecycleTails.entries()]
+      .filter(([otherEnvironmentId]) => otherEnvironmentId !== environmentId)
+      .map(([, lifecycle]) => lifecycle);
+    await Promise.all(otherLifecycles);
+  }
+
   /**
    * A thread can move between environments while its provider session is
    * still resident in the old environment runtime. Release that old runtime
@@ -395,6 +428,10 @@ export class RuntimeManager {
     // Wait outside the control lane. An in-flight thread command takes this
     // same lane for its own release step, so a wait inside the lane can hold
     // the lane against the command it waits for and deadlock the thread.
+    // Environment destruction/eviction uses a separate lane and keeps its
+    // entry visible until shutdown; wait for that handoff to finish before
+    // deciding which runtime owns the provider session.
+    await this.waitForOtherEnvironmentLifecycles(args.environmentId);
     await this.waitForThreadCommandsInOtherEnvironments(args);
     return this.enqueueThreadControl(args.threadId, () =>
       this.releaseThreadFromOtherEnvironmentsOnce(args),
@@ -437,7 +474,11 @@ export class RuntimeManager {
       args.activeTurn === "interrupt"
         ? []
         : staleEntries.filter(
-            (entry) => entry.runtime.getActiveTurnId(args.threadId) !== null,
+            // A turn-start command is live as soon as the provider accepts it,
+            // even before the first turn/started event gives it a turn id.
+            // Keep that runtime through a move so the provider session cannot
+            // be resumed in the destination CWD mid-dispatch.
+            (entry) => entry.runtime.getLiveThreadIds().includes(args.threadId),
           );
     const releasedEntries = staleEntries.filter(
       (entry) => !keptEntries.includes(entry),
@@ -477,83 +518,104 @@ export class RuntimeManager {
   }
 
   /**
-   * Keeps an environment runtime alive while a thread command is preparing a
-   * start or submit. Runtime turn state becomes active only after the provider
-   * accepts the command, so it cannot by itself protect that short interval
-   * from a concurrent shell-environment refresh.
+   * Serializes host commands for a thread across environments while keeping
+   * the owning runtime alive. A project move can switch the thread's
+   * environment between command preparation and dispatch; allowing two
+   * environments into this interval creates a cross-environment wait cycle
+   * where each command waits for the other to release the thread.
    */
   async retainEnvironmentForThreadCommand(
     environmentId: string,
     threadId: string,
   ): Promise<() => void> {
-    return this.enqueueThreadControl(threadId, () => {
-      const commandsByThreadId =
-        this.inFlightThreadCommandsByEnvironmentId.get(environmentId) ??
-        new Map<string, number>();
-      commandsByThreadId.set(
-        threadId,
-        (commandsByThreadId.get(threadId) ?? 0) + 1,
-      );
-      this.inFlightThreadCommandsByEnvironmentId.set(
-        environmentId,
-        commandsByThreadId,
-      );
+    const previous = this.threadCommandTails.get(threadId) ?? Promise.resolve();
+    let resolveCommandSlot!: () => void;
+    const commandSlot = new Promise<void>((resolve) => {
+      resolveCommandSlot = resolve;
+    });
+    this.threadCommandTails.set(threadId, commandSlot);
+    await previous;
 
-      let resolveCompletion!: () => void;
-      const completion = new Promise<void>((resolve) => {
-        resolveCompletion = resolve;
-      });
-      const completionsByThreadId =
-        this.inFlightThreadCommandCompletionsByEnvironmentId.get(
+    const release = await this.enqueueEnvironmentLifecycle(
+      environmentId,
+      () => {
+        const commandsByThreadId =
+          this.inFlightThreadCommandsByEnvironmentId.get(environmentId) ??
+          new Map<string, number>();
+        commandsByThreadId.set(
+          threadId,
+          (commandsByThreadId.get(threadId) ?? 0) + 1,
+        );
+        this.inFlightThreadCommandsByEnvironmentId.set(
           environmentId,
-        ) ?? new Map<string, Set<Promise<void>>>();
-      const completions =
-        completionsByThreadId.get(threadId) ?? new Set<Promise<void>>();
-      completions.add(completion);
-      completionsByThreadId.set(threadId, completions);
-      this.inFlightThreadCommandCompletionsByEnvironmentId.set(
-        environmentId,
-        completionsByThreadId,
-      );
+          commandsByThreadId,
+        );
 
-      let released = false;
-      return () => {
-        if (released) {
-          return;
-        }
-        released = true;
-
-        const activeCommands =
-          this.inFlightThreadCommandsByEnvironmentId.get(environmentId);
-        if (activeCommands) {
-          const count = activeCommands.get(threadId) ?? 0;
-          if (count <= 1) {
-            activeCommands.delete(threadId);
-          } else {
-            activeCommands.set(threadId, count - 1);
-          }
-          if (activeCommands.size === 0) {
-            this.inFlightThreadCommandsByEnvironmentId.delete(environmentId);
-          }
-        }
-
-        const activeCompletions =
+        let resolveCompletion!: () => void;
+        const completion = new Promise<void>((resolve) => {
+          resolveCompletion = resolve;
+        });
+        const completionsByThreadId =
           this.inFlightThreadCommandCompletionsByEnvironmentId.get(
             environmentId,
-          );
-        const threadCompletions = activeCompletions?.get(threadId);
-        threadCompletions?.delete(completion);
-        if (threadCompletions?.size === 0) {
-          activeCompletions?.delete(threadId);
+          ) ?? new Map<string, Set<Promise<void>>>();
+        const completions =
+          completionsByThreadId.get(threadId) ?? new Set<Promise<void>>();
+        completions.add(completion);
+        completionsByThreadId.set(threadId, completions);
+        this.inFlightThreadCommandCompletionsByEnvironmentId.set(
+          environmentId,
+          completionsByThreadId,
+        );
+
+        return {
+          completion,
+          resolveCompletion,
+        };
+      },
+    );
+    const { completion, resolveCompletion } = release;
+
+    let released = false;
+    return () => {
+      if (released) {
+        return;
+      }
+      released = true;
+
+      const activeCommands =
+        this.inFlightThreadCommandsByEnvironmentId.get(environmentId);
+      if (activeCommands) {
+        const count = activeCommands.get(threadId) ?? 0;
+        if (count <= 1) {
+          activeCommands.delete(threadId);
+        } else {
+          activeCommands.set(threadId, count - 1);
         }
-        if (activeCompletions?.size === 0) {
-          this.inFlightThreadCommandCompletionsByEnvironmentId.delete(
-            environmentId,
-          );
+        if (activeCommands.size === 0) {
+          this.inFlightThreadCommandsByEnvironmentId.delete(environmentId);
         }
-        resolveCompletion();
-      };
-    });
+      }
+
+      const activeCompletions =
+        this.inFlightThreadCommandCompletionsByEnvironmentId.get(environmentId);
+      const threadCompletions = activeCompletions?.get(threadId);
+      threadCompletions?.delete(completion);
+      if (threadCompletions?.size === 0) {
+        activeCompletions?.delete(threadId);
+      }
+      if (activeCompletions?.size === 0) {
+        this.inFlightThreadCommandCompletionsByEnvironmentId.delete(
+          environmentId,
+        );
+      }
+
+      if (this.threadCommandTails.get(threadId) === commandSlot) {
+        this.threadCommandTails.delete(threadId);
+      }
+      resolveCompletion();
+      resolveCommandSlot();
+    };
   }
 
   listActiveThreads(): HostDaemonActiveThread[] {
@@ -772,6 +834,9 @@ export class RuntimeManager {
           "Deferring injected skill catalog refresh for busy runtime",
         );
       }
+      // Replacing a busy provider process would kill its resident session, but
+      // the next thread/resume command can carry the newly staged roots.
+      args.entry.skillRoots = args.skillConfig.skillRoots;
       return args.entry;
     }
 
@@ -833,17 +898,44 @@ export class RuntimeManager {
   }
 
   private async evictIdleRuntimeEntries(): Promise<void> {
-    const idleEntries = [...this.entries.values()].filter(
+    const candidates = [...this.entries.values()].filter(
       (entry) => !this.entryHasActiveEnvironmentWork(entry),
     );
-
-    for (const entry of idleEntries) {
-      await this.stopWatchingStatus(entry);
-      this.entries.delete(entry.environmentId);
-    }
-
-    await Promise.all(idleEntries.map((entry) => entry.runtime.shutdown()));
+    await Promise.all(
+      candidates.map((entry) => this.evictIdleRuntimeEntry(entry)),
+    );
     await this.cleanupUnusedInjectedSkillStagingDirs([]);
+  }
+
+  private async evictIdleRuntimeEntry(
+    expectedEntry: RuntimeEntry,
+  ): Promise<string | null> {
+    return this.enqueueEnvironmentLifecycle(
+      expectedEntry.environmentId,
+      async () => {
+        const entry = this.entries.get(expectedEntry.environmentId);
+        if (
+          entry !== expectedEntry ||
+          this.entryHasActiveEnvironmentWork(expectedEntry)
+        ) {
+          return null;
+        }
+
+        await this.stopWatchingStatus(expectedEntry);
+        if (
+          this.entries.get(expectedEntry.environmentId) !== expectedEntry ||
+          this.entryHasActiveEnvironmentWork(expectedEntry)
+        ) {
+          return null;
+        }
+
+        await expectedEntry.runtime.shutdown();
+        if (this.entries.get(expectedEntry.environmentId) === expectedEntry) {
+          this.entries.delete(expectedEntry.environmentId);
+        }
+        return expectedEntry.environmentId;
+      },
+    );
   }
 
   async openWorkspace(path: string): Promise<HostWorkspace> {
@@ -1077,41 +1169,49 @@ export class RuntimeManager {
   }
 
   async destroyEnvironment(environmentId: string): Promise<void> {
-    const existing = this.entries.get(environmentId);
-    const pending = this.pendingEntries.get(environmentId);
-    const entry = existing ?? (pending ? await pending : undefined);
+    await this.enqueueEnvironmentLifecycle(environmentId, async () => {
+      const existing = this.entries.get(environmentId);
+      const pending = this.pendingEntries.get(environmentId);
+      const entry = existing ?? (pending ? await pending : undefined);
 
-    if (!entry) {
-      return;
-    }
+      if (!entry) {
+        return;
+      }
 
-    this.entries.delete(environmentId);
-    await this.stopWatchingStatus(entry);
-    await entry.runtime.shutdown();
-    await entry.workspace.destroy();
-    await this.cleanupUnusedInjectedSkillStagingDirs([]);
+      await this.stopWatchingStatus(entry);
+      await entry.runtime.shutdown();
+      await entry.workspace.destroy();
+      if (this.entries.get(environmentId) === entry) {
+        this.entries.delete(environmentId);
+      }
+      await this.cleanupUnusedInjectedSkillStagingDirs([]);
+    });
   }
 
   async forgetEnvironment(environmentId: string): Promise<void> {
-    const existing = this.entries.get(environmentId);
-    const pending = this.pendingEntries.get(environmentId);
-    let entry = existing;
-    if (!entry && pending) {
-      try {
-        entry = await pending;
-      } catch {
-        entry = undefined;
+    await this.enqueueEnvironmentLifecycle(environmentId, async () => {
+      const existing = this.entries.get(environmentId);
+      const pending = this.pendingEntries.get(environmentId);
+      let entry = existing;
+      if (!entry && pending) {
+        try {
+          entry = await pending;
+        } catch {
+          entry = undefined;
+        }
       }
-    }
 
-    if (!entry) {
-      return;
-    }
+      if (!entry) {
+        return;
+      }
 
-    this.entries.delete(environmentId);
-    await this.stopWatchingStatus(entry);
-    await entry.runtime.shutdown();
-    await this.cleanupUnusedInjectedSkillStagingDirs([]);
+      await this.stopWatchingStatus(entry);
+      await entry.runtime.shutdown();
+      if (this.entries.get(environmentId) === entry) {
+        this.entries.delete(environmentId);
+      }
+      await this.cleanupUnusedInjectedSkillStagingDirs([]);
+    });
   }
 
   async evictIdleEnvironments(): Promise<string[]> {
@@ -1126,16 +1226,8 @@ export class RuntimeManager {
       (entry) => !this.entryHasActiveEnvironmentWork(entry),
     );
 
-    for (const entry of idleEntries) {
-      await this.stopWatchingStatus(entry);
-      this.entries.delete(entry.environmentId);
-    }
-
     const shutdownResults = await Promise.allSettled(
-      idleEntries.map(async (entry) => {
-        await entry.runtime.shutdown();
-        return entry.environmentId;
-      }),
+      idleEntries.map((entry) => this.evictIdleRuntimeEntry(entry)),
     );
     const firstRejected = shutdownResults.find(
       (result) => result.status === "rejected",
@@ -1146,7 +1238,9 @@ export class RuntimeManager {
 
     await this.cleanupUnusedInjectedSkillStagingDirs([]);
     return shutdownResults.flatMap((result) =>
-      result.status === "fulfilled" ? [result.value] : [],
+      result.status === "fulfilled" && result.value !== null
+        ? [result.value]
+        : [],
     );
   }
 
@@ -1346,6 +1440,7 @@ export class RuntimeManager {
       environmentId: args.environmentId,
       runtime,
       skillCatalogHash: args.skillConfig?.catalogHash ?? null,
+      skillRoots: args.skillConfig?.skillRoots ?? [],
       lastWarnedStaleSkillCatalogHash: null,
       stopWatchingStatus: STOP_WATCHING,
       terminals: new Set<string>(),

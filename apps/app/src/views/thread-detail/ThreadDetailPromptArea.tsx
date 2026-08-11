@@ -54,11 +54,15 @@ import {
   type QueuedMessageInlineEditor,
 } from "@/components/promptbox/banner/QueuedMessagesList";
 import { ThreadEnvironmentSummary } from "@/components/promptbox/ThreadEnvironmentSummary";
+import { ProjectSelector } from "@/components/pickers/ProjectSelector";
 import type { WorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
 import { useComposerTextEffects } from "@/lib/composer-text-effects";
 import { useEscapeToHide } from "@/hooks/useEscapeToHide";
 import { useThreadCreationOptions } from "@/hooks/useThreadCreationOptions";
-import { useProjectDisplayName } from "@/hooks/queries/sidebar-navigation-query";
+import {
+  useProjectDisplayName,
+  useSidebarNavigation,
+} from "@/hooks/queries/sidebar-navigation-query";
 import {
   useActiveComposerDraft,
   useComposerAttachmentUploads,
@@ -73,7 +77,10 @@ import {
   useClearThreadGoal,
   useStopThread,
 } from "@/hooks/mutations/thread-runtime-mutations";
-import { useUnarchiveThread } from "@/hooks/mutations/thread-state-mutations";
+import {
+  useUnarchiveThread,
+  useUpdateThread,
+} from "@/hooks/mutations/thread-state-mutations";
 import {
   getLatestPendingInteraction,
   useThreadQueuedMessages,
@@ -83,9 +90,11 @@ import { useThreadDefaultExecutionOptions } from "@/hooks/queries/thread-default
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import { promptHistoryEntriesToDrafts } from "@/lib/prompt-history";
 import { getProjectComposeRoutePath } from "@/lib/route-paths";
+import { getThreadRoutePath } from "@/lib/route-paths";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { buildThreadHandoffLocationState } from "@/lib/thread-handoff-request";
 import { appToast } from "@/components/ui/app-toast";
+import { useOptionalPaneContext } from "@/views/thread-detail/PaneContext";
 import {
   FollowUpPromptBox,
   type FollowUpComposerProps,
@@ -228,6 +237,11 @@ export function ThreadDetailPromptArea({
   thread,
 }: ThreadDetailPromptAreaProps) {
   const navigate = useNavigate();
+  const paneContext = useOptionalPaneContext();
+  const sidebarNavigation = useSidebarNavigation();
+  const updateThread = useUpdateThread({
+    errorMessage: "Failed to move thread to project.",
+  });
   const defaultExecutionOptionsQuery = useThreadDefaultExecutionOptions(
     thread.id,
     {
@@ -290,6 +304,66 @@ export function ThreadDetailPromptArea({
   // The personal project isn't a meaningful label in the footer, so skip it.
   const projectName = useProjectDisplayName(
     thread.projectId === PERSONAL_PROJECT_ID ? undefined : thread.projectId,
+  );
+  const projectSelectorOptions = useMemo(
+    () =>
+      sidebarNavigation.data?.projects.map(({ id, name }) => ({ id, name })) ??
+      [],
+    [sidebarNavigation.data?.projects],
+  );
+  const selectedProjectId =
+    thread.projectId === PERSONAL_PROJECT_ID ? null : thread.projectId;
+  const projectSelectionReady =
+    sidebarNavigation.data !== undefined &&
+    (selectedProjectId === null ||
+      projectSelectorOptions.some(({ id }) => id === selectedProjectId));
+  const handleProjectChange = useCallback(
+    (nextProjectId: string | null) => {
+      const targetProjectId = nextProjectId ?? PERSONAL_PROJECT_ID;
+      if (targetProjectId === thread.projectId) {
+        return;
+      }
+      updateThread.mutate(
+        { id: thread.id, projectId: targetProjectId },
+        {
+          onSuccess: (updated) => {
+            const route = {
+              projectId: updated.projectId,
+              threadId: updated.id,
+            };
+            if (paneContext) {
+              paneContext.navigateInPane(route);
+            } else {
+              navigate(getThreadRoutePath(route));
+            }
+          },
+        },
+      );
+    },
+    [navigate, paneContext, thread.id, thread.projectId, updateThread],
+  );
+  const projectControl = useMemo(
+    () => (
+      <ProjectSelector
+        projects={projectSelectorOptions}
+        value={selectedProjectId}
+        allowNoProject
+        disabled={
+          !projectSelectionReady ||
+          updateThread.isPending ||
+          thread.parentThreadId !== null
+        }
+        onChange={handleProjectChange}
+      />
+    ),
+    [
+      handleProjectChange,
+      projectSelectionReady,
+      projectSelectorOptions,
+      selectedProjectId,
+      thread.parentThreadId,
+      updateThread.isPending,
+    ],
   );
   const {
     promptDraft,
@@ -1072,23 +1146,24 @@ export function ThreadDetailPromptArea({
   );
 
   const environmentSummary = useMemo(
-    () =>
-      environmentLabel ? (
-        <ThreadEnvironmentSummary
-          projectName={projectName}
-          environmentLabel={environmentLabel}
-          environmentCompactLabel={environmentCompactLabel}
-          environmentIcon={environmentIcon}
-          environmentCheckout={environmentCheckout}
-          onCreateNewThreadInWorktree={onCreateNewThreadInWorktree}
-        />
-      ) : null,
+    () => (
+      <ThreadEnvironmentSummary
+        projectName={projectName}
+        projectControl={projectControl}
+        environmentLabel={environmentLabel}
+        environmentCompactLabel={environmentCompactLabel}
+        environmentIcon={environmentIcon}
+        environmentCheckout={environmentCheckout}
+        onCreateNewThreadInWorktree={onCreateNewThreadInWorktree}
+      />
+    ),
     [
       environmentCheckout,
       environmentCompactLabel,
       environmentIcon,
       environmentLabel,
       onCreateNewThreadInWorktree,
+      projectControl,
       projectName,
     ],
   );

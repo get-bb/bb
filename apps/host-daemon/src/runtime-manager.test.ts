@@ -1455,6 +1455,32 @@ describe("RuntimeManager", () => {
     });
   });
 
+  it("serializes retains for one thread across environments", async () => {
+    const manager = new RuntimeManager({
+      provisionWorkspace: createProvisionWorkspaceMock("/tmp/env-old"),
+      createRuntime: createFakeRuntime,
+    });
+    const firstRelease = await manager.retainEnvironmentForThreadCommand(
+      "env-old",
+      "thread-1",
+    );
+    let secondStarted = false;
+    const secondReleasePromise = manager
+      .retainEnvironmentForThreadCommand("env-new", "thread-1")
+      .then((release) => {
+        secondStarted = true;
+        return release;
+      });
+
+    await Promise.resolve();
+    expect(secondStarted).toBe(false);
+
+    firstRelease();
+    const secondRelease = await secondReleasePromise;
+    expect(secondStarted).toBe(true);
+    secondRelease();
+  });
+
   it("releases a moved thread while another environment control waits", async () => {
     const oldRuntime = createFakeRuntime();
     const manager = new RuntimeManager({
@@ -1663,6 +1689,36 @@ describe("RuntimeManager", () => {
     await manager.destroyEnvironment("env-1");
 
     expect(runtime.shutdown).toHaveBeenCalledTimes(1);
+    expect(workspace.destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a destroying environment visible until runtime shutdown completes", async () => {
+    const workspace = createFakeWorkspace("/tmp/env-1");
+    const runtime = createFakeRuntime();
+    const shutdown = createDeferred<void>();
+    runtime.shutdown.mockImplementation(() =>
+      shutdown.promise.then(() => undefined),
+    );
+    const manager = new RuntimeManager({
+      provisionWorkspace:
+        createProvisionWorkspaceMock("/tmp/env-1").mockResolvedValue(workspace),
+      createRuntime: vi.fn(() => runtime),
+    });
+
+    await manager.ensureEnvironment({
+      environmentId: "env-1",
+      workspacePath: "/tmp/env-1",
+    });
+    const destroying = manager.destroyEnvironment("env-1");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(runtime.shutdown).toHaveBeenCalledTimes(1);
+    expect(manager.get("env-1")?.runtime).toBe(runtime);
+
+    shutdown.resolve();
+    await destroying;
+
+    expect(manager.get("env-1")).toBeUndefined();
     expect(workspace.destroy).toHaveBeenCalledTimes(1);
   });
 

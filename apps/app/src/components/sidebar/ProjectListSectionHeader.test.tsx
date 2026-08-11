@@ -91,6 +91,45 @@ describe("TopLevelSidebarSection", () => {
     expect(header?.className).not.toContain("pr-1");
   });
 
+  it("shows a visible drop affordance while a project move is active", () => {
+    render(
+      <TopLevelSidebarSection label="Target project" isDropTargetAvailable>
+        <div>Target threads</div>
+      </TopLevelSidebarSection>,
+    );
+
+    const header = screen
+      .getByTitle("Target project")
+      .closest('[data-sidebar-sticky-tier="label"]');
+
+    expect(header?.getAttribute("data-sidebar-drop-target-state")).toBe(
+      "available",
+    );
+    expect(header?.className).toContain("border-dashed");
+  });
+
+  it("switches the drop affordance to an active target while hovered", () => {
+    render(
+      <TopLevelSidebarSection
+        label="Target project"
+        isDropTargetAvailable
+        isDropTargetActive
+      >
+        <div>Target threads</div>
+      </TopLevelSidebarSection>,
+    );
+
+    const header = screen
+      .getByTitle("Target project")
+      .closest('[data-sidebar-sticky-tier="label"]');
+
+    expect(header?.getAttribute("data-sidebar-drop-target-state")).toBe(
+      "active",
+    );
+    expect(header?.className).toContain("border-solid");
+    expect(header?.className).not.toContain("border-dashed");
+  });
+
   it("pins collapsed child activity to the sidebar edge independently of row actions", () => {
     render(
       <TopLevelSidebarSection

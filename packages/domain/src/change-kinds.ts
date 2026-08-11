@@ -16,6 +16,7 @@ export const THREAD_CHANGE_KINDS = [
   "archived-changed",
   "pin-state-changed",
   "parent-changed",
+  "project-changed",
   "environment-changed",
   "read-state-changed",
   "order-changed",
@@ -172,6 +173,7 @@ export const threadChangeMetadataSchema = z
     backgroundActivityChanged: z.boolean().optional(),
     eventTypes: z.array(threadEventTypeSchema).readonly().optional(),
     hasPendingInteraction: z.boolean().optional(),
+    previousProjectId: z.string().optional(),
     projectId: z.string().optional(),
   })
   .strict();
@@ -280,6 +282,7 @@ const threadChangeMetadataLenientSchema = z.object({
     )
     .optional(),
   hasPendingInteraction: z.boolean().optional(),
+  previousProjectId: z.string().optional(),
   projectId: z.string().optional(),
 });
 

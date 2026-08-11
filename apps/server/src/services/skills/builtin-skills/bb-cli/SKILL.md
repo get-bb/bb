@@ -175,6 +175,7 @@ isolated|reuse`, or anchor with `--source-seq-end`. Permission mode inherits
   inherited value. A hidden child still reports its turns and blockers to its
   parent thread; only forks and side chats stay silent. Promote or hide an
   existing thread with `bb thread update <id> --visibility visible|hidden`.
+- Move an existing thread with `bb thread update <id> --project <project-id>`.
 - `bb connect --code <code> --server https://<handle>.getbb.app` pairs this bb
   server for browser access at `<handle>.getbb.app` (get the code from
   https://getbb.app). Pairing returns immediately — the

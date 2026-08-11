@@ -329,6 +329,39 @@ describe("NotificationHub", () => {
     });
   });
 
+  it("fires host RPC admission callbacks after the request is sent", async () => {
+    const hub = new NotificationHub();
+    const socket = createMockHubSocket();
+    const onRequestAdmitted = vi.fn(() => {
+      expect(socket.messages).toHaveLength(1);
+    });
+    hub.registerDaemon("session-1", "host-1", socket);
+
+    const wait = hub.requestHostOnlineRpc({
+      hostId: "host-1",
+      message: {
+        type: "host-rpc.request",
+        requestId: "rpc-admission",
+        command: { type: "provider.list_models", providerId: "codex" },
+      },
+      onRequestAdmitted,
+      timeoutMs: 1_000,
+    });
+
+    expect(onRequestAdmitted).toHaveBeenCalledTimes(1);
+    hub.recordHostOnlineRpcResponse({
+      message: {
+        type: "host-rpc.response",
+        requestId: "rpc-admission",
+        commandType: "provider.list_models",
+        ok: true,
+        result: { models: [], selectedOnlyModels: [] },
+      },
+      sessionId: "session-1",
+    });
+    await expect(wait).resolves.toMatchObject({ requestId: "rpc-admission" });
+  });
+
   it("does not resolve host RPC waiters from mismatched daemon sessions", async () => {
     const hub = new NotificationHub();
     const socket = createMockHubSocket();

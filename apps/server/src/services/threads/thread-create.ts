@@ -66,6 +66,8 @@ import type {
 import { resolveManagedDefaultBaseBranchSpec } from "../projects/worktree-base-branch.js";
 import { applyLoggedEnvironmentLifecycleEvent } from "../environments/lifecycle-outcome.js";
 import { resolveSystemProviderModels } from "../system/execution-options.js";
+import { acquireEnvironmentOperation } from "./environment-operation-lock.js";
+import { acquireThreadOperations } from "./thread-operation-lock.js";
 
 type ThreadCreateDeps = LoggedPendingInteractionWorkSessionDeps;
 
@@ -91,6 +93,7 @@ interface CreateProvisioningThreadArgs {
   fork: ThreadForkDescriptor | null;
   request: ThreadCreateServiceRequest;
   providerInput?: ThreadCreateServiceRequestInput["input"];
+  releaseThreadOperation?: () => void;
 }
 
 interface ResolveForkDescriptorArgs {
@@ -503,11 +506,46 @@ async function createProvisioningThread(
     environmentIntent: ThreadProvisionEnvironmentIntent;
   },
 ) {
-  const thread = createThreadRecord(deps, {
-    request: args.request,
-    environmentId: args.environmentId,
-    status: "starting",
-  });
+  const releaseEnvironmentOperation =
+    args.environmentIntent.type === "reuse"
+      ? await acquireEnvironmentOperation(args.environmentIntent.environmentId)
+      : undefined;
+  let thread: ReturnType<typeof createThreadRecord>;
+  try {
+    if (args.request.parentThreadId !== undefined) {
+      assertValidParentThread(deps, {
+        parentThreadId: args.request.parentThreadId,
+        projectId: args.request.projectId,
+      });
+    }
+    if (args.request.sourceThreadId !== undefined) {
+      requireLiveSourceThread(deps, {
+        projectId: args.request.projectId,
+        sourceThreadId: args.request.sourceThreadId,
+      });
+    }
+    if (args.environmentIntent.type === "reuse") {
+      const environment = getEnvironment(
+        deps.db,
+        args.environmentIntent.environmentId,
+      );
+      if (!environment || environment.projectId !== args.request.projectId) {
+        throw new ApiError(
+          409,
+          "invalid_request",
+          "Environment belongs to a different project",
+        );
+      }
+    }
+    thread = createThreadRecord(deps, {
+      request: args.request,
+      environmentId: args.environmentId,
+      status: "starting",
+    });
+  } finally {
+    releaseEnvironmentOperation?.();
+    args.releaseThreadOperation?.();
+  }
   let execution: Awaited<ReturnType<typeof buildExecutionOptions>>;
   let context: ThreadProvisionContext;
   try {
@@ -914,16 +952,33 @@ export async function createThreadFromRequest(
     );
   }
 
-  const thread = await createProvisioningThread(deps, {
-    environmentId,
-    environmentIntent,
-    executionDefaults: resolvedExecutionDefaults,
-    fork,
-    ...(options.providerInput !== undefined
-      ? { providerInput: options.providerInput }
-      : {}),
-    request,
-  });
+  const threadOperationIds = [
+    ...(request.parentThreadId !== undefined
+      ? [request.parentThreadId]
+      : []),
+    ...(request.sourceThreadId !== undefined ? [request.sourceThreadId] : []),
+  ];
+  const releaseThreadOperation =
+    threadOperationIds.length > 0
+      ? await acquireThreadOperations(threadOperationIds)
+      : undefined;
+  let thread: Awaited<ReturnType<typeof createProvisioningThread>>;
+  try {
+    thread = await createProvisioningThread(deps, {
+      environmentId,
+      environmentIntent,
+      executionDefaults: resolvedExecutionDefaults,
+      fork,
+      ...(options.providerInput !== undefined
+        ? { providerInput: options.providerInput }
+        : {}),
+      releaseThreadOperation,
+      request,
+    });
+  } catch (error) {
+    releaseThreadOperation?.();
+    throw error;
+  }
   deps.telemetry.capture({
     name: "thread_created",
     properties: {

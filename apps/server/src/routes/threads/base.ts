@@ -3,6 +3,7 @@ import {
   THREAD_SEARCH_LIMIT_PER_GROUP_MAX,
   countNonDeletedAssignedChildThreads,
   getEnvironment,
+  getProjectSourceByHost,
   getThreadSectionById,
   listThreadsWithPendingInteractionState,
   markThreadDeleted,
@@ -50,9 +51,17 @@ import {
   toThreadResponseFromThread,
 } from "../../services/threads/thread-runtime-display.js";
 import { assertValidParentThread } from "../../services/threads/thread-parent.js";
+import { moveThreadToProject } from "../../services/threads/thread-project.js";
 import { handleThreadOwnershipChange } from "../../services/threads/thread-ownership.js";
-import { applyThreadExecutionOverride } from "../../services/threads/thread-execution-override.js";
+import {
+  applyThreadExecutionOverride,
+  prepareThreadExecutionOverride,
+} from "../../services/threads/thread-execution-override.js";
 import { emitPluginThreadDeleted } from "../../services/plugins/plugin-thread-events.js";
+import {
+  acquireThreadOperation,
+  acquireThreadOperations,
+} from "../../services/threads/thread-operation-lock.js";
 
 function parseThreadIncludes(query: ThreadGetQuery): Set<ThreadIncludeOption> {
   const includes = new Set<ThreadIncludeOption>();
@@ -89,6 +98,32 @@ function resolveIncludedThreadEnvironment(
     return null;
   }
   return getEnvironment(deps.db, thread.environmentId);
+}
+
+function parentThreadIdChanged(
+  thread: Pick<Thread, "parentThreadId">,
+  payload: { parentThreadId?: string | null },
+): boolean {
+  return (
+    "parentThreadId" in payload &&
+    payload.parentThreadId !== thread.parentThreadId
+  );
+}
+
+function resolveMoveExecutionOverrideCwd(
+  deps: Pick<AppDeps, "db">,
+  thread: Thread,
+  targetProjectId: string,
+): string | undefined {
+  if (thread.environmentId === null) {
+    return undefined;
+  }
+  const environment = getEnvironment(deps.db, thread.environmentId);
+  if (!environment || environment.workspaceProvisionType !== "personal") {
+    return undefined;
+  }
+  return getProjectSourceByHost(deps.db, targetProjectId, environment.hostId)
+    ?.path;
 }
 
 function buildThreadResponse(
@@ -301,26 +336,51 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
 
   patch(routes.update, async (context, payload) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
+    const targetProject =
+      payload.projectId === undefined
+        ? null
+        : requirePublicProject(deps.db, payload.projectId);
     if (payload.parentThreadId) {
       assertValidParentThread(deps, {
         childThreadId: thread.id,
         parentThreadId: payload.parentThreadId,
-        projectId: thread.projectId,
+        projectId: targetProject?.id ?? thread.projectId,
       });
     }
 
     // Sticky execution override (model / reasoning level). Validated and
     // persisted by a dedicated service — kept off the generic metadata update
     // because execution config must not flow through `updateThread`.
-    if ("model" in payload || "reasoningLevel" in payload) {
+    const hasExecutionOverride =
+      "model" in payload || "reasoningLevel" in payload;
+    const projectMoveTarget =
+      targetProject !== null && targetProject.id !== thread.projectId
+        ? targetProject
+        : null;
+    const executionOverridePatch = {
+      ...("model" in payload ? { model: payload.model } : {}),
+      ...("reasoningLevel" in payload
+        ? { reasoningLevel: payload.reasoningLevel }
+        : {}),
+    };
+    const preparedExecutionOverride =
+      hasExecutionOverride && projectMoveTarget !== null
+        ? await prepareThreadExecutionOverride(deps, {
+            // Validate against the destination's project policy; the move
+            // service persists the prepared value in its transaction.
+            thread: { ...thread, projectId: projectMoveTarget.id },
+            cwd: resolveMoveExecutionOverrideCwd(
+              deps,
+              thread,
+              projectMoveTarget.id,
+            ),
+            patch: executionOverridePatch,
+          })
+        : undefined;
+    if (hasExecutionOverride && projectMoveTarget === null) {
       await applyThreadExecutionOverride(deps, {
         thread,
-        patch: {
-          ...("model" in payload ? { model: payload.model } : {}),
-          ...("reasoningLevel" in payload
-            ? { reasoningLevel: payload.reasoningLevel }
-            : {}),
-        },
+        patch: executionOverridePatch,
       });
     }
 
@@ -341,10 +401,59 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     if ("visibility" in payload) {
       metadataUpdate.visibility = payload.visibility;
     }
-    const updated =
-      Object.keys(metadataUpdate).length > 0
-        ? updateThread(deps.db, deps.hub, thread.id, metadataUpdate)
-        : requirePublicThread(deps.db, thread.id);
+    let updated: Thread | null;
+    if (projectMoveTarget !== null) {
+      updated = moveThreadToProject(deps, {
+        additionalThreadIds:
+          "parentThreadId" in payload &&
+          typeof payload.parentThreadId === "string"
+            ? [payload.parentThreadId]
+            : [],
+        metadata: metadataUpdate,
+        ...(preparedExecutionOverride
+          ? { executionOverride: preparedExecutionOverride }
+          : {}),
+        targetProject: projectMoveTarget,
+        thread,
+      });
+    } else if (parentThreadIdChanged(thread, payload)) {
+      const operationThreadIds = [
+        thread.id,
+        ...(thread.parentThreadId ? [thread.parentThreadId] : []),
+        ...(typeof payload.parentThreadId === "string"
+          ? [payload.parentThreadId]
+          : []),
+      ];
+      const releaseOperations =
+        await acquireThreadOperations(operationThreadIds);
+      try {
+        const currentThread = requirePublicThread(deps.db, thread.id);
+        if (parentThreadIdChanged(currentThread, payload)) {
+          if (typeof payload.parentThreadId === "string") {
+            assertValidParentThread(deps, {
+              childThreadId: currentThread.id,
+              parentThreadId: payload.parentThreadId,
+              projectId: currentThread.projectId,
+            });
+          }
+          updated = updateThread(
+            deps.db,
+            deps.hub,
+            currentThread.id,
+            metadataUpdate,
+          );
+        } else {
+          updated = currentThread;
+        }
+      } finally {
+        releaseOperations();
+      }
+    } else {
+      updated =
+        Object.keys(metadataUpdate).length > 0
+          ? updateThread(deps.db, deps.hub, thread.id, metadataUpdate)
+          : requirePublicThread(deps.db, thread.id);
+    }
     if (!updated) {
       throw new ApiError(404, "thread_not_found", "Thread not found");
     }
@@ -383,38 +492,47 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
   });
 
   del(routes.delete, async (context, payload) => {
-    const thread = requirePublicThread(deps.db, context.req.param("id"));
-    requireChildThreadsConfirmation({
-      action: "delete",
-      confirmed: payload.childThreadsConfirmed,
-      deps,
-      thread,
-    });
-    const deletedThread = markThreadDeleted(deps.db, deps.hub, {
-      threadId: thread.id,
-    });
-    if (deletedThread) emitPluginThreadDeleted(deletedThread);
-    deps.terminalSessions.closeDeletedThreadTerminals({ threadId: thread.id });
-    if (thread.environmentId === null) {
+    const releaseOperation = await acquireThreadOperation(
+      context.req.param("id"),
+    );
+    try {
+      const thread = requirePublicThread(deps.db, context.req.param("id"));
+      requireChildThreadsConfirmation({
+        action: "delete",
+        confirmed: payload.childThreadsConfirmed,
+        deps,
+        thread,
+      });
+      const deletedThread = markThreadDeleted(deps.db, deps.hub, {
+        threadId: thread.id,
+      });
+      if (deletedThread) emitPluginThreadDeleted(deletedThread);
+      deps.terminalSessions.closeDeletedThreadTerminals({
+        threadId: thread.id,
+      });
+      if (thread.environmentId === null) {
+        finalizeStoppedThread(deps, {
+          threadId: thread.id,
+        });
+        return context.json({ ok: true });
+      }
+
+      const environment = requireEnvironment(deps.db, thread.environmentId);
+      // Deletion finalization owns non-runtime cleanup; only active runtime
+      // work needs a daemon stop request here.
+      requestActiveRuntimeThreadStopIfNeeded(deps, thread, environment);
       finalizeStoppedThread(deps, {
         threadId: thread.id,
       });
+      requestEnvironmentCleanup(deps, {
+        environmentId: environment.id,
+      });
+      requestEnvironmentCleanupAdvance(deps, {
+        environmentId: environment.id,
+      });
       return context.json({ ok: true });
+    } finally {
+      releaseOperation();
     }
-
-    const environment = requireEnvironment(deps.db, thread.environmentId);
-    // Deletion finalization owns non-runtime cleanup; only active runtime work
-    // needs a daemon stop request here.
-    requestActiveRuntimeThreadStopIfNeeded(deps, thread, environment);
-    finalizeStoppedThread(deps, {
-      threadId: thread.id,
-    });
-    requestEnvironmentCleanup(deps, {
-      environmentId: environment.id,
-    });
-    requestEnvironmentCleanupAdvance(deps, {
-      environmentId: environment.id,
-    });
-    return context.json({ ok: true });
   });
 }

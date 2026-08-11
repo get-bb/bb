@@ -1,4 +1,15 @@
-import { and, eq, inArray, ne, sql, lt } from "drizzle-orm";
+import {
+  and,
+  count,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  ne,
+  or,
+  sql,
+  lt,
+} from "drizzle-orm";
 import type {
   DiscoveredWorkspaceProperties,
   EnvironmentChangeKind,
@@ -8,9 +19,13 @@ import type {
   WorkspaceProvisionType,
 } from "@bb/domain";
 import { evaluateEnvironmentLifecycleEvent } from "@bb/domain";
-import type { DbConnection, DbTransaction } from "../connection.js";
+import type { DbConnection, DbQueryConnection, DbTransaction } from "../connection.js";
 import type { DbNotifier } from "../notifier.js";
-import { environments } from "../schema.js";
+import {
+  environmentProvisionRequests,
+  environments,
+  threads,
+} from "../schema.js";
 import { createEnvironmentId } from "../ids.js";
 
 type EnvironmentReadConnection = DbConnection | DbTransaction;
@@ -72,8 +87,45 @@ export function getEnvironment(db: EnvironmentReadConnection, id: string) {
   );
 }
 
+export function createEnvironmentProvisionRequest(
+  db: EnvironmentWriteConnection,
+  args: { environmentId: string; requestJson: string },
+): void {
+  const now = Date.now();
+  db.insert(environmentProvisionRequests)
+    .values({
+      environmentId: args.environmentId,
+      requestJson: args.requestJson,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .run();
+}
+
+export function getEnvironmentProvisionRequest(
+  db: EnvironmentReadConnection,
+  environmentId: string,
+) {
+  return (
+    db
+      .select()
+      .from(environmentProvisionRequests)
+      .where(eq(environmentProvisionRequests.environmentId, environmentId))
+      .get() ?? null
+  );
+}
+
+export function deleteEnvironmentProvisionRequest(
+  db: EnvironmentWriteConnection,
+  environmentId: string,
+): void {
+  db.delete(environmentProvisionRequests)
+    .where(eq(environmentProvisionRequests.environmentId, environmentId))
+    .run();
+}
+
 export function findProjectEnvironmentByHostPath(
-  db: DbConnection,
+  db: EnvironmentReadConnection,
   projectId: string,
   hostId: string,
   path: string,
@@ -93,7 +145,65 @@ export function findProjectEnvironmentByHostPath(
   );
 }
 
+export function countThreadEnvironmentReferences(
+  db: EnvironmentReadConnection,
+  environmentId: string,
+): number {
+  return db
+    .select({ count: count() })
+    .from(threads)
+    .where(
+      and(
+        eq(threads.environmentId, environmentId),
+        isNull(threads.archivedAt),
+        isNull(threads.deletedAt),
+      ),
+    )
+    .get()?.count ?? 0;
+}
+
+/**
+ * Counts archived/deleted associations that still point at an environment.
+ * They are not live owners, but moving the environment itself would leave
+ * those rows pointing across project boundaries and break later restore or
+ * reprovision flows.
+ */
+export function countInactiveThreadEnvironmentReferences(
+  db: EnvironmentReadConnection,
+  environmentId: string,
+): number {
+  return db
+    .select({ count: count() })
+    .from(threads)
+    .where(
+      and(
+        eq(threads.environmentId, environmentId),
+        or(isNotNull(threads.archivedAt), isNotNull(threads.deletedAt)),
+      ),
+    )
+    .get()?.count ?? 0;
+}
+
+export function updateEnvironmentProject(
+  db: EnvironmentWriteConnection,
+  notifier: DbNotifier,
+  id: string,
+  projectId: string,
+) {
+  const updated = db
+    .update(environments)
+    .set({ projectId, updatedAt: Date.now() })
+    .where(eq(environments.id, id))
+    .returning()
+    .get();
+  if (updated) {
+    notifier.notifyEnvironment(id, ["metadata-changed"]);
+  }
+  return updated ?? null;
+}
+
 export interface FindForeignManagedEnvironmentAtHostPathArgs {
+  excludeEnvironmentId?: string;
   hostId: string;
   path: string;
   projectId: string;
@@ -106,7 +216,7 @@ export interface FindForeignManagedEnvironmentAtHostPathArgs {
  * to it in place.
  */
 export function findForeignManagedEnvironmentAtHostPath(
-  db: DbConnection,
+  db: DbQueryConnection,
   args: FindForeignManagedEnvironmentAtHostPathArgs,
 ) {
   return (
@@ -120,6 +230,9 @@ export function findForeignManagedEnvironmentAtHostPath(
           eq(environments.managed, true),
           ne(environments.projectId, args.projectId),
           ne(environments.status, "destroyed"),
+          ...(args.excludeEnvironmentId === undefined
+            ? []
+            : [ne(environments.id, args.excludeEnvironmentId)]),
         ),
       )
       .get() ?? null

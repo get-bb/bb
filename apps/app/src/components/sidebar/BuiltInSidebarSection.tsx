@@ -23,6 +23,7 @@ export interface BuiltInSidebarSectionOptions {
   actionsOpen?: boolean;
   collapsedThreads?: readonly ThreadSplitIndicatorTarget[];
   content: ReactNode;
+  isDropTargetAvailable?: boolean;
   isDropTargetActive?: boolean;
   label: string;
 }
@@ -84,6 +85,7 @@ function BuiltInSidebarSection({
   content,
   disabled,
   id,
+  isDropTargetAvailable,
   isDropTargetActive,
   isCollapsed,
   label,
@@ -104,6 +106,7 @@ function BuiltInSidebarSection({
         onToggleCollapsed: () => onToggleCollapsed(id),
       }}
       consumeClickSuppression={consumeClickSuppression}
+      isDropTargetAvailable={isDropTargetAvailable}
       isDropTargetActive={isDropTargetActive}
     >
       {content}
