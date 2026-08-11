@@ -22,6 +22,41 @@ if (!logoContents) {
   throw new Error("Could not read the contents of assets/bb-logo-gradient.svg");
 }
 
+// App icons are viewed at much smaller sizes than the welcome mark. Preserve
+// its woven seams, then add broad *inner* lighting at the silhouette edges so
+// the rounded strokes keep their depth after color tinting and downsampling.
+// The lighting is clipped to the mark; it is not a drop shadow or raster
+// texture, so every generated icon remains derived from vector geometry.
+const appIconLogoContents = `${logoContents}
+  <defs>
+    <linearGradient id="app-icon-rim" x1="58" y1="8" x2="442" y2="390" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fff" stop-opacity=".5"/>
+      <stop offset=".38" stop-color="#fff" stop-opacity=".16"/>
+      <stop offset=".62" stop-color="#000" stop-opacity=".34"/>
+      <stop offset="1" stop-color="#000" stop-opacity=".72"/>
+    </linearGradient>
+    <filter id="app-icon-surface-lighting" x="-20%" y="-20%" width="140%" height="140%" color-interpolation-filters="sRGB">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="30" result="soft-alpha"/>
+
+      <feOffset in="soft-alpha" dx="30" dy="20" result="highlight-offset"/>
+      <feComposite in="SourceAlpha" in2="highlight-offset" operator="out" result="highlight-mask"/>
+      <feFlood flood-color="#fff" flood-opacity=".5" result="highlight-color"/>
+      <feComposite in="highlight-color" in2="highlight-mask" operator="in" result="highlight"/>
+
+      <feOffset in="soft-alpha" dx="-24" dy="-16" result="shadow-offset"/>
+      <feComposite in="SourceAlpha" in2="shadow-offset" operator="out" result="shadow-mask"/>
+      <feFlood flood-color="#000" flood-opacity=".34" result="shadow-color"/>
+      <feComposite in="shadow-color" in2="shadow-mask" operator="in" result="shadow"/>
+
+      <feMerge>
+        <feMergeNode in="shadow"/>
+        <feMergeNode in="highlight"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <use href="#mark" fill="#fff" fill-rule="evenodd" filter="url(#app-icon-surface-lighting)"/>
+  <use href="#mark" fill="none" stroke="url(#app-icon-rim)" stroke-width="1.35" stroke-linejoin="round" fill-rule="evenodd"/>`;
+
 const faviconColorValues = {
   red: "#e5484d",
   orange: "#f76b15",
@@ -76,7 +111,7 @@ function composedAppIconSvg({ background, logoWidth = 320, rounded = true }) {
     : `<rect width="512" height="512" fill="${background}"/>`;
 
   return Buffer.from(
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">${tile}<svg x="${logoX}" y="${logoY}" width="${logoWidth}" height="${logoHeight}" viewBox="-8 -8 507 405">${logoContents}</svg></svg>`,
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">${tile}<svg x="${logoX}" y="${logoY}" width="${logoWidth}" height="${logoHeight}" viewBox="-8 -8 507 405">${appIconLogoContents}</svg></svg>`,
   );
 }
 
@@ -111,8 +146,12 @@ function tintTileIcon(data, colorRgb) {
     const luma = 0.2126 * red + 0.7152 * green + 0.0722 * blue;
     if (luma >= 245) continue;
 
+    // Keep the darkest parts close to the selected color while allowing the
+    // vector lighting to open into a real highlight. The old square icons had
+    // this wider tonal range; a square-root mask compressed the new mark into
+    // an almost flat mid-tone after tinting.
     const maskAlpha = Math.round(
-      255 * Math.sqrt((245 - luma) / 245) * (alpha / 255),
+      255 * (1 - Math.pow(luma / 245, 1.7)) * (alpha / 255),
     );
     if (maskAlpha <= 0) continue;
 
