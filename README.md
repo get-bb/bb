@@ -11,7 +11,7 @@
 [![npm version](https://img.shields.io/npm/v/bb-app.svg)](https://www.npmjs.com/package/bb-app)
 [![Join Discord](https://img.shields.io/badge/Discord-Join%20server-5865F2?logo=discord&logoColor=white)](https://discord.gg/kvBU6tJhcJ)
 
-bb is the IDE that builds itself. It can control, customize, and automate
+bb is an agentic IDE that builds itself. It can control, customize, and automate
 itself, laying the groundwork for your own software factory.
 
 Every surface — the desktop app, web app, CLI, and HTTP API — is a first-class

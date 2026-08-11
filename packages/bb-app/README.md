@@ -10,7 +10,7 @@
 
 [![npm version](https://img.shields.io/npm/v/bb-app.svg)](https://www.npmjs.com/package/bb-app)
 
-bb is the IDE that builds itself. It can control, customize, and automate
+bb is an agentic IDE that builds itself. It can control, customize, and automate
 itself, laying the groundwork for your own software factory.
 
 This package provides the `npx bb-app` launcher, bundled `bb` CLI entry, and
