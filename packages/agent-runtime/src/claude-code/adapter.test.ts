@@ -85,6 +85,42 @@ function createClaudeUserQuestionPayload(): UserQuestionPendingInteractionPayloa
   };
 }
 
+describe("Claude Code exact checkpoint fork", () => {
+  it("forwards the selected message UUID and preserves the explicit reset boundary", () => {
+    const adapter = createClaudeCodeProviderAdapter();
+    const exact = adapter.buildCommandPlan({
+      type: "thread/fork",
+      cwd: "/tmp/worktree",
+      threadId: "bb-thread-child",
+      sourceProviderThreadId: "claude-parent",
+      sourceProviderMessageId: "message-42",
+      instructionMode: "append",
+      options: fullProviderExecutionContext,
+    });
+    expect(exact).toMatchObject({
+      method: "thread/fork",
+      params: {
+        sourceProviderThreadId: "claude-parent",
+        sourceProviderMessageId: "message-42",
+      },
+    });
+
+    const reset = adapter.buildCommandPlan({
+      type: "thread/fork",
+      cwd: "/tmp/worktree",
+      threadId: "bb-thread-child",
+      sourceProviderThreadId: "claude-parent",
+      sourceProviderMessageId: null,
+      instructionMode: "append",
+      options: fullProviderExecutionContext,
+    });
+    expect(reset).toMatchObject({
+      method: "thread/fork",
+      params: { sourceProviderMessageId: null },
+    });
+  });
+});
+
 function createClaudeUserQuestionRequest(
   payload: UserQuestionPendingInteractionPayload,
 ): DecodedInteractiveRequest {

@@ -82,6 +82,12 @@ type ThreadResumeAdapterCommand = Extract<
   AdapterCommand,
   { type: "thread/resume" }
 >;
+type ThreadForkAdapterCommand = Extract<
+  AdapterCommand,
+  { type: "thread/fork" }
+> & {
+  lastTurnId?: unknown;
+};
 
 interface LinkedWorktreeFixture {
   cleanup(): void;
@@ -1759,6 +1765,47 @@ describe("codex provider adapter", () => {
       },
     });
     expect(JSON.stringify(cmd)).not.toContain("persistExtendedHistory");
+  });
+
+  it("buildCommand thread/fork forwards an exact Codex checkpoint", () => {
+    const adapter = createCodexProviderAdapter();
+    const command: ThreadForkAdapterCommand = {
+      type: "thread/fork",
+      cwd: "/tmp/worktree",
+      threadId: "bb-thread-child",
+      sourceProviderThreadId: "codex-parent-thread",
+      lastTurnId: "turn-completed-2",
+      instructionMode: "append",
+      options: fullProviderExecutionContext,
+    };
+
+    const cmd = adapter.buildCommandPlan(command);
+
+    expect(cmd).toMatchObject({
+      method: "thread/fork",
+      params: {
+        threadId: "codex-parent-thread",
+        lastTurnId: "turn-completed-2",
+      },
+    });
+    expect(cmd).not.toMatchObject({ method: "thread/rollback" });
+  });
+
+  it("buildCommand thread/fork rejects an empty exact Codex checkpoint", () => {
+    const adapter = createCodexProviderAdapter();
+    const command: ThreadForkAdapterCommand = {
+      type: "thread/fork",
+      cwd: "/tmp/worktree",
+      threadId: "bb-thread-child",
+      sourceProviderThreadId: "codex-parent-thread",
+      lastTurnId: "   ",
+      instructionMode: "append",
+      options: fullProviderExecutionContext,
+    };
+
+    expect(() => adapter.buildCommandPlan(command)).toThrow(
+      "Codex thread/fork lastTurnId must be a non-empty string when provided.",
+    );
   });
 
   it("buildCommand maps max reasoning level through to Codex", () => {

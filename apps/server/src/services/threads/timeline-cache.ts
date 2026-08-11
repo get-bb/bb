@@ -85,6 +85,8 @@ export function createThreadTimelineCache(
 }
 
 export interface ThreadTimelineCacheKeyArgs {
+  /** Active branch pointer revision; changes when rewind/restore switches the projection. */
+  activeBranchId?: string | null;
   threadId: string;
   /** Thread high-water event sequence; bumps on every appended event. */
   maxSeq: number;
@@ -113,6 +115,7 @@ export function buildThreadTimelineParamsKey(
 ): string {
   return [
     args.threadId,
+    args.activeBranchId ?? "-",
     args.status,
     args.environmentId ?? "-",
     args.providerDisplayName ?? "-",

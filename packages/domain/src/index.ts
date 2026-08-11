@@ -45,6 +45,7 @@ export * from "./thread-events.js";
 export * from "./thread-git-diff.js";
 export * from "./thread-lifecycle.js";
 export * from "./thread-name-tags.js";
+export * from "./thread-rewind.js";
 export * from "./thread-search.js";
 export * from "./thread-timeline-active-prompt-mode.js";
 export * from "./thread-timeline-goal.js";

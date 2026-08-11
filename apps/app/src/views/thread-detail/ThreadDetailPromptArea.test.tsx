@@ -661,6 +661,11 @@ function buildPromptAreaElement({
       pullRequest={null}
       pullRequestMergeMethod="squash"
       resolveMentionLink={() => null}
+      rewindSession={null}
+      onRewindCommit={vi.fn()}
+      onRewindCancel={vi.fn()}
+      onRewindDismiss={vi.fn()}
+      onRewindRevalidate={vi.fn()}
       sendMessage={{
         isPending: false,
         mutateAsync: vi.fn(),

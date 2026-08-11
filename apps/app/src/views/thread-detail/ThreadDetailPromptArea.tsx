@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { IconName } from "@bb/shared-ui/icon";
+import type { PromptInput } from "@bb/domain";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import {
   getFollowUpPromptPlaceholder,
@@ -102,6 +103,8 @@ import {
   shouldQueueFollowUpMessage,
   type FollowUpExecutionSelection,
 } from "./threadDetailPromptSubmission";
+import { ThreadRewindBanner } from "./ThreadRewindBanner";
+import type { ThreadRewindEditingSession } from "./useThreadRewindEditing";
 
 const ignorePromptBannerFileClick = () => {};
 
@@ -186,6 +189,16 @@ interface ThreadDetailPromptAreaProps {
    * ready for the reply beneath the freshly inserted blockquote.
    */
   composerFocusRequestNonce: number;
+  /** Active rewind edit session, or null when the composer sends normally. */
+  rewindSession: ThreadRewindEditingSession | null;
+  /** Commit the current composer draft as a rewind edit. */
+  onRewindCommit: (editedInput: PromptInput[]) => void;
+  /** Restore the pre-edit draft and close the rewind banner. */
+  onRewindCancel: () => void;
+  /** Close the rewind banner, keeping the edited draft (recovery states). */
+  onRewindDismiss: () => void;
+  /** Re-check eligibility for the open rewind session. */
+  onRewindRevalidate: () => void;
   thread: ThreadWithRuntime;
 }
 
@@ -225,6 +238,11 @@ export function ThreadDetailPromptArea({
   sendMessage,
   steerActiveThreadOnEnter,
   composerFocusRequestNonce,
+  rewindSession,
+  onRewindCommit,
+  onRewindCancel,
+  onRewindDismiss,
+  onRewindRevalidate,
   thread,
 }: ThreadDetailPromptAreaProps) {
   const navigate = useNavigate();
@@ -502,7 +520,8 @@ export function ThreadDetailPromptArea({
   const isFollowUpSubmitting =
     sendMessage.isPending ||
     createQueuedMessage.isPending ||
-    isFollowUpShortcutSending;
+    isFollowUpShortcutSending ||
+    rewindSession?.status === "submitting";
   const handleStopThread = useCallback(() => {
     stopThread.mutate(thread.id);
   }, [stopThread, thread.id]);
@@ -874,11 +893,29 @@ export function ThreadDetailPromptArea({
   );
 
   const handleBottomComposerSubmit = useCallback(() => {
+    if (rewindSession !== null) {
+      onRewindCommit(currentPromptDraftInput);
+      return;
+    }
     void handleSend();
-  }, [handleSend]);
+  }, [
+    currentPromptDraftInput,
+    handleSend,
+    onRewindCommit,
+    rewindSession,
+  ]);
   const handleBottomComposerModifierSubmit = useCallback(() => {
+    if (rewindSession !== null) {
+      onRewindCommit(currentPromptDraftInput);
+      return;
+    }
     void handleModifierSubmit();
-  }, [handleModifierSubmit]);
+  }, [
+    currentPromptDraftInput,
+    handleModifierSubmit,
+    onRewindCommit,
+    rewindSession,
+  ]);
   const handleInlineComposerSubmit = useCallback(() => {
     void handleSaveInlineQueuedMessage();
   }, [handleSaveInlineQueuedMessage]);
@@ -1240,6 +1277,16 @@ export function ThreadDetailPromptArea({
             threadId={thread.id}
           />
         ) : null}
+        {rewindSession !== null ? (
+          <ThreadRewindBanner
+            editedText={currentPromptDraft.text}
+            onCancel={onRewindCancel}
+            onCommit={() => onRewindCommit(currentPromptDraftInput)}
+            onDismiss={onRewindDismiss}
+            onRevalidate={onRewindRevalidate}
+            session={rewindSession}
+          />
+        ) : null}
         {shouldHideComposer ? null : (
           <QueuedMessagesList
             queuedMessages={queuedMessages}
@@ -1268,6 +1315,8 @@ export function ThreadDetailPromptArea({
     [
       canUseGitUi,
       contextBannerMergeBase,
+      currentPromptDraft.text,
+      currentPromptDraftInput,
       expandedBannerSection,
       handleDeleteQueuedMessage,
       beginEditQueuedMessage,
@@ -1282,6 +1331,10 @@ export function ThreadDetailPromptArea({
       isUnarchiveCurrentThreadPending,
       isQueueMutationPending,
       inlineEditor,
+      onRewindCancel,
+      onRewindCommit,
+      onRewindDismiss,
+      onRewindRevalidate,
       activeGoalCard,
       activePromptModeCard,
       isTodoExpanded,
@@ -1300,6 +1353,7 @@ export function ThreadDetailPromptArea({
       resolveMentionLink,
       runtimeDisplayStatus,
       shouldHideComposer,
+      rewindSession,
       submitMode.kind,
       thread.archivedAt,
       thread.id,

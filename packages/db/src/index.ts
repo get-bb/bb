@@ -22,6 +22,8 @@ export {
   createProjectId,
   createPromptHistoryEntryId,
   createProjectSourceId,
+  createThreadRewindCheckpointId,
+  createThreadBranchId,
   createTerminalSessionId,
   createThreadId,
   createThreadProvisioningId,

@@ -6,6 +6,7 @@ import {
 import { formatCustomAcpAgentProviderId } from "@bb/config/bb-app-managed-config";
 import {
   getAppSettings,
+  getActiveThreadBranchId,
   getLatestThreadSequence,
   listQueuedThreadMessages,
 } from "@bb/db";
@@ -376,6 +377,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     const page = parseThreadTimelinePage(query);
     const includeNestedRows = query.includeNestedRows === "true";
     const summaryOnly = query.summaryOnly === "true";
+    const activeBranchId = getActiveThreadBranchId(deps.db, thread.id);
     const maxSeq = getLatestThreadSequence(deps.db, { threadId: thread.id });
     const providerDisplayName = resolveThreadProviderDisplayName(
       deps,
@@ -390,6 +392,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     // different budget and a client only echoes `afterSequence`.
     const eventBudget = deps.config.featureFlags.timelineWindowEventBudget;
     const keyArgs = {
+      activeBranchId,
       threadId: thread.id,
       status: thread.status,
       environmentId: thread.environmentId,
@@ -449,8 +452,9 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
 
   get(routes.conversationOutline, (context) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
+    const activeBranchId = getActiveThreadBranchId(deps.db, thread.id);
     const maxSeq = getLatestThreadSequence(deps.db, { threadId: thread.id });
-    const cacheKey = `${thread.id}:${maxSeq}`;
+    const cacheKey = `${thread.id}:${activeBranchId ?? "-"}:${maxSeq}`;
     const cached = conversationOutlineCache.get(cacheKey);
     if (cached !== undefined) {
       // Re-insert to mark most-recently-used.

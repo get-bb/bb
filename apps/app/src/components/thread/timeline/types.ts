@@ -1,3 +1,4 @@
+import type { PromptTextMention } from "@bb/domain";
 import type { ThreadChatMessageReference } from "@bb/plugin-sdk";
 import type {
   MarkdownPreviewLocalFileLink,
@@ -31,6 +32,26 @@ export interface ThreadTimelineForkMessageTarget {
  */
 export type ThreadTimelineForkMessageHandler = (
   target: ThreadTimelineForkMessageTarget,
+) => void;
+
+/**
+ * Rewind the active thread at a completed user message: restore its original
+ * input into the composer and continue from there on a new branch. Supplied by
+ * the timeline host; the row supplies its source sequence and turn so the
+ * server can resolve the exact provider checkpoint.
+ */
+export interface ThreadTimelineRewindMessageTarget {
+  /** Source sequence of the user's `client/turn/requested` row. */
+  sourceSequence: number;
+  /** Original message text to restore into the composer. */
+  text: string;
+  /** Original message mentions to restore into the composer. */
+  mentions: readonly PromptTextMention[];
+  turnId: string;
+}
+
+export type ThreadTimelineRewindMessageHandler = (
+  target: ThreadTimelineRewindMessageTarget,
 ) => void;
 
 export interface ThreadTimelineSendToMainMessageTarget {

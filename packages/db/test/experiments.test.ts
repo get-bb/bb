@@ -39,6 +39,7 @@ describe("experiments", () => {
         "claudeCodeMockCliTraffic",
         "futureExperiment",
         "newOnboarding",
+        "rewind",
         "toolsHub",
       ]);
     } finally {

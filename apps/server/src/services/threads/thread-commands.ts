@@ -91,6 +91,8 @@ export interface ThreadStartCommandArgs {
   projectId: string;
   providerId: string;
   requestId: ClientTurnRequestId;
+  /** Establish a provider session without running a first turn. */
+  sessionOnly?: boolean;
   syncGeneratedTitle: boolean;
   thread: Thread;
 }
@@ -362,6 +364,7 @@ export async function buildThreadStartCommand(
     disallowedTools: resolveProviderDisallowedTools(deps, args.providerId),
     injectedSkillSources: runtimeContext.injectedSkillSources,
     instructionMode: runtimeContext.instructionMode,
+    ...(args.sessionOnly === true ? { sessionOnly: true } : {}),
     threadStoragePath: runtimeContext.threadStoragePath,
     ...(args.fork ? { fork: args.fork } : {}),
   };

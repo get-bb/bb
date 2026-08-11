@@ -308,7 +308,11 @@ describe("slow query index plans", () => {
     assertEmittedQueryPlanUsesIndex({
       db,
       debugLog,
-      indexName: "events_background_task_thread_type_item_sequence_idx",
+      // The active-lineage join adds a branch_id equality, so the completed
+      // set resolves through the branch index (thread_id + branch_id) instead
+      // of the background-task partial index; the scan stays index-driven and
+      // the per-row correlated form the test guards against is not used.
+      indexName: "events_thread_branch_sequence_idx",
       params,
     });
 

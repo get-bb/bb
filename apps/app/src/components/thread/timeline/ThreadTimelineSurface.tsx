@@ -17,9 +17,11 @@ import { ThreadTimelineRows } from "./ThreadTimelineRows.js";
 import { useAutoLoadOlderRows } from "./useAutoLoadOlderRows.js";
 import { TimelineStatusIndicator } from "./TimelineStatusIndicator.js";
 import type { TimelineTitleActionResolver } from "./TimelineTitleView.js";
+import type { TimelineRewindBoundary } from "./rewind-boundaries.js";
 import { TimelineWorkingIndicator } from "./TimelineWorkingIndicator.js";
 import type {
   ThreadTimelineForkMessageHandler,
+  ThreadTimelineRewindMessageHandler,
   ThreadTimelineAddToChatHandler,
   ThreadTimelineSendToMainMessageHandler,
   ThreadTimelineConsumerMessageAction,
@@ -46,6 +48,9 @@ export interface ThreadTimelineSurfaceProps {
   loadingContent?: ReactNode;
   leadingContent?: ReactNode;
   onForkMessage?: ThreadTimelineForkMessageHandler;
+  onRewindMessage?: ThreadTimelineRewindMessageHandler;
+  rewindBranchId?: string | null;
+  rewindStatusKey?: string;
   onMessageAddToChat?: ThreadTimelineAddToChatHandler;
   onSendToMainMessage?: ThreadTimelineSendToMainMessageHandler;
   onSelectionAddToChat?: ThreadTimelineAddToChatHandler;
@@ -60,6 +65,8 @@ export interface ThreadTimelineSurfaceProps {
   onTitleAction?: TimelineTitleActionResolver;
   projectId?: string;
   resolveMentionLink?: PromptMentionLinkResolver;
+  /** Rewind boundary markers rendered between timeline rows. */
+  rewindBoundaries?: readonly TimelineRewindBoundary[];
   showOngoingIndicator: boolean;
   ongoingIndicatorLabel?: string;
   isStopping?: boolean;
@@ -147,6 +154,9 @@ export function ThreadTimelineSurface({
   loadingContent,
   leadingContent,
   onForkMessage,
+  onRewindMessage,
+  rewindBranchId,
+  rewindStatusKey,
   onMessageAddToChat,
   onSendToMainMessage,
   onSelectionAddToChat,
@@ -159,6 +169,7 @@ export function ThreadTimelineSurface({
   onTitleAction,
   projectId,
   resolveMentionLink,
+  rewindBoundaries,
   showOngoingIndicator,
   ongoingIndicatorLabel,
   isStopping = false,
@@ -218,6 +229,9 @@ export function ThreadTimelineSurface({
           canSpawnChild={canSpawnChild}
           threadChildOrigin={threadChildOrigin}
           onForkMessage={onForkMessage}
+          onRewindMessage={onRewindMessage}
+          rewindBranchId={rewindBranchId}
+          rewindStatusKey={rewindStatusKey}
           onMessageAddToChat={onMessageAddToChat}
           onSendToMainMessage={onSendToMainMessage}
           onSelectionAddToChat={onSelectionAddToChat}
@@ -230,6 +244,7 @@ export function ThreadTimelineSurface({
           projectId={projectId}
           resolveMentionLink={resolveMentionLink}
           resolveUserAttachmentImageSrc={toUserAttachmentImageSrc}
+          rewindBoundaries={rewindBoundaries}
           hasOlderTimelineRows={hasOlderTimelineRows}
           isLoadingOlderTimelineRows={isLoadingOlderTimelineRows}
           onLoadOlderRows={onLoadOlderRows}

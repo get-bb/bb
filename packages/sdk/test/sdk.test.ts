@@ -103,6 +103,134 @@ function createFetchQueue(
 }
 
 describe("@bb/sdk", () => {
+  it("exposes rewind preview, commit, history, and restore through one typed area", async () => {
+    const preview = {
+      displacedTurnCount: 2,
+      eligibility: { status: "eligible" as const },
+      mode: "conversation-only" as const,
+      provider: "codex" as const,
+      revision: 17,
+      sourceSequence: 9,
+      startsFreshProviderSession: false,
+      target: { branchId: "br_root", sourceSequence: 9, turnId: "turn_9" },
+    };
+    const branchHistory = {
+      activeBranchId: "br_root",
+      branches: [
+        {
+          active: true,
+          activatedAt: 1,
+          cleanupStatus: "not-needed" as const,
+          createdAt: 1,
+          creationReason: "thread-start" as const,
+          cutoffSequence: 0,
+          deactivatedAt: null,
+          id: "br_root",
+          lifecycle: "active" as const,
+          parentBranchId: null,
+          threadId: "thr_test",
+          updatedAt: 1,
+        },
+      ],
+    };
+    const commit = {
+      draft: null,
+      newBranchId: "br_rewind",
+      previousBranchId: "br_root",
+      requestId: "req_1",
+      result: {
+        displacedTurnCount: 2,
+        mode: "conversation-only" as const,
+        previousBranchId: "br_root",
+        sourceSequence: 9,
+        threadId: "thr_test",
+      },
+      submission: "submitted" as const,
+    };
+    const restored = {
+      activeBranchId: "br_root",
+      previousBranchId: "br_rewind",
+      threadId: "thr_test",
+    };
+    const queue = createFetchQueue([
+      { body: preview },
+      { body: commit },
+      { body: branchHistory },
+      { body: restored },
+    ]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+    const controller = new AbortController();
+
+    await expect(
+      sdk.threads.rewind.preview({
+        branchId: "br_root",
+        mode: "conversation-only",
+        signal: controller.signal,
+        sourceSequence: 9,
+        threadId: "thr_test",
+        turnId: "turn_9",
+      }),
+    ).resolves.toEqual(preview);
+    await expect(
+      sdk.threads.rewind.commit({
+        editedInput: [{ type: "text", text: "edited", mentions: [] }],
+        idempotencyKey: "rewind-key",
+        preview: { revision: 17, target: preview.target },
+        target: preview.target,
+        threadId: "thr_test",
+      }),
+    ).resolves.toEqual(commit);
+    await expect(
+      sdk.threads.rewind.branches({ threadId: "thr_test" }),
+    ).resolves.toEqual(branchHistory);
+    await expect(
+      sdk.threads.rewind.restore({
+        branchId: "br_root",
+        expectedActiveBranchId: "br_rewind",
+        signal: controller.signal,
+        threadId: "thr_test",
+      }),
+    ).resolves.toEqual(restored);
+
+    expect(queue.requests).toEqual([
+      {
+        bodyText: undefined,
+        method: "GET",
+        url: "http://bb.test/api/v1/threads/thr_test/rewind/preview?branchId=br_root&mode=conversation-only&sourceSequence=9&turnId=turn_9",
+      },
+      {
+        bodyText: JSON.stringify({
+          editedInput: [{ type: "text", text: "edited", mentions: [] }],
+          idempotencyKey: "rewind-key",
+          mode: "conversation-only",
+          preview: { revision: 17, target: preview.target },
+          target: preview.target,
+        }),
+        method: "POST",
+        url: "http://bb.test/api/v1/threads/thr_test/rewind",
+      },
+      {
+        bodyText: undefined,
+        method: "GET",
+        url: "http://bb.test/api/v1/threads/thr_test/rewind/branches",
+      },
+      {
+        bodyText: JSON.stringify({
+          branchId: "br_root",
+          expectedActiveBranchId: "br_rewind",
+        }),
+        method: "POST",
+        url: "http://bb.test/api/v1/threads/thr_test/rewind/restore",
+      },
+    ]);
+  });
+
   it("sends thread pane presentation actions through the typed transport", async () => {
     const queue = createFetchQueue([{ body: { delivered: 3 } }]);
     const sdk = createBbSdk({

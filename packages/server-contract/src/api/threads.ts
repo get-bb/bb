@@ -18,6 +18,10 @@ import {
   threadOriginKindSchema,
   threadListEntrySchema,
   threadQueuedMessageSchema,
+  threadRewindEligibilitySchema,
+  threadRewindModeSchema,
+  threadRewindResultSchema,
+  threadRewindTargetSchema,
   threadSearchSourceKindSchema,
   threadTimelineActivePromptModeSchema,
   threadTimelineGoalSchema,
@@ -26,7 +30,11 @@ import {
   threadVisibilitySchema,
   threadWithRuntimeSchema,
 } from "@bb/domain";
-import type { CallerExecutionInputSource } from "@bb/domain";
+import type {
+  CallerExecutionInputSource,
+  ThreadRewindResult,
+  ThreadRewindTarget,
+} from "@bb/domain";
 import {
   timelineDeltaSchema,
   timelineRowSchema,
@@ -217,6 +225,163 @@ export const sendMessageRequestSchema = z.object({
   senderThreadId: z.string().min(1).optional(),
 });
 export type SendMessageRequest = z.infer<typeof sendMessageRequestSchema>;
+
+/**
+ * Query used by the public rewind preview endpoint. Sequence numbers travel
+ * as strings because they are URL query values; the route converts them to a
+ * bounded integer before invoking the server rewind service.
+ */
+export const threadRewindPreviewQuerySchema = z
+  .object({
+    branchId: z.string().min(1),
+    mode: threadRewindModeSchema.optional(),
+    sourceSequence: z.string().regex(/^\d+$/),
+    turnId: z.string().min(1),
+  })
+  .strict();
+export type ThreadRewindPreviewQuery = z.infer<
+  typeof threadRewindPreviewQuerySchema
+>;
+
+/** The only preview fields a client may echo into a commit. */
+export const threadRewindPreviewEchoSchema = z
+  .object({
+    revision: z.number().int().nonnegative(),
+    target: threadRewindTargetSchema,
+  })
+  .strict();
+export type ThreadRewindPreviewEcho = z.infer<
+  typeof threadRewindPreviewEchoSchema
+>;
+
+/** Public commit body; provider sessions and checkpoint anchors never cross it. */
+export const threadRewindCommitRequestSchema = z
+  .object({
+    editedInput: z.array(promptInputSchema).min(1),
+    idempotencyKey: z.string().trim().min(1).max(200),
+    mode: threadRewindModeSchema.default("conversation-only"),
+    preview: threadRewindPreviewEchoSchema.optional(),
+    target: threadRewindTargetSchema,
+  })
+  .strict();
+export type ThreadRewindCommitRequest = z.infer<
+  typeof threadRewindCommitRequestSchema
+>;
+
+export const threadRewindPreviewResponseSchema = z
+  .object({
+    displacedTurnCount: z.number().int().nonnegative(),
+    eligibility: threadRewindEligibilitySchema,
+    mode: threadRewindModeSchema,
+    provider: z.enum(["codex", "claude-code"]),
+    revision: z.number().int().nonnegative(),
+    sourceSequence: z.number().int().nonnegative(),
+    startsFreshProviderSession: z.boolean(),
+    target: threadRewindTargetSchema,
+  })
+  .strict();
+export type ThreadRewindPreviewResponse = z.infer<
+  typeof threadRewindPreviewResponseSchema
+>;
+
+const threadRewindBranchCreationReasonSchema = z.enum([
+  "migration-root",
+  "thread-start",
+  "rewind",
+  "restore",
+]);
+const threadRewindBranchLifecycleSchema = z.enum([
+  "staged",
+  "active",
+  "available",
+  "abandoned",
+]);
+const threadRewindBranchCleanupStatusSchema = z.enum([
+  "not-needed",
+  "pending",
+  "completed",
+  "failed",
+]);
+
+/** Server-safe branch metadata; provider thread IDs are intentionally absent. */
+export const threadRewindBranchSchema = z
+  .object({
+    active: z.boolean(),
+    activatedAt: z.number().int().nonnegative().nullable(),
+    cleanupStatus: threadRewindBranchCleanupStatusSchema,
+    createdAt: z.number().int().nonnegative(),
+    creationReason: threadRewindBranchCreationReasonSchema,
+    cutoffSequence: z.number().int().nonnegative(),
+    deactivatedAt: z.number().int().nonnegative().nullable(),
+    id: z.string().min(1),
+    lifecycle: threadRewindBranchLifecycleSchema,
+    parentBranchId: z.string().min(1).nullable(),
+    threadId: z.string().min(1),
+    updatedAt: z.number().int().nonnegative(),
+  })
+  .strict();
+export type ThreadRewindBranch = z.infer<typeof threadRewindBranchSchema>;
+
+export const threadRewindBranchHistoryResponseSchema = z
+  .object({
+    activeBranchId: z.string().min(1).nullable(),
+    branches: z.array(threadRewindBranchSchema),
+  })
+  .strict();
+export type ThreadRewindBranchHistoryResponse = z.infer<
+  typeof threadRewindBranchHistoryResponseSchema
+>;
+
+export const threadRewindRestoreRequestSchema = z
+  .object({
+    branchId: z.string().min(1),
+    expectedActiveBranchId: z.string().min(1),
+  })
+  .strict();
+export type ThreadRewindRestoreRequest = z.infer<
+  typeof threadRewindRestoreRequestSchema
+>;
+
+export const threadRewindRestoreResponseSchema = z
+  .object({
+    activeBranchId: z.string().min(1),
+    previousBranchId: z.string().min(1),
+    threadId: z.string().min(1),
+  })
+  .strict();
+export type ThreadRewindRestoreResponse = z.infer<
+  typeof threadRewindRestoreResponseSchema
+>;
+
+const threadRewindCommitResponseBaseSchema = z
+  .object({
+    newBranchId: z.string().min(1),
+    previousBranchId: z.string().min(1),
+    requestId: z.string().min(1),
+    result: threadRewindResultSchema,
+  })
+  .strict();
+
+export const threadRewindCommitResponseSchema = z.discriminatedUnion(
+  "submission",
+  [
+    threadRewindCommitResponseBaseSchema.extend({
+      draft: z.null(),
+      submission: z.literal("submitted"),
+    }),
+    threadRewindCommitResponseBaseSchema.extend({
+      draft: z.array(promptInputSchema).min(1),
+      submission: z.literal("draft-recovery"),
+    }),
+  ],
+);
+export type ThreadRewindCommitResponse = z.infer<
+  typeof threadRewindCommitResponseSchema
+>;
+
+// Keep these aliases available to SDK consumers without requiring a direct
+// dependency on the domain package for the public rewind method signatures.
+export type { ThreadRewindResult, ThreadRewindTarget };
 
 export const providerRateLimitRecoveryReasonSchema = z.enum([
   "eligible",

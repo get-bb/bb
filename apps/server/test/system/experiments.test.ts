@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getExperiments } from "@bb/db";
+import { getExperiments, incrementRewindRolloutMetric } from "@bb/db";
 import { experimentsSchema } from "@bb/domain";
 import { systemConfigResponseSchema } from "@bb/server-contract";
 import { readJson } from "../helpers/json.js";
@@ -15,6 +15,7 @@ describe("experiments settings", () => {
         claudeCodeMockCliTraffic: false,
         newOnboarding: false,
         toolsHub: false,
+        rewind: false,
       });
     });
   });
@@ -28,6 +29,7 @@ describe("experiments settings", () => {
           claudeCodeMockCliTraffic: true,
           newOnboarding: true,
           toolsHub: true,
+          rewind: true,
         }),
       });
       expect(put.status).toBe(200);
@@ -35,11 +37,13 @@ describe("experiments settings", () => {
         claudeCodeMockCliTraffic: true,
         newOnboarding: true,
         toolsHub: true,
+        rewind: true,
       });
       expect(getExperiments(harness.db)).toEqual({
         claudeCodeMockCliTraffic: true,
         newOnboarding: true,
         toolsHub: true,
+        rewind: true,
       });
 
       const config = await harness.app.request("/api/v1/system/config");
@@ -49,6 +53,7 @@ describe("experiments settings", () => {
         claudeCodeMockCliTraffic: true,
         newOnboarding: true,
         toolsHub: true,
+        rewind: true,
       });
     });
   });
@@ -65,6 +70,7 @@ describe("experiments settings", () => {
           claudeCodeMockCliTraffic: false,
           newOnboarding: false,
           toolsHub: false,
+          rewind: false,
         }),
       });
       expect(put.status).toBe(200);
@@ -85,6 +91,21 @@ describe("experiments settings", () => {
         },
       );
       expect(response.status).toBe(400);
+    });
+  });
+
+  it("exposes aggregate rewind rollout metrics", async () => {
+    await withTestHarness(async (harness) => {
+      incrementRewindRolloutMetric(harness.db, "restore");
+      incrementRewindRolloutMetric(harness.db, "preview_denied");
+      const response = await harness.app.request(
+        "/api/v1/system/rewind-rollout-metrics",
+      );
+      expect(response.status).toBe(200);
+      expect(await readJson(response)).toEqual({
+        preview_denied: 1,
+        restore: 1,
+      });
     });
   });
 });

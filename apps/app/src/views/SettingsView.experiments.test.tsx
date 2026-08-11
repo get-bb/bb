@@ -7,6 +7,7 @@ afterEach(cleanup);
 
 function renderSection(overrides?: {
   onNewOnboardingEnabledChange?: (enabled: boolean) => void;
+  onRewindEnabledChange?: (enabled: boolean) => void;
   onToolsHubEnabledChange?: (enabled: boolean) => void;
 }) {
   return render(
@@ -18,7 +19,9 @@ function renderSection(overrides?: {
       onNewOnboardingEnabledChange={
         overrides?.onNewOnboardingEnabledChange ?? vi.fn()
       }
+      onRewindEnabledChange={overrides?.onRewindEnabledChange ?? vi.fn()}
       onToolsHubEnabledChange={overrides?.onToolsHubEnabledChange ?? vi.fn()}
+      rewindEnabled={false}
       toolsHubEnabled={false}
     />,
   );
@@ -38,6 +41,13 @@ describe("ExperimentsSettingsSection", () => {
     const toggle = screen.getByLabelText("Extensions");
     expect(toggle.hasAttribute("disabled")).toBe(false);
     fireEvent.click(toggle);
+    expect(onChange).toHaveBeenCalledWith(true);
+  });
+
+  it("reports Rewind changes", () => {
+    const onChange = vi.fn();
+    renderSection({ onRewindEnabledChange: onChange });
+    fireEvent.click(screen.getByLabelText("Rewind"));
     expect(onChange).toHaveBeenCalledWith(true);
   });
 });

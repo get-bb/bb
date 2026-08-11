@@ -38,6 +38,11 @@ import type {
   TimelineTurnSummaryDetailsResponse,
   ThreadOpenFile,
   ThreadOpenSplit,
+  ThreadRewindBranchHistoryResponse,
+  ThreadRewindCommitRequest,
+  ThreadRewindCommitResponse,
+  ThreadRewindPreviewResponse,
+  ThreadRewindRestoreResponse,
   PromptHistoryQuery,
   ReorderPinnedThreadRequest,
   ReorderQueuedMessageRequest,
@@ -139,6 +144,10 @@ export type ThreadDefaultExecutionOptionsResult =
 export type ThreadConversationOutlineResult = ThreadConversationOutlineResponse;
 export type ThreadTimelineTurnSummaryDetailsResult =
   TimelineTurnSummaryDetailsResponse;
+export type ThreadRewindPreviewResult = ThreadRewindPreviewResponse;
+export type ThreadRewindCommitResult = ThreadRewindCommitResponse;
+export type ThreadRewindBranchesResult = ThreadRewindBranchHistoryResponse;
+export type ThreadRewindRestoreResult = ThreadRewindRestoreResponse;
 
 export interface ThreadSpawnBaseArgs extends Omit<
   CreateThreadRequest,
@@ -258,6 +267,37 @@ export interface ThreadOpenArgs {
 
 export interface ThreadPaneActionArgs {
   action: ThreadPaneAction;
+  threadId: string;
+}
+
+export interface ThreadRewindPreviewArgs {
+  branchId: string;
+  mode?: ThreadRewindPreviewResponse["mode"];
+  signal?: AbortSignal;
+  sourceSequence: number;
+  threadId: string;
+  turnId: string;
+}
+
+export interface ThreadRewindCommitArgs extends Omit<
+  ThreadRewindCommitRequest,
+  "mode" | "preview"
+> {
+  mode?: ThreadRewindCommitRequest["mode"];
+  preview?: Pick<ThreadRewindPreviewResponse, "revision" | "target">;
+  signal?: AbortSignal;
+  threadId: string;
+}
+
+export interface ThreadRewindBranchesArgs {
+  signal?: AbortSignal;
+  threadId: string;
+}
+
+export interface ThreadRewindRestoreArgs {
+  branchId: string;
+  expectedActiveBranchId: string;
+  signal?: AbortSignal;
   threadId: string;
 }
 
@@ -414,6 +454,13 @@ export interface ThreadTabsArea {
   update(args: ThreadTabsUpdateArgs): Promise<ThreadTabsUpdateResult>;
 }
 
+export interface ThreadRewindArea {
+  branches(args: ThreadRewindBranchesArgs): Promise<ThreadRewindBranchesResult>;
+  commit(args: ThreadRewindCommitArgs): Promise<ThreadRewindCommitResult>;
+  preview(args: ThreadRewindPreviewArgs): Promise<ThreadRewindPreviewResult>;
+  restore(args: ThreadRewindRestoreArgs): Promise<ThreadRewindRestoreResult>;
+}
+
 export interface ThreadsArea {
   archive(args: ThreadActionArgs): Promise<ThreadArchiveResult>;
   archiveAll(args: ThreadActionArgs): Promise<ThreadArchiveAllResult>;
@@ -449,6 +496,7 @@ export interface ThreadsArea {
   rateLimitRecovery(
     args: ThreadStatusArgs,
   ): Promise<ThreadRateLimitRecoveryResult>;
+  rewind: ThreadRewindArea;
   reorderPinned(args: ThreadPinOrderArgs): Promise<ThreadPinOrderResult>;
   search(args: ThreadSearchArgs): Promise<ThreadSearchResult>;
   send(args: ThreadSendArgs): Promise<ThreadSendResult>;
@@ -567,6 +615,32 @@ function eventWaitQuery(args: ThreadEventWaitArgs): ThreadEventWaitQuery {
     ...(args.afterSeq !== undefined ? { afterSeq: args.afterSeq } : {}),
     type: args.type,
     waitMs: args.waitMs,
+  };
+}
+
+function rewindPreviewQuery(args: ThreadRewindPreviewArgs): {
+  branchId: string;
+  mode?: ThreadRewindPreviewResponse["mode"];
+  sourceSequence: string;
+  turnId: string;
+} {
+  return {
+    branchId: args.branchId,
+    ...(args.mode === undefined ? {} : { mode: args.mode }),
+    sourceSequence: String(args.sourceSequence),
+    turnId: args.turnId,
+  };
+}
+
+function rewindCommitJson(
+  args: ThreadRewindCommitArgs,
+): ThreadRewindCommitRequest {
+  return {
+    editedInput: args.editedInput,
+    idempotencyKey: args.idempotencyKey,
+    mode: args.mode ?? "conversation-only",
+    ...(args.preview === undefined ? {} : { preview: args.preview }),
+    target: args.target,
   };
 }
 
@@ -870,6 +944,52 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       return threadTabsResponseSchema.parse(body);
     },
   };
+  const rewind: ThreadRewindArea = {
+    async branches(input) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"].rewind.branches.$get(
+          { param: { id: input.threadId } },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+    },
+    async commit(input) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"].rewind.$post(
+          {
+            param: { id: input.threadId },
+            json: rewindCommitJson(input),
+          },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+    },
+    async preview(input) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"].rewind.preview.$get(
+          {
+            param: { id: input.threadId },
+            query: rewindPreviewQuery(input),
+          },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+    },
+    async restore(input) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"].rewind.restore.$post(
+          {
+            param: { id: input.threadId },
+            json: {
+              branchId: input.branchId,
+              expectedActiveBranchId: input.expectedActiveBranchId,
+            },
+          },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+    },
+  };
   return {
     async archive(input) {
       // Match the UI: archiving a parent also archives assigned children and
@@ -962,6 +1082,7 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
         ),
       );
     },
+    rewind,
     async continueAfterRateLimit(input) {
       return transport.readJson(
         transport.api.v1.threads[":id"]["rate-limit-recovery"].continue.$post({

@@ -6,6 +6,7 @@ import type {
   HostConnectionNotice,
   ThreadTimelineSurfaceProps,
 } from "@/components/thread/timeline/ThreadTimelineSurface";
+import { ThreadRewindRecoveryBanner } from "./ThreadRewindRecoveryBanner";
 import { ThreadTableOfContents } from "@/components/thread/toc/ThreadTableOfContents";
 
 interface ThreadTimelinePaneProps extends ThreadTimelineSurfaceProps {
@@ -27,6 +28,10 @@ export function ThreadTimelinePane({
   footer,
   ...surface
 }: ThreadTimelinePaneProps) {
+  const rewindBanner =
+    surface.threadId.length > 0 ? (
+      <ThreadRewindRecoveryBanner threadId={surface.threadId} />
+    ) : null;
   return (
     <EmbeddedThreadChat
       variant="hosted-footer"
@@ -40,7 +45,7 @@ export function ThreadTimelinePane({
           loadOlderTimelineRows={surface.onLoadOlderRows}
         />
       }
-      surface={surface}
+      surface={{ ...surface, leadingContent: rewindBanner }}
     />
   );
 }

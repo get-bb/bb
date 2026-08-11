@@ -16,6 +16,13 @@ export const experimentKeys = [
   "claudeCodeMockCliTraffic",
   "newOnboarding",
   "toolsHub",
+  /**
+   * Native thread rewind: lets a user edit an eligible past message and
+   * continue in the same thread from a provider checkpoint. Gates rewind
+   * mutations and the UI entry points; disabling it never hides or removes
+   * existing branch history or recovery controls.
+   */
+  "rewind",
 ] as const;
 export const experimentKeySchema = z.enum(experimentKeys);
 export type ExperimentKey = z.infer<typeof experimentKeySchema>;

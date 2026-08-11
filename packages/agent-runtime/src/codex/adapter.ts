@@ -103,6 +103,13 @@ type BbThreadStartParams = ThreadStartParams & {
 
 type BbThreadForkParams = {
   threadId: string;
+  /**
+   * When present, Codex forks the source session through this completed turn
+   * instead of copying its current head. This is deliberately kept at the
+   * provider boundary: the host command contract owns how an exact checkpoint
+   * is selected, while the adapter only forwards the opaque Codex turn id.
+   */
+  lastTurnId?: string;
   model?: string | null;
   serviceTier?: string | null;
   cwd?: string | null;
@@ -221,6 +228,35 @@ type CodexInstructionCommand = Extract<
   AdapterCommand,
   { type: "thread/start" | "thread/resume" | "thread/fork" }
 >;
+
+/**
+ * BB's shared command contract learns about exact checkpoints independently
+ * of this provider adapter. Keep the adapter compatible with older command
+ * producers while accepting the optional provider-native anchor when the
+ * newer command is present.
+ */
+type CodexForkCommand = Extract<AdapterCommand, { type: "thread/fork" }> & {
+  lastTurnId?: unknown;
+};
+
+function resolveCodexForkLastTurnId(
+  command: CodexInstructionCommand,
+): string | undefined {
+  if (command.type !== "thread/fork") {
+    return undefined;
+  }
+
+  const lastTurnId = (command as CodexForkCommand).lastTurnId;
+  if (lastTurnId === undefined) {
+    return undefined;
+  }
+  if (typeof lastTurnId !== "string" || lastTurnId.trim().length === 0) {
+    throw new Error(
+      "Codex thread/fork lastTurnId must be a non-empty string when provided.",
+    );
+  }
+  return lastTurnId;
+}
 
 interface CodexInstructionOverrides {
   baseInstructions?: ThreadStartParams["baseInstructions"];
@@ -1905,8 +1941,10 @@ export function createCodexProviderAdapter(
         case "thread/fork": {
           const dynamicTools = toCodexDynamicTools(command.dynamicTools);
           const preparedGitRoots = prepareWorkspaceWriteGitRoots({ command });
+          const lastTurnId = resolveCodexForkLastTurnId(command);
           const params: BbThreadForkParams = {
             threadId: command.sourceProviderThreadId,
+            ...(lastTurnId !== undefined ? { lastTurnId } : {}),
             approvalPolicy: preparedGitRoots.permissionSettings.approvalPolicy,
             approvalsReviewer:
               preparedGitRoots.permissionSettings.approvalsReviewer,

@@ -159,6 +159,10 @@ export type AdapterCommand =
       threadId: string;
       cwd: string;
       sourceProviderThreadId: string;
+      /** Codex exact completed turn checkpoint, when selected. */
+      lastTurnId?: string;
+      /** Claude exact message checkpoint; null is the before-first boundary. */
+      sourceProviderMessageId?: string | null;
       options: ProviderExecutionContext;
       dynamicTools?: DynamicTool[];
       disallowedTools?: readonly string[];

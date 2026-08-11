@@ -677,6 +677,8 @@ function terminalDataBase64(byteLength: number): string {
 }
 
 const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
+  "hostDaemonCommandSchema.sessionOnly":
+    "thread.start includes sessionOnly only when a caller must establish a provider session without generating a first turn.",
   "hostDaemonCommandSchema.acpLaunchSpec":
     "thread.start and turn.submit include an ACP launch spec only for dynamic ACP providers; built-ins resolve from daemon-side profiles.",
   "hostDaemonCommandSchema.acpLaunchSpec.cwd":
@@ -769,6 +771,10 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "thread.start may include a storage path so the daemon creates the directory before the agent starts.",
   "hostDaemonCommandSchema.fork":
     "thread.start omits fork unless the new thread should clone an existing provider session; absent means a normal start.",
+  "hostDaemonCommandSchema.fork.lastTurnId":
+    "Codex exact-checkpoint forks omit lastTurnId when cloning the provider session head.",
+  "hostDaemonCommandSchema.fork.sourceProviderMessageId":
+    "Claude exact-checkpoint forks omit sourceProviderMessageId for head forks and use null for the before-first boundary.",
   "hostDaemonCommandSchema.inputGroups":
     "thread.start and turn.submit omit inputGroups for ordinary single user-message turns; presence preserves grouped user messages within one turn.",
   "hostDaemonCommandSchema.disallowedTools":
@@ -2078,6 +2084,136 @@ describe("host-daemon command schemas", () => {
     };
     expect(() => hostDaemonCommandSchema.parse(turnSubmitCommand)).toThrow(
       /flattened inputGroups/u,
+    );
+  });
+
+  it("accepts one exact provider checkpoint on a fork and rejects mixed anchors", () => {
+    const base = {
+      type: "thread.start" as const,
+      environmentId: "env_123",
+      threadId: "thr_123",
+      workspaceContext: {
+        workspacePath: "/tmp/workspace",
+        workspaceProvisionType: "unmanaged" as const,
+      },
+      projectId: "proj_123",
+      providerId: "codex",
+      requestId: CLIENT_REQUEST_ID,
+      input: [],
+      options: {
+        model: "gpt-5",
+        serviceTier: "default",
+        reasoningLevel: "medium",
+        workflowsEnabled: false,
+        permissionMode: "full",
+        permissionScope: "full",
+        approvalReviewer: null,
+        permissionEscalation: null,
+      },
+      instructions: "Be a helpful thread.",
+      dynamicTools: [],
+      injectedSkillSources: [],
+      instructionMode: "replace" as const,
+    };
+
+    expect(
+      hostDaemonCommandSchema.parse({
+        ...base,
+        fork: {
+          sourceProviderThreadId: "codex-source",
+          lastTurnId: "turn-2",
+        },
+      }),
+    ).toMatchObject({ fork: { lastTurnId: "turn-2" } });
+    expect(
+      hostDaemonCommandSchema.parse({
+        ...base,
+        providerId: "claude-code",
+        fork: {
+          sourceProviderThreadId: "claude-source",
+          sourceProviderMessageId: null,
+        },
+      }),
+    ).toMatchObject({ fork: { sourceProviderMessageId: null } });
+    expect(() =>
+      hostDaemonCommandSchema.parse({
+        ...base,
+        fork: {
+          sourceProviderThreadId: "source",
+          lastTurnId: "turn-2",
+          sourceProviderMessageId: "message-2",
+        },
+      }),
+    ).toThrow(/only one provider checkpoint/u);
+    expect(() =>
+      hostDaemonCommandSchema.parse({
+        ...base,
+        fork: {
+          sourceProviderThreadId: "codex-source",
+          sourceProviderMessageId: "message-2",
+        },
+      }),
+    ).toThrow(/Codex forks/u);
+    expect(() =>
+      hostDaemonCommandSchema.parse({
+        ...base,
+        providerId: "claude-code",
+        fork: {
+          sourceProviderThreadId: "claude-source",
+          lastTurnId: "turn-2",
+        },
+      }),
+    ).toThrow(/Claude Code forks/u);
+  });
+
+  it("accepts an explicit session-only start without generating a first turn", () => {
+    const base = {
+      type: "thread.start" as const,
+      environmentId: "env_123",
+      threadId: "thr_123",
+      workspaceContext: {
+        workspacePath: "/tmp/workspace",
+        workspaceProvisionType: "unmanaged" as const,
+      },
+      projectId: "proj_123",
+      providerId: "codex",
+      requestId: CLIENT_REQUEST_ID,
+      input: [],
+      options: {
+        model: "gpt-5",
+        serviceTier: "default",
+        reasoningLevel: "medium",
+        workflowsEnabled: false,
+        permissionMode: "full",
+        permissionScope: "full",
+        approvalReviewer: null,
+        permissionEscalation: null,
+      },
+      instructions: "Be a helpful thread.",
+      dynamicTools: [],
+      injectedSkillSources: [],
+      instructionMode: "replace" as const,
+    };
+
+    expect(
+      hostDaemonCommandSchema.parse({ ...base, sessionOnly: true }),
+    ).toMatchObject({ sessionOnly: true, input: [] });
+    expect(() =>
+      hostDaemonCommandSchema.parse({
+        ...base,
+        sessionOnly: true,
+        input: [{ type: "text", text: "not session-only", mentions: [] }],
+      }),
+    ).toThrow(/without input/u);
+    expect(() =>
+      hostDaemonCommandSchema.parse({
+        ...base,
+        sessionOnly: true,
+        fork: { sourceProviderThreadId: "provider-source" },
+      }),
+    ).toThrow(/combined with fork/u);
+    expect(() => hostDaemonCommandSchema.parse(base)).toThrow(
+      /input must contain at least one entry/u,
     );
   });
 

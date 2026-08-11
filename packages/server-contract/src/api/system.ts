@@ -239,6 +239,18 @@ export type SystemAttentionResponse = z.infer<
 >;
 
 /**
+ * Aggregate rewind rollout counters. Names and values only — no prompt
+ * content, thread ids, or provider checkpoint/session identifiers.
+ */
+export const systemRewindRolloutMetricsResponseSchema = z.record(
+  z.string(),
+  z.number(),
+);
+export type SystemRewindRolloutMetricsResponse = z.infer<
+  typeof systemRewindRolloutMetricsResponseSchema
+>;
+
+/**
  * Theme catalog: the on-disk custom-theme directory plus the discovered custom
  * themes and the active palette. Drives `bb theme list` / `bb theme dir`.
  */

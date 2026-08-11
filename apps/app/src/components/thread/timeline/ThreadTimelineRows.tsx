@@ -49,6 +49,7 @@ import { isRunningThreadRuntimeDisplayStatus } from "./thread-runtime-status.js"
 import type {
   ThreadTimelineAddToChatHandler,
   ThreadTimelineForkMessageHandler,
+  ThreadTimelineRewindMessageHandler,
   ThreadTimelineSendToMainMessageHandler,
   ThreadTimelineLinkHandler,
   ThreadTimelineLocalFileLinkHandler,
@@ -60,6 +61,8 @@ import type {
   ThreadTimelineUnreadDividerPlacement,
   UserAttachmentImageSrcResolver,
 } from "./types.js";
+import { useThreadRewindMessageEligibility } from "@/hooks/queries/thread-rewind-queries";
+import { isThreadRewindCandidateRow } from "@/lib/thread-rewind";
 import { ConversationMessageContent } from "./ConversationMessageContent.js";
 import { TimelineSelectionMenu } from "./TimelineSelectionMenu.js";
 import type { MessageProseSelection } from "./SelectableMessageProse.js";
@@ -90,6 +93,7 @@ import {
   timelineRowRenderSignature,
   timelineRowsSignature,
 } from "./timelineRowSignatures.js";
+import type { TimelineRewindBoundary } from "./rewind-boundaries.js";
 import { NESTED_TIMELINE_GROUP_LINE_CLASS_NAME } from "./timeline-nested-group-line.js";
 import { getThreadRoutePath } from "@/lib/route-paths";
 import { useThreadTimelineTurnSummaryDetails } from "@/hooks/queries/thread-queries";
@@ -132,6 +136,23 @@ export interface ThreadTimelineRowsProps {
   threadChildOrigin?: ThreadChildOrigin | null;
   /** Fork the rendered thread from a specific agent message. */
   onForkMessage?: ThreadTimelineForkMessageHandler;
+  /**
+   * Rewind the rendered thread at a completed user message. Supplied only by
+   * hosts that own a rewind session (the main thread detail view); embedded
+   * surfaces omit it so their bars never show the action.
+   */
+  onRewindMessage?: ThreadTimelineRewindMessageHandler;
+  /**
+   * Active rewind branch pointer for the thread. The per-message edit action
+   * stays hidden until this resolves and the server preview confirms the row
+   * is eligible.
+   */
+  rewindBranchId?: string | null;
+  /**
+   * Thread status snapshot used to re-check eligibility when the thread
+   * leaves or returns to idle while rows are on screen.
+   */
+  rewindStatusKey?: string;
   /** Add a complete agent message to the composer draft. */
   onMessageAddToChat?: ThreadTimelineAddToChatHandler;
   /** Open a side chat anchored on a specific agent message. */
@@ -175,6 +196,12 @@ export interface ThreadTimelineRowsProps {
   timelineRows: TimelineRow[];
   threadId?: string;
   threadRuntimeDisplayStatus: ThreadRuntimeDisplayStatus;
+  /**
+   * Rewind boundary markers to render between rows. Computed from the rewind
+   * branch history by the timeline host; absent on surfaces that have no
+   * branch recovery story (embedded chats).
+   */
+  rewindBoundaries?: readonly TimelineRewindBoundary[];
   /** Omit for standalone initial-unread rendering, pass false for live updates. */
   unreadDividerAutoScroll?: boolean;
   unreadDividerPlacement?: ThreadTimelineUnreadDividerPlacement | null;
@@ -197,6 +224,9 @@ interface TimelineRendererStaticContextValue {
   canSpawnChild: boolean;
   getViewRows: GetTimelineViewRows;
   onForkMessage: ThreadTimelineForkMessageHandler | undefined;
+  onRewindMessage: ThreadTimelineRewindMessageHandler | undefined;
+  rewindBranchId: string | null;
+  rewindStatusKey: string;
   onMessageAddToChat: ThreadTimelineAddToChatHandler | undefined;
   onSendToMainMessage: ThreadTimelineSendToMainMessageHandler | undefined;
   onSelectionAddToChat: ThreadTimelineAddToChatHandler | undefined;
@@ -259,6 +289,7 @@ interface TimelineRowsListProps {
   showAssistantMessageActions: boolean;
   spacing: TimelineRowsListSpacing;
   className?: string;
+  rewindBoundaries?: readonly TimelineRewindBoundary[];
   unreadDividerAutoScroll: boolean;
   unreadDividerPlacement: ThreadTimelineUnreadDividerPlacement | null;
 }
@@ -314,6 +345,7 @@ interface TimelineSystemDetailBlockProps {
 
 interface BuildTimelineRowsListItemsArgs {
   rows: readonly ThreadTimelineViewRow[];
+  rewindBoundaries: readonly TimelineRewindBoundary[];
   unreadDividerPlacement: ThreadTimelineUnreadDividerPlacement | null;
 }
 
@@ -387,6 +419,11 @@ type TimelineRowsListItem =
   | {
       kind: "unread-divider";
       id: "thread-unread-divider";
+    }
+  | {
+      kind: "rewind-divider";
+      id: string;
+      boundary: TimelineRewindBoundary;
     };
 
 interface ConversationRowProps {
@@ -884,10 +921,86 @@ function buildRowConsumerMessageActions(args: {
     }));
 }
 
+/**
+ * Conversation rows are rendered through this gate so the rewind eligibility
+ * query only mounts when a rewind host is actually wired. Timelines without a
+ * host (side chats, plugin surfaces, isolated tests) never call the query hook
+ * and therefore never require a QueryClient.
+ */
 function ConversationRow({
   row,
   showAssistantMessageActions,
 }: ConversationRowProps) {
+  const { onRewindMessage, rewindBranchId } =
+    useTimelineRendererStaticContext();
+  if (
+    onRewindMessage === undefined ||
+    rewindBranchId === null ||
+    rewindBranchId === undefined
+  ) {
+    return (
+      <ConversationRowBody
+        onEdit={undefined}
+        row={row}
+        showAssistantMessageActions={showAssistantMessageActions}
+      />
+    );
+  }
+  return (
+    <ConversationRowBodyWithRewind
+      row={row}
+      showAssistantMessageActions={showAssistantMessageActions}
+    />
+  );
+}
+
+function ConversationRowBodyWithRewind({
+  row,
+  showAssistantMessageActions,
+}: ConversationRowProps) {
+  const { onRewindMessage, rewindBranchId, rewindStatusKey, threadId } =
+    useTimelineRendererStaticContext();
+  const rewindEligibility = useThreadRewindMessageEligibility({
+    branchId: rewindBranchId ?? "",
+    enabled: row.role === "user" && isThreadRewindCandidateRow(row),
+    sourceSequence: row.sourceSeqStart,
+    statusKey: rewindStatusKey,
+    threadId: threadId ?? "",
+    turnId: row.role === "user" && row.turnId !== null ? row.turnId : "",
+  });
+  let onEdit: (() => void) | undefined;
+  if (
+    row.role === "user" &&
+    onRewindMessage !== undefined &&
+    rewindEligibility.isEligible &&
+    row.turnId !== null
+  ) {
+    const rewindTurnId = row.turnId;
+    const rewindText = row.text;
+    const rewindMentions = row.mentions;
+    const rewindSourceSequence = row.sourceSeqStart;
+    onEdit = () =>
+      onRewindMessage({
+        mentions: rewindMentions,
+        sourceSequence: rewindSourceSequence,
+        text: rewindText,
+        turnId: rewindTurnId,
+      });
+  }
+  return (
+    <ConversationRowBody
+      onEdit={onEdit}
+      row={row}
+      showAssistantMessageActions={showAssistantMessageActions}
+    />
+  );
+}
+
+function ConversationRowBody({
+  onEdit,
+  row,
+  showAssistantMessageActions,
+}: ConversationRowProps & { onEdit: (() => void) | undefined }) {
   const latestActionableAssistantMessageId = useContext(
     LatestActionableAssistantMessageIdContext,
   );
@@ -961,6 +1074,7 @@ function ConversationRow({
           row.id === latestActionableUserMessageId ? "inline" : "overflow"
         }
         onAddToChat={onSelectionAddToChat}
+        onEdit={onEdit}
         onOpenLink={onOpenLink}
         onOpenLocalFileLink={onOpenLocalFileLink}
         projectId={projectId}
@@ -1073,6 +1187,37 @@ function TimelineUnreadDivider({ autoScroll }: TimelineUnreadDividerProps) {
       data-testid="thread-unread-divider"
     >
       <span className="shrink-0">New</span>
+      <span className="h-px min-w-0 flex-1 bg-timeline-accent" aria-hidden />
+    </div>
+  );
+}
+
+interface TimelineRewindBoundaryMarkerProps {
+  boundary: TimelineRewindBoundary;
+}
+
+/**
+ * Compact divider inserted between timeline rows at the point where an exact
+ * conversation rewind branched provider history. The marker is intentionally
+ * subtle (muted text, accent line) — the branch recovery controls live in the
+ * recovery banner above the timeline, so this is a location cue, not an
+ * action surface.
+ */
+function TimelineRewindBoundaryMarker({
+  boundary,
+}: TimelineRewindBoundaryMarkerProps) {
+  return (
+    <div
+      role="separator"
+      aria-label="Conversation rewound at this point"
+      className={cn(
+        "flex items-center gap-2 px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-timeline-accent",
+      )}
+      data-testid="timeline-rewind-boundary"
+    >
+      <span className="h-px min-w-0 flex-1 bg-timeline-accent" aria-hidden />
+      <Icon name="ArrowTurnBackward" className="size-3 shrink-0" aria-hidden />
+      <span className="shrink-0">Rewind</span>
       <span className="h-px min-w-0 flex-1 bg-timeline-accent" aria-hidden />
     </div>
   );
@@ -1766,6 +1911,7 @@ function isUnreadDividerCandidateAfterCutoff({
 
 function buildTimelineRowsListItems({
   rows,
+  rewindBoundaries,
   unreadDividerPlacement,
 }: BuildTimelineRowsListItemsArgs): TimelineRowsListItem[] {
   const items: TimelineRowsListItem[] = [];
@@ -1773,8 +1919,19 @@ function buildTimelineRowsListItems({
     rows,
     unreadDividerPlacement,
   });
+  const boundaryByRowIndex = new Map(
+    rewindBoundaries.map((boundary) => [boundary.beforeRowIndex, boundary]),
+  );
 
   for (const [index, row] of rows.entries()) {
+    const boundary = boundaryByRowIndex.get(index);
+    if (boundary !== undefined) {
+      items.push({
+        kind: "rewind-divider",
+        id: `rewind-divider:${boundary.branchId}`,
+        boundary,
+      });
+    }
     if (index === dividerIndex) {
       items.push({ kind: "unread-divider", id: "thread-unread-divider" });
     }
@@ -1789,6 +1946,7 @@ function TimelineRowsList({
   hasOlderTimelineRows,
   isLoadingOlderTimelineRows,
   onLoadOlderRows,
+  rewindBoundaries = [],
   rows,
   scopeActive,
   showAssistantMessageActions,
@@ -1810,8 +1968,13 @@ function TimelineRowsList({
     [rows],
   );
   const items = useMemo(
-    () => buildTimelineRowsListItems({ rows, unreadDividerPlacement }),
-    [rows, unreadDividerPlacement],
+    () =>
+      buildTimelineRowsListItems({
+        rows,
+        rewindBoundaries,
+        unreadDividerPlacement,
+      }),
+    [rows, rewindBoundaries, unreadDividerPlacement],
   );
   return (
     <TimelineSearchExpansionContext.Provider value={stableSearchExpandedRowIds}>
@@ -1829,6 +1992,14 @@ function TimelineRowsList({
               <TimelineUnreadDivider
                 key={item.id}
                 autoScroll={unreadDividerAutoScroll}
+              />
+            );
+          }
+          if (item.kind === "rewind-divider") {
+            return (
+              <TimelineRewindBoundaryMarker
+                key={item.id}
+                boundary={item.boundary}
               />
             );
           }
@@ -2018,6 +2189,9 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
       canSpawnChild: props.canSpawnChild ?? false,
       getViewRows,
       onForkMessage: props.onForkMessage,
+      onRewindMessage: props.onRewindMessage,
+      rewindBranchId: props.rewindBranchId ?? null,
+      rewindStatusKey: props.rewindStatusKey ?? "",
       onMessageAddToChat: props.onMessageAddToChat,
       onSendToMainMessage: props.onSendToMainMessage,
       onSelectionAddToChat: selectionAddToChatHandler,
@@ -2047,6 +2221,9 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
       props.canSpawnChild,
       getViewRows,
       props.onForkMessage,
+      props.onRewindMessage,
+      props.rewindBranchId,
+      props.rewindStatusKey,
       props.onMessageAddToChat,
       props.onSendToMainMessage,
       selectionAddToChatHandler,
@@ -2106,6 +2283,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
                     showAssistantMessageActions={true}
                     compactActivityIntents={false}
                     spacing="top-level"
+                    rewindBoundaries={props.rewindBoundaries}
                     unreadDividerAutoScroll={
                       props.unreadDividerAutoScroll ?? true
                     }

@@ -5,6 +5,7 @@ import { atomWithStorage } from "jotai/utils";
 import {
   isRunningThreadRuntimeDisplayStatus,
   type ThreadTimelineForkMessageHandler,
+  type ThreadTimelineRewindMessageHandler,
   type ThreadTimelineSendToMainMessageHandler,
   type ThreadTimelineLinkHandler,
   type ThreadTimelineLocalFileLink,
@@ -29,6 +30,9 @@ import { appToast } from "@/components/ui/app-toast";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
 import type { ThreadSecondaryPanel as ThreadSecondaryPanelTab } from "@/lib/thread-secondary-panel";
 import { useForkThreadFromMessage } from "@/hooks/useForkThreadFromMessage";
+import { useThreadRewindBranches } from "@/hooks/queries/thread-rewind-queries";
+import { useThreadRewindEditing } from "./useThreadRewindEditing";
+import { displacedTurnCountLabel } from "@/lib/thread-rewind";
 import { isThreadForkable } from "@/lib/fork-thread-request";
 import { useRequestEnvironmentAction } from "../../hooks/mutations/environment-mutations";
 import {
@@ -53,6 +57,7 @@ import {
   useThread,
   useThreadDetailBootstrap,
   useThreadPendingInteractions,
+  useThreadRewindBranchHistory,
   type ProjectThreadSubsetFilters,
 } from "../../hooks/queries/thread-queries";
 import { isTransientReadError } from "@/hooks/queries/query-helpers";
@@ -115,6 +120,7 @@ import {
   type ThreadPromptChildThreadsSection,
 } from "@/components/promptbox/banner/ThreadPromptContextBanner";
 import { ThreadDetailSecondaryContent } from "./ThreadDetailSecondaryContent";
+import { computeTimelineRewindBoundaries } from "@/components/thread/timeline/rewind-boundaries";
 import {
   useThreadSecondaryPanelDrawerVisibility,
   useThreadSecondaryPanelVisibility,
@@ -928,6 +934,69 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     },
     [addQuoteToComposer, dismissCompactKeyboard],
   );
+  const isRewindProviderSupported =
+    thread?.providerId === "codex" || thread?.providerId === "claude-code";
+  const rewindBranches = useThreadRewindBranches(thread?.id ?? "");
+  const rewindBranchId = isRewindProviderSupported
+    ? rewindBranches.activeBranchId
+    : null;
+  const focusRewindComposer = useCallback(() => {
+    setComposerFocusRequestNonce((nonce) => nonce + 1);
+  }, []);
+  const handleRewindSettled = useCallback(
+    (outcome: {
+      displacedTurnCount: number;
+      submission: "draft-recovery" | "submitted";
+    }) => {
+      if (outcome.submission === "submitted") {
+        appToast.success("Message edited and sent", {
+          description: `${displacedTurnCountLabel(
+            outcome.displacedTurnCount,
+          )} after it left the active path.`,
+        });
+        return;
+      }
+      appToast.warning("Rewound — send your edit to continue", {
+        description:
+          "The edited turn wasn't sent. Your draft is preserved in the composer.",
+      });
+    },
+    [],
+  );
+  const {
+    beginRewind,
+    cancel: cancelRewind,
+    commitRewind,
+    dismiss: dismissRewind,
+    revalidate: revalidateRewind,
+    session: rewindSession,
+  } = useThreadRewindEditing({
+    branchId: rewindBranchId,
+    onFocusComposer: focusRewindComposer,
+    onSettled: handleRewindSettled,
+    readDraft: selectionPromptDraft.getCurrent,
+    statusKey: thread?.status ?? "",
+    threadId: thread?.id ?? "",
+    writeDraft: selectionPromptDraft.setDraft,
+  });
+  const handleRewindMessage = useCallback<ThreadTimelineRewindMessageHandler>(
+    (target) => {
+      dismissCompactKeyboard();
+      beginRewind({
+        branchId: rewindBranchId ?? "",
+        restoreMentions: target.mentions,
+        restoreText: target.text,
+        sourceSequence: target.sourceSequence,
+        turnId: target.turnId,
+      });
+    },
+    [dismissCompactKeyboard, rewindBranchId, beginRewind],
+  );
+  const isRewindAvailable =
+    isRewindProviderSupported &&
+    !isSideChatThread &&
+    rewindBranchId !== null &&
+    systemConfigQuery.data?.experiments.rewind === true;
   const sendSideChatMessageToMain =
     useCallback<ThreadTimelineSendToMainMessageHandler>(
       (target) => {
@@ -1734,6 +1803,17 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       return { items: activeItems };
     }, [childThreadSubsetQuery.data]);
   const isThreadTimelinePending = timelineLoading && timelineRows.length === 0;
+  const rewindBranchesQuery = useThreadRewindBranchHistory(threadId ?? "", {
+    enabled: threadId !== undefined && threadId.length > 0,
+  });
+  const rewindBoundaries = useMemo(
+    () =>
+      computeTimelineRewindBoundaries({
+        history: rewindBranchesQuery.data,
+        rows: timelineRows,
+      }),
+    [rewindBranchesQuery.data, timelineRows],
+  );
   useThreadReadTracking({
     markThreadRead,
     thread,
@@ -2396,6 +2476,11 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
           : null
       }
       composerFocusRequestNonce={composerFocusRequestNonce}
+      rewindSession={rewindSession}
+      onRewindCommit={commitRewind}
+      onRewindCancel={cancelRewind}
+      onRewindDismiss={dismissRewind}
+      onRewindRevalidate={revalidateRewind}
       sendMessage={sendMessage}
       steerActiveThreadOnEnter={
         systemConfigQuery.data?.generalSettings.steerActiveThreadOnEnter ??
@@ -2595,6 +2680,11 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
             isThreadTimelinePending,
             timelineError: Boolean(timelineError),
             onForkMessage: isForkAvailable ? handleForkMessage : undefined,
+            onRewindMessage: isRewindAvailable
+              ? handleRewindMessage
+              : undefined,
+            rewindBranchId,
+            rewindStatusKey: thread?.status ?? "",
             onMessageAddToChat: handleSelectionAddToChat,
             onSendToMainMessage: handleSendToMainMessage,
             onSelectionAddToChat: handleSelectionAddToChat,
@@ -2605,6 +2695,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
             onTitleAction: handleTimelineTitleAction,
             projectId,
             resolveMentionLink,
+            rewindBoundaries,
             showOngoingIndicator:
               thread.status !== "stopping" &&
               // A pending interaction (question or approval) already renders its

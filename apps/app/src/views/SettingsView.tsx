@@ -215,6 +215,8 @@ export interface ExperimentsSettingsSectionProps {
   onClaudeCodeMockCliTrafficEnabledChange: (enabled: boolean) => void;
   onNewOnboardingEnabledChange: (enabled: boolean) => void;
   onToolsHubEnabledChange: (enabled: boolean) => void;
+  onRewindEnabledChange: (enabled: boolean) => void;
+  rewindEnabled: boolean;
   toolsHubEnabled: boolean;
 }
 
@@ -955,6 +957,7 @@ export function ProviderSettingsSection({
 const CLAUDE_CODE_MOCK_CLI_TRAFFIC_EXPERIMENT_LABEL = "Mock CLI Traffic";
 const NEW_ONBOARDING_EXPERIMENT_LABEL = "New onboarding";
 const EXTENSIONS_EXPERIMENT_LABEL = "Extensions";
+const REWIND_EXPERIMENT_LABEL = "Rewind";
 export function ExperimentsSettingsSection({
   claudeCodeMockCliTrafficEnabled,
   disabled,
@@ -962,6 +965,8 @@ export function ExperimentsSettingsSection({
   onClaudeCodeMockCliTrafficEnabledChange,
   onNewOnboardingEnabledChange,
   onToolsHubEnabledChange,
+  onRewindEnabledChange,
+  rewindEnabled,
   toolsHubEnabled,
 }: ExperimentsSettingsSectionProps) {
   return (
@@ -1004,6 +1009,18 @@ export function ExperimentsSettingsSection({
             disabled={disabled}
             onCheckedChange={onToolsHubEnabledChange}
             aria-label={EXTENSIONS_EXPERIMENT_LABEL}
+          />
+        </SettingsWithControl>
+
+        <SettingsWithControl
+          label={REWIND_EXPERIMENT_LABEL}
+          description="Edit eligible past messages and continue in the same thread from a provider checkpoint. Turning this off stops new rewinds but keeps existing branch history visible and restorable."
+        >
+          <Switch
+            checked={rewindEnabled}
+            disabled={disabled}
+            onCheckedChange={onRewindEnabledChange}
+            aria-label={REWIND_EXPERIMENT_LABEL}
           />
         </SettingsWithControl>
       </div>
@@ -1170,12 +1187,19 @@ export function SettingsView() {
             newOnboarding: enabled,
           })
         }
+        onRewindEnabledChange={(enabled) =>
+          updateExperimentsMutation.mutate({
+            ...experiments,
+            rewind: enabled,
+          })
+        }
         onToolsHubEnabledChange={(enabled) =>
           updateExperimentsMutation.mutate({
             ...experiments,
             toolsHub: enabled,
           })
         }
+        rewindEnabled={experiments.rewind}
         toolsHubEnabled={experiments.toolsHub}
       />
     );

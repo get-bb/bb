@@ -5,6 +5,7 @@ import {
   getAppSettings,
   getAppKeybindingOverrides,
   getExperiments,
+  listRewindRolloutMetrics,
   getStoredFaviconColor,
   getStoredThemeId,
   hasActiveThreadAttention,
@@ -122,6 +123,10 @@ export function registerSystemRoutes(
 
   get(routes.attention, (context) =>
     context.json({ hasAttention: hasActiveThreadAttention(deps.db) }),
+  );
+
+  get(routes.rewindRolloutMetrics, (context) =>
+    context.json(listRewindRolloutMetrics(deps.db)),
   );
 
   function readAppKeybindingOverrides(): AppKeybindingOverrides {

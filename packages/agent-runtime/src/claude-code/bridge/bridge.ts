@@ -264,6 +264,18 @@ interface ClaudeCodeThreadStopResult {
   ok: true;
 }
 
+interface CreateClaudeForkSessionArgs {
+  cwd: string;
+  sourceProviderMessageId: ThreadForkParams["sourceProviderMessageId"];
+  sourceProviderThreadId: string;
+}
+
+interface ClaudeForkSessionResult {
+  /** Whether the session must be resumed from an existing transcript. */
+  resume: boolean;
+  providerThreadId: string;
+}
+
 interface ClaudeCanUseToolDecisionContext {
   blockedPath: string | undefined;
   decisionReason: string | undefined;
@@ -418,6 +430,93 @@ function sendResult(id: string | number, result: unknown): void {
 
 function sendError(id: string | number, code: number, message: string): void {
   send({ jsonrpc: "2.0", id, error: { code, message } });
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function formatClaudeForkError(
+  error: unknown,
+  args: CreateClaudeForkSessionArgs,
+): string {
+  const message = getErrorMessage(error).trim() || "Unknown fork failure";
+  const checkpoint = args.sourceProviderMessageId
+    ? ` at message "${args.sourceProviderMessageId}"`
+    : "";
+
+  if (/not a function|unsupported|does not support/i.test(message)) {
+    return `Cannot fork Claude session${checkpoint}: the installed Claude Agent SDK does not support exact checkpoint branching; update the SDK (${message})`;
+  }
+
+  if (
+    /not found|no conversation|missing transcript|session file/i.test(message)
+  ) {
+    return `Cannot fork Claude session${checkpoint}: the source transcript or checkpoint is unavailable (${message})`;
+  }
+
+  if (/invalid|uuid|message .* not found/i.test(message)) {
+    return `Cannot fork Claude session${checkpoint}: the checkpoint is invalid (${message})`;
+  }
+
+  if (/parent|compact|compaction|malformed/i.test(message)) {
+    return `Cannot fork Claude session${checkpoint}: the checkpoint parent chain is not forkable (${message})`;
+  }
+
+  return `Cannot fork Claude session${checkpoint}: ${message}`;
+}
+
+/**
+ * Create a Claude branch without sending a prompt.
+ *
+ * A string message id uses Agent SDK's transcript-copy primitive and is the
+ * only path that branches an existing conversation. `null` is intentional:
+ * editing the first user message has no transcript prefix to copy, so create
+ * a fresh persisted session id and let its first turn materialize the file.
+ * Omitting the field is retained for older callers that request a full fork.
+ */
+async function createClaudeForkSession(
+  args: CreateClaudeForkSessionArgs,
+): Promise<ClaudeForkSessionResult> {
+  if (args.sourceProviderMessageId === null) {
+    return { providerThreadId: randomUUID(), resume: false };
+  }
+
+  const sdkForkSession = forkSession as unknown as
+    | ((
+        sessionId: string,
+        options: { dir: string; upToMessageId?: string },
+      ) => Promise<unknown>)
+    | undefined;
+  if (typeof sdkForkSession !== "function") {
+    throw new Error(
+      "Claude Agent SDK forkSession is unavailable; exact checkpoint branching requires a newer SDK",
+    );
+  }
+
+  try {
+    const options: { dir: string; upToMessageId?: string } = {
+      dir: args.cwd,
+    };
+    if (args.sourceProviderMessageId !== undefined) {
+      options.upToMessageId = args.sourceProviderMessageId;
+    }
+    const result = await sdkForkSession(args.sourceProviderThreadId, options);
+    if (
+      typeof result !== "object" ||
+      result === null ||
+      !("sessionId" in result) ||
+      typeof result.sessionId !== "string" ||
+      result.sessionId.length === 0
+    ) {
+      throw new Error(
+        "Claude Agent SDK forkSession returned no forked session id",
+      );
+    }
+    return { providerThreadId: result.sessionId, resume: true };
+  } catch (error) {
+    throw new Error(formatClaudeForkError(error, args), { cause: error });
+  }
 }
 
 // stdout is the JSON-RPC channel; the runtime captures stderr into the
@@ -1415,30 +1514,35 @@ async function handleThreadFork(
 ): Promise<void> {
   const threadId = params.threadId;
 
-  const existing = sessions.get(threadId);
-  if (existing) {
-    await closeThreadSession({
-      graceful: false,
-      message: "Thread session replaced while awaiting permission approval",
-      threadId,
-    });
-  }
-
-  let forkedProviderThreadId: string;
+  let forkedSession: ClaudeForkSessionResult;
   try {
-    const forkResult = await forkSession(params.sourceProviderThreadId, {
-      dir: params.cwd,
+    forkedSession = await createClaudeForkSession({
+      cwd: params.cwd,
+      sourceProviderMessageId: params.sourceProviderMessageId,
+      sourceProviderThreadId: params.sourceProviderThreadId,
     });
-    forkedProviderThreadId = forkResult.sessionId;
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    sendError(id, -32000, message);
+    sendError(id, -32000, getErrorMessage(error));
     return;
   }
 
-  const preparedEnv = await prepareSessionEnv(params);
+  let preparedEnv: PreparedSessionEnv;
+  try {
+    preparedEnv = await prepareSessionEnv(params);
+  } catch (error) {
+    sendError(id, -32000, getErrorMessage(error));
+    return;
+  }
+
   const threadIdRef = { current: threadId };
-  const sessionOptions = buildSessionOptions(params, preparedEnv.env);
+  let sessionOptions: SdkSessionOptions;
+  try {
+    sessionOptions = buildSessionOptions(params, preparedEnv.env);
+  } catch (error) {
+    await preparedEnv.mockCliTrafficProxy?.close();
+    sendError(id, -32000, getErrorMessage(error));
+    return;
+  }
   sessionOptions.canUseTool = createCanUseTool(threadIdRef);
   if (params.dynamicTools && params.dynamicTools.length > 0) {
     const mcpServer = buildBridgeMcpServer(
@@ -1448,22 +1552,46 @@ async function handleThreadFork(
     sessionOptions.mcpServers = { [BRIDGE_MCP_SERVER_NAME]: mcpServer };
     sessionOptions.allowedTools = getAllowedToolNames(params.dynamicTools);
   }
+
+  const existing = sessions.get(threadId);
+  if (existing) {
+    await closeThreadSession({
+      graceful: false,
+      message: "Thread session replaced while awaiting permission approval",
+      threadId,
+    });
+  }
+
+  if (!forkedSession.resume) {
+    // The explicit before-first-message branch has no source transcript to
+    // resume. Supplying sessionId still makes the empty branch durable once
+    // its edited first turn is submitted, while avoiding an SDK resume of a
+    // random/non-existent session.
+    sessionOptions.sessionId = forkedSession.providerThreadId;
+  }
   const threadSession = createThreadSession({
     mockCliTrafficProxy: preparedEnv.mockCliTrafficProxy,
     permissionEscalation: params.permissionEscalation,
     permissionMode: params.permissionMode,
     approvedPlanPermissionMode: params.approvedPlanPermissionMode,
-    providerThreadId: forkedProviderThreadId,
+    providerThreadId: forkedSession.providerThreadId,
     sessionConstructionConfig: toSessionConstructionConfig(params),
     sessionOptions,
     sessionPermissionGrants: [],
     threadIdRef,
   });
   sessions.set(threadId, threadSession);
-  threadSession.session.start(forkedProviderThreadId);
+  if (forkedSession.resume) {
+    threadSession.session.start(forkedSession.providerThreadId);
+  } else {
+    threadSession.session.start();
+  }
 
-  sendResult(id, { threadId, providerThreadId: forkedProviderThreadId });
-  sendThreadIdentity(threadId, forkedProviderThreadId);
+  sendResult(id, {
+    threadId,
+    providerThreadId: forkedSession.providerThreadId,
+  });
+  sendThreadIdentity(threadId, forkedSession.providerThreadId);
 }
 
 function buildPromptTexts(

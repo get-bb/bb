@@ -76,6 +76,26 @@ describe("decodeClaudeCodeJsonRpcRequest", () => {
     ).toEqual({ kind: "unknown_method", id: 3, method: "turn/teleport" });
   });
 
+  it("requires a non-empty checkpoint id when an exact fork boundary is supplied", () => {
+    expect(
+      decodeClaudeCodeJsonRpcRequest({
+        jsonrpc: "2.0",
+        id: 4,
+        method: "thread/fork",
+        params: {
+          ...baseThreadStartParams,
+          sourceProviderThreadId: "claude-source-session",
+          sourceProviderMessageId: "",
+        },
+      }),
+    ).toMatchObject({
+      kind: "invalid_params",
+      id: 4,
+      method: "thread/fork",
+      issues: expect.stringContaining("sourceProviderMessageId"),
+    });
+  });
+
   it("ignores lines that are not requests", () => {
     expect(
       decodeClaudeCodeJsonRpcRequest({ jsonrpc: "2.0", id: 4, result: {} }),

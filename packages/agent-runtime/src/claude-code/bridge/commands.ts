@@ -109,6 +109,12 @@ const claudeCodeCommandSchema = z.discriminatedUnion("method", [
       threadId: z.string(),
       cwd: z.string(),
       sourceProviderThreadId: z.string(),
+      /**
+       * When present, fork only the transcript prefix through this Claude
+       * message UUID. `null` is the explicit before-first-message reset
+       * boundary; omission retains the legacy full-session fork behavior.
+       */
+      sourceProviderMessageId: z.string().min(1).nullable().optional(),
       baseInstructions: z.string().optional(),
       additionalWorkspaceWriteRoots: bridgeAdditionalWorkspaceWriteRootsSchema,
       plugins: bridgeClaudePluginsSchema,

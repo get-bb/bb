@@ -51,6 +51,13 @@ interface MessageActionBarProps {
   alignment: "start" | "end";
   mobileActionDisplay: "inline" | "overflow";
   addToChatAttachments?: readonly PromptDraftAttachment[];
+  /**
+   * Rewind this user message into the composer as an editable draft and
+   * continue from it. Supplied only by hosts that own a rewind session (the
+   * main thread timeline); side chats and plugin surfaces omit it, keeping
+   * the action out of their bars entirely.
+   */
+  onEdit?: () => void;
   onAddToChat?: (
     text: string,
     attachments?: readonly PromptDraftAttachment[],
@@ -68,7 +75,7 @@ interface MessageActionBarProps {
 }
 
 interface MessageOverflowAction {
-  icon: "Copy" | "MessageSquarePlus" | "Fork" | "ArrowTurnBackward";
+  icon: "Copy" | "Edit" | "MessageSquarePlus" | "Fork" | "ArrowTurnBackward";
   /** Set on plugin-contributed actions; renders PluginActionIcon over `icon`. */
   plugin?: { pluginId: string | null; icon: string | null };
   /** Render key when `label` may not be unique (plugin actions). */
@@ -209,6 +216,7 @@ export function MessageActionBar({
   alignment,
   mobileActionDisplay,
   addToChatAttachments = [],
+  onEdit,
   onAddToChat,
   onFork,
   onSendToMain,
@@ -239,6 +247,15 @@ export function MessageActionBar({
     onAddToChat(messageText);
   }, [addToChatAttachments, messageText, onAddToChat]);
   const overflowActions: MessageOverflowAction[] = [
+    ...(onEdit
+      ? [
+          {
+            icon: "Edit" as const,
+            label: "Edit and rewind",
+            onSelect: onEdit,
+          },
+        ]
+      : []),
     ...(hasCopy
       ? [
           {
@@ -296,6 +313,7 @@ export function MessageActionBar({
   if (
     !hasCopy &&
     !hasAddToChat &&
+    !onEdit &&
     !onFork &&
     !onSendToMain &&
     pluginActions.length === 0
@@ -312,6 +330,30 @@ export function MessageActionBar({
           alignment === "end" ? "justify-end" : "justify-start",
         )}
       >
+        {onEdit ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className={cn(
+                  ACTION_BUTTON_CLASS,
+                  HOVER_REVEAL_CLASS,
+                  mobileDirectActionClass,
+                )}
+                onClick={onEdit}
+                aria-label="Edit and rewind"
+              >
+                <Icon name="Edit" className="size-3" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent
+              side={ACTION_TOOLTIP_SIDE}
+              collisionBoundary={collisionBoundary}
+            >
+              Edit and rewind
+            </TooltipContent>
+          </Tooltip>
+        ) : null}
         {hasCopy ? (
           <Tooltip>
             <TooltipTrigger asChild>

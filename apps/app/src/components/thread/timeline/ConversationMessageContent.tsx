@@ -78,6 +78,12 @@ export interface ConversationMessageContentUserProps extends ConversationMessage
   /** Mobile presentation for the regular user message's action footer. */
   mobileActionDisplay?: "inline" | "overflow";
   /**
+   * Rewind this user message into the composer. Supplied only when the host
+   * owns a rewind session and the server preview resolved this row as
+   * eligible; omitted otherwise so the bar renders without the action.
+   */
+  onEdit?: () => void;
+  /**
    * `childOrigin` of the thread this row belongs to. Selects the fork leading
    * icon when an agent-initiated thread-start anchor (a fork's seed-without-run
    * row) renders as "Message from {source}". Null for non-fork threads.
@@ -187,6 +193,7 @@ interface UserConversationMessageProps {
   mentions: readonly PromptTextMention[];
   mobileActionDisplay: "inline" | "overflow";
   onAddToChat?: ThreadTimelineAddToChatHandler;
+  onEdit?: () => void;
   onOpenLink?: ThreadTimelineLinkHandler;
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
   projectId?: string;
@@ -378,6 +385,7 @@ function UserConversationMessage({
   mentions,
   mobileActionDisplay,
   onAddToChat,
+  onEdit,
   onOpenLink,
   onOpenLocalFileLink,
   pluginActions = [],
@@ -493,6 +501,7 @@ function UserConversationMessage({
         </div>
         {messageText ||
         addToChatAttachments.length > 0 ||
+        onEdit !== undefined ||
         pluginActions.length > 0 ? (
           <div className="mt-1 flex justify-end">
             <MessageActionBar
@@ -500,6 +509,7 @@ function UserConversationMessage({
               alignment="end"
               mobileActionDisplay={mobileActionDisplay}
               addToChatAttachments={addToChatAttachments}
+              onEdit={onEdit}
               onAddToChat={onAddToChat}
               pluginActions={pluginActions}
             />
@@ -713,6 +723,7 @@ export function ConversationMessageContent(
         mentions={props.mentions}
         mobileActionDisplay={props.mobileActionDisplay ?? "overflow"}
         onAddToChat={props.onAddToChat}
+        onEdit={props.onEdit}
         onOpenLink={props.onOpenLink}
         onOpenLocalFileLink={onOpenLocalFileLink}
         projectId={projectId}

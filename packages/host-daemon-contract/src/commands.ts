@@ -309,18 +309,106 @@ export const threadStartCommandSchema = hostDaemonThreadTargetSchema
     input: z.array(promptInputSchema),
     inputGroups: z.array(z.array(promptInputSchema).min(1)).min(1).optional(),
     threadStoragePath: z.string().min(1).optional(),
+    /**
+     * Establish a provider session without running a generated first turn.
+     * This is intentionally explicit: ordinary starts still require input,
+     * while rewind can replace a first user turn in an existing BB thread.
+     */
+    sessionOnly: z.literal(true).optional(),
     /** Present means fork the new thread from this source provider session
      *  instead of starting fresh; absent means a normal start. */
-    fork: z.object({ sourceProviderThreadId: z.string().min(1) }).optional(),
+    fork: z
+      .object({
+        sourceProviderThreadId: z.string().min(1),
+        /** Exact Codex turn to include in the new provider session. */
+        lastTurnId: z.string().min(1).optional(),
+        /** Exact Claude message to include; null means before the first message. */
+        sourceProviderMessageId: z.string().min(1).nullable().optional(),
+      })
+      .strict()
+      .superRefine((fork, ctx) => {
+        if (
+          fork.lastTurnId !== undefined &&
+          fork.sourceProviderMessageId !== undefined
+        ) {
+          ctx.addIssue({
+            code: "custom",
+            message: "fork may contain only one provider checkpoint",
+            path: ["lastTurnId"],
+          });
+        }
+      })
+      .optional(),
   })
   .strict()
   .superRefine((value, ctx) => {
-    if (value.fork === undefined && value.input.length === 0) {
+    if (
+      value.fork === undefined &&
+      value.sessionOnly !== true &&
+      value.input.length === 0
+    ) {
       ctx.addIssue({
         code: "custom",
         message: "input must contain at least one entry",
         path: ["input"],
       });
+    }
+    if (value.sessionOnly === true) {
+      if (value.fork !== undefined) {
+        ctx.addIssue({
+          code: "custom",
+          message: "sessionOnly cannot be combined with fork",
+          path: ["sessionOnly"],
+        });
+      }
+      if (value.input.length > 0) {
+        ctx.addIssue({
+          code: "custom",
+          message: "sessionOnly starts a provider session without input",
+          path: ["input"],
+        });
+      }
+      if (value.inputGroups !== undefined) {
+        ctx.addIssue({
+          code: "custom",
+          message: "sessionOnly cannot include inputGroups",
+          path: ["inputGroups"],
+        });
+      }
+    }
+    if (value.fork !== undefined) {
+      if (
+        value.providerId === "codex" &&
+        value.fork.sourceProviderMessageId !== undefined
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Codex forks may only carry lastTurnId",
+          path: ["fork", "sourceProviderMessageId"],
+        });
+      }
+      if (
+        value.providerId === "claude-code" &&
+        value.fork.lastTurnId !== undefined
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Claude Code forks may only carry sourceProviderMessageId",
+          path: ["fork", "lastTurnId"],
+        });
+      }
+      if (
+        value.providerId !== "codex" &&
+        value.providerId !== "claude-code" &&
+        (value.fork.lastTurnId !== undefined ||
+          value.fork.sourceProviderMessageId !== undefined)
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Provider does not support exact checkpoint forks",
+          path: ["fork"],
+        });
+      }
     }
     refineGroupedInputMatchesFlatInput(value, ctx);
   });

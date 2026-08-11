@@ -41,7 +41,7 @@ interface TimedStatementOperationArgs<TValue> {
 }
 
 const DEFAULT_SLOW_DB_QUERY_LOG_THRESHOLD_MS = 100;
-const MAX_LOGGED_SQL_LENGTH = 1_000;
+const MAX_LOGGED_SQL_LENGTH = 4_000;
 const SQL_TRUNCATION_SUFFIX = "...";
 // Keep ORM-generated quoted identifiers intact. SQLite accepts double-quoted
 // strings in some legacy cases, but broad redaction would erase table/column

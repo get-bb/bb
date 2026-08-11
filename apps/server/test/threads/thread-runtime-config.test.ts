@@ -859,6 +859,7 @@ describe("thread runtime config", () => {
         claudeCodeMockCliTraffic: true,
         newOnboarding: false,
         toolsHub: false,
+        rewind: false,
       });
 
       expect((await buildCommand(2)).options.claudeCodeMockCliTraffic).toEqual({

@@ -4,6 +4,7 @@ import { registerThreadActionRoutes } from "./actions.js";
 import { registerThreadBaseRoutes } from "./base.js";
 import { registerThreadDataRoutes } from "./data.js";
 import { registerThreadInteractionRoutes } from "./interactions.js";
+import { registerThreadRewindRoutes } from "./rewind.js";
 import { registerThreadTabRoutes } from "./tabs.js";
 
 export function registerThreadRoutes(app: Hono, deps: AppDeps): void {
@@ -11,5 +12,6 @@ export function registerThreadRoutes(app: Hono, deps: AppDeps): void {
   registerThreadActionRoutes(app, deps);
   registerThreadDataRoutes(app, deps);
   registerThreadInteractionRoutes(app, deps);
+  registerThreadRewindRoutes(app, deps);
   registerThreadTabRoutes(app, deps);
 }

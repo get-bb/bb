@@ -64,6 +64,14 @@ export function createPendingInteractionId(): string {
   return createId("pint");
 }
 
+export function createThreadRewindCheckpointId(): string {
+  return createId("rchk");
+}
+
+export function createThreadBranchId(): string {
+  return createId("br");
+}
+
 export function createHostDaemonSessionId(): string {
   return createId("hses");
 }

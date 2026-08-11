@@ -370,6 +370,7 @@ type ExpectedThreadsKey =
   | "promptHistory"
   | "queuedMessages"
   | "rateLimitRecovery"
+  | "rewind"
   | "reorderPinned"
   | "search"
   | "send"

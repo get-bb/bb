@@ -88,6 +88,66 @@ describe("MessageActionBar", () => {
     ).toEqual(["Copy message", "Add to chat", "Fork into new thread"]);
   });
 
+  it("renders the rewind edit action first for editable user messages and fires it", () => {
+    const onEdit = vi.fn();
+    const { container } = render(
+      <MessageActionBar
+        messageText="Fix the sidebar overflow"
+        alignment="end"
+        mobileActionDisplay="inline"
+        onEdit={onEdit}
+      />,
+    );
+
+    expect(
+      [...container.querySelectorAll<HTMLButtonElement>("button[aria-label]")]
+        .map((button) => button.getAttribute("aria-label"))
+        .filter((label) => label !== "Message actions"),
+    ).toEqual(["Edit and rewind", "Copy message"]);
+    fireEvent.click(screen.getByRole("button", { name: "Edit and rewind" }));
+    expect(onEdit).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the rewind edit action in the mobile overflow", () => {
+    mockMobileCoarsePointer();
+    const onEdit = vi.fn();
+    render(
+      <MessageActionBar
+        messageText="Fix the sidebar overflow"
+        alignment="end"
+        mobileActionDisplay="overflow"
+        onEdit={onEdit}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Message actions" }));
+    const content =
+      document.body.querySelector<HTMLElement>('[data-side="top"]');
+    if (!content) throw new Error("Missing mobile message action menu");
+    expect(
+      within(content)
+        .getAllByRole("button")
+        .map((button) => button.textContent),
+    ).toEqual(["Edit and rewind", "Copy message"]);
+    fireEvent.click(
+      within(content).getByRole("button", { name: "Edit and rewind" }),
+    );
+    expect(onEdit).toHaveBeenCalledTimes(1);
+  });
+
+  it("omits the rewind action entirely when no handler is supplied", () => {
+    render(
+      <MessageActionBar
+        messageText="A plain message."
+        alignment="end"
+        mobileActionDisplay="inline"
+      />,
+    );
+    expect(
+      screen.queryByRole("button", { name: "Edit and rewind" }),
+    ).toBeNull();
+  });
+
   it("keeps the same agent action order in the mobile overflow", () => {
     mockMobileCoarsePointer();
     render(

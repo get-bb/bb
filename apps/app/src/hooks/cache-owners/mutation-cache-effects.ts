@@ -3,6 +3,7 @@ import {
   projectPathsQueryKeyPrefix,
   sidebarNavigationQueryKey,
   threadQueuedMessagesQueryKey,
+  threadRewindBranchesQueryKeyPrefix,
   threadPromptHistoryQueryKey,
   threadQueryKey,
   threadSearchQueryKeyPrefix,
@@ -241,6 +242,21 @@ export function invalidateThreadBannerQueries({
         projectId: undefined,
         queryClient,
       }),
+    ],
+  });
+}
+
+/** Rewind restore: refresh branch history and the timeline so boundary
+ * markers and the recovery banner settle on the newly active branch. */
+export function invalidateThreadRewindQueries({
+  queryClient,
+  threadId,
+}: ThreadArg): void {
+  invalidateQueryKeys({
+    queryClient,
+    queryKeys: [
+      threadRewindBranchesQueryKeyPrefix(threadId),
+      ...getThreadTimelineInvalidationQueryKeys({ threadId }),
     ],
   });
 }

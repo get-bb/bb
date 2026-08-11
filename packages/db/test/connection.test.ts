@@ -112,14 +112,14 @@ describe("createConnection", () => {
       slowQueryLogger: logger,
       slowQueryThresholdMs: 0,
     });
-    const longSql = `SELECT '${"x".repeat(1_200)}' AS value, ${"1 OR ".repeat(
-      300,
+    const longSql = `SELECT '${"x".repeat(1_200)}' AS value, ${"1 = 1 OR ".repeat(
+      560,
     )} 1`;
 
     db.$client.prepare(longSql).get();
 
     const debugLog = getOnlyDebugLog(logger);
-    expect(debugLog.fields.sql).toHaveLength(1_000);
+    expect(debugLog.fields.sql).toHaveLength(4_000);
     expect(debugLog.fields.sql.endsWith("...")).toBe(true);
 
     db.$client.close();

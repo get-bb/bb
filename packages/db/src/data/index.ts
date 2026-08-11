@@ -172,7 +172,64 @@ export type {
   ReplaceThreadTabsResult,
   StoredThreadTabs,
 } from "./thread-tabs.js";
+export {
+  getThreadRewindCheckpoint,
+  listThreadRewindCheckpoints,
+  resolveThreadRewindCheckpoint,
+  upsertThreadRewindCheckpoint,
+} from "./thread-rewind-checkpoints.js";
+export type {
+  CreateThreadRewindCheckpointInput,
+  GetThreadRewindCheckpointArgs,
+  ListThreadRewindCheckpointsArgs,
+  ResolveThreadRewindCheckpointResult,
+  StoredThreadRewindCheckpoint,
+  UpsertThreadRewindCheckpointResult,
+} from "./thread-rewind-checkpoints.js";
+
+export {
+  abandonThreadBranchInTransaction,
+  activateThreadBranch,
+  activateThreadBranchInTransaction,
+  bindThreadBranchProviderSessionInTransaction,
+  createRootThreadBranchInTransaction,
+  createThreadBranchInTransaction,
+  getActiveThreadBranch,
+  getActiveThreadBranchId,
+  getThreadBranchIdAtOrBeforeSequence,
+  getThreadBranch,
+  getThreadSourceBranchId,
+  inspectThreadBranches,
+  listActiveThreadBranchVisibility,
+  listPendingThreadBranchCleanup,
+  listStagedThreadBranches,
+  listThreadBranches,
+  markThreadBranchCleanupPendingInTransaction,
+  recordThreadBranchCleanupResultInTransaction,
+  recordThreadSourceBranchInTransaction,
+  restoreThreadBranch,
+  restoreThreadBranchInTransaction,
+  stageThreadBranch,
+  updateThreadBranchCleanupResult,
+} from "./thread-branches.js";
+export type {
+  AbandonThreadBranchInput,
+  ActivateThreadBranchInput,
+  BindThreadBranchProviderSessionInput,
+  CreateRootThreadBranchInput,
+  CreateThreadBranchInput,
+  InspectThreadBranchesArgs,
+  StoredThreadBranch,
+  ThreadBranchCleanupResultInput,
+  ThreadBranchInspection,
+  RecordThreadSourceBranchInput,
+  ActiveThreadBranchVisibility,
+} from "./thread-branches.js";
 export { getExperiments, setExperiments } from "./experiments.js";
+export {
+  incrementRewindRolloutMetric,
+  listRewindRolloutMetrics,
+} from "./rewind-rollout-metrics.js";
 export {
   deleteInstalledPlugin,
   getInstalledPlugin,

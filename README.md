@@ -176,6 +176,7 @@ See [System overview](docs/system-overview.md) for runtime architecture, data mo
 - [Vision](docs/VISION.md)
 - [Platform support](docs/platform-support.md)
 - [Configuration](docs/configuration.md)
+- [Rewind: editing a past message](docs/rewind.md)
 - [Using bb on multiple devices](docs/multiple-devices.md)
 - [Worktrees and setup scripts](docs/worktrees.md)
 

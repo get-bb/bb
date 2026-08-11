@@ -32,6 +32,8 @@ import type {
   ThreadEventItemType,
   ThreadEventScopeKind,
   ThreadEventType,
+  ThreadRewindAnchorKind,
+  ThreadRewindProvider,
   WorkspaceProvisionType,
   ProjectKind,
 } from "@bb/domain";
@@ -150,6 +152,17 @@ export const projectExecutionDefaults = sqliteTable(
 export const systemExperiments = sqliteTable("system_experiments", {
   key: text("key").primaryKey(),
   value: integer("value", { mode: "boolean" }).notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+/**
+ * Privacy-safe rollout counters for the rewind experiment. Each row is one
+ * named counter; values are aggregate integers only — never prompt content,
+ * thread ids, or raw provider checkpoint/session identifiers.
+ */
+export const rewindRolloutMetrics = sqliteTable("rewind_rollout_metrics", {
+  id: text("id").primaryKey(),
+  count: integer("count").notNull().default(0),
   updatedAt: integer("updated_at").notNull(),
 });
 
@@ -564,6 +577,128 @@ export const threads = sqliteTable(
   ],
 );
 
+export const threadBranchCreationReasonValues = [
+  "migration-root",
+  "thread-start",
+  "rewind",
+  "restore",
+] as const;
+export type ThreadBranchCreationReason =
+  (typeof threadBranchCreationReasonValues)[number];
+
+export const threadBranchLifecycleValues = [
+  "staged",
+  "active",
+  "available",
+  "abandoned",
+] as const;
+export type ThreadBranchLifecycle =
+  (typeof threadBranchLifecycleValues)[number];
+
+export const threadBranchCleanupStatusValues = [
+  "not-needed",
+  "pending",
+  "completed",
+  "failed",
+] as const;
+export type ThreadBranchCleanupStatus =
+  (typeof threadBranchCleanupStatusValues)[number];
+
+/**
+ * Immutable conversation branch identity. The active branch is held in
+ * `thread_active_branches` so a branch row can never be mutated into another
+ * thread's active state. Provider cleanup fields deliberately live here: a
+ * provider branch may exist before BB atomically activates its durable branch.
+ */
+export const threadBranches = sqliteTable(
+  "thread_branches",
+  {
+    id: text("id").primaryKey(),
+    threadId: text("thread_id")
+      .notNull()
+      .references(() => threads.id, { onDelete: "cascade" }),
+    parentBranchId: text("parent_branch_id").references(
+      (): AnySQLiteColumn => threadBranches.id,
+      { onDelete: "set null" },
+    ),
+    cutoffSequence: integer("cutoff_sequence").notNull().default(0),
+    providerId: text("provider_id").notNull(),
+    providerThreadId: text("provider_thread_id"),
+    creationReason: text("creation_reason", {
+      enum: threadBranchCreationReasonValues,
+    })
+      .$type<ThreadBranchCreationReason>()
+      .notNull(),
+    lifecycle: text("lifecycle", { enum: threadBranchLifecycleValues })
+      .$type<ThreadBranchLifecycle>()
+      .notNull()
+      .default("staged"),
+    cleanupStatus: text("cleanup_status", {
+      enum: threadBranchCleanupStatusValues,
+    })
+      .$type<ThreadBranchCleanupStatus>()
+      .notNull()
+      .default("not-needed"),
+    cleanupRequestedAt: integer("cleanup_requested_at"),
+    cleanupCompletedAt: integer("cleanup_completed_at"),
+    cleanupError: text("cleanup_error"),
+    createdAt: integer("created_at").notNull(),
+    activatedAt: integer("activated_at"),
+    deactivatedAt: integer("deactivated_at"),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [
+    index("thread_branches_thread_created_idx").on(
+      table.threadId,
+      table.createdAt,
+      table.id,
+    ),
+    index("thread_branches_parent_idx").on(table.parentBranchId),
+    index("thread_branches_provider_session_idx").on(
+      table.providerId,
+      table.providerThreadId,
+    ),
+    index("thread_branches_cleanup_idx").on(
+      table.cleanupStatus,
+      table.cleanupRequestedAt,
+    ),
+  ],
+);
+
+/** One durable active-branch pointer for every thread. */
+export const threadActiveBranches = sqliteTable(
+  "thread_active_branches",
+  {
+    threadId: text("thread_id")
+      .primaryKey()
+      .references(() => threads.id, { onDelete: "cascade" }),
+    branchId: text("branch_id")
+      .notNull()
+      .references(() => threadBranches.id, { onDelete: "cascade" }),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [index("thread_active_branches_branch_idx").on(table.branchId)],
+);
+
+/**
+ * Stable source-branch provenance for fork/side-chat threads. Keeping this in
+ * its own table avoids widening the public thread row while retaining the
+ * branch reference after the source thread's active pointer changes.
+ */
+export const threadSourceBranches = sqliteTable(
+  "thread_source_branches",
+  {
+    threadId: text("thread_id")
+      .primaryKey()
+      .references(() => threads.id, { onDelete: "cascade" }),
+    branchId: text("branch_id").references(() => threadBranches.id, {
+      onDelete: "set null",
+    }),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [index("thread_source_branches_branch_idx").on(table.branchId)],
+);
+
 // Server-owned tab descriptors for a thread's shared secondary-panel workspace.
 // Presentation state such as active tab, panel visibility, and width remains
 // client-local; this row stores only the ordered durable tab list.
@@ -641,6 +776,13 @@ export const events = sqliteTable(
     threadId: text("thread_id")
       .notNull()
       .references(() => threads.id, { onDelete: "cascade" }),
+    // Nullable for compatibility with direct legacy/import writes. All BB
+    // event append paths resolve the thread's active branch; migration
+    // backfills historical rows. Keeping the column nullable lets old tools
+    // restart while the branch-aware writer rolls out.
+    branchId: text("branch_id").references(() => threadBranches.id, {
+      onDelete: "restrict",
+    }),
     environmentId: text("environment_id").references(() => environments.id, {
       onDelete: "set null",
     }),
@@ -657,6 +799,11 @@ export const events = sqliteTable(
   (table) => [
     uniqueIndex("events_thread_sequence_idx").on(
       table.threadId,
+      table.sequence,
+    ),
+    index("events_thread_branch_sequence_idx").on(
+      table.threadId,
+      table.branchId,
       table.sequence,
     ),
     index("events_thread_type_item_kind_sequence_idx").on(
@@ -702,6 +849,53 @@ export const events = sqliteTable(
         OR
         (${table.scopeKind} = 'thread' AND ${table.turnId} IS NULL)
       )`,
+    ),
+  ],
+);
+
+/**
+ * Exact provider checkpoints for conversation rewind. The provider anchor is
+ * opaque to the server/UI and is split into a provider-specific kind/value so
+ * an anchor cannot silently cross provider sessions. `branchId` is kept as an
+ * opaque relation here; the thread-branch table owns branch lifecycle and can
+ * add a foreign key without changing checkpoint semantics.
+ */
+export const threadRewindCheckpoints = sqliteTable(
+  "thread_rewind_checkpoints",
+  {
+    id: text("id").primaryKey(),
+    threadId: text("thread_id")
+      .notNull()
+      .references(() => threads.id, { onDelete: "cascade" }),
+    branchId: text("branch_id").notNull(),
+    providerId: text("provider_id").$type<ThreadRewindProvider>().notNull(),
+    providerThreadId: text("provider_thread_id").notNull(),
+    anchorKind: text("anchor_kind").$type<ThreadRewindAnchorKind>().notNull(),
+    /** Opaque Codex turn id or Claude message UUID. */
+    anchorValue: text("anchor_value").notNull(),
+    turnId: text("turn_id").notNull(),
+    sourceSequence: integer("source_sequence").notNull(),
+    status: text("status", { enum: ["eligible", "ambiguous"] })
+      .notNull()
+      .default("eligible"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("thread_rewind_checkpoints_thread_branch_sequence_idx").on(
+      table.threadId,
+      table.branchId,
+      table.sourceSequence,
+    ),
+    index("thread_rewind_checkpoints_provider_session_idx").on(
+      table.providerId,
+      table.providerThreadId,
+      table.anchorKind,
+      table.anchorValue,
+    ),
+    index("thread_rewind_checkpoints_thread_sequence_idx").on(
+      table.threadId,
+      table.sourceSequence,
     ),
   ],
 );

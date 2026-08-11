@@ -1301,6 +1301,9 @@ export function createClaudeCodeProviderAdapter(
               threadId: command.threadId,
               cwd: command.cwd,
               sourceProviderThreadId: command.sourceProviderThreadId,
+              ...(command.sourceProviderMessageId !== undefined
+                ? { sourceProviderMessageId: command.sourceProviderMessageId }
+                : {}),
               instructionMode: command.instructionMode,
               claudeCodeMockCliTraffic:
                 command.options.claudeCodeMockCliTraffic,

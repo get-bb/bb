@@ -1250,6 +1250,61 @@ function repairBranchLocalQueuedGroupingBeforeInitialThreadSections(
   markMigrationApplied(db, initialThreadSectionsMigration);
 }
 
+function dropRewindBranchLineageSchema(db: DbConnection): void {
+  db.$client.exec("DROP INDEX IF EXISTS `events_thread_branch_sequence_idx`");
+  const eventColumns = new Set(
+    db.$client
+      .prepare<[], { name: string }>("PRAGMA table_info(events)")
+      .all()
+      .map((column) => column.name),
+  );
+  if (eventColumns.has("branch_id")) {
+    db.$client.prepare("ALTER TABLE events DROP COLUMN branch_id").run();
+  }
+  db.$client.prepare("DROP TABLE IF EXISTS rewind_rollout_metrics").run();
+  db.$client.prepare("DROP TABLE IF EXISTS thread_source_branches").run();
+  db.$client.prepare("DROP TABLE IF EXISTS thread_active_branches").run();
+  db.$client.prepare("DROP TABLE IF EXISTS thread_rewind_checkpoints").run();
+  db.$client.prepare("DROP TABLE IF EXISTS thread_branches").run();
+}
+
+/**
+ * The 0091 branch-lineage migration is a one-shot schema + data backfill that
+ * is intentionally not replay-safe (plain CREATE TABLE / ALTER TABLE ADD
+ * COLUMN). When the branch schema already exists:
+ *   - normal upgrade path (the prior chain is applied): mark 0091 applied so
+ *     the existing backfilled state is preserved and replay is skipped;
+ *   - journal rewound (the prior chain is missing too): drop the rewind
+ *     schema so the full replay of 0091 recreates and backfills it cleanly.
+ */
+function repairRewindBranchLineageReplay(
+  db: DbConnection,
+  migrationsFolder: string,
+): void {
+  if (!tableExists(db, "thread_branches")) {
+    return;
+  }
+
+  const expectedMigrations = readExpectedAppliedMigrations(migrationsFolder);
+  const rewindMigration = requireExpectedAppliedMigration(
+    expectedMigrations,
+    "0091_numerous_rumiko_fujikawa",
+  );
+  const appliedCreatedAts = readAppliedMigrationCreatedAts(db);
+  if (appliedCreatedAts.has(rewindMigration.createdAt)) {
+    return;
+  }
+  const priorMigration = requireExpectedAppliedMigration(
+    expectedMigrations,
+    "0090_equal_reaper",
+  );
+  if (appliedCreatedAts.has(priorMigration.createdAt)) {
+    markMigrationApplied(db, rewindMigration);
+    return;
+  }
+  dropRewindBranchLineageSchema(db);
+}
+
 const STAGED_CONNECT_MACHINE_ID_COLUMN = "_bb_connect_machine_id_pending";
 
 function stageExistingConnectMachineIdColumn(
@@ -1493,6 +1548,7 @@ export function migrate(db: DbConnection, options: MigrateOptions = {}): void {
       db,
       migrationsFolder,
     );
+    repairRewindBranchLineageReplay(db, migrationsFolder);
     const stagedConnectMachineId = stageExistingConnectMachineIdColumn(
       db,
       migrationsFolder,

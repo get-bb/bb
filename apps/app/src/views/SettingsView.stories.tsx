@@ -354,12 +354,19 @@ function ExperimentsStory() {
           newOnboarding: enabled,
         }))
       }
+      onRewindEnabledChange={(enabled) =>
+        state.setExperiments((current) => ({
+          ...current,
+          rewind: enabled,
+        }))
+      }
       onToolsHubEnabledChange={(enabled) =>
         state.setExperiments((current) => ({
           ...current,
           toolsHub: enabled,
         }))
       }
+      rewindEnabled={state.experiments.rewind}
       toolsHubEnabled={state.experiments.toolsHub}
     />
   );

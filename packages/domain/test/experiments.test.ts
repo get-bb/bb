@@ -7,4 +7,8 @@ describe("experimentsSchema", () => {
       defaultExperiments,
     );
   });
+
+  it("defaults rewind to off so the rollout gate starts closed", () => {
+    expect(defaultExperiments.rewind).toBe(false);
+  });
 });

@@ -20,6 +20,7 @@ import type {
   ThreadStoragePathListResponse,
   ThreadTimelineResponse,
   TimelineTurnSummaryDetailsResponse,
+  ThreadRewindBranchHistoryResponse,
 } from "@bb/server-contract";
 import { applyTimelineDelta } from "@bb/server-contract";
 import type { ThreadListFilters } from "@/lib/api-types";
@@ -64,6 +65,7 @@ import {
   threadListQueryKey,
   threadPendingInteractionsQueryKey,
   threadPromptHistoryQueryKey,
+  threadRewindBranchesQueryKey,
   threadQueryKey,
   threadSearchQueryKey,
   threadStorageFilesQueryKey,
@@ -616,6 +618,37 @@ export function useThreadQueuedMessages(
     refetchOnMount: options?.refetchOnMount ?? true,
     refetchOnWindowFocus: true,
     staleTime: options?.staleTime,
+  });
+}
+
+/**
+ * Branch lineage for the thread's exact-conversation-rewind history. The
+ * response never carries provider session ids or checkpoint anchors; it is
+ * the single source of truth for both the timeline rewind boundary markers
+ * and the branch recovery controls.
+ */
+export function useThreadRewindBranchHistory(
+  id: string,
+  options?: ThreadTimelineQueryOptions,
+) {
+  const enabled = (options?.enabled ?? true) && Boolean(id);
+
+  return useQuery<ThreadRewindBranchHistoryResponse>({
+    queryKey: threadRewindBranchesQueryKey(
+      requireThreadId(id, "useThreadRewindBranchHistory"),
+    ),
+    queryFn: ({ signal }) =>
+      sdk.threads.rewind.branches({
+        threadId: requireThreadId(id, "useThreadRewindBranchHistory"),
+        signal,
+      }),
+    enabled,
+    refetchOnMount: options?.refetchOnMount ?? true,
+    ...(options?.staleTime === undefined
+      ? {}
+      : { staleTime: options.staleTime }),
+    retry: shouldRetryTransientReadQuery,
+    retryDelay: TRANSIENT_READ_RETRY_DELAY_MS,
   });
 }
 

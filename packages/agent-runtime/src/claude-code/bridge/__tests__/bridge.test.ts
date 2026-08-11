@@ -19,11 +19,13 @@ import {
   type PermissionEscalation,
 } from "@bb/domain";
 
-const { queryMock } = vi.hoisted(() => ({
+const { forkSessionMock, queryMock } = vi.hoisted(() => ({
+  forkSessionMock: vi.fn(),
   queryMock: vi.fn(),
 }));
 
 vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
+  forkSession: forkSessionMock,
   query: queryMock,
   createSdkMcpServer: vi.fn(() => ({})),
   tool: vi.fn((_name, _desc, _schema, handler) => handler),
@@ -466,6 +468,30 @@ function sendResumeThread(args: ResumeBridgeThreadArgs): void {
     approvedPlanPermissionMode: "default",
     permissionScope: "workspace",
     providerThreadId: args.providerThreadId,
+    threadId: args.threadId,
+  });
+}
+
+function sendForkThread(args: {
+  bridge: BridgeJsonRpcTestHarness;
+  requestId: number;
+  sourceProviderMessageId?: string | null;
+  sourceProviderThreadId: string;
+  threadId: string;
+}): void {
+  args.bridge.sendRequest(args.requestId, "thread/fork", {
+    workflowsEnabled: false,
+    claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
+    baseInstructions: "test",
+    cwd: "/tmp/worktree",
+    instructionMode: "append",
+    permissionEscalation: "ask",
+    permissionMode: "default",
+    permissionScope: "workspace",
+    sourceProviderThreadId: args.sourceProviderThreadId,
+    ...(args.sourceProviderMessageId === undefined
+      ? {}
+      : { sourceProviderMessageId: args.sourceProviderMessageId }),
     threadId: args.threadId,
   });
 }
@@ -2389,6 +2415,209 @@ describe("bridge", () => {
       queries[0]?.finish();
       await bridge.waitForResponse(2);
     } finally {
+      bridge.restore();
+    }
+  });
+
+  it("forks exactly through the selected Claude message without starting a turn", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      queries.push(query);
+      return query;
+    });
+    forkSessionMock.mockResolvedValue({ sessionId: "claude-forked-prefix" });
+
+    try {
+      sendForkThread({
+        bridge,
+        requestId: 1,
+        sourceProviderMessageId: "assistant-message-42",
+        sourceProviderThreadId: "claude-source-session",
+        threadId: "thread-claude-prefix-fork",
+      });
+      const response = await bridge.waitForResponse(1);
+
+      expect(response).toMatchObject({
+        id: 1,
+        result: {
+          providerThreadId: "claude-forked-prefix",
+          threadId: "thread-claude-prefix-fork",
+        },
+      });
+      expect(forkSessionMock).toHaveBeenCalledWith("claude-source-session", {
+        dir: "/tmp/worktree",
+        upToMessageId: "assistant-message-42",
+      });
+      expect(queryMock).toHaveBeenCalledTimes(1);
+      expect(getLatestQueryOptions()).toMatchObject({
+        resume: "claude-forked-prefix",
+      });
+
+      bridge.sendRequest(2, "turn/start", {
+        input: [{ type: "text", text: "Replace the selected turn" }],
+        providerThreadId: "claude-forked-prefix",
+        threadId: "thread-claude-prefix-fork",
+      });
+      await bridge.waitForResponse(2);
+      await expect(readNextPromptText(getLatestQueryCall())).resolves.toBe(
+        "Replace the selected turn",
+      );
+
+      bridge.sendRequest(3, "thread/stop", {
+        threadId: "thread-claude-prefix-fork",
+      });
+      await bridge.flushWork();
+      queries[0]?.finish();
+      await bridge.waitForResponse(3);
+    } finally {
+      queries.forEach((query) => query.finish());
+      bridge.restore();
+    }
+  });
+
+  it("uses a fresh persisted session for an explicit before-first-message fork", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      queries.push(query);
+      return query;
+    });
+
+    try {
+      sendForkThread({
+        bridge,
+        requestId: 1,
+        sourceProviderMessageId: null,
+        sourceProviderThreadId: "claude-source-session",
+        threadId: "thread-claude-first-message-reset",
+      });
+      const response = await bridge.waitForResponse(1);
+      const providerThreadId = getProviderThreadIdFromResult(response);
+
+      expect(providerThreadId).toEqual(expect.any(String));
+      expect(forkSessionMock).not.toHaveBeenCalled();
+      expect(getLatestQueryOptions()).toMatchObject({
+        sessionId: providerThreadId,
+      });
+      expect(getLatestQueryOptions()).not.toHaveProperty("resume");
+
+      bridge.sendRequest(2, "thread/stop", {
+        threadId: "thread-claude-first-message-reset",
+      });
+      await bridge.flushWork();
+      queries[0]?.finish();
+      await bridge.waitForResponse(2);
+    } finally {
+      queries.forEach((query) => query.finish());
+      bridge.restore();
+    }
+  });
+
+  it("keeps the existing Claude session alive when checkpoint branching fails", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      queries.push(query);
+      return query;
+    });
+    forkSessionMock.mockRejectedValue(
+      new Error("Session claude-source-session not found in project directory"),
+    );
+
+    try {
+      const threadId = "thread-claude-fork-failure";
+      bridge.sendRequest(1, "thread/start", {
+        workflowsEnabled: false,
+        claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
+        baseInstructions: "test",
+        cwd: "/tmp/worktree",
+        instructionMode: "append",
+        permissionEscalation: "ask",
+        permissionMode: "default",
+        permissionScope: "workspace",
+        threadId,
+      });
+      const startResponse = await bridge.waitForResponse(1);
+      const originalProviderThreadId =
+        getProviderThreadIdFromResult(startResponse);
+
+      sendForkThread({
+        bridge,
+        requestId: 2,
+        sourceProviderMessageId: "assistant-message-42",
+        sourceProviderThreadId: "claude-source-session",
+        threadId,
+      });
+      await expect(bridge.waitForResponse(2)).resolves.toMatchObject({
+        id: 2,
+        error: {
+          code: -32000,
+          message: expect.stringContaining("source transcript or checkpoint"),
+        },
+      });
+      expect(queryMock).toHaveBeenCalledTimes(1);
+      expect(queries[0]?.close).not.toHaveBeenCalled();
+
+      bridge.sendRequest(3, "thread/stop", { threadId });
+      await bridge.flushWork();
+      queries[0]?.finish();
+      await bridge.waitForResponse(3);
+      expect(originalProviderThreadId).toEqual(expect.any(String));
+    } finally {
+      queries.forEach((query) => query.finish());
+      bridge.restore();
+    }
+  });
+
+  it("resumes a forked Claude session after its bridge process restarts", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      queries.push(query);
+      return query;
+    });
+    forkSessionMock.mockResolvedValue({ sessionId: "claude-forked-restart" });
+
+    try {
+      const threadId = "thread-claude-fork-restart";
+      sendForkThread({
+        bridge,
+        requestId: 1,
+        sourceProviderMessageId: "assistant-message-42",
+        sourceProviderThreadId: "claude-source-session",
+        threadId,
+      });
+      await bridge.waitForResponse(1);
+
+      queries[0]?.finish();
+      await bridge.flushWork();
+
+      bridge.sendRequest(2, "turn/start", {
+        input: [{ type: "text", text: "Continue from the branched prefix" }],
+        providerThreadId: "claude-forked-restart",
+        threadId,
+      });
+      await bridge.waitForResponse(2);
+
+      expect(queries).toHaveLength(2);
+      expect(getLatestQueryOptions()).toMatchObject({
+        resume: "claude-forked-restart",
+      });
+      await expect(readNextPromptText(getLatestQueryCall())).resolves.toBe(
+        "Continue from the branched prefix",
+      );
+
+      bridge.sendRequest(3, "thread/stop", { threadId });
+      await bridge.flushWork();
+      queries[1]?.finish();
+      await bridge.waitForResponse(3);
+    } finally {
+      queries.forEach((query) => query.finish());
       bridge.restore();
     }
   });

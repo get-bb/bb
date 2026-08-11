@@ -46,7 +46,10 @@ import {
   type StopThreadTransaction,
   type UpdateQueuedMessageTransaction,
 } from "../cache-owners/thread-runtime-cache-owner";
-import { invalidateThreadBannerQueries } from "../cache-owners/mutation-cache-effects";
+import {
+  invalidateThreadBannerQueries,
+  invalidateThreadRewindQueries,
+} from "../cache-owners/mutation-cache-effects";
 
 interface CreateThreadQueuedMessageMutationRequest extends CreateQueuedMessageRequest {
   id: string;
@@ -517,6 +520,37 @@ export function useClearThreadGoal() {
     onSuccess: (_data, threadId) => {
       applyThreadGoalClearResult({ queryClient, threadId });
       invalidateThreadBannerQueries({ queryClient, threadId });
+    },
+  });
+}
+
+/**
+ * Restore a previous conversation branch after a rewind. The server keeps the
+ * compare-and-swap guard (expectedActiveBranchId), so a stale restore is
+ * rejected instead of racing a concurrent branch switch. After a successful
+ * restore the branch list and the timeline both refetch so boundary markers
+ * and the recovery banner settle on the newly active branch.
+ */
+export function useRestoreThreadRewindBranch() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    meta: { errorMessage: "Failed to restore conversation branch." },
+    mutationFn: async (input: {
+      branchId: string;
+      expectedActiveBranchId: string;
+      threadId: string;
+    }) =>
+      sdk.threads.rewind.restore({
+        branchId: input.branchId,
+        expectedActiveBranchId: input.expectedActiveBranchId,
+        threadId: input.threadId,
+      }),
+    onSuccess: (_data, input) => {
+      invalidateThreadRewindQueries({
+        queryClient,
+        threadId: input.threadId,
+      });
     },
   });
 }

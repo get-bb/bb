@@ -8,12 +8,14 @@ import {
   createThread,
   createConnection,
   createProject,
+  insertEvents,
   migrate,
   noopNotifier,
   upsertHost,
   type DbConnection,
   type MigrationWarningLogger,
 } from "../src/index.js";
+import { threadScope } from "@bb/domain";
 
 type InsertMigrationParameters = [string, number];
 type DeleteMigrationParameters = [number];
@@ -91,6 +93,30 @@ interface MigratedThreadProvenanceRow {
 interface MigratedThreadVisibilityRow {
   id: string;
   visibility: string;
+}
+
+interface BackfilledBranchRow {
+  cleanupStatus: string;
+  cutoffSequence: number;
+  id: string;
+  lifecycle: string;
+  parentBranchId: string | null;
+  providerId: string;
+  providerThreadId: string | null;
+}
+
+interface ActiveBranchPointerRow {
+  branchId: string;
+  threadId: string;
+}
+
+interface EventBranchStampRow {
+  branchId: string | null;
+  sequence: number;
+}
+
+interface SourceBranchRow {
+  branchId: string | null;
 }
 
 interface MigratedTerminalSessionRow {
@@ -343,6 +369,24 @@ function dropRewindAddedTables(db: DbConnection): void {
   db.$client.exec("DROP INDEX IF EXISTS `threads_origin_plugin_archived_idx`");
   db.$client.prepare("ALTER TABLE threads DROP COLUMN origin_plugin_id").run();
   dropProjectGitRemoteUrlColumn(db);
+  // Rewind the exact-conversation-rewind schema added by 0091 so forward
+  // replay can recreate it: branch lineage tables, checkpoint storage, the
+  // rollout metrics table, and the events.branch_id column/index.
+  db.$client.exec("DROP INDEX IF EXISTS `events_thread_branch_sequence_idx`");
+  const rewindEventColumns = new Set(
+    db.$client
+      .prepare<[], TableInfoRow>("PRAGMA table_info(events)")
+      .all()
+      .map((column) => column.name),
+  );
+  if (rewindEventColumns.has("branch_id")) {
+    db.$client.prepare("ALTER TABLE events DROP COLUMN branch_id").run();
+  }
+  db.$client.prepare("DROP TABLE IF EXISTS rewind_rollout_metrics").run();
+  db.$client.prepare("DROP TABLE IF EXISTS thread_source_branches").run();
+  db.$client.prepare("DROP TABLE IF EXISTS thread_active_branches").run();
+  db.$client.prepare("DROP TABLE IF EXISTS thread_rewind_checkpoints").run();
+  db.$client.prepare("DROP TABLE IF EXISTS thread_branches").run();
 }
 
 function requirePublishedMigrationWhen(tag: string): number {
@@ -3614,6 +3658,7 @@ describe("migrate", () => {
         "item_kind",
         "data",
         "created_at",
+        "branch_id",
       ]);
       const eventIndexNames = readIndexNames({
         db,
@@ -3624,6 +3669,7 @@ describe("migrate", () => {
         "events_completed_item_truncation_idx",
         "events_environment_idx",
         "events_goal_thread_sequence_idx",
+        "events_thread_branch_sequence_idx",
         "events_thread_sequence_idx",
         "events_thread_turn_type_item_sequence_idx",
         "events_thread_type_item_kind_sequence_idx",
@@ -4437,6 +4483,120 @@ describe("migrate", () => {
           { id: fork.id, visibility: "visible" },
         ].sort((left, right) => left.id.localeCompare(right.id)),
       );
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("0091 backfills deterministic root branches, active pointers, event stamps, and source provenance", () => {
+    const db = createConnection(":memory:");
+    try {
+      migrate(db);
+      const host = upsertHost(db, noopNotifier, {
+        id: "host-branch-lineage-backfill",
+        name: "Branch Lineage Host",
+        type: "persistent",
+      });
+      const { project } = createProject(db, noopNotifier, {
+        name: "Branch Lineage Project",
+        source: {
+          type: "local_path",
+          hostId: host.id,
+          path: "/tmp/branch-lineage-backfill",
+        },
+      });
+      const busy = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+      });
+      const forkChild = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+        originKind: "fork",
+        parentThreadId: busy.id,
+      });
+
+      insertEvents(db, noopNotifier, [
+        {
+          data: JSON.stringify({ seq: 1 }),
+          itemId: null,
+          itemKind: null,
+          scope: threadScope(),
+          threadId: busy.id,
+          type: "provider/error",
+          sequence: 1,
+        },
+        {
+          data: JSON.stringify({ seq: 3 }),
+          itemId: null,
+          itemKind: null,
+          scope: threadScope(),
+          threadId: busy.id,
+          type: "provider/error",
+          sequence: 3,
+          providerThreadId: "provider-busy-latest",
+        },
+      ]);
+      // Rewind only the 0091 branch-lineage migration (tables, event column,
+      // and journal row) while keeping the rest of the schema, so the forward
+      // replay runs the real backfill against a representative pre-branch DB.
+      dropRewindAddedTables(db);
+      db.$client
+        .prepare<DeleteMigrationParameters>(
+          "DELETE FROM __drizzle_migrations WHERE created_at >= ?",
+        )
+        .run(1786469890832);
+
+      migrate(db);
+
+      const backfilled = db.$client
+        .prepare<
+          [string],
+          BackfilledBranchRow
+        >(
+          `
+          SELECT id, thread_id AS threadId, parent_branch_id AS parentBranchId,
+                 cutoff_sequence AS cutoffSequence, provider_id AS providerId,
+                 provider_thread_id AS providerThreadId, lifecycle,
+                 cleanup_status AS cleanupStatus
+          FROM thread_branches
+          WHERE thread_id = ?
+          ORDER BY created_at, id
+        `,
+        )
+        .all(busy.id);
+      expect(backfilled).toHaveLength(1);
+      expect(backfilled[0]).toMatchObject({
+        cutoffSequence: 3,
+        lifecycle: "active",
+        parentBranchId: null,
+        providerId: "codex",
+        providerThreadId: "provider-busy-latest",
+      });
+
+      const pointer = db.$client
+        .prepare<[string], ActiveBranchPointerRow>(
+          "SELECT thread_id AS threadId, branch_id AS branchId FROM thread_active_branches WHERE thread_id = ?",
+        )
+        .get(busy.id);
+      expect(pointer?.branchId).toBe(backfilled[0]?.id);
+
+      const stamped = db.$client
+        .prepare<[string], EventBranchStampRow>(
+          "SELECT sequence, branch_id AS branchId FROM events WHERE thread_id = ? ORDER BY sequence",
+        )
+        .all(busy.id);
+      expect(stamped.every((row) => row.branchId === backfilled[0]?.id)).toBe(
+        true,
+      );
+
+      const sourceProvenance = db.$client
+        .prepare<[string], SourceBranchRow>(
+          "SELECT branch_id AS branchId FROM thread_source_branches WHERE thread_id = ?",
+        )
+        .get(forkChild.id);
+      expect(sourceProvenance?.branchId).toBe(backfilled[0]?.id);
+
     } finally {
       closeConnection(db);
     }

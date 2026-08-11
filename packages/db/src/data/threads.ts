@@ -42,6 +42,12 @@ import {
 } from "../schema.js";
 import { createThreadId } from "../ids.js";
 import {
+  createRootThreadBranchInTransaction,
+  getActiveThreadBranchId,
+  getThreadBranchIdAtOrBeforeSequence,
+  recordThreadSourceBranchInTransaction,
+} from "./thread-branches.js";
+import {
   createOrderKeyBetween,
 } from "./order-keys.js";
 
@@ -252,6 +258,10 @@ export interface CreateThreadInput {
   status?: ThreadStatus;
   parentThreadId?: string | null;
   sourceThreadId?: string | null;
+  /** Branch active in sourceThreadId when this child was created. */
+  sourceBranchId?: string | null;
+  /** Source timeline cutoff used to resolve the producing branch. */
+  sourceSequence?: number | null;
   originKind?: ThreadOriginKind | null;
   /** @deprecated Use originKind. */
   childOrigin?: ThreadChildOrigin | null;
@@ -271,6 +281,21 @@ export function createThread(
   const originKind = input.originKind ?? input.childOrigin ?? null;
   const thread = db.transaction(
     (tx) => {
+      const sourceThreadId =
+        input.sourceThreadId ??
+        (originKind === null ? null : (input.parentThreadId ?? null));
+      const sourceBranchId =
+        input.sourceBranchId !== undefined
+          ? input.sourceBranchId
+          : sourceThreadId === null
+            ? null
+            : input.sourceSequence !== undefined &&
+                input.sourceSequence !== null
+              ? getThreadBranchIdAtOrBeforeSequence(tx, {
+                  sequence: input.sourceSequence,
+                  threadId: sourceThreadId,
+                })
+              : getActiveThreadBranchId(tx, sourceThreadId);
       const createdThread = tx
         .insert(threads)
         .values({
@@ -283,10 +308,8 @@ export function createThread(
           sectionId: input.sectionId ?? null,
           status: input.status ?? "starting",
           parentThreadId:
-            originKind === null ? input.parentThreadId ?? null : null,
-          sourceThreadId:
-            input.sourceThreadId ??
-            (originKind === null ? null : input.parentThreadId ?? null),
+            originKind === null ? (input.parentThreadId ?? null) : null,
+          sourceThreadId,
           originKind,
           childOrigin: null,
           originPluginId: input.originPluginId ?? null,
@@ -298,6 +321,18 @@ export function createThread(
         })
         .returning()
         .get();
+      createRootThreadBranchInTransaction(tx, {
+        providerId: createdThread.providerId,
+        threadId: createdThread.id,
+        now,
+      });
+      if (sourceThreadId !== null) {
+        recordThreadSourceBranchInTransaction(tx, {
+          branchId: sourceBranchId,
+          threadId: createdThread.id,
+          now,
+        });
+      }
       upsertThreadTitleSearchSegments(tx, {
         threadId: createdThread.id,
         title: createdThread.title,
@@ -869,6 +904,30 @@ function listThreadSearchLimitedThreadRows(
       FROM thread_search_segments_fts
       JOIN thread_search_segments AS s ON s.rowid = thread_search_segments_fts.rowid
       WHERE thread_search_segments_fts MATCH ${matchQuery}
+        AND (
+          s.source_seq IS NULL
+          OR NOT EXISTS (
+            SELECT 1
+            FROM thread_active_branches AS legacy_active
+            WHERE legacy_active.thread_id = s.thread_id
+          )
+          OR NOT EXISTS (
+            SELECT 1
+            FROM events AS hidden_event
+            WHERE hidden_event.thread_id = s.thread_id
+              AND hidden_event.sequence = s.source_seq
+              AND NOT EXISTS (
+                SELECT 1
+                FROM active_branch_lineage AS active_lineage
+                WHERE active_lineage.thread_id = hidden_event.thread_id
+                  AND active_lineage.branch_id = hidden_event.branch_id
+                  AND (
+                    active_lineage.max_sequence IS NULL
+                    OR hidden_event.sequence <= active_lineage.max_sequence
+                  )
+              )
+          )
+        )
       GROUP BY s.thread_id
     `,
   );
@@ -877,7 +936,25 @@ function listThreadSearchLimitedThreadRows(
     : sql`t.archived_at IS NULL`;
 
   return db.all<ThreadSearchLimitedThreadRow>(sql`
-    WITH token_matches AS (
+    WITH RECURSIVE active_branch_lineage AS (
+      SELECT
+        active.thread_id,
+        active.branch_id,
+        NULL AS max_sequence
+      FROM thread_active_branches AS active
+      UNION ALL
+      SELECT
+        lineage.thread_id,
+        parent.id AS branch_id,
+        CASE
+          WHEN lineage.max_sequence IS NULL THEN child.cutoff_sequence
+          ELSE MIN(lineage.max_sequence, child.cutoff_sequence)
+        END AS max_sequence
+      FROM active_branch_lineage AS lineage
+      JOIN thread_branches AS child ON child.id = lineage.branch_id
+      JOIN thread_branches AS parent ON parent.id = child.parent_branch_id
+    ),
+    token_matches AS (
       ${sql.join(tokenMatchSelects, sql` UNION ALL `)}
     ),
     ranked_threads AS (
@@ -914,7 +991,25 @@ function listThreadSearchSegmentMatchRows(
   }
 
   return db.all<ThreadSearchSegmentMatchRow>(sql`
-    WITH ranked_thread_segments AS (
+    WITH RECURSIVE active_branch_lineage AS (
+      SELECT
+        active.thread_id,
+        active.branch_id,
+        NULL AS max_sequence
+      FROM thread_active_branches AS active
+      UNION ALL
+      SELECT
+        lineage.thread_id,
+        parent.id AS branch_id,
+        CASE
+          WHEN lineage.max_sequence IS NULL THEN child.cutoff_sequence
+          ELSE MIN(lineage.max_sequence, child.cutoff_sequence)
+        END AS max_sequence
+      FROM active_branch_lineage AS lineage
+      JOIN thread_branches AS child ON child.id = lineage.branch_id
+      JOIN thread_branches AS parent ON parent.id = child.parent_branch_id
+    ),
+    ranked_thread_segments AS (
       SELECT
         ROW_NUMBER() OVER (
           PARTITION BY thread_search_segments.thread_id
@@ -932,6 +1027,30 @@ function listThreadSearchSegmentMatchRows(
         ON thread_search_segments.rowid = thread_search_segments_fts.rowid
       WHERE thread_search_segments_fts MATCH ${args.matchQuery}
         AND ${inArray(threadSearchSegments.threadId, [...args.threadIds])}
+        AND (
+          thread_search_segments.source_seq IS NULL
+          OR NOT EXISTS (
+            SELECT 1
+            FROM thread_active_branches AS legacy_active
+            WHERE legacy_active.thread_id = thread_search_segments.thread_id
+          )
+          OR NOT EXISTS (
+            SELECT 1
+            FROM events AS hidden_event
+            WHERE hidden_event.thread_id = thread_search_segments.thread_id
+              AND hidden_event.sequence = thread_search_segments.source_seq
+              AND NOT EXISTS (
+                SELECT 1
+                FROM active_branch_lineage AS active_lineage
+                WHERE active_lineage.thread_id = hidden_event.thread_id
+                  AND active_lineage.branch_id = hidden_event.branch_id
+                  AND (
+                    active_lineage.max_sequence IS NULL
+                    OR hidden_event.sequence <= active_lineage.max_sequence
+                  )
+              )
+          )
+        )
     )
     SELECT
       segmentOrder,

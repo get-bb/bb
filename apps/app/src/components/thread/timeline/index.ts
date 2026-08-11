@@ -31,6 +31,8 @@ export {
 } from "./ThreadContextWindowIndicator.js";
 export type {
   ThreadTimelineForkMessageHandler,
+  ThreadTimelineRewindMessageHandler,
+  ThreadTimelineRewindMessageTarget,
   ThreadTimelineAddToChatHandler,
   ThreadTimelineSendToMainMessageHandler,
   ThreadTimelineSendToMainMessageTarget,
