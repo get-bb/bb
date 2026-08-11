@@ -1543,7 +1543,7 @@ export function ThreadDetailPromptArea({
 
   const bottomContent =
     activePendingInteraction && !shouldHideComposer ? (
-      <div className="space-y-2">
+      <div className="grid gap-2">
         {activePromptMode ? activePromptModeCard : null}
         {goal ? activeGoalCard : null}
         <PluginComposerHostProvider value={normalPluginComposerHost}>

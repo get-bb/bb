@@ -310,7 +310,7 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
       <PluginComposerViewProvider value={composerView}>
         <PluginComposerHostProvider value={pluginComposerHost ?? null}>
           {modeConfig.banner || pluginComposerHost ? (
-            <div className="mb-2 space-y-2">
+            <div className="mb-2 grid gap-2">
               {modeConfig.banner}
               {pluginComposerHost ? <PluginComposerBanners /> : null}
             </div>
