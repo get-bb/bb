@@ -664,7 +664,6 @@ function buildPromptAreaElement({
       goal={goal}
       modelFallback={modelFallback}
       isEnvironmentActionPending={false}
-      isSentMessageEditExperimentEnabled
       onChangedFileClick={vi.fn()}
       openThreadDiffPanel={vi.fn()}
       parentThreadSection={null}
@@ -752,7 +751,6 @@ describe("ThreadDetailPromptArea", () => {
           mentions: [],
           attachments: [],
         },
-        expectedRequestSequence: 42,
         hostElement,
         isSubmitting: false,
         operationId: "edit-operation-1",
@@ -817,7 +815,6 @@ describe("ThreadDetailPromptArea", () => {
         supportsServiceTier: false,
         executionInputSources: {},
       },
-      expectedRequestSequence: 42,
       input: [{ type: "text", text: "Edited request", mentions: [] }],
     });
     expect(mocks.promptDraft.clearIfCurrentMatches).not.toHaveBeenCalled();
@@ -848,7 +845,6 @@ describe("ThreadDetailPromptArea", () => {
     renderPromptArea({
       sentMessageEdit: {
         draft: { text: "Edited request", mentions: [], attachments: [] },
-        expectedRequestSequence: 42,
         hostElement,
         isSubmitting: false,
         operationId: "edit-operation-1",

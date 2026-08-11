@@ -117,14 +117,12 @@ const ignorePromptBannerFileClick = () => {};
 
 export interface ThreadDetailSentMessageEdit {
   draft: PromptDraftState;
-  expectedRequestSequence: number;
   hostElement: HTMLDivElement | null;
   isSubmitting: boolean;
   operationId: string;
   onCancel: () => void;
   onSubmit: (target: {
     execution: FollowUpExecutionSelection;
-    expectedRequestSequence: number;
     input: PromptInput[];
   }) => void;
   updateDraft: (
@@ -209,7 +207,6 @@ interface ThreadDetailPromptAreaProps {
   sendMessage: SendMessageMutationLike;
   /** Present only while a sent-message editor is mounted in the timeline. */
   sentMessageEdit?: ThreadDetailSentMessageEdit;
-  isSentMessageEditExperimentEnabled: boolean;
   steerActiveThreadOnEnter: boolean;
   /**
    * Bumped by the timeline host each time a quote is appended to the shared
@@ -256,7 +253,6 @@ export function ThreadDetailPromptArea({
   pullRequest,
   sendMessage,
   sentMessageEdit,
-  isSentMessageEditExperimentEnabled,
   steerActiveThreadOnEnter,
   composerFocusRequestNonce,
   thread,
@@ -399,10 +395,11 @@ export function ThreadDetailPromptArea({
   const queuedComposerTextEffects = useComposerTextEffects(
     queuedComposerTextEffectKey,
   );
+  const sentMessageComposerTextEffectKey = sentMessageEdit
+    ? `sent-message:${thread.id}:${sentMessageEdit.operationId}`
+    : null;
   const sentMessageComposerTextEffects = useComposerTextEffects(
-    sentMessageEdit
-      ? `sent-message:${thread.id}:${sentMessageEdit.operationId}`
-      : null,
+    sentMessageComposerTextEffectKey,
   );
   const [expandedBannerSection, setExpandedBannerSection] =
     useState<ThreadPromptContextBannerExpandedSection | null>(null);
@@ -685,11 +682,13 @@ export function ThreadDetailPromptArea({
   );
   const sentMessagePluginComposerHost =
     useMemo<PluginComposerHost | null>(() => {
-      if (!sentMessageEdit) return null;
+      if (!sentMessageEdit || sentMessageComposerTextEffectKey === null) {
+        return null;
+      }
       const { draft, operationId } = sentMessageEdit;
       return {
         scope: { kind: "thread", threadId: thread.id },
-        textEffectKey: `sent-message:${thread.id}:${operationId}`,
+        textEffectKey: sentMessageComposerTextEffectKey,
         draft,
         getCurrent: () => {
           const current = sentMessageEditRef.current;
@@ -703,7 +702,12 @@ export function ThreadDetailPromptArea({
         },
         focus: focusInlinePluginComposer,
       };
-    }, [focusInlinePluginComposer, sentMessageEdit, thread.id]);
+    }, [
+      focusInlinePluginComposer,
+      sentMessageComposerTextEffectKey,
+      sentMessageEdit,
+      thread.id,
+    ]);
   usePublishPluginComposerHost(
     queuedPluginComposerHost ?? normalPluginComposerHost,
   );
@@ -1053,7 +1057,6 @@ export function ThreadDetailPromptArea({
     !isFollowUpSubmitting &&
     !isQueueMutationPending &&
     !sentMessageEdit.isSubmitting &&
-    isSentMessageEditExperimentEnabled &&
     queuedMessages.length === 0 &&
     activeBackgroundAgentCount === 0 &&
     activeWorkflows.length === 0 &&
@@ -1090,7 +1093,6 @@ export function ThreadDetailPromptArea({
     }
     sentMessageEdit.onSubmit({
       execution: followUpExecutionSelection,
-      expectedRequestSequence: sentMessageEdit.expectedRequestSequence,
       input: sentMessageEditInput,
     });
   }, [
@@ -1418,7 +1420,7 @@ export function ThreadDetailPromptArea({
         variant="cap"
       >
         <FollowUpPromptBox
-          id={`${THREAD_DETAIL_COMPOSER_TEXTAREA_ID}-sent-${sentMessageEdit.expectedRequestSequence}`}
+          id={`${THREAD_DETAIL_COMPOSER_TEXTAREA_ID}-sent-${sentMessageEdit.operationId}`}
           attachments={sentMessageAttachmentsConfig}
           stack={null}
           composer={sentMessageComposerConfig}
@@ -1589,51 +1591,40 @@ export function ThreadDetailPromptArea({
     ],
   );
 
-  if (activePendingInteraction && !shouldHideComposer) {
-    const pendingInteractionComposer = isPluginPendingInteraction(
-      activePendingInteraction,
-    ) ? (
-      <PluginPendingInteractionComposer
-        interaction={activePendingInteraction}
-      />
+  const bottomContent =
+    activePendingInteraction && !shouldHideComposer ? (
+      <div className="space-y-2">
+        {activePromptMode ? activePromptModeCard : null}
+        {goal ? activeGoalCard : null}
+        <PluginComposerHostProvider value={normalPluginComposerHost}>
+          <PluginComposerBanners
+            view={{
+              scope: normalPluginComposerHost.scope,
+              layout: "expanded",
+              draft: {
+                text: normalPluginComposerHost.draft.text,
+                isEmpty:
+                  normalPluginComposerHost.draft.text.trim().length === 0 &&
+                  normalPluginComposerHost.draft.attachments.length === 0,
+                attachmentCount:
+                  normalPluginComposerHost.draft.attachments.length,
+              },
+              run: { isRunning: false, isSubmitting: false },
+            }}
+          />
+        </PluginComposerHostProvider>
+        {isPluginPendingInteraction(activePendingInteraction) ? (
+          <PluginPendingInteractionComposer
+            interaction={activePendingInteraction}
+          />
+        ) : (
+          <ThreadPendingInteractionBanner
+            interaction={activePendingInteraction}
+            threadId={thread.id}
+          />
+        )}
+      </div>
     ) : (
-      <ThreadPendingInteractionBanner
-        interaction={activePendingInteraction}
-        threadId={thread.id}
-      />
-    );
-    return (
-      <>
-        {sentMessageEditorPortal}
-        <div className="space-y-2">
-          {activePromptMode ? activePromptModeCard : null}
-          {goal ? activeGoalCard : null}
-          <PluginComposerHostProvider value={normalPluginComposerHost}>
-            <PluginComposerBanners
-              view={{
-                scope: normalPluginComposerHost.scope,
-                layout: "expanded",
-                draft: {
-                  text: normalPluginComposerHost.draft.text,
-                  isEmpty:
-                    normalPluginComposerHost.draft.text.trim().length === 0 &&
-                    normalPluginComposerHost.draft.attachments.length === 0,
-                  attachmentCount:
-                    normalPluginComposerHost.draft.attachments.length,
-                },
-                run: { isRunning: false, isSubmitting: false },
-              }}
-            />
-          </PluginComposerHostProvider>
-          {pendingInteractionComposer}
-        </div>
-      </>
-    );
-  }
-
-  return (
-    <>
-      {sentMessageEditorPortal}
       <FollowUpPromptBox
         id={THREAD_DETAIL_COMPOSER_TEXTAREA_ID}
         attachments={bottomAttachmentsConfig}
@@ -1652,6 +1643,12 @@ export function ThreadDetailPromptArea({
         typeahead={typeaheadConfig}
         promptActions={promptActions}
       />
+    );
+
+  return (
+    <>
+      {sentMessageEditorPortal}
+      {bottomContent}
     </>
   );
 }

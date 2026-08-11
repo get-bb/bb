@@ -74,12 +74,12 @@ export interface SendThreadMessageArgs {
   environment: Environment;
   /**
    * Internal edit-message path. Presence forces a new provider session;
-   * a string forks from a staged provider session and null starts fresh.
+   * a string forks from a staged provider session and null starts fresh
+   * (which also makes the request a thread-start rather than a new turn).
    */
   historyReplacement?: {
     forkSourceProviderThreadId: string | null;
     onCommandSettled?: () => void | Promise<void>;
-    requestTargetKind: "new-turn" | "thread-start";
   };
   payload: SendThreadMessagePayload;
   thread: Thread;
@@ -500,7 +500,11 @@ export async function sendThreadMessage(
   let target: TurnRequestTarget;
   if (mode === "start") {
     target = {
-      kind: args.historyReplacement?.requestTargetKind ?? "new-turn",
+      kind:
+        args.historyReplacement !== undefined &&
+        args.historyReplacement.forkSourceProviderThreadId === null
+          ? "thread-start"
+          : "new-turn",
     };
   } else {
     target = {

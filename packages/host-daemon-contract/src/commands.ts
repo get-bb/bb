@@ -1367,9 +1367,6 @@ const knownAcpAgentsStatusResultSchema = z
 const threadStartResultSchema = z.object({
   providerThreadId: z.string().min(1),
 });
-const threadRewindPrepareResultSchema = z
-  .object({ providerThreadId: z.string().min(1) })
-  .strict();
 const turnSubmitResultSchema = z.object({
   appliedAs: z.enum(["new-turn", "steer"]),
 });
@@ -1591,7 +1588,7 @@ export const hostDaemonCommandRegistry = {
   "thread.rewind.prepare": defineHostDaemonCommandDescriptor({
     type: "thread.rewind.prepare",
     schema: threadRewindPrepareCommandSchema,
-    resultSchema: threadRewindPrepareResultSchema,
+    resultSchema: threadStartResultSchema,
     transport: "settled",
     retryable: false,
     flushEventsBeforeResult: true,

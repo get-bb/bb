@@ -371,7 +371,7 @@ export function registerActionsCommands(
     .option("--self", "Target the current thread (from BB_THREAD_ID)")
     .option(
       "--expected-request-sequence <sequence>",
-      "Fail if the editable message no longer has this event sequence",
+      "Edit the message at this event sequence (default: the latest editable message)",
     )
     .option("--json", "Print machine-readable JSON output")
     .action(
@@ -382,41 +382,34 @@ export function registerActionsCommands(
         ) => {
           const threadId = requireThreadIdOrSelf(id, opts);
           const sdk = createCliBbSdk(getUrl());
-          const requestedSequence =
+          const expectedRequestSequence =
             opts.expectedRequestSequence === undefined
               ? undefined
               : Number(opts.expectedRequestSequence);
           if (
-            requestedSequence !== undefined &&
-            (!Number.isInteger(requestedSequence) || requestedSequence < 0)
+            expectedRequestSequence !== undefined &&
+            (!Number.isInteger(expectedRequestSequence) ||
+              expectedRequestSequence < 0)
           ) {
             throw new Error(
               "--expected-request-sequence must be a non-negative integer.",
             );
           }
-          const expectedRequestSequence =
-            requestedSequence ??
-            (await sdk.threads.getLatestMessageEdit({ threadId }))
-              .expectedRequestSequence;
           const senderThreadId = resolveSenderThreadId(threadId);
           const result = await sdk.threads.editMessage({
             threadId,
             operationId: randomUUID(),
-            expectedRequestSequence,
+            ...(expectedRequestSequence !== undefined
+              ? { expectedRequestSequence }
+              : {}),
             input: buildPromptInputs({ message: opts.message }),
             ...(senderThreadId !== undefined ? { senderThreadId } : {}),
           });
-          if (
-            outputJson(opts, {
-              threadId,
-              replacedRequestSequence: expectedRequestSequence,
-              ...result,
-            })
-          ) {
+          if (outputJson(opts, { threadId, ...result })) {
             return;
           }
           console.log(
-            `Thread ${threadId} message at request sequence ${expectedRequestSequence} replaced; workspace changes were kept`,
+            `Thread ${threadId} message replaced; workspace changes were kept`,
           );
         },
       ),

@@ -16,10 +16,7 @@ import {
   type PromptInput,
 } from "@bb/domain";
 import { describe, expect, it, vi } from "vitest";
-import {
-  editThreadMessage,
-  getLatestThreadMessageEdit,
-} from "../../src/services/threads/thread-edit-message.js";
+import { editThreadMessage } from "../../src/services/threads/thread-edit-message.js";
 import {
   listQueuedThreadCommands,
   reportQueuedCommandError,
@@ -304,9 +301,9 @@ describe("editThreadMessage", () => {
     });
   });
 
-  it("resolves the latest user message when a later turn was agent-initiated", async () => {
+  it("targets the latest user message when expectedRequestSequence is omitted, skipping agent turns", async () => {
     await withTestHarness(async (harness) => {
-      const { thread } = seedEditableThread(harness);
+      const { environment, thread } = seedEditableThread(harness);
       seedCompletedTurn(harness, {
         initiator: "agent",
         providerCheckpointId: "checkpoint-agent",
@@ -318,8 +315,34 @@ describe("editThreadMessage", () => {
         turnId: "turn-agent",
       });
 
-      expect(getLatestThreadMessageEdit(harness.deps, thread)).toMatchObject({
-        expectedRequestSequence: 7,
+      const editPromise = editThreadMessage(harness.deps, {
+        environment,
+        thread,
+        payload: {
+          operationId: "edit-op-latest",
+          input: [{ type: "text", text: "Replacement", mentions: [] }],
+        },
+      });
+      const rewind = await waitForQueuedCommand(
+        harness,
+        (queued) => queued.command.type === "thread.rewind.prepare",
+      );
+      expect(rewind.command).toMatchObject({
+        retainThroughProviderCheckpoint: "turn-first",
+      });
+      if (rewind.command.type !== "thread.rewind.prepare") {
+        throw new Error("Expected a thread.rewind.prepare command");
+      }
+      await reportQueuedCommandSuccess(harness, rewind, {
+        providerThreadId: "provider-staged-rewind",
+      });
+      await expect(editPromise).resolves.toMatchObject({ ok: true });
+
+      const marker = listEvents(harness.db, { threadId: thread.id }).find(
+        (event) => event.type === "system/operation",
+      );
+      expect(JSON.parse(marker?.data ?? "null")).toMatchObject({
+        metadata: { cutoffSequence: 7 },
       });
     });
   });
@@ -432,17 +455,6 @@ describe("editThreadMessage", () => {
   it("keeps history intact until the staged Codex rewind succeeds, then replaces the suffix", async () => {
     await withTestHarness(async (harness) => {
       const { environment, thread } = seedEditableThread(harness);
-      expect(getLatestThreadMessageEdit(harness.deps, thread)).toEqual({
-        expectedRequestSequence: 7,
-        input: [
-          {
-            type: "text",
-            text: "Original last message",
-            mentions: [],
-          },
-        ],
-      });
-
       const payload = {
         operationId: "edit-op-success",
         expectedRequestSequence: 7,
@@ -693,7 +705,7 @@ describe("editThreadMessage", () => {
     });
   });
 
-  it("falls back to the latest eligible message and rejects grouped requests", async () => {
+  it("rejects grouped requests", async () => {
     await withTestHarness(async (harness) => {
       const { environment, thread } = seedEditableThread(harness);
       seedCompletedTurn(harness, {
@@ -709,9 +721,6 @@ describe("editThreadMessage", () => {
         turnId: "turn-grouped",
       });
 
-      expect(getLatestThreadMessageEdit(harness.deps, thread)).toMatchObject({
-        expectedRequestSequence: 7,
-      });
       await expect(
         editThreadMessage(harness.deps, {
           environment,
@@ -728,7 +737,7 @@ describe("editThreadMessage", () => {
 
   it("finds an eligible message beyond one bounded candidate page", async () => {
     await withTestHarness(async (harness) => {
-      const { thread } = seedEditableThread(harness);
+      const { environment, thread } = seedEditableThread(harness);
       for (let index = 0; index < 26; index += 1) {
         const requestSequence = 12 + index * 5;
         seedCompletedTurn(harness, {
@@ -745,13 +754,34 @@ describe("editThreadMessage", () => {
         });
       }
 
-      expect(getLatestThreadMessageEdit(harness.deps, thread)).toMatchObject({
-        expectedRequestSequence: 7,
+      const editPromise = editThreadMessage(harness.deps, {
+        environment,
+        thread,
+        payload: {
+          operationId: "edit-op-paginated",
+          input: [{ type: "text", text: "Replacement", mentions: [] }],
+        },
       });
+      const rejectedEdit =
+        expect(editPromise).rejects.toThrow("Codex fork failed");
+      const rewind = await waitForQueuedCommand(
+        harness,
+        (queued) => queued.command.type === "thread.rewind.prepare",
+      );
+      // Resolving past 26 ineligible grouped candidates lands on sequence 7,
+      // whose preceding root turn is turn-first.
+      expect(rewind.command).toMatchObject({
+        retainThroughProviderCheckpoint: "turn-first",
+      });
+      await reportQueuedCommandError(harness, rewind, {
+        errorCode: "provider_error",
+        errorMessage: "Codex fork failed",
+      });
+      await rejectedEdit;
     });
   });
 
-  it("falls back past an unsuccessful turn and rejects it explicitly", async () => {
+  it("rejects editing a turn that did not complete successfully", async () => {
     await withTestHarness(async (harness) => {
       const { environment, thread } = seedEditableThread(harness);
       seedCompletedTurn(harness, {
@@ -764,9 +794,6 @@ describe("editThreadMessage", () => {
         turnId: "turn-failed",
       });
 
-      expect(getLatestThreadMessageEdit(harness.deps, thread)).toMatchObject({
-        expectedRequestSequence: 7,
-      });
       await expect(
         editThreadMessage(harness.deps, {
           environment,
@@ -987,24 +1014,18 @@ describe("editThreadMessage", () => {
 
       await rejectedEdit;
       expect(listEvents(harness.db, { threadId: thread.id })).toHaveLength(11);
-      expect(getLatestThreadMessageEdit(harness.deps, thread)).toMatchObject({
-        expectedRequestSequence: 7,
-      });
       expect(
         listQueuedThreadCommands(harness, "thread.start", thread.id),
       ).toHaveLength(0);
     });
   });
 
-  it("rejects reads and mutations while the experiment is disabled", async () => {
+  it("rejects mutations while the experiment is disabled", async () => {
     await withTestHarness(async (harness) => {
       const { environment, thread } = seedEditableThread(harness, {
         editMessagesExperiment: false,
       });
 
-      expect(() => getLatestThreadMessageEdit(harness.deps, thread)).toThrow(
-        "Enable the Edit messages experiment",
-      );
       await expect(
         editThreadMessage(harness.deps, {
           environment,

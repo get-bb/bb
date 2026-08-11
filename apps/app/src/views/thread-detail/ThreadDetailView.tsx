@@ -123,10 +123,6 @@ import {
   type ThreadDetailSentMessageEdit,
 } from "./ThreadDetailPromptArea";
 import {
-  canStartSentMessageEdit,
-  shouldDiscardSentMessageEdit,
-} from "./sentMessageEdit";
-import {
   type ContextBannerMergeBaseConfig,
   isThreadDisplayStatusBannerActive,
   type ThreadPromptParentThreadSection,
@@ -963,27 +959,27 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     sentMessageEditSession?.threadId === thread?.id
       ? sentMessageEditSession
       : null;
+  // Client-side affordance policy for the UX prototype. The eventual mutation
+  // must repeat the full eligibility check on the server before changing state.
   const canEditSentMessages =
     thread !== undefined &&
-    canStartSentMessageEdit({
-      activeBackgroundAgentCount: thread.activeBackgroundAgentCount,
-      activeBackgroundCommandCount: activeBackgroundCommands.length,
-      activeWorkflowCount: activeWorkflows.length,
-      archivedAt: thread.archivedAt,
-      deletedAt: thread.deletedAt,
-      hasPendingInteraction,
-      isExperimentEnabled:
-        systemConfigQuery.data?.experiments.editMessages ?? false,
-      isEditSessionActive: sentMessageEditSession !== null,
-      isMutationPending:
-        sendMessage.isPending ||
-        createQueuedMessage.isPending ||
-        editMessage.isPending,
-      isTimelinePending: timelineLoading && timelineRows.length === 0,
-      queuedMessageCount: queuedMessagesForEditEligibility.length,
-      providerId: thread.providerId,
-      runtimeDisplayStatus: thread.runtime.displayStatus,
-    });
+    (systemConfigQuery.data?.experiments.editMessages ?? false) &&
+    (thread.providerId === "claude-code" ||
+      thread.providerId === "codex" ||
+      thread.providerId === "pi") &&
+    thread.runtime.displayStatus === "idle" &&
+    thread.archivedAt === null &&
+    thread.deletedAt === null &&
+    !hasPendingInteraction &&
+    sentMessageEditSession === null &&
+    !sendMessage.isPending &&
+    !createQueuedMessage.isPending &&
+    !editMessage.isPending &&
+    !(timelineLoading && timelineRows.length === 0) &&
+    queuedMessagesForEditEligibility.length === 0 &&
+    activeWorkflows.length === 0 &&
+    thread.activeBackgroundAgentCount === 0 &&
+    activeBackgroundCommands.length === 0;
   const sentMessageEditEntryRef = useRef({ canEditSentMessages, thread });
   sentMessageEditEntryRef.current = { canEditSentMessages, thread };
   const handleEditSentMessage = useCallback<ThreadTimelineEditMessageHandler>(
@@ -1013,12 +1009,11 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     sentMessageEditTargetMessageId !== null
       ? hasTimelineRowId(timelineRows, sentMessageEditTargetMessageId)
       : true;
-  const shouldDiscardMissingSentMessageEdit = shouldDiscardSentMessageEdit({
-    currentThreadId,
-    editThreadId: sentMessageEditThreadId,
-    isTimelineLoading: timelineLoading,
-    targetStillPresent: sentMessageEditTargetStillPresent,
-  });
+  const shouldDiscardMissingSentMessageEdit =
+    sentMessageEditThreadId !== null &&
+    sentMessageEditThreadId === currentThreadId &&
+    !timelineLoading &&
+    !sentMessageEditTargetStillPresent;
   useEffect(() => {
     if (!shouldDiscardMissingSentMessageEdit) {
       return;
@@ -1067,11 +1062,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     ThreadDetailSentMessageEdit["onSubmit"]
   >(
     (target) => {
-      if (
-        !activeSentMessageEditSession ||
-        target.expectedRequestSequence !==
-          activeSentMessageEditSession.target.expectedRequestSequence
-      ) {
+      if (!activeSentMessageEditSession) {
         return;
       }
       const session = activeSentMessageEditSession;
@@ -1080,7 +1071,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
         .mutateAsync({
           id: session.threadId,
           operationId: session.operationId,
-          expectedRequestSequence: target.expectedRequestSequence,
+          expectedRequestSequence: session.target.expectedRequestSequence,
           input: target.input,
           ...(execution
             ? {
@@ -1095,9 +1086,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
             : {}),
         })
         .then(() => {
-          setSentMessageEditSession((current) =>
-            current?.operationId === session.operationId ? null : current,
-          );
+          finishCancelSentMessageEdit(session.operationId);
         })
         .catch((error) => {
           appToast.error(
@@ -1109,40 +1098,27 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
           );
         });
     },
-    [activeSentMessageEditSession, editMessage],
+    [activeSentMessageEditSession, editMessage, finishCancelSentMessageEdit],
   );
-  const handleSentMessageEditHostElementChange = useCallback(
-    (element: HTMLDivElement | null) => {
-      setSentMessageEditHostElement(element);
-    },
-    [],
-  );
-  const sentMessageEditRequestSequence =
-    activeSentMessageEditSession?.target.expectedRequestSequence ?? null;
+  const activeSentMessageEditTargetMessageId =
+    activeSentMessageEditSession?.target.messageId ?? null;
   const inlineMessageEditor = useMemo<
     ThreadTimelineInlineMessageEditor | undefined
   >(
     () =>
-      sentMessageEditRequestSequence !== null &&
-      sentMessageEditTargetMessageId !== null
+      activeSentMessageEditTargetMessageId !== null
         ? {
-            messageId: sentMessageEditTargetMessageId,
-            onHostElementChange: handleSentMessageEditHostElementChange,
+            messageId: activeSentMessageEditTargetMessageId,
+            onHostElementChange: setSentMessageEditHostElement,
           }
         : undefined,
-    [
-      handleSentMessageEditHostElementChange,
-      sentMessageEditRequestSequence,
-      sentMessageEditTargetMessageId,
-    ],
+    [activeSentMessageEditTargetMessageId],
   );
   const sentMessageEdit = useMemo<ThreadDetailSentMessageEdit | undefined>(
     () =>
       activeSentMessageEditSession
         ? {
             draft: activeSentMessageEditSession.draft,
-            expectedRequestSequence:
-              activeSentMessageEditSession.target.expectedRequestSequence,
             hostElement: sentMessageEditHostElement,
             isSubmitting: editMessage.isPending,
             operationId: activeSentMessageEditSession.operationId,
@@ -2648,9 +2624,6 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       composerFocusRequestNonce={composerFocusRequestNonce}
       sendMessage={sendMessage}
       sentMessageEdit={sentMessageEdit}
-      isSentMessageEditExperimentEnabled={
-        systemConfigQuery.data?.experiments.editMessages ?? false
-      }
       steerActiveThreadOnEnter={
         systemConfigQuery.data?.generalSettings.steerActiveThreadOnEnter ??
         defaultAppSettings.steerActiveThreadOnEnter

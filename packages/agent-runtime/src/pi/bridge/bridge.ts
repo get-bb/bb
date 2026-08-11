@@ -800,14 +800,18 @@ async function handleThreadFork(
   });
 
   const bridgeSessionDir = resolvePiBridgeSessionDir({ env: process.env });
-  const forked =
-    params.providerCheckpointId === undefined
-      ? SessionManager.forkFrom(sourceSessionFile, params.cwd, bridgeSessionDir)
-      : SessionManager.open(sourceSessionFile, bridgeSessionDir, params.cwd);
   const forkedFile =
     params.providerCheckpointId === undefined
-      ? forked.getSessionFile()
-      : forked.createBranchedSession(params.providerCheckpointId);
+      ? SessionManager.forkFrom(
+          sourceSessionFile,
+          params.cwd,
+          bridgeSessionDir,
+        ).getSessionFile()
+      : SessionManager.open(
+          sourceSessionFile,
+          bridgeSessionDir,
+          params.cwd,
+        ).createBranchedSession(params.providerCheckpointId);
   if (!forkedFile) {
     sendError(id, -32000, "Cannot fork: forked pi session was not persisted");
     return;

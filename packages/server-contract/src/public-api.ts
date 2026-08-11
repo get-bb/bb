@@ -62,7 +62,6 @@ import type {
   CreateThreadRequest,
   EditMessageRequest,
   EditMessageResponse,
-  LatestMessageEditResponse,
   ForkThreadRequest,
   RestartTerminalRequest,
   DeleteThreadSectionRequest,
@@ -1003,12 +1002,6 @@ export const publicApiRoutes = {
         editMessageRequestSchema,
       ),
       response: jsonResponse<EditMessageResponse>(),
-    }),
-    latestMessageEdit: defineRoute({
-      path: "/threads/:id/latest-message-edit",
-      method: "get",
-      request: noRequest<PathId>(),
-      response: jsonResponse<LatestMessageEditResponse>(),
     }),
     /** @deprecated App code uses dedicated composer queries. */
     composerBootstrap: defineRoute({

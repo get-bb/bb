@@ -25,11 +25,6 @@ export interface UseComposerAttachmentUploadsResult {
   isAttachingInlineFiles: boolean;
 }
 
-interface AttachmentOperationState {
-  error: string | null;
-  pendingCount: number;
-}
-
 export interface DraftAttachmentUploadTarget {
   /** Changes whenever a newly mounted draft must not receive older uploads. */
   key: string;
@@ -48,12 +43,10 @@ export interface UseDraftAttachmentUploadsResult {
   isAttachingFiles: boolean;
 }
 
-interface DraftAttachmentOperationState extends AttachmentOperationState {
+interface DraftAttachmentOperationState {
+  error: string | null;
+  pendingCount: number;
   targetKey: string | null;
-}
-
-interface InlineAttachmentOperationState extends AttachmentOperationState {
-  editSessionId: number | null;
 }
 
 /** Upload state for one independently mounted composer draft. */
@@ -151,7 +144,6 @@ export function useComposerAttachmentUploads({
   inlineEditingQueuedMessageRef,
   commitInlineQueuedMessage,
 }: UseComposerAttachmentUploadsArgs): UseComposerAttachmentUploadsResult {
-  const uploadPromptAttachment = useUploadPromptAttachment();
   const {
     attachmentError: bottomAttachmentError,
     setAttachmentError: setBottomAttachmentError,
@@ -161,110 +153,59 @@ export function useComposerAttachmentUploads({
     projectId,
     target: { key: "bottom", addAttachment: addDraftAttachment },
   });
-  const [inlineOperation, setInlineOperation] =
-    useState<InlineAttachmentOperationState>({
-      editSessionId: null,
-      error: null,
-      pendingCount: 0,
-    });
-
-  const setInlineAttachmentError = useCallback(
-    (error: string | null) => {
-      const editSessionId = inlineEditingQueuedMessage?.editSessionId ?? null;
-      setInlineOperation((current) => ({
-        editSessionId,
-        error,
-        pendingCount:
-          current.editSessionId === editSessionId ? current.pendingCount : 0,
-      }));
-    },
-    [inlineEditingQueuedMessage?.editSessionId],
-  );
-
-  const handleAttachInlineFiles = useCallback(
-    async (files: File[]) => {
-      if (!inlineEditingQueuedMessage || files.length === 0) return;
-      const { editSessionId, ownerThreadId, queuedMessageId } =
-        inlineEditingQueuedMessage;
-      setInlineOperation((current) => ({
-        editSessionId,
-        error: null,
-        pendingCount:
-          current.editSessionId === editSessionId
-            ? current.pendingCount + 1
-            : 1,
-      }));
-      const failedFiles: string[] = [];
-      try {
-        for (const file of files) {
-          try {
-            const uploaded = await uploadPromptAttachment.mutateAsync({
-              projectId,
-              file,
-            });
-            const current = inlineEditingQueuedMessageRef.current;
-            if (
-              current?.editSessionId === editSessionId &&
-              current.ownerThreadId === ownerThreadId &&
-              current.queuedMessageId === queuedMessageId &&
-              !current.draft.attachments.some(
-                (existing) => existing.path === uploaded.path,
-              )
-            ) {
-              commitInlineQueuedMessage({
-                ...current,
-                draft: {
-                  ...current.draft,
-                  attachments: [...current.draft.attachments, uploaded],
-                },
-              });
-            }
-          } catch {
-            failedFiles.push(file.name);
-          }
-        }
-      } finally {
-        setInlineOperation((current) =>
-          current.editSessionId === editSessionId
-            ? {
-                editSessionId,
-                error:
-                  failedFiles.length > 0 &&
-                  inlineEditingQueuedMessageRef.current?.editSessionId ===
-                    editSessionId
-                    ? `Failed to attach: ${failedFiles.join(", ")}`
-                    : current.error,
-                pendingCount: Math.max(0, current.pendingCount - 1),
-              }
-            : current,
-        );
+  const inlineEditSessionId = inlineEditingQueuedMessage?.editSessionId ?? null;
+  const addInlineAttachment = useCallback(
+    (uploaded: PromptDraftAttachment) => {
+      const current = inlineEditingQueuedMessageRef.current;
+      if (
+        current === null ||
+        current.editSessionId !== inlineEditSessionId ||
+        current.draft.attachments.some(
+          (existing) => existing.path === uploaded.path,
+        )
+      ) {
+        return;
       }
+      commitInlineQueuedMessage({
+        ...current,
+        draft: {
+          ...current.draft,
+          attachments: [...current.draft.attachments, uploaded],
+        },
+      });
     },
     [
       commitInlineQueuedMessage,
-      inlineEditingQueuedMessage,
+      inlineEditSessionId,
       inlineEditingQueuedMessageRef,
-      projectId,
-      uploadPromptAttachment,
     ],
   );
-
-  const currentInlineEditSessionId =
-    inlineEditingQueuedMessage?.editSessionId ?? null;
-  const isCurrentInlineOperation =
-    inlineOperation.editSessionId === currentInlineEditSessionId;
+  const {
+    attachmentError: inlineAttachmentError,
+    setAttachmentError: setInlineAttachmentError,
+    handleAttachFiles: handleAttachInlineFiles,
+    isAttachingFiles: isAttachingInlineFiles,
+  } = useDraftAttachmentUploads({
+    projectId,
+    // `editSessionId` is monotonically unique per edit session, so a key match
+    // is a session match.
+    target:
+      inlineEditSessionId !== null
+        ? {
+            key: String(inlineEditSessionId),
+            addAttachment: addInlineAttachment,
+          }
+        : null,
+  });
 
   return {
     bottomAttachmentError,
     setBottomAttachmentError,
     handleAttachBottomFiles,
     isAttachingBottomFiles,
-    inlineAttachmentError: isCurrentInlineOperation
-      ? inlineOperation.error
-      : null,
+    inlineAttachmentError,
     setInlineAttachmentError,
     handleAttachInlineFiles,
-    isAttachingInlineFiles:
-      isCurrentInlineOperation && inlineOperation.pendingCount > 0,
+    isAttachingInlineFiles,
   };
 }

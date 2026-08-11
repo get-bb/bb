@@ -1054,14 +1054,8 @@ describe("@bb/sdk", () => {
     ]);
   });
 
-  it("reads and submits an atomic message edit", async () => {
+  it("submits an atomic message edit", async () => {
     const queue = createFetchQueue([
-      {
-        body: {
-          expectedRequestSequence: 41,
-          input: [{ type: "text", text: "Original", mentions: [] }],
-        },
-      },
       {
         body: {
           ok: true,
@@ -1079,9 +1073,6 @@ describe("@bb/sdk", () => {
     });
 
     await expect(
-      sdk.threads.getLatestMessageEdit({ threadId: "thr_edit" }),
-    ).resolves.toMatchObject({ expectedRequestSequence: 41 });
-    await expect(
       sdk.threads.editMessage({
         threadId: "thr_edit",
         operationId: "edit-op-1",
@@ -1091,11 +1082,6 @@ describe("@bb/sdk", () => {
     ).resolves.toMatchObject({ requestSequence: 43 });
 
     expect(queue.requests).toEqual([
-      {
-        bodyText: undefined,
-        method: "GET",
-        url: "http://bb.test/api/v1/threads/thr_edit/latest-message-edit",
-      },
       {
         bodyText: JSON.stringify({
           operationId: "edit-op-1",

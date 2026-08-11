@@ -176,7 +176,7 @@ POST /api/v1/threads/:id/edit-message
 ```ts
 {
   operationId: string;
-  expectedRequestSequence: number;
+  expectedRequestSequence?: number;
   input: PromptInput[];
   model?: string;
   serviceTier?: ServiceTier;
@@ -186,24 +186,17 @@ POST /api/v1/threads/:id/edit-message
 }
 ```
 
-For CLI convenience, a read-only latest-target route remains available:
+Omitting `expectedRequestSequence` atomically targets the latest eligible
+request with no staleness guard; supplying it selects any eligible earlier
+message and doubles as an optimistic-concurrency guard.
 
-```text
-GET /api/v1/threads/:id/latest-message-edit
-```
-
-The SDK exposes `threads.getLatestMessageEdit(...)` and
-`threads.editMessage(...)`. The CLI exposes:
+The SDK exposes `threads.editMessage(...)`. The CLI exposes:
 
 ```text
 bb thread edit-message [id] [--self]
   --message <text>
   [--expected-request-sequence <n>] [--json]
 ```
-
-Without an explicit sequence the CLI resolves the latest eligible request.
-With a sequence it can edit any eligible earlier message and uses the value as
-an optimistic-concurrency guard.
 
 ## Atomic Replacement
 

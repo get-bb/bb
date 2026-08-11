@@ -8,14 +8,14 @@ import {
   getHighWaterMarks,
   getThread,
   hasQueuedThreadMessages,
+  hasRootStoredTurnStarted,
   listActiveBackgroundTaskCountsByThreadIds,
   type DbQueryConnection,
 } from "@bb/db";
-import { threadScope, type Thread } from "@bb/domain";
+import { threadScope, type Thread, type ThreadEvent } from "@bb/domain";
 import type {
   EditMessageRequest,
   EditMessageResponse,
-  LatestMessageEditResponse,
 } from "@bb/server-contract";
 import type {
   HostDaemonCommand,
@@ -28,6 +28,7 @@ import {
   createClientTurnRequestId,
   parseStoredTurnRequestEvent,
 } from "./thread-events.js";
+import { parseStoredEvent } from "./thread-data.js";
 import {
   buildExecutionOptions,
   buildThreadStartCommand,
@@ -55,7 +56,6 @@ interface EditableTurn {
   precedingProviderCheckpoint: string | null;
   requestSequence: number;
   sourceProviderThreadId: string | null;
-  visibleInput: ReturnType<typeof parseStoredTurnRequestEvent>["input"];
 }
 
 function conflict(message: string): never {
@@ -84,7 +84,7 @@ function findCommittedOperation(
   args: { operationId: string; threadId: string },
 ): { fingerprint: string; requestSequence: number } | null {
   const row = db
-    .select({ data: events.data })
+    .select()
     .from(events)
     .where(
       and(
@@ -97,19 +97,10 @@ function findCommittedOperation(
     .limit(1)
     .get();
   if (!row) return null;
-  let data: unknown;
-  try {
-    data = JSON.parse(row.data);
-  } catch {
-    return null;
-  }
-  if (typeof data !== "object" || data === null || !("metadata" in data)) {
-    return null;
-  }
-  const metadata = data.metadata;
-  if (typeof metadata !== "object" || metadata === null) return null;
-  const fingerprint = Reflect.get(metadata, "fingerprint");
-  const requestSequence = Reflect.get(metadata, "requestSequence");
+  const event = parseStoredEvent(row);
+  if (event.type !== "system/operation") return null;
+  const fingerprint = event.metadata?.fingerprint;
+  const requestSequence = event.metadata?.requestSequence;
   return typeof fingerprint === "string" && typeof requestSequence === "number"
     ? { fingerprint, requestSequence }
     : null;
@@ -118,34 +109,27 @@ function findCommittedOperation(
 const EDIT_MESSAGE_PROVIDER_IDS = new Set(["claude-code", "codex", "pi"]);
 const EDITABLE_TURN_CANDIDATE_PAGE_SIZE = 25;
 
-interface StoredTurnCompletion {
-  providerCheckpointId: string | null;
-  providerThreadId: string | null;
-  status: string | null;
-}
-
-function parseStoredTurnCompletion(data: string): StoredTurnCompletion | null {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(data);
-  } catch {
-    return null;
-  }
-  if (typeof parsed !== "object" || parsed === null) return null;
-  const checkpoint = Reflect.get(parsed, "providerCheckpointId");
-  const providerThreadId = Reflect.get(parsed, "providerThreadId");
-  const status = Reflect.get(parsed, "status");
-  return {
-    providerCheckpointId:
-      typeof checkpoint === "string" && checkpoint.length > 0
-        ? checkpoint
-        : null,
-    providerThreadId:
-      typeof providerThreadId === "string" && providerThreadId.length > 0
-        ? providerThreadId
-        : null,
-    status: typeof status === "string" ? status : null,
-  };
+function getTurnCompletion(
+  db: DbQueryConnection,
+  threadId: string,
+  turnId: string,
+): Extract<ThreadEvent, { type: "turn/completed" }> | null {
+  const row = db
+    .select()
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, threadId),
+        eq(events.type, "turn/completed"),
+        eq(events.turnId, turnId),
+      ),
+    )
+    .orderBy(desc(events.sequence))
+    .limit(1)
+    .get();
+  if (!row) return null;
+  const event = parseStoredEvent(row);
+  return event.type === "turn/completed" ? event : null;
 }
 
 function resolveEditableTurnCandidate(
@@ -184,20 +168,12 @@ function resolveEditableTurnCandidate(
     conflict("The selected request was not accepted into exactly one turn");
   }
 
-  const rootTurn = db
-    .select({ turnId: events.turnId })
-    .from(events)
-    .where(
-      and(
-        eq(events.threadId, thread.id),
-        eq(events.type, "turn/started"),
-        eq(events.turnId, accepted.turnId),
-        sql`COALESCE(json_extract(${events.data}, '$.parentToolCallId'), '') = ''`,
-      ),
-    )
-    .limit(1)
-    .get();
-  if (!rootTurn) {
+  if (
+    !hasRootStoredTurnStarted(db, {
+      threadId: thread.id,
+      turnId: accepted.turnId,
+    })
+  ) {
     conflict("The selected message does not belong to a root turn");
   }
   const turnAcceptedCount = db
@@ -216,21 +192,7 @@ function resolveEditableTurnCandidate(
       "A turn containing steers or multiple accepted messages cannot be edited",
     );
   }
-  const completionRow = db
-    .select({ data: events.data })
-    .from(events)
-    .where(
-      and(
-        eq(events.threadId, thread.id),
-        eq(events.type, "turn/completed"),
-        eq(events.turnId, accepted.turnId),
-      ),
-    )
-    .limit(1)
-    .get();
-  const completion = completionRow
-    ? parseStoredTurnCompletion(completionRow.data)
-    : null;
+  const completion = getTurnCompletion(db, thread.id, accepted.turnId);
   if (completion?.status !== "completed") {
     conflict("The selected turn did not complete successfully");
   }
@@ -250,25 +212,10 @@ function resolveEditableTurnCandidate(
     .limit(1)
     .get();
   const precedingTurnId = precedingTurn?.turnId ?? null;
-  const precedingCompletionRow =
+  const precedingCompletion =
     precedingTurnId === null
       ? null
-      : db
-          .select({ data: events.data })
-          .from(events)
-          .where(
-            and(
-              eq(events.threadId, thread.id),
-              eq(events.type, "turn/completed"),
-              eq(events.turnId, precedingTurnId),
-            ),
-          )
-          .orderBy(desc(events.sequence))
-          .limit(1)
-          .get();
-  const precedingCompletion = precedingCompletionRow
-    ? parseStoredTurnCompletion(precedingCompletionRow.data)
-    : null;
+      : getTurnCompletion(db, thread.id, precedingTurnId);
   if (
     precedingTurnId !== null &&
     (precedingCompletion?.status !== "completed" ||
@@ -294,9 +241,6 @@ function resolveEditableTurnCandidate(
       precedingTurnId === null
         ? null
         : (precedingCompletion?.providerThreadId ?? null),
-    visibleInput: request.input.filter(
-      (part) => part.visibility !== "agent-only",
-    ),
   };
 }
 
@@ -396,29 +340,6 @@ function resolveEditableTurn(
   conflict("The thread has no editable user message");
 }
 
-export function getLatestThreadMessageEdit(
-  deps: LoggedPendingInteractionWorkSessionDeps,
-  thread: Thread,
-): LatestMessageEditResponse {
-  if (!getExperiments(deps.db).editMessages) {
-    conflict("Enable the Edit messages experiment before editing a message");
-  }
-  if (deps.pendingInteractions.hasPendingThreadInteraction(thread.id)) {
-    conflict("Resolve the pending interaction before editing the message");
-  }
-  if (hasQueuedThreadMessages(deps.db, thread.id)) {
-    conflict("Send or remove queued messages before editing a message");
-  }
-  const target = resolveEditableTurn(deps.db, thread);
-  if (target.visibleInput.length === 0) {
-    conflict("The message has no user-visible input to edit");
-  }
-  return {
-    expectedRequestSequence: target.requestSequence,
-    input: target.visibleInput,
-  };
-}
-
 function rewindPrepareCommandFromStart(
   start: Extract<HostDaemonCommand, { type: "thread.start" }>,
   args: {
@@ -428,29 +349,18 @@ function rewindPrepareCommandFromStart(
     sourceProviderThreadId: string;
   },
 ): ThreadRewindPrepareCommand {
-  return {
-    type: "thread.rewind.prepare",
-    environmentId: start.environmentId,
-    threadId: start.threadId,
-    workspaceContext: start.workspaceContext,
-    projectId: start.projectId,
-    providerId: start.providerId,
-    ...(start.acpLaunchSpec !== undefined
-      ? { acpLaunchSpec: start.acpLaunchSpec }
-      : {}),
-    options: start.options,
-    instructions: start.instructions,
-    dynamicTools: start.dynamicTools,
-    injectedSkillSources: start.injectedSkillSources,
-    ...(start.disallowedTools !== undefined
-      ? { disallowedTools: start.disallowedTools }
-      : {}),
-    instructionMode: start.instructionMode,
-    leaseId: args.leaseId,
-    operationId: args.operationId,
-    sourceProviderThreadId: args.sourceProviderThreadId,
-    retainThroughProviderCheckpoint: args.retainThroughProviderCheckpoint,
-  };
+  // The daemon parses commands strictly, so every start-only field must stay
+  // in this destructure — the rest is exactly the shared runtime context.
+  const {
+    type: _type,
+    requestId: _requestId,
+    input: _input,
+    inputGroups: _inputGroups,
+    threadStoragePath: _threadStoragePath,
+    fork: _fork,
+    ...context
+  } = start;
+  return { type: "thread.rewind.prepare", ...context, ...args };
 }
 
 export async function editThreadMessage(
@@ -567,6 +477,11 @@ export async function editThreadMessage(
             );
           }
         };
+  const {
+    operationId: _operationId,
+    expectedRequestSequence: _expectedRequestSequence,
+    ...sendPayload
+  } = args.payload;
   try {
     await sendThreadMessage(deps, {
       beforeAppendInTransaction: ({ tx }) => {
@@ -586,7 +501,6 @@ export async function editThreadMessage(
           target.requestSequence,
         );
         if (
-          currentTarget.requestSequence !== target.requestSequence ||
           currentTarget.oldMaxSequence !== target.oldMaxSequence ||
           currentTarget.currentTurnId !== target.currentTurnId
         ) {
@@ -624,31 +538,8 @@ export async function editThreadMessage(
         ...(discardStagedRewind !== undefined
           ? { onCommandSettled: discardStagedRewind }
           : {}),
-        requestTargetKind:
-          target.precedingProviderCheckpoint === null
-            ? "thread-start"
-            : "new-turn",
       },
-      payload: {
-        input: args.payload.input,
-        mode: "start",
-        ...(args.payload.model !== undefined
-          ? { model: args.payload.model }
-          : {}),
-        ...(args.payload.serviceTier !== undefined
-          ? { serviceTier: args.payload.serviceTier }
-          : {}),
-        ...(args.payload.reasoningLevel !== undefined
-          ? { reasoningLevel: args.payload.reasoningLevel }
-          : {}),
-        ...(args.payload.permissionMode !== undefined
-          ? { permissionMode: args.payload.permissionMode }
-          : {}),
-        ...(args.payload.executionInputSources !== undefined
-          ? { executionInputSources: args.payload.executionInputSources }
-          : {}),
-        ...(senderThreadId !== null ? { senderThreadId } : {}),
-      },
+      payload: { ...sendPayload, mode: "start" },
       thread: args.thread,
       trigger: "user",
     });

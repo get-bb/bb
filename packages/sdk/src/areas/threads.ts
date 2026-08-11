@@ -16,7 +16,6 @@ import type {
   CreateThreadRequest,
   EditMessageRequest,
   EditMessageResponse,
-  LatestMessageEditResponse,
   ForkThreadRequest,
   DeleteThreadRequest,
   PromptHistoryResponse,
@@ -117,7 +116,6 @@ export type ThreadRateLimitRecoveryResult = ProviderRateLimitRecoveryStatus;
 export type ThreadContinueAfterRateLimitResult =
   ContinueAfterProviderRateLimitResponse;
 export type ThreadEditMessageResult = EditMessageResponse;
-export type ThreadLatestMessageEditResult = LatestMessageEditResponse;
 export type ThreadStopResult = { ok: true };
 export type ThreadCompactResult = { ok: true };
 export type ThreadBannerActionResult = { ok: true };
@@ -444,9 +442,6 @@ export interface ThreadsArea {
   events: ThreadEventsArea;
   fork(args: ThreadForkArgs): Promise<ThreadForkResult>;
   get(args: ThreadGetArgs): Promise<ThreadGetResult>;
-  getLatestMessageEdit(
-    args: ThreadStatusArgs,
-  ): Promise<ThreadLatestMessageEditResult>;
   interactions: ThreadInteractionsArea;
   list(args?: ThreadListArgs): Promise<ThreadListResult>;
   markRead(args: ThreadActionArgs): Promise<ThreadReadStateResult>;
@@ -953,14 +948,6 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       );
     },
     get: getThread,
-    async getLatestMessageEdit(input) {
-      return transport.readJson(
-        transport.api.v1.threads[":id"]["latest-message-edit"].$get(
-          { param: { id: input.threadId } },
-          ...signalRequestArgs(input.signal),
-        ),
-      );
-    },
     interactions,
     async list(input) {
       return transport.readJson(

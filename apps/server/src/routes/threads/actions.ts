@@ -53,10 +53,7 @@ import {
   resolveMessageSenderThreadId,
   sendThreadMessage,
 } from "../../services/threads/thread-send.js";
-import {
-  editThreadMessage,
-  getLatestThreadMessageEdit,
-} from "../../services/threads/thread-edit-message.js";
+import { editThreadMessage } from "../../services/threads/thread-edit-message.js";
 import {
   buildExecutionOptions,
   buildThreadStopCommand,
@@ -382,11 +379,6 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
       thread,
     });
     return context.json(result);
-  });
-
-  get(routes.latestMessageEdit, (context) => {
-    const thread = requirePublicThread(deps.db, context.req.param("id"));
-    return context.json(getLatestThreadMessageEdit(deps, thread));
   });
 
   post(routes.createQueuedMessage, async (context, payload) => {

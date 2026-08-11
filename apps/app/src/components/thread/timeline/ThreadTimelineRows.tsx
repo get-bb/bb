@@ -9,7 +9,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import type { ReactNode, RefCallback } from "react";
+import type { ReactNode } from "react";
 import { useLocation } from "react-router-dom";
 import {
   isBackgroundAgentTaskType,
@@ -208,8 +208,7 @@ interface TimelineRendererStaticContextValue {
   getViewRows: GetTimelineViewRows;
   onForkMessage: ThreadTimelineForkMessageHandler | undefined;
   onEditMessage: ThreadTimelineEditMessageHandler | undefined;
-  inlineMessageEditorHostRef: RefCallback<HTMLDivElement> | undefined;
-  inlineMessageEditorMessageId: string | null;
+  inlineMessageEditor: ThreadTimelineInlineMessageEditor | undefined;
   onMessageAddToChat: ThreadTimelineAddToChatHandler | undefined;
   onSendToMainMessage: ThreadTimelineSendToMainMessageHandler | undefined;
   onSelectionAddToChat: ThreadTimelineAddToChatHandler | undefined;
@@ -909,8 +908,7 @@ function ConversationRow({
   );
   const {
     canSpawnChild,
-    inlineMessageEditorHostRef,
-    inlineMessageEditorMessageId,
+    inlineMessageEditor,
     onEditMessage,
     onForkMessage,
     onMessageAddToChat,
@@ -932,11 +930,15 @@ function ConversationRow({
     workspaceRootPath,
   } = useTimelineRendererStaticContext();
   const senderThreadMetadataById = useSenderThreadMetadataContext();
-  if (row.role === "user" && inlineMessageEditorMessageId === row.id) {
+  if (
+    row.role === "user" &&
+    inlineMessageEditor !== undefined &&
+    inlineMessageEditor.messageId === row.id
+  ) {
     return (
       <div className="ml-auto w-full max-w-[70%] max-md:max-w-full">
         <div
-          ref={inlineMessageEditorHostRef}
+          ref={inlineMessageEditor.onHostElementChange}
           data-sent-message-inline-editor-host=""
         />
       </div>
@@ -2077,10 +2079,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
       getViewRows,
       onForkMessage: props.onForkMessage,
       onEditMessage: props.onEditMessage,
-      inlineMessageEditorHostRef:
-        props.inlineMessageEditor?.onHostElementChange,
-      inlineMessageEditorMessageId:
-        props.inlineMessageEditor?.messageId ?? null,
+      inlineMessageEditor: props.inlineMessageEditor,
       onMessageAddToChat: props.onMessageAddToChat,
       onSendToMainMessage: props.onSendToMainMessage,
       onSelectionAddToChat: selectionAddToChatHandler,

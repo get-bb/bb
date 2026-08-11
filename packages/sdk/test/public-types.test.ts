@@ -360,7 +360,6 @@ type ExpectedThreadsKey =
   | "events"
   | "fork"
   | "get"
-  | "getLatestMessageEdit"
   | "interactions"
   | "list"
   | "markRead"
