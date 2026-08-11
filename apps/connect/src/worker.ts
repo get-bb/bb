@@ -72,7 +72,10 @@ const GATE_STYLE = `
     --warn:oklch(0.72 0.15 66);
     --warn-bg:color-mix(in oklch,var(--warn) 14%,var(--canvas));
     --warn-border:color-mix(in oklch,var(--warn) 38%,var(--canvas));}
-  @media (prefers-color-scheme:dark){:root{--canvas:oklch(0.195 0 0);--ink:oklch(0.81 0 0)}}
+  @media (prefers-color-scheme:dark){
+    :root{--canvas:oklch(0.195 0 0);--ink:oklch(0.81 0 0)}
+    .brand img{filter:invert(1)}
+  }
   *{box-sizing:border-box}
   body{margin:0;min-height:100dvh;display:flex;align-items:center;justify-content:center;
     background:var(--canvas);color:var(--ink);

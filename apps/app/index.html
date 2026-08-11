@@ -21,16 +21,16 @@
     <title>bb</title>
     <link
       rel="icon"
-      type="image/png"
-      sizes="32x32"
-      href="/favicon-32x32.png"
+      type="image/svg+xml"
+      sizes="any"
+      href="/favicon.svg"
       id="favicon-32"
     />
     <link
       rel="icon"
-      type="image/png"
-      sizes="16x16"
-      href="/favicon-16x16.png"
+      type="image/svg+xml"
+      sizes="any"
+      href="/favicon.svg"
       id="favicon-16"
     />
     <link
@@ -48,19 +48,17 @@
     <script>
       (function () {
         var dev = "%MODE%" === "development";
-        function setFavicon(dark) {
-          var s = dev ? "-dev" : dark ? "-dark" : "";
-          document.getElementById("favicon-32").href =
-            "/favicon-32x32" + s + ".png";
-          document.getElementById("favicon-16").href =
-            "/favicon-16x16" + s + ".png";
+        function setFavicon() {
+          if (!dev) return;
+          [32, 16].forEach(function (size) {
+            var link = document.getElementById("favicon-" + size);
+            link.type = "image/png";
+            link.setAttribute("sizes", size + "x" + size);
+            link.href = "/favicon-" + size + "x" + size + "-dev.png";
+          });
         }
         var mq = window.matchMedia("(prefers-color-scheme: dark)");
-        setFavicon(mq.matches);
-        if (!dev)
-          mq.addEventListener("change", function (e) {
-            setFavicon(e.matches);
-          });
+        setFavicon();
         function getFaviconColorSuffix() {
           try {
             var color = localStorage.getItem("bb.faviconColor");
