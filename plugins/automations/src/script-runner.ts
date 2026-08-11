@@ -1,7 +1,8 @@
 import { execFile } from "node:child_process";
-import { dirname, isAbsolute, join } from "node:path";
+import { constants } from "node:fs";
+import { delimiter, dirname, isAbsolute, join } from "node:path";
 import { promisify } from "node:util";
-import { mkdir } from "node:fs/promises";
+import { access, mkdir, stat } from "node:fs/promises";
 import {
   AUTOMATION_SCRIPT_TIMEOUT_MAX_MS,
   type AutomationScriptInterpreter,
@@ -34,28 +35,59 @@ async function commandWorks(command: string, args: string[]): Promise<boolean> {
 /**
  * Ordered places to look for the bb CLI, most authoritative first.
  *
- * The env vars come before PATH because the server process does not reliably
- * inherit a PATH containing bb — on a packaged install bb lives in the daemon
- * bundle directory, which is not on any shell PATH. `BB_CLI` (absolute path to
- * the binary) and `BB_CLI_DIR` (the directory holding it) are the two
- * documented pointers; see packages/config/src/env-vars.ts.
+ * Every candidate is an absolute path. The resolved value is handed to scripts
+ * as `BB_CLI`, which is documented as an absolute path, and a script is free to
+ * rewrite `PATH` before it runs `"$BB_CLI"` — a bare `bb` would then resolve to
+ * a different binary, or to none. Expanding `PATH` here rather than letting the
+ * shell do it also keeps the probe and the script on the same executable.
  *
- * The trailing absolute paths are macOS-only install locations and are kept as
- * a last resort. Relying on them alone is what left Linux hosts with no way to
- * resolve bb at all.
+ * The env vars come before `PATH` because the server process does not reliably
+ * inherit a `PATH` containing bb: on a packaged install bb lives in the daemon
+ * bundle directory, which is on no shell `PATH`. `BB_CLI` (the binary) and
+ * `BB_CLI_DIR` (its directory) are the two documented pointers; see
+ * packages/config/src/env-vars.ts. Relative values are skipped rather than
+ * resolved against the process cwd, which has nothing to do with either.
+ *
+ * The trailing paths are macOS-only install locations, kept as a last resort.
+ * Relying on them alone is what left Linux hosts unable to resolve bb at all.
  */
 export function bbBinaryCandidates(env: NodeJS.ProcessEnv): string[] {
   const candidates: string[] = [];
+  const pushIfAbsolute = (candidate: string): void => {
+    if (isAbsolute(candidate)) {
+      candidates.push(candidate);
+    }
+  };
   const fromCli = env.BB_CLI?.trim();
   if (fromCli !== undefined && fromCli.length > 0) {
-    candidates.push(fromCli);
+    pushIfAbsolute(fromCli);
   }
   const fromCliDir = env.BB_CLI_DIR?.trim();
   if (fromCliDir !== undefined && fromCliDir.length > 0) {
-    candidates.push(join(fromCliDir, "bb"));
+    pushIfAbsolute(join(fromCliDir, "bb"));
   }
-  candidates.push("bb", "/opt/homebrew/bin/bb", "/usr/local/bin/bb");
+  // Empty PATH entries mean "the current directory". Scripts run inside the
+  // automation scripts directory, so honouring one would let a file named `bb`
+  // dropped next to a script stand in for the CLI.
+  for (const entry of (env.PATH ?? "").split(delimiter)) {
+    const trimmed = entry.trim();
+    if (trimmed.length > 0) {
+      pushIfAbsolute(join(trimmed, "bb"));
+    }
+  }
+  candidates.push("/opt/homebrew/bin/bb", "/usr/local/bin/bb");
   return candidates;
+}
+
+async function isExecutableFile(candidate: string): Promise<boolean> {
+  try {
+    const stats = await stat(candidate);
+    if (!stats.isFile()) return false;
+    await access(candidate, constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -63,12 +95,17 @@ export function bbBinaryCandidates(env: NodeJS.ProcessEnv): string[] {
  * than throwing: injection is a convenience for scripts that call `bb`, not a
  * precondition for running one. Failing the whole automation here meant a
  * script that never mentions bb still died before its first line.
+ *
+ * Candidates are stat-ed before being executed. Expanding `PATH` makes the list
+ * long, and spawning a process per entry — each with its own timeout — would
+ * make a host without bb pay seconds on every run.
  */
 export async function resolveBbBinary(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<string | null> {
   if (resolvedBbPath !== null) return resolvedBbPath;
   for (const candidate of bbBinaryCandidates(env)) {
+    if (!(await isExecutableFile(candidate))) continue;
     if (await commandWorks(candidate, ["--version"])) {
       resolvedBbPath = candidate;
       return candidate;
@@ -80,10 +117,9 @@ export async function resolveBbBinary(
 /**
  * PATH for a script run, with bb's directory prepended when it is known.
  *
- * A bare `bb` resolved off PATH is deliberately not prepended: `dirname("bb")`
- * is ".", and prepending "." would put the automation scripts directory ahead
- * of the system PATH, letting a file named `git` or `node` sitting next to a
- * script shadow the real binary.
+ * The absolute-path guard is belt and braces: bbBinaryCandidates only yields
+ * absolute paths, so a relative one would mean dirname() could return ".",
+ * putting the automation scripts directory ahead of the system PATH.
  */
 export function scriptPathEnv(
   bbPath: string | null,
@@ -94,7 +130,7 @@ export function scriptPathEnv(
     return basePath;
   }
   const bbDir = dirname(bbPath);
-  return basePath.length > 0 ? `${bbDir}:${basePath}` : bbDir;
+  return basePath.length > 0 ? `${bbDir}${delimiter}${basePath}` : bbDir;
 }
 
 export function isWakeAgentSuppressed(output: string): boolean {

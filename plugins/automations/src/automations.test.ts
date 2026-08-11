@@ -692,26 +692,44 @@ describe("bb CLI injection for script runs", () => {
     );
   });
 
-  it("still falls back to PATH and the macOS locations", () => {
-    expect(bbBinaryCandidates({})).toEqual([
-      "bb",
+  it("expands PATH itself so every candidate is absolute", () => {
+    // The resolved value is handed to scripts as BB_CLI, which is documented
+    // as absolute; a bare "bb" would re-resolve if a script edits PATH.
+    expect(bbBinaryCandidates({ PATH: "/usr/bin:/opt/tools" })).toEqual([
+      "/usr/bin/bb",
+      "/opt/tools/bb",
       "/opt/homebrew/bin/bb",
       "/usr/local/bin/bb",
     ]);
-    // Blank env vars are ignored rather than becoming a "/bb" candidate.
-    expect(bbBinaryCandidates({ BB_CLI: "  ", BB_CLI_DIR: "" })).toEqual([
-      "bb",
+    expect(
+      bbBinaryCandidates({ PATH: "/usr/bin" }).every((c) => c.startsWith("/")),
+    ).toBe(true);
+  });
+
+  it("drops entries that would resolve against the wrong directory", () => {
+    // An empty PATH entry means the cwd, which for a script run is the
+    // automation scripts directory — a `bb` dropped there is not the CLI.
+    expect(bbBinaryCandidates({ PATH: "/usr/bin::/bin" })).toEqual([
+      "/usr/bin/bb",
+      "/bin/bb",
       "/opt/homebrew/bin/bb",
       "/usr/local/bin/bb",
     ]);
+    // Blank or relative env pointers are skipped, not resolved against cwd.
+    expect(
+      bbBinaryCandidates({ BB_CLI: "  ", BB_CLI_DIR: "", PATH: "" }),
+    ).toEqual(["/opt/homebrew/bin/bb", "/usr/local/bin/bb"]);
+    expect(
+      bbBinaryCandidates({ BB_CLI: "./bb", BB_CLI_DIR: "rel/dir", PATH: "" }),
+    ).toEqual(["/opt/homebrew/bin/bb", "/usr/local/bin/bb"]);
   });
 
   it("prepends bb's directory to PATH only when it is absolute", () => {
     expect(scriptPathEnv("/daemon/bundle/bb", "/usr/bin:/bin")).toBe(
       "/daemon/bundle:/usr/bin:/bin",
     );
-    // A bare "bb" is already on PATH; dirname() would be "." and would put the
-    // scripts directory ahead of the system PATH.
+    // Guard against a relative path ever reaching here: dirname() would be "."
+    // and would put the scripts directory ahead of the system PATH.
     expect(scriptPathEnv("bb", "/usr/bin:/bin")).toBe("/usr/bin:/bin");
     expect(scriptPathEnv(null, "/usr/bin:/bin")).toBe("/usr/bin:/bin");
     expect(scriptPathEnv("/daemon/bundle/bb", undefined)).toBe(
