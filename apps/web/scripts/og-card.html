@@ -1,16 +1,18 @@
 <!doctype html>
-<!-- Source for apps/web/public/og.png (the link-unfurl card).
-     Regenerate with a 1200x630 @2x headless-Chrome screenshot of this file,
-     e.g.: shot "file://$PWD/og-card.html" ../apps/web/public/og.png \
-             --width 1200 --height 630 --scale 2 -->
+<!-- Source for public/og.png, the card shown when a bb link is shared.
+     Regenerate with `pnpm --filter @bb/web og:card` (scripts/generate-og-card.mjs);
+     it fills in the __FONT_URL__/__LOGO_URL__ placeholders and screenshots this
+     file at 1200x630 @2x. Opening it directly shows the layout without them.
+
+     Copy is verbatim from the landing page (routes/index.tsx): the hero h1 and
+     the closer's install line. -->
 <html>
 <head>
 <meta charset="utf-8" />
 <style>
   @font-face {
     font-family: "Inter Var";
-    src: url("../apps/web/node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2")
-      format("woff2-variations");
+    src: url("__FONT_URL__") format("woff2-variations");
     font-weight: 100 900;
     font-style: normal;
   }
@@ -18,6 +20,7 @@
   html, body { width: 1200px; height: 630px; overflow: hidden; }
   body {
     font-family: "Inter Var", system-ui, sans-serif;
+    /* --bg / --ink from landing.css, so the card matches the page. */
     background: oklch(1 0 0);
     color: oklch(0.3211 0 0);
     position: relative;
@@ -63,6 +66,7 @@
     letter-spacing: -0.01em;
     color: color-mix(in oklab, oklch(0.3211 0 0) 62%, white);
   }
+  /* Sized to stay legible at the ~500px width feeds render the card at. */
   .domain {
     position: absolute;
     left: 84px;
@@ -75,7 +79,7 @@
 </head>
 <body>
   <div class="wash"></div>
-  <img class="mark" src="bb-logo.png" alt="" />
+  <img class="mark" src="__LOGO_URL__" alt="" />
   <div class="content">
     <h1>The IDE that builds&nbsp;itself</h1>
     <p class="sub">Free, open source, and local-first.</p>
