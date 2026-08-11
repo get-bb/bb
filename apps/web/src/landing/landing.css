@@ -38,6 +38,11 @@
   --add: oklch(0.4 0.13 163); /* --diff-added */
   --del: oklch(0.4 0.17 28); /* --diff-removed */
   --spark: oklch(0.55 0.14 50); /* --warning-text */
+  /* Product Hunt orange (#FF6154 ≈ oklch(0.68 0.19 27)), pulled down in
+     lightness and chroma. At full saturation it is the only neon on an
+     otherwise achromatic page and reads as a foreign badge; this keeps the
+     hue recognisable while sitting inside the ink ramp. */
+  --ph: oklch(0.58 0.15 32);
   --radius: 0.5rem;
   --font-sans:
     "Inter Variable", "Inter Fallback", Inter, -apple-system,
@@ -459,6 +464,29 @@ code,
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Both pills end in the same Hugeicons chevron. The glyph is drawn with ~4px of
+   slack inside its own box, so the box gaps lie: negative margins pull that
+   slack back out and let the chevron sit against the text it belongs to,
+   rather than stranded between the text and the pill's edge. */
+.updates-arrow {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  margin-left: -4px;
+  margin-right: -4px;
+}
+
+/* Launch-day variant of the announcement pill: the release-notes pill exactly,
+   with the chip warmed to Product Hunt's orange. The chip is the only thing
+   that changes, so the two read as the same component in the same slot. */
+.ph-callout-label {
+  background: var(--ph);
+}
+
+.ph-callout:hover {
+  border-color: color-mix(in oklab, var(--ph) 45%, var(--bg));
 }
 
 /* Scroll reveal: sections start hidden only once JS marks them pending,
@@ -2692,6 +2720,12 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 
   .updates-label {
     display: none;
+  }
+
+  /* The launch pill keeps its chip. "Today" is the urgency, and without it the
+     line loses the one thing that makes it worth interrupting the hero for. */
+  .ph-callout-label {
+    display: inline;
   }
 }
 

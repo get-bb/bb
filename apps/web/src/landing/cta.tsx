@@ -1,4 +1,7 @@
-import { CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
+import {
+  ArrowRight01Icon,
+  CheckmarkCircle02Icon,
+} from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useState } from "react";
 import type { FormEvent, ReactNode } from "react";
@@ -8,6 +11,7 @@ import type { CtaPlacement } from "./site";
 import {
   DISCORD_URL,
   GITHUB_URL,
+  PRODUCT_HUNT_URL,
   SUBSCRIBE_PATH,
   downloadMacosHref,
 } from "./site";
@@ -63,6 +67,31 @@ export function DiscordLink({ placement, className, children }: CtaLinkProps) {
       }
     >
       {children}
+    </a>
+  );
+}
+
+/** Launch-day announcement pill, in the same shape as the release-notes
+ *  callout it replaces. This is bb's own markup rather than Product Hunt's
+ *  embed, so it inherits the page's type and color and can ask for the vote
+ *  outright. */
+export function ProductHuntCallout({ placement }: { placement: CtaPlacement }) {
+  return (
+    <a
+      className="updates-callout ph-callout"
+      href={PRODUCT_HUNT_URL}
+      target="_blank"
+      rel="noreferrer"
+      onClick={() =>
+        trackLandingEvent({
+          name: "landing_product_hunt_clicked",
+          properties: { placement },
+        })
+      }
+    >
+      <span className="updates-label ph-callout-label">Today</span>
+      <span className="updates-title">Vote for bb on Product Hunt</span>
+      <HugeiconsIcon icon={ArrowRight01Icon} className="updates-arrow" />
     </a>
   );
 }

@@ -11,6 +11,17 @@ export const DOWNLOAD_MACOS_REDIRECT_PATH = "/download/macos";
 export const SUBSCRIBE_PATH = "/api/subscribe";
 export const CLI_COMMAND = "npx bb-app@latest";
 
+/** Launch-day switch. While this is true the hero's announcement pill asks for
+ *  a Product Hunt vote instead of linking to the latest release. Flip it to
+ *  false after the launch and the changelog callout comes back — nothing else
+ *  needs to change. */
+export const PRODUCT_HUNT_LAUNCH_ACTIVE = true;
+
+/** The Product Hunt launch page. The UTM parameters are the ones Product Hunt
+ *  issued with the embed, kept so they can attribute the traffic back. */
+export const PRODUCT_HUNT_URL =
+  "https://www.producthunt.com/products/bb?utm_source=badge-featured&utm_medium=badge&utm_campaign=badge-bb";
+
 /** Where on the page a CTA lives, for click-through comparison. */
 export type CtaPlacement =
   | "nav"
