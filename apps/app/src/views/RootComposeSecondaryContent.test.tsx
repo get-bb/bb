@@ -113,15 +113,18 @@ vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", async () => {
     browserDeck,
     isOpen,
     renderAsDrawer,
+    showNewTabButton,
   }: {
     browserDeck?: ReactNode;
     isOpen: boolean;
     renderAsDrawer: boolean;
+    showNewTabButton?: boolean;
   }) =>
     React.createElement(
       "section",
       {
         "data-open": String(isOpen),
+        "data-show-new-tab-button": String(showNewTabButton),
         "data-testid": renderAsDrawer
           ? "drawer-secondary-panel"
           : "inline-secondary-panel",
@@ -230,6 +233,19 @@ afterEach(() => {
 });
 
 describe("RootComposeSecondaryContent desktop layout", () => {
+  it("always offers a new tab from the new-thread right panel", () => {
+    renderRootCompose({
+      isCompactViewport: false,
+      isSecondaryPanelOpen: true,
+    });
+
+    expect(
+      screen
+        .getByTestId("inline-secondary-panel")
+        .getAttribute("data-show-new-tab-button"),
+    ).toBe("true");
+  });
+
   it("marks the root compose top strip as a macOS window drag region", () => {
     setMacosDesktopChrome();
 

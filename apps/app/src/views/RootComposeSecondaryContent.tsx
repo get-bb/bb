@@ -73,6 +73,7 @@ type RootSecondaryPanelProps = Omit<
   | "isConversationCollapsed"
   | "onToggleConversationCollapse"
   | "renderAsDrawer"
+  | "showNewTabButton"
 > & {
   renderBrowserDeck?: (args: {
     canShowNativeBrowserView: boolean;
@@ -260,6 +261,7 @@ export function RootComposeSecondaryContent({
           renderAsDrawer={false}
           isConversationCollapsed={false}
           onToggleConversationCollapse={noopToggleConversationCollapse}
+          showNewTabButton
           // In the split-workspace host, panes' panels share one PanelGroup,
           // so each pane's Panel needs its own layout identity (see the prop
           // doc).
@@ -285,6 +287,7 @@ export function RootComposeSecondaryContent({
       renderAsDrawer={true}
       isConversationCollapsed={false}
       onToggleConversationCollapse={noopToggleConversationCollapse}
+      showNewTabButton
     />
   ) : null;
   const hostedPanelModel = useMemo<PaneSecondaryPanelViewModel>(
