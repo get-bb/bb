@@ -2,6 +2,7 @@ import {
   archiveThread,
   getQueuedThreadMessage,
   getThread,
+  listEvents,
   listQueuedThreadMessages,
   markThreadDeleted,
 } from "@bb/db";
@@ -13,6 +14,7 @@ import { handleUpdateEnvironmentDirectoryToolCall } from "../../src/services/thr
 import { sendThreadMessage } from "../../src/services/threads/thread-send.js";
 import {
   listQueuedThreadCommands,
+  reportQueuedCommandError,
   waitForQueuedCommand,
 } from "../helpers/commands.js";
 import { textInput } from "../helpers/prompt-input.js";
@@ -252,6 +254,63 @@ describe("user message telemetry", () => {
       });
 
       expect(capture).not.toHaveBeenCalled();
+    });
+  });
+});
+
+describe("turn submit failure settlement", () => {
+  it("records a terminal rejection for the failed client request", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedIdleProviderThreadFixture({
+        harness,
+        value: 7,
+      });
+      seedTurnStarted(harness.deps, {
+        environmentId: environment.id,
+        providerThreadId: "provider-send-dispatch-7",
+        sequence: 3,
+        threadId: thread.id,
+        turnId: "turn-active",
+      });
+      const activeThread = getThread(harness.db, thread.id);
+      if (!activeThread) throw new Error("Expected an active thread");
+
+      await sendThreadMessage(harness.deps, {
+        environment,
+        payload: {
+          input: textInput("failed steer"),
+          mode: "steer",
+          model: "gpt-5",
+          permissionMode: "full",
+          reasoningLevel: "medium",
+          serviceTier: "default",
+        },
+        thread: activeThread,
+        trigger: "user",
+      });
+      const queued = await waitForQueuedCommand(
+        harness,
+        (candidate) =>
+          candidate.command.type === "turn.submit" &&
+          candidate.command.threadId === thread.id,
+      );
+      if (queued.command.type !== "turn.submit") {
+        throw new Error("Expected a turn.submit command");
+      }
+      await reportQueuedCommandError(harness, queued, {
+        errorCode: "provider_rpc_error",
+        errorMessage: "No active turn to steer",
+      });
+
+      const rejection = listEvents(harness.db, {
+        threadId: thread.id,
+      }).find((event) => event.type === "client/turn/rejected");
+      expect(rejection).toBeDefined();
+      expect(JSON.parse(rejection?.data ?? "{}")).toEqual({
+        requestId: queued.command.requestId,
+        reason: "provider_rpc_error",
+        message: "No active turn to steer",
+      });
     });
   });
 });

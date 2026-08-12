@@ -49,7 +49,10 @@ import {
   buildAcceptedClientRequestById,
   type AcceptedClientRequestContext,
 } from "./accepted-client-request-context.js";
-import { parsePendingSteersFromClientRequest } from "./user-message-parsing.js";
+import {
+  parsePendingSteersFromClientRequest,
+  parseRejectedUsersFromClientRequest,
+} from "./user-message-parsing.js";
 import { getOrderedThreadEvents } from "./group-event-projection-turns.js";
 import {
   groupCompletedTurnMessages,
@@ -597,7 +600,9 @@ function convertMessage(
           callId: message.callId,
           toolName: message.toolName,
           toolArgs: message.toolArgs,
-          ...(message.statusLabels ? { statusLabels: message.statusLabels } : {}),
+          ...(message.statusLabels
+            ? { statusLabels: message.statusLabels }
+            : {}),
           output: message.output,
           completedAt: message.completedAt,
           approvalStatus: message.approvalStatus,
@@ -796,12 +801,12 @@ function convertMessage(
   }
 }
 
-function convertPendingSteerMessage(
+function convertSteerMessage(
   message: EventProjectionMessage,
   rowIdPrefix: string,
 ): TimelineUserConversationRow {
   if (message.kind !== "user" || message.turnRequest.kind !== "steer") {
-    throw new Error(`Expected pending steer message, received ${message.kind}`);
+    throw new Error(`Expected steer message, received ${message.kind}`);
   }
   return {
     ...buildTimelineRowBase(message, rowIdPrefix),
@@ -828,14 +833,78 @@ function buildPendingSteerRowsFromEvents(
     context: acceptedClientRequestContext,
     events: orderedEvents,
   });
+  const rejectedClientRequestIds = new Set(
+    orderedEvents.flatMap(({ event }) =>
+      event.type === "client/turn/rejected" ? [event.requestId] : [],
+    ),
+  );
+  const legacyRejectedRequestMetaById = new Map<
+    string,
+    ThreadEventWithMeta["meta"]
+  >();
+  const unresolvedSteerRequestIds: string[] = [];
+  for (const { event, meta } of orderedEvents) {
+    if (
+      event.type === "client/turn/requested" &&
+      (event.target.kind === "auto" || event.target.kind === "steer") &&
+      event.target.expectedTurnId !== null
+    ) {
+      unresolvedSteerRequestIds.push(event.requestId);
+      continue;
+    }
+    if (event.type === "turn/input/accepted") {
+      const index = unresolvedSteerRequestIds.indexOf(event.clientRequestId);
+      if (index >= 0) unresolvedSteerRequestIds.splice(index, 1);
+      continue;
+    }
+    if (event.type === "client/turn/rejected") {
+      const index = unresolvedSteerRequestIds.indexOf(event.requestId);
+      if (index >= 0) unresolvedSteerRequestIds.splice(index, 1);
+      continue;
+    }
+    if (
+      event.type === "system/error" &&
+      event.code === "thread_command_failed"
+    ) {
+      const requestId = unresolvedSteerRequestIds.pop();
+      if (requestId) legacyRejectedRequestMetaById.set(requestId, meta);
+    }
+  }
   const pendingSteerRows: TimelineUserConversationRow[] = [];
 
   for (const { event, meta } of orderedEvents) {
+    if (
+      event.type === "client/turn/requested" &&
+      rejectedClientRequestIds.has(event.requestId)
+    ) {
+      continue;
+    }
+    const acceptedClientRequest =
+      event.type === "client/turn/requested"
+        ? acceptedClientRequestById.get(event.requestId)
+        : undefined;
+    const legacyRejectedMeta =
+      event.type === "client/turn/requested"
+        ? legacyRejectedRequestMetaById.get(event.requestId)
+        : undefined;
+    if (
+      event.type === "client/turn/requested" &&
+      acceptedClientRequest === undefined &&
+      legacyRejectedMeta
+    ) {
+      pendingSteerRows.push(
+        ...parseRejectedUsersFromClientRequest({
+          decoded: event,
+          meta: legacyRejectedMeta,
+          options,
+        }).map((rejectedSteer) =>
+          convertSteerMessage(rejectedSteer, ROOT_TIMELINE_ROW_ID_PREFIX),
+        ),
+      );
+      continue;
+    }
     const pendingSteers = parsePendingSteersFromClientRequest({
-      acceptedClientRequest:
-        event.type === "client/turn/requested"
-          ? acceptedClientRequestById.get(event.requestId)
-          : undefined,
+      acceptedClientRequest,
       decoded: event,
       meta,
       options,
@@ -845,7 +914,7 @@ function buildPendingSteerRowsFromEvents(
     }
     pendingSteerRows.push(
       ...pendingSteers.map((pendingSteer) =>
-        convertPendingSteerMessage(pendingSteer, ROOT_TIMELINE_ROW_ID_PREFIX),
+        convertSteerMessage(pendingSteer, ROOT_TIMELINE_ROW_ID_PREFIX),
       ),
     );
   }

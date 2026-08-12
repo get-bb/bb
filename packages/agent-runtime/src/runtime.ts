@@ -25,6 +25,7 @@ import {
 import {
   getJsonRpcStringParam,
   ignoredJsonRpcResultSchema,
+  JsonRpcResponseError,
   type JsonRpcObject,
   parseJsonRpcLine,
   type SendJsonRpcRequestArgs,
@@ -32,6 +33,7 @@ import {
   sendJsonRpcRequest,
   settleJsonRpcResponse,
 } from "./runtime-json-rpc.js";
+import { ACP_BRIDGE_NO_ACTIVE_TURN_ERROR_CODE } from "./acp/bridge-protocol.js";
 import {
   handleRuntimeProviderRequest,
   type ResolveRuntimeProviderRequestThreadIdArgs,
@@ -1941,16 +1943,27 @@ function createAgentRuntimeInternal(
             plan: proc.adapter.buildCommandPlan(adapterCommand),
             providerId: pid,
           });
-          await sendCommand({
-            proc,
-            message: cmd,
-            resultSchema: ignoredJsonRpcResultSchema,
-            recovery: {
-              providerId: pid,
-              providerThreadId: adapterCommand.providerThreadId,
-              threadId,
-            },
-          });
+          try {
+            await sendCommand({
+              proc,
+              message: cmd,
+              resultSchema: ignoredJsonRpcResultSchema,
+              recovery: {
+                providerId: pid,
+                providerThreadId: adapterCommand.providerThreadId,
+                threadId,
+              },
+            });
+          } catch (error) {
+            if (
+              error instanceof JsonRpcResponseError &&
+              error.code === ACP_BRIDGE_NO_ACTIVE_TURN_ERROR_CODE
+            ) {
+              turnState.clearThread(threadId);
+              return { status: "stale", activeTurnId: null };
+            }
+            throw error;
+          }
           emitAcceptedCommandEvents({
             command: adapterCommand,
             proc,

@@ -16,6 +16,7 @@ import { clientTurnRequestIdSchema } from "./protocol-ids.js";
 export const systemEventTypeValues = [
   "client/thread/start",
   "client/turn/requested",
+  "client/turn/rejected",
   "client/turn/start",
   "system/error",
   // Legacy persisted user-visible system event from a removed runtime path.
@@ -153,6 +154,15 @@ export const turnRequestEventDataSchema = z.object({
   execution: turnRequestOptionsSchema,
 });
 export type TurnRequestEventData = z.infer<typeof turnRequestEventDataSchema>;
+
+export const turnRequestRejectedEventDataSchema = z.object({
+  requestId: clientTurnRequestIdSchema,
+  reason: z.string().min(1),
+  message: z.string().min(1),
+});
+export type TurnRequestRejectedEventData = z.infer<
+  typeof turnRequestRejectedEventDataSchema
+>;
 
 export const systemErrorEventDataSchema = z
   .object({
@@ -342,6 +352,7 @@ export type SystemProviderTurnWatchdogEventData = z.infer<
 export type ThreadEventDataByType = {
   "client/thread/start": ClientTurnLifecycleEventData;
   "client/turn/requested": TurnRequestEventData;
+  "client/turn/rejected": TurnRequestRejectedEventData;
   "client/turn/start": ClientTurnLifecycleEventData;
   "system/error": SystemErrorEventData;
   "system/manager/user_message": SystemLegacyUserMessageEventData;

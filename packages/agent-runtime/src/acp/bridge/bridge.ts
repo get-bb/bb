@@ -43,6 +43,7 @@ import { mimeTypeFromExtension } from "../../shared/mime-types.js";
 import {
   ACP_COMPACTION_COMPLETED_METHOD,
   ACP_COMPACTION_STARTED_METHOD,
+  ACP_BRIDGE_NO_ACTIVE_TURN_ERROR_CODE,
   ACP_DEFAULT_MODEL_ID,
   ACP_FS_WRITE_METHOD,
   ACP_PERMISSION_REQUEST_METHOD,
@@ -1902,7 +1903,11 @@ async function handleRequest(
         return;
       }
       if (session.activePromptKind !== "turn") {
-        sendError(request.id, -32000, "No active turn to steer");
+        sendError(
+          request.id,
+          ACP_BRIDGE_NO_ACTIVE_TURN_ERROR_CODE,
+          "No active turn to steer",
+        );
         return;
       }
       session.queuedInputs.push(request.params.input);

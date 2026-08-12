@@ -747,6 +747,19 @@ function settleThreadCommandFailure(
   if (hasExpectedTurnCompletedEvent(args.deps, args.command)) {
     return emptyCommandResultSideEffects();
   }
+  if (args.command.type === "turn.submit") {
+    appendThreadEventInTransaction(args.deps.db, {
+      threadId: thread.id,
+      environmentId: thread.environmentId,
+      type: "client/turn/rejected",
+      scope: threadScope(),
+      data: {
+        requestId: args.command.requestId,
+        reason: args.report.errorCode,
+        message: args.report.errorMessage,
+      },
+    });
+  }
   appendSystemErrorEventInTransaction(args.deps, {
     threadId: thread.id,
     environmentId: thread.environmentId,

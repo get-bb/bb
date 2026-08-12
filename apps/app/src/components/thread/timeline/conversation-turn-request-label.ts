@@ -6,5 +6,7 @@ export function turnRequestLabel(
   if (turnRequest.kind !== "steer") {
     return null;
   }
-  return turnRequest.status === "pending" ? "Steer pending" : "Steer";
+  if (turnRequest.status === "pending") return "Steer pending";
+  if (turnRequest.status === "rejected") return "Steer failed";
+  return "Steer";
 }

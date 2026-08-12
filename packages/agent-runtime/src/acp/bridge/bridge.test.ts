@@ -17,6 +17,7 @@ import {
   type CapturedBridgeJsonRpcOutput,
 } from "../../test/bridge-json-rpc-test-helpers.js";
 import { handleLine } from "./bridge.js";
+import { ACP_BRIDGE_NO_ACTIVE_TURN_ERROR_CODE } from "../bridge-protocol.js";
 import { ACP_BRIDGE_MCP_SERVER_NAME } from "./tool-proxy-mcp.js";
 
 const FAKE_AGENT_PATH = resolve(
@@ -1104,9 +1105,8 @@ describe("acp bridge", () => {
       configText.slice(configPrefix.length),
     ) as { env: { name: string; value: string }[] }[];
     expect(
-      mcpServerConfig?.env.find(
-        ({ name }) => name === "ELECTRON_RUN_AS_NODE",
-      )?.value,
+      mcpServerConfig?.env.find(({ name }) => name === "ELECTRON_RUN_AS_NODE")
+        ?.value,
     ).toBe("1");
 
     sendRequest("turn/start", {
@@ -1625,6 +1625,7 @@ describe("acp bridge", () => {
       input: [{ type: "text", text: "late", mentions: [] }],
     });
     const response = await waitForResponse(steerId);
+    expect(response.error?.code).toBe(ACP_BRIDGE_NO_ACTIVE_TURN_ERROR_CODE);
     expect(response.error?.message).toMatch(/No active turn/);
   });
 

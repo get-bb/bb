@@ -1230,9 +1230,7 @@ describe("acp adapter event translation", () => {
     const firstId =
       firstEvents[0]?.type === "item/completed" ? firstEvents[0].item.id : "";
     const secondId =
-      secondEvents[0]?.type === "item/completed"
-        ? secondEvents[0].item.id
-        : "";
+      secondEvents[0]?.type === "item/completed" ? secondEvents[0].item.id : "";
     expect(firstId).toBe("acp-fs-write-turn_first_1-1");
     expect(secondId).toBe("acp-fs-write-turn_second_1-1");
     expect(firstId).not.toBe(secondId);
@@ -1331,6 +1329,84 @@ describe("acp adapter event translation", () => {
         status: "failed",
         error: { message: "Agent stopped the turn: refusal" },
       },
+    ]);
+  });
+
+  it("keeps late updates outside completed turns", () => {
+    const adapter = createAdapter();
+    startTurn(adapter);
+    adapter.translateEvent(
+      {
+        jsonrpc: "2.0",
+        method: "acp/turn/completed",
+        params: { threadId: "thread-1", stopReason: "end_turn" },
+      },
+      THREAD_CONTEXT,
+    );
+
+    const lateEvents = [
+      updateNotification({
+        sessionUpdate: "agent_message_chunk",
+        content: { type: "text", text: "late message" },
+      }),
+      updateNotification({
+        sessionUpdate: "agent_thought_chunk",
+        content: { type: "text", text: "late thought" },
+      }),
+      updateNotification({
+        sessionUpdate: "tool_call",
+        toolCallId: "late-tool",
+        title: "Late tool",
+        kind: "other",
+        status: "pending",
+      }),
+      updateNotification({
+        sessionUpdate: "plan",
+        entries: [{ content: "Late plan", status: "pending" }],
+      }),
+      {
+        jsonrpc: "2.0" as const,
+        method: "acp/fs/write",
+        params: {
+          threadId: "thread-1",
+          path: "/workspace/late.ts",
+          kind: "add",
+        },
+      },
+    ].flatMap((event) => adapter.translateEvent(event, THREAD_CONTEXT));
+
+    expect(lateEvents).toHaveLength(5);
+    expect(lateEvents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "provider/unhandled",
+          rawType: "acp/update:agent_message_chunk",
+          scope: threadScope(),
+        }),
+        expect.objectContaining({
+          type: "provider/unhandled",
+          rawType: "acp/update:agent_thought_chunk",
+          scope: threadScope(),
+        }),
+        expect.objectContaining({
+          type: "provider/unhandled",
+          rawType: "acp/update:tool_call",
+          scope: threadScope(),
+        }),
+        expect.objectContaining({
+          type: "provider/unhandled",
+          rawType: "acp/update:plan",
+          scope: threadScope(),
+        }),
+        expect.objectContaining({
+          type: "provider/unhandled",
+          rawType: "acp/fs/write",
+          scope: threadScope(),
+        }),
+      ]),
+    );
+    expect(startTurn(adapter)).toMatchObject([
+      { type: "turn/started", scope: turnScope("turn-2") },
     ]);
   });
 
