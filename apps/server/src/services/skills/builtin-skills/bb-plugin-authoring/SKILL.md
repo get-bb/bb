@@ -1112,8 +1112,10 @@ Slot props contracts (versioned, additive-only):
   or short status without lifting state into the host sidebar. The host does
   not mount it on compact viewports; on wider viewports it clips the component
   to one line, 4rem wide by 1.25rem high, and ellipsizes ordinary long text.
-  Do not render controls or portalled content there. A throw hides only the
-  accessory. Experimental: see `docs/api_to_audit.md`.
+  It shares the trailing action column and fades out for the host options
+  button on row hover or keyboard focus without unmounting. Do not render
+  controls or portalled content there. A throw hides only the accessory.
+  Experimental: see `docs/api_to_audit.md`.
   The host renders your compact plugin icon + `title` into the SHARED app
   header (the same title bar as Settings pages) with your optional
   `headerContent` component as the header actions on the right — so do NOT

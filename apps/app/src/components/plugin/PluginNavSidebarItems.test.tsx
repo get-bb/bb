@@ -6,7 +6,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import type { ComponentType } from "react";
+import { useEffect, type ComponentType } from "react";
 import { createStore, Provider } from "jotai";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -121,7 +121,7 @@ describe("PluginNavSidebarItems", () => {
       screen.getByRole("button", { name: "Docs" }).classList.contains("pr-7"),
     ).toBe(true);
     expect(
-      screen.getByRole("button", { name: "Docs" }).classList.contains("pr-24"),
+      screen.getByRole("button", { name: "Docs" }).classList.contains("pr-18"),
     ).toBe(false);
     expect(
       screen.queryByRole("button", { name: "Docs panel options" }),
@@ -144,9 +144,12 @@ describe("PluginNavSidebarItems", () => {
     expect(accessory?.textContent).toBe("123456789012345678901234567890");
     expect(screen.getByRole("button", { name: "Tasks" })).not.toBeNull();
     expect(
-      screen.getByRole("button", { name: "Tasks" }).classList.contains("pr-24"),
+      screen.getByRole("button", { name: "Tasks" }).classList.contains("pr-18"),
     ).toBe(true);
     for (const className of [
+      "bb-sidebar-hover-actions-fade",
+      "right-1",
+      "min-w-5",
       "max-h-5",
       "max-w-16",
       "overflow-hidden",
@@ -155,6 +158,46 @@ describe("PluginNavSidebarItems", () => {
     ]) {
       expect(accessory?.classList.contains(className), className).toBe(true);
     }
+  });
+
+  it("replaces a live accessory with row options without remounting it", async () => {
+    let mounts = 0;
+    let unmounts = 0;
+    function LiveAccessory() {
+      useEffect(() => {
+        mounts += 1;
+        return () => {
+          unmounts += 1;
+        };
+      }, []);
+      return <span>12</span>;
+    }
+    registerPanel("tasks", "Tasks", LiveAccessory);
+
+    const view = renderSidebarItems();
+    const accessory = view.container.querySelector(
+      "[data-plugin-nav-sidebar-accessory]",
+    );
+
+    expect(mounts).toBe(1);
+    expect(unmounts).toBe(0);
+    expect(
+      accessory?.getAttribute("data-sidebar-hover-actions-open"),
+    ).toBeNull();
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Tasks panel options" }),
+      { button: 0 },
+    );
+    expect(
+      await screen.findByRole("menuitem", { name: "Hide from sidebar" }),
+    ).not.toBeNull();
+
+    expect(accessory?.getAttribute("data-sidebar-hover-actions-open")).toBe(
+      "true",
+    );
+    expect(mounts).toBe(1);
+    expect(unmounts).toBe(0);
   });
 
   it("does not mount sidebar accessories on compact viewports", () => {

@@ -13,7 +13,9 @@ can own an RPC query and realtime subscription, so a live count updates within
 that subtree instead of lifting plugin state into the whole sidebar. The host
 does not mount it on compact viewports. On wider viewports its layout box is
 limited to one line at 4rem wide by 1.25rem high; overflow is clipped and
-ordinary long text is ellipsized. A crash hides only the accessory.
+ordinary long text is ellipsized. It shares the trailing action column and
+fades out for the host options button on row hover or keyboard focus without
+unmounting. A crash hides only the accessory.
 
 **Audit before stabilizing.**
 
@@ -35,8 +37,9 @@ ordinary long text is ellipsized. A crash hides only the accessory.
    value before stabilization.
 5. **Accessibility.** Accessory text is exposed beside the navigation button
    without changing that button's stable accessible name. Confirm that reading
-   order works for counts and short statuses, and decide whether a dedicated
-   label prop or host-rendered status semantics are needed.
+   order and the focus-triggered accessory/options swap work for counts and
+   short statuses, and decide whether a dedicated label prop or host-rendered
+   status semantics are needed.
 
 ## `PluginContentScriptContext.experimental_setThreadRowStatus`
 

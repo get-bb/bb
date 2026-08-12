@@ -45,6 +45,7 @@ import { SplitPaneMiniMap } from "@/components/sidebar/SplitPaneMiniMap";
 import { SIDEBAR_MORE_ACTION_TRIGGER_CLASS } from "@/components/sidebar/sidebarRowClasses";
 import {
   SIDEBAR_HOVER_ACTIONS_CLASS,
+  SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
   SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
 } from "@/components/ui/sidebar-hover-actions";
 import { useSidebarSortable } from "@/components/sidebar/sortableMotion";
@@ -459,15 +460,7 @@ function PluginNavSidebarItem({
         slotId={panel.id}
         crashFallback={null}
       >
-        <span
-          data-plugin-nav-sidebar-accessory=""
-          // This is display-only content beside the row button. Clamp both axes
-          // and clip descendants so a plugin cannot grow the sidebar row;
-          // ordinary long text gets an ellipsis at four rems.
-          className="pointer-events-none absolute right-7 top-1/2 block max-h-5 max-w-16 -translate-y-1/2 overflow-hidden text-ellipsis whitespace-nowrap text-right leading-5"
-        >
-          <SidebarAccessory />
-        </span>
+        <SidebarAccessory />
       </PluginSlotMount>
     ) : null;
 
@@ -558,9 +551,10 @@ function SidebarNavRowChrome({
             className={cn(
               PROJECT_LIST_ACTION_BUTTON_CLASS,
               // Accessory-less rows keep their existing title width. A row
-              // with one reserves its 4rem plus the options trigger.
+              // with one reserves its 4rem trailing value; the options trigger
+              // replaces that value on hover rather than taking more space.
               "w-full pr-7",
-              accessory && "pr-24",
+              accessory && "pr-18",
               isActive && "bg-sidebar-accent text-sidebar-foreground",
               isHidden && "text-subtle-foreground",
             )}
@@ -582,7 +576,24 @@ function SidebarNavRowChrome({
               ) : null}
             </span>
           </Button>
-          {accessory}
+          {accessory ? (
+            <span
+              data-plugin-nav-sidebar-accessory=""
+              data-sidebar-hover-actions-open={
+                isActionsOpen ? "true" : undefined
+              }
+              // Share the action column with the options trigger. A short
+              // value centers on the trigger glyph; a longer value grows left
+              // up to 4rem. The shared fade class hides it on hover/focus or
+              // while the menu is open without unmounting plugin state.
+              className={cn(
+                SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
+                "pointer-events-none absolute right-1 top-1/2 block min-w-5 max-h-5 max-w-16 -translate-y-1/2 overflow-hidden text-ellipsis whitespace-nowrap text-center leading-5",
+              )}
+            >
+              {accessory}
+            </span>
+          ) : null}
           <div
             data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
             className={cn(

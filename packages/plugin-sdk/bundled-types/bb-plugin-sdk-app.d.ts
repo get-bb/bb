@@ -439,8 +439,9 @@ interface PluginNavPanelRegistration {
      * panel's sidebar row. It receives no props so it can own a narrow live
      * value through the ordinary SDK hooks without coupling that state to the
      * host sidebar. The host does not mount it on compact viewports and clips it
-     * to a small, single-line box on wider viewports; do not render controls or
-     * rely on unbounded content here.
+     * to a small, single-line box on wider viewports. It shares the trailing
+     * action column, fading out for the host's options button on hover or focus;
+     * do not render controls or rely on unbounded content here.
      *
      * Experimental: see docs/api_to_audit.md.
      */
