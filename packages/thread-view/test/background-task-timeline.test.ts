@@ -33,7 +33,7 @@ function buildTimeline(
 ): ThreadTimelineFromEventsResult {
   return buildThreadTimelineFromEvents({
     acceptedClientRequestContext: EMPTY_ACCEPTED_CLIENT_REQUEST_CONTEXT,
-    contextWindowEvents: [],
+    usageMetadataEvents: [],
     events,
     options: {
       includeDebugRawEvents: false,

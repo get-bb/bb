@@ -866,6 +866,10 @@ export interface ListContextWindowUsageRowsArgs {
   threadId: string;
 }
 
+export interface ListLatestTokenUsageRowsArgs {
+  threadId: string;
+}
+
 export interface GetLatestThreadOutputEventRowArgs {
   threadId: string;
 }
@@ -2386,6 +2390,25 @@ export function listContextWindowUsageRows(
     eventType: "thread/contextWindowUsage/updated",
     contextWindowJsonPath: "$.contextWindowUsage.modelContextWindow",
   });
+}
+
+export function listLatestTokenUsageRows(
+  db: DbConnection,
+  args: ListLatestTokenUsageRowsArgs,
+): StoredEventRow[] {
+  return db
+    .select(storedEventRowFields)
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        eq(events.type, "thread/tokenUsage/updated"),
+        isNotNestedTurnUsageEvent,
+      ),
+    )
+    .orderBy(desc(events.sequence))
+    .limit(1)
+    .all();
 }
 
 export function getLatestThreadOutputEventRow(

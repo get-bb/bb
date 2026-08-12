@@ -148,7 +148,7 @@ describe("useThreadDetailBootstrap", () => {
     });
   });
 
-  it("uses the cached timeline sequence and merges a prefetched delta", async () => {
+  it("merges live prompt-cache metadata from a prefetched timeline delta", async () => {
     const previousTimeline = {
       rows: [
         {
@@ -173,6 +173,16 @@ describe("useThreadDetailBootstrap", () => {
       pendingTodos: null,
       goal: null,
       modelFallback: null,
+      contextWindowUsage: {
+        estimated: false,
+        modelContextWindow: 200_000,
+        promptCacheUsage: {
+          status: "reported",
+          cachedInputTokens: 0,
+          inputTokens: 80_000,
+        },
+        usedTokens: 80_000,
+      },
       timelinePage: {
         kind: "latest",
         segmentLimit: 100,
@@ -184,6 +194,14 @@ describe("useThreadDetailBootstrap", () => {
     } satisfies ThreadTimelineResponse;
     vi.mocked(sdk.threads.timeline).mockResolvedValueOnce({
       ...previousTimeline,
+      contextWindowUsage: {
+        ...previousTimeline.contextWindowUsage,
+        promptCacheUsage: {
+          status: "reported",
+          cachedInputTokens: 60_000,
+          inputTokens: 80_000,
+        },
+      },
       rows: [],
       maxSeq: 8,
       delta: { upsertRows: [] },
@@ -217,6 +235,14 @@ describe("useThreadDetailBootstrap", () => {
         ),
       ).toEqual({
         ...previousTimeline,
+        contextWindowUsage: {
+          ...previousTimeline.contextWindowUsage,
+          promptCacheUsage: {
+            status: "reported",
+            cachedInputTokens: 60_000,
+            inputTokens: 80_000,
+          },
+        },
         maxSeq: 8,
       });
     });

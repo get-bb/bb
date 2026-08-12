@@ -305,6 +305,11 @@ const usage: ThreadContextWindowUsage = {
   usedTokens: 32_400,
   modelContextWindow: 128_000,
   estimated: false,
+  promptCacheUsage: {
+    status: "reported",
+    cachedInputTokens: 24_000,
+    inputTokens: 32_000,
+  },
 };
 
 // ---------------------------------------------------------------------------

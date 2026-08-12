@@ -28,10 +28,23 @@ export function isCommaSeparatedIncludeQueryValue(
   );
 }
 
+export const threadPromptCacheUsageSchema = z.discriminatedUnion("status", [
+  z.object({ status: z.literal("unknown") }),
+  z.object({
+    status: z.literal("reported"),
+    cachedInputTokens: z.number(),
+    inputTokens: z.number(),
+  }),
+]);
+export type ThreadPromptCacheUsage = z.infer<
+  typeof threadPromptCacheUsageSchema
+>;
+
 export const threadContextWindowUsageSchema = z.object({
   usedTokens: z.number(),
   modelContextWindow: z.number(),
   estimated: z.boolean(),
+  promptCacheUsage: threadPromptCacheUsageSchema,
 });
 export type ThreadContextWindowUsage = z.infer<
   typeof threadContextWindowUsageSchema

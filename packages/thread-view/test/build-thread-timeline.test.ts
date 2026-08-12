@@ -38,7 +38,15 @@ interface ContextWindowUsageEventArgs {
   estimated: boolean;
   modelContextWindow: number | null;
   seq: number;
+  turnId?: string;
   usedTokens: number | null;
+}
+
+interface TokenUsageEventArgs {
+  cachedInputTokens: number;
+  inputTokens: number;
+  seq: number;
+  turnId?: string;
 }
 
 interface FileChangeItemEventArgs {
@@ -231,6 +239,7 @@ function contextWindowUsageEvent({
   estimated,
   modelContextWindow,
   seq,
+  turnId = "turn-1",
   usedTokens,
 }: ContextWindowUsageEventArgs): ThreadEventWithMeta {
   return {
@@ -238,11 +247,49 @@ function contextWindowUsageEvent({
       type: "thread/contextWindowUsage/updated",
       threadId: "thread-1",
       providerThreadId: "provider-thread-1",
-      scope: turnScope(`turn-${seq}`),
+      scope: turnScope(turnId),
       contextWindowUsage: {
         estimated,
         modelContextWindow,
         usedTokens,
+      },
+    },
+    meta: {
+      id: `event-${seq}`,
+      seq,
+      createdAt: seq,
+    },
+  };
+}
+
+function tokenUsageEvent({
+  cachedInputTokens,
+  inputTokens,
+  seq,
+  turnId = "turn-1",
+}: TokenUsageEventArgs): ThreadEventWithMeta {
+  return {
+    event: {
+      type: "thread/tokenUsage/updated",
+      threadId: "thread-1",
+      providerThreadId: "provider-thread-1",
+      scope: turnScope(turnId),
+      tokenUsage: {
+        total: {
+          totalTokens: inputTokens,
+          inputTokens,
+          cachedInputTokens,
+          outputTokens: 0,
+          reasoningOutputTokens: 0,
+        },
+        last: {
+          totalTokens: inputTokens,
+          inputTokens,
+          cachedInputTokens,
+          outputTokens: 0,
+          reasoningOutputTokens: 0,
+        },
+        modelContextWindow: 200_000,
       },
     },
     meta: {
@@ -656,11 +703,11 @@ function userQuestionLifecycleEvent({
 }
 
 function buildContextWindowUsage(
-  contextWindowEvents: ThreadEventWithMeta[],
+  usageMetadataEvents: ThreadEventWithMeta[],
 ): ThreadContextWindowUsage | null {
   return buildThreadTimelineFromEvents({
     acceptedClientRequestContext: EMPTY_ACCEPTED_CLIENT_REQUEST_CONTEXT,
-    contextWindowEvents,
+    usageMetadataEvents,
     events: [],
     options: {
       includeDebugRawEvents: false,
@@ -682,7 +729,7 @@ function buildTimelineRows(
 ): TimelineRow[] {
   return buildThreadTimelineFromEvents({
     acceptedClientRequestContext: EMPTY_ACCEPTED_CLIENT_REQUEST_CONTEXT,
-    contextWindowEvents: [],
+    usageMetadataEvents: [],
     events,
     options: {
       includeDebugRawEvents: false,
@@ -705,7 +752,7 @@ function buildTimelineRowsWithAcceptedContext(
     acceptedClientRequestContext: {
       acceptedClientRequestEvents,
     },
-    contextWindowEvents: [],
+    usageMetadataEvents: [],
     events,
     options: {
       includeDebugRawEvents: false,
@@ -980,7 +1027,7 @@ describe("buildThreadTimelineFromEvents", () => {
 
     const timeline = buildThreadTimelineFromEvents({
       acceptedClientRequestContext: EMPTY_ACCEPTED_CLIENT_REQUEST_CONTEXT,
-      contextWindowEvents: [],
+      usageMetadataEvents: [],
       events: fromRows([
         event.clientTurnRequested({
           requestId,
@@ -1016,7 +1063,7 @@ describe("buildThreadTimelineFromEvents", () => {
 
     const timeline = buildThreadTimelineFromEvents({
       acceptedClientRequestContext: EMPTY_ACCEPTED_CLIENT_REQUEST_CONTEXT,
-      contextWindowEvents: [],
+      usageMetadataEvents: [],
       events: fromRows([
         event.clientTurnRequested({
           requestId,
@@ -1052,7 +1099,7 @@ describe("buildThreadTimelineFromEvents", () => {
 
     const timeline = buildThreadTimelineFromEvents({
       acceptedClientRequestContext: EMPTY_ACCEPTED_CLIENT_REQUEST_CONTEXT,
-      contextWindowEvents: [],
+      usageMetadataEvents: [],
       events: fromRows([
         event.clientTurnRequested({
           requestId,
@@ -1083,7 +1130,7 @@ describe("buildThreadTimelineFromEvents", () => {
 
     const timeline = buildThreadTimelineFromEvents({
       acceptedClientRequestContext: EMPTY_ACCEPTED_CLIENT_REQUEST_CONTEXT,
-      contextWindowEvents: [],
+      usageMetadataEvents: [],
       events: fromRows([
         event.clientTurnRequested({
           requestId,
@@ -2241,6 +2288,7 @@ describe("buildThreadTimelineFromEvents", () => {
     ).toEqual({
       estimated: true,
       modelContextWindow: 200_000,
+      promptCacheUsage: { status: "unknown" },
       usedTokens: 60,
     });
   });
@@ -2264,8 +2312,116 @@ describe("buildThreadTimelineFromEvents", () => {
     ).toEqual({
       estimated: true,
       modelContextWindow: 200_000,
+      promptCacheUsage: { status: "unknown" },
       usedTokens: 60,
     });
+  });
+
+  it("reports a positive prompt-cache hit from the latest token usage", () => {
+    expect(
+      buildContextWindowUsage([
+        contextWindowUsageEvent({
+          estimated: false,
+          modelContextWindow: 200_000,
+          seq: 1,
+          usedTokens: 80_000,
+        }),
+        tokenUsageEvent({
+          cachedInputTokens: 60_000,
+          inputTokens: 80_000,
+          seq: 2,
+        }),
+      ]),
+    ).toEqual(
+      expect.objectContaining({
+        promptCacheUsage: {
+          status: "reported",
+          cachedInputTokens: 60_000,
+          inputTokens: 80_000,
+        },
+      }),
+    );
+  });
+
+  it("distinguishes a reported prompt-cache miss from unknown telemetry", () => {
+    expect(
+      buildContextWindowUsage([
+        contextWindowUsageEvent({
+          estimated: false,
+          modelContextWindow: 200_000,
+          seq: 1,
+          usedTokens: 80_000,
+        }),
+        tokenUsageEvent({
+          cachedInputTokens: 0,
+          inputTokens: 80_000,
+          seq: 2,
+        }),
+      ]),
+    ).toEqual(
+      expect.objectContaining({
+        promptCacheUsage: {
+          status: "reported",
+          cachedInputTokens: 0,
+          inputTokens: 80_000,
+        },
+      }),
+    );
+  });
+
+  it("uses the newest token-usage event for live prompt-cache updates", () => {
+    expect(
+      buildContextWindowUsage([
+        contextWindowUsageEvent({
+          estimated: false,
+          modelContextWindow: 200_000,
+          seq: 1,
+          usedTokens: 80_000,
+        }),
+        tokenUsageEvent({
+          cachedInputTokens: 0,
+          inputTokens: 70_000,
+          seq: 2,
+        }),
+        tokenUsageEvent({
+          cachedInputTokens: 64_000,
+          inputTokens: 80_000,
+          seq: 3,
+        }),
+      ]),
+    ).toEqual(
+      expect.objectContaining({
+        promptCacheUsage: {
+          status: "reported",
+          cachedInputTokens: 64_000,
+          inputTokens: 80_000,
+        },
+      }),
+    );
+  });
+
+  it("does not reuse cache telemetry from an older turn", () => {
+    expect(
+      buildContextWindowUsage([
+        tokenUsageEvent({
+          cachedInputTokens: 60_000,
+          inputTokens: 80_000,
+          seq: 1,
+          turnId: "turn-old",
+        }),
+        contextWindowUsageEvent({
+          estimated: false,
+          modelContextWindow: 200_000,
+          seq: 2,
+          turnId: "turn-latest",
+          usedTokens: 80_000,
+        }),
+      ]),
+    ).toEqual(
+      expect.objectContaining({
+        promptCacheUsage: { status: "unknown" },
+      }),
+    );
   });
 
   it("keeps file-change row identity stable when provider changes reorder", () => {

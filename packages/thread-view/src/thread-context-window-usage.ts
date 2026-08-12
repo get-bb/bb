@@ -1,5 +1,8 @@
 import { toPositiveNumber } from "@bb/domain";
-import type { ThreadContextWindowUsage } from "@bb/server-contract";
+import type {
+  ThreadContextWindowUsage,
+  ThreadPromptCacheUsage,
+} from "@bb/server-contract";
 import type { ThreadEventWithMeta } from "./build-event-projection.js";
 
 interface ThreadContextWindowSignal {
@@ -36,7 +39,55 @@ function decodeContextWindowSignal(
   };
 }
 
-function getOrderedContextWindowEvents(
+function extractThreadPromptCacheUsage(
+  orderedEvents: readonly ThreadEventWithMeta[],
+): ThreadPromptCacheUsage {
+  let latestUsageTurnId: string | null = null;
+  for (let index = orderedEvents.length - 1; index >= 0; index -= 1) {
+    const { event } = orderedEvents[index];
+    if (
+      event.type !== "thread/contextWindowUsage/updated" &&
+      event.type !== "thread/tokenUsage/updated"
+    ) {
+      continue;
+    }
+    latestUsageTurnId =
+      event.scope.kind === "turn" ? event.scope.turnId : null;
+    break;
+  }
+  if (latestUsageTurnId === null) {
+    return { status: "unknown" };
+  }
+
+  for (let index = orderedEvents.length - 1; index >= 0; index -= 1) {
+    const { event } = orderedEvents[index];
+    if (
+      event.type !== "thread/tokenUsage/updated" ||
+      event.scope.kind !== "turn" ||
+      event.scope.turnId !== latestUsageTurnId
+    ) {
+      continue;
+    }
+
+    const cachedInputTokens = toNonNegativeNumber(
+      event.tokenUsage.last.cachedInputTokens,
+    );
+    const inputTokens = toNonNegativeNumber(event.tokenUsage.last.inputTokens);
+    if (cachedInputTokens === null || inputTokens === null) {
+      return { status: "unknown" };
+    }
+
+    return {
+      status: "reported",
+      cachedInputTokens,
+      inputTokens,
+    };
+  }
+
+  return { status: "unknown" };
+}
+
+function getOrderedUsageMetadataEvents(
   events: readonly ThreadEventWithMeta[],
 ): readonly ThreadEventWithMeta[] {
   for (let index = 1; index < events.length; index += 1) {
@@ -54,7 +105,7 @@ export function extractThreadContextWindowUsage(
   let modelContextWindow: number | undefined;
   let usedTokens: number | undefined;
   let usageIsUnknown = false;
-  const orderedEvents = getOrderedContextWindowEvents(events);
+  const orderedEvents = getOrderedUsageMetadataEvents(events);
 
   for (let index = orderedEvents.length - 1; index >= 0; index -= 1) {
     const signal = decodeContextWindowSignal(orderedEvents[index]);
@@ -92,6 +143,7 @@ export function extractThreadContextWindowUsage(
   return {
     estimated: estimated ?? false,
     modelContextWindow,
+    promptCacheUsage: extractThreadPromptCacheUsage(orderedEvents),
     usedTokens,
   };
 }

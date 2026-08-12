@@ -106,9 +106,9 @@ export interface ThreadTimelineFromEventsOptions extends ThreadTimelineFromEvent
 
 export interface BuildThreadTimelineFromEventsArgs {
   acceptedClientRequestContext: AcceptedClientRequestContext;
-  contextWindowEvents: ThreadEventWithMeta[];
   events: ThreadEventWithMeta[];
   options: ThreadTimelineFromEventsOptions;
+  usageMetadataEvents: ThreadEventWithMeta[];
 }
 
 export interface ThreadTimelineFromEventsResult {
@@ -1242,7 +1242,7 @@ export function buildThreadTimelineFromEvents(
       },
     ),
     contextWindowUsage: extractThreadContextWindowUsage(
-      args.contextWindowEvents,
+      args.usageMetadataEvents,
     ),
     goal: !args.options.isLatestPage
       ? null

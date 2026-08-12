@@ -982,7 +982,7 @@ describe("createRealtimeCacheEffects", () => {
     effects.dispose();
   });
 
-  it("invalidates timeline but not thread detail or prompt history for non-turn-request events", () => {
+  it("invalidates timeline but not thread detail or prompt history for token-usage events", () => {
     vi.useFakeTimers();
     const { effects, queryClient } = createRealtimeEffectsTestContext();
     const threadKey = threadQueryKey("thr_1");
@@ -1014,7 +1014,10 @@ describe("createRealtimeCacheEffects", () => {
       type: "changed",
       entity: "thread",
       id: "thr_1",
-      metadata: { eventTypes: ["system/error"], projectId: "project-1" },
+      metadata: {
+        eventTypes: ["thread/tokenUsage/updated"],
+        projectId: "project-1",
+      },
       changes: ["events-appended"],
     });
     vi.advanceTimersByTime(50);

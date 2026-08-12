@@ -22,6 +22,7 @@ import {
   hasParentedEventCrossingSequence,
   getTimelineSegmentAnchorAtSequence,
   listContextWindowUsageRows,
+  listLatestTokenUsageRows,
   listRecentStoredEventRows,
   listStoredConversationOutlineEventRows,
   listStoredClientTurnRequestIdsInRange,
@@ -156,8 +157,8 @@ export type ThreadTimelineBuildProfileStage =
   | "accepted-client-request-context-query"
   | "event-json-decode"
   | "summary-compaction"
-  | "context-window-query"
-  | "context-window-json-decode"
+  | "usage-metadata-query"
+  | "usage-metadata-json-decode"
   | "thread-view-projection"
   | "pagination-segmentation"
   | "response-serialization";
@@ -171,8 +172,8 @@ export interface ThreadTimelineBuildProfileStageTiming {
 
 export interface ThreadTimelineBuildProfile {
   compactedEventCount: number;
-  contextWindowEventDataBytes: number;
-  contextWindowEventRowCount: number;
+  usageMetadataEventDataBytes: number;
+  usageMetadataEventRowCount: number;
   decodedEventCount: number;
   eventDataBytes: number;
   eventRowCount: number;
@@ -201,8 +202,8 @@ interface BuildThreadTimelineInternalResult {
 
 interface ThreadTimelineBuildProfileAccumulator {
   compactedEventCount: number;
-  contextWindowEventDataBytes: number;
-  contextWindowEventRowCount: number;
+  usageMetadataEventDataBytes: number;
+  usageMetadataEventRowCount: number;
   decodedEventCount: number;
   eventDataBytes: number;
   eventRowCount: number;
@@ -1261,8 +1262,8 @@ function byteLengthOfStoredEventRows(rows: readonly StoredEventRow[]): number {
 function createThreadTimelineBuildProfileAccumulator(): ThreadTimelineBuildProfileAccumulator {
   return {
     compactedEventCount: 0,
-    contextWindowEventDataBytes: 0,
-    contextWindowEventRowCount: 0,
+    usageMetadataEventDataBytes: 0,
+    usageMetadataEventRowCount: 0,
     decodedEventCount: 0,
     eventDataBytes: 0,
     eventRowCount: 0,
@@ -1307,8 +1308,8 @@ function completeThreadTimelineBuildProfile(
   }
   return {
     compactedEventCount: accumulator.compactedEventCount,
-    contextWindowEventDataBytes: accumulator.contextWindowEventDataBytes,
-    contextWindowEventRowCount: accumulator.contextWindowEventRowCount,
+    usageMetadataEventDataBytes: accumulator.usageMetadataEventDataBytes,
+    usageMetadataEventRowCount: accumulator.usageMetadataEventRowCount,
     decodedEventCount: accumulator.decodedEventCount,
     eventDataBytes: accumulator.eventDataBytes,
     eventRowCount: accumulator.eventRowCount,
@@ -1376,19 +1377,22 @@ function buildThreadTimelineInternal(
   if (profile) {
     profile.compactedEventCount = decodedEvents.length;
   }
-  const contextWindowUsageRows = measureThreadTimelineStage(
+  const usageMetadataRows = measureThreadTimelineStage(
     profile,
-    "context-window-query",
-    () =>
-      listContextWindowUsageRows(db, {
+    "usage-metadata-query",
+    () => [
+      ...listContextWindowUsageRows(db, {
         threadId: thread.id,
       }),
+      ...listLatestTokenUsageRows(db, {
+        threadId: thread.id,
+      }),
+    ],
   );
   if (profile) {
-    profile.contextWindowEventDataBytes = byteLengthOfStoredEventRows(
-      contextWindowUsageRows,
-    );
-    profile.contextWindowEventRowCount = contextWindowUsageRows.length;
+    profile.usageMetadataEventDataBytes =
+      byteLengthOfStoredEventRows(usageMetadataRows);
+    profile.usageMetadataEventRowCount = usageMetadataRows.length;
   }
   const commonProjectionOptions = {
     includeDebugRawEvents: false,
@@ -1399,10 +1403,10 @@ function buildThreadTimelineInternal(
     threadName: thread.title ?? thread.titleFallback ?? "",
     workspaceRoot: resolveThreadWorkspaceRoot(db, thread),
   };
-  const contextWindowEvents = measureThreadTimelineStage(
+  const usageMetadataEvents = measureThreadTimelineStage(
     profile,
-    "context-window-json-decode",
-    () => contextWindowUsageRows.map((row) => toThreadEventWithMeta(row)),
+    "usage-metadata-json-decode",
+    () => usageMetadataRows.map((row) => toThreadEventWithMeta(row)),
   );
   const acceptedClientRequestContext: AcceptedClientRequestContext = {
     acceptedClientRequestEvents: acceptedClientRequestContextRows.map((row) =>
@@ -1415,7 +1419,6 @@ function buildThreadTimelineInternal(
     () =>
       buildThreadTimelineFromEvents({
         acceptedClientRequestContext,
-        contextWindowEvents,
         events: decodedEvents,
         options: {
           ...commonProjectionOptions,
@@ -1424,6 +1427,7 @@ function buildThreadTimelineInternal(
           providerId: thread.providerId,
           turnMessageDetail: includeNestedRows ? "full" : "summary",
         },
+        usageMetadataEvents,
       }),
   );
   if (profile) {
@@ -1582,7 +1586,7 @@ export function buildThreadConversationOutline(
   };
   const timeline = buildThreadTimelineFromEvents({
     acceptedClientRequestContext,
-    contextWindowEvents: [],
+    usageMetadataEvents: [],
     events: decodedEvents,
     options: {
       includeDebugRawEvents: false,

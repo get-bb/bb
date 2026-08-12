@@ -1095,7 +1095,7 @@ export function renderTimelineFixture(
   };
   const timeline = buildThreadTimelineFromEvents({
     acceptedClientRequestContext: EMPTY_ACCEPTED_CLIENT_REQUEST_CONTEXT,
-    contextWindowEvents: [],
+    usageMetadataEvents: [],
     events: decodedEvents,
     options: {
       ...commonProjectionOptions,

@@ -1,10 +1,13 @@
 import { Popover, PopoverContent, PopoverTrigger } from "@bb/shared-ui/popover";
+import { Icon } from "@bb/shared-ui/icon";
 import type { ThreadContextWindowUsage } from "@bb/server-contract";
 import { useHoverPopover } from "../../ui/hooks/use-hover-popover.js";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   calculateContextWindowUsagePercent,
+  calculatePromptCacheHitPercent,
   formatCompactTokenCount,
+  formatTokenCount,
 } from "./thread-context-window-usage.js";
 
 export interface ThreadContextWindowIndicatorProps {
@@ -52,6 +55,32 @@ export function ThreadContextWindowIndicator({
   const usedTokensLabel = formatCompactTokenCount(usage.usedTokens);
   const windowTokensLabel = formatCompactTokenCount(usage.modelContextWindow);
   const titleLabel = usage.estimated ? "Estimated context" : "Context window";
+  const cacheUsage = usage.promptCacheUsage;
+  const cacheHitPercent = calculatePromptCacheHitPercent(cacheUsage);
+  const cacheStatus =
+    cacheUsage.status === "unknown"
+      ? "unknown"
+      : cacheUsage.cachedInputTokens > 0
+        ? "hit"
+        : "miss";
+  const cacheSummaryLabel =
+    cacheHitPercent === null
+      ? "Unavailable"
+      : cacheStatus === "miss"
+        ? `No hit (${cacheHitPercent}%)`
+        : `${cacheHitPercent}% hit`;
+  const cacheAriaLabel =
+    cacheHitPercent === null
+      ? "prompt cache unavailable"
+      : cacheStatus === "miss"
+        ? "no prompt cache hit"
+        : `prompt cache ${cacheHitPercent}% hit`;
+  const cacheToneClass =
+    cacheStatus === "hit"
+      ? "text-success"
+      : cacheStatus === "unknown"
+        ? "text-subtle-foreground"
+        : "text-muted-foreground";
 
   return (
     <Popover open={open} onOpenChange={handleOpenChange}>
@@ -60,10 +89,10 @@ export function ThreadContextWindowIndicator({
           type="button"
           {...triggerHoverProps}
           className={cn(
-            "-m-1 inline-flex size-8 cursor-pointer items-center justify-center rounded-full transition-colors hover:bg-state-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            "-m-1 inline-flex h-8 cursor-pointer items-center justify-center gap-1 rounded-full px-1 transition-colors hover:bg-state-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             className,
           )}
-          aria-label={`Context window ${usedPercent}% used`}
+          aria-label={`Context window ${usedPercent}% used; ${cacheAriaLabel}`}
         >
           <svg
             viewBox="0 0 16 16"
@@ -91,6 +120,17 @@ export function ThreadContextWindowIndicator({
               transform="rotate(-90 8 8)"
             />
           </svg>
+          <span
+            className={cn(
+              "inline-flex items-center gap-0.5 text-xs tabular-nums",
+              cacheToneClass,
+            )}
+            data-prompt-cache-status={cacheStatus}
+            aria-hidden="true"
+          >
+            <Icon name="Layers" className="size-3" aria-hidden />
+            {cacheHitPercent === null ? "—" : `${cacheHitPercent}%`}
+          </span>
         </button>
       </PopoverTrigger>
       <PopoverContent
@@ -119,6 +159,24 @@ export function ThreadContextWindowIndicator({
               {usedTokensLabel} / {windowTokensLabel} tokens
             </span>
             <span>{leftPercent}% left</span>
+          </div>
+          <div className="space-y-1 border-t border-border pt-2 max-md:pt-3">
+            <div className="flex items-baseline justify-between gap-2 text-xs max-md:text-sm">
+              <span className="text-muted-foreground">Prompt cache</span>
+              <span className={cn("font-medium tabular-nums", cacheToneClass)}>
+                {cacheSummaryLabel}
+              </span>
+            </div>
+            {cacheUsage.status === "reported" ? (
+              <div className="text-xs tabular-nums text-muted-foreground max-md:text-sm">
+                {formatTokenCount(cacheUsage.cachedInputTokens)} cached of{" "}
+                {formatTokenCount(cacheUsage.inputTokens)} input tokens
+              </div>
+            ) : (
+              <div className="text-xs text-muted-foreground max-md:text-sm">
+                Cached input tokens were not reported for the latest turn.
+              </div>
+            )}
           </div>
         </div>
       </PopoverContent>

@@ -29,6 +29,7 @@ import {
   listCompletedTurnsByThreadIds,
   listEvents,
   listLatestGoalEventRowsByThreadIds,
+  listLatestTokenUsageRows,
   listRecentStoredEventRows,
   listTimelineSegmentAnchorsDescending,
   findTimelineSegmentAnchorSequenceAfter,
@@ -864,6 +865,56 @@ describe("events", () => {
         threadId: thread.id,
       }).map((row) => row.sequence),
     ).toEqual([2, 5]);
+  });
+
+  it("lists the latest root-turn token usage for prompt-cache metadata", () => {
+    const { db, thread } = setup();
+
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 1,
+        type: "thread/tokenUsage/updated",
+        ...createTurnEventFields({ turnId: "turn-root" }),
+        data: createTokenUsageData({
+          modelContextWindow: 200_000,
+          totalTokens: 80_000,
+        }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 2,
+        type: "turn/started",
+        ...createTurnEventFields({ turnId: "turn-subagent" }),
+        data: JSON.stringify({ parentToolCallId: "call-subagent" }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 3,
+        type: "thread/tokenUsage/updated",
+        ...createTurnEventFields({ turnId: "turn-subagent" }),
+        data: createTokenUsageData({
+          modelContextWindow: 200_000,
+          totalTokens: 10_000,
+        }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 4,
+        type: "thread/tokenUsage/updated",
+        ...createTurnEventFields({ turnId: "turn-root" }),
+        data: createTokenUsageData({
+          modelContextWindow: 200_000,
+          totalTokens: 90_000,
+        }),
+      },
+    ]);
+
+    expect(
+      listLatestTokenUsageRows(db, {
+        threadId: thread.id,
+      }).map((row) => row.sequence),
+    ).toEqual([4]);
   });
 
   it("lists bounded timeline segment anchors with request shape rules", () => {

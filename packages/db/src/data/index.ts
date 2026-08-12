@@ -311,6 +311,7 @@ export {
   insertEvents,
   listActiveBackgroundTaskCountsByThreadIds,
   listContextWindowUsageRows,
+  listLatestTokenUsageRows,
   listCompletedTurnsByThreadIds,
   listEvents,
   listRecentStoredEventRows,

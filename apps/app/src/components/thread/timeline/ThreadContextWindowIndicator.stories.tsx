@@ -1,4 +1,7 @@
-import type { ThreadContextWindowUsage } from "@bb/server-contract";
+import type {
+  ThreadContextWindowUsage,
+  ThreadPromptCacheUsage,
+} from "@bb/server-contract";
 import { StoryCard, StoryRow } from "../../../../.ladle/story-card";
 import { ThreadContextWindowIndicator } from "./ThreadContextWindowIndicator";
 
@@ -11,8 +14,18 @@ const WINDOW = 200_000;
 function usage(
   usedTokens: number,
   estimated = false,
+  promptCacheUsage: ThreadPromptCacheUsage = {
+    status: "reported",
+    cachedInputTokens: 24_000,
+    inputTokens: 32_000,
+  },
 ): ThreadContextWindowUsage {
-  return { usedTokens, modelContextWindow: WINDOW, estimated };
+  return {
+    usedTokens,
+    modelContextWindow: WINDOW,
+    estimated,
+    promptCacheUsage,
+  };
 }
 
 // Tone thresholds (shared by the ring stroke and the menu bar/percentage):
@@ -22,6 +35,12 @@ const moderate = usage(110_000); // 55% — muted
 const approachingLimit = usage(166_000); // 83% — warning
 const critical = usage(192_000); // 96% — destructive
 const estimated = usage(150_000, true); // 75% — warning, "Estimated" label
+const cacheMiss = usage(110_000, false, {
+  status: "reported",
+  cachedInputTokens: 0,
+  inputTokens: 32_000,
+});
+const cacheUnknown = usage(110_000, false, { status: "unknown" });
 
 // The popover anchors to the top of the ring, so bottom-align the trigger and
 // leave headroom above for the open menu.
@@ -49,7 +68,10 @@ export function Overview() {
   return (
     <>
       <StoryCard>
-        <StoryRow label="Low (18%)" hint="muted ring — hover for the usage menu">
+        <StoryRow
+          label="Low (18%)"
+          hint="muted ring — hover for the usage menu"
+        >
           <ThreadContextWindowIndicator usage={low} />
         </StoryRow>
         <StoryRow label="Moderate (55%)" hint="muted ring">
@@ -67,6 +89,15 @@ export function Overview() {
         >
           <ThreadContextWindowIndicator usage={estimated} />
         </StoryRow>
+        <StoryRow label="Cache miss" hint="reported telemetry with no hit">
+          <ThreadContextWindowIndicator usage={cacheMiss} />
+        </StoryRow>
+        <StoryRow
+          label="Cache unavailable"
+          hint="provider did not report cached input tokens"
+        >
+          <ThreadContextWindowIndicator usage={cacheUnknown} />
+        </StoryRow>
       </StoryCard>
       <StoryCard>
         <OpenMenuRow
@@ -83,6 +114,11 @@ export function Overview() {
           label="Usage menu — estimated (75%)"
           hint='header reads "Estimated context"'
           usage={estimated}
+        />
+        <OpenMenuRow
+          label="Usage menu — cache unavailable"
+          hint="honest unknown state with no inferred cache claim"
+          usage={cacheUnknown}
         />
       </StoryCard>
     </>
