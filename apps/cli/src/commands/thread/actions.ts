@@ -366,7 +366,7 @@ export function registerActionsCommands(
 
   parent
     .command("edit-message [id]")
-    .description("Replace a completed user message and rerun from that point")
+    .description("Replace an accepted user message and rerun from that point")
     .requiredOption("--message <text>", "Replacement message text")
     .option("--self", "Target the current thread (from BB_THREAD_ID)")
     .option(

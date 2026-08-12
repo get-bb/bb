@@ -86,7 +86,9 @@ Editing a sent message (requires the `editMessages` experiment):
   Without --expected-request-sequence, the latest eligible message is edited.
   Codex, Claude Code, and Pi threads are supported. The original conversation
   remains unchanged until the provider prepares the replacement history.
-  Submitting replaces that turn and every later turn while retaining workspace
+  Failed and incomplete turns are eligible. If the thread is running,
+  submission stops the current turn and waits for it to settle. It then
+  replaces the selected turn and every later turn while retaining workspace
   changes. From an agent thread, the command carries `BB_THREAD_ID` so the
   replacement runs under agent permission policy.
 

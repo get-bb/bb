@@ -965,7 +965,6 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     (thread.providerId === "claude-code" ||
       thread.providerId === "codex" ||
       thread.providerId === "pi") &&
-    thread.runtime.displayStatus === "idle" &&
     thread.archivedAt === null &&
     thread.deletedAt === null &&
     !hasPendingInteraction &&

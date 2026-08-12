@@ -15,6 +15,7 @@ import {
   turnScope,
   type PromptInput,
   type ThreadEventTurnStatus,
+  type ThreadStatus,
 } from "@bb/domain";
 import { describe, expect, it, vi } from "vitest";
 import { editThreadMessage } from "../../src/services/threads/thread-edit-message.js";
@@ -35,12 +36,12 @@ import {
 } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 
-function seedCompletedTurn(
+function seedTurn(
   harness: TestAppHarness,
   args: {
     providerThreadId: string;
     providerCheckpointId?: string;
-    completionStatus?: ThreadEventTurnStatus;
+    completionStatus?: ThreadEventTurnStatus | null;
     inputGroups?: PromptInput[][];
     initiator?: "agent" | "user";
     requestSequence: number;
@@ -122,20 +123,22 @@ function seedCompletedTurn(
       },
     },
   });
-  seedStoredEvent(harness.deps, {
-    threadId: args.threadId,
-    providerThreadId: args.providerThreadId,
-    sequence: args.requestSequence + 4,
-    type: "turn/completed",
-    scope: turnScope(args.turnId),
-    data: {
+  if (args.completionStatus !== null) {
+    seedStoredEvent(harness.deps, {
+      threadId: args.threadId,
       providerThreadId: args.providerThreadId,
-      status: args.completionStatus ?? "completed",
-      ...(args.providerCheckpointId !== undefined
-        ? { providerCheckpointId: args.providerCheckpointId }
-        : {}),
-    },
-  });
+      sequence: args.requestSequence + 4,
+      type: "turn/completed",
+      scope: turnScope(args.turnId),
+      data: {
+        providerThreadId: args.providerThreadId,
+        status: args.completionStatus ?? "completed",
+        ...(args.providerCheckpointId !== undefined
+          ? { providerCheckpointId: args.providerCheckpointId }
+          : {}),
+      },
+    });
+  }
 }
 
 function seedEditableThread(
@@ -148,6 +151,7 @@ function seedEditableThread(
     includeIdentity?: boolean;
     includeSecondTurn?: boolean;
     providerId?: "claude-code" | "codex" | "pi";
+    threadStatus?: ThreadStatus;
   } = {},
 ) {
   setExperiments(harness.db, {
@@ -171,7 +175,7 @@ function seedEditableThread(
     projectId: project.id,
     environmentId: environment.id,
     providerId: args.providerId ?? "codex",
-    status: "idle",
+    status: args.threadStatus ?? "idle",
   });
   if (args.includeIdentity !== false) {
     seedStoredEvent(harness.deps, {
@@ -184,7 +188,7 @@ function seedEditableThread(
       data: {},
     });
   }
-  seedCompletedTurn(harness, {
+  seedTurn(harness, {
     providerThreadId: args.firstProviderThreadId ?? "provider-original",
     requestSequence: 2,
     text: "First message",
@@ -208,7 +212,7 @@ function seedEditableThread(
     threadId: thread.id,
   });
   if (args.includeSecondTurn !== false) {
-    seedCompletedTurn(harness, {
+    seedTurn(harness, {
       providerThreadId: "provider-original",
       requestSequence: 7,
       text: "Original last message",
@@ -309,7 +313,7 @@ describe("editThreadMessage", () => {
   it("targets the latest user message when expectedRequestSequence is omitted, skipping agent turns", async () => {
     await withTestHarness(async (harness) => {
       const { environment, thread } = seedEditableThread(harness);
-      seedCompletedTurn(harness, {
+      seedTurn(harness, {
         initiator: "agent",
         providerCheckpointId: "checkpoint-agent",
         providerThreadId: "provider-original",
@@ -753,7 +757,7 @@ describe("editThreadMessage", () => {
   it("rejects grouped requests", async () => {
     await withTestHarness(async (harness) => {
       const { environment, thread } = seedEditableThread(harness);
-      seedCompletedTurn(harness, {
+      seedTurn(harness, {
         inputGroups: [
           [{ type: "text", text: "Grouped first", mentions: [] }],
           [{ type: "text", text: "Grouped second", mentions: [] }],
@@ -783,7 +787,7 @@ describe("editThreadMessage", () => {
   it("resolves the latest edit past ineligible candidates", async () => {
     await withTestHarness(async (harness) => {
       const { environment, thread } = seedEditableThread(harness);
-      seedCompletedTurn(harness, {
+      seedTurn(harness, {
         inputGroups: [
           [{ type: "text", text: "Grouped a", mentions: [] }],
           [{ type: "text", text: "Grouped b", mentions: [] }],
@@ -826,7 +830,7 @@ describe("editThreadMessage", () => {
   it("edits a selected turn that was interrupted", async () => {
     await withTestHarness(async (harness) => {
       const { environment, thread } = seedEditableThread(harness);
-      seedCompletedTurn(harness, {
+      seedTurn(harness, {
         completionStatus: "interrupted",
         providerCheckpointId: "checkpoint-interrupted",
         providerThreadId: "provider-original",
@@ -867,10 +871,12 @@ describe("editThreadMessage", () => {
     });
   });
 
-  it("rejects editing a turn that did not complete successfully", async () => {
+  it("edits a selected turn that failed", async () => {
     await withTestHarness(async (harness) => {
-      const { environment, thread } = seedEditableThread(harness);
-      seedCompletedTurn(harness, {
+      const { environment, thread } = seedEditableThread(harness, {
+        threadStatus: "error",
+      });
+      seedTurn(harness, {
         completionStatus: "failed",
         providerCheckpointId: "checkpoint-failed",
         providerThreadId: "provider-original",
@@ -880,17 +886,122 @@ describe("editThreadMessage", () => {
         turnId: "turn-failed",
       });
 
-      await expect(
-        editThreadMessage(harness.deps, {
-          environment,
-          thread,
-          payload: {
-            operationId: "edit-op-failed-turn",
-            expectedRequestSequence: 12,
-            input: [{ type: "text", text: "Replacement", mentions: [] }],
-          },
-        }),
-      ).rejects.toThrow("did not complete successfully");
+      const editPromise = editThreadMessage(harness.deps, {
+        environment,
+        thread,
+        payload: {
+          operationId: "edit-op-failed-turn",
+          expectedRequestSequence: 12,
+          input: [{ type: "text", text: "Replacement", mentions: [] }],
+        },
+      });
+      const rewind = await waitForQueuedCommand(
+        harness,
+        (queued) => queued.command.type === "thread.rewind.prepare",
+      );
+      if (rewind.command.type !== "thread.rewind.prepare") {
+        throw new Error("Expected a thread.rewind.prepare command");
+      }
+      await reportQueuedCommandSuccess(harness, rewind, {
+        providerThreadId: "provider-staged-failed-edit",
+      });
+
+      await expect(editPromise).resolves.toMatchObject({
+        ok: true,
+        operationId: "edit-op-failed-turn",
+      });
+    });
+  });
+
+  it("edits an idle selected turn without a completion event", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedEditableThread(harness);
+      seedTurn(harness, {
+        completionStatus: null,
+        providerThreadId: "provider-original",
+        requestSequence: 12,
+        text: "Incomplete request",
+        threadId: thread.id,
+        turnId: "turn-incomplete",
+      });
+
+      const editPromise = editThreadMessage(harness.deps, {
+        environment,
+        thread,
+        payload: {
+          operationId: "edit-op-incomplete-turn",
+          expectedRequestSequence: 12,
+          input: [{ type: "text", text: "Replacement", mentions: [] }],
+        },
+      });
+      const rewind = await waitForQueuedCommand(
+        harness,
+        (queued) => queued.command.type === "thread.rewind.prepare",
+      );
+      if (rewind.command.type !== "thread.rewind.prepare") {
+        throw new Error("Expected a thread.rewind.prepare command");
+      }
+      await reportQueuedCommandSuccess(harness, rewind, {
+        providerThreadId: "provider-staged-incomplete-edit",
+      });
+
+      await expect(editPromise).resolves.toMatchObject({
+        ok: true,
+        operationId: "edit-op-incomplete-turn",
+      });
+    });
+  });
+
+  it("stops an active selected turn before editing it", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedEditableThread(harness, {
+        threadStatus: "active",
+      });
+      seedTurn(harness, {
+        completionStatus: null,
+        providerThreadId: "provider-original",
+        requestSequence: 12,
+        text: "Running request",
+        threadId: thread.id,
+        turnId: "turn-running",
+      });
+
+      const editPromise = editThreadMessage(harness.deps, {
+        environment,
+        thread,
+        payload: {
+          operationId: "edit-op-active-turn",
+          expectedRequestSequence: 12,
+          input: [{ type: "text", text: "Replacement", mentions: [] }],
+        },
+      });
+      const stop = await waitForQueuedCommand(
+        harness,
+        (queued) => queued.command.type === "thread.stop",
+      );
+      expect(getThread(harness.db, thread.id)).toMatchObject({
+        status: "stopping",
+      });
+      expect(
+        listQueuedThreadCommands(harness, "thread.rewind.prepare", thread.id),
+      ).toHaveLength(0);
+      await reportQueuedCommandSuccess(harness, stop, {});
+
+      const rewind = await waitForQueuedCommand(
+        harness,
+        (queued) => queued.command.type === "thread.rewind.prepare",
+      );
+      if (rewind.command.type !== "thread.rewind.prepare") {
+        throw new Error("Expected a thread.rewind.prepare command");
+      }
+      await reportQueuedCommandSuccess(harness, rewind, {
+        providerThreadId: "provider-staged-active-edit",
+      });
+
+      await expect(editPromise).resolves.toMatchObject({
+        ok: true,
+        operationId: "edit-op-active-turn",
+      });
     });
   });
 

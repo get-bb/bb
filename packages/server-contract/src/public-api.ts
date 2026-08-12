@@ -995,6 +995,10 @@ export const publicApiRoutes = {
       ),
       response: jsonResponse<ContinueAfterProviderRateLimitResponse>(),
     }),
+    /**
+     * Replace an accepted root user turn and every later turn. A running
+     * thread is stopped and allowed to settle before history is rewritten.
+     */
     editMessage: defineRoute({
       path: "/threads/:id/edit-message",
       method: "post",

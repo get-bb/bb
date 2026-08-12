@@ -105,8 +105,10 @@ message agents, or inspect projects, providers, and environments.
   project setup guide. Change it with
   `bb settings experiment newOnboarding <true|false>`. Use
   `bb settings replay-onboarding` to enable it and show the guide again.
-- The default-off `editMessages` experiment allows completed user messages in
-  Codex, Claude Code, and Pi threads to be replaced and rerun. Change it with
+- The default-off `editMessages` experiment allows accepted root user messages
+  in Codex, Claude Code, and Pi threads to be replaced and rerun, including
+  failed or incomplete turns. Submitting an edit to a running thread stops and
+  settles the current turn first. Change it with:
   `bb settings experiment editMessages <true|false>`.
 - Thread timeline windows are capped by event count as well as by user-message
   count (`BB_FF_TIMELINE_WINDOW_EVENT_BUDGET`, default 1500), because a thread
@@ -344,12 +346,14 @@ or artifacts, validation performed, and blockers.
 - Use `bb thread tell <thread-id> "..."` when requirements change, a blocker
   needs clarification, or follow-up work is needed.
 - Use `bb thread edit-message <thread-id> --message "..."` to replace and rerun
-  the latest completed user message in an idle Codex, Claude Code, or Pi thread.
-  Pass `--expected-request-sequence <sequence>` to select an earlier message.
-  Opening edit mode in the app is non-destructive; history changes only when the
-  edit is submitted successfully, and workspace changes remain. When an agent
-  edits another thread, the CLI carries its `BB_THREAD_ID` so the replacement
-  runs under agent permission policy.
+  the latest eligible user message in a Codex, Claude Code, or Pi thread. Pass
+  `--expected-request-sequence <sequence>` to select an earlier message. Failed
+  and incomplete turns are eligible; submitting against a running thread stops
+  and settles its current turn first. Opening edit mode in the app is
+  non-destructive; history changes only when the edit is submitted successfully,
+  and workspace changes remain. When an agent edits another thread, the CLI
+  carries its `BB_THREAD_ID` so the replacement runs under agent permission
+  policy.
 - `bb thread tell` steers by default, delivering the message immediately into
   the active turn. Use `--mode queue` when the message is non-urgent and the
   agent can finish its current work first. Steer is especially important for a
