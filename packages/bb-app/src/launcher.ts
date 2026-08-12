@@ -547,6 +547,11 @@ interface ResolveServerUrlArgs {
   optionServerUrl?: string;
 }
 
+interface ResolveServerListenerUrlArgs {
+  bindHost: string | undefined;
+  port: number;
+}
+
 interface ApplyManagedConfigEnvArgs {
   config: ManagedConfig;
   env: NodeJS.ProcessEnv;
@@ -846,6 +851,13 @@ function resolveServerUrl(args: ResolveServerUrlArgs): string {
     trimToUndefined(args.env.BB_SERVER_URL) ??
     args.defaultServerUrl
   );
+}
+
+export function resolveServerListenerUrl(
+  args: ResolveServerListenerUrlArgs,
+): string {
+  const bindHost = parseServerBindHost(args.bindHost ?? BB_LOOPBACK_HOST);
+  return `http://${bindHost}:${String(args.port)}`;
 }
 
 function applyManagedConfigEnv(
@@ -3248,6 +3260,12 @@ export async function runBbApp(
   }
 
   const context = runtime.context;
+  // context.serverUrl is deliberately loopback-reachable for health checks and
+  // the colocated daemon. Report the distinct socket address users exposed.
+  const serverListenerUrl = resolveServerListenerUrl({
+    bindHost: runtime.serverEnv.BB_SERVER_BIND_HOST,
+    port: context.serverPort,
+  });
   const outputBuffer = createOutputBuffer();
   const serverEnv = createServerEnv({
     context,
@@ -3332,7 +3350,7 @@ export async function runBbApp(
       return;
     }
 
-    endStep(green("✓"), `Server listening on ${cyan(context.serverUrl)}`);
+    endStep(green("✓"), `Server listening on ${cyan(serverListenerUrl)}`);
 
     beginStep("Starting host daemon");
     const autoJoinEnv = await maybeAddAutoJoinEnv({
@@ -3367,7 +3385,7 @@ export async function runBbApp(
     process.stdout.write("\n");
     log(green("●"), bold("bb is ready"));
     process.stdout.write("\n");
-    log(" ", formatReadyOutputRow("app", cyan(context.serverUrl)));
+    log(" ", formatReadyOutputRow("app", cyan(serverListenerUrl)));
     log(" ", formatReadyOutputRow("daemon", String(context.daemonPort)));
     log(" ", formatReadyOutputRow("data", context.dataDir));
     log(" ", formatReadyOutputRow("db", context.dbPath));

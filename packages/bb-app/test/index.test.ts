@@ -34,6 +34,7 @@ import {
   createDaemonEnv,
   createHostDaemonJoinEnv,
   readBbAppPackageVersion,
+  resolveServerListenerUrl,
   runBundledCliCommand,
   superviseFullStackProcesses,
   terminateManagedFullStackProcesses,
@@ -762,7 +763,7 @@ describe("bb-app launcher", () => {
     });
   });
 
-  it("passes the server bind host flag to the server environment", async () => {
+  it("reports the server bind host separately from the loopback connection URL", async () => {
     const parsedArgs = parseLauncherArgs(["--server-bind-host", "0.0.0.0"]);
     const dataDir = mkdtempSync(join(tmpdir(), "bb-app-bind-host-"));
     const runtime = await resolveBbAppRuntimeState({
@@ -775,6 +776,13 @@ describe("bb-app launcher", () => {
 
     expect(parsedArgs.options.serverBindHost).toBe("0.0.0.0");
     expect(runtime.serverEnv.BB_SERVER_BIND_HOST).toBe("0.0.0.0");
+    expect(
+      resolveServerListenerUrl({
+        bindHost: runtime.serverEnv.BB_SERVER_BIND_HOST,
+        port: runtime.context.serverPort,
+      }),
+    ).toBe("http://0.0.0.0:38886");
+    expect(runtime.context.serverUrl).toBe("http://127.0.0.1:38886");
   });
 
   it("strips parent thread context from the production server without stripping the CLI", async () => {

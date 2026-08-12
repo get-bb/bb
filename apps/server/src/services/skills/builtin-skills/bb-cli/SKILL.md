@@ -24,7 +24,10 @@ message agents, or inspect projects, providers, and environments.
   connect or a private Tailscale Serve URL for remote browsers and execution
   machines. `--server-bind-host 0.0.0.0` is a compatibility escape hatch only:
   the public API is unauthenticated and permits command execution and file
-  reads, so wildcard binding requires a trusted network boundary.
+  reads, so wildcard binding requires a trusted network boundary. The startup
+  listener and `app` rows then show `http://0.0.0.0:<port>`; health checks and
+  the colocated daemon still use loopback. This opt-in is IPv4-only. Containers
+  must also publish the port to the host.
 
 ## Environment Setup Script
 

@@ -764,6 +764,12 @@ wildcard-bound server to an untrusted network. The only accepted bind hosts are
 `127.0.0.1` and `0.0.0.0`; this startup-only setting is not available through
 `bb-app config`.
 
+The startup `Server listening` and `app` lines show the actual listener address.
+With wildcard binding they show `http://0.0.0.0:<port>`, while bb's health check
+and colocated host daemon continue to connect through `127.0.0.1`. That local
+connection does not narrow the listener. `0.0.0.0` exposes IPv4 interfaces only;
+bb does not currently offer an IPv6 wildcard bind option.
+
 The data directory is the root directory for all bb-managed state: the SQLite
 database, logs, host identity, thread storage, custom themes (`theme/`), and
 plugins. It defaults to `~/.bb/` for the packaged app. The `pnpm dev` source launcher derives an isolated data

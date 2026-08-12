@@ -40,6 +40,11 @@ IPv4 network access. The public API is unauthenticated and permits command
 execution and file reads, so use wildcard binding only behind a trusted network
 boundary and never through Funnel or the public internet.
 
+Inside a container, `0.0.0.0` listens on the container's IPv4 interfaces; the
+container runtime must still publish that port to the host (for example,
+`docker run -p 3000:3000 ...`). Host firewall and upstream network rules also
+remain separate from bb's bind setting.
+
 If a browser on another computer should open work-host files in its local
 editor, run bb's local helper there, verify `ssh <work-host>` succeeds, and map
 the server/work-host to that SSH target:
