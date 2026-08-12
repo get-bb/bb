@@ -70,7 +70,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: 22.19.0
           registry-url: https://registry.npmjs.org
 
       - name: Ensure npm supports trusted publishing
@@ -243,7 +243,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22.x
+          node-version: 22.19.0
           cache: pnpm
 
       - name: Verify arm64 runner
