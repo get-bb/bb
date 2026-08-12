@@ -65,7 +65,7 @@ const finiteStateColorSyntaxRestrictions = [
   },
   {
     selector:
-      "Literal[value=/(?:^|\\s)(?:bg|text|border|fill|stroke|ring|outline|decoration|shadow|from|via|to)-\\[(?:#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(?:oklch|rgb|rgba|hsl|hsla|color)\\([^\\]]*\\))\\]/i], TemplateElement[value.raw=/(?:^|\\s)(?:bg|text|border|fill|stroke|ring|outline|decoration|shadow|from|via|to)-\\[(?:#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(?:oklch|rgb|rgba|hsl|hsla|color)\\([^\\]]*\\))\\]/i]",
+      "Literal[value=/(?<![a-zA-Z0-9_-])(?:bg|text|border|fill|stroke|ring|outline|decoration|shadow|from|via|to)-\\[(?:#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(?:oklch|rgb|rgba|hsl|hsla|color)\\([^\\]]*\\))\\]/i], TemplateElement[value.raw=/(?<![a-zA-Z0-9_-])(?:bg|text|border|fill|stroke|ring|outline|decoration|shadow|from|via|to)-\\[(?:#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(?:oklch|rgb|rgba|hsl|hsla|color)\\([^\\]]*\\))\\]/i]",
     message:
       "Finite State UI colors must use approved theme-token utilities, not arbitrary color utilities.",
   },

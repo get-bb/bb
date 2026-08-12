@@ -319,7 +319,7 @@ describe("lean contract tripwires", () => {
       `import { Star } from "lucide-react";
 export const accentColor = "#1a2b3c";
 export const neutralColor = "oklch(0.7 0.02 250)";
-export const classes = "bg-[#123456] border-[rgb(1_2_3)]";
+export const classes = "bg-[#123456] border-[rgb(1_2_3)] hover:bg-[#ff0000] dark:text-[#00ff00] !bg-[#123456] group-hover:fill-[rgb(1,2,3)]";
 export const icon = Star;
 `,
       `${pluginRoot}/lib/eslint-negative-probe.ts`,
@@ -362,7 +362,7 @@ import { Alert01Icon } from "@hugeicons/core-free-icons";
 export const finding = "Finding #12345";
 export const cve = "CVE-2026-deadbeef";
 export const sha = "sha256:deadbeef12345678";
-export const classes = "from-[10%] bg-[url(/assets/grid.svg)] bg-fs-surface";
+export const classes = "from-[10%] bg-[url(/assets/grid.svg)] bg-fs-surface text-[13px] bg-[var(--fs-surface)]";
 export const icon = { HugeiconsIcon, Alert01Icon };
 `,
       `${pluginRoot}/lanes/eslint-positive-probe.ts`,
