@@ -145,9 +145,11 @@ test("WP56 retains its authoritative L6 product lane", () => {
 function explicitWpDependencies(markdown) {
   const header = markdown
     .split("\n")
-    .find((line) => line.startsWith("**Depends on:**"));
+    .find((line) => line.includes("**Depends on:**"));
   assert(header, "WP document is missing its Depends on header");
-  const dependsOn = header.split("· **Blocks:**")[0];
+  const dependsOn = header
+    .slice(header.indexOf("**Depends on:**"))
+    .split("· **Blocks:**")[0];
   const dependencies = new Set();
   const pattern = /WP-(\d{2})(?:\s*[–-]\s*(?:WP-)?(\d{2}))?/g;
   for (const match of dependsOn.matchAll(pattern)) {
@@ -244,19 +246,107 @@ test("promotion carries no workflow-concurrency requirement", () => {
   }
 });
 
-test("manifest pins the revised disk floors and nine-lane pruning gate", () => {
+test("malformed promotion policies return structured errors", () => {
+  for (const malformed of [undefined, null, "nine lanes", []]) {
+    const errors = errorsFor((manifest) => {
+      manifest.dispatchPolicy.nineLanePromotion = malformed;
+    });
+    assert(
+      errors.includes("nine-lane must be an object"),
+      `expected a structured error for ${String(malformed)}`,
+    );
+  }
+
+  const errors = errorsFor((manifest) => {
+    manifest.dispatchPolicy.sixLanePromotion.requiredCompletedWorkPackages =
+      "WP10";
+    manifest.dispatchPolicy.sixLanePromotion.requiredWorkflowConcurrency = 6;
+  });
+  assert(
+    errors.includes("six-lane.requiredCompletedWorkPackages must be an array"),
+  );
+  assert(
+    errors.includes(
+      "six-lane contains unexpected field requiredWorkflowConcurrency",
+    ),
+  );
+});
+
+test("manifest pins both promotion disk floors", () => {
   const errors = errorsFor((manifest) => {
     manifest.dispatchPolicy.sixLanePromotion.minimumFreeAfterProvisionGiB = 30;
     manifest.dispatchPolicy.sixLanePromotion.minimumRuntimeFloorGiB = 25;
-    manifest.dispatchPolicy.nineLanePromotion.requiresCompletedManagedWorktreePruning = false;
+    manifest.dispatchPolicy.nineLanePromotion.minimumFreeAfterProvisionGiB = 40;
+    manifest.dispatchPolicy.nineLanePromotion.minimumRuntimeFloorGiB = 30;
   });
   for (const expected of [
     "six-lane post-provision free-space floor must be 35 GiB",
     "six-lane runtime free-space floor must be 30 GiB",
+    "nine-lane post-provision free-space floor must be 45 GiB",
+    "nine-lane runtime free-space floor must be 35 GiB",
+  ]) {
+    assert(errors.includes(expected), expected);
+  }
+});
+
+test("manifest pins pruning and independent lane-count policy", () => {
+  const errors = errorsFor((manifest) => {
+    manifest.dispatchPolicy.sixLanePromotion.requiredIndependentDecisionClusters = 5;
+    manifest.dispatchPolicy.nineLanePromotion.requiredIndependentDecisionClusters = 8;
+    manifest.dispatchPolicy.nineLanePromotion.requiresCompletedManagedWorktreePruning = false;
+  });
+  for (const expected of [
+    "six-lane.requiredIndependentDecisionClusters must be 6",
+    "nine-lane.requiredIndependentDecisionClusters must be 9",
     "nine-lane promotion must require completed managed-worktree pruning",
   ]) {
     assert(errors.includes(expected), expected);
   }
+});
+
+test("promotion policy cannot regain a mock-chain dependency", () => {
+  const errors = errorsFor((manifest) => {
+    manifest.dispatchPolicy.sixLanePromotion.requiredCompletedWorkPackages = [
+      "WP10",
+    ];
+  });
+  assert(
+    errors.includes("six-lane.requiredCompletedWorkPackages must remain empty"),
+  );
+});
+
+test("temporary stops require paired reasons and resume conditions", () => {
+  const missingReason = errorsFor((manifest) => {
+    delete manifest.dispatchPolicy.stoppedWorkPackageReasons.WP32;
+  });
+  assert(missingReason.includes("stopped reason for WP32 must be an object"));
+
+  const missingResume = errorsFor((manifest) => {
+    manifest.dispatchPolicy.stoppedWorkPackageReasons.WP56.resumeCondition = "";
+  });
+  assert(
+    missingResume.includes(
+      "stopped reason for WP56 must include a non-empty resumeCondition",
+    ),
+  );
+
+  const orphanedReason = errorsFor((manifest) => {
+    manifest.dispatchPolicy.stoppedWorkPackages = ["WP56"];
+  });
+  assert(
+    orphanedReason.includes(
+      "stopped reason for WP32 has no stoppedWorkPackages entry",
+    ),
+  );
+
+  const unpairedReintroduction = errorsFor((manifest) => {
+    manifest.dispatchPolicy.stoppedWorkPackages.push("WP33");
+  });
+  assert(
+    unpairedReintroduction.includes(
+      "stopped reason for WP33 must be an object",
+    ),
+  );
 });
 
 test("six- and nine-lane promotion require independent dependency-ready clusters", () => {

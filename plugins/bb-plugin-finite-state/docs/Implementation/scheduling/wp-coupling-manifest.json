@@ -166,6 +166,17 @@
     "prohibitedWorkPackageReasons": {
       "WP02": "ADR — bb Is Not Modified: builtin registration is a BB release decision; dispatch is prohibited and FS-16 stays in backlog until the ADR is superseded."
     },
+    "stoppedWorkPackages": ["WP32", "WP56"],
+    "stoppedWorkPackageReasons": {
+      "WP32": {
+        "reason": "WP31's independently upheld canvas gate is NO-GO on the accepted external-plugin build surface.",
+        "resumeCondition": "Resume only after WP31 records an independently reviewed GO decision for the external-plugin build surface."
+      },
+      "WP56": {
+        "reason": "At integration 056899c2d, local-auth plugin mutations reject multipart before dispatch and plugin HTTP routes match exact paths, blocking the required upload and content route.",
+        "resumeCondition": "Resume only after an owner-approved interface revision supplies both multipart upload and parameterized document-content delivery without bb-core changes or forbidden escape hatches."
+      }
+    },
     "currentLaneCap": 4,
     "sixLanePromotion": {
       "requiredCompletedWorkPackages": [],
