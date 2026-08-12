@@ -229,7 +229,7 @@ Demo-complete-first: a thin vertical slice of all fourteen Golden Loop beats bef
 | Gate | Bar | Proves |
 |---|---|---|
 | **G0** | Plugin loads in bb; nav renders; native `bb.settings.define`/`get`/`onChange` works; typed `connections.status` RPC reports three independent service mocks; CI green | The scaffold, native configuration lifecycle, and service boundary are real without depending on WP-64 CLI |
-| **G1** | Findings list renders 4,000 rows from cache at 60fps; `pull` populates SQLite | The data plane works end to end |
+| **G1** | `pull` populates SQLite; in a live bb instance, an `agent-browser` scripted scroll over the 4,000-row findings fixture uses CDP frame tracing to show no sustained frame time above approximately 16 ms, while the 39,000-row fixture does not create 39,000 DOM nodes | The data plane works end to end, and the findings-table browser behavior is measured on the real surface |
 | **G2** | Triage round-trips: agent writes YAML → `git diff` → `plan` → `push` to mock → base advances | **The architecture is proven.** This is the moment the risk drops |
 | **G3** | Every Golden Loop beat executes, even if some are stubs | No unknown unknowns remain |
 | **G4** | Golden Loop runs end-to-end against the mock, **offline, from a warm cache**, unattended | It's demoable |

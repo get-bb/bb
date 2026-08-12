@@ -2,6 +2,17 @@
 
 Use this runbook for every dispatch after FS-93. It preserves historical WP keys while ensuring one active member per decision-owner cluster.
 
+## 0. Stop program and infrastructure growth without evidence
+
+No new program/infrastructure task unless:
+
+- (a) it names a product WP blocked without it; or
+- (b) it states a measured cost it removes, with the measurement, and re-measures after landing.
+
+A review-rule or acceptance-criteria change that binds more than a handful of WPs must state before landing the recurring cost it adds and what that cost buys.
+
+This is the authoritative, versioned stopping rule. It follows the durable-rule principle cross-referenced as bb Memory entry `mem_8mdpstpgxye`, but memory is context, not the authority for this policy.
+
 ## 1. Read and validate the graph
 
 From the repository root, using the pinned Node version:
@@ -90,6 +101,15 @@ bb tasks dispatch FS-93 --preset fs-review --instructions "Review only. Do not m
 ```
 
 The review preset is Claude Opus 5 at high reasoning. The reviewer must not be the implementation thread. Only a separately authorized integrator changes a WP from `in_review` to `done` or merges its PR.
+
+For any WP touching a panel, slot, or theme, review evidence must include a live-browser pass. From the repository root, select a disposable bb data directory with `BB_DATA_DIR`, then path-install the plugin directly (no build step):
+
+```sh
+export BB_DATA_DIR="$(mktemp -d)"
+bb plugin install ./plugins/bb-plugin-finite-state
+```
+
+Open the affected surface with `agent-browser`, exercise the reviewed behavior, and attach both a screenshot and a one-line observed-behavior note to the review evidence. Component tests alone do not satisfy UI-surface review. Do not add Playwright or visual-regression infrastructure for this requirement.
 
 ## 6. Tasks limitations and audit trail
 
