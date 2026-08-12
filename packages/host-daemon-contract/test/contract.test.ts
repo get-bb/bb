@@ -1056,13 +1056,14 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  // Version 108 adds the distinct `unborn_head` provisioning failure sent by
-  // the daemon when a project source has no commits. Older daemons report the
-  // internal missing-default-branch failure, so enrolled machines must update
-  // for the actionable worktree error. Version 107 carried stopped-turn
-  // provider checkpoints and remains part of the protocol lineage.
-  it("uses protocol version 108 for commitless worktree source errors", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(109);
+  // Version 110 makes Codex command completion wait for a late full-output
+  // record before publishing the completed item. Older daemons can publish a
+  // truncated completed item when app-server reorders those events, so
+  // enrolled machines must update for the complete command output. Version 109
+  // carried the Claude Code rate-limit adapter behavior and remains part of the
+  // protocol lineage.
+  it("uses protocol version 110 for complete Codex command output", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(110);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {

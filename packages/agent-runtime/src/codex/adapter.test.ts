@@ -2897,6 +2897,129 @@ describe("codex provider adapter", () => {
     );
   });
 
+  it("defers completed command output until a later raw shell result arrives", () => {
+    const adapter = createCodexProviderAdapter();
+
+    adapter.translateEvent(
+      codexEvent("rawResponseItem/completed", {
+        threadId: "t1",
+        turnId: "turn-1",
+        item: {
+          type: "function_call",
+          name: "exec_command",
+          arguments: '{"cmd":"echo hi"}',
+          call_id: "cmd-1",
+        },
+      }),
+    );
+
+    const earlyEvents = adapter.translateEvent(
+      codexEvent("item/completed", {
+        threadId: "t1",
+        turnId: "turn-1",
+        completedAtMs: 0,
+        item: {
+          type: "commandExecution",
+          id: "cmd-1",
+          command: "echo hi",
+          cwd: "/tmp",
+          processId: null,
+          source: "agent",
+          status: "completed",
+          commandActions: [],
+          aggregatedOutput: "OUT-2\nOUT-3\n",
+          exitCode: 0,
+          durationMs: 150,
+        },
+      }),
+    );
+
+    expect(earlyEvents).toEqual([]);
+
+    const lateEvents = adapter.translateEvent(
+      codexEvent("rawResponseItem/completed", {
+        threadId: "t1",
+        turnId: "turn-1",
+        item: {
+          type: "function_call_output",
+          call_id: "cmd-1",
+          output: "Output:\nOUT-1\nOUT-2\nOUT-3\n",
+        },
+      }),
+    );
+
+    expect(lateEvents).toContainEqual(
+      expect.objectContaining({
+        type: "item/completed",
+        threadId: "t1",
+        providerThreadId: "t1",
+        scope: turnScope("turn-1"),
+        item: expect.objectContaining({
+          type: "commandExecution",
+          id: "cmd-1",
+          aggregatedOutput: "OUT-1\nOUT-2\nOUT-3\n",
+        }),
+      }),
+    );
+  });
+
+  it("releases deferred command output before turn completion when no raw result arrives", () => {
+    const adapter = createCodexProviderAdapter();
+
+    adapter.translateEvent(
+      codexEvent("rawResponseItem/completed", {
+        threadId: "t1",
+        turnId: "turn-1",
+        item: {
+          type: "function_call",
+          name: "exec_command",
+          arguments: '{"cmd":"echo hi"}',
+          call_id: "cmd-1",
+        },
+      }),
+    );
+    expect(
+      adapter.translateEvent(
+        codexEvent("item/completed", {
+          threadId: "t1",
+          turnId: "turn-1",
+          completedAtMs: 0,
+          item: {
+            type: "commandExecution",
+            id: "cmd-1",
+            command: "echo hi",
+            cwd: "/tmp",
+            processId: null,
+            source: "agent",
+            status: "completed",
+            commandActions: [],
+            aggregatedOutput: "provider output\n",
+            exitCode: 0,
+            durationMs: 150,
+          },
+        }),
+      ),
+    ).toEqual([]);
+
+    const completedEvents = adapter.translateEvent(
+      codexEvent("turn/completed", {
+        threadId: "t1",
+        turn: codexTurn({ id: "turn-1", status: "completed", error: null }),
+      }),
+    );
+
+    expect(completedEvents.map((event) => event.type)).toEqual([
+      "item/completed",
+      "turn/completed",
+    ]);
+    expect(completedEvents[0]).toMatchObject({
+      item: {
+        id: "cmd-1",
+        aggregatedOutput: "provider output\n",
+      },
+    });
+  });
+
   it("translateEvent preserves literal Output lines in recovered command output", () => {
     const adapter = createCodexProviderAdapter();
 
