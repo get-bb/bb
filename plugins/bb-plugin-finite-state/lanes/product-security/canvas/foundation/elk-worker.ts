@@ -18,6 +18,8 @@ interface LayoutWorkerPort {
   postMessage(message: LayoutWorkerResponse): void;
 }
 
+type LayoutRunner = (request: LayoutRequest) => Promise<LayoutResult>;
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -48,8 +50,9 @@ function isLayoutWorkerPort(value: unknown): value is LayoutWorkerPort {
 }
 
 function isLayoutWorkerRequest(value: unknown): value is LayoutWorkerRequest {
-  if (!isRecord(value) || value.type !== "layout") return false;
-  if (typeof value.requestId !== "string" || !isRecord(value.request)) {
+  if (!isRecord(value) || typeof value.requestId !== "string") return false;
+  if (value.type === "cancel") return true;
+  if (value.type !== "layout" || !isRecord(value.request)) {
     return false;
   }
   return (
@@ -103,17 +106,31 @@ export async function runElkLayout(
   };
 }
 
-export function installElkWorker(port: LayoutWorkerPort): void {
+export function installElkWorker(
+  port: LayoutWorkerPort,
+  runLayout: LayoutRunner = runElkLayout,
+): void {
+  const cancelled = new Set<string>();
   port.addEventListener("message", (event) => {
     if (!isLayoutWorkerRequest(event.data)) return;
-    const { requestId, request } = event.data;
+    const { requestId } = event.data;
+    if (event.data.type === "cancel") {
+      cancelled.add(requestId);
+      port.postMessage({ type: "cancelled", requestId });
+      return;
+    }
+
+    const { request } = event.data;
+    cancelled.delete(requestId);
     port.postMessage({ type: "progress", requestId, progress: 0.1 });
-    void runElkLayout(request)
+    void runLayout(request)
       .then((result) => {
+        if (cancelled.delete(requestId)) return;
         port.postMessage({ type: "progress", requestId, progress: 1 });
         port.postMessage({ type: "result", requestId, result });
       })
       .catch((error: unknown) => {
+        if (cancelled.delete(requestId)) return;
         port.postMessage({
           type: "error",
           requestId,

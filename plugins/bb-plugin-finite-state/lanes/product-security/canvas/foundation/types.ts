@@ -1,4 +1,5 @@
 export type CanvasNodeKind = "component" | "zone" | "asset";
+export type CanvasTaraKind = CanvasNodeKind | "dataflow";
 
 export interface CanvasNodeModel {
   id: string;
@@ -50,11 +51,16 @@ export interface LayoutResult {
   durationMs: number;
 }
 
-export type LayoutWorkerRequest = {
-  type: "layout";
-  requestId: string;
-  request: LayoutRequest;
-};
+export type LayoutWorkerRequest =
+  | {
+      type: "layout";
+      requestId: string;
+      request: LayoutRequest;
+    }
+  | {
+      type: "cancel";
+      requestId: string;
+    };
 
 export type LayoutWorkerResponse =
   | {
@@ -71,6 +77,10 @@ export type LayoutWorkerResponse =
       type: "error";
       requestId: string;
       message: string;
+    }
+  | {
+      type: "cancelled";
+      requestId: string;
     };
 
 export interface LayoutWorkerLike {
