@@ -143,10 +143,15 @@ function callObjects(source, callee) {
 }
 
 function canonicalToolRegistry(source) {
-  const toolsMarker = source.indexOf("tools:");
+  const surfaceMarker = /\bAGENT_SURFACE\s*=\s*{/u.exec(source);
+  if (surfaceMarker?.index === undefined) return null;
+  const surfaceOpening = source.indexOf("{", surfaceMarker.index);
+  const surface = surfaceOpening === -1 ? null : extractBalanced(source, surfaceOpening);
+  if (!surface) return null;
+  const toolsMarker = surface.indexOf("tools:");
   if (toolsMarker === -1) return null;
-  const opening = source.indexOf("{", toolsMarker);
-  const toolsObject = opening === -1 ? null : extractBalanced(source, opening);
+  const opening = surface.indexOf("{", toolsMarker);
+  const toolsObject = opening === -1 ? null : extractBalanced(surface, opening);
   if (!toolsObject) return null;
   const tools = new Map();
   for (const entry of propertyEntries(toolsObject)) {
@@ -193,7 +198,7 @@ function violationsFor(relativePath, source, registryTools = null) {
 }
 
 function registryViolation(tools) {
-  if (!tools) return null;
+  if (!tools) return "canonical registry is missing or malformed";
   const actions = new Set([...tools].filter(([, toolClass]) => toolClass === "action").map(([name]) => name));
   if (tools.size !== canonicalToolNames.size || [...tools.keys()].some((name) => !canonicalToolNames.has(name))) {
     return `canonical registry must contain exactly the ${canonicalToolNames.size} declared tool names`;

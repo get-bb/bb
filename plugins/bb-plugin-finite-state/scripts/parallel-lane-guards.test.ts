@@ -189,6 +189,11 @@ describe("parallel lane guards", () => {
     const fenced = run(frozenScript, root, "--accept", "AMD-0001");
     expect(fenced.status).toBe(1);
     expect(fenced.output).toContain("structured approved entry");
+
+    await write(root, `${pluginRootRelativePath}AMENDMENTS.md`, `\`\`\`md\n${amendment("AMD-0001", [`${pluginRootRelativePath}app.tsx`])}\`\`\`\`\n`);
+    const mismatchedFence = run(frozenScript, root, "--accept", "AMD-0001");
+    expect(mismatchedFence.status).toBe(1);
+    expect(mismatchedFence.output).toContain("structured approved entry");
   });
 
   it("updates only the approved changed artifact", async () => {
@@ -282,6 +287,14 @@ bb.agents.registerTool({ name: "fs_other_run", description: "apply server-side o
     const result = run(uiScript, root);
     expect(result.status).toBe(1);
     expect(result.output).toContain("fs_other_run");
+  });
+
+  it("fails closed when the canonical action registry is missing or malformed", async () => {
+    const root = await fixtureRoot();
+    await write(root, `${pluginRootRelativePath}lib/agentic/registry.ts`, "export const unrelated = { tools: {} };\n");
+    const result = run(uiScript, root);
+    expect(result.status).toBe(1);
+    expect(result.output).toContain("canonical registry is missing or malformed");
   });
 
   it("allows canonical read and tracked-local write registrations", async () => {
