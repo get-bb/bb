@@ -78,7 +78,6 @@ jobs:
     # FS-91 will require this stable check name. Always run the real plugin
     # lifecycle so transitive infrastructure changes cannot produce a no-op.
     name: Finite State guard gates (ubuntu-latest, Node 22.19.0)
-    needs: changes
     runs-on: ubuntu-latest
     timeout-minutes: 30
 

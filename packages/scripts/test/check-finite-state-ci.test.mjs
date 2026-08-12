@@ -106,6 +106,11 @@ test("keeps the stable check shape and excludes the plugin from the packages sha
     workflow,
     /run_finite_state|Report unchanged Finite State inputs/u,
   );
+  const finiteStateJob =
+    /\n  finite-state-guards:\n(?<job>[\s\S]*?)\n  tests:/u.exec(workflow)
+      ?.groups?.job;
+  assert.ok(finiteStateJob);
+  assert.doesNotMatch(finiteStateJob, /\n    needs:|needs\.changes|run_heavy/u);
 });
 
 test("plugin-local pretest repairs native modules without Turbo recursion", async () => {
