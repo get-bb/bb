@@ -107,6 +107,7 @@ import {
   type DesktopWindowFactory,
 } from "./desktop-window-factory.js";
 import { registerDesktopContextMenu } from "./desktop-context-menu.js";
+import { resolveBbDesktopPlatform } from "./desktop-platform.js";
 import {
   createDesktopUpdateService,
   DESKTOP_UPDATE_FEED_URL,
@@ -648,6 +649,7 @@ function buildMenuServerItems(): Array<{
 function installCurrentApplicationMenu(): void {
   installApplicationMenu({
     accelerators: currentApplicationMenuAccelerators,
+    isMac: process.platform === "darwin",
     createNewWindow() {
       void createApplicationWindow({
         initialUrl: currentWindowUrl,
@@ -2121,21 +2123,29 @@ async function runDesktopApp(): Promise<void> {
     },
   });
 
+  const desktopPlatform = resolveBbDesktopPlatform(process.platform);
+  const desktopUpdatesSupported = process.platform === "darwin";
   desktopUpdateService = createDesktopUpdateService({
     currentVersion: desktopVersion,
-    enabled: app.isPackaged || process.env.BB_DESKTOP_VERSION_CHECK === "1",
+    enabled:
+      desktopUpdatesSupported &&
+      (app.isPackaged || process.env.BB_DESKTOP_VERSION_CHECK === "1"),
     feedUrl: desktopUpdateFeedUrl,
     logger: createDesktopLogger(),
+    platform: desktopPlatform,
   });
   desktopAutoUpdateService = createDesktopAutoUpdateService({
     currentVersion: desktopVersion,
-    enabled: shouldEnableDesktopAutoUpdate({
-      env: process.env,
-      isPackaged: app.isPackaged,
-    }),
+    enabled:
+      desktopUpdatesSupported &&
+      shouldEnableDesktopAutoUpdate({
+        env: process.env,
+        isPackaged: app.isPackaged,
+      }),
     forceDevUpdateConfig:
       !app.isPackaged && process.env.BB_DESKTOP_AUTO_UPDATE === "1",
     logger: createDesktopLogger(),
+    platform: desktopPlatform,
     updater: createElectronAutoUpdaterAdapter(autoUpdater),
   });
   desktopUpdateService.subscribe(() => {
@@ -2176,8 +2186,14 @@ async function runDesktopApp(): Promise<void> {
     },
   });
   registerDesktopBrowserIpc(desktopBrowserViewManager);
-  desktopUpdateService.start();
-  desktopAutoUpdateService.start();
+  if (desktopUpdatesSupported) {
+    desktopUpdateService.start();
+    desktopAutoUpdateService.start();
+  } else {
+    logger.info(
+      "Desktop update checks disabled on linux: no Linux update feed yet.",
+    );
+  }
 
   const browserWindowCreator: DesktopBrowserWindowCreator = {
     create(options) {
@@ -2194,6 +2210,7 @@ async function runDesktopApp(): Promise<void> {
     },
     displayWorkAreas: null,
     icon: nativeImage.createFromPath(iconPath),
+    isMac: process.platform === "darwin",
     isQuitting() {
       return quitting;
     },

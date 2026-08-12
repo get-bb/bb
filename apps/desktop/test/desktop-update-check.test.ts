@@ -44,6 +44,7 @@ describe("desktop update feed parsing", () => {
       checkedAt,
       currentVersion: "0.0.1",
       payloadText: JSON.stringify(createFeed("0.0.2")),
+      platform: "macos",
     });
 
     expect(result.kind).toBe("valid");
@@ -86,6 +87,7 @@ describe("desktop update feed parsing", () => {
       checkedAt,
       currentVersion: "0.0.1",
       payloadText: JSON.stringify(payload),
+      platform: "macos",
     });
 
     expect(result.kind).toBe("malformed");
@@ -96,6 +98,7 @@ describe("desktop update feed parsing", () => {
       checkedAt,
       currentVersion: "0.0.1",
       payloadText: "{",
+      platform: "macos",
     });
 
     expect(result.kind).toBe("malformed");
@@ -106,6 +109,7 @@ describe("desktop update feed parsing", () => {
       checkedAt,
       currentVersion: "0.0.2",
       payloadText: JSON.stringify(createFeed("0.0.1")),
+      platform: "macos",
     });
 
     expect(result.kind).toBe("valid");
@@ -143,6 +147,7 @@ describe("desktop update service", () => {
       fetchImpl,
       logger: { warn() {} },
       now: () => nowMs,
+      platform: "macos",
     });
 
     const successfulInfo = await service.checkForUpdates();
@@ -201,6 +206,7 @@ describe("desktop update service", () => {
         fetchImpl,
         logger: { warn() {} },
         now: () => nowMs,
+        platform: "macos",
       });
 
       await service.checkForUpdates();
@@ -238,6 +244,7 @@ describe("desktop update service", () => {
       fetchImpl,
       logger: { warn() {} },
       now: () => nowMs,
+      platform: "macos",
     });
 
     const firstInfo = await service.checkAfterActive();
@@ -254,5 +261,16 @@ describe("desktop update service", () => {
     await service.checkAfterActive();
 
     expect(fetchCount).toBe(2);
+  });
+
+  it("reports the injected linux platform in its base info", () => {
+    const service = createDesktopUpdateService({
+      currentVersion: "0.0.1",
+      enabled: false,
+      feedUrl: "https://example.test/desktop-version.json",
+      platform: "linux",
+    });
+
+    expect(service.getInfo().platform).toBe("linux");
   });
 });

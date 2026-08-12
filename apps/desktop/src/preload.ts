@@ -60,6 +60,7 @@ import {
   BB_DESKTOP_SPELLCHECK_GLOBAL_NAME,
   type BbDesktopSpellcheckApi,
 } from "./desktop-spellcheck-contract.js";
+import { resolveBbDesktopPlatform } from "./desktop-platform.js";
 
 function getDesktopVersion(version: string | undefined): string {
   if (version === undefined || version.length === 0) {
@@ -74,7 +75,7 @@ function createInitialDesktopInfo(): BbDesktopInfo {
     lastCheckedAt: null,
     latestVersion: null,
     pendingVersion: null,
-    platform: "macos",
+    platform: resolveBbDesktopPlatform(process.platform),
     updateAvailable: false,
     updateDownloaded: false,
     version: getDesktopVersion(process.env.BB_DESKTOP_VERSION),
@@ -280,7 +281,7 @@ const bbDesktopApi: BbDesktopApi = {
   get pendingVersion() {
     return currentInfo.pendingVersion;
   },
-  platform: "macos",
+  platform: resolveBbDesktopPlatform(process.platform),
   get updateAvailable() {
     return currentInfo.updateAvailable;
   },

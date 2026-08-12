@@ -28,6 +28,7 @@ function menuArgs(
     },
     closeWindowOrSideTab: () => {},
     createNewWindow: () => {},
+    isMac: true,
     openNewTab: () => {},
     openNewThread: () => {},
     openServerDaemonLogs: () => {},
@@ -130,5 +131,39 @@ describe("application menu", () => {
     expect(selectServer).toHaveBeenCalledWith("custom");
     serverSubmenu[3]?.click?.({} as never, undefined, {} as never);
     expect(setServerUrl).toHaveBeenCalledTimes(1);
+  });
+
+  it("builds a native Linux menu with the Linux DevTools accelerator", () => {
+    vi.mocked(Menu.sendActionToFirstResponder).mockClear();
+    const template = buildApplicationMenuTemplate(
+      menuArgs(() => {}, { isMac: false }),
+    );
+    const appMenu = template[0]?.submenu as MenuItemConstructorOptions[];
+    const windowMenu = template.find((item) => item.label === "Window");
+    const windowSubmenu =
+      windowMenu?.submenu as MenuItemConstructorOptions[];
+    const viewMenu = template.find((item) => item.label === "View");
+    const viewSubmenu = viewMenu?.submenu as MenuItemConstructorOptions[];
+    const fileMenu = template.find((item) => item.label === "File");
+    const fileSubmenu = fileMenu?.submenu as MenuItemConstructorOptions[];
+    const closeWindow = fileSubmenu.find(
+      (item) => item.label === "Close Window",
+    );
+
+    expect(appMenu.map((item) => item.role).filter(Boolean)).toEqual([
+      "about",
+      "quit",
+    ]);
+    expect(windowSubmenu.map((item) => item.role).filter(Boolean)).toEqual([
+      "minimize",
+    ]);
+    expect(windowSubmenu.some((item) => item.label === "Server")).toBe(true);
+    expect(
+      viewSubmenu.find((item) => item.label === "Toggle Developer Tools")
+        ?.accelerator,
+    ).toBe("Control+Shift+I");
+
+    closeWindow?.click?.({} as never, null as never, {} as never);
+    expect(Menu.sendActionToFirstResponder).not.toHaveBeenCalled();
   });
 });
