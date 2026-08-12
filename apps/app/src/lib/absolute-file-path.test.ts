@@ -27,6 +27,14 @@ describe("normalizeAbsoluteFilePath", () => {
   it("rejects relative file paths", () => {
     expect(normalizeAbsoluteFilePath({ path: "docs/README.md" })).toBeNull();
   });
+
+  it("normalizes native Windows absolute paths", () => {
+    expect(
+      normalizeAbsoluteFilePath({
+        path: "C:\\Users\\me\\project\\docs\\..\\README.md",
+      }),
+    ).toBe("C:\\Users\\me\\project\\README.md");
+  });
 });
 
 describe("isAbsoluteFilePathWithinRoot", () => {

@@ -782,6 +782,7 @@ describe("provider CLI health", () => {
 
     const status = await getKnownAcpAgentsStatus({
       runner,
+      nodePlatform: "darwin",
       agents: [
         { id: "acp-opencode", executableName: "opencode" },
         { id: "acp-missing", executableName: "missing-acp" },
@@ -814,10 +815,46 @@ describe("provider CLI health", () => {
     const runner = new FakeProviderCliCommandRunner();
     runner.setExit("which", ["cursor-agent"], 1, "cursor-agent not found");
 
-    await expect(isProviderCliInstalled("cursor", { runner })).resolves.toBe(
-      false,
-    );
+    await expect(
+      isProviderCliInstalled("cursor", { runner, nodePlatform: "darwin" }),
+    ).resolves.toBe(false);
     expect(runner.commandLines()).toEqual(["which cursor-agent"]);
+  });
+
+  it("looks up provider CLIs with where.exe on win32", async () => {
+    const runner = new FakeProviderCliCommandRunner();
+    runner.setSuccess(
+      "where.exe",
+      ["codex"],
+      "C:\\Users\\Admin\\.bun\\bin\\codex.exe\n",
+    );
+    runner.setSuccess("codex", ["--version"], "codex 0.136.0\n");
+    runner.setSuccess("npm.cmd", ["view", "@openai/codex", "version"], "0.136.0\n");
+    runner.setSuccess(
+      "npm.cmd",
+      ["prefix", "-g"],
+      "C:\\Users\\Admin\\AppData\\Roaming\\npm\n",
+    );
+    runner.setSuccess(
+      "npm.cmd",
+      ["list", "-g", "@openai/codex", "--depth=0", "--json"],
+      JSON.stringify({
+        dependencies: { "@openai/codex": { version: "0.136.0" } },
+      }),
+    );
+
+    const status = await inspectProviderCli({
+      definition: CODEX_DEFINITION,
+      runner,
+      nodePlatform: "win32",
+    });
+
+    expect(status.installed).toBe(true);
+    expect(status.executablePath).toBe(
+      "C:\\Users\\Admin\\.bun\\bin\\codex.exe",
+    );
+    expect(runner.commandLines()).toContain("where.exe codex");
+    expect(runner.commandLines()).not.toContain("which codex");
   });
 
   it("streams failed npm installs without hiding the exit status", async () => {

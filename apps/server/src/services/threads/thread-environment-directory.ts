@@ -7,7 +7,12 @@ import {
   getThread,
   updateThread,
 } from "@bb/db";
-import { turnScope } from "@bb/domain";
+import {
+  getProjectPathValidationMessage,
+  normalizeProjectPathInput,
+  PROJECT_PATH_ROOT_MESSAGE,
+  turnScope,
+} from "@bb/domain";
 import type {
   DynamicTool,
   Environment,
@@ -83,22 +88,19 @@ function toolCallSuccess(text: string): ToolCallResponse {
 }
 
 function normalizeDirectoryPath(path: string): string {
-  const trimmed = path.trim();
-  if (trimmed === "/") {
-    return trimmed;
-  }
-  return trimmed.replace(/\/+$/u, "");
+  return normalizeProjectPathInput(path);
 }
 
 function validateDirectoryPath(path: string): string | null {
-  if (!path.startsWith("/")) {
-    return "Path must be an absolute path on the current host.";
-  }
-  if (path === "/") {
-    return "Path must name a project directory, not the filesystem root.";
-  }
   if (path.includes("\0")) {
     return "Path must not contain NUL bytes.";
+  }
+  const message = getProjectPathValidationMessage(path);
+  if (message === PROJECT_PATH_ROOT_MESSAGE) {
+    return "Path must name a project directory, not the filesystem root.";
+  }
+  if (message !== null) {
+    return "Path must be an absolute path on the current host.";
   }
   return null;
 }

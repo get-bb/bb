@@ -7396,6 +7396,7 @@ declare const systemConfigResponseSchema: z$1.ZodObject<{
         darwin: "darwin";
         linux: "linux";
         wsl: "wsl";
+        win32: "win32";
     }>>;
     voiceTranscriptionEnabled: z$1.ZodBoolean;
     dataDir: z$1.ZodString;

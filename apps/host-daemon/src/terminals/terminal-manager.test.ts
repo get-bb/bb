@@ -322,6 +322,7 @@ function createHarnessWithOptions(
   const manager = new TerminalManager({
     closeGracePeriodMs: args.closeGracePeriodMs,
     logger: createFakeLogger(),
+    platform: "linux",
     ptyAdapter: adapter,
     resolveShell: args.resolveShell,
     runtimeManager,
@@ -927,6 +928,9 @@ describe("TerminalManager", () => {
   });
 
   it("makes every available node-pty spawn-helper executable", async () => {
+    if (process.platform === "win32") {
+      return;
+    }
     const logger = createFakeLogger();
     const packageDirectory = await makeTempDir("bb-node-pty-package-");
     const buildNativePath = path.join(
@@ -979,6 +983,9 @@ describe("TerminalManager", () => {
   });
 
   it("makes an available prebuild-only node-pty spawn-helper executable", async () => {
+    if (process.platform === "win32") {
+      return;
+    }
     const logger = createFakeLogger();
     const packageDirectory = await makeTempDir("bb-node-pty-package-");
     const prebuildHelperPath = path.join(
@@ -1404,7 +1411,7 @@ describe("TerminalManager", () => {
     ]);
   });
 
-  it("rejects native Windows opens", async () => {
+  it("opens a native Windows terminal instead of rejecting the platform", async () => {
     const harness = createHarness();
     const manager = new TerminalManager({
       logger: {
@@ -1415,6 +1422,7 @@ describe("TerminalManager", () => {
       },
       platform: "win32",
       ptyAdapter: harness.adapter,
+      resolveShell: async () => "cmd.exe",
       runtimeManager: harness.runtimeManager,
       sendMessage: (message) => {
         harness.messages.push(message);
@@ -1440,16 +1448,15 @@ describe("TerminalManager", () => {
       start: DEFAULT_TERMINAL_START,
     });
 
-    expect(harness.adapter.spawned).toHaveLength(0);
-    expect(harness.messages).toEqual([
-      {
-        type: "terminal.error",
-        requestId: "open-1",
-        terminalId: "term-1",
-        code: "unsupported_platform",
-        message: "Native Windows terminals are not supported",
-      },
-    ]);
+    expect(
+      harness.messages.some(
+        (message) =>
+          message.type === "terminal.error" &&
+          message.code === "unsupported_platform",
+      ),
+    ).toBe(false);
+    expect(harness.adapter.spawned.length).toBeGreaterThan(0);
+    expect(harness.adapter.spawned[0]?.args.file).toBe("cmd.exe");
   });
 
   it("runs commands in one persistent shell from the workspace cwd", async () => {

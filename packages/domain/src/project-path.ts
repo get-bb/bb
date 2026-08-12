@@ -6,8 +6,8 @@ export const INVALID_PROJECT_PATH_MESSAGE =
   "Project path must be an absolute path.";
 export const PROJECT_PATH_ROOT_MESSAGE =
   "Project path must point to a project directory, not the filesystem root.";
-export const UNSUPPORTED_NATIVE_WINDOWS_PROJECT_PATH_MESSAGE =
-  "Native Windows paths are not supported. Use a POSIX path like /home/me/repo or /mnt/c/Users/me/repo.";
+
+const WINDOWS_UNC_SHARE_ROOT_PATTERN = /^\\\\[^\\/]+[\\/]+[^\\/]+[\\/]*$/u;
 
 export function isNativeWindowsProjectPath(path: string): boolean {
   const trimmedPath = path.trim();
@@ -28,7 +28,17 @@ export function isAbsoluteProjectPath(path: string): boolean {
     return false;
   }
 
-  return trimmedPath.startsWith("/");
+  return trimmedPath.startsWith("/") || isNativeWindowsProjectPath(trimmedPath);
+}
+
+function isProjectPathRoot(path: string): boolean {
+  if (path === "/") {
+    return true;
+  }
+  if (WINDOWS_DRIVE_ROOT_PATTERN.test(path)) {
+    return true;
+  }
+  return WINDOWS_UNC_SHARE_ROOT_PATTERN.test(path);
 }
 
 export function normalizeProjectPathInput(path: string): string {
@@ -41,7 +51,11 @@ export function normalizeProjectPathInput(path: string): string {
     return trimmedPath;
   }
 
-  return trimmedPath.replace(/\/+$/u, "");
+  if (WINDOWS_DRIVE_ROOT_PATTERN.test(trimmedPath)) {
+    return `${trimmedPath[0]}:\\`;
+  }
+
+  return trimmedPath.replace(/[\\/]+$/u, "");
 }
 
 export function getProjectPathValidationMessage(path: string): string | null {
@@ -49,13 +63,10 @@ export function getProjectPathValidationMessage(path: string): string | null {
   if (!normalizedPath) {
     return INVALID_PROJECT_PATH_MESSAGE;
   }
-  if (isNativeWindowsProjectPath(normalizedPath)) {
-    return UNSUPPORTED_NATIVE_WINDOWS_PROJECT_PATH_MESSAGE;
-  }
   if (!isAbsoluteProjectPath(normalizedPath)) {
     return INVALID_PROJECT_PATH_MESSAGE;
   }
-  if (normalizedPath === "/") {
+  if (isProjectPathRoot(normalizedPath)) {
     return PROJECT_PATH_ROOT_MESSAGE;
   }
   return null;
@@ -63,15 +74,10 @@ export function getProjectPathValidationMessage(path: string): string | null {
 
 export function deriveProjectNameFromPath(path: string): string {
   const normalizedPath = normalizeProjectPathInput(path);
-  if (
-    !normalizedPath ||
-    normalizedPath === "/" ||
-    isNativeWindowsProjectPath(normalizedPath) ||
-    !isAbsoluteProjectPath(normalizedPath)
-  ) {
+  if (!normalizedPath || getProjectPathValidationMessage(normalizedPath)) {
     return "";
   }
 
-  const segments = normalizedPath.split("/").filter(Boolean);
+  const segments = normalizedPath.replaceAll("\\", "/").split("/").filter(Boolean);
   return segments.at(-1) ?? "";
 }

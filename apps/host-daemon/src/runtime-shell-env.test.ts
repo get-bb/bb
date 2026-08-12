@@ -3,6 +3,7 @@ import os from "node:os";
 import path, { delimiter } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  bbExecutableFileName,
   prepareRuntimeShellEnv,
   resolveLocalBbExecutablePath,
   resolveUserShellPath,
@@ -172,6 +173,9 @@ describe("resolveLocalBbExecutablePath", () => {
   });
 
   it("fails clearly when the built CLI entry is not executable", async () => {
+    if (process.platform === "win32") {
+      return;
+    }
     const { cliEntryPath } = await createFakeCliPackage({
       executable: false,
     });
@@ -375,7 +379,7 @@ describe("prepareRuntimeShellEnv", () => {
       }),
     ).toEqual({
       PATH: `/tmp/bb-bin${delimiter}/usr/bin`,
-      BB_CLI: path.resolve("/tmp/bb-bin", "bb"),
+      BB_CLI: path.resolve("/tmp/bb-bin", bbExecutableFileName()),
       BB_SERVER_URL: "http://127.0.0.1:3334",
       BB_HOST_DAEMON_PORT: "3002",
     });
@@ -406,7 +410,7 @@ describe("prepareRuntimeShellEnv", () => {
       }),
     ).toEqual({
       PATH: `/tmp/bb-bin${delimiter}/usr/local/bin:/usr/bin`,
-      BB_CLI: path.resolve("/tmp/bb-bin", "bb"),
+      BB_CLI: path.resolve("/tmp/bb-bin", bbExecutableFileName()),
       BB_SERVER_URL: "http://127.0.0.1:3334",
       BB_HOST_DAEMON_PORT: "3002",
     });
@@ -421,7 +425,7 @@ describe("prepareRuntimeShellEnv", () => {
       }),
     ).toEqual({
       PATH: `/tmp/bb-bin${delimiter}/usr/bin`,
-      BB_CLI: path.resolve("/tmp/bb-bin", "bb"),
+      BB_CLI: path.resolve("/tmp/bb-bin", bbExecutableFileName()),
       BB_SERVER_URL: "http://127.0.0.1:3334",
     });
   });

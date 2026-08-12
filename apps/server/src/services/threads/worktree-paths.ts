@@ -3,14 +3,18 @@ import { ApiError } from "../../errors.js";
 
 const REPO_DIR_NAME_PATTERN = /^[A-Za-z0-9._][A-Za-z0-9._-]*$/;
 
+function toPosixSeparators(value: string): string {
+  return value.replaceAll("\\", "/");
+}
+
 export function deriveRepoDirName(sourcePath: string): string {
-  const trimmed = sourcePath.replace(/\/+$/, "");
+  const trimmed = sourcePath.replace(/[\\/]+$/u, "");
 
   const scpMatch = /^[^:/]+@[^:]+:(?<path>.+)$/.exec(trimmed);
   const pathPart =
     scpMatch?.groups?.path ?? tryParseUrlPath(trimmed) ?? trimmed;
 
-  const basename = path.posix.basename(pathPart);
+  const basename = path.posix.basename(toPosixSeparators(pathPart));
   const candidate = basename.endsWith(".git")
     ? basename.slice(0, -".git".length)
     : basename;
@@ -60,7 +64,7 @@ export interface ResolvePersonalTargetPathArgs {
 export function resolveManagedTargetPath(
   args: ResolveManagedTargetPathArgs,
 ): string {
-  return path.posix.join(
+  return path.join(
     args.dataDir,
     "worktrees",
     args.environmentId,
@@ -71,11 +75,7 @@ export function resolveManagedTargetPath(
 export function resolvePersonalTargetPath(
   args: ResolvePersonalTargetPathArgs,
 ): string {
-  return path.posix.join(
-    args.dataDir,
-    "personal-workspaces",
-    args.environmentId,
-  );
+  return path.join(args.dataDir, "personal-workspaces", args.environmentId);
 }
 
 /**
@@ -88,8 +88,9 @@ export function isBbManagedWorkspacePath(args: {
   dataDir: string;
   path: string;
 }): boolean {
+  const candidate = toPosixSeparators(args.path);
   return [
-    path.posix.join(args.dataDir, "worktrees"),
-    path.posix.join(args.dataDir, "personal-workspaces"),
-  ].some((root) => args.path === root || args.path.startsWith(`${root}/`));
+    path.posix.join(toPosixSeparators(args.dataDir), "worktrees"),
+    path.posix.join(toPosixSeparators(args.dataDir), "personal-workspaces"),
+  ].some((root) => candidate === root || candidate.startsWith(`${root}/`));
 }

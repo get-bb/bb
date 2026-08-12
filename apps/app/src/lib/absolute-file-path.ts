@@ -32,8 +32,12 @@ function trimLeadingSlash(path: string): string {
   return path.replace(/^\/+/u, "");
 }
 
+function isWindowsAbsoluteFilePath(path: string): boolean {
+  return /^[A-Za-z]:[\\/]/u.test(path) || /^\\\\[^\\/]/u.test(path);
+}
+
 function isAbsoluteFilePath(path: string): boolean {
-  return path.startsWith("/");
+  return path.startsWith("/") || isWindowsAbsoluteFilePath(path);
 }
 
 export function normalizeAbsoluteFilePath({
@@ -43,8 +47,10 @@ export function normalizeAbsoluteFilePath({
     return null;
   }
 
+  const windowsAbsolute = isWindowsAbsoluteFilePath(path);
+  const separator = windowsAbsolute && path.includes("\\") ? "\\" : "/";
   const normalizedSegments: string[] = [];
-  for (const segment of path.split("/")) {
+  for (const segment of path.split(/[\\/]/u)) {
     if (segment.length === 0 || segment === ".") {
       continue;
     }
@@ -55,6 +61,13 @@ export function normalizeAbsoluteFilePath({
       continue;
     }
     normalizedSegments.push(segment);
+  }
+
+  if (windowsAbsolute) {
+    if (path.startsWith("\\\\")) {
+      return `\\\\${normalizedSegments.join(separator)}`;
+    }
+    return normalizedSegments.join(separator);
   }
 
   return normalizedSegments.length === 0
@@ -80,7 +93,8 @@ export function isAbsoluteFilePathWithinRoot({
 
   return (
     normalizedCandidatePath === normalizedRootPath ||
-    normalizedCandidatePath.startsWith(`${normalizedRootPath}/`)
+    normalizedCandidatePath.startsWith(`${normalizedRootPath}/`) ||
+    normalizedCandidatePath.startsWith(`${normalizedRootPath}\\`)
   );
 }
 

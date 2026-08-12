@@ -558,13 +558,34 @@ describe("workspace provisioning", () => {
     });
   });
 
-  it("rejects POSIX shell setup scripts on Windows", () => {
-    expect(() =>
+  it("builds a Git sh command for POSIX setup scripts on Windows", () => {
+    expect(
       buildSetupScriptCommand({
         platform: "win32",
         scriptPath: "C:\\repo\\.bb-env-setup.sh",
       }),
-    ).toThrow(/not supported on Windows/u);
+    ).toMatchObject({
+      args: ["C:\\repo\\.bb-env-setup.sh"],
+      text: "sh .bb-env-setup.sh",
+    });
+  });
+
+  it("runs a POSIX setup script on Windows through Git sh", async () => {
+    if (process.platform !== "win32") {
+      return;
+    }
+    const workspacePath = await makeTempDir("bb-setup-win32-run-");
+    await fs.writeFile(
+      path.join(workspacePath, ".bb-env-setup.sh"),
+      "#!/bin/sh\nprintf 'setup-ok\\n'\n",
+    );
+
+    await expect(
+      runSetupScript({
+        workspacePath,
+        timeoutMs: 900000,
+      }),
+    ).resolves.toMatchObject({ ran: true, exitCode: 0 });
   });
 
   it("returns a no-op when the setup script is missing", async () => {

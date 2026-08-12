@@ -1,4 +1,5 @@
 import { execFile, spawn, type ExecFileException } from "node:child_process";
+import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -502,8 +503,24 @@ export async function getGitCommonDir(cwd: string): Promise<string> {
  *
  * Use this for building short git pipelines (e.g. `git diff | git patch-id`)
  * where Node-side buffer-and-resend would otherwise be required. All
- * supported platforms (macOS, Linux, WSL2) ship POSIX `sh`.
+ * supported platforms (macOS, Linux, WSL2) ship POSIX `sh`. Native Windows
+ * uses Git for Windows `sh.exe` when `sh` is not on PATH.
  */
+export function resolveShellPipelineExecutable(
+  platform: NodeJS.Platform = process.platform,
+): string {
+  if (platform !== "win32") {
+    return "sh";
+  }
+  const gitSh = path.join(
+    process.env.ProgramFiles ?? "C:\\Program Files",
+    "Git",
+    "bin",
+    "sh.exe",
+  );
+  return existsSync(gitSh) ? gitSh : "sh.exe";
+}
+
 export async function runShellPipeline(
   script: string,
   positionalArgs: string[],
@@ -514,7 +531,7 @@ export async function runShellPipeline(
   }
   try {
     const result = await execFileAsync(
-      "sh",
+      resolveShellPipelineExecutable(),
       ["-c", script, "sh", ...positionalArgs],
       {
         cwd: options.cwd,

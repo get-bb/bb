@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
@@ -85,6 +85,46 @@ async function readPsField(pid: number, field: string): Promise<string | null> {
   }
 }
 
+interface WindowsProcessIdentity {
+  command: string | null;
+  elapsedSeconds: number | null;
+}
+
+export async function readWindowsProcessIdentity(
+  pid: number,
+): Promise<WindowsProcessIdentity> {
+  try {
+    const result = await execFileAsync(
+      "powershell.exe",
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        `$p = Get-Process -Id ${pid} -ErrorAction Stop; $c = (Get-CimInstance Win32_Process -Filter "ProcessId=${pid}").CommandLine; @{ command = $c; start = $p.StartTime.ToUniversalTime().ToString('o') } | ConvertTo-Json -Compress`,
+      ],
+      { timeout: 8_000, windowsHide: true },
+    );
+    const parsed = JSON.parse(result.stdout) as {
+      command?: unknown;
+      start?: unknown;
+    };
+    const command =
+      typeof parsed.command === "string" && parsed.command.length > 0
+        ? parsed.command
+        : null;
+    const startedAt =
+      typeof parsed.start === "string" ? Date.parse(parsed.start) : Number.NaN;
+    return {
+      command,
+      elapsedSeconds: Number.isNaN(startedAt)
+        ? null
+        : Math.max(0, Math.floor((Date.now() - startedAt) / 1000)),
+    };
+  } catch {
+    return { command: null, elapsedSeconds: null };
+  }
+}
+
 /** Parse the `ps -o etime=` format `[[dd-]hh:]mm:ss` into seconds. */
 export function parseElapsedSeconds(rawElapsed: string): number | null {
   const match = rawElapsed
@@ -113,7 +153,35 @@ async function waitForProcessExit(
   return !isProcessRunning(args.pid);
 }
 
-export function createNodeVerifiedProcessOps(): VerifiedProcessOps {
+function killWindowsProcessTree(pid: number): void {
+  const killer = spawn("taskkill", ["/T", "/F", "/PID", String(pid)], {
+    stdio: "ignore",
+    windowsHide: true,
+  });
+  killer.once("error", () => {
+    // The wait loop in stopVerifiedProcess is the source of truth.
+  });
+}
+
+export function createNodeVerifiedProcessOps(
+  platform: NodeJS.Platform = process.platform,
+): VerifiedProcessOps {
+  if (platform === "win32") {
+    return {
+      isRunning: (pid) => isProcessRunning(pid),
+      kill(pid) {
+        killWindowsProcessTree(pid);
+      },
+      async readCommand(pid) {
+        return (await readWindowsProcessIdentity(pid)).command;
+      },
+      async readElapsedSeconds(pid) {
+        return (await readWindowsProcessIdentity(pid)).elapsedSeconds;
+      },
+      waitForExit: (args) => waitForProcessExit(args),
+    };
+  }
+
   return {
     isRunning: (pid) => isProcessRunning(pid),
     kill(pid, signal) {

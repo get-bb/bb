@@ -5,6 +5,7 @@ export function resolveHostPlatform(
   env: NodeJS.ProcessEnv = process.env,
 ): HostPlatform {
   if (nodePlatform === "darwin") return "darwin";
+  if (nodePlatform === "win32") return "win32";
   if (nodePlatform === "linux") {
     const isWsl = env.WSL_DISTRO_NAME != null || env.WSL_INTEROP != null;
     return isWsl ? "wsl" : "linux";

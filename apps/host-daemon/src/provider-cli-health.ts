@@ -119,6 +119,7 @@ interface GetProviderCliStatusForProviderArgs {
 interface IsProviderCliInstalledArgs {
   env?: NodeJS.ProcessEnv;
   runner?: ProviderCliCommandRunner;
+  nodePlatform?: NodeJS.Platform;
 }
 
 export interface KnownAcpAgentExecutableQuery {
@@ -136,12 +137,14 @@ export interface KnownAcpAgentExecutableStatus {
 interface InspectExecutableInstallStatusArgs {
   executableName: string;
   runner: ProviderCliCommandRunner;
+  nodePlatform?: NodeJS.Platform;
 }
 
 interface GetKnownAcpAgentsStatusArgs {
   agents: readonly KnownAcpAgentExecutableQuery[];
   env?: NodeJS.ProcessEnv;
   runner?: ProviderCliCommandRunner;
+  nodePlatform?: NodeJS.Platform;
 }
 
 export interface SpawnProviderCliInstallProcessArgs {
@@ -343,6 +346,16 @@ function getProviderCliDefinition(
 
 function npmExecutableName(nodePlatform: NodeJS.Platform): string {
   return nodePlatform === "win32" ? "npm.cmd" : "npm";
+}
+
+function whichLookupCommand(nodePlatform: NodeJS.Platform): {
+  command: string;
+  args: string[];
+} {
+  if (nodePlatform === "win32") {
+    return { command: "where.exe", args: [] };
+  }
+  return { command: "which", args: [] };
 }
 
 function formatCommand(command: string, args: readonly string[]): string {
@@ -836,8 +849,11 @@ export async function inspectProviderCli({
     claudeDoctorResult,
   ] = await Promise.all([
     runner.run({
-      command: "which",
-      args: [definition.executableName],
+      command: whichLookupCommand(nodePlatform).command,
+      args: [
+        ...whichLookupCommand(nodePlatform).args,
+        definition.executableName,
+      ],
       timeoutMs: COMMAND_CHECK_TIMEOUT_MS,
     }),
     runner.run({
@@ -1011,6 +1027,7 @@ export async function isProviderCliInstalled(
   const status = await inspectExecutableInstallStatus({
     executableName: getProviderCliDefinition(provider).executableName,
     runner,
+    nodePlatform: args.nodePlatform,
   });
   return status.installed;
 }
@@ -1018,13 +1035,15 @@ export async function isProviderCliInstalled(
 export async function inspectExecutableInstallStatus({
   executableName,
   runner,
+  nodePlatform = process.platform,
 }: InspectExecutableInstallStatusArgs): Promise<{
   installed: boolean;
   executablePath: string | null;
 }> {
+  const lookup = whichLookupCommand(nodePlatform);
   const whichResult = await runner.run({
-    command: "which",
-    args: [executableName],
+    command: lookup.command,
+    args: [...lookup.args, executableName],
     timeoutMs: COMMAND_CHECK_TIMEOUT_MS,
   });
 
@@ -1035,6 +1054,7 @@ export async function getKnownAcpAgentsStatus({
   agents,
   env,
   runner = createSpawnProviderCliCommandRunner(env),
+  nodePlatform,
 }: GetKnownAcpAgentsStatusArgs): Promise<{
   agents: KnownAcpAgentExecutableStatus[];
 }> {
@@ -1044,6 +1064,7 @@ export async function getKnownAcpAgentsStatus({
         const status = await inspectExecutableInstallStatus({
           executableName: agent.executableName,
           runner,
+          nodePlatform,
         });
         return {
           id: agent.id,

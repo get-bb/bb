@@ -348,8 +348,10 @@ export async function resolveLocalBbExecutablePath(
 }
 
 /** Platform-stable name of the bb CLI file inside `BB_CLI_DIR` / daemon dist. */
-export function bbExecutableFileName(): string {
-  return "bb";
+export function bbExecutableFileName(
+  platform: NodeJS.Platform = process.platform,
+): string {
+  return platform === "win32" ? "bb.cmd" : "bb";
 }
 
 export function resolveBbExecutablePathInDirectory(

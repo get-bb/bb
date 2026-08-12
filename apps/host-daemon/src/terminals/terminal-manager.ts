@@ -326,20 +326,25 @@ function isNonEmptyString(value: string | undefined): value is string {
 }
 
 export async function resolveDefaultTerminalShell(): Promise<string> {
-  const candidates = [
-    process.env.SHELL,
-    "/bin/zsh",
-    "/bin/bash",
-    "/bin/sh",
-  ].filter(isNonEmptyString);
+  const candidates =
+    process.platform === "win32"
+      ? [
+          process.env.ComSpec,
+          process.env.SHELL,
+          "pwsh.exe",
+          "powershell.exe",
+          "cmd.exe",
+        ]
+      : [process.env.SHELL, "/bin/zsh", "/bin/bash", "/bin/sh"];
+  const resolvedCandidates = candidates.filter(isNonEmptyString);
 
-  for (const candidate of candidates) {
+  for (const candidate of resolvedCandidates) {
     if (await pathIsExecutable(candidate)) {
       return candidate;
     }
   }
 
-  return "/bin/sh";
+  return process.platform === "win32" ? "cmd.exe" : "/bin/sh";
 }
 
 function buildTerminalEnv(args: BuildTerminalEnvArgs): NodeJS.ProcessEnv {
@@ -368,11 +373,17 @@ function terminalTitleFromCommand(command: string): string {
   return `${normalized.slice(0, 77)}...`;
 }
 
-function terminalSpawnArgsForStart(message: TerminalOpenMessage): string[] {
+function terminalSpawnArgsForStart(
+  message: TerminalOpenMessage,
+  platform: NodeJS.Platform,
+): string[] {
   switch (message.start.mode) {
     case "shell":
       return [];
     case "command":
+      if (platform === "win32") {
+        return ["/d", "/s", "/c", message.start.command];
+      }
       return ["-lc", message.start.command];
   }
 }
@@ -573,16 +584,6 @@ export class TerminalManager {
       return;
     }
 
-    if (this.platform === "win32") {
-      this.sendTerminalError({
-        code: "unsupported_platform",
-        message: "Native Windows terminals are not supported",
-        requestId: message.requestId,
-        terminalId: message.terminalId,
-      });
-      return;
-    }
-
     const openingEnvironmentId = terminalEnvironmentIdFromOpenMessage(message);
     this.openingTerminalEnvironmentIds.set(
       message.terminalId,
@@ -592,7 +593,7 @@ export class TerminalManager {
       const target = await this.resolveTerminalOpenTarget(message);
       const shell = await this.resolveShell();
       const pty = this.ptyAdapter.spawn({
-        args: terminalSpawnArgsForStart(message),
+        args: terminalSpawnArgsForStart(message, this.platform),
         cols: message.cols,
         cwd: target.cwd,
         env: buildTerminalEnv({

@@ -2042,6 +2042,6 @@ describe("bb-app launcher", () => {
     const metadata = readPackageMetadata();
 
     expect(metadata.engines.node).toBe("^22.19.0 || ^24.0.0 || ^26.0.0");
-    expect(metadata.os).toEqual(["darwin", "linux"]);
+    expect(metadata.os).toEqual(["darwin", "linux", "win32"]);
   });
 });

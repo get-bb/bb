@@ -18,6 +18,7 @@ import {
   pathExists,
   readDefaultBranch,
   readGitRepositoryState,
+  resolveShellPipelineExecutable,
   runGit,
   WorkspaceError,
   type GitCommandResult,
@@ -198,10 +199,12 @@ export function buildSetupScriptCommand(
   args: BuildSetupScriptCommandArgs,
 ): SetupScriptCommand {
   if (args.platform === "win32") {
-    throw new WorkspaceError(
-      "setup_script_failed",
-      `POSIX shell setup scripts are not supported on Windows: ${DEFAULT_ENV_SETUP_SCRIPT_NAME}`,
-    );
+    const shell = resolveShellPipelineExecutable("win32");
+    return {
+      command: shell,
+      args: [args.scriptPath],
+      text: `sh ${DEFAULT_ENV_SETUP_SCRIPT_NAME}`,
+    };
   }
 
   return {

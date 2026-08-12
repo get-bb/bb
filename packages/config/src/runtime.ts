@@ -160,7 +160,7 @@ function expandHomeDirectory(pathValue: string, homeDir: string): string {
     return homeDir;
   }
 
-  if (pathValue.startsWith("~/")) {
+  if (pathValue.startsWith("~/") || pathValue.startsWith("~\\")) {
     return resolve(homeDir, pathValue.slice(2));
   }
 
