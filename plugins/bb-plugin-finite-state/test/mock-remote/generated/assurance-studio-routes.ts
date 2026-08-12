@@ -2297,6 +2297,8 @@ export const ASSURANCE_STUDIO_CALLABLE_ROUTE_IDS = [
   "assurance-studio:PATCH:/api/projects/{projectId}/requirements/{requirementId}",
   "assurance-studio:GET:/api/projects/{projectId}/risks",
   "assurance-studio:POST:/api/projects/{projectId}/risks",
+  "assurance-studio:GET:/api/projects/{projectId}/risks/{riskId}",
+  "assurance-studio:PATCH:/api/projects/{projectId}/risks/{riskId}",
   "assurance-studio:GET:/api/projects/{projectId}/threats",
   "assurance-studio:POST:/api/projects/{projectId}/threats",
   "assurance-studio:DELETE:/api/projects/{projectId}/threats/{threatId}",

@@ -10,9 +10,13 @@ import {
   handlerAuditRoute,
   type AssuranceStudioRoutePatch,
 } from "./as-route-patches.js";
+import type {
+  AssuranceStudioClient,
+  PlatformClient,
+} from "../../lib/remote/types.js";
 import type { MockRoute, MockService } from "./types.js";
 
-export const ROUTE_GENERATOR_VERSION = "1";
+export const ROUTE_GENERATOR_VERSION = "2";
 
 const MOCK_ROOT = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_REFERENCE_ROOT = resolve(
@@ -31,24 +35,11 @@ const REQUIRED_SOURCES = [
   "assurance-studio-api-gaps.md",
 ] as const;
 
-/** Deliberate HTTP intersection for the named methods frozen by WP-06. */
-const WP06_PLATFORM_CALLABLE_KEYS = new Set([
-  "GET /public/v0/projects",
-  "GET /public/v0/projects/{projectId}/versions",
-  "GET /public/v0/findings",
-  "GET /public/v0/versions/{projectVersionId}/findings",
-  "GET /public/v0/projects/{projectId}/findings/activity",
-  "PUT /public/v0/findings/{projectVersionId}/{findingId}/status",
-  "PUT /public/v0/findings/{projectVersionId}/status/set/bulk",
-  "PUT /public/v0/findings/{projectVersionId}/status/clear/bulk",
-  "GET /public/v0/sboms/cyclonedx/{projectVersionId}",
-  "GET /public/v0/sboms/spdx/{projectVersionId}",
-  "GET /public/v0/components",
-  "GET /public/v0/components/search",
-  "GET /public/v0/projects/versions/{projectVersionId}/filesystem/tree",
-  "GET /public/v0/projects/versions/{projectVersionId}/filesystem/file",
-  "GET /public/v0/projects/versions/{projectVersionId}/filesystem/overview",
-  "GET /public/v0/projects/versions/{projectVersionId}/filesystem/content",
+type FrozenOperationRouteMap<Client> = {
+  readonly [Operation in Exclude<keyof Client, "health">]: readonly string[];
+};
+
+const PLATFORM_SECURITY_ASSESSMENT_KEYS = [
   "GET /public/v0/projects/versions/{projectVersionId}/security-assessment/configs/list",
   "GET /public/v0/projects/versions/{projectVersionId}/security-assessment/configs/details",
   "GET /public/v0/projects/versions/{projectVersionId}/security-assessment/binaries/info",
@@ -70,36 +61,101 @@ const WP06_PLATFORM_CALLABLE_KEYS = new Set([
   "GET /public/v0/projects/versions/{projectVersionId}/security-assessment/kernel/config",
   "GET /public/v0/projects/versions/{projectVersionId}/security-assessment/architecture",
   "GET /public/v0/projects/versions/{projectVersionId}/security-assessment/architecture-breakdown",
-]);
+] as const;
 
-/** Deliberate HTTP intersection for the named methods frozen by WP-06. */
-const WP06_ASSURANCE_STUDIO_CALLABLE_KEYS = new Set([
-  ...["threats", "risks", "mitigations", "zones", "data-flows", "components", "requirements"].flatMap(
-    (collection) => [
-      `GET /api/projects/{projectId}/${collection}`,
-      `POST /api/projects/{projectId}/${collection}`,
-    ],
+/** Deliberate HTTP mappings for every named Platform method frozen by WP-06. */
+const WP06_PLATFORM_ROUTES_BY_OPERATION = {
+  listProjects: ["GET /public/v0/projects"],
+  listVersions: ["GET /public/v0/projects/{projectId}/versions"],
+  getFindings: ["GET /public/v0/versions/{projectVersionId}/findings"],
+  getFindingDetail: ["GET /public/v0/findings"],
+  getFindingActivity: ["GET /public/v0/projects/{projectId}/findings/activity"],
+  listFindingComments: ["GET /public/v0/findings"],
+  // Vendored OpenAPI + endpoint audit verify VersionDetailsV0 as the single
+  // selected response containing findingsSummary.
+  getFindingsSummary: ["GET /public/v0/versions/{projectVersionId}"],
+  setVexStatus: ["PUT /public/v0/findings/{projectVersionId}/{findingId}/status"],
+  batchSetVexStatus: ["PUT /public/v0/findings/{projectVersionId}/status/set/bulk"],
+  clearVexStatus: ["PUT /public/v0/findings/{projectVersionId}/status/clear/bulk"],
+  downloadSbom: [
+    "GET /public/v0/sboms/cyclonedx/{projectVersionId}",
+    "GET /public/v0/sboms/spdx/{projectVersionId}",
+  ],
+  listComponents: ["GET /public/v0/components"],
+  searchComponents: ["GET /public/v0/components/search"],
+  browseFirmwareFilesystem: [
+    "GET /public/v0/projects/versions/{projectVersionId}/filesystem/tree",
+    "GET /public/v0/projects/versions/{projectVersionId}/filesystem/overview",
+  ],
+  getFirmwareFile: [
+    "GET /public/v0/projects/versions/{projectVersionId}/filesystem/file",
+    "GET /public/v0/projects/versions/{projectVersionId}/filesystem/content",
+  ],
+  securityAssessment: PLATFORM_SECURITY_ASSESSMENT_KEYS,
+} as const satisfies FrozenOperationRouteMap<PlatformClient>;
+
+const AS_COLLECTIONS = [
+  "threats",
+  "risks",
+  "mitigations",
+  "zones",
+  "data-flows",
+  "components",
+  "requirements",
+] as const;
+const AS_ITEM_ROUTES = [
+  ["threats", "threatId"],
+  ["risks", "riskId"],
+  ["mitigations", "mitigationId"],
+  ["assets", "assetId"],
+  ["zones", "zoneId"],
+  ["data-flows", "dataFlowId"],
+  ["components", "componentId"],
+  ["requirements", "requirementId"],
+  ["attack-paths", "pathId"],
+] as const;
+const asItemKeys = (method: "GET" | "PATCH" | "DELETE") =>
+  AS_ITEM_ROUTES
+    .filter(([collection]) => method !== "DELETE" || collection !== "risks")
+    .map(
+      ([collection, id]) =>
+        `${method} /api/projects/{projectId}/${collection}/{${id}}`,
+    );
+
+/** Deliberate HTTP mappings for the supported named AS methods frozen by WP-06. */
+const WP06_ASSURANCE_STUDIO_ROUTES_BY_OPERATION = {
+  // GET/POST /api/projects/{projectId}/assets remain unsupported: neither
+  // vendored OpenAPI nor the handler audit verifies an asset collection route.
+  listEntities: [
+    ...AS_COLLECTIONS.map((collection) => `GET /api/projects/{projectId}/${collection}`),
+    "GET /api/projects/{projectId}/attack-paths",
+  ],
+  getEntity: asItemKeys("GET"),
+  createEntity: AS_COLLECTIONS.map(
+    (collection) => `POST /api/projects/{projectId}/${collection}`,
   ),
-  "GET /api/projects/{projectId}/attack-paths",
-  ...[
-    ["threats", "threatId"],
-    ["mitigations", "mitigationId"],
-    ["assets", "assetId"],
-    ["zones", "zoneId"],
-    ["data-flows", "dataFlowId"],
-    ["components", "componentId"],
-    ["requirements", "requirementId"],
-    ["attack-paths", "pathId"],
-  ].flatMap(([collection, id]) =>
-    HTTP_METHODS.filter((method) => method === "GET" || method === "PATCH" || method === "DELETE").map(
-      (method) => `${method} /api/projects/{projectId}/${collection}/{${id}}`,
-    ),
-  ),
-  "GET /api/projects/{id}/sbom",
-  "GET /api/projects/{projectId}/verification/checks",
-  "GET /api/projects/{projectId}/verification/checks/{checkId}",
-  "POST /api/projects/{projectId}/verification/run",
-]);
+  updateEntity: asItemKeys("PATCH"),
+  deleteEntity: asItemKeys("DELETE"),
+  listProjectSbomPackages: ["GET /api/projects/{id}/sbom"],
+  listVerificationChecks: ["GET /api/projects/{projectId}/verification/checks"],
+  getVerificationCheck: [
+    "GET /api/projects/{projectId}/verification/checks/{checkId}",
+  ],
+  runVerificationChecks: ["POST /api/projects/{projectId}/verification/run"],
+} as const satisfies FrozenOperationRouteMap<AssuranceStudioClient>;
+
+function callableKeys(
+  mapping: Readonly<Record<string, readonly string[]>>,
+): ReadonlySet<string> {
+  return new Set(Object.values(mapping).flat());
+}
+
+const WP06_PLATFORM_CALLABLE_KEYS = callableKeys(
+  WP06_PLATFORM_ROUTES_BY_OPERATION,
+);
+const WP06_ASSURANCE_STUDIO_CALLABLE_KEYS = callableKeys(
+  WP06_ASSURANCE_STUDIO_ROUTES_BY_OPERATION,
+);
 
 interface OpenApiInventory {
   routes: MockRoute[];
@@ -272,11 +328,28 @@ function mergeAssuranceStudioRoutes(
   return [...routes.values()].sort(routeSort);
 }
 
+export function assertCallableKeysResolved(
+  service: MockService,
+  referenceRoutes: readonly Pick<MockRoute, "method" | "pathTemplate">[],
+  callableKeys: ReadonlySet<string>,
+): void {
+  const referenceKeys = new Set(referenceRoutes.map(routeKey));
+  const unresolved = [...callableKeys]
+    .filter((key) => !referenceKeys.has(key))
+    .sort();
+  if (unresolved.length > 0) {
+    throw new Error(
+      `Frozen ${service} callable routes are absent from verified references: ${unresolved.join(", ")}`,
+    );
+  }
+}
+
 function renderRoutes(
   service: MockService,
   referenceRoutes: readonly MockRoute[],
   callableKeys: ReadonlySet<string>,
 ): string {
+  assertCallableKeysResolved(service, referenceRoutes, callableKeys);
   const prefix = service === "platform" ? "PLATFORM" : "ASSURANCE_STUDIO";
   const callableRouteIds = referenceRoutes
     .filter((route) => callableKeys.has(routeKey(route)))

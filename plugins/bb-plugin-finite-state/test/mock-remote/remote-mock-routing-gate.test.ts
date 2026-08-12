@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { ASSURANCE_STUDIO_ROUTE_PATCHES } from "./as-route-patches.js";
 import {
+  assertCallableKeysResolved,
   runRouteGeneration,
   validateAssuranceStudioRoutePatches,
 } from "./generate-routes.js";
@@ -111,6 +112,71 @@ describe("remote-mock-routing-gate", () => {
         }
       }),
     ).toThrow("Unknown mock route registration");
+  });
+
+  it("literal routes outrank parameter routes at runtime", async () => {
+    const harness = createHarness((service, registry) => {
+      if (service !== "assurance-studio") return;
+      registry.register(
+        "assurance-studio:GET:/api/projects/{projectId}/requirements/{requirementId}",
+        () => Response.json({ route: "requirement-item" }),
+      );
+    });
+    const response = await harness.assuranceStudio.fetch(
+      "http://mock/api/projects/project-1/requirements/traceability",
+      { headers: { "X-API-Key": "as-secret-value" } },
+    );
+    expect(response.status).toBe(501);
+    await expect(errorCode(response)).resolves.toBe("MOCK_HANDLER_MISSING");
+  });
+
+  it("all supported frozen operations map and unresolved keys fail closed", () => {
+    const harness = createHarness((service, registry) => {
+      if (service === "platform") {
+        registry.register(
+          "platform:GET:/public/v0/versions/{projectVersionId}",
+          () => Response.json({ findingsSummary: {} }),
+        );
+        return;
+      }
+      registry.register(
+        "assurance-studio:GET:/api/projects/{projectId}/risks/{riskId}",
+        () => Response.json({}),
+      );
+      registry.register(
+        "assurance-studio:PATCH:/api/projects/{projectId}/risks/{riskId}",
+        () => Response.json({}),
+      );
+    });
+    expect(harness.platform.routes).toContainEqual(
+      expect.objectContaining({
+        routeId: "platform:GET:/public/v0/versions/{projectVersionId}",
+      }),
+    );
+    expect(harness.assuranceStudio.routes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          routeId: "assurance-studio:GET:/api/projects/{projectId}/risks/{riskId}",
+        }),
+        expect.objectContaining({
+          routeId: "assurance-studio:PATCH:/api/projects/{projectId}/risks/{riskId}",
+        }),
+      ]),
+    );
+    expect(
+      harness.assuranceStudio.routes.some(
+        (route) =>
+          route.pathTemplate === "/api/projects/{projectId}/assets" &&
+          (route.method === "GET" || route.method === "POST"),
+      ),
+    ).toBe(false);
+    expect(() =>
+      assertCallableKeysResolved(
+        "platform",
+        [{ method: "GET", pathTemplate: "/known" }],
+        new Set(["GET /known", "GET /missing"]),
+      ),
+    ).toThrow("GET /missing");
   });
 
   it("501 known versus 404 unknown versus 415 media and 400 JSON", async () => {

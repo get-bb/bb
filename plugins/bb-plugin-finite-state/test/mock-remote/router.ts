@@ -7,6 +7,24 @@ interface CompiledRoute {
   readonly parameterNames: readonly string[];
 }
 
+function pathSpecificity(left: CompiledRoute, right: CompiledRoute): number {
+  const leftSegments = left.route.pathTemplate.split("/");
+  const rightSegments = right.route.pathTemplate.split("/");
+  const segmentCount = Math.max(leftSegments.length, rightSegments.length);
+
+  for (let index = 0; index < segmentCount; index += 1) {
+    const leftSegment = leftSegments[index];
+    const rightSegment = rightSegments[index];
+    if (leftSegment === undefined) return 1;
+    if (rightSegment === undefined) return -1;
+    const leftIsParameter = /^\{[^}]+\}$/.test(leftSegment);
+    const rightIsParameter = /^\{[^}]+\}$/.test(rightSegment);
+    if (leftIsParameter !== rightIsParameter) return leftIsParameter ? 1 : -1;
+  }
+
+  return left.route.routeId.localeCompare(right.route.routeId);
+}
+
 export interface MockRouterOptions {
   readonly service: MockService;
   readonly routes: readonly MockRoute[];
@@ -56,7 +74,7 @@ function paramsFor(
 }
 
 export function createMockRouter(options: MockRouterOptions) {
-  const compiledRoutes = options.routes.map(compileRoute);
+  const compiledRoutes = options.routes.map(compileRoute).sort(pathSpecificity);
   return async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
     const compiled = compiledRoutes.find(

@@ -2772,6 +2772,7 @@ export const PLATFORM_CALLABLE_ROUTE_IDS = [
   "platform:GET:/public/v0/projects/versions/{projectVersionId}/security-assessment/services/systemd-units",
   "platform:GET:/public/v0/sboms/cyclonedx/{projectVersionId}",
   "platform:GET:/public/v0/sboms/spdx/{projectVersionId}",
+  "platform:GET:/public/v0/versions/{projectVersionId}",
   "platform:GET:/public/v0/versions/{projectVersionId}/findings"
 ] as const;
 

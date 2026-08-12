@@ -1,5 +1,5 @@
 {
-  "generatorVersion": "1",
+  "generatorVersion": "2",
   "sources": [
     {
       "name": "finite-state-api-v0.3.0.openapi.yaml",
@@ -35,11 +35,11 @@
   "outputs": [
     {
       "name": "platform-routes.ts",
-      "sha256": "c238f3607c68f233beeb9ff5d88aece781118272497f7233aa12a1c33658cc15"
+      "sha256": "eac1815601babaf1bc547ee6cd2c2de67082558bb3e8372b9f3ae5d28f0a4a94"
     },
     {
       "name": "assurance-studio-routes.ts",
-      "sha256": "bd1516203625f24b6b2dfb7bf0c4f895cee7546b17c250f785bfddcadeb45881"
+      "sha256": "ef053a338d273bf0e0eb6155232bf02016260c18e4531ff120670bc8d6bd2c73"
     }
   ]
 }
