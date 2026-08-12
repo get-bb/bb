@@ -777,14 +777,18 @@ curl -fsS "$BB_SERVER_URL/api/v1/environments/$PROVIDER_WORKTREE_ENV_ID/status" 
 Run a pending-interaction pass with permission-restricted turns:
 
 ```bash
+# Codex sandboxes commonly permit the OS temp directory. Put the disposable
+# target under the user home so it is reliably outside the managed worktree.
+APPROVAL_DIR=$(mktemp -d "${HOME:?}/.bb-approval-smoke.XXXXXX")
+APPROVAL_FILE="$APPROVAL_DIR/approval-smoke.txt"
 APPROVAL_THREAD_ID=$(bb thread spawn \
   --project "$BB_PROJECT_ID" \
   --provider codex \
   --model "$CODEX_MODEL" \
   --reasoning-level low \
   --new-environment worktree \
-  --permission-mode readonly \
-  --prompt "Run this exact shell command: printf 'APPROVED' > approval-smoke.txt. If approval is needed, request approval. After the command finishes, reply with exactly DONE." \
+  --permission-mode accept-edits \
+  --prompt "Run this exact shell command: printf 'APPROVED' > '$APPROVAL_FILE'. If approval is needed, request approval. After the command finishes, reply with exactly DONE." \
   --json | jq -r '.id')
 
 APPROVAL_INTERACTION_ID=
@@ -810,19 +814,22 @@ bb thread interactions approve "$APPROVAL_INTERACTION_ID" "$APPROVAL_THREAD_ID"
 bb thread wait "$APPROVAL_THREAD_ID" --status idle --timeout 180
 bb thread output "$APPROVAL_THREAD_ID"
 bb thread interactions list "$APPROVAL_THREAD_ID" --json | jq
+test "$(cat "$APPROVAL_FILE")" = "APPROVED"
 ```
 
 Verify denial handling with a separate interaction:
 
 ```bash
+DENY_DIR=$(mktemp -d "${HOME:?}/.bb-denial-smoke.XXXXXX")
+DENY_FILE="$DENY_DIR/denied-smoke.txt"
 DENY_THREAD_ID=$(bb thread spawn \
   --project "$BB_PROJECT_ID" \
   --provider codex \
   --model "$CODEX_MODEL" \
   --reasoning-level low \
   --new-environment worktree \
-  --permission-mode readonly \
-  --prompt "Run this exact shell command: printf 'DENIED' > denied-smoke.txt. If approval is denied, reply with exactly DENIED." \
+  --permission-mode accept-edits \
+  --prompt "Run this exact shell command: printf 'DENIED' > '$DENY_FILE'. If approval is denied, reply with exactly DENIED." \
   --json | jq -r '.id')
 
 DENY_INTERACTION_ID=
@@ -843,6 +850,7 @@ else
   bb thread show "$DENY_THREAD_ID"
 fi
 bb thread log "$DENY_THREAD_ID" --format json | jq '.[-12:]'
+test ! -e "$DENY_FILE"
 ```
 
 For `claude-code`, also verify grant semantics with a permission-grant interaction:
@@ -854,8 +862,8 @@ GRANT_THREAD_ID=$(bb thread spawn \
   --model "$CLAUDE_MODEL" \
   --reasoning-level low \
   --new-environment worktree \
-  --permission-mode workspace-write \
-  --prompt "Use the Read tool to read /etc/hosts, then reply with exactly the first non-empty line from the file and nothing else." \
+  --permission-mode accept-edits \
+  --prompt "Use WebFetch to fetch https://example.com, then reply with exactly GRANTED." \
   --json | jq -r '.id')
 
 GRANT_INTERACTION_ID=
@@ -872,11 +880,16 @@ bb thread interactions show "$GRANT_INTERACTION_ID" "$GRANT_THREAD_ID"
 bb thread interactions grant "$GRANT_INTERACTION_ID" "$GRANT_THREAD_ID" --scope turn
 bb thread wait "$GRANT_THREAD_ID" --status idle --timeout 180
 bb thread output "$GRANT_THREAD_ID"
+
+rm -f "$APPROVAL_FILE" "$DENY_FILE"
+rmdir "$APPROVAL_DIR" "$DENY_DIR"
 ```
 
 Expected result:
 
-- Permission-restricted turns surface pending interactions through `bb thread interactions list/show`.
+- `accept-edits` turns allow workspace changes but surface pending interactions
+  for the explicit outside-workspace probes through `bb thread interactions
+  list/show`.
 - `bb thread tell` is rejected while the thread is awaiting user interaction.
 - `approve`, `deny`, and `grant` resolve their matching interaction kinds.
 - Approved/granted threads continue to `idle`; denied threads either reply with the denial handling text or clearly record the denied approval in the log.
