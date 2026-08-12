@@ -48,8 +48,14 @@ The manifest is `package.json`:
   node_modules. `bb.app` (optional) — frontend entry compiled by
   `bb plugin build` into `dist/app.js` + `app.css` + `app.meta.json`; path
   and git installs build it automatically at install time. Git installs also
-  run `npm install` first (so a git plugin may use third-party packages) and
-  keep node_modules, since bundling cannot inline data files read at runtime.
+  run `npm install --omit=dev` first (so a git plugin may use third-party
+  packages) and keep node_modules, since bundling cannot inline data files read
+  at runtime. So every package your source imports that bb does not shim
+  belongs in `dependencies`: a build-required package left in
+  `devDependencies` makes the plugin uninstallable from git, and unbuildable
+  after any install that omits dev deps — including the packaged CLI's own,
+  which runs npm under `NODE_ENV=production`. `devDependencies` is for types
+  and tooling only.
   Installing or updating a git plugin needs `npm` on PATH; checking for
   updates does not, because a check reads the manifest and never builds. Path
   installs build from dependencies you have already installed.

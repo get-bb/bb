@@ -190,8 +190,9 @@ added/updated/unchanged counts.
                                  invalidating the old one
   bb plugin remove <id>          Uninstall (managed git:/npm: files deleted;
                                  builtin removals are remembered)
-  bb plugin new <name> [--app]   Scaffold a new plugin (no server required;
-                                 --app adds a frontend entry, app.tsx, plus a
+  bb plugin new <name> [--app]   Scaffold a new plugin and install its npm
+                                 dependencies (no server required; --app adds
+                                 a frontend entry, app.tsx, plus a
                                  typecheck-only tsconfig.json)
   bb plugin types [path]         Write this bb's @bb/plugin-sdk declarations
                                  into the plugin's types/ (default: cwd);

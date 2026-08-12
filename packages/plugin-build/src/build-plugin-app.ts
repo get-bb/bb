@@ -50,7 +50,7 @@ import { validatePluginBuildManifest } from "./plugin-manifest.js";
  * tailwind-merge, lucide-react, form/calendar/chart libs) bundles from the
  * plugin's own node_modules.
  */
-const RUNTIME_SLOT_BY_SPECIFIER: Record<string, string> = {
+export const RUNTIME_SLOT_BY_SPECIFIER: Record<string, string> = {
   react: "react",
   "react-dom": "reactDom",
   "react-dom/client": "reactDomClient",
