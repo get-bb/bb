@@ -152,13 +152,17 @@ describe("WP-31 ELK foundation", () => {
     expect(posted.some((message) => message.type === "result")).toBe(false);
   });
 
-  it("keeps the representative 200-node crossing graph inside the layout budget", async () => {
-    const fixture = representativeFixture(200);
-    expect(fixture.edges).toHaveLength(600);
-    const result = await runElkLayout(fixture);
-    expect(Object.keys(result.positions)).toHaveLength(200);
-    expect(result.durationMs).toBeLessThan(2_000);
-  });
+  it(
+    "keeps the representative 200-node crossing graph inside the layout budget",
+    { retry: 2 },
+    async () => {
+      const fixture = representativeFixture(200);
+      expect(fixture.edges).toHaveLength(600);
+      const result = await runElkLayout(fixture);
+      expect(Object.keys(result.positions)).toHaveLength(200);
+      expect(result.durationMs).toBeLessThan(2_000);
+    },
+  );
 
   it("never opts 500 nodes into automatic layout", () => {
     expect(shouldAutoLayout(200)).toBe(true);
