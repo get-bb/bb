@@ -97,6 +97,7 @@ jq . "$STATE_PATH"
 SERVER_DB_PATH=$(jq -er '.server.dataDir + "/bb.db"' "$STATE_PATH")
 SERVER_LOG_DIR=$(jq -er '(.paths.serverDataDir // .server.dataDir) + "/logs"' "$STATE_PATH")
 DAEMON_LOG_DIR=$(jq -er '(.paths.daemonDataDir // .daemon.dataDir) + "/logs"' "$STATE_PATH")
+DAEMON_RESTART_PID_PATH=$(jq -er '.paths.daemonRestartPidPath' "$STATE_PATH")
 
 bb() { node apps/cli/dist/index.js "$@"; }
 ```
@@ -555,7 +556,7 @@ curl -fsS "$BB_SERVER_URL/api/v1/system/config" | jq
 curl -fsS "$BB_SERVER_URL/api/v1/hosts" | jq
 
 eval "$RESTART_DAEMON_COMMAND"
-DAEMON_PID=$!
+DAEMON_PID=$(cat "$DAEMON_RESTART_PID_PATH")
 
 curl -fsS "$BB_SERVER_URL/api/v1/hosts" | jq
 bb thread tell "$SMOKE_THREAD_ID" "Check recovery after daemon restart"
@@ -597,7 +598,7 @@ for _ in $(seq 1 60); do
 done
 
 eval "$RESTART_DAEMON_COMMAND"
-DAEMON_PID=$!
+DAEMON_PID=$(cat "$DAEMON_RESTART_PID_PATH")
 
 curl -fsS "$BB_SERVER_URL/api/v1/environments/$SERVER_RESTART_ENV_ID" | jq
 bb thread show "$SERVER_RESTART_THREAD_ID"
@@ -632,7 +633,7 @@ else
 fi
 
 eval "$RESTART_DAEMON_COMMAND"
-DAEMON_PID=$!
+DAEMON_PID=$(cat "$DAEMON_RESTART_PID_PATH")
 bb thread tell "$SMOKE_THREAD_ID" "Say exactly: offline retry ok"
 bb thread wait "$SMOKE_THREAD_ID" --status idle --timeout 120
 bb thread output "$SMOKE_THREAD_ID"
@@ -660,7 +661,7 @@ HOT_REPLACE_THREAD_ID=$(bb thread spawn \
 bb thread wait "$HOT_REPLACE_THREAD_ID" --status active --timeout 30
 OLD_DAEMON_PID=$DAEMON_PID
 eval "$RESTART_DAEMON_COMMAND"
-DAEMON_PID=$!
+DAEMON_PID=$(cat "$DAEMON_RESTART_PID_PATH")
 test "$DAEMON_PID" != "$OLD_DAEMON_PID"
 
 curl -fsS "$BB_SERVER_URL/api/v1/hosts" | jq
@@ -687,7 +688,7 @@ kill -TERM "$DAEMON_PID"
 bb thread show "$SMOKE_THREAD_ID"
 
 eval "$RESTART_DAEMON_COMMAND"
-DAEMON_PID=$!
+DAEMON_PID=$(cat "$DAEMON_RESTART_PID_PATH")
 
 THREAD_STATE=$(curl -fsS "$BB_SERVER_URL/api/v1/threads/$SMOKE_THREAD_ID" | jq -r '.status')
 
