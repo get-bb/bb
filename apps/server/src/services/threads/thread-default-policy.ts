@@ -78,7 +78,7 @@ export interface ResolveThreadExecutionPermissionModeArgs {
   requestedPermissionMode?: PermissionMode;
   thread: Pick<
     Thread,
-    "childOrigin" | "originKind" | "parentThreadId" | "projectId" | "providerId"
+    "originKind" | "parentThreadId" | "projectId" | "providerId"
   >;
 }
 

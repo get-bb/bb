@@ -8,23 +8,15 @@ import {
   serviceTierSchema,
 } from "./shared-types.js";
 import { threadStatusSchema, threadStatusValues } from "./thread-status.js";
-import {
-  threadChildOriginSchema,
-  threadOriginKindSchema,
-} from "./thread-child-origin.js";
+import { threadOriginKindSchema } from "./thread-origin-kind.js";
 import { threadVisibilitySchema } from "./thread-visibility.js";
 export { threadStatusSchema, threadStatusValues } from "./thread-status.js";
 export type { ThreadStatus } from "./thread-status.js";
 export {
-  threadChildOriginSchema,
-  threadChildOriginValues,
   threadOriginKindSchema,
   threadOriginKindValues,
-} from "./thread-child-origin.js";
-export type {
-  ThreadChildOrigin,
-  ThreadOriginKind,
-} from "./thread-child-origin.js";
+} from "./thread-origin-kind.js";
+export type { ThreadOriginKind } from "./thread-origin-kind.js";
 export {
   threadVisibilitySchema,
   threadVisibilityValues,
@@ -391,8 +383,6 @@ export const threadSchema = z.object({
   parentThreadId: z.string().nullable(),
   sourceThreadId: z.string().nullable(),
   originKind: threadOriginKindSchema.nullable(),
-  /** @deprecated Use originKind. */
-  childOrigin: threadChildOriginSchema.nullable(),
   /** Id of the plugin that spawned this thread; null for non-plugin origins. */
   originPluginId: z.string().nullable(),
   visibility: threadVisibilitySchema,

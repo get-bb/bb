@@ -145,9 +145,8 @@ export type ThreadTimelineTurnSummaryDetailsResult =
 
 export interface ThreadSpawnBaseArgs extends Omit<
   CreateThreadRequest,
-  "childOrigin" | "input" | "origin" | "originKind" | "startedOnBehalfOf"
+  "input" | "origin" | "originKind" | "startedOnBehalfOf"
 > {
-  childOrigin?: CreateThreadRequest["childOrigin"];
   origin?: CreateThreadRequest["origin"];
   originKind?: CreateThreadRequest["originKind"];
   startedOnBehalfOf?: CreateThreadRequest["startedOnBehalfOf"];
@@ -536,7 +535,6 @@ function spawnInput(input: ThreadSpawnArgs): PromptInput[] {
 
 function spawnJson(args: ThreadSpawnArgs): CreateThreadRequest {
   const {
-    childOrigin,
     input: _input,
     origin,
     originKind,
@@ -550,7 +548,6 @@ function spawnJson(args: ThreadSpawnArgs): CreateThreadRequest {
     origin: origin ?? "sdk",
     startedOnBehalfOf: startedOnBehalfOf ?? null,
     originKind: originKind ?? null,
-    childOrigin: childOrigin ?? null,
   };
 }
 

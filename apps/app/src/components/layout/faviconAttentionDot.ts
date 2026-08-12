@@ -1,15 +1,9 @@
 import type { ThreadListEntry } from "@bb/domain";
 import { isSidebarProjectThread } from "@/components/sidebar/projectThreadGroups";
-import {
-  isThreadRead,
-  type ThreadReadState,
-} from "@/lib/thread-read-state";
+import { isThreadRead, type ThreadReadState } from "@/lib/thread-read-state";
 
 type FaviconSidebarThread = ThreadReadState &
-  Pick<
-    ThreadListEntry,
-    "originKind" | "childOrigin" | "hasPendingInteraction" | "visibility"
-  >;
+  Pick<ThreadListEntry, "originKind" | "hasPendingInteraction" | "visibility">;
 
 interface ShouldShowFaviconAttentionDotArgs {
   // Whether the thread currently in view is blocked on a pending interaction.

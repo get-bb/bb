@@ -20,7 +20,6 @@ function createThread(overrides: Partial<ThreadListEntry>): ThreadListEntry {
     originKind: null,
     originPluginId: null,
     visibility: "visible",
-    childOrigin: null,
     archivedAt: null,
     pinnedAt: null,
     pinSortKey: null,

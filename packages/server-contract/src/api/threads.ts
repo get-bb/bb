@@ -14,7 +14,6 @@ import {
   reasoningLevelSchema,
   resolvedThreadExecutionOptionsSchema,
   serviceTierSchema,
-  threadChildOriginSchema,
   threadOriginKindSchema,
   threadListEntrySchema,
   threadQueuedMessageSchema,
@@ -134,8 +133,6 @@ export const createThreadRequestSchema = z
     sourceSeqEnd: z.number().int().nonnegative().optional(),
     startedOnBehalfOf: startedOnBehalfOfSchema.nullable().default(null),
     originKind: threadOriginKindSchema.nullable().default(null),
-    /** @deprecated Use originKind. */
-    childOrigin: threadChildOriginSchema.nullable().default(null),
   })
   .superRefine((value, ctx) => {
     if (value.origin === "plugin" && value.originPluginId === undefined) {
@@ -152,15 +149,14 @@ export const createThreadRequestSchema = z
         path: ["originPluginId"],
       });
     }
-    const originKind = value.originKind ?? value.childOrigin;
-    if (originKind === null && value.input.length === 0) {
+    if (value.originKind === null && value.input.length === 0) {
       ctx.addIssue({
         code: "custom",
         message: "input must contain at least one entry",
         path: ["input"],
       });
     }
-    if (originKind === null && value.sourceSeqEnd !== undefined) {
+    if (value.originKind === null && value.sourceSeqEnd !== undefined) {
       ctx.addIssue({
         code: "custom",
         message: "sourceSeqEnd requires an originKind",
@@ -666,8 +662,6 @@ export const threadListQuerySchema = z.object({
   originKind: threadOriginKindSchema.optional(),
   /** Restrict to threads spawned by this plugin. */
   originPluginId: z.string().min(1).optional(),
-  /** @deprecated Use originKind. */
-  childOrigin: threadChildOriginSchema.optional(),
   /** Include hidden threads; omitted/false keeps the default visible-only list. */
   includeHidden: z.enum(["true", "false"]).optional(),
   limit: z.string().regex(/^\d+$/).optional(),

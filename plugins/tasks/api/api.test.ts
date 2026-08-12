@@ -176,15 +176,9 @@ describe("Tasks RPC domain API", () => {
               return makeThreadResponse({
                 id: threadId,
                 title: "Internal side chat",
-                originKind: "side-chat",
-              });
-            }
-            if (threadId === "thr_side_chat_legacy") {
-              return makeThreadResponse({
-                id: threadId,
-                title: "Legacy side chat",
-                originKind: null,
-                childOrigin: "side-chat",
+                originKind: "fork",
+                originPluginId: "side-chat",
+                visibility: "hidden",
               });
             }
             // Deleted / hidden / inaccessible threads reject.
@@ -240,15 +234,6 @@ describe("Tasks RPC domain API", () => {
       body: "Side chat",
       notifiedCount: 0,
     });
-    // Agent comment authored by a legacy childOrigin side chat.
-    store.tasks.createComment({
-      taskId: task.id,
-      kind: "agent",
-      authorName: "agent (thr_side_chat_legacy)",
-      threadId: "thr_side_chat_legacy",
-      body: "Legacy side chat",
-      notifiedCount: 0,
-    });
     // Agent comment whose thread is gone/inaccessible.
     store.tasks.createComment({
       taskId: task.id,
@@ -287,12 +272,11 @@ describe("Tasks RPC domain API", () => {
     expect(titleByBody.get("Fallback title")).toBe("Untitled work");
     expect(titleByBody.get("Blank title")).toBe("Recovered fallback");
     expect(titleByBody.get("Side chat")).toBeNull();
-    expect(titleByBody.get("Legacy side chat")).toBeNull();
     expect(titleByBody.get("Missing thread")).toBeNull();
     expect(titleByBody.get("Legacy")).toBeNull();
     expect(titleByBody.get("Human note")).toBeNull();
     // Each distinct agent thread is resolved once, not per comment.
-    expect(harness.sdk.callsTo("threads.get")).toHaveLength(6);
+    expect(harness.sdk.callsTo("threads.get")).toHaveLength(5);
     await harness.dispose();
   });
 
@@ -316,7 +300,9 @@ describe("Tasks RPC domain API", () => {
               return makeThreadResponse({
                 id: threadId,
                 title: "Internal side chat",
-                originKind: "side-chat",
+                originKind: "fork",
+                originPluginId: "side-chat",
+                visibility: "hidden",
                 providerId: "claude-code",
               });
             }

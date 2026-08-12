@@ -221,7 +221,7 @@ export async function resolveThreadRuntimeCommandConfig(
       host: { id: host.id, name: host.name },
       provider: { id: args.thread.providerId, model: args.model },
       origin: {
-        kind: args.thread.originKind ?? args.thread.childOrigin,
+        kind: args.thread.originKind,
         pluginId: args.thread.originPluginId,
       },
     },

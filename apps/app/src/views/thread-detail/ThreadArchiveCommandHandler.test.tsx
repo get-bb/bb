@@ -52,7 +52,6 @@ vi.mock("@/lib/bb-desktop", () => ({
 function makeThread(id: string, title: string): Thread {
   return {
     archivedAt: null,
-    childOrigin: null,
     createdAt: 1,
     deletedAt: null,
     environmentId: "env_test",

@@ -9,14 +9,7 @@ import { z } from "zod";
 //
 // Side chats used to be their own origin kind. They are now the builtin
 // side-chat plugin's hidden forks, identified by `originPluginId` — migration
-// 0085 moved every legacy row over.
+// 0084 moved every legacy row over.
 export const threadOriginKindValues = ["fork"] as const;
 export const threadOriginKindSchema = z.enum(threadOriginKindValues);
 export type ThreadOriginKind = z.infer<typeof threadOriginKindSchema>;
-
-/** @deprecated Use threadOriginKindValues. */
-export const threadChildOriginValues = threadOriginKindValues;
-/** @deprecated Use threadOriginKindSchema. */
-export const threadChildOriginSchema = threadOriginKindSchema;
-/** @deprecated Use ThreadOriginKind. */
-export type ThreadChildOrigin = ThreadOriginKind;

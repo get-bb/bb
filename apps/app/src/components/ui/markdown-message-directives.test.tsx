@@ -591,7 +591,7 @@ describe("ConversationMessageContent assistant directives", () => {
             <ConversationMessageContent
               role="user"
               attachments={null}
-              childOrigin={null}
+              originKind={null}
               initiator="user"
               mentions={[]}
               senderThreadId={null}

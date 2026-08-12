@@ -1561,7 +1561,7 @@ describe("thread lifecycle transitions and read state", () => {
   });
 });
 
-describe("thread originKind compatibility", () => {
+describe("thread originKind", () => {
   it("defaults to null for threads created without an origin", () => {
     const { db, project } = setup();
     const thread = createThread(db, noopNotifier, {
@@ -1569,11 +1569,11 @@ describe("thread originKind compatibility", () => {
       providerId: "codex",
     });
 
-    expect(thread.childOrigin).toBeNull();
-    expect(getThread(db, thread.id)?.childOrigin).toBeNull();
+    expect(thread.originKind).toBeNull();
+    expect(getThread(db, thread.id)?.originKind).toBeNull();
   });
 
-  it("maps deprecated childOrigin input to originKind", () => {
+  it("persists and filters by originKind", () => {
     const { db, project } = setup();
     const parent = createThread(db, noopNotifier, {
       projectId: project.id,
@@ -1583,29 +1583,14 @@ describe("thread originKind compatibility", () => {
       projectId: project.id,
       providerId: "codex",
       parentThreadId: parent.id,
-      childOrigin: "fork",
+      originKind: "fork",
     });
     expect(getThread(db, fork.id)).toMatchObject({
       originKind: "fork",
-      childOrigin: null,
-    });
-  });
-
-  it("filters listings by deprecated childOrigin", () => {
-    const { db, project } = setup();
-    const parent = createThread(db, noopNotifier, {
-      projectId: project.id,
-      providerId: "codex",
-    });
-    const fork = createThread(db, noopNotifier, {
-      projectId: project.id,
-      providerId: "codex",
-      parentThreadId: parent.id,
-      childOrigin: "fork",
     });
     const forks = listThreads(db, {
       projectId: project.id,
-      childOrigin: "fork",
+      originKind: "fork",
     });
     expect(forks.map((thread) => thread.id)).toEqual([fork.id]);
 

@@ -74,7 +74,6 @@ export interface ThreadListQueryFilters {
   parentThreadId?: string;
   sourceThreadId?: string;
   originKind?: ThreadListFilters["originKind"];
-  childOrigin?: ThreadListFilters["childOrigin"];
   archived: boolean;
   limit?: number;
 }

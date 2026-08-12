@@ -18,7 +18,6 @@ import type {
   EnvironmentWorkspaceDisplayKind,
   ReasoningLevel,
   ThreadChangeKind,
-  ThreadChildOrigin,
   ThreadLifecycleEvent,
   ThreadLifecycleNoopReason,
   ThreadOriginKind,
@@ -282,8 +281,6 @@ export interface CreateThreadInput {
   parentThreadId?: string | null;
   sourceThreadId?: string | null;
   originKind?: ThreadOriginKind | null;
-  /** @deprecated Use originKind. */
-  childOrigin?: ThreadChildOrigin | null;
   /** Plugin attribution for create origin "plugin". */
   originPluginId?: string | null;
   visibility?: ThreadVisibility;
@@ -297,7 +294,7 @@ export function createThread(
   const visibility = input.visibility ?? "visible";
   const now = Date.now();
   const id = createThreadId();
-  const originKind = input.originKind ?? input.childOrigin ?? null;
+  const originKind = input.originKind ?? null;
   const thread = db.transaction(
     (tx) => {
       const createdThread = tx
@@ -317,7 +314,6 @@ export function createThread(
             input.sourceThreadId ??
             (originKind === null ? null : input.parentThreadId ?? null),
           originKind,
-          childOrigin: null,
           originPluginId: input.originPluginId ?? null,
           visibility,
           lastReadAt: now,
@@ -364,8 +360,6 @@ export interface ListThreadsOptions {
   originKind?: ThreadOriginKind;
   /** Restrict to threads spawned by this plugin. */
   originPluginId?: string;
-  /** @deprecated Use originKind. */
-  childOrigin?: ThreadChildOrigin;
   limit?: number;
   offset?: number;
   /** Hidden threads are excluded unless explicitly opted in. */
@@ -652,7 +646,6 @@ function statusTransitionNeedsAttention(args: StatusTransition): boolean {
 }
 
 function buildListThreadsFilters(options: ListThreadsOptions) {
-  const originKind = options.originKind ?? options.childOrigin;
   return [
     options.projectId ? eq(threads.projectId, options.projectId) : undefined,
     options.sectionId ? eq(threads.sectionId, options.sectionId) : undefined,
@@ -665,8 +658,8 @@ function buildListThreadsFilters(options: ListThreadsOptions) {
     options.sourceThreadId
       ? eq(threads.sourceThreadId, options.sourceThreadId)
       : undefined,
-    originKind
-      ? eq(threads.originKind, originKind)
+    options.originKind
+      ? eq(threads.originKind, options.originKind)
       : undefined,
     options.originPluginId
       ? eq(threads.originPluginId, options.originPluginId)

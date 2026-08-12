@@ -10,7 +10,6 @@ function makeSidebarThread(
 ): FaviconSidebarThread {
   return {
     originKind: null,
-    childOrigin: null,
     hasPendingInteraction: false,
     lastReadAt: 10,
     latestAttentionAt: 20,

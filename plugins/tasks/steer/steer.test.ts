@@ -180,7 +180,9 @@ describe("comment notification delivery", () => {
       makeThreadResponse({
         id: threadId,
         status: "idle",
-        originKind: "side-chat",
+        originKind: "fork",
+        originPluginId: "side-chat",
+        visibility: "hidden",
       }),
     );
     store.createComment({

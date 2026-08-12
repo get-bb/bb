@@ -440,7 +440,7 @@ export interface PluginSidebarThread {
   parentThreadId: string | null;
   sectionId: string | null;
   /** How this thread came to exist under its parent; null for root threads. */
-  originKind: "fork" | "side-chat" | null;
+  originKind: "fork" | null;
   /** The plugin that spawned it, or null for non-plugin origins. */
   originPluginId: string | null;
   /** The agent provider this thread runs on, e.g. "codex", "claude-code". */

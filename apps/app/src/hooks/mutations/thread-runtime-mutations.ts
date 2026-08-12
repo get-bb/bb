@@ -65,14 +65,9 @@ interface UpdateThreadQueuedMessageMutationRequest extends UpdateQueuedMessageRe
 
 type AppCreateThreadRequest = Omit<
   CreateThreadRequest,
-  "origin" | "startedOnBehalfOf" | "originKind" | "childOrigin"
+  "origin" | "startedOnBehalfOf" | "originKind"
 > &
-  Partial<
-    Pick<
-      CreateThreadRequest,
-      "startedOnBehalfOf" | "originKind" | "childOrigin"
-    >
-  >;
+  Partial<Pick<CreateThreadRequest, "startedOnBehalfOf" | "originKind">>;
 
 interface SendThreadQueuedMessageMutationRequest {
   id: string;
@@ -142,9 +137,8 @@ export function useCreateThread() {
     mutationFn: (request: AppCreateThreadRequest) =>
       sdk.threads.spawn({
         ...request,
-        childOrigin: request.childOrigin ?? null,
         origin: "app",
-        originKind: request.originKind ?? request.childOrigin ?? null,
+        originKind: request.originKind ?? null,
         startedOnBehalfOf: request.startedOnBehalfOf ?? null,
       }),
     onMutate: async () => beginCreateThreadTransaction({ queryClient }),

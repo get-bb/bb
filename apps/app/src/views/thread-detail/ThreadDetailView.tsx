@@ -581,10 +581,9 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     isLoadingError,
     isRecoverableLoadingError: isTransientReadError(error),
   });
-  const threadOriginKind = thread?.originKind ?? thread?.childOrigin ?? null;
-  // This thread IS one of the side-chat plugin's forks — the plugin-era
-  // successor to `originKind === "side-chat"`. Migration 0084 moved every
-  // legacy side chat onto this shape.
+  const threadOriginKind = thread?.originKind ?? null;
+  // This thread is one of the side-chat plugin's hidden forks. Migration 0084
+  // moved every legacy side chat onto this canonical shape.
   const isSideChatThread =
     threadOriginKind === "fork" &&
     thread?.originPluginId === SIDE_CHAT_PLUGIN_ID;
@@ -1927,7 +1926,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
             // Forks / side chats are user-driven branches opened directly, not
             // delegated work the parent is waiting on — keep them out of the
             // active-child banner count and drawer.
-            entry.childOrigin === null &&
+            entry.originKind === null &&
             isThreadDisplayStatusBannerActive(entry.runtime.displayStatus),
         )
         .map((entry) => ({
@@ -2801,7 +2800,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
           timeline={{
             activeThinking,
             canSpawnChild: thread.canSpawnChild,
-            threadChildOrigin: threadOriginKind,
+            threadOriginKind,
             hasOlderTimelineRows,
             hostConnectionNotice,
             isLoadingOlderTimelineRows,

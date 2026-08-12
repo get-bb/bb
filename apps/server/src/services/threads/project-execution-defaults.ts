@@ -42,7 +42,6 @@ interface ResolveRequestedCreateExecutionValueArgs<TValue> {
 }
 
 function shouldRememberProjectExecutionDefaults(args: {
-  childOrigin?: ThreadCreateServiceRequest["childOrigin"];
   environment: ThreadCreateServiceRequest["environment"];
   origin: ThreadCreateServiceRequest["origin"];
   originKind?: ThreadCreateServiceRequest["originKind"];
@@ -54,7 +53,7 @@ function shouldRememberProjectExecutionDefaults(args: {
   // Fork/side-chat spawns inherit execution from their source thread and carry
   // forced/inherited values the user never picked in the composer (e.g. a side
   // chat's readonly mode). They must not reshape the project's stored defaults.
-  if ((args.originKind ?? args.childOrigin) !== null) return false;
+  if (args.originKind !== null) return false;
   return args.origin === "app";
 }
 

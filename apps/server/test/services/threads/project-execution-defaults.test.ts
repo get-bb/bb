@@ -42,7 +42,6 @@ describe("project execution defaults persistence", () => {
 
       await createThreadFromRequest(harness.deps, {
         origin: "app",
-        childOrigin: null,
         startedOnBehalfOf: null,
         projectId: project.id,
         providerId: "codex",
@@ -88,7 +87,6 @@ describe("project execution defaults persistence", () => {
 
       await createThreadFromRequest(harness.deps, {
         origin: "app",
-        childOrigin: null,
         startedOnBehalfOf: null,
         projectId: project.id,
         providerId: "codex",
@@ -157,7 +155,7 @@ describe("project execution defaults persistence", () => {
       // the composer; creating it must not reshape the project's defaults.
       await createThreadFromRequest(harness.deps, {
         origin: "app",
-        childOrigin: "fork",
+        originKind: "fork",
         startedOnBehalfOf: null,
         parentThreadId: parentThread.id,
         projectId: project.id,
