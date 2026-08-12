@@ -24,13 +24,13 @@ Plan is the safety product; push is a deterministic, resumable executor of one p
 The backend is last-write-wins for ordinary entities. TARA has only a head/content bracket; it does not make the per-row HTTP calls atomic. Findings have no precondition. A connection reset after a write is therefore ambiguous: read back first, never blindly repeat.
 
 ## What to build
-1. Load the immutable `.fs-sync/plan-<planId>.json` from WP-18. Reject missing, validation-failed, unresolved-conflict, unconfirmed blast-radius, or stale plans before any server call. Staleness includes a moved base hash/generation, not just file age.
+1. Load the immutable `.fs-sync/plan-<planId>.json` from WP-18. Reject missing, validation-failed, unresolved-conflict, unconfirmed blast-radius, or stale plans before any server call. Staleness checks explicit project/version, every accepted generation id, every starting base revision, `baseStateSha256`, and every item's `expectedBaseContentHash`.
 2. Define a typed `EntityPusher` facade in `push/types.ts` and a registry adapter around WP-17's existing seam. A pusher validates its kind, applies one item, optionally reads back, and can bracket a related group. Surface lanes register pushers without editing L2.
-3. Initialize one `push_log` row per non-noop plan item in a transaction and persist `.fs-sync/push-<runId>.json` with `planId`, ordered keys, scope, confirmation, and cursor. The frozen table has no plan-id/cursor columns; do not alter it. Reusing a run id is idempotent and does not duplicate rows.
+3. Initialize one scoped `push_log` row per non-noop plan item in a transaction and persist `.fs-sync/push-<runId>.json` with `planId`, ordered keys, explicit project/version, base generation/revision, expected base hash, confirmation, and cursor. Reusing a run id is idempotent only inside that project/version and does not duplicate rows.
 4. Mark `noop` as skipped without calling any remote service. Mark validation/conflict/orphan items as non-applicable and refuse the run unless the plan contract explicitly permits the class.
-5. Apply ordinary entities in WP-18's order. Each registered pusher closes over only its narrow `PlatformClient` or `AssuranceStudioClient` plus its service limiter; `PushContext` carries run/scope/cancellation, not a generic remote aggregate. Use id_map to translate slugs; on create learn the returned id before dependents.
-6. VEX: resolve every stable key to the precise cached `(pvId,findingId)` rows; group by pv id; chunk at 500; prefix reason with `[bb:<runId>]` without losing the human rationale; consume every `results[]` item. A success advances only that decision's base; a failure stays dirty and is logged.
-7. After every confirmed success, atomically update `push_log` and advance exactly that entity's base through WP-16. Do not wait until the whole run. A failed run therefore has a coherent partially advanced base and re-plan shows only remaining work.
+5. Apply ordinary entities in WP-18's order. Each registered pusher closes over only its narrow client. `PushContext` carries run id, explicit project/version, and cancellation. Resolve/learn ids only in the accepted generation for that exact pair.
+6. VEX: resolve every stable key to the precise cached `(projectId,projectVersionId,findingId)` rows; group by the explicit project/version pair; chunk at 500; prefix reason with `[bb:<runId>]` without losing the human rationale; consume every `results[]` item. A success advances only that decision's base; a failure stays dirty and is logged.
+7. After every confirmed success, atomically update the scoped `push_log`, advance exactly that accepted entity base/id mapping, and increment only the matching project/version/kind `base_revision`. Check the item's expected prior content hash. A failed sibling remains dirty; another project/version is untouched.
 8. Require read-back when the pusher declares `verification:"required"`, and for routes known not to apply `.strict()`. Compare the semantic payload through WP-15. HTTP 200 plus missing/different fields is `READ_BACK_MISMATCH`, not applied.
 9. Handle ambiguous connection reset: inspect server state through `readBack`; if it equals intended semantic payload, record/advance as applied; if it equals base, leave pending for retry; otherwise fail as `AMBIGUOUS_WRITE` and require a new plan/conflict resolution.
 10. TARA group hook: pusher reads current head/working hash before content calls, checks the plan fence, applies the short ordered group, then creates a version checkpoint with `expectedHeadVersionId` (and verified working hash field where the endpoint accepts it). Map the exact 409 `stale_tara_state` body. A checkpoint failure does not pretend earlier row calls rolled back; read back applied rows, mark the run warning/failed, and force pull/re-plan.
@@ -60,7 +60,10 @@ export interface EntityPusher {
 }
 export function registerTypedPusher(pusher: EntityPusher): void; // delegates to WP-17 seam; duplicate kind throws
 
-export interface PushOptions { planId: string; confirmed: boolean; runId?: string; signal?: AbortSignal; }
+export interface PushOptions {
+  scope: SyncScope; planId: string; expectedPlanSha256: string;
+  expectedBaseStateSha256: string; confirmed: boolean; runId?: string; signal?: AbortSignal;
+}
 export interface PushItemResult {
   kind: EntityKind; key: string; status: "applied" | "failed" | "skipped";
   error: { code: string; message: string; retryable: boolean } | null;
@@ -74,13 +77,14 @@ export function push(deps: PushDeps, options: PushOptions): Promise<PushReport>;
 export function resumePush(deps: PushDeps, runId: string, signal?: AbortSignal): Promise<PushReport>;
 ```
 
-`push_log.status` remains exactly `pending|applied|failed|skipped`. Detailed error is serialized JSON inside its existing TEXT column; validate on read. Sidecars are gitignored machinery and contain no secrets or raw response bodies.
+`push_log.status` remains exactly `pending|applied|failed|skipped`. Its keys and every lookup begin with storage-normalized `project_id,project_version_id`; it persists `base_generation_id`, `base_revision`, and `expected_base_content_hash`. Detailed error is validated JSON in the existing TEXT column.
 
 ## Acceptance criteria
 - [ ] A plan with unresolved conflicts, validation errors, stale base, or unconfirmed blast radius performs zero server writes.
 - [ ] Core entity calls are per-row, ordered, limiter-bound; VEX alone batches in groups of at most 500.
 - [ ] Noop items cause zero server/audit writes and are logged skipped.
 - [ ] Each successful item updates its log and base atomically before the next item can make the run incoherent.
+- [ ] One successful item increments the exact project/version/kind revision, invalidates plans fenced to the prior revision, and cannot advance a sibling scope; remaining items recheck their expected base hashes.
 - [ ] VEX partial HTTP-success advances successes only; failures remain dirty and resumable.
 - [ ] Silent key-drop produces `READ_BACK_MISMATCH`; 200 alone is never treated as proof on required routes.
 - [ ] Mid-push reset plus resume converges without duplicate writes or lost applied state.
@@ -97,7 +101,8 @@ export function resumePush(deps: PushDeps, runId: string, signal?: AbortSignal):
 - `stale plan and unresolved conflict write zero` (**error paths**).
 - `TARA pre-head mismatch and checkpoint 409` (**fault paths**); assert already-applied rows are reconciled, not called rolled back.
 - `review/standards token uses review_version`.
-- `crash between server success and log/base update` — pending reconciliation recognizes intended remote payload and advances once.
+- `crash between server success and log/base update` — pending reconciliation recognizes intended remote payload and advances the exact scoped base/revision once.
+- `same run/kind/key across two projects and versions` — journals and base/id advancement remain isolated; project-level sentinel never reaches a remote client.
 
 ## Do not
 - Do not recompute or silently modify a plan during push.

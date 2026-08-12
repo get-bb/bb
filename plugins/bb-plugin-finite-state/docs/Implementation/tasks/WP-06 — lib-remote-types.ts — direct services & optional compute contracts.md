@@ -25,7 +25,7 @@ This boundary normalizes transport quirks without hiding service ownership: call
 5. Preserve AS concurrency without inventing ETags: TARA head id/working hash and decimal `reviewVersion`. `human_edited`, review-state, delete-impact, and two-step review-status behavior remain explicit results for domain services to adjudicate.
 6. Define `ForgeComputeClient` only for dynamic verification, pen-test dispatch, firmware-root preparation, and Forge job status/list/watch. Map `verify_dynamic`, `pen_test_run`, `get_job_status`, and `list_jobs` exactly through the pinned compute-only manifest; `watchJob` is derived polling, not another MCP method. Normalized job terminal states are exactly `COMPLETED|FAILED|TIMEOUT`; `RUNNING` is the only nonterminal state. The raw registry's unadvertised `CANCELLED` value normalizes to `FAILED` with code `FORGE_JOB_CANCELLED`, never to success. The pinned commit has no firmware-root preparation tool: that member is explicitly non-freezeable until WP-50 proves plugin-owned same-host process control or a later reviewed Forge method; remote transports must return unsupported.
 7. Define `RemoteServices { platform, assuranceStudio, forgeCompute }`, where `forgeCompute` is nullable. Downstream owner services accept a narrow client, never the aggregate.
-8. Use async iterables for multipage findings, components, AS lists, and job polling. A yielded page contains items plus normalized paging metadata, but consumers never know offset/page/cursor transport details.
+8. Use `RemotePageRequest { continuation?, pageSize? }` for every paged input and async iterables yielding `RemotePage { items, total, next }`. `next` is an opaque adapter-owned continuation that binds page size; consumers never know Platform offset, Assurance Studio page, or Forge registry transport details. Abort behavior is identical across adapters.
 9. Keep the route surface closed. Do not expose `asRawApi`, arbitrary URL/method/path calls, generic `fetch`, or MCP tool invocation through the frozen contract.
 10. Verify every method against the vendored OpenAPI/audit set. When the AS snapshot is incomplete, cite the handler-backed audit entry in the method test; unresolved operations stay absent rather than guessed.
 
@@ -33,6 +33,9 @@ This boundary normalizes transport quirks without hiding service ownership: call
 ```ts
 // lib/remote/types.ts — FROZEN after WP-06.
 export type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
+export interface RemoteScope { projectId: string; projectVersionId: string | null; }
+export interface RemoteVersionScope { projectId: string; projectVersionId: string; }
+export interface RemotePageRequest { continuation?: string; pageSize?: number; }
 export interface RemoteCallContext { signal?: AbortSignal; requestId?: string; }
 export interface RemotePage<T> { items: T[]; total: number | null; next: string | null; }
 export interface RemoteHealth { configured: boolean; reachable: boolean; detail: string | null; }
@@ -54,7 +57,7 @@ export type VexStatus = typeof VEX_STATUSES[number];
 export type VexResponse = typeof VEX_RESPONSES[number];
 export type VexJustification = typeof VEX_JUSTIFICATIONS[number];
 export interface VexDecisionInput { findingId: string; status: VexStatus; response?: VexResponse | ""; justification?: VexJustification | ""; reason?: string; }
-export interface VexInput extends VexDecisionInput { projectVersionId: string; dryRun?: boolean; }
+export interface VexInput extends VexDecisionInput, RemoteVersionScope {}
 export interface VexBulkSetResult {
   status: "success" | "partial_success" | "failure";
   summary: { total: number; succeeded: number; failed: number };
@@ -65,18 +68,18 @@ export interface PlatformClient {
   health(ctx?: RemoteCallContext): Promise<RemoteHealth>;
   listProjects(ctx?: RemoteCallContext): AsyncIterable<RemotePage<Record<string, Json>>>;
   listVersions(projectId: string, ctx?: RemoteCallContext): AsyncIterable<RemotePage<Record<string, Json>>>;
-  getFindings(input: { projectVersionId: string; offset?: number; limit?: number }, ctx?: RemoteCallContext): AsyncIterable<RemotePage<Record<string, Json>>>;
-  getFindingDetail(input: { projectVersionId: string; findingId: string }, ctx?: RemoteCallContext): Promise<Record<string, Json>>;
-  getFindingActivity(input: { projectId: string; projectVersionId?: string; cve: string; cursor?: string; limit?: number }, ctx?: RemoteCallContext): AsyncIterable<RemotePage<Record<string, Json>>>;
-  listFindingComments(input: { projectVersionId: string; findingId: string; cursor?: string; limit?: number }, ctx?: RemoteCallContext): AsyncIterable<RemotePage<Record<string, Json>>>;
-  createFindingComment(input: { projectVersionId: string; findingId: string; text: string }, ctx?: RemoteCallContext): Promise<Record<string, Json>>;
-  updateFindingComment(input: { projectVersionId: string; findingId: string; commentId: string; text: string }, ctx?: RemoteCallContext): Promise<Record<string, Json>>;
-  deleteFindingComment(input: { projectVersionId: string; findingId: string; commentId: string }, ctx?: RemoteCallContext): Promise<{ success: true }>;
-  getFindingsSummary(projectVersionId: string, ctx?: RemoteCallContext): Promise<Record<string, Json>>;
-  setVexStatus(input: VexInput, ctx?: RemoteCallContext): Promise<Record<string, Json>>;
-  batchSetVexStatus(input: { projectVersionId: string; findings: VexDecisionInput[] }, ctx?: RemoteCallContext): Promise<VexBulkSetResult>;
-  clearVexStatus(input: { projectVersionId: string; findingIds: string[] }, ctx?: RemoteCallContext): Promise<void>;
-  downloadSbom(input: { projectVersionId: string; format: "cyclonedx" | "spdx"; includeVex: boolean }, ctx?: RemoteCallContext): Promise<RemoteArtifact>;
+  getFindings(input: RemoteVersionScope & RemotePageRequest, ctx?: RemoteCallContext): AsyncIterable<RemotePage<Record<string, Json>>>;
+  getFindingDetail(input: RemoteVersionScope & { findingId: string }, ctx?: RemoteCallContext): Promise<Record<string, Json>>;
+  getFindingActivity(input: RemoteScope & { cve: string } & RemotePageRequest, ctx?: RemoteCallContext): AsyncIterable<RemotePage<Record<string, Json>>>;
+  listFindingComments(input: RemoteVersionScope & { findingId: string } & RemotePageRequest, ctx?: RemoteCallContext): AsyncIterable<RemotePage<Record<string, Json>>>;
+  createFindingComment(input: RemoteVersionScope & { findingId: string; text: string }, ctx?: RemoteCallContext): Promise<Record<string, Json>>;
+  updateFindingComment(input: RemoteVersionScope & { findingId: string; commentId: string; text: string }, ctx?: RemoteCallContext): Promise<Record<string, Json>>;
+  deleteFindingComment(input: RemoteVersionScope & { findingId: string; commentId: string }, ctx?: RemoteCallContext): Promise<{ success: true }>;
+  getFindingsSummary(input: RemoteVersionScope, ctx?: RemoteCallContext): Promise<Record<string, Json>>;
+  setVexStatus(input: VexInput, ctx?: RemoteCallContext): Promise<void>;
+  batchSetVexStatus(input: RemoteVersionScope & { findings: VexDecisionInput[] }, ctx?: RemoteCallContext): Promise<VexBulkSetResult>;
+  clearVexStatus(input: RemoteVersionScope & { findingIds: string[] }, ctx?: RemoteCallContext): Promise<void>;
+  downloadSbom(input: RemoteVersionScope & { format: "cyclonedx" | "spdx"; includeVex: boolean }, ctx?: RemoteCallContext): Promise<RemoteArtifact>;
   listComponents(input: Record<string, Json>, ctx?: RemoteCallContext): AsyncIterable<RemotePage<Record<string, Json>>>;
   searchComponents(input: Record<string, Json>, ctx?: RemoteCallContext): AsyncIterable<RemotePage<Record<string, Json>>>;
   browseFirmwareFilesystem(input: { projectVersionId: string; path?: string; depth?: number; fileHash?: string; scanId?: string }, ctx?: RemoteCallContext): Promise<Record<string, Json>>;
@@ -103,20 +106,22 @@ export interface TaraState { headVersionId: string; workingHash: string | null; 
 
 export interface AssuranceStudioClient {
   health(ctx?: RemoteCallContext): Promise<RemoteHealth>;
-  listEntities(kind: AsEntityKind, input: { projectId: string; cursor?: string; limit?: number; filters?: Record<string, Json> }, ctx?: RemoteCallContext): AsyncIterable<RemotePage<AsEntity>>;
+  listEntities(kind: AsEntityKind, input: { projectId: string; filters?: Record<string, Json> } & RemotePageRequest, ctx?: RemoteCallContext): AsyncIterable<RemotePage<AsEntity>>;
   getEntity(kind: AsEntityKind, input: { projectId: string; id: string }, ctx?: RemoteCallContext): Promise<AsEntity>;
   createEntity(kind: AsCreatableEntityKind, input: { projectId: string; fields: Record<string, Json> }, fence?: TaraFence, ctx?: RemoteCallContext): Promise<AsWriteResult>;
   updateEntity(kind: AsEntityKind, input: { projectId: string; id: string; fields: Record<string, Json>; force?: boolean }, fence?: TaraFence, ctx?: RemoteCallContext): Promise<AsWriteResult>;
   deleteEntity(kind: AsEntityKind, input: { projectId: string; id: string; mode?: "cascade" | "detach"; force?: boolean }, fence?: TaraFence, ctx?: RemoteCallContext): Promise<{ success: true } | { success: false; impact: AsDeleteImpact }>;
-  listProjectSbomPackages(input: { projectId: string; cursor?: string; limit?: number; filters?: Record<string, Json> }, ctx?: RemoteCallContext): AsyncIterable<RemotePage<Record<string, Json>>>;
+  listProjectSbomPackages(input: { projectId: string; filters?: Record<string, Json> } & RemotePageRequest, ctx?: RemoteCallContext): AsyncIterable<RemotePage<Record<string, Json>>>;
   getTaraState(projectId: string, ctx?: RemoteCallContext): Promise<TaraState>;
   createTaraCheckpoint(input: { projectId: string; expected: TaraFence; message: string }, ctx?: RemoteCallContext): Promise<TaraState>;
-  listVerificationChecks(input: { projectId: string; cursor?: string; limit?: number }, ctx?: RemoteCallContext): AsyncIterable<RemotePage<Record<string, Json>>>;
-  listVerificationResults(input: { projectId: string; requirementId?: string; cursor?: string; limit?: number }, ctx?: RemoteCallContext): AsyncIterable<RemotePage<Record<string, Json>>>;
+  listVerificationChecks(input: { projectId: string } & RemotePageRequest, ctx?: RemoteCallContext): AsyncIterable<RemotePage<Record<string, Json>>>;
+  listVerificationResults(input: { projectId: string; requirementId?: string } & RemotePageRequest, ctx?: RemoteCallContext): AsyncIterable<RemotePage<Record<string, Json>>>;
   runVerificationCheck(input: { projectId: string; checkId: string; parameters?: Record<string, Json> }, ctx?: RemoteCallContext): Promise<{ runId: string }>;
 }
 
 export type ForgeJobStatus = "RUNNING" | "COMPLETED" | "FAILED" | "TIMEOUT";
+export const FORGE_COMPUTE_OPERATIONS = ["verify_dynamic", "pen_test_run", "get_job_status", "list_jobs"] as const;
+export type ForgeComputeOperation = typeof FORGE_COMPUTE_OPERATIONS[number];
 export interface ForgeJobSnapshot {
   jobId: string; status: ForgeJobStatus; tool: string; recipe: string | null;
   scope: Json; environment: Json; runId: string | null; elapsedSeconds: number;
@@ -124,8 +129,7 @@ export interface ForgeJobSnapshot {
 }
 export interface ForgeComputeClient {
   health(ctx?: RemoteCallContext): Promise<RemoteHealth>;
-  prepareFirmwareRoot(input: { projectVersionId: string; rootPath: string; expectedDigest: string }, ctx?: RemoteCallContext): Promise<{ prepared: true } | { prepared: false; reason: string }>;
-  verifyDynamic(input: { projectVersionId: string; verdictIds: string[]; budgetSecPerVerdict?: number }, ctx?: RemoteCallContext): Promise<Json>;
+  verifyDynamic(input: RemoteVersionScope & { verdictIds: string[]; budgetSecPerVerdict?: number }, ctx?: RemoteCallContext): Promise<Json>;
   penTestRun(input: Record<string, Json>, ctx?: RemoteCallContext): Promise<{ jobId: string }>;
   getJobStatus(jobId: string, tailLines?: number, ctx?: RemoteCallContext): Promise<ForgeJobSnapshot>;
   listJobs(input?: { status?: ForgeJobStatus; tool?: string }, ctx?: RemoteCallContext): AsyncIterable<RemotePage<ForgeJobSnapshot>>;
@@ -143,12 +147,14 @@ export interface RemoteServices {
 - [ ] Mock and production implementations satisfy their frozen interface without casts or transport-specific fields escaping.
 - [ ] `RemoteServices.forgeCompute` is nullable and no Platform/AS method exists on `ForgeComputeClient`.
 - [ ] VEX has exactly six statuses, five responses, nine justifications, and implementation tests bound plugin chunks to 500 while documenting the platform's 5000 ceiling.
+- [ ] Platform single-finding VEX update has no `dryRun`, accepts the explicit project/version pair internally, requires the vendored HTTP 204/no-body response, and returns `Promise<void>`.
 - [ ] Bulk VEX set has one path-scoped `projectVersionId`, heterogeneous decisions in `findings[]`, and the documented ordered per-item response; bulk clear has one path-scoped `projectVersionId`, string `findingIds[]`, and resolves only after HTTP 204 with no invented result body. Resumability and 500-row chunking remain above the client.
 - [ ] Firmware range requests are implementation-bounded to 131072 bytes; full reads return `RemoteArtifact`, never `file_path`, `save_to`, or `saved_to`.
 - [ ] AS methods always carry project scope; attack-path create fails at compile time; write results preserve review-status outcome and review version.
 - [ ] TARA concurrency models head id/working hash and review version, not invented ETags.
-- [ ] Jobs expose exactly four normalized statuses and are confined to optional Forge compute; a raw `CANCELLED` job becomes typed `FAILED/FORGE_JOB_CANCELLED`.
-- [ ] Every freezeable Forge member has an exact entry in the checksummed compute manifest. `prepareFirmwareRoot` blocks final interface freeze until its same-host implementation is proven or the member is removed; it cannot be mapped to a nonexistent MCP tool.
+- [ ] Jobs expose exactly four normalized statuses and are confined to optional Forge compute; a raw `CANCELLED` job becomes typed `FAILED/FORGE_JOB_CANCELLED`, while observed `tool` metadata remains open `string`.
+- [ ] Every invocable Forge operation is compile-time closed to `FORGE_COMPUTE_OPERATIONS` and has an exact checksummed-manifest entry. The unproven `prepareFirmwareRoot` member is absent rather than mapped to a nonexistent tool.
+- [ ] Every paged method uses `RemotePageRequest` and opaque `RemotePage.next`; offset-backed Platform, page-backed Assurance Studio, Forge-backed loaders, RPC adapters, and mocks have identical continuation and abort behavior.
 - [ ] No interface can represent arbitrary URLs, methods, raw paths, auth headers, `fetch`, or MCP tool names outside the enumerated compute operations.
 - [ ] Typecheck/test/lint/build is green before freeze.
 
@@ -157,7 +163,8 @@ export interface RemoteServices {
 - `platform and AS clients cannot be substituted for Forge compute` (**error path**, `@ts-expect-error`).
 - `attack-path is not creatable` (**error path**, `@ts-expect-error`).
 - `VEX vocabularies match vendored v0.3.0 reference verbatim` — literal snapshot.
-- `bulk VEX wire shapes match v0.3.0` — heterogeneous set decisions round-trip in request order; clear accepts 204/empty only and rejects an invented JSON success envelope (**contract/error path**).
+- `VEX wire shapes match v0.3.0` — single and clear accept 204/empty only; single has no `dryRun`; bulk set round-trips heterogeneous decisions in request order; all reject invented JSON success envelopes (**contract/error path**).
+- `offset-, page-, and Forge-backed loaders share opaque continuation and abort behavior` (**contract/fault path**).
 - `job terminal type excludes cancelled/succeeded aliases` (**error path**, `@ts-expect-error`).
 - `raw cancelled job normalizes to failed` — preserves `FORGE_JOB_CANCELLED` detail and never reports completed (**fault path**).
 - `artifact is bytes not a path` — fake streams two chunks; oversize JSON rejects with typed error (**fault path**).
@@ -173,5 +180,5 @@ export interface RemoteServices {
 
 ## Open questions
 1. Verify the exact public AS routes for TARA head/hash checkpointing and verification checks/results against the target platform handler commit before freeze. If a route remains unavailable, remove the method rather than map it through a raw escape hatch.
-2. `prepareFirmwareRoot` remains deliberately unresolved and non-freezeable: Forge commit `5083a9d7` exposes no such MCP tool. WP-50 must prove plugin-owned same-host stdio restart/environment control or introduce a separately reviewed, checksummed Forge method; otherwise remove this member before WP-06 freezes. Remote Forge returns explicit unsupported in every case until then.
+2. `prepareFirmwareRoot` is absent from the frozen interface because Forge commit `5083a9d7` exposes no such MCP tool. WP-50 may add a plugin-owned same-host operation only through a separately reviewed contract correction.
 3. Decide whether Platform bulk VEX should expose the upstream 5000 maximum directly later; v1 intentionally preserves 500-sized resumable plan chunks.

@@ -44,7 +44,7 @@ Adding an entity means adding a registry line plus a serializer — not a new sy
 Assurance Studio          system of record (others can change it)
         ▲ push                    │ pull
         │                         ▼
-.fs-sync/base/            pristine snapshot at last pull  (gitignored)
+.fs-sync/base/            pristine accepted generation at last complete pull  (gitignored)
         ▲                         │
         │ three-way diff          ▼
 product-security/ + .fs/  working model  (git-tracked, human + agent editable)
@@ -55,7 +55,7 @@ product-security/ + .fs/  working model  (git-tracked, human + agent editable)
 - `diff(base, remote)` → upstream drift
 - their intersection → **conflicts**
 
-Without it we'd have last-write-wins, which silently destroys other people's work. Base is gitignored (it's local machinery, like `.terraform/`); a fresh clone establishes it with a pull.
+Without it we'd have last-write-wins, which silently destroys other people's work. Base is gitignored (it's local machinery, like `.terraform/`); a fresh clone establishes it with a pull. Base, id mappings, and every remotely pulled cache are read only through the accepted generation for the exact `project_id, project_version_id, entity_kind`; staging pages never participate in status, plan, panels, or id resolution.
 
 **A subtlety worth designing for:** if a teammate commits a model change to git that hasn't been pushed to AS, your `status` shows it as pending. That's correct and desirable — **the model gets code review before it reaches the system of record.**
 
@@ -78,7 +78,7 @@ Without it we'd have last-write-wins, which silently destroys other people's wor
 ## 5. The commands
 
 ### `pull [surface]`
-Fetch from AS → rewrite `base/` → fast-forward the working tree if clean, else report divergence and leave the working tree alone. Refresh CACHED tables. Emit progress via realtime.
+Fetch from the owning service into a new or resumed staging generation for explicit `projectId, projectVersionId`. Every page commits atomically under that staging id without changing reader-visible pointers. After all requested kinds/pages and projections validate, one SQLite transaction flips every requested accepted pointer, increments the corresponding base revisions, and only then fast-forwards clean working files. Failure or cancellation retains the old accepted generation and opaque staging continuation for retry. Refresh CACHED tables under the same rule. Emit progress via realtime.
 
 ### `status`
 Three lists, always in this order: **local changes** (working vs base) · **upstream changes** (remote vs base) · **conflicts** (both). Plus orphans — overlay decisions whose stable key no longer resolves.
@@ -112,12 +112,12 @@ Plan: 6 to create, 3 to update, 1 to delete, 2 conflicts
 - **Blast radius** — a delete or a >20-entity change requires explicit confirmation.
 
 ### Review-panel apply (`push [surface]` is a handoff only)
-The human applies the plan from the review panel, then the engine re-pulls to refresh base. In v1 the agent-readable CLI spelling `push [surface]` only validates the plan and prints/opens the review-panel route; it never mutates upstream, resolves a conflict, accepts confirmation, or exposes a bypass flag.
+The review panel renders the complete plan and is the intended home of a future authenticated apply. Pinned bb RPC currently provides no authenticated human actor and the plugin has no `humanApprovalCapability` mint path, so v1 apply/conflict handlers are authorization-unavailable and perform no side effects. A `confirmed` boolean, plugin token, `requestInput`, Origin/Host check, or CLI flag cannot fill that gap. The agent-readable CLI spelling `push [surface]` only validates the plan and prints/opens the review-panel route; it never mutates upstream, resolves a conflict, accepts confirmation, or exposes a bypass flag.
 
 **Apply semantics, dictated by the backend's real shape:**
 - **No bulk create/update for core entities** → per-row calls, chunked and rate-limited. **VEX is the exception** (bulk ≤500 with per-item partial success) — use it.
 - **Diff before writing.** An identical re-PUT still bumps timestamps and emits an audit row. `noop` items are skipped, not re-sent.
-- **Per-entity base update.** After each success, advance that entity's base. A failed push leaves a coherent, partially-advanced state — never a corrupted one. Failed items stay dirty and re-plan next run.
+- **Per-entity base update.** After each success, advance only that entity's exact accepted `(project, product-version/project-level, kind, key)` base/id row and increment that kind's `base_revision` in the same transaction. Apply checks the accepted generation, starting revision, and the item's expected base content hash. A failed push leaves a coherent, partially-advanced state; failed siblings stay dirty and re-plan next run.
 - **Use the concurrency tokens that exist.** TARA content writes bracket between a head check and a `POST /versions` checkpoint with `expectedHeadVersionId`; review and standards lifecycle transitions use cached decimal `review_version`. Do not invent or substitute `entity_version`.
 - **Read-back verification** for entities on routes where `.strict()` isn't applied — a PATCH can silently drop unknown keys, so "it returned 200" isn't proof.
 - **Provenance stamping** where the API allows it (e.g. `[bb:{run-id}]` prefix in `vex_reason`), since there's no machine/human provenance column yet.
@@ -154,34 +154,43 @@ The plan deserves a first-class UI, not just CLI output. **This is a demo moment
 
 | Affordance | Behavior |
 |---|---|
-| **Tools** | `fs_sync_status`, `fs_sync_plan` — both read-only, but note `fs_sync_plan` performs a server *read* refresh of upstream tuples for conflict detection (never a mutation); offline it degrades to the last-pulled base with a staleness warning (SPEC 06 §2.6 ⚑9). **No `fs_sync_push` tool** — pushing is human-gated by design |
-| **Skill** | `skills/sync/SKILL.md`: edit YAML with native file tools, never call mutating APIs; run `plan` to check work; ask the human to push |
+| **Tools** | `fs_sync_status`, `fs_sync_plan` — both read-only, but note `fs_sync_plan` performs a server *read* refresh of upstream tuples for conflict detection (never a mutation); offline it degrades to the last-pulled base with a staleness warning (SPEC 06 §2.6 ⚑9). **No `fs_sync_push` tool**; v1 has no authenticated human-apply capability |
+| **Skill** | `skills/sync/SKILL.md`: edit YAML with native file tools, never call mutating APIs; run `plan` to check work; hand the plan to the human review panel, which reports apply unavailable until authenticated actor proof exists |
 | **Directive** | `::fs-plan{id=…}` renders the plan inline so the agent can show what it's about to propose |
 
 ---
 
 ## 9. Data model
 
+The wire scope is `{projectId, projectVersionId}` with null for project-level. Storage maps null to `PROJECT_LEVEL_VERSION_ID` (`"@project"`) and rejects that literal at external boundaries. Every scoped key/FK retains both non-null SQL columns; no entity key embeds a parallel project or version scope.
+
 ```sql
-CREATE TABLE base_snapshot (          -- VERSIONED + OVERLAY base
-  entity_kind TEXT NOT NULL,
-  entity_key  TEXT NOT NULL,          -- our slug or stable business key
+CREATE TABLE base_snapshot (          -- VERSIONED + OVERLAY base, staged by generation
+  project_id        TEXT NOT NULL,
+  project_version_id TEXT NOT NULL,
+  entity_kind       TEXT NOT NULL,
+  generation_id     TEXT NOT NULL,
+  entity_key        TEXT NOT NULL,
   remote_id   TEXT,                   -- owning remote-service uuid, null until created
   payload     TEXT NOT NULL,          -- canonical JSON at last pull
   content_hash TEXT NOT NULL,
   pulled_at   TEXT NOT NULL,
-  PRIMARY KEY (entity_kind, entity_key)
+  PRIMARY KEY (project_id, project_version_id, entity_kind, generation_id, entity_key)
 );
 
 CREATE TABLE id_map (
-  entity_kind TEXT NOT NULL,
-  entity_key  TEXT NOT NULL,
-  remote_id   TEXT NOT NULL,
-  PRIMARY KEY (entity_kind, entity_key)
+  project_id        TEXT NOT NULL,
+  project_version_id TEXT NOT NULL,
+  entity_kind       TEXT NOT NULL,
+  generation_id     TEXT NOT NULL,
+  entity_key        TEXT NOT NULL,
+  remote_id         TEXT NOT NULL,
+  PRIMARY KEY (project_id, project_version_id, entity_kind, generation_id, entity_key),
+  UNIQUE (project_id, project_version_id, entity_kind, generation_id, remote_id)
 );
 ```
 
-Plus `sync_state` and `push_log` from SPEC 00. `idmap.json` in `.fs-sync/` mirrors `id_map` for human inspection.
+Plus `pull_generation`, `sync_state`, and `push_log` from SPEC 00. `.fs-sync/idmap.json` mirrors only the accepted mapping for one explicit project/version and labels its generation and base revision.
 
 ---
 

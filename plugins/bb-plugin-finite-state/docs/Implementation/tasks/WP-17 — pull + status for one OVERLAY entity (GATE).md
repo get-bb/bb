@@ -28,7 +28,7 @@ This is the gate that lets L3 and L4 start the next day. It proves the three-lay
 
 ## What to build
 1. **`engine/adapter.ts`** — the seam (interface contract below): `EntityAdapter`, plus `registerAdapter` / `registerResolver` / `registerPusher` / `registerCachePuller`. TSDoc every export — L3/L4 agents build from this file's docs alone.
-2. **`engine/pull.ts`** — `pull(scope, kinds?)` per SPEC 01 §5: for each adapter, stream remote entities via `fetchRemote` → `replaceKind` in `base_snapshot` (one transaction per fetched page) → invoke registered cache pullers (CACHED tables belong to their surface lanes; L3 registers the findings puller in WP-22) → fast-forward the working tree only if clean, otherwise report divergence and leave it alone → record `sync_state` cursor → publish realtime progress on `fs-sync-pull` (`{scope, kind, page, of, phase: "fetch"|"write"|"done"}`).
+2. **`engine/pull.ts`** — validate explicit `projectId, projectVersionId`, map project-level null through `PROJECT_LEVEL_VERSION_ID`, create/resume `pull_generation`, and set each requested kind's staging pointer. Stream adapter/cache-puller pages into rows carrying the staging id; page transactions never change accepted pointers. After every requested kind/page validates, one SQLite transaction flips all requested accepted ids, increments their base revisions, clears staging metadata, and marks the generation accepted. Only then fast-forward clean working files. Failure/cancellation preserves the prior accepted generation and resumable cursor. Realtime hints include project/version, generation id, kind, page, and phase but never row data.
 3. **`engine/status.ts`** — three lists, always in this order: **local** (working vs base) · **upstream** (remote vs base, using the freshest pulled base) · **conflicts** (keys present in both — key-level at this WP; WP-20 refines to field-level) — plus **orphans** (overlay keys whose canonical key no longer exists in the pulled server key set; WP-23's ladder later replaces this exact-match check via the resolver seam).
 4. **`entities/vex-decision.ts`** — the first adapter. Its factory receives a narrow `PlatformClient`; `fetchRemote` closes over it, pages findings directly, and projects each row to `{status, justification, response, reason}` keyed by the frozen stable-key codec. `readWorking` parses `.fs/triage/**/*.yaml`. Default resolution is exact until WP-23 installs the ladder.
 5. **`rpc.ts`** — handlers for the sync methods in the frozen contract (`sync.pull`, `sync.status`; `sync.plan`/`sync.push` return `{ok:false, error:{code:"NOT_IMPLEMENTED"}}` until WP-18/19). Method names/shapes per `shared/contract.ts`; the frozen file wins on divergence.
@@ -41,7 +41,7 @@ This is the gate that lets L3 and L4 start the next day. It proves the three-lay
 import type { EntityKind } from "../../../lib/sync/registry";  // FROZEN (WP-05)
 import type { EntitySerializer } from "../serialize/serializer";
 
-export interface SyncScope { projectId: string; pvId: string | null; }
+export interface SyncScope { projectId: string; projectVersionId: string | null; }
 export interface ServerEntity { key: string; remoteId: string | null; payload: Record<string, unknown>; }
 export interface WorkingEntity { key: string; payload: Record<string, unknown>; file: string; }
 
@@ -61,7 +61,7 @@ export type KeyResolver = (key: string, scope: SyncScope) => Promise<
   | { resolved: true; detail: unknown }
   | { resolved: false }>;
 
-export type CachePuller = (scope: SyncScope,
+export type CachePuller = (scope: SyncScope, generationId: string,
   onProgress: (p: { page: number; of: number | null }) => void) => Promise<void>;
 
 export function registerAdapter(a: EntityAdapter): void;             // throws on duplicate kind
@@ -71,7 +71,11 @@ export function registerCachePuller(kind: EntityKind, fn: CachePuller): void;
 
 // lanes/sync/engine/pull.ts
 export function pull(deps: EngineDeps, scope: SyncScope, kinds?: EntityKind[]): Promise<PullReport>;
-export interface PullReport { kinds: Record<string, { fetched: number; baseRows: number }>; workingFastForwarded: boolean; divergence: string[]; }
+export interface PullReport {
+  generationId: string; acceptedAt: string;
+  kinds: Record<string, { fetched: number; baseRows: number }>;
+  workingFastForwarded: boolean; divergence: string[];
+}
 
 // lanes/sync/engine/status.ts
 export interface StatusReport {
@@ -91,12 +95,13 @@ RPC method names/shapes come from frozen `shared/contract.ts`; adapter factories
 - [ ] **Seam proof:** a test registers an adapter for a second registry kind (e.g. `requirement`) *entirely from test code* — zero edits to any `lanes/sync/` file — and `pull` + `status` run through it green. This is the property that unblocks L3/L4.
 - [ ] `sync.pull` / `sync.status` RPC handlers respond per contract; `sync.plan` / `sync.push` return `NOT_IMPLEMENTED` (not a crash).
 - [ ] Realtime progress events published on `fs-sync-pull`; payloads are tiny hints, never data (AGENTS.md realtime rule).
-- [ ] Pull is resumable and page-atomic: kill mid-pull → base is coherent (whole pages only), re-run completes from `sync_state` cursor.
+- [ ] Kill after any staging page: base/cache/id-map readers remain byte-identical on the prior accepted generation; retry resumes and flips all requested kinds exactly once.
+- [ ] Two projects and two product versions may reuse kind/key/remote id without collision or cross-scope status; project-level null round-trips through `"@project"` only at storage.
 - [ ] `engine/adapter.ts` exports are fully TSDoc'd, including a worked "register your entity" example in the file header.
 - [ ] Composition roots untouched; typecheck/test/lint/build green.
 
 ## Test plan
-- `pull.test.ts` — `populates base from mock fixtures`, `txn per page (kill between pages leaves whole pages)`, **`429 with Retry-After: pull backs off and completes` (mock fault injection)**, **`mid-pull connection reset: base coherent, resume completes` (mock fault injection)**, `dirty working tree is left alone and reported`.
+- `pull.test.ts` — `publishes one accepted generation`, `staging pages invisible`, `multi-kind flip/revision increment is one transaction`, **`429 resumes opaque cursor`**, **`mid-pull reset preserves accepted and retry flips once`**, `same identifiers across projects/versions remain distinct`, `dirty working tree left alone`.
 - `status.test.ts` — `three lists in order`, `local/upstream/conflict triple fixture`, `orphan detection`, `clean tree ⇒ all empty`.
 - `vex-decision.test.ts` — `tuple projection matches fixture bytes`, `readWorking parses .fs/triage YAML`, `malformed YAML → SerializeError surfaced, pull continues for other files` (**error path**).
 - `register.test.ts` — `seam proof: foreign adapter registered from test code round-trips pull+status`, `duplicate kind registration throws`.
@@ -109,5 +114,5 @@ RPC method names/shapes come from frozen `shared/contract.ts`; adapter factories
 - Let a failed adapter abort the whole pull — isolate per-kind failures into the report.
 
 ## Open questions
-1. `PlatformClient.getFindings` is the normalized async-page contract. Offset/cursor details stay inside its implementation; the adapter consumes pages only.
+1. `PlatformClient.getFindings` exposes only the shared opaque cursor contract. The engine, not an adapter/cache puller, owns generation publication.
 2. "Fast-forward the working tree if clean" for OVERLAY: v1 semantics = rewrite `sync.base` blocks in YAML only when file is git-clean. Confirm with tech lead whether git-cleanliness is per-file or per-directory (assumed per-file).

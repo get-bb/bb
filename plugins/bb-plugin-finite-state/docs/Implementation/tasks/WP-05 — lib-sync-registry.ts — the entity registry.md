@@ -12,13 +12,13 @@
 Both composition roots; `shared/contract.ts`; `lib/store/schema.ts`; `lib/remote/types.ts`; fixtures; `package.json`; `pnpm-lock.yaml`; every lane.
 
 ## Context
-The registry makes entity classification a compile-time decision instead of a runtime guess. It tells serializers and sync adapters which records are VERSIONED, CACHED, OVERLAY, ACTION-ONLY, or LOCAL-ONLY; where local state lives; and how stable business keys are encoded. A missing entry forces a later lane to invent a parallel sync path, so this file is intentionally complete and frozen.
+The registry makes entity classification a compile-time decision instead of a runtime guess. It tells serializers and sync adapters which records are VERSIONED, CACHED, OVERLAY, ACTION-ONLY, or LOCAL-ONLY; where local state lives; and how stable business keys are encoded. A missing entry forces a later lane to invent a parallel sync path, so this file is intentionally complete and frozen. D-1 scopes every registry key externally by explicit `projectId, projectVersionId`; entity key codecs must not embed a second project/version namespace.
 
 ## What to build
 1. Define the five entity classes and discriminated entry shapes. VERSIONED and OVERLAY entries declare their system of record explicitly as `server:"platform"|"assurance-studio"|"none"`; either named remote owner may participate in three-way sync/push through its narrow client. A `server:"none"` VERSIONED artifact remains authored, git-tracked, diffable, and reportable as local-only. CACHED entries name a frozen SQLite table or view. ACTION-ONLY entries persist nothing. LOCAL-ONLY entries are tracked workspace artifacts that never enter a plan. Optional Forge Compute is an execution dependency, not a CRUD owner, and never appears in this registry's `server` union.
 2. Register the v1 model inventory in the interface contract below. Table names must exist in WP-04. Inline overlays declare their parent; file entries use worktree-relative POSIX paths only.
 3. Implement pure keys: `slugKey`, `reqIdKey`, `hbomIdKey`, `checkCodeKey`, `componentSlugKey`, and `routeSignatureKey`. Normalize Unicode to NFC, trim outer whitespace, reject empty/control/path-separator input, and preserve display case except where a key contract explicitly case-folds.
-4. Implement the finding stable-key ladder's canonical encoders only: exact purl, exact case-folded `(name,group,version)`, and any-version `(name,group)`. WP-23 owns resolution/promotion policy. The canonical serialized key includes project identity and CVE; it never includes finding UUID.
+4. Implement the finding stable-key ladder's canonical encoders only: exact purl, exact case-folded `(name,group,version)`, and any-version `(name,group)`. WP-23 owns resolution/promotion policy. The canonical serialized key includes CVE but not project/version identity; the mandatory outer scope pair owns that identity. It never includes finding UUID.
 5. Export `EntityKind = keyof typeof ENTITIES`, typed predicates, and `entryFor(kind)`. Unknown runtime strings return a typed error rather than falling through.
 6. Validate at module/test time: unique local destinations, all CACHED tables/views exist in the frozen storage-name union, inline parents exist, and ACTION-ONLY/LOCAL-ONLY/`server:"none"` entries cannot be selected for remote push. `hbomPart` is the deliberate single aggregate file `product-security/hbom/hbom.yaml`, not one file per part; `hbomDoc` is a filtered read over the frozen `hbom_docs` view, not a second ledger.
 
@@ -75,12 +75,12 @@ export type SyncableEntityKind = { [K in EntityKind]: typeof ENTITIES[K]["class"
 export type RemoteSyncableEntityKind = { [K in EntityKind]: typeof ENTITIES[K] extends { server: "platform" | "assurance-studio" } ? K : never }[EntityKind];
 
 export interface FindingIdentity {
-  project: string; cve: string; purl?: string | null;
+  cve: string; purl?: string | null;
   name: string; group?: string | null; version?: string | null;
 }
 export type FindingKeyTier = "purl" | "name-group-version" | "name-group-any-version";
 export function findingStableKey(value: Readonly<FindingIdentity>, tier?: FindingKeyTier): string;
-export function parseFindingStableKey(key: string): Readonly<{ project: string; cve: string; tier: FindingKeyTier; component: string }>;
+export function parseFindingStableKey(key: string): Readonly<{ cve: string; tier: FindingKeyTier; component: string }>;
 export function entryFor(kind: string): (typeof ENTITIES)[EntityKind]; // throws UnknownEntityKindError
 export function isSyncable(kind: EntityKind): kind is SyncableEntityKind;
 export function isRemoteSyncable(kind: EntityKind): kind is RemoteSyncableEntityKind;
@@ -94,7 +94,7 @@ If the WP-04 frozen schema uses a different table identifier, stop and file an a
 - [ ] Every CACHED table/view resolves to storage declared by WP-04; `hbomDoc` points to the filtered `hbom_docs` view and never creates a second ledger.
 - [ ] `hbomPart` is the aggregate `product-security/hbom/hbom.yaml` with `server:"none"`; it is locally diffable but `isRemoteSyncable("hbomPart") === false` and no plan item can invent an AS push target.
 - [ ] Stable finding keys never contain a finding UUID and distinguish purl, exact fallback, and any-version tiers.
-- [ ] Keys are deterministic across object key order and reject empty, control-character, or path-traversal identities.
+- [ ] Keys are deterministic across object key order and reject empty, control-character, or path-traversal identities; identical keys in two explicit project/version scopes remain distinct.
 - [ ] `isSyncable()` identifies authored three-way-capable classes; `isRemoteSyncable()` additionally excludes CACHED, ACTION-ONLY, LOCAL-ONLY, and all `server:"none"` entries at compile time and runtime.
 - [ ] No two file entries accidentally claim the same single-file destination; deliberate shared directories (`.fs/links`) remain distinguished by kind/key.
 - [ ] Registry tests cover every entry; typecheck/test/lint/build is green before freeze.
@@ -103,7 +103,7 @@ If the WP-04 frozen schema uses a different table identifier, stop and file an a
 - `inventory is byte-for-byte complete` — snapshot the ordered keys/classes/destinations.
 - `finding key tier vectors` — purl, no-purl exact, missing-version any-version, Unicode and case-folding.
 - `UUID changes do not change finding key` — two otherwise equal identities produce one key.
-- `invalid key input fails closed` (**error path**) — empty CVE/project, slash, NUL, malformed serialized key.
+- `invalid key input fails closed` (**error path**) — empty CVE, slash, NUL, malformed serialized key; project/version validation is owned by the shared D-1 scope pair.
 - `cached tables are in schema union` — compile-time and runtime proof.
 - `HBOM aggregate is local-only` — one file holds multiple part keys, local plan/status can report changes, remote pusher selection rejects `hbomPart`, and `hbomDoc` reads the view.
 - `unknown entity kind throws UnknownEntityKindError` (**error path**).
