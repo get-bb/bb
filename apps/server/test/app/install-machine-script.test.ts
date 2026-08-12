@@ -165,16 +165,18 @@ function writeServerInstallTools(
   fixture: ReturnType<typeof createFixture>,
   artifactStatus: 200 | 404,
 ): void {
+  const curlLog = join(fixture.dataDir, "curl.log");
   const npmLog = join(fixture.dataDir, "npm.log");
   writeExecutable(
     join(fixture.binDir, "curl"),
     `#!/bin/sh
+printf '%s\n' "$*" >>"${curlLog}"
 case "$*" in
   *redeem-machine*) printf '%s' '{"credential":"bbcm_durable","machineId":"machine-1"}' ;;
   *)
     output=
     while [ "$#" -gt 0 ]; do
-      if [ "$1" = -o ]; then output=$2; shift 2; else shift; fi
+      if [ "$1" = --output ]; then output=$2; shift 2; else shift; fi
     done
     [ -z "$output" ] || printf '%s' 'fixture-tarball' >"$output"
     printf '%s' '${artifactStatus}'
@@ -224,7 +226,7 @@ function writeCurlArtifactMock(
     `#!/bin/sh
 output=
 while [ "$#" -gt 0 ]; do
-  if [ "$1" = -o ]; then output=$2; shift 2; else shift; fi
+  if [ "$1" = --output ]; then output=$2; shift 2; else shift; fi
 done
 [ -z "$output" ] || printf '%s' 'fixture-tarball' >"$output"
 printf '%s' '${artifactStatus}'
@@ -266,6 +268,27 @@ describe("machine install script", () => {
     expect(result.stderr).toContain(
       "--host-daemon-port must be an integer between 1 and 65535",
     );
+  });
+
+  it("renders an invalid server URL as an installer failure", () => {
+    const fixture = createFixture();
+    const result = runScript(
+      [
+        "--join-code",
+        "join-secret",
+        "--host-id",
+        "host-test",
+        "--server",
+        "not-a-url",
+      ],
+      fixture,
+    );
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "  ✗  Could not parse the server URL not-a-url.",
+    );
+    expect(result.stderr).not.toContain("TypeError");
   });
 
   it("uses bb-app from PATH and passes the launcher join flags verbatim", () => {
@@ -370,6 +393,30 @@ describe("machine install script", () => {
       /^install -g --prefix \/.*\/data\/npm \/.*bb-app\..*\.tgz$/mu,
     );
     expect(npmInvocation).not.toContain("bb-app\n");
+    expect(readFileSync(join(fixture.dataDir, "curl.log"), "utf8")).toContain(
+      "--silent --show-error --location --connect-timeout 10 --max-time 300",
+    );
+    expect(result.stdout).toContain(
+      "Setting up this machine as host-test for https://machine.getbb.app",
+    );
+    expect(result.stdout).toContain("\n  bb machine setup\n\n");
+    expect(result.stdout).toContain(
+      "  ○  Setting up this machine as host-test for https://machine.getbb.app",
+    );
+    expect(result.stdout).toContain(
+      "Downloading the server's bb-app package (timeout: 5 minutes)",
+    );
+    expect(result.stdout).toContain(
+      "  ✓  Downloaded the server's bb-app package",
+    );
+    expect(result.stdout).toContain(
+      "  ○  Installing the server's bb-app build",
+    );
+    expect(result.stdout).toContain("  ✓  Installed the server's bb-app build");
+    expect(result.stdout).toContain(
+      "Waiting for the temporary host daemon to connect",
+    );
+    expect(result.stdout).toContain("Join progress is logged to");
     const daemonPid = Number(
       readFileSync(join(fixture.dataDir, "install-daemon.pid"), "utf8"),
     );
@@ -544,6 +591,9 @@ describe("machine install script", () => {
     );
 
     expect(result.status, result.stderr).toBe(0);
+    expect(readFileSync(join(fixture.dataDir, "curl.log"), "utf8")).toContain(
+      "--connect-timeout 10 --max-time 30 -X POST",
+    );
     expect(readFileSync(invocationPath, "utf8")).not.toContain("bbcm_durable");
     expect(readFileSync(invocationPath, "utf8")).not.toContain(
       "--machine-credential",
@@ -559,6 +609,31 @@ describe("machine install script", () => {
       readFileSync(join(fixture.dataDir, "install-daemon.pid"), "utf8"),
     );
     process.kill(daemonPid, "SIGTERM");
+  });
+
+  it("reports periodic progress while a host daemon is still joining", () => {
+    const fixture = createFixture();
+    writeCurlArtifactMock(fixture, 404);
+    writeExecutable(
+      join(fixture.binDir, "bb-app"),
+      `#!/usr/bin/env node
+setInterval(() => {}, 1000);
+`,
+    );
+    writeExecutable(join(fixture.binDir, "sleep"), "#!/bin/sh\nexit 0\n");
+
+    const result = runScript(JOIN_ARGS, fixture, {
+      BB_INSTALL_SKIP_SERVICE: "1",
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stdout).toContain(
+      "Still waiting for the temporary host daemon (5/60 checks)",
+    );
+    expect(result.stdout).toContain(
+      "Still waiting for the temporary host daemon (60/60 checks)",
+    );
+    expect(result.stderr).toContain("Timed out waiting for host daemon");
   });
 
   it("installs an idempotent macOS launch agent for joined state", () => {
@@ -592,6 +667,19 @@ fi
 
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toContain("already joined");
+    expect(result.stdout).toContain(
+      "Installing the persistent bb host daemon service",
+    );
+    expect(result.stdout).toContain("Waiting for the launch agent to connect");
+    expect(result.stdout).toContain("  ●  bb machine is ready");
+    expect(result.stdout).toContain("server  https://machine.getbb.app");
+    expect(result.stdout).toContain(
+      "service " +
+        join(
+          fixture.homeDir,
+          "Library/LaunchAgents/app.getbb.host-daemon.machine-getbb-app.plist",
+        ),
+    );
     const plist = readFileSync(
       join(
         fixture.homeDir,
@@ -651,6 +739,9 @@ fi
 
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toContain("already joined");
+    expect(result.stdout).toContain(
+      "Waiting for the systemd service to connect",
+    );
     const unit = readFileSync(
       join(
         fixture.homeDir,
