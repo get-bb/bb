@@ -28,7 +28,13 @@ vi.hoisted(() => {
   });
 });
 
-import { act, cleanup, fireEvent, render } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   INERT_TYPEAHEAD_COMMAND_CONFIG,
@@ -67,6 +73,70 @@ afterEach(() => {
 });
 
 describe("PromptBoxInternal on a real iPadOS ProseMirror build", () => {
+  it("applies typeahead before submit for Magic Keyboard Enter", () => {
+    const onChange = vi.fn();
+    const onSubmit = vi.fn();
+    render(
+      <PromptBoxInternal
+        value="/"
+        mentionRanges={[]}
+        onChange={onChange}
+        onSubmit={onSubmit}
+        mentionMenuPlacement="bottom"
+        typeahead={{
+          mention: {
+            suggestions: [],
+            isLoading: false,
+            isError: false,
+            onQueryChange: vi.fn(),
+          },
+          command: {
+            trigger: "/",
+            suggestions: [
+              {
+                kind: "command",
+                name: "review",
+                source: "skill",
+                origin: "user",
+                description: null,
+                argumentHint: null,
+              },
+            ],
+            isLoading: false,
+            isError: false,
+            hasMore: false,
+            isLoadingMore: false,
+            loadMore: vi.fn(),
+            onQueryChange: vi.fn(),
+          },
+        }}
+      />,
+    );
+
+    const editor = getPromptEditorElement();
+    editor.focus();
+    expect(screen.getByRole("button", { name: "review" })).toBeTruthy();
+
+    fireEvent.keyDown(editor, {
+      key: "Enter",
+      code: "Enter",
+      keyCode: 13,
+    });
+
+    expect(onChange).toHaveBeenLastCalledWith(
+      "/review ",
+      expect.arrayContaining([
+        expect.objectContaining({
+          resource: expect.objectContaining({
+            kind: "command",
+            name: "review",
+          }),
+        }),
+      ]),
+    );
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
   it("submits a Magic Keyboard Enter once, with no replayed second submit", () => {
     const onChange = vi.fn();
     const onSubmit = vi.fn();

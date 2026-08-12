@@ -3002,41 +3002,6 @@ describe("PromptBoxInternal command typeahead submit", () => {
 });
 
 describe("PromptBoxInternal command typeahead navigation", () => {
-  it("applies typeahead before submit for Magic Keyboard Enter on coarse-pointer iPadOS WebKit", async () => {
-    const restoreMatchMedia = mockPointerCoarse(true);
-    const restoreNavigator = mockIPadOSWebKit();
-    try {
-      const { changes, onSubmit } = renderPromptBox("/", {
-        commandSuggestions: [
-          {
-            kind: "command",
-            name: "review",
-            source: "skill",
-            origin: "user",
-            description: null,
-            argumentHint: null,
-          },
-        ],
-      });
-      const editor = getPromptEditorElement();
-      editor.focus();
-      await screen.findByRole("button", { name: "review" });
-      expect(onSubmit).not.toHaveBeenCalled();
-
-      fireEvent.keyDown(editor, { key: "Enter", code: "Enter" });
-
-      await waitFor(() => expect(latestValue(changes)).toBe("/review "));
-      expect(onSubmit).not.toHaveBeenCalled();
-      expect(latestChange(changes)?.mentions[0]?.resource).toMatchObject({
-        kind: "command",
-        name: "review",
-      });
-    } finally {
-      restoreNavigator();
-      restoreMatchMedia();
-    }
-  });
-
   it("uses the rendered section order for Arrow keys and Enter", async () => {
     const { changes, promptBoxRef } = renderPromptBox("/", {
       commandSuggestions: [
