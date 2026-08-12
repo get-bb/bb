@@ -2,12 +2,56 @@ export const meta = {
   name: "fs-contract-freeze",
   description:
     "Read-only adversarial review of a proposed Finite State frozen-contract change, producing a decision brief for human approval.",
+  inputSchema: {
+    type: "object",
+    required: ["target"],
+    additionalProperties: false,
+    properties: { target: { type: "string", minLength: 1 } },
+  },
   phases: [
     { title: "Review", detail: "Four independent reviewers on a different provider" },
     { title: "Refute", detail: "Adversarial verification of each blocking finding" },
     { title: "Brief", detail: "Decision brief and consumer-impact list for the human gate" },
   ],
 };
+
+throw new Error("FS-95: Finite State saved workflows are quarantined until native stage capabilities, machine-verified live Tasks readiness, and an environment editing mutex are available.");
+
+const MAX_CONCURRENT_AGENTS = 4;
+const EDITING_PHASES = [];
+
+async function parallelWithinCap(thunks) {
+  const results = [];
+  for (let index = 0; index < thunks.length; index += MAX_CONCURRENT_AGENTS) {
+    const batch = await parallel(thunks.slice(index, index + MAX_CONCURRENT_AGENTS));
+    results.push(...batch);
+  }
+  return results;
+}
+
+function reviewAgent(prompt, options) {
+  return agent(
+    "READ-ONLY BOUNDARY: Do not edit any file, mutate Tasks, GitHub, gates, or approvals, or merge.\n\n" + prompt,
+    {
+      label: options.label,
+      phase: options.phase,
+      provider: "claude-code",
+      model: "claude-opus-5[1m]",
+      reasoningLevel: "high",
+      schema: options.schema,
+    },
+  );
+}
+
+function criticalNonEditingAgent(prompt, options) {
+  return agent("NON-EDITING SYNTHESIS BOUNDARY: Do not edit any repository file, mutate Tasks, GitHub, gates, or approvals, or merge.\n\n" + prompt, {
+    label: options.label,
+    phase: options.phase,
+    provider: "codex",
+    model: "gpt-5.6-sol",
+    reasoningLevel: "xhigh",
+  });
+}
 
 const AUTHORITY = [
   "docs/Implementation/api-reference/ is the vendored authority for every remote claim. Handler-backed audit evidence beats spec prose.",
@@ -82,10 +126,10 @@ const lenses = [
   },
 ];
 
-const reviews = await parallel(
+const reviews = await parallelWithinCap(
   lenses.map(
     (lens) => () =>
-      agent(
+      reviewAgent(
         "You are an INDEPENDENT READ-ONLY reviewer of a proposed Finite State frozen-contract change: " +
           target +
           ". You did not write it. Do NOT edit any file.\n\nAuthority:\n- " +
@@ -96,9 +140,6 @@ const reviews = await parallel(
         {
           label: "freeze:" + lens.key,
           phase: "Review",
-          provider: "claude-code",
-          model: "claude-sonnet-5",
-          reasoningLevel: "high",
           schema: FINDINGS_SCHEMA,
         },
       ),
@@ -113,10 +154,10 @@ const blocking = reviews
 log(target + ": " + blocking.length + " blocking/major findings before refutation");
 
 phase("Refute");
-const judged = await parallel(
+const judged = await parallelWithinCap(
   blocking.map(
     (finding, index) => () =>
-      agent(
+      reviewAgent(
         "Try to REFUTE this claim about " +
           target +
           ". Default to refuted=true if you cannot substantiate it against the working tree and the vendored authority. Do not edit anything.\n\nClaim: " +
@@ -128,9 +169,6 @@ const judged = await parallel(
         {
           label: "refute:" + index,
           phase: "Refute",
-          provider: "claude-code",
-          model: "claude-sonnet-5",
-          reasoningLevel: "high",
           schema: REFUTE_SCHEMA,
         },
       ).then((verdict) => ({ finding: finding, verdict: verdict })),
@@ -141,7 +179,7 @@ const survived = judged.filter(Boolean).filter((entry) => !entry.verdict.refuted
 log(target + ": " + survived.length + " findings survived adversarial refutation");
 
 phase("Brief");
-const brief = await agent(
+const brief = await criticalNonEditingAgent(
   "Write a DECISION BRIEF for the human who owns the frozen-contract gate on " +
     target +
     ". Do not edit anything. Do not approve anything.\n\nSurviving findings after adversarial refutation (" +

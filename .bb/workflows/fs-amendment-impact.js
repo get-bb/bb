@@ -2,11 +2,55 @@ export const meta = {
   name: "fs-amendment-impact",
   description:
     "Draft-only impact analysis for a proposed Finite State frozen-contract amendment: artifact, consumers, in-flight work, migration effect, fixtures.",
+  inputSchema: {
+    type: "object",
+    required: ["amendment"],
+    additionalProperties: false,
+    properties: { amendment: { type: "string", minLength: 1 } },
+  },
   phases: [
     { title: "Analyse", detail: "Parallel read-only analysis across impact dimensions" },
     { title: "Draft", detail: "Consolidated amendment draft for human acceptance" },
   ],
 };
+
+throw new Error("FS-95: Finite State saved workflows are quarantined until native stage capabilities, machine-verified live Tasks readiness, and an environment editing mutex are available.");
+
+const MAX_CONCURRENT_AGENTS = 4;
+const EDITING_PHASES = [];
+
+async function parallelWithinCap(thunks) {
+  const results = [];
+  for (let index = 0; index < thunks.length; index += MAX_CONCURRENT_AGENTS) {
+    const batch = await parallel(thunks.slice(index, index + MAX_CONCURRENT_AGENTS));
+    results.push(...batch);
+  }
+  return results;
+}
+
+function reviewAgent(prompt, options) {
+  return agent(
+    "READ-ONLY BOUNDARY: Do not edit any file, mutate Tasks, GitHub, gates, or approvals, or merge.\n\n" + prompt,
+    {
+      label: options.label,
+      phase: options.phase,
+      provider: "claude-code",
+      model: "claude-opus-5[1m]",
+      reasoningLevel: "high",
+      schema: options.schema,
+    },
+  );
+}
+
+function criticalNonEditingAgent(prompt, options) {
+  return agent("NON-EDITING SYNTHESIS BOUNDARY: Do not edit any repository file, mutate Tasks, GitHub, gates, or approvals, or merge.\n\n" + prompt, {
+    label: options.label,
+    phase: options.phase,
+    provider: "codex",
+    model: "gpt-5.6-sol",
+    reasoningLevel: "xhigh",
+  });
+}
 
 const FROZEN = [
   "plugins/bb-plugin-finite-state/server.ts",
@@ -77,10 +121,10 @@ const dimensions = [
   },
 ];
 
-const analyses = await parallel(
+const analyses = await parallelWithinCap(
   dimensions.map(
     (dimension) => () =>
-      agent(
+      reviewAgent(
         "You are performing DRAFT-ONLY impact analysis for proposed Finite State amendment " +
           amendment +
           ". Do NOT edit any file. Do NOT accept, approve, or apply the amendment.\n\nFrozen artifacts:\n- " +
@@ -91,9 +135,6 @@ const analyses = await parallel(
         {
           label: "impact:" + dimension.key,
           phase: "Analyse",
-          provider: "claude-code",
-          model: "claude-sonnet-5",
-          reasoningLevel: "high",
           schema: IMPACT_SCHEMA,
         },
       ).then((result) => ({ key: dimension.key, result: result })),
@@ -107,7 +148,7 @@ const blocking = sections.reduce(function (total, section) {
 log(amendment + ": " + sections.length + " dimensions analysed, " + blocking + " blocking impacts");
 
 phase("Draft");
-const draft = await agent(
+const draft = await criticalNonEditingAgent(
   "Draft the amendment record for " +
     amendment +
     ". This is a DRAFT ONLY: a human accepts or rejects it. Do not edit a frozen artifact, do not mark anything approved, and do not merge.\n\nAnalysis:\n" +
