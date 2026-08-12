@@ -12,15 +12,16 @@ import {
   type CanvasFlowEdge,
   type CanvasFlowNode,
 } from "./CanvasViewport.js";
+import {
+  browserCanvasLayoutStorage,
+  type CanvasLayoutStorage,
+} from "./layout-storage.js";
 import type {
   CanvasModel,
   CanvasViewportState,
+  LayoutRequest,
   LayoutResult,
-  LayoutWorkerFactory,
-  LayoutWorkerResponse,
 } from "./types.js";
-
-const DEFAULT_LAYOUT_TIMEOUT_MS = 10_000;
 
 export interface CanvasFoundationFeatures {
   nodeTypes: NodeTypes;
@@ -30,27 +31,42 @@ export interface CanvasFoundationFeatures {
   EditingLayer: ComponentType;
 }
 
+type LayoutRunner = (request: LayoutRequest) => Promise<LayoutResult>;
+
 interface CanvasShellProps {
+  projectId: string;
   model: CanvasModel;
   features: CanvasFoundationFeatures;
-  createLayoutWorker?: LayoutWorkerFactory;
-  layoutTimeoutMs?: number;
+  arrange?: LayoutRunner;
+  layoutStorage?: CanvasLayoutStorage;
 }
 
-type LayoutStatus = "idle" | "running" | "error" | "cancelled";
+type LayoutStatus = "idle" | "running" | "error";
 
 interface LayoutUiState {
   status: LayoutStatus;
-  progress: number;
   error: string | null;
   durationMs: number | null;
 }
 
-function initialPositions(model: CanvasModel): LayoutResult["positions"] {
+function defaultPositions(model: CanvasModel): LayoutResult["positions"] {
   return Object.fromEntries(
     model.nodes.map((node, index) => [
       node.id,
       { x: (index % 4) * 288, y: Math.floor(index / 4) * 176 },
+    ]),
+  );
+}
+
+function positionsForModel(
+  model: CanvasModel,
+  preferred: LayoutResult["positions"] | null,
+): LayoutResult["positions"] {
+  const fallback = defaultPositions(model);
+  return Object.fromEntries(
+    model.nodes.map((node) => [
+      node.id,
+      preferred?.[node.id] ?? fallback[node.id] ?? { x: 0, y: 0 },
     ]),
   );
 }
@@ -83,15 +99,6 @@ function flowEdges(model: CanvasModel): CanvasFlowEdge[] {
   }));
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isLayoutResponse(value: unknown): value is LayoutWorkerResponse {
-  if (!isRecord(value) || typeof value.type !== "string") return false;
-  return typeof value.requestId === "string";
-}
-
 function useReducedMotion(): boolean {
   const [reduced, setReduced] = useState(false);
   useEffect(() => {
@@ -105,17 +112,47 @@ function useReducedMotion(): boolean {
   return reduced;
 }
 
-export function shouldAutoLayout(nodeCount: number): boolean {
-  return nodeCount <= 200;
+function nextFrame(): Promise<void> {
+  if (typeof requestAnimationFrame !== "function") {
+    return new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
 }
 
-export default function CanvasShell({
+async function paintArrangingState(): Promise<void> {
+  await nextFrame();
+  await nextFrame();
+}
+
+async function runMainThreadLayout(
+  request: LayoutRequest,
+): Promise<LayoutResult> {
+  const { runElkLayout } = await import("./elk-worker.js");
+  return runElkLayout(request);
+}
+
+function safeLayoutError(error: unknown): string {
+  return error instanceof Error && error.message.length > 0
+    ? error.message.slice(0, 300)
+    : "ELK could not arrange this canvas.";
+}
+
+function CanvasShellState({
+  projectId,
   model,
   features,
-  createLayoutWorker,
-  layoutTimeoutMs = DEFAULT_LAYOUT_TIMEOUT_MS,
+  arrange = runMainThreadLayout,
+  layoutStorage = browserCanvasLayoutStorage,
 }: CanvasShellProps): React.JSX.Element {
-  const [positions, setPositions] = useState(() => initialPositions(model));
+  const [positions, setPositions] = useState(() =>
+    positionsForModel(
+      model,
+      layoutStorage.read(
+        projectId,
+        model.nodes.map((node) => node.id),
+      ),
+    ),
+  );
   const [viewport, setViewport] = useState<CanvasViewportState>({
     x: 0,
     y: 0,
@@ -124,90 +161,29 @@ export default function CanvasShell({
   });
   const [layout, setLayout] = useState<LayoutUiState>({
     status: "idle",
-    progress: 0,
     error: null,
     durationMs: null,
   });
-  const workerRef = useRef<ReturnType<LayoutWorkerFactory> | null>(null);
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const requestIdRef = useRef(0);
   const reducedMotion = useReducedMotion();
 
-  useEffect(() => {
-    setPositions(initialPositions(model));
-  }, [model]);
-
-  const clearWorker = useCallback(() => {
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    timeoutRef.current = null;
-    workerRef.current?.terminate();
-    workerRef.current = null;
-  }, []);
-
-  useEffect(() => clearWorker, [clearWorker]);
-
-  const failLayout = useCallback(
-    (message: string) => {
-      clearWorker();
-      setLayout((current) => ({
-        ...current,
-        status: "error",
-        error: message,
-      }));
+  useEffect(
+    () => () => {
+      requestIdRef.current += 1;
     },
-    [clearWorker],
+    [],
   );
 
-  const startLayout = useCallback(() => {
-    if (!createLayoutWorker || !shouldAutoLayout(model.nodes.length)) return;
-    clearWorker();
-    const worker = createLayoutWorker();
-    const requestId = `layout-${++requestIdRef.current}`;
-    workerRef.current = worker;
-    setLayout({
-      status: "running",
-      progress: 0,
-      error: null,
-      durationMs: null,
-    });
+  const startLayout = useCallback(async () => {
+    if (layout.status === "running") return;
+    const requestId = ++requestIdRef.current;
+    setLayout({ status: "running", error: null, durationMs: null });
 
-    worker.onmessage = (event) => {
-      if (!isLayoutResponse(event.data) || event.data.requestId !== requestId) {
-        return;
-      }
-      const response = event.data;
-      if (response.type === "progress") {
-        setLayout((current) => ({ ...current, progress: response.progress }));
-        return;
-      }
-      if (response.type === "result") {
-        clearWorker();
-        setPositions(response.result.positions);
-        setLayout({
-          status: "idle",
-          progress: 1,
-          error: null,
-          durationMs: response.result.durationMs,
-        });
-        return;
-      }
-      if (response.type === "cancelled") {
-        clearWorker();
-        setLayout((current) => ({ ...current, status: "cancelled" }));
-        return;
-      }
-      if (response.type === "error") failLayout(response.message);
-    };
-    worker.onerror = () => {
-      failLayout("Auto-layout worker stopped unexpectedly.");
-    };
-    timeoutRef.current = setTimeout(() => {
-      failLayout("Auto-layout timed out. The existing layout is unchanged.");
-    }, layoutTimeoutMs);
-    worker.postMessage({
-      type: "layout",
-      requestId,
-      request: {
+    await paintArrangingState();
+    if (requestIdRef.current !== requestId) return;
+
+    try {
+      const result = await arrange({
         nodes: model.nodes.map(({ id, width, height }) => ({
           id,
           width,
@@ -215,17 +191,25 @@ export default function CanvasShell({
         })),
         edges: model.edges.map(({ source, target }) => ({ source, target })),
         direction: "RIGHT",
-      },
-    });
-  }, [clearWorker, createLayoutWorker, failLayout, layoutTimeoutMs, model]);
-
-  const cancelLayout = useCallback(() => {
-    const worker = workerRef.current;
-    const requestId = `layout-${requestIdRef.current}`;
-    if (worker) worker.postMessage({ type: "cancel", requestId });
-    clearWorker();
-    setLayout((current) => ({ ...current, status: "cancelled" }));
-  }, [clearWorker]);
+      });
+      if (requestIdRef.current !== requestId) return;
+      const nextPositions = positionsForModel(model, result.positions);
+      layoutStorage.write(projectId, nextPositions);
+      setPositions(nextPositions);
+      setLayout({
+        status: "idle",
+        error: null,
+        durationMs: result.durationMs,
+      });
+    } catch (error: unknown) {
+      if (requestIdRef.current !== requestId) return;
+      setLayout({
+        status: "error",
+        error: safeLayoutError(error),
+        durationMs: null,
+      });
+    }
+  }, [arrange, layout.status, layoutStorage, model, projectId]);
 
   const nodes = useMemo(() => flowNodes(model, positions), [model, positions]);
   const edges = useMemo(() => flowEdges(model), [model]);
@@ -235,57 +219,40 @@ export default function CanvasShell({
   const updateSelection = useCallback((selectedIds: string[]) => {
     setViewport((current) => ({ ...current, selectedIds }));
   }, []);
-  const layoutAllowed = shouldAutoLayout(model.nodes.length);
   const ThreatOverlay = features.ThreatOverlay;
   const LinksLayer = features.LinksLayer;
   const EditingLayer = features.EditingLayer;
 
   return (
-    <section className="relative h-full min-h-0 overflow-hidden bg-background text-foreground">
+    <section
+      aria-busy={layout.status === "running"}
+      className="relative h-full min-h-0 overflow-hidden bg-background text-foreground"
+    >
       <div className="absolute left-3 top-3 z-10 flex max-w-[calc(100%-1.5rem)] items-center gap-2 rounded-lg border border-border bg-card/95 p-2 text-card-foreground shadow-sm">
-        {createLayoutWorker ? (
-          <button
-            aria-label={
-              layout.status === "error" ? "Retry auto-layout" : "Tidy canvas"
-            }
-            className="rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-            disabled={!layoutAllowed || layout.status === "running"}
-            onClick={startLayout}
-            type="button"
-          >
-            {layout.status === "error" ? "Retry" : "Tidy"}
-          </button>
-        ) : (
-          <span className="text-xs text-muted-foreground">
-            Worker auto-layout unavailable in this plugin build
-          </span>
-        )}
+        <button
+          aria-label={
+            layout.status === "error" ? "Retry arrange" : "Arrange canvas"
+          }
+          className="rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-wait disabled:opacity-70"
+          disabled={layout.status === "running"}
+          onClick={() => void startLayout()}
+          type="button"
+        >
+          {layout.status === "running"
+            ? "Arranging…"
+            : layout.status === "error"
+              ? "Retry"
+              : "Arrange"}
+        </button>
         {layout.status === "running" ? (
-          <>
-            <progress
-              aria-label="Auto-layout progress"
-              className="h-2 w-24 accent-primary"
-              max={1}
-              value={layout.progress}
-            />
-            <button
-              aria-label="Cancel auto-layout"
-              className="rounded-md px-2 py-1 text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              onClick={cancelLayout}
-              type="button"
-            >
-              Cancel
-            </button>
-          </>
-        ) : null}
-        {!layoutAllowed ? (
-          <span className="text-xs text-muted-foreground">
-            Automatic layout is disabled above 200 nodes
+          <span className="text-xs text-muted-foreground" role="status">
+            Arranging {model.nodes.length} nodes locally. Dense models can pause
+            this panel for several seconds.
           </span>
         ) : null}
         {layout.durationMs !== null ? (
           <span className="text-xs tabular-nums text-muted-foreground">
-            {Math.round(layout.durationMs)} ms
+            Arranged in {Math.round(layout.durationMs)} ms
           </span>
         ) : null}
       </div>
@@ -295,7 +262,7 @@ export default function CanvasShell({
           className="absolute left-3 right-3 top-16 z-10 rounded-md border border-destructive/40 bg-background px-3 py-2 text-sm text-destructive shadow-sm"
           role="alert"
         >
-          {layout.error}
+          Arrange failed. Existing positions are unchanged. {layout.error}
         </div>
       ) : null}
 
@@ -316,4 +283,13 @@ export default function CanvasShell({
       </output>
     </section>
   );
+}
+
+export default function CanvasShell(
+  props: CanvasShellProps,
+): React.JSX.Element {
+  const stateKey = `${props.projectId}:${JSON.stringify(
+    props.model.nodes.map((node) => node.id),
+  )}`;
+  return <CanvasShellState {...props} key={stateKey} />;
 }
