@@ -10,6 +10,32 @@ Read `docs/Implementation/AGENTS.md` completely before changing this plugin. It 
 
 RECON is historical on transport ownership; the accepted direct-API ADR supersedes its prior Forge gateway assumptions.
 
+## We do not modify bb
+
+This is the first rule, and it is not negotiable. See
+`docs/Implementation/ADR — bb Is Not Modified.md`.
+
+Finite State ships as an ordinary bb plugin and installs the way any
+third-party plugin installs. The fork is a **disposable development
+container** — it exists for workspace resolution, the
+`@bb/plugin-sdk/testing` harness, and `plugins/tasks` as a reference. It is
+not a product artifact.
+
+- Everything we build lives under `plugins/bb-plugin-finite-state/`.
+- Changes outside it are limited to development-environment concerns already
+  recorded in `FORK-DELTA.md` (Node pinning, CI configuration).
+- **No work package may modify bb's source, its builtin plugins
+  (`plugins/<name>/` other than ours), or `builtin-registry.ts`.**
+- Builtin registration is a BB release decision, not part of authoring this
+  product. Do not add one.
+
+**If a capability appears to require a bb change, the design is wrong.** Stop
+and report it as a design problem. Find the plugin-level solution or drop the
+capability — do not open a task to change bb. An entire lane (FS-95) was
+created and cancelled on 2026-08-12 because it modified `plugins/workflows`
+to support tooling we had introduced ourselves, which the product never
+required.
+
 Work on exactly one WP per task. Obey its owned-files and forbidden-files lists. If a frozen contract or another lane must change, stop and file an amendment; do not create a shadow contract.
 
 The data plane is direct typed Platform REST plus direct typed Assurance Studio REST. Forge is optional compute only and cannot own CRUD. Frontend code uses bb-native typed RPC/navigation and never imports backend clients, secrets, SQLite, or raw SDK internals.
