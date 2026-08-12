@@ -30,7 +30,9 @@ import {
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
 import { COARSE_POINTER_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
+import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
+import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
 import { PROJECT_LIST_ACTION_BUTTON_CLASS } from "@/components/sidebar/ProjectList";
 import { getPluginPanelRoutePath } from "@/lib/route-paths";
 import { usePluginSlots } from "@/lib/plugin-slots";
@@ -105,9 +107,9 @@ type SidebarNavRow =
  * built-in Extensions row: one row per entry, styled like primary sidebar
  * actions.
  * Plugin rows navigate to the panel's own route under
- * /plugins/<pluginId>/<path>. Renders nothing while no row qualifies. Only host
- * chrome renders here — a plugin's component mounts on the route
- * (PluginPanelView).
+ * /plugins/<pluginId>/<path>. Renders nothing while no row qualifies. The host
+ * owns the row chrome; only an optional bounded sidebar accessory mounts here.
+ * The panel component itself mounts on the route (PluginPanelView).
  *
  * Rows are drag-reorderable and can be hidden; hidden rows move into a
  * collapsed "More" disclosure below the list rather than disappearing. Both
@@ -431,6 +433,7 @@ function PluginNavSidebarItem({
 }) {
   const { panel } = row;
   const navigate = useNavigate();
+  const isCompactViewport = useIsCompactViewport();
   const path = getPluginPanelRoutePath({
     pluginId: panel.pluginId,
     path: panel.path,
@@ -447,6 +450,26 @@ function PluginNavSidebarItem({
     label: panel.title,
   });
   const splitIndicator = usePaneContentSplitIndicator(content, splitEnabled);
+  const SidebarAccessory = panel.experimental_sidebarAccessory;
+  const sidebarAccessory =
+    !isCompactViewport && SidebarAccessory !== undefined ? (
+      <PluginSlotMount
+        pluginId={panel.pluginId}
+        slotKind="navPanelSidebarAccessory"
+        slotId={panel.id}
+        crashFallback={null}
+      >
+        <span
+          data-plugin-nav-sidebar-accessory=""
+          // This is display-only content beside the row button. Clamp both axes
+          // and clip descendants so a plugin cannot grow the sidebar row;
+          // ordinary long text gets an ellipsis at four rems.
+          className="pointer-events-none absolute right-7 top-1/2 block max-h-5 max-w-16 -translate-y-1/2 overflow-hidden text-ellipsis whitespace-nowrap text-right leading-5"
+        >
+          <SidebarAccessory />
+        </span>
+      </PluginSlotMount>
+    ) : null;
 
   return (
     <SidebarNavRowChrome
@@ -456,6 +479,7 @@ function PluginNavSidebarItem({
       icon={<PluginIcon pluginId={panel.pluginId} icon={panel.icon} />}
       isActive={pathname === path || pathname.startsWith(`${path}/`)}
       splitMiniMap={splitIndicator.miniMap}
+      accessory={sidebarAccessory}
       // Split-drag initiator; engages only when the pointer leaves the
       // sidebar, so it coexists with the dnd-kit reorder listeners.
       onPointerDown={onPointerDown}
@@ -479,6 +503,7 @@ interface SidebarNavRowChromeProps {
   onSelect: (event: ReactMouseEvent<HTMLButtonElement>) => void;
   onPointerDown?: PointerEventHandler<HTMLElement>;
   splitMiniMap?: MiniMapSlot[] | null;
+  accessory?: ReactNode;
   isHidden?: boolean;
   onHide?: (key: string) => void;
   onShow?: (key: string) => void;
@@ -496,6 +521,7 @@ function SidebarNavRowChrome({
   onSelect,
   onPointerDown,
   splitMiniMap = null,
+  accessory,
   isHidden = false,
   onHide,
   onShow,
@@ -531,7 +557,10 @@ function SidebarNavRowChrome({
             variant="ghost"
             className={cn(
               PROJECT_LIST_ACTION_BUTTON_CLASS,
+              // Accessory-less rows keep their existing title width. A row
+              // with one reserves its 4rem plus the options trigger.
               "w-full pr-7",
+              accessory && "pr-24",
               isActive && "bg-sidebar-accent text-sidebar-foreground",
               isHidden && "text-subtle-foreground",
             )}
@@ -553,6 +582,7 @@ function SidebarNavRowChrome({
               ) : null}
             </span>
           </Button>
+          {accessory}
           <div
             data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
             className={cn(

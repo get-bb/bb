@@ -542,8 +542,46 @@ describe("loadPluginApp", () => {
         }),
       ),
     ).rejects.toThrow('slots.navPanel: "id" must match');
+    await expect(
+      loadPluginApp(
+        definePluginApp((builder) => {
+          builder.slots.navPanel({
+            id: "panel",
+            title: "Panel",
+            icon: "FileText",
+            path: "panel",
+            component: Panel,
+            experimental_sidebarAccessory: "nope" as never,
+          });
+        }),
+      ),
+    ).rejects.toThrow(
+      '"experimental_sidebarAccessory" must be a React component',
+    );
     await expect(loadPluginApp({ default: { nope: true } })).rejects.toThrow(
       "not definePluginApp(...)",
+    );
+  });
+
+  it("captures a nav panel experimental sidebar accessory", async () => {
+    function SidebarAccessory() {
+      return <span>12</span>;
+    }
+    const captured = await loadPluginApp(
+      definePluginApp((builder) => {
+        builder.slots.navPanel({
+          id: "tasks",
+          title: "Tasks",
+          icon: "ListTodo",
+          path: "tasks",
+          component: Panel,
+          experimental_sidebarAccessory: SidebarAccessory,
+        });
+      }),
+    );
+
+    expect(captured.navPanels[0]?.experimental_sidebarAccessory).toBe(
+      SidebarAccessory,
     );
   });
 

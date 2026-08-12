@@ -289,7 +289,10 @@ form; no props in V1, optional host-rendered title),
 navPanel (own sidebar entry + /plugins/<id>/<path>/* route; the remainder
 arrives as the component's subPath prop for panel-internal deep links; the
 host always renders the shared plugin title bar and the component owns a
-zero-padding full-bleed body, including its scrolling),
+zero-padding full-bleed body, including its scrolling; optional
+experimental_sidebarAccessory mounts a presentational live-value component at
+the trailing edge of the sidebar row on wide viewports, bounded to one short
+line and omitted on compact viewports),
 threadPanelAction
 (a thread-only entry in an existing thread's right-panel new-tab Actions list;
 it is never offered on root compose, and its run() can

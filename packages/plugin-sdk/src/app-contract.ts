@@ -238,6 +238,17 @@ export interface PluginNavPanelRegistration {
   path: string;
   component: ComponentType<PluginNavPanelProps>;
   /**
+   * Optional presentational component rendered at the trailing edge of this
+   * panel's sidebar row. It receives no props so it can own a narrow live
+   * value through the ordinary SDK hooks without coupling that state to the
+   * host sidebar. The host does not mount it on compact viewports and clips it
+   * to a small, single-line box on wider viewports; do not render controls or
+   * rely on unbounded content here.
+   *
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_sidebarAccessory?: ComponentType;
+  /**
    * Optional component rendered on the right side of the shared title bar
    * (e.g. a sync button or a count). Contained separately from the body: a
    * throwing headerContent is hidden without breaking the title bar.

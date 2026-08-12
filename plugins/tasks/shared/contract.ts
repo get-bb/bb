@@ -764,6 +764,7 @@ export const tasksRpcContract = defineRpcContract({
     input: z.null(),
     output: z
       .object({
+        openTaskCount: z.number().int().nonnegative(),
         projects: z.array(
           z
             .object({

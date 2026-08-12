@@ -149,12 +149,26 @@ export function collectPluginAppRegistrations(
             `${kind}: "headerContent" must be a React component function when set`,
           );
         }
+        if (
+          registration.experimental_sidebarAccessory !== undefined &&
+          typeof registration.experimental_sidebarAccessory !== "function"
+        ) {
+          throw new Error(
+            `${kind}: "experimental_sidebarAccessory" must be a React component function when set`,
+          );
+        }
         navPanels.push({
           id,
           title: requireNonEmptyString(kind, "title", registration.title),
           icon: requireNonEmptyString(kind, "icon", registration.icon),
           path,
           component: requireComponent(kind, registration.component),
+          ...(registration.experimental_sidebarAccessory !== undefined
+            ? {
+                experimental_sidebarAccessory:
+                  registration.experimental_sidebarAccessory,
+              }
+            : {}),
           ...(registration.headerContent !== undefined
             ? { headerContent: registration.headerContent }
             : {}),

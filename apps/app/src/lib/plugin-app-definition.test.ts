@@ -633,6 +633,21 @@ describe("collectPluginAppRegistrations", () => {
       /"headerContent" must be a React component/,
     ],
     [
+      "nav panel with a non-component experimental sidebar accessory",
+      () =>
+        definePluginApp((app) => {
+          app.slots.navPanel({
+            id: "x",
+            title: "X",
+            icon: "columns",
+            path: "x",
+            component: Component,
+            experimental_sidebarAccessory: "nope" as never,
+          });
+        }),
+      /"experimental_sidebarAccessory" must be a React component/,
+    ],
+    [
       "message directive with uppercase id",
       () =>
         definePluginApp((app) => {
@@ -713,6 +728,27 @@ describe("collectPluginAppRegistrations", () => {
       collectPluginAppRegistrations(definition).navPanels[0],
     ).toMatchObject({
       headerContent: Accessory,
+    });
+  });
+
+  it("keeps an experimental_sidebarAccessory registration", () => {
+    function SidebarAccessory() {
+      return null;
+    }
+    const definition = definePluginApp((app) => {
+      app.slots.navPanel({
+        id: "board",
+        title: "Board",
+        icon: "columns",
+        path: "board",
+        component: Component,
+        experimental_sidebarAccessory: SidebarAccessory,
+      });
+    });
+    expect(
+      collectPluginAppRegistrations(definition).navPanels[0],
+    ).toMatchObject({
+      experimental_sidebarAccessory: SidebarAccessory,
     });
   });
 });

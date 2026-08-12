@@ -64,6 +64,7 @@ export interface TasksApiStore {
   taskLabelIds(taskIds: readonly string[]): Map<string, string[]>;
   projectTaskCount(projectId: string): number;
   projectPrefixExists(prefix: string, excludingProjectId: string): boolean;
+  openTaskCount(): number;
   sidebarSummary(): SidebarProjectSummary[];
 }
 
@@ -120,6 +121,19 @@ export function createStore(bb: BbPluginApi): TasksApiStore {
             `,
           )
           .get(prefix, excludingProjectId),
+      );
+    },
+    openTaskCount(): number {
+      return (
+        database
+          .prepare<[], CountRow>(
+            `
+              SELECT COUNT(*) AS count
+              FROM tasks
+              WHERE status NOT IN ('done', 'canceled')
+            `,
+          )
+          .get()?.count ?? 0
       );
     },
     sidebarSummary(): SidebarProjectSummary[] {
@@ -1097,7 +1111,10 @@ export function registerHandlers(
       };
     },
     sidebarSummary() {
-      return { projects: store.sidebarSummary() };
+      return {
+        openTaskCount: store.openTaskCount(),
+        projects: store.sidebarSummary(),
+      };
     },
   };
 }

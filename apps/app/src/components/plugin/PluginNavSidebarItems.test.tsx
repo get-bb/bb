@@ -6,9 +6,11 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import type { ComponentType } from "react";
 import { createStore, Provider } from "jotai";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { SidebarProvider } from "@/components/ui/sidebar.js";
 import {
   resetPluginSlotStoreForTest,
@@ -33,7 +35,11 @@ function registrationSet(
   };
 }
 
-function registerPanel(pluginId: string, title: string) {
+function registerPanel(
+  pluginId: string,
+  title: string,
+  experimentalSidebarAccessory?: ComponentType,
+) {
   setPluginSlotRegistrations(
     pluginId,
     registrationSet({
@@ -44,6 +50,11 @@ function registerPanel(pluginId: string, title: string) {
           icon: "Puzzle",
           path: "main",
           component: () => null,
+          ...(experimentalSidebarAccessory === undefined
+            ? {}
+            : {
+                experimental_sidebarAccessory: experimentalSidebarAccessory,
+              }),
         },
       ],
     }),
@@ -54,6 +65,7 @@ function renderSidebarItems(
   options: {
     toolsRoutePath?: string;
     storedOrder?: string[];
+    compactViewport?: boolean;
   } = {},
 ) {
   const store = createStore();
@@ -63,13 +75,17 @@ function renderSidebarItems(
     store.set(pluginNavPanelOrderAtom, options.storedOrder);
   }
   return render(
-    <Provider store={store}>
-      <MemoryRouter initialEntries={["/"]}>
-        <SidebarProvider>
-          <PluginNavSidebarItems toolsRoutePath={options.toolsRoutePath} />
-        </SidebarProvider>
-      </MemoryRouter>
-    </Provider>,
+    <CompactViewportOverrideProvider
+      isCompactViewport={options.compactViewport ?? false}
+    >
+      <Provider store={store}>
+        <MemoryRouter initialEntries={["/"]}>
+          <SidebarProvider>
+            <PluginNavSidebarItems toolsRoutePath={options.toolsRoutePath} />
+          </SidebarProvider>
+        </MemoryRouter>
+      </Provider>
+    </CompactViewportOverrideProvider>,
   );
 }
 
@@ -93,6 +109,69 @@ afterEach(() => {
 });
 
 describe("PluginNavSidebarItems", () => {
+  it("keeps an accessory-less plugin row unchanged", () => {
+    registerPanel("docs", "Docs");
+
+    const view = renderSidebarItems();
+
+    expect(screen.getByRole("button", { name: "Docs" }).textContent).toBe(
+      "Docs",
+    );
+    expect(
+      screen.getByRole("button", { name: "Docs" }).classList.contains("pr-7"),
+    ).toBe(true);
+    expect(
+      screen.getByRole("button", { name: "Docs" }).classList.contains("pr-24"),
+    ).toBe(false);
+    expect(
+      screen.queryByRole("button", { name: "Docs panel options" }),
+    ).not.toBeNull();
+    expect(
+      view.container.querySelector("[data-plugin-nav-sidebar-accessory]"),
+    ).toBeNull();
+  });
+
+  it("bounds and truncates a long sidebar accessory", () => {
+    registerPanel("tasks", "Tasks", () => (
+      <span>123456789012345678901234567890</span>
+    ));
+
+    const view = renderSidebarItems();
+    const accessory = view.container.querySelector(
+      "[data-plugin-nav-sidebar-accessory]",
+    );
+
+    expect(accessory?.textContent).toBe("123456789012345678901234567890");
+    expect(screen.getByRole("button", { name: "Tasks" })).not.toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Tasks" }).classList.contains("pr-24"),
+    ).toBe(true);
+    for (const className of [
+      "max-h-5",
+      "max-w-16",
+      "overflow-hidden",
+      "text-ellipsis",
+      "whitespace-nowrap",
+    ]) {
+      expect(accessory?.classList.contains(className), className).toBe(true);
+    }
+  });
+
+  it("does not mount sidebar accessories on compact viewports", () => {
+    let mounts = 0;
+    registerPanel("tasks", "Tasks", () => {
+      mounts += 1;
+      return <span>12</span>;
+    });
+
+    const view = renderSidebarItems({ compactViewport: true });
+
+    expect(mounts).toBe(0);
+    expect(
+      view.container.querySelector("[data-plugin-nav-sidebar-accessory]"),
+    ).toBeNull();
+  });
+
   it("moves a hidden panel into an expanded More disclosure and back", async () => {
     registerPanel("docs", "Docs");
     registerPanel("github", "GitHub");
