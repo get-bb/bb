@@ -34,6 +34,8 @@ interface IdentityFixture {
 
 interface ComponentFixture {
   id: string;
+  name: string;
+  version: string;
   purl: string | null;
   fallbackIdentity: string | null;
   vulnerable: boolean;
@@ -58,6 +60,8 @@ interface AsEntityFixture {
 
 interface TaraDriftFixture {
   entityId: string;
+  field: string;
+  base: string;
   expectedHeadVersionId: string;
   remoteHeadVersionId: string;
 }
@@ -79,6 +83,33 @@ interface FirmwareFixture {
   path: string;
   scanId: string;
   byteSample: string | null;
+}
+
+interface IdentityLinksFixture {
+  orgId: string;
+  projectId: string;
+  projectVersionId: string;
+  priorVersionId: string;
+  scanId: string;
+  priorScanId: string;
+  firmwareRootHash: string;
+}
+
+interface FirmwareResponseFixture {
+  projectVersionId: string;
+  scanId: string;
+  artifactHash: string;
+  entries: FirmwareFixture[];
+  total: number;
+}
+
+interface SbomFixture {
+  components: {
+    "bom-ref": string;
+    name: string;
+    version: string;
+    purl: string | null;
+  }[];
 }
 
 interface DocumentFixture {
@@ -274,6 +305,14 @@ describe("deterministic-seed-corpus", () => {
     const extracts = await parseJsonl<SourceExtractFixture>(join(committedFixtures, "documents", "source-extracts.jsonl"));
     const vex = await parseJson<VexBulkFixture>(join(committedFixtures, "platform", "vex-bulk-partial.json"));
     const forgeJobs = await parseJsonl<ForgeJobFixture>(join(committedFixtures, "forge-compute", "jobs.jsonl"));
+    const identityLinks = await parseJson<IdentityLinksFixture>(join(committedFixtures, "expected", "identity-links.json"));
+    const filesystemResponse = await parseJson<FirmwareResponseFixture>(join(committedFixtures, "firmware", "filesystem-response.json"));
+    const sbom = await parseJson<SbomFixture>(join(committedFixtures, "platform", "sbom.cdx.json"));
+    const findingsPage = await parseJson<{ items: FindingFixture[]; total: number }>(join(committedFixtures, "platform", "findings-page-1.json"));
+    const componentsPage = await parseJson<{ items: ComponentFixture[]; total: number }>(join(committedFixtures, "platform", "components-page-1.json"));
+    const asSbomPage = await parseJson<{ success: boolean; data: { items: ComponentFixture[]; total: number } }>(join(committedFixtures, "assurance-studio", "project-sbom-page-1.json"));
+    const strictUnknownKey = await parseJson<{ projectVersionId: string; findingId: string }>(join(committedFixtures, "faults", "strict-unknown-key.json"));
+    const staleTara = await parseJson<{ entityId: string }>(join(committedFixtures, "faults", "assurance-studio-stale-tara.json"));
 
     expectReference(new Set([identity.organization.id]), identity.project.orgId, "platform/identity.json project");
     const projectIds = new Set([identity.project.id]);
@@ -283,6 +322,14 @@ describe("deterministic-seed-corpus", () => {
       expectReference(projectIds, version.projectId, `platform/identity.json version ${version.id}`);
       if (version.priorVersionId) expectReference(versionIds, version.priorVersionId, `platform/identity.json version ${version.id}`);
     }
+    expect(identityLinks).toMatchObject({
+      orgId: identity.organization.id,
+      projectId: identity.project.id,
+      projectVersionId: identity.versions[1].id,
+      priorVersionId: identity.versions[0].id,
+      scanId: identity.versions[1].scanId,
+      priorScanId: identity.versions[0].scanId,
+    });
 
     const componentIds = new Set(components.map((component) => component.id));
     const componentPurls = new Set(components.flatMap((component) => component.purl ? [component.purl] : []));
@@ -295,6 +342,27 @@ describe("deterministic-seed-corpus", () => {
     }
     const findingIds = new Set(findings.map((finding) => finding.id));
     for (const result of vex.results) expectReference(findingIds, result.findingId, "platform/vex-bulk-partial.json results");
+    expect(findingsPage.items).toEqual(findings.slice(0, findingsPage.items.length));
+    expect(findingsPage.total).toBe(new Set(findings.map((finding) => finding.id)).size);
+    expect(componentsPage.items).toEqual(components.slice(0, componentsPage.items.length));
+    expect(componentsPage.total).toBe(components.length);
+    expect(asSbomPage.success).toBe(true);
+    expect(asSbomPage.data.items).toEqual(components.slice(0, asSbomPage.data.items.length));
+    expect(asSbomPage.data.total).toBe(components.length);
+    expect(sbom.components).toHaveLength(components.length);
+    for (const [index, sbomComponent] of sbom.components.entries()) {
+      const component = components[index];
+      expect(sbomComponent, `platform/sbom.cdx.json component ${index}`).toEqual({
+        "bom-ref": component.id,
+        name: component.name,
+        version: component.version,
+        purl: component.purl,
+      });
+      expectReference(componentIds, sbomComponent["bom-ref"], `platform/sbom.cdx.json component ${index}.bom-ref`);
+      if (sbomComponent.purl) expectReference(componentPurls, sbomComponent.purl, `platform/sbom.cdx.json component ${index}.purl`);
+    }
+    expectReference(versionIds, strictUnknownKey.projectVersionId, "faults/strict-unknown-key.json projectVersionId");
+    expectReference(findingIds, strictUnknownKey.findingId, "faults/strict-unknown-key.json findingId");
 
     const entityIds = new Set(entities.map((entity) => entity.id));
     const componentOrEntityIds = new Set([...componentIds, ...entityIds]);
@@ -302,6 +370,7 @@ describe("deterministic-seed-corpus", () => {
     const assetIds = new Set(entities.filter((entity) => entity.kind === "asset").map((entity) => entity.id));
     const zoneIds = new Set(entities.filter((entity) => entity.kind === "zone").map((entity) => entity.id));
     const dataflowIds = new Set(entities.filter((entity) => entity.kind === "dataflow").map((entity) => entity.id));
+    expectReference(entityIds, staleTara.entityId, "faults/assurance-studio-stale-tara.json entityId");
     for (const entity of entities) {
       expectReference(projectIds, entity.projectId, `assurance-studio/entities.jsonl entity ${entity.id}`);
       for (const [field, targets] of [["componentId", componentOrEntityIds], ["sourceId", entityIds], ["targetId", entityIds], ["zoneId", zoneIds], ["assetId", assetIds], ["threatId", threatIds]] as const) {
@@ -330,6 +399,11 @@ describe("deterministic-seed-corpus", () => {
       expectReference(scanIds, path.scanId, `firmware/manifest.jsonl ${path.path}`);
       if (path.byteSample) expect((await stat(join(committedFixtures, ...path.byteSample.split("/")))).isFile(), `firmware/manifest.jsonl ${path.path} missing ${path.byteSample}`).toBe(true);
     }
+    expectReference(versionIds, filesystemResponse.projectVersionId, "firmware/filesystem-response.json projectVersionId");
+    expectReference(scanIds, filesystemResponse.scanId, "firmware/filesystem-response.json scanId");
+    expect(filesystemResponse.artifactHash).toBe(identityLinks.firmwareRootHash);
+    expect(filesystemResponse.entries).toEqual(firmware.slice(0, filesystemResponse.entries.length));
+    expect(filesystemResponse.total).toBe(firmware.length);
     for (const document of documentEnvelope.items) {
       expectReference(projectIds, document.projectId, `documents/documents.json ${document.id}`);
       for (const sourceRef of document.sourceRefs) expectReference(requirementIds, sourceRef.split(":")[0], `documents/documents.json ${document.id}.sourceRefs`);
@@ -425,8 +499,13 @@ describe("deterministic-seed-corpus", () => {
       join(committedFixtures, "assurance-studio", "tara-drift.json"),
     );
     const taraEntity = entities.find((entity) => entity.id === taraDrift.entityId);
-    expect(taraDrift.expectedHeadVersionId).toBe(taraEntity?.reviewVersion);
-    expect(taraDrift.expectedHeadVersionId).not.toBe(taraDrift.remoteHeadVersionId);
+    expect(taraDrift.base).toBe(taraEntity?.fields[taraDrift.field]);
+    expect(taraDrift.expectedHeadVersionId).not.toBe(taraEntity?.reviewVersion);
+    expect(taraDrift.expectedHeadVersionId).toBe("9007199254740996");
+    expect(taraDrift.remoteHeadVersionId).toBe("9007199254740997");
+    expect(BigInt(taraDrift.remoteHeadVersionId)).toBeGreaterThan(
+      BigInt(taraDrift.expectedHeadVersionId),
+    );
     expect(Number(taraDrift.expectedHeadVersionId)).toBe(
       Number(taraDrift.remoteHeadVersionId),
     );
