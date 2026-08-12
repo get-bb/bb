@@ -318,29 +318,22 @@ export function evaluatePromotion(manifest, state, targetCap) {
         `${wp} must be complete before promotion to ${targetCap} lanes`,
       );
   }
-  if ((state.workflowConcurrency ?? 0) < policy.requiredWorkflowConcurrency) {
-    promotionErrors.push(
-      `workflow concurrency must be at least ${policy.requiredWorkflowConcurrency}`,
-    );
-  }
   if (targetCap === 9 && (state.currentLaneCap ?? 0) < 6) {
     promotionErrors.push(
       "six-lane operation must be established before promotion to nine lanes",
     );
   }
-  if (targetCap === 9) {
-    if (
-      (state.freeAfterProvisionGiB ?? 0) < policy.minimumFreeAfterProvisionGiB
-    ) {
-      promotionErrors.push(
-        `free space after provisioning must be at least ${policy.minimumFreeAfterProvisionGiB} GiB`,
-      );
-    }
-    if ((state.runtimeFloorGiB ?? 0) < policy.minimumRuntimeFloorGiB) {
-      promotionErrors.push(
-        `runtime free-space floor must be at least ${policy.minimumRuntimeFloorGiB} GiB`,
-      );
-    }
+  // Disk binds at every cap, not only at nine: each managed worktree costs
+  // roughly 3.4 GiB marginal, so 4 -> 6 lanes adds about 7 GiB.
+  if ((state.freeAfterProvisionGiB ?? 0) < policy.minimumFreeAfterProvisionGiB) {
+    promotionErrors.push(
+      `free space after provisioning must be at least ${policy.minimumFreeAfterProvisionGiB} GiB`,
+    );
+  }
+  if ((state.runtimeFloorGiB ?? 0) < policy.minimumRuntimeFloorGiB) {
+    promotionErrors.push(
+      `runtime free-space floor must be at least ${policy.minimumRuntimeFloorGiB} GiB`,
+    );
   }
 
   const readyClusters = [];
@@ -435,7 +428,6 @@ export function main(argv = process.argv.slice(2)) {
         "current-cap",
         manifest.dispatchPolicy.currentLaneCap,
       ),
-      workflowConcurrency: numberOption(options, "workflow-concurrency"),
       freeAfterProvisionGiB: numberOption(options, "free-after-provision-gib"),
       runtimeFloorGiB: numberOption(options, "runtime-floor-gib"),
     },
