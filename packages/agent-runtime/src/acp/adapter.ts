@@ -1485,6 +1485,9 @@ export function createAcpProviderAdapter(
         }
       },
     }),
+    clearActiveTurnState(threadId) {
+      finishOpenProviderTurn({ registry: turnState, threadId });
+    },
 
     decodeInteractiveRequest(
       request: ProviderInboundRequest,

@@ -1,7 +1,7 @@
 import { writeFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ThreadEvent } from "@bb/domain";
 import { getThreadEventScopeTurnId, turnScope } from "@bb/domain";
 import { createAgentRuntimeWithAdapters } from "./runtime.js";
@@ -318,6 +318,7 @@ rl.on("line", (line) => {
 
   it("maps a bridge no-active-turn error to a stale steer", async () => {
     const events: ThreadEvent[] = [];
+    const clearActiveTurnState = vi.fn();
     const staleSteerScriptPath = join(tmpDir, "stale-steer-provider.cjs");
     writeFileSync(
       staleSteerScriptPath,
@@ -371,15 +372,20 @@ rl.on("line", (line) => {
         contentItems: [{ type: "inputText", text: "ok" }],
         success: true,
       }),
-      adapterFactory: () =>
-        createFakeAdapter({ scriptPath: staleSteerScriptPath }),
+      adapterFactory: () => ({
+        ...createFakeAdapter({
+          id: "acp-cursor",
+          scriptPath: staleSteerScriptPath,
+        }),
+        clearActiveTurnState,
+      }),
     });
 
     await runtime.startThread({
       environmentId: "env-1",
       threadId: "t1",
       projectId: "p1",
-      providerId: "fake",
+      providerId: "acp-cursor",
       options: fullRuntimeOptions,
     });
     await runtime.runTurn({
@@ -390,7 +396,7 @@ rl.on("line", (line) => {
     });
     await waitForThreadTurnStarted({
       events,
-      providerId: "fake",
+      providerId: "acp-cursor",
       runtime,
       threadId: "t1",
       turnId: "turn-1",
@@ -405,6 +411,7 @@ rl.on("line", (line) => {
         options: fullRuntimeOptions,
       }),
     ).resolves.toEqual({ status: "stale", activeTurnId: null });
+    expect(clearActiveTurnState).toHaveBeenCalledWith("t1");
     await expect(
       runtime.steerTurn({
         clientRequestId: "creq_222222222z",

@@ -1056,12 +1056,11 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  // Version 111 restores parentToolCallId on a resumed Codex child turn so
-  // enrolled daemons stop projecting that child completion as the root turn.
-  // Version 110 waits for a late full-output record before publishing a
-  // completed Codex command item.
-  it("uses protocol version 111 for resumed Codex child parent links", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(111);
+  // Version 112 makes ACP stale-steer results trigger a safe new-turn retry.
+  // Version 111 restores parentToolCallId on a resumed Codex child turn.
+  // Version 110 waits for a late full-output record before command completion.
+  it("uses protocol version 112 for stale ACP steer recovery", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(112);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {

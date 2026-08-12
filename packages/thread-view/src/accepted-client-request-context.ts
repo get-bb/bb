@@ -1,7 +1,4 @@
-import type {
-  ClientTurnRequestId,
-  ThreadEvent,
-} from "@bb/domain";
+import type { ClientTurnRequestId, ThreadEvent } from "@bb/domain";
 import { requireThreadEventScopeTurnId } from "@bb/domain";
 import type { EventMeta } from "./event-decode.js";
 
@@ -17,12 +14,33 @@ export interface AcceptedClientRequest {
 
 export interface AcceptedClientRequestContext {
   acceptedClientRequestEvents: readonly ThreadEventWithMetaLike[];
+  rejectedClientRequestEvents: readonly ThreadEventWithMetaLike[];
 }
 
 export const EMPTY_ACCEPTED_CLIENT_REQUEST_CONTEXT: AcceptedClientRequestContext =
   {
     acceptedClientRequestEvents: [],
+    rejectedClientRequestEvents: [],
   };
+
+export function buildRejectedClientRequestById(
+  context: AcceptedClientRequestContext,
+  events: readonly ThreadEventWithMetaLike[],
+): Map<ClientTurnRequestId, EventMeta> {
+  const rejectedRequestById = new Map<ClientTurnRequestId, EventMeta>();
+  for (const { event, meta } of [
+    ...events,
+    ...context.rejectedClientRequestEvents,
+  ]) {
+    if (
+      event.type === "client/turn/rejected" &&
+      !rejectedRequestById.has(event.requestId)
+    ) {
+      rejectedRequestById.set(event.requestId, meta);
+    }
+  }
+  return rejectedRequestById;
+}
 
 interface AcceptedClientRequestEvent {
   meta: EventMeta;

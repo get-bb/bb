@@ -47,6 +47,7 @@ import {
 } from "./build-event-projection.js";
 import {
   buildAcceptedClientRequestById,
+  buildRejectedClientRequestById,
   type AcceptedClientRequestContext,
 } from "./accepted-client-request-context.js";
 import {
@@ -833,7 +834,11 @@ function buildPendingSteerRowsFromEvents(
     context: acceptedClientRequestContext,
     events: orderedEvents,
   });
-  const rejectedClientRequestIds = new Set(
+  const rejectedClientRequestById = buildRejectedClientRequestById(
+    acceptedClientRequestContext,
+    orderedEvents,
+  );
+  const inWindowRejectedClientRequestIds = new Set(
     orderedEvents.flatMap(({ event }) =>
       event.type === "client/turn/rejected" ? [event.requestId] : [],
     ),
@@ -842,40 +847,53 @@ function buildPendingSteerRowsFromEvents(
     string,
     ThreadEventWithMeta["meta"]
   >();
-  const unresolvedSteerRequestIds: string[] = [];
+  const unresolvedSteerRequestIds = new Set<string>();
+  const unresolvedSteerRequestOrder: string[] = [];
+  let explicitRejectionNeedsCompanionError = false;
   for (const { event, meta } of orderedEvents) {
     if (
       event.type === "client/turn/requested" &&
       (event.target.kind === "auto" || event.target.kind === "steer") &&
       event.target.expectedTurnId !== null
     ) {
-      unresolvedSteerRequestIds.push(event.requestId);
+      unresolvedSteerRequestIds.add(event.requestId);
+      unresolvedSteerRequestOrder.push(event.requestId);
+      explicitRejectionNeedsCompanionError = false;
       continue;
     }
     if (event.type === "turn/input/accepted") {
-      const index = unresolvedSteerRequestIds.indexOf(event.clientRequestId);
-      if (index >= 0) unresolvedSteerRequestIds.splice(index, 1);
+      unresolvedSteerRequestIds.delete(event.clientRequestId);
+      explicitRejectionNeedsCompanionError = false;
       continue;
     }
     if (event.type === "client/turn/rejected") {
-      const index = unresolvedSteerRequestIds.indexOf(event.requestId);
-      if (index >= 0) unresolvedSteerRequestIds.splice(index, 1);
+      unresolvedSteerRequestIds.delete(event.requestId);
+      explicitRejectionNeedsCompanionError = true;
       continue;
     }
     if (
       event.type === "system/error" &&
       event.code === "thread_command_failed"
     ) {
-      const requestId = unresolvedSteerRequestIds.pop();
+      if (explicitRejectionNeedsCompanionError) {
+        explicitRejectionNeedsCompanionError = false;
+        continue;
+      }
+      let requestId = unresolvedSteerRequestOrder.pop();
+      while (requestId && !unresolvedSteerRequestIds.delete(requestId)) {
+        requestId = unresolvedSteerRequestOrder.pop();
+      }
       if (requestId) legacyRejectedRequestMetaById.set(requestId, meta);
+      continue;
     }
+    explicitRejectionNeedsCompanionError = false;
   }
   const pendingSteerRows: TimelineUserConversationRow[] = [];
 
   for (const { event, meta } of orderedEvents) {
     if (
       event.type === "client/turn/requested" &&
-      rejectedClientRequestIds.has(event.requestId)
+      inWindowRejectedClientRequestIds.has(event.requestId)
     ) {
       continue;
     }
@@ -887,6 +905,26 @@ function buildPendingSteerRowsFromEvents(
       event.type === "client/turn/requested"
         ? legacyRejectedRequestMetaById.get(event.requestId)
         : undefined;
+    const rejectedMeta =
+      event.type === "client/turn/requested"
+        ? rejectedClientRequestById.get(event.requestId)
+        : undefined;
+    if (
+      event.type === "client/turn/requested" &&
+      acceptedClientRequest === undefined &&
+      rejectedMeta
+    ) {
+      pendingSteerRows.push(
+        ...parseRejectedUsersFromClientRequest({
+          decoded: event,
+          meta: rejectedMeta,
+          options,
+        }).map((rejectedSteer) =>
+          convertSteerMessage(rejectedSteer, ROOT_TIMELINE_ROW_ID_PREFIX),
+        ),
+      );
+      continue;
+    }
     if (
       event.type === "client/turn/requested" &&
       acceptedClientRequest === undefined &&

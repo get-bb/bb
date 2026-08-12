@@ -1,5 +1,6 @@
 import path from "node:path";
 import { z } from "zod";
+import { isAcpProviderId } from "@bb/agent-providers";
 import {
   normalizeProviderThreadNameEvent,
   toProviderExternalThreadName,
@@ -1957,9 +1958,11 @@ function createAgentRuntimeInternal(
           } catch (error) {
             if (
               error instanceof JsonRpcResponseError &&
+              isAcpProviderId(pid) &&
               error.code === ACP_BRIDGE_NO_ACTIVE_TURN_ERROR_CODE
             ) {
               turnState.clearThread(threadId);
+              proc.adapter.clearActiveTurnState?.(threadId);
               return { status: "stale", activeTurnId: null };
             }
             throw error;

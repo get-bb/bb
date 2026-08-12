@@ -7,6 +7,7 @@ import {
   isNull,
   notInArray,
   or,
+  sql,
 } from "drizzle-orm";
 import {
   deleteThread,
@@ -631,6 +632,38 @@ function hasExpectedTurnCompletedEvent(
   );
 }
 
+function hasTerminalClientTurnRequestEvent(
+  deps: ThreadCommandResultSettlementDeps,
+  command: ThreadFailureCommand,
+): boolean {
+  if (command.type !== "turn.submit") {
+    return false;
+  }
+
+  return (
+    deps.db
+      .select({ id: events.id })
+      .from(events)
+      .where(
+        and(
+          eq(events.threadId, command.threadId),
+          or(
+            and(
+              eq(events.type, "turn/input/accepted"),
+              sql`json_extract(${events.data}, '$.clientRequestId') = ${command.requestId}`,
+            ),
+            and(
+              eq(events.type, "client/turn/rejected"),
+              sql`json_extract(${events.data}, '$.requestId') = ${command.requestId}`,
+            ),
+          ),
+        ),
+      )
+      .limit(1)
+      .get() !== undefined
+  );
+}
+
 function hasThreadInterruptedEventAtOrAfter(
   deps: ThreadLifecycleReadDeps,
   args: HasThreadInterruptedEventAtOrAfterArgs,
@@ -744,7 +777,7 @@ function settleThreadCommandFailure(
   if (!thread || thread.deletedAt !== null) {
     return emptyCommandResultSideEffects();
   }
-  if (hasExpectedTurnCompletedEvent(args.deps, args.command)) {
+  if (hasTerminalClientTurnRequestEvent(args.deps, args.command)) {
     return emptyCommandResultSideEffects();
   }
   if (args.command.type === "turn.submit") {
@@ -759,6 +792,9 @@ function settleThreadCommandFailure(
         message: args.report.errorMessage,
       },
     });
+  }
+  if (hasExpectedTurnCompletedEvent(args.deps, args.command)) {
+    return emptyCommandResultSideEffects();
   }
   appendSystemErrorEventInTransaction(args.deps, {
     threadId: thread.id,

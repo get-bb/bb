@@ -45,6 +45,7 @@ import {
   hasParentedEventCrossingSequence,
   listStoredTimelineWindowEventRows,
   listStoredTurnInputAcceptedRowsByClientRequestIds,
+  listStoredTurnRejectedRowsByClientRequestIds,
   MissingStoredTurnStartedError,
   listActiveBackgroundTaskCountsByThreadIds,
   listLatestBackgroundTaskStateRowsByItemIds,
@@ -1261,6 +1262,43 @@ describe("events", () => {
         clientRequestIds: ["creq_23456789ab", "creq_23456789ac"],
       }).map((row) => row.sequence),
     ).toEqual([3, 5]);
+  });
+
+  it("lists rejected rows for requested client turn sequences", () => {
+    const { db, thread } = setup();
+
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 3,
+        type: "client/turn/rejected",
+        ...threadEventFields,
+        data: JSON.stringify({
+          requestId: "creq_23456789ab",
+          reason: "provider_rpc_error",
+          message: "No active turn",
+        }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 4,
+        type: "client/turn/rejected",
+        ...threadEventFields,
+        data: JSON.stringify({
+          requestId: "creq_23456789ac",
+          reason: "provider_rpc_error",
+          message: "No active turn",
+        }),
+      },
+    ]);
+
+    expect(
+      listStoredTurnRejectedRowsByClientRequestIds(db, {
+        threadId: thread.id,
+        afterSequence: 2,
+        clientRequestIds: ["creq_23456789ac"],
+      }).map((row) => row.sequence),
+    ).toEqual([4]);
   });
 
   it("lists only the latest goal event row per thread", () => {

@@ -910,6 +910,12 @@ export interface ListStoredTurnInputAcceptedRowsByClientRequestIdsArgs {
   threadId: string;
 }
 
+export interface ListStoredTurnRejectedRowsByClientRequestIdsArgs {
+  afterSequence: number;
+  clientRequestIds: readonly ClientTurnRequestId[];
+  threadId: string;
+}
+
 export interface ListStoredClientTurnRequestIdsInRangeArgs {
   seqEnd: number;
   seqStart: number;
@@ -1748,6 +1754,34 @@ export function listStoredTurnInputAcceptedRowsByClientRequestIds(
       and(
         eq(events.threadId, args.threadId),
         eq(events.type, "turn/input/accepted"),
+        gt(events.sequence, args.afterSequence),
+        or(...clientRequestIdConditions),
+      ),
+    )
+    .orderBy(events.sequence)
+    .all();
+}
+
+export function listStoredTurnRejectedRowsByClientRequestIds(
+  db: DbConnection,
+  args: ListStoredTurnRejectedRowsByClientRequestIdsArgs,
+): StoredEventRow[] {
+  if (args.clientRequestIds.length === 0) {
+    return [];
+  }
+
+  const clientRequestIdConditions = args.clientRequestIds.map(
+    (clientRequestId) =>
+      sql`json_extract(${events.data}, '$.requestId') = ${clientRequestId}`,
+  );
+
+  return db
+    .select(storedEventRowFields)
+    .from(events)
+    .where(
+      and(
+        eq(events.threadId, args.threadId),
+        eq(events.type, "client/turn/rejected"),
         gt(events.sequence, args.afterSequence),
         or(...clientRequestIdConditions),
       ),

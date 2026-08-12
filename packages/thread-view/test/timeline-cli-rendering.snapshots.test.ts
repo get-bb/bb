@@ -599,6 +599,48 @@ describe("timeline CLI rendering snapshots", () => {
     expect(timeline.text).not.toContain("steer pending");
   });
 
+  it("does not apply an explicit rejection error to the next steer", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const turnStarted = event.turnStarted();
+    const firstRequest = event.clientTurnRequested({
+      target: { kind: "steer", expectedTurnId: "turn-1" },
+      text: "First steer",
+    });
+    const secondRequest = event.clientTurnRequested({
+      target: { kind: "steer", expectedTurnId: "turn-1" },
+      text: "Second steer",
+    });
+    const timeline = renderActiveTimeline([
+      turnStarted,
+      firstRequest,
+      secondRequest,
+      event.clientTurnRejected({ requestId: firstRequest.data.requestId }),
+      event.systemError({
+        code: "thread_command_failed",
+        message: "Command turn.submit failed",
+      }),
+    ]);
+
+    const userRows = timeline.rows.filter(
+      (
+        row,
+      ): row is Extract<TimelineRow, { kind: "conversation"; role: "user" }> =>
+        row.kind === "conversation" && row.role === "user",
+    );
+    expect(userRows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          text: "First steer",
+          turnRequest: expect.objectContaining({ status: "rejected" }),
+        }),
+        expect.objectContaining({
+          text: "Second steer",
+          turnRequest: expect.objectContaining({ status: "pending" }),
+        }),
+      ]),
+    );
+  });
+
   it("places accepted active-turn steers at the acceptance position", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
     const steerRequest = event.clientTurnRequested({

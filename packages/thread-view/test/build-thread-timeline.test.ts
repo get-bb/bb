@@ -715,6 +715,31 @@ function buildTimelineRowsWithAcceptedContext(
   return buildThreadTimelineFromEvents({
     acceptedClientRequestContext: {
       acceptedClientRequestEvents,
+      rejectedClientRequestEvents: [],
+    },
+    contextWindowEvents: [],
+    events,
+    options: {
+      includeDebugRawEvents: false,
+      includeNestedRows: true,
+      includeProviderUnhandledOperations: false,
+      isLatestPage: true,
+      threadStatus: "idle",
+      threadName: "",
+      turnMessageDetail: "full",
+      workspaceRoot: null,
+    },
+  }).rows;
+}
+
+function buildTimelineRowsWithRejectedContext(
+  events: ThreadEventWithMeta[],
+  rejectedClientRequestEvents: ThreadEventWithMeta[],
+): TimelineRow[] {
+  return buildThreadTimelineFromEvents({
+    acceptedClientRequestContext: {
+      acceptedClientRequestEvents: [],
+      rejectedClientRequestEvents,
     },
     contextWindowEvents: [],
     events,
@@ -1547,6 +1572,29 @@ describe("buildThreadTimelineFromEvents", () => {
     expect(
       rows.filter((row) => row.kind === "conversation" && row.role === "user"),
     ).toHaveLength(0);
+  });
+
+  it("uses rejected context to render a failed steer across a page boundary", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const steerRequest = event.clientTurnRequested({
+      target: { kind: "steer", expectedTurnId: "turn-1" },
+      text: "Late steer",
+    });
+    const rejectedContext = fromRows([
+      event.clientTurnRejected({ requestId: steerRequest.data.requestId }),
+    ]);
+
+    const rows = buildTimelineRowsWithRejectedContext(
+      fromRows([event.turnStarted({ turnId: "turn-1" }), steerRequest]),
+      rejectedContext,
+    );
+
+    expect(
+      rows.find((row) => row.kind === "conversation" && row.role === "user"),
+    ).toMatchObject({
+      text: "Late steer",
+      turnRequest: { status: "rejected" },
+    });
   });
 
   it("uses accepted context to classify stale steers as messages when the accepted turn is visible", () => {

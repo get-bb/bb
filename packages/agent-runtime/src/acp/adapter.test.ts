@@ -1410,6 +1410,19 @@ describe("acp adapter event translation", () => {
     ]);
   });
 
+  it("clears adapter turn state after the bridge reports no active turn", () => {
+    const adapter = createAdapter();
+    expect(startTurn(adapter)).toMatchObject([
+      { type: "turn/started", scope: turnScope("turn-1") },
+    ]);
+
+    adapter.clearActiveTurnState?.("thread-1");
+
+    expect(startTurn(adapter)).toMatchObject([
+      { type: "turn/started", scope: turnScope("turn-2") },
+    ]);
+  });
+
   it("drops noise updates and reports unknown updates", () => {
     const adapter = createAdapter();
     startTurn(adapter);
