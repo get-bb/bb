@@ -69,12 +69,18 @@ describe("mock Assurance Studio CRUD", () => {
       "utf8",
     )));
 
-    const iterator = client.listProjectSbomPackages({
-      projectId: "project-4a752600a07a",
-      page: { pageSize: 50 },
-    })[Symbol.asyncIterator]();
-    const first = await iterator.next();
-    expect(first.value).toMatchObject({ total: 900, items: { length: 50 } });
+    for (const pageSize of [50, 37]) {
+      const pages = [];
+      for await (const page of client.listProjectSbomPackages({
+        projectId: "project-4a752600a07a",
+        page: { pageSize },
+      })) pages.push(page);
+      const items = pages.flatMap((page) => page.items);
+      expect(items).toHaveLength(900);
+      expect(new Set(items.map((item) => item.id)).size).toBe(900);
+      expect(pages).toHaveLength(Math.ceil(900 / pageSize));
+      expect(pages.at(-1)).toMatchObject({ total: 900, next: null });
+    }
   });
 
   it("preserves page base, review outcome, audit attribution, and head checkpoint", async () => {

@@ -120,7 +120,25 @@ export function projectSbomListHandler(
 ): MockHandler {
   const frozenPage = JSON.parse(
     readFileSync(resolve(fixtureRoot, "assurance-studio/project-sbom-page-1.json"), "utf8"),
-  ) as { success: true; data: { page: number; pageSize: number } };
+  ) as {
+    success: true;
+    data: {
+      items: Record<string, Json>[];
+      total: number;
+      page: number;
+      pageSize: number;
+      hasMore: boolean;
+    };
+  };
+  const items = readFileSync(resolve(fixtureRoot, "platform/components.jsonl"), "utf8")
+    .split("\n")
+    .filter((line) => line.length > 0)
+    .map((line) => JSON.parse(line) as Record<string, Json>);
+  if (items.length !== frozenPage.data.total ||
+    JSON.stringify(items.slice(0, frozenPage.data.pageSize)) !==
+      JSON.stringify(frozenPage.data.items)) {
+    throw new Error("AS_SBOM_FIXTURE_INTEGRITY");
+  }
   return (context) => respond(() => {
     const paging = page(context);
     const projectExists = state.list("component").some((entity) =>
@@ -129,13 +147,21 @@ export function projectSbomListHandler(
     if (!projectExists) {
       throw new MockAssuranceStudioError(404, "AS_PROJECT_NOT_FOUND", context.params.id);
     }
-    if (paging.page !== frozenPage.data.page || paging.limit !== frozenPage.data.pageSize) {
-      throw new MockAssuranceStudioError(404, "AS_FIXTURE_PAGE_UNAVAILABLE", {
+    if (paging.page === frozenPage.data.page && paging.limit === frozenPage.data.pageSize) {
+      return Response.json(frozenPage);
+    }
+    const start = (paging.page - 1) * paging.limit;
+    const selected = items.slice(start, start + paging.limit);
+    return Response.json({
+      success: true,
+      data: {
+        items: selected,
+        total: items.length,
         page: paging.page,
         pageSize: paging.limit,
-      });
-    }
-    return Response.json(frozenPage);
+        hasMore: start + selected.length < items.length,
+      },
+    });
   });
 }
 
