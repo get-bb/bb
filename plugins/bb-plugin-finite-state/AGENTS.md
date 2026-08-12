@@ -2,10 +2,13 @@
 
 Read `docs/Implementation/AGENTS.md` completely before changing this plugin. It is binding within this directory. Precedence is:
 
-1. `docs/Implementation/RECON — bb SDK & Forge Surface.md`
-2. `docs/Implementation/IMPLEMENTATION PLAN — Master.md` and `docs/Implementation/AGENTS.md`
-3. `docs/Product Specs/SPEC 00–06`
-4. supporting research
+1. accepted ADRs and frozen interfaces
+2. `docs/Implementation/api-reference/README.md` and its vendored authority set
+3. `docs/Implementation/RECON — bb SDK & Forge Surface.md`, `docs/Implementation/IMPLEMENTATION PLAN — Master.md`, and `docs/Implementation/AGENTS.md`
+4. `docs/Product Specs/SPEC 00–06`
+5. supporting research
+
+RECON is historical on transport ownership; the accepted direct-API ADR supersedes its prior Forge gateway assumptions.
 
 Work on exactly one WP per task. Obey its owned-files and forbidden-files lists. If a frozen contract or another lane must change, stop and file an amendment; do not create a shadow contract.
 
