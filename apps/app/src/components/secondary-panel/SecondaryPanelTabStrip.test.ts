@@ -63,7 +63,12 @@ describe("secondary panel tab-strip edge fades", () => {
     const content = container.querySelector(
       "[data-secondary-panel-tab-content]",
     );
+    const strip = container.querySelector(
+      '[data-testid="secondary-panel-tab-strip"]',
+    );
     expect(content).not.toBeNull();
+    expect(strip).not.toBeNull();
+    expect(observed).toContain(strip);
     expect(observed).toContain(viewport);
     expect(observed).toContain(content);
     expect(resizeCallback).toBeDefined();
@@ -73,12 +78,14 @@ describe("secondary panel tab-strip edge fades", () => {
         .querySelector("[data-overflow-fade='left']")
         ?.classList.contains("w-6"),
     ).toBe(true);
-    expect(
-      container.querySelector('[aria-label="Scroll tabs left"]'),
-    ).not.toBeNull();
-    expect(
-      container.querySelector('[aria-label="Scroll tabs right"]'),
-    ).not.toBeNull();
+    const leftButton = container.querySelector<HTMLButtonElement>(
+      '[aria-label="Scroll tabs left"]',
+    );
+    const rightButton = container.querySelector<HTMLButtonElement>(
+      '[aria-label="Scroll tabs right"]',
+    );
+    expect(leftButton?.classList.contains("w-0")).toBe(true);
+    expect(rightButton?.classList.contains("w-0")).toBe(true);
 
     const rightFade = container.querySelector("[data-overflow-fade='right']");
     expect(rightFade?.classList.contains("opacity-0")).toBe(true);
@@ -87,17 +94,29 @@ describe("secondary panel tab-strip edge fades", () => {
       scrollWidth: { configurable: true, value: 240 },
       scrollLeft: { configurable: true, value: 0, writable: true },
     });
+    Object.defineProperty(strip!, "clientWidth", {
+      configurable: true,
+      value: 120,
+    });
+    Object.defineProperty(content!, "scrollWidth", {
+      configurable: true,
+      value: 240,
+    });
     act(() => {
       resizeCallback?.([], {} as ResizeObserver);
     });
     expect(rightFade?.classList.contains("opacity-100")).toBe(true);
 
-    const leftButton = container.querySelector<HTMLButtonElement>(
-      '[aria-label="Scroll tabs left"]',
+    const scrollRegion = container.querySelector(
+      "[data-secondary-panel-tab-scroll-region]",
     );
-    const rightButton = container.querySelector<HTMLButtonElement>(
-      '[aria-label="Scroll tabs right"]',
-    );
+    expect(strip?.children[0]).toBe(leftButton);
+    expect(strip?.children[1]).toBe(scrollRegion);
+    expect(strip?.children[2]).toBe(rightButton);
+    expect(leftButton?.classList.contains("absolute")).toBe(false);
+    expect(rightButton?.classList.contains("absolute")).toBe(false);
+    expect(leftButton?.classList.contains("w-5")).toBe(true);
+    expect(rightButton?.classList.contains("w-5")).toBe(true);
     expect(leftButton?.classList.contains("opacity-0")).toBe(true);
     expect(leftButton?.tabIndex).toBe(-1);
     expect(rightButton?.classList.contains("opacity-100")).toBe(true);
@@ -124,5 +143,18 @@ describe("secondary panel tab-strip edge fades", () => {
     expect(rightButton?.getAttribute("aria-hidden")).toBe("true");
     expect(leftButton?.getAttribute("aria-hidden")).toBe("false");
     expect(document.activeElement).toBe(leftButton);
+
+    Object.defineProperty(content!, "scrollWidth", {
+      configurable: true,
+      value: 100,
+    });
+    act(() => {
+      resizeCallback?.([], {} as ResizeObserver);
+    });
+    expect(leftButton?.classList.contains("w-0")).toBe(true);
+    expect(rightButton?.classList.contains("w-0")).toBe(true);
+    expect(document.activeElement).toBe(
+      container.querySelector('button[aria-pressed="true"]'),
+    );
   });
 });
