@@ -34,3 +34,17 @@ export function serverOwnedFields(entityType: string): ReadonlySet<string> {
   const extra = SERVER_OWNED_EXTRA_BY_TYPE[entityType] ?? SERVER_OWNED_DEFAULT_EXTRA;
   return new Set([...SERVER_OWNED_BASE, ...extra]);
 }
+
+function semanticFieldName(wireField: string): string {
+  return wireField
+    .replace(/([a-z0-9])([A-Z])/gu, "$1_$2")
+    .toLowerCase();
+}
+
+/**
+ * Matches the frozen camelCase transport spelling against the verbatim
+ * snake_case column names used by tara_snapshot_semantic_payload().
+ */
+export function isServerOwnedField(entityType: string, wireField: string): boolean {
+  return serverOwnedFields(entityType).has(semanticFieldName(wireField));
+}

@@ -15,6 +15,7 @@ import type { EntityKind } from "../../../lib/sync/registry.js";
 import { canonicalJson } from "./canonical.js";
 import { SERVER_OWNED_BASE } from "./exclusions.js";
 import {
+  InvalidEntityEnvelopeError,
   UnsupportedEntitySerializerError,
   createSerializer,
   semanticPayload,
@@ -60,16 +61,10 @@ const FROZEN_ASSET_ENTITY = {
   reviewVersion: "400",
 } satisfies AsEntity;
 
-const configuredFixtureRoot = process.env["FS_WP08_FIXTURE_ROOT"];
-const fixtureRoot = configuredFixtureRoot
-  ?? fileURLToPath(new URL("../../../test/mock-remote/fixtures", import.meta.url));
+const fixtureRoot = fileURLToPath(new URL("../../../test/mock-remote/fixtures", import.meta.url));
 const entitiesFixture = join(fixtureRoot, "assurance-studio", "entities.jsonl");
 const requirementsFixture = join(fixtureRoot, "assurance-studio", "requirements.jsonl");
 const fixtureCorpusAvailable = existsSync(entitiesFixture) && existsSync(requirementsFixture);
-
-if (configuredFixtureRoot !== undefined && !fixtureCorpusAvailable) {
-  throw new Error(`FS_WP08_FIXTURE_ROOT does not contain the frozen Assurance Studio corpus: ${fixtureRoot}`);
-}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -208,11 +203,22 @@ describe("semanticPayload", () => {
       future_semantic_field: { retained: true },
     };
 
-    expect(canonicalJson(semanticPayload("component", raw, {}))).toBe(canonicalJson({
+    expect(canonicalJson(semanticPayload("vexDecision", raw, {}))).toBe(canonicalJson({
       slug: "component-a",
       description: "Telemetry controller",
       future_semantic_field: { retained: true },
     }));
+  });
+
+  it("strips camelCase wire spellings through the upstream semantic field names", () => {
+    expect(semanticPayload("vexDecision", {
+      createdAt: "2026-05-12T14:30:00.000Z",
+      key: "finding-a",
+      projectId: "project-a",
+      status: "not_affected",
+      syncStatus: "complete",
+      updatedAt: "2026-05-12T14:31:00.000Z",
+    })).toEqual({ key: "finding-a", status: "not_affected" });
   });
 
   it("unwraps the frozen AsEntity envelope and replaces camelCase references", () => {
@@ -221,13 +227,35 @@ describe("semanticPayload", () => {
     }))).toBe('{"componentId":"component-0001","name":"Protected asset 1"}');
   });
 
-  it("replaces snake_case identifiers through arrays and nested edge objects", () => {
+  it("strips the camelCase attack-path override from a valid envelope", () => {
+    const attackPath = entityRecord({
+      fields: {
+        dataflowIds: ["flow-01"],
+        name: "WAN route",
+        routeSignature: "server-derived-route",
+      },
+      humanEdited: false,
+      id: "attack-path-1",
+      kind: "attack-path",
+      projectId: "project-4a752600a07a",
+      reviewStatus: "pending",
+      reviewVersion: "800",
+    } satisfies AsEntity);
+
+    expect(semanticPayload("attackPath", attackPath)).toEqual({
+      dataflowIds: ["flow-01"],
+      name: "WAN route",
+    });
+  });
+
+  it("replaces verified reference leaves without rewriting arbitrary descendants", () => {
     const raw = {
+      componentId: { nested: { anything: SOURCE_ID } },
       source_id: SOURCE_ID,
       target_ids: [TARGET_ID, SOURCE_ID],
       metadata: {
         description: SOURCE_ID,
-        edges: [{ from: SOURCE_ID, to: TARGET_ID }],
+        edges: [{ from: SOURCE_ID, label: SOURCE_ID, to: TARGET_ID }],
       },
     };
     const replacements = {
@@ -235,12 +263,13 @@ describe("semanticPayload", () => {
       [TARGET_ID]: "component-target",
     };
 
-    expect(semanticPayload("dataflow", raw, replacements)).toEqual({
+    expect(semanticPayload("vexDecision", raw, replacements)).toEqual({
+      componentId: { nested: { anything: SOURCE_ID } },
       source_id: "component-source",
       target_ids: ["component-target", "component-source"],
       metadata: {
         description: SOURCE_ID,
-        edges: [{ from: "component-source", to: "component-target" }],
+        edges: [{ from: "component-source", label: SOURCE_ID, to: "component-target" }],
       },
     });
   });
@@ -298,6 +327,22 @@ describe("createSerializer", () => {
     expect(serializer.contentHash(changedEnvelope, options)).toBe(serializer.contentHash(parsed));
   });
 
+  it("fails closed when an Assurance Studio response drifts from the frozen envelope", () => {
+    const driftedEnvelope = Object.fromEntries(
+      Object.entries(entityRecord(FROZEN_ASSET_ENTITY)).filter(([key]) => key !== "humanEdited"),
+    );
+
+    expect(() => createSerializer("asset").semanticPayload(driftedEnvelope))
+      .toThrow(InvalidEntityEnvelopeError);
+    expect(() => createSerializer("asset").semanticPayload(driftedEnvelope))
+      .toThrow("missing humanEdited");
+
+    expect(() => createSerializer("asset").semanticPayload({
+      ...entityRecord(FROZEN_ASSET_ENTITY),
+      fields: { invalid: undefined },
+    })).toThrow("fields must be a JSON object");
+  });
+
   it("does not route cached or canvas-layout data into entity YAML", () => {
     expect(() => createSerializer("finding")).toThrow(UnsupportedEntitySerializerError);
     expect(() => createSerializer("canvasLayout")).toThrow(UnsupportedEntitySerializerError);
@@ -323,7 +368,13 @@ describe("createSerializer", () => {
     const raw: Record<string, unknown> = JSON.parse(
       '{"slug":"component-a","__proto__":{"retained":true}}',
     );
-    const payload = semanticPayload("component", raw);
+    if (!isJsonRecord(raw)) {
+      throw new Error("test payload must satisfy the frozen JSON contract");
+    }
+    const payload = semanticPayload("asset", entityRecord({
+      ...FROZEN_ASSET_ENTITY,
+      fields: raw,
+    } satisfies AsEntity));
 
     expect(Object.hasOwn(payload, "__proto__")).toBe(true);
     expect(payload["__proto__"]).toEqual({ retained: true });

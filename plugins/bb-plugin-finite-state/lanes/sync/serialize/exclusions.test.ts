@@ -4,6 +4,7 @@ import {
   SERVER_OWNED_BASE,
   SERVER_OWNED_DEFAULT_EXTRA,
   SERVER_OWNED_EXTRA_BY_TYPE,
+  isServerOwnedField,
   serverOwnedFields,
 } from "./exclusions.js";
 
@@ -61,5 +62,14 @@ describe("server-owned field exclusions", () => {
       "created_at",
       "processing_status",
     ]);
+  });
+
+  it("matches frozen camelCase wire fields without changing the upstream list", () => {
+    expect(isServerOwnedField("component", "projectId")).toBe(true);
+    expect(isServerOwnedField("component", "updatedAt")).toBe(true);
+    expect(isServerOwnedField("component", "syncStatus")).toBe(true);
+    expect(isServerOwnedField("attack_path", "routeSignature")).toBe(true);
+    expect(isServerOwnedField("source_document", "processingStatus")).toBe(false);
+    expect(isServerOwnedField("component", "futureSemanticField")).toBe(false);
   });
 });
