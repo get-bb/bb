@@ -171,7 +171,7 @@ const ShortcutRecorder = memo(
           )}
         </Button>
         {error ? (
-          <p className="text-xs text-destructive" role="alert">
+          <p className="select-text text-xs text-destructive" role="alert">
             {error}
           </p>
         ) : null}

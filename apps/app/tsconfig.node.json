@@ -8,6 +8,8 @@
     "types": ["node"]
   },
   "include": [
+    "e2e",
+    "playwright.selection.config.ts",
     "vite.config.ts",
     "vite.dev.config.ts",
     "vite-bundle-stats.ts",

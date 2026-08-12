@@ -6,7 +6,12 @@ import { MemoryRouter } from "react-router-dom";
 import type { Environment, Thread } from "@bb/domain";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { EnvironmentRow, ParentSelectorRow } from "./ThreadMetadataContent";
+import {
+  EnvironmentRow,
+  ParentSelectorRow,
+  ThreadMetadataCard,
+  WorkspacePathRow,
+} from "./ThreadMetadataContent";
 import { parentThreads } from "./ThreadMetadataContent.fixtures";
 
 const localHost = { locality: "local", identity: null } as const;
@@ -131,6 +136,20 @@ describe("EnvironmentRow", () => {
     expect(markup).not.toContain(
       'aria-label="Create new thread in this worktree"',
     );
+  });
+});
+
+describe("ThreadMetadataCard", () => {
+  it("keeps diagnostic rows and copyable values selectable", () => {
+    render(
+      <ThreadMetadataCard>
+        <WorkspacePathRow environment={makeEnvironment()} />
+      </ThreadMetadataCard>,
+    );
+
+    const path = screen.getByText("/workspace");
+    expect(path.closest("dl")?.classList).toContain("select-text");
+    expect(path.closest("button")?.classList).toContain("select-text");
   });
 });
 

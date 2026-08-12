@@ -13,6 +13,7 @@ node_modules
 
 # testing
 coverage
+/apps/app/test-results/
 
 # next.js
 .next

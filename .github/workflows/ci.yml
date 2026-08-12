@@ -129,6 +129,28 @@ jobs:
       - name: Test
         run: pnpm exec turbo run test ${{ matrix.filter }} --cache-dir=.turbo/cache --output-logs=new-only ${{ matrix.args }}
 
+  browser-tests:
+    name: Browser tests (Chromium, ubuntu-latest, Node 22.x)
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup workspace
+        uses: ./.github/actions/setup-workspace
+        with:
+          node-version: ${{ env.PRIMARY_NODE_VERSION }}
+          pnpm-version: ${{ env.PNPM_VERSION }}
+          cache-prefix: browser-tests
+
+      - name: Install Chromium
+        run: pnpm --filter @bb/app exec playwright install --with-deps chromium
+
+      - name: Test browser selection behavior
+        run: pnpm exec turbo run test:browser --filter=@bb/app --cache-dir=.turbo/cache --output-logs=new-only
+
   # The macOS legs run without the Turbo cache. Blacksmith's transparent cache
   # only backs their Linux runners, so on macOS the cache moves over GitHub's
   # own service at ~50 MB/s: restoring and saving the ~2 GB directory cost about

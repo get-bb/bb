@@ -1301,7 +1301,8 @@ export function MachineUpdatesRows({
                 <RowStateCaption state="failed">Failed</RowStateCaption>
                 <code
                   role="alert"
-                  className="rounded bg-muted/70 px-1.5 py-0.5 font-mono text-xs text-destructive"
+                  className="select-text rounded bg-muted/70 px-1.5 py-0.5 font-mono text-xs text-destructive"
+                  data-select-all-scope=""
                 >
                   {failure.logDialogState.message}
                 </code>

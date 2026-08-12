@@ -93,7 +93,9 @@ function MachineRenameDialogContent({
             onChange={(event) => setNextName(event.target.value)}
           />
           {errorMessage !== null ? (
-            <p className="text-sm text-destructive">{errorMessage}</p>
+            <p className="select-text text-sm text-destructive">
+              {errorMessage}
+            </p>
           ) : null}
         </div>
         <DialogFooter>

@@ -547,7 +547,7 @@ export function MachineSettingsView() {
           </DialogDescription>
         </DialogHeader>
         {removeHost.isError ? (
-          <p className="text-sm text-destructive" role="alert">
+          <p className="select-text text-sm text-destructive" role="alert">
             {getMutationErrorMessage({
               error: removeHost.error,
               fallbackMessage: `Couldn't remove ${host.name}.`,

@@ -988,7 +988,7 @@ export function ThreadMetadataCard({ children }: DetailCardWrapperProps) {
   return (
     <DetailCard
       appearance="flat"
-      className="min-h-0 flex-1 gap-1.5 overflow-x-hidden overflow-y-auto px-4 py-3"
+      className="min-h-0 flex-1 select-text gap-1.5 overflow-x-hidden overflow-y-auto px-4 py-3"
     >
       {children}
     </DetailCard>

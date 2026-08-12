@@ -89,7 +89,7 @@ export function CopyableInlineLabel({
     <button
       type="button"
       className={cn(
-        `inline-flex min-w-0 max-w-full cursor-pointer items-center gap-1.5 rounded-md text-left text-foreground ${CONTROL_HOVER_TRANSITION} hover:text-foreground/80`,
+        `inline-flex min-w-0 max-w-full cursor-pointer select-text items-center gap-1.5 rounded-md text-left text-foreground ${CONTROL_HOVER_TRANSITION} hover:text-foreground/80`,
         className,
       )}
       onClick={() => {

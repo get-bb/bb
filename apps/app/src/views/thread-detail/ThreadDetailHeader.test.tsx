@@ -78,6 +78,27 @@ describe("ThreadDetailHeader", () => {
   // The header seam now belongs to AppPageHeader, so AppPageHeader.test.tsx
   // guards it for every header instead of this one call site.
 
+  it("keeps a non-draggable thread title selectable", () => {
+    render(
+      <PaneContext.Provider value={PANE_CONTEXT}>
+        <ThreadDetailHeader
+          actionsMenu={null}
+          childPillLabel={null}
+          isSecondaryPanelOpen={false}
+          onOpenThreadGitAction={vi.fn()}
+          onToggleSecondaryPanel={vi.fn()}
+          threadHeaderGitActions={[]}
+          threadId={THREAD_ID}
+          threadTitle="Selectable thread title"
+        />
+      </PaneContext.Provider>,
+    );
+
+    expect(
+      screen.getByText("Selectable thread title").closest("p")?.classList,
+    ).toContain("select-text");
+  });
+
   it("leaves the open right-panel collapse control to the panel header", () => {
     render(
       <PaneContext.Provider value={PANE_CONTEXT}>

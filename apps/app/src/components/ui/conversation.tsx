@@ -12,8 +12,9 @@ export function ConversationTimeline({
 }: ConversationTimelineProps) {
   return (
     <div
+      data-selectable-content-region=""
       className={cn(
-        "flex min-w-0 flex-col gap-1 [&_button:not(:disabled)]:cursor-pointer",
+        "flex min-w-0 select-text flex-col gap-1 [&_button:not(:disabled)]:cursor-pointer",
         className,
       )}
     >
