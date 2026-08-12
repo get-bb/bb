@@ -123,6 +123,8 @@ describe("Finite State dark theme", () => {
     expect(themeVariables.get("--font-heading")).toContain("FSDS Space Grotesk");
     expect(themeVariables.get("--font-sans")).toContain("FSDS Instrument Sans");
     expect(themeVariables.get("--font-mono")).toContain("SFMono-Regular");
+    expect(themeVariables.get("--accent")).toContain("var(--attention)");
+    expect(themeVariables.get("--accent")).not.toContain("var(--primary)");
 
     for (const name of [
       "--chart-1",
@@ -176,6 +178,19 @@ describe("Finite State dark theme", () => {
       expect(hash, family).toBe(expectedHashes.get(family));
       expect(fontReadme).toContain(hash);
     }
+
+    expect(fontReadme).toContain(
+      "Copyright 2022 The Instrument Sans Project Authors",
+    );
+    expect(fontReadme).toContain(
+      "Copyright 2020 The Space Grotesk Project Authors",
+    );
+    expect(fontReadme).toContain(
+      "SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007",
+    );
+    expect(fontReadme).toContain(
+      'THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND',
+    );
   });
 
   it("keeps operational text and focus indicators above chosen WCAG thresholds", () => {

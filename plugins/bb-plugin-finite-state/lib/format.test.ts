@@ -76,6 +76,7 @@ describe("date formatters", () => {
     expect(formatIsoDate("2026-08-12")).toBe("2026-08-12");
     expect(formatIsoDate("2026-08-12T23:30:00-04:00")).toBe("2026-08-13");
     expect(formatIsoDate("2024-02-29T00:00:00Z")).toBe("2024-02-29");
+    expect(formatIsoDate("2026-01-31T23:59:59.999Z")).toBe("2026-01-31");
   });
 
   it.each([
@@ -83,6 +84,16 @@ describe("date formatters", () => {
     undefined,
     "",
     "2026-02-30",
+    "2026-02-30T12:00:00Z",
+    "2025-02-29T12:00:00Z",
+    "2026-04-31T12:00:00Z",
+    "2026-00-01T12:00:00Z",
+    "2026-13-01T12:00:00Z",
+    "2026-08-00T12:00:00Z",
+    "2026-08-12T24:00:00Z",
+    "2026-08-12T12:60:00Z",
+    "2026-08-12T12:00:60Z",
+    "2026-08-12T12:00:00+24:00",
     "2026-08-12T12:00:00",
     "08/12/2026",
     "not-a-date",
@@ -114,13 +125,35 @@ describe("identifier formatters", () => {
 
   it("preserves valid purls and shortens long values within the requested width", () => {
     const short = "pkg:npm/zod@4.3.6";
-    const long = "pkg:npm/%40finite-state/security-package@12.0.0?arch=x86_64&os=linux";
+    const long =
+      "pkg:npm/%40finite-state/security-package@12.0.0?arch=x86_64&os=linux#dist/index.js";
     expect(formatPurl(short)).toBe(short);
+    expect(formatPurl("pkg:generic/firmware.bin")).toBe(
+      "pkg:generic/firmware.bin",
+    );
+    expect(formatPurl(long, 200)).toBe(long);
     expect(formatPurl(long, 32)).toHaveLength(32);
     expect(formatPurl(long, 32)).toContain("…");
-    expect(formatPurl("https://example.com/package")).toBe("—");
-    expect(formatPurl("pkg:npm")).toBe("—");
-    expect(formatPurl("pkg:npm/name with space")).toBe("—");
     expect(formatPurl(short, 7)).toBe("—");
+  });
+
+  it.each([
+    "https://example.com/package",
+    "pkg:npm",
+    "pkg:npm/",
+    "pkg:npm//zod",
+    "pkg:npm/zod@",
+    "pkg:npm/zod@@4.3.6",
+    "pkg:npm/zod@4.3.6/extra",
+    "pkg:NPM/zod",
+    "pkg:npm/zod?arch",
+    "pkg:npm/zod?=x86_64",
+    "pkg:npm/zod?arch=x86_64&arch=arm64",
+    "pkg:npm/zod#../etc",
+    "pkg:npm/zod#dist/?arch=x86_64",
+    "pkg:npm/%zz",
+    "pkg:npm/name with space",
+  ])("rejects malformed purl %s", (value) => {
+    expect(formatPurl(value)).toBe("—");
   });
 });

@@ -9,10 +9,12 @@ export type Severity =
 const EMPTY_VALUE = "—";
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/u;
 const ISO_INSTANT =
-  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}:\d{2})$/u;
+  /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d{1,9})?)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/u;
 const HEX_HASH = /^[a-f\d]+$/iu;
-const PURL =
-  /^pkg:[a-z][a-z\d.+-]*\/[^\s\u0000-\u001f\u007f/?#][^\s\u0000-\u001f\u007f]*$/u;
+const PURL_TYPE = /^[a-z][a-z\d.+-]*$/u;
+const PURL_QUALIFIER = /^[a-z][a-z\d._-]*$/u;
+const UNSAFE_IDENTIFIER_TEXT = /[\s\u0000-\u001f\u007f]/u;
+const INVALID_PERCENT_ESCAPE = /%(?![a-f\d]{2})/iu;
 
 const SEVERITIES = {
   critical: "Critical",
@@ -27,13 +29,27 @@ const HOUR_MS = 60 * MINUTE_MS;
 const DAY_MS = 24 * HOUR_MS;
 const WEEK_MS = 7 * DAY_MS;
 
+function isValidCalendarDate(value: string): boolean {
+  if (!ISO_DATE.test(value)) {
+    return false;
+  }
+  const timestamp = Date.parse(`${value}T00:00:00.000Z`);
+  return (
+    Number.isFinite(timestamp) &&
+    new Date(timestamp).toISOString().slice(0, 10) === value
+  );
+}
+
 function parseIsoInstant(value: string | null | undefined): number | null {
   if (typeof value !== "string") {
     return null;
   }
 
   const normalized = value.trim();
-  if (!ISO_DATE.test(normalized) && !ISO_INSTANT.test(normalized)) {
+  if (
+    (!ISO_DATE.test(normalized) && !ISO_INSTANT.test(normalized)) ||
+    !isValidCalendarDate(normalized.slice(0, 10))
+  ) {
     return null;
   }
 
@@ -44,13 +60,87 @@ function parseIsoInstant(value: string | null | undefined): number | null {
     return null;
   }
 
-  // Date.parse normalizes impossible calendar values in some runtimes. The
-  // round trip keeps date-only input strict and deterministic.
-  if (ISO_DATE.test(normalized) && new Date(timestamp).toISOString().slice(0, 10) !== normalized) {
-    return null;
+  return timestamp;
+}
+
+function isValidPurl(value: string): boolean {
+  if (
+    !value.startsWith("pkg:") ||
+    UNSAFE_IDENTIFIER_TEXT.test(value) ||
+    INVALID_PERCENT_ESCAPE.test(value)
+  ) {
+    return false;
   }
 
-  return timestamp;
+  const fragmentParts = value.split("#");
+  if (fragmentParts.length > 2) {
+    return false;
+  }
+  const [beforeFragment, subpath] = fragmentParts;
+  if (
+    subpath !== undefined &&
+    (subpath.length === 0 ||
+      subpath.includes("?") ||
+      subpath.startsWith("/") ||
+      subpath.endsWith("/") ||
+      subpath
+        .split("/")
+        .some((part) => part === "" || part === "." || part === ".."))
+  ) {
+    return false;
+  }
+
+  const queryParts = beforeFragment.split("?");
+  if (queryParts.length > 2) {
+    return false;
+  }
+  const [coordinates, query] = queryParts;
+  if (query !== undefined) {
+    if (query.length === 0) {
+      return false;
+    }
+    const qualifierKeys = new Set<string>();
+    for (const qualifier of query.split("&")) {
+      const separator = qualifier.indexOf("=");
+      const key = qualifier.slice(0, separator);
+      if (
+        separator <= 0 ||
+        separator !== qualifier.lastIndexOf("=") ||
+        separator === qualifier.length - 1 ||
+        !PURL_QUALIFIER.test(key) ||
+        qualifierKeys.has(key)
+      ) {
+        return false;
+      }
+      qualifierKeys.add(key);
+    }
+  }
+
+  const coordinate = coordinates.slice(4);
+  const firstSlash = coordinate.indexOf("/");
+  if (firstSlash <= 0 || !PURL_TYPE.test(coordinate.slice(0, firstSlash))) {
+    return false;
+  }
+
+  const path = coordinate.slice(firstSlash + 1);
+  const segments = path.split("/");
+  if (
+    segments.some((part) => part === "" || part === "." || part === "..") ||
+    segments.slice(0, -1).some((part) => part.includes("@"))
+  ) {
+    return false;
+  }
+  const nameAndVersion = segments.at(-1);
+  if (nameAndVersion === undefined) {
+    return false;
+  }
+  const nameAndVersionParts = nameAndVersion.split("@");
+  return (
+    nameAndVersionParts.length === 1 ||
+    (nameAndVersionParts.length === 2 &&
+      nameAndVersionParts[0].length > 0 &&
+      nameAndVersionParts[1].length > 0)
+  );
 }
 
 function compactDecimal(value: number): string {
@@ -141,7 +231,7 @@ export function formatPurl(
   max = 72,
 ): string {
   const normalized = typeof value === "string" ? value.trim() : "";
-  if (!PURL.test(normalized) || !Number.isInteger(max) || max < 8) {
+  if (!isValidPurl(normalized) || !Number.isInteger(max) || max < 8) {
     return EMPTY_VALUE;
   }
   if (normalized.length <= max) {

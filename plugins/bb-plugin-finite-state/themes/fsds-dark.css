@@ -49,7 +49,7 @@
   --primary-foreground: oklch(0.145 0.01 255);
   --secondary: color-mix(in oklch, var(--ink) 10%, var(--canvas));
   --secondary-foreground: var(--ink);
-  --accent: color-mix(in oklch, var(--primary) 18%, var(--canvas));
+  --accent: color-mix(in oklch, var(--attention) 16%, var(--canvas));
   --accent-foreground: var(--ink);
   --muted: color-mix(in oklch, var(--ink) 8%, var(--canvas));
   --muted-foreground: oklch(0.72 0.02 220);
