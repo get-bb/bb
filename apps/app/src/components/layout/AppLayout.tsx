@@ -8,6 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAtom, useStore } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import { Link, matchPath, useLocation, useNavigate } from "react-router-dom";
+import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type { ProjectResponse } from "@bb/server-contract";
 import { Icon } from "@bb/shared-ui/icon";
 import { RESOURCE_ROUTE_LABEL_EVENT } from "@bb/shared-ui/resource-list";
@@ -453,6 +454,20 @@ export function AppLayout({ children }: AppLayoutProps) {
     toolsBackRoutePath,
     toolsRoutePath,
   } = useAppSettingsRouteMemory();
+  useEffect(() => {
+    const desktop = getBbDesktopInfo();
+    if (desktop?.onOpenThread === undefined) {
+      return;
+    }
+    return desktop.onOpenThread((request) => {
+      void navigate(
+        getThreadRoutePath({
+          projectId: request.projectId ?? PERSONAL_PROJECT_ID,
+          threadId: request.threadId,
+        }),
+      );
+    });
+  }, [navigate]);
   useEffect(
     () =>
       wsManager.onThreadOpen((signal) => {

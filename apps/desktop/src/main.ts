@@ -9,6 +9,7 @@ import {
   nativeImage,
   nativeTheme,
   net,
+  Notification,
   safeStorage,
   session,
   shell,
@@ -33,6 +34,7 @@ import {
   systemConfigResponseSchema,
   type ClientMessage,
 } from "@bb/server-contract";
+import { BbHttpError, createNodeBbSdk, type BbSdk } from "@bb/sdk";
 import { z } from "zod";
 import {
   assertPathExists,
@@ -135,6 +137,7 @@ import {
   BB_DESKTOP_CLOSE_WINDOW_RESPONSE_CHANNEL,
   BB_DESKTOP_GET_WINDOW_STATE_CHANNEL,
   BB_DESKTOP_OPEN_NEW_TAB_CHANNEL,
+  BB_DESKTOP_OPEN_THREAD_CHANNEL,
   BB_DESKTOP_WINDOW_STATE_CHANGED_CHANNEL,
   CLOSE_WINDOW_REQUEST_TIMEOUT_MS,
 } from "./desktop-window-command-ipc.js";
@@ -146,6 +149,14 @@ import { resolveDesktopBrowserAppCommand } from "./desktop-browser-shortcuts.js"
 import { registerDesktopBrowserIpc } from "./desktop-browser-main-ipc.js";
 import { ensurePackagedMacOsUserShellPath } from "./desktop-shell-path.js";
 import { clearPackagedSessionHttpCache } from "./desktop-session-cache.js";
+import { createDesktopAuthenticatedWebsocketFactory } from "./desktop-authenticated-websocket.js";
+import {
+  createDesktopCompletionNotificationWatcher,
+  formatDesktopCompletionNotificationTitle,
+  formatDesktopCompletionThreadUrl,
+  type DesktopCompletionNotification,
+  type DesktopCompletionNotificationWatcher,
+} from "./desktop-completion-notifications.js";
 import { resolveDesktopReloadShortcut } from "./desktop-reload-shortcut.js";
 import {
   createLogTailer,
@@ -299,8 +310,11 @@ let logViewerPreloadPath: string | null = null;
 let logViewerTailer: LogTailer | null = null;
 let logViewerWindow: BrowserWindow | null = null;
 let systemConfigSync: SystemConfigSync | null = null;
+let completionNotificationWatcher: DesktopCompletionNotificationWatcher | null =
+  null;
 let systemConfigRefreshToken = 0;
 let refreshRemoteSystemConfig: (() => void) | null = null;
+const visibleCompletionNotifications = new Set<Notification>();
 const applicationWindowWebContentsIds = new Set<number>();
 let bbAppLoaded = false;
 let stoppingForQuit = false;
@@ -772,6 +786,127 @@ function formatRealtimeUrl(serverUrl: string): string {
   return url.toString();
 }
 
+function createCompletionNotificationSdk(serverUrl: string): BbSdk {
+  const authenticatedFetch: typeof fetch = (input, init) =>
+    net.fetch(input as string | Request, {
+      ...init,
+      credentials: "include",
+    });
+  return createNodeBbSdk({
+    baseUrl: serverUrl,
+    fetch: authenticatedFetch,
+    websocket: createDesktopAuthenticatedWebsocketFactory({
+      async headers() {
+        const cookies = await session.defaultSession.cookies.get({
+          url: serverUrl,
+        });
+        const cookieHeader = cookies
+          .map((cookie) => `${cookie.name}=${cookie.value}`)
+          .join("; ");
+        return cookieHeader.length > 0 ? { Cookie: cookieHeader } : undefined;
+      },
+    }),
+  });
+}
+
+function focusApplicationFromNotification(
+  completion: DesktopCompletionNotification,
+): void {
+  app.focus({ steal: true });
+  if (
+    desktopWindowFactory?.sendToFirstWindow(BB_DESKTOP_OPEN_THREAD_CHANNEL, {
+      projectId: completion.projectId,
+      threadId: completion.threadId,
+    }) === true
+  ) {
+    return;
+  }
+
+  const threadUrl =
+    currentWindowUrl === null
+      ? null
+      : formatDesktopCompletionThreadUrl(currentWindowUrl, completion);
+  void createApplicationWindow({
+    initialUrl: threadUrl,
+    stateKey: null,
+  }).catch((error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error);
+    createDesktopLogger().warn(
+      `[desktop] could not open completed thread: ${message}`,
+    );
+  });
+}
+
+function showCompletionNotification(
+  completion: DesktopCompletionNotification,
+): void {
+  if (process.platform !== "darwin" || !Notification.isSupported()) {
+    return;
+  }
+  const notification = new Notification({
+    sound: "Glass",
+    subtitle: "Click to view session.",
+    title: formatDesktopCompletionNotificationTitle(completion.title),
+  });
+  const release = (): void => {
+    visibleCompletionNotifications.delete(notification);
+  };
+  notification.once("click", () => {
+    focusApplicationFromNotification(completion);
+  });
+  notification.once("close", release);
+  notification.once("failed", (_event, error) => {
+    release();
+    createDesktopLogger().warn(
+      `[desktop] could not show completion notification: ${error}`,
+    );
+  });
+  visibleCompletionNotifications.add(notification);
+  while (visibleCompletionNotifications.size > 100) {
+    const oldest = visibleCompletionNotifications.values().next().value;
+    if (oldest === undefined) {
+      break;
+    }
+    visibleCompletionNotifications.delete(oldest);
+  }
+  notification.show();
+}
+
+function stopCompletionNotificationWatcher(): void {
+  completionNotificationWatcher?.stop();
+  completionNotificationWatcher = null;
+}
+
+function startCompletionNotificationWatcher(serverUrl: string): void {
+  stopCompletionNotificationWatcher();
+  if (process.platform !== "darwin") {
+    return;
+  }
+  const logger = createDesktopLogger();
+  const sdk = createCompletionNotificationSdk(serverUrl);
+  completionNotificationWatcher = createDesktopCompletionNotificationWatcher({
+    async fetchThread(threadId, signal) {
+      try {
+        return await sdk.threads.get({ signal, threadId });
+      } catch (error) {
+        if (error instanceof BbHttpError && error.status === 404) {
+          return null;
+        }
+        throw error;
+      }
+    },
+    listThreads: (signal) => sdk.threads.list({ archived: false, signal }),
+    notify: showCompletionNotification,
+    subscribeToConnection: (callback) =>
+      sdk.subscribe({ callback, event: "realtime:connection" }),
+    subscribeToThreadChanges: (callback) =>
+      sdk.subscribe({ callback, event: "thread:changed" }),
+    warn(message) {
+      logger.warn(`[desktop] ${message}`);
+    },
+  });
+}
+
 async function fetchSystemConfig(args: FetchSystemConfigArgs) {
   const response = await args.fetchImpl(formatApiUrl(args));
   if (!response.ok) {
@@ -925,11 +1060,13 @@ function createRemoteSystemConfigSync(serverUrl: string): SystemConfigSync {
 function stopSystemConfigSync(): void {
   systemConfigSync?.stop();
   systemConfigSync = null;
+  stopCompletionNotificationWatcher();
 }
 
 function startSystemConfigSync(serverUrl: string): void {
   systemConfigSync?.stop();
   systemConfigSync = createSystemConfigSync(serverUrl);
+  startCompletionNotificationWatcher(serverUrl);
   void refreshSystemConfig({ fetchImpl: fetch, serverUrl });
 }
 
@@ -937,6 +1074,7 @@ function startSystemConfigSync(serverUrl: string): void {
 function startRemoteSystemConfigSync(serverUrl: string): void {
   systemConfigSync?.stop();
   systemConfigSync = createRemoteSystemConfigSync(serverUrl);
+  startCompletionNotificationWatcher(serverUrl);
 }
 
 function registerApplicationWindow(browserWindow: DesktopBrowserWindow): void {
@@ -1132,6 +1270,7 @@ async function applyServerTarget(): Promise<void> {
   // flight would otherwise still read itself as current while this switch
   // runs, and its local-server fallback would undo the switch.
   connectSessionRenewal?.stop();
+  stopCompletionNotificationWatcher();
   serverTargetGeneration += 1;
   const generation = serverTargetGeneration;
   const isCurrent = (): boolean => serverTargetGeneration === generation;

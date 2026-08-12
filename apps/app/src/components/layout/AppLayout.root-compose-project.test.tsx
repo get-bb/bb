@@ -2,7 +2,7 @@
 
 import { cleanup, render, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppLayout } from "./AppLayout";
 
@@ -10,6 +10,7 @@ const ROOT_COMPOSE_PROJECT_ID_STORAGE_KEY = "bb.root-compose.project-id";
 
 const mockUseThread = vi.hoisted(() => vi.fn());
 const mockUseThreadDetailBootstrap = vi.hoisted(() => vi.fn());
+const mockGetBbDesktopInfo = vi.hoisted(() => vi.fn());
 
 vi.mock("@/components/sidebar/AppSidebar", () => ({
   AppSidebar: () => <aside data-testid="app-sidebar" />,
@@ -78,7 +79,7 @@ vi.mock("@/lib/bb-desktop", () => ({
   MACOS_TRAFFIC_LIGHT_RESERVE_OFFSET_CLASS: "",
   MACOS_WINDOW_DRAG_CLASS: "",
   MACOS_WINDOW_NO_DRAG_CLASS: "",
-  getBbDesktopInfo: () => null,
+  getBbDesktopInfo: () => mockGetBbDesktopInfo(),
   shouldReserveMacosTrafficLights: () => false,
   shouldUseMacosDesktopChrome: () => false,
 }));
@@ -145,6 +146,7 @@ vi.mock("@/hooks/queries/thread-queries", () => ({
 describe("AppLayout root compose project preference", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    mockGetBbDesktopInfo.mockReturnValue(null);
     mockUseThread.mockReturnValue({
       data: {
         id: "thr_opened",
@@ -190,5 +192,54 @@ describe("AppLayout root compose project preference", () => {
     expect(
       window.localStorage.getItem(ROOT_COMPOSE_PROJECT_ID_STORAGE_KEY),
     ).toBe("proj_last_run");
+  });
+
+  it("handles desktop thread requests with in-app router navigation", async () => {
+    const openThreadListeners = new Set<
+      (request: { projectId: string | null; threadId: string }) => void
+    >();
+    mockGetBbDesktopInfo.mockReturnValue({
+      onOpenThread(
+        listener: (request: {
+          projectId: string | null;
+          threadId: string;
+        }) => void,
+      ) {
+        openThreadListeners.add(listener);
+        return () => openThreadListeners.delete(listener);
+      },
+    });
+
+    function RouteProbe() {
+      return <div data-testid="route-path">{useLocation().pathname}</div>;
+    }
+
+    const rendered = render(
+      <MemoryRouter initialEntries={["/"]}>
+        <AppLayout>
+          <RouteProbe />
+        </AppLayout>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(openThreadListeners.size).toBe(1));
+    for (const listener of openThreadListeners) {
+      listener({ projectId: "proj_opened", threadId: "thr_opened" });
+    }
+
+    await waitFor(() => {
+      expect(rendered.getByTestId("route-path").textContent).toBe(
+        "/projects/proj_opened/threads/thr_opened",
+      );
+    });
+
+    for (const listener of openThreadListeners) {
+      listener({ projectId: null, threadId: "thr_personal" });
+    }
+    await waitFor(() => {
+      expect(rendered.getByTestId("route-path").textContent).toBe(
+        "/threads/thr_personal",
+      );
+    });
   });
 });

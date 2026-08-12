@@ -6,6 +6,7 @@ import {
   bbDesktopBrowserSnapshotSchema,
   bbDesktopBrowserStateSchema,
   bbDesktopInfoSchema,
+  bbDesktopOpenThreadRequestSchema,
   bbDesktopWindowStateSchema,
   type BbDesktopApi,
   type BbDesktopAppCommandHandler,
@@ -21,6 +22,7 @@ import {
   type BbDesktopInfoChangeHandler,
   type BbDesktopInfoUnsubscribe,
   type BbDesktopOpenNewTabHandler,
+  type BbDesktopOpenThreadHandler,
   type BbDesktopTheme,
   type BbDesktopWindowState,
   type BbDesktopWindowStateChangeHandler,
@@ -54,6 +56,7 @@ import {
   BB_DESKTOP_CLOSE_WINDOW_RESPONSE_CHANNEL,
   BB_DESKTOP_GET_WINDOW_STATE_CHANNEL,
   BB_DESKTOP_OPEN_NEW_TAB_CHANNEL,
+  BB_DESKTOP_OPEN_THREAD_CHANNEL,
   BB_DESKTOP_WINDOW_STATE_CHANGED_CHANNEL,
 } from "./desktop-window-command-ipc.js";
 import {
@@ -163,6 +166,7 @@ const browserSnapshotListeners = new Set<BbDesktopBrowserSnapshotHandler>();
 const closeWindowRequestListeners =
   new Set<BbDesktopCloseWindowRequestHandler>();
 const openNewTabListeners = new Set<BbDesktopOpenNewTabHandler>();
+const openThreadListeners = new Set<BbDesktopOpenThreadHandler>();
 
 function normalizeSpellcheckWord(word: string): string | null {
   const normalized = word.trim();
@@ -320,6 +324,12 @@ const bbDesktopApi: BbDesktopApi = {
       openNewTabListeners.delete(listener);
     };
   },
+  onOpenThread(listener): BbDesktopInfoUnsubscribe {
+    openThreadListeners.add(listener);
+    return () => {
+      openThreadListeners.delete(listener);
+    };
+  },
   onAppCommand(listener): BbDesktopInfoUnsubscribe {
     appCommandListeners.add(listener);
     return () => {
@@ -354,6 +364,14 @@ ipcRenderer.on(
 ipcRenderer.on(BB_DESKTOP_OPEN_NEW_TAB_CHANNEL, () => {
   for (const listener of openNewTabListeners) {
     listener();
+  }
+});
+
+ipcRenderer.on(BB_DESKTOP_OPEN_THREAD_CHANNEL, (_event, payload: unknown) => {
+  const parsed = bbDesktopOpenThreadRequestSchema.safeParse(payload);
+  if (!parsed.success) return;
+  for (const listener of openThreadListeners) {
+    listener(parsed.data);
   }
 });
 

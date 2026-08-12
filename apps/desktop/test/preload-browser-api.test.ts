@@ -36,6 +36,7 @@ import {
   BB_DESKTOP_CLOSE_WINDOW_RESPONSE_CHANNEL,
   BB_DESKTOP_GET_WINDOW_STATE_CHANNEL,
   BB_DESKTOP_OPEN_NEW_TAB_CHANNEL,
+  BB_DESKTOP_OPEN_THREAD_CHANNEL,
   BB_DESKTOP_WINDOW_STATE_CHANGED_CHANNEL,
 } from "../src/desktop-window-command-ipc.js";
 import { BB_DESKTOP_SPELLCHECK_GLOBAL_NAME } from "../src/desktop-spellcheck-contract.js";
@@ -349,6 +350,10 @@ describe("desktop preload browser API", () => {
     const snapshots: BbDesktopBrowserSnapshot[] = [];
     let closeWindowRequestCount = 0;
     let openNewTabCount = 0;
+    const openThreads: Array<{
+      projectId: string | null;
+      threadId: string;
+    }> = [];
     const appCommands: AppCommandId[] = [];
     const windowStates: BbDesktopWindowState[] = [];
     const state: BbDesktopBrowserState = {
@@ -386,6 +391,9 @@ describe("desktop preload browser API", () => {
     });
     api.onOpenNewTab?.(() => {
       openNewTabCount += 1;
+    });
+    api.onOpenThread?.((request) => {
+      openThreads.push(request);
     });
     api.onAppCommand?.((command) => {
       appCommands.push(command);
@@ -443,6 +451,14 @@ describe("desktop preload browser API", () => {
       payload: null,
     });
     emitIpcPayload({
+      channel: BB_DESKTOP_OPEN_THREAD_CHANNEL,
+      payload: { projectId: "proj_a", threadId: "" },
+    });
+    emitIpcPayload({
+      channel: BB_DESKTOP_OPEN_THREAD_CHANNEL,
+      payload: { projectId: "proj_a", threadId: "thr_a" },
+    });
+    emitIpcPayload({
       channel: BB_DESKTOP_APP_COMMAND_CHANNEL,
       payload: "not-a-command",
     });
@@ -462,6 +478,7 @@ describe("desktop preload browser API", () => {
     expect(windowStates).toEqual([{ isFullScreen: true }]);
     expect(closeWindowRequestCount).toBe(1);
     expect(openNewTabCount).toBe(1);
+    expect(openThreads).toEqual([{ projectId: "proj_a", threadId: "thr_a" }]);
     expect(appCommands).toEqual(["thread.new"]);
     expect(electronMock.sendCalls).toContainEqual({
       channel: BB_DESKTOP_CLOSE_WINDOW_RESPONSE_CHANNEL,

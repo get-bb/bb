@@ -32,6 +32,7 @@
     "@bb/config": "workspace:*",
     "@bb/desktop-contract": "workspace:*",
     "@bb/domain": "workspace:*",
+    "@bb/sdk": "workspace:*",
     "@bb/server-contract": "workspace:*",
     "@bb/tsconfig": "workspace:*",
     "@types/node": "^24.9.0",

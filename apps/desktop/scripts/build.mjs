@@ -44,6 +44,7 @@ const commonOptions = {
 await Promise.all([
   build({
     ...commonOptions,
+    conditions: ["source"],
     entryPoints: [resolve(packageRoot, "src", "main.ts")],
     external: ["electron"],
     format: "cjs",

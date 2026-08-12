@@ -49,6 +49,18 @@ export type BbDesktopWindowStateChangeHandler = (
 export type BbDesktopOpenNewTabHandler = () => void;
 export type BbDesktopAppCommandHandler = (command: AppCommandId) => void;
 export type BbDesktopCloseWindowRequestHandler = () => boolean;
+export const bbDesktopOpenThreadRequestSchema = z
+  .object({
+    projectId: z.string().min(1).nullable(),
+    threadId: z.string().min(1),
+  })
+  .strict();
+export type BbDesktopOpenThreadRequest = z.infer<
+  typeof bbDesktopOpenThreadRequestSchema
+>;
+export type BbDesktopOpenThreadHandler = (
+  request: BbDesktopOpenThreadRequest,
+) => void;
 
 export interface BbDesktopApi extends BbDesktopInfo {
   /**
@@ -80,6 +92,8 @@ export interface BbDesktopApi extends BbDesktopInfo {
    * panel new-tab page. Optional for desktop shells that predate this command.
    */
   onOpenNewTab?(listener: BbDesktopOpenNewTabHandler): BbDesktopInfoUnsubscribe;
+  /** Subscribe to native desktop requests to navigate to a thread in-app. */
+  onOpenThread?(listener: BbDesktopOpenThreadHandler): BbDesktopInfoUnsubscribe;
   /** Subscribe to native menu commands that are executed by the renderer. */
   onAppCommand?(listener: BbDesktopAppCommandHandler): BbDesktopInfoUnsubscribe;
   /**
