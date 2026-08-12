@@ -339,8 +339,8 @@ export interface PromptBoxInternalProps {
   mentionRanges: readonly PromptTextMention[];
   onChange: (value: string, mentionRanges: PromptTextMention[]) => void;
   onSubmit: () => void;
-  /** Blur the editor after an accepted primary or modifier submission. */
-  blurOnSubmit?: boolean;
+  /** Blur the editor after a pointer-activated primary submission. */
+  blurOnPointerSubmit?: boolean;
   placeholder?: string;
   /**
    * Whether the editor should take passive focus when it mounts or its history
@@ -1096,7 +1096,7 @@ export function PromptBoxInternal({
   mentionRanges,
   onChange,
   onSubmit,
-  blurOnSubmit = false,
+  blurOnPointerSubmit = false,
   placeholder = "Ask anything. @ to mention files, folders, or sections",
   autoFocus = true,
   className,
@@ -1168,6 +1168,7 @@ export function PromptBoxInternal({
   // Passive text autofocus opens the soft keyboard on coarse-pointer devices.
   const shouldAvoidSoftKeyboardAutofocus = isPointerCoarse;
   const formRef = useRef<HTMLFormElement>(null);
+  const blurAfterPointerSubmitRef = useRef(false);
   const heightAnimationFromRef = useRef<number | null>(null);
   const capturePromptBoxHeight = useCallback(() => {
     const formElement = formRef.current;
@@ -2458,13 +2459,26 @@ export function PromptBoxInternal({
   ]);
 
   const submitPrompt = useCallback(() => {
+    const shouldBlurAfterSubmit = blurAfterPointerSubmitRef.current;
+    blurAfterPointerSubmitRef.current = false;
     if (!canSubmit) return;
     onSubmit();
-    if (blurOnSubmit) {
+    if (shouldBlurAfterSubmit) {
       blurPromptEditor(editorRef.current);
     }
     resetZenModeAfterSubmit();
-  }, [blurOnSubmit, canSubmit, onSubmit, resetZenModeAfterSubmit]);
+  }, [canSubmit, onSubmit, resetZenModeAfterSubmit]);
+
+  const handleSubmitClick = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      // Pointer-generated click events have a positive click count. Keyboard
+      // activation and programmatic clicks use detail=0, so hardware Enter
+      // submissions retain the caret for the next follow-up.
+      blurAfterPointerSubmitRef.current =
+        blurOnPointerSubmit && event.detail > 0;
+    },
+    [blurOnPointerSubmit],
+  );
 
   const handleSubmitPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLButtonElement>) => {
@@ -2503,16 +2517,8 @@ export function PromptBoxInternal({
   const submitModifierPrompt = useCallback(() => {
     if (!canModifierSubmit || !onModifierSubmit) return;
     onModifierSubmit();
-    if (blurOnSubmit) {
-      blurPromptEditor(editorRef.current);
-    }
     resetZenModeAfterSubmit();
-  }, [
-    blurOnSubmit,
-    canModifierSubmit,
-    onModifierSubmit,
-    resetZenModeAfterSubmit,
-  ]);
+  }, [canModifierSubmit, onModifierSubmit, resetZenModeAfterSubmit]);
 
   const applyHistoryDraft = useCallback(
     (draft: PromptDraftState) => {
@@ -3267,6 +3273,7 @@ export function PromptBoxInternal({
                       aria-label={effectiveSubmitTitle}
                       disabled={!canSubmit}
                       onPointerDown={handleSubmitPointerDown}
+                      onClick={handleSubmitClick}
                       className={cn(
                         showCompactLayout
                           ? COMPACT_PROMPT_ACTION_BUTTON_CLASS
