@@ -93,6 +93,13 @@ jobs:
           pnpm-version: ${{ env.PNPM_VERSION }}
           cache-prefix: finite-state-guards
 
+      - name: Check Finite State frozen and dependency baselines
+        run: |
+          frozen_output="$(node plugins/bb-plugin-finite-state/scripts/check-frozen-artifacts.mjs)"
+          printf '%s\n' "$frozen_output"
+          test "$frozen_output" = "Frozen artifact baseline is intact."
+          node plugins/bb-plugin-finite-state/scripts/check-dependency-freeze.mjs
+
       - name: Run Finite State plugin gate
         run: pnpm exec turbo run typecheck test lint build --filter=bb-plugin-finite-state --cache-dir=.turbo/cache --output-logs=new-only
 

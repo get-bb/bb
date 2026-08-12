@@ -1,0 +1,80 @@
+{
+  "version": 1,
+  "source": {
+    "task": "FS-89",
+    "pullRequest": 6,
+    "approvedHead": "ab074586bed60af4ff58a794f0aa4a4b7fe231c2",
+    "mergeCommit": "1062b0c799a8a538da8131d298175a9e47ed2a38",
+    "approvedBy": "@mattwyckhouse",
+    "approvalEvidence": "https://github.com/mattwyckhouse/bb/pull/6#issuecomment-5270159899"
+  },
+  "contractVersion": 1,
+  "artifacts": {
+    "plugins/bb-plugin-finite-state/server.ts": {
+      "sha256": "510c19ab0ef428a52a0d23c4225c9ded3f2a64d3518dcfe158900c05e849941c",
+      "amendment": null,
+      "active": true
+    },
+    "plugins/bb-plugin-finite-state/app.tsx": {
+      "sha256": "f7e8aa6d22be0b432ad3b631864f2f381deaf768ca0cc9d1cb85558cb1f8a6d0",
+      "amendment": null,
+      "active": true
+    },
+    "plugins/bb-plugin-finite-state/shared/contract.ts": {
+      "sha256": "84bee6cab373316b2c4e47707c1c80b7a54a007d9ae2bf46862faad9cba8e905",
+      "amendment": null,
+      "active": true
+    },
+    "plugins/bb-plugin-finite-state/lib/store/schema.ts": {
+      "sha256": "0494b18f8258ffbf6e66dd8c44bbfef99d6fe7f1c8d7853221d8ad0346e7cbef",
+      "amendment": null,
+      "active": true
+    },
+    "plugins/bb-plugin-finite-state/lib/sync/registry.ts": {
+      "sha256": "e8b7390fa22546db0c727cbfbd7aac4155e00657459bec690f7106d9a3142a53",
+      "amendment": null,
+      "active": true
+    },
+    "plugins/bb-plugin-finite-state/lib/remote/types.ts": {
+      "sha256": "933bf1672ff816879cd246d1e3e9a562c9e1da7bedf16e326d5f75fd12f8ba08",
+      "amendment": null,
+      "active": true
+    },
+    "plugins/bb-plugin-finite-state/test/mock-remote/fixtures/**": {
+      "treeSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "amendment": null,
+      "active": false
+    }
+  },
+  "dependencyBaseline": {
+    "amendment": null,
+    "dependencies": {
+      "@modelcontextprotocol/sdk": "^1.29.0",
+      "@tanstack/react-virtual": "^3.14.2",
+      "@xyflow/react": "^12.11.2",
+      "elkjs": "^0.12.0",
+      "exceljs": "^4.4.0",
+      "yaml": "^2.9.0",
+      "zod": "^4.3.6"
+    },
+    "devDependencies": {
+      "@bb/domain": "workspace:*",
+      "@bb/plugin-build": "workspace:*",
+      "@bb/plugin-sdk": "workspace:*",
+      "@bb/tsconfig": "workspace:*",
+      "@testing-library/react": "^16.3.2",
+      "@types/better-sqlite3": "^7.6.12",
+      "@types/node": "^22.0.0",
+      "@types/react": "^19.0.0",
+      "better-sqlite3": "12.10.0",
+      "jsdom": "^29.0.1",
+      "react": "^19.0.0",
+      "react-dom": "^19.0.0",
+      "typescript": "npm:@typescript/typescript6@^6.0.2",
+      "typescript-7": "npm:typescript@^7.0.2",
+      "vitest": "^4.1.1"
+    },
+    "peerDependencies": {},
+    "optionalDependencies": {}
+  }
+}

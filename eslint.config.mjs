@@ -50,6 +50,42 @@ const noNativeTitleOnButtonPrimitiveSyntaxRestriction = {
     "Do not put native title tooltips on the shared Button primitive. Use aria-label for icon-only buttons and a design-system Tooltip when visible hover help is intentional.",
 };
 
+const finiteStateColorSyntaxRestrictions = [
+  {
+    selector:
+      "Literal[value=/^#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/], TemplateElement[value.raw=/^#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/]",
+    message:
+      "Finite State UI colors must use approved theme tokens, not raw hex values.",
+  },
+  {
+    selector:
+      "Literal[value=/(?:^|[^a-zA-Z0-9_-])oklch\\s*\\(/i], TemplateElement[value.raw=/(?:^|[^a-zA-Z0-9_-])oklch\\s*\\(/i]",
+    message:
+      "Finite State UI colors must use approved theme tokens, not raw oklch() values.",
+  },
+  {
+    selector:
+      "Literal[value=/(?<![a-zA-Z0-9_-])(?:bg|text|border|fill|stroke|ring|outline|decoration|shadow|from|via|to)-\\[(?:#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(?:oklch|rgb|rgba|hsl|hsla|color)\\([^\\]]*\\))\\]/i], TemplateElement[value.raw=/(?<![a-zA-Z0-9_-])(?:bg|text|border|fill|stroke|ring|outline|decoration|shadow|from|via|to)-\\[(?:#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(?:oklch|rgb|rgba|hsl|hsla|color)\\([^\\]]*\\))\\]/i]",
+    message:
+      "Finite State UI colors must use approved theme-token utilities, not arbitrary color utilities.",
+  },
+];
+
+const finiteStateIconImportRestrictions = [
+  "lucide",
+  "lucide-react",
+  "react-icons",
+  "react-icons/*",
+  "@heroicons/*",
+  "@tabler/icons-react",
+  "@phosphor-icons/react",
+  "phosphor-react",
+  "react-feather",
+  "@fortawesome/*",
+  "@mui/icons-material",
+  "iconoir-react",
+];
+
 // The server must not access workspace filesystems directly — all workspace
 // interaction goes through daemon commands. This rule enforces the boundary so
 // it holds when the daemon runs on a remote host.
@@ -146,6 +182,31 @@ export default [
         noNativeTitleWithAriaLabelSyntaxRestriction,
         noNativeTitleOnButtonPrimitiveSyntaxRestriction,
       ],
+    },
+  },
+  {
+    files: ["plugins/bb-plugin-finite-state/**/*.{ts,tsx}"],
+    ignores: [
+      "**/__tests__/**",
+      "**/generated/**",
+      "**/test/**",
+      "**/*.test.ts",
+      "**/*.test.tsx",
+    ],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: finiteStateIconImportRestrictions,
+              message:
+                "Finite State UI icons must come from @hugeicons/react and @hugeicons/core-free-icons.",
+            },
+          ],
+        },
+      ],
+      "no-restricted-syntax": ["error", ...finiteStateColorSyntaxRestrictions],
     },
   },
 ];
