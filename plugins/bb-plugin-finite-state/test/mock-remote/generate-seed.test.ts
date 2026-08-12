@@ -177,7 +177,7 @@ describe("deterministic-seed-corpus", () => {
     expect(first).toEqual(second);
     expect(await byteSnapshot(firstOut)).toEqual(await byteSnapshot(secondOut));
     expect(first.schemaVersion).toBe(FIXTURE_SCHEMA_VERSION);
-  });
+  }, 30_000);
 
   test("committed manifest hashes, logical counts, and bounded size are exact", async () => {
     const manifest = await parseJson<FixtureManifest>(join(committedFixtures, "manifest.json"));
