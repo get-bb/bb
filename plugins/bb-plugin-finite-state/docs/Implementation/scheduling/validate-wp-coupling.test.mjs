@@ -317,9 +317,9 @@ test("promotion policy cannot regain a mock-chain dependency", () => {
 
 test("temporary stops require paired reasons and resume conditions", () => {
   const missingReason = errorsFor((manifest) => {
-    delete manifest.dispatchPolicy.stoppedWorkPackageReasons.WP32;
+    delete manifest.dispatchPolicy.stoppedWorkPackageReasons.WP56;
   });
-  assert(missingReason.includes("stopped reason for WP32 must be an object"));
+  assert(missingReason.includes("stopped reason for WP56 must be an object"));
 
   const missingResume = errorsFor((manifest) => {
     manifest.dispatchPolicy.stoppedWorkPackageReasons.WP56.resumeCondition = "";
@@ -331,11 +331,11 @@ test("temporary stops require paired reasons and resume conditions", () => {
   );
 
   const orphanedReason = errorsFor((manifest) => {
-    manifest.dispatchPolicy.stoppedWorkPackages = ["WP56"];
+    manifest.dispatchPolicy.stoppedWorkPackages = [];
   });
   assert(
     orphanedReason.includes(
-      "stopped reason for WP32 has no stoppedWorkPackages entry",
+      "stopped reason for WP56 has no stoppedWorkPackages entry",
     ),
   );
 
@@ -418,7 +418,7 @@ test("promotion excludes prohibited and stopped next work packages", () => {
   );
 
   assert.equal(result.eligible, false);
-  assert.deepEqual(result.readyClusters, []);
+  assert.deepEqual(result.readyClusters, ["C-CANVAS"]);
   assert.deepEqual(result.activeClusters, [
     "C-EARS-AUTHORING",
     "C-FIRMWARE-MATERIALIZATION",
@@ -427,14 +427,10 @@ test("promotion excludes prohibited and stopped next work packages", () => {
   ]);
   assert(
     result.errors.includes(
-      "only 4 independent active-or-ready decision clusters are available; 6 required",
+      "only 5 independent active-or-ready decision clusters are available; 6 required",
     ),
   );
-  for (const blockedCluster of [
-    "C-DISTRIBUTION",
-    "C-CANVAS",
-    "C-DOCUMENT-PROVENANCE",
-  ]) {
+  for (const blockedCluster of ["C-DISTRIBUTION", "C-DOCUMENT-PROVENANCE"]) {
     assert(!result.readyClusters.includes(blockedCluster));
   }
 });
