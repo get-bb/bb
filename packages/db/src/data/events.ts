@@ -1460,20 +1460,44 @@ function dedupeScopedItemRefs(
  * Restrict a read to exactly the given item identities.
  *
  * The `item_id` list is kept as its own predicate so the query still narrows
- * through the item-id index; the scope disjunction then drops the rows that
- * belong to a different turn's reuse of the same id.
+ * through the item-id index. The scope disjunction has one branch per scope,
+ * with that scope's item ids in an `IN` predicate, so a large single-turn
+ * window does not exceed SQLite's expression-depth limit with one branch per
+ * item. The grouping still drops rows that belong to a different turn's reuse
+ * of the same id.
  */
 function scopedItemRefsPredicate(
   items: readonly ScopedItemRef[],
 ): SQL | undefined {
   const itemIds = [...new Set(items.map((item) => item.itemId))];
-  const scopePredicates = items.map((item) =>
+  const scopeGroups = new Map<
+    string,
+    {
+      itemIds: Set<string>;
+      scopeKind: ThreadEventScopeKind;
+      turnId: string | null;
+    }
+  >();
+  for (const item of items) {
+    const scopeKey = `${item.scopeKind}\u0000${item.turnId ?? ""}`;
+    const existing = scopeGroups.get(scopeKey);
+    if (existing) {
+      existing.itemIds.add(item.itemId);
+      continue;
+    }
+    scopeGroups.set(scopeKey, {
+      itemIds: new Set([item.itemId]),
+      scopeKind: item.scopeKind,
+      turnId: item.turnId,
+    });
+  }
+  const scopePredicates = [...scopeGroups.values()].map((group) =>
     and(
-      eq(events.itemId, item.itemId),
-      eq(events.scopeKind, item.scopeKind),
-      item.turnId === null
+      inArray(events.itemId, [...group.itemIds]),
+      eq(events.scopeKind, group.scopeKind),
+      group.turnId === null
         ? isNull(events.turnId)
-        : eq(events.turnId, item.turnId),
+        : eq(events.turnId, group.turnId),
     ),
   );
   return and(inArray(events.itemId, itemIds), or(...scopePredicates));
