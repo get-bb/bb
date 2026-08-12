@@ -419,6 +419,15 @@ bb thread show "$DIRTY_ARCHIVE_THREAD_ID" --work-status
 bb thread archive "$DIRTY_ARCHIVE_THREAD_ID"
 
 curl -fsS "$BB_SERVER_URL/api/v1/threads/$DIRTY_ARCHIVE_THREAD_ID" | jq -e '.archivedAt != null'
+DIRTY_ARCHIVE_ENV_STATUS=$(curl -fsS "$BB_SERVER_URL/api/v1/environments/$DIRTY_ARCHIVE_ENV_ID" | jq -r '.status')
+test "$DIRTY_ARCHIVE_ENV_STATUS" = "retiring"
+test -e "$DIRTY_ARCHIVE_ENV_PATH"
+
+# A last-live archived managed environment remains revivable during the five-minute
+# archive grace period. Permanently deleting the thread removes that revival path
+# and makes the environment immediately eligible for destruction.
+bb thread delete "$DIRTY_ARCHIVE_THREAD_ID" --yes
+
 for i in $(seq 1 60); do
   DIRTY_ARCHIVE_ENV_STATUS=$(curl -fsS "$BB_SERVER_URL/api/v1/environments/$DIRTY_ARCHIVE_ENV_ID" | jq -r '.status')
   test "$DIRTY_ARCHIVE_ENV_STATUS" = "destroyed" && break
@@ -435,7 +444,7 @@ Expected result:
 - `bb environment commit` succeeds with helper-generated commit text without requiring `OPENAI_API_KEY`.
 - Environment merge-base metadata can be set, reflected by `bb environment show`, used by thread status/diff output, and cleared.
 - Archiving blocks `bb thread tell`; unarchiving restores normal operation.
-- Dirty isolated managed worktree archive succeeds, destroys the environment, and removes the worktree even while uncommitted or unmerged work remains.
+- Archiving the last live dirty managed worktree puts it in `retiring` and preserves it during the undo grace period; permanently deleting its archived thread then destroys the environment and removes the worktree even while uncommitted or unmerged work remains.
 
 ## Multi-Thread and Shared Environment
 
