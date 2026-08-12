@@ -19,7 +19,7 @@ export interface EntitySerializer<T = Record<string, unknown>> {
   semanticPayload(raw: Record<string, unknown>): Record<string, unknown>;
   toYaml(payload: T, opts: SerializeOptions): string;
   fromYaml(text: string, file: string): T;
-  contentHash(payload: Record<string, unknown>): string;
+  contentHash(payload: Record<string, unknown>, opts?: SerializeOptions): string;
 }
 
 export type IdReplacements =
@@ -34,7 +34,7 @@ export class UnsupportedEntitySerializerError extends Error {
   }
 }
 
-const IDENTIFIER_FIELD = /(?:^id$|_id$|_ids$)/u;
+const IDENTIFIER_FIELD = /(?:^id$|_id$|_ids$|Id$|Ids$)/u;
 const UUID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/iu;
 
 interface ReplacementContext {
@@ -74,7 +74,40 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function isIdentifierField(key: string): boolean {
-  return IDENTIFIER_FIELD.test(key) || key === "edges" || key === "zones_traversed";
+  return IDENTIFIER_FIELD.test(key)
+    || key === "edges"
+    || key === "zones_traversed"
+    || key === "zonesTraversed";
+}
+
+function isNullableString(value: unknown): boolean {
+  return value === null || typeof value === "string";
+}
+
+function isAsEntityEnvelope(value: Record<string, unknown>): boolean {
+  const fields = value["fields"];
+  const kind = value["kind"];
+  const reviewStatus = value["reviewStatus"];
+  const humanEdited = value["humanEdited"];
+
+  return typeof value["id"] === "string"
+    && typeof value["projectId"] === "string"
+    && typeof kind === "string"
+    && isNullableString(value["reviewVersion"])
+    && isNullableString(reviewStatus)
+    && (humanEdited === null || typeof humanEdited === "boolean")
+    && isRecord(fields);
+}
+
+function authoredPayload(raw: Record<string, unknown>, stripServerOwned: boolean): Record<string, unknown> {
+  if (!stripServerOwned || !isAsEntityEnvelope(raw)) {
+    return raw;
+  }
+  const fields = raw["fields"];
+  if (!isRecord(fields)) {
+    throw new Error("Assurance Studio entity fields must be an object");
+  }
+  return fields;
 }
 
 function replaceReferences(
@@ -87,7 +120,7 @@ function replaceReferences(
     return value.map((item, index) => replaceReferences(
       item,
       context,
-      identifierContext && typeof item === "string",
+      identifierContext,
       `${path}[${index}]`,
     ));
   }
@@ -137,8 +170,9 @@ function buildSemanticPayload(
   stripServerOwned: boolean,
 ): Record<string, unknown> {
   const excluded = stripServerOwned ? serverOwnedFields(serverEntityType(entityType)) : new Set<string>();
+  const payload = authoredPayload(raw, stripServerOwned);
   const entries: Array<[string, unknown]> = [];
-  for (const [key, value] of Object.entries(raw)) {
+  for (const [key, value] of Object.entries(payload)) {
     if (!excluded.has(key)) {
       entries.push([key, value]);
     }
@@ -175,8 +209,8 @@ export function createSerializer(kind: EntityKind): EntitySerializer {
     fromYaml(text, file) {
       return parseYaml(text, file);
     },
-    contentHash(payload) {
-      return canonicalContentHash(buildSemanticPayload(entityType, payload, {}, stripServerOwned));
+    contentHash(payload, opts) {
+      return canonicalContentHash(buildSemanticPayload(entityType, payload, opts ?? {}, stripServerOwned));
     },
   };
 }

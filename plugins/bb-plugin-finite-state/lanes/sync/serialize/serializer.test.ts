@@ -1,5 +1,16 @@
+import { createHash } from "node:crypto";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { describe, expect, it } from "vitest";
 
+import type {
+  AsEntity,
+  AsEntityKind,
+  AsReviewStatus,
+  Json,
+} from "../../../lib/remote/types.js";
 import type { EntityKind } from "../../../lib/sync/registry.js";
 import { canonicalJson } from "./canonical.js";
 import { SERVER_OWNED_BASE } from "./exclusions.js";
@@ -7,28 +18,184 @@ import {
   UnsupportedEntitySerializerError,
   createSerializer,
   semanticPayload,
+  type SerializeOptions,
   type SerializeWarning,
 } from "./serializer.js";
 
 const SOURCE_ID = "11111111-1111-4111-8111-111111111111";
 const TARGET_ID = "22222222-2222-4222-8222-222222222222";
+const FROZEN_FIXTURE_HEAD = "ea63cc684c5eb981760270b89e50d020732ce152";
+const FROZEN_ENTITIES_SHA256 = "0daf497c641eff3534545df18acc254c2975935285f56cb9e7e24a2383d0e5e7";
+const FROZEN_REQUIREMENTS_SHA256 = "06c87a51c6e1cb7cb0db0638d2c580c5fbb11fd5a41011513a6c2d8aa63e7b81";
 
-const INLINE_PAYLOADS: ReadonlyArray<readonly [EntityKind, Record<string, unknown>]> = [
+const DOMAIN_PAYLOADS: ReadonlyArray<readonly [EntityKind, Record<string, unknown>]> = [
   ["component", { slug: "component-a", description: "Component" }],
   ["zone", { slug: "zone-a", name: "Zone" }],
-  ["dataflow", { slug: "flow-a", source_id: "component-a", target_id: "component-b" }],
-  ["asset", { slug: "asset-a", component_id: "component-a" }],
-  ["threat", { slug: "threat-a", asset_id: "asset-a", title: "Threat" }],
-  ["mitigation", { slug: "mitigation-a", threat_ids: ["threat-a"], title: "Mitigation" }],
+  ["dataflow", { slug: "flow-a", sourceId: "component-a", targetId: "component-b" }],
+  ["asset", { slug: "asset-a", componentId: "component-a" }],
+  ["threat", { slug: "threat-a", assetId: "asset-a", title: "Threat" }],
+  ["mitigation", { slug: "mitigation-a", threatIds: ["threat-a"], title: "Mitigation" }],
   ["requirement", { reqId: "REQ-001", statement: "The product shall authenticate users." }],
   ["hbomPart", { id: "part-a", manufacturer: "Acme" }],
   ["vexDecision", { key: "finding-a", status: "not_affected" }],
-  ["reqCheckMap", { reqId: "REQ-001", check_ids: ["check-a"] }],
+  ["reqCheckMap", { reqId: "REQ-001", checkIds: ["check-a"] }],
   ["checkParams", { code: "check-a", parameters: { threshold: 3 } }],
-  ["attackPath", { route_signature: "derived", name: "WAN route", threat_ids: ["threat-a"] }],
+  ["attackPath", { routeSignature: "route-a", name: "WAN route", threatIds: ["threat-a"] }],
   ["sbomLink", { componentSlug: "component-a", purl: "pkg:generic/example@1" }],
-  ["firmwareLink", { componentSlug: "component-a", firmware_path: "/usr/bin/example" }],
+  ["firmwareLink", { componentSlug: "component-a", firmwarePath: "/usr/bin/example" }],
 ];
+
+// Exact row from the frozen WP-08 corpus at FROZEN_FIXTURE_HEAD. The `satisfies`
+// check pins this serializer test to the frozen WP-06 wire contract.
+const FROZEN_ASSET_ENTITY = {
+  fields: {
+    componentId: "as-component-01",
+    name: "Protected asset 1",
+  },
+  humanEdited: false,
+  id: "asset-1",
+  kind: "asset",
+  projectId: "project-4a752600a07a",
+  reviewStatus: "pending",
+  reviewVersion: "400",
+} satisfies AsEntity;
+
+const configuredFixtureRoot = process.env["FS_WP08_FIXTURE_ROOT"];
+const fixtureRoot = configuredFixtureRoot
+  ?? fileURLToPath(new URL("../../../test/mock-remote/fixtures", import.meta.url));
+const entitiesFixture = join(fixtureRoot, "assurance-studio", "entities.jsonl");
+const requirementsFixture = join(fixtureRoot, "assurance-studio", "requirements.jsonl");
+const fixtureCorpusAvailable = existsSync(entitiesFixture) && existsSync(requirementsFixture);
+
+if (configuredFixtureRoot !== undefined && !fixtureCorpusAvailable) {
+  throw new Error(`FS_WP08_FIXTURE_ROOT does not contain the frozen Assurance Studio corpus: ${fixtureRoot}`);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isJson(value: unknown): value is Json {
+  if (value === null || typeof value === "boolean" || typeof value === "number" || typeof value === "string") {
+    return true;
+  }
+  if (Array.isArray(value)) {
+    return value.every((item) => isJson(item));
+  }
+  return isRecord(value) && Object.values(value).every((item) => isJson(item));
+}
+
+function isJsonRecord(value: unknown): value is Record<string, Json> {
+  return isRecord(value) && Object.values(value).every((item) => isJson(item));
+}
+
+function isAsEntityKind(value: unknown): value is AsEntityKind {
+  return value === "asset"
+    || value === "attack-path"
+    || value === "component"
+    || value === "dataflow"
+    || value === "mitigation"
+    || value === "requirement"
+    || value === "risk"
+    || value === "threat"
+    || value === "zone";
+}
+
+function isAsReviewStatus(value: unknown): value is AsReviewStatus | null {
+  return value === null
+    || value === "ai_approved"
+    || value === "ai_flagged"
+    || value === "human_approved"
+    || value === "human_rejected"
+    || value === "pending";
+}
+
+function parseAsEntity(line: string, file: string, lineNumber: number): AsEntity {
+  const value: unknown = JSON.parse(line);
+  if (!isRecord(value)) {
+    throw new Error(`${file}:${lineNumber} is not an object`);
+  }
+
+  const id = value["id"];
+  const projectId = value["projectId"];
+  const kind = value["kind"];
+  const reviewVersion = value["reviewVersion"];
+  const reviewStatus = value["reviewStatus"];
+  const humanEdited = value["humanEdited"];
+  const fields = value["fields"];
+  if (
+    typeof id !== "string"
+    || typeof projectId !== "string"
+    || !isAsEntityKind(kind)
+    || (reviewVersion !== null && typeof reviewVersion !== "string")
+    || !isAsReviewStatus(reviewStatus)
+    || (humanEdited !== null && typeof humanEdited !== "boolean")
+    || !isJsonRecord(fields)
+  ) {
+    throw new Error(`${file}:${lineNumber} does not satisfy the frozen AsEntity contract`);
+  }
+
+  return { id, projectId, kind, reviewVersion, reviewStatus, humanEdited, fields };
+}
+
+function readAsEntities(file: string): AsEntity[] {
+  return readFileSync(file, "utf8")
+    .split("\n")
+    .flatMap((line, index) => line.length === 0 ? [] : [parseAsEntity(line, file, index + 1)]);
+}
+
+function entityRecord(entity: AsEntity): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(entity));
+}
+
+function serializerKind(kind: AsEntityKind): EntityKind {
+  switch (kind) {
+    case "asset":
+      return "asset";
+    case "attack-path":
+      return "attackPath";
+    case "component":
+      return "component";
+    case "dataflow":
+      return "dataflow";
+    case "mitigation":
+      return "mitigation";
+    case "requirement":
+      return "requirement";
+    case "threat":
+      return "threat";
+    case "zone":
+      return "zone";
+    case "risk":
+      throw new Error("The frozen registry has no risk serializer");
+  }
+}
+
+function fixtureIdentity(entity: AsEntity): string {
+  const componentId = entity.fields["componentId"];
+  if (entity.kind === "component" && typeof componentId === "string") {
+    return componentId;
+  }
+  const requirementKey = entity.fields["key"];
+  if (entity.kind === "requirement" && typeof requirementKey === "string") {
+    return requirementKey;
+  }
+  return entity.id;
+}
+
+function fixtureOptions(entities: readonly AsEntity[]): SerializeOptions {
+  const replacements = new Map<string, string>();
+  for (const entity of entities) {
+    const identity = fixtureIdentity(entity);
+    replacements.set(entity.id, identity);
+    replacements.set(identity, identity);
+  }
+  return { idToSlug: (remoteId) => replacements.get(remoteId) ?? null };
+}
+
+function fileSha256(file: string): string {
+  return createHash("sha256").update(readFileSync(file)).digest("hex");
+}
 
 describe("semanticPayload", () => {
   it("strips the authoritative server-owned fields and preserves unknown semantic fields", () => {
@@ -48,14 +215,19 @@ describe("semanticPayload", () => {
     }));
   });
 
-  it("replaces only identifier-bearing values, recursively and in array order", () => {
+  it("unwraps the frozen AsEntity envelope and replaces camelCase references", () => {
+    expect(canonicalJson(semanticPayload("asset", entityRecord(FROZEN_ASSET_ENTITY), {
+      "as-component-01": "component-0001",
+    }))).toBe('{"componentId":"component-0001","name":"Protected asset 1"}');
+  });
+
+  it("replaces snake_case identifiers through arrays and nested edge objects", () => {
     const raw = {
-      slug: "flow-a",
       source_id: SOURCE_ID,
       target_ids: [TARGET_ID, SOURCE_ID],
       metadata: {
-        edges: [SOURCE_ID, TARGET_ID],
         description: SOURCE_ID,
+        edges: [{ from: SOURCE_ID, to: TARGET_ID }],
       },
     };
     const replacements = {
@@ -64,12 +236,11 @@ describe("semanticPayload", () => {
     };
 
     expect(semanticPayload("dataflow", raw, replacements)).toEqual({
-      slug: "flow-a",
       source_id: "component-source",
       target_ids: ["component-target", "component-source"],
       metadata: {
-        edges: ["component-source", "component-target"],
         description: SOURCE_ID,
+        edges: [{ from: "component-source", to: "component-target" }],
       },
     });
   });
@@ -78,7 +249,7 @@ describe("semanticPayload", () => {
     const warnings: SerializeWarning[] = [];
     const serializer = createSerializer("dataflow");
     const yaml = serializer.toYaml(
-      { slug: "flow-a", source_id: SOURCE_ID },
+      { slug: "flow-a", sourceId: SOURCE_ID },
       {
         idToSlug: () => null,
         onWarning: (warning) => warnings.push(warning),
@@ -89,13 +260,13 @@ describe("semanticPayload", () => {
     expect(warnings).toEqual([{
       code: "UNRESOLVED_ID",
       remoteId: SOURCE_ID,
-      path: '$["source_id"]',
+      path: '$["sourceId"]',
     }]);
   });
 });
 
 describe("createSerializer", () => {
-  it.each(INLINE_PAYLOADS)("round-trips inline %s payloads with content-hash equality", (kind, payload) => {
+  it.each(DOMAIN_PAYLOADS)("round-trips domain-shaped %s payloads with content-hash equality", (kind, payload) => {
     const serializer = createSerializer(kind);
     const expectedHash = serializer.contentHash(payload);
     const yaml = serializer.toYaml(payload, { idToSlug: () => null });
@@ -103,6 +274,28 @@ describe("createSerializer", () => {
 
     expect(serializer.contentHash(parsed)).toBe(expectedHash);
     expect(serializer.toYaml(payload, { idToSlug: () => null })).toBe(yaml);
+  });
+
+  it("hashes the same normalized semantics for a remote envelope and its YAML", () => {
+    const serializer = createSerializer("asset");
+    const options: SerializeOptions = {
+      idToSlug: (remoteId) => remoteId === "as-component-01" ? "component-0001" : null,
+    };
+    const envelope = entityRecord(FROZEN_ASSET_ENTITY);
+    const yaml = serializer.toYaml(envelope, options);
+    const parsed = serializer.fromYaml(yaml, "assets/asset-1.yaml");
+    const changedEnvelope = entityRecord({
+      ...FROZEN_ASSET_ENTITY,
+      humanEdited: true,
+      projectId: "project-changed",
+      reviewStatus: "human_rejected",
+      reviewVersion: "999",
+    });
+
+    expect(parsed).toEqual({ componentId: "component-0001", name: "Protected asset 1" });
+    expect(yaml).not.toMatch(/^(?:fields|humanEdited|id|kind|projectId|reviewStatus|reviewVersion):/mu);
+    expect(serializer.contentHash(envelope, options)).toBe(serializer.contentHash(parsed));
+    expect(serializer.contentHash(changedEnvelope, options)).toBe(serializer.contentHash(parsed));
   });
 
   it("does not route cached or canvas-layout data into entity YAML", () => {
@@ -134,5 +327,40 @@ describe("createSerializer", () => {
 
     expect(Object.hasOwn(payload, "__proto__")).toBe(true);
     expect(payload["__proto__"]).toEqual({ retained: true });
+  });
+});
+
+describe.skipIf(!fixtureCorpusAvailable)(`frozen WP-08 fixture corpus at ${FROZEN_FIXTURE_HEAD}`, () => {
+  it("reads the exact reviewed fixture bytes", () => {
+    expect(fileSha256(entitiesFixture)).toBe(FROZEN_ENTITIES_SHA256);
+    expect(fileSha256(requirementsFixture)).toBe(FROZEN_REQUIREMENTS_SHA256);
+  });
+
+  it("round-trips every frozen Assurance Studio entity with normalized hash equality", () => {
+    const entities = [...readAsEntities(entitiesFixture), ...readAsEntities(requirementsFixture)];
+    const options = fixtureOptions(entities);
+
+    expect(entities).toHaveLength(102);
+    expect([...new Set(entities.map((entity) => entity.kind))].sort()).toEqual([
+      "asset",
+      "attack-path",
+      "component",
+      "dataflow",
+      "mitigation",
+      "requirement",
+      "threat",
+      "zone",
+    ]);
+
+    for (const entity of entities) {
+      const serializer = createSerializer(serializerKind(entity.kind));
+      const envelope = entityRecord(entity);
+      const yaml = serializer.toYaml(envelope, options);
+      const parsed = serializer.fromYaml(yaml, `${entity.kind}/${entity.id}.yaml`);
+
+      expect(serializer.toYaml(envelope, options), entity.id).toBe(yaml);
+      expect(serializer.contentHash(envelope, options), entity.id).toBe(serializer.contentHash(parsed));
+      expect(yaml, entity.id).not.toMatch(/^(?:fields|humanEdited|id|kind|projectId|reviewStatus|reviewVersion):/mu);
+    }
   });
 });
