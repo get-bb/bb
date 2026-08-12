@@ -1056,13 +1056,14 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  // Version 108 adds the distinct `unborn_head` provisioning failure sent by
+  // Version 109 adds provider user-question cancellation. Version 108 added
+  // the distinct `unborn_head` provisioning failure sent by
   // the daemon when a project source has no commits. Older daemons report the
   // internal missing-default-branch failure, so enrolled machines must update
   // for the actionable worktree error. Version 107 carried stopped-turn
   // provider checkpoints and remains part of the protocol lineage.
-  it("uses protocol version 108 for commitless worktree source errors", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(108);
+  it("uses protocol version 109 for provider question cancellation", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(109);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {

@@ -303,6 +303,8 @@ declare const pendingInteractionResolutionSchema: z$1.ZodUnion<readonly [z$1.Zod
         freeText: z$1.ZodOptional<z$1.ZodString>;
     }, z$1.core.$strip>>;
 }, z$1.core.$strip>, z$1.ZodObject<{
+    kind: z$1.ZodLiteral<"user_cancelled">;
+}, z$1.core.$strip>, z$1.ZodObject<{
     kind: z$1.ZodLiteral<"plugin_submitted">;
 }, z$1.core.$strip>]>;
 type PendingInteractionResolution = z$1.infer<typeof pendingInteractionResolutionSchema>;
@@ -446,6 +448,8 @@ declare const providerPendingInteractionSchema: z$1.ZodObject<{
             selected: z$1.ZodArray<z$1.ZodString>;
             freeText: z$1.ZodOptional<z$1.ZodString>;
         }, z$1.core.$strip>>;
+    }, z$1.core.$strip>, z$1.ZodObject<{
+        kind: z$1.ZodLiteral<"user_cancelled">;
     }, z$1.core.$strip>]>>;
 }, z$1.core.$strip>;
 type ProviderPendingInteraction = z$1.infer<typeof providerPendingInteractionSchema>;
@@ -4808,6 +4812,8 @@ declare const hostDaemonCommandRegistry: {
                 selected: z$1.ZodArray<z$1.ZodString>;
                 freeText: z$1.ZodOptional<z$1.ZodString>;
             }, z$1.core.$strip>>;
+        }, z$1.core.$strip>, z$1.ZodObject<{
+            kind: z$1.ZodLiteral<"user_cancelled">;
         }, z$1.core.$strip>, z$1.ZodObject<{
             kind: z$1.ZodLiteral<"plugin_submitted">;
         }, z$1.core.$strip>]>;
@@ -9665,6 +9671,8 @@ declare const threadPendingInteractionsResponseSchema: z$1.ZodArray<z$1.ZodUnion
             selected: z$1.ZodArray<z$1.ZodString>;
             freeText: z$1.ZodOptional<z$1.ZodString>;
         }, z$1.core.$strip>>;
+    }, z$1.core.$strip>, z$1.ZodObject<{
+        kind: z$1.ZodLiteral<"user_cancelled">;
     }, z$1.core.$strip>]>>;
 }, z$1.core.$strip>, z$1.ZodObject<{
     id: z$1.ZodString;
