@@ -162,6 +162,10 @@
     }
   },
   "dispatchPolicy": {
+    "prohibitedWorkPackages": ["WP02"],
+    "prohibitedWorkPackageReasons": {
+      "WP02": "ADR — bb Is Not Modified: builtin registration is a BB release decision; dispatch is prohibited and FS-16 stays in backlog until the ADR is superseded."
+    },
     "currentLaneCap": 4,
     "sixLanePromotion": {
       "requiredCompletedWorkPackages": [],

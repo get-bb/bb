@@ -94,3 +94,53 @@ The review preset is Claude Opus 5 at high reasoning. The reviewer must not be t
 ## 6. Tasks limitations and audit trail
 
 The Tasks surface cannot enforce dependency edges, sequence locks, or decision-owner mutual exclusion. Comments and labels are advisory mirrors. The deterministic validator and coordinator discipline provide enforcement. If a Task comment and manifest disagree, stop dispatch, correct the inconsistency, and rerun validation; do not silently choose one.
+
+## 7. Shared lessons ledger (bb memory, project scope)
+
+Cross-thread findings live in the bb Memory plugin at project scope. The memory index is injected into every thread's system prompt, so an admitted entry is visible to every worker without routing through the coordinator. This is the program's shared verified context: facts, failures, constraints, and patch summaries propagate as state, not as re-discovery.
+
+Entry conventions (binding):
+
+| Field | Convention |
+|---|---|
+| `--name` | `<TYPE>-<scope>-<slug>`, TYPE one of `FACT`, `FAIL`, `CONSTRAINT`, `PATCH` |
+| `--kind` | fixed plugin vocabulary — map `FACT`/`FAIL` → `fact`, `CONSTRAINT` → `decision`, `PATCH` → `episode` |
+| `--tag` | at least one of `wp:WPxx`, `cluster:C-...`, or a file path; reviewers add `commit:<sha>` |
+| `--summary` | one claim, ~100 tokens max — this is what other threads see in their index |
+| `--details` | **evidence required**: file:line, the command and its output, or a commit SHA. An entry without concrete evidence is not binding and must be rejected or superseded |
+| `--reason` | what happened that makes this durable |
+
+Admission and hygiene:
+
+- **Verify before relying.** Before treating a ledger entry as binding for a dispatch or merge decision, spot-check its evidence. Reject or supersede entries whose evidence does not hold.
+- **Supersede, don't accumulate.** When a design is deleted or a fact is invalidated, `bb memory update`/`forget` with `--reason` immediately. Stale entries mislead every subsequent worker (e.g., any entry about the removed freeze-guard machinery or the removed workflow factory is now wrong).
+- Never store secrets, transient status, guesses, or rules already guaranteed by `AGENTS.md`.
+
+Worker duties are stated in `plugins/bb-plugin-finite-state/AGENTS.md` ("Shared lessons ledger"): search before starting, write on completion and on failure.
+
+## 8. Retries inherit; they do not restart
+
+On 2026-08-12, WP-09 was attempted by seven fresh threads and WP-08 by four; each retry re-discovered the prior attempt's failures in a cold worktree. Before re-dispatching a failed or stopped WP:
+
+1. **Harvest the dead thread.** Read `bb thread log <failed-thread>` and admit `FAIL`/`FACT` ledger entries (with evidence) for whatever killed or blocked it.
+2. **Inherit, don't reprovision.** Prefer `bb thread fork <failed-thread> --workspace reuse --prompt "..."` or `bb thread spawn --environment <same-env>` so the retry keeps the workspace and context. **A bare `bb thread fork` defaults to `--workspace isolated`, which provisions a fresh worktree — the cold restart this rule exists to prevent — so the `--workspace reuse` flag is mandatory.** Provision a fresh worktree only when the workspace itself is corrupted — and say so in the dispatch instructions.
+
+## 9. Review findings are durable; head-move audits verify deltas
+
+A moved head does not invalidate everything a reviewer verified. Serial full re-audits of the same artifact (FS-89 received five on 2026-08-12) are the slowest possible use of review capacity.
+
+- Reviewers admit verified findings to the ledger tagged `commit:<sha>` plus the files covered.
+- On a head move, keep the **same reviewer thread** and `bb thread tell` it the new head; it verifies the diff since its last verified commit against its admitted findings.
+- A brand-new full audit is reserved for: a change of reviewer identity required by the independent-review profile (provider diversity), contested findings, or a frozen-artifact approval where the human gate requires it.
+
+## 10. Ready-queue watchdog (advisory automation)
+
+The `fs-ready-queue-watchdog` script automation runs [`ready-queue-watchdog.mjs`](./ready-queue-watchdog.mjs) every 5 minutes. It computes dependency-ready, cluster-free, lowest-sequence candidates from the manifest plus live Tasks state and queues a nudge to the coordinator thread when undispatched candidates exist (re-nudging at most every 30 minutes for an unchanged set).
+
+It is advisory only: it never dispatches, never selects presets, and never changes the lane cap — §2–§4 remain the coordinator's job. It requires no bb modification (per `ADR — bb Is Not Modified.md`; it is a stock automations-plugin script). If coordination moves to a different thread, update the automation's `BB_COORDINATOR_THREAD` env value.
+
+Semantics worth knowing:
+
+- **Omitted dependencies count as satisfied.** The manifest deliberately omits the completed L0 packages (WP01, WP03–WP07) while still naming them as dependencies; requiring board-`done` for them would permanently hide 24 of 64 remaining packages. `ready-queue-watchdog.test.mjs` pins this behavior.
+- **Prohibited packages are excluded, durably.** The versioned rule is `dispatchPolicy.prohibitedWorkPackages` in the manifest (currently `["WP02"]`, per `ADR — bb Is Not Modified.md`; the sibling `prohibitedWorkPackageReasons` object records why). The automation additionally sets `FS_WATCHDOG_EXCLUDE=WP02` as belt-and-braces — but the repo artifact, not job configuration, is the mechanism of record.
+- **Dedup state** lives in the automation's working directory (the automations plugin data dir) or `FS_WATCHDOG_STATE_DIR` when set; an unchanged ready set re-nudges at most every 30 minutes.
