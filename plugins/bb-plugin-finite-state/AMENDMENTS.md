@@ -18,8 +18,9 @@ No amendment is implied by an implementation task, code comment, or local workar
 ## Structured entry format
 
 The accept command recognizes only an unfenced level-three `A-*` or `AMD-*`
-heading with all three exact fields below: `Status: approved`, an `Artifacts`
-list, and `Contract version` (a number or `n/a`). Fenced examples are
+heading with all three exact fields below: a `Status` field exactly equal to
+`approved` or `approved and merged`, an `Artifacts` list, and `Contract
+version` (a number or `n/a`). Fenced examples are
 documentation only and are never approval evidence.
 
 ```md
