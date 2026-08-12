@@ -122,7 +122,7 @@ Worker duties are stated in `plugins/bb-plugin-finite-state/AGENTS.md` ("Shared 
 On 2026-08-12, WP-09 was attempted by seven fresh threads and WP-08 by four; each retry re-discovered the prior attempt's failures in a cold worktree. Before re-dispatching a failed or stopped WP:
 
 1. **Harvest the dead thread.** Read `bb thread log <failed-thread>` and admit `FAIL`/`FACT` ledger entries (with evidence) for whatever killed or blocked it.
-2. **Inherit, don't reprovision.** Prefer `bb thread fork <failed-thread> --prompt "..."` or `bb thread spawn --environment <same-env>` so the retry keeps the workspace and context. Provision a fresh worktree only when the workspace itself is corrupted — and say so in the dispatch instructions.
+2. **Inherit, don't reprovision.** Prefer `bb thread fork <failed-thread> --workspace reuse --prompt "..."` or `bb thread spawn --environment <same-env>` so the retry keeps the workspace and context. **A bare `bb thread fork` defaults to `--workspace isolated`, which provisions a fresh worktree — the cold restart this rule exists to prevent — so the `--workspace reuse` flag is mandatory.** Provision a fresh worktree only when the workspace itself is corrupted — and say so in the dispatch instructions.
 
 ## 9. Review findings are durable; head-move audits verify deltas
 
