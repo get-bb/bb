@@ -4,16 +4,16 @@ import type { JsonValue } from "../../shared/contract.js";
 import { jsonValueSchema, rpcContract } from "../../shared/contract.js";
 import type { PluginContext } from "../../lib/context.js";
 import { toStorageProjectVersionId } from "../../lib/store/index.js";
-import { registerCanvasEditingBackend } from "./canvas/editing/index.js";
-import { registerCanvasLinksBackend } from "./canvas/links/index.js";
-import { registerCanvasNodesBackend } from "./canvas/nodes/index.js";
-import { registerThreatOverlayBackend } from "./canvas/threat-overlay/index.js";
+import { registerCanvasEditingBackend } from "./canvas/editing/backend.js";
+import { registerCanvasLinksBackend } from "./canvas/links/backend.js";
+import { registerCanvasNodesBackend } from "./canvas/nodes/backend.js";
+import { registerThreatOverlayBackend } from "./canvas/threat-overlay/backend.js";
 import type { CanvasTaraKind } from "./canvas/foundation/types.js";
 import { registerRequirementsCardsBackend } from "./requirements/cards/backend.js";
-import { registerRequirementsConversionBackend } from "./requirements/conversion/index.js";
-import { registerRequirementsTraceabilityBackend } from "./requirements/traceability/index.js";
-import { registerVerificationMatrixBackend } from "./verifications/matrix/index.js";
-import { registerVerificationRunDetailBackend } from "./verifications/run-detail/index.js";
+import { registerRequirementsConversionBackend } from "./requirements/conversion/backend.js";
+import { registerRequirementsTraceabilityBackend } from "./requirements/traceability/backend.js";
+import { registerVerificationMatrixBackend } from "./verifications/matrix/backend.js";
+import { registerVerificationRunDetailBackend } from "./verifications/run-detail/backend.js";
 
 const productSecurityRpcContract = { taraList: rpcContract.taraList } as const;
 interface TaraSyncRow {

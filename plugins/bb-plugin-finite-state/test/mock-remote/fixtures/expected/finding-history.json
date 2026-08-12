@@ -1,0 +1,15 @@
+{
+  "events": [
+    {
+      "action": "soft_delete",
+      "at": "2026-05-12T14:30:00.000Z",
+      "id": "soft-delete"
+    },
+    {
+      "action": "upstream_reconfirm",
+      "at": "2026-05-12T14:30:00.000Z",
+      "id": "reconfirm"
+    }
+  ],
+  "findingId": "8000000000000000012"
+}

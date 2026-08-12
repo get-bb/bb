@@ -54,7 +54,13 @@ function TaraPanel({
         ]);
         const LoadedCanvasShell = module.default;
         return {
-          default({ model }: { model: CanvasModel }): React.JSX.Element {
+          default({
+            model,
+            projectId: canvasProjectId,
+          }: {
+            model: CanvasModel;
+            projectId: string;
+          }): React.JSX.Element {
             return (
               <LoadedCanvasShell
                 features={{
@@ -65,6 +71,7 @@ function TaraPanel({
                   EditingLayer: features.EditingLayer,
                 }}
                 model={model}
+                projectId={canvasProjectId}
               />
             );
           },
@@ -73,7 +80,9 @@ function TaraPanel({
     [features],
   );
 
-  if (data.status === "unconfigured") return <CanvasUnconfiguredState />;
+  if (!projectId || data.status === "unconfigured") {
+    return <CanvasUnconfiguredState />;
+  }
   if (data.status === "loading") return <CanvasLoadingState />;
   if (data.status === "error" || !data.model) {
     return <CanvasErrorState onRetry={data.retry} />;
@@ -94,7 +103,7 @@ function TaraPanel({
       />
       <div className="min-h-0 flex-1">
         <Suspense fallback={<CanvasLoadingState />}>
-          <LazyCanvasShell model={model} />
+          <LazyCanvasShell model={model} projectId={projectId} />
         </Suspense>
       </div>
     </div>
@@ -119,7 +128,10 @@ export function ProductSecurityPanel({
   const VerificationMatrix = features.VerificationMatrix;
   const VerificationRunDetailLayer = features.VerificationRunDetailLayer;
   return (
-    <main className="flex h-full min-h-0 flex-col bg-background text-foreground">
+    <section
+      aria-label="Product Security"
+      className="flex h-full min-h-0 flex-col bg-background text-foreground"
+    >
       <nav
         aria-label="Product Security sections"
         className="flex shrink-0 items-center gap-1 border-b border-border px-3 py-2"
@@ -160,6 +172,6 @@ export function ProductSecurityPanel({
           </>
         ) : null}
       </div>
-    </main>
+    </section>
   );
 }

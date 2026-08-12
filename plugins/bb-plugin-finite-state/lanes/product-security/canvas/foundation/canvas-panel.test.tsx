@@ -11,7 +11,8 @@ import {
 import { loadProductSecurityNodeTypes } from "../nodes/index.js";
 import { ProductSecurityThreatOverlay } from "../threat-overlay/index.js";
 import CanvasShell, { type CanvasFoundationFeatures } from "./CanvasShell.js";
-import type { CanvasModel, LayoutWorkerLike } from "./types.js";
+import { canvasLayoutStorageKey } from "./layout-storage.js";
+import type { CanvasModel, LayoutResult } from "./types.js";
 
 const cache = {
   state: "fresh",
@@ -228,6 +229,14 @@ beforeAll(() => {
       dispatchEvent: () => true,
     }),
   );
+  vi.stubGlobal(
+    "requestAnimationFrame",
+    (callback: FrameRequestCallback): number =>
+      window.setTimeout(() => callback(performance.now()), 0),
+  );
+  vi.stubGlobal("cancelAnimationFrame", (handle: number) => {
+    window.clearTimeout(handle);
+  });
   vi.spyOn(Element.prototype, "getBoundingClientRect").mockReturnValue(
     new DOMRect(0, 0, 1000, 600),
   );
@@ -261,7 +270,10 @@ beforeAll(() => {
   });
 });
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  window.localStorage.clear();
+});
 
 async function productSecurityPanel() {
   const app = await loadPluginApp(() => import("../../../../app.js"));
@@ -325,10 +337,12 @@ describe("WP-31 bb panel qualification", () => {
     expect(slot.getByRole("button", { name: /zoom out/iu })).toBeTruthy();
     fireEvent.click(zoomIn);
 
-    const main = slot.container.querySelector("main");
-    expect(main?.className).toContain("bg-background");
+    const panelRegion = slot.getByRole("region", {
+      name: "Product Security",
+    });
+    expect(panelRegion.className).toContain("bg-background");
     document.documentElement.classList.add("dark");
-    expect(main?.className).toContain("text-foreground");
+    expect(panelRegion.className).toContain("text-foreground");
     await waitFor(() => {
       expect(slot.container.querySelector(".react-flow.dark")).toBeTruthy();
     });
@@ -420,32 +434,75 @@ describe("WP-31 bb panel qualification", () => {
     unconfigured.lifecycle.unmount();
   });
 
-  it("keeps the existing layout visible on timeout and offers Retry", async () => {
-    const createLayoutWorker = (): LayoutWorkerLike => ({
-      onmessage: null,
-      onerror: null,
-      postMessage() {},
-      terminate() {},
+  it("paints Arrange state and persists successful positions", async () => {
+    let complete = (_result: LayoutResult): void => undefined;
+    const pending = new Promise<LayoutResult>((resolveLayout) => {
+      complete = resolveLayout;
     });
     const view = render(
       <CanvasShell
-        createLayoutWorker={createLayoutWorker}
+        arrange={() => pending}
         features={features}
-        layoutTimeoutMs={5}
         model={model}
+        projectId="project-1"
       />,
     );
     expect(
       await view.findByLabelText("component Connected device"),
     ).toBeTruthy();
-    fireEvent.click(view.getByRole("button", { name: "Tidy canvas" }));
+    fireEvent.click(view.getByRole("button", { name: "Arrange canvas" }));
     expect(
-      await view.findByText("Auto-layout timed out", { exact: false }),
+      await view.findByText("Dense models can pause", { exact: false }),
+    ).toBeTruthy();
+    expect(view.container.querySelector("section")?.ariaBusy).toBe("true");
+
+    complete({
+      positions: {
+        "COMP-device": { x: 432, y: 96 },
+        "COMP-api": { x: 864, y: 96 },
+      },
+      durationMs: 1_240,
+    });
+    expect(
+      await view.findByText("Arranged in 1240 ms", { exact: false }),
+    ).toBeTruthy();
+    expect(
+      window.localStorage.getItem(canvasLayoutStorageKey("project-1")),
+    ).toContain('"x":432');
+    view.unmount();
+
+    const restored = render(
+      <CanvasShell features={features} model={model} projectId="project-1" />,
+    );
+    const restoredNode = await restored.findByLabelText(
+      "component Connected device",
+    );
+    expect(
+      restoredNode.closest(".react-flow__node")?.getAttribute("style"),
+    ).toContain("translate(432px,96px)");
+    restored.unmount();
+  });
+
+  it("keeps the existing layout visible when Arrange fails and offers Retry", async () => {
+    const view = render(
+      <CanvasShell
+        arrange={() => Promise.reject(new Error("representative ELK failure"))}
+        features={features}
+        model={model}
+        projectId="project-1"
+      />,
+    );
+    expect(
+      await view.findByLabelText("component Connected device"),
+    ).toBeTruthy();
+    fireEvent.click(view.getByRole("button", { name: "Arrange canvas" }));
+    expect(
+      await view.findByText("Existing positions are unchanged", {
+        exact: false,
+      }),
     ).toBeTruthy();
     expect(view.getByLabelText("component Connected device")).toBeTruthy();
-    expect(
-      view.getByRole("button", { name: "Retry auto-layout" }),
-    ).toBeTruthy();
+    expect(view.getByRole("button", { name: "Retry arrange" })).toBeTruthy();
     view.unmount();
   });
 });

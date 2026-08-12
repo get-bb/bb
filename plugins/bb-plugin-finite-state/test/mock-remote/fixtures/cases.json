@@ -1,0 +1,96 @@
+{
+  "binary-firmware-file": {
+    "description": "The firmware tree includes a bounded binary byte sample.",
+    "refs": [
+      "firmware/manifest.jsonl#path=rootfs/usr/bin/eagled",
+      "firmware/bytes/eagled.bin"
+    ]
+  },
+  "component-without-purl": {
+    "description": "A vulnerable component uses its content-hash fallback identity.",
+    "refs": [
+      "platform/components.jsonl#component=component-0005"
+    ]
+  },
+  "conflicting-hbom-claims": {
+    "description": "Two document-backed claims disagree about the same HBOM field.",
+    "refs": [
+      "documents/hbom-claims.json#component=as-component-01"
+    ]
+  },
+  "duplicate-finding-row": {
+    "description": "One finding row is repeated byte-for-byte in the JSONL collection.",
+    "refs": [
+      "platform/findings.jsonl#finding=8000000000000000027"
+    ]
+  },
+  "firmware-symlink": {
+    "description": "A symlink attempts to escape the materialization root.",
+    "refs": [
+      "firmware/manifest.jsonl#path=rootfs/link-outside"
+    ]
+  },
+  "firmware-unpack-error": {
+    "description": "A nested archive retains its unpack error in manifest metadata.",
+    "refs": [
+      "firmware/manifest.jsonl#path=rootfs/var/lib/broken-archive.tar"
+    ]
+  },
+  "non-ascii-names": {
+    "description": "Names contain composed non-ASCII Latin characters and the micro sign.",
+    "refs": [
+      "platform/components.jsonl#component=component-0009",
+      "documents/documents.json#document=document-2"
+    ]
+  },
+  "partial-vex-failure": {
+    "description": "Bulk VEX succeeds for three rows and fails independently for two.",
+    "refs": [
+      "platform/vex-bulk-partial.json"
+    ]
+  },
+  "requirement-without-verification": {
+    "description": "One requirement intentionally has no verification check.",
+    "refs": [
+      "assurance-studio/requirements.jsonl#requirement=requirement-040"
+    ]
+  },
+  "same-field-tara-drift": {
+    "description": "Local and remote edits change the same TARA field from a common base.",
+    "refs": [
+      "assurance-studio/tara-drift.json#entity=as-component-01"
+    ]
+  },
+  "soft-delete-then-reconfirm": {
+    "description": "Expected history includes a soft delete followed by upstream reconfirmation.",
+    "refs": [
+      "expected/finding-history.json#event=soft-delete",
+      "expected/finding-history.json#event=reconfirm"
+    ]
+  },
+  "strict-unknown-key": {
+    "description": "A strict-schema request contains one unknown key.",
+    "refs": [
+      "faults/strict-unknown-key.json#key=unexpectedFixtureKey"
+    ]
+  },
+  "version-changed-component": {
+    "description": "A component changed version between the prior and current product versions.",
+    "refs": [
+      "platform/components.jsonl#component=component-0002"
+    ]
+  },
+  "withdrawn-document": {
+    "description": "One document remains addressable after withdrawal.",
+    "refs": [
+      "documents/documents.json#document=document-6"
+    ]
+  },
+  "zero-byte-firmware-file": {
+    "description": "The firmware tree contains a real zero-byte sample.",
+    "refs": [
+      "firmware/manifest.jsonl#path=rootfs/empty.dat",
+      "firmware/bytes/zero-byte.bin"
+    ]
+  }
+}

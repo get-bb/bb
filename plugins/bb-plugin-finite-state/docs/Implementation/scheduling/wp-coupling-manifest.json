@@ -166,7 +166,14 @@
     "prohibitedWorkPackageReasons": {
       "WP02": "ADR — bb Is Not Modified: builtin registration is a BB release decision; dispatch is prohibited and FS-16 stays in backlog until the ADR is superseded."
     },
-    "currentLaneCap": 4,
+    "stoppedWorkPackages": ["WP56"],
+    "stoppedWorkPackageReasons": {
+      "WP56": {
+        "reason": "At integration 056899c2d, local-auth plugin mutations reject multipart before dispatch and plugin HTTP routes match exact paths, blocking the required upload and content route.",
+        "resumeCondition": "Resume only after an owner-approved interface revision supplies both multipart upload and parameterized document-content delivery without bb-core changes or forbidden escape hatches."
+      }
+    },
+    "currentLaneCap": 6,
     "sixLanePromotion": {
       "requiredCompletedWorkPackages": [],
       "requiredIndependentDecisionClusters": 6,

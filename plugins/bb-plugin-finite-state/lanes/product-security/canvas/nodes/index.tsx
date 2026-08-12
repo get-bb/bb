@@ -1,6 +1,4 @@
 import type { Node, NodeProps, NodeTypes } from "@xyflow/react";
-import type { BbPluginApi } from "@bb/plugin-sdk";
-import type { PluginContext } from "../../../../lib/context.js";
 import type { CanvasNodeModel } from "../foundation/types.js";
 
 interface CanvasNodeData extends Record<string, unknown> {
@@ -26,7 +24,7 @@ export async function loadProductSecurityNodeTypes(): Promise<NodeTypes> {
         data-canvas-node-id={model.id}
       >
         <Handle
-          aria-label="Incoming dataflow"
+          aria-hidden="true"
           className="border-border bg-muted-foreground"
           position={Position.Left}
           type="target"
@@ -42,7 +40,7 @@ export async function loadProductSecurityNodeTypes(): Promise<NodeTypes> {
           {model.criticality ? <span>{model.criticality}</span> : null}
         </div>
         <Handle
-          aria-label="Outgoing dataflow"
+          aria-hidden="true"
           className="border-border bg-muted-foreground"
           position={Position.Right}
           type="source"
@@ -52,11 +50,4 @@ export async function loadProductSecurityNodeTypes(): Promise<NodeTypes> {
   }
 
   return { component: RepresentativeComponentNode };
-}
-
-export function registerCanvasNodesBackend(
-  _bb: BbPluginApi,
-  _ctx: PluginContext,
-): void {
-  // WP-32 replaces this lane-local registration seam.
 }
