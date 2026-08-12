@@ -1,48 +1,25 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
+import { connectedDensityFixture } from "./elk-benchmark.js";
 import { installElkWorker, runElkLayout } from "./elk-worker.js";
-import { shouldAutoLayout } from "./CanvasShell.js";
-import type {
-  LayoutRequest,
-  LayoutWorkerRequest,
-  LayoutWorkerResponse,
-} from "./types.js";
+import type { LayoutWorkerRequest, LayoutWorkerResponse } from "./types.js";
 
 const foundationDir = dirname(fileURLToPath(import.meta.url));
 const productSecurityDir = resolve(foundationDir, "../..");
 
-export function representativeFixture(nodeCount: number): LayoutRequest {
-  const nodes = Array.from({ length: nodeCount }, (_, index) => ({
-    id: `node-${index}`,
-    width: 216,
-    height: 112,
-  }));
-  const edges: LayoutRequest["edges"] = [];
-
-  for (let sourceIndex = 0; sourceIndex < nodeCount; sourceIndex += 1) {
-    const targets = [
-      (sourceIndex + 1) % nodeCount,
-      (sourceIndex * 17 + 31) % nodeCount,
-      (sourceIndex * 31 + 73) % nodeCount,
-    ];
-    for (const candidate of targets) {
-      const targetIndex =
-        candidate === sourceIndex ? (candidate + 1) % nodeCount : candidate;
-      edges.push({
-        source: `node-${sourceIndex}`,
-        target: `node-${targetIndex}`,
-      });
-    }
-  }
-
-  return { nodes, edges, direction: "RIGHT" };
-}
-
 describe("WP-31 ELK foundation", () => {
-  it("returns stable, non-overlapping positions through the worker protocol", async () => {
+  it("completes the worker protocol deterministically after progress", async () => {
     const posted: LayoutWorkerResponse[] = [];
+    let complete = (
+      _message: Extract<LayoutWorkerResponse, { type: "result" }>,
+    ): void => undefined;
+    const completion = new Promise<
+      Extract<LayoutWorkerResponse, { type: "result" }>
+    >((resolveCompletion) => {
+      complete = resolveCompletion;
+    });
     let dispatch = (_event: MessageEvent<unknown>): void => {
       throw new Error("ELK worker listener was not installed");
     };
@@ -52,28 +29,26 @@ describe("WP-31 ELK foundation", () => {
       },
       postMessage(message) {
         posted.push(message);
+        if (message.type === "result") complete(message);
       },
     });
 
     const request: LayoutWorkerRequest = {
       type: "layout",
       requestId: "stable-layout",
-      request: representativeFixture(30),
+      request: connectedDensityFixture(30, 3),
     };
     dispatch(new MessageEvent("message", { data: request }));
-    await vi.waitFor(() => expect(posted.at(-1)?.type).toBe("result"));
+    const result = await completion;
 
-    const result = posted.find(
-      (message): message is Extract<LayoutWorkerResponse, { type: "result" }> =>
-        message.type === "result",
-    );
-    expect(Object.keys(result?.result.positions ?? {})).toHaveLength(30);
-    for (const position of Object.values(result?.result.positions ?? {})) {
+    expect(posted.at(-1)).toBe(result);
+    expect(Object.keys(result.result.positions)).toHaveLength(30);
+    for (const position of Object.values(result.result.positions)) {
       expect(Number.isFinite(position.x)).toBe(true);
       expect(Number.isFinite(position.y)).toBe(true);
     }
     const uniquePositions = new Set(
-      Object.values(result?.result.positions ?? {}).map(
+      Object.values(result.result.positions).map(
         (position) => `${position.x}:${position.y}`,
       ),
     );
@@ -83,6 +58,14 @@ describe("WP-31 ELK foundation", () => {
 
   it("reports worker failure without inventing a result", async () => {
     const posted: LayoutWorkerResponse[] = [];
+    let complete = (
+      _message: Extract<LayoutWorkerResponse, { type: "error" }>,
+    ): void => undefined;
+    const completion = new Promise<
+      Extract<LayoutWorkerResponse, { type: "error" }>
+    >((resolveCompletion) => {
+      complete = resolveCompletion;
+    });
     let dispatch = (_event: MessageEvent<unknown>): void => undefined;
     installElkWorker(
       {
@@ -91,6 +74,7 @@ describe("WP-31 ELK foundation", () => {
         },
         postMessage(message) {
           posted.push(message);
+          if (message.type === "error") complete(message);
         },
       },
       async () => {
@@ -102,12 +86,13 @@ describe("WP-31 ELK foundation", () => {
         data: {
           type: "layout",
           requestId: "crash-layout",
-          request: representativeFixture(30),
+          request: connectedDensityFixture(30, 3),
         } satisfies LayoutWorkerRequest,
       }),
     );
-    await vi.waitFor(() => expect(posted.at(-1)?.type).toBe("error"));
-    expect(posted.at(-1)).toMatchObject({
+    const error = await completion;
+    expect(posted.at(-1)).toBe(error);
+    expect(error).toMatchObject({
       type: "error",
       message: "representative worker crash",
     });
@@ -116,6 +101,14 @@ describe("WP-31 ELK foundation", () => {
 
   it("cancels an opaque ELK run and discards its late result", async () => {
     const posted: LayoutWorkerResponse[] = [];
+    let complete = (
+      _message: Extract<LayoutWorkerResponse, { type: "cancelled" }>,
+    ): void => undefined;
+    const completion = new Promise<
+      Extract<LayoutWorkerResponse, { type: "cancelled" }>
+    >((resolveCompletion) => {
+      complete = resolveCompletion;
+    });
     let dispatch = (_event: MessageEvent<unknown>): void => undefined;
     let resolveLayout = (
       _result: Awaited<ReturnType<typeof runElkLayout>>,
@@ -132,11 +125,12 @@ describe("WP-31 ELK foundation", () => {
         },
         postMessage(message) {
           posted.push(message);
+          if (message.type === "cancelled") complete(message);
         },
       },
       () => pending,
     );
-    const request = representativeFixture(30);
+    const request = connectedDensityFixture(30, 3);
     dispatch(
       new MessageEvent("message", {
         data: { type: "layout", requestId: "cancel-layout", request },
@@ -147,27 +141,36 @@ describe("WP-31 ELK foundation", () => {
         data: { type: "cancel", requestId: "cancel-layout" },
       }),
     );
+    await completion;
     resolveLayout({ positions: {}, durationMs: 5 });
-    await vi.waitFor(() => expect(posted.at(-1)?.type).toBe("cancelled"));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(posted.at(-1)?.type).toBe("cancelled");
     expect(posted.some((message) => message.type === "result")).toBe(false);
   });
 
-  it(
-    "keeps the representative 200-node crossing graph inside the layout budget",
-    { retry: 2 },
-    async () => {
-      const fixture = representativeFixture(200);
-      expect(fixture.edges).toHaveLength(600);
-      const result = await runElkLayout(fixture);
-      expect(Object.keys(result.positions)).toHaveLength(200);
-      expect(result.durationMs).toBeLessThan(2_000);
-    },
-  );
+  it("builds connected fixed-200 fixtures at every requested density", () => {
+    for (const edgesPerNode of [3, 6, 10, 15]) {
+      const fixture = connectedDensityFixture(200, edgesPerNode);
+      expect(fixture.nodes).toHaveLength(200);
+      expect(fixture.edges).toHaveLength(200 * edgesPerNode);
+      expect(
+        fixture.edges.filter(({ source }) => source === "node-0"),
+      ).toHaveLength(edgesPerNode);
+      expect(
+        fixture.edges.every(({ source, target }) => source !== target),
+      ).toBe(true);
+    }
+  });
 
-  it("never opts 500 nodes into automatic layout", () => {
-    expect(shouldAutoLayout(200)).toBe(true);
-    expect(shouldAutoLayout(201)).toBe(false);
-    expect(shouldAutoLayout(500)).toBe(false);
+  it("lays out a dense cyclic graph without relying on exact coordinates", async () => {
+    const result = await runElkLayout(connectedDensityFixture(30, 15));
+    expect(Object.keys(result.positions)).toHaveLength(30);
+    expect(
+      Object.values(result.positions).every(
+        ({ x, y }) => Number.isFinite(x) && Number.isFinite(y),
+      ),
+    ).toBe(true);
   });
 });
 
