@@ -29,6 +29,14 @@ We ran code-level reconnaissance of bb, Forge, the Platform API, and Assurance S
 
 ## 1. Repo decision
 
+> **Partly superseded — see `ADR — bb Is Not Modified.md` (accepted 2026-08-12).**
+> The fork stands as a *development container*, but it is not a product artifact
+> and **bb is never modified**. The "SDK changes (we will need some)" rationale
+> below did not materialise and is withdrawn: no work package may change bb's
+> source, its builtin plugins, or `builtin-registry.ts`. The product ships as an
+> ordinary plugin installed with `bb plugin install`, and builtin registration
+> (WP-02) is deferred as a BB release decision.
+
 **Fork the bb monorepo. Develop at `plugins/bb-plugin-finite-state/`.**
 
 | | Fork the monorepo (chosen) | Standalone repo via `bb plugin new` |
