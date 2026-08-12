@@ -1,10 +1,12 @@
 // @vitest-environment jsdom
 
 import { cleanup, render, screen } from "@testing-library/react";
+import { createStore, Provider as JotaiProvider } from "jotai";
 import type { ReactNode, Ref } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ThreadDetailHeader } from "./ThreadDetailHeader";
 import { PaneContext, type PaneContextValue } from "./PaneContext";
+import { dimInactiveSplitsAtom } from "@/lib/split-layout/atoms";
 
 vi.mock("@/components/layout/AppPageHeader", () => ({
   HEADER_ICON_BUTTON_CLASS: "header-icon-button",
@@ -31,6 +33,10 @@ vi.mock("@bb/shared-ui/hooks/use-compact-viewport", () => ({
   useIsCompactViewport: () => false,
 }));
 
+vi.mock("./SplitDimmingButton", () => ({
+  SplitDimmingButton: () => null,
+}));
+
 const PANE_CONTEXT: PaneContextValue = {
   paneId: "main",
   isFocused: true,
@@ -49,6 +55,7 @@ const PANE_CONTEXT: PaneContextValue = {
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  window.localStorage.clear();
 });
 
 describe("ThreadDetailHeader", () => {
@@ -286,5 +293,34 @@ describe("ThreadDetailHeader", () => {
     expect(inactiveTitle.classList).toContain("text-muted-foreground/60");
     expect(inactiveTitle.classList).toContain("font-normal");
     expect(inactiveTitle.classList).not.toContain("font-medium");
+  });
+
+  it("keeps inactive split titles undimmed when split dimming is off", () => {
+    const store = createStore();
+    store.set(dimInactiveSplitsAtom, false);
+    const splitContext: PaneContextValue = {
+      ...PANE_CONTEXT,
+      isFocused: false,
+      isSplitPane: true,
+      beginPaneDrag: vi.fn(),
+    };
+    render(
+      <JotaiProvider store={store}>
+        <PaneContext.Provider value={splitContext}>
+          <ThreadDetailHeader
+            actionsMenu={null}
+            childPillLabel={null}
+            isSecondaryPanelOpen={false}
+            onOpenThreadGitAction={vi.fn()}
+            onToggleSecondaryPanel={vi.fn()}
+            threadHeaderGitActions={[]}
+            threadTitle="Inactive thread"
+          />
+        </PaneContext.Provider>
+      </JotaiProvider>,
+    );
+    expect(screen.getByText("Inactive thread").classList).not.toContain(
+      "text-muted-foreground/60",
+    );
   });
 });

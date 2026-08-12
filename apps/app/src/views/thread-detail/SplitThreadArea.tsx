@@ -24,7 +24,11 @@ import { BbHttpError } from "@/lib/sdk";
 import { useThread } from "@/hooks/queries/thread-queries";
 import { useThreadSplitsEnabled } from "@/hooks/useThreadSplitsEnabled";
 import { useSplitWorkspaceActive } from "@/hooks/useSplitWorkspaceActive";
-import { maximizedPaneIdAtom, splitLayoutAtom } from "@/lib/split-layout/atoms";
+import {
+  dimInactiveSplitsAtom,
+  maximizedPaneIdAtom,
+  splitLayoutAtom,
+} from "@/lib/split-layout/atoms";
 import {
   clampSplitPairFraction,
   computePaneRects,
@@ -108,6 +112,7 @@ import {
   CONTEXT_SELECTION_SURFACE_CLASS,
 } from "@/components/ui/context-selection";
 import { PaneMaximizeButton } from "./PaneMaximizeButton";
+import { SplitDimmingButton } from "./SplitDimmingButton";
 import { wsManager } from "@/lib/ws";
 
 // A `pointerdown`-relative move threshold before a pane-header drag engages.
@@ -228,6 +233,7 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
   const navigate = useNavigate();
   const store = useStore();
   const [storedLayout, setLayout] = useAtom(splitLayoutAtom);
+  const dimsInactiveSplits = useAtomValue(dimInactiveSplitsAtom);
   const [maximizedPaneId, setMaximizedPaneIdAtom] =
     useAtom(maximizedPaneIdAtom);
   const secondaryPanelRegistry = useMemo(
@@ -642,6 +648,7 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
             isTopRow
             isLeftEdge
             isRightEdge
+            dimsInactiveSplits={dimsInactiveSplits}
             focusedPaneId={effectiveMaximizedPaneId ?? layout.focusedPaneId}
             maximizedPaneId={effectiveMaximizedPaneId}
             secondaryPanelRegistry={secondaryPanelRegistry}
@@ -715,6 +722,7 @@ function SplitPaneCommandHandlers({
 interface SplitTreeProps {
   node: LayoutNode;
   path: SplitPath;
+  dimsInactiveSplits: boolean;
   /** Whether this subtree touches the workspace's top edge. */
   isTopRow: boolean;
   /** Whether this subtree touches the workspace's left edge. */
@@ -807,7 +815,9 @@ function SplitTree(props: SplitTreeProps) {
           data-pane-focus-scrim=""
           className={cn(
             "pointer-events-none absolute inset-0 z-20 transition-colors",
-            isFocused ? "bg-transparent" : "bg-background/30",
+            isFocused || !props.dimsInactiveSplits
+              ? "bg-transparent"
+              : "bg-background/30",
           )}
         />
       </div>
@@ -1011,6 +1021,7 @@ function NonThreadPaneContent({
 }) {
   const { navPanels } = usePluginSlots();
   const resourceRouteLabel = useAtomValue(resourceRouteLabelAtom);
+  const dimsInactiveSplits = useAtomValue(dimInactiveSplitsAtom);
   const { reservesWindowPanelToggle, isFocused } = useOptionalPaneContext() ?? {
     reservesWindowPanelToggle: false,
     isFocused: true,
@@ -1047,6 +1058,7 @@ function NonThreadPaneContent({
   };
   const actions = (
     <>
+      <SplitDimmingButton />
       {panel ? (
         <PluginPanelHeaderActions
           panel={panel}
@@ -1133,7 +1145,10 @@ function NonThreadPaneContent({
                 <p
                   className={cn(
                     "relative truncate text-sm font-normal transition-colors",
-                    isBoundedPane && !isFocused && CONTEXT_INACTIVE_TEXT_CLASS,
+                    isBoundedPane &&
+                      !isFocused &&
+                      dimsInactiveSplits &&
+                      CONTEXT_INACTIVE_TEXT_CLASS,
                   )}
                 >
                   New thread
