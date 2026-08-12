@@ -2711,7 +2711,10 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       resolveMentionLink={resolveMentionLink}
       workspaceRootPath={environment?.path ?? undefined}
     >
-      <PluginPanelTabContent tab={activePluginPanelTab} threadId={thread.id} />
+      <PluginPanelTabContent
+        tab={activePluginPanelTab}
+        context={{ kind: "thread", threadId: thread.id }}
+      />
     </ThreadTimelineNavigationProvider>
   ) : undefined;
   const isBrowserTabActive = activeBrowserTab !== null;

@@ -30,6 +30,7 @@ import {
   type PluginMessageActionRegistration,
   type PluginMessageDirectiveRegistration,
   type PluginNavPanelRegistration,
+  type PluginNewThreadPanelActionRegistration,
   type PluginPendingInteractionRegistration,
   type PluginRealtimeConnectionState,
   type PluginRpcClient,
@@ -516,6 +517,7 @@ export interface CapturedPluginApp {
   settingsSections: PluginSettingsSectionRegistration[];
   navPanels: PluginNavPanelRegistration[];
   threadPanelActions: PluginThreadPanelActionRegistration[];
+  newThreadPanelActions: PluginNewThreadPanelActionRegistration[];
   composerCustomizations: ComposerCustomization[];
   pendingInteractions: PluginPendingInteractionRegistration[];
   sidebarFooterActions: PluginSidebarFooterActionRegistration[];
@@ -546,6 +548,7 @@ function collectRegistrations(
     settingsSections: [],
     navPanels: [],
     threadPanelActions: [],
+    newThreadPanelActions: [],
     composerCustomizations: [],
     pendingInteractions: [],
     sidebarFooterActions: [],
@@ -561,6 +564,7 @@ function collectRegistrations(
     settingsSection: new Set<string>(),
     navPanel: new Set<string>(),
     threadPanelAction: new Set<string>(),
+    newThreadPanelAction: new Set<string>(),
     composerCustomization: new Set<string>(),
     pendingInteraction: new Set<string>(),
     sidebarFooterAction: new Set<string>(),
@@ -648,6 +652,36 @@ function collectRegistrations(
           throw new Error(`${kind}: "layout" must be "padded" or "flush"`);
         }
         captured.threadPanelActions.push({
+          id,
+          title: requireNonEmptyString(kind, "title", registration.title),
+          ...(registration.icon !== undefined
+            ? { icon: requireNonEmptyString(kind, "icon", registration.icon) }
+            : {}),
+          component: requireComponent(kind, registration.component),
+          ...(registration.layout !== undefined
+            ? { layout: registration.layout }
+            : {}),
+          ...(registration.run !== undefined ? { run: registration.run } : {}),
+        });
+      },
+      experimental_newThreadPanelAction(registration) {
+        const kind = "slots.experimental_newThreadPanelAction";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.newThreadPanelAction, id);
+        if (
+          registration.run !== undefined &&
+          typeof registration.run !== "function"
+        ) {
+          throw new Error(`${kind}: "run" must be a function when set`);
+        }
+        if (
+          registration.layout !== undefined &&
+          registration.layout !== "padded" &&
+          registration.layout !== "flush"
+        ) {
+          throw new Error(`${kind}: "layout" must be "padded" or "flush"`);
+        }
+        captured.newThreadPanelActions.push({
           id,
           title: requireNonEmptyString(kind, "title", registration.title),
           ...(registration.icon !== undefined

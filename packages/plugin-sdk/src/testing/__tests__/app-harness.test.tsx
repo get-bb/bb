@@ -224,6 +224,51 @@ const app = await loadPluginApp(
 );
 
 describe("loadPluginApp", () => {
+  it("captures and validates New thread panel action registrations", async () => {
+    const run = () => {};
+    const captured = await loadPluginApp(
+      definePluginApp((builder) => {
+        builder.slots.experimental_newThreadPanelAction({
+          id: "template",
+          title: "Apply template",
+          icon: "Wand",
+          component: () => null,
+          layout: "flush",
+          run,
+        });
+      }),
+    );
+
+    expect(captured.newThreadPanelActions).toEqual([
+      {
+        id: "template",
+        title: "Apply template",
+        icon: "Wand",
+        component: expect.any(Function),
+        layout: "flush",
+        run,
+      },
+    ]);
+    await expect(
+      loadPluginApp(
+        definePluginApp((builder) => {
+          builder.slots.experimental_newThreadPanelAction({
+            id: "template",
+            title: "One",
+            component: () => null,
+          });
+          builder.slots.experimental_newThreadPanelAction({
+            id: "template",
+            title: "Two",
+            component: () => null,
+          });
+        }),
+      ),
+    ).rejects.toThrow(
+      'slots.experimental_newThreadPanelAction: duplicate id "template"',
+    );
+  });
+
   it("captures, mounts, and exactly-once disposes content scripts in lifecycle order", async () => {
     const events: string[] = [];
     const captured = await loadPluginApp(

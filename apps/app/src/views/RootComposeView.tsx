@@ -72,7 +72,10 @@ import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { COARSE_POINTER_COMPACT_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
-import { PluginPanelTabContent } from "@/components/plugin/PluginPanelActions";
+import {
+  PluginPanelTabContent,
+  usePluginNewThreadPanelActions,
+} from "@/components/plugin/PluginPanelActions";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { useUploadPromptAttachment } from "@/hooks/mutations/project-mutations";
 import { useCreateThread } from "@/hooks/mutations/thread-runtime-mutations";
@@ -2066,7 +2069,8 @@ export function RootComposeView() {
   );
   const [browserAddressFocusRequest, setBrowserAddressFocusRequest] =
     useState<BrowserAddressFocusRequest | null>(null);
-  const { threadPanelActions: rootPanelThreadPanelActions } = usePluginSlots();
+  const { newThreadPanelActions: rootPanelNewThreadPanelActions } =
+    usePluginSlots();
   const {
     activePluginPanelTab,
     activeHostFileEnvironmentId,
@@ -2089,6 +2093,7 @@ export function RootComposeView() {
     activateTab,
     closeTab,
     isNewTabActive,
+    openPluginPanel,
     openTab,
     orderedSecondaryFileTabs,
     reorderFileTab,
@@ -2104,6 +2109,10 @@ export function RootComposeView() {
     retainedTerminalId,
     storageFiles: rootThreadStorageFiles?.files,
     terminalSessions: loadedTerminalSessions,
+  });
+  const rootPluginPanelActions = usePluginNewThreadPanelActions({
+    openPluginPanel,
+    projectId: isProjectless ? null : projectId,
   });
 
   const activeRootHostFileThreadId =
@@ -2675,10 +2684,13 @@ export function RootComposeView() {
               onSelect: () => handleActivateFileTab(tab.id),
               onClose: () => closeTab(tab.id),
             };
-          case "plugin-panel":
-            // Plugin action tabs are opened from a thread's launcher; the
-            // root panel offers no plugin actions, but file-opener tabs open
-            // here too and persisted state must render any kind.
+          case "plugin-panel": {
+            const actionIcon =
+              rootPanelNewThreadPanelActions.find(
+                (action) =>
+                  action.pluginId === tab.pluginId &&
+                  action.id === tab.actionId,
+              )?.icon ?? null;
             return {
               id: tab.id,
               filename: tab.title,
@@ -2686,7 +2698,7 @@ export function RootComposeView() {
               leadingVisual: (
                 <PluginIcon
                   pluginId={tab.pluginId}
-                  icon={null}
+                  icon={actionIcon}
                   className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
                 />
               ),
@@ -2694,6 +2706,7 @@ export function RootComposeView() {
               onSelect: () => handleActivateFileTab(tab.id),
               onClose: () => closeTab(tab.id),
             };
+          }
         }
       },
     );
@@ -2969,6 +2982,7 @@ export function RootComposeView() {
         onStartTerminal={
           canCreateRootTerminal ? handleStartTerminal : undefined
         }
+        pluginActions={rootPluginPanelActions}
         showFileSearch={!isProjectless}
       />
     ) : activeWorkspaceFilePath !== null &&
@@ -3036,7 +3050,10 @@ export function RootComposeView() {
     ) : activePluginPanelTab ? (
       <PluginPanelTabContent
         tab={activePluginPanelTab}
-        threadId={rootPanelThreadId}
+        context={{
+          kind: "new-thread",
+          projectId: isProjectless ? null : projectId,
+        }}
       />
     ) : undefined;
   const isBrowserTabActive = activeBrowserTab !== null;
@@ -3498,7 +3515,7 @@ export function RootComposeView() {
             fileTabContent,
             fileTabContentFillsRegion:
               activePluginPanelTab !== null &&
-              rootPanelThreadPanelActions.find(
+              rootPanelNewThreadPanelActions.find(
                 (candidate) =>
                   candidate.pluginId === activePluginPanelTab.pluginId &&
                   candidate.id === activePluginPanelTab.actionId,

@@ -291,9 +291,12 @@ arrives as the component's subPath prop for panel-internal deep links; the
 host always renders the shared plugin title bar and the component owns a
 zero-padding full-bleed body, including its scrolling),
 threadPanelAction
-(an entry in the thread right panel's new-tab Actions list whose run() can
+(a thread-only entry in an existing thread's right-panel new-tab Actions list;
+it is never offered on root compose, and its run() can
 open closable panel tabs with recursive `JsonValue` params; restored
-components read `JsonValue | null`), pendingInteraction (temporarily replace a thread composer with a
+components read a required `threadId` plus `JsonValue | null`),
+experimental_newThreadPanelAction (the root New thread counterpart, with
+`projectId: string | null` instead of `threadId`), pendingInteraction (temporarily replace a thread composer with a
 plugin form), fileOpener (register as a per-extension file viewer/editor;
 users pick defaults under Settings → File openers and can right-click a
 file link for a one-off choice), and messageDirective (replace a leaf
@@ -429,7 +432,8 @@ frontend bundle needed); bb.status.needsConfiguration (report
 reload/disable/shutdown).
 
 Frontend entries register React slots (homepageSection, settingsSection,
-navPanel, threadPanelAction, fileOpener, messageDirective) and composer
+navPanel, threadPanelAction, experimental_newThreadPanelAction, fileOpener,
+messageDirective) and composer
 customizations via `app.composer.customize({ actions, plusMenu, banners,
 richText })`; action/banner components use `useComposer()` and
 `useComposerView()`, while the host renders plus-menu rows and editor

@@ -126,6 +126,35 @@ bound in `apps/app/src/lib/plugin-sdk-app-impl.tsx`.
    `PluginNewThreadComposer.test.tsx` guard this) and re-decide whether the
    re-seed-on-change rule should instead be an explicit reset nonce.
 
+## `app.slots.experimental_newThreadPanelAction` (`@bb/plugin-sdk/app`)
+
+**What it does.** Adds a plugin row to the root New thread screen's
+right-panel Actions list. Activating it can open a closable panel tab whose
+component receives `{ projectId: string | null, params: JsonValue | null }`.
+It deliberately does not reuse `threadPanelAction`: that existing contract
+requires `threadId: string`, and the in-repo and external consumers built
+against it may assume a thread exists. The two slots are surface-specific and
+never cross-render.
+
+Before stabilization, audit:
+
+1. **Surface naming.** Confirm "New thread" remains the product name and the
+   slot should stay panel-specific rather than becoming a broader root-compose
+   action surface.
+2. **Context breadth.** Confirm the selected `projectId` is sufficient. A
+   plugin can use the composer hooks for the live draft, but the slot does not
+   expose the root composer's selected host, environment, provider, or model.
+3. **Project changes.** An open tab receives the current project on every
+   render, while `run` receives the project selected when the row was
+   activated. Confirm that distinction is intuitive and whether changing
+   projects should close or re-key open tabs.
+4. **Persistence.** Tabs and JSON params persist in the root panel's fixed
+   state. Confirm restoring a plugin tab before registrations load, after a
+   plugin is removed, and in projectless compose has the right fallback.
+5. **Relationship to `threadPanelAction`.** Confirm separate opt-in remains
+   preferable to a unified discriminated context after external plugins have
+   had time to adopt the root surface deliberately.
+
 ## `app.slots.experimental_threadList` (`@bb/plugin-sdk/app`)
 
 **What it does.** Replaces the sidebar's scrolling thread list with a plugin

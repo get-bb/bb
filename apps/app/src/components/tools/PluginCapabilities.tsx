@@ -191,6 +191,11 @@ function pluginAppSurfaceItems(
       "Adds an action that opens a panel beside a thread.",
     ],
     [
+      slots.newThreadPanelActions,
+      "new-thread-panel",
+      "Adds an action that opens a panel beside the New thread screen.",
+    ],
+    [
       slots.pendingInteractions,
       "input",
       "Renders a custom interaction inside a thread.",

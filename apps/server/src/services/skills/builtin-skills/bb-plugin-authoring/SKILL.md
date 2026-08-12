@@ -853,6 +853,13 @@ export default definePluginApp((app) => {
     run: async ({ threadId, openPanel }) =>
       openPanel({ title: `Issue for ${threadId}` }),
   });
+  app.slots.experimental_newThreadPanelAction({
+    id: "template",
+    title: "Apply template",
+    component: TemplatePanel,
+    run: ({ projectId, openPanel }) =>
+      openPanel({ title: `Template for ${projectId ?? "projectless"}` }),
+  });
   app.composer.customize({
     id: "prompt-tools",
     actions: [{ id: "improve", component: ImprovePromptAction }],
@@ -1110,7 +1117,9 @@ Slot props contracts (versioned, additive-only):
   `mx-auto w-full max-w-3xl space-y-4` div.
 - `threadPanelAction` → an entry in the thread right panel's new-tab
   Actions list (next to "Start side chat" / "Start terminal"), labeled
-  `title` with your compact plugin icon. Registration:
+  `title` with your compact plugin icon. This slot is only offered for an
+  existing thread; it never renders on the root New thread screen, and its
+  `threadId` stays required. Registration:
   `{ id, title, icon?, component, layout?, run? }`. Activating it calls
   `run({ threadId, openPanel })` — do anything there (rpc, toast), and/or
   call `openPanel({ title?, params? })` to open a closable panel tab
@@ -1127,6 +1136,15 @@ Slot props contracts (versioned, additive-only):
   document-like content; `"flush"` gives it the full tab area (no padding,
   definite height, no host scrolling) — right for app-like content that
   owns its layout, such as `ThreadChat`.
+- `experimental_newThreadPanelAction` → the root New thread counterpart to
+  `threadPanelAction`. It appears in that screen's right-panel Actions list
+  and never appears beside an existing thread. Registration has the same
+  `{ id, title, icon?, component, layout?, run? }` shape, but activating it
+  calls `run({ projectId, openPanel })` and its component receives
+  `{ projectId: string | null, params: JsonValue | null }`; `projectId` is
+  null in projectless compose. Panel opening, JSON params, layout, persistence,
+  deduplication, and error containment otherwise match `threadPanelAction`.
+  Experimental: see `docs/api_to_audit.md`.
 - Removed pre-1.0: `composerAccessory` was the legacy composer footer. Migrate
   controls to `app.composer.customize({ actions })` or `plusMenu`, larger
   content to `banners`, and legacy `{ projectId, threadId }` prop reads to

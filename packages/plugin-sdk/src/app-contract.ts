@@ -55,9 +55,26 @@ export interface PluginNavPanelProps {
   subPath: string;
 }
 
-/** Props passed to a panel tab opened by a `threadPanelAction`. */
+/**
+ * Props passed to a panel tab opened by a `threadPanelAction`.
+ *
+ * This slot is rendered only for an existing thread. Use
+ * `experimental_newThreadPanelAction` for the root New thread screen.
+ */
 export interface PluginThreadPanelProps {
   threadId: string;
+  /**
+   * The JSON value the action's `openPanel` call passed (round-tripped
+   * through persistence, so the tab restores across reloads); null when the
+   * action opened the panel without params.
+   */
+  params: JsonValue | null;
+}
+
+/** Props passed to a panel tab opened by `experimental_newThreadPanelAction`. */
+export interface PluginNewThreadPanelProps {
+  /** Project selected in the root composer; null in projectless compose. */
+  projectId: string | null;
   /**
    * The JSON value the action's `openPanel` call passed (round-tripped
    * through persistence, so the tab restores across reloads); null when the
@@ -228,7 +245,12 @@ export interface PluginNavPanelRegistration {
   headerContent?: ComponentType<PluginNavPanelProps>;
 }
 
-/** Context handed to a `threadPanelAction`'s `run`. */
+/**
+ * Context handed to a `threadPanelAction`'s `run`.
+ *
+ * The action is thread-only and is never offered on the root New thread
+ * screen, so `threadId` is always present.
+ */
 export interface PluginThreadPanelActionContext {
   /** The thread whose panel launcher invoked the action. */
   threadId: string;
@@ -272,6 +294,37 @@ export interface PluginThreadPanelActionRegistration {
    * contained and logged; they never break the launcher.
    */
   run?(context: PluginThreadPanelActionContext): void | Promise<void>;
+}
+
+/** Context handed to an `experimental_newThreadPanelAction`'s `run`. */
+export interface PluginNewThreadPanelActionContext {
+  /** Project selected in the root composer; null in projectless compose. */
+  projectId: string | null;
+  /**
+   * Open a tab in the root New thread screen's side panel rendering this
+   * action's `component`. The title, params, deduplication, and error
+   * semantics match `threadPanelAction`.
+   */
+  openPanel(options?: { title?: string; params?: JsonValue }): void;
+}
+
+/** Registration for the root New thread screen's panel Actions list. */
+export interface PluginNewThreadPanelActionRegistration {
+  /** Unique within this slot for the plugin; letters, digits, `-`, `_`. */
+  id: string;
+  /** Label of the action row in the panel's new-tab launcher. */
+  title: string;
+  /** Icon hint (BB icon name) used when the plugin ships no logo. */
+  icon?: string;
+  /** Rendered inside every panel tab this action opens. */
+  component: ComponentType<PluginNewThreadPanelProps>;
+  /** Host framing; matches `threadPanelAction`. */
+  layout?: "padded" | "flush";
+  /**
+   * Runs when the user activates the action. Omitted = immediately open a
+   * panel tab with defaults. Errors are contained and logged.
+   */
+  run?(context: PluginNewThreadPanelActionContext): void | Promise<void>;
 }
 
 export interface PluginPendingInteractionRegistration {
@@ -686,7 +739,19 @@ export interface PluginAppSlots {
   homepageSection(registration: PluginHomepageSectionRegistration): void;
   settingsSection(registration: PluginSettingsSectionRegistration): void;
   navPanel(registration: PluginNavPanelRegistration): void;
+  /**
+   * Add an action to an existing thread's panel launcher. This slot is
+   * thread-only; use `experimental_newThreadPanelAction` for root compose.
+   */
   threadPanelAction(registration: PluginThreadPanelActionRegistration): void;
+  /**
+   * Add an action to the root New thread screen's panel launcher (see
+   * {@link PluginNewThreadPanelActionRegistration}). Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_newThreadPanelAction(
+    registration: PluginNewThreadPanelActionRegistration,
+  ): void;
   pendingInteraction(registration: PluginPendingInteractionRegistration): void;
   sidebarFooterAction(
     registration: PluginSidebarFooterActionRegistration,
