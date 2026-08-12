@@ -934,6 +934,16 @@ describe("QueuedMessagesList", () => {
     expect(container.textContent).not.toContain("`code`");
   });
 
+  it("keeps queued draft text selectable", () => {
+    const { getByText } = renderQueuedMessages([
+      makeQueuedMessage("q_selectable", "Selectable queued draft"),
+    ]);
+
+    expect(
+      getByText("Selectable queued draft").closest(".select-text"),
+    ).not.toBeNull();
+  });
+
   it("does not add hard-break elements for multi-line queued markdown", () => {
     const { container } = renderQueuedMessages([
       makeQueuedMessage("q_multiline", "first line\nsecond line"),

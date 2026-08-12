@@ -16,7 +16,13 @@ describe("app text selection policy", () => {
 
   it("preserves native selection in editable controls", () => {
     expect(compactCss).toContain(
-      'body.bb-app-shell :where( input, textarea, [contenteditable]:not([contenteditable="false"]) ) { user-select: text; }',
+      'body.bb-app-shell :where(input, textarea, [contenteditable]:not([contenteditable="false"])) { user-select: text; }',
+    );
+  });
+
+  it("keeps nested controls out of selectable content", () => {
+    expect(compactCss).toContain(
+      'body.bb-app-shell .select-text :where( button, label, select, summary, [role="button"], [role="checkbox"], [role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"], [role="option"], [role="radio"], [role="switch"], [role="tab"] ):not(.select-text) { user-select: none; }',
     );
   });
 });
