@@ -2,12 +2,12 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { ThreadQueuedMessage } from "@bb/domain";
 import type {
   CreateQueuedMessageRequest,
-  CreateThreadRequest,
   SendQueuedMessageMode,
   SendQueuedMessageResponse,
   ThreadQueuedMessageListResponse,
   UpdateQueuedMessageRequest,
 } from "@bb/server-contract";
+import type { AppCreateThreadRequest } from "@/lib/api-types";
 import { BbHttpError, sdk } from "@/lib/sdk";
 import { wsManager } from "@/lib/ws";
 import type { QueuedMessageReorderRequest } from "@/lib/queued-message-reorder";
@@ -62,12 +62,6 @@ interface UpdateThreadQueuedMessageMutationRequest extends UpdateQueuedMessageRe
   id: string;
   queuedMessageId: string;
 }
-
-type AppCreateThreadRequest = Omit<
-  CreateThreadRequest,
-  "origin" | "startedOnBehalfOf" | "originKind"
-> &
-  Partial<Pick<CreateThreadRequest, "startedOnBehalfOf" | "originKind">>;
 
 interface SendThreadQueuedMessageMutationRequest {
   id: string;

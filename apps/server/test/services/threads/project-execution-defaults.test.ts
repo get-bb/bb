@@ -122,7 +122,7 @@ describe("project execution defaults persistence", () => {
   it("does not overwrite project defaults for a fork/side-chat child spawn", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
-        id: "host-child-origin-defaults",
+        id: "host-origin-kind-defaults",
       });
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
@@ -130,7 +130,7 @@ describe("project execution defaults persistence", () => {
       const parentEnvironment = seedEnvironment(harness.deps, {
         hostId: host.id,
         projectId: project.id,
-        path: "/tmp/child-origin-defaults-source",
+        path: "/tmp/origin-kind-defaults-source",
       });
       const parentThread = seedThread(harness.deps, {
         projectId: project.id,
@@ -138,8 +138,8 @@ describe("project execution defaults persistence", () => {
       });
       seedTurnStarted(harness.deps, {
         threadId: parentThread.id,
-        turnId: "turn-child-origin-defaults-source",
-        providerThreadId: "provider-child-origin-defaults-source",
+        turnId: "turn-origin-kind-defaults-source",
+        providerThreadId: "provider-origin-kind-defaults-source",
       });
 
       upsertProjectExecutionDefaults(harness.db, {
