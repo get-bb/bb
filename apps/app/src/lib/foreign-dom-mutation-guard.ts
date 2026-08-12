@@ -11,9 +11,11 @@
  *   removed is not a child of this node.
  *
  * React catches that throw in the commit phase and escalates it to the nearest
- * error boundary. bb has no boundary above the router, so React tears the whole
- * root down and the user gets a blank page — a total loss for a mutation that
- * only ever affected one subtree.
+ * error boundary. bb had none above the router, so React tore the whole root
+ * down and the user got a blank page. `AppErrorBoundary` now catches it and
+ * shows a recovery screen, but a recovery screen still costs the user their
+ * place for a mutation that only ever affected one subtree. This guard keeps
+ * the fault from reaching that boundary at all.
  *
  * This guard makes both calls non-fatal. `removeChild` returns the node instead
  * of throwing when it already has a different parent (the node is gone from
