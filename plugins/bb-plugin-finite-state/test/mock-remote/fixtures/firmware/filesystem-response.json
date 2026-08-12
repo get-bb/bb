@@ -4,7 +4,7 @@
     {
       "byteSample": "firmware/bytes/zero-byte.bin",
       "errors": [],
-      "hash": "3ff098830ebf57e05dd7c60cdb205003f996915714db53b94527b54985fd59cc",
+      "hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "kind": "file",
       "linkTarget": null,
       "path": "rootfs/empty.dat",
@@ -14,12 +14,12 @@
     {
       "byteSample": "firmware/bytes/eagled.bin",
       "errors": [],
-      "hash": "3ecc4025ea7ba96219469ee9dc16360476f77b5a2bd9d384d61e361bd833d225",
+      "hash": "b16e06bd84484d737304616ed406cec442a7cd87af088f72f8580755e7585b5d",
       "kind": "file",
       "linkTarget": null,
       "path": "rootfs/usr/bin/eagled",
       "scanId": "scan-8ecb49226789",
-      "size": 17
+      "size": 64
     },
     {
       "byteSample": null,

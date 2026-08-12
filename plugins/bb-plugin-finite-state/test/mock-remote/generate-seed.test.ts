@@ -1,7 +1,9 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+  chmod,
   lstat,
+  mkdir,
   mkdtemp,
   readFile,
   readdir,
@@ -48,6 +50,7 @@ interface FindingFixture {
   componentPurl: string | null;
   componentFallbackIdentity: string | null;
   cve: string;
+  severity: string;
 }
 
 interface AsEntityFixture {
@@ -82,7 +85,19 @@ interface VerificationFixture {
 interface FirmwareFixture {
   path: string;
   scanId: string;
+  hash: string | null;
+  size: number | null;
   byteSample: string | null;
+}
+
+interface FindingHistoryFixture {
+  findingId: string;
+  events: { id: string }[];
+}
+
+interface FindingDetailFixture extends FindingFixture {
+  cves: Record<string, object>;
+  comments: { createdAt: string }[];
 }
 
 interface IdentityLinksFixture {
@@ -313,6 +328,10 @@ describe("deterministic-seed-corpus", () => {
     const asSbomPage = await parseJson<{ success: boolean; data: { items: ComponentFixture[]; total: number } }>(join(committedFixtures, "assurance-studio", "project-sbom-page-1.json"));
     const strictUnknownKey = await parseJson<{ projectVersionId: string; findingId: string }>(join(committedFixtures, "faults", "strict-unknown-key.json"));
     const staleTara = await parseJson<{ entityId: string }>(join(committedFixtures, "faults", "assurance-studio-stale-tara.json"));
+    const findingHistory = await parseJson<FindingHistoryFixture>(join(committedFixtures, "expected", "finding-history.json"));
+    const findingDetail = await parseJson<FindingDetailFixture>(join(committedFixtures, "platform", "finding-detail.json"));
+    const vexExport = await readFile(join(committedFixtures, "platform", "vex-export.csv"), "utf8");
+    const asEntitiesPage = await parseJson<{ success: boolean; data: { items: AsEntityFixture[]; total: number } }>(join(committedFixtures, "assurance-studio", "entities-page-1.json"));
 
     expectReference(new Set([identity.organization.id]), identity.project.orgId, "platform/identity.json project");
     const projectIds = new Set([identity.project.id]);
@@ -342,6 +361,20 @@ describe("deterministic-seed-corpus", () => {
     }
     const findingIds = new Set(findings.map((finding) => finding.id));
     for (const result of vex.results) expectReference(findingIds, result.findingId, "platform/vex-bulk-partial.json results");
+    expectReference(findingIds, findingHistory.findingId, "expected/finding-history.json findingId");
+    expect(findingHistory.events.map((event) => event.id)).toEqual(["soft-delete", "reconfirm"]);
+    const { cves: detailCves, comments: detailComments, ...detailFinding } = findingDetail;
+    expect(detailFinding).toEqual(findings[0]);
+    expect(Object.keys(detailCves)).toEqual([findingDetail.cve]);
+    expect(detailComments).toHaveLength(1);
+    const vexLines = vexExport.trimEnd().split("\n");
+    expect(vexLines[0]).toBe("finding_id,cve,component_id,severity");
+    expect(vexLines.slice(1, -1)).toEqual(
+      findings.slice(0, 25).map((finding) =>
+        [finding.id, finding.cve, finding.componentId, finding.severity].join(","),
+      ),
+    );
+    expect(vexLines.at(-1)).toBe("# rows_written=25 rows_skipped=2");
     expect(findingsPage.items).toEqual(findings.slice(0, findingsPage.items.length));
     expect(findingsPage.total).toBe(new Set(findings.map((finding) => finding.id)).size);
     expect(componentsPage.items).toEqual(components.slice(0, componentsPage.items.length));
@@ -371,6 +404,9 @@ describe("deterministic-seed-corpus", () => {
     const zoneIds = new Set(entities.filter((entity) => entity.kind === "zone").map((entity) => entity.id));
     const dataflowIds = new Set(entities.filter((entity) => entity.kind === "dataflow").map((entity) => entity.id));
     expectReference(entityIds, staleTara.entityId, "faults/assurance-studio-stale-tara.json entityId");
+    expect(asEntitiesPage.success).toBe(true);
+    expect(asEntitiesPage.data.items).toEqual(entities.slice(0, asEntitiesPage.data.items.length));
+    expect(asEntitiesPage.data.total).toBe(entities.length);
     for (const entity of entities) {
       expectReference(projectIds, entity.projectId, `assurance-studio/entities.jsonl entity ${entity.id}`);
       for (const [field, targets] of [["componentId", componentOrEntityIds], ["sourceId", entityIds], ["targetId", entityIds], ["zoneId", zoneIds], ["assetId", assetIds], ["threatId", threatIds]] as const) {
@@ -397,7 +433,15 @@ describe("deterministic-seed-corpus", () => {
     }
     for (const path of firmware) {
       expectReference(scanIds, path.scanId, `firmware/manifest.jsonl ${path.path}`);
-      if (path.byteSample) expect((await stat(join(committedFixtures, ...path.byteSample.split("/")))).isFile(), `firmware/manifest.jsonl ${path.path} missing ${path.byteSample}`).toBe(true);
+      if (path.byteSample) {
+        const samplePath = join(committedFixtures, ...path.byteSample.split("/"));
+        const sampleBytes = await readFile(samplePath);
+        expect((await stat(samplePath)).isFile(), `firmware/manifest.jsonl ${path.path} missing ${path.byteSample}`).toBe(true);
+        expect(path.size, `firmware/manifest.jsonl ${path.path} size`).toBe(sampleBytes.byteLength);
+        expect(path.hash, `firmware/manifest.jsonl ${path.path} hash`).toBe(
+          createHash("sha256").update(sampleBytes).digest("hex"),
+        );
+      }
     }
     expectReference(versionIds, filesystemResponse.projectVersionId, "firmware/filesystem-response.json projectVersionId");
     expectReference(scanIds, filesystemResponse.scanId, "firmware/filesystem-response.json scanId");
@@ -604,6 +648,26 @@ describe("deterministic-seed-corpus", () => {
     });
     await expect(stat(untouchedOutput)).rejects.toThrow();
     expect((await readdir(root)).sort(compareText)).toEqual(["not-a-directory"]);
+  });
+
+  test("unwritable output parent fails with a typed message and leaves no partial corpus", async () => {
+    const root = await temporaryDirectory();
+    const parent = join(root, "read-only-parent");
+    await mkdir(parent);
+    await chmod(parent, 0o500);
+    try {
+      await expect(generateFixtureCorpus({
+        seed: DEFAULT_FIXTURE_SEED,
+        outDir: join(parent, "fixtures"),
+        check: false,
+      })).rejects.toMatchObject({
+        name: "FixtureGenerationError",
+        code: "INVALID_OUTPUT",
+      });
+      expect(await readdir(parent)).toEqual([]);
+    } finally {
+      await chmod(parent, 0o700);
+    }
   });
 
   test("fixtures contain no secret-like tokens, host paths, wall-clock timestamps, or CRLF", async () => {

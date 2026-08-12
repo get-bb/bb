@@ -111,9 +111,9 @@
       "sha256": "c7c6541111ee53947140bac154f1275c6b1b244c40c045b190662f23226509c9"
     },
     {
-      "bytes": 576,
+      "bytes": 710,
       "path": "README.md",
-      "sha256": "66e223d2b3c8f2cdf313a0fc85515683385cf786e144a1a24b5aeb97ff55b141"
+      "sha256": "00215cc1c8e31894acb1ca68543cb18ce68c2f4bd0e25309fb66fb778582091c"
     },
     {
       "bytes": 8915,
@@ -229,18 +229,18 @@
     {
       "bytes": 30033,
       "path": "firmware/filesystem-response.json",
-      "sha256": "13bdbdebdcc5bc62a23573515a339ecf4f7c1929893f0ef23abc3e8a468ecc12"
+      "sha256": "2453ca218e6866aba4a052042d48ef038c306be2d9b7e5b1ed1c5f22d5a0656c"
     },
     {
       "bytes": 1343998,
       "path": "firmware/manifest.jsonl",
       "rows": 6000,
-      "sha256": "c0faea5aecd3c3eec7fbe1dda4a30fabfc557f26cf9bc8a06c910519263bb743"
+      "sha256": "8ea2df2fe1e6bf7a55e06d22bf441bbc4471939d512951ca44d8f59005073987"
     },
     {
-      "bytes": 132,
+      "bytes": 280,
       "path": "forge-compute/README.md",
-      "sha256": "110a12e9f171fbdfb0744f241c2b935c4383fa791d7780ea4eb4d9c2b34b819d"
+      "sha256": "d31e933a3f29901545020138ef9e165128ceacd0f7e89b5903aa8ad84d1ebd85"
     },
     {
       "bytes": 1968,

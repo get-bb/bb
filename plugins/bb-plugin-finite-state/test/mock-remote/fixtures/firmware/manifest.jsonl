@@ -1,5 +1,5 @@
-{"byteSample":"firmware/bytes/zero-byte.bin","errors":[],"hash":"3ff098830ebf57e05dd7c60cdb205003f996915714db53b94527b54985fd59cc","kind":"file","linkTarget":null,"path":"rootfs/empty.dat","scanId":"scan-8ecb49226789","size":0}
-{"byteSample":"firmware/bytes/eagled.bin","errors":[],"hash":"3ecc4025ea7ba96219469ee9dc16360476f77b5a2bd9d384d61e361bd833d225","kind":"file","linkTarget":null,"path":"rootfs/usr/bin/eagled","scanId":"scan-8ecb49226789","size":17}
+{"byteSample":"firmware/bytes/zero-byte.bin","errors":[],"hash":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855","kind":"file","linkTarget":null,"path":"rootfs/empty.dat","scanId":"scan-8ecb49226789","size":0}
+{"byteSample":"firmware/bytes/eagled.bin","errors":[],"hash":"b16e06bd84484d737304616ed406cec442a7cd87af088f72f8580755e7585b5d","kind":"file","linkTarget":null,"path":"rootfs/usr/bin/eagled","scanId":"scan-8ecb49226789","size":64}
 {"byteSample":null,"errors":[],"hash":null,"kind":"symlink","linkTarget":"../../outside-root","path":"rootfs/link-outside","scanId":"scan-8ecb49226789","size":null}
 {"byteSample":null,"errors":["nested archive unpack failed: unsupported header"],"hash":"e08f1112f9bf9a6247f65c85d5d95a7d1f2f0a98918136888ca7aa2e6a3c7de1","kind":"file","linkTarget":null,"path":"rootfs/var/lib/broken-archive.tar","scanId":"scan-8ecb49226789","size":19}
 {"byteSample":null,"errors":[],"hash":"a4d2151b5453535216cf0b000ae47893c1ffad2f976c2f0780dcbe1b70818560","kind":"file","linkTarget":null,"path":"rootfs/generated/dir-00/file-0005.dat","scanId":"scan-8ecb49226789","size":20}

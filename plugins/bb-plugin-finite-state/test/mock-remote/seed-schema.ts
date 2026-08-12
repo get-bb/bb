@@ -19,6 +19,7 @@ export interface FixtureManifest {
     path: string;
     sha256: string;
     bytes: number;
+    /** Physical LF-delimited lines, including CSV headers and trailers. */
     rows?: number;
   }[];
   cases: Record<string, { description: string; refs: string[] }>;
