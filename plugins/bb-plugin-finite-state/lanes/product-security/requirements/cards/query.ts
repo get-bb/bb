@@ -74,7 +74,7 @@ export function loadRequirementCardModel(
   db: Database.Database,
   scope: { projectId: string; projectVersionId: string | null },
   requirement: RequirementYamlV1,
-  sourceSha256: string,
+  sourceSha256: string | null,
 ): RequirementCardModel {
   const projectVersionId = toStorageProjectVersionId(scope.projectVersionId);
   const requirementKey = reqIdKey({ reqId: requirement.id });
@@ -119,7 +119,7 @@ export function loadRequirementCardModel(
   const local = baseHash === null || baseHash !== semanticHash;
   const firmwareChanged =
     scope.projectVersionId !== null &&
-    results.some((result) => result.fs_version_id !== null && result.fs_version_id !== scope.projectVersionId);
+    results.some((result) => result.fs_version_id !== scope.projectVersionId);
   const stale = results.length > 0 && (local || firmwareChanged);
   const tiers = TIERS.map((tier) => {
     const tierResults = results.filter((result) => result.tier === tier);

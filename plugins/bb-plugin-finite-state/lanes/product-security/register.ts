@@ -9,7 +9,7 @@ import { registerCanvasLinksBackend } from "./canvas/links/index.js";
 import { registerCanvasNodesBackend } from "./canvas/nodes/index.js";
 import { registerThreatOverlayBackend } from "./canvas/threat-overlay/index.js";
 import type { CanvasTaraKind } from "./canvas/foundation/types.js";
-import { registerRequirementsCardsBackend } from "./requirements/cards/index.js";
+import { registerRequirementsCardsBackend } from "./requirements/cards/backend.js";
 import { registerRequirementsConversionBackend } from "./requirements/conversion/index.js";
 import { registerRequirementsTraceabilityBackend } from "./requirements/traceability/index.js";
 import { registerVerificationMatrixBackend } from "./verifications/matrix/index.js";

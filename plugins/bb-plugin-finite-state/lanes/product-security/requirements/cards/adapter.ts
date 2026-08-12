@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { join } from "node:path";
 import type { BbPluginApi } from "@bb/plugin-sdk";
 import { stringify } from "yaml";
+import { normalizeEarsWhitespace, renderEars } from "./render-ears.js";
 import type { RequirementValidationIssue } from "./validator.js";
 import { validateRequirement } from "./validator.js";
 import type { RequirementYamlV1, VerificationContract } from "./schema.js";
@@ -10,6 +11,11 @@ const REQUIREMENTS_DIRECTORY = "product-security/requirements";
 
 function sortedSet(values: readonly string[]): string[] {
   return [...new Set(values)].sort((left, right) => left.localeCompare(right));
+}
+
+function canonicalPart(value: string | null | undefined): string | null | undefined {
+  if (value === null || value === undefined) return value;
+  return normalizeEarsWhitespace(value);
 }
 function canonicalVerification(contract: VerificationContract): VerificationContract {
   return {
@@ -36,22 +42,22 @@ export function canonicalRequirement(requirement: RequirementYamlV1): Requiremen
     status: requirement.status,
     ears: {
       pattern: requirement.ears.pattern,
-      text: requirement.ears.text,
+      text: renderEars(requirement.ears),
       parts: {
         ...(requirement.ears.parts.trigger === undefined
           ? {}
-          : { trigger: requirement.ears.parts.trigger }),
+          : { trigger: canonicalPart(requirement.ears.parts.trigger) }),
         ...(requirement.ears.parts.precondition === undefined
           ? {}
-          : { precondition: requirement.ears.parts.precondition }),
+          : { precondition: canonicalPart(requirement.ears.parts.precondition) }),
         ...(requirement.ears.parts.state === undefined
           ? {}
-          : { state: requirement.ears.parts.state }),
+          : { state: canonicalPart(requirement.ears.parts.state) }),
         ...(requirement.ears.parts.feature === undefined
           ? {}
-          : { feature: requirement.ears.parts.feature }),
-        system: requirement.ears.parts.system,
-        response: requirement.ears.parts.response,
+          : { feature: canonicalPart(requirement.ears.parts.feature) }),
+        system: normalizeEarsWhitespace(requirement.ears.parts.system),
+        response: normalizeEarsWhitespace(requirement.ears.parts.response),
       },
     },
     ...(requirement.rationale === undefined ? {} : { rationale: requirement.rationale }),
@@ -192,7 +198,7 @@ export function buildRequirementPlan(
 export interface RequirementDocument {
   artifactId: string;
   requirement: RequirementYamlV1;
-  sha256: string;
+  sha256: string | null;
 }
 
 export type RequirementWriteResult =
@@ -220,6 +226,11 @@ function decodeText(content: string, encoding: "utf8" | "base64"): string {
   return encoding === "utf8" ? content : Buffer.from(content, "base64").toString("utf8");
 }
 
+function isMissingFileError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /\bENOENT\b|not found|does not exist/iu.test(message);
+}
+
 export function createSdkRequirementRepository(bb: BbPluginApi): RequirementRepository {
   async function readPath(
     projectId: string,
@@ -242,10 +253,15 @@ export function createSdkRequirementRepository(bb: BbPluginApi): RequirementRepo
         const first = validated.errors[0];
         throw new Error(first ? `${first.code}: ${first.message}` : "Requirement YAML is invalid.");
       }
+      const expectedArtifactId = `${REQUIREMENTS_DIRECTORY}/${validated.data.id}.yaml`;
+      if (artifactId !== expectedArtifactId) {
+        throw new Error(
+          `Requirement id ${validated.data.id} must match its canonical file ${expectedArtifactId}.`,
+        );
+      }
       return { artifactId, requirement: validated.data, sha256: file.sha256 };
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      if (/\bENOENT\b|not found|does not exist/iu.test(message)) return null;
+      if (isMissingFileError(error)) return null;
       throw error;
     }
   }
@@ -254,11 +270,19 @@ export function createSdkRequirementRepository(bb: BbPluginApi): RequirementRepo
     async list(projectId) {
       const source = await projectSource(bb, projectId);
       const directory = join(source.path, REQUIREMENTS_DIRECTORY);
-      const listing = await bb.sdk.files.list({
-        hostId: source.hostId,
-        path: directory,
-        limit: 10_000,
-      });
+      const listing = await (async () => {
+        try {
+          return await bb.sdk.files.list({
+            hostId: source.hostId,
+            path: directory,
+            limit: 10_000,
+          });
+        } catch (error) {
+          if (isMissingFileError(error)) return null;
+          throw error;
+        }
+      })();
+      if (!listing) return [];
       if (listing.truncated) {
         throw new Error("Requirement directory exceeds the supported 10,000-file safety bound.");
       }

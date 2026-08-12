@@ -141,7 +141,7 @@ export const requirementCardModelSchema = z
     stale: z.boolean(),
     local: z.boolean(),
     tiers: z.array(tierSummarySchema),
-    sourceSha256: z.string().regex(/^[a-f0-9]{64}$/u),
+    sourceSha256: z.string().regex(/^[a-f0-9]{64}$/u).nullable(),
   })
   .strict();
 export type RequirementCardModel = z.infer<typeof requirementCardModelSchema>;

@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
 import { useBbContext, useRpc } from "@bb/plugin-sdk/app";
-import type { JsonValue } from "../../../../shared/contract.js";
-import { jsonValueSchema, type rpcContract } from "../../../../shared/contract.js";
+import type { JsonValue, RpcContract } from "../../../../shared/contract.js";
 import { renderEars } from "./render-ears.js";
 import {
   earsPatternSchema,
@@ -15,14 +14,44 @@ import { validateRequirement } from "./validator.js";
 const INPUT_CLASS = "flex min-h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
 const LABEL_CLASS = "text-sm font-medium leading-none";
 
-function isJsonRecord(value: JsonValue): value is Record<string, JsonValue> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function requirementFields(requirement: RequirementYamlV1): Record<string, JsonValue> {
-  const value = jsonValueSchema.parse(requirement);
-  if (!isJsonRecord(value)) throw new Error("Requirement must encode as an object.");
-  return value;
+  return {
+    schema: requirement.schema,
+    id: requirement.id,
+    req_type: requirement.req_type,
+    priority: requirement.priority,
+    status: requirement.status,
+    ears: {
+      pattern: requirement.ears.pattern,
+      text: requirement.ears.text,
+      parts: {
+        trigger: requirement.ears.parts.trigger ?? null,
+        precondition: requirement.ears.parts.precondition ?? null,
+        state: requirement.ears.parts.state ?? null,
+        feature: requirement.ears.parts.feature ?? null,
+        system: requirement.ears.parts.system,
+        response: requirement.ears.parts.response,
+      },
+    },
+    ...(requirement.rationale === undefined ? {} : { rationale: requirement.rationale }),
+    source_description: requirement.source_description,
+    mitigations: requirement.mitigations,
+    controls: requirement.controls,
+    standards: requirement.standards,
+    verification: requirement.verification.map((contract) => ({
+      check: contract.check,
+      method: contract.method,
+      tier: contract.tier,
+      required: contract.required,
+      ...(contract.coverage === undefined ? {} : { coverage: contract.coverage }),
+      ...(contract.suppressed === undefined ? {} : { suppressed: contract.suppressed }),
+      pass_criteria: contract.pass_criteria,
+      ...(contract.fail_criteria === undefined ? {} : { fail_criteria: contract.fail_criteria }),
+      ...(contract.expected_evidence === undefined
+        ? {}
+        : { expected_evidence: contract.expected_evidence }),
+    })),
+  };
 }
 
 function relevantParts(pattern: EarsPattern): readonly ("trigger" | "precondition" | "state" | "feature")[] {
@@ -49,7 +78,7 @@ export function RequirementEditor({
   onSaved?(nextSha256: string): void;
 }): React.JSX.Element {
   const { projectId } = useBbContext();
-  const rpc = useRpc<typeof rpcContract>();
+  const rpc = useRpc<RpcContract>();
   const source = model.requirement;
   const [pattern, setPattern] = useState<EarsPattern>(source.ears.pattern);
   const [workflowStatus, setWorkflowStatus] = useState(source.status);

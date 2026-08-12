@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { useBbContext, useRpc } from "@bb/plugin-sdk/app";
-import type { JsonValue } from "../../../../shared/contract.js";
-import type { rpcContract } from "../../../../shared/contract.js";
+import type { JsonValue, RpcContract } from "../../../../shared/contract.js";
 import { RequirementEditor } from "./RequirementEditor.js";
 import { StatusPill } from "./StatusPill.js";
 import { TierStrip } from "./TierStrip.js";
@@ -36,7 +35,7 @@ export function RequirementCard({
   initialModel?: RequirementCardModel;
 }): React.JSX.Element {
   const { projectId } = useBbContext();
-  const rpc = useRpc<typeof rpcContract>();
+  const rpc = useRpc<RpcContract>();
   const [model, setModel] = useState<RequirementCardModel | null>(initialModel ?? null);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
