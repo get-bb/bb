@@ -27,7 +27,7 @@ No amendment is implied by an implementation task, code comment, or local workar
 - Affected-lane reviewer: independent agent thread `thr_ib9at8u34a`
 - Approved specification commit: `3e37cae40405f6857d6ff1f6f628baff134d8436`
 - Merge commit: `b18f9878bc6c0b183603885687178480df56b309`
-- Broadcast commit: this target-repository import PR
+- Broadcast commit: `4f5431306245d2aef2abaa6aac342d947c780bdf` (initial target-repository corpus import)
 - Result: Platform and Assurance Studio are direct typed REST data planes. Forge is nullable and restricted to the checksummed compute manifest. `prepareFirmwareRoot` is deliberately unresolved and must be removed or proven before WP-06 freezes.
 
 ## Pending amendments
