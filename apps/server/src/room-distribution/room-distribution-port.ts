@@ -35,6 +35,11 @@ export type RoomDistributionStreamTargetV1 = Readonly<{
   cursor: string | null;
 }>;
 
+export type RoomDistributionOlderTimelineTargetV1 = Readonly<{
+  /** Public sequence-only cursor `p.<positive sequence>`. */
+  before: string;
+}>;
+
 /**
  * Deep, binding-scoped Room interface consumed by the transport adapter.
  * Implementations own binding resolution and DTO validation; transport code
@@ -49,6 +54,14 @@ export interface WorkTogetherRoomDistributionV1 {
   events(
     context: RoomDistributionContextV1,
     target: RoomDistributionStreamTargetV1,
+  ): Promise<RoomJsonObject>;
+  /**
+   * Authorized older timeline page before a public sequence-only cursor.
+   * Distinct from live events high-water semantics (`s.N`).
+   */
+  timeline(
+    context: RoomDistributionContextV1,
+    target: RoomDistributionOlderTimelineTargetV1,
   ): Promise<RoomJsonObject>;
   subscribe(
     context: RoomDistributionContextV1,

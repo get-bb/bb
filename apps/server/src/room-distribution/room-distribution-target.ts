@@ -24,8 +24,16 @@ const CHILD_QUERY_PATTERN = new RegExp(
   `^child=(${UUID_FRAGMENT})(?:&cursor=([A-Za-z0-9._~:%+-]{1,512}))?$`,
   "u",
 );
+/** Public older-page cursor: sequence-only `p.<positive integer>`. */
+const OLDER_BEFORE_QUERY_PATTERN = /^before=(p\.(?:[1-9][0-9]{0,15}))$/u;
 
-const OPERATIONS = ["bootstrap", "commands", "events", "subscribe"] as const;
+const OPERATIONS = [
+  "bootstrap",
+  "commands",
+  "events",
+  "timeline",
+  "subscribe",
+] as const;
 
 export type RoomDistributionOperation = (typeof OPERATIONS)[number];
 
@@ -60,6 +68,18 @@ export type RoomDistributionEventsTarget = {
   readonly childAttachmentId: string | null;
 };
 
+/**
+ * Older sanitized Room page. Requires exactly `before=p.<positive sequence>`.
+ * Authorized under the existing events read authority; primary stream only.
+ */
+export type RoomDistributionTimelineTarget = {
+  readonly bindingId: string;
+  readonly operation: "timeline";
+  readonly method: "GET";
+  readonly transport: "http";
+  readonly before: string;
+};
+
 export type RoomDistributionSubscribeTarget = {
   readonly bindingId: string;
   readonly operation: "subscribe";
@@ -73,6 +93,7 @@ export type RoomDistributionTargetDescriptor =
   | RoomDistributionBootstrapTarget
   | RoomDistributionCommandsTarget
   | RoomDistributionEventsTarget
+  | RoomDistributionTimelineTarget
   | RoomDistributionSubscribeTarget;
 
 /**
@@ -206,6 +227,22 @@ export function parseRoomDistributionTarget(
         method: "GET",
         transport: "http",
         ...stream,
+      });
+    }
+    case "timeline": {
+      if (method !== "GET" || transport !== "http" || query === null) {
+        reject();
+      }
+      const older = OLDER_BEFORE_QUERY_PATTERN.exec(query);
+      if (older === null) {
+        reject();
+      }
+      return Object.freeze({
+        bindingId,
+        operation: "timeline",
+        method: "GET",
+        transport: "http",
+        before: older[1] ?? reject(),
       });
     }
     case "subscribe": {

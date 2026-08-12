@@ -9,6 +9,8 @@ import {
   listNonDeletedChildThreads,
 } from "@bb/db";
 import type { Principal } from "@bb/domain";
+import type { ThreadTimelineResponse } from "@bb/server-contract";
+import { ApiError } from "../errors.js";
 import type { AppDeps } from "../types.js";
 import { buildThreadTimeline } from "../services/threads/timeline.js";
 import { DEFAULT_MAX_INLINE_OUTPUT_CHARS } from "../services/threads/timeline-output-truncation.js";
@@ -22,6 +24,7 @@ import type { WorkTogetherRoomCommandAuthorityPortV1 } from "./work-together-roo
 import {
   RoomDistributionUnavailableError,
   type RoomDistributionContextV1,
+  type RoomDistributionOlderTimelineTargetV1,
   type RoomDistributionStreamTargetV1,
   type RoomDistributionSubscriptionV1,
   type RoomJsonObject,
@@ -31,6 +34,13 @@ import {
 import { projectWorkTogetherRoomTimeline } from "./work-together-room-timeline-projection.js";
 
 const CURSOR = /^s\.([0-9]|[1-9][0-9]{0,15})$/u;
+/** Public older-page cursor: sequence only, never private anchor identity. */
+const PUBLIC_OLDER_CURSOR = /^p\.([1-9][0-9]{0,15})$/u;
+/**
+ * Non-leaking placeholder for the private builder's required anchorId. The
+ * builder pages by extant sequence even when anchor identity disagrees.
+ */
+const OLDER_PAGE_ANCHOR_PLACEHOLDER = "work-together-room-older-page";
 const MAX_TASK_PROJECTION_BYTES = 131_072;
 const INITIAL_TIMELINE_SEGMENTS = 20;
 const MAX_ROOM_CHILDREN = 64;
@@ -67,6 +77,114 @@ function parseCursor(cursor: string | null): number {
 
 function cursorFor(sequence: number): string {
   return `s.${sequence}`;
+}
+
+function parsePublicOlderCursor(before: string): number {
+  const match = PUBLIC_OLDER_CURSOR.exec(before);
+  if (!match) unavailable("not_found");
+  const sequence = Number(match[1]);
+  if (!Number.isSafeInteger(sequence) || sequence < 1) unavailable("not_found");
+  return sequence;
+}
+
+function publicOlderCursor(
+  privateCursor: ThreadTimelineResponse["timelinePage"]["olderCursor"],
+  hasOlder: boolean,
+): string | null {
+  if (!hasOlder) return null;
+  if (
+    privateCursor === null ||
+    !Number.isSafeInteger(privateCursor.anchorSeq) ||
+    privateCursor.anchorSeq < 1
+  ) {
+    unavailable();
+  }
+  return `p.${privateCursor.anchorSeq}`;
+}
+
+function collaborationState(presenceCount: number): RoomJsonObject {
+  return Object.freeze({
+    control: Object.freeze({ mode: "shared" }),
+    presenceCount,
+  });
+}
+
+function collaborationEvent(presenceCount: number): RoomJsonObject {
+  return Object.freeze({
+    type: "collaboration",
+    collaboration: collaborationState(presenceCount),
+  });
+}
+
+type PrimaryPresenceEntry = Readonly<{
+  principalId: string;
+  emit: (event: RoomJsonObject) => void;
+}>;
+
+/**
+ * Process-local unique-principal presence for primary-room subscriptions only.
+ * Advisory and ephemeral; not a controller lease and not durable.
+ */
+function createRoomPresenceRegistry() {
+  const rooms = new Map<string, Map<object, PrimaryPresenceEntry>>();
+
+  function uniqueCount(bindingId: string): number {
+    const entries = rooms.get(bindingId);
+    if (entries === undefined || entries.size === 0) return 0;
+    const principals = new Set<string>();
+    for (const entry of entries.values()) {
+      principals.add(entry.principalId);
+    }
+    return principals.size;
+  }
+
+  function broadcast(bindingId: string): void {
+    const entries = rooms.get(bindingId);
+    if (entries === undefined || entries.size === 0) return;
+    const event = collaborationEvent(uniqueCount(bindingId));
+    for (const entry of entries.values()) {
+      try {
+        entry.emit(event);
+      } catch {
+        // Emit is best-effort; a closed socket must not block other peers.
+      }
+    }
+  }
+
+  return {
+    count(bindingId: string): number {
+      return uniqueCount(bindingId);
+    },
+    join(
+      bindingId: string,
+      principalId: string,
+      emit: (event: RoomJsonObject) => void,
+    ): { leave(): void } {
+      let entries = rooms.get(bindingId);
+      if (entries === undefined) {
+        entries = new Map();
+        rooms.set(bindingId, entries);
+      }
+      const token = Object.freeze({});
+      entries.set(token, Object.freeze({ principalId, emit }));
+      broadcast(bindingId);
+      let left = false;
+      return Object.freeze({
+        leave() {
+          if (left) return;
+          left = true;
+          const current = rooms.get(bindingId);
+          if (current === undefined) return;
+          if (!current.delete(token)) return;
+          if (current.size === 0) {
+            rooms.delete(bindingId);
+            return;
+          }
+          broadcast(bindingId);
+        },
+      });
+    },
+  };
 }
 
 function participantId(bindingId: string, principalId: string): string {
@@ -246,6 +364,8 @@ export function createBindingBackedRoomDistributionV1(
     commandAuthority,
     taskProjection,
   );
+  const presence = createRoomPresenceRegistry();
+
   function resolve(bindingId: string) {
     let reservation;
     try {
@@ -272,6 +392,44 @@ export function createBindingBackedRoomDistributionV1(
     return { reservation, thread, environment };
   }
 
+  function buildTimelineOptions(
+    thread: NonNullable<ReturnType<typeof getThread>>,
+    maxSeq: number,
+    page:
+      | { kind: "latest"; segmentLimit: number }
+      | {
+          kind: "older";
+          segmentLimit: number;
+          beforeCursor: { anchorSeq: number; anchorId: string };
+        },
+  ) {
+    return {
+      eventBudget: deps.config.featureFlags.timelineWindowEventBudget,
+      includeProviderUnhandledOperations: false,
+      includeNestedRows: true,
+      maxInlineOutputChars: DEFAULT_MAX_INLINE_OUTPUT_CHARS,
+      maxSeq,
+      page,
+      providerDisplayName: "Agent",
+      summaryOnly: false,
+    } as const;
+  }
+
+  function withPublicTimelineMeta(
+    projection: RoomJsonObject,
+    response: ThreadTimelineResponse,
+  ): RoomJsonObject {
+    const hasOlder = response.timelinePage.hasOlderRows;
+    return Object.freeze({
+      ...projection,
+      hasOlder,
+      olderCursor: publicOlderCursor(
+        response.timelinePage.olderCursor,
+        hasOlder,
+      ),
+    });
+  }
+
   function timeline(
     bindingId: string,
     thread: ReturnType<typeof getThread>,
@@ -279,29 +437,69 @@ export function createBindingBackedRoomDistributionV1(
   ) {
     if (thread === null) unavailable();
     const maxSeq = getLatestThreadSequence(deps.db, { threadId: thread.id });
-    const response = buildThreadTimeline(deps.db, thread, {
-      eventBudget: deps.config.featureFlags.timelineWindowEventBudget,
-      includeProviderUnhandledOperations: false,
-      includeNestedRows: true,
-      maxInlineOutputChars: DEFAULT_MAX_INLINE_OUTPUT_CHARS,
-      maxSeq,
-      page: { kind: "latest", segmentLimit: INITIAL_TIMELINE_SEGMENTS },
-      providerDisplayName: "Agent",
-      summaryOnly: false,
+    const response = buildThreadTimeline(
+      deps.db,
+      thread,
+      buildTimelineOptions(thread, maxSeq, {
+        kind: "latest",
+        segmentLimit: INITIAL_TIMELINE_SEGMENTS,
+      }),
+    );
+    const projected = projectWorkTogetherRoomTimeline({
+      bindingId,
+      privateThreadId: thread.id,
+      publicStreamId: publicThreadId,
+      environmentId: thread.environmentId ?? unavailable(),
+      projectId: thread.projectId,
+      threadStatus: thread.status,
+      privateActiveTurnId: getActiveStoredTurnId(deps.db, thread.id),
+      timeline: response,
     });
     return {
       maxSeq,
-      projection: projectWorkTogetherRoomTimeline({
-        bindingId,
-        privateThreadId: thread.id,
-        publicStreamId: publicThreadId,
-        environmentId: thread.environmentId ?? unavailable(),
-        projectId: thread.projectId,
-        threadStatus: thread.status,
-        privateActiveTurnId: getActiveStoredTurnId(deps.db, thread.id),
-        timeline: response,
-      }),
+      response,
+      projection: withPublicTimelineMeta(projected, response),
     };
+  }
+
+  function olderTimeline(
+    bindingId: string,
+    thread: NonNullable<ReturnType<typeof getThread>>,
+    beforeSequence: number,
+  ) {
+    const maxSeq = getLatestThreadSequence(deps.db, { threadId: thread.id });
+    if (beforeSequence > maxSeq) unavailable("not_found");
+    let response: ThreadTimelineResponse;
+    try {
+      response = buildThreadTimeline(
+        deps.db,
+        thread,
+        buildTimelineOptions(thread, maxSeq, {
+          kind: "older",
+          segmentLimit: INITIAL_TIMELINE_SEGMENTS,
+          beforeCursor: {
+            anchorSeq: beforeSequence,
+            anchorId: OLDER_PAGE_ANCHOR_PLACEHOLDER,
+          },
+        }),
+      );
+    } catch (error) {
+      // Stale/invalid private cursor → non-enumerating not_found.
+      if (error instanceof ApiError) unavailable("not_found");
+      throw error;
+    }
+    const projected = projectWorkTogetherRoomTimeline({
+      bindingId,
+      privateThreadId: thread.id,
+      publicStreamId: bindingId,
+      environmentId: thread.environmentId ?? unavailable(),
+      projectId: thread.projectId,
+      threadStatus: "idle",
+      // Older pages never carry the live active turn tail.
+      privateActiveTurnId: null,
+      timeline: response,
+    });
+    return withPublicTimelineMeta(projected, response);
   }
 
   function localChildren(
@@ -497,6 +695,7 @@ export function createBindingBackedRoomDistributionV1(
         primaryRun: primaryRun(thread.status),
         capabilities,
         children,
+        collaboration: collaborationState(presence.count(context.bindingId)),
         timeline: current.projection,
         cursor: cursorFor(current.maxSeq),
       });
@@ -539,6 +738,23 @@ export function createBindingBackedRoomDistributionV1(
       });
     },
 
+    async timeline(
+      context: RoomDistributionContextV1,
+      target: RoomDistributionOlderTimelineTargetV1,
+    ) {
+      const beforeSequence = parsePublicOlderCursor(target.before);
+      const { thread } = resolve(context.bindingId);
+      const projection = olderTimeline(
+        context.bindingId,
+        thread,
+        beforeSequence,
+      );
+      return Object.freeze({
+        schemaVersion: 1,
+        timeline: projection,
+      });
+    },
+
     async subscribe(
       context: RoomDistributionContextV1,
       target: RoomDistributionStreamTargetV1,
@@ -550,6 +766,8 @@ export function createBindingBackedRoomDistributionV1(
       if (after > current) unavailable("not_found");
       let closed = false;
       let delivered = after;
+      const isPrimary = target.childAttachmentId === null;
+      let leavePresence: (() => void) | null = null;
       emit(Object.freeze({ type: "ready", cursor: cursorFor(current) }));
       delivered = current;
       const unsubscribe = deps.hub.onChangedMessage((message) => {
@@ -562,11 +780,21 @@ export function createBindingBackedRoomDistributionV1(
         delivered = latest;
         emit(Object.freeze({ type: "changed", cursor: cursorFor(latest) }));
       });
+      if (isPrimary) {
+        const handle = presence.join(
+          context.bindingId,
+          context.principal.id,
+          emit,
+        );
+        leavePresence = () => handle.leave();
+      }
       const subscription: RoomDistributionSubscriptionV1 = Object.freeze({
         close() {
           if (closed) return;
           closed = true;
           unsubscribe();
+          leavePresence?.();
+          leavePresence = null;
         },
       });
       return subscription;

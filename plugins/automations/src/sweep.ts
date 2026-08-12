@@ -24,8 +24,12 @@ type SweepApi = Pick<BbPluginApi, "realtime" | "log"> & {
   sdk: {
     hosts: { list(): Promise<unknown> };
     threads: {
-      get(args: Parameters<BbPluginApi["sdk"]["threads"]["get"]>[0]): Promise<unknown>;
-      send(args: Parameters<BbPluginApi["sdk"]["threads"]["send"]>[0]): Promise<unknown>;
+      get(
+        args: Parameters<BbPluginApi["sdk"]["threads"]["get"]>[0],
+      ): Promise<unknown>;
+      send(
+        args: Parameters<BbPluginApi["sdk"]["threads"]["send"]>[0],
+      ): Promise<unknown>;
       spawn(
         args: Parameters<BbPluginApi["sdk"]["threads"]["spawn"]>[0],
       ): Promise<unknown>;
@@ -137,6 +141,16 @@ async function processDueAutomation(
   }
 }
 
+function dueBatchNeedsAgentHost(due: AutomationRow[]): boolean {
+  return due.some((automation) => automation.runMode === "agent");
+}
+
+function isHostsListNotFoundError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const candidate = error as { status?: unknown; code?: unknown };
+  return candidate.status === 404 || candidate.code === "not_found";
+}
+
 async function hasConnectedHost(
   bb: Pick<BbPluginApi, "log"> & {
     sdk: { hosts: { list(): Promise<unknown> } };
@@ -147,11 +161,13 @@ async function hasConnectedHost(
       .parse(await bb.sdk.hosts.list())
       .some((host) => host.status === "connected");
   } catch (error) {
-    bb.log.warn(
-      `Failed to list hosts for automation sweep: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    );
+    if (!isHostsListNotFoundError(error)) {
+      bb.log.warn(
+        `Failed to list hosts for automation sweep: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
     return false;
   }
 }
@@ -167,7 +183,9 @@ export async function sweepDueAutomations(
 ): Promise<void> {
   const now = args.now ?? Date.now();
   const due = listDueAutomations(db, { now, limit: DUE_AUTOMATION_BATCH_SIZE });
-  const agentHostsAvailable = await hasConnectedHost(bb);
+  const agentHostsAvailable = dueBatchNeedsAgentHost(due)
+    ? await hasConnectedHost(bb)
+    : false;
   for (const automation of due) {
     try {
       await processDueAutomation(bb, db, {

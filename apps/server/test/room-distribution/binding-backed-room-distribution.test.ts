@@ -7,9 +7,15 @@ import {
   events,
   getLatestThreadSequence,
   getThreadCommandAdmission,
+  listTimelineSegmentAnchorsDescending,
   threads,
 } from "@bb/db";
-import type { Principal } from "@bb/domain";
+import {
+  encodeClientTurnRequestIdNumber,
+  threadScope,
+  turnScope,
+  type Principal,
+} from "@bb/domain";
 import { eq } from "drizzle-orm";
 import { describe, expect, it, vi } from "vitest";
 
@@ -31,6 +37,7 @@ import {
   type WorkTogetherRoomResourceTarget,
 } from "../../src/room-distribution/room-resource-provisioner.js";
 import {
+  seedEvent,
   seedHostSession,
   seedThread,
   seedThreadRuntimeState,
@@ -43,6 +50,11 @@ const PRINCIPAL: Principal = Object.freeze({
   kind: "human",
   displayName: "Room Reader",
 });
+const PRINCIPAL_B: Principal = Object.freeze({
+  id: "user_room_reader_b",
+  kind: "human",
+  displayName: "Room Reader B",
+});
 const NO_CHILDREN: WorkTogetherRoomChildAttachmentPortV1 = Object.freeze({
   attach: async () => {
     throw new Error("unexpected child attachment");
@@ -54,12 +66,117 @@ const MEMBER_AUTHORITY = Object.freeze({
     Object.freeze({ role: "member" as const, isTaskAssignee: false }),
 });
 
-function context(bindingId: string): RoomDistributionContextV1 {
+function context(
+  bindingId: string,
+  principal: Principal = PRINCIPAL,
+): RoomDistributionContextV1 {
   return Object.freeze({
     bindingId,
-    principal: PRINCIPAL,
+    principal,
     authorize: async () => ({ allowed: true as const }),
   });
+}
+
+function seedMessageTurn(
+  deps: Parameters<typeof seedEvent>[0],
+  args: {
+    environmentId: string;
+    firstTurn?: boolean;
+    requestId: number;
+    startSequence: number;
+    text: string;
+    threadId: string;
+    turnId: string;
+  },
+): void {
+  const clientRequestId = encodeClientTurnRequestIdNumber({
+    value: args.requestId,
+  });
+  seedEvent(deps, {
+    threadId: args.threadId,
+    environmentId: args.environmentId,
+    sequence: args.startSequence,
+    type: "client/turn/requested",
+    scope: threadScope(),
+    data: {
+      direction: "outbound",
+      requestId: clientRequestId,
+      input: [{ type: "text", text: args.text, mentions: [] }],
+      target: args.firstTurn ? { kind: "thread-start" } : { kind: "new-turn" },
+      execution: {
+        model: "gpt-5",
+        reasoningLevel: "medium",
+        permissionMode: "full",
+        serviceTier: "default",
+        source: "client/turn/requested",
+      },
+      initiator: "user",
+      senderThreadId: null,
+      request: { method: "turn/start", params: {} },
+      source: "tell",
+    },
+  });
+  seedEvent(deps, {
+    threadId: args.threadId,
+    environmentId: args.environmentId,
+    providerThreadId: "provider-room-timeline",
+    scope: turnScope(args.turnId),
+    sequence: args.startSequence + 1,
+    type: "turn/started",
+    data: {},
+  });
+  seedEvent(deps, {
+    threadId: args.threadId,
+    environmentId: args.environmentId,
+    providerThreadId: "provider-room-timeline",
+    scope: turnScope(args.turnId),
+    sequence: args.startSequence + 2,
+    type: "turn/input/accepted",
+    data: { clientRequestId },
+  });
+  seedEvent(deps, {
+    threadId: args.threadId,
+    environmentId: args.environmentId,
+    providerThreadId: "provider-room-timeline",
+    scope: turnScope(args.turnId),
+    sequence: args.startSequence + 3,
+    type: "item/completed",
+    data: {
+      item: {
+        type: "agentMessage",
+        id: `${args.turnId}-assistant`,
+        text: `${args.text} — answered.`,
+      },
+    },
+  });
+  seedEvent(deps, {
+    threadId: args.threadId,
+    environmentId: args.environmentId,
+    providerThreadId: "provider-room-timeline",
+    scope: turnScope(args.turnId),
+    sequence: args.startSequence + 4,
+    type: "turn/completed",
+    data: { status: "completed" },
+  });
+}
+
+function assertNoPrivateTimelineLeak(
+  wire: string,
+  ids: {
+    environmentId: string;
+    principalIds?: readonly string[];
+    primaryThreadId: string;
+    projectId: string;
+  },
+): void {
+  expect(wire).not.toContain(ids.primaryThreadId);
+  expect(wire).not.toContain(ids.environmentId);
+  expect(wire).not.toContain(ids.projectId);
+  expect(wire).not.toContain("anchorId");
+  expect(wire).not.toMatch(/:in-turn:|:byte-window:/u);
+  for (const principalId of ids.principalIds ?? []) {
+    expect(wire).not.toContain(principalId);
+  }
 }
 
 describe("binding-backed Work Together Room distribution", () => {
@@ -218,10 +335,17 @@ describe("binding-backed Work Together Room distribution", () => {
       );
       expect(emitted).toEqual([
         expect.objectContaining({ type: "ready", cursor: expect.any(String) }),
+        {
+          type: "collaboration",
+          collaboration: {
+            control: { mode: "shared" },
+            presenceCount: 1,
+          },
+        },
       ]);
 
       harness.hub.notifyThread("thr_zzzzzzzzzz", ["events-appended"]);
-      expect(emitted).toHaveLength(1);
+      expect(emitted).toHaveLength(2);
       const sequence =
         getLatestThreadSequence(harness.db, {
           threadId: provisioned.primaryThreadId,
@@ -251,6 +375,13 @@ describe("binding-backed Work Together Room distribution", () => {
       ]);
       expect(emitted).toEqual([
         expect.objectContaining({ type: "ready" }),
+        {
+          type: "collaboration",
+          collaboration: {
+            control: { mode: "shared" },
+            presenceCount: 1,
+          },
+        },
         { type: "changed", cursor: `s.${sequence}` },
       ]);
 
@@ -258,7 +389,7 @@ describe("binding-backed Work Together Room distribution", () => {
       harness.hub.notifyThread(provisioned.primaryThreadId, [
         "events-appended",
       ]);
-      expect(emitted).toHaveLength(2);
+      expect(emitted).toHaveLength(3);
     });
   });
 
@@ -761,6 +892,349 @@ describe("binding-backed Work Together Room distribution", () => {
       await expect(
         distribution.bootstrap(context(launch.bindingId)),
       ).rejects.toMatchObject({ kind: "unavailable" });
+    });
+  });
+
+  it("projects shared control and unique primary presence without viewer identity", async () => {
+    await withTestHarness(async (harness) => {
+      const candidateHostId = randomUUID();
+      const { host } = seedHostSession(harness.deps, { id: createHostId() });
+      const launch = {
+        bindingId: randomUUID(),
+        workspaceId: randomUUID(),
+        taskId: randomUUID(),
+        cellId: randomUUID(),
+        repositoryBindingId: randomUUID(),
+        repositoryBindingVersion: 1,
+        providerRepositoryId: "91",
+        baseBranch: "main",
+        generatedBranch: "rooms/collaboration",
+        candidateHostId,
+        environmentTemplate: "managed-worktree" as const,
+      };
+      const provisioned = await createWorkTogetherRoomResourceProvisioner(
+        harness.deps,
+        {
+          resolve: () => ({
+            bbHostId: host.id,
+            projectName: "Collaboration Repository",
+            providerId: "codex",
+            sourcePath: "/srv/work-together/collaboration",
+          }),
+        },
+      ).provision({ principal: PRINCIPAL, launch });
+      const child = seedThread(harness.deps, {
+        projectId: provisioned.projectId,
+        environmentId: provisioned.environmentId,
+        parentThreadId: provisioned.primaryThreadId,
+        title: "Worker",
+      });
+      const childAttachmentId = randomUUID();
+      const childAttachments: WorkTogetherRoomChildAttachmentPortV1 = {
+        attach: async () =>
+          Object.freeze({
+            id: childAttachmentId,
+            childThreadId: child.id,
+            parentThreadId: provisioned.primaryThreadId,
+          }),
+        list: async () =>
+          Object.freeze([
+            {
+              id: childAttachmentId,
+              childThreadId: child.id,
+              parentThreadId: provisioned.primaryThreadId,
+            },
+          ]),
+      };
+      const distribution = createBindingBackedRoomDistributionV1(
+        harness.deps,
+        { read: async () => ({ id: launch.taskId, title: "Task" }) },
+        childAttachments,
+        MEMBER_AUTHORITY,
+      );
+
+      const emptyBootstrap = await distribution.bootstrap(
+        context(launch.bindingId),
+      );
+      expect(emptyBootstrap.collaboration).toEqual({
+        control: { mode: "shared" },
+        presenceCount: 0,
+      });
+      const emptyWire = JSON.stringify(emptyBootstrap);
+      expect(emptyWire).not.toContain(PRINCIPAL.id);
+      expect(emptyWire).not.toContain(PRINCIPAL.displayName);
+      expect(emptyWire).not.toMatch(/lease|controllerId|viewer/iu);
+
+      const aliceEvents: unknown[] = [];
+      const aliceA = await distribution.subscribe(
+        context(launch.bindingId, PRINCIPAL),
+        { childAttachmentId: null, cursor: null },
+        (event) => aliceEvents.push(event),
+      );
+      expect(aliceEvents).toContainEqual({
+        type: "collaboration",
+        collaboration: {
+          control: { mode: "shared" },
+          presenceCount: 1,
+        },
+      });
+
+      const aliceBEvents: unknown[] = [];
+      const aliceB = await distribution.subscribe(
+        context(launch.bindingId, PRINCIPAL),
+        { childAttachmentId: null, cursor: null },
+        (event) => aliceBEvents.push(event),
+      );
+      // Same principal, two sockets: still unique count 1.
+      expect(aliceBEvents).toContainEqual({
+        type: "collaboration",
+        collaboration: {
+          control: { mode: "shared" },
+          presenceCount: 1,
+        },
+      });
+      expect(
+        (await distribution.bootstrap(context(launch.bindingId))).collaboration,
+      ).toEqual({ control: { mode: "shared" }, presenceCount: 1 });
+
+      const bobEvents: unknown[] = [];
+      const bob = await distribution.subscribe(
+        context(launch.bindingId, PRINCIPAL_B),
+        { childAttachmentId: null, cursor: null },
+        (event) => bobEvents.push(event),
+      );
+      expect(bobEvents).toContainEqual({
+        type: "collaboration",
+        collaboration: {
+          control: { mode: "shared" },
+          presenceCount: 2,
+        },
+      });
+      // Existing primary peers receive the updated count.
+      expect(aliceEvents.at(-1)).toEqual({
+        type: "collaboration",
+        collaboration: {
+          control: { mode: "shared" },
+          presenceCount: 2,
+        },
+      });
+      expect(
+        (await distribution.bootstrap(context(launch.bindingId))).collaboration,
+      ).toEqual({ control: { mode: "shared" }, presenceCount: 2 });
+
+      const childEvents: unknown[] = [];
+      const childSub = await distribution.subscribe(
+        context(launch.bindingId, PRINCIPAL_B),
+        { childAttachmentId, cursor: null },
+        (event) => childEvents.push(event),
+      );
+      expect(
+        childEvents.every((event) => {
+          return (
+            typeof event === "object" &&
+            event !== null &&
+            (event as { type?: unknown }).type !== "collaboration"
+          );
+        }),
+      ).toBe(true);
+      expect(
+        (await distribution.bootstrap(context(launch.bindingId))).collaboration,
+      ).toEqual({ control: { mode: "shared" }, presenceCount: 2 });
+
+      bob.close();
+      bob.close(); // idempotent cleanup
+      expect(aliceEvents.at(-1)).toEqual({
+        type: "collaboration",
+        collaboration: {
+          control: { mode: "shared" },
+          presenceCount: 1,
+        },
+      });
+      expect(
+        (await distribution.bootstrap(context(launch.bindingId))).collaboration,
+      ).toEqual({ control: { mode: "shared" }, presenceCount: 1 });
+
+      aliceA.close();
+      aliceB.close();
+      childSub.close();
+      expect(
+        (await distribution.bootstrap(context(launch.bindingId))).collaboration,
+      ).toEqual({ control: { mode: "shared" }, presenceCount: 0 });
+
+      for (const batch of [aliceEvents, aliceBEvents, bobEvents, childEvents]) {
+        assertNoPrivateTimelineLeak(JSON.stringify(batch), {
+          environmentId: provisioned.environmentId,
+          principalIds: [PRINCIPAL.id, PRINCIPAL_B.id],
+          primaryThreadId: provisioned.primaryThreadId,
+          projectId: provisioned.projectId,
+        });
+      }
+    });
+  });
+
+  it("exposes public older timeline pages through the same sanitizer", async () => {
+    await withTestHarness(async (harness) => {
+      const candidateHostId = randomUUID();
+      const { host } = seedHostSession(harness.deps, { id: createHostId() });
+      const launch = {
+        bindingId: randomUUID(),
+        workspaceId: randomUUID(),
+        taskId: randomUUID(),
+        cellId: randomUUID(),
+        repositoryBindingId: randomUUID(),
+        repositoryBindingVersion: 1,
+        providerRepositoryId: "92",
+        baseBranch: "main",
+        generatedBranch: "rooms/older-pages",
+        candidateHostId,
+        environmentTemplate: "managed-worktree" as const,
+      };
+      const provisioned = await createWorkTogetherRoomResourceProvisioner(
+        harness.deps,
+        {
+          resolve: () => ({
+            bbHostId: host.id,
+            projectName: "Older Pages Repository",
+            providerId: "codex",
+            sourcePath: "/srv/work-together/older-pages",
+          }),
+        },
+      ).provision({ principal: PRINCIPAL, launch });
+      // Room latest window is 20 segments; 22 turns forces a public older cursor
+      // even if provisioning already created one non-page segment anchor.
+      const baseSequence =
+        getLatestThreadSequence(harness.db, {
+          threadId: provisioned.primaryThreadId,
+        }) + 1;
+      for (let turn = 1; turn <= 22; turn += 1) {
+        seedMessageTurn(harness.deps, {
+          environmentId: provisioned.environmentId,
+          firstTurn: turn === 1 && baseSequence === 1,
+          requestId: 200 + turn,
+          startSequence: baseSequence + (turn - 1) * 5,
+          text: `Turn message ${turn}`,
+          threadId: provisioned.primaryThreadId,
+          turnId: `turn-room-${turn}`,
+        });
+      }
+      const distribution = createBindingBackedRoomDistributionV1(
+        harness.deps,
+        { read: async () => ({ id: launch.taskId, title: "Task" }) },
+        NO_CHILDREN,
+        MEMBER_AUTHORITY,
+      );
+
+      const anchors = listTimelineSegmentAnchorsDescending(harness.db, {
+        threadId: provisioned.primaryThreadId,
+        limit: 30,
+      });
+      expect(anchors.length).toBeGreaterThan(20);
+
+      const bootstrap = await distribution.bootstrap(context(launch.bindingId));
+      const liveCursor = bootstrap.cursor as string;
+      const latestTimeline = bootstrap.timeline as {
+        hasOlder: boolean;
+        olderCursor: string | null;
+        rows: Array<{ kind: string; text?: string }>;
+        activeTurnId: string | null;
+      };
+      expect(latestTimeline.hasOlder).toBe(true);
+      expect(latestTimeline.olderCursor).toMatch(/^p\.[1-9][0-9]*$/u);
+      expect(JSON.stringify(bootstrap)).not.toContain("hasOlderRows");
+      assertNoPrivateTimelineLeak(JSON.stringify(bootstrap), {
+        environmentId: provisioned.environmentId,
+        principalIds: [PRINCIPAL.id],
+        primaryThreadId: provisioned.primaryThreadId,
+        projectId: provisioned.projectId,
+      });
+
+      const events = await distribution.events(context(launch.bindingId), {
+        childAttachmentId: null,
+        cursor: "s.0",
+      });
+      expect(events.cursor).toBe(liveCursor);
+      expect(events.timeline).toMatchObject({
+        hasOlder: true,
+        olderCursor: latestTimeline.olderCursor,
+      });
+
+      const older = await distribution.timeline(context(launch.bindingId), {
+        before: latestTimeline.olderCursor!,
+      });
+      expect(older).toMatchObject({
+        schemaVersion: 1,
+        timeline: {
+          hasOlder: expect.any(Boolean),
+          activeTurnId: null,
+          working: false,
+        },
+      });
+      const olderTimeline = older.timeline as {
+        hasOlder: boolean;
+        olderCursor: string | null;
+        rows: Array<{ kind: string; text?: string }>;
+      };
+      expect(
+        olderTimeline.olderCursor === null ||
+          /^p\.[1-9][0-9]*$/u.test(olderTimeline.olderCursor),
+      ).toBe(true);
+      expect(olderTimeline.hasOlder).toBe(olderTimeline.olderCursor !== null);
+      // Older pages must not rewrite the live high-water cursor field.
+      expect(older).not.toHaveProperty("cursor");
+      expect(older).not.toHaveProperty("changed");
+      const olderTexts = olderTimeline.rows
+        .filter((row) => row.kind === "conversation" && row.text !== undefined)
+        .map((row) => row.text as string);
+      expect(olderTexts.some((text) => /Turn message \d+/u.test(text))).toBe(
+        true,
+      );
+      // Latest window holds the newest turns; the older page must not.
+      expect(
+        olderTexts.some(
+          (text) =>
+            text.includes("Turn message 22") ||
+            text.includes("Turn message 21"),
+        ),
+      ).toBe(false);
+      assertNoPrivateTimelineLeak(JSON.stringify(older), {
+        environmentId: provisioned.environmentId,
+        principalIds: [PRINCIPAL.id],
+        primaryThreadId: provisioned.primaryThreadId,
+        projectId: provisioned.projectId,
+      });
+
+      // Live high-water remains unchanged after older reads.
+      await expect(
+        distribution.events(context(launch.bindingId), {
+          childAttachmentId: null,
+          cursor: liveCursor,
+        }),
+      ).resolves.toMatchObject({
+        changed: false,
+        timeline: null,
+        cursor: liveCursor,
+      });
+
+      await expect(
+        distribution.timeline(context(launch.bindingId), {
+          before: "p.0",
+        }),
+      ).rejects.toMatchObject({ kind: "not_found" });
+      await expect(
+        distribution.timeline(context(launch.bindingId), {
+          before: "s.1",
+        }),
+      ).rejects.toMatchObject({ kind: "not_found" });
+      await expect(
+        distribution.timeline(context(launch.bindingId), {
+          before: "p.999999999",
+        }),
+      ).rejects.toMatchObject({ kind: "not_found" });
+      await expect(
+        distribution.timeline(context(launch.bindingId), {
+          before: "not-a-cursor",
+        }),
+      ).rejects.toMatchObject({ kind: "not_found" });
     });
   });
 });

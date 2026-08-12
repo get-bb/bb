@@ -124,6 +124,57 @@ describe("parseRoomDistributionTarget", () => {
     expect(Object.isFrozen(withCursor)).toBe(true);
   });
 
+  it("accepts GET http timeline with public sequence-only before cursor", () => {
+    const descriptor = parse({
+      method: "GET",
+      transport: "http",
+      target: targetFor("timeline", BINDING_ID, "before=p.42"),
+    });
+    expect(descriptor).toEqual({
+      bindingId: BINDING_ID,
+      operation: "timeline",
+      method: "GET",
+      transport: "http",
+      before: "p.42",
+    });
+    expect(Object.isFrozen(descriptor)).toBe(true);
+  });
+
+  it("rejects non-public or malformed timeline before cursors", () => {
+    for (const query of [
+      undefined,
+      "before=p.0",
+      "before=p.01",
+      "before=s.1",
+      "before=1",
+      "cursor=p.1",
+      "before=p.1&child=11111111-2222-4333-8444-555555555555",
+      "before=",
+      "before=p.",
+      "before=p.-1",
+    ]) {
+      expectRejected({
+        method: "GET",
+        transport: "http",
+        target: targetFor(
+          "timeline",
+          BINDING_ID,
+          query === undefined ? undefined : query,
+        ),
+      });
+    }
+    expectRejected({
+      method: "POST",
+      transport: "http",
+      target: targetFor("timeline", BINDING_ID, "before=p.1"),
+    });
+    expectRejected({
+      method: "GET",
+      transport: "websocket",
+      target: targetFor("timeline", BINDING_ID, "before=p.1"),
+    });
+  });
+
   it("accepts GET websocket subscribe with and without cursor", () => {
     const without = parse({
       method: "GET",
@@ -203,6 +254,8 @@ describe("parseRoomDistributionTarget", () => {
       transport: "http",
       target: targetFor("events", BINDING_ID, `cursor=${raw}`),
     });
+    expect(descriptor.operation).toBe("events");
+    if (descriptor.operation !== "events") return;
     expect(descriptor.cursor).toBe(raw);
   });
 

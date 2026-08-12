@@ -185,4 +185,23 @@ export function registerRoomDistributionHttpRoutes(
       return context.json(body, 200);
     }),
   );
+
+  app.get("/api/bb-rooms/v1/rooms/:bindingId/timeline", async (context) =>
+    mapFailure(async () => {
+      const target = parseRoomDistributionTarget({
+        method: context.req.method,
+        target: readPrincipalRequestTarget(context),
+        transport: "http",
+      });
+      if (target.operation !== "timeline") notFound();
+      const room = await createContext(context, target.bindingId);
+      // Older pages share the existing events read authority; no new operation.
+      await requireOperation(room, "events");
+      const body = await distribution.timeline(room, {
+        before: target.before,
+      });
+      context.header("cache-control", "no-store");
+      return context.json(body, 200);
+    }),
+  );
 }

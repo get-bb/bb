@@ -67,6 +67,10 @@ describe("Room distribution real process boundary", () => {
       events: [],
       cursor: target.cursor,
     }));
+    const timeline = vi.fn(async () => ({
+      schemaVersion: 1,
+      timeline: { rows: [], hasOlder: false, olderCursor: null },
+    }));
     const subscribe = vi.fn(async (_context, target, emit) => {
       emit({ type: "ready", cursor: target.cursor ?? "origin" });
       return Object.freeze({ close() {} });
@@ -75,6 +79,7 @@ describe("Room distribution real process boundary", () => {
       bootstrap,
       execute,
       events,
+      timeline,
       subscribe,
     } as WorkTogetherRoomDistributionV1;
     const server = await startTestServer(

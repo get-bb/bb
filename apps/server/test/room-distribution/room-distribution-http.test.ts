@@ -62,11 +62,17 @@ function fixture(
     events: [],
     cursor: target.cursor,
   }));
+  const timeline = vi.fn(async (_context, target) => ({
+    schemaVersion: 1,
+    timeline: { rows: [], hasOlder: false, olderCursor: null },
+    before: target.before,
+  }));
   const subscribe = vi.fn(async () => Object.freeze({ close() {} }));
   const distribution = {
     bootstrap,
     execute,
     events,
+    timeline,
     subscribe,
     ...options.distribution,
   } as WorkTogetherRoomDistributionV1;
@@ -83,7 +89,7 @@ function fixture(
     createResolvePrincipalMiddleware(policy, "http"),
   );
   registerRoomDistributionHttpRoutes(app, distribution);
-  return { app, authorizations, bootstrap, execute, events };
+  return { app, authorizations, bootstrap, execute, events, timeline };
 }
 
 describe("Room distribution HTTP adapter", () => {
@@ -117,7 +123,22 @@ describe("Room distribution HTTP adapter", () => {
       expect.objectContaining({ bindingId: BINDING_ID, principal: PRINCIPAL }),
       { childAttachmentId: CHILD_ID, cursor: "evt%3A8" },
     );
-    expect(test.authorizations).toHaveLength(3);
+
+    const timelineResponse = await test.app.request(
+      path("timeline", "?before=p.7"),
+    );
+    expect(timelineResponse.status).toBe(200);
+    expect(timelineResponse.headers.get("cache-control")).toBe("no-store");
+    expect(test.timeline).toHaveBeenCalledWith(
+      expect.objectContaining({ bindingId: BINDING_ID, principal: PRINCIPAL }),
+      { before: "p.7" },
+    );
+    // Older timeline reuses events read authority (no new action).
+    expect(test.authorizations.at(-1)?.action).toEqual(
+      expect.objectContaining({ name: "roomDistribution.events" }),
+    );
+
+    expect(test.authorizations).toHaveLength(4);
     for (const pair of test.authorizations) {
       expect(
         isRegistryIssuedRoomDistributionAuthorization(
@@ -169,10 +190,14 @@ describe("Room distribution HTTP adapter", () => {
       (await malformed.app.request(path("events", "?cursor="))).status,
     ).toBe(404);
     expect(
+      (await malformed.app.request(path("timeline", "?before=s.1"))).status,
+    ).toBe(404);
+    expect(
       (await malformed.app.request(`/api/bb-rooms/v1/rooms/${BINDING_ID}/raw`))
         .status,
     ).toBe(404);
     expect(malformed.events).not.toHaveBeenCalled();
+    expect(malformed.timeline).not.toHaveBeenCalled();
   });
 
   it("maps binding misses without enumeration and upstream failures to unavailable", async () => {
