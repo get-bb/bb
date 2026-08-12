@@ -20,7 +20,7 @@ test("classifies plugin-only, mixed, and non-plugin pull requests", () => {
       ref: "refs/pull/92/merge",
       changedFiles: ["plugins/bb-plugin-finite-state/app.tsx"],
     }),
-    { runHeavy: false, runFiniteState: true },
+    { runHeavy: false },
   );
   assert.deepEqual(
     classifyCiScope({
@@ -31,7 +31,7 @@ test("classifies plugin-only, mixed, and non-plugin pull requests", () => {
         "apps/server/src/index.ts",
       ],
     }),
-    { runHeavy: true, runFiniteState: true },
+    { runHeavy: true },
   );
   assert.deepEqual(
     classifyCiScope({
@@ -39,18 +39,18 @@ test("classifies plugin-only, mixed, and non-plugin pull requests", () => {
       ref: "refs/pull/92/merge",
       changedFiles: ["apps/server/src/index.ts"],
     }),
-    { runHeavy: true, runFiniteState: false },
+    { runHeavy: true },
   );
 });
 
-test("runs the real Finite State gate on integration pushes and all jobs on manual dispatch", () => {
+test("classifies integration pushes, main pushes, and manual dispatch", () => {
   assert.deepEqual(
     classifyCiScope({
       eventName: "push",
       ref: "refs/heads/finite-state/integration",
       changedFiles: ["plugins/bb-plugin-finite-state/app.tsx"],
     }),
-    { runHeavy: false, runFiniteState: true },
+    { runHeavy: false },
   );
   assert.deepEqual(
     classifyCiScope({
@@ -58,7 +58,7 @@ test("runs the real Finite State gate on integration pushes and all jobs on manu
       ref: "refs/heads/finite-state/integration",
       changedFiles: ["README.md"],
     }),
-    { runHeavy: true, runFiniteState: true },
+    { runHeavy: true },
   );
   assert.deepEqual(
     classifyCiScope({
@@ -66,7 +66,7 @@ test("runs the real Finite State gate on integration pushes and all jobs on manu
       ref: "refs/heads/main",
       changedFiles: ["README.md"],
     }),
-    { runHeavy: true, runFiniteState: false },
+    { runHeavy: true },
   );
   assert.deepEqual(
     classifyCiScope({
@@ -74,7 +74,7 @@ test("runs the real Finite State gate on integration pushes and all jobs on manu
       ref: "refs/heads/main",
       changedFiles: ["plugins/bb-plugin-finite-state/app.tsx"],
     }),
-    { runHeavy: false, runFiniteState: true },
+    { runHeavy: false },
   );
   assert.deepEqual(
     classifyCiScope({
@@ -82,7 +82,7 @@ test("runs the real Finite State gate on integration pushes and all jobs on manu
       ref: "refs/heads/main",
       changedFiles: [],
     }),
-    { runHeavy: true, runFiniteState: true },
+    { runHeavy: true },
   );
 });
 
@@ -93,6 +93,7 @@ test("keeps the stable check shape and excludes the plugin from the packages sha
     workflow,
     /name: Finite State guard gates \(ubuntu-latest, Node 22\.19\.0\)/u,
   );
+  assert.match(workflow, /base: \$\{\{ github\.ref \}\}/u);
   assert.equal(
     workflow.match(/--filter='!bb-plugin-finite-state'/gu)?.length,
     1,
@@ -100,6 +101,10 @@ test("keeps the stable check shape and excludes the plugin from the packages sha
   assert.equal(
     workflow.match(/needs\.changes\.outputs\.run_heavy == 'true'/gu)?.length,
     4,
+  );
+  assert.doesNotMatch(
+    workflow,
+    /run_finite_state|Report unchanged Finite State inputs/u,
   );
 });
 

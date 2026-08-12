@@ -23,7 +23,6 @@ jobs:
     timeout-minutes: 5
     outputs:
       run_heavy: ${{ steps.scope.outputs.run_heavy }}
-      run_finite_state: ${{ steps.scope.outputs.run_finite_state }}
 
     steps:
       - name: Checkout repository
@@ -33,6 +32,9 @@ jobs:
         id: changed
         uses: dorny/paths-filter@v3
         with:
+          # Pull requests ignore this input and use their PR base. Pushes use
+          # the preceding commit on the branch that received the push.
+          base: ${{ github.ref }}
           list-files: json
           filters: |
             all:
@@ -43,7 +45,6 @@ jobs:
         env:
           CI_CHANGED_FILES_JSON: ${{ steps.changed.outputs.all_files }}
           CI_EVENT_NAME: ${{ github.event_name }}
-          CI_REF: ${{ github.ref }}
         run: node .github/scripts/classify-finite-state-ci.mjs
 
   checks:
@@ -74,8 +75,8 @@ jobs:
         run: node apps/app/scripts/check-bundle-budget.mjs
 
   finite-state-guards:
-    # FS-91 will require this stable check name. Keep the job present even when
-    # an unrelated diff does not need the expensive plugin lifecycle.
+    # FS-91 will require this stable check name. Always run the real plugin
+    # lifecycle so transitive infrastructure changes cannot produce a no-op.
     name: Finite State guard gates (ubuntu-latest, Node 22.19.0)
     needs: changes
     runs-on: ubuntu-latest
@@ -86,7 +87,6 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup workspace
-        if: needs.changes.outputs.run_finite_state == 'true'
         uses: ./.github/actions/setup-workspace
         with:
           node-version: "22.19.0"
@@ -94,12 +94,7 @@ jobs:
           cache-prefix: finite-state-guards
 
       - name: Run Finite State plugin gate
-        if: needs.changes.outputs.run_finite_state == 'true'
         run: pnpm exec turbo run typecheck test lint build --filter=bb-plugin-finite-state --cache-dir=.turbo/cache --output-logs=new-only
-
-      - name: Report unchanged Finite State inputs
-        if: needs.changes.outputs.run_finite_state != 'true'
-        run: echo 'Finite State inputs unchanged; stable gate completed without plugin setup.'
 
   # Tests run on their own runners instead of inside the checks job: the big
   # suites are CPU-bound and previously fought each other (and the builds) for
