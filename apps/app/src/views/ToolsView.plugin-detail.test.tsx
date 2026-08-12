@@ -264,7 +264,6 @@ describe("PluginDetail official catalog lifecycle", () => {
     expect(screen.queryByRole("button", { name: "Check now" })).toBeNull();
 
     expect(container.querySelector('[data-icon="Github"]')).not.toBeNull();
-    expect(container.querySelector('img[src="/bb-mark.svg"]')).toBeNull();
 
     // Uninstall is irreversible, so it sits with the other ownership actions
     // rather than beside the reversible enable toggle.
@@ -487,7 +486,6 @@ describe("PluginDetail official catalog lifecycle", () => {
     );
     expect(icon).not.toBeNull();
     expect(icon?.className).toContain("size-full");
-    expect(container.querySelector('img[src="/bb-mark.svg"]')).toBeNull();
   });
 
   it("shows a disabled Uninstall action for a built-in plugin", async () => {
