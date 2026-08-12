@@ -237,6 +237,45 @@ describe("mobile sidebar persistence", () => {
     expect(inset?.hasAttribute("inert")).toBe(false);
   });
 
+  it("blocks tap-through with the backdrop during the deferred open", () => {
+    vi.useFakeTimers();
+    render(
+      <CompactViewportOverrideProvider isCompactViewport>
+        <SidebarProvider>
+          <Sidebar>Sidebar content</Sidebar>
+          <SidebarInset>
+            <SidebarTrigger />
+            Main content
+          </SidebarInset>
+        </SidebarProvider>
+      </CompactViewportOverrideProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Toggle Sidebar" }));
+
+    // React state stays closed for the settle window, so the class-driven
+    // backdrop state still reads pointer-events-none while the panel is
+    // still `inert`. The inline override must intercept taps immediately,
+    // or a rapid second tap falls through onto the page below.
+    const backdrop = screen.getByTestId("sidebar-mobile-backdrop");
+    expect(getMobilePanel()?.dataset.state).toBe("closed");
+    expect(backdrop.style.pointerEvents).toBe("auto");
+
+    // A tap the backdrop absorbs mid-slide must not cancel the open; the
+    // settle guard swallows the dismiss.
+    fireEvent.click(backdrop);
+    settleMobileToggle();
+    expect(getMobilePanel()?.dataset.state).toBe("open");
+    // The commit clears the override; the open-state class owns taps now.
+    expect(backdrop.style.pointerEvents).toBe("");
+
+    fireEvent.click(backdrop);
+    settleMobileToggle();
+    expect(getMobilePanel()?.dataset.state).toBe("closed");
+    // No stale override may keep the closed backdrop interactive.
+    expect(backdrop.style.pointerEvents).not.toBe("auto");
+  });
+
   it("keeps the pinned trigger interactive and closes on a second press", () => {
     vi.useFakeTimers();
     render(

@@ -10,6 +10,13 @@ import {
 } from "react";
 
 export interface StickyBottomScrollBinding<TElement extends HTMLElement> {
+  /**
+   * Attach to an element that wraps the scrolled content. The scroll port's
+   * box is fixed, so content-only height changes (an image load, a
+   * disclosure toggle) never fire its ResizeObserver; observing the wrapper
+   * keeps the cached maximum offset fresh for those changes too.
+   */
+  contentRef: RefObject<HTMLDivElement | null>;
   onPointerDown: PointerEventHandler<TElement>;
   onScroll: UIEventHandler<TElement>;
   onTouchMove: TouchEventHandler<TElement>;
@@ -56,6 +63,7 @@ export function useStickyBottomScroll<TElement extends HTMLElement>({
   streaming,
 }: UseStickyBottomScrollArgs): StickyBottomScrollBinding<TElement> {
   const scrollRef = useRef<TElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const shouldStickToBottomRef = useRef(true);
   const pointerScrollIntentRef = useRef(false);
   const userScrollIntentUntilRef = useRef(0);
@@ -80,6 +88,12 @@ export function useStickyBottomScroll<TElement extends HTMLElement>({
       refreshMaxScrollOffset(element);
     });
     observer.observe(element);
+    // The port only resizes with the viewport; the content wrapper resizes
+    // when the content itself grows or shrinks. Both feed the same cache.
+    const content = contentRef.current;
+    if (content) {
+      observer.observe(content);
+    }
     return () => observer.disconnect();
   }, [refreshMaxScrollOffset]);
 
@@ -156,6 +170,7 @@ export function useStickyBottomScroll<TElement extends HTMLElement>({
   }, [onPointerEnd, streaming]);
 
   return {
+    contentRef,
     onPointerDown,
     onScroll,
     onTouchMove: markUserScrollIntent,

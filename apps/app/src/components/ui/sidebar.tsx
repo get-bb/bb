@@ -138,6 +138,11 @@ function applySidebarMobileDragStyles({
     backdrop.style.transition = settling
       ? SIDEBAR_MOBILE_BACKDROP_SETTLE_TRANSITION
       : "none";
+    // The deferred open keeps data-state="closed" (pointer-events-none)
+    // until the settle commit, while the panel is still `inert` — without
+    // this inline override a rapid second tap during the slide-in falls
+    // through both layers onto the page below.
+    backdrop.style.pointerEvents = progress > 0 ? "auto" : "";
   }
 }
 
@@ -160,6 +165,7 @@ function clearSidebarMobileDragStyles() {
     backdrop.removeAttribute("data-vaul-animate");
     backdrop.style.opacity = "";
     backdrop.style.transition = "";
+    backdrop.style.pointerEvents = "";
   }
 }
 
@@ -484,8 +490,9 @@ const SidebarProvider = React.forwardRef<
     // drawer is open. The open commit (panel `inert` removal, data-state
     // flips) then pays its style recalculation — ~280 ms on iOS Safari for a
     // large sidebar — after the slide instead of blocking its first frame.
-    // The panel stays `inert` and the backdrop passes taps through until the
-    // commit lands one settle window later.
+    // The panel stays `inert` until the commit lands one settle window
+    // later; the drag helper puts inline pointer-events on the backdrop so
+    // taps during the slide land on the backdrop, not the page below.
     const openMobileSidebar = React.useCallback(() => {
       if (openMobileRef.current || mobileSettleTimeoutRef.current !== null) {
         return;
