@@ -407,12 +407,14 @@ export function AppLayout({ children }: AppLayoutProps) {
   const splitWorkspaceActive = useSplitWorkspaceActive();
   const store = useStore();
   const contentShellRef = useRef<HTMLDivElement>(null);
+  const providerRef = useRef<HTMLDivElement>(null);
   const restoreIOSViewportOnKeyboardDismissal = useMemo(
     () => shouldRestoreIOSViewportOnKeyboardDismissal(navigator),
     [],
   );
   useMobileVisualViewportHeight(
     contentShellRef,
+    providerRef,
     isCompactViewport,
     restoreIOSViewportOnKeyboardDismissal,
   );
@@ -572,7 +574,6 @@ export function AppLayout({ children }: AppLayoutProps) {
     threadDetailBootstrapQuery.isSuccess || threadDetailBootstrapQuery.isError;
   const [sidebarWidth, setSidebarWidth] = useAtom(sidebarWidthAtom);
   const [isSidebarResizing, setIsSidebarResizing] = useState(false);
-  const providerRef = useRef<HTMLDivElement>(null);
   const startXRef = useRef(0);
   const startWidthRef = useRef(0);
   const liveWidthRef = useRef(sidebarWidth);

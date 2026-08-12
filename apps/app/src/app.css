@@ -6,14 +6,11 @@
    * Keep the real app shell from becoming a second scroll container. These
    * selectors are class-scoped because Ladle imports app.css but does not use
    * the Vite index.html shell classes.
-   */
-  html.bb-app-shell-root,
-  body.bb-app-shell,
-  body.bb-app-shell #root {
-    height: 100%;
-  }
-
-  /*
+   *
+   * Use the dynamic viewport height in browser tabs so native/in-app browser
+   * chrome cannot leave the percentage-height containing block taller than
+   * the visible window.
+   *
    * iOS standalone subtracts the top safe-area inset from the small and
    * dynamic viewports but not from the large one. On a 852pt screen with a
    * 59pt inset, innerHeight/100svh/100dvh/height:100% all report 793 while
@@ -33,13 +30,18 @@
     --bb-shell-height: 100dvh;
   }
 
+  html.bb-app-shell-root {
+    height: var(--bb-shell-height);
+  }
+
+  body.bb-app-shell,
+  body.bb-app-shell #root {
+    height: 100%;
+  }
+
   @media (display-mode: standalone) {
     :root {
       --bb-shell-height: 100lvh;
-    }
-
-    html.bb-app-shell-root {
-      height: var(--bb-shell-height);
     }
   }
 
