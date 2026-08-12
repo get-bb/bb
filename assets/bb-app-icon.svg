@@ -136,32 +136,4 @@
   <use href="#upper-seam" fill="none" stroke="url(#upper-rim)" stroke-width=".8"/>
   <use href="#lower-seam" fill="none" stroke="url(#lower-rim)" stroke-width=".8"/>
   <use href="#mark" fill="none" stroke="url(#outline)" stroke-width=".8" stroke-linejoin="round" fill-rule="evenodd"/>
-
-  <defs>
-    <linearGradient id="app-icon-rim" x1="58" y1="8" x2="442" y2="390" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#fff" stop-opacity=".5"/>
-      <stop offset=".38" stop-color="#fff" stop-opacity=".16"/>
-      <stop offset=".62" stop-color="#000" stop-opacity=".34"/>
-      <stop offset="1" stop-color="#000" stop-opacity=".72"/>
-    </linearGradient>
-    <filter id="app-icon-surface-lighting" x="-20%" y="-20%" width="140%" height="140%" color-interpolation-filters="sRGB">
-      <feGaussianBlur in="SourceAlpha" stdDeviation="30" result="soft-alpha"/>
-
-      <feOffset in="soft-alpha" dx="30" dy="20" result="highlight-offset"/>
-      <feComposite in="SourceAlpha" in2="highlight-offset" operator="out" result="highlight-mask"/>
-      <feFlood flood-color="#fff" flood-opacity=".5" result="highlight-color"/>
-      <feComposite in="highlight-color" in2="highlight-mask" operator="in" result="highlight"/>
-
-      <feOffset in="soft-alpha" dx="-24" dy="-16" result="shadow-offset"/>
-      <feComposite in="SourceAlpha" in2="shadow-offset" operator="out" result="shadow-mask"/>
-      <feFlood flood-color="#000" flood-opacity=".34" result="shadow-color"/>
-      <feComposite in="shadow-color" in2="shadow-mask" operator="in" result="shadow"/>
-
-      <feMerge>
-        <feMergeNode in="shadow"/>
-        <feMergeNode in="highlight"/>
-      </feMerge>
-    </filter>
-  </defs>
-  <use href="#mark" fill="#fff" fill-rule="evenodd" filter="url(#app-icon-surface-lighting)"/>
-  <use href="#mark" fill="none" stroke="url(#app-icon-rim)" stroke-width="1.35" stroke-linejoin="round" fill-rule="evenodd"/></svg></svg>
+</svg></svg>
