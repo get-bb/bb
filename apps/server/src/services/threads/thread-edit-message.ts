@@ -192,7 +192,10 @@ function resolveEditableTurnCandidate(
     );
   }
   const completion = getTurnCompletion(db, thread.id, accepted.turnId);
-  if (completion?.status !== "completed") {
+  if (
+    completion?.status !== "completed" &&
+    completion?.status !== "interrupted"
+  ) {
     conflict("The selected turn did not complete successfully");
   }
 

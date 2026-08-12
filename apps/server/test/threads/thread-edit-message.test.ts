@@ -823,6 +823,50 @@ describe("editThreadMessage", () => {
     });
   });
 
+  it("edits a selected turn that was interrupted", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedEditableThread(harness);
+      seedCompletedTurn(harness, {
+        completionStatus: "interrupted",
+        providerCheckpointId: "checkpoint-interrupted",
+        providerThreadId: "provider-original",
+        requestSequence: 12,
+        text: "Interrupted request",
+        threadId: thread.id,
+        turnId: "turn-interrupted",
+      });
+
+      const editPromise = editThreadMessage(harness.deps, {
+        environment,
+        thread,
+        payload: {
+          operationId: "edit-op-interrupted-turn",
+          expectedRequestSequence: 12,
+          input: [{ type: "text", text: "Replacement", mentions: [] }],
+        },
+      });
+      const rewind = await waitForQueuedCommand(
+        harness,
+        (queued) => queued.command.type === "thread.rewind.prepare",
+      );
+      expect(rewind.command).toMatchObject({
+        retainThroughProviderCheckpoint: "turn-last",
+        sourceProviderThreadId: "provider-original",
+      });
+      if (rewind.command.type !== "thread.rewind.prepare") {
+        throw new Error("Expected a thread.rewind.prepare command");
+      }
+      await reportQueuedCommandSuccess(harness, rewind, {
+        providerThreadId: "provider-staged-interrupted-edit",
+      });
+
+      await expect(editPromise).resolves.toMatchObject({
+        ok: true,
+        operationId: "edit-op-interrupted-turn",
+      });
+    });
+  });
+
   it("rejects editing a turn that did not complete successfully", async () => {
     await withTestHarness(async (harness) => {
       const { environment, thread } = seedEditableThread(harness);
