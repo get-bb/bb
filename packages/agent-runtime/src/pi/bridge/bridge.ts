@@ -88,6 +88,7 @@ const piInstructionOverrideSchemaOptions = {
 };
 
 const piReasoningLevelValues = [
+  "off",
   "low",
   "medium",
   "high",
@@ -95,7 +96,7 @@ const piReasoningLevelValues = [
   "max",
 ] as const;
 const piReasoningLevelSchema = z.enum(piReasoningLevelValues);
-type PiReasoningLevel = z.infer<typeof piReasoningLevelSchema>;
+export type PiReasoningLevel = z.infer<typeof piReasoningLevelSchema>;
 const piAdditionalSkillPathsSchema = z.array(z.string()).optional();
 
 const piThreadStartParamsSchema = z

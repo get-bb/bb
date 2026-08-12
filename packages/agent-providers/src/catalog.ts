@@ -182,7 +182,12 @@ const PI_SERVER_CAPABILITIES: ProviderServerCapabilities = {
   supportsWorkflows: false,
   supportsExecutionOverride: false,
   backsHostDaemonAiServices: false,
-  reasoningLevels: ["low", "medium", "high", "xhigh", "max"],
+  // "none" is the thinking-off level: some Pi models (e.g. Ollama Cloud models
+  // whose `thinkingLevelMap` advertises `off`, and non-reasoning models) expose
+  // it per-model via `supportedReasoningEfforts`. The picker only offers it for
+  // those models, but this coarse ladder must include it so the plan-path
+  // validation accepts a `none` selection the picker legitimately offered.
+  reasoningLevels: ["none", "low", "medium", "high", "xhigh", "max"],
 };
 
 // ACP agents manage reasoning effort internally; "medium" is the single
