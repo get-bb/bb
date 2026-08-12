@@ -217,10 +217,10 @@ function resolveEditableTurnCandidate(
       : getTurnCompletion(db, thread.id, precedingTurnId);
   if (
     precedingTurnId !== null &&
-    (precedingCompletion?.status !== "completed" ||
+    (precedingCompletion === null ||
       precedingCompletion.providerThreadId === null)
   ) {
-    conflict("This earlier turn has no completed provider history");
+    conflict("This earlier turn has no provider history");
   }
   const precedingProviderCheckpoint =
     precedingTurnId === null

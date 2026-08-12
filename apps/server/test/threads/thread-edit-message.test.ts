@@ -14,6 +14,7 @@ import {
   threadScope,
   turnScope,
   type PromptInput,
+  type ThreadEventTurnStatus,
 } from "@bb/domain";
 import { describe, expect, it, vi } from "vitest";
 import { editThreadMessage } from "../../src/services/threads/thread-edit-message.js";
@@ -39,7 +40,7 @@ function seedCompletedTurn(
   args: {
     providerThreadId: string;
     providerCheckpointId?: string;
-    completionStatus?: "completed" | "failed";
+    completionStatus?: ThreadEventTurnStatus;
     inputGroups?: PromptInput[][];
     initiator?: "agent" | "user";
     requestSequence: number;
@@ -141,6 +142,7 @@ function seedEditableThread(
   harness: TestAppHarness,
   args: {
     editMessagesExperiment?: boolean;
+    firstCompletionStatus?: ThreadEventTurnStatus;
     firstProviderCheckpoint?: string | null;
     firstProviderThreadId?: string;
     includeIdentity?: boolean;
@@ -188,6 +190,9 @@ function seedEditableThread(
     text: "First message",
     threadId: thread.id,
     turnId: "turn-first",
+    ...(args.firstCompletionStatus !== undefined
+      ? { completionStatus: args.firstCompletionStatus }
+      : {}),
     ...(args.firstProviderCheckpoint !== null
       ? {
           providerCheckpointId:
@@ -675,6 +680,43 @@ describe("editThreadMessage", () => {
       });
     },
   );
+
+  it("stages Codex history through an interrupted preceding turn", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedEditableThread(harness, {
+        firstCompletionStatus: "interrupted",
+      });
+      const editPromise = editThreadMessage(harness.deps, {
+        environment,
+        thread,
+        payload: {
+          operationId: "edit-op-after-interrupted-turn",
+          expectedRequestSequence: 7,
+          input: [{ type: "text", text: "Replacement", mentions: [] }],
+        },
+      });
+
+      const rewind = await waitForQueuedCommand(
+        harness,
+        (queued) => queued.command.type === "thread.rewind.prepare",
+      );
+      expect(rewind.command).toMatchObject({
+        retainThroughProviderCheckpoint: "turn-first",
+        sourceProviderThreadId: "provider-original",
+      });
+      if (rewind.command.type !== "thread.rewind.prepare") {
+        throw new Error("Expected a thread.rewind.prepare command");
+      }
+      await reportQueuedCommandSuccess(harness, rewind, {
+        providerThreadId: "provider-staged-after-interruption",
+      });
+
+      await expect(editPromise).resolves.toMatchObject({
+        ok: true,
+        operationId: "edit-op-after-interrupted-turn",
+      });
+    });
+  });
 
   it("uses the provider lineage that produced the preceding checkpoint", async () => {
     await withTestHarness(async (harness) => {
