@@ -53,19 +53,19 @@ const noNativeTitleOnButtonPrimitiveSyntaxRestriction = {
 const finiteStateColorSyntaxRestrictions = [
   {
     selector:
-      "Literal[value=/#[0-9a-fA-F]{3,8}(?:\\b|$)/], TemplateElement[value.raw=/#[0-9a-fA-F]{3,8}(?:\\b|$)/]",
+      "Literal[value=/^#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/], TemplateElement[value.raw=/^#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/]",
     message:
       "Finite State UI colors must use approved theme tokens, not raw hex values.",
   },
   {
     selector:
-      "Literal[value=/oklch\\s*\\(/i], TemplateElement[value.raw=/oklch\\s*\\(/i]",
+      "Literal[value=/^oklch\\s*\\([\\s\\S]*\\)$/i], TemplateElement[value.raw=/^oklch\\s*\\([\\s\\S]*\\)$/i]",
     message:
       "Finite State UI colors must use approved theme tokens, not raw oklch() values.",
   },
   {
     selector:
-      "Literal[value=/(?:^|\\s)(?:bg|border|fill|stroke|ring|outline|decoration|from|via|to)-\\[[^\\]]+\\]/], TemplateElement[value.raw=/(?:^|\\s)(?:bg|border|fill|stroke|ring|outline|decoration|from|via|to)-\\[[^\\]]+\\]/]",
+      "Literal[value=/(?:^|\\s)(?:bg|text|border|fill|stroke|ring|outline|decoration|shadow|from|via|to)-\\[(?:#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(?:oklch|rgb|rgba|hsl|hsla|color)\\([^\\]]*\\))\\]/i], TemplateElement[value.raw=/(?:^|\\s)(?:bg|text|border|fill|stroke|ring|outline|decoration|shadow|from|via|to)-\\[(?:#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|(?:oklch|rgb|rgba|hsl|hsla|color)\\([^\\]]*\\))\\]/i]",
     message:
       "Finite State UI colors must use approved theme-token utilities, not arbitrary color utilities.",
   },
@@ -185,11 +185,14 @@ export default [
     },
   },
   {
-    files: [
-      "plugins/bb-plugin-finite-state/app.tsx",
-      "plugins/bb-plugin-finite-state/lanes/**/*.tsx",
+    files: ["plugins/bb-plugin-finite-state/**/*.{ts,tsx}"],
+    ignores: [
+      "**/__tests__/**",
+      "**/generated/**",
+      "**/test/**",
+      "**/*.test.ts",
+      "**/*.test.tsx",
     ],
-    ignores: ["**/*.test.tsx"],
     rules: {
       "no-restricted-imports": [
         "error",

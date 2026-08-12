@@ -95,7 +95,9 @@ jobs:
 
       - name: Check Finite State frozen and dependency baselines
         run: |
-          node plugins/bb-plugin-finite-state/scripts/check-frozen-artifacts.mjs
+          frozen_output="$(node plugins/bb-plugin-finite-state/scripts/check-frozen-artifacts.mjs)"
+          printf '%s\n' "$frozen_output"
+          test "$frozen_output" = "Frozen artifact baseline is intact."
           node plugins/bb-plugin-finite-state/scripts/check-dependency-freeze.mjs
 
       - name: Run Finite State plugin gate

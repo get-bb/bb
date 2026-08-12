@@ -76,7 +76,7 @@ documentation only and are never approval evidence.
 
 ### A-001 — Declare the repo-pinned Zod runtime dependency
 
-- Status: approved
+- Status: approved and merged
 - Artifacts:
   - `plugins/bb-plugin-finite-state/package.json`
 - Contract version: n/a

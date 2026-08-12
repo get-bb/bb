@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { createHash } from "node:crypto";
+import { realpathSync } from "node:fs";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -225,6 +226,14 @@ async function check(root) {
 async function accept(root, amendmentId) {
   const baseline = await readJson(root, baselinePath);
   validateBaseline(baseline);
+  const recordedPath = frozenPaths.find(
+    (relativePath) => baseline.artifacts[relativePath].amendment === amendmentId,
+  );
+  if (recordedPath) {
+    fail(
+      `Amendment ${amendmentId} is already recorded for ${recordedPath} and cannot be reused`,
+    );
+  }
   const amendment = (await amendmentMap(root)).get(amendmentId);
   if (!amendment) {
     fail(
@@ -305,7 +314,10 @@ async function main() {
   else await check(root);
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === scriptPath) {
+if (
+  process.argv[1] &&
+  realpathSync(process.argv[1]) === realpathSync(scriptPath)
+) {
   main().catch((error) => {
     process.stderr.write(`${error.message}\n`);
     process.exitCode = 1;

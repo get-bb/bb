@@ -1,6 +1,13 @@
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdtemp,
+  mkdir,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -11,6 +18,7 @@ const dependencyScript = path.join(
   import.meta.dirname,
   "check-dependency-freeze.mjs",
 );
+const eslintBinary = path.join(repositoryRoot, "node_modules/.bin/eslint");
 const pluginRoot = "plugins/bb-plugin-finite-state";
 const fixtureTree = `${pluginRoot}/test/mock-remote/fixtures/**`;
 const artifacts = [
@@ -49,6 +57,22 @@ function run(script: string, root: string, ...args: string[]) {
     process.execPath,
     [script, "--root", root, ...args],
     { cwd: repositoryRoot, encoding: "utf8" },
+  );
+  return {
+    status: result.status,
+    output: `${result.stdout ?? ""}${result.stderr ?? ""}`,
+  };
+}
+
+function lint(source: string, relativePath: string) {
+  const result = spawnSync(
+    eslintBinary,
+    ["--stdin", "--stdin-filename", relativePath],
+    {
+      cwd: repositoryRoot,
+      encoding: "utf8",
+      input: source,
+    },
   );
   return {
     status: result.status,
@@ -206,6 +230,34 @@ describe("lean contract tripwires", () => {
     expect(baseline.artifacts[appPath].amendment).toBe("AMD-0002");
   });
 
+  it("refuses to replay an amendment already recorded on a baseline entry", async () => {
+    const root = await fixtureRoot();
+    const appPath = `${pluginRoot}/app.tsx`;
+    await write(root, appPath, "export default function Changed() { return null; }\n");
+    await write(
+      root,
+      `${pluginRoot}/AMENDMENTS.md`,
+      `# Amendments\n\n${amendment("AMD-0002", [appPath])}`,
+    );
+    expect(run(frozenScript, root, "--accept", "AMD-0002").status).toBe(0);
+
+    await write(root, appPath, "export default function ChangedAgain() { return null; }\n");
+    const replay = run(frozenScript, root, "--accept", "AMD-0002");
+    expect(replay.status).toBe(1);
+    expect(replay.output).toContain("already recorded");
+    expect(replay.output).toContain("cannot be reused");
+  });
+
+  it("runs the frozen check through a symlinked script path", async () => {
+    const root = await fixtureRoot();
+    const linkedScript = path.join(root, "check-frozen-artifacts-link.mjs");
+    await symlink(frozenScript, linkedScript);
+
+    const result = run(linkedScript, root);
+    expect(result.status).toBe(0);
+    expect(result.output).toBe("Frozen artifact baseline is intact.\n");
+  });
+
   it("rejects Zod declaration and lockfile resolution drift", async () => {
     const root = await fixtureRoot();
     await write(
@@ -235,5 +287,40 @@ describe("lean contract tripwires", () => {
     expect(run(dependencyScript, root).output).toContain(
       "exactly one zod package resolution",
     );
+  });
+
+  it("rejects forbidden colors and non-Hugeicons imports across plugin TypeScript", () => {
+    const result = lint(
+      `import { Star } from "lucide-react";
+export const accentColor = "#1a2b3c";
+export const neutralColor = "oklch(0.7 0.02 250)";
+export const classes = "bg-[#123456] border-[rgb(1_2_3)]";
+export const icon = Star;
+`,
+      `${pluginRoot}/lib/eslint-negative-probe.ts`,
+    );
+
+    expect(result.status).toBe(1);
+    expect(result.output).toContain("no-restricted-imports");
+    expect(result.output).toContain("not raw hex values");
+    expect(result.output).toContain("not raw oklch() values");
+    expect(result.output).toContain("not arbitrary color utilities");
+  });
+
+  it("allows identifiers, non-color utilities, tokens, and Hugeicons", () => {
+    const result = lint(
+      `import { HugeiconsIcon } from "@hugeicons/react";
+import { Alert01Icon } from "@hugeicons/core-free-icons";
+export const finding = "Finding #12345";
+export const cve = "CVE-2026-deadbeef";
+export const sha = "sha256:deadbeef12345678";
+export const classes = "from-[10%] bg-[url(/assets/grid.svg)] bg-fs-surface";
+export const icon = { HugeiconsIcon, Alert01Icon };
+`,
+      `${pluginRoot}/lanes/eslint-positive-probe.ts`,
+    );
+
+    expect(result.status).toBe(0);
+    expect(result.output).toBe("");
   });
 });

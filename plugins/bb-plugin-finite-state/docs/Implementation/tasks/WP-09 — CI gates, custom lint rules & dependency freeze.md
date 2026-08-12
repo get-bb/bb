@@ -74,10 +74,16 @@ advance `CONTRACT_VERSION` to the recorded value.
 The mapped registry type permits `class: "action"` only for that union. The
 type-test includes an expected compiler rejection for a fourth classification.
 
-Root ESLint `no-restricted-syntax` rejects raw hex, raw `oklch()`, and
-arbitrary color utilities in Finite State TSX. `no-restricted-imports` rejects
-non-Hugeicons icon libraries. Approved semantic token classes and Hugeicons
-imports pass. No lint plugin or bespoke UI scanner is used.
+Root ESLint `no-restricted-syntax` rejects raw hex, raw `oklch()`, and actual
+arbitrary color utilities across Finite State TypeScript and TSX while allowing
+finding/CVE/SHA identifiers and non-color arbitrary utilities.
+`no-restricted-imports` rejects non-Hugeicons icon libraries. Approved semantic
+token classes and Hugeicons imports pass. No lint plugin or bespoke UI scanner
+is used.
+
+Executable enforcement of the human-only RPC mutation boundary is explicitly
+deferred to WP-57/WP-60, which own the real agent-tool registrations and RPC
+handlers. WP-09 does not replace that boundary with wording or source scanners.
 
 ## Dependency freeze
 
