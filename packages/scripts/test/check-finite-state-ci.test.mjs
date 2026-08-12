@@ -94,6 +94,14 @@ test("keeps the stable check shape and excludes the plugin from the packages sha
     /name: Finite State guard gates \(ubuntu-latest, Node 22\.19\.0\)/u,
   );
   assert.match(workflow, /base: \$\{\{ github\.ref \}\}/u);
+  assert.match(
+    workflow,
+    /id: changed\n\s+if: github\.event_name != 'workflow_dispatch'/u,
+  );
+  assert.match(
+    workflow,
+    /CI_CHANGED_FILES_JSON: \$\{\{ steps\.changed\.outputs\.all_files \|\| '\[\]' \}\}/u,
+  );
   assert.equal(
     workflow.match(/--filter='!bb-plugin-finite-state'/gu)?.length,
     1,

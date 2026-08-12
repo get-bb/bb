@@ -30,6 +30,7 @@ jobs:
 
       - name: List changed files
         id: changed
+        if: github.event_name != 'workflow_dispatch'
         uses: dorny/paths-filter@v3
         with:
           # Pull requests ignore this input and use their PR base. Pushes use
@@ -43,7 +44,7 @@ jobs:
       - name: Classify CI scope
         id: scope
         env:
-          CI_CHANGED_FILES_JSON: ${{ steps.changed.outputs.all_files }}
+          CI_CHANGED_FILES_JSON: ${{ steps.changed.outputs.all_files || '[]' }}
           CI_EVENT_NAME: ${{ github.event_name }}
         run: node .github/scripts/classify-finite-state-ci.mjs
 
