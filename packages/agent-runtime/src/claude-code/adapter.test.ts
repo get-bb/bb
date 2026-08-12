@@ -1556,6 +1556,46 @@ describe("claude-code provider adapter", () => {
     });
   });
 
+  it("rejects a cancelled Claude AskUserQuestion request without interrupting the turn", () => {
+    const adapter = createClaudeCodeProviderAdapter();
+
+    expect(
+      adapter.buildInteractiveResponse?.({
+        request: {
+          requestId: "req-question-cancel",
+          method: CLAUDE_USER_QUESTION_REQUEST_METHOD,
+          threadId: "thr_1",
+          providerThreadId: "claude-session-1",
+          turnId: "turn-1",
+          payload: {
+            kind: "user_question",
+            questions: [
+              {
+                id: "toolu_question:question-1",
+                prompt: "Which deployment target should I use?",
+                shortLabel: "Target",
+                multiSelect: false,
+                options: [
+                  {
+                    value: "toolu_question:question-1:option-1",
+                    label: "Staging",
+                    description: "Deploy to the staging environment.",
+                  },
+                ],
+                allowFreeText: true,
+              },
+            ],
+          },
+        },
+        resolution: { kind: "user_cancelled" },
+      }),
+    ).toEqual({
+      kind: "user_question",
+      behavior: "deny",
+      message: "User question request cancelled",
+    });
+  });
+
   it("keeps free-text-only Claude AskUserQuestion answers in the primary answer text", () => {
     const adapter = createClaudeCodeProviderAdapter();
 

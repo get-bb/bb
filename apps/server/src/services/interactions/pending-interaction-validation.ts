@@ -9,6 +9,7 @@ import {
   isApprovalPendingInteractionPayload,
   isApprovalPendingInteractionResolution,
   isUserQuestionPendingInteractionPayload,
+  isUserQuestionCancelledPendingInteractionResolution,
   isUserQuestionPendingInteractionResolution,
   isPluginPendingInteractionResolution,
 } from "@bb/domain";
@@ -104,6 +105,15 @@ export function pendingInteractionResolutionEquals(
 ): boolean {
   if (left === null || right === null) {
     return left === right;
+  }
+  if (
+    isUserQuestionCancelledPendingInteractionResolution(left) ||
+    isUserQuestionCancelledPendingInteractionResolution(right)
+  ) {
+    return (
+      isUserQuestionCancelledPendingInteractionResolution(left) &&
+      isUserQuestionCancelledPendingInteractionResolution(right)
+    );
   }
   if (
     isPluginPendingInteractionResolution(left) ||
@@ -351,6 +361,9 @@ function validateUserQuestionResolution(
   interaction: UserQuestionPendingInteraction,
   resolution: PendingInteractionResolution,
 ): void {
+  if (isUserQuestionCancelledPendingInteractionResolution(resolution)) {
+    return;
+  }
   if (!isUserQuestionPendingInteractionResolution(resolution)) {
     throw new ApiError(
       400,

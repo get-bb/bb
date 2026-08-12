@@ -13,6 +13,7 @@ import {
   isApprovalPendingInteractionPayload,
   isApprovalPendingInteractionResolution,
   isUserQuestionPendingInteractionPayload,
+  isUserQuestionCancelledPendingInteractionResolution,
   isUserQuestionPendingInteractionResolution,
   turnScope,
   threadScope,
@@ -70,6 +71,11 @@ function getUserQuestionResolution(
   }
   if (isUserQuestionPendingInteractionResolution(interaction.resolution)) {
     return interaction.resolution;
+  }
+  if (
+    isUserQuestionCancelledPendingInteractionResolution(interaction.resolution)
+  ) {
+    return null;
   }
   throw new Error(
     `Interaction ${interaction.id} has an approval resolution on a user-question timeline event`,

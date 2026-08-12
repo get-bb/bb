@@ -368,11 +368,18 @@ const claudePermissionApprovalResponseSchema = z.discriminatedUnion(
   ],
 );
 
-const claudeUserQuestionResponseSchema = z.object({
-  kind: z.literal("user_question"),
-  behavior: z.literal("allow"),
-  updatedInput: claudeUserQuestionOutputSchema,
-});
+const claudeUserQuestionResponseSchema = z.discriminatedUnion("behavior", [
+  z.object({
+    kind: z.literal("user_question"),
+    behavior: z.literal("allow"),
+    updatedInput: claudeUserQuestionOutputSchema,
+  }),
+  z.object({
+    kind: z.literal("user_question"),
+    behavior: z.literal("deny"),
+    message: z.string().min(1),
+  }),
+]);
 
 export const claudeInteractiveResponseSchema = z.union([
   claudePermissionApprovalResponseSchema,

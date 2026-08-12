@@ -32,6 +32,7 @@ import {
   isApprovalPendingInteractionPayload,
   isApprovalPendingInteractionResolution,
   isUserQuestionPendingInteractionPayload,
+  isUserQuestionCancelledPendingInteractionResolution,
   isUserQuestionPendingInteractionResolution,
 } from "@bb/domain";
 import { resolveBridgeProcessArgs } from "../shared/bridge-path.js";
@@ -1264,6 +1265,16 @@ export function createClaudeCodeProviderAdapter(
     },
 
     buildInteractiveResponse(args) {
+      if (
+        isUserQuestionPendingInteractionPayload(args.request.payload) &&
+        isUserQuestionCancelledPendingInteractionResolution(args.resolution)
+      ) {
+        return {
+          kind: "user_question",
+          behavior: "deny",
+          message: "User question request cancelled",
+        };
+      }
       if (
         isUserQuestionPendingInteractionPayload(args.request.payload) &&
         isUserQuestionPendingInteractionResolution(args.resolution)

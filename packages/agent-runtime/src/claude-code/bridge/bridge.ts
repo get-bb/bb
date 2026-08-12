@@ -1257,6 +1257,13 @@ function buildInteractivePermissionResult(
           toolUseID: pending.itemId,
         };
       }
+      if (response.behavior === "deny") {
+        return {
+          behavior: "deny",
+          message: response.message,
+          toolUseID: pending.itemId,
+        };
+      }
       return {
         behavior: "allow",
         updatedInput: response.updatedInput,

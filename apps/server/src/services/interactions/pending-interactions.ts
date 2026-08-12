@@ -21,6 +21,8 @@ import {
   isApprovalPendingInteractionPayload,
   isPluginPendingInteractionPayload,
   isPluginPendingInteraction,
+  isUserQuestionCancelledPendingInteractionResolution,
+  isUserQuestionPendingInteractionPayload,
   type JsonValue,
   type PendingInteraction,
   type PendingInteractionCreate,
@@ -576,6 +578,35 @@ export class PendingInteractionLifecycle {
     return interaction;
   }
 
+  cancelInteraction(args: {
+    interactionId: string;
+    threadId: string;
+    reason: PluginInteractionCancelReason;
+  }): PendingInteraction {
+    const current = this.getThreadInteraction(args);
+    if (
+      current.status === "interrupted" &&
+      current.statusReason === args.reason
+    ) {
+      return current;
+    }
+    if (isPluginPendingInteraction(current)) {
+      return this.cancelPluginInteraction(args);
+    }
+    if (!isUserQuestionPendingInteractionPayload(current.payload)) {
+      throw new ApiError(
+        400,
+        "invalid_request",
+        "Only user-question and plugin interactions can be cancelled",
+      );
+    }
+    return this.resolvePendingInteraction({
+      threadId: args.threadId,
+      interactionId: args.interactionId,
+      resolution: { kind: "user_cancelled" },
+    });
+  }
+
   interruptPluginInteractions(pluginId: string): PendingInteraction[] {
     return this.settleInterruptedRows(
       interruptPendingInteractionsForPlugin(this.deps.db, {
@@ -706,6 +737,18 @@ export class PendingInteractionLifecycle {
       this.interruptPendingInteractionInTransaction(args.deps, {
         interactionId: args.command.interactionId,
         reason: args.report.errorMessage,
+      });
+      return;
+    }
+
+    if (
+      isUserQuestionCancelledPendingInteractionResolution(
+        args.command.resolution,
+      )
+    ) {
+      this.interruptPendingInteractionInTransaction(args.deps, {
+        interactionId: args.command.interactionId,
+        reason: "user",
       });
       return;
     }

@@ -90,7 +90,7 @@ export function registerThreadInteractionRoutes(
   post(routes.cancelInteraction, (context) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     return context.json(
-      deps.pendingInteractions.cancelPluginInteraction({
+      deps.pendingInteractions.cancelInteraction({
         threadId: thread.id,
         interactionId: parsePendingInteractionId(
           context.req.param("interactionId"),

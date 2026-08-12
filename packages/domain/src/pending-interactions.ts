@@ -409,6 +409,15 @@ export type UserQuestionPendingInteractionResolution = z.infer<
   typeof userQuestionPendingInteractionResolutionSchema
 >;
 
+export const userQuestionCancelledPendingInteractionResolutionSchema = z.object(
+  {
+    kind: z.literal("user_cancelled"),
+  },
+);
+export type UserQuestionCancelledPendingInteractionResolution = z.infer<
+  typeof userQuestionCancelledPendingInteractionResolutionSchema
+>;
+
 export const pluginPendingInteractionResolutionSchema = z.object({
   kind: z.literal("plugin_submitted"),
 });
@@ -420,6 +429,7 @@ export const pendingInteractionResolutionSchema = z.union(
   [
     approvalPendingInteractionResolutionSchema,
     userQuestionPendingInteractionResolutionSchema,
+    userQuestionCancelledPendingInteractionResolutionSchema,
     pluginPendingInteractionResolutionSchema,
   ],
   approvalDecisionDiscriminatorError,
@@ -438,6 +448,12 @@ export function isUserQuestionPendingInteractionResolution(
   resolution: PendingInteractionResolution,
 ): resolution is UserQuestionPendingInteractionResolution {
   return "kind" in resolution && resolution.kind === "user_answer";
+}
+
+export function isUserQuestionCancelledPendingInteractionResolution(
+  resolution: PendingInteractionResolution,
+): resolution is UserQuestionCancelledPendingInteractionResolution {
+  return "kind" in resolution && resolution.kind === "user_cancelled";
 }
 
 export function isPluginPendingInteractionResolution(
@@ -513,6 +529,7 @@ export const providerPendingInteractionSchema =
       .union([
         approvalPendingInteractionResolutionSchema,
         userQuestionPendingInteractionResolutionSchema,
+        userQuestionCancelledPendingInteractionResolutionSchema,
       ])
       .nullable(),
   });

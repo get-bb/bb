@@ -404,6 +404,86 @@ describe("public thread interaction routes", () => {
     });
   });
 
+  it("cancels a provider user question by rejecting the interaction", async () => {
+    await withTestHarness(async (harness) => {
+      const { session, thread } = seedThreadFixture(harness, {
+        session: { id: "host-public-thread-question-cancel" },
+        thread: { providerId: "claude-code" },
+      });
+      const registered = registerPendingInteraction(
+        harness.deps,
+        harness.deps.pendingInteractions,
+        {
+          threadId: thread.id,
+          turnId: "turn-question-cancel",
+          providerId: "claude-code",
+          providerThreadId: "provider-thread-question-cancel",
+          providerRequestId: "request-question-cancel",
+          payload: createUserQuestionPayload(),
+        },
+      );
+      if (registered.outcome === "rejected") {
+        throw new Error(
+          `Expected user-question interaction registration to succeed: ${registered.reason}`,
+        );
+      }
+
+      const cancelResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/interactions/${registered.interaction.id}/cancel`,
+        { method: "POST" },
+      );
+      const cancelBody = await readJson(cancelResponse);
+      expect({ status: cancelResponse.status, body: cancelBody }).toMatchObject(
+        {
+          status: 200,
+          body: {
+            id: registered.interaction.id,
+            status: "resolving",
+            resolution: { kind: "user_cancelled" },
+          },
+        },
+      );
+
+      const queuedCancel = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "interactive.resolve" &&
+          command.interactionId === registered.interaction.id &&
+          "kind" in command.resolution &&
+          command.resolution.kind === "user_cancelled",
+      );
+      expect(queuedCancel.row.sessionId).toBe(session.id);
+      const commandResultResponse = await reportQueuedCommandSuccess(
+        harness,
+        queuedCancel,
+        {},
+      );
+      expect(commandResultResponse.status).toBe(200);
+
+      const getResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/interactions/${registered.interaction.id}`,
+      );
+      expect(getResponse.status).toBe(200);
+      await expect(readJson(getResponse)).resolves.toMatchObject({
+        id: registered.interaction.id,
+        status: "interrupted",
+        statusReason: "user",
+        resolution: null,
+      });
+
+      const duplicateCancelResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/interactions/${registered.interaction.id}/cancel`,
+        { method: "POST" },
+      );
+      expect(duplicateCancelResponse.status).toBe(200);
+      await expect(readJson(duplicateCancelResponse)).resolves.toMatchObject({
+        id: registered.interaction.id,
+        status: "interrupted",
+        statusReason: "user",
+      });
+    });
+  });
+
   it("rejects unavailable command decisions and malformed provider-specific resolutions", async () => {
     await withTestHarness(async (harness) => {
       const { thread } = seedThreadFixture(harness, {
@@ -947,9 +1027,9 @@ describe("public thread interaction routes", () => {
         message:
           "Thread is awaiting user interaction. Resolve the pending interaction before sending another prompt.",
       });
-      expect(listQueuedThreadMessages(harness.db, activeThread.id)).toHaveLength(
-        0,
-      );
+      expect(
+        listQueuedThreadMessages(harness.db, activeThread.id),
+      ).toHaveLength(0);
     });
   });
 
