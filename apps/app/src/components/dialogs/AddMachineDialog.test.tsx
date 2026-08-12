@@ -131,6 +131,7 @@ describe("AddMachineDialog", () => {
     );
 
     const command = await screen.findByText(/--join-code jc_test123/);
+    expect(command.classList.contains("select-text")).toBe(true);
     expect(sdk.plugins.callRpc).toHaveBeenCalledWith(
       expect.objectContaining({
         pluginId: "connect",

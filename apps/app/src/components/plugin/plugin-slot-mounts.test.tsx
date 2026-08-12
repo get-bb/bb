@@ -1309,6 +1309,9 @@ describe("PluginNavSidebarItems + PluginPanelView", () => {
     );
     fireEvent.click(screen.getByText("Demo board"));
     expect(screen.getByText("board panel body")).toBeDefined();
+    expect(
+      screen.getByTestId("plugin-panel-body").classList.contains("select-text"),
+    ).toBe(true);
   });
 
   it("shows a plugin panel's position when it is open in a split", () => {

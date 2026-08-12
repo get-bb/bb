@@ -1285,7 +1285,7 @@ function TimelineSystemDetailBlock({
       contentKey={detail}
       className="overflow-hidden rounded-lg border border-border bg-card"
     >
-      <pre className="whitespace-pre-wrap break-words px-4 py-3 font-mono text-xs leading-tight text-subtle-foreground opacity-70">
+      <pre className="select-text whitespace-pre-wrap break-words px-4 py-3 font-mono text-xs leading-tight text-subtle-foreground opacity-70">
         {detail}
       </pre>
     </TimelineDetailScroll>

@@ -328,10 +328,10 @@ function buildApprovalSubject({
         body: command ? (
           <div className="min-w-0 max-w-full overflow-hidden rounded-lg border border-border bg-card">
             <pre
-              className={cn(
-                getDetailScrollMaxHeightClass("base"),
-                "max-w-full overflow-auto whitespace-pre px-3 py-2 font-mono text-xs leading-relaxed text-foreground",
-              )}
+  className={cn(
+    getDetailScrollMaxHeightClass("base"),
+    "max-w-full select-text overflow-auto whitespace-pre px-3 py-2 font-mono text-xs leading-relaxed text-foreground",
+  )}
             >
               $ {command}
             </pre>

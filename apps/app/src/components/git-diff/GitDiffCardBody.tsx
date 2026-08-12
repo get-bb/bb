@@ -861,7 +861,7 @@ export function GitDiffCardBody({
   return (
     <div
       ref={bodySentinelRef}
-      className="overflow-hidden rounded-b-lg bg-background"
+      className="overflow-hidden rounded-b-lg bg-background select-text"
       style={GIT_DIFF_CARD_BODY_STYLE}
     >
       {shouldGateDeletedDiff ? (

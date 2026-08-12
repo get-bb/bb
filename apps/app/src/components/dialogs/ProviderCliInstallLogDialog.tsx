@@ -74,7 +74,7 @@ export function ProviderCliInstallLogDialogContent({
           className="absolute right-2 top-2 z-10 opacity-70 transition-opacity hover:opacity-100 focus-visible:opacity-100"
           iconClassName="size-3"
         />
-        <pre className="max-h-80 min-h-32 overflow-auto p-3 pr-12 text-xs whitespace-pre-wrap break-words text-foreground">
+        <pre className="max-h-80 min-h-32 select-text overflow-auto whitespace-pre-wrap break-words p-3 pr-12 text-xs text-foreground">
           {state.log}
         </pre>
       </div>

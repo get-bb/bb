@@ -1,4 +1,5 @@
 import { useEffect, useRef, type ReactNode } from "react";
+import { cn } from "@bb/shared-ui/lib/utils";
 
 export interface SelectionAnchorPoint {
   x: number;
@@ -497,7 +498,7 @@ export function SelectableMessageProse({
   return (
     <div
       ref={nodeRef}
-      className={className}
+      className={cn("select-text", className)}
       // Let compact-sidebar swipes begin over message prose, but give an
       // expanded native text selection priority over the same touch sequence.
       data-sidebar-swipe-selectable

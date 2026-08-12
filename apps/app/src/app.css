@@ -39,6 +39,26 @@
     height: 100%;
   }
 
+  /*
+   * App chrome is interface, not document content. Keep drag gestures
+   * and Select All from sweeping through navigation, toolbars, and empty shell
+   * space; content components opt back in with the `select-text` utility.
+   */
+  body.bb-app-shell {
+    user-select: none;
+  }
+
+  /* Chromium inherits `user-select` into form controls despite the property
+   * being non-inherited by specification. Restore native selection explicitly
+   * for every editing surface inside the shell. */
+  body.bb-app-shell :where(
+    input,
+    textarea,
+    [contenteditable]:not([contenteditable="false"])
+  ) {
+    user-select: text;
+  }
+
   @media (display-mode: standalone) {
     :root {
       --bb-shell-height: 100lvh;

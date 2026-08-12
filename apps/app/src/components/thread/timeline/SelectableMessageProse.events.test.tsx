@@ -149,6 +149,9 @@ describe("SelectableMessageProse", () => {
     );
 
     expect(
+      getByText("Selectable answer text").closest(".select-text"),
+    ).not.toBeNull();
+    expect(
       getByText("Selectable answer text").closest(
         "[data-sidebar-swipe-selectable]",
       ),

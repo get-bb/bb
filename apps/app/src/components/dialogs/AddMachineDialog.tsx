@@ -355,7 +355,10 @@ function AddMachineDialogContent({
             data-add-machine-command
             className="overflow-hidden rounded-md border border-border bg-muted/30"
           >
-            <pre className="overflow-x-auto whitespace-pre-wrap break-all p-3 font-mono text-xs text-foreground">
+            <pre
+              className="select-text overflow-x-auto whitespace-pre-wrap break-all p-3 font-mono text-xs text-foreground"
+              data-select-all-scope=""
+            >
               {command}
             </pre>
             <div className="flex flex-wrap items-center gap-2 border-t border-border px-3 py-2">

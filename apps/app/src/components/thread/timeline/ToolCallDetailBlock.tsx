@@ -94,7 +94,7 @@ export function ToolCallDetailBlock({
   const hasOutput = output.trim().length > 0;
 
   return (
-    <div className="overflow-hidden rounded-lg border border-border bg-card">
+    <div className="overflow-hidden rounded-lg border border-border bg-card select-text">
       <TimelineDetailScroll
         size="base"
         overflowX="hidden"

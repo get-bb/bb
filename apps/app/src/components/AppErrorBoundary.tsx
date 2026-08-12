@@ -57,7 +57,7 @@ export class AppErrorBoundary extends Component<
             <summary className="cursor-pointer text-sm text-muted-foreground">
               Error details
             </summary>
-            <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-md border border-border p-3 text-xs">
+            <pre className="mt-2 max-h-48 select-text overflow-auto whitespace-pre-wrap break-words rounded-md border border-border p-3 text-xs">
               {error.stack ?? error.message}
             </pre>
           </details>

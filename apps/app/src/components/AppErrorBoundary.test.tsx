@@ -50,6 +50,7 @@ describe("AppErrorBoundary", () => {
     expect(container.querySelector("button")?.textContent).toBe("Reload bb");
     // The message stays reachable so a report can carry it.
     expect(container.textContent).toContain("render exploded");
+    expect(container.querySelector("pre")?.classList).toContain("select-text");
     dispose();
   });
 

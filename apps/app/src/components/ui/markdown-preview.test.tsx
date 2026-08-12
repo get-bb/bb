@@ -92,6 +92,16 @@ function mockResizeObserverDeliveries(): {
 }
 
 describe("MarkdownPreview", () => {
+  it("opts rendered content into native text selection", () => {
+    const { container } = render(
+      <MarkdownPreview content="Selectable rendered content" />,
+    );
+
+    expect(container.firstElementChild?.classList.contains("select-text")).toBe(
+      true,
+    );
+  });
+
   it("shares one observer and observes content width only for table previews", () => {
     const { notifyResize, observed, observerCount } =
       mockResizeObserverDeliveries();
