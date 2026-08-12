@@ -4112,7 +4112,7 @@ describe("codex provider adapter", () => {
     ]);
   });
 
-  it("reproduces a missing parent link when a completed Codex subagent is resumed", () => {
+  it("preserves the parent link when a completed Codex subagent is resumed", () => {
     const adapter = createCodexProviderAdapter();
 
     adapter.translateEvent({
@@ -4194,7 +4194,7 @@ describe("codex provider adapter", () => {
         scope: turnScope("child-turn-2"),
       }),
     );
-    expect(resumedTurnStarted).not.toContainEqual(
+    expect(resumedTurnStarted).toContainEqual(
       expect.objectContaining({
         parentToolCallId: "subagent-call-1",
       }),

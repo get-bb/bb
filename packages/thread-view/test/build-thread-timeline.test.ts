@@ -1254,7 +1254,7 @@ describe("buildThreadTimelineFromEvents", () => {
     );
   });
 
-  it("reproduces omitted active work when only a nested Claude agent remains", () => {
+  it("keeps nested Claude agents out of root active-work rows", () => {
     const events = [
       turnStartedEvent({ seq: 1 }),
       toolCallItemEvent({

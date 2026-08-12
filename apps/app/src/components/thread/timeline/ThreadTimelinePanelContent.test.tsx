@@ -146,7 +146,7 @@ describe("ThreadTimelinePanelContent", () => {
     expect(screen.getByText("Working...")).not.toBeNull();
   });
 
-  it("reproduces a missing indicator for an idle Claude thread with only a nested agent active", () => {
+  it("shows a background indicator for an idle Claude thread with only a nested agent active", () => {
     mocks.activeBackgroundAgentCount = 1;
 
     render(
@@ -156,7 +156,7 @@ describe("ThreadTimelinePanelContent", () => {
       />,
     );
 
-    expect(screen.queryByText("Background work running")).toBeNull();
+    expect(screen.getByText("Background work running")).not.toBeNull();
     expect(screen.queryByText("Working...")).toBeNull();
   });
 });
