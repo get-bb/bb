@@ -51,6 +51,7 @@ interface FileChangeItemEventArgs {
 }
 
 interface ToolCallItemEventArgs {
+  parentToolCallId?: string;
   statusLabels?: { pending: string; completed: string };
   itemId?: string;
   result?: string;
@@ -291,6 +292,7 @@ function fileChangeItemEvent({
 }
 
 function toolCallItemEvent({
+  parentToolCallId,
   statusLabels,
   itemId = "tool-call-1",
   result,
@@ -311,6 +313,7 @@ function toolCallItemEvent({
         id: itemId,
         tool,
         ...(toolArgs ? { arguments: toolArgs } : {}),
+        ...(parentToolCallId ? { parentToolCallId } : {}),
         ...(statusLabels ? { statusLabels } : {}),
         status: status ?? (type === "item/completed" ? "completed" : "pending"),
         ...(result ? { result } : {}),
@@ -1249,6 +1252,52 @@ describe("buildThreadTimelineFromEvents", () => {
         }),
       ]),
     );
+  });
+
+  it("reproduces omitted active work when only a nested Claude agent remains", () => {
+    const events = [
+      turnStartedEvent({ seq: 1 }),
+      toolCallItemEvent({
+        seq: 2,
+        itemId: "root-agent-call",
+        tool: "Agent",
+        type: "item/started",
+      }),
+      toolCallItemEvent({
+        seq: 3,
+        itemId: "nested-agent-call",
+        parentToolCallId: "root-agent-call",
+        tool: "Agent",
+        type: "item/started",
+      }),
+      backgroundTaskStartedEvent({
+        seq: 4,
+        id: "task:nested-agent",
+        taskType: "local_agent",
+        description: "Nested Claude agent still running",
+        parentToolCallId: "nested-agent-call",
+      }),
+      turnCompletedEvent({ seq: 5 }),
+    ];
+
+    const timeline = buildThreadTimelineFromEvents({
+      acceptedClientRequestContext: EMPTY_ACCEPTED_CLIENT_REQUEST_CONTEXT,
+      contextWindowEvents: [],
+      events,
+      options: {
+        includeDebugRawEvents: false,
+        includeNestedRows: true,
+        includeProviderUnhandledOperations: false,
+        isLatestPage: true,
+        providerId: "claude-code",
+        threadStatus: "idle",
+        threadName: "",
+        turnMessageDetail: "full",
+        workspaceRoot: null,
+      },
+    });
+
+    expect(timeline.activeBackgroundCommands).toEqual([]);
   });
 
   it("does not project thread-start provider-session markers as provisioning rows", () => {
