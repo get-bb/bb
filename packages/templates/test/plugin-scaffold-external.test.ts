@@ -30,6 +30,7 @@ const EXTERNAL_DEPENDENCIES = [
   "@types/better-sqlite3",
   "@types/node",
   "@types/react",
+  "@types/react-dom",
   "better-sqlite3",
   "class-variance-authority",
   "clsx",

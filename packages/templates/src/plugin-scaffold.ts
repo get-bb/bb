@@ -596,6 +596,7 @@ export async function scaffoldPlugin(args: ScaffoldPluginArgs): Promise<void> {
           // The root SDK declaration also exposes frontend contract types, so
           // React's declarations are required for headless plugin typechecks.
           "@types/react": "^19.0.0",
+          ...(app ? { "@types/react-dom": "^19.0.0" } : {}),
           "better-sqlite3": "^12.0.0",
           hono: "^4.11.9",
           typescript: "^5.7.0",
