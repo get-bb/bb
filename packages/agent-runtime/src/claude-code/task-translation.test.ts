@@ -477,7 +477,7 @@ describe("claude-code background task translation", () => {
     ).toEqual([]);
   });
 
-  it("settled tasks ignore late events; a repeated start reopens a new generation", () => {
+  it("preserves the parent link when a settled Claude task restarts", () => {
     const adapter = createClaudeCodeProviderAdapter();
     const context = { threadId: "bb-thread-1" };
 
@@ -504,7 +504,10 @@ describe("claude-code background task translation", () => {
       (event) => event.type === "item/started",
     );
     expect(reopenedStarted).toHaveLength(1);
-    expect(backgroundTaskItem(reopenedStarted[0]!).id).toBe("task:wu7ol9ras#2");
+    expect(backgroundTaskItem(reopenedStarted[0]!)).toMatchObject({
+      id: "task:wu7ol9ras#2",
+      parentToolCallId: "toolu_012BkJCmbBgNqL6SXPKNfPvE",
+    });
   });
 
   it("materializes a backgrounded shell command (task_type local_bash)", () => {

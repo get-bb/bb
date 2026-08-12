@@ -4112,6 +4112,95 @@ describe("codex provider adapter", () => {
     ]);
   });
 
+  it("reproduces a missing parent link when a completed Codex subagent is resumed", () => {
+    const adapter = createCodexProviderAdapter();
+
+    adapter.translateEvent({
+      jsonrpc: "2.0",
+      method: "item/completed",
+      params: {
+        threadId: "root-provider-thread",
+        turnId: "parent-turn",
+        item: {
+          type: "subAgentActivity",
+          id: "subagent-call-1",
+          kind: "started",
+          agentThreadId: "agent-thread-1",
+          agentPath: "/root/lifecycle_child",
+        },
+      },
+    });
+
+    const firstTurnStarted = adapter.translateEvent(
+      codexEvent("turn/started", {
+        threadId: "root-provider-thread",
+        turn: codexTurn({
+          id: "child-turn-1",
+          status: "inProgress",
+          error: null,
+        }),
+      }),
+    );
+    expect(firstTurnStarted).toContainEqual(
+      expect.objectContaining({
+        type: "turn/started",
+        scope: turnScope("child-turn-1"),
+        parentToolCallId: "subagent-call-1",
+      }),
+    );
+
+    adapter.translateEvent(
+      codexEvent("turn/completed", {
+        threadId: "root-provider-thread",
+        turn: codexTurn({
+          id: "child-turn-1",
+          status: "completed",
+          error: null,
+        }),
+      }),
+    );
+    expect(
+      adapter.translateEvent({
+        jsonrpc: "2.0",
+        method: "item/completed",
+        params: {
+          threadId: "root-provider-thread",
+          turnId: "parent-turn",
+          item: {
+            type: "subAgentActivity",
+            id: "interaction-1",
+            kind: "interacted",
+            agentThreadId: "agent-thread-1",
+            agentPath: "/root/lifecycle_child",
+          },
+        },
+      }),
+    ).toEqual([]);
+
+    const resumedTurnStarted = adapter.translateEvent(
+      codexEvent("turn/started", {
+        threadId: "root-provider-thread",
+        turn: codexTurn({
+          id: "child-turn-2",
+          status: "inProgress",
+          error: null,
+        }),
+      }),
+    );
+
+    expect(resumedTurnStarted).toContainEqual(
+      expect.objectContaining({
+        type: "turn/started",
+        scope: turnScope("child-turn-2"),
+      }),
+    );
+    expect(resumedTurnStarted).not.toContainEqual(
+      expect.objectContaining({
+        parentToolCallId: "subagent-call-1",
+      }),
+    );
+  });
+
   it("links concurrent Codex subagents to child turns in activity order", () => {
     const adapter = createCodexProviderAdapter();
 
