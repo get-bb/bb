@@ -26,12 +26,12 @@ export type SpawnLoginShellPath = (
   args: SpawnLoginShellPathArgs,
 ) => ShellPathSpawnResult;
 
-export type EnsurePackagedMacOsUserShellPathResult =
+export type EnsurePackagedUserShellPathResult =
   | ShellPathSkippedResult
   | ShellPathUpdatedResult
   | ShellPathUnchangedResult;
 
-export interface EnsurePackagedMacOsUserShellPathArgs {
+export interface EnsurePackagedUserShellPathArgs {
   env: NodeJS.ProcessEnv;
   isPackaged: boolean;
   logger: DesktopShellPathLogger;
@@ -41,7 +41,7 @@ export interface EnsurePackagedMacOsUserShellPathArgs {
 
 export interface ShellPathSkippedResult {
   kind: "skipped";
-  reason: "non-darwin" | "not-packaged";
+  reason: "not-packaged" | "unsupported-platform";
 }
 
 export interface ShellPathUnchangedResult {
@@ -72,7 +72,7 @@ function defaultSpawnLoginShellPath(
 }
 
 function warnShellPathFallback(
-  args: EnsurePackagedMacOsUserShellPathArgs,
+  args: EnsurePackagedUserShellPathArgs,
   message: string,
 ): void {
   args.logger.warn(
@@ -80,11 +80,11 @@ function warnShellPathFallback(
   );
 }
 
-export function ensurePackagedMacOsUserShellPath(
-  args: EnsurePackagedMacOsUserShellPathArgs,
-): EnsurePackagedMacOsUserShellPathResult {
-  if (args.platform !== "darwin") {
-    return { kind: "skipped", reason: "non-darwin" };
+export function ensurePackagedUserShellPath(
+  args: EnsurePackagedUserShellPathArgs,
+): EnsurePackagedUserShellPathResult {
+  if (args.platform !== "darwin" && args.platform !== "linux") {
+    return { kind: "skipped", reason: "unsupported-platform" };
   }
   if (!args.isPackaged) {
     return { kind: "skipped", reason: "not-packaged" };
@@ -94,7 +94,10 @@ export function ensurePackagedMacOsUserShellPath(
     args.spawnLoginShellPath ?? defaultSpawnLoginShellPath;
   const result = spawnLoginShellPath({
     args: ["-ilc", SHELL_PATH_COMMAND],
-    command: MACOS_LOGIN_SHELL,
+    command:
+      args.platform === "darwin"
+        ? MACOS_LOGIN_SHELL
+        : (args.env.SHELL ?? "/bin/bash"),
     timeoutMs: SHELL_PATH_TIMEOUT_MS,
   });
 
