@@ -254,7 +254,7 @@ CREATE INDEX findings_component ON findings (pv_id, comp_name COLLATE NOCASE);
 
 Notes:
 - The **base fingerprint** (server VEX tuple at last pull, per stable key) lives in SPEC 01's `base_snapshot` table (`entity_kind='vexDecision'`), not here — the cache row's `vex_*` columns are always *current* theirs. Duplicate rows per stable key are expected and preserved (§8.3).
-- Pull uses `GET /findings?versionId=…&limit=10000` pages [LFD §6.1]; cursor recorded in `sync_state` (SPEC 00 §5). A 39k version is 4 pages.
+- Pull consumes the normalized `PlatformClient.getFindings({projectVersionId, page:{pageSize,continuation}})` async iterable; the direct adapter alone maps that to upstream offsets. The owner service still carries the explicit D-1 `projectId` + `projectVersionId` scope and passes only the reviewed route field to this version-addressed client call. The opaque yielded `next` value is recorded in `sync_state` for resume (SPEC 00 §5). No lane or persisted state names an upstream offset.
 - **`overlay_index`** — a derived SQLite mirror of the YAML overlay, rebuilt by a file watcher on `.fs/triage/**`, so the table's local-change gutter and `has-local-change` filter are a JOIN, not a YAML parse per render. YAML remains the sole source of truth for authored decisions; dropping `overlay_index` loses nothing.
 
 ```sql
@@ -574,7 +574,9 @@ Nothing in this spec's build depends on 7.4; items 7.2–7.3 are the only prereq
 
 **8.10 Clearing a pushed decision.** Deleting a YAML block whose `sync.base` shows a pushed tuple ⇒ plan emits a `clear` op through the exact version-scoped bulk operation `PUT /public/v0/findings/{projectVersionId}/status/clear/bulk` with `{ "findingIds": ["<finding-id>", ...] }`. Finding IDs are decimal strings to preserve int64 precision; success is HTTP 204 with no response body. The plugin chunks and resumes clears above the narrow `PlatformClient.clearVexStatus` boundary. Clears participate in blast-radius confirmation. A block with `base` all-null just disappears (nothing was ever pushed).
 
-**8.11 Comments.** Server comments don't carry across versions [LFD §2.3] and are ACTION-ONLY from our perspective (CRUD passthrough, cached read-only). Durable reasoning belongs in `reason`/`evidence` in the overlay — the detail pane says exactly this next to the comment composer.
+**8.11 Comments.** Server comments don't carry across versions [LFD §2.3]. The reviewed v0.3.0 Platform authority exposes comments only through finding reads, so v1 caches and renders them read-only; no comment composer or mutation passthrough is exposed. Durable reasoning belongs in `reason`/`evidence` in the overlay.
+
+**8.12 VEX transport normalization.** The single-finding status PUT and bulk clear both succeed only on HTTP 204 and expose `Promise<void>`; no JSON success body is invented. `dryRun` is never a Platform field: preview remains the local policy/plan workflow in §5.4 and SPEC 01. Before any single or bulk set call, empty optional `response`, `justification`, or `reason` values normalize to omission, and finding ids are validated as decimal strings. Bulk set alone returns the documented ordered per-item result envelope.
 
 ---
 

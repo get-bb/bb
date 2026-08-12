@@ -253,7 +253,7 @@ Client-side only, process-local: bounded-concurrency asyncio semaphore + optiona
 
 ### 2.6 The signatures that matter
 
-**`set_vex_status(project_version_id, finding_id, status, response="", justification="", reason="", dry_run=False)`** → `PUT /public/v0/findings/{pv_id}/{finding_id}/status`
+**Forge behavioral wrapper:** `set_vex_status(project_version_id, finding_id, status, response="", justification="", reason="", dry_run=False)` targets `PUT /public/v0/findings/{pv_id}/{finding_id}/status`. **FS-89 reconciliation:** this wrapper signature is not the plugin transport contract. The reviewed OpenAPI request has no `dryRun`, the route succeeds with 204/empty, and empty optional fields normalize to omission. Plugin dry-run remains a local policy/plan preview.
 
 - `status`: `EXPLOITABLE, IN_TRIAGE, NOT_AFFECTED, FALSE_POSITIVE, RESOLVED, RESOLVED_WITH_PEDIGREE`
 - `response`: `CAN_NOT_FIX, WILL_NOT_FIX, UPDATE, ROLLBACK, WORKAROUND_AVAILABLE`

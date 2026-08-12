@@ -555,7 +555,7 @@ Ephemeral broadcast — publish "changed" nudges, refetch via RPC; never a data 
 
 1. **`GET /filesystem/export?pv_id=&scan_id=` tarball endpoint (STP + Helix) — the high-leverage ask.** Streams the extracted tree as a tarball; collapses the hours-long first pull to minutes; a real customer feature (offline/air-gapped analysis). **[UNVERIFIED, moderate]** — does not exist; recommend building regardless of this project.
 2. **Reviewed Platform flat filesystem search route** — optional optimization. Without it, v1 enumerates by recursing `browseFirmwareFilesystem`; add only as a named frozen method.
-3. **Normalized run-history sources** — direct AS verification runs plus optional `ForgeComputeClient.listJobs`; the timeline joins them with plugin/host runs rather than inventing one Forge-owned history API.
+3. **Normalized run-history sources** — direct AS verification runs plus optional `ForgeComputeClient.listJobs`; the timeline joins them with plugin/host runs rather than inventing one Forge-owned history API. The invocation allowlist remains closed to the four checksummed MCP operations, while `ForgeJobSnapshot.tool` and the list filter preserve arbitrary Forge registry strings as telemetry metadata.
 4. **Safe Forge firmware-root preparation** — `prepareFirmwareRoot(pv_id, path, digest)` via local process control or a narrow runtime tool; remote Forge explicitly reports unsupported until secure transfer/registration exists.
 5. **Direct Platform artifact-hash exposure** — enables stronger staleness detection; scan id remains the honest fallback.
 6. **Direct AS binary document methods** — verified signed upload/finalize and download streams, plus a `datasheet`/`bom` type extension; optional for v1.

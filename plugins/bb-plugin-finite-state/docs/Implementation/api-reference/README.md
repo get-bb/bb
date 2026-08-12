@@ -35,6 +35,13 @@ For Assurance Studio specifically, the OpenAPI generator is materially incomplet
 
 The frontend never calls any of these systems. Direct means the bb plugin backend calls the upstream REST API; panels and directives still read bounded data through typed `bb.rpc` from SQLite or tracked files.
 
+## Plugin normalization corrections (FS-89)
+
+- Platform single-finding VEX PUT and bulk clear are 204/empty operations and normalize to `Promise<void>`. The OpenAPI request schema has no `dryRun`; local preview/planning never reaches transport. Empty optional VEX fields normalize to omission.
+- Remote paging is always `{continuation?,pageSize?}` in and `{items,total,next}` out. The adapter-owned continuation is opaque and binds its page size; Platform offsets, AS page numbers, and Forge registry positions stay inside their adapters.
+- The Forge manifest closes MCP invocation to its four non-null `mcpTool` entries. Its job `tool` response field and `list_jobs.tool` request field are declared `string`, so normalized telemetry preserves registry values outside that invocation allowlist.
+- Contract tests parse the OpenAPI/manifest structures and exercise the production normalization helpers; Forge wrappers remain behavioral examples only.
+
 ## Refresh procedure
 
 1. Record the source Forge commit and confirm its working tree is clean.
