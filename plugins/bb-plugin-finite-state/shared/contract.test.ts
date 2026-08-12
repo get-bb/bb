@@ -8,7 +8,7 @@ import {
   HUMAN_APPROVAL_CAPABILITY_POLICY,
   HUMAN_ONLY_RPC_METHODS,
   RPC_METHOD_CLASSIFICATIONS,
-  RPC_METHOD_NAMES,
+  RPC_WIRE_METHODS,
   documentSourceRefSchema,
   entitySummarySchema,
   humanApprovalCapabilitySchema,
@@ -132,22 +132,22 @@ function objectField(
 describe("rpc-contract-freeze", () => {
   it("exports version one and all 65 bijective logical-to-wire names", () => {
     expect(CONTRACT_VERSION).toBe(1);
-    expect(Object.keys(RPC_METHOD_NAMES).sort()).toEqual(
+    expect(Object.keys(RPC_WIRE_METHODS).sort()).toEqual(
       [...EXPECTED_LOGICAL_METHODS].sort(),
     );
-    expect(Object.keys(RPC_METHOD_NAMES)).toHaveLength(65);
+    expect(Object.keys(RPC_WIRE_METHODS)).toHaveLength(65);
 
-    const wireNames = Object.values(RPC_METHOD_NAMES);
+    const wireNames = Object.values(RPC_WIRE_METHODS);
     expect(new Set(wireNames).size).toBe(65);
     expect(Object.keys(rpcContract).sort()).toEqual([...wireNames].sort());
-    for (const [logicalName, wireName] of Object.entries(RPC_METHOD_NAMES)) {
+    for (const [logicalName, wireName] of Object.entries(RPC_WIRE_METHODS)) {
       expect(wireName).toBe(lowerCamelWireName(logicalName));
     }
   });
 
   it("registers every mapped wire key under the actual SDK rule and rejects dots", () => {
     const { bb } = createFakePluginHost({ pluginId: "finite-state-contract" });
-    for (const wireName of Object.values(RPC_METHOD_NAMES)) {
+    for (const wireName of Object.values(RPC_WIRE_METHODS)) {
       const singletonContract = defineRpcContract({
         [wireName]: { input: z.null(), output: z.null() },
       });
@@ -164,7 +164,7 @@ describe("rpc-contract-freeze", () => {
 
   it("classifies every method exactly once and keeps the agent action allowlist at three", () => {
     expect(Object.keys(RPC_METHOD_CLASSIFICATIONS).sort()).toEqual(
-      Object.values(RPC_METHOD_NAMES).sort(),
+      Object.values(RPC_WIRE_METHODS).sort(),
     );
     expect(
       Object.entries(RPC_METHOD_CLASSIFICATIONS)

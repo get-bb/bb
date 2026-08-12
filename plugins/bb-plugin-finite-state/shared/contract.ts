@@ -3,7 +3,7 @@
  * CONTRACT_VERSION bump, and a broadcast to every RPC producer and consumer.
  *
  * Product documentation uses dotted logical names. bb.rpc wire names cannot
- * contain dots, so RPC_METHOD_NAMES is the canonical, bijective logical-to-wire
+ * contain dots, so RPC_WIRE_METHODS is the canonical, bijective logical-to-wire
  * mapping. Wire names use deterministic lowerCamelCase.
  */
 import { defineRpcContract } from "@bb/plugin-sdk";
@@ -30,7 +30,7 @@ export const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
   ]),
 );
 
-export const RPC_METHOD_NAMES = {
+export const RPC_WIRE_METHODS = {
   "connections.status": "connectionsStatus",
   "workspace.summary": "workspaceSummary",
   "sync.pull": "syncPull",
@@ -99,8 +99,8 @@ export const RPC_METHOD_NAMES = {
   "documents.extractions.list": "documentsExtractionsList",
 } as const;
 
-export type LogicalRpcMethod = keyof typeof RPC_METHOD_NAMES;
-export type RpcMethod = (typeof RPC_METHOD_NAMES)[LogicalRpcMethod];
+export type LogicalRpcMethod = keyof typeof RPC_WIRE_METHODS;
+export type RpcMethod = (typeof RPC_WIRE_METHODS)[LogicalRpcMethod];
 export type RpcMethodClass = "read" | "local-write" | "action" | "human-only";
 
 /** Security classification is independent of whether an RPC exists. */
