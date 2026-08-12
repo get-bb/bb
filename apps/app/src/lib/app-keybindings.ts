@@ -6,6 +6,19 @@ export interface AppShortcutPresentation {
   label: string;
 }
 
+const NATIVE_EDITING_KEYS = new Set([
+  "ArrowDown",
+  "ArrowLeft",
+  "ArrowRight",
+  "ArrowUp",
+  "Backspace",
+  "Delete",
+  "End",
+  "Home",
+  "PageDown",
+  "PageUp",
+]);
+
 export function isEditableKeyboardTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) {
     return false;
@@ -19,6 +32,18 @@ export function isEditableKeyboardTarget(target: EventTarget | null): boolean {
   }
   return (
     target.closest('[contenteditable]:not([contenteditable="false"])') !== null
+  );
+}
+
+/**
+ * Navigation and deletion keys keep their native editable-control behavior
+ * regardless of modifiers. This covers each platform's character, word,
+ * line, and document movement/selection chords without tying arbitration to
+ * any configurable app shortcut.
+ */
+export function isNativeEditableKeyEvent(event: KeyboardEvent): boolean {
+  return (
+    isEditableKeyboardTarget(event.target) && NATIVE_EDITING_KEYS.has(event.key)
   );
 }
 

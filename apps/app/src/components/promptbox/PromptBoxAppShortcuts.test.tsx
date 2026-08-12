@@ -36,6 +36,32 @@ vi.mock("@/hooks/queries/system-queries", () => ({
       generalSettings: { ...defaultAppSettings },
       keybindings: [
         {
+          command: "thread.previous" as const,
+          desktopOnly: false,
+          shortcut: {
+            key: "ArrowUp",
+            mod: true,
+            meta: false,
+            control: false,
+            alt: false,
+            shift: true,
+          },
+          when: { all: ["mainSurface" as const], none: [] },
+        },
+        {
+          command: "thread.next" as const,
+          desktopOnly: false,
+          shortcut: {
+            key: "ArrowDown",
+            mod: true,
+            meta: false,
+            control: false,
+            alt: false,
+            shift: true,
+          },
+          when: { all: ["mainSurface" as const], none: [] },
+        },
+        {
           command: "sidebar.toggle" as const,
           desktopOnly: false,
           shortcut: testState.sidebarShortcut,
@@ -63,20 +89,32 @@ function SidebarToggleHandler() {
   return null;
 }
 
+function ThreadNavigationHandlers() {
+  useAppCommandHandler("thread.previous", () => {
+    testState.calls.push("thread.previous");
+    return true;
+  });
+  useAppCommandHandler("thread.next", () => {
+    testState.calls.push("thread.next");
+    return true;
+  });
+  return null;
+}
+
 function ShortcutHintState() {
   return (
     <span>{useIsAppCommandModifierHeld() ? "hint-held" : "hint-released"}</span>
   );
 }
 
-function renderComposer(extra: React.ReactNode = null) {
+function renderComposer(extra: React.ReactNode = null, value = "") {
   render(
     <MemoryRouter>
       <AppCommandProvider>
         <SidebarToggleHandler />
         {extra}
         <PromptBoxInternal
-          value=""
+          value={value}
           mentionRanges={[]}
           onChange={vi.fn()}
           onSubmit={vi.fn()}
@@ -115,8 +153,18 @@ function pressInEditor(
   return event;
 }
 
+function placeCaretAtBoundary(editor: HTMLElement, boundary: "start" | "end") {
+  const range = document.createRange();
+  range.selectNodeContents(editor);
+  range.collapse(boundary === "start");
+  const selection = document.getSelection();
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+}
+
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   testState.calls.length = 0;
   testState.composerInputLocked = false;
   testState.sidebarHandlerResult = true;
@@ -131,6 +179,31 @@ afterEach(() => {
 });
 
 describe("prompt editor app shortcuts", () => {
+  it.each([
+    ["ArrowUp", "start", "end" as const],
+    ["ArrowDown", "end", "start" as const],
+  ])(
+    "leaves Meta+Shift+%s to extend selection toward the input %s",
+    (key, _targetBoundary, initialBoundary) => {
+      vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+      const editor = renderComposer(
+        <ThreadNavigationHandlers />,
+        "alpha\nbeta\ngamma",
+      );
+      placeCaretAtBoundary(editor, initialBoundary);
+
+      const event = pressInEditor(editor, {
+        key,
+        metaKey: true,
+        shiftKey: true,
+      });
+
+      expect(event.defaultPrevented).toBe(false);
+      expect(testState.calls).toEqual([]);
+      expect(document.activeElement).toBe(editor);
+    },
+  );
+
   it("runs the sidebar shortcut while the composer has focus", () => {
     const editor = renderComposer();
 
