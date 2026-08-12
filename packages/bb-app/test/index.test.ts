@@ -31,8 +31,10 @@ import {
 } from "../src/index.js";
 import {
   completeFullStackSupervision,
+  createDaemonEnv,
   createHostDaemonJoinEnv,
   readBbAppPackageVersion,
+  runBundledCliCommand,
   superviseFullStackProcesses,
   terminateManagedFullStackProcesses,
   waitForHostDaemonStatus,
@@ -775,7 +777,7 @@ describe("bb-app launcher", () => {
     expect(runtime.serverEnv.BB_SERVER_BIND_HOST).toBe("0.0.0.0");
   });
 
-  it("strips parent thread context from production child processes", async () => {
+  it("strips parent thread context from the production server without stripping the CLI", async () => {
     const dataDir = mkdtempSync(join(tmpdir(), "bb-app-thread-context-"));
     const runtime = await resolveBbAppRuntimeState({
       entrypointUrl: pathToFileURL("/repo/packages/bb-app/dist/bb-app.js").href,
@@ -791,12 +793,36 @@ describe("bb-app launcher", () => {
       serverUrlMode: "local",
     });
 
-    for (const env of [runtime.env, runtime.serverEnv]) {
-      expect(env.BB_ENVIRONMENT_ID).toBeUndefined();
-      expect(env.BB_THREAD_ID).toBeUndefined();
-      expect(env.BB_THREAD_STORAGE).toBeUndefined();
-      expect(env.BB_PROJECT_ID).toBe("proj_parent");
-    }
+    expect(runtime.serverEnv.BB_ENVIRONMENT_ID).toBeUndefined();
+    expect(runtime.serverEnv.BB_THREAD_ID).toBeUndefined();
+    expect(runtime.serverEnv.BB_THREAD_STORAGE).toBeUndefined();
+    expect(runtime.serverEnv.BB_PROJECT_ID).toBe("proj_parent");
+
+    const daemonEnv = createDaemonEnv(runtime.context, runtime.env);
+    expect(daemonEnv.BB_ENVIRONMENT_ID).toBeUndefined();
+    expect(daemonEnv.BB_THREAD_ID).toBeUndefined();
+    expect(daemonEnv.BB_THREAD_STORAGE).toBeUndefined();
+    expect(daemonEnv.BB_PROJECT_ID).toBe("proj_parent");
+
+    expect(runtime.env.BB_ENVIRONMENT_ID).toBe("env_parent");
+    expect(runtime.env.BB_THREAD_ID).toBe("thr_parent");
+    expect(runtime.env.BB_THREAD_STORAGE).toBe(
+      "/home/tester/.bb/thread-storage/thr_parent",
+    );
+
+    const cliThreadIdPath = join(dataDir, "cli-thread-id.txt");
+    const exitCode = await runBundledCliCommand({
+      args: [
+        "-e",
+        "require('node:fs').writeFileSync(process.argv[1], process.env.BB_THREAD_ID ?? 'missing')",
+        cliThreadIdPath,
+      ],
+      context: runtime.context,
+      env: { ...runtime.env, BB_CLI: process.execPath },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(readFileSync(cliThreadIdPath, "utf8")).toBe("thr_parent");
   });
 
   it("rejects an invalid server bind host before launcher startup", async () => {
