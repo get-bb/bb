@@ -1,0 +1,213 @@
+{
+  "schemaVersion": 1,
+  "kind": "forge-compute-only-mcp-manifest",
+  "source": {
+    "repository": "finite-state-forge",
+    "commit": "5083a9d745e6d0e22166d2850e7e43fc3987c350",
+    "reviewedAt": "2026-08-12",
+    "files": [
+      {
+        "path": "src/finite_state_forge/tools/qemu_dynamic.py",
+        "sha256": "888a95354e75e64818f2759138542929510596d33ad6e3b02b7cd204d711277f"
+      },
+      {
+        "path": "src/finite_state_forge/tools/pentest.py",
+        "sha256": "299fd9c3e72a35fccfa786e0d75876987dd2d563f49291a074303588e2e8e520"
+      },
+      {
+        "path": "src/finite_state_forge/tools/jobs.py",
+        "sha256": "bdc35aca8eafd06f9cd8d3abdd449409ff27d5dd521f0e870c9b5430fb097c88"
+      },
+      {
+        "path": "src/finite_state_forge/process_tracker.py",
+        "sha256": "581c69efbc2d088d62f0f1966071984b43dd6e2ac0c232b97d07808781158169"
+      },
+      {
+        "path": "src/finite_state_forge/tool_errors.py",
+        "sha256": "dcef56385b12ea86d3a14ffe0d6faa0a356859904e39e7e38b6e9c9f9a0f64db"
+      },
+      {
+        "path": "tests/test_pentest_tools.py",
+        "sha256": "e918300a36103e4bc3b81cac199ae94896bc21d0ed6fe01b5bf69520598ab382"
+      }
+    ]
+  },
+  "transportEnvelope": {
+    "protocol": "MCP",
+    "payload": "The FastMCP tool result contains JSON text in its first text content item. Decode exactly one JSON object; reject missing, multiple-conflicting, non-text, non-object, or invalid-JSON payloads.",
+    "closedAllowlist": [
+      "verify_dynamic",
+      "pen_test_run",
+      "get_job_status",
+      "list_jobs"
+    ]
+  },
+  "operations": [
+    {
+      "clientMethod": "verifyDynamic",
+      "mcpTool": "verify_dynamic",
+      "availability": "Registered only when Forge dynamic verification is enabled.",
+      "execution": "inline",
+      "request": {
+        "required": {
+          "pv_id": "string",
+          "verdict_ids": "string[]"
+        },
+        "optional": {
+          "budget_sec_per_verdict": "integer; default 60"
+        }
+      },
+      "successResponse": {
+        "required": {
+          "pv_id": "string",
+          "bundle_path": "string local path; strip at client boundary",
+          "firmware_path": "string local path; strip at client boundary",
+          "verdicts": "object[]",
+          "rendered_table": "string",
+          "enrichment_summary": "object"
+        },
+        "optional": {
+          "env_error": "string"
+        }
+      },
+      "errorResponse": "A structured object containing pv_id, error, and verdicts:[] may be returned instead of throwing.",
+      "normalization": "Map camelCase input to the exact snake_case keys. Preserve verdict/enrichment data, but never expose bundle_path or firmware_path through ForgeComputeClient."
+    },
+    {
+      "clientMethod": "penTestRun",
+      "mcpTool": "pen_test_run",
+      "availability": "Registered only when Forge core/produce pen-test tooling is enabled.",
+      "execution": "background-job",
+      "request": {
+        "required": {
+          "cve_id": "string",
+          "component_id": "string",
+          "project_id": "string",
+          "version_id": "string",
+          "firmware_path": "string local rootfs path; same-host stdio only"
+        },
+        "optional": {
+          "finding_id": "string|null",
+          "profile_hint": "string|null",
+          "tenant_id": "string; default public",
+          "deployment_context": "strict object|null",
+          "budget": "object|null",
+          "replay_seed": "integer; default 0",
+          "authoring_enabled": "boolean; default true",
+          "blind": "boolean; default false",
+          "confidence_floor": "number|null",
+          "llm_provider": "anthropic|openai|google|null",
+          "llm_model": "string|null",
+          "vendor_vex_path": "string|null"
+        }
+      },
+      "successResponse": {
+        "required": {
+          "success": "true",
+          "job_id": "string",
+          "run_id": "string",
+          "evidence_root": "string local path; strip",
+          "registry": "string local path; strip",
+          "budget_defaulted": "boolean",
+          "message": "string",
+          "environment": "string"
+        },
+        "optional": {
+          "pending_switch": "object"
+        }
+      },
+      "errorResponse": "Preflight can synchronously return {success:false,error:string,environment:string,pending_switch?:object} and creates no job.",
+      "normalization": "Return only jobId after success. Convert preflight failure to RemoteError. Never expose evidence_root, registry, firmware_path, or other Forge-local paths. Remote HTTP/SSE is unsupported for this path until a secure root transfer/registration contract exists."
+    },
+    {
+      "clientMethod": "getJobStatus",
+      "mcpTool": "get_job_status",
+      "availability": "Always registered with Forge job monitoring.",
+      "execution": "inline-read",
+      "request": {
+        "required": {
+          "job_id": "string"
+        },
+        "optional": {
+          "tail_lines": "integer; default 50"
+        }
+      },
+      "successResponse": {
+        "required": {
+          "job_id": "string",
+          "status": "RUNNING|COMPLETED|FAILED|TIMEOUT|CANCELLED",
+          "tool": "string",
+          "recipe": "string",
+          "scope": "string",
+          "environment": "string",
+          "run_id": "string|null",
+          "elapsed_seconds": "integer",
+          "log_path": "string local path; strip",
+          "log_tail": "string",
+          "events": "object[]",
+          "event_count": "integer"
+        },
+        "optional": {
+          "result": "object",
+          "pending_switch": "object"
+        }
+      },
+      "errorResponse": "Unknown id returns {success:false,error:string,pending_switch?:object}.",
+      "normalization": "Split log_tail into bounded lines, strip log_path and local paths nested in known top-level envelopes, preserve bounded events/result, and map raw CANCELLED to normalized FAILED with code FORGE_JOB_CANCELLED."
+    },
+    {
+      "clientMethod": "listJobs",
+      "mcpTool": "list_jobs",
+      "availability": "Always registered with Forge job monitoring.",
+      "execution": "inline-read",
+      "request": {
+        "required": {},
+        "optional": {
+          "status": "string|null",
+          "tool": "string|null"
+        }
+      },
+      "successResponse": {
+        "required": {
+          "success": "true",
+          "count": "integer",
+          "jobs": "[{job_id,status,tool,recipe,scope,environment,elapsed_seconds,log_path,run_dir}]"
+        }
+      },
+      "errorResponse": "No dedicated application error envelope is declared; transport/shape failures become RemoteError.",
+      "normalization": "Strip log_path and run_dir, normalize each item to ForgeJobSnapshot metadata, and yield one RemotePage with total=count and next=null."
+    },
+    {
+      "clientMethod": "watchJob",
+      "mcpTool": null,
+      "availability": "Plugin-derived operation.",
+      "execution": "poll get_job_status",
+      "request": {
+        "required": {
+          "job_id": "string"
+        },
+        "optional": {}
+      },
+      "successResponse": {
+        "required": {
+          "snapshots": "Async sequence of normalized get_job_status results"
+        }
+      },
+      "errorResponse": "Transport errors and malformed snapshots become RemoteError; abort stops polling.",
+      "normalization": "Stop on COMPLETED, FAILED, or TIMEOUT; raw CANCELLED first normalizes to FAILED/FORGE_JOB_CANCELLED."
+    }
+  ],
+  "unresolved": [
+    {
+      "clientMethod": "prepareFirmwareRoot",
+      "state": "non-freezeable",
+      "reason": "Forge commit 5083a9d7 exposes no MCP tool that registers or prepares a firmware root. Same-host stdio may be implemented through plugin-owned environment-at-spawn and controlled process restart after WP-50 proves digest and lifecycle behavior. Remote HTTP/SSE must return unsupported until a separately reviewed method exists."
+    }
+  ],
+  "forbidden": [
+    "No Platform or Assurance Studio tool may be added to this allowlist.",
+    "No generic MCP tool name or arbitrary arguments seam may be exposed.",
+    "No Forge-local path may cross the ForgeComputeClient boundary.",
+    "A method absent from this manifest is unavailable until provenance, source hashes, request/response mapping, and tests are reviewed."
+  ]
+}
