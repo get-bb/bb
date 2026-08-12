@@ -1,0 +1,40 @@
+{
+  "results": [
+    {
+      "error": null,
+      "findingId": "8000000000000000000",
+      "status": "NOT_AFFECTED",
+      "success": true
+    },
+    {
+      "error": null,
+      "findingId": "8000000000000000001",
+      "status": "NOT_AFFECTED",
+      "success": true
+    },
+    {
+      "error": null,
+      "findingId": "8000000000000000002",
+      "status": "NOT_AFFECTED",
+      "success": true
+    },
+    {
+      "error": "finding locked",
+      "findingId": "8000000000000000003",
+      "status": null,
+      "success": false
+    },
+    {
+      "error": "invalid transition",
+      "findingId": "8000000000000000004",
+      "status": null,
+      "success": false
+    }
+  ],
+  "status": "partial_success",
+  "summary": {
+    "failed": 2,
+    "succeeded": 3,
+    "total": 5
+  }
+}

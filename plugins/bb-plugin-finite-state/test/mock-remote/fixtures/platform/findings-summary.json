@@ -1,0 +1,9 @@
+{
+  "bySeverity": {
+    "critical": 1000,
+    "high": 1000,
+    "low": 1000,
+    "medium": 1000
+  },
+  "total": 4000
+}

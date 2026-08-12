@@ -1,0 +1,6 @@
+{
+  "code": "FIRMWARE_BYTES_FORBIDDEN",
+  "retryable": false,
+  "service": "platform",
+  "status": 403
+}

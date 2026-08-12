@@ -1,0 +1,332 @@
+{
+  "data": {
+    "hasMore": true,
+    "items": [
+      {
+        "fields": {
+          "componentId": "component-0001",
+          "name": "Architecture node 1",
+          "zoneId": "zone-1"
+        },
+        "humanEdited": true,
+        "id": "as-component-01",
+        "kind": "component",
+        "projectId": "project-4a752600a07a",
+        "reviewStatus": "human_approved",
+        "reviewVersion": "100"
+      },
+      {
+        "fields": {
+          "componentId": "component-0002",
+          "name": "Architecture node 2",
+          "zoneId": "zone-2"
+        },
+        "humanEdited": false,
+        "id": "as-component-02",
+        "kind": "component",
+        "projectId": "project-4a752600a07a",
+        "reviewStatus": "pending",
+        "reviewVersion": "101"
+      },
+      {
+        "fields": {
+          "componentId": "component-0003",
+          "name": "Architecture node 3",
+          "zoneId": "zone-3"
+        },
+        "humanEdited": false,
+        "id": "as-component-03",
+        "kind": "component",
+        "projectId": "project-4a752600a07a",
+        "reviewStatus": "pending",
+        "reviewVersion": "102"
+      },
+      {
+        "fields": {
+          "componentId": "component-0004",
+          "name": "Contrôleur télémétrie",
+          "zoneId": "zone-1"
+        },
+        "humanEdited": false,
+        "id": "as-component-04",
+        "kind": "component",
+        "projectId": "project-4a752600a07a",
+        "reviewStatus": "pending",
+        "reviewVersion": "103"
+      },
+      {
+        "fields": {
+          "componentId": "component-0005",
+          "name": "Architecture node 5",
+          "zoneId": "zone-2"
+        },
+        "humanEdited": false,
+        "id": "as-component-05",
+        "kind": "component",
+        "projectId": "project-4a752600a07a",
+        "reviewStatus": "pending",
+        "reviewVersion": "104"
+      },
+      {
+        "fields": {
+          "componentId": "component-0006",
+          "name": "Architecture node 6",
+          "zoneId": "zone-3"
+        },
+        "humanEdited": false,
+        "id": "as-component-06",
+        "kind": "component",
+        "projectId": "project-4a752600a07a",
+        "reviewStatus": "pending",
+        "reviewVersion": "105"
+      },
+      {
+        "fields": {
+          "componentId": "component-0007",
+          "name": "Architecture node 7",
+          "zoneId": "zone-1"
+        },
+        "humanEdited": false,
+        "id": "as-component-07",
+        "kind": "component",
+        "projectId": "project-4a752600a07a",
+        "reviewStatus": "pending",
+        "reviewVersion": "106"
+      },
+      {
+        "fields": {
+          "componentId": "component-0008",
+          "name": "Architecture node 8",
+          "zoneId": "zone-2"
+        },
+        "humanEdited": false,
+        "id": "as-component-08",
+        "kind": "component",
+        "projectId": "project-4a752600a07a",
+        "reviewStatus": "pending",
+        "reviewVersion": "107"
+      },
+      {
+        "fields": {
+          "componentId": "component-0009",
+          "name": "Architecture node 9",
+          "zoneId": "zone-3"
+        },
+        "humanEdited": false,
+        "id": "as-component-09",
+        "kind": "component",
+        "projectId": "project-4a752600a07a",
+        "reviewStatus": "pending",
+        "reviewVersion": "108"
+      },
+      {
+        "fields": {
+          "componentId": "component-0010",
+          "name": "Architecture node 10",
+          "zoneId": "zone-1"
+        },
+        "humanEdited": false,
+        "id": "as-component-10",
+        "kind": "component",
+        "projectId": "project-4a752600a07a",
+        "reviewStatus": "pending",
+        "reviewVersion": "109"
+      },
+      {
+        "fields": {
+          "componentId": "component-0011",
+          "name": "Architecture node 11",
+          "zoneId": "zone-2"
+        },
+        "humanEdited": false,
+        "id": "as-component-11",
+        "kind": "component",
+        "projectId": "project-4a752600a07a",
+        "reviewStatus": "pending",
+        "reviewVersion": "110"
+      },
+      {
+        "fields": {
+          "componentId": "component-0012",
+          "name": "Architecture node 12",
+          "zoneId": "zone-3"
+        },
+        "humanEdited": false,
+        "id": "as-component-12",
+        "kind": "component",
+        "projectId": "project-4a752600a07a",
+        "reviewStatus": "pending",
+        "reviewVersion": "111"
+      },
+      {
+        "fields": {
+          "name": "Untrusted"
+        },
+        "humanEdited": false,
+        "id": "zone-1",
+        "kind": "zone",
+        "projectId": "project-4a752600a07a",
+        "reviewStatus": "pending",
+        "reviewVersion": "300"
+      },
+      {
+        "fields": {
+          "name": "Control"
+        },
+        "humanEdited": false,
+        "id": "zone-2",
+        "kind": "zone",
+        "projectId": "project-4a752600a07a",
+        "reviewStatus": "pending",
+        "reviewVersion": "301"
+      },
+      {
+        "fields": {
+          "name": "Safety"
+        },
+        "humanEdited": false,
+        "id": "zone-3",
+        "kind": "zone",
+        "projectId": "project-4a752600a07a",
+        "reviewStatus": "pending",
+        "reviewVersion": "302"
+      },
+      {
+        "fields": {
+          "componentId": "as-component-01",
+          "name": "Protected asset 1"
+        },
+        "humanEdited": false,
+        "id": "asset-1",
+        "kind": "asset",
+        "projectId": "project-4a752600a07a",
+        "reviewStatus": "pending",
+        "reviewVersion": "400"
+      },
+      {
+        "fields": {
+          "componentId": "as-component-02",
+          "name": "Protected asset 2"
+        },
+        "humanEdited": false,
+        "id": "asset-2",
+        "kind": "asset",
+        "projectId": "project-4a752600a07a",
+        "reviewStatus": "pending",
+        "reviewVersion": "401"
+      },
+      {
+        "fields": {
+          "componentId": "as-component-03",
+          "name": "Protected asset 3"
+        },
+        "humanEdited": false,
+        "id": "asset-3",
+        "kind": "asset",
+        "projectId": "project-4a752600a07a",
+        "reviewStatus": "pending",
+        "reviewVersion": "402"
+      },
+      {
+        "fields": {
+          "componentId": "as-component-04",
+          "name": "Protected asset 4"
+        },
+        "humanEdited": false,
+        "id": "asset-4",
+        "kind": "asset",
+        "projectId": "project-4a752600a07a",
+        "reviewStatus": "pending",
+        "reviewVersion": "403"
+      },
+      {
+        "fields": {
+          "name": "Dataflow 1",
+          "protocol": "MQTT",
+          "sourceId": "as-component-01",
+          "targetId": "as-component-02"
+        },
+        "humanEdited": false,
+        "id": "flow-01",
+        "kind": "dataflow",
+        "projectId": "project-4a752600a07a",
+        "reviewStatus": "pending",
+        "reviewVersion": "500"
+      },
+      {
+        "fields": {
+          "name": "Dataflow 2",
+          "protocol": "TLS",
+          "sourceId": "as-component-02",
+          "targetId": "as-component-03"
+        },
+        "humanEdited": false,
+        "id": "flow-02",
+        "kind": "dataflow",
+        "projectId": "project-4a752600a07a",
+        "reviewStatus": "pending",
+        "reviewVersion": "501"
+      },
+      {
+        "fields": {
+          "name": "Dataflow 3",
+          "protocol": "MQTT",
+          "sourceId": "as-component-03",
+          "targetId": "as-component-04"
+        },
+        "humanEdited": false,
+        "id": "flow-03",
+        "kind": "dataflow",
+        "projectId": "project-4a752600a07a",
+        "reviewStatus": "pending",
+        "reviewVersion": "502"
+      },
+      {
+        "fields": {
+          "name": "Dataflow 4",
+          "protocol": "TLS",
+          "sourceId": "as-component-04",
+          "targetId": "as-component-05"
+        },
+        "humanEdited": false,
+        "id": "flow-04",
+        "kind": "dataflow",
+        "projectId": "project-4a752600a07a",
+        "reviewStatus": "pending",
+        "reviewVersion": "503"
+      },
+      {
+        "fields": {
+          "name": "Dataflow 5",
+          "protocol": "MQTT",
+          "sourceId": "as-component-05",
+          "targetId": "as-component-06"
+        },
+        "humanEdited": false,
+        "id": "flow-05",
+        "kind": "dataflow",
+        "projectId": "project-4a752600a07a",
+        "reviewStatus": "pending",
+        "reviewVersion": "504"
+      },
+      {
+        "fields": {
+          "name": "Dataflow 6",
+          "protocol": "TLS",
+          "sourceId": "as-component-06",
+          "targetId": "as-component-07"
+        },
+        "humanEdited": false,
+        "id": "flow-06",
+        "kind": "dataflow",
+        "projectId": "project-4a752600a07a",
+        "reviewStatus": "pending",
+        "reviewVersion": "505"
+      }
+    ],
+    "page": 1,
+    "pageSize": 25,
+    "total": 62
+  },
+  "success": true
+}
