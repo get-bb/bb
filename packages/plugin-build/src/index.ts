@@ -32,3 +32,4 @@ export {
   type PluginBuildToolchain,
 } from "./toolchain.js";
 export { assertValidPluginCompactIconSvg } from "./svg-asset.js";
+export { isPathInsidePluginRoot } from "./plugin-manifest.js";

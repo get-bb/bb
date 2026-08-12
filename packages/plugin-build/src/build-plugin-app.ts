@@ -18,7 +18,10 @@ import {
 import { RUNTIME_EXPORT_MANIFEST } from "./runtime-export-manifest.js";
 import { type PluginBuildToolchain } from "./toolchain.js";
 import { createPluginArtifactMeta } from "./plugin-artifact-meta.js";
-import { validatePluginBuildManifest } from "./plugin-manifest.js";
+import {
+  isPathInsidePluginRoot,
+  validatePluginBuildManifest,
+} from "./plugin-manifest.js";
 
 /**
  * `bb plugin build` — compile a plugin's `bb.app` entry (app.tsx) into a
@@ -339,7 +342,7 @@ async function readPluginAppConfig(rootDir: string): Promise<PluginAppConfig> {
     throw new Error(`manifest bb.app must be relative, got "${app}"`);
   }
   const appEntry = resolve(rootDir, app);
-  if (appEntry !== rootDir && !appEntry.startsWith(rootDir + "/")) {
+  if (!isPathInsidePluginRoot(rootDir, appEntry)) {
     throw new Error(`manifest bb.app escapes the plugin directory: "${app}"`);
   }
   try {

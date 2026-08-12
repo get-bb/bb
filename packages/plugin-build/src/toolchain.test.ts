@@ -27,7 +27,7 @@ describe("plugin build toolchain", () => {
     for (const version of Object.values(PLUGIN_TOOLCHAIN_PINS)) {
       expect(basename(dir)).toContain(version);
     }
-    expect(dir.startsWith("/data/")).toBe(true);
+    expect(dir).toBe(join("/data", basename(dir)));
   });
 
   // The monorepo and any machine that already has the packages must not pay a

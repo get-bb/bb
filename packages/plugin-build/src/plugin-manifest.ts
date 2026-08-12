@@ -1,11 +1,23 @@
 import { readFile, realpath, stat } from "node:fs/promises";
-import { isAbsolute, resolve } from "node:path";
+import { isAbsolute, relative, resolve } from "node:path";
 import {
   isPluginOwnedIconPath,
   pluginPackageJsonSchema,
   type PluginPackageJson,
 } from "@bb/domain";
 import { assertValidPluginCompactIconSvg } from "./svg-asset.js";
+
+/** True when `candidatePath` is `rootDir` or a descendant after lexical resolve. */
+export function isPathInsidePluginRoot(
+  rootDir: string,
+  candidatePath: string,
+): boolean {
+  const relativePath = relative(resolve(rootDir), resolve(candidatePath));
+  return (
+    relativePath === "" ||
+    (!relativePath.startsWith("..") && !isAbsolute(relativePath))
+  );
+}
 
 function resolveManifestPath(
   rootDir: string,
@@ -16,7 +28,7 @@ function resolveManifestPath(
     throw new Error(`manifest ${label} must be relative, got "${entry}"`);
   }
   const resolved = resolve(rootDir, entry);
-  if (resolved !== rootDir && !resolved.startsWith(rootDir + "/")) {
+  if (!isPathInsidePluginRoot(rootDir, resolved)) {
     throw new Error(
       `manifest ${label} escapes the plugin directory: "${entry}"`,
     );
@@ -68,7 +80,7 @@ export async function validatePluginBuildManifest(
       realpath(rootDir),
       realpath(assetPath),
     ]);
-    if (realAsset !== realRoot && !realAsset.startsWith(realRoot + "/")) {
+    if (!isPathInsidePluginRoot(realRoot, realAsset)) {
       throw new Error(
         `manifest ${label} escapes the plugin directory through a symlink`,
       );
