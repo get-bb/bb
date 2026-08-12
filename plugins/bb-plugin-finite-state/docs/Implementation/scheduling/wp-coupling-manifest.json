@@ -177,7 +177,7 @@
         "resumeCondition": "Resume only after an owner-approved interface revision supplies both multipart upload and parameterized document-content delivery without bb-core changes or forbidden escape hatches."
       }
     },
-    "currentLaneCap": 4,
+    "currentLaneCap": 6,
     "sixLanePromotion": {
       "requiredCompletedWorkPackages": [],
       "requiredIndependentDecisionClusters": 6,
