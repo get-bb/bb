@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useNavigate } from "react-router-dom";
+import { NavLink, useNavigate } from "react-router-dom";
 import type { IconName } from "@bb/shared-ui/icon";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import {
@@ -1414,10 +1414,17 @@ export function ThreadDetailPromptArea({
     () =>
       childPendingInteractions.map((item) =>
         isPluginPendingInteraction(item.interaction) ? (
-          <PluginPendingInteractionComposer
-            key={item.interaction.id}
-            interaction={item.interaction}
-          />
+          <div key={item.interaction.id}>
+            <NavLink
+              to={item.href}
+              className="mb-1 block text-xs text-muted-foreground no-underline hover:underline"
+            >
+              From child thread: {item.childTitle}
+            </NavLink>
+            <PluginPendingInteractionComposer
+              interaction={item.interaction}
+            />
+          </div>
         ) : (
           <ThreadPendingInteractionBanner
             key={item.interaction.id}

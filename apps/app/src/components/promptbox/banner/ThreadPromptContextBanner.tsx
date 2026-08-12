@@ -421,7 +421,7 @@ function ChildThreadsBody({
             <span className="min-w-0 flex-1 truncate">{item.title}</span>
             {item.hasPendingInteraction ? (
               <span className="shrink-0 text-muted-foreground">
-                Needs approval
+                Needs input
               </span>
             ) : null}
           </NavLink>
@@ -694,7 +694,7 @@ function childThreadsLabel(args: {
   pendingCount: number;
 }): string {
   if (args.pendingCount > 0) {
-    return `${args.pendingCount} child ${args.pendingCount === 1 ? "thread needs" : "threads need"} approval`;
+    return `${args.pendingCount} child ${args.pendingCount === 1 ? "thread needs" : "threads need"} input`;
   }
   return `${args.count} active child ${args.count === 1 ? "thread" : "threads"}`;
 }
@@ -760,7 +760,7 @@ function ActiveChildThreadsCard({
           <span className="min-w-0 flex-1 truncate text-left">
             <span className="text-muted-foreground">
               {needsApproval
-                ? "Needs your approval: "
+                ? "Needs your input: "
                 : "Active child thread: "}
             </span>
             <span className="font-medium text-foreground/80">

@@ -420,9 +420,9 @@ describe("ThreadPromptContextBanner", () => {
     );
 
     expect(markup).toContain(
-      "1 child thread needs approval: Install workspace tools",
+      "1 child thread needs input: Install workspace tools",
     );
-    expect(markup).toContain("Needs your approval:");
+    expect(markup).toContain("Needs your input:");
     expect(markup).toContain("Install workspace tools");
     expect(markup).toContain('data-icon="CircleQuestion"');
     expect(markup).not.toContain("Active child thread:");

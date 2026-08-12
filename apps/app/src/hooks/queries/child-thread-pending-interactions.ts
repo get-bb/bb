@@ -2,7 +2,6 @@ import { useQueries } from "@tanstack/react-query";
 import { useMemo } from "react";
 import type { PendingInteraction } from "@bb/domain";
 import { sdk } from "@/lib/sdk";
-import { useThreadDetailRealtimeSubscriptions } from "@/hooks/useRealtimeSubscription";
 import { REALTIME_OWNED_NO_FOCUS_QUERY_POLICY } from "./query-policies";
 import { threadPendingInteractionsQueryKey } from "./query-keys";
 import { getLatestPendingInteraction } from "./thread-queries";
@@ -52,6 +51,9 @@ export function collectChildThreadPendingAttention(
 export function useChildThreadPendingAttention(
   children: readonly ChildThreadPendingAttentionSource[],
 ): ChildThreadPendingAttention[] {
+  // Thread-list realtime already flips `hasPendingInteraction`. Resolving
+  // from the parent invalidates the interaction query. Do not subscribe to
+  // each child detail stream.
   const pendingChildIds = useMemo(
     () =>
       children
@@ -59,7 +61,6 @@ export function useChildThreadPendingAttention(
         .map((child) => child.id),
     [children],
   );
-  useThreadDetailRealtimeSubscriptions(pendingChildIds);
 
   const queries = useQueries({
     queries: pendingChildIds.map((threadId) => ({
