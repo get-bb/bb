@@ -1120,7 +1120,6 @@ describe("gate offline page", () => {
     expect(html).toContain("Your bb is offline");
     expect(html).toContain("Last seen 5 minutes ago");
     expect(html).toContain('http-equiv="refresh"');
-    expect(html).toContain("data:image/svg+xml");
   });
 
   it("omits the last-seen sentence when the server never connected", async () => {

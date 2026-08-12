@@ -138,6 +138,7 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "lightningcss": "^1.32.0",
     "mdast-util-to-hast": "^13.2.1",
+    "sharp": "^0.34.5",
     "tailwindcss": "^4.3.0",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "typescript-7": "npm:typescript@^7.0.2",

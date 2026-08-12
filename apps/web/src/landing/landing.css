@@ -1848,7 +1848,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 .tg-thread-mark {
   width: 16px;
   height: 16px;
-  object-fit: contain;
+  border-radius: 4px;
   flex-shrink: 0;
 }
 
@@ -2264,7 +2264,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 .sb-mark {
   width: 16px;
   height: 16px;
-  object-fit: contain;
+  border-radius: 4px;
   flex-shrink: 0;
 }
 

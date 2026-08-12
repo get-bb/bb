@@ -155,13 +155,11 @@ interface FaviconRenderState {
 
 interface FaviconRenderRequest extends FaviconRenderState {
   baseHref: string;
-  size: FaviconSize;
 }
 
 interface RenderedFaviconLink {
   href: string;
   size: FaviconSize;
-  type: "image/png" | "image/svg+xml";
 }
 
 interface UnreadBadgeDot {
@@ -176,13 +174,19 @@ interface UnreadBadgeDot {
  * interchangeable; dev builds use the dev glyph to match the actual favicon.
  */
 export function getFaviconGlyphHref(): string {
-  return import.meta.env.DEV ? "/favicon-32x32-dev.png" : "/favicon.svg";
+  return import.meta.env.DEV ? "/favicon-32x32-dev.png" : "/favicon-32x32.png";
 }
 
-function getFaviconBaseHref(size: FaviconSize): string {
-  return import.meta.env.DEV
-    ? `/favicon-${size}x${size}-dev.png`
-    : "/favicon.svg";
+/**
+ * Mirrors the favicon bootstrap script in index.html: dev builds use the
+ * "-dev" variant, production follows the system color scheme.
+ */
+function getFaviconVariantSuffix(): string {
+  if (import.meta.env.DEV) return "-dev";
+  if (typeof window.matchMedia !== "function") return "";
+  return window.matchMedia("(prefers-color-scheme: dark)").matches
+    ? "-dark"
+    : "";
 }
 
 function getFaviconLink(size: number): HTMLLinkElement | null {
@@ -242,7 +246,6 @@ async function createFaviconHref({
   badge,
   baseHref,
   colorPreference,
-  size,
 }: FaviconRenderRequest): Promise<string> {
   if (badge === "none" && colorPreference === "default") {
     return baseHref;
@@ -250,20 +253,11 @@ async function createFaviconHref({
 
   const image = await loadImage(baseHref);
   const canvas = document.createElement("canvas");
-  canvas.width = size;
-  canvas.height = size;
+  canvas.width = image.naturalWidth;
+  canvas.height = image.naturalHeight;
   const context = canvas.getContext("2d");
   if (!context) throw new Error("Canvas 2D context unavailable");
-  const scale = Math.min(size / image.naturalWidth, size / image.naturalHeight);
-  const width = image.naturalWidth * scale;
-  const height = image.naturalHeight * scale;
-  context.drawImage(
-    image,
-    (size - width) / 2,
-    (size - height) / 2,
-    width,
-    height,
-  );
+  context.drawImage(image, 0, 0);
 
   if (colorPreference !== "default") {
     context.globalCompositeOperation = "source-in";
@@ -307,30 +301,22 @@ let applyToken = 0;
 
 async function applyFaviconState(state: FaviconRenderState): Promise<void> {
   const token = ++applyToken;
+  const suffix = getFaviconVariantSuffix();
   const links = await Promise.all(
     FAVICON_SIZES.map(async (size): Promise<RenderedFaviconLink> => {
-      const baseHref = getFaviconBaseHref(size);
+      const baseHref = `/favicon-${size}x${size}${suffix}.png`;
       const href = await createFaviconHref({
         badge: state.badge,
         baseHref,
         colorPreference: state.colorPreference,
-        size,
       });
-      return {
-        href,
-        size,
-        type: href === "/favicon.svg" ? "image/svg+xml" : "image/png",
-      };
+      return { href, size };
     }),
   );
   if (token !== applyToken) return;
-  for (const { href, size, type } of links) {
+  for (const { href, size } of links) {
     const link = getFaviconLink(size);
-    if (link) {
-      link.href = href;
-      link.type = type;
-      link.sizes.value = type === "image/svg+xml" ? "any" : `${size}x${size}`;
-    }
+    if (link) link.href = href;
   }
 }
 
@@ -338,8 +324,9 @@ let initialized = false;
 
 /**
  * Applies the favicon state on startup and re-applies it whenever the color
- * preference, unread badge, or system color scheme changes. The scheme listener
- * matters when the adaptive SVG is rasterized to add a tint or unread badge.
+ * preference, unread badge, or system color scheme changes. The scheme listener runs
+ * after the index.html bootstrap listener (registered first), so a tinted
+ * or badged favicon survives that script resetting the hrefs on theme changes.
  */
 export function initializeFavicon(): void {
   if (initialized || typeof window === "undefined") return;
