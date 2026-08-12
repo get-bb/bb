@@ -163,7 +163,7 @@ test("the shipped manifest prohibits WP02", async () => {
   );
 });
 
-test("the shipped manifest temporarily stops WP32 and WP56 with resume conditions", async () => {
+test("the shipped manifest temporarily stops WP56 with a resume condition", async () => {
   const { readFileSync } = await import("node:fs");
   const shipped = JSON.parse(
     readFileSync(
@@ -171,16 +171,7 @@ test("the shipped manifest temporarily stops WP32 and WP56 with resume condition
       "utf8",
     ),
   );
-  assert.deepEqual(shipped.dispatchPolicy.stoppedWorkPackages, [
-    "WP32",
-    "WP56",
-  ]);
-  assert.deepEqual(shipped.dispatchPolicy.stoppedWorkPackageReasons.WP32, {
-    reason:
-      "WP31 is reopened; WP32 remains stopped pending demonstration in a disposable live bb instance of either a viable inline blob worker or the accepted explicit main-thread Arrange fallback, plus the fixed-200-node edge-density sweep at 3, 6, 10, and 15 edges per node.",
-    resumeCondition:
-      "Resume only after those live-bb worker-or-fallback and edge-density conditions are demonstrated and WP31 records an independently reviewed GO decision.",
-  });
+  assert.deepEqual(shipped.dispatchPolicy.stoppedWorkPackages, ["WP56"]);
   for (const wp of shipped.dispatchPolicy.stoppedWorkPackages) {
     const detail = shipped.dispatchPolicy.stoppedWorkPackageReasons[wp];
     assert.ok(detail.reason.length > 0, `${wp} needs a reason`);
