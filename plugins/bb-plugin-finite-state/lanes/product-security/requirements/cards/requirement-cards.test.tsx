@@ -95,10 +95,15 @@ function model(index = 1, overrides: Partial<RequirementCardModel> = {}): Requir
   };
 }
 
-function page(cardModels: readonly RequirementCardModel[], message: string | null = null, projectVersionId: string | null = null) {
+function page(
+  cardModels: readonly RequirementCardModel[],
+  message: string | null = null,
+  projectVersionId: string | null = null,
+  projectId = "project-1",
+) {
   return {
     items: cardModels.map((card) => ({
-      projectId: "project-1",
+      projectId,
       projectVersionId,
       kind: "requirement",
       key: card.requirement.id,
@@ -283,6 +288,45 @@ describe("requirement cards", () => {
     fireEvent.click(slot.getByRole("button", { name: "Refresh requirements" }));
     await waitFor(() => expect(inputs).toHaveLength(2));
     expect(inputs[1]).toEqual(expect.objectContaining({ filters: { refresh: true } }));
+    slot.lifecycle.unmount();
+  });
+
+  it("resets the accepted project version when the mounted surface switches projects", async () => {
+    await requirementsPanel();
+    const { RequirementsCardsForProject } = await import("./index.js");
+    const inputs: Array<Record<string, unknown>> = [];
+    const slot = renderSlot(
+      { component: RequirementsCardsForProject },
+      { projectId: "project-1" },
+      {
+        rpc: {
+          requirementsList: (input) => {
+            const parsed = rpcContract.requirementsList.input.parse(input);
+            inputs.push(parsed);
+            if (parsed.projectId === "project-1") {
+              return page([model(1)], null, "version-1", "project-1");
+            }
+            return page([model(2)], null, "version-2", "project-2");
+          },
+        },
+      },
+    );
+    await slot.findByText("REQ-card-1");
+    expect(inputs).toHaveLength(1);
+    expect(inputs[0]).toEqual(expect.objectContaining({
+      projectId: "project-1",
+      projectVersionId: null,
+    }));
+
+    slot.lifecycle.rerender(<RequirementsCardsForProject projectId="project-2" />);
+
+    await slot.findByText("REQ-card-2");
+    await waitFor(() => expect(inputs).toHaveLength(2));
+    expect(inputs[1]).toEqual(expect.objectContaining({
+      projectId: "project-2",
+      projectVersionId: null,
+    }));
+    expect(slot.queryByText("REQ-card-1")).toBeNull();
     slot.lifecycle.unmount();
   });
 

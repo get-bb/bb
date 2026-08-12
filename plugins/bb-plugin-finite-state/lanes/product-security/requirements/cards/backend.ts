@@ -40,6 +40,12 @@ interface VersionRow {
 }
 
 const CACHE_MESSAGE_MAX_LENGTH = 500;
+const UNSAFE_CACHE_DETAIL_PATTERN =
+  /(?:authorization|bearer\s|api[_-]?key|token=|https?:\/\/[^\s]*[?@])/giu;
+
+function sanitizeCacheDetail(value: string): string {
+  return value.replace(UNSAFE_CACHE_DETAIL_PATTERN, "[redacted]");
+}
 
 function truncateDetail(value: string, maxLength: number): string {
   if (value.length <= maxLength) return value;
@@ -57,7 +63,9 @@ function cacheMessageWithDiagnostics(
   }[],
 ): string | null {
   if (diagnostics.length === 0) return cacheMessage;
-  const prefix = cacheMessage ? `${truncateDetail(cacheMessage, 200)} ` : "";
+  const prefix = cacheMessage
+    ? `${truncateDetail(sanitizeCacheDetail(cacheMessage), 200)} `
+    : "";
   const remainingCount = diagnostics.length - 1;
   const remainder = remainingCount === 0
     ? ""
@@ -67,7 +75,7 @@ function cacheMessageWithDiagnostics(
   const firstDetail = first
     ? `${first.artifactId}:${first.line} ${first.code}: ${first.message}`
     : "Invalid requirement YAML.";
-  return `${prefix}${truncateDetail(firstDetail, available)}${remainder}`;
+  return `${prefix}${truncateDetail(sanitizeCacheDetail(firstDetail), available)}${remainder}`;
 }
 
 function resolvedProjectVersionId(

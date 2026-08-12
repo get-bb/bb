@@ -15,6 +15,14 @@ function payloadProjectId(value: unknown): string | null {
 
 export function RequirementsCards(): React.JSX.Element {
   const { projectId } = useBbContext();
+  return <RequirementsCardsForProject projectId={projectId} />;
+}
+
+export function RequirementsCardsForProject({
+  projectId,
+}: {
+  projectId: string | null;
+}): React.JSX.Element {
   const rpc = useRpc<RpcContract>();
   const [state, setState] = useState<RequirementListState>(projectId ? "loading" : "unconfigured");
   const [models, setModels] = useState<RequirementCardModel[]>([]);
@@ -22,15 +30,32 @@ export function RequirementsCards(): React.JSX.Element {
   const [next, setNext] = useState<string | null>(null);
   const [projectVersionId, setProjectVersionId] = useState<string | null>(null);
   const [revision, setRevision] = useState(0);
-  const projectVersionIdRef = useRef<string | null>(null);
+  const [previousProjectId, setPreviousProjectId] = useState(projectId);
+  const projectVersionScopeRef = useRef({ projectId, projectVersionId: null as string | null });
   const requestEpoch = useRef(0);
+
+  if (projectId !== previousProjectId) {
+    setPreviousProjectId(projectId);
+    setProjectVersionId(null);
+    setModels([]);
+    setMessage(null);
+    setNext(null);
+    setRevision(0);
+    setState(projectId ? "loading" : "unconfigured");
+  }
+
+  useEffect(() => {
+    projectVersionScopeRef.current = { projectId, projectVersionId: null };
+  }, [projectId]);
 
   const load = useCallback(async (continuation: string | null, epoch: number, refresh = false) => {
     if (!projectId) return;
     if (continuation === null) setState("loading");
     const request = {
       projectId,
-      projectVersionId: projectVersionIdRef.current,
+      projectVersionId: projectVersionScopeRef.current.projectId === projectId
+        ? projectVersionScopeRef.current.projectVersionId
+        : null,
       pageSize: 100,
       continuation,
       filters: refresh ? { refresh: true } : {},
@@ -41,7 +66,7 @@ export function RequirementsCards(): React.JSX.Element {
       const pageModels = page.items.map((item) => requirementCardModelSchema.parse(item.fields));
       const resolvedVersionId = page.items[0]?.projectVersionId;
       if (resolvedVersionId !== undefined) {
-        projectVersionIdRef.current = resolvedVersionId;
+        projectVersionScopeRef.current = { projectId, projectVersionId: resolvedVersionId };
         setProjectVersionId(resolvedVersionId);
       }
       setModels((current) => continuation === null
