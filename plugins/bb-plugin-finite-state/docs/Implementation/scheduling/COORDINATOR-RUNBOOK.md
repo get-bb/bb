@@ -41,6 +41,13 @@ For a candidate WP, require all of the following:
 4. Its preset matches the manifest.
 5. The program remains within the validated lane cap.
 
+The manifest distinguishes permanent `prohibitedWorkPackages` from temporary
+`stoppedWorkPackages`. Do not dispatch a stopped package until its recorded
+`resumeCondition` is satisfied and the stop plus its reason are removed in the
+same reviewed scheduling change. Reintroducing a stop likewise requires both
+the list entry and its reason/resume-condition record; validation fails closed
+when either half is missing.
+
 WP documents list product prerequisites. The manifest may add a dispatch-only predecessor edge to serialize a coupled owner; the union is the effective dependency set.
 
 There is no separate per-WP phase or gate label. Readiness is computed from these conditions directly, preserving the Master Plan's G0–G6 product-milestone meanings.
@@ -59,7 +66,7 @@ fnm exec --using=22.19.0 -- node plugins/bb-plugin-finite-state/docs/Implementat
   --runtime-floor-gib 34
 ```
 
-Do not raise the cap until the command exits zero with live state. Six lanes require at least six independent active-or-ready decision clusters, 35 GiB free after provisioning, and a 30 GiB runtime floor. The floor uses the measured 3.4–4.9 GiB managed-worktree range rather than the lower early estimate.
+Do not raise the cap until the command exits zero with live state. Six lanes require at least six independent active-or-ready decision clusters, 35 GiB free after provisioning, and a 30 GiB runtime floor. Measure current managed-worktree size and free space for every promotion; historical ranges are context, not a substitute for the current observation.
 
 **Lane count is not gated on the mock chain.** WP-10 through WP-13 gate the mock-_dependent_ work packages, and the dependency graph already enforces that per package. Gating the cap on them blocked lanes whose clusters have no mock dependency at all — on 2026-08-12 eleven clusters were dependency-ready while promotion evaluated ineligible.
 
@@ -79,7 +86,7 @@ fnm exec --using=22.19.0 -- node plugins/bb-plugin-finite-state/docs/Implementat
   --runtime-floor-gib 35
 ```
 
-Replace the example values with current observations. Before evaluating nine lanes, archive completed threads, preserve recoverable branches, prune completed managed worktrees through bb's environment lifecycle, and remeasure free space. A zero exit requires that pruning/free-space recovery step to be explicitly complete, prior six-lane operation, nine independent active-or-ready clusters, 45 GiB free after provisioning, and a 35 GiB runtime floor. Managed worktrees measured 3.4–4.9 GiB, so use current measurements rather than a fixed marginal estimate. Record the cleanup evidence, command, and JSON result on the program-control Task before changing the cap.
+Replace the example values with current observations. Before evaluating nine lanes, archive completed threads, preserve recoverable branches, prune completed managed worktrees through bb's environment lifecycle, and remeasure free space. A zero exit requires that pruning/free-space recovery step to be explicitly complete, prior six-lane operation, nine independent active-or-ready clusters, 45 GiB free after provisioning, and a 35 GiB runtime floor. Record the current worktree-size and free-space measurements, cleanup evidence, command, and JSON result on the program-control Task before changing the cap.
 
 ## 4. Dispatch through the required preset
 
@@ -167,4 +174,5 @@ Semantics worth knowing:
 
 - **Omitted dependencies count as satisfied.** The manifest deliberately omits the completed L0 packages (WP01, WP03–WP07) while still naming them as dependencies; requiring board-`done` for them would permanently hide 24 of 64 remaining packages. `ready-queue-watchdog.test.mjs` pins this behavior.
 - **Prohibited packages are excluded, durably.** The versioned rule is `dispatchPolicy.prohibitedWorkPackages` in the manifest (currently `["WP02"]`, per `ADR — bb Is Not Modified.md`; the sibling `prohibitedWorkPackageReasons` object records why). The automation additionally sets `FS_WATCHDOG_EXCLUDE=WP02` as belt-and-braces — but the repo artifact, not job configuration, is the mechanism of record.
+- **Temporarily stopped packages are also excluded.** `dispatchPolicy.stoppedWorkPackages` is distinct from permanent prohibition and each entry has a versioned reason plus explicit resume condition in `stoppedWorkPackageReasons`. Removal or reintroduction changes both halves together under validator coverage.
 - **Dedup state** lives in the automation's working directory (the automations plugin data dir) or `FS_WATCHDOG_STATE_DIR` when set; an unchanged ready set re-nudges at most every 30 minutes.

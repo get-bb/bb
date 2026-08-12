@@ -15,6 +15,173 @@ function requireObject(value, label, errors) {
   return true;
 }
 
+function validatePromotionPolicy(policy, label, expected, knownSet, errors) {
+  if (!requireObject(policy, label, errors)) return;
+
+  const requiredFields = [
+    "requiredCompletedWorkPackages",
+    "requiredIndependentDecisionClusters",
+    "minimumFreeAfterProvisionGiB",
+    "minimumRuntimeFloorGiB",
+    ...(expected.requiresCompletedManagedWorktreePruning
+      ? ["requiresCompletedManagedWorktreePruning"]
+      : []),
+  ];
+  const allowedFields = new Set(requiredFields);
+  for (const field of requiredFields) {
+    if (!(field in policy)) errors.push(`${label} is missing ${field}`);
+  }
+  for (const field of Object.keys(policy)) {
+    if (!allowedFields.has(field))
+      errors.push(`${label} contains unexpected field ${field}`);
+  }
+
+  if (!Array.isArray(policy.requiredCompletedWorkPackages)) {
+    errors.push(`${label}.requiredCompletedWorkPackages must be an array`);
+  } else {
+    const repeated = duplicates(policy.requiredCompletedWorkPackages);
+    if (repeated.length > 0) {
+      errors.push(
+        `${label}.requiredCompletedWorkPackages contains duplicates: ${repeated.join(", ")}`,
+      );
+    }
+    for (const wp of policy.requiredCompletedWorkPackages) {
+      if (typeof wp !== "string" || !knownSet.has(wp))
+        errors.push(`${label} requires unknown work package ${String(wp)}`);
+    }
+    if (
+      policy.requiredCompletedWorkPackages.length !==
+        expected.requiredCompletedWorkPackages.length ||
+      policy.requiredCompletedWorkPackages.some(
+        (wp, index) => wp !== expected.requiredCompletedWorkPackages[index],
+      )
+    ) {
+      errors.push(`${label}.requiredCompletedWorkPackages must remain empty`);
+    }
+  }
+
+  if (
+    policy.requiredIndependentDecisionClusters !==
+    expected.requiredIndependentDecisionClusters
+  ) {
+    errors.push(
+      `${label}.requiredIndependentDecisionClusters must be ${expected.requiredIndependentDecisionClusters}`,
+    );
+  }
+  if (
+    policy.minimumFreeAfterProvisionGiB !==
+    expected.minimumFreeAfterProvisionGiB
+  ) {
+    errors.push(
+      `${label} post-provision free-space floor must be ${expected.minimumFreeAfterProvisionGiB} GiB`,
+    );
+  }
+  if (policy.minimumRuntimeFloorGiB !== expected.minimumRuntimeFloorGiB) {
+    errors.push(
+      `${label} runtime free-space floor must be ${expected.minimumRuntimeFloorGiB} GiB`,
+    );
+  }
+  if (
+    expected.requiresCompletedManagedWorktreePruning &&
+    policy.requiresCompletedManagedWorktreePruning !== true
+  ) {
+    errors.push(
+      `${label} promotion must require completed managed-worktree pruning`,
+    );
+  }
+}
+
+function validateProhibitedWorkPackages(dispatchPolicy, knownSet, errors) {
+  const prohibited = dispatchPolicy.prohibitedWorkPackages;
+  const reasons = dispatchPolicy.prohibitedWorkPackageReasons;
+  if (!Array.isArray(prohibited)) {
+    errors.push("dispatchPolicy.prohibitedWorkPackages must be an array");
+    requireObject(
+      reasons,
+      "dispatchPolicy.prohibitedWorkPackageReasons",
+      errors,
+    );
+    return;
+  }
+  const repeated = duplicates(prohibited);
+  if (repeated.length > 0) {
+    errors.push(
+      `dispatchPolicy.prohibitedWorkPackages contains duplicates: ${repeated.join(", ")}`,
+    );
+  }
+  if (
+    !requireObject(
+      reasons,
+      "dispatchPolicy.prohibitedWorkPackageReasons",
+      errors,
+    )
+  )
+    return;
+  for (const wp of prohibited) {
+    if (!knownSet.has(wp))
+      errors.push(
+        `dispatchPolicy prohibits unknown work package ${String(wp)}`,
+      );
+    if (typeof reasons[wp] !== "string" || reasons[wp].trim() === "") {
+      errors.push(`prohibited reason for ${wp} must be non-empty`);
+    }
+  }
+  for (const wp of Object.keys(reasons)) {
+    if (!prohibited.includes(wp)) {
+      errors.push(
+        `prohibited reason for ${wp} has no prohibitedWorkPackages entry`,
+      );
+    }
+  }
+}
+
+function validateStoppedWorkPackages(dispatchPolicy, knownSet, errors) {
+  const stopped = dispatchPolicy.stoppedWorkPackages;
+  const reasons = dispatchPolicy.stoppedWorkPackageReasons;
+  if (!Array.isArray(stopped)) {
+    errors.push("dispatchPolicy.stoppedWorkPackages must be an array");
+    requireObject(reasons, "dispatchPolicy.stoppedWorkPackageReasons", errors);
+    return;
+  }
+  const repeated = duplicates(stopped);
+  if (repeated.length > 0) {
+    errors.push(
+      `dispatchPolicy.stoppedWorkPackages contains duplicates: ${repeated.join(", ")}`,
+    );
+  }
+  if (
+    !requireObject(reasons, "dispatchPolicy.stoppedWorkPackageReasons", errors)
+  )
+    return;
+  const prohibited = new Set(
+    Array.isArray(dispatchPolicy.prohibitedWorkPackages)
+      ? dispatchPolicy.prohibitedWorkPackages
+      : [],
+  );
+  for (const wp of stopped) {
+    if (!knownSet.has(wp))
+      errors.push(`dispatchPolicy stops unknown work package ${String(wp)}`);
+    if (prohibited.has(wp))
+      errors.push(`${wp} cannot be both prohibited and temporarily stopped`);
+    const detail = reasons[wp];
+    if (!requireObject(detail, `stopped reason for ${wp}`, errors)) continue;
+    if (typeof detail.reason !== "string" || detail.reason.trim() === "")
+      errors.push(`stopped reason for ${wp} must include a non-empty reason`);
+    if (
+      typeof detail.resumeCondition !== "string" ||
+      detail.resumeCondition.trim() === ""
+    ) {
+      errors.push(
+        `stopped reason for ${wp} must include a non-empty resumeCondition`,
+      );
+    }
+  }
+  for (const wp of Object.keys(reasons)) {
+    if (!stopped.includes(wp))
+      errors.push(`stopped reason for ${wp} has no stoppedWorkPackages entry`);
+  }
+}
+
 function duplicates(values) {
   const seen = new Set();
   const repeated = new Set();
@@ -94,7 +261,14 @@ export function validateManifest(manifest) {
   for (const [label, values] of [
     ["scope.knownWorkPackages", known],
     ["scope.remainingUnstarted", declaredRemaining],
-    ["workPackages", workPackages.map((entry) => entry.wp)],
+    [
+      "workPackages",
+      workPackages.map((entry) =>
+        entry !== null && typeof entry === "object" && !Array.isArray(entry)
+          ? entry.wp
+          : undefined,
+      ),
+    ],
   ]) {
     const repeated = duplicates(values);
     if (repeated.length > 0)
@@ -102,7 +276,13 @@ export function validateManifest(manifest) {
   }
 
   const declaredSet = new Set(declaredRemaining);
-  const entrySet = new Set(workPackages.map((entry) => entry.wp));
+  const entrySet = new Set(
+    workPackages.flatMap((entry) =>
+      entry !== null && typeof entry === "object" && !Array.isArray(entry)
+        ? [entry.wp]
+        : [],
+    ),
+  );
   for (const wp of expectedRemaining) {
     if (!declaredSet.has(wp))
       errors.push(`scope.remainingUnstarted is missing ${wp}`);
@@ -123,20 +303,34 @@ export function validateManifest(manifest) {
     );
   if (manifest.effectiveWorkPackageCount !== 70)
     errors.push("effectiveWorkPackageCount must remain 70");
-  const sixLanePolicy = manifest.dispatchPolicy.sixLanePromotion;
-  const nineLanePolicy = manifest.dispatchPolicy.nineLanePromotion;
-  if (sixLanePolicy.minimumFreeAfterProvisionGiB !== 35)
-    errors.push("six-lane post-provision free-space floor must be 35 GiB");
-  if (sixLanePolicy.minimumRuntimeFloorGiB !== 30)
-    errors.push("six-lane runtime free-space floor must be 30 GiB");
-  if (nineLanePolicy.minimumFreeAfterProvisionGiB !== 45)
-    errors.push("nine-lane post-provision free-space floor must be 45 GiB");
-  if (nineLanePolicy.minimumRuntimeFloorGiB !== 35)
-    errors.push("nine-lane runtime free-space floor must be 35 GiB");
-  if (nineLanePolicy.requiresCompletedManagedWorktreePruning !== true)
-    errors.push(
-      "nine-lane promotion must require completed managed-worktree pruning",
-    );
+  validateProhibitedWorkPackages(manifest.dispatchPolicy, knownSet, errors);
+  validateStoppedWorkPackages(manifest.dispatchPolicy, knownSet, errors);
+  validatePromotionPolicy(
+    manifest.dispatchPolicy.sixLanePromotion,
+    "six-lane",
+    {
+      requiredCompletedWorkPackages: [],
+      requiredIndependentDecisionClusters: 6,
+      minimumFreeAfterProvisionGiB: 35,
+      minimumRuntimeFloorGiB: 30,
+      requiresCompletedManagedWorktreePruning: false,
+    },
+    knownSet,
+    errors,
+  );
+  validatePromotionPolicy(
+    manifest.dispatchPolicy.nineLanePromotion,
+    "nine-lane",
+    {
+      requiredCompletedWorkPackages: [],
+      requiredIndependentDecisionClusters: 9,
+      minimumFreeAfterProvisionGiB: 45,
+      minimumRuntimeFloorGiB: 35,
+      requiresCompletedManagedWorktreePruning: true,
+    },
+    knownSet,
+    errors,
+  );
   if (manifest.remainingUnstartedCount !== expectedRemaining.length) {
     errors.push(`remainingUnstartedCount must be ${expectedRemaining.length}`);
   }
@@ -337,13 +531,16 @@ export function evaluatePromotion(manifest, state, targetCap) {
       "six-lane operation must be established before promotion to nine lanes",
     );
   }
-  if (targetCap === 9 && state.managedWorktreePruningComplete !== true) {
+  if (
+    policy.requiresCompletedManagedWorktreePruning === true &&
+    state.managedWorktreePruningComplete !== true
+  ) {
     promotionErrors.push(
       "managed-worktree pruning and free-space recovery must be complete before promotion to nine lanes",
     );
   }
-  // Disk binds at every cap, not only at nine: each managed worktree costs
-  // roughly 3.4 GiB marginal, so 4 -> 6 lanes adds about 7 GiB.
+  // Disk binds at every cap. The floors are policy constants, while the
+  // coordinator must remeasure current worktree cost before promotion.
   if (
     (state.freeAfterProvisionGiB ?? 0) < policy.minimumFreeAfterProvisionGiB
   ) {
@@ -359,6 +556,10 @@ export function evaluatePromotion(manifest, state, targetCap) {
 
   const readyClusters = [];
   const activeClusters = [];
+  const unavailableWorkPackages = new Set([
+    ...manifest.dispatchPolicy.prohibitedWorkPackages,
+    ...manifest.dispatchPolicy.stoppedWorkPackages,
+  ]);
   for (const [clusterId, entries] of groupByCluster(manifest.workPackages)) {
     const activeMembers = entries.filter((entry) => active.has(entry.wp));
     if (activeMembers.length > 1) {
@@ -367,11 +568,12 @@ export function evaluatePromotion(manifest, state, targetCap) {
       );
       continue;
     }
+    const next = entries.find((entry) => !completed.has(entry.wp));
+    if (next && unavailableWorkPackages.has(next.wp)) continue;
     if (activeMembers.length === 1) {
       activeClusters.push(clusterId);
       continue;
     }
-    const next = entries.find((entry) => !completed.has(entry.wp));
     if (!next) continue;
     if (next.dependencies.every((dependency) => completed.has(dependency)))
       readyClusters.push(clusterId);

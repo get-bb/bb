@@ -166,6 +166,17 @@
     "prohibitedWorkPackageReasons": {
       "WP02": "ADR — bb Is Not Modified: builtin registration is a BB release decision; dispatch is prohibited and FS-16 stays in backlog until the ADR is superseded."
     },
+    "stoppedWorkPackages": ["WP32", "WP56"],
+    "stoppedWorkPackageReasons": {
+      "WP32": {
+        "reason": "WP31 is reopened; WP32 remains stopped pending demonstration in a disposable live bb instance of either a viable inline blob worker or the accepted explicit main-thread Arrange fallback, plus the fixed-200-node edge-density sweep at 3, 6, 10, and 15 edges per node.",
+        "resumeCondition": "Resume only after those live-bb worker-or-fallback and edge-density conditions are demonstrated and WP31 records an independently reviewed GO decision."
+      },
+      "WP56": {
+        "reason": "At integration 056899c2d, local-auth plugin mutations reject multipart before dispatch and plugin HTTP routes match exact paths, blocking the required upload and content route.",
+        "resumeCondition": "Resume only after an owner-approved interface revision supplies both multipart upload and parameterized document-content delivery without bb-core changes or forbidden escape hatches."
+      }
+    },
     "currentLaneCap": 4,
     "sixLanePromotion": {
       "requiredCompletedWorkPackages": [],
