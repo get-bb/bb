@@ -91,6 +91,27 @@ describe("mock-direct-platform-data", () => {
     expect(JSON.stringify(raw)).not.toMatch(/file_path|preview|saved_to|continuation/u);
   });
 
+  it("binds all four reviewed findings-summary routes through PlatformClient", async () => {
+    const { client, state } = setup();
+    const projectVersionId = String(
+      [...state.versions.values()].find((version) => version.priorVersionId !== null)?.id,
+    );
+    await expect(client.getFindingsSummary(projectVersionId)).resolves.toEqual({
+      exploit: {
+        withExploit: 0,
+        withoutExploit: 4_000,
+        byExploit: {},
+        total: 4_000,
+      },
+      status: expect.objectContaining({ total: 4_000 }),
+      category: { byCategory: { CVE: 4_000 }, total: 4_000 },
+      severity: {
+        bySeverity: { critical: 1_000, high: 1_000, medium: 1_000, low: 1_000 },
+        total: 4_000,
+      },
+    });
+  });
+
   it("missing or corrupt fixtures fail with a typed error before state is exposed", async () => {
     expect(() => createMockPlatformState(resolve(tmpdir(), "fixture-root-does-not-exist"))).toThrow(
       MockPlatformFixtureError,

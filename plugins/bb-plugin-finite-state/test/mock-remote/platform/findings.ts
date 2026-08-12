@@ -90,6 +90,30 @@ function versionFindings(state: MockPlatformState, projectVersionId: string): Re
   );
 }
 
+function uniqueVersionFindings(
+  state: MockPlatformState,
+  projectVersionId: string,
+): Record<string, unknown>[] {
+  const findings = new Map<string, Record<string, unknown>>();
+  for (const finding of versionFindings(state, projectVersionId)) {
+    findings.set(String(finding.id), finding);
+  }
+  return [...findings.values()];
+}
+
+function countBy(
+  findings: readonly Record<string, unknown>[],
+  field: string,
+  missing: string,
+): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const finding of findings) {
+    const key = typeof finding[field] === "string" ? finding[field] : missing;
+    counts[key] = (counts[key] ?? 0) + 1;
+  }
+  return counts;
+}
+
 export function registerFindingHandlers(
   registry: MockHandlerRegistry,
   state: MockPlatformState,
@@ -141,4 +165,45 @@ export function registerFindingHandlers(
     },
   );
 
+  const registerSummary = (
+    routeId: string,
+    body: (findings: Record<string, unknown>[]) => Record<string, unknown>,
+  ): void => {
+    registry.register(routeId, ({ params }) => {
+      if (!state.versions.has(params.projectVersionId)) {
+        return Response.json(
+          { error: { code: "VERSION_NOT_FOUND", message: "Version was not found" } },
+          { status: 404 },
+        );
+      }
+      return Response.json(body(uniqueVersionFindings(state, params.projectVersionId)));
+    });
+  };
+  registerSummary(
+    "platform:GET:/public/v0/project/version/{projectVersionId}/findings/exploit/counts",
+    (findings) => ({
+      withExploit: 0,
+      withoutExploit: findings.length,
+      byExploit: {},
+      total: findings.length,
+    }),
+  );
+  registerSummary(
+    "platform:GET:/public/v0/project/version/{projectVersionId}/findings/status/counts",
+    (findings) => ({
+      byStatus: countBy(findings, "vexStatus", "NO_STATUS"),
+      total: findings.length,
+    }),
+  );
+  registerSummary(
+    "platform:GET:/public/v0/project/version/{projectVersionId}/findings/category/counts",
+    (findings) => ({ byCategory: { CVE: findings.length }, total: findings.length }),
+  );
+  registerSummary(
+    "platform:GET:/public/v0/project/version/{projectVersionId}/findings/severities/counts",
+    (findings) => ({
+      bySeverity: countBy(findings, "severity", "unknown"),
+      total: findings.length,
+    }),
+  );
 }
