@@ -28,6 +28,7 @@
     ]
   },
   "scripts": {
+    "pretest": "node ../../scripts/ensure-native-modules.mjs",
     "build": "node --conditions=source --import tsx --input-type=module --eval \"import bbPackage from '../../packages/bb-app/package.json' with { type: 'json' }; import { resolve } from 'node:path'; import { buildPluginApp, buildPluginServer, resolvePluginBuildToolchain } from '@bb/plugin-build'; const root = process.cwd(); const toolchain = await resolvePluginBuildToolchain(resolve(root, '../../node_modules/.bb-toolchain')); await buildPluginServer(root, bbPackage.version, toolchain); await buildPluginApp(root, bbPackage.version, toolchain);\"",
     "lint": "eslint . --ext .ts,.tsx",
     "test": "vitest run --config vitest.config.ts",
