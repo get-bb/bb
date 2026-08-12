@@ -30,9 +30,7 @@ export class MockPlatformFixtureError extends Error {
 
 interface PlatformBacking {
   readonly sbomBytes: Uint8Array;
-  readonly sbomSha256: string;
   readonly spdxBytes: Uint8Array;
-  readonly spdxSha256: string;
   readonly vexFailures: ReadonlyMap<string, string>;
 }
 
@@ -199,11 +197,17 @@ export function createMockPlatformState(fixtureRoot: string): MockPlatformState 
   }
 
   const initialComponents = new Map<string, Record<string, unknown>>();
-  for (const component of componentRows) {
+  componentRows.forEach((component, index) => {
     const id = stringField(component, "id", "platform component");
     if (initialComponents.has(id)) throw new MockPlatformFixtureError(`Duplicate component id: ${id}`);
-    initialComponents.set(id, cloneRecord(component));
-  }
+    initialComponents.set(id, {
+      ...cloneRecord(component),
+      // The frozen corpus has no override/exclusion columns. Preserve its one
+      // version-change case as edited and one deterministic tail row as excluded.
+      edited: component.priorVersion !== component.version,
+      excluded: index === componentRows.length - 1,
+    });
+  });
   for (const finding of initialFindings.values()) {
     const componentId = stringField(finding, "componentId", "platform finding");
     if (!initialComponents.has(componentId)) {
@@ -335,9 +339,7 @@ export function createMockPlatformState(fixtureRoot: string): MockPlatformState 
   state.reset();
   backingByState.set(state, {
     sbomBytes: Uint8Array.from(sbomBytes),
-    sbomSha256: sha256(sbomBytes),
     spdxBytes: Uint8Array.from(spdxBytes),
-    spdxSha256: sha256(spdxBytes),
     vexFailures,
   });
   return state;

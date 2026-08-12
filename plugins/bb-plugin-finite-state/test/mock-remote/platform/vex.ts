@@ -149,6 +149,9 @@ export function registerVexHandlers(
       ) {
         return error(400, "INVALID_VEX_CLEAR", "Bulk VEX clear request is invalid");
       }
+      if (!state.versions.has(params.projectVersionId)) {
+        return error(404, "VERSION_NOT_FOUND", "Version was not found");
+      }
       for (const findingId of body.findingIds) {
         for (const finding of matchingFindings(state, params.projectVersionId, findingId)) {
           finding.vexStatus = null;

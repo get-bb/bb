@@ -1,38 +1,10 @@
 import type { MockHandlerRegistry } from "../types.js";
+import {
+  invalidPlatformPage,
+  platformArrayPage,
+  platformPageBounds,
+} from "./paging.js";
 import type { MockPlatformState } from "./state.js";
-
-interface PageBounds {
-  readonly offset: number;
-  readonly limit: number;
-}
-
-function pageBounds(request: Request): PageBounds | null {
-  const url = new URL(request.url);
-  const offset = Number(url.searchParams.get("offset") ?? "0");
-  const limit = Number(url.searchParams.get("limit") ?? "20");
-  return Number.isSafeInteger(offset) && offset >= 0 && Number.isSafeInteger(limit) && limit >= 1 && limit <= 1_000
-    ? { offset, limit }
-    : null;
-}
-
-function badPage(): Response {
-  return Response.json(
-    { error: { code: "PLATFORM_INVALID_PAGE", message: "offset or limit is invalid" } },
-    { status: 400 },
-  );
-}
-
-function arrayPage(request: Request, values: readonly Record<string, unknown>[]): Response {
-  const bounds = pageBounds(request);
-  if (bounds === null) return badPage();
-  return Response.json(values.slice(bounds.offset, bounds.offset + bounds.limit), {
-    headers: {
-      "X-Total-Count": String(values.length),
-      "X-Offset": String(bounds.offset),
-      "X-Limit": String(bounds.limit),
-    },
-  });
-}
 
 function findingComments(
   state: MockPlatformState,
@@ -67,7 +39,7 @@ function detailRows(request: Request, state: MockPlatformState): Response {
     );
   }
   const includeComments = new URL(request.url).searchParams.get("includeComments") === "true";
-  return arrayPage(
+  return platformArrayPage(
     request,
     values.map((finding) => ({
       ...structuredClone(finding),
@@ -127,8 +99,8 @@ export function registerFindingHandlers(
           { status: 404 },
         );
       }
-      const bounds = pageBounds(request);
-      if (bounds === null) return badPage();
+      const bounds = platformPageBounds(request);
+      if (bounds === null) return invalidPlatformPage();
       const values = versionFindings(state, params.projectVersionId);
       return Response.json({
         items: values.slice(bounds.offset, bounds.offset + bounds.limit),
@@ -161,7 +133,7 @@ export function registerFindingHandlers(
       const members = projectVersionId === null
         ? values
         : values.filter((event) => event.projectVersionId === projectVersionId);
-      return arrayPage(request, members);
+      return platformArrayPage(request, members);
     },
   );
 
@@ -181,6 +153,8 @@ export function registerFindingHandlers(
   };
   registerSummary(
     "platform:GET:/public/v0/project/version/{projectVersionId}/findings/exploit/counts",
+    // The frozen finding corpus has no exploit/category facets. These constants
+    // state that fixture limitation explicitly; status and severity remain data-driven.
     (findings) => ({
       withExploit: 0,
       withoutExploit: findings.length,

@@ -56,6 +56,12 @@ async function collect<T>(pages: AsyncIterable<{ items: T[] }>): Promise<T[]> {
   return values;
 }
 
+async function artifactBytes(artifact: { stream(): AsyncIterable<Uint8Array> }): Promise<Buffer> {
+  const chunks: Uint8Array[] = [];
+  for await (const chunk of artifact.stream()) chunks.push(chunk);
+  return Buffer.concat(chunks);
+}
+
 function request(path: string, init?: RequestInit): [string, RequestInit] {
   return [
     `http://platform.mock${path}`,
@@ -196,6 +202,58 @@ describe("mock-direct-platform-data", () => {
     expect(findings.slice(3).map((finding) => state.vexTuple(projectVersionId, String(finding.id)))).toEqual(before.slice(3));
   });
 
+  it("clears VEX for an owning version and rejects a foreign version", async () => {
+    const { client, harness, state } = setup();
+    const finding = state.findings.values().next().value;
+    const projectVersionId = String(finding?.projectVersionId);
+    const findingId = String(finding?.id);
+    expect(state.vexTuple(projectVersionId, findingId)?.status).toBe("IN_TRIAGE");
+    await expect(client.clearVexStatus({ projectVersionId, findingIds: [findingId] })).resolves.toBeUndefined();
+    expect(state.vexTuple(projectVersionId, findingId)).toEqual({
+      status: null,
+      response: null,
+      justification: null,
+      reason: null,
+    });
+    await harness.reset("platform");
+    const clearRequest = {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ findingIds: [findingId] }),
+    } satisfies RequestInit;
+    const [clearUrl, clearInit] = request(
+      `/public/v0/findings/${projectVersionId}/status/clear/bulk`,
+      clearRequest,
+    );
+    expect((await harness.platform.fetch(clearUrl, clearInit)).status).toBe(204);
+    const [foreignUrl, foreignInit] = request(
+      "/public/v0/findings/pv-does-not-exist/status/clear/bulk",
+      clearRequest,
+    );
+    expect((await harness.platform.fetch(foreignUrl, foreignInit)).status).toBe(404);
+  });
+
+  it("applies single and bulk VEX decisions to every physical duplicate UUID row", async () => {
+    const { client, harness, state } = setup();
+    const projectVersionId = "pv-a481df87dadf";
+    const findingId = "8000000000000000027";
+    const duplicates = () => [...state.findings.values()].filter(
+      (finding) => finding.projectVersionId === projectVersionId && finding.id === findingId,
+    );
+    expect(duplicates()).toHaveLength(2);
+    await client.setVexStatus({ projectVersionId, findingId, status: "RESOLVED" });
+    expect(duplicates().map((finding) => finding.vexStatus)).toEqual(["RESOLVED", "RESOLVED"]);
+    await harness.reset("platform");
+    await client.batchSetVexStatus({
+      projectVersionId,
+      findings: [{ findingId, status: "FALSE_POSITIVE" }],
+    });
+    expect(duplicates().map((finding) => finding.vexStatus)).toEqual([
+      "FALSE_POSITIVE",
+      "FALSE_POSITIVE",
+    ]);
+  });
+
   it("freezes the upstream 5000 ceiling separately from the 500-row planner chunk", async () => {
     const { harness } = setup();
     expect(VEX_RESUMABLE_CHUNK_SIZE).toBe(500);
@@ -229,6 +287,8 @@ describe("mock-direct-platform-data", () => {
         [...state.findingComments.get(currentVersionId)!.values()].some((comment) => comment.findingId === finding.id),
     );
     expect(detailFinding).toBeDefined();
+    expect([...state.findingComments.keys()]).toEqual([currentVersionId]);
+    expect(state.findingComments.has(priorVersionId)).toBe(false);
     expect(await collect(client.listFindingComments({
       projectVersionId: currentVersionId,
       findingId: String(detailFinding?.id),
@@ -268,15 +328,28 @@ describe("mock-direct-platform-data", () => {
     const { client, state } = setup();
     const projectVersionId = String([...state.versions.values()].find((version) => version.priorVersionId !== null)?.id);
     const artifact = await client.downloadSbom({ projectVersionId, format: "cyclonedx", includeVex: true });
-    const bytes: Uint8Array[] = [];
-    for await (const chunk of artifact.stream()) bytes.push(chunk);
-    const joined = Buffer.concat(bytes);
+    const joined = await artifactBytes(artifact);
     expect(artifact.mediaType).toBe("application/vnd.cyclonedx+json");
     expect(artifact.size).toBe(joined.byteLength);
     expect(artifact.sha256).toBe(createHash("sha256").update(joined).digest("hex"));
-    const sbom = JSON.parse(joined.toString("utf8")) as { components: Array<Record<string, Json>> };
+    const sbom = JSON.parse(joined.toString("utf8")) as {
+      components: Array<Record<string, Json>>;
+      metadata: { component: { version: string }; properties: Json[] };
+      vulnerabilities: Json[];
+    };
     expect(sbom.components).toHaveLength(900);
     expect(new Set(sbom.components.map((component) => component["bom-ref"]))).toEqual(new Set(state.components.keys()));
+    expect(sbom.metadata.component.version).toBe("2.4.0");
+    expect(sbom.vulnerabilities.length).toBeGreaterThan(0);
+
+    const withoutVex = await client.downloadSbom({ projectVersionId, format: "cyclonedx", includeVex: false });
+    const withoutVexBytes = await artifactBytes(withoutVex);
+    expect(withoutVex.sha256).not.toBe(artifact.sha256);
+    expect(JSON.parse(withoutVexBytes.toString("utf8"))).not.toHaveProperty("vulnerabilities");
+    const priorVersionId = String([...state.versions.values()].find((version) => version.priorVersionId === null)?.id);
+    const prior = await client.downloadSbom({ projectVersionId: priorVersionId, format: "cyclonedx", includeVex: true });
+    expect(prior.sha256).not.toBe(artifact.sha256);
+
     const spdx = await client.downloadSbom({ projectVersionId, format: "spdx", includeVex: false });
     expect(spdx.mediaType).toBe("application/spdx+json");
     expect((await spdx.readJson<{ packages: Json[] }>(1_000_000)).packages).toHaveLength(900);
@@ -290,6 +363,21 @@ describe("mock-direct-platform-data", () => {
     expect(await collect(client.listComponents({ filter: `name==${String(withPurl?.name)}` }))).toEqual([
       expect.objectContaining({ id: withPurl?.id, purl: withPurl?.purl }),
     ]);
+  });
+
+  it("filters components by excluded and manual-edit state without losing corpus identities", async () => {
+    const { client } = setup();
+    const included = await collect(client.listComponents({ excluded: false }));
+    const excluded = await collect(client.listComponents({ excluded: true }));
+    const edited = await collect(client.listComponents({ excluded: false, editStatus: "edited" }));
+    const unedited = await collect(client.listComponents({ excluded: false, editStatus: "unedited" }));
+    expect(included).toHaveLength(899);
+    expect(excluded).toEqual([expect.objectContaining({ excluded: true })]);
+    expect(edited).toEqual([
+      expect.objectContaining({ id: "component-0002", edited: true }),
+    ]);
+    expect(unedited).toHaveLength(898);
+    expect(new Set([...included, ...excluded].map((component) => component.id)).size).toBe(900);
   });
 
   it("reset restores byte-equivalent logical state", async () => {

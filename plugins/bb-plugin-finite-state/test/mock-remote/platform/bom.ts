@@ -1,29 +1,11 @@
+import { createHash } from "node:crypto";
+
 import type { MockHandlerRegistry } from "../types.js";
+import { platformArrayPage } from "./paging.js";
 import { platformSbom, type MockPlatformState } from "./state.js";
 
 function badRequest(code: string, message: string): Response {
   return Response.json({ error: { code, message } }, { status: 400 });
-}
-
-function bounds(request: Request): { offset: number; limit: number } | null {
-  const url = new URL(request.url);
-  const offset = Number(url.searchParams.get("offset") ?? "0");
-  const limit = Number(url.searchParams.get("limit") ?? "20");
-  return Number.isSafeInteger(offset) && offset >= 0 && Number.isSafeInteger(limit) && limit >= 1 && limit <= 1_000
-    ? { offset, limit }
-    : null;
-}
-
-function page(request: Request, values: readonly Record<string, unknown>[]): Response {
-  const paging = bounds(request);
-  if (paging === null) return badRequest("PLATFORM_INVALID_PAGE", "offset or limit is invalid");
-  return Response.json(values.slice(paging.offset, paging.offset + paging.limit), {
-    headers: {
-      "X-Total-Count": String(values.length),
-      "X-Offset": String(paging.offset),
-      "X-Limit": String(paging.limit),
-    },
-  });
 }
 
 function rsqlFilter(
@@ -56,17 +38,84 @@ function sortComponents(values: Record<string, unknown>[], sort: string | null):
   });
 }
 
+function scopedSbomBytes(
+  state: MockPlatformState,
+  projectVersionId: string,
+  format: "cyclonedx" | "spdx",
+  includeVex: boolean,
+): Uint8Array {
+  const backing = platformSbom(state);
+  const document = JSON.parse(
+    Buffer.from(format === "cyclonedx" ? backing.sbomBytes : backing.spdxBytes).toString("utf8"),
+  ) as Record<string, unknown>;
+  const version = state.versions.get(projectVersionId);
+  if (format === "cyclonedx") {
+    const metadata = document.metadata as Record<string, unknown>;
+    const component = metadata.component as Record<string, unknown>;
+    component.version = version?.name;
+    metadata.properties = [
+      { name: "finite-state:projectVersionId", value: projectVersionId },
+      { name: "finite-state:includeVex", value: String(includeVex) },
+    ];
+    if (includeVex) {
+      const vulnerabilities = new Map<string, Record<string, unknown>>();
+      for (const finding of state.findings.values()) {
+        if (finding.projectVersionId !== projectVersionId || typeof finding.vexStatus !== "string") continue;
+        vulnerabilities.set(String(finding.id), {
+          id: finding.cve,
+          affects: [{ ref: finding.componentId }],
+          analysis: {
+            state: finding.vexStatus,
+            response: typeof finding.vexResponse === "string" ? [finding.vexResponse] : [],
+            justification: typeof finding.vexJustification === "string" ? finding.vexJustification : null,
+            detail: typeof finding.vexReason === "string" ? finding.vexReason : null,
+          },
+        });
+      }
+      document.vulnerabilities = [...vulnerabilities.values()];
+    } else {
+      delete document.vulnerabilities;
+    }
+  } else {
+    document.name = `Eagle Connected Gateway ${String(version?.name)}`;
+    document.documentNamespace = `https://finite-state.example/sbom/${projectVersionId}`;
+    document.annotations = includeVex
+      ? [...state.findings.values()]
+          .filter((finding) => finding.projectVersionId === projectVersionId && typeof finding.vexStatus === "string")
+          .map((finding) => ({
+            annotationType: "OTHER",
+            annotator: "Tool: Finite State mock",
+            annotationDate: "2026-05-12T14:30:00.000Z",
+            comment: `VEX ${String(finding.id)}=${String(finding.vexStatus)}`,
+          }))
+      : [];
+  }
+  return Buffer.from(`${JSON.stringify(document, null, 2)}\n`, "utf8");
+}
+
 export function registerBomHandlers(
   registry: MockHandlerRegistry,
   state: MockPlatformState,
 ): void {
   registry.register("platform:GET:/public/v0/components", ({ request }) => {
     const url = new URL(request.url);
-    const filtered = rsqlFilter([...state.components.values()], url.searchParams.get("filter"));
+    const excluded = url.searchParams.get("excluded") ?? "false";
+    const editStatus = url.searchParams.get("editStatus") ?? "any";
+    if (
+      (excluded !== "true" && excluded !== "false") ||
+      (editStatus !== "any" && editStatus !== "edited" && editStatus !== "unedited")
+    ) {
+      return badRequest("PLATFORM_INVALID_COMPONENT_FILTER", "Component filter is invalid");
+    }
+    const byState = [...state.components.values()].filter((component) => {
+      const excludedMatches = component.excluded === (excluded === "true");
+      const editedMatches = editStatus === "any" || component.edited === (editStatus === "edited");
+      return excludedMatches && editedMatches;
+    });
+    const filtered = rsqlFilter(byState, url.searchParams.get("filter"));
     if (filtered === null) return badRequest("PLATFORM_INVALID_FILTER", "Component filter is invalid");
-    if (url.searchParams.get("excluded") === "true") filtered.splice(0);
     sortComponents(filtered, url.searchParams.get("sort"));
-    return page(request, filtered);
+    return platformArrayPage(request, filtered);
   });
 
   registry.register("platform:GET:/public/v0/components/search", ({ request }) => {
@@ -84,19 +133,25 @@ export function registerBomHandlers(
         (versionPattern === null || versionPattern.test(String(component.version)));
     });
     sortComponents(matches, url.searchParams.get("sort"));
-    return page(request, matches);
+    return platformArrayPage(request, matches);
   });
 
-  const download = (format: "cyclonedx" | "spdx") => ({ params }: { params: Readonly<Record<string, string>> }): Response => {
+  const download = (format: "cyclonedx" | "spdx") => ({
+    request,
+    params,
+  }: {
+    request: Request;
+    params: Readonly<Record<string, string>>;
+  }): Response => {
     if (!state.versions.has(params.projectVersionId)) {
       return Response.json(
         { error: { code: "VERSION_NOT_FOUND", message: "Version was not found" } },
         { status: 404 },
       );
     }
-    const artifact = platformSbom(state);
-    const bytes = format === "cyclonedx" ? artifact.sbomBytes : artifact.spdxBytes;
-    const hash = format === "cyclonedx" ? artifact.sbomSha256 : artifact.spdxSha256;
+    const includeVex = new URL(request.url).searchParams.get("includeVex") !== "false";
+    const bytes = scopedSbomBytes(state, params.projectVersionId, format, includeVex);
+    const hash = createHash("sha256").update(bytes).digest("hex");
     return new Response(Uint8Array.from(bytes), {
       headers: {
         "Content-Type": format === "cyclonedx" ? "application/vnd.cyclonedx+json" : "application/spdx+json",
