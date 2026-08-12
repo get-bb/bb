@@ -41,7 +41,10 @@ vi.mock("@bb/shared-ui/drawer", async () => {
     onPointerDownOutside?: CapturedPointerDownOutside;
   }
 
-  const DrawerContent = React.forwardRef<HTMLDivElement, MockDrawerContentProps>(
+  const DrawerContent = React.forwardRef<
+    HTMLDivElement,
+    MockDrawerContentProps
+  >(
     (
       {
         children,
@@ -240,9 +243,9 @@ describe("ResponsiveDrawerShell", () => {
     document.body.appendChild(outsideButton);
 
     try {
-      expect(
-        fireDrawerPointerDownOutside(outsideButton).defaultPrevented,
-      ).toBe(false);
+      expect(fireDrawerPointerDownOutside(outsideButton).defaultPrevented).toBe(
+        false,
+      );
     } finally {
       outsideButton.remove();
     }
@@ -323,6 +326,103 @@ describe("PersistentResponsiveDrawerShell", () => {
     expect(onOpenChange).toHaveBeenCalledTimes(2);
   });
 
+  it("lets a nested portaled surface handle Escape first", () => {
+    mockPointerCoarse(true);
+    const onOpenChange = vi.fn();
+    render(
+      <PersistentResponsiveDrawerShell
+        open={true}
+        onOpenChange={onOpenChange}
+        srLabel="Details"
+      >
+        <button type="button">Panel action</button>
+      </PersistentResponsiveDrawerShell>,
+    );
+
+    const nestedAction = document.createElement("button");
+    nestedAction.addEventListener("keydown", (event) => {
+      event.preventDefault();
+    });
+    document.body.appendChild(nestedAction);
+
+    try {
+      fireEvent.keyDown(nestedAction, { key: "Escape" });
+      expect(onOpenChange).not.toHaveBeenCalled();
+    } finally {
+      nestedAction.remove();
+    }
+  });
+
+  it("does not take Tab focus from a portaled child surface", () => {
+    mockPointerCoarse(true);
+    render(
+      <PersistentResponsiveDrawerShell
+        open={true}
+        onOpenChange={() => {}}
+        srLabel="Details"
+      >
+        <button type="button">Panel action</button>
+      </PersistentResponsiveDrawerShell>,
+    );
+
+    const nestedAction = document.createElement("button");
+    document.body.appendChild(nestedAction);
+    nestedAction.focus();
+
+    try {
+      fireEvent.keyDown(nestedAction, { key: "Tab" });
+      expect(document.activeElement).toBe(nestedAction);
+      fireEvent.keyDown(nestedAction, { key: "Tab", shiftKey: true });
+      expect(document.activeElement).toBe(nestedAction);
+    } finally {
+      nestedAction.remove();
+    }
+  });
+
+  it("keeps panel focus and uses the latest close callback after a parent rerender", () => {
+    mockPointerCoarse(false);
+    const requestAnimationFrame = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((callback) => {
+        callback(performance.now());
+        return 1;
+      });
+    const firstOnOpenChange = vi.fn();
+    const nextOnOpenChange = vi.fn();
+    const view = render(
+      <PersistentResponsiveDrawerShell
+        open={true}
+        onOpenChange={firstOnOpenChange}
+        srLabel="Details"
+      >
+        <input aria-label="Panel input" />
+      </PersistentResponsiveDrawerShell>,
+    );
+    const input = screen.getByRole("textbox", { name: "Panel input" });
+    input.focus();
+
+    view.rerender(
+      <PersistentResponsiveDrawerShell
+        open={true}
+        onOpenChange={nextOnOpenChange}
+        srLabel="Details"
+      >
+        <input aria-label="Panel input" />
+      </PersistentResponsiveDrawerShell>,
+    );
+
+    expect(requestAnimationFrame).toHaveBeenCalledTimes(1);
+    expect(document.activeElement).toBe(input);
+    fireEvent.click(
+      document.querySelector<HTMLElement>(
+        "[data-persistent-drawer-backdrop]",
+      ) as HTMLElement,
+    );
+    expect(firstOnOpenChange).not.toHaveBeenCalled();
+    expect(nextOnOpenChange).toHaveBeenCalledWith(false);
+    requestAnimationFrame.mockRestore();
+  });
+
   it("closes when the handle moves past the drag threshold", () => {
     mockPointerCoarse(true);
     const onOpenChange = vi.fn();
@@ -342,9 +442,10 @@ describe("PersistentResponsiveDrawerShell", () => {
     const handle = document.querySelector<HTMLElement>(
       "[data-persistent-drawer-handle]",
     ) as HTMLElement;
+    const readHeight = vi.fn(() => 400);
     Object.defineProperty(content, "clientHeight", {
       configurable: true,
-      value: 400,
+      get: readHeight,
     });
     handle.setPointerCapture = vi.fn();
 
@@ -357,5 +458,6 @@ describe("PersistentResponsiveDrawerShell", () => {
     fireEvent.pointerUp(handle, { clientY: 330, pointerId: 1 });
 
     expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(readHeight).toHaveBeenCalledTimes(1);
   });
 });

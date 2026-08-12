@@ -274,16 +274,17 @@ export function ResponsiveDrawerShell({
     },
     [onOpenChange, resetClosingKeyboardState],
   );
-  const handleContentAnimationEnd =
-    React.useCallback<React.AnimationEventHandler<HTMLDivElement>>(
-      (event) => {
-        if (event.currentTarget !== event.target) {
-          return;
-        }
-        onContentAnimationEnd?.(open);
-      },
-      [onContentAnimationEnd, open],
-    );
+  const handleContentAnimationEnd = React.useCallback<
+    React.AnimationEventHandler<HTMLDivElement>
+  >(
+    (event) => {
+      if (event.currentTarget !== event.target) {
+        return;
+      }
+      onContentAnimationEnd?.(open);
+    },
+    [onContentAnimationEnd, open],
+  );
   const handleOpenAutoFocus = React.useCallback(
     (event: Event) => {
       if (isPointerCoarse) {
@@ -371,6 +372,7 @@ type PersistentDrawerDrag = {
   lastY: number;
   lastTimeMs: number;
   velocityY: number;
+  height: number;
 };
 
 export function PersistentResponsiveDrawerShell({
@@ -392,11 +394,15 @@ export function PersistentResponsiveDrawerShell({
   const portalScopeProps = usePortalScopeProps();
   const transition = `transform ${motionDurationMs}ms ${PERSISTENT_DRAWER_EASING}`;
   const backdropTransition = `opacity ${motionDurationMs}ms ${PERSISTENT_DRAWER_EASING}`;
+  const onOpenChangeRef = React.useRef(onOpenChange);
+  React.useLayoutEffect(() => {
+    onOpenChangeRef.current = onOpenChange;
+  }, [onOpenChange]);
   const requestClose = React.useCallback(() => {
     blurActiveKeyboardInputWithin(panelRef.current);
     resetDrawerKeyboardStyles(panelRef.current);
-    onOpenChange(false);
-  }, [onOpenChange]);
+    onOpenChangeRef.current(false);
+  }, []);
 
   const reportSettled = React.useCallback(
     (settledOpen: boolean) => {
@@ -424,6 +430,9 @@ export function PersistentResponsiveDrawerShell({
     }
 
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) {
+        return;
+      }
       if (event.key === "Escape") {
         event.preventDefault();
         requestClose();
@@ -435,6 +444,13 @@ export function PersistentResponsiveDrawerShell({
 
       const panel = panelRef.current;
       if (panel === null) {
+        return;
+      }
+      const activeElement = panel.ownerDocument.activeElement;
+      if (
+        activeElement !== panel.ownerDocument.body &&
+        !panel.contains(activeElement)
+      ) {
         return;
       }
       const focusable = Array.from(
@@ -450,23 +466,24 @@ export function PersistentResponsiveDrawerShell({
 
       const first = focusable[0];
       const last = focusable[focusable.length - 1];
-      const activeElement = panel.ownerDocument.activeElement;
       if (
         event.shiftKey &&
-        (activeElement === first || activeElement === panel)
+        (activeElement === first ||
+          activeElement === panel ||
+          activeElement === panel.ownerDocument.body)
       ) {
         event.preventDefault();
         last?.focus({ preventScroll: true });
       } else if (
         !event.shiftKey &&
-        (activeElement === last || !panel.contains(activeElement))
+        (activeElement === last || activeElement === panel.ownerDocument.body)
       ) {
         event.preventDefault();
         first?.focus({ preventScroll: true });
       }
     };
 
-    document.addEventListener("keydown", handleKeyDown, true);
+    document.addEventListener("keydown", handleKeyDown);
     let focusFrame: number | null = null;
     if (!isPointerCoarse) {
       focusFrame = window.requestAnimationFrame(() => {
@@ -474,7 +491,7 @@ export function PersistentResponsiveDrawerShell({
       });
     }
     return () => {
-      document.removeEventListener("keydown", handleKeyDown, true);
+      document.removeEventListener("keydown", handleKeyDown);
       if (focusFrame !== null) {
         window.cancelAnimationFrame(focusFrame);
       }
@@ -491,13 +508,12 @@ export function PersistentResponsiveDrawerShell({
   }, [open]);
 
   const setDragPosition = React.useCallback(
-    (offsetY: number, animate: boolean) => {
+    (offsetY: number, height: number, animate: boolean) => {
       const panel = panelRef.current;
       const backdrop = backdropRef.current;
       if (panel === null || backdrop === null) {
         return;
       }
-      const height = Math.max(panel.clientHeight, 1);
       panel.style.transition = animate ? transition : "none";
       panel.style.transform = `translate3d(0, ${offsetY}px, 0)`;
       backdrop.style.transition = animate ? backdropTransition : "none";
@@ -515,14 +531,16 @@ export function PersistentResponsiveDrawerShell({
       }
       event.currentTarget.setPointerCapture(event.pointerId);
       const nowMs = Date.now();
+      const height = Math.max(panelRef.current?.clientHeight ?? 0, 1);
       dragRef.current = {
         pointerId: event.pointerId,
         startY: event.clientY,
         lastY: event.clientY,
         lastTimeMs: nowMs,
         velocityY: 0,
+        height,
       };
-      setDragPosition(0, false);
+      setDragPosition(0, height, false);
       event.preventDefault();
     },
     [open, setDragPosition],
@@ -541,7 +559,11 @@ export function PersistentResponsiveDrawerShell({
         drag.lastY = event.clientY;
         drag.lastTimeMs = nowMs;
       }
-      setDragPosition(Math.max(0, event.clientY - drag.startY), false);
+      setDragPosition(
+        Math.max(0, event.clientY - drag.startY),
+        drag.height,
+        false,
+      );
       event.preventDefault();
     },
     [setDragPosition],
@@ -554,17 +576,16 @@ export function PersistentResponsiveDrawerShell({
         return;
       }
       dragRef.current = null;
-      const panelHeight = Math.max(panelRef.current?.clientHeight ?? 0, 1);
       const offsetY = Math.max(0, event.clientY - drag.startY);
       const shouldClose =
         !cancelled &&
-        (offsetY >= panelHeight * PERSISTENT_DRAWER_CLOSE_RATIO ||
+        (offsetY >= drag.height * PERSISTENT_DRAWER_CLOSE_RATIO ||
           drag.velocityY >= PERSISTENT_DRAWER_CLOSE_VELOCITY_PX_PER_SEC);
       if (shouldClose) {
-        setDragPosition(panelHeight, true);
+        setDragPosition(drag.height, drag.height, true);
         requestClose();
       } else {
-        setDragPosition(0, true);
+        setDragPosition(0, drag.height, true);
       }
       event.preventDefault();
     },
