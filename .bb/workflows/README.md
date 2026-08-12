@@ -1,93 +1,91 @@
 # Finite State workflow factory
 
-Saved bb workflows for the `bb-plugin-finite-state` build. Each resolves by
-name from this directory:
+The four saved Finite State workflows are checked in as **dormant, validated
+source** and are runtime-quarantined pending FS-95. Every script throws this
+exact error as its first executable statement, before any `phase()` or
+`agent()` path:
 
-```sh
-bb workflows validate --name fs-work-package
-bb workflows run --name fs-work-package --args '{"taskKey":"FS-24","profile":"fs-standard"}'
-bb workflows status <run-id>
+```text
+FS-95: Finite State saved workflows are quarantined until native stage capabilities, machine-verified live Tasks readiness, and an environment editing mutex are available.
 ```
 
-These replace ad-hoc thread spawning for the repeated steps. The manual pattern
-produced 23 threads for 7 pull requests, with 30–140 minute idle gaps between
-each step because every transition waited on a coordinator dispatch.
+Do not run these workflows for autonomous work. Continue through Tasks and
+separately provisioned implementation/review threads until FS-95 supplies the
+native runtime controls described below.
 
-| Workflow | Args | What it does |
+## Dormant workflow source
+
+| Workflow | Closed args | Intended shape after FS-95 |
 |---|---|---|
-| `fs-work-package` | `{ taskKey, profile, scope? }` | FS-93 readiness preflight → implement → 3 independent reviewers → repair verified findings → verify → report and mark `in_review`; `profile` is exactly `fs-standard` or `fs-critical` |
-| `fs-contract-freeze` | `{ target }` | read-only: 4 reviewers (RPC, schema, registry, remote) → adversarial refutation → one-page decision brief for the human gate |
-| `fs-gate-review` | `{ gate, criteria? }` | run a G0–G6 gate, independently verify the evidence, rule pass/fail/inconclusive |
-| `fs-amendment-impact` | `{ amendment }` | draft-only: artifact, consumers, in-flight collisions, migration effect, fixtures |
+| `fs-work-package` | `{ taskKey, profile, scope? }` | readiness preflight → implement → 3 independent reviewers → repair → verify → report; `profile` is exactly `fs-standard` or `fs-critical` |
+| `fs-contract-freeze` | `{ target }` | 4 contract reviewers → adversarial refutation → decision brief |
+| `fs-gate-review` | `{ gate, criteria? }` | execute G0–G6 checks → independent verification → pass/fail/inconclusive ruling |
+| `fs-amendment-impact` | `{ amendment }` | artifact, consumer, collision, migration, and fixture analysis → draft |
 
-## Authoritative model policy
+The source remains intentionally complete so FS-95 can enable it after adding
+the required primitives without losing the reconciled shapes, prompts, model
+policy, or safety intent. Passing `bb workflows validate` proves syntax,
+schemas, and literal catalog selections; it does not make the scripts safe to
+execute past quarantine.
+
+## Why runtime quarantine is required
+
+The pinned bb workflows runtime cannot enforce the three guarantees FS-94
+requires:
+
+1. **Per-stage mutation capability.** `agent()` options have no permission or
+   tool restriction. Workers inherit the origin permission and reuse its
+   environment, so a prompt labelled read-only remains technically able to
+   edit files or mutate Tasks/GitHub when the origin is write-capable.
+2. **Machine-verified live Tasks readiness.** Workflow QuickJS has no native
+   readiness primitive. A preflight agent can inspect Tasks and return a
+   structured claim, but the workflow would still be trusting model-attested
+   readiness rather than a machine decision over live dependency, cluster,
+   sequence, preset, and lane state.
+3. **An environment editing mutex.** The runtime limits active runs and
+   per-run agent concurrency but does not serialize editing stages across
+   different runs that reuse one environment. Two runs could therefore reach
+   an editing stage in the same worktree concurrently.
+
+Prompt prefixes, `EDITING_PHASES`, closed schemas, and per-script batching are
+useful dormant design constraints, not executable security boundaries. FS-95
+owns native stage capabilities, live readiness enforcement, and the
+environment-scoped editing mutex. This repository does not patch the workflows
+runtime as part of FS-94.
+
+## Authoritative dormant model policy
 
 The source of truth is
 `plugins/bb-plugin-finite-state/docs/Implementation/scheduling/wp-coupling-manifest.json`:
 
-| Preset | Workflow tuple | Use |
+| Preset | Literal tuple | Dormant use |
 |---|---|---|
-| `fs-review` | `claude-code` / `claude-opus-5[1m]` / `high` | Every review and verifier |
-| `fs-standard` | `codex` / `gpt-5.6-sol` / `medium` | Routine work-package preflight, implement, repair, and report |
-| `fs-critical` | `codex` / `gpt-5.6-sol` / `xhigh` | Critical work-package stages and non-review frozen/gate synthesis |
+| `fs-review` | `claude-code` / `claude-opus-5[1m]` / `high` | Review and verifier paths |
+| `fs-standard` | `codex` / `gpt-5.6-sol` / `medium` | Routine work-package paths |
+| `fs-critical` | `codex` / `gpt-5.6-sol` / `xhigh` | Critical work-package and synthesis paths |
 
-`fs-work-package` rejects a missing or unknown profile and its read-only
-preflight rejects a profile that differs from the target WP's FS-93 manifest
-preset. No agent inherits the workflow origin's model selection.
+No dormant agent path inherits the workflow origin selection.
+`fs-work-package` has a closed schema that rejects a missing profile and any
+profile other than `fs-standard` or `fs-critical` before the script body.
 
-## Invariants these encode
+## Current operating path
 
-- **Reviewers and verifiers use Opus 5 [1m] at high; work agents use the closed
-  Sol profile.** Provider diversity and the medium/xhigh spend boundary are
-  explicit workflow literals.
-- **One editing agent at a time in a worktree.** Implement and repair edit;
-  preflight, review, and verify are read-only. Draft, brief, execute, rule, and
-  report agents may perform only the operations their prompts name and cannot
-  edit repository files.
-- **No workflow merges anything, approves a frozen artifact, or promotes a
-  gate.** `fs-gate-review` may move a gate to `in_review` and no further.
-  `fs-amendment-impact` drafts only, and human approver/reviewer identities
-  remain blank. A workflow cannot mint human authorization.
-- **FS-93 readiness is fail-closed.** Before `fs-work-package` edits, preflight
-  runs the checked-in graph validator and proves completed dependencies,
-  decision-cluster idleness and sequence, preset agreement, and lane-cap
-  compliance from live Tasks state.
-- **Verifiers re-run checks themselves** rather than trusting an earlier
-  agent's claim, and report from observed exit status.
-- **Reviewers are asked whether a defect originates in the work package
-  document or the specs**, because several already have — a repair aimed only
-  at code re-diverges on the next work package.
-- **Self-checkable findings are counted and reported**, so checks that belong
-  in the gate migrate there instead of recurring as review round trips.
+Autonomous Finite State work continues through the Tasks preset selected by
+the FS-93 manifest. The active coordinator verifies live dependency-cluster
+readiness, provisions an implementation thread in its own managed worktree,
+and dispatches independent review as a separate thread/provider. Only the
+coordinator sequences promotion and any separately authorized integration
+merge. The saved workflows neither dispatch nor coordinate this path.
 
-## Deliberately not built
-
-`fs-factory-coordinator` is specified in the bootstrap plan but is not here. It
-would promote tasks and dispatch worktrees. That is standing authority over
-what runs, and it belongs to the active coordinator and its owner, not to a
-script contributed alongside the work it dispatches. These workflows only
-check FS-93 readiness; they never dispatch the next WP.
-
-## Concurrency and worktrees
-
-Workflow workers reuse the origin environment (`environment: { type: "reuse" }
-in the workflows service), so five analysis dimensions do not provision five
-worktrees. The program's lane cap counts independently provisioned WP
-worktrees; per-run agent concurrency counts threads sharing one worktree.
-
-Even so, every parallel section batches through `MAX_CONCURRENT_AGENTS = 4`,
-matching FS-93's current lane cap and ensuring only read-only agents overlap.
-The workflows plugin's global active-run limit is a separate ceiling. Before
-promotion to six lanes, the coordinator must run the FS-93 promotion validator
-with live state and confirm both global workflow capacity and per-run agent
-capacity are at least six. After the manifest's `currentLaneCap` is advanced to
-six, update the checked-in workflow cap in the same reviewed change; the
-deterministic validator will reject either side advancing alone.
+The current four-worktree cap remains a program scheduling rule. Future
+six-lane promotion still requires the FS-93 promotion validator and verified
+global workflow capacity, but changing capacity alone does not lift this
+quarantine. FS-95 must land and the dormant factory must receive fresh
+independent exact-head qualification before execution is enabled.
 
 ## Deterministic qualification
 
-Run the local policy/shape check and validate every saved workflow against the
-live provider catalog:
+Validate dormant source and the runtime quarantine:
 
 ```sh
 fnm exec --using=22.19.0 -- node .bb/workflows/validate-fs-workflows.mjs
@@ -98,21 +96,29 @@ bb workflows validate --name fs-amendment-impact
 ```
 
 The deterministic check reads the FS-93 manifest directly; runtime workflow
-loading does not import plugin code. It checks every literal tuple, closed input
-and phase shape, the mutation boundary, the readiness guard, and concurrency.
+loading does not import plugin code. It proves the exact unconditional FS-95
+throw is the first executable statement in every script and occurs before all
+`phase()`/`agent()` paths. It also preserves checks for dormant literal tuples,
+closed args, declared phase shape, intended mutation phases, and batching.
 
-## FS-94 repair record
+Valid-input run attempts must fail with the exact FS-95 error and show zero
+agent calls. The `fs-work-package` missing-profile and unknown-profile cases
+must continue to fail at input validation before script execution.
+
+## FS-94 repair and incident record
 
 PR #13 was merged without independent GitHub or Task review evidence while the
-PR #6 exact-base frozen audit was active. FS-94 repairs its model and safety
-policy. No further integration merge is authorized without independent review,
-green integration CI, and explicit sequencing by the active coordinator. No
-workflow in this directory can merge or approve that integration step.
+PR #6 exact-base frozen audit was active. FS-94 repaired its stale model policy,
+qualified the dormant source, and quarantined execution after independent
+review found the pinned runtime could not enforce the claimed boundaries. No
+further integration merge is authorized without fresh independent review,
+green integration CI, and explicit sequencing by the active coordinator.
+
+`fs-factory-coordinator` remains deliberately absent. A saved script must not
+hold standing authority to promote tasks or dispatch worktrees.
 
 ## Conventions
 
 Scripts are plain JavaScript, not TypeScript. Wall-clock and random-number
-operations throw, because they would break resume. Validate before running, and
-prefer `--name` over pasting source. A run can be resumed with
-`--resume <run-id>`; the longest unchanged prefix of successful agent calls is
-replayed from cache.
+operations throw because they break resume. Validate source before any future
+FS-95 enablement change and prefer `--name` over pasted source.

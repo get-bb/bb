@@ -15,6 +15,8 @@ export const meta = {
   ],
 };
 
+throw new Error("FS-95: Finite State saved workflows are quarantined until native stage capabilities, machine-verified live Tasks readiness, and an environment editing mutex are available.");
+
 const MAX_CONCURRENT_AGENTS = 4;
 const EDITING_PHASES = [];
 

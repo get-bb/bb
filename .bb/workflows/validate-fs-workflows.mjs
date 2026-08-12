@@ -5,6 +5,9 @@ import { fileURLToPath } from "node:url";
 
 const workflowDirectory = dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = join(workflowDirectory, "..", "..");
+const QUARANTINE_ERROR =
+  "FS-95: Finite State saved workflows are quarantined until native stage capabilities, machine-verified live Tasks readiness, and an environment editing mutex are available.";
+const QUARANTINE_STATEMENT = `throw new Error(${JSON.stringify(QUARANTINE_ERROR)});`;
 const manifestPath = join(
   repositoryRoot,
   "plugins/bb-plugin-finite-state/docs/Implementation/scheduling/wp-coupling-manifest.json",
@@ -44,6 +47,49 @@ function readMeta(source, fileName) {
   assert.notEqual(end, -1, `${fileName}: meta declaration must end with a semicolon`);
   const literal = source.slice(prefix.length, end);
   return Function(`"use strict"; return (${literal});`)();
+}
+
+function assertRuntimeQuarantine(source, fileName) {
+  const metaPrefix = "export const meta = ";
+  const metaEnd = source.indexOf(";\n", metaPrefix.length);
+  assert.notEqual(metaEnd, -1, `${fileName}: meta declaration must end with a semicolon`);
+  const afterMeta = source.slice(metaEnd + 2);
+  const leadingWhitespace = afterMeta.match(/^\s*/)[0].length;
+  const quarantineOffset = metaEnd + 2 + leadingWhitespace;
+
+  assert.equal(
+    source.slice(quarantineOffset, quarantineOffset + QUARANTINE_STATEMENT.length),
+    QUARANTINE_STATEMENT,
+    `${fileName}: the exact FS-95 quarantine must be the first executable statement`,
+  );
+  assert.equal(
+    source.split(QUARANTINE_STATEMENT).length - 1,
+    1,
+    `${fileName}: the exact FS-95 quarantine must occur once`,
+  );
+
+  const executablePaths = [source.search(/\bphase\s*\(/), source.search(/\bagent\s*\(/)].filter(
+    (offset) => offset !== -1,
+  );
+  assert.ok(executablePaths.length > 0, `${fileName}: dormant phase/agent source is missing`);
+  assert.ok(
+    executablePaths.every((offset) => offset > quarantineOffset + QUARANTINE_STATEMENT.length),
+    `${fileName}: a phase or agent path precedes the FS-95 quarantine`,
+  );
+}
+
+function assertQuarantineRegressionCases(source, fileName) {
+  const withoutQuarantine = source.replace(QUARANTINE_STATEMENT, "");
+  assert.throws(
+    () => assertRuntimeQuarantine(withoutQuarantine, fileName),
+    /exact FS-95 quarantine must be the first executable statement/,
+    `${fileName}: validator must reject quarantine removal`,
+  );
+  assert.throws(
+    () => assertRuntimeQuarantine(`${withoutQuarantine}\n${QUARANTINE_STATEMENT}\n`, fileName),
+    /exact FS-95 quarantine must be the first executable statement/,
+    `${fileName}: validator must reject quarantine reordering`,
+  );
 }
 
 function readEditingPhases(source, fileName) {
@@ -105,6 +151,8 @@ const policyTuples = new Map(
 for (const [fileName, shape] of Object.entries(workflowShapes)) {
   const source = await readFile(join(workflowDirectory, fileName), "utf8");
   const meta = readMeta(source, fileName);
+  assertRuntimeQuarantine(source, fileName);
+  assertQuarantineRegressionCases(source, fileName);
 
   assert.deepEqual(
     meta.phases.map((phase) => phase.title),
@@ -194,5 +242,5 @@ for (const reportBoundary of [
 }
 
 console.log(
-  `Validated ${Object.keys(workflowShapes).length} Finite State workflows against FS-93: tuples, closed args, declared phases, mutation boundary, readiness, and concurrency cap ${manifest.dispatchPolicy.currentLaneCap}.`,
+  `Validated ${Object.keys(workflowShapes).length} quarantined Finite State workflows: the exact FS-95 throw is first, dormant tuples and closed shapes match FS-93, and no phase/agent path can precede quarantine.`,
 );
