@@ -6,8 +6,10 @@
 
 - macOS persistent host
 - Linux persistent host
-- Windows persistent host (native PowerShell, CMD, and `C:\` / UNC paths)
 - Windows via Ubuntu on WSL2
+- Native Windows host from a source checkout (PowerShell, CMD, `C:\` / UNC paths).
+  Published npm and desktop download flows still document WSL2 as the Windows
+  path until Windows CI is a required gate. See #1206.
 
 Minimum runtime: Node.js 22.19. The floor comes from Pi, whose packages declare
 `engines.node: ">=22.19.0"`.
@@ -23,7 +25,7 @@ floor only, so a release line we have not tested yet still installs rather than
 failing hard on the day it ships. The `bb-app` npm `engines` field lists the
 tested lines, which npm surfaces as a warning rather than an install failure.
 
-Native Windows is a product path:
+Native Windows from this checkout:
 
 - `npx bb-app`, the `bb` CLI (`apps/cli/bin/bb.cmd` in a source checkout), and
   a source-built desktop unpack (`pnpm --filter @bb/desktop run package:win`)

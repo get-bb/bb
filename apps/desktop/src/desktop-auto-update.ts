@@ -69,6 +69,7 @@ export interface CreateDesktopAutoUpdateServiceArgs {
 export interface ShouldEnableDesktopAutoUpdateArgs {
   env: NodeJS.ProcessEnv;
   isPackaged: boolean;
+  platform?: string;
 }
 
 interface ApplyUpdateAvailableArgs {
@@ -151,6 +152,10 @@ function formatCheckedAt(now: () => number): string {
 export function shouldEnableDesktopAutoUpdate(
   args: ShouldEnableDesktopAutoUpdateArgs,
 ): boolean {
+  const platform = args.platform ?? process.platform;
+  if (platform !== "darwin") {
+    return false;
+  }
   return args.isPackaged || args.env.BB_DESKTOP_AUTO_UPDATE === "1";
 }
 

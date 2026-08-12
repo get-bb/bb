@@ -393,12 +393,23 @@ describe("desktop auto-update service", () => {
     expect(updater.autoDownload).toBeNull();
   });
 
-  it("allows the dev-mode auto-update override", () => {
+  it("allows the dev-mode auto-update override on darwin", () => {
     expect(
       shouldEnableDesktopAutoUpdate({
         env: { BB_DESKTOP_AUTO_UPDATE: "1" },
         isPackaged: false,
+        platform: "darwin",
       }),
     ).toBe(true);
+  });
+
+  it("does not check a missing Windows update feed", () => {
+    expect(
+      shouldEnableDesktopAutoUpdate({
+        env: { BB_DESKTOP_AUTO_UPDATE: "1" },
+        isPackaged: true,
+        platform: "win32",
+      }),
+    ).toBe(false);
   });
 });
