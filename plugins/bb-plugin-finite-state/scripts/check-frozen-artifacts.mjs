@@ -149,6 +149,14 @@ function validateBaseline(baseline) {
       fail(`Invalid dependency baseline section ${section}`);
     }
   }
+  if (
+    !(
+      baseline.dependencyBaseline.amendment === null ||
+      /^(?:A|AMD)-\d{3,}$/u.test(baseline.dependencyBaseline.amendment)
+    )
+  ) {
+    fail("Invalid dependency baseline amendment");
+  }
 }
 
 function withoutFencedBlocks(source) {
@@ -226,6 +234,11 @@ async function check(root) {
 async function accept(root, amendmentId) {
   const baseline = await readJson(root, baselinePath);
   validateBaseline(baseline);
+  if (baseline.dependencyBaseline.amendment === amendmentId) {
+    fail(
+      `Amendment ${amendmentId} is already recorded for ${packagePath} and cannot be reused`,
+    );
+  }
   const recordedPath = frozenPaths.find(
     (relativePath) => baseline.artifacts[relativePath].amendment === amendmentId,
   );
@@ -249,7 +262,11 @@ async function accept(root, amendmentId) {
     return baseline.artifacts[relativePath][key] !== hashes[relativePath];
   });
   const dependencyChanged =
-    JSON.stringify(baseline.dependencyBaseline) !== JSON.stringify(dependencies);
+    dependencySections.some(
+      (section) =>
+        JSON.stringify(baseline.dependencyBaseline[section]) !==
+        JSON.stringify(dependencies[section]),
+    );
   const changedTargets = [
     ...changedArtifacts,
     ...(dependencyChanged ? [packagePath] : []),
@@ -281,7 +298,12 @@ async function accept(root, amendmentId) {
     baseline.artifacts[relativePath].active = true;
     baseline.artifacts[relativePath].amendment = amendmentId;
   }
-  if (dependencyChanged) baseline.dependencyBaseline = dependencies;
+  if (dependencyChanged) {
+    baseline.dependencyBaseline = {
+      amendment: amendmentId,
+      ...dependencies,
+    };
+  }
   await fs.writeFile(
     path.join(root, baselinePath),
     `${JSON.stringify(baseline, null, 2)}\n`,

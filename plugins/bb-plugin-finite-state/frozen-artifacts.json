@@ -47,6 +47,7 @@
     }
   },
   "dependencyBaseline": {
+    "amendment": null,
     "dependencies": {
       "@modelcontextprotocol/sdk": "^1.29.0",
       "@tanstack/react-virtual": "^3.14.2",

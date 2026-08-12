@@ -110,6 +110,7 @@ async function fixtureRoot() {
     optionalDependencies: {},
   };
   const dependencyBaseline = {
+    amendment: null,
     dependencies: { yaml: "^2.9.0", zod: "^4.3.6" },
     devDependencies: {},
     peerDependencies: {},
@@ -248,6 +249,30 @@ describe("lean contract tripwires", () => {
     expect(replay.output).toContain("cannot be reused");
   });
 
+  it("refuses to replay an amendment recorded on the dependency baseline", async () => {
+    const root = await fixtureRoot();
+    const packagePath = `${pluginRoot}/package.json`;
+    const manifest = JSON.parse(
+      await readFile(path.join(root, packagePath), "utf8"),
+    );
+    manifest.dependencies["left-pad"] = "1.3.0";
+    await write(root, packagePath, JSON.stringify(manifest));
+    await write(
+      root,
+      `${pluginRoot}/AMENDMENTS.md`,
+      `# Amendments\n\n${amendment("AMD-0900", [packagePath])}`,
+    );
+    expect(run(frozenScript, root, "--accept", "AMD-0900").status).toBe(0);
+
+    manifest.dependencies["evil-pkg"] = "1.0.0";
+    await write(root, packagePath, JSON.stringify(manifest));
+    const replay = run(frozenScript, root, "--accept", "AMD-0900");
+    expect(replay.status).toBe(1);
+    expect(replay.output).toContain("already recorded");
+    expect(replay.output).toContain(packagePath);
+    expect(replay.output).toContain("cannot be reused");
+  });
+
   it("runs the frozen check through a symlinked script path", async () => {
     const root = await fixtureRoot();
     const linkedScript = path.join(root, "check-frozen-artifacts-link.mjs");
@@ -305,6 +330,29 @@ export const icon = Star;
     expect(result.output).toContain("not raw hex values");
     expect(result.output).toContain("not raw oklch() values");
     expect(result.output).toContain("not arbitrary color utilities");
+  });
+
+  it("rejects embedded oklch literals while allowing color-mix and identifiers", () => {
+    const forbidden = lint(
+      `declare const lightness: number;
+export const computed = \`oklch(\${lightness} 0 0)\`;
+export const trailing = "oklch(0.7 0.1 250) ";
+export const gradient = "linear-gradient(oklch(1 0 0), oklch(0 0 0))";
+export const nested = "var(--x, oklch(0.5 0 0))";
+`,
+      `${pluginRoot}/lib/eslint-oklch-negative-probe.ts`,
+    );
+    expect(forbidden.status).toBe(1);
+    expect(forbidden.output.match(/not raw oklch\(\) values/g)).toHaveLength(4);
+
+    const allowed = lint(
+      `export const mixed = "color-mix(in oklch, var(--ink) 20%, var(--canvas))";
+export const identifier = "oklchPalette(value)";
+`,
+      `${pluginRoot}/lib/eslint-oklch-positive-probe.ts`,
+    );
+    expect(allowed.status).toBe(0);
+    expect(allowed.output).toBe("");
   });
 
   it("allows identifiers, non-color utilities, tokens, and Hugeicons", () => {

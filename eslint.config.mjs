@@ -59,7 +59,7 @@ const finiteStateColorSyntaxRestrictions = [
   },
   {
     selector:
-      "Literal[value=/^oklch\\s*\\([\\s\\S]*\\)$/i], TemplateElement[value.raw=/^oklch\\s*\\([\\s\\S]*\\)$/i]",
+      "Literal[value=/(?:^|[^a-zA-Z0-9_-])oklch\\s*\\(/i], TemplateElement[value.raw=/(?:^|[^a-zA-Z0-9_-])oklch\\s*\\(/i]",
     message:
       "Finite State UI colors must use approved theme tokens, not raw oklch() values.",
   },
