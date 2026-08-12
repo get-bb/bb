@@ -142,9 +142,9 @@ describe("useMobileVisualViewportHeight", () => {
       rerender(<VisualViewportShell enabled={false} />);
       expect(shell.style.top).toBe("");
       expect(shell.style.height).toBe("");
-      expect(
-        shellHeightRoot.style.getPropertyValue("--bb-shell-height"),
-      ).toBe("");
+      expect(shellHeightRoot.style.getPropertyValue("--bb-shell-height")).toBe(
+        "",
+      );
     });
   });
 
@@ -168,8 +168,7 @@ describe("useMobileVisualViewportHeight", () => {
                 />,
               );
               const shell = screen.getByTestId("shell");
-              const shellHeightRoot =
-                screen.getByTestId("shell-height-root");
+              const shellHeightRoot = screen.getByTestId("shell-height-root");
               const editor = screen.getByTestId("editor");
               expect(shell.style.top).toBe("");
               expect(shell.style.height).toBe("");
