@@ -22,8 +22,9 @@ export function createPluginContext(bb: BbPluginApi): PluginContext {
     log: bb.log,
     db() {
       if (!dbHandle) {
-        dbHandle = bb.storage.database();
-        bb.storage.migrate(dbHandle, MIGRATIONS);
+        const candidate = bb.storage.database();
+        bb.storage.migrate(candidate, MIGRATIONS);
+        dbHandle = candidate;
       }
       return dbHandle;
     },

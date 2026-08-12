@@ -241,6 +241,42 @@ describe("WP-01 scaffold", () => {
     await host.harness.lifecycle.dispose();
   });
 
+  it("db() retries migration before publishing a handle", async () => {
+    const host = createFakePluginHost({ pluginId: "finite-state" });
+    const migrateSuccessfully = host.bb.storage.migrate.bind(host.bb.storage);
+    const database = vi.spyOn(host.bb.storage, "database");
+    const migrate = vi.spyOn(host.bb.storage, "migrate");
+    const migratedHandles = new Set<
+      ReturnType<typeof host.bb.storage.database>
+    >();
+    migrate.mockImplementationOnce(() => {
+      throw new Error("induced migration failure");
+    });
+    migrate.mockImplementation((handle, migrations) => {
+      migrateSuccessfully(handle, migrations);
+      migratedHandles.add(handle);
+    });
+    const context = createPluginContext(host.bb);
+    let returnedBeforeMigration:
+      | ReturnType<typeof host.bb.storage.database>
+      | undefined;
+
+    expect(() => {
+      returnedBeforeMigration = context.db();
+    }).toThrow("induced migration failure");
+    expect(returnedBeforeMigration).toBeUndefined();
+
+    const migrated = context.db();
+
+    expect(database).toHaveBeenCalledTimes(2);
+    expect(migrate).toHaveBeenCalledTimes(2);
+    expect(migratedHandles.has(migrated)).toBe(true);
+    expect(context.db()).toBe(migrated);
+    expect(database).toHaveBeenCalledTimes(2);
+    expect(migrate).toHaveBeenCalledTimes(2);
+    await host.harness.lifecycle.dispose();
+  });
+
   it("service() memoizes by key", async () => {
     const host = createFakePluginHost({ pluginId: "finite-state" });
     const context = createPluginContext(host.bb);

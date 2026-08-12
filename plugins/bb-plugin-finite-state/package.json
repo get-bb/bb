@@ -34,8 +34,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "1.29.0",
-    "@tanstack/react-virtual": "3.14.2",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@tanstack/react-virtual": "^3.14.2",
     "@xyflow/react": "^12.11.2",
     "elkjs": "^0.12.0",
     "exceljs": "^4.4.0",
