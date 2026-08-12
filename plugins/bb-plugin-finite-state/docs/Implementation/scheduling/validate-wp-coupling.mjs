@@ -75,6 +75,8 @@ export function validateManifest(manifest) {
   if (!requireObject(manifest.presets, "presets", errors)) return errors;
   if (!requireObject(manifest.dispatchPolicy, "dispatchPolicy", errors))
     return errors;
+  if ("gateDefinitions" in manifest)
+    errors.push("manifest must not define gateDefinitions");
 
   const known = Array.isArray(manifest.scope.knownWorkPackages)
     ? manifest.scope.knownWorkPackages
@@ -135,6 +137,7 @@ export function validateManifest(manifest) {
     "fs-standard": ["codex", "gpt-5.6-sol", "medium"],
     "fs-review": ["claude-code", "claude-opus-5[1m]", "high"],
   };
+
   for (const [presetName, [provider, model, effort]] of Object.entries(
     requiredPresetValues,
   )) {
@@ -167,7 +170,6 @@ export function validateManifest(manifest) {
     "preset",
     "dependencies",
     "reason",
-    "gate",
   ];
 
   for (const entry of workPackages) {
@@ -199,8 +201,8 @@ export function validateManifest(manifest) {
     }
     dependencyMap.set(entry.wp, entry.dependencies);
 
-    if (!["merged", "sequential"].includes(entry.executionMode)) {
-      errors.push(`${entry.wp}.executionMode must be merged or sequential`);
+    if (entry.executionMode !== "sequential") {
+      errors.push(`${entry.wp}.executionMode must be sequential`);
     }
     if (!Number.isInteger(entry.sequence) || entry.sequence < 1) {
       errors.push(`${entry.wp}.sequence must be a positive integer`);
@@ -208,9 +210,9 @@ export function validateManifest(manifest) {
     if (typeof entry.reason !== "string" || entry.reason.trim() === "") {
       errors.push(`${entry.wp}.reason must be non-empty`);
     }
-    if (typeof entry.gate !== "string" || entry.gate.trim() === "") {
-      errors.push(`${entry.wp}.gate must be non-empty`);
-    }
+    if ("gate" in entry) errors.push(`${entry.wp} must not define gate`);
+    if (entry.wp === "WP56" && entry.lane !== "L6")
+      errors.push("WP56 must retain its authoritative L6 product lane");
 
     const requiresCritical = entry.lane === "L2" || entry.lane === "L4-canvas";
     const expectedPreset = requiresCritical ? "fs-critical" : "fs-standard";
@@ -231,24 +233,12 @@ export function validateManifest(manifest) {
 
   for (const [clusterId, entries] of clusters) {
     const ownerKeys = new Set(entries.map((entry) => entry.ownerKey));
-    const modes = new Set(entries.map((entry) => entry.executionMode));
     if (ownerKeys.size !== 1)
       errors.push(`${clusterId} has multiple decision owners`);
-    if (modes.size !== 1) errors.push(`${clusterId} mixes execution modes`);
 
-    const mode = entries[0]?.executionMode;
     const ordered = [...entries].sort(
       (left, right) => left.sequence - right.sequence,
     );
-    if (mode === "merged") {
-      if (ordered.some((entry) => entry.sequence !== 1)) {
-        errors.push(`${clusterId} merged members must all use sequence 1`);
-      }
-      if (ordered.length > 3)
-        errors.push(`${clusterId} merges more than three work packages`);
-      continue;
-    }
-
     for (let index = 0; index < ordered.length; index += 1) {
       const entry = ordered[index];
       const expectedSequence = index + 1;
@@ -423,8 +413,8 @@ function numberOption(options, key, fallback = 0) {
 export function main(argv = process.argv.slice(2)) {
   const options = parseCli(argv);
   const manifest = readManifest(options.manifest ?? defaultManifestPath);
-  const validationErrors = validateManifest(manifest);
   if (!("target-cap" in options)) {
+    const validationErrors = validateManifest(manifest);
     if (validationErrors.length > 0) {
       for (const error of validationErrors) console.error(`ERROR ${error}`);
       return 1;

@@ -32,6 +32,8 @@ For a candidate WP, require all of the following:
 
 WP documents list product prerequisites. The manifest may add a dispatch-only predecessor edge to serialize a coupled owner; the union is the effective dependency set.
 
+There is no separate per-WP phase or gate label. Readiness is computed from these conditions directly, preserving the Master Plan's G0–G6 product-milestone meanings.
+
 ## 3. Machine-check a cap increase
 
 Pass the live completed and active WP keys, the current cap, and configured workflow concurrency. The initial audit state intentionally fails the six-lane gate:

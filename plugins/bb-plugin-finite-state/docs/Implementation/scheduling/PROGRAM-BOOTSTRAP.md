@@ -8,9 +8,9 @@ The machine-readable source of truth is [`wp-coupling-manifest.json`](./wp-coupl
 
 The audit was performed from integration commit `1a7aaea1fd308f6817d40f81a6619b6fc46635d8`. At that point WP-01 and WP-07 were done; WP-03 through WP-06 had started; and **WP-02 plus WP-08 through WP-70 were the 64 remaining unstarted WPs**.
 
-Apply this binding test before dispatch: **if WP-A acceptance criteria cannot be made unambiguous without a design choice owned by WP-B, both WPs have one decision owner.** Keep their historical WP and Task keys, and sequence them under that owner. A merge is allowed only when it is genuinely smaller and clearer, stays below roughly one day, and touches no more than three frozen-surface files.
+Apply this binding test before dispatch: **if WP-A acceptance criteria cannot be made unambiguous without a design choice owned by WP-B, both WPs have one decision owner.** Keep their historical WP and Task keys, and sequence them under that owner. FS-93 considered a merge only when it would be genuinely smaller and clearer, stay below roughly one day, and touch no more than three frozen-surface files.
 
-FS-93 found no justified merges. The effective plan therefore remains **70 WPs total**, with **64 unstarted WPs represented by 28 remaining decision-owner clusters**. Every cluster uses sequential execution, including single-WP clusters; this makes the manifest's execution-mode field total and deterministic.
+FS-93 found no justified merges. The effective plan therefore remains **70 WPs total**, with **64 unstarted WPs represented by 28 remaining decision-owner clusters**. Every cluster uses sequential execution, including single-WP clusters; the validator rejects the unused `merged` mode rather than carrying a dead branch.
 
 ## Required candidate verdicts
 
@@ -46,6 +46,8 @@ The 15 single-WP clusters are WP-02, WP-08, WP-09, WP-10, WP-11, WP-12, WP-13, W
 Keep the current four-lane cap until WP-10, WP-11, WP-12, and WP-13 are complete and the readiness validator approves promotion. Then use a **six-lane cap**. Promotion from six to nine is conditional on all of the following: nine independent active-or-ready decision clusters, workflow concurrency of at least nine, at least 45 GiB free after all worktrees are provisioned, and a 35 GiB runtime free-space floor.
 
 Lane count is a ceiling, not a target. Never dispatch two members of one sequential cluster concurrently, even if unused capacity exists.
+
+The manifest intentionally has no per-WP `gate`, `phase`, or `milestone` field. Dispatch readiness is derived directly from effective dependencies, cluster idleness, and sequence. This avoids overloading the Master Plan's real G0–G6 product milestones; no G7 exists. The validator fails if a per-WP `gate` is reintroduced.
 
 ## Tasks surface contract
 

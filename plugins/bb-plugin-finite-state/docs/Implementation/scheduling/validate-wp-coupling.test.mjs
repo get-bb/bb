@@ -1,11 +1,19 @@
 import assert from "node:assert/strict";
+import { readFileSync, readdirSync } from "node:fs";
+import path from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 import {
   evaluatePromotion,
   readManifest,
   validateManifest,
 } from "./validate-wp-coupling.mjs";
+
+const taskDirectory = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../tasks",
+);
 
 function manifestCopy() {
   return structuredClone(readManifest());
@@ -93,6 +101,84 @@ test("L2 sync and the L4 canvas cannot use the standard model tier", () => {
       error.includes("WP31 in L4-canvas must use fs-critical"),
     ),
   );
+});
+
+test("removed gate fields and unused merged execution are rejected", () => {
+  const definitionErrors = errorsFor((manifest) => {
+    manifest.gateDefinitions = {};
+  });
+  assert(
+    definitionErrors.some((error) =>
+      error.includes("manifest must not define gateDefinitions"),
+    ),
+  );
+
+  const gateErrors = errorsFor((manifest) => {
+    manifest.workPackages.find((entry) => entry.wp === "WP65").gate = "G7";
+  });
+  assert(
+    gateErrors.some((error) => error.includes("WP65 must not define gate")),
+  );
+
+  const modeErrors = errorsFor((manifest) => {
+    manifest.workPackages.find((entry) => entry.wp === "WP65").executionMode =
+      "merged";
+  });
+  assert(
+    modeErrors.some((error) =>
+      error.includes("WP65.executionMode must be sequential"),
+    ),
+  );
+});
+
+test("WP56 retains its authoritative L6 product lane", () => {
+  const errors = errorsFor((manifest) => {
+    manifest.workPackages.find((entry) => entry.wp === "WP56").lane = "L5";
+  });
+  assert(
+    errors.some((error) =>
+      error.includes("WP56 must retain its authoritative L6 product lane"),
+    ),
+  );
+});
+
+function explicitWpDependencies(markdown) {
+  const header = markdown
+    .split("\n")
+    .find((line) => line.startsWith("**Depends on:**"));
+  assert(header, "WP document is missing its Depends on header");
+  const dependsOn = header.split("· **Blocks:**")[0];
+  const dependencies = new Set();
+  const pattern = /WP-(\d{2})(?:\s*[–-]\s*(?:WP-)?(\d{2}))?/g;
+  for (const match of dependsOn.matchAll(pattern)) {
+    const start = Number(match[1]);
+    const end = match[2] ? Number(match[2]) : start;
+    for (let number = start; number <= end; number += 1) {
+      dependencies.add(`WP${String(number).padStart(2, "0")}`);
+    }
+  }
+  return [...dependencies];
+}
+
+test("manifest dependencies are a superset of range-expanded WP headers", () => {
+  const manifest = manifestCopy();
+  const taskFiles = readdirSync(taskDirectory);
+  for (const entry of manifest.workPackages) {
+    const prefix = `WP-${entry.wp.slice(2)} `;
+    const filename = taskFiles.find((candidate) =>
+      candidate.startsWith(prefix),
+    );
+    assert(filename, `missing document for ${entry.wp}`);
+    const declared = explicitWpDependencies(
+      readFileSync(path.join(taskDirectory, filename), "utf8"),
+    );
+    for (const dependency of declared) {
+      assert(
+        entry.dependencies.includes(dependency),
+        `${entry.wp} manifest dependencies omit declared ${dependency}`,
+      );
+    }
+  }
 });
 
 test("promotion remains closed until WP10-WP13 and capacity gates pass", () => {
