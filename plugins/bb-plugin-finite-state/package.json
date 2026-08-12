@@ -1,0 +1,61 @@
+{
+  "name": "bb-plugin-finite-state",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.19.0",
+    "bb": ">=0.9",
+    "bbPluginSdk": "^0.4.1"
+  },
+  "bb": {
+    "name": "Finite State",
+    "description": "Design, analyze, secure, and prove connected products.",
+    "branding": {
+      "icon": "./assets/fs-icon.svg"
+    },
+    "server": "./server.ts",
+    "app": "./app.tsx",
+    "skills": [
+      "skills"
+    ],
+    "themes": [
+      {
+        "id": "fsds-dark",
+        "name": "Finite State Dark",
+        "css": "./themes/fsds-dark.css"
+      }
+    ]
+  },
+  "scripts": {
+    "build": "node --conditions=source --import tsx --input-type=module --eval \"import bbPackage from '../../packages/bb-app/package.json' with { type: 'json' }; import { resolve } from 'node:path'; import { buildPluginApp, buildPluginServer, resolvePluginBuildToolchain } from '@bb/plugin-build'; const root = process.cwd(); const toolchain = await resolvePluginBuildToolchain(resolve(root, '../../node_modules/.bb-toolchain')); await buildPluginServer(root, bbPackage.version, toolchain); await buildPluginApp(root, bbPackage.version, toolchain);\"",
+    "lint": "eslint . --ext .ts,.tsx",
+    "test": "vitest run --config vitest.config.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@tanstack/react-virtual": "^3.14.2",
+    "@xyflow/react": "^12.11.2",
+    "elkjs": "^0.12.0",
+    "exceljs": "^4.4.0",
+    "yaml": "^2.9.0"
+  },
+  "devDependencies": {
+    "@bb/domain": "workspace:*",
+    "@bb/plugin-build": "workspace:*",
+    "@bb/plugin-sdk": "workspace:*",
+    "@bb/tsconfig": "workspace:*",
+    "@testing-library/react": "^16.3.2",
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "better-sqlite3": "12.10.0",
+    "jsdom": "^29.0.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "typescript-7": "npm:typescript@^7.0.2",
+    "vitest": "^4.1.1"
+  }
+}
