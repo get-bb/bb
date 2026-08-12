@@ -85,7 +85,8 @@ export function ThreadTimelinePanelContent({
     displayStatus === "provisioning" || displayStatus === "starting";
   const hasActiveBackgroundWork =
     resolvedTimeline.activeWorkflows.length > 0 ||
-    resolvedTimeline.activeBackgroundCommands.length > 0;
+    resolvedTimeline.activeBackgroundCommands.length > 0 ||
+    (threadQuery.data?.activeBackgroundAgentCount ?? 0) > 0;
   const backgroundOnlyIndicatorLabel =
     displayStatus === "idle" && hasActiveBackgroundWork
       ? "Background work running"

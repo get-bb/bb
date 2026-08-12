@@ -1450,14 +1450,20 @@ export function createCodexProviderAdapter(
         type: event.type,
         scope: event.scope,
       });
-      parentToolCallId =
-        (providerThreadId
-          ? delegationParentToolCallIdsByProviderThreadId.get(providerThreadId)
-          : undefined) ??
-        consumePendingDelegationTurnLink({
+      const mappedFromProviderThread = providerThreadId
+        ? delegationParentToolCallIdsByProviderThreadId.get(providerThreadId)
+        : undefined;
+      if (mappedFromProviderThread) {
+        parentToolCallId = mappedFromProviderThread;
+        // A turn that matches an explicit agent-thread mapping must not also
+        // consume a different agent's FIFO slot on the multiplexed root.
+        removePendingDelegationCall(mappedFromProviderThread);
+      } else {
+        parentToolCallId = consumePendingDelegationTurnLink({
           providerThreadId,
           turnId: startedTurnId,
         });
+      }
     }
 
     if (!parentToolCallId && providerThreadId) {
@@ -1524,15 +1530,49 @@ export function createCodexProviderAdapter(
     });
   }
 
+  function findTrackedSubAgentByAgentThreadId(
+    agentThreadId: string,
+  ): CodexTrackedSubAgent | undefined {
+    const callId = trackedSubAgentCallIdsByAgentThreadId.get(agentThreadId);
+    if (callId) {
+      return trackedSubAgentsByCallId.get(callId);
+    }
+    for (const tracked of trackedSubAgentsByCallId.values()) {
+      if (tracked.agentThreadId === agentThreadId) {
+        return tracked;
+      }
+    }
+    return undefined;
+  }
+
+  function rearmTrackedSubAgent(tracked: CodexTrackedSubAgent): void {
+    trackedSubAgentCallIdsByAgentThreadId.set(
+      tracked.agentThreadId,
+      tracked.callId,
+    );
+    if (tracked.agentThreadId !== tracked.parentProviderThreadId) {
+      delegationParentToolCallIdsByProviderThreadId.set(
+        tracked.agentThreadId,
+        tracked.callId,
+      );
+    }
+    enqueuePendingDelegationTurnLink({
+      callId: tracked.callId,
+      parentTurnId: tracked.parentTurnId,
+      providerThreadId: tracked.parentProviderThreadId,
+    });
+  }
+
   function completeCodexTrackedSubAgent(args: {
     status: "completed" | "failed" | "interrupted";
     tracked: CodexTrackedSubAgent;
   }): ThreadEvent | null {
-    if (args.tracked.terminal) {
-      return null;
-    }
+    const alreadyTerminal = args.tracked.terminal;
     args.tracked.terminal = true;
     clearTrackedSubAgentLinks(args.tracked);
+    if (alreadyTerminal) {
+      return null;
+    }
     return buildCodexSubAgentCompletedEvent(args);
   }
 
@@ -1582,10 +1622,19 @@ export function createCodexProviderAdapter(
         });
         return startedEvent ? [startedEvent] : [];
       }
-      case "interacted":
+      case "interacted": {
         // Messaging an existing agent is activity within the original
-        // delegation, not a new timeline row.
+        // delegation, not a new timeline row. A completed agent can receive
+        // followup_task; re-arm the original parent so the next child turn
+        // is not projected as a root turn.
+        const tracked = findTrackedSubAgentByAgentThreadId(
+          activity.item.agentThreadId,
+        );
+        if (tracked?.terminal) {
+          rearmTrackedSubAgent(tracked);
+        }
         return [];
+      }
       case "interrupted": {
         const callId = trackedSubAgentCallIdsByAgentThreadId.get(
           activity.item.agentThreadId,

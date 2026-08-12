@@ -1056,14 +1056,12 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  // Version 110 makes Codex command completion wait for a late full-output
-  // record before publishing the completed item. Older daemons can publish a
-  // truncated completed item when app-server reorders those events, so
-  // enrolled machines must update for the complete command output. Version 109
-  // carried the Claude Code rate-limit adapter behavior and remains part of the
-  // protocol lineage.
-  it("uses protocol version 110 for complete Codex command output", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(110);
+  // Version 111 restores parentToolCallId on a resumed Codex child turn so
+  // enrolled daemons stop projecting that child completion as the root turn.
+  // Version 110 waits for a late full-output record before publishing a
+  // completed Codex command item.
+  it("uses protocol version 111 for resumed Codex child parent links", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(111);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {

@@ -159,4 +159,28 @@ describe("ThreadTimelinePanelContent", () => {
     expect(screen.getByText("Background work running")).not.toBeNull();
     expect(screen.queryByText("Working...")).toBeNull();
   });
+
+  it("hides the background indicator when the nested agent count returns to zero", () => {
+    mocks.activeBackgroundAgentCount = 1;
+
+    const { rerender } = render(
+      <ThreadTimelinePanelContent
+        threadId="thr-claude-nested-agent"
+        timeline={baseTimeline()}
+      />,
+    );
+
+    expect(screen.getByText("Background work running")).not.toBeNull();
+
+    mocks.activeBackgroundAgentCount = 0;
+    rerender(
+      <ThreadTimelinePanelContent
+        threadId="thr-claude-nested-agent"
+        timeline={baseTimeline()}
+      />,
+    );
+
+    expect(screen.queryByText("Background work running")).toBeNull();
+    expect(screen.queryByText("Working...")).toBeNull();
+  });
 });
