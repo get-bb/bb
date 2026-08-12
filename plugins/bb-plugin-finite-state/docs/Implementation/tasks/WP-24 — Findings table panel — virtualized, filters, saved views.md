@@ -53,7 +53,7 @@ export interface FindingsUiState {
 ```
 
 ## Acceptance criteria
-- [ ] 4,000 rows scroll at 60fps on the reference machine; 39,000-row fixture does not create 39,000 DOM nodes.
+- [ ] At the G1 gate, a scripted scroll over the 4,000-row fixture in a live bb instance, measured through `agent-browser` CDP frame tracing, shows no sustained frame time above approximately 16 ms; the 39,000-row fixture does not create 39,000 DOM nodes.
 - [ ] No Forge/network request other than plugin RPC occurs while filtering, sorting, or scrolling cached data.
 - [ ] Every required filter round-trips through route/view serialization and restores after back/forward.
 - [ ] Built-in views are `Untriaged by risk`, `Local changes`, and `Needs attention`; corrupt KV falls back safely.
@@ -69,6 +69,7 @@ export interface FindingsUiState {
 - **Error path:** malformed saved-view JSON is quarantined and defaults render without a crash.
 - **Fault path:** next-page RPC fails; already loaded rows remain visible with retry affordance.
 - Accessibility test covers roving focus and screen-reader badge text.
+- Vitest component coverage verifies the virtualization proxy (the 39,000-row fixture does not create 39,000 DOM nodes); it does not render in a real browser or measure frame rate. The G1 scripted-scroll trace supplies that evidence.
 
 ## Do not
 - Do not render an unbounded `.map()` list or fetch all rows for selection.
