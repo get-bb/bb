@@ -908,7 +908,27 @@ export function translateClaudeSdkMessage(
         });
       }
       const message = parsedMessage.data;
-      if (state.currentTurnId) {
+      // A run can report a result without ever starting a turn: a CLI-local
+      // slash command like /clear resolves before any model call, so nothing
+      // emits `turn/started` and there is no `currentTurnId` to complete.
+      // Settle it the way the synthetic no-response message above does — a
+      // pending accepted message means a prompt was dispatched and no turn has
+      // claimed it, so open the turn here and close it below. Without this the
+      // thread stays `active` indefinitely, because `run.succeeded` never fires
+      // and `active` has no other exit; a trailing result whose turn already
+      // closed (a stop finishes the open turn before the CLI's result lands)
+      // still drains to nothing, because starting the turn drained the pending
+      // message with it.
+      const turnId =
+        state.currentTurnId ??
+        (state.pendingAcceptedUserMessages.length > 0
+          ? args.ensureTurnStarted({
+              events,
+              state,
+              threadId,
+            })
+          : undefined);
+      if (turnId) {
         const contextWindowUsage = extractClaudeContextWindowUsage({
           fallbackModelContextWindow: state.selectedModelContextWindow,
           latestRequestContextTokens: state.latestRequestContextTokens,
@@ -927,7 +947,7 @@ export function translateClaudeSdkMessage(
             type: "thread/contextWindowUsage/updated",
             threadId,
             providerThreadId: "",
-            scope: turnScope(state.currentTurnId),
+            scope: turnScope(turnId),
             contextWindowUsage,
           });
         }
@@ -936,7 +956,7 @@ export function translateClaudeSdkMessage(
             type: "thread/tokenUsage/updated",
             threadId,
             providerThreadId: "",
-            scope: turnScope(state.currentTurnId),
+            scope: turnScope(turnId),
             tokenUsage,
           });
         }
@@ -968,7 +988,7 @@ export function translateClaudeSdkMessage(
                       httpStatusCode: resultErrorInfo?.httpStatusCode ?? null,
                     },
               threadId,
-              turnId: state.currentTurnId,
+              turnId,
             }),
           );
         }
@@ -986,7 +1006,7 @@ export function translateClaudeSdkMessage(
           type: "turn/completed",
           threadId,
           providerThreadId: "",
-          scope: turnScope(state.currentTurnId),
+          scope: turnScope(turnId),
           status: failed ? "failed" : "completed",
           ...(state.latestProviderCheckpointId !== undefined
             ? {

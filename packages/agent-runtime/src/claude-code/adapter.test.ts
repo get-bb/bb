@@ -2186,6 +2186,91 @@ describe("claude-code provider adapter", () => {
     );
   });
 
+  it("translateEvent settles a zero-work run that never started a turn", () => {
+    const adapter = createClaudeCodeProviderAdapter();
+
+    expect(
+      adapter.translateAcceptedCommand({
+        command: {
+          type: "turn/start",
+          threadId: "bb-thread-1",
+          providerThreadId: "claude-session-1",
+          clientRequestId: "creq_23456789af",
+          input: [promptTextInput({ text: "/clear" })],
+          options: fullProviderExecutionContext,
+        },
+      }),
+    ).toEqual([]);
+
+    // The CLI resolves /clear locally: it emits conversation_reset and then a
+    // success result, with no model call and so no assistant message to start
+    // the turn. The result has to settle it, or the thread stays active.
+    const events = adapter.translateEvent(
+      {
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        num_turns: 0,
+        result: "",
+        session_id: "claude-session-1",
+      },
+      { threadId: "bb-thread-1" },
+    );
+
+    expect(events.map((event) => event.type)).toEqual([
+      "turn/started",
+      "turn/input/accepted",
+      "turn/completed",
+    ]);
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "turn/completed",
+        scope: turnScope("turn-1"),
+        status: "completed",
+      }),
+    );
+  });
+
+  it("translateEvent ignores a trailing result once the turn has closed", () => {
+    const adapter = createClaudeCodeProviderAdapter();
+
+    adapter.translateAcceptedCommand({
+      command: {
+        type: "turn/start",
+        threadId: "bb-thread-1",
+        providerThreadId: "claude-session-1",
+        clientRequestId: "creq_23456789af",
+        input: [promptTextInput({ text: "please do this" })],
+        options: fullProviderExecutionContext,
+      },
+    });
+    adapter.translateEvent(
+      {
+        type: "assistant",
+        message: {
+          id: "msg-1",
+          role: "assistant",
+          content: [{ type: "text", text: "Hello world" }],
+        },
+        session_id: "claude-session-1",
+      },
+      { threadId: "bb-thread-1" },
+    );
+    adapter.translateEvent(
+      { type: "result", subtype: "success", session_id: "claude-session-1" },
+      { threadId: "bb-thread-1" },
+    );
+
+    // A stop finishes the open turn before the CLI's result lands, so a result
+    // with no open turn is routine. It must not open a second, empty turn.
+    expect(
+      adapter.translateEvent(
+        { type: "result", subtype: "success", session_id: "claude-session-1" },
+        { threadId: "bb-thread-1" },
+      ),
+    ).toEqual([]);
+  });
+
   it("translateEvent completes a pending turn for wrapped Claude synthetic no-response messages", () => {
     const adapter = createClaudeCodeProviderAdapter();
 
