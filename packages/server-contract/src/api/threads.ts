@@ -251,7 +251,11 @@ export type ProviderRateLimitRecoveryStatus = z.infer<
 >;
 
 export const continueAfterProviderRateLimitRequestSchema = z
-  .object({ failedRequestId: clientTurnRequestIdSchema })
+  .object({
+    failedRequestId: clientTurnRequestIdSchema,
+    /** Omitted by pre-attribution clients; the server treats omission as manual. */
+    mode: z.enum(["automatic", "manual"]).optional(),
+  })
   .strict();
 export type ContinueAfterProviderRateLimitRequest = z.infer<
   typeof continueAfterProviderRateLimitRequestSchema

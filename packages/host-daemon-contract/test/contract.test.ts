@@ -1062,7 +1062,7 @@ describe("host-daemon command schemas", () => {
   // for the actionable worktree error. Version 107 carried stopped-turn
   // provider checkpoints and remains part of the protocol lineage.
   it("uses protocol version 108 for commitless worktree source errors", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(108);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(109);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {

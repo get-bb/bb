@@ -46,11 +46,11 @@ commands.
 
 - Thread recovery is validated with the existing lifecycle commands:
   `bb thread stop`, `bb thread tell`, `bb thread spawn`, archive/unarchive, and
-  the recovery checks below. There is no current product contract for
-  `bb thread retry`; do not mark its absence from `bb thread --help` as blocked.
-  When a failed or interrupted thread should continue, inspect it first and send
-  a fresh turn with `bb thread tell`, or create a replacement with
-  `bb thread spawn` when a new thread is the right recovery path.
+  the recovery checks below. `bb thread retry` is the manual path for a failed,
+  accepted provider rate-limit turn; inspect the thread before using it. For
+  other failed or interrupted threads, send a fresh turn with `bb thread tell`,
+  or create a replacement with `bb thread spawn` when a new thread is the right
+  recovery path.
 
 ## Prerequisites
 
@@ -99,7 +99,7 @@ SERVER_LOG_DIR=$(jq -er '(.paths.serverDataDir // .server.dataDir) + "/logs"' "$
 DAEMON_LOG_DIR=$(jq -er '(.paths.daemonDataDir // .daemon.dataDir) + "/logs"' "$STATE_PATH")
 DAEMON_RESTART_PID_PATH=$(jq -er '.paths.daemonRestartPidPath' "$STATE_PATH")
 
-bb() { node apps/cli/dist/index.js "$@"; }
+bb() { env -u BB_CLI node apps/cli/dist/index.js "$@"; }
 ```
 
 The machine-facing contract is the exported env block. The state file at `$STATE_PATH`

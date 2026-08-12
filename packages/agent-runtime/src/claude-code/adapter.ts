@@ -683,6 +683,7 @@ export function createClaudeCodeProviderAdapter(
       openCompaction: undefined,
       openReasoningItemIdsByScope: new Map(),
       pendingAcceptedUserMessages: [],
+      pendingHardRateLimitRejection: undefined,
       reasoningItemCounter: 0,
       selectedModelContextWindow: null,
       tasksById: new Map(),
@@ -694,6 +695,7 @@ export function createClaudeCodeProviderAdapter(
     onTurnStart: ({ events, state, threadId, turnId }) => {
       state.latestRequestContextTokens = undefined;
       state.latestProviderCheckpointId = undefined;
+      state.pendingHardRateLimitRejection = undefined;
       drainAcceptedUserMessages({
         events,
         providerThreadId: "",
@@ -701,6 +703,9 @@ export function createClaudeCodeProviderAdapter(
         threadId,
         turnId,
       });
+    },
+    onTurnFinish: ({ state }) => {
+      state.pendingHardRateLimitRejection = undefined;
     },
     turnIdPrefix: opts?.turnIdPrefix,
   });

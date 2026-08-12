@@ -75,6 +75,12 @@ export interface ClaudeTurnState {
   openAssistantMessageIdsByScope: Map<string, string>;
   openReasoningItemIdsByScope: Map<string, string>;
   pendingAcceptedUserMessages: AcceptedUserMessageState["pendingAcceptedUserMessages"];
+  pendingHardRateLimitRejection:
+    | {
+        detail: string;
+        turnId: string;
+      }
+    | undefined;
   reasoningItemCounter: number;
   selectedModelContextWindow: number | null;
   /**
@@ -934,20 +940,39 @@ export function translateClaudeSdkMessage(
             tokenUsage,
           });
         }
-        const failed = isClaudeResultFailure(message);
+        const pendingHardRateLimitRejection =
+          state.pendingHardRateLimitRejection?.turnId === state.currentTurnId
+            ? state.pendingHardRateLimitRejection
+            : undefined;
+        const resultFailed = isClaudeResultFailure(message);
+        const failed =
+          resultFailed || pendingHardRateLimitRejection !== undefined;
         if (failed) {
+          const resultErrorInfo = buildClaudeProviderErrorInfo({
+            httpStatusCode: message.api_error_status,
+            resultSubtype: message.subtype,
+          });
           events.push(
             buildClaudeProviderErrorEvent({
-              detail: getClaudeResultErrorDetail(message),
-              errorInfo: buildClaudeProviderErrorInfo({
-                httpStatusCode: message.api_error_status,
-                resultSubtype: message.subtype,
-              }),
+              detail: resultFailed
+                ? getClaudeResultErrorDetail(message)
+                : (pendingHardRateLimitRejection?.detail ??
+                  getClaudeResultErrorDetail(message)),
+              errorInfo:
+                pendingHardRateLimitRejection === undefined
+                  ? resultErrorInfo
+                  : {
+                      category: "rate-limit",
+                      providerCode:
+                        resultErrorInfo?.providerCode ?? "rate_limit_event",
+                      httpStatusCode: resultErrorInfo?.httpStatusCode ?? null,
+                    },
               threadId,
               turnId: state.currentTurnId,
             }),
           );
         }
+        state.pendingHardRateLimitRejection = undefined;
         // Claude emits a successful result at the end of each SDK loop
         // segment. Background agents and workflows notify the CLI when they
         // settle, which reinvokes the parent model. Keep the logical bb turn
@@ -984,29 +1009,29 @@ export function translateClaudeSdkMessage(
         });
       }
       const message = parsedMessage.data;
-      events.push({
+      const rateLimitsEvent: ThreadEvent = {
         type: "provider/rateLimits/updated",
         threadId,
         providerThreadId: "",
         scope: threadScope(),
         rateLimits: normalizeClaudeRateLimits(message),
-      });
+      };
       if (!isHardClaudeRateLimitRejection(message)) {
+        events.push(rateLimitsEvent);
+        if (
+          rateLimitsEvent.rateLimits.status === "allowed" &&
+          state.pendingHardRateLimitRejection?.turnId === state.currentTurnId
+        ) {
+          state.pendingHardRateLimitRejection = undefined;
+        }
         return events;
       }
-      const turnId = state.currentTurnId ?? null;
-      events.push(
-        buildClaudeProviderErrorEvent({
-          detail: buildClaudeRateLimitEventDetail(message),
-          errorInfo: {
-            category: "rate-limit",
-            providerCode: "rate_limit_event",
-            httpStatusCode: null,
-          },
-          threadId,
-          turnId,
-        }),
-      );
+      const turnId = args.ensureTurnStarted({ events, state, threadId });
+      events.push(rateLimitsEvent);
+      state.pendingHardRateLimitRejection = {
+        detail: buildClaudeRateLimitEventDetail(message),
+        turnId,
+      };
       return events;
     }
   }

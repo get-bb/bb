@@ -688,11 +688,14 @@ bb plugin config provider-retry set maximumWait "24 hours"
 
 Pending waits are coordinated by machine/provider subscription and live only
 in the current server/plugin process. Restarting bb, reloading the plugin, or
-disabling it clears the timers without changing the original failed thread.
+disabling it clears the timers without changing the original failed thread. A
+later 429 without a fresh provider rate-limit update can still inherit the last
+blocked window during that process.
 Inspect them with `bb provider-retry status`, or cancel one from its composer
 banner or with `bb provider-retry cancel <thread-id>`. `bb thread retry`
-remains the manual recovery path. Credit or spend-control exhaustion without a
-reset time is ignored by the plugin.
+remains the manual recovery path and is labeled as manually requested in the
+timeline rather than claiming the reset occurred. Credit or spend-control
+exhaustion without a reset time is ignored by the plugin.
 
 ### Workflows plugin
 

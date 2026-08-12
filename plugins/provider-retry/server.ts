@@ -59,8 +59,8 @@ export default async function plugin(bb: BbPluginApi) {
   bb.onDispose(() => service.dispose());
 
   bb.rpc.register(providerRetryRpcContract, {
-    providerRetryCancel({ threadId }) {
-      return { cancelled: service.cancel(threadId) };
+    async providerRetryCancel({ threadId }) {
+      return { cancelled: await service.cancel(threadId) };
     },
     providerRetryStatus({ threadId }) {
       return { view: service.status(threadId) };
@@ -82,7 +82,9 @@ export default async function plugin(bb: BbPluginApi) {
   bb.events.on("thread.active", ({ thread }) => service.supersede(thread.id));
   bb.events.on("thread.idle", ({ thread }) => service.supersede(thread.id));
   bb.events.on("thread.archived", ({ thread }) => service.supersede(thread.id));
-  bb.events.on("thread.deleted", ({ thread }) => service.supersede(thread.id));
+  bb.events.on("thread.deleted", ({ thread }) =>
+    service.deleteThread(thread.id),
+  );
 
   bb.background.service("provider-retry-scheduler", {
     async start(signal) {
