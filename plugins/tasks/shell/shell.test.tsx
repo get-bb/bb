@@ -45,6 +45,14 @@ const project = {
   createdAt: "2026-07-15T00:00:00.000Z",
 };
 
+const secondProject = {
+  ...project,
+  id: "01HZZZZZZZZZZZZZZZZZZZZZP2",
+  name: "Infrastructure",
+  prefix: "INF",
+  color: "green",
+};
+
 const folder = {
   id: FOLDER_ID,
   name: "bb",
@@ -75,7 +83,8 @@ const emptyRpc = seededRpc({
 describe("tasks route grammar", () => {
   it("round-trips every route kind and decodes host-encoded subPaths", () => {
     const routes = [
-      { kind: "all" },
+      { kind: "all", view: "list" },
+      { kind: "all", view: "board" },
       { kind: "active" },
       { kind: "manage" },
       { kind: "task", taskKey: "TSK-4" },
@@ -91,7 +100,7 @@ describe("tasks route grammar", () => {
       projectId: PROJECT_ID,
       view: "board",
     });
-    expect(parseTasksRoute("")).toEqual({ kind: "all" });
+    expect(parseTasksRoute("")).toEqual({ kind: "all", view: "list" });
   });
 });
 
@@ -696,6 +705,48 @@ describe("tasks app shell", () => {
     });
   });
 
+  it("renders one All tasks board across projects, with project identity and no canceled cards by default", async () => {
+    const tasks = [
+      {
+        ...pagerTask("TSK-1", "todo", 1),
+        title: "Ship the tasks board",
+        projectId: project.id,
+      },
+      {
+        ...pagerTask("INF-1", "in_progress", 1),
+        title: "Migrate worker host",
+        projectId: secondProject.id,
+      },
+      {
+        ...pagerTask("INF-2", "canceled", 2),
+        title: "Canceled migration",
+        projectId: secondProject.id,
+      },
+    ];
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: "all?view=board" },
+      {
+        rpc: seededRpc({
+          listProjects: () => ({ projects: [project, secondProject] }),
+          sidebarSummary: () => ({ projects: [] }),
+          listTasks: (input: { activeOnly?: boolean }) => ({
+            tasks: input.activeOnly ? [] : tasks,
+          }),
+          listLabels: () => ({ labels: [] }),
+          listTaskThreads: () => ({ taskThreads: [] }),
+          listAttachments: () => ({ attachments: [] }),
+        }),
+      },
+    );
+    await slot.findByText("Ship the tasks board");
+    expect(slot.getAllByText("Tasks Plugin").length).toBeGreaterThan(1);
+    expect(slot.getAllByText("Infrastructure").length).toBeGreaterThan(1);
+    expect(slot.queryByText("Canceled migration")).toBeNull();
+    expect(slot.getByRole("button", { name: "List" })).toBeDefined();
+    expect(slot.getByRole("button", { name: "Board" })).toBeDefined();
+  });
+
   it("routes 'manage' to the manage panel via the sidebar footer", async () => {
     const slot = renderSlot(app.navPanels[0]!, { subPath: "manage" }, {
       rpc: seededRpc({ listLabels: () => ({ labels: [] }) }),
@@ -734,22 +785,26 @@ describe("tasks app shell", () => {
       builtin: false,
       createdAt: "2026-07-15T00:00:00.000Z",
     };
-    const slot = renderSlot(app.navPanels[0]!, { subPath: "all" }, {
-      rpc: seededRpc({
-        listPresets: () => ({
-          presets: [
-            basePreset,
-            {
-              ...basePreset,
-              id: "01HZZZZZZZZZZZZZZZZZZZZZE2",
-              name: "Worktree env",
-              environmentKind: "new-worktree",
-              baseBranch: "main",
-            },
-          ],
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: "all" },
+      {
+        rpc: seededRpc({
+          listPresets: () => ({
+            presets: [
+              basePreset,
+              {
+                ...basePreset,
+                id: "01HZZZZZZZZZZZZZZZZZZZZZE2",
+                name: "Worktree env",
+                environmentKind: "new-worktree",
+                baseBranch: "main",
+              },
+            ],
+          }),
         }),
-      }),
-    });
+      },
+    );
     await slot.findByText("Worktree env");
     expect(slot.getByText("Default env")).toBeDefined();
     expect(slot.getAllByLabelText("Spawns a new worktree")).toHaveLength(1);
@@ -757,14 +812,18 @@ describe("tasks app shell", () => {
 
   it("refetches sidebar data when invalidation channels fire", async () => {
     let projectCalls = 0;
-    const slot = renderSlot(app.navPanels[0]!, { subPath: "all" }, {
-      rpc: seededRpc({
-        listProjects: () => {
-          projectCalls += 1;
-          return { projects: [project] };
-        },
-      }),
-    });
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: "all" },
+      {
+        rpc: seededRpc({
+          listProjects: () => {
+            projectCalls += 1;
+            return { projects: [project] };
+          },
+        }),
+      },
+    );
     await slot.findByText("Tasks Plugin");
     const before = projectCalls;
     await slot.emitRealtime("projects:changed", { projectId: null });

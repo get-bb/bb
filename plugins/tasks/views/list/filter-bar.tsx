@@ -144,6 +144,7 @@ export function ListFilterBar({
   onSortChange,
   labelOptions,
   taskCount,
+  showSort = true,
 }: {
   filters: ListFilterState;
   onChange: (filters: ListFilterState) => void;
@@ -151,6 +152,7 @@ export function ListFilterBar({
   onSortChange: (sort: TaskSort) => void;
   labelOptions: readonly LabelFilterOption[];
   taskCount: number | undefined;
+  showSort?: boolean;
 }) {
   const keepOpen = (event: Event) => event.preventDefault();
   // Show the Label chip whenever there are options or a remembered selection
@@ -296,7 +298,7 @@ export function ListFilterBar({
       </div>
       {/* Sort and the count sit outside the scroller so they stay visible and
           aligned however far the filter chips overflow. */}
-      <SortChip sort={sort} onChange={onSortChange} />
+      {showSort ? <SortChip sort={sort} onChange={onSortChange} /> : null}
       <span className="shrink-0 whitespace-nowrap text-xs tabular-nums text-subtle-foreground">
         {taskCount === undefined
           ? ""

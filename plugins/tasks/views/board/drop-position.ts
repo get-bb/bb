@@ -55,6 +55,29 @@ export function dropNeighborsForIndex(
 }
 
 /**
+ * Finds reorder neighbors for a global board column. Cards from other
+ * projects participate in the visual insertion position but must never be
+ * sent as neighbors: board positions are stored per project.
+ */
+export function projectDropNeighbors<
+  T extends { id: string; projectId: string },
+>(column: readonly T[], task: T, visualDropIndex: number): BoardDropNeighbors {
+  const projectDropIndex = column
+    .slice(0, visualDropIndex)
+    .filter(
+      (candidate) =>
+        candidate.id !== task.id && candidate.projectId === task.projectId,
+    ).length;
+  return dropNeighborsForIndex(
+    column
+      .filter((candidate) => candidate.projectId === task.projectId)
+      .map((candidate) => candidate.id),
+    task.id,
+    projectDropIndex,
+  );
+}
+
+/**
  * Insertion slot for a pointer at `pointerY`, given the vertical centers of
  * the column's cards (top-to-bottom, dragged card excluded): the card count
  * whose center sits above the pointer.

@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useMemo,
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
@@ -8,23 +9,34 @@ import {
 import {
   TASK_STATUSES,
   type Label,
+  type Project,
   type Task,
   type TaskStatus,
   type TaskThread,
 } from "../../shared/contract.js";
 import {
   listAllTasks,
+  useProjects,
   useTasksQuery,
   useTasksRpc,
   type TasksRpc,
 } from "../../shell/data.js";
 import { useTasksNavigation } from "../../shell/routes.js";
 import { NewTaskDialog } from "../manage/index.js";
+import { ListFilterBar, type ListFilterState } from "../list/filter-bar.js";
+import {
+  listPreferenceScope,
+  loadListPreference,
+  storeListPreference,
+  type ListPreference,
+} from "../list/list-preference.js";
+import { labelFilterOptions, selectedLabelIds } from "../list/lib.js";
+import { useLabels } from "../list/data.js";
 import {
   applyBoardMove,
   BOARD_STATUSES,
   dropIndexForPointer,
-  dropNeighborsForIndex,
+  projectDropNeighbors,
   visibleBoardStatuses,
 } from "./drop-position.js";
 import { PriorityIcon, STATUS_LABELS, StatusIcon } from "./icons.js";
@@ -58,16 +70,35 @@ const EMPTY_META: BoardCardMeta = {
 
 async function fetchBoard(
   rpc: TasksRpc,
-  projectId: string,
+  projectId: string | null,
+  projectIds: readonly string[],
+  filters: {
+    statuses: readonly TaskStatus[];
+    priorities: readonly Task["priority"][];
+    labelIds: readonly string[] | null;
+  },
 ): Promise<BoardData> {
-  const tasks = await listAllTasks(rpc, { projectId });
+  const tasks = await listAllTasks(rpc, {
+    ...(projectId === null ? {} : { projectId }),
+    statuses: [...filters.statuses],
+    ...(filters.priorities.length > 0
+      ? { priorities: [...filters.priorities] }
+      : {}),
+    ...(filters.labelIds === null ? {} : { labelIds: [...filters.labelIds] }),
+  });
   const topLevel = tasks.filter((task) => task.parentTaskId === null);
 
   // Everything below decorates cards; a failure hides chips, never the board.
-  const labels = await rpc.call("listLabels", { projectId }).then(
-    (result) => result.labels,
-    () => [],
-  );
+  const labels = (
+    await Promise.all(
+      projectIds.map((id) =>
+        rpc.call("listLabels", { projectId: id }).then(
+          (result) => result.labels,
+          () => [],
+        ),
+      ),
+    )
+  ).flat();
   const subProgress = new Map<string, { done: number; total: number }>();
   for (const task of tasks) {
     if (task.parentTaskId === null) continue;
@@ -77,7 +108,7 @@ async function fetchBoard(
     subProgress.set(task.parentTaskId, entry);
   }
   const activeTaskIds = await listAllTasks(rpc, {
-    projectId,
+    ...(projectId === null ? {} : { projectId }),
     activeOnly: true,
   }).then(
     (result) => new Set(result.map((task) => task.id)),
@@ -179,6 +210,7 @@ interface TaskCardProps {
   task: Task;
   labelsById: Map<string, Label>;
   meta: BoardCardMeta;
+  project?: Project;
   ghost?: boolean;
   dragging?: boolean;
   cardRef?: (element: HTMLDivElement | null) => void;
@@ -190,6 +222,7 @@ function TaskCard({
   task,
   labelsById,
   meta,
+  project,
   ghost = false,
   dragging = false,
   cardRef,
@@ -217,6 +250,16 @@ function TaskCard({
         <span className="tabular-nums">{task.key}</span>
         <WorkingAgentsChip threads={meta.workingThreads} />
       </div>
+      {project ? (
+        <div className="mt-1 flex min-w-0 items-center gap-1.5 text-2xs font-medium text-muted-foreground">
+          <span
+            aria-hidden
+            className="size-2.5 shrink-0 rounded-sm"
+            style={{ backgroundColor: project.color }}
+          />
+          <span className="truncate">{project.name}</span>
+        </div>
+      ) : null}
       <div className="mt-1 line-clamp-2 text-sm leading-snug font-medium">
         {task.title}
       </div>
@@ -272,16 +315,80 @@ function BoardSkeleton() {
 }
 
 export interface BoardViewProps {
-  projectId: string;
+  /** null combines tasks from every current and future project. */
+  projectId: string | null;
 }
 
 export function BoardView({ projectId }: BoardViewProps) {
   const rpc = useTasksRpc();
   const navigation = useTasksNavigation();
+  const projects = useProjects();
+  const globalBoard = projectId === null;
+  const preferenceScope = listPreferenceScope(projectId, false);
+  const [preference, setPreference] = useState<ListPreference>(() =>
+    loadListPreference(preferenceScope),
+  );
+  useEffect(() => {
+    setPreference(loadListPreference(preferenceScope));
+  }, [preferenceScope]);
+  const projectIds = useMemo(
+    () =>
+      projectId === null
+        ? (projects.data ?? []).map((project) => project.id)
+        : [projectId],
+    [projectId, projects.data],
+  );
+  const labels = useLabels(projectIds);
+  const labelOptions = useMemo(
+    () => labelFilterOptions(labels.data ?? []),
+    [labels.data],
+  );
+  const labelIds = useMemo(() => {
+    if (!globalBoard || preference.filters.labelNames.length === 0) return null;
+    if (labels.data === undefined) return null;
+    return selectedLabelIds(labelOptions, preference.filters.labelNames);
+  }, [globalBoard, labelOptions, labels.data, preference.filters.labelNames]);
+  // An unfiltered All tasks board intentionally omits canceled work. Selecting
+  // Canceled in the shared Status filter remains an explicit inspection path.
+  const boardFilters = useMemo(
+    () => ({
+      statuses: globalBoard
+        ? preference.filters.statuses.length > 0
+          ? preference.filters.statuses
+          : TASK_STATUSES.filter((status) => status !== "canceled")
+        : TASK_STATUSES,
+      priorities: globalBoard ? preference.filters.priorities : [],
+      labelIds: globalBoard ? labelIds : null,
+    }),
+    [
+      globalBoard,
+      labelIds,
+      preference.filters.priorities,
+      preference.filters.statuses,
+    ],
+  );
+  const projectsById = useMemo(
+    () =>
+      new Map((projects.data ?? []).map((project) => [project.id, project])),
+    [projects.data],
+  );
+  const setFilters = (filters: ListFilterState) => {
+    setPreference((current) => {
+      const next: ListPreference = { filters, sort: current.sort };
+      storeListPreference(preferenceScope, next);
+      return next;
+    });
+  };
   const board = useTasksQuery(
-    (queryRpc) => fetchBoard(queryRpc, projectId),
+    (queryRpc) => fetchBoard(queryRpc, projectId, projectIds, boardFilters),
     ["tasks:changed", "projects:changed", "threads:changed"],
-    [projectId],
+    [
+      projectId,
+      projectIds.join(),
+      boardFilters.statuses.join(),
+      boardFilters.priorities.join(),
+      boardFilters.labelIds?.join() ?? "",
+    ],
   );
 
   // Local column state renders instantly on drop; realtime refetches replace
@@ -349,11 +456,15 @@ export function BoardView({ projectId }: BoardViewProps) {
   ) => {
     const current = columnsRef.current;
     if (!current) return;
-    const neighbors = dropNeighborsForIndex(
-      current[toStatus].map((task) => task.id),
-      taskId,
-      dropIndex,
-    );
+    const task = Object.values(current)
+      .flat()
+      .find((candidate) => candidate.id === taskId);
+    if (!task) return;
+    // Positions are intentionally scoped to a project. A global column can
+    // visually interleave projects, but its server reorder neighbors must
+    // never cross that boundary (nor can a board move change projectId).
+    const destination = current[toStatus];
+    const neighbors = projectDropNeighbors(destination, task, dropIndex);
     setColumns(applyBoardMove(current, taskId, toStatus, dropIndex));
     void rpc
       .call("boardMove", {
@@ -502,6 +613,7 @@ export function BoardView({ projectId }: BoardViewProps) {
           task={task}
           labelsById={labelsById}
           meta={metaByTaskId.get(task.id) ?? EMPTY_META}
+          project={globalBoard ? projectsById.get(task.projectId) : undefined}
           dragging={drag?.taskId === task.id}
           cardRef={(element) => {
             if (element) cardRefs.current.set(task.id, element);
@@ -550,7 +662,7 @@ export function BoardView({ projectId }: BoardViewProps) {
     );
   };
 
-  return (
+  const boardContent = (
     <div
       ref={boardRef}
       className={cn(
@@ -572,6 +684,9 @@ export function BoardView({ projectId }: BoardViewProps) {
             task={ghostTask}
             labelsById={labelsById}
             meta={metaByTaskId.get(ghostTask.id) ?? EMPTY_META}
+            project={
+              globalBoard ? projectsById.get(ghostTask.projectId) : undefined
+            }
             ghost
           />
         </div>
@@ -585,5 +700,21 @@ export function BoardView({ projectId }: BoardViewProps) {
         defaultStatus={quickAddStatus ?? undefined}
       />
     </div>
+  );
+  return globalBoard ? (
+    <div className="flex h-full min-h-0 flex-col">
+      <ListFilterBar
+        filters={preference.filters}
+        onChange={setFilters}
+        sort={preference.sort}
+        onSortChange={() => {}}
+        labelOptions={labelOptions}
+        taskCount={board.data?.tasks.length}
+        showSort={false}
+      />
+      <div className="min-h-0 flex-1">{boardContent}</div>
+    </div>
+  ) : (
+    boardContent
   );
 }

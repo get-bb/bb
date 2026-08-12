@@ -345,7 +345,7 @@ export function TasksSidebar({
         <div className="space-y-px">
           <SidebarRow
             active={route.kind === "all"}
-            onClick={() => onNavigate({ kind: "all" })}
+            onClick={() => onNavigate({ kind: "all", view: "list" })}
           >
             <Icon name="ListView" className="size-3.5 shrink-0" />
             <span className="flex-1">All tasks</span>

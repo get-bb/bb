@@ -162,7 +162,11 @@ function RouteOutlet({
 }) {
   switch (route.kind) {
     case "all":
-      return <ListView projectId={null} />;
+      return route.view === "board" && boardUsable ? (
+        <BoardView projectId={null} />
+      ) : (
+        <ListView projectId={null} />
+      );
     case "active":
       return <ListView projectId={null} activeOnly />;
     case "manage":
@@ -244,7 +248,7 @@ function TasksAppShellContent({ subPath }: PluginNavPanelProps) {
     // Routes are plain data; keying on subPath tracks every route change.
   }, [subPath]);
   const backFromTask = () =>
-    navigation.go(lastBrowseRouteRef.current ?? { kind: "all" });
+    navigation.go(lastBrowseRouteRef.current ?? { kind: "all", view: "list" });
   const onTaskRoute = route.kind === "task";
   const backRef = useRef(backFromTask);
   backRef.current = backFromTask;

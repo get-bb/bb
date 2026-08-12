@@ -329,7 +329,7 @@ export function TasksTopbar({
           onNavigate={onNavigate}
         />
       ) : null}
-      {route.kind === "project" ? (
+      {route.kind === "project" || route.kind === "all" ? (
         // Hidden in phone-width containers, where the board is unusable and
         // the shell renders the list regardless (see BOARD_MIN_WIDTH).
         <span className="hidden @md:block">

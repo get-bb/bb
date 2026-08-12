@@ -7,7 +7,7 @@ export const PANEL_PATH = "tasks";
 export type TaskViewMode = "list" | "board";
 
 export type TasksRoute =
-  | { kind: "all" }
+  | { kind: "all"; view: TaskViewMode }
   | { kind: "active" }
   | { kind: "manage" }
   | { kind: "project"; projectId: string; view: TaskViewMode }
@@ -15,8 +15,8 @@ export type TasksRoute =
 
 /**
  * subPath grammar (the trailing route below /plugins/tasks/tasks):
- *   ""                      → all tasks (default)
- *   "all"                   → all tasks
+ *   ""                      → all tasks (default list view)
+ *   "all?view=board"        → all tasks board view
  *   "active"                → tasks with agents working
  *   "manage"                → manage panel (labels, presets, folders)
  *   "task/<taskKey>"        → task detail (e.g. task/TSK-4)
@@ -40,13 +40,19 @@ export function parseTasksRoute(rawSubPath: string): TasksRoute {
   const query = queryIndex === -1 ? "" : subPath.slice(queryIndex + 1);
   const segments = path.split("/").filter((segment) => segment.length > 0);
   const head = segments[0];
-  if (head === undefined || head === "all") return { kind: "all" };
+  if (head === undefined || head === "all") {
+    return {
+      kind: "all",
+      view:
+        new URLSearchParams(query).get("view") === "board" ? "board" : "list",
+    };
+  }
   if (head === "active") return { kind: "active" };
   if (head === "manage") return { kind: "manage" };
   if (head === "task") {
     const taskKey = segments[1];
     if (taskKey !== undefined) return { kind: "task", taskKey };
-    return { kind: "all" };
+    return { kind: "all", view: "list" };
   }
   const view = new URLSearchParams(query).get("view");
   return {
@@ -59,7 +65,7 @@ export function parseTasksRoute(rawSubPath: string): TasksRoute {
 export function tasksRouteToSubPath(route: TasksRoute): string {
   switch (route.kind) {
     case "all":
-      return "all";
+      return route.view === "board" ? "all?view=board" : "all";
     case "active":
       return "active";
     case "manage":

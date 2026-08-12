@@ -4,6 +4,7 @@ import {
   applyBoardMove,
   dropIndexForPointer,
   dropNeighborsForIndex,
+  projectDropNeighbors,
   visibleBoardStatuses,
 } from "./drop-position.js";
 
@@ -36,6 +37,22 @@ describe("visibleBoardStatuses", () => {
       "done",
       "canceled",
     ]);
+  });
+});
+
+describe("projectDropNeighbors", () => {
+  it("never uses another project's card as a server reorder neighbor", () => {
+    const local = { id: "a", projectId: "project-a" };
+    const column = [
+      { id: "b", projectId: "project-b" },
+      local,
+      { id: "c", projectId: "project-a" },
+      { id: "d", projectId: "project-b" },
+    ];
+    expect(projectDropNeighbors(column, local, 3)).toEqual({
+      beforeTaskId: "c",
+      afterTaskId: null,
+    });
   });
 });
 
