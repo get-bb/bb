@@ -46,9 +46,13 @@ export function verificationGetHandler(fixtureRoot: string): MockHandler {
   };
 }
 
-export function verificationRunHandler(fixtureRoot: string): MockHandler {
+export function verificationRunHandler(
+  fixtureRoot: string,
+  registerReset?: (reset: () => void) => void,
+): MockHandler {
   const seeded = checks(fixtureRoot);
   let runNumber = 1;
+  registerReset?.(() => { runNumber = 1; });
   return async (context) => {
     const value = await context.request.json() as { check_ids?: string[]; rerun_passed?: boolean };
     const projectChecks = seeded.filter((item) => item.projectId === context.params.projectId);

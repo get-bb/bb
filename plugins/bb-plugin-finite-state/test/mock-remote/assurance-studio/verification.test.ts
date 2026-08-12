@@ -38,6 +38,11 @@ describe("mock Assurance Studio verification", () => {
         projectId: "project-4a752600a07a",
         checkIds: ["check-001", "check-002"],
       })).resolves.toEqual({ runId: "mock-verification-run-1", checksQueued: 1, status: "queued" });
+      await harness.reset("assurance-studio");
+      await expect(client.runVerificationChecks({
+        projectId: "project-4a752600a07a",
+        checkIds: ["check-001", "check-002"],
+      })).resolves.toEqual({ runId: "mock-verification-run-1", checksQueued: 1, status: "queued" });
       expect(harness.assuranceStudio.routes.map((route) => route.routeId)).not.toContain(
         "assurance-studio:POST:/api/projects/{projectId}/verification/checks",
       );

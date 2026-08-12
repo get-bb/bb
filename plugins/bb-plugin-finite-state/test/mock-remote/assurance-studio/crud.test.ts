@@ -1,10 +1,13 @@
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { afterEach, describe, expect, it } from "vitest";
 
 import { AssuranceStudioClient } from "../../../lib/remote/assurance-studio/client.js";
 import type { AsCreatableEntityKind } from "../../../lib/remote/types.js";
+import { ASSURANCE_STUDIO_CALLABLE_ROUTE_IDS } from "../generated/assurance-studio-routes.js";
 import { createMockRemote, type MockRemoteHarness } from "../server.js";
+import type { MockHandlerRegistry } from "../types.js";
 import { registerMockAssuranceStudio } from "./register.js";
 import type { AssuranceStudioState } from "./state.js";
 
@@ -47,6 +50,33 @@ afterEach(async () => {
 });
 
 describe("mock Assurance Studio CRUD", () => {
+  it("registers every frozen callable route including the exact SBOM page fixture", async () => {
+    const registered = new Set<string>();
+    registerMockAssuranceStudio({
+      register(routeId) { registered.add(routeId); },
+      onReset() {},
+    } satisfies MockHandlerRegistry, fixtureRoot);
+    expect(registered).toEqual(new Set(ASSURANCE_STUDIO_CALLABLE_ROUTE_IDS));
+
+    const { client, harness: remote } = setup();
+    const response = await remote.assuranceStudio.fetch(
+      "http://mock.invalid/api/projects/project-4a752600a07a/sbom?page=1&limit=50",
+      { headers: { "X-API-Key": apiKey } },
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual(JSON.parse(readFileSync(
+      new URL("../fixtures/assurance-studio/project-sbom-page-1.json", import.meta.url),
+      "utf8",
+    )));
+
+    const iterator = client.listProjectSbomPackages({
+      projectId: "project-4a752600a07a",
+      page: { pageSize: 50 },
+    })[Symbol.asyncIterator]();
+    const first = await iterator.next();
+    expect(first.value).toMatchObject({ total: 900, items: { length: 50 } });
+  });
+
   it("preserves page base, review outcome, audit attribution, and head checkpoint", async () => {
     const setupResult = setup();
     const { client } = setupResult;
@@ -63,6 +93,19 @@ describe("mock Assurance Studio CRUD", () => {
       reviewStatus: "human_approved",
       humanEdited: true,
     });
+    const wirePage = await setupResult.harness.assuranceStudio.fetch(
+      "http://mock.invalid/api/projects/project-4a752600a07a/components?page=1&limit=5",
+      { headers: { "X-API-Key": apiKey } },
+    ).then((response) => response.json()) as {
+      success: boolean;
+      data: { page: number; pageSize: number; items: { kind: string }[] };
+    };
+    expect(wirePage).toMatchObject({
+      success: true,
+      data: { page: 1, pageSize: 5 },
+    });
+    expect(wirePage.data.items).toHaveLength(5);
+    expect(wirePage.data.items.every((item) => item.kind === "component")).toBe(true);
 
     const created = await client.createEntity("threat", {
       projectId: "project-4a752600a07a",

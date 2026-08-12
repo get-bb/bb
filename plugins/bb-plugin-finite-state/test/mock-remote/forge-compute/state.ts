@@ -129,7 +129,10 @@ export class ForgeComputeController implements MockForgeComputeController {
     }
     const job = this.#jobs.get(jobId);
     if (job === undefined) throw new Error("FORGE_JOB_NOT_FOUND");
-    return clone({ ...job, logTail: job.logTail.slice(-tailLines) });
+    return clone({
+      ...job,
+      logTail: tailLines === 0 ? [] : job.logTail.slice(-tailLines),
+    });
   }
 
   list(): ForgeJobSnapshot[] {

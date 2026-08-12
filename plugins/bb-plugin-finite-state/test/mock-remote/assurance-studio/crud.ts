@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
 import type { AsEntity, AsEntityKind, Json } from "../../../lib/remote/types.js";
 import type { MockHandler, MockHandlerContext } from "../types.js";
 import {
@@ -25,6 +28,7 @@ function wire(entity: AsEntity): Record<string, Json> {
   return {
     ...entity.fields,
     id: entity.id,
+    kind: entity.kind,
     project_id: entity.projectId,
     review_version: entity.reviewVersion,
     review_status: entity.reviewStatus,
@@ -98,8 +102,40 @@ export function listHandler(state: AssuranceStudioState, kind: AsEntityKind): Mo
     const start = (paging.page - 1) * paging.limit;
     const items = all.slice(start, start + paging.limit).map(wire);
     return Response.json({
-      data: { items, total: all.length, hasMore: start + items.length < all.length },
+      success: true,
+      data: {
+        items,
+        total: all.length,
+        page: paging.page,
+        pageSize: paging.limit,
+        hasMore: start + items.length < all.length,
+      },
     });
+  });
+}
+
+export function projectSbomListHandler(
+  state: AssuranceStudioState,
+  fixtureRoot: string,
+): MockHandler {
+  const frozenPage = JSON.parse(
+    readFileSync(resolve(fixtureRoot, "assurance-studio/project-sbom-page-1.json"), "utf8"),
+  ) as { success: true; data: { page: number; pageSize: number } };
+  return (context) => respond(() => {
+    const paging = page(context);
+    const projectExists = state.list("component").some((entity) =>
+      entity.projectId === context.params.id,
+    );
+    if (!projectExists) {
+      throw new MockAssuranceStudioError(404, "AS_PROJECT_NOT_FOUND", context.params.id);
+    }
+    if (paging.page !== frozenPage.data.page || paging.limit !== frozenPage.data.pageSize) {
+      throw new MockAssuranceStudioError(404, "AS_FIXTURE_PAGE_UNAVAILABLE", {
+        page: paging.page,
+        pageSize: paging.limit,
+      });
+    }
+    return Response.json(frozenPage);
   });
 }
 

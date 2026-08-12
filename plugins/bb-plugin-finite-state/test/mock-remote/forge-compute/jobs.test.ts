@@ -35,6 +35,7 @@ describe("mock optional Forge compute", () => {
       expect(final.status).toBe(terminal);
       expect(final.events.map((event) => (event as { type: string }).type)).toEqual(["RUNNING", terminal]);
       expect(final.eventCount).toBe(2);
+      expect(service!.getJobStatus(jobId, 0).logTail).toEqual([]);
     }
     expect(new Set(service!.listJobs().map((job) => job.status))).toEqual(
       new Set(["RUNNING", "COMPLETED", "FAILED", "TIMEOUT"]),

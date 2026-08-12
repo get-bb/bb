@@ -6,6 +6,7 @@ import {
   deleteHandler,
   getHandler,
   listHandler,
+  projectSbomListHandler,
   routeId,
   updateHandler,
 } from "./crud.js";
@@ -42,6 +43,10 @@ export function registerMockAssuranceStudio(
   for (const kind of UPDATE_KINDS) registry.register(routeId(kind, "PATCH", true), updateHandler(state, kind));
   for (const kind of DELETE_KINDS) registry.register(routeId(kind, "DELETE", true), deleteHandler(state, kind));
   registry.register(
+    "assurance-studio:GET:/api/projects/{id}/sbom",
+    projectSbomListHandler(state, fixtureRoot),
+  );
+  registry.register(
     "assurance-studio:GET:/api/projects/{projectId}/verification/checks",
     verificationListHandler(fixtureRoot),
   );
@@ -49,9 +54,12 @@ export function registerMockAssuranceStudio(
     "assurance-studio:GET:/api/projects/{projectId}/verification/checks/{checkId}",
     verificationGetHandler(fixtureRoot),
   );
+  const verificationRun = verificationRunHandler(fixtureRoot, (reset) =>
+    registry.onReset(reset),
+  );
   registry.register(
     "assurance-studio:POST:/api/projects/{projectId}/verification/run",
-    verificationRunHandler(fixtureRoot),
+    verificationRun,
   );
   registry.onReset(() => state.reset());
   return state;
