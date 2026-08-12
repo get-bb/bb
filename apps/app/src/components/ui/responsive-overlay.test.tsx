@@ -5,10 +5,13 @@ import type {
   HTMLAttributes,
   ReactNode,
 } from "react";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { POINTER_COARSE_QUERY } from "@bb/shared-ui/hooks/use-pointer-coarse";
-import { ResponsiveDrawerShell } from "@bb/shared-ui/responsive-overlay";
+import {
+  PersistentResponsiveDrawerShell,
+  ResponsiveDrawerShell,
+} from "@bb/shared-ui/responsive-overlay";
 
 type CapturedAnimationEnd = (args: {
   currentTarget: HTMLElement;
@@ -243,5 +246,116 @@ describe("ResponsiveDrawerShell", () => {
     } finally {
       outsideButton.remove();
     }
+  });
+});
+
+describe("PersistentResponsiveDrawerShell", () => {
+  it("opens without applying modal state to the app tree", () => {
+    mockPointerCoarse(true);
+    const onContentAnimationEnd = vi.fn();
+    const view = render(
+      <>
+        <main data-testid="large-app-tree" />
+        <PersistentResponsiveDrawerShell
+          open={false}
+          onOpenChange={() => {}}
+          srLabel="Details"
+          onContentAnimationEnd={onContentAnimationEnd}
+        >
+          <button type="button">Panel action</button>
+        </PersistentResponsiveDrawerShell>
+      </>,
+    );
+
+    const appTree = screen.getByTestId("large-app-tree");
+    const content = document.querySelector<HTMLElement>(
+      "[data-persistent-drawer-content]",
+    );
+    expect(content).not.toBeNull();
+    expect(content?.getAttribute("aria-hidden")).toBe("true");
+    expect(appTree.getAttribute("aria-hidden")).toBeNull();
+    expect(appTree.hasAttribute("inert")).toBe(false);
+
+    view.rerender(
+      <>
+        <main data-testid="large-app-tree" />
+        <PersistentResponsiveDrawerShell
+          open={true}
+          onOpenChange={() => {}}
+          srLabel="Details"
+          onContentAnimationEnd={onContentAnimationEnd}
+        >
+          <button type="button">Panel action</button>
+        </PersistentResponsiveDrawerShell>
+      </>,
+    );
+
+    expect(content?.getAttribute("aria-hidden")).toBe("false");
+    expect(appTree.getAttribute("aria-hidden")).toBeNull();
+    fireEvent.transitionEnd(content as HTMLElement, {
+      propertyName: "transform",
+    });
+    expect(onContentAnimationEnd).toHaveBeenLastCalledWith(true);
+  });
+
+  it("closes from the backdrop and the Escape key", () => {
+    mockPointerCoarse(true);
+    const onOpenChange = vi.fn();
+    render(
+      <PersistentResponsiveDrawerShell
+        open={true}
+        onOpenChange={onOpenChange}
+        srLabel="Details"
+      >
+        <button type="button">Panel action</button>
+      </PersistentResponsiveDrawerShell>,
+    );
+
+    fireEvent.click(
+      document.querySelector<HTMLElement>(
+        "[data-persistent-drawer-backdrop]",
+      ) as HTMLElement,
+    );
+    expect(onOpenChange).toHaveBeenLastCalledWith(false);
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(onOpenChange).toHaveBeenLastCalledWith(false);
+    expect(onOpenChange).toHaveBeenCalledTimes(2);
+  });
+
+  it("closes when the handle moves past the drag threshold", () => {
+    mockPointerCoarse(true);
+    const onOpenChange = vi.fn();
+    render(
+      <PersistentResponsiveDrawerShell
+        open={true}
+        onOpenChange={onOpenChange}
+        srLabel="Details"
+      >
+        <button type="button">Panel action</button>
+      </PersistentResponsiveDrawerShell>,
+    );
+
+    const content = document.querySelector<HTMLElement>(
+      "[data-persistent-drawer-content]",
+    ) as HTMLElement;
+    const handle = document.querySelector<HTMLElement>(
+      "[data-persistent-drawer-handle]",
+    ) as HTMLElement;
+    Object.defineProperty(content, "clientHeight", {
+      configurable: true,
+      value: 400,
+    });
+    handle.setPointerCapture = vi.fn();
+
+    fireEvent.pointerDown(handle, {
+      button: 0,
+      clientY: 200,
+      pointerId: 1,
+    });
+    fireEvent.pointerMove(handle, { clientY: 330, pointerId: 1 });
+    fireEvent.pointerUp(handle, { clientY: 330, pointerId: 1 });
+
+    expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 });

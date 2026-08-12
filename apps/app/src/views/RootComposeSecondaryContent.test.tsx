@@ -87,7 +87,7 @@ vi.mock("react-resizable-panels", async () => {
 vi.mock("@bb/shared-ui/responsive-overlay", async () => {
   const React = await import("react");
 
-  const ResponsiveDrawerShell = ({
+  const PersistentResponsiveDrawerShell = ({
     children,
     open,
   }: {
@@ -103,7 +103,7 @@ vi.mock("@bb/shared-ui/responsive-overlay", async () => {
       children,
     );
 
-  return { ResponsiveDrawerShell };
+  return { PersistentResponsiveDrawerShell };
 });
 
 vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", async () => {
@@ -377,15 +377,14 @@ describe("RootComposeSecondaryContent desktop layout", () => {
       view.rerenderWith({ isSecondaryPanelOpen: true });
 
       expect(panelGroupState.setLayout).not.toHaveBeenCalled();
-      // The panel mounts only after the drawer settles; a skeleton fills
-      // the sheet during the entrance so the mount cannot block it. The
-      // fallback timer stands in for the animation-end signal here.
+      // The panel mounts after the light drawer shell gets its first paint.
+      // A skeleton fills the sheet during those first two frames.
       expect(screen.queryByTestId("drawer-secondary-panel")).toBeNull();
       expect(
         screen.queryByTestId("drawer-panel-loading-skeleton"),
       ).not.toBeNull();
       act(() => {
-        vi.advanceTimersByTime(700);
+        vi.advanceTimersByTime(40);
       });
       expect(
         screen.getByTestId("drawer-secondary-panel").getAttribute("data-open"),

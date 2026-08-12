@@ -14,7 +14,7 @@ import {
   PanelGroup,
   type ImperativePanelGroupHandle,
 } from "react-resizable-panels";
-import { ResponsiveDrawerShell } from "@bb/shared-ui/responsive-overlay";
+import { PersistentResponsiveDrawerShell } from "@bb/shared-ui/responsive-overlay";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { ThreadSecondaryPanel } from "@/components/secondary-panel/ThreadSecondaryPanel";
 import { useDrawerPanelRealization } from "@/components/secondary-panel/useDrawerPanelRealization";
@@ -393,7 +393,7 @@ export function RootComposeSecondaryContent({
         </PanelGroup>
       </div>
       {renderAsDrawer ? (
-        <ResponsiveDrawerShell
+        <PersistentResponsiveDrawerShell
           open={isSecondaryPanelOpen}
           onOpenChange={(open) => {
             if (!open) threadSecondaryPanelProps.onClose();
@@ -401,20 +401,17 @@ export function RootComposeSecondaryContent({
           srLabel="Right panel"
           contentClassName="h-[92dvh] max-h-[92dvh]"
           onContentAnimationEnd={handleDrawerContentAnimationEnd}
-          handleOnly
-          repositionInputs={false}
         >
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            {/* The panel mounts after the sheet settles: mounting it inside
-                the opening tap costs hundreds of milliseconds of style
-                resolution on iOS and freezes the slide-in. */}
+            {/* Paint the light shell first. The real panel mounts two frames
+                later, while the compositor moves the drawer. */}
             {isPanelRealized ? (
               drawerSecondaryPanelContent
             ) : (
               <DrawerPanelLoadingSkeleton />
             )}
           </div>
-        </ResponsiveDrawerShell>
+        </PersistentResponsiveDrawerShell>
       ) : null}
     </div>
   );

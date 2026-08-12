@@ -75,7 +75,7 @@ vi.mock("react-resizable-panels", async () => {
 vi.mock("@bb/shared-ui/responsive-overlay", async () => {
   const React = await import("react");
 
-  const ResponsiveDrawerShell = ({
+  const PersistentResponsiveDrawerShell = ({
     children,
     onContentAnimationEnd,
     open,
@@ -95,7 +95,7 @@ vi.mock("@bb/shared-ui/responsive-overlay", async () => {
     );
   };
 
-  return { ResponsiveDrawerShell };
+  return { PersistentResponsiveDrawerShell };
 });
 
 vi.mock(
@@ -442,17 +442,25 @@ function expectBrowserDeckVisibility(canShowNativeBrowserView: boolean) {
   ).toBe(String(canShowNativeBrowserView));
 }
 
-// Before the compact drawer settles, the whole secondary panel (deck
-// included) stays unmounted so its mount cost cannot block the entrance
-// animation; a skeleton fills the sheet instead.
+// Before the compact drawer paints its light shell, the whole secondary panel
+// stays unmounted. A skeleton fills the sheet during those first two frames.
 function expectDrawerPanelNotRealized() {
   expect(screen.queryByTestId("browser-deck")).toBeNull();
+}
+
+function realizeDrawerPanel(frames: QueuedAnimationFrames) {
+  act(() => {
+    frames.flushAll();
+    frames.flushAll();
+  });
 }
 
 function scheduleCompactDrawerSettleFrame() {
   const callback = drawerShellState.onContentAnimationEnd;
   if (callback === undefined) {
-    throw new Error("ResponsiveDrawerShell did not receive animation callback");
+    throw new Error(
+      "PersistentResponsiveDrawerShell did not receive animation callback",
+    );
   }
   act(() => {
     callback(true);
@@ -569,13 +577,17 @@ describe("ThreadDetailSecondaryContent compact drawer settling", () => {
     });
 
     expectDrawerPanelNotRealized();
+    expect(frames.requestAnimationFrame).toHaveBeenCalledTimes(1);
+
+    realizeDrawerPanel(frames);
+    expectBrowserDeckVisibility(false);
 
     order.push("animationEnd:true");
     scheduleCompactDrawerSettleFrame();
 
-    expect(frames.requestAnimationFrame).toHaveBeenCalledTimes(1);
+    expect(frames.requestAnimationFrame).toHaveBeenCalledTimes(3);
     expect(dispatchBrowserViewBoundsSync).not.toHaveBeenCalled();
-    expectDrawerPanelNotRealized();
+    expectBrowserDeckVisibility(false);
 
     act(() => {
       frames.flushAll();
@@ -584,6 +596,8 @@ describe("ThreadDetailSecondaryContent compact drawer settling", () => {
     expectBrowserDeckVisibility(true);
     expect(order).toEqual([
       "render:false",
+      "requestAnimationFrame",
+      "requestAnimationFrame",
       "animationEnd:true",
       "requestAnimationFrame",
       "dispatchBrowserViewBoundsSync",
@@ -605,7 +619,7 @@ describe("ThreadDetailSecondaryContent compact drawer settling", () => {
     const callback = drawerShellState.onContentAnimationEnd;
     if (callback === undefined) {
       throw new Error(
-        "ResponsiveDrawerShell did not receive animation callback",
+        "PersistentResponsiveDrawerShell did not receive animation callback",
       );
     }
 
@@ -613,7 +627,7 @@ describe("ThreadDetailSecondaryContent compact drawer settling", () => {
       callback(false);
     });
 
-    expect(frames.requestAnimationFrame).not.toHaveBeenCalled();
+    expect(frames.requestAnimationFrame).toHaveBeenCalledTimes(1);
     expect(dispatchBrowserViewBoundsSync).not.toHaveBeenCalled();
     expectDrawerPanelNotRealized();
   });
@@ -631,7 +645,8 @@ describe("ThreadDetailSecondaryContent compact drawer settling", () => {
     view.rerenderWith({ isSecondaryPanelOpen: false });
     scheduleCompactDrawerSettleFrame();
 
-    expect(frames.requestAnimationFrame).not.toHaveBeenCalled();
+    expect(frames.requestAnimationFrame).toHaveBeenCalledTimes(1);
+    expect(frames.size()).toBe(0);
     expect(dispatchBrowserViewBoundsSync).not.toHaveBeenCalled();
     expectDrawerPanelNotRealized();
   });
@@ -646,19 +661,20 @@ describe("ThreadDetailSecondaryContent compact drawer settling", () => {
       threadId: "thread-1",
     });
 
+    realizeDrawerPanel(frames);
     scheduleCompactDrawerSettleFrame();
     expect(frames.size()).toBe(1);
 
     view.rerenderWith({ isSecondaryPanelOpen: false });
     expect(frames.cancelAnimationFrame).toHaveBeenCalledTimes(1);
-    expect(frames.cancelAnimationFrame).toHaveBeenCalledWith(1);
+    expect(frames.cancelAnimationFrame).toHaveBeenCalledWith(3);
 
     act(() => {
       frames.flushAll();
     });
 
     expect(dispatchBrowserViewBoundsSync).not.toHaveBeenCalled();
-    expectDrawerPanelNotRealized();
+    expectBrowserDeckVisibility(false);
   });
 
   it("cancels a pending compact drawer settle rAF when the thread changes", () => {
@@ -671,19 +687,20 @@ describe("ThreadDetailSecondaryContent compact drawer settling", () => {
       threadId: "thread-1",
     });
 
+    realizeDrawerPanel(frames);
     scheduleCompactDrawerSettleFrame();
     expect(frames.size()).toBe(1);
 
     view.rerenderWith({ threadId: "thread-2" });
     expect(frames.cancelAnimationFrame).toHaveBeenCalledTimes(1);
-    expect(frames.cancelAnimationFrame).toHaveBeenCalledWith(1);
+    expect(frames.cancelAnimationFrame).toHaveBeenCalledWith(3);
 
     act(() => {
       frames.flushAll();
     });
 
     expect(dispatchBrowserViewBoundsSync).not.toHaveBeenCalled();
-    expectDrawerPanelNotRealized();
+    expectBrowserDeckVisibility(false);
   });
 
   it("cancels a pending compact drawer settle rAF on compact-to-wide transition", () => {
@@ -696,12 +713,13 @@ describe("ThreadDetailSecondaryContent compact drawer settling", () => {
       threadId: "thread-1",
     });
 
+    realizeDrawerPanel(frames);
     scheduleCompactDrawerSettleFrame();
     expect(frames.size()).toBe(1);
 
     view.rerenderWith({ isCompactViewport: false });
     expect(frames.cancelAnimationFrame).toHaveBeenCalledTimes(1);
-    expect(frames.cancelAnimationFrame).toHaveBeenCalledWith(1);
+    expect(frames.cancelAnimationFrame).toHaveBeenCalledWith(3);
 
     act(() => {
       frames.flushAll();
@@ -721,12 +739,13 @@ describe("ThreadDetailSecondaryContent compact drawer settling", () => {
       threadId: "thread-1",
     });
 
+    realizeDrawerPanel(frames);
     scheduleCompactDrawerSettleFrame();
     expect(frames.size()).toBe(1);
 
     view.unmount();
     expect(frames.cancelAnimationFrame).toHaveBeenCalledTimes(1);
-    expect(frames.cancelAnimationFrame).toHaveBeenCalledWith(1);
+    expect(frames.cancelAnimationFrame).toHaveBeenCalledWith(3);
 
     act(() => {
       frames.flushAll();
@@ -750,6 +769,7 @@ describe("ThreadDetailSecondaryContent compact drawer settling", () => {
     expect(compactRenderBrowserDeck).toHaveBeenLastCalledWith({
       canShowNativeBrowserView: false,
     });
+    realizeDrawerPanel(frames);
     scheduleCompactDrawerSettleFrame();
     act(() => {
       frames.flushAll();

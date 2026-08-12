@@ -1,4 +1,5 @@
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { Slot } from "@radix-ui/react-slot";
 
 import { Drawer, DrawerContent, DrawerTitle } from "./drawer.js";
@@ -11,6 +12,8 @@ import {
 } from "./overlay-trigger.js";
 import { useIsCompactViewport } from "./hooks/use-compact-viewport.js";
 import { usePointerCoarse } from "./hooks/use-pointer-coarse.js";
+import { usePortalScopeProps } from "../../lib/portal-scope.js";
+import { cn } from "../../lib/utils.js";
 
 // ---------------------------------------------------------------------------
 // Shared context value for responsive overlays (dropdown menus, popovers)
@@ -329,5 +332,314 @@ export function ResponsiveDrawerShell({
         </ResponsiveDrawerDepthContext.Provider>
       </DrawerContent>
     </Drawer>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// PersistentResponsiveDrawerShell: a bottom drawer for a large, persistent
+// panel. Unlike Radix/Vaul, this shell does not apply modal attributes to the
+// app root. Those attributes make WebKit resolve styles for the full chat tree
+// on each open. The backdrop blocks pointer input, while the key handler keeps
+// keyboard focus inside the drawer.
+// ---------------------------------------------------------------------------
+
+interface PersistentResponsiveDrawerShellProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  srLabel: string;
+  contentClassName?: string;
+  motionDurationMs?: number;
+  onContentAnimationEnd?: (open: boolean) => void;
+  children: React.ReactNode;
+}
+
+const PERSISTENT_DRAWER_EASING = "cubic-bezier(0.32, 0.72, 0, 1)";
+const PERSISTENT_DRAWER_CLOSE_RATIO = 0.25;
+const PERSISTENT_DRAWER_CLOSE_VELOCITY_PX_PER_SEC = 450;
+const PERSISTENT_DRAWER_FOCUSABLE_SELECTOR = [
+  "a[href]",
+  "button:not([disabled])",
+  "input:not([disabled])",
+  "select:not([disabled])",
+  "textarea:not([disabled])",
+  '[tabindex]:not([tabindex="-1"])',
+].join(",");
+
+type PersistentDrawerDrag = {
+  pointerId: number;
+  startY: number;
+  lastY: number;
+  lastTimeMs: number;
+  velocityY: number;
+};
+
+export function PersistentResponsiveDrawerShell({
+  open,
+  onOpenChange,
+  srLabel,
+  contentClassName,
+  motionDurationMs = 220,
+  onContentAnimationEnd,
+  children,
+}: PersistentResponsiveDrawerShellProps) {
+  const parentDrawerDepth = React.useContext(ResponsiveDrawerDepthContext);
+  const panelRef = React.useRef<HTMLDivElement>(null);
+  const backdropRef = React.useRef<HTMLDivElement>(null);
+  const dragRef = React.useRef<PersistentDrawerDrag | null>(null);
+  const settledStateRef = React.useRef<boolean | null>(null);
+  const labelId = React.useId();
+  const isPointerCoarse = usePointerCoarse();
+  const portalScopeProps = usePortalScopeProps();
+  const transition = `transform ${motionDurationMs}ms ${PERSISTENT_DRAWER_EASING}`;
+  const backdropTransition = `opacity ${motionDurationMs}ms ${PERSISTENT_DRAWER_EASING}`;
+  const requestClose = React.useCallback(() => {
+    blurActiveKeyboardInputWithin(panelRef.current);
+    resetDrawerKeyboardStyles(panelRef.current);
+    onOpenChange(false);
+  }, [onOpenChange]);
+
+  const reportSettled = React.useCallback(
+    (settledOpen: boolean) => {
+      if (settledStateRef.current === settledOpen) {
+        return;
+      }
+      settledStateRef.current = settledOpen;
+      onContentAnimationEnd?.(settledOpen);
+    },
+    [onContentAnimationEnd],
+  );
+
+  React.useEffect(() => {
+    settledStateRef.current = null;
+    const timeout = window.setTimeout(
+      () => reportSettled(open),
+      motionDurationMs + 50,
+    );
+    return () => window.clearTimeout(timeout);
+  }, [motionDurationMs, open, reportSettled]);
+
+  React.useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        requestClose();
+        return;
+      }
+      if (event.key !== "Tab") {
+        return;
+      }
+
+      const panel = panelRef.current;
+      if (panel === null) {
+        return;
+      }
+      const focusable = Array.from(
+        panel.querySelectorAll<HTMLElement>(
+          PERSISTENT_DRAWER_FOCUSABLE_SELECTOR,
+        ),
+      ).filter((element) => element.getAttribute("aria-hidden") !== "true");
+      if (focusable.length === 0) {
+        event.preventDefault();
+        panel.focus({ preventScroll: true });
+        return;
+      }
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const activeElement = panel.ownerDocument.activeElement;
+      if (
+        event.shiftKey &&
+        (activeElement === first || activeElement === panel)
+      ) {
+        event.preventDefault();
+        last?.focus({ preventScroll: true });
+      } else if (
+        !event.shiftKey &&
+        (activeElement === last || !panel.contains(activeElement))
+      ) {
+        event.preventDefault();
+        first?.focus({ preventScroll: true });
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown, true);
+    let focusFrame: number | null = null;
+    if (!isPointerCoarse) {
+      focusFrame = window.requestAnimationFrame(() => {
+        panelRef.current?.focus({ preventScroll: true });
+      });
+    }
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown, true);
+      if (focusFrame !== null) {
+        window.cancelAnimationFrame(focusFrame);
+      }
+    };
+  }, [isPointerCoarse, open, requestClose]);
+
+  const previousOpenRef = React.useRef(open);
+  React.useLayoutEffect(() => {
+    if (previousOpenRef.current && !open) {
+      blurActiveKeyboardInputWithin(panelRef.current);
+      resetDrawerKeyboardStyles(panelRef.current);
+    }
+    previousOpenRef.current = open;
+  }, [open]);
+
+  const setDragPosition = React.useCallback(
+    (offsetY: number, animate: boolean) => {
+      const panel = panelRef.current;
+      const backdrop = backdropRef.current;
+      if (panel === null || backdrop === null) {
+        return;
+      }
+      const height = Math.max(panel.clientHeight, 1);
+      panel.style.transition = animate ? transition : "none";
+      panel.style.transform = `translate3d(0, ${offsetY}px, 0)`;
+      backdrop.style.transition = animate ? backdropTransition : "none";
+      backdrop.style.opacity = String(
+        Math.max(0, Math.min(1, 1 - offsetY / height)),
+      );
+    },
+    [backdropTransition, transition],
+  );
+
+  const handleDragStart = React.useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (!open || event.button !== 0) {
+        return;
+      }
+      event.currentTarget.setPointerCapture(event.pointerId);
+      const nowMs = Date.now();
+      dragRef.current = {
+        pointerId: event.pointerId,
+        startY: event.clientY,
+        lastY: event.clientY,
+        lastTimeMs: nowMs,
+        velocityY: 0,
+      };
+      setDragPosition(0, false);
+      event.preventDefault();
+    },
+    [open, setDragPosition],
+  );
+
+  const handleDragMove = React.useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      const drag = dragRef.current;
+      if (drag === null || drag.pointerId !== event.pointerId) {
+        return;
+      }
+      const nowMs = Date.now();
+      const elapsedMs = nowMs - drag.lastTimeMs;
+      if (elapsedMs > 0) {
+        drag.velocityY = ((event.clientY - drag.lastY) / elapsedMs) * 1000;
+        drag.lastY = event.clientY;
+        drag.lastTimeMs = nowMs;
+      }
+      setDragPosition(Math.max(0, event.clientY - drag.startY), false);
+      event.preventDefault();
+    },
+    [setDragPosition],
+  );
+
+  const finishDrag = React.useCallback(
+    (event: React.PointerEvent<HTMLDivElement>, cancelled: boolean) => {
+      const drag = dragRef.current;
+      if (drag === null || drag.pointerId !== event.pointerId) {
+        return;
+      }
+      dragRef.current = null;
+      const panelHeight = Math.max(panelRef.current?.clientHeight ?? 0, 1);
+      const offsetY = Math.max(0, event.clientY - drag.startY);
+      const shouldClose =
+        !cancelled &&
+        (offsetY >= panelHeight * PERSISTENT_DRAWER_CLOSE_RATIO ||
+          drag.velocityY >= PERSISTENT_DRAWER_CLOSE_VELOCITY_PX_PER_SEC);
+      if (shouldClose) {
+        setDragPosition(panelHeight, true);
+        requestClose();
+      } else {
+        setDragPosition(0, true);
+      }
+      event.preventDefault();
+    },
+    [requestClose, setDragPosition],
+  );
+
+  const portalTarget = typeof document === "undefined" ? null : document.body;
+  if (portalTarget === null) {
+    return null;
+  }
+
+  return createPortal(
+    <>
+      <div
+        ref={backdropRef}
+        {...portalScopeProps}
+        aria-hidden="true"
+        data-persistent-drawer-backdrop=""
+        data-state={open ? "open" : "closed"}
+        className="fixed inset-0 z-50 bg-black/40 backdrop-blur-[1px]"
+        style={{
+          opacity: open ? 1 : 0,
+          pointerEvents: open ? "auto" : "none",
+          transition: backdropTransition,
+        }}
+        onClick={requestClose}
+        onTouchMove={(event) => event.preventDefault()}
+      />
+      <div
+        ref={panelRef}
+        {...portalScopeProps}
+        aria-hidden={!open}
+        aria-labelledby={labelId}
+        aria-modal={open || undefined}
+        data-persistent-drawer-content=""
+        data-state={open ? "open" : "closed"}
+        inert={!open}
+        role="dialog"
+        tabIndex={-1}
+        className={cn(
+          "fixed inset-x-0 bottom-0 z-50 mt-24 flex max-h-[92dvh] flex-col rounded-t-xl border bg-background outline-none",
+          contentClassName,
+        )}
+        style={{
+          transform: open ? "translate3d(0, 0, 0)" : "translate3d(0, 100%, 0)",
+          transition,
+          willChange: "transform",
+        }}
+        onTransitionEnd={(event) => {
+          if (
+            event.currentTarget === event.target &&
+            event.propertyName === "transform"
+          ) {
+            reportSettled(open);
+          }
+        }}
+      >
+        <div
+          data-persistent-drawer-handle=""
+          className="mx-auto flex h-8 w-16 shrink-0 touch-none cursor-grab items-center justify-center active:cursor-grabbing"
+          onPointerDown={handleDragStart}
+          onPointerMove={handleDragMove}
+          onPointerUp={(event) => finishDrag(event, false)}
+          onPointerCancel={(event) => finishDrag(event, true)}
+        >
+          <div className="h-1 w-10 rounded-full bg-muted-foreground/20" />
+        </div>
+        <h2 id={labelId} className="sr-only">
+          {srLabel}
+        </h2>
+        <ResponsiveDrawerDepthContext.Provider value={parentDrawerDepth + 1}>
+          {children}
+        </ResponsiveDrawerDepthContext.Provider>
+      </div>
+    </>,
+    portalTarget,
   );
 }
