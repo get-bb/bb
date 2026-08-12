@@ -1,0 +1,5 @@
+{
+  "retryAfterSeconds": 2,
+  "service": "platform",
+  "status": 429
+}

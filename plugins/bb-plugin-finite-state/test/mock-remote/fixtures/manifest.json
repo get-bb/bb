@@ -1,0 +1,308 @@
+{
+  "cases": {
+    "binary-firmware-file": {
+      "description": "The firmware tree includes a bounded binary byte sample.",
+      "refs": [
+        "firmware/manifest.jsonl#path=rootfs/usr/bin/eagled",
+        "firmware/bytes/eagled.bin"
+      ]
+    },
+    "component-without-purl": {
+      "description": "A vulnerable component uses its content-hash fallback identity.",
+      "refs": [
+        "platform/components.jsonl#component=component-0005"
+      ]
+    },
+    "conflicting-hbom-claims": {
+      "description": "Two document-backed claims disagree about the same HBOM field.",
+      "refs": [
+        "documents/hbom-claims.json#component=as-component-01"
+      ]
+    },
+    "duplicate-finding-row": {
+      "description": "One finding row is repeated byte-for-byte in the JSONL collection.",
+      "refs": [
+        "platform/findings.jsonl#finding=8000000000000000027"
+      ]
+    },
+    "firmware-symlink": {
+      "description": "A symlink attempts to escape the materialization root.",
+      "refs": [
+        "firmware/manifest.jsonl#path=rootfs/link-outside"
+      ]
+    },
+    "firmware-unpack-error": {
+      "description": "A nested archive retains its unpack error in manifest metadata.",
+      "refs": [
+        "firmware/manifest.jsonl#path=rootfs/var/lib/broken-archive.tar"
+      ]
+    },
+    "non-ascii-names": {
+      "description": "Names contain composed non-ASCII Latin characters and the micro sign.",
+      "refs": [
+        "platform/components.jsonl#component=component-0009",
+        "documents/documents.json#document=document-2"
+      ]
+    },
+    "partial-vex-failure": {
+      "description": "Bulk VEX succeeds for three rows and fails independently for two.",
+      "refs": [
+        "platform/vex-bulk-partial.json"
+      ]
+    },
+    "requirement-without-verification": {
+      "description": "One requirement intentionally has no verification check.",
+      "refs": [
+        "assurance-studio/requirements.jsonl#requirement=requirement-040"
+      ]
+    },
+    "same-field-tara-drift": {
+      "description": "Local and remote edits change the same TARA field from a common base.",
+      "refs": [
+        "assurance-studio/tara-drift.json#entity=as-component-01"
+      ]
+    },
+    "soft-delete-then-reconfirm": {
+      "description": "Expected history includes a soft delete followed by upstream reconfirmation.",
+      "refs": [
+        "expected/finding-history.json#event=soft-delete",
+        "expected/finding-history.json#event=reconfirm"
+      ]
+    },
+    "strict-unknown-key": {
+      "description": "A strict-schema request contains one unknown key.",
+      "refs": [
+        "faults/strict-unknown-key.json#key=unexpectedFixtureKey"
+      ]
+    },
+    "version-changed-component": {
+      "description": "A component changed version between the prior and current product versions.",
+      "refs": [
+        "platform/components.jsonl#component=component-0002"
+      ]
+    },
+    "withdrawn-document": {
+      "description": "One document remains addressable after withdrawal.",
+      "refs": [
+        "documents/documents.json#document=document-6"
+      ]
+    },
+    "zero-byte-firmware-file": {
+      "description": "The firmware tree contains a real zero-byte sample.",
+      "refs": [
+        "firmware/manifest.jsonl#path=rootfs/empty.dat",
+        "firmware/bytes/zero-byte.bin"
+      ]
+    }
+  },
+  "counts": {
+    "components": 180,
+    "documents": 6,
+    "findings": 4000,
+    "firmwarePaths": 6000,
+    "requirements": 40,
+    "sbomComponents": 900,
+    "taraNodes": 12
+  },
+  "files": [
+    {
+      "bytes": 13,
+      "path": ".gitattributes",
+      "sha256": "c7c6541111ee53947140bac154f1275c6b1b244c40c045b190662f23226509c9"
+    },
+    {
+      "bytes": 710,
+      "path": "README.md",
+      "sha256": "00215cc1c8e31894acb1ca68543cb18ce68c2f4bd0e25309fb66fb778582091c"
+    },
+    {
+      "bytes": 8915,
+      "path": "assurance-studio/entities-page-1.json",
+      "sha256": "464e483aaadc8632af3bfeaa3550226fb7306b6dd36266b0420f3782880f8837"
+    },
+    {
+      "bytes": 14175,
+      "path": "assurance-studio/entities.jsonl",
+      "rows": 62,
+      "sha256": "0daf497c641eff3534545df18acc254c2975935285f56cb9e7e24a2383d0e5e7"
+    },
+    {
+      "bytes": 13587,
+      "path": "assurance-studio/project-sbom-page-1.json",
+      "sha256": "8a6abb664a61d81ee5981cd500ae802285e158942cdf91d68894fee221f04060"
+    },
+    {
+      "bytes": 12685,
+      "path": "assurance-studio/requirements.jsonl",
+      "rows": 40,
+      "sha256": "06c87a51c6e1cb7cb0db0638d2c580c5fbb11fd5a41011513a6c2d8aa63e7b81"
+    },
+    {
+      "bytes": 254,
+      "path": "assurance-studio/tara-drift.json",
+      "sha256": "4bfcddf0bdd949b5dc9595ca73f09483012118b2c2d78b5de118f8b8ffb4c166"
+    },
+    {
+      "bytes": 8872,
+      "path": "assurance-studio/verification-checks.jsonl",
+      "rows": 39,
+      "sha256": "f39fa98949f3fc92ae2411e7836507dfd531d8f8df48137f9d165fd43c6763dd"
+    },
+    {
+      "bytes": 3156,
+      "path": "cases.json",
+      "sha256": "eb55d27d752806df79687bc3b38399b3548150a5a89356b43fe80ded06ec9536"
+    },
+    {
+      "bytes": 3847,
+      "path": "documents/documents.json",
+      "sha256": "2d747d97ff21e44a8f5272de15323f1cd57be714da65e6e31acda9e3c98d50d9"
+    },
+    {
+      "bytes": 446,
+      "path": "documents/hbom-claims.json",
+      "sha256": "dfb62a1e308a934c4e17884afe773fba6c56773aabcea52ef0edb68c8d1edd39"
+    },
+    {
+      "bytes": 708,
+      "path": "documents/source-extracts.jsonl",
+      "rows": 6,
+      "sha256": "2a6b771938b813656ad8e99ad785412d752f44dc00145d4b43590726bfa503e5"
+    },
+    {
+      "bytes": 845,
+      "path": "expected/attestations.jsonl",
+      "rows": 3,
+      "sha256": "9a7f8dbdd8c28a784c70ede51f8cf1f021926cb39f2bb23283d82231e8b29532"
+    },
+    {
+      "bytes": 1031,
+      "path": "expected/bench-runs.jsonl",
+      "rows": 3,
+      "sha256": "6fd5ab746518b1ad6711548c49688c71a21a6f223a850120a9bbbc2df4c66198"
+    },
+    {
+      "bytes": 284,
+      "path": "expected/finding-history.json",
+      "sha256": "23ede2f9f33ac7d86e76d8e89e4bd8179df1674192fe27015d17e2bb5a55d227"
+    },
+    {
+      "bytes": 314,
+      "path": "expected/identity-links.json",
+      "sha256": "49297774185ab01fd08aa67f6bcf1c5771a68acc452e455818f727e1d6e7eeb7"
+    },
+    {
+      "bytes": 116,
+      "path": "faults/assurance-studio-stale-tara.json",
+      "sha256": "32b22d578d817215305b6f5966e6e22dcd748512804e16bf2e090a060904a6fe"
+    },
+    {
+      "bytes": 78,
+      "path": "faults/forge-compute-unavailable.json",
+      "sha256": "b42622b885bb58dc2175e24d2aa96e4eeede31204f59b33d97754c24e9202def"
+    },
+    {
+      "bytes": 105,
+      "path": "faults/platform-firmware-forbidden.json",
+      "sha256": "c7a336b42c436af49f79e408c0bd347c44b60c6acd978ae7b2b25faafc33273c"
+    },
+    {
+      "bytes": 71,
+      "path": "faults/platform-rate-limit.json",
+      "sha256": "68b48641eba0786e8d7faf8666aed87556a76d19cf362949d75f531fd3ece472"
+    },
+    {
+      "bytes": 114,
+      "path": "faults/strict-unknown-key.json",
+      "sha256": "ae8c5dd8069e4df5602f179a202acb65fcbd10c6d3571d6f7d1eedc5e64dea52"
+    },
+    {
+      "bytes": 64,
+      "path": "firmware/bytes/eagled.bin",
+      "sha256": "b16e06bd84484d737304616ed406cec442a7cd87af088f72f8580755e7585b5d"
+    },
+    {
+      "bytes": 0,
+      "path": "firmware/bytes/zero-byte.bin",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 30033,
+      "path": "firmware/filesystem-response.json",
+      "sha256": "2453ca218e6866aba4a052042d48ef038c306be2d9b7e5b1ed1c5f22d5a0656c"
+    },
+    {
+      "bytes": 1343998,
+      "path": "firmware/manifest.jsonl",
+      "rows": 6000,
+      "sha256": "8ea2df2fe1e6bf7a55e06d22bf441bbc4471939d512951ca44d8f59005073987"
+    },
+    {
+      "bytes": 280,
+      "path": "forge-compute/README.md",
+      "sha256": "d31e933a3f29901545020138ef9e165128ceacd0f7e89b5903aa8ad84d1ebd85"
+    },
+    {
+      "bytes": 1968,
+      "path": "forge-compute/jobs.jsonl",
+      "rows": 5,
+      "sha256": "3d67d76c550626bb4068104a0c00c088e434d69203305d72143dcc2cba8f1f64"
+    },
+    {
+      "bytes": 25139,
+      "path": "platform/components-page-1.json",
+      "sha256": "54a47c3f4d83776265b6bc9f551b66d91b3c36629ea170fcfe589b0ef374adc8"
+    },
+    {
+      "bytes": 166805,
+      "path": "platform/components.jsonl",
+      "rows": 900,
+      "sha256": "1aee37a9b4515b80b2cf8e3eadda828b870f66c2377a1db4078f8d1efa9e314c"
+    },
+    {
+      "bytes": 590,
+      "path": "platform/finding-detail.json",
+      "sha256": "d12a9c278c72bc18a63c01d6df89fe58a8d1fda98aa8e6556d0cb56b0ebc7695"
+    },
+    {
+      "bytes": 40730,
+      "path": "platform/findings-page-1.json",
+      "sha256": "cffca838563be47ca0285e1045d52fb6a6c828c312110c6919a0386b9c4f8801"
+    },
+    {
+      "bytes": 119,
+      "path": "platform/findings-summary.json",
+      "sha256": "f43a3c8092912632eb82234bbaa792b050f2bdcf158ebcdc57629a33286c4a55"
+    },
+    {
+      "bytes": 1273133,
+      "path": "platform/findings.jsonl",
+      "rows": 4001,
+      "sha256": "a8dffd51062329731a91ee592b93d99fb0f05e4599550d12663735e2d479a69d"
+    },
+    {
+      "bytes": 697,
+      "path": "platform/identity.json",
+      "sha256": "c0136e0bd69de0b84c302ec26abc8e837e9220f1d66454175c7a676d369a1022"
+    },
+    {
+      "bytes": 149615,
+      "path": "platform/sbom.cdx.json",
+      "sha256": "c41703f9f4dd04f4df0a049b104b450d969b373d43c3dc9ccdfc738c3254cf57"
+    },
+    {
+      "bytes": 785,
+      "path": "platform/vex-bulk-partial.json",
+      "sha256": "d053bd6e136a0b6e7353318ce02228ad13a4873d0fcf0995c73b859672941035"
+    },
+    {
+      "bytes": 1479,
+      "path": "platform/vex-export.csv",
+      "rows": 27,
+      "sha256": "f50417e957a0658216dfca136c6242055a525cc60e97b9e5aa9d23ad751ecc80"
+    }
+  ],
+  "fixedNow": "2026-05-12T14:30:00.000Z",
+  "schemaVersion": 1,
+  "seed": "finite-state-eagle-v1"
+}

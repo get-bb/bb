@@ -1,0 +1,1011 @@
+{
+  "artifactHash": "0f6662d2b87697660e5b9712c025eba41a53bc09f9bcfbad92acfe708c4c7efc",
+  "entries": [
+    {
+      "byteSample": "firmware/bytes/zero-byte.bin",
+      "errors": [],
+      "hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/empty.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 0
+    },
+    {
+      "byteSample": "firmware/bytes/eagled.bin",
+      "errors": [],
+      "hash": "b16e06bd84484d737304616ed406cec442a7cd87af088f72f8580755e7585b5d",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/usr/bin/eagled",
+      "scanId": "scan-8ecb49226789",
+      "size": 64
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": null,
+      "kind": "symlink",
+      "linkTarget": "../../outside-root",
+      "path": "rootfs/link-outside",
+      "scanId": "scan-8ecb49226789",
+      "size": null
+    },
+    {
+      "byteSample": null,
+      "errors": [
+        "nested archive unpack failed: unsupported header"
+      ],
+      "hash": "e08f1112f9bf9a6247f65c85d5d95a7d1f2f0a98918136888ca7aa2e6a3c7de1",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/var/lib/broken-archive.tar",
+      "scanId": "scan-8ecb49226789",
+      "size": 19
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "a4d2151b5453535216cf0b000ae47893c1ffad2f976c2f0780dcbe1b70818560",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0005.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 20
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "a294b4daeba11dfb2b97c28098e26aaee6a171662ef370f94b7ada9522ae1e8e",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0006.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 21
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "68cc734915667bb3f8ee3cca0abde451d06beca03b7aff4a265afe794b791f23",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0007.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 22
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "c0ba15e410bcc1cb95fa0c73355986f83d056a42f5b98eada5dd78a135f81f99",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0008.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 23
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "a042fb3898592a050d3a61dd34c9ad2f8bab6a3676936e0d0d72291497c082b3",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0009.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 16
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "e449ba4d6acb92b42222bcff4bea54d8d1d6ca3d8ee6c573588ebcb6cec61d03",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0010.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 17
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "f35db5b7cf15a1aed352d942430061d30704f266add332b2cff4888f5200240a",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0011.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 18
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "6992565386ec8de65ec8f5839afeaf3b2d87c6d744a65d7a908a36283ff205b1",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0012.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 19
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "0ebf2acfb65666bf7737499610d1e4c6eeea687a1f26164fe27b4d5cb285fbad",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0013.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 20
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "314e8fb40c62eeef6d8ee28f12a2042ab60cb28da1481bae84c15af733feb20a",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0014.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 21
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "b6fe48edf26f32128fe7cd69072cbb01bfbb48fdce8e8aa2144899910e4dd255",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0015.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 22
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "25037e9355eea9d018aae15010782a4fc80dd0850a054b0b92a2501e99bd1fe4",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0016.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 23
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "35e92a8af7636dc1f8c49fe8af519c50aa46f4a4047f9b2ea29e42f5e04bfe0d",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0017.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 16
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "e44831c554becf1e0156f39d01555d5366ae2a368f1ccffce10ca27774f6377e",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0018.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 17
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "617f5fd4db1f17cbcbd294f689529d78812ebf237585175bb1b496ec1c5c628d",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0019.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 18
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "2b96d66a3bdaf180243ae14aab6e1cf7d5203986b6f11774b1345fcb2a0b0484",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0020.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 19
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "098d23596e474f64440b04dfa39769ca36caba46d75d2d679ec8563224212a19",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0021.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 20
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "9eea16d660d4058e4a59b4295e091a8d20ddea0909318073066352e6bdad7662",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0022.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 21
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "80331db88e3884774f042168e4f219b68f478ca0f663d6ce6f026a6dcc1d018e",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0023.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 22
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "30c98584b7b03a65ab369ec7b0c269de0948a9c324f64491ee8764483872dd16",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0024.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 23
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "f6d07d793c32477739589178a143cac538307e06b8f71b5a67f0ab86d6ba4776",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0025.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 16
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "19b57874ece4dcd3666112fff8b792b19bb3aa04204ac884c662202cc89af0ae",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0026.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 17
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "d92ac9082c276dd6dafe1537c0cd831f77bbae500cc178d8f551b6da7473e670",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0027.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 18
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "728302d2bd9beaacb2c9cc8c0453cd006960ca28eebdb9e7cfdf68ca531f7069",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0028.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 19
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "96ff2277cbba3e1d25c117448bb01aa261ec9336185c5fb05894239ddfc3695d",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0029.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 20
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "bc1dab2dae8f15a2323a0cd594c6b8e1eec0ca7dbddd3713baa2eb5f55d3121a",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0030.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 21
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "daea72837dfdd65fefaf0cb255a42db4541c0cf20894b9c9d722e44e1e847b06",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0031.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 22
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "7f01153e87493385014fab5880e8e4969cc5c26f3db82fc525129f06b97890f6",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0032.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 23
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "cc618e783a53fb9e63dd4cc341b481dd84ced6377832b7fed491f2ac38b60a4b",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0033.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 16
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "29ba8d42cd152f03c7e5f7563896af321143f64b6d553ee9891d9beaabe04c9c",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0034.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 17
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "64f02a4db849ddf16928f6f40a01f9dbd385fb4a8ddec4b4e0eb134b58690c18",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0035.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 18
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "94ef7e20ece8accf500ab8ad1447170b541f0e59a71568dc83caabce91bc0ec7",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0036.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 19
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "3da21e9dc2a6bbf8bd42b1ac5d2bcae8cfba4f8657228e6a987ca0d594615760",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0037.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 20
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "87698b3c3eba57d73a9232f02781220b4e95f000282bec2e8045d8c3ce281100",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0038.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 21
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "6f9573c0844cb60e84f6749ad673946204b8ead1494a873ce39bd93a5dae29fb",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0039.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 22
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "21b7463f56020733781cdccee01f3de8b7829b416ea178c113e31bcf57cd6777",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0040.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 23
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "ce78e93f46d7b8f77b8ab0cc9ca7f8044f0427a76026cad131aa7d6f644e3d0d",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0041.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 16
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "86206429098e12170eb3e83a84021855f3801a1d26128a44840f74fc55062197",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0042.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 17
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "531a38178e2fe4adaed7593d7fa7b6855a0d49a3faa24e6a668f26a20687b0c2",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0043.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 18
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "e569d927dba6e9e9cbcb76aad9457b52606ada7b65986ca929eb41723dead33f",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0044.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 19
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "1dd58e619bbb744e8856dc09708582f6ef118e4ac2ad3bc2ca2197faa9877baa",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0045.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 20
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "90c211f96af1d0df2d036499ddcee2f708915708fef6be95845508e0217a6c6d",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0046.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 21
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "a59fee718bbcf4ebdeb413f5ed8bd0c95a58d4e161640340f06357fe3c76c22c",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0047.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 22
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "1c8afa40fa8c8674513c11e1d3760cff9ddf67dae0a7caf6bc50d6a584bd43f9",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0048.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 23
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "639f2f58dfff53a0c1ad64413a15455f3895da4a9f73769b40b6ca56ddcf0eb7",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0049.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 16
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "d3f24b1d3d220ec7b2b2e739dce9cd75801e5c4b8a1bfdd26806dc3c4300badb",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0050.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 17
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "4accc6cd7b3365ecca96fcaa6791f5fd779c7b3696fa0e786c45f210605af138",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0051.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 18
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "65cffc904f170264b1d3f91a220079bb221f0c8cd1111d82ca305317fcbe0e02",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0052.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 19
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "bcfcdb343c0d9fcde3b9a46005c35b46c3fc0f0d1d487f0cf332ec10083a8c3a",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0053.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 20
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "8757fc803fb253aedc1ecf9f0e9defb75ae47a06e6df1b676761d9f7b4fadd4a",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0054.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 21
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "6a1ad8c520425786b620cf7da9440305386a636688a4060a278825aaf6a2541a",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0055.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 22
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "4205e47fb037eb3b5cac0cbd4c57443a6d18ef38375303742ea35ef61bc2cce3",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0056.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 23
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "1f7bdb7486b8bdeeb38bad6c42a9b8a2688bc7167bc2a936dcf84ae23ed9f80c",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0057.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 16
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "c72be3bc528e0882e7675ecb6615c9dbcd3c93f76a0911d134d1a399304d277c",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0058.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 17
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "5128788741022b14b1f9848661d2e3985be845b6f015a3bb8332e31f89fd2680",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0059.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 18
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "021957c0c7c4b3df8e255cbd6c49846136fbe0824099c45d2b59fd0249c85358",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0060.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 19
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "6c10965a1ac771edb002e698093d893955a26fdae9b5d9f20ae52262a9c75276",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0061.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 20
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "f007249b0d3bf3c2d223c3df84f7c0d5a95af9b9f6f0d69ad222a3d1e3251677",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0062.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 21
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "4c8a9227de2fced0915689d23fa467594e47abe53d58b15301e9bd674862b069",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0063.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 22
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "df45e2ee695c47822f61a2e5518590427c50a7e2a1b94458a86e474c45245d90",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0064.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 23
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "ef423e06eab7871d067809aeddfb3c5b4e58ca0f475428f0b8a0c3790d6edb67",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0065.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 16
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "8f20563e5c78f420de6250f81e09e983c0e96e6d0a8f97338ed67bf1dc92e1c8",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0066.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 17
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "9c04dff13a69bb7b69b9b28b6af3acb1f78d7e7b9f7f8ce5e1f419f0d510abd8",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0067.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 18
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "73e576ab5e930072e8a166acf25a077fd5c366684b76938e8d09d17bd6a7c8fb",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0068.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 19
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "21b914f874258d236595f9b9f69cf7ec496a0eb3eb986feb2ff079e5450a1e49",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0069.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 20
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "57940354f13061e0b952d6a713d7a8e2aab9604d4b793aebac48688a339b7168",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0070.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 21
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "c0823ed609260ab30cc8f926452062cd36074a36f33ea6f2b79961f54cd32536",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0071.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 22
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "b16f1ac1f26c6277750a22c1d5ec2c72bd8d3962fd5ac87a139540584d769b88",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0072.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 23
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "2c5be31507d15a21fb8277f00ab84dbce510cf6ea847c16ea0c736732a32bd13",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0073.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 16
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "d8b10df46bf72e68581a61df03126280c7e9f281a3212c19a65eb22155cc93c7",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0074.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 17
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "84973ee703debd71ec586e90da76874a384e1b92859731ecf97544525d86f7c9",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0075.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 18
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "44563c13d86e349ac61598542b048297ee7769a0fba8c1eb8891d81993db6cd2",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0076.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 19
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "2925ba0cf20b3f93869131b64325efafcffdcf5c39a751c3ead34fa0ce4e841a",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0077.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 20
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "17e7c1311c05501c193758e532c6916170e7656f5c628b6269a562fe1fc84cb6",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0078.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 21
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "002e62669ce29e1e18d9923591b8424f594927c5c36cde684f2b23e2b2ec3c99",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0079.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 22
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "aa522c962fdf77197bd07f13094efb0371f5ff44d11aae270028e9624306f307",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0080.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 23
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "038b0402f8a8b45ce15424ce1569e782c57006c5f19a6821ee2490263ff4676e",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0081.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 16
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "c56ca79eb4f274498a540275fead04ecb4430f2c491df6cd3440d11923b3a04d",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0082.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 17
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "504b0e6332526e7c1ecec1dcf3913ef5c68fab39996fdcac617961caa24d560a",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0083.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 18
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "bf00c1d5bcaccffaa2c8d138c931bb9b6b5ee98fd36f00894e17898a61f9bea8",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0084.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 19
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "4bd6511fc85d0c1e6459d4f2fb936c950ccad4a7c235da268d3deb10401b349f",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0085.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 20
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "85c112c27804ffaa839c016846475906815381df3725ac6041989819c4d549fa",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0086.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 21
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "d8dd29191e7cc58085199ba194bb551dc194bc4f6f6c4325884f3ee62f57bdba",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0087.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 22
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "ddb9f540cfd81adbbdf9ca3fc8a814f0d52d7899da7b6ee20d1d1ee34c08b73c",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0088.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 23
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "4ef4bfffa58e8372e4d1377e986bd77f6eb24e59994b94580225a5bbd2b8151d",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0089.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 16
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "8865ceee3a8f1eec92e7e74af308b643d16eb036d7875fc2e07b3db6d0e87659",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0090.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 17
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "9ac61552e5acd1fd08998e2da331f88ffcd6097dc90886358ae48e81aa668426",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0091.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 18
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "c75b72d8bdbab47a19e4b336d7652d063cc85c35c0138ca57bc275300c8545ee",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0092.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 19
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "1703048c4168ef6fee6070c6a7a84daf5a5f03647a8e598110948e91ba6f7ec5",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0093.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 20
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "b2b2e2c485182c42555678ff79910675ce45c6f50dc99c2030fc5083555b4e73",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0094.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 21
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "b6b29927b070f10003cf55ff9199098d08f589c18b5e8ca7fea8949da8f2a986",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0095.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 22
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "ca358f383eaa78c2ddf12275f53f81b9043da7f2f622acbb62ae8c74f3304ba5",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0096.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 23
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "1131c57fdb837fe76020c8ffa0018dfaddcb8b87dddc0acae37527b0acabfb97",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0097.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 16
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "a3555da3dc3aa4ee938dae2f2fa6eb55cfab17ff5f3f407e57e6a73cd5817cbd",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0098.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 17
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "88c1cb9162b95acf0eba7a3b203d527b9e6d9c082e96d65fc02f9b03d439404e",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0099.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 18
+    },
+    {
+      "byteSample": null,
+      "errors": [],
+      "hash": "9905e6fda21456cee81b4d81a1419db86a6a74cb737fc4b35dac7672ff443460",
+      "kind": "file",
+      "linkTarget": null,
+      "path": "rootfs/generated/dir-00/file-0100.dat",
+      "scanId": "scan-8ecb49226789",
+      "size": 19
+    }
+  ],
+  "path": "rootfs",
+  "projectVersionId": "pv-a481df87dadf",
+  "scanId": "scan-8ecb49226789",
+  "total": 6000
+}

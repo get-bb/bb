@@ -1,0 +1,9 @@
+{
+  "base": "Architecture node 1",
+  "entityId": "as-component-01",
+  "expectedHeadVersionId": "9007199254740996",
+  "field": "name",
+  "local": "Gateway Control Unit",
+  "remote": "Edge Gateway Controller",
+  "remoteHeadVersionId": "9007199254740997"
+}
