@@ -2,7 +2,18 @@ export const meta = {
   name: "fs-work-package",
   description:
     "Implement one Finite State work package, review it on an independent provider, repair verified findings, verify, and report.",
+  inputSchema: {
+    type: "object",
+    required: ["taskKey", "profile"],
+    additionalProperties: false,
+    properties: {
+      taskKey: { type: "string", minLength: 1 },
+      profile: { enum: ["fs-standard", "fs-critical"] },
+      scope: { type: "string" },
+    },
+  },
   phases: [
+    { title: "Preflight", detail: "Read-only FS-93 dependency-cluster readiness check" },
     { title: "Implement", detail: "One editing agent in the task worktree" },
     { title: "Review", detail: "Parallel read-only reviewers on a different provider" },
     { title: "Repair", detail: "One editing agent, verified findings only" },
@@ -10,6 +21,82 @@ export const meta = {
     { title: "Report", detail: "One substantive task comment; mark in_review" },
   ],
 };
+
+const MAX_CONCURRENT_AGENTS = 4;
+const EDITING_PHASES = ["Implement", "Repair"];
+
+async function parallelWithinCap(thunks) {
+  const results = [];
+  for (let index = 0; index < thunks.length; index += MAX_CONCURRENT_AGENTS) {
+    const batch = await parallel(thunks.slice(index, index + MAX_CONCURRENT_AGENTS));
+    results.push(...batch);
+  }
+  return results;
+}
+
+function standardAgent(prompt, options) {
+  return agent(prompt, {
+    label: options.label,
+    phase: options.phase,
+    provider: "codex",
+    model: "gpt-5.6-sol",
+    reasoningLevel: "medium",
+    schema: options.schema,
+  });
+}
+
+function criticalAgent(prompt, options) {
+  return agent(prompt, {
+    label: options.label,
+    phase: options.phase,
+    provider: "codex",
+    model: "gpt-5.6-sol",
+    reasoningLevel: "xhigh",
+    schema: options.schema,
+  });
+}
+
+function profileAgent(prompt, options) {
+  return profile === "fs-standard"
+    ? standardAgent(prompt, options)
+    : criticalAgent(prompt, options);
+}
+
+function reviewAgent(prompt, options) {
+  return agent(
+    "READ-ONLY BOUNDARY: Do not edit any file, mutate Tasks, GitHub, gates, or approvals, or merge.\n\n" + prompt,
+    {
+      label: options.label,
+      phase: options.phase,
+      provider: "claude-code",
+      model: "claude-opus-5[1m]",
+      reasoningLevel: "high",
+      schema: options.schema,
+    },
+  );
+}
+
+function profileReadOnlyAgent(prompt, options) {
+  return profileAgent(
+    "READ-ONLY BOUNDARY: Do not edit any file, mutate Tasks, GitHub, gates, or approvals, or merge.\n\n" + prompt,
+    options,
+  );
+}
+
+function editingAgent(prompt, options) {
+  if (!EDITING_PHASES.includes(options.phase)) {
+    throw new Error("Editing agent requested outside an editing phase");
+  }
+  return profileAgent(prompt, options);
+}
+
+function profileNonEditingAgent(prompt, options) {
+  return profileAgent(
+    "OPERATIONAL REPORT BOUNDARY: Do not edit repository files. You may only push the current branch, open a draft PR, comment on the named task, and set that task to in_review. Do not merge, change any gate, approve anything, or mint human authorization.\n\n" +
+      prompt,
+    options,
+  );
+}
 
 const GATE =
   "pnpm exec turbo run typecheck test lint build --filter=bb-plugin-finite-state";
@@ -58,15 +145,51 @@ const VERDICT_SCHEMA = {
   },
 };
 
-if (!args || !args.taskKey) {
-  throw new Error("fs-work-package requires args.taskKey, e.g. { taskKey: 'FS-24' }");
+const READINESS_SCHEMA = {
+  type: "object",
+  required: ["ready", "preset", "detail"],
+  additionalProperties: false,
+  properties: {
+    ready: { type: "boolean" },
+    preset: { enum: ["fs-standard", "fs-critical"] },
+    detail: { type: "string", maxLength: 2500 },
+  },
+};
+
+if (
+  !args ||
+  !args.taskKey ||
+  (args.profile !== "fs-standard" && args.profile !== "fs-critical")
+) {
+  throw new Error(
+    "fs-work-package requires taskKey and an explicit fs-standard or fs-critical profile",
+  );
 }
 
 const taskKey = args.taskKey;
+const profile = args.profile;
 const scope = args.scope ? "\n\nExtra scope notes from the coordinator:\n" + args.scope : "";
 
+phase("Preflight");
+const readiness = await profileReadOnlyAgent(
+  "Evaluate FS-93 dispatch readiness for Finite State work package task " +
+    taskKey +
+    ". Read plugins/bb-plugin-finite-state/docs/Implementation/scheduling/wp-coupling-manifest.json and run, with Node 22.19.0, its validate-wp-coupling.mjs default validation. Map the task key to exactly one manifest work package. Use `bb tasks list --limit 500 --json` and `bb tasks show` to prove: every effective dependency is done; no other member of its decision-owner cluster is in_progress or in_review; this is the lowest incomplete sequence; its dispatched preset equals the requested " +
+    profile +
+    "; and active work remains within dispatchPolicy.currentLaneCap. Return ready=false on any missing, ambiguous, or unverifiable evidence. Do not dispatch, edit, change task status, or relax readiness.",
+  {
+    label: "preflight:" + taskKey,
+    phase: "Preflight",
+    schema: READINESS_SCHEMA,
+  },
+);
+
+if (!readiness.ready || readiness.preset !== profile) {
+  throw new Error(taskKey + " is not FS-93 dependency-cluster ready: " + readiness.detail);
+}
+
 phase("Implement");
-const implemented = await agent(
+const implemented = await editingAgent(
   "You are the sole editing agent for Finite State work package " +
     taskKey +
     ". Read it with `bb tasks show " +
@@ -97,10 +220,10 @@ const lenses = [
   },
 ];
 
-const reviews = await parallel(
+const reviews = await parallelWithinCap(
   lenses.map(
     (lens) => () =>
-      agent(
+      reviewAgent(
         "You are an INDEPENDENT READ-ONLY reviewer of Finite State work package " +
           taskKey +
           ". You did not write this code. Do not edit any file.\n\nThe implementer reported:\n" +
@@ -113,9 +236,6 @@ const reviews = await parallel(
         {
           label: "review:" + lens.key,
           phase: "Review",
-          provider: "claude-code",
-          model: "claude-sonnet-5",
-          reasoningLevel: "high",
           schema: FINDINGS_SCHEMA,
         },
       ),
@@ -138,7 +258,7 @@ if (findings.length > 0) {
         index + 1 + ". [" + finding.severity + "] " + finding.summary + "\n   evidence: " + finding.evidence,
     )
     .join("\n");
-  repaired = await agent(
+  repaired = await editingAgent(
     "You are the sole editing agent repairing Finite State work package " +
       taskKey +
       ". Fix ONLY the verified findings below. Do not refactor anything else.\n\n" +
@@ -151,7 +271,7 @@ if (findings.length > 0) {
 }
 
 phase("Verify");
-const verdict = await agent(
+const verdict = await reviewAgent(
   "You are the final verifier for Finite State work package " +
     taskKey +
     ". Do not edit anything.\n\nRun the gate yourself and paste real output:\n" +
@@ -162,19 +282,16 @@ const verdict = await agent(
   {
     label: "verify:" + taskKey,
     phase: "Verify",
-    provider: "claude-code",
-    model: "claude-sonnet-5",
-    reasoningLevel: "high",
     schema: VERDICT_SCHEMA,
   },
 );
 
 phase("Report");
 const selfCheckable = findings.filter((finding) => finding.selfCheckable).length;
-const report = await agent(
+const report = await profileNonEditingAgent(
   "Post exactly one substantive comment on Finite State task " +
     taskKey +
-    " with `bb tasks comment`, summarising this run, then set its status.\n\nImplementation:\n" +
+    " with `bb tasks comment`, summarising this run. Only on green verification may you set its status to in_review.\n\nImplementation:\n" +
     implemented +
     "\n\nIndependent review found " +
     findings.length +
@@ -188,7 +305,7 @@ const report = await agent(
     verdict.acceptanceMet +
     "\n" +
     verdict.detail +
-    "\n\nIf gateGreen and acceptanceMet are both true, push the branch, open a pull request whose body ends with an agent-generation marker, and set the task to in_review. Otherwise set the task to blocked and state the exact failing command and output. Never merge. Never approve a frozen artifact.\n\nIf any self-checkable findings occurred, add one line naming the check that should move into the gate or the WP acceptance criteria so this class cannot recur.",
+    "\n\nIf gateGreen and acceptanceMet are both true, push the branch, open a pull request whose body ends with an agent-generation marker, and set the task to in_review. Otherwise leave the task status unchanged and state the exact failing command and output. Never merge. Never approve a frozen artifact.\n\nIf any self-checkable findings occurred, add one line naming the check that should move into the gate or the WP acceptance criteria so this class cannot recur.",
   { label: "report:" + taskKey, phase: "Report" },
 );
 
