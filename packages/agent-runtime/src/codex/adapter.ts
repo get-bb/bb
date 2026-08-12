@@ -1570,6 +1570,12 @@ export function createCodexProviderAdapter(
     const alreadyTerminal = args.tracked.terminal;
     args.tracked.terminal = true;
     clearTrackedSubAgentLinks(args.tracked);
+    if (alreadyTerminal && args.tracked.pendingFollowups > 0) {
+      args.tracked.pendingFollowups -= 1;
+    }
+    if (args.tracked.pendingFollowups > 0) {
+      rearmTrackedSubAgent(args.tracked);
+    }
     if (alreadyTerminal) {
       return null;
     }
@@ -1595,6 +1601,7 @@ export function createCodexProviderAdapter(
           callId: activity.item.id,
           parentProviderThreadId: activity.providerThreadId,
           parentTurnId: activity.turnId,
+          pendingFollowups: 0,
           terminal: false,
         };
         trackedSubAgentsByCallId.set(tracked.callId, tracked);
@@ -1631,6 +1638,7 @@ export function createCodexProviderAdapter(
           activity.item.agentThreadId,
         );
         if (tracked?.terminal) {
+          tracked.pendingFollowups += 1;
           rearmTrackedSubAgent(tracked);
         }
         return [];

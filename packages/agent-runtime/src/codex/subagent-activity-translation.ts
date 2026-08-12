@@ -24,6 +24,7 @@ export interface CodexTrackedSubAgent {
   parentProviderThreadId: string;
   parentToolCallId?: string;
   parentTurnId: string;
+  pendingFollowups: number;
   terminal: boolean;
 }
 
