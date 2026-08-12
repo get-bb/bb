@@ -153,6 +153,7 @@ describe("PluginNavSidebarItems", () => {
       "max-h-5",
       "max-w-16",
       "overflow-hidden",
+      "text-xs",
       "text-ellipsis",
       "whitespace-nowrap",
     ]) {

@@ -588,7 +588,7 @@ function SidebarNavRowChrome({
               // while the menu is open without unmounting plugin state.
               className={cn(
                 SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
-                "pointer-events-none absolute right-1 top-1/2 block min-w-5 max-h-5 max-w-16 -translate-y-1/2 overflow-hidden text-ellipsis whitespace-nowrap text-center leading-5",
+                "pointer-events-none absolute right-1 top-1/2 block min-w-5 max-h-5 max-w-16 -translate-y-1/2 overflow-hidden text-xs text-ellipsis whitespace-nowrap text-center leading-5",
               )}
             >
               {accessory}
