@@ -84,10 +84,11 @@ function amendment(
   id: string,
   paths: readonly string[],
   contractVersion = "n/a",
+  status = "approved",
 ) {
   return `### ${id} — fixture amendment
 
-- Status: approved
+- Status: ${status}
 - Artifacts:
 ${paths.map((artifact) => `  - \`${artifact}\``).join("\n")}
 - Contract version: ${contractVersion}
@@ -214,7 +215,7 @@ describe("lean contract tripwires", () => {
     expect(result.output).toContain("not a structured approved entry");
   });
 
-  it("accepts only a real structured approved amendment", async () => {
+  it("keeps an accepted amendment valid through the approved-and-merged lifecycle", async () => {
     const root = await fixtureRoot();
     const appPath = `${pluginRoot}/app.tsx`;
     await write(root, appPath, "export default function Changed() { return null; }\n");
@@ -229,6 +230,24 @@ describe("lean contract tripwires", () => {
       await readFile(path.join(root, `${pluginRoot}/frozen-artifacts.json`), "utf8"),
     );
     expect(baseline.artifacts[appPath].amendment).toBe("AMD-0002");
+
+    await write(
+      root,
+      `${pluginRoot}/AMENDMENTS.md`,
+      `# Amendments\n\n${amendment("AMD-0002", [appPath], "n/a", "approved and merged")}`,
+    );
+    expect(run(frozenScript, root).status).toBe(0);
+
+    for (const invalidStatus of ["proposed", "approved and merged later"]) {
+      await write(
+        root,
+        `${pluginRoot}/AMENDMENTS.md`,
+        `# Amendments\n\n${amendment("AMD-0002", [appPath], "n/a", invalidStatus)}`,
+      );
+      const invalid = run(frozenScript, root);
+      expect(invalid.status).toBe(1);
+      expect(invalid.output).toContain("lacks a structured approved amendment");
+    }
   });
 
   it("refuses to replay an amendment already recorded on a baseline entry", async () => {
@@ -319,7 +338,7 @@ describe("lean contract tripwires", () => {
       `import { Star } from "lucide-react";
 export const accentColor = "#1a2b3c";
 export const neutralColor = "oklch(0.7 0.02 250)";
-export const classes = "bg-[#123456] border-[rgb(1_2_3)] hover:bg-[#ff0000] dark:text-[#00ff00] !bg-[#123456] group-hover:fill-[rgb(1,2,3)]";
+export const classes = "bg-[#123456] border-[rgb(1_2_3)]";
 export const icon = Star;
 `,
       `${pluginRoot}/lib/eslint-negative-probe.ts`,
@@ -329,6 +348,21 @@ export const icon = Star;
     expect(result.output).toContain("no-restricted-imports");
     expect(result.output).toContain("not raw hex values");
     expect(result.output).toContain("not raw oklch() values");
+    expect(result.output).toContain("not arbitrary color utilities");
+  });
+
+  it.each([
+    "hover:bg-[#ff0000]",
+    "dark:text-[#00ff00]",
+    "!bg-[#123456]",
+    "group-hover:fill-[rgb(1,2,3)]",
+  ])("rejects variant or important arbitrary color utility %s", (classes) => {
+    const result = lint(
+      `export const classes = ${JSON.stringify(classes)};\n`,
+      `${pluginRoot}/lib/eslint-arbitrary-color-negative-probe.ts`,
+    );
+
+    expect(result.status).toBe(1);
     expect(result.output).toContain("not arbitrary color utilities");
   });
 

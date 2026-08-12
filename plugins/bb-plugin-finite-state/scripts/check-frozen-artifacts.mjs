@@ -188,7 +188,7 @@ function parseAmendments(source) {
     const [heading, ...bodyLines] = section.split("\n");
     const id = /^(?<id>(?:A|AMD)-\d{3,})\s+—/u.exec(heading)?.groups?.id;
     const body = bodyLines.join("\n");
-    const approved = /^- Status: approved$/mu.test(body);
+    const approved = /^- Status: approved(?: and merged)?$/mu.test(body);
     const artifactBlock = /^- Artifacts:\n(?<items>(?:  - `[^`]+`\n?)+)/mu.exec(body)?.groups?.items;
     const contractVersion = /^- Contract version: (?<value>\d+|n\/a)$/mu.exec(body)?.groups?.value;
     if (!id || !approved || !artifactBlock || !contractVersion) continue;
