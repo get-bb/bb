@@ -208,15 +208,13 @@ export const DEFAULT_APP_KEYBINDINGS: AppDefaultKeybindings = [
   binding("modelPicker.cycleModel", "m", { alt: true }, composerWithoutModal),
   binding("modelPicker.cycleProvider", "p", { alt: true }, composerWithoutModal),
   binding("modelPicker.cycleReasoning", "t", { alt: true }, composerWithoutModal),
-  // Navigation-style chords apply while the editor or any control in that
-  // composer is focused. Their handlers enforce that ownership at the
-  // individual picker level; `editableFocus` would reject Tab-focused buttons
-  // before those handlers can identify their composer. They only act on a
-  // closed picker, so they intentionally have no `modelPickerOpen` copies below.
-  binding("modelPicker.previousModel", "ArrowLeft", { mod: true }, composerWithoutModal),
-  binding("modelPicker.nextModel", "ArrowRight", { mod: true }, composerWithoutModal),
-  binding("modelPicker.decreaseReasoning", "ArrowDown", { mod: true }, composerWithoutModal),
-  binding("modelPicker.increaseReasoning", "ArrowUp", { mod: true }, composerWithoutModal),
+  // Directional commands are assignable, but intentionally have no defaults.
+  // Arrow chords are semantic text navigation in editable controls and remain
+  // editor-owned regardless of modifiers or user customization.
+  unassignedBinding("modelPicker.previousModel", composerWithoutModal),
+  unassignedBinding("modelPicker.nextModel", composerWithoutModal),
+  unassignedBinding("modelPicker.decreaseReasoning", composerWithoutModal),
+  unassignedBinding("modelPicker.increaseReasoning", composerWithoutModal),
   // The cycle bindings above stop the moment the popover opens. These later,
   // scoped copies keep cycling available while it is open — the same escape
   // hatch `modelPicker.toggle` uses to close itself.

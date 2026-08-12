@@ -215,10 +215,15 @@ delayed shortcut badges without disabling any shortcuts.
 | Composer  | Cycle model                   | `Alt+M`                           | All clients              |
 | Composer  | Cycle provider                | `Alt+P`                           | All clients              |
 | Composer  | Cycle reasoning effort        | `Alt+T`                           | All clients              |
-| Composer  | Previous / next model         | `Mod+←` / `Mod+→`                 | All clients              |
-| Composer  | Decrease / increase reasoning | `Mod+↓` / `Mod+↑`                 | All clients              |
 | Browser   | Focus location / reload       | `Mod+L` / `Mod+R`                 | Desktop embedded browser |
 | Questions | Choose visible answer 1–9     | `1` … `9`                         | While a question is open |
+
+Directional composer commands (`modelPicker.previousModel`,
+`modelPicker.nextModel`, `modelPicker.decreaseReasoning`, and
+`modelPicker.increaseReasoning`) are available in Settings → Keyboard and
+through `bb settings keyboard set`, but have no default bindings. Navigation
+and deletion keys remain native in editable controls even when assigned to an
+app command.
 
 The desktop application menu uses the same resolved bindings for New Thread,
 New Window, New Tab, Close, and Settings. There is no separate menu shortcut

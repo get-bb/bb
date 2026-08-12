@@ -1,3 +1,7 @@
+import {
+  reasoningLevelValues,
+  type ReasoningLevel,
+} from "@bb/domain";
 import type { PickerOption } from "./OptionPicker";
 
 /**
@@ -31,24 +35,26 @@ export function previousCycleValue<T extends string>(
 }
 
 /**
- * The adjacent reasoning value in the requested direction. Unlike cycling,
- * directional changes clamp at either end. A current value outside the list
- * enters from the edge implied by the direction.
+ * The adjacent supported reasoning value in canonical rank order. Provider
+ * responses may list efforts in any order, so their array order cannot define
+ * what increase and decrease mean.
  */
-export function adjacentReasoningValue<T extends string>(
-  options: readonly PickerOption<T>[],
-  current: T,
+export function adjacentReasoningValue(
+  options: readonly PickerOption<ReasoningLevel>[],
+  current: ReasoningLevel,
   direction: "decrease" | "increase",
-): T | null {
+): ReasoningLevel | null {
   if (options.length < 2) return null;
 
-  const currentIndex = options.findIndex((option) => option.value === current);
-  if (currentIndex < 0) {
-    return direction === "increase"
-      ? options[0]!.value
-      : options[options.length - 1]!.value;
-  }
-
+  const supported = new Set(options.map((option) => option.value));
   const offset = direction === "increase" ? 1 : -1;
-  return options[currentIndex + offset]?.value ?? null;
+  for (
+    let rank = reasoningLevelValues.indexOf(current) + offset;
+    rank >= 0 && rank < reasoningLevelValues.length;
+    rank += offset
+  ) {
+    const candidate = reasoningLevelValues[rank];
+    if (candidate !== undefined && supported.has(candidate)) return candidate;
+  }
+  return null;
 }

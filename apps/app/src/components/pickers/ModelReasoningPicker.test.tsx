@@ -235,6 +235,18 @@ describe("ModelReasoningPicker", () => {
     ).toBe(true);
   });
 
+  it("does not swallow the provider cycle chord outside its composer", () => {
+    renderPicker({ onSelectedProviderChange: null });
+    const outsideTarget = document.createElement("textarea");
+    document.body.append(outsideTarget);
+
+    expect(
+      commandHandlers.get("modelPicker.cycleProvider")?.({
+        target: outsideTarget,
+      }),
+    ).toBe(false);
+  });
+
   it("cycles the provider while the picker popover is open", () => {
     const { onSelectedProviderChange } = renderPicker();
     const trigger = screen.getByRole("button", {

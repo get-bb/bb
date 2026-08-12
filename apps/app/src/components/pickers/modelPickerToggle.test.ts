@@ -16,6 +16,7 @@ const base: ModelPickerToggleInput = {
   isPrimaryComposer: true,
   caretInThisComposer: true,
   caretInOtherComposerOfPane: false,
+  editableOutsideComposer: false,
 };
 
 describe("resolveModelPickerToggle", () => {
@@ -72,6 +73,16 @@ describe("resolveModelPickerToggle", () => {
     ).toBe("open");
   });
 
+  it("does not claim an editable control outside every composer", () => {
+    expect(
+      resolveModelPickerToggle({
+        ...base,
+        caretInThisComposer: false,
+        editableOutsideComposer: true,
+      }),
+    ).toBe("ignore");
+  });
+
   it("does NOT open a hidden secondary (side-chat) composer on the caret-outside fallback", () => {
     // The regression the reviewer flagged: a mounted-but-hidden side chat
     // must not win the fallback in a focused split pane.
@@ -95,8 +106,9 @@ describe("resolveModelPickerToggle", () => {
   });
 });
 
-// The cycle chords (Alt+M / Alt+T) resolve through this same predicate, so the
-// toggle and the cycles can never disagree about which picker a chord addresses.
+// The cycle chords (Alt+M / Alt+P / Alt+T) resolve through this same predicate,
+// so the toggle and the cycles can never disagree about which picker a chord
+// addresses.
 describe("ownsModelPickerChord", () => {
   it("agrees with the toggle on every scope decision", () => {
     for (const open of [false, true]) {

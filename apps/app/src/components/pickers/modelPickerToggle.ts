@@ -26,6 +26,8 @@ export interface ModelPickerScope {
   caretInThisComposer: boolean;
   /** The caret sits inside a DIFFERENT composer of the same focused pane. */
   caretInOtherComposerOfPane: boolean;
+  /** The event target is an editable control outside every composer. */
+  editableOutsideComposer: boolean;
 }
 
 export interface ModelPickerToggleInput extends ModelPickerScope {
@@ -44,7 +46,8 @@ export interface ModelPickerToggleInput extends ModelPickerScope {
  *    below can no longer see it.
  * 4. If the caret is inside a composer, only that composer's picker acts; a
  *    sibling composer of the same pane defers to it.
- * 5. Otherwise (caret outside every composer, e.g. after keyboard pane
+ * 5. An editable target outside every composer keeps its text-entry chord.
+ * 6. Otherwise (caret outside every composer, e.g. after keyboard pane
  *    navigation) only a split pane's primary composer acts — lone surfaces keep
  *    their prior "do nothing unless the caret is in the composer" behavior.
  */
@@ -54,6 +57,7 @@ export function ownsModelPickerChord(input: ModelPickerToggleInput): boolean {
   if (input.open) return true;
   if (input.caretInThisComposer) return true;
   if (input.caretInOtherComposerOfPane) return false;
+  if (input.editableOutsideComposer) return false;
   if (!input.isSplitPane) return false;
   return input.isPrimaryComposer;
 }

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { ReasoningLevel } from "@bb/domain";
 import {
   adjacentReasoningValue,
   nextCycleValue,
@@ -44,19 +45,45 @@ describe("previousCycleValue", () => {
 });
 
 describe("adjacentReasoningValue", () => {
-  it("moves in the requested direction without wrapping", () => {
-    expect(adjacentReasoningValue(options, "b", "increase")).toBe("c");
-    expect(adjacentReasoningValue(options, "b", "decrease")).toBe("a");
-    expect(adjacentReasoningValue(options, "c", "increase")).toBeNull();
-    expect(adjacentReasoningValue(options, "a", "decrease")).toBeNull();
+  const unorderedOptions = [
+    { value: "max", label: "Max" },
+    { value: "low", label: "Low" },
+    { value: "high", label: "High" },
+  ] satisfies readonly { value: ReasoningLevel; label: string }[];
+
+  it("uses canonical rank rather than provider response order", () => {
+    expect(adjacentReasoningValue(unorderedOptions, "low", "increase")).toBe(
+      "high",
+    );
+    expect(adjacentReasoningValue(unorderedOptions, "high", "increase")).toBe(
+      "max",
+    );
+    expect(adjacentReasoningValue(unorderedOptions, "high", "decrease")).toBe(
+      "low",
+    );
   });
 
-  it("starts at the directional edge when the value is absent", () => {
-    expect(adjacentReasoningValue(options, "gone", "increase")).toBe("a");
-    expect(adjacentReasoningValue(options, "gone", "decrease")).toBe("c");
+  it("clamps instead of wrapping at either canonical edge", () => {
+    expect(adjacentReasoningValue(unorderedOptions, "max", "increase")).toBeNull();
+    expect(adjacentReasoningValue(unorderedOptions, "low", "decrease")).toBeNull();
+  });
+
+  it("keeps direction when the current effort is unsupported", () => {
+    expect(adjacentReasoningValue(unorderedOptions, "medium", "increase")).toBe(
+      "high",
+    );
+    expect(adjacentReasoningValue(unorderedOptions, "medium", "decrease")).toBe(
+      "low",
+    );
   });
 
   it("requires two choices", () => {
-    expect(adjacentReasoningValue([options[0]!], "a", "increase")).toBeNull();
+    expect(
+      adjacentReasoningValue(
+        [{ value: "high", label: "High" }],
+        "medium",
+        "increase",
+      ),
+    ).toBeNull();
   });
 });

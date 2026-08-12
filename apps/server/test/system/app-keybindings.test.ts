@@ -205,25 +205,38 @@ describe("app keybindings", () => {
       expect(
         config.defaultKeybindings
           .filter((binding) => navigationCommands.has(binding.command))
-          .map(({ command, shortcut, when }) => [
+          .map(({ command, shortcut, when }) => ({
             command,
-            shortcut.key,
-            shortcut.mod,
-            shortcut.alt,
+            shortcut,
             when,
-          ]),
+          })),
       ).toEqual([
-        ["modelPicker.previousModel", "ArrowLeft", true, false, composerWhen],
-        ["modelPicker.nextModel", "ArrowRight", true, false, composerWhen],
-        [
-          "modelPicker.decreaseReasoning",
-          "ArrowDown",
-          true,
-          false,
-          composerWhen,
-        ],
-        ["modelPicker.increaseReasoning", "ArrowUp", true, false, composerWhen],
+        {
+          command: "modelPicker.previousModel",
+          shortcut: null,
+          when: composerWhen,
+        },
+        {
+          command: "modelPicker.nextModel",
+          shortcut: null,
+          when: composerWhen,
+        },
+        {
+          command: "modelPicker.decreaseReasoning",
+          shortcut: null,
+          when: composerWhen,
+        },
+        {
+          command: "modelPicker.increaseReasoning",
+          shortcut: null,
+          when: composerWhen,
+        },
       ]);
+      expect(
+        assignedDefaultKeybindings.filter((binding) =>
+          navigationCommands.has(binding.command),
+        ),
+      ).toEqual([]);
       // Alt defaults remain confined to composer cycling commands, so unrelated
       // actions cannot shadow these chords.
       expect(

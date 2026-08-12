@@ -61,6 +61,7 @@ import {
   useIndexedAppCommandHandlers,
 } from "@/components/commands/AppCommandProvider";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
+import { isEditableKeyboardTarget } from "@/lib/app-keybindings";
 import { useOptionalPaneContext } from "@/views/thread-detail/PaneContext";
 import {
   ownsClosedModelPickerNavigationChord,
@@ -596,6 +597,8 @@ export function ModelReasoningPicker({
           caretComposer !== pickerComposer &&
           pickerPane !== null &&
           caretPane === pickerPane,
+        editableOutsideComposer:
+          caretComposer === null && isEditableKeyboardTarget(target),
       };
     },
     [disabled, isFocusedPane, isSplitPane],

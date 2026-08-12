@@ -87,11 +87,15 @@ describe("app keybindings", () => {
     ).toBe(true);
   });
 
-  // macOS composes Option+M into "µ", so an Alt chord that matched on `key`
-  // alone would never fire there — the physical code carries the match instead.
-  it("matches alt chords by physical key across platforms", () => {
-    const ALT_M: AppShortcut = {
-      key: "m",
+  // macOS composes Option+letter chords, so matching on `key` alone would never
+  // fire the composer cycles there — the physical code carries the match.
+  it.each([
+    ["m", "µ", "KeyM"],
+    ["p", "π", "KeyP"],
+    ["t", "†", "KeyT"],
+  ])("matches Alt+%s by physical key when macOS reports %s", (key, composed, code) => {
+    const shortcut: AppShortcut = {
+      key,
       mod: false,
       meta: false,
       control: false,
@@ -101,17 +105,20 @@ describe("app keybindings", () => {
     expect(
       matchesAppShortcut(
         {
-          key: "µ",
-          code: "KeyM",
+          key: composed,
+          code,
           metaKey: false,
           ctrlKey: false,
           altKey: true,
           shiftKey: false,
         },
-        ALT_M,
+        shortcut,
         true,
       ),
     ).toBe(true);
+  });
+
+  it("matches an uncomposed alt chord by key across platforms", () => {
     expect(
       matchesAppShortcut(
         {
@@ -122,7 +129,7 @@ describe("app keybindings", () => {
           altKey: true,
           shiftKey: false,
         },
-        ALT_M,
+        { ...ALT_P, key: "m" },
         false,
       ),
     ).toBe(true);
@@ -139,7 +146,7 @@ describe("app keybindings", () => {
           altKey: true,
           shiftKey: false,
         },
-        { ...ALT_M, key: "a" },
+        { ...ALT_P, key: "a" },
         false,
       ),
     ).toBe(true);
@@ -153,7 +160,7 @@ describe("app keybindings", () => {
           altKey: true,
           shiftKey: false,
         },
-        { ...ALT_M, key: "q" },
+        { ...ALT_P, key: "q" },
         false,
       ),
     ).toBe(false);
