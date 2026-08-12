@@ -536,7 +536,7 @@ function buildCorpus(seed: string): {
     { path: "assurance-studio/entities-page-1.json", bytes: json({ success: true, data: { items: asEntities.slice(0, 25), total: asEntities.length, page: 1, pageSize: 25, hasMore: true } }) },
     { path: "assurance-studio/requirements.jsonl", bytes: jsonl(requirements), rows: requirements.length },
     { path: "assurance-studio/verification-checks.jsonl", bytes: jsonl(verificationChecks), rows: verificationChecks.length },
-    { path: "assurance-studio/tara-drift.json", bytes: json({ entityId: taraComponents[0].id, field: "name", base: "Gateway Controller", local: "Gateway Control Unit", remote: "Edge Gateway Controller", expectedHeadVersionId: "100", remoteHeadVersionId: "101" }) },
+    { path: "assurance-studio/tara-drift.json", bytes: json({ entityId: taraComponents[0].id, field: "name", base: "Gateway Controller", local: "Gateway Control Unit", remote: "Edge Gateway Controller", expectedHeadVersionId: taraComponents[0].reviewVersion, remoteHeadVersionId: "9007199254740992" }) },
     { path: "assurance-studio/project-sbom-page-1.json", bytes: json({ success: true, data: { items: components.slice(0, 50), total: components.length, page: 1, pageSize: 50, hasMore: true } }) },
     { path: "forge-compute/jobs.jsonl", bytes: jsonl(forgeJobs), rows: forgeJobs.length },
     { path: "forge-compute/README.md", bytes: text("# Optional Forge compute fixtures\n\nThis directory is independently removable. No Platform or Assurance Studio fixture refers to it.\n") },
@@ -721,8 +721,18 @@ function parseCli(argv: string[]): GenerateOptions {
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     if (argument === "--check") check = true;
-    else if (argument === "--seed" && argv[index + 1] !== undefined) seed = argv[++index];
-    else if (argument === "--out" && argv[index + 1] !== undefined) outDir = argv[++index];
+    else if (argument === "--seed" || argument === "--out") {
+      const value = argv[index + 1];
+      if (value === undefined || value.startsWith("--")) {
+        throw new FixtureGenerationError(
+          "INVALID_ARGUMENT",
+          `Unknown or incomplete argument: ${argument}`,
+        );
+      }
+      index += 1;
+      if (argument === "--seed") seed = value;
+      else outDir = value;
+    }
     else throw new FixtureGenerationError("INVALID_ARGUMENT", `Unknown or incomplete argument: ${argument}`);
   }
   return { seed, outDir, check };

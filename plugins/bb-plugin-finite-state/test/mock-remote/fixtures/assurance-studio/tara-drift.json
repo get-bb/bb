@@ -1,9 +1,9 @@
 {
   "base": "Gateway Controller",
   "entityId": "as-component-01",
-  "expectedHeadVersionId": "100",
+  "expectedHeadVersionId": "9007199254740993",
   "field": "name",
   "local": "Gateway Control Unit",
   "remote": "Edge Gateway Controller",
-  "remoteHeadVersionId": "101"
+  "remoteHeadVersionId": "9007199254740992"
 }

@@ -56,6 +56,12 @@ interface AsEntityFixture {
   fields: Record<string, string | string[]>;
 }
 
+interface TaraDriftFixture {
+  entityId: string;
+  expectedHeadVersionId: string;
+  remoteHeadVersionId: string;
+}
+
 interface RequirementFixture {
   id: string;
   projectId: string;
@@ -415,6 +421,15 @@ describe("deterministic-seed-corpus", () => {
       (entity) => BigInt(entity.reviewVersion) > BigInt(Number.MAX_SAFE_INTEGER),
     );
     expect(precisionRevision?.reviewVersion).toBe("9007199254740993");
+    const taraDrift = await parseJson<TaraDriftFixture>(
+      join(committedFixtures, "assurance-studio", "tara-drift.json"),
+    );
+    const taraEntity = entities.find((entity) => entity.id === taraDrift.entityId);
+    expect(taraDrift.expectedHeadVersionId).toBe(taraEntity?.reviewVersion);
+    expect(taraDrift.expectedHeadVersionId).not.toBe(taraDrift.remoteHeadVersionId);
+    expect(Number(taraDrift.expectedHeadVersionId)).toBe(
+      Number(taraDrift.remoteHeadVersionId),
+    );
 
     const vex = await parseJson<VexBulkFixture>(join(committedFixtures, "platform", "vex-bulk-partial.json"));
     expect(vex.status).toBe("partial_success");
@@ -462,6 +477,19 @@ describe("deterministic-seed-corpus", () => {
       "FixtureGenerationError [INVALID_ARGUMENT]: Unknown or incomplete argument: --unknown-fixture-option\n",
     );
     expect(result.stderr).not.toContain("at parseCli");
+  });
+
+  test("--seed rejects an option as its value without writing", async () => {
+    const root = await temporaryDirectory();
+    const outDir = join(root, "fixtures");
+    const result = await runGeneratorCli(["--seed", "--check", "--out", outDir]);
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe(
+      "FixtureGenerationError [INVALID_ARGUMENT]: Unknown or incomplete argument: --seed\n",
+    );
+    await expect(stat(outDir)).rejects.toThrow();
+    expect(await readdir(root)).toEqual([]);
   });
 
   test("--check detects one-byte drift and does not overwrite it", async () => {
