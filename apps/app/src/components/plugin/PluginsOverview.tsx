@@ -15,7 +15,7 @@ import {
   type ResourceCollectionMode,
 } from "@bb/shared-ui/resource-list";
 import { CreateWithTemplatesButton } from "@/components/create-via-prompt-examples";
-import { CREATE_PLUGIN_PROMPT } from "@/lib/automation-prompt";
+import { CREATE_PLUGIN_PROMPT } from "@/lib/create-resource-prompts";
 import {
   AddPluginDialog,
   type AddPluginInitial,

@@ -48,7 +48,10 @@ import {
   resetPluginLogoStoreForTest,
   setPluginLogoUrls,
 } from "@/lib/plugin-logos";
-import { AUTOMATION_PROMPT_ACTION } from "./PromptBoxActionsMenu";
+import {
+  AUTOMATION_PROMPT_ACTION,
+  CREATE_PLUGIN_PROMPT_ACTION,
+} from "./PromptBoxActionsMenu";
 import {
   INERT_TYPEAHEAD_COMMAND_CONFIG,
   PromptBoxInternal,
@@ -101,6 +104,7 @@ const promptActions: readonly PromptBoxAction[] = [
     text: "/goal ",
   },
   AUTOMATION_PROMPT_ACTION,
+  CREATE_PLUGIN_PROMPT_ACTION,
 ];
 
 function createPromptBoxProps(
@@ -2647,6 +2651,19 @@ describe("PromptBoxInternal prompt actions", () => {
         },
       },
     ]);
+  });
+
+  it("seeds the plugin prompt as plain text and returns focus", async () => {
+    const { changes, promptBoxRef } = renderPromptBox("");
+
+    await focusPromptEnd(promptBoxRef);
+    await selectPromptAction("Plugin");
+
+    await waitFor(() =>
+      expect(latestValue(changes)).toBe(CREATE_PLUGIN_PROMPT_ACTION.text),
+    );
+    // The seed is a sentence opener, not a command, so it carries no pill.
+    expect(latestChange(changes)?.mentions).toEqual([]);
   });
 
   it("does not duplicate command text immediately before the cursor", async () => {

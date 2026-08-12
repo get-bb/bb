@@ -31,8 +31,8 @@ export interface UseComposerTypeaheadResult {
 
 /**
  * The @-mention and command-trigger typeahead wiring shared by every
- * thread-chat composer, plus the provider prompt actions (with the automation
- * action appended) that seed the command suggestion list.
+ * thread-chat composer, plus the provider prompt actions (with the app-owned
+ * actions appended) that seed the command suggestion list.
  */
 export function useComposerTypeahead({
   projectId,

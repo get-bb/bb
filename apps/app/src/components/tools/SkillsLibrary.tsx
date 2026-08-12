@@ -18,7 +18,7 @@ import {
   SkillsOverview,
 } from "@/components/tools/SkillsCollection";
 import { isSkillEditable } from "@/components/tools/skill-taxonomy";
-import { CREATE_SKILL_PROMPT } from "@/lib/automation-prompt";
+import { CREATE_SKILL_PROMPT } from "@/lib/create-resource-prompts";
 import {
   buildRegistrySkillReferencePrompt,
   fetchRegistrySkillDetail,

@@ -15,7 +15,7 @@ import {
 } from "@/components/plugin/PluginComposerActions";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
-import { CREATE_PLUGIN_PROMPT } from "@/lib/automation-prompt";
+import { CREATE_PLUGIN_PROMPT } from "@/lib/create-resource-prompts";
 import type { ProviderPromptActionCommand } from "./mentions/command-trigger";
 
 export type PromptBoxActionKind =
