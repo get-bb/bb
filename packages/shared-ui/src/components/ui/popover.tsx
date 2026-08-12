@@ -124,7 +124,7 @@ const PopoverContent = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof PopoverPrimitive.Content> & {
     /** Title announced by screen readers when the mobile drawer opens. */
     mobileTitle?: string;
-    /** Class name applied to the DrawerContent wrapper on mobile. */
+    /** Class name applied to the drawer panel on mobile. */
     mobileClassName?: string;
   }
 >(
@@ -142,7 +142,7 @@ const PopoverContent = React.forwardRef<
   ) => {
     const { isCompactViewport, open, onOpenChange } = useResponsivePopover();
     // Unconditional (rules of hooks — the compact branch returns early); the
-    // compact drawer path is covered by DrawerContent's own stamp.
+    // compact drawer path is covered by the persistent drawer shell.
     const scopeProps = usePortalScopeProps();
 
     if (isCompactViewport) {
@@ -156,7 +156,6 @@ const PopoverContent = React.forwardRef<
           onOpenChange={onOpenChange}
           srLabel={mobileTitle ?? "Options"}
           contentClassName={mobileClassName}
-          repositionInputs={false}
         >
           <div
             ref={ref}

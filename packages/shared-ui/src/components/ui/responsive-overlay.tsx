@@ -2,7 +2,6 @@ import * as React from "react";
 import { createPortal } from "react-dom";
 import { Slot } from "@radix-ui/react-slot";
 
-import { Drawer, DrawerContent, DrawerTitle } from "./drawer.js";
 import {
   blurActiveKeyboardInputBeforeOverlayOpen,
   blurActiveKeyboardInputBeforeOverlayClose,
@@ -26,26 +25,13 @@ export interface ResponsiveOverlayContextValue {
 }
 
 const ResponsiveDrawerDepthContext = React.createContext(0);
-const SONNER_TOASTER_SELECTOR = "[data-sonner-toaster]";
-
-type DrawerContentPointerDownOutsideEvent = Parameters<
-  NonNullable<
-    React.ComponentPropsWithoutRef<typeof DrawerContent>["onPointerDownOutside"]
-  >
->[0];
+const RESPONSIVE_DRAWER_REALIZE_FALLBACK_MS = 120;
 
 function resetDrawerKeyboardStyles(drawerElement: HTMLElement | null): void {
   if (drawerElement === null) return;
 
   drawerElement.style.height = "";
   drawerElement.style.bottom = "";
-}
-
-function isSonnerToasterPointerTarget(target: EventTarget | null): boolean {
-  return (
-    target instanceof Element &&
-    target.closest(SONNER_TOASTER_SELECTOR) !== null
-  );
 }
 
 // ---------------------------------------------------------------------------
@@ -211,11 +197,10 @@ export function stripRadixContentProps<T extends Record<string, unknown>>(
 }
 
 // ---------------------------------------------------------------------------
-// ResponsiveDrawerShell: shared scaffold for the mobile branch of any
-// responsive overlay. Wraps children in Drawer > DrawerContent, with an
-// optional sr-only DrawerTitle. Callers supply the body (ref, padding,
-// className, etc.) since those differ between Dialog, Popover, DropdownMenu,
-// and ThreadDetailSecondaryContent.
+// ResponsiveDrawerShell: shared scaffold for compact menus, popovers, and
+// dialogs. It uses the persistent shell so opening an overlay never applies
+// modal attributes to the app tree. It also lets the transform start before
+// it mounts the overlay body, then retains that body for later opens.
 // ---------------------------------------------------------------------------
 
 interface ResponsiveDrawerShellProps {
@@ -226,22 +211,13 @@ interface ResponsiveDrawerShellProps {
    * renders its own labeled heading inside children (e.g. DialogTitle).
    */
   srLabel?: string;
-  /** Class name on the DrawerContent wrapper. */
+  /** Existing visible title used to label a dialog body. */
+  labelledBy?: string;
+  /** Existing visible description for a dialog body. */
+  describedBy?: string;
+  /** Class name on the drawer panel. */
   contentClassName?: string;
-  /**
-   * When true, the drawer can only be dragged via the handle bar. Pointer
-   * events on the content area are not consumed by vaul, which would
-   * otherwise call setPointerCapture on the click target and break clicks
-   * inside web components (e.g. Pierre tree's shadow DOM).
-   */
-  handleOnly?: boolean;
-  /**
-   * Whether Vaul should mutate drawer height/bottom around focused inputs when
-   * the visual viewport changes. Defaults off for nested drawers because the
-   * parent drawer cannot distinguish a nested drawer's focused input.
-   */
-  repositionInputs?: boolean;
-  /** Called when the DrawerContent element's own animation completes. */
+  /** Called when the drawer transform completes. */
   onContentAnimationEnd?: (open: boolean) => void;
   children: React.ReactNode;
 }
@@ -250,89 +226,63 @@ export function ResponsiveDrawerShell({
   open,
   onOpenChange,
   srLabel,
+  labelledBy,
+  describedBy,
   contentClassName,
-  handleOnly,
-  repositionInputs,
   onContentAnimationEnd,
   children,
 }: ResponsiveDrawerShellProps) {
-  const parentDrawerDepth = React.useContext(ResponsiveDrawerDepthContext);
-  const drawerContentRef = React.useRef<HTMLDivElement>(null);
-  const isPointerCoarse = usePointerCoarse();
-  const isNestedDrawer = parentDrawerDepth > 0;
-  const shouldRepositionInputs = repositionInputs ?? !isNestedDrawer;
-  const resetClosingKeyboardState = React.useCallback(() => {
-    blurActiveKeyboardInputWithin(drawerContentRef.current);
-    resetDrawerKeyboardStyles(drawerContentRef.current);
-  }, []);
-  const handleOpenChange = React.useCallback(
-    (nextOpen: boolean) => {
-      if (!nextOpen) {
-        resetClosingKeyboardState();
-      }
-      onOpenChange(nextOpen);
-    },
-    [onOpenChange, resetClosingKeyboardState],
-  );
-  const handleContentAnimationEnd = React.useCallback<
-    React.AnimationEventHandler<HTMLDivElement>
-  >(
-    (event) => {
-      if (event.currentTarget !== event.target) {
-        return;
-      }
-      onContentAnimationEnd?.(open);
-    },
-    [onContentAnimationEnd, open],
-  );
-  const handleOpenAutoFocus = React.useCallback(
-    (event: Event) => {
-      if (isPointerCoarse) {
-        event.preventDefault();
-      }
-    },
-    [isPointerCoarse],
-  );
-  const handlePointerDownOutside = React.useCallback(
-    (event: DrawerContentPointerDownOutsideEvent) => {
-      if (isSonnerToasterPointerTarget(event.detail.originalEvent.target)) {
-        event.preventDefault();
-      }
-    },
-    [],
-  );
-  const previousOpenRef = React.useRef(open);
+  const [isContentRealized, setIsContentRealized] = React.useState(false);
 
-  React.useLayoutEffect(() => {
-    if (previousOpenRef.current && !open) {
-      resetClosingKeyboardState();
+  React.useEffect(() => {
+    if (!open || isContentRealized) {
+      return;
     }
-    previousOpenRef.current = open;
-  }, [open, resetClosingKeyboardState]);
+
+    let firstFrame: number | null = window.requestAnimationFrame(() => {
+      firstFrame = null;
+      secondFrame = window.requestAnimationFrame(() => {
+        secondFrame = null;
+        setIsContentRealized(true);
+      });
+    });
+    let secondFrame: number | null = null;
+    const fallback = window.setTimeout(
+      () => setIsContentRealized(true),
+      RESPONSIVE_DRAWER_REALIZE_FALLBACK_MS,
+    );
+
+    return () => {
+      if (firstFrame !== null) {
+        window.cancelAnimationFrame(firstFrame);
+      }
+      if (secondFrame !== null) {
+        window.cancelAnimationFrame(secondFrame);
+      }
+      window.clearTimeout(fallback);
+    };
+  }, [isContentRealized, open]);
 
   return (
-    <Drawer
+    <PersistentResponsiveDrawerShell
       open={open}
-      onOpenChange={handleOpenChange}
-      handleOnly={handleOnly}
-      nested={isNestedDrawer}
-      repositionInputs={shouldRepositionInputs}
+      onOpenChange={onOpenChange}
+      srLabel={srLabel}
+      labelledBy={labelledBy}
+      describedBy={describedBy}
+      contentClassName={contentClassName}
+      onContentAnimationEnd={onContentAnimationEnd}
     >
-      <DrawerContent
-        ref={drawerContentRef}
-        className={contentClassName}
-        onAnimationEnd={handleContentAnimationEnd}
-        onOpenAutoFocus={handleOpenAutoFocus}
-        onPointerDownOutside={handlePointerDownOutside}
-      >
-        <ResponsiveDrawerDepthContext.Provider value={parentDrawerDepth + 1}>
-          {srLabel !== undefined ? (
-            <DrawerTitle className="sr-only">{srLabel}</DrawerTitle>
-          ) : null}
-          {children}
-        </ResponsiveDrawerDepthContext.Provider>
-      </DrawerContent>
-    </Drawer>
+      {isContentRealized ? (
+        children
+      ) : (
+        <div
+          aria-hidden="true"
+          className="min-h-32"
+          data-responsive-drawer-placeholder=""
+        />
+      )}
+    </PersistentResponsiveDrawerShell>
   );
 }
 
@@ -347,7 +297,9 @@ export function ResponsiveDrawerShell({
 interface PersistentResponsiveDrawerShellProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  srLabel: string;
+  srLabel?: string;
+  labelledBy?: string;
+  describedBy?: string;
   contentClassName?: string;
   motionDurationMs?: number;
   onContentAnimationEnd?: (open: boolean) => void;
@@ -379,6 +331,8 @@ export function PersistentResponsiveDrawerShell({
   open,
   onOpenChange,
   srLabel,
+  labelledBy,
+  describedBy,
   contentClassName,
   motionDurationMs = 220,
   onContentAnimationEnd,
@@ -618,7 +572,10 @@ export function PersistentResponsiveDrawerShell({
         ref={panelRef}
         {...portalScopeProps}
         aria-hidden={!open}
-        aria-labelledby={labelId}
+        aria-labelledby={
+          labelledBy ?? (srLabel === undefined ? undefined : labelId)
+        }
+        aria-describedby={describedBy}
         aria-modal={open || undefined}
         data-persistent-drawer-content=""
         data-state={open ? "open" : "closed"}
@@ -653,9 +610,11 @@ export function PersistentResponsiveDrawerShell({
         >
           <div className="h-1 w-10 rounded-full bg-muted-foreground/20" />
         </div>
-        <h2 id={labelId} className="sr-only">
-          {srLabel}
-        </h2>
+        {srLabel === undefined ? null : (
+          <h2 id={labelId} className="sr-only">
+            {srLabel}
+          </h2>
+        )}
         <ResponsiveDrawerDepthContext.Provider value={parentDrawerDepth + 1}>
           {children}
         </ResponsiveDrawerDepthContext.Provider>

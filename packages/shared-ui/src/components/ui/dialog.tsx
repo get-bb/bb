@@ -7,10 +7,6 @@ import { cn } from "../../lib/utils";
 import { usePortalScopeProps } from "../../lib/portal-scope";
 import { useBrowserDimmingModal } from "../../hooks/useBrowserDimmingModal";
 import {
-  DrawerDescription as DrawerDescriptionPrimitive,
-  DrawerTitle as DrawerTitlePrimitive,
-} from "./drawer.js";
-import {
   type ResponsiveOverlayContextValue,
   useResponsiveRoot,
   MobileTrigger,
@@ -28,11 +24,18 @@ import { Icon } from "../../components/ui/icon.js";
 // Context — separate instance from DropdownMenu / Popover.
 // ---------------------------------------------------------------------------
 
+interface ResponsiveDialogContextValue extends ResponsiveOverlayContextValue {
+  titleId: string;
+  descriptionId: string;
+}
+
 const ResponsiveDialogContext =
-  React.createContext<ResponsiveOverlayContextValue>({
+  React.createContext<ResponsiveDialogContextValue>({
     isCompactViewport: false,
     open: false,
     onOpenChange: () => {},
+    titleId: "",
+    descriptionId: "",
   });
 
 function useResponsiveDialog() {
@@ -49,7 +52,13 @@ function Dialog({
   onOpenChange: controlledOnChange,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Root>) {
-  const ctx = useResponsiveRoot(controlledOpen, controlledOnChange);
+  const responsiveRoot = useResponsiveRoot(controlledOpen, controlledOnChange);
+  const titleId = React.useId();
+  const descriptionId = React.useId();
+  const ctx = React.useMemo(
+    () => ({ ...responsiveRoot, titleId, descriptionId }),
+    [descriptionId, responsiveRoot, titleId],
+  );
 
   const body = ctx.isCompactViewport ? (
     children
@@ -191,16 +200,22 @@ type DialogContentProps = React.ComponentPropsWithoutRef<
 
 const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
   ({ className, children, ...props }, ref) => {
-    const { isCompactViewport, open, onOpenChange } = useResponsiveDialog();
+    const { isCompactViewport, open, onOpenChange, titleId, descriptionId } =
+      useResponsiveDialog();
     useBrowserDimmingModal(open);
     // Unconditional (rules of hooks — the compact branch returns early); the
-    // compact drawer path is covered by DrawerContent's own stamp.
+    // compact drawer path is covered by the persistent drawer shell.
     const scopeProps = usePortalScopeProps();
 
     if (isCompactViewport) {
       const domProps = stripRadixContentProps(props);
       return (
-        <ResponsiveDrawerShell open={open} onOpenChange={onOpenChange}>
+        <ResponsiveDrawerShell
+          open={open}
+          onOpenChange={onOpenChange}
+          labelledBy={titleId}
+          describedBy={descriptionId}
+        >
           <div
             ref={ref}
             className={cn(
@@ -272,18 +287,30 @@ const DialogFooter = ({
 DialogFooter.displayName = "DialogFooter";
 
 // ---------------------------------------------------------------------------
-// Title / Description — render through the drawer's primitives on mobile so
-// Radix Drawer/Vaul announces them to assistive tech.
+// Title / Description — use plain elements on mobile. The persistent drawer
+// links its dialog semantics to these stable IDs.
 // ---------------------------------------------------------------------------
 
 const DialogTitle = React.forwardRef<
   HTMLHeadingElement,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Title>
 >(({ className, ...props }, ref) => {
-  const { isCompactViewport } = useResponsiveDialog();
-  const Comp = isCompactViewport ? DrawerTitlePrimitive : DialogPrimitive.Title;
+  const { isCompactViewport, titleId } = useResponsiveDialog();
+  if (isCompactViewport) {
+    return (
+      <h2
+        ref={ref}
+        id={titleId}
+        className={cn(
+          "text-base font-semibold leading-none tracking-tight",
+          className,
+        )}
+        {...props}
+      />
+    );
+  }
   return (
-    <Comp
+    <DialogPrimitive.Title
       ref={ref}
       className={cn(
         "text-base font-semibold leading-none tracking-tight",
@@ -299,12 +326,19 @@ const DialogDescription = React.forwardRef<
   React.ComponentRef<typeof DialogPrimitive.Description>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Description>
 >(({ className, ...props }, ref) => {
-  const { isCompactViewport } = useResponsiveDialog();
-  const Comp = isCompactViewport
-    ? DrawerDescriptionPrimitive
-    : DialogPrimitive.Description;
+  const { isCompactViewport, descriptionId } = useResponsiveDialog();
+  if (isCompactViewport) {
+    return (
+      <p
+        ref={ref}
+        id={descriptionId}
+        className={cn("text-sm text-muted-foreground", className)}
+        {...props}
+      />
+    );
+  }
   return (
-    <Comp
+    <DialogPrimitive.Description
       ref={ref}
       className={cn("text-sm text-muted-foreground", className)}
       {...props}
