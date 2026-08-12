@@ -349,6 +349,96 @@ test("temporary stops require paired reasons and resume conditions", () => {
   );
 });
 
+test("prohibitions require paired non-empty reasons", () => {
+  const missingReason = errorsFor((manifest) => {
+    delete manifest.dispatchPolicy.prohibitedWorkPackageReasons.WP02;
+  });
+  assert(
+    missingReason.includes("prohibited reason for WP02 must be non-empty"),
+  );
+
+  const emptyReason = errorsFor((manifest) => {
+    manifest.dispatchPolicy.prohibitedWorkPackageReasons.WP02 = "";
+  });
+  assert(emptyReason.includes("prohibited reason for WP02 must be non-empty"));
+
+  const orphanedReason = errorsFor((manifest) => {
+    manifest.dispatchPolicy.prohibitedWorkPackages = [];
+  });
+  assert(
+    orphanedReason.includes(
+      "prohibited reason for WP02 has no prohibitedWorkPackages entry",
+    ),
+  );
+});
+
+test("malformed work-package policy lists return structured errors", () => {
+  for (const malformed of [5, true, { WP02: true }]) {
+    const prohibitedErrors = errorsFor((manifest) => {
+      manifest.dispatchPolicy.prohibitedWorkPackages = malformed;
+    });
+    assert.deepEqual(prohibitedErrors, [
+      "dispatchPolicy.prohibitedWorkPackages must be an array",
+    ]);
+
+    const stoppedErrors = errorsFor((manifest) => {
+      manifest.dispatchPolicy.stoppedWorkPackages = malformed;
+    });
+    assert.deepEqual(stoppedErrors, [
+      "dispatchPolicy.stoppedWorkPackages must be an array",
+    ]);
+  }
+});
+
+test("promotion excludes prohibited and stopped next work packages", () => {
+  const result = evaluatePromotion(
+    manifestCopy(),
+    {
+      completedWorkPackages: [
+        "WP01",
+        "WP03",
+        "WP04",
+        "WP05",
+        "WP06",
+        "WP07",
+        "WP09",
+        "WP10",
+        "WP14",
+        "WP31",
+        "WP47",
+        "WP52",
+        "WP57",
+      ],
+      activeWorkPackages: ["WP08", "WP15", "WP36", "WP48"],
+      currentLaneCap: 4,
+      freeAfterProvisionGiB: 35,
+      runtimeFloorGiB: 30,
+    },
+    6,
+  );
+
+  assert.equal(result.eligible, false);
+  assert.deepEqual(result.readyClusters, []);
+  assert.deepEqual(result.activeClusters, [
+    "C-EARS-AUTHORING",
+    "C-FIRMWARE-MATERIALIZATION",
+    "C-FIXTURE-CORPUS",
+    "C-SYNC-TRANSACTION",
+  ]);
+  assert(
+    result.errors.includes(
+      "only 4 independent active-or-ready decision clusters are available; 6 required",
+    ),
+  );
+  for (const blockedCluster of [
+    "C-DISTRIBUTION",
+    "C-CANVAS",
+    "C-DOCUMENT-PROVENANCE",
+  ]) {
+    assert(!result.readyClusters.includes(blockedCluster));
+  }
+});
+
 test("six- and nine-lane promotion require independent dependency-ready clusters", () => {
   const completedWorkPackages = Array.from(
     { length: 14 },
@@ -373,7 +463,7 @@ test("six- and nine-lane promotion require independent dependency-ready clusters
     manifest,
     {
       completedWorkPackages,
-      activeWorkPackages: [],
+      activeWorkPackages: ["WP24"],
       currentLaneCap: 6,
       freeAfterProvisionGiB: 45,
       runtimeFloorGiB: 35,

@@ -91,12 +91,57 @@ function validatePromotionPolicy(policy, label, expected, knownSet, errors) {
   }
 }
 
+function validateProhibitedWorkPackages(dispatchPolicy, knownSet, errors) {
+  const prohibited = dispatchPolicy.prohibitedWorkPackages;
+  const reasons = dispatchPolicy.prohibitedWorkPackageReasons;
+  if (!Array.isArray(prohibited)) {
+    errors.push("dispatchPolicy.prohibitedWorkPackages must be an array");
+    requireObject(
+      reasons,
+      "dispatchPolicy.prohibitedWorkPackageReasons",
+      errors,
+    );
+    return;
+  }
+  const repeated = duplicates(prohibited);
+  if (repeated.length > 0) {
+    errors.push(
+      `dispatchPolicy.prohibitedWorkPackages contains duplicates: ${repeated.join(", ")}`,
+    );
+  }
+  if (
+    !requireObject(
+      reasons,
+      "dispatchPolicy.prohibitedWorkPackageReasons",
+      errors,
+    )
+  )
+    return;
+  for (const wp of prohibited) {
+    if (!knownSet.has(wp))
+      errors.push(
+        `dispatchPolicy prohibits unknown work package ${String(wp)}`,
+      );
+    if (typeof reasons[wp] !== "string" || reasons[wp].trim() === "") {
+      errors.push(`prohibited reason for ${wp} must be non-empty`);
+    }
+  }
+  for (const wp of Object.keys(reasons)) {
+    if (!prohibited.includes(wp)) {
+      errors.push(
+        `prohibited reason for ${wp} has no prohibitedWorkPackages entry`,
+      );
+    }
+  }
+}
+
 function validateStoppedWorkPackages(dispatchPolicy, knownSet, errors) {
-  const stopped = Array.isArray(dispatchPolicy.stoppedWorkPackages)
-    ? dispatchPolicy.stoppedWorkPackages
-    : [];
-  if (!Array.isArray(dispatchPolicy.stoppedWorkPackages)) {
+  const stopped = dispatchPolicy.stoppedWorkPackages;
+  const reasons = dispatchPolicy.stoppedWorkPackageReasons;
+  if (!Array.isArray(stopped)) {
     errors.push("dispatchPolicy.stoppedWorkPackages must be an array");
+    requireObject(reasons, "dispatchPolicy.stoppedWorkPackageReasons", errors);
+    return;
   }
   const repeated = duplicates(stopped);
   if (repeated.length > 0) {
@@ -104,13 +149,15 @@ function validateStoppedWorkPackages(dispatchPolicy, knownSet, errors) {
       `dispatchPolicy.stoppedWorkPackages contains duplicates: ${repeated.join(", ")}`,
     );
   }
-
-  const reasons = dispatchPolicy.stoppedWorkPackageReasons;
   if (
     !requireObject(reasons, "dispatchPolicy.stoppedWorkPackageReasons", errors)
   )
     return;
-  const prohibited = new Set(dispatchPolicy.prohibitedWorkPackages ?? []);
+  const prohibited = new Set(
+    Array.isArray(dispatchPolicy.prohibitedWorkPackages)
+      ? dispatchPolicy.prohibitedWorkPackages
+      : [],
+  );
   for (const wp of stopped) {
     if (!knownSet.has(wp))
       errors.push(`dispatchPolicy stops unknown work package ${String(wp)}`);
@@ -256,6 +303,7 @@ export function validateManifest(manifest) {
     );
   if (manifest.effectiveWorkPackageCount !== 70)
     errors.push("effectiveWorkPackageCount must remain 70");
+  validateProhibitedWorkPackages(manifest.dispatchPolicy, knownSet, errors);
   validateStoppedWorkPackages(manifest.dispatchPolicy, knownSet, errors);
   validatePromotionPolicy(
     manifest.dispatchPolicy.sixLanePromotion,
@@ -508,6 +556,10 @@ export function evaluatePromotion(manifest, state, targetCap) {
 
   const readyClusters = [];
   const activeClusters = [];
+  const unavailableWorkPackages = new Set([
+    ...manifest.dispatchPolicy.prohibitedWorkPackages,
+    ...manifest.dispatchPolicy.stoppedWorkPackages,
+  ]);
   for (const [clusterId, entries] of groupByCluster(manifest.workPackages)) {
     const activeMembers = entries.filter((entry) => active.has(entry.wp));
     if (activeMembers.length > 1) {
@@ -516,11 +568,12 @@ export function evaluatePromotion(manifest, state, targetCap) {
       );
       continue;
     }
+    const next = entries.find((entry) => !completed.has(entry.wp));
+    if (next && unavailableWorkPackages.has(next.wp)) continue;
     if (activeMembers.length === 1) {
       activeClusters.push(clusterId);
       continue;
     }
-    const next = entries.find((entry) => !completed.has(entry.wp));
     if (!next) continue;
     if (next.dependencies.every((dependency) => completed.has(dependency)))
       readyClusters.push(clusterId);

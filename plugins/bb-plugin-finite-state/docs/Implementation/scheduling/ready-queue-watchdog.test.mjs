@@ -157,6 +157,10 @@ test("the shipped manifest prohibits WP02", async () => {
     shipped.dispatchPolicy.prohibitedWorkPackages.includes("WP02"),
     "WP02 dispatch is prohibited by ADR — bb Is Not Modified",
   );
+  assert.match(
+    shipped.dispatchPolicy.prohibitedWorkPackageReasons.WP02,
+    /ADR — bb Is Not Modified/u,
+  );
 });
 
 test("the shipped manifest temporarily stops WP32 and WP56 with resume conditions", async () => {
