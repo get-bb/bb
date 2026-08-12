@@ -92,6 +92,8 @@ bb tasks dispatch FS-38 --preset fs-standard --instructions "C-FINDING-UX sequen
 
 All L2 sync work and the L4 canvas use `fs-critical`. Routine or mechanical work uses `fs-standard`. Never substitute a lower tier for those critical lanes.
 
+**Permission mode is `full` for every preset** (owner decision, 2026-08-12, after FS-91 branch protection went active). Unattended operation is the point: `accept-edits` and `auto` stall threads on approval interactions nobody is watching. The presets (`fs-critical`, `fs-standard`, `fs-review`) already carry `full`; because presets live outside version control, verify with `bb tasks preset list` and restore `--permission full` if a preset is ever re-created. This is safe only while its two preconditions hold — the `finite-state/integration` ruleset (require PR + green `Finite State guard gates` check, no bypass actors; see FS-91) and isolated worktree environments. If either lapses, revert presets to `auto` before the next dispatch.
+
 ## 5. Review and close
 
 After implementation evidence and a draft PR are attached, leave the WP `in_review` and dispatch an independent review:
