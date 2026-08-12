@@ -19,6 +19,7 @@ const frozenRelativePaths = [
 ];
 const contractRelativePath = `${pluginRelativePath}/shared/contract.ts`;
 const fixtureTreeRelativePath = `${pluginRelativePath}/test/mock-remote/fixtures/**`;
+const defaultBaseRef = "origin/finite-state/integration";
 const dependencySections = ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"];
 const recovery = "file an amendment; do not edit the frozen artifact locally.";
 
@@ -189,16 +190,13 @@ function priorBaseline(root, baselineRelativePath, baseRef) {
   const relativePath = toPosix(baselineRelativePath);
   const revision = baseRef ?? (() => {
     try {
-      return gitText(root, ["merge-base", "HEAD", "origin/finite-state/integration"]).trim();
+      const resolved = gitText(root, ["merge-base", "HEAD", defaultBaseRef]).trim();
+      if (resolved) return resolved;
     } catch {
-      try {
-        return gitText(root, ["rev-parse", "HEAD"]).trim();
-      } catch {
-        return null;
-      }
+      // Report one stable recovery path below rather than leaking Git's stderr.
     }
+    fail(`Cannot resolve the authoritative frozen-artifact comparison base ${defaultBaseRef}. Fetch that ref or rerun with --base <immutable-Git-revision>`);
   })();
-  if (!revision) return null;
   try {
     gitText(root, ["cat-file", "-e", `${revision}^{commit}`]);
   } catch {

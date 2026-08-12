@@ -160,7 +160,7 @@ export function openStore(bb: BbPluginApi): Store;
 - [ ] Verification mapping/latest/history/run/artifact/attestation queries are scoped, indexed, and enforce evidence trust.
 - [ ] Row-key fixtures exactly match `PRAGMA table_info` for all tables and the view.
 - [ ] `openStore` memoization, migration retry, foreign-key enablement, and rollback regressions remain green.
-- [ ] Representative findings/SBOM/verification/timeline/document queries name the intended indexes in `EXPLAIN QUERY PLAN` and meet downstream budgets under Node 22.19.0.
+- [ ] Representative findings/SBOM/verification/timeline/document queries name the intended indexes in deterministic `EXPLAIN QUERY PLAN` assertions; wall-clock budgets are reserved for dedicated stable downstream benchmarks.
 - [ ] No manifest-sidecar migration or shadow table/contract is exported.
 
 ## Test plan — `shared-store-freeze`
@@ -177,7 +177,7 @@ export function openStore(bb: BbPluginApi): Store;
 - `review token survives semantic stripping`
 - `verification latest/history/matrix and bench evidence checkpoint`
 - `document locator matrix and cross-scope rejection`
-- `named query plans and representative performance fixtures`
+- `named query plans and representative scale fixtures`
 
 ## Do not
 

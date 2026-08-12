@@ -118,6 +118,7 @@ packages:
 } as const;\n`);
   await write(root, `${pluginRootRelativePath}lanes/findings/register.app.tsx`, 'export const panel = <div className="bg-card text-muted-foreground">CVE-2025-1234 #CVE deadbeef</div>;\n');
   expect(run(frozenScript, root, "--accept", "A-000").status).toBe(0);
+  commitFixtureBaseline(root);
   return root;
 }
 
@@ -127,6 +128,7 @@ function commitFixtureBaseline(root: string) {
   git(root, "config", "user.name", "Fixture");
   git(root, "add", ".");
   git(root, "commit", "-m", "fixture baseline");
+  git(root, "update-ref", "refs/remotes/origin/finite-state/integration", "HEAD");
 }
 
 afterEach(async () => {
@@ -255,6 +257,9 @@ describe("parallel lane guards", () => {
     const baseline = JSON.parse(await readFile(baselinePath, "utf8"));
     baseline.artifacts[`${pluginRootRelativePath}lib/remote/types.ts`].active = false;
     await writeFile(baselinePath, `${JSON.stringify(baseline)}\n`);
+    git(root, "add", baselinePath);
+    git(root, "commit", "-m", "record unresolved interface");
+    git(root, "update-ref", "refs/remotes/origin/finite-state/integration", "HEAD");
     await write(root, `${pluginRootRelativePath}lib/remote/types.ts`, "export type Remote = { id: string };\n");
     expect(run(frozenScript, root).status).toBe(0);
     const amendmentLog = await readFile(path.join(root, `${pluginRootRelativePath}AMENDMENTS.md`), "utf8");
@@ -266,7 +271,6 @@ describe("parallel lane guards", () => {
 
   it("rejects baseline hash rewrites and deactivation after a baseline is committed", async () => {
     const root = await fixtureRoot();
-    commitFixtureBaseline(root);
     const baselinePath = path.join(root, `${pluginRootRelativePath}frozen-artifacts.json`);
     const baseline = JSON.parse(await readFile(baselinePath, "utf8"));
     baseline.artifacts[`${pluginRootRelativePath}server.ts`].active = false;
@@ -281,7 +285,6 @@ describe("parallel lane guards", () => {
 
   it("rejects a two-commit baseline laundering attempt against the immutable base", async () => {
     const root = await fixtureRoot();
-    commitFixtureBaseline(root);
     const base = gitText(root, "rev-parse", "HEAD");
     const baselinePath = path.join(root, `${pluginRootRelativePath}frozen-artifacts.json`);
     const baseline = JSON.parse(await readFile(baselinePath, "utf8"));
@@ -293,6 +296,28 @@ describe("parallel lane guards", () => {
     git(root, "add", ".");
     git(root, "commit", "-m", "hide baseline change");
     expect(run(frozenScript, root, "--base", base).output).toContain("activation cannot be withdrawn");
+  });
+
+  it("fails closed when the default integration comparison ref is unavailable", async () => {
+    const root = await fixtureRoot();
+    const base = gitText(root, "rev-parse", "HEAD");
+    const baselinePath = path.join(root, `${pluginRootRelativePath}frozen-artifacts.json`);
+    const baseline = JSON.parse(await readFile(baselinePath, "utf8"));
+    baseline.artifacts[`${pluginRootRelativePath}server.ts`].active = false;
+    await writeFile(baselinePath, `${JSON.stringify(baseline)}\n`);
+    await write(root, `${pluginRootRelativePath}server.ts`, "export default function replaced() {}\n");
+    git(root, "add", ".");
+    git(root, "commit", "-m", "attempt frozen baseline withdrawal");
+    git(root, "update-ref", "-d", "refs/remotes/origin/finite-state/integration");
+
+    const defaultResult = run(frozenScript, root);
+    expect(defaultResult.status).toBe(1);
+    expect(defaultResult.output).toContain("Cannot resolve the authoritative frozen-artifact comparison base origin/finite-state/integration");
+    expect(defaultResult.output).toContain("--base <immutable-Git-revision>");
+
+    const explicitResult = run(frozenScript, root, "--base", base);
+    expect(explicitResult.status).toBe(1);
+    expect(explicitResult.output).toContain("activation cannot be withdrawn");
   });
 
   it.each([

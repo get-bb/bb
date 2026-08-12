@@ -731,7 +731,7 @@ describe("shared-store-freeze", () => {
     ]);
   });
 
-  it("keeps representative downstream pages indexed and under the 200ms cache budget", () => {
+  it("proves deterministic index plans for representative downstream pages", () => {
     const db = createDb();
     insertGeneration(db, "project-a", "version-a", "g");
     db.exec(`
