@@ -11,7 +11,7 @@ No new program/infrastructure task unless:
 
 A review-rule or acceptance-criteria change that binds more than a handful of WPs must state before landing the recurring cost it adds and what that cost buys.
 
-This is the authoritative, versioned stopping rule. It follows the durable-rule principle cross-referenced as bb Memory entry `mem_8mdpstpgxye`, but memory is context, not the authority for this policy.
+This is the authoritative, versioned stopping rule. Versioned artifacts are authoritative; bb Memory is context, not the authority for this policy.
 
 ## 1. Read and validate the graph
 
@@ -110,6 +110,8 @@ bb plugin install ./plugins/bb-plugin-finite-state
 ```
 
 Open the affected surface with `agent-browser`, exercise the reviewed behavior, and attach both a screenshot and a one-line observed-behavior note to the review evidence. Component tests alone do not satisfy UI-surface review. Do not add Playwright or visual-regression infrastructure for this requirement.
+
+Among the unstarted work packages, this recurring cost applies to 21 UI-owning WPs: WP-21, WP-24, WP-25, WP-26, WP-31, WP-32, WP-33, WP-34, WP-35, WP-36, WP-37, WP-38, WP-39, WP-40, WP-42, WP-45, WP-51, WP-54, WP-55, WP-56, and WP-61. The recurring cost is one live-browser evidence pass per UI WP review.
 
 ## 6. Tasks limitations and audit trail
 
