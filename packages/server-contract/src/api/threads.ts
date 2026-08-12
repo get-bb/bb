@@ -12,7 +12,6 @@ import {
   promptInputSchema,
   providerRateLimitStateSchema,
   reasoningLevelSchema,
-  resolvedThreadExecutionOptionsSchema,
   serviceTierSchema,
   threadChildOriginSchema,
   threadOriginKindSchema,
@@ -41,8 +40,6 @@ import {
   workspaceFileListResponseSchema,
   workspacePathListResponseSchema,
 } from "./shared.js";
-import { promptHistoryResponseSchema } from "./projects.js";
-import { systemExecutionOptionsResponseSchema } from "./system.js";
 
 export const sendMessageModeSchema = z.enum([
   "queue-if-active",
@@ -629,18 +626,6 @@ export const threadPaneActionResponseSchema = z.object({
 });
 export type ThreadPaneActionResponse = z.infer<
   typeof threadPaneActionResponseSchema
->;
-
-/** @deprecated Compatibility shape for clients that still call composer bootstrap. */
-export const threadComposerBootstrapResponseSchema = z.object({
-  defaultExecutionOptions: resolvedThreadExecutionOptionsSchema.nullable(),
-  queuedMessages: threadQueuedMessageListResponseSchema,
-  executionOptions: systemExecutionOptionsResponseSchema.nullable(),
-  pendingInteractions: threadPendingInteractionsResponseSchema,
-  promptHistory: promptHistoryResponseSchema,
-});
-export type ThreadComposerBootstrapResponse = z.infer<
-  typeof threadComposerBootstrapResponseSchema
 >;
 
 export const threadArchiveAllResponseSchema = z.object({
