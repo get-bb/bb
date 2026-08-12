@@ -149,7 +149,7 @@ export const RPC_METHOD_CLASSIFICATIONS = {
   bomComponentGet: "read",
   hbomReviewList: "read",
   hbomReviewResolve: "human-only",
-  hbomExtractionApply: "local-write",
+  hbomExtractionApply: "human-only",
   firmwareMountsList: "read",
   firmwareMountGet: "read",
   firmwareTreeList: "read",
@@ -182,6 +182,7 @@ export const HUMAN_ONLY_RPC_METHODS = [
   "verificationsManualAttestationRecord",
   "reviewTransition",
   "hbomReviewResolve",
+  "hbomExtractionApply",
 ] as const satisfies readonly RpcMethod[];
 
 /** The only server-side actions exposed to agents in v1. */
@@ -277,6 +278,8 @@ export const cacheStateSchema = z
     state: z.enum(["fresh", "stale", "empty"]),
     asOf: timestampSchema.nullable(),
     message: safeDetailSchema.nullable(),
+    acceptedGenerationId: identifierSchema.nullable(),
+    baseRevision: z.number().int().nonnegative(),
   })
   .strict();
 
@@ -431,29 +434,21 @@ export const validationErrorSchema = z
   })
   .strict();
 
-export const syncKindFenceSchema = z
-  .object({
-    kind: identifierSchema,
-    acceptedGenerationId: identifierSchema,
-    baseRevision: z.number().int().nonnegative(),
-  })
-  .strict();
-export const syncKindFencesSchema = z
-  .array(syncKindFenceSchema)
-  .min(1)
-  .max(200)
-  .superRefine((fences, context) => {
-    const kinds = fences.map((fence) => fence.kind);
-    if (new Set(kinds).size !== kinds.length) {
-      context.addIssue({ code: "custom", message: "kindFences must be unique by kind" });
-    }
-  });
+export const baseGenerationIdsSchema = z.record(
+  identifierSchema,
+  identifierSchema,
+);
+export const baseRevisionsSchema = z.record(
+  identifierSchema,
+  z.number().int().nonnegative(),
+);
 export const syncPlanFenceSchema = z
   .object({
     planId: identifierSchema,
     planSha256: sha256Schema,
+    baseGenerationIds: baseGenerationIdsSchema,
+    baseRevisions: baseRevisionsSchema,
     baseStateSha256: sha256Schema,
-    kindFences: syncKindFencesSchema,
   })
   .strict();
 
@@ -472,7 +467,7 @@ export const planItemSchema = z
     key: identifierSchema,
     label: z.string().min(1).max(1000),
     operation: planOperationSchema,
-    expectedBaseContentSha256: sha256Schema.nullable(),
+    expectedBaseContentHash: sha256Schema.nullable(),
     fields: z.array(fieldDiffSchema).max(1000),
     conflicts: z.array(conflictSchema).max(1000),
     referrers: z.array(entityRefSchema).max(1000),
@@ -529,9 +524,9 @@ export const pushItemResultSchema = z
     ...projectScopeFields,
     kind: identifierSchema,
     key: identifierSchema,
-    expectedBaseContentSha256: sha256Schema.nullable(),
+    expectedBaseContentHash: sha256Schema.nullable(),
     status: z.enum(["applied", "failed", "skipped"]),
-    newBaseContentSha256: sha256Schema.nullable(),
+    newBaseContentHash: sha256Schema.nullable(),
     error: z
       .object({
         code: identifierSchema,
@@ -548,8 +543,9 @@ export const pushReportSchema = z
     runId: identifierSchema,
     planId: identifierSchema,
     planSha256: sha256Schema,
+    baseGenerationIds: baseGenerationIdsSchema,
+    baseRevisions: baseRevisionsSchema,
     baseStateSha256: sha256Schema,
-    kindFences: syncKindFencesSchema,
     status: z.enum(["completed", "partial", "failed"]),
     summary: z
       .object({
@@ -605,12 +601,13 @@ const workspaceSummarySchema = z
 const pullReportSchema = z
   .object({
     ...projectScopeFields,
-    pullGenerationId: identifierSchema,
+    generationId: identifierSchema,
+    acceptedAt: timestampSchema,
     baseStateSha256: sha256Schema,
-    kinds: z.array(
+    kinds: z.record(
+      identifierSchema,
       z
         .object({
-          ...syncKindFenceSchema.shape,
           fetched: z.number().int().nonnegative(),
           baseRows: z.number().int().nonnegative(),
         })
@@ -623,8 +620,10 @@ const pullReportSchema = z
 const statusReportSchema = z
   .object({
     ...projectScopeFields,
+    acceptedGenerationIds: baseGenerationIdsSchema,
+    stagingGenerationIds: baseGenerationIdsSchema,
+    baseRevisions: baseRevisionsSchema,
     baseStateSha256: sha256Schema,
-    kindFences: syncKindFencesSchema,
     local: z.array(statusChangeSchema),
     upstream: z.array(statusChangeSchema),
     conflicts: z.array(statusChangeSchema),
@@ -955,9 +954,8 @@ const verdictSchema = z
 
 const planFenceInputFields = {
   planId: identifierSchema,
-  planSha256: sha256Schema,
-  baseStateSha256: sha256Schema,
-  kindFences: syncKindFencesSchema,
+  expectedPlanSha256: sha256Schema,
+  expectedBaseStateSha256: sha256Schema,
 } as const;
 const humanApprovalInputField = {
   humanApprovalCapability: humanApprovalCapabilitySchema,
@@ -1008,7 +1006,7 @@ export const rpcContract = defineRpcContract({
         kind: identifierSchema,
         key: identifierSchema,
         field: identifierSchema,
-        expectedBaseContentSha256: sha256Schema.nullable(),
+        expectedBaseContentHash: sha256Schema.nullable(),
         resolution: conflictResolutionSchema,
       })
       .strict(),
@@ -1347,6 +1345,7 @@ export const rpcContract = defineRpcContract({
     input: z
       .object({
         ...projectScopeFields,
+        ...humanApprovalInputField,
         documentSha256: sha256Schema,
         expectedHbomSha256: sha256Schema,
         proposals: z

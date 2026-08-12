@@ -194,7 +194,11 @@ function priorBaseline(root, baselineRelativePath, baseRef) {
     try {
       return gitText(root, ["merge-base", "HEAD", "origin/finite-state/integration"]).trim();
     } catch {
-      return null;
+      try {
+        return gitText(root, ["rev-parse", "HEAD"]).trim();
+      } catch {
+        return null;
+      }
     }
   })();
   if (!revision) return null;

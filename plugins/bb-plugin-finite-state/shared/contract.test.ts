@@ -171,7 +171,30 @@ describe("rpc-contract-freeze", () => {
         .filter(([, classification]) => classification === "human-only")
         .map(([method]) => method)
         .sort(),
-    ).toEqual([...HUMAN_ONLY_RPC_METHODS].sort());
+    ).toEqual([
+      "findingsCommentsCreate",
+      "findingsCommentsDelete",
+      "findingsCommentsUpdate",
+      "hbomExtractionApply",
+      "hbomReviewResolve",
+      "reviewTransition",
+      "syncConflictResolve",
+      "syncPush",
+      "syncPushRetry",
+      "verificationsManualAttestationRecord",
+    ]);
+    expect([...HUMAN_ONLY_RPC_METHODS].sort()).toEqual([
+      "findingsCommentsCreate",
+      "findingsCommentsDelete",
+      "findingsCommentsUpdate",
+      "hbomExtractionApply",
+      "hbomReviewResolve",
+      "reviewTransition",
+      "syncConflictResolve",
+      "syncPush",
+      "syncPushRetry",
+      "verificationsManualAttestationRecord",
+    ]);
     expect(AGENT_ACTION_RPC_METHODS).toEqual([
       "verificationsRunStart",
       "firmwareMaterializeStart",
@@ -284,34 +307,45 @@ describe("rpc-contract-freeze", () => {
       syncPlanFenceSchema.parse({
         planId: "plan-1",
         planSha256: SHA_A,
+        baseGenerationIds: { findings: "generation-9" },
+        baseRevisions: { findings: 14 },
         baseStateSha256: SHA_B,
-        kindFences: [
-          {
-            kind: "findings",
-            acceptedGenerationId: "generation-9",
-            baseRevision: 14,
-          },
-        ],
       }),
-    ).toMatchObject({ planSha256: SHA_A, baseStateSha256: SHA_B });
+    ).toMatchObject({
+      planSha256: SHA_A,
+      baseGenerationIds: { findings: "generation-9" },
+      baseRevisions: { findings: 14 },
+      baseStateSha256: SHA_B,
+    });
     expect(
       syncPlanFenceSchema.safeParse({
         planId: "plan-1",
         planSha256: SHA_A,
+        baseGenerationIds: { findings: "generation-9" },
+        baseRevisions: { findings: -1 },
         baseStateSha256: SHA_B,
-        kindFences: [
-          { kind: "findings", acceptedGenerationId: "g1", baseRevision: 1 },
-          { kind: "findings", acceptedGenerationId: "g2", baseRevision: 2 },
-        ],
       }).success,
     ).toBe(false);
 
     const pushShape = rpcContract.syncPush.input.shape;
-    expect(pushShape).toHaveProperty("planSha256");
-    expect(pushShape).toHaveProperty("baseStateSha256");
-    expect(pushShape).toHaveProperty("kindFences");
+    expect(pushShape).toHaveProperty("expectedPlanSha256");
+    expect(pushShape).toHaveProperty("expectedBaseStateSha256");
+    expect(pushShape).not.toHaveProperty("planSha256");
+    expect(pushShape).not.toHaveProperty("kindFences");
     expect(rpcContract.syncConflictResolve.input.shape).toHaveProperty(
-      "expectedBaseContentSha256",
+      "expectedBaseContentHash",
+    );
+    expect(rpcContract.syncPlan.output.shape).toHaveProperty(
+      "baseGenerationIds",
+    );
+    expect(rpcContract.syncPlan.output.shape).toHaveProperty("baseRevisions");
+    expect(rpcContract.syncPull.output.shape).toHaveProperty("generationId");
+    expect(rpcContract.syncPull.output.shape).toHaveProperty("acceptedAt");
+    expect(rpcContract.syncStatus.output.shape).toHaveProperty(
+      "acceptedGenerationIds",
+    );
+    expect(rpcContract.syncStatus.output.shape).toHaveProperty(
+      "stagingGenerationIds",
     );
   });
 

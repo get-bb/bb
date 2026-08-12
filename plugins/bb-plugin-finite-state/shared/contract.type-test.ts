@@ -50,6 +50,8 @@ function assertFrontendInference(client: PluginRpcClient<RpcContract>) {
       state: "fresh" | "stale" | "empty";
       asOf: string | null;
       message: string | null;
+      acceptedGenerationId: string | null;
+      baseRevision: number;
     };
   }> = finding;
   void findingResult;

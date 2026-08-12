@@ -143,7 +143,7 @@ function callObjects(source, callee) {
 }
 
 function canonicalToolRegistry(source) {
-  const surfaceMarker = /\bAGENT_SURFACE\s*=\s*{/u.exec(source);
+  const surfaceMarker = /\bAGENT_SURFACE\s*=\s*\{/u.exec(source);
   if (surfaceMarker?.index === undefined) return null;
   const surfaceOpening = source.indexOf("{", surfaceMarker.index);
   const surface = surfaceOpening === -1 ? null : extractBalanced(source, surfaceOpening);
