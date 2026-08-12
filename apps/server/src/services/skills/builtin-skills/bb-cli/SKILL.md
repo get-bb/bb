@@ -214,13 +214,14 @@ isolated|reuse`, or anchor with `--source-seq-end`. Permission mode inherits
   installer stores the bb connect machine credential locally and configures
   both the daemon protocol and agent-launched `bb` CLI to traverse the account
   gate; revoke a lost machine from the getbb.app dashboard. The installer uses
-  the server's exact `/install/bb-app.tgz` artifact (npm only on a 404) and
-  enables daemon `--auto-update`; newer protocol mismatches update from that
-  artifact with a persisted exponential retry backoff from 5 seconds to 5
-  minutes, then let launchd/systemd restart the daemon. Auto-update never
-  downgrades. Use `bb machine retry-update <id-or-name>` to bypass the current
-  backoff after a transient failure. Remove `--auto-update` from the service
-  definition and reload it to opt out.
+  the server's exact `/install/bb-app.tgz` artifact and uses the npm registry
+  only on a 404. It installs under the enrollment's bb data directory, without
+  `sudo` or a global npm configuration, and enables daemon `--auto-update`.
+  Newer protocol mismatches update that private install with a persisted
+  exponential retry backoff from 5 seconds to 5 minutes, then let
+  launchd/systemd restart the daemon. Auto-update never downgrades. To bypass a
+  transient backoff, use `bb machine retry-update <id-or-name>`. Remove
+  `--auto-update` from the service definition and reload it to opt out.
 - Run `bb machine list` to see machine names, IDs, connection status, and last
   seen time (`--json` returns the raw host list). Use `--machine <id-or-name>`
   (alias `--host`) on `bb thread spawn` to run in a personal or unmanaged

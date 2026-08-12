@@ -166,7 +166,6 @@ function writeServerInstallTools(
   artifactStatus: 200 | 404,
 ): void {
   const npmLog = join(fixture.dataDir, "npm.log");
-  const bbAppPath = join(fixture.binDir, "bb-app");
   writeExecutable(
     join(fixture.binDir, "curl"),
     `#!/bin/sh
@@ -192,8 +191,14 @@ esac
     join(fixture.binDir, "npm"),
     `#!/bin/sh
 printf '%s\n' "$*" >>"${npmLog}"
-cp "${bbAppTemplatePath}" "${bbAppPath}"
-chmod +x "${bbAppPath}"
+prefix=
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = --prefix ]; then prefix=$2; shift 2; else shift; fi
+done
+[ -n "$prefix" ] || exit 2
+mkdir -p "$prefix/bin"
+cp "${bbAppTemplatePath}" "$prefix/bin/bb-app"
+chmod +x "$prefix/bin/bb-app"
 `,
   );
 }
@@ -340,7 +345,9 @@ describe("machine install script", () => {
       join(fixture.dataDir, "npm.log"),
       "utf8",
     );
-    expect(npmInvocation).toMatch(/^install -g \/.*bb-app\..*\.tgz$/mu);
+    expect(npmInvocation).toMatch(
+      /^install -g --prefix \/.*\/data\/npm \/.*bb-app\..*\.tgz$/mu,
+    );
     const daemonPid = Number(
       readFileSync(join(fixture.dataDir, "install-daemon.pid"), "utf8"),
     );
@@ -359,7 +366,9 @@ describe("machine install script", () => {
       join(fixture.dataDir, "npm.log"),
       "utf8",
     );
-    expect(npmInvocation).toMatch(/^install -g \/.*bb-app\..*\.tgz$/mu);
+    expect(npmInvocation).toMatch(
+      /^install -g --prefix \/.*\/data\/npm \/.*bb-app\..*\.tgz$/mu,
+    );
     expect(npmInvocation).not.toContain("bb-app\n");
     const daemonPid = Number(
       readFileSync(join(fixture.dataDir, "install-daemon.pid"), "utf8"),
@@ -375,8 +384,8 @@ describe("machine install script", () => {
     });
 
     expect(result.status, result.stderr).toBe(0);
-    expect(readFileSync(join(fixture.dataDir, "npm.log"), "utf8")).toBe(
-      "install -g bb-app\n",
+    expect(readFileSync(join(fixture.dataDir, "npm.log"), "utf8")).toMatch(
+      /^install -g --prefix \/.*\/data\/npm bb-app\n$/u,
     );
     const daemonPid = Number(
       readFileSync(join(fixture.dataDir, "install-daemon.pid"), "utf8"),
@@ -555,8 +564,7 @@ describe("machine install script", () => {
   it("installs an idempotent macOS launch agent for joined state", () => {
     const fixture = createFixture();
     writeJoinedState(fixture);
-    writeCurlArtifactMock(fixture, 404);
-    writeEnrollingBbApp(fixture, join(fixture.dataDir, "service-invocation"));
+    writeServerInstallTools(fixture, 200);
     writeExecutable(join(fixture.binDir, "uname"), "#!/bin/sh\necho Darwin\n");
     writeExecutable(
       join(fixture.binDir, "launchctl"),
@@ -564,7 +572,7 @@ describe("machine install script", () => {
 printf '%s\n' "$*" >>"${join(fixture.dataDir, "launchctl.log")}"
 if [ "$1" = kickstart ]; then
   port=$(sed -n '1p' "${join(fixture.dataDir, "host-daemon-port")}")
-  BB_DATA_DIR="${fixture.dataDir}" "${join(fixture.binDir, "bb-app")}" host-daemon --host-daemon-port "$port" --server-url https://machine.getbb.app >/dev/null 2>&1 &
+  BB_DATA_DIR="${fixture.dataDir}" "${join(fixture.dataDir, "npm/bin/bb-app")}" host-daemon --host-daemon-port "$port" --server-url https://machine.getbb.app >/dev/null 2>&1 &
   echo $! >"${join(fixture.dataDir, "service-daemon.pid")}"
 fi
 `,
@@ -604,6 +612,9 @@ fi
       `<string>--host-daemon-port</string>\n    <string>${selectedPort}</string>`,
     );
     expect(plist).toContain("<string>https://machine.getbb.app</string>");
+    expect(plist).toContain(
+      `<key>BB_APP_NPM_PREFIX</key><string>${realpathSync(fixture.dataDir)}/npm</string>`,
+    );
     expect(
       readFileSync(join(fixture.dataDir, "launchctl.log"), "utf8"),
     ).toContain("bootstrap");
@@ -612,8 +623,7 @@ fi
   it("restarts an active Linux systemd user unit after replacing it", () => {
     const fixture = createFixture();
     writeJoinedState(fixture);
-    writeCurlArtifactMock(fixture, 404);
-    writeEnrollingBbApp(fixture, join(fixture.dataDir, "service-invocation"));
+    writeServerInstallTools(fixture, 200);
     writeExecutable(join(fixture.binDir, "uname"), "#!/bin/sh\necho Linux\n");
     writeExecutable(
       join(fixture.binDir, "systemctl"),
@@ -621,7 +631,7 @@ fi
 printf '%s\n' "$*" >>"${join(fixture.dataDir, "systemctl.log")}"
 if [ "$*" = "--user restart bb-host-daemon-machine-getbb-app.service" ]; then
   port=$(sed -n '1p' "${join(fixture.dataDir, "host-daemon-port")}")
-  BB_DATA_DIR="${fixture.dataDir}" "${join(fixture.binDir, "bb-app")}" host-daemon --host-daemon-port "$port" --server-url https://machine.getbb.app >/dev/null 2>&1 &
+  BB_DATA_DIR="${fixture.dataDir}" "${join(fixture.dataDir, "npm/bin/bb-app")}" host-daemon --host-daemon-port "$port" --server-url https://machine.getbb.app >/dev/null 2>&1 &
   echo $! >"${join(fixture.dataDir, "service-daemon.pid")}"
 fi
 `,
@@ -654,6 +664,9 @@ fi
     ).trim();
     expect(unit).toContain(
       `host-daemon --auto-update --host-daemon-port "${selectedPort}" --server-url "https://machine.getbb.app"`,
+    );
+    expect(unit).toContain(
+      `Environment="BB_APP_NPM_PREFIX=${realpathSync(fixture.dataDir)}/npm"`,
     );
     expect(readFileSync(join(fixture.dataDir, "systemctl.log"), "utf8")).toBe(
       "--user daemon-reload\n--user enable bb-host-daemon-machine-getbb-app.service\n--user restart bb-host-daemon-machine-getbb-app.service\n",

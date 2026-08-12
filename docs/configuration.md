@@ -513,13 +513,15 @@ machine. The current value is readable through the host API and
 Machine installation and daemon protocol repair use the owning server as the
 distribution source: `/install/version` reports the server package/protocol and
 `/install/bb-app.tgz` serves its exact installable package. The installer falls
-back to npm only when the package route returns 404. Installed services enable
-`--auto-update`; remove that flag from the launchd plist or systemd user unit
-and reload the service to opt out. Updates only move to a newer server protocol,
-retry failures with a persisted exponential backoff from 5 seconds to 5
-minutes, and never downgrade a daemon. Settings → Machines and `bb machine
-retry-update <id-or-name>` can bypass the current backoff after a transient
-failure.
+back to the npm registry only when the package route returns 404. It installs
+the package under the machine's bb data directory rather than npm's system-wide
+prefix, so enrollment needs neither `sudo` nor a global npm configuration.
+Installed services enable `--auto-update`; remove that flag from the launchd
+plist or systemd user unit and reload the service to opt out. Updates only move
+to a newer server protocol, retry failures with a persisted exponential backoff
+from 5 seconds to 5 minutes, and never downgrade a daemon. Settings → Machines
+and `bb machine retry-update <id-or-name>` can bypass the current backoff after
+a transient failure.
 
 ## Thread splits
 

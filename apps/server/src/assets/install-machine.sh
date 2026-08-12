@@ -97,6 +97,9 @@ canonical_data_dir=$(node -e '
   const fs = require("node:fs");
   process.stdout.write(fs.realpathSync(process.argv[1]));
 ' "$data_dir")
+# Keep the package private to this enrollment. Besides avoiding system-prefix
+# permissions, this lets one machine follow servers running different builds.
+machine_npm_prefix="$canonical_data_dir/npm"
 port_registry_dir="$HOME/.bb-machines/host-daemon-ports"
 mkdir -p "$port_registry_dir"
 
@@ -276,14 +279,16 @@ package_file="$package_dir/bb-app.tgz"
 package_status=$(curl -sS -L -o "$package_file" -w '%{http_code}' "$package_url" 2>/dev/null) || package_status=000
 
 bb_app=
+bb_app_npm_prefix=
 if [ "$package_status" -ge 200 ] && [ "$package_status" -lt 300 ]; then
   require_npm
   echo "Installing the server's bb-app build..."
-  if ! npm install -g "$package_file"; then
+  if ! npm install -g --prefix "$machine_npm_prefix" "$package_file"; then
     rm -rf "$package_dir"
-    echo "Could not install bb-app globally. Fix npm global-install permissions, then rerun this command." >&2
+    echo "Could not install bb-app for this machine. Check the npm error above, then rerun this command." >&2
     exit 1
   fi
+  bb_app_npm_prefix=$machine_npm_prefix
 elif command -v bb-app >/dev/null 2>&1; then
   bb_app=$(command -v bb-app)
   if [ "$package_status" = 404 ]; then
@@ -294,11 +299,12 @@ elif command -v bb-app >/dev/null 2>&1; then
 elif [ "$package_status" = 404 ]; then
   require_npm
   echo "The server does not provide its bb-app package; installing bb-app from the npm registry..."
-  if ! npm install -g bb-app; then
+  if ! npm install -g --prefix "$machine_npm_prefix" bb-app; then
     rm -rf "$package_dir"
-    echo "Could not install bb-app globally. Fix npm global-install permissions, then rerun this command." >&2
+    echo "Could not install bb-app for this machine. Check the npm error above, then rerun this command." >&2
     exit 1
   fi
+  bb_app_npm_prefix=$machine_npm_prefix
 else
   rm -rf "$package_dir"
   echo "Could not download the server's bb-app package from $package_url (HTTP $package_status)." >&2
@@ -306,13 +312,12 @@ else
 fi
 rm -rf "$package_dir"
 
-if [ -z "$bb_app" ]; then
-  if ! command -v bb-app >/dev/null 2>&1; then
-    echo "npm installed bb-app, but its global bin directory is not on PATH." >&2
-    echo "Add npm's global bin directory to PATH, then rerun this command." >&2
+if [ -n "$bb_app_npm_prefix" ]; then
+  bb_app="$bb_app_npm_prefix/bin/bb-app"
+  if [ ! -x "$bb_app" ]; then
+    echo "npm installed bb-app, but did not create the expected executable at $bb_app." >&2
     exit 1
   fi
-  bb_app=$(command -v bb-app)
 fi
 
 if [ -n "$machine_code" ]; then
@@ -402,7 +407,8 @@ join_pid=
 if [ "$already_joined" = no ]; then
   join_log="$data_dir/install-join.log"
   echo "Joining $server_url as $host_id..."
-  BB_DATA_DIR="$data_dir" nohup "$bb_app" host-daemon join \
+  # The daemon passes this prefix back to npm during protocol self-updates.
+  BB_APP_NPM_PREFIX="$bb_app_npm_prefix" BB_DATA_DIR="$data_dir" nohup "$bb_app" host-daemon join \
     --auto-update \
     --host-daemon-port "$host_daemon_port" \
     --join-code "$join_code" \
@@ -473,6 +479,7 @@ if [ "$platform" = darwin ]; then
   mkdir -p "$service_dir"
   escaped_node_bin=$(xml_escape "$node_bin")
   escaped_bb_app=$(xml_escape "$bb_app")
+  escaped_bb_app_npm_prefix=$(xml_escape "$bb_app_npm_prefix")
   escaped_server=$(xml_escape "$server_url")
   escaped_data_dir=$(xml_escape "$data_dir")
   cat >"$service_file" <<EOF
@@ -493,7 +500,10 @@ if [ "$platform" = darwin ]; then
     <string>$escaped_server</string>
   </array>
   <key>EnvironmentVariables</key>
-  <dict><key>BB_DATA_DIR</key><string>$escaped_data_dir</string></dict>
+  <dict>
+    <key>BB_APP_NPM_PREFIX</key><string>$escaped_bb_app_npm_prefix</string>
+    <key>BB_DATA_DIR</key><string>$escaped_data_dir</string>
+  </dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
   <key>StandardOutPath</key><string>$escaped_data_dir/logs/launchd.log</string>
@@ -528,6 +538,7 @@ else
   mkdir -p "$service_dir"
   escaped_node_bin=$(systemd_escape "$node_bin")
   escaped_bb_app=$(systemd_escape "$bb_app")
+  escaped_bb_app_npm_prefix=$(systemd_escape "$bb_app_npm_prefix")
   escaped_server=$(systemd_escape "$server_url")
   escaped_data_dir=$(systemd_escape "$data_dir")
   cat >"$service_file" <<EOF
@@ -538,6 +549,7 @@ Wants=network-online.target
 
 [Service]
 ExecStart="$escaped_node_bin" "$escaped_bb_app" host-daemon --auto-update --host-daemon-port "$host_daemon_port" --server-url "$escaped_server"
+Environment="BB_APP_NPM_PREFIX=$escaped_bb_app_npm_prefix"
 Environment="BB_DATA_DIR=$escaped_data_dir"
 Restart=always
 RestartSec=2
