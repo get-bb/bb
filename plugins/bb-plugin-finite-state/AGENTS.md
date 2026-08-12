@@ -167,3 +167,10 @@ WP-02 (builtin registry) is about shipping, not about seeing the plugin work.
 is active.** Installing creates `<dataDir>/plugins/finite-state/data.db` and
 applies the frozen migration array; WP-02 owns that first activation and its
 fresh-database proof.
+
+UI-surface review evidence is exempt when the plugin is installed into a
+disposable data dir via `BB_DATA_DIR`. The prohibition covers only the shared
+data dir, which WP-02 owns and which carries first-activation/fresh-database
+proof. Consistent with the accepted no-bb-core/WP-02-deferred ADR, shared-data-dir
+activation remains prohibited and WP-02 remains deferred; disposable evidence
+installs are allowed and do not revive WP-02.

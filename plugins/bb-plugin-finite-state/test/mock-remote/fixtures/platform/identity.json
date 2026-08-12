@@ -1,0 +1,29 @@
+{
+  "organization": {
+    "id": "org-f5116cb0184f",
+    "name": "Fictional Eagle Labs"
+  },
+  "project": {
+    "id": "project-4a752600a07a",
+    "name": "Eagle Connected Gateway",
+    "orgId": "org-f5116cb0184f"
+  },
+  "versions": [
+    {
+      "createdAt": "2026-05-12T14:30:00.000Z",
+      "id": "pv-a87bd8e252b0",
+      "name": "2.3.0",
+      "priorVersionId": null,
+      "projectId": "project-4a752600a07a",
+      "scanId": "scan-0d29e2ca0003"
+    },
+    {
+      "createdAt": "2026-05-12T14:30:00.000Z",
+      "id": "pv-a481df87dadf",
+      "name": "2.4.0",
+      "priorVersionId": "pv-a87bd8e252b0",
+      "projectId": "project-4a752600a07a",
+      "scanId": "scan-8ecb49226789"
+    }
+  ]
+}

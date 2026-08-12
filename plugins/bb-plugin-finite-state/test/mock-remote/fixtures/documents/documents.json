@@ -1,0 +1,111 @@
+{
+  "items": [
+    {
+      "createdAt": "2026-05-12T14:30:00.000Z",
+      "id": "document-1",
+      "kind": "architecture",
+      "name": "Eagle architecture.pdf",
+      "projectId": "project-4a752600a07a",
+      "sha256": "8e5679baf052b2f9e52b182073d483696fe163a6f84684cebccd2a8e94487616",
+      "sourceRefs": [
+        "requirement-001:document-1#page=1",
+        "requirement-007:document-1#page=2",
+        "requirement-013:document-1#page=3",
+        "requirement-019:document-1#page=4",
+        "requirement-025:document-1#page=5",
+        "requirement-031:document-1#page=1",
+        "requirement-037:document-1#page=2"
+      ],
+      "status": "active"
+    },
+    {
+      "createdAt": "2026-05-12T14:30:00.000Z",
+      "id": "document-2",
+      "kind": "specification",
+      "name": "München radio specification.pdf",
+      "projectId": "project-4a752600a07a",
+      "sha256": "f1fc7ef7e52d80575a9b1c2efdd49c2b035516fb6bbc4fa1a01619db9d43817d",
+      "sourceRefs": [
+        "requirement-002:document-2#page=2",
+        "requirement-008:document-2#page=3",
+        "requirement-014:document-2#page=4",
+        "requirement-020:document-2#page=5",
+        "requirement-026:document-2#page=1",
+        "requirement-032:document-2#page=2",
+        "requirement-038:document-2#page=3"
+      ],
+      "status": "active"
+    },
+    {
+      "createdAt": "2026-05-12T14:30:00.000Z",
+      "id": "document-3",
+      "kind": "regulatory",
+      "name": "CRA Annex I.txt",
+      "projectId": "project-4a752600a07a",
+      "sha256": "e767a3a0064bc31ded674396deb41c3b896d512cd90d092871192e164fcec199",
+      "sourceRefs": [
+        "requirement-003:document-3#page=3",
+        "requirement-009:document-3#page=4",
+        "requirement-015:document-3#page=5",
+        "requirement-021:document-3#page=1",
+        "requirement-027:document-3#page=2",
+        "requirement-033:document-3#page=3",
+        "requirement-039:document-3#page=4"
+      ],
+      "status": "active"
+    },
+    {
+      "createdAt": "2026-05-12T14:30:00.000Z",
+      "id": "document-4",
+      "kind": "design",
+      "name": "Register map.csv",
+      "projectId": "project-4a752600a07a",
+      "sha256": "b9a1d9aa1419d50d507133b831500ce6edd6e76a6efe35667c224b3890a38f6b",
+      "sourceRefs": [
+        "requirement-004:document-4#page=4",
+        "requirement-010:document-4#page=5",
+        "requirement-016:document-4#page=1",
+        "requirement-022:document-4#page=2",
+        "requirement-028:document-4#page=3",
+        "requirement-034:document-4#page=4",
+        "requirement-040:document-4#page=5"
+      ],
+      "status": "active"
+    },
+    {
+      "createdAt": "2026-05-12T14:30:00.000Z",
+      "id": "document-5",
+      "kind": "test_report",
+      "name": "Lab report.txt",
+      "projectId": "project-4a752600a07a",
+      "sha256": "8edc0103342cda64864ff2a87742040d573758bdad028b331dcc1968fb0d4bec",
+      "sourceRefs": [
+        "requirement-005:document-5#page=5",
+        "requirement-011:document-5#page=1",
+        "requirement-017:document-5#page=2",
+        "requirement-023:document-5#page=3",
+        "requirement-029:document-5#page=4",
+        "requirement-035:document-5#page=5"
+      ],
+      "status": "active"
+    },
+    {
+      "createdAt": "2026-05-12T14:30:00.000Z",
+      "id": "document-6",
+      "kind": "other",
+      "name": "Withdrawn vendor datasheet.pdf",
+      "projectId": "project-4a752600a07a",
+      "sha256": "39b912046dab92d818c734bd1c100a4bf536f364d5f35c01f6cf992ef454d00c",
+      "sourceRefs": [
+        "requirement-006:document-6#page=1",
+        "requirement-012:document-6#page=2",
+        "requirement-018:document-6#page=3",
+        "requirement-024:document-6#page=4",
+        "requirement-030:document-6#page=5",
+        "requirement-036:document-6#page=1"
+      ],
+      "status": "withdrawn"
+    }
+  ],
+  "total": 6
+}

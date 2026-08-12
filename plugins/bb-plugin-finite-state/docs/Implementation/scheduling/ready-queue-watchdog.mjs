@@ -24,14 +24,20 @@ import { fileURLToPath } from "node:url";
  * referencing them as dependencies, so requiring board-done for them would
  * permanently hide every package gated on one.
  *
- * Packages named in `dispatchPolicy.prohibitedWorkPackages` (the versioned,
- * durable rule — e.g. WP02, prohibited by "ADR — bb Is Not Modified") are
- * never surfaced. `exclude` adds config-side keys on top, as belt-and-braces.
+ * Packages named in `dispatchPolicy.prohibitedWorkPackages` or the distinct
+ * temporary `stoppedWorkPackages` policy are never surfaced. Each temporary
+ * stop carries a versioned reason and explicit resume condition in the
+ * manifest. `exclude` adds config-side keys on top, as belt-and-braces.
  */
-export function computeReady(manifest, statusByKey, { exclude = new Set() } = {}) {
+export function computeReady(
+  manifest,
+  statusByKey,
+  { exclude = new Set() } = {},
+) {
   const wps = manifest.workPackages;
   const prohibited = new Set([
     ...(manifest.dispatchPolicy?.prohibitedWorkPackages ?? []),
+    ...(manifest.dispatchPolicy?.stoppedWorkPackages ?? []),
     ...exclude,
   ]);
   const statusOf = (w) => statusByKey.get(w.task) ?? "unknown";

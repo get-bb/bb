@@ -1,0 +1,20 @@
+{
+  "claims": [
+    {
+      "componentId": "as-component-01",
+      "confidence": 0.91,
+      "field": "manufacturer",
+      "id": "hbom-claim-1",
+      "sourceRef": "document-2#page=4",
+      "value": "Acme Components"
+    },
+    {
+      "componentId": "as-component-01",
+      "confidence": 0.88,
+      "field": "manufacturer",
+      "id": "hbom-claim-2",
+      "sourceRef": "document-6#page=2",
+      "value": "Acme Semiconductor"
+    }
+  ]
+}

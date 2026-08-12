@@ -1,0 +1,906 @@
+{
+  "items": [
+    {
+      "fallbackIdentity": null,
+      "id": "component-0001",
+      "name": "eagle-component-001",
+      "priorVersion": "1.0.0",
+      "purl": "pkg:generic/eagle-component-001@1.0.0",
+      "version": "1.0.0",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0002",
+      "name": "eagle-component-002",
+      "priorVersion": "1.9.7",
+      "purl": "pkg:generic/eagle-component-002@2.0.0",
+      "version": "2.0.0",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0003",
+      "name": "eagle-component-003",
+      "priorVersion": "1.2.2",
+      "purl": "pkg:generic/eagle-component-003@1.2.2",
+      "version": "1.2.2",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0004",
+      "name": "eagle-component-004",
+      "priorVersion": "1.3.3",
+      "purl": "pkg:generic/eagle-component-004@1.3.3",
+      "version": "1.3.3",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": "sha256:3b43068d98d399379736cb2dc3e789f12537dff511af3e7e2cbafb223882c4fe",
+      "id": "component-0005",
+      "name": "eagle-component-005",
+      "priorVersion": "1.4.4",
+      "purl": null,
+      "version": "1.4.4",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0006",
+      "name": "eagle-component-006",
+      "priorVersion": "1.5.5",
+      "purl": "pkg:generic/eagle-component-006@1.5.5",
+      "version": "1.5.5",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0007",
+      "name": "eagle-component-007",
+      "priorVersion": "1.6.6",
+      "purl": "pkg:generic/eagle-component-007@1.6.6",
+      "version": "1.6.6",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0008",
+      "name": "eagle-component-008",
+      "priorVersion": "1.7.7",
+      "purl": "pkg:generic/eagle-component-008@1.7.7",
+      "version": "1.7.7",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0009",
+      "name": "münchen-µtls",
+      "priorVersion": "1.8.8",
+      "purl": "pkg:generic/m%C3%BCnchen-%C2%B5tls@1.8.8",
+      "version": "1.8.8",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0010",
+      "name": "eagle-component-010",
+      "priorVersion": "1.9.9",
+      "purl": "pkg:generic/eagle-component-010@1.9.9",
+      "version": "1.9.9",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0011",
+      "name": "eagle-component-011",
+      "priorVersion": "1.10.10",
+      "purl": "pkg:generic/eagle-component-011@1.10.10",
+      "version": "1.10.10",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0012",
+      "name": "eagle-component-012",
+      "priorVersion": "1.11.0",
+      "purl": "pkg:generic/eagle-component-012@1.11.0",
+      "version": "1.11.0",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0013",
+      "name": "eagle-component-013",
+      "priorVersion": "1.12.1",
+      "purl": "pkg:generic/eagle-component-013@1.12.1",
+      "version": "1.12.1",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0014",
+      "name": "eagle-component-014",
+      "priorVersion": "1.13.2",
+      "purl": "pkg:generic/eagle-component-014@1.13.2",
+      "version": "1.13.2",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0015",
+      "name": "eagle-component-015",
+      "priorVersion": "1.14.3",
+      "purl": "pkg:generic/eagle-component-015@1.14.3",
+      "version": "1.14.3",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0016",
+      "name": "eagle-component-016",
+      "priorVersion": "1.15.4",
+      "purl": "pkg:generic/eagle-component-016@1.15.4",
+      "version": "1.15.4",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0017",
+      "name": "eagle-component-017",
+      "priorVersion": "1.16.5",
+      "purl": "pkg:generic/eagle-component-017@1.16.5",
+      "version": "1.16.5",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0018",
+      "name": "eagle-component-018",
+      "priorVersion": "1.0.6",
+      "purl": "pkg:generic/eagle-component-018@1.0.6",
+      "version": "1.0.6",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0019",
+      "name": "eagle-component-019",
+      "priorVersion": "1.1.7",
+      "purl": "pkg:generic/eagle-component-019@1.1.7",
+      "version": "1.1.7",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0020",
+      "name": "eagle-component-020",
+      "priorVersion": "1.2.8",
+      "purl": "pkg:generic/eagle-component-020@1.2.8",
+      "version": "1.2.8",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0021",
+      "name": "eagle-component-021",
+      "priorVersion": "1.3.9",
+      "purl": "pkg:generic/eagle-component-021@1.3.9",
+      "version": "1.3.9",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0022",
+      "name": "eagle-component-022",
+      "priorVersion": "1.4.10",
+      "purl": "pkg:generic/eagle-component-022@1.4.10",
+      "version": "1.4.10",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0023",
+      "name": "eagle-component-023",
+      "priorVersion": "1.5.0",
+      "purl": "pkg:generic/eagle-component-023@1.5.0",
+      "version": "1.5.0",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0024",
+      "name": "eagle-component-024",
+      "priorVersion": "1.6.1",
+      "purl": "pkg:generic/eagle-component-024@1.6.1",
+      "version": "1.6.1",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0025",
+      "name": "eagle-component-025",
+      "priorVersion": "1.7.2",
+      "purl": "pkg:generic/eagle-component-025@1.7.2",
+      "version": "1.7.2",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0026",
+      "name": "eagle-component-026",
+      "priorVersion": "1.8.3",
+      "purl": "pkg:generic/eagle-component-026@1.8.3",
+      "version": "1.8.3",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0027",
+      "name": "eagle-component-027",
+      "priorVersion": "1.9.4",
+      "purl": "pkg:generic/eagle-component-027@1.9.4",
+      "version": "1.9.4",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0028",
+      "name": "eagle-component-028",
+      "priorVersion": "1.10.5",
+      "purl": "pkg:generic/eagle-component-028@1.10.5",
+      "version": "1.10.5",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0029",
+      "name": "eagle-component-029",
+      "priorVersion": "1.11.6",
+      "purl": "pkg:generic/eagle-component-029@1.11.6",
+      "version": "1.11.6",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0030",
+      "name": "eagle-component-030",
+      "priorVersion": "1.12.7",
+      "purl": "pkg:generic/eagle-component-030@1.12.7",
+      "version": "1.12.7",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0031",
+      "name": "eagle-component-031",
+      "priorVersion": "1.13.8",
+      "purl": "pkg:generic/eagle-component-031@1.13.8",
+      "version": "1.13.8",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0032",
+      "name": "eagle-component-032",
+      "priorVersion": "1.14.9",
+      "purl": "pkg:generic/eagle-component-032@1.14.9",
+      "version": "1.14.9",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0033",
+      "name": "eagle-component-033",
+      "priorVersion": "1.15.10",
+      "purl": "pkg:generic/eagle-component-033@1.15.10",
+      "version": "1.15.10",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0034",
+      "name": "eagle-component-034",
+      "priorVersion": "1.16.0",
+      "purl": "pkg:generic/eagle-component-034@1.16.0",
+      "version": "1.16.0",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0035",
+      "name": "eagle-component-035",
+      "priorVersion": "1.0.1",
+      "purl": "pkg:generic/eagle-component-035@1.0.1",
+      "version": "1.0.1",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0036",
+      "name": "eagle-component-036",
+      "priorVersion": "1.1.2",
+      "purl": "pkg:generic/eagle-component-036@1.1.2",
+      "version": "1.1.2",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0037",
+      "name": "eagle-component-037",
+      "priorVersion": "1.2.3",
+      "purl": "pkg:generic/eagle-component-037@1.2.3",
+      "version": "1.2.3",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0038",
+      "name": "eagle-component-038",
+      "priorVersion": "1.3.4",
+      "purl": "pkg:generic/eagle-component-038@1.3.4",
+      "version": "1.3.4",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0039",
+      "name": "eagle-component-039",
+      "priorVersion": "1.4.5",
+      "purl": "pkg:generic/eagle-component-039@1.4.5",
+      "version": "1.4.5",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0040",
+      "name": "eagle-component-040",
+      "priorVersion": "1.5.6",
+      "purl": "pkg:generic/eagle-component-040@1.5.6",
+      "version": "1.5.6",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0041",
+      "name": "eagle-component-041",
+      "priorVersion": "1.6.7",
+      "purl": "pkg:generic/eagle-component-041@1.6.7",
+      "version": "1.6.7",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0042",
+      "name": "eagle-component-042",
+      "priorVersion": "1.7.8",
+      "purl": "pkg:generic/eagle-component-042@1.7.8",
+      "version": "1.7.8",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0043",
+      "name": "eagle-component-043",
+      "priorVersion": "1.8.9",
+      "purl": "pkg:generic/eagle-component-043@1.8.9",
+      "version": "1.8.9",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0044",
+      "name": "eagle-component-044",
+      "priorVersion": "1.9.10",
+      "purl": "pkg:generic/eagle-component-044@1.9.10",
+      "version": "1.9.10",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0045",
+      "name": "eagle-component-045",
+      "priorVersion": "1.10.0",
+      "purl": "pkg:generic/eagle-component-045@1.10.0",
+      "version": "1.10.0",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0046",
+      "name": "eagle-component-046",
+      "priorVersion": "1.11.1",
+      "purl": "pkg:generic/eagle-component-046@1.11.1",
+      "version": "1.11.1",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0047",
+      "name": "eagle-component-047",
+      "priorVersion": "1.12.2",
+      "purl": "pkg:generic/eagle-component-047@1.12.2",
+      "version": "1.12.2",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0048",
+      "name": "eagle-component-048",
+      "priorVersion": "1.13.3",
+      "purl": "pkg:generic/eagle-component-048@1.13.3",
+      "version": "1.13.3",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0049",
+      "name": "eagle-component-049",
+      "priorVersion": "1.14.4",
+      "purl": "pkg:generic/eagle-component-049@1.14.4",
+      "version": "1.14.4",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0050",
+      "name": "eagle-component-050",
+      "priorVersion": "1.15.5",
+      "purl": "pkg:generic/eagle-component-050@1.15.5",
+      "version": "1.15.5",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0051",
+      "name": "eagle-component-051",
+      "priorVersion": "1.16.6",
+      "purl": "pkg:generic/eagle-component-051@1.16.6",
+      "version": "1.16.6",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0052",
+      "name": "eagle-component-052",
+      "priorVersion": "1.0.7",
+      "purl": "pkg:generic/eagle-component-052@1.0.7",
+      "version": "1.0.7",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0053",
+      "name": "eagle-component-053",
+      "priorVersion": "1.1.8",
+      "purl": "pkg:generic/eagle-component-053@1.1.8",
+      "version": "1.1.8",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0054",
+      "name": "eagle-component-054",
+      "priorVersion": "1.2.9",
+      "purl": "pkg:generic/eagle-component-054@1.2.9",
+      "version": "1.2.9",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0055",
+      "name": "eagle-component-055",
+      "priorVersion": "1.3.10",
+      "purl": "pkg:generic/eagle-component-055@1.3.10",
+      "version": "1.3.10",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0056",
+      "name": "eagle-component-056",
+      "priorVersion": "1.4.0",
+      "purl": "pkg:generic/eagle-component-056@1.4.0",
+      "version": "1.4.0",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0057",
+      "name": "eagle-component-057",
+      "priorVersion": "1.5.1",
+      "purl": "pkg:generic/eagle-component-057@1.5.1",
+      "version": "1.5.1",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0058",
+      "name": "eagle-component-058",
+      "priorVersion": "1.6.2",
+      "purl": "pkg:generic/eagle-component-058@1.6.2",
+      "version": "1.6.2",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0059",
+      "name": "eagle-component-059",
+      "priorVersion": "1.7.3",
+      "purl": "pkg:generic/eagle-component-059@1.7.3",
+      "version": "1.7.3",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0060",
+      "name": "eagle-component-060",
+      "priorVersion": "1.8.4",
+      "purl": "pkg:generic/eagle-component-060@1.8.4",
+      "version": "1.8.4",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0061",
+      "name": "eagle-component-061",
+      "priorVersion": "1.9.5",
+      "purl": "pkg:generic/eagle-component-061@1.9.5",
+      "version": "1.9.5",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0062",
+      "name": "eagle-component-062",
+      "priorVersion": "1.10.6",
+      "purl": "pkg:generic/eagle-component-062@1.10.6",
+      "version": "1.10.6",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0063",
+      "name": "eagle-component-063",
+      "priorVersion": "1.11.7",
+      "purl": "pkg:generic/eagle-component-063@1.11.7",
+      "version": "1.11.7",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0064",
+      "name": "eagle-component-064",
+      "priorVersion": "1.12.8",
+      "purl": "pkg:generic/eagle-component-064@1.12.8",
+      "version": "1.12.8",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0065",
+      "name": "eagle-component-065",
+      "priorVersion": "1.13.9",
+      "purl": "pkg:generic/eagle-component-065@1.13.9",
+      "version": "1.13.9",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0066",
+      "name": "eagle-component-066",
+      "priorVersion": "1.14.10",
+      "purl": "pkg:generic/eagle-component-066@1.14.10",
+      "version": "1.14.10",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0067",
+      "name": "eagle-component-067",
+      "priorVersion": "1.15.0",
+      "purl": "pkg:generic/eagle-component-067@1.15.0",
+      "version": "1.15.0",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0068",
+      "name": "eagle-component-068",
+      "priorVersion": "1.16.1",
+      "purl": "pkg:generic/eagle-component-068@1.16.1",
+      "version": "1.16.1",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0069",
+      "name": "eagle-component-069",
+      "priorVersion": "1.0.2",
+      "purl": "pkg:generic/eagle-component-069@1.0.2",
+      "version": "1.0.2",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0070",
+      "name": "eagle-component-070",
+      "priorVersion": "1.1.3",
+      "purl": "pkg:generic/eagle-component-070@1.1.3",
+      "version": "1.1.3",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0071",
+      "name": "eagle-component-071",
+      "priorVersion": "1.2.4",
+      "purl": "pkg:generic/eagle-component-071@1.2.4",
+      "version": "1.2.4",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0072",
+      "name": "eagle-component-072",
+      "priorVersion": "1.3.5",
+      "purl": "pkg:generic/eagle-component-072@1.3.5",
+      "version": "1.3.5",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0073",
+      "name": "eagle-component-073",
+      "priorVersion": "1.4.6",
+      "purl": "pkg:generic/eagle-component-073@1.4.6",
+      "version": "1.4.6",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0074",
+      "name": "eagle-component-074",
+      "priorVersion": "1.5.7",
+      "purl": "pkg:generic/eagle-component-074@1.5.7",
+      "version": "1.5.7",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0075",
+      "name": "eagle-component-075",
+      "priorVersion": "1.6.8",
+      "purl": "pkg:generic/eagle-component-075@1.6.8",
+      "version": "1.6.8",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0076",
+      "name": "eagle-component-076",
+      "priorVersion": "1.7.9",
+      "purl": "pkg:generic/eagle-component-076@1.7.9",
+      "version": "1.7.9",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0077",
+      "name": "eagle-component-077",
+      "priorVersion": "1.8.10",
+      "purl": "pkg:generic/eagle-component-077@1.8.10",
+      "version": "1.8.10",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0078",
+      "name": "eagle-component-078",
+      "priorVersion": "1.9.0",
+      "purl": "pkg:generic/eagle-component-078@1.9.0",
+      "version": "1.9.0",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0079",
+      "name": "eagle-component-079",
+      "priorVersion": "1.10.1",
+      "purl": "pkg:generic/eagle-component-079@1.10.1",
+      "version": "1.10.1",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0080",
+      "name": "eagle-component-080",
+      "priorVersion": "1.11.2",
+      "purl": "pkg:generic/eagle-component-080@1.11.2",
+      "version": "1.11.2",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0081",
+      "name": "eagle-component-081",
+      "priorVersion": "1.12.3",
+      "purl": "pkg:generic/eagle-component-081@1.12.3",
+      "version": "1.12.3",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0082",
+      "name": "eagle-component-082",
+      "priorVersion": "1.13.4",
+      "purl": "pkg:generic/eagle-component-082@1.13.4",
+      "version": "1.13.4",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0083",
+      "name": "eagle-component-083",
+      "priorVersion": "1.14.5",
+      "purl": "pkg:generic/eagle-component-083@1.14.5",
+      "version": "1.14.5",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0084",
+      "name": "eagle-component-084",
+      "priorVersion": "1.15.6",
+      "purl": "pkg:generic/eagle-component-084@1.15.6",
+      "version": "1.15.6",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0085",
+      "name": "eagle-component-085",
+      "priorVersion": "1.16.7",
+      "purl": "pkg:generic/eagle-component-085@1.16.7",
+      "version": "1.16.7",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0086",
+      "name": "eagle-component-086",
+      "priorVersion": "1.0.8",
+      "purl": "pkg:generic/eagle-component-086@1.0.8",
+      "version": "1.0.8",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0087",
+      "name": "eagle-component-087",
+      "priorVersion": "1.1.9",
+      "purl": "pkg:generic/eagle-component-087@1.1.9",
+      "version": "1.1.9",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0088",
+      "name": "eagle-component-088",
+      "priorVersion": "1.2.10",
+      "purl": "pkg:generic/eagle-component-088@1.2.10",
+      "version": "1.2.10",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0089",
+      "name": "eagle-component-089",
+      "priorVersion": "1.3.0",
+      "purl": "pkg:generic/eagle-component-089@1.3.0",
+      "version": "1.3.0",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0090",
+      "name": "eagle-component-090",
+      "priorVersion": "1.4.1",
+      "purl": "pkg:generic/eagle-component-090@1.4.1",
+      "version": "1.4.1",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0091",
+      "name": "eagle-component-091",
+      "priorVersion": "1.5.2",
+      "purl": "pkg:generic/eagle-component-091@1.5.2",
+      "version": "1.5.2",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0092",
+      "name": "eagle-component-092",
+      "priorVersion": "1.6.3",
+      "purl": "pkg:generic/eagle-component-092@1.6.3",
+      "version": "1.6.3",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0093",
+      "name": "eagle-component-093",
+      "priorVersion": "1.7.4",
+      "purl": "pkg:generic/eagle-component-093@1.7.4",
+      "version": "1.7.4",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0094",
+      "name": "eagle-component-094",
+      "priorVersion": "1.8.5",
+      "purl": "pkg:generic/eagle-component-094@1.8.5",
+      "version": "1.8.5",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0095",
+      "name": "eagle-component-095",
+      "priorVersion": "1.9.6",
+      "purl": "pkg:generic/eagle-component-095@1.9.6",
+      "version": "1.9.6",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0096",
+      "name": "eagle-component-096",
+      "priorVersion": "1.10.7",
+      "purl": "pkg:generic/eagle-component-096@1.10.7",
+      "version": "1.10.7",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0097",
+      "name": "eagle-component-097",
+      "priorVersion": "1.11.8",
+      "purl": "pkg:generic/eagle-component-097@1.11.8",
+      "version": "1.11.8",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0098",
+      "name": "eagle-component-098",
+      "priorVersion": "1.12.9",
+      "purl": "pkg:generic/eagle-component-098@1.12.9",
+      "version": "1.12.9",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0099",
+      "name": "eagle-component-099",
+      "priorVersion": "1.13.10",
+      "purl": "pkg:generic/eagle-component-099@1.13.10",
+      "version": "1.13.10",
+      "vulnerable": true
+    },
+    {
+      "fallbackIdentity": null,
+      "id": "component-0100",
+      "name": "eagle-component-100",
+      "priorVersion": "1.14.0",
+      "purl": "pkg:generic/eagle-component-100@1.14.0",
+      "version": "1.14.0",
+      "vulnerable": true
+    }
+  ],
+  "next": "offset:100",
+  "total": 900
+}
