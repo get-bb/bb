@@ -353,11 +353,21 @@ packages:
     expect(run(dependencyScript, root).output).toContain("Finite State plugin importer must resolve zod");
   });
 
-  it("keeps the exact guard command sequence in the verified CI workflow", async () => {
+  it("keeps the authoritative unconditional Finite State lifecycle in CI", async () => {
     const workflow = await readFile(path.join(repositoryRoot, ".github/workflows/ci.yml"), "utf8");
-    expect(workflow).toContain("pnpm exec turbo run typecheck test lint build --filter=bb-plugin-finite-state");
-    expect(workflow).toContain("node plugins/bb-plugin-finite-state/scripts/check-frozen-artifacts.mjs --base");
-    expect(workflow).toContain("node plugins/bb-plugin-finite-state/scripts/check-ui-rules.mjs");
-    expect(workflow).toContain("node plugins/bb-plugin-finite-state/scripts/check-dependency-freeze.mjs");
+    const gateMatch = workflow.match(/^  finite-state-guards:\n[\s\S]*?(?=^  [a-z][a-z0-9-]*:\n)/mu);
+    if (!gateMatch) throw new Error("finite-state-guards job is missing");
+    const gate = gateMatch[0];
+    const lifecycleCommand = "pnpm exec turbo run typecheck test lint build --filter=bb-plugin-finite-state";
+
+    expect(gate).toContain("name: Finite State guard gates (ubuntu-latest, Node 22.19.0)");
+    expect(gate).toContain('node-version: "22.19.0"');
+    expect(gate).toContain(lifecycleCommand);
+    expect(workflow.split(lifecycleCommand)).toHaveLength(2);
+    expect(gate).not.toContain("needs: changes");
+    expect(gate).not.toContain("if: needs.changes.outputs.run_heavy");
+    expect(gate).not.toContain("check-frozen-artifacts.mjs");
+    expect(gate).not.toContain("check-ui-rules.mjs");
+    expect(gate).not.toContain("check-dependency-freeze.mjs");
   });
 });
