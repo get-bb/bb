@@ -38,6 +38,33 @@ required.
 
 Work on exactly one WP per task. Obey its owned-files and forbidden-files lists. If a frozen contract or another lane must change, stop and file an amendment; do not create a shadow contract.
 
+## Shared lessons ledger
+
+Project memory is the shared state between parallel lanes. Its index is already in your system prompt; use it instead of re-deriving what another thread has proven.
+
+**Before starting a WP**, search for prior findings about your surface:
+
+```sh
+bb memory search "<your WP key, cluster, or subsystem>" --scope project
+```
+
+Read anything tagged with your WP, cluster, or files. A `FAIL` entry is a constraint: do not retry the failed approach without new evidence.
+
+**When you finish — and especially when you fail or get blocked** — write back what the next thread must know:
+
+```sh
+bb memory add --scope project \
+  --name "FAIL-wp09-eslint-flat-config" --kind fail \
+  --tag "wp:WP09" --tag "plugins/bb-plugin-finite-state/eslint.config.mjs" \
+  --summary "One-claim gist of the finding (~100 tokens max)" \
+  --details "Evidence: file:line, the exact command and its output, or a commit SHA" \
+  --reason "Why this is durable"
+```
+
+Types: `FACT` (verified positive finding), `FAIL` (falsified approach — the most valuable type), `CONSTRAINT` (binding rule discovered mid-work), `PATCH` (compact summary of a landed change: files, idea, evidence). Name entries `<TYPE>-<scope>-<slug>`.
+
+Rules: evidence in `--details` is mandatory — an entry without it is not binding. One claim per entry. Supersede stale entries (`bb memory update`/`forget` with `--reason`) rather than leaving them to mislead the next lane. Never store secrets, transient status, guesses, or anything already guaranteed by this file.
+
 The data plane is direct typed Platform REST plus direct typed Assurance Studio REST. Forge is optional compute only and cannot own CRUD. Frontend code uses bb-native typed RPC/navigation and never imports backend clients, secrets, SQLite, or raw SDK internals.
 
 Implementation agents may commit, push, and open PRs. They do not merge their own work. A separate reviewer must verify acceptance criteria, frozen-contract compatibility, the safety boundary, and focused tests. The coordinator may merge a green independently reviewed PR.
