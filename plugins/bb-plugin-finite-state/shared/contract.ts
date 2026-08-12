@@ -1,2 +1,1530 @@
-// TODO(WP-03): replace this cold-start stub with the frozen RPC contract.
-export const CONTRACT_VERSION = 0 as const;
+/**
+ * FROZEN after WP-03 merges. Changes require an accepted amendment, a
+ * CONTRACT_VERSION bump, and a broadcast to every RPC producer and consumer.
+ *
+ * Product documentation uses dotted logical names. bb.rpc wire names cannot
+ * contain dots, so RPC_METHOD_NAMES is the canonical, bijective logical-to-wire
+ * mapping. Wire names use deterministic lowerCamelCase.
+ */
+import { defineRpcContract } from "@bb/plugin-sdk";
+import { z } from "zod";
+
+export const CONTRACT_VERSION = 1 as const;
+
+export type JsonValue =
+  | null
+  | boolean
+  | number
+  | string
+  | JsonValue[]
+  | { [key: string]: JsonValue };
+
+export const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
+  z.union([
+    z.null(),
+    z.boolean(),
+    z.number().finite(),
+    z.string(),
+    z.array(jsonValueSchema),
+    z.record(z.string(), jsonValueSchema),
+  ]),
+);
+
+export const RPC_METHOD_NAMES = {
+  "connections.status": "connectionsStatus",
+  "workspace.summary": "workspaceSummary",
+  "sync.pull": "syncPull",
+  "sync.status": "syncStatus",
+  "sync.plan": "syncPlan",
+  "sync.conflict.resolve": "syncConflictResolve",
+  "sync.push": "syncPush",
+  "sync.push.retry": "syncPushRetry",
+  "findings.list": "findingsList",
+  "findings.get": "findingsGet",
+  "findings.activity.list": "findingsActivityList",
+  "findings.comments.list": "findingsCommentsList",
+  "findings.comments.create": "findingsCommentsCreate",
+  "findings.comments.update": "findingsCommentsUpdate",
+  "findings.comments.delete": "findingsCommentsDelete",
+  "findings.facets": "findingsFacets",
+  "triage.run.get": "triageRunGet",
+  "triage.decision.write": "triageDecisionWrite",
+  "triage.decision.bulkWrite": "triageDecisionBulkWrite",
+  "triage.decision.undo": "triageDecisionUndo",
+  "triage.policy.preview": "triagePolicyPreview",
+  "triage.policy.apply": "triagePolicyApply",
+  "triage.vendorVex.preview": "triageVendorVexPreview",
+  "triage.vendorVex.apply": "triageVendorVexApply",
+  "triage.orphans.prune": "triageOrphansPrune",
+  "tara.list": "taraList",
+  "tara.get": "taraGet",
+  "tara.command.apply": "taraCommandApply",
+  "tara.deleteImpact": "taraDeleteImpact",
+  "requirements.list": "requirementsList",
+  "requirements.get": "requirementsGet",
+  "requirements.write": "requirementsWrite",
+  "ears.conversion.start": "earsConversionStart",
+  "ears.conversion.get": "earsConversionGet",
+  "ears.conversion.review": "earsConversionReview",
+  "verifications.matrix": "verificationsMatrix",
+  "verifications.run.get": "verificationsRunGet",
+  "verifications.run.start": "verificationsRunStart",
+  "verifications.manualAttestation.record":
+    "verificationsManualAttestationRecord",
+  "review.transition": "reviewTransition",
+  "bom.software.list": "bomSoftwareList",
+  "bom.component.get": "bomComponentGet",
+  "hbom.review.list": "hbomReviewList",
+  "hbom.review.resolve": "hbomReviewResolve",
+  "hbom.extraction.apply": "hbomExtractionApply",
+  "firmware.mounts.list": "firmwareMountsList",
+  "firmware.mount.get": "firmwareMountGet",
+  "firmware.tree.list": "firmwareTreeList",
+  "firmware.file.get": "firmwareFileGet",
+  "firmware.diff": "firmwareDiff",
+  "firmware.materialize.start": "firmwareMaterializeStart",
+  "firmware.materialize.cancel": "firmwareMaterializeCancel",
+  "firmware.file.hydrate": "firmwareFileHydrate",
+  "bench.runs.list": "benchRunsList",
+  "bench.run.get": "benchRunGet",
+  "bench.logs.list": "benchLogsList",
+  "bench.verdict.get": "benchVerdictGet",
+  "bench.run.start": "benchRunStart",
+  "bench.hosts.list": "benchHostsList",
+  "bench.hosts.joinCode": "benchHostsJoinCode",
+  "documents.list": "documentsList",
+  "documents.get": "documentsGet",
+  "documents.search": "documentsSearch",
+  "documents.metadata.update": "documentsMetadataUpdate",
+  "documents.extractions.list": "documentsExtractionsList",
+} as const;
+
+export type LogicalRpcMethod = keyof typeof RPC_METHOD_NAMES;
+export type RpcMethod = (typeof RPC_METHOD_NAMES)[LogicalRpcMethod];
+export type RpcMethodClass = "read" | "local-write" | "action" | "human-only";
+
+/** Security classification is independent of whether an RPC exists. */
+export const RPC_METHOD_CLASSIFICATIONS = {
+  connectionsStatus: "read",
+  workspaceSummary: "read",
+  syncPull: "local-write",
+  syncStatus: "read",
+  syncPlan: "read",
+  syncConflictResolve: "human-only",
+  syncPush: "human-only",
+  syncPushRetry: "human-only",
+  findingsList: "read",
+  findingsGet: "read",
+  findingsActivityList: "read",
+  findingsCommentsList: "read",
+  findingsCommentsCreate: "human-only",
+  findingsCommentsUpdate: "human-only",
+  findingsCommentsDelete: "human-only",
+  findingsFacets: "read",
+  triageRunGet: "read",
+  triageDecisionWrite: "local-write",
+  triageDecisionBulkWrite: "local-write",
+  triageDecisionUndo: "local-write",
+  triagePolicyPreview: "read",
+  triagePolicyApply: "local-write",
+  triageVendorVexPreview: "read",
+  triageVendorVexApply: "local-write",
+  triageOrphansPrune: "local-write",
+  taraList: "read",
+  taraGet: "read",
+  taraCommandApply: "local-write",
+  taraDeleteImpact: "read",
+  requirementsList: "read",
+  requirementsGet: "read",
+  requirementsWrite: "local-write",
+  earsConversionStart: "action",
+  earsConversionGet: "read",
+  earsConversionReview: "local-write",
+  verificationsMatrix: "read",
+  verificationsRunGet: "read",
+  verificationsRunStart: "action",
+  verificationsManualAttestationRecord: "human-only",
+  reviewTransition: "human-only",
+  bomSoftwareList: "read",
+  bomComponentGet: "read",
+  hbomReviewList: "read",
+  hbomReviewResolve: "human-only",
+  hbomExtractionApply: "local-write",
+  firmwareMountsList: "read",
+  firmwareMountGet: "read",
+  firmwareTreeList: "read",
+  firmwareFileGet: "read",
+  firmwareDiff: "read",
+  firmwareMaterializeStart: "action",
+  firmwareMaterializeCancel: "action",
+  firmwareFileHydrate: "action",
+  benchRunsList: "read",
+  benchRunGet: "read",
+  benchLogsList: "read",
+  benchVerdictGet: "read",
+  benchRunStart: "action",
+  benchHostsList: "read",
+  benchHostsJoinCode: "action",
+  documentsList: "read",
+  documentsGet: "read",
+  documentsSearch: "read",
+  documentsMetadataUpdate: "local-write",
+  documentsExtractionsList: "read",
+} as const satisfies Record<RpcMethod, RpcMethodClass>;
+
+export const HUMAN_ONLY_RPC_METHODS = [
+  "syncConflictResolve",
+  "syncPush",
+  "syncPushRetry",
+  "findingsCommentsCreate",
+  "findingsCommentsUpdate",
+  "findingsCommentsDelete",
+  "verificationsManualAttestationRecord",
+  "reviewTransition",
+  "hbomReviewResolve",
+] as const satisfies readonly RpcMethod[];
+
+/** The only server-side actions exposed to agents in v1. */
+export const AGENT_ACTION_RPC_METHODS = [
+  "verificationsRunStart",
+  "firmwareMaterializeStart",
+  "benchRunStart",
+] as const satisfies readonly RpcMethod[];
+
+/**
+ * bb v1 supplies no authenticated human actor to RPC handlers. Accordingly,
+ * no route, agent tool, or CLI command may mint this capability. Human-only
+ * handlers must return authorization-unavailable until an actor-authenticated,
+ * single-use mint exists server-side.
+ */
+export const HUMAN_APPROVAL_CAPABILITY_POLICY = {
+  minting: "unavailable",
+  mintSurfaces: [],
+  requiredIssuer: "actor-authenticated-server",
+  handlerDisposition: "authorization-unavailable",
+  singleUse: true,
+  bindings: [
+    "actor",
+    "action",
+    "projectId",
+    "projectVersionId",
+    "planOrSnapshotDigest",
+  ],
+  rejectedEvidence: [
+    "caller-boolean",
+    "cli-yes",
+    "plugin-token",
+    "request-input",
+  ],
+} as const;
+
+export const humanApprovalCapabilitySchema = z
+  .string()
+  .min(32)
+  .max(4096)
+  .brand<"HumanApprovalCapability">();
+export type HumanApprovalCapability = z.infer<
+  typeof humanApprovalCapabilitySchema
+>;
+
+const identifierSchema = z.string().trim().min(1).max(512);
+export const sha256Schema = z.string().regex(/^[a-f0-9]{64}$/u);
+const timestampSchema = z.string().datetime({ offset: true });
+const decimalRevisionSchema = z.string().regex(/^(0|[1-9][0-9]*)$/u);
+const safeDetailSchema = z
+  .string()
+  .max(500)
+  .refine(
+    (value) =>
+      !/(?:authorization|bearer\s|api[_-]?key|token=|https?:\/\/[^\s]*[?@])/iu.test(
+        value,
+      ),
+    "detail must not contain credentials, authorization data, or credentialed URLs",
+  );
+const relativeArtifactSchema = z
+  .string()
+  .min(1)
+  .max(1024)
+  .refine(
+    (value) =>
+      !value.startsWith("/") &&
+      !value.startsWith("~") &&
+      !value.includes("\\") &&
+      !value.split("/").includes(".."),
+    "must be a normalized relative artifact identifier",
+  );
+
+export const projectVersionIdSchema = identifierSchema.refine(
+  (value) => value !== "@project",
+  "@project is an internal storage sentinel and is not a valid RPC version id",
+);
+export const projectScopeFields = {
+  projectId: identifierSchema,
+  projectVersionId: projectVersionIdSchema.nullable(),
+} as const;
+export const projectScopeSchema = z.object(projectScopeFields).strict();
+
+export const pageRequestFields = {
+  pageSize: z.number().int().min(1).max(200).default(50),
+  continuation: z.string().min(1).max(4096).nullable().default(null),
+} as const;
+export const scopedPageRequestSchema = z
+  .object({ ...projectScopeFields, ...pageRequestFields })
+  .strict();
+
+export const cacheStateSchema = z
+  .object({
+    state: z.enum(["fresh", "stale", "empty"]),
+    asOf: timestampSchema.nullable(),
+    message: safeDetailSchema.nullable(),
+  })
+  .strict();
+
+export const fieldsSchema = z
+  .record(z.string().min(1).max(200), jsonValueSchema)
+  .superRefine((fields, context) => {
+    if (Object.keys(fields).length > 200) {
+      context.addIssue({
+        code: "custom",
+        message: "fields may contain at most 200 entries",
+      });
+    }
+  });
+export const filtersSchema = fieldsSchema.default({});
+
+export const entityRefSchema = z
+  .object({
+    ...projectScopeFields,
+    kind: identifierSchema,
+    key: identifierSchema,
+    label: z.string().min(1).max(1000),
+  })
+  .strict();
+export const entitySummarySchema = z
+  .object({
+    ...projectScopeFields,
+    kind: identifierSchema,
+    key: identifierSchema,
+    label: z.string().min(1).max(1000),
+    fields: fieldsSchema,
+  })
+  .strict();
+export const entityDetailSchema = z
+  .object({
+    ...projectScopeFields,
+    kind: identifierSchema,
+    key: identifierSchema,
+    label: z.string().min(1).max(1000),
+    fields: fieldsSchema,
+    links: z.array(entityRefSchema).max(1000),
+    cache: cacheStateSchema,
+  })
+  .strict();
+
+export const pageResultSchema = <Item extends z.ZodType>(item: Item) =>
+  z
+    .object({
+      items: z.array(item),
+      total: z.number().int().nonnegative().nullable(),
+      next: z.string().min(1).max(4096).nullable(),
+      cache: cacheStateSchema,
+    })
+    .strict();
+
+export const documentLocatorSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("pdf"),
+      page: z.number().int().positive(),
+      bbox: z
+        .tuple([
+          z.number().min(0).max(1),
+          z.number().min(0).max(1),
+          z.number().min(0).max(1),
+          z.number().min(0).max(1),
+        ])
+        .optional(),
+    })
+    .strict()
+    .superRefine((value, context) => {
+      if (
+        value.bbox !== undefined &&
+        (value.bbox[2] < value.bbox[0] || value.bbox[3] < value.bbox[1])
+      ) {
+        context.addIssue({ code: "custom", message: "bbox must not be inverted" });
+      }
+    }),
+  z
+    .object({
+      kind: z.literal("sheet"),
+      sheet: z.string().min(1).max(200),
+      cell: z.string().regex(/^[A-Z]+[1-9][0-9]*$/u),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("text"),
+      lineStart: z.number().int().positive(),
+      lineEnd: z.number().int().positive(),
+    })
+    .strict()
+    .superRefine((value, context) => {
+      if (value.lineEnd < value.lineStart) {
+        context.addIssue({
+          code: "custom",
+          message: "lineEnd must be greater than or equal to lineStart",
+        });
+      }
+    }),
+]);
+export const documentSourceRefSchema = z
+  .object({
+    documentSha256: sha256Schema,
+    locator: documentLocatorSchema,
+  })
+  .strict();
+export type DocumentLocator = z.infer<typeof documentLocatorSchema>;
+export type DocumentSourceRef = z.infer<typeof documentSourceRefSchema>;
+
+export const fieldValueSchema = z
+  .object({ present: z.boolean(), value: jsonValueSchema.nullable() })
+  .strict();
+export const fieldDiffSchema = z
+  .object({
+    field: identifierSchema,
+    base: fieldValueSchema,
+    ours: fieldValueSchema,
+    theirs: fieldValueSchema,
+  })
+  .strict();
+export const conflictResolutionSchema = z.discriminatedUnion("choice", [
+  z.object({ choice: z.literal("take-ours") }).strict(),
+  z.object({ choice: z.literal("take-theirs") }).strict(),
+  z
+    .object({ choice: z.literal("edited"), value: jsonValueSchema })
+    .strict(),
+]);
+export const attributionSchema = z
+  .object({
+    actor: z.string().max(500).nullable(),
+    at: timestampSchema.nullable(),
+    source: z.string().max(500).nullable(),
+  })
+  .strict();
+export const conflictSchema = z
+  .object({
+    field: identifierSchema,
+    base: fieldValueSchema,
+    ours: fieldValueSchema,
+    theirs: fieldValueSchema,
+    attribution: attributionSchema.nullable(),
+    suggestion: z.enum(["take-ours", "take-theirs"]).nullable(),
+    resolution: conflictResolutionSchema.nullable(),
+  })
+  .strict();
+export const validationErrorSchema = z
+  .object({
+    code: identifierSchema,
+    message: safeDetailSchema,
+    artifactId: relativeArtifactSchema.nullable(),
+    line: z.number().int().positive().nullable(),
+  })
+  .strict();
+
+export const syncKindFenceSchema = z
+  .object({
+    kind: identifierSchema,
+    acceptedGenerationId: identifierSchema,
+    baseRevision: z.number().int().nonnegative(),
+  })
+  .strict();
+export const syncKindFencesSchema = z
+  .array(syncKindFenceSchema)
+  .min(1)
+  .max(200)
+  .superRefine((fences, context) => {
+    const kinds = fences.map((fence) => fence.kind);
+    if (new Set(kinds).size !== kinds.length) {
+      context.addIssue({ code: "custom", message: "kindFences must be unique by kind" });
+    }
+  });
+export const syncPlanFenceSchema = z
+  .object({
+    planId: identifierSchema,
+    planSha256: sha256Schema,
+    baseStateSha256: sha256Schema,
+    kindFences: syncKindFencesSchema,
+  })
+  .strict();
+
+export const planOperationSchema = z.enum([
+  "create",
+  "update",
+  "delete",
+  "noop",
+  "conflict",
+  "orphan",
+]);
+export const planItemSchema = z
+  .object({
+    ...projectScopeFields,
+    kind: identifierSchema,
+    key: identifierSchema,
+    label: z.string().min(1).max(1000),
+    operation: planOperationSchema,
+    expectedBaseContentSha256: sha256Schema.nullable(),
+    fields: z.array(fieldDiffSchema).max(1000),
+    conflicts: z.array(conflictSchema).max(1000),
+    referrers: z.array(entityRefSchema).max(1000),
+    error: validationErrorSchema.nullable(),
+  })
+  .strict();
+export const planSummarySchema = z
+  .object({
+    creates: z.number().int().nonnegative(),
+    updates: z.number().int().nonnegative(),
+    deletes: z.number().int().nonnegative(),
+    noops: z.number().int().nonnegative(),
+    conflicts: z.number().int().nonnegative(),
+    orphans: z.number().int().nonnegative(),
+  })
+  .strict();
+export const planSchema = z
+  .object({
+    ...projectScopeFields,
+    ...syncPlanFenceSchema.shape,
+    createdAt: timestampSchema,
+    staleness: z
+      .object({ asOf: timestampSchema, degraded: z.boolean() })
+      .strict(),
+    items: z.array(planItemSchema),
+    summary: planSummarySchema,
+    blastRadius: z
+      .object({
+        requiresHumanReview: z.boolean(),
+        changed: z.number().int().nonnegative(),
+        deletes: z.number().int().nonnegative(),
+        remoteCalls: z.number().int().nonnegative(),
+        surfaces: z.array(identifierSchema).max(200),
+      })
+      .strict(),
+    validationErrors: z.array(validationErrorSchema),
+    total: z.number().int().nonnegative().nullable(),
+    next: z.string().min(1).max(4096).nullable(),
+    cache: cacheStateSchema,
+  })
+  .strict();
+
+export const statusChangeSchema = z
+  .object({
+    ...projectScopeFields,
+    kind: identifierSchema,
+    key: identifierSchema,
+    fields: z.array(identifierSchema),
+    artifactId: relativeArtifactSchema.nullable(),
+  })
+  .strict();
+export const pushItemResultSchema = z
+  .object({
+    ...projectScopeFields,
+    kind: identifierSchema,
+    key: identifierSchema,
+    expectedBaseContentSha256: sha256Schema.nullable(),
+    status: z.enum(["applied", "failed", "skipped"]),
+    newBaseContentSha256: sha256Schema.nullable(),
+    error: z
+      .object({
+        code: identifierSchema,
+        message: safeDetailSchema,
+        retryable: z.boolean(),
+      })
+      .strict()
+      .nullable(),
+  })
+  .strict();
+export const pushReportSchema = z
+  .object({
+    ...projectScopeFields,
+    runId: identifierSchema,
+    planId: identifierSchema,
+    planSha256: sha256Schema,
+    baseStateSha256: sha256Schema,
+    kindFences: syncKindFencesSchema,
+    status: z.enum(["completed", "partial", "failed"]),
+    summary: z
+      .object({
+        total: z.number().int().nonnegative(),
+        applied: z.number().int().nonnegative(),
+        failed: z.number().int().nonnegative(),
+        skipped: z.number().int().nonnegative(),
+      })
+      .strict(),
+    items: z.array(pushItemResultSchema),
+    total: z.number().int().nonnegative().nullable(),
+    next: z.string().min(1).max(4096).nullable(),
+    requiresPull: z.boolean(),
+    cache: cacheStateSchema,
+  })
+  .strict();
+
+const serviceConnectionSchema = z
+  .object({
+    state: z.enum([
+      "needs-configuration",
+      "disabled",
+      "configured",
+      "connected",
+      "unreachable",
+    ]),
+    message: safeDetailSchema.nullable(),
+    checkedAt: timestampSchema.nullable(),
+  })
+  .strict();
+const connectionsStatusSchema = z
+  .object({
+    platform: serviceConnectionSchema,
+    assuranceStudio: serviceConnectionSchema,
+    forgeCompute: serviceConnectionSchema,
+  })
+  .strict();
+const workspaceSummarySchema = z
+  .object({
+    ...projectScopeFields,
+    surfaces: z.array(
+      z
+        .object({
+          id: identifierSchema,
+          pending: z.number().int().nonnegative(),
+          conflicts: z.number().int().nonnegative(),
+          cache: cacheStateSchema,
+        })
+        .strict(),
+    ),
+  })
+  .strict();
+const pullReportSchema = z
+  .object({
+    ...projectScopeFields,
+    pullGenerationId: identifierSchema,
+    baseStateSha256: sha256Schema,
+    kinds: z.array(
+      z
+        .object({
+          ...syncKindFenceSchema.shape,
+          fetched: z.number().int().nonnegative(),
+          baseRows: z.number().int().nonnegative(),
+        })
+        .strict(),
+    ),
+    workingFastForwarded: z.boolean(),
+    divergence: z.array(identifierSchema),
+  })
+  .strict();
+const statusReportSchema = z
+  .object({
+    ...projectScopeFields,
+    baseStateSha256: sha256Schema,
+    kindFences: syncKindFencesSchema,
+    local: z.array(statusChangeSchema),
+    upstream: z.array(statusChangeSchema),
+    conflicts: z.array(statusChangeSchema),
+    orphans: z.array(statusChangeSchema),
+    cache: cacheStateSchema,
+  })
+  .strict();
+const facetsSchema = z
+  .object({
+    ...projectScopeFields,
+    severity: z.record(z.string(), z.number().int().nonnegative()),
+    triage: z.record(z.string(), z.number().int().nonnegative()),
+    total: z.number().int().nonnegative(),
+    cache: cacheStateSchema,
+  })
+  .strict();
+const triageRunSchema = z
+  .object({
+    ...projectScopeFields,
+    id: identifierSchema,
+    written: z.number().int().nonnegative(),
+    held: z.number().int().nonnegative(),
+    conflicts: z.number().int().nonnegative(),
+    findingIds: z.array(identifierSchema),
+    cache: cacheStateSchema,
+  })
+  .strict();
+const vexStatusSchema = z.enum([
+  "EXPLOITABLE",
+  "IN_TRIAGE",
+  "NOT_AFFECTED",
+  "FALSE_POSITIVE",
+  "RESOLVED",
+  "RESOLVED_WITH_PEDIGREE",
+]);
+const vexResponseSchema = z.enum([
+  "CAN_NOT_FIX",
+  "WILL_NOT_FIX",
+  "UPDATE",
+  "ROLLBACK",
+  "WORKAROUND_AVAILABLE",
+]);
+const vexJustificationSchema = z.enum([
+  "CODE_NOT_PRESENT",
+  "CODE_NOT_REACHABLE",
+  "REQUIRES_CONFIGURATION",
+  "REQUIRES_DEPENDENCY",
+  "REQUIRES_ENVIRONMENT",
+  "PROTECTED_BY_COMPILER",
+  "PROTECTED_AT_RUNTIME",
+  "PROTECTED_AT_PERIMETER",
+  "PROTECTED_BY_MITIGATING_CONTROL",
+]);
+const triageDecisionFields = {
+  stableKey: identifierSchema,
+  status: vexStatusSchema,
+  response: vexResponseSchema.nullable(),
+  justification: vexJustificationSchema.nullable(),
+  reason: z.string().max(10_000),
+  evidence: z.string().max(20_000),
+  pin: z.enum(["exact_version", "any_version"]),
+  expectedContentSha256: sha256Schema.nullable(),
+} as const;
+const triageDecisionSchema = z
+  .object({ ...projectScopeFields, ...triageDecisionFields })
+  .strict();
+const localWriteResultSchema = z
+  .object({
+    ...projectScopeFields,
+    stableKey: identifierSchema,
+    beforeSha256: sha256Schema.nullable(),
+    afterSha256: sha256Schema,
+    changedFields: z.array(identifierSchema),
+    diffSummary: z.string().max(4000),
+  })
+  .strict();
+const localBatchResultSchema = z
+  .object({
+    ...projectScopeFields,
+    runId: identifierSchema,
+    total: z.number().int().nonnegative(),
+    applied: z.number().int().nonnegative(),
+    failed: z.number().int().nonnegative(),
+    results: z.array(
+      z
+        .object({
+          stableKey: identifierSchema,
+          success: z.boolean(),
+          error: validationErrorSchema.nullable(),
+        })
+        .strict(),
+    ),
+  })
+  .strict();
+const pagedOperationReportSchema = z
+  .object({
+    ...projectScopeFields,
+    runId: identifierSchema,
+    items: z.array(entitySummarySchema),
+    total: z.number().int().nonnegative().nullable(),
+    next: z.string().min(1).max(4096).nullable(),
+    written: z.number().int().nonnegative(),
+    held: z.number().int().nonnegative(),
+    errors: z.number().int().nonnegative(),
+    cache: cacheStateSchema,
+  })
+  .strict();
+const vendorVexReportSchema = z
+  .object({
+    ...projectScopeFields,
+    importId: identifierSchema,
+    format: z.enum(["cyclonedx", "csaf", "openvex"]),
+    documentSha256: sha256Schema,
+    items: z.array(entitySummarySchema),
+    total: z.number().int().nonnegative().nullable(),
+    next: z.string().min(1).max(4096).nullable(),
+    matched: z.number().int().nonnegative(),
+    unmatched: z.number().int().nonnegative(),
+    written: z.number().int().nonnegative(),
+    errors: z.number().int().nonnegative(),
+    cache: cacheStateSchema,
+  })
+  .strict();
+const taraKindSchema = z.enum([
+  "component",
+  "zone",
+  "asset",
+  "dataflow",
+  "threat",
+]);
+const taraCommandSchema = z.discriminatedUnion("operation", [
+  z
+    .object({
+      ...projectScopeFields,
+      operation: z.literal("create"),
+      kind: taraKindSchema,
+      fields: fieldsSchema,
+      expectedContentSha256: z.null(),
+    })
+    .strict(),
+  z
+    .object({
+      ...projectScopeFields,
+      operation: z.literal("update"),
+      kind: taraKindSchema,
+      stableKey: identifierSchema,
+      fields: fieldsSchema,
+      expectedContentSha256: sha256Schema,
+    })
+    .strict(),
+  z
+    .object({
+      ...projectScopeFields,
+      operation: z.literal("delete"),
+      kind: taraKindSchema,
+      stableKey: identifierSchema,
+      mode: z.enum(["cascade", "detach"]),
+      expectedContentSha256: sha256Schema,
+    })
+    .strict(),
+]);
+const deleteImpactSchema = z
+  .object({
+    ...projectScopeFields,
+    stableKey: identifierSchema,
+    referrers: z.array(
+      z
+        .object({
+          kind: identifierSchema,
+          stableKey: identifierSchema,
+          effect: z.string().max(1000),
+        })
+        .strict(),
+    ),
+    allowedActions: z.array(z.enum(["cascade", "detach"])),
+    restorable: z.boolean(),
+  })
+  .strict();
+const conversionSchema = z
+  .object({
+    ...projectScopeFields,
+    id: identifierSchema,
+    threadId: identifierSchema.nullable(),
+    snapshotSha256: sha256Schema,
+    state: z.enum([
+      "preparing",
+      "running",
+      "validating",
+      "awaiting_human",
+      "reviewed",
+      "discarded",
+      "failed",
+    ]),
+    requirementIds: z.array(identifierSchema),
+    errors: z.array(validationErrorSchema),
+    cache: cacheStateSchema,
+  })
+  .strict();
+const actionJobSchema = z
+  .object({
+    ...projectScopeFields,
+    id: identifierSchema,
+    state: z.enum(["QUEUED", "RUNNING", "COMPLETED", "FAILED", "TIMEOUT"]),
+    progress: z.number().min(0).max(1).nullable(),
+    message: safeDetailSchema.nullable(),
+  })
+  .strict();
+const attestationRecordSchema = z
+  .object({
+    ...projectScopeFields,
+    id: identifierSchema,
+    runId: identifierSchema,
+    firmwareSha256: sha256Schema,
+    evidenceSha256: sha256Schema,
+    verification: z.enum(["valid", "invalid", "unverified"]),
+  })
+  .strict();
+const hbomResolveSchema = z
+  .object({
+    ...projectScopeFields,
+    outcome: z.enum(["written", "conflict"]),
+    hbomSha256: sha256Schema.nullable(),
+    currentHbomSha256: sha256Schema.nullable(),
+    accepted: z.number().int().nonnegative(),
+    rejected: z.number().int().nonnegative(),
+  })
+  .strict();
+const hbomExtractionSchema = z
+  .object({
+    ...projectScopeFields,
+    hbomSha256: sha256Schema,
+    merged: z.number().int().nonnegative(),
+    queued: z.number().int().nonnegative(),
+    conflicts: z.number().int().nonnegative(),
+    candidatesAdded: z.number().int().nonnegative(),
+    rejected: z.array(
+      z
+        .object({
+          index: z.number().int().nonnegative(),
+          code: identifierSchema,
+          message: safeDetailSchema,
+        })
+        .strict(),
+    ),
+    diffSummary: z.string().max(4000),
+  })
+  .strict();
+const firmwareFileSchema = z
+  .object({
+    ...projectScopeFields,
+    firmwarePath: relativeArtifactSchema,
+    fileSha256: sha256Schema,
+    size: z.number().int().nonnegative().nullable(),
+    mediaType: z.string().max(500).nullable(),
+    fields: fieldsSchema,
+    previewHex: z.string().regex(/^[a-fA-F0-9]*$/u).max(512).nullable(),
+    previewBytes: z.number().int().min(0).max(256),
+    materialized: z.boolean(),
+    cache: cacheStateSchema,
+  })
+  .strict();
+const hostSchema = z
+  .object({
+    id: identifierSchema,
+    name: z.string().min(1).max(500),
+    status: identifierSchema,
+    capabilities: z.array(identifierSchema),
+    lastSeenAt: timestampSchema.nullable(),
+  })
+  .strict();
+const benchRunStartedSchema = z
+  .object({
+    ...projectScopeFields,
+    runId: identifierSchema,
+    threadId: identifierSchema,
+    jobIds: z.array(identifierSchema),
+    firmwareSha256: sha256Schema,
+    status: z.enum(["queued", "running"]),
+  })
+  .strict();
+const documentSearchHitSchema = z
+  .object({
+    ...projectScopeFields,
+    documentSha256: sha256Schema,
+    documentName: z.string().min(1).max(1000),
+    field: identifierSchema,
+    value: z.string().max(20_000),
+    confidence: z.number().min(0).max(1).nullable(),
+    sourceRef: documentSourceRefSchema,
+    snippet: z.string().max(20_000).nullable(),
+    target: entityRefSchema.nullable(),
+  })
+  .strict();
+const findingCommentSchema = z
+  .object({
+    ...projectScopeFields,
+    id: identifierSchema,
+    findingId: identifierSchema,
+    actorLabel: z.string().max(500).nullable(),
+    text: z.string().max(10_000),
+    createdAt: timestampSchema,
+    updatedAt: timestampSchema.nullable(),
+    carriesAcrossVersions: z.literal(false),
+  })
+  .strict();
+const benchLogSchema = z
+  .object({
+    ...projectScopeFields,
+    sequence: z.number().int().nonnegative(),
+    at: timestampSchema,
+    level: identifierSchema,
+    text: z.string().max(20_000),
+  })
+  .strict();
+const verdictSchema = z
+  .object({
+    ...projectScopeFields,
+    id: identifierSchema,
+    verdict: z.enum(["green", "amber", "red"]),
+    firmwareSha256: sha256Schema,
+    required: z.number().int().nonnegative(),
+    proven: z.number().int().nonnegative(),
+    evidenceIds: z.array(identifierSchema),
+    reasons: z.array(z.string().max(2000)),
+    cache: cacheStateSchema,
+  })
+  .strict();
+
+const planFenceInputFields = {
+  planId: identifierSchema,
+  planSha256: sha256Schema,
+  baseStateSha256: sha256Schema,
+  kindFences: syncKindFencesSchema,
+} as const;
+const humanApprovalInputField = {
+  humanApprovalCapability: humanApprovalCapabilitySchema,
+} as const;
+const pagedScopedInput = (extra: z.ZodRawShape = {}) =>
+  z
+    .object({ ...projectScopeFields, ...pageRequestFields, ...extra })
+    .strict();
+
+export const rpcContract = defineRpcContract({
+  connectionsStatus: { input: z.null(), output: connectionsStatusSchema },
+  workspaceSummary: { input: projectScopeSchema, output: workspaceSummarySchema },
+  syncPull: {
+    input: z
+      .object({
+        ...projectScopeFields,
+        kinds: z.array(identifierSchema).max(200).optional(),
+      })
+      .strict(),
+    output: pullReportSchema,
+  },
+  syncStatus: {
+    input: z
+      .object({
+        ...projectScopeFields,
+        kinds: z.array(identifierSchema).max(200).optional(),
+      })
+      .strict(),
+    output: statusReportSchema,
+  },
+  syncPlan: {
+    input: z
+      .object({
+        ...projectScopeFields,
+        ...pageRequestFields,
+        kinds: z.array(identifierSchema).max(200).optional(),
+      })
+      .strict(),
+    output: planSchema,
+  },
+  syncConflictResolve: {
+    input: z
+      .object({
+        ...projectScopeFields,
+        ...planFenceInputFields,
+        ...pageRequestFields,
+        ...humanApprovalInputField,
+        kind: identifierSchema,
+        key: identifierSchema,
+        field: identifierSchema,
+        expectedBaseContentSha256: sha256Schema.nullable(),
+        resolution: conflictResolutionSchema,
+      })
+      .strict(),
+    output: planSchema,
+  },
+  syncPush: {
+    input: z
+      .object({
+        ...projectScopeFields,
+        ...planFenceInputFields,
+        ...pageRequestFields,
+        ...humanApprovalInputField,
+      })
+      .strict(),
+    output: pushReportSchema,
+  },
+  syncPushRetry: {
+    input: z
+      .object({
+        ...projectScopeFields,
+        ...planFenceInputFields,
+        ...pageRequestFields,
+        ...humanApprovalInputField,
+        runId: identifierSchema,
+        keys: z.array(identifierSchema).max(500).optional(),
+      })
+      .strict(),
+    output: pushReportSchema,
+  },
+
+  findingsList: {
+    input: pagedScopedInput({ filters: filtersSchema }),
+    output: pageResultSchema(entitySummarySchema),
+  },
+  findingsGet: {
+    input: z.object({ ...projectScopeFields, findingId: identifierSchema }).strict(),
+    output: entityDetailSchema,
+  },
+  findingsActivityList: {
+    input: pagedScopedInput({ findingId: identifierSchema }),
+    output: pageResultSchema(entitySummarySchema),
+  },
+  findingsCommentsList: {
+    input: pagedScopedInput({ findingId: identifierSchema }),
+    output: pageResultSchema(findingCommentSchema),
+  },
+  findingsCommentsCreate: {
+    input: z
+      .object({
+        ...projectScopeFields,
+        ...humanApprovalInputField,
+        findingId: identifierSchema,
+        findingSnapshotSha256: sha256Schema,
+        text: z.string().trim().min(1).max(10_000),
+      })
+      .strict(),
+    output: findingCommentSchema,
+  },
+  findingsCommentsUpdate: {
+    input: z
+      .object({
+        ...projectScopeFields,
+        ...humanApprovalInputField,
+        findingId: identifierSchema,
+        commentId: identifierSchema,
+        commentSnapshotSha256: sha256Schema,
+        text: z.string().trim().min(1).max(10_000),
+      })
+      .strict(),
+    output: findingCommentSchema,
+  },
+  findingsCommentsDelete: {
+    input: z
+      .object({
+        ...projectScopeFields,
+        ...humanApprovalInputField,
+        findingId: identifierSchema,
+        commentId: identifierSchema,
+        commentSnapshotSha256: sha256Schema,
+      })
+      .strict(),
+    output: z
+      .object({ ...projectScopeFields, success: z.literal(true) })
+      .strict(),
+  },
+  findingsFacets: { input: projectScopeSchema, output: facetsSchema },
+  triageRunGet: {
+    input: z.object({ ...projectScopeFields, runId: identifierSchema }).strict(),
+    output: triageRunSchema,
+  },
+  triageDecisionWrite: {
+    input: triageDecisionSchema,
+    output: localWriteResultSchema,
+  },
+  triageDecisionBulkWrite: {
+    input: z
+      .object({
+        ...projectScopeFields,
+        decisions: z
+          .array(z.object(triageDecisionFields).strict())
+          .min(1)
+          .max(500),
+      })
+      .strict(),
+    output: localBatchResultSchema,
+  },
+  triageDecisionUndo: {
+    input: z
+      .object({
+        ...projectScopeFields,
+        stableKey: identifierSchema,
+        beforeSha256: sha256Schema,
+        afterSha256: sha256Schema,
+        prior: fieldsSchema,
+      })
+      .strict(),
+    output: localWriteResultSchema,
+  },
+  triagePolicyPreview: {
+    input: pagedScopedInput(),
+    output: pagedOperationReportSchema,
+  },
+  triagePolicyApply: {
+    input: pagedScopedInput({
+      runId: identifierSchema,
+      expectedPolicySha256: sha256Schema,
+    }),
+    output: pagedOperationReportSchema,
+  },
+  triageVendorVexPreview: {
+    input: pagedScopedInput({
+      documentSha256: sha256Schema,
+      vendor: z.string().min(1).max(500),
+    }),
+    output: vendorVexReportSchema,
+  },
+  triageVendorVexApply: {
+    input: pagedScopedInput({
+      importId: identifierSchema,
+      expectedDocumentSha256: sha256Schema,
+      overwrite: z.boolean(),
+    }),
+    output: vendorVexReportSchema,
+  },
+  triageOrphansPrune: {
+    input: z
+      .object({
+        ...projectScopeFields,
+        stableKeys: z.array(identifierSchema).min(1).max(500),
+        expectedBaseStateSha256: sha256Schema,
+      })
+      .strict(),
+    output: localBatchResultSchema,
+  },
+
+  taraList: {
+    input: pagedScopedInput({ kind: taraKindSchema, filters: filtersSchema }),
+    output: pageResultSchema(entitySummarySchema),
+  },
+  taraGet: {
+    input: z
+      .object({ ...projectScopeFields, kind: taraKindSchema, id: identifierSchema })
+      .strict(),
+    output: entityDetailSchema,
+  },
+  taraCommandApply: { input: taraCommandSchema, output: localWriteResultSchema },
+  taraDeleteImpact: {
+    input: z
+      .object({
+        ...projectScopeFields,
+        kind: taraKindSchema,
+        stableKey: identifierSchema,
+      })
+      .strict(),
+    output: deleteImpactSchema,
+  },
+  requirementsList: {
+    input: pagedScopedInput({ filters: filtersSchema }),
+    output: pageResultSchema(entitySummarySchema),
+  },
+  requirementsGet: {
+    input: z
+      .object({ ...projectScopeFields, requirementId: identifierSchema })
+      .strict(),
+    output: entityDetailSchema,
+  },
+  requirementsWrite: {
+    input: z
+      .object({
+        ...projectScopeFields,
+        requirementId: identifierSchema,
+        fields: fieldsSchema,
+        expectedContentSha256: sha256Schema.nullable(),
+      })
+      .strict(),
+    output: localWriteResultSchema,
+  },
+  earsConversionStart: {
+    input: z
+      .object({
+        ...projectScopeFields,
+        requirementIds: z.array(identifierSchema).max(500).optional(),
+      })
+      .strict(),
+    output: conversionSchema,
+  },
+  earsConversionGet: {
+    input: z.object({ ...projectScopeFields, id: identifierSchema }).strict(),
+    output: conversionSchema,
+  },
+  earsConversionReview: {
+    input: z
+      .object({
+        ...projectScopeFields,
+        id: identifierSchema,
+        decision: z.enum(["reviewed", "discarded"]),
+        expectedSnapshotSha256: sha256Schema,
+      })
+      .strict(),
+    output: conversionSchema,
+  },
+  verificationsMatrix: {
+    input: pagedScopedInput({ filters: filtersSchema }),
+    output: pageResultSchema(entitySummarySchema),
+  },
+  verificationsRunGet: {
+    input: z.object({ ...projectScopeFields, runId: identifierSchema }).strict(),
+    output: entityDetailSchema,
+  },
+  verificationsRunStart: {
+    input: z
+      .object({
+        ...projectScopeFields,
+        requirementId: identifierSchema,
+        tier: identifierSchema.optional(),
+        checkId: identifierSchema.optional(),
+        parameters: fieldsSchema.default({}),
+      })
+      .strict(),
+    output: actionJobSchema,
+  },
+  verificationsManualAttestationRecord: {
+    input: z
+      .object({
+        ...projectScopeFields,
+        ...humanApprovalInputField,
+        runId: identifierSchema,
+        evidenceNote: z.string().trim().min(1).max(20_000),
+        evidenceSha256: sha256Schema,
+        firmwareSha256: sha256Schema,
+      })
+      .strict(),
+    output: attestationRecordSchema,
+  },
+  reviewTransition: {
+    input: z
+      .object({
+        ...projectScopeFields,
+        ...humanApprovalInputField,
+        entityKind: identifierSchema,
+        entityId: identifierSchema,
+        operationId: identifierSchema,
+        entitySnapshotSha256: sha256Schema,
+        expectedReviewVersion: decimalRevisionSchema,
+        action: z.enum(["approve", "reject"]),
+      })
+      .strict(),
+    output: z
+      .object({
+        ...projectScopeFields,
+        entityId: identifierSchema,
+        reviewVersion: decimalRevisionSchema,
+        state: identifierSchema,
+      })
+      .strict(),
+  },
+
+  bomSoftwareList: {
+    input: pagedScopedInput({ filters: filtersSchema }),
+    output: pageResultSchema(entitySummarySchema),
+  },
+  bomComponentGet: {
+    input: z
+      .object({
+        ...projectScopeFields,
+        componentId: identifierSchema,
+        mode: z.enum(["software", "hardware"]),
+      })
+      .strict(),
+    output: entityDetailSchema,
+  },
+  hbomReviewList: {
+    input: pagedScopedInput({ filters: filtersSchema }),
+    output: pageResultSchema(entitySummarySchema),
+  },
+  hbomReviewResolve: {
+    input: z
+      .object({
+        ...projectScopeFields,
+        ...humanApprovalInputField,
+        expectedHbomSha256: sha256Schema,
+        decisions: z
+          .array(
+            z.discriminatedUnion("action", [
+              z
+                .object({
+                  id: identifierSchema,
+                  action: z.literal("accept"),
+                  candidateIndex: z.number().int().nonnegative().optional(),
+                })
+                .strict(),
+              z
+                .object({
+                  id: identifierSchema,
+                  action: z.literal("reject"),
+                  candidateIndex: z.number().int().nonnegative().optional(),
+                })
+                .strict(),
+              z
+                .object({
+                  id: identifierSchema,
+                  action: z.literal("edit"),
+                  value: jsonValueSchema,
+                  note: z.string().max(4000).optional(),
+                })
+                .strict(),
+            ]),
+          )
+          .min(1)
+          .max(500),
+      })
+      .strict(),
+    output: hbomResolveSchema,
+  },
+  hbomExtractionApply: {
+    input: z
+      .object({
+        ...projectScopeFields,
+        documentSha256: sha256Schema,
+        expectedHbomSha256: sha256Schema,
+        proposals: z
+          .array(
+            z
+              .object({
+                partKey: identifierSchema,
+                field: identifierSchema,
+                value: jsonValueSchema,
+                sourceRef: documentSourceRefSchema,
+                confidence: z.number().min(0).max(1),
+              })
+              .strict(),
+          )
+          .min(1)
+          .max(500),
+        createMissingParts: z.boolean(),
+      })
+      .strict(),
+    output: hbomExtractionSchema,
+  },
+
+  firmwareMountsList: {
+    input: pagedScopedInput(),
+    output: pageResultSchema(entitySummarySchema),
+  },
+  firmwareMountGet: {
+    input: projectScopeSchema,
+    output: entityDetailSchema,
+  },
+  firmwareTreeList: {
+    input: pagedScopedInput({ firmwarePath: relativeArtifactSchema }),
+    output: pageResultSchema(entitySummarySchema),
+  },
+  firmwareFileGet: {
+    input: z
+      .object({
+        ...projectScopeFields,
+        firmwarePath: relativeArtifactSchema,
+        includePreview: z.boolean().default(false),
+      })
+      .strict(),
+    output: firmwareFileSchema,
+  },
+  firmwareDiff: {
+    input: pagedScopedInput({
+      fromProjectVersionId: projectVersionIdSchema,
+      toProjectVersionId: projectVersionIdSchema,
+    }),
+    output: pageResultSchema(entitySummarySchema),
+  },
+  firmwareMaterializeStart: {
+    input: z.discriminatedUnion("source", [
+      z
+        .object({
+          ...projectScopeFields,
+          source: z.literal("standalone_unpack"),
+          inputId: identifierSchema,
+          maxDepth: z.number().int().min(1).max(12).default(12),
+        })
+        .strict(),
+      z
+        .object({
+          ...projectScopeFields,
+          source: z.literal("api"),
+          scanId: identifierSchema.optional(),
+          mode: z.enum(["metadata", "files"]),
+          firmwarePaths: z.array(relativeArtifactSchema).max(100).optional(),
+        })
+        .strict(),
+    ]),
+    output: actionJobSchema,
+  },
+  firmwareMaterializeCancel: {
+    input: z.object({ ...projectScopeFields, jobId: identifierSchema }).strict(),
+    output: actionJobSchema,
+  },
+  firmwareFileHydrate: {
+    input: z
+      .object({ ...projectScopeFields, firmwarePath: relativeArtifactSchema })
+      .strict(),
+    output: actionJobSchema,
+  },
+
+  benchRunsList: {
+    input: pagedScopedInput(),
+    output: pageResultSchema(entitySummarySchema),
+  },
+  benchRunGet: {
+    input: z.object({ ...projectScopeFields, runId: identifierSchema }).strict(),
+    output: entityDetailSchema,
+  },
+  benchLogsList: {
+    input: pagedScopedInput({ runId: identifierSchema }),
+    output: pageResultSchema(benchLogSchema),
+  },
+  benchVerdictGet: {
+    input: z.object({ ...projectScopeFields, verdictId: identifierSchema }).strict(),
+    output: verdictSchema,
+  },
+  benchRunStart: {
+    input: z
+      .object({
+        ...projectScopeFields,
+        tier: z.enum(["tier0", "tier1"]),
+        hostId: identifierSchema,
+        requirementId: identifierSchema.optional(),
+        target: z.string().max(1000).optional(),
+        deploymentContext: z
+          .object({
+            productType: z.string().max(500),
+            networkExposure: z.string().max(500),
+            regulatory: z.string().max(1000),
+            deploymentNotes: z.string().max(4000),
+            rootComponentName: z.string().max(500),
+            rootComponentType: z.string().max(500),
+          })
+          .strict()
+          .optional(),
+      })
+      .strict(),
+    output: benchRunStartedSchema,
+  },
+  benchHostsList: {
+    input: z.object(pageRequestFields).strict(),
+    output: pageResultSchema(hostSchema),
+  },
+  benchHostsJoinCode: {
+    input: z.null(),
+    output: z
+      .object({
+        joinCode: identifierSchema,
+        hostId: identifierSchema,
+        expiresAt: timestampSchema,
+      })
+      .strict(),
+  },
+
+  documentsList: {
+    input: pagedScopedInput({ filters: filtersSchema }),
+    output: pageResultSchema(entitySummarySchema),
+  },
+  documentsGet: {
+    input: z.object({ ...projectScopeFields, documentId: identifierSchema }).strict(),
+    output: entityDetailSchema,
+  },
+  documentsSearch: {
+    input: pagedScopedInput({
+      query: z.string().trim().min(1).max(2000),
+      kinds: z.array(identifierSchema).max(200).optional(),
+    }),
+    output: pageResultSchema(documentSearchHitSchema),
+  },
+  documentsMetadataUpdate: {
+    input: z
+      .object({
+        ...projectScopeFields,
+        documentId: identifierSchema,
+        expectedContentSha256: sha256Schema,
+        kind: z.enum([
+          "datasheet",
+          "bom",
+          "schematic",
+          "spec",
+          "regulatory",
+          "register_map",
+          "other",
+        ]),
+        withdrawn: z.boolean(),
+        displayName: z.string().trim().min(1).max(1000),
+      })
+      .strict(),
+    output: entityDetailSchema,
+  },
+  documentsExtractionsList: {
+    input: pagedScopedInput({ documentId: identifierSchema }),
+    output: pageResultSchema(entitySummarySchema),
+  },
+} as const);
+
+export type RpcContract = typeof rpcContract;
