@@ -48,6 +48,11 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
         "Next thread",
         "Open the next visible sidebar thread.",
       ),
+      command(
+        "thread.archive",
+        "Archive thread",
+        "Archive the thread you are viewing and its child threads.",
+      ),
       ...THREAD_JUMP_APP_COMMAND_IDS.map((id, index) =>
         command(
           id,

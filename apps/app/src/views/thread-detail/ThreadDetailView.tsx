@@ -65,6 +65,7 @@ import {
   ThreadActionsMenu,
   type ThreadActionsMenuResponsiveAction,
 } from "@/components/thread/ThreadActionsMenu";
+import { useThreadActions } from "@/components/thread/ThreadActionsProvider";
 import { PluginThreadHeaderActions } from "@/components/plugin/PluginThreadHeaderActions";
 import { ThreadWorkspaceOpenButton } from "@/components/thread/ThreadWorkspaceOpenButton";
 import {
@@ -458,6 +459,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   const { isFocused, navigateInPane, onRequestClose, isBoundedPane } =
     usePaneContext();
   const navigate = useNavigate();
+  const { archiveThreadAndChildren } = useThreadActions();
   useFixedPanelTabsStorageMaintenance(threadId);
   const systemConfigQuery = useSystemConfig();
   const fixedPanelTabsState = useFixedPanelTabsState(threadId, threadId);
@@ -1295,6 +1297,15 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     handleCloseTerminalTab,
     isSecondaryPanelOpen,
   ]);
+  useAppCommandHandler("thread.archive", () => {
+    // Archived threads stay viewable; the shortcut is archive-only, so let the
+    // event through instead of silently toggling them back to active.
+    if (!isFocused || thread === undefined || thread.archivedAt !== null) {
+      return false;
+    }
+    archiveThreadAndChildren(thread);
+    return true;
+  });
   useAppCommandHandler("panel.toggle", () => {
     if (!isFocused) return false;
     toggleSecondaryPanel();

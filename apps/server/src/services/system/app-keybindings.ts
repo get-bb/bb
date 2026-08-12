@@ -120,6 +120,16 @@ export const DEFAULT_APP_KEYBINDINGS: AppKeybindings = [
     ...mainWithoutModal,
     desktopOnly: true,
   }),
+  // Archive the focused thread. Every Mod+Shift+<letter> chord that reads as
+  // "archive" is either taken by bb or reserved by browsers (Mod+Shift+A opens
+  // tab search in Chrome), so this uses Alt like the model-cycling chords: it
+  // is free in bb, the browser, and both desktop menus, and needs no web alias.
+  // macOS composes Option+A into "å", so it matches on the physical key — see
+  // `normalizeAppShortcutInputKey` in @bb/domain.
+  binding("thread.archive", "a", { alt: true }, {
+    ...mainWithoutModal,
+    none: ["modalOpen", "terminalFocus", "browserFocus"],
+  }),
   // Browsers reserve Mod+1…9 for native tab switching. Match Slack's web
   // navigation convention: Control+N on macOS and Ctrl+Shift+N elsewhere,
   // while keeping the shorter Mod chord on desktop.
@@ -180,8 +190,9 @@ export const DEFAULT_APP_KEYBINDINGS: AppKeybindings = [
     none: [],
   }),
   // Rotate the composer's model and reasoning level without opening the picker,
-  // scoped exactly like `modelPicker.toggle` above. Alt is otherwise unused by
-  // bb, the browser, and both desktop menus, so these chords shadow nothing.
+  // scoped exactly like `modelPicker.toggle` above. Alt chords are unclaimed by
+  // the browser and both desktop menus, and bb keeps each one distinct (see
+  // `thread.archive`), so these chords shadow nothing.
   // macOS composes Option+<letter> into another character, so they match on the
   // physical key — see `normalizeAppShortcutInputKey` in @bb/domain.
   binding("modelPicker.cycleModel", "m", { alt: true }, {

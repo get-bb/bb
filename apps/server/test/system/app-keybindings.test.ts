@@ -120,6 +120,31 @@ describe("app keybindings", () => {
         { desktopOnly: false, key: "Enter" },
         { desktopOnly: true, key: "t" },
       ]);
+      // Archive is a single Alt chord on every client: the Mod+Shift letters
+      // that read as "archive" are taken by bb or reserved by browsers, so
+      // there is no web/desktop split to keep in sync here.
+      expect(
+        config.defaultKeybindings.filter(
+          (binding) => binding.command === "thread.archive",
+        ),
+      ).toEqual([
+        {
+          command: "thread.archive",
+          desktopOnly: false,
+          shortcut: {
+            key: "a",
+            mod: false,
+            meta: false,
+            control: false,
+            alt: true,
+            shift: false,
+          },
+          when: {
+            all: ["mainSurface"],
+            none: ["modalOpen", "terminalFocus", "browserFocus"],
+          },
+        },
+      ]);
       expect(
         config.defaultKeybindings.find(
           (binding) => binding.command === "composer.focus",
