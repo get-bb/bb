@@ -161,6 +161,22 @@ describe("buildProviderCliIssue", () => {
       title: "Claude Code update available",
     });
   });
+
+  it("describes an update without inventing a target for an unknown channel", () => {
+    const actionable = issueForProvider("claudeCode");
+    const issue = buildProviderCliIssue({
+      provider: "claudeCode",
+      status: {
+        ...actionable.status,
+        latestVersion: null,
+      },
+    });
+
+    expect(issue).toMatchObject({
+      description: "1.0.0; newer release available",
+      title: "Claude Code update available",
+    });
+  });
 });
 
 describe("useProviderCliInstallRunner", () => {

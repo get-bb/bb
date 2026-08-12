@@ -239,7 +239,7 @@ function createProviderCliInstallEventStream(
 
 function claudeCodeStatus(args: {
   currentVersion: string;
-  latestVersion: string;
+  latestVersion: string | null;
 }): ProviderCliStatus {
   return {
     displayName: "Claude Code",
@@ -258,9 +258,63 @@ function claudeCodeStatus(args: {
       commandKind: "exec",
       command: "claude update",
     },
-    needsUpdate: args.currentVersion !== args.latestVersion,
+    needsUpdate:
+      args.latestVersion === null || args.currentVersion !== args.latestVersion,
     versionUnsupported: false,
   };
+}
+
+async function runSuccessfulClaudeCodeUpdateVerification(args: {
+  before: ProviderCliStatus;
+  after: ProviderCliStatus;
+}) {
+  const dataDir = await makeTempDir("bb-command-dispatch-provider-cli-");
+  const manager = new RuntimeManager({
+    dataDir,
+    createRuntime,
+    provisionWorkspace: async () => createWorkspace(),
+  });
+  const getProviderCliStatusForProvider = vi
+    .fn()
+    .mockResolvedValueOnce(args.before)
+    .mockResolvedValueOnce(args.after);
+  const events: ProviderCliInstallEvent[] = [
+    {
+      type: "started",
+      provider: "claudeCode",
+      command: "claude update",
+    },
+    {
+      type: "completed",
+      provider: "claudeCode",
+      exitCode: 0,
+      signal: null,
+      success: true,
+    },
+  ];
+  const result = await dispatchOnlineRpcCommand(
+    {
+      type: "provider_cli.install",
+      provider: "claudeCode",
+      actionKind: "update",
+    },
+    {
+      dataDir,
+      eventSink: {
+        emit: vi.fn(),
+        flush: vi.fn(async () => undefined),
+      },
+      fetchProjectAttachment: async () => {
+        throw new Error("Unexpected project attachment fetch");
+      },
+      getProviderCliStatusForProvider,
+      runtimeManager: manager,
+      streamProviderCliInstall: () =>
+        createProviderCliInstallEventStream(events),
+      threadStorageRootPath: "/tmp/bb-thread-storage",
+    },
+  );
+  return { events, getProviderCliStatusForProvider, result };
 }
 
 describe("dispatchCommand", () => {
@@ -1332,6 +1386,55 @@ describe("dispatchCommand", () => {
         provider: "claudeCode",
         message: expect.stringContaining(
           "still reports 2.1.220 (expected 2.1.227)",
+        ),
+      }),
+      {
+        type: "completed",
+        provider: "claudeCode",
+        exitCode: 0,
+        signal: null,
+        success: false,
+      },
+    ]);
+  });
+
+  it("accepts a Claude update that advances when the release channel is unknown", async () => {
+    const verification = await runSuccessfulClaudeCodeUpdateVerification({
+      before: claudeCodeStatus({
+        currentVersion: "2.1.69",
+        latestVersion: null,
+      }),
+      after: claudeCodeStatus({
+        currentVersion: "2.1.221",
+        latestVersion: null,
+      }),
+    });
+
+    expect(verification.getProviderCliStatusForProvider).toHaveBeenCalledTimes(
+      2,
+    );
+    expect(verification.result).toEqual({ events: verification.events });
+  });
+
+  it("rejects a Claude update that does not advance when the release channel is unknown", async () => {
+    const verification = await runSuccessfulClaudeCodeUpdateVerification({
+      before: claudeCodeStatus({
+        currentVersion: "2.1.69",
+        latestVersion: null,
+      }),
+      after: claudeCodeStatus({
+        currentVersion: "2.1.69",
+        latestVersion: null,
+      }),
+    });
+
+    expect(verification.result.events).toEqual([
+      expect.objectContaining({ type: "started" }),
+      expect.objectContaining({
+        type: "error",
+        provider: "claudeCode",
+        message: expect.stringContaining(
+          "still reports 2.1.69 (expected a version newer than 2.1.69)",
         ),
       }),
       {

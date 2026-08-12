@@ -84,7 +84,11 @@ export function buildProviderCliIssue(
   }
 
   if (status.needsUpdate) {
-    const description = `${status.currentVersion ?? "Installed version unknown"} -> ${status.latestVersion ?? "latest"}`;
+    const currentVersion = status.currentVersion ?? "Installed version unknown";
+    const description =
+      status.latestVersion === null
+        ? `${currentVersion}; newer release available`
+        : `${currentVersion} -> ${status.latestVersion}`;
     const fingerprint = [
       provider,
       "outdated",

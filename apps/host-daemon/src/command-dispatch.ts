@@ -198,15 +198,31 @@ function verifyClaudeCodeUpdateEvents(args: {
     (event) => event.type === "completed" && event.success,
   );
   const expectedVersion = args.before.latestVersion;
+  const previousVersion = args.before.currentVersion;
   const actualVersion = args.after?.currentVersion ?? null;
-  if (
-    completedIndex === -1 ||
-    expectedVersion === null ||
-    (actualVersion !== null &&
-      semver.valid(actualVersion) !== null &&
-      semver.valid(expectedVersion) !== null &&
-      semver.gte(actualVersion, expectedVersion))
-  ) {
+  if (completedIndex === -1) {
+    return args.events;
+  }
+
+  const validExpectedVersion =
+    expectedVersion === null ? null : semver.valid(expectedVersion);
+  const validPreviousVersion =
+    previousVersion === null ? null : semver.valid(previousVersion);
+  const validActualVersion =
+    actualVersion === null ? null : semver.valid(actualVersion);
+  const hasKnownTarget = validExpectedVersion !== null;
+  const canVerifyAdvancement =
+    expectedVersion === null && validPreviousVersion !== null;
+  if (!hasKnownTarget && !canVerifyAdvancement) {
+    return args.events;
+  }
+  const updateVerified =
+    validActualVersion !== null &&
+    (validExpectedVersion !== null
+      ? semver.gte(validActualVersion, validExpectedVersion)
+      : validPreviousVersion !== null &&
+        semver.gt(validActualVersion, validPreviousVersion));
+  if (updateVerified) {
     return args.events;
   }
 
@@ -214,7 +230,10 @@ function verifyClaudeCodeUpdateEvents(args: {
     args.after?.executablePath ??
     args.before.executablePath ??
     args.before.executableName;
-  const message = `Claude Code's update command exited successfully, but ${executable} still reports ${actualVersion ?? "an unknown version"} (expected ${expectedVersion}). The executable may be pinned by PATH or managed by another installer. Run \`claude doctor\` on this machine and update the installation it reports.`;
+  const expectation = hasKnownTarget
+    ? `expected ${validExpectedVersion}`
+    : `expected a version newer than ${validPreviousVersion}`;
+  const message = `Claude Code's update command exited successfully, but ${executable} still reports ${actualVersion ?? "an unknown version"} (${expectation}). The executable may be pinned by PATH or managed by another installer. Run \`claude doctor\` on this machine and update the installation it reports.`;
   const verifiedEvents = [...args.events];
   const completedEvent = verifiedEvents[completedIndex];
   if (completedEvent?.type !== "completed") {

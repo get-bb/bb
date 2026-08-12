@@ -59,8 +59,13 @@ type ClaudeCodeInstallMethod =
   | "unknown";
 
 interface ClaudeCodeDoctorStatus {
-  installMethod: ClaudeCodeInstallMethod;
-  updateChannel: "latest" | "stable";
+  installMethod: ClaudeCodeInstallMethod | null;
+  updateChannel: "latest" | "stable" | null;
+}
+
+interface ClaudeCodeDistTagVersions {
+  latest: string;
+  stable: string | null;
 }
 
 export interface ProviderCliDefinition {
@@ -198,6 +203,7 @@ interface ResolveProviderCliInstallSourceArgs {
 interface BuildInstallActionArgs {
   definition: ProviderCliDefinition;
   installed: boolean;
+  executablePath: string | null;
   installSource: ProviderCliInstallSource;
   needsUpdate: boolean;
   versionUnsupported: boolean;
@@ -396,10 +402,9 @@ function parseNpmGlobalPackageVersion(
   }
 }
 
-function parseNpmDistTagVersion(
+function parseClaudeCodeDistTagVersions(
   text: string,
-  channel: "latest" | "stable",
-): string | null {
+): ClaudeCodeDistTagVersions | null {
   const trimmedText = text.trim();
   if (trimmedText.length === 0) {
     return null;
@@ -410,42 +415,77 @@ function parseNpmDistTagVersion(
     if (!parsed.success) {
       return null;
     }
-    const version =
-      channel === "stable"
-        ? (parsed.data.stable ?? parsed.data.latest)
-        : parsed.data.latest;
-    return extractVersion(version);
+    const latest = extractVersion(parsed.data.latest);
+    if (latest === null) {
+      return null;
+    }
+    return {
+      latest,
+      stable:
+        parsed.data.stable === undefined
+          ? latest
+          : extractVersion(parsed.data.stable),
+    };
   } catch {
     return null;
   }
 }
 
-function parseClaudeCodeDoctorStatus(
-  text: string,
-): ClaudeCodeDoctorStatus | null {
+function parseClaudeCodeDoctorStatus(text: string): ClaudeCodeDoctorStatus {
   const runningMatch = /^Running:\s+([^\s(]+)/mu.exec(text);
   const channelMatch = /^Auto-update channel:\s+(latest|stable)\s*$/mu.exec(
     text,
   );
   const rawInstallMethod = runningMatch?.[1];
   const rawUpdateChannel = channelMatch?.[1];
-  if (
-    !rawInstallMethod ||
-    (rawUpdateChannel !== "latest" && rawUpdateChannel !== "stable")
-  ) {
-    return null;
-  }
-
-  const installMethod: ClaudeCodeInstallMethod =
-    rawInstallMethod === "native" || rawInstallMethod === "npm-global"
+  const installMethod: ClaudeCodeInstallMethod | null = rawInstallMethod
+    ? rawInstallMethod === "native" || rawInstallMethod === "npm-global"
       ? rawInstallMethod
       : ["homebrew", "winget", "apt", "dnf", "apk"].includes(rawInstallMethod)
         ? "package-manager"
-        : "unknown";
+        : "unknown"
+    : null;
   return {
     installMethod,
-    updateChannel: rawUpdateChannel,
+    updateChannel:
+      rawUpdateChannel === "latest" || rawUpdateChannel === "stable"
+        ? rawUpdateChannel
+        : null,
   };
+}
+
+function resolveClaudeCodeVersionStatus(args: {
+  installed: boolean;
+  currentVersion: string | null;
+  distTags: ClaudeCodeDistTagVersions | null;
+  updateChannel: ClaudeCodeDoctorStatus["updateChannel"];
+}): { latestVersion: string | null; needsUpdate: boolean } {
+  const latestVersion =
+    args.updateChannel === null || args.distTags === null
+      ? null
+      : args.distTags[args.updateChannel];
+  if (args.updateChannel !== null) {
+    return {
+      latestVersion,
+      needsUpdate: needsProviderCliUpdate({
+        installed: args.installed,
+        currentVersion: args.currentVersion,
+        latestVersion,
+      }),
+    };
+  }
+
+  // Without an effective channel, an update is only certain when both possible
+  // targets are newer. Keep the target version unknown so a stable install is
+  // never advertised or verified against the latest release by accident.
+  const definitelyNeedsUpdate =
+    args.installed &&
+    args.currentVersion !== null &&
+    args.distTags !== null &&
+    args.distTags.stable !== null &&
+    semver.gt(args.distTags.latest, args.currentVersion) &&
+    semver.gt(args.distTags.stable, args.currentVersion);
+  return { latestVersion: null, needsUpdate: definitelyNeedsUpdate };
 }
 
 function needsProviderCliUpdate(args: NeedsProviderCliUpdateArgs): boolean {
@@ -562,6 +602,23 @@ function resolveProviderCliInstallSource({
     : "external";
 }
 
+function isDefaultClaudeCodeNativeExecutablePath(
+  executablePath: string | null,
+  nodePlatform: NodeJS.Platform,
+): boolean {
+  if (executablePath === null) {
+    return false;
+  }
+  const normalizedPath = executablePath.replace(/\\/gu, "/");
+  if (normalizedPath.endsWith("/.local/bin/claude")) {
+    return true;
+  }
+  return (
+    nodePlatform === "win32" &&
+    normalizedPath.endsWith("/.local/bin/claude.exe")
+  );
+}
+
 function resolveExecutableInstallStatus(
   whichResult: ProviderCliCommandResult,
   versionResult: ProviderCliCommandResult,
@@ -594,6 +651,7 @@ function resolveExecutablePathStatus(whichResult: ProviderCliCommandResult): {
 function buildInstallAction({
   definition,
   installed,
+  executablePath,
   installSource,
   needsUpdate,
   versionUnsupported,
@@ -609,12 +667,19 @@ function buildInstallAction({
       command: command.displayCommand,
     };
   }
+  const claudeCodeInstallMethod = claudeCodeDoctorStatus?.installMethod ?? null;
+  const hasNativeClaudeCodeFallback =
+    definition.key === "claudeCode" &&
+    claudeCodeInstallMethod === null &&
+    installSource === "external" &&
+    isDefaultClaudeCodeNativeExecutablePath(executablePath, nodePlatform);
   const canRunUpdate =
     definition.key !== "claudeCode" ||
-    claudeCodeDoctorStatus?.installMethod === "native" ||
+    claudeCodeInstallMethod === "native" ||
+    hasNativeClaudeCodeFallback ||
     (installSource === "npmGlobal" &&
-      (claudeCodeDoctorStatus === null ||
-        claudeCodeDoctorStatus.installMethod === "npm-global"));
+      (claudeCodeInstallMethod === null ||
+        claudeCodeInstallMethod === "npm-global"));
   if (needsUpdate && canRunUpdate) {
     const command = definition.updateCommand;
     return {
@@ -819,20 +884,34 @@ export async function inspectProviderCli({
     ? extractVersion(`${versionResult.stdout}\n${versionResult.stderr}`)
     : null;
   const claudeCodeDoctorStatus =
-    claudeDoctorResult !== null && isSuccessfulCommand(claudeDoctorResult)
+    claudeDoctorResult !== null
       ? parseClaudeCodeDoctorStatus(
           `${claudeDoctorResult.stdout}\n${claudeDoctorResult.stderr}`,
         )
       : null;
+  const claudeCodeDistTags =
+    definition.key === "claudeCode" &&
+    latestResult !== null &&
+    isSuccessfulCommand(latestResult)
+      ? parseClaudeCodeDistTagVersions(
+          `${latestResult.stdout}\n${latestResult.stderr}`,
+        )
+      : null;
+  const claudeCodeVersionStatus =
+    definition.key === "claudeCode"
+      ? resolveClaudeCodeVersionStatus({
+          installed,
+          currentVersion,
+          distTags: claudeCodeDistTags,
+          updateChannel: claudeCodeDoctorStatus?.updateChannel ?? null,
+        })
+      : null;
   const latestVersion =
-    latestResult === null || !isSuccessfulCommand(latestResult)
-      ? null
-      : definition.key === "claudeCode"
-        ? parseNpmDistTagVersion(
-            `${latestResult.stdout}\n${latestResult.stderr}`,
-            claudeCodeDoctorStatus?.updateChannel ?? "latest",
-          )
-        : extractVersion(`${latestResult.stdout}\n${latestResult.stderr}`);
+    claudeCodeVersionStatus === null
+      ? latestResult !== null && isSuccessfulCommand(latestResult)
+        ? extractVersion(`${latestResult.stdout}\n${latestResult.stderr}`)
+        : null
+      : claudeCodeVersionStatus.latestVersion;
   const npmGlobalPrefix = isSuccessfulCommand(npmPrefixResult)
     ? firstOutputLine(npmPrefixResult.stdout)
     : null;
@@ -849,11 +928,9 @@ export async function inspectProviderCli({
     npmGlobalPrefix,
     nodePlatform,
   });
-  const needsUpdate = needsProviderCliUpdate({
-    installed,
-    currentVersion,
-    latestVersion,
-  });
+  const needsUpdate =
+    claudeCodeVersionStatus?.needsUpdate ??
+    needsProviderCliUpdate({ installed, currentVersion, latestVersion });
   const versionUnsupported = isProviderCliVersionUnsupported({
     installed,
     currentVersion,
@@ -862,6 +939,7 @@ export async function inspectProviderCli({
   const installAction = buildInstallAction({
     definition,
     installed,
+    executablePath,
     installSource,
     needsUpdate,
     versionUnsupported,

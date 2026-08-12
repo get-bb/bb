@@ -1056,12 +1056,12 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  // Version 105 makes Claude Code update status respect the active release
-  // channel and installation manager. Older daemons can keep advertising an
-  // update their active executable will never apply, so enrolled machines must
-  // update for the new behavior.
-  it("uses protocol version 105 for Claude Code update status", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(105);
+  // Version 106 preserves an unknown Claude Code release channel when doctor
+  // cannot report it and recovers native update actions for standard installs.
+  // Older daemons can verify stable against latest or hide the managed update,
+  // so enrolled machines must update for the corrected status behavior.
+  it("uses protocol version 106 for Claude Code status fixes", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(106);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {

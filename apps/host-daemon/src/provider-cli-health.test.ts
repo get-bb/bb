@@ -602,6 +602,106 @@ describe("provider CLI health", () => {
     });
   });
 
+  it("keeps the native update action when an older Claude doctor requires a TTY", async () => {
+    const runner = new FakeProviderCliCommandRunner();
+    runner.setSuccess("which", ["claude"], "/Users/me/.local/bin/claude\n");
+    runner.setSuccess("claude", ["--version"], "2.1.69 (Claude Code)\n");
+    runner.setSuccess(
+      "npm",
+      ["view", "@anthropic-ai/claude-code", "dist-tags", "--json"],
+      JSON.stringify({ latest: "2.1.228", stable: "2.1.221" }),
+    );
+    installNpmStateCommands(
+      runner,
+      CLAUDE_CODE_DEFINITION,
+      "/Users/me/.npm-global",
+      null,
+    );
+    runner.setExit(
+      "claude",
+      ["doctor"],
+      1,
+      "Raw mode is not supported on the current process.stdin",
+    );
+
+    const status = await inspectProviderCli({
+      definition: CLAUDE_CODE_DEFINITION,
+      runner,
+      nodePlatform: "darwin",
+    });
+
+    expect(status.installSource).toBe("external");
+    expect(status.currentVersion).toBe("2.1.69");
+    expect(status.latestVersion).toBeNull();
+    expect(status.needsUpdate).toBe(true);
+    expect(status.installAction).toEqual({
+      kind: "update",
+      label: "Update",
+      commandKind: "exec",
+      command: "claude update",
+    });
+  });
+
+  it("does not infer an arbitrary external Claude install is native when doctor fails", async () => {
+    const runner = new FakeProviderCliCommandRunner();
+    runner.setSuccess("which", ["claude"], "/opt/homebrew/bin/claude\n");
+    runner.setSuccess("claude", ["--version"], "2.1.69 (Claude Code)\n");
+    runner.setSuccess(
+      "npm",
+      ["view", "@anthropic-ai/claude-code", "dist-tags", "--json"],
+      JSON.stringify({ latest: "2.1.228", stable: "2.1.221" }),
+    );
+    installNpmStateCommands(
+      runner,
+      CLAUDE_CODE_DEFINITION,
+      "/Users/me/.npm-global",
+      null,
+    );
+    runner.setExit("claude", ["doctor"], 1, "doctor failed");
+
+    const status = await inspectProviderCli({
+      definition: CLAUDE_CODE_DEFINITION,
+      runner,
+      nodePlatform: "darwin",
+    });
+
+    expect(status.needsUpdate).toBe(true);
+    expect(status.installAction).toBeNull();
+  });
+
+  it("does not default an unknown Claude release channel to latest", async () => {
+    const runner = new FakeProviderCliCommandRunner();
+    runner.setSuccess(
+      "which",
+      ["claude"],
+      "/Users/me/.npm-global/bin/claude\n",
+    );
+    runner.setSuccess("claude", ["--version"], "2.1.221 (Claude Code)\n");
+    runner.setSuccess(
+      "npm",
+      ["view", "@anthropic-ai/claude-code", "dist-tags", "--json"],
+      JSON.stringify({ latest: "2.1.228", stable: "2.1.221" }),
+    );
+    installNpmStateCommands(
+      runner,
+      CLAUDE_CODE_DEFINITION,
+      "/Users/me/.npm-global",
+      "2.1.221",
+    );
+    runner.setExit("claude", ["doctor"], 1, "doctor failed");
+
+    const status = await inspectProviderCli({
+      definition: CLAUDE_CODE_DEFINITION,
+      runner,
+      nodePlatform: "darwin",
+    });
+
+    expect(status.installSource).toBe("npmGlobal");
+    expect(status.latestVersion).toBeNull();
+    expect(status.needsUpdate).toBe(false);
+    expect(status.installAction).toBeNull();
+  });
+
   it("uses Claude Code's stable release channel when checking for updates", async () => {
     const runner = new FakeProviderCliCommandRunner();
     runner.setSuccess("which", ["claude"], "/Users/me/.local/bin/claude\n");
