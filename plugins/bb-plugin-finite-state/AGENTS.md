@@ -54,14 +54,14 @@ Read anything tagged with your WP, cluster, or files. A `FAIL` entry is a constr
 
 ```sh
 bb memory add --scope project \
-  --name "FAIL-wp09-eslint-flat-config" --kind fail \
+  --name "FAIL-wp09-eslint-flat-config" --kind fact \
   --tag "wp:WP09" --tag "plugins/bb-plugin-finite-state/eslint.config.mjs" \
   --summary "One-claim gist of the finding (~100 tokens max)" \
   --details "Evidence: file:line, the exact command and its output, or a commit SHA" \
   --reason "Why this is durable"
 ```
 
-Types: `FACT` (verified positive finding), `FAIL` (falsified approach — the most valuable type), `CONSTRAINT` (binding rule discovered mid-work), `PATCH` (compact summary of a landed change: files, idea, evidence). Name entries `<TYPE>-<scope>-<slug>`.
+Types: `FACT` (verified positive finding), `FAIL` (falsified approach — the most valuable type), `CONSTRAINT` (binding rule discovered mid-work), `PATCH` (compact summary of a landed change: files, idea, evidence). Name entries `<TYPE>-<scope>-<slug>`. The `--kind` flag takes the plugin's fixed vocabulary: use `fact` for FACT/FAIL, `decision` for CONSTRAINT, `episode` for PATCH.
 
 Rules: evidence in `--details` is mandatory — an entry without it is not binding. One claim per entry. Supersede stale entries (`bb memory update`/`forget` with `--reason`) rather than leaving them to mislead the next lane. Never store secrets, transient status, guesses, or anything already guaranteed by this file.
 

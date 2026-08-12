@@ -103,7 +103,7 @@ Entry conventions (binding):
 | Field | Convention |
 |---|---|
 | `--name` | `<TYPE>-<scope>-<slug>`, TYPE one of `FACT`, `FAIL`, `CONSTRAINT`, `PATCH` |
-| `--kind` | the same TYPE, lowercased |
+| `--kind` | fixed plugin vocabulary — map `FACT`/`FAIL` → `fact`, `CONSTRAINT` → `decision`, `PATCH` → `episode` |
 | `--tag` | at least one of `wp:WPxx`, `cluster:C-...`, or a file path; reviewers add `commit:<sha>` |
 | `--summary` | one claim, ~100 tokens max — this is what other threads see in their index |
 | `--details` | **evidence required**: file:line, the command and its output, or a commit SHA. An entry without concrete evidence is not binding and must be rejected or superseded |
