@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
-import bbLogoGradientUrl from "../../../../assets/bb-logo-gradient.svg";
+import bbLogoUrl from "../../../../assets/bb-logo.svg";
 
 interface RootComposeEmptyWelcomeProps {
   /** Reveal the composer, optionally prefilled with a starter prompt. */
@@ -140,7 +140,7 @@ export function RootComposeEmptyWelcome({
         style={{ filter: "url(#bb-gloss)" }}
       >
         <img
-          src={bbLogoGradientUrl}
+          src={bbLogoUrl}
           alt=""
           aria-hidden
           draggable={false}
