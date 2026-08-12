@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
 
 import type {
   AsEntity,
@@ -11,7 +11,7 @@ import type {
   AsReviewStatus,
   Json,
 } from "../../../lib/remote/types.js";
-import type { EntityKind } from "../../../lib/sync/registry.js";
+import { ENTITIES, type EntityKind } from "../../../lib/sync/registry.js";
 import { canonicalJson } from "./canonical.js";
 import { SERVER_OWNED_BASE } from "./exclusions.js";
 import {
@@ -19,6 +19,7 @@ import {
   UnsupportedEntitySerializerError,
   createSerializer,
   semanticPayload,
+  type EntitySerializer,
   type SerializeOptions,
   type SerializeWarning,
 } from "./serializer.js";
@@ -28,8 +29,9 @@ const TARGET_ID = "22222222-2222-4222-8222-222222222222";
 const FROZEN_FIXTURE_HEAD = "ea63cc684c5eb981760270b89e50d020732ce152";
 const FROZEN_ENTITIES_SHA256 = "0daf497c641eff3534545df18acc254c2975935285f56cb9e7e24a2383d0e5e7";
 const FROZEN_REQUIREMENTS_SHA256 = "06c87a51c6e1cb7cb0db0638d2c580c5fbb11fd5a41011513a6c2d8aa63e7b81";
+const NO_ID_REPLACEMENTS: SerializeOptions = { idToSlug: () => null };
 
-const DOMAIN_PAYLOADS: ReadonlyArray<readonly [EntityKind, Record<string, unknown>]> = [
+const DOMAIN_PAYLOADS = [
   ["component", { slug: "component-a", description: "Component" }],
   ["zone", { slug: "zone-a", name: "Zone" }],
   ["dataflow", { slug: "flow-a", sourceId: "component-a", targetId: "component-b" }],
@@ -38,13 +40,18 @@ const DOMAIN_PAYLOADS: ReadonlyArray<readonly [EntityKind, Record<string, unknow
   ["mitigation", { slug: "mitigation-a", threatIds: ["threat-a"], title: "Mitigation" }],
   ["requirement", { reqId: "REQ-001", statement: "The product shall authenticate users." }],
   ["hbomPart", { id: "part-a", manufacturer: "Acme" }],
-  ["vexDecision", { key: "finding-a", status: "not_affected" }],
+  ["vexDecision", {
+    cve: "CVE-2026-0001",
+    name: "example-component",
+    purl: "pkg:generic/example@1",
+    status: "not_affected",
+  }],
   ["reqCheckMap", { reqId: "REQ-001", checkIds: ["check-a"] }],
   ["checkParams", { code: "check-a", parameters: { threshold: 3 } }],
   ["attackPath", { routeSignature: "route-a", name: "WAN route", threatIds: ["threat-a"] }],
   ["sbomLink", { componentSlug: "component-a", purl: "pkg:generic/example@1" }],
   ["firmwareLink", { componentSlug: "component-a", firmwarePath: "/usr/bin/example" }],
-];
+] as const satisfies ReadonlyArray<readonly [EntityKind, Record<string, unknown>]>;
 
 // Exact row from the frozen WP-08 corpus at FROZEN_FIXTURE_HEAD. The `satisfies`
 // check pins this serializer test to the frozen WP-06 wire contract.
@@ -227,7 +234,7 @@ describe("semanticPayload", () => {
     }))).toBe('{"componentId":"component-0001","name":"Protected asset 1"}');
   });
 
-  it("strips the camelCase attack-path override from a valid envelope", () => {
+  it("strips the camelCase attack-path override from upstream semantic payloads", () => {
     const attackPath = entityRecord({
       fields: {
         dataflowIds: ["flow-01"],
@@ -295,14 +302,49 @@ describe("semanticPayload", () => {
 });
 
 describe("createSerializer", () => {
-  it.each(DOMAIN_PAYLOADS)("round-trips domain-shaped %s payloads with content-hash equality", (kind, payload) => {
-    const serializer = createSerializer(kind);
-    const expectedHash = serializer.contentHash(payload);
-    const yaml = serializer.toYaml(payload, { idToSlug: () => null });
-    const parsed = serializer.fromYaml(yaml, `${kind}.yaml`);
+  it("round-trips every supported entity with its registry key and content hash intact", () => {
+    const supportedKinds = Object.entries(ENTITIES)
+      .filter(([, entry]) => (entry.class === "VERSIONED" || entry.class === "OVERLAY") && "key" in entry)
+      .map(([kind]) => kind)
+      .sort();
 
-    expect(serializer.contentHash(parsed)).toBe(expectedHash);
-    expect(serializer.toYaml(payload, { idToSlug: () => null })).toBe(yaml);
+    expect(DOMAIN_PAYLOADS.map(([kind]) => kind).sort()).toEqual(supportedKinds);
+    for (const [kind, payload] of DOMAIN_PAYLOADS) {
+      const serializer = createSerializer(kind);
+      const expectedHash = serializer.contentHash(payload, NO_ID_REPLACEMENTS);
+      const expectedKey = ENTITIES[kind].key(payload);
+      const yaml = serializer.toYaml(payload, NO_ID_REPLACEMENTS);
+      const parsed = serializer.fromYaml(yaml, `${kind}.yaml`);
+
+      expect(ENTITIES[kind].key(parsed), kind).toBe(expectedKey);
+      expect(serializer.contentHash(parsed, NO_ID_REPLACEMENTS), kind).toBe(expectedHash);
+      expect(serializer.toYaml(payload, NO_ID_REPLACEMENTS), kind).toBe(yaml);
+    }
+  });
+
+  it("keeps attack-path identity in YAML while excluding it from upstream PATCH semantics", () => {
+    const serializer = createSerializer("attackPath");
+    const payload = { routeSignature: "route-a", name: "WAN route" };
+    const remoteEnvelope = entityRecord({
+      fields: payload,
+      humanEdited: false,
+      id: "attack-path-1",
+      kind: "attack-path",
+      projectId: "project-a",
+      reviewStatus: "pending",
+      reviewVersion: "1",
+    } satisfies AsEntity);
+    const yaml = serializer.toYaml(remoteEnvelope, NO_ID_REPLACEMENTS);
+    const parsed = serializer.fromYaml(yaml, "attack-paths/route-a.yaml");
+
+    expect(parsed).toHaveProperty("routeSignature", "route-a");
+    expect(ENTITIES.attackPath.key(parsed)).toBe(ENTITIES.attackPath.key(payload));
+    expect(serializer.semanticPayload(remoteEnvelope)).toEqual({ name: "WAN route" });
+  });
+
+  it("requires explicit identifier normalization options for content hashes", () => {
+    expectTypeOf<Parameters<EntitySerializer["contentHash"]>[1]>()
+      .toEqualTypeOf<SerializeOptions>();
   });
 
   it("hashes the same normalized semantics for a remote envelope and its YAML", () => {
@@ -323,8 +365,8 @@ describe("createSerializer", () => {
 
     expect(parsed).toEqual({ componentId: "component-0001", name: "Protected asset 1" });
     expect(yaml).not.toMatch(/^(?:fields|humanEdited|id|kind|projectId|reviewStatus|reviewVersion):/mu);
-    expect(serializer.contentHash(envelope, options)).toBe(serializer.contentHash(parsed));
-    expect(serializer.contentHash(changedEnvelope, options)).toBe(serializer.contentHash(parsed));
+    expect(serializer.contentHash(envelope, options)).toBe(serializer.contentHash(parsed, options));
+    expect(serializer.contentHash(changedEnvelope, options)).toBe(serializer.contentHash(parsed, options));
   });
 
   it("fails closed when an Assurance Studio response drifts from the frozen envelope", () => {
@@ -360,8 +402,8 @@ describe("createSerializer", () => {
   it("includes preserved unknown fields in content hashes", () => {
     const serializer = createSerializer("component");
 
-    expect(serializer.contentHash({ slug: "component-a", future_field: true }))
-      .not.toBe(serializer.contentHash({ slug: "component-a" }));
+    expect(serializer.contentHash({ slug: "component-a", future_field: true }, NO_ID_REPLACEMENTS))
+      .not.toBe(serializer.contentHash({ slug: "component-a" }, NO_ID_REPLACEMENTS));
   });
 
   it("preserves unknown keys without treating them as object prototypes", () => {
@@ -410,7 +452,7 @@ describe.skipIf(!fixtureCorpusAvailable)(`frozen WP-08 fixture corpus at ${FROZE
       const parsed = serializer.fromYaml(yaml, `${entity.kind}/${entity.id}.yaml`);
 
       expect(serializer.toYaml(envelope, options), entity.id).toBe(yaml);
-      expect(serializer.contentHash(envelope, options), entity.id).toBe(serializer.contentHash(parsed));
+      expect(serializer.contentHash(envelope, options), entity.id).toBe(serializer.contentHash(parsed, options));
       expect(yaml, entity.id).not.toMatch(/^(?:fields|humanEdited|id|kind|projectId|reviewStatus|reviewVersion):/mu);
     }
   });

@@ -1,4 +1,4 @@
-import { ENTITIES, type EntityKind } from "../../../lib/sync/registry.js";
+import { ENTITIES, type EntityKind, type KeyFn } from "../../../lib/sync/registry.js";
 import { contentHash as canonicalContentHash } from "./canonical.js";
 import { isServerOwnedField } from "./exclusions.js";
 import { emitYaml, parseYaml } from "./yaml.js";
@@ -19,7 +19,7 @@ export interface EntitySerializer<T = Record<string, unknown>> {
   semanticPayload(raw: Record<string, unknown>): Record<string, unknown>;
   toYaml(payload: T, opts: SerializeOptions): string;
   fromYaml(text: string, file: string): T;
-  contentHash(payload: Record<string, unknown>, opts?: SerializeOptions): string;
+  contentHash(payload: Record<string, unknown>, opts: SerializeOptions): string;
 }
 
 export type IdReplacements =
@@ -77,6 +77,29 @@ const AS_REVIEW_STATUSES = new Set([
 ]);
 
 type EntityService = "assurance-studio" | "none" | "platform";
+type RegistryKeyedYamlEntityKind = {
+  [K in EntityKind]: (typeof ENTITIES)[K] extends {
+    readonly class: "VERSIONED" | "OVERLAY";
+    readonly key: KeyFn;
+  } ? K : never;
+}[EntityKind];
+
+const REGISTRY_KEY_FIELDS = {
+  asset: ["slug"],
+  attackPath: ["routeSignature"],
+  checkParams: ["code"],
+  component: ["slug"],
+  dataflow: ["slug"],
+  firmwareLink: ["componentSlug"],
+  hbomPart: ["id"],
+  mitigation: ["slug"],
+  reqCheckMap: ["reqId"],
+  requirement: ["reqId"],
+  sbomLink: ["componentSlug"],
+  threat: ["slug"],
+  vexDecision: ["cve", "purl", "name", "group", "version"],
+  zone: ["slug"],
+} as const satisfies Readonly<Record<RegistryKeyedYamlEntityKind, readonly string[]>>;
 
 interface ReplacementContext {
   resolve(remoteId: string): string | null;
@@ -316,12 +339,13 @@ function buildSemanticPayload(
   stripServerOwned: boolean,
   service: EntityService | null,
   requireEnvelope: boolean,
+  preservedFields: ReadonlySet<string> = new Set(),
 ): Record<string, unknown> {
   const normalizedType = serverEntityType(entityType);
   const payload = authoredPayload(entityType, raw, service, requireEnvelope);
   const entries: Array<[string, unknown]> = [];
   for (const [key, value] of Object.entries(payload)) {
-    if (!stripServerOwned || !isServerOwnedField(normalizedType, key)) {
+    if (preservedFields.has(key) || !stripServerOwned || !isServerOwnedField(normalizedType, key)) {
       entries.push([key, value]);
     }
   }
@@ -330,12 +354,18 @@ function buildSemanticPayload(
   if (!isRecord(replaced)) {
     throw new Error("Semantic payload replacement must preserve the root object");
   }
-  return replaced;
+  return Object.fromEntries(Object.entries(replaced).map(([key, value]) => [
+    key,
+    preservedFields.has(key) ? payload[key] : value,
+  ]));
 }
 
-function assertYamlEntity(kind: EntityKind): void {
+function assertYamlEntity(kind: EntityKind): asserts kind is keyof typeof REGISTRY_KEY_FIELDS {
   const entry = ENTITIES[kind];
-  if ((entry.class !== "VERSIONED" && entry.class !== "OVERLAY") || kind === "canvasLayout") {
+  if (
+    (entry.class !== "VERSIONED" && entry.class !== "OVERLAY")
+    || !Object.hasOwn(REGISTRY_KEY_FIELDS, kind)
+  ) {
     throw new UnsupportedEntitySerializerError(kind);
   }
 }
@@ -346,6 +376,7 @@ export function createSerializer(kind: EntityKind): EntitySerializer {
   const entityType = serverEntityType(kind);
   const stripServerOwned = "server" in entry && entry.server !== "none";
   const service = "server" in entry ? entry.server : null;
+  const registryKeyFields = new Set(REGISTRY_KEY_FIELDS[kind]);
 
   return {
     entityKind: kind,
@@ -353,7 +384,15 @@ export function createSerializer(kind: EntityKind): EntitySerializer {
       return buildSemanticPayload(entityType, raw, {}, stripServerOwned, service, service === "assurance-studio");
     },
     toYaml(payload, opts) {
-      return emitYaml(buildSemanticPayload(entityType, payload, opts, stripServerOwned, service, false));
+      return emitYaml(buildSemanticPayload(
+        entityType,
+        payload,
+        opts,
+        stripServerOwned,
+        service,
+        false,
+        registryKeyFields,
+      ));
     },
     fromYaml(text, file) {
       return parseYaml(text, file);
@@ -362,10 +401,11 @@ export function createSerializer(kind: EntityKind): EntitySerializer {
       return canonicalContentHash(buildSemanticPayload(
         entityType,
         payload,
-        opts ?? {},
+        opts,
         stripServerOwned,
         service,
         false,
+        registryKeyFields,
       ));
     },
   };
