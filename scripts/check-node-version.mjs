@@ -1,13 +1,19 @@
-import { resolve } from "node:path";
+import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 export const REQUIRED_NODE_RANGE = "22.19.x";
 export const REQUIRED_NODE_MODULES_ABI = "127";
 
+const requiredVersion = /^(\d+)\.(\d+)\.x$/u.exec(REQUIRED_NODE_RANGE);
+if (requiredVersion === null) {
+  throw new Error(`Invalid REQUIRED_NODE_RANGE: ${REQUIRED_NODE_RANGE}`);
+}
+const [, requiredMajor, requiredMinor] = requiredVersion;
+
 export function checkNodeRuntime({ nodeVersion, modulesAbi }) {
   const match = /^(\d+)\.(\d+)\.(\d+)$/u.exec(nodeVersion);
   const versionMatches =
-    match !== null && Number(match[1]) === 22 && Number(match[2]) === 19;
+    match !== null && match[1] === requiredMajor && match[2] === requiredMinor;
   const abiMatches = modulesAbi === REQUIRED_NODE_MODULES_ABI;
 
   if (versionMatches && abiMatches) {
@@ -38,7 +44,7 @@ function main() {
 const entrypoint = process.argv[1];
 if (
   entrypoint !== undefined &&
-  resolve(entrypoint) === fileURLToPath(import.meta.url)
+  realpathSync(entrypoint) === realpathSync(fileURLToPath(import.meta.url))
 ) {
   main();
 }

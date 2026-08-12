@@ -143,17 +143,21 @@ rebuild the native dependency, for example `npm rebuild better-sqlite3`.
 
 - GitHub Actions uses Ubuntu as the required support gate for build,
   typecheck, lint, test, and Linux smoke coverage.
-- Full build, typecheck, lint, and test checks run on Ubuntu with Node.js 22
-  only.
+- Full build, typecheck, lint, and test checks run on Ubuntu with Node.js
+  22.19.0.
 - Pull requests run the `bb-app` tarball smoke on Ubuntu and macOS with Node.js
-  22, validating the packed npm artifact through `npx --package`.
-- Pushes to `main` and manually dispatched CI runs also run the `bb-app` tarball
-  smoke on Ubuntu and macOS with Node.js 24 and 26.
-- Branch protection should require `Checks (ubuntu-latest, Node 22.x)`,
-  `Package Smoke (ubuntu-latest, Node 22.x)`, and
-  `Package Smoke (macos-latest, Node 22.x)`. The Node.js 24 and 26 compatibility
-  smoke jobs do not run on pull requests and should not be configured as
-  required PR checks.
+  22.19.0, validating the packed npm artifact through `npx --package`.
+- Pushes to `main` and manually dispatched CI runs install dependencies and
+  build the `bb-app` tarball on Node.js 22.19.0, then execute the packed
+  tarball smoke on Ubuntu and macOS with Node.js 24 and 26.
+- CI reports `Checks (ubuntu-latest, Node 22.19.0)`,
+  `Package Smoke (ubuntu-latest, Node 22.19.0)`, and
+  `Package Smoke (macos-latest, Node 22.19.0)` for the primary runtime. Live
+  branch protection on `finite-state/integration` is currently disabled. When
+  FS-91 enables it, the required Finite State check is the unchanged
+  `Finite State guard gates (ubuntu-latest, Node 22.19.0)`; the Node.js 24 and
+  26 compatibility jobs do not run on pull requests and are not required PR
+  checks.
 - Native Windows CI is intentionally not required because Windows support uses
   the Linux runtime path inside WSL2 rather than a separate native Windows
   product path.

@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
-import { readFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { mkdtemp, readFile, rm, symlink } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
@@ -12,14 +13,32 @@ import {
 const testDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(testDir, "../../..");
 const scriptPath = resolve(repoRoot, "scripts/check-node-version.mjs");
+const incompatibleRuntimeFixture = resolve(
+  testDir,
+  "fixtures/node-25-runtime.mjs",
+);
+
+function runWithIncompatibleRuntime(entrypoint) {
+  return spawnSync(
+    process.execPath,
+    ["--import", incompatibleRuntimeFixture, entrypoint],
+    { encoding: "utf8" },
+  );
+}
 
 describe("check-node-version", () => {
   it("accepts Node 22.19 patch releases with the expected ABI", () => {
     expect(
-      checkNodeRuntime({ nodeVersion: "22.19.0", modulesAbi: "127" }),
+      checkNodeRuntime({
+        nodeVersion: "22.19.0",
+        modulesAbi: REQUIRED_NODE_MODULES_ABI,
+      }),
     ).toEqual({ ok: true });
     expect(
-      checkNodeRuntime({ nodeVersion: "22.19.9", modulesAbi: "127" }),
+      checkNodeRuntime({
+        nodeVersion: "22.19.9",
+        modulesAbi: REQUIRED_NODE_MODULES_ABI,
+      }),
     ).toEqual({ ok: true });
   });
 
@@ -58,6 +77,10 @@ describe("check-node-version", () => {
 
     expect(nodeVersion.trim()).toBe("22.19.0");
     expect(nvmrc.trim()).toBe("22.19.0");
+    expect(nodeVersion.trim().replace(/\.\d+$/u, ".x")).toBe(
+      REQUIRED_NODE_RANGE,
+    );
+    expect(nvmrc.trim().replace(/\.\d+$/u, ".x")).toBe(REQUIRED_NODE_RANGE);
     expect(packageJson.engines.node).toBe(REQUIRED_NODE_RANGE);
     expect(packageJson.scripts["pnpm:devPreinstall"]).toBe(
       "node scripts/check-node-version.mjs",
@@ -65,7 +88,33 @@ describe("check-node-version", () => {
     expect(packageJson.scripts.preinstall).toBe(
       "node scripts/check-node-version.mjs",
     );
-    expect(REQUIRED_NODE_MODULES_ABI).toBe("127");
+  });
+
+  it("executes the guard and rejects an incompatible child runtime", () => {
+    const result = runWithIncompatibleRuntime(scriptPath);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "[check-node-version] Expected Node 22.19.x " +
+        `(NODE_MODULE_VERSION ${REQUIRED_NODE_MODULES_ABI}), but found Node 25.4.0 ` +
+        "(NODE_MODULE_VERSION 141). Activate the runtime pinned by " +
+        ".node-version or .nvmrc before running pnpm install.",
+    );
+  });
+
+  it("executes the guard through a symlinked absolute entrypoint", async () => {
+    const workDir = await mkdtemp(join(tmpdir(), "check-node-version-"));
+    const symlinkPath = join(workDir, "check-node-version.mjs");
+
+    try {
+      await symlink(scriptPath, symlinkPath);
+      const result = runWithIncompatibleRuntime(symlinkPath);
+
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("but found Node 25.4.0");
+    } finally {
+      await rm(workDir, { recursive: true, force: true });
+    }
   });
 
   it("accepts the process running the repository test gate", () => {
@@ -74,6 +123,5 @@ describe("check-node-version", () => {
     });
 
     expect(result.status, result.stderr).toBe(0);
-    expect(result.stderr).toBe("");
   });
 });
