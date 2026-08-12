@@ -677,7 +677,7 @@ const CHILD_THREADS_HEADER_BUTTON_CLASS = activityRowClass(
 );
 
 function childThreadsLabel(count: number): string {
-  return `${count} child ${count === 1 ? "thread" : "threads"} running`;
+  return `${count} active child ${count === 1 ? "thread" : "threads"}`;
 }
 
 function ActiveChildThreadsCard({
@@ -718,7 +718,7 @@ function ActiveChildThreadsCard({
           />
           <span className="min-w-0 flex-1 truncate text-left">
             <span className="text-muted-foreground">
-              Running child thread:{" "}
+              Active child thread:{" "}
             </span>
             <span className="font-medium text-foreground/80">
               {primary.title}

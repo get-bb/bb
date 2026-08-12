@@ -3,6 +3,7 @@ import { MemoryRouter } from "react-router-dom";
 import type { ThreadPullRequest } from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import {
+  isThreadDisplayStatusBannerActive,
   ThreadPromptContextBanner,
   type ThreadPromptGitSection,
 } from "./ThreadPromptContextBanner";
@@ -309,16 +310,16 @@ describe("ThreadPromptContextBanner", () => {
 
     expect(markup).toContain('aria-label="Child threads"');
     expect(markup).toContain(
-      "1 child thread running: Investigate failing checks",
+      "1 active child thread: Investigate failing checks",
     );
-    expect(markup).toContain("Running child thread:");
+    expect(markup).toContain("Active child thread:");
     expect(markup).toContain("Investigate failing checks");
     expect(markup).toContain('data-icon="UserRound"');
     expect(markup).toContain("animate-shine-icon");
     expect(markup).not.toContain("animate-shine font-medium");
   });
 
-  it("summarizes additional running child threads", () => {
+  it("summarizes additional active child threads", () => {
     const markup = renderToStaticMarkup(
       <MemoryRouter>
         <ThreadPromptContextBanner
@@ -349,9 +350,43 @@ describe("ThreadPromptContextBanner", () => {
     );
 
     expect(markup).toContain(
-      "2 child threads running: Investigate failing checks",
+      "2 active child threads: Investigate failing checks",
     );
     expect(markup).toContain("+1 more");
+  });
+
+  it("uses neutral active copy for a child waiting for a host", () => {
+    expect(isThreadDisplayStatusBannerActive("waiting-for-host")).toBe(true);
+
+    const markup = renderToStaticMarkup(
+      <MemoryRouter>
+        <ThreadPromptContextBanner
+          gitSection={null}
+          gitSectionPending={false}
+          archivedSection={null}
+          environmentGoneSection={null}
+          parentThreadSection={null}
+          childThreadsSection={{
+            items: [
+              {
+                id: "thr_waiting",
+                title: "Waiting for build host",
+                href: "/threads/thr_waiting",
+              },
+            ],
+          }}
+          pullRequestSection={null}
+          expandedSection={null}
+          onToggleSection={noop}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(markup).toContain(
+      "1 active child thread: Waiting for build host",
+    );
+    expect(markup).toContain("Active child thread:");
+    expect(markup).not.toContain("Running child thread:");
   });
 
   it("labels standalone actionable pull request attention", () => {
