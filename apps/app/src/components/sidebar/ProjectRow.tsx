@@ -26,6 +26,7 @@ import {
   useArchiveEnvironmentThreads,
   useUpdateEnvironment,
 } from "@/hooks/mutations/environment-mutations";
+import { useUnarchiveThread } from "@/hooks/mutations/thread-state-mutations";
 import { useDialogState } from "@/hooks/useDialogState";
 import { Button } from "@bb/shared-ui/button";
 import {
@@ -139,6 +140,7 @@ import { SectionThreadDndProvider } from "./SectionThreadDndContext";
 // worktree group headers); rows deeper than the cap render non-sticky so a deep
 // chain can't pin more ancestors than a short viewport can hold.
 const SIDEBAR_STICKY_PARENT_DEPTH_CAP = 4;
+const ARCHIVE_UNDO_TOAST_DURATION_MS = 10_000;
 
 export type ProjectThreadListState =
   | {
@@ -754,6 +756,7 @@ function useArchiveEnvironmentThreadGroupAction({
 }: UseArchiveEnvironmentThreadGroupActionArgs): UseArchiveEnvironmentThreadGroupActionResult {
   const navigate = useNavigate();
   const archiveEnvironmentThreads = useArchiveEnvironmentThreads();
+  const { mutate: unarchiveThread } = useUnarchiveThread();
   const {
     isPending: archiveThreadsIsPending,
     mutateAsync: archiveThreads,
@@ -769,6 +772,17 @@ function useArchiveEnvironmentThreadGroupAction({
             archivedThreadIds: response.archivedThreadIds,
             threads,
           }),
+          {
+            action: {
+              label: "Undo",
+              onClick: () => {
+                for (const threadId of response.archivedThreadIds) {
+                  unarchiveThread({ id: threadId });
+                }
+              },
+            },
+            duration: ARCHIVE_UNDO_TOAST_DURATION_MS,
+          },
         );
         if (
           selectedThreadId &&
@@ -785,6 +799,7 @@ function useArchiveEnvironmentThreadGroupAction({
     projectId,
     selectedThreadId,
     threads,
+    unarchiveThread,
   ]);
 
   return {

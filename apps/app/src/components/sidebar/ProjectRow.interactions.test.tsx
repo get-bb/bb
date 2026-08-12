@@ -13,6 +13,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { Provider, createStore } from "jotai";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { appToast } from "@/components/ui/app-toast";
 import {
   ChronologicalSectionThreadSections,
   ProjectRow,
@@ -24,6 +25,10 @@ const mockUpdateEnvironment = vi.hoisted(() => ({
   mutate: vi.fn(),
   reset: vi.fn(),
 }));
+const mockArchiveEnvironment = vi.hoisted(() => ({
+  mutateAsync: vi.fn(),
+}));
+const mockUnarchiveThread = vi.hoisted(() => vi.fn());
 const mockDraftThreadIds = vi.hoisted(() => ({
   current: new Set<string>(),
 }));
@@ -39,7 +44,7 @@ vi.mock("@/hooks/useThreadSplitsEnabled", () => ({
 vi.mock("@/hooks/mutations/environment-mutations", () => ({
   useArchiveEnvironmentThreads: () => ({
     isPending: false,
-    mutate: vi.fn(),
+    mutateAsync: mockArchiveEnvironment.mutateAsync,
     variables: undefined,
   }),
   useUpdateEnvironment: () => ({
@@ -49,6 +54,28 @@ vi.mock("@/hooks/mutations/environment-mutations", () => ({
     reset: mockUpdateEnvironment.reset,
     variables: undefined,
   }),
+}));
+
+vi.mock("@/hooks/mutations/thread-state-mutations", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@/hooks/mutations/thread-state-mutations")
+    >();
+  return {
+    ...actual,
+    useUnarchiveThread: () => ({ mutate: mockUnarchiveThread }),
+  };
+});
+
+vi.mock("@/components/ui/app-toast", () => ({
+  appToast: {
+    dismiss: vi.fn(),
+    error: vi.fn(),
+    loading: vi.fn(),
+    message: vi.fn(),
+    success: vi.fn(),
+    warning: vi.fn(),
+  },
 }));
 
 vi.mock("@/hooks/useCreateThreadInWorktree", () => ({
@@ -497,6 +524,61 @@ describe("ProjectRow interactions", () => {
     ).not.toBeNull();
     await waitFor(() => {
       expect(screen.queryByRole("menuitem", { name: "Rename" })).toBeNull();
+    });
+  });
+
+  it("offers Undo after archiving a worktree's threads", async () => {
+    mockArchiveEnvironment.mutateAsync.mockResolvedValue({
+      archivedThreadIds: ["thr_worktree_a", "thr_worktree_b"],
+      ok: true,
+    });
+    renderProjectRow(vi.fn(), {
+      status: "ready",
+      threads: [
+        makeThread({
+          id: "thr_worktree_a",
+          environmentId: "env_test",
+          environmentName: "Feature workspace",
+          environmentWorkspaceDisplayKind: "managed-worktree",
+        }),
+        makeThread({
+          id: "thr_worktree_b",
+          environmentId: "env_test",
+          environmentName: "Feature workspace",
+          environmentWorkspaceDisplayKind: "managed-worktree",
+        }),
+      ],
+    });
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Worktree actions" }),
+      { button: 0 },
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Archive worktree" }),
+    );
+
+    await waitFor(() => {
+      expect(appToast.success).toHaveBeenCalledTimes(1);
+    });
+    const toastOptions = vi.mocked(appToast.success).mock.calls[0]?.[1];
+    expect(toastOptions).toMatchObject({
+      action: { label: "Undo" },
+      duration: 10_000,
+    });
+
+    const undoAction = toastOptions?.action;
+    if (undoAction === undefined) {
+      throw new Error("Expected archive toast to provide Undo");
+    }
+    render(<button onClick={undoAction.onClick}>Run undo</button>);
+    fireEvent.click(screen.getByRole("button", { name: "Run undo" }));
+
+    expect(mockUnarchiveThread).toHaveBeenNthCalledWith(1, {
+      id: "thr_worktree_a",
+    });
+    expect(mockUnarchiveThread).toHaveBeenNthCalledWith(2, {
+      id: "thr_worktree_b",
     });
   });
 });
