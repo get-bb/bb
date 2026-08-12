@@ -84,8 +84,10 @@ vi.mock("react-resizable-panels", async () => {
   return { Panel, PanelGroup };
 });
 
-vi.mock("@bb/shared-ui/responsive-overlay", async () => {
+vi.mock("@bb/shared-ui/responsive-overlay", async (importOriginal) => {
   const React = await import("react");
+  const actual =
+    await importOriginal<typeof import("@bb/shared-ui/responsive-overlay")>();
 
   const PersistentResponsiveDrawerShell = ({
     children,
@@ -103,7 +105,7 @@ vi.mock("@bb/shared-ui/responsive-overlay", async () => {
       children,
     );
 
-  return { PersistentResponsiveDrawerShell };
+  return { ...actual, PersistentResponsiveDrawerShell };
 });
 
 vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", async () => {

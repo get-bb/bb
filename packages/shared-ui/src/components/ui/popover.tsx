@@ -126,6 +126,8 @@ const PopoverContent = React.forwardRef<
     mobileTitle?: string;
     /** Class name applied to the drawer panel on mobile. */
     mobileClassName?: string;
+    /** Called when the mobile drawer transform completes. */
+    onMobileContentAnimationEnd?: (open: boolean) => void;
   }
 >(
   (
@@ -136,6 +138,7 @@ const PopoverContent = React.forwardRef<
       children,
       mobileTitle,
       mobileClassName,
+      onMobileContentAnimationEnd,
       ...props
     },
     ref,
@@ -156,6 +159,7 @@ const PopoverContent = React.forwardRef<
           onOpenChange={onOpenChange}
           srLabel={mobileTitle ?? "Options"}
           contentClassName={mobileClassName}
+          onContentAnimationEnd={onMobileContentAnimationEnd}
         >
           <div
             ref={ref}

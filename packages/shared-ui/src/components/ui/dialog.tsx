@@ -27,6 +27,8 @@ import { Icon } from "../../components/ui/icon.js";
 interface ResponsiveDialogContextValue extends ResponsiveOverlayContextValue {
   titleId: string;
   descriptionId: string;
+  registerTitleId: (id: string) => () => void;
+  registerDescriptionId: (id: string) => () => void;
 }
 
 const ResponsiveDialogContext =
@@ -36,6 +38,8 @@ const ResponsiveDialogContext =
     onOpenChange: () => {},
     titleId: "",
     descriptionId: "",
+    registerTitleId: () => () => {},
+    registerDescriptionId: () => () => {},
   });
 
 function useResponsiveDialog() {
@@ -53,11 +57,41 @@ function Dialog({
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Root>) {
   const responsiveRoot = useResponsiveRoot(controlledOpen, controlledOnChange);
-  const titleId = React.useId();
-  const descriptionId = React.useId();
+  const generatedTitleId = React.useId();
+  const generatedDescriptionId = React.useId();
+  const [titleId, setTitleId] = React.useState(generatedTitleId);
+  const [descriptionId, setDescriptionId] = React.useState(
+    generatedDescriptionId,
+  );
+  const registerTitleId = React.useCallback(
+    (id: string) => {
+      setTitleId(id);
+      return () => setTitleId(generatedTitleId);
+    },
+    [generatedTitleId],
+  );
+  const registerDescriptionId = React.useCallback(
+    (id: string) => {
+      setDescriptionId(id);
+      return () => setDescriptionId(generatedDescriptionId);
+    },
+    [generatedDescriptionId],
+  );
   const ctx = React.useMemo(
-    () => ({ ...responsiveRoot, titleId, descriptionId }),
-    [descriptionId, responsiveRoot, titleId],
+    () => ({
+      ...responsiveRoot,
+      titleId,
+      descriptionId,
+      registerTitleId,
+      registerDescriptionId,
+    }),
+    [
+      descriptionId,
+      registerDescriptionId,
+      registerTitleId,
+      responsiveRoot,
+      titleId,
+    ],
   );
 
   const body = ctx.isCompactViewport ? (
@@ -294,30 +328,51 @@ DialogFooter.displayName = "DialogFooter";
 const DialogTitle = React.forwardRef<
   HTMLHeadingElement,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Title>
->(({ className, ...props }, ref) => {
-  const { isCompactViewport, titleId } = useResponsiveDialog();
+>(({ asChild, className, id, children, ...props }, ref) => {
+  const { isCompactViewport, titleId, registerTitleId } = useResponsiveDialog();
+  const resolvedId = id ?? titleId;
+  React.useLayoutEffect(() => {
+    if (!isCompactViewport) {
+      return;
+    }
+    return registerTitleId(resolvedId);
+  }, [isCompactViewport, registerTitleId, resolvedId]);
+
   if (isCompactViewport) {
+    const titleProps = {
+      id: resolvedId,
+      className: cn(
+        "text-base font-semibold leading-none tracking-tight",
+        className,
+      ),
+      ...props,
+    };
+    if (asChild) {
+      return (
+        <Slot ref={ref} {...titleProps}>
+          {children}
+        </Slot>
+      );
+    }
     return (
-      <h2
-        ref={ref}
-        id={titleId}
-        className={cn(
-          "text-base font-semibold leading-none tracking-tight",
-          className,
-        )}
-        {...props}
-      />
+      <h2 ref={ref} {...titleProps}>
+        {children}
+      </h2>
     );
   }
   return (
     <DialogPrimitive.Title
       ref={ref}
+      asChild={asChild}
+      {...(id === undefined ? {} : { id })}
       className={cn(
         "text-base font-semibold leading-none tracking-tight",
         className,
       )}
       {...props}
-    />
+    >
+      {children}
+    </DialogPrimitive.Title>
   );
 });
 DialogTitle.displayName = "DialogTitle";
@@ -325,24 +380,46 @@ DialogTitle.displayName = "DialogTitle";
 const DialogDescription = React.forwardRef<
   React.ComponentRef<typeof DialogPrimitive.Description>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Description>
->(({ className, ...props }, ref) => {
-  const { isCompactViewport, descriptionId } = useResponsiveDialog();
+>(({ asChild, className, id, children, ...props }, ref) => {
+  const { isCompactViewport, descriptionId, registerDescriptionId } =
+    useResponsiveDialog();
+  const resolvedId = id ?? descriptionId;
+  React.useLayoutEffect(() => {
+    if (!isCompactViewport) {
+      return;
+    }
+    return registerDescriptionId(resolvedId);
+  }, [isCompactViewport, registerDescriptionId, resolvedId]);
+
   if (isCompactViewport) {
+    const descriptionProps = {
+      id: resolvedId,
+      className: cn("text-sm text-muted-foreground", className),
+      ...props,
+    };
+    if (asChild) {
+      return (
+        <Slot ref={ref} {...descriptionProps}>
+          {children}
+        </Slot>
+      );
+    }
     return (
-      <p
-        ref={ref}
-        id={descriptionId}
-        className={cn("text-sm text-muted-foreground", className)}
-        {...props}
-      />
+      <p ref={ref} {...descriptionProps}>
+        {children}
+      </p>
     );
   }
   return (
     <DialogPrimitive.Description
       ref={ref}
+      asChild={asChild}
+      {...(id === undefined ? {} : { id })}
       className={cn("text-sm text-muted-foreground", className)}
       {...props}
-    />
+    >
+      {children}
+    </DialogPrimitive.Description>
   );
 });
 DialogDescription.displayName = DialogPrimitive.Description.displayName;

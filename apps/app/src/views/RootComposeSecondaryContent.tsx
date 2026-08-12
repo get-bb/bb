@@ -14,10 +14,12 @@ import {
   PanelGroup,
   type ImperativePanelGroupHandle,
 } from "react-resizable-panels";
-import { PersistentResponsiveDrawerShell } from "@bb/shared-ui/responsive-overlay";
+import {
+  PersistentResponsiveDrawerShell,
+  useResponsiveDrawerRealization,
+} from "@bb/shared-ui/responsive-overlay";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { ThreadSecondaryPanel } from "@/components/secondary-panel/ThreadSecondaryPanel";
-import { useDrawerPanelRealization } from "@/components/secondary-panel/useDrawerPanelRealization";
 import { secondaryPanelWidthPercentAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import { PANEL_COLLAPSE_TRANSITION_CLASS } from "@/components/secondary-panel/panelTransitionTokens";
@@ -130,10 +132,11 @@ export function RootComposeSecondaryContent({
   }, [persistedSecondaryWidthPercent]);
   const [isCompactDrawerContentSettled, setIsCompactDrawerContentSettled] =
     useState(false);
-  const { isPanelRealized, realizePanel } = useDrawerPanelRealization({
-    isDrawerOpen: isSecondaryPanelOpen,
-    rendersAsDrawer: renderAsDrawer,
-  });
+  const { isContentRealized: isPanelRealized, realizeContent: realizePanel } =
+    useResponsiveDrawerRealization({
+      open: isSecondaryPanelOpen,
+      enabled: renderAsDrawer,
+    });
   const [desktopInfo] = useState(getBbDesktopInfo);
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
   // A bounded pane below a horizontal split is not part of the native window

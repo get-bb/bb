@@ -13,17 +13,17 @@ import {
   PanelGroup,
   type ImperativePanelGroupHandle,
 } from "react-resizable-panels";
-import { PersistentResponsiveDrawerShell } from "@bb/shared-ui/responsive-overlay";
+import {
+  PersistentResponsiveDrawerShell,
+  useResponsiveDrawerRealization,
+} from "@bb/shared-ui/responsive-overlay";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import { DETAIL_GRID_CLASS } from "@/components/ui/detail-card.js";
 import { useAtomValue } from "jotai";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { ThreadSecondaryPanel } from "@/components/secondary-panel/ThreadSecondaryPanel";
-import { useDrawerPanelRealization } from "@/components/secondary-panel/useDrawerPanelRealization";
-import {
-  secondaryPanelWidthPercentAtom,
-} from "@/components/secondary-panel/threadSecondaryPanelAtoms";
+import { secondaryPanelWidthPercentAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import {
   ThreadMetadataCard,
   ThreadMetadataContent,
@@ -127,10 +127,11 @@ function ThreadDetailSecondaryContentBody({
     canCollapseConversation && isConversationCollapsed;
   const [isCompactDrawerContentSettled, setIsCompactDrawerContentSettled] =
     useState(false);
-  const { isPanelRealized, realizePanel } = useDrawerPanelRealization({
-    isDrawerOpen: isSecondaryPanelOpen,
-    rendersAsDrawer: renderAsDrawer,
-  });
+  const { isContentRealized: isPanelRealized, realizeContent: realizePanel } =
+    useResponsiveDrawerRealization({
+      open: isSecondaryPanelOpen,
+      enabled: renderAsDrawer,
+    });
   const compactDrawerContentSettleFrameRef = useRef<number | null>(null);
   const compactDrawerContentSettleGenerationRef = useRef(0);
   const compactDrawerContentSettleStateRef = useRef({

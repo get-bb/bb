@@ -515,11 +515,9 @@ export function ModelReasoningPicker({
       ? hasActiveModelOptions && !activeModelIsLoading
       : hasSelectedModel && !modelIsLoading && !selectedModelLoadFailed);
 
-  // Reset the per-open browse state (previewed tab + "More models" expansion).
-  // This runs when the popover content UNMOUNTS — i.e. after the close
-  // animation finishes — not synchronously on close. Resetting on close would
-  // snap the visible tab back to the committed provider mid-animation; deferring
-  // it to unmount keeps the closing dropdown showing whatever was on screen.
+  // Reset the per-open browse state after the close animation. Desktop content
+  // unmounts at that point. The compact drawer stays mounted, so its settlement
+  // callback performs the same reset without changing the visible close frame.
   const resetBrowseState = useCallback(() => {
     setPreviewProviderId(null);
     setShowMoreModels(false);
@@ -527,6 +525,14 @@ export function ModelReasoningPicker({
     setSearchQuery("");
     setActiveIndex(-1);
   }, []);
+  const handleMobileContentAnimationEnd = useCallback(
+    (isOpen: boolean) => {
+      if (!isOpen) {
+        resetBrowseState();
+      }
+    },
+    [resetBrowseState],
+  );
 
   const openSub = useCallback(() => {
     setMoreModelsOpen(true);
@@ -829,13 +835,14 @@ export function ModelReasoningPicker({
       <PopoverContent
         align="start"
         mobileTitle="Model"
+        onMobileContentAnimationEnd={handleMobileContentAnimationEnd}
         className={cn(
           "flex flex-col p-0",
           MODEL_PICKER_MENU_WIDTH_CLASS_NAME,
           "max-md:w-full max-md:min-w-0 max-md:max-w-none",
         )}
       >
-        <ResetBrowseStateOnUnmount onReset={resetBrowseState} />
+        <ResetBrowseStateOnContentUnmount onReset={resetBrowseState} />
         {/* Provider icon tabs */}
         {showProviderTabs ? (
           <div
@@ -1272,7 +1279,11 @@ function MoreModelsSubmenu({
 // closing (after the exit animation), which is when the browse state should
 // reset — not during the visible close. Kept stable via a ref so a re-render
 // never triggers a spurious reset.
-function ResetBrowseStateOnUnmount({ onReset }: { onReset: () => void }) {
+function ResetBrowseStateOnContentUnmount({
+  onReset,
+}: {
+  onReset: () => void;
+}) {
   useEffect(() => onReset, [onReset]);
   return null;
 }
