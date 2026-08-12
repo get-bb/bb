@@ -282,7 +282,7 @@ describe("ThreadPromptContextBanner", () => {
     expect(markup).toContain("PR #128 · Closed");
   });
 
-  it("labels active child threads", () => {
+  it("summarizes child work without flashing the banner", () => {
     const markup = renderToStaticMarkup(
       <MemoryRouter>
         <ThreadPromptContextBanner
@@ -307,8 +307,51 @@ describe("ThreadPromptContextBanner", () => {
       </MemoryRouter>,
     );
 
-    expect(markup).toContain('aria-label="Active child threads"');
-    expect(markup).toContain("1 active child thread");
+    expect(markup).toContain('aria-label="Child threads"');
+    expect(markup).toContain(
+      "1 child thread running: Investigate failing checks",
+    );
+    expect(markup).toContain("Running child thread:");
+    expect(markup).toContain("Investigate failing checks");
+    expect(markup).toContain('data-icon="UserRound"');
+    expect(markup).toContain("animate-shine-icon");
+    expect(markup).not.toContain("animate-shine font-medium");
+  });
+
+  it("summarizes additional running child threads", () => {
+    const markup = renderToStaticMarkup(
+      <MemoryRouter>
+        <ThreadPromptContextBanner
+          gitSection={null}
+          gitSectionPending={false}
+          archivedSection={null}
+          environmentGoneSection={null}
+          parentThreadSection={null}
+          childThreadsSection={{
+            items: [
+              {
+                id: "thr_primary",
+                title: "Investigate failing checks",
+                href: "/threads/thr_primary",
+              },
+              {
+                id: "thr_other",
+                title: "Review the release notes",
+                href: "/threads/thr_other",
+              },
+            ],
+          }}
+          pullRequestSection={null}
+          expandedSection={null}
+          onToggleSection={noop}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(markup).toContain(
+      "2 child threads running: Investigate failing checks",
+    );
+    expect(markup).toContain("+1 more");
   });
 
   it("labels standalone actionable pull request attention", () => {

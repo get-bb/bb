@@ -732,7 +732,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="parent thread with active children (collapsed)"
-        hint="spinning icon signals active work; click to expand the child list"
+        hint="the primary child mirrors other background-work banners without an animated flash; click to expand the child list"
       >
         <Row childThreads={childThreadsFixture} mergeBase={null} />
       </StoryRow>

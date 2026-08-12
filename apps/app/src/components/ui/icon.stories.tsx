@@ -38,7 +38,7 @@ const USAGE: Partial<Record<IconName, string>> = {
   ChevronsUp: "Git diff toolbar expand-all",
   Circle: "Radio item indicator in menus",
   CircleCheck: "Auth callback success state",
-  CircleDashed: "Child-thread busy section indicator",
+  CircleDashed: "Dashed status circle",
   CircleQuestion: "Thread needs user input and timeline question rows",
   CircleX: "Auth callback failure state",
   ClosePluginPane: "Close a split pane containing a plugin surface",
