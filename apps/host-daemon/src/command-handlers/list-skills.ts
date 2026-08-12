@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { resolveCodexHome } from "@bb/config/codex-home";
 import { resolveDataDirSkillsRootPath } from "@bb/config/skill-storage-paths";
 import type {
   HostDaemonOnlineRpcResult,
@@ -18,7 +19,6 @@ import {
 } from "../command-discovery.js";
 import {
   type CommandRootResolution,
-  resolveCodexHome,
   resolveProviderCommandScanRoots,
 } from "./list-commands.js";
 import { writeHostFile } from "./file-write.js";
