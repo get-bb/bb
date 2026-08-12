@@ -1,0 +1,45 @@
+{
+  "generatorVersion": "1",
+  "sources": [
+    {
+      "name": "finite-state-api-v0.3.0.openapi.yaml",
+      "sha256": "49eb706db94caf7a124a438722912e19b95932ed73677cedf2e4b3186a5523c5",
+      "pathCount": 134,
+      "operationCount": 166
+    },
+    {
+      "name": "assurance-studio-openapi-2026-05-12.json",
+      "sha256": "8b684395f3bc7545c41c24ebe3ac1a18e0e15a20c606198f7ba20b40c246a251",
+      "pathCount": 80,
+      "operationCount": 118
+    }
+  ],
+  "evidenceSources": [
+    {
+      "name": "finite-state-api-v0.3.0.reference.md",
+      "sha256": "362778457ba6902a32dcccf13ac1e472bb60c706a6c01d986c40ef09486cbdb1"
+    },
+    {
+      "name": "finite-state-api-v0.3.0.endpoint-audit.md",
+      "sha256": "95498ab52f5242edf77c70241ba66f1f2e7b3669476877d2cfa2981496de0e57"
+    },
+    {
+      "name": "assurance-studio-openapi-notes.md",
+      "sha256": "375f0378f6440f95fc9f4454f28569cdec9d3d64e54a3f0fa6bc29081159c324"
+    },
+    {
+      "name": "assurance-studio-api-gaps.md",
+      "sha256": "eca05c1016635bbfe3d1e3c77a47d1e4873d32fba49d9eeed6add74e9de9106f"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "platform-routes.ts",
+      "sha256": "c238f3607c68f233beeb9ff5d88aece781118272497f7233aa12a1c33658cc15"
+    },
+    {
+      "name": "assurance-studio-routes.ts",
+      "sha256": "bd1516203625f24b6b2dfb7bf0c4f895cee7546b17c250f785bfddcadeb45881"
+    }
+  ]
+}
