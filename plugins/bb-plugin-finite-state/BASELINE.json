@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-08-12T07:35:00Z",
+  "bb": {
+    "upstreamRepository": "https://github.com/get-bb/bb.git",
+    "forkRepository": "https://github.com/mattwyckhouse/bb.git",
+    "release": "desktop-v0.37.0",
+    "upstreamCommit": "fe432e3b1475406bc0e6f21decefc29ef978e639",
+    "integrationBranch": "finite-state/integration",
+    "bootstrapCommit": "c39008042638056818a8a00fc56096413968aab9"
+  },
+  "toolchain": {
+    "node": "22.19.0",
+    "pnpm": "9.15.0",
+    "pluginSdk": "0.4.1",
+    "operatingSystem": "Darwin 25.5.0",
+    "architecture": "arm64"
+  },
+  "specification": {
+    "repository": "https://github.com/mattwyckhouse/finite-studio.git",
+    "approvedCommit": "3e37cae40405f6857d6ff1f6f628baff134d8436",
+    "mergeCommit": "b18f9878bc6c0b183603885687178480df56b309",
+    "reviewThread": "thr_ib9at8u34a"
+  },
+  "remoteInputs": {
+    "platformOpenApiSha256": "49eb706db94caf7a124a438722912e19b95932ed73677cedf2e4b3186a5523c5",
+    "assuranceStudioOpenApiSha256": "8b684395f3bc7545c41c24ebe3ac1a18e0e15a20c606198f7ba20b40c246a251",
+    "forgeCommit": "5083a9d7",
+    "forgeComputeManifestSha256": "0a997e1a4d728a3dfe717e727042550b2b39437e9aac0300248ee9de9b5c5f21"
+  },
+  "policy": {
+    "coreDataPlane": "direct Platform REST and direct Assurance Studio REST",
+    "forge": "optional compute only",
+    "g5": "mock inputs until user supplies real connection and hardware values",
+    "fonts": "Google Fonts; redistribution approved by product owner"
+  }
+}
