@@ -84,9 +84,6 @@ export function buildProviderCliIssue(
   }
 
   if (status.needsUpdate) {
-    if (status.installAction === null) {
-      return null;
-    }
     const description = `${status.currentVersion ?? "Installed version unknown"} -> ${status.latestVersion ?? "latest"}`;
     const fingerprint = [
       provider,

@@ -33,7 +33,11 @@ interface MachineUpdatesEntry {
 function providerStateLabel(status: ProviderCliStatus): string {
   if (!status.installed) return "not installed";
   if (status.versionUnsupported) return "update needed";
-  if (status.needsUpdate) return "update available";
+  if (status.needsUpdate) {
+    return status.installAction === null
+      ? "update manually"
+      : "update available";
+  }
   return "up to date";
 }
 
@@ -215,7 +219,24 @@ export function registerUpdatesCommands(
         const targets = actionableTargets(entries);
         if (targets.length === 0) {
           if (outputJson(opts, { results: [] })) return;
-          console.log("Everything is up to date.");
+          const hasManualUpdates = entries.some(
+            (entry) =>
+              entry.providerStatus !== null &&
+              MANAGED_PROVIDERS.some((provider) => {
+                const status = entry.providerStatus?.[provider];
+                return (
+                  status !== undefined &&
+                  status.installed &&
+                  status.needsUpdate &&
+                  status.installAction === null
+                );
+              }),
+          );
+          console.log(
+            hasManualUpdates
+              ? "No updates bb can apply. Run bb updates status for manual updates."
+              : "Everything is up to date.",
+          );
           return;
         }
 

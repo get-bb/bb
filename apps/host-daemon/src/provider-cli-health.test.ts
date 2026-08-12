@@ -271,10 +271,11 @@ function installMissingClaudeCommands(
   runner.setSpawnError("claude", ["--version"], "spawn claude ENOENT");
   runner.setSuccess(
     "npm",
-    ["view", "@anthropic-ai/claude-code", "version"],
-    "2.1.148\n",
+    ["view", "@anthropic-ai/claude-code", "dist-tags", "--json"],
+    JSON.stringify({ latest: "2.1.148", stable: "2.1.140" }),
   );
   installNpmStateCommands(runner, CLAUDE_CODE_DEFINITION, "/usr/local", null);
+  runner.setSpawnError("claude", ["doctor"], "spawn claude ENOENT");
 }
 
 function installMissingCursorCommands(
@@ -314,14 +315,50 @@ function installOutdatedExternalClaudeCommands(
   runner.setSuccess("claude", ["--version"], "2.1.147 (Claude Code)\n");
   runner.setSuccess(
     "npm",
-    ["view", "@anthropic-ai/claude-code", "version"],
-    "2.1.148\n",
+    ["view", "@anthropic-ai/claude-code", "dist-tags", "--json"],
+    JSON.stringify({ latest: "2.1.148", stable: "2.1.140" }),
   );
   installNpmStateCommands(
     runner,
     CLAUDE_CODE_DEFINITION,
     "/Users/me/.npm-global",
     "2.1.147",
+  );
+  runner.setSuccess(
+    "claude",
+    ["doctor"],
+    [
+      "Running: npm-global (2.1.147)",
+      "Path: /opt/homebrew/bin/claude",
+      "Auto-update channel: latest",
+    ].join("\n"),
+  );
+}
+
+function installOutdatedNativeClaudeCommands(
+  runner: FakeProviderCliCommandRunner,
+): void {
+  runner.setSuccess("which", ["claude"], "/Users/me/.local/bin/claude\n");
+  runner.setSuccess("claude", ["--version"], "2.1.147 (Claude Code)\n");
+  runner.setSuccess(
+    "npm",
+    ["view", "@anthropic-ai/claude-code", "dist-tags", "--json"],
+    JSON.stringify({ latest: "2.1.148", stable: "2.1.140" }),
+  );
+  installNpmStateCommands(
+    runner,
+    CLAUDE_CODE_DEFINITION,
+    "/Users/me/.npm-global",
+    null,
+  );
+  runner.setSuccess(
+    "claude",
+    ["doctor"],
+    [
+      "Running: native (2.1.147)",
+      "Path: /Users/me/.local/share/claude/versions/2.1.147",
+      "Auto-update channel: latest",
+    ].join("\n"),
   );
 }
 
@@ -332,14 +369,23 @@ function installCurrentClaudeCommands(
   runner.setSuccess("claude", ["--version"], "2.1.148 (Claude Code)\n");
   runner.setSuccess(
     "npm",
-    ["view", "@anthropic-ai/claude-code", "version"],
-    "2.1.148\n",
+    ["view", "@anthropic-ai/claude-code", "dist-tags", "--json"],
+    JSON.stringify({ latest: "2.1.148", stable: "2.1.140" }),
   );
   installNpmStateCommands(
     runner,
     CLAUDE_CODE_DEFINITION,
     "/opt/homebrew",
     "2.1.148",
+  );
+  runner.setSuccess(
+    "claude",
+    ["doctor"],
+    [
+      "Running: npm-global (2.1.148)",
+      "Path: /opt/homebrew/lib/node_modules/@anthropic-ai/claude-code/bin/claude.exe",
+      "Auto-update channel: latest",
+    ].join("\n"),
   );
 }
 
@@ -519,9 +565,25 @@ describe("provider CLI health", () => {
     });
   });
 
-  it("offers a self-update action when the active executable is external", async () => {
+  it("does not offer to update an npm install from a different global prefix", async () => {
     const runner = new FakeProviderCliCommandRunner();
     installOutdatedExternalClaudeCommands(runner);
+
+    const status = await inspectProviderCli({
+      definition: CLAUDE_CODE_DEFINITION,
+      runner,
+      nodePlatform: "darwin",
+    });
+
+    expect(status.installed).toBe(true);
+    expect(status.installSource).toBe("external");
+    expect(status.needsUpdate).toBe(true);
+    expect(status.installAction).toBeNull();
+  });
+
+  it("offers a self-update action for a native Claude Code install", async () => {
+    const runner = new FakeProviderCliCommandRunner();
+    installOutdatedNativeClaudeCommands(runner);
 
     const status = await inspectProviderCli({
       definition: CLAUDE_CODE_DEFINITION,
@@ -538,6 +600,39 @@ describe("provider CLI health", () => {
       commandKind: "exec",
       command: "claude update",
     });
+  });
+
+  it("uses Claude Code's stable release channel when checking for updates", async () => {
+    const runner = new FakeProviderCliCommandRunner();
+    runner.setSuccess("which", ["claude"], "/Users/me/.local/bin/claude\n");
+    runner.setSuccess("claude", ["--version"], "2.1.220 (Claude Code)\n");
+    runner.setSuccess(
+      "npm",
+      ["view", "@anthropic-ai/claude-code", "dist-tags", "--json"],
+      JSON.stringify({ latest: "2.1.227", stable: "2.1.220" }),
+    );
+    installNpmStateCommands(
+      runner,
+      CLAUDE_CODE_DEFINITION,
+      "/Users/me/.npm-global",
+      null,
+    );
+    runner.setSuccess(
+      "claude",
+      ["doctor"],
+      ["Running: native (2.1.220)", "Auto-update channel: stable"].join("\n"),
+    );
+
+    const status = await inspectProviderCli({
+      definition: CLAUDE_CODE_DEFINITION,
+      runner,
+      nodePlatform: "darwin",
+    });
+
+    expect(status.currentVersion).toBe("2.1.220");
+    expect(status.latestVersion).toBe("2.1.220");
+    expect(status.needsUpdate).toBe(false);
+    expect(status.installAction).toBeNull();
   });
 
   it("does not report an update when the CLI version matches npm latest", async () => {
@@ -574,7 +669,7 @@ describe("provider CLI health", () => {
     expect(status.cursor.installed).toBe(true);
     expect(runner.commandLines()).toContain("npm view @openai/codex version");
     expect(runner.commandLines()).toContain(
-      "npm view @anthropic-ai/claude-code version",
+      "npm view @anthropic-ai/claude-code dist-tags --json",
     );
     expect(runner.commandLines()).toContain("which cursor-agent");
     expect(runner.commandLines()).not.toContain("npm view cursor version");

@@ -237,6 +237,32 @@ function createProviderCliInstallEventStream(
   });
 }
 
+function claudeCodeStatus(args: {
+  currentVersion: string;
+  latestVersion: string;
+}): ProviderCliStatus {
+  return {
+    displayName: "Claude Code",
+    executableName: "claude",
+    executablePath: "/Users/me/.local/bin/claude",
+    installed: true,
+    installSource: "external",
+    currentVersion: args.currentVersion,
+    latestVersion: args.latestVersion,
+    minimumSupportedVersion: null,
+    npmPackageName: "@anthropic-ai/claude-code",
+    npmGlobalPackageVersion: null,
+    installAction: {
+      kind: "update",
+      label: "Update",
+      commandKind: "exec",
+      command: "claude update",
+    },
+    needsUpdate: args.currentVersion !== args.latestVersion,
+    versionUnsupported: false,
+  };
+}
+
 describe("dispatchCommand", () => {
   it("flushes buffered events before reporting thread.stop success", async () => {
     const runtime = createRuntime();
@@ -1181,6 +1207,23 @@ describe("dispatchCommand", () => {
       const streamProviderCliInstall = vi.fn(() =>
         createProviderCliInstallEventStream(testCase.events),
       );
+      const getProviderCliStatusForProvider =
+        testCase.provider === "claudeCode"
+          ? vi
+              .fn()
+              .mockResolvedValueOnce(
+                claudeCodeStatus({
+                  currentVersion: "2.1.220",
+                  latestVersion: "2.1.227",
+                }),
+              )
+              .mockResolvedValueOnce(
+                claudeCodeStatus({
+                  currentVersion: "2.1.227",
+                  latestVersion: "2.1.227",
+                }),
+              )
+          : undefined;
 
       const result = await dispatchOnlineRpcCommand(
         {
@@ -1197,6 +1240,9 @@ describe("dispatchCommand", () => {
           fetchProjectAttachment: async () => {
             throw new Error("Unexpected project attachment fetch");
           },
+          ...(getProviderCliStatusForProvider === undefined
+            ? {}
+            : { getProviderCliStatusForProvider }),
           runtimeManager: manager,
           streamProviderCliInstall,
           threadStorageRootPath: "/tmp/bb-thread-storage",
@@ -1210,6 +1256,92 @@ describe("dispatchCommand", () => {
       ).resolves.toBe(runtime);
       expect(createRuntimeSpy).toHaveBeenCalledTimes(1);
     }
+  });
+
+  it("reports a successful Claude update command as failed when the active executable stays old", async () => {
+    const dataDir = await makeTempDir("bb-command-dispatch-provider-cli-");
+    const runtime = createRuntime();
+    const manager = new RuntimeManager({
+      createRuntime: () => runtime,
+      dataDir,
+      provisionWorkspace: async () => createWorkspace(),
+    });
+    const getProviderCliStatusForProvider = vi
+      .fn()
+      .mockResolvedValueOnce(
+        claudeCodeStatus({
+          currentVersion: "2.1.220",
+          latestVersion: "2.1.227",
+        }),
+      )
+      .mockResolvedValueOnce(
+        claudeCodeStatus({
+          currentVersion: "2.1.220",
+          latestVersion: "2.1.227",
+        }),
+      );
+
+    const result = await dispatchOnlineRpcCommand(
+      {
+        type: "provider_cli.install",
+        provider: "claudeCode",
+        actionKind: "update",
+      },
+      {
+        dataDir,
+        eventSink: {
+          emit: vi.fn(),
+          flush: vi.fn(async () => undefined),
+        },
+        fetchProjectAttachment: async () => {
+          throw new Error("Unexpected project attachment fetch");
+        },
+        getProviderCliStatusForProvider,
+        runtimeManager: manager,
+        streamProviderCliInstall: () =>
+          createProviderCliInstallEventStream([
+            {
+              type: "started",
+              provider: "claudeCode",
+              command: "claude update",
+            },
+            {
+              type: "output",
+              provider: "claudeCode",
+              stream: "stdout",
+              text: "Successfully updated from 2.1.220 to version 2.1.227\n",
+            },
+            {
+              type: "completed",
+              provider: "claudeCode",
+              exitCode: 0,
+              signal: null,
+              success: true,
+            },
+          ]),
+        threadStorageRootPath: "/tmp/bb-thread-storage",
+      },
+    );
+
+    expect(getProviderCliStatusForProvider).toHaveBeenCalledTimes(2);
+    expect(result.events).toEqual([
+      expect.objectContaining({ type: "started" }),
+      expect.objectContaining({ type: "output" }),
+      expect.objectContaining({
+        type: "error",
+        provider: "claudeCode",
+        message: expect.stringContaining(
+          "still reports 2.1.220 (expected 2.1.227)",
+        ),
+      }),
+      {
+        type: "completed",
+        provider: "claudeCode",
+        exitCode: 0,
+        signal: null,
+        success: false,
+      },
+    ]);
   });
 
   // Regression: a thread.start whose freshly staged skill catalog differed

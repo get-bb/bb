@@ -1,6 +1,7 @@
 import {
   providerCliInstallEventSchema,
   type ProviderCliInstallEvent,
+  type ProviderCliStatus,
   HostDaemonCommand,
   HostDaemonCommandResult,
   HostDaemonOnlineRpcCommand,
@@ -8,6 +9,7 @@ import {
   HostDaemonOnlineRpcResult,
   HostDaemonSettledCommandType,
 } from "@bb/host-daemon-contract";
+import semver from "semver";
 import {
   CommandDispatchError,
   defaultListModels,
@@ -60,6 +62,7 @@ import { getProviderUsage } from "./provider-usage.js";
 import {
   getKnownAcpAgentsStatus,
   getProviderCliStatus,
+  getProviderCliStatusForProvider as inspectProviderCliStatusForProvider,
   ProviderCliInstallInProgressError,
   streamProviderCliInstall,
 } from "./provider-cli-health.js";
@@ -171,6 +174,61 @@ async function readProviderCliInstallEvents(
   return events;
 }
 
+async function tryGetProviderCliStatusForProvider(
+  provider: CommandOf<"provider_cli.install">["provider"],
+  options: CommandDispatchOptions,
+  env: NodeJS.ProcessEnv,
+): Promise<ProviderCliStatus | null> {
+  try {
+    if (options.getProviderCliStatusForProvider !== undefined) {
+      return await options.getProviderCliStatusForProvider(provider);
+    }
+    return await inspectProviderCliStatusForProvider(provider, { env });
+  } catch {
+    return null;
+  }
+}
+
+function verifyClaudeCodeUpdateEvents(args: {
+  before: ProviderCliStatus;
+  after: ProviderCliStatus | null;
+  events: ProviderCliInstallEvent[];
+}): ProviderCliInstallEvent[] {
+  const completedIndex = args.events.findIndex(
+    (event) => event.type === "completed" && event.success,
+  );
+  const expectedVersion = args.before.latestVersion;
+  const actualVersion = args.after?.currentVersion ?? null;
+  if (
+    completedIndex === -1 ||
+    expectedVersion === null ||
+    (actualVersion !== null &&
+      semver.valid(actualVersion) !== null &&
+      semver.valid(expectedVersion) !== null &&
+      semver.gte(actualVersion, expectedVersion))
+  ) {
+    return args.events;
+  }
+
+  const executable =
+    args.after?.executablePath ??
+    args.before.executablePath ??
+    args.before.executableName;
+  const message = `Claude Code's update command exited successfully, but ${executable} still reports ${actualVersion ?? "an unknown version"} (expected ${expectedVersion}). The executable may be pinned by PATH or managed by another installer. Run \`claude doctor\` on this machine and update the installation it reports.`;
+  const verifiedEvents = [...args.events];
+  const completedEvent = verifiedEvents[completedIndex];
+  if (completedEvent?.type !== "completed") {
+    return args.events;
+  }
+  verifiedEvents[completedIndex] = { ...completedEvent, success: false };
+  verifiedEvents.splice(completedIndex, 0, {
+    type: "error",
+    provider: "claudeCode",
+    message,
+  });
+  return verifiedEvents;
+}
+
 async function installProviderCliOnHost(
   command: CommandOf<"provider_cli.install">,
   options: CommandDispatchOptions,
@@ -179,15 +237,38 @@ async function installProviderCliOnHost(
     const env = providerCliEnvFromShellEnv(
       options.runtimeManager.getShellEnv(),
     );
+    const claudeCodeStatusBefore =
+      command.provider === "claudeCode" && command.actionKind === "update"
+        ? await tryGetProviderCliStatusForProvider(
+            command.provider,
+            options,
+            env,
+          )
+        : null;
     const streamInstall =
       options.streamProviderCliInstall ?? streamProviderCliInstall;
-    const events = await readProviderCliInstallEvents(
+    let events = await readProviderCliInstallEvents(
       streamInstall({
         provider: command.provider,
         actionKind: command.actionKind,
         env,
       }),
     );
+    if (
+      claudeCodeStatusBefore !== null &&
+      events.some((event) => event.type === "completed" && event.success)
+    ) {
+      const claudeCodeStatusAfter = await tryGetProviderCliStatusForProvider(
+        command.provider,
+        options,
+        env,
+      );
+      events = verifyClaudeCodeUpdateEvents({
+        before: claudeCodeStatusBefore,
+        after: claudeCodeStatusAfter,
+        events,
+      });
+    }
     if (
       shouldInvalidateProviderMaintenanceRuntimeAfterProviderCliInstall({
         command,

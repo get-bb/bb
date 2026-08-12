@@ -18,6 +18,7 @@ import type { HostDaemonLogger } from "./logger.js";
 import { ensureNodePtySpawnHelperExecutable } from "./terminals/terminal-manager.js";
 
 const COMMAND_CHECK_TIMEOUT_MS = 5_000;
+const CLAUDE_DOCTOR_TIMEOUT_MS = 10_000;
 const NPM_VIEW_TIMEOUT_MS = 15_000;
 const NPM_INSTALL_STATE_TIMEOUT_MS = 5_000;
 const CLAUDE_CODE_INSTALL_SCRIPT_URL = "https://claude.ai/install.sh";
@@ -43,6 +44,24 @@ const npmGlobalListResponseSchema = z
       .default({}),
   })
   .passthrough();
+
+const npmDistTagsSchema = z
+  .object({
+    latest: z.string().min(1),
+    stable: z.string().min(1).optional(),
+  })
+  .passthrough();
+
+type ClaudeCodeInstallMethod =
+  | "native"
+  | "npm-global"
+  | "package-manager"
+  | "unknown";
+
+interface ClaudeCodeDoctorStatus {
+  installMethod: ClaudeCodeInstallMethod;
+  updateChannel: "latest" | "stable";
+}
 
 export interface ProviderCliDefinition {
   key: ProviderCliKey;
@@ -179,9 +198,11 @@ interface ResolveProviderCliInstallSourceArgs {
 interface BuildInstallActionArgs {
   definition: ProviderCliDefinition;
   installed: boolean;
+  installSource: ProviderCliInstallSource;
   needsUpdate: boolean;
   versionUnsupported: boolean;
   nodePlatform: NodeJS.Platform;
+  claudeCodeDoctorStatus: ClaudeCodeDoctorStatus | null;
 }
 
 interface CreateCommandResultArgs {
@@ -375,6 +396,58 @@ function parseNpmGlobalPackageVersion(
   }
 }
 
+function parseNpmDistTagVersion(
+  text: string,
+  channel: "latest" | "stable",
+): string | null {
+  const trimmedText = text.trim();
+  if (trimmedText.length === 0) {
+    return null;
+  }
+
+  try {
+    const parsed = npmDistTagsSchema.safeParse(JSON.parse(trimmedText));
+    if (!parsed.success) {
+      return null;
+    }
+    const version =
+      channel === "stable"
+        ? (parsed.data.stable ?? parsed.data.latest)
+        : parsed.data.latest;
+    return extractVersion(version);
+  } catch {
+    return null;
+  }
+}
+
+function parseClaudeCodeDoctorStatus(
+  text: string,
+): ClaudeCodeDoctorStatus | null {
+  const runningMatch = /^Running:\s+([^\s(]+)/mu.exec(text);
+  const channelMatch = /^Auto-update channel:\s+(latest|stable)\s*$/mu.exec(
+    text,
+  );
+  const rawInstallMethod = runningMatch?.[1];
+  const rawUpdateChannel = channelMatch?.[1];
+  if (
+    !rawInstallMethod ||
+    (rawUpdateChannel !== "latest" && rawUpdateChannel !== "stable")
+  ) {
+    return null;
+  }
+
+  const installMethod: ClaudeCodeInstallMethod =
+    rawInstallMethod === "native" || rawInstallMethod === "npm-global"
+      ? rawInstallMethod
+      : ["homebrew", "winget", "apt", "dnf", "apk"].includes(rawInstallMethod)
+        ? "package-manager"
+        : "unknown";
+  return {
+    installMethod,
+    updateChannel: rawUpdateChannel,
+  };
+}
+
 function needsProviderCliUpdate(args: NeedsProviderCliUpdateArgs): boolean {
   if (!args.installed || !args.currentVersion || !args.latestVersion) {
     return false;
@@ -521,9 +594,11 @@ function resolveExecutablePathStatus(whichResult: ProviderCliCommandResult): {
 function buildInstallAction({
   definition,
   installed,
+  installSource,
   needsUpdate,
   versionUnsupported,
   nodePlatform,
+  claudeCodeDoctorStatus,
 }: BuildInstallActionArgs): ProviderCliInstallAction | null {
   if (!installed) {
     const command = installActionCommand(definition, nodePlatform);
@@ -534,7 +609,13 @@ function buildInstallAction({
       command: command.displayCommand,
     };
   }
-  if (needsUpdate) {
+  const canRunUpdate =
+    definition.key !== "claudeCode" ||
+    claudeCodeDoctorStatus?.installMethod === "native" ||
+    (installSource === "npmGlobal" &&
+      (claudeCodeDoctorStatus === null ||
+        claudeCodeDoctorStatus.installMethod === "npm-global"));
+  if (needsUpdate && canRunUpdate) {
     const command = definition.updateCommand;
     return {
       kind: "update",
@@ -543,7 +624,7 @@ function buildInstallAction({
       command: command.displayCommand,
     };
   }
-  if (versionUnsupported) {
+  if (versionUnsupported && canRunUpdate) {
     const command = definition.updateCommand;
     return {
       kind: "update",
@@ -687,6 +768,7 @@ export async function inspectProviderCli({
     latestResult,
     npmPrefixResult,
     npmListResult,
+    claudeDoctorResult,
   ] = await Promise.all([
     runner.run({
       command: "which",
@@ -702,7 +784,10 @@ export async function inspectProviderCli({
       ? Promise.resolve(null)
       : runner.run({
           command: npmCommand,
-          args: ["view", npmPackageName, "version"],
+          args:
+            definition.key === "claudeCode"
+              ? ["view", npmPackageName, "dist-tags", "--json"]
+              : ["view", npmPackageName, "version"],
           timeoutMs: NPM_VIEW_TIMEOUT_MS,
         }),
     runner.run({
@@ -717,6 +802,13 @@ export async function inspectProviderCli({
           args: ["list", "-g", npmPackageName, "--depth=0", "--json"],
           timeoutMs: NPM_INSTALL_STATE_TIMEOUT_MS,
         }),
+    definition.key === "claudeCode"
+      ? runner.run({
+          command: definition.executableName,
+          args: ["doctor"],
+          timeoutMs: CLAUDE_DOCTOR_TIMEOUT_MS,
+        })
+      : Promise.resolve(null),
   ]);
 
   const { executablePath, installed } = resolveExecutableInstallStatus(
@@ -726,10 +818,21 @@ export async function inspectProviderCli({
   const currentVersion = isSuccessfulCommand(versionResult)
     ? extractVersion(`${versionResult.stdout}\n${versionResult.stderr}`)
     : null;
-  const latestVersion =
-    latestResult !== null && isSuccessfulCommand(latestResult)
-      ? extractVersion(`${latestResult.stdout}\n${latestResult.stderr}`)
+  const claudeCodeDoctorStatus =
+    claudeDoctorResult !== null && isSuccessfulCommand(claudeDoctorResult)
+      ? parseClaudeCodeDoctorStatus(
+          `${claudeDoctorResult.stdout}\n${claudeDoctorResult.stderr}`,
+        )
       : null;
+  const latestVersion =
+    latestResult === null || !isSuccessfulCommand(latestResult)
+      ? null
+      : definition.key === "claudeCode"
+        ? parseNpmDistTagVersion(
+            `${latestResult.stdout}\n${latestResult.stderr}`,
+            claudeCodeDoctorStatus?.updateChannel ?? "latest",
+          )
+        : extractVersion(`${latestResult.stdout}\n${latestResult.stderr}`);
   const npmGlobalPrefix = isSuccessfulCommand(npmPrefixResult)
     ? firstOutputLine(npmPrefixResult.stdout)
     : null;
@@ -759,9 +862,11 @@ export async function inspectProviderCli({
   const installAction = buildInstallAction({
     definition,
     installed,
+    installSource,
     needsUpdate,
     versionUnsupported,
     nodePlatform,
+    claudeCodeDoctorStatus,
   });
 
   return {

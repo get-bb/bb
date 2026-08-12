@@ -1056,12 +1056,12 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  // Version 104 makes terminal.close idempotent in the daemon. An enrolled
-  // daemon on an older build silently ignores a close for a terminal missing
-  // from its in-memory map, leaving the server row running and the panel tab
-  // impossible to close, so enrolled machines must update for the new behavior.
-  it("uses protocol version 104 for idempotent terminal closes", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(104);
+  // Version 105 makes Claude Code update status respect the active release
+  // channel and installation manager. Older daemons can keep advertising an
+  // update their active executable will never apply, so enrolled machines must
+  // update for the new behavior.
+  it("uses protocol version 105 for Claude Code update status", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(105);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {
