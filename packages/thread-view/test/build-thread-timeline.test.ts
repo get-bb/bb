@@ -23,6 +23,7 @@ import type {
 } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
 import {
+  buildTimelineRowTitle,
   buildThreadTimelineFromEvents,
   extractThreadTimelineActivePlanTurn,
   type ThreadEventWithMeta,
@@ -58,6 +59,13 @@ interface ToolCallItemEventArgs {
   tool: string;
   toolArgs?: JsonObject;
   type: "item/completed" | "item/started";
+}
+
+interface LowercaseStructuredToolCase {
+  expectedIntent: JsonObject;
+  expectedTitle: string;
+  tool: string;
+  toolArgs: JsonObject;
 }
 
 interface ImageViewItemEventArgs {
@@ -912,6 +920,75 @@ function fileChangeRowIdByPath(
 }
 
 describe("buildThreadTimelineFromEvents", () => {
+  const lowercaseStructuredToolCases: LowercaseStructuredToolCase[] = [
+    {
+      expectedIntent: {
+        type: "read",
+        name: "read",
+        path: "src/app.ts",
+      },
+      expectedTitle: "Read src/app.ts",
+      tool: "read",
+      toolArgs: { path: "src/app.ts", offset: 1, limit: 20 },
+    },
+    {
+      expectedIntent: {
+        type: "search",
+        query: "TODO",
+        path: "src",
+      },
+      expectedTitle: "Searched for TODO in src",
+      tool: "grep",
+      toolArgs: { pattern: "TODO", path: "src" },
+    },
+    {
+      expectedIntent: {
+        type: "list_files",
+        path: "src/**/*.ts",
+      },
+      expectedTitle: "Listed files in src/**/*.ts",
+      tool: "glob",
+      toolArgs: { pattern: "src/**/*.ts" },
+    },
+  ];
+
+  it.each(lowercaseStructuredToolCases)(
+    "humanizes Pi's lowercase $tool tool calls",
+    ({ expectedIntent, expectedTitle, tool, toolArgs }) => {
+      const rows = buildTimelineRows([
+        turnStartedEvent({ seq: 1 }),
+        toolCallItemEvent({
+          seq: 2,
+          tool,
+          toolArgs,
+          type: "item/started",
+        }),
+        toolCallItemEvent({
+          result: "ok",
+          seq: 3,
+          tool,
+          toolArgs,
+          type: "item/completed",
+        }),
+      ]);
+      const [row] = collectToolRows(rows);
+
+      expect(row).toBeDefined();
+      if (!row) {
+        throw new Error(`Expected a projected ${tool} tool row`);
+      }
+      expect(row.activityIntents).toEqual([
+        expect.objectContaining(expectedIntent),
+      ]);
+      expect(
+        buildTimelineRowTitle(row, {
+          summaryStyle: "bundle",
+          workStyle: "default",
+        }).plain,
+      ).toBe(expectedTitle);
+    },
+  );
+
   it("preserves server-enriched plugin status labels on a tool row", () => {
     const statusLabels = {
       pending: "Reading project overview",

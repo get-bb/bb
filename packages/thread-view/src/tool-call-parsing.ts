@@ -7,9 +7,13 @@ const DELEGATION_TOOL_NAMES = new Set([
   "spawnAgent",
   "resumeAgent",
 ]);
-const STRUCTURED_READ_TOOL_NAMES = new Set(["Read"]);
-const STRUCTURED_SEARCH_TOOL_NAMES = new Set(["Grep"]);
-const STRUCTURED_LIST_TOOL_NAMES = new Set(["Glob"]);
+// Claude names these built-ins with title case while Pi uses lowercase names.
+// Keep this as an explicit alias list instead of normalizing every tool name:
+// plugin-contributed tool names are case-sensitive and may not share the
+// built-ins' semantics.
+const STRUCTURED_READ_TOOL_NAMES = new Set(["Read", "read"]);
+const STRUCTURED_SEARCH_TOOL_NAMES = new Set(["Grep", "grep"]);
+const STRUCTURED_LIST_TOOL_NAMES = new Set(["Glob", "glob"]);
 
 const SHELL_SEGMENT_BREAK_TOKENS = new Set(["&&", "||", "|", ";", "\n"]);
 
