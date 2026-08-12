@@ -8,6 +8,7 @@ import {
 } from "@bb/plugin-sdk/testing/app";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createPluginContext } from "../lib/context.js";
+import { MIGRATIONS } from "../lib/store/schema.js";
 
 const backendLaneMocks = vi.hoisted(() => ({
   remote: vi.fn(),
@@ -237,7 +238,7 @@ describe("WP-01 scaffold", () => {
     expect(first).toBe(second);
     expect(database).toHaveBeenCalledOnce();
     expect(migrate).toHaveBeenCalledOnce();
-    expect(migrate).toHaveBeenCalledWith(first, []);
+    expect(migrate).toHaveBeenCalledWith(first, MIGRATIONS);
     await host.harness.lifecycle.dispose();
   });
 
