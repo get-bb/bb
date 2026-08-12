@@ -1,6 +1,6 @@
 # Work Package Index
 
-*70 work packages across nine lanes. Start with `HANDOFF — Product & Architecture.md`, then the accepted direct-API ADR and `api-reference/README.md`, then the Master Plan, AGENTS, and your WP. The ADR and frozen interfaces outrank historical Forge-first recon on transport ownership.*
+*70 work packages across nine logical lanes. Start with `HANDOFF — Product & Architecture.md`, then the accepted direct-API ADR and `api-reference/README.md`, then the Master Plan, AGENTS, the scheduling bootstrap/manifest, and your WP. The ADR and frozen interfaces outrank historical Forge-first recon on transport ownership.*
 
 **Status legend:** ✅ detailed implementation spec written
 
@@ -11,6 +11,10 @@
 Each WP is a self-contained unit sized for one coding agent working one to four days. A WP file contains: files owned, files forbidden, context, numbered build steps, a real interface contract, checkbox acceptance criteria, a named test plan including an error path, a "do not" list, and open questions.
 
 **Dependencies are hard.** Do not start a WP whose `Depends on` set is incomplete — the frozen interfaces it consumes will not exist and you will invent an incompatible one.
+
+**FS-93 adds a scheduling overlay.** [`scheduling/wp-coupling-manifest.json`](../scheduling/wp-coupling-manifest.json) covers every remaining unstarted WP exactly once and may add a predecessor edge between packages that share one decision owner. The union of a WP's product prerequisites and manifest dependencies is the effective dispatch graph. Read [`scheduling/PROGRAM-BOOTSTRAP.md`](../scheduling/PROGRAM-BOOTSTRAP.md) for the binding verdicts and [`scheduling/COORDINATOR-RUNBOOK.md`](../scheduling/COORDINATOR-RUNBOOK.md) before assigning work.
+
+The 70 historical WP keys remain intact: 64 were unstarted at the FS-93 audit point and map to 28 remaining decision-owner clusters. No WP was merged. Keep the four-lane cap until WP-10 through WP-13 and the machine readiness gate complete; then cap at six, with promotion to nine conditional on the runbook's dependency, workflow, and disk checks.
 
 **Five artifacts are frozen** and may not be edited by any lane: `shared/contract.ts` (WP-03) · `lib/store/schema.ts` (WP-04) · `lib/sync/registry.ts` (WP-05) · `lib/remote/types.ts` (WP-06) · `test/mock-remote/fixtures/**` (WP-08). Plus the two composition roots from WP-01. Need a change? Write to `AMENDMENTS.md` and stop.
 
