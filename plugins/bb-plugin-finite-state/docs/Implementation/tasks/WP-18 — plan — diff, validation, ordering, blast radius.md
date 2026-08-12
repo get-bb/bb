@@ -32,7 +32,7 @@
    - **Schema/vocabulary** — VEX enums verbatim from frozen contract (status/response/justification, RECON §2.6); `NOT_AFFECTED ⇒ justification` required; incomplete decisions (`needs_completion`) are rejected with file/line (SPEC 02 §8.8).
    - **Blast radius** — `blast-radius.ts`: any delete, or > 20 entities changed ⇒ `requiresConfirmation: true` with a summary.
 4. **`order.ts`** — topological order from payload references (slug refs, WP-15); cycles reported as validation errors, never silently broken.
-5. **Plan persistence** — serialize the computed plan to `.fs-sync/plan-<planId>.json` (gitignored machinery; no new SQLite table — the frozen schema has none for plans). `push` (WP-19) applies a persisted plan by id; a stale plan (base moved since compute) is rejected at apply with `PLAN_STALE`.
+5. **Plan persistence** — serialize the computed plan to `.fs-sync/plan-<planId>.json` (gitignored machinery; no new SQLite table). Persist explicit `projectId,projectVersionId`, accepted generation ids, base revisions, `baseStateSha256`, and each item's `expectedBaseContentHash`. `push` rejects a moved generation/revision or changed exact base row with `PLAN_STALE`.
 6. **`render-cli.ts`** — exactly the SPEC 01 §5 format: summary line, `+ create` / `~ update` / `- delete` rows with slug + one-line description, `⚠ conflict` blocks with base/ours/theirs, orphan count trailer.
 7. Replace the `sync.plan` RPC NOT_IMPLEMENTED stub: `sync.plan` now computes and returns the plan (paged if large); CLI `bb finite-state plan [surface]` renders it.
 
@@ -45,6 +45,7 @@ export type PlanOp = "create" | "update" | "delete" | "noop" | "conflict" | "orp
 export interface FieldDiff { field: string; base: unknown; ours: unknown; theirs?: unknown; }
 export interface PlanItem {
   kind: EntityKind; key: string; op: PlanOp;
+  expectedBaseContentHash: string | null;      // null only for create/no prior base
   fields: FieldDiff[];                        // empty for create/delete/noop
   referrers?: string[];                       // populated on blocked deletes
   conflict?: { resolution: "unresolved" | "take-ours" | "take-theirs" | "edited";
@@ -53,7 +54,10 @@ export interface PlanItem {
 }
 export interface Plan {
   planId: string;                             // ULID
-  scope: { projectId: string; pvId: string | null };
+  scope: { projectId: string; projectVersionId: string | null };
+  baseGenerationIds: Record<string, string>;
+  baseRevisions: Record<string, number>;
+  baseStateSha256: string;
   createdAt: string;
   staleness: { asOf: string; degraded: boolean };
   items: PlanItem[];                          // in apply order (order.ts)
@@ -81,11 +85,13 @@ export function renderPlanCli(plan: Plan): string;   // SPEC 01 §5 format, byte
 - [ ] Blast radius: 21 changed entities ⇒ `requiresConfirmation: true`; 20 ⇒ false; any delete ⇒ true.
 - [ ] `NOT_AFFECTED` with null justification is rejected with the file/line of the offending YAML block.
 - [ ] Plan never writes: `base_snapshot`, YAML, and the mock server's state are byte-identical before/after `computePlan` (asserted in test).
+- [ ] The same entity keys in two projects/versions produce isolated plans. Null project-level scope maps through the reserved sentinel only inside storage and `"@project"` input is rejected.
+- [ ] A sibling push that advances one base row increments only its kind revision and invalidates a plan with the old `baseStateSha256`; every unchanged item still carries and checks its own expected base hash.
 - [ ] Offline degradation: with the mock unreachable, plan returns `staleness.degraded: true` and still renders.
 - [ ] Green: typecheck/test/lint/build.
 
 ## Test plan
-- `plan.test.ts` — `three-way classification matrix (create/update/delete/noop/conflict)`, `plan is read-only (state snapshot before/after)`, **`remote refresh under 429 exhaustion degrades to stale base with degraded flag` (mock fault injection)**, **`connection reset mid-refresh fails cleanly, no partial state` (mock fault injection)**, `plan persists and reloads by id`.
+- `plan.test.ts` — `three-way classification matrix`, `plan is read-only`, `project/version isolation`, `generation+revision fence and per-item content hashes`, **`remote refresh under 429 exhaustion degrades to accepted stale base`**, **`connection reset leaves accepted base unchanged`**, `plan persists/reloads byte-identically`.
 - `validate.test.ts` — `referential integrity lists referrers`, `derived-field guard per kind`, `VEX vocabulary enforced verbatim`, `needs_completion rejected with file/line` (**error path**), `registerValidator seam invoked for foreign kind`.
 - `order.test.ts` — `creates topologically sorted`, `deletes reversed`, `cycle → validation error`.
 - `render-cli.test.ts` — `SPEC 01 §5 fixture renders byte-identically`, incl. the conflict block with base/ours/theirs.

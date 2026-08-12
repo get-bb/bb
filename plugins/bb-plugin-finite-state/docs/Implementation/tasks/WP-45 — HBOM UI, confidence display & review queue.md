@@ -40,7 +40,7 @@ The authoritative write is a CAS-protected YAML edit through WP-44. The UI reads
 7. Build the review queue as one cell decision per row. Show incumbent and candidates side-by-side with source excerpts. Reasons are proposal, low confidence, conflict, incomplete source, or withdrawn source.
 8. Support keyboard controls: j/k navigate, Enter opens source, a accepts the selected claim, digits choose a candidate, e creates a human edit, and r rejects. Disable shortcuts while focus is in a form control.
 9. Support filter and predicate selection by document, field, provenance, confidence, and reason. Bulk accept/reject requires a confirmation summary that states count, source document, and minimum confidence.
-10. Human review RPCs derive actor identity server-side and CAS-write YAML. The client cannot submit provenance human, acceptance actor, or acceptance time. A CAS conflict reloads the row and preserves the user's draft for manual reapply.
+10. Human review RPC schemas reserve an opaque actor-bound `humanApprovalCapability`, but pinned bb exposes no authenticated actor context and v1 has no mint path. Review mutations therefore remain authorization-unavailable before CAS/YAML side effects. `confirmed`, plugin tokens, `requestInput`, Origin/Host checks, and CLI flags cannot substitute. Once bb supplies verifiable proof, the server derives actor/time from it; the client never submits provenance human, acceptance actor, or acceptance time.
 11. Agent tool registration must not expose accept/reject. CLI review commands are human-facing command paths, not agent capabilities.
 12. Implement loading, actionable empty, stale/error with retry, and unconfigured states for grid, queue, popover, and summary card.
 
@@ -52,7 +52,9 @@ The authoritative write is a CAS-protected YAML edit through WP-44. The UI reads
       | { action: "edit"; partId: string; field: string; value: unknown; note?: string };
 
     export interface ReviewRequest {
-      projectKey: string;
+      projectId: string;
+      projectVersionId: string | null;
+      humanApprovalCapability: HumanApprovalCapability;
       expectedHbomSha256: string;
       decisions: ReviewDecision[];
     }

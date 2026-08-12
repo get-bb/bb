@@ -390,38 +390,51 @@ CREATE TABLE bench_attestation (     -- the in-toto/SLSA evidence, bound to the 
 ### C12.1 Data model (`data.db`)
 
 ```sql
-CREATE TABLE document (             -- the SINGLE document ledger for the plugin (SPEC 06 §2.6 ⚑12);
-                                    -- SPEC 04's hbom_docs is a filtered view over it
-  id           TEXT PRIMARY KEY,    -- AS document id, or local uuid until pushed
-  project_key  TEXT NOT NULL,
-  filename     TEXT NOT NULL,
-  doc_type     TEXT,                -- AS enum + datasheet|bom (pending enum extension)
-  doc_kind     TEXT,                -- ingestion kind: datasheet|bom|schematic|… (drives the hbom_docs view)
-  sha256       TEXT NOT NULL,
-  size         INTEGER,
-  local_path   TEXT,               -- product-security/documents/<sha>-<name>
-  as_document_id TEXT,             -- set when pushed to AS
-  uploaded_at  TEXT,
-  analyzed_at  TEXT, analyzed_by TEXT, cells_extracted INTEGER,
-  synced_at    TEXT NOT NULL
+CREATE TABLE document (             -- the SINGLE scoped ledger; WP-04 is frozen authority
+  project_id         TEXT NOT NULL,
+  project_version_id TEXT NOT NULL, -- backend @project sentinel only; wire null never the literal
+  document_id        TEXT NOT NULL,
+  sha256             TEXT NOT NULL,
+  name               TEXT NOT NULL,
+  path               TEXT NOT NULL,
+  doc_kind           TEXT NOT NULL,
+  mime_type          TEXT NOT NULL,
+  bytes              INTEGER NOT NULL,
+  withdrawn          INTEGER NOT NULL DEFAULT 0,
+  needs_ocr          INTEGER NOT NULL DEFAULT 0,
+  uploaded_at        TEXT NOT NULL,
+  analyzed_by        TEXT,
+  analyzed_at        TEXT,
+  cells_extracted    INTEGER NOT NULL DEFAULT 0,
+  indexed_at         TEXT NOT NULL,
+  PRIMARY KEY (project_id, project_version_id, document_id),
+  UNIQUE (project_id, project_version_id, sha256)
 );
 CREATE TABLE document_extraction (  -- the overlay + the provenance ledger
-  id          TEXT PRIMARY KEY,
-  document_id TEXT NOT NULL REFERENCES document(id),
-  field       TEXT NOT NULL,        -- mpn | manufacturer | package | reg:GPIO_DIR | clause:annex1-2c
-  value       TEXT,
-  page        INTEGER, region TEXT, -- source_ref = page + bbox
-  confidence  REAL,                 -- numeric 0–1 (SPEC 04 §4.3 model; high|medium|low bands are display-only)
-  target      TEXT,                 -- hbom:HBOM-0001.mpn | req:REQ-104.rationale | null
-  extracted_at TEXT
+  project_id         TEXT NOT NULL,
+  project_version_id TEXT NOT NULL,
+  extraction_id      TEXT NOT NULL,
+  document_id        TEXT NOT NULL,
+  field              TEXT NOT NULL,
+  value              TEXT,
+  confidence         REAL,
+  source_ref         TEXT NOT NULL,
+  locator_kind       TEXT NOT NULL, -- pdf | sheet | text; typed locator columns follow
+  status             TEXT NOT NULL,
+  extracted_at       TEXT NOT NULL,
+  PRIMARY KEY (project_id, project_version_id, extraction_id),
+  FOREIGN KEY (project_id, project_version_id, document_id)
+    REFERENCES document(project_id, project_version_id, document_id) ON DELETE CASCADE
 );
 ```
+
+WP-04 defines the remaining typed locator/target columns and all constraints/indexes. No lane may replace this with an unscoped digest lookup or another document ledger.
 
 ## C13. How documents feed the other surfaces
 
 **→ HBOM extraction (SPEC 04).** The document extraction agent parses datasheets/BOM spreadsheets/schematic exports and emits `{value, provenance, source_ref, confidence}` cells that become the `product-security/hbom/hbom.yaml` component fields (SPEC 04 §4.3; MPN, manufacturer, package, reference designators, lifecycle, country-of-origin). `document_extraction.target = "hbom:HBOM-0001.mpn"` is the join; the shared `document` ledger (C12.1) records what was ingested (filename, doc_kind, sha256, analyzed_at). AS seeds almost no real HBOM fields (hardware components carry no MPN/manufacturer/ref-des), so **the documents carry the real data** — this is document-driven HBOM, not magic inference (SPEC 04 owns the merge/review-queue; this surface is the source).
 
-**→ Requirements grounding (SPEC 03).** Regulatory and specification documents ground requirements: a requirement's `rationale`/`controls`/`standards` cite a clause, and the clause text can be extracted from the uploaded regulation PDF (`document_extraction.target = "req:REQ-104.rationale"`, or a standard-clause body for the SPEC 03 `standard_clauses` cache). The agent uses `fs_doc_search` (X14) to find the spec text a requirement must satisfy — e.g., "find the secure-boot clause in cra-annex-i.pdf" — and cites the page in the requirement's `source_description`. Documents are how "the spec said so" becomes a link, not a memory.
+**→ Requirements grounding (SPEC 03).** Regulatory and specification documents ground requirements: a requirement's `rationale`/`controls`/`standards` cite a clause, and the clause text can be extracted from the uploaded regulation PDF (`document_extraction.target = "req:REQ-104.rationale"`, or a standard-clause body for the SPEC 03 `standards_clauses` cache). The agent uses `fs_doc_search` (X14) to find the spec text a requirement must satisfy — e.g., "find the secure-boot clause in cra-annex-i.pdf" — and cites the page in the requirement's `source_description`. Documents are how "the spec said so" becomes a link, not a memory.
 
 ---
 
@@ -555,7 +568,7 @@ Ephemeral broadcast — publish "changed" nudges, refetch via RPC; never a data 
 
 1. **`GET /filesystem/export?pv_id=&scan_id=` tarball endpoint (STP + Helix) — the high-leverage ask.** Streams the extracted tree as a tarball; collapses the hours-long first pull to minutes; a real customer feature (offline/air-gapped analysis). **[UNVERIFIED, moderate]** — does not exist; recommend building regardless of this project.
 2. **Reviewed Platform flat filesystem search route** — optional optimization. Without it, v1 enumerates by recursing `browseFirmwareFilesystem`; add only as a named frozen method.
-3. **Normalized run-history sources** — direct AS verification runs plus optional `ForgeComputeClient.listJobs`; the timeline joins them with plugin/host runs rather than inventing one Forge-owned history API.
+3. **Normalized run-history sources** — direct AS verification runs plus optional `ForgeComputeClient.listJobs`; the timeline joins them with plugin/host runs rather than inventing one Forge-owned history API. The invocation allowlist remains closed to the four checksummed MCP operations, while `ForgeJobSnapshot.tool` and the list filter preserve arbitrary Forge registry strings as telemetry metadata.
 4. **Safe Forge firmware-root preparation** — `prepareFirmwareRoot(pv_id, path, digest)` via local process control or a narrow runtime tool; remote Forge explicitly reports unsupported until secure transfer/registration exists.
 5. **Direct Platform artifact-hash exposure** — enables stronger staleness detection; scan id remains the honest fallback.
 6. **Direct AS binary document methods** — verified signed upload/finalize and download streams, plus a `datasheet`/`bom` type extension; optional for v1.

@@ -12,28 +12,28 @@
 Both composition roots; `shared/contract.ts`; `lib/store/schema.ts`; `lib/remote/types.ts`; fixtures; `package.json`; `pnpm-lock.yaml`; every lane.
 
 ## Context
-The registry makes entity classification a compile-time decision instead of a runtime guess. It tells serializers and sync adapters which records are VERSIONED, CACHED, OVERLAY, ACTION-ONLY, or LOCAL-ONLY; where local state lives; and how stable business keys are encoded. A missing entry forces a later lane to invent a parallel sync path, so this file is intentionally complete and frozen.
+The registry makes entity classification a compile-time decision instead of a runtime guess. It tells serializers and sync adapters which records are VERSIONED, CACHED, OVERLAY, or ACTION-ONLY; where local state lives; and how stable business keys are encoded. Local-only is an explicit `localOnly:true` capability on a `server:"none"` VERSIONED or OVERLAY entry, never a fifth entity class. A missing entry forces a later lane to invent a parallel sync path, so this file is intentionally complete and frozen.
 
 ## What to build
-1. Define the five entity classes and discriminated entry shapes. VERSIONED and OVERLAY entries declare their system of record explicitly as `server:"platform"|"assurance-studio"|"none"`; either named remote owner may participate in three-way sync/push through its narrow client. A `server:"none"` VERSIONED artifact remains authored, git-tracked, diffable, and reportable as local-only. CACHED entries name a frozen SQLite table or view. ACTION-ONLY entries persist nothing. LOCAL-ONLY entries are tracked workspace artifacts that never enter a plan. Optional Forge Compute is an execution dependency, not a CRUD owner, and never appears in this registry's `server` union.
+1. Define the four entity classes and discriminated entry shapes. VERSIONED and OVERLAY entries declare their system of record explicitly as `server:"platform"|"assurance-studio"|"none"`; either named remote owner may participate in three-way sync/push through its narrow client. A `server:"none"` VERSIONED artifact remains authored, git-tracked, diffable, and reportable in a local semantic plan. `localOnly:true` is reserved for a `server:"none"` VERSIONED or OVERLAY entry that must never enter a semantic plan or remote push. CACHED entries name a frozen SQLite table or view. ACTION-ONLY entries persist nothing. Optional Forge Compute is an execution dependency, not a CRUD owner, and never appears in this registry's `server` union.
 2. Register the v1 model inventory in the interface contract below. Table names must exist in WP-04. Inline overlays declare their parent; file entries use worktree-relative POSIX paths only.
 3. Implement pure keys: `slugKey`, `reqIdKey`, `hbomIdKey`, `checkCodeKey`, `componentSlugKey`, and `routeSignatureKey`. Normalize Unicode to NFC, trim outer whitespace, reject empty/control/path-separator input, and preserve display case except where a key contract explicitly case-folds.
-4. Implement the finding stable-key ladder's canonical encoders only: exact purl, exact case-folded `(name,group,version)`, and any-version `(name,group)`. WP-23 owns resolution/promotion policy. The canonical serialized key includes project identity and CVE; it never includes finding UUID.
+4. Implement the finding stable-key ladder's canonical encoders only: exact purl, exact case-folded `(name,group,version)`, and any-version `(name,group)`. WP-23 owns resolution/promotion policy. The canonical serialized key includes CVE but never project scope or finding UUID. Every scoped RPC and SQLite record carries `projectId` and `projectVersionId` separately from this stable business key.
 5. Export `EntityKind = keyof typeof ENTITIES`, typed predicates, and `entryFor(kind)`. Unknown runtime strings return a typed error rather than falling through.
-6. Validate at module/test time: unique local destinations, all CACHED tables/views exist in the frozen storage-name union, inline parents exist, and ACTION-ONLY/LOCAL-ONLY/`server:"none"` entries cannot be selected for remote push. `hbomPart` is the deliberate single aggregate file `product-security/hbom/hbom.yaml`, not one file per part; `hbomDoc` is a filtered read over the frozen `hbom_docs` view, not a second ledger.
+6. Validate at module/test time: unique local destinations, all CACHED tables/views exist in the frozen storage-name union, inline parents exist, and ACTION-ONLY/`localOnly:true`/`server:"none"` entries cannot be selected for remote push. `hbomPart` is the deliberate single aggregate file `product-security/hbom/hbom.yaml`, not one file per part; it is not `localOnly` and is therefore visible to local plan/status. `hbomDoc` is a filtered read over the frozen `hbom_docs` view, not a second ledger.
 
 ## Interface contract
 ```ts
 // lib/sync/registry.ts — FROZEN after WP-05.
-export type EntityClass = "VERSIONED" | "CACHED" | "OVERLAY" | "ACTION-ONLY" | "LOCAL-ONLY";
+export type EntityClass = "VERSIONED" | "CACHED" | "OVERLAY" | "ACTION-ONLY";
 type KeyFn = (value: Readonly<Record<string, unknown>>) => string;
 type RemoteTarget = "platform" | "assurance-studio" | "none";
-type FileEntry = { readonly class: "VERSIONED" | "OVERLAY"; readonly server: RemoteTarget; readonly dir: string; readonly key: KeyFn; readonly aggregate?: false };
-type AggregateFileEntry = { readonly class: "VERSIONED"; readonly server: "none"; readonly file: string; readonly key: KeyFn; readonly aggregate: true };
-type InlineEntry = { readonly class: "OVERLAY"; readonly server: RemoteTarget; readonly inline: string; readonly key: KeyFn };
+type FileEntry = { readonly class: "VERSIONED" | "OVERLAY"; readonly server: RemoteTarget; readonly localOnly?: boolean; readonly dir: string; readonly key: KeyFn; readonly aggregate?: false };
+type AggregateFileEntry = { readonly class: "VERSIONED"; readonly server: "none"; readonly localOnly?: false; readonly file: string; readonly key: KeyFn; readonly aggregate: true };
+type InlineEntry = { readonly class: "OVERLAY"; readonly server: RemoteTarget; readonly localOnly?: boolean; readonly inline: string; readonly key: KeyFn };
 type CacheEntry = { readonly class: "CACHED"; readonly table: CacheStorageName; readonly storageKind?: "table" | "view" };
 type ActionEntry = { readonly class: "ACTION-ONLY" };
-type LocalEntry = { readonly class: "LOCAL-ONLY"; readonly dir?: string; readonly file?: string; readonly key?: KeyFn };
+type LocalFileEntry = { readonly class: "VERSIONED" | "OVERLAY"; readonly server: "none"; readonly localOnly: true; readonly file: string };
 
 export const ENTITIES = {
   component:   { class: "VERSIONED", server: "assurance-studio", dir: "product-security/architecture/components", key: slugKey },
@@ -50,6 +50,8 @@ export const ENTITIES = {
   checkParams:  { class: "OVERLAY", server: "assurance-studio", dir: ".fs/verification/checks", key: checkCodeKey },
   attackPath:   { class: "OVERLAY", server: "assurance-studio", dir: ".fs/attack-paths", key: routeSignatureKey },
   sbomLink:     { class: "OVERLAY", server: "assurance-studio", dir: ".fs/links", key: componentSlugKey },
+  firmwareLink: { class: "OVERLAY", server: "none", localOnly: true, dir: ".fs/links", key: componentSlugKey },
+  canvasLayout: { class: "VERSIONED", server: "none", localOnly: true, file: "product-security/layout/canvas.json" },
 
   finding:            { class: "CACHED", table: "findings" },
   sbomComponent:      { class: "CACHED", table: "sbom_components" },
@@ -65,25 +67,31 @@ export const ENTITIES = {
   verificationDispatch: { class: "ACTION-ONLY" },
   benchDispatch:        { class: "ACTION-ONLY" },
   firmwareMaterialize:  { class: "ACTION-ONLY" },
-
-  firmwareLink: { class: "LOCAL-ONLY", dir: ".fs/links", key: componentSlugKey },
-  canvasLayout: { class: "LOCAL-ONLY", file: "product-security/layout/canvas.json" },
-} as const satisfies Readonly<Record<string, FileEntry | AggregateFileEntry | InlineEntry | CacheEntry | ActionEntry | LocalEntry>>;
+} as const satisfies Readonly<Record<string, FileEntry | AggregateFileEntry | InlineEntry | CacheEntry | ActionEntry | LocalFileEntry>>;
 
 export type EntityKind = keyof typeof ENTITIES;
-export type SyncableEntityKind = { [K in EntityKind]: typeof ENTITIES[K]["class"] extends "VERSIONED" | "OVERLAY" ? K : never }[EntityKind];
-export type RemoteSyncableEntityKind = { [K in EntityKind]: typeof ENTITIES[K] extends { server: "platform" | "assurance-studio" } ? K : never }[EntityKind];
+export type SemanticPlanEntityKind = { [K in EntityKind]: typeof ENTITIES[K] extends { localOnly: true } ? never : typeof ENTITIES[K]["class"] extends "VERSIONED" | "OVERLAY" ? K : never }[EntityKind];
+export type RemotePushableEntityKind = { [K in EntityKind]: typeof ENTITIES[K] extends { server: "platform" | "assurance-studio" } ? K : never }[EntityKind];
 
+export interface EntityScope { projectId: string; projectVersionId: string; }
 export interface FindingIdentity {
-  project: string; cve: string; purl?: string | null;
+  cve: string; purl?: string | null;
   name: string; group?: string | null; version?: string | null;
 }
 export type FindingKeyTier = "purl" | "name-group-version" | "name-group-any-version";
 export function findingStableKey(value: Readonly<FindingIdentity>, tier?: FindingKeyTier): string;
-export function parseFindingStableKey(key: string): Readonly<{ project: string; cve: string; tier: FindingKeyTier; component: string }>;
+export type ParsedFindingStableKey = Readonly<{
+  cve: string;
+  tier: FindingKeyTier;
+  component: Readonly<
+    | { readonly purl: string }
+    | { readonly name: string; readonly group: string | null; readonly version: string | null }
+  >;
+}>;
+export function parseFindingStableKey(key: string): ParsedFindingStableKey;
 export function entryFor(kind: string): (typeof ENTITIES)[EntityKind]; // throws UnknownEntityKindError
-export function isSyncable(kind: EntityKind): kind is SyncableEntityKind;
-export function isRemoteSyncable(kind: EntityKind): kind is RemoteSyncableEntityKind;
+export function isSemanticPlanEntity(kind: EntityKind): kind is SemanticPlanEntityKind;
+export function isRemotePushable(kind: EntityKind): kind is RemotePushableEntityKind;
 ```
 
 If the WP-04 frozen schema uses a different table identifier, stop and file an amendment rather than aliasing it. If product review decides risks need an authored `risk` or `riskTreatment` entry, that is also a pre-freeze decision or post-freeze amendment; do not silently add it from supporting research.
@@ -92,10 +100,10 @@ If the WP-04 frozen schema uses a different table identifier, stop and file an a
 - [ ] Every inventory entry above exists with its exact class and path/table semantics.
 - [ ] Every VERSIONED/OVERLAY remote entry names `platform` or `assurance-studio` explicitly; `vexDecision` is Platform-owned, no `"as"` alias remains, and Forge Compute cannot be represented as a CRUD target.
 - [ ] Every CACHED table/view resolves to storage declared by WP-04; `hbomDoc` points to the filtered `hbom_docs` view and never creates a second ledger.
-- [ ] `hbomPart` is the aggregate `product-security/hbom/hbom.yaml` with `server:"none"`; it is locally diffable but `isRemoteSyncable("hbomPart") === false` and no plan item can invent an AS push target.
+- [ ] `hbomPart` is the aggregate `product-security/hbom/hbom.yaml` with `server:"none"`; it is locally diffable and visible to local plan/status, but `isRemotePushable("hbomPart") === false` and no plan item can invent an AS push target.
 - [ ] Stable finding keys never contain a finding UUID and distinguish purl, exact fallback, and any-version tiers.
 - [ ] Keys are deterministic across object key order and reject empty, control-character, or path-traversal identities.
-- [ ] `isSyncable()` identifies authored three-way-capable classes; `isRemoteSyncable()` additionally excludes CACHED, ACTION-ONLY, LOCAL-ONLY, and all `server:"none"` entries at compile time and runtime.
+- [ ] `isSemanticPlanEntity()` identifies authored non-local-only classes; `isRemotePushable()` additionally excludes CACHED, ACTION-ONLY, `localOnly:true`, and all `server:"none"` entries at compile time and runtime.
 - [ ] No two file entries accidentally claim the same single-file destination; deliberate shared directories (`.fs/links`) remain distinguished by kind/key.
 - [ ] Registry tests cover every entry; typecheck/test/lint/build is green before freeze.
 
@@ -103,9 +111,9 @@ If the WP-04 frozen schema uses a different table identifier, stop and file an a
 - `inventory is byte-for-byte complete` — snapshot the ordered keys/classes/destinations.
 - `finding key tier vectors` — purl, no-purl exact, missing-version any-version, Unicode and case-folding.
 - `UUID changes do not change finding key` — two otherwise equal identities produce one key.
-- `invalid key input fails closed` (**error path**) — empty CVE/project, slash, NUL, malformed serialized key.
+- `invalid key input fails closed` (**error path**) — empty CVE, slash, NUL, malformed serialized key.
 - `cached tables are in schema union` — compile-time and runtime proof.
-- `HBOM aggregate is local-only` — one file holds multiple part keys, local plan/status can report changes, remote pusher selection rejects `hbomPart`, and `hbomDoc` reads the view.
+- `HBOM aggregate is locally planned, never remotely pushed` — one file holds multiple part keys, local plan/status can report changes, remote pusher selection rejects `hbomPart`, and `hbomDoc` reads the view.
 - `unknown entity kind throws UnknownEntityKindError` (**error path**).
 
 ## Do not
@@ -117,5 +125,5 @@ If the WP-04 frozen schema uses a different table identifier, stop and file an a
 - Do not edit after freeze without the amendment protocol.
 
 ## Open questions
-1. Product SPEC 03 discusses risks but its canonical registry excerpt does not classify an authored risk entity. Human review must decide pre-freeze whether risk body is server-derived and treatment-only, or whether a `risk`/`riskTreatment` entry is required.
-2. Confirm the preferred canonical key encoding (escaped pipe segments versus length-prefixed/base64url components) before freeze. It must be reversible and route-safe; do not rely on unescaped delimiters.
+1. Risks and risk treatments remain absent from the v1 registry. Adding either is a pre-freeze product decision or a post-freeze amendment; do not silently add it from supporting research.
+2. Key encoding is settled: `fs1` followed by dot-delimited base64url encodings of NFC UTF-8 segments. Base64url segments never contain dots; project and product-version scope stay outside the stable entity key.

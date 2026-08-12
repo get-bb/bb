@@ -2,6 +2,8 @@
 
 Frozen contracts may change only through an amendment entry approved by the contract owner and one affected-lane reviewer. Pre-freeze architecture corrections retain their accepted `A-*` identifiers; post-freeze contract changes use `AMD-*`. CI, not an implementation lane, updates baseline hashes after approval.
 
+Non-semantic pre-freeze corrections such as a missing dependency declaration, scaffold expectation, or documentation typo use one affected reviewer and do not require a global amendment broadcast. Semantic contract changes and every post-freeze statement change still require the full protocol below.
+
 Each amendment must record:
 
 - identifier and status;
@@ -14,6 +16,18 @@ Each amendment must record:
 No amendment is implied by an implementation task, code comment, or local workaround.
 
 ## Approved amendments
+
+### D-1/D-2 — Consolidated pre-freeze scope, publication, and boundary correction
+
+- Status: approved for implementation under FS-89; frozen-artifact merge still requires independent exact-head review and explicit product-owner approval
+- Prior artifact hashes: pre-release candidates only; no registered/frozen store release exists
+- Reason: replace global/ambiguous storage keys with explicit project/product-version scope, publish only complete pull generations, bind writes to generation/revision/content fences, normalize paging/remote boundaries, and match pinned bb RPC naming/authorization limits
+- Migration: rewrite the positional v1 base statements in place, including original primary keys, unique constraints, foreign keys, and indexes. Do not append D-1 repair migrations. Remove `CREATE TABLE IF NOT EXISTS` so an unexpected preexisting schema fails loudly.
+- Pre-release safety proof: on 2026-08-12 a read-only search of `/Users/matt/.bb`, `/Users/matt/Documents/Projects`, and `/Users/matt/Library/Application Support` for finite-state `data.db`/SQLite files returned zero persistent instances. The plugin is unregistered and unreleased, so no developer database can contain a shipped positional statement.
+- Cutoff: this in-place rewrite authority ends when the frozen v1 candidate merges/registers. After that point every shipped statement is immutable and changes append through `AMD-*` with a migration plan.
+- Affected WPs and gates: Specs 00/01/05; HANDOFF; WP-03–06, WP-16–19, WP-45, WP-56; shared contract, registry, remote boundary, shared store, dependency/frozen guards; G0–G6. WP-02 is held until the consolidated migration candidate merges.
+- Contract owner: Matt Wyckhouse (binding D-1/D-2 and migration-order decisions in the coordinating thread)
+- Consolidation task/branch: FS-89 / draft PR #6; final hashes and review identities pending
 
 ### A-000 — Direct APIs and optional Forge compute
 

@@ -95,31 +95,66 @@ Assurance Studio REST ──────┘                                  │
 Forge MCP (optional compute only) ─► backend job adapter ───────────────► React panels
 ```
 
-**SQLite** (`<dataDir>/plugins/finite-state/data.db`) holds all CACHED data plus sync bookkeeping. Migrations via `bb.storage.migrate`. Tables are per-surface and specified in each spec; the shared ones:
+**SQLite** (`<dataDir>/plugins/finite-state/data.db`) holds all CACHED data plus sync bookkeeping. Migrations via `bb.storage.migrate`. Every scoped table, primary/unique key, foreign key, and access index begins with explicit `project_id, project_version_id`; there is no workspace id, `scope_id`, `project_key`, or serialized scope codec. Wire contracts use `projectId` plus `projectVersionId`, where null means project-level. The backend storage boundary maps null to the one reserved non-null SQL sentinel exported as `PROJECT_LEVEL_VERSION_ID = "@project"`; external/RPC input must reject literal `"@project"`.
+
+The D-1 base schema is an authorized in-place rewrite of the positional v1 migration only because the plugin is unregistered/unreleased and the recorded 2026-08-12 read-only search found zero persistent finite-state `data.db` instances. The original table/key/index statements carry D-1 directly; no corrective migration is appended. Base `CREATE TABLE` statements omit `IF NOT EXISTS`, so an unexpected preexisting schema fails loudly. This exception ends at the first frozen merge/registration; every statement is append-only thereafter under `AMENDMENTS.md`.
+
+Pull pages write only rows carrying a staging `generation_id`. Readers select rows whose generation equals the exact project/version/kind `sync_state.accepted_generation_id`. After every requested kind/page validates, one SQLite transaction flips the requested accepted pointers, increments their `base_revision`, clears staging cursors, and marks the generation accepted. Failure or cancellation retains the prior accepted generation and resumable staging metadata. Tables are per-surface and specified in each spec; the shared control shape is:
 
 ```sql
 -- shared sync bookkeeping
+CREATE TABLE pull_generation (
+  project_id          TEXT NOT NULL,
+  project_version_id  TEXT NOT NULL,
+  generation_id       TEXT NOT NULL,
+  status              TEXT NOT NULL, -- staging | accepted | superseded | failed | cancelled
+  requested_kinds_json TEXT NOT NULL,
+  started_at          TEXT NOT NULL,
+  completed_at        TEXT,
+  accepted_at         TEXT,
+  error               TEXT,
+  PRIMARY KEY (project_id, project_version_id, generation_id)
+);
+
 CREATE TABLE sync_state (
-  entity_kind TEXT NOT NULL,      -- 'finding' | 'requirement' | 'threat' | …
-  scope       TEXT NOT NULL,      -- project or version id
-  last_pull   TEXT,               -- ISO8601
-  cursor      TEXT,               -- pagination resume
-  PRIMARY KEY (entity_kind, scope)
+  project_id               TEXT NOT NULL,
+  project_version_id       TEXT NOT NULL,
+  entity_kind              TEXT NOT NULL,
+  accepted_generation_id   TEXT,
+  staging_generation_id    TEXT,
+  base_revision            INTEGER NOT NULL DEFAULT 0,
+  staging_continuation     TEXT,
+  staged_pages             INTEGER NOT NULL DEFAULT 0,
+  staged_rows              INTEGER NOT NULL DEFAULT 0,
+  last_pull                TEXT,
+  error                    TEXT,
+  PRIMARY KEY (project_id, project_version_id, entity_kind)
 );
 
 CREATE TABLE push_log (           -- resumable, per-entity apply record
-  id          INTEGER PRIMARY KEY,
+  project_id       TEXT NOT NULL,
+  project_version_id TEXT NOT NULL,
+  id               INTEGER NOT NULL,
   run_id      TEXT NOT NULL,
+  base_generation_id TEXT NOT NULL,
+  base_revision INTEGER NOT NULL,
+  expected_base_content_hash TEXT,
   entity_kind TEXT NOT NULL,
   entity_key  TEXT NOT NULL,      -- stable key, not server uuid
   op          TEXT NOT NULL,      -- create | update | delete | noop | conflict
   status      TEXT NOT NULL,      -- pending | applied | failed | skipped
   error       TEXT,
-  applied_at  TEXT
+  applied_at  TEXT,
+  PRIMARY KEY (project_id, project_version_id, id),
+  UNIQUE (project_id, project_version_id, run_id, entity_kind, entity_key)
 );
 ```
 
-**RPC** — typed zod contracts in `shared/contract.ts`, consumed via `useRpc`. Every list endpoint is paged (`{ items, total, cursor }`). **Strict JSON only** — binary and large payloads go through `bb.http` Hono routes instead.
+`base_snapshot`, `id_map`, and remotely pulled cache rows carry the same explicit project/version pair plus `generation_id`. Local projections and action/evidence journals carry the pair without pretending to be pull generations. `base_revision` is monotonic per project/version/kind: publication increments it once, and each successful per-entity push increments it in the same transaction as the exact base/id-map advance. Plans bind accepted generation ids, starting revisions, and each operation's expected base content hash; generation identity alone is not a stale-plan fence.
+
+**RPC** — typed zod contracts in `shared/contract.ts`, consumed via `useRpc`. Product docs use dotted logical names; pinned bb rejects dots in RPC keys, so exported `RPC_WIRE_METHODS` is the sole bijection to unique lower-camel wire names. Every list input uses `{ pageSize, continuation }` and every result uses `{ items, total, next }`; continuations are opaque. **Strict JSON only** — binary and large payloads go through `bb.http` Hono routes instead.
+
+bb RPC currently supplies parsed input but no authenticated actor identity. Human-only mutation contracts reserve `humanApprovalCapability`, yet v1 has no capability mint/verification path, so push/conflict resolution, comment mutation, HBOM decisions, review transitions, and manual attestations remain authorization-unavailable before side effects. `confirmed`, plugin tokens, `requestInput`, Origin/Host checks, and CLI flags are not actor proof. Local HTTP authentication prevents cross-site access; it does not authorize a human decision.
 
 **Realtime** — `bb.realtime.publish` for sync progress and cache invalidation. Broadcast is ephemeral and unreplayed; treat it as a hint to refetch, never as a data channel.
 
@@ -136,6 +171,12 @@ CREATE TABLE push_log (           -- resumable, per-entity apply record
 - **`ForgeComputeClient | null` (optional):** MCP transport for the checksummed compute subset: dynamic/QEMU verification, autonomous pen testing, and Forge job status/list. The pinned Forge commit has no firmware-root registration method; `prepareFirmwareRoot` remains non-freezeable and remote-unsupported until WP-50 proves same-host process control or a separately reviewed Forge method. No Platform or AS CRUD method may route through it, even as a fallback.
 
 All calls occur in the plugin backend. Panels read SQLite or tracked files via typed RPC; binary streams use authenticated `bb.http` routes. Each lane receives only the narrow client it needs, never a generic URL/method/path function and never a generic MCP tool bridge.
+
+Every remote list uses the same normalized paging vocabulary: input `{continuation?, pageSize?}` and output `{items, total, next}`. `next` is an opaque, versioned continuation generated by the client adapter; resume passes it back as `continuation`. Callers never parse it or represent Platform offsets, Assurance Studio page numbers, or Forge registry positions. `next:null` is terminal, and abort is consistently driven by `RemoteCallContext.signal`.
+
+Forge invocation and Forge job telemetry are intentionally different domains. The checksummed invocation allowlist is closed to `verify_dynamic`, `pen_test_run`, `get_job_status`, and `list_jobs`; job `tool` values and the `listJobs` tool filter are open registry metadata strings so jobs owned by other Forge workflows remain observable without becoming invocable.
+
+At plugin RPC, domain, and storage boundaries, D-1 scope is the explicit `projectId` + `projectVersionId` pair—never a workspace binding or serialized scope codec. Direct remote request types remain faithful to reviewed upstream ownership rather than accepting ignored fields: project-only AS routes carry `projectId`, version-addressed Platform/Forge routes carry `projectVersionId`, and a route that uses both (finding activity) requires both.
 
 **Configuration and failure isolation:** the remote lane calls native `bb.settings.define` once and owns its returned `get/onChange` handle. Platform origin/auth, AS origin/key, and optional Forge transport/auth are separate settings and service generations; changing one recreates only that client/limiter/health slot. Missing required Platform configuration may set plugin-level `needsConfiguration`; missing AS or Forge disables only dependent surfaces/actions. A configured-but-unreachable service reports `unreachable` through secret-safe `connections.status` and does not become `needsConfiguration`. A Forge outage must not break findings, VEX, SBOM, TARA, requirements, or ordinary verification data. Disposal aborts probes/retries and closes every limiter/compute transport.
 
@@ -167,12 +208,12 @@ Detailed in SPEC 06, but every surface spec must declare its four agent affordan
 
 | Affordance | Convention |
 |---|---|
-| **Agent tools** (`bb.agents.registerTool`) | Read tools are free; **write tools mutate local YAML, never the server.** Pushing is a separate, explicit, human-gated act |
+| **Agent tools** (`bb.agents.registerTool`) | Read tools are free; **write tools mutate local YAML, never the server.** Remote human-only mutations remain unavailable until bb provides verifiable actor/capability proof |
 | **Skill** (`skills/<surface>/SKILL.md`) | Teaches the agent when to use the surface, the stable keys, the directive syntax, and the review expectation |
 | **Directive** (`::fs-*`) | For anything worth showing inline rather than describing |
 | **Mentions** | Stable ids that resolve to fresh context at send time: `@REQ-104`, `#CVE-2026-1234`, `~bench-run-88` |
 
-**The rule that keeps this safe:** *agents write intent to files; humans approve; the sync engine pushes.* No agent tool calls a **model-mutating remote endpoint**. The narrow, deliberate exception: **ACTION-ONLY invocations** (SPEC 01 class table — `fs_verification_run` in SPEC 03; `fs_bench_run` and `fs_firmware_materialize` byte modes in SPEC 05) may invoke enumerated actions; they are listed in SPEC 06 §5.3 and nowhere else. Transport does not change this policy.
+**The rule that keeps this safe:** *agents write intent to files; humans review; a future authenticated capability may authorize the sync engine to push.* No agent tool calls a **model-mutating remote endpoint**, and v1 does not pretend panel input proves a human. The narrow, deliberate exception: **ACTION-ONLY invocations** (SPEC 01 class table — `fs_verification_run` in SPEC 03; `fs_bench_run` and `fs_firmware_materialize` byte modes in SPEC 05) may invoke enumerated actions; they are listed in SPEC 06 §5.3 and nowhere else. Transport does not change this policy.
 
 ---
 
@@ -190,8 +231,8 @@ bb finite-state
   plan [surface]                   # what would be pushed
   push [surface]                   # non-mutating handoff to the human review panel; never applies from CLI
   triage <subcommand>              # SPEC 02
-  firmware pull <pv_id>            # SPEC 05 — pre-warm the mount
-  bench run <pv_id> [--target <path>]   # SPEC 05
+  firmware pull <product-version-id>            # SPEC 05 — pre-warm the mount
+  bench run <product-version-id> [--target <path>]   # SPEC 05
 ```
 
 **Both the human and the agent may inspect with these commands.** Verbs deliberately mirror git and Terraform, but v1's `push` spelling only validates state and hands the operator to the human review panel; it has no `--yes`, conflict-resolution flag, confirmation bypass, or upstream mutation path.
@@ -204,7 +245,7 @@ bb finite-state
 |---|---|
 | **Performance** | Panel first paint < 200ms from cache; 10k-row table scrolls at 60fps; no external call in a render path |
 | **Offline** | All panels read from cache; sync failures degrade to stale-with-banner, never blank |
-| **Data safety** | Deletes require confirmation with blast radius; pushes are resumable; a failed push leaves coherent state |
+| **Data safety** | Deletes require confirmation with blast radius; pushes are resumable; a failed push leaves coherent state; an interrupted pull never publishes a mixed generation |
 | **Observability** | Every sync run logged to `bb plugin logs finite-state`; push runs recorded in `push_log` with per-entity outcome |
 | **Secrets** | Platform auth, AS key, and optional Forge credential live in plugin secret settings (0600), never in the worktree, a diff, telemetry, or an error message |
 | **Bundle** | Lazy-load heavy libs (canvas/diagram, XLSX); target < 1MB initial panel bundle |

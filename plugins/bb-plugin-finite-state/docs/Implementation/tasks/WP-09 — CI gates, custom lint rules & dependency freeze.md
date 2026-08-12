@@ -24,7 +24,7 @@ Nine lanes can only move in parallel if the collision rules are executable. This
 2. Implement frozen guard: default mode hashes current bytes, reports exact changed artifacts, and fails unless a matching approved amendment id and baseline update are in the same diff. Do not infer approval from “AMENDMENTS.md changed.”
 3. Implement UI rule scan over `plugins/bb-plugin-finite-state/lanes/**/*.{ts,tsx,css}`: reject hex, `oklch(`, arbitrary Tailwind color values, Lucide imports/packages, and emoji in JSX/text literals. Allow raw colors only in `themes/fsds-dark.css`; avoid false positives on hashes/CVEs via syntax-aware or narrowly contextual patterns.
 4. Implement dependency guard: compare plugin dependency/devDependency/peerDependency/optionalDependency keys and versions to the accepted manifest baseline and fail on drift outside a designated amendment/batch. Also reject a second zod version and direct dependency additions from lanes.
-5. Wire the four-command gate into the current CI idiom: `turbo run typecheck test lint build --filter=bb-plugin-finite-state`, plus the three guards. Do not create a parallel CI system if the repo has a reusable workflow.
+5. Preserve the stable, unconditional `Finite State guard gates (ubuntu-latest, Node 22.19.0)` job and run the package lifecycle once through `turbo run typecheck test lint build --filter=bb-plugin-finite-state`. The lifecycle includes `parallel-lane-guards.test.ts`, which exercises the frozen-artifact, UI-rule, and dependency guards against fail-closed fixtures. Keep the standalone scripts as explicit baseline-acceptance, amendment, and manual-check entrypoints; do not duplicate their pre-activation invocations in CI before the approved frozen baseline and agent registry exist, and do not move this job behind the heavy-job classifier.
 6. Add fixture tests proving guards fail closed and print recovery instructions: “file an amendment; do not edit the frozen artifact locally.”
 
 ## Interface contract
@@ -62,7 +62,7 @@ Verify the actual amendment log format/file exists in the target fork. If it is 
 - [ ] The explicit accept flow requires an approved amendment id, updates only named hashes, and remains review-visible.
 - [ ] Hex/oklch/arbitrary color, Lucide import, and JSX emoji fixtures each fail; bb token classes and hashes/CVEs pass.
 - [ ] Any plugin dependency change fails outside the accepted batch; zod remains repo-pinned 4.3.6 with no plugin-specific duplicate.
-- [ ] CI runs the guards and the exact four-command filtered gate.
+- [ ] The stable Finite State CI job runs unconditionally on Node 22.19.0 and invokes the exact four-command filtered lifecycle once; that lifecycle runs the fail-closed guard fixture suite without duplicating pre-activation standalone commands.
 - [ ] Scripts use only Node built-ins and work on Linux/macOS with POSIX-normalized paths.
 
 ## Test plan — `parallel-lane-guards`
@@ -72,7 +72,7 @@ Verify the actual amendment log format/file exists in the target fork. If it is 
 - `approved amendment updates only selected artifact`.
 - `UI forbidden/allowed fixture matrix` — include `#CVE`/SHA strings to prevent false positives.
 - `dependency addition/version drift/second zod fail` (**error paths**).
-- `CI command presence is asserted from the verified workflow`.
+- `authoritative CI topology` — assert the stable job name, Node pin, unconditional exact lifecycle command, and absence of duplicate pre-activation standalone commands.
 
 ## Do not
 - Do not weaken checks because current work is inconvenient; use the amendment protocol.
