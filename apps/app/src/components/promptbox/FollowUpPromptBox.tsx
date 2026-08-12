@@ -701,6 +701,7 @@ function FollowUpPromptBoxWithComposer({
         mentionRanges={composer.mentionRanges}
         onChange={composer.onChangeMessage}
         onSubmit={onPrimarySubmit}
+        blurOnSubmit={isCompactViewport && isPointerCoarse}
         textEffects={textEffects}
         onComposerLayoutChange={setComposerLayout}
         scrollToBottomOnSubmit={

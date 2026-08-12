@@ -55,6 +55,7 @@ vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
     footerStart,
     compact,
     onSubmit,
+    blurOnSubmit,
     promptBoxRef,
     submission,
     suppressPluginComposerCustomizations,
@@ -68,6 +69,7 @@ vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
       placeholder?: string;
     };
     onSubmit: () => void;
+    blurOnSubmit?: boolean;
     promptBoxRef?: {
       current: {
         captureHeightForLayoutChange: () => void;
@@ -107,7 +109,15 @@ vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
         }}
       />
       {compact?.isCompact ? <span>{compact.placeholder}</span> : null}
-      <button type="button" onClick={onSubmit}>
+      <button
+        type="button"
+        onClick={() => {
+          onSubmit();
+          if (blurOnSubmit && document.activeElement instanceof HTMLElement) {
+            document.activeElement.blur();
+          }
+        }}
+      >
         Submit
       </button>
       <button type="button" onClick={submission?.onModifierSubmit}>
@@ -646,6 +656,28 @@ describe("FollowUpPromptBox", () => {
     expect(
       screen.queryByRole("button", { name: /Make prompt box/u }),
     ).toBeNull();
+  });
+
+  it("collapses a mobile coarse-pointer composer after submission", async () => {
+    mocks.isCompactViewport = true;
+    mocks.isPointerCoarse = true;
+    const props = createFollowUpPromptBoxProps({ kind: "ready" });
+    render(<FollowUpPromptBox {...props} />);
+
+    const input = screen.getByRole("textbox", { name: "Follow-up prompt" });
+    act(() => input.focus());
+    expect(screen.getByTestId("prompt-box").getAttribute("data-compact")).toBe(
+      "false",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+
+    expect(props.composer?.onSubmit).toHaveBeenCalledOnce();
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("prompt-box").getAttribute("data-compact"),
+      ).toBe("true"),
+    );
   });
 
   it("expands while focus is within the mobile composer", () => {

@@ -2160,6 +2160,38 @@ describe("PromptBoxInternal compact layout", () => {
 
     fireEvent.click(submit);
     expect(onSubmit).toHaveBeenCalledOnce();
+    expect(document.activeElement).toBe(editor);
+  });
+
+  it("blurs the editor after a pointer submit when requested", async () => {
+    const onSubmit = vi.fn();
+    render(
+      <PromptBoxInternal
+        {...createPromptBoxProps({
+          value: "Send this follow-up",
+          onSubmit,
+          blurOnSubmit: true,
+          compact: {
+            isCompact: true,
+            placeholder: "Ask a follow-up",
+          },
+        })}
+      />,
+    );
+
+    await waitForPromptFocus();
+    const editor = getPromptEditorElement();
+    const submit = screen.getByRole("button", { name: "Submit (Enter)" });
+
+    expect(
+      fireEvent.pointerDown(submit, { button: 0, pointerType: "touch" }),
+    ).toBe(false);
+    expect(document.activeElement).toBe(editor);
+
+    fireEvent.click(submit);
+
+    expect(onSubmit).toHaveBeenCalledOnce();
+    expect(document.activeElement).not.toBe(editor);
   });
 
   it("keeps all Markdown and mention text in the navigable preview", async () => {

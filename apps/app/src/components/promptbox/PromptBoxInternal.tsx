@@ -339,6 +339,8 @@ export interface PromptBoxInternalProps {
   mentionRanges: readonly PromptTextMention[];
   onChange: (value: string, mentionRanges: PromptTextMention[]) => void;
   onSubmit: () => void;
+  /** Blur the editor after an accepted primary or modifier submission. */
+  blurOnSubmit?: boolean;
   placeholder?: string;
   /**
    * Whether the editor should take passive focus when it mounts or its history
@@ -1094,6 +1096,7 @@ export function PromptBoxInternal({
   mentionRanges,
   onChange,
   onSubmit,
+  blurOnSubmit = false,
   placeholder = "Ask anything. @ to mention files, folders, or sections",
   autoFocus = true,
   className,
@@ -2457,8 +2460,11 @@ export function PromptBoxInternal({
   const submitPrompt = useCallback(() => {
     if (!canSubmit) return;
     onSubmit();
+    if (blurOnSubmit) {
+      blurPromptEditor(editorRef.current);
+    }
     resetZenModeAfterSubmit();
-  }, [canSubmit, onSubmit, resetZenModeAfterSubmit]);
+  }, [blurOnSubmit, canSubmit, onSubmit, resetZenModeAfterSubmit]);
 
   const handleSubmitPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLButtonElement>) => {
@@ -2497,8 +2503,16 @@ export function PromptBoxInternal({
   const submitModifierPrompt = useCallback(() => {
     if (!canModifierSubmit || !onModifierSubmit) return;
     onModifierSubmit();
+    if (blurOnSubmit) {
+      blurPromptEditor(editorRef.current);
+    }
     resetZenModeAfterSubmit();
-  }, [canModifierSubmit, onModifierSubmit, resetZenModeAfterSubmit]);
+  }, [
+    blurOnSubmit,
+    canModifierSubmit,
+    onModifierSubmit,
+    resetZenModeAfterSubmit,
+  ]);
 
   const applyHistoryDraft = useCallback(
     (draft: PromptDraftState) => {
