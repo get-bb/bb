@@ -393,8 +393,8 @@ function predictedReadiness(
   fullyMaterialized: boolean,
   hydratedCount: number,
 ): MountReadiness {
-  if (hydratedCount === 0) return "metadata_only";
-  return fullyMaterialized ? "fully_materialized" : "partial";
+  if (fullyMaterialized) return "fully_materialized";
+  return hydratedCount === 0 ? "metadata_only" : "partial";
 }
 
 export async function ingestSnapshotGeneration(

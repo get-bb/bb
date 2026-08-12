@@ -262,6 +262,73 @@ describe("standalone snapshot ingestion", () => {
     await fixture.host.harness.lifecycle.dispose();
   });
 
+  it.each(["empty", "directory-only", "symlink-only"] as const)(
+    "commits a no-error %s zero-hydrated snapshot as fully materialized",
+    async (variant) => {
+      const fixture = await createFixture();
+      const stage = await createStage(fixture.root, {});
+      const input = snapshot({});
+      if (variant === "directory-only") {
+        input.fileTree.push({
+          filePath: "/etc",
+          fileHash: null,
+          fileName: "etc",
+          mimeType: "inode/directory",
+          fullType: "directory",
+          fileSize: null,
+        });
+      }
+      if (variant === "symlink-only") {
+        await mkdir(join(stage.rootfs, "bin"), { recursive: true });
+        await symlink("real", join(stage.rootfs, "bin", "sh"));
+        input.fileTree.push({
+          filePath: "/bin/sh",
+          fileHash: null,
+          fileName: "sh",
+          mimeType: "inode/symlink",
+          fullType: "symbolic link",
+          fileSize: null,
+        });
+      }
+
+      const result = await ingestSnapshotGeneration({
+        scope: fixture.scope,
+        cache: fixture.cache,
+        snapshot: input,
+        extractedRootfs: stage.rootfs,
+        stagedSnapshotPath: stage.snapshotPath,
+        scanId: null,
+        maxDepth: 12,
+        now: () => new Date(0),
+        promotionId: variant,
+      });
+
+      expect(result.mount).toMatchObject({
+        readiness: "fully_materialized",
+        hydratedCount: 0,
+      });
+      const manifest = fixture.cache.open(fixture.scope);
+      expect(fixture.cache.readiness(manifest)).toBe("fully_materialized");
+      expect(manifest.readMeta()).toMatchObject({
+        fullyMaterialized: true,
+        hydratedCount: 0,
+        unpackErrors: [],
+      });
+      if (variant === "symlink-only") {
+        expect(manifest.getNode("/bin/sh")).toMatchObject({
+          kind: "symlink",
+          symlinkTarget: "real",
+          errors: [],
+        });
+        expect(await readlink(join(result.mount.rootfsPath, "bin", "sh"))).toBe(
+          "real",
+        );
+      }
+      manifest.close();
+      await fixture.host.harness.lifecycle.dispose();
+    },
+  );
+
   it("materializes safe relative and absolute Linux symlinks and records unsafe or missing targets as visible gaps", async () => {
     const fixture = await createFixture();
     const files = { "usr/lib/real": "target" };
