@@ -104,7 +104,6 @@ import {
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import {
-  arePromptDraftStatesEqual,
   promptInputToDraft,
   type PromptDraftAttachment,
   type PromptDraftState,
@@ -283,7 +282,6 @@ type OpenFilePreviewHandler = (relativePath: string) => void;
 
 interface SentMessageEditSession {
   draft: PromptDraftState;
-  originalDraft: PromptDraftState;
   operationId: string;
   target: ThreadTimelineEditMessageTarget;
   threadId: string;
@@ -992,7 +990,6 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       setSentMessageEditHostElement(null);
       setSentMessageEditSession({
         draft: editDraft,
-        originalDraft: editDraft,
         operationId: crypto.randomUUID(),
         target,
         threadId: current.thread.id,
@@ -1034,30 +1031,17 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     },
     [activeSentMessageEditOperationId],
   );
-  const finishCancelSentMessageEdit = useCallback((operationId: string) => {
+  const closeSentMessageEdit = useCallback((operationId: string) => {
     setSentMessageEditSession((current) =>
       current?.operationId === operationId ? null : current,
     );
   }, []);
   const cancelSentMessageEdit = useCallback(() => {
-    const current = activeSentMessageEditSession;
-    if (!current) {
+    if (!activeSentMessageEditSession) {
       return;
     }
-    if (arePromptDraftStatesEqual(current.draft, current.originalDraft)) {
-      finishCancelSentMessageEdit(current.operationId);
-      return;
-    }
-    appToast.warning("Discard this message edit?", {
-      description:
-        "The sent message and conversation are still unchanged. Your follow-up draft is unaffected.",
-      action: {
-        label: "Discard edit",
-        onClick: () => finishCancelSentMessageEdit(current.operationId),
-      },
-      cancel: { label: "Keep editing", onClick: () => {} },
-    });
-  }, [activeSentMessageEditSession, finishCancelSentMessageEdit]);
+    closeSentMessageEdit(activeSentMessageEditSession.operationId);
+  }, [activeSentMessageEditSession, closeSentMessageEdit]);
   const submitSentMessageEdit = useCallback<
     ThreadDetailSentMessageEdit["onSubmit"]
   >(
@@ -1086,7 +1070,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
             : {}),
         })
         .then(() => {
-          finishCancelSentMessageEdit(session.operationId);
+          closeSentMessageEdit(session.operationId);
         })
         .catch((error) => {
           appToast.error(
@@ -1098,7 +1082,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
           );
         });
     },
-    [activeSentMessageEditSession, editMessage, finishCancelSentMessageEdit],
+    [activeSentMessageEditSession, closeSentMessageEdit, editMessage],
   );
   const activeSentMessageEditTargetMessageId =
     activeSentMessageEditSession?.target.messageId ?? null;
