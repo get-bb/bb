@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
@@ -11,6 +11,8 @@ import { MAX_SERVERS_PER_ACCOUNT } from "@bb/connect-db";
 import type { HandleValidationError, LabelAvailability } from "@bb/connect-db";
 import appCss from "../styles.css?url";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import {
   checkAvailabilityFn,
@@ -25,6 +27,11 @@ import {
 import type { IssuedCode, MachineSummary, ServerSummary } from "@/server/api";
 import bbIcon from "../assets/bb-icon.png";
 import { DASHBOARD_PATH, connectReturnTo } from "@/lib/connect-return-to";
+import {
+  dashboardRefreshIntervalMs,
+  visibleServerPanel,
+  type ServerPanel,
+} from "@/lib/dashboard-live-state";
 
 interface DashboardSearch {
   returnTo?: string;
@@ -304,6 +311,34 @@ async function signInWithGithub(returnTo: string | undefined) {
   if (data.url) window.location.href = data.url;
 }
 
+type EmailAuthMode = "sign-in" | "sign-up";
+
+function authResponseMessage(value: unknown): string | null {
+  if (typeof value !== "object" || value === null) return null;
+  if (!("message" in value) || typeof value.message !== "string") return null;
+  return value.message;
+}
+
+async function authenticateWithEmail(input: {
+  email: string;
+  mode: EmailAuthMode;
+  name: string;
+  password: string;
+}): Promise<string | null> {
+  const body =
+    input.mode === "sign-up"
+      ? { email: input.email, name: input.name, password: input.password }
+      : { email: input.email, password: input.password };
+  const response = await fetch(`/api/auth/${input.mode}/email`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const responseBody: unknown = await response.json().catch(() => null);
+  if (response.ok) return null;
+  return authResponseMessage(responseBody) ?? "Could not authenticate";
+}
+
 async function signOut() {
   // better-auth requires the JSON content-type (else 415) and a JSON body
   // (an empty body makes it 500); the browser supplies the Origin it checks.
@@ -327,14 +362,63 @@ function Home() {
     if (returnTo) window.location.assign(returnTo);
   }, [data.authed, search.returnTo]);
 
-  if (!data.authed) return <SignInView returnTo={search.returnTo} />;
-  if (!data.handle) return <ClaimView baseDomain={data.baseDomain} />;
+  if (!data.authed)
+    return (
+      <SignInView
+        emailPasswordEnabled={data.emailPasswordEnabled}
+        returnTo={search.returnTo}
+      />
+    );
+  if (!data.handle)
+    return <ClaimView serverUrlTemplate={data.serverUrlTemplate} />;
   return <AccountDashboard state={data} />;
 }
 
 /* ── W1: sign in ──────────────────────────────────────────────────── */
 
-function SignInView({ returnTo }: { returnTo: string | undefined }) {
+function SignInView({
+  emailPasswordEnabled,
+  returnTo,
+}: {
+  emailPasswordEnabled: boolean;
+  returnTo: string | undefined;
+}) {
+  const [mode, setMode] = useState<EmailAuthMode>("sign-in");
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const submitEmail = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const trimmedName = name.trim();
+    if (mode === "sign-up" && !trimmedName) {
+      setError("Enter your name");
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    try {
+      const authError = await authenticateWithEmail({
+        email: email.trim(),
+        mode,
+        name: trimmedName,
+        password,
+      });
+      if (authError) {
+        setError(authError);
+        return;
+      }
+      window.location.href =
+        connectReturnTo(returnTo, window.location.origin) ?? DASHBOARD_PATH;
+    } catch {
+      setError("Could not reach the authentication service");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return (
     <Shell>
       <WebCard>
@@ -343,8 +427,95 @@ function SignInView({ returnTo }: { returnTo: string | undefined }) {
           Give your bb a private URL and open it from any browser. Your code and
           data never leave your machine.
         </p>
+        {emailPasswordEnabled ? (
+          <>
+            <form
+              className="space-y-3"
+              onSubmit={(event) => void submitEmail(event)}
+            >
+              {mode === "sign-up" ? (
+                <div className="space-y-1.5">
+                  <Label htmlFor="auth-name">Name</Label>
+                  <Input
+                    id="auth-name"
+                    autoComplete="name"
+                    value={name}
+                    onChange={(event) => setName(event.target.value)}
+                    disabled={submitting}
+                    required
+                  />
+                </div>
+              ) : null}
+              <div className="space-y-1.5">
+                <Label htmlFor="auth-email">Email</Label>
+                <Input
+                  id="auth-email"
+                  type="email"
+                  autoComplete="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  disabled={submitting}
+                  required
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="auth-password">Password</Label>
+                <Input
+                  id="auth-password"
+                  type="password"
+                  autoComplete={
+                    mode === "sign-up" ? "new-password" : "current-password"
+                  }
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  disabled={submitting}
+                  minLength={8}
+                  required
+                />
+              </div>
+              {error ? (
+                <p className="text-sm text-destructive" role="alert">
+                  {error}
+                </p>
+              ) : null}
+              <Button
+                className="w-full justify-center py-[11px]"
+                type="submit"
+                disabled={submitting}
+              >
+                {submitting
+                  ? "Working…"
+                  : mode === "sign-up"
+                    ? "Create local account"
+                    : "Sign in with email"}
+              </Button>
+            </form>
+            <p className="mt-3 text-center text-xs text-muted-foreground">
+              {mode === "sign-in"
+                ? "New to this local Cloud?"
+                : "Already registered?"}{" "}
+              <button
+                className="font-medium text-foreground underline-offset-2 hover:underline"
+                type="button"
+                disabled={submitting}
+                onClick={() => {
+                  setError(null);
+                  setMode(mode === "sign-in" ? "sign-up" : "sign-in");
+                }}
+              >
+                {mode === "sign-in" ? "Create an account" : "Sign in"}
+              </button>
+            </p>
+            <div className="my-4 flex items-center gap-3 text-xs text-subtle-foreground">
+              <span className="h-px flex-1 bg-border" />
+              or
+              <span className="h-px flex-1 bg-border" />
+            </div>
+          </>
+        ) : null}
         <Button
           className="w-full justify-center py-[11px]"
+          type="button"
           onClick={() => void signInWithGithub(returnTo)}
         >
           <GithubMark />
@@ -361,7 +532,7 @@ function SignInView({ returnTo }: { returnTo: string | undefined }) {
 /* ── shared claim field (W2 handle + M2 label) ────────────────────── */
 
 function ClaimField({
-  baseDomain,
+  serverUrlTemplate,
   initial = "",
   autoFocus,
   previewLead = "Your bb will live at",
@@ -371,7 +542,7 @@ function ClaimField({
   cancelLabel = "Cancel",
   layout,
 }: {
-  baseDomain: string;
+  serverUrlTemplate: string;
   initial?: string;
   autoFocus?: boolean;
   previewLead?: string;
@@ -409,7 +580,8 @@ function ClaimField({
 
   const error = submitError ?? (avail ? availabilityCopy(avail) : null);
   const canSubmit = !busy && !!label && (avail?.available ?? false);
-  const preview = `https://${label || "you"}.${baseDomain}`;
+  const preview = serverUrlTemplate.replace("{label}", label || "you");
+  const addressSuffix = serverUrlTemplate.split("{label}")[1] ?? "";
 
   async function submit() {
     if (!canSubmit) return;
@@ -448,7 +620,7 @@ function ClaimField({
           aria-label="Address"
         />
         <span className="pr-3 font-mono text-sm text-subtle-foreground">
-          .{baseDomain}
+          {addressSuffix}
         </span>
       </div>
       <p className="mt-2.5 text-xs text-muted-foreground">
@@ -474,7 +646,7 @@ function ClaimField({
 
 /* ── W2: claim handle ─────────────────────────────────────────────── */
 
-function ClaimView({ baseDomain }: { baseDomain: string }) {
+function ClaimView({ serverUrlTemplate }: { serverUrlTemplate: string }) {
   const router = useRouter();
   return (
     <Shell>
@@ -488,9 +660,11 @@ function ClaimView({ baseDomain }: { baseDomain: string }) {
         </p>
         <ClaimField
           layout="card"
-          baseDomain={baseDomain}
+          serverUrlTemplate={serverUrlTemplate}
           buildSubmitLabel={(l) =>
-            l ? `Claim ${l}.${baseDomain}` : "Claim your address"
+            l
+              ? `Claim ${serverUrlTemplate.replace("{label}", l).replace(/^https?:\/\//u, "")}`
+              : "Claim your address"
           }
           onClaim={async (label) => {
             const r = await claimHandleFn({ data: label });
@@ -726,20 +900,19 @@ function RowMenu({
 
 function ServerRow({
   server,
-  baseDomain,
   autoPair,
 }: {
   server: ServerSummary;
-  baseDomain: string;
   /** First-run: the sole never-paired bb opens its pair panel by default. */
   autoPair?: boolean;
 }) {
   // A connected row toggles the re-pair panel; a never-paired row toggles its
   // setup panel. `panel` tracks which (if any) is showing under this row.
-  const [panel, setPanel] = useState<"none" | "setup" | "repair">(
+  const [panel, setPanel] = useState<ServerPanel>(
     autoPair && !server.connected ? "setup" : "none",
   );
   const [confirm, setConfirm] = useState<"disconnect" | "remove" | null>(null);
+  const visiblePanel = visibleServerPanel(server.connected, panel);
 
   const url = server.serverUrl;
   const copyUrl = () => void navigator.clipboard.writeText(url).catch(() => {});
@@ -780,10 +953,7 @@ function ServerRow({
       </span>
       <span className="min-w-0">
         <span className="block truncate font-mono text-sm font-medium leading-tight">
-          {server.subdomain}
-          <span className="font-normal text-subtle-foreground">
-            .{baseDomain}
-          </span>
+          {server.serverUrl.replace(/^https?:\/\//u, "")}
         </span>
         <span className="mt-px block text-xs text-muted-foreground">
           {server.online ? (
@@ -799,7 +969,7 @@ function ServerRow({
             <>
               Not set up ·{" "}
               <span className="text-foreground underline underline-offset-2">
-                {panel === "setup" ? "hide code" : "get connect code"}
+                {visiblePanel === "setup" ? "hide code" : "get connect code"}
               </span>
             </>
           )}
@@ -850,9 +1020,9 @@ function ServerRow({
         </div>
       )}
 
-      {panel !== "none" && (
+      {visiblePanel !== "none" && (
         <div className="mb-2 ml-9 mr-2 rounded-[10px] border border-border bg-surface-recessed p-3.5">
-          {panel === "setup" ? (
+          {visiblePanel === "setup" ? (
             <SetupCodePanel
               serverId={server.id}
               compact
@@ -919,7 +1089,7 @@ function ConnectAnotherDialog({
           <ClaimField
             layout="dialog"
             autoFocus
-            baseDomain={state.baseDomain}
+            serverUrlTemplate={state.serverUrlTemplate}
             initial={`${state.handle}-desktop`}
             previewLead="This bb will live at"
             buildSubmitLabel={(l) => `Claim ${l || "…"}`}
@@ -940,7 +1110,7 @@ function ConnectAnotherDialog({
           <h4 className="mb-1.5 text-[15px] font-semibold">Pair the new bb</h4>
           <p className="mb-2.5 text-sm text-muted-foreground">
             <code className="font-mono text-xs text-foreground">
-              {server.subdomain}.{state.baseDomain}
+              {server.serverUrl.replace(/^https?:\/\//u, "")}
             </code>{" "}
             is reserved for it.
           </p>
@@ -1004,17 +1174,15 @@ function AccountDashboard({ state }: { state: ServerState }) {
   const [pendingId, setPendingId] = useState<string | null>(null);
 
   const single = state.servers.length === 1;
-  // Poll whenever any bb is still unpaired (first run, or a just-claimed row
-  // waiting for its machine) so the row flips to Online without a manual reload.
-  const waiting =
-    state.servers.some((s: ServerSummary) => !s.connected) ||
-    (connectOpen && pendingId != null);
+  const refreshIntervalMs = dashboardRefreshIntervalMs(
+    state.servers,
+    pendingId,
+  );
 
   useEffect(() => {
-    if (!waiting) return;
-    const id = setInterval(() => void router.invalidate(), 3000);
+    const id = setInterval(() => void router.invalidate(), refreshIntervalMs);
     return () => clearInterval(id);
-  }, [waiting, router]);
+  }, [refreshIntervalMs, router]);
 
   // Self-close the connect dialog once the new server pairs.
   useEffect(() => {
@@ -1067,12 +1235,7 @@ function AccountDashboard({ state }: { state: ServerState }) {
           </button>
         </div>
         {state.servers.map((s: ServerSummary) => (
-          <ServerRow
-            key={s.id}
-            server={s}
-            baseDomain={state.baseDomain}
-            autoPair={single}
-          />
+          <ServerRow key={s.id} server={s} autoPair={single} />
         ))}
       </div>
       <div className="mt-3 rounded-xl border border-border bg-card p-2 shadow-sm">
@@ -1115,10 +1278,9 @@ function AccountDashboard({ state }: { state: ServerState }) {
                 <span className="min-w-0 flex-1">
                   {machine.subdomain !== null ? (
                     <span className="block truncate font-mono text-sm font-medium leading-tight">
-                      {machine.subdomain}
-                      <span className="font-normal text-subtle-foreground">
-                        .{state.baseDomain}
-                      </span>
+                      {state.serverUrlTemplate
+                        .replace("{label}", machine.subdomain)
+                        .replace(/^https?:\/\//u, "")}
                     </span>
                   ) : (
                     <span className="block truncate text-sm font-medium leading-tight">

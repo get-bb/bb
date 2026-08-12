@@ -9,10 +9,10 @@ import {
   HostDaemonSettledCommandType,
 } from "@bb/host-daemon-contract";
 import {
+  CommandDispatchError,
   defaultListModels,
   ExpectedCommandDispatchError,
   type CommandOf,
-  requireExistingEnvironment,
   type CommandDispatchOptions,
 } from "./command-dispatch-support.js";
 import {
@@ -64,7 +64,9 @@ import {
   streamProviderCliInstall,
 } from "./provider-cli-health.js";
 import {
+  discardThreadRewind,
   ensureThreadRuntime,
+  prepareThreadRewind,
   startThread,
   submitTurn,
 } from "./command-handlers/thread.js";
@@ -233,11 +235,36 @@ function shouldInvalidateProviderMaintenanceRuntimeAfterProviderCliInstall(args:
 }
 
 const commandHandlers: CommandHandlerMap = {
+  "thread.rewind.discard": async (command, options) => {
+    const release =
+      await options.runtimeManager.retainEnvironmentForThreadCommand(
+        command.environmentId,
+        command.threadId,
+      );
+    try {
+      return await discardThreadRewind(command, options);
+    } finally {
+      release();
+    }
+  },
+  "thread.rewind.prepare": async (command, options) => {
+    const release =
+      await options.runtimeManager.retainEnvironmentForThreadCommand(
+        command.environmentId,
+        command.threadId,
+      );
+    try {
+      return await prepareThreadRewind(command, options);
+    } finally {
+      release();
+    }
+  },
   "thread.start": async (command, options) => {
-    const release = options.runtimeManager.retainEnvironmentForThreadCommand(
-      command.environmentId,
-      command.threadId,
-    );
+    const release =
+      await options.runtimeManager.retainEnvironmentForThreadCommand(
+        command.environmentId,
+        command.threadId,
+      );
     try {
       return await startThread(command, options);
     } finally {
@@ -245,10 +272,11 @@ const commandHandlers: CommandHandlerMap = {
     }
   },
   "turn.submit": async (command, options) => {
-    const release = options.runtimeManager.retainEnvironmentForThreadCommand(
-      command.environmentId,
-      command.threadId,
-    );
+    const release =
+      await options.runtimeManager.retainEnvironmentForThreadCommand(
+        command.environmentId,
+        command.threadId,
+      );
     try {
       const entry = await ensureThreadRuntime(command, options);
       return await submitTurn(command, entry, options);
@@ -257,10 +285,28 @@ const commandHandlers: CommandHandlerMap = {
     }
   },
   "thread.stop": async (command, options) => {
-    const entry = await requireExistingEnvironment(
+    // Release before the target runtime lookup. A moved thread often has no
+    // runtime in its new environment yet, and the old owner must still stop.
+    const released =
+      await options.runtimeManager.releaseThreadFromOtherEnvironments({
+        activeTurn: "interrupt",
+        environmentId: command.environmentId,
+        threadId: command.threadId,
+      });
+    const entry = await options.runtimeManager.getOrAwait(
       command.environmentId,
-      options.runtimeManager,
     );
+    if (!entry) {
+      if (released.releasedEnvironmentIds.length === 0) {
+        throw new CommandDispatchError(
+          "unknown_environment",
+          `No runtime exists for environment ${command.environmentId}`,
+        );
+      }
+      // The old owner stopped, so the stop reached the running turn.
+      await options.eventSink.flush();
+      return {};
+    }
     if (entry.runtime.hasThread(command.threadId)) {
       // Stop can be dispatched while the start/submit RPC is still in flight
       // and the turn/started event has not been observed yet. Wait for the
@@ -308,22 +354,26 @@ const commandHandlers: CommandHandlerMap = {
     return result;
   },
   "thread.plan.cancel": async (command, options) => {
-    const entry = await requireExistingEnvironment(
-      command.environmentId,
-      options.runtimeManager,
+    // A moved thread keeps its turn in the environment it left, and the new
+    // environment may hold no runtime yet. Cancel where the turn runs.
+    const owners = options.runtimeManager.listThreadOwnerEntries(
+      command.threadId,
     );
-    if (!entry.runtime.hasThread(command.threadId)) {
+    if (owners.length === 0) {
       throw new ExpectedCommandDispatchError(
         "unknown_thread_runtime",
         `No provider runtime available for thread ${command.threadId}`,
       );
     }
-    if (
-      entry.runtime.getActiveTurnId(command.threadId) !== command.expectedTurnId
-    ) {
+    const owner = owners.find(
+      (entry) =>
+        entry.runtime.getActiveTurnId(command.threadId) ===
+        command.expectedTurnId,
+    );
+    if (!owner) {
       return { cancelled: false };
     }
-    await entry.runtime.stopThread({ threadId: command.threadId });
+    await owner.runtime.stopThread({ threadId: command.threadId });
     await options.eventSink.flush();
     return { cancelled: true };
   },
@@ -334,6 +384,8 @@ const commandHandlers: CommandHandlerMap = {
     if (!entry) {
       return {};
     }
+    // Rename does not move the provider session, so it must not stop a turn
+    // that still runs in the environment the thread left.
     await entry.runtime.renameThread({
       threadId: command.threadId,
       title: command.title,
@@ -347,6 +399,8 @@ const commandHandlers: CommandHandlerMap = {
       runtimeManager: options.runtimeManager,
       workspaceContext: command.workspaceContext,
     });
+    // Archive works on stored provider state, not on the live session, so it
+    // must not stop a turn in the environment the thread left.
     await entry.runtime.archiveThread({
       threadId: command.threadId,
       providerId: command.providerId,
@@ -488,6 +542,7 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
   "provider.list_models": async (command, options) =>
     (options.listModels ?? defaultListModels)({
       providerId: command.providerId,
+      ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
       ...(command.acpLaunchSpec !== undefined
         ? { acpLaunchSpec: command.acpLaunchSpec }
         : {}),

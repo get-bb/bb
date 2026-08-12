@@ -13,6 +13,8 @@ describe("experiments settings", () => {
       const body = systemConfigResponseSchema.parse(await readJson(response));
       expect(body.experiments).toEqual({
         claudeCodeMockCliTraffic: false,
+        editMessages: false,
+        newOnboarding: false,
         toolsHub: false,
       });
     });
@@ -25,16 +27,22 @@ describe("experiments settings", () => {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           claudeCodeMockCliTraffic: true,
+          editMessages: true,
+          newOnboarding: true,
           toolsHub: true,
         }),
       });
       expect(put.status).toBe(200);
       expect(experimentsSchema.parse(await readJson(put))).toEqual({
         claudeCodeMockCliTraffic: true,
+        editMessages: true,
+        newOnboarding: true,
         toolsHub: true,
       });
       expect(getExperiments(harness.db)).toEqual({
         claudeCodeMockCliTraffic: true,
+        editMessages: true,
+        newOnboarding: true,
         toolsHub: true,
       });
 
@@ -43,6 +51,8 @@ describe("experiments settings", () => {
         systemConfigResponseSchema.parse(await readJson(config)).experiments,
       ).toEqual({
         claudeCodeMockCliTraffic: true,
+        editMessages: true,
+        newOnboarding: true,
         toolsHub: true,
       });
     });
@@ -58,6 +68,8 @@ describe("experiments settings", () => {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           claudeCodeMockCliTraffic: false,
+          editMessages: false,
+          newOnboarding: false,
           toolsHub: false,
         }),
       });

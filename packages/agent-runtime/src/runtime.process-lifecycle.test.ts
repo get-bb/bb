@@ -434,6 +434,38 @@ rl.on("line", (line) => {
     await runtime.shutdown();
   });
 
+  it("bounds provider stderr while data arrives without a newline", async () => {
+    const exitInfo = vi.fn<NonNullable<AgentRuntimeOptions["onProcessExit"]>>();
+    const stderrLines: string[] = [];
+    const crashScript = join(tmpDir, "large-stderr-provider.cjs");
+    writeFileSync(
+      crashScript,
+      `process.stderr.write("a".repeat(100_000) + "stderr-tail");
+      process.exit(42);`,
+    );
+    const manager = createProviderProcessManager({
+      onProcessExit: exitInfo,
+      onStderr: (line) => stderrLines.push(line),
+      scriptPath: crashScript,
+      workspacePath: tmpDir,
+    });
+
+    await manager.ensureProvider({ processKey: "fake", providerId: "fake" });
+    await waitForRuntimeState({
+      label: "bounded provider stderr exit callback",
+      predicate: () => exitInfo.mock.calls.length === 1,
+    });
+
+    const stderr = exitInfo.mock.calls[0]?.[0].stderr;
+    expect(Buffer.byteLength(stderr ?? "", "utf8")).toBeLessThanOrEqual(4_000);
+    expect(stderr?.endsWith("stderr-tail")).toBe(true);
+    expect(stderrLines).toHaveLength(1);
+    expect(Buffer.byteLength(stderrLines[0] ?? "", "utf8")).toBeLessThanOrEqual(
+      4_000,
+    );
+    await manager.shutdown();
+  });
+
   it("shutdown kills processes and rejects pending requests", async () => {
     const runtime = createAgentRuntimeWithAdapters({
       workspacePath: tmpDir,
@@ -1238,6 +1270,55 @@ rl.on("line", (line) => {
     await expect(
       runtime.ensureProvider({ providerId: "fake" }),
     ).rejects.toThrow(/failed to start|exited during startup/i);
+    await runtime.shutdown();
+  });
+
+  it("continues startup when an optional post-initialize read is unsupported", async () => {
+    const unsupportedReadScript = join(tmpDir, "unsupported-startup-read.cjs");
+    writeFileSync(
+      unsupportedReadScript,
+      `const readline = require("readline").createInterface({ input: process.stdin });
+      readline.on("line", (line) => {
+        const msg = JSON.parse(line);
+        if (msg.method === "initialize") {
+          process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: msg.id, result: {} }) + "\\n");
+          return;
+        }
+        if (msg.method === "account/rateLimits/read") {
+          process.stdout.write(JSON.stringify({
+            jsonrpc: "2.0",
+            id: msg.id,
+            error: { code: -32601, message: "Method not found" }
+          }) + "\\n");
+        }
+      });`,
+    );
+    const onResult = vi.fn();
+    const baseAdapter = createFakeAdapter(unsupportedReadScript);
+    const adapter: ProviderAdapter = {
+      ...baseAdapter,
+      buildPostInitializeRequests: () => [
+        {
+          plan: { kind: "request", method: "account/rateLimits/read" },
+          required: false,
+          onResult,
+        },
+      ],
+    };
+    const runtime = createAgentRuntimeWithAdapters({
+      workspacePath: tmpDir,
+      onEvent: () => {},
+      onToolCall: async () => ({
+        contentItems: [{ type: "inputText", text: "ok" }],
+        success: true,
+      }),
+      adapterFactory: () => adapter,
+    });
+
+    await expect(
+      runtime.ensureProvider({ providerId: "fake" }),
+    ).resolves.toBeUndefined();
+    expect(onResult).not.toHaveBeenCalled();
     await runtime.shutdown();
   });
 

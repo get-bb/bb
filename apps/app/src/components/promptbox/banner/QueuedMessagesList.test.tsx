@@ -280,10 +280,11 @@ describe("QueuedMessagesList", () => {
     ).toBe("collapsed");
   });
 
-  it("uses hover-revealed icon actions on desktop and an overflow menu on mobile widths", () => {
-    const { container, getByRole } = renderQueuedMessages([
-      makeQueuedMessage("q_one", "First queued message"),
-    ]);
+  it("uses labeled hover-revealed icon actions on desktop and an overflow menu on mobile widths", async () => {
+    const { container, findByRole, getByRole, queryByRole } =
+      renderQueuedMessages([
+        makeQueuedMessage("q_one", "First queued message"),
+      ]);
 
     const sendButton = getByRole("button", {
       name: "Send queued message 1 now",
@@ -315,6 +316,19 @@ describe("QueuedMessagesList", () => {
     expect(
       container.querySelector('[data-icon="DragDropVertical"]'),
     ).not.toBeNull();
+
+    for (const [button, label] of [
+      [sendButton, "Send now"],
+      [editButton, "Edit"],
+      [deleteButton, "Delete"],
+    ] as const) {
+      fireEvent.focus(button);
+      expect((await findByRole("tooltip")).textContent).toBe(label);
+      fireEvent.blur(button);
+      await waitFor(() => {
+        expect(queryByRole("tooltip")).toBeNull();
+      });
+    }
   });
 
   it("replaces the edited row with the real inline composer", () => {
@@ -373,6 +387,9 @@ describe("QueuedMessagesList", () => {
       ),
     ).toBe(true);
     const editingLabel = getByText(/Editing queued message/u);
+    expect(
+      editingLabel.closest('[data-inline-message-editor-frame="embedded"]'),
+    ).not.toBeNull();
     const dismissButton = getByRole("button", {
       name: "Stop editing queued message",
     });

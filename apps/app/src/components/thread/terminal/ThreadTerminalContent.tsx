@@ -6,7 +6,9 @@ import { ThreadTerminalView } from "./ThreadTerminalView";
 import type { ThreadTerminalController } from "./useThreadTerminalController";
 
 interface ThreadTerminalContentProps {
+  autoFocus?: boolean;
   controller: ThreadTerminalController;
+  onAutoFocusHandled?: () => void;
   onOpenLink?: MarkdownPreviewLinkHandler;
   onSelectionAddToChat?: (text: string) => void;
 }
@@ -55,10 +57,18 @@ function getInactiveTerminalContent({
 }
 
 export function ThreadTerminalContent({
+  autoFocus = false,
   controller,
+  onAutoFocusHandled,
   onOpenLink,
   onSelectionAddToChat,
 }: ThreadTerminalContentProps) {
+  // Keep the terminal UI entirely unmounted while its panel is hidden. In
+  // particular, mounting ThreadTerminalView initializes xterm and its socket.
+  if (!controller.isPanelOpen) {
+    return null;
+  }
+
   if (controller.hasTerminalQueryError) {
     return (
       <div className="flex h-full items-center justify-center px-4 text-center text-sm text-destructive-text">
@@ -120,9 +130,12 @@ export function ThreadTerminalContent({
 
   return (
     <ThreadTerminalView
+      autoFocus={autoFocus}
       isPanelOpen={controller.isPanelOpen}
+      onAutoFocusHandled={onAutoFocusHandled}
       onOpenLink={onOpenLink}
       onSelectionAddToChat={onSelectionAddToChat}
+      onSessionChange={controller.handleActiveTerminalSessionChange}
       onTitleChange={controller.handleActiveTerminalTitleChange}
       onUserInput={controller.handleActiveTerminalUserInput}
       session={controller.activeSession}

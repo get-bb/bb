@@ -58,7 +58,8 @@ async function createCodexTranscriptionHarness({
   handle,
 }: CreateCodexTranscriptionHarnessArgs): Promise<CodexTranscriptionHarness> {
   const harness = await createTestAppHarness({
-    transcriptionModel: "codex/gpt-4o-mini-transcribe",
+    inferenceFallbackModel: "codex/gpt-5.4-mini",
+    transcriptionModel: "codex/gpt-transcribe",
   });
   const { host, session } = seedHostSession(harness.deps);
   const responder = registerHostRpcResponder(harness, {
@@ -115,7 +116,7 @@ describe("voice transcription", () => {
     }
   });
 
-  it("retries transient Codex transcription rate limits", async () => {
+  it("retries with the transcription model after Codex service unavailability", async () => {
     let requestCount = 0;
     const harness = await createCodexTranscriptionHarness({
       handle(request) {
@@ -124,9 +125,8 @@ describe("voice transcription", () => {
         if (requestCount === 1) {
           return {
             ok: false,
-            errorCode: "codex_rate_limited",
-            errorMessage:
-              "Codex transcription request failed with HTTP 429: Transcription is temporarily unavailable. Please try again later.",
+            errorCode: "codex_service_unavailable",
+            errorMessage: "Codex transcription service unavailable",
           };
         }
         return {
@@ -144,10 +144,12 @@ describe("voice transcription", () => {
       ).resolves.toBe("hello world");
       expect(harness.requests).toHaveLength(2);
       expect(harness.requests[0]?.command).toMatchObject({
+        model: "gpt-transcribe",
         timeoutMs: 10_000,
         type: "codex.voice.transcribe",
       });
       expect(harness.requests[1]?.command).toMatchObject({
+        model: "gpt-transcribe",
         timeoutMs: 10_000,
         type: "codex.voice.transcribe",
       });

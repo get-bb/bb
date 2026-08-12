@@ -12,10 +12,14 @@ import {
 import { threadTabsResponseSchema } from "@bb/server-contract";
 import type {
   CreateQueuedMessageRequest,
+  ContinueAfterProviderRateLimitResponse,
   CreateThreadRequest,
+  EditMessageRequest,
+  EditMessageResponse,
   ForkThreadRequest,
   DeleteThreadRequest,
   PromptHistoryResponse,
+  ProviderRateLimitRecoveryStatus,
   SendQueuedMessageResponse,
   ThreadArchiveAllResponse,
   ThreadChildSummaryResponse,
@@ -108,7 +112,12 @@ export type ThreadOpenResult = ThreadOpenResponse;
 export type ThreadPaneActionResult = ThreadPaneActionResponse;
 export type ThreadDeleteResult = { ok: true };
 export type ThreadSendResult = { ok: true };
+export type ThreadRateLimitRecoveryResult = ProviderRateLimitRecoveryStatus;
+export type ThreadContinueAfterRateLimitResult =
+  ContinueAfterProviderRateLimitResponse;
+export type ThreadEditMessageResult = EditMessageResponse;
 export type ThreadStopResult = { ok: true };
+export type ThreadCompactResult = { ok: true };
 export type ThreadBannerActionResult = { ok: true };
 export type ThreadUnarchiveResult = { ok: true };
 export type ThreadArchiveAllResult = ThreadArchiveAllResponse;
@@ -177,8 +186,16 @@ export interface ThreadSendArgs extends SendMessageRequest {
   threadId: string;
 }
 
+export interface ThreadEditMessageArgs extends EditMessageRequest {
+  threadId: string;
+}
+
 export interface ThreadActionArgs {
   threadId: string;
+}
+
+export interface ThreadContinueAfterRateLimitArgs extends ThreadActionArgs {
+  failedRequestId: string;
 }
 
 export interface ThreadStatusArgs extends ThreadActionArgs {
@@ -408,6 +425,10 @@ export interface ThreadsArea {
   archive(args: ThreadActionArgs): Promise<ThreadArchiveResult>;
   archiveAll(args: ThreadActionArgs): Promise<ThreadArchiveAllResult>;
   childSummary(args: ThreadStatusArgs): Promise<ThreadChildSummaryResult>;
+  continueAfterRateLimit(
+    args: ThreadContinueAfterRateLimitArgs,
+  ): Promise<ThreadContinueAfterRateLimitResult>;
+  compact(args: ThreadActionArgs): Promise<ThreadCompactResult>;
   cancelPlan(args: ThreadActionArgs): Promise<ThreadBannerActionResult>;
   clearGoal(args: ThreadActionArgs): Promise<ThreadBannerActionResult>;
   conversationOutline(
@@ -417,6 +438,7 @@ export interface ThreadsArea {
     args: ThreadStatusArgs,
   ): Promise<ThreadDefaultExecutionOptionsResult>;
   delete(args: ThreadDeleteArgs): Promise<ThreadDeleteResult>;
+  editMessage(args: ThreadEditMessageArgs): Promise<ThreadEditMessageResult>;
   events: ThreadEventsArea;
   fork(args: ThreadForkArgs): Promise<ThreadForkResult>;
   get(args: ThreadGetArgs): Promise<ThreadGetResult>;
@@ -432,6 +454,9 @@ export interface ThreadsArea {
     args: ThreadPromptHistoryArgs,
   ): Promise<ThreadPromptHistoryResult>;
   queuedMessages: ThreadQueuedMessagesArea;
+  rateLimitRecovery(
+    args: ThreadStatusArgs,
+  ): Promise<ThreadRateLimitRecoveryResult>;
   reorderPinned(args: ThreadPinOrderArgs): Promise<ThreadPinOrderResult>;
   search(args: ThreadSearchArgs): Promise<ThreadSearchResult>;
   send(args: ThreadSendArgs): Promise<ThreadSendResult>;
@@ -905,6 +930,15 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       );
       return { ok: true };
     },
+    async editMessage(input) {
+      const { threadId, ...json } = input;
+      return transport.readJson(
+        transport.api.v1.threads[":id"]["edit-message"].$post({
+          param: { id: threadId },
+          json,
+        }),
+      );
+    },
     events,
     async fork(input) {
       return transport.readJson(
@@ -934,6 +968,22 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       return transport.readJson(
         transport.api.v1.threads[":id"].unread.$post({
           param: { id: input.threadId },
+        }),
+      );
+    },
+    async rateLimitRecovery(input) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"]["rate-limit-recovery"].$get(
+          { param: { id: input.threadId } },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+    },
+    async continueAfterRateLimit(input) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"]["rate-limit-recovery"].continue.$post({
+          param: { id: input.threadId },
+          json: { failedRequestId: input.failedRequestId },
         }),
       );
     },
@@ -1021,6 +1071,14 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
     async stop(input) {
       await transport.readVoid(
         transport.api.v1.threads[":id"].stop.$post({
+          param: { id: input.threadId },
+        }),
+      );
+      return { ok: true };
+    },
+    async compact(input) {
+      await transport.readVoid(
+        transport.api.v1.threads[":id"].compact.$post({
           param: { id: input.threadId },
         }),
       );

@@ -527,6 +527,7 @@ describe("timeline CLI rendering snapshots", () => {
     );
     expect(pendingSteerRow?.sourceSeqStart).toBe(3);
     expect(pendingSteerRow?.turnRequest).toEqual({
+      isGrouped: false,
       kind: "steer",
       status: "pending",
     });
@@ -582,6 +583,7 @@ describe("timeline CLI rendering snapshots", () => {
     );
     expect(steerMessage?.sourceSeqStart).toBe(4);
     expect(steerMessage?.turnRequest).toEqual({
+      isGrouped: false,
       kind: "steer",
       status: "accepted",
     });
@@ -598,6 +600,7 @@ describe("timeline CLI rendering snapshots", () => {
     );
     expect(steerRow?.sourceSeqStart).toBe(4);
     expect(steerRow?.turnRequest).toEqual({
+      isGrouped: false,
       kind: "steer",
       status: "accepted",
     });
@@ -674,8 +677,8 @@ describe("timeline CLI rendering snapshots", () => {
       "Follow-up task",
     ]);
     expect(userMessages.map((message) => message.turnRequest)).toEqual([
-      { kind: "message", status: "accepted" },
-      { kind: "message", status: "accepted" },
+      { isGrouped: false, kind: "message", status: "accepted" },
+      { isGrouped: false, kind: "message", status: "accepted" },
     ]);
     const topLevelUserRows = timeline.rows.filter(
       (row) => row.kind === "conversation" && row.role === "user",
@@ -868,6 +871,82 @@ describe("timeline CLI rendering snapshots", () => {
     expect(timeline.text).toMatchInlineSnapshot(`
       "── Compacting context ──────────────────────────────────────"
     `);
+  });
+
+  it("unwraps completed context compaction from a singleton turn summary", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const timeline = renderTimelineFixture({
+      events: [
+        event.turnStarted(),
+        event.contextCompactionStarted(),
+        event.assistantCompleted({
+          itemId: "assistant-after-compaction",
+          text: "Compaction finished.",
+        }),
+        event.threadCompacted(),
+        event.turnCompleted(),
+      ],
+      includeNestedRows: false,
+      projectionOptions: {
+        threadStatus: "idle",
+        turnMessageDetail: "summary",
+      },
+    });
+
+    expect(timeline.turnRows).toHaveLength(0);
+    expect(timeline.text).toContain("Context compacted");
+    expect(timeline.text).toContain("Compaction finished.");
+    expect(timeline.text).not.toContain("Worked for");
+  });
+
+  it("unwraps failed context compaction from a singleton turn summary", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const timeline = renderTimelineFixture({
+      events: [
+        event.turnStarted(),
+        event.contextCompactionStarted(),
+        event.providerError({
+          message: "Provider error",
+          detail: "Nothing to compact",
+        }),
+        event.turnCompleted({ status: "failed" }),
+      ],
+      includeNestedRows: false,
+      projectionOptions: {
+        threadStatus: "error",
+        turnMessageDetail: "summary",
+      },
+    });
+
+    expect(timeline.turnRows).toHaveLength(0);
+    expect(timeline.text).toContain("Context compaction failed");
+    expect(timeline.text).not.toContain("Worked for");
+  });
+
+  it("keeps context compaction grouped when the turn contains other work", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const timeline = renderTimelineFixture({
+      events: [
+        event.turnStarted(),
+        event.contextCompactionStarted(),
+        event.contextCompactionCompleted(),
+        event.commandCompleted({
+          itemId: "command-1",
+          command: "pnpm test",
+          aggregatedOutput: "Tests passed\n",
+          exitCode: 0,
+        }),
+        event.turnCompleted(),
+      ],
+      includeNestedRows: false,
+      projectionOptions: {
+        threadStatus: "idle",
+        turnMessageDetail: "summary",
+      },
+    });
+
+    expect(timeline.turnRows).toHaveLength(1);
+    expect(timeline.text).toContain("Worked for");
   });
 
   it("keeps a finished-turn summary when work follows an assistant step", () => {

@@ -28,13 +28,19 @@ describe("resolveToolsBreadcrumbs", () => {
   it("includes the selected collection tab", () => {
     expect(resolveToolsBreadcrumbs("/tools/skills")).toEqual([
       { label: "Skills", to: "/tools/skills" },
-      { label: "Library" },
-    ]);
-    expect(resolveToolsBreadcrumbs("/tools/skills", "?view=browse")).toEqual([
-      { label: "Skills", to: "/tools/skills" },
       { label: "Browse" },
     ]);
+    expect(resolveToolsBreadcrumbs("/tools/skills", "?view=library")).toEqual([
+      { label: "Skills", to: "/tools/skills" },
+      { label: "Library" },
+    ]);
     expect(resolveToolsBreadcrumbs("/tools/plugins")).toEqual([
+      { label: "Plugins", to: "/tools/plugins" },
+      { label: "Browse" },
+    ]);
+    expect(
+      resolveToolsBreadcrumbs("/tools/plugins", "?view=installed"),
+    ).toEqual([
       { label: "Plugins", to: "/tools/plugins" },
       { label: "Installed" },
     ]);
@@ -63,7 +69,7 @@ describe("resolveToolsBreadcrumbs", () => {
       ),
     ).toEqual([
       { label: "Skills", to: "/tools/skills" },
-      { label: "Library", to: "/tools/skills" },
+      { label: "Library", to: "/tools/skills?view=library" },
       { label: "Example Skill" },
     ]);
     expect(
@@ -77,14 +83,14 @@ describe("resolveToolsBreadcrumbs", () => {
     ]);
     expect(resolveToolsBreadcrumbs("/tools/plugins/ui-patterns")).toEqual([
       { label: "Plugins", to: "/tools/plugins" },
-      { label: "Installed", to: "/tools/plugins" },
+      { label: "Installed", to: "/tools/plugins?view=installed" },
       { label: "ui-patterns" },
     ]);
     expect(
       resolveToolsBreadcrumbs("/tools/plugins/ui-patterns", "", "UI Patterns"),
     ).toEqual([
       { label: "Plugins", to: "/tools/plugins" },
-      { label: "Installed", to: "/tools/plugins" },
+      { label: "Installed", to: "/tools/plugins?view=installed" },
       { label: "UI Patterns" },
     ]);
     expect(

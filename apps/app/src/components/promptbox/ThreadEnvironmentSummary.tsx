@@ -2,6 +2,11 @@ import { memo } from "react";
 import { OptionDisplay } from "@/components/pickers/OptionPicker";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@bb/shared-ui/tooltip";
 import type { WorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
 
 const CHECKOUT_CHIP_BASE_CLASS_NAME =
@@ -107,14 +112,19 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
         </span>
       ) : null}
       {onCreateNewThreadInWorktree ? (
-        <button
-          type="button"
-          aria-label="Create new thread in this worktree"
-          onClick={onCreateNewThreadInWorktree}
-          className="-ml-1 inline-flex cursor-pointer shrink-0 items-center justify-center rounded-md px-1 py-0.5 text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
-        >
-          <Icon name="MessageSquarePlus" className="size-4" />
-        </button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              aria-label="Create new thread in this worktree"
+              onClick={onCreateNewThreadInWorktree}
+              className="-ml-1 inline-flex cursor-pointer shrink-0 items-center justify-center rounded-md px-1 py-0.5 text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
+            >
+              <Icon name="MessageSquarePlus" className="size-4" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>Create new thread in this worktree</TooltipContent>
+        </Tooltip>
       ) : null}
     </div>
   );

@@ -1,5 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { readFile } from "node:fs/promises";
+import { promisify } from "node:util";
+import { brotliCompress, constants as zlibConstants, gzip } from "node:zlib";
 import type { Context, Hono } from "hono";
 import type { ServerRuntimeConfig } from "../types.js";
 import {
@@ -12,6 +14,11 @@ import type {
 } from "../services/plugins/plugin-service.js";
 import type { PluginMentionTrigger } from "../services/plugins/plugin-api.js";
 import { PluginSettingsValidationError } from "../services/plugins/plugin-settings.js";
+import {
+  createAppAssetCompressionCache,
+  type AppAssetCompressionCache,
+} from "../services/plugins/app-asset-compression-cache.js";
+import { rankAcceptedAssetEncodings } from "../asset-content-encoding.js";
 import {
   pluginApplyUpdateRequestSchema,
   pluginInstallRequestSchema,
@@ -27,6 +34,68 @@ export interface PluginRoutesDeps {
 }
 
 type WireAuthProblem = BrowserRequestProblem | { status: 401; error: string };
+
+const compressBrotli = promisify(brotliCompress);
+const compressGzip = promisify(gzip);
+const MIN_COMPRESSED_APP_ASSET_BYTES = 1_024;
+const MAX_CACHED_APP_ASSETS = 64;
+const APP_ASSET_ENCODINGS = [
+  {
+    encoding: "br",
+    compress: (bytes: Buffer) =>
+      compressBrotli(bytes, {
+        params: {
+          // Compression happens in the request path, so use a moderate level
+          // rather than the slower quality 10 used for build-time sidecars.
+          [zlibConstants.BROTLI_PARAM_QUALITY]: 6,
+        },
+      }),
+  },
+  {
+    encoding: "gzip",
+    compress: (bytes: Buffer) => compressGzip(bytes),
+  },
+] as const;
+
+async function appAssetResponse(
+  context: Context,
+  bytes: Buffer,
+  args: {
+    assetKey: string;
+    cache: AppAssetCompressionCache;
+    cacheControl: string;
+    contentHash: string;
+    contentType: string;
+  },
+): Promise<Response> {
+  const responseHeaders: Record<string, string> = {
+    "cache-control": args.cacheControl,
+    "content-length": String(bytes.length),
+    "content-type": args.contentType,
+  };
+  if (bytes.length < MIN_COMPRESSED_APP_ASSET_BYTES) {
+    return context.body(new Uint8Array(bytes), 200, responseHeaders);
+  }
+
+  responseHeaders.vary = "Accept-Encoding";
+  const candidate = rankAcceptedAssetEncodings(
+    context.req.header("accept-encoding"),
+    APP_ASSET_ENCODINGS,
+  )[0];
+  if (candidate === undefined) {
+    return context.body(new Uint8Array(bytes), 200, responseHeaders);
+  }
+
+  const compressed = await args.cache.getOrCreate({
+    assetKey: args.assetKey,
+    compress: () => candidate.compress(bytes),
+    encoding: candidate.encoding,
+    hash: args.contentHash,
+  });
+  responseHeaders["content-encoding"] = candidate.encoding;
+  responseHeaders["content-length"] = String(compressed.length);
+  return context.body(new Uint8Array(compressed), 200, responseHeaders);
+}
 
 function parsePluginMentionTrigger(
   value: string | undefined,
@@ -120,6 +189,10 @@ export function registerPluginRoutes(
   deps: PluginRoutesDeps,
   plugins: PluginService,
 ): void {
+  const appAssetCompressionCache = createAppAssetCompressionCache(
+    MAX_CACHED_APP_ASSETS,
+  );
+
   app.get("/plugins", (context) => context.json({ plugins: plugins.list() }));
 
   // Fast metadata for the bb CLI's help/proxy path and the app's
@@ -266,9 +339,12 @@ export function registerPluginRoutes(
       context.req.query("h") === asset.hash
         ? "public, max-age=31536000, immutable"
         : "no-store";
-    return context.body(new Uint8Array(bytes), 200, {
-      "content-type": spec.contentType,
-      "cache-control": cacheControl,
+    return appAssetResponse(context, bytes, {
+      assetKey: `${context.req.param("id")}:${spec.kind}`,
+      cache: appAssetCompressionCache,
+      contentType: spec.contentType,
+      cacheControl,
+      contentHash: asset.hash,
     });
   });
 

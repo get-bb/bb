@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite dev --host 0.0.0.0",
     "build": "vite build",
+    "og:card": "node scripts/generate-og-card.mjs",
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --config vitest.config.ts",

@@ -30,7 +30,10 @@ import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
-import { ThreadDetailPromptArea } from "./ThreadDetailPromptArea";
+import {
+  ThreadDetailPromptArea,
+  type ThreadDetailSentMessageEdit,
+} from "./ThreadDetailPromptArea";
 
 const mocks = vi.hoisted(() => ({
   cancelThreadPlanMutate: vi.fn(),
@@ -87,6 +90,7 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
     pluginComposerHost,
     showScrollToBottomButton,
     stack,
+    suppressPluginComposerCustomizations,
     textEffects,
   }: {
     attachments: {
@@ -97,6 +101,7 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
       message: string;
       onChangeMessage: (message: string, mentions: []) => void;
       onSubmit: () => void;
+      submitTitle?: string;
       submitMode: { kind: string; reason?: string };
     } | null;
     execution: {
@@ -116,6 +121,7 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
     pluginComposerHost?: PluginComposerHost | null;
     showScrollToBottomButton?: boolean;
     stack: ReactNode;
+    suppressPluginComposerCustomizations?: boolean;
     textEffects?: readonly {
       effect: { className: string };
     }[];
@@ -125,6 +131,10 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
       <div data-testid="composer-boundary" />
       <div data-testid="submit-mode">
         {composer?.submitMode.kind}:{composer?.submitMode.reason ?? ""}
+      </div>
+      <div data-testid="submit-title">{composer?.submitTitle ?? "Submit"}</div>
+      <div data-testid="plugin-customizations-suppressed">
+        {suppressPluginComposerCustomizations ? "true" : "false"}
       </div>
       <div data-testid="selected-model">{execution.model.active?.model}</div>
       <div data-testid="selected-reasoning">{execution.reasoning.value}</div>
@@ -626,6 +636,7 @@ interface RenderPromptAreaOptions {
   modelFallback?: ThreadTimelineModelFallback | null;
   pendingInteractions?: readonly PendingInteraction[];
   pendingInteractionsInitialLoading?: boolean;
+  sentMessageEdit?: ThreadDetailSentMessageEdit;
   thread?: ThreadWithRuntime;
 }
 
@@ -636,10 +647,12 @@ function buildPromptAreaElement({
   modelFallback = null,
   pendingInteractions = [],
   pendingInteractionsInitialLoading = false,
+  sentMessageEdit,
   thread = makeThread(),
 }: RenderPromptAreaOptions = {}) {
   return (
     <ThreadDetailPromptArea
+      activeBackgroundAgentCount={0}
       activeBackgroundCommands={[]}
       activePromptMode={activePromptMode}
       activeWorkflows={activeWorkflows}
@@ -665,6 +678,7 @@ function buildPromptAreaElement({
         isPending: false,
         mutateAsync: vi.fn(),
       }}
+      sentMessageEdit={sentMessageEdit}
       steerActiveThreadOnEnter={false}
       thread={thread}
       workspaceChangedFilesSection={null}
@@ -706,11 +720,150 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  document
+    .querySelectorAll("[data-sent-message-editor-test-host]")
+    .forEach((element) => element.remove());
   resetPluginSlotStoreForTest();
   vi.clearAllMocks();
 });
 
 describe("ThreadDetailPromptArea", () => {
+  it("keeps sent-message edit submission out of the normal send path", () => {
+    mocks.defaultExecutionOptions = {
+      model: "gpt-5",
+      permissionMode: "auto",
+      reasoningLevel: "medium",
+      serviceTier: "default",
+      source: "client/turn/requested",
+    };
+    mocks.promptDraft.text = "Untouched follow-up draft";
+    const onSubmit = vi.fn();
+    const onCancel = vi.fn();
+    const updateDraft = vi.fn();
+    const hostElement = document.createElement("div");
+    hostElement.dataset.sentMessageEditorTestHost = "";
+    document.body.append(hostElement);
+
+    renderPromptArea({
+      sentMessageEdit: {
+        draft: {
+          text: "Edited request",
+          mentions: [],
+          attachments: [],
+        },
+        hostElement,
+        isSubmitting: false,
+        operationId: "edit-operation-1",
+        onCancel,
+        onSubmit,
+        updateDraft,
+      },
+    });
+
+    const inlineEditor = within(hostElement);
+    const editingLabel = inlineEditor.getByText("Editing message");
+    const editingFrame = editingLabel.closest(
+      '[data-inline-message-editor-frame="cap"]',
+    );
+    expect(editingFrame).not.toBeNull();
+    expect(editingLabel.closest("section")?.className).toContain("-mb-5");
+    expect(editingLabel.closest("section")?.className).toContain(
+      "rounded-b-none",
+    );
+    expect(inlineEditor.getByTestId("submit-title").textContent).toBe(
+      "Submit edit (Enter)",
+    );
+    expect(
+      inlineEditor.getByTestId("plugin-customizations-suppressed").textContent,
+    ).toBe("true");
+    expect(
+      (
+        inlineEditor.getByRole("textbox", {
+          name: "Composer message",
+        }) as HTMLInputElement
+      ).value,
+    ).toBe("Edited request");
+    const bottomComposer = screen
+      .getAllByTestId("follow-up-prompt-box")
+      .find((element) => !hostElement.contains(element));
+    expect(bottomComposer).toBeDefined();
+    expect(
+      (
+        within(bottomComposer!).getByRole("textbox", {
+          name: "Composer message",
+        }) as HTMLInputElement
+      ).value,
+    ).toBe("Untouched follow-up draft");
+    fireEvent.click(
+      inlineEditor.getByRole("button", {
+        name: "Simulate plugin replacement",
+      }),
+    );
+    expect(updateDraft).toHaveBeenCalledTimes(1);
+    expect(mocks.promptDraft.setDraft).not.toHaveBeenCalled();
+
+    fireEvent.click(
+      inlineEditor.getByRole("button", { name: "Submit composer" }),
+    );
+
+    expect(onSubmit).toHaveBeenCalledWith({
+      execution: {
+        model: "gpt-5",
+        permissionMode: "auto",
+        reasoningLevel: "medium",
+        serviceTier: undefined,
+        supportsServiceTier: false,
+        executionInputSources: {},
+      },
+      input: [{ type: "text", text: "Edited request", mentions: [] }],
+    });
+    expect(mocks.promptDraft.clearIfCurrentMatches).not.toHaveBeenCalled();
+    expect(mocks.createQueuedMessageMutateAsync).not.toHaveBeenCalled();
+
+    fireEvent.click(
+      inlineEditor.getByRole("button", {
+        name: "Stop editing sent message",
+      }),
+    );
+    expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+
+  it("blocks a staged sent-message edit when the thread becomes ineligible", () => {
+    mocks.defaultExecutionOptions = {
+      model: "gpt-5",
+      permissionMode: "auto",
+      reasoningLevel: "medium",
+      serviceTier: "default",
+      source: "client/turn/requested",
+    };
+    mocks.queuedMessages = [makeQueuedMessage()];
+    const hostElement = document.createElement("div");
+    hostElement.dataset.sentMessageEditorTestHost = "";
+    document.body.append(hostElement);
+    const onSubmit = vi.fn();
+
+    renderPromptArea({
+      sentMessageEdit: {
+        draft: { text: "Edited request", mentions: [], attachments: [] },
+        hostElement,
+        isSubmitting: false,
+        operationId: "edit-operation-1",
+        onCancel: vi.fn(),
+        onSubmit,
+        updateDraft: vi.fn(),
+      },
+    });
+
+    const inlineEditor = within(hostElement);
+    expect(inlineEditor.getByTestId("submit-mode").textContent).toBe(
+      "blocked:unavailable",
+    );
+    fireEvent.click(
+      inlineEditor.getByRole("button", { name: "Submit composer" }),
+    );
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
   it("keeps the queued drawer adjacent to the bottom composer", () => {
     mocks.queuedMessages = [makeQueuedMessage()];
 

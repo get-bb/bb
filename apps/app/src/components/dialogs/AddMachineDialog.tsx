@@ -20,6 +20,7 @@ import { getMutationErrorMessage } from "@/lib/mutation-errors";
 interface AddMachineDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  serverUrl: string | null;
 }
 
 const connectMachineCodeSchema = z.object({
@@ -71,11 +72,17 @@ async function createConnectMachineCode(): Promise<ConnectMachineCode | null> {
 export function AddMachineDialog({
   open,
   onOpenChange,
+  serverUrl,
 }: AddMachineDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
-        {open ? <AddMachineDialogContent onOpenChange={onOpenChange} /> : null}
+        {open ? (
+          <AddMachineDialogContent
+            onOpenChange={onOpenChange}
+            serverUrl={serverUrl}
+          />
+        ) : null}
       </DialogContent>
     </Dialog>
   );
@@ -95,16 +102,18 @@ function formatCountdown(remainingMs: number): string {
  * `bb-app host-daemon join`).
  *
  * With a machine code (tunnel pairing) the whole command targets the connect
- * serverUrl the code was minted for — the browser origin may be a localhost
- * view of a paired server, which the new machine cannot reach. Only the
- * direct/LAN variant (no machine code) uses the browser origin.
+ * serverUrl the code was minted for. Otherwise it uses the direct server URL
+ * reported by system config, which may differ from the frontend origin in
+ * source development.
  */
 function pairingCommand(
   joinCode: string,
   hostId: string,
   machineCode: ConnectMachineCode | null,
-): string {
-  const serverUrl = machineCode?.serverUrl ?? window.location.origin;
+  directServerUrl: string | null,
+): string | null {
+  const serverUrl = machineCode?.serverUrl ?? directServerUrl;
+  if (serverUrl === null) return null;
   const machineFlag =
     machineCode === null ? "" : ` --machine-code ${machineCode.code}`;
   return `curl -fsSL ${serverUrl}/install.sh | sh -s -- --join-code ${joinCode} --host-id ${hostId} --server ${serverUrl}${machineFlag}`;
@@ -112,8 +121,10 @@ function pairingCommand(
 
 function AddMachineDialogContent({
   onOpenChange,
+  serverUrl,
 }: {
   onOpenChange: (open: boolean) => void;
+  serverUrl: string | null;
 }) {
   const hostsQuery = useHosts();
   const mintJoinCode = useMutation({
@@ -169,7 +180,12 @@ function AddMachineDialogContent({
   const expired = remainingMs !== null && remainingMs <= 0;
   const command =
     joinCode !== null
-      ? pairingCommand(joinCode.joinCode, joinCode.hostId, machineCode)
+      ? pairingCommand(
+          joinCode.joinCode,
+          joinCode.hostId,
+          machineCode,
+          serverUrl,
+        )
       : null;
 
   return (

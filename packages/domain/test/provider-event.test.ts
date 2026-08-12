@@ -4,6 +4,37 @@ import { threadEventSchema, turnScope } from "../src/index.js";
 const CLIENT_REQUEST_ID = "creq_23456789ab";
 
 describe("provider event schema", () => {
+  it("preserves opaque provider rate-limit window keys", () => {
+    expect(
+      threadEventSchema.parse({
+        type: "provider/rateLimits/updated",
+        threadId: "thr_123",
+        providerThreadId: "provider-thread-123",
+        scope: { kind: "thread" },
+        rateLimits: {
+          providerId: "claude-code",
+          status: "blocked",
+          kind: "subscription-window",
+          windows: [
+            {
+              providerKey: "seven_day_fable",
+              label: null,
+              status: "blocked",
+              resetsAtMs: 1_781_120_400_000,
+            },
+          ],
+          reachedReason: "seven_day_fable",
+          overageStatus: null,
+          overageReason: null,
+        },
+      }),
+    ).toMatchObject({
+      rateLimits: {
+        windows: [{ providerKey: "seven_day_fable" }],
+      },
+    });
+  });
+
   it("uses clientRequestId for accepted input and user-message items", () => {
     expect(
       threadEventSchema.parse({

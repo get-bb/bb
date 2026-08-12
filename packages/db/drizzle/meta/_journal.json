@@ -666,6 +666,13 @@
       "when": 1786156396615,
       "tag": "0094_chilly_nitro",
       "breakpoints": true
+    },
+    {
+      "idx": 95,
+      "version": "6",
+      "when": 1786540591130,
+      "tag": "0095_glorious_paper_doll",
+      "breakpoints": true
     }
   ]
 }

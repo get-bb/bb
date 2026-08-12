@@ -128,6 +128,61 @@ function stalledSseResponse(): Response {
   });
 }
 
+function openSseResponse(events: JsonValue[]): {
+  response: Response;
+  wasCanceled: () => boolean;
+} {
+  let canceled = false;
+  const bytes = new TextEncoder().encode(
+    `${events.map((event) => `data: ${JSON.stringify(event)}`).join("\n\n")}\n\n`,
+  );
+  return {
+    response: new Response(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(bytes);
+        },
+        cancel() {
+          canceled = true;
+        },
+      }),
+      {
+        status: 200,
+        headers: {
+          "content-type": "text/event-stream",
+        },
+      },
+    ),
+    wasCanceled: () => canceled,
+  };
+}
+
+function delayedSseResponse(delayMs: number, events: JsonValue[]): Response {
+  const bytes = new TextEncoder().encode(
+    `${events.map((event) => `data: ${JSON.stringify(event)}`).join("\n\n")}\n\ndata: [DONE]\n\n`,
+  );
+  return new Response(
+    new ReadableStream<Uint8Array>({
+      start(controller) {
+        setTimeout(() => {
+          try {
+            controller.enqueue(bytes);
+            controller.close();
+          } catch {
+            // The request deadline can cancel the reader before this fires.
+          }
+        }, delayMs);
+      },
+    }),
+    {
+      status: 200,
+      headers: {
+        "content-type": "text/event-stream",
+      },
+    },
+  );
+}
+
 function requiredFetchCall(fetchMock: FetchMock, index: number) {
   const call = fetchMock.mock.calls[index];
   if (!call) {
@@ -315,6 +370,112 @@ describe("Codex ChatGPT client", () => {
     });
   });
 
+  it("classifies streamed overload failures as service unavailable", async () => {
+    const homeDir = await makeTempHome();
+    await writeCodexApiKeyAuth({
+      homeDir,
+      apiKey: "sk-codex-api-key",
+    });
+    const fetchMock = setupFetchMock();
+    fetchMock.mockResolvedValueOnce(
+      sseResponse([
+        {
+          type: "response.failed",
+          response: {
+            error: {
+              message:
+                "Our servers are currently overloaded. Please try again later.",
+            },
+          },
+        },
+      ]),
+    );
+
+    await expect(
+      completeCodexInference({
+        type: "codex.inference.complete",
+        model: "gpt-5.6-luna",
+        reasoningEffort: "none",
+        prompt: "Return a title",
+        outputSchema: { type: "object" },
+        timeoutMs: 10_000,
+      }),
+    ).rejects.toMatchObject({
+      code: "codex_service_unavailable",
+    });
+  });
+
+  it("preserves structured server error codes from failed responses", async () => {
+    const homeDir = await makeTempHome();
+    await writeCodexApiKeyAuth({
+      homeDir,
+      apiKey: "sk-codex-api-key",
+    });
+    const fetchMock = setupFetchMock();
+    fetchMock.mockResolvedValueOnce(
+      sseResponse([
+        {
+          type: "response.failed",
+          response: {
+            error: {
+              code: "server_error",
+              message: "An unexpected provider error occurred.",
+            },
+          },
+        },
+      ]),
+    );
+
+    await expect(
+      completeCodexInference({
+        type: "codex.inference.complete",
+        model: "gpt-5.6-luna",
+        reasoningEffort: "none",
+        prompt: "Return a title",
+        outputSchema: { type: "object" },
+        timeoutMs: 10_000,
+      }),
+    ).rejects.toMatchObject({
+      code: "codex_service_unavailable",
+      message: "An unexpected provider error occurred.",
+    });
+  });
+
+  it("cancels an open SSE body after a terminal failure event", async () => {
+    const homeDir = await makeTempHome();
+    await writeCodexApiKeyAuth({
+      homeDir,
+      apiKey: "sk-codex-api-key",
+    });
+    const fetchMock = setupFetchMock();
+    const failedResponse = openSseResponse([
+      {
+        type: "response.failed",
+        response: {
+          error: {
+            code: "server_error",
+            message: "An unexpected provider error occurred.",
+          },
+        },
+      },
+    ]);
+    fetchMock.mockResolvedValueOnce(failedResponse.response);
+
+    await expect(
+      completeCodexInference({
+        type: "codex.inference.complete",
+        model: "gpt-5.6-luna",
+        reasoningEffort: "none",
+        prompt: "Return a title",
+        outputSchema: { type: "object" },
+        timeoutMs: 100,
+      }),
+    ).rejects.toMatchObject({
+      code: "codex_service_unavailable",
+    });
+    expect(failedResponse.wasCanceled()).toBe(true);
+  });
+
   it("uses Codex auth read-only without refreshing expired-looking access tokens", async () => {
     const homeDir = await makeTempHome();
     const oldAccessToken = createAccessToken({
@@ -414,6 +575,37 @@ describe("Codex ChatGPT client", () => {
     });
   });
 
+  it("uses one deadline across response headers and SSE body reads", async () => {
+    const homeDir = await makeTempHome();
+    await writeCodexApiKeyAuth({
+      homeDir,
+      apiKey: "sk-codex-api-key",
+    });
+    const fetchMock = setupFetchMock();
+    fetchMock.mockImplementationOnce(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      return delayedSseResponse(40, [
+        {
+          type: "response.output_text.delta",
+          delta: '{"title":"Too late"}',
+        },
+      ]);
+    });
+
+    await expect(
+      completeCodexInference({
+        type: "codex.inference.complete",
+        model: "gpt-5.6-luna",
+        reasoningEffort: "none",
+        prompt: "Return a title",
+        outputSchema: { type: "object" },
+        timeoutMs: 60,
+      }),
+    ).rejects.toMatchObject({
+      code: "codex_request_timeout",
+    });
+  });
+
   it("caps oversized Codex error response bodies", async () => {
     const homeDir = await makeTempHome();
     await writeCodexApiKeyAuth({
@@ -445,7 +637,7 @@ describe("Codex ChatGPT client", () => {
     }
 
     expect(thrown).toMatchObject({
-      code: "codex_request_failed",
+      code: "codex_service_unavailable",
     });
     expect(thrown?.message.length).toBeLessThan(700);
   });

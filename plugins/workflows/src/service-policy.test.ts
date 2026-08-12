@@ -574,6 +574,210 @@ describe("workflow service policy integration", () => {
     await worker;
   });
 
+  it.each([
+    ["JSON-labelled", '```json\r\n{"answer":42}\r\n```'],
+    ["unlabelled", '```\n{"answer":42}\n```'],
+  ])(
+    "accepts %s whole-output fences in the structured text fallback",
+    async (_label, output) => {
+      const test = setup();
+      harnesses.push(test.harness);
+      const run = await test.start(
+        source(`return await agent("structured", {
+          outputSchema: {
+            type: "object",
+            required: ["answer"],
+            properties: { answer: { type: "number" } }
+          }
+        });`),
+      );
+      const controller = new AbortController();
+      const worker = test.service.runWorker(controller.signal);
+      try {
+        await eventually(() => expect(test.childCount()).toBe(1));
+
+        test.service.onThreadIdle("child-1", output);
+
+        await eventually(() => {
+          expect(getRunRequired(test.db, run.id)).toMatchObject({
+            status: "succeeded",
+            resultJson: '{"answer":42}',
+          });
+          expect(getCall(test.db, run.id, 0)).toMatchObject({
+            status: "succeeded",
+            repairAttempts: 0,
+            error: null,
+          });
+        });
+      } finally {
+        controller.abort();
+        await worker;
+      }
+    },
+  );
+
+  it.each([
+    ["an unterminated fence", '```json\n{"answer":42}'],
+    [
+      "a fence with surrounding prose",
+      'Result follows:\n```json\n{"answer":42}\n```',
+    ],
+  ])("does not normalize %s", async (_label, output) => {
+    const test = setup();
+    harnesses.push(test.harness);
+    const run = await test.start(
+      source(`return await agent("strict-structured", {
+        outputSchema: {
+          type: "object",
+          required: ["answer"],
+          properties: { answer: { type: "number" } }
+        }
+      });`),
+    );
+    const controller = new AbortController();
+    const worker = test.service.runWorker(controller.signal);
+    try {
+      await eventually(() => expect(test.childCount()).toBe(1));
+
+      test.service.onThreadIdle("child-1", output);
+
+      await eventually(() => {
+        expect(
+          test.harness.sdk
+            .callsTo("threads.send")
+            .filter(
+              ([input]) =>
+                (input as { threadId: string }).threadId === "child-1",
+            ),
+        ).toHaveLength(1);
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(getRunRequired(test.db, run.id).status).toBe("running");
+      expect(getCall(test.db, run.id, 0)).toMatchObject({
+        status: "running",
+        repairAttempts: 1,
+        resultJson: null,
+        error: null,
+      });
+
+      await expect(test.service.stop(run.id)).resolves.toBe(true);
+      expect(getRunRequired(test.db, run.id)).toMatchObject({
+        status: "cancelled",
+        error: "Cancelled",
+      });
+      expect(getCall(test.db, run.id, 0)).toMatchObject({
+        status: "cancelled",
+        error: "Cancelled",
+      });
+    } finally {
+      controller.abort();
+      await worker;
+    }
+  });
+
+  it("keeps an awaited corrective turn alive until its valid retry completes", async () => {
+    const test = setup();
+    harnesses.push(test.harness);
+    const run = await test.start(
+      source(`return await agent("repair-structured", {
+        outputSchema: {
+          type: "object",
+          required: ["answer"],
+          properties: { answer: { type: "number" } }
+        }
+      });`),
+    );
+    const controller = new AbortController();
+    const worker = test.service.runWorker(controller.signal);
+    try {
+      await eventually(() => expect(test.childCount()).toBe(1));
+
+      test.service.onThreadIdle(
+        "child-1",
+        '```json\n{"answer":"not-a-number"}\n```',
+      );
+
+      await eventually(() => {
+        expect(
+          test.harness.sdk
+            .callsTo("threads.send")
+            .filter(
+              ([input]) =>
+                (input as { threadId: string }).threadId === "child-1",
+            ),
+        ).toHaveLength(1);
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(getRunRequired(test.db, run.id).status).toBe("running");
+      expect(getCall(test.db, run.id, 0)).toMatchObject({
+        status: "running",
+        repairAttempts: 1,
+        error: null,
+      });
+
+      test.service.onThreadIdle("child-1", '{"answer":42}');
+
+      await eventually(() => {
+        expect(getRunRequired(test.db, run.id)).toMatchObject({
+          status: "succeeded",
+          resultJson: '{"answer":42}',
+        });
+        expect(getCall(test.db, run.id, 0)).toMatchObject({
+          status: "succeeded",
+          repairAttempts: 1,
+          error: null,
+        });
+      });
+    } finally {
+      controller.abort();
+      await worker;
+    }
+  });
+
+  it("still cancels a genuinely detached call when its parent succeeds", async () => {
+    const test = setup();
+    harnesses.push(test.harness);
+    const run = await test.start(
+      source(`
+        agent("detached");
+        const result = await agent("awaited");
+        return result;
+      `),
+    );
+    const controller = new AbortController();
+    const worker = test.service.runWorker(controller.signal);
+    try {
+      await eventually(() => expect(test.childCount()).toBe(2));
+
+      test.service.onThreadIdle("child-2", "done");
+
+      await eventually(() => {
+        expect(getRunRequired(test.db, run.id)).toMatchObject({
+          status: "succeeded",
+          resultJson: '"done"',
+        });
+        expect(getCall(test.db, run.id, 0)).toMatchObject({
+          status: "cancelled",
+          error: "Parent workflow finished before this call",
+        });
+        expect(getCall(test.db, run.id, 1)).toMatchObject({
+          status: "succeeded",
+          error: null,
+        });
+      });
+      expect(
+        test.harness.sdk
+          .callsTo("threads.stop")
+          .some(
+            ([input]) => (input as { threadId: string }).threadId === "child-1",
+          ),
+      ).toBe(true);
+    } finally {
+      controller.abort();
+      await worker;
+    }
+  });
+
   it("rejects child schema failures and recursive grandchildren", async () => {
     const test = setup();
     harnesses.push(test.harness);
@@ -902,9 +1106,7 @@ describe("workflow service policy integration", () => {
   it("keeps quiet workers alive until the total run timeout", async () => {
     const test = setup();
     harnesses.push(test.harness);
-    const run = await test.start(
-      source(`return await agent("quiet");`),
-    );
+    const run = await test.start(source(`return await agent("quiet");`));
     const controller = new AbortController();
     const worker = test.service.runWorker(controller.signal);
     await eventually(() => expect(test.childCount()).toBe(1));

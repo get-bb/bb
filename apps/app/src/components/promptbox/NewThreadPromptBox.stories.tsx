@@ -14,10 +14,8 @@ import type {
   PromptBoxAction,
 } from "@/components/promptbox/PromptBoxInternal";
 import { AUTOMATION_PROMPT_ACTION } from "@/components/promptbox/PromptBoxActionsMenu";
-import { PromptStackCard } from "@/components/promptbox/banner/PromptStackCard";
+import { CodexCliVersionBanner } from "@/components/promptbox/banner/CodexCliVersionBanner";
 import type { PickerOption } from "@/components/pickers/OptionPicker";
-import { Button } from "@bb/shared-ui/button";
-import { Icon } from "@bb/shared-ui/icon";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import { ModelPickerStoryQueryProvider } from "../../../.ladle/model-picker-query-provider";
 import {
@@ -152,36 +150,6 @@ interface PromptStageProps {
 
 function PromptStage({ children }: PromptStageProps) {
   return <div className="mx-auto w-full max-w-[760px]">{children}</div>;
-}
-
-function UnsupportedCodexCliBanner() {
-  return (
-    <PromptStackCard
-      ariaLabel="Codex update needed"
-      className="overflow-hidden"
-    >
-      <div className="flex min-h-8 max-w-full items-center gap-2 px-2.5 py-1 text-xs text-muted-foreground">
-        <Icon
-          name="Info"
-          className="size-3.5 shrink-0 text-subtle-foreground"
-          aria-hidden
-        />
-        <span className="min-w-0 flex-1 truncate">
-          Update Codex to start this thread. Installed 0.135.0; required 0.136.0
-          or newer.
-        </span>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          className="h-6 shrink-0 px-2 text-xs"
-          onClick={noop}
-        >
-          Update
-        </Button>
-      </div>
-    </PromptStackCard>
-  );
 }
 
 function DefaultRow() {
@@ -321,6 +289,7 @@ function UnsupportedCodexCliRow() {
         onSubmit={noop}
         isSubmitting={false}
         disabled
+        autoFocus={false}
         zenModeStorageKey="bb.story.new-thread.unsupported-codex-cli"
         history={baseHistory}
         typeahead={makeTypeahead()}
@@ -328,7 +297,15 @@ function UnsupportedCodexCliRow() {
         promptActions={promptActions}
         modeConfig={{
           ...baseModeConfig,
-          banner: <UnsupportedCodexCliBanner />,
+          banner: (
+            <CodexCliVersionBanner
+              currentVersion="0.135.0"
+              minimumSupportedVersion="0.136.0"
+              canUpdate
+              updating={false}
+              onUpdate={noop}
+            />
+          ),
         }}
         project={baseProject}
         execution={baseExecution}

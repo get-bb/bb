@@ -48,6 +48,7 @@ const RESOURCE_PROVIDER_FILTER_ORDER: Record<ResourceProviderFilter, number> = {
   bb: 0,
   "claude-code": 1,
   codex: 2,
+  "acp-cursor": 3,
 };
 
 const RESOURCE_PROVIDER_FILTERS: readonly ResourceProviderFilter[] = (
@@ -80,8 +81,8 @@ function providerFilterLabel(provider: ResourceProviderFilter): string {
 function skillSourceFilterId(skill: SkillSummary): ResourceSkillSourceFilter {
   if (skill.scope === "bb-builtin") return "bb-official";
   if (skill.scope === "plugin") return "included";
-  // Every remaining scope (bb-user/-project, claude-*, codex-*) is authored by
-  // the user, so the bucket is total and the filter can never strand a skill.
+  // Every remaining scope is authored by the user, so the bucket is total and
+  // the filter can never strand a skill.
   return "user";
 }
 
@@ -442,12 +443,12 @@ export function SkillsOverview({
       id="skills-collection"
       description="Create and manage agent skills. bb skills work across every agent you use in bb."
       modes={[
+        { id: "browse", label: "Browse" },
         {
           id: "library",
           label: TOOLS_OWNED_COLLECTION_LABEL.skills,
           count: skills.length,
         },
-        { id: "browse", label: "Browse" },
       ]}
       activeMode={activeMode}
       onModeChange={onModeChange}

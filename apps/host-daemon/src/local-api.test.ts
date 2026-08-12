@@ -1,4 +1,5 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { createServer as createNetServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -7,10 +8,7 @@ import {
   createHostDaemonLocalClient,
   type WorkspaceOpenTarget,
 } from "@bb/host-daemon-contract";
-import {
-  startLocalApiServer,
-  type LocalApiServer,
-} from "./local-api.js";
+import { startLocalApiServer, type LocalApiServer } from "./local-api.js";
 import { resolveHostPlatform } from "./host-platform.js";
 import type { HostDaemonLocalApiConfig } from "./local-api-config.js";
 import { WorkspaceOpenTargetError } from "@bb/local-open-targets";
@@ -61,6 +59,39 @@ describe("local API server", () => {
     });
     const healthResponse = await client.health.$get();
     expect(await healthResponse.text()).toBe("ok");
+  });
+
+  it("explains how to resolve a local API port collision", async () => {
+    const occupied = createNetServer();
+    await new Promise<void>((resolve, reject) => {
+      occupied.once("error", reject);
+      occupied.listen(0, "127.0.0.1", resolve);
+    });
+    const address = occupied.address();
+    if (address === null || typeof address === "string") {
+      throw new Error("Expected occupied test server to have a TCP address");
+    }
+
+    try {
+      await expect(
+        startLocalApiServer({
+          hostId: "host-1",
+          localApiConfig: createLocalApiConfig({
+            bindHost: "127.0.0.1",
+            port: address.port,
+          }),
+          serverUrl: "http://server.test",
+          serverPort: 3334,
+          getConnected: () => true,
+        }),
+      ).rejects.toThrow(
+        `Host daemon local API port ${address.port} is already in use on 127.0.0.1. Choose another port with --host-daemon-port <port>.`,
+      );
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        occupied.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
   });
 
   it("lists workspace open targets and delegates target-aware open requests", async () => {

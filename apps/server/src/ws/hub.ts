@@ -1,3 +1,4 @@
+import { Buffer } from "node:buffer";
 import {
   realtimeSubscriptionTargetKey as subscriptionKey,
   type RealtimeSubscriptionTarget,
@@ -29,8 +30,15 @@ import {
   type TerminalServerMessage,
 } from "@bb/server-contract";
 
+const TERMINAL_SOCKET_HIGH_WATER_BYTES = 1024 * 1024;
+// A 16 MiB raw burst expands to about 21.4 MiB as base64 + JSON. Keep
+// enough bounded headroom for that workload while preventing unbounded growth.
+const TERMINAL_SOCKET_MAX_QUEUE_BYTES = 32 * 1024 * 1024;
+const TERMINAL_SOCKET_DRAIN_POLL_MS = 10;
+
 interface HubSocket {
   close(code?: number, reason?: string): void;
+  raw?: { bufferedAmount: number };
   send(data: string): void;
 }
 
@@ -41,6 +49,12 @@ interface HubSocket {
  * and existing tests.
  */
 export type ClientDeliveryMode = "unrestricted" | "scoped";
+
+interface TerminalSocketSendQueue {
+  bytes: number;
+  payloads: string[];
+  timeout: ReturnType<typeof setTimeout> | null;
+}
 
 type ChangedMessageListener = (message: ChangedMessage) => void;
 
@@ -173,10 +187,15 @@ export class NotificationHub implements DbNotifier {
     string,
     Set<HubSocket>
   >();
+  private readonly terminalSocketSendQueues = new Map<
+    HubSocket,
+    TerminalSocketSendQueue
+  >();
   private readonly terminalIdsByClientSocket = new Map<
     HubSocket,
     Set<string>
   >();
+  private readonly terminalResizeOwnerById = new Map<string, HubSocket>();
   private readonly threadEventWaiters = new Map<
     string,
     Set<ThreadEventWaiter>
@@ -243,6 +262,14 @@ export class NotificationHub implements DbNotifier {
     this.terminalIdsByClientSocket.set(socket, terminalIds);
   }
 
+  claimTerminalResizeOwnership(terminalId: string, socket: HubSocket): void {
+    this.terminalResizeOwnerById.set(terminalId, socket);
+  }
+
+  isTerminalResizeOwner(terminalId: string, socket: HubSocket): boolean {
+    return this.terminalResizeOwnerById.get(terminalId) === socket;
+  }
+
   unregisterTerminalClient(terminalId: string, socket: HubSocket): void {
     const sockets = this.terminalClientSocketsById.get(terminalId);
     if (sockets) {
@@ -251,6 +278,7 @@ export class NotificationHub implements DbNotifier {
         this.terminalClientSocketsById.delete(terminalId);
       }
     }
+    this.releaseTerminalResizeOwnership(terminalId, socket, sockets);
 
     const terminalIds = this.terminalIdsByClientSocket.get(socket);
     if (!terminalIds) {
@@ -259,6 +287,7 @@ export class NotificationHub implements DbNotifier {
     terminalIds.delete(terminalId);
     if (terminalIds.size === 0) {
       this.terminalIdsByClientSocket.delete(socket);
+      this.clearTerminalSocketSendQueue(socket);
     }
   }
 
@@ -277,16 +306,40 @@ export class NotificationHub implements DbNotifier {
       if (sockets.size === 0) {
         this.terminalClientSocketsById.delete(terminalId);
       }
+      this.releaseTerminalResizeOwnership(terminalId, socket, sockets);
     }
 
     this.terminalIdsByClientSocket.delete(socket);
+    this.clearTerminalSocketSendQueue(socket);
+  }
+
+  private releaseTerminalResizeOwnership(
+    terminalId: string,
+    socket: HubSocket,
+    sockets: Set<HubSocket> | undefined,
+  ): void {
+    if (this.terminalResizeOwnerById.get(terminalId) !== socket) {
+      return;
+    }
+    let replacement: HubSocket | undefined;
+    for (const candidate of sockets ?? []) {
+      replacement = candidate;
+    }
+    if (replacement === undefined) {
+      this.terminalResizeOwnerById.delete(terminalId);
+    } else {
+      this.terminalResizeOwnerById.set(terminalId, replacement);
+    }
   }
 
   sendTerminalSocketMessage(
     socket: HubSocket,
     message: TerminalServerMessage,
   ): void {
-    socket.send(JSON.stringify(terminalServerMessageSchema.parse(message)));
+    this.sendOrQueueTerminalPayload(
+      socket,
+      JSON.stringify(terminalServerMessageSchema.parse(message)),
+    );
   }
 
   sendTerminalClientMessage(
@@ -299,9 +352,104 @@ export class NotificationHub implements DbNotifier {
     }
 
     const payload = JSON.stringify(terminalServerMessageSchema.parse(message));
-    for (const socket of sockets) {
-      socket.send(payload);
+    for (const socket of [...sockets]) {
+      this.sendOrQueueTerminalPayload(socket, payload);
     }
+  }
+
+  private sendOrQueueTerminalPayload(socket: HubSocket, payload: string): void {
+    const existingQueue = this.terminalSocketSendQueues.get(socket);
+    if (
+      !existingQueue &&
+      (socket.raw?.bufferedAmount ?? 0) <= TERMINAL_SOCKET_HIGH_WATER_BYTES
+    ) {
+      try {
+        socket.send(payload);
+        return;
+      } catch {
+        this.dropTerminalSocket(socket, "terminal-send-failed");
+        return;
+      }
+    }
+
+    const queue = existingQueue ?? {
+      bytes: 0,
+      payloads: [],
+      timeout: null,
+    };
+    const payloadBytes = Buffer.byteLength(payload, "utf8");
+    if (queue.bytes + payloadBytes > TERMINAL_SOCKET_MAX_QUEUE_BYTES) {
+      this.dropTerminalSocket(socket, "terminal-backpressure");
+      return;
+    }
+    queue.payloads.push(payload);
+    queue.bytes += payloadBytes;
+    this.terminalSocketSendQueues.set(socket, queue);
+    this.scheduleTerminalSocketDrain(socket, queue);
+  }
+
+  private scheduleTerminalSocketDrain(
+    socket: HubSocket,
+    queue: TerminalSocketSendQueue,
+  ): void {
+    if (queue.timeout !== null) {
+      return;
+    }
+    queue.timeout = setTimeout(() => {
+      queue.timeout = null;
+      this.flushTerminalSocketQueue(socket, queue);
+    }, TERMINAL_SOCKET_DRAIN_POLL_MS);
+  }
+
+  private flushTerminalSocketQueue(
+    socket: HubSocket,
+    queue: TerminalSocketSendQueue,
+  ): void {
+    if (this.terminalSocketSendQueues.get(socket) !== queue) {
+      return;
+    }
+    while (
+      queue.payloads.length > 0 &&
+      (socket.raw?.bufferedAmount ?? 0) <= TERMINAL_SOCKET_HIGH_WATER_BYTES
+    ) {
+      const payload = queue.payloads[0];
+      if (payload === undefined) {
+        break;
+      }
+      try {
+        socket.send(payload);
+      } catch {
+        this.dropTerminalSocket(socket, "terminal-send-failed");
+        return;
+      }
+      queue.payloads.shift();
+      queue.bytes -= Buffer.byteLength(payload, "utf8");
+    }
+    if (queue.payloads.length === 0) {
+      this.clearTerminalSocketSendQueue(socket);
+      return;
+    }
+    this.scheduleTerminalSocketDrain(socket, queue);
+  }
+
+  private dropTerminalSocket(socket: HubSocket, reason: string): void {
+    this.unregisterTerminalClientSocket(socket);
+    try {
+      socket.close(1013, reason);
+    } catch {
+      // The socket is already unusable; registration and queue state are gone.
+    }
+  }
+
+  private clearTerminalSocketSendQueue(socket: HubSocket): void {
+    const queue = this.terminalSocketSendQueues.get(socket);
+    if (!queue) {
+      return;
+    }
+    if (queue.timeout !== null) {
+      clearTimeout(queue.timeout);
+    }
+    this.terminalSocketSendQueues.delete(socket);
   }
 
   subscribe(socket: HubSocket, target: RealtimeSubscriptionTarget): void {
@@ -416,12 +564,22 @@ export class NotificationHub implements DbNotifier {
     sessionId: string,
     reason: HostDaemonSessionCloseReason,
   ): void {
+    const entry = this.daemonSessions.get(sessionId);
+    if (entry) {
+      entry.socket.send(JSON.stringify({ type: "session-close", reason }));
+    }
+    this.closeDaemonSessionSocket(sessionId, reason);
+  }
+
+  closeDaemonSessionSocket(
+    sessionId: string,
+    reason: HostDaemonSessionCloseReason,
+  ): void {
     this.cancelPendingDaemonDisconnect(sessionId);
     const entry = this.daemonSessions.get(sessionId);
     if (!entry) {
       return;
     }
-    entry.socket.send(JSON.stringify({ type: "session-close", reason }));
     entry.socket.close(1000, reason);
     this.unregisterDaemon(sessionId);
   }

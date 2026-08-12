@@ -85,6 +85,13 @@ interface ThreadActionContext {
   childThreadCount: number;
 }
 
+/**
+ * Keeps immediate archive feedback actionable without pinning a toast for the
+ * full server-side recovery window. The archived thread's normal Unarchive
+ * action remains available while its environment is still retiring.
+ */
+const ARCHIVE_UNDO_TOAST_DURATION_MS = 10_000;
+
 export function ThreadActionsProvider({
   children,
 }: ThreadActionsProviderProps) {
@@ -343,7 +350,18 @@ export function ThreadActionsProvider({
                   appToast.dismiss(toastId);
                 }}
               />,
-              { id: toastId },
+              {
+                action: {
+                  label: "Undo",
+                  onClick: () => {
+                    for (const threadId of response.archivedThreadIds) {
+                      unarchiveMutate({ id: threadId });
+                    }
+                  },
+                },
+                duration: ARCHIVE_UNDO_TOAST_DURATION_MS,
+                id: toastId,
+              },
             );
           },
           onError: (error) => {
@@ -363,6 +381,7 @@ export function ThreadActionsProvider({
       closePanesForThreads,
       navigate,
       syncNavigationAfterClose,
+      unarchiveMutate,
     ],
   );
 

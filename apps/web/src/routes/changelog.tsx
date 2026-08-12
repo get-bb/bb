@@ -10,8 +10,14 @@ import { initAnalytics } from "../landing/analytics";
 import type { Release, ReleaseBlock } from "../landing/changelog";
 import { RELEASE_META, parseChangelog } from "../landing/changelog";
 import { ChangelogInline } from "../landing/changelog-inline";
-import { DownloadLink, EmailSignup, GitHubLink } from "../landing/cta";
+import {
+  DiscordLink,
+  DownloadLink,
+  EmailSignup,
+  GitHubLink,
+} from "../landing/cta";
 import { DASHBOARD_PATH } from "../lib/connect-return-to";
+import { unfurlMeta } from "../landing/site";
 import interWoff2 from "@fontsource-variable/inter/files/inter-latin-wght-normal.woff2?url";
 import landingCss from "../landing/landing.css?url";
 import changelogCss from "../landing/changelog.css?url";
@@ -25,9 +31,7 @@ export const Route = createFileRoute("/changelog")({
     meta: [
       { title: PAGE_TITLE },
       { name: "description", content: PAGE_DESCRIPTION },
-      { property: "og:title", content: PAGE_TITLE },
-      { property: "og:description", content: PAGE_DESCRIPTION },
-      { property: "og:type", content: "website" },
+      ...unfurlMeta(PAGE_TITLE, PAGE_DESCRIPTION, "/changelog"),
       { name: "theme-color", content: "#ffffff" },
     ],
     links: [
@@ -223,6 +227,8 @@ function ChangelogPage() {
         <span>bb is free and open source (MIT)</span>
         <span>
           <GitHubLink placement="footer">GitHub</GitHubLink>
+          {" · "}
+          <DiscordLink placement="footer">Discord</DiscordLink>
           {" · "}
           <DownloadLink placement="footer">Download</DownloadLink>
         </span>

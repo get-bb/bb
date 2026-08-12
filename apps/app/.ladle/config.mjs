@@ -39,7 +39,10 @@ function formatNetworkUrls(serverUrl) {
 
 /** @type {import("@ladle/react").UserConfig} */
 export default {
-  stories: ["src/**/*.stories.tsx"],
+  stories: [
+    "src/**/*.stories.tsx",
+    "../../plugins/provider-retry/**/*.stories.tsx",
+  ],
   defaultStory: "",
   viteConfig: "./.ladle/vite.config.ts",
   host: "0.0.0.0",

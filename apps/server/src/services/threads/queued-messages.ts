@@ -48,6 +48,7 @@ import {
   appendPreparedClientTurnRequestedEventInTransaction,
   createClientTurnRequestId,
   getLastProviderThreadId,
+  isManualCompactionActive,
 } from "./thread-events.js";
 import { recoverThreadModelOverride } from "./thread-execution-override.js";
 import { ensureThreadCanStartRequest } from "./thread-lifecycle.js";
@@ -132,6 +133,17 @@ async function requireReadyQueuedMessageEnvironment(
 interface QueuedMessageAutoSendRequestArgs {
   queuedMessageId: string;
   threadId: string;
+}
+
+function isQueuedMessageAutoSendCandidate(
+  thread: Thread | null,
+): thread is QueuedMessageThread {
+  return (
+    thread !== null &&
+    thread.archivedAt === null &&
+    thread.deletedAt === null &&
+    thread.status !== "stopping"
+  );
 }
 
 interface FormatQueuedMessageInputForSenderArgs {
@@ -527,6 +539,11 @@ export async function sendQueuedMessage(
   args: SendQueuedMessageArgs,
 ): Promise<ThreadQueuedMessage> {
   const queuedMessages = claimQueuedThreadMessageForSend(deps, args);
+  const thread = getThread(deps.db, args.threadId);
+  if (thread && isManualCompactionActive(deps, thread)) {
+    releaseQueuedMessageClaims(deps, queuedMessages);
+    return toThreadQueuedMessage(queuedMessages[0]!);
+  }
   try {
     return await withActiveQueuedMessageClaims(queuedMessages, () =>
       sendClaimedQueuedMessage(deps, {
@@ -545,13 +562,7 @@ export async function sendNextQueuedMessageIfPresent(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: { threadId: string },
 ): Promise<boolean> {
-  const thread = getThread(deps.db, args.threadId);
-  if (
-    !thread ||
-    thread.archivedAt !== null ||
-    thread.deletedAt !== null ||
-    thread.status === "stopping"
-  ) {
+  if (!isQueuedMessageAutoSendCandidate(getThread(deps.db, args.threadId))) {
     return false;
   }
 
@@ -561,6 +572,15 @@ export async function sendNextQueuedMessageIfPresent(
     args.threadId,
   );
   if (!nextQueuedMessages) {
+    return false;
+  }
+
+  const thread = getThread(deps.db, args.threadId);
+  if (
+    !isQueuedMessageAutoSendCandidate(thread) ||
+    isManualCompactionActive(deps, thread)
+  ) {
+    releaseQueuedMessageClaims(deps, nextQueuedMessages);
     return false;
   }
 

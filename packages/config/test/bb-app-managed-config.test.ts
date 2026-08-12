@@ -6,6 +6,20 @@ import {
 } from "../src/bb-app-managed-config.js";
 
 describe("bbAppManagedConfigSchema", () => {
+  it("parses shared user and project skill roots", () => {
+    expect(
+      parseBbAppManagedConfig({
+        sharedSkillRoots: {
+          user: [".agents/skills"],
+          project: [".agents/skills"],
+        },
+      }).sharedSkillRoots,
+    ).toEqual({
+      user: [".agents/skills"],
+      project: [".agents/skills"],
+    });
+  });
+
   it("parses custom models with a known provider", () => {
     const parsed = bbAppManagedConfigSchema.parse({
       customModels: [
@@ -21,6 +35,59 @@ describe("bbAppManagedConfigSchema", () => {
     expect(parsed.customModels).toHaveLength(2);
     expect(parsed.customModels?.[0]?.providerId).toBe("claude-code");
     expect(parsed.customModels?.[1]?.displayName).toBeUndefined();
+  });
+
+  it("parses custom models with dynamic ACP provider ids", () => {
+    const parsed = bbAppManagedConfigSchema.parse({
+      customModels: [
+        {
+          providerId: "acp-opencode",
+          model: "my-proxy/custom-model",
+          displayName: "My Proxy Custom Model",
+        },
+        { providerId: "acp-my-agent", model: "provider/model" },
+      ],
+    });
+
+    expect(parsed.customModels).toHaveLength(2);
+    expect(parsed.customModels?.[0]?.providerId).toBe("acp-opencode");
+    expect(parsed.customModels?.[1]?.providerId).toBe("acp-my-agent");
+  });
+
+  it("rejects malformed acp-* custom model provider ids", () => {
+    for (const providerId of ["acp-", "acp-Bad-Agent", "acp--x"]) {
+      expect(
+        bbAppManagedConfigSchema.safeParse({
+          customModels: [{ providerId, model: "provider/model" }],
+        }).success,
+      ).toBe(false);
+    }
+  });
+
+  it("drops invalid custom model entries with warnings at the config boundary", () => {
+    const warnings: Record<string, unknown>[] = [];
+    const parsed = parseBbAppManagedConfig(
+      {
+        customModels: [
+          { providerId: "acp-opencode", model: "my-proxy/custom-model" },
+          { providerId: "not-a-provider", model: "other-model" },
+          { providerId: "claude-code", model: "" },
+        ],
+      },
+      {
+        logger: {
+          warn(fields): void {
+            warnings.push(fields);
+          },
+        },
+      },
+    );
+
+    expect(parsed.customModels).toEqual([
+      { providerId: "acp-opencode", model: "my-proxy/custom-model" },
+    ]);
+    expect(warnings).toHaveLength(2);
+    expect(warnings.map((warning) => warning.index)).toEqual([1, 2]);
   });
 
   it("rejects custom models with an unknown provider", () => {
@@ -192,6 +259,44 @@ describe("bbAppManagedConfigSchema", () => {
         defaultLevel: "medium",
       },
     });
+  });
+
+  it("keeps portable custom ACP native skill roots", () => {
+    const parsed = bbAppManagedConfigSchema.parse({
+      customAcpAgents: [
+        {
+          id: "amp",
+          displayName: "Amp",
+          command: "amp-acp",
+          nativeSkillRoots: {
+            user: [".agents/skills"],
+            project: [".agents/skills", ".amp/skills"],
+          },
+        },
+      ],
+    });
+
+    expect(parsed.customAcpAgents?.[0]?.nativeSkillRoots).toEqual({
+      user: [".agents/skills"],
+      project: [".agents/skills", ".amp/skills"],
+    });
+  });
+
+  it("rejects unsafe custom ACP native skill roots", () => {
+    for (const root of ["/tmp/skills", "../skills", "skills/../other"]) {
+      expect(
+        bbAppManagedConfigSchema.safeParse({
+          customAcpAgents: [
+            {
+              id: "amp",
+              displayName: "Amp",
+              command: "amp-acp",
+              nativeSkillRoots: { user: [root] },
+            },
+          ],
+        }).success,
+      ).toBe(false);
+    }
   });
 
   it("rejects custom ACP reasoningCli defaults outside supported levels", () => {

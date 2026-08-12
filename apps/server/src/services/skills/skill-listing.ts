@@ -21,6 +21,7 @@ import type { ProjectCommandWorkspace as CommandWorkspace } from "../projects/pr
 import { resolveServerOwnedSkillCatalogEntries } from "./injected-skills.js";
 import { resolveSkillCatalog } from "./skill-catalog.js";
 import { readRegistrySkillProvenance } from "./registry-skill-provenance.js";
+import { resolveSharedSkills } from "./shared-skills.js";
 
 const SKILL_FILE_NAME = "SKILL.md";
 const SERVER_SKILL_FILE_LIMIT = 200;
@@ -33,6 +34,7 @@ const SERVER_SKILL_CONTENT_LIMIT_BYTES = 25 * 1024 * 1024;
 export const SKILL_COMMAND_SURFACE_PROVIDERS: readonly SkillProvider[] = [
   "claude-code",
   "codex",
+  "acp-cursor",
 ];
 
 /** Deterministic page grouping order; also keeps listing output test-stable. */
@@ -40,10 +42,14 @@ const SKILL_SCOPE_ORDER: readonly SkillScope[] = [
   "bb-project",
   "bb-user",
   "bb-builtin",
+  "shared-project",
+  "shared-user",
   "claude-project",
   "claude-user",
   "codex-project",
   "codex-user",
+  "cursor-project",
+  "cursor-user",
   "plugin",
 ];
 
@@ -89,18 +95,31 @@ export function mapSkillScope(
     case "bb-builtin":
       return { scope: "bb-builtin", provider: null, manageable: false };
     case "provider-project":
-      return provider === "claude-code"
-        ? { scope: "claude-project", provider, manageable: true }
-        : { scope: "codex-project", provider, manageable: true };
+      if (provider === "claude-code") {
+        return { scope: "claude-project", provider, manageable: true };
+      }
+      return provider === "codex"
+        ? { scope: "codex-project", provider, manageable: true }
+        : { scope: "cursor-project", provider, manageable: true };
     case "provider-user":
       if (isBundledProviderSkill(filePath)) {
-        return provider === "claude-code"
-          ? { scope: "claude-user", provider, manageable: false }
-          : { scope: "codex-user", provider, manageable: false };
+        if (provider === "claude-code") {
+          return { scope: "claude-user", provider, manageable: false };
+        }
+        return provider === "codex"
+          ? { scope: "codex-user", provider, manageable: false }
+          : { scope: "cursor-user", provider, manageable: false };
       }
-      return provider === "claude-code"
-        ? { scope: "claude-user", provider, manageable: true }
-        : { scope: "codex-user", provider, manageable: true };
+      if (provider === "claude-code") {
+        return { scope: "claude-user", provider, manageable: true };
+      }
+      return provider === "codex"
+        ? { scope: "codex-user", provider, manageable: true }
+        : { scope: "cursor-user", provider, manageable: true };
+    case "shared-project":
+      return { scope: "shared-project", provider: null, manageable: false };
+    case "shared-user":
+      return { scope: "shared-user", provider: null, manageable: false };
     case "plugin":
       return { scope: "plugin", provider, manageable: false };
   }
@@ -233,24 +252,31 @@ export async function listProjectSkills(
   deps: AppDeps,
   args: { workspace: CommandWorkspace },
 ): Promise<SkillSummary[]> {
-  const perProvider = await Promise.all(
-    SKILL_COMMAND_SURFACE_PROVIDERS.map(
-      async (provider): Promise<ProviderSkillDiscovery> => {
-        const result = await callHostRetryableOnlineRpc(deps, {
-          hostId: args.workspace.hostId,
-          timeoutMs: COMMAND_TIMEOUT_MS,
-          command: {
-            type: "host.list_skills",
-            providerId: provider,
-            cwd: args.workspace.cwd,
-          },
-        });
-        return { provider, skills: result.skills };
-      },
+  const [perProvider, sharedSkills] = await Promise.all([
+    Promise.all(
+      SKILL_COMMAND_SURFACE_PROVIDERS.map(
+        async (provider): Promise<ProviderSkillDiscovery> => {
+          const result = await callHostRetryableOnlineRpc(deps, {
+            hostId: args.workspace.hostId,
+            timeoutMs: COMMAND_TIMEOUT_MS,
+            command: {
+              type: "host.list_skills",
+              providerId: provider,
+              cwd: args.workspace.cwd,
+            },
+          });
+          return { provider, skills: result.skills };
+        },
+      ),
     ),
-  );
+    resolveSharedSkills(deps, {
+      hostId: args.workspace.hostId,
+      cwd: args.workspace.cwd,
+    }),
+  ]);
   return [
     ...assembleSkillList(perProvider),
+    ...sharedSkills.summaries,
     ...listServerOwnedSkills(deps),
     ...listBbPluginSkills(deps),
   ].sort(compareSkillSummaries);

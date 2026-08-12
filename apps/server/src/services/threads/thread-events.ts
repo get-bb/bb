@@ -19,6 +19,7 @@ import {
   SYSTEM_ACTOR_STAMP,
   encodeClientTurnRequestIdAlphabetIndexes,
   getThreadEventScopeTurnId,
+  isStandaloneBuiltinCompactCommand,
   parseStoredThreadEvent,
   systemErrorEventDataSchema,
   threadScope,
@@ -45,6 +46,7 @@ import type {
   ThreadTurnInitiator,
   ThreadChangeKind,
   ThreadChangeMetadata,
+  Thread,
   ThreadCommandRequestFingerprint,
 } from "@bb/domain";
 import { ApiError, TurnStartGuardError } from "../../errors.js";
@@ -64,6 +66,7 @@ interface ThreadEventTransactionDeps {
 export interface ClientTurnRequestedEventArgs {
   /** Server-derived actor for this durable turn request. */
   actor: ActorStamp;
+  continuationOfRequestId?: ClientTurnRequestId;
   environmentId: string | null;
   execution: ResolvedThreadExecutionOptions;
   initiator: ThreadTurnInitiator;
@@ -262,6 +265,9 @@ function buildClientTurnRequestedEventData(
   return turnRequestEventDataSchema.parse({
     ...buildClientTurnBaseEventData(args),
     requestId,
+    ...(args.continuationOfRequestId !== undefined
+      ? { continuationOfRequestId: args.continuationOfRequestId }
+      : {}),
     senderThreadId: args.senderThreadId,
     // Stamp the Family-B taxonomy fields when present. Omitted entirely for
     // non-system turns so legacy events keep parsing via the schema's optional
@@ -695,6 +701,9 @@ export function parseStoredTurnRequestEvent(
     return {
       direction: event.direction,
       requestId: event.requestId,
+      ...(event.continuationOfRequestId !== undefined
+        ? { continuationOfRequestId: event.continuationOfRequestId }
+        : {}),
       source: event.source,
       initiator: event.initiator,
       senderThreadId: event.senderThreadId,
@@ -988,6 +997,32 @@ export function getActiveTurnId(
   threadId: string,
 ): string | null {
   return getActiveStoredTurnId(deps.db, threadId);
+}
+
+export function isManualCompactionActive(
+  deps: ThreadEventReadDeps,
+  thread: Pick<Thread, "id" | "status">,
+): boolean {
+  if (thread.status !== "active") {
+    return false;
+  }
+
+  const activeTurnId = getActiveStoredTurnId(deps.db, thread.id);
+  const requestRow = activeTurnId
+    ? (getStoredTurnRequestEventForTurn(deps.db, {
+        threadId: thread.id,
+        turnId: activeTurnId,
+      }) ?? getLastStoredTurnRequestEvent(deps.db, thread.id))
+    : getLastStoredTurnRequestEvent(deps.db, thread.id);
+  if (!requestRow) {
+    return false;
+  }
+
+  const request = parseStoredTurnRequestEvent(requestRow);
+  return (
+    request.target.kind === "new-turn" &&
+    isStandaloneBuiltinCompactCommand(request.input)
+  );
 }
 
 export function getLastProviderThreadId(

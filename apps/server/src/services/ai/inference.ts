@@ -1,3 +1,4 @@
+import { setTimeout as delay } from "node:timers/promises";
 import { jsonObjectSchema, type JsonObject, type JsonValue } from "@bb/domain";
 import {
   parseProviderModelConfig,
@@ -10,6 +11,7 @@ import type { AppDeps, LoggedWorkSessionDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
 import { runLiveCommandAndWait } from "../hosts/live-command-wait.js";
 import { requireConnectedPrimaryHostId } from "../hosts/primary-host.js";
+import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
 import { backsHostDaemonAiServices } from "./host-daemon-ai-provider.js";
 
 type BaseInferenceDeps = Pick<AppDeps, "config" | "logger">;
@@ -29,11 +31,8 @@ function getInferenceModels(): InferenceModels {
 
 function getInferenceModel(
   deps: BaseInferenceDeps,
+  modelInfo: ProviderModelInfo,
 ): ReturnType<InferenceModels["getModel"]> | null {
-  const modelInfo = parseProviderModelConfig({
-    name: "BB_INFERENCE",
-    value: deps.config.inferenceModel,
-  });
   const model = getInferenceModels().getModel(
     modelInfo.provider,
     modelInfo.modelId,
@@ -51,7 +50,18 @@ function getInferenceModel(
 const RESULT_TOOL_NAME = "result";
 const DEFAULT_INFERENCE_TIMEOUT_MS = 30_000;
 
+export const INFERENCE_POLICY = {
+  // The command timeout is enforced by the daemon around the provider request.
+  // Leave enough time for its settled response to cross the host RPC boundary
+  // so the server does not discard a useful timeout or completion as stale.
+  hostRpcGraceMs: 1_000,
+  commitMessage: { maxAttempts: 2, retryDelayMs: 0, timeoutMs: 5_000 },
+  threadMetadata: { maxAttempts: 2, retryDelayMs: 250, timeoutMs: 5_000 },
+  voiceTranscription: { maxAttempts: 2, retryDelayMs: 250, timeoutMs: 10_000 },
+} as const;
+
 interface InferenceCompleteArgs<T extends TSchema> {
+  model?: string;
   prompt: string;
   schema: T;
   timeoutMs?: number;
@@ -116,6 +126,141 @@ function shouldTreatAsInferenceTimeout(error: Error): boolean {
   );
 }
 
+export function isTransientInferenceError(error: Error): boolean {
+  return (
+    error instanceof InferenceTimeoutError ||
+    (error instanceof ApiError &&
+      (error.body.code === "codex_rate_limited" ||
+        error.body.code === "codex_service_unavailable" ||
+        error.body.code === "codex_request_timeout" ||
+        error.body.code === "command_timeout"))
+  );
+}
+
+interface InferenceCompleteWithFallbackArgs<T extends TSchema> {
+  complete?: (
+    model: string,
+    prompt: string,
+    timeoutMs: number,
+  ) => Promise<Static<T> | null>;
+  fallbackModel?: string;
+  label: string;
+  logContext?: JsonObject;
+  maxAttempts: number;
+  primaryModel?: string;
+  prompt: string;
+  retryDelayMs: number;
+  schema: T;
+  timeoutMs: number;
+}
+
+/**
+ * Complete with the primary model, switching to the configured fallback only
+ * after a transient failure.
+ */
+export async function inferenceCompleteWithFallback<T extends TSchema>(
+  deps: InferenceCompleteDeps,
+  args: InferenceCompleteWithFallbackArgs<T>,
+): Promise<Static<T> | null> {
+  const startedAt = Date.now();
+  const maxAttempts = Math.max(1, args.maxAttempts);
+  const primaryModel = args.primaryModel ?? deps.config.inferenceModel;
+  const fallbackModel =
+    args.fallbackModel ?? deps.config.inferenceFallbackModel;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const model = attempt === 1 ? primaryModel : fallbackModel;
+    try {
+      const value = args.complete
+        ? await args.complete(model, args.prompt, args.timeoutMs)
+        : await inferenceComplete(deps, {
+            model,
+            prompt: args.prompt,
+            schema: args.schema,
+            timeoutMs: args.timeoutMs,
+          });
+      if (attempt > 1) {
+        deps.logger.info(
+          {
+            attempts: attempt,
+            durationMs: Date.now() - startedAt,
+            maxAttempts,
+            model,
+            reason: "transient-failure",
+            timeoutMs: args.timeoutMs,
+            ...args.logContext,
+          },
+          `${args.label} completed with fallback model`,
+        );
+      }
+      if (value === null) {
+        deps.logger.warn(
+          {
+            attempts: attempt,
+            durationMs: Date.now() - startedAt,
+            reason: "no-result",
+            ...args.logContext,
+          },
+          `${args.label} returned no result`,
+        );
+      }
+      return value;
+    } catch (error) {
+      const err =
+        error instanceof Error
+          ? error
+          : new Error(`Non-Error thrown during ${args.label.toLowerCase()}`);
+      const transient = isTransientInferenceError(err);
+      if (transient && attempt < maxAttempts) {
+        deps.logger.info(
+          {
+            attempt,
+            errorCode: err instanceof ApiError ? err.body.code : "timeout",
+            fallbackModel,
+            maxAttempts,
+            model,
+            reason: "transient-failure",
+            ...(err instanceof InferenceTimeoutError
+              ? { timeoutMs: err.timeoutMs }
+              : {}),
+            ...args.logContext,
+          },
+          `${args.label} failed transiently; using fallback model`,
+        );
+        if (args.retryDelayMs > 0) {
+          await delay(args.retryDelayMs);
+        }
+        continue;
+      }
+      const fields = {
+        attempts: attempt,
+        durationMs: Date.now() - startedAt,
+        maxAttempts,
+        model,
+        ...args.logContext,
+      };
+      if (err instanceof InferenceTimeoutError) {
+        deps.logger.info(
+          { ...fields, reason: "timeout", timeoutMs: err.timeoutMs },
+          `${args.label} timed out`,
+        );
+      } else {
+        deps.logger.warn(
+          {
+            ...fields,
+            ...runtimeErrorLogFields(deps.config, err),
+            reason: "failed",
+          },
+          `${args.label} failed`,
+        );
+      }
+      throw err;
+    }
+  }
+
+  throw new Error("Inference fallback loop completed without an outcome");
+}
+
 async function completeWithCodexHostDaemon<T extends TSchema>(
   deps: InferenceCompleteDeps,
   modelInfo: ProviderModelInfo,
@@ -126,7 +271,7 @@ async function completeWithCodexHostDaemon<T extends TSchema>(
   try {
     const result = await runLiveCommandAndWait(deps, {
       hostId,
-      timeoutMs,
+      timeoutMs: timeoutMs + INFERENCE_POLICY.hostRpcGraceMs,
       command: {
         type: "codex.inference.complete",
         model: modelInfo.modelId,
@@ -163,15 +308,17 @@ export async function inferenceComplete<T extends TSchema>(
   deps: InferenceCompleteDeps,
   args: InferenceCompleteArgs<T>,
 ): Promise<Static<T> | null> {
+  const configuredModel = args.model ?? deps.config.inferenceModel;
   const modelInfo = parseProviderModelConfig({
-    name: "BB_INFERENCE",
-    value: deps.config.inferenceModel,
+    name:
+      args.model === undefined ? "BB_INFERENCE" : "inference model override",
+    value: configuredModel,
   });
   if (backsHostDaemonAiServices(modelInfo.provider)) {
     return completeWithCodexHostDaemon(deps, modelInfo, args);
   }
 
-  const model = getInferenceModel(deps);
+  const model = getInferenceModel(deps, modelInfo);
   if (!model) {
     return null;
   }

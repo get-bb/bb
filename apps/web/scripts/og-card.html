@@ -1,0 +1,89 @@
+<!doctype html>
+<!-- Source for public/og.png, the card shown when a bb link is shared.
+     Regenerate with `pnpm --filter @bb/web og:card` (scripts/generate-og-card.mjs);
+     it fills in the __FONT_URL__/__LOGO_URL__ placeholders and screenshots this
+     file at 1200x630 @2x. Opening it directly shows the layout without them.
+
+     Copy is verbatim from the landing page (routes/index.tsx): the hero h1 and
+     the closer's install line. -->
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+  @font-face {
+    font-family: "Inter Var";
+    src: url("__FONT_URL__") format("woff2-variations");
+    font-weight: 100 900;
+    font-style: normal;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 1200px; height: 630px; overflow: hidden; }
+  body {
+    font-family: "Inter Var", system-ui, sans-serif;
+    /* --bg / --ink from landing.css, so the card matches the page. */
+    background: oklch(1 0 0);
+    color: oklch(0.3211 0 0);
+    position: relative;
+  }
+  /* Faint recessed wash behind the mark so the white isn't sterile */
+  .wash {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(
+      900px 700px at 88% 62%,
+      color-mix(in oklab, oklch(0.3211 0 0) 6%, white),
+      transparent 70%
+    );
+  }
+  .mark {
+    position: absolute;
+    width: 350px;
+    height: 350px;
+    right: 96px;
+    top: 50%;
+    transform: translateY(-50%);
+  }
+  .content {
+    position: absolute;
+    left: 84px;
+    top: 0;
+    bottom: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 36px;
+  }
+  h1 {
+    font-size: 88px;
+    font-weight: 750;
+    letter-spacing: -0.04em;
+    line-height: 1.05;
+    max-width: 700px;
+  }
+  .sub {
+    font-size: 38px;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    color: color-mix(in oklab, oklch(0.3211 0 0) 62%, white);
+  }
+  /* Sized to stay legible at the ~500px width feeds render the card at. */
+  .domain {
+    position: absolute;
+    left: 84px;
+    bottom: 56px;
+    font-size: 42px;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+  }
+</style>
+</head>
+<body>
+  <div class="wash"></div>
+  <img class="mark" src="__LOGO_URL__" alt="" />
+  <div class="content">
+    <h1>The IDE that builds&nbsp;itself</h1>
+    <p class="sub">Free, open source, and local-first.</p>
+  </div>
+  <div class="domain">getbb.app</div>
+</body>
+</html>

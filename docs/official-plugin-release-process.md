@@ -3,20 +3,24 @@
 Official plugins ship **bundled inside the BB app**. There is no separate
 publish pipeline: at packaging time, `apps/server/scripts/copy-builtin-plugins.ts`
 builds every plugin declared in `BUNDLED_PLUGINS`
-(`apps/server/src/services/plugins/builtin-registry.ts`) — the auto-installed
-builtins in `plugins/*` and the store-only official plugins in
-`official-plugins/*` — and copies each prebuilt runtime layout into
-`<server dist>/builtin-plugins/<name>`. The app in Extensions → Plugins → Browse
-installs official plugins from that local bundled copy; no network is involved.
+(`apps/server/src/services/plugins/builtin-registry.ts`) and copies each
+prebuilt runtime layout into `<server dist>/builtin-plugins/<name>`. The app in
+Extensions → Plugins → Browse installs official plugins from that local bundled
+copy; no network is involved.
+
+Every bundled plugin lives in `plugins/<name>`. The directory does not record
+the install policy. `autoInstall` in the registry does: `BUILTIN_PLUGINS`
+entries reconcile automatically, and `OFFICIAL_PLUGINS` entries stay store-only
+until a user installs them.
 
 The official plugins are:
 
-| Directory                 | Package name             | Store entry | Plugin id      |
-| ------------------------- | ------------------------ | ----------- | -------------- |
-| `official-plugins/github` | `bb-plugin-github`       | `github`    | `github`       |
-| `official-plugins/docs`   | `bb-plugin-simple-notes` | `docs`      | `simple-notes` |
-| `official-plugins/memory` | `bb-plugin-memory`       | `memory`    | `memory`       |
-| `official-plugins/tasks`  | `bb-plugin-tasks`        | `tasks`     | `tasks`        |
+| Directory        | Package name             | Store entry | Plugin id      |
+| ---------------- | ------------------------ | ----------- | -------------- |
+| `plugins/github` | `bb-plugin-github`       | `github`    | `github`       |
+| `plugins/docs`   | `bb-plugin-simple-notes` | `docs`      | `simple-notes` |
+| `plugins/memory` | `bb-plugin-memory`       | `memory`    | `memory`       |
+| `plugins/tasks`  | `bb-plugin-tasks`        | `tasks`     | `tasks`        |
 
 ## Releasing a change
 
@@ -29,11 +33,11 @@ The official plugins are:
    official plugin automatically; installed plugins pick up the new code at
    the next server start.
 
-Never check in `official-plugins/*/dist`; packaging builds it.
+Never check in `plugins/*/dist`; packaging builds it.
 
 ## Adding a new official plugin
 
-1. Create the plugin under `official-plugins/<name>` with a `bb` manifest
+1. Create the plugin under `plugins/<name>` with a `bb` manifest
    block (`server`, optional `app`, `branding`, optional `skills`).
 2. Add an entry to `OFFICIAL_PLUGINS` in
    `apps/server/src/services/plugins/builtin-registry.ts` with the store

@@ -31,6 +31,7 @@ import {
 import { resolveSkillCatalogSources } from "../skills/skill-catalog.js";
 import { discoverPluginSkillIds } from "../skills/injected-skills.js";
 import { resolveWorkspaceProjectSkills } from "../skills/workspace-skills.js";
+import { resolveSharedSkills } from "../skills/shared-skills.js";
 import { UPDATE_ENVIRONMENT_DIRECTORY_TOOL } from "./thread-environment-directory.js";
 import {
   DATA_DIR_AGENT_INSTRUCTIONS_RELATIVE_PATH,
@@ -176,16 +177,21 @@ export async function resolveThreadRuntimeCommandConfig(
   }
 
   const { workspaceProvisionType } = args.environment;
-  const [projectSkillSources, workspaceAgentInstructions] = await Promise.all([
-    resolveWorkspaceProjectSkills(deps, {
-      hostId: args.environment.hostId,
-      workspacePath,
-    }),
-    readWorkspaceAgentInstructions(deps, {
-      hostId: args.environment.hostId,
-      workspacePath,
-    }),
-  ]);
+  const [projectSkillSources, sharedSkills, workspaceAgentInstructions] =
+    await Promise.all([
+      resolveWorkspaceProjectSkills(deps, {
+        hostId: args.environment.hostId,
+        workspacePath,
+      }),
+      resolveSharedSkills(deps, {
+        hostId: args.environment.hostId,
+        cwd: workspacePath,
+      }),
+      readWorkspaceAgentInstructions(deps, {
+        hostId: args.environment.hostId,
+        workspacePath,
+      }),
+    ]);
   const pluginSkillRoots = getPluginSkillRootContributions();
   const skillIdsByPlugin = discoverPluginSkillIds(deps.logger, {
     pluginSkillRoots,
@@ -223,6 +229,7 @@ export async function resolveThreadRuntimeCommandConfig(
   });
   const injectedSkillSources = resolveSkillCatalogSources(deps, {
     projectSkillSources,
+    sharedSkillSources: sharedSkills.runtimeSources,
     pluginSkillSelections: conditionalConfiguration.selectedSkillIdsByPlugin,
   });
   const dataDirAgentInstructions = readDataDirAgentInstructions(

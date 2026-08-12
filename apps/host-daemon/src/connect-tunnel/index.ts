@@ -15,6 +15,7 @@ import {
   type HostDaemonConnectShares,
   type HostDaemonConnectTunnelIdentity,
 } from "@bb/host-daemon-contract";
+import { connectPublicProtocol } from "@bb/connect-client";
 import type { HostDaemonLogger } from "../logger.js";
 
 export type ConnectTunnelState = "connected" | "reconnecting" | "offline";
@@ -67,11 +68,6 @@ export function resolveTrustedConnectGate(
   serverUrl: string,
 ): TrustedConnectGate {
   const parsed = new URL(serverUrl);
-  if (parsed.protocol !== "https:") {
-    throw new Error(
-      `bb connect machine credentials require an HTTPS enrollment server, got ${parsed.origin}`,
-    );
-  }
   const firstDot = parsed.hostname.indexOf(".");
   if (firstDot <= 0 || firstDot === parsed.hostname.length - 1) {
     throw new Error(
@@ -79,20 +75,35 @@ export function resolveTrustedConnectGate(
     );
   }
   const baseHostname = parsed.hostname.slice(firstDot + 1);
+  const baseDomain = `${baseHostname}${parsed.port ? `:${parsed.port}` : ""}`;
+  if (parsed.protocol !== connectPublicProtocol(baseDomain)) {
+    throw new Error(
+      `bb connect machine credentials require HTTPS, or HTTP for a local *.localhost enrollment server, got ${parsed.origin}`,
+    );
+  }
   return {
     apiOrigin: parsed.origin,
-    baseDomain: `${baseHostname}${parsed.port ? `:${parsed.port}` : ""}`,
+    baseDomain,
   };
 }
 
 export function buildMachineTunnelUrl(
   identity: HostDaemonConnectTunnelIdentity,
 ): string {
+  const websocketProtocol =
+    connectPublicProtocol(identity.baseDomain) === "https:" ? "wss:" : "ws:";
   const url = new URL(
-    `wss://${identity.label}.${identity.baseDomain}/__tunnel`,
+    `${websocketProtocol}//${identity.label}.${identity.baseDomain}/__tunnel`,
   );
   url.searchParams.set(TUNNEL_PROTOCOL_QUERY_PARAM, String(PROTOCOL_VERSION));
   return url.toString();
+}
+
+export function buildMachineSharePublicOrigin(
+  identity: HostDaemonConnectTunnelIdentity,
+  port: number,
+): string {
+  return `${connectPublicProtocol(identity.baseDomain)}//${identity.label}--${port}.${identity.baseDomain}`;
 }
 
 /**
@@ -450,7 +461,7 @@ export class ConnectTunnelClient {
       kind: "ok",
       resolved: {
         origin: `http://127.0.0.1:${port}`,
-        publicOrigin: `https://${identity.label}--${port}.${identity.baseDomain}`,
+        publicOrigin: buildMachineSharePublicOrigin(identity, port),
         host: `127.0.0.1:${port}`,
       },
     };

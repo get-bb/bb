@@ -1,3 +1,4 @@
+import { listBuiltInAgentProviderInfos } from "@bb/agent-providers";
 import type {
   DiscoverReposResult,
   ProviderCliKey,
@@ -7,6 +8,7 @@ import type {
   OnboardingAgent,
   OnboardingTelemetryEvent,
   OnboardingAgentOverview,
+  SystemProvidersQuery,
   SystemOnboardingReposQuery,
 } from "@bb/server-contract";
 import type { AppDeps } from "../../types.js";
@@ -16,6 +18,7 @@ import {
   assertUsableHostId,
   requirePrimaryHostId,
 } from "../hosts/primary-host.js";
+import { resolveSystemLookupHostId } from "./host-lookup.js";
 import {
   KNOWN_ACP_AGENTS,
   listKnownAcpAgentExecutableQueries,
@@ -36,32 +39,51 @@ import {
  *   plan badge rather than a fabricated one.
  */
 
-/** The three plan-capable CLIs, mapped to their agent-provider ids. */
-const PLAN_CAPABLE: readonly {
+interface PlanCapableAgentConfig {
   cliKey: ProviderCliKey;
-  providerId: string;
-  displayName: string;
   loginCommand: string;
-}[] = [
-  {
-    cliKey: "claudeCode",
-    providerId: "claude-code",
-    displayName: "Claude Code",
-    loginCommand: "claude /login",
-  },
-  {
-    cliKey: "codex",
-    providerId: "codex",
-    displayName: "Codex",
-    loginCommand: "codex login",
-  },
-  {
-    cliKey: "cursor",
-    providerId: "acp-cursor",
-    displayName: "Cursor",
-    loginCommand: "agent login",
-  },
-];
+}
+
+/**
+ * The three plan-capable CLIs, ordered by the same built-in catalog that
+ * drives the model picker's provider tabs.
+ */
+const PLAN_CAPABLE_BY_PROVIDER_ID = new Map<string, PlanCapableAgentConfig>([
+  [
+    "codex",
+    {
+      cliKey: "codex",
+      loginCommand: "codex login",
+    },
+  ],
+  [
+    "claude-code",
+    {
+      cliKey: "claudeCode",
+      loginCommand: "claude /login",
+    },
+  ],
+  [
+    "acp-cursor",
+    {
+      cliKey: "cursor",
+      loginCommand: "cursor-agent login",
+    },
+  ],
+]);
+
+const PLAN_CAPABLE = listBuiltInAgentProviderInfos().flatMap((provider) => {
+  const config = PLAN_CAPABLE_BY_PROVIDER_ID.get(provider.id);
+  return config === undefined
+    ? []
+    : [
+        {
+          ...config,
+          providerId: provider.id,
+          displayName: provider.displayName,
+        },
+      ];
+});
 
 /**
  * Collapse a `ProviderUsage` and its CLI install state into the single status
@@ -99,10 +121,9 @@ function resolveStatus(
 
 export async function getOnboardingAgentOverview(
   deps: AppDeps,
-  query: { hostId?: string },
+  query: SystemProvidersQuery,
 ): Promise<OnboardingAgentOverview> {
-  const hostId = query.hostId ?? requirePrimaryHostId(deps);
-  assertUsableHostId(deps, { hostId });
+  const hostId = resolveSystemLookupHostId(deps, query);
 
   const rpc = { hostId, timeoutMs: COMMAND_TIMEOUT_MS } as const;
 

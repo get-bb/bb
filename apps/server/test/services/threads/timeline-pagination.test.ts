@@ -29,7 +29,7 @@ function userRow(args: {
     senderThreadId: null,
     systemMessageKind: "unlabeled",
     systemMessageSubject: null,
-    turnRequest: { kind: "message", status: "accepted" },
+    turnRequest: { isGrouped: false, kind: "message", status: "accepted" },
   };
 }
 
@@ -59,7 +59,7 @@ describe("paginateTimelineRows", () => {
     ];
 
     const page = paginateTimelineRows({
-      inTurnWindowStart: null,
+      sequenceWindowStart: null,
       knownHasOlderSegments: null,
       page: { kind: "latest", segmentLimit: 2 },
       rows,

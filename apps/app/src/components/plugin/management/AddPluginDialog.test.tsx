@@ -97,6 +97,25 @@ function renderDialog(
 }
 
 describe("AddPluginDialog", () => {
+  it("leads with and submits a pasted GitHub repository URL", async () => {
+    const requests = stubFetch();
+    renderDialog();
+    const source = "https://github.com/acme/bb-plugin-usage";
+    const input = screen.getByLabelText("Plugin source") as HTMLInputElement;
+
+    expect(input.placeholder).toBe("https://github.com/owner/bb-plugin-name");
+    expect(screen.getByText(/GitHub repository URL/)).toBeTruthy();
+    fireEvent.change(input, { target: { value: source } });
+    fireEvent.click(screen.getByRole("button", { name: /install plugin/i }));
+
+    await vi.waitFor(() => {
+      const post = requests.find(
+        (request) => request.url === "/api/v1/plugins/install",
+      );
+      expect(JSON.parse(String(post?.init?.body))).toEqual({ source });
+    });
+  });
+
   it("installs a direct local path in one step behind the full-trust warning", async () => {
     const requests = stubFetch();
     renderDialog();

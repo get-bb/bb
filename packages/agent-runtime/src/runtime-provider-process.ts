@@ -33,7 +33,8 @@ export interface RuntimeProviderProcess {
   pending: Map<string | number, PendingJsonRpcRequest>;
   processKey: string;
   providerId: string;
-  stderrChunks: string[];
+  stderrLineTail: Buffer;
+  stderrTail: Buffer;
 }
 
 export interface RuntimeProviderProcessLineArgs {
@@ -117,8 +118,10 @@ interface ProviderProcessExitStatus {
 interface ProviderProcessExitedErrorArgs {
   providerId: string;
   status: ProviderProcessExitStatus;
-  stderrChunks: readonly string[];
+  stderrTail: Buffer;
 }
+
+const PROVIDER_STDERR_TAIL_MAX_BYTES = 4_000;
 
 function createAdapterTurnIdPrefix(): string {
   const adapterId = randomUUID().replaceAll("-", "").slice(0, 16);
@@ -127,7 +130,7 @@ function createAdapterTurnIdPrefix(): string {
 
 export class ProviderProcessExitedError extends Error {
   constructor(args: ProviderProcessExitedErrorArgs) {
-    const stderr = formatProviderStderr(args.stderrChunks);
+    const stderr = formatProviderStderr(args.stderrTail);
     super(
       `Provider "${args.providerId}" exited unexpectedly (${formatProviderProcessExitStatus(args.status)})` +
         (stderr ? `\nstderr: ${stderr}` : ""),
@@ -165,7 +168,9 @@ export class RuntimeProviderProcessManager {
 
       try {
         if (hasChildProcessExited(providerProcess.child)) {
-          const stderr = providerProcess.stderrChunks.join("\n").slice(0, 500);
+          const stderr = formatProviderStderr(
+            providerProcess.stderrTail,
+          )?.slice(0, 500);
           throw new Error(
             `Provider "${args.providerId}" exited during startup with ${formatChildProcessExitStatus(providerProcess.child)}` +
               (stderr ? `\nstderr: ${stderr}` : ""),
@@ -181,6 +186,21 @@ export class RuntimeProviderProcessManager {
             getNextId: this.args.getNextRequestId,
             resultSchema: ignoredJsonRpcResultSchema,
           });
+        }
+
+        for (const request of adapter.buildPostInitializeRequests?.() ?? []) {
+          try {
+            const result = await sendJsonRpcRequest({
+              child: providerProcess.child,
+              message: request.plan,
+              pending: providerProcess.pending,
+              getNextId: this.args.getNextRequestId,
+              resultSchema: ignoredJsonRpcResultSchema,
+            });
+            request.onResult(result);
+          } catch (error) {
+            if (request.required) throw error;
+          }
         }
 
         const providerSkillRoots = filterSkillRootsForProvider({
@@ -343,7 +363,8 @@ export class RuntimeProviderProcessManager {
       pending: new Map(),
       processKey: args.processKey,
       providerId: args.providerId,
-      stderrChunks: [],
+      stderrLineTail: Buffer.alloc(0),
+      stderrTail: Buffer.alloc(0),
     };
 
     const stdout = createInterface({ input: child.stdout });
@@ -357,13 +378,22 @@ export class RuntimeProviderProcessManager {
       });
     });
 
-    const stderr = createInterface({ input: child.stderr });
-    stderr.on("line", (line) => {
+    child.stderr.on("data", (chunk: Buffer) => {
       if (this.shuttingDown) {
         return;
       }
-      providerProcess.stderrChunks.push(line);
-      this.args.onStderr?.(line);
+      consumeProviderStderrChunk({
+        chunk,
+        onLine: this.args.onStderr,
+        providerProcess,
+      });
+    });
+    child.stderr.on("end", () => {
+      if (this.shuttingDown || providerProcess.stderrLineTail.length === 0) {
+        return;
+      }
+      this.args.onStderr?.(decodeStderrLine(providerProcess.stderrLineTail));
+      providerProcess.stderrLineTail = Buffer.alloc(0);
     });
 
     child.on("error", (err) => {
@@ -481,7 +511,7 @@ export class RuntimeProviderProcessManager {
         new ProviderProcessExitedError({
           providerId: args.providerId,
           status: { code: args.code, signal: args.signal },
-          stderrChunks: args.providerProcess.stderrChunks,
+          stderrTail: args.providerProcess.stderrTail,
         }),
       );
     }
@@ -494,7 +524,7 @@ export class RuntimeProviderProcessManager {
       code: args.code,
       expected,
       signal: args.signal,
-      stderr: formatProviderStderr(args.providerProcess.stderrChunks),
+      stderr: formatProviderStderr(args.providerProcess.stderrTail),
     });
   }
 
@@ -539,12 +569,64 @@ function formatProviderProcessExitStatus(
   return "unknown status";
 }
 
-function formatProviderStderr(stderrChunks: readonly string[]): string | null {
-  const stderr = stderrChunks.join("\n").trim();
+function formatProviderStderr(stderrTail: Buffer): string | null {
+  const stderr = stderrTail.toString("utf8").trim();
   if (stderr.length === 0) {
     return null;
   }
-  return stderr.slice(-4000);
+  return stderr;
+}
+
+function appendBoundedStderrBytes(current: Buffer, chunk: Buffer): Buffer {
+  if (chunk.length >= PROVIDER_STDERR_TAIL_MAX_BYTES) {
+    return Buffer.from(
+      chunk.subarray(chunk.length - PROVIDER_STDERR_TAIL_MAX_BYTES),
+    );
+  }
+  const currentBytesToKeep = Math.min(
+    current.length,
+    PROVIDER_STDERR_TAIL_MAX_BYTES - chunk.length,
+  );
+  return Buffer.concat([
+    current.subarray(current.length - currentBytesToKeep),
+    chunk,
+  ]);
+}
+
+function decodeStderrLine(line: Buffer): string {
+  const end = line.at(-1) === 0x0d ? line.length - 1 : line.length;
+  return line.toString("utf8", 0, end);
+}
+
+function consumeProviderStderrChunk(args: {
+  chunk: Buffer;
+  onLine: AgentRuntimeOptions["onStderr"];
+  providerProcess: RuntimeProviderProcess;
+}): void {
+  args.providerProcess.stderrTail = appendBoundedStderrBytes(
+    args.providerProcess.stderrTail,
+    args.chunk,
+  );
+
+  let offset = 0;
+  let newline = args.chunk.indexOf(0x0a, offset);
+  while (newline !== -1) {
+    args.providerProcess.stderrLineTail = appendBoundedStderrBytes(
+      args.providerProcess.stderrLineTail,
+      args.chunk.subarray(offset, newline),
+    );
+    args.onLine?.(decodeStderrLine(args.providerProcess.stderrLineTail));
+    args.providerProcess.stderrLineTail = Buffer.alloc(0);
+    offset = newline + 1;
+    newline = args.chunk.indexOf(0x0a, offset);
+  }
+
+  if (offset < args.chunk.length) {
+    args.providerProcess.stderrLineTail = appendBoundedStderrBytes(
+      args.providerProcess.stderrLineTail,
+      args.chunk.subarray(offset),
+    );
+  }
 }
 
 function consumeExpectedProviderProcessShutdown(

@@ -9,6 +9,8 @@ import { EmbeddedThreadChat } from "./EmbeddedThreadChat";
 const mocks = vi.hoisted(() => ({
   createQueuedMessageMutateAsync: vi.fn(),
   markThreadReadMutate: vi.fn(),
+  onOpenLink: vi.fn(),
+  onOpenLocalFileLink: vi.fn(),
   pendingInteractions: [] as Array<{
     id: string;
     createdAt: number;
@@ -22,7 +24,9 @@ const mocks = vi.hoisted(() => ({
   // while the component is unmounted must appear after a remount.
   timelineRows: [] as Array<{ text: string }>,
   injectedTimelineProps: [] as Array<unknown>,
+  timelinePanelProps: [] as Array<Record<string, unknown>>,
   timelineProjectIds: [] as Array<string | undefined>,
+  resolveMentionLink: vi.fn(),
 }));
 
 vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
@@ -90,12 +94,10 @@ vi.mock("@/components/ui/overflow-fade", () => ({
 
 vi.mock("@/components/thread/timeline", () => ({
   isRunningThreadRuntimeDisplayStatus: (status: string) => status === "active",
-  ThreadTimelinePanelContent: (props: {
-    timeline?: unknown;
-    projectId?: string;
-  }) => {
+  ThreadTimelinePanelContent: (props: Record<string, unknown>) => {
+    mocks.timelinePanelProps.push(props);
     mocks.injectedTimelineProps.push(props.timeline);
-    mocks.timelineProjectIds.push(props.projectId);
+    mocks.timelineProjectIds.push(props.projectId as string | undefined);
     return (
       <div>
         {mocks.timelineRows.map((row, index) => (
@@ -289,7 +291,10 @@ function renderEmbeddedChat({
       providerId="provider-1"
       promptContextEnvironmentId={null}
       isActive={isActive}
-      resolveMentionLink={() => null}
+      onOpenLink={mocks.onOpenLink}
+      onOpenLocalFileLink={mocks.onOpenLocalFileLink}
+      resolveMentionLink={mocks.resolveMentionLink}
+      workspaceRootPath="/workspace"
       composer={{
         draftScope: {
           kind: "thread",
@@ -311,13 +316,17 @@ describe("EmbeddedThreadChat", () => {
     mocks.createQueuedMessageMutateAsync.mockReset().mockResolvedValue({});
     mocks.sendThreadMessageMutateAsync.mockReset().mockResolvedValue({});
     mocks.markThreadReadMutate.mockReset();
+    mocks.onOpenLink.mockReset();
+    mocks.onOpenLocalFileLink.mockReset();
     mocks.pendingInteractions = [];
     mocks.queuedMessages = [];
     mocks.readTrackingThreads = [];
     mocks.threadRuntimeDisplayStatus = "idle";
     mocks.timelineRows = [];
     mocks.injectedTimelineProps = [];
+    mocks.timelinePanelProps = [];
     mocks.timelineProjectIds = [];
+    mocks.resolveMentionLink.mockReset();
   });
 
   it("applies the requested surface tone to the timeline and footer", () => {
@@ -347,6 +356,19 @@ describe("EmbeddedThreadChat", () => {
     // resolves them against the current route (e.g. /plugins/<id>/...).
     renderEmbeddedChat();
     expect(mocks.timelineProjectIds.at(-1)).toBe("proj-1");
+  });
+
+  it("forwards host navigation to the embedded timeline", () => {
+    renderEmbeddedChat();
+
+    expect(mocks.timelinePanelProps.at(-1)).toEqual(
+      expect.objectContaining({
+        onOpenLink: mocks.onOpenLink,
+        onOpenLocalFileLink: mocks.onOpenLocalFileLink,
+        resolveMentionLink: mocks.resolveMentionLink,
+        workspaceRootPath: "/workspace",
+      }),
+    );
   });
 
   it("restores the draft and a stream that advanced while unmounted on remount", () => {

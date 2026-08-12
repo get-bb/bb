@@ -298,7 +298,9 @@ rl.on("line", (line) => {
         resolveThreadId: () => "t1",
       });
 
-      const parsed = parseJsonRpcLine((await readChildStdoutLine(child)).trim());
+      const parsed = parseJsonRpcLine(
+        (await readChildStdoutLine(child)).trim(),
+      );
       if (parsed.kind !== "response") {
         throw new Error(`Expected JSON-RPC response, got ${parsed.kind}`);
       }
@@ -473,6 +475,83 @@ rl.on("line", (line) => {
     await runtime.shutdown();
   });
 
+  it("does not reclassify provider-filtered approvals against mutable thread settings", async () => {
+    const child = spawn(process.execPath, [
+      "-e",
+      "process.stdin.pipe(process.stdout)",
+    ]);
+    const adapter = {
+      ...createInteractiveRequestAdapter(
+        join(tmpDir, "unused-provider-filtered-approval.cjs"),
+      ),
+      approvalRequestPolicy: "provider" as const,
+    };
+    const onInteractiveRequest = vi.fn(async () => ({
+      decision: "allow_once" as const,
+      grantedPermissions: null,
+    }));
+    const rawRequest = {
+      jsonrpc: "2.0",
+      id: 78,
+      method: "request_interaction",
+      params: {
+        threadId: "prov-1",
+        turnId: "turn-1",
+        itemId: "item-provider-filtered",
+        kind: "command_approval",
+        command: "git push",
+        cwd: "/tmp/project",
+        reason: "Needs approval",
+      },
+    } satisfies JsonRpcMessage;
+
+    try {
+      handleRuntimeProviderRequest({
+        getActiveTurnId: () => null,
+        getThreadExecutionOptions: () => ({
+          ...fullRuntimeOptions,
+          permissionMode: "auto",
+          permissionScope: "workspace",
+          approvalReviewer: "automatic",
+          permissionEscalation: "deny",
+        }),
+        onInteractiveRequest,
+        onToolCall: async () => ({
+          contentItems: [{ type: "inputText", text: "tool result" }],
+          success: true,
+        }),
+        parsedId: rawRequest.id,
+        parsedMethod: rawRequest.method,
+        providerProcess: {
+          adapter,
+          child,
+          interactiveRequestScope: "scope-provider-filtered",
+        },
+        rawRequest,
+        resolveThreadId: () => "t1",
+      });
+
+      const parsed = parseJsonRpcLine(
+        (await readChildStdoutLine(child)).trim(),
+      );
+      if (parsed.kind !== "response") {
+        throw new Error(`Expected JSON-RPC response, got ${parsed.kind}`);
+      }
+      expect(parsed.parsed).toMatchObject({
+        jsonrpc: "2.0",
+        id: 78,
+        result: {
+          resolution: {
+            decision: "allow_once",
+          },
+        },
+      });
+      expect(onInteractiveRequest).toHaveBeenCalledTimes(1);
+    } finally {
+      child.kill();
+    }
+  });
+
   it("routes user-question interactive requests through the handler when permission escalation is deny", async () => {
     const child = spawn(process.execPath, [
       "-e",
@@ -555,7 +634,9 @@ rl.on("line", (line) => {
         resolveThreadId: () => "t1",
       });
 
-      const parsed = parseJsonRpcLine((await readChildStdoutLine(child)).trim());
+      const parsed = parseJsonRpcLine(
+        (await readChildStdoutLine(child)).trim(),
+      );
       if (parsed.kind !== "response") {
         throw new Error(`Expected JSON-RPC response, got ${parsed.kind}`);
       }
@@ -646,7 +727,9 @@ rl.on("line", (line) => {
         resolveThreadId: () => "t1",
       });
 
-      const parsed = parseJsonRpcLine((await readChildStdoutLine(child)).trim());
+      const parsed = parseJsonRpcLine(
+        (await readChildStdoutLine(child)).trim(),
+      );
       if (parsed.kind !== "response") {
         throw new Error(`Expected JSON-RPC response, got ${parsed.kind}`);
       }

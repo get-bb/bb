@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import semver from "semver";
 import type { PromptInput } from "@bb/domain";
 import type { HostDaemonCommandResult } from "@bb/host-daemon-contract";
 import { resolveContainedPath } from "@bb/process-utils";
@@ -43,9 +44,11 @@ interface StagedThreadCommandInput {
 }
 
 interface RequireSupportedProviderCliArgs {
-  command: CommandOf<"thread.start">;
+  command: CommandOf<"thread.start"> | CommandOf<"thread.rewind.prepare">;
   options: CommandDispatchOptions;
 }
+
+const CODEX_REWIND_MINIMUM_SUPPORTED_VERSION = "0.143.0";
 
 function requireConfinedPath(rootPath: string, candidatePath: string): string {
   const resolved = resolveContainedPath({
@@ -100,17 +103,29 @@ async function requireSupportedProviderCliForThreadStart({
     (await getProviderCliStatusForProvider("codex", {
       env: options.runtimeManager.getShellEnv(),
     }));
-  if (!status.versionUnsupported) {
+  const minimumVersion =
+    command.type === "thread.rewind.prepare"
+      ? CODEX_REWIND_MINIMUM_SUPPORTED_VERSION
+      : status.minimumSupportedVersion;
+  const versionUnsupported =
+    command.type === "thread.rewind.prepare"
+      ? status.currentVersion === null ||
+        !semver.gte(
+          status.currentVersion,
+          CODEX_REWIND_MINIMUM_SUPPORTED_VERSION,
+        )
+      : status.versionUnsupported;
+  if (!versionUnsupported) {
     return;
   }
 
   const currentVersion = status.currentVersion
     ? ` ${status.currentVersion}`
     : "";
-  const minimumVersion = status.minimumSupportedVersion ?? "a newer version";
+  const requiredVersion = minimumVersion ?? "a newer version";
   throw new ExpectedCommandDispatchError(
     "provider_cli_unsupported_version",
-    `Codex${currentVersion} is too old for this bb version. Update Codex to ${minimumVersion} or newer.`,
+    `Codex${currentVersion} is too old for this operation. Update Codex to ${requiredVersion} or newer.`,
   );
 }
 
@@ -237,6 +252,50 @@ export async function startThread(
   }
 }
 
+export async function prepareThreadRewind(
+  command: CommandOf<"thread.rewind.prepare">,
+  options: CommandDispatchOptions,
+): Promise<HostDaemonCommandResult<"thread.rewind.prepare">> {
+  await requireSupportedProviderCliForThreadStart({ command, options });
+  const entry = await requireResolvedWorkspaceForCommand({
+    dataDir: options.dataDir,
+    environmentId: command.environmentId,
+    injectedSkillSources: command.injectedSkillSources,
+    runtimeManager: options.runtimeManager,
+    targetThreadId: command.threadId,
+    workspaceContext: command.workspaceContext,
+  });
+  return entry.runtime.prepareThreadRewind({
+    ...(command.acpLaunchSpec !== undefined
+      ? { acpLaunchSpec: command.acpLaunchSpec }
+      : {}),
+    environmentId: command.environmentId,
+    threadId: command.threadId,
+    leaseId: command.leaseId,
+    projectId: command.projectId,
+    providerId: command.providerId,
+    sourceProviderThreadId: command.sourceProviderThreadId,
+    retainThroughProviderCheckpoint: command.retainThroughProviderCheckpoint,
+    options: command.options,
+    instructions: command.instructions,
+    dynamicTools: command.dynamicTools,
+    disallowedTools: command.disallowedTools,
+    instructionMode: command.instructionMode,
+  });
+}
+
+export async function discardThreadRewind(
+  command: CommandOf<"thread.rewind.discard">,
+  options: CommandDispatchOptions,
+): Promise<HostDaemonCommandResult<"thread.rewind.discard">> {
+  const entry = await options.runtimeManager.getOrAwait(command.environmentId);
+  if (!entry) {
+    return {};
+  }
+  await entry.runtime.discardThreadRewind({ leaseId: command.leaseId });
+  return {};
+}
+
 export async function ensureThreadRuntime(
   command: ExistingThreadRuntimeCommand,
   options: CommandDispatchOptions,
@@ -251,6 +310,22 @@ export async function ensureThreadRuntime(
     workspaceContext: resumeContext.workspaceContext,
   });
 
+  // A new turn owns the provider session, so it interrupts an old turn that
+  // the thread left behind. A goal clear does not own it, so it waits for
+  // that turn instead of stopping it.
+  const released =
+    await options.runtimeManager.releaseThreadFromOtherEnvironments({
+      activeTurn: command.type === "turn.submit" ? "interrupt" : "keep",
+      environmentId: command.environmentId,
+      threadId: command.threadId,
+    });
+  const [busyEnvironmentId] = released.activeTurnEnvironmentIds;
+  if (busyEnvironmentId !== undefined) {
+    throw new ExpectedCommandDispatchError(
+      "thread_busy_in_other_environment",
+      `Thread ${command.threadId} still runs a turn in environment ${busyEnvironmentId}`,
+    );
+  }
   await resumeThreadRuntimeIfMissing({ command, entry });
   return entry;
 }

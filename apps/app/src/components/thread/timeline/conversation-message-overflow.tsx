@@ -9,6 +9,79 @@ interface UseOverflowMeasurementArgs {
 
 type OverflowMeasurement = "unmeasured" | "fits" | "overflowing";
 
+type OverflowMeasurementListener = (
+  measurement: Exclude<OverflowMeasurement, "unmeasured">,
+) => void;
+
+const overflowListenersByElement = new Map<
+  HTMLElement,
+  Set<OverflowMeasurementListener>
+>();
+let sharedOverflowResizeObserver: ResizeObserver | null = null;
+
+function readOverflowMeasurement(
+  element: HTMLElement,
+): Exclude<OverflowMeasurement, "unmeasured"> {
+  return element.scrollHeight > element.clientHeight + 1 ||
+    element.scrollWidth > element.clientWidth + 1
+    ? "overflowing"
+    : "fits";
+}
+
+function measureOverflowElements(elements: readonly HTMLElement[]): void {
+  // Complete every layout read before any listener can schedule a React
+  // update. This prevents one row's write from invalidating the next row's
+  // measurement.
+  const results = elements.map((element) => ({
+    element,
+    measurement: readOverflowMeasurement(element),
+  }));
+  for (const { element, measurement } of results) {
+    for (const listener of overflowListenersByElement.get(element) ?? []) {
+      listener(measurement);
+    }
+  }
+}
+
+function getSharedOverflowResizeObserver(): ResizeObserver {
+  sharedOverflowResizeObserver ??= new ResizeObserver((entries) => {
+    const connectedElements: HTMLElement[] = [];
+    for (const entry of entries) {
+      if (entry.target instanceof HTMLElement && entry.target.isConnected) {
+        connectedElements.push(entry.target);
+      }
+    }
+    measureOverflowElements(connectedElements);
+  });
+  return sharedOverflowResizeObserver;
+}
+
+function observeOverflow(
+  element: HTMLElement,
+  listener: OverflowMeasurementListener,
+): () => void {
+  let listeners = overflowListenersByElement.get(element);
+  if (!listeners) {
+    listeners = new Set();
+    overflowListenersByElement.set(element, listeners);
+    getSharedOverflowResizeObserver().observe(element);
+  }
+  listeners.add(listener);
+
+  return () => {
+    const currentListeners = overflowListenersByElement.get(element);
+    currentListeners?.delete(listener);
+    if (currentListeners?.size === 0) {
+      overflowListenersByElement.delete(element);
+      sharedOverflowResizeObserver?.unobserve?.(element);
+      if (overflowListenersByElement.size === 0) {
+        sharedOverflowResizeObserver?.disconnect?.();
+        sharedOverflowResizeObserver = null;
+      }
+    }
+  };
+}
+
 interface ConversationMessageOverflowToggleLabels {
   collapsed: string;
   expanded: string;
@@ -50,29 +123,22 @@ export function useOverflowMeasurement({
       return;
     }
 
-    const measure = () => {
+    const applyMeasurement: OverflowMeasurementListener = (nextMeasurement) => {
       // ResizeObserver still fires after the observed node detaches (e.g. when
       // an expandable row swaps the collapsed preview for the expanded body).
       // A detached node reports scroll/client size 0, which would flip the
       // measurement to "fits" and unexpand the row mid-click. Treat detached
       // nodes as "no new information" — the last connected measurement stands.
       if (!element.isConnected) return;
-      setMeasurement(
-        element.scrollHeight > element.clientHeight + 1 ||
-          element.scrollWidth > element.clientWidth + 1
-          ? "overflowing"
-          : "fits",
-      );
+      setMeasurement(nextMeasurement);
     };
-    measure();
+    applyMeasurement(readOverflowMeasurement(element));
 
     if (typeof ResizeObserver === "undefined") {
       return;
     }
 
-    const resizeObserver = new ResizeObserver(measure);
-    resizeObserver.observe(element);
-    return () => resizeObserver.disconnect();
+    return observeOverflow(element, applyMeasurement);
   }, [elementRef, enabled, measurementKey]);
 
   return measurement;

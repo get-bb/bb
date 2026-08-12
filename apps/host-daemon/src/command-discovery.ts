@@ -15,10 +15,10 @@ const SKILL_FILE_NAME = "SKILL.md";
 const MARKDOWN_FILE_EXTENSION = ".md";
 const FRONTMATTER_DELIMITER = "---";
 
-// Bounded-scan caps mirror `walkSkillTree` in injected-skills.ts so a pathological
-// command/skill tree cannot stall discovery or exhaust memory.
+// Bound each discovery request so a pathological tree cannot stall discovery
+// or exhaust memory.
 const MAX_SCAN_DEPTH = 24;
-const MAX_SCAN_FILE_COUNT = 1_000;
+const MAX_SCAN_ENTRY_COUNT = 1_000;
 
 /**
  * Scan shape for a root:
@@ -26,6 +26,8 @@ const MAX_SCAN_FILE_COUNT = 1_000;
  *   parent directory name. User-origin skill entries/files may be symlinks
  *   because personal provider skill installs commonly use them; project-origin
  *   skill entry/file symlinks are skipped.
+ * - `skill-recursive`: every `SKILL.md` below `<root>`; the command name is the
+ *   name of the directory that contains the file. Symlinks are not followed.
  * - `skill-directory`: a single `<root>/SKILL.md` skill directory; the command
  *   name is the root directory name.
  * - `skill-file`: a single `SKILL.md`; the command name comes from frontmatter
@@ -38,6 +40,7 @@ const MAX_SCAN_FILE_COUNT = 1_000;
  */
 export type CommandScanShape =
   | "skill"
+  | "skill-recursive"
   | "skill-directory"
   | "skill-file"
   | "command"
@@ -48,12 +51,16 @@ interface CommandScanRootBase {
   namePrefix: string;
   source: HostCommandSource;
   origin: HostCommandOrigin;
+  /** Stable root identity for native skill roots that share one root kind. */
+  skillIdentitySeed?: string;
 }
 
 export interface CommandScanDirectoryRoot extends CommandScanRootBase {
+  /** Optional boundary that a project-origin recursive root must stay within. */
+  boundaryPath?: string;
   /** Absolute directory to scan. Missing dir -> no records (no throw). */
   rootPath: string;
-  shape: "skill" | "skill-directory" | "command";
+  shape: "skill" | "skill-recursive" | "skill-directory" | "command";
 }
 
 export interface CommandScanFileRoot extends CommandScanRootBase {
@@ -81,7 +88,12 @@ export interface DiscoverProviderCommandsArgs {
 }
 
 interface ScanRootArgs {
+  budget: ScanBudget;
   root: CommandScanRoot;
+}
+
+interface ScanBudget {
+  remainingEntries: number;
 }
 
 interface SkillDirectoryCheckArgs {
@@ -90,11 +102,12 @@ interface SkillDirectoryCheckArgs {
   root: CommandScanDirectoryRoot;
 }
 
-interface WalkCommandTreeArgs {
+interface WalkMarkdownTreeArgs {
+  budget: ScanBudget;
   currentPath: string;
   depth: number;
-  rootPath: string;
   matchedFiles: string[];
+  matches: (entry: Dirent) => boolean;
 }
 
 interface ParsedFrontmatter {
@@ -107,9 +120,22 @@ function sortDirentsByName(left: Dirent, right: Dirent): number {
   return left.name.localeCompare(right.name);
 }
 
-async function readDirEntries(dirPath: string): Promise<Dirent[] | null> {
+async function readDirEntries(
+  dirPath: string,
+  budget?: ScanBudget,
+): Promise<Dirent[] | null> {
   try {
-    const entries = await fs.readdir(dirPath, { withFileTypes: true });
+    const directory = await fs.opendir(dirPath);
+    const entries: Dirent[] = [];
+    for await (const entry of directory) {
+      if (budget?.remainingEntries === 0) {
+        break;
+      }
+      if (budget !== undefined) {
+        budget.remainingEntries -= 1;
+      }
+      entries.push(entry);
+    }
     return entries.sort(sortDirentsByName);
   } catch {
     // Any directory that can't be enumerated — missing (ENOENT), not a
@@ -290,6 +316,97 @@ async function scanSkillRoot(
   return records;
 }
 
+/**
+ * Bounded recursive skill walk for providers that support category folders.
+ * Symlinks stay disabled because recursive symlink traversal can escape the
+ * declared root or form cycles. Direct user skill roots retain their existing
+ * one-level symlink support through the `skill` shape.
+ */
+async function walkMarkdownTree(args: WalkMarkdownTreeArgs): Promise<void> {
+  if (args.depth > MAX_SCAN_DEPTH || args.budget.remainingEntries === 0) {
+    return;
+  }
+  const entries = await readDirEntries(args.currentPath, args.budget);
+  if (entries === null) {
+    return;
+  }
+
+  for (const entry of entries) {
+    if (entry.isSymbolicLink()) {
+      continue;
+    }
+    const entryPath = path.join(args.currentPath, entry.name);
+    if (entry.isDirectory()) {
+      await walkMarkdownTree({
+        budget: args.budget,
+        currentPath: entryPath,
+        depth: args.depth + 1,
+        matchedFiles: args.matchedFiles,
+        matches: args.matches,
+      });
+      continue;
+    }
+    if (entry.isFile() && args.matches(entry)) {
+      args.matchedFiles.push(entryPath);
+    }
+  }
+}
+
+function isPathWithinDirectory(
+  directoryPath: string,
+  candidatePath: string,
+): boolean {
+  const relativePath = path.relative(directoryPath, candidatePath);
+  return (
+    relativePath === "" ||
+    (!relativePath.startsWith("..") && !path.isAbsolute(relativePath))
+  );
+}
+
+async function resolveRecursiveRootPath(
+  root: CommandScanDirectoryRoot,
+): Promise<string | null> {
+  const resolvedRoot = await fs.realpath(root.rootPath).catch(() => null);
+  if (resolvedRoot === null) {
+    return null;
+  }
+  if (root.origin !== "project" || root.boundaryPath === undefined) {
+    return resolvedRoot;
+  }
+  const resolvedBoundary = await fs
+    .realpath(root.boundaryPath)
+    .catch(() => null);
+  return resolvedBoundary !== null &&
+    isPathWithinDirectory(resolvedBoundary, resolvedRoot)
+    ? resolvedRoot
+    : null;
+}
+
+async function scanRecursiveSkillRoot(
+  args: ScanRootArgs,
+): Promise<HostProviderCommand[]> {
+  if (args.root.shape !== "skill-recursive") {
+    throw new Error("scanRecursiveSkillRoot requires a recursive skill root");
+  }
+  const rootPath = await resolveRecursiveRootPath(args.root);
+  if (rootPath === null) {
+    return [];
+  }
+  const matchedFiles: string[] = [];
+  await walkMarkdownTree({
+    budget: args.budget,
+    currentPath: rootPath,
+    depth: 0,
+    matchedFiles,
+    matches: (entry) => entry.name === SKILL_FILE_NAME,
+  });
+  return Promise.all(
+    matchedFiles.map((filePath) =>
+      buildRecord(args.root, filePath, path.basename(path.dirname(filePath))),
+    ),
+  );
+}
+
 async function scanSingleSkillDirectoryRoot(
   args: ScanRootArgs,
 ): Promise<HostProviderCommand[]> {
@@ -330,49 +447,6 @@ async function scanSkillFileRoot(
   ];
 }
 
-/**
- * Bounded recursive walk collecting `*.md` paths. Symlinks are not followed;
- * the depth and file-count caps mirror `walkSkillTree`. Hitting a cap stops the
- * walk early rather than throwing — discovery degrades to a partial list.
- *
- * This is a deliberate separate walker, not an extraction of `walkSkillTree`:
- * that walker throws on caps/symlinks (skill staging must be exact and safe)
- * and collects file bytes, whereas discovery degrades gracefully and collects
- * only `*.md` paths. Forcing a shared walker across throw-vs-degrade semantics
- * would be the wrong abstraction; revisit if a third caller appears.
- */
-async function walkCommandTree(args: WalkCommandTreeArgs): Promise<void> {
-  if (args.depth > MAX_SCAN_DEPTH) {
-    return;
-  }
-  const entries = await readDirEntries(args.currentPath);
-  if (entries === null) {
-    return;
-  }
-
-  for (const entry of entries) {
-    if (args.matchedFiles.length >= MAX_SCAN_FILE_COUNT) {
-      return;
-    }
-    if (entry.isSymbolicLink()) {
-      continue;
-    }
-    const entryPath = path.join(args.currentPath, entry.name);
-    if (entry.isDirectory()) {
-      await walkCommandTree({
-        currentPath: entryPath,
-        depth: args.depth + 1,
-        rootPath: args.rootPath,
-        matchedFiles: args.matchedFiles,
-      });
-      continue;
-    }
-    if (entry.isFile() && entry.name.endsWith(MARKDOWN_FILE_EXTENSION)) {
-      args.matchedFiles.push(entryPath);
-    }
-  }
-}
-
 function commandNameFromPath(rootPath: string, filePath: string): string {
   const relativePath = path.relative(rootPath, filePath);
   const withoutExtension = relativePath.slice(
@@ -389,11 +463,12 @@ async function scanCommandRoot(
     throw new Error("scanCommandRoot requires a command root");
   }
   const matchedFiles: string[] = [];
-  await walkCommandTree({
+  await walkMarkdownTree({
+    budget: args.budget,
     currentPath: args.root.rootPath,
     depth: 0,
-    rootPath: args.root.rootPath,
     matchedFiles,
+    matches: (entry) => entry.name.endsWith(MARKDOWN_FILE_EXTENSION),
   });
 
   const records: HostProviderCommand[] = [];
@@ -426,6 +501,8 @@ async function scanRoot(args: ScanRootArgs): Promise<HostProviderCommand[]> {
   switch (args.root.shape) {
     case "skill":
       return scanSkillRoot(args);
+    case "skill-recursive":
+      return scanRecursiveSkillRoot(args);
     case "skill-directory":
       return scanSingleSkillDirectoryRoot(args);
     case "skill-file":
@@ -447,8 +524,9 @@ export async function discoverProviderCommands(
   args: DiscoverProviderCommandsArgs,
 ): Promise<HostProviderCommand[]> {
   const records: HostProviderCommand[] = [];
+  const budget = { remainingEntries: MAX_SCAN_ENTRY_COUNT };
   for (const root of args.roots) {
-    records.push(...(await scanRoot({ root })));
+    records.push(...(await scanRoot({ budget, root })));
   }
   return records;
 }
@@ -510,6 +588,7 @@ async function scanSkillRootForSkills(
     return [];
   }
   const records: DiscoveredSkill[] = [];
+  const rootLinked = await isSymbolicLinkPath(root.rootPath);
   for (const entry of entries) {
     const skillDirPath = path.join(root.rootPath, entry.name);
     if (!(await isSkillDirectory({ entry, entryPath: skillDirPath, root }))) {
@@ -529,11 +608,51 @@ async function scanSkillRootForSkills(
         skillFilePath,
         entry.name,
         frontmatter,
-        entry.isSymbolicLink() || (await isSymbolicLinkPath(skillFilePath)),
+        rootLinked ||
+          entry.isSymbolicLink() ||
+          (await isSymbolicLinkPath(skillFilePath)),
       ),
     );
   }
   return records;
+}
+
+async function scanRecursiveSkillRootForSkills(
+  root: SkillScanRoot,
+  budget: ScanBudget,
+): Promise<DiscoveredSkill[]> {
+  if (root.shape !== "skill-recursive") {
+    throw new Error(
+      "scanRecursiveSkillRootForSkills requires a recursive skill root",
+    );
+  }
+  const rootPath = await resolveRecursiveRootPath(root);
+  if (rootPath === null) {
+    return [];
+  }
+  const matchedFiles: string[] = [];
+  await walkMarkdownTree({
+    budget,
+    currentPath: rootPath,
+    depth: 0,
+    matchedFiles,
+    matches: (entry) => entry.name === SKILL_FILE_NAME,
+  });
+  return Promise.all(
+    matchedFiles.map(async (physicalFilePath) => {
+      const logicalFilePath = path.join(
+        root.rootPath,
+        path.relative(rootPath, physicalFilePath),
+      );
+      return buildSkillRecord(
+        root,
+        logicalFilePath,
+        path.basename(path.dirname(physicalFilePath)),
+        await parseFrontmatter(physicalFilePath),
+        await isSymbolicLinkPath(root.rootPath),
+      );
+    }),
+  );
 }
 
 async function scanSingleSkillDirectoryForSkills(
@@ -593,10 +712,14 @@ export async function discoverSkills(
   args: DiscoverSkillsArgs,
 ): Promise<DiscoveredSkill[]> {
   const records: DiscoveredSkill[] = [];
+  const budget = { remainingEntries: MAX_SCAN_ENTRY_COUNT };
   for (const root of args.roots) {
     switch (root.shape) {
       case "skill":
         records.push(...(await scanSkillRootForSkills(root)));
+        break;
+      case "skill-recursive":
+        records.push(...(await scanRecursiveSkillRootForSkills(root, budget)));
         break;
       case "skill-directory":
         records.push(...(await scanSingleSkillDirectoryForSkills(root)));
@@ -609,5 +732,16 @@ export async function discoverSkills(
         break;
     }
   }
-  return records;
+  const uniqueRecords: DiscoveredSkill[] = [];
+  const seenFiles = new Set<string>();
+  for (const record of records) {
+    const canonicalFilePath = await fs
+      .realpath(record.filePath)
+      .catch(() => record.filePath);
+    if (!seenFiles.has(canonicalFilePath)) {
+      seenFiles.add(canonicalFilePath);
+      uniqueRecords.push(record);
+    }
+  }
+  return uniqueRecords;
 }

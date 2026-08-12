@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   isVisibleTerminalSession,
   shouldAutoCloseCleanTerminalSession,
+  shouldAutoCloseCleanTerminalSessionsForPanel,
   shouldCloseDisconnectedTerminalSession,
 } from "./useThreadTerminalController";
 
@@ -116,5 +117,26 @@ describe("terminal visibility", () => {
         uiCreatedTerminalIds: new Set(["term_user_input"]),
       }),
     ).toBe(false);
+  });
+
+  it("preserves clean terminals while a compact panel remains persisted", () => {
+    expect(
+      shouldAutoCloseCleanTerminalSessionsForPanel({
+        isPanelOpen: false,
+        isPanelPersistedOpen: true,
+      }),
+    ).toBe(false);
+    expect(
+      shouldAutoCloseCleanTerminalSessionsForPanel({
+        isPanelOpen: true,
+        isPanelPersistedOpen: false,
+      }),
+    ).toBe(false);
+    expect(
+      shouldAutoCloseCleanTerminalSessionsForPanel({
+        isPanelOpen: false,
+        isPanelPersistedOpen: false,
+      }),
+    ).toBe(true);
   });
 });

@@ -9,6 +9,7 @@ export const THREAD_CHANGE_KINDS = [
   "thread-created",
   "thread-deleted",
   "events-appended",
+  "history-rewritten",
   "interactions-changed",
   "status-changed",
   "title-changed",

@@ -602,6 +602,7 @@ export function PluginNewThreadComposer({
   const commandSuggestions = useCommandSuggestions({
     projectId,
     providerId: selectedProviderId,
+    commandScope: "new-thread",
     skillsTrigger: providerPromptActions.skillsTrigger,
     promptActions,
     environmentId: reuseEnvironmentId,

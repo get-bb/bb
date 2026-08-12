@@ -135,9 +135,9 @@ async function unexpectedWorkspaceCall(): Promise<never> {
   throw new Error("Unexpected workspace call");
 }
 
-function createWorkspace(): HostWorkspace {
+function createWorkspace(workspacePath = WORKSPACE_PATH): HostWorkspace {
   return makeFakeHostWorkspace({
-    path: WORKSPACE_PATH,
+    path: workspacePath,
     isGitRepo: false,
     getDefaultBranch: unexpectedWorkspaceCall,
     getCurrentBranch: unexpectedWorkspaceCall,
@@ -178,6 +178,10 @@ function createRuntime(): FakeDispatchRuntime {
       hostedThreadIds.add(args.threadId);
       return { providerThreadId: "provider-thread-1" };
     }),
+    prepareThreadRewind: vi.fn(async () => ({
+      providerThreadId: "provider-thread-rewind-1",
+    })),
+    discardThreadRewind: vi.fn(async () => undefined),
     resumeThread: vi.fn(async (args: { threadId: string }) => {
       hostedThreadIds.add(args.threadId);
       return { providerThreadId: "provider-thread-1" };
@@ -206,7 +210,7 @@ function createRuntime(): FakeDispatchRuntime {
         : null,
     reapIdleProviderSessions: vi.fn(async () => ({ reapedSessions: [] })),
     hasThread: (threadId) => hostedThreadIds.has(threadId),
-    getActiveThreadIds: () => [...activeTurnsByThreadId.keys()],
+    getLiveThreadIds: () => [...activeTurnsByThreadId.keys()],
     hasOpenBackgroundWork: () => false,
     shutdown: vi.fn(async () => undefined),
     setActiveTurn: (threadId, turnId) => {
@@ -452,6 +456,334 @@ describe("dispatchCommand", () => {
     expect(flush).toHaveBeenCalledOnce();
   });
 
+  it("releases a moved thread from its old environment before resuming it", async () => {
+    const oldRuntime = createRuntime();
+    const newRuntime = createRuntime();
+    const createRuntimeSpy = vi
+      .fn<() => AgentRuntime>()
+      .mockReturnValueOnce(oldRuntime)
+      .mockReturnValueOnce(newRuntime);
+    const manager = new RuntimeManager({
+      createRuntime: createRuntimeSpy,
+      provisionWorkspace: async (args) =>
+        createWorkspace("path" in args ? args.path : args.targetPath),
+    });
+    await manager.ensureEnvironment({
+      environmentId: "env-old",
+      workspacePath: "/tmp/bb-command-dispatch-old",
+    });
+    oldRuntime.setIdle("thread-1");
+
+    const command: CommandOf<"turn.submit"> = {
+      type: "turn.submit",
+      environmentId: "env-new",
+      threadId: "thread-1",
+      requestId: "creq_moved_thread",
+      input: [{ type: "text", text: "follow up", mentions: [] }],
+      options: {
+        model: "gpt-5",
+        serviceTier: "default",
+        reasoningLevel: "medium",
+        workflowsEnabled: false,
+        permissionMode: "full",
+        permissionScope: "full",
+        approvalReviewer: null,
+        permissionEscalation: null,
+      },
+      resumeContext: {
+        workspaceContext: {
+          workspacePath: "/tmp/bb-command-dispatch-new",
+          workspaceProvisionType: "unmanaged",
+        },
+        projectId: "proj_1",
+        providerId: "codex",
+        providerThreadId: "provider-thread-1",
+        instructions: "Be concise.",
+        dynamicTools: [],
+        injectedSkillSources: [],
+        instructionMode: "append",
+      },
+      target: { mode: "start" },
+    };
+
+    const result = await dispatchCommand(command, {
+      dataDir: "/tmp/bb-data",
+      eventSink: {
+        emit: vi.fn(),
+        flush: vi.fn(async () => undefined),
+      },
+      fetchProjectAttachment: async () => {
+        throw new Error("Unexpected project attachment fetch");
+      },
+      runtimeManager: manager,
+      threadStorageRootPath: "/tmp/bb-thread-storage",
+    });
+
+    expect(result).toEqual({ appliedAs: "new-turn" });
+    expect(oldRuntime.stopThread).toHaveBeenCalledWith({
+      threadId: "thread-1",
+    });
+    expect(createRuntimeSpy).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        workspacePath: "/tmp/bb-command-dispatch-new",
+      }),
+    );
+    expect(newRuntime.resumeThread).toHaveBeenCalledWith(
+      expect.objectContaining({
+        providerThreadId: "provider-thread-1",
+        threadId: "thread-1",
+      }),
+    );
+    expect(
+      (oldRuntime.stopThread as unknown as Mock).mock.invocationCallOrder[0],
+    ).toBeLessThan(
+      (newRuntime.resumeThread as unknown as Mock).mock.invocationCallOrder[0],
+    );
+  });
+
+  it("stops the old owner when the moved thread has no runtime yet", async () => {
+    const oldRuntime = createRuntime();
+    const manager = new RuntimeManager({
+      createRuntime: () => oldRuntime,
+      provisionWorkspace: async () => createWorkspace("/tmp/bb-stop-old"),
+    });
+    await manager.ensureEnvironment({
+      environmentId: "env-old",
+      workspacePath: "/tmp/bb-stop-old",
+    });
+    oldRuntime.setActiveTurn("thread-1", "turn-old");
+
+    // The thread already points at its new environment, which the daemon has
+    // never loaded. The stop must still reach the turn in the old runtime.
+    const command: CommandOf<"thread.stop"> = {
+      type: "thread.stop",
+      environmentId: "env-new",
+      threadId: "thread-1",
+    };
+    const flush = vi.fn(async () => undefined);
+
+    const result = await dispatchCommand(command, {
+      dataDir: "/tmp/bb-data",
+      eventSink: { emit: vi.fn(), flush },
+      fetchProjectAttachment: async () => {
+        throw new Error("Unexpected project attachment fetch");
+      },
+      runtimeManager: manager,
+      threadStorageRootPath: "/tmp/bb-thread-storage",
+    });
+
+    expect(result).toEqual({});
+    expect(oldRuntime.stopThread).toHaveBeenCalledWith({
+      threadId: "thread-1",
+    });
+    expect(flush).toHaveBeenCalledOnce();
+  });
+
+  it("rejects thread.stop when no runtime holds the thread", async () => {
+    const manager = new RuntimeManager({
+      createRuntime: () => createRuntime(),
+      provisionWorkspace: async () => createWorkspace(),
+    });
+    const command: CommandOf<"thread.stop"> = {
+      type: "thread.stop",
+      environmentId: "env-missing-runtime",
+      threadId: "thread-1",
+    };
+
+    await expect(
+      dispatchCommand(command, {
+        dataDir: "/tmp/bb-data",
+        eventSink: { emit: vi.fn(), flush: vi.fn(async () => undefined) },
+        fetchProjectAttachment: async () => {
+          throw new Error("Unexpected project attachment fetch");
+        },
+        runtimeManager: manager,
+        threadStorageRootPath: "/tmp/bb-thread-storage",
+      }),
+    ).rejects.toMatchObject({ code: "unknown_environment" });
+  });
+
+  it("cancels a plan in the environment the thread moved away from", async () => {
+    const oldRuntime = createRuntime();
+    const manager = new RuntimeManager({
+      createRuntime: () => oldRuntime,
+      provisionWorkspace: async () => createWorkspace("/tmp/bb-plan-old"),
+    });
+    await manager.ensureEnvironment({
+      environmentId: "env-old",
+      workspacePath: "/tmp/bb-plan-old",
+    });
+    oldRuntime.setActiveTurn("thread-1", "turn-old");
+
+    const command: CommandOf<"thread.plan.cancel"> = {
+      type: "thread.plan.cancel",
+      environmentId: "env-new",
+      threadId: "thread-1",
+      expectedTurnId: "turn-old",
+    };
+
+    const result = await dispatchCommand(command, {
+      dataDir: "/tmp/bb-data",
+      eventSink: { emit: vi.fn(), flush: vi.fn(async () => undefined) },
+      fetchProjectAttachment: async () => {
+        throw new Error("Unexpected project attachment fetch");
+      },
+      runtimeManager: manager,
+      threadStorageRootPath: "/tmp/bb-thread-storage",
+    });
+
+    expect(result).toEqual({ cancelled: true });
+    expect(oldRuntime.stopThread).toHaveBeenCalledWith({
+      threadId: "thread-1",
+    });
+  });
+
+  it("leaves a plan alone when no runtime runs the expected turn", async () => {
+    const oldRuntime = createRuntime();
+    const manager = new RuntimeManager({
+      createRuntime: () => oldRuntime,
+      provisionWorkspace: async () => createWorkspace("/tmp/bb-plan-old"),
+    });
+    await manager.ensureEnvironment({
+      environmentId: "env-old",
+      workspacePath: "/tmp/bb-plan-old",
+    });
+    oldRuntime.setActiveTurn("thread-1", "turn-other");
+
+    const command: CommandOf<"thread.plan.cancel"> = {
+      type: "thread.plan.cancel",
+      environmentId: "env-new",
+      threadId: "thread-1",
+      expectedTurnId: "turn-old",
+    };
+
+    const result = await dispatchCommand(command, {
+      dataDir: "/tmp/bb-data",
+      eventSink: { emit: vi.fn(), flush: vi.fn(async () => undefined) },
+      fetchProjectAttachment: async () => {
+        throw new Error("Unexpected project attachment fetch");
+      },
+      runtimeManager: manager,
+      threadStorageRootPath: "/tmp/bb-thread-storage",
+    });
+
+    expect(result).toEqual({ cancelled: false });
+    expect(oldRuntime.stopThread).not.toHaveBeenCalled();
+  });
+
+  it("keeps an old-environment turn alive through a rename", async () => {
+    const oldRuntime = createRuntime();
+    const newRuntime = createRuntime();
+    const createRuntimeSpy = vi
+      .fn<() => AgentRuntime>()
+      .mockReturnValueOnce(oldRuntime)
+      .mockReturnValueOnce(newRuntime);
+    const manager = new RuntimeManager({
+      createRuntime: createRuntimeSpy,
+      provisionWorkspace: async (args) =>
+        createWorkspace("path" in args ? args.path : args.targetPath),
+    });
+    await manager.ensureEnvironment({
+      environmentId: "env-old",
+      workspacePath: "/tmp/bb-rename-old",
+    });
+    await manager.ensureEnvironment({
+      environmentId: "env-new",
+      workspacePath: "/tmp/bb-rename-new",
+    });
+    // The switch moves the thread mid-turn, so the old runtime still runs it
+    // while the thread already points at the new environment.
+    oldRuntime.setActiveTurn("thread-1", "turn-old");
+
+    const command: CommandOf<"thread.rename"> = {
+      type: "thread.rename",
+      environmentId: "env-new",
+      threadId: "thread-1",
+      title: "Renamed",
+    };
+
+    const result = await dispatchCommand(command, {
+      dataDir: "/tmp/bb-data",
+      eventSink: { emit: vi.fn(), flush: vi.fn(async () => undefined) },
+      fetchProjectAttachment: async () => {
+        throw new Error("Unexpected project attachment fetch");
+      },
+      runtimeManager: manager,
+      threadStorageRootPath: "/tmp/bb-thread-storage",
+    });
+
+    expect(result).toEqual({});
+    expect(oldRuntime.stopThread).not.toHaveBeenCalled();
+    expect(oldRuntime.getActiveTurnId("thread-1")).toBe("turn-old");
+    expect(newRuntime.renameThread).toHaveBeenCalledWith({
+      threadId: "thread-1",
+      title: "Renamed",
+    });
+  });
+
+  it("refuses a goal clear while the old environment still runs the turn", async () => {
+    const oldRuntime = createRuntime();
+    const newRuntime = createRuntime();
+    const createRuntimeSpy = vi
+      .fn<() => AgentRuntime>()
+      .mockReturnValueOnce(oldRuntime)
+      .mockReturnValueOnce(newRuntime);
+    const manager = new RuntimeManager({
+      createRuntime: createRuntimeSpy,
+      provisionWorkspace: async (args) =>
+        createWorkspace("path" in args ? args.path : args.targetPath),
+    });
+    await manager.ensureEnvironment({
+      environmentId: "env-old",
+      workspacePath: "/tmp/bb-goal-old",
+    });
+    oldRuntime.setActiveTurn("thread-1", "turn-old");
+
+    const command: CommandOf<"thread.goal.clear"> = {
+      type: "thread.goal.clear",
+      environmentId: "env-new",
+      threadId: "thread-1",
+      options: {
+        model: "gpt-5",
+        serviceTier: "default",
+        reasoningLevel: "medium",
+        workflowsEnabled: false,
+        permissionMode: "full",
+        permissionScope: "full",
+        approvalReviewer: null,
+        permissionEscalation: null,
+      },
+      resumeContext: {
+        workspaceContext: {
+          workspacePath: "/tmp/bb-goal-new",
+          workspaceProvisionType: "unmanaged",
+        },
+        projectId: "proj_1",
+        providerId: "codex",
+        providerThreadId: "provider-thread-1",
+        instructions: "Be concise.",
+        dynamicTools: [],
+        injectedSkillSources: [],
+        instructionMode: "append",
+      },
+    };
+
+    await expect(
+      dispatchCommand(command, {
+        dataDir: "/tmp/bb-data",
+        eventSink: { emit: vi.fn(), flush: vi.fn(async () => undefined) },
+        fetchProjectAttachment: async () => {
+          throw new Error("Unexpected project attachment fetch");
+        },
+        runtimeManager: manager,
+        threadStorageRootPath: "/tmp/bb-thread-storage",
+      }),
+    ).rejects.toMatchObject({ code: "thread_busy_in_other_environment" });
+    expect(oldRuntime.stopThread).not.toHaveBeenCalled();
+    expect(newRuntime.clearThreadGoal).not.toHaveBeenCalled();
+  });
+
   it("treats thread.rename as best-effort when the runtime is not loaded", async () => {
     const runtime = createRuntime();
     const manager = new RuntimeManager({
@@ -612,6 +944,130 @@ describe("dispatchCommand", () => {
     expect(result).toEqual({ providerThreadId: "provider-thread-1" });
     expect(getProviderCliStatusForProvider).not.toHaveBeenCalled();
     expect(runtime.startThread).toHaveBeenCalledOnce();
+  });
+
+  it("prepares a Codex rewind through the requested retained turn", async () => {
+    const runtime = createRuntime();
+    const manager = new RuntimeManager({
+      createRuntime: () => runtime,
+      provisionWorkspace: async () => createWorkspace(),
+    });
+    const command: CommandOf<"thread.rewind.prepare"> = {
+      type: "thread.rewind.prepare",
+      environmentId: "env-1",
+      threadId: "thread-1",
+      workspaceContext: {
+        workspacePath: WORKSPACE_PATH,
+        workspaceProvisionType: "unmanaged",
+      },
+      projectId: "proj_1",
+      providerId: "codex",
+      leaseId: "lease-1",
+      sourceProviderThreadId: "provider-source-1",
+      retainThroughProviderCheckpoint: "turn-before-edit",
+      options: {
+        model: "gpt-5",
+        serviceTier: "default",
+        reasoningLevel: "medium",
+        workflowsEnabled: false,
+        permissionMode: "full",
+        permissionScope: "full",
+        approvalReviewer: null,
+        permissionEscalation: null,
+      },
+      instructions: "Be concise.",
+      dynamicTools: [],
+      injectedSkillSources: [],
+      instructionMode: "append",
+    };
+    const supportedCodexStatus: ProviderCliStatus = {
+      displayName: "Codex",
+      executableName: "codex",
+      executablePath: "/usr/local/bin/codex",
+      installed: true,
+      installSource: "npmGlobal",
+      currentVersion: "0.146.0",
+      latestVersion: null,
+      minimumSupportedVersion: "0.136.0",
+      npmPackageName: "@openai/codex",
+      npmGlobalPackageVersion: "0.146.0",
+      installAction: null,
+      needsUpdate: false,
+      versionUnsupported: false,
+    };
+
+    await expect(
+      dispatchCommand(command, {
+        dataDir: "/tmp/bb-data",
+        eventSink: {
+          emit: vi.fn(),
+          flush: vi.fn(async () => undefined),
+        },
+        fetchProjectAttachment: async () => {
+          throw new Error("Unexpected project attachment fetch");
+        },
+        getProviderCliStatusForProvider: async () => supportedCodexStatus,
+        runtimeManager: manager,
+        threadStorageRootPath: "/tmp/bb-thread-storage",
+      }),
+    ).resolves.toEqual({ providerThreadId: "provider-thread-rewind-1" });
+    expect(runtime.prepareThreadRewind).toHaveBeenCalledWith(
+      expect.objectContaining({
+        leaseId: "lease-1",
+        sourceProviderThreadId: "provider-source-1",
+        retainThroughProviderCheckpoint: "turn-before-edit",
+        threadId: "thread-1",
+      }),
+    );
+    await expect(
+      dispatchCommand(
+        { ...command, leaseId: "lease-old-codex" },
+        {
+          dataDir: "/tmp/bb-data",
+          eventSink: {
+            emit: vi.fn(),
+            flush: vi.fn(async () => undefined),
+          },
+          fetchProjectAttachment: async () => {
+            throw new Error("Unexpected project attachment fetch");
+          },
+          getProviderCliStatusForProvider: async () => ({
+            ...supportedCodexStatus,
+            currentVersion: "0.140.0",
+            npmGlobalPackageVersion: "0.140.0",
+          }),
+          runtimeManager: manager,
+          threadStorageRootPath: "/tmp/bb-thread-storage",
+        },
+      ),
+    ).rejects.toMatchObject({ code: "provider_cli_unsupported_version" });
+    expect(runtime.prepareThreadRewind).toHaveBeenCalledOnce();
+
+    await expect(
+      dispatchCommand(
+        {
+          type: "thread.rewind.discard",
+          environmentId: "env-1",
+          threadId: "thread-1",
+          leaseId: "lease-1",
+        },
+        {
+          dataDir: "/tmp/bb-data",
+          eventSink: {
+            emit: vi.fn(),
+            flush: vi.fn(async () => undefined),
+          },
+          fetchProjectAttachment: async () => {
+            throw new Error("Unexpected project attachment fetch");
+          },
+          runtimeManager: manager,
+          threadStorageRootPath: "/tmp/bb-thread-storage",
+        },
+      ),
+    ).resolves.toEqual({});
+    expect(runtime.discardThreadRewind).toHaveBeenCalledWith({
+      leaseId: "lease-1",
+    });
   });
 
   it("invalidates the provider maintenance runtime after a successful Codex CLI update", async () => {

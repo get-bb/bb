@@ -78,6 +78,7 @@ vi.mock("@/hooks/queries/host-queries", () => ({
 }));
 
 vi.mock("@/hooks/queries/system-queries", () => ({
+  useOnboardingAgents: () => ({ data: undefined, isPending: false }),
   useSystemConfig: () => ({ data: { primaryHostId: "host_1" } }),
   useSystemExecutionOptions: () => ({
     data: {
@@ -360,7 +361,9 @@ describe("PluginNewThreadComposer seeding", () => {
       ...STORED_REQUEST,
       projectId: "proj_2",
     };
-    view.rerender(composerElement(otherProjectRecord, onSubmit, "project-switch"));
+    view.rerender(
+      composerElement(otherProjectRecord, onSubmit, "project-switch"),
+    );
     await waitFor(() => {
       expect(latestPromptBoxProps().disabled).toBe(false);
     });
@@ -374,9 +377,13 @@ describe("PluginNewThreadComposer seeding", () => {
 
   it("does not resurrect the branch seed after the user leaves and returns to the environment", async () => {
     const submitted: NewThreadRequest[] = [];
-    renderComposer(STORED_REQUEST, (request) => {
-      submitted.push(request);
-    }, "env-return");
+    renderComposer(
+      STORED_REQUEST,
+      (request) => {
+        submitted.push(request);
+      },
+      "env-return",
+    );
     await waitFor(() => {
       expect(latestPromptBoxProps().disabled).toBe(false);
     });

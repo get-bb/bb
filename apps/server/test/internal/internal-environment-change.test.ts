@@ -165,6 +165,54 @@ describe("internal environment change websocket hints", () => {
     },
   );
 
+  it("records workspace metadata when a watched workspace becomes a repository", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-env-metadata-change",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/env-metadata-change",
+        status: "ready",
+        isGitRepo: false,
+      });
+      const notifyEnvironmentSpy = vi.spyOn(harness.hub, "notifyEnvironment");
+      const socket = createTestDaemonSocket();
+
+      onDaemonSocketMessage(harness.deps, {
+        hostId: host.id,
+        sessionId: session.id,
+        socket,
+        raw: JSON.stringify({
+          type: "environment-metadata-change",
+          environmentId: environment.id,
+          workspace: {
+            path: environment.path,
+            isGitRepo: true,
+            isWorktree: false,
+            branchName: "main",
+            defaultBranch: "main",
+          },
+        }),
+      });
+
+      expect(socket.close).not.toHaveBeenCalled();
+      expect(getEnvironment(harness.db, environment.id)).toMatchObject({
+        isGitRepo: true,
+        isWorktree: false,
+        branchName: "main",
+        defaultBranch: "main",
+      });
+      expect(notifyEnvironmentSpy).toHaveBeenCalledWith(environment.id, [
+        "metadata-changed",
+      ]);
+    });
+  });
+
   it("ignores hints for environments owned by a different host", async () => {
     await withTestHarness(async (harness) => {
       const hostA = seedHostSession(harness.deps, { id: "host-env-change-a" });

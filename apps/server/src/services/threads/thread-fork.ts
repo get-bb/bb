@@ -1,5 +1,6 @@
 import { getEnvironment, getThread } from "@bb/db";
 import {
+  PERSONAL_PROJECT_ID,
   SYSTEM_ACTOR_STAMP,
   type ActorStamp,
   type Environment,
@@ -64,12 +65,18 @@ function requireSourceEnvironment(
 
 function resolveForkEnvironment(
   sourceEnvironment: Environment,
-  workspace: ForkThreadRequest["workspace"],
+  args: {
+    projectId: string;
+    workspace: ForkThreadRequest["workspace"];
+  },
 ): EnvironmentArgs {
-  if (workspace === "reuse") {
+  if (args.workspace === "reuse") {
     return { type: "reuse", environmentId: sourceEnvironment.id };
   }
-  if (sourceEnvironment.workspaceProvisionType === "personal") {
+  if (
+    args.projectId === PERSONAL_PROJECT_ID ||
+    sourceEnvironment.workspaceProvisionType === "personal"
+  ) {
     return {
       type: "host",
       hostId: sourceEnvironment.hostId,
@@ -109,7 +116,10 @@ export async function createThreadForkFromRequest(
   return createThreadFromRequest(
     deps,
     {
-      environment: resolveForkEnvironment(sourceEnvironment, request.workspace),
+      environment: resolveForkEnvironment(sourceEnvironment, {
+        projectId: sourceThread.projectId,
+        workspace: request.workspace,
+      }),
       input,
       origin: request.origin,
       ...(request.originPluginId === undefined
@@ -140,6 +150,7 @@ export async function createThreadForkFromRequest(
     },
     {
       actor,
+      forkSourceEnvironmentId: sourceEnvironment.id,
       ...(isSeedOnlyIdleFork ? { providerInput: [] } : {}),
     },
   );

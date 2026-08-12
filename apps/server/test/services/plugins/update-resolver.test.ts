@@ -222,6 +222,11 @@ describe("git update resolution", () => {
       refKind: "branch",
       commit: first,
     });
+    expect(await resolveGitRef({ url: repo, ref: "HEAD" })).toMatchObject({
+      outcome: "resolved",
+      refKind: "branch",
+      commit: first,
+    });
     expect(
       await resolveGitUpdate({
         url: repo,

@@ -14,20 +14,26 @@ import {
   BB_APP_VERSION_ENV,
   BB_EXTERNAL_URL_ENV,
   BB_INHERITED_SKILLS_ROOTS_ENV,
+  BB_INFERENCE_FALLBACK_ENV,
   BB_INFERENCE_ENV,
   BB_POSTHOG_API_KEY_ENV,
+  BB_SERVER_BIND_HOST_ENV,
   BB_TELEMETRY_ENV,
   BB_TRANSCRIPTION_ENV,
   DEFAULT_BB_APP_URL,
   DEFAULT_BB_APP_SURFACE,
   DEFAULT_BB_APP_VERSION,
   DEFAULT_BB_EXTERNAL_URL,
+  DEFAULT_BB_INFERENCE_FALLBACK,
   DEFAULT_BB_INFERENCE,
   DEFAULT_BB_POSTHOG_API_KEY,
+  DEFAULT_BB_SERVER_BIND_HOST,
   DEFAULT_BB_TELEMETRY,
   DEFAULT_BB_TRANSCRIPTION,
   DEFAULT_OPENAI_API_KEY,
   OPENAI_API_KEY_ENV,
+  parseServerBindHost,
+  type ServerBindHost,
 } from "./env-vars.js";
 import { loadFeatureFlags } from "./feature-flags.js";
 import { assignIfDefined } from "./objects.js";
@@ -44,7 +50,9 @@ export interface ServerConfig
   BB_HOST_DAEMON_PORT: number;
   BB_INHERITED_SKILLS_ROOTS: string[];
   BB_INFERENCE: string;
+  BB_INFERENCE_FALLBACK: string;
   BB_POSTHOG_API_KEY: string;
+  BB_SERVER_BIND_HOST: ServerBindHost;
   BB_TELEMETRY: boolean;
   BB_TRANSCRIPTION: string;
   OPENAI_API_KEY: string;
@@ -52,6 +60,9 @@ export interface ServerConfig
 }
 
 export type LoadServerConfigArgs = LoadCommonConfigArgs;
+
+export { parseServerBindHost };
+export type { ServerBindHost };
 
 export function loadServerConfig(
   args: LoadServerConfigArgs = {},
@@ -127,10 +138,22 @@ export function loadServerConfig(
       definition: BB_INFERENCE_ENV,
       env: loader.env,
     }),
+    BB_INFERENCE_FALLBACK: readEnvVarWithDefault({
+      context: loader.context,
+      defaultValue: DEFAULT_BB_INFERENCE_FALLBACK,
+      definition: BB_INFERENCE_FALLBACK_ENV,
+      env: loader.env,
+    }),
     BB_POSTHOG_API_KEY: readEnvVarWithDefault({
       context: loader.context,
       defaultValue: DEFAULT_BB_POSTHOG_API_KEY,
       definition: BB_POSTHOG_API_KEY_ENV,
+      env: loader.env,
+    }),
+    BB_SERVER_BIND_HOST: readEnvVarWithDefault({
+      context: loader.context,
+      defaultValue: DEFAULT_BB_SERVER_BIND_HOST,
+      definition: BB_SERVER_BIND_HOST_ENV,
       env: loader.env,
     }),
     BB_TELEMETRY: readEnvVarWithDefault({

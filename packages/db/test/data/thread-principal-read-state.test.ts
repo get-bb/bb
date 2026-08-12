@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { eq } from "drizzle-orm";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, type Mock } from "vitest";
 import { createConnection } from "../../src/connection.js";
 import type { DbConnection } from "../../src/connection.js";
 import { createProject } from "../../src/data/projects.js";
@@ -43,7 +43,7 @@ function setup(): {
 }
 
 function createSpyNotifier(): DbNotifier & {
-  notifyThread: ReturnType<typeof vi.fn>;
+  notifyThread: Mock<DbNotifier["notifyThread"]>;
 } {
   return {
     notifyThread: vi.fn(),

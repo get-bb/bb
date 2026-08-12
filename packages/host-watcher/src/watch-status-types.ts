@@ -1,6 +1,7 @@
 export const WORKSPACE_STATUS_WATCH_CHANGE_KINDS = [
   "workspace-content-changed",
   "workspace-git-changed",
+  "workspace-git-repository-created",
   "shared-git-refs-changed",
 ] as const;
 export type WorkspaceStatusWatchChangeKind =
@@ -26,5 +27,6 @@ export type WorkspaceStatusWatchErrorCallback = (
 
 export interface WorkspaceStatusWatchArgs {
   onChange: WorkspaceStatusChangeCallback;
+  onReady?: () => void;
   onWatchError: WorkspaceStatusWatchErrorCallback;
 }

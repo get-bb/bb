@@ -47,6 +47,7 @@ export interface ResolveInjectedSkillSourcesArgs {
   pluginSkillSelections?: ReadonlyMap<string, ReadonlySet<string>>;
   projectSkillSources?: readonly ProjectInjectedSkillSource[];
   projectSkillsRootPath?: string;
+  sharedSkillSources?: readonly SharedInjectedSkillSource[];
   skillTreeRegistry: SkillTreeRegistry;
 }
 
@@ -105,6 +106,10 @@ export type ProjectInjectedSkillSource = Extract<
   HostDaemonInjectedSkillSource,
   { kind: "workspace-path" }
 >;
+export type SharedInjectedSkillSource = Extract<
+  HostDaemonInjectedSkillSource,
+  { kind: "host-path" }
+>;
 
 export interface SkillTreeEntry {
   bytes: Buffer;
@@ -130,7 +135,10 @@ export class SkillTreeRegistry {
 }
 
 interface SkillCandidateSource {
-  sourceType: HostDaemonInjectedSkillSource["sourceType"];
+  sourceType: Extract<
+    HostDaemonInjectedSkillSource["sourceType"],
+    "builtin" | "data-dir" | "project"
+  >;
 }
 
 interface SkillRootScanArgs extends SkillCandidateSource {
@@ -273,9 +281,9 @@ export function readSkillTreeManifest(rootPath: string): SkillTreeManifest {
 }
 
 function sourceRootPath(source: HostDaemonInjectedSkillSource): string {
-  return source.kind === "workspace-path"
-    ? source.sourceRootPath
-    : `skill-tree:${source.treeHash}`;
+  return source.kind === "tree"
+    ? `skill-tree:${source.treeHash}`
+    : source.sourceRootPath;
 }
 
 function toSkillFilePath(candidatePath: string): string {
@@ -680,6 +688,12 @@ export function resolveSkillCatalogEntries(
           sourceType: "project",
         })
       : [];
+  const sharedProjectSources = (args.sharedSkillSources ?? []).filter(
+    (source) => source.sourceType === "shared-project",
+  );
+  const sharedUserSources = (args.sharedSkillSources ?? []).filter(
+    (source) => source.sourceType === "shared-user",
+  );
   const builtinSources = readSkillsRoot({
     logger,
     skillTreeRegistry,
@@ -703,6 +717,13 @@ export function resolveSkillCatalogEntries(
       }),
   );
 
+  const configuredUserSources = [
+    ...dataDirSources,
+    ...excludeOverriddenLowerPriorityUserSources(logger, {
+      higherPrioritySources: dataDirSources,
+      lowerPrioritySources: sharedUserSources,
+    }),
+  ];
   const userSources = inheritedSourceGroups.reduce<
     HostDaemonInjectedSkillSource[]
   >(
@@ -713,7 +734,7 @@ export function resolveSkillCatalogEntries(
         lowerPrioritySources,
       }),
     ],
-    dataDirSources,
+    configuredUserSources,
   );
   // The plugin tier (design §4.4): sources ride the "data-dir" wire label —
   // the daemon stages every sourceType identically, so the tier is purely a
@@ -762,9 +783,18 @@ export function resolveSkillCatalogEntries(
     ...activePluginSources,
   ]);
   const activeProjectSources = excludeCollisions(logger, projectSources);
-  const projectNames = new Set(
-    activeProjectSources.map((source) => source.name),
+  const activeSharedProjectSources = excludeOverriddenLowerPriorityUserSources(
+    logger,
+    {
+      higherPrioritySources: activeProjectSources,
+      lowerPrioritySources: excludeCollisions(logger, sharedProjectSources),
+    },
   );
+  const projectTierSources = [
+    ...activeProjectSources,
+    ...activeSharedProjectSources,
+  ];
+  const projectNames = new Set(projectTierSources.map((source) => source.name));
 
   const provenanceBySource = new Map<
     HostDaemonInjectedSkillSource,
@@ -772,6 +802,12 @@ export function resolveSkillCatalogEntries(
   >();
   for (const source of projectSources) {
     provenanceBySource.set(source, { kind: "project" });
+  }
+  for (const source of sharedProjectSources) {
+    provenanceBySource.set(source, { kind: "project" });
+  }
+  for (const source of sharedUserSources) {
+    provenanceBySource.set(source, { kind: "user" });
   }
   for (const source of builtinSources) {
     provenanceBySource.set(source, { kind: "builtin" });
@@ -788,10 +824,12 @@ export function resolveSkillCatalogEntries(
     }
   }
 
-  return [...activeProjectSources, ...globalSources]
+  return [...projectTierSources, ...globalSources]
     .filter(
       (source) =>
-        source.sourceType === "project" || !projectNames.has(source.name),
+        source.sourceType === "project" ||
+        source.sourceType === "shared-project" ||
+        !projectNames.has(source.name),
     )
     .sort((left, right) => compareStringsByCodePoint(left.name, right.name))
     .map((runtimeSource) => {

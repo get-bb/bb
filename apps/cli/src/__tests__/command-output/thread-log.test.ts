@@ -73,9 +73,14 @@ describe("bb thread log command output", () => {
           mentions: [],
           initiator: "user",
           senderThreadId: null,
+          actor: fixtures.TEST_HUMAN_ACTOR,
           systemMessageKind: "unlabeled",
           systemMessageSubject: null,
-          turnRequest: { kind: "message", status: "accepted" },
+          turnRequest: {
+            isGrouped: false,
+            kind: "message",
+            status: "accepted",
+          },
         },
         {
           ...fixtures.makeTimelineBase({

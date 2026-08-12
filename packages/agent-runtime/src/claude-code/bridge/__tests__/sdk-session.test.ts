@@ -6,8 +6,11 @@ import type {
 } from "@anthropic-ai/claude-agent-sdk";
 
 const mockQueryInstance = {
+  applyFlagSettings: vi.fn(),
   close: vi.fn(),
   interrupt: vi.fn(),
+  setModel: vi.fn(),
+  setPermissionMode: vi.fn(),
   [Symbol.asyncIterator]: vi.fn(),
 };
 const { queryMock } = vi.hoisted(() => ({
@@ -34,7 +37,9 @@ interface RejectSdkStreamArgs {
   error: Error;
 }
 
-function isClaudeQueryPromptCall(value: unknown): value is ClaudeQueryPromptCall {
+function isClaudeQueryPromptCall(
+  value: unknown,
+): value is ClaudeQueryPromptCall {
   return (
     value !== null &&
     typeof value === "object" &&
@@ -81,6 +86,9 @@ describe("SdkSession", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     queryMock.mockImplementation(() => mockQueryInstance);
+    mockQueryInstance.applyFlagSettings.mockResolvedValue(undefined);
+    mockQueryInstance.setModel.mockResolvedValue(undefined);
+    mockQueryInstance.setPermissionMode.mockResolvedValue(undefined);
     // Make the query async iterable return immediately
     mockQueryInstance[Symbol.asyncIterator].mockReturnValue({
       next: vi.fn().mockResolvedValue({ value: undefined, done: true }),
@@ -100,12 +108,40 @@ describe("SdkSession", () => {
     expect(session.getIsProcessing()).toBe(false);
   });
 
+  it("applies model and mutable flag settings to the live query", async () => {
+    keepSdkStreamOpen();
+    const session = new SdkSession(defaultOptions, vi.fn(), vi.fn());
+    session.start();
+
+    await session.setModel("claude-sonnet-5");
+    await session.applyMutableSettings({
+      effort: "max",
+      settings: {
+        autoMemoryEnabled: false,
+        enableWorkflows: true,
+        effortLevel: "max",
+        ultracode: false,
+      },
+    });
+
+    expect(mockQueryInstance.setModel).toHaveBeenCalledWith("claude-sonnet-5");
+    expect(mockQueryInstance.applyFlagSettings).toHaveBeenCalledWith({
+      autoMemoryEnabled: false,
+      enableWorkflows: true,
+      effortLevel: "max",
+      ultracode: false,
+    });
+    session.stop();
+  });
+
   it("resolves pushed input after the SDK prompt iterator yields it", async () => {
     keepSdkStreamOpen();
     const session = new SdkSession(defaultOptions, vi.fn(), vi.fn());
+    const promptId = "00000000-0000-0000-0000-000000000001";
 
     session.start();
-    const consumed = session.pushInput("hello");
+    expect(session.canPushInput()).toBe(true);
+    const consumed = session.pushInput("hello", promptId);
     let consumedResolved = false;
     void consumed.then(() => {
       consumedResolved = true;
@@ -116,6 +152,7 @@ describe("SdkSession", () => {
     const result = await getLatestPrompt()[Symbol.asyncIterator]().next();
     expect(result.done).toBe(false);
     expect(result.value?.message.content).toBe("hello");
+    expect(result.value?.uuid).toBe(promptId);
     await consumed;
     expect(consumedResolved).toBe(true);
     session.stop();
@@ -126,6 +163,7 @@ describe("SdkSession", () => {
     const consumed = session.pushInput("hello");
 
     session.stop();
+    expect(session.canPushInput()).toBe(false);
 
     await expect(consumed).rejects.toThrow(
       "Claude SDK session stopped before input consumed",

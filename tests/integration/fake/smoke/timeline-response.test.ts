@@ -35,9 +35,14 @@ const USER_ROW = {
   attachments: null,
   initiator: "user",
   senderThreadId: null,
+  actor: {
+    principalId: "human:test-user",
+    principalKind: "human",
+    displayName: "Test User",
+  },
   systemMessageKind: "unlabeled",
   systemMessageSubject: null,
-  turnRequest: { kind: "message", status: "accepted" },
+  turnRequest: { isGrouped: false, kind: "message", status: "accepted" },
 } satisfies TimelineRow;
 
 function makeTimelineResponse(

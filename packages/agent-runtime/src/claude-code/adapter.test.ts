@@ -308,6 +308,27 @@ describe("claude-code provider adapter", () => {
     });
   });
 
+  it("buildCommand thread/fork forwards the provider checkpoint", () => {
+    const adapter = createClaudeCodeProviderAdapter();
+    const cmd = adapter.buildCommandPlan({
+      type: "thread/fork",
+      cwd: "/tmp/worktree",
+      threadId: "bb-thread-1",
+      sourceProviderThreadId: "claude-session-1",
+      sourceProviderCheckpointId: "assistant-message-42",
+      instructionMode: "append",
+      options: fullProviderExecutionContext,
+    });
+
+    expect(cmd).toMatchObject({
+      method: "thread/fork",
+      params: {
+        sourceProviderCheckpointId: "assistant-message-42",
+        sourceProviderThreadId: "claude-session-1",
+      },
+    });
+  });
+
   it("buildCommand passes workflowsEnabled through explicitly on thread/start and thread/resume", () => {
     const adapter = createClaudeCodeProviderAdapter();
     const start = adapter.buildCommandPlan({
@@ -929,6 +950,21 @@ describe("claude-code provider adapter", () => {
     });
   });
 
+  it("buildCommand thread/discard closes the staged bridge session", () => {
+    const adapter = createClaudeCodeProviderAdapter();
+    expect(
+      adapter.buildCommandPlan({
+        type: "thread/discard",
+        threadId: "bb-staging",
+        providerThreadId: "claude-staging",
+      }),
+    ).toEqual({
+      kind: "request",
+      method: "thread/stop",
+      params: { threadId: "bb-staging" },
+    });
+  });
+
   it("decodeToolCallRequest preserves string request ids", () => {
     const adapter = createClaudeCodeProviderAdapter();
     expect(
@@ -1134,6 +1170,75 @@ describe("claude-code provider adapter", () => {
           },
         },
       },
+    });
+  });
+
+  it("decodes ExitPlanMode approvals into a plan review the user can judge", () => {
+    const adapter = createClaudeCodeProviderAdapter();
+
+    expect(
+      adapter.decodeInteractiveRequest?.({
+        id: "req-plan",
+        method: CLAUDE_PERMISSION_REQUEST_APPROVAL_METHOD,
+        params: {
+          threadId: "thr_1",
+          providerThreadId: "claude-session-1",
+          turnId: "turn-plan",
+          itemId: "toolu_plan",
+          toolName: "ExitPlanMode",
+          input: {
+            plan: "# Plan\n\nShip it.",
+            planFilePath: "/tmp/plans/ship-it.md",
+          },
+          reason: null,
+          permissions: { network: null, fileSystem: null },
+        },
+      }),
+    ).toMatchObject({
+      payload: {
+        kind: "approval",
+        // A plan verdict grants nothing, so "allow for session" must not appear.
+        availableDecisions: ["allow_once", "deny"],
+        subject: {
+          kind: "plan",
+          itemId: "toolu_plan",
+          plan: "# Plan\n\nShip it.",
+          planFilePath: "/tmp/plans/ship-it.md",
+        },
+      },
+    });
+  });
+
+  it("tells the model to gather feedback when the user rejects a plan", () => {
+    const adapter = createClaudeCodeProviderAdapter();
+
+    const response = adapter.buildInteractiveResponse?.({
+      request: {
+        requestId: "req-plan",
+        method: CLAUDE_PERMISSION_REQUEST_APPROVAL_METHOD,
+        threadId: "thr_1",
+        providerThreadId: "claude-session-1",
+        turnId: "turn-plan",
+        payload: {
+          kind: "approval",
+          reason: null,
+          availableDecisions: ["allow_once", "deny"],
+          subject: {
+            kind: "plan",
+            itemId: "toolu_plan",
+            plan: "# Plan",
+            planFilePath: null,
+          },
+        },
+      },
+      resolution: { decision: "deny" },
+    });
+
+    // A bare "denied" leaves the model free to re-propose the same plan, and
+    // the SDK keeps the session in plan mode, so it loops.
+    expect(response).toMatchObject({
+      behavior: "deny",
+      message: expect.stringContaining("AskUserQuestion"),
     });
   });
 
@@ -1937,6 +2042,80 @@ describe("claude-code provider adapter", () => {
     );
   });
 
+  it("records the latest Claude assistant message as the turn checkpoint", () => {
+    const adapter = createClaudeCodeProviderAdapter();
+    adapter.translateEvent({
+      type: "assistant",
+      uuid: "assistant-message-42",
+      message: {
+        id: "msg-1",
+        role: "assistant",
+        content: [{ type: "text", text: "Done" }],
+      },
+      session_id: "sess-1",
+    });
+
+    const events = adapter.translateEvent({
+      type: "result",
+      subtype: "success",
+      session_id: "sess-1",
+    });
+
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "turn/completed",
+        status: "completed",
+        providerCheckpointId: "assistant-message-42",
+      }),
+    );
+  });
+
+  it("does not replace the root checkpoint with a sidechain assistant UUID", () => {
+    const adapter = createClaudeCodeProviderAdapter();
+    adapter.translateEvent(
+      {
+        type: "assistant",
+        uuid: "root-assistant-message",
+        message: {
+          id: "root-message",
+          role: "assistant",
+          content: [{ type: "text", text: "Root response" }],
+        },
+        session_id: "sess-1",
+      },
+      { threadId: "bb-thread-1" },
+    );
+    adapter.translateEvent(
+      {
+        type: "assistant",
+        uuid: "sidechain-assistant-message",
+        message: {
+          id: "sidechain-message",
+          role: "assistant",
+          content: [{ type: "text", text: "Subagent response" }],
+        },
+        session_id: "sess-1",
+      },
+      { threadId: "bb-thread-1", parentToolCallId: "tool-subagent" },
+    );
+
+    const events = adapter.translateEvent(
+      {
+        type: "result",
+        subtype: "success",
+        session_id: "sess-1",
+      },
+      { threadId: "bb-thread-1" },
+    );
+
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "turn/completed",
+        providerCheckpointId: "root-assistant-message",
+      }),
+    );
+  });
+
   it("translateEvent completes a pending turn for Claude synthetic no-response messages", () => {
     const adapter = createClaudeCodeProviderAdapter();
 
@@ -2496,7 +2675,7 @@ describe("claude-code provider adapter", () => {
     );
   });
 
-  it("translateEvent ignores rate limit events", () => {
+  it("translateEvent preserves unknown Claude rate limit window keys", () => {
     const adapter = createClaudeCodeProviderAdapter();
 
     const events = adapter.translateEvent({
@@ -2508,7 +2687,7 @@ describe("claude-code provider adapter", () => {
           type: "rate_limit_event",
           rate_limit_info: {
             status: "allowed",
-            rateLimitType: "five_hour",
+            rateLimitType: "seven_day_fable",
             overageStatus: "rejected",
             overageDisabledReason: "out_of_credits",
           },
@@ -2516,10 +2695,25 @@ describe("claude-code provider adapter", () => {
       },
     });
 
-    expect(events).toMatchObject([]);
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: "provider/rateLimits/updated",
+        scope: threadScope(),
+        rateLimits: expect.objectContaining({
+          providerId: "claude-code",
+          status: "allowed",
+          windows: [
+            expect.objectContaining({
+              providerKey: "seven_day_fable",
+              label: null,
+            }),
+          ],
+        }),
+      }),
+    ]);
   });
 
-  it("translateEvent ignores primary rate limit rejections when overage is allowed", () => {
+  it("translateEvent keeps overage-covered rejections nonterminal", () => {
     const adapter = createClaudeCodeProviderAdapter();
 
     const events = adapter.translateEvent({
@@ -2539,7 +2733,22 @@ describe("claude-code provider adapter", () => {
       },
     });
 
-    expect(events).toEqual([]);
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: "provider/rateLimits/updated",
+        rateLimits: expect.objectContaining({
+          status: "allowed",
+          overageStatus: "allowed",
+          windows: [
+            expect.objectContaining({
+              providerKey: "five_hour",
+              status: "blocked",
+              resetsAtMs: 1_781_120_400_000,
+            }),
+          ],
+        }),
+      }),
+    ]);
   });
 
   it("translateEvent ignores task-updated system events from the SDK envelope", () => {
@@ -2915,6 +3124,22 @@ describe("claude-code provider adapter", () => {
       },
     });
 
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "provider/rateLimits/updated",
+        rateLimits: expect.objectContaining({
+          status: "blocked",
+          kind: "subscription-window",
+          reachedReason: "five_hour",
+          windows: [
+            expect.objectContaining({
+              providerKey: "five_hour",
+              resetsAtMs: 12_345_000,
+            }),
+          ],
+        }),
+      }),
+    );
     expect(events).toContainEqual(
       expect.objectContaining({
         type: "provider/error",
@@ -5516,5 +5741,25 @@ describe("claude-code provider adapter", () => {
     const adapter = createClaudeCodeProviderAdapter();
     const events = adapter.translateEvent(loadFixture("system-init.json"));
     expect(events).toMatchObject([]);
+  });
+
+  it("ignores Claude command lifecycle events", () => {
+    const adapter = createClaudeCodeProviderAdapter();
+    const events = adapter.translateEvent({
+      jsonrpc: "2.0",
+      method: "sdk/message",
+      params: {
+        threadId: "thread-1",
+        message: {
+          type: "command_lifecycle",
+          command_uuid: "command-1",
+          state: "started",
+          uuid: "message-1",
+          session_id: "session-1",
+        },
+      },
+    });
+
+    expect(events).toEqual([]);
   });
 });

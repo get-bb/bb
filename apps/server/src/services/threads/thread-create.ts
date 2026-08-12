@@ -147,6 +147,7 @@ interface DeriveThreadCreateTitleFallbackArgs {
 }
 
 interface ResolveCatalogExecutionDefaultsArgs {
+  cwd?: string;
   executionDefaults: ProjectExecutionDefaults | null;
   hostId: string | null;
   providerId: string;
@@ -170,6 +171,7 @@ async function resolveCatalogExecutionDefaults(
   }
 
   const catalog = await resolveSystemProviderModels(deps, {
+    ...(args.cwd !== undefined ? { cwd: args.cwd } : {}),
     hostId: args.hostId,
     providerId: args.providerId,
   });
@@ -257,6 +259,23 @@ function childHostIdForResolvedEnvironment(
       return resolvedEnvironment.hostId;
     case "personal":
       return resolvedEnvironment.hostId;
+  }
+}
+
+function modelCatalogCwdForResolvedEnvironment(
+  resolvedEnvironment: ResolvedStableThreadRequestEnvironment,
+): string | undefined {
+  switch (resolvedEnvironment.type) {
+    case "reuse":
+      return resolvedEnvironment.environment.path ?? undefined;
+    case "host":
+      return (
+        resolvedEnvironment.unmanagedPath ??
+        resolvedEnvironment.localSource?.path ??
+        undefined
+      );
+    case "personal":
+      return undefined;
   }
 }
 
@@ -614,6 +633,8 @@ export async function createThreadFromRequest(
     providerInput?: ThreadCreateServiceRequestInput["input"];
     /** Internal-only exact identities; never populated from an HTTP payload. */
     resourceReservation?: ThreadCreateResourceReservation;
+    /** Source environment selected by the public fork route. */
+    forkSourceEnvironmentId?: string;
   } = {},
 ) {
   const resourceReservation = requireThreadCreateResourceReservation(
@@ -709,6 +730,15 @@ export async function createThreadFromRequest(
       "originKind requires a sourceThreadId",
     );
   }
+  const forkSourceEnvironmentId =
+    options.forkSourceEnvironmentId ??
+    (originKind === "fork" &&
+    sourceThread !== null &&
+    sourceThread.environmentId !== null &&
+    requestInput.environment.type === "reuse" &&
+    requestInput.environment.environmentId === sourceThread.environmentId
+      ? sourceThread.environmentId
+      : undefined);
   // Provenance coherence + anti-forgery. The validated source/parent thread
   // anchors senderThreadId so a caller cannot claim a start on behalf of an
   // arbitrary or cross-project thread.
@@ -774,7 +804,13 @@ export async function createThreadFromRequest(
       requestedVisibility: requestInput.visibility,
     }),
     environment: resolveCreateThreadEnvironment({
-      parentThread: sourceThread ?? parentThread,
+      // Source-derived forks already resolve their environment before this
+      // call. Applying ordinary child defaults here would turn an isolated
+      // personal fork back into source reuse.
+      parentThread:
+        forkSourceEnvironmentId !== undefined
+          ? null
+          : (sourceThread ?? parentThread),
       projectId: requestInput.projectId,
       requestedEnvironment: requestInput.environment,
     }),
@@ -786,15 +822,19 @@ export async function createThreadFromRequest(
     }),
   };
   const resolvedEnvironment = resolveStableThreadRequestEnvironment(deps, {
+    allowUnmanagedPersonalProjectReuseEnvironmentId: forkSourceEnvironmentId,
     environment: request.environment,
     projectId: request.projectId,
   });
   const hostDataDir = await ensureCreateHostOnline(deps, {
     resolvedEnvironment,
   });
+  const modelCatalogCwd =
+    modelCatalogCwdForResolvedEnvironment(resolvedEnvironment);
   const resolvedExecutionDefaults = await resolveCatalogExecutionDefaults(
     deps,
     {
+      ...(modelCatalogCwd !== undefined ? { cwd: modelCatalogCwd } : {}),
       executionDefaults,
       hostId: childHostIdForResolvedEnvironment(resolvedEnvironment),
       providerId,

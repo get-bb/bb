@@ -210,6 +210,56 @@ describe("resolveSkillScanRoots + discoverSkills (codex)", () => {
     expect(byName(skills, "proj-bb")?.rootKind).toBe("bb-project");
   });
 
+  it("classifies repository and nested .agents roots as codex project skills", async () => {
+    const fixture = await makeWorkspaceFixture();
+    const cwd = path.join(fixture.cwd, "packages", "app");
+    await mkdir(path.join(fixture.cwd, ".git"), { recursive: true });
+    await mkdir(cwd, { recursive: true });
+    await writeSkill(
+      path.join(
+        fixture.cwd,
+        ".agents",
+        "skills",
+        "repository-skill",
+        "SKILL.md",
+      ),
+      "repository-skill",
+    );
+    await writeSkill(
+      path.join(cwd, ".agents", "skills", "nested-skill", "SKILL.md"),
+      "nested-skill",
+    );
+
+    const skills = await listSkills(fixture, "codex", cwd);
+
+    expect(byName(skills, "repository-skill")?.rootKind).toBe(
+      "provider-project",
+    );
+    expect(byName(skills, "nested-skill")?.rootKind).toBe("provider-project");
+  });
+
+  it("gives same-named .agents skills in different roots distinct IDs", async () => {
+    const fixture = await makeWorkspaceFixture();
+    const cwd = path.join(fixture.cwd, "packages", "app");
+    await mkdir(path.join(fixture.cwd, ".git"), { recursive: true });
+    await mkdir(cwd, { recursive: true });
+    await writeSkill(
+      path.join(fixture.cwd, ".agents", "skills", "review", "SKILL.md"),
+      "review",
+    );
+    await writeSkill(
+      path.join(cwd, ".agents", "skills", "review", "SKILL.md"),
+      "review",
+    );
+
+    const skills = (await listSkills(fixture, "codex", cwd)).filter(
+      (skill) => skill.name === "review",
+    );
+
+    expect(skills).toHaveLength(2);
+    expect(new Set(skills.map((skill) => skill.id)).size).toBe(2);
+  });
+
   it("marks followed user skill directory and SKILL.md symlinks as linked", async () => {
     const fixture = await makeWorkspaceFixture();
     const skillsRoot = path.join(fixture.codexHome, "skills");
@@ -234,6 +284,114 @@ describe("resolveSkillScanRoots + discoverSkills (codex)", () => {
 
     expect(byName(skills, "linked-directory")?.linked).toBe(true);
     expect(byName(skills, "linked-file")?.linked).toBe(true);
+  });
+});
+
+describe("resolveSkillScanRoots + discoverSkills (shared roots)", () => {
+  it("classifies configured shared user and project roots", async () => {
+    const fixture = await makeWorkspaceFixture();
+    await writeSkill(
+      path.join(
+        fixture.homeDir,
+        ".agents",
+        "skills",
+        "user-shared",
+        "SKILL.md",
+      ),
+      "user-shared",
+    );
+    await writeSkill(
+      path.join(fixture.cwd, ".agents", "skills", "project-shared", "SKILL.md"),
+      "project-shared",
+    );
+
+    const skills = await discoverSkills({
+      roots: await resolveSkillScanRoots({
+        providerId: "bb-shared",
+        cwd: fixture.cwd,
+        homeDir: fixture.homeDir,
+        codexHome: fixture.codexHome,
+        nativeSkillRoots: {
+          user: [".agents/skills"],
+          project: [".agents/skills"],
+        },
+      }),
+    });
+
+    expect(byName(skills, "project-shared")?.rootKind).toBe("shared-project");
+    expect(byName(skills, "user-shared")?.rootKind).toBe("shared-user");
+  });
+
+  it("discovers a project skill through a symlinked shared root", async () => {
+    const fixture = await makeWorkspaceFixture();
+    await writeSkill(
+      path.join(fixture.cwd, ".agents", "skills", "linked-root", "SKILL.md"),
+      "linked-root",
+    );
+    await mkdir(path.join(fixture.cwd, ".shared"), { recursive: true });
+    await symlink(
+      path.join("..", ".agents", "skills"),
+      path.join(fixture.cwd, ".shared", "skills"),
+      "dir",
+    );
+
+    const skills = await discoverSkills({
+      roots: await resolveSkillScanRoots({
+        providerId: "bb-shared",
+        cwd: fixture.cwd,
+        homeDir: fixture.homeDir,
+        codexHome: fixture.codexHome,
+        nativeSkillRoots: {
+          user: [],
+          project: [".shared/skills"],
+        },
+      }),
+    });
+
+    expect(byName(skills, "linked-root")).toMatchObject({
+      rootKind: "shared-project",
+      linked: true,
+    });
+  });
+});
+
+describe("resolveSkillScanRoots + discoverSkills (acp-cursor)", () => {
+  it("classifies a skill through a symlinked .cursor/skills root", async () => {
+    const fixture = await makeWorkspaceFixture();
+    await writeSkill(
+      path.join(fixture.cwd, ".agents", "skills", "impeccable", "SKILL.md"),
+      "impeccable",
+    );
+    await mkdir(path.join(fixture.cwd, ".cursor"), { recursive: true });
+    await symlink(
+      path.join("..", ".agents", "skills"),
+      path.join(fixture.cwd, ".cursor", "skills"),
+      "dir",
+    );
+
+    const skills = await discoverSkills({
+      roots: await resolveSkillScanRoots({
+        providerId: "acp-cursor",
+        cwd: fixture.cwd,
+        homeDir: fixture.homeDir,
+        codexHome: fixture.codexHome,
+      }),
+    });
+
+    expect(skills.filter((skill) => skill.name === "impeccable")).toHaveLength(
+      1,
+    );
+    expect(byName(skills, "impeccable")).toMatchObject({
+      rootKind: "provider-project",
+      linked: true,
+      filePath: path.join(
+        fixture.cwd,
+        ".cursor",
+        "skills",
+        "impeccable",
+        "SKILL.md",
+      ),
+    });
   });
 });
 

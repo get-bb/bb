@@ -15,6 +15,7 @@ import {
   ThreadTimelinePanelContent,
   type ThreadTimelineConsumerMessageAction,
 } from "@/components/thread/timeline";
+import { useThreadTimelineNavigation } from "@/components/thread/timeline/ThreadTimelineNavigationContext";
 import { PluginContext } from "@/components/plugin/plugin-context";
 import { useEnvironment } from "@/hooks/queries/environment-queries";
 import { useThread } from "@/hooks/queries/thread-queries";
@@ -91,6 +92,22 @@ function PluginThreadChatBody({
   const { isLocalDaemonHost } = useHostDaemon();
   const environmentQuery = useEnvironment(thread?.environmentId ?? null);
   const environment = environmentQuery.data ?? null;
+  const timelineNavigation = useThreadTimelineNavigation();
+  const canUseHostFileNavigation =
+    thread !== undefined &&
+    thread.environmentId === timelineNavigation?.environmentId;
+  const onOpenLink = timelineNavigation?.onOpenLink;
+  const onOpenLocalFileLink = canUseHostFileNavigation
+    ? timelineNavigation.onOpenLocalFileLink
+    : undefined;
+  const resolveHostMentionLink = canUseHostFileNavigation
+    ? timelineNavigation.resolveMentionLink
+    : undefined;
+  const workspaceRootPath =
+    environment?.path ??
+    (canUseHostFileNavigation
+      ? timelineNavigation.workspaceRootPath
+      : undefined);
   // Null outside a plugin slot mount (host-internal usages, tests): actions
   // then render their icon hint instead of the plugin's branding icon.
   const pluginId = useContext(PluginContext);
@@ -113,8 +130,9 @@ function PluginThreadChatBody({
     [messageActions, pluginId],
   );
 
-  // Threads and projects stay navigable from a plugin surface; file mentions
-  // have no file viewer here, so their pills render as plain text.
+  // Threads and projects always stay navigable. A hosted thread panel can also
+  // open workspace-file mentions through its owning detail surface; standalone
+  // plugin surfaces and thread-storage mentions have no unambiguous file tab.
   const resolveMentionLink = useCallback<PromptMentionLinkResolver>(
     (resource) => {
       if (resource.kind === "thread") {
@@ -131,9 +149,16 @@ function PluginThreadChatBody({
       if (resource.kind === "project") {
         return () => navigate(getProjectComposeRoutePath(resource.projectId));
       }
+      if (
+        resource.kind === "path" &&
+        resource.entryKind === "file" &&
+        resource.source === "workspace"
+      ) {
+        return resolveHostMentionLink?.(resource) ?? null;
+      }
       return null;
     },
-    [navigate, thread?.projectId],
+    [navigate, resolveHostMentionLink, thread?.projectId],
   );
 
   const environmentSummary = useMemo(() => {
@@ -173,7 +198,8 @@ function PluginThreadChatBody({
   }, [environment, isLocalDaemonHost]);
 
   const isThreadMissing =
-    threadQuery.error instanceof BbHttpError && threadQuery.error.status === 404;
+    threadQuery.error instanceof BbHttpError &&
+    threadQuery.error.status === 404;
   if (isThreadMissing) {
     return (
       <EmptyStatePanel className="m-2 rounded-lg">
@@ -196,12 +222,14 @@ function PluginThreadChatBody({
       <ThreadTimelinePanelContent
         leadingContent={leadingContent}
         consumerMessageActions={consumerMessageActions}
-      includePluginMessageActions={false}
+        includePluginMessageActions={false}
+        onOpenLink={onOpenLink}
+        onOpenLocalFileLink={onOpenLocalFileLink}
         projectId={thread.projectId}
         resolveMentionLink={resolveMentionLink}
         surfaceKey={`plugin-thread-chat:${threadId}`}
         threadId={threadId}
-        workspaceRootPath={environment?.path ?? undefined}
+        workspaceRootPath={workspaceRootPath}
       />
     );
     return layout === "contained" ? (
@@ -227,6 +255,9 @@ function PluginThreadChatBody({
       leadingContent={leadingContent}
       consumerMessageActions={consumerMessageActions}
       includePluginMessageActions={false}
+      onOpenLink={onOpenLink}
+      onOpenLocalFileLink={onOpenLocalFileLink}
+      workspaceRootPath={workspaceRootPath}
       composer={{
         draftScope: {
           kind: "thread",

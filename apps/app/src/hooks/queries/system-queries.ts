@@ -47,6 +47,12 @@ export interface UseSystemExecutionOptionsArgs {
   providerId?: string;
 }
 
+export interface UseOnboardingAgentsOptions extends QueryOptions {
+  environmentId?: string;
+  hostId?: string;
+  poll?: boolean;
+}
+
 interface QueryOptions {
   enabled?: boolean;
 }
@@ -219,12 +225,17 @@ export function useHostProviderCliStatus({
  * Live agent state for onboarding. Polled while the step is open so installing
  * or signing in from a terminal updates the list without a manual refresh.
  */
-export function useOnboardingAgents(
-  options: QueryOptions & { poll?: boolean } = {},
-) {
+export function useOnboardingAgents(options: UseOnboardingAgentsOptions = {}) {
+  const environmentId = options.environmentId ?? null;
+  const hostId = options.hostId ?? null;
   return useQuery<OnboardingAgentOverview>({
-    queryKey: onboardingAgentsQueryKey(),
-    queryFn: ({ signal }) => sdk.system.onboardingAgents({ signal }),
+    queryKey: onboardingAgentsQueryKey({ environmentId, hostId }),
+    queryFn: ({ signal }) =>
+      sdk.system.onboardingAgents({
+        environmentId: options.environmentId,
+        hostId: options.hostId,
+        signal,
+      }),
     enabled: options.enabled ?? true,
     // Each read runs CLI health checks, known-agent checks, and up to three
     // provider usage requests, so this polls slowly and only while the agents

@@ -1,13 +1,16 @@
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import {
   chmodSync,
   mkdtempSync,
   mkdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
+import { createServer as createNetServer } from "node:net";
 import { delimiter, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -26,6 +29,7 @@ function createFixture(): { binDir: string; dataDir: string; homeDir: string } {
   mkdirSync(binDir, { recursive: true });
   mkdirSync(dataDir, { recursive: true });
   mkdirSync(homeDir, { recursive: true });
+  symlinkSync(process.execPath, join(binDir, "node"));
   return { binDir, dataDir, homeDir };
 }
 
@@ -34,21 +38,55 @@ function writeExecutable(path: string, contents: string): void {
   chmodSync(path, 0o755);
 }
 
+type Fixture = ReturnType<typeof createFixture>;
+
+function createScriptEnv(
+  fixture: Fixture,
+  env: Record<string, string>,
+): NodeJS.ProcessEnv {
+  return {
+    ...process.env,
+    BB_DATA_DIR: fixture.dataDir,
+    HOME: fixture.homeDir,
+    PATH: [fixture.binDir, "/usr/bin", "/bin"].join(delimiter),
+    ...env,
+  };
+}
+
 function runScript(
   args: string[],
-  fixture: ReturnType<typeof createFixture>,
+  fixture: Fixture,
   env: Record<string, string> = {},
 ) {
   return spawnSync("sh", [SCRIPT_PATH.pathname, ...args], {
     encoding: "utf8",
-    env: {
-      ...process.env,
-      BB_DATA_DIR: fixture.dataDir,
-      HOME: fixture.homeDir,
-      PATH: `${fixture.binDir}${delimiter}${process.env.PATH ?? ""}`,
-      ...env,
-    },
+    env: createScriptEnv(fixture, env),
   });
+}
+
+async function runScriptAsync(
+  args: string[],
+  fixture: Fixture,
+  env: Record<string, string> = {},
+): Promise<{ status: number | null; stderr: string; stdout: string }> {
+  const child = spawn("sh", [SCRIPT_PATH.pathname, ...args], {
+    env: createScriptEnv(fixture, env),
+  });
+  child.stderr.setEncoding("utf8");
+  child.stdout.setEncoding("utf8");
+  let stderr = "";
+  let stdout = "";
+  child.stderr.on("data", (chunk: string) => {
+    stderr += chunk;
+  });
+  child.stdout.on("data", (chunk: string) => {
+    stdout += chunk;
+  });
+  const status = await new Promise<number | null>((resolve, reject) => {
+    child.once("error", reject);
+    child.once("close", resolve);
+  });
+  return { status, stderr, stdout };
 }
 
 const JOIN_ARGS = [
@@ -73,6 +111,51 @@ function writeJoinedState(
     join(fixture.dataDir, "config.json"),
     JSON.stringify({ serverUrl }),
   );
+}
+
+function createEnrollingBbAppScript(args: {
+  hostId: string;
+  invocationPath?: string;
+  statusServerUrl?: string;
+}): string {
+  const recordInvocation =
+    args.invocationPath === undefined
+      ? ""
+      : `fs.writeFileSync(${JSON.stringify(args.invocationPath)}, cliArgs.join("\\n") + "\\n");`;
+  return `#!/usr/bin/env node
+const fs = require("node:fs");
+const http = require("node:http");
+const path = require("node:path");
+const cliArgs = process.argv.slice(2);
+const option = (name) => {
+  const index = cliArgs.indexOf(name);
+  return index === -1 ? undefined : cliArgs[index + 1];
+};
+${recordInvocation}
+const dataDir = process.env.BB_DATA_DIR;
+const hostId = ${JSON.stringify(args.hostId)};
+const port = Number(option("--host-daemon-port"));
+const serverUrl = option("--server-url");
+const statusServerUrl = ${JSON.stringify(args.statusServerUrl)} ?? serverUrl;
+fs.writeFileSync(
+  path.join(dataDir, "auth.json"),
+  JSON.stringify({ hostId, hostKey: "secret", hostType: "persistent" }) + "\\n",
+);
+const configPath = path.join(dataDir, "config.json");
+if (!fs.existsSync(configPath)) {
+  fs.writeFileSync(configPath, JSON.stringify({ serverUrl }) + "\\n");
+}
+const server = http.createServer((request, response) => {
+  if (request.url !== "/status") {
+    response.writeHead(404).end();
+    return;
+  }
+  response.writeHead(200, { "content-type": "application/json" });
+  response.end(JSON.stringify({ connected: true, hostId, serverUrl: statusServerUrl }));
+});
+server.listen(port, "127.0.0.1");
+process.on("SIGTERM", () => server.close(() => process.exit(0)));
+`;
 }
 
 // Mocks curl to serve the redeem endpoint and answer the bb-app tarball
@@ -103,11 +186,7 @@ esac
   const bbAppTemplatePath = join(fixture.dataDir, "bb-app-template");
   writeExecutable(
     bbAppTemplatePath,
-    `#!/bin/sh
-printf '%s\\n' '{"hostId":"host-test","hostKey":"secret","hostType":"persistent"}' >"$BB_DATA_DIR/auth.json"
-printf '%s\\n' '{"serverUrl":"https://machine.getbb.app"}' >"$BB_DATA_DIR/config.json"
-while :; do sleep 1; done
-`,
+    createEnrollingBbAppScript({ hostId: "host-test" }),
   );
   writeExecutable(
     join(fixture.binDir, "npm"),
@@ -123,14 +202,11 @@ function writeEnrollingBbApp(
   fixture: ReturnType<typeof createFixture>,
   invocationPath: string,
   hostId = "host-test",
+  statusServerUrl?: string,
 ): void {
   writeExecutable(
     join(fixture.binDir, "bb-app"),
-    `#!/bin/sh
-printf '%s\n' "$@" >"${invocationPath}"
-printf '%s\n' '{"hostId":"${hostId}","hostKey":"secret","hostType":"persistent"}' >"$BB_DATA_DIR/auth.json"
-while :; do sleep 1; done
-`,
+    createEnrollingBbAppScript({ hostId, invocationPath, statusServerUrl }),
   );
 }
 
@@ -153,6 +229,12 @@ printf '%s' '${artifactStatus}'
 
 afterEach(() => {
   for (const directory of createdDirectories.splice(0)) {
+    try {
+      const servicePid = Number(
+        readFileSync(join(directory, "data/service-daemon.pid"), "utf8"),
+      );
+      process.kill(servicePid, "SIGTERM");
+    } catch {}
     rmSync(directory, { force: true, recursive: true });
   }
 });
@@ -168,6 +250,19 @@ describe("machine install script", () => {
     );
   });
 
+  it("rejects an invalid explicit host-daemon port", () => {
+    const fixture = createFixture();
+    const result = runScript(
+      [...JOIN_ARGS, "--host-daemon-port", "0"],
+      fixture,
+    );
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain(
+      "--host-daemon-port must be an integer between 1 and 65535",
+    );
+  });
+
   it("uses bb-app from PATH and passes the launcher join flags verbatim", () => {
     const fixture = createFixture();
     const invocationPath = join(fixture.dataDir, "invocation");
@@ -178,10 +273,16 @@ describe("machine install script", () => {
     });
 
     expect(result.status, result.stderr).toBe(0);
+    const selectedPort = readFileSync(
+      join(fixture.dataDir, "host-daemon-port"),
+      "utf8",
+    ).trim();
     expect(readFileSync(invocationPath, "utf8").trim().split("\n")).toEqual([
       "host-daemon",
       "join",
       "--auto-update",
+      "--host-daemon-port",
+      selectedPort,
       "--join-code",
       "join-secret",
       "--host-id",
@@ -189,6 +290,36 @@ describe("machine install script", () => {
       "--server-url",
       "https://machine.getbb.app",
     ]);
+    const daemonPid = Number(
+      readFileSync(join(fixture.dataDir, "install-daemon.pid"), "utf8"),
+    );
+    process.kill(daemonPid, "SIGTERM");
+  });
+
+  it("accepts the daemon's normalized loopback server URL", () => {
+    const fixture = createFixture();
+    const invocationPath = join(fixture.dataDir, "invocation");
+    writeCurlArtifactMock(fixture, 404);
+    writeEnrollingBbApp(
+      fixture,
+      invocationPath,
+      "host-test",
+      "http://127.0.0.1:20101",
+    );
+    const result = runScript(
+      [
+        "--join-code",
+        "join-secret",
+        "--host-id",
+        "host-test",
+        "--server",
+        "http://localhost:20101",
+      ],
+      fixture,
+      { BB_INSTALL_SKIP_SERVICE: "1" },
+    );
+
+    expect(result.status, result.stderr).toBe(0);
     const daemonPid = Number(
       readFileSync(join(fixture.dataDir, "install-daemon.pid"), "utf8"),
     );
@@ -289,6 +420,100 @@ describe("machine install script", () => {
     expect(result.stdout).not.toContain("Joined successfully");
   });
 
+  it("assigns a different port when the first enrolled-daemon port is occupied", async () => {
+    const occupied = createNetServer();
+    let occupiedByTest = false;
+    await new Promise<void>((resolve, reject) => {
+      occupied.once("error", (error) => {
+        const code =
+          typeof error === "object" && error !== null && "code" in error
+            ? error.code
+            : undefined;
+        if (code === "EADDRINUSE") {
+          resolve();
+          return;
+        }
+        reject(error);
+      });
+      occupied.listen(38888, "127.0.0.1", () => {
+        occupiedByTest = true;
+        resolve();
+      });
+    });
+    const fixture = createFixture();
+    const invocationPath = join(fixture.dataDir, "invocation");
+    writeCurlArtifactMock(fixture, 404);
+    writeEnrollingBbApp(fixture, invocationPath);
+
+    try {
+      const result = runScript(JOIN_ARGS, fixture, {
+        BB_INSTALL_SKIP_SERVICE: "1",
+      });
+
+      expect(result.status, result.stderr).toBe(0);
+      const selectedPort = readFileSync(
+        join(fixture.dataDir, "host-daemon-port"),
+        "utf8",
+      ).trim();
+      expect(selectedPort).not.toBe("38888");
+      expect(readFileSync(invocationPath, "utf8")).toContain(
+        `--host-daemon-port\n${selectedPort}\n`,
+      );
+      const daemonPid = Number(
+        readFileSync(join(fixture.dataDir, "install-daemon.pid"), "utf8"),
+      );
+      process.kill(daemonPid, "SIGTERM");
+    } finally {
+      if (occupiedByTest) {
+        await new Promise<void>((resolve, reject) => {
+          occupied.close((error) => (error ? reject(error) : resolve()));
+        });
+      }
+    }
+  });
+
+  it("atomically reserves different ports for concurrent custom data directories", async () => {
+    const fixture = createFixture();
+    const firstDataDir = join(fixture.homeDir, "custom-machine-one");
+    const secondDataDir = join(fixture.homeDir, "custom-machine-two");
+    mkdirSync(firstDataDir, { recursive: true });
+    mkdirSync(secondDataDir, { recursive: true });
+    const firstFixture = { ...fixture, dataDir: firstDataDir };
+    const secondFixture = { ...fixture, dataDir: secondDataDir };
+    writeJoinedState(firstFixture);
+    writeJoinedState(secondFixture);
+    writeCurlArtifactMock(fixture, 404);
+    writeExecutable(join(fixture.binDir, "bb-app"), "#!/bin/sh\nexit 99\n");
+
+    const [firstResult, secondResult] = await Promise.all([
+      runScriptAsync(JOIN_ARGS, firstFixture, { BB_INSTALL_SKIP_SERVICE: "1" }),
+      runScriptAsync(JOIN_ARGS, secondFixture, {
+        BB_INSTALL_SKIP_SERVICE: "1",
+      }),
+    ]);
+
+    expect(firstResult.status, firstResult.stderr).toBe(0);
+    expect(secondResult.status, secondResult.stderr).toBe(0);
+    const firstPort = readFileSync(
+      join(firstDataDir, "host-daemon-port"),
+      "utf8",
+    ).trim();
+    const secondPort = readFileSync(
+      join(secondDataDir, "host-daemon-port"),
+      "utf8",
+    ).trim();
+    expect(firstPort).not.toBe(secondPort);
+    const registryDir = join(fixture.homeDir, ".bb-machines/host-daemon-ports");
+    expect(
+      new Set([
+        readFileSync(join(registryDir, firstPort, "data-dir"), "utf8").trim(),
+        readFileSync(join(registryDir, secondPort, "data-dir"), "utf8").trim(),
+      ]),
+    ).toEqual(
+      new Set([realpathSync(firstDataDir), realpathSync(secondDataDir)]),
+    );
+  });
+
   it("redeems and persists a connect machine code before joining through the tunnel", () => {
     const fixture = createFixture();
     const invocationPath = join(fixture.dataDir, "invocation");
@@ -331,12 +556,17 @@ describe("machine install script", () => {
     const fixture = createFixture();
     writeJoinedState(fixture);
     writeCurlArtifactMock(fixture, 404);
-    writeExecutable(join(fixture.binDir, "bb-app"), "#!/bin/sh\nexit 99\n");
+    writeEnrollingBbApp(fixture, join(fixture.dataDir, "service-invocation"));
     writeExecutable(join(fixture.binDir, "uname"), "#!/bin/sh\necho Darwin\n");
     writeExecutable(
       join(fixture.binDir, "launchctl"),
       `#!/bin/sh
 printf '%s\n' "$*" >>"${join(fixture.dataDir, "launchctl.log")}"
+if [ "$1" = kickstart ]; then
+  port=$(sed -n '1p' "${join(fixture.dataDir, "host-daemon-port")}")
+  BB_DATA_DIR="${fixture.dataDir}" "${join(fixture.binDir, "bb-app")}" host-daemon --host-daemon-port "$port" --server-url https://machine.getbb.app >/dev/null 2>&1 &
+  echo $! >"${join(fixture.dataDir, "service-daemon.pid")}"
+fi
 `,
     );
 
@@ -366,22 +596,34 @@ printf '%s\n' "$*" >>"${join(fixture.dataDir, "launchctl.log")}"
     );
     expect(plist).toContain("<string>host-daemon</string>");
     expect(plist).toContain("<string>--auto-update</string>");
+    const selectedPort = readFileSync(
+      join(fixture.dataDir, "host-daemon-port"),
+      "utf8",
+    ).trim();
+    expect(plist).toContain(
+      `<string>--host-daemon-port</string>\n    <string>${selectedPort}</string>`,
+    );
     expect(plist).toContain("<string>https://machine.getbb.app</string>");
     expect(
       readFileSync(join(fixture.dataDir, "launchctl.log"), "utf8"),
     ).toContain("bootstrap");
   });
 
-  it("installs an idempotent Linux systemd user unit for joined state", () => {
+  it("restarts an active Linux systemd user unit after replacing it", () => {
     const fixture = createFixture();
     writeJoinedState(fixture);
     writeCurlArtifactMock(fixture, 404);
-    writeExecutable(join(fixture.binDir, "bb-app"), "#!/bin/sh\nexit 99\n");
+    writeEnrollingBbApp(fixture, join(fixture.dataDir, "service-invocation"));
     writeExecutable(join(fixture.binDir, "uname"), "#!/bin/sh\necho Linux\n");
     writeExecutable(
       join(fixture.binDir, "systemctl"),
       `#!/bin/sh
 printf '%s\n' "$*" >>"${join(fixture.dataDir, "systemctl.log")}"
+if [ "$*" = "--user restart bb-host-daemon-machine-getbb-app.service" ]; then
+  port=$(sed -n '1p' "${join(fixture.dataDir, "host-daemon-port")}")
+  BB_DATA_DIR="${fixture.dataDir}" "${join(fixture.binDir, "bb-app")}" host-daemon --host-daemon-port "$port" --server-url https://machine.getbb.app >/dev/null 2>&1 &
+  echo $! >"${join(fixture.dataDir, "service-daemon.pid")}"
+fi
 `,
     );
 
@@ -406,11 +648,15 @@ printf '%s\n' "$*" >>"${join(fixture.dataDir, "systemctl.log")}"
       ),
       "utf8",
     );
+    const selectedPort = readFileSync(
+      join(fixture.dataDir, "host-daemon-port"),
+      "utf8",
+    ).trim();
     expect(unit).toContain(
-      'host-daemon --auto-update --server-url "https://machine.getbb.app"',
+      `host-daemon --auto-update --host-daemon-port "${selectedPort}" --server-url "https://machine.getbb.app"`,
     );
     expect(readFileSync(join(fixture.dataDir, "systemctl.log"), "utf8")).toBe(
-      "--user daemon-reload\n--user enable --now bb-host-daemon-machine-getbb-app.service\n",
+      "--user daemon-reload\n--user enable bb-host-daemon-machine-getbb-app.service\n--user restart bb-host-daemon-machine-getbb-app.service\n",
     );
   });
 });

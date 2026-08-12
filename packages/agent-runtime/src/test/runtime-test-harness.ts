@@ -7,6 +7,7 @@ import type {
   ProviderCommandPlan,
 } from "../provider-adapter.js";
 import { noPreparedProviderCommandDispatch } from "../provider-adapter.js";
+import { classifySessionExecutionSettingsChange } from "../execution-options.js";
 import { ProviderRequestDecodeError } from "../runtime-json-rpc.js";
 import { parseAvailableModelList } from "../shared/available-models.js";
 import type { AgentRuntimeExecutionOptions } from "../types.js";
@@ -205,6 +206,7 @@ export function createWarningEventAdapter(scriptPath: string): ProviderAdapter {
   return {
     id: "warning-fake",
     displayName: "Warning Fake",
+    approvalRequestPolicy: "runtime",
     capabilities: {
       supportsArchive: false,
       supportsRename: false,
@@ -213,6 +215,7 @@ export function createWarningEventAdapter(scriptPath: string): ProviderAdapter {
       supportsFork: false,
       supportedPermissionModes: ["accept-edits", "auto", "full"],
     },
+    classifyExecutionSettingsChange: classifySessionExecutionSettingsChange,
     process: {
       command: "node",
       args: buildNodeScriptArgs(scriptPath),
@@ -251,6 +254,7 @@ export function createWarningEventAdapter(scriptPath: string): ProviderAdapter {
         case "skills/configure":
         case "turn/steer":
         case "thread/stop":
+        case "thread/discard":
         case "thread/goal/clear":
         case "thread/name/set":
         case "thread/archive":
@@ -317,6 +321,7 @@ export function createStartedEventAdapter(scriptPath: string): ProviderAdapter {
   return {
     id: "started-fake",
     displayName: "Started Fake",
+    approvalRequestPolicy: "runtime",
     capabilities: {
       supportsArchive: false,
       supportsRename: false,
@@ -325,6 +330,7 @@ export function createStartedEventAdapter(scriptPath: string): ProviderAdapter {
       supportsFork: false,
       supportedPermissionModes: ["accept-edits", "auto", "full"],
     },
+    classifyExecutionSettingsChange: classifySessionExecutionSettingsChange,
     process: {
       command: "node",
       args: buildNodeScriptArgs(scriptPath),
@@ -356,6 +362,7 @@ export function createStartedEventAdapter(scriptPath: string): ProviderAdapter {
         case "turn/start":
         case "turn/steer":
         case "thread/stop":
+        case "thread/discard":
         case "thread/goal/clear":
         case "thread/name/set":
         case "thread/archive":

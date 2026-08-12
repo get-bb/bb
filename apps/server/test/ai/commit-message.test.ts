@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { ApiError } from "../../src/errors.js";
 import { generateCommitMessage } from "../../src/services/ai/commit-message.js";
 import { InferenceTimeoutError } from "../../src/services/ai/inference.js";
 import type { AppDeps, LoggedWorkSessionDeps } from "../../src/types.js";
@@ -120,21 +121,70 @@ describe("commit message generation", () => {
 
       expect(message).toBe("fix: recover commit message");
       expect(piAiMocks.complete).toHaveBeenCalledTimes(2);
+      expect(piAiMocks.getModel).toHaveBeenNthCalledWith(
+        1,
+        "test",
+        "mock-model",
+      );
+      expect(piAiMocks.getModel).toHaveBeenNthCalledWith(
+        2,
+        "test",
+        "mock-fallback-model",
+      );
       expect(logger.info).toHaveBeenCalledWith(
         expect.objectContaining({
           attempt: 1,
+          fallbackModel: "test/mock-fallback-model",
           maxAttempts: 2,
-          reason: "timeout",
+          reason: "transient-failure",
           timeoutMs: 5_000,
         }),
-        "Commit message inference timed out; retrying",
+        "Commit message inference failed transiently; using fallback model",
       );
       expect(logger.info).toHaveBeenCalledWith(
         expect.objectContaining({
           attempts: 2,
-          reason: "timeout",
+          model: "test/mock-fallback-model",
+          reason: "transient-failure",
         }),
-        "Commit message inference completed after timeout retry",
+        "Commit message inference completed with fallback model",
+      );
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("uses the fallback model after transient service unavailability", async () => {
+    piAiMocks.complete
+      .mockRejectedValueOnce(
+        new ApiError(
+          502,
+          "codex_service_unavailable",
+          "Our servers are currently overloaded. Please try again later.",
+          false,
+        ),
+      )
+      .mockResolvedValueOnce(
+        mockCommitMessageCompletion({
+          message: "fix: recover with fallback model",
+        }),
+      );
+    const { cleanup, deps, logger } = await createCommitMessageDeps();
+    try {
+      await expect(
+        generateCommitMessage(deps, commitMessageArgs),
+      ).resolves.toBe("fix: recover with fallback model");
+      expect(piAiMocks.getModel).toHaveBeenNthCalledWith(
+        2,
+        "test",
+        "mock-fallback-model",
+      );
+      expect(logger.info).toHaveBeenCalledWith(
+        expect.objectContaining({
+          errorCode: "codex_service_unavailable",
+          fallbackModel: "test/mock-fallback-model",
+        }),
+        "Commit message inference failed transiently; using fallback model",
       );
     } finally {
       await cleanup();
@@ -198,7 +248,7 @@ describe("commit message generation", () => {
           err: expect.any(Error),
           reason: "failed",
         }),
-        "Failed to generate commit message",
+        "Commit message inference failed",
       );
     } finally {
       await cleanup();

@@ -393,6 +393,11 @@ export function supportsNativeFork(providerId: string): boolean {
   );
 }
 
+/** Whether BB can explicitly request context compaction for this provider. */
+export function supportsManualCompaction(providerId: string): boolean {
+  return ["codex", "claude-code", "pi", "acp-opencode"].includes(providerId);
+}
+
 export function listBuiltInAgentProviderInfos(): BuiltInAgentProviderInfo[] {
   return BUILT_IN_AGENT_PROVIDER_CATALOG.map((provider) =>
     cloneBuiltInAgentProviderInfo(provider.info),

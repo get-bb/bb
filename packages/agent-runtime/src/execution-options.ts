@@ -1,5 +1,9 @@
 import type { ProviderAdapter } from "./provider-adapter.js";
 import type {
+  ClassifyProviderExecutionSettingsChangeArgs,
+  ProviderExecutionSettingsChange,
+} from "./provider-adapter.js";
+import type {
   AgentRuntimeExecutionOptions,
   AgentRuntimeSkillRoot,
 } from "./types.js";
@@ -84,6 +88,67 @@ export function sameExecutionSettings(
     args.left.approvalReviewer === args.right.approvalReviewer &&
     args.left.permissionEscalation === args.right.permissionEscalation
   );
+}
+
+export function classifySessionExecutionSettingsChange(
+  args: ClassifyProviderExecutionSettingsChangeArgs,
+): ProviderExecutionSettingsChange {
+  return sameExecutionSettings({ left: args.current, right: args.next })
+    ? "unchanged"
+    : "session";
+}
+
+function sameClaudeSessionSettings(
+  args: ClassifyProviderExecutionSettingsChangeArgs,
+): boolean {
+  const currentMockCliTraffic =
+    args.current.claudeCodeMockCliTraffic ??
+    DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG;
+  const nextMockCliTraffic =
+    args.next.claudeCodeMockCliTraffic ??
+    DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG;
+  return (
+    args.current.claudeCodePermissionMode ===
+      args.next.claudeCodePermissionMode &&
+    currentMockCliTraffic.enabled === nextMockCliTraffic.enabled &&
+    currentMockCliTraffic.endpoint === nextMockCliTraffic.endpoint &&
+    args.current.permissionMode === args.next.permissionMode &&
+    args.current.permissionScope === args.next.permissionScope &&
+    args.current.approvalReviewer === args.next.approvalReviewer
+  );
+}
+
+function sameClaudeLiveSettings(
+  args: ClassifyProviderExecutionSettingsChangeArgs,
+): boolean {
+  return (
+    args.current.model === args.next.model &&
+    args.current.reasoningLevel === args.next.reasoningLevel &&
+    args.current.workflowsEnabled === args.next.workflowsEnabled &&
+    (args.current.memoryEnabled ?? true) ===
+      (args.next.memoryEnabled ?? true) &&
+    (args.current.providerSubagentsEnabled ?? true) ===
+      (args.next.providerSubagentsEnabled ?? true) &&
+    args.current.permissionEscalation === args.next.permissionEscalation
+  );
+}
+
+export function classifyClaudeExecutionSettingsChange(
+  args: ClassifyProviderExecutionSettingsChangeArgs,
+): ProviderExecutionSettingsChange {
+  if (!sameClaudeSessionSettings(args)) {
+    return "session";
+  }
+  return sameClaudeLiveSettings(args) ? "unchanged" : "live";
+}
+
+export function normalizeClaudeExecutionOptions(
+  options: AgentRuntimeExecutionOptions,
+): AgentRuntimeExecutionOptions {
+  if (options.serviceTier !== "fast") {
+    return options;
+  }
+  return { ...options, serviceTier: "default" };
 }
 
 export function toProviderExecutionContext(

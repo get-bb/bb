@@ -88,8 +88,39 @@ export async function confirmDestructiveAction(
 }
 
 export function getErrorMessage(err: unknown): string {
-  if (err instanceof Error) return err.message;
-  return String(err);
+  if (!(err instanceof Error)) return String(err);
+  // Node's fetch says "fetch failed" and keeps the actionable socket errors
+  // under `cause`. Multi-address connections use an AggregateError, so walk
+  // both links while guarding against malformed cyclic error graphs.
+  const seen = new Set<Error>();
+  const messages: string[] = [];
+  const pending: Error[] = [err];
+
+  while (pending.length > 0) {
+    const current = pending.pop();
+    if (current === undefined || seen.has(current)) continue;
+    seen.add(current);
+
+    if (current.message.length > 0) {
+      messages.push(current.message);
+    }
+
+    const children: Error[] = [];
+    if (current.cause instanceof Error) {
+      children.push(current.cause);
+    }
+    if (current instanceof AggregateError) {
+      children.push(
+        ...current.errors.filter(
+          (nested): nested is Error => nested instanceof Error,
+        ),
+      );
+    }
+    for (let index = children.length - 1; index >= 0; index -= 1) {
+      pending.push(children[index]);
+    }
+  }
+  return messages.join(": ");
 }
 
 export function parseReasoningLevel(

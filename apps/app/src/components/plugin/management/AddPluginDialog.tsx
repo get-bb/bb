@@ -153,13 +153,13 @@ function AddPluginDialogContent({
             <Input
               value={sourceText}
               autoFocus
-              placeholder="npm:@bb-plugins/linear"
+              placeholder="https://github.com/owner/bb-plugin-name"
               aria-label="Plugin source"
               className="h-8 font-mono text-xs"
               onChange={(event) => setSourceText(event.target.value)}
             />
             <p className="mt-1.5 text-2xs text-subtle-foreground">
-              npm:package[@version] · git URL[@ref] · ./local/path
+              GitHub repository URL · npm:package[@version] · ./local/path
             </p>
           </div>
         )}

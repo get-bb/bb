@@ -97,7 +97,7 @@ import {
   allPluginSourceQueryKeyPrefix,
 } from "../queries/plugin-catalog-queries";
 import { allPluginSettingsQueryKeyPrefix } from "../../lib/plugin-sdk-hooks";
-import { schedulePluginFrontendReconcile } from "../../lib/plugin-frontend";
+import { schedulePluginFrontendReconcile } from "../../lib/plugin-frontend-lazy";
 import {
   getProjectListInvalidationQueryKeys,
   getProjectPromptHistoryInvalidationQueryKeys,
@@ -267,6 +267,18 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
       dirtyThreadTimelineQueries, // Timeline rows are built from appended events.
       dirtyThreadPullRequestQueryForCompletedTurn, // A turn may create a remote PR without changing the workspace.
       dirtyThreadPromptHistoryQueriesForTurnRequests, // Follow-up recall is built from client turn requests.
+    ],
+  },
+  "history-rewritten": {
+    flush: "immediate",
+    dirty: [
+      dirtyThreadListQueries,
+      dirtyThreadDetailQueries,
+      dirtyThreadSearchQueries,
+      dirtyThreadTimelineRewriteQueries,
+      dirtyThreadQueueContentQueries,
+      dirtyProjectPromptHistoryQueries,
+      dirtyThreadPendingInteractionQueries,
     ],
   },
   "interactions-changed": {
@@ -671,6 +683,12 @@ function dirtyThreadTimelineQueries({
     queryClient,
     queryKeys: getThreadTimelineWindowInvalidationQueryKeys({ threadId }),
   });
+}
+
+function dirtyThreadTimelineRewriteQueries({
+  threadId,
+}: ThreadRealtimeDirtyContext): QueryKey[] {
+  return getThreadTimelineInvalidationQueryKeys({ threadId });
 }
 
 function dirtyThreadQueueContentQueries({

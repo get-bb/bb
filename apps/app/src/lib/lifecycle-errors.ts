@@ -11,6 +11,7 @@ export type LifecycleErrorOperation =
   | "archive_thread"
   | "commit"
   | "create_thread"
+  | "edit_message"
   | "load_diff"
   | "load_git_status"
   | "load_thread_storage"
@@ -88,6 +89,8 @@ function operationTitle(operation: LifecycleErrorOperation): string {
       return "Commit failed";
     case "create_thread":
       return "Failed to create thread";
+    case "edit_message":
+      return "Failed to edit message";
     case "load_diff":
       return "Failed to load diff";
     case "load_git_status":

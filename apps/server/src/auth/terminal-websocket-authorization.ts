@@ -106,7 +106,7 @@ export function resolveTerminalWebsocketOpenAuthorization(
     return denyOpen();
   }
 
-  const session = getTerminalSession(db, { terminalId });
+  const session = getTerminalSession(db, { kind: "terminal", terminalId });
   if (session === null) {
     return denyOpen();
   }

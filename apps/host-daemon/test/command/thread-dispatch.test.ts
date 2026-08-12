@@ -1945,7 +1945,11 @@ describe("thread command dispatch", () => {
     const harness = createHarness();
     const acpLaunchSpec = customAcpLaunchSpec();
     let capturedListModelsArgs:
-      | { providerId: string; acpLaunchSpec?: HostDaemonAcpLaunchSpec }
+      | {
+          providerId: string;
+          acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+          cwd?: string;
+        }
       | undefined;
 
     const result = await dispatchOnlineRpcCommand(
@@ -1953,6 +1957,7 @@ describe("thread command dispatch", () => {
         type: "provider.list_models",
         providerId: "fake",
         acpLaunchSpec,
+        cwd: "/tmp/worktree",
       },
       {
         ...harness.dispatchOptions(),
@@ -1989,6 +1994,7 @@ describe("thread command dispatch", () => {
     expect(capturedListModelsArgs).toEqual({
       providerId: "fake",
       acpLaunchSpec,
+      cwd: "/tmp/worktree",
     });
     expect(result).toEqual({
       models: [

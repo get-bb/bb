@@ -236,6 +236,8 @@ export function allPluginCatalogSearchQueryKeyPrefix(): QueryKey {
   return ["plugin-catalog-search"];
 }
 
+const PLUGIN_CATALOG_STALE_TIME_MS = 30 * 60_000;
+
 export function usePluginCatalogSearch(
   query: string,
   options: { enabled: boolean },
@@ -244,6 +246,7 @@ export function usePluginCatalogSearch(
     queryKey: pluginCatalogSearchQueryKey(query),
     queryFn: () => searchPluginCatalog(fetch, query),
     enabled: options.enabled,
-    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+    staleTime: PLUGIN_CATALOG_STALE_TIME_MS,
   });
 }

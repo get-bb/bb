@@ -49,6 +49,7 @@ import {
   OPTION_TRIGGER_CONTENT_CLASS_NAME,
   type PickerOption,
 } from "./OptionPicker";
+import type { ModelPickerOption } from "./model-picker-option";
 import {
   formatModelLoadErrorText,
   ModelLoadErrorMessage,
@@ -122,10 +123,10 @@ function fuzzyFilter<T>(
 // the model. Filtering on the raw label would match brand words that were
 // stripped from the rendered row, surprising the user.
 function modelSearchText(
-  option: PickerOption<string>,
+  option: ModelPickerOption,
   providerId: string,
 ): string {
-  return `${stripModelBrandPrefix(option.label, providerId)} ${option.value}`;
+  return `${stripModelBrandPrefix(option.label, providerId)} ${option.routeProviderId ?? ""} ${option.value}`;
 }
 
 /**
@@ -137,7 +138,7 @@ function modelSearchText(
  * flattened inline instead, keeping every match reachable from the keyboard.
  */
 export type ModelNavRow =
-  | { kind: "model"; option: PickerOption<string> }
+  | { kind: "model"; option: ModelPickerOption }
   | { kind: "more-toggle" };
 
 export function buildModelNavRows({
@@ -147,8 +148,8 @@ export function buildModelNavRows({
   isSearching,
   showMoreModels,
 }: {
-  modelOptions: readonly PickerOption<string>[];
-  moreModelOptions: readonly PickerOption<string>[];
+  modelOptions: readonly ModelPickerOption[];
+  moreModelOptions: readonly ModelPickerOption[];
   isCompactViewport: boolean;
   isSearching: boolean;
   showMoreModels: boolean;
@@ -185,22 +186,22 @@ interface ModelReasoningPickerProps {
   providerRouting?: SystemProvidersQuery;
   providerOptions: readonly PickerOption<string>[];
   selectedProviderId: string;
-  /** Omit to render the provider as locked (tabs hidden, can't preview). */
+  /** Omit to render the provider as locked (tabs hidden, can't switch). */
   onSelectedProviderChange?: (value: string) => void;
   hasMultipleProviders: boolean;
   // Model state
   modelValue: string;
-  modelOptions: readonly PickerOption<string>[];
+  modelOptions: readonly ModelPickerOption[];
   /** Models rendered behind a collapsed "More models" row. */
-  moreModelOptions?: readonly PickerOption<string>[];
+  moreModelOptions?: readonly ModelPickerOption[];
   modelIsLoading?: boolean;
   modelLoadFailed?: boolean;
   modelLoadError?: SystemExecutionOptionsModelLoadError | null;
   onModelChange: (value: string) => void;
   /**
-   * Optional case-normaliser for raw model names returned by a previewed
-   * provider. The picker itself drops the brand prefix at render — callers
-   * only need to pass this when the preview API returns un-cased ids.
+   * Optional case-normaliser for raw model names returned during a provider
+   * handoff. The picker itself drops the brand prefix at render — callers only
+   * need to pass this when the provider API returns un-cased ids.
    */
   formatModelLabel?: (displayName: string) => string;
   // Reasoning state — supported efforts are per-model, so callers derive
@@ -283,9 +284,9 @@ export function ModelReasoningPicker({
   const listboxId = `${navId}-listbox`;
   const optionDomId = (index: number) => `${navId}-opt-${index}`;
 
-  // While the popover is open, the user can browse other providers without
-  // committing. `previewProviderId` tracks which provider tab is active;
-  // null means "showing the committed provider".
+  // A controlled parent may need one render to apply a provider-tab change.
+  // Keep showing the clicked provider's cached/querying catalog during that
+  // handoff so the tab responds immediately without flashing the old models.
   const [previewProviderId, setPreviewProviderId] = useState<string | null>(
     null,
   );
@@ -349,9 +350,8 @@ export function ModelReasoningPicker({
     ? (selectedReasoningOption?.label ?? null)
     : null;
 
-  // Preview other providers without committing. Shares its cache key with the
-  // committed `useSystemExecutionOptions` call in the caller's hook so
-  // committing is a cache hit, not a refetch.
+  // Shares its cache key with the committed `useSystemExecutionOptions` call
+  // in the caller's hook, so the controlled-provider handoff is a cache hit.
   const isPreviewing =
     previewProviderId !== null && previewProviderId !== selectedProviderId;
   const previewQuery = useSystemExecutionOptions({
@@ -360,7 +360,7 @@ export function ModelReasoningPicker({
     providerId: isPreviewing ? previewProviderId : undefined,
   });
 
-  const previewModelOptions = useMemo((): readonly PickerOption<string>[] => {
+  const previewModelOptions = useMemo((): readonly ModelPickerOption[] => {
     if (!isPreviewing) return modelOptions;
     const models = previewQuery.data?.models;
     if (!models || models.length === 0) return [];
@@ -369,25 +369,30 @@ export function ModelReasoningPicker({
       label: formatModelLabel
         ? formatModelLabel(model.displayName || model.model)
         : model.displayName || model.model,
+      ...(model.routeProviderId
+        ? { routeProviderId: model.routeProviderId }
+        : {}),
     }));
   }, [isPreviewing, modelOptions, previewQuery.data?.models, formatModelLabel]);
-  const previewMoreModelOptions =
-    useMemo((): readonly PickerOption<string>[] => {
-      if (!isPreviewing) return moreModelOptions;
-      const models = previewQuery.data?.selectedOnlyModels;
-      if (!models || models.length === 0) return [];
-      return models.map((model) => ({
-        value: model.model,
-        label: formatModelLabel
-          ? formatModelLabel(model.displayName || model.model)
-          : model.displayName || model.model,
-      }));
-    }, [
-      isPreviewing,
-      moreModelOptions,
-      previewQuery.data?.selectedOnlyModels,
-      formatModelLabel,
-    ]);
+  const previewMoreModelOptions = useMemo((): readonly ModelPickerOption[] => {
+    if (!isPreviewing) return moreModelOptions;
+    const models = previewQuery.data?.selectedOnlyModels;
+    if (!models || models.length === 0) return [];
+    return models.map((model) => ({
+      value: model.model,
+      label: formatModelLabel
+        ? formatModelLabel(model.displayName || model.model)
+        : model.displayName || model.model,
+      ...(model.routeProviderId
+        ? { routeProviderId: model.routeProviderId }
+        : {}),
+    }));
+  }, [
+    isPreviewing,
+    moreModelOptions,
+    previewQuery.data?.selectedOnlyModels,
+    formatModelLabel,
+  ]);
   // While previewing, the reasoning levels belong to the previewed provider's
   // default model (each provider exposes its own set), so the section reflects
   // the tab on screen rather than the committed model.
@@ -529,17 +534,11 @@ export function ModelReasoningPicker({
 
   const handleModelSelect = useCallback(
     (model: string) => {
-      // Commit the previewed provider if it differs from the current one.
-      // Preview is only reachable when the picker is unlocked, so onChange
-      // is guaranteed to be set when isPreviewing is true.
-      if (isPreviewing) {
-        onSelectedProviderChange?.(previewProviderId!);
-      }
       onModelChange(model);
       setMoreModelsOpen(false);
       setPreviewProviderId(null);
     },
-    [isPreviewing, onModelChange, onSelectedProviderChange, previewProviderId],
+    [onModelChange],
   );
 
   // Scope Cmd+Shift+M and the cycle chords to one composer of the focused pane.
@@ -636,11 +635,10 @@ export function ModelReasoningPicker({
   );
   const handleReasoningSelect = useCallback(
     (level: ReasoningLevel) => {
-      // While previewing, the listed levels are the previewed provider's, so
-      // picking one commits that provider's default model at the chosen level —
-      // symmetric with picking one of its models.
+      // A controlled parent that has not rendered the provider change yet
+      // still needs a concrete model when the user immediately picks one of
+      // the new provider's reasoning levels.
       if (isPreviewing && previewDefaultModel) {
-        onSelectedProviderChange?.(previewProviderId!);
         onModelChange(previewDefaultModel.model);
       }
       onReasoningChange(level);
@@ -649,14 +647,7 @@ export function ModelReasoningPicker({
       setPreviewProviderId(null);
       setMoreModelsOpen(false);
     },
-    [
-      isPreviewing,
-      previewDefaultModel,
-      previewProviderId,
-      onModelChange,
-      onReasoningChange,
-      onSelectedProviderChange,
-    ],
+    [isPreviewing, previewDefaultModel, onModelChange, onReasoningChange],
   );
 
   const handleFooterActionClick = useCallback(() => {
@@ -865,15 +856,14 @@ export function ModelReasoningPicker({
                   title={provider.label}
                   onClick={() => {
                     if (provider.value !== activeProviderId) {
+                      onSelectedProviderChange?.(provider.value);
                       setPreviewProviderId(
                         provider.value === selectedProviderId
                           ? null
                           : provider.value,
                       );
-                      // The new tab lists a different provider's models, so drop
-                      // the query and highlight from the previous tab. (Committing
-                      // a provider closes the popover, where resetBrowseState
-                      // clears these anyway.)
+                      // The new tab lists a different provider's models, so
+                      // drop the query and highlight from the previous tab.
                       setSearchQuery("");
                       setActiveIndex(-1);
                     }
@@ -979,6 +969,7 @@ export function ModelReasoningPicker({
                         option.label,
                         activeProviderId,
                       )}
+                      qualifier={option.routeProviderId}
                       selected={!isPreviewing && option.value === modelValue}
                       onClick={() => handleModelSelect(option.value)}
                     />
@@ -1176,7 +1167,7 @@ function MoreModelsSubmenu({
   activeProviderId: string;
   isPreviewing: boolean;
   modelValue: string;
-  options: readonly PickerOption<string>[];
+  options: readonly ModelPickerOption[];
   onSelect: (value: string) => void;
 }) {
   const { isLastHovered, hoverProps } = useMenuItemHover();
@@ -1265,6 +1256,7 @@ function MoreModelsSubmenu({
             <MenuRowButton
               key={option.value}
               label={stripModelBrandPrefix(option.label, activeProviderId)}
+              qualifier={option.routeProviderId}
               selected={!isPreviewing && option.value === modelValue}
               onClick={() => onSelect(option.value)}
             />
@@ -1287,6 +1279,7 @@ function ResetBrowseStateOnUnmount({ onReset }: { onReset: () => void }) {
 
 function MenuRowButton({
   label,
+  qualifier,
   selected,
   onClick,
   isActive,
@@ -1296,6 +1289,7 @@ function MenuRowButton({
   onKeyDown: callerKeyDown,
 }: {
   label: string;
+  qualifier?: string;
   selected: boolean;
   onClick: () => void;
   isActive?: boolean;
@@ -1329,10 +1323,16 @@ function MenuRowButton({
       )}
       {...hoverProps}
     >
-      <span className="truncate" title={label}>
+      <span
+        className="truncate"
+        title={qualifier ? `${label} · ${qualifier}` : label}
+      >
         {base}
         {tag ? (
           <span className="ml-1.5 text-subtle-foreground">{tag}</span>
+        ) : null}
+        {qualifier ? (
+          <span className="ml-1.5 text-subtle-foreground">{qualifier}</span>
         ) : null}
       </span>
       <span className="flex shrink-0 items-center gap-1.5">

@@ -589,6 +589,26 @@ describe("plugin service", () => {
     const enabled = await service.setEnabled("switchable", true);
     expect(enabled?.status).toBe("running");
   });
+
+  it("enables a disabled path plugin when it is reinstalled", async () => {
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-reinstalled",
+      serverSource: `export default function plugin() {}`,
+    });
+    await service.install(rootDir);
+    expect(await service.setEnabled("reinstalled", false)).toMatchObject({
+      enabled: false,
+      status: "disabled",
+    });
+
+    const reinstalled = await service.install(rootDir);
+
+    expect(reinstalled).toMatchObject({
+      enabled: true,
+      status: "running",
+    });
+    expect(service.getApi("reinstalled")).toBeDefined();
+  });
 });
 
 describe("plugins-changed broadcast", () => {

@@ -193,9 +193,19 @@ const KIND_PREFIX: Record<WorkspaceChangedFilesSection["kind"], string> = {
 };
 
 const ARCHIVED_THREAD_STATUS_LABEL = "Thread is archived";
-const ENVIRONMENT_GONE_STATUS_LABEL = "Environment is unavailable";
-const ENVIRONMENT_GONE_ARIA_LABEL =
-  "Environment is unavailable. This thread can't run any more work.";
+const ENVIRONMENT_GONE_STATUS_COPY: Record<
+  ThreadPromptEnvironmentGoneSection["status"],
+  { ariaLabel: string; label: string }
+> = {
+  destroying: {
+    ariaLabel: "This environment is being archived.",
+    label: "Archiving environment...",
+  },
+  destroyed: {
+    ariaLabel: "This environment has been archived.",
+    label: "Environment archived",
+  },
+};
 const PROMPT_BANNER_ACTION_FILL_CLASS = "bg-background shadow-xs";
 const PROMPT_BANNER_ACTION_INTERACTIVE_CLASS =
   "cursor-pointer text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60";
@@ -863,21 +873,21 @@ export function ThreadPromptContextBanner({
   onToggleSection,
 }: ThreadPromptContextBannerProps) {
   if (archivedSection || environmentGoneSection) {
+    const environmentGone = environmentGoneSection !== null;
+    const environmentGoneCopy = environmentGoneSection
+      ? ENVIRONMENT_GONE_STATUS_COPY[environmentGoneSection.status]
+      : null;
     return (
       <ReadOnlyContextBanner
-        iconName={archivedSection ? "Archive" : "CircleX"}
+        iconName={environmentGone ? "CircleX" : "Archive"}
         statusAriaLabel={
-          archivedSection
-            ? ARCHIVED_THREAD_STATUS_LABEL
-            : ENVIRONMENT_GONE_ARIA_LABEL
+          environmentGoneCopy?.ariaLabel ?? ARCHIVED_THREAD_STATUS_LABEL
         }
         statusLabel={
-          archivedSection
-            ? ARCHIVED_THREAD_STATUS_LABEL
-            : ENVIRONMENT_GONE_STATUS_LABEL
+          environmentGoneCopy?.label ?? ARCHIVED_THREAD_STATUS_LABEL
         }
         statusAction={
-          archivedSection?.onUnarchive ? (
+          archivedSection?.onUnarchive && !environmentGone ? (
             <ThreadUnarchiveTextAction
               isPending={archivedSection.unarchivePending}
               onUnarchive={archivedSection.onUnarchive}

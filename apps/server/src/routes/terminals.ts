@@ -38,8 +38,15 @@ export function registerTerminalRoutes(app: Hono, deps: AppDeps): void {
     return context.json(session);
   });
 
-  post(routes.close, (context, payload) => {
-    const session = deps.terminalSessions.closeTerminal({
+  post(routes.restart, async (context) => {
+    const session = await deps.terminalSessions.restartTerminal({
+      terminalId: context.req.param("terminalId"),
+    });
+    return context.json(session, 201);
+  });
+
+  post(routes.close, async (context, payload) => {
+    const session = await deps.terminalSessions.closeTerminal({
       payload,
       terminalId: context.req.param("terminalId"),
     });

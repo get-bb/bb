@@ -22,6 +22,8 @@ export interface RootSubscriptionArgs {
   maxRetryDelayMs: number;
   /** Non-error event batch delivered by the live subscription. */
   onEvents: (events: ParcelWatcherEventBatch) => void;
+  /** Invoked after the underlying filesystem subscription is established. */
+  onReady?: () => void;
   /**
    * Dropped FSEvents detected. Invoked once when the drop is observed and again
    * after the subscription is re-established, so callers can rescan both the
@@ -198,6 +200,8 @@ export class RootSubscription {
       if (this.recoveryPending) {
         this.recoveryPending = false;
         this.args.onDroppedEvents();
+      } else {
+        this.args.onReady?.();
       }
     } catch (error) {
       if (this.disposed) {

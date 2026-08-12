@@ -65,7 +65,8 @@ flowchart LR
     retiring -->|"destroy.started ⟨managed⟩"| destroying
     error -->|"provision.requested"| provisioning
     error -->|"destroy.started ⟨managed⟩"| destroying
-    destroying -->|"destroy.completed"| destroyed
+    error -->|"destroy.completed ⟨matchingDestroyAttempt⟩"| destroyed
+    destroying -->|"destroy.completed ⟨matchingDestroyAttempt⟩"| destroyed
     destroying -->|"destroy.failed ⟨matchingDestroyAttempt⟩"| retiring
     destroying -->|"destroy.lost"| error
 ```

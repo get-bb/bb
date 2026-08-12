@@ -55,6 +55,7 @@ interface MessageActionBarProps {
     text: string,
     attachments?: readonly PromptDraftAttachment[],
   ) => void;
+  onEdit?: () => void;
   onFork?: () => void;
   /**
    * Hand this message back to the main thread. Supplied only inside a side chat
@@ -68,7 +69,7 @@ interface MessageActionBarProps {
 }
 
 interface MessageOverflowAction {
-  icon: "Copy" | "MessageSquarePlus" | "Fork" | "ArrowTurnBackward";
+  icon: "Copy" | "Edit" | "MessageSquarePlus" | "Fork" | "ArrowTurnBackward";
   /** Set on plugin-contributed actions; renders PluginActionIcon over `icon`. */
   plugin?: { pluginId: string | null; icon: string | null };
   /** Render key when `label` may not be unique (plugin actions). */
@@ -210,6 +211,7 @@ export function MessageActionBar({
   mobileActionDisplay,
   addToChatAttachments = [],
   onAddToChat,
+  onEdit,
   onFork,
   onSendToMain,
   disabled,
@@ -254,6 +256,15 @@ export function MessageActionBar({
           },
         ]
       : []),
+    ...(onEdit
+      ? [
+          {
+            icon: "Edit" as const,
+            label: "Edit message",
+            onSelect: onEdit,
+          },
+        ]
+      : []),
     ...(hasAddToChat
       ? [
           {
@@ -295,6 +306,7 @@ export function MessageActionBar({
 
   if (
     !hasCopy &&
+    !onEdit &&
     !hasAddToChat &&
     !onFork &&
     !onSendToMain &&
@@ -326,6 +338,30 @@ export function MessageActionBar({
               collisionBoundary={collisionBoundary}
             >
               Copy message
+            </TooltipContent>
+          </Tooltip>
+        ) : null}
+        {onEdit ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className={cn(
+                  ACTION_BUTTON_CLASS,
+                  HOVER_REVEAL_CLASS,
+                  mobileDirectActionClass,
+                )}
+                onClick={onEdit}
+                aria-label="Edit message"
+              >
+                <Icon name="Edit" className="size-3" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent
+              side={ACTION_TOOLTIP_SIDE}
+              collisionBoundary={collisionBoundary}
+            >
+              Edit message
             </TooltipContent>
           </Tooltip>
         ) : null}

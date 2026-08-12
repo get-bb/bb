@@ -6,9 +6,9 @@ import type { EnvironmentStatus } from "./environment.js";
  * (status, event) → next status and ENVIRONMENT_LIFECYCLE_EVENT_PREDICATES
  * declares which row-level signals supersede each event.
  *
- * Unlike thread events, two destroy events carry a `destroyAttemptId`
+ * Unlike thread events, three destroy events carry a `destroyAttemptId`
  * payload: the db writer stamps it on start and the evaluator compares it
- * on failure settlement, replacing the old per-attempt CAS in
+ * on completion/failure settlement, replacing the old per-attempt CAS in
  * restoreEnvironmentAfterDestroyAttemptFailure.
  *
  * Vocabulary (sources are the call sites inventoried in
@@ -26,8 +26,8 @@ import type { EnvironmentStatus } from "./environment.js";
  *   cleanup started destroy.
  * - `destroy.started` — cleanup started destroying a retiring/error
  *   environment (stamps destroyAttemptId).
- * - `destroy.completed` — destroy completed; the workspace is gone or no
- *   workspace existed.
+ * - `destroy.completed` — the matching destroy completed; the workspace is
+ *   gone, or no workspace existed (`destroyAttemptId: null`).
  * - `destroy.failed` — destroy failed; the matching attempt restores cleanup
  *   intent for retry.
  * - `destroy.lost` — destroy result was lost and workspace existence is
@@ -41,7 +41,7 @@ export type EnvironmentLifecycleEvent =
   | { type: "retire.requested" }
   | { type: "retire.cancelled" }
   | { type: "destroy.started"; destroyAttemptId: string }
-  | { type: "destroy.completed" }
+  | { type: "destroy.completed"; destroyAttemptId: string | null }
   | { type: "destroy.failed"; destroyAttemptId: string }
   | { type: "destroy.lost" };
 
@@ -73,7 +73,7 @@ export const ENVIRONMENT_LIFECYCLE_EVENT_PREDICATES: Record<
   "retire.requested": { managed: true },
   "retire.cancelled": {},
   "destroy.started": { managed: true },
-  "destroy.completed": {},
+  "destroy.completed": { matchingDestroyAttempt: true },
   "destroy.failed": { matchingDestroyAttempt: true },
   "destroy.lost": {},
 };
@@ -126,6 +126,10 @@ export const ENVIRONMENT_LIFECYCLE: Record<
     // settlement only fires from provisioning.)
     "provision.requested": "provisioning",
     "destroy.started": "destroying",
+    // A daemon can report success after startup recovery classified its
+    // in-flight attempt as lost. Attempt matching makes that late settlement
+    // safe while rejecting success from an older, superseded retry.
+    "destroy.completed": "destroyed",
   },
   destroying: {
     // No provision.* here: nothing reprovisions a destroying environment, so a

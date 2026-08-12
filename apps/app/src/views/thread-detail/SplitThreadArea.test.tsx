@@ -180,9 +180,11 @@ vi.mock("react-resizable-panels", async () => {
     );
   };
   const PanelResizeHandle = ({
+    children,
     className,
     id,
   }: {
+    children?: ReactNode;
     className?: string;
     id?: string;
   }) => (
@@ -190,7 +192,9 @@ vi.mock("react-resizable-panels", async () => {
       id={id}
       className={className}
       data-testid="workspace-panel-resize-handle"
-    />
+    >
+      {children}
+    </div>
   );
   return { Panel, PanelGroup, PanelResizeHandle };
 });
@@ -1315,6 +1319,12 @@ describe("SplitThreadArea", () => {
       "split-workspace-empty-panel-state",
     );
     expect(emptyState.textContent).toContain("This pane has no right panel.");
+    const panelResizeHandle = screen.getByTestId(
+      "workspace-panel-resize-handle",
+    );
+    expect(
+      panelResizeHandle.querySelector("[data-panel-resize-hit-target]"),
+    ).not.toBeNull();
     const pluginToggle = screen
       .getByTestId("split-workspace-panel-toggle")
       .querySelector("button");
@@ -1340,6 +1350,38 @@ describe("SplitThreadArea", () => {
     expect(
       screen.queryByTestId("split-workspace-empty-panel-state"),
     ).toBeNull();
+  });
+
+  it("keeps the right-panel resize target above a bounded pane header", async () => {
+    const layout = pluginSplitLayout();
+    layout.focusedPaneId = "pane-1";
+    renderSplitArea({
+      path: threadPath("thr-a"),
+      layout,
+      routeAwareContent: true,
+    });
+
+    const pluginPane = document.querySelector('[data-split-pane-id="pane-2"]');
+    if (!(pluginPane instanceof HTMLElement)) {
+      throw new Error("Expected plugin split pane");
+    }
+
+    // Focusing a pane with no hosted panel exposes the empty right-panel
+    // handle beside that pane's bounded header. The handle must own the whole
+    // 12px grab strip at this row instead of losing its left overhang.
+    fireEvent.pointerDown(pluginPane);
+    await screen.findByTestId("split-workspace-empty-panel-state");
+
+    const panelResizeHandle = screen.getByTestId(
+      "workspace-panel-resize-handle",
+    );
+    const pluginPaneHeader = pluginPane.querySelector("header");
+    expect(pluginPaneHeader).toBeInstanceOf(HTMLElement);
+    if (pluginPaneHeader instanceof HTMLElement) {
+      expect(stackingLayer(pluginPaneHeader)).toBeLessThan(
+        stackingLayer(panelResizeHandle),
+      );
+    }
   });
 
   it("ignores the empty panel's initial collapse so a thread keeps its open panel", async () => {

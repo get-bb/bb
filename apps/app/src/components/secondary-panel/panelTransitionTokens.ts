@@ -10,23 +10,31 @@ export const PANEL_COLLAPSE_TRANSITION_CLASS =
 /**
  * Hit-area margins for the thread-detail `PanelResizeHandle`s.
  *
- * The handles render a 1px hairline and widen their *grab + cursor* region with
- * a `before:` pseudo-element that overhangs the hairline by `1.5` (6px) on each
- * side. react-resizable-panels does its own window-level hit detection against
- * the handle's bounding box (the 1px hairline) expanded by these margins — it
- * ignores the pseudo-element. Its default `fine` margin is only 5px, so the
- * outer ~1px of the pseudo-element showed the resize cursor while sitting
- * outside the library's hit area: the cursor promised a resize the drag never
- * delivered.
+ * The handles keep a zero/1px layout seam and render a real 12px-wide child as
+ * their pointer target. react-resizable-panels still calculates its hit area
+ * from the parent handle's bounding box, so these margins must fully envelop
+ * the child: unlike the old pseudo-element, the child then owns pointer hit
+ * testing while the library recognizes every point within it as a resize.
  *
- * The `fine` margin must therefore be at least as large as the 6px overhang.
- * We make it strictly larger (8px) rather than an exact 6px match so the
- * draggable region fully *envelops* the cursor region even at fractional pixel
- * boundaries (sub-pixel flex layout positions, HiDPI rounding) — an exact match
- * can still leave a ~1px sliver where the cursor shows but the drag has not yet
- * engaged. The library treats an edge-adjacent panel as non-overlapping
- * (strict intersection), so the wider margin genuinely extends the live drag
- * zone instead of being vetoed by the neighbouring panel. `coarse` (touch)
- * already exceeds the overhang, so it stays at the library default.
+ * `fine` stays slightly larger than the child's 6px overhang for fractional
+ * layout positions and HiDPI rounding. `coarse` keeps the library default.
  */
 export const PANEL_RESIZE_HIT_AREA_MARGINS = { coarse: 15, fine: 8 };
+
+/**
+ * Keep panel resize targets above bounded pane headers and focus scrims.
+ *
+ * This matches SplitDivider: a lower layer lets a pane header cover the half
+ * of the grab strip that overhangs into the main panel at the header row.
+ */
+export const PANEL_RESIZE_HANDLE_LAYER_CLASS = "z-[25]";
+
+/**
+ * A physical grab strip centered over a panel's zero/1px layout seam.
+ *
+ * Keep this on a real child rather than a pseudo-element: it must sit above the
+ * adjacent panel content and become the pointer target itself, matching the
+ * sidebar's dependable 12px-wide resize strip without consuming layout space.
+ */
+export const PANEL_RESIZE_HIT_TARGET_CLASS =
+  "absolute inset-y-0 left-1/2 z-10 w-3 -translate-x-1/2 touch-none cursor-col-resize bg-transparent";

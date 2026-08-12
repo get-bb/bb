@@ -35,6 +35,8 @@ import {
 import {
   PANEL_COLLAPSE_TRANSITION_CLASS,
   PANEL_RESIZE_HIT_AREA_MARGINS,
+  PANEL_RESIZE_HANDLE_LAYER_CLASS,
+  PANEL_RESIZE_HIT_TARGET_CLASS,
 } from "@/components/secondary-panel/panelTransitionTokens";
 import { MACOS_APP_REGION_NO_DRAG_CLASS } from "@/lib/bb-desktop";
 import { PluginComposerHostProvider } from "@/components/plugin/plugin-composer-host";
@@ -288,14 +290,21 @@ export function SplitWorkspaceSecondaryPanelHost({
                 onDragging={handleEmptyPanelDragging}
                 hitAreaMargins={PANEL_RESIZE_HIT_AREA_MARGINS}
                 className={cn(
-                  "relative z-[5] shrink-0 overflow-visible bg-border-seam transition-[width,opacity,background-color] before:absolute before:inset-y-0 before:-left-1.5 before:-right-1.5 before:content-[''] hover:bg-ring/40 data-[resize-handle-state=drag]:bg-ring/40",
+                  "relative shrink-0 overflow-visible bg-border-seam transition-[width,opacity,background-color] hover:bg-ring/40 data-[resize-handle-state=drag]:bg-ring/40",
+                  PANEL_RESIZE_HANDLE_LAYER_CLASS,
                   PANEL_COLLAPSE_TRANSITION_CLASS,
                   isOpen
                     ? "w-px cursor-col-resize opacity-100"
                     : "pointer-events-none w-0 opacity-0",
                 )}
                 aria-label="Resize right panel"
-              />
+              >
+                <span
+                  aria-hidden
+                  data-panel-resize-hit-target=""
+                  className={PANEL_RESIZE_HIT_TARGET_CLASS}
+                />
+              </PanelResizeHandle>
               <Panel
                 id="split-workspace-empty-secondary-panel"
                 collapsible

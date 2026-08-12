@@ -1,9 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAtom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import {
   isRunningThreadRuntimeDisplayStatus,
+  type ThreadTimelineEditMessageHandler,
+  type ThreadTimelineEditMessageTarget,
+  type ThreadTimelineInlineMessageEditor,
   type ThreadTimelineForkMessageHandler,
   type ThreadTimelineSendToMainMessageHandler,
   type ThreadTimelineLinkHandler,
@@ -23,6 +26,7 @@ import {
 import type {
   PullRequestMergeMethod,
   TerminalSession,
+  TimelineRow,
 } from "@bb/server-contract";
 import type { WorkspaceOpenTarget } from "@bb/host-daemon-contract";
 import { appToast } from "@/components/ui/app-toast";
@@ -37,6 +41,7 @@ import {
 } from "../../hooks/mutations/thread-state-mutations";
 import {
   useCreateThreadQueuedMessage,
+  useEditThreadMessage,
   useSendThreadMessage,
 } from "../../hooks/mutations/thread-runtime-mutations";
 import { useUpdateEnvironment } from "../../hooks/mutations/environment-mutations";
@@ -53,6 +58,7 @@ import {
   useThread,
   useThreadDetailBootstrap,
   useThreadPendingInteractions,
+  useThreadQueuedMessages,
   type ProjectThreadSubsetFilters,
 } from "../../hooks/queries/thread-queries";
 import { isTransientReadError } from "@/hooks/queries/query-helpers";
@@ -97,7 +103,12 @@ import {
 } from "@/components/workspace/workspace-change-summary";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
-import type { PromptDraftAttachment } from "@/lib/prompt-draft";
+import {
+  arePromptDraftStatesEqual,
+  promptInputToDraft,
+  type PromptDraftAttachment,
+  type PromptDraftState,
+} from "@/lib/prompt-draft";
 import { createLocalStorageEnumStorage } from "@/lib/browser-storage";
 import {
   getProjectComposeRoutePath,
@@ -107,7 +118,10 @@ import {
 } from "@/lib/route-paths";
 import { useGitDiffPanel } from "@/components/secondary-panel/git-diff/useGitDiffPanel";
 import { ThreadDetailHeader } from "./ThreadDetailHeader";
-import { ThreadDetailPromptArea } from "./ThreadDetailPromptArea";
+import {
+  ThreadDetailPromptArea,
+  type ThreadDetailSentMessageEdit,
+} from "./ThreadDetailPromptArea";
 import {
   type ContextBannerMergeBaseConfig,
   isThreadDisplayStatusBannerActive,
@@ -116,6 +130,7 @@ import {
 } from "@/components/promptbox/banner/ThreadPromptContextBanner";
 import { ThreadDetailSecondaryContent } from "./ThreadDetailSecondaryContent";
 import {
+  useThreadSecondaryPanelDrawerVisibility,
   useThreadSecondaryPanelVisibility,
   type ThreadSecondaryPanelHostFileOpenHandler,
   type ThreadSecondaryPanelStorageFileOpenHandler,
@@ -145,6 +160,7 @@ import {
   usePluginPanelActions,
 } from "@/components/plugin/PluginPanelActions";
 import { PluginThreadPanelNavigationProvider } from "@/components/plugin/plugin-thread-panel-navigation";
+import { ThreadTimelineNavigationProvider } from "@/components/thread/timeline/ThreadTimelineNavigationContext";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { getFileExtension } from "@/lib/file-opener-preference";
 import { Icon } from "@bb/shared-ui/icon";
@@ -228,6 +244,8 @@ import {
 import { useRouteState } from "@/hooks/useRouteState";
 import { useAppCommandHandler } from "@/components/commands/AppCommandProvider";
 import { DefaultPaneContextProvider, usePaneContext } from "./PaneContext";
+import { ThreadArchiveCommandHandler } from "./ThreadArchiveCommandHandler";
+import { ThreadRenameCommandHandler } from "./ThreadRenameCommandHandler";
 
 const EMPTY_PARENT_THREADS: readonly ThreadListEntry[] = [];
 const EMPTY_PROJECT_THREAD_SUBSET_FILTERS =
@@ -262,6 +280,27 @@ type OpenInEditorHandler = NonNullable<
   ReturnType<typeof buildOpenInEditorHandler>
 >;
 type OpenFilePreviewHandler = (relativePath: string) => void;
+
+interface SentMessageEditSession {
+  draft: PromptDraftState;
+  originalDraft: PromptDraftState;
+  operationId: string;
+  target: ThreadTimelineEditMessageTarget;
+  threadId: string;
+}
+
+function hasTimelineRowId(
+  rows: readonly TimelineRow[],
+  rowId: string,
+): boolean {
+  return rows.some(
+    (row) =>
+      row.id === rowId ||
+      (row.kind === "turn" &&
+        row.children !== null &&
+        hasTimelineRowId(row.children, rowId)),
+  );
+}
 
 function getPullRequestMergeLoadingTitle(
   method: PullRequestMergeMethod,
@@ -473,6 +512,14 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   });
   const activeFixedSecondaryTabId = activeFixedSecondaryTab?.id ?? null;
   const renderSecondaryPanelAsDrawer = useIsCompactViewport();
+  const secondaryPanelDrawerVisibility =
+    useThreadSecondaryPanelDrawerVisibility({
+      isCompactViewport: renderSecondaryPanelAsDrawer,
+      threadId,
+    });
+  const isSecondaryPanelOpen = renderSecondaryPanelAsDrawer
+    ? secondaryPanelDrawerVisibility.isDrawerVisible
+    : isPersistedSecondaryPanelOpen;
   const touchFixedPanelTabsState = useTouchFixedPanelTabsState(
     threadId,
     threadId,
@@ -480,6 +527,13 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   const setActiveFixedTerminal = useSetFixedRightTerminalActiveTerminal(
     threadId,
     threadId,
+  );
+  // Route-driven panel remounts are passive. Explicit terminal actions keep
+  // this request pending until the asynchronously mounted xterm handles it.
+  const [shouldAutoFocusTerminal, setShouldAutoFocusTerminal] = useState(false);
+  const handleTerminalAutoFocusHandled = useCallback(
+    () => setShouldAutoFocusTerminal(false),
+    [],
   );
   const removeFixedTerminalTab = useRemoveFixedRightTerminalTab(
     threadId,
@@ -553,13 +607,21 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     (pendingInteractionsQuery.isLoading || pendingInteractionsQuery.isFetching);
   const hasPendingInteraction =
     getLatestPendingInteraction(pendingInteractions) !== null;
+  const { data: queuedMessagesForEditEligibility = [] } =
+    useThreadQueuedMessages(thread?.id ?? "", {
+      enabled: threadQueryState.status === "ready" && Boolean(thread?.id),
+    });
   const unreadDividerState = useThreadUnreadDividerState({
     routeThreadId: threadId,
     thread,
   });
   const [hasRequestedMergeBaseOptions, setHasRequestedMergeBaseOptions] =
     useState(false);
-  const [newTabFocusRequest, setNewTabFocusRequest] = useState(0);
+  const [shouldAutoFocusNewTab, setShouldAutoFocusNewTab] = useState(false);
+  const handleNewTabAutoFocusHandled = useCallback(
+    () => setShouldAutoFocusNewTab(false),
+    [],
+  );
   const [browserAddressFocusRequest, setBrowserAddressFocusRequest] =
     useState<BrowserAddressFocusRequest | null>(null);
   const shouldLoadThreadStorageFiles = thread !== undefined;
@@ -575,7 +637,9 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     filePreviewEnabled: false,
     threadId,
   });
-  const terminalsListQuery = useThreadTerminals(threadId ?? "");
+  const terminalsListQuery = useThreadTerminals(threadId ?? "", {
+    enabled: isSecondaryPanelOpen,
+  });
   const {
     activeBrowserTab,
     activeHostFileLineRange,
@@ -768,6 +832,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     threadId: threadId ?? "",
   });
   const sendMessage = useSendThreadMessage();
+  const editMessage = useEditThreadMessage();
   const createQueuedMessage = useCreateThreadQueuedMessage();
   const requestEnvironmentAction = useRequestEnvironmentAction();
   const [pullRequestMergeMethod, setPullRequestMergeMethod] = useAtom(
@@ -780,20 +845,22 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   });
   const createTerminal = useCreateThreadTerminal();
   const closeTerminal = useCloseThreadTerminal();
-  const terminalSessions =
-    terminalsListQuery.data?.sessions ?? EMPTY_TERMINAL_SESSIONS;
+  const loadedTerminalSessions = terminalsListQuery.data?.sessions;
+  const terminalSessions = loadedTerminalSessions ?? EMPTY_TERMINAL_SESSIONS;
   const terminalsById = useMemo(
     () => new Map(terminalSessions.map((session) => [session.id, session])),
     [terminalSessions],
   );
   const syncedOrderedSecondaryFileTabs = useMemo(
     () =>
-      buildTerminalSyncedSecondaryFileTabs({
-        orderedTabs: orderedSecondaryFileTabs,
-        retainedTerminalId,
-        terminalSessions,
-      }),
-    [orderedSecondaryFileTabs, retainedTerminalId, terminalSessions],
+      loadedTerminalSessions === undefined
+        ? orderedSecondaryFileTabs
+        : buildTerminalSyncedSecondaryFileTabs({
+            orderedTabs: orderedSecondaryFileTabs,
+            retainedTerminalId,
+            terminalSessions: loadedTerminalSessions,
+          }),
+    [loadedTerminalSessions, orderedSecondaryFileTabs, retainedTerminalId],
   );
   useEffect(() => {
     if (terminalsListQuery.data === undefined) {
@@ -884,6 +951,191 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   // Desktop quote actions keep their existing focus handoff. Mobile web does
   // not focus inputs programmatically; see PromptBoxInternal.
   const [composerFocusRequestNonce, setComposerFocusRequestNonce] = useState(0);
+  const [sentMessageEditSession, setSentMessageEditSession] =
+    useState<SentMessageEditSession | null>(null);
+  const [sentMessageEditHostElement, setSentMessageEditHostElement] =
+    useState<HTMLDivElement | null>(null);
+  const activeSentMessageEditSession =
+    sentMessageEditSession?.threadId === thread?.id
+      ? sentMessageEditSession
+      : null;
+  // Client-side affordance policy for the UX prototype. The eventual mutation
+  // must repeat the full eligibility check on the server before changing state.
+  const canEditSentMessages =
+    thread !== undefined &&
+    (systemConfigQuery.data?.experiments.editMessages ?? false) &&
+    (thread.providerId === "claude-code" ||
+      thread.providerId === "codex" ||
+      thread.providerId === "pi") &&
+    thread.runtime.displayStatus === "idle" &&
+    thread.archivedAt === null &&
+    thread.deletedAt === null &&
+    !hasPendingInteraction &&
+    sentMessageEditSession === null &&
+    !sendMessage.isPending &&
+    !createQueuedMessage.isPending &&
+    !editMessage.isPending &&
+    !(timelineLoading && timelineRows.length === 0) &&
+    queuedMessagesForEditEligibility.length === 0 &&
+    activeWorkflows.length === 0 &&
+    thread.activeBackgroundAgentCount === 0 &&
+    activeBackgroundCommands.length === 0;
+  const sentMessageEditEntryRef = useRef({ canEditSentMessages, thread });
+  sentMessageEditEntryRef.current = { canEditSentMessages, thread };
+  const handleEditSentMessage = useCallback<ThreadTimelineEditMessageHandler>(
+    (target: ThreadTimelineEditMessageTarget) => {
+      const current = sentMessageEditEntryRef.current;
+      if (!current.thread || !current.canEditSentMessages) {
+        return;
+      }
+      const editDraft = promptInputToDraft(target.input);
+      setSentMessageEditHostElement(null);
+      setSentMessageEditSession({
+        draft: editDraft,
+        originalDraft: editDraft,
+        operationId: crypto.randomUUID(),
+        target,
+        threadId: current.thread.id,
+      });
+    },
+    [],
+  );
+  const sentMessageEditThreadId = sentMessageEditSession?.threadId ?? null;
+  const sentMessageEditTargetMessageId =
+    sentMessageEditSession?.target.messageId ?? null;
+  const currentThreadId = thread?.id ?? null;
+  const sentMessageEditTargetStillPresent =
+    sentMessageEditThreadId === currentThreadId &&
+    sentMessageEditTargetMessageId !== null
+      ? hasTimelineRowId(timelineRows, sentMessageEditTargetMessageId)
+      : true;
+  const shouldDiscardMissingSentMessageEdit =
+    sentMessageEditThreadId !== null &&
+    sentMessageEditThreadId === currentThreadId &&
+    !timelineLoading &&
+    !sentMessageEditTargetStillPresent;
+  useEffect(() => {
+    if (!shouldDiscardMissingSentMessageEdit) {
+      return;
+    }
+    setSentMessageEditHostElement(null);
+    setSentMessageEditSession(null);
+    appToast.warning("The message being edited is no longer available.");
+  }, [shouldDiscardMissingSentMessageEdit]);
+  const activeSentMessageEditOperationId =
+    activeSentMessageEditSession?.operationId ?? null;
+  const updateSentMessageEditDraft = useCallback(
+    (update: (current: PromptDraftState) => PromptDraftState) => {
+      setSentMessageEditSession((current) =>
+        current?.operationId === activeSentMessageEditOperationId
+          ? { ...current, draft: update(current.draft) }
+          : current,
+      );
+    },
+    [activeSentMessageEditOperationId],
+  );
+  const finishCancelSentMessageEdit = useCallback((operationId: string) => {
+    setSentMessageEditSession((current) =>
+      current?.operationId === operationId ? null : current,
+    );
+  }, []);
+  const cancelSentMessageEdit = useCallback(() => {
+    const current = activeSentMessageEditSession;
+    if (!current) {
+      return;
+    }
+    if (arePromptDraftStatesEqual(current.draft, current.originalDraft)) {
+      finishCancelSentMessageEdit(current.operationId);
+      return;
+    }
+    appToast.warning("Discard this message edit?", {
+      description:
+        "The sent message and conversation are still unchanged. Your follow-up draft is unaffected.",
+      action: {
+        label: "Discard edit",
+        onClick: () => finishCancelSentMessageEdit(current.operationId),
+      },
+      cancel: { label: "Keep editing", onClick: () => {} },
+    });
+  }, [activeSentMessageEditSession, finishCancelSentMessageEdit]);
+  const submitSentMessageEdit = useCallback<
+    ThreadDetailSentMessageEdit["onSubmit"]
+  >(
+    (target) => {
+      if (!activeSentMessageEditSession) {
+        return;
+      }
+      const session = activeSentMessageEditSession;
+      const execution = target.execution;
+      void editMessage
+        .mutateAsync({
+          id: session.threadId,
+          operationId: session.operationId,
+          expectedRequestSequence: session.target.expectedRequestSequence,
+          input: target.input,
+          ...(execution
+            ? {
+                model: execution.model,
+                permissionMode: execution.permissionMode,
+                reasoningLevel: execution.reasoningLevel,
+                executionInputSources: execution.executionInputSources,
+                ...(execution.supportsServiceTier && execution.serviceTier
+                  ? { serviceTier: execution.serviceTier }
+                  : {}),
+              }
+            : {}),
+        })
+        .then(() => {
+          finishCancelSentMessageEdit(session.operationId);
+        })
+        .catch((error) => {
+          appToast.error(
+            getMutationErrorMessage({
+              error,
+              fallbackMessage: "Failed to edit the message",
+              lifecycleOperation: "edit_message",
+            }),
+          );
+        });
+    },
+    [activeSentMessageEditSession, editMessage, finishCancelSentMessageEdit],
+  );
+  const activeSentMessageEditTargetMessageId =
+    activeSentMessageEditSession?.target.messageId ?? null;
+  const inlineMessageEditor = useMemo<
+    ThreadTimelineInlineMessageEditor | undefined
+  >(
+    () =>
+      activeSentMessageEditTargetMessageId !== null
+        ? {
+            messageId: activeSentMessageEditTargetMessageId,
+            onHostElementChange: setSentMessageEditHostElement,
+          }
+        : undefined,
+    [activeSentMessageEditTargetMessageId],
+  );
+  const sentMessageEdit = useMemo<ThreadDetailSentMessageEdit | undefined>(
+    () =>
+      activeSentMessageEditSession
+        ? {
+            draft: activeSentMessageEditSession.draft,
+            hostElement: sentMessageEditHostElement,
+            isSubmitting: editMessage.isPending,
+            operationId: activeSentMessageEditSession.operationId,
+            onCancel: cancelSentMessageEdit,
+            onSubmit: submitSentMessageEdit,
+            updateDraft: updateSentMessageEditDraft,
+          }
+        : undefined,
+    [
+      activeSentMessageEditSession,
+      cancelSentMessageEdit,
+      editMessage.isPending,
+      sentMessageEditHostElement,
+      submitSentMessageEdit,
+      updateSentMessageEditDraft,
+    ],
+  );
   // Plugin useComposer() writes ride the focus bus (they can't reach this
   // view's local nonce); same storage key = same draft the composer shows.
   useEffect(
@@ -938,8 +1190,8 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   const environmentMergeBaseBranch =
     resolveEnvironmentMergeBaseBranch(environment);
   const {
+    clearPendingGitDiffIntent,
     closeThreadSecondaryPanel,
-    defaultMergeBaseBranch: resolvedDefaultMergeBaseBranch,
     isLoadingMergeBaseBranchOptions,
     mergeBaseBranchOptions,
     mergeBaseRemoteBranchOptions,
@@ -947,6 +1199,9 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     openDiffFile: openPersistedDiffFile,
     openThreadDiffPanel: openPersistedDiffPanel,
     openThreadSecondaryPanel: openPersistedSecondaryPanel,
+    pendingGitDiffCommitSha,
+    pendingGitDiffScrollPath,
+    requestedMergeBaseBranch,
     selectedMergeBaseBranch,
     selectedMergeBaseBranchRef,
     setMergeBaseBranchSearchQuery,
@@ -960,10 +1215,10 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       : undefined,
     mergeBaseBranchOptionsEnabled: hasRequestedMergeBaseOptions,
     setThreadSecondaryPanel: setThreadSecondaryPanelForSurface,
+    threadId,
   });
   const {
     closePanel: closeSecondaryPanel,
-    isOpen: isSecondaryPanelOpen,
     openCommitDiff: openSecondaryPanelCommitDiff,
     openCompactDrawer,
     openDiffFile: openSecondaryPanelDiffFile,
@@ -975,6 +1230,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     togglePanel: toggleSecondaryPanel,
   } = useThreadSecondaryPanelVisibility({
     closePersistedPanel: closeThreadSecondaryPanel,
+    drawerVisibility: secondaryPanelDrawerVisibility,
     isPersistedOpen: isPersistedSecondaryPanelOpen,
     isCompactViewport: renderSecondaryPanelAsDrawer,
     openPersistedCommitDiff,
@@ -984,7 +1240,6 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     openPersistedPanel: openPersistedSecondaryPanel,
     openPersistedStorageFile,
     openPersistedWorkspaceFile,
-    threadId,
     togglePersistedPanel: toggleDefaultPersistedSecondaryPanel,
   });
   const handleOpenTimelinePluginPanel =
@@ -1163,7 +1418,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   const handleOpenNewTab = useCallback(() => {
     openNewTab();
     openCompactDrawer();
-    setNewTabFocusRequest((current) => current + 1);
+    setShouldAutoFocusNewTab(true);
   }, [openCompactDrawer, openNewTab]);
   useAppCommandHandler("panel.newTab", () => {
     if (!isFocused) return false;
@@ -1205,6 +1460,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       })
       .then((session) => {
         closeTab(newTab.id);
+        setShouldAutoFocusTerminal(true);
         setActiveFixedTerminal(session.id);
         openCompactDrawer();
       })
@@ -1231,6 +1487,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   });
   const handleActivateTerminalTab = useCallback(
     (terminalId: string) => {
+      setShouldAutoFocusTerminal(true);
       setActiveFixedTerminal(terminalId);
       openCompactDrawer();
     },
@@ -1467,8 +1724,6 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     syncedOrderedSecondaryFileTabs,
     terminalsById,
   ]);
-  const requestedMergeBaseBranch =
-    selectedMergeBaseBranch ?? environmentMergeBaseBranch;
   const workStatusQuery = useEnvironmentWorkStatus(
     thread?.environmentId,
     requestedMergeBaseBranch,
@@ -2319,6 +2574,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   );
   const composerFooter = (
     <ThreadDetailPromptArea
+      activeBackgroundAgentCount={thread.activeBackgroundAgentCount}
       canUseGitUi={canUseGitUi}
       contextWindowUsage={contextWindowUsage}
       environmentCheckout={threadCheckoutDisplay}
@@ -2367,6 +2623,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       }
       composerFocusRequestNonce={composerFocusRequestNonce}
       sendMessage={sendMessage}
+      sentMessageEdit={sentMessageEdit}
       steerActiveThreadOnEnter={
         systemConfigQuery.data?.generalSettings.steerActiveThreadOnEnter ??
         defaultAppSettings.steerActiveThreadOnEnter
@@ -2391,17 +2648,22 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   });
   const fileTabContent = activeTerminalId ? (
     <ThreadTerminalPanel
+      autoFocus={shouldAutoFocusTerminal}
       canCreateTerminal={canCreateTerminal}
+      isPanelOpen={isSecondaryPanelOpen}
+      isPanelPersistedOpen={isPersistedSecondaryPanelOpen}
+      onAutoFocusHandled={handleTerminalAutoFocusHandled}
       onOpenLink={handleOpenTimelineLink}
       onSelectionAddToChat={handleSelectionAddToChat}
       target={{ kind: "thread", threadId: thread.id }}
     />
   ) : isNewTabActive ? (
     <NewTabPage
+      autoFocus={shouldAutoFocusNewTab}
       projectId={projectId ?? undefined}
       environmentId={thread.environmentId ?? null}
       currentThreadId={thread.id}
-      focusRequest={newTabFocusRequest}
+      onAutoFocusHandled={handleNewTabAutoFocusHandled}
       onSelect={handleSelectFileSearchResult}
       onOpenBrowser={handleOpenBrowser}
       onStartTerminal={canCreateTerminal ? handleStartTerminal : undefined}
@@ -2442,7 +2704,15 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       threadId={thread.id}
     />
   ) : activePluginPanelTab ? (
-    <PluginPanelTabContent tab={activePluginPanelTab} threadId={thread.id} />
+    <ThreadTimelineNavigationProvider
+      environmentId={thread.environmentId}
+      onOpenLink={handleOpenTimelineLink}
+      onOpenLocalFileLink={handleOpenTimelineLocalFileLink}
+      resolveMentionLink={resolveMentionLink}
+      workspaceRootPath={environment?.path ?? undefined}
+    >
+      <PluginPanelTabContent tab={activePluginPanelTab} threadId={thread.id} />
+    </ThreadTimelineNavigationProvider>
   ) : undefined;
   const isBrowserTabActive = activeBrowserTab !== null;
   const threadDetailContent = (
@@ -2513,7 +2783,6 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
           secondaryPanel={{
             activeTab: activeFixedSecondaryTab,
             canUseGitUi,
-            defaultMergeBaseBranch: resolvedDefaultMergeBaseBranch,
             environmentId: thread.environmentId ?? undefined,
             workspaceRootPath: environment?.path,
             fileTabs,
@@ -2530,11 +2799,15 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
             isOpen: isSecondaryPanelOpen,
             onClose: closeSecondaryPanel,
             onCollapse: closeSecondaryPanel,
+            onClearPendingGitDiffIntent: clearPendingGitDiffIntent,
             onOpenFileInEditor: handleOpenFileInEditor,
             onFileTabReorder: reorderFileTab,
             onOpenNewTab: handleOpenNewTab,
             onOpenFilePreview: handleOpenFilePreview,
             onSelectionAddToChat: handleSelectionAddToChat,
+            pendingGitDiffCommitSha,
+            pendingGitDiffScrollPath,
+            requestedMergeBaseBranch,
             onPanelFocus: handleSecondaryPanelFocus,
             onPanelChange: handleSecondaryPanelChange,
             showGitDiffTab: canUseGitUi,
@@ -2549,6 +2822,10 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
             isThreadTimelinePending,
             timelineError: Boolean(timelineError),
             onForkMessage: isForkAvailable ? handleForkMessage : undefined,
+            onEditMessage: canEditSentMessages
+              ? handleEditSentMessage
+              : undefined,
+            inlineMessageEditor,
             onMessageAddToChat: handleSelectionAddToChat,
             onSendToMainMessage: handleSendToMainMessage,
             onSelectionAddToChat: handleSelectionAddToChat,
@@ -2612,10 +2889,14 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
     </MarkdownLocalFileContextMenuContext.Provider>
   );
   return (
-    <PluginThreadPanelNavigationProvider
-      openThreadPanel={handleOpenTimelinePluginPanel}
-    >
-      {threadDetailContent}
-    </PluginThreadPanelNavigationProvider>
+    <>
+      <ThreadArchiveCommandHandler thread={thread} />
+      <ThreadRenameCommandHandler thread={thread} />
+      <PluginThreadPanelNavigationProvider
+        openThreadPanel={handleOpenTimelinePluginPanel}
+      >
+        {threadDetailContent}
+      </PluginThreadPanelNavigationProvider>
+    </>
   );
 }

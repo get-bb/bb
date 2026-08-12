@@ -20,6 +20,7 @@ import { DETAIL_GRID_CLASS } from "@/components/ui/detail-card.js";
 import { useAtomValue } from "jotai";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { ThreadSecondaryPanel } from "@/components/secondary-panel/ThreadSecondaryPanel";
+import { useDrawerPanelRealization } from "@/components/secondary-panel/useDrawerPanelRealization";
 import {
   secondaryPanelWidthPercentAtom,
 } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
@@ -126,6 +127,10 @@ function ThreadDetailSecondaryContentBody({
     canCollapseConversation && isConversationCollapsed;
   const [isCompactDrawerContentSettled, setIsCompactDrawerContentSettled] =
     useState(false);
+  const { isPanelRealized, realizePanel } = useDrawerPanelRealization({
+    isDrawerOpen: isSecondaryPanelOpen,
+    rendersAsDrawer: renderAsDrawer,
+  });
   const compactDrawerContentSettleFrameRef = useRef<number | null>(null);
   const compactDrawerContentSettleGenerationRef = useRef(0);
   const compactDrawerContentSettleStateRef = useRef({
@@ -206,11 +211,12 @@ function ThreadDetailSecondaryContentBody({
             stateAfterSync.renderAsDrawer
           ) {
             setIsCompactDrawerContentSettled(true);
+            realizePanel();
           }
         },
       );
     },
-    [cancelCompactDrawerContentSettleFrame],
+    [cancelCompactDrawerContentSettleFrame, realizePanel],
   );
   const canShowNativeBrowserView = renderAsDrawer
     ? isSecondaryPanelOpen && isCompactDrawerContentSettled
@@ -453,7 +459,14 @@ function ThreadDetailSecondaryContentBody({
           repositionInputs={false}
         >
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            {drawerSecondaryPanelContent}
+            {/* The panel mounts after the sheet settles: mounting it inside
+                the opening tap costs hundreds of milliseconds of style
+                resolution on iOS and freezes the slide-in. */}
+            {isPanelRealized ? (
+              drawerSecondaryPanelContent
+            ) : (
+              <ThreadMetadataLoadingSkeleton />
+            )}
           </div>
         </ResponsiveDrawerShell>
       ) : null}

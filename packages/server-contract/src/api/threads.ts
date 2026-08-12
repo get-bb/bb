@@ -1,8 +1,8 @@
 import { z } from "zod";
 import {
   activeThinkingSchema,
-  callerExecutionInputSourceSchema,
   clientTurnRequestIdSchema,
+  callerExecutionInputSourceSchema,
   environmentSchema,
   hostSchema,
   jsonValueSchema,
@@ -10,6 +10,7 @@ import {
   pendingInteractionSchema,
   permissionModeInputSchema,
   promptInputSchema,
+  providerRateLimitStateSchema,
   reasoningLevelSchema,
   resolvedThreadExecutionOptionsSchema,
   serviceTierSchema,
@@ -409,6 +410,78 @@ export const threadCommandAdmissionLookupResponseSchema = z.discriminatedUnion(
 export type ThreadCommandAdmissionLookupResponse = z.infer<
   typeof threadCommandAdmissionLookupResponseSchema
 >;
+export const providerRateLimitRecoveryReasonSchema = z.enum([
+  "eligible",
+  "thread-not-failed",
+  "no-failed-turn",
+  "input-not-accepted",
+  "no-rate-limit-state",
+  "no-terminal-rate-limit-error",
+  "provider-will-retry",
+  "manual-only",
+  "output-or-side-effect-observed",
+  "superseded",
+  "execution-unavailable",
+]);
+export type ProviderRateLimitRecoveryReason = z.infer<
+  typeof providerRateLimitRecoveryReasonSchema
+>;
+
+export const providerRateLimitRecoveryCandidateSchema = z.object({
+  failedRequestId: clientTurnRequestIdSchema,
+  turnId: z.string().min(1),
+  automatic: z.boolean(),
+  resetsAtMs: z.number().int().nonnegative().nullable(),
+  rateLimits: providerRateLimitStateSchema,
+});
+export type ProviderRateLimitRecoveryCandidate = z.infer<
+  typeof providerRateLimitRecoveryCandidateSchema
+>;
+
+export const providerRateLimitRecoveryStatusSchema = z.object({
+  reason: providerRateLimitRecoveryReasonSchema,
+  scopeKey: z.string().min(1),
+  hostId: z.string().min(1),
+  rateLimits: providerRateLimitStateSchema.nullable(),
+  candidate: providerRateLimitRecoveryCandidateSchema.nullable(),
+});
+export type ProviderRateLimitRecoveryStatus = z.infer<
+  typeof providerRateLimitRecoveryStatusSchema
+>;
+
+export const continueAfterProviderRateLimitRequestSchema = z
+  .object({ failedRequestId: clientTurnRequestIdSchema })
+  .strict();
+export type ContinueAfterProviderRateLimitRequest = z.infer<
+  typeof continueAfterProviderRateLimitRequestSchema
+>;
+
+export const continueAfterProviderRateLimitResponseSchema = z.object({
+  ok: z.literal(true),
+  requestId: clientTurnRequestIdSchema,
+});
+export type ContinueAfterProviderRateLimitResponse = z.infer<
+  typeof continueAfterProviderRateLimitResponseSchema
+>;
+
+export const editMessageRequestSchema = sendMessageRequestSchema
+  .omit({ mode: true })
+  .extend({
+    operationId: z.string().min(1),
+    /** Omission targets the latest editable message with no staleness guard. */
+    expectedRequestSequence: z.number().int().nonnegative().optional(),
+  })
+  .strict();
+export type EditMessageRequest = z.infer<typeof editMessageRequestSchema>;
+
+export const editMessageResponseSchema = z
+  .object({
+    ok: z.literal(true),
+    operationId: z.string().min(1),
+    requestSequence: z.number().int().nonnegative(),
+  })
+  .strict();
+export type EditMessageResponse = z.infer<typeof editMessageResponseSchema>;
 
 export const sendQueuedMessageModeSchema = z.enum(["auto", "steer"]);
 export type SendQueuedMessageMode = z.infer<typeof sendQueuedMessageModeSchema>;
@@ -525,6 +598,7 @@ export type ThreadSearchResponse = z.infer<typeof threadSearchResponseSchema>;
 // be created under it. Computed on the server so clients never recompute the
 // depth cap.
 export const threadResponseSchema = threadWithRuntimeSchema.extend({
+  activeBackgroundAgentCount: z.number().int().nonnegative(),
   canSpawnChild: z.boolean(),
 });
 export type ThreadResponse = z.infer<typeof threadResponseSchema>;

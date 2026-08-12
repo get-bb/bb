@@ -11,15 +11,37 @@ import type {
   ThreadPullRequestReviewState,
 } from "@bb/domain";
 
+function isSameOrLaterCheck(
+  candidate: GitHostPullRequestCheck,
+  current: GitHostPullRequestCheck,
+): boolean {
+  if (candidate.startedAt === null) {
+    return current.startedAt === null;
+  }
+  if (current.startedAt === null) {
+    return true;
+  }
+  return Date.parse(candidate.startedAt) >= Date.parse(current.startedAt);
+}
+
 function assembleThreadPullRequestChecks(
   rawChecks: readonly GitHostPullRequestCheck[],
 ): ThreadPullRequestChecks {
+  const latestChecksByName = new Map<string, GitHostPullRequestCheck>();
+  for (const check of rawChecks) {
+    const current = latestChecksByName.get(check.name);
+    if (!current || isSameOrLaterCheck(check, current)) {
+      latestChecksByName.set(check.name, check);
+    }
+  }
+  const checks = [...latestChecksByName.values()];
+
   let passedCount = 0;
   let failedCount = 0;
   let pendingCount = 0;
   let unknownCount = 0;
 
-  for (const check of rawChecks) {
+  for (const check of checks) {
     if (check.status === "queued" || check.status === "in_progress") {
       pendingCount += 1;
       continue;
@@ -46,7 +68,7 @@ function assembleThreadPullRequestChecks(
   }
 
   let state: ThreadPullRequestChecksState;
-  if (rawChecks.length === 0) {
+  if (checks.length === 0) {
     state = "no_checks";
   } else if (failedCount > 0) {
     state = "failing";
@@ -60,7 +82,7 @@ function assembleThreadPullRequestChecks(
 
   return {
     state,
-    totalCount: rawChecks.length,
+    totalCount: checks.length,
     passedCount,
     failedCount,
     pendingCount,

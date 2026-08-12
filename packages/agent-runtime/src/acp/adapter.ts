@@ -24,6 +24,7 @@ import type {
 import {
   isApprovalPendingInteractionPayload,
   isApprovalPendingInteractionResolution,
+  isStandaloneBuiltinCompactCommand,
   threadScope,
   turnScope,
 } from "@bb/domain";
@@ -41,6 +42,7 @@ import {
   flattenPromptInputGroups,
   noPreparedProviderCommandDispatch,
 } from "../provider-adapter.js";
+import { classifySessionExecutionSettingsChange } from "../execution-options.js";
 import { ProviderResponseEncodeError } from "../runtime-json-rpc.js";
 import type {
   ProviderInboundRequest,
@@ -83,12 +85,15 @@ import type {
   AgentRuntimeSkillRoot,
 } from "../types.js";
 import {
+  ACP_COMPACTION_COMPLETED_METHOD,
+  ACP_COMPACTION_STARTED_METHOD,
   ACP_FS_WRITE_METHOD,
   ACP_PERMISSION_REQUEST_METHOD,
   ACP_TURN_COMPLETED_METHOD,
   ACP_TURN_STARTED_METHOD,
   ACP_UPDATE_METHOD,
   ACP_WARNING_METHOD,
+  acpCompactionCompletedNotificationParamsSchema,
   acpFsWriteNotificationParamsSchema,
   acpPermissionRequestParamsSchema,
   acpTurnCompletedNotificationParamsSchema,
@@ -106,6 +111,7 @@ import {
   acpAgentThoughtChunkUpdateSchema,
   acpPlanUpdateSchema,
   acpToolCallUpdateEventSchema,
+  acpUsageUpdateSchema,
   extractAcpContentText,
   type AcpSessionUpdate,
   type AcpStopReason,
@@ -789,6 +795,18 @@ export function createAcpProviderAdapter(
     args.state.toolCallEventsByCallId.clear();
   }
 
+  function flushOpenTurnItems(args: {
+    events: ThreadEvent[];
+    parentToolCallId: string | undefined;
+    state: AcpTurnState;
+    status: ThreadEventItemStatus;
+    turnId: string;
+  }): void {
+    flushOpenThoughtItem(args.events, args.state, args.parentToolCallId);
+    flushOpenAgentMessageItem(args.events, args.state, args.parentToolCallId);
+    completeOpenToolCallItems(args);
+  }
+
   function translateAcpUpdate(
     update: AcpSessionUpdate,
     state: AcpTurnState,
@@ -992,6 +1010,28 @@ export function createAcpProviderAdapter(
         return events;
       }
 
+      case "usage_update": {
+        const parsed = acpUsageUpdateSchema.safeParse(update);
+        if (!parsed.success) {
+          return [];
+        }
+        return [
+          {
+            type: "thread/contextWindowUsage/updated",
+            threadId: UNSTAMPED_THREAD_ID,
+            providerThreadId: "",
+            scope: state.currentTurnId
+              ? turnScope(state.currentTurnId)
+              : threadScope(),
+            contextWindowUsage: {
+              usedTokens: parsed.data.used,
+              modelContextWindow: parsed.data.size,
+              estimated: false,
+            },
+          },
+        ];
+      }
+
       default:
         return buildUnhandledProviderEvents({
           providerId: profile.providerId,
@@ -1017,15 +1057,13 @@ export function createAcpProviderAdapter(
       return [];
     }
     const events: ThreadEvent[] = [];
-    flushOpenThoughtItem(events, state, context?.parentToolCallId);
-    flushOpenAgentMessageItem(events, state, context?.parentToolCallId);
     const openToolCallStatus: ThreadEventItemStatus =
       stopReason === "end_turn"
         ? "completed"
         : stopReason === "cancelled"
           ? "interrupted"
           : "failed";
-    completeOpenToolCallItems({
+    flushOpenTurnItems({
       events,
       parentToolCallId: context?.parentToolCallId,
       state,
@@ -1132,6 +1170,77 @@ export function createAcpProviderAdapter(
         );
       }
 
+      case ACP_COMPACTION_STARTED_METHOD: {
+        const params = acpTurnStartedNotificationParamsSchema.safeParse(
+          envelope.data.params,
+        );
+        if (!params.success) {
+          return [];
+        }
+        const events: ThreadEvent[] = [];
+        const turnId = ensureAcpTurnStarted({
+          events,
+          state: resolveState(context),
+          threadId: UNSTAMPED_THREAD_ID,
+        });
+        events.push({
+          type: "item/started",
+          threadId: UNSTAMPED_THREAD_ID,
+          providerThreadId: "",
+          scope: turnScope(turnId),
+          item: {
+            type: "contextCompaction",
+            id: `acp-compaction-${turnId}`,
+          },
+        });
+        return events;
+      }
+
+      case ACP_COMPACTION_COMPLETED_METHOD: {
+        const params = acpCompactionCompletedNotificationParamsSchema.safeParse(
+          envelope.data.params,
+        );
+        if (!params.success) {
+          return [];
+        }
+        const state = resolveState(context);
+        const turnId = state.currentTurnId;
+        if (!turnId) {
+          return [];
+        }
+        const events: ThreadEvent[] = [];
+        flushOpenTurnItems({
+          events,
+          parentToolCallId: context?.parentToolCallId,
+          state,
+          status: params.data.status,
+          turnId,
+        });
+        if (params.data.status === "completed") {
+          events.push({
+            type: "thread/compacted",
+            threadId: UNSTAMPED_THREAD_ID,
+            providerThreadId: "",
+            scope: turnScope(turnId),
+          });
+        }
+        events.push({
+          type: "turn/completed",
+          threadId: UNSTAMPED_THREAD_ID,
+          providerThreadId: "",
+          scope: turnScope(turnId),
+          status: params.data.status,
+          ...(params.data.status === "failed"
+            ? { error: { message: params.data.error } }
+            : {}),
+        });
+        turnState.finishTurn({
+          state,
+          threadId: context?.threadId ?? "",
+        });
+        return events;
+      }
+
       case ACP_UPDATE_METHOD: {
         const params = acpUpdateNotificationParamsSchema.safeParse(
           envelope.data.params,
@@ -1168,7 +1277,9 @@ export function createAcpProviderAdapter(
           scope: turnScope(turnId),
           item: {
             type: "fileChange",
-            id: `acp-fs-write-${state.fsWriteCounter}`,
+            // Include the turn id: resumed sessions restart the counter, so a
+            // bare counter would reuse ids already persisted in earlier turns.
+            id: `acp-fs-write-${turnId}-${state.fsWriteCounter}`,
             changes: [
               {
                 path: params.data.path,
@@ -1316,6 +1427,8 @@ export function createAcpProviderAdapter(
     id: providerInfo.id,
     displayName: providerInfo.displayName,
     capabilities: providerInfo.capabilities,
+    approvalRequestPolicy: "runtime",
+    classifyExecutionSettingsChange: classifySessionExecutionSettingsChange,
     process: {
       command: opts.bridgeNodeExecutablePath ?? "node",
       args: resolveBridgeProcessArgs({
@@ -1381,18 +1494,30 @@ export function createAcpProviderAdapter(
             },
           };
         }
-        case "turn/start":
+        case "turn/start": {
+          const input = flattenPromptInputGroups(
+            command.input,
+            command.inputGroups,
+          );
+          if (
+            profile.providerId === "acp-opencode" &&
+            isStandaloneBuiltinCompactCommand(input)
+          ) {
+            return {
+              kind: "request",
+              method: "thread/compact",
+              params: { threadId: command.providerThreadId },
+            };
+          }
           return {
             kind: "request",
             method: "turn/start",
             params: {
               threadId: command.providerThreadId,
-              input: flattenPromptInputGroups(
-                command.input,
-                command.inputGroups,
-              ),
+              input,
             },
           };
+        }
         case "turn/steer":
           return {
             kind: "request",
@@ -1416,6 +1541,8 @@ export function createAcpProviderAdapter(
             method: "thread/stop",
             params: { threadId: command.providerThreadId },
           };
+        case "thread/discard":
+          return { kind: "noop", reason: "discard unsupported" };
         case "thread/goal/clear":
           return { kind: "noop", reason: "goals unsupported" };
         case "thread/name/set":

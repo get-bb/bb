@@ -242,6 +242,19 @@ reimplementing it, and `indicatorLabel` carries the matching accessible string.
    a sidebar of many distinct worktrees does not stampede the git host; and
    returning `null` for "lookup failed" (rather than an error) is the right
    failure for a row that should simply show nothing.
+9. **`experimental_useSidebarThreadSplit`.** Gives a custom row the built-in
+   drag-to-split gesture: spread `splitProps` onto the row, gate any affordance
+   on `isAvailable`, and read `layout` to paint where the thread already sits.
+   The host owns every rule — the drag engages only after the pointer leaves the
+   sidebar, an edge drop splits, a center drop replaces, an open thread focuses
+   its pane, and the pane cap turns a split into a replace — so a plugin cannot
+   reach a layout the built-in sidebar cannot. Before stabilizing, confirm: a
+   list with its own pointer-drag (reorder, swipe) still composes with the
+   host's engage threshold; `splitProps` staying an open object is the right
+   forward-compatible shape, or it should narrow to a named handler; and
+   exposing the full `panes` array does not leak more layout state than a row
+   needs.
+
 ## `app.slots.experimental_threadHeaderAction` (`@bb/plugin-sdk/app`)
 
 **What it does.** Renders a plugin component in the thread header's action row.

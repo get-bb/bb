@@ -3,13 +3,17 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  useThreadSecondaryPanelDrawerVisibility,
   useThreadSecondaryPanelVisibility,
   type UseThreadSecondaryPanelVisibilityArgs,
 } from "./useThreadSecondaryPanelVisibility";
 
-function createArgs(
-  overrides: Partial<UseThreadSecondaryPanelVisibilityArgs> = {},
-): UseThreadSecondaryPanelVisibilityArgs {
+type VisibilityArgs = Omit<
+  UseThreadSecondaryPanelVisibilityArgs,
+  "drawerVisibility"
+>;
+
+function createArgs(overrides: Partial<VisibilityArgs> = {}): VisibilityArgs {
   return {
     closePersistedPanel: vi.fn(),
     isCompactViewport: true,
@@ -21,7 +25,6 @@ function createArgs(
     openPersistedPanel: vi.fn(),
     openPersistedStorageFile: vi.fn(),
     openPersistedWorkspaceFile: vi.fn(),
-    threadId: "thr_1",
     togglePersistedPanel: vi.fn(),
     ...overrides,
   };
@@ -38,9 +41,16 @@ describe("useThreadSecondaryPanelVisibility", () => {
       isCompactViewport: true,
       isPersistedOpen: true,
     });
-    const { result } = renderHook(() =>
-      useThreadSecondaryPanelVisibility(args),
-    );
+    const { result } = renderHook(() => {
+      const drawerVisibility = useThreadSecondaryPanelDrawerVisibility({
+        isCompactViewport: args.isCompactViewport,
+        threadId: "thr_1",
+      });
+      return useThreadSecondaryPanelVisibility({
+        ...args,
+        drawerVisibility,
+      });
+    });
 
     expect(result.current.isOpen).toBe(false);
 
@@ -56,9 +66,16 @@ describe("useThreadSecondaryPanelVisibility", () => {
       isCompactViewport: true,
       isPersistedOpen: false,
     });
-    const { result } = renderHook(() =>
-      useThreadSecondaryPanelVisibility(args),
-    );
+    const { result } = renderHook(() => {
+      const drawerVisibility = useThreadSecondaryPanelDrawerVisibility({
+        isCompactViewport: args.isCompactViewport,
+        threadId: "thr_1",
+      });
+      return useThreadSecondaryPanelVisibility({
+        ...args,
+        drawerVisibility,
+      });
+    });
 
     act(() => {
       result.current.openHostFile({

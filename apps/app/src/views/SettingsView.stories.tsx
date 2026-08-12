@@ -273,6 +273,7 @@ function GeneralSettingsStory({
         openLinksInAppBrowser={state.openLinksInAppBrowser}
         rewriteLocalhostLinks={state.rewriteLocalhostLinks}
         richTextEditing={state.richTextEditing}
+        replayOnboardingAvailable={state.experiments.newOnboarding}
         steerActiveThreadOnEnter={state.steerActiveThreadOnEnter}
         steerActiveThreadOnEnterDisabled={false}
       />
@@ -340,10 +341,24 @@ function ExperimentsStory() {
         state.experiments.claudeCodeMockCliTraffic
       }
       disabled={false}
+      editMessagesEnabled={state.experiments.editMessages}
+      newOnboardingEnabled={state.experiments.newOnboarding}
       onClaudeCodeMockCliTrafficEnabledChange={(enabled) =>
         state.setExperiments((current) => ({
           ...current,
           claudeCodeMockCliTraffic: enabled,
+        }))
+      }
+      onEditMessagesEnabledChange={(enabled) =>
+        state.setExperiments((current) => ({
+          ...current,
+          editMessages: enabled,
+        }))
+      }
+      onNewOnboardingEnabledChange={(enabled) =>
+        state.setExperiments((current) => ({
+          ...current,
+          newOnboarding: enabled,
         }))
       }
       onToolsHubEnabledChange={(enabled) =>

@@ -212,6 +212,23 @@ export function invalidateThreadAcceptedMessageQueriesWithoutRealtime({
   });
 }
 
+export function invalidateThreadHistoryRewriteQueries({
+  queryClient,
+  threadId,
+}: ThreadArg): void {
+  invalidateThreadAcceptedMessageQueriesWithoutRealtime({
+    queryClient,
+    threadId,
+  });
+  queryClient.invalidateQueries({ queryKey: threadSearchQueryKeyPrefix() });
+  invalidateQueryKeys({
+    queryClient,
+    queryKeys: getProjectPromptHistoryInvalidationQueryKeys({
+      projectId: undefined,
+    }),
+  });
+}
+
 export function invalidateThreadStopQueries({
   queryClient,
   threadId,

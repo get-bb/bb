@@ -167,7 +167,6 @@ describe("bundled plugin catalog service", () => {
           pluginId: "broken",
           autoInstall: false,
           defaultEnabled: true,
-          repoDirectory: "official-plugins",
           category: "Productivity",
           rootDir: missingRoot,
         },

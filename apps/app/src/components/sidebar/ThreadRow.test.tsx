@@ -173,11 +173,13 @@ function renderSplitThreadRow({
   hasComposerDraft = false,
   options = DEFAULT_OPTIONS,
   pluginStatus,
+  shortcutKey,
   thread = createThread(),
 }: {
   hasComposerDraft?: boolean;
   options?: ThreadRowOptions;
   pluginStatus?: PluginComposerThreadRowStatus;
+  shortcutKey?: string;
   thread?: ThreadListEntry;
 } = {}) {
   if (pluginStatus) {
@@ -214,6 +216,7 @@ function renderSplitThreadRow({
       <ThreadRowTestHarness
         hasComposerDraft={hasComposerDraft}
         options={options}
+        shortcutKey={shortcutKey}
         thread={thread}
       />
     </Provider>,
@@ -396,10 +399,7 @@ describe("ThreadRow", () => {
   );
 
   it("puts the draft icon in the trailing status slot", () => {
-    const { container } = renderThreadRow({
-      hasComposerDraft: true,
-      shortcutKey: "3",
-    });
+    const { container } = renderThreadRow({ hasComposerDraft: true });
 
     const draftIcon = container.querySelector('[data-icon="Edit"]');
     expect(draftIcon).not.toBeNull();
@@ -411,7 +411,6 @@ describe("ThreadRow", () => {
     ).not.toBeNull();
     expect(screen.queryByLabelText("Thread has unsubmitted draft")).toBeNull();
     expect(screen.queryByLabelText("Unread thread succeeded")).toBeNull();
-    expect(screen.queryByText("⌘3")).toBeNull();
   });
 
   it("replaces the draft icon with a plugin status and restores it when cleared", () => {
@@ -433,7 +432,7 @@ describe("ThreadRow", () => {
     expect(container.querySelector('[data-icon="Edit"]')).not.toBeNull();
   });
 
-  it("shows a plugin status instead of a keyboard shortcut when no native status applies", () => {
+  it("shows a keyboard shortcut in place of a plugin status", () => {
     setPluginThreadRowStatus("thr_test", "composer-status-test", {
       icon: "AiContentGenerator01",
       label: "Plugin improving draft",
@@ -441,8 +440,15 @@ describe("ThreadRow", () => {
 
     renderThreadRow({ shortcutKey: "3" });
 
-    expect(screen.getByLabelText("Plugin improving draft")).not.toBeNull();
-    expect(screen.queryByText("⌘3")).toBeNull();
+    expect(screen.getByText("⌘3")).not.toBeNull();
+    expect(screen.queryByLabelText("Plugin improving draft")).toBeNull();
+  });
+
+  it("shows a keyboard shortcut in place of a split mini-map", () => {
+    renderSplitThreadRow({ shortcutKey: "3" });
+
+    expect(screen.getByText("⌘3")).not.toBeNull();
+    expect(screen.queryByRole("img", { name: /open in split/ })).toBeNull();
   });
 
   it("renders a plugin status with the semantic success tone", () => {
@@ -794,16 +800,23 @@ describe("ThreadRow", () => {
     ).toBe("always");
   });
 
-  it("shows its Command shortcut only when no indicator applies", () => {
+  it("shows its Command shortcut in place of an active indicator", () => {
     renderThreadRow({
       shortcutKey: "3",
-      thread: createThread({ lastReadAt: 1, latestAttentionAt: 1 }),
+      thread: createThread({
+        status: "active",
+        runtime: {
+          displayStatus: "active",
+          hostReconnectGraceExpiresAt: null,
+        },
+      }),
     });
 
     const shortcut = screen.getByText("⌘3");
     expect(shortcut.className).toContain("px-1.5");
     expect(shortcut.className).toContain("py-1");
     expect(shortcut.className).toContain("opacity-60");
+    expect(screen.queryByLabelText("Thread working")).toBeNull();
     expect(
       screen
         .getByRole("link", { name: "Open Thread" })
@@ -830,7 +843,6 @@ describe("ThreadRow", () => {
 
   it("shows runtime work before workflow and background work", () => {
     renderThreadRow({
-      shortcutKey: "3",
       thread: createThread({
         activity: {
           activeWorkflowCount: 1,
@@ -854,7 +866,6 @@ describe("ThreadRow", () => {
     expect(screen.queryByLabelText("Background agent running")).toBeNull();
     expect(screen.queryByLabelText("Background command running")).toBeNull();
     expect(document.querySelector('[data-icon="Edit"]')).toBeNull();
-    expect(screen.queryByText("⌘3")).toBeNull();
   });
 
   it("shows an animated working-colored workflow glyph for an idle thread with an active workflow", () => {
@@ -1073,7 +1084,6 @@ describe("ThreadRow", () => {
 
   it("shows Plan before a concurrent Goal", () => {
     renderThreadRow({
-      shortcutKey: "3",
       thread: createThread({
         activity: {
           activeWorkflowCount: 0,
@@ -1087,7 +1097,6 @@ describe("ThreadRow", () => {
 
     expect(screen.getByLabelText("Plan mode active")).not.toBeNull();
     expect(screen.queryByLabelText("Goal active")).toBeNull();
-    expect(screen.queryByText("⌘3")).toBeNull();
   });
 
   it.each([

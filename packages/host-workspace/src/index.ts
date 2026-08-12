@@ -57,6 +57,7 @@ export type {
 export {
   createPullRequestForBranch,
   getPullRequestForBranch,
+  getPullRequestForCurrentBranch,
   isPullRequestFound,
   parseGitHostPullRequest,
   type CreatedPullRequest,

@@ -17,7 +17,14 @@ message agents, or inspect projects, providers, and environments.
 - A standalone `bb` CLI with no connection env targets the default local server
   at `http://127.0.0.1:38886` and host daemon port `38887`. Set
   `BB_SERVER_URL` and `BB_HOST_DAEMON_PORT` only for remote or non-default
-  targets.
+  targets. The Add machine installer injects its enrolled daemon's selected
+  local API port automatically and atomically reserves it across default and
+  custom machine data directories.
+- The main server and source Vite app bind to loopback by default. Use bb
+  connect or a private Tailscale Serve URL for remote browsers and execution
+  machines. `--server-bind-host 0.0.0.0` is a compatibility escape hatch only:
+  the public API is unauthenticated and permits command execution and file
+  reads, so wildcard binding requires a trusted network boundary.
 
 ## Environment Setup Script
 
@@ -46,9 +53,22 @@ message agents, or inspect projects, providers, and environments.
   including thread titles and commit subjects. It defaults to
   `codex/gpt-5.6-luna`; set an override with
   `bb-app config set BB_INFERENCE <provider/model>`.
+- `BB_INFERENCE_FALLBACK` selects the helper model used after a transient
+  primary timeout, rate limit, or service-unavailable failure. It defaults to
+  `codex/gpt-5.4-mini`; set it with
+  `bb-app config set BB_INFERENCE_FALLBACK <provider/model>`.
 - `BB_TRANSCRIPTION` selects the voice transcription model. It defaults to
   `codex/gpt-transcribe`; set an override with
   `bb-app config set BB_TRANSCRIPTION <provider/model>`.
+- `bb-app config` and `bb-app env` reload runtime settings in a running server,
+  but the CLI identifies server and launcher settings that are startup-only,
+  including binding/ports, data and the dev-app port, telemetry, inherited skill
+  roots, and `BB_FF_*` flags. `BB_LOG_LEVEL` is also startup-only. Use
+  `bb-app config`, not `bb-app env`, to change `BB_APP_URL`, `BB_INFERENCE`,
+  `BB_INFERENCE_FALLBACK`, or `BB_TRANSCRIPTION` live. After a startup-only
+  change, run `bb-app stop && bb-app start` or restart the desktop app. Until
+  then, a server previously bound to `0.0.0.0` remains exposed even if
+  `BB_SERVER_BIND_HOST` was changed or unset.
 - Settings → General holds server-backed app-wide preferences, such as the
   macOS-only "Caffeinate" toggle. For details, read
   `references/app-settings.md` (in this skill's directory).
@@ -56,9 +76,13 @@ message agents, or inspect projects, providers, and environments.
   exposes raw provider events that bb does not yet understand in packaged
   builds. Development builds always show those diagnostic rows. Update it with
   `bb settings general showUnhandledProviderEvents <true|false>`.
-- The `steerActiveThreadOnEnter` General preference defaults to false. Enable
-  it to make Enter steer a running thread and Command+Enter queue a
-  follow-up; when disabled, those actions are reversed. Update it with
+- The `steerActiveThreadOnEnter` General preference defaults to false. Outside
+  an open composer typeahead menu, enable it to make Enter steer a running
+  thread and Command+Enter queue a follow-up; when disabled, those actions are
+  reversed. Shift+Enter inserts a newline, while zen mode also makes
+  unmodified Enter insert one. On coarse-pointer touch devices, the software
+  keyboard keeps Return as a newline; iPadOS WebKit preserves the Enter
+  shortcuts for a connected Magic Keyboard. Update the preference with
   `bb settings general steerActiveThreadOnEnter <true|false>`.
 - Settings → Keyboard records server-backed per-command shortcut overrides.
   The `showKeyboardHints` preference controls the delayed badges shown while
@@ -77,6 +101,13 @@ message agents, or inspect projects, providers, and environments.
   and Automations management UI. Change it with
   `bb settings experiment toolsHub <true|false>`. It does not load or unload
   tools.
+- The default-off `newOnboarding` experiment exposes the first-run agent and
+  project setup guide. Change it with
+  `bb settings experiment newOnboarding <true|false>`. Use
+  `bb settings replay-onboarding` to enable it and show the guide again.
+- The default-off `editMessages` experiment allows completed user messages in
+  Codex, Claude Code, and Pi threads to be replaced and rerun. Change it with
+  `bb settings experiment editMessages <true|false>`.
 - Thread timeline windows are capped by event count as well as by user-message
   count (`BB_FF_TIMELINE_WINDOW_EVENT_BUDGET`, default 1500), because a thread
   with few user messages but many events would otherwise reproject its whole
@@ -156,6 +187,10 @@ isolated|reuse`, or anchor with `--source-seq-end`. Permission mode inherits
   https://getbb.app). Pairing returns immediately — the
   server itself holds the tunnel and reconnects on restart, so there is no
   foreground process.
+  In a source checkout, `pnpm dev` automatically sets
+  `BB_DEV_CONNECT_BASE_URL` to the worktree's local Cloud origin. Connect uses
+  it only as the unpaired default; explicit `--server` and `--base-url` values
+  still win, including when pairing the dev bb with getbb.app.
   `bb connect status` / `bb connect off` report and clear the pairing.
   Port sharing works from a thread on any enrolled host. `bb connect expose
 <port>` resolves that thread's environment host and returns its public URL;
@@ -248,8 +283,9 @@ environment pull-request show <id>`. Diff commands require an explicit target
   provider's automatic reviewer. `full` explicitly bypasses sandbox and
   approval protections. Plan mode remains separate. The product default is
   `auto` when no inherited or project default applies.
-- When spawning a subagent, pass `--permission-mode full` unless the user or
-  task explicitly requests restricted access.
+- Subagents inherit the parent's permission mode by default; pass
+  `--permission-mode full` only when the user or task needs unsandboxed
+  execution.
 - Use `--parent-self` inside a thread to parent the new thread to the current
   thread.
 - Use `--parent-thread <thread-id>` to choose another specific parent.
@@ -262,6 +298,9 @@ environment pull-request show <id>`. Diff commands require an explicit target
   host; for example `opencode`, `omp`, Grok Build's `grok` CLI, or Hermes'
   `hermes` CLI on PATH appears as provider `acp-opencode`, `acp-omp`,
   `acp-grok`, or `acp-hermes-agent`.
+- Cursor ACP threads discover project skills from `.cursor/skills`. This root
+  can link to `.agents/skills`. `bb skill list` shows linked Cursor skills under
+  `cursor-project` and keeps them read-only.
 - Custom ACP agents can be registered in the app data-dir `config.json` under
   `customAcpAgents`. The user supplies a slug `id`; bb exposes it as provider
   id `acp-<id>`. Custom config wins if it uses the same provider id as a known
@@ -272,7 +311,21 @@ environment pull-request show <id>`. Diff commands require an explicit target
   relative paths resolve from the bb data dir. Custom ACP agents can use
   `modelCli` for CLI model listing/selection, `reasoningCli` for launch-time
   reasoning flags, and `nativeReasoning` for ACP `session/set_config_option`
-  reasoning.
+  reasoning. Optional
+  `nativeSkillRoots.user` paths resolve from the target
+  host home directory. Optional `nativeSkillRoots.project` paths resolve from
+  the selected workspace. The composer lists skills from these roots.
+- Top-level `customModels` in the same `config.json` registers extra picker
+  models. `providerId` accepts a built-in provider id or any `acp-*` provider
+  id. The provider must still accept the id: `claude-code` and `codex` accept
+  unlisted ids, while an ACP agent can reject an unknown id at session start.
+  OpenCode rejects unlisted ids; add the model to the OpenCode config instead
+  and bb discovers it automatically. An OpenCode agent is a session mode, not
+  a model, and cannot be selected through bb. This list also has no set/unset
+  CLI surface; edit the JSON and run `bb-app config refresh` or restart bb.
+- Top-level `sharedSkillRoots` uses the same relative `user` and `project`
+  paths. bb lists these skills as read-only. bb injects them into each provider,
+  so one physical skill collection can support bb and standalone provider CLIs.
 
 Give spawned threads clear prompts: objective, constraints, expected deliverable,
 validation to perform, and what to report back. Ask for outcome, changed files
@@ -290,6 +343,13 @@ or artifacts, validation performed, and blockers.
 <seconds>` when you need a shorter or longer budget.
 - Use `bb thread tell <thread-id> "..."` when requirements change, a blocker
   needs clarification, or follow-up work is needed.
+- Use `bb thread edit-message <thread-id> --message "..."` to replace and rerun
+  the latest completed user message in an idle Codex, Claude Code, or Pi thread.
+  Pass `--expected-request-sequence <sequence>` to select an earlier message.
+  Opening edit mode in the app is non-destructive; history changes only when the
+  edit is submitted successfully, and workspace changes remain. When an agent
+  edits another thread, the CLI carries its `BB_THREAD_ID` so the replacement
+  runs under agent permission policy.
 - `bb thread tell` steers by default, delivering the message immediately into
   the active turn. Use `--mode queue` when the message is non-urgent and the
   agent can finish its current work first. Steer is especially important for a
@@ -371,9 +431,27 @@ For review or fix pipelines, get the environment ID from
 - For failed threads, inspect `bb thread show <id> --json` and
   `bb thread log <id>` before deciding whether to retry, clarify, or update the
   user.
+- The opt-in Provider retry plugin automatically waits for structured Codex and
+  Claude Code subscription-window resets when the failed turn was accepted and
+  its execution settings remain available. Prior output or tool activity does
+  not block recovery. Enable it with
+  `bb plugin enable provider-retry` or under Extensions → Plugins. Its timers
+  last only while the current bb server/plugin process is running. Inspect it
+  with `bb provider-retry status [thread-id]`, or cancel one with
+  `bb provider-retry cancel <thread-id>`. Automatic waits default to six hours;
+  configure longer waits with
+  `bb plugin config provider-retry set maximumWait "24 hours"` or select
+  `No limit` in the plugin settings. Resets beyond the configured horizon are
+  not scheduled.
+- Use `bb thread retry [id] [--request-id <id>]` for the same core
+  continuation when no plugin timer remains. It sends agent-only “Please
+  continue.” on the existing provider conversation and declines when input was
+  not accepted, execution settings are unavailable, a newer request exists, or
+  the provider still owns the retry.
 - For interrupted or stopped threads, inspect first. If the user stopped the
   thread, treat that as intentional unless they ask you to continue.
 - Use `bb thread stop <id>` when a thread is stuck or no longer needed.
+- Use `bb thread compact <id>` to send the built-in `/compact` command to an idle or errored thread. Completion or failure appears in the timeline. Codex, Claude Code, Pi, and OpenCode ACP support it; Cursor ACP does not expose compatible compaction through ACP.
 - Use `bb thread cancel-plan <id>` to exit an active Plan turn without
   optimistically clearing its banner. Use `bb thread clear-goal <id>` to clear
   a Codex thread's durable active Goal. Both wait for provider confirmation.
@@ -611,22 +689,23 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
   (except `side-chat`, which is gated by the **"Side chat plugin"**
   experiment); official plugins install from the bundled store on demand.
 - **BB Official plugins** (store under `/api/v1/plugin-catalog`):
-  - BB's official plugins (GitHub, Docs, Memory, Tasks) ship bundled inside
-    the app and install from the local copy — no network. Installed official
+  - BB's official plugins (GitHub, Docs, Memory, and Tasks) ship
+    bundled inside the app and install from the local copy — no network. Installed official
     plugins are pinned to the bundled copy and update with BB app releases.
   - `bb plugin search <query> [--json]` — search the official plugins by id,
     name, description, or category; status shows installed / compatible /
     requires newer bb.
 - Commands:
   - `bb plugin install <src>` — official plugin name (github, docs, memory,
-    tasks), local path, `builtin:<name>`,
-    `git:<url>@<ref>`, or `npm:<package>[@<version|tag|range>]` (npm on PATH
-    required for `npm:`). Prefixes `path:` / `npm:` / `git:` / `builtin:` skip
-    official-plugin resolution. To pin or range an npm package, install with
-    `npm:<package>@…`.
+    tasks), HTTP(S) Git repository URL, local path, `builtin:<name>`,
+    `git:<url>[@<ref>]`, or `npm:<package>[@<version|tag|range>]` (npm on PATH
+    required for `npm:`). Repository URLs and prefixes `path:` / `npm:` /
+    `git:` / `builtin:` skip official-plugin resolution. To pin or range an
+    npm package, install with `npm:<package>@…`.
     Omit the npm spec to track compatible stable releases; ranges and dist-tags
-    track, while exact versions are pinned. Git branches track;
-    tags and commits are pinned. Installs prompt for confirmation (plugins are full-trust code);
+    track, while exact versions are pinned. Omit the Git ref to track the
+    repository's default branch; explicit branches track, while tags and
+    commits are pinned. Installs prompt for confirmation (plugins are full-trust code);
     pass `--yes` to skip. Reinstalling an already-installed managed plugin is
     refused — use `bb plugin update`. Plugins that declare a frontend (`bb.app`)
     are built at install time for path sources and git sources without a
@@ -662,6 +741,12 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     `server.meta.json` stamped with SDK/identity metadata; preferred by
     git/npm installs over source) and, when `bb.app` is declared, `app.js` +
     `app.css` + `app.meta.json`. Neither needs the server.
+  - `bb plugin types [path]` — rewrite the plugin's `types/*.d.ts` from the
+    running bb's `@bb/plugin-sdk` declarations, creating `types/` when absent.
+    Run it in a cloned or older plugin: the scaffold seeds those files once and
+    the SDK surface grows every release. `--check` reports staleness and exits
+    non-zero without writing (for CI). `bb plugin build` and `bb plugin dev`
+    refresh them automatically. Needs no server.
   - `bb plugin dev [path]` — watch loop for an installed plugin (default:
     cwd): on every change it rebuilds the frontend bundle (when `bb.app` is
     declared) and reloads the plugin; open app pages pick the new UI up live.

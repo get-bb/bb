@@ -8,7 +8,13 @@ import { ToolsSidebar } from "./ToolsSidebar";
 
 function CurrentPath() {
   const location = useLocation();
-  return <output aria-label="Current path">{location.pathname}</output>;
+  return (
+    <output aria-label="Current path">
+      {location.pathname}
+      {location.search}
+      {location.hash}
+    </output>
+  );
 }
 
 function renderToolsSidebar(path: string) {
@@ -42,6 +48,11 @@ describe("ToolsSidebar", () => {
       screen.getByRole("link", { name: "Skills" }).getAttribute("aria-current"),
     ).toBeNull();
     expect(screen.queryByRole("link", { name: "Automations" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("link", { name: "Plugins" }));
+    expect(screen.getByLabelText("Current path").textContent).toBe(
+      "/tools/plugins",
+    );
   });
 
   it("contains only Plugins and Skills and navigates back to the app", () => {
@@ -63,6 +74,25 @@ describe("ToolsSidebar", () => {
     fireEvent.click(screen.getByRole("link", { name: "Back to app" }));
     expect(screen.getByLabelText("Current path").textContent).toBe(
       "/projects/proj_one/threads/thr_one",
+    );
+  });
+
+  it("preserves each section route while navigating within Extensions", () => {
+    renderToolsSidebar("/tools/plugins?view=installed#installed-list");
+
+    fireEvent.click(screen.getByRole("link", { name: "Skills" }));
+    expect(screen.getByLabelText("Current path").textContent).toBe(
+      "/tools/skills",
+    );
+
+    fireEvent.click(screen.getByRole("link", { name: "Plugins" }));
+    expect(screen.getByLabelText("Current path").textContent).toBe(
+      "/tools/plugins?view=installed#installed-list",
+    );
+
+    fireEvent.click(screen.getByRole("link", { name: "Skills" }));
+    expect(screen.getByLabelText("Current path").textContent).toBe(
+      "/tools/skills",
     );
   });
 });

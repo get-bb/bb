@@ -10,6 +10,13 @@ import {
 } from "react";
 
 export interface StickyBottomScrollBinding<TElement extends HTMLElement> {
+  /**
+   * Attach to an element that wraps the scrolled content. The scroll port's
+   * box is fixed, so content-only height changes (an image load, a
+   * disclosure toggle) never fire its ResizeObserver; observing the wrapper
+   * keeps the cached maximum offset fresh for those changes too.
+   */
+  contentRef: RefObject<HTMLDivElement | null>;
   onPointerDown: PointerEventHandler<TElement>;
   onScroll: UIEventHandler<TElement>;
   onTouchMove: TouchEventHandler<TElement>;
@@ -39,15 +46,11 @@ function getMaxScrollOffset(element: HTMLElement): number {
   return Math.max(0, element.scrollHeight - element.clientHeight);
 }
 
-function isNearBottom(element: HTMLElement): boolean {
-  return (
-    getMaxScrollOffset(element) - element.scrollTop <=
-    STICKY_BOTTOM_THRESHOLD_PX
-  );
-}
-
-function scrollToBottom(element: HTMLElement, smooth: boolean): void {
-  const top = getMaxScrollOffset(element);
+function scrollToBottom(
+  element: HTMLElement,
+  top: number,
+  smooth: boolean,
+): void {
   if (smooth) {
     element.scrollTo({ top, behavior: "smooth" });
   } else {
@@ -60,12 +63,39 @@ export function useStickyBottomScroll<TElement extends HTMLElement>({
   streaming,
 }: UseStickyBottomScrollArgs): StickyBottomScrollBinding<TElement> {
   const scrollRef = useRef<TElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const shouldStickToBottomRef = useRef(true);
   const pointerScrollIntentRef = useRef(false);
   const userScrollIntentUntilRef = useRef(0);
   const lastScrollAtRef = useRef(0);
   const isFirstScrollRef = useRef(true);
   const wasStreamingRef = useRef(streaming);
+  const maxScrollOffsetRef = useRef(0);
+
+  const refreshMaxScrollOffset = useCallback((element: TElement): number => {
+    const nextOffset = getMaxScrollOffset(element);
+    maxScrollOffsetRef.current = nextOffset;
+    return nextOffset;
+  }, []);
+
+  useEffect(() => {
+    const element = scrollRef.current;
+    if (!element) return;
+    refreshMaxScrollOffset(element);
+    if (typeof ResizeObserver === "undefined") return;
+
+    const observer = new ResizeObserver(() => {
+      refreshMaxScrollOffset(element);
+    });
+    observer.observe(element);
+    // The port only resizes with the viewport; the content wrapper resizes
+    // when the content itself grows or shrinks. Both feed the same cache.
+    const content = contentRef.current;
+    if (content) {
+      observer.observe(content);
+    }
+    return () => observer.disconnect();
+  }, [refreshMaxScrollOffset]);
 
   useEffect(() => {
     const wasStreaming = wasStreamingRef.current;
@@ -89,10 +119,10 @@ export function useStickyBottomScroll<TElement extends HTMLElement>({
     const smooth =
       !isFirstScrollRef.current &&
       now - lastScrollAtRef.current >= SMOOTH_SCROLL_MIN_GAP_MS;
-    scrollToBottom(element, smooth);
+    scrollToBottom(element, refreshMaxScrollOffset(element), smooth);
     lastScrollAtRef.current = now;
     isFirstScrollRef.current = false;
-  }, [contentKey, streaming]);
+  }, [contentKey, refreshMaxScrollOffset, streaming]);
 
   const markUserScrollIntent = useCallback(() => {
     userScrollIntentUntilRef.current =
@@ -108,7 +138,13 @@ export function useStickyBottomScroll<TElement extends HTMLElement>({
   }, []);
 
   const onScroll = useCallback<UIEventHandler<TElement>>((event) => {
-    if (isNearBottom(event.currentTarget)) {
+    // `scrollHeight` and `clientHeight` force layout in WebKit. Cache their
+    // difference on content and box-size changes, then read only scrollTop in
+    // this high-frequency handler.
+    if (
+      maxScrollOffsetRef.current - event.currentTarget.scrollTop <=
+      STICKY_BOTTOM_THRESHOLD_PX
+    ) {
       shouldStickToBottomRef.current = true;
       return;
     }
@@ -134,6 +170,7 @@ export function useStickyBottomScroll<TElement extends HTMLElement>({
   }, [onPointerEnd, streaming]);
 
   return {
+    contentRef,
     onPointerDown,
     onScroll,
     onTouchMove: markUserScrollIntent,

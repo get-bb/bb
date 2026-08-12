@@ -4,6 +4,7 @@ import {
   countLiveThreadsInEnvironment,
   getEnvironment,
   hasPendingThreadShutdownInEnvironment,
+  hasRevivableArchivedThreadInEnvironment,
   listLiveThreadsInEnvironment,
   type DbNotifier,
   type DbQueryConnection,
@@ -204,7 +205,10 @@ export function settleEnvironmentDestroyCommandResult(
       args.deps,
       {
         environmentId: args.command.environmentId,
-        event: { type: "destroy.completed" },
+        event: {
+          type: "destroy.completed",
+          destroyAttemptId: args.execution.id,
+        },
       },
     );
     if (!outcome.applied) {
@@ -370,7 +374,10 @@ async function advanceEnvironmentCleanup(
     }
     applyLoggedEnvironmentLifecycleEvent(deps, {
       environmentId: environment.id,
-      event: { type: "destroy.completed" },
+      event: {
+        type: "destroy.completed",
+        destroyAttemptId: execution.id,
+      },
     });
     return;
   }
@@ -388,6 +395,30 @@ async function advanceEnvironmentCleanup(
     !refreshedEnvironment ||
     (refreshedEnvironment.status !== "retiring" &&
       refreshedEnvironment.status !== "error")
+  ) {
+    return;
+  }
+
+  // Archive grace window: a freshly retired managed worktree stays revivable
+  // (worktree intact, undoable via unarchive → retire.cancelled) for the
+  // configured grace window so an accidental archive can be undone losslessly.
+  // `retireRequestedAt` is stamped by the lifecycle event and survives restart
+  // without moving when unrelated environment metadata changes. Scope: only
+  // the path-bearing `retiring` case waits; a pathless env (handled above) has
+  // no worktree to lose, and `error` is failed cleanup rather than an
+  // accidental-archive brick. The window applies only when the environment
+  // still has a revivable archived thread — an env left retiring by a
+  // deleted/tombstoned thread has nothing to unarchive, so it is cleaned up
+  // immediately rather than lingering.
+  if (
+    refreshedEnvironment.status === "retiring" &&
+    refreshedEnvironment.path !== null &&
+    refreshedEnvironment.retireRequestedAt !== null &&
+    Date.now() - refreshedEnvironment.retireRequestedAt <
+      deps.config.managedEnvironmentRetireGraceMs &&
+    hasRevivableArchivedThreadInEnvironment(deps.db, {
+      environmentId: refreshedEnvironment.id,
+    })
   ) {
     return;
   }
@@ -420,7 +451,10 @@ async function advanceEnvironmentCleanup(
   if (!claimedEnvironment.path) {
     applyLoggedEnvironmentLifecycleEvent(deps, {
       environmentId: claimedEnvironment.id,
-      event: { type: "destroy.completed" },
+      event: {
+        type: "destroy.completed",
+        destroyAttemptId: execution.id,
+      },
     });
     return;
   }

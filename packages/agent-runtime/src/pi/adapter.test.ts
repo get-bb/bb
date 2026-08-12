@@ -3,6 +3,7 @@ import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
+  createStandaloneBuiltinCompactCommandInput,
   DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
   threadScope,
   turnScope,
@@ -331,6 +332,27 @@ describe("pi provider adapter", () => {
     });
   });
 
+  it("buildCommand thread/fork forwards the provider checkpoint", () => {
+    const adapter = createPiProviderAdapter();
+    const cmd = adapter.buildCommandPlan({
+      type: "thread/fork",
+      cwd: "/tmp/worktree",
+      threadId: "t1",
+      sourceProviderThreadId: "source-session",
+      sourceProviderCheckpointId: "pi-entry-42",
+      instructionMode: "append",
+      options: fullProviderExecutionContext,
+    });
+
+    expect(cmd).toMatchObject({
+      method: "thread/fork",
+      params: {
+        providerCheckpointId: "pi-entry-42",
+        sourceProviderThreadId: "source-session",
+      },
+    });
+  });
+
   it("buildCommand thread/start maps skill roots to Pi additional skill paths", () => {
     const adapter = createPiProviderAdapter();
     const cmd = adapter.buildCommandPlan({
@@ -530,6 +552,39 @@ describe("pi provider adapter", () => {
     });
   });
 
+  it("maps the selected compact command turn to the bridge compact command", () => {
+    const adapter = createPiProviderAdapter();
+    expect(
+      adapter.buildCommandPlan({
+        type: "turn/start",
+        clientRequestId: "creq_222222228c",
+        threadId: "bb-t1",
+        providerThreadId: "pi-session-1",
+        input: createStandaloneBuiltinCompactCommandInput(),
+        options: fullProviderExecutionContext,
+      }),
+    ).toEqual({
+      kind: "request",
+      method: "thread/compact",
+      params: { threadId: "pi-session-1" },
+    });
+  });
+
+  it("buildCommand thread/discard maps to destructive bridge cleanup", () => {
+    const adapter = createPiProviderAdapter();
+    expect(
+      adapter.buildCommandPlan({
+        type: "thread/discard",
+        threadId: "bb-staging",
+        providerThreadId: "pi-staging",
+      }),
+    ).toEqual({
+      kind: "request",
+      method: "thread/discard",
+      params: { threadId: "pi-staging" },
+    });
+  });
+
   it("buildCommand turn/start includes input", () => {
     const adapter = createPiProviderAdapter();
     const cmd = adapter.buildCommandPlan({
@@ -646,9 +701,10 @@ describe("pi provider adapter", () => {
     // Start a turn first
     adapter.translateEvent(loadFixture("agent-start.json"));
 
-    const events = adapter.translateEvent(
-      loadFixture("agent-end-with-message.json"),
-    );
+    const events = adapter.translateEvent({
+      ...loadFixture("agent-end-with-message.json"),
+      providerCheckpointId: "pi-entry-42",
+    });
 
     expect(events).toContainEqual(
       expect.objectContaining({
@@ -664,6 +720,7 @@ describe("pi provider adapter", () => {
         type: "turn/completed",
         scope: turnScope("turn-1"),
         status: "completed",
+        providerCheckpointId: "pi-entry-42",
       }),
     );
     expect(events.some((event) => event.type === "provider/error")).toBe(false);
@@ -786,6 +843,130 @@ describe("pi provider adapter", () => {
       }),
     );
   });
+
+  it.each([
+    {
+      label: "failed",
+      end: {
+        aborted: false,
+        errorMessage: "Automatic compaction overflowed",
+      },
+      detail: "Automatic compaction overflowed",
+    },
+    {
+      label: "aborted",
+      end: { aborted: true },
+      detail: "Automatic context compaction was interrupted",
+    },
+  ])("terminates a $label automatic compaction", ({ end, detail }) => {
+    const adapter = createPiProviderAdapter();
+    adapter.translateEvent(loadFixture("agent-start.json"));
+    adapter.translateEvent({
+      type: "compaction_start",
+      reason: "threshold",
+    } satisfies AgentSessionEvent);
+
+    const events = adapter.translateEvent({
+      type: "compaction_end",
+      reason: "threshold",
+      result: undefined,
+      willRetry: false,
+      ...end,
+    } satisfies AgentSessionEvent);
+
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "provider/error",
+        scope: turnScope("turn-1"),
+        detail,
+      }),
+    );
+    expect(events.some((event) => event.type === "thread/compacted")).toBe(
+      false,
+    );
+  });
+
+  function translateManualCompaction(args: {
+    aborted: boolean;
+    errorMessage?: string;
+  }) {
+    const adapter = createPiProviderAdapter();
+    const context = { threadId: "bb-thread-1" };
+    const started = adapter.translateEvent(
+      {
+        type: "compaction_start",
+        reason: "manual",
+      } satisfies AgentSessionEvent,
+      context,
+    );
+    const completed = adapter.translateEvent(
+      {
+        type: "compaction_end",
+        reason: "manual",
+        result: undefined,
+        willRetry: false,
+        ...args,
+      } satisfies AgentSessionEvent,
+      context,
+    );
+    return { completed, started };
+  }
+
+  it("translateEvent manual compaction owns a complete maintenance turn", () => {
+    const { completed, started } = translateManualCompaction({
+      aborted: false,
+    });
+
+    expect(started.map((event) => event.type)).toEqual([
+      "turn/started",
+      "item/started",
+    ]);
+    expect(completed).toEqual([
+      expect.objectContaining({
+        type: "thread/compacted",
+        scope: turnScope("turn-1"),
+      }),
+      expect.objectContaining({
+        type: "turn/completed",
+        scope: turnScope("turn-1"),
+        status: "completed",
+      }),
+    ]);
+  });
+
+  it.each([
+    {
+      label: "failed",
+      args: {
+        aborted: false,
+        errorMessage:
+          "Compaction failed: Nothing to compact (session too small)",
+      },
+      expected: {
+        status: "failed",
+        error: {
+          message: "Compaction failed: Nothing to compact (session too small)",
+        },
+      },
+    },
+    {
+      label: "aborted",
+      args: { aborted: true },
+      expected: { status: "interrupted" },
+    },
+  ])(
+    "translateEvent $label manual compaction does not report success",
+    ({ args, expected }) => {
+      const { completed } = translateManualCompaction(args);
+      expect(completed).toEqual([
+        expect.objectContaining({
+          type: "turn/completed",
+          scope: turnScope("turn-1"),
+          ...expected,
+        }),
+      ]);
+    },
+  );
 
   it("translateEvent compaction_end without a known turn is unhandled", () => {
     const adapter = createPiProviderAdapter();
@@ -1115,7 +1296,7 @@ describe("pi provider adapter", () => {
   });
 
   it("translateEvent drops agent_settled instead of surfacing it in the transcript", () => {
-    // Pi 0.82 emits agent_settled after every agent run. Without an explicit
+    // Pi emits agent_settled after every agent run. Without an explicit
     // ignore it falls through to provider/unhandled, which renders as
     // "Unhandled Pi event" in the thread for the user on every single turn.
     const adapter = createPiProviderAdapter();

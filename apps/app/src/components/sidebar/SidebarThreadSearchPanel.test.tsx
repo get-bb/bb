@@ -13,13 +13,13 @@ import {
   useThreadSearch,
   type UseThreadSearchResult,
 } from "@/hooks/queries/thread-queries";
-import { isThreadSearchKeyboardEventTarget } from "./AppSidebar";
 import { ProjectListActionButtons } from "./ProjectList";
 import { SidebarThreadSearchPanel } from "./SidebarThreadSearchPanel";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import {
   getSidebarThreadSearchOptionId,
   haveSameSidebarThreadSearchNavigationItems,
+  isThreadSearchKeyboardEventTarget,
   type SidebarThreadSearchNavigationItem,
 } from "./sidebarThreadSearch";
 

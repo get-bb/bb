@@ -57,6 +57,10 @@ interface StaleProvider {
  * protocol) and the agent CLIs, which carry their own brand marks so it is
  * clear which agent is stale without hovering. Both chips open the
  * consolidated Settings → Updates view.
+ *
+ * A CLI that is not installed at all is not an update and gets no chip here:
+ * there is no installed version to stale against, and the Settings → Updates
+ * page already surfaces the install prompt for it.
  */
 export function SidebarUpdatesBadge({ onNavigate }: SidebarUpdatesBadgeProps) {
   const inventory = useUpdateInventory();
@@ -70,9 +74,14 @@ export function SidebarUpdatesBadge({ onNavigate }: SidebarUpdatesBadgeProps) {
     stuckDaemonCount;
 
   // One mark per provider, even when the same CLI is stale on several machines.
+  // Missing CLIs are install prompts, not updates: skip them so the chip never
+  // claims an update is available for a CLI that isn't installed.
   const staleProvidersByKey = new Map<ProviderCliKey, StaleProvider>();
   for (const machine of inventory.machines) {
     for (const issue of machine.issues) {
+      if (!issue.status.installed) {
+        continue;
+      }
       if (!staleProvidersByKey.has(issue.provider)) {
         staleProvidersByKey.set(issue.provider, {
           provider: issue.provider,

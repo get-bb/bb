@@ -236,7 +236,7 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
           activeArtifactId: args.activeArtifactId ?? null,
           rootDir: args.rootDir,
           version: manifest.version,
-          enabled: existing?.enabled ?? true,
+          enabled: true,
         });
         const row = getInstalledPlugin(deps.db, manifest.id);
         if (row) {

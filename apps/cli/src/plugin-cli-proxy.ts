@@ -20,15 +20,101 @@ const CONTRIBUTIONS_TIMEOUT_MS = 2000;
 
 /**
  * Result of asking the server for plugin CLI contributions. "unreachable"
- * (fetch threw: server down, timeout) is distinguished from "invalid" (an
- * old server without the route, or a malformed payload) so unknown-command
- * handling can tell the user to start bb instead of printing a misleading
- * "unknown command" for a plugin command that would exist if bb were up.
+ * (fetch threw: server down, blocked, timeout) is distinguished from
+ * "invalid" (an old server without the route, or a malformed payload) so
+ * unknown-command handling can tell the user to start bb instead of printing
+ * a misleading "unknown command" for a plugin command that would exist if bb
+ * were up. The thrown error is kept: EPERM (blocked shell) and a timeout mean
+ * something very different from ECONNREFUSED (nothing listening).
  */
 export type PluginCliContributionsResult =
   | { outcome: "ok"; contributions: PluginCliContributionEntry[] }
-  | { outcome: "unreachable" }
+  | { outcome: "unreachable"; cause: unknown }
   | { outcome: "invalid" };
+
+/**
+ * Diagnose a failed probe of the server without overclaiming: only when every
+ * connection attempt reports ECONNREFUSED is there evidence that bb is not
+ * running. Blocked connections (sandboxed agent shells) and timeouts name the
+ * address and errno so the reader — often an agent — does not declare a
+ * running bb dead.
+ */
+export function describeUnreachableServer(
+  baseUrl: string,
+  cause: unknown,
+  timeoutMs: number = CONTRIBUTIONS_TIMEOUT_MS,
+): string {
+  let blockedCode: "EPERM" | "EACCES" | undefined;
+  let timedOut = false;
+  const messages: string[] = [];
+  const terminalCodes: Array<string | undefined> = [];
+  const seen = new Set<object>();
+  const pending: unknown[] = [cause];
+
+  while (pending.length > 0) {
+    const current = pending.pop();
+    if (typeof current !== "object" || current === null) {
+      terminalCodes.push(undefined);
+      continue;
+    }
+    if (seen.has(current)) {
+      terminalCodes.push(undefined);
+      continue;
+    }
+    seen.add(current);
+    const record = current as {
+      cause?: unknown;
+      code?: unknown;
+      errors?: unknown;
+      name?: unknown;
+      message?: unknown;
+    };
+    const code = typeof record.code === "string" ? record.code : undefined;
+    if (code === "EPERM" || code === "EACCES") {
+      blockedCode ??= code;
+    }
+    if (record.name === "TimeoutError") {
+      timedOut = true;
+    }
+    if (typeof record.message === "string" && record.message.length > 0) {
+      messages.push(record.message);
+    }
+
+    const children: unknown[] = [];
+    if (record.cause !== undefined && record.cause !== null) {
+      children.push(record.cause);
+    }
+    if (Array.isArray(record.errors)) {
+      children.push(...record.errors);
+    }
+    if (children.length === 0) {
+      terminalCodes.push(code);
+      continue;
+    }
+    for (let index = children.length - 1; index >= 0; index -= 1) {
+      pending.push(children[index]);
+    }
+  }
+
+  if (blockedCode !== undefined) {
+    return (
+      `Cannot reach bb at ${baseUrl}: ${blockedCode} — the connection was blocked. ` +
+      `bb may still be running; check sandbox or firewall rules for this shell.`
+    );
+  }
+  if (timedOut) {
+    return `bb did not respond at ${baseUrl} within ${timeoutMs}ms — it may be busy or unreachable.`;
+  }
+  if (
+    terminalCodes.length > 0 &&
+    terminalCodes.every((code) => code === "ECONNREFUSED")
+  ) {
+    return `bb is not running at ${baseUrl} — open the bb app, then re-run this command.`;
+  }
+  return `Cannot reach bb at ${baseUrl}: ${
+    messages.length > 0 ? messages.join(": ") : String(cause)
+  }`;
+}
 
 /** Fetch plugin CLI contributions with a short timeout. */
 export async function fetchPluginCliContributions(
@@ -40,8 +126,8 @@ export async function fetchPluginCliContributions(
     response = await cliFetch(`${baseUrl}/api/v1/plugins/contributions`, {
       signal: AbortSignal.timeout(timeoutMs),
     });
-  } catch {
-    return { outcome: "unreachable" };
+  } catch (error) {
+    return { outcome: "unreachable", cause: error };
   }
   try {
     if (!response.ok) return { outcome: "invalid" };

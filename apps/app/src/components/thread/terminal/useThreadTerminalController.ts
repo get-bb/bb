@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import type { TerminalSession } from "@bb/server-contract";
 import {
   useCloseTerminal,
@@ -17,10 +18,13 @@ import {
 import {
   useActiveFixedRightTerminalId,
   useCloseFixedSecondaryPanel,
-  useFixedPanelTabsState,
   useRemoveFixedRightTerminalTab,
   useSetFixedRightTerminalActiveTerminal,
 } from "@/lib/fixed-panel-tabs";
+import {
+  applyTerminalSessionClose,
+  applyTerminalSessionUpsert,
+} from "@/hooks/cache-owners/terminal-cache-owner";
 import {
   shouldCloseUnretainedDisconnectedTerminalSession,
   shouldShowRetainedTerminalSession,
@@ -39,6 +43,8 @@ export type ThreadTerminalTarget =
 
 export interface ThreadTerminalControllerArgs {
   canCreateTerminal: boolean;
+  isPanelOpen: boolean;
+  isPanelPersistedOpen: boolean;
   panelStateId?: string;
   target: ThreadTerminalTarget;
 }
@@ -49,6 +55,7 @@ export interface ThreadTerminalController {
   canCreateTerminal: boolean;
   closingTerminalId: string | null;
   emptyTerminalMessage: string;
+  handleActiveTerminalSessionChange: (session: TerminalSession) => void;
   handleActiveTerminalTitleChange: ThreadTerminalTitleChangeHandler;
   handleActiveTerminalUserInput: ThreadTerminalActionHandler;
   handleClosePanel: ThreadTerminalActionHandler;
@@ -118,6 +125,16 @@ export function shouldAutoCloseCleanTerminalSession({
   );
 }
 
+export function shouldAutoCloseCleanTerminalSessionsForPanel({
+  isPanelOpen,
+  isPanelPersistedOpen,
+}: {
+  isPanelOpen: boolean;
+  isPanelPersistedOpen: boolean;
+}): boolean {
+  return !isPanelOpen && !isPanelPersistedOpen;
+}
+
 function pickActiveTerminalId(
   sessions: readonly TerminalSession[],
   preferredTerminalId: string | null,
@@ -146,9 +163,12 @@ export function terminalStatusLabel(session: TerminalSession): string {
 
 export function useThreadTerminalController({
   canCreateTerminal,
+  isPanelOpen,
+  isPanelPersistedOpen,
   panelStateId,
   target,
 }: ThreadTerminalControllerArgs): ThreadTerminalController {
+  const queryClient = useQueryClient();
   const terminalTargetKind = target.kind;
   const terminalTargetId =
     target.kind === "thread"
@@ -162,11 +182,6 @@ export function useThreadTerminalController({
   const fixedPanelStateId = panelStateId ?? terminalTargetId;
   const fixedPanelSyncThreadId =
     target.kind === "thread" ? target.threadId : null;
-  const fixedPanelTabsState = useFixedPanelTabsState(
-    fixedPanelStateId,
-    fixedPanelSyncThreadId,
-  );
-  const isRightPanelOpen = fixedPanelTabsState.secondary.isOpen;
   const activeFixedTerminalId = useActiveFixedRightTerminalId(
     fixedPanelStateId,
     fixedPanelSyncThreadId,
@@ -195,12 +210,12 @@ export function useThreadTerminalController({
     string | null
   >(null);
   const threadTerminalsQuery = useThreadTerminals(threadQueryId, {
-    enabled: isRightPanelOpen && terminalTargetKind === "thread",
+    enabled: isPanelOpen && terminalTargetKind === "thread",
   });
   const environmentTerminalsQuery = useEnvironmentTerminals(
     environmentQueryId,
     {
-      enabled: isRightPanelOpen && terminalTargetKind === "environment",
+      enabled: isPanelOpen && terminalTargetKind === "environment",
     },
   );
   const globalTerminalsQuery = useTerminals(
@@ -212,7 +227,7 @@ export function useThreadTerminalController({
         }
       : null,
     {
-      enabled: isRightPanelOpen && terminalTargetKind === "host_path",
+      enabled: isPanelOpen && terminalTargetKind === "host_path",
     },
   );
   const terminalsQuery =
@@ -280,7 +295,7 @@ export function useThreadTerminalController({
     activeSession.id === retainedTerminalViewId;
 
   useEffect(() => {
-    if (!isRightPanelOpen) {
+    if (!isPanelOpen) {
       setRetainedTerminalViewId(null);
       return;
     }
@@ -298,12 +313,12 @@ export function useThreadTerminalController({
     activeSession?.id,
     activeSession?.status,
     activeTerminalId,
-    isRightPanelOpen,
+    isPanelOpen,
     retainedTerminalViewId,
   ]);
 
   useEffect(() => {
-    if (!isRightPanelOpen || terminalsQuery.isLoading || terminalsQuery.error) {
+    if (!isPanelOpen || terminalsQuery.isLoading || terminalsQuery.error) {
       return;
     }
     if (activeFixedTerminalId === activeTerminalId) {
@@ -313,7 +328,7 @@ export function useThreadTerminalController({
   }, [
     activeFixedTerminalId,
     activeTerminalId,
-    isRightPanelOpen,
+    isPanelOpen,
     setActiveFixedTerminal,
     terminalsQuery.error,
     terminalsQuery.isLoading,
@@ -415,7 +430,7 @@ export function useThreadTerminalController({
   );
 
   useEffect(() => {
-    if (!isRightPanelOpen || terminalsQuery.isLoading || terminalsQuery.error) {
+    if (!isPanelOpen || terminalsQuery.isLoading || terminalsQuery.error) {
       return;
     }
     for (const session of sessions) {
@@ -448,7 +463,7 @@ export function useThreadTerminalController({
     }
   }, [
     closeTerminal,
-    isRightPanelOpen,
+    isPanelOpen,
     removeFixedTerminalTab,
     retainedTerminalViewId,
     sessions,
@@ -488,7 +503,12 @@ export function useThreadTerminalController({
   );
 
   useEffect(() => {
-    if (isRightPanelOpen) {
+    if (
+      !shouldAutoCloseCleanTerminalSessionsForPanel({
+        isPanelOpen,
+        isPanelPersistedOpen,
+      })
+    ) {
       return;
     }
     for (const session of visibleSessions) {
@@ -521,7 +541,8 @@ export function useThreadTerminalController({
     }
   }, [
     closeTerminal,
-    isRightPanelOpen,
+    isPanelOpen,
+    isPanelPersistedOpen,
     removeFixedTerminalTab,
     visibleSessions,
   ]);
@@ -555,6 +576,21 @@ export function useThreadTerminalController({
       });
     },
     [closeTerminal, removeFixedTerminalTab],
+  );
+
+  const handleActiveTerminalSessionChange = useCallback(
+    (session: TerminalSession) => {
+      if (session.status === "exited") {
+        applyTerminalSessionClose({
+          queryClient,
+          session,
+          terminalId: session.id,
+        });
+        return;
+      }
+      applyTerminalSessionUpsert({ queryClient, session });
+    },
+    [queryClient],
   );
 
   const handleActiveTerminalUserInput = useCallback(() => {
@@ -682,6 +718,7 @@ export function useThreadTerminalController({
     canCreateTerminal,
     closingTerminalId,
     emptyTerminalMessage,
+    handleActiveTerminalSessionChange,
     handleActiveTerminalTitleChange,
     handleActiveTerminalUserInput,
     handleClosePanel,
@@ -690,7 +727,7 @@ export function useThreadTerminalController({
     handleSelectTerminal,
     hasTerminalQueryError: terminalsQuery.error !== null,
     isCreateTerminalPending,
-    isPanelOpen: isRightPanelOpen,
+    isPanelOpen,
     isTerminalQueryLoading: terminalsQuery.isLoading,
     showTerminalPlaceholders,
     shouldRetainActiveTerminalView,

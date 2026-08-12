@@ -1,7 +1,10 @@
 // @vitest-environment jsdom
 
 import { cleanup, renderHook, waitFor } from "@testing-library/react";
-import type { SystemExecutionOptionsResponse } from "@bb/server-contract";
+import type {
+  OnboardingAgentOverview,
+  SystemExecutionOptionsResponse,
+} from "@bb/server-contract";
 import type {
   ProviderCliStatusResponse,
   ProviderUsageResponse,
@@ -11,12 +14,14 @@ import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import {
   hostProviderCliStatusQueryKey,
+  onboardingAgentsQueryKey,
   systemExecutionOptionsQueryKey,
   systemProvidersQueryKey,
   systemUsageLimitsQueryKey,
 } from "./query-keys";
 import {
   useHostProviderCliStatus,
+  useOnboardingAgents,
   useSystemExecutionOptions,
   useSystemUsageLimits,
 } from "./system-queries";
@@ -27,6 +32,7 @@ vi.mock("@/lib/sdk", () => ({
     hosts: { providerCliStatus: vi.fn() },
     system: {
       executionOptions: vi.fn(),
+      onboardingAgents: vi.fn(),
       usageLimits: vi.fn(),
     },
   },
@@ -41,6 +47,22 @@ const EXECUTION_OPTIONS_RESPONSE: SystemExecutionOptionsResponse = {
 };
 
 const PROVIDER_CLI_STATUS_RESPONSE = {} as ProviderCliStatusResponse;
+
+function onboardingOverview(providerId: string): OnboardingAgentOverview {
+  return {
+    agents: [
+      {
+        providerId,
+        displayName: providerId,
+        status: "connected",
+        planLabel: null,
+        accountEmail: null,
+        canInstall: false,
+        loginCommand: null,
+      },
+    ],
+  };
+}
 
 const PROVIDER_USAGE_RESPONSE: ProviderUsageResponse = {
   codex: { status: "unauthenticated" },
@@ -162,6 +184,62 @@ describe("useHostProviderCliStatus", () => {
         staleTime: Infinity,
       }),
     );
+  });
+});
+
+describe("useOnboardingAgents", () => {
+  it("separates connected-provider results for different target machines", async () => {
+    vi.mocked(sdk.system.onboardingAgents).mockImplementation(async (args) =>
+      onboardingOverview(args?.hostId === "host-a" ? "codex" : "claude-code"),
+    );
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+
+    const { result } = renderHook(
+      () => [
+        useOnboardingAgents({ hostId: "host-a", poll: false }),
+        useOnboardingAgents({ hostId: "host-b", poll: false }),
+      ],
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(result.current[0]?.data?.agents[0]?.providerId).toBe("codex");
+      expect(result.current[1]?.data?.agents[0]?.providerId).toBe(
+        "claude-code",
+      );
+    });
+
+    const hostAKey = onboardingAgentsQueryKey({
+      environmentId: null,
+      hostId: "host-a",
+    });
+    const hostBKey = onboardingAgentsQueryKey({
+      environmentId: null,
+      hostId: "host-b",
+    });
+    expect(hostAKey).not.toEqual(hostBKey);
+    expect(queryClient.getQueryState(hostAKey)).toBeDefined();
+    expect(queryClient.getQueryState(hostBKey)).toBeDefined();
+  });
+
+  it("routes reusable worktrees through their environment", async () => {
+    vi.mocked(sdk.system.onboardingAgents).mockResolvedValue(
+      onboardingOverview("claude-code"),
+    );
+    const { wrapper } = createQueryClientTestHarness();
+
+    renderHook(
+      () => useOnboardingAgents({ environmentId: "env-remote", poll: false }),
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(sdk.system.onboardingAgents).toHaveBeenCalledWith({
+        environmentId: "env-remote",
+        hostId: undefined,
+        signal: expect.any(AbortSignal),
+      });
+    });
   });
 });
 

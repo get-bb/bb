@@ -9,6 +9,7 @@ import {
   type BbAppManagedEnvFile,
 } from "@bb/config/bb-app-managed-config";
 import {
+  validateInferenceFallbackModel,
   validateInferenceModel,
   validateTranscriptionModel,
 } from "@bb/config/inference-model";
@@ -105,10 +106,16 @@ export function applyBbAppManagedConfig(
     args.managedConfig.customAcpAgents ?? args.baseConfig.customAcpAgents;
   args.targetConfig.customModels =
     args.managedConfig.customModels ?? args.baseConfig.customModels;
+  args.targetConfig.sharedSkillRoots =
+    args.managedConfig.sharedSkillRoots ?? args.baseConfig.sharedSkillRoots;
   args.targetConfig.inferenceModel =
     managedConfig.BB_INFERENCE !== undefined
       ? validateInferenceModel(managedConfig.BB_INFERENCE)
       : args.baseConfig.inferenceModel;
+  args.targetConfig.inferenceFallbackModel =
+    managedConfig.BB_INFERENCE_FALLBACK !== undefined
+      ? validateInferenceFallbackModel(managedConfig.BB_INFERENCE_FALLBACK)
+      : args.baseConfig.inferenceFallbackModel;
   args.targetConfig.transcriptionModel =
     managedConfig.BB_TRANSCRIPTION !== undefined
       ? validateTranscriptionModel(managedConfig.BB_TRANSCRIPTION)

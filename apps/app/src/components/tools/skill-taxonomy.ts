@@ -12,6 +12,10 @@ export const SKILL_SCOPE_LABELS: Record<SkillScope, string> = {
   "claude-project": "Claude · project",
   "codex-user": "Codex · user",
   "codex-project": "Codex · project",
+  "cursor-user": "Cursor · user",
+  "cursor-project": "Cursor · project",
+  "shared-user": "Shared · user",
+  "shared-project": "Shared · project",
   plugin: "Plugin",
 };
 
@@ -32,7 +36,11 @@ export function isSkillEditable(
     case "claude-project":
     case "codex-user":
     case "codex-project":
+    case "cursor-user":
+    case "cursor-project":
       return skill.manageable;
+    case "shared-user":
+    case "shared-project":
     case "bb-builtin":
     case "plugin":
       return false;

@@ -11,7 +11,7 @@ import {
   makeWorkspaceStatus,
 } from "@bb/test-helpers";
 import { describe, expect, it, vi } from "vitest";
-import { WatchManager } from "./watch-manager.js";
+import { WatchManager, type WatchManagerOptions } from "./watch-manager.js";
 
 type GetLocalStateFingerprintResult = Awaited<
   ReturnType<HostWorkspace["getLocalStateFingerprint"]>
@@ -41,20 +41,22 @@ function createDeferred<TValue>(): Deferred<TValue> {
   return { promise, resolve, reject };
 }
 
-function createFakeWorkspace(path: string) {
+function createFakeWorkspace(path: string, isGitRepo = true) {
   let localStateFingerprint: GetLocalStateFingerprintResult = `local:${path}:initial`;
   let localStateFingerprintError: Error | null = null;
   let sharedGitRefsFingerprint: GetSharedGitRefsFingerprintResult = `refs:${path}:initial`;
   let sharedGitRefsFingerprintError: Error | null = null;
+  const getLocalStateFingerprint = vi.fn(async () => {
+    if (localStateFingerprintError) {
+      throw localStateFingerprintError;
+    }
+    return localStateFingerprint;
+  });
   const workspace = {
     ...makeFakeHostWorkspace({
       path,
-      getLocalStateFingerprint: vi.fn(async () => {
-        if (localStateFingerprintError) {
-          throw localStateFingerprintError;
-        }
-        return localStateFingerprint;
-      }),
+      isGitRepo,
+      getLocalStateFingerprint,
       getSharedGitRefsFingerprint: vi.fn(async () => {
         if (sharedGitRefsFingerprintError) {
           throw sharedGitRefsFingerprintError;
@@ -72,6 +74,7 @@ function createFakeWorkspace(path: string) {
       getAdditionalWorkspaceWriteRoots: vi.fn(async () => []),
       destroy: vi.fn(async () => undefined),
     }),
+    getLocalStateFingerprint,
     setLocalStateFingerprint(value: GetLocalStateFingerprintResult) {
       localStateFingerprint = value;
     },
@@ -114,6 +117,79 @@ function createFakeHostWatcher(
 }
 
 describe("WatchManager", () => {
+  it("starts watching before initial workspace fingerprints finish", async () => {
+    const workspace = createFakeWorkspace("/tmp/env-watch");
+    const localFingerprint = createDeferred<GetLocalStateFingerprintResult>();
+    workspace.getLocalStateFingerprint.mockImplementationOnce(
+      () => localFingerprint.promise,
+    );
+    const { hostWatcher, watchWorkspace } = createFakeHostWatcher();
+    const manager = new WatchManager({
+      hostWatcher,
+      provisionWorkspace: vi.fn(async () => workspace),
+    });
+
+    await manager.replaceWatchSet({
+      generation: 1,
+      workspaceTargets: [
+        {
+          environmentId: "env-watch",
+          workspaceContext: {
+            workspacePath: "/tmp/env-watch",
+            workspaceProvisionType: "unmanaged",
+          },
+        },
+      ],
+      threadStorageTargets: [],
+    });
+
+    expect(watchWorkspace).toHaveBeenCalledTimes(1);
+    expect(workspace.getLocalStateFingerprint).toHaveBeenCalledTimes(1);
+
+    localFingerprint.resolve("local:/tmp/env-watch:initial");
+    await vi.waitFor(() => {
+      expect(workspace.getSharedGitRefsFingerprint).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("reconciles live content when the workspace watcher becomes ready", async () => {
+    let watchWorkspaceArgs: WatchWorkspaceArgs | undefined;
+    const workspace = createFakeWorkspace("/tmp/env-watch");
+    const { hostWatcher } = createFakeHostWatcher({
+      watchWorkspaceImplementation: (args) => {
+        watchWorkspaceArgs = args;
+        return () => undefined;
+      },
+    });
+    const onWorkspaceStatusChanged = vi.fn();
+    const manager = new WatchManager({
+      hostWatcher,
+      provisionWorkspace: vi.fn(async () => workspace),
+      onWorkspaceStatusChanged,
+    });
+
+    await manager.replaceWatchSet({
+      generation: 1,
+      workspaceTargets: [
+        {
+          environmentId: "env-watch",
+          workspaceContext: {
+            workspacePath: "/tmp/env-watch",
+            workspaceProvisionType: "unmanaged",
+          },
+        },
+      ],
+      threadStorageTargets: [],
+    });
+
+    watchWorkspaceArgs?.onReady();
+
+    expect(onWorkspaceStatusChanged).toHaveBeenCalledWith({
+      changeKinds: ["work-status-changed"],
+      environmentId: "env-watch",
+    });
+  });
+
   it("starts workspace watches from snapshots and stops removed targets", async () => {
     const stopWatchingStatus = vi.fn(() => undefined);
     let watchWorkspaceArgs: WatchWorkspaceArgs | undefined;
@@ -212,6 +288,11 @@ describe("WatchManager", () => {
       ],
       threadStorageTargets: [],
     });
+    await vi.waitFor(() => {
+      expect(workspace.getLocalStateFingerprint).toHaveBeenCalledTimes(1);
+    });
+    workspace.getLocalStateFingerprint.mockClear();
+    workspace.setLocalStateFingerprintError(new Error("status too large"));
 
     watchWorkspaceArgs?.onChange({
       changedPaths: ["/tmp/env-watch/README.md"],
@@ -226,6 +307,93 @@ describe("WatchManager", () => {
       changeKinds: ["work-status-changed"],
       environmentId: "env-watch",
     });
+    expect(workspace.getLocalStateFingerprint).not.toHaveBeenCalled();
+  });
+
+  it("refreshes workspace metadata when a plain workspace becomes a git repository", async () => {
+    let watchWorkspaceArgs: WatchWorkspaceArgs | undefined;
+    const plainWorkspace = createFakeWorkspace("/tmp/env-watch", false);
+    const gitWorkspace = createFakeWorkspace("/tmp/env-watch");
+    const provisionWorkspace = vi
+      .fn<NonNullable<WatchManagerOptions["provisionWorkspace"]>>()
+      .mockResolvedValue(plainWorkspace);
+    const refreshWorkspace = vi
+      .fn<NonNullable<WatchManagerOptions["refreshWorkspace"]>>()
+      .mockResolvedValue(gitWorkspace);
+    const { hostWatcher } = createFakeHostWatcher({
+      watchWorkspaceImplementation: (args) => {
+        watchWorkspaceArgs = args;
+        return () => undefined;
+      },
+    });
+    const onWorkspaceMetadataChanged = vi.fn();
+    const onWorkspaceStatusChanged = vi.fn();
+    const manager = new WatchManager({
+      hostWatcher,
+      provisionWorkspace,
+      refreshWorkspace,
+      onWorkspaceMetadataChanged,
+      onWorkspaceStatusChanged,
+    });
+
+    await manager.replaceWatchSet({
+      generation: 1,
+      workspaceTargets: [
+        {
+          environmentId: "env-watch",
+          workspaceContext: {
+            workspacePath: "/tmp/env-watch",
+            workspaceProvisionType: "unmanaged",
+          },
+        },
+      ],
+      threadStorageTargets: [],
+    });
+    watchWorkspaceArgs?.onChange({
+      changedPaths: ["/tmp/env-watch/file.txt"],
+      changeKinds: ["workspace-content-changed"],
+      kind: "workspace-status-changed",
+      environmentId: "env-watch",
+    });
+    await vi.waitFor(() => {
+      expect(onWorkspaceStatusChanged).toHaveBeenCalledWith({
+        changeKinds: ["work-status-changed"],
+        environmentId: "env-watch",
+      });
+    });
+    expect(provisionWorkspace).toHaveBeenCalledTimes(1);
+    expect(refreshWorkspace).not.toHaveBeenCalled();
+    expect(onWorkspaceMetadataChanged).not.toHaveBeenCalled();
+    onWorkspaceStatusChanged.mockClear();
+
+    watchWorkspaceArgs?.onChange({
+      changedPaths: ["/tmp/env-watch/.git"],
+      changeKinds: [
+        "workspace-content-changed",
+        "workspace-git-repository-created",
+      ],
+      kind: "workspace-status-changed",
+      environmentId: "env-watch",
+    });
+
+    await vi.waitFor(() => {
+      expect(onWorkspaceMetadataChanged).toHaveBeenCalledWith({
+        environmentId: "env-watch",
+        workspace: {
+          path: "/tmp/env-watch",
+          isGitRepo: true,
+          isWorktree: false,
+          branchName: "main",
+          defaultBranch: "main",
+        },
+      });
+      expect(onWorkspaceStatusChanged).toHaveBeenCalledWith({
+        changeKinds: ["work-status-changed"],
+        environmentId: "env-watch",
+      });
+    });
+    expect(provisionWorkspace).toHaveBeenCalledTimes(1);
+    expect(refreshWorkspace).toHaveBeenCalledTimes(1);
   });
 
   it("suppresses git metadata notifications when the local fingerprint is unchanged", async () => {
@@ -559,10 +727,14 @@ describe("WatchManager", () => {
       threadStorageTargets: [],
     });
 
+    await vi.waitFor(() => {
+      expect(workspace.getLocalStateFingerprint).toHaveBeenCalledTimes(1);
+    });
+    workspace.getLocalStateFingerprint.mockClear();
     workspace.setLocalStateFingerprintError(new Error("workspace vanished"));
     watchWorkspaceArgs?.onChange({
-      changedPaths: ["/tmp/env-watch/README.md"],
-      changeKinds: ["workspace-content-changed"],
+      changedPaths: ["/tmp/env-watch/.git/index"],
+      changeKinds: ["workspace-git-changed"],
       kind: "workspace-status-changed",
       environmentId: "env-watch",
     });
@@ -582,8 +754,8 @@ describe("WatchManager", () => {
     workspace.setLocalStateFingerprintError(null);
     workspace.setLocalStateFingerprint("local:/tmp/env-watch:changed");
     watchWorkspaceArgs?.onChange({
-      changedPaths: ["/tmp/env-watch/src/index.ts"],
-      changeKinds: ["workspace-content-changed"],
+      changedPaths: ["/tmp/env-watch/.git/index"],
+      changeKinds: ["workspace-git-changed"],
       kind: "workspace-status-changed",
       environmentId: "env-watch",
     });

@@ -3,8 +3,11 @@ import { getThread, updateThread } from "@bb/db";
 import type { PromptInput } from "@bb/domain";
 import type { AppDeps, LoggedWorkSessionDeps } from "../../types.js";
 import { Type } from "@earendil-works/pi-ai";
-import { InferenceTimeoutError, inferenceComplete } from "../ai/inference.js";
-import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
+import {
+  INFERENCE_POLICY,
+  InferenceTimeoutError,
+  inferenceCompleteWithFallback,
+} from "../ai/inference.js";
 
 const MIN_TITLE_GENERATION_WORDS = 5;
 const MAX_GENERATED_TITLE_WORDS = 5;
@@ -151,64 +154,24 @@ export async function generateThreadMetadataWithOutcome(
   });
   const maxAttempts = Math.max(1, args.timeoutMaxAttempts ?? 1);
 
-  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    try {
-      const parsed = await inferenceComplete(deps, {
-        prompt,
-        schema: threadMetadataSchema,
-        ...(args.timeoutMs ? { timeoutMs: args.timeoutMs } : {}),
-      });
-
-      const metadata = normalizeGeneratedThreadMetadata(parsed);
-      if (attempt > 1) {
-        deps.logger.info(
-          {
-            attempts: attempt,
-            durationMs: Date.now() - startedAt,
-            threadId: args.threadId,
-          },
-          "Thread metadata inference completed after timeout retry",
-        );
-      }
-      return complete(metadata, metadata ? undefined : "inference-unavailable");
-    } catch (error) {
-      if (error instanceof InferenceTimeoutError) {
-        if (attempt < maxAttempts) {
-          deps.logger.info(
-            {
-              attempt,
-              maxAttempts,
-              threadId: args.threadId,
-              timeoutMs: error.timeoutMs,
-            },
-            "Thread metadata inference timed out; retrying",
-          );
-          continue;
-        }
-
-        deps.logger.info(
-          {
-            attempts: maxAttempts,
-            threadId: args.threadId,
-            timeoutMs: error.timeoutMs,
-          },
-          "Thread metadata inference timed out",
-        );
-        return complete(null, "timeout");
-      }
-
-      deps.logger.warn(
-        {
-          threadId: args.threadId,
-          ...runtimeErrorLogFields(deps.config, error),
-        },
-        "Failed to generate thread metadata",
-      );
-      return complete(null, "failed");
-    }
+  try {
+    const inference = await inferenceCompleteWithFallback(deps, {
+      label: "Thread metadata inference",
+      logContext: { threadId: args.threadId },
+      maxAttempts,
+      prompt,
+      retryDelayMs: INFERENCE_POLICY.threadMetadata.retryDelayMs,
+      schema: threadMetadataSchema,
+      timeoutMs: args.timeoutMs ?? INFERENCE_POLICY.threadMetadata.timeoutMs,
+    });
+    const metadata = normalizeGeneratedThreadMetadata(inference);
+    return complete(metadata, metadata ? undefined : "inference-unavailable");
+  } catch (error) {
+    return complete(
+      null,
+      error instanceof InferenceTimeoutError ? "timeout" : "failed",
+    );
   }
-
-  return complete(null, "failed");
 }
 
 export function applyGeneratedThreadTitle(

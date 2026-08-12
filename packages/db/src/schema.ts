@@ -153,11 +153,8 @@ export const projectExecutionDefaults = sqliteTable(
 );
 
 export const systemExperiments = sqliteTable("system_experiments", {
-  id: text("id").primaryKey(),
-  claudeCodeMockCliTraffic: integer("claude_code_mock_cli_traffic", {
-    mode: "boolean",
-  }).notNull(),
-  toolsHub: integer("tools_hub", { mode: "boolean" }).notNull().default(false),
+  key: text("key").primaryKey(),
+  value: integer("value", { mode: "boolean" }).notNull(),
   updatedAt: integer("updated_at").notNull(),
 });
 
@@ -448,6 +445,9 @@ export const environments = sqliteTable(
     defaultBranch: text("default_branch"),
     mergeBaseBranch: text("merge_base_branch"),
     destroyAttemptId: text("destroy_attempt_id"),
+    // Durable product-policy clock. Unlike updatedAt, metadata polling cannot
+    // move the start of an accidental-archive recovery window.
+    retireRequestedAt: integer("retire_requested_at"),
     workspaceProvisionType: text("workspace_provision_type")
       .$type<WorkspaceProvisionType>()
       .notNull(),
@@ -615,7 +615,10 @@ export const threadSearchSegments = sqliteTable(
       table.sourceKind,
       table.sourceKey,
     ),
-    index("thread_search_segments_thread_idx").on(table.threadId),
+    index("thread_search_segments_thread_source_seq_idx").on(
+      table.threadId,
+      table.sourceSeq,
+    ),
   ],
 );
 
@@ -678,6 +681,11 @@ export const events = sqliteTable(
       table.itemKind,
       table.sequence,
     ),
+    // The thread list checks all visible threads. Background-task events are
+    // rare, so this partial index keeps the cold read set small.
+    index("events_background_task_thread_type_item_sequence_idx")
+      .on(table.threadId, table.type, table.itemId, table.sequence)
+      .where(sql`${table.itemKind} = 'backgroundTask'`),
     index("events_thread_type_sequence_idx").on(
       table.threadId,
       table.type,
@@ -694,6 +702,15 @@ export const events = sqliteTable(
     index("events_completed_item_truncation_idx")
       .on(table.itemKind, table.createdAt, table.id)
       .where(sql`${table.type} = 'item/completed'`),
+    // Latest-goal lookup (listLatestGoalEventRowsByThreadIds) runs over every
+    // listed thread on each sidebar bootstrap. Goal events are rare, so this
+    // partial index stays tiny; the query must spell the same type list as
+    // literals for SQLite to accept the partial index.
+    index("events_goal_thread_sequence_idx")
+      .on(table.threadId, table.sequence)
+      .where(
+        sql`${table.type} IN ('thread/goal/updated', 'thread/goal/cleared')`,
+      ),
     check(
       "events_scope_shape_check",
       sql`(

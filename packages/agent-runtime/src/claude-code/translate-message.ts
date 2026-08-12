@@ -1,5 +1,7 @@
 import type {
   ProviderErrorInfo,
+  ProviderRateLimitState,
+  ProviderRateLimitStatus,
   ThreadEvent,
   ThreadEventItem,
   ThreadEventTokenUsageBreakdown,
@@ -65,6 +67,7 @@ export interface ClaudeTurnState {
   currentTurnId: string | undefined;
   cumulativeTokens: ThreadEventTokenUsageBreakdown;
   latestRequestContextTokens: number | undefined;
+  latestProviderCheckpointId: string | undefined;
   lastModelFallback:
     | {
         fallbackModel: string;
@@ -333,6 +336,97 @@ function buildClaudeRateLimitEventDetail(
   return details.join("; ");
 }
 
+function normalizeClaudeRateLimitStatus(
+  status: string,
+): ProviderRateLimitStatus {
+  switch (status) {
+    case "allowed":
+      return "allowed";
+    case "allowed_warning":
+      return "warning";
+    case "rejected":
+      return "blocked";
+    default:
+      return "unknown";
+  }
+}
+
+function claudeRateLimitLabel(providerKey: string | undefined): string | null {
+  switch (providerKey) {
+    case "five_hour":
+      return "Five-hour limit";
+    case "seven_day":
+      return "Weekly limit";
+    case "seven_day_opus":
+      return "Weekly Opus limit";
+    case "seven_day_sonnet":
+      return "Weekly Sonnet limit";
+    case "seven_day_overage_included":
+      return "Weekly included overage";
+    case "overage":
+      return "Overage";
+    default:
+      return null;
+  }
+}
+
+function normalizeClaudeOverageStatus(
+  status: string | undefined,
+): ProviderRateLimitState["overageStatus"] {
+  switch (status) {
+    case undefined:
+      return null;
+    case "allowed":
+      return "allowed";
+    case "allowed_warning":
+      return "warning";
+    case "rejected":
+      return "rejected";
+    default:
+      return "unavailable";
+  }
+}
+
+function normalizeClaudeRateLimits(
+  message: ClaudeRateLimitEvent,
+): ProviderRateLimitState {
+  const info = message.rate_limit_info;
+  const windowStatus = normalizeClaudeRateLimitStatus(info.status);
+  const overageStatus = normalizeClaudeOverageStatus(info.overageStatus);
+  const status =
+    windowStatus === "blocked" && overageStatus === "allowed"
+      ? "allowed"
+      : windowStatus === "blocked" && overageStatus === "warning"
+        ? "warning"
+        : windowStatus;
+  const providerKey = info.rateLimitType ?? null;
+
+  return {
+    providerId: "claude-code",
+    status,
+    kind:
+      providerKey === "overage"
+        ? "credits"
+        : providerKey === null
+          ? "unknown"
+          : "subscription-window",
+    windows: [
+      {
+        providerKey,
+        label: claudeRateLimitLabel(info.rateLimitType),
+        status: windowStatus,
+        resetsAtMs: info.resetsAt === undefined ? null : info.resetsAt * 1_000,
+      },
+    ],
+    reachedReason:
+      windowStatus === "blocked"
+        ? (info.rateLimitType ?? "rate_limit_rejected")
+        : null,
+    overageStatus,
+    overageReason: info.overageDisabledReason ?? null,
+  };
+}
+
 function isHardClaudeRateLimitRejection(
   message: ClaudeRateLimitEvent,
 ): boolean {
@@ -584,6 +678,10 @@ export function translateClaudeSdkMessage(
         });
       }
       const message = parsedMessage.data;
+      // Sidechain assistant messages belong to subagents/tools, not the root
+      // conversation lineage that thread/fork can retain through.
+      const providerCheckpointId =
+        parentToolCallId === undefined ? message.uuid : undefined;
       // Claude sends this model transition before it begins streaming from the
       // fallback model. Its richer system/model_* duplicate arrives only after
       // the response, so emit now and deduplicate that later event.
@@ -591,6 +689,9 @@ export function translateClaudeSdkMessage(
         extractClaudeFallbackOnlyAssistantMessage(message);
       if (fallbackTransition !== null) {
         const turnId = args.ensureTurnStarted({ events, state, threadId });
+        if (providerCheckpointId !== undefined) {
+          state.latestProviderCheckpointId = providerCheckpointId;
+        }
         if (
           !isDuplicateClaudeModelFallback(state, fallbackTransition, turnId)
         ) {
@@ -621,6 +722,9 @@ export function translateClaudeSdkMessage(
         if (!turnId) {
           return [];
         }
+        if (providerCheckpointId !== undefined) {
+          state.latestProviderCheckpointId = providerCheckpointId;
+        }
         if (hasCompletionBlockingClaudeTasks(state.tasksById)) {
           return events;
         }
@@ -630,6 +734,11 @@ export function translateClaudeSdkMessage(
           providerThreadId: "",
           scope: turnScope(turnId),
           status: "completed",
+          ...(state.latestProviderCheckpointId !== undefined
+            ? {
+                providerCheckpointId: state.latestProviderCheckpointId,
+              }
+            : {}),
         });
         args.turnState.finishTurn({ state, threadId: stateKey });
         return events;
@@ -639,6 +748,9 @@ export function translateClaudeSdkMessage(
         state,
         threadId,
       });
+      if (providerCheckpointId !== undefined) {
+        state.latestProviderCheckpointId = providerCheckpointId;
+      }
       const requestContextTokens = extractClaudeRequestContextTokens(message);
       if (requestContextTokens !== null) {
         state.latestRequestContextTokens = requestContextTokens;
@@ -886,6 +998,11 @@ export function translateClaudeSdkMessage(
           providerThreadId: "",
           scope: turnScope(state.currentTurnId),
           status: failed ? "failed" : "completed",
+          ...(state.latestProviderCheckpointId !== undefined
+            ? {
+                providerCheckpointId: state.latestProviderCheckpointId,
+              }
+            : {}),
         });
         args.turnState.finishTurn({ state, threadId: stateKey });
       }
@@ -902,8 +1019,15 @@ export function translateClaudeSdkMessage(
         });
       }
       const message = parsedMessage.data;
+      events.push({
+        type: "provider/rateLimits/updated",
+        threadId,
+        providerThreadId: "",
+        scope: threadScope(),
+        rateLimits: normalizeClaudeRateLimits(message),
+      });
       if (!isHardClaudeRateLimitRejection(message)) {
-        return [];
+        return events;
       }
       const turnId = state.currentTurnId ?? null;
       events.push(

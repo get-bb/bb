@@ -1,5 +1,7 @@
 import { Buffer } from "node:buffer";
+import { Readable } from "node:stream";
 import { describe, expect, it, vi } from "vitest";
+import { TERMINAL_DATA_MAX_BYTES } from "@bb/domain";
 import {
   collectLogLines,
   collectLogPayloads,
@@ -9,7 +11,10 @@ import {
   stubServerApi,
   type CommandRegistrar,
 } from "../helpers/command-output-harness.js";
-import { registerTerminalCommands } from "../../commands/terminal.js";
+import {
+  registerTerminalCommands,
+  resolveSendData,
+} from "../../commands/terminal.js";
 
 function makeTerminalSession(overrides: Record<string, unknown> = {}) {
   return {
@@ -298,32 +303,60 @@ describe("bb terminal command output", () => {
     });
   });
 
+  it("preserves arbitrary stdin bytes and appends enter as one byte", async () => {
+    const input = Buffer.from([0xff, 0xfe, 0x00, 0x80]);
+
+    const result = await resolveSendData(
+      { enter: true, stdin: true },
+      Readable.from([input]),
+    );
+
+    expect(result).toEqual(Buffer.concat([input, Buffer.from("\n")]));
+  });
+
+  it("splits large input into sequential requests at the wire byte limit", async () => {
+    const send = vi.fn(
+      async (_request: {
+        json: { dataBase64: string };
+        param: { terminalId: string };
+      }) => makeTerminalSession(),
+    );
+    stubServerApi({ "v1.terminals.:terminalId.input.$post": send });
+    const text = `${"a".repeat(TERMINAL_DATA_MAX_BYTES - 1)}🙂tail`;
+
+    await runCommand(
+      ["terminal", "send", "term-1", "--text", text, "--json"],
+      register,
+    );
+
+    const sentBytes = Buffer.concat(
+      send.mock.calls.map(([request]) =>
+        Buffer.from(request.json.dataBase64, "base64"),
+      ),
+    );
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(
+      send.mock.calls.every(
+        ([request]) =>
+          Buffer.from(request.json.dataBase64, "base64").byteLength <=
+          TERMINAL_DATA_MAX_BYTES,
+      ),
+    ).toBe(true);
+    expect(sentBytes.toString("utf8")).toBe(text);
+  });
+
   it("restarts by ID and prints the replacement session", async () => {
-    const current = makeTerminalSession({ id: "term-old" });
     const replacement = makeTerminalSession({ id: "term-new" });
-    const get = vi.fn(async () => current);
-    const close = vi.fn(async () => ({
-      ...current,
-      status: "exited",
-      closeReason: "user",
-    }));
-    const create = vi.fn(async () => replacement);
+    const restart = vi.fn(async () => replacement);
     stubServerApi({
-      "v1.terminals.:terminalId.$get": get,
-      "v1.terminals.:terminalId.close.$post": close,
-      "v1.terminals.$post": create,
+      "v1.terminals.:terminalId.restart.$post": restart,
     });
 
     await runCommand(["terminal", "restart", "term-old", "--json"], register);
 
-    expect(create).toHaveBeenCalledWith({
-      json: {
-        cols: 100,
-        rows: 30,
-        title: "Terminal 1",
-        start: { mode: "shell" },
-        target: { kind: "thread", threadId: "thr-1" },
-      },
+    expect(restart).toHaveBeenCalledWith({
+      param: { terminalId: "term-old" },
+      json: {},
     });
     expect(
       JSON.parse(collectLogPayloads(vi.mocked(console.log)).at(-1) ?? "{}"),

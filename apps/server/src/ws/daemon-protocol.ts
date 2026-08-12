@@ -14,7 +14,10 @@ import {
   requireAuthorizedOpenSession,
 } from "../internal/session-state.js";
 import { handleDaemonSocketClosed } from "../internal/session-owner-side-effects.js";
-import { notifyDaemonEnvironmentChange } from "../internal/environment-changes.js";
+import {
+  notifyDaemonEnvironmentChange,
+  recordDaemonEnvironmentMetadataChange,
+} from "../internal/environment-changes.js";
 import { decodeSocketPayload } from "./decode-payload.js";
 
 interface DaemonSocket {
@@ -143,6 +146,14 @@ export function onDaemonSocketMessage(
         hostId: args.hostId,
         environmentId: result.data.environmentId,
         change: result.data.change,
+      });
+      return;
+    }
+    if (result.data.type === "environment-metadata-change") {
+      recordDaemonEnvironmentMetadataChange(deps, {
+        hostId: args.hostId,
+        environmentId: result.data.environmentId,
+        workspace: result.data.workspace,
       });
       return;
     }

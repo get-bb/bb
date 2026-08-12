@@ -10,6 +10,7 @@ import type {
   ProviderCapabilities,
   ReasoningLevel,
   RuntimePermissionPolicy,
+  RuntimeThreadExecutionOptions,
   ServiceTier,
   ThreadEvent,
 } from "@bb/domain";
@@ -60,6 +61,12 @@ export interface ProviderNoopCommandPlan {
 export type ProviderCommandPlan =
   | ProviderRequestCommandPlan
   | ProviderNoopCommandPlan;
+
+export interface ProviderPostInitializeRequest {
+  plan: ProviderRequestCommandPlan;
+  required: boolean;
+  onResult(result: unknown): void;
+}
 
 export type ProviderInteractiveResponse =
   | boolean
@@ -127,7 +134,7 @@ export type AdapterCommand =
       type: "skills/configure";
       skillRoots: readonly AgentRuntimeSkillRoot[];
     }
-  | { type: "model/list" }
+  | { type: "model/list"; cwd?: string }
   | {
       type: "thread/start";
       threadId: string;
@@ -153,6 +160,7 @@ export type AdapterCommand =
       threadId: string;
       cwd: string;
       sourceProviderThreadId: string;
+      sourceProviderCheckpointId?: string;
       options: ProviderExecutionContext;
       dynamicTools?: DynamicTool[];
       disallowedTools?: readonly string[];
@@ -187,6 +195,11 @@ export type AdapterCommand =
        * means idle/no-active-turn stop and should not invalidate the session.
        */
       activeTurnId: string | null;
+    }
+  | {
+      type: "thread/discard";
+      threadId: string;
+      providerThreadId: string;
     }
   | {
       type: "thread/goal/clear";
@@ -239,6 +252,13 @@ export function noPreparedProviderCommandDispatch(
   return null;
 }
 
+export type ProviderExecutionSettingsChange = "unchanged" | "live" | "session";
+
+export interface ClassifyProviderExecutionSettingsChangeArgs {
+  current: RuntimeThreadExecutionOptions;
+  next: RuntimeThreadExecutionOptions;
+}
+
 // ---------------------------------------------------------------------------
 // ProviderAdapter — internal extension contract
 // ---------------------------------------------------------------------------
@@ -247,9 +267,40 @@ export interface ProviderAdapter {
   id: string;
   displayName: string;
   capabilities: ProviderCapabilities;
+  /**
+   * Selects where approval escalation is enforced. `runtime` adapters emit
+   * every approval request and rely on the runtime's current thread policy.
+   * `provider` adapters enforce the policy before forwarding a request, so a
+   * forwarded approval is already known to require user input and must not be
+   * reclassified against mutable thread settings.
+   */
+  approvalRequestPolicy: "runtime" | "provider";
+  /**
+   * Normalizes provider-specific execution options before validation,
+   * comparison, persistence, and command construction. Providers may use this
+   * to collapse accepted no-op values onto their effective setting.
+   */
+  normalizeExecutionOptions?(
+    options: RuntimeThreadExecutionOptions,
+  ): RuntimeThreadExecutionOptions;
+  /**
+   * Classifies execution-setting drift for this provider. `live` settings are
+   * carried by the next turn command; `session` settings require rebuilding
+   * the provider session.
+   */
+  classifyExecutionSettingsChange(
+    args: ClassifyProviderExecutionSettingsChangeArgs,
+  ): ProviderExecutionSettingsChange;
   process: { command: string; args: string[]; env?: Record<string, string> };
 
   buildCommandPlan(command: AdapterCommand): ProviderCommandPlan;
+  /**
+   * Optional provider-specific reads performed after the protocol initialize
+   * request and before any thread work starts. Best-effort requests let newer
+   * providers hydrate adapter-local state without making older provider
+   * versions unusable when they do not implement the read.
+   */
+  buildPostInitializeRequests?(): readonly ProviderPostInitializeRequest[];
   /**
    * Called immediately before a turn/start request is sent. Some providers
    * emit turn/started before the request promise resolves, so adapters that

@@ -22,16 +22,19 @@ import {
   publicApiRoutes,
   typedRoutes,
   type CreateQueuedMessageRequest,
+  type SendMessageRequest,
   type ThreadListResponse,
   type PublicApiSchema,
 } from "@bb/server-contract";
 import type { Hono } from "hono";
 import {
   clientTurnRequestIdSchema,
+  createStandaloneBuiltinCompactCommandInput,
   type ActorStamp,
   type Thread,
   type ThreadQueuedMessage,
 } from "@bb/domain";
+import { supportsManualCompaction } from "@bb/agent-providers";
 import type { AppDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
 import { requireRequestActorStamp } from "../../services/actor-stamp.js";
@@ -42,6 +45,7 @@ import {
   requestEnvironmentCleanupAdvance,
   wouldCleanupEnvironment,
 } from "../../services/environments/environment-cleanup-internal.js";
+import { applyLoggedEnvironmentLifecycleEvent } from "../../services/environments/lifecycle-outcome.js";
 import { requirePublicThread } from "../../services/lib/entity-lookup.js";
 import { parseSafeRelativeRoutePath } from "../relative-route-path.js";
 import { validatePromptAttachmentReferences } from "../../services/projects/attachments.js";
@@ -63,13 +67,17 @@ import {
   resolveMessageSenderThreadId,
   sendThreadMessage,
 } from "../../services/threads/thread-send.js";
+import { editThreadMessage } from "../../services/threads/thread-edit-message.js";
 import {
   buildExecutionOptions,
   buildThreadStopCommand,
   dispatchThreadUnarchiveCommand,
   prepareTurnSubmitCommandPayload,
 } from "../../services/threads/thread-commands.js";
-import { getLastProviderThreadId } from "../../services/threads/thread-events.js";
+import {
+  getLastProviderThreadId,
+  isManualCompactionActive,
+} from "../../services/threads/thread-events.js";
 import { requestThreadStopForCurrentState } from "../../services/threads/thread-lifecycle.js";
 import {
   getThreadPromptBannerActivity,
@@ -88,6 +96,10 @@ import {
   LIVE_DAEMON_COMMAND_TIMEOUT_MS,
   runLiveHostCommand,
 } from "../../services/hosts/live-command.js";
+import {
+  continueThreadAfterProviderRateLimit,
+  getProviderRateLimitRecoveryStatus,
+} from "../../services/threads/provider-rate-limit-recovery.js";
 
 function toQueuedMessageOrderResponse(
   result: ReorderQueuedThreadMessageResult,
@@ -135,6 +147,40 @@ function toQueuedMessageOrderResponse(
         "Admitted queued messages cannot be grouped with other queued messages",
       );
   }
+}
+
+async function compactThreadContext(
+  deps: AppDeps,
+  thread: Thread,
+  actor: ActorStamp,
+): Promise<void> {
+  ensureThreadIsWritable(thread);
+  if (!supportsManualCompaction(thread.providerId)) {
+    throw new ApiError(
+      409,
+      "invalid_request",
+      `Provider "${thread.providerId}" does not support manual context compaction`,
+    );
+  }
+  if (thread.status !== "idle" && thread.status !== "error") {
+    throw new ApiError(
+      409,
+      "invalid_request",
+      "Context can only be compacted while the thread is idle or errored",
+    );
+  }
+
+  const environment = await requireThreadCommandEnvironment(deps, { thread });
+  await sendThreadMessage(deps, {
+    actor,
+    environment,
+    payload: {
+      input: createStandaloneBuiltinCompactCommandInput(),
+      mode: "start",
+    },
+    thread,
+    trigger: "user",
+  });
 }
 
 function toQueuedMessageGroupBoundaryResponse(
@@ -213,6 +259,30 @@ function assertPinnedThreadOrderResult(
   }
 }
 
+function queuedMessagePayloadFromSendRequest(
+  payload: SendMessageRequest,
+): CreateQueuedMessageRequest {
+  return {
+    input: payload.input,
+    ...(payload.model !== undefined ? { model: payload.model } : {}),
+    ...(payload.serviceTier !== undefined
+      ? { serviceTier: payload.serviceTier }
+      : {}),
+    ...(payload.reasoningLevel !== undefined
+      ? { reasoningLevel: payload.reasoningLevel }
+      : {}),
+    ...(payload.permissionMode !== undefined
+      ? { permissionMode: payload.permissionMode }
+      : {}),
+    ...(payload.executionInputSources !== undefined
+      ? { executionInputSources: payload.executionInputSources }
+      : {}),
+    ...(payload.senderThreadId !== undefined
+      ? { senderThreadId: payload.senderThreadId }
+      : {}),
+  };
+}
+
 interface CreateQueuedMessageForThreadArgs {
   actor: ActorStamp;
   payload: CreateQueuedMessageRequest;
@@ -277,7 +347,7 @@ async function createQueuedMessageForThread(
 }
 
 export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
-  const { post, patch, del, get } = typedRoutes<PublicApiSchema>(app, {
+  const { get, post, patch, del } = typedRoutes<PublicApiSchema>(app, {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
   });
   const routes = publicApiRoutes.threads;
@@ -285,6 +355,7 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
   post(routes.send, async (context, payload) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     const actor = requireRequestActorStamp(context);
+    // Deterministic admission path for queue-if-active (idle starts, active queues).
     if (payload.mode === "queue-if-active") {
       const environment = await requireThreadCommandEnvironment(deps, {
         thread,
@@ -295,6 +366,20 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
         environment,
         payload,
         requestId: createClientTurnRequestId(),
+        thread,
+      });
+      return context.json({ ok: true });
+    }
+    // Upstream: during manual compaction, non-start sends must queue.
+    if (
+      thread.status === "active" &&
+      payload.mode !== "start" &&
+      isManualCompactionActive(deps, thread)
+    ) {
+      ensureThreadIsNotAwaitingUserInteraction(deps, thread.id);
+      await createQueuedMessageForThread(deps, {
+        actor,
+        payload: queuedMessagePayloadFromSendRequest(payload),
         thread,
       });
       return context.json({ ok: true });
@@ -387,6 +472,44 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
       found: true as const,
       admission: threadCommandAdmissionReceiptBodyFromPersisted(admission),
     });
+  });
+
+  get(routes.rateLimitRecovery, async (context) => {
+    const thread = requirePublicThread(deps.db, context.req.param("id"));
+    const environment = await requireThreadCommandEnvironment(deps, {
+      thread,
+    });
+    return context.json(
+      getProviderRateLimitRecoveryStatus(deps, { environment, thread }),
+    );
+  });
+
+  post(routes.continueAfterRateLimit, async (context, payload) => {
+    const thread = requirePublicThread(deps.db, context.req.param("id"));
+    const environment = await requireThreadCommandEnvironment(deps, {
+      thread,
+    });
+    return context.json(
+      await continueThreadAfterProviderRateLimit(deps, {
+        environment,
+        failedRequestId: payload.failedRequestId,
+        thread,
+      }),
+    );
+  });
+
+  post(routes.editMessage, async (context, payload) => {
+    const thread = requirePublicThread(deps.db, context.req.param("id"));
+    const environment = await requireThreadCommandEnvironment(deps, {
+      thread,
+    });
+    const result = await editThreadMessage(deps, {
+      actor: requireRequestActorStamp(context),
+      environment,
+      payload,
+      thread,
+    });
+    return context.json(result);
   });
 
   post(routes.createQueuedMessage, async (context, payload) => {
@@ -512,6 +635,16 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
       deps,
       thread,
       environment,
+      requireRequestActorStamp(context),
+    );
+    return context.json({ ok: true });
+  });
+
+  post(routes.compact, async (context) => {
+    const thread = requirePublicThread(deps.db, context.req.param("id"));
+    await compactThreadContext(
+      deps,
+      thread,
       requireRequestActorStamp(context),
     );
     return context.json({ ok: true });
@@ -738,10 +871,13 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
     });
   });
 
-  // Un-archive is a pure record op: it clears archivedAt and nothing else. It
-  // deliberately does not touch the environment lifecycle; cleanup is monotonic
-  // and never cancelled, and a thread whose environment is gone surfaces a
-  // read-only "environment is gone" banner instead of resurrecting it.
+  // Un-archive clears archivedAt. When the thread's managed environment is still
+  // inside its archive grace window (`retiring`), un-archiving revives it via the
+  // existing `retire.cancelled` event so the intact worktree is restored — the
+  // lossless undo of an accidental archive. If the grace window already elapsed
+  // and the environment was destroyed, `retire.cancelled` is a no-op (illegal
+  // from destroying/destroyed) and the thread remains read-only. The user can
+  // hand its context and surviving branch off to a new thread instead.
   post(routes.unarchive, (context) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     const providerThreadId = getLastProviderThreadId(deps, thread.id);
@@ -749,6 +885,12 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
     const environment = thread.environmentId
       ? getEnvironment(deps.db, thread.environmentId)
       : null;
+    if (environment?.status === "retiring") {
+      applyLoggedEnvironmentLifecycleEvent(deps, {
+        environmentId: environment.id,
+        event: { type: "retire.cancelled" },
+      });
+    }
     if (providerThreadId && environment) {
       dispatchThreadUnarchiveCommand(deps, {
         environment,

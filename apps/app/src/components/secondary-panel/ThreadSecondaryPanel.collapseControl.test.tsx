@@ -41,6 +41,32 @@ function renderPanel(args: {
   );
 }
 
+describe("ThreadSecondaryPanel resize handle", () => {
+  it("uses a real 12px hit target centered over the resize seam", () => {
+    const view = renderPanel({
+      isConversationCollapsed: false,
+      onToggleConversationCollapse: noop,
+    });
+
+    const handle = view.getByRole("separator", {
+      name: "Resize thread and right panel",
+    });
+    const hitTarget = handle.querySelector("[data-panel-resize-hit-target]");
+
+    expect(handle.className.split(/\s+/u)).toContain("z-[25]");
+    expect(hitTarget).not.toBeNull();
+    expect(hitTarget?.className.split(/\s+/u)).toEqual(
+      expect.arrayContaining([
+        "left-1/2",
+        "z-10",
+        "w-3",
+        "-translate-x-1/2",
+        "cursor-col-resize",
+      ]),
+    );
+  });
+});
+
 // The full-screen control is the ONLY way back once the conversation is hidden
 // — there is no standalone rail to click. Pin both halves of the same-slot
 // expansion pair so a full-screen tab can always restore its prior layout.

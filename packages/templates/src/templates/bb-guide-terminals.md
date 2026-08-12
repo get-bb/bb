@@ -38,7 +38,7 @@ All other operations need only the terminal ID:
     --stdin                               Read bytes from stdin instead of --text
   bb terminal resize <terminal-id> --cols <n> --rows <n>
   bb terminal rename <terminal-id> <title>
-  bb terminal restart <terminal-id>       Starts a shell; does not replay the original command
+  bb terminal restart <terminal-id>       Atomically replaces it with a shell; does not replay the original command
   bb terminal close <terminal-id> [--if-clean]
 
   bb terminal output <terminal-id>

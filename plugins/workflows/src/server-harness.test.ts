@@ -619,10 +619,12 @@ describe("workflows plugin", () => {
           ).length,
       ).toBeGreaterThanOrEqual(1);
     });
-    await expect(
-      workflowStatus(harness, idleOnly.runId),
-    ).resolves.toMatchObject({
-      status: "failed",
+    await eventually(async () => {
+      await expect(
+        workflowStatus(harness, idleOnly.runId),
+      ).resolves.toMatchObject({
+        status: "failed",
+      });
     });
 
     const nullSource = `export const meta = {

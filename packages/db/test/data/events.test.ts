@@ -19,12 +19,14 @@ import {
   appendStoredThreadEventInTransaction,
   appendStoredThreadEventsInTransaction,
   findStoredEventRow,
+  findStoredTimelineWindowByteBudgetFloor,
   getActiveStoredTurnId,
   getHighWaterMarks,
   getLastStoredProviderThreadId,
   getLastStoredTurnRequestEvent,
   getLatestThreadOutputEventRow,
   getLatestThreadSequence,
+  getStoredTimelineWindowEventDataBytes,
   insertEvents,
   listContextWindowUsageRows,
   listCompletedTurnsByThreadIds,
@@ -465,6 +467,56 @@ describe("events", () => {
             data: JSON.stringify({
               providerThreadId: "provider_thr_resumed",
               turnId: "turn_new",
+            }),
+          },
+        ]),
+      { behavior: "immediate" },
+    );
+
+    expect(result.skippedTurnUnstartedInputIndexes).toEqual([0]);
+    expect(result.insertedInputIndexes).toEqual([1]);
+    expect(
+      listEvents(db, { threadId: thread.id }).map((event) => event.type),
+    ).toEqual(["turn/started"]);
+  });
+
+  it("drops orphan provider/unhandled events instead of failing the batch", () => {
+    const { db, thread } = setup();
+
+    // A provider can label its own internal traffic with a turn id bb never
+    // started (Codex tags automatic-compaction events "auto-compact-N"). An
+    // unhandled passthrough event is diagnostic only, so dropping it is always
+    // cheaper than rolling back the batch it rode in with — which the daemon
+    // would then repost forever, stalling every thread on the host.
+    const result = db.transaction(
+      (tx) =>
+        appendDaemonEventsInTransaction(tx, [
+          {
+            threadId: thread.id,
+            type: "provider/unhandled",
+            ...createTurnEventFields({ turnId: "auto-compact-1" }),
+            environmentId: null,
+            providerThreadId: "provider_thr_compacting",
+            data: JSON.stringify({
+              providerThreadId: "provider_thr_compacting",
+              providerId: "codex",
+              rawType: "sdk/custom",
+              rawEvent: {
+                jsonrpc: "2.0",
+                method: "sdk/message",
+                params: { turnId: "auto-compact-1" },
+              },
+            }),
+          },
+          {
+            threadId: thread.id,
+            type: "turn/started",
+            ...createTurnEventFields({ turnId: "turn_after_compaction" }),
+            environmentId: null,
+            providerThreadId: "provider_thr_compacting",
+            data: JSON.stringify({
+              providerThreadId: "provider_thr_compacting",
+              turnId: "turn_after_compaction",
             }),
           },
         ]),
@@ -1262,7 +1314,7 @@ describe("events", () => {
 
     const rowsByThreadId = new Map(
       listLatestGoalEventRowsByThreadIds(db, {
-        threadIds: [thread.id, otherThread.id],
+        threadIds: [thread.id, otherThread.id, thread.id],
       }).map((row) => [row.threadId, row]),
     );
 
@@ -1272,6 +1324,16 @@ describe("events", () => {
       "thread/goal/updated",
     );
     expect(rowsByThreadId.get(otherThread.id)?.sequence).toBe(1);
+  });
+
+  it("batches latest goal lookups above the SQLite variable limit", () => {
+    const { db } = setup();
+    const threadIds = Array.from(
+      { length: 32_767 },
+      (_, index) => `thr_missing_goal_${index}`,
+    );
+
+    expect(listLatestGoalEventRowsByThreadIds(db, { threadIds })).toEqual([]);
   });
 
   it("lists only open accepted turn inputs after the latest interruption", () => {
@@ -1328,7 +1390,7 @@ describe("events", () => {
 
     const rowsByThreadId = new Map(
       listOpenTurnInputAcceptedRowsByThreadIds(db, {
-        threadIds: [thread.id, otherThread.id],
+        threadIds: [thread.id, otherThread.id, thread.id],
       }).map((row) => [row.threadId, row]),
     );
 
@@ -1372,6 +1434,7 @@ describe("events", () => {
         keys: [
           { threadId: thread.id, requestId: "creq_23456789aa" },
           { threadId: otherThread.id, requestId: "creq_23456789aa" },
+          { threadId: thread.id, requestId: "creq_23456789aa" },
         ],
       }).map((row) => [row.threadId, row]),
     );
@@ -1379,6 +1442,31 @@ describe("events", () => {
     expect(rowsByThreadId.get(thread.id)?.sequence).toBe(1);
     expect(rowsByThreadId.get(otherThread.id)?.sequence).toBe(1);
     expect(rowsByThreadId.size).toBe(2);
+  });
+
+  it("batches client turn request keys above the expression-depth limit", () => {
+    const { db, thread } = setup();
+    const requestId = "creq_23456789ab";
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 1,
+        type: "client/turn/requested",
+        ...threadEventFields,
+        data: clientTurnRequestData(requestId, "second batch"),
+      },
+    ]);
+    const keys = [
+      ...Array.from({ length: 995 }, (_, index) => ({
+        requestId,
+        threadId: `thr_missing_request_${index}`,
+      })),
+      { requestId, threadId: thread.id },
+    ];
+
+    expect(listStoredClientTurnRequestRowsByKeys(db, { keys })).toEqual([
+      expect.objectContaining({ sequence: 1, threadId: thread.id }),
+    ]);
   });
 
   it("lists client turn request ids in range with a storage predicate", () => {
@@ -1607,7 +1695,7 @@ describe("events", () => {
     expect(getActiveStoredTurnId(db, thread.id)).toBeNull();
   });
 
-  it("resets the latest provider thread id after an environment directory update", () => {
+  it("preserves the latest provider thread id after an environment directory update", () => {
     const { db, thread } = setup();
 
     appendStoredThreadEvent(db, noopNotifier, {
@@ -1640,6 +1728,7 @@ describe("events", () => {
         },
       },
     });
+    expect(getLastStoredProviderThreadId(db, thread.id)).toBe("provider_old");
     appendStoredThreadEvent(db, noopNotifier, {
       actor: SYSTEM_ACTOR_STAMP,
       threadId: thread.id,
@@ -1651,7 +1740,7 @@ describe("events", () => {
         status: "completed",
       },
     });
-    expect(getLastStoredProviderThreadId(db, thread.id)).toBeNull();
+    expect(getLastStoredProviderThreadId(db, thread.id)).toBe("provider_old");
 
     appendStoredThreadEvent(db, noopNotifier, {
       actor: SYSTEM_ACTOR_STAMP,
@@ -3585,7 +3674,7 @@ describe("events", () => {
 
     const countsByThreadId = new Map(
       listActiveBackgroundTaskCountsByThreadIds(db, {
-        threadIds: [thread.id],
+        threadIds: [thread.id, thread.id],
       }).map((row) => [row.threadId, row]),
     );
 
@@ -3595,6 +3684,72 @@ describe("events", () => {
       activeBackgroundAgentCount: 2,
       activeBackgroundCommandCount: 1,
     });
+  });
+
+  it("chunks thread IDs before SQLite reaches its variable limit", () => {
+    const { db } = setup();
+    const threadIds = Array.from(
+      { length: 16_378 },
+      (_, index) => `thr_missing_${index}`,
+    );
+
+    expect(
+      listActiveBackgroundTaskCountsByThreadIds(db, { threadIds }),
+    ).toEqual([]);
+  });
+
+  it("returns the same counts from chunked and unchunked thread IDs", () => {
+    const { db, project, thread } = setup();
+    const otherThread = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+    });
+    const taskData = (itemId: string, taskType: string) =>
+      JSON.stringify({
+        item: {
+          id: itemId,
+          type: "backgroundTask",
+          taskType,
+          description: "fixture background task",
+          status: "pending",
+          taskStatus: "running",
+          skipTranscript: false,
+        },
+      });
+
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 1,
+        scope: turnScope("turn-1"),
+        type: "item/started",
+        itemId: "task:workflow",
+        itemKind: "backgroundTask",
+        data: taskData("task:workflow", LOCAL_WORKFLOW_TASK_TYPE),
+      },
+      {
+        threadId: otherThread.id,
+        sequence: 1,
+        scope: turnScope("turn-2"),
+        type: "item/started",
+        itemId: "task:command",
+        itemKind: "backgroundTask",
+        data: taskData("task:command", LOCAL_BASH_TASK_TYPE),
+      },
+    ]);
+
+    const unchunkedRows = listActiveBackgroundTaskCountsByThreadIds(db, {
+      threadIds: [thread.id, otherThread.id],
+    });
+    const missingThreadIds = Array.from(
+      { length: 16_376 },
+      (_, index) => `thr_missing_${index}`,
+    );
+    const chunkedRows = listActiveBackgroundTaskCountsByThreadIds(db, {
+      threadIds: [thread.id, ...missingThreadIds, otherThread.id],
+    });
+
+    expect(chunkedRows).toEqual(unchunkedRows);
   });
 
   it("lists the latest lifecycle row per open backgroundTask item on a host", () => {
@@ -3839,6 +3994,152 @@ describe("timeline read-boundary output truncation", () => {
     return JSON.parse(row.data) as Record<string, unknown>;
   }
 
+  it("measures the exact UTF-8 bytes returned by the capped read", () => {
+    const { db, thread } = setup();
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 1,
+        type: "item/completed",
+        ...threadEventFields,
+        itemId: "cmd-bytes",
+        itemKind: "commandExecution",
+        data: JSON.stringify({
+          note: "Unicode: 🐝",
+          item: {
+            type: "commandExecution",
+            id: "cmd-bytes",
+            command: "cat big",
+            cwd: "/tmp/test",
+            status: "completed",
+            approvalStatus: null,
+            exitCode: 0,
+            aggregatedOutput: "x".repeat(maxInlineOutputChars + 500),
+          },
+        }),
+      },
+    ]);
+    const args = {
+      maxInlineOutputChars,
+      sequenceStart: 0,
+      threadId: thread.id,
+    };
+    const rows = listStoredTimelineWindowEventRows(db, args);
+
+    expect(getStoredTimelineWindowEventDataBytes(db, args)).toBe(
+      rows.reduce((total, row) => total + Buffer.byteLength(row.data), 0),
+    );
+  });
+
+  it("finds the oldest row in the newest suffix that fits a byte budget", () => {
+    const { db, thread } = setup();
+    insertEvents(
+      db,
+      noopNotifier,
+      [100, 200, 300].map((messageChars, index) => ({
+        threadId: thread.id,
+        sequence: index + 1,
+        type: "system/error" as const,
+        ...threadEventFields,
+        itemId: null,
+        itemKind: null,
+        data: JSON.stringify({ message: "x".repeat(messageChars) }),
+      })),
+    );
+    const args = {
+      maxInlineOutputChars: null,
+      sequenceStart: 0,
+      threadId: thread.id,
+    };
+    const rows = listStoredTimelineWindowEventRows(db, args);
+    const rowBytes = new Map(
+      rows.map((row) => [row.sequence, Buffer.byteLength(row.data)]),
+    );
+    const newestTwoBytes = (rowBytes.get(3) ?? 0) + (rowBytes.get(2) ?? 0);
+
+    expect(
+      findStoredTimelineWindowByteBudgetFloor(db, {
+        ...args,
+        maxDataBytes: newestTwoBytes,
+      }),
+    ).toEqual({
+      eventDataBytes: newestTwoBytes,
+      kind: "floor",
+      sequenceStart: 2,
+    });
+    expect(
+      findStoredTimelineWindowByteBudgetFloor(db, {
+        ...args,
+        maxDataBytes: getStoredTimelineWindowEventDataBytes(db, args),
+      }),
+    ).toEqual({
+      eventDataBytes: getStoredTimelineWindowEventDataBytes(db, args),
+      kind: "fits",
+    });
+    expect(
+      findStoredTimelineWindowByteBudgetFloor(db, {
+        ...args,
+        maxDataBytes: (rowBytes.get(3) ?? 0) - 1,
+      }),
+    ).toEqual(expect.objectContaining({
+      eventDataBytes: rowBytes.get(3),
+      hasOlderRows: true,
+      kind: "single-event-too-large",
+      sequenceStart: 3,
+      turnId: null,
+    }));
+  });
+
+  it.each(["floor", "single-event-too-large"] as const)(
+    "releases its statement after a %s byte-cut result",
+    (expectedKind) => {
+      const { db, thread } = setup();
+      insertEvents(
+        db,
+        noopNotifier,
+        [100, 200].map((messageChars, index) => ({
+          threadId: thread.id,
+          sequence: index + 1,
+          type: "system/error" as const,
+          ...threadEventFields,
+          itemId: null,
+          itemKind: null,
+          data: JSON.stringify({ message: "x".repeat(messageChars) }),
+        })),
+      );
+      const args = {
+        maxInlineOutputChars: null,
+        sequenceStart: 0,
+        threadId: thread.id,
+      };
+      const newestRow = listStoredTimelineWindowEventRows(db, args).at(-1);
+      if (!newestRow) {
+        throw new Error("expected a newest event row");
+      }
+      const newestRowBytes = Buffer.byteLength(newestRow.data);
+
+      expect(
+        findStoredTimelineWindowByteBudgetFloor(db, {
+          ...args,
+          maxDataBytes:
+            expectedKind === "floor" ? newestRowBytes : newestRowBytes - 1,
+        }).kind,
+      ).toBe(expectedKind);
+      insertEvents(db, noopNotifier, [
+        {
+          threadId: thread.id,
+          sequence: 3,
+          type: "system/error",
+          ...threadEventFields,
+          itemId: null,
+          itemKind: null,
+          data: JSON.stringify({ message: "write after byte-cut read" }),
+        },
+      ]);
+      expect(getLatestThreadSequence(db, { threadId: thread.id })).toBe(3);
+    },
+  );
+
   it("shortens an oversized text output and leaves the rest of the payload alone", () => {
     const { db, thread } = setup();
     const output = "x".repeat(maxInlineOutputChars + 2_345);
@@ -3875,7 +4176,7 @@ describe("timeline read-boundary output truncation", () => {
     // Byte-identical to what the response-level truncator would produce, so a
     // reader cannot tell which layer shortened the value.
     expect(cappedItem.aggregatedOutput).toBe(
-      `${"x".repeat(maxInlineOutputChars)}\n\u2026[2,345 more characters truncated \u2014 open the turn to view the full output]`,
+      `${"x".repeat(maxInlineOutputChars)}\n\u2026[2,345 more characters truncated]`,
     );
     expect({ ...cappedItem, aggregatedOutput: null }).toEqual({
       ...storedItem,

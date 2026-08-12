@@ -31,6 +31,7 @@ const NORMALIZED_ACP_UPDATE_KINDS = new Set<string>([
   "tool_call",
   "tool_call_update",
   "plan",
+  "usage_update",
 ]);
 
 // Update kinds the agent may legitimately send but BB intentionally does not
@@ -41,7 +42,6 @@ const NOISE_ACP_UPDATE_KINDS = new Set<string>([
   "current_mode_update",
   "config_option_update",
   "session_info_update",
-  "usage_update",
 ]);
 
 interface AcpMethodRawEvent {

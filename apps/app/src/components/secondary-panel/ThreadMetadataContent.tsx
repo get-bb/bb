@@ -45,6 +45,11 @@ import {
 } from "@bb/shared-ui/dropdown-menu";
 import { Icon } from "@bb/shared-ui/icon";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@bb/shared-ui/tooltip";
+import {
   BranchPicker,
   getMergeBaseBranchCandidateGroups,
 } from "@/components/pickers/BranchPicker";
@@ -338,14 +343,19 @@ export function EnvironmentRow({
           </span>
         ) : null}
         {showCreateThreadButton ? (
-          <button
-            type="button"
-            aria-label="Create new thread in this worktree"
-            onClick={createThreadInWorktree}
-            className="inline-flex shrink-0 items-center justify-center rounded-md p-0.5 text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
-          >
-            <Icon name="MessageSquarePlus" className="size-4" />
-          </button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                aria-label="Create new thread in this worktree"
+                onClick={createThreadInWorktree}
+                className="inline-flex shrink-0 items-center justify-center rounded-md p-0.5 text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
+              >
+                <Icon name="MessageSquarePlus" className="size-4" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Create new thread in this worktree</TooltipContent>
+          </Tooltip>
         ) : null}
       </span>
     </DetailRow>

@@ -146,12 +146,30 @@ export type PendingInteractionPermissionGrantApprovalSubject = z.infer<
   typeof pendingInteractionPermissionGrantApprovalSubjectSchema
 >;
 
+/**
+ * A finished plan waiting for the user's verdict before the agent may act on
+ * it. Unlike the other subjects this grants no permission: the decision only
+ * says whether the agent leaves plan mode and starts the work.
+ */
+export const pendingInteractionPlanApprovalSubjectSchema = z.object({
+  kind: z.literal("plan"),
+  itemId: z.string().min(1),
+  /** The plan body, as Markdown. */
+  plan: z.string().min(1),
+  /** Where the provider saved the plan, or null when it kept it in memory. */
+  planFilePath: z.string().min(1).nullable(),
+});
+export type PendingInteractionPlanApprovalSubject = z.infer<
+  typeof pendingInteractionPlanApprovalSubjectSchema
+>;
+
 export const pendingInteractionApprovalSubjectSchema = z.discriminatedUnion(
   "kind",
   [
     pendingInteractionCommandApprovalSubjectSchema,
     pendingInteractionFileChangeApprovalSubjectSchema,
     pendingInteractionPermissionGrantApprovalSubjectSchema,
+    pendingInteractionPlanApprovalSubjectSchema,
   ],
 );
 export type PendingInteractionApprovalSubject = z.infer<

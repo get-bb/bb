@@ -350,6 +350,64 @@ describe("injected skill source discovery", () => {
     expect(warnings).toEqual([]);
   });
 
+  it("applies bb precedence around shared user and project roots", async () => {
+    const dataDir = await makeTempDir();
+    const builtinSkillsRootPath = path.join(dataDir, "builtin-skills");
+    const userSkillRoot = await writeSkill({
+      rootPath: path.join(dataDir, "skills"),
+      name: "review",
+      description: "bb user review skill.",
+    });
+    await writeSkill({
+      rootPath: path.join(dataDir, "skills"),
+      name: "deploy",
+      description: "bb user deploy skill.",
+    });
+    const sharedUserRoot = path.join(dataDir, "external", "review");
+    const sharedProjectRoot = path.join(dataDir, "workspace", "deploy");
+    const { logger } = createCapturingLogger();
+
+    const sources = resolveInjectedSkillSources(logger, {
+      builtinSkillsRootPath,
+      dataDir,
+      sharedSkillSources: [
+        {
+          kind: "host-path",
+          sourceType: "shared-user",
+          name: "review",
+          description: "Shared user review skill.",
+          sourceRootPath: sharedUserRoot,
+          skillFilePath: path.join(sharedUserRoot, "SKILL.md"),
+        },
+        {
+          kind: "host-path",
+          sourceType: "shared-project",
+          name: "deploy",
+          description: "Shared project deploy skill.",
+          sourceRootPath: sharedProjectRoot,
+          skillFilePath: path.join(sharedProjectRoot, "SKILL.md"),
+        },
+      ],
+    });
+
+    expect(sources).toEqual([
+      {
+        kind: "host-path",
+        sourceType: "shared-project",
+        name: "deploy",
+        description: "Shared project deploy skill.",
+        sourceRootPath: sharedProjectRoot,
+        skillFilePath: path.join(sharedProjectRoot, "SKILL.md"),
+      },
+      expectedTreeSource({
+        sourceType: "data-dir",
+        name: "review",
+        description: "bb user review skill.",
+        rootPath: userSkillRoot,
+      }),
+    ]);
+  });
+
   it("lets a data-dir skill override a built-in skill with the same name", async () => {
     const dataDir = await makeTempDir();
     const builtinSkillsRootPath = path.join(dataDir, "builtin-skills");

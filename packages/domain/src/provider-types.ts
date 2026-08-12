@@ -15,6 +15,9 @@ export const availableModelSchema = z.object({
   id: z.string(),
   model: z.string(),
   displayName: z.string(),
+  /** Provider route used to run this model when it is distinct from the
+   * selected agent provider (for example, a model provider nested under Pi). */
+  routeProviderId: z.string().min(1).optional(),
   description: z.string(),
   supportedReasoningEfforts: z.array(modelReasoningEffortSchema),
   defaultReasoningEffort: reasoningLevelSchema,

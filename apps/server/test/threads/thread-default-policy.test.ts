@@ -1,3 +1,4 @@
+import { listBuiltInAgentProviderInfos } from "@bb/agent-providers";
 import {
   PERSONAL_PROJECT_ID,
   type ProjectExecutionDefaults,
@@ -76,13 +77,16 @@ describe("resolveWorkflowsEnabledPolicy", () => {
 });
 
 describe("resolveCreateThreadExecutionDefaults", () => {
-  it("uses Codex as the product provider without pinning a model", () => {
+  it("uses the model picker's first catalog provider without pinning a model", () => {
+    const productProviderId = listBuiltInAgentProviderInfos()[0]?.id;
+    expect(productProviderId).toBeDefined();
+
     expect(
       resolveCreateThreadExecutionDefaults({
         storedDefaults: null,
       }),
     ).toEqual({
-      providerId: "codex",
+      providerId: productProviderId,
       executionDefaults: null,
     });
   });

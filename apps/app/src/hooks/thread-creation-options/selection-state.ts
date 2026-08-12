@@ -34,6 +34,9 @@ export interface UsePromptModelReasoningOptions {
   scope?: ThreadCreationOptionsScope;
   resetKey?: string | number | null;
   initialProviderId?: string;
+  /** When no project default or persisted choice exists, select the first
+   * connected provider reported by the routed machine. */
+  preferConnectedProviderWhenUnset?: boolean;
   initialModel?: string;
   initialServiceTier?: ServiceTier;
   initialReasoningLevel?: ReasoningLevel;
@@ -72,6 +75,7 @@ export interface EffectiveCreateExecutionValues {
 export interface BuildExecutionInputSourcesArgs {
   effectiveValues: EffectiveCreateExecutionValues;
   forceExplicitModel?: boolean;
+  initialProviderSource?: ExecutionInputFieldSource;
   scope: ThreadCreationOptionsScope;
   storedValues: StoredCreateExecutionValues;
   touchedFields: ReadonlySet<ThreadPromptField>;
@@ -92,6 +96,7 @@ export interface UpdateThreadPromptSelectionsArgs {
 interface ResolveCreateExecutionInputSourceArgs {
   hasStoredValue: boolean;
   hasValue: boolean;
+  initialSource?: ExecutionInputFieldSource;
   touched: boolean;
 }
 
@@ -107,6 +112,7 @@ function hasValue(value: string): boolean {
 function resolveCreateExecutionInputSource({
   hasStoredValue,
   hasValue,
+  initialSource,
   touched,
 }: ResolveCreateExecutionInputSourceArgs):
   | ExecutionInputFieldSource
@@ -120,7 +126,7 @@ function resolveCreateExecutionInputSource({
   if (hasStoredValue) {
     return "client-preference";
   }
-  return undefined;
+  return initialSource;
 }
 
 export function getInitialThreadPromptSelections(
@@ -210,6 +216,7 @@ export function updateThreadPromptSelections({
 export function buildExecutionInputSources({
   effectiveValues,
   forceExplicitModel = false,
+  initialProviderSource,
   scope,
   storedValues,
   touchedFields,
@@ -236,6 +243,7 @@ export function buildExecutionInputSources({
       hasValue(storedValues.selectedProviderId) &&
       storedValues.selectedProviderId === effectiveValues.selectedProviderId,
     hasValue: hasValue(effectiveValues.selectedProviderId),
+    initialSource: initialProviderSource,
     touched: touchedFields.has("selectedProviderId"),
   });
   const modelSource = resolveCreateExecutionInputSource({

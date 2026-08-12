@@ -61,8 +61,10 @@ export function applyInstalledPlugin(args: {
  * realtime `plugins-changed` broadcast covers other windows; this gives the
  * acting window an immediate refresh.
  */
-export function invalidatePluginList(args: { queryClient: QueryClient }): void {
-  void args.queryClient.invalidateQueries({
+export function invalidatePluginList(args: {
+  queryClient: QueryClient;
+}): Promise<void> {
+  return args.queryClient.invalidateQueries({
     queryKey: allPluginListQueryKeyPrefix(),
   });
 }

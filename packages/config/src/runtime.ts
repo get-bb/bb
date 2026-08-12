@@ -6,6 +6,8 @@ export type BbRuntimeMode = "dev" | "prod";
 
 export interface DevPortSet {
   appPort: number;
+  cloudPort: number;
+  cloudWorkerPort: number;
   hostDaemonPort: number;
   serverPort: number;
 }
@@ -88,6 +90,8 @@ const DEV_PORT_BUCKETS = 8_000;
 const DEV_APP_PORT_BASE = 11_000;
 const DEV_SERVER_PORT_BASE = 19_000;
 const DEV_HOST_DAEMON_PORT_BASE = 27_000;
+const DEV_CLOUD_PORT_BASE = 35_000;
+const DEV_CLOUD_WORKER_PORT_BASE = 43_000;
 const DEV_PROCESS_STRIPPED_ENV_KEYS: readonly string[] = [
   "BB_ENVIRONMENT_ID",
   "BB_THREAD_ID",
@@ -134,10 +138,18 @@ function resolvePortOffset(repoRootPath: string): number {
   return Number.parseInt(hash.slice(0, 8), 16) % DEV_PORT_BUCKETS;
 }
 
+function reservePackagedAppPorts(port: number): number {
+  if (port === BB_PROD_SERVER_PORT) return 59_000;
+  if (port === BB_PROD_HOST_DAEMON_PORT) return 59_001;
+  return port;
+}
+
 function resolvePorts(repoRootPath: string): DevPortSet {
   const offset = resolvePortOffset(repoRootPath);
   return {
     appPort: DEV_APP_PORT_BASE + offset,
+    cloudPort: reservePackagedAppPorts(DEV_CLOUD_PORT_BASE + offset),
+    cloudWorkerPort: DEV_CLOUD_WORKER_PORT_BASE + offset,
     hostDaemonPort: DEV_HOST_DAEMON_PORT_BASE + offset,
     serverPort: DEV_SERVER_PORT_BASE + offset,
   };
@@ -194,7 +206,7 @@ export function resolveDevInstanceConfig(
   const instanceId = resolveInstanceId(args);
   const dataDir = join(args.homeDir, BB_DEV_DATA_ROOT_DIR, instanceId);
   const ports = resolvePorts(args.repoRoot);
-  const serverUrl = `http://localhost:${ports.serverPort}`;
+  const serverUrl = `http://${BB_LOOPBACK_HOST}:${ports.serverPort}`;
   return {
     dataDir,
     homeDir: args.homeDir,
@@ -305,6 +317,7 @@ export function toDevProcessEnv(args: DevProcessEnvArgs): NodeJS.ProcessEnv {
     ...env,
     BB_DATA_DIR: args.config.dataDir,
     BB_DEV_APP_PORT: String(args.config.ports.appPort),
+    BB_DEV_CONNECT_BASE_URL: `http://bb.localhost:${args.config.ports.cloudPort}`,
     BB_HOST_DAEMON_PORT: String(args.config.ports.hostDaemonPort),
     ...(inheritedSkillsRootPaths.length > 0
       ? { BB_INHERITED_SKILLS_ROOTS: inheritedSkillsRootPaths.join(delimiter) }

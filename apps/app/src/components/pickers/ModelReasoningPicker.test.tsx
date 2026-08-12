@@ -15,6 +15,7 @@ import {
   ModelReasoningPicker,
 } from "./ModelReasoningPicker";
 import type { PickerOption } from "./OptionPicker";
+import type { ModelPickerOption } from "./model-picker-option";
 
 vi.mock("@/lib/sdk", () => ({
   sdk: { system: { executionOptions: vi.fn() } },
@@ -87,15 +88,21 @@ function renderPicker({
   onModelChange = vi.fn(),
   onReasoningChange = vi.fn(),
   modelOptions = codexModels,
+  modelValue = modelOptions[0]?.value ?? "",
   moreModelOptions = [],
+  pickerProviderOptions = providerOptions,
   providerRouting,
+  selectedProviderId = "codex",
 }: {
   onSelectedProviderChange?: (value: string) => void;
   onModelChange?: (value: string) => void;
   onReasoningChange?: (value: ReasoningLevel) => void;
-  modelOptions?: readonly PickerOption<string>[];
-  moreModelOptions?: readonly PickerOption<string>[];
+  modelOptions?: readonly ModelPickerOption[];
+  modelValue?: string;
+  moreModelOptions?: readonly ModelPickerOption[];
+  pickerProviderOptions?: readonly PickerOption<string>[];
   providerRouting?: SystemProvidersQuery;
+  selectedProviderId?: string;
 } = {}) {
   const { queryClient, wrapper } = createQueryClientTestHarness();
   queryClient.setQueryData(
@@ -117,12 +124,12 @@ function renderPicker({
 
   render(
     <ModelReasoningPicker
-      providerOptions={providerOptions}
+      providerOptions={pickerProviderOptions}
       providerRouting={providerRouting}
-      selectedProviderId="codex"
+      selectedProviderId={selectedProviderId}
       onSelectedProviderChange={onSelectedProviderChange}
       hasMultipleProviders
-      modelValue="gpt-5.5"
+      modelValue={modelValue}
       modelOptions={modelOptions}
       moreModelOptions={moreModelOptions}
       onModelChange={onModelChange}
@@ -177,7 +184,7 @@ describe("ModelReasoningPicker", () => {
     ).toBe("");
   });
 
-  it("previews another provider's models without committing the provider", async () => {
+  it("commits a provider tab immediately and keeps its models selectable", async () => {
     const { onSelectedProviderChange, onModelChange } = renderPicker();
 
     fireEvent.click(
@@ -189,18 +196,18 @@ describe("ModelReasoningPicker", () => {
 
     fireEvent.click(screen.getByTitle("Claude Code"));
 
+    expect(onSelectedProviderChange).toHaveBeenCalledWith("claude-code");
     expect(await screen.findByText("Opus 4.7")).not.toBeNull();
     expect(screen.getAllByText("5.5")).toHaveLength(1);
-    expect(onSelectedProviderChange).not.toHaveBeenCalled();
     expect(onModelChange).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByText("Opus 4.7"));
 
-    expect(onSelectedProviderChange).toHaveBeenCalledWith("claude-code");
+    expect(onSelectedProviderChange).toHaveBeenCalledTimes(1);
     expect(onModelChange).toHaveBeenCalledWith("claude-opus-4-7");
   });
 
-  it("previews provider models on the compose-selected host", async () => {
+  it("loads provider models on the compose-selected host", async () => {
     renderPicker({ providerRouting: { hostId: "host-remote" } });
 
     fireEvent.click(
@@ -211,6 +218,42 @@ describe("ModelReasoningPicker", () => {
     fireEvent.click(screen.getByTitle("Claude Code"));
 
     expect(await screen.findByText("Opus 4.7")).not.toBeNull();
+  });
+
+  it("keeps duplicate Pi models distinct by their nested provider", () => {
+    const apiModel = "openai/gpt-5.3-codex-spark";
+    const subscriptionModel = "openai-codex/gpt-5.3-codex-spark";
+    const modelLabel = "GPT-5.3 Codex Spark";
+    const { onModelChange } = renderPicker({
+      modelOptions: [
+        { value: apiModel, label: modelLabel, routeProviderId: "openai" },
+        {
+          value: subscriptionModel,
+          label: modelLabel,
+          routeProviderId: "openai-codex",
+        },
+      ],
+      modelValue: subscriptionModel,
+      pickerProviderOptions: [{ value: "pi", label: "Pi" }],
+      selectedProviderId: "pi",
+    });
+
+    const trigger = screen.getByRole("button", {
+      name: "Provider, model and reasoning",
+    });
+    expect(trigger.textContent).toContain(modelLabel);
+    expect(trigger.textContent).not.toContain("openai-codex");
+
+    fireEvent.click(trigger);
+
+    expect(screen.getAllByText(modelLabel)).toHaveLength(3);
+    const apiQualifier = screen.getByText("openai");
+    expect(apiQualifier.className).toContain("text-subtle-foreground");
+    expect(screen.getByText("openai-codex")).not.toBeNull();
+
+    fireEvent.click(apiQualifier);
+
+    expect(onModelChange).toHaveBeenCalledWith(apiModel);
   });
 
   it("fuzzy-filters a long model list and selects the match by keyboard", () => {

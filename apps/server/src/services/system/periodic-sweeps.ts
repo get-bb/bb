@@ -175,14 +175,11 @@ export async function runPeriodicSweepJobs(
   }
 }
 
-async function evaluateManagedEnvironmentArchiveCleanupCandidates(
+async function advanceRetiringManagedEnvironments(
   deps: LoggedPendingInteractionWorkSessionDeps,
-  orphanedDestroyUpdatedBefore: number,
 ): Promise<ManagedEnvironmentArchiveCleanupEvaluationResult> {
-  recoverOrphanedEnvironmentDestroyRequests(deps, {
-    updatedBefore: orphanedDestroyUpdatedBefore,
-  });
-
+  // The advance enforces the archive grace window per environment, so this sweeps
+  // every retiring candidate each tick and lets in-grace ones short-circuit.
   const environmentsToClean = sweepManagedEnvironments(deps.db);
   if (environmentsToClean.length === 0) {
     return {
@@ -379,23 +376,24 @@ export async function runManagedEnvironmentArchiveCleanupRecoverySweep(
   deps: LoggedPendingInteractionWorkSessionDeps,
   now: number,
 ): Promise<void> {
+  // Orphaned-destroy recovery only touches environments stuck `destroying` for
+  // longer than the daemon command timeout, so it stays throttled — it is a rare
+  // backstop, not the steady-state driver.
   if (
-    now - lastManagedEnvironmentArchiveCleanupRecoveryAt <
+    now - lastManagedEnvironmentArchiveCleanupRecoveryAt >=
     MANAGED_ENVIRONMENT_ARCHIVE_CLEANUP_RECOVERY_INTERVAL_MS
   ) {
-    return;
-  }
-
-  const result = await evaluateManagedEnvironmentArchiveCleanupCandidates(
-    deps,
-    now - ORPHANED_ENVIRONMENT_DESTROY_RECOVERY_DELAY_MS,
-  );
-  if (
-    result.candidates > 0 &&
-    result.hostUnavailableDeferrals < result.candidates
-  ) {
+    recoverOrphanedEnvironmentDestroyRequests(deps, {
+      updatedBefore: now - ORPHANED_ENVIRONMENT_DESTROY_RECOVERY_DELAY_MS,
+    });
     lastManagedEnvironmentArchiveCleanupRecoveryAt = now;
   }
+
+  // Grace-gated destroy runs every tick: a retiring managed worktree is reclaimed
+  // ~one sweep tick after its archive grace window elapses. The advance enforces
+  // the window against the durable `updatedAt` clock (no in-memory timer), so it
+  // survives restart.
+  await advanceRetiringManagedEnvironments(deps);
 }
 
 export async function runProjectDeletionSweep(
@@ -594,7 +592,15 @@ export async function runStartupRecoverySweep(
 ): Promise<void> {
   await runEnvironmentProvisioningSweep(deps);
   await runThreadLifecycleSweep(deps);
-  await evaluateManagedEnvironmentArchiveCleanupCandidates(deps, Date.now());
+  // A daemon can reconnect and settle an in-flight destroy after the server
+  // restarts. Apply the same orphan timeout used by periodic recovery instead
+  // of immediately moving every `destroying` row to `error`; genuinely stale
+  // attempts are still recovered, and a matching late success can settle from
+  // `error` as a final backstop.
+  recoverOrphanedEnvironmentDestroyRequests(deps, {
+    updatedBefore: Date.now() - ORPHANED_ENVIRONMENT_DESTROY_RECOVERY_DELAY_MS,
+  });
+  await advanceRetiringManagedEnvironments(deps);
 }
 
 export async function runPeriodicSweeps(

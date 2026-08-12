@@ -1,5 +1,6 @@
 import { vi } from "vitest";
 import type {
+  ActorStamp,
   Environment,
   PendingInteractionApprovalDecision,
   ProviderPendingInteraction,
@@ -11,6 +12,12 @@ import type {
   TimelineRowBase,
   TimelineUserConversationRow,
 } from "@bb/server-contract";
+
+export const TEST_HUMAN_ACTOR: ActorStamp = {
+  principalId: "human:test-user",
+  principalKind: "human",
+  displayName: "Test User",
+};
 
 interface TimelineBaseArgs {
   id: string;
@@ -96,9 +103,10 @@ export function makePendingSteerTimelineRow(): TimelineUserConversationRow {
     mentions: [],
     initiator: "user",
     senderThreadId: null,
+    actor: TEST_HUMAN_ACTOR,
     systemMessageKind: "unlabeled",
     systemMessageSubject: null,
-    turnRequest: { kind: "steer", status: "pending" },
+    turnRequest: { isGrouped: false, kind: "steer", status: "pending" },
   };
 }
 

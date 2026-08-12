@@ -120,6 +120,50 @@ afterEach(async () => {
 });
 
 describe("Workspace.diffFiles", () => {
+  it("reports staged and untracked files before the initial commit", async () => {
+    const repoPath = await initRepo();
+    await write(repoPath, "staged.txt", "staged pending\n");
+    await runGit(["add", "staged.txt"], { cwd: repoPath });
+    await write(repoPath, "untracked.txt", "untracked pending\n");
+    const workspace = new Workspace(repoPath);
+
+    const diff = await workspace.getDiff({ target: UNCOMMITTED });
+    const files = await workspace.diffFiles({ target: UNCOMMITTED });
+    const patches = await workspace.diffPatch({
+      target: UNCOMMITTED,
+      paths: ["staged.txt", "untracked.txt"],
+      maxBytesPerFile: 64 * 1024,
+    });
+
+    expect(diff.files).toContain("staged.txt");
+    expect(diff.files).toContain("untracked.txt");
+    expect(diff.shortstat).toContain("2 files changed");
+    expect(files.files).toEqual([
+      expect.objectContaining({
+        path: "staged.txt",
+        additions: 1,
+        origin: "tracked",
+        statusLetter: "A",
+      }),
+      expect.objectContaining({
+        path: "untracked.txt",
+        additions: 1,
+        origin: "untracked",
+        statusLetter: "A",
+      }),
+    ]);
+    expect(patches).toEqual([
+      expect.objectContaining({
+        path: "staged.txt",
+        patch: expect.stringContaining("staged pending"),
+      }),
+      expect.objectContaining({
+        path: "untracked.txt",
+        patch: expect.stringContaining("untracked pending"),
+      }),
+    ]);
+  });
+
   it("reports additions, modifications, and deletions with numstat counts", async () => {
     const repoPath = await initRepo();
     await write(repoPath, "keep.txt", "a\nb\nc\n");

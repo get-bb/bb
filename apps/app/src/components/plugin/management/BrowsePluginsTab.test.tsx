@@ -55,7 +55,7 @@ const GITHUB_ENTRY: PluginCatalogSearchEntry = {
 const INSTALLED_MEMORY_PLUGIN = {
   id: "memory",
   source: "builtin:memory",
-  rootDir: "/official-plugins/memory",
+  rootDir: "/plugins/memory",
   version: "0.1.0",
   provenance: "catalog",
   isOrphanedBuiltin: false,

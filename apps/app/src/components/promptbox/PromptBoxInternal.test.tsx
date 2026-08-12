@@ -267,6 +267,7 @@ function renderPromptBox(
   const changes: PromptChange[] = [];
   const onMentionQueryChange = vi.fn();
   const onCommandQueryChange = vi.fn();
+  const onSubmit = vi.fn();
   const promptBoxRef = createRef<PromptBoxHandle>();
 
   function PromptBoxHarness() {
@@ -283,7 +284,7 @@ function renderPromptBox(
           setValue(nextValue);
           setMentionRanges(nextMentions);
         }}
-        onSubmit={() => {}}
+        onSubmit={onSubmit}
         typeahead={buildTypeaheadConfig({
           mentionTriggers: options.mentionTriggers,
           mentionSuggestions: options.mentionSuggestions,
@@ -304,6 +305,7 @@ function renderPromptBox(
     changes,
     onMentionQueryChange,
     onCommandQueryChange,
+    onSubmit,
     promptBoxRef,
   };
 }
@@ -437,6 +439,59 @@ function mockPointerCoarse(matches: boolean): () => void {
   return () => {
     window.matchMedia = originalMatchMedia;
   };
+}
+
+function mockNavigatorIdentity({
+  userAgent,
+  vendor,
+  platform,
+  maxTouchPoints,
+}: Pick<
+  Navigator,
+  "userAgent" | "vendor" | "platform" | "maxTouchPoints"
+>): () => void {
+  const userAgentMock = vi
+    .spyOn(navigator, "userAgent", "get")
+    .mockReturnValue(userAgent);
+  const vendorMock = vi
+    .spyOn(navigator, "vendor", "get")
+    .mockReturnValue(vendor);
+  const platformMock = vi
+    .spyOn(navigator, "platform", "get")
+    .mockReturnValue(platform);
+  const maxTouchPointsDescriptor = Object.getOwnPropertyDescriptor(
+    navigator,
+    "maxTouchPoints",
+  );
+  Object.defineProperty(navigator, "maxTouchPoints", {
+    configurable: true,
+    value: maxTouchPoints,
+  });
+  return () => {
+    if (maxTouchPointsDescriptor) {
+      Object.defineProperty(
+        navigator,
+        "maxTouchPoints",
+        maxTouchPointsDescriptor,
+      );
+    } else {
+      Reflect.deleteProperty(navigator, "maxTouchPoints");
+    }
+    platformMock.mockRestore();
+    vendorMock.mockRestore();
+    userAgentMock.mockRestore();
+  };
+}
+
+function mockIPadOSWebKit(): () => void {
+  return mockNavigatorIdentity({
+    userAgent:
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15) " +
+      "AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1",
+    vendor: "Apple Computer, Inc.",
+    platform: "MacIntel",
+    maxTouchPoints: 5,
+  });
 }
 
 afterEach(() => {
@@ -880,6 +935,23 @@ describe("PromptBoxInternal controlled value sync", () => {
     }
   });
 
+  it("releases passive editor focus when autofocus becomes blocked", async () => {
+    const restoreMatchMedia = mockPointerCoarse(false);
+    try {
+      const baseProps = createPromptBoxProps();
+      const view = render(<PromptBoxInternal {...baseProps} />);
+
+      await waitForPromptFocus();
+      view.rerender(<PromptBoxInternal {...baseProps} autoFocus={false} />);
+
+      await waitFor(() =>
+        expect(document.activeElement).not.toBe(getPromptEditorElement()),
+      );
+    } finally {
+      restoreMatchMedia();
+    }
+  });
+
   it("does not honor focus-end requests on coarse pointers", async () => {
     const restoreMatchMedia = mockPointerCoarse(true);
     try {
@@ -1073,6 +1145,360 @@ describe("PromptBoxInternal controlled value sync", () => {
     });
 
     expect(onChange).toHaveBeenLastCalledWith("> selected text\n\nreply", []);
+  });
+});
+
+describe("PromptBoxInternal submit shortcuts", () => {
+  it("continues to submit unmodified Enter on a fine-pointer device", () => {
+    const restoreMatchMedia = mockPointerCoarse(false);
+    try {
+      const onSubmit = vi.fn();
+      render(
+        <PromptBoxInternal
+          {...createPromptBoxProps({
+            value: "Run this",
+            onSubmit,
+          })}
+        />,
+      );
+
+      const wasNotCanceled = fireEvent.keyDown(getPromptEditorElement(), {
+        key: "Enter",
+      });
+
+      expect(wasNotCanceled).toBe(false);
+      expect(onSubmit).toHaveBeenCalledOnce();
+    } finally {
+      restoreMatchMedia();
+    }
+  });
+
+  it("submits a Magic Keyboard Enter on coarse-pointer iPadOS WebKit", () => {
+    const restoreMatchMedia = mockPointerCoarse(true);
+    const restoreNavigator = mockIPadOSWebKit();
+    try {
+      const onChange = vi.fn();
+      const onSubmit = vi.fn();
+      render(
+        <PromptBoxInternal
+          {...createPromptBoxProps({
+            value: "Run this",
+            onChange,
+            onSubmit,
+          })}
+        />,
+      );
+
+      const editor = getPromptEditorElement();
+      const wasNotCanceled = fireEvent.keyDown(editor, {
+        key: "Enter",
+        code: "Enter",
+      });
+
+      expect(wasNotCanceled).toBe(false);
+      expect(editor.getAttribute("enterkeyhint")).toBe("enter");
+      expect(onSubmit).toHaveBeenCalledOnce();
+      expect(onChange).not.toHaveBeenCalled();
+    } finally {
+      restoreNavigator();
+      restoreMatchMedia();
+    }
+  });
+
+  it("keeps software-keyboard Enter as a newline on coarse-pointer iPadOS WebKit", async () => {
+    const restoreMatchMedia = mockPointerCoarse(true);
+    const restoreNavigator = mockIPadOSWebKit();
+    try {
+      const onChange = vi.fn();
+      const onSubmit = vi.fn();
+      render(
+        <PromptBoxInternal
+          {...createPromptBoxProps({
+            value: "First line",
+            onChange,
+            onSubmit,
+          })}
+        />,
+      );
+
+      const editor = getPromptEditorElement();
+      fireEvent.keyDown(editor, { key: "Enter", code: "" });
+
+      expect(editor.getAttribute("enterkeyhint")).toBe("enter");
+      expect(onSubmit).not.toHaveBeenCalled();
+      await waitFor(() =>
+        expect(onChange).toHaveBeenLastCalledWith("First line\n", []),
+      );
+    } finally {
+      restoreNavigator();
+      restoreMatchMedia();
+    }
+  });
+
+  it("keeps software code=Enter as a newline on an Android coarse pointer", async () => {
+    const restoreMatchMedia = mockPointerCoarse(true);
+    const restoreNavigator = mockNavigatorIdentity({
+      userAgent:
+        "Mozilla/5.0 (Linux; Android 15; Pixel Tablet) " +
+        "AppleWebKit/537.36 Chrome/140.0.0.0 Safari/537.36",
+      vendor: "Google Inc.",
+      platform: "Linux armv8l",
+      maxTouchPoints: 5,
+    });
+    try {
+      const onChange = vi.fn();
+      const onSubmit = vi.fn();
+      render(
+        <PromptBoxInternal
+          {...createPromptBoxProps({
+            value: "First line",
+            onChange,
+            onSubmit,
+          })}
+        />,
+      );
+
+      fireEvent.keyDown(getPromptEditorElement(), {
+        key: "Enter",
+        code: "Enter",
+      });
+
+      expect(onSubmit).not.toHaveBeenCalled();
+      await waitFor(() =>
+        expect(onChange).toHaveBeenLastCalledWith("First line\n", []),
+      );
+    } finally {
+      restoreNavigator();
+      restoreMatchMedia();
+    }
+  });
+
+  it("does not intercept code=Enter on a non-iPad coarse-pointer hybrid", async () => {
+    const restoreMatchMedia = mockPointerCoarse(true);
+    const restoreNavigator = mockNavigatorIdentity({
+      userAgent:
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+        "AppleWebKit/537.36 Chrome/140.0.0.0 Safari/537.36",
+      vendor: "Google Inc.",
+      platform: "Win32",
+      maxTouchPoints: 10,
+    });
+    try {
+      const onChange = vi.fn();
+      const onSubmit = vi.fn();
+      render(
+        <PromptBoxInternal
+          {...createPromptBoxProps({
+            value: "First line",
+            onChange,
+            onSubmit,
+          })}
+        />,
+      );
+
+      fireEvent.keyDown(getPromptEditorElement(), {
+        key: "Enter",
+        code: "Enter",
+      });
+
+      expect(onSubmit).not.toHaveBeenCalled();
+      await waitFor(() =>
+        expect(onChange).toHaveBeenLastCalledWith("First line\n", []),
+      );
+    } finally {
+      restoreNavigator();
+      restoreMatchMedia();
+    }
+  });
+
+  it("keeps Magic Keyboard Shift+Enter as a newline on coarse-pointer iPadOS WebKit", async () => {
+    const restoreMatchMedia = mockPointerCoarse(true);
+    const restoreNavigator = mockIPadOSWebKit();
+    try {
+      const onChange = vi.fn();
+      const onSubmit = vi.fn();
+      render(
+        <PromptBoxInternal
+          {...createPromptBoxProps({
+            value: "First line",
+            onChange,
+            onSubmit,
+          })}
+        />,
+      );
+
+      fireEvent.keyDown(getPromptEditorElement(), {
+        key: "Enter",
+        code: "Enter",
+        shiftKey: true,
+      });
+
+      expect(onSubmit).not.toHaveBeenCalled();
+      await waitFor(() =>
+        expect(onChange).toHaveBeenLastCalledWith("First line\n", []),
+      );
+    } finally {
+      restoreNavigator();
+      restoreMatchMedia();
+    }
+  });
+
+  it("routes Magic Keyboard Command+Enter to modifier submit on coarse-pointer iPadOS WebKit", () => {
+    const restoreMatchMedia = mockPointerCoarse(true);
+    const restoreNavigator = mockIPadOSWebKit();
+    try {
+      const onModifierSubmit = vi.fn();
+      const onSubmit = vi.fn();
+      render(
+        <PromptBoxInternal
+          {...createPromptBoxProps({
+            value: "Follow up",
+            onSubmit,
+            submission: { onModifierSubmit },
+          })}
+        />,
+      );
+
+      fireEvent.keyDown(getPromptEditorElement(), {
+        key: "Enter",
+        code: "Enter",
+        metaKey: true,
+      });
+
+      expect(onModifierSubmit).toHaveBeenCalledOnce();
+      expect(onSubmit).not.toHaveBeenCalled();
+    } finally {
+      restoreNavigator();
+      restoreMatchMedia();
+    }
+  });
+
+  it("does not submit a hardware Enter that is committing IME composition", () => {
+    const restoreMatchMedia = mockPointerCoarse(true);
+    const restoreNavigator = mockIPadOSWebKit();
+    try {
+      const onSubmit = vi.fn();
+      render(
+        <PromptBoxInternal
+          {...createPromptBoxProps({
+            value: "Composing",
+            onSubmit,
+          })}
+        />,
+      );
+
+      fireEvent.keyDown(getPromptEditorElement(), {
+        key: "Enter",
+        code: "Enter",
+        isComposing: true,
+      });
+
+      expect(onSubmit).not.toHaveBeenCalled();
+    } finally {
+      restoreNavigator();
+      restoreMatchMedia();
+    }
+  });
+
+  it("does not submit the Enter keydown immediately following compositionend", () => {
+    const restoreMatchMedia = mockPointerCoarse(true);
+    const restoreNavigator = mockIPadOSWebKit();
+    try {
+      const onSubmit = vi.fn();
+      render(
+        <PromptBoxInternal
+          {...createPromptBoxProps({
+            value: "Composed candidate",
+            onSubmit,
+          })}
+        />,
+      );
+
+      const editor = getPromptEditorElement();
+      fireEvent.compositionStart(editor, { data: "候補" });
+      fireEvent.compositionEnd(editor, { data: "候補" });
+      fireEvent.keyDown(editor, {
+        key: "Enter",
+        code: "Enter",
+        keyCode: 13,
+      });
+
+      expect(onSubmit).not.toHaveBeenCalled();
+    } finally {
+      restoreNavigator();
+      restoreMatchMedia();
+    }
+  });
+
+  it("still submits a hardware Enter after a compositionend outside a composition", () => {
+    const restoreMatchMedia = mockPointerCoarse(true);
+    const restoreNavigator = mockIPadOSWebKit();
+    try {
+      const onSubmit = vi.fn();
+      render(
+        <PromptBoxInternal
+          {...createPromptBoxProps({
+            value: "Run this",
+            onSubmit,
+          })}
+        />,
+      );
+
+      // A `compositionend` with no matching `compositionstart` leaves the view
+      // outside a composition. ProseMirror ignores that event, so the 500 ms
+      // guard must ignore it too, or it would swallow a real Magic Keyboard
+      // Enter.
+      const editor = getPromptEditorElement();
+      fireEvent.compositionEnd(editor, { data: "候補" });
+      fireEvent.keyDown(editor, {
+        key: "Enter",
+        code: "Enter",
+        keyCode: 13,
+      });
+
+      expect(onSubmit).toHaveBeenCalledOnce();
+    } finally {
+      restoreNavigator();
+      restoreMatchMedia();
+    }
+  });
+
+  it("keeps hardware Enter as a newline in zen mode", async () => {
+    const restoreMatchMedia = mockPointerCoarse(true);
+    const restoreNavigator = mockIPadOSWebKit();
+    const storageKey = "bb.test.promptbox.zen-submit-shortcut";
+    window.localStorage.removeItem(storageKey);
+    try {
+      const onChange = vi.fn();
+      const onSubmit = vi.fn();
+      render(
+        <PromptBoxInternal
+          {...createPromptBoxProps({
+            value: "First line",
+            onChange,
+            onSubmit,
+            zenMode: { storageKey },
+          })}
+        />,
+      );
+      fireEvent.click(
+        screen.getByRole("button", { name: "Make prompt box larger" }),
+      );
+
+      fireEvent.keyDown(getPromptEditorElement(), {
+        key: "Enter",
+        code: "Enter",
+      });
+
+      expect(onSubmit).not.toHaveBeenCalled();
+      await waitFor(() =>
+        expect(onChange).toHaveBeenLastCalledWith("First line\n", []),
+      );
+    } finally {
+      window.localStorage.removeItem(storageKey);
+      restoreNavigator();
+      restoreMatchMedia();
+    }
   });
 });
 
@@ -2576,6 +3002,41 @@ describe("PromptBoxInternal command typeahead submit", () => {
 });
 
 describe("PromptBoxInternal command typeahead navigation", () => {
+  it("applies typeahead before submit for Magic Keyboard Enter on coarse-pointer iPadOS WebKit", async () => {
+    const restoreMatchMedia = mockPointerCoarse(true);
+    const restoreNavigator = mockIPadOSWebKit();
+    try {
+      const { changes, onSubmit } = renderPromptBox("/", {
+        commandSuggestions: [
+          {
+            kind: "command",
+            name: "review",
+            source: "skill",
+            origin: "user",
+            description: null,
+            argumentHint: null,
+          },
+        ],
+      });
+      const editor = getPromptEditorElement();
+      editor.focus();
+      await screen.findByRole("button", { name: "review" });
+      expect(onSubmit).not.toHaveBeenCalled();
+
+      fireEvent.keyDown(editor, { key: "Enter", code: "Enter" });
+
+      await waitFor(() => expect(latestValue(changes)).toBe("/review "));
+      expect(onSubmit).not.toHaveBeenCalled();
+      expect(latestChange(changes)?.mentions[0]?.resource).toMatchObject({
+        kind: "command",
+        name: "review",
+      });
+    } finally {
+      restoreNavigator();
+      restoreMatchMedia();
+    }
+  });
+
   it("uses the rendered section order for Arrow keys and Enter", async () => {
     const { changes, promptBoxRef } = renderPromptBox("/", {
       commandSuggestions: [
@@ -2653,6 +3114,83 @@ describe("PromptBoxInternal command typeahead navigation", () => {
     expect(latestChange(changes)?.mentions[0]?.resource).toMatchObject({
       kind: "command",
       name: "interview",
+    });
+  });
+
+  it("hoists an exactly-named user command above the skills section", async () => {
+    // Suggestions arrive in section order (skills first), the way the server
+    // hands them back — the exact-match hoist is PromptBoxInternal's job, so
+    // every composer that renders through it gets the same order.
+    const { changes, promptBoxRef } = renderPromptBox("/plan", {
+      commandSuggestions: [
+        {
+          kind: "command",
+          name: "planner",
+          source: "skill",
+          origin: "user",
+          description: null,
+          argumentHint: null,
+        },
+        {
+          kind: "command",
+          name: "planning-doc",
+          source: "skill",
+          origin: "user",
+          description: null,
+          argumentHint: null,
+        },
+        {
+          kind: "command",
+          name: "plan",
+          source: "command",
+          origin: "user",
+          description: null,
+          argumentHint: null,
+        },
+        {
+          kind: "command",
+          name: "plan-b",
+          source: "command",
+          origin: "user",
+          description: null,
+          argumentHint: null,
+        },
+      ],
+    });
+
+    await focusPromptEnd(promptBoxRef);
+    const sectionLabel = await screen.findByText("User commands");
+    const menu = sectionLabel.closest(".overflow-hidden");
+    if (!(menu instanceof HTMLElement)) {
+      throw new Error("Expected command menu");
+    }
+    // The exact match leads, and its section stays whole rather than splitting
+    // around the skills — one header per section keeps rendered order equal to
+    // the array Arrow/Enter walk.
+    expect(
+      within(menu)
+        .getAllByRole("button")
+        .map((button) => button.textContent),
+    ).toEqual(["plan", "plan-b", "planner", "planning-doc"]);
+    expect(
+      within(menu)
+        .getAllByText(/^(User commands|Skills)$/)
+        .map((label) => label.textContent),
+    ).toEqual(["User commands", "Skills"]);
+
+    await waitFor(() =>
+      expect(
+        within(menu).getByRole("button", { name: "plan" }).className,
+      ).toContain("bg-state-active"),
+    );
+
+    fireEvent.keyDown(getPromptEditorElement(), { key: "Enter" });
+
+    await waitFor(() => expect(latestValue(changes)).toBe("/plan "));
+    expect(latestChange(changes)?.mentions[0]?.resource).toMatchObject({
+      kind: "command",
+      name: "plan",
+      source: "command",
     });
   });
 });

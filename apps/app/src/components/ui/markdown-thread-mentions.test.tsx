@@ -66,6 +66,7 @@ function threadResponse(
       displayStatus: "idle",
       hostReconnectGraceExpiresAt: null,
     },
+    activeBackgroundAgentCount: 0,
     canSpawnChild: true,
     ...overrides,
   };

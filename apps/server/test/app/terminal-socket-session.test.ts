@@ -227,6 +227,7 @@ describe("terminal socket session manager", () => {
     await flush();
     expect(attachBrowserTerminal).toHaveBeenCalledTimes(1);
     expect(attachBrowserTerminal).toHaveBeenCalledWith({
+      sinceSeq: 0,
       socket,
       terminalId: terminal.id,
       threadId: null,

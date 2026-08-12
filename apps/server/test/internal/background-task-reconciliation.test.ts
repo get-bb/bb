@@ -18,6 +18,7 @@ import {
   seedThreadFixture,
   seedTurnStarted,
 } from "../helpers/seed.js";
+import { createMockHubSocket } from "../helpers/mock-hub-socket.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 
 function backgroundTaskItemData(args: {
@@ -364,6 +365,78 @@ describe("background-task lifecycle reconciliation triggers", () => {
 
       expect(response.status).toBe(201);
       expect(listSettledBackgroundTaskItems(harness, thread.id)).toEqual([]);
+    });
+  });
+
+  it("does not tell a live daemon to shut down when that same instance reconnects", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session, thread } = seedOpenBackgroundTaskThread(harness);
+      const previousSocket = createMockHubSocket();
+      harness.deps.hub.registerDaemon(session.id, host.id, previousSocket);
+
+      const response = await harness.app.request("/internal/session/open", {
+        method: "POST",
+        headers: internalAuthHeaders(harness, {
+          hostId: host.id,
+          hostType: host.type,
+        }),
+        body: JSON.stringify({
+          hostId: host.id,
+          instanceId: session.instanceId,
+          hostName: host.name,
+          hostType: host.type,
+          hasMachineCredential: false,
+          platform: "darwin",
+          dataDir: "/tmp/host-daemon-task-live-same-instance",
+          protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
+          activeThreads: [],
+        }),
+      });
+
+      expect(response.status).toBe(201);
+      expect(previousSocket.messages).toEqual([]);
+      expect(previousSocket.closed).toEqual([
+        { code: 1000, reason: "replaced" },
+      ]);
+      expect(listSettledBackgroundTaskItems(harness, thread.id)).toEqual([]);
+    });
+  });
+
+  it("still tells a superseded daemon instance to shut down", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session, thread } = seedOpenBackgroundTaskThread(harness);
+      const previousSocket = createMockHubSocket();
+      harness.deps.hub.registerDaemon(session.id, host.id, previousSocket);
+
+      const response = await harness.app.request("/internal/session/open", {
+        method: "POST",
+        headers: internalAuthHeaders(harness, {
+          hostId: host.id,
+          hostType: host.type,
+        }),
+        body: JSON.stringify({
+          hostId: host.id,
+          instanceId: "instance-restarted",
+          hostName: host.name,
+          hostType: host.type,
+          hasMachineCredential: false,
+          platform: "darwin",
+          dataDir: "/tmp/host-daemon-task-live-restarted",
+          protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
+          activeThreads: [],
+        }),
+      });
+
+      expect(response.status).toBe(201);
+      expect(previousSocket.messages).toEqual([
+        JSON.stringify({ type: "session-close", reason: "replaced" }),
+      ]);
+      expect(previousSocket.closed).toEqual([
+        { code: 1000, reason: "replaced" },
+      ]);
+      expect(listSettledBackgroundTaskItems(harness, thread.id)).toEqual([
+        { status: "interrupted", taskStatus: "stopped" },
+      ]);
     });
   });
 

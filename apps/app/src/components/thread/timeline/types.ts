@@ -1,4 +1,5 @@
 import type { ThreadChatMessageReference } from "@bb/plugin-sdk";
+import type { PromptInput } from "@bb/domain";
 import type {
   MarkdownPreviewLocalFileLink,
   MarkdownPreviewLocalFileLinkHandler,
@@ -32,6 +33,30 @@ export interface ThreadTimelineForkMessageTarget {
 export type ThreadTimelineForkMessageHandler = (
   target: ThreadTimelineForkMessageTarget,
 ) => void;
+
+export interface ThreadTimelineEditMessageTarget {
+  /** Stable id of the specific rendered user bubble being edited. */
+  messageId: string;
+  /** Event sequence of the user request the edit would replace. */
+  expectedRequestSequence: number;
+  /** User-visible input reconstructed from the unchanged timeline row. */
+  input: PromptInput[];
+}
+
+/**
+ * Start a client-local edit session for an eligible user request.
+ * Supplying this handler only enables the affordance; the row never mutates
+ * thread or provider state itself.
+ */
+export type ThreadTimelineEditMessageHandler = (
+  target: ThreadTimelineEditMessageTarget,
+) => void;
+
+/** Client-local editor mounted in place of one user conversation row. */
+export interface ThreadTimelineInlineMessageEditor {
+  messageId: string;
+  onHostElementChange: (element: HTMLDivElement | null) => void;
+}
 
 export interface ThreadTimelineSendToMainMessageTarget {
   /** Visible text of the side-chat agent message to hand back to the main thread. */

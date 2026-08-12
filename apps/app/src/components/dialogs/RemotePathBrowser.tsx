@@ -247,7 +247,9 @@ export function RemotePathBrowser({
                 className="flex items-center gap-2 px-2 py-1 text-sm text-muted-foreground"
               >
                 <Icon name="File" className="size-4 shrink-0" />
-                <span className="truncate">{entry.name}</span>
+                <span className="min-w-0 truncate" title={entry.name}>
+                  {entry.name}
+                </span>
               </li>
             );
           }
@@ -263,7 +265,9 @@ export function RemotePathBrowser({
                   name="Folder"
                   className="size-4 shrink-0 text-muted-foreground"
                 />
-                <span className="truncate">{entry.name}</span>
+                <span className="min-w-0 truncate" title={entry.name}>
+                  {entry.name}
+                </span>
                 <Icon
                   name="ChevronRight"
                   className="ml-auto size-4 shrink-0 text-muted-foreground"

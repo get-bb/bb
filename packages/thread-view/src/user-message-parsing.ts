@@ -225,6 +225,7 @@ function buildTurnRequest(
   acceptedClientRequest: AcceptedClientRequest | undefined,
 ): EventProjectionTurnRequest {
   return {
+    isGrouped: decoded.inputGroups !== undefined,
     kind: resolveTurnRequestKind({
       acceptedClientRequest,
       decoded,

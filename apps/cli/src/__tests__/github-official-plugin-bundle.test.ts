@@ -24,10 +24,10 @@ function testToolchain() {
  * Evaluates the official GitHub plugin's built bundle against a stub runtime
  * (the plugin-build.test.ts pattern) and asserts its default export
  * registers exactly the expected slots. Built from a temp copy so this test
- * never races the server suite over official-plugins/github/dist.
+ * never races the server suite over plugins/github/dist.
  */
 const GITHUB_DIR = fileURLToPath(
-  new URL("../../../../official-plugins/github", import.meta.url),
+  new URL("../../../../plugins/github", import.meta.url),
 );
 
 interface SlotRegistration {

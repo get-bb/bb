@@ -40,10 +40,9 @@ Absolute paths, traversal, non-html extensions, missing files, non-UTF-8
 content, and files over 5 MiB are rejected. The iframe then uses bb's existing
 confined worktree preview route to serve the document and relative assets.
 
-It ships with bb and is reconciled through the builtin plugin lifecycle; it
-does not require the user-installed Plugins experiment. Ship a workspace HTML
-file, then ask the agent to visualize it with the directive (see the bundled
-`inline-vis` skill).
+It ships with bb and is reconciled through the builtin plugin lifecycle. Ship
+a workspace HTML file, then ask the agent to visualize it with the directive
+(see the bundled `inline-vis` skill).
 
 ## Tests
 

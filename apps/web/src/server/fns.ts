@@ -14,22 +14,29 @@ import {
 } from "./api.js";
 import { getEnv } from "./env.js";
 import { getSessionUserId } from "./current-user.server.js";
+import { resolveDevEmailPasswordEnabled } from "./local-auth.js";
 
 // The ONLY server module the client route imports. Everything here is a
 // createServerFn, so the client receives RPC stubs and none of the server-only
 // imports (D1, better-auth, cloudflare:workers) land in the client bundle.
 
 export type DashboardState =
-  | { authed: false }
+  | { authed: false; emailPasswordEnabled: boolean }
   | ({ authed: true } & AccountState);
 
 export const getDashboard = createServerFn({ method: "GET" }).handler(
   async (): Promise<DashboardState> => {
+    const env = getEnv();
     const userId = await getSessionUserId();
-    if (!userId) return { authed: false };
+    if (!userId) {
+      return {
+        authed: false,
+        emailPasswordEnabled: resolveDevEmailPasswordEnabled(env),
+      };
+    }
     return {
       authed: true,
-      ...(await getAccountState(depsFromEnv(getEnv()), userId)),
+      ...(await getAccountState(depsFromEnv(env), userId)),
     };
   },
 );

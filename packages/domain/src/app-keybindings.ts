@@ -38,6 +38,8 @@ export const PANE_FOCUS_APP_COMMAND_IDS = [
 export const APP_COMMAND_IDS = [
   "thread.new",
   "thread.search",
+  "thread.rename",
+  "thread.archive",
   "thread.previous",
   "thread.next",
   ...THREAD_JUMP_APP_COMMAND_IDS,
@@ -204,8 +206,14 @@ export const appKeybindingSchema = z
   .strict();
 export type AppKeybinding = z.infer<typeof appKeybindingSchema>;
 
+export const appDefaultKeybindingSchema = appKeybindingSchema.extend({
+  // Null keeps a command assignable without shipping a default shortcut.
+  shortcut: appShortcutSchema.nullable(),
+});
+export type AppDefaultKeybinding = z.infer<typeof appDefaultKeybindingSchema>;
+
 export function isAppKeybindingAvailableForClient(
-  binding: AppKeybinding,
+  binding: AppKeybinding | AppDefaultKeybinding,
   client: { isDesktop: boolean; isMac: boolean },
 ): boolean {
   if (binding.desktopOnly && !client.isDesktop) return false;
@@ -219,6 +227,11 @@ export function isAppKeybindingAvailableForClient(
 
 export const appKeybindingsSchema = z.array(appKeybindingSchema).max(256);
 export type AppKeybindings = z.infer<typeof appKeybindingsSchema>;
+
+export const appDefaultKeybindingsSchema = z
+  .array(appDefaultKeybindingSchema)
+  .max(256);
+export type AppDefaultKeybindings = z.infer<typeof appDefaultKeybindingsSchema>;
 
 export const appKeybindingOverrideSchema = z
   .object({
@@ -250,18 +263,15 @@ export type AppKeybindingOverrides = z.infer<
 >;
 
 export function applyAppKeybindingOverrides(
-  defaults: AppKeybindings,
+  defaults: AppDefaultKeybindings,
   overrides: AppKeybindingOverrides,
 ): AppKeybindings {
   return defaults.flatMap((binding) => {
     const override = overrides.find(
       (candidate) => candidate.command === binding.command,
     );
-    if (override === undefined) {
-      return [binding];
-    }
-    return override.shortcut === null
-      ? []
-      : [{ ...binding, shortcut: override.shortcut }];
+    const shortcut =
+      override === undefined ? binding.shortcut : override.shortcut;
+    return shortcut === null ? [] : [{ ...binding, shortcut }];
   });
 }

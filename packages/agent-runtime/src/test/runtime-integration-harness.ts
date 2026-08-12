@@ -434,6 +434,8 @@ export function formatInteractiveRequest(
       return `file_change:${subject.itemId}`;
     case "permission_grant":
       return `permission_grant:${subject.toolName ?? "unknown"}`;
+    case "plan":
+      return `plan:${previewText(subject.plan)}`;
   }
 }
 
@@ -727,7 +729,7 @@ export function expectSemanticApprovalRequest(
     );
   }
 
-  expect(["command", "file_change", "permission_grant"]).toContain(
+  expect(["command", "file_change", "permission_grant", "plan"]).toContain(
     request.payload.subject.kind,
   );
   switch (request.payload.subject.kind) {
@@ -741,6 +743,9 @@ export function expectSemanticApprovalRequest(
       break;
     case "permission_grant":
       expect(request.payload.subject.permissions).toBeDefined();
+      break;
+    case "plan":
+      expect(request.payload.subject.plan.length).toBeGreaterThan(0);
       break;
   }
   expect(request.payload.availableDecisions.length).toBeGreaterThan(0);

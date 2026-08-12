@@ -7,6 +7,7 @@ import {
   type HostDaemonEventEnvelope,
 } from "@bb/host-daemon-contract";
 import { describe, expect, it } from "vitest";
+import { buildThreadTimeline } from "../../src/services/threads/timeline.js";
 import {
   internalAuthHeaders,
   waitForQueuedCommand,
@@ -73,6 +74,52 @@ function setupEventRoute(args: SeedEventRouteArgs = {}) {
 }
 
 describe("internal event append ownership", () => {
+  it("stores thread-scoped ACP context usage for the timeline display", async () => {
+    const { harness, session, thread } = await setupEventRoute();
+    try {
+      const response = await postEventBatch({
+        harness,
+        sessionId: session.id,
+        events: [
+          {
+            threadId: thread.id,
+            event: {
+              type: "thread/contextWindowUsage/updated",
+              threadId: thread.id,
+              providerThreadId: "acp-session-1",
+              scope: threadScope(),
+              contextWindowUsage: {
+                usedTokens: 24_000,
+                modelContextWindow: 128_000,
+                estimated: false,
+              },
+            },
+          },
+        ],
+      });
+
+      expect(response.status).toBe(200);
+      expect(
+        buildThreadTimeline(harness.db, thread, {
+          eventBudget: 1_000_000,
+          includeProviderUnhandledOperations: true,
+          maxInlineOutputChars: null,
+          maxSeq: 1,
+          page: {
+            kind: "latest",
+            segmentLimit: Number.MAX_SAFE_INTEGER,
+          },
+        }).contextWindowUsage,
+      ).toEqual({
+        usedTokens: 24_000,
+        modelContextWindow: 128_000,
+        estimated: false,
+      });
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
   it("assigns server-owned sequences and returns accepted event indexes", async () => {
     const { environment, harness, session, thread } = await setupEventRoute();
     try {
@@ -192,6 +239,76 @@ describe("internal event append ownership", () => {
               threadId: thread.id,
               scope: threadScope(),
               message: "accepted after skipped",
+            },
+          },
+        ],
+      });
+
+      expect(response.status).toBe(200);
+      await expect(readJson(response)).resolves.toEqual({
+        acceptedEvents: [
+          {
+            eventIndex: 1,
+            threadId: thread.id,
+            sequence: 1,
+          },
+        ],
+        rejectedEvents: [],
+      });
+      expect(
+        harness.db
+          .select()
+          .from(events)
+          .where(eq(events.threadId, thread.id))
+          .all(),
+      ).toMatchObject([
+        {
+          sequence: 1,
+          type: "system/error",
+        },
+      ]);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it("accepts a batch carrying a provider/unhandled event for a turn bb never started", async () => {
+    // The production wedge, at the route that produced it. Codex labels its
+    // automatic-compaction traffic with a turn id of its own making, so the
+    // daemon posted a provider/unhandled event scoped to `auto-compact-1`. The
+    // append rolled the whole batch back and answered 409 — which the daemon,
+    // holding one queue for every thread on the host, reposted verbatim until
+    // the app was restarted. The orphan event must be dropped and its batch
+    // must survive.
+    const { harness, session, thread } = await setupEventRoute();
+    try {
+      const response = await postEventBatch({
+        harness,
+        sessionId: session.id,
+        events: [
+          {
+            threadId: thread.id,
+            event: {
+              type: "provider/unhandled",
+              threadId: thread.id,
+              providerThreadId: "provider-compacting-session",
+              providerId: "codex",
+              rawType: "sdk/custom",
+              scope: turnScope("auto-compact-1"),
+              rawEvent: {
+                jsonrpc: "2.0",
+                method: "sdk/message",
+                params: { threadId: thread.id, turnId: "auto-compact-1" },
+              },
+            },
+          },
+          {
+            threadId: thread.id,
+            event: {
+              type: "system/error",
+              threadId: thread.id,
+              scope: threadScope(),
+              message: "queued behind the orphan event",
             },
           },
         ],

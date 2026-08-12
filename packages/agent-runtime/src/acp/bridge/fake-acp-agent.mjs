@@ -9,10 +9,16 @@
  *
  * Env knobs (passed by tests through thread/start envVars):
  * - FAKE_ACP_LOAD_SESSION=1  → advertise + accept session/load
+ * - FAKE_ACP_FAIL_LOAD=1     → advertise session/load, then fail it
+ * - FAKE_ACP_USAGE_ON_LOAD=1 → report context usage during session/load
+ * - FAKE_ACP_USAGE_SESSION_ID
+ *                            → override the usage notification session id
  * - FAKE_ACP_MODEL_CONFIG=1  → advertise a model configOptions select
  * - FAKE_ACP_MODELS_FIELD=1  → advertise legacy ACP models state
  * - FAKE_ACP_THOUGHT_LEVEL_CONFIG=1
  *                            → advertise per-model effort configOptions
+ * - FAKE_ACP_UNMAPPED_REASONING_CONFIG=1
+ *                            → advertise unmapped thought_level values
  * - FAKE_ACP_ACCEPT_NATIVE_REASONING=1
  *                            → accept reasoning_effort config updates without
  *                              advertising a thought_level config option
@@ -25,15 +31,24 @@
  * - FAKE_ACP_WRITE_PATH      → target path for the "write-file" prompt
  * - FAKE_ACP_LAUNCH_LOG      → append one line per process launch (used to
  *                              count model-discovery spawns in cache/TTL tests)
+ * - FAKE_ACP_PROMPT_LOG      → append one JSON-encoded prompt text per request
+ * - FAKE_ACP_PROMPT_ERROR=1  → reject every session/prompt request
+ * - FAKE_ACP_COMPACT_STOP_REASON
+ *                            → stop reason returned for /compact
  */
 
 import { createInterface } from "node:readline";
 import { appendFileSync, writeFileSync } from "node:fs";
 
-const loadSession = process.env.FAKE_ACP_LOAD_SESSION === "1";
+const failLoad = process.env.FAKE_ACP_FAIL_LOAD === "1";
+const loadSession = process.env.FAKE_ACP_LOAD_SESSION === "1" || failLoad;
+const usageOnLoad = process.env.FAKE_ACP_USAGE_ON_LOAD === "1";
+const usageSessionId = process.env.FAKE_ACP_USAGE_SESSION_ID;
 const modelConfig = process.env.FAKE_ACP_MODEL_CONFIG === "1";
 const modelsField = process.env.FAKE_ACP_MODELS_FIELD === "1";
 const thoughtLevelConfig = process.env.FAKE_ACP_THOUGHT_LEVEL_CONFIG === "1";
+const unmappedReasoningConfig =
+  process.env.FAKE_ACP_UNMAPPED_REASONING_CONFIG === "1";
 const acceptNativeReasoning =
   process.env.FAKE_ACP_ACCEPT_NATIVE_REASONING === "1";
 const setConfigModelError = process.env.FAKE_ACP_SET_CONFIG_MODEL_ERROR === "1";
@@ -53,6 +68,7 @@ let nextAgentRequestId = 1000;
 let selectedModel = "fake/default";
 let selectedEffort = "none";
 let authenticatedMethod = null;
+let activeSessionId = sessionId;
 const pendingClientRequests = new Map();
 let currentMcpServers = [];
 
@@ -86,11 +102,11 @@ function send(message) {
   process.stdout.write(JSON.stringify(message) + "\n");
 }
 
-function notifyUpdate(update) {
+function notifyUpdate(update, targetSessionId = activeSessionId) {
   send({
     jsonrpc: "2.0",
     method: "session/update",
-    params: { sessionId, update },
+    params: { sessionId: targetSessionId, update },
   });
 }
 
@@ -102,6 +118,16 @@ function messageChunk(text) {
 }
 
 function effortOptionForModel(model) {
+  if (unmappedReasoningConfig) {
+    return {
+      id: "effort",
+      name: "Effort",
+      category: "thought_level",
+      type: "select",
+      currentValue: "smart",
+      options: [{ value: "smart" }, { value: "fast" }],
+    };
+  }
   const efforts = thoughtLevelConfig ? effortsByModel.get(model) : undefined;
   if (!efforts) {
     return undefined;
@@ -203,8 +229,26 @@ function captureMcpServers(message) {
 async function handlePrompt(message) {
   activePromptId = message.id;
   const text = promptText(message.params?.prompt);
+  if (process.env.FAKE_ACP_PROMPT_LOG) {
+    appendFileSync(
+      process.env.FAKE_ACP_PROMPT_LOG,
+      `${JSON.stringify(text)}\n`,
+    );
+  }
 
-  if (text.includes("request-permission")) {
+  if (process.env.FAKE_ACP_PROMPT_ERROR === "1") {
+    activePromptId = null;
+    send({
+      jsonrpc: "2.0",
+      id: message.id,
+      error: { code: -32000, message: "Fake prompt failure" },
+    });
+    return;
+  }
+
+  if (text === "/compact") {
+    // OpenCode treats this exact prompt as a provider-local control.
+  } else if (text.includes("request-permission")) {
     notifyUpdate({
       sessionUpdate: "tool_call",
       toolCallId: "perm-tool-1",
@@ -216,7 +260,7 @@ async function handlePrompt(message) {
     let outcome = "cancelled";
     try {
       const result = await requestClient("session/request_permission", {
-        sessionId,
+        sessionId: activeSessionId,
         toolCall: {
           toolCallId: "perm-tool-1",
           title: "Run rm",
@@ -240,7 +284,7 @@ async function handlePrompt(message) {
   } else if (text.includes("write-file")) {
     try {
       await requestClient("fs/write_text_file", {
-        sessionId,
+        sessionId: activeSessionId,
         path: process.env.FAKE_ACP_WRITE_PATH,
         content: "hello from agent\n",
       });
@@ -287,10 +331,14 @@ async function handlePrompt(message) {
 
   if (activePromptId === message.id) {
     activePromptId = null;
+    const stopReason =
+      text === "/compact"
+        ? (process.env.FAKE_ACP_COMPACT_STOP_REASON ?? "end_turn")
+        : "end_turn";
     send({
       jsonrpc: "2.0",
       id: message.id,
-      result: { stopReason: "end_turn" },
+      result: { stopReason },
     });
   }
 }
@@ -342,12 +390,13 @@ async function handleMessage(message) {
       if (!requireAuthenticated(message)) {
         return;
       }
+      activeSessionId = sessionId;
       captureMcpServers(message);
       send({
         jsonrpc: "2.0",
         id: message.id,
         result: {
-          sessionId,
+          sessionId: activeSessionId,
           ...configState(),
         },
       });
@@ -358,7 +407,22 @@ async function handleMessage(message) {
       }
       if (loadSession) {
         captureMcpServers(message);
-        send({ jsonrpc: "2.0", id: message.id, result: configState() });
+        if (usageOnLoad) {
+          notifyUpdate(
+            { sessionUpdate: "usage_update", used: 24_000, size: 128_000 },
+            usageSessionId ?? message.params?.sessionId,
+          );
+        }
+        if (failLoad) {
+          send({
+            jsonrpc: "2.0",
+            id: message.id,
+            error: { code: -32000, message: "session/load failed" },
+          });
+        } else {
+          activeSessionId = message.params?.sessionId;
+          send({ jsonrpc: "2.0", id: message.id, result: configState() });
+        }
       } else {
         send({
           jsonrpc: "2.0",

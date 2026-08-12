@@ -14,6 +14,7 @@ import {
   type Host,
   PERSONAL_PROJECT_ID,
   type PermissionMode,
+  type ProjectExecutionDefaults,
   type PromptInput,
   type ReasoningLevel,
   type ServiceTier,
@@ -28,12 +29,11 @@ import {
   NewThreadPromptBox,
   type NewThreadProjectConfig,
 } from "@/components/promptbox/NewThreadPromptBox";
-import { PromptStackCard } from "@/components/promptbox/banner/PromptStackCard";
+import { CodexCliVersionBanner } from "@/components/promptbox/banner/CodexCliVersionBanner";
 import {
   buildProviderCliIssue,
   hasProviderCliAction,
   useProviderCliInstallRunner,
-  type ProviderCliActionableIssue,
 } from "@/components/provider-cli/provider-cli-install";
 import { providerCliJobKey } from "@/components/provider-cli/provider-cli-install-store";
 import { withAutomationPromptAction } from "@/components/promptbox/PromptBoxActionsMenu";
@@ -93,7 +93,6 @@ import { useEnvironment } from "@/hooks/queries/environment-queries";
 import { useProjectDefaultExecutionOptions } from "@/hooks/queries/project-default-execution-options-query";
 import {
   useHostProviderCliStatus,
-  useOnboardingAgents,
   useSystemConfig,
 } from "@/hooks/queries/system-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
@@ -223,7 +222,10 @@ import {
   getActiveFixedSecondaryTab,
   useSetThreadSecondaryPanelSelection,
 } from "./thread-detail/threadSecondaryPanelSelection";
-import { useThreadSecondaryPanelVisibility } from "./thread-detail/useThreadSecondaryPanelVisibility";
+import {
+  useThreadSecondaryPanelDrawerVisibility,
+  useThreadSecondaryPanelVisibility,
+} from "./thread-detail/useThreadSecondaryPanelVisibility";
 import type { ThreadSecondaryPanelHostFileOpenHandler } from "./thread-detail/useThreadSecondaryPanelVisibility";
 import {
   buildOpenInEditorHandler,
@@ -726,56 +728,6 @@ export function LegacyProjectComposeRedirect({
   );
 }
 
-interface CodexCliVersionBannerProps {
-  currentVersion: string | null;
-  minimumSupportedVersion: string | null;
-  issue: ProviderCliActionableIssue | null;
-  updating: boolean;
-  onUpdate: () => void;
-}
-
-function CodexCliVersionBanner({
-  currentVersion,
-  minimumSupportedVersion,
-  issue,
-  updating,
-  onUpdate,
-}: CodexCliVersionBannerProps) {
-  const minimumVersion = minimumSupportedVersion ?? "a newer version";
-  const versionCopy = currentVersion
-    ? `Installed ${currentVersion}; required ${minimumVersion} or newer.`
-    : `Required ${minimumVersion} or newer.`;
-  return (
-    <PromptStackCard
-      ariaLabel="Codex update needed"
-      className="overflow-hidden"
-    >
-      <div className="flex min-h-8 max-w-full items-center gap-2 px-2.5 py-1 text-xs text-muted-foreground">
-        <Icon
-          name="Info"
-          className="size-3.5 shrink-0 text-subtle-foreground"
-          aria-hidden
-        />
-        <span className="min-w-0 flex-1 truncate">
-          Update Codex to start this thread. {versionCopy}
-        </span>
-        {issue ? (
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            className="h-6 shrink-0 px-2 text-xs"
-            disabled={updating}
-            onClick={onUpdate}
-          >
-            {updating ? "Updating" : issue.action.label}
-          </Button>
-        ) : null}
-      </div>
-    </PromptStackCard>
-  );
-}
-
 export function RootComposeRoute() {
   const { projectId } = useParams<{ projectId: string }>();
 
@@ -791,6 +743,43 @@ export function RootComposeRoute() {
       <RootComposeView />
     </WorkerPoolContextProvider>
   );
+}
+
+type RootComposeProjectDefaultsState =
+  | { status: "pending" }
+  | { status: "error" }
+  | {
+      status: "resolved";
+      defaults: ProjectExecutionDefaults | null;
+    };
+
+interface ResolveRootComposeProjectDefaultsStateArgs {
+  cachedDefaults: ProjectExecutionDefaults | null | undefined;
+  projectFound: boolean;
+  queryData: ProjectExecutionDefaults | null | undefined;
+  queryIsError: boolean;
+  queryIsPlaceholderData: boolean;
+  queryIsSuccess: boolean;
+}
+
+export function resolveRootComposeProjectDefaultsState({
+  cachedDefaults,
+  projectFound,
+  queryData,
+  queryIsError,
+  queryIsPlaceholderData,
+  queryIsSuccess,
+}: ResolveRootComposeProjectDefaultsStateArgs): RootComposeProjectDefaultsState {
+  if (cachedDefaults !== null && cachedDefaults !== undefined) {
+    return { status: "resolved", defaults: cachedDefaults };
+  }
+  if (!projectFound) {
+    return { status: "pending" };
+  }
+  if (queryIsSuccess && !queryIsPlaceholderData) {
+    return { status: "resolved", defaults: queryData ?? null };
+  }
+  return queryIsError ? { status: "error" } : { status: "pending" };
 }
 
 export function RootComposeView() {
@@ -1001,19 +990,19 @@ export function RootComposeView() {
         currentProject.defaultExecutionOptions === null,
     },
   );
-  const projectDefaultExecutionOptions =
-    currentProject?.defaultExecutionOptions ??
-    projectDefaultExecutionOptionsQuery.data ??
-    null;
-  // Only consulted when the project has no saved default, so one cached read
-  // rather than the polling onboarding uses.
-  const agentOverviewQuery = useOnboardingAgents({
-    enabled: projectDefaultExecutionOptions === null,
-    poll: false,
+  const projectDefaultsState = resolveRootComposeProjectDefaultsState({
+    cachedDefaults: currentProject?.defaultExecutionOptions,
+    projectFound: currentProject !== undefined,
+    queryData: projectDefaultExecutionOptionsQuery.data,
+    queryIsError: projectDefaultExecutionOptionsQuery.isError,
+    queryIsPlaceholderData:
+      projectDefaultExecutionOptionsQuery.isPlaceholderData,
+    queryIsSuccess: projectDefaultExecutionOptionsQuery.isSuccess,
   });
-  const connectedProviderId = agentOverviewQuery.data?.agents.find(
-    (agent) => agent.status === "connected",
-  )?.providerId;
+  const projectDefaultExecutionOptions =
+    projectDefaultsState.status === "resolved"
+      ? projectDefaultsState.defaults
+      : undefined;
   const creationOptions = useThreadCreationOptions({
     scope: "new-thread",
     preferenceProjectId: projectId,
@@ -1022,8 +1011,9 @@ export function RootComposeView() {
     // actually signed in to. The raw provider catalog is a fixed list, so
     // `providers[0]` would always be Codex — wrong for anyone who only has,
     // say, Claude Code connected.
-    initialProviderId:
-      projectDefaultExecutionOptions?.providerId ?? connectedProviderId,
+    initialProviderId: projectDefaultExecutionOptions?.providerId,
+    preferConnectedProviderWhenUnset:
+      forkSeed === null && projectDefaultExecutionOptions === null,
     initialModel: projectDefaultExecutionOptions?.model,
     initialServiceTier: projectDefaultExecutionOptions?.serviceTier,
     initialReasoningLevel: projectDefaultExecutionOptions?.reasoningLevel,
@@ -1033,6 +1023,7 @@ export function RootComposeView() {
     executionOptionsRouting,
     selectedProviderId,
     setSelectedProviderId,
+    setProviderModelReasoning,
     providerOptions,
     hasMultipleProviders,
     selectedProviderComposerActions,
@@ -1051,6 +1042,7 @@ export function RootComposeView() {
     modelOptions,
     moreModelOptions,
     isLoadingModels,
+    isResolvingInitialProvider,
     modelLoadFailed,
     modelLoadError,
     reasoningOptions,
@@ -1060,6 +1052,8 @@ export function RootComposeView() {
     serviceTierSupportByProvider,
   } = creationOptions;
   const executionInputSources = creationOptions.executionInputSources;
+  const projectDefaultsUnavailable =
+    forkSeed === null && projectDefaultsState.status !== "resolved";
   const snapshotPromptDraftBeforeOptionChange = useCallback(() => {
     const currentDraft = promptDraft.getCurrent();
     promptOptionDraftSnapshotRef.current = isPromptDraftEmpty(currentDraft)
@@ -1192,9 +1186,7 @@ export function RootComposeView() {
     }
     if (nextForkSeed !== null && nextHandoffSeed === null) {
       setForkSeed(nextForkSeed);
-      setSelectedProviderId(nextForkSeed.providerId);
-      setSelectedModel(nextForkSeed.model);
-      setReasoningLevel(nextForkSeed.reasoningLevel);
+      setProviderModelReasoning(nextForkSeed);
       setPermissionMode(nextForkSeed.permissionMode);
       setServiceTier(nextForkSeed.serviceTier);
     }
@@ -1220,9 +1212,7 @@ export function RootComposeView() {
     seedHandoffPrompt,
     setEnvironmentSelectionValue,
     setPermissionMode,
-    setReasoningLevel,
-    setSelectedModel,
-    setSelectedProviderId,
+    setProviderModelReasoning,
     setRootComposeProjectId,
     setServiceTier,
   ]);
@@ -1704,6 +1694,8 @@ export function RootComposeView() {
       if (
         submittedInput.length === 0 ||
         createThread.isPending ||
+        projectDefaultsUnavailable ||
+        isResolvingInitialProvider ||
         isCodexCliVersionBlocked ||
         managedWorktreeAvailabilityPending ||
         managedWorktreeUnavailable ||
@@ -1779,10 +1771,12 @@ export function RootComposeView() {
       navigate,
       navigateToThreadAfterCreate,
       permissionMode,
+      projectDefaultsUnavailable,
       projectId,
       promptDraft,
       reasoningLevel,
       rootComposeSectionId,
+      isResolvingInitialProvider,
       selectedEnvironment,
       selectedProviderId,
       selectedThreadModel,
@@ -1804,6 +1798,8 @@ export function RootComposeView() {
     isCodexCliVersionBlocked ||
     !selectedThreadModel ||
     createThread.isPending ||
+    projectDefaultsUnavailable ||
+    isResolvingInitialProvider ||
     isCopyingPromptAttachments ||
     promptInput.length === 0 ||
     (forkSeed === null && !selectedEnvironment) ||
@@ -1859,6 +1855,7 @@ export function RootComposeView() {
   const commandSuggestions = useCommandSuggestions({
     projectId,
     providerId: selectedProviderId,
+    commandScope: "new-thread",
     skillsTrigger: providerPromptActions.skillsTrigger,
     promptActions: providerPromptActionProps.promptActions,
     environmentId: reuseEnvironmentId,
@@ -1906,6 +1903,14 @@ export function RootComposeView() {
     rawActiveRootStorageFileTab?.threadId ??
     (rawActiveRootStorageFileTab ? rootPanelThreadId : null);
   const renderSecondaryPanelAsDrawer = useIsCompactViewport();
+  const secondaryPanelDrawerVisibility =
+    useThreadSecondaryPanelDrawerVisibility({
+      isCompactViewport: renderSecondaryPanelAsDrawer,
+      threadId: ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
+    });
+  const isSecondaryPanelOpen = renderSecondaryPanelAsDrawer
+    ? secondaryPanelDrawerVisibility.isDrawerVisible
+    : isPersistedSecondaryPanelOpen;
   const touchFixedPanelTabsState = useTouchFixedPanelTabsState(
     ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
     null,
@@ -1917,6 +1922,13 @@ export function RootComposeView() {
   const setActiveFixedTerminal = useSetFixedRightTerminalActiveTerminal(
     ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
     null,
+  );
+  // Route-driven panel remounts are passive. Explicit terminal actions keep
+  // this request pending until the asynchronously mounted xterm handles it.
+  const [shouldAutoFocusTerminal, setShouldAutoFocusTerminal] = useState(false);
+  const handleTerminalAutoFocusHandled = useCallback(
+    () => setShouldAutoFocusTerminal(false),
+    [],
   );
   const removeFixedTerminalTab = useRemoveFixedRightTerminalTab(
     ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
@@ -2008,7 +2020,8 @@ export function RootComposeView() {
   const environmentTerminalsListQuery = useEnvironmentTerminals(
     rootPanelEnvironmentId ?? "",
     {
-      enabled: rootPanelTerminalTarget?.kind === "environment",
+      enabled:
+        isSecondaryPanelOpen && rootPanelTerminalTarget?.kind === "environment",
     },
   );
   const globalTerminalsListQuery = useTerminals(
@@ -2022,7 +2035,8 @@ export function RootComposeView() {
         }
       : null,
     {
-      enabled: rootPanelTerminalTarget?.kind === "host_path",
+      enabled:
+        isSecondaryPanelOpen && rootPanelTerminalTarget?.kind === "host_path",
     },
   );
   const loadedTerminalSessions = useMemo(
@@ -2045,7 +2059,11 @@ export function RootComposeView() {
     () => new Map(terminalSessions.map((session) => [session.id, session])),
     [terminalSessions],
   );
-  const [newTabFocusRequest, setNewTabFocusRequest] = useState(0);
+  const [shouldAutoFocusNewTab, setShouldAutoFocusNewTab] = useState(false);
+  const handleNewTabAutoFocusHandled = useCallback(
+    () => setShouldAutoFocusNewTab(false),
+    [],
+  );
   const [browserAddressFocusRequest, setBrowserAddressFocusRequest] =
     useState<BrowserAddressFocusRequest | null>(null);
   const { threadPanelActions: rootPanelThreadPanelActions } = usePluginSlots();
@@ -2171,13 +2189,13 @@ export function RootComposeView() {
   }, [closeRootSecondaryPanel, isPersistedSecondaryPanelOpen, openTab]);
   const {
     closePanel: closeSecondaryPanel,
-    isOpen: isSecondaryPanelOpen,
     openCompactDrawer,
     openPanel: openSecondaryPanel,
     openStorageFile,
     openWorkspaceFile,
   } = useThreadSecondaryPanelVisibility({
     closePersistedPanel: closeRootSecondaryPanel,
+    drawerVisibility: secondaryPanelDrawerVisibility,
     isCompactViewport: renderSecondaryPanelAsDrawer,
     isPersistedOpen: isPersistedSecondaryPanelOpen,
     openPersistedCommitDiff: () => undefined,
@@ -2187,7 +2205,6 @@ export function RootComposeView() {
     openPersistedPanel: openRootSecondaryPanel,
     openPersistedStorageFile,
     openPersistedWorkspaceFile,
-    threadId: ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
     togglePersistedPanel: toggleRootPersistedSecondaryPanel,
   });
   // Click handler for inserted mention pills in the root composer: threads
@@ -2397,7 +2414,7 @@ export function RootComposeView() {
   const handleOpenNewTab = useCallback(() => {
     openTab({ kind: "new-tab" });
     openCompactDrawer();
-    setNewTabFocusRequest((current) => current + 1);
+    setShouldAutoFocusNewTab(true);
   }, [openCompactDrawer, openTab]);
   useAppCommandHandler("panel.newTab", () => {
     if (!isFocusedPane) return false;
@@ -2455,6 +2472,7 @@ export function RootComposeView() {
     void createTerminal
       .then((session) => {
         closeTab(newTab.id);
+        setShouldAutoFocusTerminal(true);
         setActiveFixedTerminal(session.id);
         openCompactDrawer();
       })
@@ -2483,6 +2501,7 @@ export function RootComposeView() {
   });
   const handleActivateTerminalTab = useCallback(
     (terminalId: string) => {
+      setShouldAutoFocusTerminal(true);
       setActiveFixedTerminal(terminalId);
       openCompactDrawer();
     },
@@ -2926,7 +2945,11 @@ export function RootComposeView() {
   const fileTabContent: ReactNode =
     activeTerminalId && rootPanelTerminalTarget ? (
       <ThreadTerminalPanel
+        autoFocus={shouldAutoFocusTerminal}
         canCreateTerminal={canCreateRootTerminal}
+        isPanelOpen={isSecondaryPanelOpen}
+        isPanelPersistedOpen={isPersistedSecondaryPanelOpen}
+        onAutoFocusHandled={handleTerminalAutoFocusHandled}
         onOpenLink={handleOpenPanelLink}
         onSelectionAddToChat={handleRootPanelSelectionAddToChat}
         panelStateId={ROOT_COMPOSE_FIXED_PANEL_STATE_ID}
@@ -2934,11 +2957,12 @@ export function RootComposeView() {
       />
     ) : isNewTabActive ? (
       <NewTabPage
+        autoFocus={shouldAutoFocusNewTab}
         projectId={isProjectless ? undefined : projectId}
         environmentId={rootPanelEnvironmentId}
         hostId={rootProjectHostId}
         currentThreadId={rootPanelThreadId ?? ""}
-        focusRequest={newTabFocusRequest}
+        onAutoFocusHandled={handleNewTabAutoFocusHandled}
         onSelect={handleSelectFileSearchResult}
         recentItemsThreadId={ROOT_COMPOSE_FIXED_PANEL_STATE_ID}
         onOpenBrowser={rootPanelThreadId ? handleOpenBrowser : undefined}
@@ -3151,12 +3175,13 @@ export function RootComposeView() {
   // Focus the composer once it mounts in place of the welcome screen.
   useEffect(() => {
     if (!startedComposing) return;
+    if (isCodexCliVersionBlocked) return;
     if (isPointerCoarse) return;
     const handle = window.requestAnimationFrame(() => {
       promptBoxRef.current?.focusEnd();
     });
     return () => window.cancelAnimationFrame(handle);
-  }, [isPointerCoarse, startedComposing]);
+  }, [isCodexCliVersionBlocked, isPointerCoarse, startedComposing]);
   const [machineSetupTarget, setMachineSetupTarget] =
     useState<ProjectMachineSetupDialogTarget | null>(null);
   const currentProjectName = currentProject?.name ?? null;
@@ -3349,7 +3374,7 @@ export function RootComposeView() {
       <CodexCliVersionBanner
         currentVersion={codexCliStatus.currentVersion}
         minimumSupportedVersion={codexCliStatus.minimumSupportedVersion}
-        issue={codexCliIssue}
+        canUpdate={codexCliIssue !== null}
         updating={
           composeHostId !== null &&
           (runningJobKey === providerCliJobKey(composeHostId, "codex") ||
@@ -3409,6 +3434,7 @@ export function RootComposeView() {
       textEffects={promptTextEffects}
       isSubmitting={createThread.isPending}
       disabled={isSubmitDisabled}
+      autoFocus={!isCodexCliVersionBlocked}
       zenModeStorageKey={rootComposeZenModeStorageKey}
       history={historyConfig}
       typeahead={typeaheadConfig}

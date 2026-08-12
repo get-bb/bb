@@ -3,6 +3,8 @@ import { isAbsolute, join, relative } from "node:path";
 
 export interface ExpectedDevPortSet {
   appPort: number;
+  cloudPort: number;
+  cloudWorkerPort: number;
   hostDaemonPort: number;
   serverPort: number;
 }
@@ -26,10 +28,18 @@ function expectedPortOffset(repoRoot: string): number {
   );
 }
 
+function reservePackagedAppPorts(port: number): number {
+  if (port === 38_886) return 59_000;
+  if (port === 38_887) return 59_001;
+  return port;
+}
+
 export function expectedDevPorts(repoRoot: string): ExpectedDevPortSet {
   const offset = expectedPortOffset(repoRoot);
   return {
     appPort: 11_000 + offset,
+    cloudPort: reservePackagedAppPorts(35_000 + offset),
+    cloudWorkerPort: 43_000 + offset,
     hostDaemonPort: 27_000 + offset,
     serverPort: 19_000 + offset,
   };
@@ -69,5 +79,5 @@ export function expectedDevDataDir(args: ExpectedDevInstanceArgs): string {
 }
 
 export function expectedDevServerUrl(repoRoot: string): string {
-  return `http://localhost:${expectedDevPorts(repoRoot).serverPort}`;
+  return `http://127.0.0.1:${expectedDevPorts(repoRoot).serverPort}`;
 }

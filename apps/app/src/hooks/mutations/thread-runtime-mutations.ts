@@ -11,7 +11,10 @@ import type {
 import { BbHttpError, sdk } from "@/lib/sdk";
 import { wsManager } from "@/lib/ws";
 import type { QueuedMessageReorderRequest } from "@/lib/queued-message-reorder";
-import type { SendThreadMessageMutationRequest } from "./mutation-request-types";
+import type {
+  EditMessageMutationRequest,
+  SendThreadMessageMutationRequest,
+} from "./mutation-request-types";
 import {
   applyCreateThreadResult,
   applyQueuedMessageCreateResult,
@@ -46,7 +49,10 @@ import {
   type StopThreadTransaction,
   type UpdateQueuedMessageTransaction,
 } from "../cache-owners/thread-runtime-cache-owner";
-import { invalidateThreadBannerQueries } from "../cache-owners/mutation-cache-effects";
+import {
+  invalidateThreadBannerQueries,
+  invalidateThreadHistoryRewriteQueries,
+} from "../cache-owners/mutation-cache-effects";
 
 interface CreateThreadQueuedMessageMutationRequest extends CreateQueuedMessageRequest {
   id: string;
@@ -204,6 +210,28 @@ export function useSendThreadMessage() {
         realtimeConnected: wsManager.getConnectionState() === "connected",
         request: variables,
         transaction: context,
+      });
+    },
+  });
+}
+
+export function useEditThreadMessage() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    meta: {
+      errorMessage: "Failed to edit the message.",
+      lifecycleOperation: "edit_message",
+      showErrorToast: false,
+    },
+    mutationFn: ({ id, ...request }: EditMessageMutationRequest) =>
+      sdk.threads.editMessage({ threadId: id, ...request }),
+    onSuccess: (_result, variables) => {
+      if (wsManager.getConnectionState() === "connected") {
+        return;
+      }
+      invalidateThreadHistoryRewriteQueries({
+        queryClient,
+        threadId: variables.id,
       });
     },
   });

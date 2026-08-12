@@ -110,12 +110,50 @@ describe("commandSuggestionMatchesQuery", () => {
     ]);
   });
 
-  it("keeps menu sections primary when ranking prefix matches", () => {
+  it("keeps menu sections primary when matches are equally direct", () => {
+    const names = filterCommandSuggestions(
+      [
+        {
+          ...pluginSkill,
+          name: "deploy-service",
+          source: "command",
+          origin: "user",
+        },
+        { ...pluginSkill, name: "deploy-helper" },
+      ],
+      "deploy",
+    ).map((suggestion) => suggestion.name);
+
+    expect(names).toEqual(["deploy-helper", "deploy-service"]);
+  });
+
+  it("ranks a user-command name prefix above a skill matched by description", () => {
     const names = filterCommandSuggestions(
       [
         {
           ...pluginSkill,
           name: "review-helper",
+          description: "Contains deploy guidance",
+        },
+        {
+          ...pluginSkill,
+          name: "deploy-service",
+          source: "command",
+          origin: "user",
+        },
+      ],
+      "deploy",
+    ).map((suggestion) => suggestion.name);
+
+    expect(names).toEqual(["deploy-service", "review-helper"]);
+  });
+
+  it("ranks an exact user-command name above skills from an earlier section", () => {
+    const names = filterCommandSuggestions(
+      [
+        {
+          ...pluginSkill,
+          name: "deploy-review",
           description: "Contains deploy guidance",
         },
         {
@@ -128,6 +166,6 @@ describe("commandSuggestionMatchesQuery", () => {
       "deploy",
     ).map((suggestion) => suggestion.name);
 
-    expect(names).toEqual(["review-helper", "deploy"]);
+    expect(names).toEqual(["deploy", "deploy-review"]);
   });
 });

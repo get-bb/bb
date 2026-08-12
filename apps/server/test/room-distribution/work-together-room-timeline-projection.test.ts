@@ -148,7 +148,7 @@ function userMessage(
     },
     systemMessageKind: "unlabeled",
     systemMessageSubject: null,
-    turnRequest: { kind: "message", status: "accepted" },
+    turnRequest: { isGrouped: false, kind: "message", status: "accepted" },
     mentions: [],
   };
 }

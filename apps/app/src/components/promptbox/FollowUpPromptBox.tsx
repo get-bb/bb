@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
   type ComponentProps,
+  type FocusEvent as ReactFocusEvent,
   type ReactNode,
 } from "react";
 import type {
@@ -118,10 +119,21 @@ const OPEN_COMPOSER_OVERLAY_TRIGGER_SELECTOR =
   '[aria-haspopup][aria-expanded="true"]';
 const MOBILE_KEYBOARD_VIEWPORT_MIN_DELTA_PX = 80;
 const MOBILE_FOCUS_EXPANSION_FALLBACK_MS = 350;
+const MOBILE_KEYBOARD_DISMISSAL_FALLBACK_MS = 750;
 const DEFAULT_FOLLOW_UP_COMPOSER_SCOPE = {
   kind: "new-thread",
   projectId: null,
 } as const;
+
+function isKeyboardFocusTarget(target: EventTarget | null): boolean {
+  return (
+    target instanceof HTMLElement &&
+    (target.isContentEditable ||
+      target instanceof HTMLInputElement ||
+      target instanceof HTMLTextAreaElement ||
+      target instanceof HTMLSelectElement)
+  );
+}
 /**
  * Discriminated state for the composer's submit affordances. Replaces the
  * previous canSendFollowUp / canQueueFollowUp / canStopRuntime / onStop
@@ -156,6 +168,8 @@ export interface FollowUpComposerProps {
   onChangeMessage: (value: string, mentionRanges: PromptTextMention[]) => void;
   onModifierSubmit: () => void;
   onSubmit: () => void;
+  /** Accessible label and tooltip for the primary submit action. */
+  submitTitle?: string;
   compactPromptPlaceholder: string;
   promptPlaceholder: string;
   canModifierSubmit: boolean;
@@ -359,6 +373,7 @@ function FollowUpPromptBoxWithComposer({
   const composerInteractionRef = useRef<HTMLDivElement>(null);
   const interactionExpandedRef = useRef(false);
   const pendingFocusExpansionCleanupRef = useRef<(() => void) | null>(null);
+  const pendingFocusLossCleanupRef = useRef<(() => void) | null>(null);
   const [isInteractionExpanded, setIsInteractionExpanded] = useState(false);
   const isMobilePromptBoxCompact = isCompactViewport && !isInteractionExpanded;
   const compactConfig = useMemo(
@@ -385,95 +400,181 @@ function FollowUpPromptBoxWithComposer({
     pendingFocusExpansionCleanupRef.current?.();
     pendingFocusExpansionCleanupRef.current = null;
   }, []);
-  const handleComposerFocus = useCallback(() => {
-    if (interactionExpandedRef.current) return;
-    if (!isCompactViewport || !isPointerCoarse || !window.visualViewport) {
-      setInteractionExpanded(true);
-      return;
-    }
-    if (pendingFocusExpansionCleanupRef.current) return;
-
-    const visualViewport = window.visualViewport;
-    const initialViewportHeight = visualViewport.height;
-    let animationFrame: number | null = null;
-    let fallbackTimeout: number | null = null;
-    let hasFinished = false;
-    const removeSignals = () => {
-      visualViewport.removeEventListener("resize", handleViewportResize);
-      if (fallbackTimeout !== null) {
-        window.clearTimeout(fallbackTimeout);
-        fallbackTimeout = null;
-      }
-    };
-    const cleanup = () => {
-      removeSignals();
-      if (animationFrame !== null) {
-        window.cancelAnimationFrame(animationFrame);
-        animationFrame = null;
-      }
-    };
-    const finishExpansion = () => {
-      if (hasFinished) return;
-      hasFinished = true;
-      removeSignals();
-      // AppLayout updates its visual-viewport height in the same animation
-      // frame. Expanding here keeps the composer and keyboard on one paint.
-      animationFrame = window.requestAnimationFrame(() => {
-        animationFrame = null;
-        pendingFocusExpansionCleanupRef.current = null;
+  const cancelPendingFocusLoss = useCallback(() => {
+    const cleanup = pendingFocusLossCleanupRef.current;
+    pendingFocusLossCleanupRef.current = null;
+    cleanup?.();
+  }, []);
+  const handleComposerFocus = useCallback(
+    (event: ReactFocusEvent) => {
+      cancelPendingFocusLoss();
+      if (interactionExpandedRef.current) return;
+      if (
+        !isCompactViewport ||
+        !isPointerCoarse ||
+        !isKeyboardFocusTarget(event.target) ||
+        !window.visualViewport
+      ) {
         setInteractionExpanded(true);
-      });
-    };
-    const handleViewportResize = () => {
-      if (
-        initialViewportHeight - visualViewport.height <
-        MOBILE_KEYBOARD_VIEWPORT_MIN_DELTA_PX
-      ) {
         return;
       }
-      finishExpansion();
-    };
+      if (pendingFocusExpansionCleanupRef.current) return;
 
-    visualViewport.addEventListener("resize", handleViewportResize);
-    fallbackTimeout = window.setTimeout(
-      finishExpansion,
-      MOBILE_FOCUS_EXPANSION_FALLBACK_MS,
-    );
-    pendingFocusExpansionCleanupRef.current = cleanup;
-  }, [isCompactViewport, isPointerCoarse, setInteractionExpanded]);
-  useEffect(
-    () => () => cancelPendingFocusExpansion(),
-    [cancelPendingFocusExpansion],
-  );
-  useEffect(() => {
-    const handleDocumentInteraction = (event: Event) => {
-      const composerElement = composerInteractionRef.current;
-      const target = event.target;
-      if (!composerElement || !(target instanceof Node)) return;
-      if (composerElement.contains(target)) return;
-      // Responsive popovers and dropdowns portal their content outside the
-      // composer. Their shared trigger contract exposes open state through
-      // aria-haspopup + aria-expanded, so interaction with an owned overlay
-      // must not collapse the composer behind it.
-      if (
-        composerElement.querySelector(OPEN_COMPOSER_OVERLAY_TRIGGER_SELECTOR)
-      ) {
-        return;
-      }
-      cancelPendingFocusExpansion();
-      setInteractionExpanded(false);
-    };
-    document.addEventListener("pointerdown", handleDocumentInteraction, true);
-    document.addEventListener("focusin", handleDocumentInteraction, true);
-    return () => {
-      document.removeEventListener(
-        "pointerdown",
-        handleDocumentInteraction,
-        true,
+      const visualViewport = window.visualViewport;
+      const initialViewportHeight = visualViewport.height;
+      let animationFrame: number | null = null;
+      let fallbackTimeout: number | null = null;
+      let hasFinished = false;
+      const removeSignals = () => {
+        visualViewport.removeEventListener("resize", handleViewportResize);
+        if (fallbackTimeout !== null) {
+          window.clearTimeout(fallbackTimeout);
+          fallbackTimeout = null;
+        }
+      };
+      const cleanup = () => {
+        removeSignals();
+        if (animationFrame !== null) {
+          window.cancelAnimationFrame(animationFrame);
+          animationFrame = null;
+        }
+      };
+      const finishExpansion = () => {
+        if (hasFinished) return;
+        hasFinished = true;
+        removeSignals();
+        // AppLayout updates its visual-viewport height in the same animation
+        // frame. Expanding here keeps the composer and keyboard on one paint.
+        animationFrame = window.requestAnimationFrame(() => {
+          animationFrame = null;
+          pendingFocusExpansionCleanupRef.current = null;
+          setInteractionExpanded(true);
+        });
+      };
+      const handleViewportResize = () => {
+        if (
+          initialViewportHeight - visualViewport.height <
+          MOBILE_KEYBOARD_VIEWPORT_MIN_DELTA_PX
+        ) {
+          return;
+        }
+        finishExpansion();
+      };
+
+      visualViewport.addEventListener("resize", handleViewportResize);
+      fallbackTimeout = window.setTimeout(
+        finishExpansion,
+        MOBILE_FOCUS_EXPANSION_FALLBACK_MS,
       );
-      document.removeEventListener("focusin", handleDocumentInteraction, true);
-    };
-  }, [cancelPendingFocusExpansion, setInteractionExpanded]);
+      pendingFocusExpansionCleanupRef.current = cleanup;
+    },
+    [
+      cancelPendingFocusLoss,
+      isCompactViewport,
+      isPointerCoarse,
+      setInteractionExpanded,
+    ],
+  );
+  const scheduleCollapseAfterFocusLoss = useCallback(
+    (event: ReactFocusEvent) => {
+      cancelPendingFocusLoss();
+      const dismissedKeyboard = isKeyboardFocusTarget(event.target);
+      const focusLossFrame = window.requestAnimationFrame(() => {
+        pendingFocusLossCleanupRef.current = null;
+        const composerElement = composerInteractionRef.current;
+        if (!composerElement) return;
+
+        // Focus events for the element losing focus run before the browser has
+        // assigned the next active element. Waiting one frame makes collapse a
+        // decision about settled focus state instead of pointer intent.
+        if (composerElement.contains(document.activeElement)) return;
+
+        // Responsive popovers and dropdowns portal their content outside the
+        // composer. Their shared trigger contract exposes open state through
+        // aria-haspopup + aria-expanded, so focus in an owned overlay must not
+        // collapse the composer behind it.
+        if (
+          composerElement.querySelector(OPEN_COMPOSER_OVERLAY_TRIGGER_SELECTOR)
+        ) {
+          return;
+        }
+
+        const collapse = () => {
+          cancelPendingFocusExpansion();
+          setInteractionExpanded(false);
+        };
+        const focusSettledOnDocument =
+          document.activeElement === document.body ||
+          document.activeElement === document.documentElement;
+        const visualViewport = window.visualViewport;
+        if (
+          !dismissedKeyboard ||
+          !focusSettledOnDocument ||
+          !isCompactViewport ||
+          !isPointerCoarse ||
+          !visualViewport
+        ) {
+          collapse();
+          return;
+        }
+
+        // The software keyboard's dismiss control usually leaves focus on the
+        // document before the viewport grows. Keep the expanded composer
+        // stable during that native animation, then compact it as soon as the
+        // visible viewport reports the keyboard has actually closed.
+        const keyboardViewportHeight = visualViewport.height;
+        let fallbackTimeout: number | null = null;
+        let hasFinished = false;
+        const cleanup = () => {
+          visualViewport.removeEventListener("resize", handleViewportResize);
+          if (fallbackTimeout !== null) {
+            window.clearTimeout(fallbackTimeout);
+            fallbackTimeout = null;
+          }
+        };
+        const finishCollapse = () => {
+          if (hasFinished) return;
+          hasFinished = true;
+          cleanup();
+          pendingFocusLossCleanupRef.current = null;
+          collapse();
+        };
+        const handleViewportResize = () => {
+          if (
+            visualViewport.height - keyboardViewportHeight <
+            MOBILE_KEYBOARD_VIEWPORT_MIN_DELTA_PX
+          ) {
+            return;
+          }
+          finishCollapse();
+        };
+
+        visualViewport.addEventListener("resize", handleViewportResize);
+        fallbackTimeout = window.setTimeout(
+          finishCollapse,
+          MOBILE_KEYBOARD_DISMISSAL_FALLBACK_MS,
+        );
+        pendingFocusLossCleanupRef.current = cleanup;
+      });
+      pendingFocusLossCleanupRef.current = () => {
+        window.cancelAnimationFrame(focusLossFrame);
+      };
+    },
+    [
+      cancelPendingFocusExpansion,
+      cancelPendingFocusLoss,
+      isCompactViewport,
+      isPointerCoarse,
+      setInteractionExpanded,
+    ],
+  );
+  useEffect(
+    () => () => {
+      cancelPendingFocusExpansion();
+      cancelPendingFocusLoss();
+    },
+    [cancelPendingFocusExpansion, cancelPendingFocusLoss],
+  );
   const steerOnPrimarySubmit =
     submitMode.kind === "queue" && composer.steerActiveThreadOnEnter;
   const onPrimarySubmit = steerOnPrimarySubmit
@@ -538,35 +639,38 @@ function FollowUpPromptBoxWithComposer({
     ],
   );
   const stackRef = useRef<HTMLDivElement>(null);
+  const lastStackHeightRef = useRef(0);
   const [stackHeight, setStackHeight] = useState(0);
-  // Measure the stack synchronously after every render. useLayoutEffect runs
-  // post-DOM-commit and pre-paint, so when a React commit adds the banner
-  // (e.g. workspace status arrives and the git section becomes non-empty),
-  // we read the new stack height and the resulting `setStackHeight` triggers
-  // a synchronous re-render that updates the textarea's minHeight before the
-  // browser paints. Without this, the banner appears at 32px while the
-  // textarea is still 100px for one frame — the timeline visibly shifts up
-  // then back down as the elastic compensation catches up.
+  const applyStackHeight = useCallback((measured: number) => {
+    if (lastStackHeightRef.current === measured) return;
+    lastStackHeightRef.current = measured;
+    setStackHeight(measured);
+  }, []);
+
+  // Take one initial border-box measurement before paint. Later measurements
+  // use ResizeObserver's supplied border-box size, which avoids a synchronous
+  // offsetHeight read after each timeline or composer render.
   useLayoutEffect(() => {
     const element = stackRef.current;
-    if (!element) return;
-    const measured = element.offsetHeight;
-    setStackHeight((prev) => (prev === measured ? prev : measured));
-  }, [stack]);
-  // ResizeObserver catches changes that happen outside a React render —
-  // banner sections expanding via CSS animation, window resize affecting
-  // markdown line-wrapping inside the stack, etc.
+    if (element) {
+      applyStackHeight(element.offsetHeight);
+    }
+  }, [applyStackHeight]);
+
   useEffect(() => {
     const element = stackRef.current;
     if (!element || typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver((entries) => {
-      const entry = entries[0];
+      const entry = entries.find((candidate) => candidate.target === element);
       if (!entry) return;
-      setStackHeight(entry.contentRect.height);
+      const borderBoxSize = Array.isArray(entry.borderBoxSize)
+        ? entry.borderBoxSize[0]
+        : entry.borderBoxSize;
+      applyStackHeight(borderBoxSize?.blockSize ?? entry.contentRect.height);
     });
     observer.observe(element);
     return () => observer.disconnect();
-  }, []);
+  }, [applyStackHeight]);
   // The elastic pre-size keeps the prompt area's total height constant as the
   // stack (context banner + queued messages) mounts/unmounts so the timeline
   // doesn't shift. Callers that need the main-thread prompt height should pass
@@ -585,6 +689,7 @@ function FollowUpPromptBoxWithComposer({
       className="relative z-20"
       data-follow-up-composer=""
       data-follow-up-composer-expanded={isInteractionExpanded ? "" : undefined}
+      onBlurCapture={scheduleCollapseAfterFocusLoss}
       onFocusCapture={handleComposerFocus}
     >
       <PromptBoxWithScrollAnchor
@@ -616,21 +721,25 @@ function FollowUpPromptBoxWithComposer({
             composer.isFollowUpSubmitting ||
             (steerOnPrimarySubmit && !composer.canModifierSubmit),
           onModifierSubmit,
-          title: canQueueFollowUp
-            ? steerOnPrimarySubmit
-              ? "Steer current run (Enter)"
-              : "Queue follow-up (Enter)"
-            : isStopping
-              ? "Stopping run..."
-              : isLoadingExecutionOptions
-                ? "Loading models..."
-                : isLoadingPendingInteractions
-                  ? "Checking pending interactions..."
-                  : isProvisioning
-                    ? "Provisioning..."
-                    : isUnavailable
-                      ? "Unavailable"
-                      : "Submit (Enter)",
+          title: composer.isFollowUpSubmitting
+            ? "Submitting..."
+            : canSubmit && composer.submitTitle !== undefined
+              ? composer.submitTitle
+              : canQueueFollowUp
+                ? steerOnPrimarySubmit
+                  ? "Steer current run (Enter)"
+                  : "Queue follow-up (Enter)"
+                : isStopping
+                  ? "Stopping run..."
+                  : isLoadingExecutionOptions
+                    ? "Loading models..."
+                    : isLoadingPendingInteractions
+                      ? "Checking pending interactions..."
+                      : isProvisioning
+                        ? "Provisioning..."
+                        : isUnavailable
+                          ? "Unavailable"
+                          : "Submit (Enter)",
           isRunning: canStopRuntime,
         }}
         typeahead={typeahead}

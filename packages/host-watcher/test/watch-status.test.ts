@@ -394,20 +394,81 @@ afterEach(async () => {
 
 // These tests mutate shared module spies, so keep them out of Vitest parallelism.
 describe.sequential("watchWorkspaceStatus", () => {
+  it("starts watching before git init and promotes the repository watch", async () => {
+    const workspacePath = await makeTempDir("bb-workspace-plain-");
+    const workspaceRootCallbacks: ParcelWatcherCallback[] = [];
+    const workspaceRootOptions: ParcelWatcherSubscribeOptions[] = [];
+    const ready = createDeferredPromise<void>();
+    vi.spyOn(parcelWatcher, "subscribe").mockImplementation(
+      async (...watchArgs: ParcelWatcherSubscribeArgs) => {
+        const [rootPath, callback, options] = watchArgs;
+        if (
+          normalizeWatchPath(rootPath) === normalizeWatchPath(workspacePath)
+        ) {
+          workspaceRootCallbacks.push(callback);
+          workspaceRootOptions.push(options);
+          ready.resolve(undefined);
+        }
+        return createMockWatcherSubscription();
+      },
+    );
+    const calls: WorkspaceStatusChangeEvent[] = [];
+    const stopWatching = watchWorkspaceStatusImpl(workspacePath, {
+      onChange: (event) => calls.push(event),
+      onWatchError: ignoreWatchError,
+    });
+
+    try {
+      await ready.promise;
+      expect(workspaceRootOptions[0]?.ignore).toBeUndefined();
+
+      await runGit({ args: ["init", "-b", "main"], cwd: workspacePath });
+      const canonicalWorkspacePath = await fs.realpath(workspacePath);
+      workspaceRootCallbacks[0]?.(null, [
+        {
+          path: path.join(canonicalWorkspacePath, ".git"),
+          type: "create",
+        },
+      ]);
+
+      await waitForCallCount(() => calls.length, 1, WATCH_TEST_TIMEOUT_MS);
+      await waitForCallCount(
+        () => workspaceRootCallbacks.length,
+        2,
+        WATCH_TEST_TIMEOUT_MS,
+      );
+      expect(calls[0]).toEqual({
+        changedPaths: [path.join(canonicalWorkspacePath, ".git")],
+        changeKinds: [
+          "workspace-content-changed",
+          "workspace-git-repository-created",
+        ],
+      });
+      expect(workspaceRootOptions[1]?.ignore).toContain(".git");
+    } finally {
+      await stopWatching();
+    }
+  });
+
   it("watches workspace status changes without duplicate callbacks for the same burst", async () => {
     const repoPath = await initRepo();
     const { emitWorkspaceRootEvents, ready, watchWorkspaceStatus } =
       await importWatchWorkspaceStatusWithManualWorkspaceEvents(repoPath);
     const calls: number[] = [];
+    const onReady = vi.fn();
     const stopWatching = watchWorkspaceStatus(repoPath, {
       onChange: () => {
         calls.push(Date.now());
       },
+      onReady,
       onWatchError: ignoreWatchError,
     });
 
     try {
       await ready;
+      await vi.waitFor(() => {
+        expect(onReady).toHaveBeenCalledTimes(1);
+      });
       emitWorkspaceRootEvents([
         {
           path: path.join(repoPath, "README.md"),
@@ -546,6 +607,7 @@ describe.sequential("watchWorkspaceStatus", () => {
         changeKinds: [
           "workspace-content-changed",
           "workspace-git-changed",
+          "workspace-git-repository-created",
           "shared-git-refs-changed",
         ],
       };
@@ -678,7 +740,7 @@ describe.sequential("watchWorkspaceStatus", () => {
     }
   });
 
-  it("reports and retries when Git ignored directory discovery fails", async () => {
+  it("falls back to a live root watch when Git ignored directory discovery fails", async () => {
     const repoPath = await initRepo();
     await fs.rm(path.join(repoPath, ".git"), { force: true, recursive: true });
     await fs.writeFile(
@@ -687,10 +749,13 @@ describe.sequential("watchWorkspaceStatus", () => {
       "utf8",
     );
     const subscribedRoots: string[] = [];
+    const subscribedOptions: Array<ParcelWatcherSubscribeOptions | undefined> =
+      [];
     const mockSubscribe = async (
       ...watchArgs: ParcelWatcherSubscribeArgs
     ): Promise<ParcelWatcherSubscribeResult> => {
       subscribedRoots.push(watchArgs[0]);
+      subscribedOptions.push(watchArgs[2]);
       return createMockWatcherSubscription();
     };
     vi.spyOn(parcelWatcher, "subscribe").mockImplementation(mockSubscribe);
@@ -708,13 +773,19 @@ describe.sequential("watchWorkspaceStatus", () => {
         1,
         WATCH_TEST_TIMEOUT_MS,
       );
-      await ensureCallCountStays(() => subscribedRoots.length, 0, 600);
+      await waitForCallCount(
+        () => subscribedRoots.length,
+        1,
+        WATCH_TEST_TIMEOUT_MS,
+      );
 
       const ignoreDiscoveryErrors = watchErrors.filter((error) =>
         error.includes("Workspace root ignore discovery failed:"),
       );
       expect(ignoreDiscoveryErrors).toHaveLength(1);
       expect(ignoreDiscoveryErrors[0]).toContain(normalizeWatchPath(repoPath));
+      expect(subscribedRoots).toEqual([normalizeWatchPath(repoPath)]);
+      expect(subscribedOptions[0]?.ignore).toEqual([".git"]);
     } finally {
       await stopWatching();
     }

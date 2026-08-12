@@ -689,14 +689,14 @@ export function Overview() {
         />
       </StoryRow>
       <StoryRow
-        label="environment destroyed"
-        hint="environment-gone row suppresses git/childThreads"
+        label="environment archived"
+        hint="archived-environment row suppresses git/childThreads"
       >
         <Row environmentGone={destroyedEnvironmentFixture} mergeBase={null} />
       </StoryRow>
       <StoryRow
-        label="environment destroying + child thread"
-        hint="environment-gone row plus parent context"
+        label="environment archiving + child thread"
+        hint="archiving-environment row plus parent context"
       >
         <Row
           environmentGone={destroyingEnvironmentFixture}
@@ -705,8 +705,8 @@ export function Overview() {
         />
       </StoryRow>
       <StoryRow
-        label="environment gone (with other context, all suppressed)"
-        hint="gone environment takes precedence — git/child work are hidden"
+        label="environment archived (with other context, all suppressed)"
+        hint="archived environment takes precedence — git/child work are hidden"
       >
         <Row
           environmentGone={destroyedEnvironmentFixture}

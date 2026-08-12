@@ -25,6 +25,8 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import {
   PANEL_COLLAPSE_TRANSITION_CLASS,
   PANEL_RESIZE_HIT_AREA_MARGINS,
+  PANEL_RESIZE_HANDLE_LAYER_CLASS,
+  PANEL_RESIZE_HIT_TARGET_CLASS,
 } from "./panelTransitionTokens";
 import { SECONDARY_PANEL_TOP_CHROME_BACKGROUND_CLASS } from "./panelChromeClasses";
 import { resolveConversationCollapseControl } from "./panelToggleControlState";
@@ -210,7 +212,7 @@ export function resolveSecondaryPanelHideControl() {
 export interface ThreadSecondaryPanelProps {
   activeTab: SecondaryFixedPanelTab | null;
   canUseGitUi: boolean;
-  defaultMergeBaseBranch?: string;
+  requestedMergeBaseBranch?: string;
   environmentId?: string;
   metadataContent: ReactNode;
   fileTabs?: SecondaryPanelFileTab[];
@@ -267,7 +269,10 @@ export interface ThreadSecondaryPanelProps {
   onPanelChange: (panel: ThreadSecondaryPanelTab) => void;
   onCollapse: () => void;
   onClose: () => void;
+  onClearPendingGitDiffIntent?: () => void;
   onOpenNewTab: () => void;
+  pendingGitDiffCommitSha?: string | null;
+  pendingGitDiffScrollPath?: string | null;
   workspaceRootPath?: string | null;
   onOpenFileInEditor?: (path: string) => void;
   onOpenFilePreview?: (path: string) => void;
@@ -320,7 +325,7 @@ function resolveActiveFixedPanel({
 export function ThreadSecondaryPanel({
   activeTab,
   canUseGitUi,
-  defaultMergeBaseBranch,
+  requestedMergeBaseBranch,
   environmentId,
   metadataContent,
   fileTabs,
@@ -341,7 +346,10 @@ export function ThreadSecondaryPanel({
   onPanelChange,
   onCollapse,
   onClose,
+  onClearPendingGitDiffIntent,
   onOpenNewTab,
+  pendingGitDiffCommitSha,
+  pendingGitDiffScrollPath,
   workspaceRootPath,
   onOpenFileInEditor,
   onOpenFilePreview,
@@ -463,7 +471,10 @@ export function ThreadSecondaryPanel({
   } = useGitDiffPanelState({
     environmentId,
     isDiffPanelActive,
-    defaultMergeBaseBranch,
+    requestedMergeBaseBranch,
+    onClearPendingGitDiffIntent,
+    pendingGitDiffCommitSha,
+    pendingGitDiffScrollPath,
   });
   // Share the diff tab's table of contents with the body: React Query dedupes
   // this against GitDiffTabContent's own fetch (same key), so the toolbar reads
@@ -815,9 +826,11 @@ export function ThreadSecondaryPanel({
             target={gitDiffTarget}
             isDiffPanelActive={isDiffPanelActive}
             gitDiffViewOptions={gitDiffViewOptions}
+            onClearPendingGitDiffIntent={onClearPendingGitDiffIntent}
             onOpenFileInEditor={onOpenFileInEditor}
             onOpenFilePreview={onOpenFilePreview}
             onSelectionAddToChat={onSelectionAddToChat}
+            pendingGitDiffScrollPath={pendingGitDiffScrollPath}
             workspaceRootPath={workspaceRootPath}
           />
         ) : (
@@ -997,15 +1010,16 @@ function SecondaryPanelResizeHandle({
       onDragging={onDragging}
       hitAreaMargins={PANEL_RESIZE_HIT_AREA_MARGINS}
       className={cn(
-        "group relative shrink-0 overflow-visible transition-[width,opacity,background-color] before:absolute before:inset-y-0 before:-left-1.5 before:-right-1.5 before:content-['']",
+        "group relative shrink-0 overflow-visible transition-[width,opacity,background-color]",
+        PANEL_RESIZE_HANDLE_LAYER_CLASS,
         PANEL_COLLAPSE_TRANSITION_CLASS,
         isConversationCollapsed ? "cursor-default" : "cursor-col-resize",
         matchesSplitDividers
           ? [
               // Match SplitDivider: a one-pixel vertical seam that warms on
-              // hover/drag while the wide pseudo-element keeps it easy to
-              // grab. Collapses away with the panel.
-              "z-[5] bg-border-seam hover:bg-ring/40",
+              // hover/drag while the overlapping child keeps it easy to grab.
+              // Collapses away with the panel.
+              "bg-border-seam hover:bg-ring/40",
               isOpen && !isConversationCollapsed
                 ? "w-px opacity-100"
                 : "pointer-events-none w-0 opacity-0",
@@ -1027,6 +1041,11 @@ function SecondaryPanelResizeHandle({
       )}
       aria-label="Resize thread and right panel"
     >
+      <span
+        aria-hidden
+        data-panel-resize-hit-target=""
+        className={PANEL_RESIZE_HIT_TARGET_CLASS}
+      />
       {matchesSplitDividers ? null : (
         /*
           The panel's persistent left border lives on the content (aside

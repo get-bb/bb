@@ -40,6 +40,7 @@ interface ThreadTableOfContentsProps {
   loadOlderTimelineRows: () => void | Promise<void>;
 }
 
+// Matches `@container scroll-overlay (min-width: 56rem)` in app.css.
 const TOC_MIN_VISIBLE_WIDTH_PX = 56 * 16;
 const TOC_BOTTOM_ACTIVE_THRESHOLD_PX = 4;
 // Only worth showing once the conversation has enough user turns to navigate.
@@ -272,7 +273,22 @@ function useConversationTocItems({
   return outlineTocItems ?? timelineTocItems;
 }
 
-function useThreadTocVisible(rootElement: HTMLDivElement | null): boolean {
+/**
+ * Returns the width a container query sees for `host`.
+ *
+ * An inline-size container query resolves against the content box, but
+ * `clientWidth` also counts horizontal padding. The scroll overlay pads itself,
+ * so the raw `clientWidth` would report the TOC as visible for a padding-wide
+ * band below the CSS breakpoint.
+ */
+function containerInlineSize(host: HTMLElement): number {
+  const style = window.getComputedStyle(host);
+  const paddingLeft = Number.parseFloat(style.paddingLeft) || 0;
+  const paddingRight = Number.parseFloat(style.paddingRight) || 0;
+  return host.clientWidth - paddingLeft - paddingRight;
+}
+
+function useThreadTocVisible(rootElement: HTMLElement | null): boolean {
   const [visible, setVisible] = useState(
     () => typeof ResizeObserver === "undefined",
   );
@@ -292,7 +308,7 @@ function useThreadTocVisible(rootElement: HTMLDivElement | null): boolean {
     let frame: number | null = null;
     const measure = () => {
       frame = null;
-      setVisible(host.clientWidth >= TOC_MIN_VISIBLE_WIDTH_PX);
+      setVisible(containerInlineSize(host) >= TOC_MIN_VISIBLE_WIDTH_PX);
     };
     const scheduleMeasure = () => {
       if (frame !== null) return;
@@ -493,20 +509,19 @@ export function ThreadTableOfContents({
   loadOlderTimelineRows,
 }: ThreadTableOfContentsProps) {
   const bottomAnchor = useBottomAnchoredScroll();
-  // The outline is secondary to the latest timeline. Waiting for that first
-  // window prevents a long outline projection from occupying the synchronous
-  // server before the conversation can paint. Do not gate on `tocVisible`: the
-  // minimum-message early return can unmount the root before it is measured.
+  const [rootElement, setRootElement] = useState<HTMLElement | null>(null);
+  const tocVisible = useThreadTocVisible(rootElement);
+  // The full-thread outline exists only for the wide-layout TOC. Waiting for
+  // both its visible container and the first timeline window keeps compact
+  // clients from rebuilding an invisible outline on every appended-event batch.
   const outlineQuery = useThreadConversationOutline(threadId, {
-    enabled: timelineRows.length > 0,
+    enabled: tocVisible && timelineRows.length > 0,
   });
   const senderThreadMetadataById = useSenderThreadMetadataById();
   const { agentItems, userItems } = useConversationTocItems({
     outlineItems: outlineQuery.data?.items,
     timelineRows,
   });
-  const [rootElement, setRootElement] = useState<HTMLDivElement | null>(null);
-  const tocVisible = useThreadTocVisible(rootElement);
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<TocTab>("user");
   const [activeUserId, setActiveUserId] = useState<string | null>(null);
@@ -677,7 +692,9 @@ export function ThreadTableOfContents({
     [bottomAnchor],
   );
 
-  if (userItems.length < TOC_MIN_USER_MESSAGES) return null;
+  if (userItems.length < TOC_MIN_USER_MESSAGES) {
+    return <span ref={setRootElement} aria-hidden className="hidden" />;
+  }
 
   return (
     <div

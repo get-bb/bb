@@ -32,6 +32,7 @@ vi.mock("ws", async (importOriginal) => {
 });
 
 import { ConnectTunnel } from "./tunnel.js";
+import { DEFAULT_CONNECT_BASE_URL } from "./redeem.js";
 
 function createTunnelFixture() {
   const fakeHost = createFakePluginHost({
@@ -69,6 +70,7 @@ function createTunnelFixture() {
       clear: clearCredential,
     },
     shares,
+    defaultBaseUrl: DEFAULT_CONNECT_BASE_URL,
     getLoopbackBaseUrl: () => "http://127.0.0.1:38886",
     log: pluginBb.log,
     onStatusChange,

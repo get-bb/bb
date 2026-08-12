@@ -11,10 +11,10 @@ import {
   verifyMachineCredential,
   verifySessionCookie,
 } from "./session.js";
+import { resolveConnectRuntime } from "./cloud-dev.js";
+import { MACHINE_CREDENTIAL_HEADER } from "./protocol-headers.js";
 import type { Env } from "./tunnel-do.js";
 
-const SESSION_COOKIE = "__Secure-better-auth.session_token";
-export const DESKTOP_SESSION_COOKIE = "__Secure-bb-connect.desktop_session";
 export const DESKTOP_SESSION_TTL_MS = 60 * 60 * 1000;
 
 function bytesToBase64Url(bytes: Uint8Array): string {
@@ -152,6 +152,29 @@ export async function verifyServerCredential(
   return userId;
 }
 
+/** Revoke exactly the active server row authenticated by `credential`. */
+export async function revokeServerCredential(
+  credential: string,
+  db: ConnectDb,
+): Promise<{ subdomain: string } | null> {
+  const presented = credential.trim();
+  if (!presented) return null;
+
+  const revoked = await db
+    .update(server)
+    .set({ credentialHash: null, revokedAt: new Date() })
+    .where(
+      and(
+        eq(server.credentialHash, await sha256Hex(presented)),
+        isNull(server.revokedAt),
+      ),
+    )
+    .returning({ subdomain: server.subdomain })
+    .get();
+  serverCredentialCache.delete(presented);
+  return revoked ?? null;
+}
+
 /**
  * Resolve the authenticated account for account-scoped connect APIs.
  *
@@ -167,8 +190,9 @@ export async function resolveAccountUserId(
   request: Request,
   secret: string,
   db: ConnectDb,
+  sessionCookieName: string,
 ): Promise<string | null> {
-  const presented = request.headers.get("x-bb-connect-machine") ?? "";
+  const presented = request.headers.get(MACHINE_CREDENTIAL_HEADER) ?? "";
   if (presented) {
     const machineUserId = await verifyMachineCredential(presented, db);
     if (machineUserId) return machineUserId;
@@ -179,7 +203,7 @@ export async function resolveAccountUserId(
     if (serverUserId) return serverUserId;
   }
 
-  const cookie = parseCookie(request.headers.get("cookie"), SESSION_COOKIE);
+  const cookie = parseCookie(request.headers.get("cookie"), sessionCookieName);
   if (!cookie) return null;
   return verifySessionCookie(cookie, secret, db);
 }
@@ -249,10 +273,12 @@ export async function handleListAccountServers(
   }
 
   const db = drizzle(env.DB, { schema });
+  const runtime = resolveConnectRuntime(env);
   const userId = await resolveAccountUserId(
     request,
     env.BETTER_AUTH_SECRET,
     db,
+    runtime.sessionCookieName,
   );
   if (!userId) {
     return new Response(JSON.stringify({ error: "unauthorized" }), {
@@ -266,6 +292,40 @@ export async function handleListAccountServers(
     status: 200,
     headers: { "content-type": "application/json; charset=utf-8" },
   });
+}
+
+/** `POST /api/connect/disconnect` — revoke the presenting bb itself. */
+export async function handleDisconnectServer(
+  request: Request,
+  env: Env,
+): Promise<Response> {
+  if (request.method !== "POST") {
+    return new Response(JSON.stringify({ error: "method_not_allowed" }), {
+      status: 405,
+      headers: {
+        "content-type": "application/json; charset=utf-8",
+        allow: "POST",
+      },
+    });
+  }
+
+  const db = drizzle(env.DB, { schema });
+  const credential = request.headers.get(MACHINE_CREDENTIAL_HEADER) ?? "";
+  const revoked = await revokeServerCredential(credential, db);
+  if (!revoked) {
+    return new Response(JSON.stringify({ error: "unauthorized" }), {
+      status: 401,
+      headers: { "content-type": "application/json; charset=utf-8" },
+    });
+  }
+
+  try {
+    const stub = env.TUNNEL_DO.get(env.TUNNEL_DO.idFromName(revoked.subdomain));
+    await stub.fetch("https://tunnel/__control/close");
+  } catch {
+    // Best-effort: the credential is already revoked, so reconnect is blocked.
+  }
+  return Response.json({ ok: true });
 }
 
 /** Exchange a durable pairing credential for a short-lived browser session. */
@@ -283,10 +343,12 @@ export async function handleCreateDesktopSession(
     });
   }
   const db = drizzle(env.DB, { schema });
+  const runtime = resolveConnectRuntime(env);
   const userId = await resolveAccountUserId(
     request,
     env.BETTER_AUTH_SECRET,
     db,
+    runtime.sessionCookieName,
   );
   if (!userId) {
     return new Response(JSON.stringify({ error: "unauthorized" }), {
@@ -305,7 +367,7 @@ export async function handleCreateDesktopSession(
       cookie: {
         domain: `.${env.BASE_DOMAIN}`,
         expiresAt,
-        name: DESKTOP_SESSION_COOKIE,
+        name: runtime.desktopSessionCookieName,
         value,
       },
     }),

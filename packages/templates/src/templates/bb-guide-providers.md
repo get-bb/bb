@@ -40,6 +40,33 @@ removes the native Task tool. The preferences default off and apply
 when a provider thread is started, resumed, or forked; they do not modify the
 provider's global configuration.
 
+Subscription limit recovery
+
+The opt-in builtin Provider retry plugin recognizes structured Codex and Claude
+Code subscription windows. Enable it under Extensions → Plugins or run
+`bb plugin enable provider-retry`. If a provider terminally rejects an accepted
+turn whose execution settings remain available, the plugin waits in memory
+until the reported reset plus a short buffer, then starts one agent-only
+`Please continue.` turn on the existing provider conversation. Prior output or
+tool activity does not block recovery. Threads sharing a machine/provider
+subscription are released one at a time. Provider-native retries remain
+authoritative while the provider reports that it will retry on its own.
+
+Automatic waits default to a maximum of six hours. Longer reset windows are not
+scheduled. Set `maximumWait` to `24 hours` or `No limit` under the plugin
+settings, or run:
+
+  bb plugin config provider-retry set maximumWait "24 hours"
+
+  bb provider-retry status [thread-id] [--json]    Inspect in-memory waits
+  bb provider-retry cancel <thread-id> [--json]    Cancel an automatic retry
+  bb thread retry [id] [--request-id <id>]         Core continuation
+
+Timed waits exist only while the current bb server/plugin process remains
+running. Disabling/reloading the plugin or restarting the server clears them;
+the original failed thread remains available for `bb thread retry`. Credit and
+spend-control exhaustion without a reset time is ignored by the plugin.
+
 Claude Code's native Workflow tool can be disabled separately on its provider
 page. This preference also defaults off and applies to newly started, resumed,
 or forked provider sessions.
@@ -49,6 +76,39 @@ host. For example, opencode, omp, Grok Build's grok CLI, or Hermes' hermes CLI
 on PATH appears as provider acp-opencode, acp-omp, acp-grok, or
 acp-hermes-agent.
 
+bb indexes the native user and project skill roots for Codex, Claude Code, Pi,
+Cursor, OpenCode, omp, Grok Build, and Hermes Agent. This includes compatibility
+roots such as .agents/skills and .claude/skills when the provider supports them.
+It also includes project ancestor roots for providers that search to the Git
+repository root. Configured Pi, omp, Grok, and Hermes directories are included.
+Enabled provider plugins also contribute skills to the selected provider's `/`
+command menu. `bb skill list` shows native skills for Claude Code, Codex, and
+Cursor.
+
+ACP providers discover models from the agent itself. For acp-opencode, the
+list mirrors the OpenCode catalog, so a custom model from the OpenCode config
+appears automatically. Discover and select one with:
+
+  bb provider models acp-opencode --environment "$BB_ENVIRONMENT_ID"
+  bb thread spawn --provider acp-opencode --model <provider/model>
+
+bb applies the selected model to the ACP session before the first prompt.
+
+An OpenCode model and an OpenCode agent are different selections. An OpenCode
+agent (build, plan, or a custom primary agent such as an orchestrator) is a
+session mode, not a model. bb does not select OpenCode agents; configure the
+default agent in the OpenCode config and the ACP session uses it.
+
+Top-level customModels in the app data-dir config.json adds extra picker
+entries. Each entry has a providerId (a built-in provider id or any acp-*
+provider id), a model id, and an optional displayName. bb skips an invalid
+entry with a warning. The entry then appears in bb provider models output and
+in the model picker, but the provider must still accept the id: claude-code
+and codex accept unlisted ids, while an ACP agent can reject an id it does
+not know at session start. OpenCode rejects unlisted ids, so add an OpenCode
+model to the OpenCode config instead. Like customAcpAgents, edit the JSON and
+run bb-app config refresh; there is no set/unset CLI surface.
+
 Custom ACP agents are configured in the app data-dir config.json under
 customAcpAgents. bb derives provider id acp-<id> from each slug id. Edit the JSON
 and run bb-app config refresh; there is no set/unset CLI surface for this list.
@@ -57,3 +117,14 @@ example, override acp-opencode with id opencode. Use modelCli for CLI model
 listing/selection, reasoningCli for launch-time reasoning flags, and
 nativeReasoning for ACP session/set_config_option reasoning. Optional logo
 accepts an SVG, PNG, or WebP path; relative paths resolve from the bb data dir.
+Use nativeSkillRoots to add native skills to the composer. User roots resolve
+from the target host home directory. Project roots resolve from the selected
+workspace. Each root must use a relative path without dot segments.
+
+Use top-level sharedSkillRoots for one provider-neutral skill collection. The
+user and project paths use the same relative-path rules. bb indexes these roots
+as read-only sources. It then injects the selected skills into all providers.
+The bb user and project roots keep higher precedence than matching shared roots.
+
+OpenCode ACP supports the built-in /compact command. Cursor ACP does not expose
+compatible manual compaction through ACP.

@@ -58,6 +58,9 @@ function buildPiAvailableModel(model: PiCatalogModel): AvailableModel {
     id: canonicalId,
     model: canonicalId,
     displayName: model.name,
+    // Pi is the selected agent provider; this is the nested model route that
+    // determines authentication, billing, and where workspace content is sent.
+    routeProviderId: model.provider,
     description: describePiModel(model),
     supportedReasoningEfforts,
     defaultReasoningEffort,

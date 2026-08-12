@@ -393,11 +393,12 @@ function SeededNewTabPage({
 
   return (
     <NewTabPage
+      autoFocus={false}
       projectId={projectId}
       environmentId={ENVIRONMENT_ID}
       currentThreadId={currentThreadId}
-      focusRequest={0}
       initialQuery={initialQuery}
+      onAutoFocusHandled={() => undefined}
       onSelect={onSelect}
       onOpenBrowser={onOpenBrowser}
       onStartTerminal={onStartTerminal}
@@ -538,7 +539,7 @@ function NewTabPanelStory({
       <ThreadSecondaryPanel
         activeTab={activeTab}
         canUseGitUi
-        defaultMergeBaseBranch="main"
+        requestedMergeBaseBranch="main"
         environmentId={ENVIRONMENT_ID}
         fileTabs={fileTabs}
         fileTabContent={content}

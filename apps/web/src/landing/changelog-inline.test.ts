@@ -30,4 +30,28 @@ describe("ChangelogInline", () => {
       "Keep **this and `that readable",
     );
   });
+
+  it("renders a link, including one inside bold text", () => {
+    expect(
+      render(
+        "Thank you **[@tymonTe](https://github.com/tymonTe)** and [@charpeni](https://github.com/charpeni).",
+      ),
+    ).toBe(
+      "Thank you " +
+        '<strong><a href="https://github.com/tymonTe" target="_blank" rel="noreferrer" class="release-link">@tymonTe</a></strong>' +
+        ' and <a href="https://github.com/charpeni" target="_blank" rel="noreferrer" class="release-link">@charpeni</a>.',
+    );
+  });
+
+  it("keeps a bracket that is not a link as text", () => {
+    expect(render("Use [brackets] freely [like](this).")).toBe(
+      "Use [brackets] freely [like](this).",
+    );
+  });
+
+  it("refuses a script URL and keeps it as text", () => {
+    expect(render("[click](javascript:alert(1))")).toBe(
+      "[click](javascript:alert(1))",
+    );
+  });
 });

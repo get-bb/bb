@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { bootPluginFrontends } from "../lib/plugin-frontend";
+import { bootPluginFrontends } from "../lib/plugin-frontend-lazy";
 import { useSystemConfig } from "./queries/system-queries";
 
 /**

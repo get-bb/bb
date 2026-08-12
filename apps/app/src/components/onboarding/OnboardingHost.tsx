@@ -50,9 +50,10 @@ import {
  * creating the chosen projects, persisting the completion timestamp, and
  * reporting the funnel to the server's telemetry.
  *
- * Mounted once by the app shell. `onboardingCompletedAt` is the only gate —
- * whether an agent is actually usable is answered live by the agents query, so
- * dismissing onboarding never claims the machine is configured.
+ * Mounted once by the app shell. The new-onboarding experiment and the
+ * `onboardingCompletedAt` timestamp gate the flow. Whether an agent is actually
+ * usable is answered live by the agents query, so dismissing onboarding never
+ * claims the machine is configured.
  */
 export function OnboardingHost() {
   const configQuery = useSystemConfig();
@@ -66,18 +67,22 @@ export function OnboardingHost() {
   const startedAt = useRef<number | null>(null);
 
   const settings = configQuery.data?.generalSettings;
+  const newOnboardingEnabled =
+    configQuery.data?.experiments.newOnboarding ?? false;
   const primaryHostId = primaryHost?.id ?? null;
   // Migration 0085 stamps existing installs as already onboarded, so a null
-  // timestamp means exactly one thing here: show the flow. That is what lets
-  // Settings re-trigger it by clearing the column.
+  // timestamp means exactly one thing here: the flow remains incomplete. That
+  // is what lets Settings re-trigger it by clearing the column.
   const neverOnboarded =
     settings !== undefined && settings.onboardingCompletedAt === null;
+  const shouldShow =
+    newOnboardingEnabled && neverOnboarded && primaryHostId !== null;
   const cliStatusQuery = useHostProviderCliStatus({
     hostId: primaryHostId,
     // Only needed to build an install job, and only while the flow is open.
     // Left ungated this runs provider CLI and package-registry checks on every
     // app start, forever, for users who finished onboarding long ago.
-    enabled: primaryHostId !== null && neverOnboarded,
+    enabled: shouldShow,
   });
 
   const projects = navigationQuery.data?.projects;
@@ -110,8 +115,6 @@ export function OnboardingHost() {
     },
     [cliStatusQuery.data, installRunner, primaryHostId],
   );
-
-  const shouldShow = neverOnboarded && primaryHostId !== null;
 
   // Stamp when the flow actually opens, so a re-trigger hours into a session
   // does not report the whole session as its duration.

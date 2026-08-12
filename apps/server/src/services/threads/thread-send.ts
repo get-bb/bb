@@ -25,6 +25,7 @@ import { ApiError } from "../../errors.js";
 import {
   addRequestIdToTurnSubmitCommandPayload,
   buildExecutionOptions,
+  buildThreadStartCommand,
   prepareTurnSubmitCommandPayload,
 } from "./thread-commands.js";
 import {
@@ -78,6 +79,15 @@ export interface SendThreadMessageArgs {
   actor: ActorStamp;
   beforeAppendInTransaction?: SendThreadMessageTransactionPreflight;
   environment: Environment;
+  /**
+   * Internal edit-message path. Presence forces a new provider session;
+   * a string forks from a staged provider session and null starts fresh
+   * (which also makes the request a thread-start rather than a new turn).
+   */
+  historyReplacement?: {
+    forkSourceProviderThreadId: string | null;
+    onCommandSettled?: () => void | Promise<void>;
+  };
   payload: SendThreadMessagePayload;
   /**
    * Optional preserved admission identity from an admitted queued row. When
@@ -514,7 +524,13 @@ export async function sendThreadMessage(
   );
   let target: TurnRequestTarget;
   if (mode === "start") {
-    target = { kind: "new-turn" };
+    target = {
+      kind:
+        args.historyReplacement !== undefined &&
+        args.historyReplacement.forkSourceProviderThreadId === null
+          ? "thread-start"
+          : "new-turn",
+    };
   } else {
     target = {
       kind: mode,
@@ -526,10 +542,10 @@ export async function sendThreadMessage(
     args.preservedAdmission?.requestId ?? createClientTurnRequestId();
 
   if (mode === "start") {
-    const command = await prepareReadyThreadTurnCommand(deps, {
+    const commandArgs = {
       thread,
-      // A send/steer always targets an already-started thread; forking only
-      // happens at create time.
+      // Normal sends target the existing provider session. A history
+      // replacement deliberately starts from a staged provider fork instead.
       fork: null,
       input,
       ...(inputGroups !== undefined ? { inputGroups } : {}),
@@ -546,7 +562,23 @@ export async function sendThreadMessage(
       projectId: thread.projectId,
       providerId: thread.providerId,
       syncGeneratedTitle: false,
-    });
+    };
+    const command = args.historyReplacement
+      ? {
+          command: await buildThreadStartCommand(deps, {
+            ...commandArgs,
+            fork:
+              args.historyReplacement.forkSourceProviderThreadId === null
+                ? null
+                : {
+                    sourceProviderThreadId:
+                      args.historyReplacement.forkSourceProviderThreadId,
+                  },
+          }),
+          mode: "thread.start" as const,
+          sessionId: "history-replacement",
+        }
+      : await prepareReadyThreadTurnCommand(deps, commandArgs);
     const queuedRequest = appendAndQueueSendThreadMessageInTransaction({
       actor: args.actor,
       beforeAppendInTransaction: ({ tx }) => {
@@ -604,6 +636,9 @@ export async function sendThreadMessage(
       command: command.command,
       hostId: readyEnvironment.hostId,
       timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
+      ...(args.historyReplacement?.onCommandSettled !== undefined
+        ? { onSettled: args.historyReplacement.onCommandSettled }
+        : {}),
       onError: ({ error }) => {
         deps.logger.warn(
           { err: error, threadId: thread.id },

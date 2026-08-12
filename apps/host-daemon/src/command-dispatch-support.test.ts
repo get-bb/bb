@@ -48,6 +48,10 @@ function makeRuntime(args: MakeRuntimeArgs): AgentRuntime {
     async startThread() {
       return { providerThreadId: "provider-thread-test" };
     },
+    async prepareThreadRewind() {
+      return { providerThreadId: "provider-thread-rewind-test" };
+    },
+    async discardThreadRewind() {},
     async resumeThread() {
       return { providerThreadId: "provider-thread-test" };
     },
@@ -81,7 +85,7 @@ function makeRuntime(args: MakeRuntimeArgs): AgentRuntime {
     hasThread() {
       return false;
     },
-    getActiveThreadIds() {
+    getLiveThreadIds() {
       return [];
     },
     hasOpenBackgroundWork() {

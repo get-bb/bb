@@ -1,5 +1,4 @@
 import { Buffer } from "node:buffer";
-import { setTimeout as delay } from "node:timers/promises";
 import { jsonValueSchema, type JsonObject, type JsonValue } from "@bb/domain";
 import {
   parseProviderModelConfig,
@@ -11,6 +10,11 @@ import { runLiveCommandAndWait } from "../hosts/live-command-wait.js";
 import { requireConnectedPrimaryHostId } from "../hosts/primary-host.js";
 import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
 import { backsHostDaemonAiServices } from "./host-daemon-ai-provider.js";
+import {
+  INFERENCE_POLICY,
+  inferenceCompleteWithFallback,
+} from "./inference.js";
+import { Type } from "@earendil-works/pi-ai";
 
 interface TranscribeVoiceInputArgs {
   file: File;
@@ -21,10 +25,7 @@ type OptionalJsonValue = JsonValue | null | undefined;
 
 const OPENAI_TRANSCRIPTION_PROVIDER = "openai";
 const VOICE_TRANSCRIPTION_MAX_BYTES = 25 * 1024 * 1024;
-const CODEX_VOICE_TRANSCRIPTION_ATTEMPT_TIMEOUT_MS = 10_000;
-const CODEX_VOICE_TRANSCRIPTION_MAX_ATTEMPTS = 2;
-const CODEX_VOICE_TRANSCRIPTION_RETRY_DELAY_MS = 250;
-const OPENAI_VOICE_TRANSCRIPTION_TIMEOUT_MS = 10_000;
+const voiceTranscriptionSchema = Type.Object({ text: Type.String() });
 
 function parseTranscriptionModel(model: string): ProviderModelInfo {
   return parseProviderModelConfig({
@@ -96,23 +97,6 @@ async function readJsonValue(response: Response): Promise<JsonValue | null> {
   }
 }
 
-function shouldTreatAsVoiceTimeout(error: Error): boolean {
-  return (
-    error instanceof ApiError &&
-    (error.body.code === "command_timeout" ||
-      error.body.code === "codex_request_timeout")
-  );
-}
-
-function shouldRetryCodexVoiceTranscription(error: Error): boolean {
-  return (
-    error instanceof ApiError &&
-    (error.body.code === "codex_rate_limited" ||
-      error.body.code === "codex_request_timeout" ||
-      error.body.code === "command_timeout")
-  );
-}
-
 function buildTranscriptionTimeoutError(): ApiError {
   return new ApiError(
     504,
@@ -140,65 +124,54 @@ async function transcribeWithCodexHostDaemon(
   const audioBase64 = Buffer.from(await args.file.arrayBuffer()).toString(
     "base64",
   );
-  const prompt = trimPrompt(args.prompt);
-  for (
-    let attempt = 1;
-    attempt <= CODEX_VOICE_TRANSCRIPTION_MAX_ATTEMPTS;
-    attempt += 1
-  ) {
-    try {
+  const prompt = trimPrompt(args.prompt) ?? "";
+  const transcriptionModel = `${modelInfo.provider}/${modelInfo.modelId}`;
+  const transcription = await inferenceCompleteWithFallback(deps, {
+    ...INFERENCE_POLICY.voiceTranscription,
+    complete: async (model, attemptPrompt, timeoutMs) => {
+      const attemptModel = parseTranscriptionModel(model);
       const result = await runLiveCommandAndWait(deps, {
         hostId,
-        timeoutMs: CODEX_VOICE_TRANSCRIPTION_ATTEMPT_TIMEOUT_MS,
+        timeoutMs: timeoutMs + INFERENCE_POLICY.hostRpcGraceMs,
         command: {
           type: "codex.voice.transcribe",
-          model: modelInfo.modelId,
+          model: attemptModel.modelId,
           audioBase64,
           mimeType: args.file.type || "application/octet-stream",
           filename: args.file.name || "voice-input",
-          prompt,
-          timeoutMs: CODEX_VOICE_TRANSCRIPTION_ATTEMPT_TIMEOUT_MS,
+          prompt: trimPrompt(attemptPrompt),
+          timeoutMs,
         },
       });
-      return result.text;
-    } catch (error) {
-      if (!(error instanceof Error)) {
-        throw error;
-      }
-
-      if (!shouldRetryCodexVoiceTranscription(error)) {
-        throw error;
-      }
-
-      if (attempt < CODEX_VOICE_TRANSCRIPTION_MAX_ATTEMPTS) {
-        deps.logger.info(
-          {
-            attempt,
-            errorCode:
-              error instanceof ApiError ? error.body.code : error.name,
-            maxAttempts: CODEX_VOICE_TRANSCRIPTION_MAX_ATTEMPTS,
-            timeoutMs: CODEX_VOICE_TRANSCRIPTION_ATTEMPT_TIMEOUT_MS,
-          },
-          "Voice transcription failed transiently; retrying",
-        );
-        await delay(CODEX_VOICE_TRANSCRIPTION_RETRY_DELAY_MS);
-        continue;
-      }
-
-      if (shouldTreatAsVoiceTimeout(error)) {
-        throw buildTranscriptionTimeoutError();
-      }
-      if (
-        error instanceof ApiError &&
-        error.body.code === "codex_rate_limited"
-      ) {
-        throw buildTranscriptionUnavailableError();
-      }
-      throw error;
-    }
+      return { text: result.text };
+    },
+    fallbackModel: transcriptionModel,
+    label: "Voice transcription",
+    primaryModel: transcriptionModel,
+    prompt,
+    schema: voiceTranscriptionSchema,
+  }).catch((error: Error) => error);
+  if (!(transcription instanceof Error) && transcription) {
+    return transcription.text;
   }
-
-  throw buildTranscriptionTimeoutError();
+  if (!(transcription instanceof Error)) {
+    throw buildTranscriptionUnavailableError();
+  }
+  if (
+    transcription instanceof ApiError &&
+    (transcription.body.code === "command_timeout" ||
+      transcription.body.code === "codex_request_timeout")
+  ) {
+    throw buildTranscriptionTimeoutError();
+  }
+  if (
+    transcription instanceof ApiError &&
+    (transcription.body.code === "codex_rate_limited" ||
+      transcription.body.code === "codex_service_unavailable")
+  ) {
+    throw buildTranscriptionUnavailableError();
+  }
+  throw transcription;
 }
 
 async function transcribeWithOpenAi(
@@ -227,7 +200,7 @@ async function transcribeWithOpenAi(
   const timer = setTimeout(() => {
     timedOut = true;
     abortController.abort();
-  }, OPENAI_VOICE_TRANSCRIPTION_TIMEOUT_MS);
+  }, INFERENCE_POLICY.voiceTranscription.timeoutMs);
   timer.unref();
 
   let response: Response;

@@ -1,5 +1,188 @@
 # Changelog
 
+## 0.37.0
+
+A much faster app on your phone, message editing, manual context compaction, shared skills, and a long list of fixes.
+
+### Mobile is much faster
+
+Every tap used to make bb measure the whole page before it could respond. On a phone, that froze the app for seconds at a time. This release removes that work.
+
+- Taps answer at once. The sidebar, the right panel, and the timeline all open without a stall.
+- The sidebar keeps its scroll position when you close it and open it again.
+- A long thread stays smooth while an agent streams into it.
+- A remote session over bb connect no longer lags behind your typing.
+- The prompt box no longer collapses while you scroll.
+
+### Edit a message you already sent
+
+Turn on **Edit messages** in Settings → Experiments. You can then edit any message you already sent. Nothing changes until you submit the edit. bb then rewinds the conversation to that point and runs the turn again, and your workspace keeps its changes. Codex, Claude Code, and Pi support it. Agents can do the same with `bb thread edit-message`.
+
+### Compact a long thread
+
+Type `/compact` in the composer to compact a thread that has grown too long. Codex, Claude Code, Pi, and OpenCode support it. Cursor and other custom ACP agents do not. Agents can do the same with `bb thread compact`.
+
+### Skills
+
+- bb now looks for skills in the places each agent already reads, so your existing skills appear without a copy.
+- Cursor project skills in `.cursor/skills` are found, including a link to a shared folder such as `.agents/skills`.
+- You can point every agent at one shared skill folder instead of a copy for each provider.
+- A custom ACP agent can declare its own skill folders.
+
+### An archive you can undo
+
+An accidental archive no longer destroys your worktree. bb waits five minutes before it removes the worktree. The archive toast offers **Undo**, and **Unarchive** on the thread brings back the same environment. A thread you delete still cleans up at once.
+
+### Threads and turns
+
+- Threads no longer freeze at "waiting" until you restart the app.
+- Background tasks, workflows, and agents survive a settings change or a memory write. They used to stop.
+- A very large finished turn opens instead of restarting the server.
+- The first turn of a new thread no longer dies in silence.
+- Claude Code asks for your approval before it leaves Plan mode.
+- Codex reopens an archived session and tries again instead of failing the turn.
+- A thread that moves to another folder keeps its history. Side chats and forks still work.
+- A thread title retries instead of staying empty.
+
+### Models and providers
+
+- ACP agents such as OpenCode and Kimi now show context window usage.
+- An agent with no reasoning levels no longer offers a false one.
+- A custom model entry works for any ACP agent, and one bad entry no longer breaks the rest.
+- Cursor starts the right CLI even when another `agent` command comes first on your `PATH`.
+- bb finds the Claude CLI where you installed it, and it explains the problem when it cannot.
+- A required Codex update is now hard to miss, with an **Update Codex** button.
+- A Pi thread no longer sticks on "Working…" because an extension printed a message.
+- Provider chatter no longer shows up as unknown events in the timeline.
+- Voice transcription retries on the transcription model, so a hiccup no longer loses your words.
+
+### Faster elsewhere
+
+- A desktop sidebar with many threads uses much less memory.
+- bb no longer stalls on a cold start with a large history.
+- A very large thread list loads instead of failing.
+- Plugin pages load faster.
+- The Keyboard settings page stays responsive while you record a shortcut.
+
+### Plugins and automations
+
+- A plugin turns on as soon as you install it, including a reinstall.
+- You can paste a plain repository URL to install a plugin from Git.
+- An automation script can call the `bb` CLI.
+- The GitHub plugin loads pull requests for a repository with Issues turned off, finds pull requests on a renamed fork branch, and no longer counts a superseded check as a failure.
+- The GitHub plugin fits a phone screen.
+
+### Fixes and polish
+
+- The slash command menu puts an exact match first.
+- A stale terminal tab closes instead of coming back.
+- A new terminal no longer steals focus from a new thread.
+- A long message expands in full when you select **Show more**.
+- A split thread view no longer goes blank.
+- An agent can call the `bb` CLI from a sandboxed shell.
+- Add Project reuses the project you already have for that folder.
+- File previews refresh in a large workspace with many changes.
+- The sidebar badge no longer offers an update for a CLI you never installed.
+- The macOS Dock icon, the iOS home-screen icon, and notification badges follow dark mode.
+- Sidebar shortcut hints stay visible, and a child thread name no longer shows through the row above it.
+- The iPad landscape sidebar clears the safe area, and Enter on a Magic Keyboard sends the prompt.
+- The browser panel lines up with the page when you zoom the window.
+- Queued message actions and worktree new-thread buttons have tooltips.
+- The New project tooltip no longer appears after you dismiss the picker.
+- An error message names the real cause instead of a bare `fetch failed`.
+- Log timestamps show the correct local time.
+
+### Thanks
+
+Twenty of the changes in this release came from outside the core team. Thank you:
+
+- **[@tymonTe](https://github.com/tymonTe)** found the bug that froze every thread on a host, traced it to a single event, and shipped the fix.
+- **[@sholub-dev](https://github.com/sholub-dev)** shipped four changes. Background tasks now survive a settings change. Agents can reach the `bb` CLI from a sandboxed shell. Errors now name their real cause.
+- **[@patleeman](https://github.com/patleeman)** kept a thread's history when it moves to another folder, made Codex reopen an archived session, and stopped the false update badge.
+- **[@smsunarto](https://github.com/smsunarto)** fixed the browser panel at window zoom, aligned the built-in plugin icons, and documented scoped plugin package names.
+- **[@vburojevic](https://github.com/vburojevic)** fixed the error that broke ACP thread timelines. They also made the app icons and notification badges follow dark mode.
+- **[@ratulsarna](https://github.com/ratulsarna)** fixed the crash that blanked a split thread view.
+- **[@ryanbbrown](https://github.com/ryanbbrown)** added the rename and archive shortcuts.
+- **[@wjin17](https://github.com/wjin17)** removed the hidden refresh that made a remote session lag on a phone.
+- **[@DevVig](https://github.com/DevVig)** made Cursor start the right CLI.
+- **[@raincodes64](https://github.com/raincodes64)** fixed the Pi thread that stuck on "Working…".
+- **[@salemsayed](https://github.com/salemsayed)** made Enter on a Magic Keyboard send the prompt in the iPad app.
+- **[@charpeni](https://github.com/charpeni)** added the worktree new-thread tooltips.
+
+Thank you also to everyone who reported an issue that this release fixes: **[@amadad](https://github.com/amadad)**, **[@andreasmcdermott](https://github.com/andreasmcdermott)**, **[@arunsathiya](https://github.com/arunsathiya)**, **[@bighitbiker3](https://github.com/bighitbiker3)**, **[@DarrenTsung](https://github.com/DarrenTsung)**, **[@davekilleen](https://github.com/davekilleen)**, **[@fabianlindfors](https://github.com/fabianlindfors)**, **[@fabricioereche](https://github.com/fabricioereche)**, **[@Joesirven](https://github.com/Joesirven)**, **[@jshph](https://github.com/jshph)**, **[@o98k-ok](https://github.com/o98k-ok)**, **[@rohit-simile](https://github.com/rohit-simile)**, **[@sudoHackIn](https://github.com/sudoHackIn)**, **[@tekumara](https://github.com/tekumara)**, and **[@vaayne](https://github.com/vaayne)**.
+
+## 0.36.0
+
+A faster web app, a more reliable terminal, steadier model catalogs, and a long list of fixes.
+
+### The server now default binds to loopback
+
+The server used to listen on every network interface, which exposed its unauthenticated API to any host that could reach the machine. It now binds `127.0.0.1`. Use `--server-bind-host 0.0.0.0` or `BB_SERVER_BIND_HOST` to opt back in, only behind a trusted network boundary.
+
+- **Action needed before you upgrade** if a browser or an enrolled machine reaches bb at a direct address such as `http://<LAN-IP>:38886` or `http://<machine>.<tailnet>.ts.net:38886`. Move the route first, then upgrade. This release also raises the host daemon protocol, so every enrolled daemon must update itself — and a daemon that lost its route cannot.
+- Move to bb connect, or put bb behind Tailscale Serve, then remove and re-add each machine in Settings → Machines so its installer records the new route. Setup steps: https://github.com/get-bb/bb/blob/main/docs/multiple-devices.md
+- The desktop app, the `bb` CLI, agents, plugins, and the host daemon on the same machine reach the server over loopback. They need no change.
+
+### Machines and threads
+
+- An enrolled host daemon no longer collides with another daemon over its local API port.
+- Background tasks survive a daemon reconnect.
+- Provider subscription rate limits now retry instead of failing the turn.
+- New threads pick up the connected provider defaults. A thread that names no model now resolves one from the provider catalog on the target host, instead of a hard-coded default. The thread fails to start when that host cannot list models.
+- Provider usage limits normalize correctly.
+
+### Pi and ACP
+
+- A broken extension no longer empties the Pi model list.
+- A bare Pi model name resolves through the sole authenticated provider.
+- An aggregator model ID keeps its provider prefix.
+- The bundled runtime loads your own Pi configuration.
+- ACP plugin tools work in packaged Electron builds.
+- An ACP agent may send a null model or config-option string without breaking the session.
+
+### Models
+
+- Codex re-reads its model list after a CLI update, and it finds project skills again.
+- Voice transcription moves to GPT Transcribe. Helper inference moves to GPT-5.6 Luna.
+
+### Performance
+
+- The web app boot payload is 60% smaller.
+- The built-in terminal is more reliable, replays faster over a remote connection, and the terminal panel loads faster.
+
+### Plugins and extensions
+
+- Official plugins now live with the rest of the plugins in one place.
+- Plugin installs report progress, the build toolchain downloads on demand, and git plugin dependencies install before bundling.
+- Plugin SDK type declarations stay current, so agents read the declarations instead of the bundles.
+- Browse is the default Extensions tab.
+- Interactive plugin tools stay alive past the Connect timeout.
+- The GitHub plugin syncs pull requests for repositories with Issues disabled, finds pull requests on fork branches, renders GFM tables in descriptions, and refreshes status when a turn completes.
+
+### Fixes and polish
+
+- New keyboard shortcuts cycle the model and the reasoning level.
+- A `.worktreeinclude` file controls what a new worktree copies in.
+- Sandbox network permission prompts are grantable.
+- App shortcuts and Escape work in the chat input, and sidebar search resets after you open a thread.
+- Cmd+W no longer crashes the About window.
+- Git status is correct for a newly initialized repository, and a workspace path claim is scoped to its project.
+- Long filenames fit in the Add Project dialog, tab overflow controls are back, and right panel resize is less sensitive.
+- File links work in side chat timelines.
+- The mobile PWA shell tracks the iOS keyboard, and mobile voice recording controls work again.
+- bb connect relays DELETE request bodies.
+- First-run onboarding is behind an experiment while it settles.
+- New `pnpm dev:status` command for source development.
+
+### Thanks
+
+Much of this release came from outside the core team. Thank you:
+
+- **[@ben-vargas](https://github.com/ben-vargas)** reported the wildcard bind and shipped the loopback default, the `BB_SERVER_BIND_HOST` setting, and its migration guide.
+- **[@Diffuzmetall](https://github.com/Diffuzmetall)** made the built-in terminal more reliable and much faster to replay over a remote connection.
+- **[@kschrader](https://github.com/kschrader)** fixed GitHub pull request sync for a repository with Issues disabled.
+- **[@toasterman234](https://github.com/toasterman234)** helped cut the web app boot payload by 60%.
+
 ## 0.35.0
 
 Plugins ship in this release, enabled by default. Much of bb is already built with them — and an agent inside bb can now write one for you.

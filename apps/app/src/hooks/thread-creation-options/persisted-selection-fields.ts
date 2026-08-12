@@ -1,4 +1,4 @@
-import { useAtom } from "jotai";
+import { atom, useAtom, useStore } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import { atomFamily } from "jotai-family";
 import { useCallback } from "react";
@@ -16,6 +16,7 @@ const REASONING_STORAGE_KEY = "bb.promptbox.reasoning";
 const PERMISSION_MODE_STORAGE_KEY = "bb.promptbox.permission-mode";
 const ENVIRONMENT_STORAGE_KEY = "bb.promptbox.environment";
 const PROVIDER_STORAGE_KEY = "bb.promptbox.provider";
+const PROVIDER_SELECTION_STORAGE_VERSION = "1";
 
 export type StoredServiceTier = "" | ServiceTier;
 export type StoredReasoningLevel = "" | ReasoningLevel;
@@ -44,6 +45,12 @@ export interface PersistedReasoningLevelSelectionField {
 export interface PersistedPermissionModeSelectionField {
   setValue: StoredPermissionModeSetter;
   value: StoredPermissionMode;
+}
+
+export interface PromptBoxProviderModelReasoningPreference {
+  providerId: string;
+  model: string;
+  reasoningLevel: ReasoningLevel;
 }
 
 function isReasoningLevel(value: string): value is ReasoningLevel {
@@ -85,11 +92,58 @@ const providerIdAtom = atomWithStorage<string>(
   rawStringLocalStorage,
   { getOnInit: true },
 );
-const modelAtom = atomWithStorage<string>(
-  MODEL_STORAGE_KEY,
-  "",
-  rawStringLocalStorage,
-  { getOnInit: true },
+const emptyModelAtom = atom("");
+const emptyReasoningLevelAtom = atom<StoredReasoningLevel>("");
+
+function getProviderSelectionStorageKey(
+  storageKey: string,
+  providerId: string,
+): string {
+  return `${storageKey}-${encodeURIComponent(providerId.trim())}-${PROVIDER_SELECTION_STORAGE_VERSION}`;
+}
+
+function getLegacyProviderSelection(
+  providerId: string,
+  storageKey: string,
+): string | null {
+  if (typeof window === "undefined") return null;
+  if (window.localStorage.getItem(PROVIDER_STORAGE_KEY) !== providerId) {
+    return null;
+  }
+  return window.localStorage.getItem(storageKey);
+}
+
+function createProviderModelStorage(providerId: string) {
+  return createLocalStorageSyncStorage<string>({
+    parse: (storedValue, initialValue) =>
+      storedValue ??
+      getLegacyProviderSelection(providerId, MODEL_STORAGE_KEY) ??
+      initialValue,
+    serialize: (value) => value,
+  });
+}
+
+function createProviderReasoningStorage(providerId: string) {
+  return createLocalStorageSyncStorage<StoredReasoningLevel>({
+    parse: (storedValue, initialValue) => {
+      const value =
+        storedValue ??
+        getLegacyProviderSelection(providerId, REASONING_STORAGE_KEY);
+      return value !== null && isStoredReasoningLevel(value)
+        ? value
+        : initialValue;
+    },
+    serialize: (value) => value,
+  });
+}
+
+const modelAtomFamily = atomFamily((providerId: string) =>
+  atomWithStorage<string>(
+    getProviderSelectionStorageKey(MODEL_STORAGE_KEY, providerId),
+    "",
+    createProviderModelStorage(providerId),
+    { getOnInit: true },
+  ),
 );
 const serviceTierAtom = atomWithStorage<StoredServiceTier>(
   SERVICE_TIER_STORAGE_KEY,
@@ -97,28 +151,31 @@ const serviceTierAtom = atomWithStorage<StoredServiceTier>(
   createLocalStorageEnumStorage(isStoredServiceTier),
   { getOnInit: true },
 );
-const reasoningLevelAtom = atomWithStorage<StoredReasoningLevel>(
-  REASONING_STORAGE_KEY,
-  "",
-  createLocalStorageEnumStorage(isStoredReasoningLevel),
-  { getOnInit: true },
+const reasoningLevelAtomFamily = atomFamily((providerId: string) =>
+  atomWithStorage<StoredReasoningLevel>(
+    getProviderSelectionStorageKey(REASONING_STORAGE_KEY, providerId),
+    "",
+    createProviderReasoningStorage(providerId),
+    { getOnInit: true },
+  ),
 );
 // Legacy preference migration: "workspace-write" maps onto the same workspace
 // sandbox as "accept-edits", so the user's stored intent carries forward.
 // Legacy "readonly" (and any other unknown value) is dropped rather than
 // reinterpreted — localStorage is untrusted, and a read-only preference must
 // never silently become a writable mode.
-const permissionModePreferenceStorage = createLocalStorageSyncStorage<StoredPermissionMode>({
-  parse: (storedValue, initialValue) => {
-    if (storedValue === "workspace-write") {
-      return "accept-edits";
-    }
-    return storedValue !== null && isStoredPermissionMode(storedValue)
-      ? storedValue
-      : initialValue;
-  },
-  serialize: (value) => value,
-});
+const permissionModePreferenceStorage =
+  createLocalStorageSyncStorage<StoredPermissionMode>({
+    parse: (storedValue, initialValue) => {
+      if (storedValue === "workspace-write") {
+        return "accept-edits";
+      }
+      return storedValue !== null && isStoredPermissionMode(storedValue)
+        ? storedValue
+        : initialValue;
+    },
+    serialize: (value) => value,
+  });
 
 const permissionModeAtom = atomWithStorage<StoredPermissionMode>(
   PERMISSION_MODE_STORAGE_KEY,
@@ -145,15 +202,27 @@ export function usePromptBoxProviderPreference(): PersistedStringSelectionField 
   const [value, setAtomValue] = useAtom(providerIdAtom);
   const setValue = useCallback(
     (nextValue: string) => {
+      if (nextValue !== value && typeof window !== "undefined") {
+        // Once the provider changes, the legacy unscoped values no longer have
+        // a trustworthy owner. The caller saves the current pair under its
+        // provider-scoped keys before changing this value.
+        window.localStorage.removeItem(MODEL_STORAGE_KEY);
+        window.localStorage.removeItem(REASONING_STORAGE_KEY);
+      }
       setAtomValue(nextValue);
     },
-    [setAtomValue],
+    [setAtomValue, value],
   );
   return { setValue, value };
 }
 
-export function usePromptBoxModelPreference(): PersistedStringSelectionField {
-  const [value, setAtomValue] = useAtom(modelAtom);
+export function usePromptBoxModelPreference(
+  providerId: string,
+): PersistedStringSelectionField {
+  const selectionAtom = providerId
+    ? modelAtomFamily(providerId)
+    : emptyModelAtom;
+  const [value, setAtomValue] = useAtom(selectionAtom);
   const setValue = useCallback(
     (nextValue: string) => {
       setAtomValue(nextValue);
@@ -174,8 +243,13 @@ export function usePromptBoxServiceTierPreference(): PersistedServiceTierSelecti
   return { setValue, value };
 }
 
-export function usePromptBoxReasoningLevelPreference(): PersistedReasoningLevelSelectionField {
-  const [value, setAtomValue] = useAtom(reasoningLevelAtom);
+export function usePromptBoxReasoningLevelPreference(
+  providerId: string,
+): PersistedReasoningLevelSelectionField {
+  const selectionAtom = providerId
+    ? reasoningLevelAtomFamily(providerId)
+    : emptyReasoningLevelAtom;
+  const [value, setAtomValue] = useAtom(selectionAtom);
   const setValue = useCallback(
     (nextValue: StoredReasoningLevel) => {
       setAtomValue(nextValue);
@@ -183,6 +257,20 @@ export function usePromptBoxReasoningLevelPreference(): PersistedReasoningLevelS
     [setAtomValue],
   );
   return { setValue, value };
+}
+
+export function useSetPromptBoxProviderModelReasoningPreference(): (
+  preference: PromptBoxProviderModelReasoningPreference,
+) => void {
+  const store = useStore();
+  return useCallback(
+    ({ providerId, model, reasoningLevel }) => {
+      if (providerId.length === 0) return;
+      store.set(modelAtomFamily(providerId), model);
+      store.set(reasoningLevelAtomFamily(providerId), reasoningLevel);
+    },
+    [store],
+  );
 }
 
 export function usePromptBoxPermissionModePreference(): PersistedPermissionModeSelectionField {

@@ -442,6 +442,13 @@ function expectBrowserDeckVisibility(canShowNativeBrowserView: boolean) {
   ).toBe(String(canShowNativeBrowserView));
 }
 
+// Before the compact drawer settles, the whole secondary panel (deck
+// included) stays unmounted so its mount cost cannot block the entrance
+// animation; a skeleton fills the sheet instead.
+function expectDrawerPanelNotRealized() {
+  expect(screen.queryByTestId("browser-deck")).toBeNull();
+}
+
 function scheduleCompactDrawerSettleFrame() {
   const callback = drawerShellState.onContentAnimationEnd;
   if (callback === undefined) {
@@ -561,14 +568,14 @@ describe("ThreadDetailSecondaryContent compact drawer settling", () => {
       threadId: "thread-1",
     });
 
-    expectBrowserDeckVisibility(false);
+    expectDrawerPanelNotRealized();
 
     order.push("animationEnd:true");
     scheduleCompactDrawerSettleFrame();
 
     expect(frames.requestAnimationFrame).toHaveBeenCalledTimes(1);
     expect(dispatchBrowserViewBoundsSync).not.toHaveBeenCalled();
-    expectBrowserDeckVisibility(false);
+    expectDrawerPanelNotRealized();
 
     act(() => {
       frames.flushAll();
@@ -608,7 +615,7 @@ describe("ThreadDetailSecondaryContent compact drawer settling", () => {
 
     expect(frames.requestAnimationFrame).not.toHaveBeenCalled();
     expect(dispatchBrowserViewBoundsSync).not.toHaveBeenCalled();
-    expectBrowserDeckVisibility(false);
+    expectDrawerPanelNotRealized();
   });
 
   it("does not schedule a stale open callback after the compact drawer closes", () => {
@@ -626,7 +633,7 @@ describe("ThreadDetailSecondaryContent compact drawer settling", () => {
 
     expect(frames.requestAnimationFrame).not.toHaveBeenCalled();
     expect(dispatchBrowserViewBoundsSync).not.toHaveBeenCalled();
-    expectBrowserDeckVisibility(false);
+    expectDrawerPanelNotRealized();
   });
 
   it("cancels a pending compact drawer settle rAF when the drawer closes", () => {
@@ -651,7 +658,7 @@ describe("ThreadDetailSecondaryContent compact drawer settling", () => {
     });
 
     expect(dispatchBrowserViewBoundsSync).not.toHaveBeenCalled();
-    expectBrowserDeckVisibility(false);
+    expectDrawerPanelNotRealized();
   });
 
   it("cancels a pending compact drawer settle rAF when the thread changes", () => {
@@ -676,7 +683,7 @@ describe("ThreadDetailSecondaryContent compact drawer settling", () => {
     });
 
     expect(dispatchBrowserViewBoundsSync).not.toHaveBeenCalled();
-    expectBrowserDeckVisibility(false);
+    expectDrawerPanelNotRealized();
   });
 
   it("cancels a pending compact drawer settle rAF on compact-to-wide transition", () => {

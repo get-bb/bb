@@ -10,6 +10,7 @@ import {
   type ModelReasoningPickerFooterAction,
 } from "@/components/pickers/ModelReasoningPicker";
 import { type PickerOption } from "@/components/pickers/OptionPicker";
+import type { ModelPickerOption } from "@/components/pickers/model-picker-option";
 
 export interface ExecutionProviderConfig {
   options?: readonly PickerOption<string>[];
@@ -23,9 +24,9 @@ export interface ExecutionProviderConfig {
 export interface ExecutionModelConfig {
   active?: { model: string } | null;
   selected: string;
-  options: readonly PickerOption<string>[];
+  options: readonly ModelPickerOption[];
   /** Models behind the picker's collapsed "More models" section. */
-  moreOptions: readonly PickerOption<string>[];
+  moreOptions: readonly ModelPickerOption[];
   isLoading: boolean;
   loadFailed: boolean;
   loadError?: SystemExecutionOptionsModelLoadError | null;

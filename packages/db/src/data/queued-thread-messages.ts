@@ -655,8 +655,26 @@ export function getQueuedThreadMessage(db: DbConnection, id: string) {
   );
 }
 
-export function listQueuedThreadMessages(db: DbConnection, threadId: string) {
+export function listQueuedThreadMessages(
+  db: DbQueryConnection,
+  threadId: string,
+) {
   return listUnclaimedQueuedThreadMessages(db, threadId);
+}
+
+/** Includes messages currently claimed by the queue drain worker. */
+export function hasQueuedThreadMessages(
+  db: DbQueryConnection,
+  threadId: string,
+): boolean {
+  return (
+    db
+      .select({ id: queuedThreadMessages.id })
+      .from(queuedThreadMessages)
+      .where(eq(queuedThreadMessages.threadId, threadId))
+      .limit(1)
+      .get() !== undefined
+  );
 }
 
 export function listIdleThreadsWithQueuedMessages(

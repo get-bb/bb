@@ -28,6 +28,12 @@ type ReuseThreadRequestEnvironment = Extract<
   { type: "reuse" }
 >;
 export interface ResolveStableThreadRequestEnvironmentArgs {
+  /**
+   * A directory switch can leave a personal-project source thread attached to
+   * an unmanaged environment. Source-derived forks may reuse that exact
+   * environment, but a new root thread must still use a personal workspace.
+   */
+  allowUnmanagedPersonalProjectReuseEnvironmentId?: string;
   environment: ThreadRequestEnvironment;
   projectId: string;
 }
@@ -81,11 +87,21 @@ function assertPersonalWorkspaceProjectCompatibility(projectId: string): void {
 function assertReuseWorkspaceProjectCompatibility(
   projectId: string,
   environment: Environment,
+  allowUnmanagedPersonalProjectReuseEnvironmentId: string | undefined,
 ): void {
   const projectIsPersonal = projectId === PERSONAL_PROJECT_ID;
   const environmentIsPersonal =
     environment.workspaceProvisionType === "personal";
-  if (projectIsPersonal && !environmentIsPersonal) {
+  const environmentIsUnmanaged =
+    environment.workspaceProvisionType === "unmanaged";
+  if (
+    projectIsPersonal &&
+    !environmentIsPersonal &&
+    !(
+      environmentIsUnmanaged &&
+      allowUnmanagedPersonalProjectReuseEnvironmentId === environment.id
+    )
+  ) {
     throw new ApiError(
       409,
       "invalid_request",
@@ -110,8 +126,7 @@ function resolveHostThreadRequestEnvironment(
   | ResolvedPersonalThreadRequestEnvironment {
   if (environment.workspace.type === "personal") {
     assertPersonalWorkspaceProjectCompatibility(projectId);
-    const hostId =
-      environment.hostId ?? requireConnectedPrimaryHostId(deps);
+    const hostId = environment.hostId ?? requireConnectedPrimaryHostId(deps);
     assertUsableHostId(deps, { hostId });
     return {
       hostId,
@@ -158,6 +173,7 @@ function resolveReuseThreadRequestEnvironment(
   deps: ThreadRequestEnvironmentDeps,
   environment: ReuseThreadRequestEnvironment,
   projectId: string,
+  allowUnmanagedPersonalProjectReuseEnvironmentId: string | undefined,
 ): ResolvedReuseThreadRequestEnvironment {
   const reusedEnvironment = requireEnvironment(
     deps.db,
@@ -170,7 +186,11 @@ function resolveReuseThreadRequestEnvironment(
       "Environment belongs to a different project",
     );
   }
-  assertReuseWorkspaceProjectCompatibility(projectId, reusedEnvironment);
+  assertReuseWorkspaceProjectCompatibility(
+    projectId,
+    reusedEnvironment,
+    allowUnmanagedPersonalProjectReuseEnvironmentId,
+  );
   assertUsableHostId(deps, { hostId: reusedEnvironment.hostId });
   return {
     environment: reusedEnvironment,
@@ -194,6 +214,7 @@ export function resolveStableThreadRequestEnvironment(
         deps,
         args.environment,
         args.projectId,
+        args.allowUnmanagedPersonalProjectReuseEnvironmentId,
       );
     default: {
       const exhaustiveCheck: never = args.environment;

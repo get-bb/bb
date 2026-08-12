@@ -57,6 +57,7 @@ export type TerminalSocketProtocol = {
     socket: TerminalSocket,
     session: ClientSocketSession,
     terminalId: string,
+    sinceSeq?: number,
   ): void;
   message(socket: TerminalSocket, raw: unknown): void;
   close(socket: TerminalSocket): void;
@@ -66,6 +67,7 @@ type SocketState = {
   active: boolean;
   readonly session: ClientSocketSession;
   readonly terminalId: string;
+  readonly sinceSeq: number;
   attached: boolean;
   readonly cancelPendingAuthorizations: Set<() => void>;
   queue: Promise<void>;
@@ -358,6 +360,7 @@ export function createTerminalSocketProtocol(
     try {
       terminalSessions.attachBrowserTerminal({
         socket,
+        sinceSeq: state.sinceSeq,
         terminalId: state.terminalId,
         threadId: null,
       });
@@ -489,7 +492,7 @@ export function createTerminalSocketProtocol(
   }
 
   return {
-    open(socket, session, terminalId): void {
+    open(socket, session, terminalId, sinceSeq = 0): void {
       if (boundSockets.has(socket)) {
         // One immutable binding per socket; refuse reuse.
         const existing = states.get(socket);
@@ -510,6 +513,12 @@ export function createTerminalSocketProtocol(
         active: true,
         session,
         terminalId,
+        sinceSeq:
+          typeof sinceSeq === "number" &&
+          Number.isSafeInteger(sinceSeq) &&
+          sinceSeq >= 0
+            ? sinceSeq
+            : 0,
         attached: false,
         cancelPendingAuthorizations: new Set(),
         queue: Promise.resolve(),
