@@ -41,6 +41,29 @@ jobs:
       - name: Check app boot-payload budget
         run: node apps/app/scripts/check-bundle-budget.mjs
 
+  finite-state-guards:
+    name: Finite State guard gates (ubuntu-latest, Node 22.x)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup workspace
+        uses: ./.github/actions/setup-workspace
+        with:
+          node-version: ${{ env.PRIMARY_NODE_VERSION }}
+          pnpm-version: ${{ env.PNPM_VERSION }}
+          cache-prefix: finite-state-guards
+
+      - name: Run Finite State plugin gate
+        run: |
+          pnpm exec turbo run typecheck test lint build --filter=bb-plugin-finite-state --cache-dir=.turbo/cache --output-logs=new-only
+          node plugins/bb-plugin-finite-state/scripts/check-frozen-artifacts.mjs --base "${{ github.event.pull_request.base.sha || github.event.before || github.sha }}"
+          node plugins/bb-plugin-finite-state/scripts/check-ui-rules.mjs
+          node plugins/bb-plugin-finite-state/scripts/check-dependency-freeze.mjs
+
   # Tests run on their own runners instead of inside the checks job: the big
   # suites are CPU-bound and previously fought each other (and the builds) for
   # the same 4 vCPUs, which made tests the critical path of every run.
