@@ -118,6 +118,11 @@
       "types": "./src/skill-storage-paths.ts",
       "default": "./src/skill-storage-paths.ts"
     },
+    "./codex-home": {
+      "source": "./src/codex-home.ts",
+      "types": "./src/codex-home.ts",
+      "default": "./src/codex-home.ts"
+    },
     "./verified-process-stop": {
       "source": "./src/verified-process-stop.ts",
       "types": "./src/verified-process-stop.ts",

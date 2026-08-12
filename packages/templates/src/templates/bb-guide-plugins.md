@@ -152,18 +152,18 @@ added/updated/unchanged counts.
   bb plugin search <query>       Search BB's official plugins (bundled with
                                  the app)
   bb plugin install <entry>      Install a bundled official plugin by name
-                                 (github, docs, memory, tasks), a local
-                                 path, builtin:<name>,
-                                 git:<url>@<ref>, or
+                                 (github, docs, memory, tasks), a Git repository
+                                 URL, local path, builtin:<name>,
+                                 git:<url>[@<ref>], or
                                  npm:<package>[@<version|tag|range>]
                                  (npm: needs npm on PATH; installs prompt —
                                  pass --yes to skip). Managed git:/npm:
                                  installs refuse engines.bb / engines.bbPluginSdk
                                  mismatches, manifest/artifact identity
                                  mismatches, and ids reserved by bundled plugins
-                                 Omitted npm specs, ranges, dist-tags, and git
-                                 branches track; exact npm versions, git tags,
-                                 and git commits are pinned
+                                 Omitted npm specs, ranges, dist-tags, omitted
+                                 Git refs, and Git branches track; exact npm
+                                 versions, Git tags, and Git commits are pinned
   bb plugin outdated             Check installed plugins for compatible
                                  updates (table; --json for raw results).
                                  Columns: installed, latest compatible,
@@ -190,8 +190,9 @@ added/updated/unchanged counts.
                                  invalidating the old one
   bb plugin remove <id>          Uninstall (managed git:/npm: files deleted;
                                  builtin removals are remembered)
-  bb plugin new <name> [--app]   Scaffold a new plugin (no server required;
-                                 --app adds a frontend entry, app.tsx, plus a
+  bb plugin new <name> [--app]   Scaffold a new plugin and install its npm
+                                 dependencies (no server required; --app adds
+                                 a frontend entry, app.tsx, plus a
                                  typecheck-only tsconfig.json)
   bb plugin types [path]         Write this bb's @bb/plugin-sdk declarations
                                  into the plugin's types/ (default: cwd);
@@ -225,13 +226,14 @@ Reinstalling an already-installed managed plugin is refused — use
 `bb plugin update`. A failed activation restores the pre-update snapshot and
 leaves the latest failure visible as needing attention. Exact npm versions,
 git tags and commits, path sources, and bundled official plugins are pinned;
-npm ranges/omitted specs/dist-tags and git branches track compatible updates.
+npm ranges/omitted specs/dist-tags, omitted Git refs (the repository default
+branch), and Git branches track compatible updates.
 
 `bb plugin search <query>` matches id, display name, description, and
 category across the bundled official plugins (status: installed / compatible
 / requires newer bb). Install an official plugin by its bare name. Direct
-`path:`, `npm:`, `git:`, and `builtin:` sources—and path-like
-syntax—continue to bypass official-plugin resolution.
+HTTP(S) Git repository URLs, `path:`, `npm:`, `git:`, and `builtin:`
+sources—and path-like syntax—continue to bypass official-plugin resolution.
 
 Builds are automatic once installed. Git installs run `npm install`
 (lifecycle scripts disabled), then compile both bundles — so a git plugin may
@@ -287,11 +289,18 @@ form; no props in V1, optional host-rendered title),
 navPanel (own sidebar entry + /plugins/<id>/<path>/* route; the remainder
 arrives as the component's subPath prop for panel-internal deep links; the
 host always renders the shared plugin title bar and the component owns a
-zero-padding full-bleed body, including its scrolling),
+zero-padding full-bleed body, including its scrolling; optional
+experimental_sidebarAccessory mounts a presentational live-value component at
+the trailing edge of the sidebar row on wide viewports, bounded to one short
+line, replaced visually by the host options button on hover/focus, and omitted
+on compact viewports),
 threadPanelAction
-(an entry in the thread right panel's new-tab Actions list whose run() can
+(a thread-only entry in an existing thread's right-panel new-tab Actions list;
+it is never offered on root compose, and its run() can
 open closable panel tabs with recursive `JsonValue` params; restored
-components read `JsonValue | null`), pendingInteraction (temporarily replace a thread composer with a
+components read a required `threadId` plus `JsonValue | null`),
+experimental_newThreadPanelAction (the root New thread counterpart, with
+`projectId: string | null` instead of `threadId`), pendingInteraction (temporarily replace a thread composer with a
 plugin form), fileOpener (register as a per-extension file viewer/editor;
 users pick defaults under Settings → File openers and can right-click a
 file link for a one-off choice), and messageDirective (replace a leaf
@@ -427,7 +436,8 @@ frontend bundle needed); bb.status.needsConfiguration (report
 reload/disable/shutdown).
 
 Frontend entries register React slots (homepageSection, settingsSection,
-navPanel, threadPanelAction, fileOpener, messageDirective) and composer
+navPanel, threadPanelAction, experimental_newThreadPanelAction, fileOpener,
+messageDirective) and composer
 customizations via `app.composer.customize({ actions, plusMenu, banners,
 richText })`; action/banner components use `useComposer()` and
 `useComposerView()`, while the host renders plus-menu rows and editor

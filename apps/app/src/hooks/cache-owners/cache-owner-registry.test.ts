@@ -175,10 +175,7 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "terminalsQueryKey",
     "threadsQueryKey",
   ],
-  "hooks/cache-owners/skills-cache-effects.ts": [
-    "projectSkillsQueryKey",
-    "skillContentQueryKeyPrefix",
-  ],
+  "hooks/cache-owners/skills-cache-effects.ts": ["projectSkillsQueryKey"],
   "hooks/cache-owners/system-cache-effects.ts": [
     "allEnvironmentDiffFilesQueryKeyPrefix",
     "allEnvironmentDiffPatchQueryKeyPrefix",
@@ -207,7 +204,6 @@ const CACHE_OWNER_QUERY_KEY_IMPORTS: CacheOwnerQueryKeyImportRegistry = {
     "projectsQueryKey",
     "sidebarNavigationQueryKey",
     "systemConfigQueryKey",
-    "systemExecutionOptionsQueryKey",
     "threadPromptHistoryQueryKeyPrefix",
     "threadSearchQueryKeyPrefix",
     "threadsQueryKey",

@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import type { AvailableModel, ReasoningLevel } from "@bb/domain";
 import type {
   SystemExecutionOptionsResponse,
@@ -9,6 +15,7 @@ import type {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { systemExecutionOptionsQueryKey } from "@/hooks/queries/query-keys";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
+import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import {
   buildFuzzyRegex,
   buildModelNavRows,
@@ -93,6 +100,7 @@ function renderPicker({
   pickerProviderOptions = providerOptions,
   providerRouting,
   selectedProviderId = "codex",
+  compact = false,
 }: {
   onSelectedProviderChange?: (value: string) => void;
   onModelChange?: (value: string) => void;
@@ -103,6 +111,7 @@ function renderPicker({
   pickerProviderOptions?: readonly PickerOption<string>[];
   providerRouting?: SystemProvidersQuery;
   selectedProviderId?: string;
+  compact?: boolean;
 } = {}) {
   const { queryClient, wrapper } = createQueryClientTestHarness();
   queryClient.setQueryData(
@@ -122,7 +131,7 @@ function renderPicker({
     }),
   );
 
-  render(
+  const picker = (
     <ModelReasoningPicker
       providerOptions={pickerProviderOptions}
       providerRouting={providerRouting}
@@ -140,7 +149,16 @@ function renderPicker({
       onFastModeChange={vi.fn()}
       showFastModeToggle={false}
       modal={false}
-    />,
+    />
+  );
+  render(
+    compact ? (
+      <CompactViewportOverrideProvider isCompactViewport>
+        {picker}
+      </CompactViewportOverrideProvider>
+    ) : (
+      picker
+    ),
     { wrapper },
   );
 
@@ -274,6 +292,41 @@ describe("ModelReasoningPicker", () => {
     fireEvent.keyDown(search, { key: "Enter" });
 
     expect(onModelChange).toHaveBeenCalledWith("o4-mini");
+  });
+
+  it("resets retained mobile browse state after the drawer closes", () => {
+    const frames: FrameRequestCallback[] = [];
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    renderPicker({ compact: true, modelOptions: manyCodexModels });
+    const trigger = screen.getByRole("button", {
+      name: "Provider, model and reasoning",
+    });
+
+    fireEvent.click(trigger);
+    act(() => frames.shift()?.(0));
+    act(() => frames.shift()?.(16));
+    const search = screen.getByPlaceholderText(
+      "Search models",
+    ) as HTMLInputElement;
+    fireEvent.change(search, { target: { value: "o4" } });
+    expect(search.value).toBe("o4");
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    const drawer = document.querySelector<HTMLElement>(
+      "[data-persistent-drawer-content]",
+    );
+    fireEvent.transitionEnd(drawer as HTMLElement, {
+      propertyName: "transform",
+    });
+    fireEvent.click(trigger);
+
+    expect(
+      (screen.getByPlaceholderText("Search models") as HTMLInputElement).value,
+    ).toBe("");
+    expect(screen.getByText("o4-mini")).not.toBeNull();
   });
 
   it("reaches selected-only models by keyboard once a search flattens them", () => {

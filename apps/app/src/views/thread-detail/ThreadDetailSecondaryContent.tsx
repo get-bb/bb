@@ -13,16 +13,17 @@ import {
   PanelGroup,
   type ImperativePanelGroupHandle,
 } from "react-resizable-panels";
-import { ResponsiveDrawerShell } from "@bb/shared-ui/responsive-overlay";
+import {
+  PersistentResponsiveDrawerShell,
+  useResponsiveDrawerRealization,
+} from "@bb/shared-ui/responsive-overlay";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import { DETAIL_GRID_CLASS } from "@/components/ui/detail-card.js";
 import { useAtomValue } from "jotai";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { ThreadSecondaryPanel } from "@/components/secondary-panel/ThreadSecondaryPanel";
-import {
-  secondaryPanelWidthPercentAtom,
-} from "@/components/secondary-panel/threadSecondaryPanelAtoms";
+import { secondaryPanelWidthPercentAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import {
   ThreadMetadataCard,
   ThreadMetadataContent,
@@ -126,6 +127,11 @@ function ThreadDetailSecondaryContentBody({
     canCollapseConversation && isConversationCollapsed;
   const [isCompactDrawerContentSettled, setIsCompactDrawerContentSettled] =
     useState(false);
+  const { isContentRealized: isPanelRealized, realizeContent: realizePanel } =
+    useResponsiveDrawerRealization({
+      open: isSecondaryPanelOpen,
+      enabled: renderAsDrawer,
+    });
   const compactDrawerContentSettleFrameRef = useRef<number | null>(null);
   const compactDrawerContentSettleGenerationRef = useRef(0);
   const compactDrawerContentSettleStateRef = useRef({
@@ -206,11 +212,12 @@ function ThreadDetailSecondaryContentBody({
             stateAfterSync.renderAsDrawer
           ) {
             setIsCompactDrawerContentSettled(true);
+            realizePanel();
           }
         },
       );
     },
-    [cancelCompactDrawerContentSettleFrame],
+    [cancelCompactDrawerContentSettleFrame, realizePanel],
   );
   const canShowNativeBrowserView = renderAsDrawer
     ? isSecondaryPanelOpen && isCompactDrawerContentSettled
@@ -434,7 +441,7 @@ function ThreadDetailSecondaryContentBody({
         </PanelGroup>
       </div>
       {renderAsDrawer ? (
-        <ResponsiveDrawerShell
+        <PersistentResponsiveDrawerShell
           open={isSecondaryPanelOpen}
           onOpenChange={(open) => {
             if (!open) threadSecondaryPanelProps.onClose();
@@ -442,20 +449,17 @@ function ThreadDetailSecondaryContentBody({
           srLabel="Thread details"
           contentClassName="h-[92dvh] max-h-[92dvh]"
           onContentAnimationEnd={handleDrawerContentAnimationEnd}
-          // `handleOnly` keeps vaul from binding its pointerdown handler on
-          // the drawer body. Without it, vaul calls setPointerCapture on the
-          // click target, which captures the pointer on Pierre tree's host
-          // element and prevents the click from reaching rows inside the
-          // shadow DOM. The drag handle bar still drags the drawer.
-          handleOnly
-          // This drawer hosts nested picker drawers; Vaul's input repositioning
-          // reacts to any focused input, including nested search fields.
-          repositionInputs={false}
         >
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            {drawerSecondaryPanelContent}
+            {/* Paint the light shell first. The real panel mounts two frames
+                later, while the compositor moves the drawer. */}
+            {isPanelRealized ? (
+              drawerSecondaryPanelContent
+            ) : (
+              <ThreadMetadataLoadingSkeleton />
+            )}
           </div>
-        </ResponsiveDrawerShell>
+        </PersistentResponsiveDrawerShell>
       ) : null}
     </div>
   );

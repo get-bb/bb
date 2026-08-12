@@ -13,7 +13,10 @@ import type {
   HistoryConfig,
   PromptBoxAction,
 } from "@/components/promptbox/PromptBoxInternal";
-import { AUTOMATION_PROMPT_ACTION } from "@/components/promptbox/PromptBoxActionsMenu";
+import {
+  AUTOMATION_PROMPT_ACTION,
+  CREATE_PLUGIN_PROMPT_ACTION,
+} from "@/components/promptbox/PromptBoxActionsMenu";
 import { CodexCliVersionBanner } from "@/components/promptbox/banner/CodexCliVersionBanner";
 import type { PickerOption } from "@/components/pickers/OptionPicker";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
@@ -122,6 +125,7 @@ const promptActions: readonly PromptBoxAction[] = [
     text: "/goal ",
   },
   AUTOMATION_PROMPT_ACTION,
+  CREATE_PLUGIN_PROMPT_ACTION,
 ];
 
 function useControlledValue(initial: string) {

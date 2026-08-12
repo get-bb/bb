@@ -26,7 +26,11 @@ const SIDEBAR_MOBILE_SWIPE_OPEN_FLING_MIN_RATIO = 0.12;
 const SIDEBAR_MOBILE_SWIPE_OPEN_FLING_VELOCITY_PX_PER_SEC = 450;
 const SIDEBAR_MOBILE_DRAG_SETTLE_MS = 220;
 const SIDEBAR_MOBILE_DRAG_SETTLE_EASING = "cubic-bezier(0.32, 0.72, 0, 1)";
-const SIDEBAR_MOBILE_PANEL_SETTLE_TRANSITION = `transform ${SIDEBAR_MOBILE_DRAG_SETTLE_MS}ms ${SIDEBAR_MOBILE_DRAG_SETTLE_EASING}`;
+// The panel moves on the `translate` property, matching Tailwind v4's
+// `-translate-x-full` utilities. Inline motion styles MUST use the same
+// property: an inline `transform` does not interpolate against the class
+// `translate`, so a slide written as `transform` silently snaps.
+const SIDEBAR_MOBILE_PANEL_SETTLE_TRANSITION = `translate ${SIDEBAR_MOBILE_DRAG_SETTLE_MS}ms ${SIDEBAR_MOBILE_DRAG_SETTLE_EASING}`;
 const SIDEBAR_MOBILE_BACKDROP_SETTLE_TRANSITION = `opacity ${SIDEBAR_MOBILE_DRAG_SETTLE_MS}ms ${SIDEBAR_MOBILE_DRAG_SETTLE_EASING}`;
 const SIDEBAR_MOBILE_WHEEL_SWIPE_OPEN_DISTANCE_PX = 90;
 const SIDEBAR_MOBILE_WHEEL_SWIPE_RESET_MS = 250;
@@ -36,13 +40,13 @@ const SIDEBAR_MOBILE_DRAG_CLOSE_RATIO = 0.25;
 const SIDEBAR_MOBILE_DRAG_CLOSE_FLING_VELOCITY_PX_PER_SEC = 450;
 // The transitions below must match SIDEBAR_MOBILE_DRAG_SETTLE_MS /
 // SIDEBAR_MOBILE_DRAG_SETTLE_EASING; Tailwind arbitrary values cannot
-// interpolate the constants. The `visibility` leg keeps the closed panel out
-// of paint and hit-testing: it flips to hidden only after the slide-out
-// transform finishes, and back to visible immediately on open.
+// interpolate the constants. Keep the translated panel style-ready while it
+// is closed. WebKit otherwise rebuilds its style and accessibility subtrees
+// when `visibility` flips during every open.
 const SIDEBAR_MOBILE_PANEL_TRANSITION_CLASS =
-  "[transition:transform_220ms_cubic-bezier(0.32,0.72,0,1),visibility_0s_linear_0s] data-[state=closed]:[transition:transform_220ms_cubic-bezier(0.32,0.72,0,1),visibility_0s_linear_220ms]";
+  "[transition:translate_220ms_cubic-bezier(0.32,0.72,0,1)]";
 const SIDEBAR_MOBILE_BACKDROP_TRANSITION_CLASS =
-  "[transition:opacity_220ms_cubic-bezier(0.32,0.72,0,1),visibility_0s_linear_0s] data-[state=closed]:[transition:opacity_220ms_cubic-bezier(0.32,0.72,0,1),visibility_0s_linear_220ms]";
+  "[transition:opacity_220ms_cubic-bezier(0.32,0.72,0,1)]";
 const SIDEBAR_GROUP_LABEL_BASE_CLASS =
   "duration-200 flex shrink-0 items-center rounded-md px-1 text-xs font-medium text-sidebar-foreground/75 outline-none ring-sidebar-ring transition-[margin,opa] ease-linear focus-visible:ring-2 [&>svg]:size-4 [&>svg]:shrink-0";
 const SIDEBAR_GROUP_LABEL_COLLAPSED_CLASS =
@@ -102,14 +106,12 @@ function getSidebarMobileMotionNodes(): {
   };
 }
 
-function getSidebarMobilePanelTransform(
+function getSidebarMobilePanelTranslate(
   progress: number,
   side: "left" | "right",
 ): string {
   const hiddenPercent = (1 - progress) * 100;
-  return side === "left"
-    ? `translate3d(-${hiddenPercent}%, 0, 0)`
-    : `translate3d(${hiddenPercent}%, 0, 0)`;
+  return side === "left" ? `-${hiddenPercent}%` : `${hiddenPercent}%`;
 }
 
 function applySidebarMobileDragStyles({
@@ -124,7 +126,7 @@ function applySidebarMobileDragStyles({
 
   if (panel !== null) {
     panel.setAttribute("data-vaul-animate", "false");
-    panel.style.transform = getSidebarMobilePanelTransform(progress, side);
+    panel.style.translate = getSidebarMobilePanelTranslate(progress, side);
     panel.style.transition = settling
       ? SIDEBAR_MOBILE_PANEL_SETTLE_TRANSITION
       : "none";
@@ -136,6 +138,11 @@ function applySidebarMobileDragStyles({
     backdrop.style.transition = settling
       ? SIDEBAR_MOBILE_BACKDROP_SETTLE_TRANSITION
       : "none";
+    // The deferred open keeps data-state="closed" (pointer-events-none)
+    // until the settle commit, while the panel is still `inert` — without
+    // this inline override a rapid second tap during the slide-in falls
+    // through both layers onto the page below.
+    backdrop.style.pointerEvents = progress > 0 ? "auto" : "";
   }
 }
 
@@ -150,7 +157,7 @@ function clearSidebarMobileDragStyles() {
 
   if (panel !== null) {
     panel.removeAttribute("data-vaul-animate");
-    panel.style.transform = "";
+    panel.style.translate = "";
     panel.style.transition = "";
   }
 
@@ -158,6 +165,7 @@ function clearSidebarMobileDragStyles() {
     backdrop.removeAttribute("data-vaul-animate");
     backdrop.style.opacity = "";
     backdrop.style.transition = "";
+    backdrop.style.pointerEvents = "";
   }
 }
 
@@ -350,6 +358,9 @@ type SidebarContext = {
   setOpen: (open: boolean) => void;
   openMobile: boolean;
   setOpenMobile: (open: boolean) => void;
+  openMobileSidebar: () => void;
+  closeMobileSidebar: () => void;
+  isMobileSidebarClosing: boolean;
   suppressMobileOpenAnimation: boolean;
   setSuppressMobileOpenAnimation: (suppress: boolean) => void;
   suppressMobileCloseAnimation: boolean;
@@ -402,11 +413,13 @@ function useOptionalIsSidebarShowing() {
  * Stable callback that closes the mobile sidebar drawer. Every navigation
  * triggered from inside the sidebar must call this so the destination view is
  * revealed on compact viewports; on wider viewports the drawer state is
- * already closed and the call is a no-op.
+ * already closed and the call is a no-op. The close starts the slide-out
+ * transition immediately and defers the React state flip until the panel is
+ * offscreen, so the exit animation survives the commit's style recalculation.
  */
 function useCloseMobileSidebar() {
-  const { setOpenMobile } = useSidebar();
-  return React.useCallback(() => setOpenMobile(false), [setOpenMobile]);
+  const { closeMobileSidebar } = useSidebar();
+  return closeMobileSidebar;
 }
 
 const SidebarProvider = React.forwardRef<
@@ -435,6 +448,81 @@ const SidebarProvider = React.forwardRef<
       React.useState(false);
     const [suppressMobileCloseAnimation, setSuppressMobileCloseAnimation] =
       React.useState(false);
+    const [isMobileSidebarClosing, setIsMobileSidebarClosing] =
+      React.useState(false);
+    const mobileSettleTimeoutRef = React.useRef<number | null>(null);
+
+    const clearMobileSettleTimeout = React.useCallback(() => {
+      if (mobileSettleTimeoutRef.current !== null) {
+        window.clearTimeout(mobileSettleTimeoutRef.current);
+        mobileSettleTimeoutRef.current = null;
+      }
+    }, []);
+
+    const openMobileRef = React.useRef(openMobile);
+    React.useEffect(() => {
+      openMobileRef.current = openMobile;
+    }, [openMobile]);
+
+    // Stable identity: sidebar rows close the drawer on navigation, and an
+    // unstable callback would re-render every memoized row on each toggle.
+    // Reads the open state through a ref instead of closing over it.
+    const closeMobileSidebar = React.useCallback(() => {
+      if (!openMobileRef.current || mobileSettleTimeoutRef.current !== null) {
+        return;
+      }
+
+      // Start the compositor transition while React state stays open. The
+      // close commit (panel `inert`, data-state flips) then pays its style
+      // recalculation after the panel has moved offscreen instead of
+      // consuming the whole transition window.
+      setIsMobileSidebarClosing(true);
+      applySidebarMobileDragStyles({ progress: 0, settling: true });
+      mobileSettleTimeoutRef.current = window.setTimeout(() => {
+        mobileSettleTimeoutRef.current = null;
+        flushSync(() => {
+          setSuppressMobileOpenAnimation(false);
+          setSuppressMobileCloseAnimation(true);
+          setIsMobileSidebarClosing(false);
+          setOpenMobile(false);
+        });
+        clearSidebarMobileDragAttributes();
+      }, SIDEBAR_MOBILE_DRAG_SETTLE_MS);
+    }, []);
+
+    // The symmetric deferred open. The persistent panel already holds its
+    // full content, so the compositor can slide it in before React knows the
+    // drawer is open. The open commit (panel `inert` removal, data-state
+    // flips) then pays its style recalculation — ~280 ms on iOS Safari for a
+    // large sidebar — after the slide instead of blocking its first frame.
+    // The panel stays `inert` until the commit lands one settle window
+    // later; the drag helper puts inline pointer-events on the backdrop so
+    // taps during the slide land on the backdrop, not the page below.
+    const openMobileSidebar = React.useCallback(() => {
+      if (openMobileRef.current || mobileSettleTimeoutRef.current !== null) {
+        return;
+      }
+
+      applySidebarMobileDragStyles({ progress: 1, settling: true });
+      mobileSettleTimeoutRef.current = window.setTimeout(() => {
+        mobileSettleTimeoutRef.current = null;
+        flushSync(() => {
+          // The panel already sits at the open transform; suppressing the
+          // open animation keeps the commit from replaying the slide.
+          setSuppressMobileOpenAnimation(true);
+          setSuppressMobileCloseAnimation(false);
+          setOpenMobile(true);
+        });
+        clearSidebarMobileDragAttributes();
+      }, SIDEBAR_MOBILE_DRAG_SETTLE_MS);
+    }, []);
+
+    React.useEffect(
+      () => () => {
+        clearMobileSettleTimeout();
+      },
+      [clearMobileSettleTimeout],
+    );
 
     React.useEffect(() => {
       if (openMobile) {
@@ -460,10 +548,22 @@ const SidebarProvider = React.forwardRef<
 
     // Helper to toggle the sidebar.
     const toggleSidebar = React.useCallback(() => {
-      return isCompactViewport
-        ? setOpenMobile((open) => !open)
-        : setOpen((open) => !open);
-    }, [isCompactViewport, setOpen, setOpenMobile]);
+      if (!isCompactViewport) {
+        setOpen((open) => !open);
+        return;
+      }
+      if (openMobile) {
+        closeMobileSidebar();
+        return;
+      }
+      openMobileSidebar();
+    }, [
+      closeMobileSidebar,
+      isCompactViewport,
+      openMobile,
+      openMobileSidebar,
+      setOpen,
+    ]);
 
     // We add a state so that we can do data-state="expanded" or "collapsed".
     // This makes it easier to style the sidebar with Tailwind classes.
@@ -477,6 +577,9 @@ const SidebarProvider = React.forwardRef<
         isCompactViewport,
         openMobile,
         setOpenMobile,
+        openMobileSidebar,
+        closeMobileSidebar,
+        isMobileSidebarClosing,
         suppressMobileOpenAnimation,
         setSuppressMobileOpenAnimation,
         suppressMobileCloseAnimation,
@@ -490,6 +593,9 @@ const SidebarProvider = React.forwardRef<
         isCompactViewport,
         openMobile,
         setOpenMobile,
+        openMobileSidebar,
+        closeMobileSidebar,
+        isMobileSidebarClosing,
         suppressMobileOpenAnimation,
         setSuppressMobileOpenAnimation,
         suppressMobileCloseAnimation,
@@ -515,10 +621,9 @@ const SidebarProvider = React.forwardRef<
               } as React.CSSProperties
             }
             className={cn(
-              // Fill the shell root (html/body/#root are height:100%) instead of
-              // re-measuring the viewport. On iOS standalone, viewport units and
-              // the safe-area insets disagree, and app.css clips the difference
-              // into an unreachable band at the bottom of the screen.
+              // Fill the app root instead of re-measuring the viewport here.
+              // app.css owns the browser-mode-specific root height, while fixed
+              // sidebar panels read the shared --bb-shell-height override.
               "group/sidebar-wrapper flex h-full min-h-0 w-full has-[[data-variant=inset]]:bg-sidebar",
               className,
             )}
@@ -559,6 +664,7 @@ const Sidebar = React.forwardRef<
       state,
       openMobile,
       setOpenMobile,
+      closeMobileSidebar,
       suppressMobileOpenAnimation,
       setSuppressMobileOpenAnimation,
       suppressMobileCloseAnimation,
@@ -586,12 +692,8 @@ const Sidebar = React.forwardRef<
     >(() => {
       if (shouldSuppressMobileCloseAnimation) {
         return {
-          transform:
-            side === "left"
-              ? "translate3d(-100%, 0, 0)"
-              : "translate3d(100%, 0, 0)",
+          translate: side === "left" ? "-100%" : "100%",
           transition: "none",
-          visibility: "hidden",
         };
       }
 
@@ -605,7 +707,6 @@ const Sidebar = React.forwardRef<
           opacity: 0,
           pointerEvents: "none",
           transition: "none",
-          visibility: "hidden",
         };
       }
 
@@ -631,9 +732,9 @@ const Sidebar = React.forwardRef<
     if (isCompactViewport) {
       // The mobile drawer stays mounted across open/close (#1261). Closing
       // translates the panel off-screen instead of unmounting it, so a
-      // reopen replays no mount work. While closed the panel is `inert` and
-      // `visibility: hidden` (after the slide-out finishes), so it takes no
-      // paint or hit-testing work and cannot trap focus or taps.
+      // reopen replays no mount work. While closed the translated panel is
+      // `inert`, so it cannot trap focus or taps. It stays style-ready because
+      // a visibility flip makes WebKit rebuild the subtree during every open.
       return (
         <SidebarMobilePanel
           ref={ref}
@@ -641,6 +742,7 @@ const Sidebar = React.forwardRef<
           variant={variant}
           open={openMobile}
           onOpenChange={handleOpenMobileChange}
+          onDismiss={closeMobileSidebar}
           suppressOpenAnimation={suppressMobileOpenAnimation}
           panelMotionStyle={mobilePanelMotionStyle}
           backdropStyle={mobileBackdropStyle}
@@ -745,17 +847,55 @@ interface SidebarMobilePanelProps extends React.ComponentProps<"div"> {
   variant: "sidebar" | "floating" | "inset";
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  // Deferred close: starts the slide-out transition immediately and flips the
+  // React state after the settle window. Backdrop taps and Escape use this;
+  // the drag paths call `onOpenChange(false)` directly because their panel is
+  // already at the closed transform when they settle.
+  onDismiss: () => void;
   suppressOpenAnimation: boolean;
   panelMotionStyle?: React.CSSProperties;
   backdropStyle?: React.CSSProperties;
 }
 
+const SIDEBAR_MOBILE_TAB_STOP_SELECTOR = [
+  "a[href]",
+  "button",
+  "input",
+  "select",
+  "textarea",
+  '[tabindex]:not([tabindex="-1"])',
+].join(", ");
+
+/**
+ * The open drawer's Tab cycle: the pinned sidebar trigger(s) outside the
+ * panel, then every focusable inside the panel. The trigger stays in the
+ * cycle because it remains interactive while the drawer is open (a second
+ * press closes it).
+ */
+function getSidebarMobileTabStops(panel: HTMLElement): HTMLElement[] {
+  const doc = panel.ownerDocument;
+  const triggerStops = Array.from(
+    doc.querySelectorAll('[data-sidebar="trigger"]'),
+  ).filter((element) => !panel.contains(element));
+  const panelStops = Array.from(
+    panel.querySelectorAll(SIDEBAR_MOBILE_TAB_STOP_SELECTOR),
+  );
+  return [...triggerStops, ...panelStops].filter(
+    (element): element is HTMLElement =>
+      element instanceof HTMLElement &&
+      !element.matches(":disabled") &&
+      !element.hasAttribute("hidden") &&
+      element.getAttribute("aria-hidden") !== "true" &&
+      element.closest("[inert]") === null,
+  );
+}
+
 /**
  * The persistent mobile sidebar drawer. Unlike the previous vaul drawer it
- * never unmounts its children: closing translates the panel off-screen, then
- * a delayed `visibility: hidden` plus `inert` take it out of paint,
- * hit-testing, focus order, and the accessibility tree. Reopening therefore
- * replays no mount cost (#1261).
+ * never unmounts its children: closing translates the panel off-screen, while
+ * `inert` takes it out of hit-testing, focus order, and the accessibility
+ * tree. Reopening therefore replays no mount cost or visibility-driven style
+ * rebuild (#1261).
  *
  * The DOM contract the swipe-open code in SidebarInset relies on is kept:
  * `[data-sidebar="panel"][data-vaul-drawer-direction]` selects the panel,
@@ -772,6 +912,7 @@ const SidebarMobilePanel = React.forwardRef<
       variant,
       open,
       onOpenChange,
+      onDismiss,
       suppressOpenAnimation,
       panelMotionStyle,
       backdropStyle,
@@ -831,50 +972,86 @@ const SidebarMobilePanel = React.forwardRef<
         document.activeElement instanceof HTMLElement
           ? document.activeElement
           : null;
-      panelRef.current?.focus({ preventScroll: true });
+      // A touch-opened drawer does not need DOM focus. On iOS, focusing this
+      // newly interactive subtree can synchronously rebuild style and the
+      // accessibility tree for hundreds of milliseconds. Keyboard and
+      // assistive-technology activation leave the trigger focus-visible, so
+      // keep the modal focus move for those paths.
+      const shouldMoveFocus =
+        previouslyFocused?.matches(
+          '[data-sidebar="trigger"]:focus-visible',
+        ) ?? false;
+      if (shouldMoveFocus) {
+        panelRef.current?.focus({ preventScroll: true });
+      }
 
+      // The drawer is modal, but its siblings must NOT be marked `inert`:
+      // toggling `inert` on the content inset forces WebKit (and Blink) to
+      // re-resolve computed style for that entire subtree, which on a long
+      // thread timeline costs hundreds of milliseconds per open/close. The
+      // backdrop already blocks pointer input, `aria-modal` scopes assistive
+      // technology, and this Tab trap owns keyboard focus, so no attribute
+      // flip has to touch the large subtree. The pinned sidebar trigger
+      // stays interactive on purpose: a second press closes the drawer.
       const handleKeyDown = (event: KeyboardEvent) => {
-        if (event.key === "Escape" && !event.defaultPrevented) {
-          onOpenChange(false);
+        if (event.defaultPrevented) {
+          return;
+        }
+        if (event.key === "Escape") {
+          onDismiss();
+          return;
+        }
+        if (event.key !== "Tab") {
+          return;
+        }
+        const panel = panelRef.current;
+        const shell = panel?.parentElement ?? null;
+        if (panel === null || shell === null) {
+          return;
+        }
+        const doc = panel.ownerDocument;
+        const active = doc.activeElement;
+        // Portalled surfaces (row context menus under document.body) manage
+        // their own focus; the trap only arbitrates Tab inside the app shell.
+        if (active !== null && active !== doc.body && !shell.contains(active)) {
+          return;
+        }
+        const stops = getSidebarMobileTabStops(panel);
+        if (stops.length === 0) {
+          return;
+        }
+        event.preventDefault();
+        const direction = event.shiftKey ? -1 : 1;
+        const activeIndex =
+          active instanceof HTMLElement ? stops.indexOf(active) : -1;
+        // Focus can silently fail on a hidden stop; walk until one takes.
+        for (let step = 1; step <= stops.length; step += 1) {
+          const nextIndex =
+            activeIndex === -1
+              ? (event.shiftKey ? stops.length - step : step - 1)
+              : (((activeIndex + direction * step) % stops.length) +
+                  stops.length) %
+                stops.length;
+          const candidate = stops[nextIndex];
+          candidate?.focus({ preventScroll: true });
+          if (doc.activeElement === candidate) {
+            return;
+          }
         }
       };
       window.addEventListener("keydown", handleKeyDown);
 
-      // The drawer is modal: while it is open, every sibling of the panel
-      // (the inset, the pinned trigger overlay, and any other app chrome at
-      // that level) leaves focus order and hit-testing, so Tab cannot escape
-      // the drawer. Portalled popovers (row context menus) render under
-      // document.body, so they stay interactive. Attribute writes rather
-      // than the `inert` property, so the state is observable in tests.
-      const container = panelRef.current?.parentElement ?? null;
-      const inertedSiblings: HTMLElement[] = [];
-      if (container) {
-        for (const sibling of container.children) {
-          if (
-            sibling === panelRef.current ||
-            sibling === backdropRef.current ||
-            !(sibling instanceof HTMLElement) ||
-            sibling.hasAttribute("inert")
-          ) {
-            continue;
-          }
-          sibling.setAttribute("inert", "");
-          inertedSiblings.push(sibling);
-        }
-      }
-
       return () => {
         window.removeEventListener("keydown", handleKeyDown);
-        for (const sibling of inertedSiblings) {
-          sibling.removeAttribute("inert");
-        }
         const active = document.activeElement;
         if (active instanceof HTMLElement && panelRef.current?.contains(active)) {
           active.blur();
-          previouslyFocused?.focus({ preventScroll: true });
+          if (shouldMoveFocus) {
+            previouslyFocused?.focus({ preventScroll: true });
+          }
         }
       };
-    }, [open, onOpenChange]);
+    }, [open, onDismiss]);
 
     React.useEffect(
       () => () => {
@@ -1196,12 +1373,12 @@ const SidebarMobilePanel = React.forwardRef<
           data-testid="sidebar-mobile-backdrop"
           data-state={open ? "open" : "closed"}
           className={cn(
-            "fixed inset-0 z-40 bg-black/80",
+            "fixed inset-0 z-40 bg-black/80 will-change-[opacity]",
             SIDEBAR_MOBILE_BACKDROP_TRANSITION_CLASS,
-            "data-[state=closed]:invisible data-[state=closed]:pointer-events-none data-[state=closed]:opacity-0",
+            "data-[state=closed]:pointer-events-none data-[state=closed]:opacity-0",
           )}
           style={{ ...suppressedOpenTransitionStyle, ...backdropStyle }}
-          onClick={() => onOpenChange(false)}
+          onClick={onDismiss}
         />
         <div
           ref={setPanelRef}
@@ -1224,9 +1401,8 @@ const SidebarMobilePanel = React.forwardRef<
             // initial containing block, so it reads the shell unit directly.
             // touch-pan-y hands horizontal touch moves to the drag-to-close
             // handler while leaving vertical list scrolling native.
-            "group fixed inset-y-0 z-40 flex h-(--bb-shell-height) w-(--sidebar-width-mobile) touch-pan-y flex-col bg-sidebar text-sidebar-foreground outline-none",
+            "group fixed inset-y-0 z-40 flex h-(--bb-shell-height) w-(--sidebar-width-mobile) touch-pan-y flex-col bg-sidebar text-sidebar-foreground outline-none will-change-[translate]",
             SIDEBAR_MOBILE_PANEL_TRANSITION_CLASS,
-            "data-[state=closed]:invisible",
             side === "left"
               ? "left-0 data-[state=closed]:-translate-x-full"
               : "right-0 data-[state=closed]:translate-x-full",
@@ -1295,6 +1471,7 @@ const SidebarInset = React.forwardRef<
     isCompactViewport,
     openMobile,
     setOpenMobile,
+    openMobileSidebar,
     setSuppressMobileOpenAnimation,
     setSuppressMobileCloseAnimation,
   } = useSidebar();
@@ -1743,9 +1920,9 @@ const SidebarInset = React.forwardRef<
       }
 
       clearWheelSwipe();
-      setOpenMobile(true);
+      openMobileSidebar();
     },
-    [clearWheelSwipe, isCompactViewport, openMobile, setOpenMobile],
+    [clearWheelSwipe, isCompactViewport, openMobile, openMobileSidebar],
   );
 
   React.useEffect(() => {

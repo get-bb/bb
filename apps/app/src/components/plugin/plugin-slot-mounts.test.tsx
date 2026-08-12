@@ -12,7 +12,11 @@ import {
 import { createStore, Provider } from "jotai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
-import type { PluginComposerApi, PluginThreadPanelProps } from "@bb/plugin-sdk";
+import type {
+  PluginComposerApi,
+  PluginNewThreadPanelProps,
+  PluginThreadPanelProps,
+} from "@bb/plugin-sdk";
 import { createPluginPanelFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import {
   resetPluginSlotStoreForTest,
@@ -52,9 +56,11 @@ import { getComposerTextEffects } from "@/lib/composer-text-effects";
 import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
 import {
   PluginPanelTabContent,
+  usePluginNewThreadPanelActions,
   usePluginPanelActions,
   type OpenPluginPanelArgs,
 } from "./PluginPanelActions";
+import { NewTabActions } from "@/components/secondary-panel/NewTabFileSearch";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import type { PromptDraftState } from "@/lib/prompt-draft";
 
@@ -1512,6 +1518,17 @@ describe("plugin thread panel actions", () => {
     );
   }
 
+  function NewThreadPanelProbe({
+    projectId,
+    params,
+  }: PluginNewThreadPanelProps) {
+    return (
+      <div>
+        new thread panel for {String(projectId)} / {JSON.stringify(params)}
+      </div>
+    );
+  }
+
   function ActionsProbe({
     threadId,
     openPluginPanel,
@@ -1563,7 +1580,12 @@ describe("plugin thread panel actions", () => {
               setTab(createPluginPanelFixedPanelTab(args))
             }
           />
-          {tab ? <PluginPanelTabContent tab={tab} threadId="thr_9" /> : null}
+          {tab ? (
+            <PluginPanelTabContent
+              tab={tab}
+              context={{ kind: "thread", threadId: "thr_9" }}
+            />
+          ) : null}
         </>
       );
     }
@@ -1632,6 +1654,68 @@ describe("plugin thread panel actions", () => {
     expect(screen.queryByText("Issue")).toBeNull();
   });
 
+  it("offers only opted-in New thread actions on the root panel", () => {
+    setPluginSlotRegistrations(
+      "demo",
+      registrationSet({
+        threadPanelActions: [
+          { id: "issue", title: "Thread issue", component: PanelProbe },
+        ],
+        newThreadPanelActions: [
+          {
+            id: "setup",
+            title: "Set up thread",
+            icon: "Wand",
+            component: NewThreadPanelProbe,
+            run: ({ projectId, openPanel }) =>
+              openPanel({
+                title: `Setup for ${String(projectId)}`,
+                params: { source: "root" },
+              }),
+          },
+        ],
+      }),
+    );
+
+    function RootActionHarness() {
+      const [tab, setTab] = useState<ReturnType<
+        typeof createPluginPanelFixedPanelTab
+      > | null>(null);
+      const entries = usePluginNewThreadPanelActions({
+        openPluginPanel: (args) => setTab(createPluginPanelFixedPanelTab(args)),
+        projectId: "proj_1",
+      });
+      return (
+        <>
+          <NewTabActions
+            onStartTerminal={() => undefined}
+            pluginActions={entries}
+          />
+          {tab ? (
+            <PluginPanelTabContent
+              tab={tab}
+              context={{ kind: "new-thread", projectId: "proj_1" }}
+            />
+          ) : null}
+        </>
+      );
+    }
+
+    const root = render(<RootActionHarness />);
+    expect(screen.getByText("Start terminal")).toBeDefined();
+    expect(screen.getByText("Set up thread")).toBeDefined();
+    expect(screen.queryByText("Thread issue")).toBeNull();
+    fireEvent.click(screen.getByText("Set up thread"));
+    expect(
+      screen.getByText('new thread panel for proj_1 / {"source":"root"}'),
+    ).toBeDefined();
+    root.unmount();
+
+    render(<ActionsProbe threadId="thr_9" openPluginPanel={vi.fn()} />);
+    expect(screen.getByText("Thread issue")).toBeDefined();
+    expect(screen.queryByText("Set up thread")).toBeNull();
+  });
+
   it("degrades to a placeholder when the tab's action is gone", () => {
     const tab = createPluginPanelFixedPanelTab({
       actionId: "issue",
@@ -1639,7 +1723,12 @@ describe("plugin thread panel actions", () => {
       pluginId: "ghost",
       title: "Issue",
     });
-    render(<PluginPanelTabContent tab={tab} threadId="thr_9" />);
+    render(
+      <PluginPanelTabContent
+        tab={tab}
+        context={{ kind: "thread", threadId: "thr_9" }}
+      />,
+    );
     expect(screen.getByText(/This plugin tab is not available/)).toBeDefined();
   });
 
@@ -1659,7 +1748,12 @@ describe("plugin thread panel actions", () => {
       title: "Issue",
     });
 
-    render(<PluginPanelTabContent tab={tab} threadId="thr_9" />);
+    render(
+      <PluginPanelTabContent
+        tab={tab}
+        context={{ kind: "thread", threadId: "thr_9" }}
+      />,
+    );
     expect(screen.getByText("panel body for thr_9 / null")).toBeDefined();
   });
 });
@@ -1708,7 +1802,12 @@ describe("plugin file opener tabs", () => {
       title: "todo.md",
     });
 
-    render(<PluginPanelTabContent tab={tab} threadId={null} />);
+    render(
+      <PluginPanelTabContent
+        tab={tab}
+        context={{ kind: "new-thread", projectId: null }}
+      />,
+    );
 
     expect(
       screen.getByText("editor notes/todo.md @ workspace:env_1"),
@@ -1726,7 +1825,10 @@ describe("plugin file opener tabs", () => {
       title: "a.md",
     });
     const { unmount } = render(
-      <PluginPanelTabContent tab={orphanTab} threadId={null} />,
+      <PluginPanelTabContent
+        tab={orphanTab}
+        context={{ kind: "new-thread", projectId: null }}
+      />,
     );
     expect(screen.getByText(/file opener is not available/)).toBeDefined();
     unmount();
@@ -1750,7 +1852,12 @@ describe("plugin file opener tabs", () => {
       pluginId: "notes",
       title: "junk",
     });
-    render(<PluginPanelTabContent tab={junkParamsTab} threadId={null} />);
+    render(
+      <PluginPanelTabContent
+        tab={junkParamsTab}
+        context={{ kind: "new-thread", projectId: null }}
+      />,
+    );
     expect(screen.getByText(/file opener is not available/)).toBeDefined();
   });
 });

@@ -139,7 +139,7 @@ function artifactMeta(args: {
 }
 
 describe("plugin install sources", () => {
-  it("parses git shorthand, requires a pinned ref, and rejects traversal", () => {
+  it("parses git URLs, tracks HEAD by default, and rejects traversal", () => {
     expect(parsePluginSource("git:github.com/acme/bb-plugin-foo@v1")).toEqual({
       kind: "git",
       url: "https://github.com/acme/bb-plugin-foo",
@@ -155,8 +155,26 @@ describe("plugin install sources", () => {
       kind: "git",
       url: "https://github.com/acme/bb-plugin-foo.git",
     });
-    expect(() => parsePluginSource("git:github.com/acme/repo")).toThrowError(
-      /must specify a ref/,
+    expect(parsePluginSource("https://github.com/acme/bb-plugin-foo")).toEqual({
+      kind: "git",
+      url: "https://github.com/acme/bb-plugin-foo",
+      ref: "HEAD",
+      installDir: "github.com/acme/bb-plugin-foo@HEAD",
+      cachePath: "github.com/acme/bb-plugin-foo",
+    });
+    expect(
+      parsePluginSource("https://github.com/acme/bb-plugin-foo/"),
+    ).toMatchObject({
+      kind: "git",
+      ref: "HEAD",
+      cachePath: "github.com/acme/bb-plugin-foo",
+    });
+    expect(parsePluginSource("git:github.com/acme/repo")).toMatchObject({
+      kind: "git",
+      ref: "HEAD",
+    });
+    expect(() => parsePluginSource("git:github.com/acme/repo@")).toThrowError(
+      /empty ref/,
     );
     expect(() =>
       parsePluginSource("git:github.com/acme/../evil@v1"),
@@ -201,7 +219,7 @@ describe("plugin install sources", () => {
     });
   });
 
-  it("treats bare strings and path: as local paths with no managed dir", () => {
+  it("treats bare non-URL strings and path: as local paths with no managed dir", () => {
     expect(parsePluginSource("/tmp/my-plugin")).toEqual({
       kind: "path",
       path: "/tmp/my-plugin",
@@ -282,6 +300,31 @@ describe("plugin install flows", () => {
   // Each test clones a repo and runs a full install (git subprocesses +
   // esbuild build + plugin load); the 5s default flakes on loaded CI runners.
   describe.skipIf(!hasGit)("git sources", { timeout: 30_000 }, () => {
+    it("installs and tracks the default branch when the ref is omitted", async () => {
+      const repoDir = join(workDir, "repo-default-branch");
+      await writePluginFixture(repoDir, { name: "bb-plugin-default-branch" });
+      await initGitRepo(repoDir);
+      const commit = await commitAll(repoDir, "init");
+
+      const source = `git:${repoDir}`;
+      const entry = await service.install(source);
+
+      expect(entry).toMatchObject({
+        id: "default-branch",
+        source,
+        status: "running",
+      });
+      expect(
+        getInstalledPluginRegistration(db, "default-branch"),
+      ).toMatchObject({
+        sourceKind: "git",
+        sourceGitUrl: repoDir,
+        sourceGitRequestedRef: "HEAD",
+        sourceGitRefKind: "branch",
+        gitResolvedCommit: commit,
+      });
+    });
+
     it("clones a pinned tag into its exact immutable cache dir and loads it", async () => {
       const repoDir = join(workDir, "repo");
       await writePluginFixture(repoDir, { name: "bb-plugin-gitty" });

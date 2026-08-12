@@ -58,7 +58,7 @@ function renderChildCompleted(text = MARKDOWN_BODY) {
         <ConversationMessageContent
           role="user"
           initiator="system"
-          childOrigin={null}
+          originKind={null}
           senderThreadId={null}
           senderThreadTitle={null}
           resolveSegmentLinkHref={resolveThreadLink}
@@ -193,7 +193,7 @@ function renderAgentMessage(
           <ConversationMessageContent
             role="user"
             initiator="agent"
-            childOrigin={null}
+            originKind={null}
             senderThreadId="thr_agent"
             senderThreadTitle={senderThreadTitle}
             senderIsPluginSideChat={senderIsPluginSideChat}

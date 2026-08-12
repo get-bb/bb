@@ -517,10 +517,7 @@ describe("timeline CLI rendering snapshots", () => {
     const pendingSteerRow = timeline.rows.find(
       (
         row,
-      ): row is Extract<
-        TimelineRow,
-        { kind: "conversation"; role: "user" }
-      > =>
+      ): row is Extract<TimelineRow, { kind: "conversation"; role: "user" }> =>
         row.kind === "conversation" &&
         row.role === "user" &&
         row.turnRequest.status === "pending",
@@ -546,6 +543,102 @@ describe("timeline CLI rendering snapshots", () => {
       Please account for the restart
       steer pending"
     `);
+  });
+
+  it("shows a rejected steer as failed instead of pending", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const request = event.clientTurnRequested({
+      target: { kind: "auto", expectedTurnId: "turn-1" },
+      text: "Please account for the restart",
+    });
+    const timeline = renderIdleTimeline([
+      event.turnStarted(),
+      request,
+      event.clientTurnRejected({ requestId: request.data.requestId }),
+      event.turnCompleted({ status: "failed" }),
+    ]);
+
+    const rejectedSteerRow = timeline.rows.find(
+      (
+        row,
+      ): row is Extract<TimelineRow, { kind: "conversation"; role: "user" }> =>
+        row.kind === "conversation" && row.role === "user",
+    );
+    expect(rejectedSteerRow?.turnRequest).toEqual({
+      isGrouped: false,
+      kind: "steer",
+      status: "rejected",
+    });
+    expect(timeline.text).toContain("steer failed");
+    expect(timeline.text).not.toContain("steer pending");
+  });
+
+  it("closes a legacy unmatched steer after its command failure", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const timeline = renderIdleTimeline([
+      event.turnStarted(),
+      event.clientTurnRequested({
+        target: { kind: "auto", expectedTurnId: "turn-1" },
+        text: "Late steer",
+      }),
+      event.systemError({
+        code: "thread_command_failed",
+        message: "Command turn.submit failed",
+      }),
+      event.turnCompleted(),
+    ]);
+
+    const legacySteerRow = timeline.rows.find(
+      (
+        row,
+      ): row is Extract<TimelineRow, { kind: "conversation"; role: "user" }> =>
+        row.kind === "conversation" && row.role === "user",
+    );
+    expect(legacySteerRow?.turnRequest.status).toBe("rejected");
+    expect(timeline.text).toContain("steer failed");
+    expect(timeline.text).not.toContain("steer pending");
+  });
+
+  it("does not apply an explicit rejection error to the next steer", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const turnStarted = event.turnStarted();
+    const firstRequest = event.clientTurnRequested({
+      target: { kind: "steer", expectedTurnId: "turn-1" },
+      text: "First steer",
+    });
+    const secondRequest = event.clientTurnRequested({
+      target: { kind: "steer", expectedTurnId: "turn-1" },
+      text: "Second steer",
+    });
+    const timeline = renderActiveTimeline([
+      turnStarted,
+      firstRequest,
+      secondRequest,
+      event.clientTurnRejected({ requestId: firstRequest.data.requestId }),
+      event.systemError({
+        code: "thread_command_failed",
+        message: "Command turn.submit failed",
+      }),
+    ]);
+
+    const userRows = timeline.rows.filter(
+      (
+        row,
+      ): row is Extract<TimelineRow, { kind: "conversation"; role: "user" }> =>
+        row.kind === "conversation" && row.role === "user",
+    );
+    expect(userRows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          text: "First steer",
+          turnRequest: expect.objectContaining({ status: "rejected" }),
+        }),
+        expect.objectContaining({
+          text: "Second steer",
+          turnRequest: expect.objectContaining({ status: "pending" }),
+        }),
+      ]),
+    );
   });
 
   it("places accepted active-turn steers at the acceptance position", () => {
@@ -1091,9 +1184,9 @@ describe("timeline CLI rendering snapshots", () => {
     // Delegation children render flat — no synthetic turn wrapper. Each
     // child row carries the delegation's scoped id prefix so it does not
     // collide with rows from the root turn.
-    expect(
-      delegation?.childRows.some((row) => row.kind === "turn"),
-    ).toBe(false);
+    expect(delegation?.childRows.some((row) => row.kind === "turn")).toBe(
+      false,
+    );
     expect(delegation?.childRows.length ?? 0).toBeGreaterThan(0);
     for (const childRow of delegation?.childRows ?? []) {
       expect(childRow.id.startsWith(`${delegation?.id}:child:`)).toBe(true);
@@ -1270,9 +1363,9 @@ describe("timeline CLI rendering snapshots", () => {
         }),
       ]),
     );
-    expect(
-      delegation?.childRows.some((row) => row.turnId === "turn-2"),
-    ).toBe(false);
+    expect(delegation?.childRows.some((row) => row.turnId === "turn-2")).toBe(
+      false,
+    );
     expect(rootFollowUp).toMatchObject({
       kind: "conversation",
       role: "assistant",
@@ -1856,9 +1949,9 @@ describe("timeline CLI rendering snapshots", () => {
         }),
       ]),
     );
-    expect(
-      delegation?.childRows.some((row) => row.turnId === "turn-2"),
-    ).toBe(false);
+    expect(delegation?.childRows.some((row) => row.turnId === "turn-2")).toBe(
+      false,
+    );
     expect(rootFollowUp).toMatchObject({
       kind: "conversation",
       role: "assistant",
@@ -1920,9 +2013,9 @@ describe("timeline CLI rendering snapshots", () => {
 
     expect(delegation).toBeDefined();
     expect(delegation?.status).toBe("pending");
-    expect(
-      delegation?.childRows.some((row) => row.kind === "turn"),
-    ).toBe(false);
+    expect(delegation?.childRows.some((row) => row.kind === "turn")).toBe(
+      false,
+    );
     expect(delegation?.childRows.length ?? 0).toBeGreaterThanOrEqual(3);
     // A regression that re-introduces a synthetic turn wrapper would
     // produce a "Worked for X" or "Working for X" label inside the

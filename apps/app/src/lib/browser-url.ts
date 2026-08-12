@@ -124,20 +124,6 @@ function isPublicBareHost(host: string): boolean {
   );
 }
 
-/**
- * Whether the trimmed input should be treated as a URL to navigate to (vs. a
- * search query). Only an explicit `http(s)://` scheme, recognized bare
- * loopback host, or public bare host counts — anything with whitespace,
- * unsupported schemes, or private/local bare hosts is treated as a search.
- */
-export function looksLikeUrl(input: string): boolean {
-  const trimmed = input.trim();
-  if (trimmed.length === 0 || WHITESPACE_PATTERN.test(trimmed)) {
-    return false;
-  }
-  return normalizeUrl(trimmed) !== null;
-}
-
 function buildSearchUrl(query: string): string {
   return `${SEARCH_ENGINE_URL}?q=${encodeURIComponent(query)}`;
 }

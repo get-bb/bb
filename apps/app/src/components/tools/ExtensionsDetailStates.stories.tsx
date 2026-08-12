@@ -38,6 +38,7 @@ import {
   PluginProvenancePill,
 } from "@/components/tools/PluginDetail";
 import {
+  BbLogo,
   ProviderLogo,
   SkillProvenanceTooltip,
 } from "@/components/tools/SkillsCollection";
@@ -192,14 +193,7 @@ const SKILL_PATH = "/Users/you/.bb/skills/writing-voice/SKILL.md";
  */
 function SkillLeading({ provider }: { provider: SkillProvider | null }) {
   if (provider === null) {
-    return (
-      <img
-        src="/bb-mark.svg"
-        alt=""
-        aria-hidden
-        className="size-4 object-contain dark:invert"
-      />
-    );
+    return <BbLogo />;
   }
   return <ProviderLogo providerId={provider} className="size-4" />;
 }

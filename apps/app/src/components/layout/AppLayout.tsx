@@ -16,11 +16,8 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar.js";
-import { AppSidebar } from "@/components/sidebar/AppSidebar";
 import { ThreadTitleMentionResourcesProvider } from "@/components/thread/ThreadTitleMentions";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
-import { SettingsSidebar } from "@/components/settings/SettingsSidebar";
-import { ToolsSidebar } from "@/components/tools/ToolsSidebar";
 import { ToolsHubExperimentProvider } from "@/components/tools/tools-experiment-context";
 import {
   resolveAutomationBreadcrumbs,
@@ -79,6 +76,7 @@ import { IframeDragGuardOverlay } from "@/lib/iframe-drag-guard";
 import { dispatchBrowserViewBoundsSync } from "@/lib/browser-view-bounds-sync";
 import { useFaviconBadge } from "@/lib/favicon-color-preference";
 import { shouldShowFaviconAttentionDot } from "./faviconAttentionDot";
+import { AppLayoutSidebar } from "./AppLayoutSidebar";
 import {
   useAppCommandHandler,
   useAppCommandShortcut,
@@ -407,12 +405,14 @@ export function AppLayout({ children }: AppLayoutProps) {
   const splitWorkspaceActive = useSplitWorkspaceActive();
   const store = useStore();
   const contentShellRef = useRef<HTMLDivElement>(null);
+  const providerRef = useRef<HTMLDivElement>(null);
   const restoreIOSViewportOnKeyboardDismissal = useMemo(
     () => shouldRestoreIOSViewportOnKeyboardDismissal(navigator),
     [],
   );
   useMobileVisualViewportHeight(
     contentShellRef,
+    providerRef,
     isCompactViewport,
     restoreIOSViewportOnKeyboardDismissal,
   );
@@ -572,7 +572,6 @@ export function AppLayout({ children }: AppLayoutProps) {
     threadDetailBootstrapQuery.isSuccess || threadDetailBootstrapQuery.isError;
   const [sidebarWidth, setSidebarWidth] = useAtom(sidebarWidthAtom);
   const [isSidebarResizing, setIsSidebarResizing] = useState(false);
-  const providerRef = useRef<HTMLDivElement>(null);
   const startXRef = useRef(0);
   const startWidthRef = useRef(0);
   const liveWidthRef = useRef(sidebarWidth);
@@ -735,6 +734,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     null;
   const faviconBadge = shouldShowFaviconAttentionDot({
     currentThreadHasPendingInteraction,
+    currentThreadId: threadId,
     isThreadView,
     sidebarThreads,
     thread,
@@ -834,29 +834,21 @@ export function AppLayout({ children }: AppLayoutProps) {
               providerRef={providerRef}
               style={sidebarProviderStyle}
             >
-              {isGlobalSettingsView ? (
-                <SettingsSidebar
-                  onResizeMouseDown={handleResizeMouseDown}
-                  isResizing={isSidebarResizing}
-                  showTopReserve={true}
-                  appRoutePath={appRoutePath}
-                />
-              ) : isGlobalToolsView ? (
-                <ToolsSidebar
-                  onResizeMouseDown={handleResizeMouseDown}
-                  isResizing={isSidebarResizing}
-                  showTopReserve={true}
-                  appRoutePath={toolsBackRoutePath}
-                />
-              ) : (
-                <AppSidebar
-                  onResizeMouseDown={handleResizeMouseDown}
-                  isResizing={isSidebarResizing}
-                  showTopReserve={true}
-                  settingsRoutePath={settingsRoutePath}
-                  toolsRoutePath={toolsHubEnabled ? toolsRoutePath : undefined}
-                />
-              )}
+              <AppLayoutSidebar
+                mode={
+                  isGlobalSettingsView
+                    ? "settings"
+                    : isGlobalToolsView
+                      ? "tools"
+                      : "app"
+                }
+                onResizeMouseDown={handleResizeMouseDown}
+                isResizing={isSidebarResizing}
+                appRoutePath={appRoutePath}
+                settingsRoutePath={settingsRoutePath}
+                toolsBackRoutePath={toolsBackRoutePath}
+                toolsRoutePath={toolsHubEnabled ? toolsRoutePath : undefined}
+              />
               <SidebarInset>
                 <div
                   ref={contentShellRef}

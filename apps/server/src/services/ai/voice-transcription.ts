@@ -125,6 +125,7 @@ async function transcribeWithCodexHostDaemon(
     "base64",
   );
   const prompt = trimPrompt(args.prompt) ?? "";
+  const transcriptionModel = `${modelInfo.provider}/${modelInfo.modelId}`;
   const transcription = await inferenceCompleteWithFallback(deps, {
     ...INFERENCE_POLICY.voiceTranscription,
     complete: async (model, attemptPrompt, timeoutMs) => {
@@ -144,8 +145,9 @@ async function transcribeWithCodexHostDaemon(
       });
       return { text: result.text };
     },
+    fallbackModel: transcriptionModel,
     label: "Voice transcription",
-    primaryModel: `${modelInfo.provider}/${modelInfo.modelId}`,
+    primaryModel: transcriptionModel,
     prompt,
     schema: voiceTranscriptionSchema,
   }).catch((error: Error) => error);

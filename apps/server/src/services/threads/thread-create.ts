@@ -617,7 +617,7 @@ export async function createThreadFromRequest(
     ...rawRequestInput,
     environment:
       rawRequestInput.environment.type === "project-default"
-        ? resolveProjectDefaultThreadEnvironment(deps, {
+        ? await resolveProjectDefaultThreadEnvironment(deps, {
             projectId: rawRequestInput.projectId,
           })
         : rawRequestInput.environment,
@@ -633,8 +633,7 @@ export async function createThreadFromRequest(
     requestInput.input = [...requestInput.input, ...pluginMentionContext];
   }
   assertProjectWorkspaceCompatibility(project, requestInput);
-  const originKind =
-    requestInput.originKind ?? requestInput.childOrigin ?? null;
+  const originKind = requestInput.originKind ?? null;
   const sourceThreadId =
     requestInput.sourceThreadId ??
     (originKind !== null ? requestInput.parentThreadId : undefined);
@@ -736,7 +735,6 @@ export async function createThreadFromRequest(
       providerId: requestInput.providerId,
     });
   const {
-    childOrigin: _requestedChildOrigin,
     originKind: _requestedOriginKind,
     parentThreadId: _requestedParentThreadId,
     sourceThreadId: _requestedSourceThreadId,
@@ -749,7 +747,6 @@ export async function createThreadFromRequest(
       : {}),
     ...(sourceThread ? { sourceThreadId: sourceThread.id } : {}),
     originKind,
-    childOrigin: originKind,
     visibility: resolveCreateThreadVisibility({
       parentThread,
       requestedVisibility: requestInput.visibility,

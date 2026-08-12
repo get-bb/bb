@@ -10,7 +10,6 @@ import {
   getSkillDetailRoutePath,
   getSkillsRoutePath,
   getThreadRoutePath,
-  getToolsRoutePath,
   isRoutePath,
   isProjectlessProjectId,
   LEGACY_AUTOMATION_DETAIL_ROUTE_PATH,
@@ -61,7 +60,6 @@ describe("route path helpers", () => {
   });
 
   it("builds and recognizes the Extensions routes", () => {
-    expect(getToolsRoutePath()).toBe("/tools");
     expect(getSkillsRoutePath()).toBe("/tools/skills");
     expect(
       getSkillDetailRoutePath({

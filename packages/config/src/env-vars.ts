@@ -287,13 +287,6 @@ export const BB_CLI_DIR_ENV = defineEnvVar<string | undefined>({
   parse: parseOptionalTrimmedStringEnvValue,
 });
 
-export const BB_CLI_ENV = defineEnvVar<string | undefined>({
-  description:
-    "Absolute path to the daemon-managed bb CLI (injected into agent shells; official entrypoints re-exec here when set)",
-  name: "BB_CLI",
-  parse: parseOptionalTrimmedStringEnvValue,
-});
-
 export const BB_INHERITED_SKILLS_ROOTS_ENV = defineEnvVar<string[]>({
   description:
     "Development-only path list of lower-priority inherited bb skill roots",

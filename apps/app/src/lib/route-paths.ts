@@ -115,10 +115,6 @@ export function getSettingsMachineRoutePath(hostId: string): string {
   return `/settings/machines/${encodeURIComponent(hostId)}`;
 }
 
-export function getToolsRoutePath(): string {
-  return TOOLS_ROUTE_PATH;
-}
-
 /** True on Extensions and every canonical route nested under it. */
 export function isToolsRoutePath(pathname: string): boolean {
   // Automations moved out of Extensions and into its plugin-owned panel. Keep

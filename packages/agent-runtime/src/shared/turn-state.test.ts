@@ -77,8 +77,15 @@ describe("turn-state", () => {
   });
 
   it("starts turns, clears transient state on finish, and increments turn ids", () => {
+    const lifecycle: string[] = [];
     const registry = createProviderTurnStateRegistry({
       createState: createTurnState,
+      onTurnFinish: ({ state }) => {
+        lifecycle.push(`finish:${state.currentTurnId}`);
+      },
+      onTurnStart: ({ turnId }) => {
+        lifecycle.push(`start:${turnId}`);
+      },
     });
     const state = registry.getOrCreate({ threadId: "thread-1" });
     const events: ThreadEvent[] = [];
@@ -118,6 +125,11 @@ describe("turn-state", () => {
     expect(events.map((event) => event.type)).toEqual([
       "turn/started",
       "turn/started",
+    ]);
+    expect(lifecycle).toEqual([
+      "start:turn-1",
+      "finish:turn-1",
+      "start:turn-2",
     ]);
   });
 

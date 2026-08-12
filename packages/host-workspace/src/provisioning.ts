@@ -17,6 +17,7 @@ import { tryWithCheckoutMutationLock } from "./checkout-mutation-lock.js";
 import {
   pathExists,
   readDefaultBranch,
+  readGitRepositoryState,
   runGit,
   WorkspaceError,
   type GitCommandResult,
@@ -339,6 +340,22 @@ export async function createWorktree(
   throwIfProvisionAborted(args.signal);
   if (await ensureExistingWorkspaceMatches(args.targetPath, args.branchName)) {
     return { path: args.targetPath };
+  }
+
+  throwIfProvisionAborted(args.signal);
+  switch (await readGitRepositoryState(args.sourcePath)) {
+    case "not_git":
+      throw new WorkspaceError(
+        "not_git_repo",
+        `Cannot create a worktree because the source is not a Git repository: ${args.sourcePath}. Initialize it and create at least one commit, then try again.`,
+      );
+    case "no_commits":
+      throw new WorkspaceError(
+        "unborn_head",
+        `Cannot create a worktree because the repository has no commits: ${args.sourcePath}. Create an initial commit, then try again.`,
+      );
+    case "has_commits":
+      break;
   }
 
   throwIfProvisionAborted(args.signal);

@@ -4,7 +4,7 @@ import type {
   PromptTextMention,
   SystemMessageKind,
   SystemMessageSubject,
-  ThreadChildOrigin,
+  ThreadOriginKind,
 } from "@bb/domain";
 import type { TimelineTitle, TimelineTitleSegment } from "@bb/thread-view";
 import { type IconName } from "@bb/shared-ui/icon";
@@ -45,11 +45,11 @@ import {
 interface GeneratedConversationMessageProps {
   attachmentItems: ConversationAttachmentItems;
   /**
-   * `childOrigin` of the thread this generated row belongs to. A fork's
+   * `originKind` of the thread this generated row belongs to. A fork's
    * seed-without-run anchor (`"fork"`) renders the Fork leading icon for
    * consistency with the Fork action; otherwise the per-`sourceKind` icon.
    */
-  childOrigin: ThreadChildOrigin | null;
+  originKind: ThreadOriginKind | null;
   mentions: readonly PromptTextMention[];
   onOpenLink?: ThreadTimelineLinkHandler;
   onOpenLocalFileLink?: ThreadTimelineLocalFileLinkHandler;
@@ -101,7 +101,7 @@ interface TimelineTitleSegmentArgs {
 }
 
 interface GeneratedConversationTitleArgs {
-  childOrigin: ThreadChildOrigin | null;
+  originKind: ThreadOriginKind | null;
   sourceKind: GeneratedConversationSourceKind;
   sourceName: string;
   sourceThreadId: string | null;
@@ -260,7 +260,7 @@ function systemMessageTitleSegments(
 }
 
 export function generatedConversationTitle({
-  childOrigin,
+  originKind,
   sourceKind,
   sourceName,
   sourceThreadId,
@@ -274,7 +274,7 @@ export function generatedConversationTitle({
   // so it is tested first.
   const agentLeadIn = sourceIsPluginSideChat
     ? "Replying to"
-    : childOrigin === "fork"
+    : originKind === "fork"
       ? "Forked from"
       : "Message from";
   // A side-chat source opens in the plugin's panel tab (a title action), so its
@@ -354,12 +354,12 @@ export function systemMessageIconName(
 
 function generatedConversationIconName(
   sourceKind: GeneratedConversationSourceKind,
-  childOrigin: ThreadChildOrigin | null,
+  originKind: ThreadOriginKind | null,
   systemMessageKind: SystemMessageKind,
 ): IconName {
   // A fork's anchor uses the Fork icon (matching the Fork action) regardless of
   // source kind; in practice fork anchors are always agent-initiated.
-  if (childOrigin === "fork") {
+  if (originKind === "fork") {
     return "Fork";
   }
   switch (sourceKind) {
@@ -459,7 +459,7 @@ const COLLAPSED_MARKDOWN_PREVIEW_CLASS = cn(
 export const GeneratedConversationMessage = memo(
   function GeneratedConversationMessage({
     attachmentItems,
-    childOrigin,
+    originKind,
     mentions,
     onOpenLink,
     onOpenLocalFileLink,
@@ -494,7 +494,7 @@ export const GeneratedConversationMessage = memo(
     const title = useMemo(
       () =>
         generatedConversationTitle({
-          childOrigin,
+          originKind,
           sourceKind,
           sourceName,
           sourceThreadId,
@@ -503,7 +503,7 @@ export const GeneratedConversationMessage = memo(
           systemMessageSubject,
         }),
       [
-        childOrigin,
+        originKind,
         sourceKind,
         sourceName,
         sourceThreadId,
@@ -525,7 +525,7 @@ export const GeneratedConversationMessage = memo(
       ) : undefined;
     const leadingIcon = generatedConversationIconName(
       sourceKind,
-      childOrigin,
+      originKind,
       systemMessageKind,
     );
     // Title-only rows (ownership assigned/removed) restate their body in the

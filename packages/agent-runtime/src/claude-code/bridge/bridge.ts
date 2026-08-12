@@ -16,11 +16,8 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { realpathSync } from "node:fs";
 import { resolve as resolvePath } from "node:path";
-import { createInterface } from "node:readline";
 import { isDeepStrictEqual } from "node:util";
-import { fileURLToPath } from "node:url";
 import {
   DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT,
   type PendingInteractionGrantedPermissionProfile,
@@ -35,11 +32,21 @@ import {
   type SDKMessage,
 } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
+import { extractEnvOverrides } from "../../shared/adapter-utils.js";
 import {
   decodeBridgeJsonRpcResponse,
-  decodeToolCallResponsePayload,
   type BridgeToolCallRequest,
 } from "../../shared/bridge-tool-calls.js";
+import {
+  createBridgeIo,
+  createBridgeLineHandler,
+  runBridgeRequest,
+  startBridgeStdio,
+} from "../../shared/bridge-harness.js";
+import {
+  createBridgeSessionRegistry,
+  type PendingBridgeToolCall,
+} from "../../shared/bridge-session-registry.js";
 import { withoutBridgeRuntimeEnv } from "../../shared/bridge-runtime-env.js";
 import { shouldAutoDenyInteractiveRequest } from "../../shared/permission-policy.js";
 import { SdkSession, type SdkSessionOptions } from "./sdk-session.js";
@@ -72,7 +79,6 @@ import {
   buildBridgeMcpServer,
   getAllowedToolNames,
   BRIDGE_MCP_SERVER_NAME,
-  type ToolCallForwarder,
 } from "./tool-proxy-mcp.js";
 import {
   type ClaudeInteractiveResponse,
@@ -119,13 +125,6 @@ const promptInputItemSchema = z.discriminatedUnion("type", [
 const CLAUDE_PROVIDER_SUBAGENT_TOOL_NAMES = new Set(["Agent", "Task"]);
 const CLAUDE_WORKFLOW_TOOL_NAME = "Workflow";
 
-interface JsonRpcResponse {
-  jsonrpc: "2.0";
-  id: string | number;
-  result?: unknown;
-  error?: { code: number; message: string; data?: unknown };
-}
-
 /** JSON-RPC notification carrying a raw SDK message. */
 interface SdkMessageNotification {
   jsonrpc: "2.0";
@@ -138,10 +137,6 @@ interface BridgeEventNotification {
   jsonrpc: "2.0";
   method: string;
   params: Record<string, unknown>;
-}
-
-interface PendingToolCall {
-  resolve: (value: { content: string; isError?: boolean }) => void;
 }
 
 interface ThreadIdRef {
@@ -203,7 +198,7 @@ interface ThreadSession {
   closing: boolean;
   streamEnded: boolean;
   mockCliTrafficProxy: ClaudeCodeMockCliTrafficProxy | null;
-  pendingToolCalls: Map<string | number, PendingToolCall>;
+  pendingToolCalls: Map<string | number, PendingBridgeToolCall>;
   pendingInteractiveRequests: Map<string | number, PendingInteractiveRequest>;
   /** Current-turn fallback when Claude supplies no originating-work metadata. */
   permissionEscalation: PermissionEscalation | null;
@@ -230,12 +225,6 @@ interface ThreadSession {
   providerThreadId?: string;
   sessionPermissionGrants: ClaudeSessionPermissionGrant[];
   threadIdRef: ThreadIdRef;
-}
-
-interface CloseThreadSessionArgs {
-  graceful: boolean;
-  message: string;
-  threadId: string;
 }
 
 interface CreateThreadSessionArgs {
@@ -342,14 +331,38 @@ interface ForwardUserQuestionRequestArgs extends BuildUserQuestionRequestParamsA
   signal: AbortSignal;
 }
 
-const sessions = new Map<string, ThreadSession>();
-const closingSessions = new Map<string, Promise<void>>();
 let sessionSerialCounter = 0;
 let toolCallRequestIdCounter = 0;
 
 // Runtime waits on thread/stop until the SDK stream drains or this timeout
 // forces the session closed. Stop remains a best-effort success boundary.
 const THREAD_STOP_CLOSE_TIMEOUT_MS = 4_000;
+
+const { send, sendResult, sendError } = createBridgeIo<
+  SdkMessageNotification | BridgeEventNotification | BridgeToolCallRequest
+>();
+
+const {
+  closeThreadSession,
+  closeThreadSessionsGracefully,
+  createForwardToolCall,
+  handleToolCallResponse,
+  resolvePendingSessionWork,
+  sessions,
+} = createBridgeSessionRegistry<ThreadSession>({
+  closeSessionGracefully: (threadSession) =>
+    closeClaudeThreadSession(threadSession, true),
+  getProviderThreadId: (threadSession, threadId) =>
+    threadSession.providerThreadId ?? threadId,
+  nextToolCallRequestId: () => {
+    toolCallRequestIdCounter += 1;
+    return toolCallRequestIdCounter;
+  },
+  resolveAdditionalPendingWork: resolvePendingInteractiveRequests,
+  sendToolCall: send,
+  stopSession: (threadSession) =>
+    closeClaudeThreadSession(threadSession, false),
+});
 
 function normalizePermissionPath(path: string): string {
   return resolvePath(path);
@@ -444,24 +457,6 @@ function shouldCacheClaudeSessionPermission(
     (response.decisionClassification === "user_permanent" ||
       response.updatedPermissions !== undefined)
   );
-}
-
-function send(
-  msg:
-    | JsonRpcResponse
-    | SdkMessageNotification
-    | BridgeEventNotification
-    | BridgeToolCallRequest,
-): void {
-  process.stdout.write(JSON.stringify(msg) + "\n");
-}
-
-function sendResult(id: string | number, result: unknown): void {
-  send({ jsonrpc: "2.0", id, result });
-}
-
-function sendError(id: string | number, code: number, message: string): void {
-  send({ jsonrpc: "2.0", id, error: { code, message } });
 }
 
 // stdout is the JSON-RPC channel; the runtime captures stderr into the
@@ -1055,44 +1050,6 @@ function createOnSdkDone(
   };
 }
 
-function createForwardToolCall(threadIdRef: ThreadIdRef): ToolCallForwarder {
-  return (toolName, args) => {
-    return new Promise<{ content: string; isError?: boolean }>((resolve) => {
-      const threadSession = sessions.get(threadIdRef.current);
-      if (!threadSession || threadSession.closing) {
-        resolve({ content: "Thread session not found", isError: true });
-        return;
-      }
-      toolCallRequestIdCounter += 1;
-      const requestId = toolCallRequestIdCounter;
-      threadSession.pendingToolCalls.set(requestId, { resolve });
-      send({
-        jsonrpc: "2.0",
-        id: requestId,
-        method: "item/tool/call",
-        params: {
-          threadId: threadIdRef.current,
-          providerThreadId:
-            threadSession.providerThreadId ?? threadIdRef.current,
-          turnId: null,
-          callId: `call-${requestId}`,
-          tool: toolName,
-          arguments: args,
-        },
-      });
-    });
-  };
-}
-
-function findSessionByPendingToolCall(
-  id: string | number,
-): ThreadSession | undefined {
-  for (const session of sessions.values()) {
-    if (session.pendingToolCalls.has(id)) return session;
-  }
-  return undefined;
-}
-
 function findSessionByPendingInteractiveRequest(
   id: string | number,
 ): ThreadSession | undefined {
@@ -1120,85 +1077,20 @@ function resolvePendingInteractiveRequests(
   }
 }
 
-function resolvePendingToolCalls(
+async function closeClaudeThreadSession(
   threadSession: ThreadSession,
-  message: string,
-): void {
-  for (const [requestId, pending] of threadSession.pendingToolCalls) {
-    threadSession.pendingToolCalls.delete(requestId);
-    pending.resolve({ content: message, isError: true });
-  }
-}
-
-function resolvePendingSessionWork(
-  threadSession: ThreadSession,
-  message: string,
-): void {
-  resolvePendingToolCalls(threadSession, message);
-  resolvePendingInteractiveRequests(threadSession, message);
-}
-
-async function closeThreadSession(args: CloseThreadSessionArgs): Promise<void> {
-  const existingClose = closingSessions.get(args.threadId);
-  if (existingClose) {
-    await existingClose;
-    return;
-  }
-
-  const threadSession = sessions.get(args.threadId);
-  if (!threadSession) {
-    return;
-  }
-
-  threadSession.closing = true;
-  resolvePendingSessionWork(threadSession, args.message);
-  const closePromise = (async () => {
-    try {
-      if (args.graceful) {
-        await threadSession.session.closeGracefully(
-          THREAD_STOP_CLOSE_TIMEOUT_MS,
-        );
-      } else {
-        threadSession.session.stop();
-      }
-    } finally {
-      await threadSession.mockCliTrafficProxy?.close();
-      threadSession.mockCliTrafficProxy = null;
+  graceful: boolean,
+): Promise<void> {
+  try {
+    if (graceful) {
+      await threadSession.session.closeGracefully(THREAD_STOP_CLOSE_TIMEOUT_MS);
+    } else {
+      threadSession.session.stop();
     }
-  })().finally(() => {
-    if (sessions.get(args.threadId) === threadSession) {
-      sessions.delete(args.threadId);
-    }
-    closingSessions.delete(args.threadId);
-  });
-  closingSessions.set(args.threadId, closePromise);
-  await closePromise;
-}
-
-async function closeThreadSessionsGracefully(message: string): Promise<void> {
-  await Promise.all(
-    Array.from(sessions.keys()).map((threadId) =>
-      closeThreadSession({ graceful: true, message, threadId }),
-    ),
-  );
-}
-
-function extractEnvOverrides(
-  config: Record<string, unknown> | undefined,
-): Record<string, string> {
-  const envOverrides: Record<string, string> = {};
-  if (config) {
-    for (const [key, value] of Object.entries(config)) {
-      if (
-        key.startsWith("shell_environment_policy.set.") &&
-        typeof value === "string"
-      ) {
-        const envVar = key.slice("shell_environment_policy.set.".length);
-        envOverrides[envVar] = value;
-      }
-    }
+  } finally {
+    await threadSession.mockCliTrafficProxy?.close();
+    threadSession.mockCliTrafficProxy = null;
   }
-  return envOverrides;
 }
 
 /**
@@ -1758,7 +1650,7 @@ async function handleThreadStart(
   if (params.dynamicTools && params.dynamicTools.length > 0) {
     const mcpServer = buildBridgeMcpServer(
       params.dynamicTools,
-      createForwardToolCall(threadIdRef),
+      createForwardToolCall(() => threadIdRef.current),
     );
     sessionOptions.mcpServers = { [BRIDGE_MCP_SERVER_NAME]: mcpServer };
     sessionOptions.allowedTools = getAllowedToolNames(params.dynamicTools);
@@ -1834,7 +1726,7 @@ async function handleThreadResume(
   if (params.dynamicTools && params.dynamicTools.length > 0) {
     const mcpServer = buildBridgeMcpServer(
       params.dynamicTools,
-      createForwardToolCall(threadIdRef),
+      createForwardToolCall(() => threadIdRef.current),
     );
     sessionOptions.mcpServers = { [BRIDGE_MCP_SERVER_NAME]: mcpServer };
     sessionOptions.allowedTools = getAllowedToolNames(params.dynamicTools);
@@ -1903,7 +1795,7 @@ async function handleThreadFork(
   if (params.dynamicTools && params.dynamicTools.length > 0) {
     const mcpServer = buildBridgeMcpServer(
       params.dynamicTools,
-      createForwardToolCall(threadIdRef),
+      createForwardToolCall(() => threadIdRef.current),
     );
     sessionOptions.mcpServers = { [BRIDGE_MCP_SERVER_NAME]: mcpServer };
     sessionOptions.allowedTools = getAllowedToolNames(params.dynamicTools);
@@ -2104,30 +1996,9 @@ function buildPromptText(input: unknown): string | undefined {
   return chunks.length > 0 ? chunks.join("\n") : undefined;
 }
 
-export function handleLine(line: string): void {
-  const trimmed = line.trim();
-  if (!trimmed) return;
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(trimmed);
-  } catch {
-    return;
-  }
-
+function handleParsedMessage(parsed: unknown): void {
   const response = decodeBridgeJsonRpcResponse(parsed);
-  if (response && findSessionByPendingToolCall(response.id)) {
-    const threadSession = findSessionByPendingToolCall(response.id)!;
-    const pending = threadSession.pendingToolCalls.get(response.id)!;
-    threadSession.pendingToolCalls.delete(response.id);
-    if ("error" in response) {
-      pending.resolve({
-        content: response.error.message ?? "Tool call failed",
-        isError: true,
-      });
-    } else {
-      pending.resolve(decodeToolCallResponsePayload(response.result));
-    }
+  if (response && handleToolCallResponse(response)) {
     return;
   }
 
@@ -2196,15 +2067,17 @@ export function handleLine(line: string): void {
       return;
     }
     case "request": {
-      const request = decoded.request;
-      void handleRequest(request).catch((error: unknown) => {
-        const message = error instanceof Error ? error.message : String(error);
-        sendError(request.id, -32000, message);
+      runBridgeRequest({
+        request: decoded.request,
+        handleRequest,
+        sendError,
       });
       return;
     }
   }
 }
+
+export const handleLine = createBridgeLineHandler({ handleParsedMessage });
 
 // Main entry point
 let shuttingDown = false;
@@ -2219,33 +2092,18 @@ function shutdownGracefully(message: string): void {
   });
 }
 
-function isMainModule(): boolean {
-  const entryPoint = process.argv[1];
-  if (entryPoint === undefined) return false;
-  try {
-    return (
-      realpathSync(fileURLToPath(import.meta.url)) ===
-      realpathSync(resolvePath(entryPoint))
-    );
-  } catch {
-    return false;
-  }
-}
-
-if (isMainModule()) {
-  process.once("SIGTERM", () => {
+startBridgeStdio({
+  importMetaUrl: import.meta.url,
+  handleLine,
+  onSigterm: () => {
     shutdownGracefully(
       "Bridge shutting down while awaiting permission approval",
     );
-  });
-
-  process.once("SIGINT", () => {
+  },
+  onSigint: () => {
     shutdownGracefully("Bridge interrupted while awaiting permission approval");
-  });
-
-  const rl = createInterface({ input: process.stdin, terminal: false });
-  rl.on("line", handleLine);
-  rl.on("close", () => {
+  },
+  onClose: () => {
     shutdownGracefully("Bridge closed while awaiting permission approval");
-  });
-}
+  },
+});

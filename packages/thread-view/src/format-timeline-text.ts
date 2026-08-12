@@ -323,10 +323,7 @@ function formatWorkBody(
       if (row.childRows.length > 0) {
         lines.push(
           indentBlock(
-            formatRows(
-              row.childRows,
-              nestedContext(context, row.childRows),
-            ),
+            formatRows(row.childRows, nestedContext(context, row.childRows)),
             "  ",
           ),
         );
@@ -414,7 +411,10 @@ function formatWorkSummary(
   const isActive =
     row.kind === "bundle-summary" && row.id === context.activeLatestBundleId;
   const lines = [
-    rowHeader(buildTimelineWorkSummaryLabel(row, { active: isActive }), context),
+    rowHeader(
+      buildTimelineWorkSummaryLabel(row, { active: isActive }),
+      context,
+    ),
   ];
   if (context.verbose || row.kind === "bundle-summary") {
     const details = formatWorkSummaryDetails(row, context);
@@ -438,7 +438,9 @@ function formatConversationRequestLabel(
   if (row.role !== "user" || row.turnRequest.kind !== "steer") {
     return null;
   }
-  return row.turnRequest.status === "pending" ? "steer pending" : "steer";
+  if (row.turnRequest.status === "pending") return "steer pending";
+  if (row.turnRequest.status === "rejected") return "steer failed";
+  return "steer";
 }
 
 function formatRow(

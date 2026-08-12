@@ -7,6 +7,7 @@ import {
   isNull,
   notInArray,
   or,
+  sql,
 } from "drizzle-orm";
 import {
   deleteThread,
@@ -241,11 +242,13 @@ interface ProvisioningInterruptedThread {
 }
 
 interface FinalizeStoppedThreadArgs {
+  providerCheckpointId?: string;
   threadId: string;
 }
 
 interface InterruptActiveTurnForThreadArgs {
   environmentId: string | null;
+  providerCheckpointId?: string;
   reason: SystemThreadInterruptedReason;
   threadId: string;
 }
@@ -426,6 +429,7 @@ interface FinalizeStoppedThreadTransactionDeps extends ThreadLifecycleTransactio
 interface ApplyActiveTurnInterruptionArgs {
   activeTurnId: string;
   environmentId: string | null;
+  providerCheckpointId?: string;
   providerThreadId: string | null;
   reason: SystemThreadInterruptedReason;
   threadId: string;
@@ -557,6 +561,9 @@ function applyActiveTurnInterruptionInTransaction(
     data: {
       providerThreadId: args.providerThreadId,
       status: "interrupted",
+      ...(args.providerCheckpointId !== undefined
+        ? { providerCheckpointId: args.providerCheckpointId }
+        : {}),
     },
   });
   const appendedThreadInterruptedEvent =
@@ -618,6 +625,38 @@ function hasExpectedTurnCompletedEvent(
           eq(events.threadId, command.threadId),
           eq(events.turnId, turnId),
           eq(events.type, "turn/completed"),
+        ),
+      )
+      .limit(1)
+      .get() !== undefined
+  );
+}
+
+function hasTerminalClientTurnRequestEvent(
+  deps: ThreadCommandResultSettlementDeps,
+  command: ThreadFailureCommand,
+): boolean {
+  if (command.type !== "turn.submit") {
+    return false;
+  }
+
+  return (
+    deps.db
+      .select({ id: events.id })
+      .from(events)
+      .where(
+        and(
+          eq(events.threadId, command.threadId),
+          or(
+            and(
+              eq(events.type, "turn/input/accepted"),
+              sql`json_extract(${events.data}, '$.clientRequestId') = ${command.requestId}`,
+            ),
+            and(
+              eq(events.type, "client/turn/rejected"),
+              sql`json_extract(${events.data}, '$.requestId') = ${command.requestId}`,
+            ),
+          ),
         ),
       )
       .limit(1)
@@ -737,6 +776,22 @@ function settleThreadCommandFailure(
   const thread = getThread(args.deps.db, args.command.threadId);
   if (!thread || thread.deletedAt !== null) {
     return emptyCommandResultSideEffects();
+  }
+  if (hasTerminalClientTurnRequestEvent(args.deps, args.command)) {
+    return emptyCommandResultSideEffects();
+  }
+  if (args.command.type === "turn.submit") {
+    appendThreadEventInTransaction(args.deps.db, {
+      threadId: thread.id,
+      environmentId: thread.environmentId,
+      type: "client/turn/rejected",
+      scope: threadScope(),
+      data: {
+        requestId: args.command.requestId,
+        reason: args.report.errorCode,
+        message: args.report.errorMessage,
+      },
+    });
   }
   if (hasExpectedTurnCompletedEvent(args.deps, args.command)) {
     return emptyCommandResultSideEffects();
@@ -991,6 +1046,9 @@ export function settleThreadStopCommandResult(
   }
 
   finalizeStoppedThreadInTransaction(args.deps, {
+    ...(args.report.result.providerCheckpointId !== null
+      ? { providerCheckpointId: args.report.result.providerCheckpointId }
+      : {}),
     threadId: args.command.threadId,
   });
 
@@ -1409,6 +1467,9 @@ function interruptActiveTurnForThreadInTransaction(
     applyActiveTurnInterruptionInTransaction(deps, {
       activeTurnId,
       environmentId: args.environmentId,
+      ...(args.providerCheckpointId !== undefined
+        ? { providerCheckpointId: args.providerCheckpointId }
+        : {}),
       providerThreadId,
       reason: args.reason,
       threadId: args.threadId,
@@ -1617,6 +1678,9 @@ export function finalizeStoppedThreadInTransaction(
       deps,
       {
         environmentId: currentThread.environmentId,
+        ...(args.providerCheckpointId !== undefined
+          ? { providerCheckpointId: args.providerCheckpointId }
+          : {}),
         threadId: currentThread.id,
         reason: interruptionReason,
       },

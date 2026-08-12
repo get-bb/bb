@@ -71,7 +71,6 @@ describe("thread creation telemetry", () => {
       });
 
       await createThreadFromRequest(harness.deps, {
-        childOrigin: null,
         environment: {
           type: "host",
           hostId: host.id,
@@ -265,7 +264,6 @@ describe("thread creation with startedOnBehalfOf (seed-without-run)", () => {
       });
 
       const thread = await createThreadFromRequest(harness.deps, {
-        childOrigin: null,
         environment: {
           type: "host",
           hostId: host.id,
@@ -536,7 +534,6 @@ describe("thread creation child-thread boundary validation", () => {
       async ({ harness, hostId, path, projectId, sourceThreadId }) => {
         const error = await captureCreateError(() =>
           createThreadFromRequest(harness.deps, {
-            childOrigin: null,
             environment: {
               type: "host",
               hostId,

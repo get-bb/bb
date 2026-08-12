@@ -92,7 +92,7 @@ const DEV_SERVER_PORT_BASE = 19_000;
 const DEV_HOST_DAEMON_PORT_BASE = 27_000;
 const DEV_CLOUD_PORT_BASE = 35_000;
 const DEV_CLOUD_WORKER_PORT_BASE = 43_000;
-const DEV_PROCESS_STRIPPED_ENV_KEYS: readonly string[] = [
+const THREAD_CONTEXT_ENV_KEYS: readonly string[] = [
   "BB_ENVIRONMENT_ID",
   "BB_THREAD_ID",
   "BB_THREAD_STORAGE",
@@ -304,11 +304,23 @@ export function resolvePortFromEnv(args: ResolvePortFromEnvArgs): number {
   });
 }
 
-export function toDevProcessEnv(args: DevProcessEnvArgs): NodeJS.ProcessEnv {
-  const env = { ...args.baseEnv };
-  for (const key of DEV_PROCESS_STRIPPED_ENV_KEYS) {
+/**
+ * Remove context that bb injects into an agent shell for one specific thread.
+ * Long-lived server and daemon processes must never adopt that identity or the
+ * thread-specific storage directory as process-wide configuration.
+ */
+export function stripThreadContextEnv(
+  baseEnv: NodeJS.ProcessEnv,
+): NodeJS.ProcessEnv {
+  const env = { ...baseEnv };
+  for (const key of THREAD_CONTEXT_ENV_KEYS) {
     delete env[key];
   }
+  return env;
+}
+
+export function toDevProcessEnv(args: DevProcessEnvArgs): NodeJS.ProcessEnv {
+  const env = stripThreadContextEnv(args.baseEnv);
   const inheritedSkillsRootPaths = resolveInheritedDevSkillsRootPaths({
     homeDir: args.config.homeDir,
     repoRoot: args.config.repoRoot,

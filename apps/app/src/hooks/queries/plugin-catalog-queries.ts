@@ -2,7 +2,6 @@ import type {
   InstalledPlugin,
   PluginApplyUpdateResult as SdkPluginApplyUpdateResult,
   PluginCatalogSearchResult as SdkPluginCatalogSearchResult,
-  PluginCatalogStatus as SdkPluginCatalogStatus,
   PluginSourceDetail as SdkPluginSourceDetail,
   PluginUpdateCheckEntry,
 } from "@bb/server-contract";
@@ -149,43 +148,6 @@ export async function applyPluginUpdate(
     to: result.to ?? null,
     detail: result.detail ?? null,
   };
-}
-
-export interface PluginCatalogStatus {
-  pluginCount: number;
-  includedPluginCount: number;
-  optionalPluginCount: number;
-}
-
-function toPluginCatalogStatus(
-  data: SdkPluginCatalogStatus,
-): PluginCatalogStatus {
-  return {
-    pluginCount: data.pluginCount,
-    includedPluginCount: data.includedPluginCount,
-    optionalPluginCount: data.optionalPluginCount,
-  };
-}
-
-export async function fetchPluginCatalogStatus(
-  fetchImpl: FetchLike,
-): Promise<PluginCatalogStatus> {
-  return toPluginCatalogStatus(
-    await createPluginsClient(fetchImpl).catalog.status(),
-  );
-}
-
-export function pluginCatalogStatusQueryKey(): QueryKey {
-  return ["plugin-catalog-status"];
-}
-
-export function usePluginCatalogStatus(options: { enabled: boolean }) {
-  return useQuery({
-    queryKey: pluginCatalogStatusQueryKey(),
-    queryFn: () => fetchPluginCatalogStatus(fetch),
-    enabled: options.enabled,
-    staleTime: 30_000,
-  });
 }
 
 export interface PluginCatalogSearchEntry {

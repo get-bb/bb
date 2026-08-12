@@ -40,6 +40,16 @@ const NODE_ESM_REQUIRE_BANNER = [
   "var __dirname = __pathDirname(__filename);",
 ].join("\n");
 
+/**
+ * Specifiers the backend bundle leaves unresolved. Everything else a plugin's
+ * server source imports is inlined from its node_modules, so it has to be a
+ * real `dependency` — `packages/templates` scaffolds against this list.
+ */
+export const PLUGIN_SERVER_EXTERNALS: readonly string[] = [
+  "@bb/plugin-sdk",
+  "better-sqlite3",
+];
+
 interface PluginServerConfig {
   /** Absolute path of the `bb.server` entry file. */
   serverEntry: string;
@@ -147,7 +157,7 @@ export async function buildPluginServer(
       // The server's loader aliases the SDK to its shipped runtime bundle at
       // load time; better-sqlite3 comes from the host (bb.storage). Node
       // builtins are auto-external via platform: "node".
-      external: ["@bb/plugin-sdk", "better-sqlite3"],
+      external: [...PLUGIN_SERVER_EXTERNALS],
       logLevel: "error",
     });
     await writeFile(

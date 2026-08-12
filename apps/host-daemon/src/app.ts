@@ -225,7 +225,7 @@ export async function createHostDaemonApp(
   const threadStorageRootPath = await ensureThreadStorageRoot(
     options.dataDir,
     options.threadStorageRootPath
-      ? { env: { BB_THREAD_STORAGE: options.threadStorageRootPath } }
+      ? { configuredRoot: options.threadStorageRootPath }
       : {},
   );
   const dataDirSkillsRootPath = await ensureDataDirSkillsRootPath(

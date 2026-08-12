@@ -82,7 +82,7 @@ describe("AddMachineDialog", () => {
     );
     expect(command.textContent).toContain("--host-id host_new");
     expect(command.textContent).toContain(
-      "curl -fsSL https://example.getbb.app/install.sh",
+      "curl -fL --progress-meter --connect-timeout 10 --max-time 60 --retry 2 https://example.getbb.app/install.sh",
     );
     expect(command.textContent).toContain("--server https://example.getbb.app");
     expect(command.textContent).toContain("--machine-code mc_test456");
@@ -149,7 +149,7 @@ describe("AddMachineDialog", () => {
     // server-reported URL and carries no --machine-code flag.
     const command = await screen.findByText(/--join-code jc_test123/);
     expect(command.textContent).toContain(
-      "curl -fsSL http://direct.example.test:38886/install.sh",
+      "curl -fL --progress-meter --connect-timeout 10 --max-time 60 --retry 2 http://direct.example.test:38886/install.sh",
     );
     expect(command.textContent).toContain(
       "--server http://direct.example.test:38886",

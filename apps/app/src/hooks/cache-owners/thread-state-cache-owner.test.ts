@@ -9,7 +9,7 @@ import {
 } from "../queries/query-keys";
 import {
   beginThreadReadStateTransaction,
-  beginThreadTitleTransaction,
+  beginThreadMetadataTransaction,
   rollbackThreadListMutationTransaction,
 } from "./thread-state-cache-owner";
 
@@ -30,7 +30,6 @@ function makeThreadWithRuntime(
     originKind: null,
     originPluginId: null,
     visibility: "visible",
-    childOrigin: null,
     archivedAt: null,
     pinnedAt: null,
     deletedAt: null,
@@ -124,7 +123,7 @@ describe("thread state cache owner", () => {
       makeSidebarNavigation([listEntry]),
     );
 
-    const transaction = await beginThreadTitleTransaction({
+    const transaction = await beginThreadMetadataTransaction({
       queryClient,
       threadId,
       title: "New title",

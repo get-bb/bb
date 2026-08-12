@@ -15,7 +15,7 @@ export const CLI_COMMAND = "npx bb-app@latest";
  *  a Product Hunt vote instead of linking to the latest release. Flip it to
  *  false after the launch and the changelog callout comes back — nothing else
  *  needs to change. */
-export const PRODUCT_HUNT_LAUNCH_ACTIVE = true;
+export const PRODUCT_HUNT_LAUNCH_ACTIVE = false;
 
 /** The Product Hunt launch page. The UTM parameters are the ones Product Hunt
  *  issued with the embed, kept so they can attribute the traffic back. */

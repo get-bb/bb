@@ -222,7 +222,6 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
       "Thread list queries may omit filters and pagination to include the corresponding unfiltered/default set.",
     fields: [
       "threadListQuerySchema.archived",
-      "threadListQuerySchema.childOrigin",
       "threadListQuerySchema.sectionId",
       "threadListQuerySchema.limit",
       "threadListQuerySchema.hasParent",
@@ -834,7 +833,6 @@ describe("server-contract canonical schemas", () => {
           parentThreadId: null,
           sourceThreadId: null,
           originKind: null,
-          childOrigin: null,
           originPluginId: null,
           visibility: "visible",
           archivedAt: null,
@@ -1247,7 +1245,7 @@ describe("server-contract canonical schemas", () => {
     ).toThrow();
   });
 
-  it("defaults startedOnBehalfOf, originKind, and childOrigin to null", () => {
+  it("defaults startedOnBehalfOf and originKind to null", () => {
     const parsed = createThreadRequestSchema.parse({
       projectId: "proj_123",
       providerId: "codex",
@@ -1261,7 +1259,6 @@ describe("server-contract canonical schemas", () => {
     });
     expect(parsed.startedOnBehalfOf).toBeNull();
     expect(parsed.originKind).toBeNull();
-    expect(parsed.childOrigin).toBeNull();
   });
 
   it("accepts sdk as a thread creation origin", () => {
@@ -1381,13 +1378,13 @@ describe("server-contract canonical schemas", () => {
         workspace: { type: "unmanaged", path: null },
       },
       startedOnBehalfOf: { initiator: "agent", senderThreadId: "thr_source" },
-      childOrigin: "fork",
+      originKind: "fork",
     });
     expect(parsed.startedOnBehalfOf).toEqual({
       initiator: "agent",
       senderThreadId: "thr_source",
     });
-    expect(parsed.childOrigin).toBe("fork");
+    expect(parsed.originKind).toBe("fork");
   });
 
   it("rejects startedOnBehalfOf without a sender thread or with initiator user", () => {
@@ -1425,7 +1422,7 @@ describe("server-contract canonical schemas", () => {
     ).toThrow();
   });
 
-  it("rejects an unknown childOrigin", () => {
+  it("rejects an unknown originKind", () => {
     expect(() =>
       createThreadRequestSchema.parse({
         projectId: "proj_123",
@@ -1437,7 +1434,7 @@ describe("server-contract canonical schemas", () => {
           hostId: "host_abc",
           workspace: { type: "unmanaged", path: null },
         },
-        childOrigin: "branch",
+        originKind: "branch",
       }),
     ).toThrow();
   });
@@ -1470,11 +1467,6 @@ describe("server-contract clients", () => {
       publicClient.threads[":id"].send.$url({ param: { id: "thr_123" } })
         .pathname,
     ).toBe("/api/v1/threads/thr_123/send");
-    expect(
-      publicClient.threads[":id"]["composer-bootstrap"].$url({
-        param: { id: "thr_123" },
-      }).pathname,
-    ).toBe("/api/v1/threads/thr_123/composer-bootstrap");
     expect(
       publicClient.threads[":id"]["queued-messages"].$url({
         param: { id: "thr_123" },

@@ -127,14 +127,18 @@ const originalPiBridgeSessionDir = process.env[PI_BRIDGE_SESSION_DIR_ENV];
 
 interface ControlledPiAgentSession {
   abort: ReturnType<typeof vi.fn>;
+  bindExtensions: ReturnType<typeof vi.fn>;
   compact: ReturnType<typeof vi.fn>;
   dispose: ReturnType<typeof vi.fn>;
   emit(event: AgentSessionEvent): void;
+  extensionRunner: { emit: ReturnType<typeof vi.fn> };
   finishAbort(): void;
   getActiveToolNames: ReturnType<typeof vi.fn>;
   getContextUsage: ReturnType<typeof vi.fn>;
+  hasExtensionHandlers: ReturnType<typeof vi.fn>;
   isStreaming: boolean;
   prompt: ReturnType<typeof vi.fn>;
+  requestExtensionShutdown(): void;
   sessionManager: { getLeafId: ReturnType<typeof vi.fn> };
   setActiveToolsByName: ReturnType<typeof vi.fn>;
   subscribe: ReturnType<typeof vi.fn>;
@@ -142,6 +146,7 @@ interface ControlledPiAgentSession {
 
 function createControlledPiAgentSession(): ControlledPiAgentSession {
   let finishAbort: (() => void) | undefined;
+  let extensionShutdownHandler: (() => void) | undefined;
   const listeners: ControlledPiAgentSessionListener[] = [];
   const abort = vi.fn(
     () =>
@@ -151,6 +156,11 @@ function createControlledPiAgentSession(): ControlledPiAgentSession {
   );
   return {
     abort,
+    bindExtensions: vi.fn(
+      async (bindings: { shutdownHandler?: () => void }) => {
+        extensionShutdownHandler = bindings.shutdownHandler;
+      },
+    ),
     compact: vi.fn(async () => undefined),
     dispose: vi.fn(),
     emit(event: AgentSessionEvent): void {
@@ -158,6 +168,7 @@ function createControlledPiAgentSession(): ControlledPiAgentSession {
         listener(event);
       }
     },
+    extensionRunner: { emit: vi.fn(async () => undefined) },
     finishAbort() {
       if (!finishAbort) {
         throw new Error("Expected Pi abort to be waiting");
@@ -167,8 +178,15 @@ function createControlledPiAgentSession(): ControlledPiAgentSession {
     },
     getActiveToolNames: vi.fn(() => []),
     getContextUsage: vi.fn(() => undefined),
+    hasExtensionHandlers: vi.fn(() => false),
     isStreaming: false,
     prompt: vi.fn(async () => {}),
+    requestExtensionShutdown(): void {
+      if (!extensionShutdownHandler) {
+        throw new Error("Expected Pi extension shutdown handler to be bound");
+      }
+      extensionShutdownHandler();
+    },
     sessionManager: { getLeafId: vi.fn(() => "pi-entry-checkpoint") },
     setActiveToolsByName: vi.fn(),
     subscribe: vi.fn((listener: ControlledPiAgentSessionListener) => {
@@ -652,10 +670,16 @@ describe("pi bridge", () => {
       expect(sessions[0]?.abort).toHaveBeenCalledTimes(1);
       expect(sessions[0]?.dispose).not.toHaveBeenCalled();
 
+      sessions[0]?.sessionManager.getLeafId.mockReturnValue(
+        "pi-entry-after-abort",
+      );
       sessions[0]?.finishAbort();
       await expect(bridge.waitForResponse(2)).resolves.toMatchObject({
         id: 2,
-        result: { ok: true },
+        result: {
+          ok: true,
+          providerCheckpointId: "pi-entry-after-abort",
+        },
       });
       expect(sessions[0]?.dispose).toHaveBeenCalledTimes(1);
     } finally {
@@ -765,6 +789,60 @@ describe("pi bridge", () => {
       await bridge.flushWork();
       sessions[1]?.finishAbort();
       await bridge.waitForResponse(14);
+    } finally {
+      bridge.restore();
+    }
+  });
+
+  it("shuts down extensions before disposing a replaced thread session", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const sessions: ControlledPiAgentSession[] = [];
+    mockCreateAgentSession.mockImplementation(async () => {
+      const session = createControlledPiAgentSession();
+      sessions.push(session);
+      return { session };
+    });
+
+    try {
+      bridge.sendRequest(15, "thread/start", {
+        cwd: "/tmp/worktree",
+        threadId: "thread-replaced",
+      });
+      await bridge.waitForResponse(15);
+      sessions[0]?.hasExtensionHandlers.mockReturnValue(true);
+
+      bridge.sendRequest(16, "thread/resume", {
+        cwd: "/tmp/worktree",
+        threadId: "thread-replaced",
+      });
+      await bridge.flushWork();
+
+      expect(sessions).toHaveLength(1);
+      expect(sessions[0]?.abort).toHaveBeenCalledOnce();
+      expect(sessions[0]?.extensionRunner.emit).not.toHaveBeenCalled();
+      expect(sessions[0]?.dispose).not.toHaveBeenCalled();
+
+      sessions[0]?.finishAbort();
+      await bridge.waitForResponse(16);
+
+      expect(sessions).toHaveLength(2);
+      expect(sessions[0]?.extensionRunner.emit).toHaveBeenCalledWith({
+        type: "session_shutdown",
+        reason: "quit",
+      });
+      expect(sessions[0]?.dispose).toHaveBeenCalledOnce();
+      expect(
+        sessions[0]?.extensionRunner.emit.mock.invocationCallOrder[0],
+      ).toBeLessThan(sessions[0]?.dispose.mock.invocationCallOrder[0] ?? 0);
+
+      sessions[0]?.requestExtensionShutdown();
+      await bridge.flushWork();
+      expect(sessions[1]?.abort).not.toHaveBeenCalled();
+
+      bridge.sendRequest(17, "thread/stop", { threadId: "thread-replaced" });
+      await bridge.flushWork();
+      sessions[1]?.finishAbort();
+      await bridge.waitForResponse(17);
     } finally {
       bridge.restore();
     }

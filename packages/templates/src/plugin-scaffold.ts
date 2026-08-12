@@ -477,6 +477,12 @@ ${componentsSection}
   \`.webp\` files.
 - \`engines.bb\` — supported bb app version range.
 - \`engines.bbPluginSdk\` — supported plugin SDK range (scaffold: \`^${PLUGIN_SDK_VERSION}\`).
+- \`dependencies\` — every package your source imports that BB does not provide.
+  \`bb plugin build\` inlines them into \`dist/\`, and git installs resolve this
+  list alone, so a build-required package here rather than in
+  \`devDependencies\` is what keeps your plugin installable. \`devDependencies\`
+  is for types and tooling only (BB shims React, the portal primitives, and
+  \`@bb/plugin-sdk\` at runtime — never bundle them).
 
 Run \`bb plugin build\` before publishing git/npm installs. It writes
 \`dist/server.js\` + \`server.meta.json\` (and, with \`bb.app\`, \`app.js\` /
@@ -486,9 +492,11 @@ Run \`bb plugin build\` before publishing git/npm installs. It writes
 
 ## Install
 
-From this directory:
+From this directory (\`bb plugin new\` already ran the install; a fresh clone
+needs it):
 
 \`\`\`
+npm install
 bb plugin install .
 \`\`\`
 
@@ -561,27 +569,37 @@ export async function scaffoldPlugin(args: ScaffoldPluginArgs): Promise<void> {
           server: "./server.ts",
           ...(app ? { app: "./app.tsx" } : {}),
         },
+        // A package belongs here when generated source imports it AND the
+        // build neither externalizes nor shims it — those imports are inlined
+        // into dist/ by esbuild, and load from node_modules for path: installs
+        // (which run server.ts from source). They must survive an install that
+        // omits dev deps: the packaged CLI runs with NODE_ENV=production, and
+        // the server installs git: plugins with an explicit `--omit=dev`.
+        // - zod: `server.ts` imports it and buildPluginServer externalizes only
+        //   @bb/plugin-sdk and better-sqlite3, so it is bundled, not provided.
+        // - starter deps: the vendored components' real runtime deps, bundled
+        //   into dist/app.js (consumers get the prebuilt dist/ and need none).
+        dependencies: {
+          ...(app ? PLUGIN_STARTER_DEPENDENCIES : {}),
+          zod: "^4.3.6",
+        },
         // Typecheck-only. The BbPluginApi/SDK types come from the bundled
         // `.d.ts` in `types/` (tsconfig maps @bb/plugin-sdk to them), so the
-        // package is not needed for normal plugin source. These deps supply the
-        // real npm types the bundle references (zod/hono/better-sqlite3 and
-        // the root contract's React types); BB provides them all at runtime, and
-        // `bb plugin build` never bundles them.
-        // Real runtime deps of the vendored starter components — esbuild
-        // bundles these into dist/app.js, so they must be installed to
-        // build (`npm install` once; authors need npm, consumers get
-        // prebuilt dist/).
-        ...(app ? { dependencies: PLUGIN_STARTER_DEPENDENCIES } : {}),
+        // package is not needed for normal plugin source. These supply the real
+        // npm types those declarations reference (hono/better-sqlite3 and the
+        // root contract's React types) for packages generated source does not
+        // import: BB provides them at runtime and the bundle never inlines
+        // them. An author who imports one directly must promote it above.
         devDependencies: {
           "@types/better-sqlite3": "^7.6.12",
           "@types/node": "^22.0.0",
           // The root SDK declaration also exposes frontend contract types, so
           // React's declarations are required for headless plugin typechecks.
           "@types/react": "^19.0.0",
+          ...(app ? { "@types/react-dom": "^19.0.0" } : {}),
           "better-sqlite3": "^12.0.0",
           hono: "^4.11.9",
           typescript: "^5.7.0",
-          zod: "^4.3.6",
           // Runtime-shimmed by BB (never bundled) — types only.
           ...(app ? PLUGIN_STARTER_TYPE_DEPENDENCIES : {}),
         },

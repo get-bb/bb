@@ -178,7 +178,7 @@ export function createThreadRecord(
       sectionId,
       parentThreadId: args.request.parentThreadId ?? null,
       sourceThreadId: args.request.sourceThreadId ?? null,
-      originKind: args.request.originKind ?? args.request.childOrigin,
+      originKind: args.request.originKind,
       originPluginId: args.request.originPluginId ?? null,
       visibility: args.request.visibility,
       status: args.status ?? "starting",

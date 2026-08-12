@@ -34,8 +34,10 @@ export interface ResolveRootComposeEffectiveEnvironmentValueArgs {
   reuseThreadOptionsLoading: boolean;
 }
 
-export const PROJECT_SOURCE_WORKTREE_DISABLED_REASON =
-  "Project source is not a git repository";
+const PROJECT_SOURCE_NOT_GIT_WORKTREE_DISABLED_REASON =
+  "New worktrees require a Git repository with at least one commit";
+const PROJECT_SOURCE_NO_COMMITS_WORKTREE_DISABLED_REASON =
+  "Project source has no commits. Create an initial commit before creating a worktree";
 
 function isWorktreeWithEnv(thread: ThreadListEntry): boolean {
   if (thread.environmentId === null) return false;
@@ -107,10 +109,19 @@ export function buildReuseThreadOptions(
   return options;
 }
 
-export function isProjectSourceWorktreeUnavailable(
+export function resolveProjectSourceWorktreeDisabledReason(
   data: ProjectBranchesResponse | undefined,
-): boolean {
-  return data?.checkout.kind === "unknown";
+): string | null {
+  switch (data?.checkout.kind) {
+    case "unknown":
+      return PROJECT_SOURCE_NOT_GIT_WORKTREE_DISABLED_REASON;
+    case "unborn":
+      return PROJECT_SOURCE_NO_COMMITS_WORKTREE_DISABLED_REASON;
+    case "branch":
+    case "detached":
+    case undefined:
+      return null;
+  }
 }
 
 export function resolveRootComposeEffectiveEnvironmentValue({

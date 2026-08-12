@@ -914,14 +914,6 @@ const browserReconcileDeps: PluginFrontendReconcileDeps = {
   diagnosticsChanged: publishBrowserDiagnostics,
 };
 
-/** Load state of every plugin frontend this page load, keyed by plugin id. */
-export function getPluginFrontendRecords(): ReadonlyMap<
-  string,
-  PluginFrontendRecord
-> {
-  return state.records;
-}
-
 /** Current per-window lifecycle diagnostics for plugin frontend generations. */
 export function getPluginFrontendDiagnostics(): ReadonlyMap<
   string,

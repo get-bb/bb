@@ -65,7 +65,11 @@ describe("scaffoldPlugin bundled types", () => {
     });
     expect(pkg.devDependencies["@bb/plugin-sdk"]).toBeUndefined();
     expect(pkg.devDependencies["@types/react"]).toBeDefined();
-    expect(pkg.devDependencies.zod).toBeDefined();
+    // server.ts imports zod and the build inlines it, so an install that omits
+    // dev deps still has to produce a buildable plugin (see
+    // plugin-scaffold-dependencies.test.ts).
+    expect(pkg.dependencies.zod).toBeDefined();
+    expect(pkg.devDependencies.zod).toBeUndefined();
 
     // No app entry ⇒ no app types.
     await expect(

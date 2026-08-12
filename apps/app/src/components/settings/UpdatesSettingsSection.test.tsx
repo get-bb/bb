@@ -126,6 +126,21 @@ function makeUpdateIssue(args: {
   };
 }
 
+function makeManualUpdateIssue(args: {
+  provider: "codex" | "claudeCode";
+}): ProviderCliIssue {
+  const issue = makeUpdateIssue(args);
+  return {
+    ...issue,
+    action: null,
+    status: {
+      ...issue.status,
+      installSource: "external",
+      installAction: null,
+    },
+  };
+}
+
 function makeMachine(args: {
   host: Host;
   issues?: ProviderCliIssue[];
@@ -515,5 +530,29 @@ describe("UpdatesSettingsSection", () => {
       hostId: "host_2",
       issue: homelabIssue,
     });
+  });
+
+  it("shows an external Claude installation as a manual update without an update button", () => {
+    useDesktopUpdateInfoMock.mockReturnValue({
+      desktopApi: null,
+      desktopInfo: null,
+      isDesktop: false,
+    });
+    const host = makeHost({ id: "host_1", name: "workstation" });
+    const issue = makeManualUpdateIssue({ provider: "claudeCode" });
+    useUpdateInventoryMock.mockReturnValue(
+      makeInventory({
+        machines: [makeMachine({ host, issues: [issue] })],
+        actionableCount: 1,
+        hasAttention: true,
+      }),
+    );
+
+    renderSection();
+
+    expect(screen.getByText("Update manually")).toBeDefined();
+    expect(screen.getByText("1 update needs manual action")).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Update" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Update all/ })).toBeNull();
   });
 });

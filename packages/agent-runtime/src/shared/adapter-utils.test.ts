@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   buildEditDiff,
+  buildShellEnvironmentPolicyConfig,
   diffCumulativeText,
+  extractEnvOverrides,
   extractResultText,
   normalizeProviderCommandOutput,
 } from "./adapter-utils.js";
@@ -20,6 +22,14 @@ describe("adapter-utils", () => {
     }
     return { added, removed };
   }
+
+  it("round-trips shell environment policy overrides", () => {
+    expect(
+      extractEnvOverrides(
+        buildShellEnvironmentPolicyConfig({ API_URL: "https://example.com" }),
+      ),
+    ).toEqual({ API_URL: "https://example.com" });
+  });
 
   it("extractResultText returns an empty string for nullish content", () => {
     expect(extractResultText(null)).toBe("");

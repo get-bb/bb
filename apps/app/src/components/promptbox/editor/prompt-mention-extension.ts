@@ -4,7 +4,6 @@ import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { Plugin } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { ReactNodeViewRenderer } from "@tiptap/react";
-import type { PromptMentionResource } from "@bb/domain";
 import { PromptMentionPillNodeView } from "./PromptMentionPillNodeView";
 import { parsePromptEditorMentionAttrs } from "./prompt-editor-serialization";
 import {
@@ -32,12 +31,6 @@ function renderMentionLabel(attrs: ParsedMentionAttrs): string {
 
 function renderMentionTitle(attrs: ParsedMentionAttrs): string {
   return attrs ? promptMentionTooltipLabel(attrs.resource) : "@mention";
-}
-
-export function promptMentionArgumentHintPlaceholder(
-  _resource: PromptMentionResource | null,
-): null {
-  return null;
 }
 
 export const PromptMentionExtension = Mention.extend({

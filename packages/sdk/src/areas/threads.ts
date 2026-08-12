@@ -12,6 +12,7 @@ import {
 import { threadTabsResponseSchema } from "@bb/server-contract";
 import type {
   CreateQueuedMessageRequest,
+  ContinueAfterProviderRateLimitRequest,
   ContinueAfterProviderRateLimitResponse,
   CreateThreadRequest,
   EditMessageRequest,
@@ -152,9 +153,8 @@ export type ThreadTimelineTurnSummaryDetailsResult =
 
 export interface ThreadSpawnBaseArgs extends Omit<
   CreateThreadRequest,
-  "childOrigin" | "input" | "origin" | "originKind" | "startedOnBehalfOf"
+  "input" | "origin" | "originKind" | "startedOnBehalfOf"
 > {
-  childOrigin?: CreateThreadRequest["childOrigin"];
   origin?: CreateThreadRequest["origin"];
   originKind?: CreateThreadRequest["originKind"];
   startedOnBehalfOf?: CreateThreadRequest["startedOnBehalfOf"];
@@ -203,6 +203,7 @@ export interface ThreadActionArgs {
 
 export interface ThreadContinueAfterRateLimitArgs extends ThreadActionArgs {
   failedRequestId: string;
+  mode: NonNullable<ContinueAfterProviderRateLimitRequest["mode"]>;
 }
 
 export interface ThreadStatusArgs extends ThreadActionArgs {
@@ -546,7 +547,6 @@ function spawnInput(input: ThreadSpawnArgs): PromptInput[] {
 
 function spawnJson(args: ThreadSpawnArgs): CreateThreadRequest {
   const {
-    childOrigin,
     input: _input,
     origin,
     originKind,
@@ -560,7 +560,6 @@ function spawnJson(args: ThreadSpawnArgs): CreateThreadRequest {
     origin: origin ?? "sdk",
     startedOnBehalfOf: startedOnBehalfOf ?? null,
     originKind: originKind ?? null,
-    childOrigin: childOrigin ?? null,
   };
 }
 
@@ -993,7 +992,10 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       return transport.readJson(
         transport.api.v1.threads[":id"]["rate-limit-recovery"].continue.$post({
           param: { id: input.threadId },
-          json: { failedRequestId: input.failedRequestId },
+          json: {
+            failedRequestId: input.failedRequestId,
+            mode: input.mode,
+          },
         }),
       );
     },

@@ -84,44 +84,6 @@ export function supportsWorkspaceOpenTargetCapability(
   return args.target.capabilities[args.capability] ?? false;
 }
 
-export function isWorkspaceDirectoryOpenTarget(
-  target: WorkspaceOpenTarget,
-): boolean {
-  return supportsWorkspaceOpenTargetCapability({
-    capability: "openDirectory",
-    target,
-  });
-}
-
-export function isWorkspaceFileOpenTarget(
-  target: WorkspaceOpenTarget,
-): boolean {
-  return supportsWorkspaceOpenTargetCapability({
-    capability: "openFile",
-    target,
-  });
-}
-
-export function isRemoteSshWorkspaceDirectoryOpenTarget(
-  target: WorkspaceOpenTarget,
-): boolean {
-  return supportsWorkspaceOpenTargetCapability({
-    capability: "openDirectory",
-    contextKind: "remote-ssh",
-    target,
-  });
-}
-
-export function isRemoteSshWorkspaceFileOpenTarget(
-  target: WorkspaceOpenTarget,
-): boolean {
-  return supportsWorkspaceOpenTargetCapability({
-    capability: "openFile",
-    contextKind: "remote-ssh",
-    target,
-  });
-}
-
 function resolveFallbackWorkspaceOpenTarget(
   capability: WorkspaceOpenTargetCapability,
   contextKind: WorkspaceOpenTargetContextKind,

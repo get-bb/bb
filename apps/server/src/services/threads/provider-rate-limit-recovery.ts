@@ -212,7 +212,13 @@ function inspectRecovery(args: InspectRecoveryArgs): RecoveryInspection {
         event.rateLimits.providerId === args.thread.providerId,
     )
     .at(-1)?.rateLimits;
-  if (!turnRateLimits || turnRateLimits.status !== "blocked") {
+  const blockedRateLimits =
+    turnRateLimits?.status === "blocked"
+      ? turnRateLimits
+      : observedRateLimits?.status === "blocked"
+        ? observedRateLimits
+        : null;
+  if (blockedRateLimits === null) {
     return emptyInspection(args, "no-rate-limit-state", observedRateLimits);
   }
 
@@ -230,20 +236,20 @@ function inspectRecovery(args: InspectRecoveryArgs): RecoveryInspection {
       rateLimitErrors.length > 0
         ? "provider-will-retry"
         : "no-terminal-rate-limit-error",
-      turnRateLimits,
+      blockedRateLimits,
     );
   }
   const execution = resolvedThreadExecutionOptionsSchema.safeParse(
     request.execution,
   );
   if (!execution.success) {
-    return emptyInspection(args, "execution-unavailable", turnRateLimits);
+    return emptyInspection(args, "execution-unavailable", blockedRateLimits);
   }
   const failedRequestId = clientTurnRequestIdSchema.parse(request.requestId);
   const currentBlockedRateLimits =
     observedRateLimits?.status === "blocked"
       ? observedRateLimits
-      : turnRateLimits;
+      : blockedRateLimits;
   const resetsAtMs = recoveryResetAtMs(currentBlockedRateLimits);
   const automatic =
     currentBlockedRateLimits.kind === "subscription-window" &&
@@ -262,7 +268,7 @@ function inspectRecovery(args: InspectRecoveryArgs): RecoveryInspection {
       reason: automatic ? "eligible" : "manual-only",
       scopeKey: scopeKey(args.environment, args.thread),
       hostId: args.environment.hostId,
-      rateLimits: observedRateLimits ?? turnRateLimits,
+      rateLimits: observedRateLimits ?? blockedRateLimits,
       candidate: {
         automatic,
         failedRequestId,
@@ -295,6 +301,7 @@ export async function continueThreadAfterProviderRateLimit(
   args: {
     environment: Environment;
     failedRequestId: ClientTurnRequestId;
+    mode: "automatic" | "manual";
     thread: Thread;
   },
 ): Promise<ContinueAfterProviderRateLimitResponse> {
@@ -318,7 +325,8 @@ export async function continueThreadAfterProviderRateLimit(
   });
   if (
     !initial.candidate ||
-    initial.candidate.failedRequestId !== args.failedRequestId
+    initial.candidate.failedRequestId !== args.failedRequestId ||
+    (args.mode === "automatic" && !initial.candidate.automatic)
   ) {
     throw unavailableRecoveryError(initial.status);
   }
@@ -364,7 +372,8 @@ export async function continueThreadAfterProviderRateLimit(
       });
       if (
         !current.candidate ||
-        current.candidate.failedRequestId !== args.failedRequestId
+        current.candidate.failedRequestId !== args.failedRequestId ||
+        (args.mode === "automatic" && !current.candidate.automatic)
       ) {
         throw unavailableRecoveryError(current.status);
       }
@@ -392,10 +401,15 @@ export async function continueThreadAfterProviderRateLimit(
           operation: "provider_rate_limit_recovery",
           operationId: `provider-rate-limit-recovery:${args.failedRequestId}`,
           status: "completed",
-          message: "Continued after provider rate limit reset",
+          message:
+            args.mode === "automatic"
+              ? "Continued automatically after provider rate limit reset"
+              : "Provider rate limit retry requested manually",
           metadata: {
+            mode: args.mode,
             failedRequestId: args.failedRequestId,
             continuationRequestId: requestId,
+            resetsAtMs: current.candidate.resetsAtMs,
           },
         },
       });

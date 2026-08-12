@@ -15,7 +15,7 @@ import {
 
 type PolicyTestThread = Pick<
   Thread,
-  "childOrigin" | "originKind" | "parentThreadId" | "projectId" | "providerId"
+  "originKind" | "parentThreadId" | "projectId" | "providerId"
 >;
 type PolicyTestParentThread = Pick<
   Thread,
@@ -31,7 +31,6 @@ function makeThread(
   overrides: Partial<PolicyTestThread> = {},
 ): PolicyTestThread {
   return {
-    childOrigin: null,
     originKind: null,
     parentThreadId: null,
     projectId: "proj-1",

@@ -48,8 +48,14 @@ The manifest is `package.json`:
   node_modules. `bb.app` (optional) — frontend entry compiled by
   `bb plugin build` into `dist/app.js` + `app.css` + `app.meta.json`; path
   and git installs build it automatically at install time. Git installs also
-  run `npm install` first (so a git plugin may use third-party packages) and
-  keep node_modules, since bundling cannot inline data files read at runtime.
+  run `npm install --omit=dev` first (so a git plugin may use third-party
+  packages) and keep node_modules, since bundling cannot inline data files read
+  at runtime. So every package your source imports that bb does not shim
+  belongs in `dependencies`: a build-required package left in
+  `devDependencies` makes the plugin uninstallable from git, and unbuildable
+  after any install that omits dev deps — including the packaged CLI's own,
+  which runs npm under `NODE_ENV=production`. `devDependencies` is for types
+  and tooling only.
   Installing or updating a git plugin needs `npm` on PATH; checking for
   updates does not, because a check reads the manifest and never builds. Path
   installs build from dependencies you have already installed.
@@ -159,8 +165,12 @@ or Git repository:
 ```sh
 bb plugin install ./bb-plugin-notes
 bb plugin install npm:bb-plugin-notes@^1.0.0
+bb plugin install https://github.com/acme/bb-plugin-notes
 bb plugin install git:https://github.com/acme/bb-plugin-notes.git@main
 ```
+
+A bare HTTP(S) repository URL tracks its default branch. Use the `git:` form
+with an explicit branch, tag, or commit when that tracking intent matters.
 
 BB has one maintained set of official plugins; users cannot add third-party
 catalogs. Official-plugin inclusion is a BB release decision, not part of the
@@ -835,6 +845,7 @@ export default definePluginApp((app) => {
     icon: "Columns",
     path: "board",
     component: Board,
+    experimental_sidebarAccessory: OpenIssueCount,
   });
   app.slots.threadPanelAction({
     id: "issue",
@@ -842,6 +853,13 @@ export default definePluginApp((app) => {
     component: IssuePanel,
     run: async ({ threadId, openPanel }) =>
       openPanel({ title: `Issue for ${threadId}` }),
+  });
+  app.slots.experimental_newThreadPanelAction({
+    id: "template",
+    title: "Apply template",
+    component: TemplatePanel,
+    run: ({ projectId, openPanel }) =>
+      openPanel({ title: `Template for ${projectId ?? "projectless"}` }),
   });
   app.composer.customize({
     id: "prompt-tools",
@@ -1087,20 +1105,32 @@ Slot props contracts (versioned, additive-only):
   `useBbNavigate().toPluginPanel(path, { subPath, replace? })` — browser
   back/forward then walks panel-internal history (prefer this over hash
   routing).
-  Registration: `{ id, title, icon, path, component, headerContent? }`.
+  Registration:
+  `{ id, title, icon, path, component, experimental_sidebarAccessory?, headerContent? }`.
+  `experimental_sidebarAccessory` is a no-props, presentational component at
+  the trailing edge of the sidebar row. It can own SDK hooks for a live count
+  or short status without lifting state into the host sidebar. The host does
+  not mount it on compact viewports; on wider viewports it clips the component
+  to one line, 4rem wide by 1.25rem high, and ellipsizes ordinary long text.
+  It shares the trailing action column and fades out for the host options
+  button on row hover or keyboard focus without unmounting. Do not render
+  controls or portalled content there. A throw hides only the accessory.
+  Experimental: see `docs/api_to_audit.md`.
   The host renders your compact plugin icon + `title` into the SHARED app
   header (the same title bar as Settings pages) with your optional
   `headerContent` component as the header actions on the right — so do NOT
   repeat the title inside your component. The component owns the full-bleed
   body below with zero host padding; add your own padding and scrolling when
   the design needs them. `headerContent` is plugin code inside the host title bar and is
-  contained separately: a throw hides the accessory without breaking the
+  contained separately: a throw hides the header content without breaking the
   title bar or the panel body. For a classic page, use an outer scroll region
   with `p-4 md:p-5` and wrap its content in a
   `mx-auto w-full max-w-3xl space-y-4` div.
 - `threadPanelAction` → an entry in the thread right panel's new-tab
   Actions list (next to "Start side chat" / "Start terminal"), labeled
-  `title` with your compact plugin icon. Registration:
+  `title` with your compact plugin icon. This slot is only offered for an
+  existing thread; it never renders on the root New thread screen, and its
+  `threadId` stays required. Registration:
   `{ id, title, icon?, component, layout?, run? }`. Activating it calls
   `run({ threadId, openPanel })` — do anything there (rpc, toast), and/or
   call `openPanel({ title?, params? })` to open a closable panel tab
@@ -1117,6 +1147,15 @@ Slot props contracts (versioned, additive-only):
   document-like content; `"flush"` gives it the full tab area (no padding,
   definite height, no host scrolling) — right for app-like content that
   owns its layout, such as `ThreadChat`.
+- `experimental_newThreadPanelAction` → the root New thread counterpart to
+  `threadPanelAction`. It appears in that screen's right-panel Actions list
+  and never appears beside an existing thread. Registration has the same
+  `{ id, title, icon?, component, layout?, run? }` shape, but activating it
+  calls `run({ projectId, openPanel })` and its component receives
+  `{ projectId: string | null, params: JsonValue | null }`; `projectId` is
+  null in projectless compose. Panel opening, JSON params, layout, persistence,
+  deduplication, and error containment otherwise match `threadPanelAction`.
+  Experimental: see `docs/api_to_audit.md`.
 - Removed pre-1.0: `composerAccessory` was the legacy composer footer. Migrate
   controls to `app.composer.customize({ actions })` or `plusMenu`, larger
   content to `banners`, and legacy `{ projectId, threadId }` prop reads to

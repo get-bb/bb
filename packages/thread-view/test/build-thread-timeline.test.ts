@@ -23,6 +23,7 @@ import type {
 } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
 import {
+  buildTimelineRowTitle,
   buildThreadTimelineFromEvents,
   extractThreadTimelineActivePlanTurn,
   type ThreadEventWithMeta,
@@ -50,6 +51,7 @@ interface FileChangeItemEventArgs {
 }
 
 interface ToolCallItemEventArgs {
+  parentToolCallId?: string;
   statusLabels?: { pending: string; completed: string };
   itemId?: string;
   result?: string;
@@ -58,6 +60,13 @@ interface ToolCallItemEventArgs {
   tool: string;
   toolArgs?: JsonObject;
   type: "item/completed" | "item/started";
+}
+
+interface LowercaseStructuredToolCase {
+  expectedIntent: JsonObject;
+  expectedTitle: string;
+  tool: string;
+  toolArgs: JsonObject;
 }
 
 interface ImageViewItemEventArgs {
@@ -283,6 +292,7 @@ function fileChangeItemEvent({
 }
 
 function toolCallItemEvent({
+  parentToolCallId,
   statusLabels,
   itemId = "tool-call-1",
   result,
@@ -303,6 +313,7 @@ function toolCallItemEvent({
         id: itemId,
         tool,
         ...(toolArgs ? { arguments: toolArgs } : {}),
+        ...(parentToolCallId ? { parentToolCallId } : {}),
         ...(statusLabels ? { statusLabels } : {}),
         status: status ?? (type === "item/completed" ? "completed" : "pending"),
         ...(result ? { result } : {}),
@@ -704,6 +715,31 @@ function buildTimelineRowsWithAcceptedContext(
   return buildThreadTimelineFromEvents({
     acceptedClientRequestContext: {
       acceptedClientRequestEvents,
+      rejectedClientRequestEvents: [],
+    },
+    contextWindowEvents: [],
+    events,
+    options: {
+      includeDebugRawEvents: false,
+      includeNestedRows: true,
+      includeProviderUnhandledOperations: false,
+      isLatestPage: true,
+      threadStatus: "idle",
+      threadName: "",
+      turnMessageDetail: "full",
+      workspaceRoot: null,
+    },
+  }).rows;
+}
+
+function buildTimelineRowsWithRejectedContext(
+  events: ThreadEventWithMeta[],
+  rejectedClientRequestEvents: ThreadEventWithMeta[],
+): TimelineRow[] {
+  return buildThreadTimelineFromEvents({
+    acceptedClientRequestContext: {
+      acceptedClientRequestEvents: [],
+      rejectedClientRequestEvents,
     },
     contextWindowEvents: [],
     events,
@@ -912,6 +948,75 @@ function fileChangeRowIdByPath(
 }
 
 describe("buildThreadTimelineFromEvents", () => {
+  const lowercaseStructuredToolCases: LowercaseStructuredToolCase[] = [
+    {
+      expectedIntent: {
+        type: "read",
+        name: "read",
+        path: "src/app.ts",
+      },
+      expectedTitle: "Read src/app.ts",
+      tool: "read",
+      toolArgs: { path: "src/app.ts", offset: 1, limit: 20 },
+    },
+    {
+      expectedIntent: {
+        type: "search",
+        query: "TODO",
+        path: "src",
+      },
+      expectedTitle: "Searched for TODO in src",
+      tool: "grep",
+      toolArgs: { pattern: "TODO", path: "src" },
+    },
+    {
+      expectedIntent: {
+        type: "list_files",
+        path: "src/**/*.ts",
+      },
+      expectedTitle: "Listed files in src/**/*.ts",
+      tool: "glob",
+      toolArgs: { pattern: "src/**/*.ts" },
+    },
+  ];
+
+  it.each(lowercaseStructuredToolCases)(
+    "humanizes Pi's lowercase $tool tool calls",
+    ({ expectedIntent, expectedTitle, tool, toolArgs }) => {
+      const rows = buildTimelineRows([
+        turnStartedEvent({ seq: 1 }),
+        toolCallItemEvent({
+          seq: 2,
+          tool,
+          toolArgs,
+          type: "item/started",
+        }),
+        toolCallItemEvent({
+          result: "ok",
+          seq: 3,
+          tool,
+          toolArgs,
+          type: "item/completed",
+        }),
+      ]);
+      const [row] = collectToolRows(rows);
+
+      expect(row).toBeDefined();
+      if (!row) {
+        throw new Error(`Expected a projected ${tool} tool row`);
+      }
+      expect(row.activityIntents).toEqual([
+        expect.objectContaining(expectedIntent),
+      ]);
+      expect(
+        buildTimelineRowTitle(row, {
+          summaryStyle: "bundle",
+          workStyle: "default",
+        }).plain,
+      ).toBe(expectedTitle);
+    },
+  );
+
   it("preserves server-enriched plugin status labels on a tool row", () => {
     const statusLabels = {
       pending: "Reading project overview",
@@ -1174,6 +1279,52 @@ describe("buildThreadTimelineFromEvents", () => {
     );
   });
 
+  it("keeps nested Claude agents out of root active-work rows", () => {
+    const events = [
+      turnStartedEvent({ seq: 1 }),
+      toolCallItemEvent({
+        seq: 2,
+        itemId: "root-agent-call",
+        tool: "Agent",
+        type: "item/started",
+      }),
+      toolCallItemEvent({
+        seq: 3,
+        itemId: "nested-agent-call",
+        parentToolCallId: "root-agent-call",
+        tool: "Agent",
+        type: "item/started",
+      }),
+      backgroundTaskStartedEvent({
+        seq: 4,
+        id: "task:nested-agent",
+        taskType: "local_agent",
+        description: "Nested Claude agent still running",
+        parentToolCallId: "nested-agent-call",
+      }),
+      turnCompletedEvent({ seq: 5 }),
+    ];
+
+    const timeline = buildThreadTimelineFromEvents({
+      acceptedClientRequestContext: EMPTY_ACCEPTED_CLIENT_REQUEST_CONTEXT,
+      contextWindowEvents: [],
+      events,
+      options: {
+        includeDebugRawEvents: false,
+        includeNestedRows: true,
+        includeProviderUnhandledOperations: false,
+        isLatestPage: true,
+        providerId: "claude-code",
+        threadStatus: "idle",
+        threadName: "",
+        turnMessageDetail: "full",
+        workspaceRoot: null,
+      },
+    });
+
+    expect(timeline.activeBackgroundCommands).toEqual([]);
+  });
+
   it("does not project thread-start provider-session markers as provisioning rows", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
     const providerSessionMarker = event.threadProvisioning({
@@ -1421,6 +1572,29 @@ describe("buildThreadTimelineFromEvents", () => {
     expect(
       rows.filter((row) => row.kind === "conversation" && row.role === "user"),
     ).toHaveLength(0);
+  });
+
+  it("uses rejected context to render a failed steer across a page boundary", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const steerRequest = event.clientTurnRequested({
+      target: { kind: "steer", expectedTurnId: "turn-1" },
+      text: "Late steer",
+    });
+    const rejectedContext = fromRows([
+      event.clientTurnRejected({ requestId: steerRequest.data.requestId }),
+    ]);
+
+    const rows = buildTimelineRowsWithRejectedContext(
+      fromRows([event.turnStarted({ turnId: "turn-1" }), steerRequest]),
+      rejectedContext,
+    );
+
+    expect(
+      rows.find((row) => row.kind === "conversation" && row.role === "user"),
+    ).toMatchObject({
+      text: "Late steer",
+      turnRequest: { status: "rejected" },
+    });
   });
 
   it("uses accepted context to classify stale steers as messages when the accepted turn is visible", () => {

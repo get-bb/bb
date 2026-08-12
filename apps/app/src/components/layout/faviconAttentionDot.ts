@@ -1,14 +1,15 @@
 import type { ThreadListEntry } from "@bb/domain";
 import { isSidebarProjectThread } from "@/components/sidebar/projectThreadGroups";
-import {
-  isThreadRead,
-  type ThreadReadState,
-} from "@/lib/thread-read-state";
+import { isThreadRead, type ThreadReadState } from "@/lib/thread-read-state";
 
 type FaviconSidebarThread = ThreadReadState &
   Pick<
     ThreadListEntry,
-    "originKind" | "childOrigin" | "hasPendingInteraction" | "visibility"
+    | "hasPendingInteraction"
+    | "id"
+    | "originKind"
+    | "parentThreadId"
+    | "visibility"
   >;
 
 interface ShouldShowFaviconAttentionDotArgs {
@@ -16,6 +17,7 @@ interface ShouldShowFaviconAttentionDotArgs {
   // Sourced from the thread's own pending-interactions query, since the sidebar
   // list can't see archived threads or side chats.
   currentThreadHasPendingInteraction: boolean;
+  currentThreadId?: string | null;
   isThreadView: boolean;
   sidebarThreads: readonly FaviconSidebarThread[];
   thread: ThreadReadState | null | undefined;
@@ -34,15 +36,33 @@ function isPendingSidebarThread(thread: FaviconSidebarThread): boolean {
   return isSidebarProjectThread(thread) && thread.hasPendingInteraction;
 }
 
+function isPendingDelegatedChildOfCurrentThread(
+  thread: FaviconSidebarThread,
+  currentThreadId: string,
+): boolean {
+  return (
+    thread.parentThreadId === currentThreadId &&
+    thread.originKind === null &&
+    thread.hasPendingInteraction
+  );
+}
+
 export function shouldShowFaviconAttentionDot({
   currentThreadHasPendingInteraction,
+  currentThreadId,
   isThreadView,
   sidebarThreads,
   thread,
 }: ShouldShowFaviconAttentionDotArgs): boolean {
   if (isThreadView) {
+    const childNeedsAttention =
+      currentThreadId != null &&
+      sidebarThreads.some((candidate) =>
+        isPendingDelegatedChildOfCurrentThread(candidate, currentThreadId),
+      );
     return (
       currentThreadHasPendingInteraction ||
+      childNeedsAttention ||
       Boolean(thread && !isThreadRead(thread))
     );
   }

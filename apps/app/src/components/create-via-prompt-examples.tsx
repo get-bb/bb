@@ -5,12 +5,11 @@ import {
 import type { IconName } from "@bb/shared-ui/icon";
 import {
   CREATE_AUTOMATION_PROMPT,
+  CREATE_PLUGIN_PROMPT,
   CREATE_SKILL_PROMPT,
-} from "@/lib/automation-prompt";
+} from "@/lib/create-resource-prompts";
 
 export type CreateViaPromptKind = "skill" | "plugin" | "automation";
-
-export const CREATE_PLUGIN_PROMPT = "Create a new bb plugin that ";
 
 interface Example {
   label: string;
@@ -145,47 +144,6 @@ export function getCreateExamples(kind: CreateViaPromptKind): {
       prompt: `${config.prefix}${example.description}.`,
     })),
   };
-}
-
-export interface CreateViaPromptExamplesProps {
-  kind: CreateViaPromptKind;
-  /** Opens the composer seeded with the given full prompt. */
-  onCreate: (prompt: string) => void;
-}
-
-/**
- * Empty-state examples that seed the create-via-prompt composer.
- */
-export function CreateViaPromptExamples({
-  kind,
-  onCreate,
-}: CreateViaPromptExamplesProps) {
-  const { explainer, examples } = getCreateExamples(kind);
-  return (
-    <div>
-      <p className="max-w-prose text-sm text-muted-foreground">{explainer}</p>
-      <p className="mt-3 text-xs font-medium text-subtle-foreground">
-        Start from an example
-      </p>
-      <div className="mt-1.5 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-        {examples.map((example) => (
-          <button
-            key={example.label}
-            type="button"
-            onClick={() => onCreate(example.prompt)}
-            className="rounded-lg border border-border bg-background p-3 text-left transition-colors hover:border-file-accent/50 hover:bg-state-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-          >
-            <span className="block text-sm font-medium text-foreground">
-              {example.label}
-            </span>
-            <span className="mt-1 block text-xs leading-snug text-subtle-foreground">
-              {example.description}
-            </span>
-          </button>
-        ))}
-      </div>
-    </div>
-  );
 }
 
 export interface CreateWithTemplatesButtonProps {

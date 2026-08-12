@@ -13,7 +13,7 @@ import {
   prependOlderTimelineRows,
   recoverLoadedTimelineAfterStaleCursor,
   type LoadedTimelineState,
-} from "./useThreadTimelinePages";
+} from "./useThreadTimelineController";
 
 interface TimelineTestRowArgs {
   id: string;

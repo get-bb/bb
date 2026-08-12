@@ -473,6 +473,7 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
           status: "completed",
           conclusion: "success",
           url: null,
+          startedAt: "2026-06-16T12:25:00Z",
         },
       ],
       reviewDecision: "APPROVED",
@@ -494,7 +495,7 @@ const SETTLED_RESPONSE_RESULT_FIXTURES: SettledResponseResultFixtures = {
   "turn.submit": {
     appliedAs: "new-turn",
   },
-  "thread.stop": {},
+  "thread.stop": { providerCheckpointId: null },
   "thread.goal.clear": { cleared: true },
   "thread.plan.cancel": { cancelled: true },
   "thread.rename": {},
@@ -1055,14 +1056,11 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  // Version 102 stops the event sink from reposting a batch the server has
-  // permanently refused. An enrolled daemon on an older build retries such a
-  // batch forever, and because the queue is host-wide that stalls every thread
-  // on the machine until it restarts, so it must update before it delivers more
-  // events. It also stops scoping provider/unhandled events to turn ids that
-  // came from the provider rather than from bb.
-  it("uses protocol version 102 for non-repeating permanent event rejections", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(102);
+  // Version 112 makes ACP stale-steer results trigger a safe new-turn retry.
+  // Version 111 restores parentToolCallId on a resumed Codex child turn.
+  // Version 110 waits for a late full-output record before command completion.
+  it("uses protocol version 112 for stale ACP steer recovery", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(112);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {

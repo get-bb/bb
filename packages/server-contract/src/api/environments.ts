@@ -169,14 +169,6 @@ export type PullRequestMergeMethod = z.infer<
   typeof pullRequestMergeMethodSchema
 >;
 
-export const environmentActionTypeSchema = z.enum([
-  "commit",
-  "squash_merge",
-  "pull_request_ready",
-  "pull_request_merge",
-  "pull_request_draft",
-]);
-
 export const squashMergeOptionsSchema = z
   .object({
     mergeBaseBranch: gitBranchNameSchema,

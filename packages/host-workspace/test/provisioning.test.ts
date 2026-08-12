@@ -100,6 +100,53 @@ afterEach(async () => {
 });
 
 describe("workspace provisioning", () => {
+  it("explains all requirements when a worktree source is not a repository", async () => {
+    const sourceDir = await makeTempDir("bb-provisioning-non-git-source-");
+    const parentDir = await makeTempDir("bb-worktree-non-git-parent-");
+    const targetPath = path.join(parentDir, "feature");
+
+    await expect(
+      createWorktree({
+        sourcePath: sourceDir,
+        targetPath,
+        branchName: "feature",
+        baseBranch: null,
+        timeoutMs: 900000,
+      }),
+    ).rejects.toMatchObject({
+      name: "WorkspaceError",
+      code: "not_git_repo",
+      message:
+        `Cannot create a worktree because the source is not a Git repository: ${sourceDir}. ` +
+        "Initialize it and create at least one commit, then try again.",
+    });
+    await expect(fs.stat(targetPath)).rejects.toThrow();
+  });
+
+  it("rejects a commitless repository with an actionable error", async () => {
+    const sourceRepo = await makeTempDir("bb-provisioning-empty-repo-");
+    await runGit(["init", "-b", "main"], { cwd: sourceRepo });
+    const parentDir = await makeTempDir("bb-worktree-empty-parent-");
+    const targetPath = path.join(parentDir, "feature");
+
+    await expect(
+      createWorktree({
+        sourcePath: sourceRepo,
+        targetPath,
+        branchName: "feature",
+        baseBranch: null,
+        timeoutMs: 900000,
+      }),
+    ).rejects.toMatchObject({
+      name: "WorkspaceError",
+      code: "unborn_head",
+      message:
+        `Cannot create a worktree because the repository has no commits: ${sourceRepo}. ` +
+        "Create an initial commit, then try again.",
+    });
+    await expect(fs.stat(targetPath)).rejects.toThrow();
+  });
+
   it("creates worktrees and is idempotent for valid targets", async () => {
     const sourceRepo = await initRepoWithOptionalSetup();
     const parentDir = await makeTempDir("bb-worktree-parent-");

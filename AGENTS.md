@@ -42,6 +42,7 @@
 
 - Prefer sanctioned typography tokens over arbitrary `text-[Npx]` classes.
 - Derive theme color tokens from the `--canvas`/`--ink` anchors (`color-mix(in oklch, var(--ink) N%, var(--canvas))`) or from another derived token — never hand-set an `oklch(L 0 0)` literal. Achromatic literals don't follow custom palettes (Nord, Dracula, …), which re-anchor only `--canvas`/`--ink`, so a hardcoded token strands a neutral-gray element in an otherwise tinted UI. Mix opaque steps `in oklch`; mix translucent steps (a `transparent` pole) `in oklab` so the hue survives. `apps/app/src/components/ui/theme.css` is the source of truth and `theme.test.ts` guards it.
+- Use the shared persistent responsive drawer for every compact slide-out menu, picker, popover, and dialog. Do not use modal drawer primitives that add `inert` or `aria-hidden` to the app root: iOS Safari can recalculate styles for the full app tree and stall the interaction. Start the drawer transform before heavy content, realize that content after two animation frames with a timeout fallback, and retain it after the first open. Verify representative drawers in iOS Simulator Safari and protect the app-root and deferred-realization behavior with tests.
 
 ## Build And Typecheck
 
@@ -53,6 +54,17 @@
 
 - Only write high quality tests that verify where there could be potential bugs. Avoid testing trivial getters/setters, framework wiring, or other code that is unlikely to break.
 - Pipe slow test output to a file, then read the file. Example: `pnpm exec turbo run test --filter=@bb/integration-tests --force > /tmp/test-out.txt 2>&1`.
+
+## GitHub Issues And Pull Requests
+
+- When an agent creates a GitHub issue or pull request, add this line at the end of the body:
+
+  ```
+  > AGENT GENERATED: by <model>
+  ```
+
+- Replace `<model>` with the name of the model that writes the text, for example `Claude Opus 5`.
+- Add this line to each new issue and pull request. It shows the readers that an agent made the content.
 
 ## Debugging And QA
 

@@ -100,7 +100,10 @@ export function TimelineDetailScroll({
           aria-hidden
           className="-mb-px h-px w-full"
         />
-        {children}
+        {/* Content-only height changes (image loads, disclosure toggles)
+            never resize the scroll port; this wrapper gives the sticky
+            hook's ResizeObserver a box that tracks them. */}
+        <div ref={sticky.contentRef}>{children}</div>
         <div
           ref={overflow.bottomSentinelRef}
           aria-hidden

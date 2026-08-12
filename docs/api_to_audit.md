@@ -5,6 +5,42 @@ entry here (see [AGENTS.md](../AGENTS.md), "Plugin API"). Dropping the prefix
 is the deliberate stabilization step: audit the entry, rename project-wide,
 and delete the entry in the same change.
 
+## `PluginNavPanelRegistration.experimental_sidebarAccessory`
+
+**What it does.** Lets a nav panel register a no-props, presentational React
+component at the trailing edge of its host-rendered sidebar row. The component
+can own an RPC query and realtime subscription, so a live count updates within
+that subtree instead of lifting plugin state into the whole sidebar. The host
+does not mount it on compact viewports. On wider viewports its layout box is
+limited to one line at 4rem wide by 1.25rem high; overflow is clipped and
+ordinary long text is ellipsized. It shares the trailing action column and
+fades out for the host options button on row hover or keyboard focus without
+unmounting. A crash hides only the accessory.
+
+**Audit before stabilizing.**
+
+1. **Component versus value.** Confirm real consumers need component-owned
+   live state, rather than a narrower string/number/badge value plus a separate
+   host update primitive. Installed plugins are trusted, but a component can
+   still render controls or markup that is inappropriate for row chrome.
+2. **Budget.** Revisit the 4rem by 1.25rem cap against counts, short statuses,
+   localization, browser zoom, and multiple plugin rows. Decide whether the
+   host should expose a fixed badge treatment instead of accepting plugin
+   styling.
+3. **Compact behavior.** The component is not mounted below the compact
+   breakpoint, so it performs no hidden queries there and loses local state
+   when the viewport crosses the breakpoint. Confirm that is preferable to a
+   mounted-but-CSS-hidden subtree.
+4. **Overflow and portals.** The wrapper clips ordinary descendants but cannot
+   constrain content portalled elsewhere in the document. Confirm the
+   presentational-only contract is sufficient, or enforce a non-component
+   value before stabilization.
+5. **Accessibility.** Accessory text is exposed beside the navigation button
+   without changing that button's stable accessible name. Confirm that reading
+   order and the focus-triggered accessory/options swap work for counts and
+   short statuses, and decide whether a dedicated label prop or host-rendered
+   status semantics are needed.
+
 ## `PluginContentScriptContext.experimental_setThreadRowStatus`
 
 Lets a plugin-lifetime content script set or clear one of its own status
@@ -43,7 +79,6 @@ Each label is capped at 80 characters and rendered as a truncating segment.
 3. **Persistence and source identity.** Labels are snapshotted by the server
    only for non-MCP native plugin tools. Confirm that distinction stays sound
    as provider adapters and dynamic-tool provenance evolve.
-
 
 ## `experimental_NewThreadComposer` (`@bb/plugin-sdk/app`)
 
@@ -125,6 +160,35 @@ bound in `apps/app/src/lib/plugin-sdk-app-impl.tsx`.
    `new-thread-environment-seed.test.ts` and
    `PluginNewThreadComposer.test.tsx` guard this) and re-decide whether the
    re-seed-on-change rule should instead be an explicit reset nonce.
+
+## `app.slots.experimental_newThreadPanelAction` (`@bb/plugin-sdk/app`)
+
+**What it does.** Adds a plugin row to the root New thread screen's
+right-panel Actions list. Activating it can open a closable panel tab whose
+component receives `{ projectId: string | null, params: JsonValue | null }`.
+It deliberately does not reuse `threadPanelAction`: that existing contract
+requires `threadId: string`, and the in-repo and external consumers built
+against it may assume a thread exists. The two slots are surface-specific and
+never cross-render.
+
+Before stabilization, audit:
+
+1. **Surface naming.** Confirm "New thread" remains the product name and the
+   slot should stay panel-specific rather than becoming a broader root-compose
+   action surface.
+2. **Context breadth.** Confirm the selected `projectId` is sufficient. A
+   plugin can use the composer hooks for the live draft, but the slot does not
+   expose the root composer's selected host, environment, provider, or model.
+3. **Project changes.** An open tab receives the current project on every
+   render, while `run` receives the project selected when the row was
+   activated. Confirm that distinction is intuitive and whether changing
+   projects should close or re-key open tabs.
+4. **Persistence.** Tabs and JSON params persist in the root panel's fixed
+   state. Confirm restoring a plugin tab before registrations load, after a
+   plugin is removed, and in projectless compose has the right fallback.
+5. **Relationship to `threadPanelAction`.** Confirm separate opt-in remains
+   preferable to a unified discriminated context after external plugins have
+   had time to adopt the root surface deliberately.
 
 ## `app.slots.experimental_threadList` (`@bb/plugin-sdk/app`)
 

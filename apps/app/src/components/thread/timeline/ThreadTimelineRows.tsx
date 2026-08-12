@@ -17,7 +17,7 @@ import {
 } from "@bb/domain";
 import type {
   PromptInput,
-  ThreadChildOrigin,
+  ThreadOriginKind,
   ThreadRuntimeDisplayStatus,
 } from "@bb/domain";
 import type {
@@ -132,10 +132,10 @@ export interface ThreadTimelineRowsProps {
    */
   canSpawnChild?: boolean;
   /**
-   * Origin of the rendered thread as a child (`fork` / `side-chat`), or null for
-   * root threads. Selects the fork leading icon on the seed-without-run anchor.
+   * Origin of the rendered thread (`fork`), or null for ordinary threads.
+   * Selects the fork leading icon on the seed-without-run anchor.
    */
-  threadChildOrigin?: ThreadChildOrigin | null;
+  threadOriginKind?: ThreadOriginKind | null;
   /** Fork the rendered thread from a specific agent message. */
   onForkMessage?: ThreadTimelineForkMessageHandler;
   /** Stage an edit of an eligible user request in the host composer. */
@@ -235,7 +235,7 @@ interface TimelineRendererStaticContextValue {
         message: ThreadChatMessageReference,
       ) => void)
     | undefined;
-  threadChildOrigin: ThreadChildOrigin | null;
+  threadOriginKind: ThreadOriginKind | null;
   onOpenLink: ThreadTimelineLinkHandler | undefined;
   onOpenLocalFileLink: ThreadTimelineLocalFileLinkHandler | undefined;
   onOpenPluginPanel: ThreadTimelineOpenPluginPanelHandler | undefined;
@@ -739,7 +739,7 @@ function timelineRowsListGapClassName(
  * first executed turn), which distinguishes it from a *later* cross-thread agent
  * message in the same thread (those belong to a turn, so `turnId` is non-null).
  * Only this row should take the fork leading icon; later cross-thread agent rows
- * keep their per-sourceKind icon even though the thread's `childOrigin` is fork.
+ * keep their per-sourceKind icon even though the thread's `originKind` is fork.
  */
 function isForkSeedAnchorRow(row: TimelineConversationViewRow): boolean {
   return (
@@ -917,7 +917,7 @@ function ConversationRow({
     pluginMessageActions,
     consumerMessageActions,
     reportProseSelection,
-    threadChildOrigin,
+    threadOriginKind,
     onOpenLink,
     onOpenLocalFileLink,
     onOpenPluginPanel,
@@ -975,10 +975,10 @@ function ConversationRow({
       row.senderThreadId === null
         ? null
         : (senderThreadMetadataById.get(row.senderThreadId) ?? null);
-    // The fork leading icon is the thread's `childOrigin`, but only on the seed
+    // The fork leading icon is the thread's `originKind`, but only on the seed
     // anchor (thread-start) row — pass null for every other generated row so a
     // later cross-thread agent message in a forked thread keeps its own icon.
-    const childOrigin = isForkSeedAnchorRow(row) ? threadChildOrigin : null;
+    const originKind = isForkSeedAnchorRow(row) ? threadOriginKind : null;
     const canEditMessage =
       onEditMessage !== undefined &&
       row.initiator === "user" &&
@@ -1012,7 +1012,7 @@ function ConversationRow({
     return (
       <ConversationMessageContent
         attachments={row.attachments}
-        childOrigin={childOrigin}
+        originKind={originKind}
         initiator={row.initiator}
         mentions={row.mentions}
         mobileActionDisplay={
@@ -2091,7 +2091,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
       consumerMessageActions:
         props.consumerMessageActions ?? EMPTY_CONSUMER_MESSAGE_ACTIONS,
       reportProseSelection,
-      threadChildOrigin: props.threadChildOrigin ?? null,
+      threadOriginKind: props.threadOriginKind ?? null,
       onOpenLink: props.onOpenLink,
       onOpenLocalFileLink: props.onOpenLocalFileLink,
       onOpenPluginPanel: props.onOpenPluginPanel,
@@ -2118,7 +2118,7 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
       props.includePluginMessageActions,
       props.consumerMessageActions,
       reportProseSelection,
-      props.threadChildOrigin,
+      props.threadOriginKind,
       timelineThreadId,
       props.onOpenLink,
       props.onOpenLocalFileLink,

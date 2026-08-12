@@ -363,6 +363,7 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
       await continueThreadAfterProviderRateLimit(deps, {
         environment,
         failedRequestId: payload.failedRequestId,
+        mode: payload.mode ?? "manual",
         thread,
       }),
     );

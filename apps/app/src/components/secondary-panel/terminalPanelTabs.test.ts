@@ -306,6 +306,42 @@ describe("terminalPanelTabs", () => {
     expect(nextState.secondary.activeTabId).toBeNull();
   });
 
+  it("removes a disconnected terminal without disturbing the active file tab", () => {
+    const terminalTab = createTerminalFixedPanelTab({
+      terminalId: "term_disconnected",
+    });
+    const activeFileTab = createHostFilePreviewFixedPanelTab({
+      environmentId: "env_1",
+      tab: {
+        lineRange: null,
+        path: "/workspace/proposal.md",
+      },
+      threadId: "thr_1",
+    });
+    const state = createEmptyFixedPanelTabsState({
+      secondary: {
+        activeTabId: activeFileTab.id,
+        isOpen: true,
+        tabs: [terminalTab, activeFileTab],
+      },
+    });
+
+    const nextState = syncTerminalTabsInFixedPanelState({
+      retainedTerminalId: null,
+      state,
+      terminalSessions: [
+        terminalSession({
+          id: "term_disconnected",
+          status: "disconnected",
+          title: "zsh",
+        }),
+      ],
+    });
+
+    expect(nextState.secondary.tabs).toEqual([activeFileTab]);
+    expect(nextState.secondary.activeTabId).toBe(activeFileTab.id);
+  });
+
   it("keeps fixed panel state identity when terminal tabs already match", () => {
     const terminalTab = createTerminalFixedPanelTab({ terminalId: "term_1" });
     const state = createEmptyFixedPanelTabsState({

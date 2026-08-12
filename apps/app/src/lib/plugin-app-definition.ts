@@ -8,6 +8,7 @@ import {
   type PluginMessageActionRegistration,
   type PluginMessageDirectiveRegistration,
   type PluginNavPanelRegistration,
+  type PluginNewThreadPanelActionRegistration,
   type PluginPendingInteractionRegistration,
   type PluginSettingsSectionRegistration,
   type PluginSidebarFooterActionRegistration,
@@ -25,7 +26,6 @@ import {
   requireSlotId,
   requireUniqueId,
 } from "@bb/plugin-sdk/internal/composer-customization-validation";
-import type { PluginFrontendRecord } from "./plugin-frontend";
 import type { PluginRegistrationSet } from "./plugin-slots";
 
 export type CollectedPluginAppRegistrations = PluginRegistrationSet & {
@@ -74,6 +74,7 @@ export function collectPluginAppRegistrations(
   const settingsSections: PluginSettingsSectionRegistration[] = [];
   const navPanels: PluginNavPanelRegistration[] = [];
   const threadPanelActions: PluginThreadPanelActionRegistration[] = [];
+  const newThreadPanelActions: PluginNewThreadPanelActionRegistration[] = [];
   const composerCustomizations: ComposerCustomization[] = [];
   const pendingInteractions: PluginPendingInteractionRegistration[] = [];
   const sidebarFooterActions: PluginSidebarFooterActionRegistration[] = [];
@@ -88,6 +89,7 @@ export function collectPluginAppRegistrations(
     settingsSection: new Set<string>(),
     navPanel: new Set<string>(),
     threadPanelAction: new Set<string>(),
+    newThreadPanelAction: new Set<string>(),
     composerCustomization: new Set<string>(),
     pendingInteraction: new Set<string>(),
     sidebarFooterAction: new Set<string>(),
@@ -146,12 +148,26 @@ export function collectPluginAppRegistrations(
             `${kind}: "headerContent" must be a React component function when set`,
           );
         }
+        if (
+          registration.experimental_sidebarAccessory !== undefined &&
+          typeof registration.experimental_sidebarAccessory !== "function"
+        ) {
+          throw new Error(
+            `${kind}: "experimental_sidebarAccessory" must be a React component function when set`,
+          );
+        }
         navPanels.push({
           id,
           title: requireNonEmptyString(kind, "title", registration.title),
           icon: requireNonEmptyString(kind, "icon", registration.icon),
           path,
           component: requireComponent(kind, registration.component),
+          ...(registration.experimental_sidebarAccessory !== undefined
+            ? {
+                experimental_sidebarAccessory:
+                  registration.experimental_sidebarAccessory,
+              }
+            : {}),
           ...(registration.headerContent !== undefined
             ? { headerContent: registration.headerContent }
             : {}),
@@ -175,6 +191,38 @@ export function collectPluginAppRegistrations(
           throw new Error(`${kind}: "layout" must be "padded" or "flush"`);
         }
         threadPanelActions.push({
+          id,
+          title: requireNonEmptyString(kind, "title", registration.title),
+          ...(registration.icon !== undefined
+            ? {
+                icon: requireNonEmptyString(kind, "icon", registration.icon),
+              }
+            : {}),
+          component: requireComponent(kind, registration.component),
+          ...(registration.layout !== undefined
+            ? { layout: registration.layout }
+            : {}),
+          ...(registration.run !== undefined ? { run: registration.run } : {}),
+        });
+      },
+      experimental_newThreadPanelAction(registration) {
+        const kind = "slots.experimental_newThreadPanelAction";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.newThreadPanelAction, id);
+        if (
+          registration.run !== undefined &&
+          typeof registration.run !== "function"
+        ) {
+          throw new Error(`${kind}: "run" must be a function when set`);
+        }
+        if (
+          registration.layout !== undefined &&
+          registration.layout !== "padded" &&
+          registration.layout !== "flush"
+        ) {
+          throw new Error(`${kind}: "layout" must be "padded" or "flush"`);
+        }
+        newThreadPanelActions.push({
           id,
           title: requireNonEmptyString(kind, "title", registration.title),
           ...(registration.icon !== undefined
@@ -321,6 +369,7 @@ export function collectPluginAppRegistrations(
     settingsSections,
     navPanels,
     threadPanelActions,
+    newThreadPanelActions,
     composerCustomizations,
     pendingInteractions,
     sidebarFooterActions,
@@ -331,51 +380,4 @@ export function collectPluginAppRegistrations(
     messageActions,
     contentScripts,
   };
-}
-
-export interface InterpretPluginFrontendsDeps {
-  setRegistrations: (
-    pluginId: string,
-    registrations: PluginRegistrationSet,
-  ) => void;
-  warn: (message: string) => void;
-}
-
-/**
- * Interpret every loaded record's `module.default` into slot registrations.
- * Mutates `records` in place: a plugin whose default export is not a
- * `definePluginApp` product (or whose setup throws) is downgraded to a
- * "failed" record — contained per plugin, backend untouched. Returns the
- * same map for convenience.
- */
-export function interpretPluginFrontends(
-  records: Map<string, PluginFrontendRecord>,
-  deps: InterpretPluginFrontendsDeps,
-): Map<string, PluginFrontendRecord> {
-  for (const [pluginId, record] of records) {
-    if (record.status !== "loaded") continue;
-    try {
-      const definition = record.module.default;
-      if (!isPluginAppDefinition(definition)) {
-        throw new Error(
-          "the bundle's default export is not definePluginApp(...) from @bb/plugin-sdk/app",
-        );
-      }
-      deps.setRegistrations(
-        pluginId,
-        collectPluginAppRegistrations(definition, (reason) => {
-          deps.warn(
-            `[plugin:${pluginId}] composer customization rejected: ${reason}`,
-          );
-        }),
-      );
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      deps.warn(
-        `[plugin:${pluginId}] frontend registration failed: ${message}`,
-      );
-      records.set(pluginId, { pluginId, status: "failed", error: message });
-    }
-  }
-  return records;
 }

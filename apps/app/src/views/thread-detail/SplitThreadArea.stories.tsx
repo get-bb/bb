@@ -132,7 +132,7 @@ const idleTimeline = storyTimeline(
 
 const activeTimeline = storyTimeline(
   ACTIVE_THREAD_ID,
-  `Use ${MENTIONED_THREAD_ID} as context, make the divider thinner, and let the header carry focus. Keep \`${MENTIONED_THREAD_ID}\` literal in code.`,
+  `Use ${MENTIONED_THREAD_ID} as context, make the divider thinner, and let the header carry focus. Resolve the exact inline-code reference \`${MENTIONED_THREAD_ID}\` too.`,
   [
     `The split seam now matches ${MENTIONED_THREAD_ID}: one pixel with a wider invisible resize target.`,
     "The same hairline treatment is applied where the secondary panel meets the split workspace, so the seams read as one system.",

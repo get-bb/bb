@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   applyPluginUpdate,
   checkPluginUpdates,
-  fetchPluginCatalogStatus,
   installCatalogPlugin,
   installPlugin,
   searchPluginCatalog,
@@ -16,17 +15,6 @@ function fetchReturning(body: unknown, status = 200): typeof fetch {
     });
 }
 
-function receiverSensitiveFetch(body: unknown): typeof fetch {
-  return function (this: typeof globalThis) {
-    if (this !== globalThis) throw new TypeError("Illegal invocation");
-    return Promise.resolve(
-      new Response(JSON.stringify(body), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      }),
-    );
-  } as typeof fetch;
-}
 
 function recordingFetch(body: unknown, status = 200) {
   const calls: { url: string; init: RequestInit | undefined }[] = [];
@@ -130,23 +118,6 @@ describe("plugin installs", () => {
 });
 
 describe("plugin catalog queries", () => {
-  it("binds browser fetch and parses the status count", async () => {
-    const status = await fetchPluginCatalogStatus(
-      receiverSensitiveFetch({
-        catalog: {
-          pluginCount: 13,
-          includedPluginCount: 8,
-          optionalPluginCount: 5,
-        },
-      }),
-    );
-    expect(status).toEqual({
-      pluginCount: 13,
-      includedPluginCount: 8,
-      optionalPluginCount: 5,
-    });
-  });
-
   it("preserves canonical plugin identity without source-catalog fields", async () => {
     const entries = await searchPluginCatalog(
       fetchReturning({

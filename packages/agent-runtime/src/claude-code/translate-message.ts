@@ -16,10 +16,7 @@ import type {
   EnsureProviderTurnStartedArgs,
   ProviderTurnStateRegistry,
 } from "../shared/turn-state.js";
-import {
-  getOrCreateScopedItemId,
-  resolveCompletedScopedItemId,
-} from "../shared/scoped-item-ids.js";
+import { createScopedItemIdFactory } from "../shared/scoped-item-ids.js";
 import { UNSTAMPED_THREAD_ID } from "../shared/unstamped-thread-id.js";
 import type { ProviderTranslationContext } from "../provider-adapter.js";
 import {
@@ -78,6 +75,12 @@ export interface ClaudeTurnState {
   openAssistantMessageIdsByScope: Map<string, string>;
   openReasoningItemIdsByScope: Map<string, string>;
   pendingAcceptedUserMessages: AcceptedUserMessageState["pendingAcceptedUserMessages"];
+  pendingHardRateLimitRejection:
+    | {
+        detail: string;
+        turnId: string;
+      }
+    | undefined;
   reasoningItemCounter: number;
   selectedModelContextWindow: number | null;
   /**
@@ -134,12 +137,6 @@ export interface TranslateClaudeSdkMessageArgs {
     input: ClaudeToolUseTranslationInput,
   ) => ThreadEventItem;
   turnState: ProviderTurnStateRegistry<ClaudeTurnState>;
-}
-
-interface ClaudeReasoningItemIdArgs {
-  contentIndex: number;
-  parentToolCallId?: string;
-  state: ClaudeTurnState;
 }
 
 interface BuildClaudeCompactedEventArgs {
@@ -266,38 +263,12 @@ function buildClaudeProviderErrorEvent(
   };
 }
 
-function buildClaudeCompactionItemId(turnId: string): string {
-  return turnId.length > 0
-    ? `claude-compaction-${turnId}`
-    : "claude-compaction";
-}
-
-function createClaudeReasoningItemId(state: ClaudeTurnState): string {
-  state.reasoningItemCounter += 1;
-  return `claude-reasoning-${state.reasoningItemCounter}`;
-}
-
-function getOrCreateClaudeReasoningItemId(
-  args: ClaudeReasoningItemIdArgs,
-): string {
-  return getOrCreateScopedItemId({
-    createItemId: () => createClaudeReasoningItemId(args.state),
-    openItemIdsByScope: args.state.openReasoningItemIdsByScope,
-    parentToolCallId: args.parentToolCallId,
-    scopeId: String(args.contentIndex),
-  });
-}
-
-function resolveCompletedClaudeReasoningItemId(
-  args: ClaudeReasoningItemIdArgs,
-): string {
-  return resolveCompletedScopedItemId({
-    createItemId: () => createClaudeReasoningItemId(args.state),
-    openItemIdsByScope: args.state.openReasoningItemIdsByScope,
-    parentToolCallId: args.parentToolCallId,
-    scopeId: String(args.contentIndex),
-  });
-}
+const claudeCompactionItemIds = createScopedItemIdFactory({
+  prefix: "claude-compaction",
+});
+const claudeReasoningItemIds = createScopedItemIdFactory({
+  prefix: "claude-reasoning",
+});
 
 function buildClaudeCompactedEvent(
   args: BuildClaudeCompactedEventArgs,
@@ -527,7 +498,7 @@ export function translateClaudeSdkMessage(
           state,
           threadId,
         });
-        const compactionItemId = buildClaudeCompactionItemId(turnId);
+        const compactionItemId = claudeCompactionItemIds.createId(turnId);
         state.openCompaction = { itemId: compactionItemId, turnId };
         events.push({
           type: "item/started",
@@ -759,10 +730,10 @@ export function translateClaudeSdkMessage(
 
       const thinkingBlocks = extractThinkingBlocks(message);
       for (const thinkingBlock of thinkingBlocks) {
-        const itemId = resolveCompletedClaudeReasoningItemId({
+        const itemId = claudeReasoningItemIds.resolveCompleted({
           state,
           parentToolCallId,
-          contentIndex: thinkingBlock.contentIndex,
+          scopeId: thinkingBlock.contentIndex,
         });
         events.push({
           type: "item/completed",
@@ -842,10 +813,10 @@ export function translateClaudeSdkMessage(
           state,
           threadId,
         });
-        const itemId = getOrCreateClaudeReasoningItemId({
+        const itemId = claudeReasoningItemIds.getOrCreate({
           state,
           parentToolCallId,
-          contentIndex: reasoningDelta.contentIndex,
+          scopeId: reasoningDelta.contentIndex,
         });
         events.push({
           type: "item/reasoning/textDelta",
@@ -969,20 +940,39 @@ export function translateClaudeSdkMessage(
             tokenUsage,
           });
         }
-        const failed = isClaudeResultFailure(message);
+        const pendingHardRateLimitRejection =
+          state.pendingHardRateLimitRejection?.turnId === state.currentTurnId
+            ? state.pendingHardRateLimitRejection
+            : undefined;
+        const resultFailed = isClaudeResultFailure(message);
+        const failed =
+          resultFailed || pendingHardRateLimitRejection !== undefined;
         if (failed) {
+          const resultErrorInfo = buildClaudeProviderErrorInfo({
+            httpStatusCode: message.api_error_status,
+            resultSubtype: message.subtype,
+          });
           events.push(
             buildClaudeProviderErrorEvent({
-              detail: getClaudeResultErrorDetail(message),
-              errorInfo: buildClaudeProviderErrorInfo({
-                httpStatusCode: message.api_error_status,
-                resultSubtype: message.subtype,
-              }),
+              detail: resultFailed
+                ? getClaudeResultErrorDetail(message)
+                : (pendingHardRateLimitRejection?.detail ??
+                  getClaudeResultErrorDetail(message)),
+              errorInfo:
+                pendingHardRateLimitRejection === undefined
+                  ? resultErrorInfo
+                  : {
+                      category: "rate-limit",
+                      providerCode:
+                        resultErrorInfo?.providerCode ?? "rate_limit_event",
+                      httpStatusCode: resultErrorInfo?.httpStatusCode ?? null,
+                    },
               threadId,
               turnId: state.currentTurnId,
             }),
           );
         }
+        state.pendingHardRateLimitRejection = undefined;
         // Claude emits a successful result at the end of each SDK loop
         // segment. Background agents and workflows notify the CLI when they
         // settle, which reinvokes the parent model. Keep the logical bb turn
@@ -1019,29 +1009,29 @@ export function translateClaudeSdkMessage(
         });
       }
       const message = parsedMessage.data;
-      events.push({
+      const rateLimitsEvent: ThreadEvent = {
         type: "provider/rateLimits/updated",
         threadId,
         providerThreadId: "",
         scope: threadScope(),
         rateLimits: normalizeClaudeRateLimits(message),
-      });
+      };
       if (!isHardClaudeRateLimitRejection(message)) {
+        events.push(rateLimitsEvent);
+        if (
+          rateLimitsEvent.rateLimits.status === "allowed" &&
+          state.pendingHardRateLimitRejection?.turnId === state.currentTurnId
+        ) {
+          state.pendingHardRateLimitRejection = undefined;
+        }
         return events;
       }
-      const turnId = state.currentTurnId ?? null;
-      events.push(
-        buildClaudeProviderErrorEvent({
-          detail: buildClaudeRateLimitEventDetail(message),
-          errorInfo: {
-            category: "rate-limit",
-            providerCode: "rate_limit_event",
-            httpStatusCode: null,
-          },
-          threadId,
-          turnId,
-        }),
-      );
+      const turnId = args.ensureTurnStarted({ events, state, threadId });
+      events.push(rateLimitsEvent);
+      state.pendingHardRateLimitRejection = {
+        detail: buildClaudeRateLimitEventDetail(message),
+        turnId,
+      };
       return events;
     }
   }

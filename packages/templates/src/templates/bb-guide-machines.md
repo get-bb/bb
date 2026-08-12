@@ -16,13 +16,15 @@ installer while using that reachable server URL.
 
 The Settings installer first uses the exact `bb-app` tarball served by that bb
 server at `/install/bb-app.tgz`; only servers that do not implement the route
-(HTTP 404) fall back to npm. Installed launchd/systemd services pass
+(HTTP 404) fall back to the npm registry. npm installs bb-app under this
+machine enrollment's bb data directory, so the installer needs neither `sudo`
+nor a global npm configuration. Installed launchd/systemd services pass
 `--auto-update`. On a newer server protocol mismatch, the daemon downloads that
-same artifact, installs it globally with npm, and exits for the service manager
-to restart. Failed attempts use a persisted exponential backoff that starts at
-5 seconds and caps at 5 minutes. A daemon never auto-downgrades to an older
-server protocol. Use Settings → Machines or `bb machine retry-update` to bypass
-the current backoff after a transient failure.
+same artifact, updates its private install, and exits for the service manager to
+restart. Failed attempts use a persisted exponential backoff that starts at 5
+seconds and caps at 5 minutes. A daemon never auto-downgrades to an older server
+protocol. Use Settings → Machines or `bb machine retry-update` to bypass the
+current backoff after a transient failure.
 
 To opt out, remove `--auto-update` from the launchd plist or systemd user unit
 and reload that service. Foreground/manual `bb-app host-daemon` runs leave it off

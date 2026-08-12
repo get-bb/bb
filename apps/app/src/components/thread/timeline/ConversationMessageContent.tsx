@@ -4,7 +4,7 @@ import type {
   TimelineRowBase,
   TimelineUserConversationRow,
 } from "@bb/server-contract";
-import type { PromptTextMention, ThreadChildOrigin } from "@bb/domain";
+import type { PromptTextMention, ThreadOriginKind } from "@bb/domain";
 import { fileNameFromPath } from "@bb/thread-view";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
@@ -82,11 +82,11 @@ export interface ConversationMessageContentUserProps extends ConversationMessage
   /** Mobile presentation for the regular user message's action footer. */
   mobileActionDisplay?: "inline" | "overflow";
   /**
-   * `childOrigin` of the thread this row belongs to. Selects the fork leading
+   * `originKind` of the thread this row belongs to. Selects the fork leading
    * icon when an agent-initiated thread-start anchor (a fork's seed-without-run
    * row) renders as "Message from {source}". Null for non-fork threads.
    */
-  childOrigin: ThreadChildOrigin | null;
+  originKind: ThreadOriginKind | null;
   initiator: TimelineUserConversationRow["initiator"];
   mentions: readonly PromptTextMention[];
   onAddToChat?: ThreadTimelineAddToChatHandler;
@@ -186,7 +186,7 @@ export type ConversationMessageContentProps =
 interface UserConversationMessageProps {
   addToChatAttachments: readonly PromptDraftAttachment[];
   attachmentItems: ConversationAttachmentItems;
-  childOrigin: ThreadChildOrigin | null;
+  originKind: ThreadOriginKind | null;
   pluginActions?: readonly ThreadTimelinePluginMessageAction[];
   initiator: TimelineUserConversationRow["initiator"];
   mentions: readonly PromptTextMention[];
@@ -385,7 +385,7 @@ function buildAddToChatAttachments(
 function UserConversationMessage({
   addToChatAttachments,
   attachmentItems,
-  childOrigin,
+  originKind,
   initiator,
   mentions,
   mobileActionDisplay,
@@ -416,7 +416,7 @@ function UserConversationMessage({
     return (
       <GeneratedConversationMessage
         attachmentItems={attachmentItems}
-        childOrigin={childOrigin}
+        originKind={originKind}
         mentions={bodyMentions}
         onOpenLink={onOpenLink}
         onOpenLocalFileLink={onOpenLocalFileLink}
@@ -448,7 +448,7 @@ function UserConversationMessage({
     return (
       <GeneratedConversationMessage
         attachmentItems={attachmentItems}
-        childOrigin={null}
+        originKind={null}
         mentions={bodyMentions}
         onOpenLink={onOpenLink}
         onOpenLocalFileLink={onOpenLocalFileLink}
@@ -722,7 +722,7 @@ export function ConversationMessageContent(
       <UserConversationMessage
         addToChatAttachments={addToChatAttachments}
         attachmentItems={attachmentItems}
-        childOrigin={props.childOrigin}
+        originKind={props.originKind}
         pluginActions={props.pluginActions}
         initiator={props.initiator}
         mentions={props.mentions}

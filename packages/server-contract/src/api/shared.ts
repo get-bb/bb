@@ -130,7 +130,8 @@ export type EnvironmentArgs = z.infer<typeof environmentArgsSchema>;
 /**
  * Server-resolved environment default for thread creation: the server picks
  * the host and workspace using its own defaulting policy (personal workspace
- * for the personal project, a managed worktree on the primary host otherwise).
+ * for the personal project; otherwise a managed worktree when the primary
+ * source has a usable base branch, or that source checkout when it does not).
  * For callers — plugins, scripts — that should not re-derive compose-flow
  * policy. Accepted only by thread creation; other surfaces keep the explicit
  * {@link environmentArgsSchema}.

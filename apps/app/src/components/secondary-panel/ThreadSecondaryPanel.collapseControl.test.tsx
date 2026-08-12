@@ -1,10 +1,13 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PanelGroup } from "react-resizable-panels";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
-import { createThreadInfoFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
+import {
+  createThreadInfoFixedPanelTab,
+  createWorkspaceFilePreviewFixedPanelTab,
+} from "@/lib/fixed-panel-tabs-state";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { ThreadSecondaryPanel } from "./ThreadSecondaryPanel";
 
@@ -64,6 +67,63 @@ describe("ThreadSecondaryPanel resize handle", () => {
         "cursor-col-resize",
       ]),
     );
+  });
+});
+
+describe("ThreadSecondaryPanel compact file content", () => {
+  it("retains the active file body after the persistent drawer closes", () => {
+    const { wrapper: Wrapper } = createQueryClientTestHarness();
+    const activeTab = createWorkspaceFilePreviewFixedPanelTab({
+      environmentId: "env-test",
+      projectId: "project-test",
+      tab: {
+        lineRange: null,
+        path: "src/index.ts",
+        source: { kind: "working-tree" },
+        statusLabel: null,
+      },
+    });
+    const renderDrawer = (isOpen: boolean) => (
+      <Wrapper>
+        <TooltipProvider>
+          <ThreadSecondaryPanel
+            activeTab={activeTab}
+            canUseGitUi={false}
+            fileTabs={[
+              {
+                id: activeTab.id,
+                filename: "index.ts",
+                isActive: true,
+                leadingVisual: null,
+                statusLabel: null,
+                onSelect: noop,
+                onClose: noop,
+              },
+            ]}
+            fileTabContent={<input aria-label="Retained file content" />}
+            isConversationCollapsed={false}
+            isOpen={isOpen}
+            metadataContent={null}
+            onClose={noop}
+            onCollapse={noop}
+            onFileTabReorder={noop}
+            onOpenNewTab={noop}
+            onPanelChange={noop}
+            onPanelFocus={noop}
+            onToggleConversationCollapse={noop}
+            renderAsDrawer
+          />
+        </TooltipProvider>
+      </Wrapper>
+    );
+    const view = render(renderDrawer(true));
+    const fileContent = screen.getByRole("textbox", {
+      name: "Retained file content",
+    });
+
+    view.rerender(renderDrawer(false));
+
+    expect(screen.getByLabelText("Retained file content")).toBe(fileContent);
   });
 });
 

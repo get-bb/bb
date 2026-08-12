@@ -343,23 +343,44 @@ const childThreadsFixture: ThreadPromptChildThreadsSection = {
       id: "thr_a",
       title: "Investigate Safari auth flake on staging",
       href: "/projects/proj-1/threads/thr_a",
+      hasPendingInteraction: false,
     },
     {
       id: "thr_b",
       title: "Review PR #4521 reviewer comments",
       href: "/projects/proj-1/threads/thr_b",
+      hasPendingInteraction: false,
     },
     {
       id: "thr_c",
       title: "Refactor email pipeline retry logic",
       href: "/projects/proj-1/threads/thr_c",
+      hasPendingInteraction: false,
     },
     {
       id: "thr_d",
       title: "Backfill workspace-status invalidation cache",
       href: "/projects/proj-1/threads/thr_d",
+      hasPendingInteraction: false,
     },
   ],
+};
+
+const childThreadsPendingFixture: ThreadPromptChildThreadsSection = {
+  items: [
+    {
+      id: "thr_blocked",
+      title: "Install workspace tools",
+      href: "/projects/proj-1/threads/thr_blocked",
+      hasPendingInteraction: true,
+    },
+  ],
+};
+
+const childThreadsMixedFixture: ThreadPromptChildThreadsSection = {
+  items: childThreadsFixture.items.map((item, index) =>
+    index === 1 ? { ...item, hasPendingInteraction: true } : item,
+  ),
 };
 
 const childThreadsLargeFixture: ThreadPromptChildThreadsSection = {
@@ -367,6 +388,7 @@ const childThreadsLargeFixture: ThreadPromptChildThreadsSection = {
     id: `thr_large_${i}`,
     title: `Child work item ${i + 1} that is busy doing thing-${i}`,
     href: `/projects/proj-1/threads/thr_large_${i}`,
+    hasPendingInteraction: i === 1,
   })),
 };
 
@@ -731,8 +753,14 @@ export function Overview() {
         <Row parentThread={sideChatFromFixture} mergeBase={null} />
       </StoryRow>
       <StoryRow
+        label="parent thread with a child waiting for approval"
+        hint="the parent banner names the blocked child and drops the active shimmer"
+      >
+        <Row childThreads={childThreadsPendingFixture} mergeBase={null} />
+      </StoryRow>
+      <StoryRow
         label="parent thread with active children (collapsed)"
-        hint="spinning icon signals active work; click to expand the child list"
+        hint="the primary child mirrors other background-work banners without an animated flash; click to expand the child list"
       >
         <Row childThreads={childThreadsFixture} mergeBase={null} />
       </StoryRow>
@@ -741,7 +769,7 @@ export function Overview() {
         hint="list of children with status + pending-approval marker on item 2"
       >
         <Row
-          childThreads={childThreadsFixture}
+          childThreads={childThreadsMixedFixture}
           mergeBase={null}
           initiallyExpandedSection="childThreads"
         />

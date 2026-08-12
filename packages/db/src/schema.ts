@@ -10,10 +10,7 @@ import {
 import { sql } from "drizzle-orm";
 import type { AnySQLiteColumn } from "drizzle-orm/sqlite-core";
 import { threadStatusValues } from "@bb/domain/thread-status";
-import {
-  threadChildOriginValues,
-  threadOriginKindValues,
-} from "@bb/domain/thread-child-origin";
+import { threadOriginKindValues } from "@bb/domain/thread-origin-kind";
 import { threadVisibilityValues } from "@bb/domain/thread-visibility";
 import type {
   EnvironmentStatus,
@@ -506,11 +503,6 @@ export const threads = sqliteTable(
     ),
     originKind: text("origin_kind", {
       enum: threadOriginKindValues,
-    }),
-    // Deprecated compatibility column for older migrated data. New fork and
-    // side-chat provenance uses source_thread_id + origin_kind.
-    childOrigin: text("child_origin", {
-      enum: threadChildOriginValues,
     }),
     // Id of the plugin that spawned this thread (create origin "plugin").
     // NULL for every other origin.

@@ -968,7 +968,6 @@ describe("@bb/sdk", () => {
         origin: "sdk",
         startedOnBehalfOf: null,
         originKind: null,
-        childOrigin: null,
       }),
     );
   });

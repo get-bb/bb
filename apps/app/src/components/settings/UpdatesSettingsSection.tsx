@@ -406,6 +406,13 @@ function providerRowState({
   if (issue === null) {
     return null;
   }
+  if (issue.action === null) {
+    return {
+      label: "Update manually",
+      rowTone: issue.status.versionUnsupported ? "destructive" : "attention",
+      statusTone: issue.status.versionUnsupported ? "destructive" : "attention",
+    };
+  }
   if (issue.status.versionUnsupported) {
     return {
       label: "Update needed",
@@ -663,6 +670,14 @@ export function UpdatesSettingsSection() {
     const jobKey = providerCliJobKey(hostId, issue.provider);
     return runningJobKey !== jobKey && !queuedJobKeys.has(jobKey);
   });
+  const manualIssueCount = inventory.machines.reduce(
+    (count, machine) =>
+      count +
+      machine.issues.filter(
+        (issue) => issue.status.installed && !hasProviderCliAction(issue),
+      ).length,
+    0,
+  );
 
   const strandedMachines = inventory.machines.filter(
     (machine) => machine.canRetryDaemonUpdate,
@@ -724,9 +739,11 @@ export function UpdatesSettingsSection() {
             ? `Checking ${checkingMachines} ${checkingMachines === 1 ? "machine" : "machines"}…`
             : activeInstallCount > 0
               ? `${activeInstallCount} ${activeInstallCount === 1 ? "update" : "updates"} in progress`
-              : actionableIssues.length === 0
-                ? `${inventory.machines.length} ${inventory.machines.length === 1 ? "machine" : "machines"}, all in sync`
-                : null;
+              : manualIssueCount > 0
+                ? `${manualIssueCount} ${manualIssueCount === 1 ? "update needs" : "updates need"} manual action`
+                : actionableIssues.length === 0
+                  ? `${inventory.machines.length} ${inventory.machines.length === 1 ? "machine" : "machines"}, all in sync`
+                  : null;
 
   return (
     <>

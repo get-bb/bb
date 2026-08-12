@@ -161,6 +161,11 @@ export const threadEventScopeDefinitionByType = {
     rationale:
       "Outbound client lifecycle event; it records the request before provider turn acceptance.",
   },
+  "client/turn/rejected": {
+    policy: "thread",
+    rationale:
+      "Client request rejection occurs before provider turn acceptance and identifies the request at thread scope.",
+  },
   "client/turn/start": {
     policy: "thread",
     rationale:

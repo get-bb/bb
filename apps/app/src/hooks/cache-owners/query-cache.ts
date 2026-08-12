@@ -533,13 +533,7 @@ function threadMatchesListFilters(
   }
   if (
     filters?.originKind !== undefined &&
-    (thread.originKind ?? thread.childOrigin) !== filters.originKind
-  ) {
-    return false;
-  }
-  if (
-    filters?.childOrigin !== undefined &&
-    (thread.originKind ?? thread.childOrigin) !== filters.childOrigin
+    thread.originKind !== filters.originKind
   ) {
     return false;
   }

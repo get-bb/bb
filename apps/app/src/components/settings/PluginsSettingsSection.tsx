@@ -46,6 +46,7 @@ import {
   getPluginFrontendDiagnostics,
   subscribePluginFrontendDiagnostics,
 } from "@/lib/plugin-frontend";
+import { CREATE_PLUGIN_PROMPT } from "@/lib/create-resource-prompts";
 import {
   getRootComposeRoutePath,
   getSettingsRoutePath,
@@ -78,14 +79,6 @@ const DROPDOWN_TRIGGER_CLASS =
   "h-7 w-full justify-between border-border/60 bg-card px-2 text-xs sm:w-44";
 const DROPDOWN_CONTENT_CLASS =
   "min-w-[var(--radix-dropdown-menu-trigger-width)]";
-
-/**
- * Seed prompt for the "Create a plugin" entry point: opens the composer
- * pre-filled so the agent reaches for the bb-plugin-authoring skill and
- * scaffolds a new plugin. The user reviews and sends.
- */
-const CREATE_PLUGIN_PROMPT =
-  "I want to build a new bb plugin. Use the bb-plugin-authoring skill to scaffold a starter plugin and walk me through customizing it.";
 
 function statusPillVariant(status: string): PillVariant {
   if (status === "running") return "secondary";

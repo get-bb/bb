@@ -14,10 +14,14 @@ import {
   PanelGroup,
   type ImperativePanelGroupHandle,
 } from "react-resizable-panels";
-import { ResponsiveDrawerShell } from "@bb/shared-ui/responsive-overlay";
+import {
+  PersistentResponsiveDrawerShell,
+  useResponsiveDrawerRealization,
+} from "@bb/shared-ui/responsive-overlay";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { ThreadSecondaryPanel } from "@/components/secondary-panel/ThreadSecondaryPanel";
 import { secondaryPanelWidthPercentAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
+import { Skeleton } from "@bb/shared-ui/skeleton";
 import { PANEL_COLLAPSE_TRANSITION_CLASS } from "@/components/secondary-panel/panelTransitionTokens";
 import { PAGE_SHELL_CONTENT_STYLE } from "@/components/ui/page-shell-content-style.js";
 import { dispatchBrowserViewBoundsSync } from "@/lib/browser-view-bounds-sync";
@@ -71,6 +75,7 @@ type RootSecondaryPanelProps = Omit<
   | "isConversationCollapsed"
   | "onToggleConversationCollapse"
   | "renderAsDrawer"
+  | "showNewTabButton"
 > & {
   renderBrowserDeck?: (args: {
     canShowNativeBrowserView: boolean;
@@ -87,6 +92,19 @@ interface RootComposeSecondaryContentProps {
 }
 
 function noopToggleConversationCollapse(): void {}
+
+function DrawerPanelLoadingSkeleton() {
+  return (
+    <div
+      data-testid="drawer-panel-loading-skeleton"
+      className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden p-4"
+    >
+      <Skeleton className="h-8 w-40 rounded-md" />
+      <Skeleton className="h-24 w-full rounded-md" />
+      <Skeleton className="h-24 w-full rounded-md" />
+    </div>
+  );
+}
 
 export function RootComposeSecondaryContent({
   children,
@@ -114,6 +132,11 @@ export function RootComposeSecondaryContent({
   }, [persistedSecondaryWidthPercent]);
   const [isCompactDrawerContentSettled, setIsCompactDrawerContentSettled] =
     useState(false);
+  const { isContentRealized: isPanelRealized, realizeContent: realizePanel } =
+    useResponsiveDrawerRealization({
+      open: isSecondaryPanelOpen,
+      enabled: renderAsDrawer,
+    });
   const [desktopInfo] = useState(getBbDesktopInfo);
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
   // A bounded pane below a horizontal split is not part of the native window
@@ -198,11 +221,12 @@ export function RootComposeSecondaryContent({
             stateAfterSync.renderAsDrawer
           ) {
             setIsCompactDrawerContentSettled(true);
+            realizePanel();
           }
         },
       );
     },
-    [cancelCompactDrawerContentSettleFrame],
+    [cancelCompactDrawerContentSettleFrame, realizePanel],
   );
 
   const canShowNativeBrowserView = renderAsDrawer
@@ -240,6 +264,7 @@ export function RootComposeSecondaryContent({
           renderAsDrawer={false}
           isConversationCollapsed={false}
           onToggleConversationCollapse={noopToggleConversationCollapse}
+          showNewTabButton
           // In the split-workspace host, panes' panels share one PanelGroup,
           // so each pane's Panel needs its own layout identity (see the prop
           // doc).
@@ -265,6 +290,7 @@ export function RootComposeSecondaryContent({
       renderAsDrawer={true}
       isConversationCollapsed={false}
       onToggleConversationCollapse={noopToggleConversationCollapse}
+      showNewTabButton
     />
   ) : null;
   const hostedPanelModel = useMemo<PaneSecondaryPanelViewModel>(
@@ -370,7 +396,7 @@ export function RootComposeSecondaryContent({
         </PanelGroup>
       </div>
       {renderAsDrawer ? (
-        <ResponsiveDrawerShell
+        <PersistentResponsiveDrawerShell
           open={isSecondaryPanelOpen}
           onOpenChange={(open) => {
             if (!open) threadSecondaryPanelProps.onClose();
@@ -378,13 +404,17 @@ export function RootComposeSecondaryContent({
           srLabel="Right panel"
           contentClassName="h-[92dvh] max-h-[92dvh]"
           onContentAnimationEnd={handleDrawerContentAnimationEnd}
-          handleOnly
-          repositionInputs={false}
         >
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            {drawerSecondaryPanelContent}
+            {/* Paint the light shell first. The real panel mounts two frames
+                later, while the compositor moves the drawer. */}
+            {isPanelRealized ? (
+              drawerSecondaryPanelContent
+            ) : (
+              <DrawerPanelLoadingSkeleton />
+            )}
           </div>
-        </ResponsiveDrawerShell>
+        </PersistentResponsiveDrawerShell>
       ) : null}
     </div>
   );

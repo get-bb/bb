@@ -1,7 +1,7 @@
 import { watch } from "node:fs";
 import { homedir } from "node:os";
 import { access, readFile, realpath } from "node:fs/promises";
-import { join, relative, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { setTimeout as sleep } from "node:timers/promises";
 import { Command } from "commander";
@@ -187,6 +187,115 @@ async function refreshPluginTypes(
   );
 }
 
+/** The npm tree a generated scaffold declares — what its install must land. */
+const scaffoldPackageSchema = z.object({
+  dependencies: z.record(z.string(), z.string()).default({}),
+  devDependencies: z.record(z.string(), z.string()).default({}),
+});
+
+/**
+ * Why a scaffold's install cannot be trusted, or null when every declared
+ * package resolved.
+ *
+ * npm's exit code reports only that npm did what its resolved config told it
+ * to, so it stays 0 for an install that skipped packages the plugin needs to
+ * build — which is exactly the failure this guards (issue #1133).
+ */
+async function unresolvedScaffoldPackages(
+  targetDir: string,
+): Promise<string | null> {
+  let declared: string[];
+  try {
+    const manifest = scaffoldPackageSchema.parse(
+      JSON.parse(await readFile(join(targetDir, "package.json"), "utf8")),
+    );
+    declared = [
+      ...Object.keys(manifest.dependencies),
+      ...Object.keys(manifest.devDependencies),
+    ];
+  } catch {
+    return "the generated package.json could not be read back";
+  }
+  const missing: string[] = [];
+  for (const name of declared) {
+    if (!(await isPackageInstalled(targetDir, name))) {
+      missing.push(name);
+    }
+  }
+  return missing.length === 0
+    ? null
+    : `${missing.sort().join(", ")} missing from node_modules`;
+}
+
+/**
+ * Whether `name` resolves for a plugin at `targetDir`, following node's own
+ * lookup up the directory chain.
+ *
+ * Scaffolding inside an npm workspace makes npm install the whole workspace
+ * and hoist to its root, so the plugin's own node_modules can be legitimately
+ * empty. Checking only the plugin directory would report a healthy install as
+ * broken and send the author back to an `npm install` that hoists again.
+ */
+async function isPackageInstalled(
+  targetDir: string,
+  name: string,
+): Promise<boolean> {
+  const segments = name.split("/");
+  let dir = targetDir;
+  for (;;) {
+    try {
+      await access(join(dir, "node_modules", ...segments));
+      return true;
+    } catch {
+      const parent = dirname(dir);
+      if (parent === dir) return false;
+      dir = parent;
+    }
+  }
+}
+
+/**
+ * Install a fresh scaffold's npm tree, reporting whether it is usable.
+ *
+ * Generated source imports packages `bb plugin build` inlines into dist/ (zod;
+ * with --app, the vendored components' deps), and path: installs run server.ts
+ * from source, so the tree must exist before the plugin can build or load.
+ *
+ * `--include=dev` rather than a bare `npm install`: the packaged CLI runs with
+ * NODE_ENV=production — bb-app's launcher sets it for every `bb` invocation —
+ * which npm reads as `omit=dev`. A command-line flag outranks both that and an
+ * inherited `npm_config_omit`, so the install no longer depends on how bb was
+ * started. Best-effort overall: authors need npm anyway (design §5.5), so a
+ * failure surfaces the manual step rather than failing the scaffold.
+ */
+async function installScaffoldDependencies(
+  targetDir: string,
+): Promise<boolean> {
+  const { execFile } = await import("node:child_process");
+  const { promisify } = await import("node:util");
+  try {
+    await promisify(execFile)(
+      "npm",
+      ["install", "--include=dev", "--no-fund", "--no-audit"],
+      { cwd: targetDir },
+    );
+  } catch {
+    console.warn(
+      "Could not run npm install — run it in the plugin directory before `bb plugin build`.",
+    );
+    return false;
+  }
+  const problem = await unresolvedScaffoldPackages(targetDir);
+  if (problem !== null) {
+    console.warn(
+      `npm install reported success but ${problem} — run \`npm install --include=dev\` in the plugin directory before \`bb plugin build\`.`,
+    );
+    return false;
+  }
+  console.log("Installed dependencies (npm install).");
+  return true;
+}
+
 type PluginSettingDescriptor = z.infer<typeof pluginSettingDescriptorSchema>;
 type PluginSettingsResult = z.infer<typeof pluginSettingsResultSchema>;
 
@@ -272,7 +381,7 @@ function formatAbsoluteDate(value: string | number | undefined): string {
 function dualInterpretationError(source: string): string {
   return (
     `Could not resolve "${source}" as either a catalog plugin or a path on disk. ` +
-    "Use path:<path>, npm:<package>, or git:<url>@<ref> to choose an interpretation explicitly."
+    "Use a Git repository URL, path:<path>, npm:<package>, or git:<url>[@<ref>] to choose an interpretation explicitly."
   );
 }
 
@@ -315,6 +424,9 @@ async function resolveInstallIntent(
         summary: `Installing ${path}`,
       };
     }
+    return { kind: "source", source: input, summary: `Installing ${input}` };
+  }
+  if (/^https?:\/\//iu.test(input)) {
     return { kind: "source", source: input, summary: `Installing ${input}` };
   }
   if (hasPathSyntax(input)) {
@@ -546,7 +658,7 @@ export function registerPluginCommands(
   plugin
     .command("install <source>")
     .description(
-      "Install a bundled official plugin by name, local path, builtin:<name>, git:<url>@<ref>, or npm:<name>@<version> (managed sources validate engines ranges and build artifacts; bundled plugin ids are reserved)",
+      "Install a bundled official plugin by name, Git repository URL, local path, builtin:<name>, git:<url>[@<ref>], or npm:<name>@<version> (managed sources validate engines ranges and build artifacts; bundled plugin ids are reserved)",
     )
     .option("--yes", "Skip the confirmation prompt")
     .option("--json", "Output JSON")
@@ -771,32 +883,11 @@ export function registerPluginCommands(
           app: opts.app ?? false,
         });
         console.log(`Created ${directoryName}/ (${packageName}).`);
-        // App scaffolds vendor components whose npm deps must be installed
-        // before `bb plugin build` bundles them. Best-effort: authors need
-        // npm anyway (design §5.5); a failure here just surfaces the manual
-        // step.
-        let installed = false;
-        if (opts.app) {
-          const { execFile } = await import("node:child_process");
-          const { promisify } = await import("node:util");
-          try {
-            await promisify(execFile)(
-              "npm",
-              ["install", "--no-fund", "--no-audit"],
-              { cwd: targetDir },
-            );
-            installed = true;
-            console.log("Installed component dependencies (npm install).");
-          } catch {
-            console.warn(
-              "Could not run npm install — run it in the plugin directory before `bb plugin build`.",
-            );
-          }
-        }
+        const installed = await installScaffoldDependencies(targetDir);
         console.log("Next steps:");
         console.log(`  cd ${directoryName}`);
-        if (opts.app && !installed) {
-          console.log("  npm install");
+        if (!installed) {
+          console.log("  npm install --include=dev");
         }
         console.log("  bb plugin install .");
       }),

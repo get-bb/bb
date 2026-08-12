@@ -74,7 +74,6 @@ export interface ThreadListQueryFilters {
   parentThreadId?: string;
   sourceThreadId?: string;
   originKind?: ThreadListFilters["originKind"];
-  childOrigin?: ThreadListFilters["childOrigin"];
   archived: boolean;
   limit?: number;
 }
@@ -184,7 +183,6 @@ export type DisabledThreadListQueryKey = readonly [
 ];
 export type ThreadQueryKeyPrefix = readonly [typeof THREAD_QUERY_KEY];
 export type ThreadQueryKey = readonly [typeof THREAD_QUERY_KEY, string];
-export type ThreadTabsQueryKeyPrefix = readonly [typeof THREAD_TABS_QUERY_KEY];
 export type ThreadTabsQueryKey = readonly [
   typeof THREAD_TABS_QUERY_KEY,
   string,
@@ -287,10 +285,6 @@ export type ThreadHostFilePreviewQueryKey = readonly [
 ];
 export type AllThreadHostFilePreviewQueryKeyPrefix = readonly [
   typeof THREAD_HOST_FILE_PREVIEW_QUERY_KEY,
-];
-export type ThreadHostFilePreviewQueryKeyPrefix = readonly [
-  typeof THREAD_HOST_FILE_PREVIEW_QUERY_KEY,
-  string,
 ];
 export type EnvironmentQueryKeyPrefix = readonly [typeof ENVIRONMENT_QUERY_KEY];
 export type EnvironmentQueryKey = readonly [
@@ -671,10 +665,6 @@ export function threadTabsQueryKey(threadId: string): ThreadTabsQueryKey {
   return [THREAD_TABS_QUERY_KEY, threadId];
 }
 
-export function allThreadTabsQueryKeyPrefix(): ThreadTabsQueryKeyPrefix {
-  return [THREAD_TABS_QUERY_KEY];
-}
-
 export function threadDetailBootstrapQueryKey(
   threadId: string,
 ): ThreadDetailBootstrapQueryKey {
@@ -819,12 +809,6 @@ export function threadHostFilePreviewQueryKey(
 
 export function allThreadHostFilePreviewQueryKeyPrefix(): AllThreadHostFilePreviewQueryKeyPrefix {
   return [THREAD_HOST_FILE_PREVIEW_QUERY_KEY];
-}
-
-export function threadHostFilePreviewQueryKeyPrefix(
-  threadId: string,
-): ThreadHostFilePreviewQueryKeyPrefix {
-  return [THREAD_HOST_FILE_PREVIEW_QUERY_KEY, threadId];
 }
 
 export function allEnvironmentQueryKeyPrefix(): EnvironmentQueryKeyPrefix {
@@ -1148,10 +1132,6 @@ export function skillContentQueryKey(
   path: string,
 ) {
   return [SKILL_CONTENT_QUERY_KEY, projectId, skillId, path] as const;
-}
-
-export function skillContentQueryKeyPrefix(projectId: string, skillId: string) {
-  return [SKILL_CONTENT_QUERY_KEY, projectId, skillId] as const;
 }
 
 export function skillFilesQueryKey(projectId: string, skillId: string) {

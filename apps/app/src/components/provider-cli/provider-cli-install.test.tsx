@@ -15,7 +15,10 @@ import {
   hostProviderCliStatusQueryKey,
 } from "@/hooks/queries/query-keys";
 import type { ProviderCliActionableIssue } from "./provider-cli-install";
-import { useProviderCliInstallRunner } from "./provider-cli-install";
+import {
+  buildProviderCliIssue,
+  useProviderCliInstallRunner,
+} from "./provider-cli-install";
 import {
   registerProviderCliInstallQueryClient,
   resetProviderCliInstallStoreForTests,
@@ -138,6 +141,42 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+});
+
+describe("buildProviderCliIssue", () => {
+  it("keeps an external update visible when bb cannot apply it", () => {
+    const actionable = issueForProvider("claudeCode");
+    const issue = buildProviderCliIssue({
+      provider: "claudeCode",
+      status: {
+        ...actionable.status,
+        installSource: "external",
+        installAction: null,
+      },
+    });
+
+    expect(issue).toMatchObject({
+      provider: "claudeCode",
+      action: null,
+      title: "Claude Code update available",
+    });
+  });
+
+  it("describes an update without inventing a target for an unknown channel", () => {
+    const actionable = issueForProvider("claudeCode");
+    const issue = buildProviderCliIssue({
+      provider: "claudeCode",
+      status: {
+        ...actionable.status,
+        latestVersion: null,
+      },
+    });
+
+    expect(issue).toMatchObject({
+      description: "1.0.0; newer release available",
+      title: "Claude Code update available",
+    });
+  });
 });
 
 describe("useProviderCliInstallRunner", () => {

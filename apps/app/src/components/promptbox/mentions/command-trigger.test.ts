@@ -2,31 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildProviderPromptActionProps,
   commandPillDismissedRangeEnd,
-  commandTriggerForComposerActions,
 } from "./command-trigger";
-
-describe("commandTriggerForComposerActions", () => {
-  it("uses the provider-declared skills trigger", () => {
-    expect(
-      commandTriggerForComposerActions([{ kind: "skills", trigger: "/" }]),
-    ).toBe("/");
-  });
-
-  it("returns null when the provider has no skills action", () => {
-    expect(
-      commandTriggerForComposerActions([
-        {
-          kind: "plan",
-          command: { trigger: "/", name: "plan", trailingText: " " },
-        },
-        {
-          kind: "goal",
-          command: { trigger: "/", name: "goal", trailingText: " " },
-        },
-      ]),
-    ).toBeNull();
-  });
-});
 
 describe("buildProviderPromptActionProps", () => {
   it("maps skills and insertion composer actions into prompt action props", () => {

@@ -45,6 +45,7 @@ export function getEventProviderThreadId(
     case "thread/started":
     case "client/thread/start":
     case "client/turn/requested":
+    case "client/turn/rejected":
     case "client/turn/start":
     case "system/error":
     case "system/manager/user_message":
@@ -98,6 +99,7 @@ export function getEventParentToolCallId(
     case "provider/rateLimits/updated":
     case "client/thread/start":
     case "client/turn/requested":
+    case "client/turn/rejected":
     case "client/turn/start":
     case "system/error":
     case "system/manager/user_message":

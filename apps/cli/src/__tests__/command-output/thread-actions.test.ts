@@ -445,10 +445,10 @@ describe("bb thread action command output", () => {
     });
     expect(continuePost).toHaveBeenCalledWith({
       param: { id: "thread-retry-1" },
-      json: { failedRequestId: "request-failed-1" },
+      json: { failedRequestId: "request-failed-1", mode: "manual" },
     });
     expect(collectLogLines(vi.mocked(console.log))).toContain(
-      "Thread thread-retry-1 continued after provider rate limit",
+      "Thread thread-retry-1 provider rate limit retry requested manually",
     );
   });
 

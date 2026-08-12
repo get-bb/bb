@@ -525,6 +525,41 @@ describe("in-turn timeline windows", () => {
     );
   });
 
+  it("pages a compact byte slice with hundreds of item identities", () => {
+    const { db, thread } = setup();
+    // One early large command pushes the 1,000 compact commands after it into a
+    // separate byte-budget page. Querying every scoped identity in that page
+    // as its own OR branch exceeds SQLite's expression-depth limit even though
+    // the page itself is correctly bounded.
+    seedTurns(db, thread, {
+      commandChars: THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT - 500_000,
+      completeLastTurn: false,
+      itemsPerTurn: [1],
+    });
+    appendCommandItems(db, thread, {
+      commandChars: 1,
+      count: 1_000,
+      itemStart: 1,
+    });
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: getLatestThreadSequence(db, { threadId: thread.id }) + 1,
+        type: "turn/completed",
+        scope: turnScope("turn-1"),
+        providerThreadId,
+        itemId: null,
+        itemKind: null,
+        data: JSON.stringify({ status: "completed", providerThreadId }),
+      },
+    ]);
+
+    const walked = walkAllPages(db, thread, LARGE_BUDGET);
+
+    expect(walked.pages).toBeGreaterThan(1);
+    expect(walked.rows).not.toHaveLength(0);
+  });
+
   it("pages back through a running oversized turn to exactly the unbudgeted rows", () => {
     const { db, thread } = setup();
     seedTurns(db, thread, {

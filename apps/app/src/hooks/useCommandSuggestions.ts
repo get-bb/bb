@@ -1,8 +1,6 @@
 import { useMemo } from "react";
 import type { PromptMentionCommandTrigger } from "@bb/domain";
 import {
-  compareCommandSuggestionSections,
-  orderCommandSuggestionsBySection,
   toProviderCommandSuggestion,
   type ProviderCommandSuggestion,
 } from "@/components/promptbox/mentions/types";
@@ -70,39 +68,18 @@ export function commandSuggestionMatchesQuery(
     .includes(query);
 }
 
-function commandSuggestionSearchNames(
-  suggestion: ProviderCommandSuggestion,
-): string[] {
-  const name = suggestion.name.toLowerCase();
-  if (suggestion.source !== "skill") {
-    return [name];
-  }
-  const separatorIndex = name.lastIndexOf(":");
-  return separatorIndex < 0 ? [name] : [name, name.slice(separatorIndex + 1)];
-}
-
+/**
+ * Filter the cached catalog without changing its order. PromptBoxInternal owns
+ * the single relevance-ordering pass because it has the query under the caret.
+ */
 export function filterCommandSuggestions(
   suggestions: readonly ProviderCommandSuggestion[],
   query: string,
 ): ProviderCommandSuggestion[] {
   const normalizedQuery = query.toLowerCase();
-  return suggestions
-    .filter((suggestion) =>
-      commandSuggestionMatchesQuery(suggestion, normalizedQuery),
-    )
-    .sort((left, right) => {
-      const bySection = compareCommandSuggestionSections(left, right);
-      if (bySection !== 0) {
-        return bySection;
-      }
-      const leftPrefix = commandSuggestionSearchNames(left).some((name) =>
-        name.startsWith(normalizedQuery),
-      );
-      const rightPrefix = commandSuggestionSearchNames(right).some((name) =>
-        name.startsWith(normalizedQuery),
-      );
-      return leftPrefix === rightPrefix ? 0 : leftPrefix ? -1 : 1;
-    });
+  return suggestions.filter((suggestion) =>
+    commandSuggestionMatchesQuery(suggestion, normalizedQuery),
+  );
 }
 
 export function promptActionCommandSuggestions({
@@ -216,8 +193,9 @@ export function useCommandSuggestions(
         ),
       trimmedQuery,
     );
-    return orderCommandSuggestionsBySection(
-      mergeCommandSuggestions(promptActionSuggestions, discoveredSuggestions),
+    return mergeCommandSuggestions(
+      promptActionSuggestions,
+      discoveredSuggestions,
     );
   }, [
     commandsQuery.data?.commands,

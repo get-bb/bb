@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
+import bbLogoUrl from "../../../../assets/bb-logo.svg";
 
 interface RootComposeEmptyWelcomeProps {
   /** Reveal the composer, optionally prefilled with a starter prompt. */
@@ -75,12 +76,6 @@ export function RootComposeEmptyWelcome({
   const reducedMotion = usePrefersReducedMotion();
   return (
     <div className="flex flex-col items-center gap-12 duration-500 animate-in fade-in-0 slide-in-from-bottom-2">
-      {/* Real specular highlight: a blurred copy of the mark's alpha is the bump
-          map, and feSpecularLighting lit by a moving point light produces a
-          glint that follows the surface curvature (and travels) the way light
-          actually reflects — far less "stuck-on" than a flat sweeping band. The
-          highlight is clipped just inside the glyph and added over it so the
-          light does not brighten antialiased outer-edge pixels. */}
       <svg aria-hidden className="absolute h-0 w-0" focusable="false">
         <defs>
           <filter
@@ -102,10 +97,6 @@ export function RootComposeEmptyWelcome({
             >
               <fePointLight x="40" y="10" z="80">
                 {reducedMotion ? null : (
-                  // Ping-pong the light out and back between points far off the
-                  // glyph (so each pass fades fully to matte). Returning to the
-                  // exact start means no position jump on repeat — it eases to a
-                  // stop at each end and reverses, so the loop never snaps.
                   <animate
                     attributeName="x"
                     dur="5s"
@@ -142,14 +133,19 @@ export function RootComposeEmptyWelcome({
           </filter>
         </defs>
       </svg>
-      {/* Filter on the parent so its SourceAlpha is the masked glyph below. */}
       <div
         role="img"
         aria-label="bb"
         className="h-24 w-28 select-none"
         style={{ filter: "url(#bb-gloss)" }}
       >
-        <div className="bb-mark-fill size-full" />
+        <img
+          src={bbLogoUrl}
+          alt=""
+          aria-hidden
+          draggable={false}
+          className="size-full object-contain dark:invert"
+        />
       </div>
       <div className="flex w-full max-w-[360px] flex-col gap-1">
         <WelcomeAction

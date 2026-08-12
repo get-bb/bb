@@ -8,7 +8,6 @@ import {
 describe("isPluginSideChatSenderThread", () => {
   const pluginFork: SenderThreadMetadata = {
     title: null,
-    childOrigin: null,
     originKind: "fork",
     originPluginId: SIDE_CHAT_PLUGIN_ID,
     visibility: "hidden",

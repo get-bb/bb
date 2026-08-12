@@ -6,7 +6,6 @@ import {
   type QueryClient,
 } from "@tanstack/react-query";
 import type {
-  ThreadChildOrigin,
   ThreadOriginKind,
   ThreadVisibility,
   ThreadWithRuntime,
@@ -26,7 +25,6 @@ import {
 
 export interface SenderThreadMetadata {
   title: string | null;
-  childOrigin: ThreadChildOrigin | null;
   originKind: ThreadOriginKind | null;
   originPluginId: string | null;
   visibility: ThreadVisibility | null;
@@ -39,7 +37,6 @@ interface SenderThreadTitleSource {
 
 interface SenderThreadMetadataSource extends SenderThreadTitleSource {
   id: string;
-  childOrigin: ThreadChildOrigin | null;
   originKind: ThreadOriginKind | null;
   originPluginId: string | null;
   visibility: ThreadVisibility;
@@ -65,7 +62,6 @@ function addSenderThreadMetadata(
   }
   metadataById.set(thread.id, {
     title,
-    childOrigin: thread.childOrigin,
     originKind: thread.originKind,
     originPluginId: thread.originPluginId,
     visibility: thread.visibility,
@@ -125,7 +121,6 @@ function areSenderThreadMetadataEntriesEqual(
 ): boolean {
   return (
     left.title === right.title &&
-    left.childOrigin === right.childOrigin &&
     left.originKind === right.originKind &&
     left.originPluginId === right.originPluginId &&
     left.visibility === right.visibility

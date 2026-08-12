@@ -47,24 +47,23 @@ describe("SplitThreadArea stories", () => {
       expect(titlePill?.tagName).not.toBe("A");
       expect(titlePill?.textContent).toBe("Raw thread ID mention target");
 
-      const linkedMessagePill = activePane.querySelector(
+      const linkedMessagePills = activePane.querySelectorAll(
         'a[data-prompt-mention="true"]',
       );
-      expect(linkedMessagePill).toBeTruthy();
-      expect(linkedMessagePill?.textContent).toBe(
-        "Raw thread ID mention target",
-      );
-      expect(linkedMessagePill?.getAttribute("href")).toBe(
-        "/projects/proj_bb/threads/thr_dcwivn5n8w",
-      );
-
-      const inlineCode = Array.from(activePane.querySelectorAll("code")).find(
-        (node) => node.textContent === "thr_dcwivn5n8w",
-      );
-      expect(inlineCode).toBeTruthy();
+      expect(linkedMessagePills).toHaveLength(3);
+      for (const linkedMessagePill of linkedMessagePills) {
+        expect(linkedMessagePill.textContent).toBe(
+          "Raw thread ID mention target",
+        );
+        expect(linkedMessagePill.getAttribute("href")).toBe(
+          "/projects/proj_bb/threads/thr_dcwivn5n8w",
+        );
+      }
       expect(
-        inlineCode?.querySelector('[data-prompt-mention="true"]'),
-      ).toBeNull();
+        Array.from(activePane.querySelectorAll("code")).find(
+          (node) => node.textContent === "thr_dcwivn5n8w",
+        ),
+      ).toBeUndefined();
       expect(
         view.getByText(
           "When I drag threads between sections, the source row sometimes stays faded after the drop.",

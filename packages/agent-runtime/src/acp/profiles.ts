@@ -71,18 +71,6 @@ export const ACP_AGENT_PROFILES: readonly BuiltInAcpAgentProfile[] = [
   },
 ];
 
-export function getAcpAgentProfile(
-  providerId: AcpAgentProviderId,
-): AcpAgentProfile {
-  const profile = ACP_AGENT_PROFILES.find(
-    (candidate) => candidate.providerId === providerId,
-  );
-  if (!profile) {
-    throw new Error(`Unknown ACP agent profile "${providerId}".`);
-  }
-  return profile;
-}
-
 export function acpProfileFromLaunchSpec(
   spec: HostDaemonAcpLaunchSpec,
   providerId: string,

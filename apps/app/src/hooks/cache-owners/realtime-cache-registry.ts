@@ -263,6 +263,7 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
     flush: "debounced",
     dirty: [
       dirtyThreadListQueriesForBackgroundActivity, // Sidebar rows render active workflow/background task state.
+      dirtyThreadDetailQueriesForBackgroundActivity, // Detail indicator reads activeBackgroundAgentCount.
       dirtyThreadSearchQueries, // Indexed conversation content may now match a search query.
       dirtyThreadTimelineQueries, // Timeline rows are built from appended events.
       dirtyThreadPullRequestQueryForCompletedTurn, // A turn may create a remote PR without changing the workspace.
@@ -630,6 +631,15 @@ function dirtyThreadListQueriesForBackgroundActivity(
     return [];
   }
   return dirtyThreadListQueries(context);
+}
+
+function dirtyThreadDetailQueriesForBackgroundActivity(
+  context: ThreadRealtimeDirtyContext,
+): QueryKey[] {
+  if (context.backgroundActivityChanged !== true) {
+    return [];
+  }
+  return dirtyThreadDetailQueries(context);
 }
 
 function dirtyRootOrderThreadListQueries({

@@ -13,9 +13,7 @@ import {
   providerRateLimitStateSchema,
   reasoningLevelSchema,
   rawThreadIdSchema,
-  resolvedThreadExecutionOptionsSchema,
   serviceTierSchema,
-  threadChildOriginSchema,
   threadOriginKindSchema,
   threadListEntrySchema,
   threadQueuedMessageSchema,
@@ -42,8 +40,6 @@ import {
   workspaceFileListResponseSchema,
   workspacePathListResponseSchema,
 } from "./shared.js";
-import { promptHistoryResponseSchema } from "./projects.js";
-import { systemExecutionOptionsResponseSchema } from "./system.js";
 
 export const sendMessageModeSchema = z.enum([
   "queue-if-active",
@@ -135,8 +131,6 @@ export const createThreadRequestSchema = z
     sourceSeqEnd: z.number().int().nonnegative().optional(),
     startedOnBehalfOf: startedOnBehalfOfSchema.nullable().default(null),
     originKind: threadOriginKindSchema.nullable().default(null),
-    /** @deprecated Use originKind. */
-    childOrigin: threadChildOriginSchema.nullable().default(null),
   })
   .superRefine((value, ctx) => {
     if (value.origin === "plugin" && value.originPluginId === undefined) {
@@ -153,15 +147,14 @@ export const createThreadRequestSchema = z
         path: ["originPluginId"],
       });
     }
-    const originKind = value.originKind ?? value.childOrigin;
-    if (originKind === null && value.input.length === 0) {
+    if (value.originKind === null && value.input.length === 0) {
       ctx.addIssue({
         code: "custom",
         message: "input must contain at least one entry",
         path: ["input"],
       });
     }
-    if (originKind === null && value.sourceSeqEnd !== undefined) {
+    if (value.originKind === null && value.sourceSeqEnd !== undefined) {
       ctx.addIssue({
         code: "custom",
         message: "sourceSeqEnd requires an originKind",
@@ -259,7 +252,11 @@ export type ProviderRateLimitRecoveryStatus = z.infer<
 >;
 
 export const continueAfterProviderRateLimitRequestSchema = z
-  .object({ failedRequestId: clientTurnRequestIdSchema })
+  .object({
+    failedRequestId: clientTurnRequestIdSchema,
+    /** Omitted by pre-attribution clients; the server treats omission as manual. */
+    mode: z.enum(["automatic", "manual"]).optional(),
+  })
   .strict();
 export type ContinueAfterProviderRateLimitRequest = z.infer<
   typeof continueAfterProviderRateLimitRequestSchema
@@ -661,18 +658,6 @@ export type ThreadPaneActionResponse = z.infer<
   typeof threadPaneActionResponseSchema
 >;
 
-/** @deprecated Compatibility shape for clients that still call composer bootstrap. */
-export const threadComposerBootstrapResponseSchema = z.object({
-  defaultExecutionOptions: resolvedThreadExecutionOptionsSchema.nullable(),
-  queuedMessages: threadQueuedMessageListResponseSchema,
-  executionOptions: systemExecutionOptionsResponseSchema.nullable(),
-  pendingInteractions: threadPendingInteractionsResponseSchema,
-  promptHistory: promptHistoryResponseSchema,
-});
-export type ThreadComposerBootstrapResponse = z.infer<
-  typeof threadComposerBootstrapResponseSchema
->;
-
 export const threadArchiveAllResponseSchema = z.object({
   ok: z.literal(true),
   archivedThreadIds: z.array(z.string().min(1)),
@@ -696,8 +681,6 @@ export const threadListQuerySchema = z.object({
   originKind: threadOriginKindSchema.optional(),
   /** Restrict to threads spawned by this plugin. */
   originPluginId: z.string().min(1).optional(),
-  /** @deprecated Use originKind. */
-  childOrigin: threadChildOriginSchema.optional(),
   /** Include hidden threads; omitted/false keeps the default visible-only list. */
   includeHidden: z.enum(["true", "false"]).optional(),
   limit: z.string().regex(/^\d+$/).optional(),

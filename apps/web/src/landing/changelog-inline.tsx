@@ -4,7 +4,19 @@ import type { ReactNode } from "react";
 type InlineToken =
   | { kind: "text"; text: string }
   | { kind: "code"; text: string }
-  | { kind: "strong"; children: InlineToken[] };
+  | { kind: "strong"; children: InlineToken[] }
+  | { kind: "link"; href: string; children: InlineToken[] };
+
+/** Only shapes the changelog actually uses. Anything else — a `javascript:`
+ *  URL above all — falls back to literal text rather than becoming an anchor. */
+function isRenderableHref(href: string): boolean {
+  return (
+    href.startsWith("https://") ||
+    href.startsWith("http://") ||
+    href.startsWith("/") ||
+    href.startsWith("#")
+  );
+}
 
 function appendText(tokens: InlineToken[], text: string): void {
   if (!text) {
@@ -18,23 +30,51 @@ function appendText(tokens: InlineToken[], text: string): void {
   tokens.push({ kind: "text", text });
 }
 
-function parseInline(text: string, allowStrong: boolean): InlineToken[] {
+function parseInline(
+  text: string,
+  allowStrong: boolean,
+  allowLink: boolean,
+): InlineToken[] {
   const tokens: InlineToken[] = [];
   let cursor = 0;
 
   while (cursor < text.length) {
     const codeStart = text.indexOf("`", cursor);
     const strongStart = allowStrong ? text.indexOf("**", cursor) : -1;
-    const tokenStart =
-      codeStart === -1
-        ? strongStart
-        : strongStart === -1
-          ? codeStart
-          : Math.min(codeStart, strongStart);
+    const linkStart = allowLink ? text.indexOf("[", cursor) : -1;
+    const tokenStart = [codeStart, strongStart, linkStart]
+      .filter((index) => index !== -1)
+      .reduce((lowest, index) => Math.min(lowest, index), text.length);
 
-    if (tokenStart === -1) {
+    if (tokenStart === text.length) {
       appendText(tokens, text.slice(cursor));
       break;
+    }
+
+    if (tokenStart === linkStart) {
+      appendText(tokens, text.slice(cursor, tokenStart));
+      const labelEnd = text.indexOf("](", tokenStart);
+      const hrefEnd = labelEnd === -1 ? -1 : text.indexOf(")", labelEnd + 2);
+      const href = hrefEnd === -1 ? "" : text.slice(labelEnd + 2, hrefEnd);
+
+      if (hrefEnd === -1 || !isRenderableHref(href)) {
+        appendText(tokens, "[");
+        cursor = tokenStart + 1;
+        continue;
+      }
+
+      tokens.push({
+        kind: "link",
+        href,
+        // No nested links, so a stray `[` inside the label stays literal.
+        children: parseInline(
+          text.slice(tokenStart + 1, labelEnd),
+          allowStrong,
+          false,
+        ),
+      });
+      cursor = hrefEnd + 1;
+      continue;
     }
 
     appendText(tokens, text.slice(cursor, tokenStart));
@@ -55,7 +95,7 @@ function parseInline(text: string, allowStrong: boolean): InlineToken[] {
     } else {
       tokens.push({
         kind: "strong",
-        children: parseInline(content, false),
+        children: parseInline(content, false, allowLink),
       });
     }
     cursor = tokenEnd + delimiter.length;
@@ -71,6 +111,18 @@ function renderTokens(tokens: InlineToken[]): ReactNode {
         return <code key={index}>{token.text}</code>;
       case "strong":
         return <strong key={index}>{renderTokens(token.children)}</strong>;
+      case "link":
+        return (
+          <a
+            key={index}
+            href={token.href}
+            target="_blank"
+            rel="noreferrer"
+            className="release-link"
+          >
+            {renderTokens(token.children)}
+          </a>
+        );
       case "text":
         return <Fragment key={index}>{token.text}</Fragment>;
     }
@@ -78,5 +130,5 @@ function renderTokens(tokens: InlineToken[]): ReactNode {
 }
 
 export function ChangelogInline({ text }: { text: string }): ReactNode {
-  return renderTokens(parseInline(text, true));
+  return renderTokens(parseInline(text, true, true));
 }

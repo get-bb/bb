@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import type { SkillProvider, SkillSummary } from "@bb/server-contract";
+import bbLogoUrl from "../../../../../assets/bb-logo.svg";
 import {
   ResourcePagination,
   useResourcePagination,
@@ -133,10 +134,10 @@ export function ProviderLogo({
   );
 }
 
-function BbLogo({ className = "size-4" }: { className?: string }) {
+export function BbLogo({ className = "size-4" }: { className?: string }) {
   return (
     <img
-      src="/bb-mark.svg"
+      src={bbLogoUrl}
       alt=""
       aria-hidden="true"
       className={cn(className, "object-contain dark:invert")}

@@ -51,27 +51,6 @@ function releaseSlotInstanceOwnedState(instanceKey: string): void {
   for (const release of releases) release();
 }
 
-/**
- * Whether a slot instance is currently disabled by a crash. Read by hosts
- * that hide their own UI while a plugin owns a region: the boundary's
- * fallback restores the region's CONTENT, but only the host can restore the
- * chrome it stopped rendering.
- *
- * Safe to read during render: the set only changes in `componentDidCatch`,
- * which is followed by the boundary's own re-render, and crashed instances
- * stay crashed for the session.
- */
-export function isPluginSlotInstanceCrashed(
-  pluginId: string,
-  slotKind: string,
-  slotId: string,
-  instanceId?: string,
-): boolean {
-  return crashedSlotInstances.has(
-    pluginSlotInstanceKey(pluginId, slotKind, slotId, instanceId),
-  );
-}
-
 export function pluginSlotInstanceKey(
   pluginId: string,
   slotKind: string,

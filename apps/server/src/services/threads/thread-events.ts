@@ -1020,19 +1020,3 @@ export function getLastExecutionOptions(
       }).execution
     : null;
 }
-
-export function getTurnExecutionOptions(
-  deps: Pick<AppDeps, "db">,
-  args: { threadId: string; turnId: string },
-): RecordedThreadExecutionOptions | null {
-  const row = getStoredTurnRequestEventForTurn(deps.db, args);
-
-  return row
-    ? parseStoredTurnRequestEvent({
-        data: row.data,
-        sequence: row.sequence,
-        threadId: row.threadId,
-        type: row.type,
-      }).execution
-    : null;
-}

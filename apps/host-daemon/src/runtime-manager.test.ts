@@ -268,7 +268,9 @@ function createFakeRuntime() {
     steerTurn: vi.fn(async (_args: SteerTurnArgs) => ({
       status: "steered" as const,
     })),
-    stopThread: vi.fn(async (_args: StopThreadArgs) => undefined),
+    stopThread: vi.fn(async (_args: StopThreadArgs) => ({
+      providerCheckpointId: null,
+    })),
     clearThreadGoal: vi.fn(async () => ({ cleared: true })),
     renameThread: vi.fn(async (_args: RenameThreadArgs) => undefined),
     archiveThread: vi.fn(async () => undefined),

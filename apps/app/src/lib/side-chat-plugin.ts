@@ -10,10 +10,9 @@ export const SIDE_CHAT_PLUGIN_ID = "side-chat";
 export const SIDE_CHAT_PLUGIN_PANEL_ACTION_ID = "side-chat";
 
 /**
- * Whether a sender thread is one of the side-chat plugin's hidden forks — the
- * plugin-era equivalent of `childOrigin === "side-chat"`. Promoted ("Open as
- * full thread") forks become visible and fall back to the normal named-thread
- * affordance.
+ * Whether a sender thread is one of the side-chat plugin's hidden forks.
+ * Promoted ("Open as full thread") forks become visible and fall back to the
+ * normal named-thread affordance.
  */
 export function isPluginSideChatSenderThread(
   metadata: SenderThreadMetadata | null,

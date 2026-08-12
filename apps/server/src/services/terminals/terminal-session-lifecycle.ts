@@ -91,6 +91,7 @@ interface PendingTerminalRpcKey extends PendingRpcKey {
 }
 
 interface PendingTerminalCloseKey extends PendingRpcKey {
+  closeReason: TerminalSessionCloseReason;
   daemonSessionId: string;
   terminalId: string;
 }
@@ -511,7 +512,12 @@ export class TerminalSessionLifecycle {
         "Timed out attaching terminal session",
       ),
     });
-    this.pendingCloses = new PendingRpcRegistry({
+    this.pendingCloses = new PendingRpcRegistry<
+      PendingTerminalCloseKey,
+      TerminalSessionRow
+    >({
+      onFail: (pending, error) =>
+        this.finalizeTimedOutTerminalClose(pending, error),
       timeoutMs: closeTimeoutMs,
       timeoutError: terminalTimeoutError(
         "terminal_close_timeout",
@@ -952,6 +958,7 @@ export class TerminalSessionLifecycle {
     }
 
     const pending = this.pendingCloses.claim({
+      closeReason: args.payload.reason,
       daemonSessionId: current.daemonSessionId,
       rpcKey: terminalRpcKey(current.daemonSessionId, current.id, current.id),
       terminalId: current.id,
@@ -966,16 +973,31 @@ export class TerminalSessionLifecycle {
         },
       );
       if (!sent) {
+        this.disconnectDaemonSessionTerminals({
+          daemonSessionId: current.daemonSessionId,
+        });
         this.rejectPendingClose(
           current.id,
           new ApiError(502, "host_disconnected", "Host is not connected"),
         );
-        this.disconnectDaemonSessionTerminals({
-          daemonSessionId: current.daemonSessionId,
-        });
       }
     }
-    return toTerminalSession(await pending.promise);
+    try {
+      return toTerminalSession(await pending.promise);
+    } catch (error) {
+      // The close-failure hook may already have finalized the daemon-owned row
+      // after the acknowledgement window elapsed. Return that converged state
+      // so clients remove the tab instead of surfacing a failure for a close
+      // the server has now made authoritative.
+      const finalized = getTerminalById(this.options.db, current.id);
+      if (
+        finalized?.status === "exited" &&
+        finalized.closeReason === args.payload.reason
+      ) {
+        return toTerminalSession(finalized);
+      }
+      throw error;
+    }
   }
 
   private finishTerminalCloseWithoutDaemon(args: {
@@ -1733,6 +1755,54 @@ export class TerminalSessionLifecycle {
         session: toTerminalSession(session),
       });
     }
+  }
+
+  private finalizeTimedOutTerminalClose(
+    pending: PendingTerminalCloseKey,
+    error: Error,
+  ): void {
+    if (
+      !(error instanceof ApiError) ||
+      error.body.code !== "terminal_close_timeout"
+    ) {
+      return;
+    }
+    // A normal daemon close force-kills after two seconds; the server waits
+    // five seconds for terminal.exited. If that acknowledgement never arrives,
+    // keeping the row daemon-owned makes every client rediscover an unclosable
+    // terminal forever. Honor the completed force-close window and converge
+    // server state even when the daemon response was lost or the daemon forgot
+    // the PTY before receiving the request.
+    const exited = updateTerminalSession(this.options.db, {
+      scope: {
+        daemonSessionId: pending.daemonSessionId,
+        kind: "daemon",
+        statuses: DAEMON_OWNED_TERMINAL_STATUSES,
+        terminalId: pending.terminalId,
+      },
+      update: {
+        closeReason: pending.closeReason,
+        exitCode: null,
+        kind: "exit",
+      },
+    });
+    if (!exited) {
+      return;
+    }
+
+    this.options.logger.warn(
+      {
+        err: error,
+        sessionId: pending.daemonSessionId,
+        terminalId: pending.terminalId,
+      },
+      "Finalized terminal after close acknowledgement timed out",
+    );
+    this.notifyExitedTerminalSession({
+      code: error.body.code,
+      message: error.body.message,
+      session: exited,
+    });
   }
 
   private rejectPendingClose(terminalId: string, error: Error): void {

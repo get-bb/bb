@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ensureThreadStorageRoot,
   threadStorageRootPath,
@@ -16,6 +16,7 @@ async function makeTempDir(prefix: string): Promise<string> {
 }
 
 afterEach(async () => {
+  vi.unstubAllEnvs();
   await Promise.all(
     tempDirs.splice(0).map(async (dir) => {
       await fs.rm(dir, { force: true, recursive: true });
@@ -27,19 +28,31 @@ describe("thread storage root", () => {
   it("creates the shared thread-storage directory under the host data dir", async () => {
     const dataDir = await makeTempDir("bb-thread-storage-root-");
 
-    const rootPath = await ensureThreadStorageRoot(dataDir, { env: {} });
+    const rootPath = await ensureThreadStorageRoot(dataDir);
     const stats = await fs.stat(rootPath);
 
-    expect(rootPath).toBe(threadStorageRootPath(dataDir, { env: {} }));
+    expect(rootPath).toBe(threadStorageRootPath(dataDir));
     expect(stats.isDirectory()).toBe(true);
   });
 
-  it("uses BB_THREAD_STORAGE when provided", async () => {
+  it("ignores a parent agent thread's ambient storage path", async () => {
+    const dataDir = await makeTempDir("bb-thread-storage-root-data-");
+    const parentStorageRoot = await makeTempDir(
+      "bb-thread-storage-root-parent-",
+    );
+    vi.stubEnv("BB_THREAD_STORAGE", path.join(parentStorageRoot, "thr_parent"));
+
+    const rootPath = await ensureThreadStorageRoot(dataDir);
+
+    expect(rootPath).toBe(path.join(dataDir, "thread-storage"));
+  });
+
+  it("uses an explicitly configured root", async () => {
     const dataDir = await makeTempDir("bb-thread-storage-root-data-");
     const configuredRoot = await makeTempDir("bb-thread-storage-root-env-");
 
     const rootPath = await ensureThreadStorageRoot(dataDir, {
-      env: { BB_THREAD_STORAGE: configuredRoot },
+      configuredRoot,
     });
 
     expect(rootPath).toBe(configuredRoot);

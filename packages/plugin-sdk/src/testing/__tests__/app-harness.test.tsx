@@ -224,6 +224,51 @@ const app = await loadPluginApp(
 );
 
 describe("loadPluginApp", () => {
+  it("captures and validates New thread panel action registrations", async () => {
+    const run = () => {};
+    const captured = await loadPluginApp(
+      definePluginApp((builder) => {
+        builder.slots.experimental_newThreadPanelAction({
+          id: "template",
+          title: "Apply template",
+          icon: "Wand",
+          component: () => null,
+          layout: "flush",
+          run,
+        });
+      }),
+    );
+
+    expect(captured.newThreadPanelActions).toEqual([
+      {
+        id: "template",
+        title: "Apply template",
+        icon: "Wand",
+        component: expect.any(Function),
+        layout: "flush",
+        run,
+      },
+    ]);
+    await expect(
+      loadPluginApp(
+        definePluginApp((builder) => {
+          builder.slots.experimental_newThreadPanelAction({
+            id: "template",
+            title: "One",
+            component: () => null,
+          });
+          builder.slots.experimental_newThreadPanelAction({
+            id: "template",
+            title: "Two",
+            component: () => null,
+          });
+        }),
+      ),
+    ).rejects.toThrow(
+      'slots.experimental_newThreadPanelAction: duplicate id "template"',
+    );
+  });
+
   it("captures, mounts, and exactly-once disposes content scripts in lifecycle order", async () => {
     const events: string[] = [];
     const captured = await loadPluginApp(
@@ -497,8 +542,46 @@ describe("loadPluginApp", () => {
         }),
       ),
     ).rejects.toThrow('slots.navPanel: "id" must match');
+    await expect(
+      loadPluginApp(
+        definePluginApp((builder) => {
+          builder.slots.navPanel({
+            id: "panel",
+            title: "Panel",
+            icon: "FileText",
+            path: "panel",
+            component: Panel,
+            experimental_sidebarAccessory: "nope" as never,
+          });
+        }),
+      ),
+    ).rejects.toThrow(
+      '"experimental_sidebarAccessory" must be a React component',
+    );
     await expect(loadPluginApp({ default: { nope: true } })).rejects.toThrow(
       "not definePluginApp(...)",
+    );
+  });
+
+  it("captures a nav panel experimental sidebar accessory", async () => {
+    function SidebarAccessory() {
+      return <span>12</span>;
+    }
+    const captured = await loadPluginApp(
+      definePluginApp((builder) => {
+        builder.slots.navPanel({
+          id: "tasks",
+          title: "Tasks",
+          icon: "ListTodo",
+          path: "tasks",
+          component: Panel,
+          experimental_sidebarAccessory: SidebarAccessory,
+        });
+      }),
+    );
+
+    expect(captured.navPanels[0]?.experimental_sidebarAccessory).toBe(
+      SidebarAccessory,
     );
   });
 

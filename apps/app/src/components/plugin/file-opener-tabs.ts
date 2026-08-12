@@ -18,10 +18,6 @@ import type { OpenSecondaryPanelTabRequest } from "@/components/secondary-panel/
  */
 export const FILE_OPENER_ACTION_ID_PREFIX = "file-opener:";
 
-export function isFileOpenerPanelTab(tab: PluginPanelFixedPanelTab): boolean {
-  return tab.actionId.startsWith(FILE_OPENER_ACTION_ID_PREFIX);
-}
-
 export function fileOpenerIdFromActionId(actionId: string): string | null {
   return actionId.startsWith(FILE_OPENER_ACTION_ID_PREFIX)
     ? actionId.slice(FILE_OPENER_ACTION_ID_PREFIX.length)

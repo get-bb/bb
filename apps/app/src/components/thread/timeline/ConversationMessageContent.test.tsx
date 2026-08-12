@@ -33,7 +33,6 @@ function threadListEntry(
     originKind: null,
     originPluginId: null,
     visibility: "visible",
-    childOrigin: null,
     archivedAt: null,
     pinnedAt: null,
     pinSortKey: null,
@@ -167,7 +166,7 @@ describe("ConversationMessageContent long user messages", () => {
             <ConversationMessageContent
               role="user"
               attachments={null}
-              childOrigin={null}
+              originKind={null}
               initiator="user"
               mentions={[]}
               senderThreadId={null}
@@ -199,7 +198,7 @@ describe("ConversationMessageContent long user messages", () => {
           <ConversationMessageContent
             role="user"
             attachments={null}
-            childOrigin={null}
+            originKind={null}
             initiator="user"
             mentions={[]}
             senderThreadId={null}
@@ -294,7 +293,7 @@ describe("ConversationMessageContent user thread mentions", () => {
             <ConversationMessageContent
               role="user"
               attachments={null}
-              childOrigin={null}
+              originKind={null}
               initiator="user"
               mentions={[]}
               senderThreadId={null}
@@ -339,7 +338,7 @@ describe("ConversationMessageContent user thread mentions", () => {
             <ConversationMessageContent
               role="user"
               attachments={null}
-              childOrigin={null}
+              originKind={null}
               initiator="user"
               mentions={[]}
               senderThreadId={null}
@@ -385,7 +384,7 @@ describe("ConversationMessageContent user thread mentions", () => {
             <ConversationMessageContent
               role="user"
               attachments={null}
-              childOrigin={null}
+              originKind={null}
               initiator="user"
               mentions={[]}
               senderThreadId={null}
@@ -430,7 +429,7 @@ describe("ConversationMessageContent user thread mentions", () => {
             <ConversationMessageContent
               role="user"
               attachments={null}
-              childOrigin={null}
+              originKind={null}
               initiator="user"
               mentions={[]}
               resolveSegmentLinkHref={(link) =>

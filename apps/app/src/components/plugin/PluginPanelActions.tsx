@@ -3,6 +3,7 @@ import type { JsonValue } from "@bb/plugin-sdk";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import {
   usePluginSlots,
+  type PluginNewThreadPanelActionSlot,
   type PluginThreadPanelActionSlot,
 } from "@/lib/plugin-slots";
 import type { PluginPanelFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
@@ -17,9 +18,9 @@ import {
 import { PluginSlotMount } from "./PluginSlotMount";
 
 /**
- * Plugin `threadPanelAction` slots (plugin design §5.2): rows in the
- * secondary panel's new-tab Actions list. Activating one runs the plugin's
- * `run` (contained: a throw/rejection is logged and never breaks the
+ * Plugin panel-action slots (plugin design §5.2): surface-specific rows in
+ * the secondary panel's new-tab Actions list. Activating one runs the
+ * plugin's `run` (contained: a throw/rejection is logged and never breaks the
  * launcher), whose `openPanel` opens closable file-strip tabs rendering the
  * action's component with persisted JSON params.
  */
@@ -84,6 +85,45 @@ function runPluginPanelAction({
   }
 }
 
+interface RunPluginNewThreadPanelActionArgs {
+  action: PluginNewThreadPanelActionSlot;
+  openPluginPanel: OpenPluginPanelHandler;
+  projectId: string | null;
+}
+
+function runPluginNewThreadPanelAction({
+  action,
+  openPluginPanel,
+  projectId,
+}: RunPluginNewThreadPanelActionArgs): void {
+  const openPanel = (options?: { title?: string; params?: JsonValue }) => {
+    const paramsJson = serializePluginPanelParams(options?.params);
+    openPluginPanel({
+      pluginId: action.pluginId,
+      actionId: action.id,
+      title: options?.title ?? action.title,
+      paramsJson,
+    });
+  };
+  const warn = (error: unknown) => {
+    console.warn(
+      `[plugin:${action.pluginId}] experimental_newThreadPanelAction "${action.id}" failed: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  };
+  try {
+    if (action.run === undefined) {
+      openPanel();
+      return;
+    }
+    const result = action.run({ projectId, openPanel });
+    if (result instanceof Promise) result.catch(warn);
+  } catch (error) {
+    warn(error);
+  }
+}
+
 /**
  * Every registered plugin action as a launcher entry for the given thread.
  * Empty outside a thread context (actions are thread-scoped).
@@ -111,6 +151,37 @@ export function usePluginPanelActions({
   }, [openPluginPanel, threadId, threadPanelActions]);
 }
 
+/** Every registered root New thread action as a launcher entry. */
+export function usePluginNewThreadPanelActions({
+  openPluginPanel,
+  projectId,
+}: {
+  openPluginPanel: OpenPluginPanelHandler;
+  projectId: string | null;
+}): readonly PluginPanelActionEntry[] {
+  const { newThreadPanelActions } = usePluginSlots();
+  return useMemo(
+    () =>
+      newThreadPanelActions.map((action) => ({
+        id: `plugin-new-thread-action:${action.pluginId}:${action.id}`,
+        pluginId: action.pluginId,
+        icon: action.icon ?? null,
+        title: action.title,
+        onSelect: () =>
+          runPluginNewThreadPanelAction({
+            action,
+            openPluginPanel,
+            projectId,
+          }),
+      })),
+    [newThreadPanelActions, openPluginPanel, projectId],
+  );
+}
+
+export type PluginPanelSurfaceContext =
+  | { kind: "thread"; threadId: string }
+  | { kind: "new-thread"; projectId: string | null };
+
 /**
  * The content region of an open plugin panel tab. A persisted tab can
  * outlive its plugin (disabled/removed) or render before plugin frontends
@@ -118,24 +189,39 @@ export function usePluginPanelActions({
  */
 export function PluginPanelTabContent({
   tab,
-  threadId,
+  context,
 }: {
   tab: PluginPanelFixedPanelTab;
-  threadId: string | null | undefined;
+  context: PluginPanelSurfaceContext;
 }) {
   const openerId = fileOpenerIdFromActionId(tab.actionId);
   if (openerId !== null) {
     return <FileOpenerTabContent openerId={openerId} tab={tab} />;
   }
-  return <ActionTabContent tab={tab} threadId={threadId} />;
+  return context.kind === "thread" ? (
+    <ThreadActionTabContent tab={tab} threadId={context.threadId} />
+  ) : (
+    <NewThreadActionTabContent tab={tab} projectId={context.projectId} />
+  );
 }
 
-function ActionTabContent({
+function UnavailableActionTab() {
+  return (
+    <div className="p-4">
+      <EmptyStatePanel className="rounded-lg p-6 text-sm">
+        This plugin tab is not available. The plugin may still be loading, or it
+        has been disabled or removed.
+      </EmptyStatePanel>
+    </div>
+  );
+}
+
+function ThreadActionTabContent({
   tab,
   threadId,
 }: {
   tab: PluginPanelFixedPanelTab;
-  threadId: string | null | undefined;
+  threadId: string;
 }) {
   const { threadPanelActions } = usePluginSlots();
   const action =
@@ -149,16 +235,7 @@ function ActionTabContent({
     () => parsePersistedPluginPanelParams(tab.paramsJson),
     [tab.paramsJson],
   );
-  if (action === null || !threadId) {
-    return (
-      <div className="p-4">
-        <EmptyStatePanel className="rounded-lg p-6 text-sm">
-          This plugin tab is not available. The plugin may still be loading, or
-          it has been disabled or removed.
-        </EmptyStatePanel>
-      </div>
-    );
-  }
+  if (action === null) return <UnavailableActionTab />;
   return (
     <div
       className={
@@ -173,12 +250,51 @@ function ActionTabContent({
       <PluginSlotMount
         // Generation in the key: a P3.4 reload remounts the slot (fresh
         // error-boundary state).
-        key={`${action.pluginId}/${action.id}/${action.generation}`}
+        key={`thread/${action.pluginId}/${action.id}/${action.generation}`}
         pluginId={action.pluginId}
         slotKind="threadPanelAction"
         slotId={action.id}
       >
         <action.component threadId={threadId} params={params} />
+      </PluginSlotMount>
+    </div>
+  );
+}
+
+function NewThreadActionTabContent({
+  tab,
+  projectId,
+}: {
+  tab: PluginPanelFixedPanelTab;
+  projectId: string | null;
+}) {
+  const { newThreadPanelActions } = usePluginSlots();
+  const action =
+    newThreadPanelActions.find(
+      (candidate) =>
+        candidate.pluginId === tab.pluginId && candidate.id === tab.actionId,
+    ) ?? null;
+  const params = useMemo(
+    () => parsePersistedPluginPanelParams(tab.paramsJson),
+    [tab.paramsJson],
+  );
+  if (action === null) return <UnavailableActionTab />;
+  return (
+    <div
+      className={
+        action.layout === "flush"
+          ? "h-full min-h-0 flex-1 overflow-hidden"
+          : "h-full min-h-0 flex-1 overflow-y-auto p-4"
+      }
+      data-testid="plugin-new-thread-panel-tab-content"
+    >
+      <PluginSlotMount
+        key={`new-thread/${action.pluginId}/${action.id}/${action.generation}`}
+        pluginId={action.pluginId}
+        slotKind="newThreadPanelAction"
+        slotId={action.id}
+      >
+        <action.component projectId={projectId} params={params} />
       </PluginSlotMount>
     </div>
   );

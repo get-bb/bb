@@ -1,9 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type {
-  DeleteSkillRequest,
-  SkillSummary,
-  UpdateSkillRequest,
-} from "@bb/server-contract";
+import type { DeleteSkillRequest, SkillSummary } from "@bb/server-contract";
 import { sdk } from "@/lib/sdk";
 import {
   projectSkillsQueryKey,
@@ -12,10 +8,7 @@ import {
   SKILL_CONTENT_QUERY_KEY,
   SKILL_FILES_QUERY_KEY,
 } from "@/hooks/queries/query-keys";
-import {
-  invalidateProjectSkillsMutationQueries,
-  invalidateSkillContentMutationQueries,
-} from "@/hooks/cache-owners/skills-cache-effects";
+import { invalidateProjectSkillsMutationQueries } from "@/hooks/cache-owners/skills-cache-effects";
 
 /**
  * Skills discovered for a project's default workspace (user/builtin/provider
@@ -77,22 +70,6 @@ export function useSkillFiles(projectId: string, skill: SkillSummary | null) {
     enabled: skill !== null && projectId.length > 0,
     staleTime: 0,
     refetchOnMount: "always",
-  });
-}
-
-export function useUpdateSkill(projectId: string) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    meta: { errorMessage: "Failed to save skill." },
-    mutationFn: (body: UpdateSkillRequest) =>
-      sdk.skills.update({ projectId, ...body }),
-    onSuccess: (_data, variables) => {
-      invalidateSkillContentMutationQueries({
-        projectId,
-        skillId: variables.skillId,
-        queryClient,
-      });
-    },
   });
 }
 

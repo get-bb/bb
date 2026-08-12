@@ -48,7 +48,10 @@ import {
   resetPluginLogoStoreForTest,
   setPluginLogoUrls,
 } from "@/lib/plugin-logos";
-import { AUTOMATION_PROMPT_ACTION } from "./PromptBoxActionsMenu";
+import {
+  AUTOMATION_PROMPT_ACTION,
+  CREATE_PLUGIN_PROMPT_ACTION,
+} from "./PromptBoxActionsMenu";
 import {
   INERT_TYPEAHEAD_COMMAND_CONFIG,
   PromptBoxInternal,
@@ -101,6 +104,7 @@ const promptActions: readonly PromptBoxAction[] = [
     text: "/goal ",
   },
   AUTOMATION_PROMPT_ACTION,
+  CREATE_PLUGIN_PROMPT_ACTION,
 ];
 
 function createPromptBoxProps(
@@ -1185,11 +1189,13 @@ describe("PromptBoxInternal submit shortcuts", () => {
             value: "Run this",
             onChange,
             onSubmit,
+            blurOnPointerSubmit: true,
           })}
         />,
       );
 
       const editor = getPromptEditorElement();
+      act(() => editor.focus());
       const wasNotCanceled = fireEvent.keyDown(editor, {
         key: "Enter",
         code: "Enter",
@@ -1199,6 +1205,7 @@ describe("PromptBoxInternal submit shortcuts", () => {
       expect(editor.getAttribute("enterkeyhint")).toBe("enter");
       expect(onSubmit).toHaveBeenCalledOnce();
       expect(onChange).not.toHaveBeenCalled();
+      expect(document.activeElement).toBe(editor);
     } finally {
       restoreNavigator();
       restoreMatchMedia();
@@ -1355,11 +1362,14 @@ describe("PromptBoxInternal submit shortcuts", () => {
             value: "Follow up",
             onSubmit,
             submission: { onModifierSubmit },
+            blurOnPointerSubmit: true,
           })}
         />,
       );
 
-      fireEvent.keyDown(getPromptEditorElement(), {
+      const editor = getPromptEditorElement();
+      act(() => editor.focus());
+      fireEvent.keyDown(editor, {
         key: "Enter",
         code: "Enter",
         metaKey: true,
@@ -1367,6 +1377,7 @@ describe("PromptBoxInternal submit shortcuts", () => {
 
       expect(onModifierSubmit).toHaveBeenCalledOnce();
       expect(onSubmit).not.toHaveBeenCalled();
+      expect(document.activeElement).toBe(editor);
     } finally {
       restoreNavigator();
       restoreMatchMedia();
@@ -2158,8 +2169,40 @@ describe("PromptBoxInternal compact layout", () => {
     ).toBe(false);
     expect(document.activeElement).toBe(editor);
 
-    fireEvent.click(submit);
+    fireEvent.click(submit, { detail: 1 });
     expect(onSubmit).toHaveBeenCalledOnce();
+    expect(document.activeElement).toBe(editor);
+  });
+
+  it("blurs the editor after a pointer submit when requested", async () => {
+    const onSubmit = vi.fn();
+    render(
+      <PromptBoxInternal
+        {...createPromptBoxProps({
+          value: "Send this follow-up",
+          onSubmit,
+          blurOnPointerSubmit: true,
+          compact: {
+            isCompact: true,
+            placeholder: "Ask a follow-up",
+          },
+        })}
+      />,
+    );
+
+    await waitForPromptFocus();
+    const editor = getPromptEditorElement();
+    const submit = screen.getByRole("button", { name: "Submit (Enter)" });
+
+    expect(
+      fireEvent.pointerDown(submit, { button: 0, pointerType: "touch" }),
+    ).toBe(false);
+    expect(document.activeElement).toBe(editor);
+
+    fireEvent.click(submit, { detail: 1 });
+
+    expect(onSubmit).toHaveBeenCalledOnce();
+    expect(document.activeElement).not.toBe(editor);
   });
 
   it("keeps all Markdown and mention text in the navigable preview", async () => {
@@ -2608,6 +2651,19 @@ describe("PromptBoxInternal prompt actions", () => {
         },
       },
     ]);
+  });
+
+  it("seeds the plugin prompt as plain text and returns focus", async () => {
+    const { changes, promptBoxRef } = renderPromptBox("");
+
+    await focusPromptEnd(promptBoxRef);
+    await selectPromptAction("Plugin");
+
+    await waitFor(() =>
+      expect(latestValue(changes)).toBe(CREATE_PLUGIN_PROMPT_ACTION.text),
+    );
+    // The seed is a sentence opener, not a command, so it carries no pill.
+    expect(latestChange(changes)?.mentions).toEqual([]);
   });
 
   it("does not duplicate command text immediately before the cursor", async () => {
@@ -3114,6 +3170,91 @@ describe("PromptBoxInternal command typeahead navigation", () => {
     expect(latestChange(changes)?.mentions[0]?.resource).toMatchObject({
       kind: "command",
       name: "interview",
+    });
+  });
+
+  it("hoists an exactly-named user command above the skills section", async () => {
+    // Suggestions arrive in section order (skills first), the way the server
+    // hands them back — the exact-match hoist is PromptBoxInternal's job, so
+    // every composer that renders through it gets the same order.
+    const { changes, promptBoxRef } = renderPromptBox("/plan", {
+      commandSuggestions: [
+        {
+          kind: "command",
+          name: "plugin:plan",
+          source: "skill",
+          origin: "user",
+          description: null,
+          argumentHint: null,
+        },
+        {
+          kind: "command",
+          name: "planner",
+          source: "skill",
+          origin: "user",
+          description: null,
+          argumentHint: null,
+        },
+        {
+          kind: "command",
+          name: "planning-doc",
+          source: "skill",
+          origin: "user",
+          description: null,
+          argumentHint: null,
+        },
+        {
+          kind: "command",
+          name: "plan",
+          source: "command",
+          origin: "user",
+          description: null,
+          argumentHint: null,
+        },
+        {
+          kind: "command",
+          name: "plan-b",
+          source: "command",
+          origin: "user",
+          description: null,
+          argumentHint: null,
+        },
+      ],
+    });
+
+    await focusPromptEnd(promptBoxRef);
+    const sectionLabel = await screen.findByText("User commands");
+    const menu = sectionLabel.closest(".overflow-hidden");
+    if (!(menu instanceof HTMLElement)) {
+      throw new Error("Expected command menu");
+    }
+    // The exact match leads, and its section stays whole rather than splitting
+    // around the skills — one header per section keeps rendered order equal to
+    // the array Arrow/Enter walk.
+    expect(
+      within(menu)
+        .getAllByRole("button")
+        .map((button) => button.textContent),
+    ).toEqual(["plan", "plan-b", "plugin:plan", "planner", "planning-doc"]);
+    expect(
+      within(menu)
+        .getAllByText(/^(User commands|Skills)$/)
+        .map((label) => label.textContent),
+    ).toEqual(["User commands", "Skills"]);
+
+    await waitFor(() =>
+      expect(
+        within(menu).getByRole("button", { name: "plan" }).className,
+      ).toContain("bg-state-active"),
+    );
+
+    fireEvent.keyDown(getPromptEditorElement(), { key: "Enter" });
+
+    await waitFor(() => expect(latestValue(changes)).toBe("/plan "));
+    expect(latestChange(changes)?.mentions[0]?.resource).toMatchObject({
+      kind: "command",
+      name: "plan",
+      source: "command",
     });
   });
 });

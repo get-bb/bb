@@ -704,7 +704,21 @@ export class TerminalManager {
 
   private closeTerminal(args: CloseTerminalArgs): void {
     const session = this.sessions.get(args.terminalId);
-    if (!session || session.closeReason !== null) {
+    if (!session) {
+      // Close is idempotent across the server/daemon boundary. The server can
+      // still have a running row after the daemon has already forgotten the
+      // PTY (for example, when an earlier exit message was lost). A silent
+      // return leaves that row running forever because the server is waiting
+      // for this acknowledgement before it completes the close request.
+      this.options.sendMessage({
+        type: "terminal.exited",
+        terminalId: args.terminalId,
+        exitCode: null,
+        closeReason: args.reason,
+      });
+      return;
+    }
+    if (session.closeReason !== null) {
       return;
     }
     session.closeReason = args.reason;

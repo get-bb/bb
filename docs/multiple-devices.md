@@ -40,6 +40,11 @@ IPv4 network access. The public API is unauthenticated and permits command
 execution and file reads, so use wildcard binding only behind a trusted network
 boundary and never through Funnel or the public internet.
 
+Inside a container, `0.0.0.0` listens on the container's IPv4 interfaces; the
+container runtime must still publish that port to the host (for example,
+`docker run -p 3000:3000 ...`). Host firewall and upstream network rules also
+remain separate from bb's bind setting.
+
 If a browser on another computer should open work-host files in its local
 editor, run bb's local helper there, verify `ssh <work-host>` succeeds, and map
 the server/work-host to that SSH target:
@@ -84,7 +89,9 @@ strings cannot distinguish unpublished builds, so this keeps remote machines
 aligned with development and pre-release servers whose build may not exist on
 npm. The package route is public like `/install.sh`: `bb-app` is public
 software, and exposing an unpublished build slightly early through a paired
-tunnel is an accepted tradeoff.
+tunnel is an accepted tradeoff. npm installs the package into the machine's bb
+data directory, not its system-wide global prefix, so enrollment needs neither
+`sudo` nor a PATH change.
 
 Each joined server gets its own daemon instance, data directory
 (`~/.bb-machines/<server-host>`, override with `BB_DATA_DIR` when running the
@@ -94,17 +101,17 @@ the selected port in that data directory and atomically reserves it under
 elsewhere. Subsequent runs reuse the reservation; pass `--host-daemon-port
 <port>` to the installer to override the selection. One machine can therefore
 serve several bb servers at once, and joining never touches a full local bb
-install's `~/.bb`. Each instance self-updates against its own server, but
-instances currently share the global `bb-app` binary, so servers running
-different bb versions on one machine can still fight over it.
+install's `~/.bb`. Each instance keeps its own `bb-app` under that data
+directory and self-updates against its own server, so servers running different
+bb versions on one machine remain isolated.
 
 The installed launchd/systemd service enables `--auto-update`. If session open
-reports a newer server protocol, the daemon downloads and globally installs the
-server artifact, then exits so the service manager restarts it. Failed attempts
-fall back to normal reconnect behavior with a persisted exponential retry
-backoff from 5 seconds to 5 minutes. Settings → Machines and `bb machine
-retry-update <id-or-name>` can bypass the current backoff. A daemon never
-downgrades itself to an older server protocol. To opt out, remove
+reports a newer server protocol, the daemon downloads the server artifact,
+updates its private install, then exits so the service manager restarts it.
+Failed attempts fall back to normal reconnect behavior with a persisted
+exponential retry backoff from 5 seconds to 5 minutes. Settings → Machines and
+`bb machine retry-update <id-or-name>` can bypass the current backoff. A daemon
+never downgrades itself to an older server protocol. To opt out, remove
 `--auto-update` from
 `~/Library/LaunchAgents/app.getbb.host-daemon.<server>.plist` or
 `~/.config/systemd/user/bb-host-daemon-<server>.service`, then reload the

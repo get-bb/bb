@@ -46,6 +46,20 @@ describe("RuntimeTurnState", () => {
     expect(state.getActiveThreadIds()).toEqual([]);
   });
 
+  it("keeps the root turn active when a delegated child completes", () => {
+    const state = new RuntimeTurnState();
+
+    state.observe(turnStarted("root-turn"));
+    state.observe(turnStarted("child-turn", { parentToolCallId: "tool-1" }));
+    state.observe(turnCompleted("child-turn"));
+
+    expect(state.getActiveTurnId("t1")).toBe("root-turn");
+
+    state.observe(turnCompleted("root-turn"));
+
+    expect(state.getActiveTurnId("t1")).toBeNull();
+  });
+
   it("ignores delegated child turn starts for active foreground state", async () => {
     vi.useFakeTimers();
     const state = new RuntimeTurnState();

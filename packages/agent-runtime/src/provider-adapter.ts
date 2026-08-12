@@ -325,6 +325,8 @@ export interface ProviderAdapter {
   translateAcceptedCommand(
     args: ProviderAcceptedCommandTranslationArgs,
   ): ThreadEvent[];
+  /** Clears adapter-local turn state after the provider reports no active turn. */
+  clearActiveTurnState?(threadId: string): void;
   /**
    * Called when a thread detaches because its provider process exited or the
    * runtime is shutting down. Returns events reconciling adapter state that

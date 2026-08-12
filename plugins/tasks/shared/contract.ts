@@ -760,6 +760,12 @@ export const tasksRpcContract = defineRpcContract({
       })
       .strict(),
   },
+  sidebarOpenTaskCount: {
+    input: z.null(),
+    output: z
+      .object({ openTaskCount: z.number().int().nonnegative() })
+      .strict(),
+  },
   sidebarSummary: {
     input: z.null(),
     output: z

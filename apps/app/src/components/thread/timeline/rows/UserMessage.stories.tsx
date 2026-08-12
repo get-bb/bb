@@ -540,7 +540,7 @@ export function Overview() {
     <StoryCard>
       <StoryRow
         label="raw thread ID"
-        hint="known IDs become linked pills; inline code remains literal"
+        hint="known IDs become linked pills in prose and exact inline-code spans"
       >
         <ThreadTitleMentionResourcesProvider
           sectionNamesById={new Map()}
@@ -550,14 +550,14 @@ export function Overview() {
           <TimelineStage>
             <ConversationMessageContent
               role="user"
-              childOrigin={null}
+              originKind={null}
               initiator="user"
               senderThreadId={null}
               senderThreadTitle={null}
               senderIsPluginSideChat={false}
               systemMessageKind="unlabeled"
               systemMessageSubject={null}
-              text={`Continue in ${RAW_THREAD_ID}; keep \`${RAW_THREAD_ID}\` literal in code.`}
+              text={`Continue in ${RAW_THREAD_ID}; exact inline-code reference \`${RAW_THREAD_ID}\`.`}
               attachments={null}
               mentions={[]}
               turnRequest={acceptedMessage}
@@ -572,7 +572,7 @@ export function Overview() {
         <TimelineStage>
           <ConversationMessageContent
             role="user"
-            childOrigin={null}
+            originKind={null}
             initiator="user"
             senderThreadId={null}
             senderThreadTitle={null}
@@ -591,7 +591,7 @@ export function Overview() {
         <TimelineStage revealMessageActions>
           <ConversationMessageContent
             role="user"
-            childOrigin={null}
+            originKind={null}
             initiator="user"
             senderThreadId={null}
             senderThreadTitle={null}
@@ -613,7 +613,7 @@ export function Overview() {
         <TimelineStage revealMessageActions>
           <ConversationMessageContent
             role="user"
-            childOrigin={null}
+            originKind={null}
             initiator="user"
             senderThreadId={null}
             senderThreadTitle={null}
@@ -636,7 +636,7 @@ export function Overview() {
         <TimelineStage revealMessageActions>
           <ConversationMessageContent
             role="user"
-            childOrigin={null}
+            originKind={null}
             initiator="user"
             senderThreadId={null}
             senderThreadTitle={null}
@@ -658,7 +658,7 @@ export function Overview() {
         <TimelineStage revealMessageActions>
           <ConversationMessageContent
             role="user"
-            childOrigin={null}
+            originKind={null}
             initiator="user"
             senderThreadId={null}
             senderThreadTitle={null}
@@ -680,7 +680,7 @@ export function Overview() {
         <TimelineStage revealMessageActions>
           <ConversationMessageContent
             role="user"
-            childOrigin={null}
+            originKind={null}
             initiator="user"
             senderThreadId={null}
             senderThreadTitle={null}
@@ -699,7 +699,7 @@ export function Overview() {
         <TimelineStage revealMessageActions>
           <ConversationMessageContent
             role="user"
-            childOrigin={null}
+            originKind={null}
             initiator="user"
             senderThreadId={null}
             senderThreadTitle={null}
@@ -722,7 +722,7 @@ export function Overview() {
         <TimelineStage revealMessageActions>
           <ConversationMessageContent
             role="user"
-            childOrigin={null}
+            originKind={null}
             initiator="user"
             senderThreadId={null}
             senderThreadTitle={null}
@@ -752,7 +752,7 @@ export function Overview() {
         <TimelineStage>
           <ConversationMessageContent
             role="user"
-            childOrigin={null}
+            originKind={null}
             initiator="agent"
             resolveSegmentLinkHref={resolveThreadLink}
             senderThreadId="thr_ux3h8sxg65"
@@ -775,7 +775,7 @@ export function Overview() {
         <TimelineStage>
           <ConversationMessageContent
             role="user"
-            childOrigin={null}
+            originKind={null}
             initiator="agent"
             resolveSegmentLinkHref={resolveThreadLink}
             onTitleAction={() => () => undefined}
@@ -799,7 +799,7 @@ export function Overview() {
         <div className="flex w-full max-w-[760px] flex-col gap-3">
           <ConversationMessageContent
             role="user"
-            childOrigin={null}
+            originKind={null}
             initiator="agent"
             resolveSegmentLinkHref={resolveThreadLink}
             senderThreadId="thr_h4u3fgr6be"
@@ -815,7 +815,7 @@ export function Overview() {
           />
           <ConversationMessageContent
             role="user"
-            childOrigin={null}
+            originKind={null}
             initiator="system"
             senderThreadId={null}
             senderThreadTitle={null}
@@ -837,7 +837,7 @@ export function Overview() {
         <TimelineStage>
           <ConversationMessageContent
             role="user"
-            childOrigin={null}
+            originKind={null}
             initiator="system"
             senderThreadId={null}
             senderThreadTitle={null}
@@ -859,7 +859,7 @@ export function Overview() {
         <TimelineStage>
           <ConversationMessageContent
             role="user"
-            childOrigin={null}
+            originKind={null}
             initiator="system"
             senderThreadId={null}
             senderThreadTitle={null}
@@ -881,7 +881,7 @@ export function Overview() {
         <TimelineStage>
           <ConversationMessageContent
             role="user"
-            childOrigin={null}
+            originKind={null}
             initiator="system"
             senderThreadId={null}
             senderThreadTitle={null}
@@ -911,7 +911,7 @@ export function ParentChildSystemMessages() {
               initiator="system"
               senderThreadId={null}
               senderThreadTitle={null}
-              childOrigin={null}
+              originKind={null}
               senderIsPluginSideChat={false}
               resolveSegmentLinkHref={resolveThreadLink}
               systemMessageKind="unlabeled"

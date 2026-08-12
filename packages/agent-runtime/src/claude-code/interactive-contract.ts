@@ -6,8 +6,8 @@ import {
 import type {
   PendingInteractionGrantedPermissionProfile,
   PendingInteractionGrantablePermissionProfile,
+  RuntimePermissionPolicy,
 } from "@bb/domain";
-import type { ResolvedAdapterPermissionPolicy } from "../shared/permission-policy.js";
 
 export const CLAUDE_PERMISSION_REQUEST_APPROVAL_METHOD =
   "item/permissions/requestApproval";
@@ -50,7 +50,7 @@ export const claudePermissionModeSchema = z.enum([
 export type ClaudePermissionMode = z.infer<typeof claudePermissionModeSchema>;
 
 export function toClaudePermissionMode(
-  policy: ResolvedAdapterPermissionPolicy,
+  policy: RuntimePermissionPolicy,
 ): ClaudePermissionMode {
   switch (policy.permissionMode) {
     case "accept-edits":
@@ -69,7 +69,7 @@ const claudePermissionRuleValueSchema = z.object({
 
 // Updates bb sends back to Claude. bb never writes a user's settings files, so
 // an outgoing update is always scoped to the session.
-export const claudePermissionUpdateSchema = z.discriminatedUnion("type", [
+const claudePermissionUpdateSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("addRules"),
     rules: z.array(claudePermissionRuleValueSchema).min(1),
@@ -271,13 +271,13 @@ export type ClaudePermissionRequestApprovalParams = z.infer<
   typeof claudePermissionRequestApprovalParamsSchema
 >;
 
-export const claudeUserQuestionOptionSchema = z.object({
+const claudeUserQuestionOptionSchema = z.object({
   label: z.string().min(1),
   description: z.string().min(1),
   preview: z.string().optional(),
 });
 
-export const claudeUserQuestionSchema = z.object({
+const claudeUserQuestionSchema = z.object({
   question: z.string().min(1),
   header: z.string().min(1),
   options: z
@@ -330,7 +330,7 @@ const claudeUserQuestionAnnotationSchema = z.object({
   notes: z.string().optional(),
 });
 
-export const claudeUserQuestionOutputSchema = z.object({
+const claudeUserQuestionOutputSchema = z.object({
   questions: claudeUserQuestionListSchema,
   answers: z.record(z.string().min(1), z.string().min(1)),
   annotations: z

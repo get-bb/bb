@@ -81,7 +81,6 @@ interface MigratedManagerCleanupThreadRow {
 }
 
 interface MigratedThreadProvenanceRow {
-  childOrigin: string | null;
   id: string;
   originKind: string | null;
   parentThreadId: string | null;
@@ -485,6 +484,20 @@ function dropSideChatPluginExperimentColumn(db: DbConnection): void {
   }
 }
 
+// Current schemas no longer have the legacy provenance column. Replay tests
+// that clear later migration rows must reconstruct the historical schema so
+// older migrations can run before 0093 removes the column again.
+function restoreLegacyThreadOriginColumn(db: DbConnection): void {
+  const columns = db.$client
+    .prepare<[], TableInfoRow>("PRAGMA table_info(threads)")
+    .all();
+  if (!columns.some((column) => column.name === "child_origin")) {
+    db.$client
+      .prepare("ALTER TABLE threads ADD COLUMN child_origin text")
+      .run();
+  }
+}
+
 // Migration 0082 drops the `plugins` experiment column. Rewind scenarios that
 // clear its migration row must restore the column before replaying the
 // migration, since ALTER TABLE DROP COLUMN is not re-appliable.
@@ -583,6 +596,7 @@ function dropOnboardingCompletedAtColumn(db: DbConnection): void {
 // real upgrade, where thread-search is repaired before later migrations apply.
 // NOTE: when adding a migration after thread-search, drop its schema here too.
 function resetMigrationsAfterThreadSearch(db: DbConnection): void {
+  restoreLegacyThreadOriginColumn(db);
   dropRewindAddedTables(db);
   db.$client
     .prepare<[number]>("DELETE FROM __drizzle_migrations WHERE created_at > ?")
@@ -738,8 +752,13 @@ function restorePre0022ThreadTypeSchema(db: DbConnection): void {
     DROP INDEX IF EXISTS threads_source_origin_idx;
     ALTER TABLE threads DROP COLUMN source_thread_id;
     ALTER TABLE threads DROP COLUMN origin_kind;
-    ALTER TABLE threads DROP COLUMN child_origin;
   `);
+  const threadColumns = db.$client
+    .prepare<[], TableInfoRow>("PRAGMA table_info(threads)")
+    .all();
+  if (threadColumns.some((row) => row.name === "child_origin")) {
+    db.$client.prepare("ALTER TABLE threads DROP COLUMN child_origin").run();
+  }
 }
 
 function readIndexNames(args: ReadIndexNamesArgs): string[] {
@@ -855,7 +874,12 @@ function markEventLargeValuesMigrationUnapplied(db: DbConnection): void {
     .prepare("ALTER TABLE `threads` DROP COLUMN `source_thread_id`")
     .run();
   db.$client.prepare("ALTER TABLE `threads` DROP COLUMN `origin_kind`").run();
-  db.$client.prepare("ALTER TABLE `threads` DROP COLUMN `child_origin`").run();
+  const threadColumns = db.$client
+    .prepare<[], TableInfoRow>("PRAGMA table_info(threads)")
+    .all();
+  if (threadColumns.some((row) => row.name === "child_origin")) {
+    db.$client.prepare("ALTER TABLE threads DROP COLUMN child_origin").run();
+  }
   db.$client.exec(`
     DROP TRIGGER IF EXISTS thread_search_segments_after_text_update;
     DROP TRIGGER IF EXISTS thread_search_segments_after_delete;
@@ -1385,6 +1409,7 @@ describe("migrate", () => {
     // existing user can have projects without one.
     db.$client.prepare("DELETE FROM app_settings").run();
 
+    restoreLegacyThreadOriginColumn(db);
     migrate(db);
 
     const row = db.$client
@@ -1473,6 +1498,7 @@ describe("migrate", () => {
         "DROP INDEX IF EXISTS `threads_origin_plugin_archived_idx`",
       );
       restoreSideChatPluginExperimentColumn(db);
+      restoreLegacyThreadOriginColumn(db);
       runMigrationFile({ db, migrationPath: sideChatPluginOnlyMigrationPath });
 
       const rows = db.$client
@@ -1659,6 +1685,7 @@ describe("migrate", () => {
       dropHostMaxPermissionModeColumn(db);
       dropEnvironmentRetireRequestedAtColumn(db);
 
+      restoreLegacyThreadOriginColumn(db);
       migrate(db);
 
       expect(
@@ -2058,6 +2085,7 @@ describe("migrate", () => {
       dropHostMaxPermissionModeColumn(db);
       dropEnvironmentRetireRequestedAtColumn(db);
 
+      restoreLegacyThreadOriginColumn(db);
       expect(
         db.$client
           .prepare<[number], MigrationCountRow>(
@@ -2154,6 +2182,7 @@ describe("migrate", () => {
       dropHostMaxPermissionModeColumn(db);
       dropEnvironmentRetireRequestedAtColumn(db);
 
+      restoreLegacyThreadOriginColumn(db);
       expect(() => migrate(db)).not.toThrow();
 
       expect(readTableNames(db)).toContain("thread_sections");
@@ -2365,6 +2394,7 @@ describe("migrate", () => {
       db.$client
         .prepare("ALTER TABLE `threads` DROP COLUMN `origin_kind`")
         .run();
+      restoreLegacyThreadOriginColumn(db);
       db.$client
         .prepare<DeleteMigrationParameters>(
           `
@@ -2468,8 +2498,7 @@ describe("migrate", () => {
                 id,
                 parent_thread_id AS parentThreadId,
                 source_thread_id AS sourceThreadId,
-                origin_kind AS originKind,
-                child_origin AS childOrigin
+                origin_kind AS originKind
               FROM threads
               WHERE id IN ('thr_delegated_child', 'thr_fork', 'thr_side_chat')
               ORDER BY id
@@ -2482,14 +2511,12 @@ describe("migrate", () => {
           parentThreadId: "thr_source",
           sourceThreadId: null,
           originKind: null,
-          childOrigin: null,
         },
         {
           id: "thr_fork",
           parentThreadId: null,
           sourceThreadId: "thr_source",
           originKind: "fork",
-          childOrigin: null,
         },
         {
           // 0038 moves the provenance, then 0084 hands the side chat to the
@@ -2498,9 +2525,14 @@ describe("migrate", () => {
           parentThreadId: null,
           sourceThreadId: "thr_source",
           originKind: "fork",
-          childOrigin: null,
         },
       ]);
+      expect(
+        db.$client
+          .prepare<[], TableInfoRow>("PRAGMA table_info(threads)")
+          .all()
+          .some((column) => column.name === "child_origin"),
+      ).toBe(false);
     } finally {
       closeConnection(db);
     }
@@ -4459,7 +4491,8 @@ describe("migrate", () => {
         providerId: "codex",
         originKind: "fork",
       });
-      const childOriginSideChat = createThread(db, noopNotifier, {
+      restoreLegacyThreadOriginColumn(db);
+      const legacyOriginSideChat = createThread(db, noopNotifier, {
         projectId: project.id,
         providerId: "codex",
       });
@@ -4473,7 +4506,7 @@ describe("migrate", () => {
         .run(originKindSideChat.id);
       db.$client
         .prepare("UPDATE threads SET child_origin = 'side-chat' WHERE id = ?")
-        .run(childOriginSideChat.id);
+        .run(legacyOriginSideChat.id);
 
       // The merged 0079 also ADDs the experiment column; drop it first so the
       // ALTER re-applies cleanly and the backfill UPDATE runs on seeded rows.
@@ -4490,7 +4523,7 @@ describe("migrate", () => {
           )
           .all()
           .filter((row) =>
-            [originKindSideChat.id, childOriginSideChat.id, fork.id].includes(
+            [originKindSideChat.id, legacyOriginSideChat.id, fork.id].includes(
               row.id,
             ),
           )
@@ -4498,7 +4531,7 @@ describe("migrate", () => {
       ).toEqual(
         [
           { id: originKindSideChat.id, visibility: "hidden" },
-          { id: childOriginSideChat.id, visibility: "hidden" },
+          { id: legacyOriginSideChat.id, visibility: "hidden" },
           { id: fork.id, visibility: "visible" },
         ].sort((left, right) => left.id.localeCompare(right.id)),
       );

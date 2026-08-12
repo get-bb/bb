@@ -2,6 +2,7 @@ import {
   archiveThread,
   getQueuedThreadMessage,
   getThread,
+  listEvents,
   listQueuedThreadMessages,
   markThreadDeleted,
 } from "@bb/db";
@@ -13,6 +14,7 @@ import { handleUpdateEnvironmentDirectoryToolCall } from "../../src/services/thr
 import { sendThreadMessage } from "../../src/services/threads/thread-send.js";
 import {
   listQueuedThreadCommands,
+  reportQueuedCommandError,
   waitForQueuedCommand,
 } from "../helpers/commands.js";
 import { textInput } from "../helpers/prompt-input.js";
@@ -38,13 +40,16 @@ interface SeedIdleThreadFixtureArgs {
   value: number;
 }
 
+interface SeedProviderThreadFixtureArgs extends SeedIdleThreadFixtureArgs {
+  status?: "active" | "idle";
+}
+
 /**
- * Seeds a ready environment + an `idle` thread with a live provider session
- * (a stored provider-thread-id, so `getLastProviderThreadId` resolves) so a
- * queued-message auto-send takes the warm idle-provider fast path.
+ * Seeds a ready environment and a thread with a live provider session.
+ * The stored provider thread ID lets queued messages use the warm provider path.
  */
-function seedIdleProviderThreadFixture(
-  args: SeedIdleThreadFixtureArgs,
+function seedProviderThreadFixture(
+  args: SeedProviderThreadFixtureArgs,
 ): IdleThreadFixture {
   const { host } = seedHostSession(args.harness.deps, {
     id: `host-send-dispatch-${args.value}`,
@@ -62,7 +67,7 @@ function seedIdleProviderThreadFixture(
   const thread = seedThread(args.harness.deps, {
     projectId: project.id,
     environmentId: environment.id,
-    status: "idle",
+    status: args.status ?? "idle",
   });
   seedThreadRuntimeState(args.harness.deps, {
     environmentId: environment.id,
@@ -112,7 +117,7 @@ function installTelemetryCaptureSpy(harness: TestAppHarness) {
 describe("queued message dispatch gate", () => {
   it("rolls back and sends no host command when the idle thread was archived between claim and dispatch", async () => {
     await withTestHarness(async (harness) => {
-      const { thread } = seedIdleProviderThreadFixture({ harness, value: 1 });
+      const { thread } = seedProviderThreadFixture({ harness, value: 1 });
       const queued = seedQueuedMessage(harness.deps, {
         threadId: thread.id,
         content: textInput("queued while idle"),
@@ -161,7 +166,7 @@ describe("queued message dispatch gate", () => {
 
   it("rolls back and sends no host command when the idle thread was deleted between claim and dispatch", async () => {
     await withTestHarness(async (harness) => {
-      const { thread } = seedIdleProviderThreadFixture({ harness, value: 2 });
+      const { thread } = seedProviderThreadFixture({ harness, value: 2 });
       const queued = seedQueuedMessage(harness.deps, {
         threadId: thread.id,
         content: textInput("queued while idle"),
@@ -256,6 +261,190 @@ describe("user message telemetry", () => {
   });
 });
 
+describe("turn submit failure settlement", () => {
+  it("records a terminal rejection for the failed client request", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedProviderThreadFixture({
+        harness,
+        status: "active",
+        value: 7,
+      });
+      seedTurnStarted(harness.deps, {
+        environmentId: environment.id,
+        providerThreadId: "provider-send-dispatch-7",
+        sequence: 3,
+        threadId: thread.id,
+        turnId: "turn-active",
+      });
+      const activeThread = getThread(harness.db, thread.id);
+      if (!activeThread) throw new Error("Expected an active thread");
+
+      await sendThreadMessage(harness.deps, {
+        environment,
+        payload: {
+          input: textInput("failed steer"),
+          mode: "steer",
+          model: "gpt-5",
+          permissionMode: "full",
+          reasoningLevel: "medium",
+          serviceTier: "default",
+        },
+        thread: activeThread,
+        trigger: "user",
+      });
+      const queued = await waitForQueuedCommand(
+        harness,
+        (candidate) =>
+          candidate.command.type === "turn.submit" &&
+          candidate.command.threadId === thread.id,
+      );
+      if (queued.command.type !== "turn.submit") {
+        throw new Error("Expected a turn.submit command");
+      }
+      await reportQueuedCommandError(harness, queued, {
+        errorCode: "provider_rpc_error",
+        errorMessage: "No active turn to steer",
+      });
+
+      const rejection = listEvents(harness.db, {
+        threadId: thread.id,
+      }).find((event) => event.type === "client/turn/rejected");
+      expect(rejection).toBeDefined();
+      expect(JSON.parse(rejection?.data ?? "{}")).toEqual({
+        requestId: queued.command.requestId,
+        reason: "provider_rpc_error",
+        message: "No active turn to steer",
+      });
+    });
+  });
+
+  it("records a rejection after the target turn completes", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedProviderThreadFixture({
+        harness,
+        status: "active",
+        value: 8,
+      });
+      seedTurnStarted(harness.deps, {
+        environmentId: environment.id,
+        providerThreadId: "provider-send-dispatch-8",
+        sequence: 3,
+        threadId: thread.id,
+        turnId: "turn-active",
+      });
+      const activeThread = getThread(harness.db, thread.id);
+      if (!activeThread) throw new Error("Expected an active thread");
+
+      await sendThreadMessage(harness.deps, {
+        environment,
+        payload: {
+          input: textInput("late failed steer"),
+          mode: "steer",
+          model: "gpt-5",
+          permissionMode: "full",
+          reasoningLevel: "medium",
+          serviceTier: "default",
+        },
+        thread: activeThread,
+        trigger: "user",
+      });
+      const queued = await waitForQueuedCommand(
+        harness,
+        (candidate) =>
+          candidate.command.type === "turn.submit" &&
+          candidate.command.threadId === thread.id,
+      );
+      if (
+        queued.command.type !== "turn.submit" ||
+        queued.command.target.mode === "start" ||
+        queued.command.target.expectedTurnId === null
+      ) {
+        throw new Error("Expected a turn.submit command with a target turn");
+      }
+      seedStoredEvent(harness.deps, {
+        data: { status: "completed" },
+        environmentId: environment.id,
+        providerThreadId: "provider-send-dispatch-8",
+        scope: turnScope(queued.command.target.expectedTurnId),
+        sequence: 100,
+        threadId: thread.id,
+        type: "turn/completed",
+      });
+      await reportQueuedCommandError(harness, queued, {
+        errorCode: "provider_rpc_error",
+        errorMessage: "No active turn to steer",
+      });
+
+      const eventTypes = listEvents(harness.db, {
+        threadId: thread.id,
+      }).map((event) => event.type);
+      expect(eventTypes).toContain("client/turn/rejected");
+    });
+  });
+
+  it("does not reject an accepted client request", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedProviderThreadFixture({
+        harness,
+        status: "active",
+        value: 9,
+      });
+      seedTurnStarted(harness.deps, {
+        environmentId: environment.id,
+        providerThreadId: "provider-send-dispatch-9",
+        sequence: 3,
+        threadId: thread.id,
+        turnId: "turn-active",
+      });
+      const activeThread = getThread(harness.db, thread.id);
+      if (!activeThread) throw new Error("Expected an active thread");
+
+      await sendThreadMessage(harness.deps, {
+        environment,
+        payload: {
+          input: textInput("accepted steer"),
+          mode: "steer",
+          model: "gpt-5",
+          permissionMode: "full",
+          reasoningLevel: "medium",
+          serviceTier: "default",
+        },
+        thread: activeThread,
+        trigger: "user",
+      });
+      const queued = await waitForQueuedCommand(
+        harness,
+        (candidate) =>
+          candidate.command.type === "turn.submit" &&
+          candidate.command.threadId === thread.id,
+      );
+      if (queued.command.type !== "turn.submit") {
+        throw new Error("Expected a turn.submit command");
+      }
+      seedStoredEvent(harness.deps, {
+        data: { clientRequestId: queued.command.requestId },
+        environmentId: environment.id,
+        providerThreadId: "provider-send-dispatch-9",
+        scope: turnScope("turn-active"),
+        sequence: 100,
+        threadId: thread.id,
+        type: "turn/input/accepted",
+      });
+
+      await reportQueuedCommandError(harness, queued, {
+        errorCode: "provider_rpc_error",
+        errorMessage: "Response arrived after acceptance",
+      });
+
+      const eventTypes = listEvents(harness.db, {
+        threadId: thread.id,
+      }).map((event) => event.type);
+      expect(eventTypes).not.toContain("client/turn/rejected");
+      expect(eventTypes).not.toContain("system/error");
+    });
+  });
+});
+
 describe("idle cold-start activation", () => {
   it("activates an idle thread immediately when it does a cold thread.start", async () => {
     await withTestHarness(async (harness) => {
@@ -303,7 +492,7 @@ describe("idle cold-start activation", () => {
 
   it("resumes provider continuity after an environment directory update", async () => {
     await withTestHarness(async (harness) => {
-      const { environment, thread } = seedIdleProviderThreadFixture({
+      const { environment, thread } = seedProviderThreadFixture({
         harness,
         value: 4,
       });

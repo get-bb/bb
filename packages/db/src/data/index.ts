@@ -346,6 +346,7 @@ export {
   listStoredTimelineWindowEventRows,
   listStoredToolCallRowsByItemIds,
   listStoredTurnInputAcceptedRowsByClientRequestIds,
+  listStoredTurnRejectedRowsByClientRequestIds,
   listStoredTurnCompletedRowsByTurnIds,
   listStoredTurnStartedKeys,
   listStoredTurnStartedRowsByTurnIdsUpToSequence,
