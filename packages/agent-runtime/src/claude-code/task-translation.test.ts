@@ -497,7 +497,10 @@ describe("claude-code background task translation", () => {
 
     // A fresh task_started for the same id starts a new item generation.
     const reopened = adapter.translateEvent(
-      loadFixture("task-started-workflow.json"),
+      {
+        ...loadFixture("task-started-workflow.json"),
+        tool_use_id: "toolu_send_message_1",
+      },
       context,
     );
     const reopenedStarted = collectTaskEvents(reopened).filter(
@@ -506,7 +509,7 @@ describe("claude-code background task translation", () => {
     expect(reopenedStarted).toHaveLength(1);
     expect(backgroundTaskItem(reopenedStarted[0]!)).toMatchObject({
       id: "task:wu7ol9ras#2",
-      parentToolCallId: "toolu_012BkJCmbBgNqL6SXPKNfPvE",
+      parentToolCallId: "toolu_send_message_1",
     });
   });
 
