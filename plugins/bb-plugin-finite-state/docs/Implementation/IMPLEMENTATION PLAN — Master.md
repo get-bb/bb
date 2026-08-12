@@ -1,8 +1,8 @@
 # IMPLEMENTATION PLAN — `bb-plugin-finite-state`
 
-*Owner: Matt Wyckhouse. Status: ready to dispatch. This is the tech-lead document — read before assigning any work. It converts SPECs 00–06 into a repo, a dependency graph, nine parallel agent lanes, and a set of frozen interfaces that let those lanes run without colliding.*
+*Owner: Matt Wyckhouse. Status: ready to dispatch under the FS-93 scheduling gates. This is the tech-lead document — read before assigning any work. It converts SPECs 00–06 into a repo, a dependency graph, nine logical lanes, and a set of frozen interfaces that let those lanes run without colliding.*
 
-**Companion artifacts:** `HANDOFF — Product & Architecture.md` (self-contained product and system overview) · `ADR — Direct APIs & Optional Forge Compute.md` (current integration ruling) · `api-reference/` (vendored reviewed API snapshots) · `AGENTS.md` (the instruction file every coding agent reads) · `tasks/WP-*.md` (the work packages) · `RECON — bb SDK & Forge Surface.md` (historical code-grounded recon, superseded by the ADR where noted).
+**Companion artifacts:** `HANDOFF — Product & Architecture.md` (self-contained product and system overview) · `ADR — Direct APIs & Optional Forge Compute.md` (current integration ruling) · `api-reference/` (vendored reviewed API snapshots) · `AGENTS.md` (the instruction file every coding agent reads) · `tasks/WP-*.md` (the work packages) · `scheduling/PROGRAM-BOOTSTRAP.md` (binding decisions and model policy) · `scheduling/wp-coupling-manifest.json` (effective dispatch graph) · `scheduling/COORDINATOR-RUNBOOK.md` (cap and dispatch procedure) · `RECON — bb SDK & Forge Surface.md` (historical code-grounded recon, superseded by the ADR where noted).
 
 ---
 
@@ -142,6 +142,14 @@ Everything else outside `plugins/bb-plugin-finite-state/` needs a `FORK-DELTA.md
 
 **L4's canvas is a sub-lane.** It is ~2–2.5 weeks on its own and has no dependency on the other L4 work beyond the registry. Assign it a dedicated agent from the start.
 
+### 5.1 Decision ownership and operational concurrency
+
+The nine lanes describe product ownership, not permission to run nine agents immediately. FS-93 preserves all 70 WP keys and binds the 64 WPs that were still unstarted into 28 decision-owner clusters. The binding rule is strict: if one WP's acceptance criteria require a design choice owned by another, both packages use one owner and execute sequentially. The checked-in manifest is authoritative for this scheduling overlay and its validator prevents two sequential members from becoming concurrently ready.
+
+The operational cap remains four until WP-10 through WP-13 are complete and dependency readiness passes. It then becomes **six lanes**. A later increase to **nine lanes** is conditional on nine independent active-or-ready decision clusters, workflow concurrency of at least nine, 45 GiB free after provisioning all worktrees, and a 35 GiB runtime free-space floor. A free slot never overrides an owner sequence.
+
+Use `fs-critical` (Codex `gpt-5.6-sol`, `xhigh`) for L2 sync and the L4 canvas. Use `fs-standard` (the same model at `medium`) for routine/mechanical packages. Independent review uses `fs-review` (Claude Opus 5, `high`). Exact provider/model identifiers and the machine promotion command live in the manifest and coordinator runbook.
+
 ---
 
 ## 6. Dependency graph
@@ -181,6 +189,8 @@ Everything else outside `plugins/bb-plugin-finite-state/` needs a `FORK-DELTA.md
 ```
 
 **Critical path: WP-01 → 03 → 05 → 06 → 08 → 13 → (L3) → L7 → L8.** Everything else has slack. Staff the critical path with your strongest agents and keep a human on WP-03/04/05 review — a mistake in a frozen file is the only thing here that can cost a week.
+
+This diagram shows product prerequisites at lane scale. Dispatch uses the effective per-WP dependency graph in `scheduling/wp-coupling-manifest.json`, including owner-serialization edges such as WP-19 → WP-20 and WP-56 → WP-44.
 
 ---
 
@@ -226,7 +236,7 @@ Demo-complete-first: a thin vertical slice of all fourteen Golden Loop beats bef
 
 ## 9. Effort and staffing
 
-| Lane | Serial effort | Agents | Wall-clock to G4 |
+| Lane | Serial effort | Unconstrained owner demand | Unconstrained wall-clock to G4 |
 |---|---|---|---|
 | L0 Foundation | 1.5–2 wk | 2 | 1 wk (mostly serial) |
 | L1 Remote Services + Mocks | 2–2.5 wk | 2 | 1.5 wk |
@@ -237,11 +247,11 @@ Demo-complete-first: a thin vertical slice of all fourteen Golden Loop beats bef
 | L6 Firmware/Bench/Docs | 5–7 wk | 2 | 3.5 wk |
 | L7 Agentic | 2.5–3.5 wk | 1 | 2 wk (trails surfaces) |
 | L8 Demo & E2E | 1.5 wk | 1 | 1 wk |
-| **Total** | **~30–37 agent-weeks** | **~14–16 concurrent** | **~6–7 wk to G4** |
+| **Total** | **~30–37 agent-weeks** | **~14–16 potential; operationally capped below** | **~6–7 wk scenario, not a dispatch promise** |
 
 Then **G4 → G6 is roughly another 4–5 weeks** of depth work at lower parallelism.
 
-**Reality adjustment:** these are agent-weeks, not human-weeks, and they assume competent review throughput. The binding constraint on a max-fan-out build is almost never agent capacity — it is **human review bandwidth and merge serialization.** Plan for one reviewer per two or three lanes, and expect the actual schedule to be set by how fast frozen-interface amendments get adjudicated.
+**Reality adjustment:** these are agent-weeks, not human-weeks, and they assume competent review throughput. The operational cap is four now, six only after WP-10 through WP-13 and readiness validation, and nine only after the second conditional promotion gate. The binding constraint is usually **human review bandwidth and merge serialization**, not nominal owner demand. Plan for one reviewer per two or three active lanes, and expect the actual schedule to be set by how fast frozen-interface amendments get adjudicated.
 
 ---
 
