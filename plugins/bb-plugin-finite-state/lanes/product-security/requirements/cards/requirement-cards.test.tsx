@@ -223,13 +223,16 @@ describe("requirement cards", () => {
         },
       },
     });
-    let calls = 0;
+    const listInputs: Array<Record<string, unknown>> = [];
     let writeInput: Record<string, unknown> | null = null;
     const panel = await requirementsPanel();
     const slot = renderSlot(panel, { subPath: "requirements" }, {
       context: { projectId: "project-1", threadId: null },
       rpc: {
-        requirementsList: () => page([calls++ < 2 ? first : refreshed], null, "version-7"),
+        requirementsList: (input) => {
+          listInputs.push(rpcContract.requirementsList.input.parse(input));
+          return page([listInputs.length === 1 ? first : refreshed], null, "version-7");
+        },
         requirementsWrite: (input) => {
           writeInput = rpcContract.requirementsWrite.input.parse(input);
           return {
@@ -245,8 +248,14 @@ describe("requirement cards", () => {
       },
     });
     expect(await slot.findByText(/verify its signature/iu)).toBeTruthy();
+    expect(listInputs).toHaveLength(1);
     await slot.behavior.emitRealtime("requirements:changed", { projectId: "project-1" });
     expect(await slot.findByText(/quarantine the image/iu)).toBeTruthy();
+    expect(listInputs).toHaveLength(2);
+    expect(listInputs[1]).toEqual(expect.objectContaining({
+      projectVersionId: "version-7",
+      filters: { refresh: true },
+    }));
     fireEvent.click(slot.getByRole("button", { name: "Expand requirement" }));
     fireEvent.click(slot.getByRole("button", { name: "Edit local YAML" }));
     fireEvent.submit(slot.getByRole("button", { name: "Save local YAML" }).closest("form")!);
@@ -255,6 +264,25 @@ describe("requirement cards", () => {
       projectVersionId: "version-7",
       expectedContentSha256: "f".repeat(64),
     }));
+    slot.lifecycle.unmount();
+  });
+
+  it("offers a ready-state refresh for external YAML changes", async () => {
+    const inputs: Array<Record<string, unknown>> = [];
+    const panel = await requirementsPanel();
+    const slot = renderSlot(panel, { subPath: "requirements" }, {
+      context: { projectId: "project-1", threadId: null },
+      rpc: {
+        requirementsList: (input) => {
+          inputs.push(rpcContract.requirementsList.input.parse(input));
+          return page([model()]);
+        },
+      },
+    });
+    await slot.findByText("REQ-card-1");
+    fireEvent.click(slot.getByRole("button", { name: "Refresh requirements" }));
+    await waitFor(() => expect(inputs).toHaveLength(2));
+    expect(inputs[1]).toEqual(expect.objectContaining({ filters: { refresh: true } }));
     slot.lifecycle.unmount();
   });
 

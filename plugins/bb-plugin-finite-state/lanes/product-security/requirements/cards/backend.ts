@@ -39,6 +39,37 @@ interface VersionRow {
   project_version_id: string;
 }
 
+const CACHE_MESSAGE_MAX_LENGTH = 500;
+
+function truncateDetail(value: string, maxLength: number): string {
+  if (value.length <= maxLength) return value;
+  if (maxLength <= 1) return value.slice(0, maxLength);
+  return `${value.slice(0, maxLength - 1)}…`;
+}
+
+function cacheMessageWithDiagnostics(
+  cacheMessage: string | null,
+  diagnostics: readonly {
+    artifactId: string;
+    line: number;
+    code: string;
+    message: string;
+  }[],
+): string | null {
+  if (diagnostics.length === 0) return cacheMessage;
+  const prefix = cacheMessage ? `${truncateDetail(cacheMessage, 200)} ` : "";
+  const remainingCount = diagnostics.length - 1;
+  const remainder = remainingCount === 0
+    ? ""
+    : ` And ${remainingCount} more invalid requirement ${remainingCount === 1 ? "file" : "files"}.`;
+  const available = Math.max(0, CACHE_MESSAGE_MAX_LENGTH - prefix.length - remainder.length);
+  const first = diagnostics[0];
+  const firstDetail = first
+    ? `${first.artifactId}:${first.line} ${first.code}: ${first.message}`
+    : "Invalid requirement YAML.";
+  return `${prefix}${truncateDetail(firstDetail, available)}${remainder}`;
+}
+
 function resolvedProjectVersionId(
   db: Database.Database,
   projectId: string,
@@ -220,11 +251,6 @@ export function registerRequirementsCardsBackend(
       const next = start + pageSize < allModels.length
         ? visible.at(-1)?.requirement.id ?? null
         : null;
-      const diagnosticMessage = listing.diagnostics.length === 0 ? null : listing.diagnostics
-        .map((diagnostic) =>
-          `${diagnostic.artifactId}:${diagnostic.line} ${diagnostic.code}: ${diagnostic.message}`,
-        )
-        .join(" ");
       return {
         items: visible.map((model) => ({
           projectId: input.projectId,
@@ -238,7 +264,7 @@ export function registerRequirementsCardsBackend(
         next,
         cache: {
           ...cache,
-          message: [cache.message, diagnosticMessage].filter(Boolean).join(" ") || null,
+          message: cacheMessageWithDiagnostics(cache.message, listing.diagnostics),
         },
       };
     },

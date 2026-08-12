@@ -145,7 +145,7 @@ export function RequirementEditor({
       onSaved?.(validation.data, result.afterSha256);
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
-      if (detail.includes("LOCAL_WRITE_CONFLICT")) {
+      if (detail.startsWith("LOCAL_WRITE_CONFLICT:")) {
         try {
           const current = await rpc.call("requirementsGet", {
             projectId,
@@ -158,7 +158,7 @@ export function RequirementEditor({
           setMessage("This requirement changed on disk, but the latest version could not be loaded. Retry the local read before saving.");
         }
       } else {
-        setMessage("The requirement could not be saved to tracked local YAML. Review the fields and retry.");
+        setMessage(detail || "The requirement could not be saved to tracked local YAML. Review the fields and retry.");
       }
     } finally {
       setSaving(false);

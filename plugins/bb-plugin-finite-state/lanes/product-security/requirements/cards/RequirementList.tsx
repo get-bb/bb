@@ -12,7 +12,7 @@ export interface RequirementListProps {
   message?: string | null;
   hasNextPage?: boolean;
   onLoadMore?(): void;
-  onRetry?(): void;
+  onRefresh?(): void;
 }
 
 function CenteredState({
@@ -42,7 +42,7 @@ export function RequirementList({
   message,
   hasNextPage = false,
   onLoadMore,
-  onRetry,
+  onRefresh,
 }: RequirementListProps): React.JSX.Element {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [filter, setFilter] = useState("");
@@ -76,7 +76,7 @@ export function RequirementList({
   if (state === "error" && models.length === 0) {
     return (
       <CenteredState
-        action={onRetry ? <button className="h-9 rounded-md border border-input px-4 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" onClick={onRetry} type="button">Retry local read</button> : null}
+        action={onRefresh ? <button className="h-9 rounded-md border border-input px-4 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" onClick={onRefresh} type="button">Retry local read</button> : null}
         detail={message ?? "The tracked requirement directory and accepted cache could not be read."}
         title="Requirements unavailable"
       />
@@ -85,7 +85,7 @@ export function RequirementList({
   if (state === "ready" && models.length === 0) {
     return (
       <CenteredState
-        action={onRetry ? <button className="h-9 rounded-md bg-foreground px-4 text-sm font-medium text-background hover:bg-foreground/90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" onClick={onRetry} type="button">Check for local YAML</button> : null}
+        action={onRefresh ? <button className="h-9 rounded-md bg-foreground px-4 text-sm font-medium text-background hover:bg-foreground/90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" onClick={onRefresh} type="button">Check for local YAML</button> : null}
         detail="Create a strict fs-requirement/v1 file under product-security/requirements, pull from Sync, or ask the agent to draft one for human review."
         title="No requirements yet"
       />
@@ -97,7 +97,7 @@ export function RequirementList({
       {message ? (
         <div className="flex items-center gap-2 border-b border-border bg-muted px-4 py-2 text-sm text-muted-foreground" role="status">
           {message} Cached cards remain available.
-          {onRetry ? <button className="ml-auto h-8 rounded-md px-3 text-xs font-medium hover:bg-background focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" onClick={onRetry} type="button">Retry</button> : null}
+          {onRefresh ? <button className="ml-auto h-8 rounded-md px-3 text-xs font-medium hover:bg-background focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" onClick={onRefresh} type="button">Refresh</button> : null}
         </div>
       ) : null}
       <div className="flex shrink-0 items-center gap-3 border-b border-border p-3">
@@ -106,6 +106,15 @@ export function RequirementList({
           <input className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" id="requirement-filter" onChange={(event) => setFilter(event.target.value)} placeholder="Filter id, EARS text, type, priority…" value={filter} />
         </div>
         <span className="text-xs tabular-nums text-muted-foreground">{filtered.length} loaded</span>
+        {onRefresh ? (
+          <button
+            className="h-8 rounded-md border border-input px-3 text-xs font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            onClick={onRefresh}
+            type="button"
+          >
+            Refresh requirements
+          </button>
+        ) : null}
       </div>
       <div
         aria-busy={state === "loading"}

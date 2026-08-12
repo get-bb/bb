@@ -158,10 +158,66 @@ describe("requirements registration boundary", () => {
       projectId: "project-1", projectVersionId: null, pageSize: 50, continuation: null, filters: {},
     }));
     expect(result.items.map((item) => item.key)).toEqual(["REQ-valid"]);
-    expect(result.cache.message).toContain("product-security/requirements/REQ-bad.yaml:2 YAML_PARSE");
     expect(result.cache.message).toContain("product-security/requirements/nested/REQ-nested.yaml:1 NESTED_REQUIREMENT_FILE");
+    expect(result.cache.message).toContain("And 1 more invalid requirement file.");
     await host.harness.lifecycle.dispose();
   });
+
+  it.each([4, 5, 8])(
+    "keeps valid cards when %i invalid files exceed the diagnostic transport budget",
+    async (invalidCount) => {
+      const invalidFiles = Array.from({ length: invalidCount }, (_, index) => {
+        const name = `REQ-bad-${String(index).padStart(2, "0")}.yaml`;
+        return { name, path: `/workspace/product-security/requirements/${name}` };
+      });
+      const host = createFakePluginHost({
+        pluginId: "finite-state",
+        sdk: {
+          projects: {
+            get: () => ({
+              sources: [{ hostId: "host-1", path: "/workspace", isDefault: true }],
+            }),
+          },
+          files: {
+            list: () => ({
+              files: [
+                ...invalidFiles,
+                {
+                  name: "REQ-valid.yaml",
+                  path: "/workspace/product-security/requirements/REQ-valid.yaml",
+                },
+              ],
+              truncated: false,
+            }),
+            read: ({ path }: { path: string }) => ({
+              content: path.endsWith("REQ-valid.yaml")
+                ? serializeRequirement(localRequirement("REQ-valid"))
+                : "schema: [\n",
+              contentEncoding: "utf8" as const,
+              sha256: "a".repeat(64),
+            }),
+          },
+        },
+      });
+      registerRequirementsCardsBackend(host.bb, createPluginContext(host.bb));
+      const result = rpcContract.requirementsList.output.parse(
+        await host.harness.callRpc("requirementsList", {
+          projectId: "project-1",
+          projectVersionId: null,
+          pageSize: 50,
+          continuation: null,
+          filters: {},
+        }),
+      );
+      expect(result.items.map((item) => item.key)).toEqual(["REQ-valid"]);
+      expect(result.cache.message).toContain(
+        "product-security/requirements/REQ-bad-00.yaml:2 YAML_PARSE",
+      );
+      expect(result.cache.message).toContain(`And ${invalidCount - 1} more invalid requirement files.`);
+      expect(result.cache.message?.length).toBeLessThanOrEqual(500);
+      await host.harness.lifecycle.dispose();
+    },
+  );
 
   it("resolves the project source once and reuses the 5,000-file snapshot across pages", async () => {
     const files = Array.from({ length: 5_000 }, (_, index) => {
