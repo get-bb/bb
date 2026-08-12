@@ -31,7 +31,11 @@ export interface GenerateOptions {
 }
 
 export class FixtureGenerationError extends Error {
-  readonly code: "INVALID_SEED" | "INVALID_OUTPUT" | "FIXTURE_DRIFT";
+  readonly code:
+    | "INVALID_SEED"
+    | "INVALID_OUTPUT"
+    | "INVALID_ARGUMENT"
+    | "FIXTURE_DRIFT";
 
   constructor(
     code: FixtureGenerationError["code"],

@@ -37,7 +37,7 @@
     ]
   },
   "non-ascii-names": {
-    "description": "Names contain composed non-ASCII Latin and Greek characters.",
+    "description": "Names contain composed non-ASCII Latin characters and the micro sign.",
     "refs": [
       "platform/components.jsonl#component=component-0009",
       "documents/documents.json#document=document-2"

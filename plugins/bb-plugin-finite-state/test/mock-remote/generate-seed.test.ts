@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   lstat,
@@ -14,6 +15,10 @@ import { fileURLToPath } from "node:url";
 
 import { afterEach, describe, expect, test } from "vitest";
 
+import {
+  normalizeForgeJobSnapshot,
+  type ForgeJobCandidate,
+} from "../../lib/remote/types.js";
 import { generateFixtureCorpus } from "./generate-seed.js";
 import {
   DEFAULT_FIXTURE_SEED,
@@ -47,6 +52,7 @@ interface AsEntityFixture {
   id: string;
   projectId: string;
   kind: string;
+  reviewVersion: string;
   fields: Record<string, string | string[]>;
 }
 
@@ -102,9 +108,7 @@ interface SourceExtractFixture {
   target: string;
 }
 
-interface ForgeJobFixture {
-  jobId: string;
-  runId: string | null;
+interface ForgeJobFixture extends Omit<ForgeJobCandidate, "scope"> {
   scope: { projectId: string; projectVersionId: string };
 }
 
@@ -156,6 +160,30 @@ async function byteSnapshot(root: string): Promise<Map<string, Buffer>> {
   return snapshot;
 }
 
+async function runGeneratorCli(args: string[]): Promise<{
+  exitCode: number | null;
+  stdout: string;
+  stderr: string;
+}> {
+  const executable = fileURLToPath(
+    new URL("../../../../node_modules/.bin/tsx", import.meta.url),
+  );
+  const generator = fileURLToPath(new URL("./generate-seed.ts", import.meta.url));
+  return await new Promise((resolveResult, reject) => {
+    const child = spawn(executable, [generator, ...args], { stdio: "pipe" });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.setEncoding("utf8").on("data", (chunk: string) => {
+      stdout += chunk;
+    });
+    child.stderr.setEncoding("utf8").on("data", (chunk: string) => {
+      stderr += chunk;
+    });
+    child.on("error", reject);
+    child.on("close", (exitCode) => resolveResult({ exitCode, stdout, stderr }));
+  });
+}
+
 function expectReference(targets: Set<string>, reference: string, source: string): void {
   expect(targets.has(reference), `${source} references missing target ${reference}`).toBe(true);
 }
@@ -181,15 +209,28 @@ describe("deterministic-seed-corpus", () => {
 
   test("committed manifest hashes, logical counts, and bounded size are exact", async () => {
     const manifest = await parseJson<FixtureManifest>(join(committedFixtures, "manifest.json"));
+    const findings = await parseJsonl<FindingFixture>(join(committedFixtures, "platform", "findings.jsonl"));
+    const components = await parseJsonl<ComponentFixture>(join(committedFixtures, "platform", "components.jsonl"));
+    const entities = await parseJsonl<AsEntityFixture>(join(committedFixtures, "assurance-studio", "entities.jsonl"));
+    const requirements = await parseJsonl<RequirementFixture>(join(committedFixtures, "assurance-studio", "requirements.jsonl"));
+    const firmware = await parseJsonl<FirmwareFixture>(join(committedFixtures, "firmware", "manifest.jsonl"));
+    const documents = await parseJson<{ items: DocumentFixture[] }>(join(committedFixtures, "documents", "documents.json"));
     expect(manifest.counts).toEqual({
-      findings: 4_000,
-      components: 180,
-      sbomComponents: 900,
-      taraNodes: 12,
-      requirements: 40,
-      firmwarePaths: 6_000,
-      documents: 6,
+      findings: new Set(findings.map((finding) => finding.id)).size,
+      components: components.filter((component) => component.vulnerable).length,
+      sbomComponents: components.length,
+      taraNodes: entities.filter((entity) => entity.kind === "component").length,
+      requirements: requirements.length,
+      firmwarePaths: firmware.length,
+      documents: documents.items.length,
     });
+    expect(manifest.counts.findings).toBeGreaterThanOrEqual(4_000);
+    expect(manifest.counts.components).toBeGreaterThanOrEqual(180);
+    expect(manifest.counts.sbomComponents).toBeGreaterThanOrEqual(900);
+    expect(manifest.counts.taraNodes).toBeGreaterThanOrEqual(12);
+    expect(manifest.counts.requirements).toBeGreaterThanOrEqual(40);
+    expect(manifest.counts.firmwarePaths).toBeGreaterThanOrEqual(6_000);
+    expect(manifest.counts.documents).toBeGreaterThanOrEqual(6);
 
     const listedPaths = new Set(manifest.files.map((file) => file.path));
     const actualPaths = (await relativeFiles(committedFixtures)).filter((path) => path !== "manifest.json");
@@ -207,6 +248,9 @@ describe("deterministic-seed-corpus", () => {
     }
     expect(corpusBytes).toBeLessThan(4 * 1024 * 1024);
     expect((await relativeFiles(join(committedFixtures, "firmware", "bytes"))).length).toBe(2);
+    expect(await readFile(join(committedFixtures, ".gitattributes"), "utf8")).toBe(
+      "*.bin binary\n",
+    );
   });
 
   test("all references resolve with source-specific diagnostics", async () => {
@@ -366,6 +410,11 @@ describe("deterministic-seed-corpus", () => {
     const asPage = await parseJson<{ success: boolean; data: { items: object[]; total: number; page: number; pageSize: number; hasMore: boolean } }>(join(committedFixtures, "assurance-studio", "entities-page-1.json"));
     expect(asPage).toMatchObject({ success: true, data: { page: 1, pageSize: 25, hasMore: true } });
     expect(asPage.data.total).toBeGreaterThan(asPage.data.items.length);
+    const entities = await parseJsonl<AsEntityFixture>(join(committedFixtures, "assurance-studio", "entities.jsonl"));
+    const precisionRevision = entities.find(
+      (entity) => BigInt(entity.reviewVersion) > BigInt(Number.MAX_SAFE_INTEGER),
+    );
+    expect(precisionRevision?.reviewVersion).toBe("9007199254740993");
 
     const vex = await parseJson<VexBulkFixture>(join(committedFixtures, "platform", "vex-bulk-partial.json"));
     expect(vex.status).toBe("partial_success");
@@ -373,8 +422,19 @@ describe("deterministic-seed-corpus", () => {
     expect(vex.results.filter((result) => result.success)).toHaveLength(3);
 
     expect((await readFile(join(committedFixtures, "platform", "vex-export.csv"), "utf8")).toString()).toMatch(/# rows_written=25 rows_skipped=2\n$/);
-    const jobs = await parseJsonl<{ status: string }>(join(committedFixtures, "forge-compute", "jobs.jsonl"));
-    expect(new Set(jobs.map((job) => job.status))).toEqual(new Set(["RUNNING", "COMPLETED", "FAILED", "TIMEOUT"]));
+    const jobs = await parseJsonl<ForgeJobFixture>(join(committedFixtures, "forge-compute", "jobs.jsonl"));
+    expect(new Set(jobs.map((job) => job.status))).toEqual(new Set(["RUNNING", "COMPLETED", "FAILED", "TIMEOUT", "CANCELLED"]));
+    const cancelled = jobs.find((job) => job.status === "CANCELLED");
+    expect(cancelled).toBeDefined();
+    if (cancelled) {
+      expect(normalizeForgeJobSnapshot(cancelled)).toMatchObject({
+        status: "FAILED",
+        error: {
+          code: "FORGE_JOB_CANCELLED",
+          message: "Fixture cancelled by operator",
+        },
+      });
+    }
     const nonForgeFiles = (await relativeFiles(committedFixtures)).filter((path) => !path.startsWith("forge-compute/") && !path.endsWith("manifest.json"));
     for (const path of nonForgeFiles) {
       const bytes = await readFile(join(committedFixtures, ...path.split("/")));
@@ -391,7 +451,17 @@ describe("deterministic-seed-corpus", () => {
     expect(second.fixedNow).toBe(first.fixedNow);
     expect(second.counts).toEqual(first.counts);
     expect(second.files.map((file) => file.path)).toEqual(first.files.map((file) => file.path));
-    expect(second.files.filter((file, index) => file.sha256 !== first.files[index].sha256).length).toBeGreaterThan(20);
+    expect(second.files.filter((file, index) => file.sha256 !== first.files[index].sha256).length).toBe(21);
+  });
+
+  test("unknown CLI arguments emit one typed diagnostic without a stack", async () => {
+    const result = await runGeneratorCli(["--unknown-fixture-option"]);
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe(
+      "FixtureGenerationError [INVALID_ARGUMENT]: Unknown or incomplete argument: --unknown-fixture-option\n",
+    );
+    expect(result.stderr).not.toContain("at parseCli");
   });
 
   test("--check detects one-byte drift and does not overwrite it", async () => {

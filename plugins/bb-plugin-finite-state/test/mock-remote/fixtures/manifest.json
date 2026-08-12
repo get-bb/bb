@@ -38,7 +38,7 @@
       ]
     },
     "non-ascii-names": {
-      "description": "Names contain composed non-ASCII Latin and Greek characters.",
+      "description": "Names contain composed non-ASCII Latin characters and the micro sign.",
       "refs": [
         "platform/components.jsonl#component=component-0009",
         "documents/documents.json#document=document-2"
@@ -106,20 +106,25 @@
   },
   "files": [
     {
+      "bytes": 13,
+      "path": ".gitattributes",
+      "sha256": "c7c6541111ee53947140bac154f1275c6b1b244c40c045b190662f23226509c9"
+    },
+    {
       "bytes": 576,
       "path": "README.md",
       "sha256": "66e223d2b3c8f2cdf313a0fc85515683385cf786e144a1a24b5aeb97ff55b141"
     },
     {
-      "bytes": 8902,
+      "bytes": 8915,
       "path": "assurance-studio/entities-page-1.json",
-      "sha256": "fba515c21d59b233e654381cef56e7145bbe3bf0f9fe937bfefe0a5cbecfc6c4"
+      "sha256": "464e483aaadc8632af3bfeaa3550226fb7306b6dd36266b0420f3782880f8837"
     },
     {
-      "bytes": 14162,
+      "bytes": 14175,
       "path": "assurance-studio/entities.jsonl",
       "rows": 62,
-      "sha256": "98b9ac72f61c56744d14e423a15bb7cef6c5744d9bc10fedd2588224a51421ea"
+      "sha256": "0daf497c641eff3534545df18acc254c2975935285f56cb9e7e24a2383d0e5e7"
     },
     {
       "bytes": 13587,
@@ -144,9 +149,9 @@
       "sha256": "f39fa98949f3fc92ae2411e7836507dfd531d8f8df48137f9d165fd43c6763dd"
     },
     {
-      "bytes": 3147,
+      "bytes": 3156,
       "path": "cases.json",
-      "sha256": "15fee55bcf0804f9bacfe0c24b5bf10830a79364834db9c37924ddbc623fdae4"
+      "sha256": "eb55d27d752806df79687bc3b38399b3548150a5a89356b43fe80ded06ec9536"
     },
     {
       "bytes": 3847,
@@ -238,10 +243,10 @@
       "sha256": "110a12e9f171fbdfb0744f241c2b935c4383fa791d7780ea4eb4d9c2b34b819d"
     },
     {
-      "bytes": 1536,
+      "bytes": 1968,
       "path": "forge-compute/jobs.jsonl",
-      "rows": 4,
-      "sha256": "eb3861d2a53beb442d8df355f3539590e0355eb67b595cfaa8f4c3028aa74312"
+      "rows": 5,
+      "sha256": "3d67d76c550626bb4068104a0c00c088e434d69203305d72143dcc2cba8f1f64"
     },
     {
       "bytes": 25139,
