@@ -73,6 +73,10 @@ import { AppCommandShortcutPill } from "@/components/commands/AppCommandShortcut
 import { useThreadTitleDisplayText } from "@/components/thread/ThreadTitleMentions";
 import { pluginIconName } from "@/components/plugin/PluginIcon";
 import { usePluginThreadRowStatus } from "@/lib/plugin-thread-row-status";
+import {
+  getEnvironmentPullRequestFromResponse,
+  useEnvironmentPullRequest,
+} from "@/hooks/queries/environment-queries";
 
 interface ThreadRowBaseOptions {
   depth: number;
@@ -411,7 +415,35 @@ export function CollapsedThreadStatusGlyph({
 }
 type ThreadTrailingIndicatorProps = ThreadStatusGlyphProps & {
   pluginStatus: PluginComposerThreadRowStatus | null;
+  unreadPullRequestEnvironmentId: string | null;
 };
+
+function UnreadPullRequestIndicator({
+  environmentId,
+  fallback,
+}: {
+  environmentId: string;
+  fallback: ReactNode;
+}) {
+  const query = useEnvironmentPullRequest(environmentId);
+  const pullRequest = getEnvironmentPullRequestFromResponse(query.data);
+
+  if (pullRequest === null) {
+    return fallback;
+  }
+
+  return (
+    <Icon
+      name="Github"
+      className={cn(
+        "pointer-events-none shrink-0",
+        COARSE_POINTER_ICON_SIZE_CLASS,
+        SIDEBAR_SUCCESS_STATUS_COLOR_CLASS,
+      )}
+      aria-label="Pull request pushed to GitHub"
+    />
+  );
+}
 
 interface ThreadTrailingIndicatorResolution {
   accessibleLabel: string | null;
@@ -441,6 +473,7 @@ function resolveThreadTrailingIndicatorStatus(
 
 function ThreadTrailingIndicator({
   pluginStatus,
+  unreadPullRequestEnvironmentId,
   ...statusProps
 }: ThreadTrailingIndicatorProps) {
   const { indicatorKind, pluginStatusIsVisible } =
@@ -458,7 +491,19 @@ function ThreadTrailingIndicator({
         COARSE_POINTER_GLYPH_BOX_CLASS,
       )}
     >
-      {pluginStatusIsVisible && pluginStatus ? (
+      {indicatorKind === "unread-success" &&
+      unreadPullRequestEnvironmentId !== null ? (
+        <UnreadPullRequestIndicator
+          environmentId={unreadPullRequestEnvironmentId}
+          fallback={
+            pluginStatusIsVisible && pluginStatus ? (
+              <PluginThreadRowStatusIndicator status={pluginStatus} />
+            ) : (
+              <ThreadStatusGlyph {...statusProps} />
+            )
+          }
+        />
+      ) : pluginStatusIsVisible && pluginStatus ? (
         <PluginThreadRowStatusIndicator status={pluginStatus} />
       ) : (
         <ThreadStatusGlyph {...statusProps} />
@@ -695,6 +740,9 @@ function ThreadRowComponent({
                 ) : (
                   <ThreadTrailingIndicator
                     {...trailingIndicatorState}
+                    unreadPullRequestEnvironmentId={
+                      threadUnreadSuccess ? thread.environmentId : null
+                    }
                     hideIdleDraftLabel={
                       !hasHiddenChildren && trailingIndicatorKind === "draft"
                     }

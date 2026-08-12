@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import { createStore, Provider } from "jotai";
 import type { ThreadListEntry } from "@bb/domain";
 import type { PluginComposerThreadRowStatus } from "@bb/plugin-sdk";
+import type { EnvironmentPullRequestResponse } from "@bb/server-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ThreadRow, type ThreadRowOptions } from "./ThreadRow";
 import { SidebarThreadTitleMentionResourcesProvider } from "./SidebarThreadTitleMentions";
@@ -24,6 +25,19 @@ import {
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import { SPLIT_LAYOUT_STORAGE_KEY } from "@/lib/split-layout/persistence";
 import { NO_COLLAPSED_CHILD_ACTIVITY } from "@/lib/thread-activity";
+
+const { mockUseEnvironmentPullRequest } = vi.hoisted(() => ({
+  mockUseEnvironmentPullRequest: vi.fn<
+    () => { data: EnvironmentPullRequestResponse | undefined }
+  >(() => ({ data: undefined })),
+}));
+
+vi.mock("@/hooks/queries/environment-queries", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@/hooks/queries/environment-queries")
+  >()),
+  useEnvironmentPullRequest: mockUseEnvironmentPullRequest,
+}));
 
 vi.mock("@/hooks/useThreadSplitsEnabled", () => ({
   useThreadSplitsEnabled: () => true,
@@ -225,6 +239,8 @@ function renderSplitThreadRow({
 
 afterEach(() => {
   cleanup();
+  mockUseEnvironmentPullRequest.mockReset();
+  mockUseEnvironmentPullRequest.mockReturnValue({ data: undefined });
   resetPluginThreadRowStatusesForTest();
   // The layout is tab-scoped, so it lands in both stores (createTabScopedStorage).
   window.localStorage.removeItem(SPLIT_LAYOUT_STORAGE_KEY);
@@ -1206,6 +1222,65 @@ describe("ThreadRow", () => {
 
     expect(screen.getByLabelText("Unread thread succeeded")).not.toBeNull();
     expect(container.querySelector('[data-icon="CircleCheck"]')).toBeNull();
+  });
+
+  it("shows GitHub for an unread successful thread with a pull request", () => {
+    mockUseEnvironmentPullRequest.mockReturnValue({
+      data: {
+        outcome: "available",
+        pullRequest: {
+          number: 412,
+          title: "Ship the sidebar indicator",
+          url: "https://github.com/get-bb/bb/pull/412",
+          state: "open",
+          baseRefName: "main",
+          headRefName: "codex/sidebar-pr-indicator",
+          updatedAt: "2026-08-11T12:00:00.000Z",
+          checks: {
+            state: "passing",
+            totalCount: 1,
+            passedCount: 1,
+            failedCount: 0,
+            pendingCount: 0,
+          },
+          review: { state: "none", reviewRequestCount: 0 },
+          mergeability: {
+            state: "mergeable",
+            mergeStateStatus: "CLEAN",
+            mergeable: "MERGEABLE",
+          },
+          attention: "ready_to_merge",
+        },
+      },
+    });
+    const { container, rerenderThreadRow } = renderThreadRow({
+      thread: createThread({
+        environmentId: "env_test",
+        status: "idle",
+        lastReadAt: 1_000,
+        latestAttentionAt: 2_000,
+      }),
+    });
+
+    expect(
+      screen.getByLabelText("Pull request pushed to GitHub"),
+    ).not.toBeNull();
+    expect(container.querySelector('[data-icon="Github"]')).not.toBeNull();
+    expect(screen.queryByLabelText("Unread thread succeeded")).toBeNull();
+    expect(mockUseEnvironmentPullRequest).toHaveBeenCalledOnce();
+    expect(mockUseEnvironmentPullRequest).toHaveBeenCalledWith("env_test");
+
+    rerenderThreadRow(
+      createThread({
+        environmentId: "env_test",
+        status: "idle",
+        lastReadAt: 2_000,
+        latestAttentionAt: 2_000,
+      }),
+    );
+
+    expect(screen.queryByLabelText("Pull request pushed to GitHub")).toBeNull();
+    expect(mockUseEnvironmentPullRequest).toHaveBeenCalledOnce();
   });
 
   it("switches directly from working to the settled done dot after finishing", () => {
