@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import type { TypeaheadConfig } from "@/components/promptbox/PromptBoxInternal";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import type { PromptBoxAction } from "@/components/promptbox/PromptBoxActionsMenu";
-import { withAutomationPromptAction } from "@/components/promptbox/PromptBoxActionsMenu";
+import { withAppPromptActions } from "@/components/promptbox/PromptBoxActionsMenu";
 import type { ProviderComposerAction } from "@bb/domain";
 import { buildProviderPromptActionProps } from "@/components/promptbox/mentions/command-trigger";
 import { useCommandSuggestions } from "@/hooks/useCommandSuggestions";
@@ -54,7 +54,7 @@ export function useComposerTypeahead({
     [selectedProviderComposerActions],
   );
   const promptActions = useMemo(
-    () => withAutomationPromptAction(providerPromptActions.promptActions),
+    () => withAppPromptActions(providerPromptActions.promptActions),
     [providerPromptActions.promptActions],
   );
   const commandSuggestions = useCommandSuggestions({
