@@ -166,12 +166,13 @@
     "sixLanePromotion": {
       "requiredCompletedWorkPackages": [],
       "requiredIndependentDecisionClusters": 6,
-      "minimumFreeAfterProvisionGiB": 30,
-      "minimumRuntimeFloorGiB": 25
+      "minimumFreeAfterProvisionGiB": 35,
+      "minimumRuntimeFloorGiB": 30
     },
     "nineLanePromotion": {
       "requiredCompletedWorkPackages": [],
       "requiredIndependentDecisionClusters": 9,
+      "requiresCompletedManagedWorktreePruning": true,
       "minimumFreeAfterProvisionGiB": 45,
       "minimumRuntimeFloorGiB": 35
     }

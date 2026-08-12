@@ -196,12 +196,12 @@ test("promotion is closed when disk headroom is insufficient at six lanes", () =
   assert.equal(result.eligible, false);
   assert(
     result.errors.some((error) =>
-      error.includes("free space after provisioning must be at least 30 GiB"),
+      error.includes("free space after provisioning must be at least 35 GiB"),
     ),
   );
   assert(
     result.errors.some((error) =>
-      error.includes("runtime free-space floor must be at least 25 GiB"),
+      error.includes("runtime free-space floor must be at least 30 GiB"),
     ),
   );
 });
@@ -244,6 +244,21 @@ test("promotion carries no workflow-concurrency requirement", () => {
   }
 });
 
+test("manifest pins the revised disk floors and nine-lane pruning gate", () => {
+  const errors = errorsFor((manifest) => {
+    manifest.dispatchPolicy.sixLanePromotion.minimumFreeAfterProvisionGiB = 30;
+    manifest.dispatchPolicy.sixLanePromotion.minimumRuntimeFloorGiB = 25;
+    manifest.dispatchPolicy.nineLanePromotion.requiresCompletedManagedWorktreePruning = false;
+  });
+  for (const expected of [
+    "six-lane post-provision free-space floor must be 35 GiB",
+    "six-lane runtime free-space floor must be 30 GiB",
+    "nine-lane promotion must require completed managed-worktree pruning",
+  ]) {
+    assert(errors.includes(expected), expected);
+  }
+});
+
 test("six- and nine-lane promotion require independent dependency-ready clusters", () => {
   const completedWorkPackages = Array.from(
     { length: 14 },
@@ -257,8 +272,8 @@ test("six- and nine-lane promotion require independent dependency-ready clusters
       completedWorkPackages,
       activeWorkPackages: [],
       currentLaneCap: 4,
-      freeAfterProvisionGiB: 30,
-      runtimeFloorGiB: 25,
+      freeAfterProvisionGiB: 35,
+      runtimeFloorGiB: 30,
     },
     6,
   );
@@ -272,10 +287,36 @@ test("six- and nine-lane promotion require independent dependency-ready clusters
       currentLaneCap: 6,
       freeAfterProvisionGiB: 45,
       runtimeFloorGiB: 35,
+      managedWorktreePruningComplete: true,
     },
     9,
   );
   assert.equal(nine.eligible, true, nine.errors.join("\n"));
+});
+
+test("nine-lane promotion requires completed managed-worktree pruning", () => {
+  const completedWorkPackages = Array.from(
+    { length: 14 },
+    (_, index) => `WP${String(index + 1).padStart(2, "0")}`,
+  );
+  const result = evaluatePromotion(
+    manifestCopy(),
+    {
+      completedWorkPackages,
+      activeWorkPackages: [],
+      currentLaneCap: 6,
+      freeAfterProvisionGiB: 45,
+      runtimeFloorGiB: 35,
+      managedWorktreePruningComplete: false,
+    },
+    9,
+  );
+  assert.equal(result.eligible, false);
+  assert(
+    result.errors.includes(
+      "managed-worktree pruning and free-space recovery must be complete before promotion to nine lanes",
+    ),
+  );
 });
 
 test("runtime readiness rejects concurrent active members of a sequential cluster", () => {

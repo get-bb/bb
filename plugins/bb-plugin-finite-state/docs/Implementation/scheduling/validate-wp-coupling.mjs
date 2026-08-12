@@ -123,6 +123,20 @@ export function validateManifest(manifest) {
     );
   if (manifest.effectiveWorkPackageCount !== 70)
     errors.push("effectiveWorkPackageCount must remain 70");
+  const sixLanePolicy = manifest.dispatchPolicy.sixLanePromotion;
+  const nineLanePolicy = manifest.dispatchPolicy.nineLanePromotion;
+  if (sixLanePolicy.minimumFreeAfterProvisionGiB !== 35)
+    errors.push("six-lane post-provision free-space floor must be 35 GiB");
+  if (sixLanePolicy.minimumRuntimeFloorGiB !== 30)
+    errors.push("six-lane runtime free-space floor must be 30 GiB");
+  if (nineLanePolicy.minimumFreeAfterProvisionGiB !== 45)
+    errors.push("nine-lane post-provision free-space floor must be 45 GiB");
+  if (nineLanePolicy.minimumRuntimeFloorGiB !== 35)
+    errors.push("nine-lane runtime free-space floor must be 35 GiB");
+  if (nineLanePolicy.requiresCompletedManagedWorktreePruning !== true)
+    errors.push(
+      "nine-lane promotion must require completed managed-worktree pruning",
+    );
   if (manifest.remainingUnstartedCount !== expectedRemaining.length) {
     errors.push(`remainingUnstartedCount must be ${expectedRemaining.length}`);
   }
@@ -323,9 +337,16 @@ export function evaluatePromotion(manifest, state, targetCap) {
       "six-lane operation must be established before promotion to nine lanes",
     );
   }
+  if (targetCap === 9 && state.managedWorktreePruningComplete !== true) {
+    promotionErrors.push(
+      "managed-worktree pruning and free-space recovery must be complete before promotion to nine lanes",
+    );
+  }
   // Disk binds at every cap, not only at nine: each managed worktree costs
   // roughly 3.4 GiB marginal, so 4 -> 6 lanes adds about 7 GiB.
-  if ((state.freeAfterProvisionGiB ?? 0) < policy.minimumFreeAfterProvisionGiB) {
+  if (
+    (state.freeAfterProvisionGiB ?? 0) < policy.minimumFreeAfterProvisionGiB
+  ) {
     promotionErrors.push(
       `free space after provisioning must be at least ${policy.minimumFreeAfterProvisionGiB} GiB`,
     );
@@ -430,6 +451,8 @@ export function main(argv = process.argv.slice(2)) {
       ),
       freeAfterProvisionGiB: numberOption(options, "free-after-provision-gib"),
       runtimeFloorGiB: numberOption(options, "runtime-floor-gib"),
+      managedWorktreePruningComplete:
+        options["managed-worktree-pruning-complete"] === "true",
     },
     numberOption(options, "target-cap"),
   );

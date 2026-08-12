@@ -48,9 +48,9 @@ fnm exec --using=22.19.0 -- node plugins/bb-plugin-finite-state/docs/Implementat
   --runtime-floor-gib 34
 ```
 
-Do not raise the cap until the command exits zero with live state. Six lanes require at least six independent active-or-ready decision clusters, 30 GiB free after provisioning, and a 25 GiB runtime floor.
+Do not raise the cap until the command exits zero with live state. Six lanes require at least six independent active-or-ready decision clusters, 35 GiB free after provisioning, and a 30 GiB runtime floor. The floor uses the measured 3.4–4.9 GiB managed-worktree range rather than the lower early estimate.
 
-**Lane count is not gated on the mock chain.** WP-10 through WP-13 gate the mock-*dependent* work packages, and the dependency graph already enforces that per package. Gating the cap on them blocked lanes whose clusters have no mock dependency at all — on 2026-08-12 eleven clusters were dependency-ready while promotion evaluated ineligible.
+**Lane count is not gated on the mock chain.** WP-10 through WP-13 gate the mock-_dependent_ work packages, and the dependency graph already enforces that per package. Gating the cap on them blocked lanes whose clusters have no mock dependency at all — on 2026-08-12 eleven clusters were dependency-ready while promotion evaluated ineligible.
 
 There is also **no workflow-concurrency requirement**. The saved-workflow factory was removed on 2026-08-12 (`ADR — bb Is Not Modified.md`) and orchestration is manual, so such a requirement would be permanently unsatisfiable.
 
@@ -63,11 +63,12 @@ fnm exec --using=22.19.0 -- node plugins/bb-plugin-finite-state/docs/Implementat
   --completed WP01,WP02,WP03,WP04,WP05,WP06,WP07,WP08,WP09,WP10,WP11,WP12,WP13 \
   --active WP14 \
   --current-cap 6 \
+  --managed-worktree-pruning-complete true \
   --free-after-provision-gib 45 \
   --runtime-floor-gib 35
 ```
 
-Replace the example values with current observations. A zero exit requires prior six-lane operation, nine independent active-or-ready clusters, 45 GiB free after provisioning, and a 35 GiB runtime floor. Each managed worktree costs roughly 3.4 GiB marginal, so budget about 7 GiB when going from four lanes to six. Record the command and JSON result on the program-control Task before changing the cap.
+Replace the example values with current observations. Before evaluating nine lanes, archive completed threads, preserve recoverable branches, prune completed managed worktrees through bb's environment lifecycle, and remeasure free space. A zero exit requires that pruning/free-space recovery step to be explicitly complete, prior six-lane operation, nine independent active-or-ready clusters, 45 GiB free after provisioning, and a 35 GiB runtime floor. Managed worktrees measured 3.4–4.9 GiB, so use current measurements rather than a fixed marginal estimate. Record the cleanup evidence, command, and JSON result on the program-control Task before changing the cap.
 
 ## 4. Dispatch through the required preset
 
