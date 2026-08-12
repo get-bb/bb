@@ -181,26 +181,67 @@ test("manifest dependencies are a superset of range-expanded WP headers", () => 
   }
 });
 
-test("promotion remains closed until WP10-WP13 and capacity gates pass", () => {
+test("promotion is closed when disk headroom is insufficient at six lanes", () => {
   const result = evaluatePromotion(
     manifestCopy(),
     {
       completedWorkPackages: ["WP01", "WP07"],
       activeWorkPackages: [],
       currentLaneCap: 4,
-      workflowConcurrency: 4,
+      freeAfterProvisionGiB: 12,
+      runtimeFloorGiB: 8,
     },
     6,
   );
   assert.equal(result.eligible, false);
   assert(
-    result.errors.some((error) => error.includes("WP10 must be complete")),
+    result.errors.some((error) =>
+      error.includes("free space after provisioning must be at least 30 GiB"),
+    ),
   );
   assert(
     result.errors.some((error) =>
-      error.includes("workflow concurrency must be at least 6"),
+      error.includes("runtime free-space floor must be at least 25 GiB"),
     ),
   );
+});
+
+// Regression guard. Lane COUNT must not be gated on the mock chain: the DAG
+// already makes mock-dependent packages wait for WP10-WP13, and gating the cap
+// on them blocked lanes whose clusters have no mock dependency at all.
+test("six-lane promotion does not require the mock chain to be complete", () => {
+  const result = evaluatePromotion(
+    manifestCopy(),
+    {
+      completedWorkPackages: ["WP01", "WP03", "WP04", "WP05", "WP06", "WP07"],
+      activeWorkPackages: [],
+      currentLaneCap: 4,
+      freeAfterProvisionGiB: 52,
+      runtimeFloorGiB: 40,
+    },
+    6,
+  );
+  assert.equal(result.eligible, true, result.errors.join("\n"));
+  assert(
+    !result.errors.some((error) => /WP1[0-3] must be complete/u.test(error)),
+    "lane promotion must not depend on the mock chain",
+  );
+});
+
+// The saved-workflow factory was removed on 2026-08-12 and orchestration is
+// manual, so a workflow-concurrency requirement is permanently unsatisfiable.
+test("promotion carries no workflow-concurrency requirement", () => {
+  const manifest = manifestCopy();
+  for (const key of ["sixLanePromotion", "nineLanePromotion"]) {
+    assert.equal(
+      Object.hasOwn(
+        manifest.dispatchPolicy[key],
+        "requiredWorkflowConcurrency",
+      ),
+      false,
+      `${key} must not require workflow concurrency`,
+    );
+  }
 });
 
 test("six- and nine-lane promotion require independent dependency-ready clusters", () => {
@@ -216,7 +257,8 @@ test("six- and nine-lane promotion require independent dependency-ready clusters
       completedWorkPackages,
       activeWorkPackages: [],
       currentLaneCap: 4,
-      workflowConcurrency: 6,
+      freeAfterProvisionGiB: 30,
+      runtimeFloorGiB: 25,
     },
     6,
   );
@@ -228,7 +270,6 @@ test("six- and nine-lane promotion require independent dependency-ready clusters
       completedWorkPackages,
       activeWorkPackages: [],
       currentLaneCap: 6,
-      workflowConcurrency: 9,
       freeAfterProvisionGiB: 45,
       runtimeFloorGiB: 35,
     },
