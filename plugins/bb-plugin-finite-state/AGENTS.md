@@ -42,7 +42,7 @@ The data plane is direct typed Platform REST plus direct typed Assurance Studio 
 
 Implementation agents may commit, push, and open PRs. They do not merge their own work. A separate reviewer must verify acceptance criteria, frozen-contract compatibility, the safety boundary, and focused tests. The coordinator may merge a green independently reviewed PR.
 
-Human-only product actions remain absent from agent tools and executable CLI mutation paths: upstream push, conflict resolution, HBOM acceptance/rejection, lifecycle approval, manual attestation, and non-restorable destructive confirmation. The exact three agent action tools remain the compile-time allowlist.
+Human-only product actions remain absent from agent tools and executable CLI mutation paths: upstream push, conflict resolution, HBOM acceptance/rejection, lifecycle approval, manual attestation, and non-restorable destructive confirmation. `lib/agentic/registry.ts` is the canonical registry seam, and its closed `ActionToolName` union is the compile-time authority for the exact three agent actions.
 
 Every PR body ends with an agent-generation marker as required by the repository root `AGENTS.md`.
 
@@ -62,9 +62,12 @@ this machine; `nvm`, `mise`, `asdf`, `volta`, and `n` are not.
 
 ## Verification — always through turbo
 
-Run every check through turbo from the repository root:
+Run the two repository tripwires directly, then run every package lifecycle
+check through Turbo from the repository root:
 
 ```sh
+node plugins/bb-plugin-finite-state/scripts/check-frozen-artifacts.mjs
+node plugins/bb-plugin-finite-state/scripts/check-dependency-freeze.mjs
 pnpm exec turbo run typecheck test lint build --filter=bb-plugin-finite-state
 ```
 
@@ -133,7 +136,7 @@ bb plugin logs finite-state -f
 
 WP-02 (builtin registry) is about shipping, not about seeing the plugin work.
 
-**Do not install the plugin until the base migration rewrite has landed.**
-Installing creates `<dataDir>/plugins/finite-state/data.db` and applies the
-current migration array, which closes the in-place rewrite window described
-above.
+**Do not install the plugin until FS-23 has merged and FS-91 branch protection
+is active.** Installing creates `<dataDir>/plugins/finite-state/data.db` and
+applies the frozen migration array; WP-02 owns that first activation and its
+fresh-database proof.

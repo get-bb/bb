@@ -1,0 +1,8 @@
+/plugins/bb-plugin-finite-state/server.ts @mattwyckhouse
+/plugins/bb-plugin-finite-state/app.tsx @mattwyckhouse
+/plugins/bb-plugin-finite-state/shared/contract.ts @mattwyckhouse
+/plugins/bb-plugin-finite-state/lib/store/schema.ts @mattwyckhouse
+/plugins/bb-plugin-finite-state/lib/sync/registry.ts @mattwyckhouse
+/plugins/bb-plugin-finite-state/lib/remote/types.ts @mattwyckhouse
+/plugins/bb-plugin-finite-state/frozen-artifacts.json @mattwyckhouse
+/plugins/bb-plugin-finite-state/AMENDMENTS.md @mattwyckhouse
