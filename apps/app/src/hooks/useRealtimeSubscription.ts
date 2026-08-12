@@ -43,6 +43,29 @@ export function useThreadDetailRealtimeSubscription(
   useRealtimeSubscription(target, options);
 }
 
+export function useThreadDetailRealtimeSubscriptions(
+  threadIds: readonly string[],
+  options?: RealtimeSubscriptionOptions,
+): void {
+  const enabled = options?.enabled ?? true;
+  const serializedIds = threadIds.join("\0");
+
+  useEffect(() => {
+    if (!enabled || serializedIds.length === 0) {
+      return;
+    }
+    const ids = serializedIds.split("\0");
+    for (const threadId of ids) {
+      wsManager.subscribe({ kind: "thread-detail", threadId });
+    }
+    return () => {
+      for (const threadId of ids) {
+        wsManager.unsubscribe({ kind: "thread-detail", threadId });
+      }
+    };
+  }, [enabled, serializedIds]);
+}
+
 export function useEnvironmentDetailRealtimeSubscription(
   environmentId: string | null | undefined,
   options?: RealtimeSubscriptionOptions,

@@ -52,6 +52,10 @@ import {
   useEnvironmentWorkStatus,
 } from "../../hooks/queries/environment-queries";
 import {
+  useChildThreadPendingAttention,
+  type ChildThreadPendingAttentionSource,
+} from "../../hooks/queries/child-thread-pending-interactions";
+import {
   didThreadDetailBootstrapRefreshAfterMount,
   getLatestPendingInteraction,
   useProjectThreadSubset,
@@ -247,6 +251,8 @@ import { ThreadArchiveCommandHandler } from "./ThreadArchiveCommandHandler";
 import { ThreadRenameCommandHandler } from "./ThreadRenameCommandHandler";
 
 const EMPTY_PARENT_THREADS: readonly ThreadListEntry[] = [];
+const EMPTY_CHILD_THREAD_ITEMS: readonly ChildThreadPendingAttentionSource[] =
+  [];
 const EMPTY_PROJECT_THREAD_SUBSET_FILTERS =
   {} satisfies ProjectThreadSubsetFilters;
 const EMPTY_TERMINAL_SESSIONS: readonly TerminalSession[] = [];
@@ -1925,9 +1931,12 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
           (entry) =>
             // Forks / side chats are user-driven branches opened directly, not
             // delegated work the parent is waiting on — keep them out of the
-            // active-child banner count and drawer.
+            // active-child banner count and drawer. A child blocked on the user
+            // stays visible even if its runtime status later leaves the active
+            // set.
             entry.originKind === null &&
-            isThreadDisplayStatusBannerActive(entry.runtime.displayStatus),
+            (isThreadDisplayStatusBannerActive(entry.runtime.displayStatus) ||
+              entry.hasPendingInteraction),
         )
         .map((entry) => ({
           id: entry.id,
@@ -1936,10 +1945,21 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
             projectId: entry.projectId,
             threadId: entry.id,
           }),
-        }));
+          hasPendingInteraction: entry.hasPendingInteraction,
+        }))
+        .sort((left, right) =>
+          left.hasPendingInteraction === right.hasPendingInteraction
+            ? 0
+            : left.hasPendingInteraction
+              ? -1
+              : 1,
+        );
       if (activeItems.length === 0) return null;
       return { items: activeItems };
     }, [childThreadSubsetQuery.data]);
+  const childPendingInteractions = useChildThreadPendingAttention(
+    childThreadsSection?.items ?? EMPTY_CHILD_THREAD_ITEMS,
+  );
   const isThreadTimelinePending = timelineLoading && timelineRows.length === 0;
   useThreadReadTracking({
     markThreadRead,
@@ -2619,6 +2639,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       activeWorkflows={activeWorkflows}
       activeBackgroundCommands={activeBackgroundCommands}
       parentThreadSection={parentThreadSection}
+      childPendingInteractions={childPendingInteractions}
       childThreadsSection={childThreadsSection}
       pullRequest={pullRequest}
       thread={thread}

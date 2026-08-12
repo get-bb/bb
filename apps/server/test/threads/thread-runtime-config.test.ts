@@ -1085,7 +1085,7 @@ describe("thread runtime config", () => {
     });
   });
 
-  it("derives ask escalation only for direct user root-thread work", async () => {
+  it("derives ask escalation for user-initiated work on root and child threads", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
         id: "host-runtime-permission-escalation",
@@ -1135,6 +1135,12 @@ describe("thread runtime config", () => {
         resolvePermissionEscalation({
           thread: childThread,
           initiator: "user",
+        }),
+      ).toBe("ask");
+      expect(
+        resolvePermissionEscalation({
+          thread: childThread,
+          initiator: "system",
         }),
       ).toBe("deny");
       expect(

@@ -30,6 +30,7 @@ import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
+import type { ChildThreadPendingAttention } from "@/hooks/queries/child-thread-pending-interactions";
 import {
   ThreadDetailPromptArea,
   type ThreadDetailSentMessageEdit,
@@ -635,6 +636,7 @@ interface RenderPromptAreaOptions {
   goal?: ThreadTimelineGoal | null;
   modelFallback?: ThreadTimelineModelFallback | null;
   pendingInteractions?: readonly PendingInteraction[];
+  childPendingInteractions?: readonly ChildThreadPendingAttention[];
   pendingInteractionsInitialLoading?: boolean;
   sentMessageEdit?: ThreadDetailSentMessageEdit;
   thread?: ThreadWithRuntime;
@@ -646,6 +648,7 @@ function buildPromptAreaElement({
   goal = null,
   modelFallback = null,
   pendingInteractions = [],
+  childPendingInteractions = [],
   pendingInteractionsInitialLoading = false,
   sentMessageEdit,
   thread = makeThread(),
@@ -657,6 +660,7 @@ function buildPromptAreaElement({
       activePromptMode={activePromptMode}
       activeWorkflows={activeWorkflows}
       canUseGitUi={false}
+      childPendingInteractions={childPendingInteractions}
       childThreadsSection={null}
       composerFocusRequestNonce={0}
       contextBannerMergeBase={null}
@@ -1462,6 +1466,21 @@ describe("ThreadDetailPromptArea", () => {
         .getAllByTestId("workflow-card")
         .map((card) => card.getAttribute("data-expanded")),
     ).toEqual(["false", "true"]);
+  });
+
+  it("shows a child permission prompt on the parent composer", () => {
+    renderPromptArea({
+      childPendingInteractions: [
+        {
+          childThreadId: "thr_child",
+          childTitle: "Install workspace tools",
+          href: "/threads/thr_child",
+          interaction: makePendingInteraction(),
+        },
+      ],
+    });
+
+    expect(screen.getByText("Pending interaction")).toBeTruthy();
   });
 
   it("keeps Goal above a pending interaction", () => {
