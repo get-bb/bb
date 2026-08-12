@@ -44,17 +44,17 @@
     <path id="lower-seam" d="M221.66 343.061C247.234 321.797 270.309 286.682 279.815 258.612"/>
 
     <linearGradient id="background-fill" x1="74" y1="18" x2="424" y2="377" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#555555"/>
-      <stop offset=".28" stop-color="#292929"/>
-      <stop offset=".57" stop-color="#151515"/>
-      <stop offset=".82" stop-color="#090909"/>
+      <stop stop-color="#424242"/>
+      <stop offset=".28" stop-color="#303030"/>
+      <stop offset=".57" stop-color="#1b1b1b"/>
+      <stop offset=".82" stop-color="#0b0b0b"/>
       <stop offset="1" stop-color="#030303"/>
     </linearGradient>
     <linearGradient id="foreground-fill" x1="74" y1="18" x2="424" y2="377" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#6a6a6a"/>
-      <stop offset=".28" stop-color="#353535"/>
-      <stop offset=".57" stop-color="#1c1c1c"/>
-      <stop offset=".82" stop-color="#101010"/>
+      <stop stop-color="#4c4c4c"/>
+      <stop offset=".28" stop-color="#373737"/>
+      <stop offset=".57" stop-color="#212121"/>
+      <stop offset=".82" stop-color="#0f0f0f"/>
       <stop offset="1" stop-color="#050505"/>
     </linearGradient>
     <linearGradient id="lower-fade" x1="8" y1="0" x2="118" y2="0" gradientUnits="userSpaceOnUse">
@@ -110,6 +110,9 @@
     <clipPath id="lower-underlap">
       <path d="M221.66 343.061C247.234 321.797 270.309 286.682 279.815 258.612L540-40V440H-40Z"/>
     </clipPath>
+    <filter id="seam-blur" x="-45%" y="-45%" width="190%" height="190%" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="2.1"/>
+    </filter>
   </defs>
 
   <use href="#mark" fill="url(#background-fill)" fill-rule="evenodd"/>
@@ -123,10 +126,10 @@
   <!-- Shadows are cast only onto the surface that passes underneath. -->
   <g clip-path="url(#mark-clip)">
     <g clip-path="url(#upper-underlap)">
-      <path d="M240.8 142.2 224.2 207.2" fill="none" stroke="url(#upper-shadow)" stroke-width="4.5" stroke-linecap="butt"/>
+      <path d="M240.8 142.2 224.2 207.2" fill="none" stroke="url(#upper-shadow)" stroke-width="8" stroke-linecap="butt" filter="url(#seam-blur)"/>
     </g>
     <g clip-path="url(#lower-underlap)">
-      <path d="M228.5 335.5C246 320 263 294 274.5 270.5" fill="none" stroke="url(#lower-shadow)" stroke-width="5" stroke-linecap="butt"/>
+      <path d="M228.5 335.5C246 320 263 294 274.5 270.5" fill="none" stroke="url(#lower-shadow)" stroke-width="9" stroke-linecap="butt" filter="url(#seam-blur)"/>
     </g>
   </g>
 
@@ -135,44 +138,30 @@
   <use href="#mark" fill="none" stroke="url(#outline)" stroke-width=".8" stroke-linejoin="round" fill-rule="evenodd"/>
 
   <defs>
-    <linearGradient id="app-icon-depth" x1="52" y1="18" x2="438" y2="382" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#fff" stop-opacity="0.16"/>
-      <stop offset=".42" stop-color="#fff" stop-opacity=".03"/>
-      <stop offset=".7" stop-color="#000" stop-opacity=".05"/>
-      <stop offset="1" stop-color="#000" stop-opacity="0.24"/>
+    <linearGradient id="app-icon-rim" x1="58" y1="8" x2="442" y2="390" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fff" stop-opacity=".5"/>
+      <stop offset=".38" stop-color="#fff" stop-opacity=".16"/>
+      <stop offset=".62" stop-color="#000" stop-opacity=".34"/>
+      <stop offset="1" stop-color="#000" stop-opacity=".72"/>
     </linearGradient>
-    <radialGradient id="app-icon-left-stem" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(77 92) rotate(14) scale(72 150)">
-      <stop stop-color="#fff" stop-opacity=".28"/>
-      <stop offset=".54" stop-color="#fff" stop-opacity=".08"/>
-      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
-    </radialGradient>
-    <radialGradient id="app-icon-right-stem" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(279 91) rotate(14) scale(70 148)">
-      <stop stop-color="#fff" stop-opacity=".24"/>
-      <stop offset=".55" stop-color="#fff" stop-opacity=".06"/>
-      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
-    </radialGradient>
-    <radialGradient id="app-icon-left-loop" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(116 210) rotate(-18) scale(170 112)">
-      <stop stop-color="#fff" stop-opacity=".34"/>
-      <stop offset=".5" stop-color="#fff" stop-opacity=".1"/>
-      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
-    </radialGradient>
-    <radialGradient id="app-icon-right-loop" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(384 196) rotate(14) scale(168 112)">
-      <stop stop-color="#fff" stop-opacity=".3"/>
-      <stop offset=".5" stop-color="#fff" stop-opacity=".09"/>
-      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
-    </radialGradient>
-    <linearGradient id="app-icon-rim" x1="54" y1="8" x2="444" y2="392" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#fff" stop-opacity=".62"/>
-      <stop offset=".4" stop-color="#fff" stop-opacity=".2"/>
-      <stop offset=".62" stop-color="#000" stop-opacity=".26"/>
-      <stop offset="1" stop-color="#000" stop-opacity="0.78"/>
-    </linearGradient>
+    <filter id="app-icon-surface-lighting" x="-20%" y="-20%" width="140%" height="140%" color-interpolation-filters="sRGB">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="30" result="soft-alpha"/>
+
+      <feOffset in="soft-alpha" dx="30" dy="20" result="highlight-offset"/>
+      <feComposite in="SourceAlpha" in2="highlight-offset" operator="out" result="highlight-mask"/>
+      <feFlood flood-color="#fff" flood-opacity=".5" result="highlight-color"/>
+      <feComposite in="highlight-color" in2="highlight-mask" operator="in" result="highlight"/>
+
+      <feOffset in="soft-alpha" dx="-24" dy="-16" result="shadow-offset"/>
+      <feComposite in="SourceAlpha" in2="shadow-offset" operator="out" result="shadow-mask"/>
+      <feFlood flood-color="#000" flood-opacity=".34" result="shadow-color"/>
+      <feComposite in="shadow-color" in2="shadow-mask" operator="in" result="shadow"/>
+
+      <feMerge>
+        <feMergeNode in="shadow"/>
+        <feMergeNode in="highlight"/>
+      </feMerge>
+    </filter>
   </defs>
-  <g clip-path="url(#mark-clip)">
-    <use href="#mark" fill="url(#app-icon-depth)" fill-rule="evenodd"/>
-    <use href="#mark" fill="url(#app-icon-left-stem)" fill-rule="evenodd"/>
-    <use href="#mark" fill="url(#app-icon-right-stem)" fill-rule="evenodd"/>
-    <use href="#mark" fill="url(#app-icon-left-loop)" fill-rule="evenodd"/>
-    <use href="#mark" fill="url(#app-icon-right-loop)" fill-rule="evenodd"/>
-  </g>
-  <use href="#mark" fill="none" stroke="url(#app-icon-rim)" stroke-width="2.8" stroke-linejoin="round" fill-rule="evenodd"/></svg></svg>
+  <use href="#mark" fill="#fff" fill-rule="evenodd" filter="url(#app-icon-surface-lighting)"/>
+  <use href="#mark" fill="none" stroke="url(#app-icon-rim)" stroke-width="1.35" stroke-linejoin="round" fill-rule="evenodd"/></svg></svg>

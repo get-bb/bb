@@ -22,20 +22,40 @@ if (!logoContents) {
   throw new Error("Could not read the contents of assets/bb-logo-gradient.svg");
 }
 
-// The large welcome mark uses narrowly blurred seam shadows. App icons need a
-// crisper treatment at 192px, so remove that filter and use only vector fills
-// and strokes. The wider seam strokes retain the weave without softening the
-// silhouette or counters.
-const crispLogoContents = logoContents
-  .replace(/\s*<filter id="seam-blur"[\s\S]*?<\/filter>/u, "")
-  .replace(/ filter="url\(#seam-blur\)"/gu, "")
-  .replace('stroke-width="8"', 'stroke-width="4.5"')
-  .replace('stroke-width="9"', 'stroke-width="5"');
+// App icons are viewed at much smaller sizes than the welcome mark. Preserve
+// its woven seams, then add broad *inner* lighting at the silhouette edges so
+// the rounded strokes keep their depth after color tinting and downsampling.
+// The lighting is clipped to the mark; it is not a drop shadow or raster
+// texture, so every generated icon remains derived from vector geometry.
+const appIconLogoContents = `${logoContents}
+  <defs>
+    <linearGradient id="app-icon-rim" x1="58" y1="8" x2="442" y2="390" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fff" stop-opacity=".5"/>
+      <stop offset=".38" stop-color="#fff" stop-opacity=".16"/>
+      <stop offset=".62" stop-color="#000" stop-opacity=".34"/>
+      <stop offset="1" stop-color="#000" stop-opacity=".72"/>
+    </linearGradient>
+    <filter id="app-icon-surface-lighting" x="-20%" y="-20%" width="140%" height="140%" color-interpolation-filters="sRGB">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="30" result="soft-alpha"/>
 
-const graphiteSurfaces = {
-  background: ["#555555", "#292929", "#151515", "#090909", "#030303"],
-  foreground: ["#6a6a6a", "#353535", "#1c1c1c", "#101010", "#050505"],
-};
+      <feOffset in="soft-alpha" dx="30" dy="20" result="highlight-offset"/>
+      <feComposite in="SourceAlpha" in2="highlight-offset" operator="out" result="highlight-mask"/>
+      <feFlood flood-color="#fff" flood-opacity=".5" result="highlight-color"/>
+      <feComposite in="highlight-color" in2="highlight-mask" operator="in" result="highlight"/>
+
+      <feOffset in="soft-alpha" dx="-24" dy="-16" result="shadow-offset"/>
+      <feComposite in="SourceAlpha" in2="shadow-offset" operator="out" result="shadow-mask"/>
+      <feFlood flood-color="#000" flood-opacity=".34" result="shadow-color"/>
+      <feComposite in="shadow-color" in2="shadow-mask" operator="in" result="shadow"/>
+
+      <feMerge>
+        <feMergeNode in="shadow"/>
+        <feMergeNode in="highlight"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <use href="#mark" fill="#fff" fill-rule="evenodd" filter="url(#app-icon-surface-lighting)"/>
+  <use href="#mark" fill="none" stroke="url(#app-icon-rim)" stroke-width="1.35" stroke-linejoin="round" fill-rule="evenodd"/>`;
 
 const faviconColorValues = {
   red: "#e5484d",
@@ -51,10 +71,8 @@ const faviconColorValues = {
 const pwaIconNames = [
   "icon-192.png",
   "icon-512.png",
-  "icon-1024.png",
   "icon-192-maskable.png",
   "icon-512-maskable.png",
-  "icon-1024-maskable.png",
   "apple-touch-icon.png",
 ];
 
@@ -87,128 +105,11 @@ function parseHex(hex) {
   );
 }
 
-function mixHex(from, to, amount) {
-  const fromRgb = parseHex(from);
-  const toRgb = parseHex(to);
-  return `#${fromRgb
-    .map((channel, index) =>
-      Math.round(channel + (toRgb[index] - channel) * amount)
-        .toString(16)
-        .padStart(2, "0"),
-    )
-    .join("")}`;
-}
-
-function tintedSurfaces(tint) {
-  return {
-    background: [
-      mixHex(tint, "#ffffff", 0.18),
-      mixHex(tint, "#ffffff", 0.07),
-      tint,
-      mixHex(tint, "#000000", 0.04),
-      mixHex(tint, "#000000", 0.09),
-    ],
-    foreground: [
-      mixHex(tint, "#ffffff", 0.24),
-      mixHex(tint, "#ffffff", 0.1),
-      mixHex(tint, "#ffffff", 0.02),
-      mixHex(tint, "#000000", 0.02),
-      mixHex(tint, "#000000", 0.07),
-    ],
-  };
-}
-
-function replaceGradientStops(contents, gradientId, colors) {
-  const gradientPattern = new RegExp(
-    `(<linearGradient id="${gradientId}"[\\s\\S]*?<\\/linearGradient>)`,
-    "u",
-  );
-  let replacedStops = 0;
-  const result = contents.replace(gradientPattern, (gradient) =>
-    gradient.replace(/stop-color="#[0-9a-f]+"/giu, () => {
-      const color = colors[replacedStops];
-      replacedStops += 1;
-      return `stop-color="${color}"`;
-    }),
-  );
-  if (replacedStops !== colors.length) {
-    throw new Error(
-      `Expected ${colors.length} stops in ${gradientId}, found ${replacedStops}`,
-    );
-  }
-  return result;
-}
-
-function appIconLogoContents(tint) {
-  const surfaces = tint ? tintedSurfaces(tint) : graphiteSurfaces;
-  const depthHighlightOpacity = tint ? 0.11 : 0.16;
-  const depthShadowOpacity = tint ? 0.11 : 0.24;
-  const rimShadowOpacity = tint ? 0.46 : 0.78;
-  const coloredLogo = replaceGradientStops(
-    replaceGradientStops(
-      crispLogoContents,
-      "background-fill",
-      surfaces.background,
-    ),
-    "foreground-fill",
-    surfaces.foreground,
-  );
-
-  return `${coloredLogo}
-  <defs>
-    <linearGradient id="app-icon-depth" x1="52" y1="18" x2="438" y2="382" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#fff" stop-opacity="${depthHighlightOpacity}"/>
-      <stop offset=".42" stop-color="#fff" stop-opacity=".03"/>
-      <stop offset=".7" stop-color="#000" stop-opacity=".05"/>
-      <stop offset="1" stop-color="#000" stop-opacity="${depthShadowOpacity}"/>
-    </linearGradient>
-    <radialGradient id="app-icon-left-stem" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(77 92) rotate(14) scale(72 150)">
-      <stop stop-color="#fff" stop-opacity=".28"/>
-      <stop offset=".54" stop-color="#fff" stop-opacity=".08"/>
-      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
-    </radialGradient>
-    <radialGradient id="app-icon-right-stem" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(279 91) rotate(14) scale(70 148)">
-      <stop stop-color="#fff" stop-opacity=".24"/>
-      <stop offset=".55" stop-color="#fff" stop-opacity=".06"/>
-      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
-    </radialGradient>
-    <radialGradient id="app-icon-left-loop" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(116 210) rotate(-18) scale(170 112)">
-      <stop stop-color="#fff" stop-opacity=".34"/>
-      <stop offset=".5" stop-color="#fff" stop-opacity=".1"/>
-      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
-    </radialGradient>
-    <radialGradient id="app-icon-right-loop" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(384 196) rotate(14) scale(168 112)">
-      <stop stop-color="#fff" stop-opacity=".3"/>
-      <stop offset=".5" stop-color="#fff" stop-opacity=".09"/>
-      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
-    </radialGradient>
-    <linearGradient id="app-icon-rim" x1="54" y1="8" x2="444" y2="392" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#fff" stop-opacity=".62"/>
-      <stop offset=".4" stop-color="#fff" stop-opacity=".2"/>
-      <stop offset=".62" stop-color="#000" stop-opacity=".26"/>
-      <stop offset="1" stop-color="#000" stop-opacity="${rimShadowOpacity}"/>
-    </linearGradient>
-  </defs>
-  <g clip-path="url(#mark-clip)">
-    <use href="#mark" fill="url(#app-icon-depth)" fill-rule="evenodd"/>
-    <use href="#mark" fill="url(#app-icon-left-stem)" fill-rule="evenodd"/>
-    <use href="#mark" fill="url(#app-icon-right-stem)" fill-rule="evenodd"/>
-    <use href="#mark" fill="url(#app-icon-left-loop)" fill-rule="evenodd"/>
-    <use href="#mark" fill="url(#app-icon-right-loop)" fill-rule="evenodd"/>
-  </g>
-  <use href="#mark" fill="none" stroke="url(#app-icon-rim)" stroke-width="2.8" stroke-linejoin="round" fill-rule="evenodd"/>`;
-}
-
 function outputFileName(file, color) {
   return file.replace(/\.png$/u, `-${color}.png`);
 }
 
-function composedAppIconSvg({
-  background,
-  logoWidth = 320,
-  rounded = true,
-  tint,
-}) {
+function composedAppIconSvg({ background, logoWidth = 320, rounded = true }) {
   const logoHeight = (logoWidth * 405) / 507;
   const logoX = (512 - logoWidth) / 2;
   const logoY = (512 - logoHeight) / 2;
@@ -217,15 +118,12 @@ function composedAppIconSvg({
     : `<rect width="512" height="512" fill="${background}"/>`;
 
   return Buffer.from(
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">${tile}<svg x="${logoX}" y="${logoY}" width="${logoWidth}" height="${logoHeight}" viewBox="-8 -8 507 405">${appIconLogoContents(tint)}</svg></svg>`,
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">${tile}<svg x="${logoX}" y="${logoY}" width="${logoWidth}" height="${logoHeight}" viewBox="-8 -8 507 405">${appIconLogoContents}</svg></svg>`,
   );
 }
 
 async function renderSquare(svg, size) {
-  // Rasterize the vector at 2x its 512-unit design canvas (or at the target
-  // size for 1024px desktop assets), then downsample once. This keeps curves
-  // and subpixel rim strokes crisp instead of enlarging a 512px intermediate.
-  return sharp(svg, { density: 144 })
+  return sharp(svg)
     .resize({
       width: size,
       height: size,
@@ -241,6 +139,50 @@ async function renderSolidMark(size, fill) {
     markSvg.toString("utf8").replace('fill="#111"', `fill="${fill}"`),
   );
   return renderSquare(source, size);
+}
+
+function tintTileIcon(data, colorRgb) {
+  const output = Buffer.from(data);
+  for (let index = 0; index < output.length; index += 4) {
+    const red = data[index];
+    const green = data[index + 1];
+    const blue = data[index + 2];
+    const alpha = data[index + 3];
+    if (alpha === 0) continue;
+
+    const luma = 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+    if (luma >= 245) continue;
+
+    // Keep the darkest parts close to the selected color while allowing the
+    // vector lighting to open into a real highlight. The old square icons had
+    // this wider tonal range; a square-root mask compressed the new mark into
+    // an almost flat mid-tone after tinting.
+    const maskAlpha = Math.round(
+      255 * (1 - Math.pow(luma / 245, 1.7)) * (alpha / 255),
+    );
+    if (maskAlpha <= 0) continue;
+
+    const ratio = maskAlpha / 255;
+    output[index] = Math.round(colorRgb[0] * ratio + 255 * (1 - ratio));
+    output[index + 1] = Math.round(colorRgb[1] * ratio + 255 * (1 - ratio));
+    output[index + 2] = Math.round(colorRgb[2] * ratio + 255 * (1 - ratio));
+    output[index + 3] = alpha;
+  }
+  return output;
+}
+
+async function tintedPng(source, hex) {
+  const { data, info } = await sharp(source)
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  const output = tintTileIcon(data, parseHex(hex));
+
+  return sharp(output, {
+    raw: { width: info.width, height: info.height, channels: 4 },
+  })
+    .png()
+    .toBuffer();
 }
 
 async function monochromePng(source) {
@@ -282,10 +224,7 @@ function generatedManifest(baseManifest, color) {
             ? icon
             : {
                 ...icon,
-                src: icon.src.replace(
-                  /\.(png|svg)$/u,
-                  (_extension, format) => `-${color}.${format}`,
-                ),
+                src: icon.src.replace(/\.png$/u, `-${color}.png`),
               },
         ),
       },
@@ -397,16 +336,12 @@ const touchIconSvg = composedAppIconSvg({
 const basePwaIcons = new Map([
   ["icon-192.png", await renderSquare(standardIconSvg, 192)],
   ["icon-512.png", await renderSquare(standardIconSvg, 512)],
-  ["icon-1024.png", await renderSquare(standardIconSvg, 1024)],
   ["icon-192-maskable.png", await renderSquare(maskableIconSvg, 192)],
   ["icon-512-maskable.png", await renderSquare(maskableIconSvg, 512)],
-  ["icon-1024-maskable.png", await renderSquare(maskableIconSvg, 1024)],
   ["apple-touch-icon.png", await renderSquare(touchIconSvg, 180)],
 ]);
 
 await writeOrCheck(join(assetsDir, "bb-app-icon.svg"), standardIconSvg);
-await writeOrCheck(join(appPublicDir, "icon.svg"), standardIconSvg);
-await writeOrCheck(join(appPublicDir, "icon-maskable.svg"), maskableIconSvg);
 await writeOrCheck(
   join(projectRoot, "apps", "connect", "src", "bb-icon.ts"),
   generatedConnectIconModule(),
@@ -456,47 +391,10 @@ const baseManifest = JSON.parse(
   await readFile(join(appPublicDir, "manifest.webmanifest"), "utf8"),
 );
 for (const [color, hex] of Object.entries(faviconColorValues)) {
-  const coloredStandardIconSvg = composedAppIconSvg({
-    background: "#fff",
-    tint: hex,
-  });
-  const coloredMaskableIconSvg = composedAppIconSvg({
-    background: "#fff",
-    rounded: false,
-    tint: hex,
-  });
-  const coloredTouchIconSvg = composedAppIconSvg({
-    background: "#fff",
-    logoWidth: 420,
-    rounded: false,
-    tint: hex,
-  });
-  const coloredPwaIcons = new Map([
-    ["icon-192.png", await renderSquare(coloredStandardIconSvg, 192)],
-    ["icon-512.png", await renderSquare(coloredStandardIconSvg, 512)],
-    ["icon-1024.png", await renderSquare(coloredStandardIconSvg, 1024)],
-    ["icon-192-maskable.png", await renderSquare(coloredMaskableIconSvg, 192)],
-    ["icon-512-maskable.png", await renderSquare(coloredMaskableIconSvg, 512)],
-    [
-      "icon-1024-maskable.png",
-      await renderSquare(coloredMaskableIconSvg, 1024),
-    ],
-    ["apple-touch-icon.png", await renderSquare(coloredTouchIconSvg, 180)],
-  ]);
-
-  await writeOrCheck(
-    join(appPublicDir, `icon-${color}.svg`),
-    coloredStandardIconSvg,
-  );
-  await writeOrCheck(
-    join(appPublicDir, `icon-maskable-${color}.svg`),
-    coloredMaskableIconSvg,
-  );
-
   for (const fileName of pwaIconNames) {
     await writeOrCheck(
       join(appPublicDir, outputFileName(fileName, color)),
-      coloredPwaIcons.get(fileName),
+      await tintedPng(basePwaIcons.get(fileName), hex),
     );
   }
   await writeOrCheck(
