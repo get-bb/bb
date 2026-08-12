@@ -1,6 +1,3 @@
-import type { BbPluginApi } from "@bb/plugin-sdk";
-import type { PluginContext } from "../../../../lib/context.js";
-
 export function VerificationMatrix(): React.JSX.Element {
   return (
     <section className="mx-auto w-full max-w-3xl p-5">
@@ -14,11 +11,4 @@ export function VerificationMatrix(): React.JSX.Element {
       </div>
     </section>
   );
-}
-
-export function registerVerificationMatrixBackend(
-  _bb: BbPluginApi,
-  _ctx: PluginContext,
-): void {
-  // WP-39 replaces this lane-local registration seam.
 }
