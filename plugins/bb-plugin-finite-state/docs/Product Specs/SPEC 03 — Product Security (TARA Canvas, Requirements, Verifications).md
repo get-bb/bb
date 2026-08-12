@@ -246,15 +246,15 @@ export const ENTITIES = {
   checkParams:  { class: "OVERLAY",   dir: ".fs/verification/checks",  key: checkCodeKey }, // parameters only
   attackPath:   { class: "OVERLAY",   dir: ".fs/attack-paths",   key: routeSignatureKey }, // viability decision over cached body
   sbomLink:     { class: "OVERLAY",   dir: ".fs/links",          key: componentSlugKey },  // component ↔ SBOM
-  firmwareLink: { class: "LOCAL-ONLY",dir: ".fs/links",          key: componentSlugKey },  // never pushed — AS has no concept
-  canvasLayout: { class: "LOCAL-ONLY",file: "product-security/layout/canvas.json" },       // git-tracked, never planned
+  firmwareLink: { class: "OVERLAY", server: "none", localOnly: true, dir: ".fs/links", key: componentSlugKey }, // never pushed — AS has no concept
+  canvasLayout: { class: "VERSIONED", server: "none", localOnly: true, file: "product-security/layout/canvas.json" }, // git-tracked, never planned
   verificationResult: { class: "CACHED", table: "verification_results" },
   verificationCheck:  { class: "CACHED", table: "verification_checks" }, // body cache; params edited via overlay
-  standardClause:     { class: "CACHED", table: "standard_clauses" },
+  standardClause:     { class: "CACHED", table: "standards_clauses" },
 } as const;
 ```
 
-`LOCAL-ONLY` is a degenerate class: git-tracked, agent-editable, excluded from plan/push entirely.
+There are exactly four classes: `VERSIONED`, `CACHED`, `OVERLAY`, and `ACTION-ONLY`. Local-only is the explicit `localOnly:true` capability on a `server:"none"` VERSIONED or OVERLAY entry; those files remain git-tracked and agent-readable but are excluded from semantic plan and remote push.
 
 ### 5.2 YAML — requirement (EARS with inline verification)
 
@@ -407,14 +407,14 @@ CREATE TABLE standards (
   scope TEXT NOT NULL,                       -- system|org
   synced_at TEXT NOT NULL
 );
-CREATE TABLE standard_clauses (
+CREATE TABLE standards_clauses (
   id TEXT PRIMARY KEY, standard_id TEXT NOT NULL REFERENCES standards(id),
   clause_code TEXT NOT NULL,                 -- e.g. "annex1-2c"
   section_path TEXT, parent_clause_id TEXT,
   title TEXT, text TEXT,
   synced_at TEXT NOT NULL
 );
-CREATE INDEX sc_std ON standard_clauses(standard_id, section_path);
+CREATE INDEX sc_std ON standards_clauses(standard_id, section_path);
 
 -- attack-path bodies for the canvas overlay (CACHED; viability decision is the .fs/ overlay)
 CREATE TABLE attack_paths (

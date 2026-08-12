@@ -1,7 +1,7 @@
 // FROZEN. Amend only through AMENDMENTS.md and a CONTRACT_VERSION broadcast.
 import type { BbPluginApi } from "@bb/plugin-sdk";
 import type Database from "better-sqlite3";
-import { MIGRATIONS } from "./store/schema.js";
+import { openStore } from "./store/index.js";
 
 export const PLUGIN_ID = "finite-state" as const;
 
@@ -22,9 +22,7 @@ export function createPluginContext(bb: BbPluginApi): PluginContext {
     log: bb.log,
     db() {
       if (!dbHandle) {
-        const candidate = bb.storage.database();
-        bb.storage.migrate(candidate, MIGRATIONS);
-        dbHandle = candidate;
+        dbHandle = openStore(bb).db;
       }
       return dbHandle;
     },

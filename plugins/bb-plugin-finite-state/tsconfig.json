@@ -15,6 +15,7 @@
     "server.ts",
     "lanes",
     "lib",
+    "scripts",
     "shared",
     "test",
     "vitest.config.ts"

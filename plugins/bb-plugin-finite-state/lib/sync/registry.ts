@@ -8,29 +8,22 @@
  * separate `EntityScope` fields used for every remote and SQLite operation.
  */
 
+import {
+  CACHE_STORAGE_NAMES,
+  type CacheStorageName,
+} from "../store/schema.js";
+
+export { CACHE_STORAGE_NAMES };
+export type { CacheStorageName };
+
 export type EntityClass = "VERSIONED" | "CACHED" | "OVERLAY" | "ACTION-ONLY";
 export type RemoteTarget = "platform" | "assurance-studio" | "none";
 export type KeyFn = (value: Readonly<Record<string, unknown>>) => string;
 
 export interface EntityScope {
   readonly projectId: string;
-  readonly productVersionId: string;
+  readonly projectVersionId: string;
 }
-
-/** The WP-04 cache/view inventory; schema owns the corresponding SQL names. */
-export const CACHE_STORAGE_NAMES = [
-  "findings",
-  "sbom_components",
-  "standards_clauses",
-  "attack_paths",
-  "verification_runs",
-  "verification_results",
-  "firmware_mounts",
-  "document",
-  "hbom_docs",
-] as const;
-
-export type CacheStorageName = (typeof CACHE_STORAGE_NAMES)[number];
 
 type RemoteFileEntry = {
   readonly class: "VERSIONED" | "OVERLAY";
@@ -360,10 +353,6 @@ export function isRemotePushable(kind: EntityKind): kind is RemotePushableEntity
   const entry = ENTITIES[kind];
   return isSemanticPlanEntity(kind) && "server" in entry && entry.server !== "none";
 }
-
-/** Compatibility names make the plan/push distinction explicit at call sites. */
-export const isSyncable = isSemanticPlanEntity;
-export const isRemoteSyncable = isRemotePushable;
 
 function validateRegistry(): void {
   const cacheNames = new Set<string>(CACHE_STORAGE_NAMES);

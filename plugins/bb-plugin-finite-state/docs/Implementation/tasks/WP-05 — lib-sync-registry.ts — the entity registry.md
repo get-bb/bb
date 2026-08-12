@@ -18,7 +18,7 @@ The registry makes entity classification a compile-time decision instead of a ru
 1. Define the four entity classes and discriminated entry shapes. VERSIONED and OVERLAY entries declare their system of record explicitly as `server:"platform"|"assurance-studio"|"none"`; either named remote owner may participate in three-way sync/push through its narrow client. A `server:"none"` VERSIONED artifact remains authored, git-tracked, diffable, and reportable in a local semantic plan. `localOnly:true` is reserved for a `server:"none"` VERSIONED or OVERLAY entry that must never enter a semantic plan or remote push. CACHED entries name a frozen SQLite table or view. ACTION-ONLY entries persist nothing. Optional Forge Compute is an execution dependency, not a CRUD owner, and never appears in this registry's `server` union.
 2. Register the v1 model inventory in the interface contract below. Table names must exist in WP-04. Inline overlays declare their parent; file entries use worktree-relative POSIX paths only.
 3. Implement pure keys: `slugKey`, `reqIdKey`, `hbomIdKey`, `checkCodeKey`, `componentSlugKey`, and `routeSignatureKey`. Normalize Unicode to NFC, trim outer whitespace, reject empty/control/path-separator input, and preserve display case except where a key contract explicitly case-folds.
-4. Implement the finding stable-key ladder's canonical encoders only: exact purl, exact case-folded `(name,group,version)`, and any-version `(name,group)`. WP-23 owns resolution/promotion policy. The canonical serialized key includes CVE but never project scope or finding UUID. Every scoped RPC and SQLite record carries `projectId` and `productVersionId` separately from this stable business key.
+4. Implement the finding stable-key ladder's canonical encoders only: exact purl, exact case-folded `(name,group,version)`, and any-version `(name,group)`. WP-23 owns resolution/promotion policy. The canonical serialized key includes CVE but never project scope or finding UUID. Every scoped RPC and SQLite record carries `projectId` and `projectVersionId` separately from this stable business key.
 5. Export `EntityKind = keyof typeof ENTITIES`, typed predicates, and `entryFor(kind)`. Unknown runtime strings return a typed error rather than falling through.
 6. Validate at module/test time: unique local destinations, all CACHED tables/views exist in the frozen storage-name union, inline parents exist, and ACTION-ONLY/`localOnly:true`/`server:"none"` entries cannot be selected for remote push. `hbomPart` is the deliberate single aggregate file `product-security/hbom/hbom.yaml`, not one file per part; it is not `localOnly` and is therefore visible to local plan/status. `hbomDoc` is a filtered read over the frozen `hbom_docs` view, not a second ledger.
 
@@ -73,14 +73,22 @@ export type EntityKind = keyof typeof ENTITIES;
 export type SemanticPlanEntityKind = { [K in EntityKind]: typeof ENTITIES[K] extends { localOnly: true } ? never : typeof ENTITIES[K]["class"] extends "VERSIONED" | "OVERLAY" ? K : never }[EntityKind];
 export type RemotePushableEntityKind = { [K in EntityKind]: typeof ENTITIES[K] extends { server: "platform" | "assurance-studio" } ? K : never }[EntityKind];
 
-export interface EntityScope { projectId: string; productVersionId: string; }
+export interface EntityScope { projectId: string; projectVersionId: string; }
 export interface FindingIdentity {
   cve: string; purl?: string | null;
   name: string; group?: string | null; version?: string | null;
 }
 export type FindingKeyTier = "purl" | "name-group-version" | "name-group-any-version";
 export function findingStableKey(value: Readonly<FindingIdentity>, tier?: FindingKeyTier): string;
-export function parseFindingStableKey(key: string): Readonly<{ cve: string; tier: FindingKeyTier; component: string }>;
+export type ParsedFindingStableKey = Readonly<{
+  cve: string;
+  tier: FindingKeyTier;
+  component: Readonly<
+    | { readonly purl: string }
+    | { readonly name: string; readonly group: string | null; readonly version: string | null }
+  >;
+}>;
+export function parseFindingStableKey(key: string): ParsedFindingStableKey;
 export function entryFor(kind: string): (typeof ENTITIES)[EntityKind]; // throws UnknownEntityKindError
 export function isSemanticPlanEntity(kind: EntityKind): kind is SemanticPlanEntityKind;
 export function isRemotePushable(kind: EntityKind): kind is RemotePushableEntityKind;

@@ -239,6 +239,17 @@ describe("WP-01 scaffold", () => {
     expect(database).toHaveBeenCalledOnce();
     expect(migrate).toHaveBeenCalledOnce();
     expect(migrate).toHaveBeenCalledWith(first, MIGRATIONS);
+    expect(first.pragma("foreign_keys", { simple: true })).toBe(1);
+    expect(() =>
+      first
+        .prepare(
+          `INSERT INTO finding_cwes
+             (project_id, project_version_id, generation_id, finding_id, cwe, pulled_at)
+           VALUES ('project-a', 'version-a', 'missing-generation',
+                   'missing-finding', 'CWE-79', 'now')`,
+        )
+        .run(),
+    ).toThrow(/FOREIGN KEY constraint failed/u);
     await host.harness.lifecycle.dispose();
   });
 
@@ -272,6 +283,7 @@ describe("WP-01 scaffold", () => {
     expect(database).toHaveBeenCalledTimes(2);
     expect(migrate).toHaveBeenCalledTimes(2);
     expect(migratedHandles.has(migrated)).toBe(true);
+    expect(migrated.pragma("foreign_keys", { simple: true })).toBe(1);
     expect(context.db()).toBe(migrated);
     expect(database).toHaveBeenCalledTimes(2);
     expect(migrate).toHaveBeenCalledTimes(2);

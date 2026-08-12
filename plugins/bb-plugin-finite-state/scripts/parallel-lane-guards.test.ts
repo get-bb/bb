@@ -66,7 +66,7 @@ function amendment(id: string, artifacts: string[], contractVersion = "n/a", sta
   return `### ${id} — fixture amendment\n\n- Status: ${status}\n- Artifacts:\n${artifacts.map((artifact) => `  - \`${artifact}\``).join("\n")}\n- Contract version: ${contractVersion}\n`;
 }
 
-async function fixtureRoot() {
+async function fixtureRoot({ withFixture = true } = {}) {
   const root = await mkdtemp(path.join(tmpdir(), "fs-guard-"));
   temporaryRoots.push(root);
   await write(root, "package.json", JSON.stringify({ pnpm: { overrides: { zod: "4.3.6" } } }));
@@ -76,7 +76,9 @@ async function fixtureRoot() {
   await write(root, `${pluginRootRelativePath}lib/store/schema.ts`, "export const MIGRATIONS: string[] = [];\n");
   await write(root, `${pluginRootRelativePath}lib/sync/registry.ts`, "export {};\n");
   await write(root, `${pluginRootRelativePath}lib/remote/types.ts`, "export {};\n");
-  await write(root, `${pluginRootRelativePath}test/mock-remote/fixtures/base.json`, '{"fixture":true}\n');
+  if (withFixture) {
+    await write(root, `${pluginRootRelativePath}test/mock-remote/fixtures/base.json`, '{"fixture":true}\n');
+  }
   await write(root, `${pluginRootRelativePath}package.json`, JSON.stringify({ name: "bb-plugin-finite-state", dependencies: { yaml: "^2.9.0", zod: "^4.3.6" } }));
   await write(root, "pnpm-lock.yaml", `lockfileVersion: '9.0'
 
@@ -116,10 +118,6 @@ packages:
 } as const;\n`);
   await write(root, `${pluginRootRelativePath}lanes/findings/register.app.tsx`, 'export const panel = <div className="bg-card text-muted-foreground">CVE-2025-1234 #CVE deadbeef</div>;\n');
   expect(run(frozenScript, root, "--accept", "A-000").status).toBe(0);
-  const baselinePath = path.join(root, `${pluginRootRelativePath}frozen-artifacts.json`);
-  const baseline = JSON.parse(await readFile(baselinePath, "utf8"));
-  for (const artifact of Object.values(baseline.artifacts)) artifact.active = true;
-  await writeFile(baselinePath, `${JSON.stringify(baseline)}\n`);
   return root;
 }
 
@@ -136,6 +134,41 @@ afterEach(async () => {
 });
 
 describe("parallel lane guards", () => {
+  it("activates every frozen file and an existing fixture corpus on the first baseline", async () => {
+    const root = await fixtureRoot();
+    const baseline = JSON.parse(
+      await readFile(
+        path.join(root, `${pluginRootRelativePath}frozen-artifacts.json`),
+        "utf8",
+      ),
+    ) as { artifacts: Record<string, { active: boolean }> };
+
+    expect(Object.keys(baseline.artifacts).sort()).toEqual(
+      [...artifactPaths].sort(),
+    );
+    expect(
+      Object.values(baseline.artifacts).every((artifact) => artifact.active),
+    ).toBe(true);
+  });
+
+  it("leaves only an absent fixture corpus inactive on the first baseline", async () => {
+    const root = await fixtureRoot({ withFixture: false });
+    const baseline = JSON.parse(
+      await readFile(
+        path.join(root, `${pluginRootRelativePath}frozen-artifacts.json`),
+        "utf8",
+      ),
+    ) as { artifacts: Record<string, { active: boolean }> };
+    const fixtureArtifact = `${pluginRootRelativePath}test/mock-remote/fixtures/**`;
+
+    expect(baseline.artifacts[fixtureArtifact]?.active).toBe(false);
+    expect(
+      Object.entries(baseline.artifacts)
+        .filter(([artifact]) => artifact !== fixtureArtifact)
+        .every(([, entry]) => entry.active),
+    ).toBe(true);
+  });
+
   it("accepts a clean baseline", async () => {
     const root = await fixtureRoot();
     expect(run(frozenScript, root).status).toBe(0);

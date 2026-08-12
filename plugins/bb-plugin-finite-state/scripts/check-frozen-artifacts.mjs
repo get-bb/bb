@@ -18,10 +18,7 @@ const frozenRelativePaths = [
   `${pluginRelativePath}/test/mock-remote/fixtures/**`,
 ];
 const contractRelativePath = `${pluginRelativePath}/shared/contract.ts`;
-const compositionRootPaths = new Set([
-  `${pluginRelativePath}/server.ts`,
-  `${pluginRelativePath}/app.tsx`,
-]);
+const fixtureTreeRelativePath = `${pluginRelativePath}/test/mock-remote/fixtures/**`;
 const dependencySections = ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"];
 const recovery = "file an amendment; do not edit the frozen artifact locally.";
 
@@ -271,8 +268,12 @@ function generatedBaseline(hashes, dependencyBaseline, contractVersion, amendmen
   const artifacts = Object.fromEntries(frozenRelativePaths.map((artifact) => [
     artifact,
     artifact.endsWith("/**")
-      ? { treeSha256: hashes[artifact], amendment: amendmentId, active: compositionRootPaths.has(artifact) }
-      : { sha256: hashes[artifact], amendment: amendmentId, active: compositionRootPaths.has(artifact) },
+      ? {
+          treeSha256: hashes[artifact],
+          amendment: amendmentId,
+          active: artifact !== fixtureTreeRelativePath || hashes[artifact] !== sha256(""),
+        }
+      : { sha256: hashes[artifact], amendment: amendmentId, active: true },
   ]));
   return { version: 1, contractVersion, artifacts, dependencyBaseline };
 }

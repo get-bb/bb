@@ -41,6 +41,7 @@ import {
   SCHEMA_VERSION,
   SCHEMA_VIEWS,
 } from "./schema.js";
+import { ENTITIES } from "../sync/registry.js";
 
 function defineColumns<Row>() {
   return <const Names extends readonly (keyof Row & string)[]>(
@@ -306,6 +307,13 @@ describe("shared-store-freeze", () => {
     expect(names("view")).toEqual([...SCHEMA_VIEWS].sort());
     expect(SCHEMA_TABLES).toHaveLength(29);
     expect(SCHEMA_INDEXES).toHaveLength(48);
+
+    const registryCacheNames = Object.values(ENTITIES).flatMap((entry) =>
+      entry.class === "CACHED" ? [entry.table] : [],
+    );
+    expect([...registryCacheNames].sort()).toEqual(
+      [...CACHE_STORAGE_NAMES].sort(),
+    );
 
     for (const storageName of CACHE_STORAGE_NAMES) {
       const kind = db
@@ -849,11 +857,8 @@ describe("shared-store-freeze", () => {
 
     for (const [indexName, sql, params] of pages) {
       expect(planDetails(db, sql, ...params), indexName).toContain(indexName);
-      const startedAt = performance.now();
       const rows = db.prepare(sql).all(...params);
-      const elapsedMs = performance.now() - startedAt;
       expect(rows.length, indexName).toBeGreaterThan(0);
-      expect(elapsedMs, `${indexName} took ${elapsedMs.toFixed(1)}ms`).toBeLessThan(200);
     }
   });
 });

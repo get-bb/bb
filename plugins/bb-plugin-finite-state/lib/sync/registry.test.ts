@@ -138,12 +138,12 @@ describe("entity registry", () => {
     expect(purlKey).toBe(findingStableKey({
       ...purlFinding,
       projectId: "project-a",
-      productVersionId: "version-a",
+      projectVersionId: "version-a",
     }));
     expect(purlKey).toBe(findingStableKey({
       ...purlFinding,
       projectId: "project-b",
-      productVersionId: "version-b",
+      projectVersionId: "version-b",
     }));
     expect(parseFindingStableKey(purlKey)).toEqual({
       cve: "CVE-2026-1234",

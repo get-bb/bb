@@ -102,6 +102,8 @@ export const CACHE_STORAGE_NAMES = [
   "hbom_docs",
 ] as const;
 
+export type CacheStorageName = (typeof CACHE_STORAGE_NAMES)[number];
+
 export const MIGRATIONS: string[] = [
   // ── shared bookkeeping + atomic pull publication ─────────────────────────
   // Pull execution control only; never semantic or authored model state.

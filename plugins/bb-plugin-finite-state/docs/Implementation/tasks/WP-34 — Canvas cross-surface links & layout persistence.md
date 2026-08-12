@@ -25,7 +25,7 @@ One workspace pays off when a TARA node links to its SBOM component, firmware fi
 4. Define `fs-canvas-layout/v1` keyed only by stable slugs. Persist node x/y and collapsed state, integers, stable key order, CAS, and 500 ms debounce after actual node changes.
 5. Never persist pan/zoom/selection. Do not write for layout results equal after rounding. Handle concurrent layout edits with reload/compare instead of overwrite.
 6. Merge newly discovered nodes with stored positions: retain known nodes; place new nodes using elkjs; retain orphan positions in the file only long enough to report/prune explicitly.
-7. Register layout as LOCAL-ONLY with the plan exclusion seam if it is not already frozen there. If the frozen registry cannot represent it, write an amendment—do not edit it.
+7. Register layout as a `server:"none"` VERSIONED entry with `localOnly:true` and the plan exclusion seam if it is not already frozen there. Local-only is a capability, not a fifth entity class. If the frozen registry cannot represent it, write an amendment—do not edit it.
 8. Cover loading links, no mappings, partial downstream errors, and unconfigured; the canvas remains usable when every linked surface is absent.
 
 ## Interface contract
@@ -73,4 +73,3 @@ export function saveLayout(root: string, next: CanvasLayoutV1, expectedSha256?: 
 ## Open questions
 1. Default is tracked shared layout; if user testing shows excessive git noise, a later setting may make it ignored—do not change the default here.
 2. The exact public cross-lane readiness interface may live in the frozen contract; adapt the resolver to it rather than creating imports across lanes.
-
