@@ -13,7 +13,7 @@ import {
   unlink,
 } from "node:fs/promises";
 import { constants } from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { dirname, resolve } from "node:path";
 import { Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { FirmwareMount, FirmwareNode } from "./manifest.js";
@@ -22,6 +22,8 @@ import {
   blobPath,
   FirmwareCacheError,
   globalBlobsPath,
+  manifestPath,
+  rootfsPath,
   stagingPath,
   validateSha256,
 } from "./layout.js";
@@ -133,8 +135,16 @@ export async function putBlob(
   }
 }
 
-export interface LinkNodeResult {
-  deduplicated: boolean;
+export type LinkNodeResult =
+  | { method: "hardlink"; deduplicated: true }
+  | { method: "verified_copy"; deduplicated: false }
+  | { method: "not_applicable"; deduplicated: false };
+
+export interface FirmwareExecutionScope {
+  worktreeRoot: string;
+  projectId: string;
+  projectVersionId: string;
+  generationId: string;
 }
 
 async function removeIdenticalDestination(destination: string, blob: string): Promise<boolean> {
@@ -160,27 +170,35 @@ async function removeIdenticalDestination(destination: string, blob: string): Pr
 }
 
 export async function linkNodeWithResult(
+  scope: FirmwareExecutionScope,
   mount: FirmwareMount,
   node: FirmwareNode,
   blob: string,
 ): Promise<LinkNodeResult> {
+  const worktreeRoot = assertFirmwareCacheIgnored(scope.worktreeRoot);
+  if (!scope.projectId || !scope.generationId) {
+    throw new FirmwareCacheError(
+      "INVALID_MOUNT_SCOPE",
+      "Materialization requires explicit project and generation scope.",
+    );
+  }
   if (mount.readiness === "invalid") {
     throw new FirmwareCacheError("MOUNT_INVALID", "Cannot link content into an invalid mount.");
   }
-  const cacheRootPath = dirname(dirname(mount.rootfsPath));
-  if (basename(cacheRootPath) !== ".fs-firmware") {
-    throw new FirmwareCacheError("MOUNT_INVALID", "The rootfs is outside the firmware cache layout.");
+  if (mount.pvId !== scope.projectVersionId) {
+    throw new FirmwareCacheError("MOUNT_INVALID", "The execution scope does not match the mount id.");
+  }
+  const expectedRootfs = rootfsPath(worktreeRoot, scope.projectVersionId);
+  const expectedManifest = manifestPath(worktreeRoot, scope.projectVersionId);
+  if (resolve(mount.manifestPath) !== expectedManifest) {
+    throw new FirmwareCacheError("MOUNT_INVALID", "The manifest path is outside the scoped firmware mount.");
   }
   const rootStat = await lstat(mount.rootfsPath);
   if (!rootStat.isDirectory() || rootStat.isSymbolicLink()) {
     throw new FirmwareCacheError("MOUNT_INVALID", "The firmware rootfs is not a real directory.");
   }
-  if (basename(dirname(mount.manifestPath)) !== mount.pvId) {
-    throw new FirmwareCacheError("MOUNT_INVALID", "The manifest path does not match the mount id.");
-  }
-  const expectedRootfs = join(dirname(mount.manifestPath), "rootfs");
   if ((await realpath(mount.rootfsPath)) !== (await realpath(expectedRootfs))) {
-    throw new FirmwareCacheError("MOUNT_INVALID", "The rootfs path does not match the mount sidecar.");
+    throw new FirmwareCacheError("MOUNT_INVALID", "The rootfs path is outside the scoped firmware mount.");
   }
   const destination = await resolveSafeNodePath(mount.rootfsPath, node.path, true);
 
@@ -192,7 +210,7 @@ export async function linkNodeWithResult(
       const existing = await lstat(destination);
       if (!existing.isDirectory() || existing.isSymbolicLink()) throw error;
     }
-    return { deduplicated: false };
+    return { method: "not_applicable", deduplicated: false };
   }
   if (node.kind === "symlink") {
     if (node.symlinkTarget === null) {
@@ -205,7 +223,7 @@ export async function linkNodeWithResult(
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
       if ((await readlink(destination)) !== safeTarget) throw error;
     }
-    return { deduplicated: false };
+    return { method: "not_applicable", deduplicated: false };
   }
   if (!node.materialized || !node.fileHash) {
     throw new FirmwareCacheError(
@@ -220,19 +238,20 @@ export async function linkNodeWithResult(
   if (node.size !== null && blobStat.size !== node.size) {
     throw new FirmwareCacheError("BLOB_SIZE_MISMATCH", "Blob size does not match the manifest node.");
   }
-  const cacheRoot = await realpath(dirname(dirname(mount.rootfsPath)));
-  const expectedBlob = join(cacheRoot, "blobs", node.fileHash);
+  const expectedBlob = blobPath(worktreeRoot, node.fileHash);
   if ((await realpath(blob)) !== expectedBlob) {
     throw new FirmwareCacheError("BLOB_PATH_INVALID", "The blob is outside the canonical workspace store.");
   }
   if ((await hashFile(blob)) !== node.fileHash) {
     throw new FirmwareCacheError("BLOB_HASH_MISMATCH", "Blob bytes do not match the manifest node.");
   }
-  if (await removeIdenticalDestination(destination, blob)) return { deduplicated: true };
+  if (await removeIdenticalDestination(destination, blob)) {
+    return { method: "hardlink", deduplicated: true };
+  }
 
   try {
     await link(blob, destination);
-    return { deduplicated: true };
+    return { method: "hardlink", deduplicated: true };
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
     if (code !== "EXDEV" && code !== "EPERM" && code !== "ENOTSUP" && code !== "EOPNOTSUPP") {
@@ -271,7 +290,7 @@ export async function linkNodeWithResult(
     }
     await fsyncDirectory(dirname(destination));
     if (node.unixMode !== null) await chmod(destination, node.unixMode & 0o777);
-    return { deduplicated: false };
+    return { method: "verified_copy", deduplicated: false };
   } finally {
     await unlink(temporary).catch((error: NodeJS.ErrnoException) => {
       if (error.code !== "ENOENT") throw error;
@@ -280,9 +299,10 @@ export async function linkNodeWithResult(
 }
 
 export async function linkNode(
+  scope: FirmwareExecutionScope,
   mount: FirmwareMount,
   node: FirmwareNode,
   blob: string,
-): Promise<void> {
-  await linkNodeWithResult(mount, node, blob);
+): Promise<LinkNodeResult> {
+  return linkNodeWithResult(scope, mount, node, blob);
 }

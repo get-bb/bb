@@ -26,4 +26,9 @@ export const MANIFEST_MIGRATIONS = [
    );
    CREATE INDEX IF NOT EXISTS fs_node_hash ON fs_node(file_hash);
   CREATE INDEX IF NOT EXISTS fs_node_materialized ON fs_node(materialized);`,
+  `ALTER TABLE fs_node ADD COLUMN verified_dev TEXT;
+   ALTER TABLE fs_node ADD COLUMN verified_ino TEXT;
+   ALTER TABLE fs_node ADD COLUMN verified_size INTEGER;
+   ALTER TABLE fs_node ADD COLUMN verified_mtime_ns TEXT;
+   ALTER TABLE fs_node ADD COLUMN verified_ctime_ns TEXT;`,
 ] as const;

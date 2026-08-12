@@ -1,5 +1,14 @@
 import { createHash } from "node:crypto";
-import { closeSync, lstatSync, openSync, readSync, realpathSync } from "node:fs";
+import type { BigIntStats } from "node:fs";
+import {
+  closeSync,
+  constants,
+  fstatSync,
+  lstatSync,
+  openSync,
+  readSync,
+  realpathSync,
+} from "node:fs";
 import { lstat, mkdir, readdir, realpath } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { FirmwareCacheError } from "./layout.js";
@@ -134,41 +143,107 @@ export function safeSymlinkTarget(nodePath: string, target: string): string {
   return rel || ".";
 }
 
+export interface RegularFileEvidence {
+  device: string;
+  inode: string;
+  size: number;
+  mtimeNs: string;
+  ctimeNs: string;
+}
+
+function evidenceFromStat(stat: BigIntStats): RegularFileEvidence {
+  return {
+    device: stat.dev.toString(),
+    inode: stat.ino.toString(),
+    size: Number(stat.size),
+    mtimeNs: stat.mtimeNs.toString(),
+    ctimeNs: stat.ctimeNs.toString(),
+  };
+}
+
+function sameEvidence(left: RegularFileEvidence, right: RegularFileEvidence): boolean {
+  return (
+    left.device === right.device &&
+    left.inode === right.inode &&
+    left.size === right.size &&
+    left.mtimeNs === right.mtimeNs &&
+    left.ctimeNs === right.ctimeNs
+  );
+}
+
+function resolveRegularFileSync(
+  rootfs: string,
+  virtualPath: string,
+  expectedSize: number | null,
+): string | null {
+  const root = realpathSync(rootfs);
+  const segments = normalizeVirtualPath(virtualPath).slice(1).split("/");
+  let current = root;
+  for (const [index, segment] of segments.entries()) {
+    current = resolve(current, segment);
+    if (!isContained(root, current)) return null;
+    const stat = lstatSync(current, { bigint: true });
+    if (stat.isSymbolicLink()) return null;
+    if (index < segments.length - 1 && !stat.isDirectory()) return null;
+    if (index === segments.length - 1) {
+      if (!stat.isFile() || (expectedSize !== null && stat.size !== BigInt(expectedSize))) return null;
+    }
+  }
+  return current;
+}
+
+export function inspectRegularFileEvidenceSync(
+  rootfs: string,
+  virtualPath: string,
+  expectedSize: number | null,
+): RegularFileEvidence | null {
+  try {
+    const path = resolveRegularFileSync(rootfs, virtualPath, expectedSize);
+    if (!path) return null;
+    return evidenceFromStat(lstatSync(path, { bigint: true }));
+  } catch {
+    return null;
+  }
+}
+
+export function verifyRegularFileIntegritySync(
+  rootfs: string,
+  virtualPath: string,
+  expectedSha256: string,
+  expectedSize: number | null,
+): RegularFileEvidence | null {
+  try {
+    const path = resolveRegularFileSync(rootfs, virtualPath, expectedSize);
+    if (!path) return null;
+
+    const descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+    const hash = createHash("sha256");
+    const buffer = Buffer.allocUnsafe(64 * 1024);
+    let before: RegularFileEvidence;
+    let after: RegularFileEvidence;
+    try {
+      before = evidenceFromStat(fstatSync(descriptor, { bigint: true }));
+      let bytesRead = 0;
+      do {
+        bytesRead = readSync(descriptor, buffer, 0, buffer.length, null);
+        if (bytesRead > 0) hash.update(buffer.subarray(0, bytesRead));
+      } while (bytesRead > 0);
+      after = evidenceFromStat(fstatSync(descriptor, { bigint: true }));
+    } finally {
+      closeSync(descriptor);
+    }
+    if (!sameEvidence(before, after) || hash.digest("hex") !== expectedSha256) return null;
+    return after;
+  } catch {
+    return null;
+  }
+}
+
 export function verifyRegularFileBytesSync(
   rootfs: string,
   virtualPath: string,
   expectedSha256: string,
   expectedSize: number | null,
 ): boolean {
-  try {
-    const root = realpathSync(rootfs);
-    const segments = normalizeVirtualPath(virtualPath).slice(1).split("/");
-    let current = root;
-    for (const [index, segment] of segments.entries()) {
-      current = resolve(current, segment);
-      if (!isContained(root, current)) return false;
-      const stat = lstatSync(current);
-      if (stat.isSymbolicLink()) return false;
-      if (index < segments.length - 1 && !stat.isDirectory()) return false;
-      if (index === segments.length - 1) {
-        if (!stat.isFile() || (expectedSize !== null && stat.size !== expectedSize)) return false;
-      }
-    }
-
-    const descriptor = openSync(current, "r");
-    const hash = createHash("sha256");
-    const buffer = Buffer.allocUnsafe(64 * 1024);
-    try {
-      let bytesRead = 0;
-      do {
-        bytesRead = readSync(descriptor, buffer, 0, buffer.length, null);
-        if (bytesRead > 0) hash.update(buffer.subarray(0, bytesRead));
-      } while (bytesRead > 0);
-    } finally {
-      closeSync(descriptor);
-    }
-    return hash.digest("hex") === expectedSha256;
-  } catch {
-    return false;
-  }
+  return verifyRegularFileIntegritySync(rootfs, virtualPath, expectedSha256, expectedSize) !== null;
 }

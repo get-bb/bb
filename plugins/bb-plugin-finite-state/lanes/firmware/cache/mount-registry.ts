@@ -7,9 +7,9 @@ import {
   getMountReadiness,
   type MountReadiness,
   type MountSource,
+  verifyMountIntegrity,
 } from "./manifest.js";
 import { assertFirmwareCacheIgnored, FirmwareCacheError, validatePvId } from "./layout.js";
-import { verifyRegularFileBytesSync } from "./path-safety.js";
 
 export interface FirmwareMountScope {
   projectId: string;
@@ -71,21 +71,6 @@ function assertScope(scope: FirmwareMountScope): void {
   validatePvId(scope.projectVersionId);
 }
 
-function assertMaterializedFilesCoherent(manifest: FirmwareManifest, rootfs: string): void {
-  for (const node of manifest.listNodes()) {
-    if (node.kind !== "file" || !node.materialized) continue;
-    if (
-      !node.fileHash ||
-      !verifyRegularFileBytesSync(rootfs, node.path, node.fileHash, node.size)
-    ) {
-      throw new FirmwareCacheError(
-        "INCOHERENT_FIRMWARE_MOUNT",
-        `Materialized bytes do not match the sidecar: ${node.path}`,
-      );
-    }
-  }
-}
-
 export function commitFirmwareMount(db: Database.Database, input: CommitFirmwareMountInput): void {
   assertScope(input.scope);
   const meta = input.manifest.readMeta();
@@ -106,6 +91,7 @@ export function commitFirmwareMount(db: Database.Database, input: CommitFirmware
       "The mount summary does not match sidecar provenance.",
     );
   }
+  verifyMountIntegrity(input.manifest);
   const readiness = getMountReadiness(input.manifest);
   if (readiness === "missing" || readiness === "invalid") {
     throw new FirmwareCacheError(
@@ -145,7 +131,6 @@ export function commitFirmwareMount(db: Database.Database, input: CommitFirmware
       "The mount summary counts or readiness do not match the sidecar.",
     );
   }
-  assertMaterializedFilesCoherent(input.manifest, input.mount.rootfsPath);
   const errorCount = counts.errors + meta.unpackErrors.length + input.mount.errors.length;
   const message = [...meta.unpackErrors, ...input.mount.errors].slice(0, 20).join("\n") || null;
 

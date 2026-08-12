@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import Database from "better-sqlite3";
@@ -9,7 +10,12 @@ import {
   validatePvId,
 } from "./layout.js";
 import { MANIFEST_MIGRATIONS } from "./manifest-schema.js";
-import { normalizeVirtualPath, verifyRegularFileBytesSync } from "./path-safety.js";
+import {
+  inspectRegularFileEvidenceSync,
+  normalizeVirtualPath,
+  type RegularFileEvidence,
+  verifyRegularFileIntegritySync,
+} from "./path-safety.js";
 
 export type MountSource = "standalone_unpack" | "api";
 export type MountReadiness =
@@ -65,6 +71,8 @@ export interface FirmwareManifestMeta {
   stale: boolean;
 }
 
+export type FirmwarePageMeta = Omit<FirmwareManifestMeta, "nodeCount" | "hydratedCount">;
+
 interface MetaRow {
   key: string;
   value: string;
@@ -85,7 +93,29 @@ interface NodeRow {
   symlink_target: string | null;
   materialized: 0 | 1;
   errors: string | null;
+  verified_dev: string | null;
+  verified_ino: string | null;
+  verified_size: number | null;
+  verified_mtime_ns: string | null;
+  verified_ctime_ns: string | null;
 }
+
+interface IntegrityRow {
+  path: string;
+  file_hash: string | null;
+  size: number | null;
+  verified_dev: string | null;
+  verified_ino: string | null;
+  verified_size: number | null;
+  verified_mtime_ns: string | null;
+  verified_ctime_ns: string | null;
+}
+
+export interface FirmwareIntegrityVerification {
+  verifiedFiles: number;
+}
+
+const INVALID_NODE_PREFIX = "/.__fs_invalid__";
 
 const META_KEYS = {
   pvId: "pv_id",
@@ -114,6 +144,12 @@ function parseJson<T>(value: string, label: string): T {
 
 function serializeNode(node: FirmwareNode): NodeRow {
   const path = normalizeVirtualPath(node.path);
+  if (path === INVALID_NODE_PREFIX || path.startsWith(`${INVALID_NODE_PREFIX}/`)) {
+    throw new FirmwareCacheError(
+      "UNSAFE_FIRMWARE_PATH",
+      "The reserved invalid-node namespace cannot be supplied by firmware input.",
+    );
+  }
   if (node.kind === "file") {
     if (node.symlinkTarget !== null) {
       throw new FirmwareCacheError("INVALID_MANIFEST_NODE", "Regular files cannot have symlink targets.");
@@ -158,7 +194,55 @@ function serializeNode(node: FirmwareNode): NodeRow {
     symlink_target: node.kind === "symlink" ? node.symlinkTarget : null,
     materialized: node.kind === "file" && node.materialized ? 1 : 0,
     errors: JSON.stringify(node.errors),
+    verified_dev: null,
+    verified_ino: null,
+    verified_size: null,
+    verified_mtime_ns: null,
+    verified_ctime_ns: null,
   };
+}
+
+function invalidPathRow(node: FirmwareNode, error: FirmwareCacheError): NodeRow {
+  const digest = createHash("sha256")
+    .update(node.path)
+    .update("\0")
+    .update(node.kind)
+    .digest("hex");
+  return {
+    path: `${INVALID_NODE_PREFIX}/${digest}`,
+    kind: "file",
+    file_hash: null,
+    size: null,
+    mime_type: node.mimeType,
+    full_type: node.fullType,
+    unix_mode: node.unixMode,
+    unix_uid: node.unixUid ?? null,
+    unix_gid: node.unixGid ?? null,
+    is_setuid: 0,
+    is_setgid: 0,
+    symlink_target: null,
+    materialized: 0,
+    errors: JSON.stringify([
+      ...node.errors,
+      `${error.code}: ${error.message} Source path: ${JSON.stringify(node.path)}`,
+    ]),
+    verified_dev: null,
+    verified_ino: null,
+    verified_size: null,
+    verified_mtime_ns: null,
+    verified_ctime_ns: null,
+  };
+}
+
+function serializeIngestedNode(node: FirmwareNode): NodeRow {
+  try {
+    return serializeNode(node);
+  } catch (error) {
+    if (error instanceof FirmwareCacheError && error.code === "UNSAFE_FIRMWARE_PATH") {
+      return invalidPathRow(node, error);
+    }
+    throw error;
+  }
 }
 
 function deserializeNode(row: NodeRow): FirmwareNode {
@@ -279,26 +363,30 @@ export class FirmwareManifest {
   }
 
   upsertNodes(nodes: readonly FirmwareNode[]): void {
-    const rows = nodes.map(serializeNode);
+    const rows = nodes.map(serializeIngestedNode);
     const statement = this.database.prepare(`INSERT INTO fs_node (
       path, kind, file_hash, size, mime_type, full_type, unix_mode, unix_uid, unix_gid,
-      is_setuid, is_setgid, symlink_target, materialized, errors
+      is_setuid, is_setgid, symlink_target, materialized, errors,
+      verified_dev, verified_ino, verified_size, verified_mtime_ns, verified_ctime_ns
     ) VALUES (
       @path, @kind, @file_hash, @size, @mime_type, @full_type, @unix_mode, @unix_uid, @unix_gid,
-      @is_setuid, @is_setgid, @symlink_target, @materialized, @errors
+      @is_setuid, @is_setgid, @symlink_target, @materialized, @errors,
+      @verified_dev, @verified_ino, @verified_size, @verified_mtime_ns, @verified_ctime_ns
     ) ON CONFLICT(path) DO UPDATE SET
       kind=excluded.kind, file_hash=excluded.file_hash, size=excluded.size,
       mime_type=excluded.mime_type, full_type=excluded.full_type, unix_mode=excluded.unix_mode,
       unix_uid=excluded.unix_uid, unix_gid=excluded.unix_gid, is_setuid=excluded.is_setuid,
       is_setgid=excluded.is_setgid, symlink_target=excluded.symlink_target,
-      materialized=excluded.materialized, errors=excluded.errors`);
+      materialized=excluded.materialized, errors=excluded.errors,
+      verified_dev=NULL, verified_ino=NULL, verified_size=NULL,
+      verified_mtime_ns=NULL, verified_ctime_ns=NULL`);
     this.database.transaction(() => {
       for (const row of rows) statement.run(row);
     })();
   }
 
   replaceNodes(nodes: readonly FirmwareNode[], meta: FirmwareManifestMeta): void {
-    const rows = nodes.map(serializeNode);
+    const rows = nodes.map(serializeIngestedNode);
     const paths = new Set(rows.map((row) => row.path));
     if (paths.size !== rows.length) {
       throw new FirmwareCacheError("INVALID_MANIFEST_NODE", "A manifest batch contains duplicate paths.");
@@ -318,6 +406,24 @@ export class FirmwareManifest {
       this.database.prepare("DELETE FROM fs_node").run();
       this.upsertNodes(nodes);
       this.writeMeta(meta);
+    })();
+  }
+
+  ingestPage(nodes: readonly FirmwareNode[], pageMeta: FirmwarePageMeta): void {
+    this.database.transaction(() => {
+      this.upsertNodes(nodes);
+      const counts = this.counts();
+      if (pageMeta.fullyMaterialized && counts.hydrated !== counts.files) {
+        throw new FirmwareCacheError(
+          "INVALID_MANIFEST_META",
+          "A completed paged ingest must hydrate every regular file.",
+        );
+      }
+      this.writeMeta({
+        ...pageMeta,
+        nodeCount: counts.nodes,
+        hydratedCount: counts.hydrated,
+      });
     })();
   }
 
@@ -347,6 +453,39 @@ export class FirmwareManifest {
       hydrated: row.hydrated ?? 0,
       errors: row.errors ?? 0,
     };
+  }
+
+  integrityRows(): IntegrityRow[] {
+    return this.database
+      .prepare(`SELECT path, file_hash, size, verified_dev, verified_ino, verified_size,
+        verified_mtime_ns, verified_ctime_ns
+        FROM fs_node WHERE kind = 'file' AND materialized = 1 ORDER BY path`)
+      .all() as IntegrityRow[];
+  }
+
+  replaceIntegrityEvidence(evidence: ReadonlyMap<string, RegularFileEvidence>): void {
+    const clear = this.database.prepare(`UPDATE fs_node SET
+      verified_dev = NULL, verified_ino = NULL, verified_size = NULL,
+      verified_mtime_ns = NULL, verified_ctime_ns = NULL
+      WHERE kind = 'file' AND materialized = 1`);
+    const update = this.database.prepare(`UPDATE fs_node SET
+      verified_dev = @device, verified_ino = @inode, verified_size = @size,
+      verified_mtime_ns = @mtimeNs, verified_ctime_ns = @ctimeNs
+      WHERE path = @path AND kind = 'file' AND materialized = 1`);
+    this.database.transaction(() => {
+      clear.run();
+      for (const [path, item] of evidence) update.run({ path, ...item });
+    })();
+  }
+
+  markIntegrityFailure(path: string): void {
+    this.replaceIntegrityEvidence(new Map());
+    this.database
+      .prepare(`UPDATE fs_node SET
+        verified_dev = '', verified_ino = '', verified_size = -1,
+        verified_mtime_ns = '', verified_ctime_ns = ''
+        WHERE path = ? AND kind = 'file' AND materialized = 1`)
+      .run(path);
   }
 }
 
@@ -396,6 +535,60 @@ export function openManifest(worktreeRoot: string, pvId: string): FirmwareManife
   }
 }
 
+function evidenceState(manifest: FirmwareManifest): "current" | "missing" | "stale" {
+  const rootfs = join(dirname(manifest.path), "rootfs");
+  let missing = false;
+  for (const row of manifest.integrityRows()) {
+    const current = inspectRegularFileEvidenceSync(rootfs, row.path, row.size);
+    if (!current) return "stale";
+    if (
+      row.verified_dev === null ||
+      row.verified_ino === null ||
+      row.verified_size === null ||
+      row.verified_mtime_ns === null ||
+      row.verified_ctime_ns === null
+    ) {
+      missing = true;
+      continue;
+    }
+    if (
+      current.device !== row.verified_dev ||
+      current.inode !== row.verified_ino ||
+      current.size !== row.verified_size ||
+      current.mtimeNs !== row.verified_mtime_ns ||
+      current.ctimeNs !== row.verified_ctime_ns
+    ) {
+      return "stale";
+    }
+  }
+  return missing ? "missing" : "current";
+}
+
+export function verifyMountIntegrity(manifest: FirmwareManifest): FirmwareIntegrityVerification {
+  const rootfs = join(dirname(manifest.path), "rootfs");
+  const evidence = new Map<string, RegularFileEvidence>();
+  for (const row of manifest.integrityRows()) {
+    if (!row.file_hash) {
+      manifest.markIntegrityFailure(row.path);
+      throw new FirmwareCacheError(
+        "INCOHERENT_FIRMWARE_MOUNT",
+        `Materialized file has no digest: ${row.path}`,
+      );
+    }
+    const verified = verifyRegularFileIntegritySync(rootfs, row.path, row.file_hash, row.size);
+    if (!verified) {
+      manifest.markIntegrityFailure(row.path);
+      throw new FirmwareCacheError(
+        "INCOHERENT_FIRMWARE_MOUNT",
+        `Materialized bytes do not match the sidecar: ${row.path}`,
+      );
+    }
+    evidence.set(row.path, verified);
+  }
+  manifest.replaceIntegrityEvidence(evidence);
+  return { verifiedFiles: evidence.size };
+}
+
 export function getMountReadiness(manifest: FirmwareManifest): MountReadiness {
   if (manifest.invalidReason) return "invalid";
   try {
@@ -411,23 +604,12 @@ export function getMountReadiness(manifest: FirmwareManifest): MountReadiness {
       return "invalid";
     }
     const hasErrors = meta.unpackErrors.length > 0 || counts.errors > 0;
-    const verifiedHydrated = manifest
-      .listNodes()
-      .filter((node) => node.kind === "file" && node.materialized)
-      .filter(
-        (node) =>
-          node.fileHash !== null &&
-          verifyRegularFileBytesSync(
-            join(dirname(manifest.path), "rootfs"),
-            node.path,
-            node.fileHash,
-            node.size,
-          ),
-      ).length;
-    if (verifiedHydrated !== counts.hydrated) return "invalid";
+    const integrity = evidenceState(manifest);
+    if (integrity === "stale") return "invalid";
     if (
       meta.fullyMaterialized &&
-      verifiedHydrated === counts.files &&
+      integrity === "current" &&
+      counts.hydrated === counts.files &&
       !hasErrors &&
       meta.adminBytesOk !== false
     ) {

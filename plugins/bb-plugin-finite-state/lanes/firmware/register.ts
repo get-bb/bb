@@ -2,7 +2,12 @@ import type { BbPluginApi, PluginCliContext } from "@bb/plugin-sdk";
 import type { PluginContext } from "../../lib/context.js";
 import { rpcContract } from "../../shared/contract.js";
 import { materializeFromApi, hydrateFirmwareFile } from "./api/fallback.js";
-import { linkNode, putBlob } from "./cache/blob-store.js";
+import {
+  linkNode,
+  type FirmwareExecutionScope,
+  type LinkNodeResult,
+  putBlob,
+} from "./cache/blob-store.js";
 import { validateWorktreeRoot } from "./cache/layout.js";
 import {
   commitFirmwareMount,
@@ -14,6 +19,7 @@ import {
   type FirmwareNode,
   getMountReadiness,
   openManifest,
+  verifyMountIntegrity,
 } from "./cache/manifest.js";
 import { diffFirmware } from "./diff.js";
 import { getFirmwareStatus, listFirmwareMounts, listFirmwareTree, getFirmwareFile } from "./status.js";
@@ -30,12 +36,7 @@ const firmwareRpcContract = {
   firmwareFileHydrate: rpcContract.firmwareFileHydrate,
 } as const;
 
-export interface FirmwareExecutionScope {
-  worktreeRoot: string;
-  projectId: string;
-  projectVersionId: string;
-  generationId: string;
-}
+export type { FirmwareExecutionScope } from "./cache/blob-store.js";
 
 export interface FirmwareCacheService {
   open(scope: FirmwareExecutionScope): FirmwareManifest;
@@ -44,9 +45,15 @@ export interface FirmwareCacheService {
     source: NodeJS.ReadableStream,
     expectedSha256: string,
   ): Promise<{ path: string; reused: boolean }>;
-  linkNode(mount: FirmwareMount, node: FirmwareNode, blobPath: string): Promise<void>;
+  linkNode(
+    scope: FirmwareExecutionScope,
+    mount: FirmwareMount,
+    node: FirmwareNode,
+    blobPath: string,
+  ): Promise<LinkNodeResult>;
   commit(input: CommitFirmwareMountInput): void;
   readiness(manifest: FirmwareManifest): ReturnType<typeof getMountReadiness>;
+  verifyIntegrity(manifest: FirmwareManifest): ReturnType<typeof verifyMountIntegrity>;
 }
 
 function assertScope(scope: FirmwareExecutionScope): FirmwareExecutionScope {
@@ -66,11 +73,14 @@ export function createFirmwareCacheService(ctx: PluginContext): FirmwareCacheSer
       const verified = assertScope(scope);
       return putBlob(verified.worktreeRoot, source, expectedSha256);
     },
-    linkNode,
+    linkNode(scope, mount, node, blobPath) {
+      return linkNode(assertScope(scope), mount, node, blobPath);
+    },
     commit(input) {
       commitFirmwareMount(ctx.db(), input);
     },
     readiness: getMountReadiness,
+    verifyIntegrity: verifyMountIntegrity,
   };
 }
 
