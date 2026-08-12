@@ -13,8 +13,8 @@ function sortedSet(values: readonly string[]): string[] {
   return [...new Set(values)].sort((left, right) => left.localeCompare(right));
 }
 
-function canonicalPart(value: string | null | undefined): string | null | undefined {
-  if (value === null || value === undefined) return value;
+function canonicalPart(value: string | null | undefined): string | undefined {
+  if (value === null || value === undefined) return undefined;
   return normalizeEarsWhitespace(value);
 }
 function canonicalVerification(contract: VerificationContract): VerificationContract {
@@ -44,16 +44,16 @@ export function canonicalRequirement(requirement: RequirementYamlV1): Requiremen
       pattern: requirement.ears.pattern,
       text: renderEars(requirement.ears),
       parts: {
-        ...(requirement.ears.parts.trigger === undefined
+        ...(canonicalPart(requirement.ears.parts.trigger) === undefined
           ? {}
           : { trigger: canonicalPart(requirement.ears.parts.trigger) }),
-        ...(requirement.ears.parts.precondition === undefined
+        ...(canonicalPart(requirement.ears.parts.precondition) === undefined
           ? {}
           : { precondition: canonicalPart(requirement.ears.parts.precondition) }),
-        ...(requirement.ears.parts.state === undefined
+        ...(canonicalPart(requirement.ears.parts.state) === undefined
           ? {}
           : { state: canonicalPart(requirement.ears.parts.state) }),
-        ...(requirement.ears.parts.feature === undefined
+        ...(canonicalPart(requirement.ears.parts.feature) === undefined
           ? {}
           : { feature: canonicalPart(requirement.ears.parts.feature) }),
         system: normalizeEarsWhitespace(requirement.ears.parts.system),
@@ -201,12 +201,24 @@ export interface RequirementDocument {
   sha256: string | null;
 }
 
+export interface RequirementDocumentDiagnostic {
+  artifactId: string;
+  line: number;
+  code: string;
+  message: string;
+}
+
+export interface RequirementListing {
+  documents: RequirementDocument[];
+  diagnostics: RequirementDocumentDiagnostic[];
+}
+
 export type RequirementWriteResult =
   | { outcome: "written"; sha256: string; sizeBytes: number }
   | { outcome: "conflict"; currentSha256: string | null };
 
 export interface RequirementRepository {
-  list(projectId: string): Promise<RequirementDocument[]>;
+  list(projectId: string, options?: { refresh?: boolean }): Promise<RequirementListing>;
   read(projectId: string, requirementId: string): Promise<RequirementDocument | null>;
   write(
     projectId: string,
@@ -232,12 +244,13 @@ function isMissingFileError(error: unknown): boolean {
 }
 
 export function createSdkRequirementRepository(bb: BbPluginApi): RequirementRepository {
+  const snapshots = new Map<string, Promise<RequirementListing>>();
+
   async function readPath(
-    projectId: string,
+    source: Awaited<ReturnType<typeof projectSource>>,
     absolutePath: string,
     artifactId: string,
   ): Promise<RequirementDocument | null> {
-    const source = await projectSource(bb, projectId);
     try {
       const file = await bb.sdk.files.read({
         hostId: source.hostId,
@@ -251,7 +264,9 @@ export function createSdkRequirementRepository(bb: BbPluginApi): RequirementRepo
       );
       if (!validated.success) {
         const first = validated.errors[0];
-        throw new Error(first ? `${first.code}: ${first.message}` : "Requirement YAML is invalid.");
+        throw new Error(first
+          ? `${artifactId}:${first.line ?? 1} ${first.code}: ${first.message}`
+          : `${artifactId}:1 Requirement YAML is invalid.`);
       }
       const expectedArtifactId = `${REQUIREMENTS_DIRECTORY}/${validated.data.id}.yaml`;
       if (artifactId !== expectedArtifactId) {
@@ -267,48 +282,92 @@ export function createSdkRequirementRepository(bb: BbPluginApi): RequirementRepo
   }
 
   return {
-    async list(projectId) {
-      const source = await projectSource(bb, projectId);
-      const directory = join(source.path, REQUIREMENTS_DIRECTORY);
-      const listing = await (async () => {
-        try {
-          return await bb.sdk.files.list({
-            hostId: source.hostId,
-            path: directory,
-            limit: 10_000,
-          });
-        } catch (error) {
-          if (isMissingFileError(error)) return null;
-          throw error;
+    async list(projectId, options) {
+      if (options?.refresh) snapshots.delete(projectId);
+      const existing = snapshots.get(projectId);
+      if (existing) return existing;
+      const pending = (async (): Promise<RequirementListing> => {
+        const source = await projectSource(bb, projectId);
+        const directory = join(source.path, REQUIREMENTS_DIRECTORY);
+        const listing = await (async () => {
+          try {
+            return await bb.sdk.files.list({
+              hostId: source.hostId,
+              path: directory,
+              limit: 10_000,
+            });
+          } catch (error) {
+            if (isMissingFileError(error)) return null;
+            throw error;
+          }
+        })();
+        if (!listing) return { documents: [], diagnostics: [] };
+        if (listing.truncated) {
+          throw new Error("Requirement directory exceeds the supported 10,000-file safety bound.");
         }
+        const yamlFiles = listing.files
+          .filter((file) => /\.ya?ml$/iu.test(file.name))
+          .sort((left, right) => left.path.localeCompare(right.path));
+        const results = await Promise.all(yamlFiles.map(async (file) => {
+          const relativePath = file.path.replaceAll("\\", "/")
+            .split(`${REQUIREMENTS_DIRECTORY}/`).at(-1) ?? file.name;
+          const artifactId = `${REQUIREMENTS_DIRECTORY}/${relativePath}`;
+          if (relativePath.includes("/")) {
+            return { diagnostic: {
+              artifactId,
+              line: 1,
+              code: "NESTED_REQUIREMENT_FILE",
+              message: "Requirement YAML must be a direct child of the requirements directory.",
+            } };
+          }
+          try {
+            return { document: await readPath(source, file.path, artifactId) };
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            const match = message.match(/^(.*):(\d+)\s+([A-Z][A-Z0-9_]*):\s*(.*)$/u);
+            return { diagnostic: {
+              artifactId,
+              line: Number(match?.[2] ?? 1),
+              code: match?.[3] ?? "INVALID_REQUIREMENT_YAML",
+              message: match?.[4] ?? message,
+            } };
+          }
+        }));
+        return {
+          documents: results.flatMap((result) => result.document ? [result.document] : []),
+          diagnostics: results.flatMap((result) => result.diagnostic ? [result.diagnostic] : []),
+        };
       })();
-      if (!listing) return [];
-      if (listing.truncated) {
-        throw new Error("Requirement directory exceeds the supported 10,000-file safety bound.");
+      snapshots.set(projectId, pending);
+      try {
+        return await pending;
+      } catch (error) {
+        snapshots.delete(projectId);
+        throw error;
       }
-      const yamlFiles = listing.files
-        .filter((file) => /\.ya?ml$/iu.test(file.name))
-        .sort((left, right) => left.path.localeCompare(right.path));
-      const documents = await Promise.all(
-        yamlFiles.map((file) =>
-          readPath(
-            projectId,
-            file.path,
-            `${REQUIREMENTS_DIRECTORY}/${file.path.split(/[\\/]/u).at(-1) ?? file.name}`,
-          ),
-        ),
-      );
-      return documents.filter((document): document is RequirementDocument => document !== null);
     },
     async read(projectId, requirementId) {
       const source = await projectSource(bb, projectId);
       const artifactId = `${REQUIREMENTS_DIRECTORY}/${requirementId}.yaml`;
-      return readPath(projectId, join(source.path, artifactId), artifactId);
+      const document = await readPath(source, join(source.path, artifactId), artifactId);
+      if (document) {
+        const snapshot = await snapshots.get(projectId);
+        if (snapshot) {
+          snapshots.set(projectId, Promise.resolve({
+            ...snapshot,
+            documents: [
+              ...snapshot.documents.filter((item) => item.requirement.id !== requirementId),
+              document,
+            ],
+          }));
+        }
+      }
+      return document;
     },
     async write(projectId, requirement, expectedSha256) {
       const source = await projectSource(bb, projectId);
       const artifactId = `${REQUIREMENTS_DIRECTORY}/${requirement.id}.yaml`;
-      return bb.sdk.files.write({
+      const result = await bb.sdk.files.write({
         hostId: source.hostId,
         path: join(source.path, artifactId),
         rootPath: source.path,
@@ -317,6 +376,24 @@ export function createSdkRequirementRepository(bb: BbPluginApi): RequirementRepo
         createParents: true,
         expectedSha256,
       });
+      if (result.outcome === "written") {
+        const snapshot = await snapshots.get(projectId);
+        if (snapshot) {
+          const document = {
+            artifactId,
+            requirement: canonicalRequirement(requirement),
+            sha256: result.sha256,
+          };
+          snapshots.set(projectId, Promise.resolve({
+            ...snapshot,
+            documents: [
+              ...snapshot.documents.filter((item) => item.requirement.id !== requirement.id),
+              document,
+            ],
+          }));
+        }
+      }
+      return result;
     },
   };
 }

@@ -4,6 +4,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import { cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@bb/plugin-sdk/testing/app";
 import type { RequirementCardModel } from "./schema.js";
+import { rpcContract } from "../../../../shared/contract.js";
 
 const observedElements = new WeakSet<Element>();
 
@@ -94,11 +95,11 @@ function model(index = 1, overrides: Partial<RequirementCardModel> = {}): Requir
   };
 }
 
-function page(cardModels: readonly RequirementCardModel[], message: string | null = null) {
+function page(cardModels: readonly RequirementCardModel[], message: string | null = null, projectVersionId: string | null = null) {
   return {
     items: cardModels.map((card) => ({
       projectId: "project-1",
-      projectVersionId: null,
+      projectVersionId,
       kind: "requirement",
       key: card.requirement.id,
       label: card.requirement.id,
@@ -206,6 +207,100 @@ describe("requirement cards", () => {
       expect(cards).toBeLessThan(50);
       expect(rows).toBeLessThan(50);
     });
+    slot.lifecycle.unmount();
+  });
+
+  it("refreshes mounted card content and its CAS fence after realtime refetch", async () => {
+    const first = model(1);
+    const refreshed = model(1, {
+      sourceSha256: "f".repeat(64),
+      requirement: {
+        ...first.requirement,
+        ears: {
+          ...first.requirement.ears,
+          text: "WHEN an update begins, the gateway SHALL quarantine the image",
+          parts: { ...first.requirement.ears.parts, response: "quarantine the image" },
+        },
+      },
+    });
+    let calls = 0;
+    let writeInput: Record<string, unknown> | null = null;
+    const panel = await requirementsPanel();
+    const slot = renderSlot(panel, { subPath: "requirements" }, {
+      context: { projectId: "project-1", threadId: null },
+      rpc: {
+        requirementsList: () => page([calls++ < 2 ? first : refreshed], null, "version-7"),
+        requirementsWrite: (input) => {
+          writeInput = rpcContract.requirementsWrite.input.parse(input);
+          return {
+            projectId: "project-1",
+            projectVersionId: "version-7",
+            stableKey: "REQ-card-1",
+            beforeSha256: "f".repeat(64),
+            afterSha256: "e".repeat(64),
+            changedFields: [],
+            diffSummary: "local only",
+          };
+        },
+      },
+    });
+    expect(await slot.findByText(/verify its signature/iu)).toBeTruthy();
+    await slot.behavior.emitRealtime("requirements:changed", { projectId: "project-1" });
+    expect(await slot.findByText(/quarantine the image/iu)).toBeTruthy();
+    fireEvent.click(slot.getByRole("button", { name: "Expand requirement" }));
+    fireEvent.click(slot.getByRole("button", { name: "Edit local YAML" }));
+    fireEvent.submit(slot.getByRole("button", { name: "Save local YAML" }).closest("form")!);
+    await waitFor(() => expect(writeInput).not.toBeNull());
+    expect(writeInput).toEqual(expect.objectContaining({
+      projectVersionId: "version-7",
+      expectedContentSha256: "f".repeat(64),
+    }));
+    slot.lifecycle.unmount();
+  });
+
+  it("recovers a CAS conflict with current data and a human-readable retry path", async () => {
+    const original = model(1);
+    const current = model(1, {
+      sourceSha256: "c".repeat(64),
+      requirement: {
+        ...original.requirement,
+        ears: {
+          ...original.requirement.ears,
+          text: "WHEN an update begins, the gateway SHALL retain the installed image",
+          parts: { ...original.requirement.ears.parts, response: "retain the installed image" },
+        },
+      },
+    });
+    const writes: Array<Record<string, unknown>> = [];
+    const panel = await requirementsPanel();
+    const slot = renderSlot(panel, { subPath: "requirements" }, {
+      context: { projectId: "project-1", threadId: null },
+      rpc: {
+        requirementsList: () => page([original]),
+        requirementsWrite: (input) => {
+          writes.push(rpcContract.requirementsWrite.input.parse(input));
+          if (writes.length === 1) throw new Error(`LOCAL_WRITE_CONFLICT: current ${"c".repeat(64)}`);
+          return {
+            projectId: "project-1", projectVersionId: null, stableKey: "REQ-card-1",
+            beforeSha256: "c".repeat(64), afterSha256: "d".repeat(64), changedFields: [], diffSummary: "local only",
+          };
+        },
+        requirementsGet: () => ({
+          ...page([current]).items[0],
+          links: [],
+          cache: page([current]).cache,
+        }),
+      },
+    });
+    await slot.findByText("REQ-card-1");
+    fireEvent.click(slot.getByRole("button", { name: "Expand requirement" }));
+    fireEvent.click(slot.getByRole("button", { name: "Edit local YAML" }));
+    fireEvent.click(slot.getByRole("button", { name: "Save local YAML" }));
+    expect(await slot.findByText(/latest version is loaded/iu)).toBeTruthy();
+    expect(slot.getAllByText(/retain the installed image/iu).length).toBeGreaterThan(0);
+    fireEvent.click(slot.getByRole("button", { name: "Save local YAML" }));
+    await waitFor(() => expect(writes).toHaveLength(2));
+    expect(writes[1]).toEqual(expect.objectContaining({ expectedContentSha256: "c".repeat(64) }));
     slot.lifecycle.unmount();
   });
 });

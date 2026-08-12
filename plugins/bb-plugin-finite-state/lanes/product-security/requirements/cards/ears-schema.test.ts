@@ -2,6 +2,7 @@ import { parse } from "yaml";
 import { describe, expect, it } from "vitest";
 import {
   buildRequirementPlan,
+  requirementSemanticSha256,
   serializeRequirement,
 } from "./adapter.js";
 import { renderEars } from "./render-ears.js";
@@ -112,6 +113,19 @@ describe("fs-requirement/v1 EARS validation", () => {
       "EARS_PARTS",
       "EARS_ROUND_TRIP",
     ]);
+  });
+
+  it("canonicalizes omitted and null inapplicable EARS parts identically", () => {
+    const omitted = requirement("ubiquitous");
+    const explicitNull = {
+      ...omitted,
+      ears: {
+        ...omitted.ears,
+        parts: { ...omitted.ears.parts, trigger: null, state: null },
+      },
+    };
+    expect(serializeRequirement(explicitNull)).toBe(serializeRequirement(omitted));
+    expect(requirementSemanticSha256(explicitNull)).toBe(requirementSemanticSha256(omitted));
   });
 
   it("rejects server-owned verification truth at its YAML line and plans no write", () => {

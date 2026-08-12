@@ -4,6 +4,7 @@ import type { JsonValue, RpcContract } from "../../../../shared/contract.js";
 import { renderEars } from "./render-ears.js";
 import {
   earsPatternSchema,
+  requirementCardModelSchema,
   requirementWorkflowStatusSchema,
   type EarsPattern,
   type RequirementCardModel,
@@ -72,10 +73,14 @@ function relevantParts(pattern: EarsPattern): readonly ("trigger" | "preconditio
 
 export function RequirementEditor({
   model,
+  projectVersionId,
+  onConflict,
   onSaved,
 }: {
   model: RequirementCardModel;
-  onSaved?(nextSha256: string): void;
+  projectVersionId: string | null;
+  onConflict?(current: RequirementCardModel): void;
+  onSaved?(next: RequirementYamlV1, nextSha256: string): void;
 }): React.JSX.Element {
   const { projectId } = useBbContext();
   const rpc = useRpc<RpcContract>();
@@ -130,20 +135,31 @@ export function RequirementEditor({
     try {
       const request = {
         projectId,
-        projectVersionId: null,
+        projectVersionId,
         requirementId: source.id,
         fields: requirementFields(validation.data),
         expectedContentSha256: model.sourceSha256,
       };
       const result = await rpc.call("requirementsWrite", request);
       setMessage("Saved to tracked local YAML. Remote systems were not contacted.");
-      onSaved?.(result.afterSha256);
+      onSaved?.(validation.data, result.afterSha256);
     } catch (error) {
-      setMessage(
-        error instanceof Error
-          ? error.message
-          : "The local file changed before this save. Reload and review the newer version.",
-      );
+      const detail = error instanceof Error ? error.message : String(error);
+      if (detail.includes("LOCAL_WRITE_CONFLICT")) {
+        try {
+          const current = await rpc.call("requirementsGet", {
+            projectId,
+            projectVersionId,
+            requirementId: source.id,
+          });
+          onConflict?.(requirementCardModelSchema.parse(current.fields));
+          setMessage("This requirement changed on disk. The latest version is loaded; review it before saving again.");
+        } catch {
+          setMessage("This requirement changed on disk, but the latest version could not be loaded. Retry the local read before saving.");
+        }
+      } else {
+        setMessage("The requirement could not be saved to tracked local YAML. Review the fields and retry.");
+      }
     } finally {
       setSaving(false);
     }

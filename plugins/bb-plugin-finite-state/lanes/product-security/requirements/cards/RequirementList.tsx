@@ -8,6 +8,7 @@ export type RequirementListState = "unconfigured" | "loading" | "ready" | "error
 export interface RequirementListProps {
   state: RequirementListState;
   models: readonly RequirementCardModel[];
+  projectVersionId?: string | null;
   message?: string | null;
   hasNextPage?: boolean;
   onLoadMore?(): void;
@@ -37,6 +38,7 @@ function CenteredState({
 export function RequirementList({
   state,
   models,
+  projectVersionId = null,
   message,
   hasNextPage = false,
   onLoadMore,
@@ -105,7 +107,13 @@ export function RequirementList({
         </div>
         <span className="text-xs tabular-nums text-muted-foreground">{filtered.length} loaded</span>
       </div>
-      <div aria-label="Requirement cards" className="min-h-0 flex-1 overflow-auto p-4" ref={scrollRef} role="feed">
+      <div
+        aria-busy={state === "loading"}
+        aria-label="Requirement cards"
+        className="min-h-0 flex-1 overflow-auto p-4"
+        ref={scrollRef}
+        role="feed"
+      >
         <div className="relative w-full" style={{ height: `${virtualizer.getTotalSize()}px` }}>
           {virtualizer.getVirtualItems().map((virtualRow) => {
             const model = filtered[virtualRow.index];
@@ -119,7 +127,13 @@ export function RequirementList({
                 ref={virtualizer.measureElement}
                 style={{ transform: `translateY(${virtualRow.start}px)` }}
               >
-                <RequirementCard id={model.requirement.id} initialModel={model} />
+                <RequirementCard
+                  id={model.requirement.id}
+                  initialModel={model}
+                  positionInSet={virtualRow.index + 1}
+                  projectVersionId={projectVersionId}
+                  setSize={filtered.length}
+                />
               </div>
             );
           })}

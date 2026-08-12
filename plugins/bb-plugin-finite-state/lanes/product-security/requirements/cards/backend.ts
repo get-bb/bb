@@ -1,7 +1,11 @@
 import type { BbPluginApi } from "@bb/plugin-sdk";
 import type Database from "better-sqlite3";
 import type { PluginContext } from "../../../../lib/context.js";
-import { toStorageProjectVersionId } from "../../../../lib/store/index.js";
+import {
+  fromStorageProjectVersionId,
+  PROJECT_LEVEL_VERSION_ID,
+  toStorageProjectVersionId,
+} from "../../../../lib/store/index.js";
 import { reqIdKey } from "../../../../lib/sync/registry.js";
 import type { JsonValue } from "../../../../shared/contract.js";
 import { rpcContract } from "../../../../shared/contract.js";
@@ -29,6 +33,27 @@ interface CacheRow {
 interface SnapshotRow {
   entity_key: string;
   payload: string;
+}
+
+interface VersionRow {
+  project_version_id: string;
+}
+
+function resolvedProjectVersionId(
+  db: Database.Database,
+  projectId: string,
+  requested: string | null,
+): string | null {
+  if (requested !== null) return requested;
+  const row = db.prepare<[string, string], VersionRow>(
+    `SELECT project_version_id
+       FROM sync_state
+      WHERE project_id = ? AND entity_kind = 'requirement'
+        AND project_version_id <> ? AND accepted_generation_id IS NOT NULL
+      ORDER BY last_pull DESC, project_version_id DESC
+      LIMIT 1`,
+  ).get(projectId, PROJECT_LEVEL_VERSION_ID);
+  return row ? fromStorageProjectVersionId(row.project_version_id) : null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -158,18 +183,28 @@ export function registerRequirementsCardsBackend(
   const repository = createSdkRequirementRepository(bb);
   bb.rpc.register(requirementsRpcContract, {
     async requirementsList(input) {
-      const cache = cacheState(ctx.db(), input.projectId, input.projectVersionId);
-      let documents = await repository.list(input.projectId);
-      if (documents.length === 0) {
-        documents = cachedDocuments(
-          ctx.db(),
-          input.projectId,
-          input.projectVersionId,
-          cache.acceptedGenerationId,
-        );
-      }
+      const projectVersionId = resolvedProjectVersionId(
+        ctx.db(), input.projectId, input.projectVersionId,
+      );
+      const cache = cacheState(ctx.db(), input.projectId, projectVersionId);
       const filters = readFilters(input);
-      const allModels = (await listModels(ctx, documents, input))
+      const listing = await repository.list(input.projectId, { refresh: filters.refresh === true });
+      const cached = cachedDocuments(
+        ctx.db(),
+        input.projectId,
+        projectVersionId,
+        cache.acceptedGenerationId,
+      );
+      const localById = new Map(
+        listing.documents.map((document) => [document.requirement.id, document]),
+      );
+      const documents = [
+        ...cached.filter((document) => !localById.has(document.requirement.id)),
+        ...listing.documents,
+      ];
+      const allModels = (await listModels(
+        ctx, documents, { projectId: input.projectId, projectVersionId },
+      ))
         .filter((model) => matchesFilters(model, filters))
         .sort((left, right) => left.requirement.id.localeCompare(right.requirement.id));
       const after = input.continuation;
@@ -185,10 +220,15 @@ export function registerRequirementsCardsBackend(
       const next = start + pageSize < allModels.length
         ? visible.at(-1)?.requirement.id ?? null
         : null;
+      const diagnosticMessage = listing.diagnostics.length === 0 ? null : listing.diagnostics
+        .map((diagnostic) =>
+          `${diagnostic.artifactId}:${diagnostic.line} ${diagnostic.code}: ${diagnostic.message}`,
+        )
+        .join(" ");
       return {
         items: visible.map((model) => ({
           projectId: input.projectId,
-          projectVersionId: input.projectVersionId,
+          projectVersionId,
           kind: "requirement",
           key: model.requirement.id,
           label: model.requirement.id,
@@ -196,22 +236,33 @@ export function registerRequirementsCardsBackend(
         })),
         total: allModels.length,
         next,
-        cache,
+        cache: {
+          ...cache,
+          message: [cache.message, diagnosticMessage].filter(Boolean).join(" ") || null,
+        },
       };
     },
     async requirementsGet(input) {
-      const cache = cacheState(ctx.db(), input.projectId, input.projectVersionId);
+      const projectVersionId = resolvedProjectVersionId(
+        ctx.db(), input.projectId, input.projectVersionId,
+      );
+      const cache = cacheState(ctx.db(), input.projectId, projectVersionId);
       let document = await repository.read(input.projectId, input.requirementId);
       if (!document) {
         document = cachedDocuments(
-          ctx.db(), input.projectId, input.projectVersionId, cache.acceptedGenerationId,
+          ctx.db(), input.projectId, projectVersionId, cache.acceptedGenerationId,
         ).find((candidate) => candidate.requirement.id === input.requirementId) ?? null;
       }
       if (!document) throw new Error(`Requirement ${input.requirementId} was not found locally.`);
-      const model = loadRequirementCardModel(ctx.db(), input, document.requirement, document.sha256);
+      const model = loadRequirementCardModel(
+        ctx.db(),
+        { projectId: input.projectId, projectVersionId },
+        document.requirement,
+        document.sha256,
+      );
       return {
         projectId: input.projectId,
-        projectVersionId: input.projectVersionId,
+        projectVersionId,
         kind: "requirement",
         key: document.requirement.id,
         label: document.requirement.id,

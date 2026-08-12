@@ -26,7 +26,6 @@ export function cardModelFromFields(fields: Record<string, JsonValue>): Requirem
 }
 
 interface RollupRow {
-  verification_status: string | null;
   total_checks: number;
   verified_checks: number;
   failed_checks: number;
@@ -91,7 +90,7 @@ export function loadRequirementCardModel(
   if (generation) {
     rollup = db
       .prepare<[string, string, string, string], RollupRow>(
-        `SELECT verification_status, total_checks, verified_checks, failed_checks,
+        `SELECT total_checks, verified_checks, failed_checks,
                 error_checks, inconclusive_checks, running_checks, pending_checks, skipped_checks
            FROM requirement_rollup
           WHERE project_id = ? AND project_version_id = ? AND generation_id = ? AND requirement_key = ?`,

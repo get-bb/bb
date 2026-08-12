@@ -20,23 +20,26 @@ export function RequirementsCards(): React.JSX.Element {
   const [models, setModels] = useState<RequirementCardModel[]>([]);
   const [message, setMessage] = useState<string | null>(null);
   const [next, setNext] = useState<string | null>(null);
+  const [projectVersionId, setProjectVersionId] = useState<string | null>(null);
   const [revision, setRevision] = useState(0);
   const requestEpoch = useRef(0);
 
-  const load = useCallback(async (continuation: string | null, epoch: number) => {
+  const load = useCallback(async (continuation: string | null, epoch: number, refresh = false) => {
     if (!projectId) return;
     if (continuation === null) setState("loading");
     const request = {
       projectId,
-      projectVersionId: null,
+      projectVersionId,
       pageSize: 100,
       continuation,
-      filters: {},
+      filters: refresh ? { refresh: true } : {},
       };
     try {
       const page = await rpc.call("requirementsList", request);
       if (requestEpoch.current !== epoch) return;
       const pageModels = page.items.map((item) => requirementCardModelSchema.parse(item.fields));
+      const resolvedVersionId = page.items[0]?.projectVersionId;
+      if (resolvedVersionId !== undefined) setProjectVersionId(resolvedVersionId);
       setModels((current) => continuation === null
         ? pageModels
         : [...current, ...pageModels.filter((nextModel) =>
@@ -50,7 +53,7 @@ export function RequirementsCards(): React.JSX.Element {
       setMessage(error instanceof Error ? error.message : "Requirements could not be read.");
       setState("error");
     }
-  }, [projectId, rpc]);
+  }, [projectId, projectVersionId, rpc]);
 
   useRealtime("requirements:changed", (payload) => {
     if (projectId && payloadProjectId(payload) === projectId) setRevision((value) => value + 1);
@@ -75,8 +78,12 @@ export function RequirementsCards(): React.JSX.Element {
         message={message}
         models={projectId ? models : []}
         onLoadMore={() => void load(next, requestEpoch.current)}
-        onRetry={() => setRevision((value) => value + 1)}
+        onRetry={() => {
+          const epoch = ++requestEpoch.current;
+          void load(null, epoch, true);
+        }}
         state={projectId ? state : "unconfigured"}
+        projectVersionId={projectVersionId}
       />
     </section>
   );

@@ -30,21 +30,36 @@ function parseModel(fields: Record<string, JsonValue>): RequirementCardModel {
 export function RequirementCard({
   id,
   initialModel,
+  positionInSet,
+  projectVersionId = null,
+  setSize,
 }: {
   id: string;
   initialModel?: RequirementCardModel;
+  positionInSet?: number;
+  projectVersionId?: string | null;
+  setSize?: number;
 }): React.JSX.Element {
   const { projectId } = useBbContext();
   const rpc = useRpc<RpcContract>();
   const [model, setModel] = useState<RequirementCardModel | null>(initialModel ?? null);
+  const [previousInitialModel, setPreviousInitialModel] = useState(initialModel);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [conflictMessage, setConflictMessage] = useState<string | null>(null);
+
+  if (initialModel && initialModel !== previousInitialModel) {
+    setPreviousInitialModel(initialModel);
+    setModel(initialModel);
+    setError(null);
+    setConflictMessage(null);
+  }
 
   useEffect(() => {
     if (initialModel || !projectId) return;
     let active = true;
-    const request = { projectId, projectVersionId: null, requirementId: id };
+    const request = { projectId, projectVersionId, requirementId: id };
     void rpc.call("requirementsGet", request).then((result) => {
       if (!active) return;
       setModel(parseModel(result.fields));
@@ -54,7 +69,7 @@ export function RequirementCard({
       setError(nextError instanceof Error ? nextError.message : "Requirement could not be loaded.");
     });
     return () => { active = false; };
-  }, [id, initialModel, projectId, rpc]);
+  }, [id, initialModel, projectId, projectVersionId, rpc]);
 
   if (error) {
     return <article className="rounded-lg border border-destructive/40 bg-card p-4 text-sm text-card-foreground" role="alert">{error}</article>;
@@ -72,7 +87,12 @@ export function RequirementCard({
   const requirement = model.requirement;
   const traces = [...requirement.standards, ...requirement.mitigations, ...requirement.controls].slice(0, 3);
   return (
-    <article className="rounded-lg border border-border bg-card p-4 text-card-foreground shadow-xs" data-requirement-id={id}>
+    <article
+      aria-posinset={positionInSet}
+      aria-setsize={setSize}
+      className="rounded-lg border border-border bg-card p-4 text-card-foreground shadow-xs"
+      data-requirement-id={id}
+    >
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <span className="font-mono text-sm font-semibold">{requirement.id}</span>
@@ -80,7 +100,7 @@ export function RequirementCard({
           <span className="inline-flex items-center rounded-md border border-border px-2.5 py-0.5 text-xs font-semibold">{requirement.req_type} · {requirement.priority}</span>
           <span
             aria-label={`Workflow status: ${requirement.status}; this is not evidence`}
-            className="border-border text-muted-foreground"
+            className="inline-flex items-center rounded-full border border-accent bg-accent px-2.5 py-0.5 text-xs font-semibold text-accent-foreground"
             title="Authored workflow state — not verification evidence"
           >
             workflow: {requirement.status}
@@ -145,7 +165,24 @@ export function RequirementCard({
               </ul>
             )}
           </div>
-          {editing ? <RequirementEditor model={model} onSaved={(sourceSha256) => setModel({ ...model, sourceSha256, local: true })} /> : null}
+          {editing ? (
+            <>
+              {conflictMessage ? <p aria-live="polite" className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm text-foreground">{conflictMessage}</p> : null}
+              <RequirementEditor
+                key={model.sourceSha256 ?? "cached"}
+                model={model}
+                onConflict={(current) => {
+                  setModel(current);
+                  setConflictMessage("This requirement changed on disk. The latest version is loaded; review it before saving again.");
+                }}
+                onSaved={(requirement, sourceSha256) => {
+                  setModel({ ...model, requirement, sourceSha256, local: true });
+                  setConflictMessage(null);
+                }}
+                projectVersionId={projectVersionId}
+              />
+            </>
+          ) : null}
         </section>
       ) : null}
     </article>
