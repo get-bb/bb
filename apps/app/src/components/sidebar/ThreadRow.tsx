@@ -55,6 +55,7 @@ import {
   SIDEBAR_ROW_INTERACTIVE_STATE_CLASS,
   SIDEBAR_ROW_SELECTED_STATE_CLASS,
   SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
+  SIDEBAR_ROW_OPEN_IN_SPLIT_STATE_CLASS,
   SIDEBAR_SUCCESS_STATUS_COLOR_CLASS,
   SIDEBAR_SUCCESS_STATUS_DOT_CLASS,
   SIDEBAR_WORKING_STATUS_COLOR_CLASS,
@@ -598,7 +599,9 @@ function ThreadRowComponent({
     // Subtle open-in-split tint, weaker than the active-row treatment. The
     // focused pane's thread is already the active row, so this only marks the
     // other open panes; hover still wins over it.
-    !showActive && splitIndicator.isOpenInSplit && "bg-sidebar-accent/50",
+    !showActive &&
+      splitIndicator.isOpenInSplit &&
+      SIDEBAR_ROW_OPEN_IN_SPLIT_STATE_CLASS,
     !showActive && "has-[[data-state=open]]:bg-sidebar-accent",
     rowDragBindings && !rowDragBindings.disabled && "select-none",
   );

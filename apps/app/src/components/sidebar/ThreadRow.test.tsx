@@ -10,6 +10,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ThreadRow, type ThreadRowOptions } from "./ThreadRow";
 import { SidebarThreadTitleMentionResourcesProvider } from "./SidebarThreadTitleMentions";
 import {
+  SIDEBAR_ROW_OPEN_IN_SPLIT_STATE_CLASS,
   SIDEBAR_SUCCESS_STATUS_COLOR_CLASS,
   SIDEBAR_WORKING_STATUS_COLOR_CLASS,
 } from "./sidebarRowClasses";
@@ -336,6 +337,28 @@ describe("ThreadRow", () => {
       expect(container.querySelector('[data-icon="Loading"]')).toBeNull();
     },
   );
+
+  it("uses the opaque split tint on a sticky parent thread row", () => {
+    const { container } = renderSplitThreadRow({
+      options: {
+        kind: "parent",
+        depth: 0,
+        isCompact: false,
+        isCollapsed: false,
+        childCount: 1,
+        childActivity: NO_COLLAPSED_CHILD_ACTIVITY,
+        stickyLevel: 0,
+        onToggleCollapsed: vi.fn(),
+      },
+    });
+
+    const stickyRow = container.querySelector(
+      '[data-sidebar-sticky-tier="parent"]',
+    );
+    expect(stickyRow?.classList).toContain(
+      SIDEBAR_ROW_OPEN_IN_SPLIT_STATE_CLASS,
+    );
+  });
 
   it.each([
     ["idle", createThread()],

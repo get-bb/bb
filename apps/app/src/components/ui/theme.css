@@ -212,6 +212,39 @@
       linear-gradient(var(--sidebar), var(--sidebar));
   }
 
+  /* This state is sidebar-only, so resolve its quiet accent tint against the
+     sidebar up front. Keeping it opaque prevents an unfocused split's sticky
+     parent-thread row from revealing descendants that scroll underneath it. */
+  .bb-sidebar-open-in-split-row {
+    --bb-sidebar-open-in-split-background: color-mix(
+      in oklch,
+      var(--sidebar-accent) 50%,
+      var(--sidebar)
+    );
+    background-color: var(--bb-sidebar-open-in-split-background);
+  }
+
+  /* Utility-layer bg-sidebar owns the sticky tier's base background-color, so
+     paint the state above it as an image just like the selected-row treatment. */
+  [data-sidebar-sticky-stack]
+    [data-sidebar-sticky-tier].bb-sidebar-open-in-split-row {
+    background-image: linear-gradient(
+      var(--bb-sidebar-open-in-split-background),
+      var(--bb-sidebar-open-in-split-background)
+    );
+  }
+
+  [data-sidebar-sticky-stack]
+    [data-sidebar-sticky-tier].bb-sidebar-open-in-split-row:is(
+      :hover,
+      :has([data-state="open"])
+    ) {
+    background-image: linear-gradient(
+      var(--sidebar-accent),
+      var(--sidebar-accent)
+    );
+  }
+
   .bb-sidebar-hover-actions {
     pointer-events: none;
     opacity: 0;
