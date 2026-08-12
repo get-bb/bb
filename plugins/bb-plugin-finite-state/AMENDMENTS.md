@@ -96,3 +96,21 @@ documentation only and are never approval evidence.
 - Merge commit: `1062b0c799a8a538da8131d298175a9e47ed2a38`
 - Broadcast commit: `1062b0c799a8a538da8131d298175a9e47ed2a38`
 - Result: the plugin resolves the repo-pinned Zod 4.3.6 runtime directly, while the lockfile retains every pre-existing importer and package resolution unchanged.
+
+### A-005 — Declare the established shared UI and Hugeicons dependencies
+
+- Status: approved
+- Artifacts:
+  - `plugins/bb-plugin-finite-state/package.json`
+- Contract version: n/a
+- Prior artifact hashes:
+  - `plugins/bb-plugin-finite-state/package.json`: `729a4ef78484d219bb510dfa3a4c1726d02e7328203c916de8ffdd3a75c5784c`
+  - `pnpm-lock.yaml`: `dbeb4f897f85ff24d3129ce038814fd53818d1995ba36b948101559c91028d5c`
+- New artifact hashes:
+  - `plugins/bb-plugin-finite-state/package.json`: `422191d82ff75b7e1b0dca78a5b4a5598433b79d327c2e04d2f3028ad5d7b108`
+  - `pnpm-lock.yaml`: `43d1a3c77970f882ba086044a7be1b0e2af2424d609ed396735019c85374e301`
+- Reason: FS-46 requires `@bb/shared-ui` and Hugeicons UI. All three are established repository dependencies: `@bb/shared-ui` `workspace:*` is declared by all 13 other bundled plugins, while `@hugeicons/react` `^1.1.6` and `@hugeicons/core-free-icons` `^4.1.3` are already resolved via `plugins/secrets`.
+- Migration: dependency declaration only, with existing package resolutions reused. No source contract, composition root, or product behavior changes.
+- Affected WPs and gates: WP-32 (FS-46) and the dependency-freeze tripwire
+- Contract owner: FS-46's own requirement text — “Use Hugeicons/shared-ui/theme tokens and all four states” — is the owner-intent anchor; the product owner was notified with veto opportunity before merge via the supervisor oversight thread
+- Affected-lane reviewer: FS-46 independent exact-head review — thread id recorded before merge
