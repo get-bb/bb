@@ -59,7 +59,9 @@ function makeRuntime(args: MakeRuntimeArgs): AgentRuntime {
     async steerTurn() {
       return { status: "steered" };
     },
-    async stopThread() {},
+    async stopThread() {
+      return { providerCheckpointId: null };
+    },
     async clearThreadGoal() {
       return { cleared: true };
     },

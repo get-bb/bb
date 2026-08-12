@@ -495,7 +495,7 @@ const SETTLED_RESPONSE_RESULT_FIXTURES: SettledResponseResultFixtures = {
   "turn.submit": {
     appliedAs: "new-turn",
   },
-  "thread.stop": {},
+  "thread.stop": { providerCheckpointId: null },
   "thread.goal.clear": { cleared: true },
   "thread.plan.cancel": { cancelled: true },
   "thread.rename": {},
@@ -1056,12 +1056,10 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  // Version 106 preserves an unknown Claude Code release channel when doctor
-  // cannot report it and recovers native update actions for standard installs.
-  // Older daemons can verify stable against latest or hide the managed update,
-  // so enrolled machines must update for the corrected status behavior.
-  it("uses protocol version 106 for Claude Code status fixes", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(106);
+  // Version 107 carries a provider checkpoint through thread.stop so the
+  // server can retain an interrupted turn when a later message is edited.
+  it("uses protocol version 107 for stopped-turn checkpoints", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(107);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {

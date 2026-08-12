@@ -23,13 +23,14 @@ interface CloseThreadSessionArgs {
 
 interface BridgeSessionRegistryOptions<
   TSession extends RegisteredBridgeSession,
+  TCloseResult,
 > {
-  closeSessionGracefully: (session: TSession) => Promise<void>;
+  closeSessionGracefully: (session: TSession) => Promise<TCloseResult>;
   getProviderThreadId: (session: TSession, threadId: string) => string;
   nextToolCallRequestId?: () => number;
   resolveAdditionalPendingWork?: (session: TSession, message: string) => void;
   sendToolCall: (request: BridgeToolCallRequest) => void;
-  stopSession?: (session: TSession) => Promise<void> | void;
+  stopSession?: (session: TSession) => Promise<TCloseResult> | TCloseResult;
 }
 
 export type BridgeToolCallForwarder = (
@@ -39,10 +40,13 @@ export type BridgeToolCallForwarder = (
 
 export function createBridgeSessionRegistry<
   TSession extends RegisteredBridgeSession,
+  TCloseResult = void,
 >(
-  options: BridgeSessionRegistryOptions<TSession>,
+  options: BridgeSessionRegistryOptions<TSession, TCloseResult>,
 ): {
-  closeThreadSession: (args: CloseThreadSessionArgs) => Promise<void>;
+  closeThreadSession: (
+    args: CloseThreadSessionArgs,
+  ) => Promise<TCloseResult | undefined>;
   closeThreadSessionsGracefully: (message: string) => Promise<void>;
   createForwardToolCall: (getThreadId: () => string) => BridgeToolCallForwarder;
   handleToolCallResponse: (response: BridgeJsonRpcResponse) => boolean;
@@ -51,7 +55,7 @@ export function createBridgeSessionRegistry<
   sessions: Map<string, TSession>;
 } {
   const sessions = new Map<string, TSession>();
-  const closingSessions = new Map<string, Promise<void>>();
+  const closingSessions = new Map<string, Promise<TCloseResult>>();
   let toolCallRequestIdCounter = 0;
   const nextToolCallRequestId =
     options.nextToolCallRequestId ??
@@ -91,11 +95,10 @@ export function createBridgeSessionRegistry<
 
   const closeThreadSession = async (
     args: CloseThreadSessionArgs,
-  ): Promise<void> => {
+  ): Promise<TCloseResult | undefined> => {
     const existingClose = closingSessions.get(args.threadId);
     if (existingClose) {
-      await existingClose;
-      return;
+      return existingClose;
     }
 
     const session = sessions.get(args.threadId);
@@ -118,7 +121,7 @@ export function createBridgeSessionRegistry<
         closingSessions.delete(args.threadId);
       });
     closingSessions.set(args.threadId, closePromise);
-    await closePromise;
+    return closePromise;
   };
 
   return {

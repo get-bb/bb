@@ -92,6 +92,7 @@ const {
   const mockAbort = vi.fn(async () => {});
   const mockCompact = vi.fn(async () => {});
   const mockDispose = vi.fn();
+  const mockGetLeafId = vi.fn(() => "pi-entry-checkpoint");
   const mockGetSessionStats = vi.fn();
   const mockGetContextUsage = vi.fn();
   const mockGetActiveToolNames = vi.fn<() => string[]>(() => []);
@@ -132,6 +133,7 @@ const {
       getContextUsage: mockGetContextUsage,
       getActiveToolNames: mockGetActiveToolNames,
       setActiveToolsByName: mockSetActiveToolsByName,
+      sessionManager: { getLeafId: mockGetLeafId },
       get isStreaming() {
         return mockSessionState.isStreaming;
       },
@@ -980,7 +982,7 @@ describe("PiSdkSession", () => {
       throw new Error("Expected Pi abort promise to be pending");
     }
     resolveAbort();
-    await closePromise;
+    await expect(closePromise).resolves.toBe("pi-entry-checkpoint");
 
     expect(mockDispose).toHaveBeenCalledTimes(1);
     expect(session.getIsProcessing()).toBe(false);

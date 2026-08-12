@@ -1250,7 +1250,9 @@ process.on("SIGTERM", () => {
       providerId: "fake",
       options: fullRuntimeOptions,
     });
-    await runtime.stopThread({ threadId: "t1" });
+    await expect(runtime.stopThread({ threadId: "t1" })).resolves.toEqual({
+      providerCheckpointId: null,
+    });
 
     // Even a no-op stop removes the thread from the runtime, so the follow-up
     // turn resumes the provider session first.

@@ -190,6 +190,7 @@ function createRuntime(): FakeDispatchRuntime {
     stopThread: vi.fn(async (args: { threadId: string }) => {
       activeTurnsByThreadId.delete(args.threadId);
       hostedThreadIds.delete(args.threadId);
+      return { providerCheckpointId: null };
     }),
     clearThreadGoal: vi.fn(async () => ({ cleared: true })),
     renameThread: vi.fn(async () => undefined),
@@ -349,8 +350,9 @@ describe("dispatchCommand", () => {
       },
       runtimeManager: manager,
       threadStorageRootPath: "/tmp/bb-thread-storage",
-    }).then(() => {
+    }).then((result) => {
       resolved = true;
+      return result;
     });
 
     await vi.waitFor(() => {
@@ -360,7 +362,9 @@ describe("dispatchCommand", () => {
     expect(resolved).toBe(false);
 
     flushDeferred.resolve(undefined);
-    await dispatchPromise;
+    await expect(dispatchPromise).resolves.toEqual({
+      providerCheckpointId: null,
+    });
 
     expect(resolved).toBe(true);
     expect(runtime.hasThread("thread-1")).toBe(false);
@@ -632,6 +636,9 @@ describe("dispatchCommand", () => {
       workspacePath: "/tmp/bb-stop-old",
     });
     oldRuntime.setActiveTurn("thread-1", "turn-old");
+    (oldRuntime.stopThread as Mock).mockResolvedValueOnce({
+      providerCheckpointId: "pi-entry-at-stop",
+    });
 
     // The thread already points at its new environment, which the daemon has
     // never loaded. The stop must still reach the turn in the old runtime.
@@ -652,7 +659,7 @@ describe("dispatchCommand", () => {
       threadStorageRootPath: "/tmp/bb-thread-storage",
     });
 
-    expect(result).toEqual({});
+    expect(result).toEqual({ providerCheckpointId: "pi-entry-at-stop" });
     expect(oldRuntime.stopThread).toHaveBeenCalledWith({
       threadId: "thread-1",
     });

@@ -401,8 +401,11 @@ const commandHandlers: CommandHandlerMap = {
       }
       // The old owner stopped, so the stop reached the running turn.
       await options.eventSink.flush();
-      return {};
+      return {
+        providerCheckpointId: released.providerCheckpointId,
+      };
     }
+    let providerCheckpointId = released.providerCheckpointId;
     if (entry.runtime.hasThread(command.threadId)) {
       // Stop can be dispatched while the start/submit RPC is still in flight
       // and the turn/started event has not been observed yet. Wait for the
@@ -412,12 +415,16 @@ const commandHandlers: CommandHandlerMap = {
       await entry.runtime.waitForActiveTurn(command.threadId, {
         timeoutMs: THREAD_STOP_ACTIVE_TURN_WAIT_MS,
       });
-      await entry.runtime.stopThread({ threadId: command.threadId });
+      const result = await entry.runtime.stopThread({
+        threadId: command.threadId,
+      });
+      providerCheckpointId =
+        result.providerCheckpointId ?? providerCheckpointId;
     }
     // Stop completion finalizes server-side thread state. Flush provider
     // events first so buffered lifecycle events cannot arrive after that.
     await options.eventSink.flush();
-    return {};
+    return { providerCheckpointId };
   },
   "thread.goal.clear": async (command, options) => {
     const entry = await ensureThreadRuntime(command, options);

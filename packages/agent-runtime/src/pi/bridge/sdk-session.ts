@@ -371,17 +371,18 @@ export class PiSdkSession {
     }
   }
 
-  async closeGracefully(timeoutMs: number): Promise<void> {
+  async closeGracefully(timeoutMs: number): Promise<string | undefined> {
     const session = this.session;
     this.rejectPendingSteerConsumptions(
       "Pi SDK session closed before steer consumed",
     );
     this.detach();
     if (!session) {
-      return;
+      return undefined;
     }
 
     let timeout: ReturnType<typeof setTimeout> | undefined;
+    let providerCheckpointId: string | undefined;
     const abortCompleted = session.abort().catch(() => undefined);
     const timeoutReached = new Promise<void>((resolve) => {
       timeout = setTimeout(resolve, timeoutMs);
@@ -392,6 +393,7 @@ export class PiSdkSession {
       if (timeout) {
         clearTimeout(timeout);
       }
+      providerCheckpointId = session.sessionManager.getLeafId() ?? undefined;
       session.dispose();
       if (this.session === session) {
         this.session = undefined;
@@ -399,6 +401,7 @@ export class PiSdkSession {
       this.isProcessing = false;
       this.isCompacting = false;
     }
+    return providerCheckpointId;
   }
 
   private trackProcessingState(event: AgentSessionEvent): void {

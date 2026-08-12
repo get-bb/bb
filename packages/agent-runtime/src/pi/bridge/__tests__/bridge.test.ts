@@ -652,10 +652,16 @@ describe("pi bridge", () => {
       expect(sessions[0]?.abort).toHaveBeenCalledTimes(1);
       expect(sessions[0]?.dispose).not.toHaveBeenCalled();
 
+      sessions[0]?.sessionManager.getLeafId.mockReturnValue(
+        "pi-entry-after-abort",
+      );
       sessions[0]?.finishAbort();
       await expect(bridge.waitForResponse(2)).resolves.toMatchObject({
         id: 2,
-        result: { ok: true },
+        result: {
+          ok: true,
+          providerCheckpointId: "pi-entry-after-abort",
+        },
       });
       expect(sessions[0]?.dispose).toHaveBeenCalledTimes(1);
     } finally {

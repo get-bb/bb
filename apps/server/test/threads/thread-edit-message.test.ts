@@ -19,6 +19,7 @@ import {
 } from "@bb/domain";
 import { describe, expect, it, vi } from "vitest";
 import { editThreadMessage } from "../../src/services/threads/thread-edit-message.js";
+import { requestThreadStopForCurrentState } from "../../src/services/threads/thread-lifecycle.js";
 import {
   listQueuedThreadCommands,
   reportQueuedCommandError,
@@ -145,7 +146,7 @@ function seedEditableThread(
   harness: TestAppHarness,
   args: {
     editMessagesExperiment?: boolean;
-    firstCompletionStatus?: ThreadEventTurnStatus;
+    firstCompletionStatus?: ThreadEventTurnStatus | null;
     firstProviderCheckpoint?: string | null;
     firstProviderThreadId?: string;
     includeIdentity?: boolean;
@@ -722,6 +723,78 @@ describe("editThreadMessage", () => {
     });
   });
 
+  it("edits after stopping a Pi turn and completing the next turn", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedEditableThread(harness, {
+        firstCompletionStatus: null,
+        firstProviderCheckpoint: null,
+        includeSecondTurn: false,
+        providerId: "pi",
+        threadStatus: "active",
+      });
+
+      requestThreadStopForCurrentState(harness.deps, thread, environment);
+      const stop = await waitForQueuedCommand(
+        harness,
+        (queued) => queued.command.type === "thread.stop",
+      );
+      await reportQueuedCommandSuccess(harness, stop, {
+        providerCheckpointId: "pi-entry-after-abort",
+      });
+
+      seedTurn(harness, {
+        providerCheckpointId: "pi-entry-next-completion",
+        providerThreadId: "provider-original",
+        requestSequence: 8,
+        text: "Original last message",
+        threadId: thread.id,
+        turnId: "turn-last",
+      });
+      createPromptHistoryEntry(harness.db, {
+        input: [{ type: "text", text: "Original last message", mentions: [] }],
+        projectId: thread.projectId,
+        requestSequence: 8,
+        scope: "thread",
+        threadId: thread.id,
+      });
+
+      const stoppedThread = getThread(harness.db, thread.id);
+      if (!stoppedThread) {
+        throw new Error("Expected stopped Pi thread");
+      }
+      const editPromise = editThreadMessage(harness.deps, {
+        environment,
+        thread: stoppedThread,
+        payload: {
+          operationId: "edit-op-pi-after-stopped-turn",
+          expectedRequestSequence: 8,
+          input: [{ type: "text", text: "Replacement", mentions: [] }],
+        },
+      });
+
+      const rewind = await waitForQueuedCommand(
+        harness,
+        (queued) => queued.command.type === "thread.rewind.prepare",
+      );
+      expect(rewind.command).toMatchObject({
+        providerId: "pi",
+        retainThroughProviderCheckpoint: "pi-entry-after-abort",
+        sourceProviderThreadId: "provider-original",
+      });
+      if (rewind.command.type !== "thread.rewind.prepare") {
+        throw new Error("Expected a thread.rewind.prepare command");
+      }
+      await reportQueuedCommandSuccess(harness, rewind, {
+        providerThreadId: "provider-staged-pi-after-stop",
+      });
+
+      await expect(editPromise).resolves.toMatchObject({
+        ok: true,
+        operationId: "edit-op-pi-after-stopped-turn",
+      });
+    });
+  });
+
   it("lets Claude validate a failed preceding turn checkpoint", async () => {
     await withTestHarness(async (harness) => {
       const { environment, thread } = seedEditableThread(harness, {
@@ -1024,7 +1097,9 @@ describe("editThreadMessage", () => {
       expect(
         listQueuedThreadCommands(harness, "thread.rewind.prepare", thread.id),
       ).toHaveLength(0);
-      await reportQueuedCommandSuccess(harness, stop, {});
+      await reportQueuedCommandSuccess(harness, stop, {
+        providerCheckpointId: null,
+      });
 
       const rewind = await waitForQueuedCommand(
         harness,

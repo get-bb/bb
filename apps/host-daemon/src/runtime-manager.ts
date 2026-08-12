@@ -237,6 +237,8 @@ export type ReleaseThreadActiveTurnPolicy = "interrupt" | "keep";
 export interface ReleaseThreadFromOtherEnvironmentsResult {
   /** Environments that still run a turn for the thread under `keep`. */
   activeTurnEnvironmentIds: string[];
+  /** Provider checkpoint retained by a stopped runtime, when one reported it. */
+  providerCheckpointId: string | null;
   /** Environments whose runtime released the thread. */
   releasedEnvironmentIds: string[];
 }
@@ -443,13 +445,24 @@ export class RuntimeManager {
       (entry) => !keptEntries.includes(entry),
     );
 
-    await Promise.all(
+    const stopResults = await Promise.all(
       releasedEntries.map((entry) =>
         entry.runtime.stopThread({ threadId: args.threadId }),
       ),
     );
+    const providerCheckpointIds = new Set(
+      stopResults.flatMap((result) =>
+        result.providerCheckpointId === null
+          ? []
+          : [result.providerCheckpointId],
+      ),
+    );
     return {
       activeTurnEnvironmentIds: keptEntries.map((entry) => entry.environmentId),
+      providerCheckpointId:
+        providerCheckpointIds.size === 1
+          ? (providerCheckpointIds.values().next().value ?? null)
+          : null,
       releasedEnvironmentIds: releasedEntries.map(
         (entry) => entry.environmentId,
       ),

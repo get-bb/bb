@@ -290,6 +290,11 @@ interface StartPiThreadSessionArgs {
 
 interface PiThreadStopResult {
   ok: true;
+  providerCheckpointId: string | null;
+}
+
+interface PiCommandOkResult {
+  ok: true;
 }
 
 let sessionSerialCounter = 0;
@@ -308,7 +313,7 @@ const {
   createForwardToolCall,
   handleToolCallResponse,
   sessions,
-} = createBridgeSessionRegistry<ThreadSession>({
+} = createBridgeSessionRegistry<ThreadSession, string | undefined>({
   closeSessionGracefully: (threadSession) =>
     threadSession.session.closeGracefully(THREAD_STOP_CLOSE_TIMEOUT_MS),
   getProviderThreadId: (_threadSession, threadId) => threadId,
@@ -785,11 +790,12 @@ async function handleTurnSteer(
 async function handleThreadStop(
   params: ThreadIdParams,
 ): Promise<PiThreadStopResult> {
-  await closeThreadSession({
-    message: "Pi thread stopped while tool call was pending",
-    threadId: params.threadId,
-  });
-  return { ok: true };
+  const providerCheckpointId =
+    (await closeThreadSession({
+      message: "Pi thread stopped while tool call was pending",
+      threadId: params.threadId,
+    })) ?? null;
+  return { ok: true, providerCheckpointId };
 }
 
 function handleThreadCompact(
@@ -819,7 +825,7 @@ function handleThreadCompact(
 
 async function handleThreadDiscard(
   params: ThreadDiscardParams,
-): Promise<PiThreadStopResult> {
+): Promise<PiCommandOkResult> {
   await closeThreadSession({
     message: "Pi staged thread discarded while tool call was pending",
     threadId: params.threadId,

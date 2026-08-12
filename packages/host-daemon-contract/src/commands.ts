@@ -36,7 +36,7 @@ import {
   providerCliStatusResponseSchema,
 } from "./local.js";
 
-export const HOST_DAEMON_PROTOCOL_VERSION = 106 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 107 as const;
 
 export {
   BRANCH_LIST_LIMIT_MAX,
@@ -1369,6 +1369,11 @@ const threadStartResultSchema = z.object({
 const turnSubmitResultSchema = z.object({
   appliedAs: z.enum(["new-turn", "steer"]),
 });
+const threadStopResultSchema = z
+  .object({
+    providerCheckpointId: z.string().min(1).nullable(),
+  })
+  .strict();
 const emptyCommandResultSchema = z.object({});
 const projectPathResultSchema = z.object({ path: z.string().min(1) }).strict();
 const projectInspectResultSchema = projectPathResultSchema
@@ -1614,7 +1619,7 @@ export const hostDaemonCommandRegistry = {
   "thread.stop": defineHostDaemonCommandDescriptor({
     type: "thread.stop",
     schema: threadStopCommandSchema,
-    resultSchema: emptyCommandResultSchema,
+    resultSchema: threadStopResultSchema,
     transport: "settled",
     retryable: false,
     flushEventsBeforeResult: true,

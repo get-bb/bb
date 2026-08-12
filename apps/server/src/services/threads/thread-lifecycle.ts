@@ -241,11 +241,13 @@ interface ProvisioningInterruptedThread {
 }
 
 interface FinalizeStoppedThreadArgs {
+  providerCheckpointId?: string;
   threadId: string;
 }
 
 interface InterruptActiveTurnForThreadArgs {
   environmentId: string | null;
+  providerCheckpointId?: string;
   reason: SystemThreadInterruptedReason;
   threadId: string;
 }
@@ -426,6 +428,7 @@ interface FinalizeStoppedThreadTransactionDeps extends ThreadLifecycleTransactio
 interface ApplyActiveTurnInterruptionArgs {
   activeTurnId: string;
   environmentId: string | null;
+  providerCheckpointId?: string;
   providerThreadId: string | null;
   reason: SystemThreadInterruptedReason;
   threadId: string;
@@ -557,6 +560,9 @@ function applyActiveTurnInterruptionInTransaction(
     data: {
       providerThreadId: args.providerThreadId,
       status: "interrupted",
+      ...(args.providerCheckpointId !== undefined
+        ? { providerCheckpointId: args.providerCheckpointId }
+        : {}),
     },
   });
   const appendedThreadInterruptedEvent =
@@ -991,6 +997,9 @@ export function settleThreadStopCommandResult(
   }
 
   finalizeStoppedThreadInTransaction(args.deps, {
+    ...(args.report.result.providerCheckpointId !== null
+      ? { providerCheckpointId: args.report.result.providerCheckpointId }
+      : {}),
     threadId: args.command.threadId,
   });
 
@@ -1409,6 +1418,9 @@ function interruptActiveTurnForThreadInTransaction(
     applyActiveTurnInterruptionInTransaction(deps, {
       activeTurnId,
       environmentId: args.environmentId,
+      ...(args.providerCheckpointId !== undefined
+        ? { providerCheckpointId: args.providerCheckpointId }
+        : {}),
       providerThreadId,
       reason: args.reason,
       threadId: args.threadId,
@@ -1617,6 +1629,9 @@ export function finalizeStoppedThreadInTransaction(
       deps,
       {
         environmentId: currentThread.environmentId,
+        ...(args.providerCheckpointId !== undefined
+          ? { providerCheckpointId: args.providerCheckpointId }
+          : {}),
         threadId: currentThread.id,
         reason: interruptionReason,
       },

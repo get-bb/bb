@@ -395,6 +395,7 @@ export function createFakeRuntime() {
       state.stoppedThreadId = args.threadId;
       activeTurnsByThreadId.delete(args.threadId);
       providerSessionsByThreadId.delete(args.threadId);
+      return { providerCheckpointId: null };
     },
     async clearThreadGoal() {
       return { cleared: true };
