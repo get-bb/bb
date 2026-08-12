@@ -141,5 +141,5 @@ It is advisory only: it never dispatches, never selects presets, and never chang
 Semantics worth knowing:
 
 - **Omitted dependencies count as satisfied.** The manifest deliberately omits the completed L0 packages (WP01, WP03–WP07) while still naming them as dependencies; requiring board-`done` for them would permanently hide 24 of 64 remaining packages. `ready-queue-watchdog.test.mjs` pins this behavior.
-- **Prohibited packages are excluded.** The automation sets `FS_WATCHDOG_EXCLUDE=WP02` (dispatch prohibited by `ADR — bb Is Not Modified.md`); the script also honors an optional `dispatchPolicy.prohibitedWorkPackages` manifest array if one is added.
+- **Prohibited packages are excluded, durably.** The versioned rule is `dispatchPolicy.prohibitedWorkPackages` in the manifest (currently `["WP02"]`, per `ADR — bb Is Not Modified.md`; the sibling `prohibitedWorkPackageReasons` object records why). The automation additionally sets `FS_WATCHDOG_EXCLUDE=WP02` as belt-and-braces — but the repo artifact, not job configuration, is the mechanism of record.
 - **Dedup state** lives in the automation's working directory (the automations plugin data dir) or `FS_WATCHDOG_STATE_DIR` when set; an unchanged ready set re-nudges at most every 30 minutes.

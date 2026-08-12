@@ -24,11 +24,16 @@ import { fileURLToPath } from "node:url";
  * referencing them as dependencies, so requiring board-done for them would
  * permanently hide every package gated on one.
  *
- * `exclude` holds WP keys that must never be surfaced regardless of readiness
- * (e.g. WP02, whose dispatch is prohibited by "ADR — bb Is Not Modified").
+ * Packages named in `dispatchPolicy.prohibitedWorkPackages` (the versioned,
+ * durable rule — e.g. WP02, prohibited by "ADR — bb Is Not Modified") are
+ * never surfaced. `exclude` adds config-side keys on top, as belt-and-braces.
  */
 export function computeReady(manifest, statusByKey, { exclude = new Set() } = {}) {
   const wps = manifest.workPackages;
+  const prohibited = new Set([
+    ...(manifest.dispatchPolicy?.prohibitedWorkPackages ?? []),
+    ...exclude,
+  ]);
   const statusOf = (w) => statusByKey.get(w.task) ?? "unknown";
   const terminal = (s) => ["done", "canceled", "cancelled"].includes(s);
 
@@ -55,7 +60,7 @@ export function computeReady(manifest, statusByKey, { exclude = new Set() } = {}
   };
 
   return wps.filter((w) => {
-    if (exclude.has(w.wp)) return false;
+    if (prohibited.has(w.wp)) return false;
     if (busyClusters.has(w.clusterId)) return false;
     const s = statusOf(w);
     if (s === "todo") return lowestInCluster(w);
@@ -77,11 +82,10 @@ function main() {
   const stateFile = join(stateDir, "fs-ready-queue-watchdog-state.json");
   const RENUDGE_MS = 30 * 60 * 1000;
 
+  // Manifest prohibitions are handled inside computeReady; the env var is a
+  // config-side belt-and-braces layer on top.
   const exclude = new Set(
-    [
-      ...(manifest.dispatchPolicy?.prohibitedWorkPackages ?? []),
-      ...(process.env.FS_WATCHDOG_EXCLUDE?.split(",") ?? []),
-    ]
+    (process.env.FS_WATCHDOG_EXCLUDE?.split(",") ?? [])
       .map((s) => s.trim())
       .filter(Boolean),
   );

@@ -95,6 +95,33 @@ test("excluded WPs are never surfaced", () => {
   );
 });
 
+test("manifest-prohibited WPs are never surfaced, with no config needed", () => {
+  const m = {
+    ...manifest([
+      wp({ wp: "WP02", task: "FS-16", clusterId: "C-A", dependencies: ["WP01"] }),
+      wp({ wp: "WP47", task: "FS-61", clusterId: "C-B" }),
+    ]),
+    dispatchPolicy: { prohibitedWorkPackages: ["WP02"] },
+  };
+  // WP02 is otherwise fully ready (backlog, omitted dep, free cluster) —
+  // the versioned prohibition alone must hide it.
+  assert.deepEqual(
+    readyWps(m, statuses({ "FS-16": "backlog", "FS-61": "backlog" })),
+    ["WP47"],
+  );
+});
+
+test("the shipped manifest prohibits WP02", async () => {
+  const { readFileSync } = await import("node:fs");
+  const shipped = JSON.parse(
+    readFileSync(new URL("./wp-coupling-manifest.json", import.meta.url), "utf8"),
+  );
+  assert.ok(
+    shipped.dispatchPolicy.prohibitedWorkPackages.includes("WP02"),
+    "WP02 dispatch is prohibited by ADR — bb Is Not Modified",
+  );
+});
+
 test("a fully terminal cluster yields nothing (no Infinity path)", () => {
   const m = manifest([
     wp({ wp: "WP15", task: "FS-29", clusterId: "C-A", sequence: 1 }),
