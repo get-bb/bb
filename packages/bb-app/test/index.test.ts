@@ -775,6 +775,30 @@ describe("bb-app launcher", () => {
     expect(runtime.serverEnv.BB_SERVER_BIND_HOST).toBe("0.0.0.0");
   });
 
+  it("strips parent thread context from production child processes", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "bb-app-thread-context-"));
+    const runtime = await resolveBbAppRuntimeState({
+      entrypointUrl: pathToFileURL("/repo/packages/bb-app/dist/bb-app.js").href,
+      env: {
+        BB_DATA_DIR: dataDir,
+        BB_ENVIRONMENT_ID: "env_parent",
+        BB_PROJECT_ID: "proj_parent",
+        BB_THREAD_ID: "thr_parent",
+        BB_THREAD_STORAGE: "/home/tester/.bb/thread-storage/thr_parent",
+      },
+      homeDir: "/home/tester",
+      options: { help: false },
+      serverUrlMode: "local",
+    });
+
+    for (const env of [runtime.env, runtime.serverEnv]) {
+      expect(env.BB_ENVIRONMENT_ID).toBeUndefined();
+      expect(env.BB_THREAD_ID).toBeUndefined();
+      expect(env.BB_THREAD_STORAGE).toBeUndefined();
+      expect(env.BB_PROJECT_ID).toBe("proj_parent");
+    }
+  });
+
   it("rejects an invalid server bind host before launcher startup", async () => {
     const dataDir = mkdtempSync(join(tmpdir(), "bb-app-invalid-bind-host-"));
 

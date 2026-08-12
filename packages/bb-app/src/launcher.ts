@@ -64,6 +64,7 @@ import {
   resolveDataDirDatabasePath,
   resolvePortFromEnv,
   resolveProdDataDir,
+  stripThreadContextEnv,
 } from "@bb/config/runtime";
 import { z } from "zod";
 
@@ -1296,20 +1297,24 @@ export async function resolveBbAppRuntimeState(
   });
   const config = await readManagedConfig({ dataDir: initialContext.dataDir });
   const envFile = await readManagedEnvFile({ dataDir: initialContext.dataDir });
-  const managedEnv = applyManagedConfigEnv({
-    config,
-    envFile,
-    env: initialEnv,
-  });
-
-  if (args.serverUrlMode === "local") {
-    const localEnv = { ...managedEnv };
-    const localServerEnv = createServerBaseEnv({
+  const managedEnv = stripThreadContextEnv(
+    applyManagedConfigEnv({
       config,
       envFile,
       env: initialEnv,
-      serverBindHostOverride: args.options.serverBindHost,
-    });
+    }),
+  );
+
+  if (args.serverUrlMode === "local") {
+    const localEnv = { ...managedEnv };
+    const localServerEnv = stripThreadContextEnv(
+      createServerBaseEnv({
+        config,
+        envFile,
+        env: initialEnv,
+        serverBindHostOverride: args.options.serverBindHost,
+      }),
+    );
     delete localEnv.BB_SERVER_URL;
     delete localServerEnv.BB_SERVER_URL;
     return {
@@ -1341,12 +1346,14 @@ export async function resolveBbAppRuntimeState(
       homeDir: args.homeDir,
     }),
     env: finalEnv,
-    serverEnv: createServerBaseEnv({
-      config,
-      envFile,
-      env: initialEnv,
-      serverBindHostOverride: args.options.serverBindHost,
-    }),
+    serverEnv: stripThreadContextEnv(
+      createServerBaseEnv({
+        config,
+        envFile,
+        env: initialEnv,
+        serverBindHostOverride: args.options.serverBindHost,
+      }),
+    ),
   };
 }
 
