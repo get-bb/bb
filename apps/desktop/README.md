@@ -1,7 +1,8 @@
 # @bb/desktop
 
-macOS Electron shell for bb. The desktop app loads the existing bb web UI and
-uses the packaged `bb-app` launcher for server and host-daemon lifecycle.
+macOS and Linux Electron shell for bb. The desktop app loads the existing bb
+web UI and uses the packaged `bb-app` launcher for server and host-daemon
+lifecycle.
 
 ## Development
 
@@ -82,6 +83,26 @@ the app's process tree, which can stall process launches system-wide. On
 machines with no keychain identity (or with `CSC_IDENTITY_AUTO_DISCOVERY=false`,
 as CI sets for workflow-artifact-only builds), artifacts remain unsigned and
 macOS shows the normal Gatekeeper warning on first launch.
+
+### Linux (AppImage, x64)
+
+Linux packaging targets x64 glibc-based distributions. Install `python3`,
+`make`, and `g++` so node-gyp can build node-pty during dependency installation.
+
+From the repo root, build an unpacked app, an AppImage distribution, or smoke
+test the current packaged output with:
+
+```bash
+pnpm --filter @bb/desktop run package:linux
+pnpm --filter @bb/desktop run dist:linux
+pnpm --filter @bb/desktop run smoke:packaged
+```
+
+Running an AppImage normally requires FUSE and, on some distributions, the
+`libfuse2` compatibility package. If FUSE is unavailable, launch it with
+`--appimage-extract-and-run` instead.
+
+Auto-update is disabled on Linux because there is no Linux update feed yet.
 
 ## Releasing
 
