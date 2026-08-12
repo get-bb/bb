@@ -91,6 +91,17 @@ function rsql(value: string | undefined): string | undefined {
   return trimmed;
 }
 
+function rsqlScalar(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed.length === 0 || trimmed.length > 256 || !/^[A-Za-z0-9_.:+\-/]+$/u.test(trimmed)) {
+    throw new RemoteError("Platform filter value is not a safe RSQL scalar", {
+      service: "platform", code: "PLATFORM_INVALID_RSQL", status: null,
+      retryable: false, retryAfterMs: null, details: null,
+    });
+  }
+  return trimmed;
+}
+
 function vexStatus(value: Json | undefined): VexStatus | null {
   return value === "EXPLOITABLE" || value === "IN_TRIAGE" ||
     value === "NOT_AFFECTED" || value === "FALSE_POSITIVE" ||
@@ -217,8 +228,10 @@ export class PlatformClient implements PlatformClientContract {
     return this.#pages(PLATFORM_ROUTES.getFindings, { projectVersionId: input.projectVersionId }, {}, input.page, ctx);
   }
   async getFindingDetail(input: { projectVersionId: string; findingId: string }, ctx?: RemoteCallContext) {
+    const projectVersionId = rsqlScalar(input.projectVersionId);
+    const findingId = rsqlScalar(input.findingId);
     const value = await this.#json(PLATFORM_ROUTES.getFindingDetail, {}, {
-      filter: `projectVersion==${input.projectVersionId};findingId==${input.findingId}`, limit: 1,
+      filter: rsql(`projectVersion==${projectVersionId};findingId==${findingId}`), limit: 1,
       includeAdditionalDetails: true, includeComments: true,
     }, undefined, ctx);
     const normalized = records(value);
@@ -234,11 +247,19 @@ export class PlatformClient implements PlatformClientContract {
       projectVersionId: input.projectVersionId, cve: input.cve,
     }, input.page, ctx);
   }
-  async *listFindingComments(input: { projectVersionId: string; findingId: string; page?: RemotePageRequest }, ctx?: RemoteCallContext) {
-    const detail = await this.getFindingDetail(input, ctx);
-    const raw = detail.comments;
-    const items = Array.isArray(raw) ? raw.map(record) : [];
-    yield { items, total: items.length, next: null };
+  listFindingComments(input: { projectVersionId: string; findingId: string; page?: RemotePageRequest }, ctx?: RemoteCallContext) {
+    let comments: Promise<Record<string, Json>[]> | null = null;
+    return iterateRemotePages(input.page, ctx, {
+      service: "platform", defaultPageSize: 50, maxPageSize: 1_000,
+    }, async request => {
+      comments ??= this.getFindingDetail(input, ctx).then(detail => {
+        const raw = detail.comments;
+        return Array.isArray(raw) ? raw.map(record) : [];
+      });
+      const all = await comments;
+      const items = all.slice(request.index, request.index + request.pageSize);
+      return { items, total: all.length, hasMore: request.index + items.length < all.length };
+    });
   }
   async getFindingsSummary(projectVersionId: string, ctx?: RemoteCallContext) {
     const parameters = { projectVersionId };
@@ -277,18 +298,35 @@ export class PlatformClient implements PlatformClientContract {
     const rawResults = Array.isArray(value.results) ? value.results.map(record) : [];
     const statusValue = value.status;
     if ((statusValue !== "success" && statusValue !== "partial_success" && statusValue !== "failure") ||
-      typeof summary.total !== "number" || typeof summary.succeeded !== "number" || typeof summary.failed !== "number") {
+      typeof summary.total !== "number" || !Number.isSafeInteger(summary.total) ||
+      typeof summary.succeeded !== "number" || !Number.isSafeInteger(summary.succeeded) ||
+      typeof summary.failed !== "number" || !Number.isSafeInteger(summary.failed) ||
+      summary.total < 0 || summary.succeeded < 0 || summary.failed < 0 ||
+      summary.total !== findings.length || summary.succeeded + summary.failed !== summary.total ||
+      rawResults.length !== findings.length) {
       throw new RemoteError("Platform VEX bulk response was invalid", { service: "platform", code: "PLATFORM_INVALID_RESPONSE", status: null, retryable: false, retryAfterMs: null, details: null });
     }
+    const results = rawResults.map((item, index) => {
+      const findingId = typeof item.findingId === "string" ? item.findingId : null;
+      const success = typeof item.success === "boolean" ? item.success : null;
+      const normalizedStatus = vexStatus(item.status);
+      if (findingId !== findings[index]?.findingId || success === null || (success && normalizedStatus === null)) {
+        throw new RemoteError("Platform VEX bulk response was invalid", {
+          service: "platform", code: "PLATFORM_INVALID_RESPONSE", status: null,
+          retryable: false, retryAfterMs: null, details: null,
+        });
+      }
+      return {
+        findingId,
+        success,
+        status: normalizedStatus,
+        error: typeof item.error === "string" ? item.error : null,
+      };
+    });
     return {
       status: statusValue,
       summary: { total: summary.total, succeeded: summary.succeeded, failed: summary.failed },
-      results: rawResults.map(item => ({
-        findingId: typeof item.findingId === "string" ? item.findingId : "",
-        success: item.success === true,
-        status: vexStatus(item.status),
-        error: typeof item.error === "string" ? item.error : null,
-      })),
+      results,
     };
   }
   async clearVexStatus(input: { projectVersionId: string; findingIds: string[] }, ctx?: RemoteCallContext): Promise<void> {

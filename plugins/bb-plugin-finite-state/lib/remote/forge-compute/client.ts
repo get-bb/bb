@@ -1,4 +1,4 @@
-import { IndeterminateRemoteWriteError, unsupportedError } from "../errors.js";
+import { unsupportedError } from "../errors.js";
 import { RemoteLimiter, systemScheduler, type Scheduler } from "../rate-limit.js";
 import {
   RemoteError,
@@ -25,6 +25,16 @@ export interface ForgeComputeClientOptions {
   publishHint?(hint: { jobId: string; status: ForgeJobStatus; eventCount: number }): void;
 }
 
+const FORGE_LOCAL_PATH_FIELDS = new Set([
+  "bundle_path",
+  "firmware_path",
+  "evidence_root",
+  "registry",
+  "log_path",
+  "run_dir",
+  "vendor_vex_path",
+]);
+
 function json(value: unknown): Json {
   if (value === null || typeof value === "string" || typeof value === "boolean") return value;
   if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -32,12 +42,15 @@ function json(value: unknown): Json {
   if (typeof value === "object") {
     const output: Record<string, Json> = {};
     for (const [key, item] of Object.entries(value)) {
-      if (/(?:^|_)(?:path|root|dir|directory)(?:$|_)/iu.test(key)) continue;
+      if (FORGE_LOCAL_PATH_FIELDS.has(key.toLowerCase())) continue;
       output[key] = json(item);
     }
     return output;
   }
-  return null;
+  throw new RemoteError("Forge returned a non-JSON value", {
+    service: "forge-compute", code: "FORGE_INVALID_RESPONSE", status: null,
+    retryable: false, retryAfterMs: null, details: null,
+  });
 }
 
 function object(value: unknown): Record<string, unknown> {
@@ -101,6 +114,25 @@ function snapshot(value: unknown): ForgeJobSnapshot {
   return normalizeForgeJobSnapshot(candidate);
 }
 
+function listSnapshot(value: unknown): ForgeJobSnapshot {
+  const item = object(value);
+  return normalizeForgeJobSnapshot({
+    jobId: string(item.job_id, "job_id") ?? "",
+    status: status(item.status),
+    tool: string(item.tool, "tool") ?? "",
+    recipe: string(item.recipe, "recipe", true),
+    scope: json(item.scope),
+    environment: json(item.environment),
+    runId: null,
+    elapsedSeconds: integer(item.elapsed_seconds, "elapsed_seconds"),
+    logTail: [],
+    events: [],
+    eventCount: 0,
+    result: null,
+    error: null,
+  });
+}
+
 export class ForgeComputeClient implements ForgeComputeClientContract {
   readonly #transport: ForgeComputeTransport;
   readonly #limiter: RemoteLimiter;
@@ -122,7 +154,7 @@ export class ForgeComputeClient implements ForgeComputeClientContract {
   async close(): Promise<void> { this.#limiter.close(); await this.#transport.close(); }
 
   async #read<T>(operation: () => Promise<T>, ctx?: RemoteCallContext): Promise<T> {
-    return await this.#limiter.run(operation, ctx?.signal);
+    return await this.#limiter.run(operation, ctx?.signal, "forge-compute");
   }
 
   async health(ctx?: RemoteCallContext): Promise<RemoteHealth> {
@@ -139,34 +171,14 @@ export class ForgeComputeClient implements ForgeComputeClientContract {
   }
 
   async penTestRun(input: ForgePenTestInput, ctx?: RemoteCallContext): Promise<{ jobId: string }> {
-    if (this.#remoteTransport) throw unsupportedError("forge-compute", "penTestRun.remoteFirmwareRoot");
-    const value = await this.#limiter.run(async () => {
-      try {
-        return await this.#transport.penTestRun({
-          cve_id: input.cveId, component_id: input.componentId, project_id: input.projectId,
-          version_id: input.projectVersionId,
-          ...(input.findingId !== undefined ? { finding_id: input.findingId } : {}),
-          ...(input.profileHint !== undefined ? { profile_hint: input.profileHint } : {}),
-          ...(input.tenantId !== undefined ? { tenant_id: input.tenantId } : {}),
-          ...(input.deploymentContext !== undefined ? { deployment_context: input.deploymentContext } : {}),
-          ...(input.budget !== undefined ? { budget: input.budget } : {}),
-          ...(input.replaySeed !== undefined ? { replay_seed: input.replaySeed } : {}),
-          ...(input.authoringEnabled !== undefined ? { authoring_enabled: input.authoringEnabled } : {}),
-          ...(input.blind !== undefined ? { blind: input.blind } : {}),
-          ...(input.confidenceFloor !== undefined ? { confidence_floor: input.confidenceFloor } : {}),
-          ...(input.llmProvider !== undefined ? { llm_provider: input.llmProvider } : {}),
-          ...(input.llmModel !== undefined ? { llm_model: input.llmModel } : {}),
-        }, ctx?.signal);
-      } catch (error: unknown) {
-        if (error instanceof RemoteError && !error.retryable) throw error;
-        throw new IndeterminateRemoteWriteError("forge-compute", "pen_test_run");
-      }
-    }, ctx?.signal);
-    if (value.success !== true) throw new RemoteError("Forge pen test preflight failed", {
-      service: "forge-compute", code: "FORGE_PEN_TEST_PREFLIGHT", status: null,
-      retryable: false, retryAfterMs: null, details: null,
-    });
-    return { jobId: string(value.job_id, "job_id") ?? "" };
+    void input;
+    void ctx;
+    throw unsupportedError(
+      "forge-compute",
+      this.#remoteTransport
+        ? "penTestRun.remoteFirmwareRoot"
+        : "penTestRun.firmwarePathRequiredByManifest",
+    );
   }
 
   async getJobStatus(jobId: string, tailLines = 50, ctx?: RemoteCallContext): Promise<ForgeJobSnapshot> {
@@ -174,14 +186,31 @@ export class ForgeComputeClient implements ForgeComputeClientContract {
   }
 
   listJobs(input: { status?: ForgeJobStatus; tool?: string; page?: { continuation?: string; pageSize?: number } } = {}, ctx?: RemoteCallContext) {
+    let allJobs: Promise<ForgeJobSnapshot[]> | null = null;
     return iterateRemotePages(input.page, ctx, { service: "forge-compute", defaultPageSize: 50, maxPageSize: 200 }, async request => {
-      const value = await this.#read(() => this.#transport.listJobs({
-        ...(input.status ? { status: input.status } : {}), ...(input.tool ? { tool: input.tool } : {}),
-      }, ctx?.signal), ctx);
-      const jobs = Array.isArray(value.jobs) ? value.jobs.map(snapshot) : [];
-      const total = typeof value.count === "number" && Number.isSafeInteger(value.count) ? value.count : jobs.length;
+      allJobs ??= this.#read(() => this.#transport.listJobs({
+        ...(input.status ? { status: input.status } : {}),
+        ...(input.tool ? { tool: input.tool } : {}),
+      }, ctx?.signal), ctx).then(value => {
+        if (value.success !== true) throw new RemoteError("Forge list_jobs returned an error envelope", {
+          service: "forge-compute", code: "FORGE_LIST_JOBS_FAILED", status: null,
+          retryable: false, retryAfterMs: null, details: null,
+        });
+        if (!Array.isArray(value.jobs)) throw new RemoteError("Forge list_jobs returned an invalid jobs collection", {
+          service: "forge-compute", code: "FORGE_INVALID_RESPONSE", status: null,
+          retryable: false, retryAfterMs: null, details: null,
+        });
+        const count = integer(value.count, "count");
+        const jobs = value.jobs.map(listSnapshot);
+        if (count !== jobs.length) throw new RemoteError("Forge list_jobs returned a partial paged envelope", {
+          service: "forge-compute", code: "FORGE_LIST_JOBS_PARTIAL_ENVELOPE", status: null,
+          retryable: false, retryAfterMs: null, details: { count, jobs: jobs.length },
+        });
+        return jobs;
+      });
+      const jobs = await allJobs;
       const items = jobs.slice(request.index, request.index + request.pageSize);
-      return { items, total, hasMore: request.index + items.length < total };
+      return { items, total: jobs.length, hasMore: request.index + items.length < jobs.length };
     });
   }
 

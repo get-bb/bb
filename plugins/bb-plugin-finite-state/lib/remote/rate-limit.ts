@@ -1,4 +1,4 @@
-import { RemoteError } from "./types.js";
+import { RemoteError, type RemoteService } from "./types.js";
 
 export interface Scheduler {
   now(): number;
@@ -29,14 +29,15 @@ export const systemScheduler: Scheduler = {
 };
 
 interface Waiter {
+  readonly service: RemoteService;
   readonly signal?: AbortSignal;
   readonly resolve: () => void;
   readonly reject: (error: RemoteError) => void;
 }
 
-function limiterError(code: string, message: string): RemoteError {
+function limiterError(service: RemoteService, code: string, message: string): RemoteError {
   return new RemoteError(message, {
-    service: "platform",
+    service,
     code,
     status: null,
     retryable: false,
@@ -59,22 +60,22 @@ export class RemoteLimiter {
     this.#options = options;
   }
 
-  async #acquire(signal?: AbortSignal): Promise<void> {
-    if (this.#closed) throw limiterError("REMOTE_LIMITER_CLOSED", "Remote limiter is closed");
-    if (signal?.aborted) throw limiterError("REMOTE_ABORTED", "Remote operation was aborted");
+  async #acquire(service: RemoteService, signal?: AbortSignal): Promise<void> {
+    if (this.#closed) throw limiterError(service, "REMOTE_LIMITER_CLOSED", "Remote limiter is closed");
+    if (signal?.aborted) throw limiterError(service, "REMOTE_ABORTED", "Remote operation was aborted");
     if (this.#active < this.#options.concurrency && this.#queue.length === 0) {
       this.#active += 1;
       return;
     }
     await new Promise<void>((resolve, reject) => {
-      const waiter: Waiter = { signal, resolve, reject };
+      const waiter: Waiter = { service, signal, resolve, reject };
       this.#queue.push(waiter);
       signal?.addEventListener(
         "abort",
         () => {
           const index = this.#queue.indexOf(waiter);
           if (index >= 0) this.#queue.splice(index, 1);
-          reject(limiterError("REMOTE_ABORTED", "Remote operation was aborted"));
+          reject(limiterError(service, "REMOTE_ABORTED", "Remote operation was aborted"));
         },
         { once: true },
       );
@@ -94,14 +95,15 @@ export class RemoteLimiter {
   async run<T>(
     operation: (attempt: number) => Promise<T>,
     signal?: AbortSignal,
+    service: RemoteService = "platform",
   ): Promise<T> {
     const activeSignal = signal === undefined
       ? this.#closeController.signal
       : AbortSignal.any([signal, this.#closeController.signal]);
-    await this.#acquire(activeSignal);
+    await this.#acquire(service, activeSignal);
     try {
       for (let attempt = 1; ; attempt += 1) {
-        if (activeSignal.aborted) throw limiterError("REMOTE_ABORTED", "Remote operation was aborted");
+        if (activeSignal.aborted) throw limiterError(service, "REMOTE_ABORTED", "Remote operation was aborted");
         try {
           return await operation(attempt);
         } catch (error: unknown) {
@@ -117,17 +119,14 @@ export class RemoteLimiter {
             1_000 * 2 ** (attempt - 1),
           );
           const jittered = Math.floor(exponential * (0.5 + this.#options.random() * 0.5));
-          const delay = Math.min(
-            this.#options.maxBackoffMs,
-            error.retryAfterMs ?? jittered,
-          );
+          const delay = error.retryAfterMs ?? jittered;
           if (activeSignal.aborted) {
-            throw limiterError("REMOTE_ABORTED", "Remote operation was aborted");
+            throw limiterError(service, "REMOTE_ABORTED", "Remote operation was aborted");
           }
           try {
             await this.#options.scheduler.sleep(delay, activeSignal);
           } catch {
-            throw limiterError("REMOTE_ABORTED", "Remote operation was aborted");
+            throw limiterError(service, "REMOTE_ABORTED", "Remote operation was aborted");
           }
         }
       }
@@ -140,7 +139,8 @@ export class RemoteLimiter {
     if (this.#closed) return;
     this.#closed = true;
     this.#closeController.abort();
-    const error = limiterError("REMOTE_LIMITER_CLOSED", "Remote limiter is closed");
-    for (const waiter of this.#queue.splice(0)) waiter.reject(error);
+    for (const waiter of this.#queue.splice(0)) {
+      waiter.reject(limiterError(waiter.service, "REMOTE_LIMITER_CLOSED", "Remote limiter is closed"));
+    }
   }
 }

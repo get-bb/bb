@@ -19,7 +19,7 @@ function contentLength(response: Response): number | null {
 function digest(response: Response): string | null {
   const value = response.headers.get("x-content-sha256")?.toLowerCase() ?? null;
   if (value !== null && /^[0-9a-f]{64}$/u.test(value)) return value;
-  const standard = /^sha-256=([A-Za-z0-9+/]{43}=)$/u.exec(
+  const standard = /(?:^|,)\s*sha-256\s*=\s*([A-Za-z0-9+/]{43}=)(?=\s*(?:,|$))/iu.exec(
     response.headers.get("digest") ?? "",
   );
   if (standard === null) return null;
@@ -100,6 +100,7 @@ export async function materializeRemoteArtifact(
     await rename(partPath, targetPath);
   } catch (error: unknown) {
     output.destroy();
+    if (!output.closed) await once(output, "close").catch(() => undefined);
     await unlink(partPath).catch(() => undefined);
     throw error;
   }

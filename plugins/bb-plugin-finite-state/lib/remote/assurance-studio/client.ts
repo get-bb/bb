@@ -103,15 +103,22 @@ function normalizeEntity(kind: AsEntityKind, projectId: string, value: unknown):
   };
 }
 
-function pagePayload(value: unknown): { items: unknown[]; total: number | null; hasMore?: boolean } {
+function pagePayload(
+  value: unknown,
+  itemKeys: readonly string[],
+): { items: unknown[]; total: number | null; hasMore?: boolean } {
   if (Array.isArray(value)) return { items: value, total: null };
   const envelope = object(value);
   const data = envelope.data;
   const nested = data !== null && data !== undefined && !Array.isArray(data) && typeof data === "object"
     ? object(data)
     : envelope;
-  const candidates = [envelope.items, envelope.results, envelope.entities, envelope.packages,
-    nested.items, nested.results, nested.entities, nested.packages, Array.isArray(data) ? data : undefined];
+  const candidates = [
+    ...itemKeys.flatMap(key => [envelope[key], nested[key]]),
+    envelope.items, envelope.results, envelope.entities, envelope.packages,
+    nested.items, nested.results, nested.entities, nested.packages,
+    Array.isArray(data) ? data : undefined,
+  ];
   const items = candidates.find(Array.isArray);
   if (!Array.isArray(items)) throw new RemoteError("Assurance Studio list response had no items", {
     service: "assurance-studio", code: "AS_INVALID_RESPONSE", status: null,
@@ -125,6 +132,13 @@ function pagePayload(value: unknown): { items: unknown[]; total: number | null; 
     ...(typeof hasMoreValue === "boolean" ? { hasMore: hasMoreValue } : {}),
   };
 }
+
+const AS_ENTITY_COLLECTION_KEYS = {
+  threat: ["threats"], risk: ["risks"], mitigation: ["mitigations"],
+  asset: ["assets"], zone: ["zones"], dataflow: ["data_flows", "dataFlows"],
+  component: ["components"], requirement: ["requirements"],
+  "attack-path": ["attack_paths", "attackPaths"],
+} as const satisfies Record<AsEntityKind, readonly string[]>;
 
 function routePath(route: AssuranceStudioRoute, parameters: Readonly<Record<string, string>>): string {
   return route.path.replace(/\{([^}]+)\}/gu, (_match, key: string) => {
@@ -154,6 +168,42 @@ function createFields(kind: AsCreatableEntityKind, fields: Record<string, Json>)
     }
   }
   return output;
+}
+
+function sameJson(left: Json, right: Json): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function aliasField(
+  fields: Record<string, Json>,
+  source: string,
+  target: string,
+): void {
+  const value = fields[source];
+  if (value === undefined) return;
+  const existing = fields[target];
+  if (existing !== undefined && !sameJson(existing, value)) {
+    throw new RemoteError("Assurance Studio PATCH field aliases conflict", {
+      service: "assurance-studio", code: "AS_AMBIGUOUS_PATCH_FIELDS", status: null,
+      retryable: false, retryAfterMs: null, details: { source, target },
+    });
+  }
+  fields[target] = value;
+  delete fields[source];
+}
+
+function updateFields(kind: AsEntityKind, input: Record<string, Json>): Record<string, Json> {
+  const fields = { ...input };
+  aliasField(fields, "reviewVersion", "review_version");
+  aliasField(fields, "reviewStatus", "review_status");
+  if (kind === "dataflow") {
+    aliasField(fields, "source_component_id", "from_component");
+    aliasField(fields, "target_component_id", "to_component");
+    aliasField(fields, "is_encrypted", "encrypted");
+    aliasField(fields, "is_authenticated", "authenticated");
+    aliasField(fields, "is_bidirectional", "bidirectional");
+  }
+  return fields;
 }
 
 const REVIEW_PATCH_KINDS = new Set<AsEntityKind>([
@@ -213,7 +263,7 @@ export class AssuranceStudioClient implements AssuranceStudioClientContract {
         throw error;
       }
       return response;
-    }, ctx?.signal);
+    }, ctx?.signal, "assurance-studio");
   }
 
   async #json(
@@ -237,19 +287,71 @@ export class AssuranceStudioClient implements AssuranceStudioClientContract {
     return { configured: true, reachable: true, detail: null };
   }
 
+  #pageNumberPages<T>(
+    page: RemotePageRequest | undefined,
+    ctx: RemoteCallContext | undefined,
+    loadPage: (pageNumber: number, pageSize: number) => Promise<{
+      items: T[];
+      total: number | null;
+      hasMore?: boolean;
+    }>,
+  ): AsyncIterable<RemotePage<T>> {
+    let nextPageNumber = 1;
+    let normalizedIndex = 0;
+    const reset = () => {
+      nextPageNumber = 1;
+      normalizedIndex = 0;
+    };
+    const pagingDrift = (): RemoteError => new RemoteError(
+      "Assurance Studio paging changed while resuming",
+      {
+        service: "assurance-studio", code: "AS_PAGING_DRIFT", status: null,
+        retryable: false, retryAfterMs: null, details: null,
+      },
+    );
+
+    return iterateRemotePages(page, ctx, {
+      service: "assurance-studio", defaultPageSize: 50, maxPageSize: 200,
+    }, async request => {
+      if (request.index < normalizedIndex) reset();
+      while (normalizedIndex < request.index) {
+        const skipped = await loadPage(nextPageNumber, request.pageSize);
+        const skippedHasMore = skipped.hasMore ?? (skipped.total === null
+          ? skipped.items.length === request.pageSize
+          : normalizedIndex + skipped.items.length < skipped.total);
+        if (
+          skipped.items.length === 0 ||
+          normalizedIndex + skipped.items.length > request.index ||
+          !skippedHasMore
+        ) {
+          throw pagingDrift();
+        }
+        normalizedIndex += skipped.items.length;
+        nextPageNumber += 1;
+      }
+      if (normalizedIndex !== request.index) throw pagingDrift();
+
+      const batch = await loadPage(nextPageNumber, request.pageSize);
+      const startIndex = normalizedIndex;
+      const hasMore = batch.hasMore ?? (batch.total === null
+        ? batch.items.length === request.pageSize
+        : startIndex + batch.items.length < batch.total);
+      normalizedIndex += batch.items.length;
+      nextPageNumber += 1;
+      return { items: batch.items, total: batch.total, hasMore };
+    });
+  }
+
   listEntities(kind: AsEntityKind, input: { projectId: string; page?: RemotePageRequest; filters?: Record<string, Json> }, ctx?: RemoteCallContext): AsyncIterable<RemotePage<AsEntity>> {
     const route = entityCollectionRoute(kind, "GET");
-    return iterateRemotePages(input.page, ctx, { service: "assurance-studio", defaultPageSize: 50, maxPageSize: 200 }, async request => {
+    return this.#pageNumberPages(input.page, ctx, async (pageNumber, pageSize) => {
       const raw = await this.#json(route, { projectId: input.projectId }, {
-        page: Math.floor(request.index / request.pageSize) + 1, limit: request.pageSize,
+        page: pageNumber, limit: pageSize,
         ...(input.filters ?? {}),
       }, undefined, ctx);
-      const normalized = pagePayload(raw);
+      const normalized = pagePayload(raw, AS_ENTITY_COLLECTION_KEYS[kind]);
       const items = normalized.items.map(item => normalizeEntity(kind, input.projectId, item));
-      const hasMore = normalized.hasMore ?? (normalized.total === null
-        ? items.length === request.pageSize
-        : request.index + items.length < normalized.total);
-      return { items, total: normalized.total, hasMore };
+      return { items, total: normalized.total, hasMore: normalized.hasMore };
     });
   }
 
@@ -260,8 +362,16 @@ export class AssuranceStudioClient implements AssuranceStudioClientContract {
   }
 
   async createEntity(kind: AsCreatableEntityKind, input: { projectId: string; fields: Record<string, Json> }, ctx?: RemoteCallContext): Promise<AsWriteResult> {
-    const desiredReview = typeof input.fields.review_status === "string" ? input.fields.review_status : null;
     const baseFields = { ...input.fields };
+    aliasField(baseFields, "reviewStatus", "review_status");
+    const requestedReview = baseFields.review_status;
+    const desiredReview = reviewStatus(requestedReview);
+    if (requestedReview !== undefined && desiredReview === null) {
+      throw new RemoteError("Assurance Studio review status is invalid", {
+        service: "assurance-studio", code: "AS_INVALID_REVIEW_STATUS", status: null,
+        retryable: false, retryAfterMs: null, details: null,
+      });
+    }
     delete baseFields.review_status;
     const value = await this.#json(entityCollectionRoute(kind, "POST"), { projectId: input.projectId }, {}, createFields(kind, baseFields), ctx);
     let entity = normalizeEntity(kind, input.projectId, value);
@@ -270,17 +380,55 @@ export class AssuranceStudioClient implements AssuranceStudioClientContract {
       success: true, entity, reviewStatusSet: false,
       reviewStatusReason: "Assurance Studio does not accept review_status for this entity type",
     };
-    const updated = await this.updateEntity(kind, { projectId: input.projectId, id: entity.id, fields: { review_status: desiredReview } }, ctx);
-    entity = updated.entity;
-    return { success: true, entity, reviewStatusSet: updated.reviewStatusSet, reviewStatusReason: updated.reviewStatusReason };
+    if (entity.reviewVersion === null) return {
+      success: true, entity, reviewStatusSet: false,
+      reviewStatusReason: "Assurance Studio did not return the review version required for a safe PATCH",
+    };
+    try {
+      const updated = await this.updateEntity(kind, {
+        projectId: input.projectId,
+        id: entity.id,
+        fields: { review_status: desiredReview, review_version: entity.reviewVersion },
+      }, ctx);
+      entity = updated.entity;
+      return { success: true, entity, reviewStatusSet: updated.reviewStatusSet, reviewStatusReason: updated.reviewStatusReason };
+    } catch (error: unknown) {
+      if (!(error instanceof RemoteError)) throw error;
+      if (error.code === "REMOTE_ABORTED") throw error;
+      try {
+        const current = await this.getEntity(kind, { projectId: input.projectId, id: entity.id }, ctx);
+        if (current.reviewStatus === desiredReview) return {
+          success: true, entity: current, reviewStatusSet: true, reviewStatusReason: null,
+        };
+        entity = current;
+      } catch (readError: unknown) {
+        if (!(readError instanceof RemoteError)) throw readError;
+        if (readError.code === "REMOTE_ABORTED") throw readError;
+      }
+      return {
+        success: true,
+        entity,
+        reviewStatusSet: false,
+        reviewStatusReason: error.code === "REMOTE_WRITE_INDETERMINATE"
+          ? "Review status PATCH outcome is indeterminate; read-back did not confirm it"
+          : "Review status PATCH failed after the entity was created",
+      };
+    }
   }
 
   async updateEntity(kind: AsEntityKind, input: { projectId: string; id: string; fields: Record<string, Json>; force?: boolean }, ctx?: RemoteCallContext): Promise<AsWriteResult> {
     const [, idName] = AS_ENTITY_SEGMENTS[kind];
-    const desiredReview = typeof input.fields.review_status === "string";
-    const fields = { ...input.fields };
+    const fields = updateFields(kind, input.fields);
+    const desiredReview = typeof fields.review_status === "string";
     if (desiredReview && !REVIEW_PATCH_KINDS.has(kind)) delete fields.review_status;
-    const value = Object.keys(fields).length === 0
+    const mutationFields = Object.keys(fields).filter(key => key !== "review_version");
+    if (mutationFields.length > 0 && input.force !== true && stringValue(fields.review_version) === null) {
+      throw new RemoteError("Assurance Studio PATCH requires a decimal review version or force=true", {
+        service: "assurance-studio", code: "AS_REVIEW_VERSION_REQUIRED", status: null,
+        retryable: false, retryAfterMs: null, details: null,
+      });
+    }
+    const value = mutationFields.length === 0
       ? await this.getEntity(kind, input, ctx)
       : normalizeEntity(kind, input.projectId, await this.#json(entityItemRoute(kind, "PATCH"), { projectId: input.projectId, [idName]: input.id }, { force: input.force }, fields, ctx));
     return {
@@ -317,14 +465,17 @@ export class AssuranceStudioClient implements AssuranceStudioClientContract {
   }
 
   #recordPages(route: AssuranceStudioRoute, input: { projectId: string; page?: RemotePageRequest; filters?: Record<string, Json> }, ctx?: RemoteCallContext): AsyncIterable<RemotePage<Record<string, Json>>> {
-    return iterateRemotePages(input.page, ctx, { service: "assurance-studio", defaultPageSize: 50, maxPageSize: 200 }, async request => {
+    const itemKeys = route === ASSURANCE_STUDIO_ROUTES.listVerificationChecks
+      ? ["checks", "verification_checks"]
+      : ["packages", "sbom_packages"];
+    return this.#pageNumberPages(input.page, ctx, async (pageNumber, pageSize) => {
       const raw = await this.#json(route, { projectId: input.projectId, id: input.projectId }, {
-        page: Math.floor(request.index / request.pageSize) + 1, limit: request.pageSize,
+        page: pageNumber, limit: pageSize,
         ...(input.filters ?? {}),
       }, undefined, ctx);
-      const normalized = pagePayload(raw);
+      const normalized = pagePayload(raw, itemKeys);
       const items = normalized.items.map(object);
-      return { items, total: normalized.total, hasMore: normalized.hasMore ?? (normalized.total === null ? items.length === request.pageSize : request.index + items.length < normalized.total) };
+      return { items, total: normalized.total, hasMore: normalized.hasMore };
     });
   }
 

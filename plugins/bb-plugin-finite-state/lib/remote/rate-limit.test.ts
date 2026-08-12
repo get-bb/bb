@@ -43,7 +43,7 @@ describe("RemoteLimiter", () => {
       throw retryable(120_000);
     })).rejects.toMatchObject({ code: "REMOTE_RATE_LIMITED" });
     expect(attempts).toBe(6);
-    expect(delays).toEqual([64_000, 64_000, 64_000, 64_000, 64_000]);
+    expect(delays).toEqual([120_000, 120_000, 120_000, 120_000, 120_000]);
   });
 
   it("aborts queued work and in-flight retry sleep promptly", async () => {
@@ -70,5 +70,35 @@ describe("RemoteLimiter", () => {
     await Promise.resolve();
     limiter.close();
     await expect(retrying).rejects.toMatchObject({ code: "REMOTE_ABORTED" });
+  });
+
+  it("attributes abort and close errors to the calling service", async () => {
+    let release!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    let markStarted!: () => void;
+    const started = new Promise<void>(resolve => { markStarted = resolve; });
+    const limiter = new RemoteLimiter({
+      concurrency: 1, maxAttempts: 1, maxBackoffMs: 64_000,
+      scheduler: { now: () => 0, sleep: async () => undefined }, random: () => 0,
+    });
+    const active = limiter.run(async () => { markStarted(); await held; }, undefined, "platform");
+    await started;
+    const queued = limiter.run(async () => undefined, undefined, "assurance-studio");
+    limiter.close();
+    await expect(queued).rejects.toMatchObject({
+      service: "assurance-studio",
+      code: "REMOTE_ABORTED",
+    });
+    release();
+    await active;
+
+    await expect(limiter.run(
+      async () => undefined,
+      undefined,
+      "forge-compute",
+    )).rejects.toMatchObject({
+      service: "forge-compute",
+      code: "REMOTE_LIMITER_CLOSED",
+    });
   });
 });

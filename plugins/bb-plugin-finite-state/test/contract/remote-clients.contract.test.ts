@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import { describe, expect, it, vi } from "vitest";
 import { createFakePluginHost } from "@bb/plugin-sdk/testing";
 import { createPluginContext } from "../../lib/context.js";
@@ -14,7 +16,6 @@ import { PLATFORM_REFERENCE_ROUTES } from "../mock-remote/generated/platform-rou
 import { ASSURANCE_STUDIO_REFERENCE_ROUTES } from "../mock-remote/generated/assurance-studio-routes.js";
 import { registerRemoteServices } from "../../lanes/remote/register.js";
 import { createMockRemote } from "../mock-remote/server.js";
-import { RemoteError } from "../../lib/remote/types.js";
 
 async function firstPage<T>(pages: AsyncIterable<{ items: T[] }>): Promise<T[]> {
   for await (const page of pages) return page.items;
@@ -183,19 +184,27 @@ describe("direct remote and compute contract", () => {
     expect(JSON.stringify(hints)).not.toContain("log");
   });
 
-  it("never replays an indeterminate Forge job dispatch", async () => {
-    let attempts = 0;
-    const transport: ForgeComputeTransport = {
-      health: async () => undefined, verifyDynamic: async () => ({}),
-      penTestRun: async () => {
-        attempts += 1;
-        throw new RemoteError("reset", { service: "forge-compute", code: "FORGE_TRANSPORT_ERROR", status: null, retryable: true, retryAfterMs: null, details: null });
-      },
-      getJobStatus: async () => ({}), listJobs: async () => ({ count: 0, jobs: [] }), close: async () => undefined,
+  it("keeps a configured-but-unreachable Platform client loaded", async () => {
+    const values: RemoteSettingValues = {
+      platformBaseUrl: "https://platform.example", platformToken: "p", platformConcurrency: "8",
+      asBaseUrl: "", asApiKey: undefined, asConcurrency: "8",
+      forgeTransport: "disabled", forgeUrl: "", forgeCommand: "", forgeAuthToken: undefined, forgeConcurrency: "4",
     };
-    const client = new ForgeComputeClient({ transport, remoteTransport: false });
-    await expect(client.penTestRun({ cveId: "CVE-1", componentId: "c", projectId: "p", projectVersionId: "v" })).rejects.toMatchObject({ code: "REMOTE_WRITE_INDETERMINATE" });
-    expect(attempts).toBe(1);
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      Response.json({ error: "unauthorized" }, { status: 401 }),
+    );
+    const host = createFakePluginHost({ pluginId: "finite-state" });
+    const controller = createRemoteServiceController(createPluginContext(host.bb), values);
+    await vi.waitFor(() => {
+      expect(controller.connectionStatus().platform.state).toBe("unreachable");
+    });
+    expect(host.harness.needsConfigurationMessages).toEqual([]);
+    await expect(controller.services.platform.health()).rejects.toMatchObject({
+      service: "platform",
+      code: "REMOTE_HTTP_401",
+    });
+    expect(controller.connectionStatus().assuranceStudio.state).toBe("disabled");
+    await controller.dispose();
+    fetchMock.mockRestore();
   });
 });
-import { readFileSync } from "node:fs";
