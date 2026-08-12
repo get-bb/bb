@@ -1031,6 +1031,52 @@ describe("createRealtimeCacheEffects", () => {
     effects.dispose();
   });
 
+  it("invalidates thread detail when background activity starts or settles", () => {
+    vi.useFakeTimers();
+    const { effects, queryClient } = createRealtimeEffectsTestContext();
+    const threadKey = threadQueryKey("thr_1");
+    queryClient.setQueryData(threadKey, {
+      activeBackgroundAgentCount: 0,
+      id: "thr_1",
+    });
+
+    effects.handleChanged({
+      type: "changed",
+      entity: "thread",
+      id: "thr_1",
+      metadata: {
+        backgroundActivityChanged: true,
+        eventTypes: ["item/started"],
+        projectId: "project-1",
+      },
+      changes: ["events-appended"],
+    });
+    vi.advanceTimersByTime(50);
+
+    expect(queryClient.getQueryState(threadKey)?.isInvalidated).toBe(true);
+
+    queryClient.setQueryData(threadKey, {
+      activeBackgroundAgentCount: 1,
+      id: "thr_1",
+    });
+    effects.handleChanged({
+      type: "changed",
+      entity: "thread",
+      id: "thr_1",
+      metadata: {
+        backgroundActivityChanged: true,
+        eventTypes: ["item/completed"],
+        projectId: "project-1",
+      },
+      changes: ["events-appended"],
+    });
+    vi.advanceTimersByTime(50);
+
+    expect(queryClient.getQueryState(threadKey)?.isInvalidated).toBe(true);
+
+    effects.dispose();
+  });
+
   it("does not cancel active timeline refetches for repeated event invalidations", async () => {
     vi.useFakeTimers();
     const { effects, queryClient } = createRealtimeEffectsTestContext();
