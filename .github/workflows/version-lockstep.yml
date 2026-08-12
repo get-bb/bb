@@ -21,7 +21,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22.x
+          node-version: 22.19.0
 
       - name: Check version lockstep
         run: node .github/workflows/check-version-lockstep.mjs
