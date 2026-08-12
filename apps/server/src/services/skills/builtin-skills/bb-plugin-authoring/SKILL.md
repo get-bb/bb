@@ -1122,7 +1122,7 @@ Slot props contracts (versioned, additive-only):
   repeat the title inside your component. The component owns the full-bleed
   body below with zero host padding; add your own padding and scrolling when
   the design needs them. `headerContent` is plugin code inside the host title bar and is
-  contained separately: a throw hides the accessory without breaking the
+  contained separately: a throw hides the header content without breaking the
   title bar or the panel body. For a classic page, use an outer scroll region
   with `p-4 md:p-5` and wrap its content in a
   `mx-auto w-full max-w-3xl space-y-4` div.

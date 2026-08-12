@@ -1065,11 +1065,15 @@ describe("Tasks RPC domain API", () => {
       status: "canceled",
     });
 
+    const openCount = tasksRpcContract.sidebarOpenTaskCount.output.parse(
+      await harness.callRpc("sidebarOpenTaskCount", null),
+    );
+    expect(openCount).toEqual({ openTaskCount: 2 });
+
     const summary = tasksRpcContract.sidebarSummary.output.parse(
       await harness.callRpc("sidebarSummary", null),
     );
     expect(summary).toEqual({
-      openTaskCount: 2,
       projects: [
         {
           projectId: project.id,

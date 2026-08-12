@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, waitFor } from "@testing-library/react";
+import { act, cleanup, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { loadPluginApp, renderSlot } from "@bb/plugin-sdk/testing/app";
 
@@ -19,7 +19,7 @@ describe("Tasks nav panel sidebar accessory", () => {
       {},
       {
         rpc: {
-          sidebarSummary: () => ({ openTaskCount, projects: [] }),
+          sidebarOpenTaskCount: () => ({ openTaskCount }),
         },
       },
     );
@@ -39,8 +39,54 @@ describe("Tasks nav panel sidebar accessory", () => {
     await waitFor(() => expect(slot.getByText("7")).toBeDefined());
     expect(
       slot.inspection.rpcCalls.filter(
-        ({ method }) => method === "sidebarSummary",
+        ({ method }) => method === "sidebarOpenTaskCount",
       ),
     ).toHaveLength(3);
+  });
+
+  it("coalesces a burst of task changes into one trailing count refresh", async () => {
+    let calls = 0;
+    let resolveFirstRequest:
+      | ((result: { openTaskCount: number }) => void)
+      | undefined;
+    const firstRequest = new Promise<{ openTaskCount: number }>((resolve) => {
+      resolveFirstRequest = resolve;
+    });
+    const Accessory = app.navPanels[0]?.experimental_sidebarAccessory;
+
+    const slot = renderSlot(
+      { component: Accessory! },
+      {},
+      {
+        rpc: {
+          sidebarOpenTaskCount: () => {
+            calls += 1;
+            return calls === 1 ? firstRequest : { openTaskCount: 13 };
+          },
+        },
+      },
+    );
+
+    await waitFor(() => expect(calls).toBe(1));
+    await slot.behavior.emitRealtime("tasks:changed", {
+      taskId: "01HZZZZZZZZZZZZZZZZZZZZZT1",
+      projectId: "01HZZZZZZZZZZZZZZZZZZZZZP1",
+    });
+    await slot.behavior.emitRealtime("tasks:changed", {
+      taskId: "01HZZZZZZZZZZZZZZZZZZZZZT2",
+      projectId: "01HZZZZZZZZZZZZZZZZZZZZZP1",
+    });
+    await slot.behavior.emitRealtime("projects:changed", {
+      projectId: "01HZZZZZZZZZZZZZZZZZZZZZP1",
+    });
+    expect(calls).toBe(1);
+
+    await act(async () => {
+      resolveFirstRequest?.({ openTaskCount: 12 });
+      await firstRequest;
+    });
+
+    await waitFor(() => expect(calls).toBe(2));
+    expect(await slot.findByText("13")).toBeDefined();
   });
 });

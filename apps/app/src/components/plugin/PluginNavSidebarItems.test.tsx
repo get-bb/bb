@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -9,7 +10,7 @@ import {
 import { useEffect, type ComponentType } from "react";
 import { createStore, Provider } from "jotai";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { SidebarProvider } from "@/components/ui/sidebar.js";
 import {
@@ -17,6 +18,10 @@ import {
   setPluginSlotRegistrations,
   type PluginRegistrationSet,
 } from "@/lib/plugin-slots";
+import {
+  resetAllCrashedPluginSlotsForTest,
+  resetCrashedPluginSlots,
+} from "./PluginSlotMount";
 import { PluginNavSidebarItems } from "./PluginNavSidebarItems";
 import { pluginNavPanelOrderAtom } from "./pluginNavSidebarAtoms";
 
@@ -100,11 +105,18 @@ function panelRowNames(): string[] {
 
 beforeEach(() => {
   window.localStorage.clear();
+  resetAllCrashedPluginSlotsForTest();
+  // React reports errors caught by the slot boundary; keep expected crashes
+  // from obscuring the regression assertions below.
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  vi.spyOn(console, "warn").mockImplementation(() => {});
 });
 
 afterEach(() => {
   cleanup();
   resetPluginSlotStoreForTest();
+  resetAllCrashedPluginSlotsForTest();
+  vi.restoreAllMocks();
   window.localStorage.clear();
 });
 
@@ -214,6 +226,26 @@ describe("PluginNavSidebarItems", () => {
     expect(
       view.container.querySelector("[data-plugin-nav-sidebar-accessory]"),
     ).toBeNull();
+  });
+
+  it("hides a crashed accessory and retries it after a plugin reload", () => {
+    function CrashingAccessory(): never {
+      throw new Error("accessory crashed");
+    }
+    registerPanel("tasks", "Tasks", CrashingAccessory);
+
+    const view = renderSidebarItems();
+
+    expect(screen.queryByText("plugin tasks crashed")).toBeNull();
+    expect(
+      view.container.querySelector("[data-plugin-nav-sidebar-accessory]"),
+    ).not.toBeNull();
+
+    resetCrashedPluginSlots("tasks");
+    act(() => registerPanel("tasks", "Tasks", () => <span>18</span>));
+
+    expect(screen.getByText("18")).toBeDefined();
+    expect(screen.queryByText("plugin tasks crashed")).toBeNull();
   });
 
   it("moves a hidden panel into an expanded More disclosure and back", async () => {

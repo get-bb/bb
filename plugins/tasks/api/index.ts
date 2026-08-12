@@ -1110,11 +1110,11 @@ export function registerHandlers(
         })),
       };
     },
+    sidebarOpenTaskCount() {
+      return { openTaskCount: store.openTaskCount() };
+    },
     sidebarSummary() {
-      return {
-        openTaskCount: store.openTaskCount(),
-        projects: store.sidebarSummary(),
-      };
+      return { projects: store.sidebarSummary() };
     },
   };
 }

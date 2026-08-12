@@ -5,28 +5,54 @@ import { useTasksRpc } from "./data.js";
 /** Live count of non-terminal tasks for the host sidebar row. */
 export function TasksSidebarAccessory() {
   const rpc = useTasksRpc();
+  const rpcRef = useRef(rpc);
+  rpcRef.current = rpc;
   const connectionState = useRealtimeConnectionState();
-  const requestSequence = useRef(0);
+  const requestState = useRef({
+    isMounted: true,
+    isRunning: false,
+    refreshQueued: false,
+  });
   const [count, setCount] = useState<number | null>(null);
 
   const refresh = useCallback(() => {
-    const sequence = ++requestSequence.current;
-    void rpc.call("sidebarSummary").then(
-      ({ openTaskCount }) => {
-        if (sequence === requestSequence.current) setCount(openTaskCount);
-      },
-      () => {
-        // Keep the last durable value during transient RPC failures. A later
-        // realtime event or reconnect reconciles it without noisy row chrome.
-      },
-    );
-  }, [rpc]);
+    const request = requestState.current;
+    if (!request.isMounted) return;
+    request.refreshQueued = true;
+    if (request.isRunning) return;
+    request.isRunning = true;
+
+    void (async () => {
+      try {
+        while (request.isMounted && request.refreshQueued) {
+          request.refreshQueued = false;
+          try {
+            const { openTaskCount } = await rpcRef.current.call(
+              "sidebarOpenTaskCount",
+            );
+            if (request.isMounted) setCount(openTaskCount);
+          } catch {
+            // Keep the last durable value during transient RPC failures. A
+            // queued event or reconnect reconciles it without noisy chrome.
+          }
+        }
+      } finally {
+        request.isRunning = false;
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    const request = requestState.current;
+    request.isMounted = true;
+    return () => {
+      request.isMounted = false;
+      request.refreshQueued = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (connectionState === "connected") refresh();
-    return () => {
-      requestSequence.current += 1;
-    };
   }, [connectionState, refresh]);
   useRealtime("tasks:changed", refresh);
   useRealtime("projects:changed", refresh);

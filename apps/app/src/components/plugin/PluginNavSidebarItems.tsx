@@ -455,10 +455,11 @@ function PluginNavSidebarItem({
   const sidebarAccessory =
     !isCompactViewport && SidebarAccessory !== undefined ? (
       <PluginSlotMount
+        key={`${panel.pluginId}/${panel.id}/${panel.generation}`}
         pluginId={panel.pluginId}
         slotKind="navPanelSidebarAccessory"
         slotId={panel.id}
-        crashFallback={null}
+        crashFallback={<></>}
       >
         <SidebarAccessory />
       </PluginSlotMount>
