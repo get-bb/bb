@@ -1,6 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { access, lstat, mkdir, readdir, rename, rm } from "node:fs/promises";
+import {
+  access,
+  lstat,
+  mkdir,
+  readlink,
+  readdir,
+  rename,
+  rm,
+} from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { CommitFirmwareMountInput } from "../cache/mount-registry.js";
 import type {
@@ -22,7 +30,10 @@ import type {
   FirmwareNode,
   MountReadiness,
 } from "../cache/manifest.js";
-import { resolveSafeNodePath } from "../cache/path-safety.js";
+import {
+  resolveSafeNodePath,
+  safeSymlinkTarget,
+} from "../cache/path-safety.js";
 import type { FirmwareProgressPublisher } from "./progress.js";
 import { publishFirmwareProgress, redactHostPaths } from "./progress.js";
 import type {
@@ -56,6 +67,7 @@ export interface IngestSnapshotInput {
   extractedRootfs: string;
   stagedSnapshotPath: string;
   scanId: string | null;
+  maxDepth: number;
   publishProgress?: FirmwareProgressPublisher;
   now: () => Date;
   promotionId?: string;
@@ -69,6 +81,11 @@ export interface IngestSnapshotResult {
 }
 
 interface VerifiedNode {
+  node: FirmwareNode;
+  blobPath: string;
+}
+
+interface LinkedNode {
   node: FirmwareNode;
   blobPath: string;
 }
@@ -135,11 +152,13 @@ function parentDirectories(path: string): string[] {
 async function verifyAndStoreFiles(input: IngestSnapshotInput): Promise<{
   nodes: FirmwareNode[];
   verified: VerifiedNode[];
+  linked: LinkedNode[];
   warnings: string[];
   reused: number;
 }> {
   const directories = new Set<string>();
   const verified: VerifiedNode[] = [];
+  const linked: LinkedNode[] = [];
   const warnings: string[] = [];
   let reused = 0;
   const total = input.snapshot.fileTree.length;
@@ -151,7 +170,66 @@ async function verifyAndStoreFiles(input: IngestSnapshotInput): Promise<{
       if (isDirectory(entry)) {
         directories.add(entry.filePath);
       } else if (isSymlink(entry)) {
-        warnings.push(`Skipped symlink without a target: ${entry.filePath}`);
+        let error: string | null = null;
+        try {
+          const sourcePath = await resolveSafeNodePath(
+            input.extractedRootfs,
+            entry.filePath,
+          );
+          const stat = await lstat(sourcePath);
+          if (!stat.isSymbolicLink()) {
+            error = `Snapshot symlink has no recoverable target: ${entry.filePath}`;
+          } else {
+            const target = safeSymlinkTarget(
+              entry.filePath,
+              await readlink(sourcePath),
+            );
+            linked.push({
+              blobPath: "",
+              node: {
+                path: entry.filePath,
+                kind: "symlink",
+                fileHash: null,
+                size: null,
+                mimeType: entry.mimeType,
+                fullType: entry.fullType,
+                unixMode: stat.mode & 0o7777,
+                symlinkTarget: target,
+                materialized: false,
+                errors: [],
+              },
+            });
+          }
+        } catch (caught) {
+          if (
+            caught instanceof FirmwareCacheError &&
+            caught.code === "UNSAFE_FIRMWARE_SYMLINK"
+          ) {
+            error = `Unsafe snapshot symlink target: ${entry.filePath}`;
+          } else if ((caught as NodeJS.ErrnoException).code === "ENOENT") {
+            error = `Snapshot symlink has no recoverable target: ${entry.filePath}`;
+          } else {
+            throw caught;
+          }
+        }
+        if (error !== null) {
+          warnings.push(error);
+          linked.push({
+            blobPath: "",
+            node: {
+              path: entry.filePath,
+              kind: "file",
+              fileHash: null,
+              size: null,
+              mimeType: entry.mimeType,
+              fullType: entry.fullType,
+              unixMode: null,
+              symlinkTarget: null,
+              materialized: false,
+              errors: [error],
+            },
+          });
+        }
       } else {
         warnings.push(
           `Skipped snapshot node without verified bytes: ${entry.filePath}`,
@@ -226,8 +304,9 @@ async function verifyAndStoreFiles(input: IngestSnapshotInput): Promise<{
       )
       .map(directoryNode),
     ...verified.map(({ node }) => node),
+    ...linked.map(({ node }) => node),
   ];
-  return { nodes, verified, warnings, reused };
+  return { nodes, verified, linked, warnings, reused };
 }
 
 async function pathExists(path: string): Promise<boolean> {
@@ -310,7 +389,11 @@ function sanitizedMetadata(
   );
 }
 
-function predictedReadiness(fullyMaterialized: boolean): MountReadiness {
+function predictedReadiness(
+  fullyMaterialized: boolean,
+  hydratedCount: number,
+): MountReadiness {
+  if (hydratedCount === 0) return "metadata_only";
   return fullyMaterialized ? "fully_materialized" : "partial";
 }
 
@@ -408,6 +491,11 @@ export async function ingestSnapshotGeneration(
         "INSERT INTO fs_meta(key, value) VALUES ('unpack_metadata', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
       )
       .run(JSON.stringify(unpackMetadata));
+    manifest.database
+      .prepare(
+        "INSERT INTO fs_meta(key, value) VALUES ('unpack_max_depth', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+      )
+      .run(JSON.stringify(input.maxDepth));
 
     const mount: FirmwareMount = {
       pvId: stagingPvId,
@@ -416,7 +504,10 @@ export async function ingestSnapshotGeneration(
       manifestPath: manifest.path,
       inputSha256: input.snapshot.inputSha256,
       artifactHash: null,
-      readiness: predictedReadiness(fullyMaterialized),
+      readiness: predictedReadiness(
+        fullyMaterialized,
+        prepared.verified.length,
+      ),
       nodeCount: prepared.nodes.length,
       hydratedCount: prepared.verified.length,
       errors: [],
@@ -427,6 +518,11 @@ export async function ingestSnapshotGeneration(
       await input.cache.linkNode(stagingScope, mount, node, "");
     }
     for (const item of prepared.verified) {
+      await input.cache.linkNode(stagingScope, mount, item.node, item.blobPath);
+    }
+    for (const item of prepared.linked.filter(
+      ({ node }) => node.kind === "symlink",
+    )) {
       await input.cache.linkNode(stagingScope, mount, item.node, item.blobPath);
     }
     manifest.close();

@@ -467,6 +467,8 @@ async function tryReuse(
   deps: UnpackDeps,
   request: LocalUnpackRequest,
   digest: string,
+  maxDepth: number,
+  signal: AbortSignal,
 ): Promise<LocalUnpackResult | null> {
   if (request.force) return null;
   try {
@@ -484,7 +486,26 @@ async function tryReuse(
       meta.source !== "standalone_unpack"
     )
       return null;
-    deps.cache.verifyIntegrity(manifest);
+    const depthRow = manifest.database
+      .prepare("SELECT value FROM fs_meta WHERE key = 'unpack_max_depth'")
+      .get() as { value: string } | undefined;
+    if (depthRow === undefined || JSON.parse(depthRow.value) !== maxDepth) {
+      return null;
+    }
+    try {
+      deps.cache.verifyIntegrity(manifest);
+    } catch (error) {
+      if (signal.aborted) throw error;
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "EACCES" || code === "EPERM") throw error;
+      if (
+        error instanceof FirmwareCacheError &&
+        error.code === "INCOHERENT_FIRMWARE_MOUNT"
+      ) {
+        return null;
+      }
+      throw error;
+    }
     const readiness = deps.cache.readiness(manifest);
     if (
       readiness === "invalid" ||
@@ -557,24 +578,16 @@ export function standaloneUnpackArgv(
   ];
 }
 
-export function runStandaloneUnpack(_registrationInput: unknown): never;
 export function runStandaloneUnpack(
   deps: UnpackDeps,
   request: LocalUnpackRequest,
   signal: AbortSignal,
 ): Promise<LocalUnpackResult>;
 export function runStandaloneUnpack(
-  first: UnpackDeps | unknown,
-  request?: LocalUnpackRequest,
-  signal?: AbortSignal,
-): Promise<LocalUnpackResult> | never {
-  if (request === undefined || signal === undefined) {
-    throw new FirmwareCacheError(
-      "UNPACK_CONFIGURATION_REQUIRED",
-      "Standalone unpack requires the configured wrapper, FACT image, and verified execution scope.",
-    );
-  }
-  const deps = first as UnpackDeps;
+  deps: UnpackDeps,
+  request: LocalUnpackRequest,
+  signal: AbortSignal,
+): Promise<LocalUnpackResult> {
   return runConfiguredStandaloneUnpack(deps, request, signal);
 }
 
@@ -600,7 +613,7 @@ async function runConfiguredStandaloneUnpack(
     deps.publishProgress,
     signal,
   );
-  const reused = await tryReuse(deps, request, digest);
+  const reused = await tryReuse(deps, request, digest, maxDepth, signal);
   if (reused) {
     publishFirmwareProgress(
       deps.publishProgress,
@@ -697,6 +710,7 @@ async function runConfiguredStandaloneUnpack(
       extractedRootfs,
       stagedSnapshotPath: snapshotPath,
       scanId: request.scanId ?? null,
+      maxDepth,
       publishProgress: deps.publishProgress,
       now,
       promotionId: generationId,

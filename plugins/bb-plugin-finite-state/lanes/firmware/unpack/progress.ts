@@ -42,7 +42,11 @@ export function redactHostPaths(
   )) {
     if (path.length > 0) redacted = redacted.split(path).join("<host-path>");
   }
-  return redacted.replace(/(?:^|[\s"'=])\/(?:[^\s"']+\/?)+/gu, (match) => {
+  return redacted;
+}
+
+function redactUntrustedAbsolutePaths(value: string): string {
+  return value.replace(/(?:^|[\s"'=])\/(?:[^\s"']+\/?)+/gu, (match) => {
     const prefix = match[0] === "/" ? "" : match[0];
     return `${prefix}<host-path>`;
   });
@@ -60,7 +64,9 @@ export class BoundedDiagnosticBuffer {
   }
 
   append(chunk: string | Buffer): string {
-    const text = redactHostPaths(chunk.toString(), this.#paths);
+    const text = redactUntrustedAbsolutePaths(
+      redactHostPaths(chunk.toString(), this.#paths),
+    );
     this.#value += text;
     if (Buffer.byteLength(this.#value) > this.#limit) {
       const bytes = Buffer.from(this.#value);

@@ -1,6 +1,13 @@
 import { spawn } from "node:child_process";
 import { execFileSync } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile, realpath } from "node:fs/promises";
+import {
+  mkdtemp,
+  readFile,
+  rm,
+  unlink,
+  writeFile,
+  realpath,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createFakePluginHost } from "@bb/plugin-sdk/testing";
@@ -259,6 +266,65 @@ describe("standalone unpack driver", () => {
     expect(first.reused).toBe(false);
     expect(second.reused).toBe(true);
     expect(await readFile(`${fixture.firmwarePath}.runs`, "utf8")).toBe("1");
+    await fixture.host.harness.lifecycle.dispose();
+  });
+
+  it("does not reuse an unchanged digest when maxDepth changes", async () => {
+    const fixture = await createTestContext();
+    await runStandaloneUnpack(
+      fixture.deps,
+      { pvId: "pv-1", firmwarePath: fixture.firmwarePath, maxDepth: 4 },
+      new AbortController().signal,
+    );
+    const result = await runStandaloneUnpack(
+      fixture.deps,
+      { pvId: "pv-1", firmwarePath: fixture.firmwarePath, maxDepth: 5 },
+      new AbortController().signal,
+    );
+    expect(result.reused).toBe(false);
+    expect(await readFile(`${fixture.firmwarePath}.runs`, "utf8")).toBe("2");
+    expect(
+      await readFile(
+        join(result.mount.rootfsPath, "nested", "payload.txt"),
+        "utf8",
+      ),
+    ).toBe("extracted:firmware:depth=5");
+    await fixture.host.harness.lifecycle.dispose();
+  });
+
+  it("falls through a failed reuse integrity check to a fresh atomic unpack", async () => {
+    const fixture = await createTestContext();
+    const first = await runStandaloneUnpack(
+      fixture.deps,
+      { pvId: "pv-1", firmwarePath: fixture.firmwarePath },
+      new AbortController().signal,
+    );
+    const materializedPath = join(
+      first.mount.rootfsPath,
+      "nested",
+      "payload.txt",
+    );
+    await unlink(materializedPath);
+    await writeFile(
+      materializedPath,
+      "tampered",
+      "utf8",
+    );
+
+    const repaired = await runStandaloneUnpack(
+      fixture.deps,
+      { pvId: "pv-1", firmwarePath: fixture.firmwarePath },
+      new AbortController().signal,
+    );
+
+    expect(repaired.reused).toBe(false);
+    expect(await readFile(`${fixture.firmwarePath}.runs`, "utf8")).toBe("2");
+    expect(
+      await readFile(
+        join(repaired.mount.rootfsPath, "nested", "payload.txt"),
+        "utf8",
+      ),
+    ).toBe("extracted:firmware:depth=12");
     await fixture.host.harness.lifecycle.dispose();
   });
 

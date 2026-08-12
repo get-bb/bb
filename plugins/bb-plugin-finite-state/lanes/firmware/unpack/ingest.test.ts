@@ -4,8 +4,10 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  readlink,
   realpath,
   rm,
+  symlink,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -185,6 +187,7 @@ describe("standalone snapshot ingestion", () => {
       extractedRootfs: stage.rootfs,
       stagedSnapshotPath: stage.snapshotPath,
       scanId: "scan-1",
+      maxDepth: 12,
       now: () => new Date("2026-08-12T00:00:00.000Z"),
       promotionId: "partial",
     });
@@ -207,6 +210,118 @@ describe("standalone snapshot ingestion", () => {
         ).value,
       ),
     ).toEqual(input.unpackMetadata);
+    manifest.close();
+    await fixture.host.harness.lifecycle.dispose();
+  });
+
+  it("commits an error-only snapshot as durable metadata-only provenance", async () => {
+    const fixture = await createFixture();
+    const stage = await createStage(fixture.root, {});
+    const input = snapshot({});
+    input.errors = [{ path: "/usr/lib/firmware", message: "no files recovered" }];
+    input.unpackMetadata[digest("missing")] = {
+      tried: ["filesystem"],
+      errorType: "UnpackError",
+      errorMsg: "extractor produced metadata only",
+    };
+
+    const result = await ingestSnapshotGeneration({
+      scope: fixture.scope,
+      cache: fixture.cache,
+      snapshot: input,
+      extractedRootfs: stage.rootfs,
+      stagedSnapshotPath: stage.snapshotPath,
+      scanId: null,
+      maxDepth: 7,
+      now: () => new Date(0),
+      promotionId: "metadata-only",
+    });
+
+    expect(result.mount.readiness).toBe("metadata_only");
+    const manifest = fixture.cache.open(fixture.scope);
+    expect(manifest.readMeta()).toMatchObject({
+      hydratedCount: 0,
+      fullyMaterialized: false,
+      unpackErrors: [
+        JSON.stringify({
+          path: "/usr/lib/firmware",
+          message: "no files recovered",
+        }),
+      ],
+    });
+    expect(
+      JSON.parse(
+        (
+          manifest.database
+            .prepare("SELECT value FROM fs_meta WHERE key='unpack_metadata'")
+            .get() as { value: string }
+        ).value,
+      ),
+    ).toEqual(input.unpackMetadata);
+    manifest.close();
+    await fixture.host.harness.lifecycle.dispose();
+  });
+
+  it("materializes safe relative and absolute Linux symlinks and records unsafe or missing targets as visible gaps", async () => {
+    const fixture = await createFixture();
+    const files = { "usr/lib/real": "target" };
+    const stage = await createStage(fixture.root, files);
+    await mkdir(join(stage.rootfs, "usr", "bin"), { recursive: true });
+    await symlink("../lib/real", join(stage.rootfs, "usr", "bin", "relative"));
+    await symlink("/usr/lib/real", join(stage.rootfs, "usr", "bin", "absolute"));
+    await symlink("../../../../host", join(stage.rootfs, "usr", "bin", "unsafe"));
+    const input = snapshot(files);
+    for (const name of ["relative", "absolute", "unsafe", "missing"]) {
+      input.fileTree.push({
+        filePath: `/usr/bin/${name}`,
+        fileHash: null,
+        fileName: name,
+        mimeType: "inode/symlink",
+        fullType: "symbolic link",
+        fileSize: null,
+      });
+    }
+
+    const result = await ingestSnapshotGeneration({
+      scope: fixture.scope,
+      cache: fixture.cache,
+      snapshot: input,
+      extractedRootfs: stage.rootfs,
+      stagedSnapshotPath: stage.snapshotPath,
+      scanId: null,
+      maxDepth: 12,
+      now: () => new Date(0),
+      promotionId: "symlinks",
+    });
+
+    expect(result.mount.readiness).toBe("partial");
+    expect(
+      await readlink(join(result.mount.rootfsPath, "usr", "bin", "relative")),
+    ).toBe("../lib/real");
+    expect(
+      await readlink(join(result.mount.rootfsPath, "usr", "bin", "absolute")),
+    ).toBe("../lib/real");
+    const manifest = fixture.cache.open(fixture.scope);
+    expect(manifest.getNode("/usr/bin/relative")).toMatchObject({
+      kind: "symlink",
+      symlinkTarget: "../lib/real",
+      errors: [],
+    });
+    expect(manifest.getNode("/usr/bin/absolute")).toMatchObject({
+      kind: "symlink",
+      symlinkTarget: "../lib/real",
+      errors: [],
+    });
+    expect(manifest.getNode("/usr/bin/unsafe")).toMatchObject({
+      kind: "file",
+      materialized: false,
+      errors: ["Unsafe snapshot symlink target: /usr/bin/unsafe"],
+    });
+    expect(manifest.getNode("/usr/bin/missing")).toMatchObject({
+      kind: "file",
+      materialized: false,
+      errors: ["Snapshot symlink has no recoverable target: /usr/bin/missing"],
+    });
     manifest.close();
     await fixture.host.harness.lifecycle.dispose();
   });
@@ -234,6 +349,7 @@ describe("standalone snapshot ingestion", () => {
         extractedRootfs: stage.rootfs,
         stagedSnapshotPath: stage.snapshotPath,
         scanId: null,
+        maxDepth: 12,
         now: () => new Date(0),
         promotionId: "rollback",
       }),
@@ -255,6 +371,66 @@ describe("standalone snapshot ingestion", () => {
       inputSha256: digest("old-input"),
       nodeCount: 1,
     });
+    restored.close();
+    await fixture.host.harness.lifecycle.dispose();
+  });
+
+  it("restores the previous coherent generation when commit rejects an error-only promotion", async () => {
+    const fixture = await createFixture();
+    await createCoherentPreviousMount(fixture);
+    const stage = await createStage(fixture.root, {});
+    const input = snapshot({});
+    input.errors = ["zero hydrated files"];
+    input.unpackMetadata[digest("gap")] = {
+      tried: ["fake"],
+      errorMsg: "no recoverable payload",
+    };
+    const failingCache: UnpackCache = {
+      ...fixture.cache,
+      commit(commitInput) {
+        expect(commitInput.mount.readiness).toBe("metadata_only");
+        expect(commitInput.manifest.readMeta()?.unpackErrors).toEqual([
+          "zero hydrated files",
+        ]);
+        expect(
+          commitInput.manifest.database
+            .prepare("SELECT value FROM fs_meta WHERE key='unpack_metadata'")
+            .get(),
+        ).toBeTruthy();
+        throw new FirmwareCacheError(
+          "INJECTED_COMMIT_FAILURE",
+          "injected commit failure",
+        );
+      },
+    };
+
+    await expect(
+      ingestSnapshotGeneration({
+        scope: fixture.scope,
+        cache: failingCache,
+        snapshot: input,
+        extractedRootfs: stage.rootfs,
+        stagedSnapshotPath: stage.snapshotPath,
+        scanId: null,
+        maxDepth: 12,
+        now: () => new Date(0),
+        promotionId: "commit-rollback",
+      }),
+    ).rejects.toMatchObject({ code: "INJECTED_COMMIT_FAILURE" });
+    expect(
+      await readFile(
+        join(fixture.root, ".fs-firmware", "pv-1", "rootfs", "old.txt"),
+        "utf8",
+      ),
+    ).toBe("old-coherent-bytes");
+    expect(
+      await readFile(
+        join(fixture.root, ".fs-firmware", "pv-1", "snapshot.json"),
+        "utf8",
+      ),
+    ).toBe("old snapshot");
+    const restored = fixture.cache.open(fixture.scope);
+    expect(restored.readMeta()?.inputSha256).toBe(digest("old-input"));
     restored.close();
     await fixture.host.harness.lifecycle.dispose();
   });
@@ -292,6 +468,7 @@ describe("standalone snapshot ingestion", () => {
         extractedRootfs: stage.rootfs,
         stagedSnapshotPath: stage.snapshotPath,
         scanId: null,
+        maxDepth: 12,
         now: () => new Date(0),
         promotionId: "file-500",
       }),
