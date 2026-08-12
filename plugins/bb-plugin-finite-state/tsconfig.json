@@ -1,0 +1,22 @@
+{
+  "extends": [
+    "@bb/tsconfig/base.json",
+    "@bb/tsconfig/typecheck-overrides.json"
+  ],
+  "compilerOptions": {
+    "rootDir": "../..",
+    "jsx": "react-jsx",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["node"],
+    "customConditions": ["source"]
+  },
+  "include": [
+    "app.tsx",
+    "server.ts",
+    "lanes",
+    "lib",
+    "shared",
+    "test",
+    "vitest.config.ts"
+  ]
+}
