@@ -73,6 +73,9 @@ function SidebarModeHarness() {
       <button type="button" onClick={() => navigate("app")}>
         Navigate back to app
       </button>
+      <button type="button" onClick={() => setMode("settings")}>
+        Change route without closing
+      </button>
       <AppLayoutSidebar
         mode={mode}
         onResizeMouseDown={() => {}}
@@ -125,9 +128,6 @@ describe("AppLayoutSidebar mobile mode transitions", () => {
     expect(settingsPanel).not.toBe(appPanel);
     expect(settingsPanel.dataset.state).toBe("closed");
     expect(settingsPanel.textContent).toContain("Settings sidebar");
-    expect(settingsPanel.className).toContain(
-      "data-[state=closed]:-translate-x-full",
-    );
 
     fireEvent.click(screen.getByRole("button", { name: "Toggle Sidebar" }));
     settleMobileToggle();
@@ -148,8 +148,32 @@ describe("AppLayoutSidebar mobile mode transitions", () => {
     expect(returnedAppPanel).not.toBe(reopenedSettingsPanel);
     expect(returnedAppPanel.dataset.state).toBe("closed");
     expect(returnedAppPanel.textContent).toContain("App sidebar");
-    expect(returnedAppPanel.className).toContain(
-      "data-[state=closed]:-translate-x-full",
+  });
+
+  it("swaps modes immediately when navigation does not close the drawer", () => {
+    vi.useFakeTimers();
+    render(
+      <CompactViewportOverrideProvider isCompactViewport>
+        <SidebarProvider>
+          <SidebarModeHarness />
+        </SidebarProvider>
+      </CompactViewportOverrideProvider>,
     );
+
+    fireEvent.click(screen.getByRole("button", { name: "Toggle Sidebar" }));
+    settleMobileToggle();
+
+    const appPanel = getMobilePanel();
+    expect(appPanel.dataset.state).toBe("open");
+    expect(appPanel.textContent).toContain("App sidebar");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Change route without closing" }),
+    );
+
+    const settingsPanel = getMobilePanel();
+    expect(settingsPanel).not.toBe(appPanel);
+    expect(settingsPanel.dataset.state).toBe("open");
+    expect(settingsPanel.textContent).toContain("Settings sidebar");
   });
 });

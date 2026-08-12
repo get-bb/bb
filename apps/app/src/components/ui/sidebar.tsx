@@ -360,6 +360,7 @@ type SidebarContext = {
   setOpenMobile: (open: boolean) => void;
   openMobileSidebar: () => void;
   closeMobileSidebar: () => void;
+  isMobileSidebarClosing: boolean;
   suppressMobileOpenAnimation: boolean;
   setSuppressMobileOpenAnimation: (suppress: boolean) => void;
   suppressMobileCloseAnimation: boolean;
@@ -447,6 +448,8 @@ const SidebarProvider = React.forwardRef<
       React.useState(false);
     const [suppressMobileCloseAnimation, setSuppressMobileCloseAnimation] =
       React.useState(false);
+    const [isMobileSidebarClosing, setIsMobileSidebarClosing] =
+      React.useState(false);
     const mobileSettleTimeoutRef = React.useRef<number | null>(null);
 
     const clearMobileSettleTimeout = React.useCallback(() => {
@@ -473,12 +476,14 @@ const SidebarProvider = React.forwardRef<
       // close commit (panel `inert`, data-state flips) then pays its style
       // recalculation after the panel has moved offscreen instead of
       // consuming the whole transition window.
+      setIsMobileSidebarClosing(true);
       applySidebarMobileDragStyles({ progress: 0, settling: true });
       mobileSettleTimeoutRef.current = window.setTimeout(() => {
         mobileSettleTimeoutRef.current = null;
         flushSync(() => {
           setSuppressMobileOpenAnimation(false);
           setSuppressMobileCloseAnimation(true);
+          setIsMobileSidebarClosing(false);
           setOpenMobile(false);
         });
         clearSidebarMobileDragAttributes();
@@ -574,6 +579,7 @@ const SidebarProvider = React.forwardRef<
         setOpenMobile,
         openMobileSidebar,
         closeMobileSidebar,
+        isMobileSidebarClosing,
         suppressMobileOpenAnimation,
         setSuppressMobileOpenAnimation,
         suppressMobileCloseAnimation,
@@ -589,6 +595,7 @@ const SidebarProvider = React.forwardRef<
         setOpenMobile,
         openMobileSidebar,
         closeMobileSidebar,
+        isMobileSidebarClosing,
         suppressMobileOpenAnimation,
         setSuppressMobileOpenAnimation,
         suppressMobileCloseAnimation,

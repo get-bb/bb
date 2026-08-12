@@ -1,8 +1,4 @@
-import {
-  useEffect,
-  useState,
-  type MouseEvent as ReactMouseEvent,
-} from "react";
+import { useState, type MouseEvent as ReactMouseEvent } from "react";
 import { AppSidebar } from "@/components/sidebar/AppSidebar";
 import { SettingsSidebar } from "@/components/settings/SettingsSidebar";
 import { ToolsSidebar } from "@/components/tools/ToolsSidebar";
@@ -37,17 +33,15 @@ export function AppLayoutSidebar({
   toolsBackRoutePath,
   toolsRoutePath,
 }: AppLayoutSidebarProps) {
-  const { isCompactViewport, openMobile } = useSidebar();
-  const holdCurrentMode = isCompactViewport && openMobile;
-  const [settledMode, setSettledMode] = useState(mode);
-
-  useEffect(() => {
-    if (!holdCurrentMode) {
-      setSettledMode(mode);
-    }
-  }, [holdCurrentMode, mode]);
-
-  const renderedMode = holdCurrentMode ? settledMode : mode;
+  const { isCompactViewport, isMobileSidebarClosing } = useSidebar();
+  const holdCurrentMode = isCompactViewport && isMobileSidebarClosing;
+  const [lastVisibleMode, setLastVisibleMode] = useState(mode);
+  if (!holdCurrentMode && lastVisibleMode !== mode) {
+    // React restarts this render before committing, so the next deferred close
+    // can retain the current mode without an effect and its follow-up commit.
+    setLastVisibleMode(mode);
+  }
+  const renderedMode = holdCurrentMode ? lastVisibleMode : mode;
 
   if (renderedMode === "settings") {
     return (
