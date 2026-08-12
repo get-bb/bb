@@ -137,3 +137,9 @@ A moved head does not invalidate everything a reviewer verified. Serial full re-
 The `fs-ready-queue-watchdog` script automation runs [`ready-queue-watchdog.mjs`](./ready-queue-watchdog.mjs) every 5 minutes. It computes dependency-ready, cluster-free, lowest-sequence candidates from the manifest plus live Tasks state and queues a nudge to the coordinator thread when undispatched candidates exist (re-nudging at most every 30 minutes for an unchanged set).
 
 It is advisory only: it never dispatches, never selects presets, and never changes the lane cap — §2–§4 remain the coordinator's job. It requires no bb modification (per `ADR — bb Is Not Modified.md`; it is a stock automations-plugin script). If coordination moves to a different thread, update the automation's `BB_COORDINATOR_THREAD` env value.
+
+Semantics worth knowing:
+
+- **Omitted dependencies count as satisfied.** The manifest deliberately omits the completed L0 packages (WP01, WP03–WP07) while still naming them as dependencies; requiring board-`done` for them would permanently hide 24 of 64 remaining packages. `ready-queue-watchdog.test.mjs` pins this behavior.
+- **Prohibited packages are excluded.** The automation sets `FS_WATCHDOG_EXCLUDE=WP02` (dispatch prohibited by `ADR — bb Is Not Modified.md`); the script also honors an optional `dispatchPolicy.prohibitedWorkPackages` manifest array if one is added.
+- **Dedup state** lives in the automation's working directory (the automations plugin data dir) or `FS_WATCHDOG_STATE_DIR` when set; an unchanged ready set re-nudges at most every 30 minutes.
