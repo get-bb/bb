@@ -2,6 +2,32 @@ import type { BbPluginApi } from "@bb/plugin-sdk";
 import type Database from "better-sqlite3";
 import { MIGRATIONS } from "./schema.js";
 
+export const PROJECT_LEVEL_VERSION_ID = "@project" as const;
+
+export function toStorageProjectVersionId(
+  projectVersionId: string | null,
+): string {
+  if (projectVersionId === null) return PROJECT_LEVEL_VERSION_ID;
+  if (projectVersionId.length === 0) {
+    throw new Error("projectVersionId must be non-empty or null");
+  }
+  if (projectVersionId === PROJECT_LEVEL_VERSION_ID) {
+    throw new Error("@project is reserved for backend storage");
+  }
+  return projectVersionId;
+}
+
+export function fromStorageProjectVersionId(
+  projectVersionId: string,
+): string | null {
+  if (projectVersionId.length === 0) {
+    throw new Error("stored project_version_id must be non-empty");
+  }
+  return projectVersionId === PROJECT_LEVEL_VERSION_ID
+    ? null
+    : projectVersionId;
+}
+
 export interface Store {
   readonly db: Database.Database;
   tx<T>(fn: () => T): T;
@@ -31,27 +57,54 @@ export function openStore(bb: BbPluginApi): Store {
   return store;
 }
 
+export interface PullGenerationRow {
+  project_id: string;
+  project_version_id: string;
+  generation_id: string;
+  status: "staging" | "accepted" | "superseded" | "failed" | "cancelled";
+  requested_kinds_json: string;
+  started_at: string;
+  completed_at: string | null;
+  accepted_at: string | null;
+  error: string | null;
+}
+
 export interface SyncStateRow {
+  project_id: string;
+  project_version_id: string;
   entity_kind: string;
-  scope: string;
+  accepted_generation_id: string | null;
+  staging_generation_id: string | null;
+  base_revision: number;
+  staging_continuation: string | null;
+  staged_pages: number;
+  staged_rows: number;
   last_pull: string | null;
-  cursor: string | null;
   error: string | null;
 }
 
 export interface PushLogRow {
+  project_id: string;
+  project_version_id: string;
   id: number;
   run_id: string;
+  base_generation_id: string;
+  base_revision: number;
+  expected_base_content_hash: string | null;
   entity_kind: string;
   entity_key: string;
   op: "create" | "update" | "delete" | "noop" | "conflict";
   status: "pending" | "applied" | "failed" | "skipped";
   error: string | null;
+  created_at: string;
   applied_at: string | null;
 }
 
 export interface BaseSnapshotRow {
+  project_id: string;
+  project_version_id: string;
   entity_kind: string;
+  generation_id: string;
   entity_key: string;
   remote_id: string | null;
   payload: string;
@@ -60,13 +113,19 @@ export interface BaseSnapshotRow {
 }
 
 export interface IdMapRow {
+  project_id: string;
+  project_version_id: string;
   entity_kind: string;
+  generation_id: string;
   entity_key: string;
   remote_id: string;
+  pulled_at: string;
 }
 
 export interface EntityReviewStateRow {
   project_id: string;
+  project_version_id: string;
+  generation_id: string;
   entity_kind: string;
   entity_key: string;
   remote_id: string;
@@ -76,9 +135,10 @@ export interface EntityReviewStateRow {
 }
 
 export interface FindingRow {
-  finding_id: string;
   project_id: string;
   project_version_id: string;
+  generation_id: string;
+  finding_id: string;
   stable_key: string;
   finding_type: string | null;
   cve: string | null;
@@ -118,14 +178,18 @@ export interface FindingRow {
 }
 
 export interface FindingCweRow {
+  project_id: string;
   project_version_id: string;
+  generation_id: string;
   finding_id: string;
   cwe: string;
   pulled_at: string;
 }
 
 export interface FindingActivityRow {
+  project_id: string;
   project_version_id: string;
+  generation_id: string;
   finding_id: string;
   event_id: string;
   stable_key: string;
@@ -139,8 +203,9 @@ export interface FindingActivityRow {
 }
 
 export interface OverlayIndexRow {
+  project_id: string;
+  project_version_id: string;
   entity_kind: string;
-  project_key: string;
   stable_key: string;
   component_key: string | null;
   cve: string | null;
@@ -178,9 +243,9 @@ export interface OverlayIndexRow {
 }
 
 export interface TriageRunRow {
-  run_id: string;
   project_id: string;
-  project_version_id: string | null;
+  project_version_id: string;
+  run_id: string;
   source: "manual" | "policy" | "vendor_import" | "drift";
   dry_run: 0 | 1;
   status: "running" | "completed" | "partial" | "failed";
@@ -196,8 +261,9 @@ export interface TriageRunRow {
 }
 
 export interface SbomComponentRow {
-  project_version_id: string;
   project_id: string;
+  project_version_id: string;
+  generation_id: string;
   component_id: string;
   component_key: string;
   purl: string | null;
@@ -215,7 +281,9 @@ export interface SbomComponentRow {
 }
 
 export interface SbomVulnRollupRow {
+  project_id: string;
   project_version_id: string;
+  generation_id: string;
   component_key: string;
   critical: number;
   high: number;
@@ -228,7 +296,8 @@ export interface SbomVulnRollupRow {
 }
 
 export interface HbomCellRow {
-  project_key: string;
+  project_id: string;
+  project_version_id: string;
   part_key: string;
   field: string;
   value: string | null;
@@ -246,8 +315,9 @@ export interface HbomCellRow {
 }
 
 export interface HbomCandidateRow {
+  project_id: string;
+  project_version_id: string;
   candidate_id: string;
-  project_key: string;
   part_key: string;
   field: string;
   value: string | null;
@@ -261,6 +331,9 @@ export interface HbomCandidateRow {
 }
 
 export interface StandardRow {
+  project_id: string;
+  project_version_id: string;
+  generation_id: string;
   standard_id: string;
   code: string;
   name: string;
@@ -272,6 +345,9 @@ export interface StandardRow {
 }
 
 export interface StandardsClauseRow {
+  project_id: string;
+  project_version_id: string;
+  generation_id: string;
   standard_id: string;
   clause_id: string;
   clause_code: string;
@@ -286,8 +362,10 @@ export interface StandardsClauseRow {
 }
 
 export interface MethodologyProfileRow {
+  project_id: string;
+  project_version_id: string;
+  generation_id: string;
   profile_id: string;
-  project_id: string | null;
   organization_id: string | null;
   scope: string;
   name: string;
@@ -304,6 +382,8 @@ export interface MethodologyProfileRow {
 
 export interface AttackPathRow {
   project_id: string;
+  project_version_id: string;
+  generation_id: string;
   path_id: string;
   route_signature: string;
   name: string | null;
@@ -320,8 +400,10 @@ export interface AttackPathRow {
 }
 
 export interface VerificationCheckRow {
+  project_id: string;
+  project_version_id: string;
+  generation_id: string;
   check_id: string;
-  project_id: string | null;
   code: string;
   name: string;
   check_type: string;
@@ -341,6 +423,8 @@ export interface VerificationCheckRow {
 
 export interface RequirementCheckMappingRow {
   project_id: string;
+  project_version_id: string;
+  generation_id: string;
   requirement_key: string;
   check_id: string;
   is_required: 0 | 1;
@@ -352,6 +436,8 @@ export interface RequirementCheckMappingRow {
 
 export interface RequirementRollupRow {
   project_id: string;
+  project_version_id: string;
+  generation_id: string;
   requirement_key: string;
   verification_status: string | null;
   total_checks: number;
@@ -367,9 +453,10 @@ export interface RequirementRollupRow {
 }
 
 export interface VerificationRunRow {
-  run_id: string;
   project_id: string;
-  pv_id: string | null;
+  project_version_id: string;
+  generation_id: string;
+  run_id: string;
   tier: "tier0" | "tier1" | "tier2" | "tier3" | "tier4";
   matrix_col: "static" | "emulation" | "hil" | "manual";
   kind: string;
@@ -391,10 +478,11 @@ export interface VerificationRunRow {
 }
 
 export interface VerificationResultRow {
+  project_id: string;
+  project_version_id: string;
+  generation_id: string;
   result_id: string;
   run_id: string | null;
-  project_id: string;
-  pv_id: string | null;
   requirement_key: string | null;
   check_id: string | null;
   tier: "static" | "emulation" | "hil" | "manual";
@@ -426,6 +514,9 @@ export interface VerificationResultRow {
 }
 
 export interface VerificationArtifactRow {
+  project_id: string;
+  project_version_id: string;
+  generation_id: string;
   artifact_id: string;
   run_id: string;
   result_id: string | null;
@@ -440,6 +531,9 @@ export interface VerificationArtifactRow {
 }
 
 export interface AttestationRow {
+  project_id: string;
+  project_version_id: string;
+  generation_id: string;
   attestation_id: string;
   run_id: string;
   format: string;
@@ -462,8 +556,9 @@ export interface AttestationRow {
 }
 
 export interface FirmwareMountRow {
-  pv_id: string;
-  project_id: string | null;
+  project_id: string;
+  project_version_id: string;
+  generation_id: string;
   source: "api" | "standalone_unpack";
   state:
     | "not_materialized"
@@ -490,8 +585,9 @@ export interface FirmwareMountRow {
 }
 
 export interface DocumentRow {
+  project_id: string;
+  project_version_id: string;
   document_id: string;
-  project_key: string;
   sha256: string;
   name: string;
   path: string;
@@ -515,6 +611,8 @@ export interface DocumentRow {
 }
 
 export interface DocumentExtractionRow {
+  project_id: string;
+  project_version_id: string;
   extraction_id: string;
   document_id: string;
   field: string;
@@ -538,8 +636,9 @@ export interface DocumentExtractionRow {
 }
 
 export interface HbomDocRow {
+  project_id: string;
+  project_version_id: string;
   document_id: string;
-  project_key: string;
   sha256: string;
   name: string;
   path: string;

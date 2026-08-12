@@ -267,7 +267,7 @@ Five early artifacts allow parallel implementation:
 | Contract | Purpose |
 |---|---|
 | `shared/contract.ts` | All 65 frontend/backend RPC method contracts |
-| `lib/store/schema.ts` | Shared database: 28 tables, one view, and 46 explicit indexes |
+| `lib/store/schema.ts` | Shared database: named inventory of 29 tables, one view, and 48 explicit indexes |
 | `lib/sync/registry.ts` | Entity classes, storage locations, stable keys, and remote-sync eligibility |
 | `lib/remote/types.ts` | Closed `PlatformClient`, `AssuranceStudioClient`, and nullable `ForgeComputeClient` contracts |
 | `test/mock-remote/fixtures/**` | Deterministic per-service corpus shared by every lane and E2E test |

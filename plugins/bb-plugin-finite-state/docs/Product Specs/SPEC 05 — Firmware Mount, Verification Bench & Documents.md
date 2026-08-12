@@ -390,32 +390,45 @@ CREATE TABLE bench_attestation (     -- the in-toto/SLSA evidence, bound to the 
 ### C12.1 Data model (`data.db`)
 
 ```sql
-CREATE TABLE document (             -- the SINGLE document ledger for the plugin (SPEC 06 §2.6 ⚑12);
-                                    -- SPEC 04's hbom_docs is a filtered view over it
-  id           TEXT PRIMARY KEY,    -- AS document id, or local uuid until pushed
-  project_key  TEXT NOT NULL,
-  filename     TEXT NOT NULL,
-  doc_type     TEXT,                -- AS enum + datasheet|bom (pending enum extension)
-  doc_kind     TEXT,                -- ingestion kind: datasheet|bom|schematic|… (drives the hbom_docs view)
-  sha256       TEXT NOT NULL,
-  size         INTEGER,
-  local_path   TEXT,               -- product-security/documents/<sha>-<name>
-  as_document_id TEXT,             -- set when pushed to AS
-  uploaded_at  TEXT,
-  analyzed_at  TEXT, analyzed_by TEXT, cells_extracted INTEGER,
-  synced_at    TEXT NOT NULL
+CREATE TABLE document (             -- the SINGLE scoped ledger; WP-04 is frozen authority
+  project_id         TEXT NOT NULL,
+  project_version_id TEXT NOT NULL, -- backend @project sentinel only; wire null never the literal
+  document_id        TEXT NOT NULL,
+  sha256             TEXT NOT NULL,
+  name               TEXT NOT NULL,
+  path               TEXT NOT NULL,
+  doc_kind           TEXT NOT NULL,
+  mime_type          TEXT NOT NULL,
+  bytes              INTEGER NOT NULL,
+  withdrawn          INTEGER NOT NULL DEFAULT 0,
+  needs_ocr          INTEGER NOT NULL DEFAULT 0,
+  uploaded_at        TEXT NOT NULL,
+  analyzed_by        TEXT,
+  analyzed_at        TEXT,
+  cells_extracted    INTEGER NOT NULL DEFAULT 0,
+  indexed_at         TEXT NOT NULL,
+  PRIMARY KEY (project_id, project_version_id, document_id),
+  UNIQUE (project_id, project_version_id, sha256)
 );
 CREATE TABLE document_extraction (  -- the overlay + the provenance ledger
-  id          TEXT PRIMARY KEY,
-  document_id TEXT NOT NULL REFERENCES document(id),
-  field       TEXT NOT NULL,        -- mpn | manufacturer | package | reg:GPIO_DIR | clause:annex1-2c
-  value       TEXT,
-  page        INTEGER, region TEXT, -- source_ref = page + bbox
-  confidence  REAL,                 -- numeric 0–1 (SPEC 04 §4.3 model; high|medium|low bands are display-only)
-  target      TEXT,                 -- hbom:HBOM-0001.mpn | req:REQ-104.rationale | null
-  extracted_at TEXT
+  project_id         TEXT NOT NULL,
+  project_version_id TEXT NOT NULL,
+  extraction_id      TEXT NOT NULL,
+  document_id        TEXT NOT NULL,
+  field              TEXT NOT NULL,
+  value              TEXT,
+  confidence         REAL,
+  source_ref         TEXT NOT NULL,
+  locator_kind       TEXT NOT NULL, -- pdf | sheet | text; typed locator columns follow
+  status             TEXT NOT NULL,
+  extracted_at       TEXT NOT NULL,
+  PRIMARY KEY (project_id, project_version_id, extraction_id),
+  FOREIGN KEY (project_id, project_version_id, document_id)
+    REFERENCES document(project_id, project_version_id, document_id) ON DELETE CASCADE
 );
 ```
+
+WP-04 defines the remaining typed locator/target columns and all constraints/indexes. No lane may replace this with an unscoped digest lookup or another document ledger.
 
 ## C13. How documents feed the other surfaces
 

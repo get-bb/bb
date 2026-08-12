@@ -5,6 +5,91 @@
 
 export const SCHEMA_VERSION = 1 as const;
 
+export const SCHEMA_TABLES = [
+  "pull_generation",
+  "sync_state",
+  "push_log",
+  "base_snapshot",
+  "id_map",
+  "entity_review_state",
+  "findings",
+  "finding_cwes",
+  "finding_activity",
+  "overlay_index",
+  "triage_runs",
+  "sbom_components",
+  "sbom_vuln_rollup",
+  "hbom_cells",
+  "hbom_candidates",
+  "standards",
+  "standards_clauses",
+  "methodology_profiles",
+  "attack_paths",
+  "verification_checks",
+  "requirement_check_mappings",
+  "requirement_rollup",
+  "verification_runs",
+  "verification_results",
+  "verification_artifacts",
+  "attestations",
+  "firmware_mounts",
+  "document",
+  "document_extraction",
+] as const;
+
+export const SCHEMA_INDEXES = [
+  "ix_pull_generation_status",
+  "ix_sync_state_generation",
+  "ix_push_log_run",
+  "ix_entity_review_state_status",
+  "ix_findings_page",
+  "ix_findings_stable",
+  "ix_findings_cve",
+  "ix_findings_component",
+  "ix_findings_risk",
+  "ix_findings_epss",
+  "ix_findings_kev",
+  "ix_findings_reachability",
+  "ix_findings_policy_dataset",
+  "ix_findings_policy_band",
+  "ix_findings_policy_flags",
+  "ix_findings_type",
+  "ix_finding_cwes_selector",
+  "ix_finding_activity_stable",
+  "ix_overlay_project_state",
+  "ix_overlay_policy_flag",
+  "ix_overlay_file",
+  "ix_triage_runs_scope",
+  "ix_sbom_key",
+  "ix_sbom_purl",
+  "ix_sbom_name",
+  "ix_hbom_review",
+  "ix_hbom_candidates_review",
+  "ix_hbom_candidates_source",
+  "ix_standards_code",
+  "ix_standard_clauses_path",
+  "ix_methodology_project",
+  "ix_attack_paths_threat",
+  "ix_verification_checks_code",
+  "ix_req_check_check",
+  "ix_verification_runs_recent",
+  "ix_verification_runs_host",
+  "ix_verification_runs_job",
+  "ix_verification_results_matrix",
+  "ix_verification_results_check",
+  "ix_verification_results_run",
+  "ix_verification_artifacts_run",
+  "ix_attestations_run",
+  "ix_attestations_subject",
+  "ix_firmware_mounts_state",
+  "ix_document_list",
+  "ix_document_extraction_source",
+  "ix_document_extraction_target",
+  "ix_document_extraction_search",
+] as const;
+
+export const SCHEMA_VIEWS = ["hbom_docs"] as const;
+
 export const CACHE_STORAGE_NAMES = [
   "findings",
   "sbom_components",
@@ -18,69 +103,123 @@ export const CACHE_STORAGE_NAMES = [
 ] as const;
 
 export const MIGRATIONS: string[] = [
-  // ── shared bookkeeping ───────────────────────────────────────────────────
-  `CREATE TABLE IF NOT EXISTS sync_state (
-     entity_kind TEXT NOT NULL,
-     scope       TEXT NOT NULL,
-     last_pull   TEXT,
-     cursor      TEXT,
-     error       TEXT,
-     PRIMARY KEY (entity_kind, scope)
+  // ── shared bookkeeping + atomic pull publication ─────────────────────────
+  // Pull execution control only; never semantic or authored model state.
+  `CREATE TABLE pull_generation (
+     project_id           TEXT NOT NULL,
+     project_version_id   TEXT NOT NULL,
+     generation_id        TEXT NOT NULL,
+     status               TEXT NOT NULL CHECK (status IN ('staging','accepted','superseded','failed','cancelled')),
+     requested_kinds_json TEXT NOT NULL,
+     started_at           TEXT NOT NULL,
+     completed_at         TEXT,
+     accepted_at          TEXT,
+     error                TEXT,
+     PRIMARY KEY (project_id, project_version_id, generation_id)
+   )`,
+  `CREATE INDEX IF NOT EXISTS ix_pull_generation_status ON pull_generation (project_id, project_version_id, status, started_at DESC, generation_id)`,
+
+  // Per-kind publication pointers and stale-plan revision fence; never model state.
+  `CREATE TABLE sync_state (
+     project_id              TEXT NOT NULL,
+     project_version_id      TEXT NOT NULL,
+     entity_kind             TEXT NOT NULL,
+     accepted_generation_id  TEXT,
+     staging_generation_id   TEXT,
+     base_revision           INTEGER NOT NULL DEFAULT 0 CHECK (base_revision >= 0),
+     staging_continuation    TEXT,
+     staged_pages            INTEGER NOT NULL DEFAULT 0 CHECK (staged_pages >= 0),
+     staged_rows             INTEGER NOT NULL DEFAULT 0 CHECK (staged_rows >= 0),
+     last_pull               TEXT,
+     error                   TEXT,
+     PRIMARY KEY (project_id, project_version_id, entity_kind),
+     FOREIGN KEY (project_id, project_version_id, accepted_generation_id)
+       REFERENCES pull_generation(project_id, project_version_id, generation_id),
+     FOREIGN KEY (project_id, project_version_id, staging_generation_id)
+       REFERENCES pull_generation(project_id, project_version_id, generation_id)
+   )`,
+  `CREATE INDEX IF NOT EXISTS ix_sync_state_generation ON sync_state (project_id, project_version_id, accepted_generation_id, staging_generation_id, entity_kind)`,
+
+  // Durable, resumable per-entity apply journal; never authored model state.
+  `CREATE TABLE push_log (
+     project_id                TEXT NOT NULL,
+     project_version_id        TEXT NOT NULL,
+     id                        INTEGER NOT NULL,
+     run_id                    TEXT NOT NULL,
+     base_generation_id        TEXT NOT NULL,
+     base_revision             INTEGER NOT NULL CHECK (base_revision >= 0),
+     expected_base_content_hash TEXT,
+     entity_kind               TEXT NOT NULL,
+     entity_key                TEXT NOT NULL,
+     op                        TEXT NOT NULL CHECK (op IN ('create','update','delete','noop','conflict')),
+     status                    TEXT NOT NULL CHECK (status IN ('pending','applied','failed','skipped')),
+     error                     TEXT,
+     created_at                TEXT NOT NULL,
+     applied_at                TEXT,
+     PRIMARY KEY (project_id, project_version_id, id),
+     UNIQUE (project_id, project_version_id, run_id, entity_kind, entity_key),
+     FOREIGN KEY (project_id, project_version_id, base_generation_id)
+       REFERENCES pull_generation(project_id, project_version_id, generation_id)
+   )`,
+  `CREATE INDEX IF NOT EXISTS ix_push_log_run ON push_log (project_id, project_version_id, run_id, status, id)`,
+
+  // ── sync engine + review tokens ─────────────────────────────────────
+  // Immutable semantic base rows for one pull generation; gitignored machinery.
+  `CREATE TABLE base_snapshot (
+     project_id         TEXT NOT NULL,
+     project_version_id TEXT NOT NULL,
+     entity_kind        TEXT NOT NULL,
+     generation_id      TEXT NOT NULL,
+     entity_key         TEXT NOT NULL,
+     remote_id          TEXT,
+     payload            TEXT NOT NULL,
+     content_hash       TEXT NOT NULL,
+     pulled_at          TEXT NOT NULL,
+     PRIMARY KEY (project_id, project_version_id, entity_kind, generation_id, entity_key),
+     FOREIGN KEY (project_id, project_version_id, generation_id)
+       REFERENCES pull_generation(project_id, project_version_id, generation_id) ON DELETE CASCADE
    )`,
 
-  // Execution journal for resumable remote applies; never authored model state.
-  `CREATE TABLE IF NOT EXISTS push_log (
-     id          INTEGER PRIMARY KEY,
-     run_id      TEXT NOT NULL,
-     entity_kind TEXT NOT NULL,
-     entity_key  TEXT NOT NULL,
-     op          TEXT NOT NULL CHECK (op IN ('create','update','delete','noop','conflict')),
-     status      TEXT NOT NULL CHECK (status IN ('pending','applied','failed','skipped')),
-     error       TEXT,
-     applied_at  TEXT,
-     UNIQUE (run_id, entity_kind, entity_key)
-   )`,
-  `CREATE INDEX IF NOT EXISTS ix_push_log_run ON push_log (run_id, status, id)`,
-
-  // ── sync engine ──────────────────────────────────────────────────────────
-  `CREATE TABLE IF NOT EXISTS base_snapshot (
-     entity_kind  TEXT NOT NULL,
-     entity_key   TEXT NOT NULL,
-     remote_id    TEXT,
-     payload      TEXT NOT NULL,
-     content_hash TEXT NOT NULL,
-     pulled_at    TEXT NOT NULL,
-     PRIMARY KEY (entity_kind, entity_key)
-   )`,
-
-  `CREATE TABLE IF NOT EXISTS id_map (
-     entity_kind TEXT NOT NULL,
-     entity_key  TEXT NOT NULL,
-     remote_id   TEXT NOT NULL,
-     PRIMARY KEY (entity_kind, entity_key),
-     UNIQUE (entity_kind, remote_id)
+  // Generation-scoped business-key/remote-id cache; never authored identity truth.
+  `CREATE TABLE id_map (
+     project_id         TEXT NOT NULL,
+     project_version_id TEXT NOT NULL,
+     entity_kind        TEXT NOT NULL,
+     generation_id      TEXT NOT NULL,
+     entity_key         TEXT NOT NULL,
+     remote_id          TEXT NOT NULL,
+     pulled_at          TEXT NOT NULL,
+     PRIMARY KEY (project_id, project_version_id, entity_kind, generation_id, entity_key),
+     UNIQUE (project_id, project_version_id, entity_kind, generation_id, remote_id),
+     FOREIGN KEY (project_id, project_version_id, generation_id)
+       REFERENCES pull_generation(project_id, project_version_id, generation_id) ON DELETE CASCADE
    )`,
 
   // Server-owned lifecycle cache, separate from semantic base snapshots/YAML.
-  `CREATE TABLE IF NOT EXISTS entity_review_state (
-     project_id     TEXT NOT NULL,
-     entity_kind    TEXT NOT NULL,
-     entity_key     TEXT NOT NULL,
-     remote_id      TEXT NOT NULL,
-     review_status  TEXT,
-     review_version TEXT NOT NULL,
-     pulled_at      TEXT NOT NULL,
-     PRIMARY KEY (project_id, entity_kind, entity_key),
-     UNIQUE (project_id, entity_kind, remote_id)
+  `CREATE TABLE entity_review_state (
+     project_id         TEXT NOT NULL,
+     project_version_id TEXT NOT NULL,
+     generation_id      TEXT NOT NULL,
+     entity_kind        TEXT NOT NULL,
+     entity_key         TEXT NOT NULL,
+     remote_id          TEXT NOT NULL,
+     review_status      TEXT,
+     review_version     TEXT NOT NULL,
+     pulled_at          TEXT NOT NULL,
+     PRIMARY KEY (project_id, project_version_id, generation_id, entity_kind, entity_key),
+     UNIQUE (project_id, project_version_id, generation_id, entity_kind, remote_id),
+     FOREIGN KEY (project_id, project_version_id, generation_id)
+       REFERENCES pull_generation(project_id, project_version_id, generation_id) ON DELETE CASCADE
    )`,
-  `CREATE INDEX IF NOT EXISTS ix_entity_review_state_status ON entity_review_state (project_id, entity_kind, review_status, entity_key)`,
+  `CREATE INDEX IF NOT EXISTS ix_entity_review_state_status ON entity_review_state (project_id, project_version_id, generation_id, entity_kind, review_status, entity_key)`,
 
-  // ── findings + local triage projections ──────────────────────────────────
+  // ── findings + local triage projections ────────────────────────────
   // Upstream findings cache; canonical authored VEX decisions live in tracked YAML.
-  `CREATE TABLE IF NOT EXISTS findings (
-     finding_id           TEXT NOT NULL,
+  `CREATE TABLE findings (
      project_id           TEXT NOT NULL,
      project_version_id   TEXT NOT NULL,
+     generation_id        TEXT NOT NULL,
+     finding_id           TEXT NOT NULL,
      stable_key           TEXT NOT NULL,
      finding_type         TEXT,
      cve                  TEXT,
@@ -117,36 +256,42 @@ export const MIGRATIONS: string[] = [
      soft_deleted         INTEGER NOT NULL DEFAULT 0 CHECK (soft_deleted IN (0,1)),
      raw                  TEXT NOT NULL,
      pulled_at            TEXT NOT NULL,
-     PRIMARY KEY (project_version_id, finding_id)
+     PRIMARY KEY (project_id, project_version_id, generation_id, finding_id),
+     FOREIGN KEY (project_id, project_version_id, generation_id)
+       REFERENCES pull_generation(project_id, project_version_id, generation_id) ON DELETE CASCADE
    )`,
-  `CREATE INDEX IF NOT EXISTS ix_findings_page ON findings (project_version_id, severity, finding_id)`,
-  `CREATE INDEX IF NOT EXISTS ix_findings_stable ON findings (project_version_id, stable_key, finding_id)`,
-  `CREATE INDEX IF NOT EXISTS ix_findings_cve ON findings (project_version_id, cve, finding_id)`,
-  `CREATE INDEX IF NOT EXISTS ix_findings_component ON findings (project_version_id, component_name COLLATE NOCASE, component_group COLLATE NOCASE, component_version, finding_id)`,
-  `CREATE INDEX IF NOT EXISTS ix_findings_risk ON findings (project_version_id, risk_score DESC, finding_id)`,
-  `CREATE INDEX IF NOT EXISTS ix_findings_epss ON findings (project_version_id, epss_score DESC, finding_id)`,
-  `CREATE INDEX IF NOT EXISTS ix_findings_kev ON findings (project_version_id, in_kev, in_vc_kev, finding_id)`,
-  `CREATE INDEX IF NOT EXISTS ix_findings_reachability ON findings (project_version_id, reachability_score, finding_id)`,
-  `CREATE INDEX IF NOT EXISTS ix_findings_policy_dataset ON findings (project_version_id, vuln_in_dataset, reachability_score, finding_id)`,
-  `CREATE INDEX IF NOT EXISTS ix_findings_policy_band ON findings (project_version_id, band, finding_id)`,
-  `CREATE INDEX IF NOT EXISTS ix_findings_policy_flags ON findings (project_version_id, violation_count, warning_count, finding_id)`,
-  `CREATE INDEX IF NOT EXISTS ix_findings_type ON findings (project_version_id, finding_type, finding_id)`,
+  `CREATE INDEX IF NOT EXISTS ix_findings_page ON findings (project_id, project_version_id, generation_id, severity, finding_id)`,
+  `CREATE INDEX IF NOT EXISTS ix_findings_stable ON findings (project_id, project_version_id, generation_id, stable_key, finding_id)`,
+  `CREATE INDEX IF NOT EXISTS ix_findings_cve ON findings (project_id, project_version_id, generation_id, cve, finding_id)`,
+  `CREATE INDEX IF NOT EXISTS ix_findings_component ON findings (project_id, project_version_id, generation_id, component_name COLLATE NOCASE, component_group COLLATE NOCASE, component_version, finding_id)`,
+  `CREATE INDEX IF NOT EXISTS ix_findings_risk ON findings (project_id, project_version_id, generation_id, risk_score DESC, finding_id)`,
+  `CREATE INDEX IF NOT EXISTS ix_findings_epss ON findings (project_id, project_version_id, generation_id, epss_score DESC, finding_id)`,
+  `CREATE INDEX IF NOT EXISTS ix_findings_kev ON findings (project_id, project_version_id, generation_id, in_kev, in_vc_kev, finding_id)`,
+  `CREATE INDEX IF NOT EXISTS ix_findings_reachability ON findings (project_id, project_version_id, generation_id, reachability_score, finding_id)`,
+  `CREATE INDEX IF NOT EXISTS ix_findings_policy_dataset ON findings (project_id, project_version_id, generation_id, vuln_in_dataset, reachability_score, finding_id)`,
+  `CREATE INDEX IF NOT EXISTS ix_findings_policy_band ON findings (project_id, project_version_id, generation_id, band, finding_id)`,
+  `CREATE INDEX IF NOT EXISTS ix_findings_policy_flags ON findings (project_id, project_version_id, generation_id, violation_count, warning_count, finding_id)`,
+  `CREATE INDEX IF NOT EXISTS ix_findings_type ON findings (project_id, project_version_id, generation_id, finding_type, finding_id)`,
 
-  // Normalized, rebuildable membership index over findings.cwes JSON.
-  `CREATE TABLE IF NOT EXISTS finding_cwes (
+  // Rebuildable normalized membership index over findings.cwes JSON.
+  `CREATE TABLE finding_cwes (
+     project_id         TEXT NOT NULL,
      project_version_id TEXT NOT NULL,
+     generation_id      TEXT NOT NULL,
      finding_id         TEXT NOT NULL,
      cwe                TEXT NOT NULL,
      pulled_at          TEXT NOT NULL,
-     PRIMARY KEY (project_version_id, finding_id, cwe),
-     FOREIGN KEY (project_version_id, finding_id)
-       REFERENCES findings(project_version_id, finding_id) ON DELETE CASCADE
+     PRIMARY KEY (project_id, project_version_id, generation_id, finding_id, cwe),
+     FOREIGN KEY (project_id, project_version_id, generation_id, finding_id)
+       REFERENCES findings(project_id, project_version_id, generation_id, finding_id) ON DELETE CASCADE
    )`,
-  `CREATE INDEX IF NOT EXISTS ix_finding_cwes_selector ON finding_cwes (project_version_id, cwe, finding_id)`,
+  `CREATE INDEX IF NOT EXISTS ix_finding_cwes_selector ON finding_cwes (project_id, project_version_id, generation_id, cwe, finding_id)`,
 
-  // Cached, paged upstream VEX/audit activity. Never authored or replayed as model state.
-  `CREATE TABLE IF NOT EXISTS finding_activity (
+  // Cached upstream VEX/audit activity; never authored or replayed as model state.
+  `CREATE TABLE finding_activity (
+     project_id         TEXT NOT NULL,
      project_version_id TEXT NOT NULL,
+     generation_id      TEXT NOT NULL,
      finding_id         TEXT NOT NULL,
      event_id           TEXT NOT NULL,
      stable_key         TEXT NOT NULL,
@@ -157,48 +302,49 @@ export const MIGRATIONS: string[] = [
      new_tuple          TEXT,
      raw                TEXT NOT NULL,
      pulled_at          TEXT NOT NULL,
-     PRIMARY KEY (project_version_id, finding_id, event_id),
-     FOREIGN KEY (project_version_id, finding_id)
-       REFERENCES findings(project_version_id, finding_id) ON DELETE CASCADE
+     PRIMARY KEY (project_id, project_version_id, generation_id, finding_id, event_id),
+     FOREIGN KEY (project_id, project_version_id, generation_id, finding_id)
+       REFERENCES findings(project_id, project_version_id, generation_id, finding_id) ON DELETE CASCADE
    )`,
-  `CREATE INDEX IF NOT EXISTS ix_finding_activity_stable ON finding_activity (project_version_id, stable_key, event_at DESC, event_id)`,
+  `CREATE INDEX IF NOT EXISTS ix_finding_activity_stable ON finding_activity (project_id, project_version_id, generation_id, stable_key, event_at DESC, event_id)`,
 
   // Rebuildable projection of .fs/triage YAML. Never authoritative.
-  `CREATE TABLE IF NOT EXISTS overlay_index (
-     entity_kind        TEXT NOT NULL,
-     project_key        TEXT NOT NULL,
-     stable_key         TEXT NOT NULL,
-     component_key      TEXT,
-     cve                TEXT,
-     file_path          TEXT NOT NULL,
-     file_sha256        TEXT NOT NULL,
-     vex_status         TEXT,
-     vex_response       TEXT,
-     vex_justification  TEXT,
-     vex_reason         TEXT,
-     pin                TEXT CHECK (pin IS NULL OR pin IN ('exact_version','any_version')),
-     provenance_by      TEXT,
-     provenance_at      TEXT,
-     evidence           TEXT,
-     sync_base          TEXT,
-     pushed_at          TEXT,
-     local_state        TEXT NOT NULL CHECK (local_state IN ('dirty','pushed','conflict','stale','orphaned','needs_completion')),
-     drift_state        TEXT CHECK (drift_state IS NULL OR drift_state IN ('reattached_noop','reapply','stale','orphaned','conflict','needs_completion')),
-     match_tier         TEXT CHECK (match_tier IS NULL OR match_tier IN ('purl','nvg','ng')),
-     policy_warning_count   INTEGER NOT NULL DEFAULT 0 CHECK (policy_warning_count >= 0),
-     policy_violation_count INTEGER NOT NULL DEFAULT 0 CHECK (policy_violation_count >= 0),
-     indexed_at         TEXT NOT NULL,
-     PRIMARY KEY (entity_kind, stable_key)
+  `CREATE TABLE overlay_index (
+     project_id               TEXT NOT NULL,
+     project_version_id       TEXT NOT NULL,
+     entity_kind              TEXT NOT NULL,
+     stable_key               TEXT NOT NULL,
+     component_key            TEXT,
+     cve                      TEXT,
+     file_path                TEXT NOT NULL,
+     file_sha256              TEXT NOT NULL,
+     vex_status               TEXT,
+     vex_response             TEXT,
+     vex_justification        TEXT,
+     vex_reason               TEXT,
+     pin                      TEXT CHECK (pin IS NULL OR pin IN ('exact_version','any_version')),
+     provenance_by            TEXT,
+     provenance_at            TEXT,
+     evidence                 TEXT,
+     sync_base                TEXT,
+     pushed_at                TEXT,
+     local_state              TEXT NOT NULL CHECK (local_state IN ('dirty','pushed','conflict','stale','orphaned','needs_completion')),
+     drift_state              TEXT CHECK (drift_state IS NULL OR drift_state IN ('reattached_noop','reapply','stale','orphaned','conflict','needs_completion')),
+     match_tier               TEXT CHECK (match_tier IS NULL OR match_tier IN ('purl','nvg','ng')),
+     policy_warning_count     INTEGER NOT NULL DEFAULT 0 CHECK (policy_warning_count >= 0),
+     policy_violation_count   INTEGER NOT NULL DEFAULT 0 CHECK (policy_violation_count >= 0),
+     indexed_at               TEXT NOT NULL,
+     PRIMARY KEY (project_id, project_version_id, entity_kind, stable_key)
    )`,
-  `CREATE INDEX IF NOT EXISTS ix_overlay_project_state ON overlay_index (project_key, entity_kind, local_state, drift_state, stable_key)`,
-  `CREATE INDEX IF NOT EXISTS ix_overlay_policy_flag ON overlay_index (project_key, entity_kind, policy_violation_count, policy_warning_count, stable_key)`,
-  `CREATE INDEX IF NOT EXISTS ix_overlay_file ON overlay_index (file_path, stable_key)`,
+  `CREATE INDEX IF NOT EXISTS ix_overlay_project_state ON overlay_index (project_id, project_version_id, entity_kind, local_state, drift_state, stable_key)`,
+  `CREATE INDEX IF NOT EXISTS ix_overlay_policy_flag ON overlay_index (project_id, project_version_id, entity_kind, policy_violation_count, policy_warning_count, stable_key)`,
+  `CREATE INDEX IF NOT EXISTS ix_overlay_file ON overlay_index (project_id, project_version_id, file_path, stable_key)`,
 
-  // Durable execution journal for ::fs-triage-summary and policy/import review.
-  `CREATE TABLE IF NOT EXISTS triage_runs (
-     run_id             TEXT PRIMARY KEY,
+  // Durable execution summary for triage/policy/import review; never a finding dump.
+  `CREATE TABLE triage_runs (
      project_id         TEXT NOT NULL,
-     project_version_id TEXT,
+     project_version_id TEXT NOT NULL,
+     run_id             TEXT NOT NULL,
      source             TEXT NOT NULL CHECK (source IN ('manual','policy','vendor_import','drift')),
      dry_run            INTEGER NOT NULL DEFAULT 0 CHECK (dry_run IN (0,1)),
      status             TEXT NOT NULL CHECK (status IN ('running','completed','partial','failed')),
@@ -210,15 +356,17 @@ export const MIGRATIONS: string[] = [
      errors             INTEGER NOT NULL DEFAULT 0,
      report_json        TEXT NOT NULL,
      created_at         TEXT NOT NULL,
-     finished_at        TEXT
+     finished_at        TEXT,
+     PRIMARY KEY (project_id, project_version_id, run_id)
    )`,
   `CREATE INDEX IF NOT EXISTS ix_triage_runs_scope ON triage_runs (project_id, project_version_id, created_at DESC, run_id)`,
 
-  // ── SBOM ─────────────────────────────────────────────────────────────────
+  // ── SBOM ────────────────────────────────────────────────────────────────
   // Upstream SBOM cache; refresh-only and rebuildable from the selected version.
-  `CREATE TABLE IF NOT EXISTS sbom_components (
-     project_version_id TEXT NOT NULL,
+  `CREATE TABLE sbom_components (
      project_id         TEXT NOT NULL,
+     project_version_id TEXT NOT NULL,
+     generation_id      TEXT NOT NULL,
      component_id       TEXT NOT NULL,
      component_key      TEXT NOT NULL,
      purl               TEXT,
@@ -233,102 +381,124 @@ export const MIGRATIONS: string[] = [
      is_stale           INTEGER NOT NULL DEFAULT 0 CHECK (is_stale IN (0,1)),
      raw                TEXT NOT NULL,
      pulled_at          TEXT NOT NULL,
-     PRIMARY KEY (project_version_id, component_id)
+     PRIMARY KEY (project_id, project_version_id, generation_id, component_id),
+     FOREIGN KEY (project_id, project_version_id, generation_id)
+       REFERENCES pull_generation(project_id, project_version_id, generation_id) ON DELETE CASCADE
    )`,
-  `CREATE INDEX IF NOT EXISTS ix_sbom_key ON sbom_components (project_version_id, component_key, component_id)`,
-  `CREATE INDEX IF NOT EXISTS ix_sbom_purl ON sbom_components (project_id, purl, component_id)`,
-  `CREATE INDEX IF NOT EXISTS ix_sbom_name ON sbom_components (project_version_id, name COLLATE NOCASE, component_group COLLATE NOCASE, version, component_id)`,
+  `CREATE INDEX IF NOT EXISTS ix_sbom_key ON sbom_components (project_id, project_version_id, generation_id, component_key, component_id)`,
+  `CREATE INDEX IF NOT EXISTS ix_sbom_purl ON sbom_components (project_id, project_version_id, generation_id, purl, component_id)`,
+  `CREATE INDEX IF NOT EXISTS ix_sbom_name ON sbom_components (project_id, project_version_id, generation_id, name COLLATE NOCASE, component_group COLLATE NOCASE, version, component_id)`,
 
-  // Derived rollup over cached findings and SBOM identity; safe to recompute.
-  `CREATE TABLE IF NOT EXISTS sbom_vuln_rollup (
-     project_version_id   TEXT NOT NULL,
-     component_key        TEXT NOT NULL,
-     critical             INTEGER NOT NULL DEFAULT 0,
-     high                 INTEGER NOT NULL DEFAULT 0,
-     medium               INTEGER NOT NULL DEFAULT 0,
-     low                  INTEGER NOT NULL DEFAULT 0,
+  // Rebuildable derived rollup over one accepted SBOM/findings generation.
+  `CREATE TABLE sbom_vuln_rollup (
+     project_id            TEXT NOT NULL,
+     project_version_id    TEXT NOT NULL,
+     generation_id         TEXT NOT NULL,
+     component_key         TEXT NOT NULL,
+     critical              INTEGER NOT NULL DEFAULT 0,
+     high                  INTEGER NOT NULL DEFAULT 0,
+     medium                INTEGER NOT NULL DEFAULT 0,
+     low                   INTEGER NOT NULL DEFAULT 0,
      kev_count             INTEGER NOT NULL DEFAULT 0,
      max_epss              REAL,
      reachability_verdict  TEXT NOT NULL,
      computed_at           TEXT NOT NULL,
-     PRIMARY KEY (project_version_id, component_key)
+     PRIMARY KEY (project_id, project_version_id, generation_id, component_key),
+     FOREIGN KEY (project_id, project_version_id, generation_id)
+       REFERENCES pull_generation(project_id, project_version_id, generation_id) ON DELETE CASCADE
    )`,
 
-  // ── HBOM YAML mirrors ────────────────────────────────────────────────────
+  // ── HBOM YAML mirrors ─────────────────────────────────────────────
   // Rebuilt from product-security/hbom/hbom.yaml. The file remains authority.
-  `CREATE TABLE IF NOT EXISTS hbom_cells (
-     project_key   TEXT NOT NULL,
-     part_key      TEXT NOT NULL,
-     field         TEXT NOT NULL,
-     value         TEXT,
-     provenance    TEXT,
-     source_ref    TEXT,
-     confidence    REAL CHECK (confidence IS NULL OR (confidence >= 0 AND confidence <= 1)),
-     asserted_by   TEXT,
-     asserted_at   TEXT,
-     note          TEXT,
-     accepted_by   TEXT,
-     accepted_at   TEXT,
-     state         TEXT NOT NULL CHECK (state IN ('verified','proposal','conflict','unknown','not_applicable')),
-     file_sha256   TEXT NOT NULL,
-     indexed_at    TEXT NOT NULL,
-     PRIMARY KEY (project_key, part_key, field)
+  `CREATE TABLE hbom_cells (
+     project_id         TEXT NOT NULL,
+     project_version_id TEXT NOT NULL,
+     part_key           TEXT NOT NULL,
+     field              TEXT NOT NULL,
+     value              TEXT,
+     provenance         TEXT,
+     source_ref         TEXT,
+     confidence         REAL CHECK (confidence IS NULL OR (confidence >= 0 AND confidence <= 1)),
+     asserted_by        TEXT,
+     asserted_at        TEXT,
+     note               TEXT,
+     accepted_by        TEXT,
+     accepted_at        TEXT,
+     state              TEXT NOT NULL CHECK (state IN ('verified','proposal','conflict','unknown','not_applicable')),
+     file_sha256        TEXT NOT NULL,
+     indexed_at         TEXT NOT NULL,
+     PRIMARY KEY (project_id, project_version_id, part_key, field)
    )`,
-  `CREATE INDEX IF NOT EXISTS ix_hbom_review ON hbom_cells (project_key, state, part_key, field)`,
+  `CREATE INDEX IF NOT EXISTS ix_hbom_review ON hbom_cells (project_id, project_version_id, state, part_key, field)`,
 
-  // Rebuildable competing-claim projection from the authoritative HBOM YAML.
-  `CREATE TABLE IF NOT EXISTS hbom_candidates (
-     candidate_id  TEXT PRIMARY KEY,
-     project_key   TEXT NOT NULL,
-     part_key      TEXT NOT NULL,
-     field         TEXT NOT NULL,
-     value         TEXT,
-     provenance    TEXT NOT NULL,
-     source_ref    TEXT,
-     confidence    REAL NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
-     asserted_by   TEXT NOT NULL,
-     asserted_at   TEXT NOT NULL,
-     status        TEXT NOT NULL CHECK (status IN ('pending','accepted','rejected','superseded')),
-     indexed_at    TEXT NOT NULL
+  // Rebuildable candidate review projection over the authoritative HBOM YAML/evidence.
+  `CREATE TABLE hbom_candidates (
+     project_id         TEXT NOT NULL,
+     project_version_id TEXT NOT NULL,
+     candidate_id       TEXT NOT NULL,
+     part_key           TEXT NOT NULL,
+     field              TEXT NOT NULL,
+     value              TEXT,
+     provenance         TEXT NOT NULL,
+     source_ref         TEXT,
+     confidence         REAL NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
+     asserted_by        TEXT NOT NULL,
+     asserted_at        TEXT NOT NULL,
+     status             TEXT NOT NULL CHECK (status IN ('pending','accepted','rejected','superseded')),
+     indexed_at         TEXT NOT NULL,
+     PRIMARY KEY (project_id, project_version_id, candidate_id)
    )`,
-  `CREATE INDEX IF NOT EXISTS ix_hbom_candidates_review ON hbom_candidates (project_key, status, part_key, field, candidate_id)`,
-  `CREATE INDEX IF NOT EXISTS ix_hbom_candidates_source ON hbom_candidates (source_ref, project_key, part_key)`,
+  `CREATE INDEX IF NOT EXISTS ix_hbom_candidates_review ON hbom_candidates (project_id, project_version_id, status, part_key, field, candidate_id)`,
+  `CREATE INDEX IF NOT EXISTS ix_hbom_candidates_source ON hbom_candidates (project_id, project_version_id, source_ref, part_key, candidate_id)`,
 
-  // ── product security caches/vocabulary ──────────────────────────────────
-  // Upstream standards cache; authored requirement links remain in tracked YAML.
-  `CREATE TABLE IF NOT EXISTS standards (
-     standard_id    TEXT PRIMARY KEY,
-     code           TEXT NOT NULL,
-     name           TEXT NOT NULL,
-     scope          TEXT NOT NULL,
-     review_status  TEXT,
-     review_version TEXT NOT NULL DEFAULT '0',
-     raw            TEXT NOT NULL,
-     pulled_at      TEXT NOT NULL
+  // ── product security caches/vocabulary ───────────────────────────────
+  // Upstream standard vocabulary cache; never authored locally.
+  `CREATE TABLE standards (
+     project_id         TEXT NOT NULL,
+     project_version_id TEXT NOT NULL,
+     generation_id      TEXT NOT NULL,
+     standard_id        TEXT NOT NULL,
+     code               TEXT NOT NULL,
+     name               TEXT NOT NULL,
+     scope              TEXT NOT NULL,
+     review_status      TEXT,
+     review_version     TEXT NOT NULL DEFAULT '0',
+     raw                TEXT NOT NULL,
+     pulled_at          TEXT NOT NULL,
+     PRIMARY KEY (project_id, project_version_id, generation_id, standard_id),
+     FOREIGN KEY (project_id, project_version_id, generation_id)
+       REFERENCES pull_generation(project_id, project_version_id, generation_id) ON DELETE CASCADE
    )`,
-  `CREATE INDEX IF NOT EXISTS ix_standards_code ON standards (code, standard_id)`,
+  `CREATE INDEX IF NOT EXISTS ix_standards_code ON standards (project_id, project_version_id, generation_id, code, standard_id)`,
 
-  // Upstream clause cache; requirement rationale and mappings remain authored YAML.
-  `CREATE TABLE IF NOT EXISTS standards_clauses (
-     standard_id     TEXT NOT NULL REFERENCES standards(standard_id) ON DELETE CASCADE,
-     clause_id       TEXT NOT NULL,
-     clause_code     TEXT NOT NULL,
-     section_path    TEXT,
-     parent_clause_id TEXT,
-     title           TEXT,
-     body            TEXT,
-     review_status   TEXT,
-     review_version  TEXT NOT NULL DEFAULT '0',
-     raw             TEXT NOT NULL,
-     pulled_at       TEXT NOT NULL,
-     PRIMARY KEY (standard_id, clause_id)
+  // Upstream standard clause cache; parent/body remain server-owned.
+  `CREATE TABLE standards_clauses (
+     project_id          TEXT NOT NULL,
+     project_version_id  TEXT NOT NULL,
+     generation_id       TEXT NOT NULL,
+     standard_id         TEXT NOT NULL,
+     clause_id           TEXT NOT NULL,
+     clause_code         TEXT NOT NULL,
+     section_path        TEXT,
+     parent_clause_id    TEXT,
+     title               TEXT,
+     body                TEXT,
+     review_status       TEXT,
+     review_version      TEXT NOT NULL DEFAULT '0',
+     raw                 TEXT NOT NULL,
+     pulled_at           TEXT NOT NULL,
+     PRIMARY KEY (project_id, project_version_id, generation_id, standard_id, clause_id),
+     FOREIGN KEY (project_id, project_version_id, generation_id, standard_id)
+       REFERENCES standards(project_id, project_version_id, generation_id, standard_id) ON DELETE CASCADE
    )`,
-  `CREATE INDEX IF NOT EXISTS ix_standard_clauses_path ON standards_clauses (standard_id, section_path, clause_code)`,
+  `CREATE INDEX IF NOT EXISTS ix_standard_clauses_path ON standards_clauses (project_id, project_version_id, generation_id, standard_id, section_path, clause_code)`,
 
-  // Validation vocabulary; JSON fields are server/profile data, never hard-coded guesses.
-  `CREATE TABLE IF NOT EXISTS methodology_profiles (
-     profile_id          TEXT PRIMARY KEY,
-     project_id          TEXT,
+  // Server validation vocabulary cache; JSON fields are never hard-coded guesses.
+  `CREATE TABLE methodology_profiles (
+     project_id          TEXT NOT NULL,
+     project_version_id  TEXT NOT NULL,
+     generation_id       TEXT NOT NULL,
+     profile_id          TEXT NOT NULL,
      organization_id     TEXT,
      scope               TEXT NOT NULL,
      name                TEXT NOT NULL,
@@ -340,71 +510,89 @@ export const MIGRATIONS: string[] = [
      stride_map          TEXT NOT NULL,
      review_version      TEXT NOT NULL DEFAULT '0',
      raw                 TEXT NOT NULL,
-     pulled_at           TEXT NOT NULL
+     pulled_at           TEXT NOT NULL,
+     PRIMARY KEY (project_id, project_version_id, generation_id, profile_id),
+     FOREIGN KEY (project_id, project_version_id, generation_id)
+       REFERENCES pull_generation(project_id, project_version_id, generation_id) ON DELETE CASCADE
    )`,
-  `CREATE INDEX IF NOT EXISTS ix_methodology_project ON methodology_profiles (project_id, scope, profile_id)`,
+  `CREATE INDEX IF NOT EXISTS ix_methodology_project ON methodology_profiles (project_id, project_version_id, generation_id, scope, profile_id)`,
 
   // Cached attack-path body; .fs/attack-paths holds viability decisions.
-  `CREATE TABLE IF NOT EXISTS attack_paths (
-     project_id      TEXT NOT NULL,
-     path_id         TEXT NOT NULL,
-     route_signature TEXT NOT NULL,
-     name            TEXT,
-     threat_key      TEXT,
-     steps           TEXT NOT NULL,
-     edges           TEXT,
-     total_steps     INTEGER,
-     zones_traversed TEXT,
-     exploitability TEXT,
-     review_status   TEXT,
-     review_version  TEXT NOT NULL DEFAULT '0',
-     raw             TEXT NOT NULL,
-     pulled_at       TEXT NOT NULL,
-     PRIMARY KEY (project_id, path_id),
-     UNIQUE (project_id, route_signature)
+  `CREATE TABLE attack_paths (
+     project_id         TEXT NOT NULL,
+     project_version_id TEXT NOT NULL,
+     generation_id      TEXT NOT NULL,
+     path_id            TEXT NOT NULL,
+     route_signature    TEXT NOT NULL,
+     name               TEXT,
+     threat_key         TEXT,
+     steps              TEXT NOT NULL,
+     edges              TEXT,
+     total_steps        INTEGER,
+     zones_traversed    TEXT,
+     exploitability    TEXT,
+     review_status      TEXT,
+     review_version     TEXT NOT NULL DEFAULT '0',
+     raw                TEXT NOT NULL,
+     pulled_at          TEXT NOT NULL,
+     PRIMARY KEY (project_id, project_version_id, generation_id, path_id),
+     UNIQUE (project_id, project_version_id, generation_id, route_signature),
+     FOREIGN KEY (project_id, project_version_id, generation_id)
+       REFERENCES pull_generation(project_id, project_version_id, generation_id) ON DELETE CASCADE
    )`,
-  `CREATE INDEX IF NOT EXISTS ix_attack_paths_threat ON attack_paths (project_id, threat_key, path_id)`,
+  `CREATE INDEX IF NOT EXISTS ix_attack_paths_threat ON attack_paths (project_id, project_version_id, generation_id, threat_key, path_id)`,
 
-  // ── verification + bench evidence ───────────────────────────────────────
-  // Upstream check-body cache; authored parameters and mappings use overlays/YAML.
-  `CREATE TABLE IF NOT EXISTS verification_checks (
-     check_id          TEXT PRIMARY KEY,
-     project_id        TEXT,
-     code              TEXT NOT NULL,
-     name              TEXT NOT NULL,
-     check_type        TEXT NOT NULL,
-     category          TEXT,
-     description       TEXT,
-     pass_criteria     TEXT,
-     fail_criteria     TEXT,
-     input_description TEXT,
-     parameters        TEXT,
-     default_sla_days  INTEGER,
-     deleted_at        TEXT,
-     review_status     TEXT,
-     review_version    TEXT NOT NULL DEFAULT '0',
-     raw               TEXT NOT NULL,
-     pulled_at         TEXT NOT NULL
+  // ── verification + bench evidence ───────────────────────────────────
+  // Upstream verification-check cache; check definitions remain server-owned.
+  `CREATE TABLE verification_checks (
+     project_id         TEXT NOT NULL,
+     project_version_id TEXT NOT NULL,
+     generation_id      TEXT NOT NULL,
+     check_id           TEXT NOT NULL,
+     code               TEXT NOT NULL,
+     name               TEXT NOT NULL,
+     check_type         TEXT NOT NULL,
+     category           TEXT,
+     description        TEXT,
+     pass_criteria      TEXT,
+     fail_criteria      TEXT,
+     input_description  TEXT,
+     parameters         TEXT,
+     default_sla_days   INTEGER,
+     deleted_at         TEXT,
+     review_status      TEXT,
+     review_version     TEXT NOT NULL DEFAULT '0',
+     raw                TEXT NOT NULL,
+     pulled_at          TEXT NOT NULL,
+     PRIMARY KEY (project_id, project_version_id, generation_id, check_id),
+     FOREIGN KEY (project_id, project_version_id, generation_id)
+       REFERENCES pull_generation(project_id, project_version_id, generation_id) ON DELETE CASCADE
    )`,
-  `CREATE UNIQUE INDEX IF NOT EXISTS ix_verification_checks_code ON verification_checks (COALESCE(project_id,''), code)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS ix_verification_checks_code ON verification_checks (project_id, project_version_id, generation_id, code)`,
 
-  // Server mapping body; authored required/suppressed/coverage decisions remain in requirement YAML/overlay.
-  `CREATE TABLE IF NOT EXISTS requirement_check_mappings (
-     project_id       TEXT NOT NULL,
-     requirement_key  TEXT NOT NULL,
-     check_id         TEXT NOT NULL REFERENCES verification_checks(check_id) ON DELETE CASCADE,
-     is_required      INTEGER NOT NULL DEFAULT 0 CHECK (is_required IN (0,1)),
-     coverage_level   TEXT,
-     suppressed       INTEGER NOT NULL DEFAULT 0 CHECK (suppressed IN (0,1)),
-     raw              TEXT NOT NULL,
-     pulled_at        TEXT NOT NULL,
-     PRIMARY KEY (project_id, requirement_key, check_id)
+  // Server mapping body; authored requirement decisions remain in YAML/overlay.
+  `CREATE TABLE requirement_check_mappings (
+     project_id         TEXT NOT NULL,
+     project_version_id TEXT NOT NULL,
+     generation_id      TEXT NOT NULL,
+     requirement_key    TEXT NOT NULL,
+     check_id           TEXT NOT NULL,
+     is_required        INTEGER NOT NULL DEFAULT 0 CHECK (is_required IN (0,1)),
+     coverage_level     TEXT,
+     suppressed         INTEGER NOT NULL DEFAULT 0 CHECK (suppressed IN (0,1)),
+     raw                TEXT NOT NULL,
+     pulled_at          TEXT NOT NULL,
+     PRIMARY KEY (project_id, project_version_id, generation_id, requirement_key, check_id),
+     FOREIGN KEY (project_id, project_version_id, generation_id, check_id)
+       REFERENCES verification_checks(project_id, project_version_id, generation_id, check_id) ON DELETE CASCADE
    )`,
-  `CREATE INDEX IF NOT EXISTS ix_req_check_check ON requirement_check_mappings (check_id, project_id, requirement_key)`,
+  `CREATE INDEX IF NOT EXISTS ix_req_check_check ON requirement_check_mappings (project_id, project_version_id, generation_id, check_id, requirement_key)`,
 
-  // Server-derived requirement status. Never authored and never written back from this table.
-  `CREATE TABLE IF NOT EXISTS requirement_rollup (
+  // Server-derived requirement status; never authored or written back from here.
+  `CREATE TABLE requirement_rollup (
      project_id             TEXT NOT NULL,
+     project_version_id     TEXT NOT NULL,
+     generation_id          TEXT NOT NULL,
      requirement_key        TEXT NOT NULL,
      verification_status    TEXT,
      total_checks           INTEGER NOT NULL DEFAULT 0,
@@ -417,43 +605,50 @@ export const MIGRATIONS: string[] = [
      skipped_checks         INTEGER NOT NULL DEFAULT 0,
      last_run_at            TEXT,
      pulled_at              TEXT NOT NULL,
-     PRIMARY KEY (project_id, requirement_key)
+     PRIMARY KEY (project_id, project_version_id, generation_id, requirement_key),
+     FOREIGN KEY (project_id, project_version_id, generation_id)
+       REFERENCES pull_generation(project_id, project_version_id, generation_id) ON DELETE CASCADE
    )`,
 
-  // Unified verification/bench run cache. ACTION-ONLY to start; CACHED to display.
-  `CREATE TABLE IF NOT EXISTS verification_runs (
-     run_id          TEXT PRIMARY KEY,
-     project_id      TEXT NOT NULL,
-     pv_id           TEXT,
-     tier            TEXT NOT NULL CHECK (tier IN ('tier0','tier1','tier2','tier3','tier4')),
-     matrix_col      TEXT NOT NULL CHECK (matrix_col IN ('static','emulation','hil','manual')),
-     kind            TEXT NOT NULL,
-     trigger         TEXT,
-     host_id         TEXT,
-     thread_id       TEXT,
-     target          TEXT,
-     config          TEXT,
-     status          TEXT NOT NULL CHECK (status IN ('queued','running','completed','failed','timeout')),
-     started_at      TEXT,
-     finished_at     TEXT,
-     duration_ms     INTEGER,
-     firmware_digest TEXT,
-     job_id          TEXT,
-     log_locator     TEXT,
-     log_cursor      TEXT,
-     raw             TEXT NOT NULL,
-     synced_at       TEXT NOT NULL
+  // Unified verification/bench run cache and action journal; never authored intent.
+  `CREATE TABLE verification_runs (
+     project_id       TEXT NOT NULL,
+     project_version_id TEXT NOT NULL,
+     generation_id    TEXT NOT NULL,
+     run_id           TEXT NOT NULL,
+     tier             TEXT NOT NULL CHECK (tier IN ('tier0','tier1','tier2','tier3','tier4')),
+     matrix_col       TEXT NOT NULL CHECK (matrix_col IN ('static','emulation','hil','manual')),
+     kind             TEXT NOT NULL,
+     trigger          TEXT,
+     host_id          TEXT,
+     thread_id        TEXT,
+     target           TEXT,
+     config           TEXT,
+     status           TEXT NOT NULL CHECK (status IN ('queued','running','completed','failed','timeout')),
+     started_at       TEXT,
+     finished_at      TEXT,
+     duration_ms      INTEGER,
+     firmware_digest  TEXT,
+     job_id           TEXT,
+     log_locator      TEXT,
+     log_cursor       TEXT,
+     raw              TEXT NOT NULL,
+     synced_at        TEXT NOT NULL,
+     PRIMARY KEY (project_id, project_version_id, generation_id, run_id),
+     FOREIGN KEY (project_id, project_version_id, generation_id)
+       REFERENCES pull_generation(project_id, project_version_id, generation_id) ON DELETE CASCADE
    )`,
-  `CREATE INDEX IF NOT EXISTS ix_verification_runs_recent ON verification_runs (project_id, pv_id, started_at DESC, run_id)`,
-  `CREATE INDEX IF NOT EXISTS ix_verification_runs_host ON verification_runs (host_id, thread_id, status, run_id)`,
-  `CREATE INDEX IF NOT EXISTS ix_verification_runs_job ON verification_runs (job_id)`,
+  `CREATE INDEX IF NOT EXISTS ix_verification_runs_recent ON verification_runs (project_id, project_version_id, generation_id, started_at DESC, run_id)`,
+  `CREATE INDEX IF NOT EXISTS ix_verification_runs_host ON verification_runs (project_id, project_version_id, generation_id, host_id, thread_id, status, run_id)`,
+  `CREATE INDEX IF NOT EXISTS ix_verification_runs_job ON verification_runs (project_id, project_version_id, generation_id, job_id, run_id)`,
 
-  // Latest + history cache. Status is normalized evidence truth; raw retains richer upstream values.
-  `CREATE TABLE IF NOT EXISTS verification_results (
-     result_id                TEXT PRIMARY KEY,
-     run_id                   TEXT REFERENCES verification_runs(run_id) ON DELETE SET NULL,
+  // Latest + history evidence cache; raw retains richer upstream statuses.
+  `CREATE TABLE verification_results (
      project_id               TEXT NOT NULL,
-     pv_id                    TEXT,
+     project_version_id       TEXT NOT NULL,
+     generation_id            TEXT NOT NULL,
+     result_id                TEXT NOT NULL,
+     run_id                   TEXT,
      requirement_key          TEXT,
      check_id                 TEXT,
      tier                     TEXT NOT NULL CHECK (tier IN ('static','emulation','hil','manual')),
@@ -474,61 +669,81 @@ export const MIGRATIONS: string[] = [
      sla_status               TEXT,
      mapping_state            TEXT NOT NULL DEFAULT 'mapped' CHECK (mapping_state IN ('mapped','unmapped')),
      raw                      TEXT NOT NULL,
-     pulled_at                TEXT NOT NULL
+     pulled_at                TEXT NOT NULL,
+     PRIMARY KEY (project_id, project_version_id, generation_id, result_id),
+     FOREIGN KEY (project_id, project_version_id, generation_id, run_id)
+       REFERENCES verification_runs(project_id, project_version_id, generation_id, run_id),
+     FOREIGN KEY (project_id, project_version_id, generation_id, check_id)
+       REFERENCES verification_checks(project_id, project_version_id, generation_id, check_id)
    )`,
-  `CREATE INDEX IF NOT EXISTS ix_verification_results_matrix ON verification_results (project_id, pv_id, requirement_key, tier, is_latest, executed_at DESC, result_id)`,
-  `CREATE INDEX IF NOT EXISTS ix_verification_results_check ON verification_results (check_id, is_latest, executed_at DESC, result_id)`,
-  `CREATE INDEX IF NOT EXISTS ix_verification_results_run ON verification_results (run_id, result_id)`,
+  `CREATE INDEX IF NOT EXISTS ix_verification_results_matrix ON verification_results (project_id, project_version_id, generation_id, requirement_key, tier, is_latest, executed_at DESC, result_id)`,
+  `CREATE INDEX IF NOT EXISTS ix_verification_results_check ON verification_results (project_id, project_version_id, generation_id, check_id, is_latest, executed_at DESC, result_id)`,
+  `CREATE INDEX IF NOT EXISTS ix_verification_results_run ON verification_results (project_id, project_version_id, generation_id, run_id, result_id)`,
 
-  // Rebuildable evidence-artifact cache; artifact bytes remain behind controlled locators.
-  `CREATE TABLE IF NOT EXISTS verification_artifacts (
-     artifact_id   TEXT PRIMARY KEY,
-     run_id        TEXT NOT NULL REFERENCES verification_runs(run_id) ON DELETE CASCADE,
-     result_id     TEXT REFERENCES verification_results(result_id) ON DELETE SET NULL,
-     name          TEXT NOT NULL,
-     kind          TEXT NOT NULL,
-     locator       TEXT NOT NULL,
-     media_type    TEXT,
-     sha256        TEXT,
-     bytes         INTEGER,
-     created_at    TEXT,
-     pulled_at     TEXT NOT NULL
+  // Rebuildable artifact locator cache; artifact bytes remain external evidence.
+  `CREATE TABLE verification_artifacts (
+     project_id         TEXT NOT NULL,
+     project_version_id TEXT NOT NULL,
+     generation_id      TEXT NOT NULL,
+     artifact_id        TEXT NOT NULL,
+     run_id             TEXT NOT NULL,
+     result_id          TEXT,
+     name               TEXT NOT NULL,
+     kind               TEXT NOT NULL,
+     locator            TEXT NOT NULL,
+     media_type         TEXT,
+     sha256             TEXT,
+     bytes              INTEGER,
+     created_at         TEXT,
+     pulled_at          TEXT NOT NULL,
+     PRIMARY KEY (project_id, project_version_id, generation_id, artifact_id),
+     FOREIGN KEY (project_id, project_version_id, generation_id, run_id)
+       REFERENCES verification_runs(project_id, project_version_id, generation_id, run_id) ON DELETE CASCADE,
+     FOREIGN KEY (project_id, project_version_id, generation_id, result_id)
+       REFERENCES verification_results(project_id, project_version_id, generation_id, result_id)
    )`,
-  `CREATE INDEX IF NOT EXISTS ix_verification_artifacts_run ON verification_artifacts (run_id, kind, artifact_id)`,
+  `CREATE INDEX IF NOT EXISTS ix_verification_artifacts_run ON verification_artifacts (project_id, project_version_id, generation_id, run_id, kind, artifact_id)`,
 
-  // Cached signed evidence. `verified` is local verification output, never an upstream assertion.
-  `CREATE TABLE IF NOT EXISTS attestations (
-     attestation_id       TEXT PRIMARY KEY,
-     run_id               TEXT NOT NULL REFERENCES verification_runs(run_id) ON DELETE CASCADE,
-     format               TEXT NOT NULL,
-     predicate_type       TEXT,
-     subject_digest       TEXT NOT NULL,
-     evidence_digest      TEXT,
-     verdict              TEXT,
-     requirement_ids      TEXT,
-     check_ids            TEXT,
-     result_refs          TEXT,
-     signer_identity      TEXT,
-     rekor_uuid           TEXT,
-     envelope_locator     TEXT,
-     payload              TEXT NOT NULL,
-     signature_verified   INTEGER NOT NULL DEFAULT 0 CHECK (signature_verified IN (0,1)),
-     subject_matches_run  INTEGER NOT NULL DEFAULT 0 CHECK (subject_matches_run IN (0,1)),
-     verified             INTEGER NOT NULL DEFAULT 0
-                            CHECK (verified IN (0,1)
-                              AND (verified = 0 OR (signature_verified = 1 AND subject_matches_run = 1))),
-     created_at           TEXT NOT NULL,
-     pulled_at            TEXT NOT NULL,
-     UNIQUE (run_id, attestation_id)
+  // Verification evidence cache; verified is local output, never an upstream boolean.
+  `CREATE TABLE attestations (
+     project_id          TEXT NOT NULL,
+     project_version_id  TEXT NOT NULL,
+     generation_id       TEXT NOT NULL,
+     attestation_id      TEXT NOT NULL,
+     run_id              TEXT NOT NULL,
+     format              TEXT NOT NULL,
+     predicate_type      TEXT,
+     subject_digest      TEXT NOT NULL,
+     evidence_digest     TEXT,
+     verdict             TEXT,
+     requirement_ids     TEXT,
+     check_ids           TEXT,
+     result_refs         TEXT,
+     signer_identity     TEXT,
+     rekor_uuid          TEXT,
+     envelope_locator    TEXT,
+     payload             TEXT NOT NULL,
+     signature_verified  INTEGER NOT NULL DEFAULT 0 CHECK (signature_verified IN (0,1)),
+     subject_matches_run INTEGER NOT NULL DEFAULT 0 CHECK (subject_matches_run IN (0,1)),
+     verified            INTEGER NOT NULL DEFAULT 0
+                           CHECK (verified IN (0,1)
+                             AND (verified = 0 OR (signature_verified = 1 AND subject_matches_run = 1))),
+     created_at          TEXT NOT NULL,
+     pulled_at           TEXT NOT NULL,
+     PRIMARY KEY (project_id, project_version_id, generation_id, attestation_id),
+     UNIQUE (project_id, project_version_id, generation_id, run_id, attestation_id),
+     FOREIGN KEY (project_id, project_version_id, generation_id, run_id)
+       REFERENCES verification_runs(project_id, project_version_id, generation_id, run_id) ON DELETE CASCADE
    )`,
-  `CREATE INDEX IF NOT EXISTS ix_attestations_run ON attestations (run_id, verified, attestation_id)`,
-  `CREATE INDEX IF NOT EXISTS ix_attestations_subject ON attestations (subject_digest, verified, attestation_id)`,
+  `CREATE INDEX IF NOT EXISTS ix_attestations_run ON attestations (project_id, project_version_id, generation_id, run_id, verified, attestation_id)`,
+  `CREATE INDEX IF NOT EXISTS ix_attestations_subject ON attestations (project_id, project_version_id, generation_id, subject_digest, verified, attestation_id)`,
 
-  // ── firmware mount registry only; manifest.sqlite belongs to WP-47 ───────
-  // Registry/cache of mount state; firmware bytes and sidecar manifests remain on disk.
-  `CREATE TABLE IF NOT EXISTS firmware_mounts (
-     pv_id               TEXT PRIMARY KEY,
-     project_id          TEXT,
+  // ── firmware mount registry only; manifest.sqlite belongs to WP-47 ──────────────
+  // Materialization registry/cache only; never firmware manifest or file authority.
+  `CREATE TABLE firmware_mounts (
+     project_id          TEXT NOT NULL,
+     project_version_id  TEXT NOT NULL,
+     generation_id       TEXT NOT NULL,
      source              TEXT NOT NULL CHECK (source IN ('api','standalone_unpack')),
      state               TEXT NOT NULL CHECK (state IN ('not_materialized','hashing','unpacking','validating','ingesting','ready','ready_with_gaps','metadata_only','stale','error')),
      scan_id             TEXT,
@@ -541,63 +756,73 @@ export const MIGRATIONS: string[] = [
      admin_bytes_ok      INTEGER CHECK (admin_bytes_ok IS NULL OR admin_bytes_ok IN (0,1)),
      message             TEXT,
      materialized_at     TEXT,
-     pulled_at           TEXT NOT NULL
+     pulled_at           TEXT NOT NULL,
+     PRIMARY KEY (project_id, project_version_id, generation_id),
+     FOREIGN KEY (project_id, project_version_id, generation_id)
+       REFERENCES pull_generation(project_id, project_version_id, generation_id) ON DELETE CASCADE
    )`,
-  `CREATE INDEX IF NOT EXISTS ix_firmware_mounts_state ON firmware_mounts (project_id, state, pv_id)`,
+  `CREATE INDEX IF NOT EXISTS ix_firmware_mounts_state ON firmware_mounts (project_id, project_version_id, generation_id, state)`,
 
-  // ── one plugin-local, project-scoped document ledger ─────────────────────
-  // Ledger projection over git-tracked documents; document files remain authority.
-  `CREATE TABLE IF NOT EXISTS document (
-     document_id      TEXT PRIMARY KEY,
-     project_key      TEXT NOT NULL,
-     sha256           TEXT NOT NULL,
-     name             TEXT NOT NULL,
-     path             TEXT NOT NULL,
-     doc_kind         TEXT NOT NULL CHECK (doc_kind IN ('datasheet','bom','schematic','spec','regulatory','register_map','other')),
-     mime_type        TEXT NOT NULL,
-     bytes            INTEGER NOT NULL,
-     withdrawn        INTEGER NOT NULL DEFAULT 0 CHECK (withdrawn IN (0,1)),
-     needs_ocr        INTEGER NOT NULL DEFAULT 0 CHECK (needs_ocr IN (0,1)),
-     uploaded_at      TEXT NOT NULL,
-     analyzed_by      TEXT,
-     analyzed_at      TEXT,
-     cells_extracted  INTEGER NOT NULL DEFAULT 0,
-     indexed_at       TEXT NOT NULL,
-     UNIQUE (project_key, sha256)
+  // ── one plugin-local, project/version-scoped document ledger ───────────────────────
+  // Rebuildable ledger over tracked document files; bytes/files remain authority.
+  `CREATE TABLE document (
+     project_id         TEXT NOT NULL,
+     project_version_id TEXT NOT NULL,
+     document_id        TEXT NOT NULL,
+     sha256             TEXT NOT NULL,
+     name               TEXT NOT NULL,
+     path               TEXT NOT NULL,
+     doc_kind           TEXT NOT NULL CHECK (doc_kind IN ('datasheet','bom','schematic','spec','regulatory','register_map','other')),
+     mime_type          TEXT NOT NULL,
+     bytes              INTEGER NOT NULL,
+     withdrawn          INTEGER NOT NULL DEFAULT 0 CHECK (withdrawn IN (0,1)),
+     needs_ocr          INTEGER NOT NULL DEFAULT 0 CHECK (needs_ocr IN (0,1)),
+     uploaded_at        TEXT NOT NULL,
+     analyzed_by        TEXT,
+     analyzed_at        TEXT,
+     cells_extracted    INTEGER NOT NULL DEFAULT 0,
+     indexed_at         TEXT NOT NULL,
+     PRIMARY KEY (project_id, project_version_id, document_id),
+     UNIQUE (project_id, project_version_id, sha256)
    )`,
-  `CREATE INDEX IF NOT EXISTS ix_document_list ON document (project_key, doc_kind, withdrawn, uploaded_at DESC, document_id)`,
+  `CREATE INDEX IF NOT EXISTS ix_document_list ON document (project_id, project_version_id, doc_kind, withdrawn, uploaded_at DESC, document_id)`,
 
-  // Rebuildable extraction/source-reference projection. Document bytes/files remain authority.
-  `CREATE TABLE IF NOT EXISTS document_extraction (
-     extraction_id    TEXT PRIMARY KEY,
-     document_id      TEXT NOT NULL REFERENCES document(document_id) ON DELETE CASCADE,
-     field             TEXT NOT NULL,
-     value             TEXT,
-     confidence        REAL CHECK (confidence IS NULL OR (confidence >= 0 AND confidence <= 1)),
-     source_ref        TEXT NOT NULL,
-     locator_kind      TEXT NOT NULL CHECK (locator_kind IN ('pdf','sheet','text')),
-     page              INTEGER,
-     bbox              TEXT,
-     sheet             TEXT,
-     cell              TEXT,
-     line_start        INTEGER,
-     line_end          INTEGER,
-     target_surface    TEXT,
-     target_id         TEXT,
-     target_field      TEXT,
-     status            TEXT NOT NULL CHECK (status IN ('proposal','accepted','rejected','withdrawn')),
-     extracted_by      TEXT,
-     extracted_at      TEXT NOT NULL,
-     raw               TEXT
+  // Rebuildable extraction/source-reference projection; tracked files remain authority.
+  `CREATE TABLE document_extraction (
+     project_id         TEXT NOT NULL,
+     project_version_id TEXT NOT NULL,
+     extraction_id      TEXT NOT NULL,
+     document_id        TEXT NOT NULL,
+     field              TEXT NOT NULL,
+     value              TEXT,
+     confidence         REAL CHECK (confidence IS NULL OR (confidence >= 0 AND confidence <= 1)),
+     source_ref         TEXT NOT NULL,
+     locator_kind       TEXT NOT NULL CHECK (locator_kind IN ('pdf','sheet','text')),
+     page               INTEGER,
+     bbox               TEXT,
+     sheet              TEXT,
+     cell               TEXT,
+     line_start         INTEGER,
+     line_end           INTEGER,
+     target_surface     TEXT,
+     target_id          TEXT,
+     target_field       TEXT,
+     status             TEXT NOT NULL CHECK (status IN ('proposal','accepted','rejected','withdrawn')),
+     extracted_by       TEXT,
+     extracted_at       TEXT NOT NULL,
+     raw                TEXT,
+     PRIMARY KEY (project_id, project_version_id, extraction_id),
+     FOREIGN KEY (project_id, project_version_id, document_id)
+       REFERENCES document(project_id, project_version_id, document_id) ON DELETE CASCADE
    )`,
-  `CREATE INDEX IF NOT EXISTS ix_document_extraction_source ON document_extraction (document_id, locator_kind, page, sheet, cell, line_start, extraction_id)`,
-  `CREATE INDEX IF NOT EXISTS ix_document_extraction_target ON document_extraction (target_surface, target_id, target_field, status, extraction_id)`,
-  `CREATE INDEX IF NOT EXISTS ix_document_extraction_search ON document_extraction (field COLLATE NOCASE, value COLLATE NOCASE, status, document_id, extraction_id)`,
+  `CREATE INDEX IF NOT EXISTS ix_document_extraction_source ON document_extraction (project_id, project_version_id, document_id, locator_kind, page, sheet, cell, line_start, extraction_id)`,
+  `CREATE INDEX IF NOT EXISTS ix_document_extraction_target ON document_extraction (project_id, project_version_id, target_surface, target_id, target_field, status, extraction_id)`,
+  `CREATE INDEX IF NOT EXISTS ix_document_extraction_search ON document_extraction (project_id, project_version_id, field COLLATE NOCASE, value COLLATE NOCASE, status, document_id, extraction_id)`,
 
-  // Filtered projection over the one document ledger; never a second HBOM document table.
   `CREATE VIEW IF NOT EXISTS hbom_docs AS
-     SELECT document_id, project_key, sha256, name, path, doc_kind, mime_type, bytes,
-            withdrawn, needs_ocr, uploaded_at, analyzed_by, analyzed_at, cells_extracted, indexed_at
+     SELECT project_id, project_version_id, document_id, sha256, name, path,
+            doc_kind, mime_type, bytes, withdrawn, needs_ocr, uploaded_at,
+            analyzed_by, analyzed_at, cells_extracted, indexed_at
        FROM document
       WHERE doc_kind IN ('datasheet','bom','schematic')`,
 ];

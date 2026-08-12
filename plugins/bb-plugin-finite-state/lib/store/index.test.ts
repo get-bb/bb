@@ -1,7 +1,34 @@
-import { describe, expect, it, vi } from "vitest";
 import { createFakePluginHost } from "@bb/plugin-sdk/testing";
-import { openStore } from "./index.js";
+import { describe, expect, it, vi } from "vitest";
+import {
+  fromStorageProjectVersionId,
+  openStore,
+  PROJECT_LEVEL_VERSION_ID,
+  toStorageProjectVersionId,
+} from "./index.js";
 import { MIGRATIONS } from "./schema.js";
+
+describe("project-version storage boundary", () => {
+  it("round-trips project-level null without exposing the reserved sentinel", () => {
+    expect(PROJECT_LEVEL_VERSION_ID).toBe("@project");
+    const stored = toStorageProjectVersionId(null);
+    expect(stored).toBe(PROJECT_LEVEL_VERSION_ID);
+
+    const upstreamInputs: (string | null)[] = [];
+    upstreamInputs.push(fromStorageProjectVersionId(stored));
+    upstreamInputs.push(
+      fromStorageProjectVersionId(toStorageProjectVersionId("version-1")),
+    );
+    expect(upstreamInputs).toEqual([null, "version-1"]);
+    expect(upstreamInputs).not.toContain(PROJECT_LEVEL_VERSION_ID);
+  });
+
+  it("rejects empty and externally supplied sentinel values", () => {
+    expect(() => toStorageProjectVersionId("")).toThrow(/non-empty/u);
+    expect(() => toStorageProjectVersionId("@project")).toThrow(/reserved/u);
+    expect(() => fromStorageProjectVersionId("")).toThrow(/non-empty/u);
+  });
+});
 
 describe("openStore", () => {
   it("migrates once, memoizes per plugin context, and enables foreign keys", async () => {
@@ -27,7 +54,7 @@ describe("openStore", () => {
     await secondHost.harness.lifecycle.dispose();
   });
 
-  it("retries after a migration failure without publishing an unmigrated store", async () => {
+  it("retries after migration failure without publishing an unmigrated store", async () => {
     const host = createFakePluginHost({ pluginId: "finite-state-store-retry" });
     const migrateSuccessfully = host.bb.storage.migrate.bind(host.bb.storage);
     const database = vi.spyOn(host.bb.storage, "database");
@@ -48,7 +75,7 @@ describe("openStore", () => {
     expect(
       store.db
         .prepare(
-          "SELECT count(*) FROM sqlite_schema WHERE type = 'table' AND name = 'findings'",
+          "SELECT count(*) FROM sqlite_schema WHERE type = 'table' AND name = 'pull_generation'",
         )
         .pluck()
         .get(),
@@ -61,13 +88,24 @@ describe("openStore", () => {
   it("commits successful transactions and fully rolls back thrown work", async () => {
     const host = createFakePluginHost({ pluginId: "finite-state-store-tx" });
     const store = openStore(host.bb);
+    store.db
+      .prepare(
+        `INSERT INTO pull_generation
+           (project_id, project_version_id, generation_id, status,
+            requested_kinds_json, started_at, completed_at, accepted_at)
+         VALUES ('project-a', 'version-a', 'g', 'accepted', '["finding"]',
+                 'now', 'now', 'now')`,
+      )
+      .run();
 
     const result = store.tx(() => {
       store.db
         .prepare(
           `INSERT INTO findings
-             (finding_id, project_id, project_version_id, stable_key, raw, pulled_at)
-           VALUES ('finding-commit', 'project-a', 'pv-a', 'stable-commit', '{}', 'now')`,
+             (project_id, project_version_id, generation_id, finding_id,
+              stable_key, raw, pulled_at)
+           VALUES ('project-a', 'version-a', 'g', 'finding-commit',
+                   'stable-commit', '{}', 'now')`,
         )
         .run();
       return "committed" as const;
@@ -79,15 +117,17 @@ describe("openStore", () => {
         store.db
           .prepare(
             `INSERT INTO findings
-               (finding_id, project_id, project_version_id, stable_key, raw, pulled_at)
-             VALUES ('finding-rollback', 'project-a', 'pv-a', 'stable-rollback', '{}', 'now')`,
+               (project_id, project_version_id, generation_id, finding_id,
+                stable_key, raw, pulled_at)
+             VALUES ('project-a', 'version-a', 'g', 'finding-rollback',
+                     'stable-rollback', '{}', 'now')`,
           )
           .run();
         store.db
           .prepare(
             `INSERT INTO finding_cwes
-               (project_version_id, finding_id, cwe, pulled_at)
-             VALUES ('pv-a', 'finding-rollback', 'CWE-79', 'now')`,
+               (project_id, project_version_id, generation_id, finding_id, cwe, pulled_at)
+             VALUES ('project-a', 'version-a', 'g', 'finding-rollback', 'CWE-79', 'now')`,
           )
           .run();
         throw new Error("rollback checkpoint");
@@ -104,7 +144,7 @@ describe("openStore", () => {
     await host.harness.lifecycle.dispose();
   });
 
-  it("rolls back partial document, check, and run checkpoints on foreign-key errors", async () => {
+  it("rolls back a partial scoped document checkpoint on a foreign-key error", async () => {
     const host = createFakePluginHost({ pluginId: "finite-state-store-fk" });
     const store = openStore(host.bb);
 
@@ -113,9 +153,9 @@ describe("openStore", () => {
         store.db
           .prepare(
             `INSERT INTO document
-               (document_id, project_key, sha256, name, path, doc_kind, mime_type,
-                bytes, uploaded_at, indexed_at)
-             VALUES ('doc-atomic', 'project-a', 'sha-doc', 'doc.pdf',
+               (project_id, project_version_id, document_id, sha256, name, path,
+                doc_kind, mime_type, bytes, uploaded_at, indexed_at)
+             VALUES ('project-a', 'version-a', 'doc-atomic', 'sha-doc', 'doc.pdf',
                      'product-security/documents/doc.pdf', 'datasheet',
                      'application/pdf', 1, 'now', 'now')`,
           )
@@ -123,62 +163,15 @@ describe("openStore", () => {
         store.db
           .prepare(
             `INSERT INTO document_extraction
-               (extraction_id, document_id, field, source_ref, locator_kind, status,
-                extracted_at)
-             VALUES ('extract-invalid', 'missing', 'mpn', '#p1', 'pdf', 'proposal',
-                     'now')`,
+               (project_id, project_version_id, extraction_id, document_id, field,
+                source_ref, locator_kind, status, extracted_at)
+             VALUES ('project-a', 'version-a', 'extract-invalid', 'missing',
+                     'mpn', '#p1', 'pdf', 'proposal', 'now')`,
           )
           .run();
       }),
     ).toThrow(/foreign key constraint failed/i);
     expect(store.db.prepare("SELECT count(*) FROM document").pluck().get()).toBe(0);
-
-    expect(() =>
-      store.tx(() => {
-        store.db
-          .prepare(
-            `INSERT INTO verification_checks
-               (check_id, code, name, check_type, raw, pulled_at)
-             VALUES ('check-atomic', 'CHK-1', 'Check one', 'binary_analysis', '{}', 'now')`,
-          )
-          .run();
-        store.db
-          .prepare(
-            `INSERT INTO requirement_check_mappings
-               (project_id, requirement_key, check_id, raw, pulled_at)
-             VALUES ('project-a', 'REQ-1', 'missing', '{}', 'now')`,
-          )
-          .run();
-      }),
-    ).toThrow(/foreign key constraint failed/i);
-    expect(
-      store.db.prepare("SELECT count(*) FROM verification_checks").pluck().get(),
-    ).toBe(0);
-
-    expect(() =>
-      store.tx(() => {
-        store.db
-          .prepare(
-            `INSERT INTO verification_runs
-               (run_id, project_id, tier, matrix_col, kind, status, raw, synced_at)
-             VALUES ('run-atomic', 'project-a', 'tier0', 'static', 'static',
-                     'running', '{}', 'now')`,
-          )
-          .run();
-        store.db
-          .prepare(
-            `INSERT INTO verification_artifacts
-               (artifact_id, run_id, name, kind, locator, pulled_at)
-             VALUES ('artifact-invalid', 'missing', 'log', 'log', 'artifacts/log',
-                     'now')`,
-          )
-          .run();
-      }),
-    ).toThrow(/foreign key constraint failed/i);
-    expect(
-      store.db.prepare("SELECT count(*) FROM verification_runs").pluck().get(),
-    ).toBe(0);
-
     await host.harness.lifecycle.dispose();
   });
 });
