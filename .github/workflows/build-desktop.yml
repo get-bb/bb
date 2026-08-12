@@ -19,7 +19,7 @@ on:
 
 env:
   CSC_IDENTITY_AUTO_DISCOVERY: "false"
-  NODE_VERSION: "22.x"
+  NODE_VERSION: "22.19.0"
   PNPM_VERSION: "9.15.0"
 
 permissions:

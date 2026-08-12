@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 env:
-  PRIMARY_NODE_VERSION: "22.x"
+  PRIMARY_NODE_VERSION: "22.19.0"
   PNPM_VERSION: "9.15.0"
 
 concurrency:
@@ -30,6 +30,7 @@ jobs:
 
       - name: List changed files
         id: changed
+        if: github.event_name != 'workflow_dispatch'
         uses: dorny/paths-filter@v3
         with:
           # Pull requests ignore this input and use their PR base. Pushes use
@@ -43,12 +44,12 @@ jobs:
       - name: Classify CI scope
         id: scope
         env:
-          CI_CHANGED_FILES_JSON: ${{ steps.changed.outputs.all_files }}
+          CI_CHANGED_FILES_JSON: ${{ steps.changed.outputs.all_files || '[]' }}
           CI_EVENT_NAME: ${{ github.event_name }}
         run: node .github/scripts/classify-finite-state-ci.mjs
 
   checks:
-    name: Checks (ubuntu-latest, Node 22.x)
+    name: Checks (ubuntu-latest, Node 22.19.0)
     needs: changes
     if: needs.changes.outputs.run_heavy == 'true'
     runs-on: ubuntu-latest
@@ -99,7 +100,7 @@ jobs:
   # suites are CPU-bound and previously fought each other (and the builds) for
   # the same 4 vCPUs, which made tests the critical path of every run.
   tests:
-    name: Tests (${{ matrix.shard }}, ubuntu-latest, Node 22.x)
+    name: Tests (${{ matrix.shard }}, ubuntu-latest, Node 22.19.0)
     needs: changes
     if: needs.changes.outputs.run_heavy == 'true'
     runs-on: ubuntu-latest
@@ -144,9 +145,9 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            node-version: "22.x"
+            node-version: "22.19.0"
           - os: macos-latest
-            node-version: "22.x"
+            node-version: "22.19.0"
 
     steps:
       - name: Checkout repository
@@ -188,9 +189,17 @@ jobs:
       - name: Setup workspace
         uses: ./.github/actions/setup-workspace
         with:
-          node-version: ${{ matrix.node-version }}
+          node-version: ${{ env.PRIMARY_NODE_VERSION }}
           pnpm-version: ${{ env.PNPM_VERSION }}
           cache-prefix: compat-smoke
 
-      - name: Smoke bb-app tarball
-        run: pnpm exec turbo run smoke:tarball --filter=bb-app --cache-dir=.turbo/cache --output-logs=new-only
+      - name: Build bb-app with the repository runtime
+        run: pnpm exec turbo run build --filter=bb-app --cache-dir=.turbo/cache --output-logs=new-only
+
+      - name: Set up compatibility runtime
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Smoke bb-app tarball with the compatibility runtime
+        run: node packages/bb-app/scripts/smoke-tarball.mjs

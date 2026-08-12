@@ -4,9 +4,11 @@
   "license": "MIT",
   "type": "module",
   "engines": {
-    "node": ">=22.19.0"
+    "node": "22.19.x"
   },
   "scripts": {
+    "pnpm:devPreinstall": "node scripts/check-node-version.mjs",
+    "preinstall": "node scripts/check-node-version.mjs",
     "scripts:prepare": "pnpm exec turbo run build --filter=@bb/scripts --output-logs=none --log-prefix=none --summarize=false",
     "cli:prepare": "pnpm exec turbo run build --filter=@bb/scripts --filter=@bb/cli --output-logs=none --log-prefix=none --summarize=false",
     "ensure-native-modules": "node scripts/ensure-native-modules.mjs",
