@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { createRequire } from "node:module";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -18,11 +19,11 @@ const generatedConfigPath = resolve(
   desktopPackageRoot,
   ".electron-builder.generated.json",
 );
-const electronBuilderBin = resolve(
-  desktopPackageRoot,
-  "node_modules",
-  ".bin",
-  "electron-builder",
+const requireFromDesktopPackage = createRequire(
+  resolve(desktopPackageRoot, "package.json"),
+);
+const electronBuilderCli = requireFromDesktopPackage.resolve(
+  "electron-builder/cli.js",
 );
 
 const codeSigningKeys = ["CSC_LINK", "CSC_KEY_PASSWORD"];
@@ -230,8 +231,8 @@ async function removeGeneratedConfig() {
 
 async function runElectronBuilder(args, signingPlan) {
   const child = spawn(
-    electronBuilderBin,
-    ["--config", generatedConfigPath, ...args],
+    process.execPath,
+    [electronBuilderCli, "--config", generatedConfigPath, ...args],
     {
       cwd: desktopPackageRoot,
       env: createElectronBuilderEnv(signingPlan),
@@ -240,7 +241,8 @@ async function runElectronBuilder(args, signingPlan) {
   );
 
   const exitCode = await new Promise((resolveExitCode) => {
-    child.on("error", () => {
+    child.on("error", (error) => {
+      console.error(error instanceof Error ? error.message : String(error));
       resolveExitCode(1);
     });
     child.on("close", resolveExitCode);

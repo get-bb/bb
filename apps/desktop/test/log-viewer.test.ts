@@ -5,6 +5,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   createLogLineBuffer,
   createLogTailer,
+  formatWindowsLogTailCommand,
+  LOG_VIEWER_INITIAL_TAIL_LINES,
   resolveCurrentLogFile,
   type LogTailer,
 } from "../src/log-viewer.js";
@@ -75,6 +77,24 @@ function createTestLogLine(args: CreateTestLogLineArgs): LogViewerLine {
 }
 
 describe("log viewer", () => {
+  it("quotes a Windows log path so PowerShell cannot expand $() in the name", () => {
+    const command = formatWindowsLogTailCommand(
+      String.raw`C:\logs\server.$(Start-Process calc).log`,
+      LOG_VIEWER_INITIAL_TAIL_LINES,
+    );
+
+    expect(command).toBe(
+      `Get-Content -LiteralPath 'C:\\logs\\server.$(Start-Process calc).log' -Tail ${String(LOG_VIEWER_INITIAL_TAIL_LINES)} -Wait -Encoding utf8`,
+    );
+    expect(command).not.toContain(JSON.stringify(String.raw`C:\logs\server.$(Start-Process calc).log`));
+  });
+
+  it("escapes single quotes in the Windows log path", () => {
+    expect(formatWindowsLogTailCommand("C:\\logs\\O'Brien.log", 10)).toBe(
+      "Get-Content -LiteralPath 'C:\\logs\\O''Brien.log' -Tail 10 -Wait -Encoding utf8",
+    );
+  });
+
   it("selects the newest matching server log file", async () => {
     const tempDir = await createTempDir();
     const firstServerLog = join(tempDir.path, "server.1.log");
@@ -92,6 +112,23 @@ describe("log viewer", () => {
         logDir: tempDir.path,
       }),
     ).resolves.toBe(nextServerLog);
+  });
+
+  it("ignores server log names that are not a numeric rotation", async () => {
+    const tempDir = await createTempDir();
+    await writeFile(join(tempDir.path, "server.1.log"), "keep\n");
+    await writeFile(
+      join(tempDir.path, "server.$(Start-Process calc).log"),
+      "ignore\n",
+    );
+    await writeFile(join(tempDir.path, "server.backup.log"), "ignore\n");
+
+    await expect(
+      resolveCurrentLogFile({
+        component: "server",
+        logDir: tempDir.path,
+      }),
+    ).resolves.toBe(join(tempDir.path, "server.1.log"));
   });
 
   it("returns null when no matching component log exists", async () => {

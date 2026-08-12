@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { BbDesktopInfo } from "@bb/desktop-contract";
+import {
+  desktopPlatformFromNode,
+  type BbDesktopInfo,
+} from "@bb/desktop-contract";
 import { mergeDesktopUpdateInfo } from "../src/desktop-update-info.js";
 
 function info(overrides: Partial<BbDesktopInfo> = {}): BbDesktopInfo {
@@ -7,7 +10,7 @@ function info(overrides: Partial<BbDesktopInfo> = {}): BbDesktopInfo {
     lastCheckedAt: "2026-07-19T00:00:00.000Z",
     latestVersion: "0.0.32",
     pendingVersion: null,
-    platform: "macos",
+    platform: desktopPlatformFromNode(process.platform),
     updateAvailable: true,
     updateDownloaded: false,
     version: "0.0.31",

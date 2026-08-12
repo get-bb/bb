@@ -6,6 +6,7 @@
 
 - macOS persistent host
 - Linux persistent host
+- Windows persistent host (native PowerShell, CMD, and `C:\` / UNC paths)
 - Windows via Ubuntu on WSL2
 
 Minimum runtime: Node.js 22.19. The floor comes from Pi, whose packages declare
@@ -22,14 +23,26 @@ floor only, so a release line we have not tested yet still installs rather than
 failing hard on the day it ships. The `bb-app` npm `engines` field lists the
 tested lines, which npm surfaces as a warning rather than an install failure.
 
-Windows support means the Linux stack runs entirely inside WSL2:
+Native Windows is a product path:
+
+- `npx bb-app`, the `bb` CLI (`apps/cli/bin/bb.cmd` in a source checkout), and
+  a source-built desktop unpack (`pnpm --filter @bb/desktop run package:win`)
+  run in PowerShell or CMD
+- Node.js, Git, and provider CLIs are native Windows installs (`.exe` / `PATHEXT`)
+- local project paths accept drive-letter and UNC paths
+- worktree setup hooks still use the POSIX `.bb-env-setup.sh` contract and run
+  through Git's bundled `bash` when `sh` is not on `PATH`
+
+Windows via WSL2 remains supported as the Linux stack inside Ubuntu:
 
 - all `bb` processes run inside the same Ubuntu WSL2 distro
 - Node.js, Git, provider CLIs, and pnpm for source-development flows are
   installed inside WSL2
 - local project paths use Linux-style absolute paths from inside WSL2
-- native Windows PowerShell, CMD, drive-letter paths, and UNC paths are not
-  supported product paths
+
+Published desktop download assets remain macOS Apple Silicon. A Windows
+`.exe` is produced from this checkout; it is not uploaded to `desktop-latest`
+and has no Authenticode signature or `latest.yml` feed.
 
 ## Support Boundaries
 
@@ -64,23 +77,21 @@ Windows support means the Linux stack runs entirely inside WSL2:
 
 ### WSL2-specific expectations
 
-- Run `npx bb-app`, source checkout commands such as `pnpm install`,
-  `pnpm dev`, `pnpm bb:dev`, and host-daemon commands from a WSL2 shell, not
-  from native Windows terminals.
+- When you choose the WSL2 path, run `npx bb-app`, `pnpm install`, `pnpm dev`,
+  `pnpm bb:dev`, and host-daemon commands from a WSL2 shell.
 - Repositories inside the WSL filesystem are recommended for best behavior.
 - `/mnt/c/...` mounted paths are deliberately supported so WSL2 users can keep
   working with existing Windows checkouts instead of relocating every repo into
   the WSL filesystem, but they are a tradeoff:
   slower filesystem I/O and weaker file-watching behavior than the WSL
   filesystem.
-- Native Windows drive-letter and UNC paths are rejected at the app/server
-  boundary so unsupported input fails clearly.
 
 ### Maintainer-only or best-effort surfaces
 
 - workspace-owned QA helpers under [`tests/qa/`](../tests/qa/)
 - dev restart internals that are not part of the shipped product path
-- native Windows PowerShell, CMD, and host-daemon runtime flows
+- folder picker, `bb-dev-app`, and other host UX still marked best-effort on
+  native Windows
 
 ## Dependency Policy
 
@@ -136,8 +147,8 @@ rebuild the native dependency, for example `npm rebuild better-sqlite3`.
 - The repository enforces LF checkout for supported text files via
   [.gitattributes](../.gitattributes).
 - Supported Linux and WSL2 flows must work with those repository rules applied.
-- Native Windows checkouts are outside the support contract unless we later
-  choose to support a native Windows product path.
+- Native Windows checkouts are a supported product path. Text files still
+  check out as LF via [.gitattributes](../.gitattributes).
 
 ## CI And Validation
 
@@ -154,6 +165,6 @@ rebuild the native dependency, for example `npm rebuild better-sqlite3`.
   `Package Smoke (macos-latest, Node 22.x)`. The Node.js 24 and 26 compatibility
   smoke jobs do not run on pull requests and should not be configured as
   required PR checks.
-- Native Windows CI is intentionally not required because Windows support uses
-  the Linux runtime path inside WSL2 rather than a separate native Windows
-  product path.
+- Native Windows CI is not required on pull requests. Ubuntu and macOS remain
+  the required gates. Windows behavior is covered by in-repo unit tests that
+  run on every host.

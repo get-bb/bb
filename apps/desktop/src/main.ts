@@ -545,9 +545,7 @@ function createDesktopPathContext(): DesktopPathContext {
 function shouldEnableServerDaemonLogsMenu(): boolean {
   // Attached runtimes are owned by an external bb-app, so the desktop has no
   // reliable server/daemon log lifecycle to tail.
-  return (
-    process.platform === "darwin" && currentRuntime?.ownership === "spawned"
-  );
+  return currentRuntime?.ownership === "spawned";
 }
 
 // Close requests routed through the renderer, keyed by webContents id. If the

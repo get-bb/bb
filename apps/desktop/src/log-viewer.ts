@@ -12,7 +12,7 @@ import {
 export const LOG_VIEWER_IPC_BATCH_INTERVAL_MS = 50;
 export const LOG_VIEWER_IPC_BATCH_LINE_LIMIT = 250;
 
-const LOG_VIEWER_INITIAL_TAIL_LINES = 400;
+export const LOG_VIEWER_INITIAL_TAIL_LINES = 400;
 const LOG_VIEWER_ROTATION_POLL_INTERVAL_MS = 2_000;
 const LOG_VIEWER_COMPONENTS: LogViewerComponent[] = ["server", "host-daemon"];
 
@@ -416,10 +416,12 @@ function parseLogFileCandidate(
     prefix.length,
     args.fileName.length - suffix.length,
   );
-  const sequence = /^\d+$/u.test(rawSequence) ? Number(rawSequence) : 0;
+  if (!/^\d+$/u.test(rawSequence)) {
+    return null;
+  }
   return {
     fileName: args.fileName,
-    sequence,
+    sequence: Number(rawSequence),
     timestampMs: 0,
   };
 }
@@ -484,6 +486,15 @@ function createComponentTailState(
     pendingText: "",
     tailProcess: null,
   };
+}
+
+/** PowerShell single-quoted path. `$()` in a file name must not expand. */
+export function formatWindowsLogTailCommand(
+  filePath: string,
+  tailLines: number,
+): string {
+  const literalPath = filePath.replaceAll("'", "''");
+  return `Get-Content -LiteralPath '${literalPath}' -Tail ${String(tailLines)} -Wait -Encoding utf8`;
 }
 
 export function createLogTailer(args: CreateLogTailerArgs): LogTailer {
@@ -561,13 +572,36 @@ export function createLogTailer(args: CreateLogTailerArgs): LogTailer {
     stopTailProcess({ state: restartArgs.state });
     restartArgs.state.currentFilePath = restartArgs.filePath;
 
-    const childProcess = spawn(
-      "tail",
-      ["-n", String(LOG_VIEWER_INITIAL_TAIL_LINES), "-F", restartArgs.filePath],
-      {
-        stdio: ["ignore", "pipe", "pipe"],
-      },
-    );
+    const childProcess =
+      process.platform === "win32"
+        ? spawn(
+            "powershell.exe",
+            [
+              "-NoProfile",
+              "-NonInteractive",
+              "-Command",
+              formatWindowsLogTailCommand(
+                restartArgs.filePath,
+                LOG_VIEWER_INITIAL_TAIL_LINES,
+              ),
+            ],
+            {
+              stdio: ["ignore", "pipe", "pipe"],
+              windowsHide: true,
+            },
+          )
+        : spawn(
+            "tail",
+            [
+              "-n",
+              String(LOG_VIEWER_INITIAL_TAIL_LINES),
+              "-F",
+              restartArgs.filePath,
+            ],
+            {
+              stdio: ["ignore", "pipe", "pipe"],
+            },
+          );
     const tailProcess: TailProcess = {
       childProcess,
       filePath: restartArgs.filePath,
@@ -577,6 +611,9 @@ export function createLogTailer(args: CreateLogTailerArgs): LogTailer {
     if (childProcess.stdout !== null) {
       childProcess.stdout.setEncoding("utf8");
       childProcess.stdout.on("data", (chunk: string) => {
+        if (restartArgs.state.tailProcess !== tailProcess) {
+          return;
+        }
         handleTailChunk({ chunk, state: restartArgs.state });
       });
     }
@@ -584,6 +621,9 @@ export function createLogTailer(args: CreateLogTailerArgs): LogTailer {
     if (childProcess.stderr !== null) {
       childProcess.stderr.setEncoding("utf8");
       childProcess.stderr.on("data", (chunk: string) => {
+        if (restartArgs.state.tailProcess !== tailProcess) {
+          return;
+        }
         const text = chunk.trim();
         if (text.length > 0) {
           emitSystemLine({
@@ -594,6 +634,9 @@ export function createLogTailer(args: CreateLogTailerArgs): LogTailer {
     }
 
     childProcess.once("error", (error) => {
+      if (restartArgs.state.tailProcess !== tailProcess) {
+        return;
+      }
       emitSystemLine({
         text: `${restartArgs.state.component} tail failed: ${error.message}`,
       });

@@ -192,6 +192,25 @@ function waitForProcessExitWithTimeout(
   });
 }
 
+function stopWindowsProcessTree(pid: number): Promise<void> {
+  return new Promise((resolvePromise) => {
+    const killer = spawn(
+      "taskkill",
+      ["/T", "/F", "/PID", String(pid)],
+      {
+        stdio: "ignore",
+        windowsHide: true,
+      },
+    );
+    killer.once("error", () => {
+      resolvePromise();
+    });
+    killer.once("close", () => {
+      resolvePromise();
+    });
+  });
+}
+
 export function startBbAppProcess(args: StartBbAppProcessArgs): BbAppProcess {
   const logs = createRuntimeLogBuffer({ maxLines: args.logLineLimit });
   const childProcess = spawn(args.runtime.executablePath, [args.bridgePath], {
@@ -228,6 +247,17 @@ export function startBbAppProcess(args: StartBbAppProcessArgs): BbAppProcess {
     pid,
     async stop(stopArgs) {
       if (hasProcessExited(childProcess)) {
+        return;
+      }
+      if (process.platform === "win32") {
+        const pid = childProcess.pid;
+        if (pid !== undefined) {
+          await stopWindowsProcessTree(pid);
+        }
+        await waitForProcessExitWithTimeout({
+          childProcess,
+          timeoutMs: stopArgs.timeoutMs,
+        });
         return;
       }
       childProcess.kill(stopArgs.signal);

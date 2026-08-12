@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import type { BbDesktopVersionFeed } from "@bb/desktop-contract";
+import {
+  desktopPlatformFromNode,
+  type BbDesktopVersionFeed,
+} from "@bb/desktop-contract";
 import {
   createDesktopUpdateService,
   DESKTOP_UPDATE_ACTIVE_MIN_INTERVAL_MS,
@@ -56,7 +59,7 @@ describe("desktop update feed parsing", () => {
       lastCheckedAt: checkedAt,
       latestVersion: "0.0.2",
       pendingVersion: null,
-      platform: "macos",
+      platform: desktopPlatformFromNode(process.platform),
       updateAvailable: true,
       updateDownloaded: false,
       version: "0.0.1",
@@ -180,7 +183,7 @@ describe("desktop update feed parsing", () => {
       lastCheckedAt: checkedAt,
       latestVersion: "0.0.1",
       pendingVersion: null,
-      platform: "macos",
+      platform: desktopPlatformFromNode(process.platform),
       updateAvailable: false,
       updateDownloaded: false,
       version: "0.0.2",
@@ -216,7 +219,7 @@ describe("desktop update service", () => {
       lastCheckedAt: checkedAt,
       latestVersion: "0.0.2",
       pendingVersion: null,
-      platform: "macos",
+      platform: desktopPlatformFromNode(process.platform),
       updateAvailable: true,
       updateDownloaded: false,
       version: "0.0.1",
@@ -230,7 +233,7 @@ describe("desktop update service", () => {
       lastCheckedAt: failedCheckedAt,
       latestVersion: "0.0.2",
       pendingVersion: null,
-      platform: "macos",
+      platform: desktopPlatformFromNode(process.platform),
       updateAvailable: true,
       updateDownloaded: false,
       version: "0.0.1",
@@ -282,7 +285,7 @@ describe("desktop update service", () => {
         lastCheckedAt: timeoutCheckedAt,
         latestVersion: "0.0.2",
         pendingVersion: null,
-        platform: "macos",
+        platform: desktopPlatformFromNode(process.platform),
         updateAvailable: true,
         updateDownloaded: false,
         version: "0.0.1",

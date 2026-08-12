@@ -100,8 +100,8 @@ Contract:
   transcript in the app.
 - A non-zero exit, a signal, or a timeout (15 minutes) fails provisioning and
   the thread doesn't start.
-- POSIX only — supported on macOS, Linux, and WSL2. Native Windows isn't
-  supported.
+- POSIX script. On native Windows, bb runs it with Git's bundled `bash` when
+  `sh` is not on `PATH`.
 
 ## Cleanup
 

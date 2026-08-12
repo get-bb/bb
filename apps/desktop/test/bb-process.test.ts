@@ -70,7 +70,58 @@ afterEach(async () => {
   }
 });
 
+function isPidRunning(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 describe("bb app process", () => {
+  it("stops grandchild processes on win32", async () => {
+    if (process.platform !== "win32") {
+      return;
+    }
+
+    const script = await createTempScript({
+      contents: `
+import { spawn } from "node:child_process";
+const grandchild = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
+  stdio: "ignore",
+});
+console.log("grandchild=" + String(grandchild.pid));
+console.log("ready");
+`,
+    });
+    const bbProcess = startBbAppProcess({
+      bridgePath: script.path,
+      cwd: script.root,
+      env: process.env,
+      logLineLimit: 50,
+      runtime: {
+        executablePath: process.execPath,
+        mode: "node",
+      },
+    });
+    processes.push(bbProcess);
+    await waitForLog({ process: bbProcess, text: "ready", timeoutMs: 5_000 });
+    const match = /grandchild=(\d+)/u.exec(bbProcess.logs.text());
+    const grandchildPid = Number(match?.[1]);
+    expect(grandchildPid).toBeGreaterThan(0);
+    expect(isPidRunning(grandchildPid)).toBe(true);
+
+    await bbProcess.stop({
+      killSignal: "SIGKILL",
+      killTimeoutMs: 2_000,
+      signal: "SIGTERM",
+      timeoutMs: 2_000,
+    });
+
+    expect(isPidRunning(grandchildPid)).toBe(false);
+  });
+
   it("uses the dev Node executable without Electron node mode", () => {
     const env = createBbAppProcessEnv({
       env: {
@@ -125,6 +176,9 @@ describe("bb app process", () => {
   });
 
   it("escalates to SIGKILL when the bridge ignores SIGTERM", async () => {
+    if (process.platform === "win32") {
+      return;
+    }
     const script = await createTempScript({
       contents: `
 process.on("SIGTERM", () => {

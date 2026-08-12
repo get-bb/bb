@@ -57,5 +57,15 @@
   "dmg": {
     "sign": false
   },
+  "win": {
+    "icon": "assets/icon.ico",
+    "signAndEditExecutable": false,
+    "target": [
+      {
+        "target": "portable",
+        "arch": ["x64"]
+      }
+    ]
+  },
   "npmRebuild": false
 }

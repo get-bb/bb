@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { desktopPlatformFromNode } from "@bb/desktop-contract";
 import type {
   UpdateCheckResult,
   UpdateDownloadedEvent,
@@ -250,7 +251,7 @@ describe("desktop auto-update service", () => {
       lastCheckedAt: checkedAt,
       latestVersion: "0.0.2",
       pendingVersion: null,
-      platform: "macos",
+      platform: desktopPlatformFromNode(process.platform),
       updateAvailable: true,
       updateDownloaded: false,
       version: "0.0.1",
@@ -263,7 +264,7 @@ describe("desktop auto-update service", () => {
       lastCheckedAt: checkedAt,
       latestVersion: "0.0.2",
       pendingVersion: "0.0.2",
-      platform: "macos",
+      platform: desktopPlatformFromNode(process.platform),
       updateAvailable: true,
       updateDownloaded: true,
       version: "0.0.1",
@@ -332,7 +333,7 @@ describe("desktop auto-update service", () => {
       lastCheckedAt: checkedAt,
       latestVersion: "0.0.2",
       pendingVersion: null,
-      platform: "macos",
+      platform: desktopPlatformFromNode(process.platform),
       updateAvailable: true,
       updateDownloaded: false,
       version: "0.0.1",
@@ -360,7 +361,7 @@ describe("desktop auto-update service", () => {
       lastCheckedAt: checkedAt,
       latestVersion: "0.0.2",
       pendingVersion: null,
-      platform: "macos",
+      platform: desktopPlatformFromNode(process.platform),
       updateAvailable: true,
       updateDownloaded: false,
       version: "0.0.1",

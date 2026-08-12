@@ -39,7 +39,9 @@ is alpha: expect problems, and please report them. Intel Mac users should run bb
 with `npx` instead. On Windows, run bb inside
 [WSL2 (Windows Subsystem for Linux)](https://learn.microsoft.com/windows/wsl/install):
 install WSL2 first, then run the same `npx` command below from your WSL2 (Linux)
-shell. Native Windows PowerShell and CMD are not supported.
+shell. Native Windows PowerShell and CMD are not a published support path.
+A source checkout can build a local Windows installer with
+`pnpm --filter @bb/desktop run dist:win`.
 
 Early adopters can install
 **[bb Nightly](https://github.com/get-bb/bb/releases/tag/desktop-nightly)**

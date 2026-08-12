@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   resolveDesktopBridgePath,
@@ -14,7 +15,7 @@ describe("desktop app paths", () => {
     };
 
     expect(resolveDesktopBridgePath({ paths })).toBe(
-      "/Applications/bb.app/Contents/Resources/app.asar.unpacked/dist/bb-app-bridge.mjs",
+      join(`${paths.appPath}.unpacked`, "dist", "bb-app-bridge.mjs"),
     );
   });
 
@@ -26,7 +27,7 @@ describe("desktop app paths", () => {
     };
 
     expect(resolveDesktopBridgePath({ paths })).toBe(
-      "/Applications/bb.app/Contents/Resources/app-arm64.asar.unpacked/dist/bb-app-bridge.mjs",
+      join(`${paths.appPath}.unpacked`, "dist", "bb-app-bridge.mjs"),
     );
   });
 
@@ -42,9 +43,7 @@ describe("desktop app paths", () => {
         packagedIconFileName: "icon-nightly.png",
         paths,
       }),
-    ).toBe(
-      "/Applications/bb Nightly.app/Contents/Resources/app.asar/assets/icon-nightly.png",
-    );
+    ).toBe(join(paths.appPath, "assets", "icon-nightly.png"));
   });
 
   it("keeps the development icon independent of the release channel", () => {
@@ -59,6 +58,6 @@ describe("desktop app paths", () => {
         packagedIconFileName: "icon-nightly.png",
         paths,
       }),
-    ).toBe("/checkout/apps/desktop/assets/icon-dev.png");
+    ).toBe(join(paths.appPath, "assets", "icon-dev.png"));
   });
 });

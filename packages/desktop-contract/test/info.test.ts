@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { bbDesktopInfoSchema } from "../src/info.js";
+import {
+  bbDesktopInfoSchema,
+  desktopPlatformFromNode,
+} from "../src/info.js";
 
 const baseInfo = {
   lastCheckedAt: null,
@@ -20,6 +23,18 @@ describe("bbDesktopInfoSchema", () => {
       }).success,
     ).toBe(true);
     expect(bbDesktopInfoSchema.safeParse(baseInfo).success).toBe(true);
+  });
+
+  it("maps Node platforms onto desktop bridge platforms", () => {
+    expect(desktopPlatformFromNode("win32")).toBe("windows");
+    expect(desktopPlatformFromNode("linux")).toBe("linux");
+    expect(desktopPlatformFromNode("darwin")).toBe("macos");
+    expect(
+      bbDesktopInfoSchema.safeParse({
+        ...baseInfo,
+        platform: "windows",
+      }).success,
+    ).toBe(true);
   });
 
   it("rejects an unknown download state", () => {

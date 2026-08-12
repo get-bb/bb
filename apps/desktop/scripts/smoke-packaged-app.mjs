@@ -343,12 +343,23 @@ async function stopPackagedApp(child) {
 }
 
 async function smokePackagedApp() {
-  if (process.platform !== "darwin" && process.platform !== "linux") {
-    throw new Error("Packaged desktop smoke only runs on macOS or Linux.");
+  if (
+    process.platform !== "darwin" &&
+    process.platform !== "linux" &&
+    process.platform !== "win32"
+  ) {
+    throw new Error(
+      "Packaged desktop smoke only runs on macOS, Linux, or Windows.",
+    );
   }
 
   const desktopVersion = await readDesktopPackageVersion();
-  const desktopPlatform = process.platform === "darwin" ? "macos" : "linux";
+  const desktopPlatform =
+    process.platform === "darwin"
+      ? "macos"
+      : process.platform === "win32"
+        ? "windows"
+        : "linux";
   const appBinary = await resolvePackagedAppBinary({
     executableName: releaseConfig.linuxExecutableName,
     platform: process.platform,

@@ -1,5 +1,5 @@
 const { spawn } = require("node:child_process");
-const { chmod, readFile, readdir, writeFile } = require("node:fs/promises");
+const { chmod, cp, readFile, readdir, writeFile } = require("node:fs/promises");
 const { createRequire } = require("node:module");
 const path = require("node:path");
 
@@ -8,6 +8,7 @@ const desktopPackageRoot = path.resolve(__dirname, "..");
 const NODE_MODULES_DIRECTORY = "node_modules";
 const NODE_PTY_PACKAGE_NAME = "node-pty";
 const BETTER_SQLITE3_PACKAGE_NAME = "better-sqlite3";
+const PARCEL_WATCHER_PACKAGE_NAME = "@parcel/watcher";
 const PACKAGED_NATIVE_PACKAGE_NAMES = [
   NODE_PTY_PACKAGE_NAME,
   BETTER_SQLITE3_PACKAGE_NAME,
@@ -139,7 +140,36 @@ async function patchNodePtyHelperPath(packageDirectory) {
   );
 }
 
-async function prepareNodePtyPackageDirectory(packageDirectory) {
+function resolveNativeModulePlatform(nodeOrElectronPlatform = process.platform) {
+  if (
+    nodeOrElectronPlatform === "win32" ||
+    nodeOrElectronPlatform === "windows"
+  ) {
+    return "win32";
+  }
+  if (nodeOrElectronPlatform === "linux") {
+    return "linux";
+  }
+  if (
+    nodeOrElectronPlatform === "darwin" ||
+    nodeOrElectronPlatform === "macos" ||
+    nodeOrElectronPlatform === "mac"
+  ) {
+    return "darwin";
+  }
+  throw new Error(
+    `Unsupported native-module platform: ${String(nodeOrElectronPlatform)}`,
+  );
+}
+
+async function prepareNodePtyPackageDirectory(
+  packageDirectory,
+  nativePlatform = resolveNativeModulePlatform(),
+) {
+  if (nativePlatform === "win32") {
+    return;
+  }
+
   await patchNodePtyHelperPath(packageDirectory);
 
   await Promise.all(
@@ -200,6 +230,107 @@ async function prepareBetterSqlite3PackageDirectory(packageDirectory, options) {
   );
 }
 
+function parcelWatcherPlatformPackageName(platform, arch) {
+  return `${PARCEL_WATCHER_PACKAGE_NAME}-${platform}-${arch}`;
+}
+
+function workspaceRoot() {
+  return path.resolve(desktopPackageRoot, "..", "..");
+}
+
+async function resolveWorkspaceParcelWatcherPlatformDir(packageName) {
+  const hostDaemonPackageJson = path.join(
+    workspaceRoot(),
+    "apps",
+    "host-daemon",
+    "package.json",
+  );
+  let watcherPackageJsonPath;
+  try {
+    watcherPackageJsonPath = createRequire(hostDaemonPackageJson).resolve(
+      `${PARCEL_WATCHER_PACKAGE_NAME}/package.json`,
+    );
+  } catch {
+    return undefined;
+  }
+
+  try {
+    return path.dirname(
+      createRequire(watcherPackageJsonPath).resolve(
+        `${packageName}/package.json`,
+      ),
+    );
+  } catch {
+    // Optional platform package is often not linked next to the JS wrapper.
+  }
+
+  const siblingDirectory = path.join(
+    path.dirname(watcherPackageJsonPath),
+    "..",
+    path.basename(packageName),
+  );
+  if (await isDirectory(siblingDirectory)) {
+    return siblingDirectory;
+  }
+
+  let watcherVersion;
+  try {
+    watcherVersion = JSON.parse(
+      await readFile(watcherPackageJsonPath, "utf8"),
+    ).version;
+  } catch {
+    return undefined;
+  }
+  if (typeof watcherVersion !== "string" || watcherVersion.length === 0) {
+    return undefined;
+  }
+
+  const storeDirectory = path.join(
+    workspaceRoot(),
+    "node_modules",
+    ".pnpm",
+    `${packageName.replace("/", "+")}@${watcherVersion}`,
+    "node_modules",
+    packageName,
+  );
+  if (await isDirectory(storeDirectory)) {
+    return storeDirectory;
+  }
+  return undefined;
+}
+
+async function prepareParcelWatcherPlatformPackage(
+  appOutDir,
+  platform,
+  arch,
+) {
+  const watcherDirectories = (
+    await findPackageDirectories(appOutDir, [PARCEL_WATCHER_PACKAGE_NAME])
+  ).get(PARCEL_WATCHER_PACKAGE_NAME);
+  if (watcherDirectories.length === 0) {
+    return [];
+  }
+
+  const packageName = parcelWatcherPlatformPackageName(platform, arch);
+  const sourceDir = await resolveWorkspaceParcelWatcherPlatformDir(packageName);
+  if (sourceDir === undefined) {
+    throw new Error(
+      `Unable to find ${packageName} in the workspace. The packaged host-daemon loads @parcel/watcher and needs that optional native package.`,
+    );
+  }
+
+  const destinationDirectories = [];
+  for (const watcherDirectory of watcherDirectories) {
+    const destinationDirectory = path.join(
+      path.dirname(watcherDirectory),
+      path.basename(packageName),
+    );
+    await cp(sourceDir, destinationDirectory, { recursive: true });
+    destinationDirectories.push(destinationDirectory);
+  }
+  return destinationDirectories;
+}
+
 async function preparePackagedNativeModules(appOutDir, options = {}) {
   if (!(await isDirectory(appOutDir))) {
     throw new Error(`Packaged app output does not exist: ${appOutDir}`);
@@ -215,12 +346,30 @@ async function preparePackagedNativeModules(appOutDir, options = {}) {
       `Unable to find ${NODE_PTY_PACKAGE_NAME} under ${appOutDir}`,
     );
   }
-  await Promise.all(nodePtyDirectories.map(prepareNodePtyPackageDirectory));
+  const nativePlatform = resolveNativeModulePlatform(
+    options.platform ?? process.platform,
+  );
+  await Promise.all(
+    nodePtyDirectories.map((packageDirectory) =>
+      prepareNodePtyPackageDirectory(packageDirectory, nativePlatform),
+    ),
+  );
+
+  const nativeArch = options.arch ?? process.arch;
+  const parcelWatcherDirectories = await prepareParcelWatcherPlatformPackage(
+    appOutDir,
+    nativePlatform,
+    nativeArch,
+  );
 
   // The Electron target is only known on the real afterPack path. Standalone
   // invocations (e.g. tests, manual node-pty repair) omit it and skip the fetch.
   if (options.electronVersion === undefined) {
-    return { betterSqlite3Directories: [], nodePtyDirectories };
+    return {
+      betterSqlite3Directories: [],
+      nodePtyDirectories,
+      parcelWatcherDirectories,
+    };
   }
 
   const betterSqlite3Directories = packageDirectories.get(
@@ -234,14 +383,18 @@ async function preparePackagedNativeModules(appOutDir, options = {}) {
   await Promise.all(
     betterSqlite3Directories.map((packageDirectory) =>
       prepareBetterSqlite3PackageDirectory(packageDirectory, {
-        arch: options.arch,
+        arch: nativeArch,
         electronVersion: options.electronVersion,
         platform: options.platform,
       }),
     ),
   );
 
-  return { betterSqlite3Directories, nodePtyDirectories };
+  return {
+    betterSqlite3Directories,
+    nodePtyDirectories,
+    parcelWatcherDirectories,
+  };
 }
 
 function resolveElectronVersion() {
@@ -251,7 +404,24 @@ function resolveElectronVersion() {
   return requireFromDesktop("electron/package.json").version;
 }
 
+const ELECTRON_BUILDER_ARCH_NAMES = {
+  0: "ia32",
+  1: "x64",
+  2: "armv7l",
+  3: "arm64",
+  4: "universal",
+};
+
 function resolveArchName(context) {
+  if (typeof context?.arch === "string" && context.arch.length > 0) {
+    return context.arch;
+  }
+  if (typeof context?.arch === "number") {
+    const mappedName = ELECTRON_BUILDER_ARCH_NAMES[context.arch];
+    if (typeof mappedName === "string") {
+      return mappedName;
+    }
+  }
   try {
     const { Arch } = require("electron-builder");
     const archName = Arch[context.arch];
@@ -259,10 +429,11 @@ function resolveArchName(context) {
       return archName;
     }
   } catch {
-    // electron-builder is only resolvable inside the build process; fall back to
-    // the host architecture, which matches single-arch builds on a native host.
+    // electron-builder is only resolvable inside the afterPack process.
   }
-  return process.arch;
+  throw new Error(
+    "Unable to resolve packaged native arch from afterPack context",
+  );
 }
 
 async function afterPack(context) {
@@ -329,6 +500,8 @@ module.exports.preparePackagedNativeModules = preparePackagedNativeModules;
 module.exports.parseStandaloneArguments = parseStandaloneArguments;
 module.exports.resolveBetterSqlite3PrebuildArguments =
   resolveBetterSqlite3PrebuildArguments;
+module.exports.resolveNativeModulePlatform = resolveNativeModulePlatform;
+module.exports.resolveArchName = resolveArchName;
 
 if (require.main === module) {
   main().catch((error) => {

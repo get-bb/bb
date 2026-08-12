@@ -1,13 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 import type { AppCommandId } from "@bb/domain";
-import type {
-  BbDesktopApi,
-  BbDesktopBrowserOpenTabRequest,
-  BbDesktopBrowserScopedOpenTabRequest,
-  BbDesktopBrowserSnapshot,
-  BbDesktopBrowserState,
-  BbDesktopInfo,
-  BbDesktopWindowState,
+import {
+  desktopPlatformFromNode,
+  type BbDesktopApi,
+  type BbDesktopBrowserOpenTabRequest,
+  type BbDesktopBrowserScopedOpenTabRequest,
+  type BbDesktopBrowserSnapshot,
+  type BbDesktopBrowserState,
+  type BbDesktopInfo,
+  type BbDesktopWindowState,
 } from "@bb/desktop-contract";
 import {
   BB_DESKTOP_CHECK_FOR_UPDATES_CHANNEL,
@@ -100,6 +101,9 @@ const electronMock = vi.hoisted(() => {
       sendCalls.length = 0;
       zoomFactor = 1;
     },
+    setDesktopPlatform(platform: BbDesktopInfo["platform"]): void {
+      desktopInfo.platform = platform;
+    },
     setZoomFactor(nextZoomFactor: number): void {
       zoomFactor = nextZoomFactor;
     },
@@ -160,6 +164,7 @@ interface EmitIpcPayloadArgs {
 
 async function loadPreload(): Promise<BbDesktopApi> {
   electronMock.reset();
+  electronMock.setDesktopPlatform(desktopPlatformFromNode(process.platform));
   vi.resetModules();
   process.env.BB_DESKTOP_VERSION = "0.0.0-test";
   await import("../src/preload.js");
@@ -224,6 +229,7 @@ describe("desktop preload browser API", () => {
       visible: false,
     };
 
+    expect(api.platform).toBe(desktopPlatformFromNode(process.platform));
     expect(Object.keys(api.browser).sort()).toEqual([
       "attach",
       "detach",
