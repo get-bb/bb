@@ -1,2 +1,272 @@
-// TODO(WP-07): replace this cold-start stub with the shared formatters.
-export {};
+export type Severity =
+  | "critical"
+  | "high"
+  | "medium"
+  | "low"
+  | "none"
+  | "unknown";
+
+const EMPTY_VALUE = "—";
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/u;
+const ISO_INSTANT =
+  /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d{1,9})?)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/u;
+const HEX_HASH = /^[a-f\d]+$/iu;
+const PURL_TYPE = /^[a-z][a-z\d.+-]*$/u;
+const PURL_QUALIFIER = /^[a-z][a-z\d._-]*$/u;
+const UNSAFE_IDENTIFIER_TEXT = /[\s\u0000-\u001f\u007f]/u;
+const INVALID_PERCENT_ESCAPE = /%(?![a-f\d]{2})/iu;
+
+const SEVERITIES = {
+  critical: "Critical",
+  high: "High",
+  medium: "Medium",
+  low: "Low",
+  none: "None",
+} as const satisfies Record<Exclude<Severity, "unknown">, string>;
+
+const MINUTE_MS = 60_000;
+const HOUR_MS = 60 * MINUTE_MS;
+const DAY_MS = 24 * HOUR_MS;
+const WEEK_MS = 7 * DAY_MS;
+
+function isValidCalendarDate(value: string): boolean {
+  if (!ISO_DATE.test(value)) {
+    return false;
+  }
+  const timestamp = Date.parse(`${value}T00:00:00.000Z`);
+  return (
+    Number.isFinite(timestamp) &&
+    new Date(timestamp).toISOString().slice(0, 10) === value
+  );
+}
+
+function parseIsoInstant(value: string | null | undefined): number | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalized = value.trim();
+  if (
+    (!ISO_DATE.test(normalized) && !ISO_INSTANT.test(normalized)) ||
+    !isValidCalendarDate(normalized.slice(0, 10))
+  ) {
+    return null;
+  }
+
+  const timestamp = Date.parse(
+    ISO_DATE.test(normalized) ? `${normalized}T00:00:00.000Z` : normalized,
+  );
+  if (!Number.isFinite(timestamp)) {
+    return null;
+  }
+
+  return timestamp;
+}
+
+function isValidPurl(value: string): boolean {
+  if (
+    !value.startsWith("pkg:") ||
+    UNSAFE_IDENTIFIER_TEXT.test(value) ||
+    INVALID_PERCENT_ESCAPE.test(value)
+  ) {
+    return false;
+  }
+
+  const fragmentParts = value.split("#");
+  if (fragmentParts.length > 2) {
+    return false;
+  }
+  const [beforeFragment, subpath] = fragmentParts;
+  if (
+    subpath !== undefined &&
+    (subpath.length === 0 ||
+      subpath.includes("?") ||
+      subpath.startsWith("/") ||
+      subpath.endsWith("/") ||
+      subpath
+        .split("/")
+        .some((part) => part === "" || part === "." || part === ".."))
+  ) {
+    return false;
+  }
+
+  const queryParts = beforeFragment.split("?");
+  if (queryParts.length > 2) {
+    return false;
+  }
+  const [coordinates, query] = queryParts;
+  if (query !== undefined) {
+    if (query.length === 0) {
+      return false;
+    }
+    const qualifierKeys = new Set<string>();
+    for (const qualifier of query.split("&")) {
+      const separator = qualifier.indexOf("=");
+      const key = qualifier.slice(0, separator);
+      if (
+        separator <= 0 ||
+        separator !== qualifier.lastIndexOf("=") ||
+        separator === qualifier.length - 1 ||
+        !PURL_QUALIFIER.test(key) ||
+        qualifierKeys.has(key)
+      ) {
+        return false;
+      }
+      qualifierKeys.add(key);
+    }
+  }
+
+  const coordinate = coordinates.slice(4);
+  const firstSlash = coordinate.indexOf("/");
+  if (firstSlash <= 0 || !PURL_TYPE.test(coordinate.slice(0, firstSlash))) {
+    return false;
+  }
+
+  const path = coordinate.slice(firstSlash + 1);
+  const segments = path.split("/");
+  if (
+    segments.some((part) => part === "" || part === "." || part === "..") ||
+    segments.slice(0, -1).some((part) => part.includes("@"))
+  ) {
+    return false;
+  }
+  const nameAndVersion = segments.at(-1);
+  if (nameAndVersion === undefined) {
+    return false;
+  }
+  const nameAndVersionParts = nameAndVersion.split("@");
+  return (
+    nameAndVersionParts.length === 1 ||
+    (nameAndVersionParts.length === 2 &&
+      nameAndVersionParts[0].length > 0 &&
+      nameAndVersionParts[1].length > 0)
+  );
+}
+
+function compactDecimal(value: number): string {
+  return value.toFixed(1).replace(/\.0$/u, "");
+}
+
+export function formatSeverity(
+  value: string | null | undefined,
+): { label: string; severity: Severity } {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  switch (normalized) {
+    case "critical":
+    case "high":
+    case "medium":
+    case "low":
+    case "none":
+      return { label: SEVERITIES[normalized], severity: normalized };
+    default:
+      return { label: "Unknown", severity: "unknown" };
+  }
+}
+
+export function formatCvss(value: number | null | undefined): string {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 10
+    ? value.toFixed(1)
+    : EMPTY_VALUE;
+}
+
+export function formatEpss(value: number | null | undefined): string {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1
+    ? `${(value * 100).toFixed(1)}%`
+    : EMPTY_VALUE;
+}
+
+export function formatIsoDate(value: string | null | undefined): string {
+  const timestamp = parseIsoInstant(value);
+  return timestamp === null ? EMPTY_VALUE : new Date(timestamp).toISOString().slice(0, 10);
+}
+
+export function formatRelativeDate(
+  value: string | null | undefined,
+  now: Date,
+): string {
+  const timestamp = parseIsoInstant(value);
+  const nowTimestamp = now.getTime();
+  if (timestamp === null || !Number.isFinite(nowTimestamp)) {
+    return EMPTY_VALUE;
+  }
+
+  const difference = nowTimestamp - timestamp;
+  if (difference < MINUTE_MS) {
+    // Future values collapse to "just now" so clock skew cannot produce a
+    // misleading negative duration.
+    return "just now";
+  }
+  if (difference < HOUR_MS) {
+    return `${Math.floor(difference / MINUTE_MS)}m ago`;
+  }
+  if (difference < DAY_MS) {
+    return `${Math.floor(difference / HOUR_MS)}h ago`;
+  }
+  if (difference < WEEK_MS) {
+    return `${Math.floor(difference / DAY_MS)}d ago`;
+  }
+  if (difference < 5 * WEEK_MS) {
+    return `${Math.floor(difference / WEEK_MS)}w ago`;
+  }
+  return new Date(timestamp).toISOString().slice(0, 10);
+}
+
+export function formatHash(
+  value: string | null | undefined,
+  visible = 12,
+): string {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (
+    !HEX_HASH.test(normalized) ||
+    !Number.isInteger(visible) ||
+    visible < 1
+  ) {
+    return EMPTY_VALUE;
+  }
+  return normalized.length > visible ? `${normalized.slice(0, visible)}…` : normalized;
+}
+
+export function formatPurl(
+  value: string | null | undefined,
+  max = 72,
+): string {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  if (!isValidPurl(normalized) || !Number.isInteger(max) || max < 8) {
+    return EMPTY_VALUE;
+  }
+  if (normalized.length <= max) {
+    return normalized;
+  }
+
+  const remaining = max - 1;
+  const head = Math.ceil((remaining * 2) / 3);
+  return `${normalized.slice(0, head)}…${normalized.slice(-(remaining - head))}`;
+}
+
+export function formatBytes(value: number | null | undefined): string {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
+    return EMPTY_VALUE;
+  }
+
+  const units = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"] as const;
+  let scaled = value;
+  let unitIndex = 0;
+  while (scaled >= 1024 && unitIndex < units.length - 1) {
+    scaled /= 1024;
+    unitIndex += 1;
+  }
+
+  const amount = unitIndex === 0 ? Math.round(scaled).toString() : compactDecimal(scaled);
+  return `${amount} ${units[unitIndex]}`;
+}
+
+export function formatCount(value: number | null | undefined): string {
+  if (
+    typeof value !== "number" ||
+    !Number.isSafeInteger(value) ||
+    value < 0
+  ) {
+    return EMPTY_VALUE;
+  }
+  return value.toString().replace(/\B(?=(\d{3})+(?!\d))/gu, ",");
+}
