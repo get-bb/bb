@@ -368,7 +368,9 @@ complete_step "Using local host-daemon port $host_daemon_port"
 package_url="${server_url%/}/install/bb-app.tgz"
 package_dir=$(mktemp -d "${TMPDIR:-/tmp}/bb-app.XXXXXX")
 package_file="$package_dir/bb-app.tgz"
-curl_output_mode=--progress-bar
+# curl's numeric meter shows bytes, rate, percentage, and ETA without the
+# animated ASCII bar. Keep redirected installs quiet while preserving errors.
+curl_output_mode=--progress-meter
 if [ ! -t 2 ]; then
   curl_output_mode=--silent
 fi
