@@ -20,9 +20,9 @@ describe("QA runbook contracts", () => {
       );
 
       expect(modes.length).toBeGreaterThan(0);
-      expect(
-        modes.filter((mode) => !publicPermissionModes.has(mode)),
-      ).toEqual([]);
+      expect(modes.filter((mode) => !publicPermissionModes.has(mode))).toEqual(
+        [],
+      );
     },
   );
 
@@ -32,9 +32,23 @@ describe("QA runbook contracts", () => {
     expect(runbook).toContain(
       'mktemp -d "${HOME:?}/.bb-approval-smoke.XXXXXX"',
     );
-    expect(runbook).toContain(
-      'mktemp -d "${HOME:?}/.bb-denial-smoke.XXXXXX"',
-    );
+    expect(runbook).toContain('mktemp -d "${HOME:?}/.bb-denial-smoke.XXXXXX"');
     expect(runbook).not.toMatch(/mktemp -d \/tmp\/bb-(?:approval|denial)/);
+  });
+
+  it("documents provisioning retry only after a completed failure", async () => {
+    const runbook = await readRunbook("manual-runbook.md");
+
+    expect(runbook).toContain("Provisioning failure and next-message retry");
+    expect(runbook).toContain(
+      'bb thread wait "$PROVISION_RETRY_THREAD_ID" --status error',
+    );
+    expect(runbook).toContain(
+      'bb thread tell "$PROVISION_RETRY_THREAD_ID" "Say exactly: provisioning retry ok" --mode auto',
+    );
+    expect(runbook).not.toContain(
+      "Server restart during environment provisioning",
+    );
+    expect(runbook).not.toMatch(/active[_ -]provisioning[_ -]id/i);
   });
 });

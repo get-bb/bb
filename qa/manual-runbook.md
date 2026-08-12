@@ -564,55 +564,63 @@ bb thread wait "$SMOKE_THREAD_ID" --status idle --timeout 120
 bb thread output "$SMOKE_THREAD_ID"
 ```
 
-Server restart during environment provisioning:
+Provisioning failure and next-message retry:
 
 ```bash
-SERVER_RESTART_THREAD_ID=$(bb thread spawn \
+# Commit a supported setup hook that fails exactly once across worktrees in the
+# disposable repository. The marker lives in the shared Git directory, so the
+# first failed worktree can be removed without losing it.
+cat > "$PROJECT_ROOT/.bb-env-setup.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+MARKER="$(git rev-parse --path-format=absolute --git-common-dir)/bb-qa-provision-failed-once"
+if [ ! -e "$MARKER" ]; then
+  touch "$MARKER"
+  echo "intentional one-time QA setup failure" >&2
+  exit 42
+fi
+EOF
+git -C "$PROJECT_ROOT" add .bb-env-setup.sh
+git -C "$PROJECT_ROOT" commit -m "qa: fail one worktree setup"
+
+PROVISION_RETRY_THREAD_ID=$(bb thread spawn \
   --project "$BB_PROJECT_ID" \
   --provider codex \
   --model "$CODEX_MODEL" \
   --reasoning-level low \
   --new-environment worktree \
-  --prompt "Say exactly: server restart provisioning recovery" \
+  --prompt "Say exactly: initial provisioning should fail" \
   --json | jq -r '.id')
 
-SERVER_RESTART_ENV_ID=$(curl -fsS "$BB_SERVER_URL/api/v1/threads/$SERVER_RESTART_THREAD_ID" | jq -er '.environmentId')
-for _ in $(seq 1 60); do
-  ENV_STATUS=$(curl -fsS "$BB_SERVER_URL/api/v1/environments/$SERVER_RESTART_ENV_ID" | jq -r '.status')
-  [ "$ENV_STATUS" = "provisioning" ] && break
-  sleep 1
-done
-test "$ENV_STATUS" = "provisioning"
+bb thread wait "$PROVISION_RETRY_THREAD_ID" --status error --timeout 120
+PROVISION_RETRY_ENV_ID=$(curl -fsS "$BB_SERVER_URL/api/v1/threads/$PROVISION_RETRY_THREAD_ID" | jq -er '.environmentId')
+curl -fsS "$BB_SERVER_URL/api/v1/environments/$PROVISION_RETRY_ENV_ID" | jq -e '.status == "error"'
+bb thread log "$PROVISION_RETRY_THREAD_ID" --format json \
+  | jq -e 'any(.[]; .type == "system/error" and (.data.code // .code // null) == "thread_provisioning_failed")'
 
-kill -TERM "$SERVER_PID"
-while kill -0 "$SERVER_PID" 2>/dev/null; do sleep 1; done
+# Retry only after the first provisioning RPC has completed as a real failure.
+# This next message starts a fresh provision; it does not recover an in-flight
+# RPC or rely on a persisted provisioning-attempt identifier.
+bb thread tell "$PROVISION_RETRY_THREAD_ID" "Say exactly: provisioning retry ok" --mode auto
+bb thread wait "$PROVISION_RETRY_THREAD_ID" --status idle --timeout 180
+bb thread output "$PROVISION_RETRY_THREAD_ID"
+curl -fsS "$BB_SERVER_URL/api/v1/environments/$PROVISION_RETRY_ENV_ID" | jq -e '.status == "ready"'
 
-BB_DATA_DIR=$(jq -er '.server.dataDir' "$STATE_PATH") \
-BB_SERVER_PORT=$(jq -er '.server.port' "$STATE_PATH") \
-node apps/server/dist/index.js >> "$(jq -er '.server.logPath' "$STATE_PATH")" 2>&1 &
-SERVER_PID=$!
-
-for _ in $(seq 1 60); do
-  curl -fsS "$BB_SERVER_URL/api/v1/system/config" >/dev/null && break
-  sleep 1
-done
-
-eval "$RESTART_DAEMON_COMMAND"
-DAEMON_PID=$(cat "$DAEMON_RESTART_PID_PATH")
-
-curl -fsS "$BB_SERVER_URL/api/v1/environments/$SERVER_RESTART_ENV_ID" | jq
-bb thread show "$SERVER_RESTART_THREAD_ID"
-bb thread log "$SERVER_RESTART_THREAD_ID" --format json | jq '.[-12:]'
+PROVISION_RETRY_MARKER="$(git -C "$PROJECT_ROOT" rev-parse --path-format=absolute --git-common-dir)/bb-qa-provision-failed-once"
+rm -f "$PROVISION_RETRY_MARKER"
+git -C "$PROJECT_ROOT" rm .bb-env-setup.sh
+git -C "$PROJECT_ROOT" commit -m "qa: remove one-time setup failure"
 ```
 
 Expected result:
 
-- The server restarts with the same data directory and the daemon reconnects.
-- The in-flight environment provision is not replayed from a durable queue.
-- If the live RPC result was lost, the environment/thread reaches an honest
-  `error` or retryable interrupted state, with a system error explaining that
-  the server restarted before live provisioning completed.
-- The operator can retry by sending a new turn after the host is connected.
+- The first setup hook failure completes with the thread and environment in
+  `error` and records `thread_provisioning_failed`.
+- Sending the next message with `--mode auto` starts a fresh provisioning
+  attempt for the same thread and environment, which reaches `ready` before the
+  turn runs.
+- Nothing in this scenario promises recovery of an in-flight provisioning RPC
+  across a server restart.
 
 Host offline before send:
 
@@ -888,8 +896,8 @@ rmdir "$APPROVAL_DIR" "$DENY_DIR"
 Expected result:
 
 - `accept-edits` turns allow workspace changes but surface pending interactions
-  for the explicit outside-workspace probes through `bb thread interactions
-  list/show`.
+  for the explicit outside-workspace probes; inspect them with
+  `bb thread interactions list/show`.
 - `bb thread tell` is rejected while the thread is awaiting user interaction.
 - `approve`, `deny`, and `grant` resolve their matching interaction kinds.
 - Approved/granted threads continue to `idle`; denied threads either reply with the denial handling text or clearly record the denied approval in the log.
