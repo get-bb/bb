@@ -617,7 +617,7 @@ export async function createThreadFromRequest(
     ...rawRequestInput,
     environment:
       rawRequestInput.environment.type === "project-default"
-        ? resolveProjectDefaultThreadEnvironment(deps, {
+        ? await resolveProjectDefaultThreadEnvironment(deps, {
             projectId: rawRequestInput.projectId,
           })
         : rawRequestInput.environment,

@@ -444,6 +444,22 @@ export async function ensureGitRepo(
   );
 }
 
+export type GitRepositoryState = "not_git" | "no_commits" | "has_commits";
+
+export async function readGitRepositoryState(
+  cwd: string,
+  options: GitTimeoutOptions = {},
+): Promise<GitRepositoryState> {
+  if (!(await detectGitRepo(cwd, options))) {
+    return "not_git";
+  }
+  const result = await runGit(["rev-list", "--all", "--max-count=1"], {
+    cwd,
+    timeoutMs: options.timeoutMs,
+  });
+  return trimOutput(result.stdout).length > 0 ? "has_commits" : "no_commits";
+}
+
 async function readHeadSha(
   cwd: string,
   options: GitTimeoutOptions = {},

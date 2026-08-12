@@ -1056,10 +1056,13 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  // Version 107 carries a provider checkpoint through thread.stop so the
-  // server can retain an interrupted turn when a later message is edited.
-  it("uses protocol version 107 for stopped-turn checkpoints", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(107);
+  // Version 108 adds the distinct `unborn_head` provisioning failure sent by
+  // the daemon when a project source has no commits. Older daemons report the
+  // internal missing-default-branch failure, so enrolled machines must update
+  // for the actionable worktree error. Version 107 carried stopped-turn
+  // provider checkpoints and remains part of the protocol lineage.
+  it("uses protocol version 108 for commitless worktree source errors", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(108);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {

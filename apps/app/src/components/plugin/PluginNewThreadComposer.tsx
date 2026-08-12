@@ -50,8 +50,7 @@ import { useScopedBranchSelection } from "@/views/root-compose-branch-selection"
 import { resolveRootComposeThreadEnvironment } from "@/views/root-compose-thread-environment";
 import {
   buildReuseThreadOptions,
-  isProjectSourceWorktreeUnavailable,
-  PROJECT_SOURCE_WORKTREE_DISABLED_REASON,
+  resolveProjectSourceWorktreeDisabledReason,
   resolveRootComposeEffectiveEnvironmentValue,
   resolveRootComposeProjectRouting,
   resolveRootComposeProviderRouting,
@@ -410,9 +409,10 @@ export function PluginNewThreadComposer({
       selectedBranch: selectedBranch?.name ?? "",
     },
   );
-  const projectSourceWorktreeUnavailable = isProjectSourceWorktreeUnavailable(
-    branchesQuery.data,
-  );
+  const projectSourceWorktreeDisabledReason =
+    resolveProjectSourceWorktreeDisabledReason(branchesQuery.data);
+  const projectSourceWorktreeUnavailable =
+    projectSourceWorktreeDisabledReason !== null;
   const requestsManagedWorktree =
     isHostMode && parsedEnvironment.mode === "worktree";
   const managedWorktreeAvailabilityPending =
@@ -813,9 +813,7 @@ export function PluginNewThreadComposer({
             onChange: setEnvironmentSelectionValue,
             sources: projectSources,
             reuseDisabled: reuseThreadOptions.length === 0,
-            worktreeDisabledReason: projectSourceWorktreeUnavailable
-              ? PROJECT_SOURCE_WORKTREE_DISABLED_REASON
-              : null,
+            worktreeDisabledReason: projectSourceWorktreeDisabledReason,
           },
           branch: {
             value:

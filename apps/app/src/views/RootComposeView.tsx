@@ -192,8 +192,7 @@ import {
 import { useScopedBranchSelection } from "./root-compose-branch-selection";
 import {
   buildReuseThreadOptions,
-  isProjectSourceWorktreeUnavailable,
-  PROJECT_SOURCE_WORKTREE_DISABLED_REASON,
+  resolveProjectSourceWorktreeDisabledReason,
   resolveComposeHostId,
   resolveRootComposeEffectiveEnvironmentValue,
   resolveRootComposeProjectRouting,
@@ -1323,9 +1322,10 @@ export function RootComposeView() {
     },
   );
   const activeBranchesQuery = hostBranchesQuery;
-  const projectSourceWorktreeUnavailable = isProjectSourceWorktreeUnavailable(
-    activeBranchesQuery.data,
-  );
+  const projectSourceWorktreeDisabledReason =
+    resolveProjectSourceWorktreeDisabledReason(activeBranchesQuery.data);
+  const projectSourceWorktreeUnavailable =
+    projectSourceWorktreeDisabledReason !== null;
   const selectedEnvironmentRequestsManagedWorktree =
     parsedEnvironment?.type === "host" && parsedEnvironment.mode === "worktree";
   const managedWorktreeAvailabilityPending =
@@ -3207,9 +3207,7 @@ export function RootComposeView() {
       onChange: handleEnvironmentSelectionValueChange,
       sources: projectSources,
       reuseDisabled: reuseThreadOptions.length === 0,
-      worktreeDisabledReason: projectSourceWorktreeUnavailable
-        ? PROJECT_SOURCE_WORKTREE_DISABLED_REASON
-        : null,
+      worktreeDisabledReason: projectSourceWorktreeDisabledReason,
       disabled: isForkDraft,
       ...(isProjectless
         ? {}
@@ -3221,7 +3219,7 @@ export function RootComposeView() {
       isProjectless,
       handleEnvironmentSelectionValueChange,
       handleRequestMachineSetup,
-      projectSourceWorktreeUnavailable,
+      projectSourceWorktreeDisabledReason,
       projectSources,
       reuseThreadOptions.length,
     ],
