@@ -619,8 +619,11 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
         ? { acpLaunchSpec: command.acpLaunchSpec }
         : {}),
     }),
-  "known_acp_agents.status": async (command) =>
-    getKnownAcpAgentsStatus({ agents: command.agents }),
+  "known_acp_agents.status": async (command, options) =>
+    getKnownAcpAgentsStatus({
+      agents: command.agents,
+      env: providerCliEnvFromShellEnv(options.runtimeManager.getShellEnv()),
+    }),
   "provider.usage": async () => getProviderUsage(),
   "provider_cli.status": async (_command, options) =>
     getProviderCliStatus({

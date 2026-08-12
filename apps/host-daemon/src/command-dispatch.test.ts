@@ -1571,4 +1571,54 @@ describe("dispatchCommand", () => {
       fixture.originalCatalogHash,
     );
   });
+
+  it("detects known ACP agents on the resolved user shell PATH, not the daemon's process PATH", async () => {
+    // Regression: known_acp_agents.status must query `which` with the user's
+    // resolved login-shell PATH (like provider_cli.status), otherwise ACP CLIs
+    // installed only on the login PATH — e.g. Hermes' `hermes` under
+    // ~/.local/bin — are invisible to a daemon launched by launchd/systemd with
+    // a stripped PATH.
+    const binDir = await makeTempDir("bb-acp-shell-path-");
+    const executableName = `bb-acp-probe-${process.pid}`;
+    const executablePath = path.join(binDir, executableName);
+    await fs.writeFile(executablePath, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+
+    const runtime = createRuntime();
+    const manager = new RuntimeManager({
+      createRuntime: () => runtime,
+      provisionWorkspace: async () => createWorkspace(),
+    });
+    // The probe executable exists ONLY on the shell PATH the manager reports,
+    // never on process.env.PATH, so a detection that ignores the shell env
+    // fails to find it. System bin dirs stay on PATH so `which` itself resolves;
+    // only binDir (the stand-in for ~/.local/bin) is exclusive to the shell env.
+    manager.replaceManagedShellEnv({ PATH: `${binDir}:/usr/bin:/bin` });
+
+    const result = await dispatchOnlineRpcCommand(
+      {
+        type: "known_acp_agents.status",
+        agents: [{ id: "acp-probe", executableName }],
+      },
+      {
+        dataDir: "/tmp/bb-data",
+        eventSink: { emit: vi.fn(), flush: vi.fn(async () => undefined) },
+        fetchProjectAttachment: async () => {
+          throw new Error("Unexpected project attachment fetch");
+        },
+        runtimeManager: manager,
+        threadStorageRootPath: "/tmp/bb-thread-storage",
+      },
+    );
+
+    expect(result).toEqual({
+      agents: [
+        {
+          id: "acp-probe",
+          executableName,
+          installed: true,
+          executablePath,
+        },
+      ],
+    });
+  });
 });
