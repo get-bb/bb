@@ -199,6 +199,7 @@ root:
 
 ```json
 {
+  "$schema": "https://getbb.app/schemas/plugins.schema.json",
   "schemaVersion": 1,
   "name": "acme-plugins",
   "plugins": [

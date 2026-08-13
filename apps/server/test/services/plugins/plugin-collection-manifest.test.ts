@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  COLLECTION_SCHEMA_URL,
   parsePluginCollectionManifest,
   readPluginCollectionManifest,
   resolveSelectedSubdirectory,
@@ -25,7 +26,7 @@ describe("collection manifest schema", () => {
   it("accepts an index of nested plugin directories", () => {
     const parsed = parsePluginCollectionManifest(
       JSON.stringify({
-        $schema: "https://getbb.dev/schemas/plugins.schema.json",
+        $schema: COLLECTION_SCHEMA_URL,
         schemaVersion: 1,
         name: "acme-plugins",
         plugins: [
@@ -92,6 +93,17 @@ describe("collection manifest schema", () => {
     expect(() =>
       parsePluginCollectionManifest("{ nope", ".bb/plugins.json"),
     ).toThrowError(/not valid JSON/);
+    expect(() =>
+      parsePluginCollectionManifest(
+        JSON.stringify({
+          $schema: "https://example.test/plugins.schema.json",
+          schemaVersion: 1,
+          name: "acme-plugins",
+          plugins: [{ name: "a", source: "./a" }],
+        }),
+        ".bb/plugins.json",
+      ),
+    ).toThrowError(/invalid \.bb\/plugins\.json/);
   });
 
   it("names the available entries when a name is unknown", () => {

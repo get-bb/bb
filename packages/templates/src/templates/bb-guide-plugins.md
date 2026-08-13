@@ -237,6 +237,7 @@ ordinary plugin package with its own package.json and bb manifest. An optional
 collection manifest at .bb/plugins.json indexes them:
 
   {
+    "$schema": "https://getbb.app/schemas/plugins.schema.json",
     "schemaVersion": 1,
     "name": "acme-plugins",
     "plugins": [

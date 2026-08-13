@@ -10,6 +10,8 @@ import { readPluginManifest } from "./manifest.js";
 
 /** Repository-relative location of the plugin collection manifest. */
 export const COLLECTION_MANIFEST_PATH = ".bb/plugins.json";
+export const COLLECTION_SCHEMA_URL =
+  "https://getbb.app/schemas/plugins.schema.json";
 
 const COLLECTION_NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 
@@ -50,7 +52,7 @@ const collectionEntrySchema = z
  */
 export const pluginCollectionManifestSchema = z
   .object({
-    $schema: z.string().optional(),
+    $schema: z.literal(COLLECTION_SCHEMA_URL).optional(),
     schemaVersion: z.literal(1),
     name: z.string().regex(COLLECTION_NAME_PATTERN),
     plugins: z.array(collectionEntrySchema).min(1),
