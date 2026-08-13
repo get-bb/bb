@@ -6,6 +6,10 @@ import { useOptionalArchitectureSelection } from "../nodes/selection.js";
 import type { DeletionImpact } from "./commands.js";
 import { DeleteImpactDialog } from "./delete-impact.js";
 import { EntityForm, type CanvasReferenceOptions } from "./forms.js";
+import {
+  CanvasEditHistory,
+  type CanvasHistoryExecutor,
+} from "./history.js";
 import type { canvasEditingRpcContract } from "./backend.js";
 import {
   architectureEntityPayload,
@@ -42,15 +46,6 @@ interface FormState {
   kind: CanvasEntityKind;
   initial: ArchitectureYamlEntity | null;
   expectedSha256: string | null;
-}
-
-interface UiHistoryEntry {
-  kind: CanvasEntityKind;
-  slug: string;
-  before: ArchitectureYamlEntity | null;
-  after: ArchitectureYamlEntity | null;
-  currentSha256: string | null;
-  deleteMode: "cascade" | "detach";
 }
 
 interface DeleteTarget {
@@ -206,8 +201,8 @@ function ProjectEditingLayer({
   const [deleteImpact, setDeleteImpact] = useState<DeletionImpact | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
-  const undoStack = useRef<UiHistoryEntry[]>([]);
-  const redoStack = useRef<UiHistoryEntry[]>([]);
+  const historyExecutor = useRef<CanvasHistoryExecutor | null>(null);
+  const historyRef = useRef<CanvasEditHistory | null>(null);
   const [, setHistoryRevision] = useState(0);
   const references = useMemo(
     () =>
@@ -223,15 +218,70 @@ function ProjectEditingLayer({
     architecture.nodesBySlug.size === 0 &&
     architecture.edgesBySlug.size === 0;
 
+  historyExecutor.current = async (transition) => {
+    if (transition.to === null && transition.from !== null) {
+      if (!transition.expectedSha256) {
+        throw new Error("History entry has no current CAS hash.");
+      }
+      const result = await rpc.call("taraCommandApply", {
+        projectId,
+        projectVersionId: null,
+        operation: "delete",
+        kind: transition.kind,
+        stableKey: transition.slug,
+        mode: transition.deleteMode,
+        expectedContentSha256: transition.expectedSha256,
+      });
+      if (result.afterSha256 !== null) {
+        throw new Error("Canvas deletion returned an invalid content hash.");
+      }
+      return { afterSha256: null };
+    }
+    if (transition.to !== null && transition.from === null) {
+      const result = await rpc.call("taraCommandApply", {
+        projectId,
+        projectVersionId: null,
+        operation: "create",
+        kind: transition.kind,
+        fields: jsonFields(transition.to),
+        expectedContentSha256: null,
+      });
+      return {
+        afterSha256: requireAfterSha256(result.afterSha256, "create"),
+      };
+    }
+    if (transition.to !== null && transition.from !== null) {
+      if (!transition.expectedSha256) {
+        throw new Error("History entry has no current CAS hash.");
+      }
+      const result = await rpc.call("taraCommandApply", {
+        projectId,
+        projectVersionId: null,
+        operation: "update",
+        kind: transition.kind,
+        stableKey: transition.slug,
+        fields: replacementPatch(transition.from, transition.to),
+        expectedContentSha256: transition.expectedSha256,
+      });
+      return {
+        afterSha256: requireAfterSha256(result.afterSha256, "update"),
+      };
+    }
+    throw new Error("History entry has no semantic state.");
+  };
+  historyRef.current ??= new CanvasEditHistory((transition) => {
+    const execute = historyExecutor.current;
+    if (!execute) throw new Error("Canvas history is not configured.");
+    return execute(transition);
+  });
+  const history = historyRef.current;
+
   function refreshHistoryUi(): void {
     setHistoryRevision((revision) => revision + 1);
   }
 
   function invalidateHistory(kind: CanvasEntityKind, slug: string): void {
-    const keep = (entry: UiHistoryEntry) =>
-      entry.kind !== kind || entry.slug !== slug;
-    undoStack.current = undoStack.current.filter(keep);
-    redoStack.current = redoStack.current.filter(keep);
+    history.invalidate(kind, slug);
     refreshHistoryUi();
   }
 
@@ -280,7 +330,7 @@ function ProjectEditingLayer({
           fields: jsonFields(entity),
           expectedContentSha256: null,
         });
-        undoStack.current.push({
+        history.record({
           kind: entity.kind,
           slug: entity.slug,
           before: null,
@@ -301,7 +351,7 @@ function ProjectEditingLayer({
           fields: replacementPatch(form.initial, entity),
           expectedContentSha256: form.expectedSha256,
         });
-        undoStack.current.push({
+        history.record({
           kind: entity.kind,
           slug: entity.slug,
           before: form.initial,
@@ -310,8 +360,6 @@ function ProjectEditingLayer({
           deleteMode: "cascade",
         });
       }
-      if (undoStack.current.length > 50) undoStack.current.shift();
-      redoStack.current = [];
       refreshHistoryUi();
       setForm(null);
       setMessage(
@@ -319,12 +367,8 @@ function ProjectEditingLayer({
       );
     } catch (saveError) {
       const detail = safeError(saveError);
-      if (detail.startsWith("LOCAL_WRITE_CONFLICT:")) {
-        invalidateHistory(entity.kind, entity.slug);
-        setError(`${detail} Undo and redo for this entity were invalidated.`);
-      } else {
-        setError(detail);
-      }
+      invalidateHistory(entity.kind, entity.slug);
+      setError(`${detail} Undo and redo for this entity were invalidated.`);
     } finally {
       setSaving(false);
     }
@@ -404,7 +448,7 @@ function ProjectEditingLayer({
       if (result.afterSha256 !== null) {
         throw new Error("Canvas deletion returned an invalid content hash.");
       }
-      undoStack.current.push({
+      history.record({
         kind: deleteTarget.kind,
         slug: deleteTarget.slug,
         before: deleteTarget.entity,
@@ -412,8 +456,6 @@ function ProjectEditingLayer({
         currentSha256: null,
         deleteMode: mode,
       });
-      if (undoStack.current.length > 50) undoStack.current.shift();
-      redoStack.current = [];
       refreshHistoryUi();
       setDeleteOpen(false);
       setDeleteTarget(null);
@@ -423,12 +465,8 @@ function ProjectEditingLayer({
       );
     } catch (deleteError) {
       const detail = safeError(deleteError);
-      if (detail.startsWith("LOCAL_WRITE_CONFLICT:")) {
-        invalidateHistory(deleteTarget.kind, deleteTarget.slug);
-        setError(`${detail} Undo and redo for this entity were invalidated.`);
-      } else {
-        setError(detail);
-      }
+      invalidateHistory(deleteTarget.kind, deleteTarget.slug);
+      setError(`${detail} Undo and redo for this entity were invalidated.`);
     } finally {
       setSaving(false);
     }
@@ -436,76 +474,18 @@ function ProjectEditingLayer({
 
   async function transitionHistory(direction: "undo" | "redo"): Promise<void> {
     if (!projectId) return;
-    const source = direction === "undo" ? undoStack.current : redoStack.current;
-    const destination =
-      direction === "undo" ? redoStack.current : undoStack.current;
-    const entry = source.at(-1);
-    if (!entry) return;
-    const target = direction === "undo" ? entry.before : entry.after;
-    const current = direction === "undo" ? entry.after : entry.before;
     setSaving(true);
     setError(null);
     try {
-      let nextSha256: string | null;
-      if (target === null && current !== null) {
-        if (!entry.currentSha256)
-          throw new Error("History entry has no current CAS hash.");
-        const result = await rpc.call("taraCommandApply", {
-          projectId,
-          projectVersionId: null,
-          operation: "delete",
-          kind: entry.kind,
-          stableKey: entry.slug,
-          mode: entry.deleteMode,
-          expectedContentSha256: entry.currentSha256,
-        });
-        if (result.afterSha256 !== null) {
-          throw new Error("Canvas deletion returned an invalid content hash.");
-        }
-        nextSha256 = null;
-      } else if (target !== null && current === null) {
-        const result = await rpc.call("taraCommandApply", {
-          projectId,
-          projectVersionId: null,
-          operation: "create",
-          kind: entry.kind,
-          fields: jsonFields(target),
-          expectedContentSha256: null,
-        });
-        nextSha256 = requireAfterSha256(result.afterSha256, "create");
-      } else if (target !== null && current !== null) {
-        if (!entry.currentSha256)
-          throw new Error("History entry has no current CAS hash.");
-        const result = await rpc.call("taraCommandApply", {
-          projectId,
-          projectVersionId: null,
-          operation: "update",
-          kind: entry.kind,
-          stableKey: entry.slug,
-          fields: replacementPatch(current, target),
-          expectedContentSha256: entry.currentSha256,
-        });
-        nextSha256 = requireAfterSha256(result.afterSha256, "update");
-      } else {
-        throw new Error("History entry has no semantic state.");
-      }
-      source.pop();
-      entry.currentSha256 = nextSha256;
-      destination.push(entry);
+      await (direction === "undo" ? history.undo() : history.redo());
       refreshHistoryUi();
       setMessage(
         `${direction === "undo" ? "Undo" : "Redo"} wrote an inverse CAS command to local YAML.`,
       );
     } catch (historyError) {
       const detail = safeError(historyError);
-      if (detail.startsWith("LOCAL_WRITE_CONFLICT:")) {
-        invalidateHistory(entry.kind, entry.slug);
-        setError(
-          `${detail} History for ${entry.kind}/${entry.slug} was invalidated; reload and compare.`,
-        );
-      } else {
-        setError(detail);
-      }
+      refreshHistoryUi();
+      setError(`${detail} History was invalidated; reload and compare.`);
     } finally {
       setSaving(false);
     }
@@ -565,7 +545,7 @@ function ProjectEditingLayer({
       <span aria-hidden="true" className="h-5 w-px bg-border" />
       <Button
         aria-label="Undo with inverse CAS"
-        disabled={undoStack.current.length === 0 || saving}
+        disabled={!history.state().canUndo || saving}
         onClick={() => void transitionHistory("undo")}
         size="sm"
         type="button"
@@ -575,7 +555,7 @@ function ProjectEditingLayer({
       </Button>
       <Button
         aria-label="Redo with inverse CAS"
-        disabled={redoStack.current.length === 0 || saving}
+        disabled={!history.state().canRedo || saving}
         onClick={() => void transitionHistory("redo")}
         size="sm"
         type="button"

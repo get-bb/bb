@@ -13,15 +13,17 @@ import type {
 } from "../../../../lib/remote/types.js";
 import { ENTITIES } from "../../../../lib/sync/registry.js";
 import { computePlan } from "../../../sync/plan/index.js";
+import { saveLayout } from "../links/layout-store.js";
 import {
   classifyThreeWay,
   conflictingFields,
   threeWayDiff,
 } from "../../../sync/plan/diff.js";
 import {
-  assetProjectionRoundTrip,
   createCanvasEntityAdapters,
-  dataflowProjectionRoundTrip,
+  projectCreateFields,
+  projectPatchFields,
+  projectRemoteEntity,
   type AdapterSlugResolver,
 } from "./adapters.js";
 import {
@@ -284,9 +286,9 @@ const remoteClient = {
 } satisfies AssuranceStudioClient;
 
 const projectionResolver: AdapterSlugResolver = {
-  remoteToSlug(_scope, kind, remoteId) {
+  remoteToSlug(_scope, _kind, remoteId) {
     return remoteId.startsWith("remote-")
-      ? `${kind}-${remoteId.slice("remote-".length)}`
+      ? remoteId.slice("remote-".length)
       : null;
   },
   slugToRemote(_scope, _kind, slug) {
@@ -537,25 +539,162 @@ describe("WP-35 plan ordering and adapter projections", () => {
     await host.harness.lifecycle.dispose();
   });
 
-  it("maps dataflow and asset POST/PATCH mismatches without changing stable YAML", () => {
+  it("keeps a WP-34 layout move out of the semantic plan", async () => {
+    const root = await mkdtemp(join(tmpdir(), "fs49-layout-plan-"));
+    roots.push(root);
+    const gateway = component("gateway", "Gateway");
+    const payload = architectureEntityPayload(gateway);
+    const yamlFile = canvasEntityFile("component", gateway.slug);
+    const yaml = serializeCanvasEntity(gateway);
+    await mkdir(dirname(join(root, yamlFile)), { recursive: true });
+    await writeFile(join(root, yamlFile), yaml, "utf8");
+
+    const matchingRemote: AsEntity = {
+      id: "remote-gateway",
+      projectId: scope.projectId,
+      kind: "component",
+      reviewVersion: null,
+      reviewStatus: null,
+      humanEdited: null,
+      fields: projectCreateFields(gateway, scope, projectionResolver),
+    };
+    const matchingClient = {
+      ...remoteClient,
+      listEntities(kind: string) {
+        return {
+          async *[Symbol.asyncIterator]() {
+            yield {
+              items: kind === "component" ? [matchingRemote] : [],
+              total: kind === "component" ? 1 : 0,
+              next: null,
+            };
+          },
+        };
+      },
+    } satisfies AssuranceStudioClient;
+    const componentAdapter = createCanvasEntityAdapters(
+      matchingClient,
+      projectionResolver,
+    ).find((adapter) => adapter.kind === "component");
+    if (!componentAdapter) throw new Error("component adapter is unavailable");
+
+    const host = createFakePluginHost({ pluginId: "finite-state-layout-plan" });
+    const db = createPluginContext(host.bb).db();
+    db.prepare(
+      `INSERT INTO pull_generation
+         (project_id, project_version_id, generation_id, status,
+          requested_kinds_json, started_at, completed_at, accepted_at)
+       VALUES (?, ?, 'generation-layout', 'accepted', '["component"]', ?, ?, ?)`,
+    ).run(
+      scope.projectId,
+      scope.projectVersionId,
+      "2026-08-13T12:00:00.000Z",
+      "2026-08-13T12:00:01.000Z",
+      "2026-08-13T12:00:01.000Z",
+    );
+    db.prepare(
+      `INSERT INTO sync_state
+         (project_id, project_version_id, entity_kind,
+          accepted_generation_id, base_revision, last_pull, error)
+       VALUES (?, ?, 'component', 'generation-layout', 1, ?, NULL)`,
+    ).run(
+      scope.projectId,
+      scope.projectVersionId,
+      "2026-08-13T12:00:01.000Z",
+    );
+    db.prepare(
+      `INSERT INTO base_snapshot
+         (project_id, project_version_id, entity_kind, generation_id,
+          entity_key, remote_id, payload, content_hash, pulled_at)
+       VALUES (?, ?, 'component', 'generation-layout', ?, ?, ?, ?, ?)`,
+    ).run(
+      scope.projectId,
+      scope.projectVersionId,
+      ENTITIES.component.key(payload),
+      matchingRemote.id,
+      JSON.stringify(payload),
+      hash(JSON.stringify(payload)),
+      "2026-08-13T12:00:01.000Z",
+    );
+
+    const firstLayout = await saveLayout(root, {
+      schema: "fs-canvas-layout/v1",
+      project: scope.projectId,
+      nodes: { gateway: { x: 0, y: 0 } },
+    });
+    await saveLayout(
+      root,
+      {
+        schema: "fs-canvas-layout/v1",
+        project: scope.projectId,
+        nodes: { gateway: { x: 420, y: 160 } },
+      },
+      firstLayout.sha256,
+    );
+    const plan = await computePlan(
+      { db, worktreeRoot: root, adapters: [componentAdapter] },
+      scope,
+      ["component"],
+    );
+    const movedEntityChanges = plan.items.filter(
+      (item) =>
+        item.kind === "component" &&
+        item.key === ENTITIES.component.key(payload) &&
+        item.operation !== "noop",
+    );
+    expect(movedEntityChanges).toEqual([]);
+    expect(plan.items).toEqual([
+      expect.objectContaining({
+        kind: "component",
+        key: ENTITIES.component.key(payload),
+        operation: "noop",
+      }),
+    ]);
+    expect(await readFile(join(root, yamlFile), "utf8")).toBe(yaml);
+    await host.harness.lifecycle.dispose();
+  });
+
+  it("round-trips dataflow and asset POST/PATCH mismatches back to stable YAML", () => {
     const flow = dataflow("telemetry", "device", "cloud");
     if (flow.kind !== "dataflow") throw new Error("expected dataflow fixture");
-    const flowProjection = dataflowProjectionRoundTrip(
+    const flowCreate = projectCreateFields(
       flow,
       scope,
       projectionResolver,
     );
-    expect(flowProjection.create).toMatchObject({
+    const flowPatch = projectPatchFields(flow, scope, projectionResolver);
+    expect(flowCreate).toMatchObject({
       source_component_id: "remote-device",
       target_component_id: "remote-cloud",
       is_encrypted: true,
     });
-    expect(flowProjection.patch).toMatchObject({
+    expect(flowPatch).toMatchObject({
       from_component: "remote-device",
       to_component: "remote-cloud",
       encrypted: true,
     });
-    expect(flowProjection.patch).not.toHaveProperty("source_component_id");
+    expect(flowPatch).not.toHaveProperty("source_component_id");
+    for (const [id, fields] of [
+      ["remote-flow-create", flowCreate],
+      ["remote-flow-patch", flowPatch],
+    ] as const) {
+      expect(
+        projectRemoteEntity(
+          "dataflow",
+          {
+            id,
+            projectId: scope.projectId,
+            kind: "dataflow",
+            reviewVersion: null,
+            reviewStatus: null,
+            humanEdited: null,
+            fields,
+          },
+          scope,
+          projectionResolver,
+        ).payload["fields"],
+      ).toEqual(architectureEntityPayload(flow));
+    }
 
     const asset = parseArchitectureEntity("asset", {
       slug: "credentials",
@@ -564,14 +703,66 @@ describe("WP-35 plan ordering and adapter projections", () => {
       criticality: "critical",
     });
     if (asset.kind !== "asset") throw new Error("expected asset fixture");
-    const assetProjection = assetProjectionRoundTrip(
-      asset,
+    const assetCreate = projectCreateFields(asset, scope, projectionResolver);
+    const assetPatch = projectPatchFields(asset, scope, projectionResolver);
+    expect(assetCreate.business_value).toBe("critical");
+    expect(assetPatch.criticality).toBe("critical");
+    expect(assetPatch).not.toHaveProperty("business_value");
+    for (const [id, fields] of [
+      ["remote-asset-create", assetCreate],
+      ["remote-asset-patch", assetPatch],
+    ] as const) {
+      expect(
+        projectRemoteEntity(
+          "asset",
+          {
+            id,
+            projectId: scope.projectId,
+            kind: "asset",
+            reviewVersion: null,
+            reviewStatus: null,
+            humanEdited: null,
+            fields,
+          },
+          scope,
+          projectionResolver,
+        ).payload["fields"],
+      ).toEqual(architectureEntityPayload(asset));
+    }
+  });
+
+  it("rejects missing remote semantics and slug-shaped identifiers absent from id_map", () => {
+    const fields = projectCreateFields(
+      component("gateway", "Gateway"),
       scope,
       projectionResolver,
     );
-    expect(assetProjection.create.business_value).toBe("critical");
-    expect(assetProjection.patch.criticality).toBe("critical");
-    expect(assetProjection.patch).not.toHaveProperty("business_value");
+    const remote = (overrides: Record<string, Json>): AsEntity => ({
+      id: "remote-gateway",
+      projectId: scope.projectId,
+      kind: "component",
+      reviewVersion: null,
+      reviewStatus: null,
+      humanEdited: null,
+      fields: { ...fields, ...overrides },
+    });
+    const { criticality: _criticality, ...missingCriticality } = fields;
+    expect(() =>
+      projectRemoteEntity(
+        "component",
+        { ...remote({}), fields: missingCriticality },
+        scope,
+        projectionResolver,
+      ),
+    ).toThrow(/REMOTE_FIELD_MISSING.*criticality/iu);
+    expect(() =>
+      projectRemoteEntity(
+        "component",
+        remote({ zone_id: "edge-zone" }),
+        scope,
+        projectionResolver,
+      ),
+    ).toThrow(/UNRESOLVED_REMOTE_ID.*edge-zone.*id_map/iu);
   });
 });
 
@@ -609,12 +800,60 @@ describe("WP-35 delete impact, history, and conflict honesty", () => {
     const { store, deps } = dependencies();
     const initial = component("gateway", "Gateway");
     store.seed(initial);
-    const history = new CanvasEditHistory(deps, 5);
-    await history.execute({
+    const edited = component("gateway", "Gateway v2");
+    const update = await applyCanvasCommand(deps, {
       kind: "update",
       entityKind: "component",
       slug: "gateway",
       patch: { name: "Gateway v2" },
+    });
+    const history = new CanvasEditHistory(async (transition) => {
+      if (transition.to === null && transition.from !== null) {
+        if (!transition.expectedSha256) throw new Error("missing CAS hash");
+        const result = await applyCanvasCommand(
+          deps,
+          {
+            kind: "delete",
+            entityKind: transition.kind,
+            slug: transition.slug,
+            mode: transition.deleteMode,
+          },
+          transition.expectedSha256,
+        );
+        return { afterSha256: result.afterSha256 };
+      }
+      if (transition.to !== null && transition.from === null) {
+        const result = await applyCanvasCommand(deps, {
+          kind: "create",
+          entity: transition.to,
+        });
+        return { afterSha256: result.afterSha256 };
+      }
+      if (transition.to !== null && transition.from !== null) {
+        if (!transition.expectedSha256) throw new Error("missing CAS hash");
+        const fields = architectureEntityPayload(transition.to);
+        const { slug: _slug, ...patch } = fields;
+        const result = await applyCanvasCommand(
+          deps,
+          {
+            kind: "update",
+            entityKind: transition.kind,
+            slug: transition.slug,
+            patch,
+          },
+          transition.expectedSha256,
+        );
+        return { afterSha256: result.afterSha256 };
+      }
+      throw new Error("invalid transition");
+    }, 5);
+    history.record({
+      kind: "component",
+      slug: "gateway",
+      before: initial,
+      after: edited,
+      currentSha256: update.afterSha256,
+      deleteMode: "cascade",
     });
     expect(
       (await store.read(canvasEntityFile("component", "gateway")))?.entity.name,
@@ -661,7 +900,7 @@ describe("WP-35 delete impact, history, and conflict honesty", () => {
     expect(yaml).not.toMatch(/^(<{7}|={7}|>{7})/mu);
   });
 
-  it("keeps layout and trial/checkpoint APIs outside the semantic editing package", async () => {
+  it("keeps trial/checkpoint and push APIs outside the semantic editing package", async () => {
     const editingSource = await Promise.all(
       ["backend.ts", "commands.tsx", "writer.ts"].map((file) =>
         readFile(new URL(file, import.meta.url), "utf8"),
@@ -670,7 +909,6 @@ describe("WP-35 delete impact, history, and conflict honesty", () => {
     const joined = editingSource.join("\n");
     expect(joined).not.toContain("begin_tara_trial");
     expect(joined).not.toContain("checkpoint");
-    expect(joined).not.toContain("canvas.json");
     expect(joined).not.toContain("syncPush");
   });
 });

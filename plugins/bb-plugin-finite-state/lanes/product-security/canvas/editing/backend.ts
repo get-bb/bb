@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { defineRpcContract, type BbPluginApi } from "@bb/plugin-sdk";
 import type Database from "better-sqlite3";
@@ -166,6 +167,47 @@ function acceptedCanvasRows(
     );
 }
 
+function acceptedCanvasRow(
+  db: Database.Database,
+  input: { projectId: string; projectVersionId: string | null },
+  kind: CanvasEntityKind,
+  slug: string,
+): AcceptedCanvasRow | null {
+  const rows = db
+    .prepare<
+      [string, string, string, string, string],
+      AcceptedCanvasRow
+    >(
+      `SELECT snapshot.entity_key, snapshot.payload
+         FROM sync_state AS state
+         JOIN base_snapshot AS snapshot
+           ON snapshot.project_id = state.project_id
+          AND snapshot.project_version_id = state.project_version_id
+          AND snapshot.entity_kind = state.entity_kind
+          AND snapshot.generation_id = state.accepted_generation_id
+        WHERE state.project_id = ? AND state.project_version_id = ?
+          AND state.entity_kind = ?
+          AND (
+            snapshot.entity_key = ?
+            OR json_extract(snapshot.payload, '$.slug') = ?
+          )
+        LIMIT 2`,
+    )
+    .all(
+      input.projectId,
+      toStorageProjectVersionId(input.projectVersionId),
+      kind,
+      ENTITIES[kind].key({ slug }),
+      slug,
+    );
+  if (rows.length > 1) {
+    throw new Error(
+      `INVALID_ACCEPTED_TARA: ${kind}/${slug} has multiple accepted rows.`,
+    );
+  }
+  return rows[0] ?? null;
+}
+
 function parseAcceptedCanvasEntity(
   kind: CanvasEntityKind,
   row: AcceptedCanvasRow,
@@ -226,6 +268,64 @@ async function materializeAcceptedCanvasKind(
   }
 }
 
+async function deletedCanvasSlugs(
+  bb: BbPluginApi,
+  input: { projectId: string; projectVersionId: string | null },
+  kind: CanvasEntityKind,
+): Promise<Set<string>> {
+  const prefix = canvasDeletedMarkerPrefix(
+    input.projectId,
+    input.projectVersionId,
+    kind,
+  );
+  return new Set(
+    (await bb.storage.kv.list(prefix)).map((key) => {
+      try {
+        return decodeURIComponent(key.slice(prefix.length));
+      } catch {
+        throw new Error("A local canvas deletion marker is malformed.");
+      }
+    }),
+  );
+}
+
+async function mergedCanvasEntities(
+  bb: BbPluginApi,
+  db: Database.Database,
+  input: { projectId: string; projectVersionId: string | null },
+  files: CanvasFileStore,
+) {
+  const kinds = [
+    "component",
+    "zone",
+    "asset",
+    "dataflow",
+    "threat",
+  ] as const;
+  const groups = await Promise.all(
+    kinds.map(async (kind) => {
+      const merged = new Map(
+        acceptedCanvasRows(db, input, kind).map((row) => {
+          const entity = parseAcceptedCanvasEntity(kind, row);
+          return [entity.slug, entity] as const;
+        }),
+      );
+      for (const stored of await files.list(kind)) {
+        merged.set(stored.entity.slug, stored.entity);
+      }
+      for (const slug of await deletedCanvasSlugs(bb, input, kind)) {
+        merged.delete(slug);
+      }
+      return [...merged.values()];
+    }),
+  );
+  return groups.flat();
+}
+
+function sha256(content: string): string {
+  return createHash("sha256").update(content).digest("hex");
+}
+
 async function projectSource(
   bb: BbPluginApi,
   projectId: string,
@@ -261,15 +361,6 @@ async function mitigationFileExists(
     if (isMissingFile(error)) return false;
     throw error;
   }
-}
-
-async function allCanvasEntities(files: CanvasFileStore) {
-  const groups = await Promise.all(
-    (["component", "zone", "asset", "dataflow", "threat"] as const).map(
-      (kind) => files.list(kind),
-    ),
-  );
-  return groups.flatMap((group) => group.map((stored) => stored.entity));
 }
 
 function jsonValue(value: unknown, path: string): Json {
@@ -464,7 +555,7 @@ export function registerCanvasEditingBackend(
         return computeDeletionImpact(
           kind,
           slug,
-          await allCanvasEntities(files),
+          await mergedCanvasEntities(bb, db, input, files),
         );
       },
     };
@@ -474,10 +565,10 @@ export function registerCanvasEditingBackend(
   bb.rpc.register(canvasEditingRpcContract, {
     async canvasEditingLoad(input) {
       const { files } = await dependencies(input);
-      await materializeAcceptedCanvasKind(bb, db, input, input.kind, files);
       const file = canvasEntityFile(input.kind, input.slug);
-      const stored = await files.read(file);
-      if (!stored) {
+      if (
+        (await deletedCanvasSlugs(bb, input, input.kind)).has(input.slug)
+      ) {
         return {
           projectId: input.projectId,
           projectVersionId: input.projectVersionId,
@@ -487,6 +578,37 @@ export function registerCanvasEditingBackend(
           file,
         };
       }
+      const stored = await files.read(file);
+      if (stored) {
+        return {
+          projectId: input.projectId,
+          projectVersionId: input.projectVersionId,
+          state: "ready" as const,
+          kind: input.kind,
+          slug: input.slug,
+          file,
+          sha256: stored.sha256,
+          fields: jsonFields(architectureEntityPayload(stored.entity)),
+        };
+      }
+      const acceptedRow = acceptedCanvasRow(
+        db,
+        input,
+        input.kind,
+        input.slug,
+      );
+      if (!acceptedRow) {
+        return {
+          projectId: input.projectId,
+          projectVersionId: input.projectVersionId,
+          state: "missing" as const,
+          kind: input.kind,
+          slug: input.slug,
+          file,
+        };
+      }
+      const accepted = parseAcceptedCanvasEntity(input.kind, acceptedRow);
+      const content = serializeCanvasEntity(accepted);
       return {
         projectId: input.projectId,
         projectVersionId: input.projectVersionId,
@@ -494,8 +616,8 @@ export function registerCanvasEditingBackend(
         kind: input.kind,
         slug: input.slug,
         file,
-        sha256: stored.sha256,
-        fields: jsonFields(architectureEntityPayload(stored.entity)),
+        sha256: sha256(content),
+        fields: jsonFields(architectureEntityPayload(accepted)),
       };
     },
   });
@@ -609,15 +731,11 @@ export function registerCanvasEditingBackend(
       };
     },
     async taraDeleteImpact(input) {
-      const { deps, files } = await dependencies(input);
-      await Promise.all(
-        (["component", "zone", "asset", "dataflow", "threat"] as const).map(
-          (kind) => materializeAcceptedCanvasKind(bb, db, input, kind, files),
-        ),
-      );
-      const impact: DeletionImpact = await deps.deletionImpact(
+      const { files } = await dependencies(input);
+      const impact: DeletionImpact = computeDeletionImpact(
         input.kind,
         input.stableKey,
+        await mergedCanvasEntities(bb, db, input, files),
       );
       return {
         projectId: input.projectId,

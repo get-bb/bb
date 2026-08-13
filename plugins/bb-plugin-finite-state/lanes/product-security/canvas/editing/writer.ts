@@ -26,6 +26,17 @@ export interface StoredCanvasEntity {
   sha256: string;
 }
 
+export interface CanvasFileDiagnostic {
+  file: string;
+  slug: string;
+  message: string;
+}
+
+export interface CanvasFileListing {
+  entities: StoredCanvasEntity[];
+  diagnostics: CanvasFileDiagnostic[];
+}
+
 export type CanvasWriteOutcome =
   | { outcome: "written"; sha256: string }
   | { outcome: "conflict"; currentSha256: string | null };
@@ -41,6 +52,7 @@ export type CanvasRemoveOutcome =
 export interface CanvasFileStore {
   read(file: string): Promise<StoredCanvasEntity | null>;
   list(kind: CanvasEntityKind): Promise<StoredCanvasEntity[]>;
+  listWithDiagnostics?(kind: CanvasEntityKind): Promise<CanvasFileListing>;
   write(
     file: string,
     content: string,
@@ -293,9 +305,9 @@ export async function reclaimCanvasDeleteTombstones(
 }
 
 /**
- * CAS deletion over the shipped move/read/remove primitives. The move is
- * same-directory and refuses overwrite. Hash mismatch restores by atomic
- * rename; a concurrent recreation keeps both paths and returns a conflict.
+ * Best-effort CAS deletion over the shipped move/read/remove primitives. The
+ * daemon's no-replace move is not an atomic rename fence: a recreation race
+ * therefore keeps both paths and returns an explicit conflict for compare.
  */
 export async function casRemoveCanvasFile(
   bb: BbPluginApi,
@@ -405,9 +417,9 @@ export function createSdkCanvasFileStore(
     return { entity, file, content: stored.content, sha256: stored.sha256 };
   }
 
-  return {
-    read,
-    async list(kind) {
+  async function listWithDiagnostics(
+    kind: CanvasEntityKind,
+  ): Promise<CanvasFileListing> {
       const directory = ENTITIES[kind].dir;
       let listing;
       try {
@@ -417,7 +429,7 @@ export function createSdkCanvasFileStore(
           limit: 10_000,
         });
       } catch (error) {
-        if (isMissingFile(error)) return [];
+        if (isMissingFile(error)) return { entities: [], diagnostics: [] };
         throw error;
       }
       if (listing.truncated) {
@@ -446,12 +458,44 @@ export function createSdkCanvasFileStore(
         .map((name) => `${directory}/${name}`)
         .sort();
       const documents = await Promise.all(
-        files.map((file) => read(file, false)),
+        files.map(async (file) => {
+          try {
+            return { entity: await read(file, false), diagnostic: null };
+          } catch (error) {
+            const name = basename(file).replace(/\.ya?ml$/iu, "");
+            return {
+              entity: null,
+              diagnostic: {
+                file,
+                slug: name,
+                message:
+                  error instanceof Error && error.message.length > 0
+                    ? error.message
+                    : "The working canvas YAML is invalid.",
+              },
+            };
+          }
+        }),
       );
-      return documents.filter(
-        (document): document is StoredCanvasEntity => document !== null,
-      );
+      return {
+        entities: documents.flatMap(({ entity }) => (entity ? [entity] : [])),
+        diagnostics: documents.flatMap(({ diagnostic }) =>
+          diagnostic ? [diagnostic] : [],
+        ),
+      };
+  }
+
+  return {
+    read,
+    async list(kind) {
+      const listing = await listWithDiagnostics(kind);
+      const first = listing.diagnostics[0];
+      if (first) {
+        throw new Error(`${first.file}: ${first.message}`);
+      }
+      return listing.entities;
     },
+    listWithDiagnostics,
     async write(file, content, expectedSha256) {
       const result = await bb.sdk.files.write({
         hostId: source.hostId,

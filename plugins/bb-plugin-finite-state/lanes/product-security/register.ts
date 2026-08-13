@@ -11,7 +11,6 @@ import { registerThreatOverlayBackend } from "./canvas/threat-overlay/backend.js
 import type { CanvasTaraKind } from "./canvas/foundation/types.js";
 import {
   architectureEntityPayload,
-  type CanvasEntityKind,
 } from "./canvas/editing/schema.js";
 import {
   canvasDeletedMarkerPrefix,
@@ -36,6 +35,10 @@ interface TaraSyncRow {
 interface TaraSnapshotRow {
   entity_key: string;
   payload: string;
+}
+
+interface TaraTotalRow {
+  total: number;
 }
 
 type TaraKind = CanvasTaraKind | "threat";
@@ -141,32 +144,20 @@ async function projectSource(
   return { hostId: source.hostId, path: source.path };
 }
 
-function isMissingDirectory(error: unknown): boolean {
-  return /\bENOENT\b|not found|does not exist/iu.test(
-    error instanceof Error ? error.message : String(error),
-  );
+function compareTaraSlug(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
 }
 
-async function workingDirectoryExists(
-  bb: BbPluginApi,
-  source: CanvasProjectSource,
-  kind: CanvasEntityKind,
-): Promise<boolean> {
-  try {
-    await bb.sdk.files.list({
-      hostId: source.hostId,
-      path: `${source.path}/${
-        kind === "threat"
-          ? "product-security/threats"
-          : `product-security/architecture/${kind === "dataflow" ? "dataflows" : `${kind}s`}`
-      }`,
-      limit: 1,
-    });
-    return true;
-  } catch (error) {
-    if (isMissingDirectory(error)) return false;
-    throw error;
-  }
+function workingDiagnosticMessage(
+  baseMessage: string | null,
+  diagnostics: readonly { file: string; message: string }[],
+): string | null {
+  const first = diagnostics[0];
+  const invalid = first
+    ? `Invalid working YAML quarantined at ${first.file}: ${first.message}${diagnostics.length > 1 ? ` And ${diagnostics.length - 1} more invalid file${diagnostics.length === 2 ? "" : "s"}.` : ""}`
+    : null;
+  const combined = [baseMessage, invalid].filter(Boolean).join(" ");
+  return combined.length > 0 ? combined.slice(0, 4_000) : null;
 }
 
 export async function listTara(
@@ -194,32 +185,8 @@ export async function listTara(
 
   const pageSize = input.pageSize ?? 50;
   const afterKey = decodeContinuation(input.continuation ?? null);
-  const rows = sync?.accepted_generation_id
-    ? db
-        .prepare<[string, string, string, string], TaraSnapshotRow>(
-          `SELECT entity_key, payload
-         FROM base_snapshot
-        WHERE project_id = ?
-          AND project_version_id = ?
-          AND entity_kind = ?
-          AND generation_id = ?
-        ORDER BY entity_key
-        LIMIT 10001`,
-        )
-        .all(
-          input.projectId,
-          projectVersionId,
-          kind,
-          sync.accepted_generation_id,
-        )
-    : [];
-  if (rows.length > 10_000) {
-    throw new Error(
-      `TARA ${kind} accepted base exceeds the 10,000-entity safety bound.`,
-    );
-  }
   let working: StoredCanvasEntity[] = [];
-  let hasWorkingDirectory = false;
+  let diagnostics: { file: string; slug: string; message: string }[] = [];
   let source: CanvasProjectSource | null = null;
   try {
     source = await projectSource(bb, input.projectId);
@@ -231,24 +198,110 @@ export async function listTara(
   if (source) {
     try {
       const files = createSdkCanvasFileStore(bb, source);
-      working = await files.list(kind);
-      hasWorkingDirectory = await workingDirectoryExists(bb, source, kind);
+      const listing = files.listWithDiagnostics
+        ? await files.listWithDiagnostics(kind)
+        : { entities: await files.list(kind), diagnostics: [] };
+      working = listing.entities;
+      diagnostics = listing.diagnostics;
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       throw new Error(`INVALID_WORKING_TARA: ${detail}`);
     }
   }
-  const merged = new Map<string, Record<string, JsonValue>>();
+  const deletedPrefix = canvasDeletedMarkerPrefix(
+    input.projectId,
+    input.projectVersionId,
+    kind,
+  );
+  const deleted = new Set<string>();
+  for (const key of await bb.storage.kv.list(deletedPrefix)) {
+    try {
+      deleted.add(decodeURIComponent(key.slice(deletedPrefix.length)));
+    } catch {
+      throw new Error(
+        "INVALID_WORKING_TARA: a local deletion marker is malformed.",
+      );
+    }
+  }
+  const excluded = new Set([
+    ...working.map((stored) => stored.entity.slug),
+    ...diagnostics.map((diagnostic) => diagnostic.slug),
+    ...deleted,
+  ]);
+  const visibleWorking = working.filter(
+    (stored) => !deleted.has(stored.entity.slug),
+  );
+  const excludedJson = JSON.stringify([...excluded]);
+  const rows = sync?.accepted_generation_id
+    ? db
+        .prepare<
+          [string, string, string, string, string, string, number],
+          TaraSnapshotRow
+        >(
+          `SELECT entity_key, payload
+             FROM (
+               SELECT COALESCE(
+                        NULLIF(json_extract(payload, '$.slug'), ''),
+                        entity_key
+                      ) AS entity_key,
+                      payload
+                 FROM base_snapshot
+                WHERE project_id = ? AND project_version_id = ?
+                  AND entity_kind = ? AND generation_id = ?
+             )
+            WHERE entity_key COLLATE BINARY > ?
+              AND NOT EXISTS (
+                SELECT 1 FROM json_each(?) AS excluded
+                 WHERE excluded.value = entity_key
+              )
+            ORDER BY entity_key COLLATE BINARY
+            LIMIT ?`,
+        )
+        .all(
+          input.projectId,
+          projectVersionId,
+          kind,
+          sync.accepted_generation_id,
+          afterKey,
+          excludedJson,
+          pageSize + 1,
+        )
+    : [];
+  const acceptedTotal = sync?.accepted_generation_id
+    ? db
+        .prepare<
+          [string, string, string, string, string],
+          TaraTotalRow
+        >(
+          `SELECT COUNT(*) AS total
+             FROM (
+               SELECT COALESCE(
+                        NULLIF(json_extract(payload, '$.slug'), ''),
+                        entity_key
+                      ) AS entity_key
+                 FROM base_snapshot
+                WHERE project_id = ? AND project_version_id = ?
+                  AND entity_kind = ? AND generation_id = ?
+             )
+            WHERE NOT EXISTS (
+              SELECT 1 FROM json_each(?) AS excluded
+               WHERE excluded.value = entity_key
+            )`,
+        )
+        .get(
+          input.projectId,
+          projectVersionId,
+          kind,
+          sync.accepted_generation_id,
+          excludedJson,
+        )?.total ?? 0
+    : 0;
+  const mergedRows: Array<[string, Record<string, JsonValue>]> = [];
   for (const row of rows) {
     const fields = parsePayload(row.payload);
-    const payloadSlug = fields["slug"];
-    const slug =
-      typeof payloadSlug === "string" && payloadSlug.length > 0
-        ? payloadSlug
-        : row.entity_key;
-    merged.set(slug, fields);
+    mergedRows.push([row.entity_key, fields]);
   }
-  for (const stored of working) {
+  for (const stored of visibleWorking) {
     const fields = jsonValueSchema.parse(
       architectureEntityPayload(stored.entity),
     );
@@ -257,33 +310,29 @@ export async function listTara(
         `INVALID_WORKING_TARA: ${stored.file} must contain a mapping.`,
       );
     }
-    merged.set(stored.entity.slug, fields);
+    mergedRows.push([stored.entity.slug, fields]);
   }
-  if (hasWorkingDirectory) {
-    const deletedPrefix = canvasDeletedMarkerPrefix(
-      input.projectId,
-      input.projectVersionId,
-      kind,
-    );
-    for (const key of await bb.storage.kv.list(deletedPrefix)) {
-      try {
-        merged.delete(decodeURIComponent(key.slice(deletedPrefix.length)));
-      } catch {
-        throw new Error(
-          "INVALID_WORKING_TARA: a local deletion marker is malformed.",
-        );
-      }
-    }
-  }
-  const mergedRows = [...merged.entries()]
-    .filter(([slug]) => slug > afterKey)
-    .sort(([left], [right]) => left.localeCompare(right));
+  mergedRows.splice(
+    0,
+    mergedRows.length,
+    ...mergedRows
+      .filter(([slug]) => compareTaraSlug(slug, afterKey) > 0)
+      .sort(([left], [right]) => compareTaraSlug(left, right)),
+  );
   const visibleRows = mergedRows.slice(0, pageSize);
   const next =
     mergedRows.length > pageSize && visibleRows.length > 0
       ? encodeContinuation(visibleRows[visibleRows.length - 1]![0])
       : null;
-  const cacheState: "stale" | "fresh" = sync?.error ? "stale" : "fresh";
+  const cacheState: "stale" | "fresh" =
+    sync?.error || diagnostics.length > 0 ? "stale" : "fresh";
+  const cacheMessage = workingDiagnosticMessage(
+    sync?.error
+      ? "The last product-security refresh failed; showing accepted cache."
+      : null,
+    diagnostics,
+  );
+  const total = acceptedTotal + visibleWorking.length;
 
   return {
     items: visibleRows.map(([slug, fields]) => {
@@ -296,19 +345,25 @@ export async function listTara(
         fields,
       };
     }),
-    total: merged.size,
+    total,
     next,
     cache: sync?.accepted_generation_id
       ? {
           state: cacheState,
           asOf: sync.last_pull,
-          message: sync.error
-            ? "The last product-security refresh failed; showing accepted cache."
-            : null,
+          message: cacheMessage,
           acceptedGenerationId: sync.accepted_generation_id,
           baseRevision: sync.base_revision,
         }
-      : emptyCache(sync?.base_revision),
+      : diagnostics.length > 0
+        ? {
+            state: "stale" as const,
+            asOf: null,
+            message: cacheMessage,
+            acceptedGenerationId: null,
+            baseRevision: sync?.base_revision ?? 0,
+          }
+        : emptyCache(sync?.base_revision),
   };
 }
 

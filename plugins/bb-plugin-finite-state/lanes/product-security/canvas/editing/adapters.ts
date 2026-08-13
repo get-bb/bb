@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type {
@@ -17,11 +16,8 @@ import { createSerializer } from "../../../sync/serialize/serializer.js";
 import {
   architectureEntityPayload,
   criticalitySchema,
-  stableSlugSchema,
   type ArchitectureYamlEntity,
-  type AssetYamlEntity,
   type CanvasEntityKind,
-  type DataflowYamlEntity,
 } from "./schema.js";
 import { parseCanvasEntity, canvasEntityFile } from "./writer.js";
 
@@ -198,6 +194,18 @@ function stringField(
   return undefined;
 }
 
+function requiredStringField(
+  kind: CanvasEntityKind,
+  fields: Record<string, Json>,
+  ...names: string[]
+): string {
+  const value = stringField(fields, ...names);
+  if (value) return value;
+  throw new Error(
+    `REMOTE_FIELD_MISSING: ${kind} payload lacks ${names.join("/")}.`,
+  );
+}
+
 function isJson(value: unknown): value is Json {
   if (
     value === null ||
@@ -215,7 +223,8 @@ function isJson(value: unknown): value is Json {
   );
 }
 
-function booleanField(
+function requiredBooleanField(
+  kind: CanvasEntityKind,
   fields: Record<string, Json>,
   ...names: string[]
 ): boolean {
@@ -223,10 +232,13 @@ function booleanField(
     const value = fields[name];
     if (typeof value === "boolean") return value;
   }
-  return false;
+  throw new Error(
+    `REMOTE_FIELD_MISSING: ${kind} payload lacks ${names.join("/")}.`,
+  );
 }
 
-function stringList(
+function requiredStringList(
+  kind: CanvasEntityKind,
   fields: Record<string, Json>,
   ...names: string[]
 ): string[] {
@@ -239,7 +251,19 @@ function stringList(
       return value;
     }
   }
-  return [];
+  throw new Error(
+    `REMOTE_FIELD_MISSING: ${kind} payload lacks ${names.join("/")}.`,
+  );
+}
+
+function requiredList(
+  kind: CanvasEntityKind,
+  fields: Record<string, Json>,
+  name: string,
+): Json[] {
+  const value = fields[name];
+  if (Array.isArray(value)) return value;
+  throw new Error(`REMOTE_FIELD_MISSING: ${kind} payload lacks ${name}.`);
 }
 
 function remoteReference(
@@ -253,8 +277,6 @@ function remoteReference(
   if (!value) return undefined;
   const mapped = resolver.remoteToSlug(scope, kind, value);
   if (mapped) return mapped;
-  const stable = stableSlugSchema.safeParse(value);
-  if (stable.success) return stable.data;
   throw new Error(
     `UNRESOLVED_REMOTE_ID: ${kind} identifier “${value}” is absent from id_map.`,
   );
@@ -267,11 +289,25 @@ function remoteReferenceList(
   kind: CanvasEntityKind | "mitigation",
   ...names: string[]
 ): string[] {
-  return stringList(fields, ...names).map((value) => {
+  let references: string[] | null = null;
+  for (const name of names) {
+    const value = fields[name];
+    if (
+      Array.isArray(value) &&
+      value.every((item) => typeof item === "string")
+    ) {
+      references = value;
+      break;
+    }
+  }
+  if (!references) {
+    throw new Error(
+      `REMOTE_FIELD_MISSING: ${kind} reference list lacks ${names.join("/")}.`,
+    );
+  }
+  return references.map((value) => {
     const mapped = resolver.remoteToSlug(scope, kind, value);
     if (mapped) return mapped;
-    const stable = stableSlugSchema.safeParse(value);
-    if (stable.success) return stable.data;
     throw new Error(
       `UNRESOLVED_REMOTE_ID: ${kind} identifier “${value}” is absent from id_map.`,
     );
@@ -294,20 +330,28 @@ function remotePayload(
     case "component":
       return {
         ...common,
-        component_type:
-          stringField(fields, "component_type", "componentType", "type") ??
-          "software",
-        criticality: stringField(fields, "criticality") ?? "medium",
+        component_type: requiredStringField(
+          kind,
+          fields,
+          "component_type",
+          "componentType",
+          "type",
+        ),
+        criticality: requiredStringField(kind, fields, "criticality"),
         ...optional(
           "zone",
           remoteReference(fields, resolver, scope, "zone", "zone_id", "zone"),
         ),
-        interfaces: Array.isArray(fields["interfaces"])
-          ? fields["interfaces"]
-          : [],
-        technologies: stringList(fields, "technologies"),
-        is_entry_point: booleanField(fields, "is_entry_point", "isEntryPoint"),
-        stores_data: booleanField(
+        interfaces: requiredList(kind, fields, "interfaces"),
+        technologies: requiredStringList(kind, fields, "technologies"),
+        is_entry_point: requiredBooleanField(
+          kind,
+          fields,
+          "is_entry_point",
+          "isEntryPoint",
+        ),
+        stores_data: requiredBooleanField(
+          kind,
           fields,
           "stores_data",
           "storesData",
@@ -318,8 +362,12 @@ function remotePayload(
     case "zone":
       return {
         ...common,
-        trust_level:
-          stringField(fields, "trust_level", "trustLevel") ?? "semi_trusted",
+        trust_level: requiredStringField(
+          kind,
+          fields,
+          "trust_level",
+          "trustLevel",
+        ),
         ...optional(
           "zone",
           remoteReference(
@@ -334,13 +382,22 @@ function remotePayload(
         ),
       };
     case "asset": {
-      const criticality =
-        stringField(fields, "criticality", "business_value") ?? "medium";
+      const criticality = requiredStringField(
+        kind,
+        fields,
+        "criticality",
+        "business_value",
+      );
       criticalitySchema.parse(criticality);
       return {
         ...common,
-        asset_type:
-          stringField(fields, "asset_type", "assetType", "type") ?? "data",
+        asset_type: requiredStringField(
+          kind,
+          fields,
+          "asset_type",
+          "assetType",
+          "type",
+        ),
         criticality,
         ...optional(
           "zone",
@@ -374,14 +431,26 @@ function remotePayload(
           "to",
         ),
         ...optional("protocol", stringField(fields, "protocol")),
-        data_types: stringList(fields, "data_types", "dataTypes"),
-        encrypted: booleanField(fields, "is_encrypted", "encrypted"),
-        authenticated: booleanField(
+        data_types: requiredStringList(
+          kind,
+          fields,
+          "data_types",
+          "dataTypes",
+        ),
+        encrypted: requiredBooleanField(
+          kind,
+          fields,
+          "is_encrypted",
+          "encrypted",
+        ),
+        authenticated: requiredBooleanField(
+          kind,
           fields,
           "is_authenticated",
           "authenticated",
         ),
-        bidirectional: booleanField(
+        bidirectional: requiredBooleanField(
+          kind,
           fields,
           "is_bidirectional",
           "bidirectional",
@@ -390,11 +459,19 @@ function remotePayload(
     case "threat":
       return {
         ...common,
-        category:
-          stringField(fields, "category", "stride_category") ?? "spoofing",
-        threat_source:
-          stringField(fields, "threat_source", "threatSource") ?? "manual",
-        severity: stringField(fields, "severity", "criticality") ?? "medium",
+        category: requiredStringField(
+          kind,
+          fields,
+          "category",
+          "stride_category",
+        ),
+        threat_source: requiredStringField(
+          kind,
+          fields,
+          "threat_source",
+          "threatSource",
+        ),
+        severity: requiredStringField(kind, fields, "severity"),
         affected_components: remoteReferenceList(
           fields,
           resolver,
@@ -427,7 +504,7 @@ function remotePayload(
           "mitigation_ids",
           "mitigations",
         ),
-        assumptions: stringList(fields, "assumptions"),
+        assumptions: requiredStringList(kind, fields, "assumptions"),
       };
   }
 }
@@ -474,7 +551,18 @@ export function projectRemoteEntity(
   return {
     key: ENTITIES[kind].key(payload),
     remoteId: remote.id,
-    payload,
+    // The sync engine owns the one semanticPayload() call for remote rows.
+    // Re-wrap the canonical, id_map-resolved fields in its expected envelope
+    // so plan, status, and pull all observe the same authored projection.
+    payload: {
+      id: remote.id,
+      projectId: remote.projectId,
+      kind: remote.kind,
+      reviewVersion: remote.reviewVersion,
+      reviewStatus: remote.reviewStatus,
+      humanEdited: remote.humanEdited,
+      fields: payload,
+    },
   };
 }
 
@@ -559,30 +647,4 @@ export function createCanvasEntityAdapters(
   return (["component", "zone", "asset", "dataflow", "threat"] as const).map(
     (kind) => createAdapter(kind, client, resolver),
   );
-}
-
-export function projectionDigest(fields: Record<string, Json>): string {
-  return createHash("sha256").update(JSON.stringify(fields)).digest("hex");
-}
-
-export function dataflowProjectionRoundTrip(
-  entity: DataflowYamlEntity,
-  scope: SyncScope,
-  resolver: AdapterSlugResolver,
-): { create: Record<string, Json>; patch: Record<string, Json> } {
-  return {
-    create: projectCreateFields(entity, scope, resolver),
-    patch: projectPatchFields(entity, scope, resolver),
-  };
-}
-
-export function assetProjectionRoundTrip(
-  entity: AssetYamlEntity,
-  scope: SyncScope,
-  resolver: AdapterSlugResolver,
-): { create: Record<string, Json>; patch: Record<string, Json> } {
-  return {
-    create: projectCreateFields(entity, scope, resolver),
-    patch: projectPatchFields(entity, scope, resolver),
-  };
 }

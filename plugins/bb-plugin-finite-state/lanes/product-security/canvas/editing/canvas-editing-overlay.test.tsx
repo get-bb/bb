@@ -24,6 +24,7 @@ function hash(content: string): string {
 function seedBase(
   context: ReturnType<typeof createPluginContext>,
   name = "Accepted gateway",
+  slug = "gateway",
 ): void {
   const db = context.db();
   db.prepare(
@@ -45,20 +46,47 @@ function seedBase(
         base_revision, last_pull, error)
      VALUES (?, ?, 'component', ?, 1, ?, NULL)`,
   ).run(PROJECT, VERSION, GENERATION, "2026-08-13T12:00:01.000Z");
-  const payload = JSON.stringify({ slug: "gateway", name });
+  const payload = JSON.stringify({ slug, name });
   db.prepare(
     `INSERT INTO base_snapshot
        (project_id, project_version_id, entity_kind, generation_id,
         entity_key, remote_id, payload, content_hash, pulled_at)
-     VALUES (?, ?, 'component', ?, 'encoded-gateway', 'remote-gateway', ?, ?, ?)`,
+     VALUES (?, ?, 'component', ?, ?, ?, ?, ?, ?)`,
   ).run(
     PROJECT,
     VERSION,
     GENERATION,
+    `encoded-${slug}`,
+    `remote-${slug}`,
     payload,
     hash(payload),
     "2026-08-13T12:00:01.000Z",
   );
+}
+
+function seedNamedBase(
+  context: ReturnType<typeof createPluginContext>,
+  slug: string,
+): void {
+  const payload = JSON.stringify({ slug, name: slug });
+  context
+    .db()
+    .prepare(
+      `INSERT INTO base_snapshot
+       (project_id, project_version_id, entity_kind, generation_id,
+        entity_key, remote_id, payload, content_hash, pulled_at)
+     VALUES (?, ?, 'component', ?, ?, ?, ?, ?, ?)`,
+    )
+    .run(
+      PROJECT,
+      VERSION,
+      GENERATION,
+      `encoded-${slug}`,
+      `remote-${slug}`,
+      payload,
+      hash(payload),
+      "2026-08-13T12:00:01.000Z",
+    );
 }
 
 function seedAdditionalBase(
@@ -95,6 +123,46 @@ function input() {
 }
 
 describe("WP-35 taraList working overlay", () => {
+  it("uses one BINARY/code-unit comparator across every accepted page", async () => {
+    const host = createFakePluginHost({
+      pluginId: "finite-state-overlay-pagination",
+      sdk: {
+        projects: {
+          get: () => ({
+            sources: [
+              { hostId: "host-1", path: "/workspace", isDefault: true },
+            ],
+          }),
+        },
+        files: {
+          list: () => {
+            throw new Error("ENOENT: directory does not exist");
+          },
+        },
+      },
+    });
+    hosts.push(host);
+    const context = createPluginContext(host.bb);
+    seedBase(context, "Gateway", "Gateway");
+    seedNamedBase(context, "alpha");
+    seedNamedBase(context, "beta");
+
+    const first = await listTara(host.bb, context.db(), {
+      ...input(),
+      pageSize: 2,
+    });
+    expect(first.items.map((item) => item.key)).toEqual(["Gateway", "alpha"]);
+    expect(first.total).toBe(3);
+    expect(first.next).not.toBeNull();
+    const second = await listTara(host.bb, context.db(), {
+      ...input(),
+      pageSize: 2,
+      continuation: first.next,
+    });
+    expect(second.items.map((item) => item.key)).toEqual(["beta"]);
+    expect(second.next).toBeNull();
+  });
+
   it("loads hand-authored working YAML without an accepted base or editor marker", async () => {
     const working = serializeCanvasEntity(
       parseArchitectureEntity("component", {
@@ -231,7 +299,7 @@ describe("WP-35 taraList working overlay", () => {
     ]);
   });
 
-  it("surfaces invalid working YAML explicitly instead of falling back to base", async () => {
+  it("quarantines invalid working YAML without exposing the shadowed base", async () => {
     const host = createFakePluginHost({
       pluginId: "finite-state-overlay-invalid",
       sdk: {
@@ -258,8 +326,15 @@ describe("WP-35 taraList working overlay", () => {
     hosts.push(host);
     const context = createPluginContext(host.bb);
     seedBase(context);
-    await expect(listTara(host.bb, context.db(), input())).rejects.toThrow(
-      /INVALID_WORKING_TARA:.*verification_status.*cannot be authored/iu,
+    const page = await listTara(host.bb, context.db(), input());
+    expect(page.items).toEqual([]);
+    expect(page.total).toBe(0);
+    expect(page.cache).toMatchObject({
+      state: "stale",
+      acceptedGenerationId: GENERATION,
+    });
+    expect(page.cache.message).toMatch(
+      /Invalid working YAML quarantined.*gateway\.yaml.*verification_status.*cannot be authored/iu,
     );
   });
 });
