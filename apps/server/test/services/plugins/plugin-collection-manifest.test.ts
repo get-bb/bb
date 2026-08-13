@@ -57,6 +57,9 @@ describe("collection manifest schema", () => {
       "./plugins//sidebar",
       "./plugins/sidebar/",
       "./plugins/./sidebar",
+      "./.git",
+      "./plugins/.git/hooks",
+      "./plugins\\sidebar",
     ]) {
       expect(() => parse([{ name: "sidebar", source }])).toThrowError(
         /invalid \.bb\/plugins\.json/,
@@ -202,7 +205,15 @@ describe("collection manifest in a checkout", () => {
   });
 
   it("rejects a --subdirectory that escapes the checkout", async () => {
-    for (const path of ["../evil", "/etc", "plugins/../../evil", "."]) {
+    for (const path of [
+      "../evil",
+      "/etc",
+      "plugins/../../evil",
+      ".",
+      ".git",
+      "plugins/.git/hooks",
+      "plugins\\sidebar",
+    ]) {
       await expect(
         resolveSelectedSubdirectory({
           checkoutDir: repoDir,

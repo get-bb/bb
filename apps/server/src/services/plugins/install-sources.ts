@@ -185,6 +185,9 @@ export function normalizePluginSubdirectory(value: string): string {
     throw new Error(`invalid plugin subdirectory "${value}"`);
   }
   assertSafeSegments(trimmed, "plugin subdirectory");
+  if (trimmed.split("/").includes(".git")) {
+    throw new Error(`invalid plugin subdirectory "${value}"`);
+  }
   return trimmed;
 }
 
