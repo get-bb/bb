@@ -119,6 +119,8 @@ export function InlineThreadTitleEditor({
 interface UseInlineThreadTitleArgs {
   inputClassName?: string;
   onCommit: (title: string) => void;
+  /** Cancel an open edit when this identity changes (usually the thread id). */
+  resetKey: string;
   title: string;
 }
 
@@ -131,40 +133,49 @@ interface UseInlineThreadTitleResult {
 export function useInlineThreadTitle({
   inputClassName,
   onCommit,
+  resetKey,
   title,
 }: UseInlineThreadTitleArgs): UseInlineThreadTitleResult {
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState(title);
-  const titleRef = useRef(title);
-  const onCommitRef = useRef(onCommit);
-  titleRef.current = title;
-  onCommitRef.current = onCommit;
+  const titleAtStartRef = useRef(title);
+  const onCommitAtStartRef = useRef(onCommit);
+  const resetKeyRef = useRef(resetKey);
 
   useEffect(() => {
+    if (resetKeyRef.current !== resetKey) {
+      resetKeyRef.current = resetKey;
+      setIsEditing(false);
+      setDraft(title);
+      return;
+    }
     if (!isEditing) {
       setDraft(title);
     }
-  }, [isEditing, title]);
+  }, [isEditing, resetKey, title]);
 
   const startEditing = useCallback(() => {
-    setDraft(titleRef.current);
+    titleAtStartRef.current = title;
+    onCommitAtStartRef.current = onCommit;
+    resetKeyRef.current = resetKey;
+    setDraft(title);
     setIsEditing(true);
-  }, []);
+  }, [onCommit, resetKey, title]);
 
   const cancelEditing = useCallback(() => {
     setIsEditing(false);
-    setDraft(titleRef.current);
+    setDraft(titleAtStartRef.current);
   }, []);
 
   const submitEditing = useCallback(() => {
     const result = resolveInlineThreadTitleCommit({
-      currentTitle: titleRef.current,
+      currentTitle: titleAtStartRef.current,
       nextTitle: draft,
     });
     setIsEditing(false);
-    setDraft(titleRef.current);
+    setDraft(titleAtStartRef.current);
     if (result.kind === "commit" && result.title !== undefined) {
-      onCommitRef.current(result.title);
+      onCommitAtStartRef.current(result.title);
     }
   }, [draft]);
 

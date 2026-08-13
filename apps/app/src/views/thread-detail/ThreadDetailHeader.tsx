@@ -97,6 +97,7 @@ export function ThreadDetailHeader({
   );
   const { editor, isEditing, startEditing } = useInlineThreadTitle({
     onCommit: handleRename,
+    resetKey: threadId,
     title: threadTitle,
   });
   const renderAsDrawer = useIsCompactViewport();

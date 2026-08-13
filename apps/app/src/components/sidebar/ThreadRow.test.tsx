@@ -7,7 +7,11 @@ import { createStore, Provider } from "jotai";
 import type { ThreadListEntry } from "@bb/domain";
 import type { PluginComposerThreadRowStatus } from "@bb/plugin-sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ThreadRow, type ThreadRowOptions } from "./ThreadRow";
+import {
+  resetSidebarTitleDoubleClickForTest,
+  ThreadRow,
+  type ThreadRowOptions,
+} from "./ThreadRow";
 
 const mocks = vi.hoisted(() => ({
   renameThread: vi.fn(),
@@ -236,6 +240,7 @@ function renderSplitThreadRow({
 afterEach(() => {
   cleanup();
   mocks.renameThread.mockReset();
+  resetSidebarTitleDoubleClickForTest();
   resetPluginThreadRowStatusesForTest();
   // The layout is tab-scoped, so it lands in both stores (createTabScopedStorage).
   window.localStorage.removeItem(SPLIT_LAYOUT_STORAGE_KEY);
@@ -1299,5 +1304,20 @@ describe("ThreadRow", () => {
     expect(mocks.renameThread).not.toHaveBeenCalled();
     expect(screen.queryByRole("textbox", { name: "Thread name" })).toBeNull();
     expect(screen.getByText("Thread")).not.toBeNull();
+  });
+
+  it("starts a rename from a second click after the row remounts", () => {
+    const thread = createThread({ title: "Thread", titleFallback: "Thread" });
+    const { rerenderThreadRow } = renderThreadRow({ thread });
+    const link = screen.getByRole("link", { name: "Open Thread" });
+
+    fireEvent.click(link);
+    rerenderThreadRow(thread);
+    fireEvent.click(screen.getByRole("link", { name: "Open Thread" }));
+
+    expect(screen.getByRole("textbox", { name: "Thread name" })).toHaveProperty(
+      "value",
+      "Thread",
+    );
   });
 });

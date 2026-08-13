@@ -77,6 +77,25 @@ import { useThreadTitleDisplayText } from "@/components/thread/ThreadTitleMentio
 import { pluginIconName } from "@/components/plugin/PluginIcon";
 import { usePluginThreadRowStatus } from "@/lib/plugin-thread-row-status";
 
+const SIDEBAR_TITLE_DOUBLE_CLICK_MS = 400;
+
+let lastSidebarTitleClick: { at: number; threadId: string } | null = null;
+
+function consumeSidebarTitleDoubleClick(threadId: string): boolean {
+  const now = Date.now();
+  const previous = lastSidebarTitleClick;
+  lastSidebarTitleClick = { at: now, threadId };
+  return (
+    previous !== null &&
+    previous.threadId === threadId &&
+    now - previous.at < SIDEBAR_TITLE_DOUBLE_CLICK_MS
+  );
+}
+
+export function resetSidebarTitleDoubleClickForTest(): void {
+  lastSidebarTitleClick = null;
+}
+
 interface ThreadRowBaseOptions {
   depth: number;
   isCompact: boolean;
@@ -512,6 +531,7 @@ function ThreadRowComponent({
   );
   const { editor, isEditing, startEditing } = useInlineThreadTitle({
     onCommit: handleRename,
+    resetKey: thread.id,
     title: threadTitle,
   });
   const startTitleEditing = useCallback(
@@ -660,6 +680,15 @@ function ThreadRowComponent({
           if (splitAvailable && (event.metaKey || event.ctrlKey)) {
             event.preventDefault();
             openInSplit();
+            return;
+          }
+          // A first click may navigate and remount this row. Remember that
+          // click so the second click of a double-click can still open the
+          // editor after the remount.
+          if (consumeSidebarTitleDoubleClick(thread.id)) {
+            event.preventDefault();
+            event.stopPropagation();
+            startEditing();
             return;
           }
           onProjectSelect?.();

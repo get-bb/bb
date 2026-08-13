@@ -13,13 +13,16 @@ afterEach(() => {
 
 function InlineTitleHarness({
   onCommit,
+  resetKey = "thr_test",
   title,
 }: {
   onCommit: (nextTitle: string) => void;
+  resetKey?: string;
   title: string;
 }) {
   const { editor, isEditing, startEditing } = useInlineThreadTitle({
     onCommit,
+    resetKey,
     title,
   });
 
@@ -88,5 +91,31 @@ describe("useInlineThreadTitle", () => {
 
     expect(onCommit).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "Old name" })).not.toBeNull();
+  });
+
+  it("cancels an open edit when the thread identity changes", () => {
+    const firstCommit = vi.fn();
+    const secondCommit = vi.fn();
+    const { rerender } = render(
+      <InlineTitleHarness onCommit={firstCommit} title="Old name" />,
+    );
+
+    fireEvent.doubleClick(screen.getByRole("button", { name: "Old name" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Thread name" }), {
+      target: { value: "Draft name" },
+    });
+
+    rerender(
+      <InlineTitleHarness
+        onCommit={secondCommit}
+        resetKey="thr_other"
+        title="Other thread"
+      />,
+    );
+
+    expect(screen.queryByRole("textbox", { name: "Thread name" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Other thread" })).not.toBeNull();
+    expect(firstCommit).not.toHaveBeenCalled();
+    expect(secondCommit).not.toHaveBeenCalled();
   });
 });
