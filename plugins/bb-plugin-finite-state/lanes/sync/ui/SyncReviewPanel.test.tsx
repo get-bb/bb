@@ -316,6 +316,55 @@ describe("Sync review panel", () => {
     },
   );
 
+  it.each([
+    ["product-security", "Product Security"],
+    ["requirement", "requirement"],
+    ["threat", "threat"],
+    ["hbomPart", "hbomPart"],
+  ])(
+    "renders adapter-pending guidance without RPCs for %s",
+    async (surface, label) => {
+      const slot = renderSlot(
+        await syncPanel(),
+        { subPath: `${SCOPE_PATH}/surface/${surface}` },
+        { rpc: {} },
+      );
+
+      expect(
+        slot.getByText(`${label} Sync review is not available yet`),
+      ).toBeTruthy();
+      expect(
+        slot.getByText(
+          "The plan adapters for this surface have not shipped in this build. Changing remote settings or retrying cannot enable it.",
+        ),
+      ).toBeTruthy();
+      expect(slot.queryByRole("button", { name: "Retry current scope" })).toBeNull();
+      expect(slot.inspection.rpcCalls).toEqual([]);
+
+      fireEvent.click(
+        slot.getByRole("button", { name: "Review available VEX decisions" }),
+      );
+      expect(slot.inspection.navigateCalls).toContainEqual({
+        method: "toPluginPanel",
+        path: "sync",
+        options: {
+          subPath: `${SCOPE_PATH}/surface/vexDecision`,
+        },
+      });
+    },
+  );
+
+  it("keeps only registered Sync surfaces loadable", async () => {
+    const { isSyncReviewSurfaceAvailable } = await import("./SyncReviewPanel.js");
+
+    expect(isSyncReviewSurfaceAvailable("all")).toBe(true);
+    expect(isSyncReviewSurfaceAvailable("triage")).toBe(true);
+    expect(isSyncReviewSurfaceAvailable("vexDecision")).toBe(true);
+    expect(isSyncReviewSurfaceAvailable("product-security")).toBe(false);
+    expect(isSyncReviewSurfaceAvailable("component")).toBe(false);
+    expect(isSyncReviewSurfaceAvailable("finding")).toBe(false);
+  });
+
   it("loads all pages, preserves group order, and windows a 5k-item group", async () => {
     const allItems = Array.from({ length: 5_000 }, (_, index) => item(index));
     const syncPlan = vi.fn((input: unknown) => {

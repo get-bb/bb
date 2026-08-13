@@ -206,6 +206,12 @@ function routeKinds(surface: SyncSurfaceFilter): EntityKind[] | undefined {
   return [surface];
 }
 
+export function isSyncReviewSurfaceAvailable(
+  surface: SyncSurfaceFilter,
+): boolean {
+  return surface === "all" || surface === "triage" || surface === "vexDecision";
+}
+
 function routeSurfaceLabel(surface: SyncSurfaceFilter): string {
   if (surface === "all") return "All authored surfaces";
   if (surface === "product-security") return "Product Security";
@@ -490,6 +496,40 @@ function ProjectScopeGuidanceState({
   );
 }
 
+function SurfaceUnavailableState({
+  surface,
+  onOpenVex,
+}: {
+  surface: SyncSurfaceFilter;
+  onOpenVex(): void;
+}): React.JSX.Element {
+  const label = routeSurfaceLabel(surface);
+  return (
+    <div className="flex min-h-80 items-center justify-center p-6">
+      <section className="w-full max-w-lg rounded-lg border border-border bg-card p-6 shadow-sm">
+        <Icon className="size-6 text-muted-foreground" name="Layers" />
+        <p className="mt-4 font-mono text-xs uppercase tracking-wide text-muted-foreground">
+          ADAPTERS_PENDING
+        </p>
+        <h2 className="mt-2 text-lg font-semibold">
+          {label} Sync review is not available yet
+        </h2>
+        <p className="mt-2 text-sm leading-6 text-muted-foreground">
+          The plan adapters for this surface have not shipped in this build.
+          Changing remote settings or retrying cannot enable it.
+        </p>
+        <p className="mt-2 text-xs leading-5 text-muted-foreground">
+          No status or plan request was sent. VEX decisions are the currently
+          registered review surface.
+        </p>
+        <Button className="mt-5" onClick={onOpenVex} variant="outline">
+          Review available VEX decisions
+        </Button>
+      </section>
+    </div>
+  );
+}
+
 function ErrorState({ onRetry }: { onRetry(): void }): React.JSX.Element {
   return (
     <div className="flex min-h-80 items-center justify-center p-6">
@@ -569,6 +609,7 @@ export function SyncReviewPanel({
   );
   const activeScope = route?.scope ?? selectedScope;
   const surface = route?.surface ?? "all";
+  const surfaceAvailable = isSyncReviewSurfaceAvailable(surface);
   const kinds = useMemo(() => routeKinds(surface), [surface]);
   const [state, setState] = useState<ReviewState>({ kind: "loading" });
   const [refreshing, setRefreshing] = useState(false);
@@ -628,7 +669,14 @@ export function SyncReviewPanel({
 
   const refresh = useCallback(
     async (keepVisible = false) => {
-      if (!activeScope || activeScope.projectVersionId === null || !route) return;
+      if (
+        !activeScope ||
+        activeScope.projectVersionId === null ||
+        !surfaceAvailable ||
+        !route
+      ) {
+        return;
+      }
       const generation = requestGeneration.current + 1;
       requestGeneration.current = generation;
       if (keepVisible) setRefreshing(true);
@@ -677,19 +725,20 @@ export function SyncReviewPanel({
       });
       setConfirmationChecked(false);
     },
-    [activeScope, kinds, loadPlan, route, rpc],
+    [activeScope, kinds, loadPlan, route, rpc, surfaceAvailable],
   );
 
   useEffect(() => {
     if (
       !parsedRoute.valid ||
       !activeScope ||
-      activeScope.projectVersionId === null
+      activeScope.projectVersionId === null ||
+      !surfaceAvailable
     ) {
       return;
     }
     void refresh(false);
-  }, [activeScope, parsedRoute.valid, refresh]);
+  }, [activeScope, parsedRoute.valid, refresh, surfaceAvailable]);
 
   const scheduleAuthoritativeRefresh = useCallback(() => {
     if (realtimeDebounce.current !== null) {
@@ -899,6 +948,21 @@ export function SyncReviewPanel({
       ) : activeScope.projectVersionId === null ? (
         <div className="min-h-0 flex-1 overflow-auto">
           <ProjectScopeGuidanceState surface={surface} />
+        </div>
+      ) : !surfaceAvailable ? (
+        <div className="min-h-0 flex-1 overflow-auto">
+          <SurfaceUnavailableState
+            onOpenVex={() => {
+              navigate.toPluginPanel("sync", {
+                subPath: buildReviewSubPath(activeScope, {
+                  surface: "vexDecision",
+                  planId: null,
+                  runId: null,
+                }),
+              });
+            }}
+            surface={surface}
+          />
         </div>
       ) : state.kind === "loading" ? (
         <div className="min-h-0 flex-1 overflow-auto">
