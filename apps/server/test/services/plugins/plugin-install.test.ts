@@ -29,6 +29,7 @@ import { PLUGIN_SDK_MAJOR, PLUGIN_SDK_VERSION } from "@bb/domain";
 import { validatePluginArtifactMeta } from "../../../src/services/plugins/app-bundle.js";
 import {
   gitArtifactCacheDir,
+  hashInstallDir,
   npmArtifactCacheDir,
   parsePluginSource,
 } from "../../../src/services/plugins/install-sources.js";
@@ -921,6 +922,30 @@ describe("plugin install flows", () => {
             .filter((plugin) => plugin.id.startsWith("collection-"))
             .map((plugin) => plugin.status),
         ).toEqual(["running", "running"]);
+      });
+
+      it("refreshes a root artifact hash after a nested install", async () => {
+        const repoDir = join(workDir, "repo-collection-root-first");
+        await writePluginFixture(join(repoDir, "plugins", "alpha"), {
+          name: "bb-plugin-collection-root-first-alpha",
+        });
+        await writePluginFixture(repoDir, {
+          name: "bb-plugin-collection-root-first-top",
+        });
+        await initGitRepo(repoDir);
+        await commitAll(repoDir, "init");
+
+        const top = await service.install(`git:${repoDir}@main`, {
+          kind: "root",
+        });
+        await service.install(`git:${repoDir}@main`, {
+          kind: "subdirectory",
+          path: "plugins/alpha",
+        });
+
+        expect(listPluginArtifacts(db, top.id)).toMatchObject([
+          { contentHash: await hashInstallDir(top.rootDir) },
+        ]);
       });
 
       it("keeps a symlinked nested plugin when the repository root installs", async () => {
