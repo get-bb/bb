@@ -44,7 +44,12 @@ function completed(subjectDigest: string): ForgeJobSnapshot {
 }
 
 async function checkpoint(subjectDigest: string, signatureVerified: boolean) {
-  const verify = vi.fn(async () => signatureVerified);
+  const verify = vi.fn(async () => signatureVerified ? {
+    requirementIds: ["REQ-A"],
+    checkIds: ["verify_dynamic"],
+    resultRefs: ["bench-result-a"],
+    signerIdentity: "builder@example.test",
+  } : null);
   const bundle = await forgeEvidenceCheckpoint(
     {
       persistLog: async () => "runs/run-a/jobs/job-1.log",
@@ -74,6 +79,14 @@ describe("bench evidence conversion", () => {
       signatureVerified: true,
       subjectMatchesRun: true,
       verified: true,
+    });
+    expect(fixture.db.prepare(
+      "SELECT requirement_ids, check_ids, result_refs, signer_identity FROM attestations",
+    ).get()).toEqual({
+      requirement_ids: '["REQ-A"]',
+      check_ids: '["verify_dynamic"]',
+      result_refs: '["bench-result-a"]',
+      signer_identity: "builder@example.test",
     });
   });
 

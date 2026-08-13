@@ -115,6 +115,18 @@ describe("bench registration", () => {
     });
     expect(page).toMatchObject({ items: [], total: 0, next: null });
     await expect(
+      host.harness.behavior.callRpc("benchOtaVerdictGet", {
+        projectId: "project-a",
+        pvId: "version-a",
+        digest: "a".repeat(64),
+      }),
+    ).resolves.toMatchObject({
+      pvId: "version-a",
+      verdict: "INCONCLUSIVE",
+      firmwareDigest: "a".repeat(64),
+      issues: [{ code: "MODEL_UNAVAILABLE" }],
+    });
+    await expect(
       host.harness.behavior.callRpc("benchRunStart", {
         projectId: "project-a",
         projectVersionId: "version-a",

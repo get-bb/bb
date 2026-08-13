@@ -24,7 +24,12 @@ import { listBenchAttestations } from "./store/attestations.js";
 import { listBenchResults, storeEvidenceCheckpointWithResult } from "./store/results.js";
 import { getBenchRun, listBenchRuns } from "./store/runs.js";
 import type { BenchEvidenceBundle } from "./store/types.js";
-import { getOtaVerdict } from "./verdict/query.js";
+import { createBenchVerdictCliRunner } from "./verdict/render-cli.js";
+import {
+  getOtaVerdict,
+  otaVerdictRpcContract,
+  projectFrozenVerdict,
+} from "./verdict/query.js";
 
 const benchRpcContract = {
   benchRunsList: rpcContract.benchRunsList,
@@ -34,6 +39,7 @@ const benchRpcContract = {
   benchRunStart: rpcContract.benchRunStart,
   benchHostsList: rpcContract.benchHostsList,
   benchHostsJoinCode: rpcContract.benchHostsJoinCode,
+  benchOtaVerdictGet: otaVerdictRpcContract.benchOtaVerdictGet,
 } as const;
 
 function streamUnavailable(message: string, status = 410): Response {
@@ -308,6 +314,7 @@ export function registerBench(bb: BbPluginApi, ctx: PluginContext): void {
   const db = ctx.db();
   const jobQueue = ctx.service("bench.job-queue", () => new InMemoryBenchJobQueue());
   ctx.service("bench.command-services", () => createBenchCommandServices(bb, db));
+  ctx.service("bench.cli", () => ({ run: createBenchVerdictCliRunner(db) }));
 
   bb.rpc.register(benchRpcContract, {
     benchRunsList(input) {
@@ -496,8 +503,17 @@ export function registerBench(bb: BbPluginApi, ctx: PluginContext): void {
         },
       };
     },
-    benchVerdictGet() {
-      return getOtaVerdict();
+    async benchVerdictGet(input) {
+      const pvId = input.projectVersionId ?? input.verdictId;
+      const result = await getOtaVerdict({ db, projectId: input.projectId }, pvId);
+      return projectFrozenVerdict(db, input.projectId, input.verdictId, result);
+    },
+    benchOtaVerdictGet(input) {
+      return getOtaVerdict(
+        { db, projectId: input.projectId },
+        input.pvId,
+        input.digest,
+      );
     },
     async benchRunStart(input) {
       if (input.projectVersionId === null) {

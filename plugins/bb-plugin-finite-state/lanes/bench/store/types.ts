@@ -59,6 +59,14 @@ export interface BenchAttestationInput {
   payload: string;
   /** A signature-verifier result produced locally, never an upstream claim. */
   verified: boolean;
+  /** Verifier-authenticated predicate coverage. Omission preserves legacy rows. */
+  requirementIds?: readonly string[];
+  /** Verifier-authenticated predicate coverage. Omission preserves legacy rows. */
+  checkIds?: readonly string[];
+  /** Verifier-authenticated local result identities. Omission preserves legacy rows. */
+  resultRefs?: readonly string[];
+  /** Verifier-authenticated signing identity, when the envelope supplies one. */
+  signerIdentity?: string;
 }
 
 export interface BenchEvidenceBundle {

@@ -28,6 +28,10 @@ describe("bench attestations repository", () => {
           subjectDigest: DIGEST_A,
           payload: JSON.stringify({ payloadType: "application/vnd.in-toto+json", signatures: [] }),
           verified: true,
+          requirementIds: ["REQ-A"],
+          checkIds: ["check-a"],
+          resultRefs: ["result-a"],
+          signerIdentity: "builder@example.test",
         },
       }),
       SYNCED_AT,
@@ -43,6 +47,16 @@ describe("bench attestations repository", () => {
       signatureVerified: true,
       subjectMatchesRun: true,
       verified: true,
+    });
+    expect(
+      fixture.db.prepare(
+        "SELECT requirement_ids, check_ids, result_refs, signer_identity FROM attestations",
+      ).get(),
+    ).toEqual({
+      requirement_ids: '["REQ-A"]',
+      check_ids: '["check-a"]',
+      result_refs: '["result-a"]',
+      signer_identity: "builder@example.test",
     });
   });
 
