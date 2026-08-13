@@ -24,6 +24,8 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { focusManager } from "@tanstack/react-query";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
+import { SidebarHistoryNavigationControls } from "@/components/sidebar/SidebarHistoryNavigationControls";
+import { resetAppRouteHistoryForTest } from "@/lib/app-route-history";
 import { PluginsOverview } from "./PluginsOverview";
 
 // The hero mounts bb's real new-thread composer when a create affordance
@@ -208,6 +210,7 @@ function LocationPath() {
 afterEach(() => {
   focusManager.setFocused(undefined);
   cleanup();
+  resetAppRouteHistoryForTest();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -264,12 +267,13 @@ describe("PluginsOverview", () => {
     await waitFor(() => expect(catalogRequests()).toHaveLength(1));
   });
 
-  it("enters creation explicitly and returns with the labeled back control", async () => {
+  it("uses the existing sidebar history control to return from creation", async () => {
     installFetch();
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     render(
       <MemoryRouter initialEntries={["/extensions/plugins"]}>
         <QueryClientWrapper>
+          <SidebarHistoryNavigationControls />
           <PluginsOverview />
         </QueryClientWrapper>
       </MemoryRouter>,
@@ -281,10 +285,8 @@ describe("PluginsOverview", () => {
     });
 
     fireEvent.click(createPlugin);
-    expect(screen.getByTestId("inline-composer")).toBeTruthy();
-    expect(
-      screen.getByRole("button", { name: "Back to browse plugins" }),
-    ).toBeTruthy();
+    expect(await screen.findByTestId("inline-composer")).toBeTruthy();
+    expect(screen.queryByText("Back to browse plugins")).toBeNull();
     expect(
       screen.queryByRole("button", { name: "Close the composer" }),
     ).toBeNull();
@@ -294,13 +296,14 @@ describe("PluginsOverview", () => {
     fireEvent.click(createPlugin);
     expect(screen.getByTestId("inline-composer")).toBeTruthy();
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Back to browse plugins" }),
+    const goBack = screen.getByRole("button", { name: "Go back" });
+    await waitFor(() =>
+      expect((goBack as HTMLButtonElement).disabled).toBe(false),
     );
-    expect(screen.queryByTestId("inline-composer")).toBeNull();
-    expect(
-      screen.queryByRole("button", { name: "Back to browse plugins" }),
-    ).toBeNull();
+    fireEvent.click(goBack);
+    await waitFor(() =>
+      expect(screen.queryByTestId("inline-composer")).toBeNull(),
+    );
   });
 
   it("shows category filters only in Browse", async () => {

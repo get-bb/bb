@@ -580,12 +580,12 @@ describe("BrowsePluginsTab", () => {
       screen.queryByRole("button", { name: "Open Memory details" }),
     ).toBeNull();
 
-    // Toggling the CTA restores the browse body and removes the examples.
+    // Create is enter-only: repeated activation keeps the creation body open.
     fireEvent.click(screen.getByRole("button", { name: "Create a plugin" }));
+    expect(await screen.findByText("Start from an example")).toBeTruthy();
     expect(
-      await screen.findByRole("button", { name: "Open Memory details" }),
-    ).toBeTruthy();
-    expect(screen.queryByText("Start from an example")).toBeNull();
+      screen.queryByRole("button", { name: "Open Memory details" }),
+    ).toBeNull();
   });
 
   it("routes every create affordance into the inline composer", async () => {
