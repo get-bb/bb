@@ -515,8 +515,15 @@ export function registerHardware(bb: BbPluginApi, ctx: PluginContext): void {
   void capability
     .then((value) => {
       if (disposed) return;
-      if (!value.installed) bb.status.needsConfiguration("Install KiCad 7+ to enable hardware artifact extraction.");
-      else if (!value.supported) bb.status.needsConfiguration(`KiCad 7+ is required; detected ${value.version ?? "an unreadable version"}.`);
+      if (!value.installed) {
+        ctx.log.warn(
+          "Hardware extraction advisory: KiCad 7+ is unavailable on this host. Hardware extraction is disabled; other plugin lanes remain available.",
+        );
+      } else if (!value.supported) {
+        ctx.log.warn(
+          `Hardware extraction advisory: KiCad 7+ is required; detected ${value.version ?? "an unreadable version"}. Hardware extraction is disabled; other plugin lanes remain available.`,
+        );
+      }
     })
     .catch((error: unknown) => {
       const detail = error instanceof Error ? `${error.name}: ${error.message}` : "unknown error";

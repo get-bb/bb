@@ -145,7 +145,9 @@ export async function resolveHardwareProjectSource(
   const project = await bb.sdk.projects.get({ projectId });
   const source = project.sources.find((candidate) => candidate.isDefault) ?? project.sources[0];
   if (!source) {
-    bb.status.needsConfiguration("Register a default workspace source before using hardware discovery.");
+    bb.log.warn(
+      "Hardware discovery advisory: this project has no workspace source. Hardware discovery is unavailable for this project; other plugin lanes remain available.",
+    );
     throw new Error("HW_PROJECT_SOURCE_UNAVAILABLE: the project has no workspace source");
   }
   return { hostId: source.hostId, path: source.path };
