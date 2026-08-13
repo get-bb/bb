@@ -244,6 +244,28 @@ pnpm exec turbo run test --filter=bb-plugin-finite-state
 
 ---
 
+## The review kill list — attack your own work before you flag review
+
+Ten consecutive WPs got zero first-pass approvals, and every round-1 blocker was a real defect. They cluster into a small number of classes, tracked in [REVIEW-KILL-LIST.md](./REVIEW-KILL-LIST.md) — attest against that list when you flag review. Four standing rules come out of it:
+
+### 1. Registered-surface proof ("wired-in proof")
+
+Every property you claim — gate, guard, validation, behavior — needs at least one test that exercises it **through the registered surface** (RPC dispatch, agent tool, panel or CLI path), not only the exported helper. A guard that holds on the export but is bypassed by the actual RPC is a round-1 blocker, and it has happened three times: FS-122 (send-confirm gate bypassed by the registered RPC), FS-74 (guard defeated by runtime registration), FS-108 (parser never invoked by any production path). Your PR body must name the production call path for each new module.
+
+### 2. Real-fixture proof
+
+Any parser or remote-client change must pass against at least one real-world artifact — a real KiCad file, a captured (sanitized) real API response — and mock fixtures must mirror the vendored reference shape, not a convenient simplification. FS-108 computed wrong connectivity on the repo's own real KiCad fixture; FS-164's real API nests the component object where every mock was flat. Fixture changes under `test/mock-remote/fixtures/**` still flow through the WP-08 freeze process (§2 above) while that freeze stands.
+
+### 3. Adversarial self-test
+
+For each MUST or guard in your WP, write the attack test that tries to defeat it — register the tool the allowlist doesn't enumerate, call the ungated path, spoof the evidence value — **before** flagging review. Your reviewer will attempt to defeat your guard; attempt it first. A guard nobody attacked shipped a ReDoS (FS-122, repair round).
+
+### 4. Amendment echo table
+
+If your WP implements signed amendment text, the PR body quotes each amendment constraint verbatim, each with the `file:line` and the test that satisfies it. FS-121 turned AMD-0013's "one mechanism and one test" into two mechanisms; FS-74's intake note said "nine" tools where the ratified union has eight. The echo table catches this drift mechanically.
+
+---
+
 ## Before you call a work package done
 
 ```bash
@@ -257,6 +279,10 @@ All four green, then check:
 - [ ] No frozen interface touched
 - [ ] No new dependency
 - [ ] Error paths tested, not just the happy path
+- [ ] Every claimed gate/guard/behavior has a registered-surface test; the PR body names the production call path for each new module
+- [ ] Parser/remote-client changes verified against a real artifact; fixtures mirror the vendored reference shape
+- [ ] Attack tests written for every MUST/guard (see the review kill list above)
+- [ ] Amendment echo table in the PR body, if the WP implements signed amendment text
 - [ ] All four UI states exist, if you built UI
 - [ ] No secret, no absolute local path, no `console.log` left behind
 - [ ] `[UNVERIFIED]` or `TODO` markers either resolved or explicitly listed in your summary

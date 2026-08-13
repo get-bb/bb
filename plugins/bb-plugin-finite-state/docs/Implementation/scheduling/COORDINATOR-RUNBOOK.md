@@ -99,6 +99,8 @@ bb tasks dispatch FS-38 --preset fs-standard --instructions "C-FINDING-UX sequen
 
 All L2 sync work and the L4 canvas use `fs-critical`. Routine or mechanical work uses `fs-standard`. Never substitute a lower tier for those critical lanes.
 
+**Merge notifications are dispatch triggers.** When a PR merges, run §2–§4 immediately for the next ready candidate instead of waiting for the watchdog cadence — the watchdog (§10) is a backstop, not the scheduler.
+
 **Permission mode is `full` for every preset** (owner decision, 2026-08-12, after FS-91 branch protection went active). Unattended operation is the point: `accept-edits` and `auto` stall threads on approval interactions nobody is watching. The presets (`fs-critical`, `fs-standard`, `fs-review`) already carry `full`; because presets live outside version control, verify with `bb tasks preset list` and restore `--permission full` if a preset is ever re-created. This is safe only while its two preconditions hold — the `finite-state/integration` ruleset (require PR + green `Finite State guard gates` check, no bypass actors; see FS-91) and isolated worktree environments. If either lapses, revert presets to `auto` before the next dispatch.
 
 ## 5. Review and close
@@ -119,6 +121,8 @@ bb plugin install ./plugins/bb-plugin-finite-state
 ```
 
 Open the affected surface with `agent-browser`, exercise the reviewed behavior, and attach both a screenshot and a one-line observed-behavior note to the review evidence. Component tests alone do not satisfy UI-surface review. Do not add Playwright or visual-regression infrastructure for this requirement.
+
+When a round-1 verdict lands, classify its blockers against [REVIEW-KILL-LIST.md](../REVIEW-KILL-LIST.md) and add or prune classes so the list tracks what round-1 reviews actually find.
 
 Among the unstarted work packages, this recurring cost applies to 21 UI-owning WPs: WP-21, WP-24, WP-25, WP-26, WP-31, WP-32, WP-33, WP-34, WP-35, WP-36, WP-37, WP-38, WP-39, WP-40, WP-42, WP-45, WP-51, WP-54, WP-55, WP-56, and WP-61. The recurring cost is one live-browser evidence pass per UI WP review.
 
@@ -166,7 +170,8 @@ A moved head does not invalidate everything a reviewer verified. Serial full re-
 
 - Reviewers admit verified findings to the ledger tagged `commit:<sha>` plus the files covered.
 - On a head move, keep the **same reviewer thread** and `bb thread tell` it the new head; it verifies the diff since its last verified commit against its admitted findings.
-- A brand-new full audit is reserved for: a change of reviewer identity required by the independent-review profile (provider diversity), contested findings, or a frozen-artifact approval where the human gate requires it.
+- A brand-new full audit is reserved for: a change of reviewer identity required by the independent-review profile (provider diversity), contested findings, or a frozen-artifact approval where the human gate requires it. A reviewer whose environment was lost (worktree prune) also forces a fresh reviewer thread — point it at the durable findings and scope it as a delta review, not a full re-audit.
+- **Repair rounds 2+ are delta reviews by default.** The reviewer re-verifies only (i) the previously-failed findings and (ii) the incremental diff since the last reviewed head. Automated gates (typecheck/test/lint/build, tripwires) still run every round — they are cheap and catch regressions anywhere. Manual reproduction and live-browser evidence are re-required only when the diff touches the corresponding surface: UI evidence only if UI-owning files changed, gate reproduction only if the gated path changed. A full re-review is triggered only by frozen-file, scope, or merge-base changes, a reviewer-identity change, or contested findings. The incremental diff must still be reviewed adversarially — repairs introduce new defects (FS-122's repair shipped a ReDoS in a diff that was "just a guard").
 
 ## 10. Ready-queue watchdog (advisory automation)
 
