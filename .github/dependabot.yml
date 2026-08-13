@@ -1,11 +1,12 @@
 version: 2
 updates:
   - package-ecosystem: github-actions
-    directory: /
+    directories:
+      - /
+      - /.github/actions/setup-workspace
     schedule:
       interval: weekly
-
-  - package-ecosystem: github-actions
-    directory: /.github/actions/setup-workspace
-    schedule:
-      interval: weekly
+    groups:
+      github-actions:
+        patterns:
+          - "*"
