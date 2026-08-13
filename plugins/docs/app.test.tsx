@@ -78,6 +78,44 @@ function listNotesResult(
   };
 }
 
+function listNotesResultForVault(
+  vaultId: "personal" | "work",
+  path: string,
+  title: string,
+) {
+  return {
+    ...listNotesResult([{ path, title, preview: "", modifiedAtMs: 1 }]),
+    vaults: [
+      {
+        id: "personal",
+        name: "Personal",
+        hostId: null,
+        rootPath: "/vaults/personal",
+      },
+      {
+        id: "work",
+        name: "Work",
+        hostId: null,
+        rootPath: "/vaults/work",
+      },
+    ],
+    vault: {
+      id: vaultId,
+      name: vaultId === "work" ? "Work" : "Personal",
+      hostId: null,
+      rootPath: `/vaults/${vaultId}`,
+    },
+  };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((next) => {
+    resolve = next;
+  });
+  return { promise, resolve };
+}
+
 const preview = {
   baseUrl: "/api/v1/file-previews/lease",
   expiresAtMs: Date.now() + 60_000,
@@ -407,6 +445,157 @@ describe("Docs nav panel", () => {
         input: { vaultId: "work", parent: "", name: "Untitled" },
       }),
     );
+  });
+
+  it("ignores an obsolete vault refresh and rename after a deferred save", async () => {
+    const pendingSave = deferred<{
+      outcome: "written";
+      sha256: string;
+    }>();
+    const pendingWorkNotebook =
+      deferred<ReturnType<typeof listNotesResultForVault>>();
+    let workNotebookRequested = false;
+    const PanelContent = docsRegistration.component;
+    const slot = renderSlot(
+      docsRegistration,
+      { subPath: "personal/personal.md" },
+      {
+        rpc: {
+          listNotes: (rawInput: unknown) => {
+            const input = rawInput as { vaultId?: string } | undefined;
+            if (input?.vaultId === "work") {
+              workNotebookRequested = true;
+              return pendingWorkNotebook.promise;
+            }
+            return listNotesResultForVault(
+              "personal",
+              "personal.md",
+              "Personal note",
+            );
+          },
+          readNote: (rawInput: unknown) => {
+            const input = rawInput as { vaultId: string };
+            return {
+              content:
+                input.vaultId === "work"
+                  ? "# Work document\n\nWork body"
+                  : "# Personal document\n\nPersonal body",
+              sha256: input.vaultId,
+            };
+          },
+          preparePreview: () => preview,
+          saveNote: () => pendingSave.promise,
+          renameToTitle: (rawInput: unknown) => {
+            const input = rawInput as { vaultId: string; path: string };
+            return {
+              path:
+                input.vaultId === "personal"
+                  ? "personal-renamed.md"
+                  : input.path,
+            };
+          },
+        },
+      },
+    );
+    const body = await slot.findByText("Personal body");
+    body.textContent = "Edited personal body";
+    fireEvent.input(body);
+    await waitFor(
+      () =>
+        expect(slot.rpcCalls.some((call) => call.method === "saveNote")).toBe(
+          true,
+        ),
+      { timeout: 2_000 },
+    );
+
+    slot.rerender(<PanelContent subPath="work/work.md" />);
+    await waitFor(() => expect(workNotebookRequested).toBe(true));
+    await act(async () => {
+      pendingSave.resolve({ outcome: "written", sha256: "saved-personal" });
+    });
+    pendingWorkNotebook.resolve(
+      listNotesResultForVault("work", "work.md", "Work note"),
+    );
+
+    await slot.findByText("Work body");
+    expect(
+      slot.rpcCalls.filter(
+        (call) =>
+          call.method === "listNotes" &&
+          (call.input as { vaultId?: string }).vaultId === "personal",
+      ),
+    ).toHaveLength(1);
+    expect(slot.navigateCalls).not.toContainEqual({
+      method: "toPluginPanel",
+      path: "docs",
+      options: {
+        subPath: "personal/personal-renamed.md",
+        replace: true,
+      },
+    });
+  });
+
+  it("ignores obsolete refresh and navigation after deferred note creation", async () => {
+    const pendingCreate = deferred<{ path: string }>();
+    const pendingWorkNotebook =
+      deferred<ReturnType<typeof listNotesResultForVault>>();
+    let workNotebookRequested = false;
+    const slot = renderSlot(
+      navigationRegistration,
+      { subPath: "personal/personal.md", params: null },
+      {
+        rpc: {
+          listNotes: (rawInput: unknown) => {
+            const input = rawInput as { vaultId?: string } | undefined;
+            if (input?.vaultId === "work") {
+              workNotebookRequested = true;
+              return pendingWorkNotebook.promise;
+            }
+            return listNotesResultForVault(
+              "personal",
+              "personal.md",
+              "Personal note",
+            );
+          },
+          createNote: () => pendingCreate.promise,
+        },
+      },
+    );
+    await slot.findByText("Personal note");
+    fireEvent.click(slot.getByRole("button", { name: "New note" }));
+    await waitFor(() =>
+      expect(slot.rpcCalls.some((call) => call.method === "createNote")).toBe(
+        true,
+      ),
+    );
+
+    slot.rerender(
+      <navigationView.component subPath="work/work.md" params={null} />,
+    );
+    await waitFor(() => expect(workNotebookRequested).toBe(true));
+    await act(async () => {
+      pendingCreate.resolve({ path: "created-in-personal.md" });
+    });
+    pendingWorkNotebook.resolve(
+      listNotesResultForVault("work", "work.md", "Work note"),
+    );
+
+    await slot.findByText("Work note");
+    expect(
+      slot.rpcCalls.filter(
+        (call) =>
+          call.method === "listNotes" &&
+          (call.input as { vaultId?: string }).vaultId === "personal",
+      ),
+    ).toHaveLength(1);
+    expect(slot.navigateCalls).not.toContainEqual({
+      method: "toPluginPanel",
+      path: "docs",
+      options: {
+        subPath: "personal/created-in-personal.md",
+        replace: false,
+      },
+    });
   });
 
   it("only shows host status when the selected vault is unavailable", async () => {

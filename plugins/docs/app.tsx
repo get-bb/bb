@@ -590,22 +590,33 @@ function TiptapEditor({
 
 function useNotebook(vaultId: string | null) {
   const rpc = useRpc<typeof docsRpcContract>();
+  const currentVaultIdRef = useRef(vaultId);
+  currentVaultIdRef.current = vaultId;
   const requestIdRef = useRef(0);
   const [result, setResult] = useState<{
     requestedVaultId: string | null;
     data: NotesData;
   } | null>(null);
   const refresh = useCallback(() => {
-    const requestId = ++requestIdRef.current;
     const requestedVaultId = vaultId;
+    if (currentVaultIdRef.current !== requestedVaultId) return;
+    const requestId = ++requestIdRef.current;
     void rpc
       .call("listNotes", vaultId ? { vaultId } : {})
       .then((value) => {
-        if (requestId !== requestIdRef.current) return;
+        if (
+          requestId !== requestIdRef.current ||
+          currentVaultIdRef.current !== requestedVaultId
+        )
+          return;
         setResult({ requestedVaultId, data: parseNotesData(value) });
       })
       .catch((error: unknown) => {
-        if (requestId !== requestIdRef.current) return;
+        if (
+          requestId !== requestIdRef.current ||
+          currentVaultIdRef.current !== requestedVaultId
+        )
+          return;
         setResult((current) =>
           current?.requestedVaultId === requestedVaultId
             ? {
@@ -1741,16 +1752,22 @@ function NotesWorkspace({
   const { data, refresh } = useNotebook(route.vaultId);
   const activeVaultId = data?.vault.id ?? route.vaultId;
   const filePath = route.filePath;
+  const currentVaultIdRef = useRef(activeVaultId);
+  currentVaultIdRef.current = activeVaultId;
+  const isCurrentVault = useCallback(
+    (vaultId: string) => currentVaultIdRef.current === vaultId,
+    [],
+  );
 
   const open = useCallback(
     (path: string, replace = false) => {
-      if (!activeVaultId) return;
+      if (!activeVaultId || !isCurrentVault(activeVaultId)) return;
       navigate.toPluginPanel("docs", {
         subPath: `${activeVaultId}/${path}`,
         replace,
       });
     },
-    [activeVaultId, navigate],
+    [activeVaultId, isCurrentVault, navigate],
   );
 
   if (!data || !activeVaultId)
@@ -1772,7 +1789,11 @@ function NotesWorkspace({
         name: "Untitled",
       })
       .then((value) => {
-        if (isRecord(value) && typeof value.path === "string") {
+        if (
+          isCurrentVault(activeVaultId) &&
+          isRecord(value) &&
+          typeof value.path === "string"
+        ) {
           refresh();
           open(value.path);
         }
@@ -1784,6 +1805,7 @@ function NotesWorkspace({
     const target = selectedFolder ? `${selectedFolder}/${name}` : name;
     try {
       await rpc.call("createFolder", { vaultId: activeVaultId, path: target });
+      if (!isCurrentVault(activeVaultId)) return;
       setFolderName("");
       setFolderDialogOpen(false);
       refresh();
@@ -1805,6 +1827,7 @@ function NotesWorkspace({
       });
       if (!isRecord(value) || typeof value.id !== "string")
         throw new Error("Create vault returned an invalid response");
+      if (!isCurrentVault(activeVaultId)) return;
       setVaultName("");
       setVaultRootPath("");
       setVaultHostId("primary");
@@ -1823,6 +1846,7 @@ function NotesWorkspace({
         vaultId: activeVaultId,
         path,
       });
+      if (!isCurrentVault(activeVaultId)) return;
       refresh();
       if (filePath === path) {
         navigate.toPluginPanel("docs", {
@@ -1845,6 +1869,7 @@ function NotesWorkspace({
         parent,
         paths,
       });
+      if (!isCurrentVault(activeVaultId)) return;
       refresh();
     } catch (error) {
       toast.error(
@@ -1883,6 +1908,7 @@ function NotesWorkspace({
           );
         }
       }
+      if (!isCurrentVault(activeVaultId)) return;
       refresh();
       if (filePath === sourcePath) open(destinationPath, true);
       if (orderPreserved) {
