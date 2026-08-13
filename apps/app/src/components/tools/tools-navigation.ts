@@ -74,6 +74,22 @@ export interface ToolsBreadcrumbSegment {
   to?: string;
 }
 
+function resolvePluginCreateBreadcrumbs(
+  pathname: string,
+  search: string,
+): ToolsBreadcrumbSegment[] | null {
+  if (
+    pathname !== TOOLS_SECTIONS.plugins.to ||
+    new URLSearchParams(search).get("view") !== "create"
+  ) {
+    return null;
+  }
+  return [
+    { label: "Extensions", to: getPluginsRoutePath() },
+    { label: "Create a plugin" },
+  ];
+}
+
 export function resolveAutomationBreadcrumbs(
   pathname: string,
   resourceLabel?: string | null,
@@ -194,6 +210,13 @@ export function resolveToolsBreadcrumbs(
   resourceLabel?: string | null,
 ): ToolsBreadcrumbSegment[] | null {
   const view = new URLSearchParams(search).get("view");
+  const pluginCreateBreadcrumbs = resolvePluginCreateBreadcrumbs(
+    pathname,
+    search,
+  );
+  if (pluginCreateBreadcrumbs !== null) {
+    return pluginCreateBreadcrumbs;
+  }
   // Browse is matched before detail on purpose. A single-param detail pattern
   // such as /extensions/plugins/:pluginId also matches /extensions/plugins/browse, so
   // testing detail first resolves the reserved "browse" segment as a resource
@@ -332,9 +355,11 @@ export function resolveToolsActivePage(
 
 /**
  * What the app header shows for a route in the Tools/Automations chrome area:
- * Extensions pages get the static area title (their sidebar names every page,
- * so a crumb trail would repeat the active row), automation routes keep their
- * breadcrumb trail, and anything else is not this resolver's business.
+ * Extensions collection pages get the static area title (their sidebar names
+ * every page, so a crumb trail would repeat the active row), plugin creation
+ * gets the same ancestor/current breadcrumb treatment as other app depth,
+ * automation routes keep their breadcrumb trail, and anything else is not
+ * this resolver's business.
  *
  * Pure on purpose: the precedence used to live in AppLayout's meta ternary
  * with no coverage; here the three cases are testable directly.
@@ -343,11 +368,19 @@ export function resolveToolsAreaHeaderMeta(
   pathname: string,
   toolsHubEnabled: boolean,
   resourceLabel?: string | null,
+  search = "",
 ):
   | { kind: "extensions-title"; title: string }
   | { kind: "breadcrumbs"; breadcrumbs: ToolsBreadcrumbSegment[] }
   | null {
   if (toolsHubEnabled && isToolsRoutePath(pathname)) {
+    const pluginCreateBreadcrumbs = resolvePluginCreateBreadcrumbs(
+      pathname,
+      search,
+    );
+    if (pluginCreateBreadcrumbs !== null) {
+      return { kind: "breadcrumbs", breadcrumbs: pluginCreateBreadcrumbs };
+    }
     return { kind: "extensions-title", title: "Extensions" };
   }
   const automationBreadcrumbs = resolveAutomationBreadcrumbs(

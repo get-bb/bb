@@ -633,6 +633,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     // Extensions graduated from experiments (#1360): the hub is always on.
     true,
     resourceRouteLabel,
+    location.search,
   );
   const meta = isThreadView
     ? {

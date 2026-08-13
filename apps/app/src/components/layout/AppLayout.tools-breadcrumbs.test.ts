@@ -40,6 +40,12 @@ describe("resolveToolsBreadcrumbs", () => {
       { label: "Browse" },
     ]);
     expect(
+      resolveToolsBreadcrumbs("/extensions/plugins", "?view=create"),
+    ).toEqual([
+      { label: "Extensions", to: "/extensions/plugins" },
+      { label: "Create a plugin" },
+    ]);
+    expect(
       resolveToolsBreadcrumbs("/extensions/plugins", "?view=installed"),
     ).toEqual([
       { label: "Plugins", to: "/extensions/plugins" },
@@ -192,6 +198,23 @@ describe("resolveToolsAreaHeaderMeta", () => {
     expect(resolveToolsAreaHeaderMeta("/extensions/skills/registry", true)).toEqual({
       kind: "extensions-title",
       title: "Extensions",
+    });
+  });
+
+  it("shows established ancestor/current breadcrumbs during plugin creation", () => {
+    expect(
+      resolveToolsAreaHeaderMeta(
+        "/extensions/plugins",
+        true,
+        null,
+        "?view=create",
+      ),
+    ).toEqual({
+      kind: "breadcrumbs",
+      breadcrumbs: [
+        { label: "Extensions", to: "/extensions/plugins" },
+        { label: "Create a plugin" },
+      ],
     });
   });
 
