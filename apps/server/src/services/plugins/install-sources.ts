@@ -445,7 +445,13 @@ export async function promoteGitPluginArtifact(args: {
     });
     return args.contentHash;
   }
-  const stagingRoot = pluginRootDir(args.stagingDir, args.subdirectory);
+  // A selected path can be an in-repository symlink. Move the directory that
+  // validation built, not the symlink whose target the staging cleanup removes.
+  const stagingRoot = await realPathInside(
+    args.stagingDir,
+    pluginRootDir(args.stagingDir, args.subdirectory),
+    "git plugin subdirectory",
+  );
   const targetRoot = pluginRootDir(args.targetDir, args.subdirectory);
   const preserved: Array<{ from: string; to: string }> = [];
   try {

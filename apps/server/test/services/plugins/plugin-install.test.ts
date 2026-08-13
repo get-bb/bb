@@ -850,6 +850,43 @@ describe("plugin install flows", () => {
         expect(listPluginArtifacts(db, "collection-alpha")).toHaveLength(1);
       });
 
+      it("promotes an in-repository symlinked plugin after a sibling", async () => {
+        const repoDir = join(workDir, "repo-collection-symlinked-entry");
+        await writePluginFixture(join(repoDir, "plugins", "actual"), {
+          name: "bb-plugin-collection-linked",
+        });
+        await writePluginFixture(join(repoDir, "plugins", "sibling"), {
+          name: "bb-plugin-collection-sibling",
+        });
+        await symlink("actual", join(repoDir, "plugins", "linked"));
+        await mkdir(join(repoDir, ".bb"), { recursive: true });
+        await writeFile(
+          join(repoDir, ".bb", "plugins.json"),
+          JSON.stringify({
+            schemaVersion: 1,
+            name: "collection",
+            plugins: [
+              { name: "linked", source: "./plugins/linked" },
+              { name: "sibling", source: "./plugins/sibling" },
+            ],
+          }),
+        );
+        await initGitRepo(repoDir);
+        await commitAll(repoDir, "init");
+
+        await service.install(`git:${repoDir}@main`, {
+          kind: "entry",
+          name: "sibling",
+        });
+        const linked = await service.install(`git:${repoDir}@main`, {
+          kind: "entry",
+          name: "linked",
+        });
+
+        expect(linked.status).toBe("running");
+        await stat(join(linked.rootDir, "dist", "server.js"));
+      });
+
       it("keeps a nested sibling intact when the repository root installs too", async () => {
         const repoDir = join(workDir, "repo-collection-root");
         await writePluginFixture(join(repoDir, "plugins", "alpha"), {
