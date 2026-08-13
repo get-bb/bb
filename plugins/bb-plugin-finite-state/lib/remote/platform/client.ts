@@ -130,6 +130,7 @@ export class PlatformClient implements PlatformClientContract {
 
   constructor(options: PlatformClientOptions) {
     this.#baseUrl = new URL(options.baseUrl);
+    if (!this.#baseUrl.pathname.endsWith("/")) this.#baseUrl.pathname += "/";
     this.#token = options.token;
     this.#fetch = options.fetch ?? fetch;
     this.#limiter = options.limiter ?? new RemoteLimiter({
@@ -147,7 +148,7 @@ export class PlatformClient implements PlatformClientContract {
     body: Json | undefined,
     ctx?: RemoteCallContext,
   ): Promise<Response> {
-    const url = new URL(path(route, parameters), this.#baseUrl);
+    const url = new URL(path(route, parameters).replace(/^\/+/u, ""), this.#baseUrl);
     for (const [key, value] of Object.entries(query)) set(url, key, value);
     return await this.#limiter.run(async () => {
       let response: Response;

@@ -218,6 +218,7 @@ export class AssuranceStudioClient implements AssuranceStudioClientContract {
 
   constructor(options: AssuranceStudioClientOptions) {
     this.#baseUrl = new URL(options.baseUrl);
+    if (!this.#baseUrl.pathname.endsWith("/")) this.#baseUrl.pathname += "/";
     this.#apiKey = options.apiKey;
     this.#fetch = options.fetch ?? fetch;
     this.#limiter = options.limiter ?? new RemoteLimiter({
@@ -236,7 +237,7 @@ export class AssuranceStudioClient implements AssuranceStudioClientContract {
     ctx?: RemoteCallContext,
     accepted: readonly number[] = [],
   ): Promise<Response> {
-    const url = new URL(routePath(route, parameters), this.#baseUrl);
+    const url = new URL(routePath(route, parameters).replace(/^\/+/u, ""), this.#baseUrl);
     for (const [key, value] of Object.entries(query)) {
       if (value !== undefined) url.searchParams.set(key, queryValue(value));
     }

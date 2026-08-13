@@ -22,6 +22,21 @@ async function firstPage<T>(pages: AsyncIterable<{ items: T[] }>): Promise<T[]> 
   return [];
 }
 
+function mountMockAtPath(
+  baseUrl: string,
+  rootFetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
+): (input: RequestInfo | URL, init?: RequestInit) => Promise<Response> {
+  const mountPath = new URL(baseUrl).pathname.replace(/\/$/u, "");
+  return async (input, init) => {
+    const url = new URL(String(input));
+    if (!url.pathname.startsWith(`${mountPath}/`)) {
+      return Response.json({ error: "request missed mock mount" }, { status: 404 });
+    }
+    url.pathname = url.pathname.slice(mountPath.length);
+    return await rootFetch(url, init);
+  };
+}
+
 describe("direct remote and compute contract", () => {
   it("defines native settings once and reports three independent secret-safe states", async () => {
     const host = createFakePluginHost({ pluginId: "finite-state" });
@@ -58,7 +73,7 @@ describe("direct remote and compute contract", () => {
     for (const [, operation] of Object.values(SECURITY_ASSESSMENT_ROUTES)) expect(operations.has(operation)).toBe(true);
   });
 
-  it("runs normalized core reads against the generated Platform and AS mock routers with Forge absent", async () => {
+  it("runs normalized core reads through path-prefixed Platform and AS mock bases with Forge absent", async () => {
     const mock = createMockRemote({
       platformToken: "platform-token",
       assuranceStudioKey: "as-key",
@@ -71,8 +86,18 @@ describe("direct remote and compute contract", () => {
         }
       },
     });
-    const platform = new PlatformClient({ baseUrl: "http://platform.mock", token: "platform-token", fetch: mock.platform.fetch });
-    const assuranceStudio = new AssuranceStudioClient({ baseUrl: "http://as.mock", apiKey: "as-key", fetch: mock.assuranceStudio.fetch });
+    const platformBaseUrl = "http://platform.mock/api";
+    const assuranceStudioBaseUrl = "http://as.mock/gateway";
+    const platform = new PlatformClient({
+      baseUrl: platformBaseUrl,
+      token: "platform-token",
+      fetch: mountMockAtPath(platformBaseUrl, mock.platform.fetch),
+    });
+    const assuranceStudio = new AssuranceStudioClient({
+      baseUrl: assuranceStudioBaseUrl,
+      apiKey: "as-key",
+      fetch: mountMockAtPath(assuranceStudioBaseUrl, mock.assuranceStudio.fetch),
+    });
     expect(await firstPage(platform.listProjects())).toEqual([{ id: "p1" }]);
     expect(await firstPage(assuranceStudio.listEntities("threat", { projectId: "p1" }))).toEqual([
       expect.objectContaining({ id: "t1", projectId: "p1", kind: "threat" }),
@@ -117,7 +142,7 @@ describe("direct remote and compute contract", () => {
     });
     const client = new PlatformClient({ baseUrl: "https://platform.example/private/path?secret=x", token: "platform-secret", fetch });
     expect(await firstPage(client.listProjects({ pageSize: 8 }))).toEqual([{ id: "p1" }]);
-    expect(calls[0]?.url.pathname).toBe("/public/v0/projects");
+    expect(calls[0]?.url.pathname).toBe("/private/path/public/v0/projects");
     expect(calls[0]?.url.searchParams.get("offset")).toBe("0");
     expect(new Headers(calls[0]?.init?.headers).get("X-Authorization")).toBe("platform-secret");
     expect(new Headers(calls[0]?.init?.headers).has("X-API-Key")).toBe(false);
