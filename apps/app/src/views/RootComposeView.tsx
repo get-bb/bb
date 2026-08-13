@@ -2,7 +2,6 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -11,23 +10,27 @@ import {
   findLocalPathProjectSourceForHost,
   type EnvironmentStatus,
   type Host,
-  PERSONAL_PROJECT_ID,
-  type PermissionMode,
-  type ProjectExecutionDefaults,
-  type PromptInput,
   type ReasoningLevel,
   type ServiceTier,
   type ThreadListEntry,
 } from "@bb/domain";
 import type { OpenInTargetContext } from "@bb/host-daemon-contract";
+import type { NewThreadRequest } from "@bb/plugin-sdk";
 import type {
   SidebarBootstrapResponse,
   TerminalSession,
 } from "@bb/server-contract";
 import {
-  NewThreadPromptBox,
-  type NewThreadProjectConfig,
-} from "@/components/promptbox/NewThreadPromptBox";
+  NewThreadComposer,
+  type NewThreadComposerState,
+} from "@/components/promptbox/NewThreadComposer";
+export {
+  hasPromptBranchSelectionChanged,
+  hasPromptOptionValueChanged,
+  mergeMissingPromptDraftAttachments,
+  resolveNewThreadProjectDefaultsState as resolveRootComposeProjectDefaultsState,
+  restorePromptDraftAfterOptionChange,
+} from "@/components/promptbox/NewThreadComposer";
 import { CodexCliVersionBanner } from "@/components/promptbox/banner/CodexCliVersionBanner";
 import {
   buildProviderCliIssue,
@@ -35,15 +38,10 @@ import {
   useProviderCliInstallRunner,
 } from "@/components/provider-cli/provider-cli-install";
 import { providerCliJobKey } from "@/components/provider-cli/provider-cli-install-store";
-import { withAppPromptActions } from "@/components/promptbox/PromptBoxActionsMenu";
-import { buildProviderPromptActionProps } from "@/components/promptbox/mentions/command-trigger";
-import { type PromptBoxHandle } from "@/components/promptbox/PromptBoxInternal";
 import {
   encodeHostValue,
   encodeReuseValue,
-  parseEnvironmentValue,
 } from "@/components/pickers/environment-picker-value";
-import type { ProjectSelectorOption } from "@/components/pickers/ProjectSelector";
 import {
   ProjectMachineSetupDialog,
   type ProjectMachineSetupCompletion,
@@ -76,7 +74,6 @@ import {
   usePluginNewThreadPanelActions,
 } from "@/components/plugin/PluginPanelActions";
 import { usePluginSlots } from "@/lib/plugin-slots";
-import { useUploadPromptAttachment } from "@/hooks/mutations/project-mutations";
 import { useCreateThread } from "@/hooks/mutations/thread-runtime-mutations";
 import {
   useCloseTerminal,
@@ -86,49 +83,19 @@ import {
   useEnvironmentTerminals,
   useTerminals,
 } from "@/hooks/queries/thread-terminal-queries";
-import {
-  useProjectPromptHistory,
-  useProjectSourceBranches,
-  stripProjectThreads,
-} from "@/hooks/queries/project-queries";
 import { useEnvironment } from "@/hooks/queries/environment-queries";
-import { useProjectDefaultExecutionOptions } from "@/hooks/queries/project-default-execution-options-query";
-import {
-  useHostProviderCliStatus,
-  useSystemConfig,
-} from "@/hooks/queries/system-queries";
-import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
-import { useThreads } from "@/hooks/queries/thread-queries";
-import { useCommandSuggestions } from "@/hooks/useCommandSuggestions";
+import { useHostProviderCliStatus } from "@/hooks/queries/system-queries";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
-import { selectPrimaryHost, useHosts } from "@/hooks/queries/host-queries";
-import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
 import {
   requestComposerFocus,
   subscribeComposerFocusRequests,
 } from "@/lib/composer-focus-requests";
-import {
-  PluginComposerHostProvider,
-  type PluginComposerHost,
-} from "@/components/plugin/plugin-composer-host";
-import { useComposerTextEffects } from "@/lib/composer-text-effects";
-import { usePromptMentions } from "@/hooks/usePromptMentions";
+import { PluginComposerHostProvider } from "@/components/plugin/plugin-composer-host";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
-import { useThreadCreationOptions } from "@/hooks/useThreadCreationOptions";
-import { getMutationErrorMessage } from "@/lib/mutation-errors";
-import { sdk } from "@/lib/sdk";
-import { promptHistoryEntriesToDrafts } from "@/lib/prompt-history";
 import { getProjectScopedStorageKey } from "@/lib/project-scoped-storage";
-import {
-  arePromptDraftStatesEqual,
-  getProjectStoredPromptAttachmentPaths,
-  isPromptDraftEmpty,
-  promptDraftToInput,
-  type PromptDraftAttachment,
-  type PromptDraftState,
-} from "@/lib/prompt-draft";
+import type { PromptDraftAttachment } from "@/lib/prompt-draft";
 import {
   buildForkThreadRequest,
   FORK_THREAD_CREATE_SEED_LOCATION_STATE_KEY,
@@ -144,7 +111,6 @@ import {
   getProjectComposeRoutePath,
   getRootComposeRoutePath,
   isRoutePath,
-  isProjectlessProjectId,
 } from "@/lib/route-paths";
 import { resolveAbsoluteFilePath } from "@/lib/absolute-file-path";
 import { getBrowserUrlHost } from "@/lib/browser-url";
@@ -181,23 +147,7 @@ import {
   ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS,
   RootComposeSecondaryContent,
 } from "./RootComposeSecondaryContent";
-import {
-  buildRootComposeBranchUiState,
-  type RootComposeBranchEnvironmentMode,
-} from "./root-compose-branch-ui";
-import {
-  resolveRootComposeThreadEnvironment,
-  type RootComposeSelectedBranch,
-} from "./root-compose-thread-environment";
-import { useScopedBranchSelection } from "./root-compose-branch-selection";
-import {
-  buildReuseThreadOptions,
-  resolveProjectSourceWorktreeDisabledReason,
-  resolveComposeHostId,
-  resolveRootComposeEffectiveEnvironmentValue,
-  resolveRootComposeProjectRouting,
-  resolveRootComposeProviderRouting,
-} from "./root-compose-environment-selection";
+import { resolveComposeHostId } from "./root-compose-environment-selection";
 import { RootComposeMobileRecents } from "./RootComposeMobileRecents";
 import { RootComposeEmptyWelcome } from "./RootComposeEmptyWelcome";
 import { useThreadStorageViewer } from "@/components/secondary-panel/useThreadStorageViewer";
@@ -266,95 +216,11 @@ const ROOT_COMPOSE_EMPTY_WELCOME_CONTENT_CLASS =
 const ROOT_COMPOSE_FIXED_PANEL_STATE_ID = "root-compose";
 const EMPTY_TERMINAL_SESSIONS: readonly TerminalSession[] = [];
 
-type ProjectSelectionChangeHandler = NewThreadProjectConfig["onChange"];
 type SecondaryPanelChangeHandler = (panel: ThreadSecondaryPanelTab) => void;
 type NullableSecondaryPanelChangeHandler = (
   panel: ThreadSecondaryPanelTab | null,
 ) => void;
 
-export function mergeMissingPromptDraftAttachments(
-  currentAttachments: readonly PromptDraftAttachment[],
-  preservedAttachments: readonly PromptDraftAttachment[],
-): PromptDraftAttachment[] | null {
-  const existingPaths = new Set(
-    currentAttachments.map((attachment) => attachment.path),
-  );
-  const missingAttachments = preservedAttachments.filter(
-    (attachment) => !existingPaths.has(attachment.path),
-  );
-  if (missingAttachments.length === 0) {
-    return null;
-  }
-  return [...currentAttachments, ...missingAttachments];
-}
-
-export function restorePromptDraftAfterOptionChange({
-  currentDraft,
-  preservedDraft,
-}: {
-  currentDraft: PromptDraftState;
-  preservedDraft: PromptDraftState | null;
-}): PromptDraftState | null {
-  if (preservedDraft === null) {
-    return null;
-  }
-  if (arePromptDraftStatesEqual(currentDraft, preservedDraft)) {
-    return null;
-  }
-
-  let restoredDraft = currentDraft;
-  let changed = false;
-
-  if (isPromptDraftEmpty(currentDraft) && !isPromptDraftEmpty(preservedDraft)) {
-    restoredDraft = preservedDraft;
-    changed = true;
-  } else if (
-    currentDraft.text === preservedDraft.text &&
-    currentDraft.mentions !== preservedDraft.mentions &&
-    JSON.stringify(currentDraft.mentions) !==
-      JSON.stringify(preservedDraft.mentions)
-  ) {
-    restoredDraft = {
-      ...restoredDraft,
-      mentions: preservedDraft.mentions,
-    };
-    changed = true;
-  }
-
-  const mergedAttachments = mergeMissingPromptDraftAttachments(
-    restoredDraft.attachments,
-    preservedDraft.attachments,
-  );
-  if (mergedAttachments !== null) {
-    restoredDraft = {
-      ...restoredDraft,
-      attachments: mergedAttachments,
-    };
-    changed = true;
-  }
-
-  return changed ? restoredDraft : null;
-}
-
-export function hasPromptOptionValueChanged<T>(
-  currentValue: T,
-  nextValue: T,
-): boolean {
-  return !Object.is(currentValue, nextValue);
-}
-
-export function hasPromptBranchSelectionChanged(
-  currentBranch: RootComposeSelectedBranch | null,
-  nextBranch: RootComposeSelectedBranch | null,
-): boolean {
-  if (currentBranch === null || nextBranch === null) {
-    return currentBranch !== nextBranch;
-  }
-  return (
-    currentBranch.name !== nextBranch.name ||
-    currentBranch.isNew !== nextBranch.isNew
-  );
-}
 
 interface LegacyProjectComposeRedirectProps {
   projectId: string;
@@ -720,86 +586,19 @@ export function LegacyProjectComposeRedirect({
   );
 }
 
-type RootComposeProjectDefaultsState =
-  | { status: "pending" }
-  | { status: "error" }
-  | {
-      status: "resolved";
-      defaults: ProjectExecutionDefaults | null;
-    };
-
-interface ResolveRootComposeProjectDefaultsStateArgs {
-  cachedDefaults: ProjectExecutionDefaults | null | undefined;
-  projectFound: boolean;
-  queryData: ProjectExecutionDefaults | null | undefined;
-  queryIsError: boolean;
-  queryIsPlaceholderData: boolean;
-  queryIsSuccess: boolean;
-}
-
-export function resolveRootComposeProjectDefaultsState({
-  cachedDefaults,
-  projectFound,
-  queryData,
-  queryIsError,
-  queryIsPlaceholderData,
-  queryIsSuccess,
-}: ResolveRootComposeProjectDefaultsStateArgs): RootComposeProjectDefaultsState {
-  if (cachedDefaults !== null && cachedDefaults !== undefined) {
-    return { status: "resolved", defaults: cachedDefaults };
-  }
-  if (!projectFound) {
-    return { status: "pending" };
-  }
-  if (queryIsSuccess && !queryIsPlaceholderData) {
-    return { status: "resolved", defaults: queryData ?? null };
-  }
-  return queryIsError ? { status: "error" } : { status: "pending" };
-}
 
 export function RootComposeView() {
-  const paneContext = useOptionalPaneContext();
-  const isFocusedPane = paneContext?.isFocused ?? true;
   const [rootComposeProjectId, setRootComposeProjectId] =
     useRootComposeProjectId();
   const location = useLocation();
   const navigate = useNavigate();
-  const isPointerCoarse = usePointerCoarse();
+  const createThread = useCreateThread();
   const [rootComposeSectionId, setRootComposeSectionId] = useState<
     string | null
   >(() => readSectionIdFromLocationState(location.state));
-  const promptBoxRef = useRef<PromptBoxHandle>(null);
-  const quickCreateProject = useQuickCreateProjectController();
-  const sidebarNavigationQuery = useSidebarNavigation();
-  const hasSidebarNavigationSettled =
-    sidebarNavigationQuery.isSuccess || sidebarNavigationQuery.isError;
-  const projects = useMemo(
-    () => sidebarNavigationQuery.data?.projects.map(stripProjectThreads),
-    [sidebarNavigationQuery.data],
-  );
-  const projectId = useMemo(() => {
-    if (isProjectlessProjectId(rootComposeProjectId)) {
-      return PERSONAL_PROJECT_ID;
-    }
-    if (!projects) {
-      return rootComposeProjectId;
-    }
-    return projects.some((project) => project.id === rootComposeProjectId)
-      ? rootComposeProjectId
-      : PERSONAL_PROJECT_ID;
-  }, [projects, rootComposeProjectId]);
-  const isProjectless = isProjectlessProjectId(projectId);
-  useEffect(() => {
-    if (!projects) return;
-    if (projectId === rootComposeProjectId) return;
-    setRootComposeProjectId(projectId);
-  }, [projectId, projects, rootComposeProjectId, setRootComposeProjectId]);
-  const createThread = useCreateThread();
   const [lastCreatedThreadId, setLastCreatedThreadId] = useState<string | null>(
     null,
   );
-  // The no-projects welcome replaces the composer until the user opts in; once
-  // they pick "New thread" we reveal the composer for the rest of the session.
   const [startedComposing, setStartedComposing] = useState(() =>
     shouldStartComposingFromLocationState(location.state),
   );
@@ -808,330 +607,194 @@ export function RootComposeView() {
   const [forkSeed, setForkSeed] = useState<ForkThreadCreateSeed | null>(() =>
     readForkThreadCreateSeedFromLocationState(location.state),
   );
-  const hostsQuery = useHosts();
-  const connectedHostIds = useMemo(
+
+  const handleProjectChange = useCallback(
+    (projectId: string) => {
+      setForkSeed(null);
+      setRootComposeProjectId(projectId);
+    },
+    [setRootComposeProjectId],
+  );
+  const handleSubmit = useCallback(
+    async (request: NewThreadRequest) => {
+      const shouldNavigateToCreatedThread = shouldNavigateAfterThreadCreate({
+        isForkDraft: forkSeed !== null,
+        navigateToThreadAfterCreate,
+      });
+      const createRequest =
+        forkSeed === null
+          ? {
+              ...request,
+              ...(rootComposeSectionId
+                ? { sectionId: rootComposeSectionId }
+                : {}),
+            }
+          : buildForkThreadRequest({
+              ...forkSeed,
+              input: request.input,
+              model: request.model,
+              permissionMode: request.permissionMode,
+              reasoningLevel: request.reasoningLevel,
+              serviceTier: request.serviceTier,
+            });
+      if (createRequest === null) return;
+      const thread = await createThread.mutateAsync(createRequest);
+      setLastCreatedThreadId(thread.id);
+      setForkSeed(null);
+      setRootComposeSectionId(null);
+      if (shouldNavigateToCreatedThread) {
+        navigate(
+          getThreadRoutePath({
+            projectId: thread.projectId,
+            threadId: thread.id,
+          }),
+        );
+      }
+    }, [
+      createThread,
+      forkSeed,
+      navigate,
+      navigateToThreadAfterCreate,
+      rootComposeSectionId,
+    ],
+  );
+  const composerSeed = useMemo(
     () =>
-      new Set(
-        (hostsQuery.data ?? [])
-          .filter((host) => host.status === "connected")
-          .map((host) => host.id),
-      ),
-    [hostsQuery.data],
+      forkSeed === null
+        ? undefined
+        : {
+            providerId: forkSeed.providerId,
+            model: forkSeed.model,
+            reasoningLevel: forkSeed.reasoningLevel,
+            serviceTier: forkSeed.serviceTier,
+            permissionMode: forkSeed.permissionMode,
+            environment: {
+              type: "reuse" as const,
+              environmentId: forkSeed.environmentId,
+            },
+          },
+    [forkSeed],
   );
-  const systemConfigQuery = useSystemConfig();
-  const serverPrimaryHostId = systemConfigQuery.data?.primaryHostId ?? null;
-  const primaryHost = useMemo(
-    () => selectPrimaryHost(hostsQuery.data, serverPrimaryHostId),
-    [hostsQuery.data, serverPrimaryHostId],
+
+  return (
+    <NewThreadComposer
+      projectId={rootComposeProjectId}
+      onProjectChange={handleProjectChange}
+      draftStorage={{ kind: "new-thread" }}
+      selectionScope="new-thread"
+      seed={composerSeed}
+      resetKey={forkSeed?.sourceThreadId ?? null}
+      preferConnectedProviderWhenUnset={forkSeed === null}
+      onSubmit={handleSubmit}
+    >
+      {(composer) => (
+        <RootComposeSurface
+          composer={composer}
+          forkSeed={forkSeed}
+          lastCreatedThreadId={lastCreatedThreadId}
+          rootComposeProjectId={rootComposeProjectId}
+          setForkSeed={setForkSeed}
+          setRootComposeProjectId={setRootComposeProjectId}
+          setRootComposeSectionId={setRootComposeSectionId}
+          setStartedComposing={setStartedComposing}
+          startedComposing={startedComposing}
+        />
+      )}
+    </NewThreadComposer>
   );
-  const primaryHostId = primaryHost?.id ?? null;
-  const knownHostIds = useMemo(
-    () => new Set((hostsQuery.data ?? []).map((host) => host.id)),
-    [hostsQuery.data],
+}
+
+interface RootComposeSurfaceProps {
+  composer: NewThreadComposerState;
+  forkSeed: ForkThreadCreateSeed | null;
+  lastCreatedThreadId: string | null;
+  rootComposeProjectId: string;
+  setForkSeed: (seed: ForkThreadCreateSeed | null) => void;
+  setRootComposeProjectId: (projectId: string) => void;
+  setRootComposeSectionId: (sectionId: string | null) => void;
+  setStartedComposing: (started: boolean) => void;
+  startedComposing: boolean;
+}
+
+function RootComposeSurface({
+  composer,
+  forkSeed,
+  lastCreatedThreadId,
+  rootComposeProjectId,
+  setForkSeed,
+  setRootComposeProjectId,
+  setRootComposeSectionId,
+  setStartedComposing,
+  startedComposing,
+}: RootComposeSurfaceProps) {
+  const paneContext = useOptionalPaneContext();
+  const isFocusedPane = paneContext?.isFocused ?? true;
+  const location = useLocation();
+  const navigate = useNavigate();
+  const isPointerCoarse = usePointerCoarse();
+  const quickCreateProject = useQuickCreateProjectController();
+  const {
+    projectId,
+    isProjectless,
+    projects,
+    sidebarNavigation,
+    sidebarNavigationSettled,
+    sidebarNavigationError,
+    currentProject,
+    projectSources,
+    connectedHostIds,
+    primaryHostId,
+    parsedEnvironment,
+    projectHostId: rootProjectHostId,
+    panelThreadId: rootPanelThreadId,
+    selectedProviderId,
+    promptDraft,
+    promptBoxRef,
+    pluginComposerHost: sharedPluginComposerHost,
+    textEffects: promptTextEffects,
+    isSubmitting,
+    setEnvironmentSelectionValue,
+    setProviderModelReasoning,
+    setPermissionMode,
+    setServiceTier,
+    renderPromptBox,
+  } = composer;
+  const rootPanelEnvironmentId =
+    parsedEnvironment?.type === "reuse"
+      ? parsedEnvironment.environmentId
+      : null;
+  const pluginComposerHost = useMemo(
+    () => ({
+      ...sharedPluginComposerHost,
+      // Root may be showing the empty welcome instead of a mounted editor.
+      // Route focus through the shared request channel so the subscription
+      // below first reveals the composer and then focuses it.
+      focus: () => requestRootComposePluginFocus(promptDraft.storageKey),
+    }),
+    [promptDraft.storageKey, sharedPluginComposerHost],
   );
-  // Worktree rows only carry a machine hint once there's more than one
-  // machine to tell apart.
-  const worktreeHostNameById = useMemo(() => {
-    const hosts = hostsQuery.data ?? [];
-    if (hosts.length <= 1) return null;
-    return new Map(hosts.map((host) => [host.id, host.name]));
-  }, [hostsQuery.data]);
-  const uploadPromptAttachment = useUploadPromptAttachment();
-  const promptDraft = usePromptDraftStorage({ kind: "new-thread" });
-  const promptTextEffects = useComposerTextEffects(promptDraft.storageKey);
-  // Plugin useComposer() writes (from nav panels / homepage sections) target
-  // the new-thread draft; surface + focus the composer when they ask.
+
+  useEffect(() => {
+    if (projectId === rootComposeProjectId) return;
+    setRootComposeProjectId(projectId);
+  }, [projectId, rootComposeProjectId, setRootComposeProjectId]);
   useEffect(
     () =>
       subscribeComposerFocusRequests(promptDraft.storageKey, () => {
         setStartedComposing(true);
-        window.requestAnimationFrame(() => {
-          promptBoxRef.current?.focusEnd();
-        });
+        window.requestAnimationFrame(() => promptBoxRef.current?.focusEnd());
       }),
-    [promptDraft.storageKey],
+    [promptBoxRef, promptDraft.storageKey, setStartedComposing],
   );
   const handleRootPanelSelectionAddToChat = useCallback(
     (text: string, attachments?: readonly PromptDraftAttachment[]) => {
       promptDraft.addQuote(text, attachments);
       setStartedComposing(true);
-      window.requestAnimationFrame(() => {
-        promptBoxRef.current?.focusEnd();
-      });
+      window.requestAnimationFrame(() => promptBoxRef.current?.focusEnd());
     },
-    [promptDraft],
+    [promptBoxRef, promptDraft, setStartedComposing],
   );
-  const promptOptionDraftSnapshotRef = useRef<PromptDraftState | null>(null);
-  const { data: projectPromptHistory = [] } =
-    useProjectPromptHistory(projectId);
-  const [attachmentError, setAttachmentError] = useState<string | null>(null);
-  const [isCopyingPromptAttachments, setIsCopyingPromptAttachments] =
-    useState(false);
-  const prompt = promptDraft.text;
-  const promptInput = useMemo(
-    () =>
-      promptDraftToInput({
-        text: promptDraft.text,
-        mentions: promptDraft.mentions,
-        attachments: promptDraft.attachments,
-      }),
-    [promptDraft.attachments, promptDraft.mentions, promptDraft.text],
-  );
-  const pluginComposerHost = useMemo<PluginComposerHost>(
-    () => ({
-      scope: { kind: "new-thread", projectId },
-      draft: {
-        text: promptDraft.text,
-        mentions: promptDraft.mentions,
-        attachments: promptDraft.attachments,
-      },
-      textEffectKey: promptDraft.storageKey,
-      getCurrent: promptDraft.getCurrent,
-      setDraft: promptDraft.setDraft,
-      focus: () => requestRootComposePluginFocus(promptDraft.storageKey),
-    }),
-    [
-      projectId,
-      promptDraft.attachments,
-      promptDraft.getCurrent,
-      promptDraft.mentions,
-      promptDraft.setDraft,
-      promptDraft.storageKey,
-      promptDraft.text,
-    ],
-  );
-  const rootComposeZenModeStorageKey = useMemo(
-    () =>
-      getProjectScopedStorageKey(ROOT_COMPOSE_ZEN_MODE_STORAGE_KEY, projectId),
-    [projectId],
-  );
-  const promptHistoryDrafts = useMemo(
-    () => promptHistoryEntriesToDrafts(projectPromptHistory),
-    [projectPromptHistory],
-  );
-  const currentProject = useMemo(
-    () =>
-      isProjectless
-        ? sidebarNavigationQuery.data?.personalProject
-        : projects?.find((p) => p.id === projectId),
-    [isProjectless, projectId, projects, sidebarNavigationQuery.data],
-  );
-  const projectSources = useMemo(
-    () => currentProject?.sources ?? [],
-    [currentProject?.sources],
-  );
-  // Worktree picker options come from the project's unarchived threads.
-  // Threads on managed or unmanaged worktrees with a non-null environmentId
-  // contribute; envs with only archived threads disappear naturally.
-  const threadsQuery = useThreads(
-    { projectId, archived: false },
-    { enabled: Boolean(projectId) },
-  );
-  const reuseThreadOptions = useMemo(
-    () =>
-      buildReuseThreadOptions(threadsQuery.data ?? [], worktreeHostNameById),
-    [threadsQuery.data, worktreeHostNameById],
-  );
-  const resolveProviderRouting = useCallback(
-    (environmentSelectionValue: string) =>
-      resolveRootComposeProviderRouting({
-        environmentSelectionValue,
-        isProjectless,
-        knownHostIds,
-        primaryHostId,
-        projectSources,
-        reuseThreadOptions,
-        reuseThreadOptionsLoading: threadsQuery.isLoading,
-      }),
-    [
-      isProjectless,
-      knownHostIds,
-      primaryHostId,
-      projectSources,
-      reuseThreadOptions,
-      threadsQuery.isLoading,
-    ],
-  );
-  // Seed the picker from the server-resolved project defaults so the visible
-  // default matches what create-thread will use when the user submits without
-  // touching execution controls. Values normally ride along with sidebar
-  // bootstrap; optimistic sidebar entries use a one-off fallback fetch because
-  // their null means "not loaded into this cache entry", not a client default.
-  const projectDefaultExecutionOptionsQuery = useProjectDefaultExecutionOptions(
-    { projectId },
-    {
-      enabled:
-        currentProject !== undefined &&
-        currentProject.defaultExecutionOptions === null,
-    },
-  );
-  const projectDefaultsState = resolveRootComposeProjectDefaultsState({
-    cachedDefaults: currentProject?.defaultExecutionOptions,
-    projectFound: currentProject !== undefined,
-    queryData: projectDefaultExecutionOptionsQuery.data,
-    queryIsError: projectDefaultExecutionOptionsQuery.isError,
-    queryIsPlaceholderData:
-      projectDefaultExecutionOptionsQuery.isPlaceholderData,
-    queryIsSuccess: projectDefaultExecutionOptionsQuery.isSuccess,
-  });
-  const projectDefaultExecutionOptions =
-    projectDefaultsState.status === "resolved"
-      ? projectDefaultsState.defaults
-      : undefined;
-  const creationOptions = useThreadCreationOptions({
-    scope: "new-thread",
-    preferenceProjectId: projectId,
-    resolveProviderRouting,
-    // Without a saved project default, fall back to an agent the user is
-    // actually signed in to. The raw provider catalog is a fixed list, so
-    // `providers[0]` would always be Codex — wrong for anyone who only has,
-    // say, Claude Code connected.
-    initialProviderId: projectDefaultExecutionOptions?.providerId,
-    preferConnectedProviderWhenUnset:
-      forkSeed === null && projectDefaultExecutionOptions === null,
-    initialModel: projectDefaultExecutionOptions?.model,
-    initialServiceTier: projectDefaultExecutionOptions?.serviceTier,
-    initialReasoningLevel: projectDefaultExecutionOptions?.reasoningLevel,
-    initialPermissionMode: projectDefaultExecutionOptions?.permissionMode,
-  });
-  const {
-    executionOptionsRouting,
-    selectedProviderId,
-    setSelectedProviderId,
-    setProviderModelReasoning,
-    providerOptions,
-    hasMultipleProviders,
-    selectedProviderComposerActions,
-    selectedModel,
-    setSelectedModel,
-    serviceTier,
-    setServiceTier,
-    reasoningLevel,
-    setReasoningLevel,
-    permissionMode,
-    setPermissionMode,
-    environmentSelectionValue,
-    setEnvironmentSelectionValue,
-    clearReuseEnvironment,
-    activeModel,
-    modelOptions,
-    moreModelOptions,
-    isLoadingModels,
-    isResolvingInitialProvider,
-    modelLoadFailed,
-    modelLoadError,
-    reasoningOptions,
-    permissionModeOptions,
-    supportsPermissionModeSelection,
-    supportsServiceTier,
-    serviceTierSupportByProvider,
-  } = creationOptions;
-  const executionInputSources = creationOptions.executionInputSources;
-  const projectDefaultsUnavailable =
-    forkSeed === null && projectDefaultsState.status !== "resolved";
-  const snapshotPromptDraftBeforeOptionChange = useCallback(() => {
-    const currentDraft = promptDraft.getCurrent();
-    promptOptionDraftSnapshotRef.current = isPromptDraftEmpty(currentDraft)
-      ? null
-      : currentDraft;
-  }, [promptDraft]);
-  const handleSelectedProviderIdChange = useCallback(
-    (nextProviderId: string) => {
-      if (!hasPromptOptionValueChanged(selectedProviderId, nextProviderId)) {
-        return;
-      }
-      snapshotPromptDraftBeforeOptionChange();
-      setSelectedProviderId(nextProviderId);
-    },
-    [
-      selectedProviderId,
-      setSelectedProviderId,
-      snapshotPromptDraftBeforeOptionChange,
-    ],
-  );
-  const handleSelectedModelChange = useCallback(
-    (nextModel: string) => {
-      if (!hasPromptOptionValueChanged(selectedModel, nextModel)) {
-        return;
-      }
-      snapshotPromptDraftBeforeOptionChange();
-      setSelectedModel(nextModel);
-    },
-    [selectedModel, setSelectedModel, snapshotPromptDraftBeforeOptionChange],
-  );
-  const handleServiceTierChange = useCallback(
-    (nextServiceTier: ServiceTier | undefined) => {
-      if (!hasPromptOptionValueChanged(serviceTier, nextServiceTier)) {
-        return;
-      }
-      snapshotPromptDraftBeforeOptionChange();
-      setServiceTier(nextServiceTier);
-    },
-    [serviceTier, setServiceTier, snapshotPromptDraftBeforeOptionChange],
-  );
-  const handleReasoningLevelChange = useCallback(
-    (nextReasoningLevel: ReasoningLevel) => {
-      if (!hasPromptOptionValueChanged(reasoningLevel, nextReasoningLevel)) {
-        return;
-      }
-      snapshotPromptDraftBeforeOptionChange();
-      setReasoningLevel(nextReasoningLevel);
-    },
-    [reasoningLevel, setReasoningLevel, snapshotPromptDraftBeforeOptionChange],
-  );
-  const handlePermissionModeChange = useCallback(
-    (nextPermissionMode: PermissionMode) => {
-      if (!hasPromptOptionValueChanged(permissionMode, nextPermissionMode)) {
-        return;
-      }
-      snapshotPromptDraftBeforeOptionChange();
-      setPermissionMode(nextPermissionMode);
-    },
-    [permissionMode, setPermissionMode, snapshotPromptDraftBeforeOptionChange],
-  );
-  const handleEnvironmentSelectionValueChange = useCallback(
-    (nextEnvironmentValue: string) => {
-      if (
-        !hasPromptOptionValueChanged(
-          environmentSelectionValue,
-          nextEnvironmentValue,
-        )
-      ) {
-        return;
-      }
-      snapshotPromptDraftBeforeOptionChange();
-      setEnvironmentSelectionValue(nextEnvironmentValue);
-    },
-    [
-      environmentSelectionValue,
-      setEnvironmentSelectionValue,
-      snapshotPromptDraftBeforeOptionChange,
-    ],
-  );
-  useEffect(() => {
-    const preservedDraft = promptOptionDraftSnapshotRef.current;
-    if (preservedDraft === null) {
-      return;
-    }
 
-    promptOptionDraftSnapshotRef.current = null;
-    const restoredDraft = restorePromptDraftAfterOptionChange({
-      currentDraft: promptDraft.getCurrent(),
-      preservedDraft,
-    });
-    if (restoredDraft === null) {
-      return;
-    }
-
-    promptDraft.setDraft(restoredDraft);
-  });
-  const seedHandoffPrompt = promptDraft.setDraft;
-
-  // Seed transient picker state from navigation state: `reuseEnvironmentId`
-  // (the "+" affordance on a worktree) seeds the env picker into reuse mode for
-  // that env. A fork seed also pins the first create request to the source
-  // thread/environment. This is single-use — clear location.state after applying
-  // so a refresh starts from persisted root-compose selection.
   useEffect(() => {
     const sectionTarget = readRootComposeSectionTargetFromLocationState(
       location.state,
@@ -1145,9 +808,7 @@ export function RootComposeView() {
     const nextHandoffSeed = readThreadHandoffCreateSeedFromLocationState(
       location.state,
     );
-    if (!hasSingleUseRootComposeTargetState(location.state)) {
-      return;
-    }
+    if (!hasSingleUseRootComposeTargetState(location.state)) return;
     if (shouldStartComposingFromLocationState(location.state)) {
       setStartedComposing(true);
     }
@@ -1161,9 +822,13 @@ export function RootComposeView() {
     }
     if (nextForkSeed !== null && nextHandoffSeed === null) {
       setForkSeed(nextForkSeed);
+      setRootComposeProjectId(nextForkSeed.projectId);
       setProviderModelReasoning(nextForkSeed);
       setPermissionMode(nextForkSeed.permissionMode);
       setServiceTier(nextForkSeed.serviceTier);
+      setEnvironmentSelectionValue(
+        encodeReuseValue(nextForkSeed.environmentId),
+      );
     }
     if (nextHandoffSeed !== null) {
       setStartedComposing(true);
@@ -1174,7 +839,7 @@ export function RootComposeView() {
           encodeReuseValue(nextHandoffSeed.environmentId),
         );
       }
-      seedHandoffPrompt(buildThreadHandoffPromptDraft(nextHandoffSeed));
+      promptDraft.setDraft(buildThreadHandoffPromptDraft(nextHandoffSeed));
     }
     navigate(getRootComposeRoutePath() + location.search, {
       replace: true,
@@ -1184,81 +849,60 @@ export function RootComposeView() {
     location.search,
     location.state,
     navigate,
-    seedHandoffPrompt,
+    promptDraft,
     setEnvironmentSelectionValue,
+    setForkSeed,
     setPermissionMode,
     setProviderModelReasoning,
     setRootComposeProjectId,
+    setRootComposeSectionId,
     setServiceTier,
+    setStartedComposing,
   ]);
-
-  // Seed the composer from navigation state `initialPrompt`. Single-use:
-  // applied only when the current draft is empty so it never clobbers an
-  // in-progress draft, then cleared from
-  // location.state so a refresh starts from the persisted draft.
-  const seedInitialPrompt = promptDraft.restoreIfEmpty;
-  const replaceInitialPrompt = promptDraft.setDraft;
   useEffect(() => {
     const initialPrompt = readInitialPromptFromLocationState(location.state);
     if (initialPrompt === null) return;
     const nextDraft = { text: initialPrompt, mentions: [], attachments: [] };
     if (shouldReplaceInitialPromptFromLocationState(location.state)) {
-      replaceInitialPrompt(nextDraft);
+      promptDraft.setDraft(nextDraft);
     } else {
-      seedInitialPrompt(nextDraft);
+      promptDraft.restoreIfEmpty(nextDraft);
     }
     navigate(getRootComposeRoutePath() + location.search, {
       replace: true,
       state: { focusPrompt: true },
     });
-  }, [
-    location.search,
-    location.state,
-    navigate,
-    replaceInitialPrompt,
-    seedInitialPrompt,
-  ]);
+  }, [location.search, location.state, navigate, promptDraft]);
+  const shouldFocusPrompt =
+    typeof location.state === "object" &&
+    location.state !== null &&
+    "focusPrompt" in location.state &&
+    location.state.focusPrompt === true;
+  useEffect(() => {
+    if (!shouldFocusPrompt || isPointerCoarse) return;
+    const handle = window.requestAnimationFrame(() => {
+      promptBoxRef.current?.focusEnd();
+    });
+    return () => window.cancelAnimationFrame(handle);
+  }, [isPointerCoarse, location.key, promptBoxRef, shouldFocusPrompt]);
 
   const mobileRecentThreads = useMemo(
-    () =>
-      buildMobileRecentThreads({
-        sidebarNavigation: sidebarNavigationQuery.data,
-      }),
-    [sidebarNavigationQuery.data],
+    () => buildMobileRecentThreads({ sidebarNavigation }),
+    [sidebarNavigation],
   );
+  const mobileRecentProjectNamesById = useMemo(() => {
+    const namesById = new Map<string, string>();
+    if (!sidebarNavigation) return namesById;
+    namesById.set(
+      sidebarNavigation.personalProject.id,
+      sidebarNavigation.personalProject.name,
+    );
+    for (const project of sidebarNavigation.projects) {
+      namesById.set(project.id, project.name);
+    }
+    return namesById;
+  }, [sidebarNavigation]);
 
-  // The stored root-compose environment is global. Resolve it against the
-  // selected project before the branch picker or create-thread request sees it.
-  const effectiveEnvironmentValue = useMemo(
-    () =>
-      resolveRootComposeEffectiveEnvironmentValue({
-        environmentSelectionValue,
-        isProjectless,
-        knownHostIds,
-        primaryHostId,
-        projectSources,
-        reuseThreadOptions,
-        reuseThreadOptionsLoading: threadsQuery.isLoading,
-      }),
-    [
-      environmentSelectionValue,
-      isProjectless,
-      knownHostIds,
-      primaryHostId,
-      projectSources,
-      reuseThreadOptions,
-      threadsQuery.isLoading,
-    ],
-  );
-  const parsedEnvironment = useMemo(
-    () => parseEnvironmentValue(effectiveEnvironmentValue),
-    [effectiveEnvironmentValue],
-  );
-  // Provider-CLI eligibility follows the machine the thread will actually run
-  // on — the selected host when the effective selection names one, otherwise
-  // the primary. An outdated
-  // CLI on the primary must not block submission to a healthy remote machine,
-  // nor the other way around.
   const composeHostId = resolveComposeHostId(parsedEnvironment, primaryHostId);
   const providerCliStatus = useHostProviderCliStatus({
     hostId: composeHostId,
@@ -1271,9 +915,7 @@ export function RootComposeView() {
     selectedProviderId === "codex" &&
     codexCliStatus?.versionUnsupported === true;
   const codexCliIssue = useMemo(() => {
-    if (!isCodexCliVersionBlocked || codexCliStatus === null) {
-      return null;
-    }
+    if (!isCodexCliVersionBlocked || codexCliStatus === null) return null;
     const issue = buildProviderCliIssue({
       provider: "codex",
       status: codexCliStatus,
@@ -1281,576 +923,10 @@ export function RootComposeView() {
     return issue && hasProviderCliAction(issue) ? issue : null;
   }, [codexCliStatus, isCodexCliVersionBlocked]);
   const handleUpdateCodexCli = useCallback(() => {
-    if (codexCliIssue === null || composeHostId === null) {
-      return;
-    }
+    if (codexCliIssue === null || composeHostId === null) return;
     startInstall({ hostId: composeHostId, issue: codexCliIssue });
   }, [codexCliIssue, composeHostId, startInstall]);
-  const [branchSearchQuery, setBranchSearchQuery] = useState("");
-  useEffect(() => {
-    setBranchSearchQuery("");
-  }, [effectiveEnvironmentValue, projectId]);
-  const isHostMode = parsedEnvironment?.type === "host";
-  const isHostLocalMode = isHostMode && parsedEnvironment.mode === "local";
-  const branchEnvironmentMode: RootComposeBranchEnvironmentMode = isProjectless
-    ? "other"
-    : isHostLocalMode
-      ? "local"
-      : isHostMode && parsedEnvironment.mode === "worktree"
-        ? "worktree"
-        : "other";
-  const {
-    selectedBranch,
-    onBranchChange: handleBranchChange,
-    onClearBranch: handleClearBranch,
-    onCreateBranch: handleCreateBranch,
-    onCreateBranchFrom: handleCreateBranchFrom,
-  } = useScopedBranchSelection({
-    environmentValue: effectiveEnvironmentValue,
-    projectId,
-  });
-  const canChangeBranchSelection =
-    projectId !== undefined && effectiveEnvironmentValue !== "";
-  const selectedBranchName = selectedBranch?.name ?? "";
-  const hostBranchesQuery = useProjectSourceBranches(
-    projectId,
-    isHostMode ? parsedEnvironment.hostId : null,
-    {
-      enabled: isHostMode && !isProjectless,
-      query: branchSearchQuery,
-      selectedBranch: selectedBranchName,
-    },
-  );
-  const activeBranchesQuery = hostBranchesQuery;
-  const projectSourceWorktreeDisabledReason =
-    resolveProjectSourceWorktreeDisabledReason(activeBranchesQuery.data);
-  const projectSourceWorktreeUnavailable =
-    projectSourceWorktreeDisabledReason !== null;
-  const selectedEnvironmentRequestsManagedWorktree =
-    parsedEnvironment?.type === "host" && parsedEnvironment.mode === "worktree";
-  const managedWorktreeAvailabilityPending =
-    selectedEnvironmentRequestsManagedWorktree &&
-    !isProjectless &&
-    activeBranchesQuery.isLoading;
-  const managedWorktreeUnavailable =
-    selectedEnvironmentRequestsManagedWorktree &&
-    projectSourceWorktreeUnavailable;
-  useEffect(() => {
-    if (
-      !projectSourceWorktreeUnavailable ||
-      parsedEnvironment?.type !== "host" ||
-      parsedEnvironment.mode !== "worktree"
-    ) {
-      return;
-    }
-    setEnvironmentSelectionValue(
-      encodeHostValue(parsedEnvironment.hostId, "local"),
-    );
-  }, [
-    parsedEnvironment,
-    projectSourceWorktreeUnavailable,
-    setEnvironmentSelectionValue,
-  ]);
-  const branchOptions = useMemo(() => {
-    const branches = activeBranchesQuery.data?.branches ?? [];
-    const selectedRef = activeBranchesQuery.data?.selectedBranch;
-    return selectedRef?.kind === "local" && !branches.includes(selectedRef.name)
-      ? [selectedRef.name, ...branches]
-      : branches;
-  }, [
-    activeBranchesQuery.data?.branches,
-    activeBranchesQuery.data?.selectedBranch,
-  ]);
-  const remoteBranchOptions = useMemo(() => {
-    if (
-      branchEnvironmentMode !== "local" &&
-      branchEnvironmentMode !== "worktree"
-    ) {
-      return [];
-    }
-    const branches = activeBranchesQuery.data?.remoteBranches ?? [];
-    const selectedRef = activeBranchesQuery.data?.selectedBranch;
-    return selectedRef?.kind === "remote" &&
-      !branches.includes(selectedRef.name)
-      ? [selectedRef.name, ...branches]
-      : branches;
-  }, [
-    activeBranchesQuery.data?.remoteBranches,
-    activeBranchesQuery.data?.selectedBranch,
-    branchEnvironmentMode,
-  ]);
-  const priorityBranchOptions = useMemo(
-    () =>
-      [
-        activeBranchesQuery.data?.defaultWorktreeBaseBranch,
-        activeBranchesQuery.data?.defaultBranch,
-        activeBranchesQuery.data?.originDefaultBranch,
-      ].filter((branch): branch is string => Boolean(branch)),
-    [
-      activeBranchesQuery.data?.defaultBranch,
-      activeBranchesQuery.data?.defaultWorktreeBaseBranch,
-      activeBranchesQuery.data?.originDefaultBranch,
-    ],
-  );
-  const branchSelectionSeed =
-    branchEnvironmentMode === "local" &&
-    activeBranchesQuery.data?.checkout.kind === "branch"
-      ? activeBranchesQuery.data.checkout.branchName
-      : branchEnvironmentMode === "worktree"
-        ? (activeBranchesQuery.data?.defaultWorktreeBaseBranch ??
-          activeBranchesQuery.data?.defaultBranch ??
-          null)
-        : null;
-  const handleCreateBranchFromSeed = useCallback(() => {
-    handleCreateBranch(branchSelectionSeed);
-  }, [branchSelectionSeed, handleCreateBranch]);
-  const branchUiState = useMemo(
-    () =>
-      buildRootComposeBranchUiState({
-        checkout: activeBranchesQuery.data,
-        isFetching: activeBranchesQuery.isFetching,
-        isLoading: activeBranchesQuery.isLoading,
-        mode: branchEnvironmentMode,
-        selectedBranch,
-      }),
-    [
-      activeBranchesQuery.data,
-      activeBranchesQuery.isFetching,
-      activeBranchesQuery.isLoading,
-      branchEnvironmentMode,
-      selectedBranch,
-    ],
-  );
-  const refetchSourceBranches = activeBranchesQuery.refetch;
-  const handleBranchOpenChange = useCallback(
-    (open: boolean) => {
-      if (open) {
-        void refetchSourceBranches();
-      }
-    },
-    [refetchSourceBranches],
-  );
-  const handlePromptBoxBranchChange = useCallback(
-    (branch: string) => {
-      const nextBranch: RootComposeSelectedBranch = {
-        name: branch,
-        isNew: false,
-      };
-      if (
-        !canChangeBranchSelection ||
-        !hasPromptBranchSelectionChanged(selectedBranch, nextBranch)
-      ) {
-        return;
-      }
-      snapshotPromptDraftBeforeOptionChange();
-      handleBranchChange(branch);
-    },
-    [
-      canChangeBranchSelection,
-      handleBranchChange,
-      selectedBranch,
-      snapshotPromptDraftBeforeOptionChange,
-    ],
-  );
-  const handlePromptBoxClearBranch = useCallback(() => {
-    if (
-      !canChangeBranchSelection ||
-      !hasPromptBranchSelectionChanged(selectedBranch, null)
-    ) {
-      return;
-    }
-    snapshotPromptDraftBeforeOptionChange();
-    handleClearBranch();
-  }, [
-    canChangeBranchSelection,
-    handleClearBranch,
-    selectedBranch,
-    snapshotPromptDraftBeforeOptionChange,
-  ]);
-  const handlePromptBoxCreateBranchFromSeed = useCallback(() => {
-    const branchName = selectedBranch?.name ?? branchSelectionSeed;
-    const nextBranch =
-      branchName === null
-        ? null
-        : {
-            name: branchName,
-            isNew: true,
-          };
-    if (
-      !canChangeBranchSelection ||
-      !hasPromptBranchSelectionChanged(selectedBranch, nextBranch)
-    ) {
-      return;
-    }
-    snapshotPromptDraftBeforeOptionChange();
-    handleCreateBranchFromSeed();
-  }, [
-    branchSelectionSeed,
-    canChangeBranchSelection,
-    handleCreateBranchFromSeed,
-    selectedBranch,
-    snapshotPromptDraftBeforeOptionChange,
-  ]);
-  const handlePromptBoxCreateBranchFrom = useCallback(
-    (branch: string) => {
-      const nextBranch: RootComposeSelectedBranch = {
-        name: branch,
-        isNew: true,
-      };
-      if (
-        !canChangeBranchSelection ||
-        !hasPromptBranchSelectionChanged(selectedBranch, nextBranch)
-      ) {
-        return;
-      }
-      snapshotPromptDraftBeforeOptionChange();
-      handleCreateBranchFrom(branch);
-    },
-    [
-      canChangeBranchSelection,
-      handleCreateBranchFrom,
-      selectedBranch,
-      snapshotPromptDraftBeforeOptionChange,
-    ],
-  );
 
-  const selectedEnvironment = useMemo(
-    () =>
-      resolveRootComposeThreadEnvironment({
-        defaultBranch: activeBranchesQuery.data?.defaultBranch,
-        defaultWorktreeBaseBranch:
-          activeBranchesQuery.data?.defaultWorktreeBaseBranch,
-        environmentValue: effectiveEnvironmentValue,
-        projectId,
-        selectedBranch,
-      }),
-    [
-      activeBranchesQuery.data?.defaultBranch,
-      activeBranchesQuery.data?.defaultWorktreeBaseBranch,
-      effectiveEnvironmentValue,
-      projectId,
-      selectedBranch,
-    ],
-  );
-
-  const projectOptions = useMemo(
-    (): readonly ProjectSelectorOption[] =>
-      projects?.map((project) => ({ id: project.id, name: project.name })) ??
-      [],
-    [projects],
-  );
-  const mobileRecentProjectNamesById = useMemo(() => {
-    const namesById = new Map<string, string>();
-    const navigation = sidebarNavigationQuery.data;
-    if (!navigation) return namesById;
-
-    namesById.set(
-      navigation.personalProject.id,
-      navigation.personalProject.name,
-    );
-    for (const project of navigation.projects) {
-      namesById.set(project.id, project.name);
-    }
-    return namesById;
-  }, [sidebarNavigationQuery.data]);
-
-  const selectedThreadModel = activeModel?.model ?? selectedModel;
-  const handleProjectChange = useCallback<ProjectSelectionChangeHandler>(
-    async (nextProjectId) => {
-      const nextRootComposeProjectId = nextProjectId ?? PERSONAL_PROJECT_ID;
-      if (
-        nextRootComposeProjectId === projectId ||
-        isCopyingPromptAttachments
-      ) {
-        return;
-      }
-
-      const attachmentPaths = getProjectStoredPromptAttachmentPaths(
-        promptDraft.getCurrent().attachments,
-      );
-      if (attachmentPaths.length > 0) {
-        setAttachmentError(null);
-        setIsCopyingPromptAttachments(true);
-        try {
-          await sdk.projects.attachments.copy({
-            projectId: nextRootComposeProjectId,
-            sourceProjectId: projectId,
-            paths: attachmentPaths,
-          });
-        } catch (error) {
-          setAttachmentError(
-            getMutationErrorMessage({
-              error,
-              fallbackMessage:
-                "Attachments could not be moved to the selected project",
-            }),
-          );
-          return;
-        } finally {
-          setIsCopyingPromptAttachments(false);
-        }
-      }
-
-      snapshotPromptDraftBeforeOptionChange();
-      setForkSeed(null);
-      setRootComposeProjectId(nextRootComposeProjectId);
-    },
-    [
-      isCopyingPromptAttachments,
-      projectId,
-      promptDraft,
-      setRootComposeProjectId,
-      snapshotPromptDraftBeforeOptionChange,
-    ],
-  );
-  const shouldFocusPrompt =
-    typeof location.state === "object" &&
-    location.state !== null &&
-    "focusPrompt" in location.state &&
-    location.state.focusPrompt === true;
-
-  useEffect(() => {
-    if (!shouldFocusPrompt) return;
-    if (isPointerCoarse) return;
-    const handle = window.requestAnimationFrame(() => {
-      promptBoxRef.current?.focusEnd();
-    });
-    return () => window.cancelAnimationFrame(handle);
-  }, [isPointerCoarse, location.key, shouldFocusPrompt]);
-
-  const handleAttachFiles = useCallback(
-    async (files: File[]) => {
-      if (!projectId || files.length === 0) return;
-
-      setAttachmentError(null);
-      for (const file of files) {
-        try {
-          const uploaded = await uploadPromptAttachment.mutateAsync({
-            projectId,
-            file,
-          });
-          promptDraft.addAttachment(uploaded);
-        } catch (err) {
-          setAttachmentError(
-            getMutationErrorMessage({
-              error: err,
-              fallbackMessage: "Attachment upload failed",
-            }),
-          );
-          break;
-        }
-      }
-    },
-    [projectId, promptDraft, uploadPromptAttachment],
-  );
-
-  // `inputsOverride` bypasses the draft: plugin slash-command `{ send }`
-  // results (design §4.9) submit through the same thread-creation path
-  // without touching what the user has typed.
-  const submitPromptInternal = useCallback(
-    async (inputsOverride: PromptInput[] | null) => {
-      const submittedDraft =
-        inputsOverride === null
-          ? {
-              text: promptDraft.text,
-              mentions: promptDraft.mentions,
-              attachments: promptDraft.attachments,
-            }
-          : null;
-      const submittedInput =
-        submittedDraft !== null
-          ? promptDraftToInput(submittedDraft)
-          : (inputsOverride ?? []);
-      if (!projectId || !selectedProviderId || !selectedThreadModel) {
-        return;
-      }
-
-      setAttachmentError(null);
-
-      if (
-        submittedInput.length === 0 ||
-        createThread.isPending ||
-        projectDefaultsUnavailable ||
-        isResolvingInitialProvider ||
-        isCodexCliVersionBlocked ||
-        managedWorktreeAvailabilityPending ||
-        managedWorktreeUnavailable ||
-        (forkSeed === null && !selectedEnvironment)
-      ) {
-        return;
-      }
-
-      try {
-        const shouldNavigateToCreatedThread = shouldNavigateAfterThreadCreate({
-          isForkDraft: forkSeed !== null,
-          navigateToThreadAfterCreate,
-        });
-        const request =
-          forkSeed !== null
-            ? buildForkThreadRequest({
-                ...forkSeed,
-                input: submittedInput,
-                model: selectedThreadModel,
-                permissionMode,
-                reasoningLevel,
-                serviceTier: supportsServiceTier ? serviceTier : undefined,
-              })
-            : selectedEnvironment !== null
-              ? {
-                  input: submittedInput,
-                  projectId,
-                  providerId: selectedProviderId,
-                  model: selectedThreadModel,
-                  ...(rootComposeSectionId
-                    ? { sectionId: rootComposeSectionId }
-                    : {}),
-                  ...(supportsServiceTier && serviceTier
-                    ? { serviceTier }
-                    : {}),
-                  reasoningLevel,
-                  permissionMode,
-                  executionInputSources,
-                  environment: selectedEnvironment,
-                }
-              : null;
-        if (request === null) {
-          return;
-        }
-        const thread = await createThread.mutateAsync(request);
-        setLastCreatedThreadId(thread.id);
-        clearReuseEnvironment();
-        setForkSeed(null);
-        setRootComposeSectionId(null);
-        if (submittedDraft !== null) {
-          promptDraft.clearIfCurrentMatches(submittedDraft);
-        }
-        if (shouldNavigateToCreatedThread) {
-          navigate(
-            getThreadRoutePath({
-              projectId: thread.projectId,
-              threadId: thread.id,
-            }),
-          );
-        }
-      } catch {
-        // Global mutation error handling already surfaced the failure.
-      }
-    },
-    [
-      clearReuseEnvironment,
-      createThread,
-      executionInputSources,
-      forkSeed,
-      isCodexCliVersionBlocked,
-      managedWorktreeAvailabilityPending,
-      managedWorktreeUnavailable,
-      navigate,
-      navigateToThreadAfterCreate,
-      permissionMode,
-      projectDefaultsUnavailable,
-      projectId,
-      promptDraft,
-      reasoningLevel,
-      rootComposeSectionId,
-      isResolvingInitialProvider,
-      selectedEnvironment,
-      selectedProviderId,
-      selectedThreadModel,
-      serviceTier,
-      supportsServiceTier,
-    ],
-  );
-
-  const submitPrompt = useCallback(
-    () => submitPromptInternal(null),
-    [submitPromptInternal],
-  );
-
-  const isSubmitDisabled =
-    !selectedProviderId ||
-    isLoadingModels ||
-    modelLoadError?.code === "missing_executable" ||
-    modelLoadError?.code === "auth_required" ||
-    isCodexCliVersionBlocked ||
-    !selectedThreadModel ||
-    createThread.isPending ||
-    projectDefaultsUnavailable ||
-    isResolvingInitialProvider ||
-    isCopyingPromptAttachments ||
-    promptInput.length === 0 ||
-    (forkSeed === null && !selectedEnvironment) ||
-    managedWorktreeAvailabilityPending ||
-    managedWorktreeUnavailable ||
-    (branchEnvironmentMode === "local" &&
-      selectedBranch !== null &&
-      branchUiState.mutationBlocker !== null);
-
-  const currentPromptDraft = useMemo(
-    () => ({
-      text: promptDraft.text,
-      mentions: promptDraft.mentions,
-      attachments: promptDraft.attachments,
-    }),
-    [promptDraft.attachments, promptDraft.mentions, promptDraft.text],
-  );
-  const historyConfig = useMemo(
-    () => ({
-      currentDraft: currentPromptDraft,
-      entries: promptHistoryDrafts,
-      onSelectEntry: promptDraft.setDraft,
-      resetKey: projectId,
-    }),
-    [currentPromptDraft, projectId, promptDraft.setDraft, promptHistoryDrafts],
-  );
-  // Mirrors the @-mention plumbing: the composer feeds the text typed after the
-  // command trigger into `commandQuery`, which drives command typeahead. In
-  // projectless compose, the server resolves the personal project to user-home
-  // command discovery with cwd: null.
-  const [commandQuery, setCommandQuery] = useState<string | null>(null);
-  const providerPromptActions = useMemo(
-    () => buildProviderPromptActionProps(selectedProviderComposerActions),
-    [selectedProviderComposerActions],
-  );
-  const providerPromptActionProps = useMemo(
-    () => ({
-      promptActions: withAppPromptActions(providerPromptActions.promptActions),
-    }),
-    [providerPromptActions.promptActions],
-  );
-  const reuseEnvironmentId =
-    parsedEnvironment?.type === "reuse"
-      ? parsedEnvironment.environmentId
-      : null;
-  const rootProjectRouting = resolveRootComposeProjectRouting(
-    parsedEnvironment,
-    primaryHostId,
-  );
-  const rootProjectHostId = rootProjectRouting.hostId ?? null;
-  const commandSuggestions = useCommandSuggestions({
-    projectId,
-    providerId: selectedProviderId,
-    commandScope: "new-thread",
-    skillsTrigger: providerPromptActions.skillsTrigger,
-    promptActions: providerPromptActionProps.promptActions,
-    environmentId: reuseEnvironmentId,
-    hostId: rootProjectHostId,
-    query: commandQuery,
-  });
-  const rootPanelEnvironmentId = reuseEnvironmentId;
-  const rootPanelThreadId = useMemo(() => {
-    return resolveRootComposePanelThreadId({
-      environmentId: rootPanelEnvironmentId,
-      reuseThreadOptions,
-    });
-  }, [rootPanelEnvironmentId, reuseThreadOptions]);
-  const promptMentions = usePromptMentions(
-    isProjectless ? undefined : projectId,
-    {
-      currentThreadId: rootPanelThreadId ?? undefined,
-      environmentId: rootPanelEnvironmentId,
-      hostId: rootProjectHostId,
-    },
-  );
   useFixedPanelTabsStorageMaintenance(ROOT_COMPOSE_FIXED_PANEL_STATE_ID);
   const fixedPanelTabsState = useFixedPanelTabsState(
     ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
@@ -2235,43 +1311,6 @@ export function RootComposeView() {
       openWorkspaceFile,
       projectId,
       rootPanelThreadId,
-    ],
-  );
-  const typeaheadConfig = useMemo(
-    () => ({
-      mention: {
-        triggers: promptMentions.triggers,
-        suggestions: promptMentions.suggestions,
-        isLoading: promptMentions.isLoading,
-        isError: promptMentions.isError,
-        onQueryChange: promptMentions.setQuery,
-        resolveLink: resolveMentionLink,
-      },
-      command: {
-        trigger: commandSuggestions.trigger,
-        suggestions: commandSuggestions.suggestions,
-        isLoading: commandSuggestions.isLoading,
-        isError: commandSuggestions.isError,
-        hasMore: commandSuggestions.hasMore,
-        isLoadingMore: commandSuggestions.isLoadingMore,
-        loadMore: commandSuggestions.loadMore,
-        onQueryChange: setCommandQuery,
-      },
-    }),
-    [
-      promptMentions.isError,
-      promptMentions.isLoading,
-      promptMentions.setQuery,
-      promptMentions.suggestions,
-      promptMentions.triggers,
-      resolveMentionLink,
-      commandSuggestions.isError,
-      commandSuggestions.hasMore,
-      commandSuggestions.isLoading,
-      commandSuggestions.isLoadingMore,
-      commandSuggestions.loadMore,
-      commandSuggestions.suggestions,
-      commandSuggestions.trigger,
     ],
   );
   useEffect(() => {
@@ -3069,96 +2108,21 @@ export function RootComposeView() {
       />
     </div>
   ) : null;
-  const attachmentsConfig = useMemo(
-    () => ({
-      items: promptDraft.attachments,
-      projectId: projectId ?? "",
-      onAttachFiles: handleAttachFiles,
-      onRemove: promptDraft.removeAttachment,
-      isAttaching:
-        uploadPromptAttachment.isPending || isCopyingPromptAttachments,
-      error: attachmentError,
-    }),
-    [
-      attachmentError,
-      handleAttachFiles,
-      projectId,
-      promptDraft.attachments,
-      promptDraft.removeAttachment,
-      isCopyingPromptAttachments,
-      uploadPromptAttachment.isPending,
-    ],
-  );
-  const executionConfig = useMemo(
-    () => ({
-      providerRouting: executionOptionsRouting,
-      provider: {
-        options: providerOptions,
-        selectedId: selectedProviderId,
-        onChange:
-          forkSeed === null ? handleSelectedProviderIdChange : undefined,
-        hasMultiple: hasMultipleProviders,
-      },
-      model: {
-        active: activeModel,
-        selected: selectedModel,
-        options: modelOptions,
-        moreOptions: moreModelOptions,
-        isLoading: isLoadingModels,
-        loadFailed: modelLoadFailed,
-        loadError: modelLoadError,
-        onChange: handleSelectedModelChange,
-      },
-      serviceTier: {
-        value: serviceTier,
-        onChange: handleServiceTierChange,
-        supported: supportsServiceTier,
-        supportByProvider: serviceTierSupportByProvider,
-      },
-      reasoning: {
-        value: reasoningLevel,
-        options: reasoningOptions,
-        onChange: handleReasoningLevelChange,
-      },
-    }),
-    [
-      activeModel,
-      executionOptionsRouting,
-      forkSeed,
-      hasMultipleProviders,
-      handleSelectedProviderIdChange,
-      handleReasoningLevelChange,
-      handleSelectedModelChange,
-      handleServiceTierChange,
-      isLoadingModels,
-      modelLoadFailed,
-      modelLoadError,
-      modelOptions,
-      moreModelOptions,
-      providerOptions,
-      reasoningLevel,
-      reasoningOptions,
-      selectedModel,
-      selectedProviderId,
-      serviceTier,
-      serviceTierSupportByProvider,
-      supportsServiceTier,
-    ],
-  );
   const isForkDraft = forkSeed !== null;
   const showEmptyWelcome =
     !isForkDraft &&
     !startedComposing &&
     projects !== undefined &&
     projects.length === 0;
+  const setPromptTextAndMentions = promptDraft.setTextAndMentions;
   const handleStartComposing = useCallback(
     (prefill?: string) => {
       if (prefill) {
-        promptDraft.setTextAndMentions(prefill, []);
+        setPromptTextAndMentions(prefill, []);
       }
       setStartedComposing(true);
     },
-    [promptDraft],
+    [setPromptTextAndMentions, setStartedComposing],
   );
   // Focus the composer once it mounts in place of the welcome screen.
   useEffect(() => {
@@ -3169,7 +2133,12 @@ export function RootComposeView() {
       promptBoxRef.current?.focusEnd();
     });
     return () => window.cancelAnimationFrame(handle);
-  }, [isCodexCliVersionBlocked, isPointerCoarse, startedComposing]);
+  }, [
+    isCodexCliVersionBlocked,
+    isPointerCoarse,
+    promptBoxRef,
+    startedComposing,
+  ]);
   const [machineSetupTarget, setMachineSetupTarget] =
     useState<ProjectMachineSetupDialogTarget | null>(null);
   const currentProjectName = currentProject?.name ?? null;
@@ -3193,135 +2162,16 @@ export function RootComposeView() {
       // Mirror a normal selection of that machine: prefer worktree mode; the
       // non-git downgrade effect above falls back to local work if the new
       // source's checkout doesn't support worktrees.
-      handleEnvironmentSelectionValueChange(
-        encodeHostValue(setUpHostId, "worktree"),
-      );
+      setEnvironmentSelectionValue(encodeHostValue(setUpHostId, "worktree"));
     },
-    [handleEnvironmentSelectionValueChange],
-  );
-  const environmentConfig = useMemo(
-    () => ({
-      value: effectiveEnvironmentValue,
-      onChange: handleEnvironmentSelectionValueChange,
-      sources: projectSources,
-      reuseDisabled: reuseThreadOptions.length === 0,
-      worktreeDisabledReason: projectSourceWorktreeDisabledReason,
-      disabled: isForkDraft,
-      ...(isProjectless
-        ? {}
-        : { onRequestMachineSetup: handleRequestMachineSetup }),
-    }),
-    [
-      effectiveEnvironmentValue,
-      isForkDraft,
-      isProjectless,
-      handleEnvironmentSelectionValueChange,
-      handleRequestMachineSetup,
-      projectSourceWorktreeDisabledReason,
-      projectSources,
-      reuseThreadOptions.length,
-    ],
-  );
-  const worktreeConfig = useMemo(() => {
-    const handleWorktreeChange = (environmentId: string) => {
-      handleEnvironmentSelectionValueChange(encodeReuseValue(environmentId));
-    };
-    return {
-      options: reuseThreadOptions,
-      value:
-        parsedEnvironment?.type === "reuse"
-          ? parsedEnvironment.environmentId
-          : null,
-      onChange: handleWorktreeChange,
-      disabled: isForkDraft,
-    };
-  }, [
-    isForkDraft,
-    handleEnvironmentSelectionValueChange,
-    parsedEnvironment,
-    reuseThreadOptions,
-  ]);
-  const branchConfig = useMemo(
-    () => ({
-      value:
-        selectedBranch?.name ??
-        (branchEnvironmentMode === "worktree"
-          ? branchUiState.currentBranch
-          : null),
-      currentBranch: branchUiState.currentBranch,
-      isNew: selectedBranch?.isNew ?? false,
-      options: branchOptions,
-      remoteOptions: remoteBranchOptions,
-      priorityOptions: priorityBranchOptions,
-      loading: activeBranchesQuery.isFetching,
-      placeholder: branchUiState.placeholder,
-      triggerLabel: branchUiState.triggerLabel,
-      triggerTitle: branchUiState.triggerTitle,
-      currentOptionLabel:
-        branchEnvironmentMode === "local"
-          ? branchUiState.currentOptionLabel
-          : null,
-      currentOptionTitle:
-        branchEnvironmentMode === "local"
-          ? (branchUiState.currentOptionLabel ?? undefined)
-          : undefined,
-      hidden: projectSourceWorktreeUnavailable,
-      optionDisabledReason: branchUiState.mutationBlocker?.label,
-      optionDisabledTitle: branchUiState.mutationBlocker?.title,
-      createDisabledReason: branchUiState.mutationBlocker?.label,
-      createDisabledTitle: branchUiState.mutationBlocker?.title,
-      disabled: isForkDraft,
-      onChange: handlePromptBoxBranchChange,
-      onClear: handlePromptBoxClearBranch,
-      onCreate: handlePromptBoxCreateBranchFromSeed,
-      onCreateBaseChange: handlePromptBoxCreateBranchFrom,
-      onOpenChange: handleBranchOpenChange,
-      onSearchQueryChange: setBranchSearchQuery,
-    }),
-    [
-      activeBranchesQuery.isFetching,
-      branchOptions,
-      branchEnvironmentMode,
-      isForkDraft,
-      priorityBranchOptions,
-      projectSourceWorktreeUnavailable,
-      remoteBranchOptions,
-      branchUiState.currentBranch,
-      branchUiState.currentOptionLabel,
-      branchUiState.mutationBlocker,
-      branchUiState.placeholder,
-      branchUiState.triggerLabel,
-      branchUiState.triggerTitle,
-      handleBranchOpenChange,
-      handlePromptBoxBranchChange,
-      handlePromptBoxClearBranch,
-      handlePromptBoxCreateBranchFromSeed,
-      handlePromptBoxCreateBranchFrom,
-      setBranchSearchQuery,
-      selectedBranch?.isNew,
-      selectedBranch?.name,
-    ],
-  );
-  const permissionConfig = useMemo(
-    () => ({
-      value: permissionMode,
-      options: permissionModeOptions,
-      onChange: handlePermissionModeChange,
-      supported: supportsPermissionModeSelection,
-    }),
-    [
-      handlePermissionModeChange,
-      permissionMode,
-      permissionModeOptions,
-      supportsPermissionModeSelection,
-    ],
+    [setEnvironmentSelectionValue],
   );
   const handleCancelForkDraft = useCallback(() => {
     setForkSeed(null);
     window.requestAnimationFrame(() => {
       promptBoxRef.current?.focusEnd();
     });
-  }, []);
+  }, [promptBoxRef, setForkSeed]);
 
   const promptHeader = useMemo(() => {
     if (forkSeed === null) {
@@ -3379,7 +2229,7 @@ export function RootComposeView() {
     runningJobKey,
   ]);
 
-  if (!hasSidebarNavigationSettled) {
+  if (!sidebarNavigationSettled) {
     return (
       <PageShell contentClassName="min-h-full items-center justify-center">
         <p className="py-12 text-center text-sm text-muted-foreground">
@@ -3388,7 +2238,7 @@ export function RootComposeView() {
       </PageShell>
     );
   }
-  if (!projects && sidebarNavigationQuery.isError) {
+  if (!projects && sidebarNavigationError) {
     return (
       <PageShell contentClassName="min-h-full items-center justify-center">
         <p className="py-12 text-center text-sm text-destructive">
@@ -3408,48 +2258,34 @@ export function RootComposeView() {
     />
   );
 
-  const promptBox = (
-    <NewThreadPromptBox
-      id="root-compose-prompt"
-      promptBoxRef={promptBoxRef}
-      value={prompt}
-      mentionRanges={promptDraft.mentions}
-      onChange={promptDraft.setTextAndMentions}
-      onSubmit={submitPrompt}
-      pluginComposerHost={pluginComposerHost}
-      textEffects={promptTextEffects}
-      isSubmitting={createThread.isPending}
-      disabled={isSubmitDisabled}
-      autoFocus={!isCodexCliVersionBlocked}
-      zenModeStorageKey={rootComposeZenModeStorageKey}
-      history={historyConfig}
-      typeahead={typeaheadConfig}
-      attachments={attachmentsConfig}
-      {...providerPromptActionProps}
-      modeConfig={{
-        environment: environmentConfig,
-        branch: branchConfig,
-        worktree: worktreeConfig,
-        permission: permissionConfig,
-        banner: promptBanner,
-        header: promptHeader,
-      }}
-      project={{
-        projects: projectOptions,
-        value: isProjectless ? null : projectId,
-        onChange: handleProjectChange,
-        allowNoProject: true,
-        createProject: {
-          onCreate: quickCreateProject.openCreateDialog,
-          disabled:
-            !quickCreateProject.isAvailable || quickCreateProject.isCreating,
-          isCreating: quickCreateProject.isCreating,
-        },
-        disabled: isForkDraft || isCopyingPromptAttachments,
-      }}
-      execution={executionConfig}
-    />
-  );
+  const promptBox = renderPromptBox({
+    id: "root-compose-prompt",
+    autoFocus: !isCodexCliVersionBlocked,
+    zenModeStorageKey: getProjectScopedStorageKey(
+      ROOT_COMPOSE_ZEN_MODE_STORAGE_KEY,
+      projectId,
+    ),
+    banner: promptBanner,
+    header: promptHeader,
+    externallyBlocked: isCodexCliVersionBlocked,
+    resolveMentionLink,
+    pluginComposerHost,
+    textEffects: promptTextEffects,
+    allowNoProject: true,
+    createProject: {
+      onCreate: quickCreateProject.openCreateDialog,
+      disabled:
+        !quickCreateProject.isAvailable || quickCreateProject.isCreating,
+      isCreating: quickCreateProject.isCreating,
+    },
+    onRequestMachineSetup: handleRequestMachineSetup,
+    locks: {
+      project: isForkDraft,
+      provider: isForkDraft,
+      environment: isForkDraft,
+      branch: isForkDraft,
+    },
+  });
 
   return (
     <>
@@ -3521,7 +2357,7 @@ export function RootComposeView() {
               <RootComposeMobileRecents
                 highlightedThreadId={lastCreatedThreadId}
                 projectNamesById={mobileRecentProjectNamesById}
-                showCreatingRow={createThread.isPending}
+                showCreatingRow={isSubmitting}
                 threads={mobileRecentThreads}
               />
             </>

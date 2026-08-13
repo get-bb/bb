@@ -538,6 +538,7 @@ export interface NewThreadConnectedBranchConfig {
   hidden?: boolean;
   options: readonly string[];
   remoteOptions?: readonly string[];
+  priorityOptions?: readonly string[];
   loading?: boolean;
   placeholder?: string;
   triggerLabel?: string;
@@ -644,6 +645,7 @@ function ConnectedThreadModeBranch({
       hidden: branch.hidden,
       options: branch.options,
       remoteOptions: branch.remoteOptions,
+      priorityOptions: branch.priorityOptions,
       loading: branch.loading,
       placeholder: branch.placeholder,
       triggerLabel: branch.triggerLabel,

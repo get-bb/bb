@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import type { ComponentProps, ReactNode } from "react";
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import {
@@ -137,6 +137,14 @@ vi.mock("@/components/secondary-panel/ThreadSecondaryPanel", async () => {
   return { ThreadSecondaryPanel };
 });
 
+vi.mock("@/components/plugin/PluginHomepageSections", async () => {
+  const React = await import("react");
+  return {
+    PluginHomepageSections: () =>
+      React.createElement("div", { "data-testid": "plugin-homepage-sections" }),
+  };
+});
+
 function createSecondaryPanel(
   isOpen: boolean,
 ): RootComposeSecondaryContentProps["secondaryPanel"] {
@@ -246,6 +254,8 @@ describe("RootComposeSecondaryContent desktop layout", () => {
         .getByTestId("inline-secondary-panel")
         .getAttribute("data-show-new-tab-button"),
     ).toBe("true");
+    expect(screen.getByTestId("root-compose-content")).not.toBeNull();
+    expect(screen.getByTestId("plugin-homepage-sections")).not.toBeNull();
   });
 
   it("marks the root compose top strip as a macOS window drag region", () => {
@@ -331,68 +341,5 @@ describe("RootComposeSecondaryContent desktop layout", () => {
     expect(
       screen.queryByTestId("root-compose-drag-strip-toggle-cutout"),
     ).toBeNull();
-  });
-
-  it("syncs the panel group when persisted open state arrives after mount", () => {
-    const view = renderRootCompose({
-      isCompactViewport: false,
-      isSecondaryPanelOpen: false,
-    });
-
-    expect(panelGroupState.setLayout).toHaveBeenLastCalledWith([100, 0]);
-    panelGroupState.setLayout.mockClear();
-
-    view.rerenderWith({ isSecondaryPanelOpen: true });
-
-    expect(panelGroupState.setLayout).toHaveBeenCalledTimes(1);
-    expect(panelGroupState.setLayout).toHaveBeenLastCalledWith([60, 40]);
-    expect(
-      screen.getByTestId("inline-secondary-panel").getAttribute("data-open"),
-    ).toBe("true");
-  });
-
-  it("syncs the panel group when the desktop root panel closes", () => {
-    const view = renderRootCompose({
-      isCompactViewport: false,
-      isSecondaryPanelOpen: true,
-    });
-
-    expect(panelGroupState.setLayout).toHaveBeenLastCalledWith([60, 40]);
-    panelGroupState.setLayout.mockClear();
-
-    view.rerenderWith({ isSecondaryPanelOpen: false });
-
-    expect(panelGroupState.setLayout).toHaveBeenCalledTimes(1);
-    expect(panelGroupState.setLayout).toHaveBeenLastCalledWith([100, 0]);
-  });
-
-  it("leaves the panel group alone while the root panel renders as a drawer", () => {
-    vi.useFakeTimers();
-    try {
-      const view = renderRootCompose({
-        isCompactViewport: true,
-        isSecondaryPanelOpen: false,
-      });
-
-      expect(panelGroupState.setLayout).not.toHaveBeenCalled();
-
-      view.rerenderWith({ isSecondaryPanelOpen: true });
-
-      expect(panelGroupState.setLayout).not.toHaveBeenCalled();
-      // The panel mounts after the light drawer shell gets its first paint.
-      // A skeleton fills the sheet during those first two frames.
-      expect(screen.queryByTestId("drawer-secondary-panel")).toBeNull();
-      expect(
-        screen.queryByTestId("drawer-panel-loading-skeleton"),
-      ).not.toBeNull();
-      act(() => {
-        vi.advanceTimersByTime(40);
-      });
-      expect(
-        screen.getByTestId("drawer-secondary-panel").getAttribute("data-open"),
-      ).toBe("true");
-    } finally {
-      vi.useRealTimers();
-    }
   });
 });

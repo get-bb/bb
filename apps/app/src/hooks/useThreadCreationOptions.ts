@@ -159,6 +159,9 @@ export function useThreadCreationOptions(
   options?: UseNewThreadCreationOptions,
 ): UseThreadCreationOptionsResult<CreateExecutionInputSources>;
 export function useThreadCreationOptions(
+  options: UsePromptModelReasoningOptions,
+): UseThreadCreationOptionsResult<ScopedExecutionInputSources>;
+export function useThreadCreationOptions(
   options?: UsePromptModelReasoningOptions,
 ): UseThreadCreationOptionsResult<ScopedExecutionInputSources> {
   const {

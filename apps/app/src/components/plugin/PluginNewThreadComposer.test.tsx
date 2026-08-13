@@ -17,6 +17,8 @@ import { PluginNewThreadComposer } from "./PluginNewThreadComposer";
 
 const mocks = vi.hoisted(() => ({
   promptBoxProps: [] as Array<Record<string, any>>,
+  copyAttachments: vi.fn(),
+  uploadAttachment: vi.fn(),
 }));
 
 vi.mock("@/components/promptbox/NewThreadPromptBox", () => ({
@@ -27,7 +29,7 @@ vi.mock("@/components/promptbox/NewThreadPromptBox", () => ({
 }));
 
 vi.mock("@/lib/sdk", () => ({
-  sdk: { projects: { attachments: { copy: vi.fn() } } },
+  sdk: { projects: { attachments: { copy: mocks.copyAttachments } } },
 }));
 
 const PROJECT = {
@@ -167,7 +169,10 @@ vi.mock("@/hooks/queries/project-default-execution-options-query", () => ({
 }));
 
 vi.mock("@/hooks/mutations/project-mutations", () => ({
-  useUploadPromptAttachment: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useUploadPromptAttachment: () => ({
+    mutateAsync: mocks.uploadAttachment,
+    isPending: false,
+  }),
 }));
 
 vi.mock("@/hooks/usePromptMentions", () => ({
@@ -264,6 +269,8 @@ async function submit(): Promise<void> {
 describe("PluginNewThreadComposer seeding", () => {
   beforeEach(() => {
     mocks.promptBoxProps.length = 0;
+    mocks.copyAttachments.mockReset();
+    mocks.uploadAttachment.mockReset();
     window.localStorage.clear();
   });
 
@@ -288,6 +295,9 @@ describe("PluginNewThreadComposer seeding", () => {
 
     expect(submitted).toHaveLength(1);
     expect(submitted[0]).toEqual(STORED_REQUEST);
+    await waitFor(() => {
+      expect(latestPromptBoxProps().value).toBe("");
+    });
   });
 
   it("re-seeds every selection when the seed props change, even after a user pick", async () => {
@@ -450,5 +460,79 @@ describe("PluginNewThreadComposer seeding", () => {
         workspace: { type: "unmanaged", path: null },
       },
     });
+  });
+
+  it("ignores a repeated submit while the first submission is pending", async () => {
+    let finishSubmit: (() => void) | null = null;
+    const onSubmit = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finishSubmit = resolve;
+        }),
+    );
+    renderComposer(STORED_REQUEST, onSubmit, "repeated-submit");
+    await waitFor(() => {
+      expect(latestPromptBoxProps().disabled).toBe(false);
+    });
+
+    act(() => {
+      latestPromptBoxProps().onSubmit();
+      latestPromptBoxProps().onSubmit();
+    });
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      finishSubmit?.();
+    });
+  });
+
+  it("preserves the draft when submission fails", async () => {
+    const onSubmit = vi.fn().mockRejectedValue(new Error("create failed"));
+    renderComposer(STORED_REQUEST, onSubmit, "failed-submit");
+    await waitFor(() => {
+      expect(latestPromptBoxProps().disabled).toBe(false);
+    });
+
+    act(() => latestPromptBoxProps().onSubmit());
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    await waitFor(() => {
+      expect(latestPromptBoxProps().isSubmitting).toBe(false);
+    });
+    expect(latestPromptBoxProps().value).toBe("review every PR for slop");
+  });
+
+  it("keeps the old project when attachment copying fails", async () => {
+    mocks.uploadAttachment.mockResolvedValue({
+      type: "localFile",
+      name: "notes.txt",
+      path: ".bb/attachments/notes.txt",
+      mimeType: "text/plain",
+      sizeBytes: 5,
+    });
+    mocks.copyAttachments.mockRejectedValue(new Error("copy failed"));
+    renderComposer(STORED_REQUEST, vi.fn(), "copy-failure");
+    await waitFor(() => {
+      expect(latestPromptBoxProps().disabled).toBe(false);
+    });
+
+    await act(async () => {
+      await latestPromptBoxProps().attachments.onAttachFiles([
+        new File(["notes"], "notes.txt", { type: "text/plain" }),
+      ]);
+    });
+    await waitFor(() => {
+      expect(latestPromptBoxProps().attachments.items).toHaveLength(1);
+    });
+    await act(async () => {
+      await latestPromptBoxProps().project.onChange("proj_2");
+    });
+
+    expect(mocks.copyAttachments).toHaveBeenCalledWith({
+      projectId: "proj_2",
+      sourceProjectId: "proj_1",
+      paths: [".bb/attachments/notes.txt"],
+    });
+    expect(latestPromptBoxProps().project.value).toBe("proj_1");
+    expect(latestPromptBoxProps().attachments.items).toHaveLength(1);
   });
 });
