@@ -46,6 +46,8 @@ export interface CachedFinding {
   softDeleted: boolean;
   raw: Record<string, Json>;
   pulledAt: string;
+  localState: "none" | "local" | "conflicted" | "stale" | "needs_completion";
+  localFile: string | null;
 }
 
 export interface CachedActivity {
@@ -91,6 +93,7 @@ export interface FindingsFilter {
   triage?: string[];
   findingType?: string[];
   hasLocalChange?: boolean;
+  localState?: Array<"none" | "local" | "conflicted" | "stale" | "needs_completion">;
   cursor?: string;
   limit?: number;
 }

@@ -60,6 +60,9 @@ interface FindingRow {
   soft_deleted: number;
   raw: string;
   pulled_at: string;
+  overlay_local_state?: string | null;
+  overlay_drift_state?: string | null;
+  overlay_file_path?: string | null;
 }
 
 interface CursorValue {
@@ -104,6 +107,17 @@ function comments(value: Json, findingId: string): CachedComment[] {
 }
 
 export function findingFromRow(row: FindingRow): CachedFinding {
+  const overlayState = row.overlay_local_state ?? null;
+  const driftState = row.overlay_drift_state ?? null;
+  const localState = overlayState === null
+    ? "none"
+    : overlayState === "conflict" || driftState === "conflict"
+      ? "conflicted"
+      : overlayState === "needs_completion" || driftState === "needs_completion"
+        ? "needs_completion"
+        : overlayState === "stale" || driftState === "stale" || driftState === "orphaned"
+          ? "stale"
+          : "local";
   return {
     projectId: row.project_id,
     projectVersionId: row.project_version_id,
@@ -145,6 +159,8 @@ export function findingFromRow(row: FindingRow): CachedFinding {
     softDeleted: row.soft_deleted === 1,
     raw: parseJson(row.raw, {}) as Record<string, Json>,
     pulledAt: row.pulled_at,
+    localState,
+    localFile: row.overlay_file_path ?? null,
   };
 }
 
@@ -215,7 +231,11 @@ function whereFor(filter: FindingsFilter, generationId: string): {
   const where = ["f.project_id = ?", "f.project_version_id = ?", "f.generation_id = ?"];
   const parameters: Array<string | number> = [filter.projectId, filter.pvId, generationId];
   addList(where, parameters, "f.severity", filter.severity);
-  addList(where, parameters, "f.vex_status", filter.triage);
+  if (filter.triage && filter.triage.length > 0) {
+    if (filter.triage.length > MAX_LIMIT) throw new FindingsCacheError("FINDINGS_FILTER_INVALID", "A filter has too many values");
+    where.push(`COALESCE(f.vex_status, 'unknown') IN (${filter.triage.map(() => "?").join(", ")})`);
+    parameters.push(...filter.triage);
+  }
   addList(where, parameters, "f.finding_type", filter.findingType);
   if (filter.reachability) {
     where.push("COALESCE(f.reachability_verdict, 'unknown') = ?");
@@ -243,11 +263,55 @@ function whereFor(filter: FindingsFilter, generationId: string): {
       SELECT 1 FROM overlay_index AS overlay
        WHERE overlay.project_id = f.project_id
          AND overlay.project_version_id = f.project_version_id
+         AND overlay.entity_kind = 'vexDecision'
          AND overlay.stable_key = f.stable_key
     )`);
   }
+  if (filter.localState && filter.localState.length > 0) {
+    const predicates: string[] = [];
+    for (const state of filter.localState) {
+      if (state === "none") {
+        predicates.push(`NOT EXISTS (
+          SELECT 1 FROM overlay_index AS overlay
+           WHERE overlay.project_id = f.project_id
+             AND overlay.project_version_id = f.project_version_id
+             AND overlay.entity_kind = 'vexDecision'
+             AND overlay.stable_key = f.stable_key
+        )`);
+      } else {
+        const states = state === "conflicted"
+          ? ["conflict"]
+          : state === "needs_completion"
+            ? ["needs_completion"]
+            : state === "stale"
+              ? ["stale", "orphaned"]
+              : ["dirty", "pushed"];
+        predicates.push(`EXISTS (
+          SELECT 1 FROM overlay_index AS overlay
+           WHERE overlay.project_id = f.project_id
+             AND overlay.project_version_id = f.project_version_id
+             AND overlay.entity_kind = 'vexDecision'
+             AND overlay.stable_key = f.stable_key
+             AND (overlay.local_state IN (${states.map(() => "?").join(", ")})
+               OR overlay.drift_state IN (${states.map(() => "?").join(", ")}))
+        ` + ")");
+        parameters.push(...states, ...states);
+      }
+    }
+    where.push(`(${predicates.join(" OR ")})`);
+  }
   return { sql: where.join(" AND "), parameters };
 }
+
+const FINDING_WITH_OVERLAY = `f.*,
+  overlay.local_state AS overlay_local_state,
+  overlay.drift_state AS overlay_drift_state,
+  overlay.file_path AS overlay_file_path`;
+const FINDING_OVERLAY_JOIN = `LEFT JOIN overlay_index AS overlay
+  ON overlay.project_id = f.project_id
+ AND overlay.project_version_id = f.project_version_id
+ AND overlay.entity_kind = 'vexDecision'
+ AND overlay.stable_key = f.stable_key`;
 
 function counts(
   db: Database.Database,
@@ -290,7 +354,8 @@ export function queryFindings(db: Database.Database, filter: FindingsFilter): Fi
     }
   }
   const rows = db.prepare(
-    `SELECT f.* FROM findings AS f
+    `SELECT ${FINDING_WITH_OVERLAY} FROM findings AS f
+      ${FINDING_OVERLAY_JOIN}
       WHERE ${pageWhere.sql}
       ORDER BY f.risk_score DESC, f.finding_id ASC
       LIMIT ?`,
@@ -318,8 +383,9 @@ export function getCachedFinding(
   const cache = cacheState(db, projectId, pvId);
   if (!cache.acceptedGenerationId) return { finding: null, cache };
   const row = db.prepare(
-    `SELECT * FROM findings
-      WHERE project_id = ? AND project_version_id = ? AND generation_id = ? AND finding_id = ?`,
+    `SELECT ${FINDING_WITH_OVERLAY} FROM findings AS f
+      ${FINDING_OVERLAY_JOIN}
+      WHERE f.project_id = ? AND f.project_version_id = ? AND f.generation_id = ? AND f.finding_id = ?`,
   ).get(projectId, pvId, cache.acceptedGenerationId, findingId) as FindingRow | undefined;
   return { finding: row ? findingFromRow(row) : null, cache };
 }

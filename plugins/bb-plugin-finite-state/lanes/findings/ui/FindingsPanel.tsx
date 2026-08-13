@@ -1,0 +1,202 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  experimental_useSidebarThreads,
+  type PluginNavPanelProps,
+  useBbContext,
+  useBbNavigate,
+  useRpc,
+} from "@bb/plugin-sdk/app";
+import type { findingsUiRpcContract } from "../rpc.js";
+import { FINDING_COLUMNS } from "./columns.js";
+import { FilterBar } from "./FilterBar.js";
+import { FindingsHeader } from "./FindingsHeader.js";
+import { FindingsTable } from "./FindingsTable.js";
+import { SavedViews } from "./SavedViews.js";
+import { FindingDetailStub } from "./detail/index.js";
+import {
+  filterSnapshot,
+  findingDetailSubPath,
+  findingsTableSubPath,
+  findingsViewSubPath,
+  normalizeFindingsFilter,
+  parseFindingsRoute,
+  serializeFindingsFilter,
+  type FindingsFilter,
+  type FindingsUiState,
+} from "./route.js";
+import {
+  FindingsEmptyState,
+  FindingsErrorState,
+  FindingsLoadingState,
+  FindingsPageError,
+  FindingsStaleBanner,
+  FindingsUnconfiguredState,
+} from "./states.js";
+import { FindingsTriageStub } from "./triage/index.js";
+import { useFindings } from "./useFindings.js";
+import { useSavedViews } from "./useSavedViews.js";
+
+export function FindingsPanel({ subPath }: PluginNavPanelProps): React.JSX.Element {
+  const route = useMemo(() => parseFindingsRoute(subPath), [subPath]);
+  const navigate = useBbNavigate();
+  const context = useBbContext();
+  const sidebar = experimental_useSidebarThreads();
+  const rpc = useRpc<typeof findingsUiRpcContract>();
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const projectId = context.projectId ?? selectedProjectId ?? (sidebar.status === "ready" ? sidebar.projects[0]?.id ?? null : null);
+  const [versions, setVersions] = useState<Array<{ projectVersionId: string; asOf: string | null; state: "fresh" | "stale" }>>([]);
+  const [projectVersionId, setProjectVersionId] = useState<string | null>(null);
+  const [versionLoading, setVersionLoading] = useState(Boolean(projectId));
+  const saved = useSavedViews(projectId);
+  const activeView = route.kind === "view" ? saved.views.find(view => view.id === route.view) : undefined;
+  const [customColumns, setCustomColumns] = useState<string[]>([...FINDING_COLUMNS]);
+  const columns = activeView?.columns ?? customColumns;
+  const filter = useMemo<FindingsFilter>(() => route.kind === "view"
+    ? normalizeFindingsFilter(activeView?.filter ?? {})
+    : route.kind === "table" || route.kind === "finding"
+      ? route.filter
+      : normalizeFindingsFilter({}), [activeView, route]);
+  const data = useFindings(projectId, projectVersionId, filter);
+  const [dismissedStale, setDismissedStale] = useState<string | null>(null);
+  const [ui, setUi] = useState<FindingsUiState>({
+    route: {},
+    selection: { mode: "explicit", keys: new Set() },
+    cursorKey: null,
+  });
+
+  useEffect(() => {
+    if (!projectId) return;
+    let active = true;
+    void Promise.resolve().then(() => {
+      if (active) setVersionLoading(true);
+      return rpc.call("cachedProjectVersions", { projectId });
+    }).then(result => {
+      if (!active) return;
+      setVersions(result.versions);
+      setProjectVersionId(current => result.versions.some(version => version.projectVersionId === current)
+        ? current
+        : result.selectedProjectVersionId);
+    }).catch(() => {
+      if (!active) return;
+      setVersions([]);
+      setProjectVersionId(null);
+    }).finally(() => { if (active) setVersionLoading(false); });
+    return () => { active = false; };
+  }, [projectId, rpc]);
+
+  const changeFilter = useCallback((next: FindingsFilter) => {
+    setUi(current => ({ ...current, selection: { mode: "explicit", keys: new Set() } }));
+    navigate.toPluginPanel("findings", { subPath: findingsTableSubPath(next) });
+  }, [navigate]);
+
+  const changeSelection = useCallback((key: string, isSelected: boolean, shift: boolean, anchorKey: string | null) => {
+    setUi(current => {
+      if (current.selection.mode === "predicate") {
+        const excluded = new Set(current.selection.excluded);
+        if (isSelected) excluded.delete(key); else excluded.add(key);
+        return { ...current, selection: { ...current.selection, excluded } };
+      }
+      const keys = new Set(current.selection.keys);
+      if (shift && anchorKey) {
+        const start = data.rows.findIndex(row => row.stableKey === anchorKey);
+        const end = data.rows.findIndex(row => row.stableKey === key);
+        if (start >= 0 && end >= 0) {
+          for (let index = Math.min(start, end); index <= Math.max(start, end); index += 1) {
+            const row = data.rows[index];
+            if (!row) continue;
+            if (isSelected) keys.add(row.stableKey); else keys.delete(row.stableKey);
+          }
+        }
+      } else if (isSelected) keys.add(key); else keys.delete(key);
+      return { ...current, selection: { mode: "explicit", keys } };
+    });
+  }, [data.rows]);
+
+  const selectPage = useCallback(() => {
+    const page = data.rows.slice(-100);
+    setUi(current => {
+      if (current.selection.mode === "predicate") {
+        const excluded = new Set(current.selection.excluded);
+        for (const row of page) excluded.delete(row.stableKey);
+        return { ...current, selection: { ...current.selection, excluded } };
+      }
+      const keys = new Set(current.selection.keys);
+      for (const row of page) keys.add(row.stableKey);
+      return { ...current, selection: { mode: "explicit", keys } };
+    });
+  }, [data.rows]);
+
+  if (route.kind === "policy" || route.kind === "import") {
+    return <section aria-label="Findings" className="h-full min-h-0 bg-background text-foreground"><FindingsTriageStub kind={route.kind} /></section>;
+  }
+
+  const hasFilters = Object.keys(filterSnapshot(filter)).length > 0;
+  const staleMessage = data.cache?.state === "stale" ? data.cache.message ?? "The last cache refresh failed." : null;
+  const showStale = staleMessage && dismissedStale !== staleMessage;
+  return (
+    <section aria-label="Findings" className="flex h-full min-h-0 flex-col bg-background text-foreground">
+      <FindingsHeader
+        loaded={data.rows.length}
+        onClearSelection={() => setUi(current => ({ ...current, selection: { mode: "explicit", keys: new Set() } }))}
+        onProject={id => { setSelectedProjectId(id || null); setVersions([]); setProjectVersionId(null); setVersionLoading(Boolean(id)); }}
+        onSelectPage={selectPage}
+        onSelectPredicate={() => setUi(current => ({ ...current, selection: { mode: "predicate", filter: filterSnapshot(filter), excluded: new Set(), total: data.total } }))}
+        onVersion={id => setProjectVersionId(id || null)}
+        projectId={projectId}
+        projectVersionId={projectVersionId}
+        projects={sidebar.projects}
+        selection={ui.selection}
+        total={data.total}
+        versions={versions}
+      />
+      <SavedViews
+        activeId={route.kind === "view" ? route.view : undefined}
+        columns={columns}
+        error={saved.error}
+        filter={filter}
+        loading={saved.loading}
+        onColumns={next => {
+          setCustomColumns(next);
+          if (route.kind === "view") navigate.toPluginPanel("findings", { subPath: findingsTableSubPath(filter) });
+        }}
+        onCreate={async (name, currentFilter, currentColumns) => {
+          const view = await saved.create(name, currentFilter, currentColumns);
+          if (view) navigate.toPluginPanel("findings", { subPath: findingsViewSubPath(view.id) });
+        }}
+        onDelete={async id => { await saved.remove(id); navigate.toPluginPanel("findings", { subPath: "", replace: true }); }}
+        onOpen={id => navigate.toPluginPanel("findings", { subPath: findingsViewSubPath(id) })}
+        onRename={saved.rename}
+        recoveredFromCorrupt={saved.recoveredFromCorrupt}
+        views={saved.views}
+        key={route.kind === "view" ? route.view : "new-view"}
+      />
+      <FilterBar key={serializeFindingsFilter(filter)} onChange={changeFilter} onClear={() => changeFilter({})} value={filter} />
+      {showStale ? <FindingsStaleBanner message={staleMessage} onDismiss={() => setDismissedStale(staleMessage)} onRetry={() => void data.retry()} /> : null}
+      <div className="flex min-h-0 flex-1">
+        <div className="flex min-w-0 flex-1 flex-col">
+          {!projectId ? <FindingsUnconfiguredState detail="Select a bb project to discover its accepted cached finding versions." />
+            : versionLoading ? <FindingsLoadingState />
+              : !projectVersionId ? <FindingsUnconfiguredState detail="This project has no accepted findings cache. Pull a project version through Sync first." />
+                : data.loading && data.rows.length === 0 ? <FindingsLoadingState />
+                  : data.error && data.rows.length === 0 ? <FindingsErrorState message={data.error} onRetry={() => void data.retry()} />
+                    : !data.loading && data.rows.length === 0 ? <FindingsEmptyState filtered={hasFilters} onClear={() => changeFilter({})} onRetry={() => void data.retry()} />
+                      : <FindingsTable
+                          columns={columns}
+                          cursorKey={ui.cursorKey}
+                          hasNextPage={Boolean(data.next)}
+                          loadingMore={data.loadingMore}
+                          onCursor={key => setUi(current => ({ ...current, cursorKey: key }))}
+                          onNearEnd={() => { if (data.next) void data.loadMore(); }}
+                          onOpen={key => navigate.toPluginPanel("findings", { subPath: findingDetailSubPath(key, filter) })}
+                          onSelection={changeSelection}
+                          rows={data.rows}
+                          selection={ui.selection}
+                          total={data.total}
+                        />}
+          {data.pageError ? <FindingsPageError loading={data.loadingMore} message={data.pageError} onRetry={() => void data.loadMore()} /> : null}
+        </div>
+        {route.kind === "finding" ? <FindingDetailStub onClose={() => navigate.toPluginPanel("findings", { subPath: findingsTableSubPath(filter) })} stableKey={route.stableKey} /> : null}
+      </div>
+    </section>
+  );
+}
