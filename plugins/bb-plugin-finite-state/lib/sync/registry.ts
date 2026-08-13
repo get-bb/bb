@@ -202,6 +202,21 @@ export function componentSlugKey(value: Readonly<Record<string, unknown>>): stri
   return encodeKey("component", valueString(value, "componentSlug"));
 }
 
+export function referenceDesignatorKey(value: Readonly<Record<string, unknown>>): string {
+  return encodeKey("hardware-reference", valueString(value, "reference"));
+}
+
+export function sourcePathKey(value: Readonly<Record<string, unknown>>): string {
+  const sourcePath = value.file;
+  if (typeof sourcePath !== "string") {
+    throw new InvalidEntityKeyError("file must be a string");
+  }
+  return encodeSegments([
+    "citation-file",
+    normalizeSegment(sourcePath, "file", true),
+  ]);
+}
+
 export function routeSignatureKey(value: Readonly<Record<string, unknown>>): string {
   return encodeKey("route", valueString(value, "routeSignature"));
 }
@@ -302,6 +317,9 @@ export const ENTITIES = {
   sbomLink: { class: "OVERLAY", server: "assurance-studio", dir: ".fs/links", key: componentSlugKey },
   firmwareLink: { class: "OVERLAY", server: "none", localOnly: true, dir: ".fs/links", key: componentSlugKey },
   canvasLayout: { class: "VERSIONED", server: "none", localOnly: true, file: "product-security/layout/canvas.json" },
+  hardwareLink: { class: "OVERLAY", server: "none", localOnly: true, dir: "product-security/links", key: referenceDesignatorKey },
+  citationFile: { class: "OVERLAY", server: "none", localOnly: true, dir: ".fs/authoring/citations", key: sourcePathKey },
+  authoringGate: { class: "VERSIONED", server: "none", localOnly: true, file: ".fs/workflows/authoring-gate.yaml" },
 
   finding: { class: "CACHED", table: "findings" },
   sbomComponent: { class: "CACHED", table: "sbom_components" },
@@ -312,6 +330,16 @@ export const ENTITIES = {
   firmwareMount: { class: "CACHED", table: "firmware_mounts" },
   document: { class: "CACHED", table: "document" },
   hbomDoc: { class: "CACHED", table: "hbom_docs", storageKind: "view" },
+  hardwareProject: { class: "CACHED", table: "hw_project" },
+  hardwareArtifact: { class: "CACHED", table: "hw_artifact" },
+  hardwareSymbol: { class: "CACHED", table: "hw_symbol" },
+  hardwareNet: { class: "CACHED", table: "hw_net" },
+  hardwareViolation: { class: "CACHED", table: "hw_violation" },
+  groundingSource: { class: "CACHED", table: "ground_source" },
+  groundingChunk: { class: "CACHED", table: "ground_chunk" },
+  benchDevice: { class: "CACHED", table: "bench_device" },
+  probeRun: { class: "CACHED", table: "probe_run" },
+  buildRun: { class: "CACHED", table: "build_run" },
 
   reviewTransition: { class: "ACTION-ONLY" },
   verificationDispatch: { class: "ACTION-ONLY" },

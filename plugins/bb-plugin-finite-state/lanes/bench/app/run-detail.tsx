@@ -171,7 +171,11 @@ export function RunDetail({
         <LogTail projectId={projectId} projectVersionId={detail.projectVersionId} runId={runId} />
         <section className="rounded-lg border border-border bg-card p-4"><h3 className="text-sm font-semibold">Artifacts</h3><div className="mt-3"><ArtifactList artifacts={detail.artifacts} projectId={projectId} runId={runId} /></div></section>
         <section className="rounded-lg border border-border bg-card p-4"><div className="flex items-center gap-2"><h3 className="text-sm font-semibold">Attestation</h3>{detail.attestations.length > 0 ? <Button asChild className="ml-auto" size="sm" variant="outline"><a href={attestationDownload}><Icon name="Download" />Download envelope</a></Button> : null}</div>{detail.attestations.length === 0 ? <p className="mt-3 text-sm text-muted-foreground">Unsigned: no attestation metadata is available.</p> : <div className="mt-3 space-y-2">{detail.attestations.map((attestation, index) => <div className="flex items-center gap-2 rounded-md border border-border bg-background p-3" key={`${attestation.subjectDigest}-${index}`}><Badge variant={attestation.verified ? "secondary" : "outline"}>{attestation.verified ? "Verified" : "Unverified"}</Badge><span className="text-xs">{attestation.format}</span><span className="min-w-0 truncate font-mono text-xs text-muted-foreground">{attestation.subjectDigest}</span></div>)}</div>}</section>
-        <VerdictCard />
+        <VerdictCard
+          digest={detail.firmwareDigest ?? undefined}
+          id={detail.projectVersionId ?? undefined}
+          projectId={projectId}
+        />
       </div>
     </article>
   );

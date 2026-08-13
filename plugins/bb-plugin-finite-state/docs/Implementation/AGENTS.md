@@ -78,7 +78,7 @@ Dependencies were frozen after WP-09 — `pnpm-lock.yaml` is 764KB, ordering-sen
 
 **There is no `fs_sync_push` tool and there will never be one.** bb has no per-tool approval mechanism — recon confirmed the registration contract has no `requiresApproval` field and bb's generic approval UI is not configurable per tool. So the human gate is **architectural, not a setting**: the capability simply does not exist in the agent's toolset.
 
-Agent write tools mutate **local YAML only**. Three tools are the enumerated exception and may invoke server-side actions — `fs_verification_run`, `fs_bench_run`, `fs_firmware_materialize` (byte modes). They are ACTION-ONLY: they invoke, they don't mutate the model. **Adding a fourth requires a human decision recorded in `AMENDMENTS.md`.**
+Agent write tools mutate **local YAML only**. Eight tools are the enumerated ACTION exceptions: `fs_verification_run`, `fs_bench_run`, `fs_firmware_materialize`, `fs_hw_extract`, `fs_build`, `fs_flash`, `fs_serial`, and `fs_probe`. The first three may invoke server-side work; the five AMD-0013 additions are local-subprocess/local-hardware only. None mutates the authored model, and `fs_flash` is destructive-gated. **Adding a ninth requires a human decision recorded in `AMENDMENTS.md`.**
 
 ---
 

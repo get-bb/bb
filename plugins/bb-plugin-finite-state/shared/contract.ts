@@ -9,7 +9,7 @@
 import { defineRpcContract } from "@bb/plugin-sdk";
 import { z } from "zod";
 
-export const CONTRACT_VERSION = 3 as const;
+export const CONTRACT_VERSION = 4 as const;
 
 export type JsonValue =
   | null
@@ -98,6 +98,26 @@ export const RPC_WIRE_METHODS = {
   "documents.search": "documentsSearch",
   "documents.metadata.update": "documentsMetadataUpdate",
   "documents.extractions.list": "documentsExtractionsList",
+  "hardware.projects.list": "hardwareProjectsList",
+  "hardware.symbols.list": "hardwareSymbolsList",
+  "hardware.nets.list": "hardwareNetsList",
+  "hardware.violations.list": "hardwareViolationsList",
+  "hardware.sheets.list": "hardwareSheetsList",
+  "hardware.part.get": "hardwarePartGet",
+  "hardware.artifacts.status": "hardwareArtifactsStatus",
+  "hardware.extract.start": "hardwareExtractStart",
+  "hardware.extract.status": "hardwareExtractStatus",
+  "grounding.sources.list": "groundingSourcesList",
+  "grounding.query": "groundingQuery",
+  "grounding.coverage.get": "groundingCoverageGet",
+  "authoring.citations.list": "authoringCitationsList",
+  "authoring.quarantine.list": "authoringQuarantineList",
+  "authoring.gate.status": "authoringGateStatus",
+  "benchDev.devices.list": "benchDevDevicesList",
+  "benchDev.device.claim": "benchDevDeviceClaim",
+  "benchDev.device.release": "benchDevDeviceRelease",
+  "benchDev.runs.list": "benchDevRunsList",
+  "benchDev.serial.session.get": "benchDevSerialSessionGet",
 } as const;
 
 export type LogicalRpcMethod = keyof typeof RPC_WIRE_METHODS;
@@ -172,6 +192,26 @@ export const RPC_METHOD_CLASSIFICATIONS = {
   documentsSearch: "read",
   documentsMetadataUpdate: "local-write",
   documentsExtractionsList: "read",
+  hardwareProjectsList: "read",
+  hardwareSymbolsList: "read",
+  hardwareNetsList: "read",
+  hardwareViolationsList: "read",
+  hardwareSheetsList: "read",
+  hardwarePartGet: "read",
+  hardwareArtifactsStatus: "read",
+  hardwareExtractStart: "action",
+  hardwareExtractStatus: "read",
+  groundingSourcesList: "read",
+  groundingQuery: "read",
+  groundingCoverageGet: "read",
+  authoringCitationsList: "read",
+  authoringQuarantineList: "read",
+  authoringGateStatus: "read",
+  benchDevDevicesList: "read",
+  benchDevDeviceClaim: "local-write",
+  benchDevDeviceRelease: "local-write",
+  benchDevRunsList: "read",
+  benchDevSerialSessionGet: "read",
 } as const satisfies Record<RpcMethod, RpcMethodClass>;
 
 export const HUMAN_ONLY_RPC_METHODS = [
@@ -975,6 +1015,356 @@ const verdictSchema = z
   })
   .strict();
 
+export const verificationMatrixColumnSchema = z.enum([
+  "static",
+  "emulation",
+  "hil",
+  "manual",
+  "hardware",
+]);
+
+const cursorPageRequestFields = {
+  pageSize: z.number().int().min(1).max(200).default(50),
+  cursor: z.string().min(1).max(4096).nullable().default(null),
+} as const;
+const cursorPagedScopedInput = (extra: z.ZodRawShape = {}) =>
+  z
+    .object({ ...projectScopeFields, ...cursorPageRequestFields, ...extra })
+    .strict();
+const cursorPageResultSchema = <Item extends z.ZodType>(
+  item: Item,
+  extra: z.ZodRawShape = {},
+) =>
+  z
+    .object({
+      items: z.array(item),
+      total: z.number().int().nonnegative(),
+      cursor: z.string().min(1).max(4096).nullable(),
+      ...extra,
+    })
+    .strict();
+
+const pointSchema = z
+  .object({
+    x: z.number().finite(),
+    y: z.number().finite(),
+    angle: z.number().finite().nullable(),
+  })
+  .strict();
+const hardwareProjectSchema = z
+  .object({
+    ...projectScopeFields,
+    projectKey: relativeArtifactSchema,
+    name: z.string().min(1).max(1000),
+    schPath: relativeArtifactSchema,
+    pcbPath: relativeArtifactSchema.nullable(),
+    schSha256: sha256Schema,
+    pcbSha256: sha256Schema.nullable(),
+    kicadVersion: z.string().max(100).nullable(),
+    discoveredAt: timestampSchema,
+  })
+  .strict();
+const hardwareSymbolSchema = z
+  .object({
+    ...projectScopeFields,
+    projectKey: relativeArtifactSchema,
+    reference: identifierSchema,
+    value: z.string().max(2000).nullable(),
+    footprint: z.string().max(2000).nullable(),
+    mpn: z.string().max(1000).nullable(),
+    manufacturer: z.string().max(1000).nullable(),
+    units: z
+      .array(
+        z
+          .object({
+            unit: z.number().int().positive(),
+            sheetPath: relativeArtifactSchema,
+            at: pointSchema,
+          })
+          .strict(),
+      )
+      .min(1),
+    nets: z.array(identifierSchema).max(2000),
+  })
+  .strict();
+const hardwareNetSchema = z
+  .object({
+    ...projectScopeFields,
+    projectKey: relativeArtifactSchema,
+    netName: identifierSchema,
+    nodes: z
+      .array(
+        z
+          .object({ reference: identifierSchema, pin: identifierSchema })
+          .strict(),
+      )
+      .max(10_000),
+  })
+  .strict();
+const hardwareViolationSchema = z
+  .object({
+    ...projectScopeFields,
+    id: z.number().int().nonnegative(),
+    projectKey: relativeArtifactSchema,
+    kind: z.enum(["drc", "erc"]),
+    severity: z.enum(["error", "warning", "exclusion"]),
+    rule: identifierSchema,
+    description: z.string().max(20_000).nullable(),
+    refs: z
+      .object({
+        references: z.array(identifierSchema).max(2000),
+        nets: z.array(identifierSchema).max(2000),
+      })
+      .strict(),
+    at: z
+      .object({ x: z.number().finite(), y: z.number().finite() })
+      .strict()
+      .nullable(),
+    runAt: timestampSchema,
+  })
+  .strict();
+const hardwareSheetSchema = z
+  .object({
+    ...projectScopeFields,
+    projectKey: relativeArtifactSchema,
+    sheetPath: relativeArtifactSchema,
+    name: z.string().min(1).max(1000),
+    parentSheetPath: relativeArtifactSchema.nullable(),
+    breadcrumbs: z
+      .array(
+        z
+          .object({
+            sheetPath: relativeArtifactSchema,
+            name: z.string().min(1).max(1000),
+          })
+          .strict(),
+      )
+      .max(100),
+    widthMm: z.number().positive().nullable(),
+    heightMm: z.number().positive().nullable(),
+    symbolCount: z.number().int().nonnegative(),
+  })
+  .strict();
+const hardwarePartSchema = hardwareSymbolSchema.extend({
+  hbom: z
+    .object({
+      partKey: identifierSchema,
+      confidence: z.number().min(0).max(1),
+    })
+    .strict()
+    .nullable(),
+  openCveCount: z.number().int().nonnegative().nullable(),
+});
+const hardwareArtifactKindSchema = z.enum([
+  "sheet_svg",
+  "board_svg",
+  "glb",
+  "bom",
+  "netlist",
+  "gerber",
+  "drill",
+  "drc",
+  "erc",
+]);
+const hardwareArtifactStatusSchema = z
+  .object({
+    projectKey: relativeArtifactSchema,
+    kind: hardwareArtifactKindSchema,
+    sheetPath: relativeArtifactSchema.nullable(),
+    path: relativeArtifactSchema,
+    sourceSha256: sha256Schema,
+    cliVersion: z.string().max(100).nullable(),
+    generatedAt: timestampSchema,
+    fresh: z.boolean(),
+  })
+  .strict();
+const kicadCapabilitySchema = z
+  .object({
+    installed: z.boolean(),
+    cliPath: z.string().max(4096).nullable(),
+    version: z.string().max(100).nullable(),
+    supported: z.boolean(),
+  })
+  .strict();
+const hardwareExtractJobSchema = z
+  .object({
+    ...projectScopeFields,
+    jobId: identifierSchema,
+    projectKey: relativeArtifactSchema,
+    state: z.enum(["queued", "running", "completed", "failed", "cancelled"]),
+    produced: z.array(hardwareArtifactStatusSchema),
+    failures: z.array(
+      z
+        .object({
+          kind: hardwareArtifactKindSchema,
+          exitCode: z.number().int().nullable(),
+          message: safeDetailSchema,
+        })
+        .strict(),
+    ),
+    startedAt: timestampSchema.nullable(),
+    finishedAt: timestampSchema.nullable(),
+  })
+  .strict();
+
+const groundSourceKindSchema = z.enum([
+  "reference_manual",
+  "datasheet",
+  "svd",
+  "errata",
+  "appnote",
+  "sdk",
+  "re_corpus",
+]);
+const groundChunkKindSchema = z.enum([
+  "prose",
+  "register_table",
+  "pin_table",
+  "timing",
+  "figure",
+]);
+const groundSourceSchema = z
+  .object({
+    ...projectScopeFields,
+    sourceId: sha256Schema,
+    projectKey: relativeArtifactSchema.nullable(),
+    kind: groundSourceKindSchema,
+    part: z.string().max(1000).nullable(),
+    title: z.string().max(2000).nullable(),
+    path: relativeArtifactSchema,
+    pages: z.number().int().nonnegative().nullable(),
+    indexedAt: timestampSchema.nullable(),
+    status: z.enum(["pending", "indexing", "ready", "failed"]),
+    license: z.string().max(500).nullable(),
+    redistributable: z.boolean(),
+    citationCount: z.number().int().nonnegative(),
+    message: safeDetailSchema.nullable(),
+  })
+  .strict();
+const groundingCoverageSchema = z
+  .object({
+    catalogPresent: z.boolean(),
+    flavour: z.enum(["redistributable", "full"]).nullable(),
+    sources: z.number().int().nonnegative(),
+    readySources: z.number().int().nonnegative(),
+    redistributableSources: z.number().int().nonnegative(),
+    licenses: z.record(z.string(), z.number().int().nonnegative()),
+  })
+  .strict();
+const groundingHitSchema = z.discriminatedUnion("plane", [
+  z
+    .object({
+      plane: z.literal("catalog"),
+      confidence: z.literal(1),
+      sourceFile: relativeArtifactSchema,
+      device: z.string().max(1000),
+      peripheral: z.string().max(1000).nullable(),
+      register: z.string().max(1000).nullable(),
+      field: z.string().max(1000).nullable(),
+      value: jsonValueSchema,
+    })
+    .strict(),
+  z
+    .object({
+      plane: z.literal("document"),
+      confidence: z.number().min(0).max(1),
+      sourceId: sha256Schema,
+      documentName: z.string().min(1).max(1000),
+      page: z.number().int().positive().nullable(),
+      anchor: z.string().max(1000).nullable(),
+      kind: groundChunkKindSchema,
+      snippet: z.string().max(4000),
+    })
+    .strict(),
+]);
+
+const citationFileSummarySchema = z
+  .object({
+    ...projectScopeFields,
+    file: relativeArtifactSchema,
+    cited: z.number().int().nonnegative(),
+    inferred: z.number().int().nonnegative(),
+    quarantined: z.number().int().nonnegative(),
+    stale: z.number().int().nonnegative(),
+    coverage: z.number().min(0).max(1),
+    contentSha256: sha256Schema,
+  })
+  .strict();
+const quarantineItemSchema = z
+  .object({
+    ...projectScopeFields,
+    id: identifierSchema,
+    file: relativeArtifactSchema,
+    symbol: identifierSchema,
+    value: jsonValueSchema,
+    note: z.string().max(4000).nullable(),
+    status: z.enum(["quarantined", "accepted", "rejected"]),
+    contentSha256: sha256Schema,
+  })
+  .strict();
+const authoringGateStatusSchema = z
+  .object({
+    ...projectScopeFields,
+    configured: z.boolean(),
+    configSha256: sha256Schema.nullable(),
+    trigger: z.enum(["pre_pr", "post_merge"]).nullable(),
+    state: z.enum(["not_run", "running", "passed", "failed", "failed_unconfigured"]),
+    ranAt: timestampSchema.nullable(),
+    failures: z.array(safeDetailSchema).max(200),
+  })
+  .strict();
+
+const benchDeviceSchema = z
+  .object({
+    ...projectScopeFields,
+    deviceId: identifierSchema,
+    kind: z.enum(["probe", "logic", "power", "scope", "serial"]),
+    make: z.string().max(1000).nullable(),
+    model: z.string().max(1000).nullable(),
+    connection: z.string().max(2000),
+    transport: z.enum(["local-usb", "local-net", "bb-host"]),
+    claimedBy: identifierSchema.nullable(),
+    claimedAt: timestampSchema.nullable(),
+    claimScope: z.enum(["machine", "fleet"]),
+    lastSeen: timestampSchema,
+    stale: z.boolean(),
+  })
+  .strict();
+const benchDeviceClaimSchema = z
+  .object({
+    ...projectScopeFields,
+    device: benchDeviceSchema,
+    outcome: z.enum(["claimed", "released", "already_free"]),
+  })
+  .strict();
+const benchDevelopmentRunSchema = z
+  .object({
+    ...projectScopeFields,
+    runId: identifierSchema,
+    kind: z.enum(["build", "flash", "probe"]),
+    status: z.enum(["queued", "running", "succeeded", "failed", "cancelled"]),
+    target: z.string().max(2000).nullable(),
+    artifact: relativeArtifactSchema.nullable(),
+    digest: sha256Schema.nullable(),
+    startedAt: timestampSchema,
+    finishedAt: timestampSchema.nullable(),
+  })
+  .strict();
+const serialSessionSchema = z
+  .object({
+    ...projectScopeFields,
+    sessionId: identifierSchema,
+    deviceId: identifierSchema,
+    state: z.enum(["connected", "reconnecting", "closed", "unconfigured"]),
+    baud: z.number().int().positive(),
+    latestCursor: z.number().int().nonnegative(),
+    droppedLines: z.number().int().nonnegative(),
+    openedAt: timestampSchema,
+    closedAt: timestampSchema.nullable(),
+    message: safeDetailSchema.nullable(),
+  })
+  .strict();
+
 const planFenceInputFields = {
   planId: identifierSchema,
   expectedPlanSha256: sha256Schema,
@@ -1264,7 +1654,7 @@ export const rpcContract = defineRpcContract({
       .object({
         ...projectScopeFields,
         requirementId: identifierSchema,
-        tier: identifierSchema.optional(),
+        tier: verificationMatrixColumnSchema.optional(),
         checkId: identifierSchema.optional(),
         parameters: fieldsSchema.default({}),
       })
@@ -1565,6 +1955,181 @@ export const rpcContract = defineRpcContract({
   documentsExtractionsList: {
     input: pagedScopedInput({ documentId: identifierSchema }),
     output: pageResultSchema(entitySummarySchema),
+  },
+
+  hardwareProjectsList: {
+    input: cursorPagedScopedInput({ query: z.string().trim().max(1000).optional() }),
+    output: cursorPageResultSchema(hardwareProjectSchema),
+  },
+  hardwareSymbolsList: {
+    input: cursorPagedScopedInput({
+      projectKey: relativeArtifactSchema,
+      query: z.string().trim().max(1000).optional(),
+      sheetPath: relativeArtifactSchema.optional(),
+      netName: identifierSchema.optional(),
+    }),
+    output: cursorPageResultSchema(hardwareSymbolSchema),
+  },
+  hardwareNetsList: {
+    input: cursorPagedScopedInput({
+      projectKey: relativeArtifactSchema,
+      query: z.string().trim().max(1000).optional(),
+      reference: identifierSchema.optional(),
+    }),
+    output: cursorPageResultSchema(hardwareNetSchema),
+  },
+  hardwareViolationsList: {
+    input: cursorPagedScopedInput({
+      projectKey: relativeArtifactSchema,
+      kind: z.enum(["drc", "erc"]).optional(),
+      severities: z
+        .array(z.enum(["error", "warning", "exclusion"]))
+        .max(3)
+        .optional(),
+    }),
+    output: cursorPageResultSchema(hardwareViolationSchema),
+  },
+  hardwareSheetsList: {
+    input: cursorPagedScopedInput({ projectKey: relativeArtifactSchema }),
+    output: cursorPageResultSchema(hardwareSheetSchema),
+  },
+  hardwarePartGet: {
+    input: z
+      .object({
+        ...projectScopeFields,
+        projectKey: relativeArtifactSchema,
+        reference: identifierSchema,
+      })
+      .strict(),
+    output: hardwarePartSchema,
+  },
+  hardwareArtifactsStatus: {
+    input: z
+      .object({ ...projectScopeFields, projectKey: relativeArtifactSchema })
+      .strict(),
+    output: z
+      .object({
+        ...projectScopeFields,
+        projectKey: relativeArtifactSchema,
+        capability: kicadCapabilitySchema,
+        artifacts: z.array(hardwareArtifactStatusSchema),
+      })
+      .strict(),
+  },
+  hardwareExtractStart: {
+    input: z
+      .object({
+        ...projectScopeFields,
+        projectKey: relativeArtifactSchema,
+        kinds: z.array(hardwareArtifactKindSchema).max(9).optional(),
+        force: z.boolean().default(false),
+      })
+      .strict(),
+    output: hardwareExtractJobSchema,
+  },
+  hardwareExtractStatus: {
+    input: z
+      .object({ ...projectScopeFields, jobId: identifierSchema })
+      .strict(),
+    output: hardwareExtractJobSchema,
+  },
+
+  groundingSourcesList: {
+    input: cursorPagedScopedInput({
+      projectKey: relativeArtifactSchema.optional(),
+      kinds: z.array(groundSourceKindSchema).max(7).optional(),
+      statuses: z
+        .array(z.enum(["pending", "indexing", "ready", "failed"]))
+        .max(4)
+        .optional(),
+      redistributable: z.boolean().optional(),
+    }),
+    output: cursorPageResultSchema(groundSourceSchema),
+  },
+  groundingQuery: {
+    input: cursorPagedScopedInput({
+      text: z.string().trim().max(2000).optional(),
+      device: z.string().trim().max(1000).optional(),
+      peripheral: z.string().trim().max(1000).optional(),
+      register: z.string().trim().max(1000).optional(),
+      field: z.string().trim().max(1000).optional(),
+    }),
+    output: cursorPageResultSchema(groundingHitSchema, {
+      coverage: groundingCoverageSchema,
+    }),
+  },
+  groundingCoverageGet: {
+    input: projectScopeSchema,
+    output: groundingCoverageSchema,
+  },
+
+  authoringCitationsList: {
+    input: cursorPagedScopedInput({
+      query: z.string().trim().max(1000).optional(),
+    }),
+    output: cursorPageResultSchema(citationFileSummarySchema),
+  },
+  authoringQuarantineList: {
+    input: cursorPagedScopedInput({
+      file: relativeArtifactSchema.optional(),
+      statuses: z
+        .array(z.enum(["quarantined", "accepted", "rejected"]))
+        .max(3)
+        .optional(),
+    }),
+    output: cursorPageResultSchema(quarantineItemSchema),
+  },
+  authoringGateStatus: {
+    input: projectScopeSchema,
+    output: authoringGateStatusSchema,
+  },
+
+  benchDevDevicesList: {
+    input: cursorPagedScopedInput({
+      kinds: z
+        .array(z.enum(["probe", "logic", "power", "scope", "serial"]))
+        .max(5)
+        .optional(),
+      includeStale: z.boolean().default(true),
+    }),
+    output: cursorPageResultSchema(benchDeviceSchema),
+  },
+  benchDevDeviceClaim: {
+    input: z
+      .object({
+        ...projectScopeFields,
+        deviceId: identifierSchema,
+        holder: identifierSchema,
+        claimScope: z.enum(["machine", "fleet"]).default("machine"),
+      })
+      .strict(),
+    output: benchDeviceClaimSchema,
+  },
+  benchDevDeviceRelease: {
+    input: z
+      .object({
+        ...projectScopeFields,
+        deviceId: identifierSchema,
+        holder: identifierSchema,
+      })
+      .strict(),
+    output: benchDeviceClaimSchema,
+  },
+  benchDevRunsList: {
+    input: cursorPagedScopedInput({
+      kinds: z.array(z.enum(["build", "flash", "probe"])).max(3).optional(),
+      statuses: z
+        .array(z.enum(["queued", "running", "succeeded", "failed", "cancelled"]))
+        .max(5)
+        .optional(),
+    }),
+    output: cursorPageResultSchema(benchDevelopmentRunSchema),
+  },
+  benchDevSerialSessionGet: {
+    input: z
+      .object({ ...projectScopeFields, sessionId: identifierSchema })
+      .strict(),
+    output: serialSessionSchema,
   },
 } as const);
 

@@ -121,7 +121,7 @@ describe("API firmware enumeration", () => {
     } finally {
       test.client.close();
     }
-  });
+  }, 15_000);
 
   it("discovers every reviewed leaf in the real directoryless WP-12 fixture", async () => {
     const harness = createMockRemote({

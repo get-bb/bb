@@ -14,8 +14,19 @@ export interface SignedEvidenceCandidate {
   signature: string;
 }
 
+export interface VerifiedEvidencePredicate {
+  requirementIds: readonly string[];
+  checkIds: readonly string[];
+  resultRefs: readonly string[];
+  signerIdentity?: string;
+}
+
 export interface EvidenceVerifier {
-  verify(candidate: SignedEvidenceCandidate, signal: AbortSignal): Promise<boolean>;
+  /** Verifies the signature and returns coverage parsed from the signed predicate. */
+  verify(
+    candidate: SignedEvidenceCandidate,
+    signal: AbortSignal,
+  ): Promise<VerifiedEvidencePredicate | null>;
 }
 
 export interface ForgeEvidenceDeps {
@@ -127,14 +138,22 @@ export async function forgeEvidenceCheckpoint(
   const candidate = input.jobs.map(signedEvidence).find((value) => value !== null) ?? null;
   let attestation: BenchAttestationInput | undefined;
   if (candidate) {
-    const signatureVerified = deps.verifier
+    const verifiedPredicate = deps.verifier
       ? await deps.verifier.verify(candidate, signal)
-      : false;
+      : null;
     attestation = {
       format: candidate.format,
       subjectDigest: candidate.subjectDigest,
       payload: candidate.payload,
-      verified: signatureVerified,
+      verified: verifiedPredicate !== null,
+      ...(verifiedPredicate ? {
+        requirementIds: verifiedPredicate.requirementIds,
+        checkIds: verifiedPredicate.checkIds,
+        resultRefs: verifiedPredicate.resultRefs,
+        ...(verifiedPredicate.signerIdentity
+          ? { signerIdentity: verifiedPredicate.signerIdentity }
+          : {}),
+      } : {}),
     };
   }
   const terminalStatus = input.jobs.some((job) => job.status === "TIMEOUT")

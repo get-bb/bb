@@ -25,6 +25,14 @@ const SHA_B = "b".repeat(64);
 const CAPABILITY = `fs-human-approval-v1.${"x".repeat(48)}`;
 
 const EXPECTED_LOGICAL_METHODS = [
+  "authoring.citations.list",
+  "authoring.gate.status",
+  "authoring.quarantine.list",
+  "benchDev.device.claim",
+  "benchDev.device.release",
+  "benchDev.devices.list",
+  "benchDev.runs.list",
+  "benchDev.serial.session.get",
   "bench.hosts.joinCode",
   "bench.hosts.list",
   "bench.logs.list",
@@ -60,6 +68,18 @@ const EXPECTED_LOGICAL_METHODS = [
   "firmware.mount.get",
   "firmware.mounts.list",
   "firmware.tree.list",
+  "grounding.coverage.get",
+  "grounding.query",
+  "grounding.sources.list",
+  "hardware.artifacts.status",
+  "hardware.extract.start",
+  "hardware.extract.status",
+  "hardware.nets.list",
+  "hardware.part.get",
+  "hardware.projects.list",
+  "hardware.sheets.list",
+  "hardware.symbols.list",
+  "hardware.violations.list",
   "hbom.extraction.apply",
   "hbom.review.list",
   "hbom.review.resolve",
@@ -92,6 +112,33 @@ const EXPECTED_LOGICAL_METHODS = [
   "verifications.run.start",
   "workspace.summary",
 ] as const;
+
+const AMD_0011_CURSOR_PAGED_METHODS = new Set([
+  "hardwareProjectsList",
+  "hardwareSymbolsList",
+  "hardwareNetsList",
+  "hardwareViolationsList",
+  "hardwareSheetsList",
+  "groundingSourcesList",
+  "groundingQuery",
+  "authoringCitationsList",
+  "authoringQuarantineList",
+  "benchDevDevicesList",
+  "benchDevRunsList",
+]);
+
+const PROJECT_KEY_DOMAIN_METHODS = new Set([
+  // Owner-ratified AMD-0011 exception: this is the project-relative KiCad
+  // artifact key, not an alias for projectId/projectVersionId scope.
+  "hardwareSymbolsList",
+  "hardwareNetsList",
+  "hardwareViolationsList",
+  "hardwareSheetsList",
+  "hardwarePartGet",
+  "hardwareArtifactsStatus",
+  "hardwareExtractStart",
+  "groundingSourcesList",
+]);
 
 const UN_SCOPED_METHODS = new Set([
   "connectionsStatus",
@@ -131,15 +178,15 @@ function objectField(
 }
 
 describe("rpc-contract-freeze", () => {
-  it("exports version three and all 66 bijective logical-to-wire names", () => {
-    expect(CONTRACT_VERSION).toBe(3);
+  it("exports version four and all 86 bijective logical-to-wire names", () => {
+    expect(CONTRACT_VERSION).toBe(4);
     expect(Object.keys(RPC_WIRE_METHODS).sort()).toEqual(
       [...EXPECTED_LOGICAL_METHODS].sort(),
     );
-    expect(Object.keys(RPC_WIRE_METHODS)).toHaveLength(66);
+    expect(Object.keys(RPC_WIRE_METHODS)).toHaveLength(86);
 
     const wireNames = Object.values(RPC_WIRE_METHODS);
-    expect(new Set(wireNames).size).toBe(66);
+    expect(new Set(wireNames).size).toBe(86);
     expect(Object.keys(rpcContract).sort()).toEqual([...wireNames].sort());
     for (const [logicalName, wireName] of Object.entries(RPC_WIRE_METHODS)) {
       expect(wireName).toBe(lowerCamelWireName(logicalName));
@@ -344,6 +391,12 @@ describe("rpc-contract-freeze", () => {
         ).toBe(false);
         const keys = Object.keys(input.shape);
         for (const forbiddenField of forbiddenFields) {
+          if (
+            forbiddenField === "projectKey" &&
+            PROJECT_KEY_DOMAIN_METHODS.has(method)
+          ) {
+            continue;
+          }
           expect(keys, `${method} exposes ${forbiddenField}`).not.toContain(
             forbiddenField,
           );
@@ -365,6 +418,25 @@ describe("rpc-contract-freeze", () => {
     for (const [method, contract] of Object.entries(rpcContract)) {
       for (const input of objectVariants(contract.input)) {
         const inputKeys = Object.keys(input.shape);
+        if (AMD_0011_CURSOR_PAGED_METHODS.has(method)) {
+          pagedMethods += 1;
+          expect(inputKeys).toContain("pageSize");
+          expect(inputKeys).toContain("cursor");
+          expect(inputKeys).not.toContain("continuation");
+          expect(inputKeys).not.toContain("offset");
+          expect(inputKeys).not.toContain("limit");
+          expect(contract.output).toBeInstanceOf(z.ZodObject);
+          if (contract.output instanceof z.ZodObject) {
+            const outputKeys = Object.keys(contract.output.shape);
+            expect(outputKeys).toContain("items");
+            expect(outputKeys).toContain("total");
+            expect(outputKeys).toContain("cursor");
+            expect(outputKeys).not.toContain("next");
+            expect(objectField(contract.output, "total")?.safeParse(null).success).toBe(false);
+            expect(objectField(contract.output, "cursor")?.safeParse(null).success).toBe(true);
+          }
+          continue;
+        }
         expect(inputKeys, `${method} leaks cursor`).not.toContain("cursor");
         expect(inputKeys, `${method} leaks offset`).not.toContain("offset");
         expect(inputKeys, `${method} leaks limit`).not.toContain("limit");
@@ -394,6 +466,27 @@ describe("rpc-contract-freeze", () => {
       }
     }
     expect(pagedMethods).toBeGreaterThan(15);
+  });
+
+  it("keeps every AMD-0011 list method on the items-total-cursor shape", () => {
+    const listMethods = Object.entries(RPC_WIRE_METHODS)
+      .filter(([logical]) =>
+        /^(?:hardware|grounding|authoring|benchDev)\..*\.list$/u.test(logical))
+      .map(([, wire]) => wire);
+    expect(listMethods.sort()).toEqual(
+      [...AMD_0011_CURSOR_PAGED_METHODS]
+        .filter((method) => method !== "groundingQuery")
+        .sort(),
+    );
+    for (const method of listMethods) {
+      const contract = rpcContract[method];
+      expect(contract.output).toBeInstanceOf(z.ZodObject);
+      if (contract.output instanceof z.ZodObject) {
+        expect(Object.keys(contract.output.shape)).toEqual(
+          expect.arrayContaining(["items", "total", "cursor"]),
+        );
+      }
+    }
   });
 
   it("carries generation, revision, base-state, per-item, and plan fences", () => {

@@ -32,10 +32,15 @@ bb finite-state firmware pull <pv-id> --source api [--scan <scan-id>]
 bb finite-state firmware status <pv-id> [--json]
 bb finite-state firmware hydrate <pv-id> <path>...
 bb finite-state firmware diff <from-pv-id> <to-pv-id> [--cursor <cursor>] [--json]
+bb finite-state bench verdict <pv-id> [--digest <sha256>] [--json]
 ```
 
 The local image is primary. API pull is a metadata fallback, hydration is
-explicitly per-file, and diff reads cached manifest sidecars offline.
+explicitly per-file, and diff reads cached manifest sidecars offline. The
+bench verdict evaluates the full cached requirement matrix. Omit `--digest`
+for the currently mounted firmware; an explicit digest remains visibly
+historical when it differs from the mounted bytes. Exit status is `0` only
+for Safe to OTA, `1` for Not safe to OTA, and `2` for Inconclusive.
 
 The builtin Custom instructions plugin adds a multiline editor under Settings
 → Custom instructions. Saved text is persisted on this bb host and included in

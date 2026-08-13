@@ -3,7 +3,7 @@
 // APPEND-ONLY after first release: never reorder/edit a shipped statement.
 // This is shared data.db only. WP-47 owns every manifest.sqlite statement.
 
-export const SCHEMA_VERSION = 1 as const;
+export const SCHEMA_VERSION = 2 as const;
 
 export const SCHEMA_TABLES = [
   "pull_generation",
@@ -35,6 +35,16 @@ export const SCHEMA_TABLES = [
   "firmware_mounts",
   "document",
   "document_extraction",
+  "hw_project",
+  "hw_artifact",
+  "hw_symbol",
+  "hw_net",
+  "hw_violation",
+  "ground_source",
+  "ground_chunk",
+  "bench_device",
+  "probe_run",
+  "build_run",
 ] as const;
 
 export const SCHEMA_INDEXES = [
@@ -86,6 +96,9 @@ export const SCHEMA_INDEXES = [
   "ix_document_extraction_source",
   "ix_document_extraction_target",
   "ix_document_extraction_search",
+  "ix_hw_symbol_ref",
+  "ix_hw_symbol_mpn",
+  "ix_chunk_source",
 ] as const;
 
 export const SCHEMA_VIEWS = ["hbom_docs"] as const;
@@ -100,6 +113,16 @@ export const CACHE_STORAGE_NAMES = [
   "firmware_mounts",
   "document",
   "hbom_docs",
+  "hw_project",
+  "hw_artifact",
+  "hw_symbol",
+  "hw_net",
+  "hw_violation",
+  "ground_source",
+  "ground_chunk",
+  "bench_device",
+  "probe_run",
+  "build_run",
 ] as const;
 
 export type CacheStorageName = (typeof CACHE_STORAGE_NAMES)[number];
@@ -827,4 +850,237 @@ export const MIGRATIONS: string[] = [
             analyzed_by, analyzed_at, cells_extracted, indexed_at
        FROM document
       WHERE doc_kind IN ('datasheet','bom','schematic')`,
+
+  // ── AMD-0010: hardware and grounding caches ──────────────────────────────
+  `CREATE TABLE hw_project (
+     project_id         TEXT NOT NULL,
+     project_version_id TEXT NOT NULL,
+     project_key        TEXT NOT NULL,
+     name               TEXT NOT NULL,
+     sch_path           TEXT NOT NULL,
+     pcb_path           TEXT,
+     sch_hash           TEXT NOT NULL,
+     pcb_hash           TEXT,
+     kicad_version      TEXT,
+     discovered_at      TEXT NOT NULL,
+     PRIMARY KEY (project_id, project_version_id, project_key)
+   )`,
+  `CREATE TABLE hw_artifact (
+     project_id         TEXT NOT NULL,
+     project_version_id TEXT NOT NULL,
+     project_key        TEXT NOT NULL,
+     kind               TEXT NOT NULL CHECK (kind IN ('sheet_svg','board_svg','glb','bom','netlist','gerber','drill','drc','erc')),
+     sheet_path         TEXT,
+     path               TEXT NOT NULL,
+     source_hash        TEXT NOT NULL,
+     cli_version        TEXT,
+     generated_at       TEXT NOT NULL,
+     PRIMARY KEY (project_id, project_version_id, project_key, kind, sheet_path),
+     FOREIGN KEY (project_id, project_version_id, project_key)
+       REFERENCES hw_project(project_id, project_version_id, project_key) ON DELETE CASCADE
+   )`,
+  `CREATE TABLE hw_symbol (
+     project_id         TEXT NOT NULL,
+     project_version_id TEXT NOT NULL,
+     project_key        TEXT NOT NULL,
+     sheet_path         TEXT NOT NULL,
+     reference          TEXT NOT NULL,
+     value              TEXT,
+     footprint          TEXT,
+     mpn                TEXT,
+     manufacturer       TEXT,
+     at_x               REAL NOT NULL,
+     at_y               REAL NOT NULL,
+     angle              REAL,
+     unit               INTEGER,
+     fields             TEXT,
+     PRIMARY KEY (project_id, project_version_id, project_key, sheet_path, reference, unit),
+     FOREIGN KEY (project_id, project_version_id, project_key)
+       REFERENCES hw_project(project_id, project_version_id, project_key) ON DELETE CASCADE
+   )`,
+  `CREATE INDEX IF NOT EXISTS ix_hw_symbol_ref ON hw_symbol (project_id, project_version_id, reference, project_key, sheet_path, unit)`,
+  `CREATE INDEX IF NOT EXISTS ix_hw_symbol_mpn ON hw_symbol (project_id, project_version_id, mpn, project_key, sheet_path, reference, unit)`,
+  `CREATE TABLE hw_net (
+     project_id         TEXT NOT NULL,
+     project_version_id TEXT NOT NULL,
+     project_key        TEXT NOT NULL,
+     net_name           TEXT NOT NULL,
+     nodes              TEXT NOT NULL,
+     PRIMARY KEY (project_id, project_version_id, project_key, net_name),
+     FOREIGN KEY (project_id, project_version_id, project_key)
+       REFERENCES hw_project(project_id, project_version_id, project_key) ON DELETE CASCADE
+   )`,
+  `CREATE TABLE hw_violation (
+     project_id         TEXT NOT NULL,
+     project_version_id TEXT NOT NULL,
+     id                 INTEGER NOT NULL,
+     project_key        TEXT NOT NULL,
+     kind               TEXT NOT NULL CHECK (kind IN ('drc','erc')),
+     severity           TEXT NOT NULL CHECK (severity IN ('error','warning','exclusion')),
+     rule               TEXT NOT NULL,
+     description        TEXT,
+     refs               TEXT,
+     at_x               REAL,
+     at_y               REAL,
+     run_at             TEXT NOT NULL,
+     PRIMARY KEY (project_id, project_version_id, id),
+     FOREIGN KEY (project_id, project_version_id, project_key)
+       REFERENCES hw_project(project_id, project_version_id, project_key) ON DELETE CASCADE
+   )`,
+  `CREATE TABLE ground_source (
+     project_id         TEXT NOT NULL,
+     project_version_id TEXT NOT NULL,
+     source_id          TEXT NOT NULL,
+     project_key        TEXT,
+     kind               TEXT NOT NULL CHECK (kind IN ('reference_manual','datasheet','svd','errata','appnote','sdk','re_corpus')),
+     part               TEXT,
+     title              TEXT,
+     path               TEXT NOT NULL,
+     pages              INTEGER,
+     indexed_at         TEXT,
+     status             TEXT NOT NULL CHECK (status IN ('pending','indexing','ready','failed')),
+     license            TEXT,
+     redistributable    INTEGER NOT NULL DEFAULT 0 CHECK (redistributable IN (0,1)),
+     PRIMARY KEY (project_id, project_version_id, source_id)
+   )`,
+  `CREATE TABLE ground_chunk (
+     project_id         TEXT NOT NULL,
+     project_version_id TEXT NOT NULL,
+     chunk_id           TEXT NOT NULL,
+     source_id          TEXT NOT NULL,
+     page               INTEGER,
+     kind               TEXT NOT NULL CHECK (kind IN ('prose','register_table','pin_table','timing','figure')),
+     anchor             TEXT,
+     text               TEXT NOT NULL,
+     embedding          BLOB,
+     PRIMARY KEY (project_id, project_version_id, chunk_id),
+     FOREIGN KEY (project_id, project_version_id, source_id)
+       REFERENCES ground_source(project_id, project_version_id, source_id) ON DELETE CASCADE
+   )`,
+  `CREATE INDEX IF NOT EXISTS ix_chunk_source ON ground_chunk (project_id, project_version_id, source_id, kind, chunk_id)`,
+  `CREATE TABLE bench_device (
+     project_id         TEXT NOT NULL,
+     project_version_id TEXT NOT NULL,
+     device_id          TEXT NOT NULL,
+     kind               TEXT NOT NULL CHECK (kind IN ('probe','logic','power','scope','serial')),
+     make               TEXT,
+     model              TEXT,
+     connection         TEXT,
+     transport          TEXT NOT NULL CHECK (transport IN ('local-usb','local-net','bb-host')),
+     claimed_by         TEXT,
+     claimed_at         TEXT,
+     claim_scope        TEXT NOT NULL CHECK (claim_scope IN ('machine','fleet')),
+     last_seen          TEXT NOT NULL,
+     PRIMARY KEY (project_id, project_version_id, device_id)
+   )`,
+  `CREATE TABLE probe_run (
+     project_id         TEXT NOT NULL,
+     project_version_id TEXT NOT NULL,
+     run_id             TEXT NOT NULL,
+     script_path        TEXT NOT NULL,
+     devices            TEXT NOT NULL,
+     hypothesis         TEXT,
+     outcome            TEXT CHECK (outcome IS NULL OR outcome IN ('confirmed','refuted','inconclusive')),
+     artifacts          TEXT,
+     started_at         TEXT NOT NULL,
+     finished_at        TEXT,
+     PRIMARY KEY (project_id, project_version_id, run_id)
+   )`,
+  `CREATE TABLE build_run (
+     project_id         TEXT NOT NULL,
+     project_version_id TEXT NOT NULL,
+     run_id             TEXT NOT NULL,
+     kind               TEXT NOT NULL CHECK (kind IN ('build','flash')),
+     target             TEXT,
+     toolchain          TEXT,
+     status             TEXT NOT NULL,
+     artifact           TEXT,
+     digest             TEXT,
+     log_path           TEXT,
+     started_at         TEXT NOT NULL,
+     PRIMARY KEY (project_id, project_version_id, run_id)
+   )`,
+
+  // The following statements are intentionally positional and transactional.
+  // Deferral preserves artifact/attestation FKs while their parent tables swap.
+  `PRAGMA defer_foreign_keys = ON`,
+  `CREATE TEMP TABLE verification_artifacts_amd0010_backup AS SELECT * FROM verification_artifacts`,
+  `CREATE TEMP TABLE attestations_amd0010_backup AS SELECT * FROM attestations`,
+  `CREATE TABLE verification_runs_v2 (
+     project_id       TEXT NOT NULL,
+     project_version_id TEXT NOT NULL,
+     generation_id    TEXT NOT NULL,
+     run_id           TEXT NOT NULL,
+     tier             TEXT NOT NULL CHECK (tier IN ('tier0','tier1','tier2','tier3','tier4')),
+     matrix_col       TEXT NOT NULL CHECK (matrix_col IN ('static','emulation','hil','manual','hardware')),
+     kind             TEXT NOT NULL,
+     trigger          TEXT,
+     host_id          TEXT,
+     thread_id        TEXT,
+     target           TEXT,
+     config           TEXT,
+     status           TEXT NOT NULL CHECK (status IN ('queued','running','completed','failed','timeout')),
+     started_at       TEXT,
+     finished_at      TEXT,
+     duration_ms      INTEGER,
+     firmware_digest  TEXT,
+     job_id           TEXT,
+     log_locator      TEXT,
+     log_cursor       TEXT,
+     raw              TEXT NOT NULL,
+     synced_at        TEXT NOT NULL,
+     PRIMARY KEY (project_id, project_version_id, generation_id, run_id),
+     FOREIGN KEY (project_id, project_version_id, generation_id)
+       REFERENCES pull_generation(project_id, project_version_id, generation_id) ON DELETE CASCADE
+   )`,
+  `INSERT INTO verification_runs_v2 SELECT * FROM verification_runs`,
+  `CREATE TABLE verification_results_v2 (
+     project_id               TEXT NOT NULL,
+     project_version_id       TEXT NOT NULL,
+     generation_id            TEXT NOT NULL,
+     result_id                TEXT NOT NULL,
+     run_id                   TEXT,
+     requirement_key          TEXT,
+     check_id                 TEXT,
+     tier                     TEXT NOT NULL CHECK (tier IN ('static','emulation','hil','manual','hardware')),
+     status                   TEXT NOT NULL CHECK (status IN ('verified','failed','error','inconclusive','running','pending','skipped')),
+     outcome                  TEXT,
+     confidence               TEXT,
+     evidence_summary         TEXT,
+     result_data              TEXT,
+     measured                 TEXT,
+     executed_at              TEXT,
+     executed_by              TEXT,
+     failure_reason           TEXT,
+     remediation_suggestion   TEXT,
+     fs_version_id            TEXT,
+     fs_version_name          TEXT,
+     is_latest                INTEGER NOT NULL DEFAULT 0 CHECK (is_latest IN (0,1)),
+     superseded_by            TEXT,
+     sla_status               TEXT,
+     mapping_state            TEXT NOT NULL DEFAULT 'mapped' CHECK (mapping_state IN ('mapped','unmapped')),
+     raw                      TEXT NOT NULL,
+     pulled_at                TEXT NOT NULL,
+     PRIMARY KEY (project_id, project_version_id, generation_id, result_id),
+     FOREIGN KEY (project_id, project_version_id, generation_id, run_id)
+       REFERENCES verification_runs(project_id, project_version_id, generation_id, run_id),
+     FOREIGN KEY (project_id, project_version_id, generation_id, check_id)
+       REFERENCES verification_checks(project_id, project_version_id, generation_id, check_id)
+   )`,
+  `INSERT INTO verification_results_v2 SELECT * FROM verification_results`,
+  `DROP TABLE verification_runs`,
+  `DROP TABLE verification_results`,
+  `ALTER TABLE verification_runs_v2 RENAME TO verification_runs`,
+  `ALTER TABLE verification_results_v2 RENAME TO verification_results`,
+  `INSERT OR IGNORE INTO verification_artifacts SELECT * FROM verification_artifacts_amd0010_backup`,
+  `INSERT OR IGNORE INTO attestations SELECT * FROM attestations_amd0010_backup`,
+  `DROP TABLE verification_artifacts_amd0010_backup`,
+  `DROP TABLE attestations_amd0010_backup`,
+  `CREATE INDEX IF NOT EXISTS ix_verification_runs_recent ON verification_runs (project_id, project_version_id, generation_id, started_at DESC, run_id)`,
+  `CREATE INDEX IF NOT EXISTS ix_verification_runs_host ON verification_runs (project_id, project_version_id, generation_id, host_id, thread_id, status, run_id)`,
+  `CREATE INDEX IF NOT EXISTS ix_verification_runs_job ON verification_runs (project_id, project_version_id, generation_id, job_id, run_id)`,
+  `CREATE INDEX IF NOT EXISTS ix_verification_results_matrix ON verification_results (project_id, project_version_id, generation_id, requirement_key, tier, is_latest, executed_at DESC, result_id)`,
+  `CREATE INDEX IF NOT EXISTS ix_verification_results_check ON verification_results (project_id, project_version_id, generation_id, check_id, is_latest, executed_at DESC, result_id)`,
+  `CREATE INDEX IF NOT EXISTS ix_verification_results_run ON verification_results (project_id, project_version_id, generation_id, run_id, result_id)`,
+  `PRAGMA defer_foreign_keys = OFF`,
 ];

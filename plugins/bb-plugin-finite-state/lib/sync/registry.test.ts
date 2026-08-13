@@ -15,9 +15,11 @@ import {
   isSemanticPlanEntity,
   parseFindingStableKey,
   parseKey,
+  referenceDesignatorKey,
   reqIdKey,
   routeSignatureKey,
   slugKey,
+  sourcePathKey,
 } from "./registry.js";
 
 describe("entity registry", () => {
@@ -53,6 +55,9 @@ describe("entity registry", () => {
       sbomLink: "OVERLAY:assurance-studio:.fs/links",
       firmwareLink: "OVERLAY:none:.fs/links",
       canvasLayout: "VERSIONED:none:product-security/layout/canvas.json",
+      hardwareLink: "OVERLAY:none:product-security/links",
+      citationFile: "OVERLAY:none:.fs/authoring/citations",
+      authoringGate: "VERSIONED:none:.fs/workflows/authoring-gate.yaml",
       finding: "CACHED:findings",
       sbomComponent: "CACHED:sbom_components",
       standardClause: "CACHED:standards_clauses",
@@ -62,6 +67,16 @@ describe("entity registry", () => {
       firmwareMount: "CACHED:firmware_mounts",
       document: "CACHED:document",
       hbomDoc: "CACHED:hbom_docs",
+      hardwareProject: "CACHED:hw_project",
+      hardwareArtifact: "CACHED:hw_artifact",
+      hardwareSymbol: "CACHED:hw_symbol",
+      hardwareNet: "CACHED:hw_net",
+      hardwareViolation: "CACHED:hw_violation",
+      groundingSource: "CACHED:ground_source",
+      groundingChunk: "CACHED:ground_chunk",
+      benchDevice: "CACHED:bench_device",
+      probeRun: "CACHED:probe_run",
+      buildRun: "CACHED:build_run",
       reviewTransition: "ACTION-ONLY",
       verificationDispatch: "ACTION-ONLY",
       benchDispatch: "ACTION-ONLY",
@@ -95,6 +110,40 @@ describe("entity registry", () => {
     expect(isRemotePushable("verificationDispatch")).toBe(false);
   });
 
+  it("keeps AMD-0012 YAML entities local-only and the push set unchanged", () => {
+    expect(ENTITIES.hardwareLink).toMatchObject({
+      class: "OVERLAY",
+      server: "none",
+      localOnly: true,
+      dir: "product-security/links",
+    });
+    expect(ENTITIES.citationFile).toMatchObject({
+      class: "OVERLAY",
+      server: "none",
+      localOnly: true,
+      dir: ".fs/authoring/citations",
+    });
+    expect(ENTITIES.authoringGate).toEqual({
+      class: "VERSIONED",
+      server: "none",
+      localOnly: true,
+      file: ".fs/workflows/authoring-gate.yaml",
+    });
+
+    for (const kind of ["hardwareLink", "citationFile", "authoringGate"] as const) {
+      expect(isSemanticPlanEntity(kind)).toBe(false);
+      expect(isRemotePushable(kind)).toBe(false);
+    }
+    expect(
+      Object.entries(ENTITIES).flatMap(([kind, entry]) =>
+        "server" in entry && entry.server !== "none" ? [kind] : []),
+    ).toEqual([
+      "component", "zone", "dataflow", "asset", "threat", "mitigation",
+      "requirement", "vexDecision", "reqCheckMap", "checkParams", "attackPath",
+      "sbomLink",
+    ]);
+  });
+
   it("uses only declared WP-04 storage names for cached entries", () => {
     const storageNames = new Set(CACHE_STORAGE_NAMES);
     for (const entry of Object.values(ENTITIES)) {
@@ -112,6 +161,8 @@ describe("entity registry", () => {
       hbomIdKey({ id: "U17" }),
       checkCodeKey({ code: "MISRA-C-1" }),
       componentSlugKey({ componentSlug: "gateway" }),
+      referenceDesignatorKey({ reference: "U3" }),
+      sourcePathKey({ file: "src/drivers/bme280.c" }),
       routeSignatureKey({ routeSignature: "gateway-to-cloud" }),
     ];
 

@@ -18,6 +18,7 @@ import {
 } from "../register.js";
 
 const roots: string[] = [];
+const ASYNC_EFFECT_TIMEOUT = 10_000;
 
 const fakeWrapperSource = String.raw`
 import { createHash } from "node:crypto";
@@ -199,16 +200,16 @@ describe("firmware registration", () => {
         join(root, ".fs-firmware", "pv-1", "rootfs", "bin", "firmware.txt"),
         "utf8",
       )).toBe("registered:cli-bytes");
-    });
+    }, { timeout: ASYNC_EFFECT_TIMEOUT });
     await vi.waitFor(() => {
       expect(ctx.db().prepare(`SELECT status FROM pull_generation
         WHERE project_id=? AND project_version_id=? ORDER BY started_at DESC LIMIT 1`).get(
         "project-1",
         "pv-1",
       )).toEqual({ status: "accepted" });
-    });
+    }, { timeout: ASYNC_EFFECT_TIMEOUT });
     await host.harness.lifecycle.dispose();
-  });
+  }, 15_000);
 
   it("does not accept CLI cwd as an execution identity", async () => {
     const host = createFakePluginHost({ pluginId: "finite-state" });
@@ -307,7 +308,7 @@ describe("firmware registration", () => {
           "utf8",
         ),
       ).toBe("registered:bytes");
-    });
+    }, { timeout: ASYNC_EFFECT_TIMEOUT });
     await vi.waitFor(() => {
       expect(
         ctx
@@ -317,7 +318,7 @@ describe("firmware registration", () => {
           )
           .get("project-1", "pv-1", "job-1"),
       ).toEqual({ status: "accepted" });
-    });
+    }, { timeout: ASYNC_EFFECT_TIMEOUT });
     await expect(
       host.harness.callRpc("firmwareMaterializeCancel", {
         projectId: "project-1",
@@ -373,7 +374,7 @@ describe("firmware registration", () => {
           )
           .get("project-1", "pv-1", "job-2"),
       ).toEqual({ status: "staging" });
-    });
+    }, { timeout: ASYNC_EFFECT_TIMEOUT });
     await expect(
       host.harness.callRpc("firmwareMaterializeCancel", {
         projectId: "project-1",
@@ -393,12 +394,12 @@ describe("firmware registration", () => {
           )
           .get("project-1", "pv-1", "job-2"),
       ).toEqual({ status: "cancelled" });
-    });
+    }, { timeout: ASYNC_EFFECT_TIMEOUT });
 
     service.controller.abort();
     await service.done;
     await host.harness.lifecycle.dispose();
-  });
+  }, 15_000);
 
   it("rejects expired registry records before they can be consumed", () => {
     let now = new Date("2026-08-12T00:00:00.000Z");

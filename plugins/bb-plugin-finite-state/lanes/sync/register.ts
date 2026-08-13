@@ -62,6 +62,10 @@ export function registerSync(bb: BbPluginApi, ctx: PluginContext): void {
         "firmware.cli",
         () => { throw new Error("Firmware CLI services are unavailable"); },
       ).run(argv, cliContext),
+      bench: (argv, cliContext) => ctx.service<{ run: NamespacedCliRunner }>(
+        "bench.cli",
+        () => { throw new Error("Bench CLI services are unavailable"); },
+      ).run(argv, cliContext),
     },
   );
 }

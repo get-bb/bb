@@ -37,6 +37,15 @@ function stableId(prefix: string, parts: readonly string[]): string {
   return `${prefix}-${createHash("sha256").update(parts.join("\0")).digest("hex")}`;
 }
 
+/** Deterministic identity used by both result persistence and signed predicates. */
+export function benchResultId(
+  runId: string,
+  requirementId: string,
+  checkId: string,
+): string {
+  return stableId("bench-result", [runId, requirementId, checkId]);
+}
+
 function decodeCursor(value: string): IdCursor {
   let parsed: unknown;
   try {
@@ -105,11 +114,11 @@ function upsertBenchResults(
           )
       : undefined;
     const mapped = mapping !== undefined;
-    const resultId = stableId("bench-result", [
+    const resultId = benchResultId(
       bundle.run.runId,
       result.requirementId,
       result.checkId,
-    ]);
+    );
     const existingResult = db
       .prepare<[string, string, string, string], BenchResultRow>(
         `SELECT * FROM verification_results

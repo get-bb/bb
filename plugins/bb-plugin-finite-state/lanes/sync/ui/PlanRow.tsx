@@ -49,6 +49,19 @@ const ENTITY_KINDS = [
   "verificationDispatch",
   "benchDispatch",
   "firmwareMaterialize",
+  "hardwareLink",
+  "citationFile",
+  "authoringGate",
+  "hardwareProject",
+  "hardwareArtifact",
+  "hardwareSymbol",
+  "hardwareNet",
+  "hardwareViolation",
+  "groundingSource",
+  "groundingChunk",
+  "benchDevice",
+  "probeRun",
+  "buildRun",
 ] as const satisfies readonly EntityKind[];
 
 export function isEntityKind(kind: string): kind is EntityKind {
@@ -84,6 +97,19 @@ const ENTITY_LABELS: Readonly<Record<EntityKind, string>> = {
   verificationDispatch: "Verification dispatch",
   benchDispatch: "Bench dispatch",
   firmwareMaterialize: "Firmware materialization",
+  hardwareLink: "Hardware link",
+  citationFile: "Citation file",
+  authoringGate: "Authoring gate",
+  hardwareProject: "Hardware project",
+  hardwareArtifact: "Hardware artifact",
+  hardwareSymbol: "Hardware symbol",
+  hardwareNet: "Hardware net",
+  hardwareViolation: "Hardware violation",
+  groundingSource: "Grounding source",
+  groundingChunk: "Grounding chunk",
+  benchDevice: "Bench device",
+  probeRun: "Probe run",
+  buildRun: "Build run",
 };
 
 export function entityKindLabel(kind: string): string {

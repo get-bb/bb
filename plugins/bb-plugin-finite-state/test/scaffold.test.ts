@@ -20,6 +20,10 @@ const backendLaneMocks = vi.hoisted(() => ({
   bench: vi.fn(),
   documents: vi.fn(),
   agentic: vi.fn(),
+  hardware: vi.fn(),
+  grounding: vi.fn(),
+  authoring: vi.fn(),
+  debugBench: vi.fn(),
 }));
 
 const frontendLaneMocks = vi.hoisted(() => ({
@@ -32,6 +36,10 @@ const frontendLaneMocks = vi.hoisted(() => ({
   bench: vi.fn(),
   documents: vi.fn(),
   agentic: vi.fn(),
+  hardware: vi.fn(),
+  grounding: vi.fn(),
+  authoring: vi.fn(),
+  debugBench: vi.fn(),
 }));
 
 vi.mock("../lanes/remote/register.js", () => ({
@@ -61,6 +69,18 @@ vi.mock("../lanes/documents/register.js", () => ({
 vi.mock("../lanes/agentic/register.js", () => ({
   registerAgentic: backendLaneMocks.agentic,
 }));
+vi.mock("../lanes/hardware/register.js", () => ({
+  registerHardware: backendLaneMocks.hardware,
+}));
+vi.mock("../lanes/grounding/register.js", () => ({
+  registerGrounding: backendLaneMocks.grounding,
+}));
+vi.mock("../lanes/authoring/register.js", () => ({
+  registerAuthoring: backendLaneMocks.authoring,
+}));
+vi.mock("../lanes/debug-bench/register.js", () => ({
+  registerDebugBench: backendLaneMocks.debugBench,
+}));
 
 vi.mock("../lanes/remote/register.app.js", () => ({
   registerRemoteServicesApp: frontendLaneMocks.remote,
@@ -88,6 +108,18 @@ vi.mock("../lanes/documents/register.app.js", () => ({
 }));
 vi.mock("../lanes/agentic/register.app.js", () => ({
   registerAgenticApp: frontendLaneMocks.agentic,
+}));
+vi.mock("../lanes/hardware/register.app.js", () => ({
+  registerHardwareApp: frontendLaneMocks.hardware,
+}));
+vi.mock("../lanes/grounding/register.app.js", () => ({
+  registerGroundingApp: frontendLaneMocks.grounding,
+}));
+vi.mock("../lanes/authoring/register.app.js", () => ({
+  registerAuthoringApp: frontendLaneMocks.authoring,
+}));
+vi.mock("../lanes/debug-bench/register.app.js", () => ({
+  registerDebugBenchApp: frontendLaneMocks.debugBench,
 }));
 
 import plugin from "../server.js";
@@ -125,7 +157,7 @@ describe("WP-01 scaffold", () => {
     expect(() => pluginPackageJsonSchema.parse(invalidManifest)).toThrow();
   });
 
-  it("composition root registers all nine backend lanes in order", async () => {
+  it("composition root registers all thirteen backend lanes in order", async () => {
     const calls: string[] = [];
     backendLaneMocks.remote.mockImplementation(async () => {
       calls.push("remote");
@@ -142,6 +174,10 @@ describe("WP-01 scaffold", () => {
       calls.push("documents"),
     );
     backendLaneMocks.agentic.mockImplementation(() => calls.push("agentic"));
+    backendLaneMocks.hardware.mockImplementation(() => calls.push("hardware"));
+    backendLaneMocks.grounding.mockImplementation(() => calls.push("grounding"));
+    backendLaneMocks.authoring.mockImplementation(() => calls.push("authoring"));
+    backendLaneMocks.debugBench.mockImplementation(() => calls.push("debug-bench"));
     const host = createFakePluginHost({ pluginId: "finite-state" });
 
     await plugin(host.bb);
@@ -156,6 +192,10 @@ describe("WP-01 scaffold", () => {
       "bench",
       "documents",
       "agentic",
+      "hardware",
+      "grounding",
+      "authoring",
+      "debug-bench",
     ]);
     for (const register of Object.values(backendLaneMocks)) {
       expect(register).toHaveBeenCalledOnce();
@@ -191,7 +231,7 @@ describe("WP-01 scaffold", () => {
     await host.harness.lifecycle.dispose();
   });
 
-  it("frontend root registers all nine app lanes in order", async () => {
+  it("frontend root registers all thirteen app lanes in order", async () => {
     const calls: string[] = [];
     frontendLaneMocks.remote.mockImplementation(() => calls.push("remote"));
     frontendLaneMocks.sync.mockImplementation(() => calls.push("sync"));
@@ -206,6 +246,10 @@ describe("WP-01 scaffold", () => {
       calls.push("documents"),
     );
     frontendLaneMocks.agentic.mockImplementation(() => calls.push("agentic"));
+    frontendLaneMocks.hardware.mockImplementation(() => calls.push("hardware"));
+    frontendLaneMocks.grounding.mockImplementation(() => calls.push("grounding"));
+    frontendLaneMocks.authoring.mockImplementation(() => calls.push("authoring"));
+    frontendLaneMocks.debugBench.mockImplementation(() => calls.push("debug-bench"));
     installTestPluginRuntime();
 
     await loadPluginApp(() => import("../app.js"));
@@ -220,6 +264,10 @@ describe("WP-01 scaffold", () => {
       "bench",
       "documents",
       "agentic",
+      "hardware",
+      "grounding",
+      "authoring",
+      "debug-bench",
     ]);
     for (const register of Object.values(frontendLaneMocks)) {
       expect(register).toHaveBeenCalledOnce();

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, waitFor, within } from "@testing-library/react";
+import { cleanup, configure, fireEvent, waitFor, within } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@bb/plugin-sdk/testing/app";
 import { connectedRemoteStatus } from "../../../../test/app-connections.js";
 import type { JsonValue } from "../../../../shared/contract.js";
@@ -100,6 +100,8 @@ class TableResizeObserver implements ResizeObserver {
 }
 
 beforeAll(() => {
+  vi.setConfig({ testTimeout: 15_000 });
+  configure({ asyncUtilTimeout: 10_000 });
   vi.stubGlobal("ResizeObserver", TableResizeObserver);
   Object.defineProperty(HTMLElement.prototype, "clientHeight", {
     configurable: true,
