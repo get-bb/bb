@@ -3,6 +3,7 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@bb/plugin-sdk/testing/app";
+import { connectedRemoteStatus } from "../../../../test/app-connections.js";
 import { ProductSecurityEditingLayer } from "../editing/index.js";
 import {
   ProductSecurityLinksLayer,
@@ -292,12 +293,16 @@ describe("WP-31 bb panel qualification", () => {
       { subPath: "requirements" },
       {
         context: { projectId: "project-1", threadId: null },
-        rpc: { requirementsList: () => requirementsPage() },
+        rpc: {
+          connectionsStatus: connectedRemoteStatus,
+          requirementsList: () => requirementsPage(),
+        },
       },
     );
     expect(await slot.findByText("REQ-secure-update")).toBeTruthy();
     expect(slot.getByLabelText("Evidence status: Not run")).toBeTruthy();
     expect(slot.inspection.rpcCalls.map((call) => call.method)).toEqual([
+      "connectionsStatus",
       "requirementsList",
     ]);
     expect(slot.getByRole("button", { name: "TARA" })).toBeTruthy();
@@ -313,10 +318,15 @@ describe("WP-31 bb panel qualification", () => {
       { subPath: "tara" },
       {
         context: { projectId: "project-1", threadId: null },
-        rpc: { taraList: (input) => taraPage(input) },
+        rpc: {
+          connectionsStatus: connectedRemoteStatus,
+          taraList: (input) => taraPage(input),
+        },
       },
     );
-    expect(slot.getByLabelText("Loading product-security model")).toBeTruthy();
+    expect(
+      await slot.findByLabelText("Loading product-security model"),
+    ).toBeTruthy();
 
     const node = await slot.findByLabelText("component Connected device");
     const nodeWrapper = node.closest(".react-flow__node");
@@ -362,6 +372,7 @@ describe("WP-31 bb panel qualification", () => {
       {
         context: { projectId: "project-1", threadId: null },
         rpc: {
+          connectionsStatus: connectedRemoteStatus,
           taraList: (input) => {
             if (offline) throw new Error("offline");
             return taraPage(input);
@@ -393,7 +404,10 @@ describe("WP-31 bb panel qualification", () => {
       { subPath: "tara" },
       {
         context: { projectId: "project-1", threadId: null },
-        rpc: { taraList: () => ({ items: [], total: 0, next: null, cache }) },
+        rpc: {
+          connectionsStatus: connectedRemoteStatus,
+          taraList: () => ({ items: [], total: 0, next: null, cache }),
+        },
       },
     );
     expect(await empty.findByText("No architecture model yet")).toBeTruthy();
@@ -404,7 +418,10 @@ describe("WP-31 bb panel qualification", () => {
       { subPath: "tara" },
       {
         context: { projectId: "project-1", threadId: null },
-        rpc: { taraList: () => Promise.reject(new Error("cache failure")) },
+        rpc: {
+          connectionsStatus: connectedRemoteStatus,
+          taraList: () => Promise.reject(new Error("cache failure")),
+        },
       },
     );
     expect(
@@ -417,7 +434,10 @@ describe("WP-31 bb panel qualification", () => {
       { subPath: "tara" },
       {
         context: { projectId: "project-1", threadId: null },
-        rpc: { taraList: (input) => taraPage(input, true) },
+        rpc: {
+          connectionsStatus: connectedRemoteStatus,
+          taraList: (input) => taraPage(input, true),
+        },
       },
     );
     expect(
@@ -428,7 +448,10 @@ describe("WP-31 bb panel qualification", () => {
     const unconfigured = renderSlot(
       panel,
       { subPath: "tara" },
-      { context: { projectId: null, threadId: null } },
+      {
+        context: { projectId: null, threadId: null },
+        rpc: { connectionsStatus: connectedRemoteStatus },
+      },
     );
     expect(await unconfigured.findByText("Choose a project")).toBeTruthy();
     unconfigured.lifecycle.unmount();
