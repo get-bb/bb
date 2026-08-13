@@ -12,7 +12,7 @@ This monorepo contains the packaged app plus the runtime services it bundles:
 | [`apps/cli`](../apps/cli)                                           | Scriptable `bb` CLI for users and agents.                                                           |
 | [`apps/web`](../apps/web)                                           | getbb.app site: marketing page + bb connect auth/dashboard (TanStack Start on Cloudflare Workers).  |
 | [`packages/sdk`](../packages/sdk)                                   | TypeScript SDK used by the CLI, package SDK export, and programmatic clients.                       |
-| [`packages/agent-runtime`](../packages/agent-runtime)               | Provider runtime adapters and bridges for Codex, Claude Code, Pi, and ACP agents.                   |
+| [`packages/agent-runtime`](../packages/agent-runtime)               | Provider runtime adapters and bridges for Codex, Claude Code, Pi, Prime Agent, and ACP agents.      |
 | [`packages/config`](../packages/config)                             | Config parsing, defaults, managed package config schema, and environment variable definitions.      |
 | [`packages/db`](../packages/db)                                     | SQLite schema, migrations, and data access helpers.                                                 |
 | [`packages/server-contract`](../packages/server-contract)           | HTTP and WebSocket contract between clients and the server.                                         |
@@ -27,7 +27,7 @@ This monorepo contains the packaged app plus the runtime services it bundles:
 Some dependencies are pinned to an exact version for reasons that are not
 visible from `package.json` alone.
 
-| Dependency                     | Where         | Why                                                                                                                                                                                                                                                 |
-| ------------------------------ | ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@opentelemetry/api` (`1.9.1`) | `apps/server` | Pi AI and Drizzle each pull in `@opentelemetry/api`. Without an exact direct pin, pnpm can resolve two copies and TypeScript sees two distinct type identities, which fails the server typecheck. Bump both consumers together, not this pin alone. |
-| Pi packages (`0.84.0`)         | Pi bridge and `bb-app` | Pi extensions import the host's Pi modules. The packaged bridge keeps this exact package tree on disk so extensions share one compatible runtime. Bump the Pi packages together. |
+| Dependency                     | Where                  | Why                                                                                                                                                                                                                                                 |
+| ------------------------------ | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@opentelemetry/api` (`1.9.1`) | `apps/server`          | Pi AI and Drizzle each pull in `@opentelemetry/api`. Without an exact direct pin, pnpm can resolve two copies and TypeScript sees two distinct type identities, which fails the server typecheck. Bump both consumers together, not this pin alone. |
+| Pi packages (`0.84.0`)         | Pi bridge and `bb-app` | Pi extensions import the host's Pi modules. The packaged bridge keeps this exact package tree on disk so extensions share one compatible runtime. Bump the Pi packages together.                                                                    |

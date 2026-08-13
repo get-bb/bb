@@ -394,7 +394,7 @@ or restart bb. `bb-app config list` prints the entries.
 ```
 
 `providerId` accepts a built-in provider id (`codex`, `claude-code`, `pi`,
-`acp-cursor`) or any `acp-*` provider id: a known ACP agent such as
+`prime-agent`, `acp-cursor`) or any `acp-*` provider id: a known ACP agent such as
 `acp-opencode`, or a custom ACP agent's derived `acp-<id>`. `displayName` is
 optional; bb derives the label from the model id when it is omitted. bb skips
 an invalid entry with a warning and keeps the rest of the config.
@@ -454,13 +454,14 @@ skills by name, overriding built-ins.
 
 bb indexes each provider's native skill roots for that provider's `/` command
 menu. The Skills page and `bb skill list` show native skills for Claude Code,
-Codex, and Cursor.
+Codex, Pi, Prime Agent, and Cursor.
 
 | Provider     | User roots                                                                                               | Project roots                                                                                                |
 | ------------ | -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
 | Codex        | `~/.agents/skills`, `$CODEX_HOME/skills`                                                                 | `.agents/skills` from the repository root to the current directory, plus `.codex/skills`                     |
 | Claude Code  | `$CLAUDE_CONFIG_DIR/skills` or `~/.claude/skills`, plus enabled plugin skills                            | `.claude/skills` from the repository root to the current directory, plus enabled plugin skills               |
 | Pi           | `~/.pi/agent/skills`, `~/.agents/skills`                                                                 | `.pi/skills` and `.agents/skills` from the repository root to the current directory                          |
+| Prime Agent  | `~/.prime/agent/skills`                                                                                  | `.prime/agent/skills` from the repository root to the current directory                                      |
 | Cursor       | `~/.cursor/skills`, `~/.agents/skills`, `~/.claude/skills`, `~/.codex/skills`                            | The same four roots in the workspace                                                                         |
 | OpenCode     | `~/.config/opencode/skills`, `~/.claude/skills`, `~/.agents/skills`                                      | `.opencode/skills`, `.claude/skills`, and `.agents/skills` from the repository root to the current directory |
 | omp          | The active `~/.omp/.../agent` roots and supported Pi, Agents, Claude, Codex, and OpenCode roots          | `.omp/skills` and the supported compatibility roots from the repository root to the current directory        |
