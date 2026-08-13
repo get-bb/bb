@@ -353,8 +353,8 @@ export const LAUNCH_ADAPTERS: LaunchAdapter[] = [
   },
   {
     capabilities: FULL_FILE_OPEN_CAPABILITIES,
-    icon: { kind: "builtin", name: "windsurf" },
-    id: "windsurf",
+    icon: { kind: "builtin", name: "devin-desktop" },
+    id: "devin-desktop",
     kind: "editor",
     label: "Devin Desktop",
     fileOpenBehavior: "direct",

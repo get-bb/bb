@@ -6,7 +6,10 @@ import {
   type WorkspaceOpenTargetCapabilities,
   type WorkspaceOpenTargetId,
 } from "@bb/host-daemon-contract";
-import { createNullableLocalStorageEnumStorage } from "./browser-storage";
+import {
+  createNullableLocalStorageEnumStorage,
+  type SyncStorage,
+} from "./browser-storage";
 
 export const WORKSPACE_OPEN_TARGET_STORAGE_KEY = "bb.workspaceOpenTarget";
 export const FILE_OPEN_TARGET_STORAGE_KEY = "bb.fileOpenTarget";
@@ -179,10 +182,43 @@ function isStoredWorkspaceOpenTargetPreference(
   return workspaceOpenTargetIdSchema.safeParse(value).success;
 }
 
-const workspaceOpenTargetPreferenceStorage =
+export function migrateStoredWorkspaceOpenTargetPreference(
+  value: StoredWorkspaceOpenTargetPreference,
+): StoredWorkspaceOpenTargetPreference {
+  return value === "windsurf" ? "devin-desktop" : value;
+}
+
+const baseWorkspaceOpenTargetPreferenceStorage =
   createNullableLocalStorageEnumStorage<WorkspaceOpenTargetId>(
     isStoredWorkspaceOpenTargetPreference,
   );
+
+const workspaceOpenTargetPreferenceStorage: SyncStorage<StoredWorkspaceOpenTargetPreference> =
+  {
+    getItem: (key, initialValue) => {
+      const storedValue = baseWorkspaceOpenTargetPreferenceStorage.getItem(
+        key,
+        initialValue,
+      );
+      const migratedValue = migrateStoredWorkspaceOpenTargetPreference(storedValue);
+      if (migratedValue !== storedValue) {
+        baseWorkspaceOpenTargetPreferenceStorage.setItem(key, migratedValue);
+      }
+      return migratedValue;
+    },
+    setItem: (key, value) => {
+      baseWorkspaceOpenTargetPreferenceStorage.setItem(key, value);
+    },
+    removeItem: (key) => {
+      baseWorkspaceOpenTargetPreferenceStorage.removeItem(key);
+    },
+    subscribe: (key, callback, initialValue) =>
+      baseWorkspaceOpenTargetPreferenceStorage.subscribe?.(
+        key,
+        (value) => callback(migrateStoredWorkspaceOpenTargetPreference(value)),
+        initialValue,
+      ),
+  };
 
 export const workspaceOpenTargetPreferenceAtom =
   atomWithStorage<StoredWorkspaceOpenTargetPreference>(

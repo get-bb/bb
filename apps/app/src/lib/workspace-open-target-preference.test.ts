@@ -1,6 +1,7 @@
 import type { WorkspaceOpenTarget } from "@bb/host-daemon-contract";
 import { describe, expect, it } from "vitest";
 import {
+  migrateStoredWorkspaceOpenTargetPreference,
   resolvePreferredWorkspaceOpenFileTarget,
   resolvePreferredWorkspaceOpenTarget,
 } from "./workspace-open-target-preference";
@@ -48,6 +49,15 @@ const defaultAppTarget: WorkspaceOpenTarget = {
   kind: "default-app",
   label: "Default App",
 };
+
+describe("migrateStoredWorkspaceOpenTargetPreference", () => {
+  it("migrates the old Windsurf target id to Devin Desktop", () => {
+    expect(migrateStoredWorkspaceOpenTargetPreference("windsurf")).toBe(
+      "devin-desktop",
+    );
+    expect(migrateStoredWorkspaceOpenTargetPreference("vscode")).toBe("vscode");
+  });
+});
 
 describe("resolvePreferredWorkspaceOpenTarget", () => {
   it("chooses the stored target when it supports the requested capability", () => {

@@ -941,7 +941,7 @@ describe("workspace open targets", () => {
           "bin",
           "devin-desktop",
         ],
-        targetId: "windsurf",
+        targetId: "devin-desktop",
       },
       {
         appName: "Antigravity",
@@ -1134,14 +1134,16 @@ describe("workspace open targets", () => {
       }),
     );
 
-    expect(targets.find((target) => target.id === "windsurf")).toMatchObject({
+    expect(
+      targets.find((target) => target.id === "devin-desktop"),
+    ).toMatchObject({
       capabilities: {
         openDirectory: true,
         openFile: true,
         openFileAtColumn: true,
         openFileAtLine: true,
       },
-      icon: { kind: "builtin", name: "windsurf" },
+      icon: { kind: "builtin", name: "devin-desktop" },
       kind: "editor",
       label: "Devin Desktop",
     });
@@ -2283,7 +2285,7 @@ describe("workspace open targets", () => {
           columnNumber: 6,
           lineNumber: 15,
           path: filePath,
-          targetId: "windsurf",
+          targetId: "devin-desktop",
         },
         createRuntime({ execFile }),
       );
