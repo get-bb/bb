@@ -2,7 +2,7 @@ import type { BbPluginApi } from "@bb/plugin-sdk";
 
 import { ENTITIES, type EntityKind } from "../../lib/sync/registry.js";
 import { rpcContract } from "../../shared/contract.js";
-import { resolveConflict } from "./conflicts/index.js";
+import { resolveConflictRpc } from "./conflicts/index.js";
 import { pull, type EngineDeps } from "./engine/pull.js";
 import { status, syncMetadata } from "./engine/status.js";
 import { plan } from "./plan/index.js";
@@ -95,7 +95,7 @@ export function registerSyncRpc(bb: BbPluginApi, deps: EngineDeps): void {
       pageSize: input.pageSize,
       continuation: input.continuation,
     }),
-    syncConflictResolve: () => resolveConflict(),
+    syncConflictResolve: (input) => resolveConflictRpc(deps, input),
     syncPush: (input) => pushAuthorizationUnavailable(deps, input.humanApprovalCapability),
     syncPushRetry: (input) => pushAuthorizationUnavailable(deps, input.humanApprovalCapability),
   });
