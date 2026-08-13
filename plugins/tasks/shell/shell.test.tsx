@@ -2,6 +2,7 @@
 import { cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadPluginApp, renderSlot } from "@bb/plugin-sdk/testing/app";
+import type { TaskStatus } from "../shared/contract.js";
 
 // jsdom lacks matchMedia; the vendored Dialog's responsive root needs it.
 if (!window.matchMedia) {
@@ -730,8 +731,19 @@ describe("tasks app shell", () => {
         rpc: seededRpc({
           listProjects: () => ({ projects: [project, secondProject] }),
           sidebarSummary: () => ({ projects: [] }),
-          listTasks: (input: { activeOnly?: boolean }) => ({
-            tasks: input.activeOnly ? [] : tasks,
+          // Status filtering is server-side, so the fake honors `statuses`:
+          // the canceled card is absent only if the board asked for it to be.
+          listTasks: (input: {
+            activeOnly?: boolean;
+            statuses?: TaskStatus[];
+          }) => ({
+            tasks: input.activeOnly
+              ? []
+              : tasks.filter(
+                  (task) =>
+                    input.statuses === undefined ||
+                    input.statuses.includes(task.status),
+                ),
           }),
           listLabels: () => ({ labels: [] }),
           listTaskThreads: () => ({ taskThreads: [] }),
