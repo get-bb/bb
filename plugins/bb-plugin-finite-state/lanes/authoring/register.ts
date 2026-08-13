@@ -1,6 +1,5 @@
 import type { BbPluginApi } from "@bb/plugin-sdk";
 import type { PluginContext } from "../../lib/context.js";
-import { toStorageProjectVersionId } from "../../lib/store/index.js";
 import { rpcContract } from "../../shared/contract.js";
 import { listCitationFilesNotImplemented } from "./citations/store.js";
 import { listQuarantineNotImplemented } from "./citations/quarantine.js";
@@ -17,7 +16,6 @@ import {
   type FlashActionResult,
 } from "./build/flash.js";
 import {
-  listBuildRuns,
   recoverOrphanedBuildRuns,
   type BuildRunChangedHint,
 } from "./build/runs-store.js";
@@ -33,7 +31,6 @@ const authoringRpcContract = {
   authoringCitationsList: rpcContract.authoringCitationsList,
   authoringQuarantineList: rpcContract.authoringQuarantineList,
   authoringGateStatus: rpcContract.authoringGateStatus,
-  benchDevRunsList: rpcContract.benchDevRunsList,
 } as const;
 
 export const fsBuildService = runBuildAction;
@@ -87,37 +84,6 @@ function publishBuildChanged(bb: BbPluginApi, hint: BuildRunChangedHint): void {
   bb.realtime.publish("build:changed", hint);
 }
 
-function buildRunFilters(input: object): {
-  kinds: Array<"build" | "flash" | "probe">;
-  statuses: Array<"queued" | "running" | "succeeded" | "failed" | "cancelled">;
-} {
-  const rawKinds = Reflect.get(input, "kinds");
-  const rawStatuses = Reflect.get(input, "statuses");
-  const kinds: Array<"build" | "flash" | "probe"> = [];
-  if (Array.isArray(rawKinds)) {
-    for (const kind of rawKinds) {
-      if (kind === "build" || kind === "flash" || kind === "probe") {
-        kinds.push(kind);
-      }
-    }
-  }
-  const statuses: Array<"queued" | "running" | "succeeded" | "failed" | "cancelled"> = [];
-  if (Array.isArray(rawStatuses)) {
-    for (const status of rawStatuses) {
-      if (
-        status === "queued" ||
-        status === "running" ||
-        status === "succeeded" ||
-        status === "failed" ||
-        status === "cancelled"
-      ) {
-        statuses.push(status);
-      }
-    }
-  }
-  return { kinds, statuses };
-}
-
 export function registerAuthoring(
   bb: BbPluginApi,
   ctx: PluginContext,
@@ -144,33 +110,6 @@ export function registerAuthoring(
     },
     authoringGateStatus(input) {
       return getAuthoringGateStatusNotImplemented(input);
-    },
-    benchDevRunsList(input) {
-      const filters = buildRunFilters(input);
-      const page = listBuildRuns(db, {
-        projectId: input.projectId,
-        projectVersionId: toStorageProjectVersionId(input.projectVersionId),
-        pageSize: input.pageSize,
-        cursor: input.cursor,
-        kinds: filters.kinds,
-        statuses: filters.statuses,
-      });
-      return {
-        items: page.items.map((item) => ({
-          projectId: item.projectId,
-          projectVersionId: item.projectVersionId,
-          runId: item.runId,
-          kind: item.kind,
-          status: item.status,
-          target: item.target,
-          artifact: item.artifact,
-          digest: item.digest,
-          startedAt: item.startedAt,
-          finishedAt: null,
-        })),
-        total: page.total,
-        cursor: page.cursor,
-      };
     },
   });
   bb.http.route(
