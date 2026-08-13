@@ -12,6 +12,7 @@ export interface ChangeTally {
   filesCount: number;
   insertions: number;
   deletions: number;
+  lineStatsComplete: boolean;
 }
 
 export function toChangeTally(stats: WorkspaceChangeStats): ChangeTally {
@@ -19,6 +20,7 @@ export function toChangeTally(stats: WorkspaceChangeStats): ChangeTally {
     filesCount: stats.files.length,
     insertions: stats.insertions,
     deletions: stats.deletions,
+    lineStatsComplete: stats.lineStatsComplete,
   };
 }
 
@@ -35,7 +37,10 @@ export function formatChangeSummary(tally: ChangeTally): string {
     return "No changes";
   }
   const filesLabel = formatWorkspaceChangedFilesLabel(tally.filesCount);
-  if (tally.insertions === 0 && tally.deletions === 0) {
+  if (
+    !tally.lineStatsComplete ||
+    (tally.insertions === 0 && tally.deletions === 0)
+  ) {
     return filesLabel;
   }
   const diffText = formatDiffStatsText({
@@ -54,7 +59,10 @@ export function renderChangeSummary(tally: ChangeTally): ReactNode {
     return "No changes";
   }
   const filesLabel = formatWorkspaceChangedFilesLabel(tally.filesCount);
-  if (tally.insertions === 0 && tally.deletions === 0) {
+  if (
+    !tally.lineStatsComplete ||
+    (tally.insertions === 0 && tally.deletions === 0)
+  ) {
     return filesLabel;
   }
   return (
