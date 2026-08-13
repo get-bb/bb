@@ -88,7 +88,13 @@ export function registerSyncRpc(bb: BbPluginApi, deps: EngineDeps): void {
         cache: cacheState(metadata),
       };
     },
-    syncPlan: () => plan(),
+    syncPlan: (input) => plan(deps, {
+      projectId: input.projectId,
+      projectVersionId: input.projectVersionId,
+      kinds: entityKinds(input.kinds),
+      pageSize: input.pageSize,
+      continuation: input.continuation,
+    }),
     syncConflictResolve: () => resolveConflict(),
     syncPush: () => push(),
     syncPushRetry: () => push(),
