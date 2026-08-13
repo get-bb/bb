@@ -177,7 +177,7 @@ export function FirmwareStatusChip({
         ) : (
           <div className="rounded-lg border border-dashed p-4 text-sm">
             <p className="font-medium">No firmware is materialized</p>
-            <p className="mt-1 text-muted-foreground">Start with a local image when AMD-0003 activates, or load API metadata as a bounded fallback.</p>
+            <p className="mt-1 text-muted-foreground">Start with a local image, or load API metadata as a bounded fallback.</p>
           </div>
         )}
 
