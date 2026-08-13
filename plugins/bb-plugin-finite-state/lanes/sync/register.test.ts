@@ -92,6 +92,13 @@ beforeAll(async () => {
   };
   context = createPluginContext(host.bb);
   context.service<RemoteServices>("remote-services", () => services);
+  context.service("firmware.cli", () => ({
+    run: async (argv: string[]) => ({
+      exitCode: 0,
+      stdout: `${JSON.stringify({ namespace: "firmware", argv })}\n`,
+      stderr: "",
+    }),
+  }));
   registerSync(host.bb, context);
   registerAdapter(foreignAdapter);
   root = await mkdtemp(join(tmpdir(), "fs-wp17-register-"));
@@ -247,7 +254,7 @@ describe("sync registration", () => {
       && typeof row["componentPurl"] === "string",
     ).slice(0, 3);
     if (findings.length !== 3) throw new Error("fixture has fewer than three VEX findings");
-    const directory = join(root, ".fs", "triage", "triple");
+    const directory = join(root, ".fs", "triage", scope.projectId);
     await mkdir(directory, { recursive: true });
     for (const [index, row] of findings.entries()) {
       const purl = String(row["componentPurl"]);
@@ -257,14 +264,19 @@ describe("sync registration", () => {
       const version = at < 0 ? null : decodeURIComponent(tail.slice(at + 1));
       const localStatus = index === 0 ? "NOT_AFFECTED" : index === 2 ? "FALSE_POSITIVE" : row["vexStatus"];
       const localReason = index === 0 || index === 2 ? `local edit ${index}` : null;
-      await writeFile(join(directory, `${index}.yaml`), `cve: ${JSON.stringify(row["cve"])}
-purl: ${JSON.stringify(purl)}
-name: ${JSON.stringify(name)}
-version: ${JSON.stringify(version)}
-status: ${JSON.stringify(localStatus)}
-justification: null
-response: null
-reason: ${JSON.stringify(localReason)}
+      await writeFile(join(directory, `${index}.yaml`), `schema: fs-triage/v1
+project: ${JSON.stringify(scope.projectId)}
+component:
+  purl: ${JSON.stringify(purl)}
+  name: ${JSON.stringify(name)}
+  group: null
+  version: ${JSON.stringify(version)}
+decisions:
+  ${String(row["cve"])}:
+    status: ${JSON.stringify(localStatus)}
+    justification: null
+    response: null
+    reason: ${JSON.stringify(localReason)}
 `, "utf8");
     }
     findings[1]!["vexStatus"] = "RESOLVED";
@@ -307,6 +319,22 @@ reason: ${JSON.stringify(localReason)}
     expect(host.harness.realtimeSignals.some((signal) => signal.channel === "fs-sync-pull")).toBe(true);
     expect(host.harness.sdk.callsTo("threads.get")).toHaveLength(2);
     expect(host.harness.sdk.callsTo("environments.get")).toHaveLength(2);
+  });
+
+  it("delegates the firmware namespace without changing sync verb parsing", async () => {
+    const result = await host.harness.behavior.runCli(
+      ["finite-state", "firmware", "status", "pv-1", "--json"],
+      { threadId: "thread-sync-cli", projectId: "bb-project-sync" },
+    );
+
+    expect(result).toEqual({
+      exitCode: 0,
+      stdout: `${JSON.stringify({
+        namespace: "firmware",
+        argv: ["status", "pv-1", "--json"],
+      })}\n`,
+      stderr: "",
+    });
   });
 
   it("refuses CLI working-tree access without a bb thread identity", async () => {

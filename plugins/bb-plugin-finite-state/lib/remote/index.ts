@@ -131,8 +131,6 @@ export function createRemoteServiceController(
   initial: RemoteSettingValues,
 ): RemoteServiceController {
   let disposed = false;
-  let needsConfiguration: ((message: string) => void) | null = message =>
-    ctx.bb.status.needsConfiguration(message);
   let publishForgeHint: ((hint: {
     jobId: string;
     status: ForgeJobStatus;
@@ -173,7 +171,6 @@ export function createRemoteServiceController(
     void old.close();
     if (next.platformBaseUrl === null || next.platformToken === null) {
       platform = emptySlot({ state: "needs-configuration", message: "Connect your Finite State account to load projects", checkedAt: null });
-      needsConfiguration?.("Connect your Finite State account to load projects");
       return;
     }
     const client = new PlatformClient({ baseUrl: next.platformBaseUrl, token: next.platformToken, concurrency: next.platformConcurrency });
@@ -244,7 +241,6 @@ export function createRemoteServiceController(
     async dispose() {
       if (disposed) return;
       disposed = true;
-      needsConfiguration = null;
       publishForgeHint = null;
       platform.abort.abort(); assuranceStudio.abort.abort(); forge.abort.abort();
       await Promise.all([platform.close(), assuranceStudio.close(), forge.close()]);

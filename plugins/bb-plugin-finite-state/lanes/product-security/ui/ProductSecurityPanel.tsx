@@ -48,6 +48,7 @@ const PROJECT_SCOPE_STORAGE_KEY =
 
 interface ProjectScopedLaneProps {
   projectId: string;
+  detail?: readonly string[];
 }
 
 export interface ProductSecurityFeatures extends Omit<
@@ -343,8 +344,14 @@ export function ProductSecurityPanel({
         ) : null}
         {route.tab === "requirements" && projectId ? (
           <>
-            <RequirementsCards projectId={projectId} />
-            <RequirementsTraceabilityLayer projectId={projectId} />
+            {route.detail[0] === "trace" ? (
+              <RequirementsTraceabilityLayer
+                detail={route.detail}
+                projectId={projectId}
+              />
+            ) : (
+              <RequirementsCards projectId={projectId} />
+            )}
             <RequirementsConversionLayer projectId={projectId} />
           </>
         ) : null}

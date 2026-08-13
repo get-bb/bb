@@ -478,6 +478,20 @@ describe("resumable push", () => {
     expect(db.prepare("SELECT COUNT(*) FROM push_log").pluck().get()).toBe(0);
   });
 
+  it("rejects degraded plans with PLAN_STALE before any server write", async () => {
+    const db = createDb("degraded-preflight");
+    const root = await createRoot("degraded-preflight");
+    seedGeneration(db, ["threat"]);
+    const create = item("create", "degraded", null, { slug: "degraded", title: "new" });
+    const degraded = await persistPlan(db, root, [create], { degraded: true });
+    const audit: string[] = [];
+    const pusher = fakePusher(new Map(), audit);
+
+    await expect(push({ db, worktreeRoot: root, pushers: [pusher] }, pushOptions(degraded)))
+      .rejects.toMatchObject({ code: "PLAN_STALE" });
+    expect(audit).toEqual([]);
+  });
+
   it("maps TARA pre-head 409 and preserves already-applied rows on checkpoint failure", async () => {
     const db = createDb("tara");
     const root = await createRoot("tara");

@@ -1,9 +1,21 @@
-import type { PluginAppBuilder } from "@bb/plugin-sdk/app";
+import type { PluginAppBuilder, PluginNavPanelProps } from "@bb/plugin-sdk/app";
 import type { AppContext } from "../../lib/app-context.js";
+import { PlatformConnectionGate } from "../remote/platform-connection-gate.js";
+import { FindingsPanel } from "./ui/FindingsPanel.js";
+
+function FindingsPanelSlot(props: PluginNavPanelProps): React.JSX.Element {
+  return <PlatformConnectionGate><FindingsPanel {...props} /></PlatformConnectionGate>;
+}
 
 export function registerFindingsApp(
-  _app: PluginAppBuilder,
+  app: PluginAppBuilder,
   _ctx: AppContext,
 ): void {
-  // TODO(L3): findings and triage frontend registration. See WP-24–WP-26.
+  app.slots.navPanel({
+    id: "findings",
+    title: "Findings",
+    icon: "AlertTriangle",
+    path: "findings",
+    component: FindingsPanelSlot,
+  });
 }

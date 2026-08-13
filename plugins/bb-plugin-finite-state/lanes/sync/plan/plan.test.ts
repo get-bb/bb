@@ -8,10 +8,13 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createPluginContext } from "../../../lib/context.js";
 import { RemoteError } from "../../../lib/remote/types.js";
 import { ENTITIES } from "../../../lib/sync/registry.js";
+import { registerAttributionProvider } from "../conflicts/attribution.js";
 import type { EntityAdapter, ServerEntity, WorkingEntity } from "../engine/adapter.js";
 import { pull, type EngineDeps } from "../engine/pull.js";
+import { intendedPayload } from "../push/read-back.js";
 import { canonicalJson } from "../serialize/canonical.js";
 import { createSerializer } from "../serialize/serializer.js";
+import { BaseSnapshotStore } from "../store/base-snapshot.js";
 import { blastRadius } from "./blast-radius.js";
 import { classifyThreeWay } from "./diff.js";
 import {
@@ -133,6 +136,130 @@ describe("three-way plan", () => {
     expect(plan.items.find((item) => item.label === "REQ-NOOP")?.fields).toEqual([]);
   });
 
+  it("delegates live plan conflicts to pointer refinement and audit attribution", async () => {
+    const base = requirement("REQ-FIELD-CONFLICT", "same", {
+      metadata: { owner: "base", stable: true },
+    });
+    let remote = [base];
+    let authored = [working(base)];
+    const setup = await fixture(() => remote, () => authored);
+    await pull(setup.deps, scope, ["requirement"]);
+
+    remote = [requirement("REQ-FIELD-CONFLICT", "same", {
+      metadata: { owner: "theirs", stable: true },
+    })];
+    const ours = working(base);
+    authored = [{
+      ...ours,
+      payload: {
+        ...ours.payload,
+        metadata: { owner: "ours", stable: true },
+      },
+    }];
+    let attributionCalls = 0;
+    registerAttributionProvider("requirement", async (_kind, key, paths) => {
+      if (key !== base.key) {
+        return { actor: null, at: null, source: null, available: false };
+      }
+      attributionCalls += 1;
+      expect(paths).toEqual(["/metadata/owner"]);
+      return {
+        actor: "reviewer@example.com",
+        at: "2026-08-13T01:00:00.000Z",
+        source: "human",
+        available: true,
+      };
+    });
+
+    const plan = await computePlan(
+      { ...setup.deps, worktreeRoot: setup.root },
+      scope,
+      ["requirement"],
+    );
+
+    expect(attributionCalls).toBe(1);
+    expect(plan.items.find((item) => item.key === base.key)).toMatchObject({
+      operation: "conflict",
+      conflicts: [{
+        field: "/metadata/owner",
+        base: { present: true, value: "base" },
+        ours: { present: true, value: "ours" },
+        theirs: { present: true, value: "theirs" },
+        attribution: {
+          actor: "reviewer@example.com",
+          at: "2026-08-13T01:00:00.000Z",
+          source: "human",
+        },
+        suggestion: null,
+        resolution: null,
+      }],
+    });
+  });
+
+  it("carries a disjoint merge as planned ours without mutating YAML on CLI or deadlocking RPC", async () => {
+    const base = requirement("REQ-DISJOINT", "base title", {
+      metadata: { owner: "base-owner", stable: true },
+    });
+    let remote = [base];
+    let authored = [working(base)];
+    const setup = await fixture(() => remote, () => authored);
+    await pull(setup.deps, scope, ["requirement"]);
+
+    remote = [requirement("REQ-DISJOINT", "base title", {
+      metadata: { owner: "remote-owner", stable: true },
+    })];
+    authored = [working(base, "local title")];
+    const authoredFile = join(setup.root, authored[0]?.file ?? "missing");
+    await mkdir(dirname(authoredFile), { recursive: true });
+    const authoredYaml = "reqId: REQ-DISJOINT\ntitle: local title\nmetadata:\n  owner: base-owner\n  stable: true\n";
+    await writeFile(authoredFile, authoredYaml, "utf8");
+    const databaseBefore = databaseSnapshot(setup.deps);
+    const remoteBefore = canonicalJson(remote);
+
+    const cliPlan = await computePlan(
+      { ...setup.deps, worktreeRoot: setup.root },
+      scope,
+      ["requirement"],
+    );
+    const item = cliPlan.items.find((candidate) => candidate.key === base.key);
+    expect(item).toMatchObject({ operation: "update", conflicts: [] });
+    expect(item?.fields.map((field) => field.field)).toEqual(["metadata", "title"]);
+    expect(item?.fields.find((field) => field.field === "metadata")?.ours).toEqual({
+      present: true,
+      value: { owner: "remote-owner", stable: true },
+    });
+    expect(item?.fields.find((field) => field.field === "title")?.ours).toEqual({
+      present: true,
+      value: "local title",
+    });
+    expect(cliPlan.summary).toMatchObject({ updates: 1, conflicts: 0 });
+    const baseRow = new BaseSnapshotStore(setup.deps.db).getAccepted(
+      scope.projectId,
+      scope.projectVersionId,
+      "requirement",
+      base.key,
+    );
+    expect(item === undefined ? null : intendedPayload(item, baseRow)).toEqual({
+      reqId: "REQ-DISJOINT",
+      title: "local title",
+      metadata: { owner: "remote-owner", stable: true },
+    });
+    expect(await readFile(authoredFile, "utf8")).toBe(authoredYaml);
+    expect(databaseSnapshot(setup.deps)).toBe(databaseBefore);
+    expect(loadPlan(setup.root, cliPlan.planId)).toEqual(cliPlan);
+
+    const rpcPlan = await computePagedPlan(setup.deps, {
+      ...scope,
+      kinds: ["requirement"],
+    });
+    const rpcItem = rpcPlan.items.find((candidate) => candidate.key === base.key);
+    expect(rpcItem).toMatchObject({ operation: "update", conflicts: [] });
+    expect(rpcItem?.operation).toBe(item?.operation);
+    expect(rpcPlan.summary).toMatchObject({ updates: 1, conflicts: 0 });
+    expect(await readFile(authoredFile, "utf8")).toBe(authoredYaml);
+    expect(canonicalJson(remote)).toBe(remoteBefore);
+  });
+
   it("computes the SPEC summary and blocks its referenced delete", async () => {
     const updates = Array.from({ length: 3 }, (_, index) => requirement(`REQ-UPDATE-${index + 1}`, "base"));
     const conflicts = Array.from({ length: 2 }, (_, index) => requirement(`REQ-CONFLICT-${index + 1}`, "base"));
@@ -242,8 +369,8 @@ describe("three-way plan", () => {
         state: "stale",
         message: "Working tree unavailable; plan includes upstream changes only",
       },
-      summary: { conflicts: 1, noops: 0 },
-      items: [{ label: "REQ-RPC-DRIFT", operation: "conflict" }],
+      summary: { updates: 1, conflicts: 0, noops: 0 },
+      items: [{ label: "REQ-RPC-DRIFT", operation: "update", conflicts: [] }],
     });
     expect(loadPlanForDeps(setup.deps, computed.planId)).not.toBeNull();
   });
@@ -261,8 +388,8 @@ describe("three-way plan", () => {
       pageSize: 2,
     });
     expect(first.items.map((item) => `${item.operation}:${item.label}`)).toEqual([
-      "conflict:REQ-H0",
-      "conflict:REQ-H1",
+      "update:REQ-H0",
+      "update:REQ-H1",
     ]);
     expect(first.next).toBe(`fsp1:${first.planId}:2`);
 
@@ -276,24 +403,24 @@ describe("three-way plan", () => {
       continuation: first.next,
     });
     expect(second.items.map((item) => `${item.operation}:${item.label}`)).toEqual([
-      "conflict:REQ-H2",
-      "conflict:REQ-H3",
+      "update:REQ-H2",
+      "update:REQ-H3",
     ]);
     expect(second).toMatchObject({
       planId: first.planId,
       planSha256: first.planSha256,
       total: 4,
       next: null,
-      summary: { conflicts: 4 },
+      summary: { updates: 4, conflicts: 0 },
     });
     expect(loadPlanForDeps(setup.deps, first.planId)).toMatchObject({
       planId: first.planId,
       planSha256: first.planSha256,
       items: [
-        { label: "REQ-H0", operation: "conflict" },
-        { label: "REQ-H1", operation: "conflict" },
-        { label: "REQ-H2", operation: "conflict" },
-        { label: "REQ-H3", operation: "conflict" },
+        { label: "REQ-H0", operation: "update", conflicts: [] },
+        { label: "REQ-H1", operation: "update", conflicts: [] },
+        { label: "REQ-H2", operation: "update", conflicts: [] },
+        { label: "REQ-H3", operation: "update", conflicts: [] },
       ],
     });
     const sidecarDirectory = join(dirname(setup.deps.db.name), ".fs-sync");

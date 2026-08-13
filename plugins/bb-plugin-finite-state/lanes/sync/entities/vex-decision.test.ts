@@ -10,6 +10,7 @@ import type { Json } from "../../../lib/remote/types.js";
 import { ENTITIES } from "../../../lib/sync/registry.js";
 import { pull } from "../engine/pull.js";
 import { status } from "../engine/status.js";
+import { computePlan } from "../plan/index.js";
 import type { EntityAdapter } from "../engine/adapter.js";
 import { createSerializer } from "../serialize/serializer.js";
 import { SerializeError } from "../serialize/yaml.js";
@@ -89,6 +90,77 @@ decisions:
     ]);
   });
 
+  it("loads only the scoped project and rejects ambiguous unscoped reads", async () => {
+    const root = await worktree();
+    const overlay = (project: string) => `schema: fs-triage/v1
+project: ${project}
+component:
+  purl: pkg:generic/busybox@1.36.1
+  name: busybox
+  group: null
+  version: 1.36.1
+decisions:
+  CVE-2026-11000:
+    status: IN_TRIAGE
+    justification: null
+    response: null
+    reason: ${project}
+`;
+    for (const project of ["project-a", "project-b"]) {
+      const directory = join(root, ".fs", "triage", project);
+      await mkdir(directory, { recursive: true });
+      await writeFile(join(directory, "busybox.yaml"), overlay(project), "utf8");
+    }
+
+    const projectA = await readVexWorking(root, { projectId: "project-a", projectVersionId: "pv-a" });
+    const projectB = await readVexWorking(root, { projectId: "project-b", projectVersionId: "pv-b" });
+    expect(projectA).toEqual([expect.objectContaining({ file: ".fs/triage/project-a/busybox.yaml" })]);
+    expect(projectB).toEqual([expect.objectContaining({ file: ".fs/triage/project-b/busybox.yaml" })]);
+
+    const host = createFakePluginHost({ pluginId: `finite-state-vex-scope-${hosts.length}` });
+    hosts.push(host);
+    const readScopes: Array<{ projectId: string; projectVersionId: string | null } | undefined> = [];
+    const adapter: EntityAdapter = {
+      kind: "vexDecision",
+      klass: "OVERLAY",
+      serializer: createSerializer("vexDecision"),
+      async *fetchRemote() { yield []; },
+      async readWorking(worktreeRoot, readScope) {
+        readScopes.push(readScope);
+        return readVexWorking(worktreeRoot, readScope);
+      },
+    };
+    const scopedDeps = {
+      db: createPluginContext(host.bb).db(),
+      adapters: [adapter],
+      worktreeRoot: root,
+    };
+    const projectAScope = { projectId: "project-a", projectVersionId: "pv-a" };
+    const plan = await computePlan(scopedDeps, projectAScope, ["vexDecision"]);
+    expect(plan.items).toHaveLength(1);
+    await status(scopedDeps, projectAScope, ["vexDecision"]);
+    expect(readScopes).toEqual([projectAScope, projectAScope]);
+    expect(projectA[0]?.payload["reason"]).toBe("project-a");
+
+    const ambiguous = await readVexWorking(root).catch((error: unknown) => error);
+    expect(ambiguous).toBeInstanceOf(VexWorkingReadError);
+    expect(ambiguous).toMatchObject({
+      issues: [expect.objectContaining({ file: ".fs/triage/project-b/busybox.yaml" })],
+      partialWorking: [expect.objectContaining({ file: ".fs/triage/project-a/busybox.yaml" })],
+    });
+
+    await writeFile(join(root, ".fs", "triage", "project-a", "duplicate.yaml"), overlay("project-a"), "utf8");
+    const failure = await readVexWorking(root, {
+      projectId: "project-a",
+      projectVersionId: "pv-a",
+    }).catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(VexWorkingReadError);
+    expect(failure).toMatchObject({
+      issues: [expect.objectContaining({ file: ".fs/triage/project-a/duplicate.yaml" })],
+      partialWorking: [expect.objectContaining({ file: ".fs/triage/project-a/busybox.yaml" })],
+    });
+  });
+
   it("surfaces malformed YAML with valid entities from the other files preserved", async () => {
     const root = await worktree();
     await writeFile(join(root, ".fs", "triage", "broken.yaml"), "decisions:\n  CVE-1: [unterminated\n", "utf8");
@@ -114,16 +186,22 @@ reason: null
 
   it("reports one broken file while fast-forwarding and statusing a well-formed peer", async () => {
     const root = await worktree();
-    await writeFile(join(root, ".fs", "triage", "broken.yaml"), "decisions:\n  CVE-1: [unterminated\n", "utf8");
-    const validFile = join(root, ".fs", "triage", "valid.yaml");
-    await writeFile(validFile, `cve: CVE-2020-10000
-purl: pkg:generic/eagle-component-001@1.0.0
-name: eagle-component-001
-version: 1.0.0
-status: NOT_AFFECTED
-justification: CODE_NOT_PRESENT
-response: null
-reason: local evidence
+    const directory = join(root, ".fs", "triage", "project");
+    await mkdir(directory, { recursive: true });
+    await writeFile(join(directory, "broken.yaml"), "decisions:\n  CVE-1: [unterminated\n", "utf8");
+    const validFile = join(directory, "valid.yaml");
+    await writeFile(validFile, `schema: fs-triage/v1
+project: project
+component:
+  purl: pkg:generic/eagle-component-001@1.0.0
+  name: eagle-component-001
+  version: 1.0.0
+decisions:
+  CVE-2020-10000:
+    status: NOT_AFFECTED
+    justification: CODE_NOT_PRESENT
+    response: null
+    reason: local evidence
 `, "utf8");
     const remote = projectVexDecision(JSON.parse(
       (await readFile(FIXTURE, "utf8")).split("\n", 1)[0] ?? "{}",
@@ -158,7 +236,7 @@ reason: local evidence
       .resolves.toMatchObject({
         kinds: { vexDecision: { fetched: 1, baseRows: 1 } },
         workingFastForwarded: false,
-        divergence: ["vexDecision/.fs/triage/broken.yaml/read-error"],
+        divergence: ["vexDecision/.fs/triage/project/broken.yaml/read-error"],
       });
     expect(await readFile(validFile, "utf8")).toContain("base:");
     await expect(status(

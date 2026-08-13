@@ -38,7 +38,7 @@ function mountMockAtPath(
 }
 
 describe("direct remote and compute contract", () => {
-  it("defines native settings once and reports three independent secret-safe states", async () => {
+  it("keeps the plugin running while missing Platform remains a scoped connection state", async () => {
     const host = createFakePluginHost({ pluginId: "finite-state" });
     await registerRemoteServices(host.bb, createPluginContext(host.bb));
     expect(await host.harness.callRpc("connectionsStatus")).toEqual({
@@ -58,9 +58,14 @@ describe("direct remote and compute contract", () => {
         checkedAt: null,
       },
     });
-    expect(host.harness.needsConfigurationMessages).toEqual([
-      "Connect your Finite State account to load projects",
-    ]);
+    expect(host.harness.needsConfigurationMessages).toEqual([]);
+    await host.harness.setSettings({ platformConcurrency: "16" });
+    await vi.waitFor(() => {
+      expect(host.harness.realtimeSignals).toContainEqual({
+        channel: "finite-state:connections-changed",
+        payload: null,
+      });
+    });
     const source = readFileSync(new URL("../../lanes/remote/register.ts", import.meta.url), "utf8");
     expect(source.match(/settings\.define\(/gu)).toHaveLength(1);
     await host.harness.lifecycle.dispose();
@@ -109,6 +114,7 @@ describe("direct remote and compute contract", () => {
       platformBaseUrl: "https://platform-one.example", platformToken: "p", platformConcurrency: "8",
       asBaseUrl: "https://as.example", asApiKey: "a", asConcurrency: "8",
       forgeTransport: "disabled", forgeUrl: "", forgeCommand: "", forgeAuthToken: undefined, forgeConcurrency: "4",
+      standaloneUnpackExecutablePath: "", standaloneUnpackImage: "localhost:5000/services-unpack:latest",
     };
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json([]));
     const host = createFakePluginHost({ pluginId: "finite-state" });
@@ -214,6 +220,7 @@ describe("direct remote and compute contract", () => {
       platformBaseUrl: "https://platform.example", platformToken: "p", platformConcurrency: "8",
       asBaseUrl: "", asApiKey: undefined, asConcurrency: "8",
       forgeTransport: "disabled", forgeUrl: "", forgeCommand: "", forgeAuthToken: undefined, forgeConcurrency: "4",
+      standaloneUnpackExecutablePath: "", standaloneUnpackImage: "localhost:5000/services-unpack:latest",
     };
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       Response.json({ error: "unauthorized" }, { status: 401 }),

@@ -16,6 +16,10 @@ import {
 } from "./query.js";
 import type { RequirementCardModel } from "./schema.js";
 import { validateRequirement } from "./validator.js";
+import {
+  isTraceabilityListInput,
+  queryRequirementsTraceability,
+} from "../traceability/query.js";
 
 const requirementsRpcContract = {
   requirementsList: rpcContract.requirementsList,
@@ -222,6 +226,9 @@ export function registerRequirementsCardsBackend(
   const repository = createSdkRequirementRepository(bb);
   bb.rpc.register(requirementsRpcContract, {
     async requirementsList(input) {
+      if (isTraceabilityListInput(input)) {
+        return queryRequirementsTraceability({ bb, ctx, repository, input });
+      }
       const projectVersionId = resolvedProjectVersionId(
         ctx.db(), input.projectId, input.projectVersionId,
       );
