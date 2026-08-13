@@ -27,6 +27,11 @@
       "source": "./src/plugin-cli.ts",
       "types": "./src/plugin-cli.ts",
       "default": "./src/plugin-cli.ts"
+    },
+    "./plugin-interaction-limits": {
+      "source": "./src/plugin-interaction-limits.ts",
+      "types": "./src/plugin-interaction-limits.ts",
+      "default": "./src/plugin-interaction-limits.ts"
     }
   },
   "types": "./src/index.ts",

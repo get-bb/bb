@@ -5,7 +5,7 @@ import Database from "better-sqlite3";
 import { CronExpressionParser } from "cron-parser";
 import { Hono } from "hono";
 import { z } from "zod";
-import { PLUGIN_INTERACTION_MAX_TITLE_LENGTH } from "@bb/domain";
+import { PLUGIN_INTERACTION_MAX_TITLE_LENGTH } from "@bb/domain/plugin-interaction-limits";
 import {
   AGENT_TOOL_NAME_PATTERN,
   BACKGROUND_NAME_PATTERN,
