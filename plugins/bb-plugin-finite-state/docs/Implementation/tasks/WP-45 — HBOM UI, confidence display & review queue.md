@@ -4,6 +4,12 @@
 **Depends on:** WP-44, WP-07 · **Blocks:** WP-61, WP-67
 **Produces a FROZEN artifact:** no — consumes the frozen RPC contract and WP-44's versioned HBOM schema
 
+> **SPEC 07 intake note (2026-08-12).** `kicad_bom` cells (WP-78) render as
+> design-asserted facts, not proposals — hover reveals the schematic sheet and
+> reference designator as the source. Where a `kicad_bom` value disagrees with
+> an existing human cell, the disagreement surfaces in this review queue
+> rather than silently winning. Do not hardcode the provenance list.
+
 ## Files you own
 
     plugins/bb-plugin-finite-state/lanes/bom/app/hbom/hbom-grid.tsx

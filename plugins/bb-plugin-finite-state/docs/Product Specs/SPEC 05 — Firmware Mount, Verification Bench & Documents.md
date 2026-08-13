@@ -619,3 +619,11 @@ Slots into SPEC 00 build sequence **Phase 5** after the shared infra—direct re
 5. **Tier 3/4 evidence ingestion format.** Tier 4 lab reports are external PDFs to countersign; Tier 3 HIL emits OpenHTF-style measurements. Decide the canonical `measured` JSON shape and the countersign flow (who signs, with what identity) before HIL lands.
 6. **Document retention in v1 (C12).** Docs live worktree-local until `as_upload_document` exists — acceptable for FDE/demo, a data-loss risk for a tenanted product. Decide whether Phase 5 ships the binary I/O tools or defers to Horizon 2.
 7. **`doc_type` enum extension.** `datasheet`/`bom` need a small AS migration or land as `specification`/`other`. Confirm whether we extend the enum now (cleaner HBOM provenance) or map locally and defer.
+
+---
+
+## Amendments applied by later specs
+
+- **SPEC 08 §4.1 — tier D (development) below tier 0.** The bench answers "does this build pass?"; debug answers "why is this hanging?" — different loops, different safety postures. Tier D is interactive, human-initiated, read-mostly, with destructive operations requiring explicit instruction. **Tier D results are diagnostic, never evidentiary**: they never feed the requirement × tier matrix and never produce attestations. A hypothesis confirmed at the bench is a finding, not a proof. Data lands in `probe_run` (AMD-0010), not `verification_results`.
+- **SPEC 08 §5 — `build_run.digest` joins the attestation chain.** A firmware image built by the authoring loop is the subject of the attestation produced by this spec's bench, binding "the requirement flipped because *this* build passed" to a digest.
+- **SPEC 07 §2 — the hardware artifact cache mirrors the firmware mount.** `.fs-hw/<project-hash>/` follows the same CACHED discipline as `.fs-firmware/`: content-addressed, gitignored, regenerable, provenance recorded per artifact.

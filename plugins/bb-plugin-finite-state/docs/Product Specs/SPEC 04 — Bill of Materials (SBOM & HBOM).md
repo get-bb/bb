@@ -616,3 +616,10 @@ Definition of done per SPEC 00 §12, including the offline warm-cache demo path.
 5. **Confidence calibration** — extractor confidences are self-reported by the agent. After real usage, sample accepted-vs-rejected rates per band and tune `review_threshold` defaults; consider per-provenance floors (e.g. `inferred` caps at 0.7).
 6. **Multi-board / board-rev modeling** (§7.9) — one file vs per-board files; decide when a real product forces it.
 7. **HBOM board view** — an SVG board/placement visualization (ref-des → position) was floated in the Build Guide and is deliberately out of scope here [FD §3g]; revisit post-demo if the grid + review queue prove insufficient for the story.
+
+---
+
+## Amendments applied by later specs
+
+- **SPEC 07 §7.1 — `kicad_bom` becomes the top provenance tier.** The cell model gains provenance `kicad_bom` at confidence 1.0: *asserted by the design, not inferred*. `source_ref` is the schematic path plus the reference designator, so every HBOM value can name the exact symbol on the exact sheet it came from. The HBOM stops being assembled and starts being derived, with the design as its citation. Ingest lands in WP-78; WP-44/45 must treat the provenance vocabulary as open to these values.
+- **SPEC 08 §4.2.1 — structured vendor provenance.** `svd` / `dfp` / `devicetree` join at confidence 1.0 (declared by the vendor in machine-readable form) and `re_corpus` at 0.85 (observed in shipped firmware). Full ladder: `svd`/`dfp`/`devicetree` 1.0 · `kicad_bom` 1.0 · `human` 1.0 · `as_seed` 0.9 · `re_corpus` 0.85 · `document` ~0.72.

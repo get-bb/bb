@@ -4,6 +4,14 @@
 **Depends on:** WP-04, WP-05 · **Blocks:** WP-45, WP-46, WP-59
 **Produces a FROZEN artifact:** no — the HBOM YAML schema is versioned, but the frozen cross-lane contracts remain owned by WP-03/04/05
 
+> **SPEC 07/08 intake note (2026-08-12).** The provenance vocabulary is now
+> open-ended upward: SPEC 07 §7.1 adds `kicad_bom` (confidence 1.0, asserted
+> by the design; `source_ref` = schematic path + reference designator, ingest
+> in WP-78) and SPEC 08 §4.2.1 adds `svd`/`dfp`/`devicetree` (1.0, vendor-
+> declared) and `re_corpus` (0.85). Model provenance as an extensible string
+> with a known-values table, not a closed enum, and keep confidence semantics
+> per the SPEC 04 amendment section.
+
 ## Files you own
 
     plugins/bb-plugin-finite-state/lanes/bom/hbom/schema.ts

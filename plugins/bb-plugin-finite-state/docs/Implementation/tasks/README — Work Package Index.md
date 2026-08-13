@@ -1,6 +1,6 @@
 # Work Package Index
 
-*70 work packages across nine logical lanes. Start with `HANDOFF — Product & Architecture.md`, then the accepted direct-API ADR and `api-reference/README.md`, then the Master Plan, AGENTS, the scheduling bootstrap/manifest, and your WP. The ADR and frozen interfaces outrank historical Forge-first recon on transport ownership.*
+*98 work packages across eleven logical lanes (WP-71…98 added 2026-08-12 for SPECs 07–08). Start with `HANDOFF — Product & Architecture.md`, then the accepted direct-API ADR and `api-reference/README.md`, then the Master Plan, AGENTS, the scheduling bootstrap/manifest, and your WP. The ADR and frozen interfaces outrank historical Forge-first recon on transport ownership.*
 
 **Status legend:** ✅ detailed implementation spec written
 
@@ -226,6 +226,7 @@ Staff this path with your strongest agents. Keep a human reviewer on WP-03/04/05
 | 68 | Golden Loop beats 6–10 | 2 d | 19–21, 32–40, 50, 52–54, 59–62, 67 | ✅ |
 | 69 | Golden Loop beats 11–14 | 2 d | 39, 40, 52–55, 61, 68 | ✅ |
 | 70 | Offline mode, demo runbook & failure recovery | 2 d | 64, 69, Golden Loop production deps | ✅ |
+| 98 | Golden Loop v2 — the authoring beat (post-G4) | 2 d | 69, 95, 96 | ✅ |
 
 **The Golden Loop, for reference.** New firmware version lands → agent materializes the mount → queries findings → applies triage policy → writes YAML → human reviews the diff → plan → push → a finding is real, so the agent traces it to the threat model → drafts an EARS requirement → implements the fix in firmware source → dispatches a bench run → the verdict card goes green → the requirement flips to verified → **one commit spans source, model, and decisions** → attestation.
 
@@ -235,10 +236,69 @@ Staff this path with your strongest agents. Keep a human reviewer on WP-03/04/05
 
 ---
 
+## Amendment intake — SPEC 07/08 *(one WP, gates L9 and L10)*
+
+| WP | Title | Effort | Depends on | Frozen | Status |
+|---|---|---|---|---|---|
+| 71 | Consolidated SPEC 07/08 frozen-contract amendments (AMD-0010…0015) | 3 d | AMD approval by contract owner | **yes** | ✅ |
+
+**WP-71 scope.** The single implementation task for the six proposed amendments in `AMENDMENTS.md`: hardware/grounding/bench tables plus the `hardware` matrix column rebuild (AMD-0010), the `hardware.*`/`grounding.*`/`authoring.*`/`benchDev.*` RPC groups (AMD-0011), the `hardwareLink`/`citationFile`/`authoringGate` registry entities (AMD-0012), the ACTION allowlist growing three→nine with the `destructive` in-turn primitive (AMD-0013), the `kicadts` + `@google/model-viewer` dependency batch (AMD-0014), and the one-time composition-root registration of the four new lane stubs (AMD-0015). CI updates the frozen baselines after merge. **No L9/L10 package dispatches before this merges.**
+
+---
+
+## L9 — Hardware Design Plane *(1–2 agents, ~5.5 wk serial)* · SPEC 07
+
+| WP | Title | Effort | Depends on | Status |
+|---|---|---|---|---|
+| 72 | KiCad discovery, `kicad-cli` driver & the `.fs-hw` artifact cache | 3 d | 71 | ✅ |
+| 73 | `kicadts` parsing — symbols, nets & semantic search | 2.5 d | 71, 72 | ✅ |
+| 74 | Schematics tab — React Flow viewport, sheet tree, SVG render (KiCanvas go/no-go spike) | 3 d | 07, 72, 73 | ✅ |
+| 75 | Semantic overlay — coordinate transform, hit targets, part card & inspector | 3 d | 74 | ✅ |
+| 76 | Board tab — GLB view, 2D board SVG, stackup card | 2.5 d | 72, 74 | ✅ |
+| 77 | Fab tab — gerbers/drill, BOM extract, netlist browser, DRC/ERC list | 2 d | 72, 73 | ✅ |
+| 78 | HBOM ingest with `kicad_bom` provenance | 2 d | 73, 44 | ✅ |
+| 79 | Cross-surface links & `links/hardware.yaml` | 3 d | 71, 73, 25, 34 | ✅ |
+| 80 | DRC/ERC into the verification matrix (`hardware` column) | 1.5 d | 71, 77, 39 | ✅ |
+| 81 | Hardware agentic surfaces — tools, directives, `#refdes` mentions, skill, CLI | 3 d | 57, 73–80 | ✅ |
+
+**The lane's product claim:** the reference designator is a join key — click the MCU on the schematic and reach its HBOM row, the firmware that drives it, the CVEs against its SDK, and its threat-model node. **7g/7h (WP-78/79) are the moat, not polish**; the viewer is table stakes. KiCad stays the editor: everything here is read-only over worktree files, parsing works with no KiCad installed (`kicadts` is pure TS), and `kicad-cli` is required only for renders, fab outputs, and DRC/ERC. Sample projects live in `test/fixtures/kicad/` (not frozen). **Before WP-79 dispatches, the MPN→SBOM mapping decision (SPEC 07 §12.1) needs an owner ruling** — curated vendor table, agent proposal with human acceptance, manual linking, or all three tiered by confidence.
+
+---
+
+## L10 — Firmware Authoring, Grounding & the Bench Loop *(2 agents, ~11.5 wk serial; 8i–8k and 8n deferrable)* · SPEC 08
+
+| WP | Title | Effort | Depends on | Status |
+|---|---|---|---|---|
+| 82 | Grounding store & document index — structure-aware chunking, anchored retrieval | 4 d | 71, 56 | ✅ |
+| 83 | Structured catalog — `catalog.db` read-only attach, redistributable build, fetch & cache | 4 d | 71 | ✅ |
+| 84 | Grounding tab — sources, part picker, coverage, citation trace | 3 d | 07, 82, 83 | ✅ |
+| 85 | Citation store, quarantine & review queue — gutter annotations | 4 d | 71, 82 | ✅ |
+| 86 | Build & flash runner — toolchain detection, `build_run`, digest join to attestations | 3 d | 71 | ✅ |
+| 87 | Serial console — auto-connect after flash, regex filter, agent read, `~` send | 3 d | 86 | ✅ |
+| 88 | Device registry, claim/release arbitration & `fs_hw_status` | 2.5 d | 71 | ✅ |
+| 89 | GDB driver (J-Link/OpenOCD) & probe-script runtime | 4 d | 88 | ✅ |
+| 90 | Debug-mode gating, safety rails & the `destructive` primitive test | 2.5 d | 89 | ✅ |
+| 91 | Cascade tiers D0–D2 — STP static, rehosted repro, Renode replay, escalation rules | 4 d | 90, 48, 53 | ✅ |
+| 92 | Logic analyzer driver (Saleae, Digilent) | 3 d | 88 | ✅ |
+| 93 | Power profiler driver (PPK2, Joulescope) | 2.5 d | 88 | ✅ |
+| 94 | Scope drivers (PicoScope USB, SCPI/LAN) | 3 d | 88 | ✅ |
+| 95 | Authoring workflows & the gate pipeline — bring-up, port, requirement→code | 4 d | 85, 86 | ✅ |
+| 96 | Firmware-authoring agentic surfaces — hand-written skills, tools, directives, CLI | 4 d | 57, 82–91 | ✅ |
+| 97 | RE-corpus grounding *(the moat — start on corpus access, longest lead)* | 5 d | 82, corpus-access decision 9.1 | ✅ |
+
+**The lane in one sentence:** the loop from requirement to running, instrumented firmware on real silicon — grounded in datasheets and the schematic, gated by citations, coupled to the verification layer. Citation gating is the core mechanic: **an uncited hardware constant is quarantined, not written.** Tier D is diagnostic, never evidentiary. The cascade rule: answer at the cheapest tier that can answer (D0 static → D1 rehosted → D2 deterministic → D3 physical); a D1/D2 result may *refute* but never *confirm* a timing-, power-, or analog-class hypothesis. WP-92/93/94 are independently valuable and independently deferrable; the production/ATE bench (SPEC 09) is deferred per decision 9.6, but the driver interface takes a transport so the rack is not foreclosed. **Skills in WP-96 are hand-written by people who have brought up hardware** — IoT-SkillsBench is unambiguous that self-generated skills underperform.
+
+---
+
 ## Amendments log
 
 Frozen-interface change requests land in `AMENDMENTS.md`. **Expect 3–6 over the build** — that's the freeze working, not failing. Investigate at ten.
 
 | # | Interface | Requested by | Change | Status |
 |---|---|---|---|---|
-| — | — | — | — | — |
+| AMD-0010 | `lib/store/schema.ts` | SPEC 07/08 intake | `hw_*`, `ground_*`, `bench_device`, `probe_run`, `build_run` tables; `hardware` matrix column | proposed |
+| AMD-0011 | `shared/contract.ts` | SPEC 07/08 intake | `hardware.*` / `grounding.*` / `authoring.*` / `benchDev.*` RPC groups; `hardware` in tier enums | proposed |
+| AMD-0012 | `lib/sync/registry.ts` | SPEC 07/08 intake | `hardwareLink`, `citationFile`, `authoringGate` entities + CACHED registrations | proposed |
+| AMD-0013 | `lib/agentic/registry.ts` | SPEC 07/08 intake | ACTION allowlist three→nine; `destructive` in-turn primitive | proposed |
+| AMD-0014 | `package.json` / lockfile | SPEC 07/08 intake | `kicadts`, `@google/model-viewer` dependency batch | proposed |
+| AMD-0015 | `server.ts` / `app.tsx` | SPEC 07/08 intake | One-time composition-root registration of the four new lane stubs | proposed |

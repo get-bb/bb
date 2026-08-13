@@ -417,19 +417,17 @@ test("promotion excludes prohibited and stopped next work packages", () => {
     6,
   );
 
-  assert.equal(result.eligible, false);
-  assert.deepEqual(result.readyClusters, ["C-CANVAS"]);
+  // C-SPEC78-CONTRACT (WP71) became dependency-ready when AMD-0010…0015 were
+  // approved on 2026-08-13 and its temporary stop was lifted, which brings the
+  // independent-cluster count to the six required.
+  assert.equal(result.eligible, true, result.errors.join("\n"));
+  assert.deepEqual(result.readyClusters, ["C-CANVAS", "C-SPEC78-CONTRACT"]);
   assert.deepEqual(result.activeClusters, [
     "C-EARS-AUTHORING",
     "C-FIRMWARE-MATERIALIZATION",
     "C-FIXTURE-CORPUS",
     "C-SYNC-TRANSACTION",
   ]);
-  assert(
-    result.errors.includes(
-      "only 5 independent active-or-ready decision clusters are available; 6 required",
-    ),
-  );
   for (const blockedCluster of ["C-DISTRIBUTION", "C-DOCUMENT-PROVENANCE"]) {
     assert(!result.readyClusters.includes(blockedCluster));
   }
