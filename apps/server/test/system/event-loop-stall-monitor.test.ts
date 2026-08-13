@@ -34,6 +34,7 @@ vi.mock("node:perf_hooks", async () => {
   };
 });
 
+import { performance as nodePerformance } from "node:perf_hooks";
 import { startEventLoopStallMonitor } from "../../src/services/system/event-loop-stall-monitor.js";
 import {
   resetEventLoopWorkForTests,
@@ -73,6 +74,8 @@ const EMPTY_WORK_SNAPSHOT = {
   currentWork: null,
   lastWork: null,
   lastWorkMs: null,
+  slowestWork: null,
+  slowestWorkMs: null,
 };
 
 describe("event loop stall monitor", () => {
@@ -179,6 +182,7 @@ describe("event loop stall monitor", () => {
         currentWork: "GET /api/v1/threads/thr_example/timeline",
         lastWork: null,
         lastWorkMs: null,
+        slowestWork: "GET /api/v1/threads/thr_example/timeline",
       }),
       "Event loop stalled",
     );
@@ -248,6 +252,80 @@ describe("event loop stall monitor", () => {
 
     release();
     await held;
+    monitor.stop();
+  });
+
+  it("keeps sibling frames when one request finishes first", async () => {
+    installHistogram({
+      maxDelayMs: 500,
+      meanDelayMs: 25,
+      p99DelayMs: 450,
+    });
+    const logger = { info: vi.fn() };
+    const monitor = startEventLoopStallMonitor({ logger });
+    let releaseFirst!: () => void;
+    let releaseSecond!: () => void;
+    const first = runEventLoopWork(
+      "GET /api/v1/first",
+      () =>
+        new Promise<void>((resolve) => {
+          releaseFirst = resolve;
+        }),
+    );
+    const second = runEventLoopWork(
+      "GET /api/v1/second",
+      () =>
+        new Promise<void>((resolve) => {
+          releaseSecond = resolve;
+        }),
+    );
+
+    releaseFirst();
+    await first;
+    vi.advanceTimersByTime(EVENT_LOOP_STALL_MONITOR_INTERVAL_MS);
+
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.objectContaining({
+        currentWork: "GET /api/v1/second",
+        lastWork: "GET /api/v1/first",
+      }),
+      "Event loop stalled",
+    );
+
+    releaseSecond();
+    await second;
+    monitor.stop();
+  });
+
+  it("keeps the slowest work from the stall window after later short work", () => {
+    installHistogram({
+      maxDelayMs: 500,
+      meanDelayMs: 25,
+      p99DelayMs: 450,
+    });
+    const logger = { info: vi.fn() };
+    const nowSpy = vi.spyOn(nodePerformance, "now");
+    nowSpy.mockReturnValueOnce(0);
+    nowSpy.mockReturnValueOnce(650);
+    runEventLoopWorkSync("sweep:database-maintenance", () => undefined);
+    nowSpy.mockReturnValueOnce(650);
+    nowSpy.mockReturnValueOnce(651);
+    runEventLoopWorkSync("ws:daemon heartbeat", () => undefined);
+    nowSpy.mockRestore();
+
+    const monitor = startEventLoopStallMonitor({ logger });
+    vi.advanceTimersByTime(EVENT_LOOP_STALL_MONITOR_INTERVAL_MS);
+
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.objectContaining({
+        lastWork: "ws:daemon heartbeat",
+        lastWorkMs: 1,
+        slowestWork: "sweep:database-maintenance",
+        slowestWorkMs: 650,
+      }),
+      "Event loop stalled",
+    );
+
     monitor.stop();
   });
 });
