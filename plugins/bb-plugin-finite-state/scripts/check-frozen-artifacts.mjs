@@ -258,8 +258,16 @@ async function accept(root, amendmentId) {
   const manifest = await readJson(root, packagePath);
   const dependencies = normalizeDependencies(manifest);
   const changedArtifacts = frozenPaths.filter((relativePath) => {
+    const entry = baseline.artifacts[relativePath];
     const key = relativePath === fixtureTree ? "treeSha256" : "sha256";
-    return baseline.artifacts[relativePath][key] !== hashes[relativePath];
+    // Inactive baselines are ignored by check(); they participate in accept()
+    // only when the amendment names them (the activation path). Without this
+    // filter an inactive-and-drifted entry pollutes every other amendment's
+    // exact-target match.
+    if (!entry.active && !amendment.artifacts.includes(relativePath)) {
+      return false;
+    }
+    return entry[key] !== hashes[relativePath];
   });
   const dependencyChanged =
     dependencySections.some(

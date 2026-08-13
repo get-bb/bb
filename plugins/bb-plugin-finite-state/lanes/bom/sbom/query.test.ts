@@ -408,9 +408,17 @@ describe("cached SBOM query", () => {
         continuation: null,
       }),
     ).rejects.toThrow(/NOT_IMPLEMENTED/u);
-    expect(
-      (await host.harness.behavior.fetchHttp("GET", "/sbom/export")).status,
-    ).toBe(501);
+    const missingExportQuery = await host.harness.behavior.fetchHttp(
+      "GET",
+      "/sbom/export",
+    );
+    expect(missingExportQuery.status).toBe(400);
+    expect(await missingExportQuery.json()).toEqual({
+      error: {
+        code: "SBOM_PROJECT_VERSION_INVALID",
+        message: "projectVersionId is required.",
+      },
+    });
     expect(
       (await host.harness.behavior.fetchHttp("GET", "/hbom/export.xlsx"))
         .status,
