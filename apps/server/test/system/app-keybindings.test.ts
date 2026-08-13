@@ -60,10 +60,31 @@ describe("app keybindings", () => {
           .map((binding) => ({
             desktopOnly: binding.desktopOnly,
             key: binding.shortcut.key,
+            mod: binding.shortcut.mod,
+            control: binding.shortcut.control,
+            shift: binding.shortcut.shift,
+            when: binding.when,
           })),
       ).toEqual([
-        { desktopOnly: false, key: "ArrowUp" },
-        { desktopOnly: true, key: "[" },
+        {
+          desktopOnly: false,
+          key: "[",
+          mod: false,
+          control: true,
+          shift: true,
+          when: {
+            all: ["mainSurface", "webSurface"],
+            none: ["modalOpen"],
+          },
+        },
+        {
+          desktopOnly: true,
+          key: "[",
+          mod: true,
+          control: false,
+          shift: true,
+          when: { all: ["mainSurface"], none: ["modalOpen"] },
+        },
       ]);
       expect(
         assignedDefaultKeybindings
@@ -71,10 +92,31 @@ describe("app keybindings", () => {
           .map((binding) => ({
             desktopOnly: binding.desktopOnly,
             key: binding.shortcut.key,
+            mod: binding.shortcut.mod,
+            control: binding.shortcut.control,
+            shift: binding.shortcut.shift,
+            when: binding.when,
           })),
       ).toEqual([
-        { desktopOnly: false, key: "ArrowDown" },
-        { desktopOnly: true, key: "]" },
+        {
+          desktopOnly: false,
+          key: "]",
+          mod: false,
+          control: true,
+          shift: true,
+          when: {
+            all: ["mainSurface", "webSurface"],
+            none: ["modalOpen"],
+          },
+        },
+        {
+          desktopOnly: true,
+          key: "]",
+          mod: true,
+          control: false,
+          shift: true,
+          when: { all: ["mainSurface"], none: ["modalOpen"] },
+        },
       ]);
       expect(
         assignedDefaultKeybindings

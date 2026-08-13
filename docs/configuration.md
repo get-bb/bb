@@ -184,7 +184,8 @@ before bb receives them.
 pane shortcuts follow Slack's browser-safe convention: web uses
 `Control+1…9` on macOS and `Ctrl+Shift+1…9` on Windows/Linux, while desktop
 uses `Mod+1…9`. The web aliases leave native browser `Mod+1…9` tab switching
-untouched.
+untouched. Previous and next thread use `Mod+Shift+[/]` on desktop and
+`Control+Shift+[/]` on the web.
 
 The "Show keyboard hints when holding CMD / Control" preference defaults
 to on. Set it with
@@ -197,7 +198,7 @@ delayed shortcut badges without disabling any shortcuts.
 | Threads   | Search threads                     | `Mod+K`                           | All clients              |
 | Threads   | Rename focused thread              | Unassigned                        | Thread view              |
 | Threads   | Archive focused thread             | Unassigned                        | Thread view              |
-| Threads   | Previous / next thread             | `Mod+Shift+[/]` / `Mod+Shift+↑/↓` | Desktop / web            |
+| Threads   | Previous / next thread             | Surface defaults above            | Desktop / web            |
 | Threads   | Open visible thread 1–9            | Platform defaults above           | Web / desktop            |
 | Layout    | Previous / next chat pane          | `Mod+Shift+[/]`                   | While split              |
 | Layout    | Focus chat pane 1–8                | Platform defaults above           | Split (web / desktop)    |
@@ -222,8 +223,9 @@ Cycle commands wrap in both directions. Reasoning cycles only through the
 current model's supported efforts in canonical low-to-high rank order, not the
 provider response order. The cycle shortcuts act only from the active composer
 or an open picker; unrelated editable controls retain their Option-composed
-character input. Navigation and deletion keys remain native in editable controls
-when assigned to an app command.
+character input. A configured app shortcut takes precedence in editable
+controls; when no matching command handles a chord, the control retains its
+native behavior.
 
 The desktop application menu uses the same resolved bindings for New Thread,
 New Window, New Tab, Close, and Settings. There is no separate menu shortcut

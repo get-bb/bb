@@ -123,6 +123,11 @@ const pickerOpenOnly = {
   none: [],
 } as const;
 
+const webMainWithoutModal = {
+  all: ["mainSurface", "webSurface"],
+  none: ["modalOpen"],
+} as const;
+
 const splitWithoutModal = {
   all: ["mainSurface", "splitActive"],
   none: ["modalOpen"],
@@ -141,12 +146,22 @@ export const DEFAULT_APP_KEYBINDINGS: AppDefaultKeybindings = [
   unassignedBinding("thread.archive", mainWithoutModal),
   binding("settings.open", ",", { mod: true }, mainWithoutModal),
   binding("sidebar.toggle", "\\", { mod: true }, mainWithoutModal),
-  binding("thread.previous", "ArrowUp", { mod: true, shift: true }, mainWithoutModal),
+  binding(
+    "thread.previous",
+    "[",
+    { control: true, shift: true },
+    webMainWithoutModal,
+  ),
   binding("thread.previous", "[", { mod: true, shift: true }, {
     ...mainWithoutModal,
     desktopOnly: true,
   }),
-  binding("thread.next", "ArrowDown", { mod: true, shift: true }, mainWithoutModal),
+  binding(
+    "thread.next",
+    "]",
+    { control: true, shift: true },
+    webMainWithoutModal,
+  ),
   binding("thread.next", "]", { mod: true, shift: true }, {
     ...mainWithoutModal,
     desktopOnly: true,
