@@ -31,6 +31,7 @@ describe("bb environment command output", () => {
       ],
       insertions: 3,
       deletions: 1,
+      lineStatsComplete: true,
     },
     checkout: {
       kind: "branch",
@@ -51,6 +52,7 @@ describe("bb environment command output", () => {
       files: [],
       insertions: 0,
       deletions: 0,
+      lineStatsComplete: true,
     },
   };
 
@@ -144,6 +146,28 @@ describe("bb environment command output", () => {
     expect(
       JSON.parse(String(vi.mocked(console.log).mock.calls[0]?.[0])),
     ).toEqual(response);
+  });
+
+  it("does not print incomplete line totals for untracked files", async () => {
+    stubServerApi({
+      "v1.environments.:id.status.$get": vi.fn(async () => ({
+        outcome: "available",
+        workspace: {
+          ...workspaceStatus,
+          workingTree: {
+            ...workspaceStatus.workingTree,
+            lineStatsComplete: false,
+          },
+        },
+      })),
+    });
+
+    await runCommand(["environment", "status", "env-untracked"], register);
+
+    const lines = collectLogLines(vi.mocked(console.log));
+    expect(lines).toContain("Line stats: unavailable for untracked files");
+    expect(lines.some((line) => line.startsWith("Insertions:"))).toBe(false);
+    expect(lines.some((line) => line.startsWith("Deletions:"))).toBe(false);
   });
 
   it("bb environment status explains non-git environments", async () => {

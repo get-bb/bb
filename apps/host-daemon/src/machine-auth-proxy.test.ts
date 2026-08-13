@@ -213,6 +213,135 @@ describe("startMachineAuthProxy", () => {
     expect(upstreamRequests).toBe(0);
   });
 
+  // The in-app browser can now reach any unreserved loopback port, and this
+  // proxy's port is chosen at random so no reserved list can name it. A browsed
+  // page must not be able to borrow the machine credential with a blind
+  // `no-cors` request, whose response it cannot read but whose effect lands.
+  it("rejects browser-originated requests without reaching upstream", async () => {
+    let upstreamRequests = 0;
+    const upstream = http.createServer((_request, response) => {
+      upstreamRequests += 1;
+      response.end();
+    });
+    const upstreamPort = await listen(upstream);
+    const proxy = await startMachineAuthProxy({
+      machineCredential: "bbcm_machine",
+      serverUrl: `http://127.0.0.1:${upstreamPort}`,
+    });
+    proxies.push(proxy);
+
+    const browserHeaders: Array<Record<string, string>> = [
+      // A blind cross-origin POST: no preflight, and the effect still lands.
+      { origin: "http://127.0.0.1:3009", "content-type": "text/plain" },
+      // A blind `no-cors` GET carries no Origin, but Chromium still marks it.
+      { "sec-fetch-site": "cross-site" },
+    ];
+    for (const headers of browserHeaders) {
+      const response = await fetch(`${proxy.serverUrl}/api/v1/threads`, {
+        method: "POST",
+        headers,
+        body: "{}",
+      });
+      expect(response.status).toBe(403);
+    }
+    expect(upstreamRequests).toBe(0);
+
+    // A runtime process using Node's own `fetch` still gets through. Node sends
+    // `sec-fetch-mode: cors`, so that header must not be a discriminator.
+    const allowed = await fetch(`${proxy.serverUrl}/api/v1/threads`, {
+      method: "POST",
+      body: "{}",
+    });
+    expect(allowed.status).toBe(200);
+    expect(upstreamRequests).toBe(1);
+  });
+
+  it("rejects a browser WebSocket handshake without reaching upstream", async () => {
+    let upstreamUpgrades = 0;
+    const upstream = http.createServer((_request, response) => response.end());
+    upstream.on("upgrade", (_request, socket) => {
+      upstreamUpgrades += 1;
+      socket.destroy();
+    });
+    const upstreamPort = await listen(upstream);
+    const proxy = await startMachineAuthProxy({
+      machineCredential: "bbcm_machine",
+      serverUrl: `http://127.0.0.1:${upstreamPort}`,
+    });
+    proxies.push(proxy);
+    const proxyUrl = new URL(proxy.serverUrl);
+
+    const handshake = await new Promise<string>((resolve, reject) => {
+      const socket = net.connect(
+        Number(proxyUrl.port),
+        proxyUrl.hostname,
+        () => {
+          socket.write(
+            `GET /ws HTTP/1.1\r\nHost: ${proxyUrl.host}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: ${Buffer.from("0123456789abcdef").toString("base64")}\r\nSec-WebSocket-Version: 13\r\nOrigin: http://127.0.0.1:3009\r\n\r\n`,
+          );
+        },
+      );
+      socket.setEncoding("utf8");
+      socket.once("data", (chunk) => resolve(String(chunk)));
+      socket.once("error", reject);
+    });
+
+    expect(handshake).toContain("403 Forbidden");
+    expect(upstreamUpgrades).toBe(0);
+  });
+
+  // A page on a public hostname that DNS-rebinds to 127.0.0.1 reaches this
+  // socket with that name in `Host`, and Chromium sends no `Origin` or
+  // `Sec-Fetch-*` for a `no-cors` GET to a non-trustworthy URL — so the header
+  // check alone cannot see it. Verified in Electron with
+  // `--host-resolver-rules="MAP rebind.example 127.0.0.1"`.
+  it("rejects a rebound public Host without reaching upstream", async () => {
+    let upstreamRequests = 0;
+    const upstream = http.createServer((_request, response) => {
+      upstreamRequests += 1;
+      response.end();
+    });
+    const upstreamPort = await listen(upstream);
+    const proxy = await startMachineAuthProxy({
+      machineCredential: "bbcm_machine",
+      serverUrl: `http://127.0.0.1:${upstreamPort}`,
+    });
+    proxies.push(proxy);
+    const proxyUrl = new URL(proxy.serverUrl);
+
+    async function statusForHost(host: string): Promise<number | undefined> {
+      return await new Promise<number | undefined>((resolve, reject) => {
+        const request = http.request(
+          {
+            host: proxyUrl.hostname,
+            port: proxyUrl.port,
+            path: "/api/v1/threads",
+            headers: { host },
+          },
+          (response) => resolve(response.statusCode),
+        );
+        request.once("error", reject);
+        request.end();
+      });
+    }
+
+    // No Origin, no Sec-Fetch-Site: only the Host header gives it away.
+    expect(await statusForHost(`rebind.example:${proxyUrl.port}`)).toBe(403);
+    // A mismatched port on a loopback name is not this proxy either.
+    expect(await statusForHost("127.0.0.1:1")).toBe(403);
+    expect(upstreamRequests).toBe(0);
+
+    // The authorities a real runtime client sends still pass.
+    for (const host of [
+      `127.0.0.1:${proxyUrl.port}`,
+      `localhost:${proxyUrl.port}`,
+      `[::1]:${proxyUrl.port}`,
+    ]) {
+      expect(await statusForHost(host)).toBe(200);
+    }
+    expect(upstreamRequests).toBe(3);
+  });
+
   it("rejects loudly when its loopback port cannot be bound", async () => {
     const occupied = net.createServer();
     const port = await listen(occupied);

@@ -47,6 +47,7 @@ describe("workspace command dispatch", () => {
         target: { type: "all", mergeBaseBranch: "main" },
         maxDiffBytes: 2 * 1024 * 1024,
         maxFileListBytes: 256 * 1024,
+        maxUntrackedFiles: 5000,
       },
       harness.dispatchOptions(),
     );
@@ -362,6 +363,7 @@ describe("workspace command dispatch", () => {
         target: { type: "uncommitted" },
         maxDiffBytes: 2 * 1024 * 1024,
         maxFileListBytes: 256 * 1024,
+        maxUntrackedFiles: 5000,
       },
       harness.dispatchOptions(),
     );

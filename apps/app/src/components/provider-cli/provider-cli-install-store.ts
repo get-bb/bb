@@ -19,9 +19,19 @@ type ProviderCliInstallCompletedEvent = Extract<
 type ProviderCliTitlePhase = "failure" | "log";
 type ProviderCliTitleTemplate = (displayName: string) => string;
 
+export const PROVIDER_CLI_FAILURE_LOG_MAX_BYTES = 128 * 1024;
+export const PROVIDER_CLI_FAILURE_MAX_ENTRIES = 32;
+const PROVIDER_CLI_FAILURE_LOG_TRUNCATION_MARKER =
+  "\n\n… provider update output truncated …\n\n";
+
 export interface ProviderCliInstallJob {
   hostId: string;
   issue: ProviderCliActionableIssue;
+}
+
+export interface ProviderCliInstallFailure {
+  issueFingerprint: string;
+  logDialogState: ProviderCliInstallLogDialogState;
 }
 
 export interface ProviderCliInstallSnapshot {
@@ -31,6 +41,8 @@ export interface ProviderCliInstallSnapshot {
   queuedJobKeys: ReadonlySet<string>;
   /** The failure log a user opened from a toast, or null when closed. */
   logDialogState: ProviderCliInstallLogDialogState | null;
+  /** The latest failed attempt for each provider row. */
+  failuresByJobKey: ReadonlyMap<string, ProviderCliInstallFailure>;
 }
 
 const PROVIDER_CLI_TITLE_TEMPLATES = {
@@ -48,11 +60,16 @@ const PROVIDER_CLI_TITLE_TEMPLATES = {
 >;
 
 const EMPTY_QUEUED_JOB_KEYS: ReadonlySet<string> = new Set();
+const EMPTY_FAILURES_BY_JOB_KEY: ReadonlyMap<
+  string,
+  ProviderCliInstallFailure
+> = new Map();
 
 const INITIAL_SNAPSHOT: ProviderCliInstallSnapshot = {
   runningJobKey: null,
   queuedJobKeys: EMPTY_QUEUED_JOB_KEYS,
   logDialogState: null,
+  failuresByJobKey: EMPTY_FAILURES_BY_JOB_KEY,
 };
 
 // Module-level, not component state: a provider CLI install keeps running (and
@@ -140,7 +157,49 @@ function getProviderCliTitle(args: {
   );
 }
 
+function truncateProviderCliFailureLog(log: string): string {
+  const encoder = new TextEncoder();
+  const encodedLog = encoder.encode(log);
+  if (encodedLog.byteLength <= PROVIDER_CLI_FAILURE_LOG_MAX_BYTES) {
+    return log;
+  }
+
+  const encodedMarker = encoder.encode(
+    PROVIDER_CLI_FAILURE_LOG_TRUNCATION_MARKER,
+  );
+  const outputBudget =
+    PROVIDER_CLI_FAILURE_LOG_MAX_BYTES - encodedMarker.byteLength;
+  const headBudget = Math.floor(outputBudget / 2);
+  const tailBudget = outputBudget - headBudget;
+  const head = new TextDecoder()
+    .decode(encodedLog.slice(0, headBudget))
+    .replace(/\uFFFD$/u, "");
+  const tail = new TextDecoder()
+    .decode(encodedLog.slice(-tailBudget))
+    .replace(/^\uFFFD/u, "");
+  return `${head}${PROVIDER_CLI_FAILURE_LOG_TRUNCATION_MARKER}${tail}`;
+}
+
+function setProviderCliInstallFailure(args: {
+  failure: ProviderCliInstallFailure;
+  jobKey: string;
+}): void {
+  const failuresByJobKey = new Map(snapshot.failuresByJobKey);
+  // Refresh an existing key's insertion order so eviction stays least-recent.
+  failuresByJobKey.delete(args.jobKey);
+  failuresByJobKey.set(args.jobKey, args.failure);
+  while (failuresByJobKey.size > PROVIDER_CLI_FAILURE_MAX_ENTRIES) {
+    const oldest = failuresByJobKey.keys().next();
+    if (oldest.done) {
+      break;
+    }
+    failuresByJobKey.delete(oldest.value);
+  }
+  setSnapshot({ failuresByJobKey });
+}
+
 function showProviderCliInstallFailureToast(args: {
+  jobKey: string;
   issue: ProviderCliActionableIssue;
   log: string;
   message: string;
@@ -148,10 +207,17 @@ function showProviderCliInstallFailureToast(args: {
 }): void {
   const logDialogState: ProviderCliInstallLogDialogState = {
     displayName: args.issue.status.displayName,
-    log: args.log,
+    log: truncateProviderCliFailureLog(args.log),
     message: args.message,
     title: getProviderCliTitle({ issue: args.issue, phase: "log" }),
   };
+  setProviderCliInstallFailure({
+    jobKey: args.jobKey,
+    failure: {
+      issueFingerprint: args.issue.fingerprint,
+      logDialogState,
+    },
+  });
 
   appToast.error(getProviderCliTitle({ issue: args.issue, phase: "failure" }), {
     id: args.toastId,
@@ -168,7 +234,9 @@ function runInstall(job: ProviderCliInstallJob): void {
   const { action, provider } = issue;
   const jobKey = providerCliJobKey(hostId, provider);
 
-  setSnapshot({ runningJobKey: jobKey });
+  const failuresByJobKey = new Map(snapshot.failuresByJobKey);
+  failuresByJobKey.delete(jobKey);
+  setSnapshot({ failuresByJobKey, runningJobKey: jobKey });
   const failureToastId = `provider-cli-install-failure:${jobKey}`;
   let installLogChunks = [`$ ${action.command}\n`];
   let completedEvent: ProviderCliInstallCompletedEvent | null = null;
@@ -214,6 +282,7 @@ function runInstall(job: ProviderCliInstallJob): void {
           ? exitDescription(completedEvent)
           : "Command finished without reporting success.");
       showProviderCliInstallFailureToast({
+        jobKey,
         issue,
         log: installLogChunks.join(""),
         message: failureMessage,
@@ -224,6 +293,7 @@ function runInstall(job: ProviderCliInstallJob): void {
       const message = error instanceof Error ? error.message : String(error);
       installLogChunks.push(`\n${message}\n`);
       showProviderCliInstallFailureToast({
+        jobKey,
         issue,
         log: installLogChunks.join(""),
         message,
