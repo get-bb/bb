@@ -225,10 +225,38 @@ describe("bench registration", () => {
       total: 3,
       next: null,
     });
+    const downloadedLog = await host.harness.behavior.fetchHttp(
+      "GET",
+      `/bench/runs/log?runId=${encodeURIComponent(runId)}`,
+    );
+    expect(downloadedLog.status).toBe(206);
+    expect(downloadedLog.headers.get("X-BB-Log-Completeness")).toBe("cached-tail");
+    await expect(downloadedLog.text()).resolves.toBe("one\ntwo\nthree\n");
+    const artifactRecovery = await host.harness.behavior.fetchHttp(
+      "GET",
+      `/bench/runs/artifact?runId=${encodeURIComponent(runId)}&artifactName=report.json`,
+    );
+    expect(artifactRecovery.status).toBe(404);
+    await expect(artifactRecovery.json()).resolves.toMatchObject({
+      error: { code: "BENCH_STREAM_UNAVAILABLE" },
+    });
+    const attestationRecovery = await host.harness.behavior.fetchHttp(
+      "GET",
+      `/bench/runs/attestation?runId=${encodeURIComponent(runId)}`,
+    );
+    expect(attestationRecovery.status).toBe(404);
+    await expect(attestationRecovery.json()).resolves.toMatchObject({
+      error: { code: "BENCH_STREAM_UNAVAILABLE" },
+    });
+    const traversalRejected = await host.harness.behavior.fetchHttp(
+      "GET",
+      "/bench/runs/artifact?runId=..%2Frun&artifactName=..%2Fsecret",
+    );
+    expect(traversalRejected.status).toBe(400);
     expect(host.harness.registrations.httpRoutes).toEqual([
-      expect.objectContaining({ method: "GET", path: "/bench/runs/:runId/log", auth: "local" }),
-      expect.objectContaining({ method: "GET", path: "/bench/runs/:runId/artifacts/:artifactName", auth: "local" }),
-      expect.objectContaining({ method: "GET", path: "/bench/runs/:runId/attestation", auth: "local" }),
+      expect.objectContaining({ method: "GET", path: "/bench/runs/log", auth: "local" }),
+      expect.objectContaining({ method: "GET", path: "/bench/runs/artifact", auth: "local" }),
+      expect.objectContaining({ method: "GET", path: "/bench/runs/attestation", auth: "local" }),
     ]);
     expect(host.harness.registrations.cli).toBeNull();
 

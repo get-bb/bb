@@ -27,7 +27,7 @@ describe("LogTail", () => {
     });
     expect(await slot.findByText("line 0")).toBeTruthy();
     expect(slot.container.querySelectorAll("[data-bench-log-line]").length).toBeLessThan(50);
-    expect(slot.getByRole("link", { name: /Download cached log/u }).getAttribute("href")).toBe("/api/v1/plugins/finite-state/http/bench/runs/run-1/log");
+    expect(slot.getByRole("link", { name: /Download cached log/u }).getAttribute("href")).toBe("/api/v1/plugins/finite-state/http/bench/runs/log?runId=run-1");
     await slot.behavior.emitRealtime("bench:log", { runId: "run-1", sequence: 199 });
     await slot.behavior.emitRealtime("bench:log", { runId: "run-1", sequence: 999 });
     fireEvent.click(slot.getByRole("button", { name: "Load next log page" }));

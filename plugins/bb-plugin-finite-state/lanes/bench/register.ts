@@ -37,10 +37,18 @@ const benchRpcContract = {
 } as const;
 
 function streamUnavailable(message: string, status = 410): Response {
-  return Response.json(
-    { error: { code: "BENCH_STREAM_UNAVAILABLE", message } },
-    { status },
+  return new Response(
+    JSON.stringify({ error: { code: "BENCH_STREAM_UNAVAILABLE", message } }),
+    { headers: { "Content-Type": "application/json; charset=utf-8" }, status },
   );
+}
+
+function queryRunId(value: string | undefined): string | null {
+  return value !== undefined && SAFE_ID.test(value) ? value : null;
+}
+
+function queryArtifactName(value: string | undefined): string | null {
+  return value !== undefined && SAFE_ARTIFACT_NAME.test(value) ? value : null;
 }
 
 interface RunSurfaceRow {
@@ -565,8 +573,9 @@ export function registerBench(bb: BbPluginApi, ctx: PluginContext): void {
     },
   });
 
-  bb.http.route("GET", "/bench/runs/:runId/log", async (http) => {
-    const runId = http.req.param("runId");
+  bb.http.route("GET", "/bench/runs/log", async (http) => {
+    const runId = queryRunId(http.req.query("runId"));
+    if (runId === null) return streamUnavailable("A valid runId query parameter is required.", 400);
     const row = uniqueRunRowById(db, runId);
     if (!row) return streamUnavailable("Run log is unknown or ambiguous.", 404);
     if (row.log_locator !== null) {
@@ -590,11 +599,14 @@ export function registerBench(bb: BbPluginApi, ctx: PluginContext): void {
     headers.set("X-BB-Log-Completeness", "cached-tail");
     return new Response(body, { status: 206, headers });
   }, { auth: "local" });
-  bb.http.route("GET", "/bench/runs/:runId/artifacts/:artifactName", (http) => {
-    const runId = http.req.param("runId");
-    const artifactName = http.req.param("artifactName");
+  bb.http.route("GET", "/bench/runs/artifact", async (http) => {
+    const runId = queryRunId(http.req.query("runId"));
+    const artifactName = queryArtifactName(http.req.query("artifactName"));
+    if (runId === null || artifactName === null) {
+      return streamUnavailable("Valid runId and artifactName query parameters are required.", 400);
+    }
     const row = uniqueRunRowById(db, runId);
-    if (!row || !SAFE_ARTIFACT_NAME.test(artifactName)) {
+    if (!row) {
       return streamUnavailable("Artifact is unknown or has an unsafe logical name.", 404);
     }
     const artifact = db
@@ -616,8 +628,9 @@ export function registerBench(bb: BbPluginApi, ctx: PluginContext): void {
       `Artifact ${artifact.name} (${artifact.kind}) has verified metadata but its logical locator has no approved byte adapter. Refresh evidence to recover it.`,
     );
   }, { auth: "local" });
-  bb.http.route("GET", "/bench/runs/:runId/attestation", (http) => {
-    const runId = http.req.param("runId");
+  bb.http.route("GET", "/bench/runs/attestation", async (http) => {
+    const runId = queryRunId(http.req.query("runId"));
+    if (runId === null) return streamUnavailable("A valid runId query parameter is required.", 400);
     const row = uniqueRunRowById(db, runId);
     if (!row) return streamUnavailable("Attestation is unknown or ambiguous.", 404);
     const attestation = db

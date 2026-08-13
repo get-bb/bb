@@ -156,7 +156,7 @@ export function RunDetail({
   if (loading && !detail) return <div aria-label="Loading bench run detail" className="space-y-3 p-4" role="status"><Skeleton className="h-24 w-full" /><Skeleton className="h-40 w-full" /><Skeleton className="h-64 w-full" /></div>;
   if (!detail) return <div className="flex h-full items-center justify-center p-6"><section className="max-w-md rounded-lg border border-border bg-card p-6 text-center"><Icon className="mx-auto size-6 text-destructive" name="AlertCircle" /><h2 className="mt-3 text-lg font-semibold">Unknown bench run</h2><p className="mt-2 text-sm text-muted-foreground">{error ?? `Run ${runId} is not present in the bounded bench cache.`}</p><Button className="mt-4" onClick={() => setRevision((value) => value + 1)} variant="outline">Retry</Button></section></div>;
 
-  const attestationDownload = `/api/v1/plugins/finite-state/http/bench/runs/${encodeURIComponent(runId)}/attestation`;
+  const attestationDownload = `/api/v1/plugins/finite-state/http/bench/runs/attestation?runId=${encodeURIComponent(runId)}`;
   return (
     <article className="h-full overflow-auto bg-background p-4 text-foreground">
       <div className={compact ? "space-y-4" : "mx-auto max-w-5xl space-y-4"}>

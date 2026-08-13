@@ -43,7 +43,7 @@ export function ArtifactList({ runId, artifacts }: ArtifactListProps): React.JSX
         if (!safeName) {
           return <Alert key={`unsafe-${index}`}><Icon name="AlertTriangle" /><AlertDescription>An artifact has an unsafe or expired logical name. Refresh run evidence to recover it.</AlertDescription></Alert>;
         }
-        const href = `/api/v1/plugins/finite-state/http/bench/runs/${encodeURIComponent(runId)}/artifacts/${encodeURIComponent(artifact.name)}`;
+        const href = `/api/v1/plugins/finite-state/http/bench/runs/artifact?runId=${encodeURIComponent(runId)}&artifactName=${encodeURIComponent(artifact.name)}`;
         return (
           <div className="flex items-center gap-3 rounded-md border border-border bg-background p-3" key={`${artifact.name}-${index}`}>
             <Icon className="text-muted-foreground" name="Download" />

@@ -10,7 +10,7 @@ describe("ArtifactList", () => {
   it("uses safe logical names and verified hashes, never upstream paths", () => {
     const view = render(<ArtifactList runId="run-1" artifacts={[{ name: "report.json", kind: "evidence", sha256: "a".repeat(64), bytes: 42, downloadAvailable: true }, { name: "../../etc/passwd", kind: "malicious", sha256: "b".repeat(64), bytes: 1, downloadAvailable: true }]} />);
     const link = view.getByRole("link", { name: /Download/u });
-    expect(link.getAttribute("href")).toBe("/api/v1/plugins/finite-state/http/bench/runs/run-1/artifacts/report.json");
+    expect(link.getAttribute("href")).toBe("/api/v1/plugins/finite-state/http/bench/runs/artifact?runId=run-1&artifactName=report.json");
     expect(view.container.querySelector('a[href*="etc"]')).toBeNull();
     expect(view.getByText(/unsafe or expired logical name/u)).toBeTruthy();
     expect(view.getByText(`sha256 ${"a".repeat(64)}`)).toBeTruthy();
