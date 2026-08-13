@@ -177,6 +177,7 @@ export function GitDiffToolbar({
     ref: rootRef,
     box: "content-box",
   });
+  const changeTally = { ...stats, lineStatsComplete: true };
 
   return (
     <div ref={rootRef} className="px-4 pb-3 pt-3">
@@ -195,9 +196,9 @@ export function GitDiffToolbar({
             "min-w-0 shrink truncate text-muted-foreground",
             COARSE_POINTER_TEXT_SM_CLASS,
           )}
-          title={formatChangeSummary(stats)}
+          title={formatChangeSummary(changeTally)}
         >
-          {renderChangeSummary(stats)}
+          {renderChangeSummary(changeTally)}
         </span>
         <div className="ml-auto flex min-w-0 shrink-0 items-center justify-end gap-1">
           <Button
