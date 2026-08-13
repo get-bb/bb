@@ -76,6 +76,40 @@ export function computeReady(
   });
 }
 
+/**
+ * Frozen-board stall detection (2026-08-13 outage lesson: the coordinator's
+ * shell died at 06:31 with lanes mid-flight; finished work froze at
+ * in_progress, which made the ready set legitimately empty, so the
+ * ready-queue nudge — correctly — never fired and nobody noticed for an
+ * hour). A dead coordinator is indistinguishable from a busy one by ready
+ * math alone, so this watches for the opposite signal: tasks are in flight
+ * but NOTHING on the board has transitioned for `stallMs`.
+ *
+ * Advisory and rate-limited like the ready nudge. Long-running lanes can
+ * legitimately hold a status for a while, hence the generous default; the
+ * escalation asks for a liveness check, it does not claim an outage.
+ */
+export function detectStall(statusByKey, prev, now, { stallMs } = {}) {
+  const threshold = stallMs ?? 90 * 60 * 1000;
+  const fingerprint = [...statusByKey.entries()]
+    .map(([key, status]) => `${key}:${status}`)
+    .sort()
+    .join("|");
+  const inFlight = [...statusByKey.values()].filter((s) =>
+    ["in_progress", "in_review"].includes(s),
+  ).length;
+  const since =
+    fingerprint === prev.fingerprint && prev.fingerprintSince
+      ? prev.fingerprintSince
+      : now;
+  return {
+    fingerprint,
+    since,
+    inFlight,
+    stalled: inFlight > 0 && now - since >= threshold,
+  };
+}
+
 function main() {
   const here = dirname(fileURLToPath(import.meta.url));
   const manifest = JSON.parse(
@@ -118,9 +152,11 @@ function main() {
       /* corrupted state resets to defaults */
     }
   }
+  const now = Date.now();
   const changed = JSON.stringify(readyKeys) !== JSON.stringify(prev.keys);
-  const renudge = Date.now() - (prev.lastNudge || 0) > RENUDGE_MS;
+  const renudge = now - (prev.lastNudge || 0) > RENUDGE_MS;
 
+  let lastNudge = prev.lastNudge || 0;
   if (readyKeys.length > 0 && coordinator && (changed || renudge)) {
     const lines = ready
       .map(
@@ -136,18 +172,51 @@ function main() {
       "queue",
       `Ready-queue watchdog: ${ready.length} dependency-ready, cluster-free work package(s) awaiting dispatch:\n${lines}\n\nApply COORDINATOR-RUNBOOK §2–§4 (validator, cap check, preset) before dispatching. Automated advisory; no reply needed.`,
     ]);
-    writeFileSync(
-      stateFile,
-      JSON.stringify({ keys: readyKeys, lastNudge: Date.now() }),
-    );
-  } else if (changed) {
-    writeFileSync(
-      stateFile,
-      JSON.stringify({ keys: readyKeys, lastNudge: prev.lastNudge || 0 }),
-    );
+    lastNudge = now;
   }
 
-  console.log(JSON.stringify({ wakeAgent: false }));
+  // Frozen-board escalation: in-flight tasks with zero board transitions for
+  // the stall window means the coordinator may be dead mid-flow (the ready
+  // set is typically empty in exactly that failure, so the nudge above
+  // cannot fire). Escalate to the supervisor thread, which can investigate;
+  // the coordinator gets a copy in queue mode in case it is merely asleep.
+  const stall = detectStall(statusByKey, prev, now, {
+    stallMs: Number(process.env.FS_WATCHDOG_STALL_MS) || undefined,
+  });
+  let lastStallNudge = prev.lastStallNudge || 0;
+  if (stall.stalled && now - lastStallNudge > RENUDGE_MS) {
+    const supervisor = process.env.BB_SUPERVISOR_THREAD;
+    const minutes = Math.round((now - stall.since) / 60000);
+    const message = `Watchdog stall escalation: ${stall.inFlight} task(s) are in_progress/in_review but no board status has changed in ${minutes} minutes. Verify the coordinator thread is alive and processing (its shell can die while the thread still shows active — see the 2026-08-13 06:31 outage). Automated advisory.`;
+    for (const target of [supervisor, coordinator].filter(Boolean)) {
+      try {
+        bb(["thread", "tell", target, "--mode", "queue", message]);
+      } catch {
+        /* one dead recipient must not block the other */
+      }
+    }
+    lastStallNudge = now;
+  }
+
+  writeFileSync(
+    stateFile,
+    JSON.stringify({
+      keys: readyKeys,
+      lastNudge,
+      fingerprint: stall.fingerprint,
+      fingerprintSince: stall.since,
+      lastStallNudge,
+    }),
+  );
+
+  console.log(
+    JSON.stringify({
+      wakeAgent: false,
+      ready: readyKeys.length,
+      inFlight: stall.inFlight,
+      stalled: stall.stalled,
+    }),
+  );
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
