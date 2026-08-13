@@ -341,8 +341,8 @@ export function ShowcaseHeroCarousel({
             badge={copy.frameBadge}
             rail={rail}
             reducedMotion={reducedMotion}
-            // 13rem fits the densest scenes (Design studio's split grid,
-            // the inbox with its handoff line) without a bottom clip.
+            // 13rem fits the densest scenes (the prototype grid and the inbox
+            // with its handoff line) without a bottom clip.
             className="mx-auto h-[13rem] w-full max-w-[38rem] lg:w-[66%]"
           />
         </div>

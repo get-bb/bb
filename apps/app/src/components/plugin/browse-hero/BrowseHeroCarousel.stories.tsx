@@ -57,6 +57,6 @@ const slide = (index: number) => () => (
 export const KanbanBoard = slide(0);
 export const LiveDashboard = slide(1);
 export const ChiefOfStaff = slide(2);
-export const BrandStudio = slide(3);
-export const DesignStudio = slide(4);
+export const VideoEditor = slide(3);
+export const PrototypingLab = slide(4);
 export const SupportInbox = slide(5);

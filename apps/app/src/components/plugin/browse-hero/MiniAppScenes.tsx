@@ -1,4 +1,3 @@
-import { cn } from "@bb/shared-ui/lib/utils";
 import type { ShowcaseScenes } from "@/components/showcase-hero/showcase-archetype";
 import {
   Bar,
@@ -139,26 +138,42 @@ export function DashboardScene({ accentToken }: SceneProps) {
   );
 }
 
-/**
- * A brand studio: raw clips on a multitrack timeline mid-edit — video, audio,
- * and caption lanes under a playhead, with the render line narrating the
- * agents' pass. The timeline IS the surface: a rich creative suite agents
- * assemble and iterate, not a list with a media icon.
- */
-export function BrandStudioScene({ accentToken }: SceneProps) {
-  // One lane per media track; the active clip sits under the playhead.
-  const videoClips = [
-    { width: "24%", active: false },
-    { width: "34%", active: true },
-    { width: "18%", active: false },
-    { width: "12%", active: false },
+/** A video edit with plainly named tracks, a playhead, and render status. */
+export function VideoEditorScene({ accentToken }: SceneProps) {
+  const tracks = [
+    {
+      label: "Video",
+      height: "h-3.5",
+      clips: [
+        { width: "24%", active: false },
+        { width: "34%", active: true },
+        { width: "18%", active: false },
+      ],
+    },
+    {
+      label: "Audio",
+      height: "h-2",
+      clips: [
+        { width: "42%", active: false },
+        { width: "30%", active: false },
+        { width: "16%", active: false },
+      ],
+    },
+    {
+      label: "Captions",
+      height: "h-1.5",
+      clips: [
+        { width: "16%", active: false },
+        { width: "13%", active: false },
+        { width: "19%", active: false },
+        { width: "12%", active: false },
+      ],
+    },
   ];
-  const audioClips = [{ width: "42%" }, { width: "30%" }, { width: "16%" }];
-  const captionTicks = ["10%", "8%", "12%", "7%", "9%"];
   return (
     <div className="flex h-full flex-col gap-1.5 p-2">
       <div className="flex items-center gap-1">
-        <SceneLabel>Draft cut</SceneLabel>
+        <SceneLabel>Launch video</SceneLabel>
         <span
           className="ml-auto rounded-full px-1.5 py-0.5 font-mono text-2xs font-medium tabular-nums"
           style={{
@@ -166,77 +181,58 @@ export function BrandStudioScene({ accentToken }: SceneProps) {
             color: accentInk(accentToken, 62),
           }}
         >
-          v2 · 00:42
+          first cut · 00:42
         </span>
       </div>
-
-      <SceneCard className="relative flex min-h-0 flex-1 flex-col justify-center gap-1.5">
-        {/* The playhead spans every lane; the active clip sits under it. */}
+      <SceneCard className="relative flex min-h-0 flex-1 flex-col justify-center gap-2">
         <div
-          className="pointer-events-none absolute inset-y-1 left-[46%] w-px"
+          className="pointer-events-none absolute inset-y-1 left-[52%] w-px"
           style={{ background: `var(${accentToken})` }}
           aria-hidden
         />
-        <div className="grid grid-cols-[0.875rem_minmax(0,1fr)] items-center gap-x-1 gap-y-1.5">
-          <span className="font-mono text-2xs" style={{ color: neutral(40) }}>
-            V
-          </span>
-          <div className="flex h-3.5 items-stretch gap-0.5">
-            {videoClips.map((clip, index) => (
-              <span
-                key={index}
-                className="rounded-sm"
-                style={{
-                  width: clip.width,
-                  background: clip.active
-                    ? accentTint(accentToken, 34)
-                    : neutral(12),
-                }}
-              />
-            ))}
+        {tracks.map((track) => (
+          <div
+            key={track.label}
+            className="grid grid-cols-[3.25rem_minmax(0,1fr)] items-center gap-1.5"
+          >
+            <span
+              className="text-2xs font-medium"
+              style={{ color: neutral(46) }}
+            >
+              {track.label}
+            </span>
+            <div className={`flex ${track.height} items-stretch gap-0.5`}>
+              {track.clips.map((clip, index) => (
+                <span
+                  key={index}
+                  className="rounded-sm"
+                  style={{
+                    width: clip.width,
+                    background:
+                      track.label === "Audio"
+                        ? accentTint("--success", 30)
+                        : clip.active
+                          ? accentTint(accentToken, 36)
+                          : neutral(track.label === "Captions" ? 16 : 12),
+                  }}
+                />
+              ))}
+            </div>
           </div>
-          <span className="font-mono text-2xs" style={{ color: neutral(40) }}>
-            A
-          </span>
-          <div className="flex h-2 items-stretch gap-0.5">
-            {audioClips.map((clip, index) => (
-              <span
-                key={index}
-                className="rounded-sm"
-                style={{
-                  width: clip.width,
-                  background: accentTint("--success", 30),
-                }}
-              />
-            ))}
-          </div>
-          <span className="font-mono text-2xs" style={{ color: neutral(40) }}>
-            C
-          </span>
-          <div className="flex h-1.5 items-stretch gap-1">
-            {captionTicks.map((width, index) => (
-              <span
-                key={index}
-                className="rounded-sm"
-                style={{ width, background: neutral(16) }}
-              />
-            ))}
-          </div>
-        </div>
+        ))}
       </SceneCard>
-
       <div
         className="flex items-center gap-1.5 rounded-md border border-dashed px-1.5 py-1"
         style={{ borderColor: accentTint(accentToken, 40) }}
       >
-        <span className="font-mono text-2xs" style={{ color: neutral(46) }}>
-          captions added
+        <span className="text-2xs" style={{ color: neutral(46) }}>
+          captions and music added
         </span>
         <span
           className="text-2xs font-medium"
           style={{ color: accentInk(accentToken, 62) }}
         >
-          → rendering cut v2
+          → rendering first cut
         </span>
       </div>
     </div>
@@ -321,69 +317,33 @@ export function ChiefOfStaffScene({ accentToken }: SceneProps) {
   );
 }
 
-/**
- * A design studio: one brief, N takes building in parallel SPLIT VIEWS —
- * the same split panes bb uses for side-by-side threads — with the count
- * under the user's control (up to ten). The splits ARE the point: watching
- * competing takes assemble simultaneously only exists because the user chose
- * a number and agents fanned out.
- */
-export function DesignStudioScene({ accentToken }: SceneProps) {
-  // The chosen count drives everything: the stepper, the split panes, and
-  // the console line all reflect the same number.
-  const chosenCount = 4;
-  const splits = [
-    { name: "take 1", state: "building" },
-    { name: "take 2", state: "ready" },
-    { name: "take 3", state: "building" },
-    { name: "take 4", state: "building" },
+/** One product brief becoming several clearly named working prototypes. */
+export function PrototypingLabScene({ accentToken }: SceneProps) {
+  const prototypes = [
+    { name: "Guided", state: "ready" },
+    { name: "One page", state: "ready" },
+    { name: "Express", state: "building" },
   ];
   return (
     <div className="flex h-full flex-col gap-1.5 p-2">
       <div className="flex items-center gap-1.5">
         <SceneLabel>Checkout flow</SceneLabel>
-        {/* The prototype-count control: pick how many takes, capped at ten. */}
-        <span className="ml-auto flex items-center gap-1">
-          <span className="text-2xs" style={{ color: neutral(40) }}>
-            Variants
-          </span>
-          <span
-            className="flex items-center overflow-hidden rounded-md border"
-            style={{ borderColor: neutral(14) }}
-          >
-            <span
-              className="px-1.5 text-2xs"
-              style={{ color: neutral(40), background: neutral(4) }}
-            >
-              −
-            </span>
-            <span
-              className="px-1.5 text-2xs font-semibold tabular-nums"
-              style={{ color: accentInk(accentToken, 62) }}
-            >
-              {chosenCount}
-            </span>
-            <span
-              className="px-1.5 text-2xs"
-              style={{ color: neutral(40), background: neutral(4) }}
-            >
-              +
-            </span>
-          </span>
-          <span className="text-2xs" style={{ color: neutral(34) }}>
-            of 10
-          </span>
+        <span
+          className="ml-auto rounded-full px-1.5 py-0.5 text-2xs font-medium"
+          style={{
+            background: accentTint(accentToken, 14),
+            color: accentInk(accentToken, 62),
+          }}
+        >
+          3 prototypes
         </span>
       </div>
-
-      {/* One split pane per chosen take, each a live agent thread: title bar
-          with a working dot, a sketched screen, and its own progress track. */}
-      <div className="grid min-h-0 flex-1 grid-cols-2 grid-rows-2 gap-1">
-        {splits.map((split, index) => {
-          const ready = split.state === "ready";
+      <div className="grid min-h-0 flex-1 grid-cols-3 gap-1">
+        {prototypes.map((prototype, index) => {
+          const ready = prototype.state === "ready";
           return (
             <SceneCard
-              key={split.name}
+              key={prototype.name}
               className="flex min-h-0 flex-col gap-1 p-1.5"
               style={
                 ready
@@ -396,43 +356,35 @@ export function DesignStudioScene({ accentToken }: SceneProps) {
             >
               <div className="flex items-center gap-1">
                 <span
-                  className={cn(
-                    "size-1.5 rounded-full",
-                    !ready && "animate-pulse motion-reduce:animate-none",
-                  )}
+                  className="size-1.5 rounded-full"
                   style={{
                     background: ready ? `var(${accentToken})` : neutral(24),
                   }}
                 />
                 <span
-                  className="font-mono text-2xs"
+                  className="text-2xs font-medium"
                   style={{
                     color: ready ? accentInk(accentToken, 62) : neutral(48),
                   }}
                 >
-                  {split.name}
+                  {prototype.name}
                 </span>
-                {ready ? (
-                  <span
-                    className="ml-auto rounded-sm px-1 text-2xs font-medium"
-                    style={{
-                      background: accentTint(accentToken, 18),
-                      color: accentInk(accentToken, 62),
-                    }}
-                  >
-                    ready
-                  </span>
-                ) : null}
               </div>
-              <Bar width={index % 2 === 0 ? "78%" : "62%"} strength={12} />
+              <SceneLabel>{ready ? "ready" : "building"}</SceneLabel>
+              <Bar width={index % 2 === 0 ? "78%" : "62%"} strength={14} />
+              <Bar width={index % 2 === 0 ? "58%" : "74%"} strength={10} />
+              <SceneCard className="mt-auto flex min-h-0 flex-1 flex-col gap-1 border-dashed p-1">
+                <Bar width="72%" strength={12} />
+                <Bar width="48%" strength={8} />
+              </SceneCard>
               <div
-                className="mt-auto h-1 overflow-hidden rounded-full"
+                className="h-1 overflow-hidden rounded-full"
                 style={{ background: neutral(8) }}
               >
                 <div
                   className="h-full rounded-full"
                   style={{
-                    width: ready ? "100%" : `${34 + index * 17}%`,
+                    width: ready ? "100%" : "58%",
                     background: ready
                       ? `var(${accentToken})`
                       : accentTint(accentToken, 34),
@@ -448,14 +400,14 @@ export function DesignStudioScene({ accentToken }: SceneProps) {
         className="flex items-center gap-1.5 rounded-md border border-dashed px-1.5 py-1"
         style={{ borderColor: accentTint(accentToken, 40) }}
       >
-        <span className="font-mono text-2xs" style={{ color: neutral(46) }}>
-          {chosenCount} agents in splits
+        <span className="text-2xs" style={{ color: neutral(46) }}>
+          2 prototypes ready
         </span>
         <span
           className="text-2xs font-medium"
           style={{ color: accentInk(accentToken, 62) }}
         >
-          → take 2 ready to compare
+          → compare side by side
         </span>
       </div>
     </div>
@@ -546,7 +498,7 @@ export const MINI_APP_SCENES: ShowcaseScenes = {
   "kanban-board": KanbanScene,
   "live-dashboard": DashboardScene,
   "chief-of-staff": ChiefOfStaffScene,
-  "brand-studio": BrandStudioScene,
-  "design-studio": DesignStudioScene,
+  "video-editor": VideoEditorScene,
+  "prototyping-lab": PrototypingLabScene,
   "support-inbox": InboxScene,
 };

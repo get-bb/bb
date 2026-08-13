@@ -56,28 +56,24 @@ const ARCHETYPE_SOURCE: readonly Omit<BrowseArchetype, "id">[] = [
       "adds a chief-of-staff panel that takes in my backlog, opens an agent thread for each item, keeps them moving by answering routine questions itself, and briefs me on progress and the few decisions only I can make",
   },
   {
-    noun: "a brand studio",
-    title: "Brand studio",
-    hook: "Drop in raw footage and get a real edited cut back on a timeline.",
+    noun: "a video editor",
+    title: "Video editor",
+    hook: "Drop in raw clips and let agents assemble a polished first cut.",
     capability: "fileOpener + navPanel + service",
-    icon: "Palette",
+    icon: "Play",
     accentToken: "--warning",
-    // The media-creation archetype: a rich creative suite agents build and
-    // iterate, not a workflow widget — the timeline is the surface.
     brief:
-      "turns bb into a brand studio: I drop raw clips onto a multitrack timeline, agents assemble a draft cut with trims, captions, and a music bed, and I scrub the result and ask for changes in plain words",
+      "adds a video editor where I drop raw clips onto a timeline, agents assemble a first cut with trims, captions, and music, and I review the result and request changes in plain words",
   },
   {
-    noun: "a design studio",
-    title: "Design studio",
-    hook: "Describe a flow and watch agents build up to ten takes in splits.",
+    noun: "a prototyping lab",
+    title: "Prototyping lab",
+    hook: "Describe a product flow and compare working prototypes side by side.",
     capability: "navPanel + experimental_threadList + service",
-    icon: "GridView",
+    icon: "Beaker",
     accentToken: "--attention",
-    // Speaks to PMs and designers: the leverage is parallel takes on an
-    // idea, built in split views you watch — you choose how many, up to ten.
     brief:
-      "turns bb into a design studio: I describe a flow in plain words, pick how many takes to build — up to ten — and agents build them in parallel split views I compare side by side before choosing one to refine",
+      "adds a prototyping lab where I describe a product flow in plain words, agents build several working prototypes in parallel, and I compare them side by side before choosing one to refine",
   },
   {
     noun: "a support inbox",
