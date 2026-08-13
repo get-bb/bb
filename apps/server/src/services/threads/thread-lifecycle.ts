@@ -1166,7 +1166,7 @@ function dispatchThreadStartFromRequest(
 
 export async function requestThreadStart(
   deps: CommandResultSideEffectsDeps,
-  args: ThreadStartCommandArgs,
+  args: ThreadStartCommandArgs & { onFailure?: (error: unknown) => void },
 ): Promise<void> {
   await threadStartRequestDeduper.run(args.thread.id, () =>
     requestThreadStartOnce(deps, args),
@@ -1175,7 +1175,7 @@ export async function requestThreadStart(
 
 async function requestThreadStartOnce(
   deps: CommandResultSideEffectsDeps,
-  args: ThreadStartCommandArgs,
+  args: ThreadStartCommandArgs & { onFailure?: (error: unknown) => void },
 ): Promise<void> {
   if (hasLiveThreadStartInFlight(args.thread.id)) {
     return;
@@ -1209,6 +1209,7 @@ async function requestThreadStartOnce(
       timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
     })
       .catch((error) => {
+        args.onFailure?.(error);
         deps.logger.warn(
           { err: error, threadId: args.thread.id },
           "Live thread start command failed",

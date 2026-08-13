@@ -7,6 +7,7 @@ import {
   isSqliteForeignKeyConstraint,
 } from "@bb/db";
 import type { DbNotifier } from "@bb/db";
+import type { DbQueryConnection } from "@bb/db";
 import type { HostDaemonCommand } from "@bb/host-daemon-contract";
 import type { LocalPathProjectSource } from "@bb/domain";
 import type { BaseBranchSpec } from "@bb/server-contract";
@@ -156,9 +157,11 @@ export function buildEnvironmentProvisionCommand(
 }
 
 export function createThreadRecord(
-  deps: Pick<AppDeps, "db"> & { hub: DbNotifier },
+  deps: { db: DbQueryConnection; hub: DbNotifier },
   args: {
     environmentId: string | null;
+    id?: string;
+    emitPluginEvent?: boolean;
     request: ThreadCreateServiceRequest;
     status?: "starting";
   },
@@ -170,6 +173,7 @@ export function createThreadRecord(
 
   try {
     const thread = createThread(deps.db, deps.hub, {
+      ...(args.id !== undefined ? { id: args.id } : {}),
       projectId: args.request.projectId,
       environmentId: args.environmentId,
       providerId: args.request.providerId,
@@ -183,7 +187,9 @@ export function createThreadRecord(
       visibility: args.request.visibility,
       status: args.status ?? "starting",
     });
-    emitPluginThreadCreated(thread);
+    if (args.emitPluginEvent !== false) {
+      emitPluginThreadCreated(thread);
+    }
     return thread;
   } catch (error) {
     if (

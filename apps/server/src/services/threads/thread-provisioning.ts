@@ -80,6 +80,7 @@ interface RequestThreadReprovisionArgs {
 
 interface AdvanceThreadProvisioningArgs {
   context?: ThreadProvisionContext;
+  onThreadStartFailure?: (error: unknown) => void;
   threadId: string;
 }
 
@@ -102,6 +103,7 @@ interface ThreadProvisionWorkspaceReadyTransactionDeps {
 interface EnvironmentPayloadThreadArgs {
   context: ThreadProvisionProvisionableContext;
   environment: Environment;
+  onThreadStartFailure?: (error: unknown) => void;
   thread: Thread;
 }
 
@@ -245,6 +247,9 @@ async function startThreadIfEnvironmentReady(
     projectId: args.thread.projectId,
     providerId: args.thread.providerId,
     syncGeneratedTitle: !args.context.request.titleProvided,
+    ...(args.onThreadStartFailure !== undefined
+      ? { onFailure: args.onThreadStartFailure }
+      : {}),
   });
 }
 
@@ -412,6 +417,9 @@ async function advanceThreadProvisioningOnce(
       context: ready.context,
       environment: ready.environment,
       thread: ready.thread,
+      ...(args.onThreadStartFailure !== undefined
+        ? { onThreadStartFailure: args.onThreadStartFailure }
+        : {}),
     });
   } catch (error) {
     const failureThread = getCurrentProvisioningFailureThread(deps, {

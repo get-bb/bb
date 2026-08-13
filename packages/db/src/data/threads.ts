@@ -272,6 +272,7 @@ export function upsertThreadTitleSearchSegments(
 }
 
 export interface CreateThreadInput {
+  id?: string;
   projectId: string;
   environmentId?: string | null;
   providerId: string;
@@ -288,17 +289,16 @@ export interface CreateThreadInput {
 }
 
 export function createThread(
-  db: DbConnection,
+  db: ThreadWriteConnection,
   notifier: DbNotifier,
   input: CreateThreadInput,
 ) {
   const visibility = input.visibility ?? "visible";
   const now = Date.now();
-  const id = createThreadId();
+  const id = input.id ?? createThreadId();
   const originKind = input.originKind ?? null;
-  const thread = db.transaction(
-    (tx) => {
-      const createdThread = tx
+  const insert = (connection: ThreadWriteConnection) => {
+      const createdThread = connection
         .insert(threads)
         .values({
           id,
@@ -324,16 +324,18 @@ export function createThread(
         })
         .returning()
         .get();
-      upsertThreadTitleSearchSegments(tx, {
+      upsertThreadTitleSearchSegments(connection, {
         threadId: createdThread.id,
         title: createdThread.title,
         titleFallback: createdThread.titleFallback,
         updatedAt: now,
       });
       return createdThread;
-    },
-    { behavior: "immediate" },
-  );
+  };
+  const thread =
+    "transaction" in db
+      ? db.transaction((tx) => insert(tx), { behavior: "immediate" })
+      : insert(db);
   notifier.notifyThread(id, ["thread-created"], {
     projectId: input.projectId,
   });

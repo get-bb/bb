@@ -16,7 +16,11 @@ import {
   type CustomProviderModel,
 } from "@bb/config/bb-app-managed-config";
 import {
+  permissionModeRank,
   reasoningEffortsForLevels,
+  type PermissionMode,
+  type ReasoningLevel,
+  type ServiceTier,
   type AvailableModel,
   type ProviderInfo,
 } from "@bb/domain";
@@ -35,6 +39,106 @@ import {
   listKnownAcpAgentExecutableQueries,
   type KnownAcpAgent,
 } from "./known-acp-agents.js";
+
+export interface ExplicitThreadExecutionInput {
+  environmentId: string;
+  model: string;
+  permissionMode: PermissionMode;
+  providerId: string;
+  reasoningLevel: ReasoningLevel;
+  serviceTier?: ServiceTier;
+}
+
+export interface ValidatedExplicitThreadExecution {
+  model: string;
+  permissionMode: PermissionMode;
+  providerId: string;
+  reasoningLevel: ReasoningLevel;
+  serviceTier: ServiceTier;
+}
+
+function invalidExplicitExecution(message: string): never {
+  throw new ApiError(400, "invalid_execution_options", message);
+}
+
+/** Validate a requested execution tuple against the source environment's live host. */
+export async function validateExplicitThreadExecution(
+  deps: LoggedWorkSessionDeps,
+  input: ExplicitThreadExecutionInput,
+): Promise<ValidatedExplicitThreadExecution> {
+  const environment = requireEnvironment(deps.db, input.environmentId);
+  const knownAgent = findKnownAcpAgentForProviderId(input.providerId);
+  const provider =
+    listConfiguredSystemProviderInfos(deps.config.customAcpAgents, []).find(
+      (candidate) => candidate.id === input.providerId,
+    ) ?? (knownAgent ? buildKnownAcpProviderInfo(knownAgent) : undefined);
+  if (!provider?.available) {
+    invalidExplicitExecution(
+      `Provider ${input.providerId} is unavailable on this host`,
+    );
+  }
+  const catalog = await resolveSystemProviderModels(deps, {
+    cwd: environment.path ?? undefined,
+    hostId: environment.hostId,
+    providerId: input.providerId,
+  });
+  if (catalog.modelLoadError !== null) {
+    invalidExplicitExecution(
+      `The ${input.providerId} model catalog could not be verified`,
+    );
+  }
+  if (
+    catalog.selectedOnlyModels.some(
+      (candidate) => candidate.model === input.model,
+    )
+  ) {
+    invalidExplicitExecution(
+      `Model ${input.model} is selected-only or retired`,
+    );
+  }
+  const model = catalog.models.find(
+    (candidate) => candidate.model === input.model,
+  );
+  if (!model) {
+    invalidExplicitExecution(
+      `Model ${input.model} is unavailable on this host`,
+    );
+  }
+  if (
+    !model.supportedReasoningEfforts.some(
+      (effort) => effort.reasoningEffort === input.reasoningLevel,
+    )
+  ) {
+    invalidExplicitExecution(
+      `Reasoning level ${input.reasoningLevel} is unsupported by ${input.model}`,
+    );
+  }
+  const serviceTier = input.serviceTier ?? "default";
+  if (serviceTier !== "default" && !provider.capabilities.supportsServiceTier) {
+    invalidExplicitExecution(
+      `Service tier ${serviceTier} is unsupported by ${input.providerId}`,
+    );
+  }
+  if (
+    !provider.capabilities.supportedPermissionModes.includes(
+      input.permissionMode,
+    )
+  ) {
+    invalidExplicitExecution(
+      `Permission mode ${input.permissionMode} is unsupported by ${input.providerId}`,
+    );
+  }
+  const permissionCeiling = getHostPermissionCeiling(deps, environment.hostId);
+  if (
+    permissionModeRank(input.permissionMode) >
+    permissionModeRank(permissionCeiling)
+  ) {
+    invalidExplicitExecution(
+      `Permission mode ${input.permissionMode} exceeds this machine's ${permissionCeiling} ceiling`,
+    );
+  }
+  return { ...input, serviceTier };
+}
 
 export type SystemExecutionOptionsRequest = SystemExecutionOptionsQuery;
 

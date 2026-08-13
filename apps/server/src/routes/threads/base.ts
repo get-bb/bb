@@ -55,6 +55,10 @@ import { assertValidParentThread } from "../../services/threads/thread-parent.js
 import { handleThreadOwnershipChange } from "../../services/threads/thread-ownership.js";
 import { applyThreadExecutionOverride } from "../../services/threads/thread-execution-override.js";
 import { emitPluginThreadDeleted } from "../../services/plugins/plugin-thread-events.js";
+import {
+  createThreadHandoff,
+  getThreadHandoffStatus,
+} from "../../services/threads/thread-handoff.js";
 
 function parseThreadIncludes(query: ThreadGetQuery): Set<ThreadIncludeOption> {
   const includes = new Set<ThreadIncludeOption>();
@@ -312,6 +316,15 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
   post(routes.fork, async (context, payload) => {
     const thread = await createThreadForkFromRequest(deps, payload);
     return context.json(toThreadResponseFromThread(deps, { thread }), 201);
+  });
+
+  post(routes.handoff, async (context, payload) => {
+    const handoff = await createThreadHandoff(deps, payload);
+    return context.json(handoff, 201);
+  });
+
+  get(routes.handoffStatus, (context) => {
+    return context.json(getThreadHandoffStatus(deps, context.req.param("id")));
   });
 
   get(routes.get, (context, query) => {
