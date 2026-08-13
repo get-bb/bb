@@ -1846,7 +1846,7 @@ rl.on("line", (line) => {
     await runtime.shutdown();
   });
 
-  it("rejects pending sendRequest when provider dies mid-turn", async () => {
+  it("reports a pending turn when the provider exits after acknowledging turn/start", async () => {
     const crashDuringTurnScript = join(tmpDir, "crash-during-turn.cjs");
     writeFileSync(
       crashDuringTurnScript,
@@ -1865,7 +1865,8 @@ rl.on("line", (line) => {
             params: { threadId: msg.params?.threadId, providerThreadId: "prov-mid" }
           }) + "\\n");
         } else if (msg.method === "turn/start") {
-          // Don't respond — just crash
+          process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: msg.id, result: {} }) + "\\n");
+          // Acknowledge the request, then exit before emitting turn/started.
           setTimeout(() => process.exit(77), 50);
         }
       });`,
@@ -1891,15 +1892,16 @@ rl.on("line", (line) => {
       options: fullRuntimeOptions,
     });
 
-    // runTurn sends the request but the provider crashes without responding
-    await expect(
-      runtime.runTurn({
-        clientRequestId: "creq_222222224y",
-        threadId: "t1",
-        input: [promptTextInput({ text: "hi" })],
-        options: fullRuntimeOptions,
-      }),
-    ).rejects.toThrow(/exited unexpectedly/i);
+    await runtime.runTurn({
+      clientRequestId: "creq_222222224y",
+      threadId: "t1",
+      input: [promptTextInput({ text: "hi" })],
+      options: fullRuntimeOptions,
+    });
+    await waitForRuntimeState({
+      label: "provider process exit callback",
+      predicate: () => exitInfo.mock.calls.length === 1,
+    });
     expect(exitInfo).toHaveBeenCalledWith(
       expect.objectContaining({
         threads: [
