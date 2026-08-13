@@ -5,6 +5,8 @@
   ],
   "compilerOptions": {
     "rootDir": "../..",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
     "jsx": "react-jsx",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": ["node"],
