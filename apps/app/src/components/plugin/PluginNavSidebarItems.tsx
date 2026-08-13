@@ -46,6 +46,7 @@ import { SIDEBAR_MORE_ACTION_TRIGGER_CLASS } from "@/components/sidebar/sidebarR
 import {
   SIDEBAR_HOVER_ACTIONS_CLASS,
   SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
+  SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE,
   SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
 } from "@/components/ui/sidebar-hover-actions";
 import { useSidebarSortable } from "@/components/sidebar/sortableMotion";
@@ -597,6 +598,9 @@ function SidebarNavRowChrome({
           ) : null}
           <div
             data-sidebar-hover-actions-open={isActionsOpen ? "true" : undefined}
+            data-sidebar-hover-actions-mobile={
+              SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE
+            }
             className={cn(
               SIDEBAR_HOVER_ACTIONS_CLASS,
               // right-0 (not right-1): the trigger's own m-1 supplies the inset,
