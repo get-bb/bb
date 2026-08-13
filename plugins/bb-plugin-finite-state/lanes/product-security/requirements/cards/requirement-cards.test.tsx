@@ -293,10 +293,10 @@ describe("requirement cards", () => {
 
   it("resets the accepted project version when the mounted surface switches projects", async () => {
     await requirementsPanel();
-    const { RequirementsCardsForProject } = await import("./index.js");
+    const { RequirementsCards } = await import("./index.js");
     const inputs: Array<Record<string, unknown>> = [];
     const slot = renderSlot(
-      { component: RequirementsCardsForProject },
+      { component: RequirementsCards },
       { projectId: "project-1" },
       {
         rpc: {
@@ -318,7 +318,7 @@ describe("requirement cards", () => {
       projectVersionId: null,
     }));
 
-    slot.lifecycle.rerender(<RequirementsCardsForProject projectId="project-2" />);
+    slot.lifecycle.rerender(<RequirementsCards projectId="project-2" />);
 
     await slot.findByText("REQ-card-2");
     await waitFor(() => expect(inputs).toHaveLength(2));

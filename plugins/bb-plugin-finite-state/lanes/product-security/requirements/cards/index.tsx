@@ -13,9 +13,17 @@ function payloadProjectId(value: unknown): string | null {
   return typeof value.projectId === "string" ? value.projectId : null;
 }
 
-export function RequirementsCards(): React.JSX.Element {
-  const { projectId } = useBbContext();
-  return <RequirementsCardsForProject projectId={projectId} />;
+export function RequirementsCards({
+  projectId: selectedProjectId,
+}: {
+  projectId?: string;
+} = {}): React.JSX.Element {
+  const { projectId: routeProjectId } = useBbContext();
+  return (
+    <RequirementsCardsForProject
+      projectId={selectedProjectId ?? routeProjectId}
+    />
+  );
 }
 
 export function RequirementsCardsForProject({
