@@ -178,8 +178,8 @@ function objectField(
 }
 
 describe("rpc-contract-freeze", () => {
-  it("exports version three and all 86 bijective logical-to-wire names", () => {
-    expect(CONTRACT_VERSION).toBe(3);
+  it("exports version four and all 86 bijective logical-to-wire names", () => {
+    expect(CONTRACT_VERSION).toBe(4);
     expect(Object.keys(RPC_WIRE_METHODS).sort()).toEqual(
       [...EXPECTED_LOGICAL_METHODS].sort(),
     );
@@ -191,6 +191,70 @@ describe("rpc-contract-freeze", () => {
     for (const [logicalName, wireName] of Object.entries(RPC_WIRE_METHODS)) {
       expect(wireName).toBe(lowerCamelWireName(logicalName));
     }
+  });
+
+  it("allows a null after-hash only for TARA deletion and rejects empty writes", () => {
+    const localWriteMethods = [
+      "triageDecisionWrite",
+      "triageDecisionUndo",
+      "taraCommandApply",
+      "requirementsWrite",
+    ] as const;
+    const created = {
+      projectId: "project-1",
+      projectVersionId: null,
+      stableKey: "entity-1",
+      beforeSha256: null,
+      afterSha256: SHA_A,
+      changedFields: ["name"],
+      diffSummary: "create entity-1",
+    };
+    const deleted = {
+      ...created,
+      beforeSha256: SHA_A,
+      afterSha256: null,
+      diffSummary: "delete entity-1",
+    };
+    const emptyWrite = {
+      ...created,
+      beforeSha256: null,
+      afterSha256: null,
+      changedFields: [],
+      diffSummary: "no write",
+    };
+
+    expect(
+      localWriteMethods.filter(
+        (method) => rpcContract[method].output.safeParse(deleted).success,
+      ),
+    ).toEqual(["taraCommandApply"]);
+    for (const method of localWriteMethods) {
+      expect(
+        rpcContract[method].output.safeParse(created).success,
+        `${method} must continue to accept create/update hashes`,
+      ).toBe(true);
+      expect(
+        rpcContract[method].output.safeParse(emptyWrite).success,
+        `${method} must reject a write with no before or after bytes`,
+      ).toBe(false);
+    }
+    expect(
+      objectVariants(rpcContract.taraCommandApply.input)
+        .filter(
+          (variant) => objectField(variant, "operation")?.safeParse("delete").success,
+        )
+        .map((variant) => Object.keys(variant.shape).sort()),
+    ).toEqual([
+      [
+        "expectedContentSha256",
+        "kind",
+        "mode",
+        "operation",
+        "projectId",
+        "projectVersionId",
+        "stableKey",
+      ],
+    ]);
   });
 
   it("registers every mapped wire key under the actual SDK rule and rejects dots", () => {

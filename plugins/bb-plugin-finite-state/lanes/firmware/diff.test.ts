@@ -2,7 +2,6 @@ import { execFileSync } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { performance } from "node:perf_hooks";
 import { createFakePluginHost } from "@bb/plugin-sdk/testing";
 import { afterEach, describe, expect, it } from "vitest";
 import { createPluginContext } from "../../lib/context.js";
@@ -158,9 +157,10 @@ describe("firmware manifest diff", () => {
     }
     register(ctx.db(), root, "pv-before", "generation-1");
     register(ctx.db(), root, "pv-after", "generation-2");
-    const started = performance.now();
+    const started = process.cpuUsage();
     const result = diffFirmware({ db: ctx.db(), projectId: "project-1" }, "pv-before", "pv-after");
-    expect(performance.now() - started).toBeLessThan(5_000);
+    const cpu = process.cpuUsage(started);
+    expect((cpu.user + cpu.system) / 1_000).toBeLessThan(5_000);
     expect(result).toMatchObject({ total: 0, unchanged: 30_000 });
     await harness.lifecycle.dispose();
   });

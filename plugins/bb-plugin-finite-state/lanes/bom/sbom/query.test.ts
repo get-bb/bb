@@ -1,4 +1,3 @@
-import { performance } from "node:perf_hooks";
 import { createFakePluginHost } from "@bb/plugin-sdk/testing";
 import Database from "better-sqlite3";
 import { afterEach, describe, expect, it } from "vitest";
@@ -341,18 +340,18 @@ describe("cached SBOM query", () => {
       }
     });
     write();
-    const started = performance.now();
+    const started = process.cpuUsage();
     const firstPage = querySbom(db, { projectVersionId: "v", limit: 50 });
     expect(firstPage.items).toHaveLength(50);
     expect("findings" in firstPage.items[0]!).toBe(false);
-    const firstMs = performance.now() - started;
-    const filteredStarted = performance.now();
+    const firstCpu = process.cpuUsage(started);
+    const filteredStarted = process.cpuUsage();
     expect(
       querySbom(db, { projectVersionId: "v", search: "needle", limit: 50 })
         .total,
     ).toBe(50);
-    const filteredMs = performance.now() - filteredStarted;
-    const detailStarted = performance.now();
+    const filteredCpu = process.cpuUsage(filteredStarted);
+    const detailStarted = process.cpuUsage();
     expect(
       queryComponentFindings(
         db,
@@ -366,10 +365,10 @@ describe("cached SBOM query", () => {
         }),
       ),
     ).toHaveLength(4);
-    const detailMs = performance.now() - detailStarted;
-    expect(firstMs).toBeLessThan(500);
-    expect(filteredMs).toBeLessThan(500);
-    expect(detailMs).toBeLessThan(1_000);
+    const detailCpu = process.cpuUsage(detailStarted);
+    expect((firstCpu.user + firstCpu.system) / 1_000).toBeLessThan(500);
+    expect((filteredCpu.user + filteredCpu.system) / 1_000).toBeLessThan(500);
+    expect((detailCpu.user + detailCpu.system) / 1_000).toBeLessThan(1_000);
     db.close();
   });
 

@@ -197,7 +197,13 @@ function TaraPanel({
     return <CanvasErrorState onRetry={data.retry} />;
   }
   if (data.model.nodes.length === 0) {
-    return <CanvasEmptyState onRetry={data.retry} />;
+    const EditingLayer = features.EditingLayer;
+    return (
+      <div className="relative h-full min-h-0">
+        <CanvasEmptyState onRetry={data.retry} />
+        <EditingLayer />
+      </div>
+    );
   }
 
   const model: ArchitectureModel = data.error
