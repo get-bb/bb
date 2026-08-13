@@ -169,8 +169,11 @@ function defaultPrerequisites(): PrerequisiteReport {
       remediation: "Start Logic 2 and enable its Automation API server (default port 10430).",
     },
   ].filter((item) => !item.configured);
-  cachedPrerequisites = { configured: needsConfiguration.length === 0, needsConfiguration };
-  return cachedPrerequisites;
+  const report = { configured: needsConfiguration.length === 0, needsConfiguration };
+  // A negative result is recoverable through the remediation rail, so retry it.
+  // Only the stable configured state is safe to cache for the process lifetime.
+  if (report.configured) cachedPrerequisites = report;
+  return report;
 }
 
 function endpoint(

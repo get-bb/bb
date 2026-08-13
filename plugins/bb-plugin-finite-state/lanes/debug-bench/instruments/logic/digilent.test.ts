@@ -149,6 +149,11 @@ describe("Digilent WaveForms driver", () => {
     expect(report.configured).toBe(report.needsConfiguration.length === 0);
     expect(report.needsConfiguration.map((item) => item.key).every((key) =>
       key === "digilent.dwfpy" || key === "digilent.waveforms-runtime")).toBe(true);
+    if (!report.configured) {
+      const retried = createDigilentLogicDriver({ verifyClaim: vi.fn() }).prerequisites();
+      expect(retried).not.toBe(report);
+      expect(retried.configured).toBe(retried.needsConfiguration.length === 0);
+    }
   });
 });
 

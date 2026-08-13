@@ -158,8 +158,11 @@ function defaultPrerequisites(): PrerequisiteReport {
       remediation: "Install the Digilent WaveForms application/runtime from Digilent.",
     },
   ].filter((item) => !item.configured);
-  cachedPrerequisites = { configured: needsConfiguration.length === 0, needsConfiguration };
-  return cachedPrerequisites;
+  const report = { configured: needsConfiguration.length === 0, needsConfiguration };
+  // Runtime/package remediation must become visible without restarting bb.
+  // Cache only a fully configured result; every negative result is retried.
+  if (report.configured) cachedPrerequisites = report;
+  return report;
 }
 
 function parseObject(stdout: string): Record<string, unknown> {

@@ -71,6 +71,11 @@ describe("Saleae Logic 2 driver", () => {
     expect(report.configured).toBe(report.needsConfiguration.length === 0);
     expect(report.needsConfiguration.map((item) => item.key).every((key) =>
       key === "saleae.logic2-automation" || key === "saleae.logic2-app")).toBe(true);
+    if (!report.configured) {
+      const retried = createSaleaeDriver({ verifyClaim: vi.fn() }).prerequisites();
+      expect(retried).not.toBe(report);
+      expect(retried.configured).toBe(retried.needsConfiguration.length === 0);
+    }
   });
 
   it("propagates capture cancellation through the supervised process and closes cleanly", async () => {
