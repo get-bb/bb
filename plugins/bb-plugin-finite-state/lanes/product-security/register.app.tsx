@@ -1,5 +1,6 @@
 import type { PluginAppBuilder, PluginNavPanelProps } from "@bb/plugin-sdk/app";
 import type { AppContext } from "../../lib/app-context.js";
+import { PlatformConnectionGate } from "../remote/platform-connection-gate.js";
 import { ProductSecurityEditingLayer } from "./canvas/editing/index.js";
 import {
   ProductSecurityLinksLayer,
@@ -34,7 +35,11 @@ const features: ProductSecurityFeatures = {
 function ProductSecurityPanelSlot(
   props: PluginNavPanelProps,
 ): React.JSX.Element {
-  return <ProductSecurityPanel {...props} features={features} />;
+  return (
+    <PlatformConnectionGate>
+      <ProductSecurityPanel {...props} features={features} />
+    </PlatformConnectionGate>
+  );
 }
 
 export function registerProductSecurityApp(

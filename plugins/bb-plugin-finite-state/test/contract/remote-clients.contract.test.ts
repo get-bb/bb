@@ -59,6 +59,13 @@ describe("direct remote and compute contract", () => {
       },
     });
     expect(host.harness.needsConfigurationMessages).toEqual([]);
+    await host.harness.setSettings({ platformConcurrency: "16" });
+    await vi.waitFor(() => {
+      expect(host.harness.realtimeSignals).toContainEqual({
+        channel: "finite-state:connections-changed",
+        payload: null,
+      });
+    });
     const source = readFileSync(new URL("../../lanes/remote/register.ts", import.meta.url), "utf8");
     expect(source.match(/settings\.define\(/gu)).toHaveLength(1);
     await host.harness.lifecycle.dispose();
