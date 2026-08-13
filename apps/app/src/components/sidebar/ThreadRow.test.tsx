@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import type { ReactNode } from "react";
 import { createStore, Provider } from "jotai";
@@ -8,6 +8,16 @@ import type { ThreadListEntry } from "@bb/domain";
 import type { PluginComposerThreadRowStatus } from "@bb/plugin-sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ThreadRow, type ThreadRowOptions } from "./ThreadRow";
+
+const mocks = vi.hoisted(() => ({
+  renameThread: vi.fn(),
+}));
+
+vi.mock("@/components/thread/ThreadActionsProvider", () => ({
+  useThreadActions: () => ({
+    renameThread: mocks.renameThread,
+  }),
+}));
 import { SidebarThreadTitleMentionResourcesProvider } from "./SidebarThreadTitleMentions";
 import {
   SIDEBAR_ROW_OPEN_IN_SPLIT_STATE_CLASS,
@@ -225,6 +235,7 @@ function renderSplitThreadRow({
 
 afterEach(() => {
   cleanup();
+  mocks.renameThread.mockReset();
   resetPluginThreadRowStatusesForTest();
   // The layout is tab-scoped, so it lands in both stores (createTabScopedStorage).
   window.localStorage.removeItem(SPLIT_LAYOUT_STORAGE_KEY);
@@ -1256,5 +1267,37 @@ describe("ThreadRow", () => {
 
     expect(container.querySelector('[data-icon="CircleCheck"]')).toBeNull();
     expect(screen.getByLabelText("Unread thread succeeded")).not.toBeNull();
+  });
+
+  it("edits the row title inline after a double click and commits on Enter", () => {
+    renderThreadRow({
+      thread: createThread({ title: "Thread", titleFallback: "Thread" }),
+    });
+
+    fireEvent.doubleClick(screen.getByText("Thread"));
+    const input = screen.getByRole("textbox", { name: "Thread name" });
+    expect(input).toHaveProperty("value", "Thread");
+
+    fireEvent.change(input, { target: { value: "Renamed thread" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(mocks.renameThread).toHaveBeenCalledWith("thr_test", "Renamed thread");
+    expect(screen.queryByRole("textbox", { name: "Thread name" })).toBeNull();
+    expect(screen.getByText("Thread")).not.toBeNull();
+  });
+
+  it("cancels an inline row rename on Escape without saving", () => {
+    renderThreadRow({
+      thread: createThread({ title: "Thread", titleFallback: "Thread" }),
+    });
+
+    fireEvent.doubleClick(screen.getByText("Thread"));
+    const input = screen.getByRole("textbox", { name: "Thread name" });
+    fireEvent.change(input, { target: { value: "Scratch name" } });
+    fireEvent.keyDown(input, { key: "Escape" });
+
+    expect(mocks.renameThread).not.toHaveBeenCalled();
+    expect(screen.queryByRole("textbox", { name: "Thread name" })).toBeNull();
+    expect(screen.getByText("Thread")).not.toBeNull();
   });
 });

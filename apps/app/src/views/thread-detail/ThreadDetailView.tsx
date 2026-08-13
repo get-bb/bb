@@ -2570,6 +2570,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
         />
       }
       threadHeaderGitActions={gitActions.threadHeaderGitActions}
+      threadId={thread.id}
       threadTitle={threadTitle}
       workspaceOpenButton={workspaceOpenButton}
     />
