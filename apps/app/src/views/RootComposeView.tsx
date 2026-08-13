@@ -15,7 +15,7 @@ import {
   type ThreadListEntry,
 } from "@bb/domain";
 import type { OpenInTargetContext } from "@bb/host-daemon-contract";
-import type { NewThreadRequest } from "@bb/plugin-sdk";
+import type { NewThreadRequest } from "@get-bb/plugin-sdk";
 import type {
   SidebarBootstrapResponse,
   TerminalSession,

@@ -15,7 +15,7 @@ import {
   type ReasoningLevel,
   type ServiceTier,
 } from "@bb/domain";
-import type { NewThreadRequest } from "@bb/plugin-sdk";
+import type { NewThreadRequest } from "@get-bb/plugin-sdk";
 import type {
   CreateExecutionInputSources,
   SidebarBootstrapResponse,
