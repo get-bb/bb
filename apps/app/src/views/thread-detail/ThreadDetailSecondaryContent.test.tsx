@@ -303,6 +303,10 @@ describe("ThreadDetailSecondaryContent", () => {
   it("places the hosted panel hide control at the outer edge of its toolbar", () => {
     renderThreadDetail(true, false, true);
 
+    expect(screen.getByTestId("header").closest("[inert]")).toBeNull();
+    expect(
+      screen.getByTestId("thread-timeline-pane").closest("[inert]"),
+    ).not.toBeNull();
     if (publishedHostedPanel === null) {
       throw new Error("Expected the focused pane to publish its panel model");
     }

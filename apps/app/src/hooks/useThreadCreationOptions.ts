@@ -933,8 +933,9 @@ export function useThreadCreationOptions(
   // host-mode default is — no localStorage write needed, just clear the
   // transient override.
   const clearReuseEnvironment = useCallback(() => {
+    if (scope !== "new-thread") return;
     setRootComposeReuseValue(null);
-  }, [setRootComposeReuseValue]);
+  }, [scope, setRootComposeReuseValue]);
 
   return {
     executionOptionsRouting,

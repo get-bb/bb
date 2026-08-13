@@ -9,16 +9,33 @@
  * environment to project defaults.
  */
 
-import { act, cleanup, render, waitFor } from "@testing-library/react";
+import { useEffect } from "react";
+import { Provider } from "jotai";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { NewThreadRequest } from "@get-bb/plugin-sdk";
+import {
+  NewThreadComposer,
+  type NewThreadComposerState,
+} from "@/components/promptbox/NewThreadComposer";
+import { encodeReuseValue } from "@/components/pickers/environment-picker-value";
+import { useRootComposeReuseEnvironment } from "@/lib/root-compose-selection";
+import { getPromptDraftAccessor } from "@/hooks/usePromptDraftStorage";
 import { PluginNewThreadComposer } from "./PluginNewThreadComposer";
 
 const mocks = vi.hoisted(() => ({
   promptBoxProps: [] as Array<Record<string, any>>,
   copyAttachments: vi.fn(),
   uploadAttachment: vi.fn(),
+  threadsLoading: false,
 }));
 
 vi.mock("@/components/promptbox/NewThreadPromptBox", () => ({
@@ -137,7 +154,7 @@ vi.mock("@/hooks/queries/system-queries", () => ({
 }));
 
 vi.mock("@/hooks/queries/thread-queries", () => ({
-  useThreads: () => ({ data: [], isLoading: false }),
+  useThreads: () => ({ data: [], isLoading: mocks.threadsLoading }),
 }));
 
 vi.mock("@/hooks/queries/project-queries", () => ({
@@ -201,6 +218,49 @@ function latestPromptBoxProps(): Record<string, any> {
   const props = mocks.promptBoxProps.at(-1);
   expect(props).toBeDefined();
   return props as Record<string, any>;
+}
+
+function RootReuseProbe() {
+  const [reuseEnvironment, setReuseEnvironment] =
+    useRootComposeReuseEnvironment();
+  return (
+    <button
+      type="button"
+      data-testid="root-reuse-probe"
+      data-value={reuseEnvironment}
+      onClick={() => setReuseEnvironment("reuse:env-root")}
+    />
+  );
+}
+
+function ForkSeedSurface({ composer }: { composer: NewThreadComposerState }) {
+  const { seedEnvironmentSelectionValue } = composer;
+  useEffect(() => {
+    seedEnvironmentSelectionValue(encodeReuseValue("env-source"));
+  }, [seedEnvironmentSelectionValue]);
+  return composer.renderPromptBox({
+    zenModeStorageKey: "bb.promptbox.zen-mode.test-root-fork",
+  });
+}
+
+function HandoffSeedSurface({
+  composer,
+}: {
+  composer: NewThreadComposerState;
+}) {
+  const { promptDraft, seedEnvironmentSelectionValue } = composer;
+  const setDraft = promptDraft.setDraft;
+  useEffect(() => {
+    seedEnvironmentSelectionValue(encodeReuseValue("env-source"));
+    setDraft({
+      text: "Continue from @thread:thr_source",
+      mentions: [],
+      attachments: [],
+    });
+  }, [seedEnvironmentSelectionValue, setDraft]);
+  return composer.renderPromptBox({
+    zenModeStorageKey: "bb.promptbox.zen-mode.test-root-handoff",
+  });
 }
 
 function composerElement(
@@ -271,7 +331,13 @@ describe("PluginNewThreadComposer seeding", () => {
     mocks.promptBoxProps.length = 0;
     mocks.copyAttachments.mockReset();
     mocks.uploadAttachment.mockReset();
+    mocks.threadsLoading = false;
     window.localStorage.clear();
+    getPromptDraftAccessor({ kind: "new-thread" }).setDraft({
+      text: "",
+      mentions: [],
+      attachments: [],
+    });
   });
 
   afterEach(() => {
@@ -460,6 +526,119 @@ describe("PluginNewThreadComposer seeding", () => {
         workspace: { type: "unmanaged", path: null },
       },
     });
+  });
+
+  it("does not clear the root reuse selection after a plugin submission", async () => {
+    render(
+      <Provider>
+        <MemoryRouter>
+          <RootReuseProbe />
+          <PluginNewThreadComposer
+            draftKey="root-reuse-isolation"
+            defaultProjectId={STORED_REQUEST.projectId}
+            defaultProviderId={STORED_REQUEST.providerId}
+            defaultModel={STORED_REQUEST.model}
+            defaultReasoningLevel={STORED_REQUEST.reasoningLevel}
+            defaultPermissionMode={STORED_REQUEST.permissionMode}
+            defaultEnvironment={STORED_REQUEST.environment}
+            initialPrompt="plugin prompt"
+            onSubmit={() => undefined}
+          />
+        </MemoryRouter>
+      </Provider>,
+    );
+    fireEvent.click(screen.getByTestId("root-reuse-probe"));
+    expect(screen.getByTestId("root-reuse-probe").dataset.value).toBe(
+      "reuse:env-root",
+    );
+    await waitFor(() => {
+      expect(latestPromptBoxProps().disabled).toBe(false);
+    });
+
+    await submit();
+
+    expect(screen.getByTestId("root-reuse-probe").dataset.value).toBe(
+      "reuse:env-root",
+    );
+  });
+
+  it("submits a fork with its seeded environment while reuse options load", async () => {
+    mocks.threadsLoading = true;
+    const submitted: NewThreadRequest[] = [];
+    render(
+      <Provider>
+        <MemoryRouter>
+          <NewThreadComposer
+            projectId="proj_1"
+            onProjectChange={() => undefined}
+            draftStorage={{ kind: "new-thread" }}
+            selectionScope="new-thread"
+            seed={{
+              initialPrompt: "fork prompt",
+              environment: {
+                type: "reuse",
+                environmentId: "env-source",
+              },
+            }}
+            resetKey="thr_source"
+            onSubmit={(request) => {
+              submitted.push(request);
+            }}
+          >
+            {(composer) => <ForkSeedSurface composer={composer} />}
+          </NewThreadComposer>
+        </MemoryRouter>
+      </Provider>,
+    );
+
+    await waitFor(() => {
+      expect(latestPromptBoxProps().disabled).toBe(false);
+    });
+    await submit();
+
+    expect(submitted).toHaveLength(1);
+    expect(submitted[0].environment).toEqual({
+      type: "reuse",
+      environmentId: "env-source",
+    });
+  });
+
+  it("does not merge an existing draft attachment into a handoff seed", async () => {
+    getPromptDraftAccessor({ kind: "new-thread" }).setDraft({
+      text: "unrelated draft",
+      mentions: [],
+      attachments: [
+        {
+          type: "localFile",
+          name: "unrelated.txt",
+          path: ".bb/attachments/unrelated.txt",
+          mimeType: "text/plain",
+          sizeBytes: 5,
+        },
+      ],
+    });
+    render(
+      <Provider>
+        <MemoryRouter>
+          <NewThreadComposer
+            projectId="proj_1"
+            onProjectChange={() => undefined}
+            draftStorage={{ kind: "new-thread" }}
+            selectionScope="new-thread"
+            onSubmit={() => undefined}
+          >
+            {(composer) => <HandoffSeedSurface composer={composer} />}
+          </NewThreadComposer>
+        </MemoryRouter>
+      </Provider>,
+    );
+
+    await waitFor(() => {
+      expect(latestPromptBoxProps().value).toBe(
+        "Continue from @thread:thr_source",
+      );
+    });
+    expect(latestPromptBoxProps().attachments.items).toEqual([]);
   });
 
   it("ignores a repeated submit while the first submission is pending", async () => {

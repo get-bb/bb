@@ -12,6 +12,13 @@ import type {
 import { describe, expect, it } from "vitest";
 import { parseEnvironmentValue } from "@/components/pickers/environment-picker-value";
 import type { ReuseThreadOption } from "@/components/pickers/WorktreePicker";
+import {
+  hasPromptBranchSelectionChanged,
+  hasPromptOptionValueChanged,
+  mergeMissingPromptDraftAttachments,
+  resolveNewThreadProjectDefaultsState,
+  restorePromptDraftAfterOptionChange,
+} from "@/components/promptbox/NewThreadComposer";
 import { subscribeComposerFocusRequests } from "@/lib/composer-focus-requests";
 import { getProjectStoredPromptAttachmentPaths } from "@/lib/prompt-draft";
 import { THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY } from "@/lib/thread-handoff-request";
@@ -19,16 +26,11 @@ import {
   buildRootComposeTerminalSessions,
   buildMobileRecentThreads,
   canCreateRootComposeTerminal,
-  hasPromptBranchSelectionChanged,
-  hasPromptOptionValueChanged,
   hasSingleUseRootComposeTargetState,
-  mergeMissingPromptDraftAttachments,
   readSectionIdFromLocationState,
   readRootComposeSectionTargetFromLocationState,
   readInitialPromptFromLocationState,
   requestRootComposePluginFocus,
-  resolveRootComposeProjectDefaultsState,
-  restorePromptDraftAfterOptionChange,
   resolveRootComposePanelThreadId,
   shouldReplaceInitialPromptFromLocationState,
   shouldStartComposingFromLocationState,
@@ -59,7 +61,7 @@ describe("requestRootComposePluginFocus", () => {
   });
 });
 
-describe("resolveRootComposeProjectDefaultsState", () => {
+describe("resolveNewThreadProjectDefaultsState", () => {
   const storedDefaults = {
     providerId: "codex",
     model: "gpt-5.6-sol",
@@ -70,7 +72,7 @@ describe("resolveRootComposeProjectDefaultsState", () => {
 
   it("keeps optimistic null defaults unresolved while the fallback query is pending", () => {
     expect(
-      resolveRootComposeProjectDefaultsState({
+      resolveNewThreadProjectDefaultsState({
         cachedDefaults: null,
         projectFound: true,
         queryData: undefined,
@@ -83,7 +85,7 @@ describe("resolveRootComposeProjectDefaultsState", () => {
 
   it("uses the authoritative saved defaults when the delayed query resolves", () => {
     expect(
-      resolveRootComposeProjectDefaultsState({
+      resolveNewThreadProjectDefaultsState({
         cachedDefaults: null,
         projectFound: true,
         queryData: storedDefaults,
@@ -96,7 +98,7 @@ describe("resolveRootComposeProjectDefaultsState", () => {
 
   it("only confirms absence after the fallback query succeeds with null", () => {
     expect(
-      resolveRootComposeProjectDefaultsState({
+      resolveNewThreadProjectDefaultsState({
         cachedDefaults: null,
         projectFound: true,
         queryData: null,
@@ -109,7 +111,7 @@ describe("resolveRootComposeProjectDefaultsState", () => {
 
   it("does not treat a previous project's placeholder as authoritative", () => {
     expect(
-      resolveRootComposeProjectDefaultsState({
+      resolveNewThreadProjectDefaultsState({
         cachedDefaults: null,
         projectFound: true,
         queryData: storedDefaults,

@@ -52,6 +52,7 @@ interface SecondaryPanelLayoutProps {
   drawerLabel: string;
   drawerFallback: ReactNode;
   mainPanelId: string;
+  mainHeader?: ReactNode;
   main: ReactNode;
   collapse?: {
     active: boolean;
@@ -78,6 +79,7 @@ export function SecondaryPanelLayout({
   drawerLabel,
   drawerFallback,
   mainPanelId,
+  mainHeader,
   main,
   collapse,
   renderPanel,
@@ -280,17 +282,24 @@ export function SecondaryPanelLayout({
       data-conversation-collapsed={isMainCollapsed}
       inert={isMainCollapsed}
       className={cn(
-        "flex h-full min-h-0 min-w-0 flex-1 flex-col transition-opacity",
+        "flex min-h-0 min-w-0 flex-1 flex-col transition-opacity",
+        secondaryPanelHost === null && "h-full",
         PANEL_COLLAPSE_TRANSITION_CLASS,
         isMainCollapsed && "opacity-0",
       )}
     >
+      {secondaryPanelHost === null ? mainHeader : null}
       {main}
     </div>
   );
 
   if (secondaryPanelHost !== null) {
-    return mainContent;
+    return (
+      <>
+        {mainHeader}
+        {mainContent}
+      </>
+    );
   }
 
   return (

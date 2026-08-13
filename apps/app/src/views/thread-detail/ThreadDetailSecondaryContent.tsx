@@ -106,13 +106,6 @@ function ThreadDetailSecondaryContentBody({
     [hasForks, isMetadataLoading, metadata],
   );
 
-  const mainContent = (
-    <>
-      {header}
-      <ThreadTimelinePane {...timeline} footer={footer} />
-    </>
-  );
-
   return (
     <div
       className={cn(
@@ -129,7 +122,8 @@ function ThreadDetailSecondaryContentBody({
         drawerLabel="Thread details"
         drawerFallback={<ThreadMetadataLoadingSkeleton />}
         mainPanelId="thread-detail-timeline-panel"
-        main={mainContent}
+        mainHeader={header}
+        main={<ThreadTimelinePane {...timeline} footer={footer} />}
         collapse={{
           active: isConversationCollapsed,
           onToggle: onToggleConversationCollapse,

@@ -286,13 +286,24 @@ describe("SecondaryPanelLayout", () => {
       resetKey: "thread-1",
     });
 
+    expect(panelGroupState.setLayout).toHaveBeenCalledTimes(1);
     expect(panelGroupState.setLayout).toHaveBeenLastCalledWith([100, 0]);
+    expect(renderPanel).toHaveBeenLastCalledWith(
+      expect.objectContaining({ canShowNativeBrowserView: false }),
+    );
     const mountedPanel = screen.getByTestId("inline-secondary-panel");
 
+    panelGroupState.setLayout.mockClear();
     view.rerenderWith({ open: true });
+    expect(panelGroupState.setLayout).toHaveBeenCalledTimes(1);
     expect(panelGroupState.setLayout).toHaveBeenLastCalledWith([60, 40]);
+    expect(renderPanel).toHaveBeenLastCalledWith(
+      expect.objectContaining({ canShowNativeBrowserView: true }),
+    );
 
+    panelGroupState.setLayout.mockClear();
     view.rerenderWith({ collapseActive: true });
+    expect(panelGroupState.setLayout).toHaveBeenCalledTimes(1);
     expect(panelGroupState.setLayout).toHaveBeenLastCalledWith([0, 100]);
     expect(
       screen.getByTestId("main-content").closest("[inert]"),
@@ -304,7 +315,9 @@ describe("SecondaryPanelLayout", () => {
     ).toBe("true");
     expect(screen.getByTestId("inline-secondary-panel")).toBe(mountedPanel);
 
+    panelGroupState.setLayout.mockClear();
     view.rerenderWith({ collapseActive: false });
+    expect(panelGroupState.setLayout).toHaveBeenCalledTimes(1);
     expect(panelGroupState.setLayout).toHaveBeenLastCalledWith([60, 40]);
   });
 
@@ -358,6 +371,7 @@ describe("SecondaryPanelLayout", () => {
 
     expect(screen.queryByTestId("drawer-secondary-panel")).toBeNull();
     expect(screen.getByTestId("drawer-fallback")).not.toBeNull();
+    expect(panelGroupState.setLayout).not.toHaveBeenCalled();
     realizeDrawerPanel(frames);
     expectNativeBrowserVisibility(false);
 
@@ -462,6 +476,25 @@ describe("SecondaryPanelLayout", () => {
     expect(frames.cancelAnimationFrame).toHaveBeenCalledWith(3);
     expect(frames.size()).toBe(0);
     expect(dispatchBrowserViewBoundsSync).not.toHaveBeenCalled();
+  });
+
+  it("revokes native readiness when the drawer content identity changes", () => {
+    const frames = installAnimationFrameQueue();
+    const view = renderLayout({
+      isCompactViewport: true,
+      open: true,
+      renderPanel: createPanelRenderer(),
+      resetKey: "thread-1",
+    });
+    realizeDrawerPanel(frames);
+    scheduleCompactDrawerSettleFrame();
+    act(() => {
+      frames.flushAll();
+    });
+    expectNativeBrowserVisibility(true);
+
+    view.rerenderWith({ resetKey: "thread-2" });
+    expectNativeBrowserVisibility(false);
   });
 
   it("cancels a pending settle frame when the drawer closes", () => {

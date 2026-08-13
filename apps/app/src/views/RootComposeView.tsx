@@ -24,13 +24,6 @@ import {
   NewThreadComposer,
   type NewThreadComposerState,
 } from "@/components/promptbox/NewThreadComposer";
-export {
-  hasPromptBranchSelectionChanged,
-  hasPromptOptionValueChanged,
-  mergeMissingPromptDraftAttachments,
-  resolveNewThreadProjectDefaultsState as resolveRootComposeProjectDefaultsState,
-  restorePromptDraftAfterOptionChange,
-} from "@/components/promptbox/NewThreadComposer";
 import { CodexCliVersionBanner } from "@/components/promptbox/banner/CodexCliVersionBanner";
 import {
   buildProviderCliIssue,
@@ -220,7 +213,6 @@ type SecondaryPanelChangeHandler = (panel: ThreadSecondaryPanelTab) => void;
 type NullableSecondaryPanelChangeHandler = (
   panel: ThreadSecondaryPanelTab | null,
 ) => void;
-
 
 interface LegacyProjectComposeRedirectProps {
   projectId: string;
@@ -586,7 +578,6 @@ export function LegacyProjectComposeRedirect({
   );
 }
 
-
 export function RootComposeView() {
   const [rootComposeProjectId, setRootComposeProjectId] =
     useRootComposeProjectId();
@@ -650,7 +641,8 @@ export function RootComposeView() {
           }),
         );
       }
-    }, [
+    },
+    [
       createThread,
       forkSeed,
       navigate,
@@ -753,6 +745,7 @@ function RootComposeSurface({
     pluginComposerHost: sharedPluginComposerHost,
     textEffects: promptTextEffects,
     isSubmitting,
+    seedEnvironmentSelectionValue,
     setEnvironmentSelectionValue,
     setProviderModelReasoning,
     setPermissionMode,
@@ -818,7 +811,7 @@ function RootComposeSurface({
       setRootComposeSectionId(null);
     }
     if (reuseEnvironmentId !== null) {
-      setEnvironmentSelectionValue(encodeReuseValue(reuseEnvironmentId));
+      seedEnvironmentSelectionValue(encodeReuseValue(reuseEnvironmentId));
     }
     if (nextForkSeed !== null && nextHandoffSeed === null) {
       setForkSeed(nextForkSeed);
@@ -826,7 +819,9 @@ function RootComposeSurface({
       setProviderModelReasoning(nextForkSeed);
       setPermissionMode(nextForkSeed.permissionMode);
       setServiceTier(nextForkSeed.serviceTier);
-      setEnvironmentSelectionValue(
+      // New-thread selection state intentionally ignores seed.environment;
+      // this explicit write is what pins the picker to the fork environment.
+      seedEnvironmentSelectionValue(
         encodeReuseValue(nextForkSeed.environmentId),
       );
     }
@@ -835,7 +830,7 @@ function RootComposeSurface({
       setRootComposeProjectId(nextHandoffSeed.projectId);
       setForkSeed(null);
       if (nextHandoffSeed.environmentId !== null) {
-        setEnvironmentSelectionValue(
+        seedEnvironmentSelectionValue(
           encodeReuseValue(nextHandoffSeed.environmentId),
         );
       }
@@ -850,7 +845,7 @@ function RootComposeSurface({
     location.state,
     navigate,
     promptDraft,
-    setEnvironmentSelectionValue,
+    seedEnvironmentSelectionValue,
     setForkSeed,
     setPermissionMode,
     setProviderModelReasoning,

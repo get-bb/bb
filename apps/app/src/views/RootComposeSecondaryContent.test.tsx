@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import type { ComponentProps, ReactNode } from "react";
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import {
@@ -341,5 +341,49 @@ describe("RootComposeSecondaryContent desktop layout", () => {
     expect(
       screen.queryByTestId("root-compose-drag-strip-toggle-cutout"),
     ).toBeNull();
+  });
+
+  it("forwards root panel open and close state to the shared desktop layout", () => {
+    const view = renderRootCompose({
+      isCompactViewport: false,
+      isSecondaryPanelOpen: false,
+    });
+
+    expect(panelGroupState.setLayout).toHaveBeenCalledTimes(1);
+    expect(panelGroupState.setLayout).toHaveBeenLastCalledWith([100, 0]);
+    panelGroupState.setLayout.mockClear();
+
+    view.rerenderWith({ isSecondaryPanelOpen: true });
+    expect(panelGroupState.setLayout).toHaveBeenCalledTimes(1);
+    expect(panelGroupState.setLayout).toHaveBeenLastCalledWith([60, 40]);
+
+    panelGroupState.setLayout.mockClear();
+    view.rerenderWith({ isSecondaryPanelOpen: false });
+    expect(panelGroupState.setLayout).toHaveBeenCalledTimes(1);
+    expect(panelGroupState.setLayout).toHaveBeenLastCalledWith([100, 0]);
+  });
+
+  it("shows the root fallback before realizing compact drawer content", () => {
+    vi.useFakeTimers();
+    try {
+      renderRootCompose({
+        isCompactViewport: true,
+        isSecondaryPanelOpen: true,
+      });
+
+      expect(panelGroupState.setLayout).not.toHaveBeenCalled();
+      expect(screen.queryByTestId("drawer-secondary-panel")).toBeNull();
+      expect(
+        screen.getByTestId("drawer-panel-loading-skeleton"),
+      ).not.toBeNull();
+
+      act(() => {
+        vi.advanceTimersByTime(120);
+      });
+
+      expect(screen.getByTestId("drawer-secondary-panel")).not.toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
