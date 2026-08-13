@@ -94,7 +94,7 @@ describe("resolvePreferredWorkspaceOpenTarget", () => {
     expect(
       resolvePreferredWorkspaceOpenTarget({
         capability: "openDirectory",
-        preferredTargetId: "windsurf",
+        preferredTargetId: "removed-editor",
         targets: [finderTarget, defaultAppTarget],
       }),
     ).toBe(defaultAppTarget);
@@ -156,7 +156,7 @@ describe("resolvePreferredWorkspaceOpenFileTarget", () => {
     expect(
       resolvePreferredWorkspaceOpenFileTarget({
         path: "/tmp/src/file.ts",
-        preferredTargetId: "windsurf",
+        preferredTargetId: "removed-editor",
         targets: [vscodeTarget, defaultAppTarget],
       }),
     ).toBe(defaultAppTarget);

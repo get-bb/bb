@@ -19,6 +19,16 @@ const targets: WorkspaceOpenTarget[] = [
     capabilities: {
       openDirectory: true,
       openFile: true,
+      openFileAtLine: true,
+    },
+    id: "devin-desktop",
+    kind: "editor",
+    label: "Devin Desktop",
+  },
+  {
+    capabilities: {
+      openDirectory: true,
+      openFile: true,
       openFileAtLine: false,
     },
     id: "default-app",
@@ -34,8 +44,8 @@ afterEach(() => {
 describe("workspace open target preference override", () => {
   it("persists Default App over unknown directory and file target ids", async () => {
     const store = createStore();
-    store.set(workspaceOpenTargetPreferenceAtom, "windsurf");
-    store.set(fileOpenTargetPreferenceAtom, "windsurf");
+    store.set(workspaceOpenTargetPreferenceAtom, "removed-editor");
+    store.set(fileOpenTargetPreferenceAtom, "removed-editor");
     const wrapper = ({ children }: { children: ReactNode }) => (
       <Provider store={store}>{children}</Provider>
     );
@@ -58,6 +68,30 @@ describe("workspace open target preference override", () => {
     expect(window.localStorage.getItem(FILE_OPEN_TARGET_STORAGE_KEY)).toBe(
       "default-app",
     );
+  });
+
+  it("migrates Windsurf preferences to Devin Desktop", async () => {
+    const store = createStore();
+    store.set(workspaceOpenTargetPreferenceAtom, "windsurf");
+    store.set(fileOpenTargetPreferenceAtom, "windsurf");
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <Provider store={store}>{children}</Provider>
+    );
+
+    renderHook(
+      () => {
+        useWorkspaceOpenTargetPreference(targets);
+        useFileOpenTargetPreference(targets);
+      },
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(store.get(workspaceOpenTargetPreferenceAtom)).toBe(
+        "devin-desktop",
+      );
+      expect(store.get(fileOpenTargetPreferenceAtom)).toBe("devin-desktop");
+    });
   });
 
   it("does not override preferences before available targets load", () => {

@@ -932,6 +932,18 @@ describe("workspace open targets", () => {
         targetId: "vscode-insiders",
       },
       {
+        appName: "Windsurf",
+        args: ["-g", `${filePath}:15:6`],
+        relativeExecutablePath: [
+          "Contents",
+          "Resources",
+          "app",
+          "bin",
+          "windsurf",
+        ],
+        targetId: "devin-desktop",
+      },
+      {
         appName: "Devin",
         args: ["-g", `${filePath}:15:6`],
         relativeExecutablePath: [

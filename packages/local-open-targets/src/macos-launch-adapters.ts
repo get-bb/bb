@@ -20,6 +20,7 @@ import type {
   BuildMacLineOpenArgs,
   BuildMacRemoteSshOpenArgs,
   LaunchAdapter,
+  MacCommandExecutableAdapter,
 } from "./types.js";
 
 const CURSOR_CLI_JS_RELATIVE_PATH = [
@@ -104,6 +105,17 @@ function bundledExecutable(
     relativeExecutablePath,
   };
 }
+
+const LEGACY_WINDSURF_EXECUTABLE: MacCommandExecutableAdapter = {
+  bundledExecutable: bundledExecutable(
+    "Contents",
+    "Resources",
+    "app",
+    "bin",
+    "windsurf",
+  ),
+  executable: "windsurf",
+};
 
 function jetBrainsToolbox(
   executable: string,
@@ -360,6 +372,7 @@ export const LAUNCH_ADAPTERS: LaunchAdapter[] = [
     fileOpenBehavior: "direct",
     macos: {
       openMode: "application",
+      additionalAppNames: ["Windsurf"],
       appName: "Devin",
       bundleIds: ["com.exafunction.windsurf"],
       builtIn: false,
@@ -372,6 +385,7 @@ export const LAUNCH_ADAPTERS: LaunchAdapter[] = [
           "devin-desktop",
         ),
         executable: "devin-desktop",
+        fallbackExecutables: [LEGACY_WINDSURF_EXECUTABLE],
         supportsColumn: true,
         toArgs: (args) => ["-g", formatPathWithLineNumber(args)],
       },
@@ -384,6 +398,7 @@ export const LAUNCH_ADAPTERS: LaunchAdapter[] = [
           "devin-desktop",
         ),
         executable: "devin-desktop",
+        fallbackExecutables: [LEGACY_WINDSURF_EXECUTABLE],
         toArgs: (path) => [path],
       },
       remoteSshOpenCommand: {
@@ -396,6 +411,7 @@ export const LAUNCH_ADAPTERS: LaunchAdapter[] = [
         ),
         capabilities: FULL_FILE_OPEN_CAPABILITIES,
         executable: "devin-desktop",
+        fallbackExecutables: [LEGACY_WINDSURF_EXECUTABLE],
         toArgs: (args) => [
           "--remote",
           `ssh-remote+${args.sshAuthority}`,
