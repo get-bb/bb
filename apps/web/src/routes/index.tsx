@@ -1719,7 +1719,9 @@ function SpawnSidebar() {
 function LandingPage() {
   const [companyProofPaused, setCompanyProofPaused] = useState(false);
   const [companyProofInView, setCompanyProofInView] = useState(false);
+  const [companyProofCopies, setCompanyProofCopies] = useState(2);
   const companyProofRef = useRef<HTMLElement>(null);
+  const companyProofMarqueeRef = useRef<HTMLDivElement>(null);
   useScrollReveal();
   useConstructMock();
   useFitMock();
@@ -1732,6 +1734,28 @@ function LandingPage() {
       setCompanyProofInView(entry?.isIntersecting ?? false);
     });
     observer.observe(companyProof);
+    return () => observer.disconnect();
+  }, []);
+
+  // The track scrolls left by one logo-list copy per animation cycle, so the
+  // copies after the first must cover the full marquee width or the viewport
+  // runs out of content near the end of each cycle on wide screens.
+  useEffect(() => {
+    const marquee = companyProofMarqueeRef.current;
+    const firstCopy = marquee?.querySelector(".company-proof-logos");
+    if (!marquee || !firstCopy) return;
+
+    const measure = () => {
+      const copyWidth = firstCopy.getBoundingClientRect().width;
+      if (copyWidth === 0) return;
+      setCompanyProofCopies(
+        Math.max(2, Math.ceil(marquee.clientWidth / copyWidth) + 1),
+      );
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(marquee);
+    observer.observe(firstCopy);
     return () => observer.disconnect();
   }, []);
   return (
@@ -1789,10 +1813,17 @@ function LandingPage() {
             />
           </button>
         </div>
-        <div className="company-proof-marquee">
-          <div className="company-proof-track">
+        <div className="company-proof-marquee" ref={companyProofMarqueeRef}>
+          <div
+            className="company-proof-track"
+            style={
+              { "--company-proof-copies": companyProofCopies } as CSSProperties
+            }
+          >
             <CompanyProofLogos />
-            <CompanyProofLogos duplicate />
+            {Array.from({ length: companyProofCopies - 1 }, (_, i) => (
+              <CompanyProofLogos key={i} duplicate />
+            ))}
           </div>
         </div>
       </section>
