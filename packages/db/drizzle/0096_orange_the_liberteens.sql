@@ -1,2 +1,0 @@
-ALTER TABLE `thread_handoffs` ADD `archive_effects_completed_at` integer;--> statement-breakpoint
-CREATE INDEX `thread_handoffs_archive_effects_page_idx` ON `thread_handoffs` (`status`,`archive_source`,`archive_effects_completed_at`,`created_at`,`id`);

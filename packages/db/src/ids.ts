@@ -38,6 +38,10 @@ export function createThreadHandoffId(): string {
   return createId("thd");
 }
 
+export function createThreadHandoffArchiveEffectClaimToken(): string {
+  return createId("thclaim");
+}
+
 export function createThreadSectionId(): string {
   return createId("sec");
 }

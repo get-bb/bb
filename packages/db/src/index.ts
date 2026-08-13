@@ -25,6 +25,7 @@ export {
   createTerminalSessionId,
   createThreadId,
   createThreadHandoffId,
+  createThreadHandoffArchiveEffectClaimToken,
   createThreadProvisioningId,
 } from "./ids.js";
 

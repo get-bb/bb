@@ -40,6 +40,18 @@ export const threadHandoffStatusValues = [
 ] as const;
 export type ThreadHandoffStatus = (typeof threadHandoffStatusValues)[number];
 
+export const threadHandoffArchiveEffectTypeValues = [
+  "notification",
+  "close-terminals",
+  "stop-runtime",
+  "provider-archive",
+  "reset-pruning",
+  "prune-events",
+  "plugin-archived",
+] as const;
+export type ThreadHandoffArchiveEffectType =
+  (typeof threadHandoffArchiveEffectTypeValues)[number];
+
 export const authUsers = sqliteTable(
   "user",
   {
@@ -595,7 +607,6 @@ export const threadHandoffs = sqliteTable(
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),
     settledAt: integer("settled_at"),
-    archiveEffectsCompletedAt: integer("archive_effects_completed_at"),
   },
   (table) => [
     uniqueIndex("thread_handoffs_replacement_idx").on(
@@ -609,13 +620,6 @@ export const threadHandoffs = sqliteTable(
     index("thread_handoffs_environment_idx").on(table.environmentId),
     index("thread_handoffs_provisioning_page_idx").on(
       table.status,
-      table.createdAt,
-      table.id,
-    ),
-    index("thread_handoffs_archive_effects_page_idx").on(
-      table.status,
-      table.archiveSource,
-      table.archiveEffectsCompletedAt,
       table.createdAt,
       table.id,
     ),
@@ -643,6 +647,46 @@ export const threadHandoffs = sqliteTable(
           AND ${table.failureMessage} IS NOT NULL
           AND length(${table.failureCode}) > 0
           AND length(${table.failureMessage}) > 0
+        )
+      )`,
+    ),
+  ],
+);
+
+export const threadHandoffArchiveEffects = sqliteTable(
+  "thread_handoff_archive_effects",
+  {
+    handoffId: text("handoff_id")
+      .notNull()
+      .references(() => threadHandoffs.id, { onDelete: "cascade" }),
+    effectKey: text("effect_key").notNull(),
+    effectType: text("effect_type", {
+      enum: threadHandoffArchiveEffectTypeValues,
+    }).notNull(),
+    payload: text("payload").notNull(),
+    claimToken: text("claim_token"),
+    claimExpiresAt: integer("claim_expires_at"),
+    completedAt: integer("completed_at"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.handoffId, table.effectKey] }),
+    index("thread_handoff_archive_effects_pending_idx").on(
+      table.completedAt,
+      table.claimExpiresAt,
+      table.createdAt,
+      table.handoffId,
+      table.effectKey,
+    ),
+    check(
+      "thread_handoff_archive_effects_claim_shape_check",
+      sql`(
+        (${table.completedAt} IS NULL)
+        OR
+        (
+          ${table.claimToken} IS NULL
+          AND ${table.claimExpiresAt} IS NULL
         )
       )`,
     ),

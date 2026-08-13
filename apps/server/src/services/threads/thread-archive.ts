@@ -2,6 +2,7 @@ import {
   listLiveThreadsInEnvironment,
   listUnarchivedAssignedChildThreads,
   listUnarchivedHiddenSourceThreads,
+  type ThreadHandoffArchiveEffectType,
 } from "@bb/db";
 import type { Environment, Thread } from "@bb/domain";
 import type {
@@ -70,72 +71,47 @@ export function applyArchivedThreadLifecycleEffects(
   emitPluginThreadArchived(args.thread);
 }
 
-export function applyArchivedThreadLifecycleEffectsBestEffort(
+export function applyThreadHandoffArchiveLifecycleEffect(
   deps: LoggedPendingInteractionWorkSessionDeps,
-  args: ApplyArchivedThreadLifecycleEffectsArgs,
-): boolean {
-  // These archive operations already reconcile current state and are safe to
-  // repeat. A crash or an incomplete batch can replay the whole list until the
-  // handoff's durable completion marker is written.
-  const effects: Array<{ label: string; run: () => void }> = [
-    {
-      label: "close archived source terminals",
-      run: () =>
-        deps.terminalSessions.closeArchivedThreadTerminals({
-          threadId: args.thread.id,
-        }),
-    },
-    {
-      label: "stop archived source runtime",
-      run: () =>
-        requestActiveRuntimeThreadStopIfNeeded(
-          deps,
-          args.thread,
-          args.environment,
-        ),
-    },
-    {
-      label: "archive source provider thread",
-      run: () => {
-        dispatchSettledArchivedThreadProviderArchiveCommand(deps, {
-          threadId: args.thread.id,
-        });
-      },
-    },
-    {
-      label: "reset source event pruning state",
-      run: () => resetActiveThreadEventPruningState(args.thread.id),
-    },
-    {
-      label: "prune archived source events",
-      run: () => {
-        const pruned = pruneThreadEventHistoryBestEffort(deps, {
-          mode: "archived",
-          threadId: args.thread.id,
-        });
-        if (pruned === null) {
-          throw new Error("Archived source event pruning did not complete");
-        }
-      },
-    },
-    {
-      label: "emit source archived plugin event",
-      run: () => emitPluginThreadArchived(args.thread),
-    },
-  ];
-  let allSucceeded = true;
-  for (const effect of effects) {
-    try {
-      effect.run();
-    } catch (error) {
-      allSucceeded = false;
-      deps.logger.warn(
-        { err: error, threadId: args.thread.id },
-        `Failed to ${effect.label} for thread handoff`,
+  args: ApplyArchivedThreadLifecycleEffectsArgs & {
+    effectType: Exclude<
+      ThreadHandoffArchiveEffectType,
+      "notification" | "plugin-archived"
+    >;
+  },
+): void {
+  switch (args.effectType) {
+    case "close-terminals":
+      deps.terminalSessions.closeArchivedThreadTerminals({
+        threadId: args.thread.id,
+      });
+      return;
+    case "stop-runtime":
+      requestActiveRuntimeThreadStopIfNeeded(
+        deps,
+        args.thread,
+        args.environment,
       );
+      return;
+    case "provider-archive":
+      dispatchSettledArchivedThreadProviderArchiveCommand(deps, {
+        threadId: args.thread.id,
+      });
+      return;
+    case "reset-pruning":
+      resetActiveThreadEventPruningState(args.thread.id);
+      return;
+    case "prune-events": {
+      const pruned = pruneThreadEventHistoryBestEffort(deps, {
+        mode: "archived",
+        threadId: args.thread.id,
+      });
+      if (pruned === null) {
+        throw new Error("Archived source event pruning did not complete");
+      }
+      return;
     }
   }
-  return allSucceeded;
 }
 
 export function archiveThreadWithLifecycleEffects(

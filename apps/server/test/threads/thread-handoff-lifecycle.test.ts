@@ -1,8 +1,13 @@
 import {
   archiveThread,
+  claimNextThreadHandoffArchiveEffect,
+  completeClaimedThreadHandoffArchiveEffect,
   createThreadHandoff as createThreadHandoffRow,
+  createThreadHandoffArchiveEffects,
   getThread,
   getThreadHandoffByReplacementThreadId,
+  listThreadHandoffArchiveEffects,
+  markThreadHandoffStarted,
 } from "@bb/db";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -219,18 +224,61 @@ describe("thread handoff lifecycle settlement", () => {
 
       expect(closeTerminals).toHaveBeenCalledWith({ threadId: source.id });
       expect(
-        getThreadHandoffByReplacementThreadId(harness.db, replacement.id),
-      ).toMatchObject({
-        status: "started",
-        archiveEffectsCompletedAt: null,
-      });
+        listThreadHandoffArchiveEffects(
+          harness.db,
+          getThreadHandoffByReplacementThreadId(harness.db, replacement.id)!.id,
+        ).some((effect) => effect.completedAt === null),
+      ).toBe(true);
       notify.mockRestore();
 
       runThreadHandoffReconciliationSweep(harness.deps);
 
       expect(
-        getThreadHandoffByReplacementThreadId(harness.db, replacement.id),
-      ).toMatchObject({ archiveEffectsCompletedAt: expect.any(Number) });
+        listThreadHandoffArchiveEffects(
+          harness.db,
+          getThreadHandoffByReplacementThreadId(harness.db, replacement.id)!.id,
+        ).every((effect) => effect.completedAt !== null),
+      ).toBe(true);
+    });
+  });
+
+  it("retries a failed released-child notification without replaying successful sibling notifications", async () => {
+    await withTestHarness(async (harness) => {
+      const { replacement, source } = seedHandoff(harness, {
+        archiveSource: true,
+      });
+      const child = seedThread(harness.deps, {
+        environmentId: source.environmentId,
+        parentThreadId: source.id,
+        projectId: source.projectId,
+      });
+      let failedParentNotification = false;
+      const notify = vi
+        .spyOn(harness.deps.hub, "notifyThread")
+        .mockImplementation((threadId, changes) => {
+          if (
+            threadId === child.id &&
+            changes.includes("parent-changed") &&
+            !failedParentNotification
+          ) {
+            failedParentNotification = true;
+            throw new Error("child notification failed");
+          }
+        });
+
+      settleThreadHandoffStarted(harness.deps, replacement.id);
+      runThreadHandoffReconciliationSweep(harness.deps);
+
+      const childParentChanges = notify.mock.calls.filter(
+        ([threadId, changes]) =>
+          threadId === child.id && changes.includes("parent-changed"),
+      );
+      const childEventChanges = notify.mock.calls.filter(
+        ([threadId, changes]) =>
+          threadId === child.id && changes.includes("events-appended"),
+      );
+      expect(childParentChanges).toHaveLength(2);
+      expect(childEventChanges).toHaveLength(1);
     });
   });
 
@@ -259,19 +307,137 @@ describe("thread handoff lifecycle settlement", () => {
         expect(emitThreadArchived).toHaveBeenCalledWith(
           expect.objectContaining({ id: source.id }),
         );
+        const handoff = getThreadHandoffByReplacementThreadId(
+          harness.db,
+          replacement.id,
+        )!;
         expect(
-          getThreadHandoffByReplacementThreadId(harness.db, replacement.id),
-        ).toMatchObject({ archiveEffectsCompletedAt: null });
+          listThreadHandoffArchiveEffects(harness.db, handoff.id).some(
+            (effect) => effect.completedAt === null,
+          ),
+        ).toBe(true);
         closeTerminals.mockRestore();
 
         runThreadHandoffReconciliationSweep(harness.deps);
-        const callsAfterCompletion = emitThreadArchived.mock.calls.length;
         expect(
-          getThreadHandoffByReplacementThreadId(harness.db, replacement.id),
-        ).toMatchObject({ archiveEffectsCompletedAt: expect.any(Number) });
+          listThreadHandoffArchiveEffects(harness.db, handoff.id).every(
+            (effect) => effect.completedAt !== null,
+          ),
+        ).toBe(true);
+        expect(emitThreadArchived).toHaveBeenCalledTimes(1);
+      } finally {
+        setPluginThreadEventEmitter(undefined);
+      }
+    });
+  });
 
+  it("does not deliver one claimed effect twice when reconciliation overlaps", async () => {
+    await withTestHarness(async (harness) => {
+      const { replacement, source } = seedHandoff(harness, {
+        archiveSource: true,
+      });
+      const notify = vi
+        .spyOn(harness.deps.hub, "notifyThread")
+        .mockImplementationOnce(() => {
+          throw new Error("initial notification failed");
+        });
+      settleThreadHandoffStarted(harness.deps, replacement.id);
+      notify.mockClear();
+      let nestedSweepStarted = false;
+      notify.mockImplementation((threadId, changes) => {
+        if (
+          threadId === source.id &&
+          changes.includes("archived-changed") &&
+          !nestedSweepStarted
+        ) {
+          nestedSweepStarted = true;
+          runThreadHandoffReconciliationSweep(harness.deps);
+        }
+      });
+
+      runThreadHandoffReconciliationSweep(harness.deps);
+
+      expect(
+        notify.mock.calls.filter(
+          ([threadId, changes]) =>
+            threadId === source.id && changes.includes("archived-changed"),
+        ),
+      ).toHaveLength(1);
+    });
+  });
+
+  it("does not retry an at-most-once plugin archive event that throws after dispatch", async () => {
+    await withTestHarness(async (harness) => {
+      const { replacement } = seedHandoff(harness, {
+        archiveSource: true,
+      });
+      const emitThreadArchived = vi.fn(() => {
+        throw new Error("process stopped after plugin dispatch");
+      });
+      setPluginThreadEventEmitter({
+        emitThreadActive: vi.fn(),
+        emitThreadArchived,
+        emitThreadCreated: vi.fn(),
+        emitThreadDeleted: vi.fn(),
+        emitThreadFailed: vi.fn(),
+        emitThreadIdle: vi.fn(),
+      });
+      try {
+        settleThreadHandoffStarted(harness.deps, replacement.id);
         runThreadHandoffReconciliationSweep(harness.deps);
-        expect(emitThreadArchived).toHaveBeenCalledTimes(callsAfterCompletion);
+
+        expect(emitThreadArchived).toHaveBeenCalledTimes(1);
+      } finally {
+        setPluginThreadEventEmitter(undefined);
+      }
+    });
+  });
+
+  it("accepts loss instead of duplication when a plugin effect is completed before a simulated crash", async () => {
+    await withTestHarness(async (harness) => {
+      const { replacement, source } = seedHandoff(harness, {
+        archiveSource: true,
+      });
+      const handoffOutcome = markThreadHandoffStarted(harness.db, {
+        replacementThreadId: replacement.id,
+      });
+      if (!handoffOutcome.applied) throw new Error("expected started handoff");
+      archiveThread(harness.db, harness.hub, source.id);
+      createThreadHandoffArchiveEffects(harness.db, {
+        handoffId: handoffOutcome.handoff.id,
+        effects: [
+          {
+            effectKey: "plugin:archived",
+            effectType: "plugin-archived",
+            payload: JSON.stringify({
+              environmentId: source.environmentId,
+              threadId: source.id,
+            }),
+          },
+        ],
+      });
+      const claimed = claimNextThreadHandoffArchiveEffect(harness.db, {
+        handoffId: handoffOutcome.handoff.id,
+        leaseMs: 30_000,
+      });
+      if (!claimed?.claimToken) throw new Error("expected plugin effect claim");
+      completeClaimedThreadHandoffArchiveEffect(harness.db, {
+        claimToken: claimed.claimToken,
+        effectKey: claimed.effectKey,
+        handoffId: claimed.handoffId,
+      });
+      const emitThreadArchived = vi.fn();
+      setPluginThreadEventEmitter({
+        emitThreadActive: vi.fn(),
+        emitThreadArchived,
+        emitThreadCreated: vi.fn(),
+        emitThreadDeleted: vi.fn(),
+        emitThreadFailed: vi.fn(),
+        emitThreadIdle: vi.fn(),
+      });
+      try {
+        runThreadHandoffReconciliationSweep(harness.deps);
+        expect(emitThreadArchived).not.toHaveBeenCalled();
       } finally {
         setPluginThreadEventEmitter(undefined);
       }

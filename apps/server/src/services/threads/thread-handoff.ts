@@ -1,5 +1,9 @@
 import { desc, eq } from "drizzle-orm";
 import {
+  areThreadHandoffArchiveEffectsCompleted,
+  claimNextThreadHandoffArchiveEffect,
+  completeClaimedThreadHandoffArchiveEffect,
+  createThreadHandoffArchiveEffects,
   createThreadHandoff as createThreadHandoffRow,
   createThreadId,
   archiveThread,
@@ -7,13 +11,14 @@ import {
   getThreadHandoffByReplacementThreadId,
   getThreadHandoffBySourceAndIdempotencyKey,
   hasNonStaleRootTurnStarted,
-  markThreadHandoffArchiveEffectsCompleted,
   markThreadHandoffFailed,
   markThreadHandoffStarted,
   noopNotifier,
   promptHistoryEntries,
+  releaseClaimedThreadHandoffArchiveEffect,
   type ThreadHandoffRow,
   type SettleThreadHandoffResult,
+  type ThreadHandoffArchiveEffectType,
 } from "@bb/db";
 import { promptInputSchema, type PromptInput, type Thread } from "@bb/domain";
 import type {
@@ -27,7 +32,11 @@ import {
   isCommandTimeoutError,
   runtimeErrorLogFields,
 } from "../lib/error-log-fields.js";
-import { NotificationBuffer } from "../lib/notification-buffer.js";
+import {
+  deliverBufferedDbNotification,
+  NotificationBuffer,
+  parseBufferedDbNotification,
+} from "../lib/notification-buffer.js";
 import {
   requireConnectedHostSession,
   requireEnvironment,
@@ -35,10 +44,13 @@ import {
 } from "../lib/entity-lookup.js";
 import { throwEnvironmentNotReady } from "../lib/lifecycle-api-errors.js";
 import { validatePromptAttachmentReferences } from "../projects/attachments.js";
-import { emitPluginThreadCreated } from "../plugins/plugin-thread-events.js";
+import {
+  emitPluginThreadArchived,
+  emitPluginThreadCreated,
+} from "../plugins/plugin-thread-events.js";
 import { validateExplicitThreadExecution } from "../system/execution-options.js";
 import { createThreadRecord } from "./thread-create-helpers.js";
-import { applyArchivedThreadLifecycleEffectsBestEffort } from "./thread-archive.js";
+import { applyThreadHandoffArchiveLifecycleEffect } from "./thread-archive.js";
 import { releaseUnarchivedChildrenFromArchivedThreadInTransaction } from "./thread-ownership.js";
 import {
   advanceThreadProvisioning,
@@ -47,72 +59,100 @@ import {
 
 type ThreadHandoffDeps = LoggedPendingInteractionWorkSessionDeps;
 const storedInputSchema = z.array(promptInputSchema).min(1);
+const archiveEffectSourceSchema = z.object({
+  environmentId: z.string().min(1),
+  threadId: z.string().min(1),
+});
+const ARCHIVE_EFFECT_CLAIM_LEASE_MS = 30_000;
 
 export interface ThreadHandoffFailure {
   code: string;
   message: string;
 }
 
-function completeThreadHandoffArchiveEffects(
+function buildThreadHandoffArchiveEffects(
+  notificationBuffer: NotificationBuffer,
+  source: Thread,
+) {
+  if (!source.environmentId) {
+    throw new Error("Archived handoff source has no environment");
+  }
+  const sourcePayload = JSON.stringify({
+    environmentId: source.environmentId,
+    threadId: source.id,
+  });
+  const lifecycleEffects: Array<{
+    effectKey: string;
+    effectType: ThreadHandoffArchiveEffectType;
+    payload: string;
+  }> = [
+    {
+      effectKey: "lifecycle:close-terminals",
+      effectType: "close-terminals",
+      payload: sourcePayload,
+    },
+    {
+      effectKey: "lifecycle:stop-runtime",
+      effectType: "stop-runtime",
+      payload: sourcePayload,
+    },
+    {
+      effectKey: "lifecycle:provider-archive",
+      effectType: "provider-archive",
+      payload: sourcePayload,
+    },
+    {
+      effectKey: "lifecycle:reset-pruning",
+      effectType: "reset-pruning",
+      payload: sourcePayload,
+    },
+    {
+      effectKey: "lifecycle:prune-events",
+      effectType: "prune-events",
+      payload: sourcePayload,
+    },
+    {
+      effectKey: "plugin:archived",
+      effectType: "plugin-archived",
+      payload: sourcePayload,
+    },
+  ];
+  return [
+    ...notificationBuffer.snapshot().map((notification, index) => ({
+      effectKey: `notification:${String(index).padStart(6, "0")}`,
+      effectType: "notification" as const,
+      payload: JSON.stringify(notification),
+    })),
+    ...lifecycleEffects,
+  ];
+}
+
+function executeClaimedThreadHandoffArchiveEffect(
   deps: ThreadHandoffDeps,
-  args: {
-    notificationBuffer?: NotificationBuffer;
-    replacementThreadId: string;
-    source: Thread;
-  },
-): boolean {
-  let allSucceeded = true;
-  if (args.notificationBuffer) {
-    allSucceeded = args.notificationBuffer.flushIntoBestEffort(
+  effect: NonNullable<ReturnType<typeof claimNextThreadHandoffArchiveEffect>>,
+): void {
+  if (effect.effectType === "notification") {
+    deliverBufferedDbNotification(
       deps.hub,
-      (error) => {
-        deps.logger.warn(
-          { replacementThreadId: args.replacementThreadId, err: error },
-          "Failed to publish source archive notification for thread handoff",
-        );
-      },
+      parseBufferedDbNotification(JSON.parse(effect.payload)),
     );
-  } else {
-    try {
-      deps.hub.notifyThread(args.source.id, ["archived-changed"], {
-        projectId: args.source.projectId,
-      });
-    } catch (error) {
-      allSucceeded = false;
-      deps.logger.warn(
-        { replacementThreadId: args.replacementThreadId, err: error },
-        "Failed to replay source archive notification for thread handoff",
-      );
-    }
+    return;
   }
-  const environmentId = args.source.environmentId;
-  if (!environmentId) {
-    deps.logger.warn(
-      { replacementThreadId: args.replacementThreadId },
-      "Archived handoff source has no environment for lifecycle effects",
-    );
-    return false;
+  const payload = archiveEffectSourceSchema.parse(JSON.parse(effect.payload));
+  const source = getThread(deps.db, payload.threadId);
+  if (!source || source.archivedAt === null) {
+    throw new Error("Thread handoff archive effect source is unavailable");
   }
-  let lifecycleEffectsSucceeded = false;
-  try {
-    const environment = requireEnvironment(deps.db, environmentId);
-    lifecycleEffectsSucceeded = applyArchivedThreadLifecycleEffectsBestEffort(
-      deps,
-      { environment, thread: args.source },
-    );
-  } catch (error) {
-    deps.logger.warn(
-      { replacementThreadId: args.replacementThreadId, err: error },
-      "Failed to resolve source archive lifecycle effects for thread handoff",
-    );
+  if (effect.effectType === "plugin-archived") {
+    emitPluginThreadArchived(source);
+    return;
   }
-  allSucceeded &&= lifecycleEffectsSucceeded;
-  if (allSucceeded) {
-    markThreadHandoffArchiveEffectsCompleted(deps.db, {
-      replacementThreadId: args.replacementThreadId,
-    });
-  }
-  return allSucceeded;
+  const environment = requireEnvironment(deps.db, payload.environmentId);
+  applyThreadHandoffArchiveLifecycleEffect(deps, {
+    effectType: effect.effectType,
+    environment,
+    thread: source,
+  });
 }
 
 export function retryThreadHandoffArchiveEffects(
@@ -123,22 +163,58 @@ export function retryThreadHandoffArchiveEffects(
     deps.db,
     replacementThreadId,
   );
-  if (
-    !handoff ||
-    handoff.status !== "started" ||
-    !handoff.archiveSource ||
-    handoff.archiveEffectsCompletedAt !== null
-  ) {
+  if (!handoff || handoff.status !== "started" || !handoff.archiveSource) {
     return true;
   }
-  const source = getThread(deps.db, handoff.sourceThreadId);
-  if (!source || source.archivedAt === null) {
-    return false;
+  const failedEffectKeys = new Set<string>();
+  while (true) {
+    const effect = claimNextThreadHandoffArchiveEffect(deps.db, {
+      excludeEffectKeys: [...failedEffectKeys],
+      handoffId: handoff.id,
+      leaseMs: ARCHIVE_EFFECT_CLAIM_LEASE_MS,
+    });
+    if (!effect) {
+      return areThreadHandoffArchiveEffectsCompleted(deps.db, handoff.id);
+    }
+    const claimToken = effect.claimToken;
+    if (!claimToken) {
+      throw new Error("Claimed thread handoff archive effect has no token");
+    }
+    const completionArgs = {
+      claimToken,
+      effectKey: effect.effectKey,
+      handoffId: effect.handoffId,
+    };
+    if (effect.effectType === "plugin-archived") {
+      // Plugin events are observe-only and fire-and-forget. Complete before
+      // dispatch for at-most-once behavior: a crash can lose this notification
+      // but can never repeat arbitrary plugin handler side effects.
+      if (!completeClaimedThreadHandoffArchiveEffect(deps.db, completionArgs)) {
+        continue;
+      }
+      try {
+        executeClaimedThreadHandoffArchiveEffect(deps, effect);
+      } catch (error) {
+        deps.logger.warn(
+          { err: error, replacementThreadId },
+          "At-most-once handoff plugin archive notification failed",
+        );
+      }
+      continue;
+    }
+    try {
+      executeClaimedThreadHandoffArchiveEffect(deps, effect);
+      completeClaimedThreadHandoffArchiveEffect(deps.db, completionArgs);
+    } catch (error) {
+      releaseClaimedThreadHandoffArchiveEffect(deps.db, completionArgs);
+      failedEffectKeys.add(effect.effectKey);
+      deps.logger.warn(
+        { err: error, replacementThreadId },
+        "Thread handoff archive effect failed",
+      );
+      continue;
+    }
   }
-  return completeThreadHandoffArchiveEffects(deps, {
-    replacementThreadId,
-    source,
-  });
 }
 
 export function settleThreadHandoffStarted(
@@ -162,6 +238,13 @@ export function settleThreadHandoffStarted(
           { db: tx, hub: notificationBuffer },
           { parentThreadId: archivedSource.id },
         );
+        createThreadHandoffArchiveEffects(tx, {
+          effects: buildThreadHandoffArchiveEffects(
+            notificationBuffer,
+            archivedSource,
+          ),
+          handoffId: outcome.handoff.id,
+        });
       }
       return { archivedSource, outcome };
     },
@@ -169,18 +252,7 @@ export function settleThreadHandoffStarted(
   );
   const archivedSource = transactionResult.archivedSource;
   if (archivedSource) {
-    completeThreadHandoffArchiveEffects(deps, {
-      notificationBuffer,
-      replacementThreadId,
-      source: archivedSource,
-    });
-  } else if (
-    transactionResult.outcome.applied &&
-    transactionResult.outcome.handoff.archiveSource
-  ) {
-    markThreadHandoffArchiveEffectsCompleted(deps.db, {
-      replacementThreadId,
-    });
+    retryThreadHandoffArchiveEffects(deps, replacementThreadId);
   }
   return transactionResult.outcome;
 }

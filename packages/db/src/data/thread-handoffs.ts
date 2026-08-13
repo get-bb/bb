@@ -1,8 +1,12 @@
-import { and, asc, eq, gt, or, sql } from "drizzle-orm";
+import { and, asc, eq, gt, isNull, or, sql } from "drizzle-orm";
 import type { PermissionMode, ReasoningLevel, ServiceTier } from "@bb/domain";
 import type { DbConnection, DbTransaction } from "../connection.js";
 import { createThreadHandoffId } from "../ids.js";
-import { events, threadHandoffs } from "../schema.js";
+import {
+  events,
+  threadHandoffArchiveEffects,
+  threadHandoffs,
+} from "../schema.js";
 
 type ThreadHandoffConnection = DbConnection | DbTransaction;
 
@@ -49,14 +53,6 @@ export interface ProvisioningThreadHandoffPage {
 
 export type IncompleteThreadHandoffArchiveEffectsPage =
   ProvisioningThreadHandoffPage;
-
-export type CompleteThreadHandoffArchiveEffectsResult =
-  | { applied: true; handoff: ThreadHandoffRow }
-  | {
-      applied: false;
-      handoff: ThreadHandoffRow | null;
-      reason: "already-completed" | "not-found-or-ineligible";
-    };
 
 export type SettleThreadHandoffResult =
   | { applied: true; handoff: ThreadHandoffRow }
@@ -142,7 +138,6 @@ export function createThreadHandoff(
       createdAt: now,
       updatedAt: now,
       settledAt: null,
-      archiveEffectsCompletedAt: null,
     })
     .onConflictDoNothing({
       target: [threadHandoffs.sourceThreadId, threadHandoffs.idempotencyKey],
@@ -208,13 +203,17 @@ export function listIncompleteThreadHandoffArchiveEffects(
     return { handoffs: [], nextCursor: null };
   }
   const rows = db
-    .select()
+    .select({ handoff: threadHandoffs })
     .from(threadHandoffs)
+    .innerJoin(
+      threadHandoffArchiveEffects,
+      eq(threadHandoffArchiveEffects.handoffId, threadHandoffs.id),
+    )
     .where(
       and(
         eq(threadHandoffs.status, "started"),
         eq(threadHandoffs.archiveSource, true),
-        sql`${threadHandoffs.archiveEffectsCompletedAt} IS NULL`,
+        isNull(threadHandoffArchiveEffects.completedAt),
         args.after
           ? or(
               gt(threadHandoffs.createdAt, args.after.createdAt),
@@ -226,49 +225,20 @@ export function listIncompleteThreadHandoffArchiveEffects(
           : undefined,
       ),
     )
+    .groupBy(threadHandoffs.id)
     .orderBy(asc(threadHandoffs.createdAt), asc(threadHandoffs.id))
     .limit(args.limit + 1)
     .all();
   const hasMore = rows.length > args.limit;
-  const handoffs = hasMore ? rows.slice(0, args.limit) : rows;
+  const handoffs = (hasMore ? rows.slice(0, args.limit) : rows).map(
+    (row) => row.handoff,
+  );
   const last = handoffs.at(-1);
   return {
     handoffs,
     nextCursor:
       hasMore && last ? { createdAt: last.createdAt, id: last.id } : null,
   };
-}
-
-export function markThreadHandoffArchiveEffectsCompleted(
-  db: ThreadHandoffConnection,
-  args: { completedAt?: number; replacementThreadId: string },
-): CompleteThreadHandoffArchiveEffectsResult {
-  const completedAt = args.completedAt ?? Date.now();
-  const updated = db
-    .update(threadHandoffs)
-    .set({ archiveEffectsCompletedAt: completedAt, updatedAt: completedAt })
-    .where(
-      and(
-        eq(threadHandoffs.replacementThreadId, args.replacementThreadId),
-        eq(threadHandoffs.status, "started"),
-        eq(threadHandoffs.archiveSource, true),
-        sql`${threadHandoffs.archiveEffectsCompletedAt} IS NULL`,
-      ),
-    )
-    .returning()
-    .get();
-  if (updated) return { applied: true, handoff: updated };
-  const existing = getThreadHandoffByReplacementThreadId(
-    db,
-    args.replacementThreadId,
-  );
-  return existing?.archiveEffectsCompletedAt !== null
-    ? { applied: false, handoff: existing, reason: "already-completed" }
-    : {
-        applied: false,
-        handoff: existing,
-        reason: "not-found-or-ineligible",
-      };
 }
 
 export function hasNonStaleRootTurnStarted(
@@ -322,10 +292,6 @@ function settleThreadHandoff(
       failureCode: args.failureCode,
       failureMessage: args.failureMessage,
       settledAt: args.settledAt,
-      archiveEffectsCompletedAt:
-        args.status === "started"
-          ? sql`CASE WHEN ${threadHandoffs.archiveSource} = 0 THEN ${args.settledAt} ELSE NULL END`
-          : null,
       updatedAt: args.settledAt,
     })
     .where(

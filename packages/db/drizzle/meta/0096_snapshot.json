@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "4a33b29d-c2a6-4606-ba03-0b05e486ad4e",
+  "id": "16c54460-7ab7-4703-b4f5-b79446e22174",
   "prevId": "81344a6c-0a4b-4853-b53c-e9935756527a",
   "tables": {
     "app_settings": {
@@ -2889,6 +2889,118 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
+    "thread_handoff_archive_effects": {
+      "name": "thread_handoff_archive_effects",
+      "columns": {
+        "handoff_id": {
+          "name": "handoff_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "effect_key": {
+          "name": "effect_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "effect_type": {
+          "name": "effect_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "payload": {
+          "name": "payload",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "claim_token": {
+          "name": "claim_token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "claim_expires_at": {
+          "name": "claim_expires_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "completed_at": {
+          "name": "completed_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "thread_handoff_archive_effects_pending_idx": {
+          "name": "thread_handoff_archive_effects_pending_idx",
+          "columns": [
+            "completed_at",
+            "claim_expires_at",
+            "created_at",
+            "handoff_id",
+            "effect_key"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "thread_handoff_archive_effects_handoff_id_thread_handoffs_id_fk": {
+          "name": "thread_handoff_archive_effects_handoff_id_thread_handoffs_id_fk",
+          "tableFrom": "thread_handoff_archive_effects",
+          "tableTo": "thread_handoffs",
+          "columnsFrom": [
+            "handoff_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "thread_handoff_archive_effects_handoff_id_effect_key_pk": {
+          "columns": [
+            "handoff_id",
+            "effect_key"
+          ],
+          "name": "thread_handoff_archive_effects_handoff_id_effect_key_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "thread_handoff_archive_effects_claim_shape_check": {
+          "name": "thread_handoff_archive_effects_claim_shape_check",
+          "value": "(\n        (\"thread_handoff_archive_effects\".\"completed_at\" IS NULL)\n        OR\n        (\n          \"thread_handoff_archive_effects\".\"claim_token\" IS NULL\n          AND \"thread_handoff_archive_effects\".\"claim_expires_at\" IS NULL\n        )\n      )"
+        }
+      }
+    },
     "thread_handoffs": {
       "name": "thread_handoffs",
       "columns": {
@@ -3017,13 +3129,6 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
-        },
-        "archive_effects_completed_at": {
-          "name": "archive_effects_completed_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
         }
       },
       "indexes": {
@@ -3060,17 +3165,6 @@
           "name": "thread_handoffs_provisioning_page_idx",
           "columns": [
             "status",
-            "created_at",
-            "id"
-          ],
-          "isUnique": false
-        },
-        "thread_handoffs_archive_effects_page_idx": {
-          "name": "thread_handoffs_archive_effects_page_idx",
-          "columns": [
-            "status",
-            "archive_source",
-            "archive_effects_completed_at",
             "created_at",
             "id"
           ],

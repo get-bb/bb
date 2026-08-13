@@ -3,12 +3,19 @@ import { eq } from "drizzle-orm";
 import { createConnection } from "../../src/connection.js";
 import { createEnvironment } from "../../src/data/environments.js";
 import {
+  areThreadHandoffArchiveEffectsCompleted,
+  claimNextThreadHandoffArchiveEffect,
+  completeClaimedThreadHandoffArchiveEffect,
+  createThreadHandoffArchiveEffects,
+  listThreadHandoffArchiveEffects,
+  releaseClaimedThreadHandoffArchiveEffect,
+} from "../../src/data/thread-handoff-archive-effects.js";
+import {
   createThreadHandoff,
   getThreadHandoffByReplacementThreadId,
   getThreadHandoffBySourceAndIdempotencyKey,
   listIncompleteThreadHandoffArchiveEffects,
   listProvisioningThreadHandoffs,
-  markThreadHandoffArchiveEffectsCompleted,
   markThreadHandoffFailed,
   markThreadHandoffStarted,
   type CreateThreadHandoffInput,
@@ -100,7 +107,6 @@ describe("thread handoffs", () => {
       createdAt: 100,
       updatedAt: 100,
       settledAt: null,
-      archiveEffectsCompletedAt: null,
     });
     expect(created.handoff.id).toMatch(/^thd_/u);
     expect(
@@ -302,7 +308,7 @@ describe("thread handoffs", () => {
     expect(secondPage).toEqual({ handoffs: [last], nextCursor: null });
   });
 
-  it("pages only started archive handoffs with incomplete effects and CASes completion", () => {
+  it("pages only started archive handoffs with incomplete durable effects", () => {
     const fixture = setup();
     const firstInput = handoffInput(fixture, { now: 100 });
     const noArchiveInput = handoffInput(fixture, {
@@ -322,16 +328,28 @@ describe("thread handoffs", () => {
     createThreadHandoff(fixture.db, noArchiveInput);
     const last = createThreadHandoff(fixture.db, lastInput).handoff;
     for (const input of [firstInput, noArchiveInput, lastInput]) {
-      markThreadHandoffStarted(fixture.db, {
+      const outcome = markThreadHandoffStarted(fixture.db, {
         replacementThreadId: input.replacementThreadId,
       });
+      if (outcome.applied && input.archiveSource) {
+        createThreadHandoffArchiveEffects(fixture.db, {
+          handoffId: outcome.handoff.id,
+          effects: [
+            {
+              effectKey: "notification:000000",
+              effectType: "notification",
+              payload: "{}",
+            },
+          ],
+        });
+      }
     }
 
     const firstPage = listIncompleteThreadHandoffArchiveEffects(fixture.db, {
       limit: 1,
     });
     expect(firstPage.handoffs).toEqual([
-      expect.objectContaining({ id: first.id, archiveEffectsCompletedAt: null }),
+      expect.objectContaining({ id: first.id }),
     ]);
     expect(firstPage.nextCursor).toEqual({ createdAt: 100, id: first.id });
     const secondPage = listIncompleteThreadHandoffArchiveEffects(fixture.db, {
@@ -339,26 +357,77 @@ describe("thread handoffs", () => {
       limit: 1,
     });
     expect(secondPage.handoffs).toEqual([
-      expect.objectContaining({ id: last.id, archiveEffectsCompletedAt: null }),
+      expect.objectContaining({ id: last.id }),
     ]);
 
+    const claimed = claimNextThreadHandoffArchiveEffect(fixture.db, {
+      handoffId: first.id,
+      leaseMs: 1_000,
+      now: 400,
+    });
+    expect(claimed).toMatchObject({ effectKey: "notification:000000" });
+    if (!claimed?.claimToken) throw new Error("expected claimed effect");
     expect(
-      markThreadHandoffArchiveEffectsCompleted(fixture.db, {
-        replacementThreadId: firstInput.replacementThreadId,
-        completedAt: 400,
-      }),
-    ).toMatchObject({ applied: true });
-    expect(
-      markThreadHandoffArchiveEffectsCompleted(fixture.db, {
-        replacementThreadId: firstInput.replacementThreadId,
+      completeClaimedThreadHandoffArchiveEffect(fixture.db, {
+        claimToken: claimed.claimToken,
+        effectKey: claimed.effectKey,
+        handoffId: claimed.handoffId,
         completedAt: 500,
       }),
-    ).toMatchObject({ applied: false, reason: "already-completed" });
+    ).toBe(true);
+    expect(areThreadHandoffArchiveEffectsCompleted(fixture.db, first.id)).toBe(
+      true,
+    );
     expect(
       listIncompleteThreadHandoffArchiveEffects(fixture.db, { limit: 10 })
         .handoffs,
     ).toEqual([
-      expect.objectContaining({ id: last.id, archiveEffectsCompletedAt: null }),
+      expect.objectContaining({ id: last.id }),
     ]);
+  });
+
+  it("claims each archive effect once, releases failures, and preserves individual completion", () => {
+    const fixture = setup();
+    const handoff = createThreadHandoff(fixture.db, handoffInput(fixture)).handoff;
+    createThreadHandoffArchiveEffects(fixture.db, {
+      handoffId: handoff.id,
+      now: 100,
+      effects: [
+        { effectKey: "a", effectType: "notification", payload: '{"a":1}' },
+        { effectKey: "b", effectType: "close-terminals", payload: '{"b":2}' },
+      ],
+    });
+
+    const first = claimNextThreadHandoffArchiveEffect(fixture.db, {
+      handoffId: handoff.id,
+      leaseMs: 1_000,
+      now: 200,
+    });
+    expect(first).toMatchObject({ effectKey: "a" });
+    expect(
+      claimNextThreadHandoffArchiveEffect(fixture.db, {
+        handoffId: handoff.id,
+        leaseMs: 1_000,
+        now: 200,
+      }),
+    ).toMatchObject({ effectKey: "b" });
+    if (!first?.claimToken) throw new Error("expected first claim");
+    expect(
+      releaseClaimedThreadHandoffArchiveEffect(fixture.db, {
+        claimToken: first.claimToken,
+        effectKey: first.effectKey,
+        handoffId: first.handoffId,
+        now: 201,
+      }),
+    ).toBe(true);
+    const retried = claimNextThreadHandoffArchiveEffect(fixture.db, {
+      handoffId: handoff.id,
+      leaseMs: 1_000,
+      now: 202,
+    });
+    expect(retried).toMatchObject({ effectKey: "a" });
+    expect(listThreadHandoffArchiveEffects(fixture.db, handoff.id)).toHaveLength(
+      2,
+    );
   });
 });

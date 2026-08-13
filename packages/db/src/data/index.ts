@@ -171,14 +171,12 @@ export {
   hasNonStaleRootTurnStarted,
   listIncompleteThreadHandoffArchiveEffects,
   listProvisioningThreadHandoffs,
-  markThreadHandoffArchiveEffectsCompleted,
   markThreadHandoffFailed,
   markThreadHandoffStarted,
 } from "./thread-handoffs.js";
 export type {
   CreateThreadHandoffInput,
   CreateThreadHandoffResult,
-  CompleteThreadHandoffArchiveEffectsResult,
   IncompleteThreadHandoffArchiveEffectsPage,
   ListProvisioningThreadHandoffsArgs,
   MarkThreadHandoffFailedArgs,
@@ -189,6 +187,19 @@ export type {
   ThreadHandoffPageCursor,
   ThreadHandoffRow,
 } from "./thread-handoffs.js";
+
+export {
+  areThreadHandoffArchiveEffectsCompleted,
+  claimNextThreadHandoffArchiveEffect,
+  completeClaimedThreadHandoffArchiveEffect,
+  createThreadHandoffArchiveEffects,
+  listThreadHandoffArchiveEffects,
+  releaseClaimedThreadHandoffArchiveEffect,
+} from "./thread-handoff-archive-effects.js";
+export type {
+  CreateThreadHandoffArchiveEffectInput,
+  ThreadHandoffArchiveEffectRow,
+} from "./thread-handoff-archive-effects.js";
 
 export {
   getAppKeybindingOverrides,
