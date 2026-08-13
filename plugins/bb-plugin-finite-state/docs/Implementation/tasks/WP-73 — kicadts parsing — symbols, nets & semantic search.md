@@ -44,6 +44,9 @@ Search runs over parsed semantics, never SVG glyph text — stroke fonts plot as
       sheetPath: string;            // project-relative
       name: string;
       parent: string | null;
+      pageOrder: number;
+      widthMm: number | null;
+      heightMm: number | null;
       symbols: ParsedSymbol[];
     }
 
@@ -63,11 +66,27 @@ Search runs over parsed semantics, never SVG glyph text — stroke fonts plot as
       nodes: { reference: string; pin: string }[];
     }
 
+    export interface ConnectivityGap {
+      sheetPath: string;
+      kind: "unresolved_label" | "unresolved_hierarchical_pin" |
+        "unsupported_bus" | "missing_pin_geometry";
+      detail: string;
+      at: { x: number; y: number } | null;
+    }
+
+    export interface HardwareSemanticScope {
+      projectId: string;
+      projectVersionId: string | null;
+      projectKey: string;
+    }
+
     export function parseProject(worktreeRoot: string, projectKey: string):
-      Promise<{ sheets: ParsedSheet[]; nets: ParsedNet[] }>;   // throws KICAD_VERSION_UNSUPPORTED
-    export function ingestProject(db: Database, projectKey: string,
-      sourceHash: string, parsed: { sheets: ParsedSheet[]; nets: ParsedNet[] }): void;
-    export function diffSymbolSets(db: Database, projectKey: string,
+      Promise<{ sheets: ParsedSheet[]; nets: ParsedNet[];
+        connectivityGaps: ConnectivityGap[] }>;                // throws KICAD_VERSION_UNSUPPORTED
+    export function ingestProject(db: Database, scope: HardwareSemanticScope,
+      sourceHash: string, parsed: { sheets: ParsedSheet[]; nets: ParsedNet[];
+        connectivityGaps: ConnectivityGap[] }): void;
+    export function diffSymbolSets(db: Database, scope: HardwareSemanticScope,
       fromHash: string, toHash: string): { added: string[]; removed: string[] };
 
 ## Acceptance criteria

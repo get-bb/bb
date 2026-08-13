@@ -23,8 +23,8 @@ import { detectKicadCli, type HwArtifactKind, type KicadCapability } from "./ext
 import { listArtifactStatus } from "./extract/provenance.js";
 import { HardwareSourceWatcher } from "./extract/watch.js";
 import { hardwareViolationsNotImplemented } from "./fab/violations.js";
-import { hardwareSheetsNotImplemented } from "./parse/sheets.js";
-import { hardwareSearchNotImplemented } from "./search.js";
+import { listHardwareSheets } from "./parse/sheets.js";
+import { getHardwarePart, listHardwareNets, listHardwareSymbols } from "./search.js";
 
 const hardwareRpcContract = {
   hardwareProjectsList: rpcContract.hardwareProjectsList,
@@ -544,11 +544,11 @@ export function registerHardware(bb: BbPluginApi, ctx: PluginContext): void {
       const nextOffset = offset + rows.length;
       return { items: rows.map(projectOutput), total, cursor: nextOffset < total ? Buffer.from(String(nextOffset)).toString("base64url") : null };
     },
-    hardwareSymbolsList() { return hardwareSearchNotImplemented(); },
-    hardwareNetsList() { return hardwareSearchNotImplemented(); },
+    hardwareSymbolsList(input) { return listHardwareSymbols(db, input); },
+    hardwareNetsList(input) { return listHardwareNets(db, input); },
     hardwareViolationsList() { return hardwareViolationsNotImplemented(); },
-    hardwareSheetsList() { return hardwareSheetsNotImplemented(); },
-    hardwarePartGet() { return hardwareSearchNotImplemented(); },
+    hardwareSheetsList(input) { return listHardwareSheets(db, input); },
+    hardwarePartGet(input) { return getHardwarePart(db, input); },
     async hardwareArtifactsStatus(input) {
       const projectKey = assertRelativeProjectPath(input.projectKey);
       const project = db.prepare<[string, string, string], HardwareProjectDbRow>(
