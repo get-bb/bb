@@ -4,6 +4,12 @@
 **Depends on:** WP-57 and the owning domain-component WPs (WP-21, WP-25, WP-28, WP-32–40, WP-42, WP-45, WP-54–56) · **Blocks:** WP-65, WP-67, WP-68, WP-69
 **Produces a FROZEN artifact:** no
 
+> **SPEC 07/08 intake note (2026-08-12).** "All twelve" is now the SPEC 06
+> set only. Eight more directives ship with their surfaces, not here:
+> `::fs-schematic` `::fs-part` `::fs-board` `::fs-drc` in WP-81 and
+> `::fs-citation` `::fs-probe` `::fs-serial` `::fs-build` in WP-96 — all
+> following this WP's registration and self-fetching-component conventions.
+
 ## Files you own
 ```
 plugins/bb-plugin-finite-state/lanes/agentic/register.app.tsx
