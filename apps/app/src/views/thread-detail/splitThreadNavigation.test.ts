@@ -153,6 +153,7 @@ describe("applyThreadPaneActionToLayout", () => {
     expect(result.layout.root).toEqual(before.root);
     expect(result.layout.focusedPaneId).toBe("pane-1");
     expect(result.maximizedPaneId).toBe("pane-1");
+    expect(result.dimInactiveSplits).toBeNull();
   });
 
   it("restores only the targeted maximized pane and toggles it back", () => {
@@ -163,7 +164,11 @@ describe("applyThreadPaneActionToLayout", () => {
       { projectId: "p1", threadId: "thread-2" },
       "restore",
     );
-    expect(restored).toEqual({ layout: before, maximizedPaneId: null });
+    expect(restored).toEqual({
+      layout: before,
+      maximizedPaneId: null,
+      dimInactiveSplits: null,
+    });
 
     const toggled = applyThreadPaneActionToLayout(
       restored.layout,
@@ -174,6 +179,27 @@ describe("applyThreadPaneActionToLayout", () => {
     expect(toggled.maximizedPaneId).toBe("pane-2");
   });
 
+  it.each([
+    ["spotlight", true],
+    ["clear-spotlight", false],
+  ] as const)(
+    "focuses the target for %s and returns the preference",
+    (action, expected) => {
+      const before = twoPaneLayout();
+      const result = applyThreadPaneActionToLayout(
+        before,
+        null,
+        { projectId: "p1", threadId: "thread-1" },
+        action,
+      );
+
+      expect(result.layout.root).toEqual(before.root);
+      expect(result.layout.focusedPaneId).toBe("pane-1");
+      expect(result.maximizedPaneId).toBeNull();
+      expect(result.dimInactiveSplits).toBe(expected);
+    },
+  );
+
   it("is a no-op when the target is not open", () => {
     const before = twoPaneLayout();
     expect(
@@ -183,6 +209,10 @@ describe("applyThreadPaneActionToLayout", () => {
         { projectId: "p1", threadId: "missing" },
         "maximize",
       ),
-    ).toEqual({ layout: before, maximizedPaneId: "pane-2" });
+    ).toEqual({
+      layout: before,
+      maximizedPaneId: "pane-2",
+      dimInactiveSplits: null,
+    });
   });
 });

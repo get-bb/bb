@@ -54,6 +54,21 @@ describe("bb thread pane command output", () => {
     ]);
   });
 
+  it.each(["spotlight", "clear-spotlight"] as const)(
+    "sends the %s action for an explicit thread",
+    async (action) => {
+      const paneAction = vi.fn(async () => ({ delivered: 1 }));
+      stubServerApi({ "v1.threads.:id.pane-action.$post": paneAction });
+
+      await runCommand(["thread", "pane", action, "thr_explicit"], register);
+
+      expect(paneAction).toHaveBeenCalledWith({
+        param: { id: "thr_explicit" },
+        json: { action },
+      });
+    },
+  );
+
   it("rejects an unknown action before sending a request", async () => {
     const paneAction = vi.fn(async () => ({ delivered: 1 }));
     stubServerApi({ "v1.threads.:id.pane-action.$post": paneAction });

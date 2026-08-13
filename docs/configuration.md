@@ -535,11 +535,13 @@ viewports show the ordinary single-page surface while preserving that desktop
 layout state.
 It also enables explicit split placement through
 `bb thread open <thread-id> --split right|down|left|top|replace` and the matching
-SDK request, plus ephemeral maximize/restore delivery through
-`bb thread pane maximize|restore|toggle [thread-id]` and
+SDK request, plus pane presentation controls through
+`bb thread pane maximize|restore|toggle|spotlight|clear-spotlight [thread-id]` and
 `sdk.threads.paneAction({ threadId, action })`. Pane actions apply only when the
 target thread is already open in a multi-pane app window; the response reports
-how many connected clients received the broadcast.
+how many connected clients received the broadcast. `spotlight` focuses the
+target pane and persistently dims the others; `clear-spotlight` focuses it and
+persistently restores undimmed splits.
 
 ## bb connect
 

@@ -325,6 +325,9 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
         if (next.maximizedPaneId !== previousMaximizedPaneId) {
           setMaximizedPaneId(next.maximizedPaneId);
         }
+        if (next.dimInactiveSplits !== null) {
+          store.set(dimInactiveSplitsAtom, next.dimInactiveSplits);
+        }
       }),
     [navigate, setMaximizedPaneId, store, threadSplitsEnabled],
   );

@@ -133,6 +133,8 @@ export function applyThreadOpenToLayout(
 export interface ThreadPaneActionLayoutResult {
   layout: SplitLayout;
   maximizedPaneId: string | null;
+  /** Explicit preference update requested by the action, or null when unchanged. */
+  dimInactiveSplits: boolean | null;
 }
 
 /** Apply one CLI/SDK pane action without creating or replacing pane content. */
@@ -144,16 +146,27 @@ export function applyThreadPaneActionToLayout(
 ): ThreadPaneActionLayoutResult {
   const pane = findPaneByThread(layout.root, thread.projectId, thread.threadId);
   if (pane === null || countPanes(layout.root) < 2) {
-    return { layout, maximizedPaneId };
+    return { layout, maximizedPaneId, dimInactiveSplits: null };
+  }
+  if (action === "spotlight" || action === "clear-spotlight") {
+    return {
+      layout:
+        layout.focusedPaneId === pane.paneId
+          ? layout
+          : setFocus(layout, pane.paneId),
+      maximizedPaneId,
+      dimInactiveSplits: action === "spotlight",
+    };
   }
   if (action === "restore") {
     return {
       layout,
       maximizedPaneId: maximizedPaneId === pane.paneId ? null : maximizedPaneId,
+      dimInactiveSplits: null,
     };
   }
   if (action === "toggle" && maximizedPaneId === pane.paneId) {
-    return { layout, maximizedPaneId: null };
+    return { layout, maximizedPaneId: null, dimInactiveSplits: null };
   }
   return {
     layout:
@@ -161,5 +174,6 @@ export function applyThreadPaneActionToLayout(
         ? layout
         : setFocus(layout, pane.paneId),
     maximizedPaneId: pane.paneId,
+    dimInactiveSplits: null,
   };
 }

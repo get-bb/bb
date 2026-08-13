@@ -759,7 +759,7 @@ export class NotificationHub implements DbNotifier {
     return delivered;
   }
 
-  /** Broadcast an ephemeral maximize/restore request to every app client. */
+  /** Broadcast an ephemeral pane presentation request to every app client. */
   notifyThreadPaneAction(
     thread: { projectId: string; threadId: string },
     action: ThreadPaneAction,

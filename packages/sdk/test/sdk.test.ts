@@ -116,12 +116,12 @@ describe("@bb/sdk", () => {
     await expect(
       sdk.threads.paneAction({
         threadId: "thr_test",
-        action: "restore",
+        action: "spotlight",
       }),
     ).resolves.toEqual({ delivered: 3 });
     expect(queue.requests).toEqual([
       {
-        bodyText: JSON.stringify({ action: "restore" }),
+        bodyText: JSON.stringify({ action: "spotlight" }),
         method: "POST",
         url: "http://bb.test/api/v1/threads/thr_test/pane-action",
       },

@@ -588,7 +588,13 @@ export const threadOpenResponseSchema = z.object({
 export type ThreadOpenResponse = z.infer<typeof threadOpenResponseSchema>;
 
 /** Presentation action for one thread pane in each connected app window. */
-export const threadPaneActionSchema = z.enum(["maximize", "restore", "toggle"]);
+export const threadPaneActionSchema = z.enum([
+  "maximize",
+  "restore",
+  "toggle",
+  "spotlight",
+  "clear-spotlight",
+]);
 export type ThreadPaneAction = z.infer<typeof threadPaneActionSchema>;
 
 /** Request body for POST /threads/:id/pane-action. */
