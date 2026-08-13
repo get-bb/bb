@@ -200,6 +200,109 @@ describe("vendor VEX import", () => {
     });
   });
 
+  it("resolves CSAF full_product_names and relationship product ids", async () => {
+    const value = await fixture();
+    const component = {
+      purl: "pkg:generic/acme/csaf-tree@3.0.0",
+      name: "csaf-tree",
+      group: "acme",
+      version: "3.0.0",
+    };
+    addFinding(value.db, { id: "tree-1", cve: "CVE-CSAF-FULL", ...component });
+    addFinding(value.db, { id: "tree-2", cve: "CVE-CSAF-REL", ...component });
+    const file = await document(value.root, "csaf-product-tree.json", {
+      document: { category: "csaf_vex", tracking: { id: "ACME-CSAF-TREE" } },
+      product_tree: {
+        full_product_names: [{
+          product_id: "COMPONENT-1",
+          name: "csaf-tree",
+          product_identification_helper: { purl: component.purl },
+        }],
+        relationships: [{
+          category: "default_component_of",
+          product_reference: "COMPONENT-1",
+          relates_to_product_reference: "PRODUCT-1",
+          full_product_name: { product_id: "RELATIONSHIP-1", name: "csaf-tree within appliance" },
+        }],
+      },
+      vulnerabilities: [
+        { cve: "CVE-CSAF-FULL", product_status: { known_affected: ["COMPONENT-1"] } },
+        { cve: "CVE-CSAF-REL", product_status: { fixed: ["RELATIONSHIP-1"] } },
+      ],
+    });
+    const result = await importVendorVex(deps(value), file, { vendor: "CSAF Supplier", overwrite: false, dryRun: false });
+    expect(result).toMatchObject({ matched: 2, unmatched: 0, written: 2, errors: [] });
+    const overlays = await readOverlayFiles(value.root);
+    expect(Object.values(overlays.files[0]?.overlay.proposals ?? {}).map((proposal) => proposal.status).sort())
+      .toEqual(["EXPLOITABLE", "RESOLVED"]);
+  });
+
+  it("reports unmapped CSAF justification labels and product-status buckets", async () => {
+    const value = await fixture();
+    const file = await document(value.root, "csaf-unmapped.json", {
+      document: { category: "csaf_vex", tracking: { id: "ACME-CSAF-UNMAPPED" } },
+      product_tree: {
+        full_product_names: [{
+          product_id: "UNMAPPED-1",
+          name: "unmapped",
+          product_identification_helper: { purl: "pkg:generic/acme/unmapped@1.0.0" },
+        }],
+      },
+      vulnerabilities: [{
+        cve: "CVE-CSAF-UNMAPPED",
+        product_status: {
+          known_not_affected: ["UNMAPPED-1"],
+          first_affected: ["UNMAPPED-1"],
+        },
+        flags: [{
+          label: "vulnerable_code_cannot_be_controlled_by_adversary",
+          product_ids: ["UNMAPPED-1"],
+        }],
+      }],
+    });
+    const result = await importVendorVex(deps(value), file, { vendor: "CSAF Supplier", overwrite: false, dryRun: false });
+    expect(result).toMatchObject({ matched: 0, unmatched: 0, needsCompletion: 0, written: 0 });
+    expect(result.errors.map((error) => error.code).sort()).toEqual([
+      "JUSTIFICATION_UNSUPPORTED",
+      "STATUS_BUCKET_UNSUPPORTED",
+    ]);
+    expect((await readOverlayFiles(value.root)).files).toEqual([]);
+  });
+
+  it("degrades a mixed OpenVEX batch without discarding valid statements", async () => {
+    const value = await fixture();
+    const component = {
+      purl: "pkg:generic/acme/partial@1.0.0",
+      name: "partial",
+      group: "acme",
+      version: "1.0.0",
+    };
+    addFinding(value.db, { id: "partial-1", cve: "CVE-PARTIAL-GOOD", ...component });
+    const file = await document(value.root, "openvex-partial.json", {
+      "@context": "https://openvex.dev/ns/v0.2.0",
+      "@id": "https://vendor.example/vex/partial",
+      statements: [
+        {
+          vulnerability: { name: "CVE-PARTIAL-GOOD" },
+          products: [{ "@id": component.purl }],
+          status: "affected",
+          action_statement: "Apply the vendor update",
+        },
+        {
+          vulnerability: { name: "CVE-PARTIAL-BAD" },
+          products: [{ "@id": "pkg:generic/acme/bad@1.0.0" }],
+          status: "not_affected",
+          justification: "vulnerable_code_cannot_be_controlled_by_adversary",
+        },
+      ],
+    });
+    const result = await importVendorVex(deps(value), file, { vendor: "Open Supplier", overwrite: false, dryRun: false });
+    expect(result).toMatchObject({ matched: 1, written: 1 });
+    expect(result.errors).toEqual([
+      expect.objectContaining({ code: "JUSTIFICATION_UNSUPPORTED" }),
+    ]);
+  });
+
   it("keeps a strict local decision by default and writes only a separate proposal on human overwrite", async () => {
     const value = await fixture();
     const component = { purl: "pkg:generic/acme/collision@1.0.0", name: "collision", group: "acme", version: "1.0.0" };

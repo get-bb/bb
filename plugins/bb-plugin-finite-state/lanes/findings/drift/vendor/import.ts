@@ -40,7 +40,6 @@ export interface VendorImportOptions {
 
 interface ExistingDecisionRow {
   stable_key: string;
-  component_key: string | null;
   pin: string | null;
 }
 
@@ -83,7 +82,7 @@ function localDecisionExists(
   const targetIds = findingIds(resolution);
   const sourceStableKey = stableKeyFor(deps.projectId, statement.component, statement.cve);
   const rows = deps.db.prepare(
-    `SELECT stable_key, component_key, pin
+    `SELECT stable_key, pin
        FROM overlay_index
       WHERE project_id = ? AND project_version_id = ?
         AND entity_kind = 'vexDecision' AND cve = ?

@@ -3,7 +3,7 @@ import {
   registerCachePuller,
   registeredCachePullers,
 } from "../../sync/engine/adapter.js";
-import { classifyDrift } from "./classify.js";
+import { classifyDrift, readDriftReport } from "./classify.js";
 import { pruneOrphans } from "./orphans.js";
 import { importVendorVex } from "./vendor/import.js";
 
@@ -26,8 +26,10 @@ export function registerFindingsDrift(ctx: PluginContext): void {
     ctx.bb.realtime.publish(FINDINGS_DRIFT_CHANGED_CHANNEL, { pvId: scope.projectVersionId });
   });
   ctx.service("findings.drift", () => ({
-    classify: (input: { root: string; projectId: string; pvId: string; cursor?: string | null; limit?: number }) =>
-      classifyDrift({ db, root: input.root, projectId: input.projectId, cursor: input.cursor, limit: input.limit }, input.pvId),
+    refresh: (input: { root: string; projectId: string; pvId: string; limit?: number }) =>
+      classifyDrift({ db, root: input.root, projectId: input.projectId, limit: input.limit }, input.pvId),
+    report: (input: { root: string; projectId: string; pvId: string; cursor?: string | null; limit?: number }) =>
+      readDriftReport({ db, root: input.root, projectId: input.projectId, cursor: input.cursor, limit: input.limit }, input.pvId),
     importVendorVex: (input: {
       root: string;
       projectId: string;

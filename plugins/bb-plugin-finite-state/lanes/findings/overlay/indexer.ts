@@ -179,7 +179,7 @@ function indexFile(
         parsed.overlay.project,
         projectVersionId,
         stableKey,
-        componentKeyFromIdentity(parsed.overlay.component),
+        null,
         cve,
         parsed.file,
         parsed.sha256,

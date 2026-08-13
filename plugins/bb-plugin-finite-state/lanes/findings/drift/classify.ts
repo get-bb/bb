@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { readFileSync, realpathSync } from "node:fs";
 import { isAbsolute, resolve, sep } from "node:path";
 import type Database from "better-sqlite3";
@@ -12,20 +13,19 @@ import {
 } from "../../../lib/remote/types.js";
 import { identityFromStableKey, stripVexProvenance } from "../bulk/readback.js";
 import { parseOverlayText } from "../overlay/reader.js";
-import type { TriageOverlayV1 } from "../overlay/schema.js";
-import type { VexTuple } from "../overlay/schema.js";
+import type { TriageOverlayV1, VexTuple } from "../overlay/schema.js";
 import { resolveFinding, type FindingResolution, type Pin } from "../stable-key/index.js";
 import {
   boundedDriftLimit,
   driftTotals,
   type DriftItem,
   type DriftReport,
+  type DriftState,
 } from "./report.js";
 
 interface DriftRow {
   project_id: string;
   stable_key: string;
-  component_key: string | null;
   file_path: string;
   vex_status: string | null;
   vex_response: string | null;
@@ -36,48 +36,31 @@ interface DriftRow {
   local_state: string;
 }
 
-function componentIdentity(
-  row: DriftRow,
-  authoredComponents: ReadonlyMap<string, TriageOverlayV1["component"]>,
-): {
-  purl: string | null;
-  name: string;
-  group: string | null;
-  version: string | null;
-  cve: string;
-} {
-  const decoded = identityFromStableKey(row.project_id, row.stable_key);
-  const authored = authoredComponents.get(row.file_path);
-  if (authored !== undefined) return { cve: decoded.identity.cve, ...authored };
-  if (row.component_key === null) {
-    return {
-      cve: decoded.identity.cve,
-      purl: decoded.identity.purl ?? null,
-      name: decoded.identity.name,
-      group: decoded.identity.group ?? null,
-      version: decoded.identity.version ?? null,
-    };
-  }
-  const value: unknown = JSON.parse(row.component_key);
-  if (value === null || typeof value !== "object" || Array.isArray(value)) throw new Error("Overlay component identity is invalid");
-  const raw = value as Record<string, unknown>;
-  if (typeof raw["name"] !== "string") throw new Error("Overlay component identity is missing name");
-  return {
-    cve: decoded.identity.cve,
-    purl: typeof raw["purl"] === "string" ? raw["purl"] : null,
-    name: raw["name"],
-    group: typeof raw["group"] === "string" ? raw["group"] : null,
-    version: typeof raw["version"] === "string" ? raw["version"] : null,
-  };
+interface PersistedDriftRow {
+  project_id: string;
+  stable_key: string;
+  file_path: string;
+  drift_state: DriftState;
+  match_tier: "purl" | "nvg" | "ng" | null;
+}
+
+interface DriftRunRow {
+  report_json: string;
+}
+
+interface PersistedDriftSummary {
+  totals: Record<DriftState, number>;
 }
 
 export interface DriftDeps {
   db: Database.Database;
+  root: string;
   projectId: string;
-  root?: string;
-  cursor?: string | null;
   limit?: number;
-  updateIndex?: boolean;
+}
+
+export interface DriftReportDeps extends DriftDeps {
+  cursor?: string | null;
 }
 
 function enumOrNull<T extends string>(value: string | null, values: readonly T[], field: string): T | null {
@@ -104,12 +87,8 @@ function baseTuple(serialized: string | null): VexTuple | null {
   }
   const raw = value as Record<string, unknown>;
   return {
-    status: typeof raw["status"] === "string"
-      ? enumOrNull(raw["status"], VEX_STATUSES, "sync_base.status")
-      : null,
-    response: typeof raw["response"] === "string"
-      ? enumOrNull(raw["response"], VEX_RESPONSES, "sync_base.response")
-      : null,
+    status: typeof raw["status"] === "string" ? enumOrNull(raw["status"], VEX_STATUSES, "sync_base.status") : null,
+    response: typeof raw["response"] === "string" ? enumOrNull(raw["response"], VEX_RESPONSES, "sync_base.response") : null,
     justification: typeof raw["justification"] === "string"
       ? enumOrNull(raw["justification"], VEX_JUSTIFICATIONS, "sync_base.justification")
       : null,
@@ -119,12 +98,7 @@ function baseTuple(serialized: string | null): VexTuple | null {
 
 function tupleKey(value: VexTuple | null): string {
   const normalized = value ?? { status: null, justification: null, response: null, reason: null };
-  return JSON.stringify([
-    normalized.status,
-    normalized.justification,
-    normalized.response,
-    normalized.reason,
-  ]);
+  return JSON.stringify([normalized.status, normalized.justification, normalized.response, normalized.reason]);
 }
 
 function remoteTuples(resolution: FindingResolution): VexTuple[] {
@@ -146,30 +120,84 @@ function versionOf(resolution: FindingResolution): string | undefined {
   return rows.map((row) => row.componentVersion).find((version): version is string => version !== null);
 }
 
+function rootPath(root: string): string {
+  if (!isAbsolute(root)) throw new TypeError("Drift root must be absolute");
+  return realpathSync(root);
+}
+
+function authoredComponents(
+  db: Database.Database,
+  root: string,
+  projectId: string,
+  pvId: string,
+  files?: readonly string[],
+): Map<string, TriageOverlayV1["component"]> {
+  const selected = files ?? (db.prepare(
+    `SELECT DISTINCT file_path
+       FROM overlay_index
+      WHERE project_id = ? AND project_version_id = ? AND entity_kind = 'vexDecision'
+      ORDER BY file_path ASC`,
+  ).all(projectId, pvId) as Array<{ file_path: string }>).map((row) => row.file_path);
+  const components = new Map<string, TriageOverlayV1["component"]>();
+  for (const file of selected) {
+    const absolute = resolve(root, file);
+    if (!absolute.startsWith(`${root}${sep}`) || realpathSync(absolute) !== absolute) {
+      throw new Error(`Overlay index path escapes the drift root: ${file}`);
+    }
+    const overlay = parseOverlayText(readFileSync(absolute, "utf8"), file);
+    if (overlay.project !== projectId) throw new Error(`Overlay project differs from drift scope: ${file}`);
+    components.set(file, overlay.component);
+  }
+  return components;
+}
+
+function identity(
+  row: Pick<DriftRow, "project_id" | "stable_key" | "file_path">,
+  components: ReadonlyMap<string, TriageOverlayV1["component"]>,
+): { purl: string | null; name: string; group: string | null; version: string | null; cve: string } {
+  const component = components.get(row.file_path);
+  if (component === undefined) throw new Error(`Authored overlay identity is unavailable for ${row.file_path}`);
+  const decoded = identityFromStableKey(row.project_id, row.stable_key);
+  return { cve: decoded.identity.cve, ...component };
+}
+
+function staleReason(previousVersion: string | undefined, currentVersion: string | undefined): string {
+  if (
+    previousVersion !== undefined
+    && currentVersion !== undefined
+    && previousVersion !== currentVersion
+    && previousVersion.toLocaleLowerCase("en-US") === currentVersion.toLocaleLowerCase("en-US")
+  ) {
+    return "Exact-version decision requires re-evaluation after the component version was re-cased";
+  }
+  return "Exact-version decision requires re-evaluation after the component version changed";
+}
+
 function classifyRow(
   db: Database.Database,
   row: DriftRow,
   pvId: string,
-  authoredComponents: ReadonlyMap<string, TriageOverlayV1["component"]>,
+  components: ReadonlyMap<string, TriageOverlayV1["component"]>,
 ): DriftItem {
   if (row.local_state === "needs_completion") {
     return { stableKey: row.stable_key, state: "needs_completion", reason: "Local decision is incomplete and plan-blocked" };
   }
-  const identity = componentIdentity(row, authoredComponents);
+  const findingIdentity = identity(row, components);
   const pin: Pin = row.pin === "any_version" ? "any_version" : "exact_version";
   const resolution = resolveFinding(db, {
     schema: "fs-finding-key/v1",
     project: row.project_id,
-    ...identity,
+    ...findingIdentity,
   }, pvId, pin);
-  const previousVersion = identity.version ?? undefined;
+  const previousVersion = findingIdentity.version ?? undefined;
   if (resolution.state === "stale" || (resolution.state === "resolved" && pin === "exact_version" && resolution.versionChanged)) {
+    const currentVersion = versionOf(resolution);
     return {
       stableKey: row.stable_key,
       state: "stale",
-      reason: "Exact-version decision requires re-evaluation after the component version changed",
+      reason: staleReason(previousVersion, currentVersion),
       previousVersion,
-      currentVersion: versionOf(resolution),
+      currentVersion,
     };
   }
   if (resolution.state === "orphaned") {
@@ -200,12 +228,103 @@ function classifyRow(
   return { ...common, state: "reapply", reason: "Canonical identity resolved but server carry-forward missed or differs" };
 }
 
-/** Classifies every decision while retaining only one bounded stable-key page in memory. */
-export function classifyDrift(deps: DriftDeps, pvId: string): DriftReport {
-  const limit = boundedDriftLimit(deps.limit);
+function parseSummary(serialized: string): PersistedDriftSummary {
+  const value: unknown = JSON.parse(serialized);
+  if (value === null || typeof value !== "object" || Array.isArray(value) || !("totals" in value)) {
+    throw new Error("Persisted drift report is invalid");
+  }
+  const raw = (value as { totals: unknown }).totals;
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) throw new Error("Persisted drift totals are invalid");
   const totals = driftTotals();
-  const items: DriftItem[] = [];
-  let hasMore = false;
+  for (const state of Object.keys(totals) as DriftState[]) {
+    const count = (raw as Record<string, unknown>)[state];
+    if (!Number.isInteger(count) || (count as number) < 0) throw new Error(`Persisted drift total ${state} is invalid`);
+    totals[state] = count as number;
+  }
+  return { totals };
+}
+
+function persistedItem(
+  db: Database.Database,
+  row: PersistedDriftRow,
+  pvId: string,
+  components: ReadonlyMap<string, TriageOverlayV1["component"]>,
+): DriftItem {
+  const tier = row.match_tier === "purl" ? 1 : row.match_tier === "nvg" ? 2 : row.match_tier === "ng" ? 3 : undefined;
+  const componentIdentity = identity(row, components);
+  const previousVersion = componentIdentity.version ?? undefined;
+  if (row.drift_state === "stale") {
+    const resolution = resolveFinding(db, {
+      schema: "fs-finding-key/v1",
+      project: row.project_id,
+      ...componentIdentity,
+    }, pvId, "exact_version");
+    const currentVersion = versionOf(resolution);
+    return {
+      stableKey: row.stable_key,
+      state: row.drift_state,
+      reason: staleReason(previousVersion, currentVersion),
+      previousVersion,
+      currentVersion,
+    };
+  }
+  const reason: Record<Exclude<DriftState, "stale">, string> = {
+    reattached_noop: "Resolved server VEX tuple already equals the local decision",
+    reapply: "Canonical identity resolved but server carry-forward missed or differs",
+    orphaned: "Canonical resolver found no component/CVE match in the accepted generation",
+    conflict: "Local and server VEX tuples both changed differently from the recorded base",
+    needs_completion: "Local decision is incomplete and plan-blocked",
+  };
+  return {
+    stableKey: row.stable_key,
+    state: row.drift_state,
+    ...(tier === undefined ? {} : { tier }),
+    reason: reason[row.drift_state],
+    ...(row.drift_state === "orphaned" ? { previousVersion } : {}),
+  };
+}
+
+/** Serves a bounded, read-only page from the most recently refreshed drift projection. */
+export function readDriftReport(deps: DriftReportDeps, pvId: string): DriftReport {
+  const limit = boundedDriftLimit(deps.limit);
+  const run = deps.db.prepare(
+    `SELECT report_json
+       FROM triage_runs
+      WHERE project_id = ? AND project_version_id = ? AND source = 'drift' AND status = 'completed'
+      ORDER BY created_at DESC, run_id DESC
+      LIMIT 1`,
+  ).get(deps.projectId, pvId) as DriftRunRow | undefined;
+  if (run === undefined) throw new Error("DRIFT_REFRESH_REQUIRED");
+  const rows = deps.db.prepare(
+    `SELECT project_id, stable_key, file_path, drift_state, match_tier
+       FROM overlay_index
+      WHERE project_id = ? AND project_version_id = ? AND entity_kind = 'vexDecision'
+        AND drift_state IS NOT NULL AND (? IS NULL OR stable_key > ?)
+      ORDER BY stable_key ASC
+      LIMIT ?`,
+  ).all(deps.projectId, pvId, deps.cursor ?? null, deps.cursor ?? null, limit + 1) as PersistedDriftRow[];
+  const page = rows.slice(0, limit);
+  const root = rootPath(deps.root);
+  const components = authoredComponents(
+    deps.db,
+    root,
+    deps.projectId,
+    pvId,
+    [...new Set(page.map((row) => row.file_path))],
+  );
+  return {
+    pvId,
+    totals: parseSummary(run.report_json).totals,
+    items: page.map((row) => persistedItem(deps.db, row, pvId, components)),
+    nextCursor: rows.length > limit ? page.at(-1)?.stable_key ?? null : null,
+  };
+}
+
+/** Explicitly refreshes and persists every drift classification exactly once. */
+export function classifyDrift(deps: DriftDeps, pvId: string): DriftReport {
+  const totals = driftTotals();
+  const root = rootPath(deps.root);
+  const components = authoredComponents(deps.db, root, deps.projectId, pvId);
   const update = deps.db.prepare(
     `UPDATE overlay_index
         SET drift_state = ?, match_tier = ?
@@ -213,61 +332,44 @@ export function classifyDrift(deps: DriftDeps, pvId: string): DriftReport {
         AND entity_kind = 'vexDecision' AND stable_key = ?`,
   );
   const select = deps.db.prepare(
-    `SELECT project_id, stable_key, component_key, vex_status, vex_response, vex_justification,
-            vex_reason, pin, sync_base, local_state, file_path
+    `SELECT project_id, stable_key, file_path, vex_status, vex_response, vex_justification,
+            vex_reason, pin, sync_base, local_state
        FROM overlay_index
       WHERE project_id = ? AND project_version_id = ? AND entity_kind = 'vexDecision'
         AND (? IS NULL OR stable_key > ?)
       ORDER BY stable_key ASC
       LIMIT 200`,
   );
-
-  const authoredComponents = new Map<string, TriageOverlayV1["component"]>();
-  if (deps.root !== undefined) {
-    if (!isAbsolute(deps.root)) throw new TypeError("Drift root must be absolute");
-    const root = realpathSync(deps.root);
-    const files = deps.db.prepare(
-      `SELECT DISTINCT file_path
-         FROM overlay_index
-        WHERE project_id = ? AND project_version_id = ? AND entity_kind = 'vexDecision'
-        ORDER BY file_path ASC`,
-    ).all(deps.projectId, pvId) as Array<{ file_path: string }>;
-    for (const { file_path: file } of files) {
-      const absolute = resolve(root, file);
-      if (!absolute.startsWith(`${root}${sep}`) || realpathSync(absolute) !== absolute) {
-        throw new Error(`Overlay index path escapes the drift root: ${file}`);
-      }
-      const overlay = parseOverlayText(readFileSync(absolute, "utf8"), file);
-      if (overlay.project !== deps.projectId) throw new Error(`Overlay project differs from drift scope: ${file}`);
-      authoredComponents.set(file, overlay.component);
-    }
-  }
-
+  const now = new Date().toISOString();
   deps.db.transaction(() => {
     let scanCursor: string | null = null;
     while (true) {
       const rows = select.all(deps.projectId, pvId, scanCursor, scanCursor) as DriftRow[];
       if (rows.length === 0) break;
       for (const row of rows) {
-        const item = classifyRow(deps.db, row, pvId, authoredComponents);
+        const item = classifyRow(deps.db, row, pvId, components);
         totals[item.state] += 1;
-        if (deps.updateIndex !== false) {
-          const matchTier = item.tier === 1 ? "purl" : item.tier === 2 ? "nvg" : item.tier === 3 ? "ng" : null;
-          update.run(item.state, matchTier, deps.projectId, pvId, item.stableKey);
-        }
-        if (deps.cursor !== undefined && deps.cursor !== null && item.stableKey <= deps.cursor) continue;
-        if (items.length < limit) items.push(item);
-        else hasMore = true;
+        const matchTier = item.tier === 1 ? "purl" : item.tier === 2 ? "nvg" : item.tier === 3 ? "ng" : null;
+        update.run(item.state, matchTier, deps.projectId, pvId, item.stableKey);
       }
       scanCursor = rows.at(-1)?.stable_key ?? null;
       if (rows.length < 200) break;
     }
+    deps.db.prepare(
+      `INSERT INTO triage_runs
+        (project_id, project_version_id, run_id, source, dry_run, status,
+         input_digest, written, held, conflicts, skipped_existing, errors,
+         report_json, created_at, finished_at)
+       VALUES (?, ?, ?, 'drift', 0, 'completed', NULL, 0, 0, ?, 0, 0, ?, ?, ?)`,
+    ).run(
+      deps.projectId,
+      pvId,
+      `drift-${randomUUID()}`,
+      totals.conflict,
+      JSON.stringify({ totals }),
+      now,
+      now,
+    );
   })();
-
-  return {
-    pvId,
-    totals,
-    items,
-    nextCursor: hasMore ? items.at(-1)?.stableKey ?? null : null,
-  };
+  return readDriftReport(deps, pvId);
 }

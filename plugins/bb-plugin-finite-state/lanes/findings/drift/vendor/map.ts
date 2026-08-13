@@ -192,6 +192,14 @@ function cyclonedx(parsed: ParsedVendorVex): MappedVendorVex {
   return { statements, errors };
 }
 
+function csafProduct(value: unknown): { id: string; target: TriageOverlayV1["component"] } | null {
+  const product = record(value);
+  const id = text(product?.["product_id"]);
+  const helper = record(product?.["product_identification_helper"]);
+  const target = component(text(helper?.["purl"]), text(product?.["name"]));
+  return id === null || target === null ? null : { id, target };
+}
+
 function csafProducts(document: Record<string, unknown>): Map<string, TriageOverlayV1["component"]> {
   const products = new Map<string, TriageOverlayV1["component"]>();
   const tree = record(document["product_tree"]);
@@ -200,15 +208,28 @@ function csafProducts(document: Record<string, unknown>): Map<string, TriageOver
     for (const value of branches) {
       const branch = record(value);
       if (branch === null) continue;
-      const product = record(branch["product"]);
-      const id = text(product?.["product_id"]);
-      const full = record(product?.["product_identification_helper"]);
-      const target = component(text(full?.["purl"]), text(product?.["name"]));
-      if (id !== null && target !== null) products.set(id, target);
+      const parsed = csafProduct(branch["product"]);
+      if (parsed !== null) products.set(parsed.id, parsed.target);
       visit(branch["branches"]);
     }
   };
   visit(tree?.["branches"]);
+  for (const value of Array.isArray(tree?.["full_product_names"]) ? tree["full_product_names"] : []) {
+    const parsed = csafProduct(value);
+    if (parsed !== null) products.set(parsed.id, parsed.target);
+  }
+  for (const value of Array.isArray(tree?.["relationships"]) ? tree["relationships"] : []) {
+    const relationship = record(value);
+    const full = csafProduct(relationship?.["full_product_name"]);
+    const fullName = record(relationship?.["full_product_name"]);
+    const id = text(fullName?.["product_id"]);
+    const productReference = text(relationship?.["product_reference"]);
+    const relatedReference = text(relationship?.["relates_to_product_reference"]);
+    const target = (productReference === null ? undefined : products.get(productReference))
+      ?? full?.target
+      ?? (relatedReference === null ? undefined : products.get(relatedReference));
+    if (id !== null && target !== undefined) products.set(id, target);
+  }
   return products;
 }
 
@@ -223,17 +244,24 @@ function csafScopedDetail(values: unknown, category: string, productId: string):
   return null;
 }
 
-function csafJustification(values: unknown, productId: string): VexJustification | null {
-  if (!Array.isArray(values)) return null;
+type CsafJustification =
+  | { state: "absent" }
+  | { state: "mapped"; value: VexJustification }
+  | { state: "unsupported"; label: string };
+
+function csafJustification(values: unknown, productId: string): CsafJustification {
+  if (!Array.isArray(values)) return { state: "absent" };
   for (const value of values) {
     const flag = record(value);
     if (flag === null) continue;
     const ids = textArray(flag["product_ids"]);
     if (ids.length > 0 && !ids.includes(productId)) continue;
     const label = text(flag["label"]);
-    if (label !== null && OPENVEX_JUSTIFICATION[label] !== undefined) return OPENVEX_JUSTIFICATION[label] ?? null;
+    if (label === null) continue;
+    const mapped = OPENVEX_JUSTIFICATION[label];
+    return mapped === undefined ? { state: "unsupported", label } : { state: "mapped", value: mapped };
   }
-  return null;
+  return { state: "absent" };
 }
 
 const CSAF_STATUS: Readonly<Record<string, VexStatus>> = {
@@ -257,20 +285,43 @@ function csaf(parsed: ParsedVendorVex): MappedVendorVex {
       errors.push({ sourceRef: sourceRef(parsed, pointer), code: "STATEMENT_INVALID", message: "CSAF vulnerability requires cve/id and product_status" });
       continue;
     }
+    for (const statusName of Object.keys(statuses).sort()) {
+      if (CSAF_STATUS[statusName] !== undefined) continue;
+      errors.push({
+        sourceRef: sourceRef(parsed, `${pointer}/product_status/${statusName}`),
+        code: "STATUS_BUCKET_UNSUPPORTED",
+        message: `Unsupported CSAF product_status bucket ${statusName}`,
+      });
+    }
     for (const [statusName, status] of Object.entries(CSAF_STATUS)) {
       const productIds = textArray(statuses[statusName]);
       for (const [productIndex, productId] of productIds.entries()) {
         const target = products.get(productId);
         const productPointer = `${pointer}/product_status/${statusName}/${productIndex}`;
         if (target === undefined) {
-          errors.push({ sourceRef: sourceRef(parsed, productPointer), code: "SUBJECT_UNRESOLVED", message: `CSAF product ${productId} is absent from product_tree` });
+          errors.push({
+            sourceRef: sourceRef(parsed, productPointer),
+            code: "SUBJECT_UNRESOLVED",
+            message: `CSAF product ${productId} has no usable identity in product_tree branches, full_product_names, or relationships`,
+          });
+          continue;
+        }
+        const justification = status === "NOT_AFFECTED"
+          ? csafJustification(vulnerability["flags"], productId)
+          : { state: "absent" } as const;
+        if (justification.state === "unsupported") {
+          errors.push({
+            sourceRef: sourceRef(parsed, productPointer),
+            code: "JUSTIFICATION_UNSUPPORTED",
+            message: `Unsupported CSAF justification ${justification.label}`,
+          });
           continue;
         }
         statements.push({
           cve,
           component: target,
           status,
-          justification: status === "NOT_AFFECTED" ? csafJustification(vulnerability["flags"], productId) : null,
+          justification: justification.state === "mapped" ? justification.value : null,
           response: null,
           reason: status === "NOT_AFFECTED"
             ? csafScopedDetail(vulnerability["threats"], "impact", productId)
