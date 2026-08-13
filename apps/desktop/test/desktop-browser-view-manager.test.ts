@@ -104,6 +104,16 @@ type FakeBeforeInputListener = (
   input: FakeInput,
 ) => void;
 
+interface FakeRenderProcessGoneDetails {
+  exitCode: number;
+  reason: "memory-eviction";
+}
+
+type FakeRenderProcessGoneListener = (
+  event: FakeWebContentsEvent,
+  details: FakeRenderProcessGoneDetails,
+) => void;
+
 interface FakeWebContentsEventMap {
   "before-input-event": FakeBeforeInputListener;
   "will-frame-navigate": FakeWillFrameNavigateListener;
@@ -117,6 +127,7 @@ interface FakeWebContentsEventMap {
   "page-title-updated": FakeVoidWebContentsListener;
   "did-fail-load": FakeDidFailLoadListener;
   "context-menu": FakeContextMenuListener;
+  "render-process-gone": FakeRenderProcessGoneListener;
 }
 
 type FakeResourceType =
@@ -258,6 +269,7 @@ const electronMock = vi.hoisted(() => {
     public historyEntries: Array<{ title: string; url: string }> = [];
     public readonly id: number;
     public readonly loadURLCalls: string[] = [];
+    public reloadCalls = 0;
     public readonly pendingCaptureResolvers: Array<
       (image: FakeNativeImage) => void
     > = [];
@@ -274,6 +286,7 @@ const electronMock = vi.hoisted(() => {
       "page-title-updated": [],
       "did-fail-load": [],
       "context-menu": [],
+      "render-process-gone": [],
     };
     private title = "";
     private url = "";
@@ -340,7 +353,9 @@ const electronMock = vi.hoisted(() => {
       this.listeners[eventName].push(listener);
     }
 
-    reload(): void {}
+    reload(): void {
+      this.reloadCalls += 1;
+    }
 
     setWindowOpenHandler(handler: FakeWindowOpenHandler): void {
       this.windowOpenHandler = handler;
@@ -357,6 +372,12 @@ const electronMock = vi.hoisted(() => {
           args.validatedURL,
           args.isMainFrame,
         );
+      }
+    }
+
+    emitRenderProcessGone(details: FakeRenderProcessGoneDetails): void {
+      for (const listener of this.listeners["render-process-gone"]) {
+        listener(fakeWebContentsEvent, details);
       }
     }
 
@@ -1790,6 +1811,39 @@ describe("DesktopBrowserViewManager", () => {
 
     const view = requireFakeView(0);
     expect(view.webContents.focusCalls).toBe(1);
+  });
+
+  it("recovers a hidden page after its renderer process exits", () => {
+    const manager = createDesktopBrowserViewManager({
+      partition: "persist:test",
+    });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 75,
+    });
+
+    attachBrowserTab({
+      manager,
+      hostWindow,
+      tabId: "browser:a",
+      url: "https://example.com/original",
+    });
+    const view = requireFakeView(0);
+    view.webContents.emitDidNavigate("https://example.com/current");
+    manager.setVisible({
+      hostWindow,
+      request: { tabId: "browser:a", visible: false },
+    });
+
+    view.webContents.emitRenderProcessGone({
+      exitCode: 0,
+      reason: "memory-eviction",
+    });
+
+    expect(view.webContents.reloadCalls).toBe(1);
+    expect(view.webContents.getURL()).toBe("https://example.com/current");
+    expect(electronMock.fakeViews).toHaveLength(1);
+    expect(view.visible).toBe(false);
   });
 
   it("does not focus a freshly-attached inactive tab", () => {

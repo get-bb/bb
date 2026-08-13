@@ -558,6 +558,17 @@ export function createDesktopBrowserViewManager(
       menu.popup();
     });
 
+    webContents.on("render-process-gone", () => {
+      if (webContents.isDestroyed() || webContents.getURL().length === 0) {
+        return;
+      }
+      entry.lastErrorText = null;
+      // The native view and its current navigation entry survive renderer
+      // eviction or failure. Reload that entry in a new renderer so a hidden
+      // or idle page recovers without recreating the tab from its original URL.
+      webContents.reload();
+    });
+
     const refresh = () => pushState(hostWindow, tabId);
     webContents.on("did-start-loading", refresh);
     webContents.on("did-stop-loading", refresh);
