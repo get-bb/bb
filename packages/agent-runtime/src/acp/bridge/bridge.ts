@@ -130,6 +130,10 @@ interface AcpThreadSession {
   pendingInstructions: string | undefined;
   activePromptKind: "turn" | "compaction" | null;
   queuedInputs: PromptInput[][];
+  /** True while a session/prompt request is outstanding. */
+  promptRequestPending: boolean;
+  /** True after a steer sent session/cancel for the current prompt. */
+  cancelRequested: boolean;
   loading: boolean;
   loadingSessionId: string | undefined;
   pendingLoadUsageUpdate: AcpUsageUpdate | undefined;
@@ -1226,7 +1230,11 @@ function handlePermissionRequest(
     return;
   }
 
-  if (session.stopping || session.activePromptKind !== "turn") {
+  if (
+    session.stopping ||
+    session.cancelRequested ||
+    session.activePromptKind !== "turn"
+  ) {
     responder.result({ outcome: { outcome: "cancelled" } });
     return;
   }
@@ -1476,6 +1484,8 @@ async function startAgentSession(
     pendingInstructions: params.instructions,
     activePromptKind: null,
     queuedInputs: [],
+    promptRequestPending: false,
+    cancelRequested: false,
     loading: false,
     loadingSessionId: undefined,
     pendingLoadUsageUpdate: undefined,
@@ -1627,6 +1637,36 @@ async function stopSession(session: AcpThreadSession): Promise<void> {
 // Turn loop
 // ---------------------------------------------------------------------------
 
+function requestSteerCancel(session: AcpThreadSession): void {
+  if (
+    session.stopping ||
+    session.cancelRequested ||
+    !session.promptRequestPending ||
+    session.connection.exited
+  ) {
+    return;
+  }
+  session.cancelRequested = true;
+  cancelPendingPermissions(session);
+  session.connection.notify("session/cancel", {
+    sessionId: session.providerThreadId,
+  });
+}
+
+function finishTurn(
+  session: AcpThreadSession,
+  stopReason: z.infer<typeof acpStopReasonSchema>,
+): void {
+  session.activePromptKind = null;
+  session.queuedInputs = [];
+  session.promptRequestPending = false;
+  session.cancelRequested = false;
+  sendNotification(ACP_TURN_COMPLETED_METHOD, {
+    threadId: session.bbThreadId,
+    stopReason,
+  });
+}
+
 function runTurn(session: AcpThreadSession, firstInput: PromptInput[]): void {
   session.activePromptKind = "turn";
   sendNotification(ACP_TURN_STARTED_METHOD, { threadId: session.bbThreadId });
@@ -1634,8 +1674,15 @@ function runTurn(session: AcpThreadSession, firstInput: PromptInput[]): void {
   session.turnSettled = (async () => {
     let input = firstInput;
     for (;;) {
+      if (session.stopping) {
+        finishTurn(session, "cancelled");
+        return;
+      }
+
       let stopReason: z.infer<typeof acpStopReasonSchema>;
+      session.cancelRequested = false;
       try {
+        session.promptRequestPending = true;
         const result = await session.connection.request({
           method: "session/prompt",
           params: {
@@ -1646,8 +1693,10 @@ function runTurn(session: AcpThreadSession, firstInput: PromptInput[]): void {
         });
         stopReason = result.stopReason;
       } catch (error) {
-        session.activePromptKind = null;
+        session.promptRequestPending = false;
         session.queuedInputs = [];
+        session.cancelRequested = false;
+        session.activePromptKind = null;
         // An exited agent already produced an error notification from the
         // connection's exit handler; only report in-protocol prompt failures.
         if (!session.stopping && !session.connection.exited) {
@@ -1658,9 +1707,10 @@ function runTurn(session: AcpThreadSession, firstInput: PromptInput[]): void {
         }
         return;
       }
+      session.promptRequestPending = false;
 
-      if (stopReason !== "cancelled" && !session.stopping) {
-        // Steer inputs queued during the prompt continue the same bb turn.
+      // Hard steer cancels the current prompt, then continues this bb turn.
+      if (!session.stopping) {
         const next = session.queuedInputs.shift();
         if (next) {
           input = next;
@@ -1668,12 +1718,7 @@ function runTurn(session: AcpThreadSession, firstInput: PromptInput[]): void {
         }
       }
 
-      session.activePromptKind = null;
-      session.queuedInputs = [];
-      sendNotification(ACP_TURN_COMPLETED_METHOD, {
-        threadId: session.bbThreadId,
-        stopReason,
-      });
+      finishTurn(session, stopReason);
       return;
     }
   })();
@@ -1911,6 +1956,7 @@ async function handleRequest(
         return;
       }
       session.queuedInputs.push(request.params.input);
+      requestSteerCancel(session);
       sendResult(request.id, { threadId: request.params.threadId });
       return;
     }

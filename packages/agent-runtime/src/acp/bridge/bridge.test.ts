@@ -1590,8 +1590,34 @@ describe("acp bridge", () => {
     }
   });
 
-  it("chains steer input onto the active turn", async () => {
-    const { providerThreadId } = await startThread();
+  it("cancels a hung prompt and continues the same turn with steer input", async () => {
+    const { bbThreadId, providerThreadId } = await startThread();
+    const turnId = sendRequest("turn/start", {
+      threadId: providerThreadId,
+      input: [{ type: "text", text: "hang", mentions: [] }],
+    });
+    await waitForResponse(turnId);
+
+    const steerId = sendRequest("turn/steer", {
+      threadId: providerThreadId,
+      expectedTurnId: "turn-1",
+      input: [{ type: "text", text: "steered", mentions: [] }],
+    });
+    await waitForResponse(steerId);
+
+    const completed = await waitForTurnCompleted();
+    expect(completed.params).toEqual({
+      threadId: bbThreadId,
+      stopReason: "end_turn",
+    });
+    expect(agentMessageTexts()).toContain("echo:steered");
+    expect(agentMessageTexts()).not.toContain("echo:hang");
+    expect(notifications("acp/turn/started")).toHaveLength(1);
+    expect(notifications("acp/turn/completed")).toHaveLength(1);
+  });
+
+  it("keeps partial output from the cancelled prompt then continues", async () => {
+    const { bbThreadId, providerThreadId } = await startThread();
     const turnId = sendRequest("turn/start", {
       threadId: providerThreadId,
       input: [{ type: "text", text: "slow first", mentions: [] }],
@@ -1610,9 +1636,45 @@ describe("acp bridge", () => {
     });
     await waitForResponse(steerId);
 
-    await waitForTurnCompleted();
+    const completed = await waitForTurnCompleted();
+    expect(completed.params).toEqual({
+      threadId: bbThreadId,
+      stopReason: "end_turn",
+    });
+    expect(agentMessageTexts()).toContain("echo:slow first");
     expect(agentMessageTexts()).toContain("echo:steered");
-    // One bb turn spans both prompts.
+    expect(notifications("acp/turn/started")).toHaveLength(1);
+    expect(notifications("acp/turn/completed")).toHaveLength(1);
+  });
+
+  it("cancels once and delivers stacked steers on the same turn", async () => {
+    const { bbThreadId, providerThreadId } = await startThread();
+    const turnId = sendRequest("turn/start", {
+      threadId: providerThreadId,
+      input: [{ type: "text", text: "hang", mentions: [] }],
+    });
+    await waitForResponse(turnId);
+
+    const firstSteerId = sendRequest("turn/steer", {
+      threadId: providerThreadId,
+      expectedTurnId: "turn-1",
+      input: [{ type: "text", text: "first-steer", mentions: [] }],
+    });
+    const secondSteerId = sendRequest("turn/steer", {
+      threadId: providerThreadId,
+      expectedTurnId: "turn-1",
+      input: [{ type: "text", text: "second-steer", mentions: [] }],
+    });
+    await waitForResponse(firstSteerId);
+    await waitForResponse(secondSteerId);
+
+    const completed = await waitForTurnCompleted();
+    expect(completed.params).toEqual({
+      threadId: bbThreadId,
+      stopReason: "end_turn",
+    });
+    expect(agentMessageTexts()).toContain("echo:first-steer");
+    expect(agentMessageTexts()).toContain("echo:second-steer");
     expect(notifications("acp/turn/started")).toHaveLength(1);
     expect(notifications("acp/turn/completed")).toHaveLength(1);
   });
