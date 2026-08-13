@@ -1,6 +1,6 @@
-import { readFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { readFile, mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { createFakePluginHost } from "@bb/plugin-sdk/testing";
 import { afterEach, describe, expect, it } from "vitest";
@@ -14,7 +14,12 @@ import { canonicalJson } from "../serialize/canonical.js";
 import { createSerializer } from "../serialize/serializer.js";
 import { blastRadius } from "./blast-radius.js";
 import { classifyThreeWay } from "./diff.js";
-import { computePlan, loadPlan } from "./index.js";
+import {
+  computePlan,
+  loadPlan,
+  loadPlanForDeps,
+  plan as computePagedPlan,
+} from "./index.js";
 import { renderPlanCli } from "./render-cli.js";
 
 const hosts: Array<ReturnType<typeof createFakePluginHost>> = [];
@@ -181,6 +186,135 @@ describe("three-way plan", () => {
       referrers: [{ label: "REQ-UPSTREAM-REF" }],
       error: { code: "REFERENTIAL_INTEGRITY" },
     });
+  });
+
+  it("derives create ordering from real payload references", async () => {
+    const parent = requirement("REQ-PARENT", "parent");
+    const child = requirement("REQ-CHILD", "child", { dependsOn: ["REQ-PARENT"] });
+    const setup = await fixture(() => [], () => [working(child), working(parent)]);
+
+    const computed = await computePlan(
+      { ...setup.deps, worktreeRoot: setup.root },
+      scope,
+      ["requirement"],
+    );
+    expect(computed.items
+      .filter((item) => item.operation === "create")
+      .map((item) => item.label))
+      .toEqual(["REQ-PARENT", "REQ-CHILD"]);
+  });
+
+  it("derives reverse delete ordering from real payload references", async () => {
+    const parent = requirement("REQ-PARENT", "parent");
+    const child = requirement("REQ-CHILD", "child", { dependsOn: ["REQ-PARENT"] });
+    let remote = [parent, child];
+    let authored = remote.map((entity) => working(entity));
+    const setup = await fixture(() => remote, () => authored);
+    await pull(setup.deps, scope, ["requirement"]);
+    remote = [parent, child];
+    authored = [];
+
+    const computed = await computePlan(
+      { ...setup.deps, worktreeRoot: setup.root },
+      scope,
+      ["requirement"],
+    );
+    expect(computed.items
+      .filter((item) => item.operation === "delete")
+      .map((item) => item.label))
+      .toEqual(["REQ-CHILD", "REQ-PARENT"]);
+  });
+
+  it("signals RPC worktree blindness while retaining upstream drift", async () => {
+    const entity = requirement("REQ-RPC-DRIFT", "base");
+    let remote = [entity];
+    const setup = await fixture(() => remote, () => [working(entity)]);
+    await pull(setup.deps, scope, ["requirement"]);
+    remote = [requirement("REQ-RPC-DRIFT", "upstream edit")];
+
+    const computed = await computePagedPlan(setup.deps, {
+      ...scope,
+      kinds: ["requirement"],
+    });
+    expect(computed).toMatchObject({
+      staleness: { degraded: true },
+      cache: {
+        state: "stale",
+        message: "Working tree unavailable; plan includes upstream changes only",
+      },
+      summary: { conflicts: 1, noops: 0 },
+      items: [{ label: "REQ-RPC-DRIFT", operation: "conflict" }],
+    });
+    expect(loadPlanForDeps(setup.deps, computed.planId)).not.toBeNull();
+  });
+
+  it("serves every RPC page from one persisted plan identity", async () => {
+    const base = Array.from({ length: 4 }, (_, index) => requirement(`REQ-H${index}`, "base"));
+    let remote = [...base];
+    const setup = await fixture(() => remote, () => base.map((entity) => working(entity)));
+    await pull(setup.deps, scope, ["requirement"]);
+    remote = base.map((_, index) => requirement(`REQ-H${index}`, "upstream edit"));
+
+    const first = await computePagedPlan(setup.deps, {
+      ...scope,
+      kinds: ["requirement"],
+      pageSize: 2,
+    });
+    expect(first.items.map((item) => `${item.operation}:${item.label}`)).toEqual([
+      "conflict:REQ-H0",
+      "conflict:REQ-H1",
+    ]);
+    expect(first.next).toBe(`fsp1:${first.planId}:2`);
+
+    remote = [
+      base[0]!,
+      ...base.slice(1).map((_, index) => requirement(`REQ-H${index + 1}`, "second refresh")),
+    ];
+    const second = await computePagedPlan(setup.deps, {
+      ...scope,
+      pageSize: 2,
+      continuation: first.next,
+    });
+    expect(second.items.map((item) => `${item.operation}:${item.label}`)).toEqual([
+      "conflict:REQ-H2",
+      "conflict:REQ-H3",
+    ]);
+    expect(second).toMatchObject({
+      planId: first.planId,
+      planSha256: first.planSha256,
+      total: 4,
+      next: null,
+      summary: { conflicts: 4 },
+    });
+    expect(loadPlanForDeps(setup.deps, first.planId)).toMatchObject({
+      planId: first.planId,
+      planSha256: first.planSha256,
+      items: [
+        { label: "REQ-H0", operation: "conflict" },
+        { label: "REQ-H1", operation: "conflict" },
+        { label: "REQ-H2", operation: "conflict" },
+        { label: "REQ-H3", operation: "conflict" },
+      ],
+    });
+    const sidecarDirectory = join(dirname(setup.deps.db.name), ".fs-sync");
+    expect(await readdir(sidecarDirectory))
+      .toEqual([`plan-${first.planId}.json`]);
+    await expect(computePagedPlan(setup.deps, {
+      projectId: "another-project",
+      projectVersionId: scope.projectVersionId,
+      continuation: `fsp1:${first.planId}:2`,
+    })).rejects.toThrow("PLAN_CONTINUATION_SCOPE_MISMATCH");
+    const sidecar = join(sidecarDirectory, `plan-${first.planId}.json`);
+    const persisted = await readFile(sidecar, "utf8");
+    await writeFile(sidecar, persisted.replace("REQ-H2", "REQ-HX"), "utf8");
+    await expect(computePagedPlan(setup.deps, {
+      ...scope,
+      continuation: `fsp1:${first.planId}:2`,
+    })).rejects.toThrow("PLAN_CONTINUATION_STALE");
+    await expect(computePagedPlan(setup.deps, {
+      ...scope,
+      continuation: `fsp1:${"0".repeat(26)}:2`,
+    })).rejects.toThrow("PLAN_CONTINUATION_STALE");
   });
 
   it("is read-only across accepted base, authored YAML, and remote state while persisting its sidecar", async () => {

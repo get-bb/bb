@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { join, resolve, sep } from "node:path";
+import { dirname, join, resolve, sep } from "node:path";
 
 import { RemoteError } from "../../../lib/remote/types.js";
 import { toStorageProjectVersionId } from "../../../lib/store/index.js";
@@ -161,7 +161,7 @@ class PlanRemoteDataError extends Error {
 
 const ULID_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 const PLAN_ID = /^[0-9A-HJKMNP-TV-Z]{26}$/u;
-const PLAN_PAGE = /^fsp1:([0-9]+)$/u;
+const PLAN_PAGE = /^fsp1:([0-9A-HJKMNP-TV-Z]{26}):([0-9]+)$/u;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -439,7 +439,11 @@ function itemFromEntity(
   const semanticFields = orphan ? [] : threeWayDiff(base, working, theirs);
   const operation = orphan
     ? "orphan" as const
-    : classifyThreeWay(base, working, theirs, state.adapter.klass !== "OVERLAY");
+    : !state.workingAvailable && !sameEntity(base, theirs)
+      // Without authored state, upstream drift is a conservative unresolved
+      // conflict: it must stay visible, but must never be mistaken for a write.
+      ? "conflict" as const
+      : classifyThreeWay(base, working, theirs, state.adapter.klass !== "OVERLAY");
   const fields = operation === "noop" ? [] : semanticFields;
   const conflictFields = operation === "conflict" ? conflictingFields(semanticFields) : [];
   const baseRow = state.baseRows.find((row) => row.entityKey === key);
@@ -489,6 +493,9 @@ function effectivePayload(
   remote: ReadonlyMap<string, Record<string, unknown>>,
 ): Readonly<Record<string, unknown>> | undefined {
   if (item.operation === "delete") return state.base.get(item.key);
+  if (!state.workingAvailable && !sameEntity(state.base.get(item.key), remote.get(item.key))) {
+    return remote.get(item.key) ?? state.base.get(item.key);
+  }
   if (item.operation === "noop") {
     const base = state.base.get(item.key);
     const theirs = remote.get(item.key);
@@ -582,13 +589,22 @@ function acceptedGenerationId(values: Readonly<Record<string, string>>): string 
 
 function cacheState(
   metadata: ReturnType<typeof syncMetadata>,
-  degraded: boolean,
+  remoteDegraded: boolean,
+  workingUnavailable: boolean,
 ): Plan["cache"] {
   const revisions = Object.values(metadata.baseRevisions);
+  const degraded = remoteDegraded || workingUnavailable;
+  const message = remoteDegraded && workingUnavailable
+    ? "Working tree and upstream refresh unavailable; plan uses the accepted base only"
+    : remoteDegraded
+      ? "Upstream refresh unavailable; plan uses the accepted base"
+      : workingUnavailable
+        ? "Working tree unavailable; plan includes upstream changes only"
+        : null;
   return {
     state: degraded ? (metadata.lastPull === null ? "empty" : "stale") : "fresh",
     asOf: metadata.lastPull,
-    message: degraded ? "Upstream refresh unavailable; plan uses the accepted base" : null,
+    message,
     acceptedGenerationId: acceptedGenerationId(metadata.acceptedGenerationIds),
     baseRevision: revisions.length === 0 ? 0 : Math.max(...revisions),
   };
@@ -618,6 +634,14 @@ async function persistPlan(worktreeRoot: string, planValue: Plan): Promise<void>
     await rm(temporary, { force: true }).catch(() => undefined);
     throw error;
   }
+}
+
+function persistenceRoot(deps: EngineDeps): string | null {
+  if (deps.worktreeRoot !== undefined && deps.worktreeRoot !== null) {
+    return deps.worktreeRoot;
+  }
+  if (deps.db.memory || deps.db.name.length === 0) return null;
+  return dirname(resolve(deps.db.name));
 }
 
 function regexLiteral(value: string): string {
@@ -691,24 +715,24 @@ export async function computePlan(
     readAdapterState(deps, scope, storageVersionId, adapter)
   )));
 
-  let degraded = false;
+  let remoteDegraded = false;
   let remote: Map<EntityKind, Map<string, Record<string, unknown>>>;
   try {
     remote = await fetchRemoteState(scope, states, deps, storageVersionId);
   } catch (error: unknown) {
     if (error instanceof PlanRemoteDataError) throw error;
     if (error instanceof RemoteError && error.code === "REMOTE_ABORTED") throw error;
-    degraded = true;
+    remoteDegraded = true;
     remote = degradedRemote(states);
   }
 
   let orphans = new Map<string, boolean>();
-  if (!degraded) {
+  if (!remoteDegraded) {
     try {
       orphans = await resolveOrphans(scope, states, remote, false);
     } catch (error: unknown) {
       if (error instanceof RemoteError && error.code === "REMOTE_ABORTED") throw error;
-      degraded = true;
+      remoteDegraded = true;
       remote = degradedRemote(states);
       orphans = new Map();
     }
@@ -758,7 +782,9 @@ export async function computePlan(
   }
 
   const createdAt = (deps.now?.() ?? new Date()).toISOString();
-  const asOf = degraded ? before.lastPull ?? createdAt : createdAt;
+  const workingUnavailable = states.some((state) => !state.workingAvailable);
+  const degraded = remoteDegraded || workingUnavailable;
+  const asOf = remoteDegraded ? before.lastPull ?? createdAt : createdAt;
   const unsignedPlan: Plan = {
     ...scope,
     planId: createUlid(new Date(createdAt)),
@@ -774,13 +800,12 @@ export async function computePlan(
     validationErrors: validated.flatMap((item) => item.error === null ? [] : [item.error]),
     total: validated.length,
     next: null,
-    cache: cacheState(before, degraded),
+    cache: cacheState(before, remoteDegraded, workingUnavailable),
   };
   const computed: Plan = { ...unsignedPlan, planSha256: contentHash(withoutPlanSha(unsignedPlan)) };
   planSchema.parse(computed);
-  if (deps.worktreeRoot !== undefined && deps.worktreeRoot !== null) {
-    await persistPlan(deps.worktreeRoot, computed);
-  }
+  const root = persistenceRoot(deps);
+  if (root !== null) await persistPlan(root, computed);
   return computed;
 }
 
@@ -798,24 +823,65 @@ export function loadPlan(worktreeRoot: string, planId: string): Plan | null {
   }
 }
 
-function pageOffset(continuation: string | null | undefined): number {
-  if (continuation === null || continuation === undefined) return 0;
-  const matched = PLAN_PAGE.exec(continuation);
-  if (matched === null) throw new Error("Invalid plan continuation token");
-  const offset = Number(matched[1]);
-  if (!Number.isSafeInteger(offset)) throw new Error("Invalid plan continuation token");
-  return offset;
+/** Loads a plan from the worktree sidecar or the server-local RPC sidecar. */
+export function loadPlanForDeps(deps: EngineDeps, planId: string): Plan | null {
+  const root = persistenceRoot(deps);
+  return root === null ? null : loadPlan(root, planId);
 }
 
-/** Frozen-RPC facade: computes the immutable full plan, then returns its requested page. */
+function pageCursor(continuation: string): { planId: string; offset: number } {
+  const matched = PLAN_PAGE.exec(continuation);
+  if (matched === null) throw new Error("PLAN_CONTINUATION_INVALID: malformed plan continuation token");
+  const planId = matched[1];
+  const offset = Number(matched[2]);
+  if (planId === undefined || !PLAN_ID.test(planId) || !Number.isSafeInteger(offset)) {
+    throw new Error("PLAN_CONTINUATION_INVALID: malformed plan continuation token");
+  }
+  return { planId, offset };
+}
+
+function sameScope(planValue: Plan, input: PlanRequest): boolean {
+  return planValue.projectId === input.projectId
+    && planValue.projectVersionId === input.projectVersionId;
+}
+
+/** Frozen-RPC facade: computes and persists once, then pages that exact plan by id. */
 export async function plan(deps: EngineDeps, input: PlanRequest): Promise<Plan> {
-  const computed = await computePlan(deps, {
-    projectId: input.projectId,
-    projectVersionId: input.projectVersionId,
-  }, input.kinds);
   const pageSize = input.pageSize ?? 50;
-  const offset = pageOffset(input.continuation);
-  if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 200 || offset > computed.items.length) {
+  if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 200) {
+    throw new Error("Invalid plan page request");
+  }
+  let computed: Plan;
+  let offset = 0;
+  if (input.continuation === null || input.continuation === undefined) {
+    computed = await computePlan(deps, {
+      projectId: input.projectId,
+      projectVersionId: input.projectVersionId,
+    }, input.kinds);
+    if (persistenceRoot(deps) === null) {
+      throw new Error("PLAN_PERSISTENCE_UNAVAILABLE: plan paging requires a durable sidecar root");
+    }
+  } else {
+    if (input.kinds !== undefined) {
+      throw new Error("PLAN_CONTINUATION_INVALID: kinds are bound by the persisted plan token");
+    }
+    const cursor = pageCursor(input.continuation);
+    offset = cursor.offset;
+    const loaded = loadPlanForDeps(deps, cursor.planId);
+    if (loaded === null) {
+      throw new Error("PLAN_CONTINUATION_STALE: persisted plan is missing or failed integrity validation");
+    }
+    if (!sameScope(loaded, input)) {
+      throw new Error("PLAN_CONTINUATION_SCOPE_MISMATCH: persisted plan belongs to another scope");
+    }
+    computed = loaded;
+  }
+  if (
+    offset > computed.items.length
+    || (input.continuation !== null
+      && input.continuation !== undefined
+      && offset === computed.items.length)
+  ) {
     throw new Error("Invalid plan page request");
   }
   const items = computed.items.slice(offset, offset + pageSize);
@@ -825,6 +891,6 @@ export async function plan(deps: EngineDeps, input: PlanRequest): Promise<Plan> 
     items,
     validationErrors: items.flatMap((item) => item.error === null ? [] : [item.error]),
     total: computed.items.length,
-    next: nextOffset < computed.items.length ? `fsp1:${nextOffset}` : null,
+    next: nextOffset < computed.items.length ? `fsp1:${computed.planId}:${nextOffset}` : null,
   };
 }

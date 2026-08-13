@@ -198,7 +198,12 @@ describe("sync registration", () => {
       },
       items: expect.any(Array),
       total: expect.any(Number),
-      cache: { acceptedGenerationId: pulledGenerationId },
+      staleness: { degraded: true },
+      cache: {
+        state: "stale",
+        message: "Working tree unavailable; plan includes upstream changes only",
+        acceptedGenerationId: pulledGenerationId,
+      },
     });
     await expect(host.harness.behavior.callRpc("syncPush", {
       ...scope,
