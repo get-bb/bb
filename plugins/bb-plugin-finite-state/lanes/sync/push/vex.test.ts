@@ -251,4 +251,86 @@ describe("VEX resumable push", () => {
     expect(syncMetadata({ db }, { projectId: PROJECT, projectVersionId: VERSION }, ["vexDecision"]).baseRevisions)
       .toEqual({ vexDecision: 500 });
   });
+
+  it("treats void bulk clear as unverified until read-back proves absence", async () => {
+    const host = createFakePluginHost({ pluginId: "finite-state-wp19-vex-clear" });
+    hosts.push(host);
+    const db = createPluginContext(host.bb).db();
+    const findingId = "44001";
+    const cve = "CVE-2026-4401";
+    const purl = "pkg:npm/clear-me@1.0.0";
+    const key = ENTITIES.vexDecision.key({ cve, purl, name: "clear-me", group: null, version: "1.0.0" });
+    db.prepare(
+      `INSERT INTO pull_generation
+         (project_id, project_version_id, generation_id, status,
+          requested_kinds_json, started_at, completed_at, accepted_at)
+       VALUES (?, ?, ?, 'accepted', '["finding"]', ?, ?, ?)`,
+    ).run(PROJECT, VERSION, GENERATION, PULLED_AT, PULLED_AT, PULLED_AT);
+    db.prepare(
+      `INSERT INTO sync_state
+         (project_id, project_version_id, entity_kind, accepted_generation_id, base_revision, last_pull)
+       VALUES (?, ?, 'finding', ?, 0, ?)`,
+    ).run(PROJECT, VERSION, GENERATION, PULLED_AT);
+    const detail: Record<string, JsonValue> = {
+      id: findingId,
+      cve,
+      componentId: "clear-me",
+      componentFallbackIdentity: "clear-me",
+      componentPurl: purl,
+      vexStatus: BEFORE.status,
+      vexResponse: null,
+      vexJustification: null,
+      vexReason: BEFORE.reason,
+    };
+    db.prepare(
+      `INSERT INTO findings
+         (project_id, project_version_id, generation_id, finding_id, stable_key,
+          cve, component_purl, vex_status, vex_reason, raw, pulled_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      PROJECT, VERSION, GENERATION, findingId, key, cve, purl,
+      BEFORE.status, BEFORE.reason, canonicalJson(detail), PULLED_AT,
+    );
+    const cleared: string[][] = [];
+    const client = {
+      async batchSetVexStatus() { throw new Error("unexpected VEX set"); },
+      async clearVexStatus(input: { projectVersionId: string; findingIds: string[] }): Promise<void> {
+        expect(input.projectVersionId).toBe(VERSION);
+        cleared.push(input.findingIds);
+        detail["vexStatus"] = null;
+        detail["vexResponse"] = null;
+        detail["vexJustification"] = null;
+        detail["vexReason"] = null;
+      },
+      async getFindingDetail() { return structuredClone(detail); },
+    } satisfies Pick<PlatformClient, "batchSetVexStatus" | "clearVexStatus" | "getFindingDetail">;
+    const pusher = createVexPusher({ db, client, limiter: limiter() });
+    const item: PlanItem = {
+      projectId: PROJECT,
+      projectVersionId: VERSION,
+      kind: "vexDecision",
+      key,
+      label: cve,
+      operation: "delete",
+      expectedBaseContentHash: "planned-base-hash",
+      fields: [],
+      conflicts: [],
+      referrers: [],
+      error: null,
+    };
+    const context = {
+      runId: "vex-clear-run",
+      scope: { projectId: PROJECT, projectVersionId: VERSION },
+    };
+
+    const outcome = (await pusher.applyBatch([item], context))[0];
+
+    expect(cleared).toEqual([[findingId]]);
+    expect(outcome).toMatchObject({ error: null, result: { verification: "required" } });
+    await expect(pusher.readBack(item, context)).resolves.toEqual({
+      exists: false,
+      remoteId: null,
+      payload: null,
+    });
+  });
 });

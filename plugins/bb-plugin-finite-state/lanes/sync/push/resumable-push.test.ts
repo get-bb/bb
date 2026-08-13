@@ -435,7 +435,7 @@ describe("resumable push", () => {
     expect(audit).toEqual([updates[0]?.key]);
   });
 
-  it("rejects stale and unresolved plans before any server or journal write", async () => {
+  it("rejects stale, unresolved, invalid, and unconfirmed plans before any server or journal write", async () => {
     const db = createDb("preflight");
     const root = await createRoot("preflight");
     seedGeneration(db, ["threat"]);
@@ -458,6 +458,22 @@ describe("resumable push", () => {
     const unresolved = await persistPlan(db, root, [conflict]);
     await expect(push({ db, worktreeRoot: root, pushers: [pusher] }, pushOptions(unresolved)))
       .rejects.toMatchObject({ code: "PLAN_CONFLICT_UNRESOLVED" });
+
+    const invalid = await persistPlan(db, root, [{
+      ...create,
+      error: {
+        code: "WORKING_INVALID",
+        message: "injected validation failure",
+        artifactId: "product-security/threats/stale.yaml",
+        line: 1,
+      },
+    }]);
+    await expect(push({ db, worktreeRoot: root, pushers: [pusher] }, pushOptions(invalid)))
+      .rejects.toMatchObject({ code: "PLAN_VALIDATION_FAILED" });
+
+    const unconfirmed = await persistPlan(db, root, [create], { requiresHumanReview: true });
+    await expect(push({ db, worktreeRoot: root, pushers: [pusher] }, pushOptions(unconfirmed, false)))
+      .rejects.toMatchObject({ code: "BLAST_RADIUS_UNCONFIRMED" });
     expect(audit).toEqual([]);
     expect(db.prepare("SELECT COUNT(*) FROM push_log").pluck().get()).toBe(0);
   });
