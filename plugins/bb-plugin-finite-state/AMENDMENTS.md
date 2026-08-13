@@ -206,6 +206,10 @@ specs: `docs/Product Specs/SPEC 07` and `SPEC 08`.*
 - Artifacts:
   - `plugins/bb-plugin-finite-state/lib/store/schema.ts`
 - Contract version: n/a
+- Prior artifact hashes:
+  - `lib/store/schema.ts`: `0494b18f8258ffbf6e66dd8c44bbfef99d6fe7f1c8d7853221d8ad0346e7cbef`
+- New artifact hashes:
+  - `lib/store/schema.ts`: `2e83339eaf9fd86efb0e9ab08162eb24dba5645022e6a0fe86fe779656e6c569`
 - Note: schema.ts is not the wire contract; the contract-version gate applies only to `shared/contract.ts` (see AMD-0011)
 - Change: append tables `hw_project`, `hw_artifact`, `hw_symbol`, `hw_net`,
   `hw_violation` (SPEC 07 §5) and `ground_source`, `ground_chunk`,
@@ -239,8 +243,12 @@ specs: `docs/Product Specs/SPEC 07` and `SPEC 08`.*
 - Approved: 2026-08-13, product owner (Matt) via supervisor thread `thr_rxxqm3px8s`; renumbered from AMD-0002 (that identifier is claimed by the duplicate-finding-ID dedup amendment on PR #42)
 - Artifacts:
   - `plugins/bb-plugin-finite-state/shared/contract.ts`
-- Contract version: 2
-- Note: 2 assumes this is the next contract.ts change to land; if an in-flight contract amendment (e.g. the FS-65 issuer-RPC proposal) lands first, WP-71 renumbers this upward before accepting
+- Contract version: 3
+- Prior artifact hashes:
+  - `shared/contract.ts`: `84bee6cab373316b2c4e47707c1c80b7a54a007d9ae2bf46862faad9cba8e905`
+- New artifact hashes:
+  - `shared/contract.ts`: `4a6f17e3b6ba12074f975a7fa4a51161cb3f704b3b0d93519120a0a705db511d`
+- Note: renumbered to 3 because AMD-0003 reserved contract version 2 before WP-71 acceptance, as authorized by this entry
 - Change: add namespaced method groups — `hardware.*` (projects, sheets,
   symbols, nets, violations, artifact status, extract job control),
   `grounding.*` (sources, federated query with plane labels, catalog
@@ -261,6 +269,10 @@ specs: `docs/Product Specs/SPEC 07` and `SPEC 08`.*
 - Artifacts:
   - `plugins/bb-plugin-finite-state/lib/sync/registry.ts`
 - Contract version: n/a
+- Prior artifact hashes:
+  - `lib/sync/registry.ts`: `e8b7390fa22546db0c727cbfbd7aac4155e00657459bec690f7106d9a3142a53`
+- New artifact hashes:
+  - `lib/sync/registry.ts`: `2059a09c3d6d090505195b69ca56bef6585c8e6c5d25dbbed3735582516b3e86`
 - Change: register `hardwareLink` (OVERLAY, server `none`, localOnly, dir
   `product-security/links`, keyed by reference designator; SPEC 07 §6),
   `citationFile` (OVERLAY, server `none`, localOnly, dir
@@ -274,13 +286,13 @@ specs: `docs/Product Specs/SPEC 07` and `SPEC 08`.*
 - Affected WPs and gates: WP-71 (implementation); consumers WP-78, WP-79,
   WP-85, WP-95.
 
-### AMD-0013 — ACTION-tool allowlist grows from three to nine; `destructive` primitive
+### AMD-0013 — ACTION-tool allowlist grows from three to eight; `destructive` primitive
 
 - Status: approved
 - Approved: 2026-08-13, product owner (Matt) via supervisor thread `thr_rxxqm3px8s`; renumbered from AMD-0004
 - Artifacts:
   - `plugins/bb-plugin-finite-state/lib/agentic/registry.ts`
-  - `plugins/bb-plugin-finite-state/AGENTS.md` (the "exact three" language)
+  - `plugins/bb-plugin-finite-state/AGENTS.md` (the exact-count language)
   - `docs/Implementation/AGENTS.md` (same rule, §5 of non-negotiables)
 - Contract version: n/a
 - Note: the agentic registry is the compile-time authority, not a wire
@@ -292,14 +304,14 @@ specs: `docs/Product Specs/SPEC 07` and `SPEC 08`.*
   turn** — intent inherited from an approved plan does not count — enforced
   by one mechanism and one test, not convention. `fs_flash` is the first
   `destructive` tool; `fs_serial` send (not read) sits behind confirmation.
-- Safety argument: all six new tools invoke local subprocesses or local
+- Safety argument: all five new tools invoke local subprocesses or local
   hardware. None mutates Platform or Assurance Studio. The model-mutation
   boundary (no push tool, human-only VEX/HBOM/lifecycle actions) is intact
   and unchanged. The allowlist guard's value — nobody adds a server-touching
   tool by accident — is preserved because the union stays closed and the
-  guard test enumerates all nine by name.
+  guard test enumerates all eight by name.
 - Reason: SPEC 06 §5.3 requires a recorded human decision to extend the
-  ACTION class; SPEC 07 adds one tool and SPEC 08 adds five, which materially
+  ACTION class; SPEC 07 adds one tool and SPEC 08 adds four, which materially
   changes the safety posture and must not happen tool-by-tool.
 - Affected WPs and gates: WP-71 (implementation); WP-60 (allowlist guard)
   must consume the amended union; consumers WP-81, WP-86…WP-96.
@@ -310,8 +322,17 @@ specs: `docs/Product Specs/SPEC 07` and `SPEC 08`.*
 - Approved: 2026-08-13, product owner (Matt) via supervisor thread `thr_rxxqm3px8s`; renumbered from AMD-0005
 - Artifacts:
   - `plugins/bb-plugin-finite-state/package.json`
-  - `pnpm-lock.yaml`
+- Guard-scope normalization: `pnpm-lock.yaml` changes mechanically with this
+  dependency batch, but the frozen accept guard tracks dependency changes only
+  through the plugin `package.json` dependency baseline. The lockfile is not a
+  baseline target and therefore is not listed under Artifacts.
 - Contract version: n/a
+- Prior artifact hashes:
+  - `plugins/bb-plugin-finite-state/package.json`: `422191d82ff75b7e1b0dca78a5b4a5598433b79d327c2e04d2f3028ad5d7b108`
+  - `pnpm-lock.yaml`: `43d1a3c77970f882ba086044a7be1b0e2af2424d609ed396735019c85374e301`
+- New artifact hashes:
+  - `plugins/bb-plugin-finite-state/package.json`: `fa7e65d79a96e0db7922f4a794837bb421e5e5c5975fb1850a53ee60d266fdea`
+  - `pnpm-lock.yaml`: `037bbc846051d8e287656133d383b86a602b2d33698209957e350fdd2f3122ab`
 - Change: declare `kicadts` (KiCad S-expression parser, pure TS — used with
   no KiCad install) and `@google/model-viewer` (GLB rendering, SPEC 07 §3
   Tab 2). `@xyflow/react` is already declared via the canvas lane. Python-side
@@ -331,6 +352,12 @@ specs: `docs/Product Specs/SPEC 07` and `SPEC 08`.*
   - `plugins/bb-plugin-finite-state/server.ts`
   - `plugins/bb-plugin-finite-state/app.tsx`
 - Contract version: n/a
+- Prior artifact hashes:
+  - `server.ts`: `510c19ab0ef428a52a0d23c4225c9ded3f2a64d3518dcfe158900c05e849941c`
+  - `app.tsx`: `f7e8aa6d22be0b432ad3b631864f2f381deaf768ca0cc9d1cb85558cb1f8a6d0`
+- New artifact hashes:
+  - `server.ts`: `0f2a1047ba074533deb0e1520f690093f88f631eefdb841387ba2b70856bd145`
+  - `app.tsx`: `e3b929346acf5a29d635e002baf6cf9e238c5dcdbd181649b3a3407e3b0efee9`
 - Note: accepting this amendment is a baseline hash update for the
   composition-root guard
 - Change: add the one-time registration calls for the new lanes —

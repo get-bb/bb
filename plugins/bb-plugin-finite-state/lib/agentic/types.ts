@@ -17,6 +17,7 @@ export interface AgentToolSpec {
   readonly class: ToolClass;
   readonly server: ServerAccess;
   readonly idempotency: ToolIdempotency;
+  readonly destructive?: true;
   readonly directive?: DirectiveId;
   readonly page?: { readonly default: 50; readonly max: 200 };
 }

@@ -51,6 +51,8 @@ const DOMAIN_PAYLOADS = [
   ["attackPath", { routeSignature: "route-a", name: "WAN route", threatIds: ["threat-a"] }],
   ["sbomLink", { componentSlug: "component-a", purl: "pkg:generic/example@1" }],
   ["firmwareLink", { componentSlug: "component-a", firmwarePath: "/usr/bin/example" }],
+  ["hardwareLink", { reference: "U3", mpn: "STM32H753ZIT6" }],
+  ["citationFile", { file: "src/drivers/bme280.c", values: [] }],
 ] as const satisfies ReadonlyArray<readonly [EntityKind, Record<string, unknown>]>;
 
 // Exact row from the frozen WP-08 corpus at FROZEN_FIXTURE_HEAD. The `satisfies`

@@ -69,7 +69,7 @@ The data plane is direct typed Platform REST plus direct typed Assurance Studio 
 
 Implementation agents may commit, push, and open PRs. They do not merge their own work. A separate reviewer must verify acceptance criteria, frozen-contract compatibility, the safety boundary, and focused tests. The coordinator may merge a green independently reviewed PR.
 
-Human-only product actions remain absent from agent tools and executable CLI mutation paths: upstream push, conflict resolution, HBOM acceptance/rejection, lifecycle approval, manual attestation, and non-restorable destructive confirmation. `lib/agentic/registry.ts` is the canonical registry seam, and its closed `ActionToolName` union is the compile-time authority for the exact three agent actions.
+Human-only product actions remain absent from agent tools and executable CLI mutation paths: upstream push, conflict resolution, HBOM acceptance/rejection, lifecycle approval, manual attestation, and non-restorable destructive confirmation. `lib/agentic/registry.ts` is the canonical registry seam, and its closed `ActionToolName` union is the compile-time authority for the exact eight agent actions.
 
 Every PR body ends with an agent-generation marker as required by the repository root `AGENTS.md`.
 

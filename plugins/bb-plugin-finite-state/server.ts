@@ -10,6 +10,10 @@ import { registerFirmware } from "./lanes/firmware/register.js";
 import { registerBench } from "./lanes/bench/register.js";
 import { registerDocuments } from "./lanes/documents/register.js";
 import { registerAgentic } from "./lanes/agentic/register.js";
+import { registerHardware } from "./lanes/hardware/register.js";
+import { registerGrounding } from "./lanes/grounding/register.js";
+import { registerAuthoring } from "./lanes/authoring/register.js";
+import { registerDebugBench } from "./lanes/debug-bench/register.js";
 
 export default async function plugin(bb: BbPluginApi): Promise<void> {
   const ctx = createPluginContext(bb);
@@ -22,4 +26,8 @@ export default async function plugin(bb: BbPluginApi): Promise<void> {
   registerBench(bb, ctx); // L6
   registerDocuments(bb, ctx); // L6
   registerAgentic(bb, ctx); // L7
+  registerHardware(bb, ctx); // L9
+  registerGrounding(bb, ctx); // L10
+  registerAuthoring(bb, ctx); // L10
+  registerDebugBench(bb, ctx); // L10
 }
