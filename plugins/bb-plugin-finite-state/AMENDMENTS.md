@@ -117,7 +117,7 @@ documentation only and are never approval evidence.
 
 ### AMD-0003 — Make standalone firmware materialization safely reachable
 
-- Status: proposed
+- Status: approved
 - Artifacts:
   - `plugins/bb-plugin-finite-state/shared/contract.ts`
 - Contract version: 2
@@ -137,6 +137,7 @@ documentation only and are never approval evidence.
 - Blocked pending amendment merge: confined workspace-image token issuance, production `configureStandaloneUnpackRuntime(...)`, and a truthful end-to-end Local image submit from the materialize dialog. Images outside the worktree remain blocked by the existing host contract even after this amendment and must render an explicit unsupported/recovery state. These pieces do not block the API fallback or read-only firmware UX.
 - Affected WPs and gates: WP-07, WP-09, WP-48, WP-49, WP-50, WP-51, WP-61, WP-64, WP-67; firmware materialization UI/CLI, remote settings, shared RPC authorization and contract tests, frozen guards; G0–G6
 - Contract owner: Matt Wyckhouse; approved decision relayed through supervisor `thr_rxxqm3px8s` and recorded on FS-65 by coordinator `thr_hg37weivk7` on 2026-08-13
-- Affected-lane reviewer: pending
+- Approval provenance: owner Matt Wyckhouse, relayed via supervisor `thr_rxxqm3px8s`, scope-match verified by coordinator `thr_hg37weivk7` at approved proposal head `9f81f270f` on 2026-08-13
+- Affected-lane reviewer: independent exact-head audit in `thr_82qsv2zmgw`; APPROVE at `9f81f270f`
 - Broadcast and merge commits: pending
 - Evidence: FS-65 scope audit at base `afb16ac928e053187b5bfe85ace2e8b7887ed751`; `shared/contract.ts` exposes `firmwareMaterializeStart.inputId` but no issuer; `lanes/firmware/register.ts` contains the unconfigured registry/runtime seams and currently trusts the issuer to enforce canonical worktree containment and a bounded expiry; `PluginAppBuilder` exposes no file picker and the backend SDK exposes only `hosts.pickFolder`; non-frozen `lib/remote/config.ts` is the sole settings descriptor owner and has no standalone unpack fields; no standalone wrapper exists in this repository; owner scope decision recorded on FS-65 on 2026-08-13; independent review constraint `mem_i30_pg8cd4c` documents the canonical-symlink escape and unbounded-expiry chain corrected by this proposal.
