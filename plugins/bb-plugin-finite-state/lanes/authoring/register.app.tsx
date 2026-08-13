@@ -1,9 +1,16 @@
 import type { PluginAppBuilder } from "@bb/plugin-sdk/app";
 import type { AppContext } from "../../lib/app-context.js";
+import { ToolchainAdvisoryPanel } from "./toolchain-advisory.js";
 
 export function registerAuthoringApp(
-  _app: PluginAppBuilder,
+  app: PluginAppBuilder,
   _ctx: AppContext,
 ): void {
-  // NOT_IMPLEMENTED: compiling composition-root seam for the L10 authoring lane.
+  app.slots.navPanel({
+    id: "firmware-authoring",
+    title: "Firmware Authoring",
+    icon: "Code",
+    path: "firmware-authoring",
+    component: ToolchainAdvisoryPanel,
+  });
 }

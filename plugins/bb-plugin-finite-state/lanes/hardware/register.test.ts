@@ -187,7 +187,11 @@ describe("hardware registration", () => {
     const ctx = createPluginContext(host.bb);
     ctx.service("hardware.kicad-capability", async () => ({ installed: false, cliPath: null, version: null, supported: false }));
     registerHardware(host.bb, ctx);
-    await vi.waitFor(() => expect(host.harness.needsConfigurationMessages).toHaveLength(1));
+    await vi.waitFor(() => expect(host.harness.logEntries).toContainEqual({
+      level: "warn",
+      message: expect.stringContaining("Hardware extraction advisory: KiCad 7+ is unavailable"),
+    }));
+    expect(host.harness.needsConfigurationMessages).toEqual([]);
 
     await expect(host.harness.behavior.callRpc("hardwareProjectsList", {
       projectId: "project", projectVersionId: null, pageSize: 1, cursor: null,
@@ -275,7 +279,11 @@ describe("hardware registration", () => {
     })).toMatchObject({ state: "degraded", message: expect.stringContaining("HW_PROJECT_SOURCE_UNAVAILABLE") }));
     service.controller.abort();
     await service.done;
-    expect(host.harness.needsConfigurationMessages.some((message) => message.includes("workspace source"))).toBe(true);
+    expect(host.harness.needsConfigurationMessages).toEqual([]);
+    expect(host.harness.logEntries).toContainEqual({
+      level: "warn",
+      message: expect.stringContaining("Hardware discovery advisory: this project has no workspace source"),
+    });
   });
 
   it("keeps partial-success jobs readable when KiCad emits oversized credential-shaped stderr", async () => {

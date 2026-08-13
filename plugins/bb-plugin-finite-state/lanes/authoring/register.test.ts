@@ -100,11 +100,26 @@ describe("authoring registration", () => {
     expect(response.status).toBe(206);
     expect(await response.text()).toBe("prior");
 
-    expect(host.harness.inspection.needsConfigurationMessages).toEqual([
-      expect.stringContaining(
+    expect(host.harness.inspection.needsConfigurationMessages).toEqual([]);
+    await expect(
+      host.harness.behavior.callRpc("authoringToolchainStatus", null),
+    ).resolves.toEqual(expect.objectContaining({
+      state: "unavailable",
+      configured: false,
+      missing: [
+        { id: "fixture-missing-compiler", unlocks: "build" },
+        { id: "fixture-missing-west", unlocks: "zephyr-workspace" },
+      ],
+      message: expect.stringContaining(
         "build missing fixture-missing-compiler; zephyr-workspace missing fixture-missing-west",
       ),
-    ]);
+    }));
+    expect(host.harness.inspection.logEntries).toContainEqual({
+      level: "warn",
+      message: expect.stringContaining(
+        "Authoring toolchain advisory: build missing fixture-missing-compiler; zephyr-workspace missing fixture-missing-west",
+      ),
+    });
     service.controller.abort();
     await service.done;
   });

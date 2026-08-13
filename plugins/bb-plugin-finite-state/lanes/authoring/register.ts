@@ -26,6 +26,11 @@ import {
   type ToolchainReport,
   type ToolchainProbe,
 } from "./build/toolchain.js";
+import {
+  authoringToolchainRpcContract,
+  type ToolchainAdvisory,
+} from "./toolchain-advisory-contract.js";
+import { AUTHORING_TOOLCHAIN_CHANGED_CHANNEL } from "./toolchain-advisory-channel.js";
 
 const authoringRpcContract = {
   authoringCitationsList: rpcContract.authoringCitationsList,
@@ -58,23 +63,52 @@ export interface AuthoringRegistration {
   ready: Promise<void>;
 }
 
+interface ToolchainAdvisoryChannel {
+  current: ToolchainAdvisory;
+}
+
+function missingToolchainDetail(report: ToolchainReport): string {
+  return (["build", "flash", "zephyr-workspace"] as const)
+    .map((capability) => ({
+      capability,
+      tools: report.missing
+        .filter((tool) => tool.unlocks === capability)
+        .map((tool) => tool.id),
+    }))
+    .filter((entry) => entry.tools.length > 0)
+    .map((entry) => `${entry.capability} missing ${entry.tools.join(", ")}`)
+    .join("; ");
+}
+
+function toolchainAdvisory(report: ToolchainReport): ToolchainAdvisory {
+  const detail = missingToolchainDetail(report);
+  const state = report.missing.length === 0
+    ? "ready"
+    : report.configured
+      ? "degraded"
+      : "unavailable";
+  const message = state === "ready"
+    ? "Firmware build, flash, and Zephyr workspace helpers are available on this host."
+    : state === "degraded"
+      ? `Some optional firmware helpers are unavailable on this host: ${detail}.`
+      : `Firmware helpers are unavailable on this host: ${detail}.`;
+  return {
+    state,
+    configured: report.configured,
+    found: report.found.map(({ id, version }) => ({ id, version })),
+    missing: report.missing.map(({ id, unlocks }) => ({ id, unlocks })),
+    message,
+    checkedAt: new Date().toISOString(),
+  };
+}
+
 export function reportToolchainConfiguration(
   bb: BbPluginApi,
   report: ToolchainReport,
 ): ToolchainReport {
-  if (!report.configured) {
-    const missing = (["build", "flash", "zephyr-workspace"] as const)
-      .map((capability) => ({
-        capability,
-        tools: report.missing
-          .filter((tool) => tool.unlocks === capability)
-          .map((tool) => tool.id),
-      }))
-      .filter((entry) => entry.tools.length > 0)
-      .map((entry) => `${entry.capability} missing ${entry.tools.join(", ")}`)
-      .join("; ");
-    bb.status.needsConfiguration(
-      `No complete firmware capability is configured on this host${missing ? `: ${missing}` : ""}. Install project prerequisites and explicitly re-detect; Finite State never auto-installs them.`,
+  if (report.missing.length > 0) {
+    bb.log.warn(
+      `Authoring toolchain advisory: ${missingToolchainDetail(report)}. Finite State never auto-installs host prerequisites.`,
     );
   }
   return report;
@@ -96,6 +130,19 @@ export function registerAuthoring(
   },
 ): AuthoringRegistration {
   const db = ctx.db();
+  const advisory = ctx.service<ToolchainAdvisoryChannel>(
+    "authoring.toolchain-advisory",
+    () => ({
+      current: {
+        state: "detecting",
+        configured: false,
+        found: [],
+        missing: [],
+        message: "Firmware helper detection is in progress.",
+        checkedAt: null,
+      },
+    }),
+  );
   const publish = (hint: BuildRunChangedHint): void => publishBuildChanged(bb, hint);
   let resolveReady: () => void = () => undefined;
   const ready = new Promise<void>((resolve) => {
@@ -110,6 +157,11 @@ export function registerAuthoring(
     },
     authoringGateStatus(input) {
       return getAuthoringGateStatusNotImplemented(input);
+    },
+  });
+  bb.rpc.register(authoringToolchainRpcContract, {
+    authoringToolchainStatus() {
+      return advisory.current;
     },
   });
   bb.http.route(
@@ -135,13 +187,29 @@ export function registerAuthoring(
             signal,
           })
             .then((report) => {
-              if (!signal.aborted) reportToolchainConfiguration(bb, report);
+              if (signal.aborted) return;
+              const reported = reportToolchainConfiguration(bb, report);
+              advisory.current = toolchainAdvisory(reported);
+              bb.realtime.publish(AUTHORING_TOOLCHAIN_CHANGED_CHANNEL, {
+                state: advisory.current.state,
+              });
             })
             .catch((error: unknown) => {
               if (signal.aborted) return;
+              advisory.current = {
+                state: "error",
+                configured: false,
+                found: [],
+                missing: [],
+                message: "Firmware helper detection failed. Review plugin logs and retry after correcting the host environment.",
+                checkedAt: new Date().toISOString(),
+              };
               ctx.log.warn(
                 `Authoring toolchain detection failed: ${error instanceof Error ? error.message : "unknown error"}`,
               );
+              bb.realtime.publish(AUTHORING_TOOLCHAIN_CHANGED_CHANNEL, {
+                state: advisory.current.state,
+              });
             });
         }
       } finally {
