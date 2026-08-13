@@ -356,19 +356,24 @@ export async function recoverInterruptedGitPluginPromotion(
   targetDir: string,
 ): Promise<void> {
   const corruptDir = `${targetDir}.corrupt`;
+  const promotingDir = `${targetDir}.promoting`;
   const corruptExists = await lstat(corruptDir)
     .then(() => true)
     .catch(() => false);
-  if (!corruptExists) return;
+  if (!corruptExists) {
+    await rm(promotingDir, { recursive: true, force: true });
+    return;
+  }
   const targetExists = await lstat(targetDir)
     .then(() => true)
     .catch(() => false);
   if (targetExists) {
     await rm(corruptDir, { recursive: true, force: true });
-    return;
+  } else {
+    await mkdir(dirname(targetDir), { recursive: true });
+    await rename(corruptDir, targetDir);
   }
-  await mkdir(dirname(targetDir), { recursive: true });
-  await rename(corruptDir, targetDir);
+  await rm(promotingDir, { recursive: true, force: true });
 }
 
 /**

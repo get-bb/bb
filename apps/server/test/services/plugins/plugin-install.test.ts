@@ -724,6 +724,8 @@ describe("plugin install flows", () => {
         )
         .run(artifact.id);
       await rename(entry.rootDir, `${entry.rootDir}.corrupt`);
+      await mkdir(`${entry.rootDir}.promoting`, { recursive: true });
+      await writeFile(join(`${entry.rootDir}.promoting`, "partial"), "copy");
       service = createPluginService({
         db,
         hub: {
@@ -741,6 +743,9 @@ describe("plugin install flows", () => {
 
       await stat(join(entry.rootDir, "dist", "server.js"));
       await expect(stat(`${entry.rootDir}.corrupt`)).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+      await expect(stat(`${entry.rootDir}.promoting`)).rejects.toMatchObject({
         code: "ENOENT",
       });
       expect(
