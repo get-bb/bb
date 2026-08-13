@@ -193,19 +193,6 @@ const MOBILE_OVERFLOW_CONTENT_CLASS =
 const MOBILE_OVERFLOW_ITEM_CLASS =
   "flex min-h-8 w-full cursor-pointer items-center gap-2 rounded px-2 py-1 text-left text-xs text-foreground transition-colors hover:bg-surface-recessed focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring active:bg-state-active disabled:pointer-events-none disabled:opacity-40 select-none";
 
-/**
- * Vertical slot a message renders its action bar into. The bar is 20px tall but
- * reserves only 16px of layout, and the 2px offset keeps it clear of the message
- * body. Its last pixels fall in the timeline row gap, which is empty, so a
- * one-line message keeps its density while the bar still neither overlaps the
- * next row's text nor pushes the layout when hover reveals it. Coarse pointers
- * get a taller, always visible bar, so they reserve its full height.
- */
-export const MESSAGE_ACTION_BAR_SLOT_CLASS_NAME =
-  "relative h-4 max-md:pointer-coarse:h-7";
-export const MESSAGE_ACTION_BAR_SLOT_CONTENT_CLASS_NAME =
-  "absolute top-0.5 max-md:pointer-coarse:top-0";
-
 export function findMessageActionTooltipCollisionBoundary(
   node: HTMLElement | null,
 ): HTMLElement | undefined {
