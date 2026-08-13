@@ -24,7 +24,7 @@ interface BinaryMetadata {
   materialized: boolean;
 }
 
-const binaryExtensions = new Set(["bin", "elf", "fw", "img", "ko", "o", "out", "rom", "so"]);
+const binaryExtensions = new Set(["bin", "elf", "fw", "hex", "img", "ko", "o", "out", "rom", "so"]);
 
 export function isFirmwareBinaryMetadata(
   mediaType: string | null,

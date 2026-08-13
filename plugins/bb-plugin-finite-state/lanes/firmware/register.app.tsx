@@ -15,7 +15,7 @@ export function registerFirmwareApp(
   app.slots.fileOpener({
     id: "firmware-binary",
     title: "Firmware binary metadata",
-    extensions: ["bin", "elf", "fw", "img", "ko", "o", "out", "rom", "so"],
+    extensions: ["bin", "elf", "fw", "hex", "img", "ko", "o", "out", "rom", "so"],
     component: BinaryOpener,
   });
 }

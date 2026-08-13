@@ -190,6 +190,11 @@ export function FirmwareStatusChip({
           </Alert>
         ) : null}
 
+        <p className="text-xs text-muted-foreground">
+          Binary inspection: in the native file tree choose Open with → Firmware binary metadata.
+          Use the same visible action for extensionless executables; the opener verifies manifest MIME/full type before showing metadata.
+        </p>
+
         <VersionDiff projectId={projectId} initialToPvId={status?.pvId ?? ""} />
       </PopoverContent>
     </Popover>
