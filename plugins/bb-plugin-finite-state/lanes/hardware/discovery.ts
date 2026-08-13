@@ -1,7 +1,13 @@
 import { createHash } from "node:crypto";
+import { execFile } from "node:child_process";
 import { opendir, readFile, realpath, stat } from "node:fs/promises";
 import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { promisify } from "node:util";
 import type { BbPluginApi } from "@bb/plugin-sdk";
+
+const execFileAsync = promisify(execFile);
+const GIT_TIMEOUT_MS = 5_000;
+export const WORKTREE_INCLUDE_HINT = "Untracked or ignored KiCad sources need .worktreeinclude to appear in agent worktrees.";
 
 export interface KicadProjectRow {
   projectKey: string;
@@ -18,6 +24,11 @@ export interface KicadProjectRow {
 export interface HardwareProjectSource {
   hostId: string;
   path: string;
+}
+
+export interface ProjectDiscoveryResult {
+  projects: KicadProjectRow[];
+  truncated: boolean;
 }
 
 const SKIP_DIRECTORIES = new Set([".git", ".fs-hw", "node_modules"]);
@@ -140,10 +151,10 @@ export async function resolveHardwareProjectSource(
   return { hostId: source.hostId, path: source.path };
 }
 
-export async function discoverProjectsFromSource(
+export async function scanProjectsFromSource(
   bb: BbPluginApi,
   source: HardwareProjectSource,
-): Promise<KicadProjectRow[]> {
+): Promise<ProjectDiscoveryResult> {
   const listing = await bb.sdk.files.listPaths({
     hostId: source.hostId,
     path: source.path,
@@ -152,7 +163,6 @@ export async function discoverProjectsFromSource(
     includeFiles: true,
     includeDirectories: false,
   });
-  if (listing.truncated) throw new Error("HW_DISCOVERY_TRUNCATED: workspace contains too many paths");
   const keys = listing.paths
     .filter((entry) => entry.kind === "file" && entry.path.endsWith(".kicad_pro"))
     .map((entry) => assertRelativeProjectPath(entry.path))
@@ -171,5 +181,42 @@ export async function discoverProjectsFromSource(
     }
   };
   const rows = await Promise.all(keys.map((key) => projectRow(key, read)));
-  return rows.filter((row): row is KicadProjectRow => row !== null);
+  return {
+    projects: rows.filter((row): row is KicadProjectRow => row !== null),
+    truncated: listing.truncated,
+  };
+}
+
+export async function discoverProjectsFromSource(
+  bb: BbPluginApi,
+  source: HardwareProjectSource,
+): Promise<KicadProjectRow[]> {
+  return (await scanProjectsFromSource(bb, source)).projects;
+}
+
+export async function worktreeIncludeHint(
+  sourceRoot: string,
+  projects: KicadProjectRow[],
+): Promise<string | null> {
+  if (!isAbsolute(sourceRoot) || projects.length === 0) return null;
+  const paths = projects.flatMap((project) => [
+    project.projectKey,
+    project.schPath,
+    ...(project.pcbPath ? [project.pcbPath] : []),
+  ]);
+  try {
+    const status = await execFileAsync(
+      "git",
+      ["-C", sourceRoot, "status", "--porcelain=v1", "--untracked-files=all", "--", ...paths],
+      { encoding: "utf8", timeout: GIT_TIMEOUT_MS, maxBuffer: 1024 * 1024 },
+    );
+    if (status.stdout.split("\n").some((line) => line.startsWith("??"))) return WORKTREE_INCLUDE_HINT;
+    for (const path of paths) {
+      try {
+        await execFileAsync("git", ["-C", sourceRoot, "check-ignore", "--quiet", "--", path], { timeout: GIT_TIMEOUT_MS });
+        return WORKTREE_INCLUDE_HINT;
+      } catch { /* a non-zero status means this path is not ignored */ }
+    }
+  } catch { /* tracking metadata is unavailable for a remote or non-Git source */ }
+  return null;
 }

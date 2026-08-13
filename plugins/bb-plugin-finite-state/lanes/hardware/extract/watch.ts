@@ -1,14 +1,11 @@
 import { watch, type FSWatcher } from "node:fs";
-import type Database from "better-sqlite3";
-import type { ArtifactScope } from "./provenance.js";
-import { markArtifactsStale } from "./provenance.js";
+import { basename, dirname } from "node:path";
 
 export interface HardwareWatchOptions {
-  db: Database.Database;
-  scope: ArtifactScope;
   schematicPath: string;
   boardPath: string | null;
-  publish(): void;
+  onChange(source: "schematic" | "board"): void | Promise<void>;
+  onError(error: Error): void;
   debounceMs?: number;
 }
 
@@ -21,8 +18,26 @@ export class HardwareSourceWatcher {
 
   start(): void {
     this.stop();
-    this.#watchers.push(watch(this.#options.schematicPath, () => this.#changed("schematic")));
-    if (this.#options.boardPath) this.#watchers.push(watch(this.#options.boardPath, () => this.#changed("board")));
+    const targets = new Map<string, Map<string, "schematic" | "board">>();
+    const add = (path: string, source: "schematic" | "board") => {
+      const names = targets.get(dirname(path)) ?? new Map<string, "schematic" | "board">();
+      names.set(basename(path), source);
+      targets.set(dirname(path), names);
+    };
+    add(this.#options.schematicPath, "schematic");
+    if (this.#options.boardPath) add(this.#options.boardPath, "board");
+    for (const [directory, names] of targets) {
+      const watcher = watch(directory, (_event, filename) => {
+        if (filename === null) {
+          for (const source of names.values()) this.#changed(source);
+          return;
+        }
+        const source = names.get(filename.toString());
+        if (source) this.#changed(source);
+      });
+      watcher.on("error", (error) => this.#options.onError(error));
+      this.#watchers.push(watcher);
+    }
   }
 
   #changed(source: "schematic" | "board"): void {
@@ -30,8 +45,9 @@ export class HardwareSourceWatcher {
     if (prior) clearTimeout(prior);
     this.#timers.set(source, setTimeout(() => {
       this.#timers.delete(source);
-      markArtifactsStale(this.#options.db, this.#options.scope, source);
-      this.#options.publish();
+      void Promise.resolve(this.#options.onChange(source)).catch((error) => {
+        this.#options.onError(error instanceof Error ? error : new Error(String(error)));
+      });
     }, this.#options.debounceMs ?? 100));
   }
 

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
-import { mkdir, realpath, stat } from "node:fs/promises";
-import { dirname, isAbsolute } from "node:path";
+import { mkdir, opendir, realpath, stat } from "node:fs/promises";
+import { dirname, isAbsolute, join, relative, sep } from "node:path";
 import { promisify } from "node:util";
 import type Database from "better-sqlite3";
 import { discoverProjects, resolveInsideRoot } from "../discovery.js";
@@ -12,7 +12,14 @@ import {
   type HwArtifactKind,
   type KicadCapability,
 } from "./driver.js";
-import { findArtifact, recordArtifact, type ArtifactScope, type HwArtifactStatus } from "./provenance.js";
+import {
+  artifactPathPresent,
+  findArtifacts,
+  recordArtifact,
+  replaceArtifactsForKind,
+  type ArtifactScope,
+  type HwArtifactStatus,
+} from "./provenance.js";
 
 const execFileAsync = promisify(execFile);
 export const HW_CACHE_DIRECTORY = ".fs-hw";
@@ -56,23 +63,49 @@ export function artifactIsFresh(recordedHash: string | null, currentHash: string
   return !force && recordedHash === currentHash;
 }
 
+interface ValidatedHardwareSource {
+  sourceRoot: string;
+  gitRoot: string;
+}
+
+export async function validateHardwareSourceRoot(worktreeRoot: string): Promise<ValidatedHardwareSource> {
+  if (!isAbsolute(worktreeRoot)) throw new HardwareCacheError("INVALID_WORKTREE_ROOT", "An absolute project source root is required.");
+  let sourceRoot: string;
+  try {
+    sourceRoot = await realpath(worktreeRoot);
+    if (!(await stat(sourceRoot)).isDirectory()) throw new Error("not a directory");
+  } catch (error) {
+    throw new HardwareCacheError("INVALID_WORKTREE_ROOT", "The project source root is unavailable or is not a directory.", { cause: error });
+  }
+  let gitRoot: string;
+  try {
+    const git = await execFileAsync("git", ["-C", sourceRoot, "rev-parse", "--show-toplevel"], {
+      encoding: "utf8", timeout: 5_000, maxBuffer: 64 * 1024,
+    });
+    gitRoot = await realpath(git.stdout.trim());
+  } catch (error) {
+    throw new HardwareCacheError("HW_SOURCE_NOT_GIT_REPOSITORY", "The project source must be inside a Git worktree before hardware artifacts can be cached.", { cause: error });
+  }
+  const fromGitRoot = relative(gitRoot, sourceRoot);
+  if (fromGitRoot === ".." || fromGitRoot.startsWith(`..${sep}`) || isAbsolute(fromGitRoot)) {
+    throw new HardwareCacheError("INVALID_WORKTREE_ROOT", "The project source resolves outside its Git worktree.");
+  }
+  return { sourceRoot, gitRoot };
+}
+
 export async function validateHardwareWorktreeRoot(worktreeRoot: string): Promise<string> {
-  if (!isAbsolute(worktreeRoot)) throw new HardwareCacheError("INVALID_WORKTREE_ROOT", "An absolute worktree root is required.");
-  const root = await realpath(worktreeRoot);
-  if (!(await stat(root)).isDirectory()) throw new HardwareCacheError("INVALID_WORKTREE_ROOT", "The worktree root must be a directory.");
-  const git = await execFileAsync("git", ["-C", root, "rev-parse", "--show-toplevel"], { encoding: "utf8", timeout: 5_000 });
-  if (await realpath(git.stdout.trim()) !== root) throw new HardwareCacheError("INVALID_WORKTREE_ROOT", "The path must be the Git worktree root.");
-  return root;
+  return (await validateHardwareSourceRoot(worktreeRoot)).sourceRoot;
 }
 
 export async function assertHardwareCacheIgnored(worktreeRoot: string): Promise<string> {
-  const root = await validateHardwareWorktreeRoot(worktreeRoot);
+  const { sourceRoot, gitRoot } = await validateHardwareSourceRoot(worktreeRoot);
+  const probe = relative(gitRoot, resolveInsideRoot(sourceRoot, `${HW_CACHE_DIRECTORY}/.ignore-probe`));
   try {
-    await execFileAsync("git", ["-C", root, "check-ignore", "--quiet", "--no-index", "--", `${HW_CACHE_DIRECTORY}/.ignore-probe`], { timeout: 5_000 });
+    await execFileAsync("git", ["-C", gitRoot, "check-ignore", "--quiet", "--no-index", "--", probe], { timeout: 5_000 });
   } catch (error) {
     throw new HardwareCacheError("HW_CACHE_NOT_IGNORED", ".fs-hw must be gitignored before hardware artifacts are created.", { cause: error });
   }
-  return root;
+  return sourceRoot;
 }
 
 function sourceForKind(project: Awaited<ReturnType<typeof discoverProjects>>[number], kind: HwArtifactKind) {
@@ -88,6 +121,57 @@ export interface ExtractDependencies {
   scope: ArtifactScope;
   capability?: KicadCapability;
   execute?: typeof executeExtractCommand;
+}
+
+function statusFromRow(
+  projectKey: string,
+  row: ReturnType<typeof findArtifacts>[number],
+): HwArtifactStatus {
+  return {
+    projectKey,
+    kind: row.kind,
+    sheetPath: row.sheet_path,
+    path: row.path,
+    sourceHash: row.source_hash,
+    cliVersion: row.cli_version,
+    generatedAt: row.generated_at,
+    fresh: true,
+  };
+}
+
+async function allPriorArtifactsFresh(
+  root: string,
+  rows: ReturnType<typeof findArtifacts>,
+  currentHash: string,
+  force: boolean,
+): Promise<boolean> {
+  if (force || rows.length === 0 || rows.some((row) => row.source_hash !== currentHash)) return false;
+  const present = await Promise.all(rows.map((row) => artifactPathPresent(root, row.path, row.kind)));
+  return present.every(Boolean);
+}
+
+async function sheetSvgArtifacts(
+  root: string,
+  output: string,
+  sourceHash: string,
+  cliVersion: string,
+  generatedAt: string,
+): Promise<Array<Omit<HwArtifactStatus, "fresh" | "projectKey">>> {
+  const artifacts: Array<Omit<HwArtifactStatus, "fresh" | "projectKey">> = [];
+  async function walk(directory: string): Promise<void> {
+    for await (const entry of await opendir(directory)) {
+      if (entry.isSymbolicLink()) continue;
+      const absolute = join(directory, entry.name);
+      if (entry.isDirectory()) await walk(absolute);
+      else if (entry.isFile() && entry.name.endsWith(".svg") && (await stat(absolute)).size > 0) {
+        const sheetPath = relative(output, absolute).split(sep).join("/");
+        const path = relative(root, absolute).split(sep).join("/");
+        artifacts.push({ kind: "sheet_svg", sheetPath, path, sourceHash, cliVersion, generatedAt });
+      }
+    }
+  }
+  await walk(output);
+  return artifacts.sort((left, right) => (left.sheetPath ?? "").localeCompare(right.sheetPath ?? ""));
 }
 
 export async function runExtractCached(
@@ -114,19 +198,15 @@ export async function runExtractCached(
   for (const kind of [...new Set(kinds)]) {
     const source = sourceForKind(project, kind);
     if (!source) continue;
-    const prior = findArtifact(deps.db, deps.scope, kind, null);
-    if (artifactIsFresh(prior?.source_hash ?? null, source.hash, opts.force)) {
-      if (prior) produced.push({
-        projectKey, kind, sheetPath: prior.sheet_path, path: prior.path,
-        sourceHash: prior.source_hash, cliVersion: prior.cli_version,
-        generatedAt: prior.generated_at, fresh: true,
-      });
+    const prior = findArtifacts(deps.db, deps.scope, kind);
+    if (await allPriorArtifactsFresh(root, prior, source.hash, opts.force ?? false)) {
+      produced.push(...prior.map((row) => statusFromRow(projectKey, row)));
       continue;
     }
     const relativeOutput = artifactRelativePath(projectKey, kind);
     const output = resolveInsideRoot(root, relativeOutput);
     const sourcePath = resolveInsideRoot(root, source.path);
-    const command = buildExtractCommand(capability.cliPath, kind, sourcePath, output);
+    const command = buildExtractCommand(capability.cliPath, kind, sourcePath, output, root);
     if (major < command.minMajor) {
       failures.push({ kind, exitCode: -1, stderr: `KICAD_ARTIFACT_UNSUPPORTED: ${kind} requires KiCad ${command.minMajor}+` });
       continue;
@@ -138,10 +218,32 @@ export async function runExtractCached(
       failures.push({ kind, exitCode: result.exitCode, stderr: result.stderr });
       continue;
     }
-    produced.push(recordArtifact(deps.db, deps.scope, {
-      kind, sheetPath: null, path: relativeOutput, sourceHash: source.hash,
-      cliVersion: capability.version, generatedAt: new Date().toISOString(),
-    }));
+    const generatedAt = new Date().toISOString();
+    try {
+      if (kind === "sheet_svg") {
+        const sheets = await sheetSvgArtifacts(root, output, source.hash, capability.version, generatedAt);
+        if (sheets.length === 0) {
+          failures.push({ kind, exitCode: -1, stderr: "KICAD_OUTPUT_MISSING: sheet SVG export produced no non-empty SVG files" });
+          continue;
+        }
+        produced.push(...replaceArtifactsForKind(deps.db, deps.scope, kind, sheets));
+        continue;
+      }
+      if (!await artifactPathPresent(root, relativeOutput, kind)) {
+        failures.push({ kind, exitCode: -1, stderr: `KICAD_OUTPUT_MISSING: ${kind} export did not create the expected artifact` });
+        continue;
+      }
+      produced.push(recordArtifact(deps.db, deps.scope, {
+        kind, sheetPath: null, path: relativeOutput, sourceHash: source.hash,
+        cliVersion: capability.version, generatedAt,
+      }));
+    } catch (error) {
+      failures.push({
+        kind,
+        exitCode: -1,
+        stderr: `HW_PROVENANCE_WRITE_FAILED: ${error instanceof Error ? error.message : String(error)}`,
+      });
+    }
   }
   return { projectKey, produced, failures };
 }

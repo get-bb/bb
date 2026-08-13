@@ -1,14 +1,16 @@
 import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
-import type { BbPluginApi } from "@bb/plugin-sdk";
+import { defineRpcContract, type BbPluginApi } from "@bb/plugin-sdk";
 import type Database from "better-sqlite3";
+import { z } from "zod";
 import type { PluginContext } from "../../lib/context.js";
 import { toStorageProjectVersionId } from "../../lib/store/index.js";
 import { rpcContract } from "../../shared/contract.js";
 import {
   assertRelativeProjectPath,
-  discoverProjectsFromSource,
   resolveHardwareProjectSource,
+  scanProjectsFromSource,
+  worktreeIncludeHint,
   type HardwareProjectSource,
   type KicadProjectRow,
 } from "./discovery.js";
@@ -35,6 +37,31 @@ const hardwareRpcContract = {
   hardwareExtractStart: rpcContract.hardwareExtractStart,
   hardwareExtractStatus: rpcContract.hardwareExtractStatus,
 } as const;
+
+const projectScopeSchema = {
+  projectId: z.string().trim().min(1).max(512),
+  projectVersionId: z.string().trim().min(1).max(512).nullable(),
+};
+const discoveryStatusSchema = z.object({
+  ...projectScopeSchema,
+  state: z.enum(["idle", "queued", "refreshing", "ready", "degraded"]),
+  message: z.string().max(500).nullable(),
+  worktreeincludeHint: z.string().max(500).nullable(),
+  truncated: z.boolean(),
+}).strict();
+
+export const hardwareDiscoveryRpcContract = defineRpcContract({
+  hardwareDiscoveryRefresh: {
+    input: z.object(projectScopeSchema).strict(),
+    output: discoveryStatusSchema,
+  },
+  hardwareDiscoveryStatus: {
+    input: z.object(projectScopeSchema).strict(),
+    output: discoveryStatusSchema,
+  },
+});
+
+type DiscoveryStatus = z.infer<typeof discoveryStatusSchema>;
 
 interface HardwareProjectDbRow {
   project_id: string;
@@ -79,6 +106,7 @@ function upsertProjects(
   projectId: string,
   projectVersionId: string | null,
   projects: KicadProjectRow[],
+  complete = true,
 ): void {
   const pv = storageVersion(projectVersionId);
   const statement = db.prepare(
@@ -99,8 +127,10 @@ function upsertProjects(
     const remove = db.prepare(
       `DELETE FROM hw_project WHERE project_id = ? AND project_version_id = ? AND project_key = ?`,
     );
-    for (const row of existing) {
-      if (!discoveredKeys.has(row.project_key)) remove.run(projectId, pv, row.project_key);
+    if (complete) {
+      for (const row of existing) {
+        if (!discoveredKeys.has(row.project_key)) remove.run(projectId, pv, row.project_key);
+      }
     }
     for (const project of projects) statement.run(
       projectId, pv, project.projectKey, project.name, project.schPath, project.pcbPath,
@@ -131,16 +161,203 @@ function cursorOffset(cursor: string | null): number {
   return offset;
 }
 
+const SAFE_DETAIL_MAX_LENGTH = 500;
+const TRUNCATION_MARKER = "\n[diagnostic truncated; tail shown]";
+
+export function safeHardwareDetail(value: string): string {
+  const scrubbed = value
+    .replace(/authorization(?:\s*[:=]\s*|\s+)\S+/giu, "authorization [redacted]")
+    .replace(/bearer\s+\S+/giu, "credential [redacted]")
+    .replace(/api[_-]?key\s*[:=]\s*\S+/giu, "credential [redacted]")
+    .replace(/token\s*=\s*[^\s&]+/giu, "credential=[redacted]")
+    .replace(/https?:\/\/\S+/giu, (url) => url.includes("?") || url.includes("@") ? "[credentialed URL redacted]" : url);
+  if (scrubbed.length <= SAFE_DETAIL_MAX_LENGTH) return scrubbed;
+  return `${scrubbed.slice(-(SAFE_DETAIL_MAX_LENGTH - TRUNCATION_MARKER.length))}${TRUNCATION_MARKER}`;
+}
+
+function errorDetail(error: unknown): string {
+  return safeHardwareDetail(error instanceof Error ? error.message : String(error));
+}
+
+async function waitForWake(
+  signal: AbortSignal,
+  setWake: (wake: (() => void) | null) => void,
+): Promise<void> {
+  if (signal.aborted) return;
+  await new Promise<void>((resolve) => {
+    let settled = false;
+    const wake = () => {
+      if (settled) return;
+      settled = true;
+      signal.removeEventListener("abort", wake);
+      setWake(null);
+      resolve();
+    };
+    setWake(wake);
+    signal.addEventListener("abort", wake, { once: true });
+    if (signal.aborted) wake();
+  });
+}
+
+interface DiscoveryScope {
+  projectId: string;
+  projectVersionId: string | null;
+}
+
+interface RefreshedDiscovery {
+  source: HardwareProjectSource;
+  projects: KicadProjectRow[];
+}
+
+class HardwareDiscoveryCoordinator {
+  readonly #ctx: PluginContext;
+  readonly #watchers: Map<string, HardwareSourceWatcher>;
+  readonly #queue: DiscoveryScope[] = [];
+  readonly #queued = new Set<string>();
+  readonly #statuses = new Map<string, DiscoveryStatus>();
+  #wake: (() => void) | null = null;
+
+  constructor(ctx: PluginContext, watchers: Map<string, HardwareSourceWatcher>) {
+    this.#ctx = ctx;
+    this.#watchers = watchers;
+  }
+
+  #key(scope: DiscoveryScope): string {
+    return `${scope.projectId}\0${storageVersion(scope.projectVersionId)}`;
+  }
+
+  status(scope: DiscoveryScope): DiscoveryStatus {
+    return structuredClone(this.#statuses.get(this.#key(scope)) ?? {
+      ...scope,
+      state: "idle",
+      message: null,
+      worktreeincludeHint: null,
+      truncated: false,
+    });
+  }
+
+  enqueue(scope: DiscoveryScope): DiscoveryStatus {
+    const key = this.#key(scope);
+    if (!this.#queued.has(key) && this.#statuses.get(key)?.state !== "refreshing") {
+      this.#queued.add(key);
+      this.#queue.push(scope);
+      this.#statuses.set(key, {
+        ...scope,
+        state: "queued",
+        message: null,
+        worktreeincludeHint: this.#statuses.get(key)?.worktreeincludeHint ?? null,
+        truncated: this.#statuses.get(key)?.truncated ?? false,
+      });
+      this.#wake?.();
+    }
+    return this.status(scope);
+  }
+
+  async refreshNow(scope: DiscoveryScope): Promise<RefreshedDiscovery> {
+    return this.#refresh(scope);
+  }
+
+  async start(signal: AbortSignal): Promise<void> {
+    while (!signal.aborted) {
+      const scope = this.#queue.shift();
+      if (scope) {
+        this.#queued.delete(this.#key(scope));
+        try { await this.#refresh(scope); } catch { /* status records the degraded result */ }
+        continue;
+      }
+      await waitForWake(signal, (wake) => { this.#wake = wake; });
+    }
+  }
+
+  async #refresh(scope: DiscoveryScope): Promise<RefreshedDiscovery> {
+    const key = this.#key(scope);
+    this.#statuses.set(key, {
+      ...scope,
+      state: "refreshing",
+      message: null,
+      worktreeincludeHint: this.#statuses.get(key)?.worktreeincludeHint ?? null,
+      truncated: false,
+    });
+    try {
+      const source = await resolveHardwareProjectSource(this.#ctx.bb, scope.projectId);
+      const scan = await scanProjectsFromSource(this.#ctx.bb, source);
+      upsertProjects(this.#ctx.db(), scope.projectId, scope.projectVersionId, scan.projects, !scan.truncated);
+      const hint = await worktreeIncludeHint(source.path, scan.projects);
+      this.#replaceWatchers(scope, source, scan.projects);
+      this.#statuses.set(key, {
+        ...scope,
+        state: scan.truncated ? "degraded" : "ready",
+        message: scan.truncated
+          ? "HW_DISCOVERY_PARTIAL: the workspace path limit was reached; cached projects are a truthful partial result"
+          : null,
+        worktreeincludeHint: hint,
+        truncated: scan.truncated,
+      });
+      this.#ctx.bb.realtime.publish("hardware:changed", { projectId: scope.projectId });
+      return { source, projects: scan.projects };
+    } catch (error) {
+      this.#statuses.set(key, {
+        ...scope,
+        state: "degraded",
+        message: errorDetail(error),
+        worktreeincludeHint: null,
+        truncated: false,
+      });
+      this.#ctx.bb.realtime.publish("hardware:changed", { projectId: scope.projectId });
+      throw error;
+    }
+  }
+
+  #replaceWatchers(
+    scope: DiscoveryScope,
+    source: HardwareProjectSource,
+    projects: KicadProjectRow[],
+  ): void {
+    const scopePrefix = `${this.#key(scope)}\0`;
+    for (const [watcherKey, watcher] of this.#watchers) {
+      if (watcherKey.startsWith(scopePrefix)) {
+        watcher.stop();
+        this.#watchers.delete(watcherKey);
+      }
+    }
+    for (const project of projects) {
+      const watcherKey = `${scopePrefix}${project.projectKey}`;
+      const watcher = new HardwareSourceWatcher({
+        schematicPath: resolve(source.path, project.schPath),
+        boardPath: project.pcbPath ? resolve(source.path, project.pcbPath) : null,
+        onChange: () => { this.enqueue(scope); },
+        onError: (error) => {
+          this.#ctx.bb.log.warn(`hardware source watch degraded: ${safeHardwareDetail(error.message)}`);
+          this.enqueue(scope);
+        },
+      });
+      try {
+        watcher.start();
+        this.#watchers.set(watcherKey, watcher);
+      } catch {
+        // Remote sources remain refreshable through the explicit refresh action.
+      }
+    }
+  }
+}
+
 class HardwareExtractCoordinator {
   readonly #ctx: PluginContext;
   readonly #capability: Promise<KicadCapability>;
+  readonly #discovery: HardwareDiscoveryCoordinator;
   readonly #jobs = new Map<string, HardwareExtractJob>();
   readonly #queue: Array<{ job: HardwareExtractJob; kinds: HwArtifactKind[]; force: boolean }> = [];
   #wake: (() => void) | null = null;
+  static readonly MAX_RETAINED_JOBS = 128;
 
-  constructor(ctx: PluginContext, capability: Promise<KicadCapability>) {
+  constructor(
+    ctx: PluginContext,
+    capability: Promise<KicadCapability>,
+    discovery: HardwareDiscoveryCoordinator,
+  ) {
     this.#ctx = ctx;
     this.#capability = capability;
+    this.#discovery = discovery;
   }
 
   enqueue(input: {
@@ -151,6 +368,12 @@ class HardwareExtractCoordinator {
     force: boolean;
   }): HardwareExtractJob {
     assertRelativeProjectPath(input.projectKey);
+    if (this.#jobs.size >= HardwareExtractCoordinator.MAX_RETAINED_JOBS) {
+      const evictable = [...this.#jobs].find(([, candidate]) =>
+        candidate.state === "completed" || candidate.state === "failed" || candidate.state === "cancelled");
+      if (!evictable) throw new Error("HW_EXTRACT_QUEUE_FULL: too many active extraction jobs");
+      this.#jobs.delete(evictable[0]);
+    }
     const job: HardwareExtractJob = {
       projectId: input.projectId,
       projectVersionId: input.projectVersionId,
@@ -184,15 +407,7 @@ class HardwareExtractCoordinator {
         if (next.job.state === "queued") await this.#run(next.job, next.kinds, next.force);
         continue;
       }
-      await new Promise<void>((resolve) => {
-        const wake = () => {
-          signal.removeEventListener("abort", wake);
-          this.#wake = null;
-          resolve();
-        };
-        this.#wake = wake;
-        signal.addEventListener("abort", wake, { once: true });
-      });
+      await waitForWake(signal, (wake) => { this.#wake = wake; });
     }
   }
 
@@ -200,9 +415,10 @@ class HardwareExtractCoordinator {
     job.state = "running";
     job.startedAt = new Date().toISOString();
     try {
-      const source = await resolveHardwareProjectSource(this.#ctx.bb, job.projectId);
-      const projects = await discoverProjectsFromSource(this.#ctx.bb, source);
-      upsertProjects(this.#ctx.db(), job.projectId, job.projectVersionId, projects);
+      const { source } = await this.#discovery.refreshNow({
+        projectId: job.projectId,
+        projectVersionId: job.projectVersionId,
+      });
       const result = await runExtractCached(source.path, job.projectKey, kinds, {
         db: this.#ctx.db(),
         scope: {
@@ -216,11 +432,12 @@ class HardwareExtractCoordinator {
       job.state = "completed";
     } catch (error) {
       job.state = "failed";
-      job.failures.push({
-        kind: kinds[0] ?? "sheet_svg",
+      const affectedKinds = kinds.length > 0 ? [...new Set(kinds)] : [...ALL_HW_ARTIFACT_KINDS];
+      job.failures.push(...affectedKinds.map((kind) => ({
+        kind,
         exitCode: null,
-        message: error instanceof Error ? error.message : String(error),
-      });
+        message: errorDetail(error),
+      })));
     } finally {
       job.finishedAt = new Date().toISOString();
       this.#ctx.bb.realtime.publish("hardware:changed", { projectKey: job.projectKey });
@@ -241,7 +458,7 @@ class HardwareExtractCoordinator {
     job.failures = result.failures.map((failure) => ({
       kind: failure.kind,
       exitCode: failure.exitCode,
-      message: failure.stderr,
+      message: safeHardwareDetail(failure.stderr),
     }));
   }
 }
@@ -264,13 +481,16 @@ export function registerHardware(bb: BbPluginApi, ctx: PluginContext): void {
     if (!value.installed) bb.status.needsConfiguration("Install KiCad 7+ to enable hardware artifact extraction.");
     else if (!value.supported) bb.status.needsConfiguration(`KiCad 7+ is required; detected ${value.version ?? "an unreadable version"}.`);
   });
-  const coordinator = ctx.service("hardware.extract-coordinator", () => new HardwareExtractCoordinator(ctx, capability));
+  const watchers = ctx.service("hardware.source-watchers", () => new Map<string, HardwareSourceWatcher>());
+  const discovery = ctx.service("hardware.discovery-coordinator", () =>
+    new HardwareDiscoveryCoordinator(ctx, watchers));
+  const coordinator = ctx.service("hardware.extract-coordinator", () =>
+    new HardwareExtractCoordinator(ctx, capability, discovery));
   ctx.service<HardwareExtractActionService>("hardware.extract.action", () => ({
     start: (input) => coordinator.enqueue(input),
     status: (jobId) => coordinator.status(jobId),
   }));
   ctx.service("hardware.command-services", () => createHardwareCommandHandlers(ctx));
-  const watchers = ctx.service("hardware.source-watchers", () => new Map<string, HardwareSourceWatcher>());
   bb.onDispose(() => {
     for (const watcher of watchers.values()) watcher.stop();
     watchers.clear();
@@ -278,38 +498,17 @@ export function registerHardware(bb: BbPluginApi, ctx: PluginContext): void {
   bb.background.service("hardware-extraction", {
     start: (signal) => coordinator.start(signal),
   });
+  bb.background.service("hardware-discovery", {
+    start: (signal) => discovery.start(signal),
+  });
 
-  async function discover(input: { projectId: string; projectVersionId: string | null }): Promise<{ source: HardwareProjectSource; projects: KicadProjectRow[] }> {
-    const source = await resolveHardwareProjectSource(bb, input.projectId);
-    const projects = await discoverProjectsFromSource(bb, source);
-    upsertProjects(db, input.projectId, input.projectVersionId, projects);
-    const scopePrefix = `${input.projectId}\0${storageVersion(input.projectVersionId)}\0`;
-    const activeKeys = new Set(projects.map((project) => `${scopePrefix}${project.projectKey}`));
-    for (const [key, watcher] of watchers) {
-      if (key.startsWith(scopePrefix) && !activeKeys.has(key)) {
-        watcher.stop();
-        watchers.delete(key);
-      }
-    }
-    for (const project of projects) {
-      const key = `${scopePrefix}${project.projectKey}`;
-      watchers.get(key)?.stop();
-      watchers.delete(key);
-      const watcher = new HardwareSourceWatcher({
-        db,
-        scope: { projectId: input.projectId, projectVersionId: storageVersion(input.projectVersionId), projectKey: project.projectKey },
-        schematicPath: resolve(source.path, project.schPath),
-        boardPath: project.pcbPath ? resolve(source.path, project.pcbPath) : null,
-        publish: () => bb.realtime.publish("hardware:changed", { projectKey: project.projectKey }),
-      });
-      try { watcher.start(); watchers.set(key, watcher); } catch { /* remote roots are polled on RPC reads */ }
-    }
-    return { source, projects };
-  }
+  bb.rpc.register(hardwareDiscoveryRpcContract, {
+    hardwareDiscoveryRefresh(input) { return discovery.enqueue(input); },
+    hardwareDiscoveryStatus(input) { return discovery.status(input); },
+  });
 
   bb.rpc.register(hardwareRpcContract, {
-    async hardwareProjectsList(input) {
-      await discover(input);
+    hardwareProjectsList(input) {
       const pv = storageVersion(input.projectVersionId);
       // The frozen cursorPagedScopedInput helper validates `query` at runtime but
       // loses additive shape keys in its TypeScript return type. Narrow once at
@@ -335,18 +534,22 @@ export function registerHardware(bb: BbPluginApi, ctx: PluginContext): void {
     hardwareSheetsList() { return hardwareSheetsNotImplemented(); },
     hardwarePartGet() { return hardwareSearchNotImplemented(); },
     async hardwareArtifactsStatus(input) {
-      const { projects } = await discover(input);
-      const project = projects.find((candidate) => candidate.projectKey === assertRelativeProjectPath(input.projectKey));
+      const projectKey = assertRelativeProjectPath(input.projectKey);
+      const project = db.prepare<[string, string, string], HardwareProjectDbRow>(
+        `SELECT * FROM hw_project
+          WHERE project_id = ? AND project_version_id = ? AND project_key = ?`,
+      ).get(input.projectId, storageVersion(input.projectVersionId), projectKey);
       if (!project) throw new Error(`HW_PROJECT_NOT_FOUND: ${input.projectKey}`);
-      const artifacts = listArtifactStatus(db, {
+      const source = await resolveHardwareProjectSource(bb, input.projectId);
+      const artifacts = await listArtifactStatus(db, {
         projectId: input.projectId,
         projectVersionId: storageVersion(input.projectVersionId),
-        projectKey: project.projectKey,
-      }, { schematic: project.schSha256, board: project.pcbSha256 });
+        projectKey: project.project_key,
+      }, { schematic: project.sch_hash, board: project.pcb_hash }, source.path);
       return {
         projectId: input.projectId,
         projectVersionId: input.projectVersionId,
-        projectKey: project.projectKey,
+        projectKey: project.project_key,
         capability: await capability,
         artifacts: artifacts.map((artifact) => ({
           projectKey: artifact.projectKey,

@@ -1,53 +1,69 @@
 import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
+import { access, chmod, mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createFakePluginHost } from "@bb/plugin-sdk/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createPluginContext } from "../../lib/context.js";
-import { registerHardware } from "./register.js";
+import { registerHardware, safeHardwareDetail } from "./register.js";
 
 const hosts: Array<ReturnType<typeof createFakePluginHost>> = [];
 afterEach(async () => Promise.all(hosts.splice(0).map((host) => host.harness.lifecycle.dispose())));
 
-function file(content: string) {
+async function sourceFixture() {
+  const root = await mkdtemp(join(tmpdir(), "fs-hw-register-"));
+  execFileSync("git", ["init", "--quiet", root]);
+  await writeFile(join(root, ".gitignore"), ".fs-hw/\n");
+  for (const [directory, version, pcb] of [["a", "5.1.12", false], ["b", "8.0.4", true]] as const) {
+    await mkdir(join(root, directory));
+    await writeFile(join(root, directory, `${directory}.kicad_pro`), "{}\n");
+    await writeFile(join(root, directory, `${directory}.kicad_sch`),
+      `(kicad_sch (version 20231120) (generator_version "${version}"))\n`);
+    if (pcb) await writeFile(join(root, directory, `${directory}.kicad_pcb`), `(kicad_pcb (version 20231120))\n`);
+  }
+  return root;
+}
+
+async function sdkFile(path: string) {
+  const content = await readFile(path);
   return {
-    content,
+    content: content.toString("utf8"),
     contentEncoding: "utf8" as const,
     sha256: createHash("sha256").update(content).digest("hex"),
-    sizeBytes: Buffer.byteLength(content),
+    sizeBytes: content.length,
+  };
+}
+
+function project(root: string, sources = true) {
+  return {
+    id: "project", kind: "standard" as const, name: "Project", gitRemoteUrl: null,
+    createdAt: 1, updatedAt: 1,
+    sources: sources ? [
+      { id: "other", projectId: "project", type: "local_path" as const, hostId: "host", path: "/workspace/other", isDefault: false, createdAt: 1, updatedAt: 1 },
+      { id: "default", projectId: "project", type: "local_path" as const, hostId: "host", path: root, isDefault: true, createdAt: 1, updatedAt: 1 },
+    ] : [],
   };
 }
 
 describe("hardware registration", () => {
-  it("uses the default project source, returns cursor pages, and reports absent KiCad", async () => {
-    const schematic = `(kicad_sch (version 20231120) (generator_version \"8.0.4\"))\n`;
-    const files = new Map([
-      ["/workspace/default/a/a.kicad_sch", file(schematic)],
-      ["/workspace/default/b/b.kicad_sch", file(schematic)],
-      ["/workspace/default/b/b.kicad_pcb", file("(kicad_pcb (version 20231120))\n")],
-    ]);
+  it("refreshes explicitly, keeps read RPCs write-free, and reports the completed absent-CLI job", async () => {
+    const root = await sourceFixture();
     const host = createFakePluginHost({
       pluginId: `finite-state-hardware-${Math.random()}`,
       sdk: {
-        projects: { get: async () => ({
-          id: "project", kind: "standard", name: "Project", gitRemoteUrl: null,
-          createdAt: 1, updatedAt: 1,
-          sources: [
-            { id: "other", projectId: "project", type: "local_path", hostId: "host", path: "/workspace/other", isDefault: false, createdAt: 1, updatedAt: 1 },
-            { id: "default", projectId: "project", type: "local_path", hostId: "host", path: "/workspace/default", isDefault: true, createdAt: 1, updatedAt: 1 },
-          ],
-        }) },
+        projects: { get: async () => project(root) },
         files: {
           listPaths: async (input) => {
-            expect(input.path).toBe("/workspace/default");
+            expect(input.path).toBe(root);
             return { paths: [
               { kind: "file" as const, path: "a/a.kicad_pro", name: "a.kicad_pro", score: 1, positions: [] },
               { kind: "file" as const, path: "b/b.kicad_pro", name: "b.kicad_pro", score: 1, positions: [] },
             ], truncated: false };
           },
           read: async (input) => {
-            expect(input.rootPath).toBe("/workspace/default");
-            const found = files.get(input.path);
-            if (!found) throw new Error("ENOENT");
-            return found;
+            expect(input.rootPath).toBe(root);
+            return sdkFile(input.path);
           },
         },
       },
@@ -58,51 +74,149 @@ describe("hardware registration", () => {
     registerHardware(host.bb, ctx);
     await vi.waitFor(() => expect(host.harness.needsConfigurationMessages).toHaveLength(1));
 
+    await expect(host.harness.behavior.callRpc("hardwareProjectsList", {
+      projectId: "project", projectVersionId: null, pageSize: 1, cursor: null,
+    })).resolves.toMatchObject({ items: [], total: 0, cursor: null });
+    expect(host.harness.inspection.sdk.callsTo("files.listPaths")).toHaveLength(0);
+
+    await host.harness.behavior.callRpc("hardwareDiscoveryRefresh", { projectId: "project", projectVersionId: null });
+    const discoveryService = host.harness.runService("hardware-discovery");
+    await vi.waitFor(async () => expect(await host.harness.behavior.callRpc("hardwareDiscoveryStatus", {
+      projectId: "project", projectVersionId: null,
+    })).toMatchObject({ state: "ready", worktreeincludeHint: expect.stringContaining(".worktreeinclude") }));
+    const oldHash = ctx.db().prepare("SELECT sch_hash FROM hw_project WHERE project_key = 'b/b.kicad_pro'").pluck().get();
+    await writeFile(join(root, "b", "b.kicad_sch"), `(kicad_sch (version 20231120) (generator_version "9.0.1"))\n`);
+    await vi.waitFor(() => expect(
+      ctx.db().prepare("SELECT sch_hash FROM hw_project WHERE project_key = 'b/b.kicad_pro'").pluck().get(),
+    ).not.toBe(oldHash));
+    await expect(access(join(root, ".fs-hw"))).rejects.toMatchObject({ code: "ENOENT" });
+    discoveryService.controller.abort();
+    await discoveryService.done;
+
     const first = await host.harness.behavior.callRpc("hardwareProjectsList", {
       projectId: "project", projectVersionId: null, pageSize: 1, cursor: null,
     });
     expect(first).toMatchObject({ total: 2, items: [{ projectKey: "a/a.kicad_pro" }] });
     const firstCursor = Reflect.get(Object(first), "cursor");
-    expect(firstCursor).toEqual(expect.any(String));
     const second = await host.harness.behavior.callRpc("hardwareProjectsList", {
       projectId: "project", projectVersionId: null, pageSize: 1, cursor: firstCursor,
     });
     expect(second).toMatchObject({ total: 2, cursor: null, items: [{ projectKey: "b/b.kicad_pro" }] });
+    expect(host.harness.inspection.sdk.callsTo("files.listPaths")).toHaveLength(2);
 
+    const before = ctx.db().prepare("SELECT discovered_at FROM hw_project WHERE project_key = 'b/b.kicad_pro'").pluck().get();
     const status = await host.harness.behavior.callRpc("hardwareArtifactsStatus", {
       projectId: "project", projectVersionId: null, projectKey: "b/b.kicad_pro",
     });
-    expect(status).toMatchObject({
-      projectKey: "b/b.kicad_pro",
-      capability: { installed: false, supported: false },
-      artifacts: [],
-    });
+    expect(status).toMatchObject({ projectKey: "b/b.kicad_pro", capability: { installed: false }, artifacts: [] });
+    expect(ctx.db().prepare("SELECT discovered_at FROM hw_project WHERE project_key = 'b/b.kicad_pro'").pluck().get()).toBe(before);
+    expect(host.harness.inspection.sdk.callsTo("files.listPaths")).toHaveLength(2);
+
     const job = await host.harness.behavior.callRpc("hardwareExtractStart", {
       projectId: "project", projectVersionId: null, projectKey: "b/b.kicad_pro",
+      kinds: ["bom", "board_svg"], force: false,
     });
     const jobId = Reflect.get(Object(job), "jobId");
+    const extractionService = host.harness.runService("hardware-extraction");
+    await vi.waitFor(async () => expect(await host.harness.behavior.callRpc("hardwareExtractStatus", {
+      projectId: "project", projectVersionId: null, jobId,
+    })).toMatchObject({
+      state: "completed",
+      produced: [],
+      failures: [
+        { kind: "bom", message: expect.stringContaining("KICAD_NOT_INSTALLED") },
+        { kind: "board_svg", message: expect.stringContaining("KICAD_NOT_INSTALLED") },
+      ],
+    }));
+    extractionService.controller.abort();
+    await extractionService.done;
     await expect(host.harness.behavior.callRpc("hardwareExtractStatus", {
       projectId: "another-project", projectVersionId: null, jobId,
     })).rejects.toThrow(/HW_EXTRACT_JOB_NOT_FOUND/u);
-    const service = host.harness.runService("hardware-extraction");
-    service.controller.abort();
-    await service.done;
     expect(host.harness.registrations.agentTools).toHaveLength(0);
     expect(host.harness.registrations.cli).toBeNull();
   });
 
-  it("truthfully rejects a project without a source", async () => {
+  it("reports a truthful degraded discovery status when no project source exists", async () => {
     const host = createFakePluginHost({
       pluginId: `finite-state-hardware-empty-${Math.random()}`,
-      sdk: { projects: { get: async () => ({ id: "project", kind: "standard", name: "Project", gitRemoteUrl: null, createdAt: 1, updatedAt: 1, sources: [] }) } },
+      sdk: { projects: { get: async () => project("/unused", false) } },
     });
     hosts.push(host);
     const ctx = createPluginContext(host.bb);
     ctx.service("hardware.kicad-capability", async () => ({ installed: false, cliPath: null, version: null, supported: false }));
     registerHardware(host.bb, ctx);
-    await expect(host.harness.behavior.callRpc("hardwareProjectsList", {
-      projectId: "project", projectVersionId: null, pageSize: 50, cursor: null,
-    })).rejects.toThrow(/HW_PROJECT_SOURCE_UNAVAILABLE/u);
+    await host.harness.behavior.callRpc("hardwareDiscoveryRefresh", { projectId: "project", projectVersionId: null });
+    const service = host.harness.runService("hardware-discovery");
+    await vi.waitFor(async () => expect(await host.harness.behavior.callRpc("hardwareDiscoveryStatus", {
+      projectId: "project", projectVersionId: null,
+    })).toMatchObject({ state: "degraded", message: expect.stringContaining("HW_PROJECT_SOURCE_UNAVAILABLE") }));
+    service.controller.abort();
+    await service.done;
     expect(host.harness.needsConfigurationMessages.some((message) => message.includes("workspace source"))).toBe(true);
+  });
+
+  it("keeps partial-success jobs readable when KiCad emits oversized credential-shaped stderr", async () => {
+    const root = await sourceFixture();
+    const fakeCli = join(root, "fake-kicad-cli");
+    await writeFile(fakeCli, `#!${process.execPath}
+const fs = require("node:fs");
+const path = require("node:path");
+const args = process.argv.slice(2);
+const output = args[args.indexOf("--output") + 1];
+if (args.includes("bom")) {
+  fs.mkdirSync(path.dirname(output), { recursive: true });
+  fs.writeFileSync(output, "bom");
+  process.exit(0);
+}
+process.stderr.write("?token=super-secret\\n" + "diagnostic\\n".repeat(100) + "FINAL_KICAD_ERROR");
+process.exit(9);
+`);
+    await chmod(fakeCli, 0o755);
+    const host = createFakePluginHost({
+      pluginId: `finite-state-hardware-long-error-${Math.random()}`,
+      sdk: {
+        projects: { get: async () => project(root) },
+        files: {
+          listPaths: async () => ({
+            paths: [{ kind: "file" as const, path: "b/b.kicad_pro", name: "b.kicad_pro", score: 1, positions: [] }],
+            truncated: false,
+          }),
+          read: async (input) => sdkFile(input.path),
+        },
+      },
+    });
+    hosts.push(host);
+    const ctx = createPluginContext(host.bb);
+    ctx.service("hardware.kicad-capability", async () => ({ installed: true, cliPath: fakeCli, version: "9.0.1", supported: true }));
+    registerHardware(host.bb, ctx);
+    const queued = await host.harness.behavior.callRpc("hardwareExtractStart", {
+      projectId: "project", projectVersionId: null, projectKey: "b/b.kicad_pro",
+      kinds: ["bom", "netlist"], force: false,
+    });
+    const jobId = Reflect.get(Object(queued), "jobId");
+    const service = host.harness.runService("hardware-extraction");
+    let completed: unknown;
+    await vi.waitFor(async () => {
+      completed = await host.harness.behavior.callRpc("hardwareExtractStatus", {
+        projectId: "project", projectVersionId: null, jobId,
+      });
+      expect(completed).toMatchObject({ state: "completed", produced: [{ kind: "bom" }] });
+    });
+    service.controller.abort();
+    await service.done;
+    const failure = Reflect.get(Object(completed), "failures")[0] as { message: string };
+    expect(failure.message).toHaveLength(500);
+    expect(failure.message).toContain("FINAL_KICAD_ERROR");
+    expect(failure.message).not.toMatch(/super-secret|token=/u);
+  });
+
+  it("clips the diagnostic tail and scrubs credentials before frozen output validation", () => {
+    const tail = "final KiCad error";
+    const detail = safeHardwareDetail(`${"prefix\n".repeat(100)}https://user:secret@example.test/path?token=secret\n${tail}`);
+    expect(detail).toHaveLength(500);
+    expect(detail).toContain(tail);
+    expect(detail).toContain("diagnostic truncated; tail shown");
+    expect(detail).not.toMatch(/secret|token=/u);
   });
 });

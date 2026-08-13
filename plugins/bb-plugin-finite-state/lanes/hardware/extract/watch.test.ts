@@ -1,45 +1,35 @@
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, rename, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createFakePluginHost } from "@bb/plugin-sdk/testing";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { createPluginContext } from "../../../lib/context.js";
-import { listArtifactStatus, recordArtifact } from "./provenance.js";
+import { describe, expect, it, vi } from "vitest";
 import { HardwareSourceWatcher, refuseAutomaticExtraction } from "./watch.js";
 
-const hosts: Array<ReturnType<typeof createFakePluginHost>> = [];
-afterEach(async () => Promise.all(hosts.splice(0).map((host) => host.harness.lifecycle.dispose())));
-
 describe("hardware source watch", () => {
-  it("publishes a stale refetch hint without invoking extraction", async () => {
+  it("survives repeated rename-over-save events and only requests a source refresh", async () => {
     const root = await mkdtemp(join(tmpdir(), "fs-hw-watch-"));
     const schematic = join(root, "board.kicad_sch");
     await writeFile(schematic, "before");
-    const host = createFakePluginHost({ pluginId: `hw-watch-${Math.random()}` });
-    hosts.push(host);
-    const db = createPluginContext(host.bb).db();
-    const scope = { projectId: "project", projectVersionId: "@project", projectKey: "board.kicad_pro" };
-    db.prepare(
-      `INSERT INTO hw_project (project_id, project_version_id, project_key, name, sch_path, sch_hash, discovered_at)
-       VALUES ('project', '@project', 'board.kicad_pro', 'board', 'board.kicad_sch', 'old', '2026-01-01T00:00:00.000Z')`,
-    ).run();
-    recordArtifact(db, scope, {
-      kind: "bom", sheetPath: null, path: ".fs-hw/cache/bom.csv",
-      sourceHash: "old", cliVersion: "8.0.4", generatedAt: "2026-01-01T00:00:00.000Z",
+    const onChange = vi.fn();
+    const onError = vi.fn();
+    const watcher = new HardwareSourceWatcher({
+      schematicPath: schematic,
+      boardPath: null,
+      onChange,
+      onError,
+      debounceMs: 10,
     });
-    const publish = vi.fn();
-    const subprocess = vi.fn();
-    const watcher = new HardwareSourceWatcher({ db, scope, schematicPath: schematic, boardPath: null, publish, debounceMs: 10 });
     watcher.start();
-    await writeFile(schematic, "after");
-    await vi.waitFor(() => expect(publish).toHaveBeenCalledOnce());
+
+    for (const content of ["first save", "second save"]) {
+      const replacement = join(root, `replacement-${content.replace(" ", "-")}`);
+      await writeFile(replacement, content);
+      await rename(replacement, schematic);
+      await vi.waitFor(() => expect(onChange).toHaveBeenCalledTimes(content === "first save" ? 1 : 2));
+    }
+
     watcher.stop();
-    expect(subprocess).not.toHaveBeenCalled();
-    expect(db.prepare("SELECT source_hash FROM hw_artifact WHERE kind = 'bom'").pluck().get()).toBe("old");
-    expect(listArtifactStatus(db, scope, {
-      schematic: createHash("sha256").update("after").digest("hex"),
-      board: null,
-    })[0]?.fresh).toBe(false);
+    expect(onError).not.toHaveBeenCalled();
+    expect(onChange.mock.calls).toEqual([["schematic"], ["schematic"]]);
   });
 
   it("refuses every automatic regeneration path, including active agent runs", () => {
@@ -47,4 +37,3 @@ describe("hardware source watch", () => {
     expect(() => refuseAutomaticExtraction(true)).toThrow("during an agent run");
   });
 });
-import { createHash } from "node:crypto";

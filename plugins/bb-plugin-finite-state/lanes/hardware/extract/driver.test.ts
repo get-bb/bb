@@ -1,9 +1,13 @@
+import { mkdtemp, realpath } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   buildExtractCommand,
   detectKicadCli,
   executeExtractCommand,
   parseKicadVersion,
+  runKicadProcess,
   type HwArtifactKind,
 } from "./driver.js";
 
@@ -45,5 +49,30 @@ describe("kicad-cli driver", () => {
       exitCode: 17,
       stderr: "exact stderr\nline two\n",
     });
+  });
+
+  it("runs the default subprocess path in the bounded cwd and types forced termination", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "fs-hw-driver-"));
+    const command = {
+      executable: process.execPath,
+      args: ["-e", "process.stderr.write(process.cwd()); process.exit(7)"],
+      cwd,
+      minMajor: 7,
+    };
+    await expect(executeExtractCommand(command)).resolves.toEqual({
+      exitCode: 7,
+      stderr: await realpath(cwd),
+      code: "KICAD_EXIT_NONZERO",
+    });
+    const timeout = await runKicadProcess({
+      ...command,
+      args: ["-e", "setInterval(() => {}, 1000)"],
+    }, { timeoutMs: 25 });
+    expect(timeout).toMatchObject({ exitCode: -1, code: "KICAD_CLI_TIMEOUT" });
+    const outputLimit = await runKicadProcess({
+      ...command,
+      args: ["-e", "process.stderr.write('x'.repeat(2048))"],
+    }, { maxBuffer: 128 });
+    expect(outputLimit).toMatchObject({ exitCode: -1, code: "KICAD_CLI_OUTPUT_LIMIT" });
   });
 });
