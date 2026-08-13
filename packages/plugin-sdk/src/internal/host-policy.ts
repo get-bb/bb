@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { RESERVED_BB_CLI_COMMANDS } from "@bb/domain/plugin-cli";
 import { PLUGIN_CLI_OUTPUT_MAX_BYTES } from "../backend-contract.js";
 import type {
   PluginCliExecutionResult,
@@ -20,28 +21,7 @@ import type {
  * unit tests are not lying about load-time behavior.
  */
 
-/**
- * Core `bb` CLI top-level command names (plus commander's built-in help).
- * Plugin CLI commands may not shadow these. Maintained by hand — kept in
- * sync with apps/cli/src/index.ts by
- * apps/cli/src/__tests__/plugin-cli-proxy.test.ts.
- *
- * "automation" and "connect" are intentionally absent: builtin plugins own
- * those top-level commands and the CLI proxies them.
- */
-export const RESERVED_BB_CLI_COMMANDS: readonly string[] = [
-  "environment",
-  "guide",
-  "help",
-  "manager",
-  "plugin",
-  "project",
-  "provider",
-  "skill",
-  "status",
-  "theme",
-  "thread",
-];
+export { RESERVED_BB_CLI_COMMANDS };
 
 /**
  * Built-in dynamic tool names plugins may not shadow. Maintained by hand —

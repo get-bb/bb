@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Command } from "commander";
-import { RESERVED_BB_CLI_COMMANDS } from "@bb/plugin-sdk/internal/host-policy";
+import { RESERVED_BB_CLI_COMMANDS } from "@bb/domain/plugin-cli";
 
 import { registerEnvironmentCommands } from "../commands/environment.js";
 import { registerGuideCommand } from "../commands/guide.js";

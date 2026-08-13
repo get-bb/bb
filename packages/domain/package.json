@@ -22,6 +22,11 @@
       "source": "./src/thread-visibility.ts",
       "types": "./src/thread-visibility.ts",
       "default": "./src/thread-visibility.ts"
+    },
+    "./plugin-cli": {
+      "source": "./src/plugin-cli.ts",
+      "types": "./src/plugin-cli.ts",
+      "default": "./src/plugin-cli.ts"
     }
   },
   "types": "./src/index.ts",

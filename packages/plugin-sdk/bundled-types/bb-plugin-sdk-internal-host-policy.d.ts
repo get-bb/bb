@@ -6,6 +6,17 @@
 // and read the real source: https://github.com/get-bb/bb
 
 /**
+ * Core `bb` CLI top-level command names (plus commander's built-in help).
+ * Plugin CLI commands may not shadow these. Maintained by hand and checked
+ * against the real Commander program by
+ * apps/cli/src/__tests__/plugin-cli-proxy.test.ts.
+ *
+ * "automation" and "connect" are intentionally absent: builtin plugins own
+ * those top-level commands and the CLI proxies them.
+ */
+declare const RESERVED_BB_CLI_COMMANDS: readonly string[];
+
+/**
  * The validator-neutral subset of Standard Schema v1 used by plugin RPC.
  * Zod 4 schemas implement this interface directly; other validators can do
  * the same without becoming part of BB's public protocol.
@@ -85,23 +96,6 @@ interface PluginCliExecutionResult {
 }
 type PluginMentionTrigger = "@" | "#" | "$" | "!" | "~";
 
-/**
- * Shared registration policy for the real plugin host and the in-process fake.
- *
- * These rules decide whether `bb.*.register()` throws. The fake host must
- * accept and reject the same names, schemas, and caps as production so plugin
- * unit tests are not lying about load-time behavior.
- */
-/**
- * Core `bb` CLI top-level command names (plus commander's built-in help).
- * Plugin CLI commands may not shadow these. Maintained by hand — kept in
- * sync with apps/cli/src/index.ts by
- * apps/cli/src/__tests__/plugin-cli-proxy.test.ts.
- *
- * "automation" and "connect" are intentionally absent: builtin plugins own
- * those top-level commands and the CLI proxies them.
- */
-declare const RESERVED_BB_CLI_COMMANDS: readonly string[];
 /**
  * Built-in dynamic tool names plugins may not shadow. Maintained by hand —
  * kept in sync with the built-in tools in
