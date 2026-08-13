@@ -2,10 +2,11 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { mkdir, open, realpath, stat } from "node:fs/promises";
-import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import type Database from "better-sqlite3";
 import {
   createBuildRun,
+  getBuildRun,
   transitionBuildRun,
   type BuildRunChangedHint,
   type BuildRunRecord,
@@ -18,6 +19,8 @@ import {
   type ToolchainContext,
   type ToolchainReport,
 } from "./toolchain.js";
+import { buildLogPath } from "./logs.js";
+import { toStorageProjectVersionId } from "../../../lib/store/index.js";
 
 declare const destructiveConfirmation: unique symbol;
 export interface DestructiveConfirmation {
@@ -42,12 +45,12 @@ export interface FlashPlan {
 export interface AuthoringContext extends ToolchainContext {
   db: Database.Database;
   projectId: string;
-  projectVersionId: string;
+  /** Domain form at the boundary; null is converted once to the storage sentinel. */
+  projectVersionId: string | null;
   execution: {
     worktreeRoot: string;
     verified: true;
   };
-  dataDir: string;
   signal: AbortSignal;
   now(): Date;
   publish(hint: BuildRunChangedHint): void;
@@ -112,7 +115,7 @@ export interface LocalCommandResult {
 
 const activeJobs = new WeakMap<Database.Database, Set<AbortController>>();
 const ENV_NAME = /^[A-Z_][A-Z0-9_]{0,100}$/u;
-const DENIED_ENV = /^(?:BASH_ENV|ENV|NODE_OPTIONS|LD_PRELOAD|DYLD_.+)$/u;
+const DENIED_ENV = /^(?:BASH_ENV|ENV|NODE_OPTIONS|PATH|LD_PRELOAD|LD_LIBRARY_PATH|DYLD_.+)$/u;
 const MAX_ARGS = 256;
 const MAX_ARG_BYTES = 8192;
 
@@ -121,7 +124,24 @@ function storeFor(ctx: AuthoringContext): BuildRunStore {
 }
 
 function scopeFor(ctx: AuthoringContext): BuildRunScope {
-  return { projectId: ctx.projectId, projectVersionId: ctx.projectVersionId };
+  return {
+    projectId: ctx.projectId,
+    projectVersionId: toStorageProjectVersionId(ctx.projectVersionId),
+  };
+}
+
+async function failActiveBuildRun(
+  ctx: AuthoringContext,
+  runId: string,
+): Promise<BuildRunRecord> {
+  const scope = scopeFor(ctx);
+  const current = getBuildRun(ctx.db, scope, runId);
+  if (current === null) throw new Error(`Unknown build run ${runId}`);
+  if (current.status !== "queued" && current.status !== "running") return current;
+  return await transitionBuildRun(storeFor(ctx), scope, runId, "failed", {
+    artifact: current.artifact,
+    digest: current.digest,
+  });
 }
 
 function validatePlan(
@@ -158,8 +178,8 @@ function boundedEnvironment(
   return {
     LANG: "C",
     LC_ALL: "C",
-    PATH: pathValue,
     ...configured,
+    PATH: pathValue,
   };
 }
 
@@ -296,7 +316,9 @@ export async function executeLocalCommand(
   }
   await mkdir(dirname(run.logPath), { recursive: true });
   const handle = await open(run.logPath, "a", 0o600);
-  await handle.write(`[finite-state] ${kind} command: ${JSON.stringify([executable, ...plan.command.slice(1)])}\n`);
+  await handle.write(
+    `[finite-state] ${kind} command: ${basename(executable)} (${plan.command.length - 1} arguments)\n`,
+  );
   await transitionBuildRun(storeFor(ctx), scopeFor(ctx), run.runId, "running", {
     artifact: run.artifact,
     digest: run.digest,
@@ -378,15 +400,6 @@ export async function executeLocalCommand(
   }
 }
 
-async function prepareLogPath(ctx: AuthoringContext, runId: string): Promise<string> {
-  if (!isAbsolute(ctx.dataDir)) throw new Error("Authoring dataDir must be absolute");
-  await mkdir(ctx.dataDir, { recursive: true });
-  const dataDir = await realpath(ctx.dataDir);
-  const logDir = resolve(dataDir, "build-logs");
-  await mkdir(logDir, { recursive: true });
-  return resolve(logDir, `${runId}.log`);
-}
-
 async function runBuildDetailed(
   ctx: AuthoringContext,
   req: { target?: string },
@@ -402,7 +415,7 @@ async function runBuildDetailed(
   }
   validatePlan(plan, "build");
   const runId = `build-${randomUUID()}`;
-  const logPath = await prepareLogPath(ctx, runId);
+  const logPath = await buildLogPath(ctx.db, runId);
   const queued = await createBuildRun(storeFor(ctx), {
     ...scopeFor(ctx),
     runId,
@@ -418,11 +431,8 @@ async function runBuildDetailed(
   try {
     command = await executeLocalCommand(ctx, queued, plan, "build");
   } catch (error) {
-    if (error instanceof AuthoringError && error.code === "AUTHORING_NEEDS_CONFIGURATION") {
-      const record = await transitionBuildRun(storeFor(ctx), scopeFor(ctx), runId, "failed", {
-        artifact: null,
-        digest: null,
-      });
+    const record = await failActiveBuildRun(ctx, runId);
+    if (error instanceof AuthoringError) {
       throw new AuthoringError({
         code: error.code,
         message: error.message,
@@ -430,7 +440,12 @@ async function runBuildDetailed(
         run: record,
       });
     }
-    throw error;
+    throw new AuthoringError({
+      code: "BUILD_FAILED",
+      message: error instanceof Error ? error.message : "Build failed before spawn",
+      hint: "Inspect the run log and verified execution context before retrying.",
+      run: record,
+    });
   }
   if (command.termination === "cancelled") {
     const record = await transitionBuildRun(storeFor(ctx), scopeFor(ctx), runId, "cancelled", {

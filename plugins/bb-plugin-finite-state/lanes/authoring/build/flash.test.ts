@@ -38,7 +38,12 @@ describe("flash runner", () => {
     const fx = await fixture({ confirmationValid: true });
     const build = await runBuild(fx.ctx, { target: "board-a" });
     const events: Array<{ runId: string; device: string; digest: string }> = [];
-    onFlashCompleted((event) => events.push(event));
+    const otherProjectEvents: typeof events = [];
+    const dispose = onFlashCompleted(fx.ctx, (event) => events.push(event));
+    const disposeOther = onFlashCompleted(
+      { ...fx.ctx, projectId: "project-b" },
+      (event) => otherProjectEvents.push(event),
+    );
     const flash = await runFlash(fx.ctx, {
       runId: build.runId,
       device: "probe-a",
@@ -55,6 +60,15 @@ describe("flash runner", () => {
       device: "probe-a",
       digest: build.digest,
     });
+    expect(otherProjectEvents).toEqual([]);
+    dispose();
+    disposeOther();
+    await runFlash(fx.ctx, {
+      runId: build.runId,
+      device: "probe-a",
+      confirmation: confirmationFixture(),
+    });
+    expect(events).toHaveLength(1);
   });
 
   it("refuses when artifact bytes no longer match the immutable build digest", async () => {

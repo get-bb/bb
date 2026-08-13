@@ -38,7 +38,7 @@ function probe(id: string, unlocks: "build" | "flash"): ToolchainProbe {
 }
 
 function context(path: string, probes: readonly ToolchainProbe[]): ToolchainContext {
-  return { path, probes, probeTimeoutMs: 5_000 };
+  return { cacheKey: {}, path, probes, probeTimeoutMs: 5_000 };
 }
 
 describe("toolchain detection", () => {
@@ -62,7 +62,7 @@ describe("toolchain detection", () => {
         probe("fixture-bad", "flash"),
       ]),
     );
-    expect(report.configured).toBe(true);
+    expect(report.configured).toBe(false);
     expect(report.found).toMatchObject([{ id: "fixture-gcc", version: "1.2.3" }]);
     expect(report.missing).toEqual([{ id: "fixture-bad", unlocks: "flash" }]);
   });
@@ -77,5 +77,21 @@ describe("toolchain detection", () => {
     await chmod(path, 0o700);
     expect((await detectToolchains(ctx)).configured).toBe(false);
     expect((await redetectToolchains(ctx)).found[0]?.version).toBe("2.0.0");
+  });
+
+  it("caches across fresh contexts that share the stable plugin holder", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "fs-toolchain-holder-"));
+    cleanup.push(directory);
+    const cacheKey = {};
+    const first = context(directory, [probe("stable-tool", "build")]);
+    first.cacheKey = cacheKey;
+    expect((await detectToolchains(first)).configured).toBe(false);
+    const path = join(directory, "stable-tool");
+    await writeFile(path, "#!/bin/sh\nprintf 'fixture 3.0.0\\n'\n", "utf8");
+    await chmod(path, 0o700);
+    const second = context(directory, [probe("stable-tool", "build")]);
+    second.cacheKey = cacheKey;
+    expect((await detectToolchains(second)).configured).toBe(false);
+    expect((await redetectToolchains(second)).configured).toBe(true);
   });
 });

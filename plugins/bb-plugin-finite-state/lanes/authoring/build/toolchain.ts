@@ -18,6 +18,8 @@ export interface ToolchainProbe {
 }
 
 export interface ToolchainContext {
+  /** Stable per-plugin holder; production uses the plugin database handle. */
+  cacheKey: object;
   path: string;
   probes: readonly ToolchainProbe[];
   probeTimeoutMs: number;
@@ -61,7 +63,7 @@ export const DEFAULT_TOOLCHAIN_PROBES: readonly ToolchainProbe[] = [
   },
 ] as const;
 
-const cache = new WeakMap<ToolchainContext, Promise<ToolchainReport>>();
+const cache = new WeakMap<object, Promise<ToolchainReport>>();
 const MAX_VERSION_BYTES = 64 * 1024;
 
 function firstVersionLine(output: string): string | null {
@@ -179,21 +181,25 @@ async function probeToolchains(ctx: ToolchainContext): Promise<ToolchainReport> 
     }
     found.push({ id: probe.id, version, path: executable });
   }
-  return { found, missing, configured: found.length > 0 };
+  return {
+    found,
+    missing,
+    configured: found.length > 0 && missing.length === 0,
+  };
 }
 
 export function detectToolchains(ctx: ToolchainContext): Promise<ToolchainReport> {
-  const existing = cache.get(ctx);
+  const existing = cache.get(ctx.cacheKey);
   if (existing) return existing;
   const pending = probeToolchains(ctx).catch((error: unknown) => {
-    cache.delete(ctx);
+    cache.delete(ctx.cacheKey);
     throw error;
   });
-  cache.set(ctx, pending);
+  cache.set(ctx.cacheKey, pending);
   return pending;
 }
 
 export function redetectToolchains(ctx: ToolchainContext): Promise<ToolchainReport> {
-  cache.delete(ctx);
+  cache.delete(ctx.cacheKey);
   return detectToolchains(ctx);
 }

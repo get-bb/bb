@@ -1,5 +1,4 @@
 import type { BbPluginApi } from "@bb/plugin-sdk";
-import { dirname } from "node:path";
 import type { PluginContext } from "../../lib/context.js";
 import { toStorageProjectVersionId } from "../../lib/store/index.js";
 import { rpcContract } from "../../shared/contract.js";
@@ -13,6 +12,7 @@ import {
   type AuthoringContext,
 } from "./build/runner.js";
 import {
+  clearFlashCompletedHandlers,
   runFlashAction,
   type FlashActionResult,
 } from "./build/flash.js";
@@ -22,7 +22,11 @@ import {
   type BuildRunChangedHint,
 } from "./build/runs-store.js";
 import { getAuthoringGateStatusNotImplemented } from "./workflows/state.js";
-import type { ToolchainReport } from "./build/toolchain.js";
+import {
+  DEFAULT_TOOLCHAIN_PROBES,
+  detectToolchains,
+  type ToolchainReport,
+} from "./build/toolchain.js";
 
 const authoringRpcContract = {
   authoringCitationsList: rpcContract.authoringCitationsList,
@@ -60,15 +64,17 @@ function publishBuildChanged(bb: BbPluginApi, hint: BuildRunChangedHint): void {
 }
 
 function buildRunFilters(input: object): {
-  kinds: Array<"build" | "flash">;
+  kinds: Array<"build" | "flash" | "probe">;
   statuses: Array<"queued" | "running" | "succeeded" | "failed" | "cancelled">;
 } {
   const rawKinds = Reflect.get(input, "kinds");
   const rawStatuses = Reflect.get(input, "statuses");
-  const kinds: Array<"build" | "flash"> = [];
+  const kinds: Array<"build" | "flash" | "probe"> = [];
   if (Array.isArray(rawKinds)) {
     for (const kind of rawKinds) {
-      if (kind === "build" || kind === "flash") kinds.push(kind);
+      if (kind === "build" || kind === "flash" || kind === "probe") {
+        kinds.push(kind);
+      }
     }
   }
   const statuses: Array<"queued" | "running" | "succeeded" | "failed" | "cancelled"> = [];
@@ -91,11 +97,23 @@ function buildRunFilters(input: object): {
 export function registerAuthoring(bb: BbPluginApi, ctx: PluginContext): void {
   const db = ctx.db();
   const publish = (hint: BuildRunChangedHint): void => publishBuildChanged(bb, hint);
-  void recoverOrphanedBuildRuns({ db, publish }).catch((error: unknown) => {
+  const recovery = recoverOrphanedBuildRuns({ db, publish }).catch((error: unknown) => {
     ctx.log.error(
       `Authoring build-run recovery failed: ${error instanceof Error ? error.message : "unknown error"}`,
     );
   });
+  void detectToolchains({
+    cacheKey: db,
+    path: process.env.PATH ?? "",
+    probes: DEFAULT_TOOLCHAIN_PROBES,
+    probeTimeoutMs: 2_000,
+  })
+    .then((report) => reportToolchainConfiguration(bb, report))
+    .catch((error: unknown) => {
+      ctx.log.warn(
+        `Authoring toolchain detection failed: ${error instanceof Error ? error.message : "unknown error"}`,
+      );
+    });
   bb.rpc.register(authoringRpcContract, {
     authoringCitationsList(input) {
       return listCitationFilesNotImplemented(input);
@@ -137,19 +155,22 @@ export function registerAuthoring(bb: BbPluginApi, ctx: PluginContext): void {
   bb.http.route(
     "GET",
     "/authoring/build/log",
-    createBuildLogTailHandler({ db, dataDir: dirname(db.name) }),
+    createBuildLogTailHandler({ db }),
     { auth: "local" },
   );
   bb.background.service("authoring-build-supervisor", {
     async start(signal) {
-      await recoverOrphanedBuildRuns({ db, publish });
+      await recovery;
       await new Promise<void>((resolve) => {
         if (signal.aborted) resolve();
         else signal.addEventListener("abort", () => resolve(), { once: true });
       });
     },
   });
-  bb.onDispose(() => cancelAuthoringJobs(db));
+  bb.onDispose(() => {
+    cancelAuthoringJobs(db);
+    clearFlashCompletedHandlers(db);
+  });
 }
 
 export type { AuthoringContext, BuildActionResult, FlashActionResult };

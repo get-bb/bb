@@ -57,7 +57,7 @@ export interface NewBuildRun extends BuildRunScope {
 export interface RunHistoryQuery extends BuildRunScope {
   pageSize: number;
   cursor: string | null;
-  kinds: readonly BuildRunKind[];
+  kinds: readonly (BuildRunKind | "probe")[];
   statuses: readonly BuildRunStatus[];
 }
 
@@ -92,7 +92,7 @@ interface HistoryCursor {
 
 const SHA256 = /^[a-f0-9]{64}$/u;
 const RUN_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,511}$/u;
-const KINDS = new Set<BuildRunKind>(["build", "flash"]);
+const TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
 const STATUSES = new Set<BuildRunStatus>([
   "queued",
   "running",
@@ -189,6 +189,12 @@ export async function createBuildRun(
   input: NewBuildRun,
 ): Promise<ScopedBuildRunRecord> {
   if (!RUN_ID.test(input.runId)) throw new Error("Invalid build run id");
+  if (
+    !TIMESTAMP.test(input.startedAt) ||
+    new Date(input.startedAt).toISOString() !== input.startedAt
+  ) {
+    throw new Error("Build run startedAt must be a canonical UTC timestamp");
+  }
   if (input.digest !== null && !SHA256.test(input.digest)) {
     throw new Error("Build run digest must be a lowercase sha256");
   }
@@ -310,15 +316,28 @@ function decodeCursor(value: string): HistoryCursor {
 }
 
 function filterClause(query: RunHistoryQuery): { sql: string; values: string[] } {
-  if (query.kinds.some((kind) => !KINDS.has(kind))) throw new Error("Invalid build run kind filter");
+  if (
+    query.kinds.some(
+      (kind) => kind !== "build" && kind !== "flash" && kind !== "probe",
+    )
+  ) {
+    throw new Error("Invalid build run kind filter");
+  }
   if (query.statuses.some((status) => !STATUSES.has(status))) {
     throw new Error("Invalid build run status filter");
   }
   const clauses = ["project_id = ?", "project_version_id = ?"];
   const values = [query.projectId, query.projectVersionId];
   if (query.kinds.length > 0) {
-    clauses.push(`kind IN (${query.kinds.map(() => "?").join(",")})`);
-    values.push(...query.kinds);
+    const supportedKinds = query.kinds.filter(
+      (kind): kind is BuildRunKind => kind === "build" || kind === "flash",
+    );
+    if (supportedKinds.length === 0) {
+      clauses.push("0 = 1");
+    } else {
+      clauses.push(`kind IN (${supportedKinds.map(() => "?").join(",")})`);
+      values.push(...supportedKinds);
+    }
   }
   if (query.statuses.length > 0) {
     clauses.push(`status IN (${query.statuses.map(() => "?").join(",")})`);
@@ -404,7 +423,7 @@ export async function recoverOrphanedBuildRuns(
     .prepare<[], BuildRunRow>(
       `SELECT project_id, project_version_id, run_id, kind, target, toolchain,
               status, artifact, digest, log_path, started_at
-         FROM build_run WHERE status = 'running'`,
+         FROM build_run WHERE status IN ('queued','running')`,
     )
     .all();
   if (rows.length === 0) return 0;
@@ -414,7 +433,7 @@ export async function recoverOrphanedBuildRuns(
       try {
         await appendFile(
           row.log_path,
-          "\n[finite-state] orphaned: plugin restarted while the subprocess was running\n",
+          `\n[finite-state] orphaned: plugin restarted while the job was ${row.status}\n`,
           "utf8",
         );
       } catch {
@@ -428,9 +447,9 @@ export async function recoverOrphanedBuildRuns(
         .prepare(
           `UPDATE build_run SET status = 'failed'
             WHERE project_id = ? AND project_version_id = ? AND run_id = ?
-              AND status = 'running'`,
+              AND status = ?`,
         )
-        .run(row.project_id, row.project_version_id, row.run_id);
+        .run(row.project_id, row.project_version_id, row.run_id, row.status);
     }
   })();
   for (const row of rows) {

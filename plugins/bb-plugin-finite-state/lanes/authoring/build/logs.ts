@@ -1,5 +1,5 @@
-import { open, realpath, stat } from "node:fs/promises";
-import { isAbsolute, relative, resolve, sep } from "node:path";
+import { mkdir, open, realpath, stat } from "node:fs/promises";
+import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import type { PluginHttpHandler } from "@bb/plugin-sdk";
 import type Database from "better-sqlite3";
 import { toStorageProjectVersionId } from "../../../lib/store/index.js";
@@ -7,7 +7,6 @@ import { getBuildRun } from "./runs-store.js";
 
 export interface LogTailDependencies {
   db: Database.Database;
-  dataDir: string;
 }
 
 interface ByteRange {
@@ -18,6 +17,27 @@ interface ByteRange {
 const ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,511}$/u;
 const DEFAULT_TAIL_BYTES = 64 * 1024;
 const MAX_RANGE_BYTES = 256 * 1024;
+
+export function authoringDataDir(db: Database.Database): string {
+  if (!isAbsolute(db.name)) {
+    throw new Error("Authoring requires an on-disk plugin database");
+  }
+  return dirname(db.name);
+}
+
+export async function buildLogRoot(db: Database.Database): Promise<string> {
+  const root = resolve(authoringDataDir(db), "build-logs");
+  await mkdir(root, { recursive: true });
+  return await realpath(root);
+}
+
+export async function buildLogPath(
+  db: Database.Database,
+  runId: string,
+): Promise<string> {
+  if (!ID.test(runId)) throw new Error("Invalid build log run id");
+  return resolve(await buildLogRoot(db), `${runId}.log`);
+}
 
 function errorResponse(code: string, message: string, status: number): Response {
   return new Response(JSON.stringify({ error: { code, message } }), {
@@ -57,10 +77,10 @@ function parseRange(value: string | undefined, size: number): ByteRange | null {
   return { start, end };
 }
 
-async function safeLogFile(dataDir: string, storedPath: string): Promise<string | null> {
-  if (!isAbsolute(dataDir) || !isAbsolute(storedPath)) return null;
+async function safeLogFile(db: Database.Database, storedPath: string): Promise<string | null> {
+  if (!isAbsolute(storedPath)) return null;
   try {
-    const logRoot = await realpath(resolve(dataDir, "build-logs"));
+    const logRoot = await buildLogRoot(db);
     const path = await realpath(storedPath);
     const inside = relative(logRoot, path);
     if (inside === "" || inside === ".." || inside.startsWith(`..${sep}`) || isAbsolute(inside)) {
@@ -98,7 +118,7 @@ export function createBuildLogTailHandler(deps: LogTailDependencies): PluginHttp
     if (run === null) {
       return errorResponse("RUN_NOT_FOUND", "The scoped build run does not exist.", 404);
     }
-    const logPath = await safeLogFile(deps.dataDir, run.logPath);
+    const logPath = await safeLogFile(deps.db, run.logPath);
     if (logPath === null) {
       return errorResponse(
         "LOG_NOT_AVAILABLE",

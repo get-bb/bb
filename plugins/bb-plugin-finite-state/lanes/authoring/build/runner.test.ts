@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { runBuild, runBuildAction } from "./runner.js";
 import { createFixture, type AuthoringFixture } from "./test-fixture.js";
@@ -14,6 +15,27 @@ async function fixture(input: Parameters<typeof createFixture>[0] = {}) {
   const value = await createFixture(input);
   fixtures.push(value);
   return value;
+}
+
+function processExists(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function waitForFile(path: string): Promise<string> {
+  const deadline = Date.now() + 2_000;
+  while (true) {
+    try {
+      return await readFile(path, "utf8");
+    } catch (error) {
+      if (Date.now() >= deadline) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+  }
 }
 
 describe("build runner", () => {
@@ -59,6 +81,56 @@ describe("build runner", () => {
     });
   });
 
+  it("kills a spawned grandchild when cancellation terminates the process group", async () => {
+    const fx = await fixture({
+      buildScript: "/bin/sleep 30 & echo $! > grandchild.pid; wait",
+      buildTimeoutMs: 5_000,
+    });
+    const pending = runBuild(fx.ctx, {});
+    const pid = Number((await waitForFile(join(fx.root, "grandchild.pid"))).trim());
+    expect(Number.isInteger(pid)).toBe(true);
+    expect(processExists(pid)).toBe(true);
+    fx.controller.abort();
+    await expect(pending).rejects.toMatchObject({ code: "BUILD_CANCELLED" });
+    await eventuallyDead(pid);
+  });
+
+  it("terminalizes a queued row when verified-root validation fails before spawn", async () => {
+    const fx = await fixture();
+    fx.ctx.execution.worktreeRoot = join(fx.root, "missing-worktree");
+    const result = await runBuildAction(fx.ctx, {});
+    expect(result).toMatchObject({ status: "failed", digest: null });
+    const rows = fx.ctx.db
+      .prepare<[], { status: string }>("SELECT status FROM build_run")
+      .all();
+    expect(rows).toEqual([{ status: "failed" }]);
+  });
+
+  it("does not expose configured argv values in the served run log", async () => {
+    const fx = await fixture();
+    fx.ctx.resolveBuildPlan = async () => ({
+      command: ["fixture-build", "sensitive-probe-serial"],
+      toolchain: "fixture-build",
+      primaryArtifact: "build/app.bin",
+      timeoutMs: 10_000,
+      env: {},
+    });
+    const run = await runBuild(fx.ctx, {});
+    expect(await readFile(run.logPath, "utf8")).not.toContain("sensitive-probe-serial");
+  });
+
+  it("converts a project-level domain scope once at the execution boundary", async () => {
+    const fx = await fixture();
+    fx.ctx.projectVersionId = null;
+    const run = await runBuild(fx.ctx, {});
+    const stored = fx.ctx.db
+      .prepare<[string], { project_version_id: string }>(
+        "SELECT project_version_id FROM build_run WHERE run_id = ?",
+      )
+      .get(run.runId);
+    expect(stored?.project_version_id).toBe("@project");
+  });
+
   it("fails a successful command whose configured primary artifact is absent", async () => {
     const fx = await fixture({ buildScript: "echo done", primaryArtifact: "build/missing.bin" });
     await expect(runBuild(fx.ctx, {})).rejects.toMatchObject({
@@ -67,3 +139,11 @@ describe("build runner", () => {
     });
   });
 });
+
+async function eventuallyDead(pid: number): Promise<void> {
+  const deadline = Date.now() + 2_000;
+  while (processExists(pid)) {
+    if (Date.now() >= deadline) throw new Error(`grandchild ${pid} survived cancellation`);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+}

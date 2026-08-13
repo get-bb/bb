@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import type Database from "better-sqlite3";
+import { toStorageProjectVersionId } from "../../../lib/store/index.js";
 import {
   createBuildRun,
   getBuildRun,
@@ -15,6 +17,7 @@ import {
   type DestructiveConfirmation,
   type LocalCommandResult,
 } from "./runner.js";
+import { buildLogPath } from "./logs.js";
 
 export interface FlashCompletedEvent {
   runId: string;
@@ -31,22 +34,58 @@ export interface FlashActionResult {
   hint: string | null;
 }
 
-const flashCompletedHandlers = new Set<(event: FlashCompletedEvent) => void>();
+type FlashCompletedHandler = (event: FlashCompletedEvent) => void;
+const flashCompletedHandlers = new WeakMap<
+  Database.Database,
+  Map<string, Set<FlashCompletedHandler>>
+>();
 
 function scopeFor(ctx: AuthoringContext): { projectId: string; projectVersionId: string } {
-  return { projectId: ctx.projectId, projectVersionId: ctx.projectVersionId };
+  return {
+    projectId: ctx.projectId,
+    projectVersionId: toStorageProjectVersionId(ctx.projectVersionId),
+  };
 }
 
 function storeFor(ctx: AuthoringContext) {
   return { db: ctx.db, publish: ctx.publish };
 }
 
-export function onFlashCompleted(handler: (event: FlashCompletedEvent) => void): void {
-  flashCompletedHandlers.add(handler);
+function flashScopeKey(ctx: AuthoringContext): string {
+  const scope = scopeFor(ctx);
+  return `${scope.projectId}\0${scope.projectVersionId}`;
 }
 
-function emitFlashCompleted(event: FlashCompletedEvent): void {
-  for (const handler of flashCompletedHandlers) handler(event);
+/** WP-87 subscribes per database/project scope and must dispose on reload. */
+export function onFlashCompleted(
+  ctx: AuthoringContext,
+  handler: FlashCompletedHandler,
+): () => void {
+  let byScope = flashCompletedHandlers.get(ctx.db);
+  if (!byScope) {
+    byScope = new Map();
+    flashCompletedHandlers.set(ctx.db, byScope);
+  }
+  const key = flashScopeKey(ctx);
+  let handlers = byScope.get(key);
+  if (!handlers) {
+    handlers = new Set();
+    byScope.set(key, handlers);
+  }
+  handlers.add(handler);
+  return () => {
+    handlers.delete(handler);
+    if (handlers.size === 0) byScope?.delete(key);
+  };
+}
+
+export function clearFlashCompletedHandlers(db: Database.Database): void {
+  flashCompletedHandlers.delete(db);
+}
+
+function emitFlashCompleted(ctx: AuthoringContext, event: FlashCompletedEvent): void {
+  const handlers = flashCompletedHandlers.get(ctx.db)?.get(flashScopeKey(ctx));
+  for (const handler of handlers ?? []) handler(event);
 }
 
 async function runFlashDetailed(
@@ -112,7 +151,7 @@ async function runFlashDetailed(
     });
   }
   const runId = `flash-${randomUUID()}`;
-  const logPath = await flashLogPath(ctx, runId);
+  const logPath = await buildLogPath(ctx.db, runId);
   const queued = await createBuildRun(storeFor(ctx), {
     ...scope,
     runId,
@@ -173,7 +212,7 @@ async function runFlashDetailed(
     artifact: artifact.relativePath,
     digest,
   });
-  emitFlashCompleted({ runId, device, digest });
+  emitFlashCompleted(ctx, { runId, device, digest });
   return { record, command, device };
 }
 
@@ -186,17 +225,6 @@ async function realWorktreeRoot(ctx: AuthoringContext): Promise<string> {
   const root = await realpath(ctx.execution.worktreeRoot);
   if (!(await stat(root)).isDirectory()) throw new Error("Verified worktree root is not a directory");
   return root;
-}
-
-async function flashLogPath(ctx: AuthoringContext, runId: string): Promise<string> {
-  const { mkdir, realpath } = await import("node:fs/promises");
-  const { isAbsolute, resolve } = await import("node:path");
-  if (!isAbsolute(ctx.dataDir)) throw new Error("Authoring dataDir must be absolute");
-  await mkdir(ctx.dataDir, { recursive: true });
-  const root = await realpath(ctx.dataDir);
-  const logDir = resolve(root, "build-logs");
-  await mkdir(logDir, { recursive: true });
-  return resolve(logDir, `${runId}.log`);
 }
 
 export async function runFlash(

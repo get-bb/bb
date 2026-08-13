@@ -1,9 +1,9 @@
 import { createFakePluginHost } from "@bb/plugin-sdk/testing";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { rm, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { openStore } from "../../../lib/store/index.js";
-import { createBuildLogTailHandler } from "./logs.js";
+import { buildLogPath, createBuildLogTailHandler } from "./logs.js";
 import { createBuildRun } from "./runs-store.js";
 
 const cleanups: Array<() => Promise<void>> = [];
@@ -15,10 +15,7 @@ afterEach(async () => {
 async function fixture() {
   const host = createFakePluginHost({ pluginId: `fs-logs-${crypto.randomUUID()}` });
   const db = openStore(host.bb).db;
-  const dataDir = await mkdtemp(join(process.cwd(), ".fs-logs-test-"));
-  const logDir = join(dataDir, "build-logs");
-  await mkdir(logDir);
-  const logPath = join(logDir, "run-a.log");
+  const logPath = await buildLogPath(db, "run-a");
   await writeFile(logPath, "0123456789", "utf8");
   await createBuildRun({ db, publish: () => undefined }, {
     projectId: "project-a",
@@ -32,12 +29,11 @@ async function fixture() {
     logPath,
     startedAt: "2026-08-13T01:00:00.000Z",
   });
-  host.bb.http.route("GET", "/authoring/build/log", createBuildLogTailHandler({ db, dataDir }));
+  host.bb.http.route("GET", "/authoring/build/log", createBuildLogTailHandler({ db }));
   cleanups.push(async () => {
     await host.harness.lifecycle.dispose();
-    await rm(dataDir, { recursive: true, force: true });
   });
-  return { host, db, dataDir, logPath };
+  return { host, db, logPath };
 }
 
 describe("build log tail", () => {

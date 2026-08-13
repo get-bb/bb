@@ -15,7 +15,6 @@ export interface AuthoringFixture {
   ctx: AuthoringContext;
   root: string;
   bin: string;
-  dataDir: string;
   controller: AbortController;
   spawned: { build: number; flash: number };
   cleanup(): Promise<void>;
@@ -29,7 +28,6 @@ export async function createFixture(input: {
   confirmationValid?: boolean;
 } = {}): Promise<AuthoringFixture> {
   const root = await mkdtemp(join(tmpdir(), "fs-authoring-root-"));
-  const dataDir = await mkdtemp(join(tmpdir(), "fs-authoring-data-"));
   const bin = join(root, "fixture-bin");
   await mkdir(bin);
   const spawned = { build: 0, flash: 0 };
@@ -68,11 +66,11 @@ export async function createFixture(input: {
     projectId: "project-a",
     projectVersionId: "version-a",
     execution: { worktreeRoot: root, verified: true },
-    dataDir,
     signal: controller.signal,
     now: () => new Date("2026-08-13T12:00:00.000Z"),
     publish: () => undefined,
     path: bin,
+    cacheKey: db,
     probes: [],
     probeTimeoutMs: 500,
     async resolveBuildPlan() {
@@ -95,13 +93,11 @@ export async function createFixture(input: {
     ctx,
     root,
     bin,
-    dataDir,
     controller,
     spawned,
     async cleanup() {
       await host.harness.lifecycle.dispose();
       await rm(root, { recursive: true, force: true });
-      await rm(dataDir, { recursive: true, force: true });
     },
   };
 }
