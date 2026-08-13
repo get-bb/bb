@@ -7,10 +7,8 @@ import {
   createDiffWorker,
   getDiffWorkerPoolSize,
 } from "@/lib/diff-worker-pool";
-import {
-  useResolvedCodeThemePair,
-  useSyncPierreWorkerPoolTheme,
-} from "@/lib/code-theme";
+import { useResolvedCodeThemePair } from "@/lib/code-theme";
+import { useSyncPierreWorkerPoolTheme } from "@/lib/pierre-worker-pool-theme";
 import { usePluginSlots } from "@/lib/plugin-slots";
 
 // Plugins can render `@pierre/diffs` FileDiff (the specifier is shimmed to

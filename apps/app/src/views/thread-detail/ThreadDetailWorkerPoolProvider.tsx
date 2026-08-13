@@ -4,10 +4,8 @@ import {
   createDiffWorker,
   getDiffWorkerPoolSize,
 } from "@/lib/diff-worker-pool";
-import {
-  useResolvedCodeThemePair,
-  useSyncPierreWorkerPoolTheme,
-} from "@/lib/code-theme";
+import { useResolvedCodeThemePair } from "@/lib/code-theme";
+import { useSyncPierreWorkerPoolTheme } from "@/lib/pierre-worker-pool-theme";
 
 const WORKER_POOL_OPTIONS = {
   workerFactory: createDiffWorker,
