@@ -1,8 +1,10 @@
 import { useSyncExternalStore } from "react";
 
 const listeners = new Set<() => void>();
+let revision = 0;
 
 function notifyListeners(): void {
+  revision += 1;
   for (const listener of listeners) {
     listener();
   }
@@ -29,10 +31,10 @@ export function isDocumentVisible(): boolean {
   );
 }
 
-export function useDocumentVisible(): boolean {
+export function useDocumentVisibilityRevision(): number {
   return useSyncExternalStore(
     subscribeToDocumentVisibility,
-    isDocumentVisible,
-    isDocumentVisible,
+    () => revision,
+    () => revision,
   );
 }

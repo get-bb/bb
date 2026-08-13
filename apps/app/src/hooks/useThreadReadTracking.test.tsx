@@ -105,9 +105,9 @@ describe("useThreadReadTracking", () => {
     expect(markThreadRead.mutate).toHaveBeenCalledTimes(2);
   });
 
-  it("allows retrying a failed read marker", () => {
+  it("retries a failed read after pageshow while already visible", () => {
     const markThreadRead = makeMarkThreadRead();
-    const { rerender } = renderHook(() =>
+    renderHook(() =>
       useThreadReadTracking({
         markThreadRead,
         thread: {
@@ -121,7 +121,9 @@ describe("useThreadReadTracking", () => {
       markThreadRead.mutate.mock.calls[0]?.[1];
 
     options?.onError?.();
-    rerender();
+    act(() => {
+      window.dispatchEvent(new Event("pageshow"));
+    });
 
     expect(markThreadRead.mutate).toHaveBeenCalledTimes(2);
   });

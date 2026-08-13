@@ -4,7 +4,10 @@ import {
   isThreadRead,
   type ThreadReadState,
 } from "@/lib/thread-read-state";
-import { useDocumentVisible } from "@/lib/document-visibility";
+import {
+  isDocumentVisible,
+  useDocumentVisibilityRevision,
+} from "@/lib/document-visibility";
 
 type ThreadReadTrackingState = ThreadReadState & Pick<Thread, "id">;
 
@@ -35,7 +38,8 @@ export function useThreadReadTracking({
   const pendingReadKeysRef = useRef<Set<string>>(new Set());
   const suppressedManualUnreadKeysRef = useRef<Set<string>>(new Set());
   const previousSnapshotRef = useRef<ReadTrackingSnapshot | null>(null);
-  const isVisible = useDocumentVisible();
+  const visibilityRevision = useDocumentVisibilityRevision();
+  const isVisible = isDocumentVisible();
 
   useEffect(() => {
     const previousSnapshot = previousSnapshotRef.current;
@@ -112,5 +116,5 @@ export function useThreadReadTracking({
         pendingReadKeysRef.current.delete(marker);
       },
     });
-  }, [isVisible, markThreadRead, thread]);
+  }, [isVisible, markThreadRead, thread, visibilityRevision]);
 }
