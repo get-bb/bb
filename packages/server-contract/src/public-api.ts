@@ -137,6 +137,8 @@ import type {
   ReorderProjectRequest,
   ReorderQueuedMessageRequest,
   ResolvePendingInteractionRequest,
+  ResolveThreadMentionsRequest,
+  ResolveThreadMentionsResponse,
   RespondPluginInteractionRequest,
   SendMessageRequest,
   SetQueuedMessageGroupBoundaryRequest,
@@ -274,6 +276,7 @@ import {
   reorderProjectRequestSchema,
   reorderQueuedMessageRequestSchema,
   resolvePendingInteractionRequestSchema,
+  resolveThreadMentionsRequestSchema,
   respondPluginInteractionRequestSchema,
   sendMessageRequestSchema,
   editMessageRequestSchema,
@@ -918,6 +921,14 @@ export const publicApiRoutes = {
         threadSearchQuerySchema,
       ),
       response: jsonResponse<ThreadSearchResponse>(),
+    }),
+    resolveMentions: defineRoute({
+      path: "/threads/resolve-mentions",
+      method: "post",
+      request: jsonRequest<EmptyInput, ResolveThreadMentionsRequest>(
+        resolveThreadMentionsRequestSchema,
+      ),
+      response: jsonResponse<ResolveThreadMentionsResponse>(),
     }),
     create: defineRoute({
       path: "/threads",

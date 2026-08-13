@@ -12,6 +12,7 @@ import {
   promptInputSchema,
   providerRateLimitStateSchema,
   reasoningLevelSchema,
+  rawThreadIdSchema,
   serviceTierSchema,
   threadOriginKindSchema,
   threadListEntrySchema,
@@ -346,6 +347,35 @@ export type SendQueuedMessageResponse = z.infer<
 
 export const threadListResponseSchema = z.array(threadListEntrySchema);
 export type ThreadListResponse = z.infer<typeof threadListResponseSchema>;
+
+export const THREAD_MENTION_RESOLVE_MAX_IDS = 32;
+
+export const resolveThreadMentionsRequestSchema = z
+  .object({
+    threadIds: z.array(rawThreadIdSchema).max(THREAD_MENTION_RESOLVE_MAX_IDS),
+  })
+  .strict();
+export type ResolveThreadMentionsRequest = z.infer<
+  typeof resolveThreadMentionsRequestSchema
+>;
+
+export const threadMentionResolutionSchema = z
+  .object({
+    threadId: rawThreadIdSchema,
+    projectId: z.string().min(1),
+    label: z.string().min(1),
+  })
+  .strict();
+export type ThreadMentionResolution = z.infer<
+  typeof threadMentionResolutionSchema
+>;
+
+export const resolveThreadMentionsResponseSchema = z.array(
+  threadMentionResolutionSchema,
+);
+export type ResolveThreadMentionsResponse = z.infer<
+  typeof resolveThreadMentionsResponseSchema
+>;
 
 export const threadSearchHighlightRangeSchema = z
   .object({

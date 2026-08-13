@@ -4,6 +4,8 @@ import type { TimelineTitleLink } from "@bb/thread-view";
 import { renderTemplate } from "@bb/templates";
 import type { ReactNode } from "react";
 import { ConversationMessageContent } from "@/components/thread/timeline/ConversationMessageContent";
+import { ThreadTitleMentionResourcesProvider } from "@/components/thread/ThreadTitleMentions";
+import { makeThreadListEntry } from "@/test/fixtures/thread-list-entries";
 import {
   StoryDraftPromptBox,
   useStoryPromptDraft,
@@ -53,6 +55,13 @@ const acceptedMessage = {
   kind: "message" as const,
   status: "accepted" as const,
 };
+const RAW_THREAD_ID = "thr_dcwivn5n8w";
+const rawThreadIdTarget = makeThreadListEntry({
+  id: RAW_THREAD_ID,
+  projectId: "proj_demo",
+  title: "Raw thread ID mention target",
+  titleFallback: "Raw thread ID mention target",
+});
 const pendingSteer = {
   isGrouped: false,
   kind: "steer" as const,
@@ -529,6 +538,33 @@ export function Overview() {
 
   return (
     <StoryCard>
+      <StoryRow
+        label="raw thread ID"
+        hint="known IDs become linked pills in prose and exact inline-code spans"
+      >
+        <ThreadTitleMentionResourcesProvider
+          sectionNamesById={new Map()}
+          projectNamesById={new Map()}
+          threadById={new Map([[RAW_THREAD_ID, rawThreadIdTarget]])}
+        >
+          <TimelineStage>
+            <ConversationMessageContent
+              role="user"
+              originKind={null}
+              initiator="user"
+              senderThreadId={null}
+              senderThreadTitle={null}
+              senderIsPluginSideChat={false}
+              systemMessageKind="unlabeled"
+              systemMessageSubject={null}
+              text={`Continue in ${RAW_THREAD_ID}; exact inline-code reference \`${RAW_THREAD_ID}\`.`}
+              attachments={null}
+              mentions={[]}
+              turnRequest={acceptedMessage}
+            />
+          </TimelineStage>
+        </ThreadTitleMentionResourcesProvider>
+      </StoryRow>
       <StoryRow
         label="short (hover)"
         hint="production behavior — hover or focus the message to reveal actions"

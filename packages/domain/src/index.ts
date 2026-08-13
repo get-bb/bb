@@ -32,6 +32,7 @@ export * from "./prompt-history.js";
 export * from "./protocol-ids.js";
 export * from "./provider-event.js";
 export * from "./provider-types.js";
+export * from "./raw-thread-id.js";
 export * from "./reasoning-efforts.js";
 export * from "./reasoning-level.js";
 export * from "./retry.js";

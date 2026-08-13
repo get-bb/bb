@@ -256,9 +256,9 @@ declare const hostSchema: z$1.ZodObject<{
         connected: "connected";
     }>;
     maxPermissionMode: z$1.ZodEnum<{
-        full: "full";
         auto: "auto";
         "accept-edits": "accept-edits";
+        full: "full";
     }>;
     lastSeenAt: z$1.ZodNullable<z$1.ZodNumber>;
     lastRejectedProtocolVersion: z$1.ZodNullable<z$1.ZodNumber>;
@@ -509,9 +509,9 @@ declare const serviceTierSchema: z$1.ZodEnum<{
 }>;
 type ServiceTier = z$1.infer<typeof serviceTierSchema>;
 declare const permissionModeSchema: z$1.ZodEnum<{
-    full: "full";
     auto: "auto";
     "accept-edits": "accept-edits";
+    full: "full";
 }>;
 type PermissionMode = z$1.infer<typeof permissionModeSchema>;
 declare const promptInputSchema: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
@@ -614,9 +614,9 @@ declare const resolvedThreadExecutionOptionsSchema: z$1.ZodObject<{
         ultra: "ultra";
     }>;
     permissionMode: z$1.ZodEnum<{
-        full: "full";
         auto: "auto";
         "accept-edits": "accept-edits";
+        full: "full";
     }>;
     source: z$1.ZodEnum<{
         "client/thread/start": "client/thread/start";
@@ -643,9 +643,9 @@ declare const projectExecutionDefaultsSchema: z$1.ZodObject<{
         ultra: "ultra";
     }>;
     permissionMode: z$1.ZodEnum<{
-        full: "full";
         auto: "auto";
         "accept-edits": "accept-edits";
+        full: "full";
     }>;
 }, z$1.core.$strip>;
 type ProjectExecutionDefaults = z$1.infer<typeof projectExecutionDefaultsSchema>;
@@ -1549,8 +1549,8 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         tell: "tell";
     }>;
     initiator: z$1.ZodEnum<{
-        user: "user";
         system: "system";
+        user: "user";
         agent: "agent";
     }>;
     request: z$1.ZodObject<{
@@ -1571,8 +1571,8 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         tell: "tell";
     }>;
     initiator: z$1.ZodEnum<{
-        user: "user";
         system: "system";
+        user: "user";
         agent: "agent";
     }>;
     senderThreadId: z$1.ZodNullable<z$1.ZodString>;
@@ -1798,9 +1798,9 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         }>;
         permissionMode: z$1.ZodEnum<{
             readonly: "readonly";
-            full: "full";
             auto: "auto";
             "accept-edits": "accept-edits";
+            full: "full";
             "workspace-write": "workspace-write";
         }>;
     }, z$1.core.$strip>;
@@ -1819,8 +1819,8 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         tell: "tell";
     }>;
     initiator: z$1.ZodEnum<{
-        user: "user";
         system: "system";
+        user: "user";
         agent: "agent";
     }>;
     request: z$1.ZodObject<{
@@ -2009,9 +2009,9 @@ declare const providerInfoSchema: z$1.ZodObject<{
         supportsUserQuestion: z$1.ZodBoolean;
         supportsFork: z$1.ZodBoolean;
         supportedPermissionModes: z$1.ZodArray<z$1.ZodEnum<{
-            full: "full";
             auto: "auto";
             "accept-edits": "accept-edits";
+            full: "full";
         }>>;
     }, z$1.core.$strip>;
     composerActions: z$1.ZodArray<z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
@@ -2192,9 +2192,9 @@ declare const threadQueuedMessageSchema: z$1.ZodObject<{
         ultra: "ultra";
     }>;
     permissionMode: z$1.ZodEnum<{
-        full: "full";
         auto: "auto";
         "accept-edits": "accept-edits";
+        full: "full";
     }>;
     serviceTier: z$1.ZodEnum<{
         default: "default";
@@ -9199,6 +9199,16 @@ declare const threadListResponseSchema: z$1.ZodArray<z$1.ZodObject<{
     }>;
 }, z$1.core.$strip>>;
 type ThreadListResponse = z$1.infer<typeof threadListResponseSchema>;
+declare const resolveThreadMentionsRequestSchema: z$1.ZodObject<{
+    threadIds: z$1.ZodArray<z$1.ZodString>;
+}, z$1.core.$strict>;
+type ResolveThreadMentionsRequest = z$1.infer<typeof resolveThreadMentionsRequestSchema>;
+declare const resolveThreadMentionsResponseSchema: z$1.ZodArray<z$1.ZodObject<{
+    threadId: z$1.ZodString;
+    projectId: z$1.ZodString;
+    label: z$1.ZodString;
+}, z$1.core.$strict>>;
+type ResolveThreadMentionsResponse = z$1.infer<typeof resolveThreadMentionsResponseSchema>;
 declare const threadSearchResponseSchema: z$1.ZodObject<{
     active: z$1.ZodObject<{
         total: z$1.ZodNumber;
@@ -12628,6 +12638,9 @@ interface ThreadListArgs {
 interface ThreadSearchArgs extends ThreadSearchQuery {
     signal?: AbortSignal;
 }
+interface ThreadResolveMentionsArgs extends ResolveThreadMentionsRequest {
+    signal?: AbortSignal;
+}
 interface ThreadGetArgs {
     include?: ThreadGetQuery["include"];
     signal?: AbortSignal;
@@ -12636,6 +12649,7 @@ interface ThreadGetArgs {
 type ThreadGetResult = ThreadResponse | ThreadWithIncludesResponse;
 type ThreadListResult = ThreadListResponse;
 type ThreadSearchResult = ThreadSearchResponse;
+type ThreadResolveMentionsResult = ResolveThreadMentionsResponse;
 interface ThreadOutputResponse {
     output: string | null;
 }
@@ -12904,6 +12918,7 @@ interface ThreadsArea {
     queuedMessages: ThreadQueuedMessagesArea;
     rateLimitRecovery(args: ThreadStatusArgs): Promise<ThreadRateLimitRecoveryResult>;
     reorderPinned(args: ThreadPinOrderArgs): Promise<ThreadPinOrderResult>;
+    resolveMentions(args: ThreadResolveMentionsArgs): Promise<ThreadResolveMentionsResult>;
     search(args: ThreadSearchArgs): Promise<ThreadSearchResult>;
     send(args: ThreadSendArgs): Promise<ThreadSendResult>;
     spawn(args: ThreadSpawnArgs): Promise<ThreadSpawnResult>;

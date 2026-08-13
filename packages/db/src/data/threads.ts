@@ -37,6 +37,7 @@ import type { DbNotifier } from "../notifier.js";
 import {
   environments,
   pendingInteractions,
+  projects,
   threadSearchSegments,
   threads,
 } from "../schema.js";
@@ -342,6 +343,43 @@ export function createThread(
 
 export function getThread(db: ThreadWriteConnection, id: string) {
   return db.select().from(threads).where(eq(threads.id, id)).get() ?? null;
+}
+
+export interface ThreadMentionRow {
+  id: string;
+  projectId: string;
+  title: string | null;
+  titleFallback: string | null;
+}
+
+/**
+ * Resolves an exact bounded ID set without loading unrelated threads. Deleted
+ * threads and threads whose project was deleted are intentionally absent.
+ */
+export function listThreadMentionRowsByIds(
+  db: DbQueryConnection,
+  threadIds: readonly string[],
+): ThreadMentionRow[] {
+  if (threadIds.length === 0) {
+    return [];
+  }
+  return db
+    .select({
+      id: threads.id,
+      projectId: threads.projectId,
+      title: threads.title,
+      titleFallback: threads.titleFallback,
+    })
+    .from(threads)
+    .innerJoin(projects, eq(projects.id, threads.projectId))
+    .where(
+      and(
+        inArray(threads.id, [...threadIds]),
+        isNull(threads.deletedAt),
+        isNull(projects.deletedAt),
+      ),
+    )
+    .all();
 }
 
 export interface ListThreadsOptions {

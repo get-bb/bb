@@ -11,7 +11,7 @@
 // 0.x releases and is intentionally vacuous for them until a future 1.0.
 // Pre-1.0 compatibility rides on each plugin's engines.bbPluginSdk range plus
 // the exact sdkVersion-differs rebuild trigger for rebuildable artifacts.
-export const PLUGIN_SDK_VERSION = "0.4.1";
+export const PLUGIN_SDK_VERSION = "0.4.2";
 
 /** Major of {@link PLUGIN_SDK_VERSION} — the plugin API compatibility number. */
 export const PLUGIN_SDK_MAJOR = Number(PLUGIN_SDK_VERSION.split(".", 1)[0]);

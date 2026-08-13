@@ -46,7 +46,11 @@ import {
   useMessageDirectiveRegistry,
   type MarkdownMessageDirectives,
 } from "@/components/ui/markdown-message-directives.js";
-import { USER_MESSAGE_CHAR_CAP } from "./conversation-message-limits.js";
+import {
+  boundedMarkdownPreview,
+  closeUnterminatedMarkdownCodeSpan,
+  USER_MESSAGE_CHAR_CAP,
+} from "./conversation-message-limits.js";
 import { turnRequestLabel } from "./conversation-turn-request-label.js";
 import { TurnRequestLabel } from "./TurnRequestLabel.js";
 import { MessageActionBar } from "./MessageActionBar.js";
@@ -262,10 +266,11 @@ function CollapsibleMessageText({
   // initial timeline render. Expanding is an explicit request for the complete
   // message, so only then hand the full body to the markdown renderer.
   const exceedsCollapsedRenderCap = bodyText.length > USER_MESSAGE_CHAR_CAP;
-  const renderedBodyText =
+  const collapsedPreview =
     !isExpanded && exceedsCollapsedRenderCap
-      ? bodyText.slice(0, USER_MESSAGE_CHAR_CAP)
-      : bodyText;
+      ? boundedMarkdownPreview(bodyText, USER_MESSAGE_CHAR_CAP)
+      : null;
+  const renderedBodyText = collapsedPreview?.text ?? bodyText;
   // Rebase mentions onto the prefix-stripped body currently being rendered. A
   // mention straddling the collapsed cap is omitted from the preview and
   // restored when the complete body is rendered after expansion.
@@ -328,12 +333,20 @@ function CollapsibleMessageText({
           !isExpanded && showToggle ? COLLAPSED_MESSAGE_FADE_STYLE : undefined
         }
       >
-        <MarkdownPreview
-          content={body.text}
-          promptMentions={promptMentions}
-          threadMentions={rawThreadMentions}
-          linkRouting={linkRouting}
-        />
+        {collapsedPreview?.parseAsMarkdown === false ? (
+          <span>{body.text}</span>
+        ) : (
+          <MarkdownPreview
+            content={
+              collapsedPreview?.wasCapped === true
+                ? closeUnterminatedMarkdownCodeSpan(body.text)
+                : body.text
+            }
+            promptMentions={promptMentions}
+            threadMentions={rawThreadMentions}
+            linkRouting={linkRouting}
+          />
+        )}
       </div>
       {showToggle ? (
         <ConversationMessageOverflowToggle

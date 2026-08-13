@@ -608,6 +608,39 @@ describe("@bb/sdk", () => {
     ]);
   });
 
+  it("routes bounded thread mention resolution through one HTTP request", async () => {
+    const resolved = [
+      {
+        threadId: "thr_23456789ab",
+        projectId: "proj_target",
+        label: "Target thread",
+      },
+    ];
+    const queue = createFetchQueue([{ body: resolved }]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await expect(
+      sdk.threads.resolveMentions({
+        threadIds: ["thr_23456789ab", "thr_23456789ab"],
+      }),
+    ).resolves.toEqual(resolved);
+    expect(queue.requests).toEqual([
+      {
+        bodyText: JSON.stringify({
+          threadIds: ["thr_23456789ab", "thr_23456789ab"],
+        }),
+        method: "POST",
+        url: "http://bb.test/api/v1/threads/resolve-mentions",
+      },
+    ]);
+  });
+
   it("routes canonical terminal calls across every scope and by terminal ID", async () => {
     const session = makeTerminalSession();
     const queue = createFetchQueue([

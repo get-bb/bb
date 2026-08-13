@@ -749,7 +749,7 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
   - `bb plugin run <id> [args...]` — explicit form of a plugin's CLI command.
   - `bb plugin new <name> [--app]` — scaffold a plugin and install its npm
     dependencies (`--app` adds a frontend entry plus a typecheck-only
-    `tsconfig.json`; scaffold sets `engines.bbPluginSdk` to `^0.4.1`). The
+    `tsconfig.json`; scaffold sets `engines.bbPluginSdk` to `^0.4.2`). The
     install is best-effort and verified: if npm is missing or leaves a package
     out, it says so and prints the manual `npm install --include=dev` step
     rather than reporting success; `bb plugin build [path]` —

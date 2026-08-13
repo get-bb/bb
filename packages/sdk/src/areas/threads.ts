@@ -44,6 +44,8 @@ import type {
   PromptHistoryQuery,
   ReorderPinnedThreadRequest,
   ReorderQueuedMessageRequest,
+  ResolveThreadMentionsRequest,
+  ResolveThreadMentionsResponse,
   SendMessageRequest,
   SendQueuedMessageRequest,
   SetQueuedMessageGroupBoundaryRequest,
@@ -85,6 +87,10 @@ export interface ThreadSearchArgs extends ThreadSearchQuery {
   signal?: AbortSignal;
 }
 
+export interface ThreadResolveMentionsArgs extends ResolveThreadMentionsRequest {
+  signal?: AbortSignal;
+}
+
 export interface ThreadGetArgs {
   include?: ThreadGetQuery["include"];
   signal?: AbortSignal;
@@ -94,6 +100,7 @@ export interface ThreadGetArgs {
 export type ThreadGetResult = ThreadResponse | ThreadWithIncludesResponse;
 export type ThreadListResult = ThreadListResponse;
 export type ThreadSearchResult = ThreadSearchResponse;
+export type ThreadResolveMentionsResult = ResolveThreadMentionsResponse;
 export interface ThreadOutputResponse {
   output: string | null;
 }
@@ -459,6 +466,9 @@ export interface ThreadsArea {
     args: ThreadStatusArgs,
   ): Promise<ThreadRateLimitRecoveryResult>;
   reorderPinned(args: ThreadPinOrderArgs): Promise<ThreadPinOrderResult>;
+  resolveMentions(
+    args: ThreadResolveMentionsArgs,
+  ): Promise<ThreadResolveMentionsResult>;
   search(args: ThreadSearchArgs): Promise<ThreadSearchResult>;
   send(args: ThreadSendArgs): Promise<ThreadSendResult>;
   spawn(args: ThreadSpawnArgs): Promise<ThreadSpawnResult>;
@@ -1044,6 +1054,14 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
             nextThreadId: input.nextThreadId,
           },
         }),
+      );
+    },
+    async resolveMentions(input) {
+      return transport.readJson(
+        transport.api.v1.threads["resolve-mentions"].$post(
+          { json: { threadIds: input.threadIds } },
+          ...signalRequestArgs(input.signal),
+        ),
       );
     },
     async search(input) {

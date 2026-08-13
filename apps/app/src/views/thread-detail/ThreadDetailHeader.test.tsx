@@ -1,12 +1,15 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
 import type { ReactNode, Ref } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ThreadDetailHeader } from "./ThreadDetailHeader";
 import { PaneContext, type PaneContextValue } from "./PaneContext";
 import { dimInactiveSplitsAtom } from "@/lib/split-layout/atoms";
+import { ThreadTitleMentionResourcesProvider } from "@/components/thread/ThreadTitleMentions";
+import { makeThreadListEntry } from "@/test/fixtures/thread-list-entries";
+import { sdk } from "@/lib/sdk";
 
 vi.mock("@/components/layout/AppPageHeader", () => ({
   HEADER_ICON_BUTTON_CLASS: "header-icon-button",
@@ -239,6 +242,155 @@ describe("ThreadDetailHeader", () => {
       container.querySelectorAll('[data-prompt-mention="true"]'),
     ).toHaveLength(2);
     expect(screen.queryByText("@thread:thr_worker")).toBeNull();
+  });
+
+  it("renders a raw thread id in the title as an unlinked mention pill", () => {
+    const mentionedThread = makeThreadListEntry({
+      id: "thr_dcwivn5n8w",
+      projectId: "proj_target",
+      title: "Raw title target",
+      titleFallback: "Raw title target",
+    });
+
+    render(
+      <ThreadTitleMentionResourcesProvider
+        sectionNamesById={new Map()}
+        projectNamesById={new Map()}
+        threadById={new Map([[mentionedThread.id, mentionedThread]])}
+      >
+        <PaneContext.Provider value={PANE_CONTEXT}>
+          <ThreadDetailHeader
+            actionsMenu={null}
+            childPillLabel={null}
+            isSecondaryPanelOpen={false}
+            onOpenThreadGitAction={vi.fn()}
+            onToggleSecondaryPanel={vi.fn()}
+            threadHeaderGitActions={[]}
+            threadTitle="Continue from thr_dcwivn5n8w docs/foo.ts"
+          />
+        </PaneContext.Provider>
+      </ThreadTitleMentionResourcesProvider>,
+    );
+
+    const pill = screen.getByText("Raw title target");
+    expect(pill.closest('[data-prompt-mention="true"]')).not.toBeNull();
+    expect(pill.closest("a")).toBeNull();
+    expect(screen.queryByText("thr_dcwivn5n8w")).toBeNull();
+    expect(screen.getByText(/docs\/foo\.ts/u)).not.toBeNull();
+  });
+
+  it.each([
+    ["straight closing quote", 'Review "thr_dcwivn5n8w."'],
+    ["curly closing quote", "Review “thr_dcwivn5n8w.”"],
+  ])(
+    "renders a sentence-final raw id before a %s in a title",
+    (_label, title) => {
+      const mentionedThread = makeThreadListEntry({
+        id: "thr_dcwivn5n8w",
+        projectId: "proj_target",
+        title: "Quoted title target",
+        titleFallback: "Quoted title target",
+      });
+
+      render(
+        <ThreadTitleMentionResourcesProvider
+          sectionNamesById={new Map()}
+          projectNamesById={new Map()}
+          threadById={new Map([[mentionedThread.id, mentionedThread]])}
+        >
+          <PaneContext.Provider value={PANE_CONTEXT}>
+            <ThreadDetailHeader
+              actionsMenu={null}
+              childPillLabel={null}
+              isSecondaryPanelOpen={false}
+              onOpenThreadGitAction={vi.fn()}
+              onToggleSecondaryPanel={vi.fn()}
+              threadHeaderGitActions={[]}
+              threadTitle={title}
+            />
+          </PaneContext.Provider>
+        </ThreadTitleMentionResourcesProvider>,
+      );
+
+      const pill = screen.getByText("Quoted title target");
+      expect(pill.closest('[data-prompt-mention="true"]')).not.toBeNull();
+      expect(pill.closest("a")).toBeNull();
+      expect(screen.queryByText("thr_dcwivn5n8w")).toBeNull();
+    },
+  );
+
+  it("leaves raw-id path, extension, and overlong continuations literal in titles", () => {
+    const resolveMentions = vi
+      .spyOn(sdk.threads, "resolveMentions")
+      .mockResolvedValue([]);
+    const title = [
+      "thr_dcwivn5n8w.md",
+      "thr_dcwivn5n8w/path",
+      "thr_dcwivn5n8w2",
+      "/tmp/thr_dcwivn5n8w",
+      "docs/thr_dcwivn5n8w",
+      "C:\\tmp\\thr_dcwivn5n8w",
+      "docs\\thr_dcwivn5n8w",
+      "thr_dcwivn5n8w\\logs",
+    ].join(" ");
+    const mentionedThread = makeThreadListEntry({
+      id: "thr_dcwivn5n8w",
+      title: "Should not render",
+      titleFallback: "Should not render",
+    });
+
+    const { container } = render(
+      <ThreadTitleMentionResourcesProvider
+        sectionNamesById={new Map()}
+        projectNamesById={new Map()}
+        threadById={new Map([[mentionedThread.id, mentionedThread]])}
+      >
+        <PaneContext.Provider value={PANE_CONTEXT}>
+          <ThreadDetailHeader
+            actionsMenu={null}
+            childPillLabel={null}
+            isSecondaryPanelOpen={false}
+            onOpenThreadGitAction={vi.fn()}
+            onToggleSecondaryPanel={vi.fn()}
+            threadHeaderGitActions={[]}
+            threadTitle={title}
+          />
+        </PaneContext.Provider>
+      </ThreadTitleMentionResourcesProvider>,
+    );
+
+    expect(container.textContent).toContain(title);
+    expect(container.querySelector('[data-prompt-mention="true"]')).toBeNull();
+    expect(resolveMentions).not.toHaveBeenCalled();
+  });
+
+  it("leaves an unresolvable raw thread id literal in a title", async () => {
+    const resolveMentions = vi
+      .spyOn(sdk.threads, "resolveMentions")
+      .mockResolvedValue([]);
+    const { container } = render(
+      <ThreadTitleMentionResourcesProvider
+        sectionNamesById={new Map()}
+        projectNamesById={new Map()}
+        threadById={new Map()}
+      >
+        <PaneContext.Provider value={PANE_CONTEXT}>
+          <ThreadDetailHeader
+            actionsMenu={null}
+            childPillLabel={null}
+            isSecondaryPanelOpen={false}
+            onOpenThreadGitAction={vi.fn()}
+            onToggleSecondaryPanel={vi.fn()}
+            threadHeaderGitActions={[]}
+            threadTitle="Unknown thr_2222222222"
+          />
+        </PaneContext.Provider>
+      </ThreadTitleMentionResourcesProvider>,
+    );
+
+    await waitFor(() => expect(resolveMentions).toHaveBeenCalledTimes(1));
+    expect(container.textContent).toContain("thr_2222222222");
+    expect(container.querySelector('[data-prompt-mention="true"]')).toBeNull();
   });
 
   it("uses a title tab for the focused split and no pane-wide dimming", () => {

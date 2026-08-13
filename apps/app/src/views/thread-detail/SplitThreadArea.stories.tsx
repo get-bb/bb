@@ -30,6 +30,7 @@ export default {
 const PROJECT_ID = "proj_bb";
 const IDLE_THREAD_ID = "thr_split_idle";
 const ACTIVE_THREAD_ID = "thr_split_active";
+const MENTIONED_THREAD_ID = "thr_dcwivn5n8w";
 
 function storyThread(id: string, title: string): ThreadResponse {
   return {
@@ -50,7 +51,14 @@ function storyThread(id: string, title: string): ThreadResponse {
 }
 
 const idleThread = storyThread(IDLE_THREAD_ID, "Fix Thread Drag Sync");
-const activeThread = storyThread(ACTIVE_THREAD_ID, "Refine split styling");
+const activeThread = storyThread(
+  ACTIVE_THREAD_ID,
+  `Continue from ${MENTIONED_THREAD_ID}`,
+);
+const mentionedThread = storyThread(
+  MENTIONED_THREAD_ID,
+  "Raw thread ID mention target",
+);
 
 function storyTimeline(
   threadId: string,
@@ -124,9 +132,9 @@ const idleTimeline = storyTimeline(
 
 const activeTimeline = storyTimeline(
   ACTIVE_THREAD_ID,
-  "Make the divider thinner, keep the inactive timeline readable, and let the header carry focus.",
+  `Use ${MENTIONED_THREAD_ID} as context, make the divider thinner, and let the header carry focus. Resolve the exact inline-code reference \`${MENTIONED_THREAD_ID}\` too.`,
   [
-    "The split seam is now one pixel with a wider invisible resize target. One uniform pane scrim marks the inactive side without layering extra opacity on its content.",
+    `The split seam now matches ${MENTIONED_THREAD_ID}: one pixel with a wider invisible resize target.`,
     "The same hairline treatment is applied where the secondary panel meets the split workspace, so the seams read as one system.",
     "Inactive panes receive a subtle background scrim while messages and status rows remain readable and interactive.",
     "The inactive scrim trades places as focus moves between panes while both composers remain fully legible.",
@@ -187,6 +195,7 @@ function createStoryQueryClient(): QueryClient {
     queryClient.setQueryData(threadQueryKey(thread.id), thread);
     queryClient.setQueryData(threadTimelineQueryKey(thread.id), timeline);
   }
+  queryClient.setQueryData(threadQueryKey(mentionedThread.id), mentionedThread);
 
   return queryClient;
 }
