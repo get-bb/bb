@@ -34,8 +34,9 @@ import {
   openManifest,
   verifyMountIntegrity,
 } from "./cache/manifest.js";
-import { diffFirmwarePage } from "./diff.js";
+import { diffFirmware, diffFirmwarePage } from "./diff.js";
 import {
+  getFirmwareStatus,
   getFirmwareFile,
   getFirmwareStatusDetail,
   listFirmwareMounts,
@@ -146,6 +147,222 @@ export function createFirmwareCommandHandlers(ctx: PluginContext) {
       return resolveFirmwareExecutionScope(ctx, { ...input, threadId: cliContext.threadId });
     },
     cache: ctx.service("firmware.cache", () => createFirmwareCacheService(ctx)),
+  };
+}
+
+export function redactFirmwareApiError(
+  error: unknown,
+  worktreeRoot: string,
+  fallback: string,
+): Error {
+  const cause = error instanceof Error ? error : new Error(fallback);
+  cause.message = redactHostPaths(cause.message, [worktreeRoot]).slice(0, 20_000);
+  return cause;
+}
+
+interface FirmwareCliResult {
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+}
+
+interface FirmwareCliService {
+  run(argv: string[], context: PluginCliContext): Promise<FirmwareCliResult>;
+}
+
+type FirmwareCliInput =
+  | { command: "pull"; pvId: string; image: string | null; source: "api" | null; scanId: string | null; maxDepth: number }
+  | { command: "status"; pvId: string; json: boolean }
+  | { command: "hydrate"; pvId: string; paths: string[]; json: boolean }
+  | { command: "diff"; fromPvId: string; toPvId: string; cursor: string | null; json: boolean };
+
+function firmwareCliOption(
+  args: string[],
+  index: number,
+  name: string,
+): { value: string; consumed: number } {
+  const current = args[index] ?? "";
+  const equals = current.indexOf("=");
+  if (equals >= 0) {
+    const value = current.slice(equals + 1);
+    if (!value) throw new Error(`${name} requires a value`);
+    return { value, consumed: 1 };
+  }
+  const value = args[index + 1];
+  if (!value || value.startsWith("--")) throw new Error(`${name} requires a value`);
+  return { value, consumed: 2 };
+}
+
+function parseFirmwareCli(argv: string[]): FirmwareCliInput {
+  const args = argv[0] === "firmware" ? argv.slice(1) : [...argv];
+  const command = args.shift();
+  const usage = "usage: bb finite-state firmware <pull|status|hydrate|diff> ...";
+  if (command === "pull") {
+    const pvId = args.shift();
+    if (!pvId || pvId.startsWith("--")) throw new Error(`${usage}; pull requires <pv-id>`);
+    let image: string | null = null;
+    let source: "api" | null = null;
+    let scanId: string | null = null;
+    let maxDepth = 12;
+    for (let index = 0; index < args.length;) {
+      const arg = args[index] ?? "";
+      if (arg === "--image" || arg.startsWith("--image=")) {
+        const option = firmwareCliOption(args, index, "--image");
+        image = option.value;
+        index += option.consumed;
+      } else if (arg === "--source" || arg.startsWith("--source=")) {
+        const option = firmwareCliOption(args, index, "--source");
+        if (option.value !== "api") throw new Error("--source accepts only api");
+        source = "api";
+        index += option.consumed;
+      } else if (arg === "--scan" || arg.startsWith("--scan=")) {
+        const option = firmwareCliOption(args, index, "--scan");
+        scanId = option.value;
+        index += option.consumed;
+      } else if (arg === "--max-depth" || arg.startsWith("--max-depth=")) {
+        const option = firmwareCliOption(args, index, "--max-depth");
+        maxDepth = Number(option.value);
+        index += option.consumed;
+      } else {
+        throw new Error(`unknown firmware pull option ${arg}`);
+      }
+    }
+    if ((image === null) === (source === null)) {
+      throw new Error("firmware pull requires exactly one of --image <file> or --source api");
+    }
+    if (!Number.isInteger(maxDepth) || maxDepth < 1 || maxDepth > 12) {
+      throw new Error("--max-depth must be an integer from 1 through 12");
+    }
+    if (source === null && scanId !== null) throw new Error("--scan requires --source api");
+    if (source === "api" && maxDepth !== 12) throw new Error("--max-depth requires --image");
+    return { command, pvId, image, source, scanId, maxDepth };
+  }
+  if (command === "status") {
+    const pvId = args.shift();
+    if (!pvId || pvId.startsWith("--")) throw new Error(`${usage}; status requires <pv-id>`);
+    const json = args.length === 1 && args[0] === "--json";
+    if (args.length !== (json ? 1 : 0)) throw new Error(`unexpected firmware status argument ${args[0] ?? ""}`);
+    return { command, pvId, json };
+  }
+  if (command === "hydrate") {
+    const pvId = args.shift();
+    if (!pvId || pvId.startsWith("--")) throw new Error(`${usage}; hydrate requires <pv-id>`);
+    const jsonIndex = args.indexOf("--json");
+    const json = jsonIndex >= 0;
+    if (json) args.splice(jsonIndex, 1);
+    if (args.length === 0 || args.some((path) => path.startsWith("--"))) {
+      throw new Error("firmware hydrate requires one or more explicit paths; bulk hydration is unavailable");
+    }
+    return { command, pvId, paths: args, json };
+  }
+  if (command === "diff") {
+    const fromPvId = args.shift();
+    const toPvId = args.shift();
+    if (!fromPvId || !toPvId || fromPvId.startsWith("--") || toPvId.startsWith("--")) {
+      throw new Error(`${usage}; diff requires <from-pv-id> <to-pv-id>`);
+    }
+    let cursor: string | null = null;
+    let json = false;
+    for (let index = 0; index < args.length;) {
+      const arg = args[index] ?? "";
+      if (arg === "--json") {
+        json = true;
+        index += 1;
+      } else if (arg === "--cursor" || arg.startsWith("--cursor=")) {
+        const option = firmwareCliOption(args, index, "--cursor");
+        cursor = option.value;
+        index += option.consumed;
+      } else {
+        throw new Error(`unknown firmware diff option ${arg}`);
+      }
+    }
+    return { command, fromPvId, toPvId, cursor, json };
+  }
+  throw new Error(usage);
+}
+
+function firmwareCliOutput(value: unknown, json: boolean): FirmwareCliResult {
+  return {
+    exitCode: 0,
+    stdout: `${JSON.stringify(value, null, json ? undefined : 2)}\n`,
+    stderr: "",
+  };
+}
+
+async function resolveFirmwareCliIdentity(
+  ctx: PluginContext,
+  context: PluginCliContext,
+): Promise<{ projectId: string; environmentId: string }> {
+  if (!context.threadId) {
+    throw new Error(
+      "FIRMWARE_EXECUTION_CONTEXT_REQUIRED: invoke from a bb thread; cwd is not trusted as a worktree identity",
+    );
+  }
+  const thread = await ctx.bb.sdk.threads.get({ threadId: context.threadId });
+  if (!thread.environmentId || (context.projectId !== undefined && context.projectId !== thread.projectId)) {
+    throw new Error("FIRMWARE_EXECUTION_CONTEXT_INVALID: thread project/environment mismatch");
+  }
+  return { projectId: thread.projectId, environmentId: thread.environmentId };
+}
+
+function createFirmwareCliService(
+  ctx: PluginContext,
+  coordinator: FirmwareBackgroundCoordinator,
+  cache: FirmwareCacheService,
+  remote: () => RemoteServices,
+): FirmwareCliService {
+  return {
+    async run(argv, context) {
+      const input = parseFirmwareCli(argv);
+      const identity = await resolveFirmwareCliIdentity(ctx, context);
+      if (input.command === "pull") {
+        if (input.source === "api") {
+          const action = await materializeApiFromRpc(ctx, cache, remote(), {
+            projectId: identity.projectId,
+            projectVersionId: input.pvId,
+            mode: "metadata",
+            ...(input.scanId === null ? {} : { scanId: input.scanId }),
+          });
+          return firmwareCliOutput(action, false);
+        }
+        const issued = await issueStandaloneUnpackInput(ctx, {
+          projectId: identity.projectId,
+          projectVersionId: input.pvId,
+          environmentId: identity.environmentId,
+          firmwarePath: input.image ?? "",
+        });
+        return firmwareCliOutput(coordinator.enqueue({
+          projectId: identity.projectId,
+          projectVersionId: input.pvId,
+          source: "standalone_unpack",
+          inputId: issued.inputId,
+          maxDepth: input.maxDepth,
+        }), false);
+      }
+      if (input.command === "status") {
+        return firmwareCliOutput(
+          await getFirmwareStatus({ db: ctx.db(), projectId: identity.projectId }, input.pvId),
+          input.json,
+        );
+      }
+      if (input.command === "hydrate") {
+        const actions = [];
+        for (const firmwarePath of input.paths) {
+          actions.push(await hydrateApiFileFromRpc(ctx, cache, remote(), {
+            projectId: identity.projectId,
+            projectVersionId: input.pvId,
+            firmwarePath,
+          }));
+        }
+        return firmwareCliOutput({ items: actions, total: actions.length }, input.json);
+      }
+      return firmwareCliOutput(diffFirmware(
+        { db: ctx.db(), projectId: identity.projectId, pageSize: 200 },
+        input.fromPvId,
+        input.toPvId,
+        input.cursor ?? undefined,
+      ), input.json);
+    },
   };
 }
 
@@ -779,11 +996,15 @@ async function materializeApiFromRpc(
     ctx.bb.realtime.publish("firmware:changed", { pvId: projectVersionId });
     return actionFromMount(input.projectId, projectVersionId, generationId, "API firmware fallback completed.");
   } catch (error) {
-    const message = error instanceof Error ? error.message : "API firmware fallback failed.";
+    const failure = redactFirmwareApiError(
+      error,
+      worktreeRoot,
+      "API firmware fallback failed.",
+    );
     ctx.db().prepare(`UPDATE pull_generation SET status='failed', completed_at=?, error=?
       WHERE project_id=? AND project_version_id=? AND generation_id=?`).run(
       new Date().toISOString(),
-      message.slice(0, 20_000),
+      failure.message,
       input.projectId,
       projectVersionId,
       generationId,
@@ -796,10 +1017,10 @@ async function materializeApiFromRpc(
       state: "error",
       worktreeRoot,
       at: new Date().toISOString(),
-      message,
+      message: failure.message,
     });
     ctx.bb.realtime.publish("firmware:changed", { pvId: projectVersionId });
-    throw error;
+    throw failure;
   }
 }
 
@@ -820,19 +1041,27 @@ async function hydrateApiFileFromRpc(
     ) as { generation_id: string; root_path: string } | undefined;
   if (!row) throw new FirmwareCacheError("MOUNT_MISSING", "Firmware metadata must be materialized before hydration.");
   const worktreeRoot = dirname(dirname(dirname(row.root_path)));
-  await hydrateFirmwareFile({
-    platform: remote.platform,
-    scope: {
+  try {
+    await hydrateFirmwareFile({
+      platform: remote.platform,
+      scope: {
+        worktreeRoot,
+        projectId: input.projectId,
+        projectVersionId: input.projectVersionId,
+        generationId: row.generation_id,
+      },
+      cache,
+      publishProgress(progress) {
+        ctx.bb.realtime.publish("firmware:progress", progress);
+      },
+    }, { pvId: input.projectVersionId, path: input.firmwarePath }, new AbortController().signal);
+  } catch (error) {
+    throw redactFirmwareApiError(
+      error,
       worktreeRoot,
-      projectId: input.projectId,
-      projectVersionId: input.projectVersionId,
-      generationId: row.generation_id,
-    },
-    cache,
-    publishProgress(progress) {
-      ctx.bb.realtime.publish("firmware:progress", progress);
-    },
-  }, { pvId: input.projectVersionId, path: input.firmwarePath }, new AbortController().signal);
+      "Firmware file hydration failed.",
+    );
+  }
   ctx.bb.realtime.publish("firmware:changed", { pvId: input.projectVersionId });
   return actionFromMount(
     input.projectId,
@@ -900,6 +1129,8 @@ export function registerFirmware(bb: BbPluginApi, ctx: PluginContext): void {
   const remote = () => ctx.service<RemoteServices>("remote-services", () => {
     throw new Error("Firmware API operations require configured remote services");
   });
+  ctx.service<FirmwareCliService>("firmware.cli", () =>
+    createFirmwareCliService(ctx, coordinator, cache, remote));
   const unsubscribeSettings = subscribeRemoteSettings(ctx, (values) => {
     const config = readRemoteConfig(values);
     configureStandaloneUnpackRuntime(ctx, config.standaloneUnpackExecutablePath === null

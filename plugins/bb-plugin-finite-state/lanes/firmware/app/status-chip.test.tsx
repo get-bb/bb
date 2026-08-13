@@ -126,6 +126,41 @@ describe("firmware status chip", () => {
     await waitFor(() => expect(calls).toBe(3));
   });
 
+  it("refetches the first materialization when progress arrives before status exists", async () => {
+    let mountCalls = 0;
+    const slot = renderSlot(
+      chip,
+      { threadId: "thread-1", projectId: "project-1", isCompactViewport: false },
+      {
+        realtimeConnectionState: "connected" as const,
+        rpc: {
+          firmwareMountsList: () => {
+            mountCalls += 1;
+            return mountCalls === 1 ? { ...mounts(), items: [], total: 0 } : mounts();
+          },
+          firmwareMountGet: () => detail("unpacking"),
+        },
+      },
+    );
+    await slot.findByText("Firmware");
+
+    await slot.behavior.emitRealtime("firmware:progress", { pvId: "pv-1", state: "unpacking" });
+
+    await slot.findByText("Unpacking");
+    expect(mountCalls).toBe(2);
+  });
+
+  it("shows the workspace-relative rootfs location for ready mounts", async () => {
+    const slot = renderSlot(
+      chip,
+      { threadId: "thread-1", projectId: "project-1", isCompactViewport: false },
+      options(() => detail("ready_with_gaps")),
+    );
+    await slot.findByText("Ready with gaps");
+    fireEvent.click(slot.getByRole("button", { name: "Firmware status" }));
+    expect(await slot.findByText(".fs-firmware/pv-1/rootfs")).toBeTruthy();
+  });
+
   it("retains stale status when a hint refetch fails and offers retry", async () => {
     let calls = 0;
     const slot = renderSlot(

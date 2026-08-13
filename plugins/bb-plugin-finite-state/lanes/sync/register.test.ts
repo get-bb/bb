@@ -92,6 +92,13 @@ beforeAll(async () => {
   };
   context = createPluginContext(host.bb);
   context.service<RemoteServices>("remote-services", () => services);
+  context.service("firmware.cli", () => ({
+    run: async (argv: string[]) => ({
+      exitCode: 0,
+      stdout: `${JSON.stringify({ namespace: "firmware", argv })}\n`,
+      stderr: "",
+    }),
+  }));
   registerSync(host.bb, context);
   registerAdapter(foreignAdapter);
   root = await mkdtemp(join(tmpdir(), "fs-wp17-register-"));
@@ -299,6 +306,22 @@ reason: ${JSON.stringify(localReason)}
     expect(host.harness.realtimeSignals.some((signal) => signal.channel === "fs-sync-pull")).toBe(true);
     expect(host.harness.sdk.callsTo("threads.get")).toHaveLength(2);
     expect(host.harness.sdk.callsTo("environments.get")).toHaveLength(2);
+  });
+
+  it("delegates the firmware namespace without changing sync verb parsing", async () => {
+    const result = await host.harness.behavior.runCli(
+      ["finite-state", "firmware", "status", "pv-1", "--json"],
+      { threadId: "thread-sync-cli", projectId: "bb-project-sync" },
+    );
+
+    expect(result).toEqual({
+      exitCode: 0,
+      stdout: `${JSON.stringify({
+        namespace: "firmware",
+        argv: ["status", "pv-1", "--json"],
+      })}\n`,
+      stderr: "",
+    });
   });
 
   it("refuses CLI working-tree access without a bb thread identity", async () => {

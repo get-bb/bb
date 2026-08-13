@@ -725,6 +725,21 @@ bb plugin config finite-state set standaloneUnpackImage localhost:5000/services-
 The wrapper setting is host-local. Configure it on the bb host that owns the
 firmware worktree; leaving it blank preserves the explicit unconfigured state.
 
+Run firmware operations from a bb thread so the plugin can use the thread's
+project and environment identity instead of trusting the shell working directory:
+
+```bash
+bb finite-state firmware pull <pv-id> --image <workspace-relative-firmware-file> [--max-depth 12]
+bb finite-state firmware pull <pv-id> --source api [--scan <scan-id>]
+bb finite-state firmware status <pv-id> [--json]
+bb finite-state firmware hydrate <pv-id> <path>...
+bb finite-state firmware diff <from-pv-id> <to-pv-id> [--cursor <cursor>] [--json]
+```
+
+Local image materialization is the primary path. The API form is a metadata
+fallback; `hydrate` requires explicit per-file paths and never performs bulk
+rootfs hydration. Diff reads local manifest sidecars and works offline.
+
 `bb plugin install npm:<package>[@<version|tag|range>]` requires `npm` on PATH
 (packages are installed with `--ignore-scripts`). Git plugins also use npm with
 lifecycle scripts disabled, so they may depend on third-party packages; bb

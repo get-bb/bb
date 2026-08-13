@@ -737,6 +737,13 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     `standaloneUnpackImage` (default
     `localhost:5000/services-unpack:latest`); those two settings apply live
     and do not require reload.
+    From a bb thread, firmware commands are available as:
+    `bb finite-state firmware pull <pv-id> --image <workspace-relative-file> [--max-depth 12]`,
+    `bb finite-state firmware pull <pv-id> --source api [--scan <scan-id>]`,
+    `bb finite-state firmware status <pv-id> [--json]`,
+    `bb finite-state firmware hydrate <pv-id> <path>...`, and
+    `bb finite-state firmware diff <from-pv-id> <to-pv-id> [--cursor <cursor>] [--json]`.
+    Hydration is per-file only; diff reads cached sidecars offline.
   - `bb plugin logs <id> [-n N] [-f]` — the plugin's `bb.log` output.
   - `bb plugin run <id> [args...]` — explicit form of a plugin's CLI command.
   - `bb plugin new <name> [--app]` — scaffold a plugin (`--app` adds a frontend

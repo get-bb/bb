@@ -117,7 +117,7 @@ export function FirmwareStatusChip({
   useEffect(() => { void refresh(); }, [refresh]);
   useRealtime("firmware:progress", (payload) => {
     const pvId = signalPvId(payload);
-    if (pvId !== null && status?.pvId === pvId) void refresh();
+    if (pvId !== null && (status === null || status.pvId === pvId)) void refresh();
   });
   useRealtime("firmware:changed", (payload) => {
     const pvId = signalPvId(payload);
@@ -168,7 +168,12 @@ export function FirmwareStatusChip({
               <div><dt className="text-muted-foreground">Files</dt><dd>{status.materializedFiles.toLocaleString()} / {status.files.toLocaleString()}</dd></div>
               <div><dt className="text-muted-foreground">Errors</dt><dd>{status.errors.toLocaleString()}</dd></div>
               <div><dt className="text-muted-foreground">Source</dt><dd>{status.source === "standalone_unpack" ? "Local image" : status.source === "api" ? "API fallback" : "Unknown"}</dd></div>
-              <div><dt className="text-muted-foreground">Rootfs</dt><dd>{status.state === "ready" || status.state === "ready_with_gaps" ? "Available in workspace" : "Not available"}</dd></div>
+              <div>
+                <dt className="text-muted-foreground">Rootfs</dt>
+                <dd>{status.state === "ready" || status.state === "ready_with_gaps"
+                  ? <span className="break-all font-mono text-xs">.fs-firmware/{status.pvId}/rootfs</span>
+                  : "Not available"}</dd>
+              </div>
             </dl>
             {status.inputSha256 ? <p className="break-all font-mono text-xs text-muted-foreground">Input {status.inputSha256}</p> : null}
             {status.artifactHash ? <p className="break-all font-mono text-xs text-muted-foreground">Firmware {status.artifactHash}</p> : null}
