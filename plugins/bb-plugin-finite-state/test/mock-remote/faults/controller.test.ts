@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import { createFaultController } from "./controller.js";
 import {
+  AS_COMPONENT_LIST_ROUTE,
   AS_COMPONENT_UPDATE_ROUTE,
   PLATFORM_BULK_VEX_ROUTE,
+  PLATFORM_FINDINGS_ROUTE,
   PLATFORM_FIRMWARE_BYTES_ROUTE,
 } from "./scenarios.js";
 
@@ -33,6 +35,16 @@ describe("fault controller contract", () => {
       service: "assurance-studio",
       routeIds: ["assurance-studio:GET:/api/projects/{projectId}/components"],
     })).toThrow(/status 409 is not declared by route/u);
+    expect(() => controller.install({
+      name: "rate-limit-then-success",
+      service: "platform",
+      routeIds: ["platform:GET:/public/v0/projects"],
+    })).toThrow(/status 429 is not declared by route platform:GET:\/public\/v0\/projects/u);
+    expect(() => controller.install({
+      name: "rate-limit-then-success",
+      service: "platform",
+      routeIds: [PLATFORM_FINDINGS_ROUTE],
+    })).not.toThrow();
   });
 
   it("keeps instance and service counters isolated and returns immutable log values", () => {
@@ -42,21 +54,21 @@ describe("fault controller contract", () => {
       controller.install({
         name: "rate-limit-then-success",
         service: "platform",
-        routeIds: [PLATFORM_BULK_VEX_ROUTE],
+        routeIds: [PLATFORM_FINDINGS_ROUTE],
         times: 1,
       });
     }
     left.install({
       name: "rate-limit-then-success",
       service: "assurance-studio",
-      routeIds: [AS_COMPONENT_UPDATE_ROUTE],
+      routeIds: [AS_COMPONENT_LIST_ROUTE],
       times: 1,
     });
 
     const request = new Request("http://mock.invalid", { headers: { "X-Request-ID": "request-1" } });
-    const platform = left.select("platform", PLATFORM_BULK_VEX_ROUTE, request);
-    const assuranceStudio = left.select("assurance-studio", AS_COMPONENT_UPDATE_ROUTE, request);
-    const otherInstance = right.select("platform", PLATFORM_BULK_VEX_ROUTE, request);
+    const platform = left.select("platform", PLATFORM_FINDINGS_ROUTE, request);
+    const assuranceStudio = left.select("assurance-studio", AS_COMPONENT_LIST_ROUTE, request);
+    const otherInstance = right.select("platform", PLATFORM_FINDINGS_ROUTE, request);
     expect(platform && platform !== "unknown" ? platform.attempt : null).toBe(1);
     expect(assuranceStudio && assuranceStudio !== "unknown" ? assuranceStudio.attempt : null).toBe(1);
     expect(otherInstance && otherInstance !== "unknown" ? otherInstance.attempt : null).toBe(1);
@@ -66,7 +78,7 @@ describe("fault controller contract", () => {
       scenario: "rate-limit-then-success",
       service: "platform",
       requestId: "request-1",
-      routeId: PLATFORM_BULK_VEX_ROUTE,
+      routeId: PLATFORM_FINDINGS_ROUTE,
       attempt: 1,
       effect: "test-effect",
     }]);
@@ -75,7 +87,7 @@ describe("fault controller contract", () => {
 
     left.clear("platform");
     expect(left.log()).toEqual([]);
-    expect(left.select("platform", PLATFORM_BULK_VEX_ROUTE, request)).toBeNull();
-    expect(left.select("assurance-studio", AS_COMPONENT_UPDATE_ROUTE, request)).not.toBeNull();
+    expect(left.select("platform", PLATFORM_FINDINGS_ROUTE, request)).toBeNull();
+    expect(left.select("assurance-studio", AS_COMPONENT_LIST_ROUTE, request)).not.toBeNull();
   });
 });

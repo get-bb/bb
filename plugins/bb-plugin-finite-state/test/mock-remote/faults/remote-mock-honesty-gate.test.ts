@@ -18,10 +18,12 @@ import { createMockRemote, type MockRemoteHarness } from "../server.js";
 import { createFaultController, type FaultControllerRuntime } from "./controller.js";
 import { forgeFault, transportResetFetch, withFaultMiddleware } from "./middleware.js";
 import {
+  AS_COMPONENT_LIST_ROUTE,
   AS_COMPONENT_UPDATE_ROUTE,
   FORGE_CREATE_ROUTE,
   FORGE_PREPARE_ROUTE,
   PLATFORM_BULK_VEX_ROUTE,
+  PLATFORM_FINDINGS_ROUTE,
   PLATFORM_FIRMWARE_BYTES_ROUTE,
   PLATFORM_FIRMWARE_RANGE_ROUTE,
   type ScenarioSpec,
@@ -173,19 +175,18 @@ describe("remote-mock-honesty-gate", () => {
   });
 
   it("retries deterministic service-scoped 429s with an injected scheduler and exhausts independently", async () => {
-    const route = "platform:GET:/public/v0/projects";
     const result = setup([
       {
         name: "rate-limit-then-success",
         service: "platform",
-        routeIds: [route],
+        routeIds: [PLATFORM_FINDINGS_ROUTE],
         times: 2,
         retryAfterSeconds: 3,
       },
       {
         name: "rate-limit-exhausted",
         service: "assurance-studio",
-        routeIds: ["assurance-studio:GET:/api/projects/{projectId}/components"],
+        routeIds: [AS_COMPONENT_LIST_ROUTE],
         times: 9,
         retryAfterSeconds: 4,
       },
@@ -200,7 +201,7 @@ describe("remote-mock-honesty-gate", () => {
     });
     const platformFetch = authenticatedFetch(result.harness, "platform");
     const value = await limiter.run(async () => {
-      const response = await platformFetch("/public/v0/projects", {
+      const response = await platformFetch("/public/v0/versions/pv-a481df87dadf/findings?offset=0&limit=1", {
         headers: { "X-FS-Mock-Scenario": "rate-limit-then-success", "X-Request-ID": "platform-rate" },
       });
       if (!response.ok) throw await responseError("platform", response, scheduler.now());
@@ -226,19 +227,23 @@ describe("remote-mock-honesty-gate", () => {
   });
 
   it("normalizes malformed and negative Retry-After values to typed rate-limit errors", async () => {
+    const now = 10_000;
     const malformed = await responseError("platform", new Response(null, {
       status: 429, headers: { "Retry-After": "not-a-delay" },
-    }), 10_000);
+    }), now);
     const negative = await responseError("assurance-studio", new Response(null, {
       status: 429, headers: { "Retry-After": "-1" },
-    }), 10_000);
+    }), now);
     expect(malformed).toBeInstanceOf(RemoteError);
     expect(malformed).toMatchObject({ code: "REMOTE_RATE_LIMITED", retryAfterMs: null });
     expect(negative).toBeInstanceOf(RemoteError);
-    // Tripwire for mem_8fm66mk2pzm: V8 Date.parse currently turns "-1" into
-    // a future date and production code sleeps this unbounded value. The
-    // production owner must update this exact assertion with the parser fix.
-    expect(negative).toMatchObject({ code: "REMOTE_RATE_LIMITED", retryAfterMs: 978_325_190_000 });
+    // Portable tripwire for mem_8fm66mk2pzm: production currently falls
+    // through to Date.parse for a negative number. This remains timezone-safe
+    // while failing as soon as FS-103 stops taking that defective branch.
+    expect(negative).toMatchObject({
+      code: "REMOTE_RATE_LIMITED",
+      retryAfterMs: Math.max(0, Date.parse("-1") - now),
+    });
   });
 
   it("applies only successful VEX items and reports exact mixed counts", async () => {
@@ -303,7 +308,7 @@ describe("remote-mock-honesty-gate", () => {
     client.close();
   });
 
-  it("preserves first N writes, converges one retry, and resets each distinct push id", async () => {
+  it("preserves first N writes, converges one retry, and resets each new push generation", async () => {
     const base = createMockPlatformState(fixtureRoot);
     const findings = [...base.findings.values()].slice(10, 14);
     const result = setup([{
@@ -312,9 +317,10 @@ describe("remote-mock-honesty-gate", () => {
       routeIds: [PLATFORM_BULK_VEX_ROUTE],
       afterApplied: 2,
     }]);
-    const faulted = scenarioFetch(result.harness.platform.fetch, "mid-push-reset", "push-1");
     const client = new PlatformClient({
-      baseUrl: "http://platform.mock", token: platformToken, fetch: transportResetFetch(faulted),
+      baseUrl: "http://platform.mock",
+      token: platformToken,
+      fetch: transportResetFetch(result.harness.platform.fetch),
     });
     const projectVersionId = String(findings[0]?.projectVersionId);
     const input = {
@@ -338,22 +344,13 @@ describe("remote-mock-honesty-gate", () => {
       "transport-reset-after-2", "retry-converged",
     ]);
 
-    const independentPush = new PlatformClient({
-      baseUrl: "http://platform.mock",
-      token: platformToken,
-      fetch: transportResetFetch(scenarioFetch(
-        result.harness.platform.fetch,
-        "mid-push-reset",
-        "push-2",
-      )),
-    });
-    await expect(independentPush.batchSetVexStatus(input)).rejects.toMatchObject({
+    result.controller.beginPush("platform");
+    await expect(client.batchSetVexStatus(input)).rejects.toMatchObject({
       code: "REMOTE_WRITE_INDETERMINATE",
     });
     expect(result.controller.log().map((entry) => entry.effect)).toEqual([
       "transport-reset-after-2", "retry-converged", "transport-reset-after-2",
     ]);
-    independentPush.close();
     client.close();
   });
 
@@ -409,11 +406,12 @@ describe("remote-mock-honesty-gate", () => {
     const result = setup([{
       name: "rate-limit-then-success",
       service: "platform",
-      routeIds: ["platform:GET:/public/v0/projects"],
+      routeIds: [PLATFORM_FINDINGS_ROUTE],
       times: 1,
     }]);
     const fetch = authenticatedFetch(result.harness, "platform");
-    const faulted = await fetch("/public/v0/projects", {
+    const findingsPath = "/public/v0/versions/pv-a481df87dadf/findings?offset=0&limit=1";
+    const faulted = await fetch(findingsPath, {
       headers: { "X-FS-Mock-Scenario": "rate-limit-then-success" },
     });
     expect(faulted.status).toBe(429);
@@ -423,7 +421,7 @@ describe("remote-mock-honesty-gate", () => {
     await result.harness.reset("platform");
     expect(result.controller.log()).toEqual([]);
     expect(result.platformState.vexTuple(String(finding?.projectVersionId), String(finding?.id))?.status).toBeNull();
-    const scenarioAfterReset = await fetch("/public/v0/projects", {
+    const scenarioAfterReset = await fetch(findingsPath, {
       headers: { "X-FS-Mock-Scenario": "rate-limit-then-success" },
     });
     expect(scenarioAfterReset.status).toBe(400);

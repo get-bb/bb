@@ -35,12 +35,16 @@ export interface ScenarioSpec {
 
 export const PLATFORM_BULK_VEX_ROUTE =
   "platform:PUT:/public/v0/findings/{projectVersionId}/status/set/bulk";
+export const PLATFORM_FINDINGS_ROUTE =
+  "platform:GET:/public/v0/versions/{projectVersionId}/findings";
 export const PLATFORM_FIRMWARE_BYTES_ROUTE =
   "platform:GET:/public/v0/projects/versions/{projectVersionId}/filesystem/file";
 export const PLATFORM_FIRMWARE_RANGE_ROUTE =
   "platform:GET:/public/v0/projects/versions/{projectVersionId}/filesystem/content";
 export const AS_COMPONENT_UPDATE_ROUTE =
   "assurance-studio:PATCH:/api/projects/{projectId}/components/{componentId}";
+export const AS_COMPONENT_LIST_ROUTE =
+  "assurance-studio:GET:/api/projects/{projectId}/components";
 export const FORGE_CREATE_ROUTE = "forge-compute:POST:/jobs";
 export const FORGE_PREPARE_ROUTE = "forge-compute:POST:/prepare";
 
@@ -97,13 +101,13 @@ const FAULT_RESPONSE_STATUS: Readonly<Partial<Record<MockScenario, number>>> = {
 };
 
 const TRANSPORT_STATUS_EXCEPTIONS: ReadonlySet<string> = new Set([
-  // Rate limiting is injected at the gateway boundary, outside a route's
-  // application response vocabulary, but remains an ordinary HTTP response.
-  "rate-limit-then-success:429",
-  "rate-limit-exhausted:429",
+  // Gateway 429 injection is reviewed only for these two read boundaries;
+  // every other route must declare 429 in its vendored response vocabulary.
+  `${PLATFORM_FINDINGS_ROUTE}:429`,
+  `${AS_COMPONENT_LIST_ROUTE}:429`,
   // The in-process sentinel is converted to a thrown transport TypeError by
   // transportResetFetch and is never exposed to a production client as HTTP.
-  "mid-push-reset:599",
+  `${PLATFORM_BULK_VEX_ROUTE}:599`,
 ]);
 
 const AUDITED_STATUS_EVIDENCE: ReadonlySet<string> = new Set([
@@ -166,11 +170,11 @@ export function normalizeScenarioSpec(input: ScenarioSpec): ScenarioSpec & { rou
   const unknownRoute = routeIds.find((routeId) => !known.has(routeId));
   if (unknownRoute !== undefined) fail(`unknown route ${unknownRoute}`);
   const faultStatus = FAULT_RESPONSE_STATUS[name];
-  if (faultStatus !== undefined &&
-    !TRANSPORT_STATUS_EXCEPTIONS.has(`${name}:${faultStatus}`)) {
+  if (faultStatus !== undefined) {
     const incompatibleRoute = routeIds.find((routeId) =>
       !responseStatuses(service, routeId).includes(faultStatus) &&
-      !AUDITED_STATUS_EVIDENCE.has(`${routeId}:${faultStatus}`),
+      !AUDITED_STATUS_EVIDENCE.has(`${routeId}:${faultStatus}`) &&
+      !TRANSPORT_STATUS_EXCEPTIONS.has(`${routeId}:${faultStatus}`),
     );
     if (incompatibleRoute !== undefined) {
       fail(`status ${faultStatus} is not declared by route ${incompatibleRoute}`);
