@@ -19,7 +19,7 @@ import {
  *
  * Rows and active-state come from `tools-navigation`'s canonical tables, so
  * the highlight always agrees with the ownership the breadcrumb resolver and
- * post-action navigation encode (a plugin detail page belongs to Installed).
+ * detail-route origin encode.
  */
 export function ToolsSidebar({
   appRoutePath,

@@ -298,7 +298,12 @@ export function PluginsOverview() {
           setAddDialog((current) => ({ ...current, open }))
         }
         onInstalled={(plugin) =>
-          navigate(getPluginDetailRoutePath({ pluginId: plugin.id }))
+          navigate(
+            getPluginDetailRoutePath({
+              pluginId: plugin.id,
+              view: "installed",
+            }),
+          )
         }
       />
     </ResourceCollectionPage>

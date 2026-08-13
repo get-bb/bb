@@ -57,9 +57,8 @@ describe("ToolsSidebar", () => {
   it.each([
     ["/extensions/plugins", "Browse plugins"],
     ["/extensions/plugins?view=installed", "Installed plugins"],
-    // Detail pages belong to the collection their breadcrumbs and post-action
-    // navigation name: a plugin detail is owned by Installed.
-    ["/extensions/plugins/github", "Installed plugins"],
+    ["/extensions/plugins/github", "Browse plugins"],
+    ["/extensions/plugins/github?view=installed", "Installed plugins"],
     ["/extensions/skills", "Browse skills"],
     ["/extensions/skills/registry", "Browse skills"],
     ["/extensions/skills?view=library", "My skills"],

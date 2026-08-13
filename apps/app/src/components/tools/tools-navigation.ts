@@ -211,9 +211,14 @@ export function resolveToolsBreadcrumbs(
   for (const detail of DETAIL_ROUTES) {
     const match = matchPath(detail.pattern, pathname);
     if (!match) continue;
+    const collection =
+      detail.section === "plugins" &&
+      view !== TOOLS_OWNED_COLLECTION_VIEW.plugins
+        ? collectionCrumb("plugins", "Browse", getPluginsRoutePath())
+        : detail.collection;
     return [
       sectionCrumb(detail.section),
-      detail.collection,
+      collection,
       {
         label:
           resourceLabel ??
@@ -292,11 +297,11 @@ export const TOOLS_PAGES: readonly ToolsPageDefinition[] = [
 
 /**
  * Which Extensions page owns the current location — the same ownership the
- * breadcrumb resolver's DETAIL_ROUTES table encodes, so the sidebar highlight,
- * the document title, and post-action navigation always agree. In particular a
- * plugin detail page belongs to Installed (its collection crumb and its
- * post-delete navigation both say so), and the legacy installed-skill path
- * belongs to the library.
+ * breadcrumb resolver's DETAIL_ROUTES table encodes, so the sidebar highlight
+ * and document title agree. Plugin details preserve their originating
+ * collection in `view`: catalog details default to Browse, while installed
+ * rows carry `view=installed`. The legacy installed-skill path belongs to the
+ * library.
  */
 export function resolveToolsActivePage(
   pathname: string,
@@ -305,7 +310,11 @@ export function resolveToolsActivePage(
   const view = new URLSearchParams(search).get("view");
   for (const detail of DETAIL_ROUTES) {
     if (matchPath(detail.pattern, pathname) === null) continue;
-    if (detail.section === "plugins") return "plugins-installed";
+    if (detail.section === "plugins") {
+      return view === TOOLS_OWNED_COLLECTION_VIEW.plugins
+        ? "plugins-installed"
+        : "plugins-browse";
+    }
     return detail.collection.label === TOOLS_OWNED_COLLECTION_LABEL.skills
       ? "skills-library"
       : "skills-browse";

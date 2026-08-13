@@ -76,6 +76,9 @@ describe("route path helpers", () => {
     expect(getPluginDetailRoutePath({ pluginId: "github" })).toBe(
       "/extensions/plugins/github",
     );
+    expect(
+      getPluginDetailRoutePath({ pluginId: "github", view: "installed" }),
+    ).toBe("/extensions/plugins/github?view=installed");
     expect(getPluginConfigurationRoutePath({ pluginId: "github" })).toBe(
       "/settings/plugins/github",
     );

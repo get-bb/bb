@@ -164,12 +164,15 @@ export function getPluginsRoutePath(): string {
 
 export interface PluginDetailRoutePathArgs {
   pluginId: string;
+  view?: "installed";
 }
 
 export function getPluginDetailRoutePath({
   pluginId,
+  view,
 }: PluginDetailRoutePathArgs): string {
-  return `${TOOLS_PLUGINS_ROUTE_PATH}/${encodeURIComponent(pluginId)}`;
+  const path = `${TOOLS_PLUGINS_ROUTE_PATH}/${encodeURIComponent(pluginId)}`;
+  return view === "installed" ? `${path}?view=installed` : path;
 }
 
 /**

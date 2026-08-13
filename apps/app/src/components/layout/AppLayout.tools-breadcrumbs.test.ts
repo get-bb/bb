@@ -84,11 +84,15 @@ describe("resolveToolsBreadcrumbs", () => {
     ]);
     expect(resolveToolsBreadcrumbs("/extensions/plugins/ui-patterns")).toEqual([
       { label: "Plugins", to: "/extensions/plugins" },
-      { label: "Installed", to: "/extensions/plugins?view=installed" },
+      { label: "Browse", to: "/extensions/plugins" },
       { label: "ui-patterns" },
     ]);
     expect(
-      resolveToolsBreadcrumbs("/extensions/plugins/ui-patterns", "", "UI Patterns"),
+      resolveToolsBreadcrumbs(
+        "/extensions/plugins/ui-patterns",
+        "?view=installed",
+        "UI Patterns",
+      ),
     ).toEqual([
       { label: "Plugins", to: "/extensions/plugins" },
       { label: "Installed", to: "/extensions/plugins?view=installed" },
