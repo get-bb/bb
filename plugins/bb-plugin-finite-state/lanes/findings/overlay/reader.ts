@@ -38,6 +38,7 @@ export function serializeOverlay(overlay: TriageOverlayV1): string {
     project: parsed.project,
     component: parsed.component,
     decisions: parsed.decisions,
+    ...(parsed.proposals === undefined ? {} : { proposals: parsed.proposals }),
   });
 }
 

@@ -279,6 +279,10 @@ export async function readVexWorking(
         throw new SerializeError(file, 1, `overlay project must match sync scope ${scope.projectId}`);
       }
       if (decisions.length === 0) {
+        // Supplier proposals are a separate, local-only record class. They are
+        // visible through the overlay projection but must never become sync
+        // entities until a human writes a strict decision.
+        if (isRecord(document["proposals"])) continue;
         throw new SerializeError(file, 1, `${basename(file)} is not an fs-triage decision document`);
       }
       const fileRows: WorkingEntity[] = [];

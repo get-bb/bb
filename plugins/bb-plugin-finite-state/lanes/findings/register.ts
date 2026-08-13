@@ -6,7 +6,7 @@ import { hydrateFindingActivity } from "./cache/activity.js";
 import { hydrateFindingComments } from "./cache/comments.js";
 import { pullFindings } from "./cache/pull.js";
 import { registerFindingsBulk } from "./bulk/index.js";
-import { registerFindingsDriftStub } from "./drift/index.js";
+import { registerFindingsDrift } from "./drift/index.js";
 import { registerFindingsOverlay } from "./overlay/index.js";
 import { registerFindingsPolicyStub } from "./policy/index.js";
 import { registerFindingsStableKeyStub } from "./stable-key/index.js";
@@ -50,5 +50,5 @@ export function registerFindings(bb: BbPluginApi, ctx: PluginContext): void {
   registerFindingsOverlay(ctx);
   registerFindingsPolicyStub();
   registerFindingsBulk({ db, platform: remote.platform, publish: progress => bb.realtime.publish("fs-vex-push-progress", progress) });
-  registerFindingsDriftStub();
+  registerFindingsDrift(ctx);
 }

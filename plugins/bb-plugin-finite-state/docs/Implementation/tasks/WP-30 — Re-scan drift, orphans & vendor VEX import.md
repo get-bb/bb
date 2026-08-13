@@ -34,14 +34,18 @@ New versions produce new finding UUIDs, and platform carry-forward is best effor
 ```ts
 export type DriftState = "reattached_noop" | "reapply" | "stale" | "orphaned" | "conflict" | "needs_completion";
 export interface DriftItem { stableKey: string; state: DriftState; tier?: 1 | 2 | 3; reason: string; previousVersion?: string; currentVersion?: string; }
-export interface DriftReport { pvId: string; totals: Record<DriftState, number>; items: DriftItem[]; nextCursor: string | null; }
+export interface DriftReport {
+  pvId: string; runId: string; createdAt: string; unclassifiedCount: number;
+  totals: Record<DriftState, number>; items: DriftItem[]; nextCursor: string | null;
+}
 export interface VendorImportResult {
   source: { format: "cyclonedx" | "csaf" | "openvex"; digest: string; vendor: string };
   matched: number; unmatched: number; needsCompletion: number; keptLocal: number; written: number;
   proposals: { stableKey?: string; state: string; sourceRef: string }[];
   errors: { sourceRef?: string; code: string; message: string }[];
 }
-export function classifyDrift(deps: DriftDeps, pvId: string): DriftReport;
+export function classifyDrift(deps: DriftDeps, pvId: string): DriftReport; // explicit refresh + persist
+export function readDriftReport(deps: DriftReportDeps, pvId: string): DriftReport; // read-only keyset page
 export function importVendorVex(deps: ImportDeps, file: string, options: { vendor: string; overwrite: boolean; dryRun: boolean }): Promise<VendorImportResult>;
 ```
 

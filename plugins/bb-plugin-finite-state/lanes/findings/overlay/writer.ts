@@ -17,6 +17,7 @@ import { parseOverlayText, readOverlayFiles, serializeOverlay } from "./reader.j
 import {
   decisionFromInput,
   parseOverlay,
+  proposalFromInput,
   stableKeyFor,
   TRIAGE_OVERLAY_SCHEMA,
   type DecisionInput,
@@ -24,6 +25,9 @@ import {
   type RemoveDecisionInput,
   type TriageDecisionV1,
   type TriageOverlayV1,
+  type VendorProposalInput,
+  type VendorProposalState,
+  type VendorProposalV1,
 } from "./schema.js";
 
 export interface OverlayWriteResult {
@@ -33,6 +37,11 @@ export interface OverlayWriteResult {
   afterSha256: string;
   changedFields: string[];
   state: OverlayState;
+}
+
+export interface VendorProposalWriteResult extends Omit<OverlayWriteResult, "state"> {
+  state: VendorProposalState;
+  proposalId: string;
 }
 
 export class OverlayCasConflictError extends Error {
@@ -204,6 +213,17 @@ function candidateOverlay(input: DecisionInput): TriageOverlayV1 {
   }, "<input>");
 }
 
+function candidateProposalOverlay(input: VendorProposalInput): TriageOverlayV1 {
+  const proposal = proposalFromInput(input);
+  return parseOverlay({
+    schema: TRIAGE_OVERLAY_SCHEMA,
+    project: input.project,
+    component: input.component,
+    decisions: {},
+    proposals: { [input.proposalId]: proposal },
+  }, "<input>");
+}
+
 async function componentFile(root: string, project: string, component: TriageOverlayV1["component"]): Promise<string> {
   const directory = resolve(root, ".fs", "triage", project);
   const base = safeComponent(component.name);
@@ -236,7 +256,10 @@ function flatten(value: unknown, prefix = ""): Map<string, string> {
   return result;
 }
 
-function changedFields(before: TriageDecisionV1 | undefined, after: TriageDecisionV1 | undefined): string[] {
+function changedFields(
+  before: TriageDecisionV1 | VendorProposalV1 | undefined,
+  after: TriageDecisionV1 | VendorProposalV1 | undefined,
+): string[] {
   const left = flatten(before ?? null);
   const right = flatten(after ?? null);
   return [...new Set([...left.keys(), ...right.keys()])]
@@ -353,6 +376,49 @@ export async function setDecision(root: string, input: DecisionInput, expectedSh
   return result;
 }
 
+/** Writes an untrusted supplier proposal through the same file lock and digest CAS as decisions. */
+export async function setVendorProposal(
+  root: string,
+  input: VendorProposalInput,
+  expectedSha256?: string,
+): Promise<VendorProposalWriteResult> {
+  const projectRoot = await canonicalRoot(root);
+  const initial = candidateProposalOverlay(input);
+  const file = await componentFile(projectRoot, initial.project, initial.component);
+  await ensureDirectory(projectRoot, dirname(file));
+  const result = await withLock<VendorProposalWriteResult>(projectRoot, file, async () => {
+    const current = await readCurrent(projectRoot, file);
+    if (expectedSha256 !== undefined && current?.digest !== expectedSha256) {
+      throw new OverlayCasConflictError(normalizeFile(projectRoot, file), expectedSha256, current?.digest);
+    }
+    if (current !== null && (!sameComponent(current.overlay.component, initial.component) || current.overlay.project !== initial.project)) {
+      throw new SerializeError(normalizeFile(projectRoot, file), 1, "Overlay file belongs to a different component identity");
+    }
+    const proposal = initial.proposals?.[input.proposalId];
+    if (proposal === undefined) throw new Error("Validated vendor proposal is missing");
+    const before: VendorProposalV1 | undefined = current?.overlay.proposals?.[input.proposalId];
+    const overlay: TriageOverlayV1 = current?.overlay ?? { ...initial, decisions: {}, proposals: {} };
+    const proposals = overlay.proposals ?? {};
+    proposals[input.proposalId] = proposal;
+    overlay.proposals = proposals;
+    const serialized = serializeOverlay(overlay);
+    const afterDigest = sha256(serialized);
+    const fields = changedFields(before, proposal);
+    if (current?.text !== serialized) await commitFile(projectRoot, file, serialized, current?.digest);
+    return {
+      file: normalizeFile(projectRoot, file),
+      proposalId: input.proposalId,
+      stableKey: proposal.target_stable_key ?? stableKeyFor(initial.project, initial.component, proposal.cve),
+      beforeSha256: current?.digest ?? null,
+      afterSha256: current?.text === serialized ? current.digest : afterDigest,
+      changedFields: fields,
+      state: proposal.state,
+    };
+  });
+  await rememberComponentFile(projectRoot, initial.project, initial.component, file);
+  return result;
+}
+
 export async function removeDecision(root: string, input: RemoveDecisionInput, expectedSha256?: string): Promise<OverlayWriteResult> {
   const projectRoot = await canonicalRoot(root);
   const stableKey = stableKeyFor(input.project, input.component, input.cve);
@@ -369,7 +435,7 @@ export async function removeDecision(root: string, input: RemoveDecisionInput, e
     if (before === undefined) throw new SerializeError(normalizeFile(projectRoot, file), 1, "Overlay decision does not exist");
     delete current.overlay.decisions[input.cve];
     const fields = changedFields(before, undefined);
-    if (Object.keys(current.overlay.decisions).length === 0) {
+    if (Object.keys(current.overlay.decisions).length === 0 && Object.keys(current.overlay.proposals ?? {}).length === 0) {
       const immediatelyBeforeDelete = await readCurrent(projectRoot, file);
       if (immediatelyBeforeDelete?.digest !== current.digest) {
         throw new OverlayCasConflictError(normalizeFile(projectRoot, file), current.digest, immediatelyBeforeDelete?.digest);
