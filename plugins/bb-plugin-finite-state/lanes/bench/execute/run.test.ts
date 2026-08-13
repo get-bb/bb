@@ -1,18 +1,96 @@
+import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  openManifest,
+  verifyMountIntegrity,
+  type FirmwareManifestMeta,
+  type FirmwareNode,
+} from "../../firmware/cache/manifest.js";
+import { rootfsPath } from "../../firmware/cache/layout.js";
+import { prepareFirmwareForBench } from "../../firmware/forge/handshake.js";
 import { DIGEST_A, createBenchTestStore } from "../store/test-helpers.js";
 import { InMemoryBenchJobQueue } from "./jobs.js";
 import {
   BenchRunError,
+  persistBenchLog,
+  readPersistedBenchLog,
   runBench,
   type BenchExecutionDeps,
   type BenchRunRequest,
 } from "./run.js";
 
 const fixtures: Array<ReturnType<typeof createBenchTestStore>> = [];
+const roots: string[] = [];
 
 afterEach(async () => {
-  await Promise.all(fixtures.splice(0).map((fixture) => fixture.host.harness.lifecycle.dispose()));
+  await Promise.all([
+    ...fixtures.splice(0).map((fixture) => fixture.host.harness.lifecycle.dispose()),
+    ...roots.splice(0).map((root) => rm(root, { recursive: true, force: true })),
+  ]);
 });
+
+function sha256(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+async function preparedFirmwareFixture() {
+  const root = await mkdtemp(join(tmpdir(), "fs-run-tier1-"));
+  roots.push(root);
+  execFileSync("git", ["init", "--quiet", root]);
+  await writeFile(join(root, ".gitignore"), ".fs-firmware/\n");
+  const rootfs = rootfsPath(root, "version-a");
+  await mkdir(join(rootfs, "bin"), { recursive: true });
+  await writeFile(join(rootfs, "bin/app"), "verified bytes");
+  const node: FirmwareNode = {
+    path: "/bin/app",
+    kind: "file",
+    fileHash: sha256("verified bytes"),
+    size: 14,
+    mimeType: "application/octet-stream",
+    fullType: null,
+    unixMode: 0o755,
+    unixUid: 0,
+    unixGid: 0,
+    isSetuid: false,
+    isSetgid: false,
+    symlinkTarget: null,
+    materialized: true,
+    errors: [],
+  };
+  const meta: FirmwareManifestMeta = {
+    pvId: "version-a",
+    scanId: "scan-a",
+    inputSha256: sha256("input"),
+    source: "standalone_unpack",
+    artifactHash: null,
+    fullyMaterialized: true,
+    materializedAt: new Date(0).toISOString(),
+    nodeCount: 1,
+    hydratedCount: 1,
+    adminBytesOk: true,
+    unpackErrors: [],
+    stale: false,
+  };
+  const manifest = openManifest(root, "version-a");
+  try {
+    manifest.replaceNodes([node], meta);
+    verifyMountIntegrity(manifest);
+  } finally {
+    manifest.close();
+  }
+  return {
+    root,
+    prepared: await prepareFirmwareForBench(
+      { worktreeRoot: root },
+      "version-a",
+      new AbortController().signal,
+    ),
+  };
+}
 
 function enrolledHost() {
   return {
@@ -181,6 +259,69 @@ describe("runBench", () => {
     expect(penTestRun).not.toHaveBeenCalled();
   });
 
+  it("persists the validated Tier 1 deployment context in run config", async () => {
+    const fixture = createBenchTestStore("execute-run-tier1-config");
+    fixtures.push(fixture);
+    const firmware = await preparedFirmwareFixture();
+    const execution = deps(fixture);
+    execution.hostProbe = {
+      inspect: async () => ({
+        allowPentest: true,
+        docker: true,
+        cveEvidenceVerifier: true,
+        forgeCompute: true,
+      }),
+    };
+    execution.forgeCompute = {
+      verifyDynamic: vi.fn(async () => ({ job_id: "dynamic-a" })),
+      penTestRun: vi.fn(async () => ({ jobId: "pentest-a" })),
+      getJobStatus: vi.fn(),
+    };
+    execution.prepareFirmware = async () => ({
+      prepared: firmware.prepared,
+      firmwareHandshake: { worktreeRoot: firmware.root },
+      forgeProcess: {
+        kind: "plugin_owned_stdio",
+        hostId: "host-a",
+        command: ["forge"],
+        start: async () => undefined,
+      },
+    });
+    execution.resolveTier1Targets = async () => ({
+      verdictIds: ["REQ-A"],
+      cveId: "CVE-2026-0001",
+      componentId: "component-a",
+      findingId: null,
+    });
+    const deploymentContext = {
+      productType: "gateway",
+      networkExposure: "internet",
+      regulatory: "CRA",
+      deploymentNotes: "Production edge",
+      rootComponentName: "Eagle",
+      rootComponentType: "firmware",
+    };
+    await runBench(
+      execution,
+      {
+        projectId: "project-a",
+        pvId: "version-a",
+        tier: "tier1",
+        hostId: "host-a",
+        requirementId: "REQ-A",
+        target: "CVE-2026-0001@component-a",
+        deploymentContext,
+      },
+      new AbortController().signal,
+    );
+    expect(
+      fixture.db
+        .prepare("SELECT config FROM verification_runs WHERE run_id = 'run-execute-a'")
+        .pluck()
+        .get(),
+    ).toBe(JSON.stringify(deploymentContext));
+  });
+
   it("rejects tiers 2-4 explicitly before any host or persistence call", async () => {
     const fixture = createBenchTestStore("execute-run-tier-reject");
     fixtures.push(fixture);
@@ -198,5 +339,55 @@ describe("runBench", () => {
     );
     expect(fixture.db.prepare("SELECT COUNT(*) FROM verification_runs").pluck().get()).toBe(0);
     expect(fixture.host.harness.inspection.sdk.callsTo("hosts.list")).toHaveLength(0);
+  });
+});
+
+describe("persistBenchLog", () => {
+  it("writes a bounded cached tail to the logical locator it returns", async () => {
+    const values = new Map<string, unknown>();
+    const kv = {
+      async set(key: string, value: unknown) {
+        values.set(key, value);
+      },
+      async delete(key: string) {
+        values.delete(key);
+      },
+      async get<T>(key: string) {
+        return values.get(key) as T | undefined;
+      },
+    };
+    const locator = await persistBenchLog(
+      kv,
+      "run-a",
+      { jobId: "job-a", logTail: ["x".repeat(300 * 1024), "last line"] },
+      new AbortController().signal,
+    );
+    expect(locator).toBe("runs/run-a/jobs/job-a.log");
+    const persisted = await readPersistedBenchLog(kv, locator!);
+    expect(persisted?.text.endsWith("last line\n")).toBe(true);
+    expect(Buffer.byteLength(persisted?.text ?? "", "utf8")).toBeLessThanOrEqual(240 * 1024);
+    expect(persisted?.complete).toBe(false);
+  });
+
+  it("removes a partial write and returns no locator when persistence fails", async () => {
+    const values = new Map<string, unknown>();
+    const kv = {
+      async set(key: string, value: unknown) {
+        values.set(key, value);
+        throw new Error("storage unavailable after write");
+      },
+      async delete(key: string) {
+        values.delete(key);
+      },
+    };
+    await expect(
+      persistBenchLog(
+        kv,
+        "run-a",
+        { jobId: "job-a", logTail: ["partial"] },
+        new AbortController().signal,
+      ),
+    ).resolves.toBeNull();
+    expect(values).toEqual(new Map());
   });
 });
