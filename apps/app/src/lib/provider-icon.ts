@@ -22,8 +22,9 @@ interface ProviderIconInfo {
   ariaLabel: string;
 }
 
-const GenericAcpIcon: ComponentType<{ className?: string }> = ({ className }) =>
-  createElement(Icon, { name: "Code", className, "aria-hidden": "true" });
+const GenericProviderIcon: ComponentType<{ className?: string }> = ({
+  className,
+}) => createElement(Icon, { name: "Code", className, "aria-hidden": "true" });
 
 // Brand icons for well-known ACP agents, keyed by slug (the provider id with
 // the `acp-` prefix stripped). Unknown ACP agents fall back to the generic
@@ -94,7 +95,7 @@ export function getProviderIconInfo(
     const slug = providerId.slice(ACP_ID_PREFIX.length);
     const brandIcon = KNOWN_ACP_BRAND_ICONS[slug];
     return {
-      icon: brandIcon ?? GenericAcpIcon,
+      icon: brandIcon ?? GenericProviderIcon,
       ariaLabel: brandIcon ? slug : "ACP provider",
     };
   }
@@ -120,6 +121,11 @@ export function getProviderIconInfo(
     case "pi":
       return {
         icon: PiIcon,
+        ariaLabel: providerInfo.displayName,
+      };
+    case "prime-agent":
+      return {
+        icon: GenericProviderIcon,
         ariaLabel: providerInfo.displayName,
       };
     case "acp-cursor":

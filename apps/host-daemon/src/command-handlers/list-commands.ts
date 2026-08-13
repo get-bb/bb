@@ -132,6 +132,7 @@ const HERMES_DIR_NAME = ".hermes";
 const OMP_DIR_NAME = ".omp";
 const OPENCODE_DIR_NAME = ".opencode";
 const PI_DIR_NAME = ".pi";
+const PRIME_DIR_NAME = ".prime";
 const CLAUDE_PLUGIN_DIR_NAME = ".claude-plugin";
 const CLAUDE_PLUGIN_MANIFEST_FILE_NAME = "plugin.json";
 const CLAUDE_PLUGIN_INSTALLED_FILE_NAME = "installed_plugins.json";
@@ -1790,6 +1791,16 @@ const PROVIDER_SKILL_SPECS: Readonly<Record<string, ProviderSkillSpec>> = {
       [
         AGENTS_DIR_NAME,
         path.join(resolution.homeDir, AGENTS_DIR_NAME, "skills"),
+      ],
+    ],
+    walkParents: true,
+  },
+  "prime-agent": {
+    projectDirectories: [path.join(PRIME_DIR_NAME, "agent", "skills")],
+    userLocations: (resolution) => [
+      [
+        PRIME_DIR_NAME,
+        path.join(resolution.homeDir, PRIME_DIR_NAME, "agent", "skills"),
       ],
     ],
     walkParents: true,

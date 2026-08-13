@@ -82,6 +82,7 @@ import { piVisibilityMetadata } from "./visibility.js";
 // ---------------------------------------------------------------------------
 
 interface PiUnhandledEventArgs {
+  providerId: string;
   rawEvent: JsonRpcMessage;
   turnId?: string;
   parentToolCallId?: string;
@@ -89,6 +90,7 @@ interface PiUnhandledEventArgs {
 
 interface BuildUnexpectedPiSdkEventArgs {
   context?: ProviderTranslationContext;
+  providerId: string;
   rawMessage: unknown;
   turnId?: string;
 }
@@ -109,7 +111,7 @@ interface PiInstructionOverrides {
 
 function buildUnhandledPiEvent(args: PiUnhandledEventArgs): ThreadEvent[] {
   return buildUnhandledProviderEvents({
-    providerId: "pi",
+    providerId: args.providerId,
     rawEvent: args.rawEvent,
     visibilityMetadata: piVisibilityMetadata,
     ...(args.turnId ? { turnId: args.turnId } : {}),
@@ -132,7 +134,7 @@ function buildUnexpectedPiSdkEvent(
   };
   return [
     createUnhandledProviderEvent({
-      providerId: "pi",
+      providerId: args.providerId,
       rawEvent,
       rawType: piVisibilityMetadata.describeRawEvent(rawEvent).kind,
       ...(args.turnId ? { turnId: args.turnId } : {}),
@@ -428,25 +430,31 @@ interface PiAdditionalSkillPathsParams {
 }
 
 interface PiSkillRootPathArgs {
+  providerId: "pi" | "prime-agent";
   skillRoot: AgentRuntimeSkillRoot;
 }
 
 function piSkillRootPath(args: PiSkillRootPathArgs): string {
-  if (args.skillRoot.providerId !== "pi") {
-    throw new Error(
-      `Pi cannot configure ${args.skillRoot.providerId} skill root "${args.skillRoot.id}".`,
-    );
+  if (
+    (args.providerId === "pi" && args.skillRoot.providerId === "pi") ||
+    (args.providerId === "prime-agent" &&
+      args.skillRoot.providerId === "prime-agent")
+  ) {
+    return args.skillRoot.skillDirectoryRootPath;
   }
-  return args.skillRoot.skillDirectoryRootPath;
+  throw new Error(
+    `${args.providerId} cannot configure ${args.skillRoot.providerId} skill root "${args.skillRoot.id}".`,
+  );
 }
 
 function buildPiAdditionalSkillPathsParams(
   skillRoots: ProviderExecutionContext["skillRoots"],
+  providerId: "pi" | "prime-agent",
 ): PiAdditionalSkillPathsParams | undefined {
   return skillRoots && skillRoots.length > 0
     ? {
         additionalSkillPaths: skillRoots.map((skillRoot) =>
-          piSkillRootPath({ skillRoot }),
+          piSkillRootPath({ providerId, skillRoot }),
         ),
       }
     : undefined;
@@ -530,6 +538,12 @@ export interface CreatePiProviderAdapterOptions {
   turnIdPrefix?: string;
 }
 
+export interface CreatePiProtocolProviderAdapterOptions extends CreatePiProviderAdapterOptions {
+  bridgeBundleFileName: string;
+  bridgeRelativePath: string;
+  providerId: "pi" | "prime-agent";
+}
+
 interface PiTurnState {
   assistantMessageCounter: number;
   commandOutputSnapshotsByCallId: Map<string, string>;
@@ -543,13 +557,6 @@ interface PiTurnState {
   toolItemsByCallId: Map<string, ThreadEventItem>;
 }
 
-const piCompactionItemIds = createScopedItemIdFactory({
-  prefix: "pi-compaction",
-});
-const piReasoningItemIds = createScopedItemIdFactory({
-  prefix: "pi-reasoning",
-});
-
 function resetPiCommandOutputSnapshots(state: PiTurnState): void {
   state.commandOutputSnapshotsByCallId.clear();
 }
@@ -557,10 +564,29 @@ function resetPiCommandOutputSnapshots(state: PiTurnState): void {
 export function createPiProviderAdapter(
   opts?: CreatePiProviderAdapterOptions,
 ): ProviderAdapter {
-  const providerInfo = getBuiltInAgentProviderInfo("pi");
+  return createPiProtocolProviderAdapter({
+    ...opts,
+    bridgeBundleFileName: "bb-pi-bridge.mjs",
+    bridgeRelativePath: "bridge/bridge.js",
+    providerId: "pi",
+  });
+}
+
+/** Shared native AgentSession event protocol used by Pi and Prime Agent. */
+export function createPiProtocolProviderAdapter(
+  opts: CreatePiProtocolProviderAdapterOptions,
+): ProviderAdapter {
+  const providerInfo = getBuiltInAgentProviderInfo(opts.providerId);
   const capabilities = providerInfo.capabilities;
   const resolveModelContextWindow =
     opts?.resolveModelContextWindow ?? createPiModelContextWindowResolver();
+  const piCompactionItemIds = createScopedItemIdFactory({
+    prefix: `${providerInfo.id}-compaction`,
+  });
+  const piReasoningItemIds = createScopedItemIdFactory({
+    prefix: `${providerInfo.id}-reasoning`,
+  });
+  const assistantIdPrefix = `${providerInfo.id}-assistant`;
 
   const turnState = createProviderTurnStateRegistry<PiTurnState>({
     createState: () => ({
@@ -626,6 +652,7 @@ export function createPiProviderAdapter(
       return translated.length > 0
         ? translated
         : buildUnhandledPiEvent({
+            providerId: providerInfo.id,
             rawEvent: {
               jsonrpc: "2.0",
               method: sdkEnvelope.data.method,
@@ -682,6 +709,7 @@ export function createPiProviderAdapter(
     if (envelope.success) {
       const fallbackTurnId = resolvePiActiveTurnId(context);
       return buildUnhandledPiEvent({
+        providerId: providerInfo.id,
         rawEvent: {
           jsonrpc: "2.0",
           method: envelope.data.method,
@@ -705,6 +733,7 @@ export function createPiProviderAdapter(
     const fallbackTurnId = state.currentTurnId;
     const buildUnexpectedEvent = (rawMessage: unknown): ThreadEvent[] =>
       buildUnexpectedPiSdkEvent({
+        providerId: providerInfo.id,
         rawMessage,
         context,
         ...(fallbackTurnId ? { turnId: fallbackTurnId } : {}),
@@ -835,7 +864,7 @@ export function createPiProviderAdapter(
           const text = extractAssistantText(lastAssistant);
           if (text) {
             const itemId = turnState.resolveCompletedAssistantMessageId({
-              assistantIdPrefix: "pi-assistant",
+              assistantIdPrefix,
               parentToolCallId: context?.parentToolCallId,
               state,
             });
@@ -889,7 +918,7 @@ export function createPiProviderAdapter(
           const delta = assistantEvent.delta;
           if (delta) {
             const itemId = turnState.getOrCreateAssistantMessageId({
-              assistantIdPrefix: "pi-assistant",
+              assistantIdPrefix,
               parentToolCallId: context?.parentToolCallId,
               state,
             });
@@ -970,7 +999,7 @@ export function createPiProviderAdapter(
         // text at agent_end gets a fresh ID and doesn't overwrite
         // earlier streamed content.
         turnState.resolveCompletedAssistantMessageId({
-          assistantIdPrefix: "pi-assistant",
+          assistantIdPrefix,
           parentToolCallId: context?.parentToolCallId,
           state,
         });
@@ -1091,9 +1120,9 @@ export function createPiProviderAdapter(
         command: opts?.bridgeNodeExecutablePath ?? "node",
         args: resolveBridgeProcessArgs({
           bridgeBundleDir: opts?.bridgeBundleDir,
-          bundleFileName: "bb-pi-bridge.mjs",
+          bundleFileName: opts.bridgeBundleFileName,
           importMetaUrl: import.meta.url,
-          bridgeRelativePath: "bridge/bridge.js",
+          bridgeRelativePath: opts.bridgeRelativePath,
         }),
         ...(opts?.bridgeNodeEnv !== undefined
           ? { env: opts.bridgeNodeEnv }
@@ -1114,7 +1143,7 @@ export function createPiProviderAdapter(
           case "skills/configure":
             return {
               kind: "noop",
-              reason: "Pi skill paths are configured per session",
+              reason: `${providerInfo.displayName} skill paths are configured per session`,
             };
           case "thread/start": {
             finishOpenProviderTurn({
@@ -1131,7 +1160,10 @@ export function createPiProviderAdapter(
               inputSchema: JSON.parse(JSON.stringify(t.inputSchema)),
             }));
             const additionalSkillPathsParams =
-              buildPiAdditionalSkillPathsParams(command.options.skillRoots);
+              buildPiAdditionalSkillPathsParams(
+                command.options.skillRoots,
+                opts.providerId,
+              );
             return {
               kind: "request",
               method: "thread/start",
@@ -1171,7 +1203,10 @@ export function createPiProviderAdapter(
               inputSchema: JSON.parse(JSON.stringify(t.inputSchema)),
             }));
             const additionalSkillPathsParams =
-              buildPiAdditionalSkillPathsParams(command.options.skillRoots);
+              buildPiAdditionalSkillPathsParams(
+                command.options.skillRoots,
+                opts.providerId,
+              );
             return {
               kind: "request",
               method: "thread/resume",
@@ -1253,7 +1288,10 @@ export function createPiProviderAdapter(
               inputSchema: JSON.parse(JSON.stringify(t.inputSchema)),
             }));
             const additionalSkillPathsParams =
-              buildPiAdditionalSkillPathsParams(command.options.skillRoots);
+              buildPiAdditionalSkillPathsParams(
+                command.options.skillRoots,
+                opts.providerId,
+              );
             return {
               kind: "request",
               method: "thread/fork",

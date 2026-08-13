@@ -11,6 +11,7 @@ const AGENT_PROVIDER_ID_VALUES = [
   "codex",
   "claude-code",
   "pi",
+  "prime-agent",
   "acp-cursor",
 ] as const;
 export const agentProviderIdSchema = z.enum(AGENT_PROVIDER_ID_VALUES);
@@ -114,6 +115,15 @@ const PI_CAPABILITIES: ProviderCapabilities = {
   supportedPermissionModes: ["full"],
 };
 
+const PRIME_AGENT_CAPABILITIES: ProviderCapabilities = {
+  supportsArchive: false,
+  supportsRename: true,
+  supportsServiceTier: false,
+  supportsUserQuestion: false,
+  supportsFork: false,
+  supportedPermissionModes: ["full"],
+};
+
 const CODEX_COMPOSER_ACTIONS: ProviderComposerAction[] = [
   { kind: "skills", trigger: "/" },
   {
@@ -138,6 +148,9 @@ const CLAUDE_COMPOSER_ACTIONS: ProviderComposerAction[] = [
 // `/` skills composer action unlocks slash-command typeahead for those same
 // skills on every provider surface, not just Codex/Claude Code.
 const PI_COMPOSER_ACTIONS: ProviderComposerAction[] = [
+  { kind: "skills", trigger: "/" },
+];
+const PRIME_AGENT_COMPOSER_ACTIONS: ProviderComposerAction[] = [
   { kind: "skills", trigger: "/" },
 ];
 const ACP_COMPOSER_ACTIONS: ProviderComposerAction[] = [
@@ -179,6 +192,13 @@ const CLAUDE_SERVER_CAPABILITIES: ProviderServerCapabilities = {
 };
 
 const PI_SERVER_CAPABILITIES: ProviderServerCapabilities = {
+  supportsWorkflows: false,
+  supportsExecutionOverride: false,
+  backsHostDaemonAiServices: false,
+  reasoningLevels: ["low", "medium", "high", "xhigh", "max"],
+};
+
+const PRIME_AGENT_SERVER_CAPABILITIES: ProviderServerCapabilities = {
   supportsWorkflows: false,
   supportsExecutionOverride: false,
   backsHostDaemonAiServices: false,
@@ -246,6 +266,17 @@ const BUILT_IN_AGENT_PROVIDER_CATALOG: BuiltInAgentProviderCatalogEntry[] = [
       logoUrl: null,
     },
     serverCapabilities: PI_SERVER_CAPABILITIES,
+  },
+  {
+    info: {
+      available: true,
+      capabilities: PRIME_AGENT_CAPABILITIES,
+      composerActions: PRIME_AGENT_COMPOSER_ACTIONS,
+      displayName: "Prime Agent",
+      id: "prime-agent",
+      logoUrl: null,
+    },
+    serverCapabilities: PRIME_AGENT_SERVER_CAPABILITIES,
   },
   {
     info: {
@@ -395,7 +426,9 @@ export function supportsNativeFork(providerId: string): boolean {
 
 /** Whether BB can explicitly request context compaction for this provider. */
 export function supportsManualCompaction(providerId: string): boolean {
-  return ["codex", "claude-code", "pi", "acp-opencode"].includes(providerId);
+  return ["codex", "claude-code", "pi", "prime-agent", "acp-opencode"].includes(
+    providerId,
+  );
 }
 
 export function listBuiltInAgentProviderInfos(): BuiltInAgentProviderInfo[] {

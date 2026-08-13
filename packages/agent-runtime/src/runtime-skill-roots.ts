@@ -5,6 +5,7 @@ import type {
   AgentRuntimeClaudeCodeSkillRoot,
   AgentRuntimeCodexSkillRoot,
   AgentRuntimePiSkillRoot,
+  AgentRuntimePrimeAgentSkillRoot,
   AgentRuntimeSkillRoot,
 } from "./types.js";
 
@@ -54,6 +55,8 @@ function normalizeSkillRoot(
       return normalizeCodexSkillRoot(skillRoot);
     case "pi":
       return normalizePiSkillRoot(skillRoot);
+    case "prime-agent":
+      return normalizePrimeAgentSkillRoot(skillRoot);
     default:
       return assertKnownSkillRootProvider(skillRoot);
   }
@@ -127,6 +130,23 @@ function normalizeCodexSkillRoot(
 function normalizePiSkillRoot(
   skillRoot: AgentRuntimePiSkillRoot,
 ): AgentRuntimePiSkillRoot {
+  assertAbsoluteSkillRootPath({
+    id: skillRoot.id,
+    path: skillRoot.skillDirectoryRootPath,
+    pathField: "skillDirectoryRootPath",
+    providerId: skillRoot.providerId,
+  });
+
+  return {
+    id: skillRoot.id,
+    providerId: skillRoot.providerId,
+    skillDirectoryRootPath: skillRoot.skillDirectoryRootPath,
+  };
+}
+
+function normalizePrimeAgentSkillRoot(
+  skillRoot: AgentRuntimePrimeAgentSkillRoot,
+): AgentRuntimePrimeAgentSkillRoot {
   assertAbsoluteSkillRootPath({
     id: skillRoot.id,
     path: skillRoot.skillDirectoryRootPath,

@@ -14,6 +14,7 @@ export type {
   AgentRuntimeExecutionOptions,
   AgentRuntimeOptions,
   AgentRuntimePiSkillRoot,
+  AgentRuntimePrimeAgentSkillRoot,
   AgentRuntimeProcessExitInfo,
   AgentRuntimeProcessExitThreadState,
   AgentRuntimeProviderSession,

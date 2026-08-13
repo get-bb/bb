@@ -36,6 +36,12 @@ export interface AgentRuntimePiSkillRoot {
   skillDirectoryRootPath: string;
 }
 
+export interface AgentRuntimePrimeAgentSkillRoot {
+  id: string;
+  providerId: "prime-agent";
+  skillDirectoryRootPath: string;
+}
+
 export interface AgentRuntimeAcpSkill {
   description: string;
   name: string;
@@ -52,7 +58,8 @@ export type AgentRuntimeSkillRoot =
   | AgentRuntimeAcpSkillRoot
   | AgentRuntimeClaudeCodeSkillRoot
   | AgentRuntimeCodexSkillRoot
-  | AgentRuntimePiSkillRoot;
+  | AgentRuntimePiSkillRoot
+  | AgentRuntimePrimeAgentSkillRoot;
 
 /**
  * Final per-thread state snapshot taken when a provider process exits,

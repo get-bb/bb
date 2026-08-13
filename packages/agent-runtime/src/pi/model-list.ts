@@ -19,6 +19,7 @@ export interface PiCatalogModel {
 }
 
 export interface BuildPiAvailableModelsArgs {
+  agentDisplayName?: string;
   models: readonly PiCatalogModel[];
 }
 
@@ -45,7 +46,10 @@ function isModelAlias(id: string): boolean {
   return !DATE_SUFFIX_PATTERN.test(id);
 }
 
-function buildPiAvailableModel(model: PiCatalogModel): AvailableModel {
+function buildPiAvailableModel(
+  model: PiCatalogModel,
+  agentDisplayName: string,
+): AvailableModel {
   const canonicalId = toCanonicalPiModelId(model.provider, model.id);
   const supportedReasoningEfforts = getPiReasoningEfforts(model);
   const defaultReasoningEffort =
@@ -61,7 +65,7 @@ function buildPiAvailableModel(model: PiCatalogModel): AvailableModel {
     // Pi is the selected agent provider; this is the nested model route that
     // determines authentication, billing, and where workspace content is sent.
     routeProviderId: model.provider,
-    description: describePiModel(model),
+    description: describePiModel(model, agentDisplayName),
     supportedReasoningEfforts,
     defaultReasoningEffort,
     isDefault: false,
@@ -74,7 +78,7 @@ export function buildPiAvailableModels(
   const models: AvailableModel[] = [];
   const selectedOnlyModels: AvailableModel[] = [];
   for (const model of args.models) {
-    const built = buildPiAvailableModel(model);
+    const built = buildPiAvailableModel(model, args.agentDisplayName ?? "Pi");
     if (isModelAlias(model.id)) {
       models.push(built);
     } else {
@@ -125,7 +129,10 @@ function getPiReasoningEfforts(model: PiCatalogModel): ModelReasoningEffort[] {
   return efforts.length > 0 ? efforts : [LOW_REASONING_EFFORT];
 }
 
-function describePiModel(model: PiCatalogModel): string {
+function describePiModel(
+  model: PiCatalogModel,
+  agentDisplayName: string,
+): string {
   const capabilities: string[] = [];
   capabilities.push(model.reasoning ? "reasoning" : "non-reasoning");
   if (model.input.includes("image")) {
@@ -136,7 +143,7 @@ function describePiModel(model: PiCatalogModel): string {
     model.provider.length > 0
       ? model.provider[0].toUpperCase() + model.provider.slice(1)
       : model.provider;
-  return `${provider} ${capabilities.join(", ")} model via Pi`;
+  return `${provider} ${capabilities.join(", ")} model via ${agentDisplayName}`;
 }
 
 function resolveDefaultPiModelId(models: AvailableModel[]): string | undefined {

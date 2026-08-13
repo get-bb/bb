@@ -588,6 +588,11 @@ function buildSkillRoots(args: BuildSkillRootsArgs): AgentRuntimeSkillRoot[] {
       skillDirectoryRootPath,
     },
     {
+      id: `global-skills:${args.catalogHash}:prime-agent`,
+      providerId: "prime-agent",
+      skillDirectoryRootPath,
+    },
+    {
       id: `global-skills:${args.catalogHash}:acp`,
       providerId: "acp",
       skillDirectoryRootPath,
