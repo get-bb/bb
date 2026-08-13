@@ -288,6 +288,127 @@ describe("Docs nav panel", () => {
     });
   });
 
+  it("keeps independently mounted page and navigation on the route vault across out-of-order refreshes", async () => {
+    type PendingNotebook = {
+      vaultId: string;
+      resolve: (value: ReturnType<typeof listNotesResult>) => void;
+    };
+    const pending: PendingNotebook[] = [];
+    const notebook = (vaultId: string) => ({
+      ...listNotesResult([
+        {
+          path: `${vaultId}.md`,
+          title: vaultId === "work" ? "Work note" : "Personal note",
+          preview: "",
+          modifiedAtMs: 1,
+        },
+      ]),
+      vaults: [
+        {
+          id: "personal",
+          name: "Personal",
+          hostId: null,
+          rootPath: "/vaults/personal",
+        },
+        {
+          id: "work",
+          name: "Work",
+          hostId: null,
+          rootPath: "/vaults/work",
+        },
+      ],
+      vault: {
+        id: vaultId,
+        name: vaultId === "work" ? "Work" : "Personal",
+        hostId: null,
+        rootPath: `/vaults/${vaultId}`,
+      },
+    });
+    const rpc = {
+      listNotes: (rawInput: unknown) => {
+        const input = rawInput as { vaultId?: string } | undefined;
+        const vaultId = input?.vaultId ?? "personal";
+        return new Promise<ReturnType<typeof listNotesResult>>((resolve) => {
+          pending.push({ vaultId, resolve });
+        });
+      },
+      readNote: (rawInput: unknown) => {
+        const input = rawInput as { vaultId: string };
+        return {
+          content: `# ${input.vaultId === "work" ? "Work document" : "Personal document"}`,
+          sha256: input.vaultId,
+        };
+      },
+      preparePreview: () => preview,
+      createNote: () => ({ path: "created.md" }),
+      renameToTitle: (rawInput: unknown) => {
+        const input = rawInput as { path: string };
+        return { path: input.path };
+      },
+    };
+    const page = renderSlot(
+      docsRegistration,
+      { subPath: "personal/personal.md" },
+      { rpc },
+    );
+    const navigation = renderSlot(
+      navigationRegistration,
+      { subPath: "personal/personal.md", params: null },
+      { rpc },
+    );
+    await waitFor(() => expect(pending).toHaveLength(2));
+    expect(pending.map((request) => request.vaultId)).toEqual([
+      "personal",
+      "personal",
+    ]);
+    for (const request of pending.splice(0))
+      request.resolve(notebook("personal"));
+    await page.findByText("Personal document");
+    await navigation.findByText("Personal note");
+
+    await page.emitRealtime("vault-changed", { vaultId: "personal" });
+    await navigation.emitRealtime("vault-changed", { vaultId: "personal" });
+    await waitFor(() => expect(pending).toHaveLength(2));
+    const latePersonalRequests = pending.splice(0);
+    expect(latePersonalRequests.map((request) => request.vaultId)).toEqual([
+      "personal",
+      "personal",
+    ]);
+
+    page.rerender(<docsRegistration.component subPath="work/work.md" />);
+    navigation.rerender(
+      <navigationView.component subPath="work/work.md" params={null} />,
+    );
+    expect(page.queryByText("Personal document")).toBeNull();
+    expect(navigation.queryByText("Personal note")).toBeNull();
+    await waitFor(() => expect(pending).toHaveLength(2));
+    const workRequests = pending.splice(0);
+    expect(workRequests.map((request) => request.vaultId)).toEqual([
+      "work",
+      "work",
+    ]);
+    for (const request of workRequests) request.resolve(notebook("work"));
+    await page.findByText("Work document");
+    await navigation.findByText("Work note");
+
+    for (const request of latePersonalRequests) {
+      request.resolve(notebook("personal"));
+    }
+    await act(async () => undefined);
+    expect(page.queryByText("Personal document")).toBeNull();
+    expect(navigation.queryByText("Personal note")).toBeNull();
+    expect(page.getByText("Work document")).toBeTruthy();
+    expect(navigation.getByText("Work note")).toBeTruthy();
+
+    fireEvent.click(navigation.getByRole("button", { name: "New note" }));
+    await waitFor(() =>
+      expect(navigation.rpcCalls).toContainEqual({
+        method: "createNote",
+        input: { vaultId: "work", parent: "", name: "Untitled" },
+      }),
+    );
+  });
+
   it("only shows host status when the selected vault is unavailable", async () => {
     const available = listNotesResult([]);
     const unavailable = {

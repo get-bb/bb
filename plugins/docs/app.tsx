@@ -590,24 +590,47 @@ function TiptapEditor({
 
 function useNotebook(vaultId: string | null) {
   const rpc = useRpc<typeof docsRpcContract>();
-  const [data, setData] = useState<NotesData | null>(null);
+  const requestIdRef = useRef(0);
+  const [result, setResult] = useState<{
+    requestedVaultId: string | null;
+    data: NotesData;
+  } | null>(null);
   const refresh = useCallback(() => {
+    const requestId = ++requestIdRef.current;
+    const requestedVaultId = vaultId;
     void rpc
       .call("listNotes", vaultId ? { vaultId } : {})
-      .then((value) => setData(parseNotesData(value)))
+      .then((value) => {
+        if (requestId !== requestIdRef.current) return;
+        setResult({ requestedVaultId, data: parseNotesData(value) });
+      })
       .catch((error: unknown) => {
-        setData((current) =>
-          current
+        if (requestId !== requestIdRef.current) return;
+        setResult((current) =>
+          current?.requestedVaultId === requestedVaultId
             ? {
                 ...current,
-                error: error instanceof Error ? error.message : String(error),
+                data: {
+                  ...current.data,
+                  error: error instanceof Error ? error.message : String(error),
+                },
               }
             : null,
         );
       });
   }, [rpc, vaultId]);
-  useEffect(refresh, [refresh]);
+  useEffect(() => {
+    refresh();
+    return () => {
+      requestIdRef.current += 1;
+    };
+  }, [refresh]);
   useRealtime("vault-changed", refresh);
+  const data =
+    result?.requestedVaultId === vaultId &&
+    (vaultId === null || result.data.vault.id === vaultId)
+      ? result.data
+      : null;
   return { data, refresh };
 }
 
@@ -1707,7 +1730,6 @@ function NotesWorkspace({
   const rpc = useRpc<typeof docsRpcContract>();
   const navigate = useBbNavigate();
   const route = parseRoute(subPath);
-  const [vaultId, setVaultId] = useState<string | null>(route.vaultId);
   const [folderDialogOpen, setFolderDialogOpen] = useState(false);
   const [folderName, setFolderName] = useState("");
   const [folderError, setFolderError] = useState<string | null>(null);
@@ -1716,20 +1738,9 @@ function NotesWorkspace({
   const [vaultRootPath, setVaultRootPath] = useState("");
   const [vaultHostId, setVaultHostId] = useState("primary");
   const [vaultError, setVaultError] = useState<string | null>(null);
-  const { data, refresh } = useNotebook(vaultId);
-  const activeVaultId = data?.vault.id ?? vaultId;
-  const filePath =
-    route.vaultId === null || route.vaultId === activeVaultId
-      ? route.filePath
-      : null;
-
-  useEffect(() => {
-    if (route.vaultId && route.vaultId !== vaultId) {
-      setVaultId(route.vaultId);
-      return;
-    }
-    if (!vaultId && data?.vault.id) setVaultId(data.vault.id);
-  }, [data, route.vaultId, vaultId]);
+  const { data, refresh } = useNotebook(route.vaultId);
+  const activeVaultId = data?.vault.id ?? route.vaultId;
+  const filePath = route.filePath;
 
   const open = useCallback(
     (path: string, replace = false) => {
@@ -1798,7 +1809,6 @@ function NotesWorkspace({
       setVaultRootPath("");
       setVaultHostId("primary");
       setVaultDialogOpen(false);
-      setVaultId(value.id);
       navigate.toPluginPanel("docs", {
         subPath: value.id,
       });
@@ -1905,7 +1915,6 @@ function NotesWorkspace({
               void moveFile(sourcePath, targetFolder, targetOrder)
             }
             onVaultChange={(value) => {
-              setVaultId(value);
               navigate.toPluginPanel("docs", {
                 subPath: value,
               });
