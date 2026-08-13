@@ -209,6 +209,7 @@ describe("finding detail", () => {
       expect.objectContaining({ path: "product-security", options: expect.objectContaining({ subPath: "requirements/trace/REQ-secure-gateway" }) }),
     ]));
     expect(within(section).getByText(/WP-39 ships/u)).toBeTruthy();
+    expect((within(section).getByRole("button", { name: "Unavailable" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("rejects an invalid encoded key before detail SQL or remote calls", async () => {

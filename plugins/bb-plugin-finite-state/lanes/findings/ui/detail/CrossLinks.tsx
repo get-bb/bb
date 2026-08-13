@@ -119,7 +119,9 @@ export function CrossLinks({ rows }: { rows: readonly FindingDetailRow[] }): Rea
                 {link.reason ? <p className="mt-1 break-words text-muted-foreground">{link.reason}</p> : null}
               </div>
               {link.ready ? <Button onClick={() => open(link)} size="sm" variant="outline">Open</Button>
-                : <Button onClick={() => recover(link)} size="sm" variant="ghost">{link.action === "pull" ? "Pull" : "Inspect"}</Button>}
+                : link.kind === "verification"
+                  ? <Button disabled size="sm" variant="ghost">Unavailable</Button>
+                  : <Button onClick={() => recover(link)} size="sm" variant="ghost">{link.action === "pull" ? "Pull" : "Inspect"}</Button>}
             </li>
           ))}
         </ul>
