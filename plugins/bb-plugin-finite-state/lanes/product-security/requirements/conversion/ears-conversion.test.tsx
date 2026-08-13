@@ -1,10 +1,15 @@
 // @vitest-environment jsdom
 
-import { render, screen } from "@testing-library/react";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { cleanup, render, screen } from "@testing-library/react";
 import { createFakePluginHost } from "@bb/plugin-sdk/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createPluginContext } from "../../../../lib/context.js";
 import { reqIdKey } from "../../../../lib/sync/registry.js";
+import { registeredAdapters } from "../../../sync/engine/adapter.js";
+import { computePlan } from "../../../sync/plan/index.js";
 import { rpcContract } from "../../../../shared/contract.js";
 import { serializeRequirement } from "../cards/adapter.js";
 import type { EarsPattern, RequirementYamlV1 } from "../cards/schema.js";
@@ -30,6 +35,7 @@ import { validateConversion } from "./validate.js";
 import {
   conversionDiffIsComplete,
   exactRequirementDiffItems,
+  loadConversionDiff,
   requirementEditSubPath,
 } from "./index.js";
 
@@ -141,6 +147,7 @@ function fixture(initial: ConversionPullSnapshot) {
 }
 
 afterEach(() => {
+  cleanup();
   clearConversionBundlesForTests();
   clearConversionReportsForTests();
 });
@@ -223,6 +230,29 @@ describe("EARS conversion flow", () => {
       },
     });
     const ctx = createPluginContext(host.bb);
+    ctx.service("remote-services", () => ({
+      assuranceStudio: {
+        async *listEntities() {
+          yield {
+            items: [{
+              id: item.remoteId,
+              projectId: "project-1",
+              kind: "requirement" as const,
+              reviewVersion: "1",
+              reviewStatus: null,
+              humanEdited: null,
+              fields: {
+                reqId: item.requirementId,
+                description: item.sourceDescription,
+                priority: "P1",
+              },
+            }],
+            total: 1,
+            next: null,
+          };
+        },
+      },
+    }));
     const db = ctx.db();
     const requirementKey = reqIdKey({ reqId: item.requirementId });
     db.prepare(
@@ -272,6 +302,22 @@ describe("EARS conversion flow", () => {
     ).run("project-1", "version-1", "generation-1", requirementKey, item.checks[0]?.id, PULLED_AT);
 
     registerRequirementsConversionBackend(host.bb, ctx);
+    expect(registeredAdapters().map((adapter) => adapter.kind)).toContain("requirement");
+    const worktreeRoot = await mkdtemp(join(tmpdir(), "fs-ears-plan-"));
+    try {
+      const requirementDirectory = join(worktreeRoot, "product-security/requirements");
+      await mkdir(requirementDirectory, { recursive: true });
+      await writeFile(join(requirementDirectory, "REQ-1.yaml"), proposal, "utf8");
+      const requirementPlan = await computePlan({ db, worktreeRoot }, {
+        projectId: "project-1",
+        projectVersionId: "version-1",
+      }, ["requirement"]);
+      expect(requirementPlan.items).toEqual(expect.arrayContaining([
+        expect.objectContaining({ kind: "requirement", label: "REQ-1", operation: "update" }),
+      ]));
+    } finally {
+      await rm(worktreeRoot, { recursive: true, force: true });
+    }
     expect([...host.harness.registrations.rpcMethods].sort()).toEqual([
       "earsConversionGet", "earsConversionReview", "earsConversionStart",
     ]);
@@ -383,10 +429,36 @@ describe("EARS conversion flow", () => {
       fields: [],
     }));
     expect(exactRequirementDiffItems(diff, ["REQ-1"]).map((item) => item.label)).toEqual(["REQ-1"]);
+    expect(exactRequirementDiffItems([
+      { ...diff[0]!, operation: "noop" },
+    ], ["REQ-1"])).toEqual([]);
     expect(conversionDiffIsComplete([diff[0]!], ["REQ-1"], "next-page")).toBe(false);
     expect(conversionDiffIsComplete([diff[0]!], ["REQ-1", "REQ-2"], null)).toBe(false);
     expect(conversionDiffIsComplete([diff[0]!], ["REQ-1"], null)).toBe(true);
     expect(requirementEditSubPath("REQ-1")).toBe("requirements/trace/REQ-1");
+  });
+
+  it("keeps refreshed gates visible when the production diff path is unavailable", async () => {
+    const conversion: Parameters<typeof loadConversionDiff>[0] = {
+      id: "bundle",
+      projectVersionId: "version-1",
+      state: "awaiting_human",
+      requirementIds: ["REQ-1"],
+      snapshotSha256: "a".repeat(64),
+      errors: [],
+    };
+    const result = await loadConversionDiff(conversion, "project-1", async () => {
+      throw new Error("Requirement plan is temporarily unavailable");
+    });
+    expect(result).toMatchObject({
+      state: "awaiting_human",
+      requirementIds: ["REQ-1"],
+      diffComplete: false,
+      diffError: "Requirement plan is temporarily unavailable",
+    });
+    render(<ConversionDialog model={result} onClose={vi.fn()} onDiscard={vi.fn()} onEdit={vi.fn()} onRefresh={vi.fn()} />);
+    expect(screen.getByText("Requirement diff unavailable")).toBeTruthy();
+    expect(screen.getByText(/Gate results remain current/u)).toBeTruthy();
   });
 
   it("discard navigation never claims review and leaves source unchanged", () => {

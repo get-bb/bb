@@ -1,13 +1,15 @@
-import { join } from "node:path";
+import { readdir, readFile } from "node:fs/promises";
+import { join, relative, sep } from "node:path";
 import type { BbPluginApi } from "@bb/plugin-sdk";
 import type Database from "better-sqlite3";
 import type { PluginContext } from "../../../../lib/context.js";
+import type { AssuranceStudioClient, RemoteServices } from "../../../../lib/remote/types.js";
 import {
   fromStorageProjectVersionId,
   PROJECT_LEVEL_VERSION_ID,
   toStorageProjectVersionId,
 } from "../../../../lib/store/index.js";
-import { parseKey } from "../../../../lib/sync/registry.js";
+import { ENTITIES, parseKey } from "../../../../lib/sync/registry.js";
 import {
   HUMAN_APPROVAL_CAPABILITY_POLICY,
   rpcContract,
@@ -27,6 +29,14 @@ import {
   type ConversionReport,
 } from "./report.js";
 import { requirementIdSchema } from "../cards/schema.js";
+import { validateRequirementYaml } from "../cards/validator.js";
+import {
+  registerAdapter,
+  registeredAdapters,
+  type EntityAdapter,
+  type WorkingEntity,
+} from "../../../sync/engine/adapter.js";
+import { createSerializer } from "../../../sync/serialize/serializer.js";
 
 const conversionRpcContract = {
   earsConversionStart: rpcContract.earsConversionStart,
@@ -35,6 +45,7 @@ const conversionRpcContract = {
 } as const;
 
 const REQUIREMENTS_DIRECTORY = "product-security/requirements";
+const REQUIREMENT_PAGE_SIZE = 1_000;
 const RESULT_SUMMARY_LIMIT = 20;
 const DETAIL_LIMIT = 500;
 const REQUIREMENT_TYPES = new Set(["security", "privacy", "safety", "regulatory", "operational"]);
@@ -69,6 +80,83 @@ interface CheckRow {
 }
 interface ResultRow { tier: string; status: string; evidence_summary: string | null; executed_at: string | null }
 interface VocabularyRow { slug: string; remote_id: string }
+
+type RequirementRemote = Pick<AssuranceStudioClient, "listEntities">;
+
+function requirementRemoteId(fields: Readonly<Record<string, unknown>>): string {
+  const candidate = fields["reqId"] ?? fields["req_id"] ?? fields["id"];
+  if (typeof candidate !== "string" || !requirementIdSchema.safeParse(candidate).success) {
+    throw new Error("Assurance Studio requirement is missing its stable REQ-* id.");
+  }
+  return candidate;
+}
+
+async function readRequirementWorking(worktreeRoot: string): Promise<WorkingEntity[]> {
+  const directory = join(worktreeRoot, REQUIREMENTS_DIRECTORY);
+  let entries;
+  try {
+    entries = await readdir(directory, { withFileTypes: true });
+  } catch (error: unknown) {
+    if (record(error)?.["code"] === "ENOENT") return [];
+    throw error;
+  }
+  const rows: WorkingEntity[] = [];
+  for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+    if (!entry.isFile() || !/\.ya?ml$/iu.test(entry.name)) continue;
+    const absolutePath = join(directory, entry.name);
+    const file = relative(worktreeRoot, absolutePath).split(sep).join("/");
+    const validated = validateRequirementYaml(await readFile(absolutePath, "utf8"), file);
+    if (!validated.success) {
+      const first = validated.errors[0];
+      throw new Error(first
+        ? `${file}:${first.line ?? 1} ${first.code}: ${first.message}`
+        : `${file}:1 Requirement YAML is invalid.`);
+    }
+    rows.push({
+      key: ENTITIES.requirement.key({ reqId: validated.data.id }),
+      payload: { ...validated.data, reqId: validated.data.id },
+      file,
+    });
+  }
+  return rows;
+}
+
+export function createRequirementPlanAdapter(remote: RequirementRemote): EntityAdapter {
+  return {
+    kind: "requirement",
+    klass: "VERSIONED",
+    serializer: createSerializer("requirement"),
+    async *fetchRemote(scope, onProgress) {
+      let pageNumber = 0;
+      for await (const page of remote.listEntities("requirement", {
+        projectId: scope.projectId,
+        page: { pageSize: REQUIREMENT_PAGE_SIZE },
+      })) {
+        pageNumber += 1;
+        onProgress({
+          page: pageNumber,
+          of: page.total === null ? null : Math.ceil(page.total / REQUIREMENT_PAGE_SIZE),
+        });
+        yield page.items.map((entity) => ({
+          key: ENTITIES.requirement.key({ reqId: requirementRemoteId(entity.fields) }),
+          remoteId: entity.id,
+          payload: { ...entity },
+        }));
+      }
+    },
+    readWorking: readRequirementWorking,
+  };
+}
+
+function ensureRequirementPlanAdapter(ctx: PluginContext): void {
+  if (registeredAdapters().some((adapter) => adapter.kind === "requirement")) return;
+  const remote: RequirementRemote = {
+    listEntities: (...args) => ctx.service<RemoteServices>("remote-services", () => {
+      throw new Error("Requirement plan adapter requires remote services");
+    }).assuranceStudio.listEntities(...args),
+  };
+  registerAdapter(createRequirementPlanAdapter(remote));
+}
 
 function record(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -430,6 +518,7 @@ export function registerRequirementsConversionBackend(
   bb: BbPluginApi,
   ctx: PluginContext,
 ): void {
+  ensureRequirementPlanAdapter(ctx);
   bb.rpc.register(conversionRpcContract, {
     async earsConversionStart(input) {
       const projectVersionId = resolvedProjectVersionId(

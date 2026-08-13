@@ -10,12 +10,20 @@ function message(error: unknown): string {
 
 const MAX_SYNC_PLAN_PAGES = 50;
 
+type SyncPlanCall = (input: {
+  projectId: string;
+  projectVersionId: string | null;
+  pageSize: number;
+  continuation: string | null;
+  kinds: ["requirement"];
+}) => Promise<{ items: NonNullable<ConversionDialogModel["diff"]>; next: string | null }>;
+
 export function exactRequirementDiffItems(
   items: NonNullable<ConversionDialogModel["diff"]>,
   requirementIds: readonly string[],
 ): NonNullable<ConversionDialogModel["diff"]> {
   const selected = new Set(requirementIds);
-  return items.filter((item) => selected.has(item.label));
+  return items.filter((item) => selected.has(item.label) && item.operation !== "noop");
 }
 
 export function requirementEditSubPath(requirementId: string): string {
@@ -30,6 +38,44 @@ export function conversionDiffIsComplete(
   if (continuation !== null) return false;
   const shownIds = new Set(items.map((item) => item.label));
   return requirementIds.every((id) => shownIds.has(id));
+}
+
+export async function loadConversionDiff(
+  conversion: ConversionDialogModel,
+  projectId: string,
+  callSyncPlan: SyncPlanCall,
+): Promise<ConversionDialogModel> {
+  if (conversion.state !== "awaiting_human") return conversion;
+  try {
+    const items: NonNullable<ConversionDialogModel["diff"]> = [];
+    let continuation: string | null = null;
+    let pageIndex = 0;
+    do {
+      const plan = await callSyncPlan({
+        projectId,
+        projectVersionId: conversion.projectVersionId,
+        pageSize: 200,
+        continuation,
+        kinds: ["requirement"],
+      });
+      items.push(...exactRequirementDiffItems(plan.items, conversion.requirementIds));
+      continuation = plan.next;
+      pageIndex += 1;
+    } while (continuation !== null && pageIndex < MAX_SYNC_PLAN_PAGES);
+    return {
+      ...conversion,
+      diff: items,
+      diffComplete: conversionDiffIsComplete(items, conversion.requirementIds, continuation),
+      diffError: undefined,
+    };
+  } catch (error: unknown) {
+    return {
+      ...conversion,
+      diff: undefined,
+      diffComplete: false,
+      diffError: message(error),
+    };
+  }
 }
 
 export function RequirementsConversionLayer({
@@ -48,23 +94,7 @@ export function RequirementsConversionLayer({
 
   async function withDiff(conversion: ConversionDialogModel): Promise<ConversionDialogModel> {
     if (conversion.state !== "awaiting_human" || !projectId) return conversion;
-    const items: NonNullable<ConversionDialogModel["diff"]> = [];
-    let continuation: string | null = null;
-    let pageIndex = 0;
-    do {
-      const plan: { items: NonNullable<ConversionDialogModel["diff"]>; next: string | null } = await rpc.call("syncPlan", {
-        projectId,
-        projectVersionId: conversion.projectVersionId,
-        pageSize: 200,
-        continuation,
-        kinds: ["requirement"],
-      });
-      items.push(...exactRequirementDiffItems(plan.items, conversion.requirementIds));
-      continuation = plan.next;
-      pageIndex += 1;
-    } while (continuation !== null && pageIndex < MAX_SYNC_PLAN_PAGES);
-    const diffComplete = conversionDiffIsComplete(items, conversion.requirementIds, continuation);
-    return { ...conversion, diff: items, diffComplete };
+    return loadConversionDiff(conversion, projectId, (input) => rpc.call("syncPlan", input));
   }
 
   useEffect(() => {
@@ -83,6 +113,7 @@ export function RequirementsConversionLayer({
         projectVersionId,
       });
       setProjectVersionId(conversion.projectVersionId);
+      setModel(conversion);
       setModel(await withDiff(conversion));
     } catch (nextError) {
       setError(message(nextError));
@@ -100,6 +131,7 @@ export function RequirementsConversionLayer({
         projectVersionId,
         id: model.id,
       });
+      setModel(conversion);
       setModel(await withDiff(conversion));
     } catch (nextError) {
       setError(message(nextError));

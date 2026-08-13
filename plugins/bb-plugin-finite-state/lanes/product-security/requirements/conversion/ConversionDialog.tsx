@@ -10,6 +10,7 @@ export interface ConversionDialogModel {
   snapshotSha256: string;
   errors: Array<{ code: string; message: string; artifactId: string | null; line: number | null }>;
   diffComplete?: boolean;
+  diffError?: string;
   diff?: Array<{
     key: string;
     label: string;
@@ -64,9 +65,15 @@ export function ConversionDialog({
           {model.state === "awaiting_human" ? (
             <div className="rounded-lg border border-border bg-muted/40 p-4">
               <div className="flex items-start gap-3"><Icon aria-hidden="true" className="mt-0.5 size-5" name="FileDiff" /><div><p className="font-medium">Review the ordinary git/sync diff</p><p className="mt-1 text-sm text-muted-foreground">Approval acknowledges a valid local proposal only. It does not push or apply it.</p></div></div>
-              {model.diff === undefined ? <p className="mt-3 text-sm text-muted-foreground">Loading selected requirement changes…</p> : null}
+              {model.diffError ? (
+                <div className="mt-3 rounded-md border border-destructive/40 bg-background p-3" role="alert">
+                  <p className="text-sm font-medium text-destructive">Requirement diff unavailable</p>
+                  <p className="mt-1 text-sm text-muted-foreground">{model.diffError} Gate results remain current; approval stays unavailable.</p>
+                </div>
+              ) : null}
+              {model.diff === undefined && !model.diffError ? <p className="mt-3 text-sm text-muted-foreground">Loading selected requirement changes…</p> : null}
               {model.diff?.length === 0 ? <p className="mt-3 text-sm text-destructive">No selected requirement diff is available. Refresh gates before approval.</p> : null}
-              {model.diff !== undefined && model.diffComplete === false ? (
+              {model.diff !== undefined && model.diffComplete === false && !model.diffError ? (
                 <p className="mt-3 text-sm text-destructive">The selected requirement diff is incomplete. Approval stays unavailable until every scoped requirement is shown.</p>
               ) : null}
               {model.diff?.map((item) => (
@@ -87,7 +94,7 @@ export function ConversionDialog({
         <footer className="flex flex-wrap justify-end gap-2 border-t border-border p-4">
           <button className="h-9 rounded-md border border-input px-3 text-sm font-medium hover:bg-muted" onClick={onRefresh} type="button">Refresh gates</button>
           <button className="h-9 rounded-md border border-input px-3 text-sm font-medium hover:bg-muted" onClick={onEdit} type="button">Edit files</button>
-          <button className="h-9 rounded-md border border-destructive/40 px-3 text-sm font-medium text-destructive hover:bg-destructive/10" onClick={onDiscard} type="button">Discard</button>
+          <button className="h-9 rounded-md border border-destructive/40 px-3 text-sm font-medium text-foreground hover:bg-destructive/10" onClick={onDiscard} type="button">Discard</button>
           <div className="flex flex-col items-end gap-1">
             <button aria-describedby="conversion-approval-pending" className="h-9 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50" disabled type="button">Approve local proposal</button>
             <p className="max-w-sm text-right text-xs text-muted-foreground" id="conversion-approval-pending">Human approval is pending an owner ruling on the trusted local-review transition.</p>
