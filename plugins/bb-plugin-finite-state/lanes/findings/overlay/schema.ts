@@ -30,6 +30,37 @@ export interface TriageDecisionV1 {
   sync: { base: VexTuple | null; pushed_at: string | null };
 }
 
+export type VendorProposalMatch = "matched" | "none";
+export type VendorProposalState = "proposal" | "needs_completion";
+
+/**
+ * Supplier assertions are deliberately not decisions. They may be incomplete,
+ * never participate in sync planning, and require an explicit strict
+ * DecisionInput write before they can become authored VEX intent.
+ */
+export interface VendorProposalV1 {
+  cve: string;
+  status: VexStatus;
+  justification: VexJustification | null;
+  response: VexResponse | null;
+  reason: string | null;
+  state: VendorProposalState;
+  match: VendorProposalMatch;
+  target_stable_key: string | null;
+  provenance: {
+    by: string;
+    at: string | null;
+    evidence: string;
+    import_id: string;
+  };
+  source: {
+    format: "cyclonedx" | "csaf" | "openvex";
+    document_id: string;
+    document_sha256: string;
+    statement: string;
+  };
+}
+
 export interface TriageOverlayV1 {
   schema: typeof TRIAGE_OVERLAY_SCHEMA;
   project: string;
@@ -40,6 +71,7 @@ export interface TriageOverlayV1 {
     version: string | null;
   };
   decisions: Record<string, TriageDecisionV1>;
+  proposals?: Record<string, VendorProposalV1>;
 }
 
 export interface DecisionInput {
@@ -63,6 +95,13 @@ export interface RemoveDecisionInput {
   stableKey: string;
 }
 
+export interface VendorProposalInput {
+  project: string;
+  component: TriageOverlayV1["component"];
+  proposalId: string;
+  proposal: VendorProposalV1;
+}
+
 export type OverlayState =
   | "dirty"
   | "pushed"
@@ -72,12 +111,27 @@ export type OverlayState =
   | "needs_completion";
 
 const UUID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/iu;
-const TOP_FIELDS = new Set(["schema", "project", "component", "decisions"]);
+const TOP_FIELDS = new Set(["schema", "project", "component", "decisions", "proposals"]);
 const COMPONENT_FIELDS = new Set(["purl", "name", "group", "version"]);
 const DECISION_FIELDS = new Set(["status", "justification", "response", "reason", "pin", "provenance", "sync"]);
 const PROVENANCE_FIELDS = new Set(["by", "at", "evidence"]);
 const SYNC_FIELDS = new Set(["base", "pushed_at"]);
 const TUPLE_FIELDS = new Set(["status", "justification", "response", "reason"]);
+const PROPOSAL_FIELDS = new Set([
+  "cve",
+  "status",
+  "justification",
+  "response",
+  "reason",
+  "state",
+  "match",
+  "target_stable_key",
+  "provenance",
+  "source",
+]);
+const PROPOSAL_PROVENANCE_FIELDS = new Set(["by", "at", "evidence", "import_id"]);
+const PROPOSAL_SOURCE_FIELDS = new Set(["format", "document_id", "document_sha256", "statement"]);
+const SHA256 = /^[0-9a-f]{64}$/u;
 
 function record(value: unknown, field: string, file: string): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -116,6 +170,18 @@ function nullableText(value: unknown, field: string, file: string): string | nul
   if (value === null) return null;
   if (typeof value !== "string") throw new SerializeError(file, 1, `${field} must be a string or null`);
   return value.normalize("NFC");
+}
+
+function nullableBoundedText(value: unknown, field: string, maximum: number, file: string): string | null {
+  const parsed = nullableText(value, field, file);
+  if (parsed !== null && parsed.length > maximum) {
+    throw new SerializeError(file, 1, `${field} exceeds ${maximum} characters`);
+  }
+  return parsed;
+}
+
+function nullableTimestamp(value: unknown, field: string, file: string): string | null {
+  return value === null ? null : timestamp(value, field, file);
 }
 
 function enumValue<T extends string>(value: unknown, values: readonly T[], field: string, file: string): T {
@@ -202,6 +268,69 @@ function parseDecision(value: unknown, field: string, file: string): TriageDecis
   };
 }
 
+function parseProposal(value: unknown, field: string, file: string): VendorProposalV1 {
+  const raw = record(value, field, file);
+  exactFields(raw, PROPOSAL_FIELDS, field, file);
+  const status = enumValue(raw["status"], VEX_STATUSES, `${field}.status`, file);
+  const justification = nullableEnum(raw["justification"], VEX_JUSTIFICATIONS, `${field}.justification`, file);
+  const state = raw["state"];
+  if (state !== "proposal" && state !== "needs_completion") {
+    throw new SerializeError(file, 1, `${field}.state must be proposal or needs_completion`);
+  }
+  if (status === "NOT_AFFECTED" && justification === null && state !== "needs_completion") {
+    throw new SerializeError(file, 1, `${field}.state must be needs_completion when NOT_AFFECTED has no justification`);
+  }
+  const match = raw["match"];
+  if (match !== "matched" && match !== "none") {
+    throw new SerializeError(file, 1, `${field}.match must be matched or none`);
+  }
+  const targetStableKey = nullableText(raw["target_stable_key"], `${field}.target_stable_key`, file);
+  if ((match === "none") !== (targetStableKey === null)) {
+    throw new SerializeError(file, 1, `${field}.target_stable_key must be null exactly when match is none`);
+  }
+  if (targetStableKey !== null) {
+    try {
+      const parsed = parseFindingStableKey(targetStableKey);
+      const cve = requiredText(raw["cve"], `${field}.cve`, file);
+      if (parsed.cve !== cve) throw new Error("target CVE differs from proposal CVE");
+    } catch (error) {
+      throw new SerializeError(file, 1, `${field}.target_stable_key is invalid: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  const provenance = record(raw["provenance"], `${field}.provenance`, file);
+  exactFields(provenance, PROPOSAL_PROVENANCE_FIELDS, `${field}.provenance`, file);
+  const source = record(raw["source"], `${field}.source`, file);
+  exactFields(source, PROPOSAL_SOURCE_FIELDS, `${field}.source`, file);
+  const format = source["format"];
+  if (format !== "cyclonedx" && format !== "csaf" && format !== "openvex") {
+    throw new SerializeError(file, 1, `${field}.source.format is unsupported`);
+  }
+  const digest = requiredText(source["document_sha256"], `${field}.source.document_sha256`, file);
+  if (!SHA256.test(digest)) throw new SerializeError(file, 1, `${field}.source.document_sha256 must be SHA-256`);
+  return {
+    cve: boundedText(raw["cve"], `${field}.cve`, 512, file),
+    status,
+    justification,
+    response: nullableEnum(raw["response"], VEX_RESPONSES, `${field}.response`, file),
+    reason: nullableBoundedText(raw["reason"], `${field}.reason`, 10_000, file),
+    state,
+    match,
+    target_stable_key: targetStableKey,
+    provenance: {
+      by: boundedText(provenance["by"], `${field}.provenance.by`, 1_000, file),
+      at: nullableTimestamp(provenance["at"], `${field}.provenance.at`, file),
+      evidence: boundedText(provenance["evidence"], `${field}.provenance.evidence`, 20_000, file),
+      import_id: boundedText(provenance["import_id"], `${field}.provenance.import_id`, 512, file),
+    },
+    source: {
+      format,
+      document_id: boundedText(source["document_id"], `${field}.source.document_id`, 2_000, file),
+      document_sha256: digest,
+      statement: boundedText(source["statement"], `${field}.source.statement`, 4_096, file),
+    },
+  };
+}
+
 export function stableKeyFor(project: string, component: TriageOverlayV1["component"], cve: string): string {
   void project;
   return ENTITIES.vexDecision.key({ cve, ...component });
@@ -231,15 +360,29 @@ export function parseOverlay(value: unknown, file: string): TriageOverlayV1 {
     group: nullableText(componentRaw["group"], "component.group", file),
     version: nullableText(componentRaw["version"], "component.version", file),
   };
-  const decisionsRaw = record(raw["decisions"], "decisions", file);
-  if (Object.keys(decisionsRaw).length === 0) throw new SerializeError(file, 1, "decisions must contain at least one authored decision");
+  const decisionsRaw = raw["decisions"] === undefined ? {} : record(raw["decisions"], "decisions", file);
+  const proposalsRaw = raw["proposals"] === undefined ? {} : record(raw["proposals"], "proposals", file);
+  if (Object.keys(decisionsRaw).length === 0 && Object.keys(proposalsRaw).length === 0) {
+    throw new SerializeError(file, 1, "overlay must contain at least one decision or vendor proposal");
+  }
   const decisions: Record<string, TriageDecisionV1> = {};
   for (const cve of Object.keys(decisionsRaw).sort()) {
     requiredText(cve, "decision CVE", file);
     decisions[cve] = parseDecision(decisionsRaw[cve], `decisions.${cve}`, file);
     stableKeyFor(project, component, cve);
   }
-  return { schema: TRIAGE_OVERLAY_SCHEMA, project, component, decisions };
+  const proposals: Record<string, VendorProposalV1> = {};
+  for (const proposalId of Object.keys(proposalsRaw).sort()) {
+    boundedText(proposalId, "proposal id", 512, file);
+    proposals[proposalId] = parseProposal(proposalsRaw[proposalId], `proposals.${proposalId}`, file);
+  }
+  return {
+    schema: TRIAGE_OVERLAY_SCHEMA,
+    project,
+    component,
+    decisions,
+    ...(Object.keys(proposals).length === 0 ? {} : { proposals }),
+  };
 }
 
 export function decisionFromInput(input: DecisionInput): TriageDecisionV1 {
@@ -254,4 +397,9 @@ export function decisionFromInput(input: DecisionInput): TriageDecisionV1 {
     provenance: input.provenance,
     sync: input.sync ?? { base: null, pushed_at: null },
   }, `decisions.${input.cve}`, "<input>");
+}
+
+export function proposalFromInput(input: VendorProposalInput): VendorProposalV1 {
+  stableKeyFor(input.project, input.component, input.proposal.cve);
+  return parseProposal(input.proposal, `proposals.${input.proposalId}`, "<input>");
 }

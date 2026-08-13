@@ -8,6 +8,7 @@ import {
   type VexResponse,
   type VexStatus,
 } from "../../../lib/remote/types.js";
+import { componentKeyFromIdentity } from "../../bom/sbom/rollup.js";
 import { canonicalJson } from "../../sync/serialize/canonical.js";
 import { PROJECT_LEVEL_VERSION_ID } from "../../../lib/store/index.js";
 import { resolveFinding, type FindingResolution } from "../stable-key/index.js";
@@ -125,7 +126,19 @@ const INSERT = `INSERT INTO overlay_index
    file_path, file_sha256, vex_status, vex_response, vex_justification, vex_reason,
    pin, provenance_by, provenance_at, evidence, sync_base, pushed_at, local_state,
    drift_state, match_tier, policy_warning_count, policy_violation_count, indexed_at)
- VALUES (?, ?, 'vexDecision', ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+ VALUES (
+   ?, ?, 'vexDecision', ?, ?, ?,
+   ?, ?, ?, ?, ?, ?,
+   ?, ?, ?, ?, ?, ?, ?,
+   ?, ?, ?, ?, ?
+ )`;
+
+const INSERT_PROPOSAL = `INSERT INTO overlay_index
+  (project_id, project_version_id, entity_kind, stable_key, component_key, cve,
+   file_path, file_sha256, vex_status, vex_response, vex_justification, vex_reason,
+   pin, provenance_by, provenance_at, evidence, sync_base, pushed_at, local_state,
+   drift_state, match_tier, policy_warning_count, policy_violation_count, indexed_at)
+ VALUES (?, ?, 'vendorProposal', ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, NULL, NULL, ?, ?, ?, 0, 0, ?)`;
 
 function projectionKey(project: string, projectVersionId: string, stableKey: string): string {
   return JSON.stringify([project, projectVersionId, stableKey]);
@@ -155,6 +168,7 @@ function indexFile(
   indexedAt: string,
 ): number {
   const insert = db.prepare(INSERT);
+  const insertProposal = db.prepare(INSERT_PROPOSAL);
   let indexed = 0;
   for (const projectVersionId of projectVersions(db, parsed.overlay.project)) {
     for (const [cve, decision] of Object.entries(parsed.overlay.decisions)) {
@@ -165,6 +179,7 @@ function indexFile(
         parsed.overlay.project,
         projectVersionId,
         stableKey,
+        componentKeyFromIdentity(parsed.overlay.component),
         cve,
         parsed.file,
         parsed.sha256,
@@ -187,6 +202,48 @@ function indexFile(
       );
       indexed += 1;
     }
+    for (const [proposalId, proposal] of Object.entries(parsed.overlay.proposals ?? {})) {
+      const resolution = projectVersionId === PROJECT_LEVEL_VERSION_ID
+        ? null
+        : resolveFinding(db, {
+            schema: "fs-finding-key/v1",
+            project: parsed.overlay.project,
+            cve: proposal.cve,
+            ...parsed.overlay.component,
+          }, projectVersionId, "any_version");
+      const resolved = resolution?.state === "resolved";
+      const localState = proposal.state === "needs_completion"
+        ? "needs_completion"
+        : resolved
+          ? "dirty"
+          : "orphaned";
+      const driftState = proposal.state === "needs_completion"
+        ? "needs_completion"
+        : resolved
+          ? null
+          : "orphaned";
+      insertProposal.run(
+        parsed.overlay.project,
+        projectVersionId,
+        proposalId,
+        componentKeyFromIdentity(parsed.overlay.component),
+        proposal.cve,
+        parsed.file,
+        parsed.sha256,
+        proposal.status,
+        proposal.response,
+        proposal.justification,
+        proposal.reason,
+        proposal.provenance.by,
+        proposal.provenance.at,
+        proposal.provenance.evidence,
+        localState,
+        driftState,
+        matchTier(resolution),
+        indexedAt,
+      );
+      indexed += 1;
+    }
   }
   return indexed;
 }
@@ -196,7 +253,7 @@ export async function rebuildOverlayIndex(db: Database.Database, root: string): 
   const indexedAt = new Date().toISOString();
   const indexed = db.transaction(() => {
     const preserved = preservedProjections(db);
-    db.prepare("DELETE FROM overlay_index WHERE entity_kind = 'vexDecision'").run();
+    db.prepare("DELETE FROM overlay_index WHERE entity_kind IN ('vexDecision', 'vendorProposal')").run();
     return parsed.files.reduce(
       (count, file) => count + indexFile(db, file, preserved, indexedAt),
       0,

@@ -2,7 +2,7 @@ import { registeredAdapters } from "../../sync/engine/adapter.js";
 import type { PluginContext } from "../../../lib/context.js";
 import { rebuildOverlayIndex } from "./indexer.js";
 import { watchOverlay } from "./watcher.js";
-import { removeDecision, setDecision } from "./writer.js";
+import { removeDecision, setDecision, setVendorProposal } from "./writer.js";
 
 export * from "./indexer.js";
 export * from "./reader.js";
@@ -23,6 +23,7 @@ export function registerFindingsOverlay(ctx: PluginContext): void {
   const db = ctx.db();
   ctx.service("findings.overlay", () => ({
     setDecision,
+    setVendorProposal,
     removeDecision,
     rebuild: (root: string) => rebuildOverlayIndex(db, root),
     watch: (root: string) => watchOverlay({
