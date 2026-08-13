@@ -1719,7 +1719,10 @@ function SpawnSidebar() {
 function LandingPage() {
   const [companyProofPaused, setCompanyProofPaused] = useState(false);
   const [companyProofInView, setCompanyProofInView] = useState(false);
-  const [companyProofCopies, setCompanyProofCopies] = useState(2);
+  // Start with enough copies to cover a 5K display before hydration: one
+  // copy is ~1300px, and coverage needs (copies - 1) * copyWidth >= viewport.
+  // The measurement below trims the count once JavaScript runs.
+  const [companyProofCopies, setCompanyProofCopies] = useState(5);
   const companyProofRef = useRef<HTMLElement>(null);
   const companyProofMarqueeRef = useRef<HTMLDivElement>(null);
   useScrollReveal();

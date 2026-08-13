@@ -722,7 +722,7 @@ code,
    seamless at every viewport width. */
 @keyframes company-proof-scroll {
   to {
-    transform: translate3d(calc(-100% / var(--company-proof-copies, 2)), 0, 0);
+    transform: translate3d(calc(-100% / var(--company-proof-copies, 5)), 0, 0);
   }
 }
 
