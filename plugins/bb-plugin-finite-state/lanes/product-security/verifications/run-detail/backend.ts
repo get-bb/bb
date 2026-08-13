@@ -12,6 +12,7 @@ import { manualAttestationUnavailable, runVerification } from "./actions.js";
 import { SAFE_ARTIFACT_NAME, SAFE_SURFACE_ID, parseByteRange, verificationRunDetailRpcContract } from "./logs.js";
 import { queryResultHistory, queryRunDetail } from "./query.js";
 import { withProductSecurityHeadFence } from "../../sync/pusher.js";
+import { registerVerificationAgentAction } from "./agent-action.js";
 
 const frozenContract = {
   verificationsRunGet: rpcContract.verificationsRunGet,
@@ -76,6 +77,7 @@ export function registerVerificationRunDetailBackend(
 ): void {
   const db = ctx.db();
   const remote = () => ctx.service<RemoteServices>("remote-services", () => { throw new Error("REMOTE_SERVICES_NOT_REGISTERED"); });
+  registerVerificationAgentAction(ctx, { runVerificationChecks: (...args) => remote().assuranceStudio.runVerificationChecks(...args) });
   const lazyAssuranceStudio = {
     listEntities: (...args: Parameters<RemoteServices["assuranceStudio"]["listEntities"]>) => remote().assuranceStudio.listEntities(...args),
     getEntity: (...args: Parameters<RemoteServices["assuranceStudio"]["getEntity"]>) => remote().assuranceStudio.getEntity(...args),

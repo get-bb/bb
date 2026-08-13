@@ -1,5 +1,6 @@
 import type { BbPluginApi } from "@bb/plugin-sdk";
 import type { PluginContext } from "../../lib/context.js";
+import { registerActionTools as registerOwnedActionTools } from "./tools/actions.js";
 
 export type AgenticRegistrar = (
   bb: BbPluginApi,
@@ -10,7 +11,7 @@ export type AgenticRegistrar = (
 // its no-op with a thin import; domain handlers remain in their owner modules.
 export const registerReadTools: AgenticRegistrar = () => {};
 export const registerWriteTools: AgenticRegistrar = () => {};
-export const registerActionTools: AgenticRegistrar = () => {};
+export const registerActionTools: AgenticRegistrar = registerOwnedActionTools;
 export const registerMentions: AgenticRegistrar = () => {};
 export const registerFiniteStateCli: AgenticRegistrar = () => {};
 

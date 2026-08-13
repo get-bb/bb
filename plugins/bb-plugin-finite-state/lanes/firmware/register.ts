@@ -48,6 +48,7 @@ import {
 } from "./unpack/driver.js";
 import type { FirmwareProgress } from "./unpack/progress.js";
 import { redactHostPaths } from "./unpack/progress.js";
+import { registerFirmwareAgentAction } from "./agent-action.js";
 
 const firmwareRpcContract = {
   firmwareMountsList: rpcContract.firmwareMountsList,
@@ -1129,6 +1130,7 @@ export function registerFirmware(bb: BbPluginApi, ctx: PluginContext): void {
   const remote = () => ctx.service<RemoteServices>("remote-services", () => {
     throw new Error("Firmware API operations require configured remote services");
   });
+  registerFirmwareAgentAction(ctx, { materializeApi: (input) => materializeApiFromRpc(ctx, cache, remote(), input) });
   ctx.service<FirmwareCliService>("firmware.cli", () =>
     createFirmwareCliService(ctx, coordinator, cache, remote));
   const unsubscribeSettings = subscribeRemoteSettings(ctx, (values) => {

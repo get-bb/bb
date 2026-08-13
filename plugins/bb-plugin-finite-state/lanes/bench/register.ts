@@ -30,6 +30,7 @@ import {
   otaVerdictRpcContract,
   projectFrozenVerdict,
 } from "./verdict/query.js";
+import { registerBenchAgentAction } from "./agent-action.js";
 
 const benchRpcContract = {
   benchRunsList: rpcContract.benchRunsList,
@@ -313,6 +314,7 @@ export function createBenchCommandServices(
 export function registerBench(bb: BbPluginApi, ctx: PluginContext): void {
   const db = ctx.db();
   const jobQueue = ctx.service("bench.job-queue", () => new InMemoryBenchJobQueue());
+  registerBenchAgentAction(ctx, () => ctx.service<RemoteServices>("remote-services", () => { throw new Error("REMOTE_SERVICES_NOT_REGISTERED"); }), jobQueue);
   ctx.service("bench.command-services", () => createBenchCommandServices(bb, db));
   ctx.service("bench.cli", () => ({ run: createBenchVerdictCliRunner(db) }));
 
