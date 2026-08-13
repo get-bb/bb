@@ -5,11 +5,11 @@ import { afterEach, describe, expect, it } from "vitest";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { PluginSettingsCompatibilityRoute } from "./PluginSettingsCompatibilityRoute";
 
-function ToolsPluginsLocation() {
+function ExtensionsPluginsLocation() {
   const location = useLocation();
   return (
     <div>
-      Tools plugins
+      Extensions plugins
       <output data-testid="tools-plugins-location">
         {location.pathname}
         {location.search}
@@ -39,10 +39,13 @@ function renderRoute(path: string) {
             </PluginSettingsCompatibilityRoute>
           }
         />
-        <Route path="/tools/plugins" element={<ToolsPluginsLocation />} />
         <Route
-          path="/tools/plugins/:pluginId"
-          element={<ToolsPluginsLocation />}
+          path="/extensions/plugins"
+          element={<ExtensionsPluginsLocation />}
+        />
+        <Route
+          path="/extensions/plugins/:pluginId"
+          element={<ExtensionsPluginsLocation />}
         />
       </Routes>
     </MemoryRouter>,
@@ -52,14 +55,11 @@ function renderRoute(path: string) {
 describe("PluginSettingsCompatibilityRoute", () => {
   afterEach(cleanup);
 
-  it("moves legacy plugin detail routes to the canonical Extensions detail", () => {
+  it("keeps plugin configuration on its Settings detail route", () => {
     renderRoute("/settings/plugins/example");
 
-    expect(screen.getByText("Tools plugins")).toBeTruthy();
-    expect(screen.getByTestId("tools-plugins-location").textContent).toBe(
-      "/tools/plugins/example#configuration",
-    );
-    expect(screen.queryByText("Settings plugin detail")).toBeNull();
+    expect(screen.getByText("Settings plugin detail")).toBeTruthy();
+    expect(screen.queryByText("Extensions plugins")).toBeNull();
   });
 
   it.each(["/settings/plugins", "/settings/plugins/"])(
@@ -67,9 +67,9 @@ describe("PluginSettingsCompatibilityRoute", () => {
     (path) => {
       renderRoute(path);
 
-      expect(screen.getByText("Tools plugins")).toBeTruthy();
+      expect(screen.getByText("Extensions plugins")).toBeTruthy();
       expect(screen.getByTestId("tools-plugins-location").textContent).toBe(
-        "/tools/plugins?view=installed",
+        "/extensions/plugins?view=installed",
       );
       expect(screen.queryByText("Settings plugin manager")).toBeNull();
     },

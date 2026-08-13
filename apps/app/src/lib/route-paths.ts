@@ -14,17 +14,22 @@ export const SETTINGS_PROVIDER_ROUTE_PATH = "/settings/providers/:providerId";
 // Per-machine detail page. The static "machines" segment sits above the
 // :section route, which has no splat and so never matches this two-segment path.
 export const SETTINGS_MACHINE_ROUTE_PATH = "/settings/machines/:hostId";
-export const TOOLS_ROUTE_PATH = "/tools";
-export const TOOLS_SKILLS_ROUTE_PATH = "/tools/skills";
-export const TOOLS_SKILL_DETAIL_ROUTE_PATH = "/tools/skills/library/:skillId";
+export const TOOLS_ROUTE_PATH = "/extensions";
+export const TOOLS_SKILLS_ROUTE_PATH = "/extensions/skills";
+export const TOOLS_SKILL_DETAIL_ROUTE_PATH =
+  "/extensions/skills/library/:skillId";
 export const LEGACY_TOOLS_SKILL_DETAIL_ROUTE_PATH =
-  "/tools/skills/installed/:skillId";
-export const TOOLS_REGISTRY_SKILLS_ROUTE_PATH = "/tools/skills/registry";
+  "/extensions/skills/installed/:skillId";
+export const TOOLS_REGISTRY_SKILLS_ROUTE_PATH = "/extensions/skills/registry";
 export const TOOLS_REGISTRY_SKILL_DETAIL_ROUTE_PATH =
-  "/tools/skills/registry/:registrySkillId";
-export const TOOLS_PLUGINS_ROUTE_PATH = "/tools/plugins";
-export const TOOLS_PLUGIN_BROWSE_ROUTE_PATH = "/tools/plugins/browse";
-export const TOOLS_PLUGIN_DETAIL_ROUTE_PATH = "/tools/plugins/:pluginId";
+  "/extensions/skills/registry/:registrySkillId";
+export const TOOLS_PLUGINS_ROUTE_PATH = "/extensions/plugins";
+export const TOOLS_PLUGIN_BROWSE_ROUTE_PATH = "/extensions/plugins/browse";
+export const TOOLS_PLUGIN_DETAIL_ROUTE_PATH = "/extensions/plugins/:pluginId";
+// The pre-rename Extensions prefix. Every /tools URL redirects to the same
+// path under /extensions, so old deep links keep working.
+export const LEGACY_TOOLS_PREFIX_ROUTE_PATH = "/tools";
+export const LEGACY_TOOLS_SPLAT_ROUTE_PATH = "/tools/*";
 export const LEGACY_TOOLS_AUTOMATIONS_ROUTE_PATH = "/tools/automations";
 export const LEGACY_TOOLS_AUTOMATION_BROWSE_ROUTE_PATH =
   "/tools/automations/browse";
@@ -111,17 +116,12 @@ export function getSettingsMachineRoutePath(hostId: string): string {
   return `/settings/machines/${encodeURIComponent(hostId)}`;
 }
 
-/** True on Extensions and every canonical route nested under it. */
+/**
+ * True on Extensions and every canonical route nested under it. Legacy /tools
+ * URLs return false: they only exist long enough to redirect, and the
+ * automations ones leave Extensions entirely for their plugin-owned panel.
+ */
 export function isToolsRoutePath(pathname: string): boolean {
-  // Automations moved out of Extensions and into its plugin-owned panel. Keep
-  // the old /tools/automations URLs routable for redirects, but do not remember
-  // them as the user's last Extensions destination.
-  if (
-    pathname === LEGACY_TOOLS_AUTOMATIONS_ROUTE_PATH ||
-    matchPath(`${LEGACY_TOOLS_AUTOMATIONS_ROUTE_PATH}/*`, pathname) !== null
-  ) {
-    return false;
-  }
   return (
     pathname === TOOLS_ROUTE_PATH ||
     matchPath(`${TOOLS_ROUTE_PATH}/*`, pathname) !== null
@@ -172,10 +172,14 @@ export function getPluginDetailRoutePath({
   return `${TOOLS_PLUGINS_ROUTE_PATH}/${encodeURIComponent(pluginId)}`;
 }
 
+/**
+ * A plugin's configuration lives on the Settings page; the Extensions detail
+ * page links here instead of hosting the form.
+ */
 export function getPluginConfigurationRoutePath(
   args: PluginDetailRoutePathArgs,
 ): string {
-  return `${getPluginDetailRoutePath(args)}#configuration`;
+  return `/settings/plugins/${encodeURIComponent(args.pluginId)}`;
 }
 
 export function getAutomationsRoutePath(): string {
@@ -254,6 +258,8 @@ const baseRoutePatterns: readonly string[] = [
   TOOLS_PLUGINS_ROUTE_PATH,
   TOOLS_PLUGIN_BROWSE_ROUTE_PATH,
   TOOLS_PLUGIN_DETAIL_ROUTE_PATH,
+  LEGACY_TOOLS_PREFIX_ROUTE_PATH,
+  LEGACY_TOOLS_SPLAT_ROUTE_PATH,
   LEGACY_TOOLS_AUTOMATIONS_ROUTE_PATH,
   LEGACY_TOOLS_AUTOMATION_BROWSE_ROUTE_PATH,
   LEGACY_TOOLS_AUTOMATION_DETAIL_ROUTE_PATH,

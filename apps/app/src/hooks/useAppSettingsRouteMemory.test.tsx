@@ -25,7 +25,7 @@ function RouteMemoryTestSurface() {
       <Link to={settingsRoutePath}>Settings</Link>
       <Link to={toolsRoutePath}>Tools</Link>
       <Link to={toolsBackRoutePath}>Tools back</Link>
-      <Link to="/tools/plugins/ui-patterns?tab=settings#source">
+      <Link to="/extensions/plugins/ui-patterns?tab=settings#source">
         Plugin detail
       </Link>
       <Link to="/settings/providers/codex?tab=models#preferred">
@@ -82,11 +82,13 @@ describe("useAppSettingsRouteMemory", () => {
     );
 
     fireEvent.click(screen.getByRole("link", { name: "Tools" }));
-    expect(screen.getByTestId("location").textContent).toBe("/tools/plugins");
+    expect(screen.getByTestId("location").textContent).toBe(
+      "/extensions/plugins",
+    );
 
     fireEvent.click(screen.getByRole("link", { name: "Plugin detail" }));
     expect(screen.getByTestId("location").textContent).toBe(
-      "/tools/plugins/ui-patterns?tab=settings#source",
+      "/extensions/plugins/ui-patterns?tab=settings#source",
     );
 
     fireEvent.click(screen.getByRole("link", { name: "Tools back" }));
@@ -95,7 +97,9 @@ describe("useAppSettingsRouteMemory", () => {
     );
 
     fireEvent.click(screen.getByRole("link", { name: "Tools" }));
-    expect(screen.getByTestId("location").textContent).toBe("/tools/plugins");
+    expect(screen.getByTestId("location").textContent).toBe(
+      "/extensions/plugins",
+    );
   });
 
   it.each([
@@ -124,7 +128,7 @@ describe("useAppSettingsRouteMemory", () => {
       ).toBe("/settings/providers/codex?tab=models#preferred");
       expect(
         screen.getByRole("link", { name: "Tools" }).getAttribute("href"),
-      ).toBe("/tools/plugins");
+      ).toBe("/extensions/plugins");
       expect(
         screen.getByRole("link", { name: "Tools back" }).getAttribute("href"),
       ).toBe("/projects/proj_one/threads/thr_one?message=12#event-12");
@@ -159,7 +163,7 @@ describe("useAppSettingsRouteMemory", () => {
       ).toBe("/settings");
       expect(
         screen.getByRole("link", { name: "Tools" }).getAttribute("href"),
-      ).toBe("/tools/plugins");
+      ).toBe("/extensions/plugins");
       expect(
         screen.getByRole("link", { name: "Tools back" }).getAttribute("href"),
       ).toBe("/");
@@ -182,7 +186,9 @@ describe("useAppSettingsRouteMemory", () => {
       );
 
       fireEvent.click(screen.getByRole("link", { name: "Tools" }));
-      expect(screen.getByTestId("location").textContent).toBe("/tools/plugins");
+      expect(screen.getByTestId("location").textContent).toBe(
+        "/extensions/plugins",
+      );
     },
   );
 });

@@ -140,7 +140,7 @@ describe("PluginSidebarFooterActions", () => {
     fireEvent.click(screen.getByRole("button", { name: "Remote settings" }));
 
     expect(screen.getByLabelText("Current path").textContent).toBe(
-      "/tools/plugins/remote#configuration",
+      "/settings/plugins/remote",
     );
   });
 });

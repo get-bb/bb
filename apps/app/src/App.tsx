@@ -24,7 +24,9 @@ import {
   LEGACY_TOOLS_AUTOMATION_DETAIL_ROUTE_PATH,
   LEGACY_TOOLS_AUTOMATION_EDIT_ROUTE_PATH,
   LEGACY_TOOLS_AUTOMATIONS_ROUTE_PATH,
+  LEGACY_TOOLS_PREFIX_ROUTE_PATH,
   LEGACY_TOOLS_SKILL_DETAIL_ROUTE_PATH,
+  LEGACY_TOOLS_SPLAT_ROUTE_PATH,
   PROJECT_ARCHIVED_ROUTE_PATH,
   PROJECTLESS_ARCHIVED_ROUTE_PATH,
   PROJECT_SETTINGS_ROUTE_PATH,
@@ -126,6 +128,28 @@ export function LegacySkillDetailRedirect() {
 
 export function ExtensionsLandingRedirect() {
   return <Navigate to={TOOLS_PLUGINS_ROUTE_PATH} replace />;
+}
+
+/**
+ * /tools/* → /extensions/* preserving the subpath, query, and hash, so every
+ * pre-rename deep link lands on its renamed page. The /tools/automations
+ * routes keep their own more-specific redirects (React Router ranks static
+ * segments above this splat), since those left Extensions for the plugin
+ * panel rather than moving with the rename.
+ */
+export function LegacyToolsPathRedirect() {
+  const location = useLocation();
+  const suffix = location.pathname.slice(LEGACY_TOOLS_PREFIX_ROUTE_PATH.length);
+  return (
+    <Navigate
+      to={{
+        pathname: `${TOOLS_ROUTE_PATH}${suffix}`,
+        search: location.search,
+        hash: location.hash,
+      }}
+      replace
+    />
+  );
 }
 
 export function LegacyPluginBrowseRedirect() {
@@ -262,6 +286,14 @@ function AppRoutes() {
           <Route
             path={TOOLS_ROUTE_PATH}
             element={<ExtensionsLandingRedirect />}
+          />
+          <Route
+            path={LEGACY_TOOLS_PREFIX_ROUTE_PATH}
+            element={<LegacyToolsPathRedirect />}
+          />
+          <Route
+            path={LEGACY_TOOLS_SPLAT_ROUTE_PATH}
+            element={<LegacyToolsPathRedirect />}
           />
           <Route path={SKILLS_ROUTE_PATH} element={<ToolsView />} />
           <Route path={TOOLS_SKILL_DETAIL_ROUTE_PATH} element={<ToolsView />} />

@@ -20,6 +20,7 @@ import { ThreadTitleMentionResourcesProvider } from "@/components/thread/ThreadT
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
 import {
   resolveAutomationBreadcrumbs,
+  resolveToolsAreaHeaderMeta,
   resolveToolsBreadcrumbs,
 } from "@/components/tools/tools-navigation";
 import { AppBreadcrumbs } from "./AppBreadcrumbs";
@@ -623,60 +624,71 @@ export function AppLayout({ children }: AppLayoutProps) {
     location.pathname,
     resourceRouteLabel,
   );
-  const routeBreadcrumbs = toolsBreadcrumbs ?? automationBreadcrumbs;
+  // Tools breadcrumbs feed only the document title now; the header's choice
+  // between the Extensions title and automation breadcrumbs lives in the pure
+  // (and tested) resolveToolsAreaHeaderMeta.
+  const documentTitleBreadcrumbs = toolsBreadcrumbs ?? automationBreadcrumbs;
+  const toolsAreaHeaderMeta = resolveToolsAreaHeaderMeta(
+    location.pathname,
+    // Extensions graduated from experiments (#1360): the hub is always on.
+    true,
+    resourceRouteLabel,
+  );
   const meta = isThreadView
     ? {
         title: thread ? getThreadDisplayTitle(thread) : "Thread",
         subtitle: undefined,
       }
-    : routeBreadcrumbs
-      ? {
-          title: "",
-          subtitle: undefined,
-          breadcrumbs: routeBreadcrumbs,
-        }
-      : isArchivedView && projectId
-        ? isProjectlessProjectId(projectId)
-          ? {
-              title: "",
-              subtitle: undefined,
-              breadcrumbs: [
-                { label: "Threads", to: getRootComposeRoutePath() },
-                ...(archivedSectionName
-                  ? [{ label: archivedSectionName }]
-                  : []),
-                { label: "Archived" },
-              ],
-            }
-          : {
-              title: "",
-              subtitle: undefined,
-              breadcrumbs: [
-                {
-                  label: projectLabel ?? projectId,
-                  to: getLegacyProjectComposeRoutePath(projectId),
-                },
-                { label: "Archived" },
-              ],
-            }
-        : isSettingsView && projectId
-          ? {
-              title: "",
-              subtitle: undefined,
-              breadcrumbs: [
-                {
-                  label: projectLabel ?? projectId,
-                  to: getLegacyProjectComposeRoutePath(projectId),
-                },
-                { label: "Settings" },
-              ],
-            }
-          : projectId
+    : toolsAreaHeaderMeta?.kind === "extensions-title"
+      ? { title: toolsAreaHeaderMeta.title, subtitle: undefined }
+      : toolsAreaHeaderMeta?.kind === "breadcrumbs"
+        ? {
+            title: "",
+            subtitle: undefined,
+            breadcrumbs: toolsAreaHeaderMeta.breadcrumbs,
+          }
+        : isArchivedView && projectId
+          ? isProjectlessProjectId(projectId)
             ? {
-                title: projectLabel ?? projectId,
+                title: "",
                 subtitle: undefined,
+                breadcrumbs: [
+                  { label: "Threads", to: getRootComposeRoutePath() },
+                  ...(archivedSectionName
+                    ? [{ label: archivedSectionName }]
+                    : []),
+                  { label: "Archived" },
+                ],
               }
-            : (resolveRouteTitle(location.pathname) ?? { title: "" });
+            : {
+                title: "",
+                subtitle: undefined,
+                breadcrumbs: [
+                  {
+                    label: projectLabel ?? projectId,
+                    to: getLegacyProjectComposeRoutePath(projectId),
+                  },
+                  { label: "Archived" },
+                ],
+              }
+          : isSettingsView && projectId
+            ? {
+                title: "",
+                subtitle: undefined,
+                breadcrumbs: [
+                  {
+                    label: projectLabel ?? projectId,
+                    to: getLegacyProjectComposeRoutePath(projectId),
+                  },
+                  { label: "Settings" },
+                ],
+              }
+            : projectId
+              ? {
+                  title: projectLabel ?? projectId,
+                  subtitle: undefined,
+                }
+              : (resolveRouteTitle(location.pathname) ?? { title: "" });
 
   const documentTitle = (() => {
     if (isThreadView) {
@@ -685,9 +697,9 @@ export function AppLayout({ children }: AppLayoutProps) {
     if (pluginPanel) {
       return pluginPanel.title;
     }
-    if (routeBreadcrumbs) {
-      const sectionLabel = routeBreadcrumbs[0]?.label ?? "BB";
-      const pageLabel = routeBreadcrumbs.at(-1)?.label ?? sectionLabel;
+    if (documentTitleBreadcrumbs) {
+      const sectionLabel = documentTitleBreadcrumbs[0]?.label ?? "BB";
+      const pageLabel = documentTitleBreadcrumbs.at(-1)?.label ?? sectionLabel;
       return pageLabel === sectionLabel
         ? sectionLabel
         : `${pageLabel} · ${sectionLabel}`;
@@ -814,59 +826,59 @@ export function AppLayout({ children }: AppLayoutProps) {
   }, [documentTitle]);
 
   return (
-    <ProjectActionsProvider>
-      <ThreadTitleMentionResourcesProvider {...titleMentionResources}>
-        <ThreadActionsProvider>
-          <IframeDragGuardOverlay active={isSidebarResizing} />
-          <SidebarStateBridge
-            providerRef={providerRef}
-            style={sidebarProviderStyle}
-          >
-            <AppLayoutSidebar
-              mode={
-                isGlobalSettingsView
-                  ? "settings"
-                  : isGlobalToolsView
-                    ? "tools"
-                    : "app"
-              }
-              onResizeMouseDown={handleResizeMouseDown}
-              isResizing={isSidebarResizing}
-              appRoutePath={appRoutePath}
-              settingsRoutePath={settingsRoutePath}
-              toolsBackRoutePath={toolsBackRoutePath}
-              toolsRoutePath={toolsRoutePath}
-            />
-            <SidebarInset>
-              <div
-                ref={contentShellRef}
-                data-testid="app-layout-content-shell"
-                className="relative flex h-full min-h-0 min-w-0 w-full flex-col pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)]"
-              >
-                {showHeader ? (
-                  <AppHeader
-                    usesDesktopChrome={usesDesktopChrome}
-                    usesProjectChromeStyle={
-                      isRootView || isArchivedView || isSettingsView
-                    }
-                    isSettingsView={isSettingsView}
-                    projectId={projectId}
-                    project={project}
-                    pluginPanel={pluginPanel}
-                    pluginPanelSubPath={pluginPanelMatch?.params["*"] ?? ""}
-                    meta={meta}
-                  />
-                ) : null}
-                <main className="flex min-h-0 flex-1 flex-col p-4 md:p-5">
-                  {children}
-                </main>
-              </div>
-            </SidebarInset>
-            <SidebarTriggerOverlay
-              reserveMacosTrafficLights={reserveMacosTrafficLights}
-              usesDesktopChrome={usesDesktopChrome}
-            />
-          </SidebarStateBridge>
+      <ProjectActionsProvider>
+        <ThreadTitleMentionResourcesProvider {...titleMentionResources}>
+          <ThreadActionsProvider>
+            <IframeDragGuardOverlay active={isSidebarResizing} />
+            <SidebarStateBridge
+              providerRef={providerRef}
+              style={sidebarProviderStyle}
+            >
+              <AppLayoutSidebar
+                mode={
+                  isGlobalSettingsView
+                    ? "settings"
+                    : isGlobalToolsView
+                      ? "tools"
+                      : "app"
+                }
+                onResizeMouseDown={handleResizeMouseDown}
+                isResizing={isSidebarResizing}
+                appRoutePath={appRoutePath}
+                settingsRoutePath={settingsRoutePath}
+                toolsBackRoutePath={toolsBackRoutePath}
+                toolsRoutePath={toolsRoutePath}
+              />
+              <SidebarInset>
+                <div
+                  ref={contentShellRef}
+                  data-testid="app-layout-content-shell"
+                  className="relative flex h-full min-h-0 min-w-0 w-full flex-col pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)]"
+                >
+                  {showHeader ? (
+                    <AppHeader
+                      usesDesktopChrome={usesDesktopChrome}
+                      usesProjectChromeStyle={
+                        isRootView || isArchivedView || isSettingsView
+                      }
+                      isSettingsView={isSettingsView}
+                      projectId={projectId}
+                      project={project}
+                      pluginPanel={pluginPanel}
+                      pluginPanelSubPath={pluginPanelMatch?.params["*"] ?? ""}
+                      meta={meta}
+                    />
+                  ) : null}
+                  <main className="flex min-h-0 flex-1 flex-col p-4 md:p-5">
+                    {children}
+                  </main>
+                </div>
+              </SidebarInset>
+              <SidebarTriggerOverlay
+                reserveMacosTrafficLights={reserveMacosTrafficLights}
+                usesDesktopChrome={usesDesktopChrome}
+              />
+            </SidebarStateBridge>
           <ProjectPathDialog
             target={quickCreateProject.projectPathDialog.target}
             pending={quickCreateProject.isCreating}

@@ -32,13 +32,11 @@ export function SectionSidebarIcon({ name }: { name: IconName }) {
 export function SectionSidebarRow({
   active,
   children,
-  current = "page",
   label,
   to,
 }: {
   active: boolean;
   children: ReactNode;
-  current?: "location" | "page";
   label: string;
   to: string;
 }) {
@@ -57,7 +55,7 @@ export function SectionSidebarRow({
       <Link
         to={to}
         onClick={closeOnMobile}
-        aria-current={active ? current : undefined}
+        aria-current={active ? "page" : undefined}
       >
         {children}
         <span className="min-w-0 flex-1 truncate text-left">{label}</span>

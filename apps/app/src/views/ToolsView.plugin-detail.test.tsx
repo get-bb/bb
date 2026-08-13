@@ -625,9 +625,9 @@ describe("BB Official plugin detail routing", () => {
 
     const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
     render(
-      <MemoryRouter initialEntries={["/tools/plugins/github"]}>
+      <MemoryRouter initialEntries={["/extensions/plugins/github"]}>
         <Routes>
-          <Route path="/tools/plugins/:pluginId" element={<ToolsView />} />
+          <Route path="/extensions/plugins/:pluginId" element={<ToolsView />} />
         </Routes>
       </MemoryRouter>,
       { wrapper: QueryClientWrapper },
