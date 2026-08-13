@@ -32,7 +32,7 @@ import {
   FindingsUnconfiguredState,
   FindingsViewNotFound,
 } from "./states.js";
-import { FindingsTriageStub } from "./triage/index.js";
+import { FindingsTriage, FindingsTriageStub } from "./triage/index.js";
 import { useFindings } from "./useFindings.js";
 import { useSavedViews } from "./useSavedViews.js";
 
@@ -177,6 +177,22 @@ export function FindingsPanel({ subPath }: PluginNavPanelProps): React.JSX.Eleme
       />
       <FilterBar onChange={changeFilter} onClear={() => changeFilter({})} value={filter} />
       {showStale ? <FindingsStaleBanner message={staleMessage} onDismiss={() => setDismissedStale(staleMessage)} onRetry={() => void data.retry()} /> : null}
+      <FindingsTriage
+        active={route.kind === "table" || route.kind === "finding" || route.kind === "view"}
+        cursorKey={ui.cursorKey}
+        filter={filterSnapshot(filter)}
+        loading={versionLoading || data.loading}
+        onCommitted={() => void data.retry()}
+        onCursor={key => setUi(current => ({ ...current, cursorKey: key }))}
+        onOpen={key => navigate.toPluginPanel("findings", { subPath: findingDetailSubPath(key, filter) })}
+        onSelection={changeSelection}
+        platformProjectId={platformProjectId}
+        projectVersionId={projectVersionId}
+        rows={data.rows}
+        selection={ui.selection}
+        total={data.total}
+        workspaceProjectId={projectId}
+      />
       <div className="flex min-h-0 flex-1">
         <div className="flex min-w-0 flex-1 flex-col">
           {missingView ? <FindingsViewNotFound name={route.kind === "view" ? route.view : ""} onReturn={() => navigate.toPluginPanel("findings", { subPath: "", replace: true })} />
