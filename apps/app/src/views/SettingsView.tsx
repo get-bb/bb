@@ -1037,8 +1037,9 @@ export function SettingsView() {
     enabled: hasDaemon,
   });
   const [directoryTargetId, setDirectoryTargetId] =
-    useWorkspaceOpenTargetPreference();
-  const [fileTargetId, setFileTargetId] = useFileOpenTargetPreference();
+    useWorkspaceOpenTargetPreference(workspaceOpenTargets);
+  const [fileTargetId, setFileTargetId] =
+    useFileOpenTargetPreference(workspaceOpenTargets);
   const [openLinksInAppBrowser, setOpenLinksInAppBrowser] =
     useOpenLinksInAppBrowserPreference();
   const [rewriteLocalhostLinks, setRewriteLocalhostLinks] =

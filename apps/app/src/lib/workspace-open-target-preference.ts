@@ -1,5 +1,6 @@
 import { useAtom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
+import { useEffect } from "react";
 import {
   workspaceOpenTargetIdSchema,
   type WorkspaceOpenTarget,
@@ -295,10 +296,46 @@ export function resolvePreferredWorkspaceOpenFileTarget(
   });
 }
 
-export function useWorkspaceOpenTargetPreference() {
-  return useAtom(workspaceOpenTargetPreferenceAtom);
+function useOverrideUnknownOpenTargetPreference(
+  preferredTargetId: StoredWorkspaceOpenTargetPreference,
+  setPreferredTargetId: (targetId: StoredWorkspaceOpenTargetPreference) => void,
+  targets: WorkspaceOpenTarget[] | undefined,
+): void {
+  useEffect(() => {
+    if (
+      preferredTargetId === null ||
+      targets === undefined ||
+      targets.some((target) => target.id === preferredTargetId) ||
+      !targets.some((target) => target.id === "default-app")
+    ) {
+      return;
+    }
+    setPreferredTargetId("default-app");
+  }, [preferredTargetId, setPreferredTargetId, targets]);
 }
 
-export function useFileOpenTargetPreference() {
-  return useAtom(fileOpenTargetPreferenceAtom);
+export function useWorkspaceOpenTargetPreference(
+  targets?: WorkspaceOpenTarget[],
+) {
+  const [preferredTargetId, setPreferredTargetId] = useAtom(
+    workspaceOpenTargetPreferenceAtom,
+  );
+  useOverrideUnknownOpenTargetPreference(
+    preferredTargetId,
+    setPreferredTargetId,
+    targets,
+  );
+  return [preferredTargetId, setPreferredTargetId] as const;
+}
+
+export function useFileOpenTargetPreference(targets?: WorkspaceOpenTarget[]) {
+  const [preferredTargetId, setPreferredTargetId] = useAtom(
+    fileOpenTargetPreferenceAtom,
+  );
+  useOverrideUnknownOpenTargetPreference(
+    preferredTargetId,
+    setPreferredTargetId,
+    targets,
+  );
+  return [preferredTargetId, setPreferredTargetId] as const;
 }
