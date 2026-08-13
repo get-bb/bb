@@ -8,7 +8,7 @@ import { confirmationFixture, createFixture, type AuthoringFixture } from "../..
 import { runBuild } from "../../authoring/build/runner.js";
 import { runFlash } from "../../authoring/build/flash.js";
 import { listClaimEvents } from "../registry/claims.js";
-import { upsertCandidate } from "../registry/store.js";
+import { recordFamilyStatus, upsertCandidate } from "../registry/store.js";
 import { associateSerialDevice, createSerialRuntime } from "./session.js";
 import type { SerialPortRef, SerialTransport } from "./transport.js";
 
@@ -96,7 +96,7 @@ describe("serial session lifecycle", () => {
     });
     const session = await runtime.open(scope, deviceId);
     transports[0]!.emit("one\ntwo\nthree\nfour\n");
-    expect(session.read({ cursor: 0, maxLines: 10 })).toMatchObject({
+    await expect(session.read({ cursor: 0, maxLines: 10 })).resolves.toMatchObject({
       state: "connected",
       gaps: [{ dropped: 1 }],
       lines: [{ text: "two" }, { text: "three" }, { text: "four" }],
@@ -119,11 +119,28 @@ describe("serial session lifecycle", () => {
   it("lands unconfigured without claiming when Python/pyserial is absent", async () => {
     const db = database();
     const deviceId = seedSerial(db);
+    recordFamilyStatus(db, scope, {
+      familyId: "serial-ports",
+      kind: "serial",
+      label: "Serial ports",
+      availability: "unavailable",
+      reason: "pyserial is unavailable",
+      helper: {
+        id: "python-pyserial",
+        displayName: "Python pyserial",
+        source: "python3 -m pip install pyserial",
+        why: "Required for UART sessions",
+      },
+      needsConfiguration: true,
+      checkedAt: "2026-08-13T12:00:01.000Z",
+    });
+    const transportFactory = vi.fn(() => new FakeTransport());
     const runtime = createSerialRuntime({
       db,
       artifactRoot: await root(),
       publish: () => undefined,
       helperStatus: async () => ({ configured: false, message: "pyserial missing" }),
+      transportFactory,
     });
     const session = await runtime.open(scope, deviceId);
     expect(session.record()).toMatchObject({ state: "unconfigured", message: "pyserial missing" });
@@ -134,11 +151,12 @@ describe("serial session lifecycle", () => {
       publish: () => undefined,
       helperStatus: async () => ({ configured: false, message: "pyserial missing" }),
     });
-    expect(reloaded.read(scope, { device: deviceId, maxLines: 10 })).toMatchObject({
+    await expect(reloaded.read(scope, { device: deviceId, maxLines: 10 })).resolves.toMatchObject({
       state: "unconfigured",
       lines: [],
     });
     expect(listClaimEvents(db, deviceId)).toEqual([]);
+    expect(transportFactory).not.toHaveBeenCalled();
     await reloaded.dispose();
   });
 
@@ -298,7 +316,7 @@ describe("serial session lifecycle", () => {
       ([sql]) => typeof sql === "string" && sql.includes("INSERT INTO bench_serial_session"),
     ).length;
     transport.emit("abcdefghijklmnopqrst");
-    expect(session.read({ maxLines: 10 }).lines.map((line) => line.text)).toEqual([
+    expect((await session.read({ maxLines: 10 })).lines.map((line) => line.text)).toEqual([
       "abcdefgh",
       "ijklmnop",
     ]);

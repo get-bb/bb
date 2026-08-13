@@ -167,4 +167,42 @@ describe("serial console", () => {
     expect(await error.findByText("serial failed")).toBeTruthy();
     error.lifecycle.unmount();
   });
+
+  it("renders the designed unconfigured state after helper-less Connect", async () => {
+    let opened = false;
+    const unconfigured = {
+      ...scope,
+      sessionId: "serial-helper-less",
+      deviceId: serialDevice.deviceId,
+      state: "unconfigured" as const,
+      baud: 115_200,
+      latestCursor: 0,
+      droppedLines: 0,
+      openedAt: "2026-08-13T12:00:00.000Z",
+      closedAt: "2026-08-13T12:00:00.000Z",
+      message: "Python with pyserial is required for serial sessions.",
+    };
+    const open = vi.fn(() => {
+      opened = true;
+      return unconfigured;
+    });
+    const slot = renderSlot(serialConsole(), {}, {
+      context: { projectId: "project-1", threadId: "thread-1" },
+      rpc: {
+        benchDevSerialSessionCurrent: () => opened ? unconfigured : null,
+        benchDevSerialAutoConnectStatus: () => null,
+        benchDevSerialSessionOpen: open,
+        benchDevSerialLinesRead: () => ({
+          lines: [], nextCursor: 0, gaps: [], state: "unconfigured" as const,
+        }),
+      },
+    });
+
+    expect(await slot.findByText("Closed")).toBeTruthy();
+    fireEvent.click(slot.getByRole("button", { name: "Connect" }));
+    expect(await slot.findByText("Needs setup")).toBeTruthy();
+    expect(slot.getByText("Python with pyserial is required for serial sessions.")).toBeTruthy();
+    expect(open).toHaveBeenCalledOnce();
+    slot.lifecycle.unmount();
+  });
 });

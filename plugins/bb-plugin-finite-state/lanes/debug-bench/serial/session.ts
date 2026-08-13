@@ -14,7 +14,7 @@ import { claimDevice, refreshClaim, releaseDevice } from "../registry/claims.js"
 import type { BenchContext } from "../registry/enumerate.js";
 import type { BenchDeviceRecord } from "../registry/families.js";
 import { getDevice, type RegistryScope } from "../registry/store.js";
-import { compileSerialFilter } from "./filter.js";
+import { filterSerialLines } from "./filter.js";
 import {
   createSerialRingBuffer,
   type SerialRingBuffer,
@@ -518,8 +518,8 @@ export class SerialSession {
     });
   }
 
-  async open(): Promise<this> {
-    const helper = await this.runtime.options.helperStatus();
+  async open(initialHelper?: SerialHelperStatus): Promise<this> {
+    const helper = initialHelper ?? await this.runtime.options.helperStatus();
     if (!helper.configured) {
       this.setState("unconfigured", helper.message ?? "Python with pyserial is required.");
       return this;
@@ -547,12 +547,30 @@ export class SerialSession {
     }
   }
 
-  read(input: { cursor?: number; filter?: string; maxLines: number }): SerialReadResult {
-    const include = compileSerialFilter(input.filter);
-    return {
-      ...this.buffer.read({ cursor: input.cursor, maxLines: input.maxLines, include }),
-      state: this.stateValue,
-    };
+  async read(input: { cursor?: number; filter?: string; maxLines: number }): Promise<SerialReadResult> {
+    if (!input.filter) {
+      return {
+        ...this.buffer.read({ cursor: input.cursor, maxLines: input.maxLines }),
+        state: this.stateValue,
+      };
+    }
+    const snapshot = this.buffer.read({
+      cursor: input.cursor,
+      maxLines: Math.max(1, this.buffer.lineCount),
+    });
+    const matchingIndexes = await filterSerialLines(input.filter, snapshot.lines);
+    const lines: SerialReadResult["lines"] = [];
+    let nextCursor = snapshot.nextCursor;
+    for (let index = 0; index < snapshot.lines.length; index += 1) {
+      const line = snapshot.lines[index]!;
+      if (!matchingIndexes.has(index)) continue;
+      lines.push(line);
+      if (lines.length >= input.maxLines) {
+        nextCursor = line.cursor;
+        break;
+      }
+    }
+    return { lines, nextCursor, gaps: snapshot.gaps, state: this.stateValue };
   }
 
   async write(data: string): Promise<{ bytes: number }> {
@@ -687,7 +705,8 @@ export class SerialRuntime {
     this.observeScope(scope);
     const device = getDevice(this.options.db, scope, deviceId);
     if (!device) throw new Error(`DEVICE_NOT_FOUND:${deviceId}`);
-    portFromDevice(device);
+    const helper = await this.options.helperStatus();
+    if (helper.configured) portFromDevice(device);
     const key = sessionKey(scope, deviceId);
     const existing = this.sessions.get(key);
     if (existing && existing.state !== "closed" && existing.state !== "unconfigured") {
@@ -709,7 +728,7 @@ export class SerialRuntime {
       deviceId,
       this.options.now().toISOString(),
     );
-    await session.open();
+    await session.open(helper);
     return session;
   }
 
@@ -724,10 +743,10 @@ export class SerialRuntime {
     return row ? sessionRecord(row) : null;
   }
 
-  read(
+  async read(
     scope: RegistryScope,
     request: { device: string; cursor?: number; filter?: string; maxLines: number },
-  ): SerialReadResult {
+  ): Promise<SerialReadResult> {
     const session = this.sessions.get(sessionKey(scope, request.device));
     if (!session) {
       return {

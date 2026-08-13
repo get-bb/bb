@@ -157,7 +157,7 @@ export function readSerial(
     ...request,
     maxLines: normalizePageSize(request.maxLines),
   });
-  return Promise.resolve(enforceSerialReadBudget(result));
+  return result.then(enforceSerialReadBudget);
 }
 
 export async function sendSerial(
@@ -206,8 +206,8 @@ export function registerSerialRpc(
     benchDevSerialSessionClose(input) {
       return runtime.close(input, input.deviceId);
     },
-    benchDevSerialLinesRead(input) {
-      return enforceSerialReadBudget(runtime.read(input, {
+    async benchDevSerialLinesRead(input) {
+      return enforceSerialReadBudget(await runtime.read(input, {
         device: input.device,
         cursor: input.cursor,
         filter: input.filter,
@@ -219,6 +219,8 @@ export function registerSerialRpc(
       return runtime.send(input, input.device, input.data);
     },
     benchDevSerialSendReview(input) {
+      // Owner ruling pending: this two-step confirmation cannot join the frozen
+      // HUMAN_ONLY_RPC_METHODS gate without an approved contract amendment.
       const now = Date.now();
       for (const [token, approval] of approvals) {
         if (approval.expiresAt < now) approvals.delete(token);
