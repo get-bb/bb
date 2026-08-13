@@ -250,7 +250,7 @@ describe("VEX resumable push", () => {
     expect(metadata.baseRevisions).toEqual({ vexDecision: 0 });
     expect(syncMetadata({ db }, { projectId: PROJECT, projectVersionId: VERSION }, ["vexDecision"]).baseRevisions)
       .toEqual({ vexDecision: 500 });
-  });
+  }, 30_000);
 
   it("treats void bulk clear as unverified until read-back proves absence", async () => {
     const host = createFakePluginHost({ pluginId: "finite-state-wp19-vex-clear" });

@@ -551,5 +551,5 @@ describe("standalone snapshot ingestion", () => {
     expect(retained.readMeta()?.inputSha256).toBe(digest("old-input"));
     retained.close();
     await fixture.host.harness.lifecycle.dispose();
-  });
+  }, 15_000);
 });

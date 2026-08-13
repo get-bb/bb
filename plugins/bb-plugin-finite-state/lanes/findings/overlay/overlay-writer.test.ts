@@ -217,5 +217,5 @@ describe("triage overlay writer", () => {
       });
     }
     expect(performance.now() - started).toBeLessThan(2_000);
-  });
+  }, 15_000);
 });

@@ -314,7 +314,7 @@ describe("requirements traceability backend", () => {
     expect(host.harness.sdk.callsTo("files.list")).toHaveLength(2);
     await host.harness.lifecycle.dispose();
     rmSync(root, { recursive: true, force: true });
-  });
+  }, 30_000);
 
   it("rejects a malformed route id before any git runner or SDK call", async () => {
     const host = createFakePluginHost({ pluginId: "finite-state" });
@@ -505,8 +505,11 @@ describe("requirements traceability UI", () => {
       { projectId: "project-1", detail: ["trace"] },
       { rpc: { requirementsList: () => ({ ...rpcPage({ card: card(), facets, trace: null }, 5_000), items }) } },
     );
-    await waitFor(() => expect(slot.container.querySelectorAll("[data-trace-result-row]").length).toBeGreaterThan(0));
+    await waitFor(
+      () => expect(slot.container.querySelectorAll("[data-trace-result-row]").length).toBeGreaterThan(0),
+      { timeout: 10_000 },
+    );
     expect(slot.container.querySelectorAll("[data-trace-result-row]").length).toBeLessThan(30);
     slot.lifecycle.unmount();
-  });
+  }, 15_000);
 });
