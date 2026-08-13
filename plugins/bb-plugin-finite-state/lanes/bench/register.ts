@@ -1,10 +1,11 @@
 import type { BbPluginApi } from "@bb/plugin-sdk";
 import type Database from "better-sqlite3";
 import type { PluginContext } from "../../lib/context.js";
+import type { RemoteServices } from "../../lib/remote/types.js";
 import { rpcContract } from "../../shared/contract.js";
 import { createBenchHostJoinCode, listBenchHosts } from "./execute/hosts.js";
-import { runBenchJobService } from "./execute/jobs.js";
-import { runBench } from "./execute/run.js";
+import { InMemoryBenchJobQueue, runBenchJobService } from "./execute/jobs.js";
+import { createDefaultBenchExecutionDeps, runBench } from "./execute/run.js";
 import { listBenchArtifacts } from "./store/artifacts.js";
 import { listBenchAttestations } from "./store/attestations.js";
 import { listBenchResults, storeEvidenceCheckpointWithResult } from "./store/results.js";
@@ -54,6 +55,7 @@ export function createBenchCommandServices(
 
 export function registerBench(bb: BbPluginApi, ctx: PluginContext): void {
   const db = ctx.db();
+  const jobQueue = ctx.service("bench.job-queue", () => new InMemoryBenchJobQueue());
   ctx.service("bench.command-services", () => createBenchCommandServices(bb, db));
 
   bb.rpc.register(benchRpcContract, {
@@ -140,19 +142,78 @@ export function registerBench(bb: BbPluginApi, ctx: PluginContext): void {
     benchVerdictGet() {
       return getOtaVerdict();
     },
-    benchRunStart() {
-      return runBench();
+    async benchRunStart(input) {
+      if (input.projectVersionId === null) {
+        throw new Error("BENCH_PROJECT_VERSION_REQUIRED");
+      }
+      const request = {
+        projectId: input.projectId,
+        pvId: input.projectVersionId,
+        tier: input.tier,
+        hostId: input.hostId,
+        ...(input.requirementId ? { requirementId: input.requirementId } : {}),
+        ...(input.target ? { target: input.target } : {}),
+        ...(input.deploymentContext ? { deploymentContext: input.deploymentContext } : {}),
+      };
+      const remote = ctx.service<RemoteServices>("remote-services", () => {
+        throw new Error("REMOTE_SERVICES_NOT_REGISTERED");
+      });
+      const started = await runBench(
+        createDefaultBenchExecutionDeps(ctx, request, remote, jobQueue),
+        request,
+        new AbortController().signal,
+      );
+      return {
+        projectId: input.projectId,
+        projectVersionId: input.projectVersionId,
+        runId: started.runId,
+        threadId: started.threadId,
+        jobIds: started.jobIds,
+        firmwareSha256: started.firmwareDigest,
+        status: started.status,
+      };
     },
-    benchHostsList() {
-      return listBenchHosts();
+    async benchHostsList(input) {
+      const hosts = await listBenchHosts(bb);
+      const offset = input.continuation === null
+        ? 0
+        : Number.parseInt(Buffer.from(input.continuation, "base64url").toString("utf8"), 10);
+      if (!Number.isSafeInteger(offset) || offset < 0) {
+        throw new Error("INVALID_BENCH_HOST_CONTINUATION");
+      }
+      const items = hosts.slice(offset, offset + input.pageSize);
+      const nextOffset = offset + items.length;
+      return {
+        items: items.map((host) => ({
+          id: host.id,
+          name: host.name,
+          status: host.connected ? "connected" : "disconnected",
+          capabilities: [],
+          lastSeenAt: host.lastSeenAt,
+        })),
+        total: hosts.length,
+        next:
+          nextOffset < hosts.length
+            ? Buffer.from(String(nextOffset), "utf8").toString("base64url")
+            : null,
+        cache: {
+          state: "fresh" as const,
+          asOf: new Date().toISOString(),
+          message: null,
+          acceptedGenerationId: null,
+          baseRevision: 0,
+        },
+      };
     },
     benchHostsJoinCode() {
-      return createBenchHostJoinCode();
+      return createBenchHostJoinCode(bb);
     },
   });
 
   bb.http.route("GET", "/bench/runs/log", () => notImplementedHttp("WP-54"));
   bb.http.route("GET", "/bench/runs/artifact", () => notImplementedHttp("WP-54"));
   bb.http.route("GET", "/bench/runs/attestation", () => notImplementedHttp("WP-54"));
-  bb.background.service("bench-jobs", { start: runBenchJobService });
+  bb.background.service("bench-jobs", {
+    start: (signal) => runBenchJobService(jobQueue, signal),
+  });
 }
