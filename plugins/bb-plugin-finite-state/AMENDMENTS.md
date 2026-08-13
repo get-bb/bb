@@ -182,6 +182,26 @@ documentation only and are never approval evidence.
 - Broadcast and merge commits: pending
 - Evidence: FS-67 review at WP-53 head `7520ccb8b` reproduced the default `FIRMWARE_REGISTRATION_UNAVAILABLE` path. Repair head `b0c76335d` fails before run/thread creation, while the configured client remains unable to launch Tier 1 until a lifecycle contract is approved and implemented.
 
+### AMD-0016 — Represent local semantic deletion results truthfully
+
+- Status: proposed; owner decision pending
+- Artifacts:
+  - `plugins/bb-plugin-finite-state/shared/contract.ts`
+- Contract version: 3 (proposed)
+- Prior artifact hashes:
+  - `shared/contract.ts`: `7a09956e16923fe4c12421b5c234c5d238dc73d0a95f8277930cf827e284484f`
+- New artifact hashes: pending an approved implementation
+- Reason: WP-35's frozen `taraCommandApply` input includes a semantic `delete` operation, but its output reuses `localWriteResultSchema`, whose `afterSha256` is required to be a SHA-256 string. A successful file deletion has no post-write file and therefore no truthful content hash. Returning the deleted file's prior hash or the hash of fabricated empty bytes would misstate the worktree and make undo/concurrency evidence ambiguous. The WP-35 interface correctly specifies `afterSha256: string | null`, paired with `beforeSha256: string | null` (`before` null means create; `after` null means delete).
+- Option A — uniform nullable (coordinator recommendation): change `localWriteResultSchema.afterSha256` from `sha256Schema` to `sha256Schema.nullable()`. Document the paired semantics as `beforeSha256 === null` for creation and `afterSha256 === null` for deletion. Existing `triageDecisionWrite`, `triageDecisionUndo`, and `requirementsWrite` producers continue returning a non-null hash for their current create/update-only behaviors; their consumers must narrow the frozen output even though null is not emitted today. `taraCommandApply` returns null only after its CAS rename-aside deletion has completed successfully. This option makes the shared local-write result honest for future semantic deletes without another amendment.
+- Option B — narrow TARA result: leave `localWriteResultSchema` unchanged and introduce a `taraLocalWriteResultSchema` identical to it except for `afterSha256: sha256Schema.nullable()`, then use that schema only for `taraCommandApply.output`. Existing triage and requirement consumers retain their narrower static type. This is the minimum-blast-radius change but duplicates the otherwise uniform local-write result and postpones the same decision for the next local semantic-delete surface.
+- Contract and test migration: after owner selection and independent affected-lane review, increment `CONTRACT_VERSION` from 2 to 3; implement exactly one option; update `shared/contract.test.ts` pinned version and output assertions; add contract tests proving create/update results reject null where semantically impossible at their producer boundary and a TARA delete accepts exactly null, never a placeholder digest. Run the amendment accept flow to update the frozen artifact baseline and broadcast the contract-version change to every RPC producer and consumer. No wire method name, input shape, method classification, human-only gate, or push path changes.
+- Implementation safety: WP-35 may implement and test the lane-local `EditResult.afterSha256: null` and CAS deletion internals while this proposal is pending, but its frozen `taraCommandApply` delete handler and delete affordance remain fail-closed until the approved contract implementation is merged. Create/update authoring, read-time working overlay, validation, plan generation, and review navigation are unaffected.
+- Affected WPs and gates: WP-09, WP-15, WP-18, WP-20, WP-27, WP-35, WP-36; frozen shared RPC contract, local-write consumers, contract-version/baseline guards, G0–G6
+- Contract owner: Matt Wyckhouse; decision pending, escalated by coordinator `thr_hg37weivk7` from FS-49 on 2026-08-13
+- Affected-lane reviewer: pending independent exact-head amendment audit
+- Broadcast and merge commits: pending
+- Evidence: FS-49 at integration head `037831bf2` confirmed `taraCommandSchema` includes `operation: "delete"`, while `taraCommandApply.output` is `localWriteResultSchema` and the schema requires non-null `afterSha256`. The task's published `EditResult` contract requires nullable before/after digests, and the coordinator explicitly rejected old-file and empty-file synthetic hashes in task comment `01KZX45244TNG1KN12NQFST3DD`.
+
 ## Approved amendments — SPEC 07 / SPEC 08 intake
 
 *Drafted 2026-08-12 as AMD-0001…0006. Approved 2026-08-13 by the product
