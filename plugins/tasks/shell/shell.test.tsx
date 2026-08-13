@@ -22,9 +22,14 @@ if (!window.matchMedia) {
 const app = await loadPluginApp(() => import("../app"));
 const { parseTasksRoute, tasksRouteToSubPath } = await import("./routes.js");
 const { pagerPosition } = await import("./topbar.js");
-const { SIDEBAR_COLLAPSED_STORAGE_KEY } =
-  await import("./sidebar-preference.js");
 const { loadViewMode } = await import("./view-preference.js");
+
+const tasksRegistration = app.navPanels[0]!;
+const navigationView = tasksRegistration.experimental_rightPanel?.views?.[0]!;
+const navigationRegistration = {
+  ...tasksRegistration,
+  component: navigationView.component,
+};
 
 beforeEach(() => window.localStorage.clear());
 afterEach(() => {
@@ -152,7 +157,11 @@ describe("project view preference", () => {
   });
 
   it("navigates from the sidebar without pinning a view", async () => {
-    const slot = openProject("all");
+    const slot = renderSlot(
+      navigationRegistration,
+      { subPath: "all" },
+      { rpc: seededRpc({ listLabels: () => ({ labels: [] }) }) },
+    );
     fireEvent.click(await slot.findByText("Tasks Plugin"));
     expect(slot.navigateCalls).toContainEqual({
       method: "toPluginPanel",
@@ -251,119 +260,18 @@ describe("task pager", () => {
 });
 
 describe("tasks app shell", () => {
-  it("keeps the first-use sidebar expanded without writing a preference", async () => {
-    const slot = renderSlot(
-      app.navPanels[0]!,
-      { subPath: "all" },
-      {
-        rpc: seededRpc(),
-      },
-    );
-    await slot.findByText("Tasks Plugin");
-
-    expect(
-      slot
-        .getByRole("button", { name: "Collapse sidebar" })
-        .getAttribute("aria-expanded"),
-    ).toBe("true");
-    expect(
-      window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY),
-    ).toBeNull();
-  });
-
-  it("persists collapsed state across route changes and remounts", async () => {
-    const registration = app.navPanels[0]!;
-    const slot = renderSlot(
-      registration,
-      { subPath: "all" },
-      {
-        rpc: seededRpc(),
-      },
-    );
-    await slot.findByText("Tasks Plugin");
-
-    fireEvent.click(slot.getByRole("button", { name: "Collapse sidebar" }));
-    expect(slot.queryByRole("button", { name: "Manage" })).toBeNull();
-    expect(window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY)).toBe(
-      "true",
-    );
-
-    const Shell = registration.component;
-    slot.lifecycle.rerender(<Shell subPath={`${PROJECT_ID}?view=board`} />);
-    await slot.findByText("Backlog");
-    expect(
-      slot
-        .getByRole("button", { name: "Expand sidebar" })
-        .getAttribute("aria-expanded"),
-    ).toBe("false");
-
-    slot.lifecycle.unmount();
-    const remounted = renderSlot(
-      registration,
-      { subPath: "all" },
-      {
-        rpc: seededRpc(),
-      },
-    );
-    await remounted.findByText("All tasks");
-    expect(remounted.queryByRole("button", { name: "Manage" })).toBeNull();
-    expect(
-      remounted.getByRole("button", { name: "Expand sidebar" }),
-    ).toBeDefined();
-  });
-
-  it("persists expanded state after restoring a collapsed preference", async () => {
-    window.localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, "true");
-    const registration = app.navPanels[0]!;
-    const slot = renderSlot(
-      registration,
-      { subPath: "all" },
-      {
-        rpc: seededRpc(),
-      },
-    );
-    await slot.findByText("All tasks");
-    fireEvent.click(slot.getByRole("button", { name: "Expand sidebar" }));
-
-    expect(window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY)).toBe(
-      "false",
-    );
-    await slot.findByRole("button", { name: "Manage" });
-
-    slot.lifecycle.unmount();
-    const remounted = renderSlot(
-      registration,
-      { subPath: "manage" },
-      {
-        rpc: seededRpc({ listLabels: () => ({ labels: [] }) }),
-      },
-    );
-    await remounted.findByText("Labels, agent presets, and folders.");
-    expect(
-      remounted.getByRole("button", { name: "Collapse sidebar" }),
-    ).toBeDefined();
-    expect(remounted.getByRole("button", { name: "Manage" })).toBeDefined();
-  });
-
-  it("keeps toggling usable when client storage rejects writes", async () => {
-    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
-      throw new DOMException("Storage is disabled", "SecurityError");
+  it("registers navigation as the default BB-owned right-panel view", () => {
+    expect(tasksRegistration.experimental_rightPanel).toMatchObject({
+      defaultViewId: "navigation",
+      views: [
+        {
+          id: "navigation",
+          title: "Navigation",
+          icon: "ListView",
+          layout: "flush",
+        },
+      ],
     });
-    const slot = renderSlot(
-      app.navPanels[0]!,
-      { subPath: "all" },
-      {
-        rpc: seededRpc(),
-      },
-    );
-    await slot.findByText("Tasks Plugin");
-
-    fireEvent.click(slot.getByRole("button", { name: "Collapse sidebar" }));
-    expect(
-      slot
-        .getByRole("button", { name: "Expand sidebar" })
-        .getAttribute("aria-expanded"),
-    ).toBe("false");
   });
 
   it("does not treat the first connection as a reconnect", async () => {
@@ -476,6 +384,67 @@ describe("tasks app shell", () => {
     await slot.findByText("Manually refreshed list title");
   });
 
+  it("shares manual refresh across the page and right-panel queries", async () => {
+    let listTaskCalls = 0;
+    let listProjectCalls = 0;
+    let holdProjects = false;
+    let releaseProjects: (() => void) | null = null;
+    const page = renderSlot(
+      app.navPanels[0]!,
+      { subPath: "all" },
+      {
+        rpc: seededRpc({
+          listTasks: () => {
+            listTaskCalls += 1;
+            return { tasks: [] };
+          },
+        }),
+      },
+    );
+    const panel = renderSlot(
+      navigationRegistration,
+      { subPath: "all" },
+      {
+        rpc: seededRpc({
+          listProjects: async () => {
+            listProjectCalls += 1;
+            if (holdProjects) {
+              await new Promise<void>((resolve) => {
+                releaseProjects = resolve;
+              });
+            }
+            return { projects: [project] };
+          },
+        }),
+      },
+    );
+    await page.findByRole("button", { name: "Refresh tasks" });
+    await panel.findByText("Tasks Plugin");
+    const initialTaskCalls = listTaskCalls;
+    const initialProjectCalls = listProjectCalls;
+
+    holdProjects = true;
+    const refresh = page.getByRole("button", {
+      name: "Refresh tasks",
+    }) as HTMLButtonElement;
+    fireEvent.click(refresh);
+
+    await waitFor(() =>
+      expect(listTaskCalls).toBeGreaterThan(initialTaskCalls),
+    );
+    await waitFor(() =>
+      expect(listProjectCalls).toBeGreaterThan(initialProjectCalls),
+    );
+    expect(refresh.disabled).toBe(true);
+    const taskCallsWhilePanelPending = listTaskCalls;
+    fireEvent.click(refresh);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(listTaskCalls).toBe(taskCallsWhilePanelPending);
+
+    releaseProjects?.();
+    await waitFor(() => expect(refresh.disabled).toBe(false));
+  });
+
   it("exposes a subtle icon-only refresh control left of New task", async () => {
     const slot = renderSlot(
       app.navPanels[0]!,
@@ -503,25 +472,19 @@ describe("tasks app shell", () => {
 
     const refresh = slot.getByRole("button", { name: "Refresh tasks" });
     const newTask = slot.getByRole("button", { name: /New task/i });
-    const sidebar = slot.getByRole("button", { name: "Collapse sidebar" });
 
     // Icon-only: no visible "Refresh" text; accessible name remains.
     expect(refresh.textContent?.trim() ?? "").not.toMatch(/Refresh/i);
     expect(refresh.getAttribute("aria-label")).toBe("Refresh tasks");
     expect(refresh.className).toMatch(/size-7/);
 
-    // DOM order: refresh → New task → sidebar toggle.
+    // DOM and tab order: refresh → New task. BB owns the right-panel toggle
+    // outside this plugin surface.
     expect(
       refresh.compareDocumentPosition(newTask) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-    expect(
-      newTask.compareDocumentPosition(sidebar) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-
-    // Tab order follows DOM order among the three controls.
-    const tabbables = [refresh, newTask, sidebar];
+    const tabbables = [refresh, newTask];
     for (let i = 0; i < tabbables.length - 1; i++) {
       expect(
         tabbables[i]!.compareDocumentPosition(tabbables[i + 1]!) &
@@ -751,7 +714,7 @@ describe("tasks app shell", () => {
     await slot.findByText("Projects group tasks under a shared key prefix.");
   });
 
-  it("renders sidebar data and routes project/board/task subPaths", async () => {
+  it("renders board and task subPaths without plugin-owned sidebar chrome", async () => {
     const boardSlot = renderSlot(
       app.navPanels[0]!,
       { subPath: `${PROJECT_ID}?view=board` },
@@ -760,8 +723,8 @@ describe("tasks app shell", () => {
     // The real board renders its status columns (empty listTasks → 0 cards).
     await boardSlot.findByText("Backlog");
     await boardSlot.findByText("In Review");
-    expect(boardSlot.getAllByText("Tasks Plugin").length).toBeGreaterThan(0);
-    expect(boardSlot.getByText("All tasks")).toBeDefined();
+    expect(boardSlot.getByText("Tasks Plugin")).toBeDefined();
+    expect(boardSlot.queryByRole("button", { name: /sidebar/i })).toBeNull();
     cleanup();
 
     const taskSlot = renderSlot(
@@ -780,7 +743,66 @@ describe("tasks app shell", () => {
     });
   });
 
-  it("routes 'manage' to the manage panel via the sidebar footer", async () => {
+  it("renders right-panel navigation and routes through the plugin panel", async () => {
+    const slot = renderSlot(
+      navigationRegistration,
+      { subPath: "all" },
+      {
+        rpc: seededRpc(),
+      },
+    );
+    await slot.findByText("Tasks Plugin");
+    expect(slot.getByRole("button", { name: /^All tasks/ })).toBeDefined();
+    expect(slot.getByRole("button", { name: "Manage" })).toBeDefined();
+
+    fireEvent.click(slot.getByTitle("Tasks Plugin"));
+    expect(slot.navigateCalls).toContainEqual({
+      method: "toPluginPanel",
+      path: "tasks",
+      options: { subPath: PROJECT_ID },
+    });
+  });
+
+  it("does not mount New project queries until the dialog opens", async () => {
+    let bbProjectCalls = 0;
+    const slot = renderSlot(
+      navigationRegistration,
+      { subPath: "all" },
+      {
+        rpc: seededRpc({
+          listBbProjects: () => {
+            bbProjectCalls += 1;
+            return { bbProjects: [] };
+          },
+        }),
+      },
+    );
+    await slot.findByRole("button", { name: "New project" });
+    expect(bbProjectCalls).toBe(0);
+
+    fireEvent.click(slot.getByRole("button", { name: "New project" }));
+
+    await slot.findByText("Projects group tasks under a shared key prefix.");
+    expect(bbProjectCalls).toBeGreaterThan(0);
+  });
+
+  it("routes 'manage' to the manage panel from right-panel navigation", async () => {
+    const panel = renderSlot(
+      navigationRegistration,
+      { subPath: "all" },
+      {
+        rpc: seededRpc(),
+      },
+    );
+    await panel.findByRole("button", { name: "Manage" });
+    fireEvent.click(panel.getByRole("button", { name: "Manage" }));
+    expect(panel.navigateCalls).toContainEqual({
+      method: "toPluginPanel",
+      path: "tasks",
+      options: { subPath: "manage" },
+    });
+    cleanup();
+
     const slot = renderSlot(
       app.navPanels[0]!,
       { subPath: "manage" },
@@ -789,8 +811,6 @@ describe("tasks app shell", () => {
       },
     );
     await slot.findByText("Labels, agent presets, and folders.");
-    // The sidebar footer row is highlighted and present on every route.
-    expect(slot.getByRole("button", { name: "Manage" })).toBeDefined();
   });
 
   it("opens quick-create on bare 'c' but not from editable targets or dialogs", async () => {
@@ -801,7 +821,7 @@ describe("tasks app shell", () => {
         rpc: seededRpc(),
       },
     );
-    await slot.findByText("Tasks Plugin");
+    await slot.findByText("All tasks");
     fireEvent.keyDown(window, { key: "c" });
     // The New task dialog mounts (project select defaults to the only project).
     await slot.findByRole("dialog");
@@ -827,7 +847,7 @@ describe("tasks app shell", () => {
       createdAt: "2026-07-15T00:00:00.000Z",
     };
     const slot = renderSlot(
-      app.navPanels[0]!,
+      navigationRegistration,
       { subPath: "all" },
       {
         rpc: seededRpc({
@@ -854,7 +874,7 @@ describe("tasks app shell", () => {
   it("refetches sidebar data when invalidation channels fire", async () => {
     let projectCalls = 0;
     const slot = renderSlot(
-      app.navPanels[0]!,
+      navigationRegistration,
       { subPath: "all" },
       {
         rpc: seededRpc({

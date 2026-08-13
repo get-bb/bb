@@ -188,7 +188,6 @@ function RefreshTasksButton() {
 export interface TasksTopbarProps {
   route: ResolvedTasksRoute;
   projects: Project[] | undefined;
-  sidebarCollapsed: boolean;
   /**
    * Pager scope on task routes: the list/board browsed before (projectId null
    * = All tasks). null when no list/board was visited this session (deep
@@ -196,7 +195,6 @@ export interface TasksTopbarProps {
    */
   pagerScope: { projectId: string | null } | null;
   onNavigate: (route: TasksRoute) => void;
-  onToggleSidebar: () => void;
   onNewTask: () => void;
   onBack: () => void;
 }
@@ -204,10 +202,8 @@ export interface TasksTopbarProps {
 export function TasksTopbar({
   route,
   projects,
-  sidebarCollapsed,
   pagerScope,
   onNavigate,
-  onToggleSidebar,
   onNewTask,
   onBack,
 }: TasksTopbarProps) {
@@ -360,16 +356,6 @@ export function TasksTopbar({
           <span className="hidden @lg:inline">New task</span>
         </Button>
       ) : null}
-      <Button
-        variant="ghost"
-        size="icon"
-        className="size-7 max-md:pointer-coarse:size-9"
-        aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-        aria-expanded={!sidebarCollapsed}
-        onClick={onToggleSidebar}
-      >
-        <Icon name="PanelRight" className="size-4" />
-      </Button>
     </header>
   );
 }

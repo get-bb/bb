@@ -1,13 +1,10 @@
 import {
   useCallback,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
   type DragEvent as ReactDragEvent,
-  type PointerEvent as ReactPointerEvent,
 } from "react";
 import {
   definePluginApp,
@@ -56,7 +53,6 @@ import {
   HtmlFile01Icon,
   PlusSignIcon,
   Search01Icon,
-  SidebarRightIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "@bb/shared-ui/button";
@@ -1240,159 +1236,6 @@ function orderEntries(
   return ordered;
 }
 
-const SIDEBAR_AUTO_COLLAPSE_PANE_WIDTH = 640;
-
-interface NotesSidebarState {
-  headerMounted: boolean;
-  paneNarrow: boolean;
-  width: number;
-  userCollapsed: boolean | null;
-}
-
-interface NotesSidebarStore {
-  state: NotesSidebarState;
-  headerMounts: number;
-  viewMounts: number;
-  listeners: Set<() => void>;
-}
-
-// The header toggle and the sidebar view live in separate React subtrees and
-// find each other only through this map. Entries stay for the session: a
-// deleted entry lets one subtree keep the old store while the other creates a
-// new one, which silently breaks the header toggle. A reopened pane starts
-// clean anyway, because the view resets the state on its first mount.
-const notesSidebarStores = new Map<string, NotesSidebarStore>();
-const STANDALONE_SIDEBAR_SCOPE = "standalone";
-
-function notesSidebarVaultKey(subPath: string): string {
-  const firstSegment = subPath.split("/", 1)[0];
-  return firstSegment ? decodeURIComponent(firstSegment) : "";
-}
-
-function useNotesSidebarScope(subPath: string): {
-  scopeRef(element: HTMLElement | null): void;
-  storeKey: string;
-} {
-  const [paneScope, setPaneScope] = useState(STANDALONE_SIDEBAR_SCOPE);
-  const scopeRef = useCallback((element: HTMLElement | null) => {
-    if (element === null) return;
-    const nextPaneScope =
-      element
-        .closest<HTMLElement>("[data-split-pane-id]")
-        ?.getAttribute("data-split-pane-id") ?? STANDALONE_SIDEBAR_SCOPE;
-    setPaneScope((current) =>
-      current === nextPaneScope ? current : nextPaneScope,
-    );
-  }, []);
-  return {
-    scopeRef,
-    storeKey: `${paneScope}:${notesSidebarVaultKey(subPath)}`,
-  };
-}
-
-function getNotesSidebarStore(key: string): NotesSidebarStore {
-  const existing = notesSidebarStores.get(key);
-  if (existing) return existing;
-  const store: NotesSidebarStore = {
-    state: {
-      headerMounted: false,
-      paneNarrow: false,
-      width: 288,
-      userCollapsed: null,
-    },
-    headerMounts: 0,
-    viewMounts: 0,
-    listeners: new Set(),
-  };
-  notesSidebarStores.set(key, store);
-  return store;
-}
-
-function updateNotesSidebarState(
-  store: NotesSidebarStore,
-  patch: Partial<NotesSidebarState>,
-): void {
-  const next = { ...store.state, ...patch };
-  if (
-    next.headerMounted === store.state.headerMounted &&
-    next.paneNarrow === store.state.paneNarrow &&
-    next.width === store.state.width &&
-    next.userCollapsed === store.state.userCollapsed
-  ) {
-    return;
-  }
-  store.state = next;
-  for (const listener of store.listeners) listener();
-}
-
-function useNotesSidebarState(key: string): {
-  state: NotesSidebarState;
-  store: NotesSidebarStore;
-} {
-  const store = useMemo(() => getNotesSidebarStore(key), [key]);
-  const subscribe = useCallback(
-    (listener: () => void) => {
-      store.listeners.add(listener);
-      return () => store.listeners.delete(listener);
-    },
-    [store],
-  );
-  const getSnapshot = useCallback(() => store.state, [store]);
-  const state = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
-  return { state, store };
-}
-
-function NotesSidebarToggle({
-  collapsed,
-  onCollapsedChange,
-}: {
-  collapsed: boolean;
-  onCollapsedChange(collapsed: boolean): void;
-}) {
-  return (
-    <Button
-      className="size-8"
-      size="icon"
-      variant="ghost"
-      aria-label={collapsed ? "Expand notes sidebar" : "Collapse notes sidebar"}
-      aria-expanded={!collapsed}
-      onClick={() => onCollapsedChange(!collapsed)}
-    >
-      <HugeiconsIcon icon={SidebarRightIcon} />
-    </Button>
-  );
-}
-
-function NotesPanelHeader({ subPath }: PluginNavPanelProps) {
-  const { scopeRef, storeKey } = useNotesSidebarScope(subPath);
-  const { state: sidebar, store } = useNotesSidebarState(storeKey);
-  const collapsed = sidebar.userCollapsed ?? sidebar.paneNarrow;
-  useLayoutEffect(() => {
-    store.headerMounts += 1;
-    updateNotesSidebarState(store, { headerMounted: true });
-    return () => {
-      store.headerMounts = Math.max(0, store.headerMounts - 1);
-      if (store.headerMounts === 0) {
-        updateNotesSidebarState(store, { headerMounted: false });
-      }
-    };
-  }, [store]);
-  return (
-    <div
-      ref={scopeRef}
-      data-testid="notes-sidebar-header"
-      className="flex w-8 shrink-0 items-center justify-end"
-    >
-      <NotesSidebarToggle
-        collapsed={collapsed}
-        onCollapsedChange={(userCollapsed) =>
-          updateNotesSidebarState(store, { userCollapsed })
-        }
-      />
-    </div>
-  );
-}
-
 interface NotesSidebarNavigationProps {
   query: string;
   searchOpen: boolean;
@@ -1490,7 +1333,6 @@ function Tree({
   onMoveFile,
   onVaultChange,
   onAddVault,
-  sidebarKey,
 }: {
   data: NotesData;
   selectedPath: string | null;
@@ -1506,7 +1348,6 @@ function Tree({
   ): void;
   onVaultChange(vaultId: string): void;
   onAddVault(): void;
-  sidebarKey: string;
 }) {
   const portalScopeProps = usePortalScopeProps();
   const [query, setQuery] = useState("");
@@ -1519,64 +1360,6 @@ function Tree({
     edge: "before" | "after";
   } | null>(null);
   const [folderDropTarget, setFolderDropTarget] = useState<string | null>(null);
-  const { scopeRef, storeKey } = useNotesSidebarScope(sidebarKey);
-  const { state: sidebar, store: sidebarStore } =
-    useNotesSidebarState(storeKey);
-  // null = follow the responsive default (collapsed in narrow panes) until
-  // the user toggles the sidebar explicitly.
-  const sidebarCollapsed = sidebar.userCollapsed ?? sidebar.paneNarrow;
-  const sidebarWidth = sidebar.width;
-  const asideRef = useRef<HTMLElement | null>(null);
-  const setAsideRef = useCallback(
-    (element: HTMLElement | null) => {
-      asideRef.current = element;
-      scopeRef(element);
-    },
-    [scopeRef],
-  );
-  useLayoutEffect(() => {
-    if (sidebarStore.viewMounts === 0) {
-      updateNotesSidebarState(sidebarStore, {
-        paneNarrow: false,
-        width: 288,
-        userCollapsed: null,
-      });
-    }
-    sidebarStore.viewMounts += 1;
-    return () => {
-      sidebarStore.viewMounts = Math.max(0, sidebarStore.viewMounts - 1);
-      if (sidebarStore.viewMounts === 0) {
-        updateNotesSidebarState(sidebarStore, {
-          paneNarrow: false,
-          width: 288,
-          userCollapsed: null,
-        });
-      }
-    };
-  }, [sidebarStore]);
-  useLayoutEffect(() => {
-    const pane = asideRef.current?.parentElement;
-    if (!pane || typeof ResizeObserver === "undefined") return;
-    const update = () => {
-      const width = pane.clientWidth;
-      // Width 0 means the pane is hidden or not yet laid out — keep the
-      // wide-pane default rather than collapsing.
-      updateNotesSidebarState(sidebarStore, {
-        paneNarrow: width > 0 && width < SIDEBAR_AUTO_COLLAPSE_PANE_WIDTH,
-      });
-    };
-    update();
-    const observer = new ResizeObserver(update);
-    observer.observe(pane);
-    return () => observer.disconnect();
-  }, [sidebarStore]);
-  const resizeCleanupRef = useRef<(() => void) | null>(null);
-  useEffect(
-    () => () => {
-      resizeCleanupRef.current?.();
-    },
-    [],
-  );
   const notesByPath = useMemo(
     () => new Map(data.notes.map((note) => [note.path, note])),
     [data.notes],
@@ -1698,82 +1481,8 @@ function Tree({
     setFolderDropTarget(null);
   };
 
-  const startResize = (event: ReactPointerEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    resizeCleanupRef.current?.();
-    const handle = event.currentTarget;
-    const pointerId = event.pointerId;
-    const startX = event.clientX;
-    const startWidth = sidebarWidth;
-    let frame: number | null = null;
-    let pendingWidth = startWidth;
-    const commitPendingWidth = () => {
-      frame = null;
-      updateNotesSidebarState(sidebarStore, { width: pendingWidth });
-    };
-    const move = (moveEvent: PointerEvent) => {
-      pendingWidth = Math.min(
-        480,
-        Math.max(220, startWidth + startX - moveEvent.clientX),
-      );
-      if (frame === null) {
-        frame = window.requestAnimationFrame(commitPendingWidth);
-      }
-    };
-    const cleanup = () => {
-      if (resizeCleanupRef.current !== cleanup) return;
-      handle.removeEventListener("pointermove", move);
-      handle.removeEventListener("pointerup", cleanup);
-      handle.removeEventListener("pointercancel", cleanup);
-      handle.removeEventListener("lostpointercapture", cleanup);
-      window.removeEventListener("blur", cleanup);
-      if (frame !== null) {
-        window.cancelAnimationFrame(frame);
-        commitPendingWidth();
-      }
-      resizeCleanupRef.current = null;
-      if (handle.hasPointerCapture(pointerId)) {
-        handle.releasePointerCapture(pointerId);
-      }
-    };
-    resizeCleanupRef.current = cleanup;
-    handle.setPointerCapture(pointerId);
-    handle.addEventListener("pointermove", move);
-    handle.addEventListener("pointerup", cleanup);
-    handle.addEventListener("pointercancel", cleanup);
-    handle.addEventListener("lostpointercapture", cleanup);
-    window.addEventListener("blur", cleanup);
-  };
-
-  if (sidebarCollapsed) {
-    return (
-      <aside
-        ref={setAsideRef}
-        className={cn(
-          "order-2 flex shrink-0 flex-col items-center",
-          !sidebar.headerMounted &&
-            "w-10 border-l border-border bg-muted/20 py-2",
-        )}
-        style={{ width: sidebar.headerMounted ? 0 : 40 }}
-      >
-        {!sidebar.headerMounted ? (
-          <NotesSidebarToggle
-            collapsed
-            onCollapsedChange={(userCollapsed) =>
-              updateNotesSidebarState(sidebarStore, { userCollapsed })
-            }
-          />
-        ) : null}
-      </aside>
-    );
-  }
-
   return (
-    <aside
-      ref={setAsideRef}
-      className="relative order-2 flex shrink-0 flex-col border-l border-border bg-muted/20"
-      style={{ width: sidebarWidth }}
-    >
+    <div className="flex h-full min-h-0 flex-col bg-sidebar">
       <div className="relative flex items-center gap-1 border-b border-border p-2">
         <NotesSidebarNavigation
           query={query}
@@ -1783,14 +1492,6 @@ function Tree({
           onNewNote={onNewNote}
           onNewFolder={onNewFolder}
         />
-        {!sidebar.headerMounted ? (
-          <NotesSidebarToggle
-            collapsed={false}
-            onCollapsedChange={(userCollapsed) =>
-              updateNotesSidebarState(sidebarStore, { userCollapsed })
-            }
-          />
-        ) : null}
         {draggingPath && dirname(draggingPath) ? (
           <button
             type="button"
@@ -1980,20 +1681,7 @@ function Tree({
           </div>
         ) : null}
       </div>
-      <div
-        className="absolute inset-y-0 -left-0.5 z-10 w-1 cursor-col-resize touch-none transition-colors hover:bg-border"
-        role="separator"
-        aria-label="Resize notes sidebar"
-        aria-orientation="vertical"
-        aria-valuemin={220}
-        aria-valuemax={480}
-        aria-valuenow={sidebarWidth}
-        onPointerDown={startResize}
-        onDoubleClick={() =>
-          updateNotesSidebarState(sidebarStore, { width: 288 })
-        }
-      />
-    </aside>
+    </div>
   );
 }
 
@@ -2012,7 +1700,10 @@ function parseRoute(subPath: string): {
   };
 }
 
-function NotesPanel({ subPath }: PluginNavPanelProps) {
+function NotesWorkspace({
+  subPath,
+  navigationOnly,
+}: PluginNavPanelProps & { navigationOnly: boolean }) {
   const rpc = useRpc<typeof docsRpcContract>();
   const navigate = useBbNavigate();
   const route = parseRoute(subPath);
@@ -2033,8 +1724,12 @@ function NotesPanel({ subPath }: PluginNavPanelProps) {
       : null;
 
   useEffect(() => {
+    if (route.vaultId && route.vaultId !== vaultId) {
+      setVaultId(route.vaultId);
+      return;
+    }
     if (!vaultId && data?.vault.id) setVaultId(data.vault.id);
-  }, [data, vaultId]);
+  }, [data, route.vaultId, vaultId]);
 
   const open = useCallback(
     (path: string, replace = false) => {
@@ -2197,27 +1892,27 @@ function NotesPanel({ subPath }: PluginNavPanelProps) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex min-h-0 flex-1">
-        <Tree
-          data={data}
-          selectedPath={filePath}
-          onOpen={open}
-          onNewNote={newNote}
-          onNewFolder={() => setFolderDialogOpen(true)}
-          onDeleteFile={(path) => void deleteFile(path)}
-          onReorderFiles={(parent, paths) => void reorderFiles(parent, paths)}
-          onMoveFile={(sourcePath, targetFolder, targetOrder) =>
-            void moveFile(sourcePath, targetFolder, targetOrder)
-          }
-          onVaultChange={(value) => {
-            setVaultId(value);
-            navigate.toPluginPanel("docs", {
-              subPath: value,
-            });
-          }}
-          onAddVault={() => setVaultDialogOpen(true)}
-          sidebarKey={route.vaultId ?? ""}
-        />
-        {filePath && /\.md$/i.test(filePath) ? (
+        {navigationOnly ? (
+          <Tree
+            data={data}
+            selectedPath={filePath}
+            onOpen={open}
+            onNewNote={newNote}
+            onNewFolder={() => setFolderDialogOpen(true)}
+            onDeleteFile={(path) => void deleteFile(path)}
+            onReorderFiles={(parent, paths) => void reorderFiles(parent, paths)}
+            onMoveFile={(sourcePath, targetFolder, targetOrder) =>
+              void moveFile(sourcePath, targetFolder, targetOrder)
+            }
+            onVaultChange={(value) => {
+              setVaultId(value);
+              navigate.toPluginPanel("docs", {
+                subPath: value,
+              });
+            }}
+            onAddVault={() => setVaultDialogOpen(true)}
+          />
+        ) : filePath && /\.md$/i.test(filePath) ? (
           <NotePane
             key={`${activeVaultId}:${filePath}`}
             vaultId={activeVaultId}
@@ -2243,123 +1938,135 @@ function NotesPanel({ subPath }: PluginNavPanelProps) {
           </div>
         )}
       </div>
-      <Dialog open={folderDialogOpen} onOpenChange={setFolderDialogOpen}>
-        <DialogContent>
-          <form
-            className="grid gap-4"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void createFolder();
-            }}
-          >
-            <DialogHeader>
-              <DialogTitle>New folder</DialogTitle>
-              <DialogDescription>
-                Create it{" "}
-                {selectedFolder
-                  ? `inside ${selectedFolder}`
-                  : "at the vault root"}
-                .
-              </DialogDescription>
-            </DialogHeader>
-            <label className="grid gap-1.5 text-sm font-medium">
-              Folder name
-              <Input
-                autoFocus
-                value={folderName}
-                onChange={(event) => setFolderName(event.target.value)}
-                placeholder="Projects"
-              />
-            </label>
-            {folderError ? (
-              <p className="text-xs text-destructive">{folderError}</p>
-            ) : null}
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => setFolderDialogOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button type="submit" disabled={!folderName.trim()}>
-                Create folder
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-      <Dialog open={vaultDialogOpen} onOpenChange={setVaultDialogOpen}>
-        <DialogContent>
-          <form
-            className="grid gap-4"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void createVault();
-            }}
-          >
-            <DialogHeader>
-              <DialogTitle>Add vault</DialogTitle>
-              <DialogDescription>
-                Open a notes folder from this machine or a connected host.
-              </DialogDescription>
-            </DialogHeader>
-            <label className="grid gap-1.5 text-sm font-medium">
-              Name
-              <Input
-                autoFocus
-                value={vaultName}
-                onChange={(event) => setVaultName(event.target.value)}
-                placeholder="Personal"
-              />
-            </label>
-            <label className="grid gap-1.5 text-sm font-medium">
-              Folder path
-              <Input
-                value={vaultRootPath}
-                onChange={(event) => setVaultRootPath(event.target.value)}
-                placeholder="/Users/me/Notes"
-              />
-            </label>
-            <label className="grid gap-1.5 text-sm font-medium">
-              Host
-              <Select value={vaultHostId} onValueChange={setVaultHostId}>
-                <SelectTrigger aria-label="Vault host">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="primary">Primary host</SelectItem>
-                  {data.hosts.map((host) => (
-                    <SelectItem key={host.id} value={host.id}>
-                      {host.name} · {host.status}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </label>
-            {vaultError ? (
-              <p className="text-xs text-destructive">{vaultError}</p>
-            ) : null}
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => setVaultDialogOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                disabled={!vaultName.trim() || !vaultRootPath.trim()}
-              >
-                Add vault
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      {navigationOnly ? (
+        <Dialog open={folderDialogOpen} onOpenChange={setFolderDialogOpen}>
+          <DialogContent>
+            <form
+              className="grid gap-4"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void createFolder();
+              }}
+            >
+              <DialogHeader>
+                <DialogTitle>New folder</DialogTitle>
+                <DialogDescription>
+                  Create it{" "}
+                  {selectedFolder
+                    ? `inside ${selectedFolder}`
+                    : "at the vault root"}
+                  .
+                </DialogDescription>
+              </DialogHeader>
+              <label className="grid gap-1.5 text-sm font-medium">
+                Folder name
+                <Input
+                  autoFocus
+                  value={folderName}
+                  onChange={(event) => setFolderName(event.target.value)}
+                  placeholder="Projects"
+                />
+              </label>
+              {folderError ? (
+                <p className="text-xs text-destructive">{folderError}</p>
+              ) : null}
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => setFolderDialogOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={!folderName.trim()}>
+                  Create folder
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      ) : null}
+      {navigationOnly ? (
+        <Dialog open={vaultDialogOpen} onOpenChange={setVaultDialogOpen}>
+          <DialogContent>
+            <form
+              className="grid gap-4"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void createVault();
+              }}
+            >
+              <DialogHeader>
+                <DialogTitle>Add vault</DialogTitle>
+                <DialogDescription>
+                  Open a notes folder from this machine or a connected host.
+                </DialogDescription>
+              </DialogHeader>
+              <label className="grid gap-1.5 text-sm font-medium">
+                Name
+                <Input
+                  autoFocus
+                  value={vaultName}
+                  onChange={(event) => setVaultName(event.target.value)}
+                  placeholder="Personal"
+                />
+              </label>
+              <label className="grid gap-1.5 text-sm font-medium">
+                Folder path
+                <Input
+                  value={vaultRootPath}
+                  onChange={(event) => setVaultRootPath(event.target.value)}
+                  placeholder="/Users/me/Notes"
+                />
+              </label>
+              <label className="grid gap-1.5 text-sm font-medium">
+                Host
+                <Select value={vaultHostId} onValueChange={setVaultHostId}>
+                  <SelectTrigger aria-label="Vault host">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="primary">Primary host</SelectItem>
+                    {data.hosts.map((host) => (
+                      <SelectItem key={host.id} value={host.id}>
+                        {host.name} · {host.status}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </label>
+              {vaultError ? (
+                <p className="text-xs text-destructive">{vaultError}</p>
+              ) : null}
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => setVaultDialogOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={!vaultName.trim() || !vaultRootPath.trim()}
+                >
+                  Add vault
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      ) : null}
     </div>
   );
+}
+
+function NotesPanel(props: PluginNavPanelProps) {
+  return <NotesWorkspace {...props} navigationOnly={false} />;
+}
+
+function NotesNavigationPanel(props: PluginNavPanelProps) {
+  return <NotesWorkspace {...props} navigationOnly />;
 }
 
 export default definePluginApp((app) => {
@@ -2369,7 +2076,18 @@ export default definePluginApp((app) => {
     icon: "FileText",
     path: "docs",
     component: NotesPanel,
-    headerContent: NotesPanelHeader,
+    experimental_rightPanel: {
+      views: [
+        {
+          id: "navigation",
+          title: "Navigation",
+          icon: "ListView",
+          component: NotesNavigationPanel,
+          layout: "flush",
+        },
+      ],
+      defaultViewId: "navigation",
+    },
   });
   app.slots.threadPanelAction({
     id: "document",
