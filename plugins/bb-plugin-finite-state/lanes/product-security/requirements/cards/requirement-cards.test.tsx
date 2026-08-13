@@ -330,6 +330,50 @@ describe("requirement cards", () => {
     slot.lifecycle.unmount();
   });
 
+  it("saves with the picker-supplied project when the panel route has no project", async () => {
+    await requirementsPanel();
+    const { RequirementsCardsForProject } = await import("./index.js");
+    let writeInput: Record<string, unknown> | null = null;
+    const slot = renderSlot(
+      { component: RequirementsCardsForProject },
+      { projectId: "picker-project" },
+      {
+        context: { projectId: null, threadId: null },
+        rpc: {
+          requirementsList: () => page([model()], null, "version-7", "picker-project"),
+          requirementsWrite: (input) => {
+            writeInput = rpcContract.requirementsWrite.input.parse(input);
+            return {
+              projectId: "picker-project",
+              projectVersionId: "version-7",
+              stableKey: "REQ-card-1",
+              beforeSha256: model().sourceSha256,
+              afterSha256: "e".repeat(64),
+              changedFields: [],
+              diffSummary: "local only",
+            };
+          },
+        },
+      },
+    );
+    await slot.findByText("REQ-card-1");
+    fireEvent.click(slot.getByRole("button", { name: "Expand requirement" }));
+    fireEvent.click(slot.getByRole("button", { name: "Edit local YAML" }));
+    const saveButton = slot.getByRole("button", { name: "Save local YAML" });
+    if (!(saveButton instanceof HTMLButtonElement)) throw new Error("Save control is not a button");
+    expect(saveButton.disabled).toBe(false);
+    fireEvent.click(saveButton);
+    await waitFor(() => expect(writeInput).not.toBeNull());
+    expect(writeInput).toEqual(expect.objectContaining({
+      projectId: "picker-project",
+      projectVersionId: "version-7",
+      requirementId: "REQ-card-1",
+      expectedContentSha256: model().sourceSha256,
+    }));
+    expect(await slot.findByText("local")).toBeTruthy();
+    slot.lifecycle.unmount();
+  });
+
   it("recovers a CAS conflict with current data and a human-readable retry path", async () => {
     const original = model(1);
     const current = model(1, {

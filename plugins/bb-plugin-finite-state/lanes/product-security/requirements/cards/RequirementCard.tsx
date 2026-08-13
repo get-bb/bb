@@ -31,16 +31,19 @@ export function RequirementCard({
   id,
   initialModel,
   positionInSet,
+  projectId: selectedProjectId,
   projectVersionId = null,
   setSize,
 }: {
   id: string;
   initialModel?: RequirementCardModel;
   positionInSet?: number;
+  projectId?: string | null;
   projectVersionId?: string | null;
   setSize?: number;
 }): React.JSX.Element {
-  const { projectId } = useBbContext();
+  const { projectId: routeProjectId } = useBbContext();
+  const projectId = selectedProjectId ?? routeProjectId;
   const rpc = useRpc<RpcContract>();
   const [model, setModel] = useState<RequirementCardModel | null>(initialModel ?? null);
   const [previousInitialModel, setPreviousInitialModel] = useState(initialModel);
@@ -179,6 +182,7 @@ export function RequirementCard({
                   setModel({ ...model, requirement, sourceSha256, local: true });
                   setConflictMessage(null);
                 }}
+                projectId={projectId}
                 projectVersionId={projectVersionId}
               />
             </>

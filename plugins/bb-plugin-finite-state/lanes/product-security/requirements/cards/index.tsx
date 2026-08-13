@@ -119,6 +119,7 @@ export function RequirementsCardsForProject({
           const epoch = ++requestEpoch.current;
           void load(null, epoch, true);
         }}
+        projectId={projectId}
         state={projectId ? state : "unconfigured"}
         projectVersionId={projectVersionId}
       />

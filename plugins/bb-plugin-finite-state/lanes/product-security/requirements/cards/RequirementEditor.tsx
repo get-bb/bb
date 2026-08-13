@@ -73,16 +73,19 @@ function relevantParts(pattern: EarsPattern): readonly ("trigger" | "preconditio
 
 export function RequirementEditor({
   model,
+  projectId: selectedProjectId,
   projectVersionId,
   onConflict,
   onSaved,
 }: {
   model: RequirementCardModel;
+  projectId?: string | null;
   projectVersionId: string | null;
   onConflict?(current: RequirementCardModel): void;
   onSaved?(next: RequirementYamlV1, nextSha256: string): void;
 }): React.JSX.Element {
-  const { projectId } = useBbContext();
+  const { projectId: routeProjectId } = useBbContext();
+  const projectId = selectedProjectId ?? routeProjectId;
   const rpc = useRpc<RpcContract>();
   const source = model.requirement;
   const [pattern, setPattern] = useState<EarsPattern>(source.ears.pattern);

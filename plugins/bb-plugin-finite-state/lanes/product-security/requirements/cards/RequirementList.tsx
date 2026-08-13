@@ -8,6 +8,7 @@ export type RequirementListState = "unconfigured" | "loading" | "ready" | "error
 export interface RequirementListProps {
   state: RequirementListState;
   models: readonly RequirementCardModel[];
+  projectId?: string | null;
   projectVersionId?: string | null;
   message?: string | null;
   hasNextPage?: boolean;
@@ -38,6 +39,7 @@ function CenteredState({
 export function RequirementList({
   state,
   models,
+  projectId = null,
   projectVersionId = null,
   message,
   hasNextPage = false,
@@ -140,6 +142,7 @@ export function RequirementList({
                   id={model.requirement.id}
                   initialModel={model}
                   positionInSet={virtualRow.index + 1}
+                  projectId={projectId}
                   projectVersionId={projectVersionId}
                   setSize={filtered.length}
                 />
