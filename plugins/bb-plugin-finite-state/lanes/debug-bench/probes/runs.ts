@@ -128,8 +128,10 @@ function decodeCursor(value: string | null): RunCursor | null {
       const startedAt = Reflect.get(parsed, "startedAt");
       const runId = Reflect.get(parsed, "runId");
       const kind = Reflect.get(parsed, "kind");
-      if (typeof startedAt === "string" && typeof runId === "string" &&
-        (kind === "build" || kind === "flash" || kind === "probe")) return { startedAt, runId, kind };
+      if (typeof startedAt === "string" && typeof runId === "string") {
+        if (kind === undefined) return { startedAt, runId, kind: "build" };
+        if (kind === "build" || kind === "flash" || kind === "probe") return { startedAt, runId, kind };
+      }
     }
   } catch { /* stable error below */ }
   throw new Error("INVALID_BENCH_RUN_CURSOR");
@@ -152,7 +154,11 @@ export function listBenchDevelopmentRuns(db: Database.Database, input: Developme
       FROM build_run
     UNION ALL
     SELECT project_id, project_version_id, run_id, 'probe' AS kind,
-           CASE WHEN finished_at IS NULL THEN 'running' ELSE 'succeeded' END AS status,
+           CASE
+             WHEN finished_at IS NULL THEN 'running'
+             WHEN outcome IN ('confirmed','refuted') THEN 'succeeded'
+             ELSE 'failed'
+           END AS status,
            hypothesis AS target,
            json_extract(COALESCE(artifacts, '[]'), '$[0]') AS artifact,
            NULL AS digest, started_at, finished_at

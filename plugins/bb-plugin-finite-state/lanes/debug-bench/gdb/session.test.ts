@@ -16,12 +16,18 @@ afterEach(async () => {
   await Promise.all(cleanup.splice(0).map((path) => rm(path, { recursive: true, force: true })));
 });
 
-async function fakeGdb(): Promise<string> {
+async function fakeGdb(escapedGrandchild = false): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "fs-fake-gdb-"));
   cleanup.push(root);
   const path = join(root, "gdb");
   await writeFile(path, `#!/usr/bin/env node
 import readline from "node:readline";
+${escapedGrandchild ? `import { spawn } from "node:child_process";
+const escaped = spawn(process.execPath, ["-e", "setTimeout(() => process.exit(0), 2000)"], {
+  detached: true,
+  stdio: ["ignore", 1, "ignore"],
+});
+escaped.unref();` : ""}
 const rl = readline.createInterface({ input: process.stdin });
 rl.on("line", (line) => {
   const match = /^(\\d+)(.*)$/.exec(line);
@@ -78,7 +84,7 @@ function claimedDatabase(): { db: Database.Database; claim: DeviceClaim } {
   };
 }
 
-async function deps(): Promise<DebugBenchDeps & {
+async function deps(gdbExecutablePath?: string): Promise<DebugBenchDeps & {
   claim: DeviceClaim;
   releaseClaim: ReturnType<typeof vi.fn>;
   startServer: ReturnType<typeof vi.fn>;
@@ -93,7 +99,7 @@ async function deps(): Promise<DebugBenchDeps & {
     db,
     registryScope: { projectId: device.projectId, projectVersionId: device.projectVersionId },
     claim,
-    gdbExecutablePath: await fakeGdb(),
+    gdbExecutablePath: gdbExecutablePath ?? await fakeGdb(),
     serverConfig: () => ({ kind: "jlink", executablePath: "/unused", targetConfig: "STM32F407VG", gdbPort: 2331 }),
     releaseClaim,
     startServer,
@@ -144,6 +150,20 @@ describe("GDB session", () => {
     expect(dependencies.releaseClaim).toHaveBeenCalledOnce();
   });
 
+  it("disposes at the deadline when an escaped grandchild inherits GDB stdout", async () => {
+    const dependencies = await deps(await fakeGdb(true));
+    const session = await openGdbSession(
+      dependencies,
+      device.deviceId,
+      dependencies.claim,
+      new AbortController().signal,
+    );
+    const started = Date.now();
+    await session.dispose();
+    expect(Date.now() - started).toBeLessThan(1_500);
+    expect(dependencies.releaseClaim).toHaveBeenCalledOnce();
+  }, 10_000);
+
   it("releases a verified claim when GDB configuration prevents opening", async () => {
     const dependencies = await deps();
     dependencies.gdbExecutablePath = "/definitely/missing/gdb";
@@ -184,5 +204,6 @@ describe("GDB session", () => {
       new AbortController().signal,
     )).rejects.toMatchObject({ code: "DEVICE_UNAVAILABLE" });
     expect(dependencies.startServer).not.toHaveBeenCalled();
+    expect(dependencies.releaseClaim).toHaveBeenCalledTimes(3);
   });
 });

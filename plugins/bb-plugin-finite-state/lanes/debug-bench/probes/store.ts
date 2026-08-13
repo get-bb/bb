@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFile } from "node:child_process";
 import { constants } from "node:fs";
 import {
   access,
@@ -11,12 +11,14 @@ import {
 } from "node:fs/promises";
 import { isAbsolute, join, relative, sep } from "node:path";
 import { randomUUID } from "node:crypto";
+import { promisify } from "node:util";
 
 export const BENCH_ARTIFACT_DIRECTORY = ".fs-bench" as const;
 export const PROBE_SOURCE_DIRECTORY = ".fs/bench/probes" as const;
 
 const SAFE_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
 const HEADER_LIMIT = 16 * 1024;
+const execFileAsync = promisify(execFile);
 
 export class ProbeStoreError extends Error {
   constructor(readonly code: string, message: string, options?: ErrorOptions) {
@@ -61,10 +63,11 @@ async function validateWorktreeRoot(worktreeRoot: string): Promise<string> {
   }
   let gitRoot: string;
   try {
-    gitRoot = execFileSync("git", ["-C", canonical, "rev-parse", "--show-toplevel"], {
+    const result = await execFileAsync("git", ["-C", canonical, "rev-parse", "--show-toplevel"], {
       encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    }).trim();
+      windowsHide: true,
+    });
+    gitRoot = result.stdout.trim();
   } catch (error) {
     throw new ProbeStoreError("INVALID_WORKTREE_ROOT", "Probe storage requires a Git worktree root.", { cause: error });
   }
@@ -94,10 +97,10 @@ export async function assertBenchArtifactRootIgnored(worktreeRoot: string): Prom
     if (typeof error === "object" && error !== null && "code" in error && error.code !== "ENOENT") throw error;
   }
   try {
-    execFileSync(
+    await execFileAsync(
       "git",
       ["-C", root, "check-ignore", "--quiet", "--no-index", "--", `${BENCH_ARTIFACT_DIRECTORY}/.ignore-probe`],
-      { stdio: "ignore" },
+      { windowsHide: true },
     );
   } catch (error) {
     throw new ProbeStoreError(

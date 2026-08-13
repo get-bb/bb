@@ -103,4 +103,27 @@ describe("GDB server lifecycle", () => {
     expect(child.signalCode).not.toBeNull();
     await handle.dispose();
   }, 10_000);
+
+  it("disposes at the deadline when an escaped grandchild inherits server stdout", async () => {
+    const executablePath = await fixtureExecutable(`
+import { spawn } from "node:child_process";
+const escaped = spawn(process.execPath, ["-e", "setTimeout(() => process.exit(0), 2000)"], {
+  detached: true,
+  stdio: ["ignore", 1, "ignore"],
+});
+escaped.unref();
+setInterval(() => {}, 1000);
+`);
+    const handle = await startGdbServer({ healthProbe: async () => undefined }, {
+      kind: "jlink",
+      executablePath,
+      targetConfig: "device",
+      connection: "serial",
+      gdbPort: 2331,
+      stopTimeoutMs: 100,
+    }, new AbortController().signal);
+    const started = Date.now();
+    await handle.dispose();
+    expect(Date.now() - started).toBeLessThan(1_500);
+  }, 10_000);
 });

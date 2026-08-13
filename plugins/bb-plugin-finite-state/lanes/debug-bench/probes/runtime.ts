@@ -42,6 +42,7 @@ export interface ProbeRuntimeDeps extends ProbeRunScope {
   writeArtifact?: typeof writeBenchArtifact;
   publishChanged?: (channel: typeof PROBE_CHANGED_CHANNEL, payload: { runId: string }) => void;
   maxProtocolBytes?: number;
+  maxStderrBytes?: number;
 }
 
 export class ProbeRuntimeError extends Error {
@@ -136,32 +137,92 @@ function claimedDevices(request: ProbeRunRequest, claims: readonly DeviceClaim[]
   return map;
 }
 
-export function isDestructiveGdbCommand(command: string, args: readonly string[] = []): boolean {
-  const text = `${command} ${args.join(" ")}`.toLocaleLowerCase("en-US").replace(/\\?"/gu, " ");
-  return /(?:^|\s)(?:load|restore|-target-download)(?:\s|$)/u.test(text) ||
-    /(?:^|\s)-data-write-(?:memory(?:-bytes)?|register-values)(?:\s|$)/u.test(text) ||
-    /(?:^|\s)-exec-(?:run|jump)(?:\s|$)/u.test(text) ||
-    /(?:^|\s)[^\s]*(?:reset|erase|flash|fuse|program)[^\s]*(?:\s|$)/u.test(text);
+const NUMERIC_MI_ARGUMENT = /^(?:0[xX][0-9A-Fa-f]+|\d+)$/u;
+const BREAKPOINT_LOCATION = /^[A-Za-z0-9_.$*:+/-]{1,1024}$/u;
+
+function isAllowedProbeGdbCommand(command: string, args: readonly string[]): boolean {
+  switch (command) {
+    case "-break-delete":
+      return args.length > 0 && args.every((argument) => /^\d{1,16}$/u.test(argument));
+    case "-break-insert":
+      return args.length === 1 && BREAKPOINT_LOCATION.test(args[0]!);
+    case "-data-list-register-names":
+      return args.every((argument) => /^\d{1,16}$/u.test(argument));
+    case "-data-list-register-values":
+      return args.length > 0 && /^[xotdrN]$/u.test(args[0]!) &&
+        args.slice(1).every((argument) => /^\d{1,16}$/u.test(argument));
+    case "-data-read-memory-bytes": {
+      if (args.length !== 2 || !NUMERIC_MI_ARGUMENT.test(args[0]!) || !/^\d{1,5}$/u.test(args[1]!)) return false;
+      const bytes = Number.parseInt(args[1]!, 10);
+      return bytes > 0 && bytes <= 65_536;
+    }
+    case "-exec-continue":
+    case "-exec-interrupt":
+      return args.length === 0;
+    case "-stack-list-frames":
+      return (args.length === 0 || args.length === 2) &&
+        args.every((argument) => /^\d{1,10}$/u.test(argument));
+    case "-thread-info":
+      return args.length === 0 || (args.length === 1 && /^\d{1,16}$/u.test(args[0]!));
+    default:
+      return false;
+  }
 }
 
-async function terminate(child: ChildProcess): Promise<void> {
-  if (child.exitCode !== null || child.signalCode !== null) return;
-  const closed = new Promise<void>((resolve) => child.once("close", () => resolve()));
+export function isDestructiveGdbCommand(command: string, args: readonly string[] = []): boolean {
+  return !isAllowedProbeGdbCommand(command, args);
+}
+
+function destroyProcessPipes(child: ChildProcess): void {
+  child.stdin?.destroy();
+  child.stdout?.destroy();
+  child.stderr?.destroy();
+}
+
+function signalProcessGroup(child: ChildProcess, signal: NodeJS.Signals): void {
   try {
-    if (process.platform !== "win32" && child.pid) process.kill(-child.pid, "SIGTERM");
-    else child.kill("SIGTERM");
-  } catch { child.kill("SIGTERM"); }
-  const ended = await Promise.race([
-    closed.then(() => true),
-    new Promise<false>((resolve) => setTimeout(() => resolve(false), 1_000)),
-  ]);
-  if (!ended) {
-    try {
-      if (process.platform !== "win32" && child.pid) process.kill(-child.pid, "SIGKILL");
-      else child.kill("SIGKILL");
-    } catch { child.kill("SIGKILL"); }
-    await closed;
+    if (process.platform !== "win32" && child.pid) process.kill(-child.pid, signal);
+    else child.kill(signal);
+  } catch {
+    try { child.kill(signal); } catch { /* Process already exited. */ }
   }
+}
+
+async function terminate(child: ChildProcess, deadlineMs = 1_000): Promise<void> {
+  if (child.exitCode !== null || child.signalCode !== null) {
+    destroyProcessPipes(child);
+    return;
+  }
+  let onExit: (() => void) | null = null;
+  const exited = new Promise<true>((resolve) => {
+    onExit = () => resolve(true);
+    child.once("exit", onExit);
+  });
+  signalProcessGroup(child, "SIGTERM");
+  let deadline: NodeJS.Timeout | null = null;
+  const ended = await Promise.race([
+    exited,
+    new Promise<false>((resolve) => { deadline = setTimeout(() => resolve(false), deadlineMs); }),
+  ]);
+  if (deadline !== null) clearTimeout(deadline);
+  if (!ended) signalProcessGroup(child, "SIGKILL");
+  if (onExit) child.removeListener("exit", onExit);
+  destroyProcessPipes(child);
+}
+
+class BoundedText {
+  #value = Buffer.alloc(0);
+
+  constructor(private readonly limit: number) {}
+
+  append(chunk: Buffer): void {
+    const combined = Buffer.concat([this.#value, chunk]);
+    this.#value = combined.byteLength <= this.limit
+      ? combined
+      : combined.subarray(combined.byteLength - this.limit);
+  }
+
+  text(): string { return this.#value.toString("utf8"); }
 }
 
 interface BridgeMessage {
@@ -309,6 +370,8 @@ export async function runProbe(
   const sessions = new Map<string, DebugGdbSession>();
   const delegatedClaims = new Set<string>();
   let child: ChildProcess | null = null;
+  let terminationPromise: Promise<void> | null = null;
+  const stderr = new BoundedText(deps.maxStderrBytes ?? 64 * 1024);
   let outcome: ProbeOutcome = "inconclusive";
   let runtimeError: unknown = null;
   const controller = new AbortController();
@@ -328,8 +391,17 @@ export async function runProbe(
       const claim = claimMap.get(deviceId)!;
       verifyDeviceClaim(deps.db, claim, deviceId);
       controller.signal.throwIfAborted();
-      delegatedClaims.add(deviceId);
-      const session = await deps.openSession(deviceId, claim, controller.signal);
+      let session: DebugGdbSession;
+      try {
+        session = await deps.openSession(deviceId, claim, controller.signal);
+        delegatedClaims.add(deviceId);
+      } catch (error) {
+        try {
+          await deps.releaseClaim(deviceId, claim.holder);
+          delegatedClaims.add(deviceId);
+        } catch { /* The finalizer retries release if this attempt fails. */ }
+        throw error;
+      }
       sessions.set(deviceId, session);
     }
     child = (deps.spawnProcess ?? spawn)(python, ["-u", "-c", PYTHON_BRIDGE, script.absolutePath], {
@@ -338,7 +410,13 @@ export async function runProbe(
       windowsHide: true,
       stdio: ["pipe", "pipe", "pipe"],
     });
-    const abortChild = () => { if (child) void terminate(child); };
+    child.stderr?.on("data", (chunk: Buffer) => stderr.append(chunk));
+    const stopChild = (deadlineMs: number) => {
+      if (!child) return Promise.resolve();
+      terminationPromise ??= terminate(child, deadlineMs);
+      return terminationPromise;
+    };
+    const abortChild = () => { void stopChild(0); };
     controller.signal.addEventListener("abort", abortChild, { once: true });
     const result = await protocolLoop(child, sessions, deps, runId, artifacts, controller.signal);
     controller.signal.removeEventListener("abort", abortChild);
@@ -349,7 +427,10 @@ export async function runProbe(
   } finally {
     clearTimeout(timeout);
     signal.removeEventListener("abort", abort);
-    if (child) await terminate(child);
+    if (child) {
+      terminationPromise ??= terminate(child, controller.signal.aborted ? 0 : 1_000);
+      await terminationPromise;
+    }
     for (const session of [...sessions.values()].reverse()) {
       await session.dispose().catch(() => undefined);
     }
@@ -359,11 +440,15 @@ export async function runProbe(
     }
   }
   if (runtimeError !== null) {
-    const text = runtimeError instanceof Error
+    const primary = runtimeError instanceof Error
       ? `${runtimeError.name}: ${runtimeError.message}\n`
       : typeof runtimeError === "string"
         ? `${runtimeError}\n`
         : "Probe failed with an unknown error.\n";
+    const diagnosticStderr = stderr.text().trim();
+    const text = diagnosticStderr.length > 0
+      ? `${primary}probe stderr:\n${diagnosticStderr}\n`
+      : primary;
     try {
       artifacts.push(await (deps.writeArtifact ?? writeBenchArtifact)(
         deps.worktreeRoot,

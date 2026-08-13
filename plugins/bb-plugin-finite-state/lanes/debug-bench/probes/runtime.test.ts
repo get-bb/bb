@@ -121,7 +121,7 @@ describe("probe runtime", () => {
   it("binds requested devices, dispatches safe GDB, writes artifacts, and persists the outcome", async () => {
     const root = await worktree();
     const python = await fixtureBridge(`
-const gdb = await request({ type: "gdb", id: 1, deviceId: "probe-rs:serial-hash", command: "-data-evaluate-expression", args: ["counter"] });
+const gdb = await request({ type: "gdb", id: 1, deviceId: "probe-rs:serial-hash", command: "-thread-info", args: [] });
 if (!gdb.ok) throw new Error(gdb.error);
 const artifact = await request({ type: "artifact", id: 2, path: "captures/result.csv", data: Buffer.from("a,b\\n").toString("base64") });
 if (!artifact.ok) throw new Error(artifact.error);
@@ -130,7 +130,7 @@ console.log(JSON.stringify({ type: "result", outcome: "confirmed" }));
     const { deps, claim, executeCommand, releaseClaim } = await runtime(python, root);
     const result = await runProbe(deps, request, [claim], new AbortController().signal);
     expect(result).toMatchObject({ outcome: "confirmed", artifacts: [".fs-bench/probe-run-1/captures/result.csv"] });
-    expect(executeCommand).toHaveBeenCalledWith("-data-evaluate-expression", ["counter"]);
+    expect(executeCommand).toHaveBeenCalledWith("-thread-info", []);
     expect(await readFile(join(root, ".fs-bench/probe-run-1/captures/result.csv"), "utf8")).toBe("a,b\n");
     expect(deps.db.prepare("SELECT outcome, finished_at FROM probe_run").get()).toMatchObject({ outcome: "confirmed", finished_at: expect.any(String) });
     expect(releaseClaim).toHaveBeenCalledOnce();
@@ -139,7 +139,7 @@ console.log(JSON.stringify({ type: "result", outcome: "confirmed" }));
   it("rejects destructive commands before any byte reaches the GDB session", async () => {
     const root = await worktree();
     const python = await fixtureBridge(`
-const response = await request({ type: "gdb", id: 1, deviceId: "probe-rs:serial-hash", command: "-interpreter-exec", args: ["console", "monitor reset halt"] });
+const response = await request({ type: "gdb", id: 1, deviceId: "probe-rs:serial-hash", command: "-interpreter-exec", args: ["console", "monitor mww 0xE000ED0C 0x05FA0004"] });
 console.log(JSON.stringify({ type: "error", message: response.error }));
 `);
     const { deps, claim, executeCommand } = await runtime(python, root);
@@ -180,22 +180,62 @@ console.log(JSON.stringify({ type: "error", message: response.error }));
       .toContain("CLAIM_EXPIRED");
   });
 
+  it("releases the claim when session ownership transfer rejects", async () => {
+    const root = await worktree();
+    const python = await fixtureBridge('console.log(JSON.stringify({ type: "result", outcome: "confirmed" }));');
+    const openSession = vi.fn(async (): Promise<DebugGdbSession> => {
+      throw new Error("claim lapsed during session open");
+    });
+    const { deps, claim, releaseClaim } = await runtime(python, root, { openSession });
+    await expect(runProbe(deps, request, [claim], new AbortController().signal))
+      .resolves.toMatchObject({ outcome: "inconclusive" });
+    expect(openSession).toHaveBeenCalledOnce();
+    expect(releaseClaim).toHaveBeenCalledOnce();
+  });
+
   it("kills a timed-out subprocess and persists inconclusive with an error artifact", async () => {
     const root = await worktree();
-    const python = await fixtureBridge("setInterval(() => {}, 1000);");
+    const python = await fixtureBridge(`
+const { spawn } = await import("node:child_process");
+const escaped = spawn(process.execPath, ["-e", "setTimeout(() => process.exit(0), 2000)"], {
+  detached: true,
+  stdio: ["ignore", 1, "ignore"],
+});
+escaped.unref();
+setInterval(() => {}, 1000);
+`);
     const { deps, claim } = await runtime(python, root);
+    const started = Date.now();
     const result = await runProbe(deps, { ...request, timeoutMs: 100 }, [claim], new AbortController().signal);
+    expect(Date.now() - started).toBeLessThan(1_500);
     expect(result.outcome).toBe("inconclusive");
     expect(await readFile(join(root, ".fs-bench/probe-run-1/runtime-error.txt"), "utf8")).toContain("PROBE_TIMEOUT");
   }, 10_000);
 
+  it("drains bounded stderr so a chatty probe can finish", async () => {
+    const root = await worktree();
+    const python = await fixtureBridge(`
+process.stderr.write("x".repeat(2 * 1024 * 1024));
+console.log(JSON.stringify({ type: "result", outcome: "confirmed" }));
+`);
+    const { deps, claim } = await runtime(python, root);
+    await expect(runProbe(deps, request, [claim], new AbortController().signal))
+      .resolves.toMatchObject({ outcome: "confirmed" });
+  }, 10_000);
+
   it("records a script exception as inconclusive with captured diagnostics", async () => {
     const root = await worktree();
-    const python = await fixtureBridge('console.log(JSON.stringify({ type: "error", message: "fixture exploded", traceback: "line 7" }));');
+    const python = await fixtureBridge(`
+process.stderr.write("fixture stderr diagnostic");
+console.log(JSON.stringify({ type: "error", message: "fixture exploded", traceback: "line 7" }));
+`);
     const { deps, claim } = await runtime(python, root);
     const result = await runProbe(deps, request, [claim], new AbortController().signal);
     expect(result.outcome).toBe("inconclusive");
-    expect(await readFile(join(root, ".fs-bench/probe-run-1/runtime-error.txt"), "utf8")).toContain("fixture exploded");
+    expect(await readFile(join(root, ".fs-bench/probe-run-1/runtime-error.txt"), "utf8"))
+      .toContain("fixture exploded");
+    expect(await readFile(join(root, ".fs-bench/probe-run-1/runtime-error.txt"), "utf8"))
+      .toContain("fixture stderr diagnostic");
   });
 
   it("reports missing Python as needsConfiguration before device I/O and still closes the run", async () => {
@@ -216,11 +256,20 @@ console.log(JSON.stringify({ type: "error", message: response.error }));
 
   it("recognizes every forbidden destructive family", () => {
     expect(isDestructiveGdbCommand("-interpreter-exec", ["console", "monitor reset"])).toBe(true);
+    expect(isDestructiveGdbCommand("-interpreter-exec", ["console", "monitor mww 0xE000ED0C 0x05FA0004"])).toBe(true);
+    expect(isDestructiveGdbCommand("-interpreter-exec", ["console", "monitor dump_image /tmp/pwned.bin 0x0 4096"])).toBe(true);
+    expect(isDestructiveGdbCommand("-interpreter-exec", ["console", "shell touch /tmp/pwned"])).toBe(true);
+    expect(isDestructiveGdbCommand("-gdb-set", ["logging", "file", "/tmp/pwned"])).toBe(true);
+    expect(isDestructiveGdbCommand("-data-evaluate-expression", ["set {int}0x2000 = 1"])).toBe(true);
+    expect(isDestructiveGdbCommand("-break-insert", ["-c", "*(int*)0x2000=1", "main"])).toBe(true);
     expect(isDestructiveGdbCommand("load", ["firmware.elf"])).toBe(true);
     expect(isDestructiveGdbCommand("monitor", ["flash", "write_image"])).toBe(true);
     expect(isDestructiveGdbCommand("monitor", ["nrf5", "mass_erase"])).toBe(true);
     expect(isDestructiveGdbCommand("monitor", ["fuse", "write"])).toBe(true);
     expect(isDestructiveGdbCommand("-data-write-memory-bytes", ["0x2000", "00"])).toBe(true);
     expect(isDestructiveGdbCommand("-data-read-memory-bytes", ["0x2000", "16"])).toBe(false);
+    expect(isDestructiveGdbCommand("-data-read-memory-bytes", ["0x2000", "65537"])).toBe(true);
+    expect(isDestructiveGdbCommand("-break-insert", ["main"])).toBe(false);
+    expect(isDestructiveGdbCommand("-thread-info", [])).toBe(false);
   });
 });

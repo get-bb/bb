@@ -19,6 +19,13 @@ export interface RtosTaskOptions {
 
 type Command = (command: string, args?: readonly string[]) => Promise<MiResultRecord>;
 
+export class RtosTasksUnavailableError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "RtosTasksUnavailableError";
+  }
+}
+
 function objectValue(value: MiValue | undefined): Record<string, MiValue> | null {
   return typeof value === "object" && value !== null && !Array.isArray(value) ? value : null;
 }
@@ -54,17 +61,21 @@ export async function readRtosState(
   command: Command,
   options: RtosTaskOptions = {},
 ): Promise<{ method: "server" | "symbols"; tasks: RtosTask[] }> {
+  let serverError: unknown = null;
   if (options.serverAware !== false) {
     try {
       const tasks = serverTasks(await command("-thread-info"));
-      if (tasks.length > 0) return { method: "server", tasks };
-    } catch {
-      // Server RTOS awareness is optional; a configured symbol walker is the fallback.
+      return { method: "server", tasks };
+    } catch (error) {
+      serverError = error;
     }
   }
   if (options.elfPath && options.rtos && options.walkSymbols) {
     const tasks = await options.walkSymbols({ elfPath: options.elfPath, rtos: options.rtos });
     return { method: "symbols", tasks: [...tasks] };
   }
-  return { method: "server", tasks: [] };
+  throw new RtosTasksUnavailableError(
+    "RTOS tasks are unavailable: server awareness failed and no symbol walker is configured.",
+    serverError === null ? undefined : { cause: serverError },
+  );
 }

@@ -24,6 +24,22 @@ describe("probe runs", () => {
       });
       finishProbeRun(db, scope, runId, index === 0 ? "confirmed" : "refuted", [`.fs-bench/${runId}/capture.csv`], `2026-08-13T10:01:0${index}.000Z`);
     }
+    startProbeRun(db, {
+      ...scope,
+      runId: "probe-inconclusive",
+      scriptPath: ".fs/bench/probes/probe-inconclusive.py",
+      deviceIds: ["probe-rs:serial"],
+      hypothesis: "timeout fixture",
+      startedAt: "2026-08-13T10:00:02.000Z",
+    });
+    finishProbeRun(
+      db,
+      scope,
+      "probe-inconclusive",
+      "inconclusive",
+      [".fs-bench/probe-inconclusive/runtime-error.txt"],
+      "2026-08-13T10:01:02.000Z",
+    );
     const first = listBenchDevelopmentRuns(db, {
       ...scope, pageSize: 1, cursor: null, kinds: ["probe"], statuses: ["succeeded"],
     });
@@ -33,5 +49,29 @@ describe("probe runs", () => {
       ...scope, pageSize: 1, cursor: first.cursor, kinds: ["probe"], statuses: ["succeeded"],
     });
     expect(second).toMatchObject({ total: 2, items: [{ runId: "probe-2" }], cursor: null });
+    expect(listBenchDevelopmentRuns(db, {
+      ...scope,
+      pageSize: 10,
+      cursor: null,
+      kinds: ["probe"],
+      statuses: ["failed"],
+    })).toMatchObject({
+      total: 1,
+      items: [{ runId: "probe-inconclusive", status: "failed" }],
+    });
+  });
+
+  it("accepts an in-flight legacy authoring cursor without a kind", () => {
+    const db = database();
+    const scope = { projectId: "project-1", projectVersionId: "pv-1" };
+    const legacyCursor = Buffer.from(JSON.stringify({
+      startedAt: "2026-08-13T10:00:00.000Z",
+      runId: "build-1",
+    }), "utf8").toString("base64url");
+    expect(() => listBenchDevelopmentRuns(db, {
+      ...scope,
+      pageSize: 10,
+      cursor: legacyCursor,
+    })).not.toThrow();
   });
 });

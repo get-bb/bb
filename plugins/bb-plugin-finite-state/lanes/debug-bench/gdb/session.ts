@@ -99,24 +99,41 @@ function miQuote(value: string): string {
   return JSON.stringify(value);
 }
 
-async function terminate(child: ChildProcess): Promise<void> {
-  if (child.exitCode !== null || child.signalCode !== null) return;
-  const closed = new Promise<void>((resolve) => child.once("close", () => resolve()));
+function destroyProcessPipes(child: ChildProcess): void {
+  child.stdin?.destroy();
+  child.stdout?.destroy();
+  child.stderr?.destroy();
+}
+
+function signalProcessGroup(child: ChildProcess, signal: NodeJS.Signals): void {
   try {
-    if (process.platform !== "win32" && child.pid) process.kill(-child.pid, "SIGTERM");
-    else child.kill("SIGTERM");
-  } catch { child.kill("SIGTERM"); }
-  const ended = await Promise.race([
-    closed.then(() => true),
-    new Promise<false>((resolve) => setTimeout(() => resolve(false), 1_000)),
-  ]);
-  if (!ended) {
-    try {
-      if (process.platform !== "win32" && child.pid) process.kill(-child.pid, "SIGKILL");
-      else child.kill("SIGKILL");
-    } catch { child.kill("SIGKILL"); }
-    await closed;
+    if (process.platform !== "win32" && child.pid) process.kill(-child.pid, signal);
+    else child.kill(signal);
+  } catch {
+    try { child.kill(signal); } catch { /* Process already exited. */ }
   }
+}
+
+async function terminate(child: ChildProcess, deadlineMs = 1_000): Promise<void> {
+  if (child.exitCode !== null || child.signalCode !== null) {
+    destroyProcessPipes(child);
+    return;
+  }
+  let onExit: (() => void) | null = null;
+  const exited = new Promise<true>((resolve) => {
+    onExit = () => resolve(true);
+    child.once("exit", onExit);
+  });
+  signalProcessGroup(child, "SIGTERM");
+  let deadline: NodeJS.Timeout | null = null;
+  const ended = await Promise.race([
+    exited,
+    new Promise<false>((resolve) => { deadline = setTimeout(() => resolve(false), deadlineMs); }),
+  ]);
+  if (deadline !== null) clearTimeout(deadline);
+  if (!ended) signalProcessGroup(child, "SIGKILL");
+  if (onExit) child.removeListener("exit", onExit);
+  destroyProcessPipes(child);
 }
 
 interface PendingCommand {
@@ -236,16 +253,22 @@ export async function openGdbSession(
   claim: DeviceClaim,
   signal: AbortSignal,
 ): Promise<DebugGdbSession> {
-  signal.throwIfAborted();
-  const device = requireClaim(deps, deviceId, claim);
   const holder = claim.holder;
-  signal.throwIfAborted();
   let released = false;
   const release = async () => {
     if (released) return;
     released = true;
     await deps.releaseClaim(deviceId, holder);
   };
+  let device: BenchDeviceRecord;
+  try {
+    signal.throwIfAborted();
+    device = requireClaim(deps, deviceId, claim);
+    signal.throwIfAborted();
+  } catch (error) {
+    await release().catch(() => undefined);
+    throw error;
+  }
   let gdb: string;
   let config: GdbServerConfig;
   try {

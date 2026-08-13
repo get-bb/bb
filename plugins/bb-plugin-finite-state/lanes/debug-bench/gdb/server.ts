@@ -219,22 +219,38 @@ async function defaultHealthProbe(port: number, signal: AbortSignal): Promise<vo
 }
 
 async function stopProcess(child: ChildProcess, timeoutMs: number): Promise<void> {
-  if (child.exitCode !== null || child.signalCode !== null) return;
-  const closed = new Promise<void>((resolve) => child.once("close", () => resolve()));
-  try {
-    if (process.platform !== "win32" && child.pid) process.kill(-child.pid, "SIGTERM");
-    else child.kill("SIGTERM");
-  } catch { child.kill("SIGTERM"); }
+  const destroyPipes = () => {
+    child.stdin?.destroy();
+    child.stdout?.destroy();
+    child.stderr?.destroy();
+  };
+  if (child.exitCode !== null || child.signalCode !== null) {
+    destroyPipes();
+    return;
+  }
+  const signalGroup = (processSignal: NodeJS.Signals) => {
+    try {
+      if (process.platform !== "win32" && child.pid) process.kill(-child.pid, processSignal);
+      else child.kill(processSignal);
+    } catch {
+      try { child.kill(processSignal); } catch { /* Process already exited. */ }
+    }
+  };
+  let onExit: (() => void) | null = null;
+  const exited = new Promise<true>((resolve) => {
+    onExit = () => resolve(true);
+    child.once("exit", onExit);
+  });
+  signalGroup("SIGTERM");
+  let deadline: NodeJS.Timeout | null = null;
   const stopped = await Promise.race([
-    closed.then(() => true),
-    new Promise<false>((resolve) => setTimeout(() => resolve(false), timeoutMs)),
+    exited,
+    new Promise<false>((resolve) => { deadline = setTimeout(() => resolve(false), timeoutMs); }),
   ]);
-  if (stopped) return;
-  try {
-    if (process.platform !== "win32" && child.pid) process.kill(-child.pid, "SIGKILL");
-    else child.kill("SIGKILL");
-  } catch { child.kill("SIGKILL"); }
-  await closed;
+  if (deadline !== null) clearTimeout(deadline);
+  if (!stopped) signalGroup("SIGKILL");
+  if (onExit) child.removeListener("exit", onExit);
+  destroyPipes();
 }
 
 export async function startGdbServer(
