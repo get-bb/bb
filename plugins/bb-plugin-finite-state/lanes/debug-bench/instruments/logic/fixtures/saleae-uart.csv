@@ -1,0 +1,2 @@
+Time [s],Duration [s],Type,Data,Baud,Parity,Framing Error
+0.02,0.000087,data,OK\r\n,115200,none,false

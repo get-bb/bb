@@ -11,7 +11,9 @@ import {
   listClaimEvents,
   refreshClaim,
   releaseDevice,
+  verifyDeviceClaim,
 } from "./claims.js";
+import type { DeviceClaim } from "./claims.js";
 import { getDevice, initializeRegistryStore, upsertCandidate } from "./store.js";
 
 const databases: Database.Database[] = [];
@@ -155,5 +157,72 @@ describe("device claim arbitration", () => {
       scope,
       now: new Date("2026-08-13T10:20:00.000Z"),
     })).toThrow(expect.objectContaining({ code: "DEVICE_CLAIMED", holder: "thread-a" }));
+  });
+});
+
+describe("read-only device claim verification", () => {
+  function claimedFixture(
+    db: Database.Database,
+    holder = "thread-a",
+  ): { deviceId: string; claim: DeviceClaim } {
+    const deviceId = seed(db);
+    const claimedAt = "2026-08-13T10:00:00.000Z";
+    claimDevice(db, deviceId, holder, {
+      scope,
+      now: new Date(claimedAt),
+    });
+    return {
+      deviceId,
+      claim: {
+        deviceId,
+        holder,
+        scope: "machine",
+        expiresAt: "2026-08-13T10:15:00.000Z",
+      },
+    };
+  }
+
+  it("accepts a live machine claim without writing registry state", () => {
+    const db = createConnection(":memory:");
+    migrate(db);
+    const { deviceId, claim } = claimedFixture(db);
+    const beforeDevice = db.prepare("SELECT * FROM bench_device WHERE device_id = ?").all(deviceId);
+    const beforeEvents = db.prepare("SELECT * FROM bench_claim_event").all();
+
+    expect(() => verifyDeviceClaim(db, claim, deviceId, {
+      now: new Date("2026-08-13T10:14:59.999Z"),
+    })).not.toThrow();
+
+    expect(db.prepare("SELECT * FROM bench_device WHERE device_id = ?").all(deviceId))
+      .toEqual(beforeDevice);
+    expect(db.prepare("SELECT * FROM bench_claim_event").all()).toEqual(beforeEvents);
+  });
+
+  it("refuses expired, foreign-holder, and wrong-device claims", () => {
+    const db = createConnection(":memory:");
+    migrate(db);
+    const { deviceId, claim } = claimedFixture(db);
+    expect(() => verifyDeviceClaim(db, claim, deviceId, {
+      now: new Date("2026-08-13T10:15:00.000Z"),
+    })).toThrow(expect.objectContaining({ code: "CLAIM_EXPIRED" }));
+    expect(() => verifyDeviceClaim(db, { ...claim, holder: "thread-b" }, deviceId, {
+      now: new Date("2026-08-13T10:01:00.000Z"),
+    })).toThrow(expect.objectContaining({ code: "DEVICE_NOT_HELD", holder: "thread-a" }));
+    expect(() => verifyDeviceClaim(db, claim, "another-device", {
+      now: new Date("2026-08-13T10:01:00.000Z"),
+    })).toThrow(expect.objectContaining({ code: "CLAIM_DEVICE_MISMATCH" }));
+  });
+
+  it("refuses non-machine scope semantics before querying claim state", () => {
+    const db = createConnection(":memory:");
+    migrate(db);
+    const { deviceId, claim } = claimedFixture(db);
+    const fleetClaim: DeviceClaim = { ...claim, scope: "fleet" };
+    expect(() => verifyDeviceClaim(
+      db,
+      fleetClaim,
+      deviceId,
+      { now: new Date("2026-08-13T10:01:00.000Z") },
+    )).toThrow(expect.objectContaining({ code: "CLAIM_SCOPE_NOT_IMPLEMENTED" }));
   });
 });

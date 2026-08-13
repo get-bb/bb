@@ -1,0 +1,12 @@
+{
+  "schema": "finite-state-logic-v1",
+  "vendor": "replay",
+  "rawCapture": "recorded-session.sal",
+  "decoderExports": {
+    "spi": "saleae-spi.csv",
+    "i2c": "saleae-i2c.csv",
+    "uart": "saleae-uart.csv",
+    "can": "saleae-can.csv"
+  },
+  "frames": {}
+}
