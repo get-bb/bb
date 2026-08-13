@@ -64,7 +64,6 @@ function record(value: Json): Record<string, Json> | null {
 function stringValue(row: Record<string, Json>, keys: readonly string[]): string | null {
   for (const key of keys) {
     const value = row[key];
-    if (value === null) return null;
     if (typeof value === "string") {
       const normalized = value.normalize("NFC").trim();
       if (normalized) return normalized;

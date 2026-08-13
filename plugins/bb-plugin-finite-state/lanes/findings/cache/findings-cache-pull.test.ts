@@ -8,7 +8,7 @@ import type { Json, RemotePage } from "../../../lib/remote/types.js";
 import { pull } from "../../sync/engine/pull.js";
 import type { AdapterProgress, SyncScope } from "../../sync/engine/adapter.js";
 import type { EngineDeps } from "../../sync/engine/pull.js";
-import { pullFindings } from "./pull.js";
+import { normalizeFinding, pullFindings } from "./pull.js";
 import { queryFindings } from "./query.js";
 
 const hosts: Array<ReturnType<typeof createFakePluginHost>> = [];
@@ -26,6 +26,63 @@ function pages<T>(values: RemotePage<T>[]): AsyncIterable<RemotePage<T>> {
 }
 
 describe("findings cache pull", () => {
+  it("treats null, absent, and empty primary aliases identically across stable identity inputs", () => {
+    const identities = new Map([
+      ["component-1", {
+        name: "Library",
+        group: "Acme",
+        version: "1.0.0",
+        purl: "pkg:npm/library@1.0.0",
+      }],
+    ]);
+    const fallbackRow: Record<string, Json> = {
+      uuid: "finding-1",
+      vulnerabilityId: "CVE-2026-0001",
+      componentUuid: "component-1",
+      packageUrl: "pkg:npm/library@1.0.0",
+      name: "Library",
+      namespace: "Acme",
+      version: "1.0.0",
+    };
+    const expectedKey = findingStableKey({
+      cve: "CVE-2026-0001",
+      purl: "pkg:npm/library@1.0.0",
+      name: "Library",
+      group: "Acme",
+      version: "1.0.0",
+    }, "purl");
+    const primaryAliases = [
+      "id",
+      "findingId",
+      "cve",
+      "findingIdentifier",
+      "componentId",
+      "componentPurl",
+      "purl",
+      "componentName",
+      "componentGroup",
+      "group",
+      "componentVersion",
+    ] as const;
+    const primaryStates: Array<{ label: string; value: Json | undefined }> = [
+      { label: "absent", value: undefined },
+      { label: "null", value: null },
+      { label: "empty", value: "" },
+    ];
+
+    for (const primaryAlias of primaryAliases) {
+      for (const state of primaryStates) {
+        const row = { ...fallbackRow };
+        if (state.value !== undefined) row[primaryAlias] = state.value;
+        const normalized = normalizeFinding(row, identities);
+        expect(
+          { findingId: normalized.findingId, stableKey: normalized.stableKey },
+          `${primaryAlias} ${state.label}`,
+        ).toEqual({ findingId: "finding-1", stableKey: expectedKey });
+      }
+    }
+  });
+
   it("resumes whole pages, deduplicates Platform ids observably, and uses only exact frozen stable keys", async () => {
     const host = createFakePluginHost({ pluginId: "findings-pull" });
     hosts.push(host);

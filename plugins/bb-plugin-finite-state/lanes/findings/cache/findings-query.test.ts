@@ -44,6 +44,14 @@ function fixture() {
 describe("findings cache queries", () => {
   it("pages deterministically through equal risk values and rejects oversized limits", () => {
     const db = fixture();
+    const plan = db.prepare(
+      `EXPLAIN QUERY PLAN
+       SELECT * FROM findings
+        WHERE project_id = ? AND project_version_id = ? AND generation_id = ?
+        ORDER BY risk_score DESC, finding_id ASC LIMIT ?`,
+    ).all("project-1", "pv-1", "generation-1", 3) as Array<{ detail: string }>;
+    expect(plan.some(row => row.detail.includes("ix_findings_risk"))).toBe(true);
+    expect(plan.some(row => row.detail.includes("TEMP B-TREE"))).toBe(false);
     const first = queryFindings(db, { projectId: "project-1", pvId: "pv-1", limit: 2 });
     expect(first.items.map(item => item.findingId)).toEqual(["a", "b"]);
     expect(first.nextCursor).not.toBeNull();

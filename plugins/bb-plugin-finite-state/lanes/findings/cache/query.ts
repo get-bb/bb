@@ -292,7 +292,7 @@ export function queryFindings(db: Database.Database, filter: FindingsFilter): Fi
   const rows = db.prepare(
     `SELECT f.* FROM findings AS f
       WHERE ${pageWhere.sql}
-      ORDER BY f.risk_score IS NULL ASC, f.risk_score DESC, f.finding_id ASC
+      ORDER BY f.risk_score DESC, f.finding_id ASC
       LIMIT ?`,
   ).all(...pageWhere.parameters, limit + 1) as FindingRow[];
   const hasMore = rows.length > limit;
