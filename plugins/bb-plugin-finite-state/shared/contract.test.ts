@@ -54,6 +54,7 @@ const EXPECTED_LOGICAL_METHODS = [
   "firmware.diff",
   "firmware.file.get",
   "firmware.file.hydrate",
+  "firmware.input.issue",
   "firmware.materialize.cancel",
   "firmware.materialize.start",
   "firmware.mount.get",
@@ -130,15 +131,15 @@ function objectField(
 }
 
 describe("rpc-contract-freeze", () => {
-  it("exports version one and all 65 bijective logical-to-wire names", () => {
-    expect(CONTRACT_VERSION).toBe(1);
+  it("exports version two and all 66 bijective logical-to-wire names", () => {
+    expect(CONTRACT_VERSION).toBe(2);
     expect(Object.keys(RPC_WIRE_METHODS).sort()).toEqual(
       [...EXPECTED_LOGICAL_METHODS].sort(),
     );
-    expect(Object.keys(RPC_WIRE_METHODS)).toHaveLength(65);
+    expect(Object.keys(RPC_WIRE_METHODS)).toHaveLength(66);
 
     const wireNames = Object.values(RPC_WIRE_METHODS);
-    expect(new Set(wireNames).size).toBe(65);
+    expect(new Set(wireNames).size).toBe(66);
     expect(Object.keys(rpcContract).sort()).toEqual([...wireNames].sort());
     for (const [logicalName, wireName] of Object.entries(RPC_WIRE_METHODS)) {
       expect(wireName).toBe(lowerCamelWireName(logicalName));
@@ -200,6 +201,35 @@ describe("rpc-contract-freeze", () => {
       "firmwareMaterializeStart",
       "benchRunStart",
     ]);
+    expect(RPC_METHOD_CLASSIFICATIONS.firmwareInputIssue).toBe("action");
+    expect(AGENT_ACTION_RPC_METHODS).not.toContain("firmwareInputIssue");
+  });
+
+  it("keeps firmware input issuance non-null, relative, and path-redacted", () => {
+    expect(rpcContract.firmwareInputIssue.input.parse({
+      projectId: "project-1",
+      projectVersionId: "pv-1",
+      environmentId: "environment-1",
+      firmwarePath: "artifacts/firmware.bin",
+    })).toEqual({
+      projectId: "project-1",
+      projectVersionId: "pv-1",
+      environmentId: "environment-1",
+      firmwarePath: "artifacts/firmware.bin",
+    });
+    expect(rpcContract.firmwareInputIssue.input.safeParse({
+      projectId: "project-1",
+      projectVersionId: null,
+      environmentId: "environment-1",
+      firmwarePath: "artifacts/firmware.bin",
+    }).success).toBe(false);
+    expect(rpcContract.firmwareInputIssue.input.safeParse({
+      projectId: "project-1",
+      projectVersionId: "pv-1",
+      environmentId: "environment-1",
+      firmwarePath: "/tmp/firmware.bin",
+    }).success).toBe(false);
+    expect(Object.keys(rpcContract.firmwareInputIssue.output.shape)).not.toContain("firmwarePath");
   });
 
   it("requires explicit project coordinates and rejects the internal sentinel", () => {

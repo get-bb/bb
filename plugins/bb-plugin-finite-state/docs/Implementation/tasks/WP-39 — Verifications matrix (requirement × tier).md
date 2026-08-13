@@ -1,8 +1,16 @@
 # WP-39 — Verifications matrix (requirement × tier)
 
 **Lane:** L4 Product Security · **Spec refs:** SPEC 03 §3.3, §4.1, §5.6, §8.4 · SPEC 05 bench tier mapping · **Effort:** 3 d · **Status:** unassigned
-**Depends on:** WP-36 · **Blocks:** WP-40
+**Depends on:** WP-36, WP-71 (the AMD-0010 `hardware` matrix-column change must land first) · **Blocks:** WP-40
 **Produces a FROZEN artifact:** no — replace the WP-31 matrix stub and read frozen verification cache tables.
+
+> **SPEC 07 intake note (2026-08-12).** SPEC 07 §7.2 adds a `hardware` column
+> to this matrix (DRC/ERC results as verification evidence), landing via
+> AMD-0010/AMD-0011 and populated by WP-80. Build the column model
+> vocabulary-driven rather than hardcoding the four column names, so the
+> amended enum renders without rework. If AMD-0010 has not merged when this
+> WP dispatches, the four-column contract stands and WP-80 carries the
+> rendering delta.
 
 ## Files you own
 ```

@@ -4,6 +4,14 @@
 **Depends on:** WP-57 and completed domain services · **Blocks:** WP-65, WP-70
 **Produces a FROZEN artifact:** no
 
+> **SPEC 07/08 intake note (2026-08-12).** Two subtrees join later without
+> re-registering the root: `hw` (discover/extract/parts/nets/drc/erc/link,
+> WP-81) and `fw` (ground/build/flash/serial/devices/claim/release/probe/
+> bringup/port, WP-96). Structure the command tree and the metadata
+> `commands` array so a lane can contribute a subtree; destructive verbs
+> (`fw flash`) obey the AMD-0013 in-turn rule and are never satisfiable by a
+> `--yes`-style bypass.
+
 ## Files you own
 ```
 plugins/bb-plugin-finite-state/lanes/agentic/cli/register.ts

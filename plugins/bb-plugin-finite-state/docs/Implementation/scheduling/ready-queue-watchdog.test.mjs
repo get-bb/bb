@@ -163,6 +163,8 @@ test("the shipped manifest prohibits WP02", async () => {
   );
 });
 
+// WP71 was stopped here between intake and owner approval; AMD-0010…0015
+// were approved 2026-08-13 and WP71 is dispatchable again.
 test("the shipped manifest temporarily stops WP56 with a resume condition", async () => {
   const { readFileSync } = await import("node:fs");
   const shipped = JSON.parse(

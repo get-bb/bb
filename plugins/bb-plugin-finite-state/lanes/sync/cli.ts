@@ -1,4 +1,4 @@
-import type { BbPluginApi, PluginCliContext } from "@bb/plugin-sdk";
+import type { BbPluginApi, PluginCliContext, PluginCliResult } from "@bb/plugin-sdk";
 
 import type { Json, PlatformClient } from "../../lib/remote/types.js";
 import { ENTITIES, type EntityKind } from "../../lib/sync/registry.js";
@@ -17,6 +17,10 @@ interface CliInput {
 }
 
 type WorktreeRootResolver = (context: PluginCliContext) => Promise<string>;
+export type NamespacedCliRunner = (
+  argv: string[],
+  context: PluginCliContext,
+) => PluginCliResult | Promise<PluginCliResult>;
 
 function isRecord(value: unknown): value is Record<string, Json> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -135,7 +139,13 @@ async function run(
   resolveWorktreeRoot: WorktreeRootResolver,
   argv: string[],
   context: PluginCliContext,
+  namespaceRunners: Readonly<Record<string, NamespacedCliRunner>>,
 ) {
+  const args = argv[0] === "finite-state" ? argv.slice(1) : argv;
+  const namespace = args[0];
+  if (namespace !== undefined && Object.hasOwn(namespaceRunners, namespace)) {
+    return namespaceRunners[namespace]!(args.slice(1), context);
+  }
   const input = parseArgs(argv);
   const worktreeRoot = await resolveWorktreeRoot(context);
   const scope = await resolveScope(platform, input);
@@ -166,6 +176,7 @@ export function registerSyncCli(
   deps: EngineDeps,
   platform: PlatformClient,
   resolveWorktreeRoot: WorktreeRootResolver,
+  namespaceRunners: Readonly<Record<string, NamespacedCliRunner>> = {},
 ): void {
   bb.cli.register({
     name: "finite-state",
@@ -174,7 +185,15 @@ export function registerSyncCli(
       { name: "pull", summary: "Pull remote entity state", usage: "pull [surface] [--project ID] [--version ID] [--json]" },
       { name: "status", summary: "Compare working, base, and upstream state", usage: "status [surface] [--project ID] [--version ID] [--json]" },
       { name: "plan", summary: "Validate and render an ordered sync plan", usage: "plan [surface] [--project ID] [--version ID] [--json]" },
+      { name: "firmware", summary: "Materialize and inspect firmware", usage: "firmware <pull|status|hydrate|diff> ..." },
     ],
-    run: (argv, context) => run(deps, platform, resolveWorktreeRoot, argv, context),
+    run: (argv, context) => run(
+      deps,
+      platform,
+      resolveWorktreeRoot,
+      argv,
+      context,
+      namespaceRunners,
+    ),
   });
 }

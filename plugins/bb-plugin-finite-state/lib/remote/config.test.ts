@@ -6,6 +6,7 @@ const defaults: RemoteSettingValues = {
   asBaseUrl: "", asApiKey: undefined, asConcurrency: "8",
   forgeTransport: "disabled", forgeUrl: "", forgeCommand: "",
   forgeAuthToken: undefined, forgeConcurrency: "4",
+  standaloneUnpackExecutablePath: "", standaloneUnpackImage: "localhost:5000/services-unpack:latest",
 };
 
 describe("remote configuration", () => {
@@ -19,6 +20,19 @@ describe("remote configuration", () => {
       asBaseUrl: null, asApiKey: null, forgeTransport: "disabled",
       forgeUrl: null, forgeCommand: null, forgeAuthToken: null,
       platformConcurrency: 8, asConcurrency: 8, forgeConcurrency: 4,
+      standaloneUnpackExecutablePath: null,
+      standaloneUnpackImage: "localhost:5000/services-unpack:latest",
     });
+  });
+
+  it("normalizes standalone unpack settings and keeps the canonical image explicit", () => {
+    expect(readRemoteConfig({
+      ...defaults,
+      standaloneUnpackExecutablePath: " /opt/finite-state/unpack ",
+      standaloneUnpackImage: " ",
+    })).toEqual(expect.objectContaining({
+      standaloneUnpackExecutablePath: "/opt/finite-state/unpack",
+      standaloneUnpackImage: "localhost:5000/services-unpack:latest",
+    }));
   });
 });

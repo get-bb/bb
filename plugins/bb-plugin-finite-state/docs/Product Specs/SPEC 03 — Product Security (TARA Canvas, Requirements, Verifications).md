@@ -678,3 +678,10 @@ Slots into SPEC 00 build sequence Phase 3 (after Findings/VEX has forced the syn
 5. **Canvas layout tables are API-orphaned in AS.** If AS ever adds a layout write path, decide whether `canvas.json` starts syncing (probably yes, as a low-priority OVERLAY) — the local file format should stay a superset of AS's `canvas_node_positions` shape to keep that door open.
 6. **Manual tier column default.** Matrix ships with manual hidden by default (§4.1) on the theory that attestations are exceptions, not coverage. Revisit after first regulated-customer feedback — a 510(k) shop may want it front and center.
 7. **Risk records on this surface.** Risk treatment/acceptance (OVERLAY) is deliberately out of v1 — the threat table shows severity, not the full risk chain. Decide whether a `tara/risks` sub-view joins this panel or waits for a dedicated surface.
+
+---
+
+## Amendments applied by later specs
+
+- **SPEC 07 §7.2 — the `hardware` verification column.** The requirement × tier matrix (§4) gains a `hardware` column alongside `static`, `emulation`, `hil`, and `manual`. DRC/ERC results from the hardware design plane map into `verification_results` keyed by requirement, exactly as bench results do — the matrix answers "what's unproven" regardless of which discipline the proof came from. Schema/contract change tracked as AMD-0010/AMD-0011; rendered by WP-39, populated by WP-80.
+- **SPEC 08 §4.1 — tier D is *not* a matrix column.** The development tier added below tier 0 is diagnostic, never evidentiary: tier D results never feed this matrix and never produce attestations.
