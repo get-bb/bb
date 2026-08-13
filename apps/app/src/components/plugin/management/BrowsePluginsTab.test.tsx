@@ -123,6 +123,7 @@ describe("BrowsePluginsTab", () => {
         <BrowsePluginsTab
           onInstall={() => {}}
           onOpenPlugin={() => {}}
+          onInstallFromSource={() => {}}
         />
       </MemoryRouter>,
       {
@@ -189,6 +190,7 @@ describe("BrowsePluginsTab", () => {
         <BrowsePluginsTab
           onInstall={() => {}}
           onOpenPlugin={() => {}}
+          onInstallFromSource={() => {}}
         />
       </MemoryRouter>,
       { wrapper },
@@ -262,6 +264,7 @@ describe("BrowsePluginsTab", () => {
         <BrowsePluginsTab
           onInstall={onInstall}
           onOpenPlugin={onOpenPlugin}
+          onInstallFromSource={() => {}}
         />
       </MemoryRouter>,
       { wrapper },
@@ -333,6 +336,7 @@ describe("BrowsePluginsTab", () => {
       entryId: "memory",
       displayName: "Memory",
       icon: "Brain",
+      source: "builtin:memory",
     });
     fireEvent.click(
       screen.getByRole("button", { name: "Open Memory details" }),
@@ -367,6 +371,7 @@ describe("BrowsePluginsTab", () => {
         <BrowsePluginsTab
           onInstall={() => {}}
           onOpenPlugin={() => {}}
+          onInstallFromSource={() => {}}
         />
       </MemoryRouter>,
       {
@@ -412,6 +417,7 @@ describe("BrowsePluginsTab", () => {
         <BrowsePluginsTab
           onInstall={() => {}}
           onOpenPlugin={onOpenPlugin}
+          onInstallFromSource={() => {}}
         />
       </MemoryRouter>,
       { wrapper },
@@ -511,6 +517,7 @@ describe("BrowsePluginsTab", () => {
         <BrowsePluginsTab
           onInstall={() => {}}
           onOpenPlugin={onOpenPlugin}
+          onInstallFromSource={() => {}}
         />
       </MemoryRouter>,
       { wrapper },
@@ -524,4 +531,113 @@ describe("BrowsePluginsTab", () => {
     expect(onOpenPlugin).toHaveBeenCalledWith("simple-notes");
   });
 
+  it("swaps the browse body for examples while composing", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/api/v1/plugin-catalog") {
+          return jsonResponse({ catalog: CATALOG_STATUS });
+        }
+        if (url.startsWith("/api/v1/plugin-catalog/search")) {
+          return jsonResponse({ results: [MEMORY_ENTRY, GITHUB_ENTRY] });
+        }
+        if (url === "/api/v1/plugins") {
+          return jsonResponse({ enabled: true, plugins: [] });
+        }
+        return jsonResponse({ error: "not found" }, 404);
+      }),
+    );
+
+    const { wrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter>
+        <BrowsePluginsTab
+          onInstallFromSource={() => {}}
+          onInstall={() => {}}
+          onOpenPlugin={() => {}}
+        />
+      </MemoryRouter>,
+      { wrapper },
+    );
+
+    // Default state: search + catalog, no example cards anywhere.
+    expect(
+      await screen.findByRole("button", { name: "Open Memory details" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("textbox", { name: "Search plugins" }),
+    ).toBeTruthy();
+    expect(screen.queryByText("Start from an example")).toBeNull();
+
+    // Composing: examples replace the search + catalog wholesale.
+    fireEvent.click(screen.getByRole("button", { name: "Create a plugin" }));
+    expect(await screen.findByText("Start from an example")).toBeTruthy();
+    expect(screen.getByText("Explore plugin capabilities")).toBeTruthy();
+    expect(
+      screen.queryByRole("textbox", { name: "Search plugins" }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Open Memory details" }),
+    ).toBeNull();
+
+    // Toggling the CTA restores the browse body and removes the examples.
+    fireEvent.click(screen.getByRole("button", { name: "Create a plugin" }));
+    expect(
+      await screen.findByRole("button", { name: "Open Memory details" }),
+    ).toBeTruthy();
+    expect(screen.queryByText("Start from an example")).toBeNull();
+  });
+
+  it("routes every create affordance into the inline composer", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/api/v1/plugin-catalog") {
+          return jsonResponse({ catalog: CATALOG_STATUS });
+        }
+        if (url.startsWith("/api/v1/plugin-catalog/search")) {
+          return jsonResponse({ results: [MEMORY_ENTRY] });
+        }
+        if (url === "/api/v1/plugins") {
+          return jsonResponse({ enabled: true, plugins: [] });
+        }
+        return jsonResponse({ error: "not found" }, 404);
+      }),
+    );
+
+    const { wrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter>
+        <BrowsePluginsTab
+          onInstallFromSource={() => {}}
+          onInstall={() => {}}
+          onOpenPlugin={() => {}}
+        />
+      </MemoryRouter>,
+      { wrapper },
+    );
+
+    // The CTA opens the composer blank, which also reveals the example cards.
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Create a plugin" }),
+    );
+    const blank = await screen.findByTestId("inline-composer");
+    expect(blank.textContent).toBe("Create a new bb plugin that ");
+
+    // A use-case card re-seeds the open composer with its brief.
+    // (The hook is the unique handle; the title also appears on a hero chip.)
+    fireEvent.click(
+      screen.getByText(
+        "Ship a board your agents move cards across while they work.",
+      ),
+    );
+    const seeded = await screen.findByTestId("inline-composer");
+    expect(seeded.textContent).toContain("kanban board panel");
+
+    // A capability-tier card seeds its own brief the same way.
+    fireEvent.click(screen.getByText("CLI command"));
+    expect(
+      (await screen.findByTestId("inline-composer")).textContent,
+    ).toContain("deploys the current branch to staging");
+  });
 });

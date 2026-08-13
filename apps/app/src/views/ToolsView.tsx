@@ -382,6 +382,7 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
                     entryId: installTarget.entryId,
                     displayName: installTarget.displayName,
                     icon: installTarget.icon,
+                    source: installTarget.source,
                   }
             }
             onOpenChange={(open) => {

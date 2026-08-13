@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useDebounceValue } from "usehooks-ts";
 import {
@@ -15,10 +15,21 @@ import {
   ConfirmDeleteDialog,
   ConfirmDeleteDialogContent,
 } from "@/components/dialogs/ConfirmDeleteDialog";
-import { CreateWithTemplatesButton } from "@/components/create-via-prompt-examples";
-import { BrowseHeroCarousel } from "@/components/plugin/browse-hero/BrowseHeroCarousel";
+import { Button } from "@bb/shared-ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@bb/shared-ui/dropdown-menu";
+import { Icon } from "@bb/shared-ui/icon";
+import { cn } from "@bb/shared-ui/lib/utils";
 import { appToast } from "@/components/ui/app-toast";
+import { TOOLS_PAGE_BAND_CLASSES } from "@/components/tools/tools-navigation";
 import { pluginIconName } from "@/components/plugin/PluginIcon";
+import { BrowseArchetypeCards } from "@/components/plugin/browse-hero/BrowseArchetypeCards";
+import { nextComposerRequestNonce } from "@/components/plugin/browse-hero/browse-hero-archetypes";
+import { BrowseHeroCarousel } from "@/components/plugin/browse-hero/BrowseHeroCarousel";
 import {
   invalidatePluginCatalogSearch,
   invalidatePluginList,
@@ -31,19 +42,52 @@ import { removePlugin } from "@/hooks/queries/plugin-settings-queries";
 import type { AddPluginInitial } from "./AddPluginDialog";
 import { PlaceholderBadge } from "./plugin-ui";
 
-/** Browse BB's official plugins, bundled with the app. */
+/**
+ * The Browse page: hero → one CTA row (create + install-from-source) → then
+ * ONE of two mutually exclusive bodies. Browsing shows the search toolbar and
+ * the installable grid; composing swaps that for the example cards, since the
+ * examples exist to feed the open composer. Every create-shaped affordance
+ * opens the hero's inline composer in place; nothing navigates away.
+ */
 export function BrowsePluginsTab({
   onInstall,
   onOpenPlugin,
+  onInstallFromSource,
 }: {
-  onInstall: (initial: AddPluginInitial | null) => void;
+  onInstall: (initial: AddPluginInitial) => void;
   onOpenPlugin: (pluginId: string) => void;
+  /** Opens the Add-plugin dialog; rendered beside the hero CTA. */
+  onInstallFromSource: () => void;
 }) {
   const [query, setQuery] = useState("");
-  const [heroOpenRequest, setHeroOpenRequest] = useState<{
+  // Example cards and the page button open the hero's inline composer through
+  // this request; nonces make a repeated click on the same card still land.
+  const [heroRequest, setHeroRequest] = useState<{
     nonce: number;
     seed?: string;
+    close?: boolean;
   } | null>(null);
+  const [composing, setComposing] = useState(false);
+  const openComposer = (seed?: string) =>
+    setHeroRequest({
+      nonce: nextComposerRequestNonce(),
+      ...(seed === undefined ? {} : { seed }),
+    });
+  const closeComposer = () =>
+    setHeroRequest({ nonce: nextComposerRequestNonce(), close: true });
+  // The composer lives in the hero at the top; opening it from a card further
+  // down must bring it into view or the click appears to do nothing.
+  useEffect(() => {
+    if (heroRequest === null) return;
+    const viewport = document.getElementById("plugins-browse-results");
+    // Optional call: jsdom implements elements without scrollTo.
+    viewport?.scrollTo?.({
+      top: 0,
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        ? "auto"
+        : "smooth",
+    });
+  }, [heroRequest]);
   // Empty means unfiltered, matching the Type filters on Installed and Skills.
   const [categories, setCategories] = useState<string[]>([]);
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
@@ -77,115 +121,146 @@ export function BrowsePluginsTab({
       return left.entryId.localeCompare(right.entryId);
     });
 
-  const openHeroComposer = (seed?: string) => {
-    setHeroOpenRequest((current) => ({
-      nonce: (current?.nonce ?? 0) + 1,
-      ...(seed === undefined ? {} : { seed }),
-    }));
-  };
-
   return (
-    <ResourceCollectionViewport
-      scrollId="plugins-browse-results"
-      contentClassName="space-y-6"
-    >
-      <div className="space-y-4">
-        <BrowseHeroCarousel openRequest={heroOpenRequest} />
-        <div className="flex justify-center">
-          <CreateWithTemplatesButton
-            kind="plugin"
-            label="Create a plugin"
-            menuActions={[
-              {
-                label: "Install from source",
-                icon: "Download",
-                onSelect: () => onInstall(null),
-              },
-            ]}
-            onCreate={openHeroComposer}
-          />
+    <ResourceCollectionViewport scrollId="plugins-browse-results">
+      {/* One wrapper owns the page rhythm and centers the content column: the
+          scroller spans the whole pane so the wheel works from the gutters.
+          (Spacing utilities on the scroll viewport itself never fire: Radix
+          interposes a display:table div, so the sections would not be siblings
+          of each other there.) */}
+      <div className={cn("space-y-7", TOOLS_PAGE_BAND_CLASSES)}>
+        {/* The create control sits at the page's top right, like every other
+            collection's actions row; the hero keeps only its showcase. */}
+        <div className="flex justify-end">
+          <div className="flex items-stretch">
+            <Button
+              aria-pressed={composing}
+              className="rounded-r-none"
+              onClick={() => (composing ? closeComposer() : openComposer())}
+            >
+              <Icon name="MessageSquarePlus" className="size-3.5" />
+              Create a plugin
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  aria-label="Create a plugin options"
+                  className="rounded-l-none border-l border-l-primary-foreground/20 px-1.5"
+                >
+                  <Icon name="ChevronDown" className="size-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-max min-w-40">
+                <DropdownMenuItem onSelect={onInstallFromSource}>
+                  <Icon name="Download" className="size-4" />
+                  Install from source
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
-      </div>
 
-      <div>
-        <ResourceToolbar
-          searchValue={query}
-          searchPlaceholder="Search plugins"
-          onSearchChange={setQuery}
-          controls={
-            <>
-              {categoryOptions.length > 0 ? (
-                <ResourceMultiSelectMenu
-                  label="Category"
-                  icon="SlidersHorizontal"
-                  compact
-                  selectedValues={categories}
-                  options={categoryOptions}
-                  onChange={setCategories}
-                />
-              ) : null}
-              <ResourceSortMenu
-                value="alpha"
-                direction={sortDirection}
-                compact
-                options={[{ id: "alpha", label: "Plugin name" }]}
-                onChange={() =>
-                  setSortDirection((current) =>
-                    current === "asc" ? "desc" : "asc",
-                  )
+        <BrowseHeroCarousel
+          openRequest={heroRequest}
+          onComposingChange={setComposing}
+        />
+
+        {composing ? (
+          /* The examples exist to feed the open composer, so they appear only
+             in this state — browsing and composing are mutually exclusive
+             bodies below one stable hero. */
+          <BrowseArchetypeCards onCreate={openComposer} />
+        ) : (
+          <section>
+            {/* Compact and centered under the hero: the search scopes the
+                grid below, and full width here would read as page chrome. */}
+            <div className="mx-auto w-full max-w-[32rem]">
+              <ResourceToolbar
+                searchValue={query}
+                searchPlaceholder="Search plugins"
+                onSearchChange={setQuery}
+                controls={
+                  <>
+                    {categoryOptions.length > 0 ? (
+                      <ResourceMultiSelectMenu
+                        label="Category"
+                        icon="SlidersHorizontal"
+                        compact
+                        selectedValues={categories}
+                        options={categoryOptions}
+                        onChange={setCategories}
+                      />
+                    ) : null}
+                    <ResourceSortMenu
+                      value="alpha"
+                      direction={sortDirection}
+                      compact
+                      options={[{ id: "alpha", label: "Plugin name" }]}
+                      onChange={() =>
+                        setSortDirection((current) =>
+                          current === "asc" ? "desc" : "asc",
+                        )
+                      }
+                    />
+                  </>
                 }
               />
-            </>
-          }
-        />
-      </div>
+            </div>
 
-      {searchQuery.isError && entries.length > 0 ? (
-        <p className="text-xs text-warning-text" role="status">
-          Showing cached catalog results because the latest search failed.
-        </p>
-      ) : null}
+            <div className="mt-7 space-y-3">
+              {searchQuery.isError && entries.length > 0 ? (
+                <p className="text-xs text-warning-text" role="status">
+                  Showing cached catalog results because the latest search
+                  failed.
+                </p>
+              ) : null}
 
-      {searchQuery.isPending ? (
-        <ResourceListState state="loading" message="Loading plugins" />
-      ) : entries.length === 0 ? (
-        <ResourceListState
-          state={searchQuery.isError ? "error" : "empty"}
-          message={
-            searchQuery.isError
-              ? "BB's official plugins are unavailable."
-              : "No plugins match this search."
-          }
-          onRetry={
-            searchQuery.isError
-              ? () => {
-                  void searchQuery.refetch();
-                }
-              : undefined
-          }
-        />
-      ) : (
-        <div className="space-y-3">
-          {visibleEntries.length === 0 ? (
-            <ResourceListState
-              state="empty"
-              message="No plugins match these filters."
-            />
-          ) : (
-            <ResourceBrowseGrid className="grid-cols-[repeat(auto-fill,minmax(min(100%,18rem),1fr))] gap-2">
-              {visibleEntries.map((entry) => (
-                <BrowseCard
-                  key={entry.entryId}
-                  entry={entry}
-                  installedPluginId={entry.installed ? entry.pluginId : null}
-                  onInstall={onInstall}
-                  onOpenPlugin={onOpenPlugin}
+              {searchQuery.isPending ? (
+                <ResourceListState state="loading" message="Loading plugins" />
+              ) : entries.length === 0 ? (
+                <ResourceListState
+                  state={searchQuery.isError ? "error" : "empty"}
+                  message={
+                    searchQuery.isError
+                      ? "BB's official plugins are unavailable."
+                      : "No plugins match this search."
+                  }
+                  onRetry={
+                    searchQuery.isError
+                      ? () => {
+                          void searchQuery.refetch();
+                        }
+                      : undefined
+                  }
                 />
-              ))}
-            </ResourceBrowseGrid>
-          )}
-        </div>
-      )}
+              ) : (
+                <div className="space-y-3">
+                  {visibleEntries.length === 0 ? (
+                    <ResourceListState
+                      state="empty"
+                      message="No plugins match these filters."
+                    />
+                  ) : (
+                    <ResourceBrowseGrid className="grid-cols-[repeat(auto-fill,minmax(min(100%,18rem),1fr))] gap-2">
+                      {visibleEntries.map((entry) => (
+                        <BrowseCard
+                          key={entry.entryId}
+                          entry={entry}
+                          installedPluginId={
+                            entry.installed ? entry.pluginId : null
+                          }
+                          onInstall={onInstall}
+                          onOpenPlugin={onOpenPlugin}
+                        />
+                      ))}
+                    </ResourceBrowseGrid>
+                  )}
+                </div>
+              )}
+            </div>
+          </section>
+        )}
+      </div>
     </ResourceCollectionViewport>
   );
 }
@@ -259,6 +334,7 @@ function BrowseCard({
             entryId: entry.entryId,
             displayName: entry.displayName,
             icon: entry.icon,
+            source: entry.source,
           })
         }
       />

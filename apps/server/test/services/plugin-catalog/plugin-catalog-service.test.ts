@@ -13,6 +13,7 @@ import { createPluginCatalogService } from "../../../src/services/plugin-catalog
 import {
   BUILTIN_PLUGINS,
   BUNDLED_PLUGINS,
+  GIT_OFFICIAL_PLUGINS,
   OFFICIAL_PLUGINS,
   PLUGIN_CATALOG_CATEGORIES,
   listBundledPluginRegistrations,
@@ -21,11 +22,13 @@ import {
 describe("bundled plugin catalog service", () => {
   let db: DbConnection;
   let installedNames: string[];
+  let installedGitEntries: Array<{ entryId: string; source: string }>;
 
   beforeEach(() => {
     db = createConnection(":memory:");
     migrate(db);
     installedNames = [];
+    installedGitEntries = [];
   });
 
   afterEach(() => db.$client.close());
@@ -34,6 +37,9 @@ describe("bundled plugin catalog service", () => {
     bundledPlugins?: Parameters<
       typeof createPluginCatalogService
     >[0]["bundledPlugins"];
+    gitOfficialPlugins?: Parameters<
+      typeof createPluginCatalogService
+    >[0]["gitOfficialPlugins"];
     warn?: (message: string) => void;
   }) {
     return createPluginCatalogService({
@@ -44,10 +50,20 @@ describe("bundled plugin catalog service", () => {
           installedNames.push(name);
           throw new Error("installation stopped by test");
         },
+        installGitCatalogPlugin: async (args: {
+          entryId: string;
+          source: string;
+        }) => {
+          installedGitEntries.push(args);
+          throw new Error("git installation stopped by test");
+        },
       },
       ...(options?.bundledPlugins === undefined
         ? {}
         : { bundledPlugins: options.bundledPlugins }),
+      ...(options?.gitOfficialPlugins === undefined
+        ? {}
+        : { gitOfficialPlugins: options.gitOfficialPlugins }),
       ...(options?.warn === undefined ? {} : { warn: options.warn }),
     });
   }
@@ -78,14 +94,18 @@ describe("bundled plugin catalog service", () => {
   it("lists every bundled official plugin from its manifest", async () => {
     const catalog = service();
     expect(catalog.status()).toEqual({
-      pluginCount: BUNDLED_PLUGINS.length,
+      pluginCount: BUNDLED_PLUGINS.length + GIT_OFFICIAL_PLUGINS.length,
       includedPluginCount: BUILTIN_PLUGINS.length,
-      optionalPluginCount: OFFICIAL_PLUGINS.length,
+      optionalPluginCount:
+        OFFICIAL_PLUGINS.length + GIT_OFFICIAL_PLUGINS.length,
     });
 
     const results = await catalog.search("");
     expect(results.map((entry) => entry.entryId).sort()).toEqual(
-      BUNDLED_PLUGINS.map((plugin) => plugin.name).sort(),
+      [
+        ...BUNDLED_PLUGINS.map((plugin) => plugin.name),
+        ...GIT_OFFICIAL_PLUGINS.map((plugin) => plugin.name),
+      ].sort(),
     );
     expect(results).toHaveLength(catalog.status().pluginCount);
     expect(results.some((entry) => entry.category === "Included with BB")).toBe(
@@ -171,10 +191,125 @@ describe("bundled plugin catalog service", () => {
           rootDir: missingRoot,
         },
       ],
+      gitOfficialPlugins: [],
       warn: (message) => warnings.push(message),
     });
     const results = await catalog.search("");
     expect(results.map((entry) => entry.entryId)).toEqual(["github"]);
     expect(warnings.some((warning) => warning.includes("broken"))).toBe(true);
+  });
+
+  it("lists git official entries from their static metadata", async () => {
+    const catalog = service();
+    const results = await catalog.search("improve-prompt");
+    expect(results).toMatchObject([
+      {
+        entryId: "improve-prompt",
+        pluginId: "prompt-shaper",
+        displayName: "Improve Prompt",
+        icon: "AiContentGenerator01",
+        category: "Agent interaction",
+        source:
+          "git:https://github.com/brsbl/bb-plugins.git@ee3cc420b915d91acab68aaec8d82a080d020f64",
+        installed: false,
+      },
+    ]);
+    const validCategories = new Set<string>(PLUGIN_CATALOG_CATEGORIES);
+    for (const entry of GIT_OFFICIAL_PLUGINS) {
+      expect(validCategories.has(entry.category), entry.name).toBe(true);
+    }
+  });
+
+  it("reflects the installed flag for a git entry by plugin id", async () => {
+    const catalog = service();
+    upsertInstalledPlugin(db, {
+      id: "prompt-shaper",
+      source:
+        "git:https://github.com/brsbl/bb-plugins.git@ee3cc420b915d91acab68aaec8d82a080d020f64",
+      provenance: { kind: "catalog", entryId: "improve-prompt" },
+      sourceIntent: {
+        kind: "git",
+        url: "https://github.com/brsbl/bb-plugins.git",
+        subdirectory: null,
+        requestedRef: "plugin/improve-prompt",
+        refKind: "branch",
+      },
+      exactResolution: {
+        kind: "git",
+        commit: "a985e1d5523398e9c7459d35679142cc4339771e",
+      },
+      updateState: {
+        lastCheckAt: null,
+        availableCompatibleVersion: null,
+        newestIncompatibleVersion: null,
+        statusDetail: null,
+      },
+      activeArtifactId: null,
+      rootDir: "/managed/improve-prompt",
+      version: "0.1.0",
+      enabled: true,
+    });
+    const [entry] = await catalog.search("improve-prompt");
+    expect(entry?.installed).toBe(true);
+  });
+
+  it("delegates git entry installs with catalog identity", async () => {
+    const catalog = service({
+      gitOfficialPlugins: [
+        {
+          name: "improve-prompt",
+          pluginId: "prompt-shaper",
+          category: "Agent interaction",
+          gitSource:
+            "git:https://github.com/brsbl/bb-plugins.git@ee3cc420b915d91acab68aaec8d82a080d020f64",
+          displayName: "Improve Prompt",
+          description: "Rewrites composer drafts.",
+          icon: "AiContentGenerator01",
+          bbEngineRange: ">=0.0.34",
+          bbPluginSdkRange: ">=0.4.1",
+        },
+      ],
+    });
+    const [entry] = await catalog.search("improve-prompt");
+    expect(entry).toMatchObject({ compatible: true, incompatibleReason: null });
+    await expect(catalog.install("improve-prompt")).rejects.toThrow(
+      "git installation stopped by test",
+    );
+    expect(installedGitEntries).toEqual([
+      {
+        entryId: "improve-prompt",
+        pluginId: "prompt-shaper",
+        source:
+          "git:https://github.com/brsbl/bb-plugins.git@ee3cc420b915d91acab68aaec8d82a080d020f64",
+      },
+    ]);
+    expect(installedNames).toEqual([]);
+  });
+
+  it("refuses installing an incompatible git entry", async () => {
+    const catalog = service({
+      gitOfficialPlugins: [
+        {
+          name: "future-plugin",
+          pluginId: "future-plugin",
+          category: "Interface",
+          gitSource: "git:https://example.com/acme/future.git@main",
+          displayName: "Future Plugin",
+          description: "Needs a newer bb.",
+          icon: "Zap",
+          bbEngineRange: ">=99.0.0",
+          bbPluginSdkRange: "^0.4.1",
+        },
+      ],
+    });
+    const [entry] = await catalog.search("future-plugin");
+    expect(entry).toMatchObject({
+      compatible: false,
+      incompatibleReason: expect.stringContaining(">=99.0.0"),
+    });
+    await expect(catalog.install("future-plugin")).rejects.toThrow(
+      /install refused/,
+    );
+    expect(installedGitEntries).toEqual([]);
   });
 });

@@ -34,7 +34,20 @@ export type AddPluginInitial = {
   entryId: string;
   displayName: string;
   icon: string | null;
+  /** The entry's install source; decides how the dialog describes the install. */
+  source: string;
 };
+
+/**
+ * Official catalog entries install from two kinds of source, and the dialog
+ * must not claim one is the other: `builtin:` plugins ship inside the app,
+ * while git-catalog entries are fetched from their pinned, reviewed commit.
+ */
+function catalogInstallDescription(source: string): string {
+  return source.startsWith("builtin:")
+    ? "Install this official plugin, bundled with BB."
+    : "Install this official plugin from its pinned source repository.";
+}
 
 export interface AddPluginDialogProps {
   open: boolean;
@@ -130,7 +143,7 @@ function AddPluginDialogContent({
         </DialogTitle>
         <DialogDescription>
           {initial !== null
-            ? "Install this official plugin, bundled with BB."
+            ? catalogInstallDescription(initial.source)
             : "Install from npm, a Git repository, or a local path."}
         </DialogDescription>
       </DialogHeader>

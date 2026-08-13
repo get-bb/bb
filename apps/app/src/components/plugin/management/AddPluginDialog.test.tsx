@@ -178,12 +178,42 @@ describe("AddPluginDialog", () => {
     });
   });
 
+  it("describes each catalog source kind truthfully", () => {
+    stubFetch();
+    const { unmount } = renderDialog({
+      entryId: "linear",
+      displayName: "Linear",
+      icon: "Github",
+      source: "builtin:linear",
+    });
+    expect(
+      screen.getByText("Install this official plugin, bundled with BB."),
+    ).not.toBeNull();
+    unmount();
+
+    // Git catalog entries install from their pinned commit, not the app
+    // bundle — the dialog must not claim otherwise.
+    renderDialog({
+      entryId: "thread-hover-cards",
+      displayName: "Thread Hover Cards",
+      icon: "Github",
+      source: "git:https://github.com/brsbl/bb-plugins@b173b67",
+    });
+    expect(
+      screen.getByText(
+        "Install this official plugin from its pinned source repository.",
+      ),
+    ).not.toBeNull();
+    expect(screen.queryByText(/bundled with BB/)).toBeNull();
+  });
+
   it("installs official catalog entries through the catalog endpoint", async () => {
     const requests = stubFetch();
     renderDialog({
       entryId: "linear",
       displayName: "Linear",
       icon: "Github",
+      source: "builtin:linear",
     });
 
     expect(document.querySelector('[data-icon="Github"]')).not.toBeNull();
@@ -217,6 +247,7 @@ describe("AddPluginDialog", () => {
           entryId: "linear",
           displayName: "Linear",
           icon: "Github",
+          source: "builtin:linear",
         }}
         onInstalled={(plugin) => {
           onInstalled(plugin);

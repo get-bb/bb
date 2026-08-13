@@ -21,8 +21,9 @@ import {
 } from "@bb/shared-ui/tooltip";
 import { formatHomePathForDisplay } from "@bb/shared-ui/lib/utils";
 import { Icon } from "@bb/shared-ui/icon";
+import { Link } from "react-router-dom";
+import { getPluginConfigurationRoutePath } from "@/lib/route-paths";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
-import { PluginSettingsDetail } from "@/components/plugin/PluginSettings";
 import {
   PluginDetailReleaseControl,
   PluginDetailReleaseStatus,
@@ -367,7 +368,8 @@ export function PluginDetail({
           {
             label: "Submit to marketplace",
             icon: "Github" as const,
-            onSelect: () => openUrlInExternalBrowser(PLUGIN_SUBMISSION_FORM_URL),
+            onSelect: () =>
+              openUrlInExternalBrowser(PLUGIN_SUBMISSION_FORM_URL),
           },
         ]),
     {
@@ -424,7 +426,22 @@ export function PluginDetail({
             className="scroll-mt-4"
             label="Configuration"
           >
-            <PluginSettingsDetail plugin={plugin} />
+            {/* Configuration lives on the Settings page; the detail page
+                only points there so one surface owns the form. */}
+            <p className="max-w-none text-sm leading-relaxed text-muted-foreground">
+              This plugin is configured from{" "}
+              <Link
+                to={getPluginConfigurationRoutePath({ pluginId: plugin.id })}
+                className="inline-flex items-center gap-0.5 rounded-sm underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              >
+                its Settings page
+                <Icon
+                  name="ChevronRight"
+                  className="size-3.5 no-underline"
+                  aria-hidden
+                />
+              </Link>
+            </p>
           </ResourceDetailConfigurationSection>
         ) : null}
         <ResourceDetailReleaseSection

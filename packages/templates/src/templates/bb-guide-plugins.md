@@ -470,4 +470,5 @@ The `plugins/` directory contains every bundled plugin: the auto-installed
 builtins and the store-only BB Official GitHub, Docs, Memory, and Tasks
 plugins. The `examples/plugins/` reference plugins cover slack-bot (webhook
 bot), agent-enrichment (agent surfaces), composer-customization (all composer
-regions), and t3sidebar (a replacement sidebar thread list).
+regions), and t3sidebar (a replacement sidebar thread list). Thread Hover
+Cards installs from the BB Official catalog (source: the bb-plugins repo).

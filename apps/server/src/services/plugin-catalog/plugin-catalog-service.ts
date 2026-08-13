@@ -6,9 +6,11 @@ import type {
 } from "@bb/server-contract";
 import {
   builtinPluginSource,
+  GIT_OFFICIAL_PLUGINS,
   listBundledPluginRegistrations,
   PLUGIN_CATALOG_CATEGORIES,
   type BundledPluginRegistration,
+  type GitOfficialPluginDefinition,
 } from "../plugins/builtin-registry.js";
 import {
   readPluginManifest,
@@ -24,19 +26,27 @@ export interface PluginCatalogService {
 }
 
 /**
- * The plugin store over the official plugins bundled with the app. Entries
- * install from the local bundled copy — no network, no remote catalog;
- * installed plugins update by riding app releases.
+ * The plugin store over the official plugins bundled with the app plus the
+ * git-sourced official entries. Bundled entries install from the local
+ * bundled copy — no network, no remote catalog; installed plugins update by
+ * riding app releases. Git entries install from their pinned repository ref
+ * with catalog provenance, so they list as official and update through the
+ * regular git update flow.
  */
 export function createPluginCatalogService(deps: {
   db: DbConnection;
   appVersion: string;
-  plugins: Pick<PluginService, "installOfficialPlugin">;
+  plugins: Pick<
+    PluginService,
+    "installOfficialPlugin" | "installGitCatalogPlugin"
+  >;
   bundledPlugins?: readonly BundledPluginRegistration[];
+  gitOfficialPlugins?: readonly GitOfficialPluginDefinition[];
   warn?: (message: string) => void;
 }): PluginCatalogService {
   const bundledPlugins =
     deps.bundledPlugins ?? listBundledPluginRegistrations();
+  const gitOfficialPlugins = deps.gitOfficialPlugins ?? GIT_OFFICIAL_PLUGINS;
   const officialPlugins = bundledPlugins.map((plugin) => ({
     ...plugin,
     category: plugin.category ?? "Other",
@@ -61,10 +71,13 @@ export function createPluginCatalogService(deps: {
     });
   }
 
-  function compatibilityProblem(manifest: PluginManifest): string | null {
+  function compatibilityProblem(ranges: {
+    bbRange: string | undefined;
+    sdkRange: string | undefined;
+  }): string | null {
     const compatibility = evaluateCompatibility({
-      bbRange: manifest.bbEngineRange,
-      sdkRange: manifest.bbPluginSdkRange,
+      bbRange: ranges.bbRange,
+      sdkRange: ranges.sdkRange,
       appVersion: deps.appVersion,
     });
     return compatibility.effective.length === 0
@@ -76,7 +89,10 @@ export function createPluginCatalogService(deps: {
     entry: { name: string; pluginId: string; category: string },
     manifest: PluginManifest,
   ): PluginCatalogSearchResult {
-    const problem = compatibilityProblem(manifest);
+    const problem = compatibilityProblem({
+      bbRange: manifest.bbEngineRange,
+      sdkRange: manifest.bbPluginSdkRange,
+    });
     return {
       entryId: entry.name,
       pluginId: entry.pluginId,
@@ -91,13 +107,41 @@ export function createPluginCatalogService(deps: {
     };
   }
 
+  function gitCompatibilityProblem(
+    entry: GitOfficialPluginDefinition,
+  ): string | null {
+    return compatibilityProblem({
+      bbRange: entry.bbEngineRange,
+      sdkRange: entry.bbPluginSdkRange,
+    });
+  }
+
+  function gitSearchResult(
+    entry: GitOfficialPluginDefinition,
+  ): PluginCatalogSearchResult {
+    const problem = gitCompatibilityProblem(entry);
+    return {
+      entryId: entry.name,
+      pluginId: entry.pluginId,
+      displayName: entry.displayName,
+      description: entry.description,
+      icon: entry.icon,
+      category: entry.category,
+      source: entry.gitSource,
+      installed: getInstalledPlugin(deps.db, entry.pluginId) !== undefined,
+      compatible: problem === null,
+      incompatibleReason: problem,
+    };
+  }
+
   return {
     status: () => ({
-      pluginCount: bundledPlugins.length,
+      pluginCount: bundledPlugins.length + gitOfficialPlugins.length,
       includedPluginCount: bundledPlugins.filter((plugin) => plugin.autoInstall)
         .length,
-      optionalPluginCount: bundledPlugins.filter((plugin) => !plugin.autoInstall)
-        .length,
+      optionalPluginCount:
+        bundledPlugins.filter((plugin) => !plugin.autoInstall).length +
+        gitOfficialPlugins.length,
     }),
 
     async search(rawQuery) {
@@ -113,7 +157,11 @@ export function createPluginCatalogService(deps: {
               };
         }),
       );
-      return entries
+      const gitEntries = gitOfficialPlugins.map((entry) => ({
+        pluginId: entry.pluginId,
+        result: gitSearchResult(entry),
+      }));
+      return [...entries, ...gitEntries]
         .filter((entry) => entry !== null)
         .filter(
           ({ pluginId, result }) =>
@@ -142,6 +190,22 @@ export function createPluginCatalogService(deps: {
     },
 
     async install(entryId) {
+      const gitEntry = gitOfficialPlugins.find(
+        (candidate) => candidate.name === entryId,
+      );
+      if (gitEntry !== undefined) {
+        // The UI disables incompatible entries, but the server owns the
+        // policy: refuse direct installs the store would not offer.
+        const problem = gitCompatibilityProblem(gitEntry);
+        if (problem !== null) {
+          throw new Error(`install refused: ${problem}`);
+        }
+        return deps.plugins.installGitCatalogPlugin({
+          entryId: gitEntry.name,
+          pluginId: gitEntry.pluginId,
+          source: gitEntry.gitSource,
+        });
+      }
       const entry = officialPlugins.find(
         (candidate) => candidate.name === entryId,
       );
@@ -156,7 +220,10 @@ export function createPluginCatalogService(deps: {
           `official plugin "${entryId}" is unavailable in this build`,
         );
       }
-      const problem = compatibilityProblem(manifest);
+      const problem = compatibilityProblem({
+        bbRange: manifest.bbEngineRange,
+        sdkRange: manifest.bbPluginSdkRange,
+      });
       if (problem !== null) {
         throw new Error(`install refused: ${problem}`);
       }

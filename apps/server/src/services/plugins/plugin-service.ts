@@ -170,6 +170,17 @@ export interface PluginService {
    * Registers with catalog provenance so the opt-in survives reconciliation.
    */
   installOfficialPlugin(name: string): Promise<PluginListEntry>;
+  /**
+   * Install a git-sourced official catalog entry (store install). Installs
+   * from the entry's `git:` source and stamps catalog provenance so the
+   * plugin lists as official and traces back to its catalog entry.
+   */
+  installGitCatalogPlugin(args: {
+    entryId: string;
+    /** Manifest id the catalog entry promises; the install aborts on mismatch. */
+    pluginId: string;
+    source: string;
+  }): Promise<PluginListEntry>;
   installPath(path: string): Promise<PluginListEntry>;
   checkForUpdates(id?: string): Promise<PluginUpdateCheckEntry[]>;
   listUpdateResults(): PluginUpdateCheckEntry[];
@@ -1493,6 +1504,21 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           throw new Error(`unknown official plugin "${name}"`);
         }
         return installBuiltinSource({ kind: "builtin", name });
+      });
+    },
+
+    async installGitCatalogPlugin({ entryId, pluginId, source }) {
+      return withPluginOperationLock(REGISTRATION_MUTATION_KEY, async () => {
+        const parsed = parsePluginSource(source);
+        if (parsed.kind !== "git") {
+          throw new Error(
+            `catalog entry "${entryId}" has a non-git source "${source}"`,
+          );
+        }
+        return installGitSource(parsed, source, {
+          provenance: { kind: "catalog", entryId },
+          expectedPluginId: pluginId,
+        });
       });
     },
 

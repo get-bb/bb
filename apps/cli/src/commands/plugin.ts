@@ -688,10 +688,15 @@ export function registerPluginCommands(
       action(
         async (source: string, opts: JsonOutputOptions & { yes?: boolean }) => {
           const intent = await resolveInstallIntent(getUrl(), source);
+          // Catalog entries split by source kind: `builtin:` plugins ship
+          // inside the app, git-catalog entries install from their pinned,
+          // reviewed commit — the preamble must not claim one is the other.
           let summary =
             intent.kind === "source"
               ? intent.summary
-              : `Installing ${intent.entry.displayName}, bundled with BB (${intent.entry.source})`;
+              : intent.entry.source.startsWith("builtin:")
+                ? `Installing ${intent.entry.displayName}, bundled with BB (${intent.entry.source})`
+                : `Installing ${intent.entry.displayName} from its pinned source (${intent.entry.source})`;
           if (intent.kind === "source" && intent.source.startsWith("path:")) {
             const path = intent.source.slice(5);
             // Best effort — a missing/invalid manifest is the server's

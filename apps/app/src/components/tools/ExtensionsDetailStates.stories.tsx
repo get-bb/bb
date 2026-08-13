@@ -691,6 +691,7 @@ function CatalogPlugin({
           entryId: entry.entryId,
           displayName: entry.displayName,
           icon: entry.icon,
+          source: entry.source,
         }}
         onOpenChange={setInstallOpen}
       />
