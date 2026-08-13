@@ -151,6 +151,8 @@ added/updated/unchanged counts.
 
   bb plugin search <query>       Search BB's official plugins (bundled with
                                  the app)
+  bb plugin submit               Print the intake form link for submitting a
+                                 plugin to BB's marketplace
   bb plugin install <entry>      Install a bundled official plugin by name
                                  (github, docs, memory, tasks), a Git repository
                                  URL, local path, builtin:<name>,
@@ -234,6 +236,10 @@ category across the bundled official plugins (status: installed / compatible
 / requires newer bb). Install an official plugin by its bare name. Direct
 HTTP(S) Git repository URLs, `path:`, `npm:`, `git:`, and `builtin:`
 sources—and path-like syntax—continue to bypass official-plugin resolution.
+SDK clients can retrieve the same canonical browser form without a server
+request through `sdk.plugins.catalog.submission()`. It returns `{ url }`;
+submission itself remains browser-owned because the form asks the author for
+their repository, description, rationale, and email.
 
 Builds are automatic once installed. Git installs run `npm install`
 (lifecycle scripts disabled), then compile both bundles — so a git plugin may

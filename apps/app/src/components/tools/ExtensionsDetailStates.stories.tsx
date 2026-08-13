@@ -1101,6 +1101,16 @@ const CATALOG_PLUGIN = {
 } satisfies PluginListItem;
 
 const pluginUninstallItems = [
+  { label: "Submit to marketplace", icon: "Github" as const, onSelect: noop },
+  {
+    label: "Uninstall",
+    icon: "Trash2" as const,
+    tone: "destructive" as const,
+    onSelect: noop,
+  },
+];
+
+const pluginCatalogItems = [
   {
     label: "Uninstall",
     icon: "Trash2" as const,
@@ -1112,7 +1122,7 @@ const pluginUninstallItems = [
 const pluginLocalItems = [
   { label: "Edit", icon: "Edit" as const, onSelect: noop },
   { label: "Open source", icon: "ExternalLink" as const, onSelect: noop },
-  { kind: "separator" as const },
+  { label: "Submit to marketplace", icon: "Github" as const, onSelect: noop },
   {
     label: "Remove from bb",
     icon: "Trash2" as const,
@@ -1315,14 +1325,24 @@ export function ResourceControlStates() {
             meaning="A plugin mutation is in flight, so the lifecycle switch cannot race it."
           />
           <ControlRow
-            state="Installed actions"
+            state="Direct installed actions"
             control={
               <ResourceOverflowMenu
                 label="Direct plugin actions"
                 items={pluginUninstallItems}
               />
             }
-            meaning="Direct and catalog installs can be uninstalled from the ownership menu."
+            meaning="Direct installs can be submitted to the marketplace or uninstalled."
+          />
+          <ControlRow
+            state="Catalog installed actions"
+            control={
+              <ResourceOverflowMenu
+                label="Catalog plugin actions"
+                items={pluginCatalogItems}
+              />
+            }
+            meaning="Official catalog installs are already published, so their ownership menu only offers uninstall."
           />
           <ControlRow
             state="Local actions"
@@ -1332,7 +1352,7 @@ export function ResourceControlStates() {
                 items={pluginLocalItems}
               />
             }
-            meaning="Local sources can be edited, opened, or removed from bb without deleting the source directory."
+            meaning="Local sources can be edited, opened, submitted to the marketplace, or removed from bb without deleting the source directory."
           />
           <ControlRow
             state="BB Official built-in actions"

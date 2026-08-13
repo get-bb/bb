@@ -27,6 +27,7 @@ export * from "./pending-interactions.js";
 export * from "./plugin-id.js";
 export * from "./plugin-manifest.js";
 export * from "./plugin-sdk-version.js";
+export * from "./plugin-submission.js";
 export * from "./project-path.js";
 export * from "./project.js";
 export * from "./prompt-history.js";

@@ -14,6 +14,7 @@ import type {
   PluginUpdateCheckEntry as PluginUpdateResult,
 } from "@bb/server-contract";
 import { installedPluginSchema } from "@bb/server-contract";
+import { PLUGIN_SUBMISSION_FORM_URL } from "@bb/domain";
 import { BbHttpError } from "@bb/sdk";
 import { parseDataDirEnvValue, resolveProdDataDir } from "@bb/config/runtime";
 import { scaffoldPlugin, syncPluginTypes } from "@bb/templates/plugin-scaffold";
@@ -591,6 +592,27 @@ export function registerPluginCommands(
             rows,
           ),
         );
+      }),
+    );
+
+  plugin
+    .command("submit")
+    .description(
+      "Print the intake form link for submitting a plugin to BB's marketplace",
+    )
+    .option("--json", "Output JSON")
+    .action(
+      action(async (opts: JsonOutputOptions) => {
+        // The form is the entire submission UI for now — this links out
+        // rather than relaying, so submission itself happens in the browser.
+        if (opts.json) {
+          outputJson(opts, { url: PLUGIN_SUBMISSION_FORM_URL });
+          return;
+        }
+        console.log(
+          "Submit your plugin to BB's marketplace (public GitHub repo required):",
+        );
+        console.log(PLUGIN_SUBMISSION_FORM_URL);
       }),
     );
 

@@ -10,6 +10,7 @@ import {
   ResourceOverflowMenu,
   type ResourceOverflowMenuItem,
 } from "@bb/shared-ui/resource-list";
+import { PLUGIN_SUBMISSION_FORM_URL } from "@bb/domain";
 import { Switch } from "@bb/shared-ui/switch";
 import {
   Tooltip,
@@ -42,7 +43,10 @@ import {
 } from "@/components/tools/plugin-detail-table";
 import { PluginBannerBar } from "@/components/tools/plugin-detail-banner";
 import { ProvenancePill } from "@/components/tools/ProvenancePill";
+import { isOfficialProvenance } from "@/components/plugin/plugin-provenance";
+
 import { appToast } from "@/components/ui/app-toast";
+import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
 import {
   usePluginSource,
   type PluginCatalogSearchEntry,
@@ -344,6 +348,21 @@ export function PluginDetail({
           },
         ]
       : []),
+    // An ownership action like Edit: you submit your own plugin, so it only
+    // renders on user-provenance plugins — official ones are already in the
+    // marketplace. The intake form is the whole submission UI for now, and it
+    // opens in the external browser like every other Tools-route link: the
+    // in-app browser is a thread-panel surface, so UrlOpenRoutingProvider is
+    // never mounted here and the preference cannot apply.
+    ...(isOfficialProvenance(plugin.provenance)
+      ? []
+      : [
+          {
+            label: "Submit to marketplace",
+            icon: "Github" as const,
+            onSelect: () => openUrlInExternalBrowser(PLUGIN_SUBMISSION_FORM_URL),
+          },
+        ]),
     {
       label: pluginRemovalLabel(plugin),
       icon: "Trash2" as const,

@@ -1,4 +1,8 @@
-import { jsonValueSchema, type JsonValue } from "@bb/domain";
+import {
+  jsonValueSchema,
+  PLUGIN_SUBMISSION_FORM_URL,
+  type JsonValue,
+} from "@bb/domain";
 import {
   pluginCatalogInstallRequestSchema,
   pluginCatalogSearchResponseSchema,
@@ -110,10 +114,17 @@ export type PluginApplyUpdateResult = PluginApplyUpdateContract;
 export type PluginCatalogStatusResult = PluginCatalogStatusContract;
 export type PluginCatalogSearchResult = PluginCatalogSearchContract[];
 
+export interface PluginCatalogSubmissionResult {
+  /** BB's canonical browser form for proposing a plugin to the marketplace. */
+  url: string;
+}
+
 export interface PluginCatalogArea {
   install(args: PluginCatalogInstallArgs): Promise<PluginInstallResult>;
   search(args: PluginCatalogSearchArgs): Promise<PluginCatalogSearchResult>;
   status(args?: PluginCatalogStatusArgs): Promise<PluginCatalogStatusResult>;
+  /** Return the canonical marketplace submission form; submitting stays browser-owned. */
+  submission(): PluginCatalogSubmissionResult;
 }
 
 export interface PluginsArea {
@@ -195,6 +206,9 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
         { signal: input.signal },
       );
       return response.catalog;
+    },
+    submission() {
+      return { url: PLUGIN_SUBMISSION_FORM_URL };
     },
   };
 

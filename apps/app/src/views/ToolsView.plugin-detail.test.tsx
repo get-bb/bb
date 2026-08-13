@@ -202,6 +202,67 @@ describe("PluginDetail official catalog lifecycle", () => {
     expect(container.textContent).toBe("");
   });
 
+  it("offers Submit to marketplace only on user-provenance plugins", async () => {
+    // Submission is an ownership action: you submit your own plugin, and
+    // official (builtin/catalog) plugins are already in the marketplace.
+    const harness = createQueryClientTestHarness();
+    const directPlugin: PluginListItem = {
+      ...GITHUB_PLUGIN,
+      source: "path:/Users/you/Code/github-plugin",
+      provenance: "direct",
+      catalogEntryId: null,
+    };
+    const detail = (plugin: PluginListItem) => (
+      <MemoryRouter>
+        <harness.wrapper>
+          <PluginDetail
+            isLoading={false}
+            plugin={plugin}
+            pending={false}
+            openSourceDisabled
+            onToggle={() => {}}
+            onEdit={() => {}}
+            onOpenSource={() => {}}
+            onDelete={() => {}}
+          />
+        </harness.wrapper>
+      </MemoryRouter>
+    );
+
+    // The in-app browser is a thread-panel surface, so even with the in-app
+    // link preference ON, this Tools-route action must open externally.
+    window.localStorage.setItem("bb.openLinksInAppBrowser", "true");
+    const openSpy = vi
+      .spyOn(window, "open")
+      .mockImplementation(() => null);
+
+    render(detail(directPlugin));
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "GitHub actions" }),
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Submit to marketplace" }),
+    );
+    expect(openSpy).toHaveBeenCalledWith(
+      "https://docs.google.com/forms/d/e/1FAIpQLScRTABhHwCjuZWYn0lJJd0aZT2cYvGk2KaZ2GF-1GsXoLMLSQ/viewform",
+      "_blank",
+      "noopener,noreferrer",
+    );
+    window.localStorage.removeItem("bb.openLinksInAppBrowser");
+    cleanup();
+
+    render(detail(GITHUB_PLUGIN));
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "GitHub actions" }),
+    );
+    expect(
+      await screen.findByRole("menuitem", { name: "Uninstall" }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("menuitem", { name: "Submit to marketplace" }),
+    ).toBeNull();
+  });
+
   it("keeps catalog provenance and release management in the unified detail taxonomy", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.assign(navigator, { clipboard: { writeText } });
