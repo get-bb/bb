@@ -182,7 +182,7 @@ export const GIT_OFFICIAL_PLUGINS: readonly GitOfficialPluginDefinition[] = [
     category: "Interface",
     gitSource:
       // Pinned to a reviewed commit of bb-plugins plugin/thread-hover-cards.
-      "git:https://github.com/brsbl/bb-plugins.git@84a1e1cd5f54d8b47960c0be321f452c92b948f4",
+      "git:https://github.com/brsbl/bb-plugins.git@30f91fd977ba1ce60532af27a68534464fb62516",
     displayName: "Thread Hover Cards",
     description:
       "Preview thread status, the latest agent update, and repository or PR context from the sidebar.",
@@ -210,7 +210,7 @@ export const GIT_OFFICIAL_PLUGINS: readonly GitOfficialPluginDefinition[] = [
     category: "Agent interaction",
     gitSource:
       // Pinned to a reviewed commit of bb-plugins plugin/improve-prompt.
-      "git:https://github.com/brsbl/bb-plugins.git@ee3cc420b915d91acab68aaec8d82a080d020f64",
+      "git:https://github.com/brsbl/bb-plugins.git@b08c2d2a636300a0af3e4e06895b4c2ef50947ca",
     displayName: "Improve Prompt",
     description:
       "Adds an Improve prompt action to the composer that sends your rough draft to a hidden helper agent, which applies the prompt-shaper skill to rewrite it into a clear, complete prompt and returns it in place for review before you send.",
