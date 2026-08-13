@@ -66,6 +66,10 @@ export interface CanvasProjectSource {
   path: string;
 }
 
+export interface CanvasFileStoreOptions {
+  reclaimTombstones?: boolean;
+}
+
 export function canvasUsedSlugMarkerKey(
   projectId: string,
   projectVersionId: string | null,
@@ -396,10 +400,12 @@ export function parseCanvasEntity(
 export function createSdkCanvasFileStore(
   bb: BbPluginApi,
   source: CanvasProjectSource,
+  options: CanvasFileStoreOptions = {},
 ): CanvasFileStore {
+  const shouldReclaim = options.reclaimTombstones ?? true;
   async function read(
     file: string,
-    reclaim = true,
+    reclaim = shouldReclaim,
   ): Promise<StoredCanvasEntity | null> {
     if (reclaim) await reclaimCanvasDeleteTombstones(bb, source, file);
     const stored = await readCanvasTargetFile(bb, source, file);
@@ -449,11 +455,13 @@ export function createSdkCanvasFileStore(
         const target = tombstoneTargetName(entry.name);
         return target && /\.ya?ml$/iu.test(target) ? [target] : [];
       });
-      await Promise.all(
-        [...new Set(tombstoneTargets)].map((name) =>
-          reclaimCanvasDeleteTombstones(bb, source, `${directory}/${name}`),
-        ),
-      );
+      if (shouldReclaim) {
+        await Promise.all(
+          [...new Set(tombstoneTargets)].map((name) =>
+            reclaimCanvasDeleteTombstones(bb, source, `${directory}/${name}`),
+          ),
+        );
+      }
       const files = [...new Set([...regular, ...tombstoneTargets])]
         .map((name) => `${directory}/${name}`)
         .sort();

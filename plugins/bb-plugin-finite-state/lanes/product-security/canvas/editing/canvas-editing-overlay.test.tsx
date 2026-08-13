@@ -299,7 +299,7 @@ describe("WP-35 taraList working overlay", () => {
     ]);
   });
 
-  it("quarantines invalid working YAML without exposing the shadowed base", async () => {
+  it("surfaces a designed error when quarantine leaves no readable entity", async () => {
     const host = createFakePluginHost({
       pluginId: "finite-state-overlay-invalid",
       sdk: {
@@ -326,15 +326,47 @@ describe("WP-35 taraList working overlay", () => {
     hosts.push(host);
     const context = createPluginContext(host.bb);
     seedBase(context);
-    const page = await listTara(host.bb, context.db(), input());
-    expect(page.items).toEqual([]);
-    expect(page.total).toBe(0);
-    expect(page.cache).toMatchObject({
-      state: "stale",
-      acceptedGenerationId: GENERATION,
+    await expect(listTara(host.bb, context.db(), input())).rejects.toThrow(
+      /INVALID_WORKING_TARA:.*gateway\.yaml.*verification_status.*cannot be authored/iu,
+    );
+  });
+
+  it("quarantines one invalid file while retaining other readable entities", async () => {
+    const host = createFakePluginHost({
+      pluginId: "finite-state-overlay-partial-invalid",
+      sdk: {
+        projects: {
+          get: () => ({
+            sources: [
+              { hostId: "host-1", path: "/workspace", isDefault: true },
+            ],
+          }),
+        },
+        files: {
+          list: () => ({
+            files: [{ name: "gateway.yaml", path: "gateway.yaml" }],
+            truncated: false,
+          }),
+          read: () => ({
+            content: "slug: gateway\nverification_status: passed\n",
+            contentEncoding: "utf8" as const,
+            sha256: "b".repeat(64),
+          }),
+        },
+      },
     });
+    hosts.push(host);
+    const context = createPluginContext(host.bb);
+    seedBase(context);
+    seedAdditionalBase(context);
+    const page = await listTara(host.bb, context.db(), input());
+    expect(page.items).toEqual([
+      expect.objectContaining({ key: "sensor", label: "Accepted sensor" }),
+    ]);
+    expect(page.total).toBe(1);
+    expect(page.cache).toMatchObject({ state: "stale" });
     expect(page.cache.message).toMatch(
-      /Invalid working YAML quarantined.*gateway\.yaml.*verification_status.*cannot be authored/iu,
+      /Invalid working YAML quarantined.*gateway\.yaml.*verification_status/iu,
     );
   });
 });

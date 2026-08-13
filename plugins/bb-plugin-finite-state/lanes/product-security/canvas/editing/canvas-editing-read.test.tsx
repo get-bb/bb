@@ -121,6 +121,12 @@ describe("WP-35 read-classified editing RPCs", () => {
     const writes = vi.fn(() => {
       throw new Error("read-classified RPC attempted a file write");
     });
+    const moves = vi.fn(() => {
+      throw new Error("read-classified RPC attempted a file move");
+    });
+    const removes = vi.fn(() => {
+      throw new Error("read-classified RPC attempted a file remove");
+    });
     const host = createFakePluginHost({
       pluginId: "finite-state-editing-read-only",
       sdk: {
@@ -140,6 +146,8 @@ describe("WP-35 read-classified editing RPCs", () => {
             });
           },
           write: writes,
+          move: moves,
+          remove: removes,
         },
       },
     });
@@ -180,5 +188,7 @@ describe("WP-35 read-classified editing RPCs", () => {
       }),
     ]);
     expect(writes).not.toHaveBeenCalled();
+    expect(moves).not.toHaveBeenCalled();
+    expect(removes).not.toHaveBeenCalled();
   });
 });

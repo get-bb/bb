@@ -197,7 +197,9 @@ export async function listTara(
   }
   if (source) {
     try {
-      const files = createSdkCanvasFileStore(bb, source);
+      const files = createSdkCanvasFileStore(bb, source, {
+        reclaimTombstones: false,
+      });
       const listing = files.listWithDiagnostics
         ? await files.listWithDiagnostics(kind)
         : { entities: await files.list(kind), diagnostics: [] };
@@ -333,6 +335,9 @@ export async function listTara(
     diagnostics,
   );
   const total = acceptedTotal + visibleWorking.length;
+  if (diagnostics.length > 0 && total === 0) {
+    throw new Error(`INVALID_WORKING_TARA: ${cacheMessage}`);
+  }
 
   return {
     items: visibleRows.map(([slug, fields]) => {

@@ -475,13 +475,16 @@ export function registerCanvasEditingBackend(
       projectVersionId: string | null;
     },
     restoration?: { kind: CanvasEntityKind; slug: string },
+    reclaimTombstones = true,
   ): Promise<{
     files: CanvasFileStore;
     deps: EditDeps;
     source: CanvasProjectSource;
   }> {
     const source = await projectSource(bb, input.projectId);
-    const files = createSdkCanvasFileStore(bb, source);
+    const files = createSdkCanvasFileStore(bb, source, {
+      reclaimTombstones,
+    });
     const scope: SyncScope = {
       projectId: input.projectId,
       projectVersionId: input.projectVersionId,
@@ -564,7 +567,7 @@ export function registerCanvasEditingBackend(
 
   bb.rpc.register(canvasEditingRpcContract, {
     async canvasEditingLoad(input) {
-      const { files } = await dependencies(input);
+      const { files } = await dependencies(input, undefined, false);
       const file = canvasEntityFile(input.kind, input.slug);
       if (
         (await deletedCanvasSlugs(bb, input, input.kind)).has(input.slug)
@@ -731,7 +734,7 @@ export function registerCanvasEditingBackend(
       };
     },
     async taraDeleteImpact(input) {
-      const { files } = await dependencies(input);
+      const { files } = await dependencies(input, undefined, false);
       const impact: DeletionImpact = computeDeletionImpact(
         input.kind,
         input.stableKey,
