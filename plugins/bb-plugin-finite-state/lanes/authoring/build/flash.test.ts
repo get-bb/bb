@@ -1,6 +1,10 @@
 import { appendFile } from "node:fs/promises";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { onFlashCompleted, runFlash } from "./flash.js";
+import {
+  onFlashCompleted,
+  runFlash,
+  subscribeFlashCompleted,
+} from "./flash.js";
 import { AuthoringError, runBuild } from "./runner.js";
 import {
   confirmationFixture,
@@ -69,6 +73,48 @@ describe("flash runner", () => {
       confirmation: confirmationFixture(),
     });
     expect(events).toHaveLength(1);
+  });
+
+  it("scopes the subscription adapter and honors each disposer", async () => {
+    const fx = await fixture({ confirmationValid: true });
+    const build = await runBuild(fx.ctx, { target: "board-a" });
+    const scoped: string[] = [];
+    const otherProject: string[] = [];
+    const otherVersion: string[] = [];
+    const dispose = subscribeFlashCompleted({
+      db: fx.ctx.db,
+      projectId: fx.ctx.projectId,
+      projectVersionId: fx.ctx.projectVersionId,
+    }, (event) => scoped.push(event.runId));
+    const disposeOtherProject = subscribeFlashCompleted({
+      db: fx.ctx.db,
+      projectId: "project-b",
+      projectVersionId: fx.ctx.projectVersionId,
+    }, (event) => otherProject.push(event.runId));
+    const disposeOtherVersion = subscribeFlashCompleted({
+      db: fx.ctx.db,
+      projectId: fx.ctx.projectId,
+      projectVersionId: "version-b",
+    }, (event) => otherVersion.push(event.runId));
+
+    const first = await runFlash(fx.ctx, {
+      runId: build.runId,
+      device: "probe-a",
+      confirmation: confirmationFixture(),
+    });
+    expect(scoped).toEqual([first.runId]);
+    expect(otherProject).toEqual([]);
+    expect(otherVersion).toEqual([]);
+
+    dispose();
+    disposeOtherProject();
+    disposeOtherVersion();
+    await runFlash(fx.ctx, {
+      runId: build.runId,
+      device: "probe-a",
+      confirmation: confirmationFixture(),
+    });
+    expect(scoped).toHaveLength(1);
   });
 
   it("refuses when artifact bytes no longer match the immutable build digest", async () => {
