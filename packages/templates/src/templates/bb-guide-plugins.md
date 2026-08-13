@@ -241,7 +241,7 @@ collection manifest at .bb/plugins.json indexes them:
     "name": "acme-plugins",
     "plugins": [
       { "name": "sidebar", "source": "./plugins/sidebar" },
-      { "name": "status", "source": "./apps/status", "description": "..." }
+      { "name": "status", "source": "./apps/status" }
     ]
   }
 

@@ -679,7 +679,7 @@ manifest at the repository root indexes them:
   "name": "acme-plugins",
   "plugins": [
     { "name": "notes", "source": "./plugins/notes" },
-    { "name": "status", "source": "./plugins/status", "description": "..." }
+    { "name": "status", "source": "./plugins/status" }
   ]
 }
 ```

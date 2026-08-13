@@ -30,11 +30,7 @@ describe("collection manifest schema", () => {
         name: "acme-plugins",
         plugins: [
           { name: "sidebar", source: "./plugins/sidebar" },
-          {
-            name: "status",
-            source: "./apps/status",
-            description: "Status bar.",
-          },
+          { name: "status", source: "./apps/status" },
         ],
       }),
       ".bb/plugins.json",
@@ -76,6 +72,9 @@ describe("collection manifest schema", () => {
     ).toThrowError(/duplicate plugin name "sidebar"/);
     expect(() =>
       parse([{ name: "sidebar", source: "./a", subdir: "./b" }]),
+    ).toThrowError(/invalid \.bb\/plugins\.json/);
+    expect(() =>
+      parse([{ name: "sidebar", source: "./a", description: "Sidebar" }]),
     ).toThrowError(/invalid \.bb\/plugins\.json/);
     expect(() => parse([{ name: "Sidebar", source: "./a" }])).toThrowError(
       /invalid \.bb\/plugins\.json/,

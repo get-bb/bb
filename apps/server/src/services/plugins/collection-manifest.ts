@@ -29,7 +29,6 @@ const collectionEntrySchema = z
   .object({
     name: z.string().regex(COLLECTION_NAME_PATTERN),
     source: z.string(),
-    description: z.string().min(1).optional(),
   })
   .strict()
   .superRefine((entry, ctx) => {
