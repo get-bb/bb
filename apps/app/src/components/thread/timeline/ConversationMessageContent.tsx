@@ -49,7 +49,11 @@ import {
 import { USER_MESSAGE_CHAR_CAP } from "./conversation-message-limits.js";
 import { turnRequestLabel } from "./conversation-turn-request-label.js";
 import { TurnRequestLabel } from "./TurnRequestLabel.js";
-import { MessageActionBar } from "./MessageActionBar.js";
+import {
+  MESSAGE_ACTION_BAR_SLOT_CLASS_NAME,
+  MESSAGE_ACTION_BAR_SLOT_CONTENT_CLASS_NAME,
+  MessageActionBar,
+} from "./MessageActionBar.js";
 import {
   ConversationMessageOverflowToggle,
   useIsOverflowing,
@@ -495,16 +499,23 @@ function UserConversationMessage({
         addToChatAttachments.length > 0 ||
         onEdit !== undefined ||
         pluginActions.length > 0 ? (
-          <div className="mt-1 flex justify-end">
-            <MessageActionBar
-              messageText={messageText}
-              alignment="end"
-              mobileActionDisplay={mobileActionDisplay}
-              addToChatAttachments={addToChatAttachments}
-              onAddToChat={onAddToChat}
-              onEdit={onEdit}
-              pluginActions={pluginActions}
-            />
+          <div className={MESSAGE_ACTION_BAR_SLOT_CLASS_NAME}>
+            <div
+              className={cn(
+                MESSAGE_ACTION_BAR_SLOT_CONTENT_CLASS_NAME,
+                "right-0",
+              )}
+            >
+              <MessageActionBar
+                messageText={messageText}
+                alignment="end"
+                mobileActionDisplay={mobileActionDisplay}
+                addToChatAttachments={addToChatAttachments}
+                onAddToChat={onAddToChat}
+                onEdit={onEdit}
+                pluginActions={pluginActions}
+              />
+            </div>
           </div>
         ) : null}
       </div>
@@ -654,12 +665,9 @@ function AssistantConversationMessage({
           `disabled` greys both fork and side chat together when the thread is at
           the spawn-depth cap (both spawn a child thread, one guard).
         */
-        <div className="relative h-5 max-md:pointer-coarse:h-7">
+        <div className={MESSAGE_ACTION_BAR_SLOT_CLASS_NAME}>
           <div
-            className={cn(
-              "absolute left-0 top-1",
-              "max-md:pointer-coarse:top-0",
-            )}
+            className={cn(MESSAGE_ACTION_BAR_SLOT_CONTENT_CLASS_NAME, "left-0")}
           >
             <MessageActionBar
               messageText={text}
