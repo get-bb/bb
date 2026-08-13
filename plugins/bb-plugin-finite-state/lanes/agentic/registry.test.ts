@@ -42,6 +42,10 @@ describe("agent tool registry", () => {
       ["fs_probe", "none"],
     ]);
     expect(ACTION_TOOL_NAMES).toEqual(actions.map(([name]) => name));
+    expect(
+      Object.values(AGENT_SURFACE.tools).flatMap((tool) =>
+        "destructive" in tool && tool.destructive === true ? [tool.name] : []),
+    ).toEqual(["fs_flash"]);
   });
 
   it("rejects a ninth action without an amendment", () => {
