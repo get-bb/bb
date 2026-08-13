@@ -6,10 +6,7 @@ import {
   type WorkspaceOpenTargetCapabilities,
   type WorkspaceOpenTargetId,
 } from "@bb/host-daemon-contract";
-import {
-  createNullableLocalStorageEnumStorage,
-  type SyncStorage,
-} from "./browser-storage";
+import { createNullableLocalStorageEnumStorage } from "./browser-storage";
 
 export const WORKSPACE_OPEN_TARGET_STORAGE_KEY = "bb.workspaceOpenTarget";
 export const FILE_OPEN_TARGET_STORAGE_KEY = "bb.fileOpenTarget";
@@ -103,6 +100,24 @@ function resolveFallbackWorkspaceOpenTarget(
   );
 }
 
+function resolveDefaultAppWorkspaceOpenTarget(
+  capability: WorkspaceOpenTargetCapability,
+  contextKind: WorkspaceOpenTargetContextKind,
+  targets: WorkspaceOpenTarget[],
+): WorkspaceOpenTarget | null {
+  return (
+    targets.find(
+      (target) =>
+        target.id === "default-app" &&
+        supportsWorkspaceOpenTargetCapability({
+          capability,
+          contextKind,
+          target,
+        }),
+    ) ?? null
+  );
+}
+
 function getLowercaseFileExtension(path: string): string {
   const lastSegment = path.split(/[\\/]/u).at(-1) ?? path;
   const dotIndex = lastSegment.lastIndexOf(".");
@@ -182,43 +197,10 @@ function isStoredWorkspaceOpenTargetPreference(
   return workspaceOpenTargetIdSchema.safeParse(value).success;
 }
 
-export function migrateStoredWorkspaceOpenTargetPreference(
-  value: StoredWorkspaceOpenTargetPreference,
-): StoredWorkspaceOpenTargetPreference {
-  return value === "windsurf" ? "devin-desktop" : value;
-}
-
-const baseWorkspaceOpenTargetPreferenceStorage =
+const workspaceOpenTargetPreferenceStorage =
   createNullableLocalStorageEnumStorage<WorkspaceOpenTargetId>(
     isStoredWorkspaceOpenTargetPreference,
   );
-
-const workspaceOpenTargetPreferenceStorage: SyncStorage<StoredWorkspaceOpenTargetPreference> =
-  {
-    getItem: (key, initialValue) => {
-      const storedValue = baseWorkspaceOpenTargetPreferenceStorage.getItem(
-        key,
-        initialValue,
-      );
-      const migratedValue = migrateStoredWorkspaceOpenTargetPreference(storedValue);
-      if (migratedValue !== storedValue) {
-        baseWorkspaceOpenTargetPreferenceStorage.setItem(key, migratedValue);
-      }
-      return migratedValue;
-    },
-    setItem: (key, value) => {
-      baseWorkspaceOpenTargetPreferenceStorage.setItem(key, value);
-    },
-    removeItem: (key) => {
-      baseWorkspaceOpenTargetPreferenceStorage.removeItem(key);
-    },
-    subscribe: (key, callback, initialValue) =>
-      baseWorkspaceOpenTargetPreferenceStorage.subscribe?.(
-        key,
-        (value) => callback(migrateStoredWorkspaceOpenTargetPreference(value)),
-        initialValue,
-      ),
-  };
 
 export const workspaceOpenTargetPreferenceAtom =
   atomWithStorage<StoredWorkspaceOpenTargetPreference>(
@@ -242,16 +224,27 @@ export function resolvePreferredWorkspaceOpenTarget(
   const contextKind = args.contextKind ?? "local";
   if (args.preferredTargetId !== null) {
     const preferredTarget = args.targets.find(
-      (target) =>
-        target.id === args.preferredTargetId &&
-        supportsWorkspaceOpenTargetCapability({
-          capability: args.capability,
-          contextKind,
-          target,
-        }),
+      (target) => target.id === args.preferredTargetId,
     );
-    if (preferredTarget) {
+    if (
+      preferredTarget &&
+      supportsWorkspaceOpenTargetCapability({
+        capability: args.capability,
+        contextKind,
+        target: preferredTarget,
+      })
+    ) {
       return preferredTarget;
+    }
+    if (!preferredTarget) {
+      const defaultAppTarget = resolveDefaultAppWorkspaceOpenTarget(
+        args.capability,
+        contextKind,
+        args.targets,
+      );
+      if (defaultAppTarget) {
+        return defaultAppTarget;
+      }
     }
   }
 
@@ -270,16 +263,27 @@ export function resolvePreferredWorkspaceOpenFileTarget(
   const contextKind = args.contextKind ?? "local";
   if (args.preferredTargetId !== null) {
     const preferredTarget = args.targets.find(
-      (target) =>
-        target.id === args.preferredTargetId &&
-        supportsWorkspaceOpenTargetCapability({
-          capability: "openFile",
-          contextKind,
-          target,
-        }),
+      (target) => target.id === args.preferredTargetId,
     );
-    if (preferredTarget) {
+    if (
+      preferredTarget &&
+      supportsWorkspaceOpenTargetCapability({
+        capability: "openFile",
+        contextKind,
+        target: preferredTarget,
+      })
+    ) {
       return preferredTarget;
+    }
+    if (!preferredTarget) {
+      const defaultAppTarget = resolveDefaultAppWorkspaceOpenTarget(
+        "openFile",
+        contextKind,
+        args.targets,
+      );
+      if (defaultAppTarget) {
+        return defaultAppTarget;
+      }
     }
   }
 

@@ -1,7 +1,6 @@
 import type { WorkspaceOpenTarget } from "@bb/host-daemon-contract";
 import { describe, expect, it } from "vitest";
 import {
-  migrateStoredWorkspaceOpenTargetPreference,
   resolvePreferredWorkspaceOpenFileTarget,
   resolvePreferredWorkspaceOpenTarget,
 } from "./workspace-open-target-preference";
@@ -50,15 +49,6 @@ const defaultAppTarget: WorkspaceOpenTarget = {
   label: "Default App",
 };
 
-describe("migrateStoredWorkspaceOpenTargetPreference", () => {
-  it("migrates the old Windsurf target id to Devin Desktop", () => {
-    expect(migrateStoredWorkspaceOpenTargetPreference("windsurf")).toBe(
-      "devin-desktop",
-    );
-    expect(migrateStoredWorkspaceOpenTargetPreference("vscode")).toBe("vscode");
-  });
-});
-
 describe("resolvePreferredWorkspaceOpenTarget", () => {
   it("chooses the stored target when it supports the requested capability", () => {
     expect(
@@ -100,14 +90,14 @@ describe("resolvePreferredWorkspaceOpenTarget", () => {
     ).toBeNull();
   });
 
-  it("preserves stale stored preferences by falling back at runtime", () => {
+  it("uses Default App when a stored target is no longer available", () => {
     expect(
       resolvePreferredWorkspaceOpenTarget({
         capability: "openDirectory",
-        preferredTargetId: "cursor",
-        targets: [finderTarget],
+        preferredTargetId: "windsurf",
+        targets: [finderTarget, defaultAppTarget],
       }),
-    ).toBe(finderTarget);
+    ).toBe(defaultAppTarget);
   });
 
   it("uses remote SSH capabilities when resolving remote targets", () => {
@@ -160,6 +150,16 @@ describe("resolvePreferredWorkspaceOpenFileTarget", () => {
         targets: [defaultAppTarget, terminalTarget, vscodeTarget],
       }),
     ).toBe(vscodeTarget);
+  });
+
+  it("uses Default App for source files when a stored target is unavailable", () => {
+    expect(
+      resolvePreferredWorkspaceOpenFileTarget({
+        path: "/tmp/src/file.ts",
+        preferredTargetId: "windsurf",
+        targets: [vscodeTarget, defaultAppTarget],
+      }),
+    ).toBe(defaultAppTarget);
   });
 
   it("prefers editors for line-targeted opens even when the extension is viewable", () => {
