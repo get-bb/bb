@@ -48,7 +48,7 @@
   (wire (pts (xy 25 50) (xy 40 50)) (stroke (width 0) (type solid)))
   (label "OP_OUT" (at 30 50 0) (effects (font (size 1.27 1.27))))
   (wire (pts (xy 55 70) (xy 50 70)) (stroke (width 0) (type solid)))
-  (label "AUX_INPUT" (at 50 70 0) (effects (font (size 1.27 1.27))))
+  (label "OP_INPUT" (at 50 70 0) (effects (font (size 1.27 1.27))))
   (wire (pts (xy 65 70) (xy 70 70)) (stroke (width 0) (type solid)))
   (label "AUX_OUTPUT" (at 70 70 0) (effects (font (size 1.27 1.27))))
   (symbol (lib_id "Device:R") (at 20 20 0) (unit 1) (in_bom yes) (on_board yes)

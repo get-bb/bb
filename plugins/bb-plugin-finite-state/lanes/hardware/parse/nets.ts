@@ -273,10 +273,13 @@ export function mergeProjectConnectivity(
   const sets = new DisjointSet(groups.length);
 
   const globalGroups = new Map<string, number>();
+  const sheetNamedGroups = new Map<string, number>();
   groups.forEach((group, index) => {
-    for (const name of group.names.filter((candidate) => candidate.kind === "global")) {
-      const existing = globalGroups.get(name.name);
-      if (existing === undefined) globalGroups.set(name.name, index);
+    for (const name of group.names) {
+      const namedGroups = name.kind === "global" ? globalGroups : sheetNamedGroups;
+      const key = name.kind === "global" ? name.name : `${group.sheetPath}\0${name.name}`;
+      const existing = namedGroups.get(key);
+      if (existing === undefined) namedGroups.set(key, index);
       else sets.union(existing, index);
     }
   });

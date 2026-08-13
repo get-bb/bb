@@ -18,6 +18,10 @@ describe("KiCad net parsing", () => {
     expect(parsed.nets.find((net) => net.netName === "R2_LOCAL")?.nodes).toEqual([
       { reference: "R2", pin: "1" },
     ]);
+    expect(parsed.nets.find((net) => net.netName === "OP_INPUT")?.nodes).toEqual([
+      { reference: "U3", pin: "1" },
+      { reference: "U3", pin: "3" },
+    ]);
   }, 30_000);
 
   it("records unresolved connectivity as gaps instead of fabricated nets", async () => {
