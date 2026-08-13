@@ -69,6 +69,7 @@ interface MatrixSqlRow {
   requirement_type: string | null;
   priority: string | null;
   requirement_pulled_at: string;
+  suppressed_mapping_count: number;
   total_count: number;
   total_verified: number;
   total_failed: number;
@@ -97,7 +98,10 @@ interface MatrixSqlRow {
 interface MatrixIndexMetaRow {
   generation_id: string;
   base_revision: number;
+  evidence_revision: string;
 }
+
+interface EvidenceRevisionRow { evidence_revision: string }
 
 interface MatrixCursor { rank: number; requirementId: string }
 
@@ -117,6 +121,10 @@ function stringFilter(filters: Record<string, JsonValue>, key: string): string |
 
 function booleanFilter(filters: Record<string, JsonValue>, key: string): boolean {
   return filters[key] === true;
+}
+
+function escapeLike(value: string): string {
+  return value.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_");
 }
 
 function encodeCursor(cursor: MatrixCursor): string {
@@ -214,6 +222,7 @@ function initializeMatrixIndex(db: Database.Database): void {
       project_version_id TEXT NOT NULL,
       generation_id TEXT NOT NULL,
       base_revision INTEGER NOT NULL,
+      evidence_revision TEXT NOT NULL,
       PRIMARY KEY (project_id, project_version_id)
     );
     CREATE TEMP TABLE IF NOT EXISTS fs_verification_matrix_index (
@@ -252,11 +261,20 @@ function ensureMatrixIndex(
 ): void {
   initializeMatrixIndex(db);
   const storageVersion = toStorageProjectVersionId(projectVersionId);
+  const evidenceRevision = db.prepare<[string, string, string], EvidenceRevisionRow>(
+    `SELECT COALESCE(MAX(pulled_at), '') || ':' || COUNT(*) AS evidence_revision
+       FROM verification_results
+      WHERE project_id = ? AND project_version_id = ? AND generation_id = ?
+        AND is_latest = 1`,
+  ).get(projectId, storageVersion, generationId)?.evidence_revision ?? ":0";
   const current = db.prepare<[string, string], MatrixIndexMetaRow>(
-    `SELECT generation_id, base_revision FROM fs_verification_matrix_meta
+    `SELECT generation_id, base_revision, evidence_revision FROM fs_verification_matrix_meta
       WHERE project_id = ? AND project_version_id = ?`,
   ).get(projectId, storageVersion);
-  if (current?.generation_id === generationId && current.base_revision === baseRevision) return;
+  if (
+    current?.generation_id === generationId && current.base_revision === baseRevision &&
+    current.evidence_revision === evidenceRevision
+  ) return;
   const mappedTier = tierSql();
   const rebuild = db.transaction(() => {
     db.prepare(
@@ -288,8 +306,7 @@ function ensureMatrixIndex(
          LEFT JOIN verification_results vr
            ON vr.project_id = bs.project_id AND vr.project_version_id = bs.project_version_id
           AND vr.generation_id = bs.generation_id AND vr.requirement_key = bs.entity_key
-          AND vr.is_latest = 1 AND vr.mapping_state = 'mapped'
-          AND (vr.check_id = rcm.check_id OR vr.check_id IS NULL)
+          AND vr.is_latest = 1
         WHERE bs.project_id = ? AND bs.project_version_id = ? AND bs.generation_id = ?
           AND bs.entity_kind = 'requirement'
         GROUP BY bs.project_id, bs.project_version_id, bs.generation_id, bs.entity_key,
@@ -297,11 +314,12 @@ function ensureMatrixIndex(
     ).run(projectId, storageVersion, generationId);
     db.prepare(
       `INSERT INTO fs_verification_matrix_meta (
-         project_id, project_version_id, generation_id, base_revision
-       ) VALUES (?, ?, ?, ?)
+         project_id, project_version_id, generation_id, base_revision, evidence_revision
+       ) VALUES (?, ?, ?, ?, ?)
        ON CONFLICT (project_id, project_version_id) DO UPDATE SET
-         generation_id = excluded.generation_id, base_revision = excluded.base_revision`,
-    ).run(projectId, storageVersion, generationId, baseRevision);
+         generation_id = excluded.generation_id, base_revision = excluded.base_revision,
+         evidence_revision = excluded.evidence_revision`,
+    ).run(projectId, storageVersion, generationId, baseRevision, evidenceRevision);
   });
   rebuild();
 }
@@ -313,7 +331,8 @@ function queryRows(
   generationId: string,
 ): MatrixSqlRow[] {
   const filters = isRecord(input.filters) ? input.filters : {};
-  const text = stringFilter(filters, "text")?.toLocaleLowerCase() ?? null;
+  const textValue = stringFilter(filters, "text")?.toLocaleLowerCase() ?? null;
+  const text = textValue === null ? null : escapeLike(textValue);
   const pattern = stringFilter(filters, "pattern");
   const requirementType = stringFilter(filters, "reqType");
   const priority = stringFilter(filters, "priority");
@@ -323,7 +342,7 @@ function queryRows(
   const unprovenOnly = booleanFilter(filters, "unprovenOnly");
   const cursor = decodeCursor(input.continuation);
   const tierFilterSql = tierSql().replaceAll("vc.", "matrix_check.");
-  const sql = `WITH filtered AS (
+  const sql = `WITH matching AS (
     SELECT matrix.*, COUNT(*) OVER () AS total_count,
            SUM(CASE WHEN unproven_rank = 7 THEN 1 ELSE 0 END) OVER () AS total_verified,
            SUM(CASE WHEN unproven_rank = 0 THEN 1 ELSE 0 END) OVER () AS total_failed,
@@ -334,7 +353,7 @@ function queryRows(
            SUM(CASE WHEN unproven_rank = 8 THEN 1 ELSE 0 END) OVER () AS total_skipped
       FROM fs_verification_matrix_index matrix
      WHERE matrix.project_id = ? AND matrix.project_version_id = ?
-       AND (? IS NULL OR lower(matrix.requirement_id || ' ' || matrix.title) LIKE '%' || ? || '%')
+       AND (? IS NULL OR lower(matrix.requirement_id || ' ' || matrix.title) LIKE '%' || ? || '%' ESCAPE '\\')
        AND (? IS NULL OR matrix.pattern = ?)
        AND (? IS NULL OR matrix.requirement_type = ?)
        AND (? IS NULL OR matrix.priority = ?)
@@ -367,11 +386,20 @@ function queryRows(
            WHEN 'failed' THEN 0 WHEN 'error' THEN 1 WHEN 'inconclusive' THEN 2
            WHEN 'running' THEN 3 WHEN 'pending' THEN 4 WHEN 'verified' THEN 7
            WHEN 'skipped' THEN 8 ELSE -1 END END)
-       AND (? IS NULL OR unproven_rank > ? OR (unproven_rank = ? AND requirement_id > ?))
+  ), filtered AS (
+    SELECT * FROM matching
+     WHERE (? IS NULL OR unproven_rank > ? OR (unproven_rank = ? AND requirement_id > ?))
      ORDER BY unproven_rank, requirement_id
      LIMIT ?
   )
-  SELECT f.*, rcm.check_id, vc.check_type, vc.category, vc.parameters, rcm.is_required,
+  SELECT f.*,
+         (SELECT COUNT(*) FROM requirement_check_mappings suppressed_mapping
+           WHERE suppressed_mapping.project_id = f.project_id
+             AND suppressed_mapping.project_version_id = f.project_version_id
+             AND suppressed_mapping.generation_id = f.generation_id
+             AND suppressed_mapping.requirement_key = f.requirement_key
+             AND suppressed_mapping.suppressed = 1) AS suppressed_mapping_count,
+         rcm.check_id, vc.check_type, vc.category, vc.parameters, rcm.is_required,
          vr.result_id, vr.check_id AS result_check_id, vr.tier AS result_tier,
          vr.status AS result_status, vr.run_id, vr.executed_at, vr.is_latest,
          vr.mapping_state, vr.fs_version_id
@@ -385,7 +413,6 @@ function queryRows(
     LEFT JOIN verification_results vr
       ON vr.project_id = ? AND vr.project_version_id = ? AND vr.generation_id = ?
      AND vr.requirement_key = f.requirement_key AND vr.is_latest = 1
-     AND (vr.check_id = rcm.check_id OR vr.check_id IS NULL)
    ORDER BY f.unproven_rank, f.requirement_id, rcm.check_id, vr.result_id`;
   const storageVersion = toStorageProjectVersionId(projectVersionId);
   return db.prepare<unknown[], MatrixSqlRow>(sql).all(
@@ -395,7 +422,7 @@ function queryRows(
     staleOnly ? 1 : 0, unprovenOnly ? 1 : 0,
     state, state, state,
     cursor?.rank ?? null, cursor?.rank ?? null, cursor?.rank ?? null,
-    cursor?.requirementId ?? null, input.pageSize,
+    cursor?.requirementId ?? null, input.pageSize + 1,
     input.projectId, storageVersion, generationId,
     input.projectId, storageVersion, generationId,
   );
@@ -497,6 +524,7 @@ function groupRows(
         firmwareMoved || (newestAt !== null && first.requirement_pulled_at > newestAt)
       ),
       unknownCheckCount,
+      suppressedCheckCount: first.suppressed_mapping_count,
       cells,
     };
   });
@@ -541,11 +569,16 @@ export function queryVerificationMatrix(
     cache.baseRevision,
   );
   const sqlRows = queryRows(db, input, projectVersionId, cache.acceptedGenerationId);
-  const rows = groupRows(sqlRows, projectVersionId);
+  const groupedRows = groupRows(sqlRows, projectVersionId);
+  const hasNextPage = groupedRows.length > input.pageSize;
+  const rows = groupedRows.slice(0, input.pageSize);
   const totals = rollup(sqlRows);
-  const lastSqlRow = sqlRows.at(-1);
+  const lastRequirementId = rows.at(-1)?.requirementId;
+  const lastSqlRow = lastRequirementId
+    ? sqlRows.find((row) => row.requirement_id === lastRequirementId)
+    : undefined;
   const total = sqlRows[0]?.total_count ?? 0;
-  const next = rows.length === input.pageSize && lastSqlRow
+  const next = hasNextPage && lastSqlRow
     ? encodeCursor({ rank: lastSqlRow.unproven_rank, requirementId: lastSqlRow.requirement_id })
     : null;
   return {

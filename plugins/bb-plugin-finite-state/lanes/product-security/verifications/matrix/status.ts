@@ -43,6 +43,7 @@ export interface MatrixRow {
   priority: string | null;
   stale: boolean;
   unknownCheckCount: number;
+  suppressedCheckCount: number;
   cells: Record<VerificationTier, VerificationCell>;
 }
 
@@ -60,7 +61,6 @@ export interface MatrixRollup {
 export interface MatrixPageFields {
   row: MatrixRow;
   rollup: MatrixRollup;
-  preferences: { showManual: boolean };
 }
 
 export const WORST_STATE_ORDER: readonly VerificationResultState[] = [

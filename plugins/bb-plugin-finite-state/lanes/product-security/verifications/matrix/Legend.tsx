@@ -2,9 +2,11 @@ import { Icon } from "@bb/shared-ui/icon";
 
 const ITEMS = [
   ["CircleCheck", "Verified"],
-  ["CircleX", "Failed or error"],
+  ["CircleX", "Failed"],
+  ["AlertCircle", "Error"],
   ["AlertTriangle", "Inconclusive"],
   ["Loading", "Running"],
+  ["NewTab", "Skipped"],
   ["Clock", "Mapped, not run"],
   ["NewTab", "No check mapped"],
 ] as const;

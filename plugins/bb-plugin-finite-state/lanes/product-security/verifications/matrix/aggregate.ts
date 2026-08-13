@@ -1,4 +1,5 @@
 import type { CheckModel } from "./tier-map.js";
+import { mapCheckToTier } from "./tier-map.js";
 import {
   WORST_STATE_ORDER,
   type VerificationCell,
@@ -41,8 +42,7 @@ export function aggregateCell(
   latest: readonly VerificationResult[],
 ): VerificationCell {
   const requirementId = latest[0]?.requirementId ?? "";
-  const tier = latest[0]?.tier;
-  if (!tier) throw new Error("aggregateCell requires a tier-scoped result or aggregateCellForTier");
+  const tier = latest[0]?.tier ?? (checks[0] ? mapCheckToTier(checks[0]) : "static");
   return aggregateCellForTier(requirementId, tier, checks, latest);
 }
 
@@ -52,9 +52,7 @@ export function aggregateCellForTier(
   checks: readonly CheckModel[],
   results: readonly VerificationResult[],
 ): VerificationCell {
-  const latest = results.filter(
-    (result) => result.isLatest && result.mappingState === "mapped",
-  );
+  const latest = results.filter((result) => result.isLatest);
   const runIds = Array.from(new Set(latest.flatMap((result) =>
     result.runId ? [result.runId] : [],
   ))).sort();

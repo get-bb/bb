@@ -1,12 +1,14 @@
 // @vitest-environment jsdom
 
 import { createFakePluginHost } from "@bb/plugin-sdk/testing";
+import { loadPluginApp, renderSlot } from "@bb/plugin-sdk/testing/app";
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { createPluginContext } from "../../../../lib/context.js";
 import { rpcContract } from "../../../../shared/contract.js";
-import { aggregateCellForTier, type VerificationResult } from "./aggregate.js";
+import { connectedRemoteStatus } from "../../../../test/app-connections.js";
+import { aggregateCell, aggregateCellForTier, type VerificationResult } from "./aggregate.js";
 import { registerVerificationMatrixBackend } from "./backend.js";
 import type { MatrixFilterValue } from "./MatrixFilters.js";
 import type { MatrixRow, VerificationTier } from "./status.js";
@@ -113,6 +115,7 @@ function matrixRow(index: number): MatrixRow {
     priority: "high",
     stale: index === 0,
     unknownCheckCount: 0,
+    suppressedCheckCount: 0,
     cells,
   };
 }
@@ -149,7 +152,7 @@ describe("verification tier mapping and aggregation", () => {
     expect(mapBenchTierToVerificationTier(tier)).toBe(expected);
   });
 
-  it("uses only latest mapped rows and applies the worst-wins ladder", () => {
+  it("uses all latest evidence rows and applies the worst-wins ladder", () => {
     const cell = aggregateCellForTier(
       "REQ-1",
       "static",
@@ -161,15 +164,16 @@ describe("verification tier mapping and aggregation", () => {
         result("unmapped", "failed", { mappingState: "unmapped" }),
       ],
     );
-    expect(cell.state).toBe("inconclusive");
+    expect(cell.state).toBe("failed");
     expect(cell.checkCount).toBe(2);
     expect(cell.requiredCount).toBe(1);
-    expect(cell.runIds).toEqual(["run-inconclusive", "run-verified"]);
+    expect(cell.runIds).toEqual(["run-inconclusive", "run-unmapped", "run-verified"]);
   });
 
   it("distinguishes mapped-not-run from no mapping", () => {
     expect(aggregateCellForTier("REQ-1", "static", [check("check", "config_check")], []).state).toBe("mapped_not_run");
     expect(aggregateCellForTier("REQ-1", "static", [], []).state).toBe("unmapped");
+    expect(aggregateCell([check("check", "config_check")], []).state).toBe("mapped_not_run");
   });
 });
 
@@ -264,6 +268,11 @@ describe("verification matrix production RPC", () => {
       filters: {},
     }));
     expect(second.items.map((item) => item.key)).toEqual(["REQ-VERIFIED"]);
+    expect(second.next).toBeNull();
+    expect(second.total).toBe(3);
+    expect(second.items[0]?.fields).toMatchObject({
+      rollup: { requirements: 3, failed: 1, verified: 1 },
+    });
 
     const db = createPluginContext(host.bb).db();
     const plan = db.prepare(`EXPLAIN QUERY PLAN SELECT requirement_id
@@ -287,10 +296,90 @@ describe("verification matrix production RPC", () => {
       filters: { unprovenOnly: true },
     }));
     expect(page.items.map((item) => item.key)).toEqual(["REQ-FAILED", "REQ-UNKNOWN"]);
+    const literalWildcard = rpcContract.verificationsMatrix.output.parse(await host.harness.behavior.callRpc("verificationsMatrix", {
+      projectId: PROJECT_ID,
+      projectVersionId: VERSION_ID,
+      pageSize: 200,
+      continuation: null,
+      filters: { text: "%" },
+    }));
+    expect(literalWildcard.items).toEqual([]);
     await host.harness.lifecycle.dispose();
   });
 
-  it("defaults the manual preference off and persists it through the lane RPC", async () => {
+  it("invalidates cached ranks when latest evidence changes without a requirement revision", async () => {
+    const host = insertFixtureRows();
+    const input = {
+      projectId: PROJECT_ID,
+      projectVersionId: VERSION_ID,
+      pageSize: 20,
+      continuation: null,
+      filters: { status: "failed" },
+    };
+    const first = rpcContract.verificationsMatrix.output.parse(
+      await host.harness.behavior.callRpc("verificationsMatrix", input),
+    );
+    expect(first.items.map((item) => item.key)).toEqual(["REQ-FAILED"]);
+    createPluginContext(host.bb).db().prepare(`UPDATE verification_results
+      SET status = 'failed', pulled_at = '2026-08-13T13:00:00.000Z'
+      WHERE result_id = 'result-verified'`).run();
+    const refreshed = rpcContract.verificationsMatrix.output.parse(
+      await host.harness.behavior.callRpc("verificationsMatrix", input),
+    );
+    expect(refreshed.items.map((item) => item.key)).toEqual(["REQ-FAILED", "REQ-VERIFIED"]);
+    await host.harness.lifecycle.dispose();
+  });
+
+  it("keeps failed latest evidence visible without a live mapping and identifies suppressed mappings", async () => {
+    const host = insertFixtureRows();
+    const db = createPluginContext(host.bb).db();
+    const snapshot = db.prepare(`INSERT INTO base_snapshot (
+      project_id, project_version_id, entity_kind, generation_id, entity_key,
+      remote_id, payload, content_hash, pulled_at
+    ) VALUES (?, ?, 'requirement', ?, ?, ?, ?, ?, ?)`);
+    for (const id of ["REQ-NOMAP", "REQ-SUPPRESSED"] as const) {
+      snapshot.run(
+        PROJECT_ID, VERSION_ID, GENERATION_ID, `key-${id}`, id,
+        JSON.stringify({ id, ears: { text: `${id} shall expose failed evidence`, pattern: "ubiquitous" } }),
+        `hash-${id}`, NOW,
+      );
+    }
+    db.prepare(`INSERT INTO requirement_check_mappings (
+      project_id, project_version_id, generation_id, requirement_key, check_id,
+      is_required, coverage_level, suppressed, raw, pulled_at
+    ) VALUES (?, ?, ?, 'key-REQ-SUPPRESSED', 'check-static', 1, NULL, 1, '{}', ?)`)
+      .run(PROJECT_ID, VERSION_ID, GENERATION_ID, NOW);
+    const insertResult = db.prepare(`INSERT INTO verification_results (
+      project_id, project_version_id, generation_id, result_id, run_id,
+      requirement_key, check_id, tier, status, outcome, confidence,
+      evidence_summary, result_data, measured, executed_at, executed_by,
+      failure_reason, remediation_suggestion, fs_version_id, fs_version_name,
+      is_latest, superseded_by, sla_status, mapping_state, raw, pulled_at
+    ) VALUES (?, ?, ?, ?, NULL, ?, 'check-static', 'static', 'failed', NULL, NULL,
+      NULL, NULL, NULL, ?, NULL, NULL, NULL, ?, NULL, 1, NULL, NULL, 'mapped', '{}', ?)`);
+    insertResult.run(PROJECT_ID, VERSION_ID, GENERATION_ID, "result-nomap", "key-REQ-NOMAP", NOW, VERSION_ID, NOW);
+    insertResult.run(PROJECT_ID, VERSION_ID, GENERATION_ID, "result-suppressed", "key-REQ-SUPPRESSED", NOW, VERSION_ID, NOW);
+
+    const page = rpcContract.verificationsMatrix.output.parse(await host.harness.behavior.callRpc("verificationsMatrix", {
+      projectId: PROJECT_ID,
+      projectVersionId: VERSION_ID,
+      pageSize: 20,
+      continuation: null,
+      filters: { status: "failed" },
+    }));
+    expect(page.total).toBe(3);
+    expect(page.items.map((item) => item.key)).toEqual(["REQ-FAILED", "REQ-NOMAP", "REQ-SUPPRESSED"]);
+    for (const item of page.items) {
+      expect(item.fields).toMatchObject({ row: { cells: { static: { state: "failed" } } } });
+    }
+    expect(page.items.find((item) => item.key === "REQ-NOMAP")?.fields)
+      .toMatchObject({ row: { suppressedCheckCount: 0 } });
+    expect(page.items.find((item) => item.key === "REQ-SUPPRESSED")?.fields)
+      .toMatchObject({ row: { suppressedCheckCount: 1 } });
+    await host.harness.lifecycle.dispose();
+  });
+
+  it("reads the manual preference independently of zero-row matrix pages", async () => {
     const host = insertFixtureRows();
     const input = {
       projectId: PROJECT_ID,
@@ -299,20 +388,25 @@ describe("verification matrix production RPC", () => {
       continuation: null,
       filters: { unprovenOnly: false },
     };
-    const initial = rpcContract.verificationsMatrix.output.parse(
-      await host.harness.behavior.callRpc("verificationsMatrix", input),
-    );
-    expect(initial.items[0]?.fields.preferences).toEqual({ showManual: false });
+    await expect(host.harness.behavior.callRpc("verificationMatrixPreferenceGet", {
+      projectId: PROJECT_ID,
+    })).resolves.toEqual({ showManual: false });
 
     await expect(host.harness.behavior.callRpc("verificationMatrixPreferenceSet", {
       projectId: PROJECT_ID,
       showManual: true,
     })).resolves.toEqual({ showManual: true });
 
-    const saved = rpcContract.verificationsMatrix.output.parse(
-      await host.harness.behavior.callRpc("verificationsMatrix", input),
+    const empty = rpcContract.verificationsMatrix.output.parse(
+      await host.harness.behavior.callRpc("verificationsMatrix", {
+        ...input,
+        filters: { text: "does-not-exist" },
+      }),
     );
-    expect(saved.items[0]?.fields.preferences).toEqual({ showManual: true });
+    expect(empty.items).toEqual([]);
+    await expect(host.harness.behavior.callRpc("verificationMatrixPreferenceGet", {
+      projectId: PROJECT_ID,
+    })).resolves.toEqual({ showManual: true });
     await host.harness.lifecycle.dispose();
   });
 });
@@ -352,10 +446,89 @@ describe("verification matrix UI", () => {
     expect(view.getByLabelText("Loading verification matrix")).toBeTruthy();
     view.rerender(<VerificationMatrixView {...props} message={null} rows={[]} state="ready" />);
     expect(view.getByText("No verification rows")).toBeTruthy();
+    expect(view.getByLabelText("Verification matrix filters")).toBeTruthy();
+    view.rerender(<VerificationMatrixView {...props} filters={{ ...props.filters, tier: "manual" }} message={null} rows={[matrixRow(0)]} state="ready" total={1} />);
+    expect(view.getByRole("columnheader", { name: "Manual" })).toBeTruthy();
+    expect(view.getByText("Manual evidence is shown because the Manual tier filter is active.")).toBeTruthy();
     view.rerender(<VerificationMatrixView {...props} message="Refresh fault" rows={[matrixRow(0)]} state="error" total={1} />);
     expect(view.getByText(/Refresh fault/u)).toBeTruthy();
     expect(await view.findByText("Stale")).toBeTruthy();
+    view.rerender(<VerificationMatrixView {...props} message="Refresh fault" rows={[]} state="error" />);
+    expect(view.getByLabelText("Verification matrix filters")).toBeTruthy();
     view.rerender(<VerificationMatrixView {...props} message={null} rows={[]} state="unconfigured" />);
     expect(view.getByText("Choose a project")).toBeTruthy();
+  });
+
+  it("refreshes the full loaded range after paging instead of collapsing to page one", async () => {
+    const allRows = Array.from({ length: 201 }, (_, index) => matrixRow(index));
+    allRows[0]!.cells.static = aggregateCellForTier(
+      allRows[0]!.requirementId,
+      "static",
+      [check("running-check", "config_check")],
+      [result("running-result", "running", { requirementId: allRows[0]!.requirementId })],
+    );
+    const requests: Array<{ continuation: string | null; pageSize: number }> = [];
+    const matrixPage = (rawInput: unknown) => {
+      const input = rpcContract.verificationsMatrix.input.parse(rawInput);
+      requests.push(input);
+      const selected = input.continuation
+        ? allRows.slice(200)
+        : allRows.slice(0, input.pageSize);
+      return {
+        items: selected.map((row) => ({
+          projectId: PROJECT_ID,
+          projectVersionId: VERSION_ID,
+          kind: "verification-matrix-row",
+          key: row.requirementId,
+          label: row.title,
+          fields: {
+            row,
+            rollup: {
+              requirements: allRows.length,
+              verified: 200,
+              failed: 0,
+              error: 0,
+              inconclusive: 0,
+              running: 1,
+              pending: 0,
+              skipped: 0,
+            },
+          },
+        })),
+        total: allRows.length,
+        next: selected.length < allRows.length && input.continuation === null ? "next-page" : null,
+        cache: {
+          state: "fresh",
+          asOf: NOW,
+          message: null,
+          acceptedGenerationId: GENERATION_ID,
+          baseRevision: 1,
+        },
+      };
+    };
+    const app = await loadPluginApp(() => import("../../../../app.js"));
+    const panel = app.navPanels.find((candidate) => candidate.id === "product-security");
+    if (!panel) throw new Error("Product Security panel was not registered");
+    const slot = renderSlot(panel, { subPath: "verifications" }, {
+      context: { projectId: PROJECT_ID, threadId: null },
+      rpc: {
+        connectionsStatus: connectedRemoteStatus,
+        verificationMatrixPreferenceGet: () => ({ showManual: false }),
+        verificationMatrixPreferenceSet: (input) => input,
+        verificationsMatrix: matrixPage,
+      },
+    });
+    expect(await slot.findByRole("button", { name: "Load more unproven requirements" })).toBeTruthy();
+    fireEvent.click(slot.getByRole("button", { name: "Load more unproven requirements" }));
+    await waitFor(() => expect(requests.at(-1)).toMatchObject({ continuation: "next-page" }));
+    await waitFor(() => expect(slot.queryByRole("button", { name: "Load more unproven requirements" })).toBeNull());
+
+    await slot.behavior.emitRealtime("verifications:changed", { projectId: PROJECT_ID });
+    await waitFor(() => expect(requests.slice(-2)).toEqual([
+      expect.objectContaining({ continuation: null, pageSize: 200 }),
+      expect.objectContaining({ continuation: "next-page", pageSize: 1 }),
+    ]));
+    expect(slot.getByRole("grid").getAttribute("aria-rowcount")).toBe("202");
+    slot.lifecycle.unmount();
   });
 });

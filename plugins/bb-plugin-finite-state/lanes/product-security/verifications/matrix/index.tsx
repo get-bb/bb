@@ -39,6 +39,7 @@ const rowSchema = z.object({
   priority: z.string().nullable(),
   stale: z.boolean(),
   unknownCheckCount: z.number().int().nonnegative(),
+  suppressedCheckCount: z.number().int().nonnegative(),
   cells: cellsSchema,
 }).strict();
 const rollupSchema = z.object({
@@ -54,7 +55,6 @@ const rollupSchema = z.object({
 const fieldsSchema = z.object({
   row: rowSchema,
   rollup: rollupSchema,
-  preferences: z.object({ showManual: z.boolean() }).strict(),
 }).strict();
 
 function signalProjectId(payload: unknown): string | null {
@@ -86,44 +86,62 @@ export function VerificationMatrix({ projectId }: { projectId: string }): React.
   const [revision, setRevision] = useState(0);
   const requestEpoch = useRef(0);
   const projectVersionId = useRef<string | null>(null);
+  const loadedCount = useRef(200);
+  const queryKey = `${projectId}:${filters.text}:${filters.tier}:${filters.status}:${filters.unprovenOnly}`;
+  const previousQueryKey = useRef("");
   const running = rows.some((row) => VERIFICATION_TIERS.some((tier) => row.cells[tier].state === "running"));
 
-  const load = useCallback(async (continuation: string | null, epoch: number) => {
+  const load = useCallback(async (continuation: string | null, epoch: number, replaceLimit = 200) => {
     if (!projectId) return;
     if (continuation === null) setState("loading");
     try {
-      const request = {
-        projectId,
-        projectVersionId: projectVersionId.current,
-        pageSize: 200,
-        continuation,
-        filters: {
-          text: filters.text,
-          tier: filters.tier === "all" ? null : filters.tier,
-          status: filters.status === "all" ? null : filters.status,
-          unprovenOnly: filters.unprovenOnly,
-        },
-      };
-      const page = await rpc.call("verificationsMatrix", request);
-      if (requestEpoch.current !== epoch) return;
-      const parsed = page.items.map((item) => fieldsSchema.parse(item.fields));
-      const resolvedVersion = page.items[0]?.projectVersionId;
-      if (resolvedVersion !== undefined) projectVersionId.current = resolvedVersion;
-      setRows((current) => continuation === null
-        ? parsed.map((item) => item.row)
-        : [...current, ...parsed.map((item) => item.row).filter((row) =>
-          !current.some((existing) => existing.requirementId === row.requirementId),
-        )]);
-      setRollup(parsed[0]?.rollup ?? null);
-      const savedPreference = parsed[0]?.preferences.showManual;
-      if (savedPreference !== undefined) {
-        setFilters((current) => current.showManual === savedPreference
-          ? current
-          : { ...current, showManual: savedPreference });
+      const parsed: Array<z.infer<typeof fieldsSchema>> = [];
+      let requestContinuation = continuation;
+      let remaining = continuation === null ? replaceLimit : 200;
+      let responseNext: string | null = null;
+      let responseTotal = 0;
+      let responseMessage: string | null = null;
+      do {
+        const input = {
+          projectId,
+          projectVersionId: projectVersionId.current,
+          pageSize: Math.min(200, remaining),
+          continuation: requestContinuation,
+          filters: {
+            text: filters.text,
+            tier: filters.tier === "all" ? null : filters.tier,
+            status: filters.status === "all" ? null : filters.status,
+            unprovenOnly: filters.unprovenOnly,
+          },
+        };
+        const page = await rpc.call("verificationsMatrix", input);
+        if (requestEpoch.current !== epoch) return;
+        const pageFields = page.items.map((item) => fieldsSchema.parse(item.fields));
+        parsed.push(...pageFields);
+        const resolvedVersion = page.items[0]?.projectVersionId;
+        if (resolvedVersion !== undefined) projectVersionId.current = resolvedVersion;
+        remaining -= pageFields.length;
+        responseNext = page.next;
+        responseTotal = page.total ?? pageFields.length;
+        responseMessage = page.cache.message;
+        if (continuation !== null || page.next === null || pageFields.length === 0) break;
+        requestContinuation = page.next;
+      } while (remaining > 0);
+      setRows((current) => {
+        const nextRows = continuation === null
+          ? parsed.map((item) => item.row)
+          : [...current, ...parsed.map((item) => item.row).filter((row) =>
+            !current.some((existing) => existing.requirementId === row.requirementId),
+          )];
+        loadedCount.current = Math.max(200, nextRows.length);
+        return nextRows;
+      });
+      if (continuation === null || parsed.length > 0) {
+        setRollup(parsed[0]?.rollup ?? null);
+        setTotal(responseTotal);
       }
-      setTotal(page.total ?? parsed.length);
-      setNext(page.next);
-      setMessage(page.cache.message);
+      setNext(responseNext);
+      setMessage(responseMessage);
       setState("ready");
     } catch (error) {
       if (requestEpoch.current !== epoch) return;
@@ -134,16 +152,31 @@ export function VerificationMatrix({ projectId }: { projectId: string }): React.
 
   useEffect(() => {
     projectVersionId.current = null;
-  }, [projectId]);
+    if (!projectId) return;
+    void rpc.call("verificationMatrixPreferenceGet", { projectId }).then(({ showManual }) => {
+      setFilters((current) => current.showManual === showManual
+        ? current
+        : { ...current, showManual });
+    }).catch(() => {
+      setMessage("The manual-column preference could not be read.");
+    });
+  }, [projectId, rpc]);
 
   useEffect(() => {
     const epoch = ++requestEpoch.current;
-    const timer = window.setTimeout(() => void load(null, epoch), filters.text ? 180 : 0);
+    const filtersChanged = previousQueryKey.current !== queryKey;
+    previousQueryKey.current = queryKey;
+    if (filtersChanged) loadedCount.current = 200;
+    const replaceLimit = filtersChanged ? 200 : loadedCount.current;
+    const timer = window.setTimeout(
+      () => void load(null, epoch, replaceLimit),
+      filters.text ? 180 : 0,
+    );
     return () => {
       window.clearTimeout(timer);
       if (requestEpoch.current === epoch) requestEpoch.current += 1;
     };
-  }, [load, revision, filters.text]);
+  }, [load, queryKey, revision, filters.text]);
 
   useEffect(() => {
     if (!running) return;

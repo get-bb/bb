@@ -9,6 +9,10 @@ const verificationMatrixRpcContract = {
 } as const;
 
 export const verificationMatrixPreferenceRpcContract = defineRpcContract({
+  verificationMatrixPreferenceGet: {
+    input: z.object({ projectId: z.string().min(1) }).strict(),
+    output: z.object({ showManual: z.boolean() }).strict(),
+  },
   verificationMatrixPreferenceSet: {
     input: z.object({
       projectId: z.string().min(1),
@@ -30,16 +34,12 @@ export function registerVerificationMatrixBackend(
     ...verificationMatrixRpcContract,
     ...verificationMatrixPreferenceRpcContract,
   }, {
-    async verificationsMatrix(input) {
+    verificationsMatrix(input) {
+      return queryVerificationMatrix(ctx.db(), input);
+    },
+    async verificationMatrixPreferenceGet(input) {
       const showManual = (await bb.storage.kv.get<boolean>(preferenceKey(input.projectId))) ?? false;
-      const page = queryVerificationMatrix(ctx.db(), input);
-      return {
-        ...page,
-        items: page.items.map((item) => ({
-          ...item,
-          fields: { ...item.fields, preferences: { showManual } },
-        })),
-      };
+      return { showManual };
     },
     async verificationMatrixPreferenceSet(input) {
       await bb.storage.kv.set(preferenceKey(input.projectId), input.showManual);

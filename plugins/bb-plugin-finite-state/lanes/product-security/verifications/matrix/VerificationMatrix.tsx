@@ -57,7 +57,7 @@ export function VerificationMatrixView({
   const [focus, setFocus] = useState({ row: 0, column: 0 });
   const columns = useMemo<VerificationTier[]>(() => {
     const visible: VerificationTier[] = ["static", "emulation", "hil", "hardware"];
-    if (filters.showManual) visible.push("manual");
+    if (filters.showManual || filters.tier === "manual") visible.push("manual");
     return filters.tier === "all" ? visible : visible.filter((tier) => tier === filters.tier);
   }, [filters.showManual, filters.tier]);
   const virtualizer = useVirtualizer({
@@ -73,8 +73,23 @@ export function VerificationMatrixView({
   if (state === "loading" && rows.length === 0) {
     return <div aria-label="Loading verification matrix" className="space-y-2 p-4" role="status">{[0, 1, 2, 3, 4].map((key) => <div className="h-16 animate-pulse rounded-md bg-muted" key={key} />)}<span className="sr-only">Loading verification evidence</span></div>;
   }
-  if (state === "error" && rows.length === 0) return <CenteredState detail={message ?? "The accepted verification cache could not be read."} onRetry={onRefresh} title="Verification evidence unavailable" />;
-  if (state === "ready" && rows.length === 0) return <CenteredState detail="No requirements are available in the accepted cache, or none match the current filters. Add requirement YAML and pull it through Sync, or clear the filters." onRetry={onRefresh} title="No verification rows" />;
+  if ((state === "error" || state === "ready") && rows.length === 0) {
+    return (
+      <section aria-label="Requirement verification matrix" className="flex h-full min-h-0 flex-col bg-background text-foreground">
+        <MatrixFilters onChange={onFiltersChange} onRefresh={onRefresh} value={filters} />
+        {filters.tier === "manual" && !filters.showManual ? (
+          <div className="border-b border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground" role="status">Manual evidence is shown because the Manual tier filter is active.</div>
+        ) : null}
+        <CenteredState
+          detail={state === "error"
+            ? message ?? "The accepted verification cache could not be read."
+            : "No requirements are available in the accepted cache, or none match the current filters. Add requirement YAML and pull it through Sync, or clear the filters."}
+          onRetry={onRefresh}
+          title={state === "error" ? "Verification evidence unavailable" : "No verification rows"}
+        />
+      </section>
+    );
+  }
 
   const focusCell = (rowIndex: number, columnIndex: number): void => {
     const boundedRow = Math.max(0, Math.min(rows.length - 1, rowIndex));
@@ -94,6 +109,9 @@ export function VerificationMatrixView({
         </div>
       ) : null}
       <MatrixFilters onChange={onFiltersChange} onRefresh={onRefresh} value={filters} />
+      {filters.tier === "manual" && !filters.showManual ? (
+        <div className="border-b border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground" role="status">Manual evidence is shown because the Manual tier filter is active.</div>
+      ) : null}
       <div
         aria-busy={state === "loading"}
         aria-colcount={columns.length + 1}
@@ -126,6 +144,7 @@ export function VerificationMatrixView({
                       <span className="shrink-0 font-mono text-xs font-semibold">{row.requirementId}</span>
                       {row.stale ? <Badge variant="outline"><Icon aria-hidden="true" className="size-3" name="RotateCcw" />Stale</Badge> : null}
                       {row.unknownCheckCount > 0 ? <Badge variant="destructive">TIER_UNKNOWN ×{row.unknownCheckCount}</Badge> : null}
+                      {row.suppressedCheckCount > 0 ? <Badge variant="outline"><Icon aria-hidden="true" className="size-3" name="EyeOff" />Suppressed mapping ×{row.suppressedCheckCount}</Badge> : null}
                     </div>
                     <p className="mt-1 max-w-xl truncate text-sm text-muted-foreground" title={row.title}>{row.title}</p>
                   </div>
