@@ -351,22 +351,34 @@ async function fsyncTree(rootDir: string): Promise<void> {
   }
 }
 
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await lstat(path);
+    return true;
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      "code" in error &&
+      (error.code === "ENOENT" || error.code === "ENOTDIR")
+    ) {
+      return false;
+    }
+    throw error;
+  }
+}
+
 /** Restore or clean the backup left by a process stop during promotion. */
 export async function recoverInterruptedGitPluginPromotion(
   targetDir: string,
 ): Promise<void> {
   const corruptDir = `${targetDir}.corrupt`;
   const promotingDir = `${targetDir}.promoting`;
-  const corruptExists = await lstat(corruptDir)
-    .then(() => true)
-    .catch(() => false);
+  const corruptExists = await pathExists(corruptDir);
   if (!corruptExists) {
     await rm(promotingDir, { recursive: true, force: true });
     return;
   }
-  const targetExists = await lstat(targetDir)
-    .then(() => true)
-    .catch(() => false);
+  const targetExists = await pathExists(targetDir);
   if (targetExists) {
     await rm(corruptDir, { recursive: true, force: true });
   } else {
