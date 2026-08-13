@@ -1405,6 +1405,79 @@ describe("dispatchCommand", () => {
     ]);
   });
 
+  it("reports a successful Claude update as unverified when the pre-update version check fails", async () => {
+    const dataDir = await makeTempDir("bb-command-dispatch-provider-cli-");
+    const manager = new RuntimeManager({
+      createRuntime,
+      dataDir,
+      provisionWorkspace: async () => createWorkspace(),
+    });
+    const getProviderCliStatusForProvider = vi
+      .fn()
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(
+        claudeCodeStatus({
+          currentVersion: "2.1.220",
+          latestVersion: "2.1.227",
+        }),
+      );
+
+    const result = await dispatchOnlineRpcCommand(
+      {
+        type: "provider_cli.install",
+        provider: "claudeCode",
+        actionKind: "update",
+      },
+      {
+        dataDir,
+        eventSink: {
+          emit: vi.fn(),
+          flush: vi.fn(async () => undefined),
+        },
+        fetchProjectAttachment: async () => {
+          throw new Error("Unexpected project attachment fetch");
+        },
+        getProviderCliStatusForProvider,
+        runtimeManager: manager,
+        streamProviderCliInstall: () =>
+          createProviderCliInstallEventStream([
+            {
+              type: "started",
+              provider: "claudeCode",
+              command: "claude update",
+            },
+            {
+              type: "completed",
+              provider: "claudeCode",
+              exitCode: 0,
+              signal: null,
+              success: true,
+            },
+          ]),
+        threadStorageRootPath: "/tmp/bb-thread-storage",
+      },
+    );
+
+    expect(getProviderCliStatusForProvider).toHaveBeenCalledTimes(2);
+    expect(result.events).toEqual([
+      expect.objectContaining({ type: "started" }),
+      expect.objectContaining({
+        type: "error",
+        provider: "claudeCode",
+        message: expect.stringContaining(
+          "bb could not read /Users/me/.local/bin/claude's version before the update",
+        ),
+      }),
+      {
+        type: "completed",
+        provider: "claudeCode",
+        exitCode: 0,
+        signal: null,
+        success: false,
+      },
+    ]);
+  });
+
   it("accepts a Claude update that advances when the release channel is unknown", async () => {
     const verification = await runSuccessfulClaudeCodeUpdateVerification({
       before: claudeCodeStatus({

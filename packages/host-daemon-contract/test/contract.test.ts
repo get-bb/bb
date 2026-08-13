@@ -1069,7 +1069,7 @@ describe("host-daemon command schemas", () => {
   // mixed version. Version 113 carried the Devin Desktop open target rename
   // and remains part of the protocol lineage.
   it("uses protocol version 117 for context-cleared provider events", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(117);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(118);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {

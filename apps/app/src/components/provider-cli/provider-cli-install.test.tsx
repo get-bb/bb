@@ -297,24 +297,38 @@ describe("useProviderCliInstallRunner", () => {
     expect(remounted.result.current.runningJobKey).toBe("host_1:claudeCode");
   });
 
-  it("reports a failed install with a log the user can still open", async () => {
+  it("keeps a failed install and its stderr available for a retry", async () => {
     const { result } = renderRunner();
+    const issue = issueForProvider("codex");
 
     act(() => {
       result.current.startInstall({
         hostId: "host_1",
-        issue: issueForProvider("codex"),
+        issue,
       });
     });
 
     await act(async () => {
-      completeInstall(installAt(0), {
-        type: "completed",
-        provider: "codex",
-        success: false,
-        exitCode: 1,
-        signal: null,
-      });
+      installAt(0).resolve([
+        {
+          type: "started",
+          provider: "codex",
+          command: "codex update",
+        },
+        {
+          type: "output",
+          provider: "codex",
+          stream: "stderr",
+          text: "permission denied\n",
+        },
+        {
+          type: "completed",
+          provider: "codex",
+          success: false,
+          exitCode: 1,
+          signal: null,
+        },
+      ]);
     });
 
     expect(appToastMock.error).toHaveBeenCalledWith(
@@ -324,5 +338,17 @@ describe("useProviderCliInstallRunner", () => {
         action: expect.objectContaining({ label: "View log" }),
       }),
     );
+    expect(result.current.failuresByJobKey.get("host_1:codex")).toMatchObject({
+      issueFingerprint: issue.fingerprint,
+      logDialogState: {
+        message: "Command exited with code 1",
+        log: "$ codex update\npermission denied\n",
+      },
+    });
+
+    act(() => {
+      result.current.startInstall({ hostId: "host_1", issue });
+    });
+    expect(result.current.failuresByJobKey.has("host_1:codex")).toBe(false);
   });
 });
