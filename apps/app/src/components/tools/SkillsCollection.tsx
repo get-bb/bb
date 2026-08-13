@@ -288,8 +288,19 @@ export function SkillsOverview({
   const [libraryViewport, setLibraryViewport] = useState<HTMLDivElement | null>(
     null,
   );
-  const libraryPageSize = useResourceViewportPageSize(libraryViewport);
   const normalizedQuery = query.trim().toLowerCase();
+  // One projection identity for both the page selection and the row heights
+  // the page size is measured from.
+  const libraryResetKey = [
+    normalizedQuery,
+    providerFilters.join(","),
+    sourceFilters.join(","),
+    sortMode,
+    sortDirection,
+  ].join("\u0000");
+  const libraryPageSize = useResourceViewportPageSize(libraryViewport, {
+    resetKey: libraryResetKey,
+  });
   const providerCounts = useMemo(() => {
     const counts = new Map<ResourceProviderFilter, number>();
     for (const skill of skills) {
@@ -378,13 +389,7 @@ export function SkillsOverview({
   ]);
   const libraryPagination = useResourcePagination(visibleSkills, {
     pageSize: libraryPageSize,
-    resetKey: [
-      normalizedQuery,
-      providerFilters.join(","),
-      sourceFilters.join(","),
-      sortMode,
-      sortDirection,
-    ].join("\u0000"),
+    resetKey: libraryResetKey,
   });
   const hasLibraryPagination =
     !hasError &&
