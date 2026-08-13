@@ -26,7 +26,15 @@ describe("RunDetail", () => {
     const { BenchRunCard } = await import("./bench-run-card.js");
     const slot = renderSlot({ component: () => <BenchRunCard id="run-1" /> }, {}, {
       context: { projectId: "p1" },
-      rpc: { benchRunGet: () => detail(), benchLogsList: () => ({ items: [], total: 0, next: null, cache }) },
+      rpc: {
+        benchRunGet: (input: unknown) => {
+          if (typeof input !== "object" || input === null || Reflect.get(input, "runId") !== "run-1") {
+            throw new Error("BENCH_RUN_NOT_FOUND");
+          }
+          return detail();
+        },
+        benchLogsList: () => ({ items: [], total: 0, next: null, cache }),
+      },
     });
     expect(await slot.findByText("run-1")).toBeTruthy();
     expect(slot.getByText("Configuration")).toBeTruthy();
@@ -35,7 +43,10 @@ describe("RunDetail", () => {
     expect(slot.getByText("Artifacts")).toBeTruthy();
     expect(slot.getByText("Attestation")).toBeTruthy();
     expect(slot.getByText("OTA verdict")).toBeTruthy();
-    expect(slot.inspection.rpcCalls[0]).toMatchObject({ method: "benchRunGet", input: { projectId: "p1", projectVersionId: null, runId: "run-1" } });
+    expect(slot.inspection.rpcCalls).toContainEqual(expect.objectContaining({
+      method: "benchLogsList",
+      input: expect.objectContaining({ projectVersionId: "v1", runId: "run-1" }),
+    }));
   });
 
   it("renders unknown-run recovery and stale cache truthfully", async () => {
@@ -46,5 +57,43 @@ describe("RunDetail", () => {
     const stale = renderSlot({ component: () => <RunDetail projectId="p1" projectVersionId="v1" runId="run-1" /> }, {}, { rpc: { benchRunGet: () => detail("stale"), benchLogsList: () => ({ items: [], total: 0, next: null, cache }) } });
     expect(await stale.findByText("cached")).toBeTruthy();
     expect(stale.getByRole("button", { name: "Retry" })).toBeTruthy();
+  });
+
+  it("carries the locally resolved project version from thread lookup into detail", async () => {
+    const { BenchThreadRunDetail } = await import("./run-detail.js");
+    const slot = renderSlot(
+      { component: BenchThreadRunDetail },
+      { threadId: "thread-1", params: null },
+      {
+        context: { projectId: "p1", threadId: "thread-1" },
+        rpc: {
+          benchRunsList: () => ({
+            items: [{
+              projectId: "p1",
+              projectVersionId: "v1",
+              kind: "verificationRun",
+              key: "run-1",
+              label: "tier0 completed",
+              fields: { threadId: "thread-1" },
+            }],
+            total: 1,
+            next: null,
+            cache,
+          }),
+          benchRunGet: (input: unknown) => {
+            if (typeof input !== "object" || input === null || Reflect.get(input, "projectVersionId") !== "v1") {
+              throw new Error("BENCH_RUN_NOT_FOUND");
+            }
+            return detail();
+          },
+          benchLogsList: () => ({ items: [], total: 0, next: null, cache }),
+        },
+      },
+    );
+    expect(await slot.findByText("run-1")).toBeTruthy();
+    expect(slot.inspection.rpcCalls).toContainEqual(expect.objectContaining({
+      method: "benchRunGet",
+      input: expect.objectContaining({ projectVersionId: "v1", runId: "run-1" }),
+    }));
   });
 });

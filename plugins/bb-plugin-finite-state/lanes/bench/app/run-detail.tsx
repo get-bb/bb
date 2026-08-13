@@ -168,7 +168,7 @@ export function RunDetail({
         {detail.stale || error || detail.cacheMessage ? <Alert><Icon name="AlertTriangle" /><AlertDescription className="flex items-center gap-3"><span>{error ? `Showing cached detail. ${error}` : detail.cacheMessage ?? "Showing stale cached detail."}</span><Button className="ml-auto" onClick={() => setRevision((value) => value + 1)} size="sm" variant="outline">Retry</Button></AlertDescription></Alert> : null}
         <section className="rounded-lg border border-border bg-card p-4"><h3 className="text-sm font-semibold">Configuration</h3><dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2"><div><dt className="text-xs text-muted-foreground">Project version</dt><dd className="mt-1 font-mono">{detail.projectVersionId ?? "project latest"}</dd></div><div><dt className="text-xs text-muted-foreground">Target</dt><dd className="mt-1">{detail.target ?? "All configured checks"}</dd></div></dl>{detail.config !== null ? <pre className="mt-3 max-h-48 overflow-auto rounded-md bg-muted p-3 text-xs">{JSON.stringify(detail.config, null, 2)}</pre> : <p className="mt-3 text-xs text-muted-foreground">No deployment configuration was recorded.</p>}</section>
         <section className="rounded-lg border border-border bg-card p-4"><h3 className="text-sm font-semibold">Requirement and check results</h3>{detail.results.length === 0 ? <p className="mt-3 text-sm text-muted-foreground">No check results have arrived.</p> : <div className="mt-3 space-y-2">{detail.results.map((result, index) => <div className="rounded-md border border-border bg-background p-3" key={`${result.requirementId}-${result.checkId}-${index}`}><div className="flex flex-wrap items-center gap-2"><Badge variant="outline">{result.outcome}</Badge><span className="text-sm font-medium">{result.requirementId}</span><span className="font-mono text-xs text-muted-foreground">{result.checkId}</span></div>{result.evidenceSummary ? <p className="mt-2 text-xs text-muted-foreground">{result.evidenceSummary}</p> : null}</div>)}</div>}</section>
-        <LogTail projectId={projectId} projectVersionId={projectVersionId} runId={runId} />
+        <LogTail projectId={projectId} projectVersionId={detail.projectVersionId} runId={runId} />
         <section className="rounded-lg border border-border bg-card p-4"><h3 className="text-sm font-semibold">Artifacts</h3><div className="mt-3"><ArtifactList artifacts={detail.artifacts} runId={runId} /></div></section>
         <section className="rounded-lg border border-border bg-card p-4"><div className="flex items-center gap-2"><h3 className="text-sm font-semibold">Attestation</h3>{detail.attestations.length > 0 ? <Button asChild className="ml-auto" size="sm" variant="outline"><a href={attestationDownload}><Icon name="Download" />Download envelope</a></Button> : null}</div>{detail.attestations.length === 0 ? <p className="mt-3 text-sm text-muted-foreground">Unsigned: no attestation metadata is available.</p> : <div className="mt-3 space-y-2">{detail.attestations.map((attestation, index) => <div className="flex items-center gap-2 rounded-md border border-border bg-background p-3" key={`${attestation.subjectDigest}-${index}`}><Badge variant={attestation.verified ? "secondary" : "outline"}>{attestation.verified ? "Verified" : "Unverified"}</Badge><span className="text-xs">{attestation.format}</span><span className="min-w-0 truncate font-mono text-xs text-muted-foreground">{attestation.subjectDigest}</span></div>)}</div>}</section>
         <VerdictCard />
@@ -188,6 +188,7 @@ export function BenchThreadRunDetail({ threadId, params }: PluginThreadPanelProp
   const rpc = useRpc<RpcContract>();
   const suppliedRunId = paramRunId(params);
   const [runId, setRunId] = useState<string | null>(suppliedRunId);
+  const [projectVersionId, setProjectVersionId] = useState<string | null>(null);
   const [resolving, setResolving] = useState(suppliedRunId === null);
   const [resolveError, setResolveError] = useState<string | null>(null);
   useEffect(() => {
@@ -196,7 +197,13 @@ export function BenchThreadRunDetail({ threadId, params }: PluginThreadPanelProp
     void (async () => {
       const page = await rpc.call("benchRunsList", { projectId, projectVersionId: null, pageSize: 200, continuation: null });
       const match = page.items.find((item) => text(item.fields.threadId) === threadId);
-      if (match) { if (active) setRunId(match.key); return; }
+      if (match) {
+        if (active) {
+          setRunId(match.key);
+          setProjectVersionId(match.projectVersionId);
+        }
+        return;
+      }
       if (active) setResolveError("No cached bench run references this native thread.");
     })().catch((cause: unknown) => { if (active) setResolveError(cause instanceof Error ? cause.message : "Run lookup failed."); }).finally(() => { if (active) setResolving(false); });
     return () => { active = false; };
@@ -204,5 +211,5 @@ export function BenchThreadRunDetail({ threadId, params }: PluginThreadPanelProp
   if (!projectId) return <Alert className="m-4"><Icon name="AlertTriangle" /><AlertDescription>Select the bb project that owns this run.</AlertDescription></Alert>;
   if (resolving) return <div aria-label="Resolving bench run" className="space-y-3 p-4" role="status"><Skeleton className="h-24 w-full" /><Skeleton className="h-48 w-full" /></div>;
   if (!runId) return <Alert className="m-4"><Icon name="AlertCircle" /><AlertDescription>{resolveError ?? "Bench run is unavailable."}</AlertDescription></Alert>;
-  return <RunDetail compact projectId={projectId} projectVersionId={null} runId={runId} />;
+  return <RunDetail compact projectId={projectId} projectVersionId={projectVersionId} runId={runId} />;
 }

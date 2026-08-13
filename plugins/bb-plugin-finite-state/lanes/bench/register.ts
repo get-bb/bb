@@ -1,9 +1,11 @@
 import type { BbPluginApi } from "@bb/plugin-sdk";
 import type Database from "better-sqlite3";
-import { z } from "zod";
 import type { PluginContext } from "../../lib/context.js";
 import type { RemoteServices } from "../../lib/remote/types.js";
-import { toStorageProjectVersionId } from "../../lib/store/index.js";
+import {
+  PROJECT_LEVEL_VERSION_ID,
+  toStorageProjectVersionId,
+} from "../../lib/store/index.js";
 import { rpcContract } from "../../shared/contract.js";
 import {
   createBenchHostJoinCode,
@@ -27,18 +29,7 @@ import { getOtaVerdict } from "./verdict/query.js";
 const benchRpcContract = {
   benchRunsList: rpcContract.benchRunsList,
   benchRunGet: rpcContract.benchRunGet,
-  // Contain the frozen pagedScopedInput inference defect: the runtime schema
-  // already includes runId, but its additive field is lost from TS inference.
-  benchLogsList: {
-    input: z.object({
-      projectId: z.string(),
-      projectVersionId: z.string().nullable(),
-      runId: z.string(),
-      pageSize: z.number().int().min(1).max(200),
-      continuation: z.string().nullable(),
-    }).strict(),
-    output: rpcContract.benchLogsList.output,
-  },
+  benchLogsList: rpcContract.benchLogsList,
   benchVerdictGet: rpcContract.benchVerdictGet,
   benchRunStart: rpcContract.benchRunStart,
   benchHostsList: rpcContract.benchHostsList,
@@ -89,8 +80,71 @@ interface CachedLogLine {
   text: string;
 }
 
+interface ProjectVersionRow {
+  project_version_id: string;
+}
+
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,511}$/u;
 const SAFE_ARTIFACT_NAME = /^[A-Za-z0-9][A-Za-z0-9._ -]{0,199}$/u;
+
+function acceptedBenchProjectVersionId(
+  db: Database.Database,
+  projectId: string,
+): string | null {
+  return db
+    .prepare<[string, string], ProjectVersionRow>(
+      `SELECT s.project_version_id
+         FROM sync_state s
+         JOIN pull_generation g
+           ON g.project_id = s.project_id
+          AND g.project_version_id = s.project_version_id
+          AND g.generation_id = s.accepted_generation_id
+          AND g.status = 'accepted'
+        WHERE s.project_id = ? AND s.entity_kind = 'verificationRun'
+          AND s.project_version_id <> ?
+          AND s.accepted_generation_id IS NOT NULL
+        ORDER BY s.last_pull DESC, s.project_version_id DESC
+        LIMIT 1`,
+    )
+    .get(projectId, PROJECT_LEVEL_VERSION_ID)?.project_version_id ?? null;
+}
+
+function runProjectVersionId(
+  db: Database.Database,
+  projectId: string,
+  requestedProjectVersionId: string | null,
+  runId: string,
+): string | null {
+  if (requestedProjectVersionId !== null) return requestedProjectVersionId;
+  const rows = db
+    .prepare<[string, string], ProjectVersionRow>(
+      `SELECT r.project_version_id
+         FROM verification_runs r
+         JOIN sync_state s
+           ON s.project_id = r.project_id
+          AND s.project_version_id = r.project_version_id
+          AND s.entity_kind = 'verificationRun'
+          AND s.accepted_generation_id = r.generation_id
+         JOIN pull_generation g
+           ON g.project_id = s.project_id
+          AND g.project_version_id = s.project_version_id
+          AND g.generation_id = s.accepted_generation_id
+          AND g.status = 'accepted'
+        WHERE r.project_id = ? AND r.run_id = ?
+        ORDER BY s.last_pull DESC, r.project_version_id DESC
+        LIMIT 2`,
+    )
+    .all(projectId, runId);
+  return rows.length === 1 ? rows[0]!.project_version_id : null;
+}
+
+function frozenBenchLogRunId(input: object): string {
+  // pagedScopedInput currently erases additive keys from its inferred output
+  // type. Runtime validation still uses the frozen schema by reference.
+  const runId = Reflect.get(input, "runId");
+  if (typeof runId !== "string") throw new Error("INVALID_BENCH_RUN_ID");
+  return runId;
+}
 
 function parseJson(value: string | null): unknown | null {
   if (value === null) return null;
@@ -245,16 +299,32 @@ export function registerBench(bb: BbPluginApi, ctx: PluginContext): void {
 
   bb.rpc.register(benchRpcContract, {
     benchRunsList(input) {
+      const projectVersionId = input.projectVersionId ??
+        acceptedBenchProjectVersionId(db, input.projectId);
+      if (projectVersionId === null) {
+        return {
+          items: [],
+          total: 0,
+          next: null,
+          cache: {
+            state: "empty" as const,
+            asOf: null,
+            message: null,
+            acceptedGenerationId: null,
+            baseRevision: 0,
+          },
+        };
+      }
       const page = listBenchRuns(db, {
         projectId: input.projectId,
-        pvId: input.projectVersionId,
+        pvId: projectVersionId,
         pageSize: input.pageSize,
         continuation: input.continuation,
       });
       const surface = runSurfaceRows(
         db,
         input.projectId,
-        input.projectVersionId,
+        projectVersionId,
         page.items.map((run) => run.runId),
       );
       return {
@@ -295,15 +365,22 @@ export function registerBench(bb: BbPluginApi, ctx: PluginContext): void {
       };
     },
     benchRunGet(input) {
+      const projectVersionId = runProjectVersionId(
+        db,
+        input.projectId,
+        input.projectVersionId,
+        input.runId,
+      );
+      if (projectVersionId === null) throw new Error(`BENCH_RUN_NOT_FOUND: ${input.runId}`);
       const detail = getBenchRun(db, {
         projectId: input.projectId,
-        pvId: input.projectVersionId,
+        pvId: projectVersionId,
         runId: input.runId,
       });
       if (!detail) throw new Error(`BENCH_RUN_NOT_FOUND: ${input.runId}`);
       const pageQuery = {
         projectId: input.projectId,
-        pvId: input.projectVersionId,
+        pvId: projectVersionId,
         runId: input.runId,
         pageSize: 50,
         continuation: null,
@@ -314,7 +391,7 @@ export function registerBench(bb: BbPluginApi, ctx: PluginContext): void {
       const stored = runSurfaceRow(
         db,
         input.projectId,
-        input.projectVersionId,
+        projectVersionId,
         input.runId,
       );
       return {
@@ -365,31 +442,39 @@ export function registerBench(bb: BbPluginApi, ctx: PluginContext): void {
       };
     },
     benchLogsList(input) {
-      const row = runSurfaceRow(
+      const runId = frozenBenchLogRunId(input);
+      const projectVersionId = runProjectVersionId(
         db,
         input.projectId,
         input.projectVersionId,
-        input.runId,
+        runId,
       );
-      if (!row) throw new Error(`BENCH_RUN_NOT_FOUND: ${input.runId}`);
+      if (projectVersionId === null) throw new Error(`BENCH_RUN_NOT_FOUND: ${runId}`);
+      const row = runSurfaceRow(
+        db,
+        input.projectId,
+        projectVersionId,
+        runId,
+      );
+      if (!row) throw new Error(`BENCH_RUN_NOT_FOUND: ${runId}`);
       const lines = cachedLogLines(row);
-      const offset = decodeLogCursor(input.continuation, input.runId);
+      const offset = decodeLogCursor(input.continuation, runId);
       const items = lines.slice(offset, offset + input.pageSize);
       const after = offset + items.length;
       const detail = getBenchRun(db, {
         projectId: input.projectId,
-        pvId: input.projectVersionId,
-        runId: input.runId,
+        pvId: projectVersionId,
+        runId,
       });
-      if (!detail) throw new Error(`BENCH_RUN_NOT_FOUND: ${input.runId}`);
+      if (!detail) throw new Error(`BENCH_RUN_NOT_FOUND: ${runId}`);
       return {
         items: items.map((line) => ({
           projectId: input.projectId,
-          projectVersionId: input.projectVersionId,
+          projectVersionId,
           ...line,
         })),
         total: lines.length,
-        next: after < lines.length ? encodeLogCursor(input.runId, after) : null,
+        next: after < lines.length ? encodeLogCursor(runId, after) : null,
         cache: {
           ...detail.cache,
           message:

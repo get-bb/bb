@@ -75,6 +75,17 @@ describe("bench registration", () => {
     const context = createPluginContext(host.bb);
     await registerRemoteServices(host.bb, context);
     registerBench(host.bb, context);
+    await expect(
+      host.harness.behavior.callRpc("benchRunsList", {
+        projectId: "project-a",
+        projectVersionId: null,
+      }),
+    ).resolves.toMatchObject({
+      items: [],
+      total: 0,
+      next: null,
+      cache: { state: "empty", acceptedGenerationId: null },
+    });
     context.db().exec(
       `INSERT INTO pull_generation
          (project_id, project_version_id, generation_id, status,
@@ -140,6 +151,21 @@ describe("bench registration", () => {
       ],
     });
     const runId = requiredNestedString(startedPage, ["items", 0, "key"]);
+    const locallyResolvedPage = await host.harness.behavior.callRpc("benchRunsList", {
+      projectId: "project-a",
+      projectVersionId: null,
+    });
+    expect(locallyResolvedPage).toMatchObject({
+      items: [{ key: runId, projectVersionId: "version-a" }],
+      total: 1,
+    });
+    await expect(
+      host.harness.behavior.callRpc("benchRunGet", {
+        projectId: "project-a",
+        projectVersionId: null,
+        runId,
+      }),
+    ).resolves.toMatchObject({ key: runId, projectVersionId: "version-a" });
     context.db().prepare(
       `UPDATE verification_runs
        SET raw = ?, log_cursor = 'forge-cursor-a'
@@ -160,6 +186,33 @@ describe("bench registration", () => {
       total: 3,
       next: expect.any(String),
     });
+    const defaultedLogPage = await host.harness.behavior.callRpc("benchLogsList", {
+      projectId: "project-a",
+      projectVersionId: null,
+      runId,
+    });
+    expect(defaultedLogPage).toMatchObject({
+      items: [
+        { projectVersionId: "version-a", sequence: 0, text: "one" },
+        { projectVersionId: "version-a", sequence: 1, text: "two" },
+        { projectVersionId: "version-a", sequence: 2, text: "three" },
+      ],
+      next: null,
+    });
+    await expect(
+      host.harness.behavior.callRpc("benchLogsList", {
+        projectId: "project-a",
+        projectVersionId: "@project",
+        runId,
+      }),
+    ).rejects.toThrow();
+    await expect(
+      host.harness.behavior.callRpc("benchLogsList", {
+        projectId: "project-a",
+        projectVersionId: "version-a",
+        runId: "",
+      }),
+    ).rejects.toThrow();
     const secondLogPage = await host.harness.behavior.callRpc("benchLogsList", {
       projectId: "project-a",
       projectVersionId: "version-a",
