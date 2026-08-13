@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import type { BbPluginApi } from "@bb/plugin-sdk";
+import { defineRpcContract, type BbPluginApi } from "@bb/plugin-sdk";
 import type Database from "better-sqlite3";
 import type { PluginContext } from "../../../../lib/context.js";
 import type { Json, RemoteServices } from "../../../../lib/remote/types.js";
@@ -22,7 +22,8 @@ import {
 } from "./adapters.js";
 import {
   architectureEntityPayload,
-  canvasEditingRpcContract,
+  canvasEditingLoadInputSchema,
+  canvasEditingLoadOutputSchema,
   parseArchitectureEntity,
   type CanvasEntityKind,
   type DeletionImpact,
@@ -43,6 +44,13 @@ import {
   type CanvasProjectSource,
   type EditDeps,
 } from "./writer.js";
+
+export const canvasEditingRpcContract = defineRpcContract({
+  canvasEditingLoad: {
+    input: canvasEditingLoadInputSchema,
+    output: canvasEditingLoadOutputSchema,
+  },
+});
 
 const editingCommandContract = {
   taraCommandApply: rpcContract.taraCommandApply,

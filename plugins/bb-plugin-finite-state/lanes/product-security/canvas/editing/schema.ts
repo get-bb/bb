@@ -1,4 +1,3 @@
-import { defineRpcContract } from "@bb/plugin-sdk";
 import { z } from "zod";
 import type { JsonValue } from "../../../../shared/contract.js";
 
@@ -282,36 +281,33 @@ const editingScopeFields = {
 } as const;
 const sha256Schema = z.string().regex(/^[a-f0-9]{64}$/u);
 
-export const canvasEditingRpcContract = defineRpcContract({
-  canvasEditingLoad: {
-    input: z
-      .object({
-        ...editingScopeFields,
-        kind: z.enum(CANVAS_ENTITY_KINDS),
-        slug: stableSlugSchema,
-      })
-      .strict(),
-    output: z.discriminatedUnion("state", [
-      z
-        .object({
-          ...editingScopeFields,
-          state: z.literal("missing"),
-          kind: z.enum(CANVAS_ENTITY_KINDS),
-          slug: stableSlugSchema,
-          file: z.string().trim().min(1).max(1_024),
-        })
-        .strict(),
-      z
-        .object({
-          ...editingScopeFields,
-          state: z.literal("ready"),
-          kind: z.enum(CANVAS_ENTITY_KINDS),
-          slug: stableSlugSchema,
-          file: z.string().trim().min(1).max(1_024),
-          sha256: sha256Schema,
-          fields: z.record(z.string(), canvasJsonValueSchema),
-        })
-        .strict(),
-    ]),
-  },
-});
+export const canvasEditingLoadInputSchema = z
+  .object({
+    ...editingScopeFields,
+    kind: z.enum(CANVAS_ENTITY_KINDS),
+    slug: stableSlugSchema,
+  })
+  .strict();
+
+export const canvasEditingLoadOutputSchema = z.discriminatedUnion("state", [
+  z
+    .object({
+      ...editingScopeFields,
+      state: z.literal("missing"),
+      kind: z.enum(CANVAS_ENTITY_KINDS),
+      slug: stableSlugSchema,
+      file: z.string().trim().min(1).max(1_024),
+    })
+    .strict(),
+  z
+    .object({
+      ...editingScopeFields,
+      state: z.literal("ready"),
+      kind: z.enum(CANVAS_ENTITY_KINDS),
+      slug: stableSlugSchema,
+      file: z.string().trim().min(1).max(1_024),
+      sha256: sha256Schema,
+      fields: z.record(z.string(), canvasJsonValueSchema),
+    })
+    .strict(),
+]);

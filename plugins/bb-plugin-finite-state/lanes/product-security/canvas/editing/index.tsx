@@ -6,11 +6,11 @@ import { useOptionalArchitectureSelection } from "../nodes/selection.js";
 import type { DeletionImpact } from "./commands.js";
 import { DeleteImpactDialog } from "./delete-impact.js";
 import { EntityForm, type CanvasReferenceOptions } from "./forms.js";
+import type { canvasEditingRpcContract } from "./backend.js";
 import {
   architectureEntityPayload,
   canvasJsonValueSchema,
   canvasEntityKindSchema,
-  canvasEditingRpcContract,
   parseArchitectureEntity,
   type ArchitectureYamlEntity,
   type CanvasEntityKind,
