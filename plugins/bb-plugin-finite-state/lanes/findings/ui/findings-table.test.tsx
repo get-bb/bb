@@ -73,7 +73,7 @@ async function renderFindings(
     sidebarThreads: { status: "ready", projects: [{ id: "project-1", name: "Project One", isPersonal: false }] },
     rpc: {
       connectionsStatus: connectedRemoteStatus,
-      cachedProjectVersions: () => options.versions ?? { versions: [{ projectVersionId: "version-1", asOf: "2026-08-13T00:00:00.000Z", state: "fresh" }], selectedProjectVersionId: "version-1" },
+      cachedProjectVersions: () => options.versions ?? { versions: [{ platformProjectId: "platform-project-1", projectVersionId: "version-1", asOf: "2026-08-13T00:00:00.000Z", state: "fresh" }], selectedPlatformProjectId: "platform-project-1", selectedProjectVersionId: "version-1" },
       findingsSavedViewsGet: () => options.saved ?? { views: [], sha256: null, recoveredFromCorrupt: false },
       findingsSavedViewsPut: input => ({ views: typeof input === "object" && input !== null ? Reflect.get(input, "views") : [], sha256: "a".repeat(64), recoveredFromCorrupt: false }),
       findingsUiList: input => list(input),
@@ -93,7 +93,7 @@ describe("findings table panel", () => {
     expect(slot.queryByRole("columnheader", { name: "EPSS" })).toBeNull();
   });
 
-  it("appends cursor pages without duplicate stable keys and retains rows on a page fault", async () => {
+  it("appends cursor pages without duplicate finding ids and retains rows on a page fault", async () => {
     let pageAttempts = 0;
     const { slot } = await renderFindings(input => {
       if (inputField(input, "continuation") === "page-2") {
@@ -119,7 +119,43 @@ describe("findings table panel", () => {
     expect(parseFindingsRoute(`q/${query}`)).toMatchObject({ kind: "table", filter });
     await renderFindings(input => { calls.push(input); return { items: [], total: 0, next: null, cache: freshCache }; }, { subPath: `q/${query}` });
     await waitFor(() => expect(calls.length).toBeGreaterThan(0));
+    expect(inputField(calls.at(-1), "projectId")).toBe("platform-project-1");
     expect(inputField(calls.at(-1), "filters")).toEqual(filter);
+  });
+
+  it("renders every finding when distinct finding ids share a stable key", async () => {
+    const { slot } = await renderFindings(() => ({
+      items: [finding(0, "shared-stable-key"), finding(1, "shared-stable-key")],
+      total: 2,
+      next: null,
+      cache: freshCache,
+    }));
+    expect(await slot.findByText("CVE-2026-0000")).toBeTruthy();
+    expect(slot.getByText("CVE-2026-0001")).toBeTruthy();
+    expect(slot.container.querySelectorAll("[data-finding-row]")).toHaveLength(2);
+    expect(slot.getByText("2 loaded / 2")).toBeTruthy();
+  });
+
+  it("preserves text-filter focus across a debounced route commit", async () => {
+    const { slot } = await renderFindings(() => ({ items: [], total: 0, next: null, cache: freshCache }));
+    const input = slot.getByLabelText("Filter component");
+    input.focus();
+    fireEvent.change(input, { target: { value: "openssl" } });
+    await waitFor(() => {
+      const navigation = slot.inspection.navigateCalls.at(-1);
+      const subPath = navigation?.method === "toPluginPanel" ? navigation.options?.subPath : "";
+      expect(parseFindingsRoute(subPath ?? "")).toMatchObject({ filter: { component: "openssl" } });
+    }, { timeout: 2_000 });
+    expect(slot.getByLabelText("Filter component")).toBe(input);
+    expect(document.activeElement).toBe(input);
+  });
+
+  it("does not query unfiltered findings for a deleted saved-view deep link", async () => {
+    const calls: unknown[] = [];
+    const { slot } = await renderFindings(input => { calls.push(input); return { items: [], total: 0, next: null, cache: freshCache }; }, { subPath: "view/user-deleted" });
+    expect(await slot.findByText("Saved view not found")).toBeTruthy();
+    expect(slot.getByText(/user-deleted/u)).toBeTruthy();
+    expect(calls).toHaveLength(0);
   });
 
   it("preserves grid scroll and roving focus while the detail route opens", async () => {
@@ -166,7 +202,7 @@ describe("findings table panel", () => {
     expect(await stale.slot.findByText("Showing accepted stale data")).toBeTruthy();
     stale.slot.lifecycle.unmount();
 
-    const unconfigured = await renderFindings(() => ({ items: [], total: 0, next: null, cache: freshCache }), { versions: { versions: [], selectedProjectVersionId: null } });
+    const unconfigured = await renderFindings(() => ({ items: [], total: 0, next: null, cache: freshCache }), { versions: { versions: [], selectedPlatformProjectId: null, selectedProjectVersionId: null } });
     expect(await unconfigured.slot.findByText("Choose a findings scope")).toBeTruthy();
   });
 

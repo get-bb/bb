@@ -3,16 +3,21 @@ import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import type { FindingSelection } from "./route.js";
 
-export function FindingsHeader({ projects, projectId, versions, projectVersionId, total, loaded, selection, onProject, onVersion, onSelectPage, onSelectPredicate, onClearSelection }: {
+function scopeValue(platformProjectId: string, projectVersionId: string): string {
+  return `${encodeURIComponent(platformProjectId)}/${encodeURIComponent(projectVersionId)}`;
+}
+
+export function FindingsHeader({ projects, projectId, versions, platformProjectId, projectVersionId, total, loaded, selection, onProject, onVersion, onSelectPage, onSelectPredicate, onClearSelection }: {
   projects: readonly { id: string; name: string }[];
   projectId: string | null;
-  versions: readonly { projectVersionId: string; state: "fresh" | "stale" }[];
+  versions: readonly { platformProjectId: string; projectVersionId: string; state: "fresh" | "stale" }[];
+  platformProjectId: string | null;
   projectVersionId: string | null;
   total: number;
   loaded: number;
   selection: FindingSelection;
   onProject(id: string): void;
-  onVersion(id: string): void;
+  onVersion(platformProjectId: string, projectVersionId: string): void;
   onSelectPage(): void;
   onSelectPredicate(): void;
   onClearSelection(): void;
@@ -24,8 +29,11 @@ export function FindingsHeader({ projects, projectId, versions, projectVersionId
       <select aria-label="Findings project" className="h-8 max-w-52 rounded-md border border-input bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onChange={event => onProject(event.target.value)} value={projectId ?? ""}>
         <option value="">Select project</option>{projects.map(project => <option key={project.id} value={project.id}>{project.name}</option>)}
       </select>
-      <select aria-label="Findings project version" className="h-8 max-w-56 rounded-md border border-input bg-background px-2 font-mono text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" disabled={!projectId} onChange={event => onVersion(event.target.value)} value={projectVersionId ?? ""}>
-        <option value="">Select cached version</option>{versions.map(version => <option key={version.projectVersionId} value={version.projectVersionId}>{version.projectVersionId}{version.state === "stale" ? " · stale" : ""}</option>)}
+      <select aria-label="Findings project version" className="h-8 max-w-64 rounded-md border border-input bg-background px-2 font-mono text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" disabled={!projectId} onChange={event => {
+        const version = versions.find(candidate => scopeValue(candidate.platformProjectId, candidate.projectVersionId) === event.target.value);
+        onVersion(version?.platformProjectId ?? "", version?.projectVersionId ?? "");
+      }} value={platformProjectId && projectVersionId ? scopeValue(platformProjectId, projectVersionId) : ""}>
+        <option value="">Select cached version</option>{versions.map(version => <option key={scopeValue(version.platformProjectId, version.projectVersionId)} value={scopeValue(version.platformProjectId, version.projectVersionId)}>{version.platformProjectId} / {version.projectVersionId}{version.state === "stale" ? " · stale" : ""}</option>)}
       </select>
       <Badge variant="outline">{loaded.toLocaleString()} loaded / {total.toLocaleString()}</Badge>
       {selected > 0 ? <Badge aria-label={`${selected} findings selected`} variant="secondary">{selected.toLocaleString()} selected</Badge> : null}

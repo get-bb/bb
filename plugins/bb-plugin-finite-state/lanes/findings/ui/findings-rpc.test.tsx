@@ -40,33 +40,37 @@ describe("findings UI RPC seams", () => {
   });
 
   it("resolves cached versions and projects conflict state without changing frozen callers", async () => {
-    const host = createFakePluginHost({ pluginId: "findings-ui-projection" });
+    const host = createFakePluginHost({
+      pluginId: "findings-ui-projection",
+      sdk: { projects: { get: ({ projectId }) => ({ id: projectId, sources: [{ hostId: "host-1", path: "/workspace", isDefault: true }] }) } },
+    });
     hosts.push(host);
     const db = createPluginContext(host.bb).db();
     db.prepare(`INSERT INTO pull_generation
       (project_id, project_version_id, generation_id, status, requested_kinds_json, started_at, completed_at, accepted_at, error)
-      VALUES ('project-1','version-1','generation-1','accepted','["finding"]',?,?,?,NULL)`)
+      VALUES ('platform-project-1','version-1','generation-1','accepted','["finding"]',?,?,?,NULL)`)
       .run("2026-08-13T00:00:00.000Z", "2026-08-13T00:00:00.000Z", "2026-08-13T00:00:00.000Z");
     db.prepare(`INSERT INTO sync_state
       (project_id, project_version_id, entity_kind, accepted_generation_id, staging_generation_id, base_revision, staging_continuation, staged_pages, staged_rows, last_pull, error)
-      VALUES ('project-1','version-1','finding','generation-1',NULL,1,NULL,0,0,?,NULL)`)
+      VALUES ('platform-project-1','version-1','finding','generation-1',NULL,1,NULL,0,0,?,NULL)`)
       .run("2026-08-13T00:00:00.000Z");
     db.prepare(`INSERT INTO findings
       (project_id, project_version_id, generation_id, finding_id, stable_key, cve, severity, risk_score, raw, pulled_at)
-      VALUES ('project-1','version-1','generation-1','finding-1','stable-1','CVE-2026-1','critical',10,'{}',?)`)
+      VALUES ('platform-project-1','version-1','generation-1','finding-1','stable-1','CVE-2026-1','critical',10,'{}',?)`)
       .run("2026-08-13T00:00:00.000Z");
     db.prepare(`INSERT INTO overlay_index
       (project_id, project_version_id, entity_kind, stable_key, file_path, file_sha256, local_state, drift_state, indexed_at)
-      VALUES ('project-1','version-1','vexDecision','stable-1','.fs/triage/one.yaml',?,'conflict','needs_completion',?)`)
+      VALUES ('platform-project-1','version-1','vexDecision','stable-1','.fs/triage/one.yaml',?,'conflict','needs_completion',?)`)
       .run("a".repeat(64), "2026-08-13T00:00:00.000Z");
     registerFindingsRpc(host.bb, db);
 
     await expect(host.harness.callRpc("cachedProjectVersions", { projectId: "project-1" })).resolves.toMatchObject({
+      selectedPlatformProjectId: "platform-project-1",
       selectedProjectVersionId: "version-1",
-      versions: [{ projectVersionId: "version-1", state: "fresh" }],
+      versions: [{ platformProjectId: "platform-project-1", projectVersionId: "version-1", state: "fresh" }],
     });
     const page = findingsUiRpcContract.findingsUiList.output.parse(await host.harness.callRpc("findingsUiList", {
-      projectId: "project-1", projectVersionId: "version-1", pageSize: 100, continuation: null,
+      projectId: "platform-project-1", projectVersionId: "version-1", pageSize: 100, continuation: null,
       filters: { localState: ["conflicted"] },
     }));
     expect(page.items).toHaveLength(1);

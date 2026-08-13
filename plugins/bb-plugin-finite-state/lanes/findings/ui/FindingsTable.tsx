@@ -52,7 +52,7 @@ export function FindingsTable({ rows, total, selection, cursorKey, columns, load
   const rowRefs = useRef(new Map<string, HTMLDivElement>());
   const shiftRef = useRef(false);
   const anchorRef = useRef<string | null>(cursorKey);
-  const [activeKey, setActiveKey] = useState(cursorKey ?? rows[0]?.stableKey ?? null);
+  const [activeKey, setActiveKey] = useState(cursorKey ?? rows[0]?.findingId ?? null);
   const visible = new Set(columns);
   const gridColumns = ["32px", ...columns.flatMap(column => COLUMN_WIDTHS[column] ? [COLUMN_WIDTHS[column]] : [])].join(" ");
   const virtualizer = useVirtualizer({
@@ -61,7 +61,7 @@ export function FindingsTable({ rows, total, selection, cursorKey, columns, load
     estimateSize: () => 44,
     overscan: 10,
     initialRect: { width: 1200, height: 720 },
-    getItemKey: index => rows[index]?.stableKey ?? index,
+    getItemKey: index => rows[index]?.findingId ?? index,
   });
   const virtualRows = virtualizer.getVirtualItems();
   const finalIndex = virtualRows.at(-1)?.index ?? 0;
@@ -71,11 +71,11 @@ export function FindingsTable({ rows, total, selection, cursorKey, columns, load
     const bounded = Math.max(0, Math.min(rows.length - 1, index));
     const row = rows[bounded];
     if (!row) return;
-    setActiveKey(row.stableKey);
+    setActiveKey(row.findingId);
     anchorRef.current = row.stableKey;
-    onCursor(row.stableKey);
+    onCursor(row.findingId);
     virtualizer.scrollToIndex(bounded, { align: "auto" });
-    window.requestAnimationFrame(() => rowRefs.current.get(row.stableKey)?.focus());
+    window.requestAnimationFrame(() => rowRefs.current.get(row.findingId)?.focus());
   }
 
   return (
@@ -105,9 +105,9 @@ export function FindingsTable({ rows, total, selection, cursorKey, columns, load
               className="absolute left-0 top-0 grid h-11 min-w-max items-center border-b border-border/60 px-2 text-xs text-foreground hover:bg-muted/60 focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
               data-finding-row
               data-index={virtualRow.index}
-              key={row.stableKey}
+              key={row.findingId}
               onDoubleClick={() => onOpen(row.stableKey)}
-              onFocus={() => { setActiveKey(row.stableKey); anchorRef.current = row.stableKey; onCursor(row.stableKey); }}
+              onFocus={() => { setActiveKey(row.findingId); anchorRef.current = row.stableKey; onCursor(row.findingId); }}
               onKeyDown={event => {
                 if (editingTarget(event.target)) return;
                 if (event.key === "ArrowDown" || event.key === "ArrowUp" || event.key === "Home" || event.key === "End") {
@@ -117,15 +117,15 @@ export function FindingsTable({ rows, total, selection, cursorKey, columns, load
                 } else if (event.key === "Enter") { event.preventDefault(); onOpen(row.stableKey); }
                 else if (event.key === " ") { event.preventDefault(); onSelection(row.stableKey, !isSelected, event.shiftKey, anchorRef.current); }
               }}
-              ref={element => { if (element) rowRefs.current.set(row.stableKey, element); else rowRefs.current.delete(row.stableKey); virtualizer.measureElement(element); }}
+              ref={element => { if (element) rowRefs.current.set(row.findingId, element); else rowRefs.current.delete(row.findingId); virtualizer.measureElement(element); }}
               role="row"
               style={{ gridTemplateColumns: gridColumns, transform: `translateY(${virtualRow.start}px)`, width: "100%" }}
-              tabIndex={activeKey === row.stableKey ? 0 : -1}
+              tabIndex={activeKey === row.findingId ? 0 : -1}
             >
               <div role="gridcell"><Checkbox aria-label={`Select ${row.cve ?? row.stableKey}`} checked={isSelected} onCheckedChange={checked => onSelection(row.stableKey, checked === true, shiftRef.current, anchorRef.current)} onClick={event => { shiftRef.current = event.shiftKey; event.stopPropagation(); }} /></div>
               {visible.has("state") ? <div className={`flex min-w-0 items-center gap-1.5 ${local.className}`} role="gridcell"><Icon aria-hidden="true" className="size-3.5 shrink-0" name={local.icon} /><span className="truncate">{local.label}</span><span className="sr-only">Local state: {local.label}</span></div> : null}
               {visible.has("severity") ? <div className={`font-semibold capitalize ${severityClass(row.severity)}`} role="gridcell">{row.severity ?? "Unknown"}</div> : null}
-              {visible.has("cve") ? <button className="min-w-0 truncate text-left font-mono focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => onOpen(row.stableKey)} role="gridcell" type="button">{row.cve ?? row.findingId}</button> : null}
+              {visible.has("cve") ? <div className="min-w-0" role="gridcell"><button className="w-full truncate text-left font-mono focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => onOpen(row.stableKey)} type="button">{row.cve ?? row.findingId}</button></div> : null}
               {visible.has("component") ? <div className="min-w-0" role="gridcell"><div className="truncate font-medium">{row.componentName ?? row.title ?? "Unknown component"}</div><div className="truncate font-mono text-muted-foreground">{row.componentVersion ?? "version unknown"}</div></div> : null}
               {visible.has("reachability") ? <div className="flex items-center gap-1.5 capitalize" role="gridcell"><Icon aria-hidden="true" className="size-3.5 text-muted-foreground" name="Target" />{row.reachability ?? "unknown"}</div> : null}
               {visible.has("kev") ? <div role="gridcell">{row.inKev || row.inVcKev ? <Badge aria-label={row.inKev ? "CISA Known Exploited Vulnerability" : "VulnCheck Known Exploited Vulnerability"} variant="destructive">{row.inKev ? "KEV" : "VC KEV"}</Badge> : <span className="text-muted-foreground">—</span>}</div> : null}

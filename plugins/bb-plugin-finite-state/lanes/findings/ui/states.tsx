@@ -49,6 +49,19 @@ export function FindingsUnconfiguredState({ detail }: { detail: string }): React
   return <Centered detail={detail} icon="PackageReceive" title="Choose a findings scope" />;
 }
 
+export function FindingsViewNotFound({ name, onReturn }: { name: string; onReturn(): void }): React.JSX.Element {
+  return (
+    <div className="flex min-h-0 flex-1 items-center justify-center p-6">
+      <div className="max-w-md rounded-lg border border-border bg-card p-6 text-center shadow-sm">
+        <Icon aria-hidden="true" className="mx-auto size-8 text-muted-foreground" name="Search" />
+        <h2 className="mt-3 text-base font-semibold">Saved view not found</h2>
+        <p className="mt-2 text-sm leading-6 text-muted-foreground">The saved view “{name}” was deleted or is no longer available in this workspace.</p>
+        <Button className="mt-4" onClick={onReturn} size="sm" variant="outline">Return to findings</Button>
+      </div>
+    </div>
+  );
+}
+
 export function FindingsStaleBanner({ message, onDismiss, onRetry }: { message: string; onDismiss(): void; onRetry(): void }): React.JSX.Element {
   return (
     <Alert className="rounded-none border-x-0 border-t-0" variant="destructive">

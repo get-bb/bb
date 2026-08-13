@@ -20,7 +20,6 @@ import {
   findingsViewSubPath,
   normalizeFindingsFilter,
   parseFindingsRoute,
-  serializeFindingsFilter,
   type FindingsFilter,
   type FindingsUiState,
 } from "./route.js";
@@ -31,6 +30,7 @@ import {
   FindingsPageError,
   FindingsStaleBanner,
   FindingsUnconfiguredState,
+  FindingsViewNotFound,
 } from "./states.js";
 import { FindingsTriageStub } from "./triage/index.js";
 import { useFindings } from "./useFindings.js";
@@ -44,7 +44,8 @@ export function FindingsPanel({ subPath }: PluginNavPanelProps): React.JSX.Eleme
   const rpc = useRpc<typeof findingsUiRpcContract>();
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const projectId = context.projectId ?? selectedProjectId ?? (sidebar.status === "ready" ? sidebar.projects[0]?.id ?? null : null);
-  const [versions, setVersions] = useState<Array<{ projectVersionId: string; asOf: string | null; state: "fresh" | "stale" }>>([]);
+  const [versions, setVersions] = useState<Array<{ platformProjectId: string; projectVersionId: string; asOf: string | null; state: "fresh" | "stale" }>>([]);
+  const [platformProjectId, setPlatformProjectId] = useState<string | null>(null);
   const [projectVersionId, setProjectVersionId] = useState<string | null>(null);
   const [versionLoading, setVersionLoading] = useState(Boolean(projectId));
   const saved = useSavedViews(projectId);
@@ -56,7 +57,8 @@ export function FindingsPanel({ subPath }: PluginNavPanelProps): React.JSX.Eleme
     : route.kind === "table" || route.kind === "finding"
       ? route.filter
       : normalizeFindingsFilter({}), [activeView, route]);
-  const data = useFindings(projectId, projectVersionId, filter);
+  const missingView = route.kind === "view" && !saved.loading && !activeView;
+  const data = useFindings(missingView || (saved.loading && route.kind === "view") ? null : platformProjectId, projectVersionId, filter);
   const [dismissedStale, setDismissedStale] = useState<string | null>(null);
   const [ui, setUi] = useState<FindingsUiState>({
     route: {},
@@ -73,12 +75,15 @@ export function FindingsPanel({ subPath }: PluginNavPanelProps): React.JSX.Eleme
     }).then(result => {
       if (!active) return;
       setVersions(result.versions);
-      setProjectVersionId(current => result.versions.some(version => version.projectVersionId === current)
-        ? current
-        : result.selectedProjectVersionId);
+      const selected = result.versions.find(version => version.platformProjectId === result.selectedPlatformProjectId
+        && version.projectVersionId === result.selectedProjectVersionId)
+        ?? result.versions[0];
+      setPlatformProjectId(selected?.platformProjectId ?? null);
+      setProjectVersionId(selected?.projectVersionId ?? null);
     }).catch(() => {
       if (!active) return;
       setVersions([]);
+      setPlatformProjectId(null);
       setProjectVersionId(null);
     }).finally(() => { if (active) setVersionLoading(false); });
     return () => { active = false; };
@@ -138,10 +143,11 @@ export function FindingsPanel({ subPath }: PluginNavPanelProps): React.JSX.Eleme
       <FindingsHeader
         loaded={data.rows.length}
         onClearSelection={() => setUi(current => ({ ...current, selection: { mode: "explicit", keys: new Set() } }))}
-        onProject={id => { setSelectedProjectId(id || null); setVersions([]); setProjectVersionId(null); setVersionLoading(Boolean(id)); }}
+        onProject={id => { setSelectedProjectId(id || null); setVersions([]); setPlatformProjectId(null); setProjectVersionId(null); setVersionLoading(Boolean(id)); }}
         onSelectPage={selectPage}
         onSelectPredicate={() => setUi(current => ({ ...current, selection: { mode: "predicate", filter: filterSnapshot(filter), excluded: new Set(), total: data.total } }))}
-        onVersion={id => setProjectVersionId(id || null)}
+        onVersion={(platformId, versionId) => { setPlatformProjectId(platformId || null); setProjectVersionId(versionId || null); }}
+        platformProjectId={platformProjectId}
         projectId={projectId}
         projectVersionId={projectVersionId}
         projects={sidebar.projects}
@@ -168,13 +174,13 @@ export function FindingsPanel({ subPath }: PluginNavPanelProps): React.JSX.Eleme
         onRename={saved.rename}
         recoveredFromCorrupt={saved.recoveredFromCorrupt}
         views={saved.views}
-        key={route.kind === "view" ? route.view : "new-view"}
       />
-      <FilterBar key={serializeFindingsFilter(filter)} onChange={changeFilter} onClear={() => changeFilter({})} value={filter} />
+      <FilterBar onChange={changeFilter} onClear={() => changeFilter({})} value={filter} />
       {showStale ? <FindingsStaleBanner message={staleMessage} onDismiss={() => setDismissedStale(staleMessage)} onRetry={() => void data.retry()} /> : null}
       <div className="flex min-h-0 flex-1">
         <div className="flex min-w-0 flex-1 flex-col">
-          {!projectId ? <FindingsUnconfiguredState detail="Select a bb project to discover its accepted cached finding versions." />
+          {missingView ? <FindingsViewNotFound name={route.kind === "view" ? route.view : ""} onReturn={() => navigate.toPluginPanel("findings", { subPath: "", replace: true })} />
+            : !projectId ? <FindingsUnconfiguredState detail="Select a bb project to discover its accepted cached finding versions." />
             : versionLoading ? <FindingsLoadingState />
               : !projectVersionId ? <FindingsUnconfiguredState detail="This project has no accepted findings cache. Pull a project version through Sync first." />
                 : data.loading && data.rows.length === 0 ? <FindingsLoadingState />

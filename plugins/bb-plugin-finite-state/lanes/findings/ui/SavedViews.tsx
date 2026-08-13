@@ -21,7 +21,9 @@ export function SavedViews({ views, activeId, filter, columns, loading, error, r
   onColumns(columns: string[]): void;
 }): React.JSX.Element {
   const active = views.find(view => view.id === activeId);
-  const [name, setName] = useState(active?.builtIn ? "" : active?.name ?? "");
+  const defaultName = active?.builtIn ? "" : active?.name ?? "";
+  const [draft, setDraft] = useState({ activeId, name: defaultName });
+  const name = draft.activeId === activeId ? draft.name : defaultName;
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-2 border-b border-border px-3 py-2">
       <select aria-label="Saved finding view" className="h-8 max-w-56 rounded-md border border-input bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" disabled={loading} onChange={event => event.target.value && onOpen(event.target.value)} value={activeId ?? ""}>
@@ -29,14 +31,14 @@ export function SavedViews({ views, activeId, filter, columns, loading, error, r
         <optgroup label="Built in">{views.filter(view => view.builtIn).map(view => <option key={view.id} value={view.id}>{view.name}</option>)}</optgroup>
         {views.some(view => !view.builtIn) ? <optgroup label="Workspace">{views.filter(view => !view.builtIn).map(view => <option key={view.id} value={view.id}>{view.name}</option>)}</optgroup> : null}
       </select>
-      <Input aria-label={active && !active.builtIn ? "Rename saved view" : "New saved view name"} className="h-8 w-44 text-xs" onChange={event => setName(event.target.value)} placeholder="View name" value={name} />
+      <Input aria-label={active && !active.builtIn ? "Rename saved view" : "New saved view name"} className="h-8 w-44 text-xs" onChange={event => setDraft({ activeId, name: event.target.value })} placeholder="View name" value={name} />
       {active && !active.builtIn ? (
         <>
           <Button disabled={!name.trim()} onClick={() => onRename(active.id, name)} size="sm" variant="outline"><Icon aria-hidden="true" className="size-4" name="Edit" />Rename</Button>
           <Button onClick={() => onDelete(active.id)} size="sm" variant="ghost"><Icon aria-hidden="true" className="size-4" name="Trash2" />Delete</Button>
         </>
       ) : (
-        <Button disabled={!name.trim()} onClick={async () => { await onCreate(name, filter, columns); setName(""); }} size="sm" variant="outline"><Icon aria-hidden="true" className="size-4" name="Plus" />Save current</Button>
+        <Button disabled={!name.trim()} onClick={async () => { await onCreate(name, filter, columns); setDraft({ activeId, name: "" }); }} size="sm" variant="outline"><Icon aria-hidden="true" className="size-4" name="Plus" />Save current</Button>
       )}
       <div aria-label="Visible finding columns" className="flex flex-wrap items-center gap-2 border-l border-border pl-2" role="group">
         <span className="text-xs text-muted-foreground">Columns</span>

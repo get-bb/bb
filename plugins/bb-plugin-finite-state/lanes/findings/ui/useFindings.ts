@@ -37,7 +37,7 @@ function rpcFilter(filter: FindingsFilter) {
 export function useFindings(projectId: string | null, projectVersionId: string | null, filter: FindingsFilter): FindingsData {
   const rpc = useRpc<typeof findingsUiRpcContract>();
   const rowsRef = useRef<FindingRow[]>([]);
-  const keysRef = useRef(new Set<string>());
+  const findingIdsRef = useRef(new Set<string>());
   const generationRef = useRef(0);
   const filterRef = useRef(filter);
   filterRef.current = filter;
@@ -63,12 +63,12 @@ export function useFindings(projectId: string | null, projectVersionId: string |
     if (generation !== generationRef.current) return;
     if (!append) {
       rowsRef.current = [];
-      keysRef.current = new Set();
+      findingIdsRef.current = new Set();
     }
     for (const item of page.items) {
       const row = findingRow(item);
-      if (keysRef.current.has(row.stableKey)) continue;
-      keysRef.current.add(row.stableKey);
+      if (findingIdsRef.current.has(row.findingId)) continue;
+      findingIdsRef.current.add(row.findingId);
       rowsRef.current.push(row);
     }
     setRowVersion(value => value + 1);

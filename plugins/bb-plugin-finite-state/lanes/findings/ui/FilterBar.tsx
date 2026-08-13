@@ -11,8 +11,9 @@ function selected(event: React.ChangeEvent<HTMLSelectElement>): string[] {
 }
 
 export function FilterBar({ value, onChange, onClear }: { value: FindingsFilter; onChange(value: FindingsFilter): void; onClear(): void }): React.JSX.Element {
-  const [component, setComponent] = useState(value.component ?? "");
-  const [cve, setCve] = useState(value.cve ?? "");
+  const [draft, setDraft] = useState({ sourceComponent: value.component, sourceCve: value.cve, component: value.component ?? "", cve: value.cve ?? "" });
+  const component = draft.sourceComponent === value.component ? draft.component : value.component ?? "";
+  const cve = draft.sourceCve === value.cve ? draft.cve : value.cve ?? "";
   useEffect(() => {
     if (component === (value.component ?? "") && cve === (value.cve ?? "")) return;
     const timer = window.setTimeout(() => onChange({ ...value, component: component || undefined, cve: cve || undefined }), 250);
@@ -24,9 +25,9 @@ export function FilterBar({ value, onChange, onClear }: { value: FindingsFilter;
       <div className="flex min-w-0 flex-wrap items-center gap-2">
         <div className="relative min-w-48 flex-1 sm:max-w-xs">
           <Icon aria-hidden="true" className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" name="Search" />
-          <Input aria-label="Filter component" className="h-8 pl-8 text-xs" onChange={event => setComponent(event.target.value)} placeholder="Component, group, or purl" value={component} />
+          <Input aria-label="Filter component" className="h-8 pl-8 text-xs" onChange={event => setDraft(current => ({ ...current, sourceComponent: value.component, component: event.target.value }))} placeholder="Component, group, or purl" value={component} />
         </div>
-        <Input aria-label="Filter CVE" className="h-8 w-36 font-mono text-xs" onChange={event => setCve(event.target.value)} placeholder="CVE-…" value={cve} />
+        <Input aria-label="Filter CVE" className="h-8 w-36 font-mono text-xs" onChange={event => setDraft(current => ({ ...current, sourceCve: value.cve, cve: event.target.value }))} placeholder="CVE-…" value={cve} />
         <select aria-label="Severity filters" className={`${controlClass} min-h-8`} multiple onChange={event => onChange({ ...value, severity: selected(event) })} size={1} value={value.severity ?? []}>
           <option value="critical">Critical</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option><option value="info">Info</option>
         </select>

@@ -56,7 +56,7 @@ const findingsUiListInputSchema = z.object({
   projectVersionId: z.string().min(1).max(512),
   pageSize: z.number().int().min(1).max(200),
   continuation: z.string().min(1).max(4096).nullable(),
-  filters: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null(), z.array(z.string())])),
+  filters: savedFilterSchema,
 }).strict();
 
 export const findingsUiRpcContract = defineRpcContract({
@@ -68,10 +68,12 @@ export const findingsUiRpcContract = defineRpcContract({
     input: z.object({ projectId: z.string().min(1).max(512) }).strict(),
     output: z.object({
       versions: z.array(z.object({
+        platformProjectId: z.string().min(1).max(512),
         projectVersionId: z.string().min(1).max(512),
         asOf: z.string().nullable(),
         state: z.enum(["fresh", "stale"]),
       }).strict()),
+      selectedPlatformProjectId: z.string().min(1).max(512).nullable(),
       selectedProjectVersionId: z.string().min(1).max(512).nullable(),
     }).strict(),
   },
@@ -406,22 +408,32 @@ export function registerFindingsRpc(bb: BbPluginApi, db: Database.Database): voi
       return findingsListResult(db, input);
     },
     cachedProjectVersions(input) {
+      // The input is a bb workspace project id; validate that local project
+      // boundary, then derive remote cache scopes from SQLite. Never reuse a
+      // bb id as the Platform project id stored in sync_state.
+      const project = projectSource(bb, input.projectId);
       const rows = db.prepare(
-        `SELECT project_version_id, MAX(last_pull) AS as_of,
+        `SELECT project_id, project_version_id, MAX(last_pull) AS as_of,
                 MAX(CASE WHEN error IS NOT NULL THEN 1 ELSE 0 END) AS stale
            FROM sync_state
-          WHERE project_id = ?
-            AND entity_kind = 'finding'
+          WHERE entity_kind = 'finding'
             AND accepted_generation_id IS NOT NULL
-          GROUP BY project_version_id
-          ORDER BY as_of DESC, project_version_id ASC`,
-      ).all(input.projectId) as Array<{ project_version_id: string; as_of: string | null; stale: number }>;
-      const versions = rows.map(row => ({
-        projectVersionId: row.project_version_id,
-        asOf: row.as_of,
-        state: row.stale === 1 ? "stale" as const : "fresh" as const,
-      }));
-      return { versions, selectedProjectVersionId: versions[0]?.projectVersionId ?? null };
+          GROUP BY project_id, project_version_id
+          ORDER BY as_of DESC, project_id ASC, project_version_id ASC`,
+      ).all() as Array<{ project_id: string; project_version_id: string; as_of: string | null; stale: number }>;
+      return project.then(() => {
+        const versions = rows.map(row => ({
+          platformProjectId: row.project_id,
+          projectVersionId: row.project_version_id,
+          asOf: row.as_of,
+          state: row.stale === 1 ? "stale" as const : "fresh" as const,
+        }));
+        return {
+          versions,
+          selectedPlatformProjectId: versions[0]?.platformProjectId ?? null,
+          selectedProjectVersionId: versions[0]?.projectVersionId ?? null,
+        };
+      });
     },
     findingsSavedViewsGet(input) {
       return readSavedViews(bb, input.projectId);
