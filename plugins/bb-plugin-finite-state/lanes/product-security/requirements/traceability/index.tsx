@@ -217,8 +217,7 @@ export function RequirementsTraceabilityLayer({
   projectId: string;
   detail?: readonly string[];
 }): React.JSX.Element {
-  const detailKey = detail.join("\0");
-  const route = useMemo(() => parseTraceabilityDetail(detail), [detailKey]);
+  const route = useMemo(() => parseTraceabilityDetail(detail), [detail]);
   const rpc = useRpc<RpcContract>();
   const navigate = useBbNavigate();
   const [state, setState] = useState<ViewState>("loading");
