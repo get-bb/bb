@@ -206,6 +206,7 @@ export {
   getPluginArtifactByResolution,
   getPluginArtifact,
   listPluginArtifacts,
+  listPluginArtifactsUnderPath,
   listRecentPluginArtifacts,
   setPluginArtifactValidation,
   type CreatePluginArtifactInput,

@@ -187,6 +187,30 @@ export function normalizePluginSubdirectory(value: string): string {
   return trimmed;
 }
 
+/**
+ * Plugin roots that live inside `root`, as paths relative to it. Ancestors
+ * win: moving a directory moves everything under it, so a root nested inside
+ * another preserved root is dropped. `root` itself is never returned.
+ */
+export function nestedPluginRoots(root: string, paths: string[]): string[] {
+  const relatives = paths
+    .map((path) => relative(root, path))
+    .filter(
+      (path) =>
+        path.length > 0 && path !== ".." && !path.startsWith(`..${sep}`),
+    )
+    .sort((left, right) => left.length - right.length);
+  const kept: string[] = [];
+  for (const candidate of relatives) {
+    if (kept.includes(candidate)) continue;
+    if (kept.some((parent) => candidate.startsWith(`${parent}${sep}`))) {
+      continue;
+    }
+    kept.push(candidate);
+  }
+  return kept;
+}
+
 /** Plugin root inside a checkout: the checkout itself for a root install. */
 export function pluginRootDir(
   checkoutDir: string,
@@ -385,38 +409,78 @@ export async function promoteImmutableDir(args: {
 /**
  * Promote a git plugin from its staged checkout into the repo+commit cache.
  *
- * One checkout serves every plugin of a multi-plugin repository, so a nested
- * install must not replace a checkout that a sibling plugin already built into.
- * When the checkout is already there, only the selected subdirectory moves;
- * the sibling's dependencies and bundles stay byte-for-byte intact. The
- * content hash covers the plugin root alone for the same reason.
+ * One checkout serves every plugin of a multi-plugin repository, so a promote
+ * must never replace a tree another plugin already built into. Only the
+ * selected plugin root moves, and the built trees of the plugins that live
+ * inside that root ride along from the target instead of being replaced by
+ * the pristine copies of the staged clone. The content hash covers the plugin
+ * root alone for the same reason.
+ *
+ * Returns the content hash of the promoted plugin root, which differs from
+ * the staged hash when a nested plugin was carried over.
  */
 export async function promoteGitPluginArtifact(args: {
   stagingDir: string;
   targetDir: string;
   subdirectory: string | null;
   contentHash: string;
-}): Promise<void> {
+  /**
+   * Plugin roots inside this plugin's root, relative to it, whose built files
+   * belong to another plugin. See `nestedPluginRoots`.
+   */
+  preserveNestedRoots: string[];
+}): Promise<string> {
   const targetExists = await stat(args.targetDir)
     .then(() => true)
     .catch(() => false);
-  if (args.subdirectory === null || !targetExists) {
+  if (!targetExists) {
     await promoteImmutableDir({
       stagingDir: args.stagingDir,
       targetDir: args.targetDir,
       contentHash: args.contentHash,
     });
-    return;
+    return args.contentHash;
   }
+  const stagingRoot = pluginRootDir(args.stagingDir, args.subdirectory);
+  const targetRoot = pluginRootDir(args.targetDir, args.subdirectory);
+  const preserved: Array<{ from: string; to: string }> = [];
   try {
+    // An identical target is settled before anything moves: `promoteImmutableDir`
+    // drops the staging tree in that case, and the carried-over plugins are in
+    // it by then.
+    if (
+      (await hashInstallDir(targetRoot).catch(() => null)) === args.contentHash
+    ) {
+      await rm(args.stagingDir, { recursive: true, force: true });
+      return args.contentHash;
+    }
+    for (const nested of args.preserveNestedRoots) {
+      const from = join(targetRoot, nested);
+      const exists = await stat(from)
+        .then(() => true)
+        .catch(() => false);
+      if (!exists) continue;
+      const to = join(stagingRoot, nested);
+      await rm(to, { recursive: true, force: true });
+      await rename(from, to);
+      preserved.push({ from, to });
+    }
     await promoteImmutableDir({
-      stagingDir: pluginRootDir(args.stagingDir, args.subdirectory),
-      targetDir: pluginRootDir(args.targetDir, args.subdirectory),
+      stagingDir: stagingRoot,
+      targetDir: targetRoot,
       contentHash: args.contentHash,
     });
+  } catch (error) {
+    for (const move of preserved.reverse()) {
+      await rename(move.to, move.from).catch(() => {});
+    }
+    throw error;
   } finally {
     await rm(args.stagingDir, { recursive: true, force: true });
   }
+  return preserved.length === 0
+    ? args.contentHash
+    : await hashInstallDir(targetRoot);
 }
 
 export const INSTALL_COMMAND_TIMEOUT_MS = 5 * 60_000;

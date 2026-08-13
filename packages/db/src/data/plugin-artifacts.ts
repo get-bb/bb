@@ -1,4 +1,4 @@
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import type { DbConnection } from "../connection.js";
 import { installedPlugins, pluginArtifacts } from "../schema.js";
 
@@ -87,6 +87,29 @@ export function listPluginArtifacts(
     .from(pluginArtifacts)
     .where(eq(pluginArtifacts.pluginId, pluginId))
     .orderBy(asc(pluginArtifacts.createdAt), asc(pluginArtifacts.id))
+    .all();
+}
+
+/**
+ * Artifacts stored strictly inside `directory`. A multi-plugin repository
+ * keeps one checkout per commit, so the plugin roots of its nested plugins
+ * are directories of another plugin's artifact: promotion and garbage
+ * collection ask for them before they replace or delete a tree.
+ */
+export function listPluginArtifactsUnderPath(
+  db: DbConnection,
+  directory: string,
+  separator: string,
+): PluginArtifactRow[] {
+  const prefix = directory.endsWith(separator)
+    ? directory
+    : `${directory}${separator}`;
+  const pattern = `${prefix.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_")}%`;
+  return db
+    .select()
+    .from(pluginArtifacts)
+    .where(sql`${pluginArtifacts.path} LIKE ${pattern} ESCAPE '\\'`)
+    .orderBy(asc(pluginArtifacts.path), asc(pluginArtifacts.id))
     .all();
 }
 

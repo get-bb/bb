@@ -1,10 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rm, stat } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, join, sep } from "node:path";
 import {
   createPluginArtifact,
   getInstalledPlugin,
   getPluginArtifactByResolution,
+  listPluginArtifactsUnderPath,
   setPluginArtifactValidation,
   type InstalledPluginRow,
   type PluginExactResolution,
@@ -19,6 +20,7 @@ import { resolveSelectedSubdirectory } from "./collection-manifest.js";
 import {
   gitArtifactCacheDir,
   hashInstallDir,
+  nestedPluginRoots,
   npmArtifactCacheDir,
   parsePluginSource,
   pluginRootDir,
@@ -404,6 +406,20 @@ export function createManagedPluginArtifacts(
     throw new Error(`npm did not resolve a registry for ${packageName}`);
   }
 
+  /**
+   * Plugin roots of other plugins that live inside `root`. A multi-plugin
+   * repository shares one checkout per commit, so a promote of `root` must
+   * carry these trees over instead of replacing them with pristine sources.
+   */
+  function preservedNestedRoots(root: string): string[] {
+    return nestedPluginRoots(
+      root,
+      listPluginArtifactsUnderPath(deps.db, root, sep).map(
+        (artifact) => artifact.path,
+      ),
+    );
+  }
+
   async function installGitSource(
     parsed: Extract<ReturnType<typeof parsePluginSource>, { kind: "git" }>,
     source: string,
@@ -607,11 +623,12 @@ export function createManagedPluginArtifacts(
           activeArtifactId: artifact.id,
           preparedManifest: stagedManifest,
           beforePersist: async () => {
-            await promoteGitPluginArtifact({
+            const promotedHash = await promoteGitPluginArtifact({
               stagingDir,
               targetDir,
               subdirectory: stagedSubdirectory,
               contentHash,
+              preserveNestedRoots: preservedNestedRoots(stagedTargetRoot),
             });
             await deps.afterArtifactPromoted?.({
               pluginId: stagedManifest.id,
@@ -620,7 +637,7 @@ export function createManagedPluginArtifacts(
             });
             if (
               !setPluginArtifactValidation(deps.db, artifact.id, {
-                contentHash,
+                contentHash: promotedHash,
                 validationResult: "valid",
                 validatedAt: Date.now(),
               })
@@ -1074,11 +1091,12 @@ export function createManagedPluginArtifacts(
           exactResolution: { kind: "git", commit: args.commit },
           artifactId: artifact.id,
           beforePersist: async () => {
-            await promoteGitPluginArtifact({
+            const promotedHash = await promoteGitPluginArtifact({
               stagingDir,
               targetDir,
               subdirectory: args.row.sourceGitSubdirectory,
               contentHash,
+              preserveNestedRoots: preservedNestedRoots(targetRoot),
             });
             await deps.afterArtifactPromoted?.({
               pluginId: args.row.id,
@@ -1087,7 +1105,7 @@ export function createManagedPluginArtifacts(
             });
             if (
               !setPluginArtifactValidation(deps.db, artifact.id, {
-                contentHash,
+                contentHash: promotedHash,
                 validationResult: "valid",
                 validatedAt: Date.now(),
               })

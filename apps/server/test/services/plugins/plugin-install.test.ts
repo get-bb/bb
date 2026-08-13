@@ -850,6 +850,42 @@ describe("plugin install flows", () => {
         expect(listPluginArtifacts(db, "collection-alpha")).toHaveLength(1);
       });
 
+      it("keeps a nested sibling intact when the repository root installs too", async () => {
+        const repoDir = join(workDir, "repo-collection-root");
+        await writePluginFixture(join(repoDir, "plugins", "alpha"), {
+          name: "bb-plugin-collection-alpha",
+        });
+        await writePluginFixture(repoDir, { name: "bb-plugin-collection-top" });
+        await initGitRepo(repoDir);
+        await commitAll(repoDir, "init");
+
+        const alpha = await service.install(`git:${repoDir}@main`, {
+          kind: "subdirectory",
+          path: "./plugins/alpha",
+        });
+        const alphaBundle = await readFile(
+          join(alpha.rootDir, "dist", "server.js"),
+          "utf8",
+        );
+        const top = await service.install(`git:${repoDir}@main`, {
+          kind: "root",
+        });
+
+        expect(top.status).toBe("running");
+        // The root install owns the checkout the nested sibling already built
+        // into, so it must not replace it wholesale.
+        expect(
+          await readFile(join(alpha.rootDir, "dist", "server.js"), "utf8"),
+        ).toBe(alphaBundle);
+        await stat(join(top.rootDir, "dist", "server.js"));
+        expect(
+          service
+            .list()
+            .filter((plugin) => plugin.id.startsWith("collection-"))
+            .map((plugin) => plugin.status),
+        ).toEqual(["running", "running"]);
+      });
+
       it("lists the collection entries when no plugin is selected", async () => {
         const repoDir = join(workDir, "repo-collection-unselected");
         await writeCollectionRepo(repoDir);
