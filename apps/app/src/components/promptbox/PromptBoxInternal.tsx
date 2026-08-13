@@ -1702,9 +1702,15 @@ export function PromptBoxInternal({
 
   useEffect(() => {
     if (!editor || editor.isDestroyed) return;
-    const editable = !composerInputLocked;
+    const editable = !composerInputLocked && !isVoiceBusy;
     if (editor.isEditable !== editable) editor.setEditable(editable);
-  }, [composerInputLocked, editor]);
+    editor.view.dom.tabIndex = editable ? 0 : -1;
+    if (editable) {
+      editor.view.dom.removeAttribute("aria-readonly");
+    } else {
+      editor.view.dom.setAttribute("aria-readonly", "true");
+    }
+  }, [composerInputLocked, editor, isVoiceBusy]);
 
   useEffect(() => {
     editorRef.current = editor;
@@ -2005,6 +2011,7 @@ export function PromptBoxInternal({
     activeTrigger.char !== DEFAULT_PLUGIN_MENTION_TRIGGER &&
     activeMentionQuery.length === 0;
   const showTypeaheadMenu =
+    !isVoiceBusy &&
     activeTrigger !== null &&
     !isCommandTriggerLiteral &&
     !isBareNonDefaultMentionTrigger;
@@ -2961,12 +2968,14 @@ export function PromptBoxInternal({
             // mode also gets more top room since the card fills the viewport.
             <div
               data-promptbox-expanded-only=""
+              inert={showVoiceActionGroup ? true : undefined}
               className={cn("pl-4 pr-14 pt-3", compact && "pr-14")}
             >
               {header}
             </div>
           ) : null}
           <div
+            data-promptbox-input-region=""
             className={cn(
               "relative",
               isZenMode && "min-h-0 flex flex-1 flex-col",
@@ -2982,6 +2991,8 @@ export function PromptBoxInternal({
                 </div>
                 <div
                   data-promptbox-expanded-only=""
+                  data-promptbox-standard-actions=""
+                  inert={showVoiceActionGroup ? true : undefined}
                   className="absolute right-2 top-2 z-20 flex items-center gap-0.5"
                 >
                   {isZenMode ? (
@@ -3138,7 +3149,10 @@ export function PromptBoxInternal({
 
           {!showCompactLayout ? (
             <>
-              <div data-promptbox-expanded-only="">
+              <div
+                data-promptbox-expanded-only=""
+                inert={showVoiceActionGroup ? true : undefined}
+              >
                 <AttachmentPreview
                   attachments={attachments}
                   attachmentProjectId={attachmentProjectId}
@@ -3180,10 +3194,12 @@ export function PromptBoxInternal({
               {!showCompactLayout ? (
                 <div
                   data-promptbox-expanded-only=""
+                  data-promptbox-standard-actions=""
                   className={cn(
                     "flex min-w-0 flex-1 flex-row items-center gap-1",
                     showVoiceActionGroup && "pointer-events-none invisible",
                   )}
+                  inert={showVoiceActionGroup ? true : undefined}
                   aria-live="polite"
                 >
                   <PromptBoxActionsMenu
@@ -3205,10 +3221,12 @@ export function PromptBoxInternal({
                 </div>
               ) : null}
               <div
+                data-promptbox-standard-actions=""
                 className={cn(
                   "flex shrink-0 flex-row items-center gap-1",
                   showVoiceActionGroup && "pointer-events-none invisible",
                 )}
+                inert={showVoiceActionGroup ? true : undefined}
               >
                 {!showCompactLayout ? (
                   <>

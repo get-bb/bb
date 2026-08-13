@@ -2313,8 +2313,65 @@ describe("PromptBoxInternal compact layout", () => {
 
     expect(getPromptEditorElement()).toBe(editor);
     expect(editor.textContent).toBe("Keep this prompt visible while I dictate");
-    expect(onChange).not.toHaveBeenCalled();
+    expect(
+      onChange.mock.calls.every(
+        ([nextValue]) =>
+          nextValue === "Keep this prompt visible while I dictate",
+      ),
+    ).toBe(true);
   });
+
+  it.each(["recording", "transcribing"] as const)(
+    "keeps the visible draft keyboard-read-only and standard controls inert while %s",
+    async (state) => {
+      const onChange = vi.fn();
+      render(
+        <PromptBoxInternal
+          {...createPromptBoxProps({
+            value: "Keep this prompt unchanged",
+            onChange,
+            voice: {
+              state,
+              isSupported: true,
+              stream: null,
+              start: vi.fn(),
+              stop: vi.fn(),
+              cancel: vi.fn(),
+            },
+          })}
+        />,
+      );
+
+      const editor = getPromptEditorElement();
+      await waitFor(() =>
+        expect(editor.getAttribute("contenteditable")).toBe("false"),
+      );
+      expect(editor.getAttribute("tabindex")).toBe("-1");
+      expect(editor.getAttribute("aria-readonly")).toBe("true");
+      expect(screen.getByRole("textbox")).toBe(editor);
+      onChange.mockClear();
+      editor.focus();
+      fireEvent.keyDown(editor, { key: "x", code: "KeyX" });
+
+      expect(editor.textContent).toBe("Keep this prompt unchanged");
+      expect(onChange).not.toHaveBeenCalled();
+      expect(
+        document
+          .querySelector("[data-promptbox-input-region]")
+          ?.hasAttribute("inert"),
+      ).toBe(false);
+      for (const controls of document.querySelectorAll(
+        "[data-promptbox-standard-actions]",
+      )) {
+        expect(controls.hasAttribute("inert")).toBe(true);
+      }
+      expect(
+        document
+          .querySelector("[data-promptbox-voice-controls]")
+          ?.hasAttribute("inert"),
+      ).toBe(false);
+    },
+  );
 
   it("keeps the prompt editor visible while the waveform occupies the action row", () => {
     const stop = vi.fn();
