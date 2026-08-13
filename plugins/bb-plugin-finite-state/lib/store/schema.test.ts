@@ -443,7 +443,7 @@ describe("shared-store-freeze", () => {
       results: snapshot("verification_results", "result_id"),
       artifacts: snapshot("verification_artifacts", "artifact_id"),
       attestations: snapshot("attestations", "attestation_id"),
-};
+    };
 
     host.bb.storage.migrate(db, MIGRATIONS);
 

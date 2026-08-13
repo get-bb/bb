@@ -113,6 +113,15 @@ function ledgerRow(
   ).get(...bindings);
 }
 
+export function semanticIngestRequired(
+  db: Database.Database,
+  scope: HardwareSemanticScope,
+  sourceHash: string,
+): boolean {
+  const validatedHash = sha256Schema.parse(sourceHash);
+  return ledgerRow(db, scope)?.source_hash !== validatedHash;
+}
+
 export function ingestProject(
   db: Database.Database,
   scope: HardwareSemanticScope,

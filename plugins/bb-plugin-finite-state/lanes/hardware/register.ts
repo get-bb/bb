@@ -25,9 +25,11 @@ import { HardwareSourceWatcher } from "./extract/watch.js";
 import { hardwareViolationsNotImplemented } from "./fab/violations.js";
 import {
   hardwareConnectivityGapsRpcContract,
+  ingestProject,
   listConnectivityGaps,
+  semanticIngestRequired,
 } from "./parse/ingest.js";
-import { listHardwareSheets } from "./parse/sheets.js";
+import { listHardwareSheets, parseProject } from "./parse/sheets.js";
 import { getHardwarePart, listHardwareNets, listHardwareSymbols } from "./search.js";
 
 const hardwareRpcContract = {
@@ -290,14 +292,38 @@ class HardwareDiscoveryCoordinator {
       const source = await resolveHardwareProjectSource(this.#ctx.bb, scope.projectId);
       const scan = await scanProjectsFromSource(this.#ctx.bb, source);
       upsertProjects(this.#ctx.db(), scope.projectId, scope.projectVersionId, scan.projects, !scan.truncated);
+      const semanticFailures: string[] = [];
+      for (const project of scan.projects) {
+        if (!project.supported) continue;
+        try {
+          const semanticScope = {
+            projectId: scope.projectId,
+            projectVersionId: scope.projectVersionId,
+            projectKey: project.projectKey,
+          };
+          if (!semanticIngestRequired(this.#ctx.db(), semanticScope, project.schSha256)) continue;
+          const parsed = await parseProject(source.path, project.projectKey);
+          ingestProject(this.#ctx.db(), semanticScope, project.schSha256, parsed);
+        } catch (error) {
+          const detail = `${project.projectKey}: ${errorDetail(error)}`;
+          semanticFailures.push(detail);
+          this.#ctx.bb.log.warn(`hardware semantic ingest degraded: ${detail}`);
+        }
+      }
       const hint = await worktreeIncludeHint(source.path, scan.projects);
       this.#replaceWatchers(scope, source, scan.projects);
+      const semanticMessage = semanticFailures.length > 0
+        ? safeHardwareDetail(
+          `HW_SEMANTIC_INGEST_FAILED: ${semanticFailures[0]}` +
+          (semanticFailures.length > 1 ? ` (${semanticFailures.length - 1} more project failures)` : ""),
+        )
+        : null;
       this.#statuses.set(key, {
         ...scope,
-        state: scan.truncated ? "degraded" : "ready",
+        state: scan.truncated || semanticMessage !== null ? "degraded" : "ready",
         message: scan.truncated
           ? "HW_DISCOVERY_PARTIAL: the workspace path limit was reached; cached projects are a truthful partial result"
-          : null,
+          : semanticMessage,
         worktreeincludeHint: hint,
         truncated: scan.truncated,
       });

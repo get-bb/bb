@@ -96,6 +96,22 @@ when either requested hash is absent from that bounded ledger; it never returns
 an empty diff for an unretained hash. Connectivity gaps are available through
 the lane-local `hardwareConnectivityGapsList` read RPC and never appear as nets.
 
+The AMD-0018 `hw_sheet` key represents one project-relative sheet file and
+cannot represent repeated instances of the same hierarchical sheet file.
+`parseProject` therefore rejects that supported KiCad authoring pattern with
+the typed `KicadSheetReusedError` code `KICAD_SHEET_REUSED`; cycles remain the
+distinct `KICAD_SHEET_CYCLE` error. Supporting repeated-channel instances
+requires a future additive instance-path persistence amendment rather than
+silently collapsing two instances into one cached sheet.
+
+Connectivity is intentionally source-label-only in the no-CLI path. Wires,
+junctions, explicit labels, hierarchical pins, and symbol pins are resolved
+from `.kicad_sch`; unlabeled connected components are not assigned KiCad's
+generated net names. Each such component produces one `unresolved_label` gap,
+so ordinary schematics can have many gap rows while `hw_net` contains only
+honest explicitly named nets. Bus connectivity remains an `unsupported_bus`
+gap under `kicadts@0.0.53`; parser output is never mixed with netlist exports.
+
 ## Acceptance criteria
 
 - [ ] The fixture project parses to `hw_symbol` rows with correct references, positions, and units — with no KiCad installed and no `.fs-hw` artifacts present.
@@ -125,5 +141,5 @@ the lane-local `hardwareConnectivityGapsList` read RPC and never appear as nets.
 ## Open questions
 
 1. Reference renumbering between revisions is the hardware analogue of SPEC 02's stable-key problem (SPEC 07 §12.6). The diff primitive here reports added/removed; whether a rename heuristic (same value+footprint+position) is worth shipping belongs to WP-79's drift report — do not solve it here.
-2. Verify during implementation how much connectivity `kicadts` derives from a `.kicad_sch` alone (wires/junctions vs. labels). If real connectivity requires the netlist export, `hw_net` gains a documented degraded mode when `kicad-cli` is absent — decide and record, don't silently mix sources.
+2. Resolved for `kicadts@0.0.53`: `.kicad_sch` supplies wire/junction/label/hierarchical-pin connectivity, but not KiCad-generated names for unlabeled components or supported bus connectivity. The documented source-label-only degraded mode above records explicit gaps and never mixes parser results with exports.
 3. KiCad 9 format drift: `kicadts` tracks upstream loosely. Pin the tested KiCad file-format versions in fixture notes so a future parse failure is diagnosable as format drift rather than regression.

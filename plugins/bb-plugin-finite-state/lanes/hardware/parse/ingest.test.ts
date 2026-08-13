@@ -21,6 +21,10 @@ const fixtureRoot = dirname(fileURLToPath(new URL(
   "../../../test/fixtures/kicad/semantic/semantic.kicad_pro",
   import.meta.url,
 )));
+const customFieldsRoot = dirname(fileURLToPath(new URL(
+  "../../../test/fixtures/kicad/custom-fields/custom_fields.kicad_pro",
+  import.meta.url,
+)));
 
 const scope: HardwareSemanticScope = {
   projectId: "project-1",
@@ -114,6 +118,27 @@ describe("hardware semantic ingest", () => {
       { reference: "R4", unit: 1, at_x: 30, at_y: 20 },
     ]));
     expect(db.prepare("SELECT net_name FROM hw_net ORDER BY net_name").pluck().all()).toContain("OP_OUT");
+  }, 30_000);
+
+  it("ingests the KiCad-authored custom-fields project with strict plain gap points", async () => {
+    db.prepare("DELETE FROM hw_project").run();
+    const customScope = { ...scope, projectKey: "custom_fields.kicad_pro" };
+    db.prepare(`INSERT INTO hw_project (
+      project_id, project_version_id, project_key, name, sch_path, pcb_path,
+      sch_hash, pcb_hash, kicad_version, supported, discovered_at
+    ) VALUES (?, ?, ?, ?, ?, NULL, ?, NULL, ?, 1, ?)`).run(
+      customScope.projectId, "@project", customScope.projectKey, "custom_fields",
+      "custom_fields.kicad_sch", hash(2), "20210123", "2026-08-13T00:00:00.000Z",
+    );
+    const realParsed = await parseProject(customFieldsRoot, customScope.projectKey);
+    expect(() => ingestProject(db, customScope, hash(2), realParsed)).not.toThrow();
+    expect(db.prepare("SELECT reference FROM hw_symbol ORDER BY reference").pluck().all()).toEqual(["J1", "R1"]);
+    expect(db.prepare("SELECT COUNT(*) FROM hw_ingest").pluck().get()).toBe(1);
+    const gaps = listConnectivityGaps(db, customScope).gaps;
+    expect(gaps).toHaveLength(2);
+    for (const gap of gaps) {
+      if (gap.at) expect(Object.keys(gap.at).sort()).toEqual(["x", "y"]);
+    }
   }, 30_000);
 
   it("replaces sheets, symbols, nets, and gaps atomically and hash-gates a repeat", () => {

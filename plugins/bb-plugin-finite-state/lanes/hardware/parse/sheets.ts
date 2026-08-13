@@ -80,6 +80,15 @@ export class KicadSheetCycleError extends Error {
   }
 }
 
+export class KicadSheetReusedError extends Error {
+  readonly code = "KICAD_SHEET_REUSED";
+
+  constructor(path: string) {
+    super(`KICAD_SHEET_REUSED: ${path} has multiple parents`);
+    this.name = "KicadSheetReusedError";
+  }
+}
+
 function posixPath(path: string): string {
   return path.split(sep).join("/");
 }
@@ -259,7 +268,7 @@ export async function parseProject(worktreeRoot: string, projectKey: string): Pr
     const previousParent = parentByPath.get(normalizedPath);
     if (previousParent !== undefined) {
       if (previousParent !== parent) {
-        throw new Error(`KICAD_SHEET_REUSED: ${normalizedPath} has multiple parents`);
+        throw new KicadSheetReusedError(normalizedPath);
       }
       return;
     }
@@ -378,7 +387,7 @@ export function listHardwareSheets(db: Database.Database, rawInput: unknown) {
   const offset = sheetCursorOffset(input.cursor);
   const rows = db.prepare<[string, string, string, number, number], SheetRow>(
     `SELECT sheet.sheet_path, sheet.name, sheet.parent_sheet_path, sheet.page_order,
-            sheet.width_mm, sheet.height_mm, COUNT(symbol.reference) AS symbol_count
+            sheet.width_mm, sheet.height_mm, COUNT(DISTINCT symbol.reference) AS symbol_count
        FROM hw_sheet AS sheet
        LEFT JOIN hw_symbol AS symbol
          ON symbol.project_id = sheet.project_id

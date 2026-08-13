@@ -116,7 +116,10 @@ function wireSegments(schematic: KicadSch): Array<[Point, Point]> {
     for (let index = 1; index < points.length; index += 1) {
       const start = points[index - 1];
       const end = points[index];
-      if (start && end) segments.push([start, end]);
+      if (start && end) segments.push([
+        { x: start.x, y: start.y },
+        { x: end.x, y: end.y },
+      ]);
     }
   }
   return segments;
@@ -142,7 +145,8 @@ export function extractSheetConnectivity(input: {
   }
   for (const junction of input.schematic.junctions) {
     if (junction.at) addAnchor(anchors, {
-      point: junction.at, node: null, name: null, childPin: null, noConnect: false,
+      point: { x: junction.at.x, y: junction.at.y },
+      node: null, name: null, childPin: null, noConnect: false,
     });
   }
   for (const pin of input.symbolPins) addAnchor(anchors, {
@@ -154,7 +158,7 @@ export function extractSheetConnectivity(input: {
   });
   for (const label of input.schematic.labels) {
     if (label.at) addAnchor(anchors, {
-      point: label.at,
+      point: { x: label.at.x, y: label.at.y },
       node: null,
       name: { name: label.value, kind: "local" },
       childPin: null,
@@ -163,7 +167,7 @@ export function extractSheetConnectivity(input: {
   }
   for (const label of input.schematic.globalLabels) {
     if (label.at) addAnchor(anchors, {
-      point: label.at,
+      point: { x: label.at.x, y: label.at.y },
       node: null,
       name: { name: label.value, kind: "global" },
       childPin: null,
@@ -186,7 +190,7 @@ export function extractSheetConnectivity(input: {
   });
   for (const noConnect of input.schematic.noConnects) {
     if (noConnect.at) addAnchor(anchors, {
-      point: noConnect.at,
+      point: { x: noConnect.at.x, y: noConnect.at.y },
       node: null,
       name: null,
       childPin: null,
