@@ -7,6 +7,7 @@ import {
   createBenchHostJoinCode,
   createSdkBenchHostProbe,
   listBenchHosts,
+  probeBenchHostCapabilities,
 } from "./execute/hosts.js";
 import { InMemoryBenchJobQueue, runBenchJobService } from "./execute/jobs.js";
 import { createDefaultBenchExecutionDeps, runBench } from "./execute/run.js";
@@ -178,22 +179,24 @@ export function registerBench(bb: BbPluginApi, ctx: PluginContext): void {
       };
     },
     async benchHostsList(input) {
-      const remote = ctx.service<RemoteServices>("remote-services", () => {
-        throw new Error("REMOTE_SERVICES_NOT_REGISTERED");
-      });
-      const hosts = await listBenchHosts(bb, {
-        probe: createSdkBenchHostProbe(bb, {
-          workspacePath: null,
-          forgeCompute: remote.forgeCompute !== null,
-        }),
-      });
+      const hosts = await listBenchHosts(bb);
       const offset = input.continuation === null
         ? 0
         : Number.parseInt(Buffer.from(input.continuation, "base64url").toString("utf8"), 10);
       if (!Number.isSafeInteger(offset) || offset < 0) {
         throw new Error("INVALID_BENCH_HOST_CONTINUATION");
       }
-      const items = hosts.slice(offset, offset + input.pageSize);
+      const remote = ctx.service<RemoteServices>("remote-services", () => {
+        throw new Error("REMOTE_SERVICES_NOT_REGISTERED");
+      });
+      const items = await probeBenchHostCapabilities(
+        hosts.slice(offset, offset + input.pageSize),
+        createSdkBenchHostProbe(bb, {
+          workspacePath: null,
+          forgeCompute: remote.forgeCompute !== null,
+        }),
+        new AbortController().signal,
+      );
       const nextOffset = offset + items.length;
       return {
         items: items.map((host) => ({

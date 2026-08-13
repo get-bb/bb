@@ -4,6 +4,7 @@ import {
   BenchHostError,
   createBenchHostJoinCode,
   listBenchHosts,
+  probeBenchHostCapabilities,
   selectBenchHost,
   startBenchThread,
 } from "./hosts.js";
@@ -96,29 +97,41 @@ describe("bench hosts", () => {
     );
   });
 
-  it("reports inspected capabilities for connected enrolled hosts", async () => {
+  it("keeps a mixed healthy/unhealthy page visible and never probes outside the page", async () => {
     const host = createFakePluginHost({
       pluginId: "finite-state-bench-host-list-capabilities",
-      sdk: { hosts: { list: async () => [enrolled("host-1")] } },
+      sdk: {
+        hosts: {
+          list: async () => [enrolled("host-healthy"), enrolled("host-unhealthy"), enrolled("host-next-page")],
+        },
+      },
     });
     hosts.push(host);
+    const listed = await listBenchHosts(host.bb);
+    const inspect = vi.fn(async (hostId: string) => {
+      if (hostId === "host-unhealthy") throw new Error("HOST_PREFLIGHT_TIMEOUT");
+      return {
+        allowPentest: true,
+        docker: true,
+        cveEvidenceVerifier: false,
+        forgeCompute: true,
+      };
+    });
     await expect(
-      listBenchHosts(host.bb, {
-        probe: {
-          inspect: async () => ({
-            allowPentest: true,
-            docker: true,
-            cveEvidenceVerifier: false,
-            forgeCompute: true,
-          }),
-        },
-      }),
+      probeBenchHostCapabilities(
+        listed.slice(0, 2),
+        { inspect },
+        new AbortController().signal,
+      ),
     ).resolves.toEqual([
       expect.objectContaining({
-        id: "host-1",
+        id: "host-healthy",
         capabilities: ["forgeCompute", "allowPentest", "docker"],
       }),
+      expect.objectContaining({ id: "host-unhealthy", capabilities: [] }),
     ]);
+    expect(inspect).toHaveBeenCalledTimes(2);
+    expect(inspect).not.toHaveBeenCalledWith("host-next-page", expect.anything());
   });
 
   it("starts a hidden server-initiated thread on the selected enrolled host", async () => {

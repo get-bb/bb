@@ -116,28 +116,40 @@ export async function createBenchHostJoinCode(bb: BbPluginApi): Promise<HostEnro
 
 export async function listBenchHosts(
   bb: BbPluginApi,
-  options: { signal?: AbortSignal; probe?: BenchHostProbe } = {},
+  options: { signal?: AbortSignal } = {},
 ): Promise<BenchHost[]> {
   const hosts = await bb.sdk.hosts.list({ ...(options.signal ? { signal: options.signal } : {}) });
+  return hosts.map((host) => ({
+    id: host.id,
+    name: host.name,
+    connected: host.status === "connected",
+    capabilities: [],
+    lastSeenAt: host.lastSeenAt === null ? null : new Date(host.lastSeenAt).toISOString(),
+  }));
+}
+
+export async function probeBenchHostCapabilities(
+  hosts: readonly BenchHost[],
+  probe: BenchHostProbe,
+  signal: AbortSignal,
+): Promise<BenchHost[]> {
   return await Promise.all(hosts.map(async (host) => {
-    const connected = host.status === "connected";
-    const inspected = connected && options.probe
-      ? await options.probe.inspect(host.id, options.signal ?? new AbortController().signal)
-      : null;
-    return {
-      id: host.id,
-      name: host.name,
-      connected,
-      capabilities: inspected
-        ? [
-            ...(inspected.forgeCompute ? ["forgeCompute"] : []),
-            ...(inspected.allowPentest ? ["allowPentest"] : []),
-            ...(inspected.docker ? ["docker"] : []),
-            ...(inspected.cveEvidenceVerifier ? ["cveEvidenceVerifier"] : []),
-          ]
-        : [],
-      lastSeenAt: host.lastSeenAt === null ? null : new Date(host.lastSeenAt).toISOString(),
-    };
+    if (!host.connected) return host;
+    try {
+      const inspected = await probe.inspect(host.id, signal);
+      return {
+        ...host,
+        capabilities: [
+          ...(inspected.forgeCompute ? ["forgeCompute"] : []),
+          ...(inspected.allowPentest ? ["allowPentest"] : []),
+          ...(inspected.docker ? ["docker"] : []),
+          ...(inspected.cveEvidenceVerifier ? ["cveEvidenceVerifier"] : []),
+        ],
+      };
+    } catch (error) {
+      if (signal.aborted) throw error;
+      return { ...host, capabilities: [] };
+    }
   }));
 }
 
