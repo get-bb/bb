@@ -56,6 +56,12 @@ export interface BenchRunStarted {
   status: "queued" | "running";
 }
 
+export interface PersistedBenchLog {
+  version: 1;
+  text: string;
+  complete: false;
+}
+
 export interface BenchProjectVersion {
   workspacePath: string;
   firmwareDigest: string;
@@ -105,6 +111,68 @@ interface FirmwareDigestRow {
 
 interface CheckIdRow {
   check_id: string;
+}
+
+const SAFE_LOCATOR_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
+const MAX_PERSISTED_LOG_TEXT_BYTES = 240 * 1024;
+
+function boundedUtf8Tail(text: string): string {
+  const bytes = Buffer.from(text, "utf8");
+  if (bytes.byteLength <= MAX_PERSISTED_LOG_TEXT_BYTES) return text;
+  let tail = bytes
+    .subarray(bytes.byteLength - MAX_PERSISTED_LOG_TEXT_BYTES)
+    .toString("utf8");
+  while (Buffer.byteLength(tail, "utf8") > MAX_PERSISTED_LOG_TEXT_BYTES) {
+    tail = tail.slice(1);
+  }
+  return tail;
+}
+
+export async function persistBenchLog(
+  kv: Pick<BbPluginApi["storage"]["kv"], "set" | "delete">,
+  runId: string,
+  job: Pick<ForgeJobSnapshot, "jobId" | "logTail">,
+  signal: AbortSignal,
+): Promise<string | null> {
+  if (!SAFE_LOCATOR_SEGMENT.test(runId) || !SAFE_LOCATOR_SEGMENT.test(job.jobId)) {
+    return null;
+  }
+  const locator = `runs/${runId}/jobs/${job.jobId}.log`;
+  const persisted: PersistedBenchLog = {
+    version: 1,
+    text: boundedUtf8Tail(job.logTail.length === 0 ? "" : `${job.logTail.join("\n")}\n`),
+    complete: false,
+  };
+  signal.throwIfAborted();
+  try {
+    await kv.set(locator, persisted);
+    signal.throwIfAborted();
+    return locator;
+  } catch (error) {
+    await kv.delete(locator).catch(() => undefined);
+    if (signal.aborted) throw signal.reason;
+    return null;
+  }
+}
+
+export async function readPersistedBenchLog(
+  kv: Pick<BbPluginApi["storage"]["kv"], "get">,
+  locator: string,
+): Promise<PersistedBenchLog | null> {
+  const value = await kv.get<unknown>(locator);
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !("version" in value) ||
+    value.version !== 1 ||
+    !("text" in value) ||
+    typeof value.text !== "string" ||
+    !("complete" in value) ||
+    value.complete !== false
+  ) {
+    return null;
+  }
+  return { version: 1, text: value.text, complete: false };
 }
 
 async function projectWorkspacePath(
@@ -187,8 +255,8 @@ export function createDefaultBenchExecutionDeps(
     scheduler: { sleep: cancellableSleep },
     jobQueue,
     evidence: {
-      async persistLog(runId, job) {
-        return `runs/${runId}/jobs/${job.jobId}.log`;
+      async persistLog(runId, job, signal) {
+        return await persistBenchLog(ctx.bb.storage.kv, runId, job, signal);
       },
     },
     async assertProjectVersion(projectId, pvId, signal) {
@@ -440,13 +508,16 @@ async function executeRunBench(
   const prepared = preparedExecution?.prepared ?? null;
   const firmwareDigest = prepared?.artifactHash ?? version.firmwareDigest;
   const runId = requiredText("runId", deps.createRunId());
-  const queued = baseRun(
-    validated,
-    request.tier,
-    runId,
-    firmwareDigest,
-    deps.now().toISOString(),
-  );
+  const queued: BenchRunRecord = {
+    ...baseRun(
+      validated,
+      request.tier,
+      runId,
+      firmwareDigest,
+      deps.now().toISOString(),
+    ),
+    ...(deploymentContext ? { config: deploymentContext } : {}),
+  };
   checkpoint(deps, { run: queued, results: [], artifacts: [] });
 
   const workspacePath = prepared?.rootfsPath ?? version.workspacePath;
