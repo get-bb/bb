@@ -1,7 +1,17 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { useResourcePagination } from "@bb/shared-ui/resource-pagination";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
+import { useCallback, useState } from "react";
+import {
+  useResourcePagination,
+  useResourceViewportPageSize,
+} from "@bb/shared-ui/resource-pagination";
 import { afterEach, describe, expect, it } from "vitest";
 
 const ROWS = Array.from({ length: 30 }, (_, index) => index + 1);
@@ -100,5 +110,97 @@ describe("useResourcePagination", () => {
     rerender(<Probe pageSize={10} rowCount={12} />);
     expect(selectedPage()).toBe(1);
     expect(visibleRows()).toEqual(ROWS.slice(10, 12));
+  });
+});
+
+const VIEWPORT_HEIGHT = 220;
+const SHORT_ROW_HEIGHT = 40;
+const TALL_ROW_HEIGHT = 110;
+const TALL_ROW_INDEX = 3;
+/** Bounds a regression so it fails an assertion instead of hanging the run. */
+const MEASUREMENT_LIMIT = 12;
+
+function stubHeight(node: HTMLElement, height: number): void {
+  Object.defineProperty(node, "clientHeight", {
+    configurable: true,
+    value: height,
+  });
+  node.getBoundingClientRect = () =>
+    ({
+      height,
+      width: 0,
+      top: 0,
+      bottom: height,
+      left: 0,
+      right: 0,
+    }) as DOMRect;
+}
+
+/**
+ * A collection whose fourth row is taller than the rest — a wrapped
+ * description, a badge that adds a line. Which rows render is decided by the
+ * measured page size, so the tall row is only measurable while the page size
+ * is large enough to show it.
+ */
+function ViewportProbe({ measured }: { measured: number[] }) {
+  const [viewport, setViewport] = useState<HTMLDivElement | null>(null);
+  const pageSize = useResourceViewportPageSize(viewport, {
+    fallbackPageSize: 5,
+  });
+  measured.push(pageSize);
+  const attachViewport = useCallback((node: HTMLDivElement | null) => {
+    if (node !== null) stubHeight(node, VIEWPORT_HEIGHT);
+    setViewport(node);
+  }, []);
+  const rowCount = measured.length > MEASUREMENT_LIMIT ? 1 : pageSize;
+
+  return (
+    <div ref={attachViewport}>
+      <div data-resource-list-panel="">
+        {Array.from({ length: rowCount }, (_, index) => (
+          <div
+            key={index}
+            data-resource-row=""
+            ref={(node) => {
+              if (node === null) return;
+              stubHeight(
+                node,
+                index === TALL_ROW_INDEX ? TALL_ROW_HEIGHT : SHORT_ROW_HEIGHT,
+              );
+            }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+async function settle(): Promise<void> {
+  for (let frame = 0; frame < 6; frame += 1) {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+  }
+}
+
+describe("useResourceViewportPageSize", () => {
+  /**
+   * The measurement reads back its own output: it can only see the rows the
+   * page size selected. A page size of 5 shows the tall row and measures 2, a
+   * page size of 2 hides it and measures 5, and the two trade places forever —
+   * a render loop that re-measures on every mutation and locks the tab up.
+   * Changing pages is what used to start it, by swapping in rows of a
+   * different height.
+   */
+  it("settles instead of trading page sizes with the rows it measures", async () => {
+    const measured: number[] = [];
+    render(<ViewportProbe measured={measured} />);
+    await settle();
+
+    const changes = measured.filter(
+      (value, index) => index > 0 && value !== measured[index - 1],
+    );
+    expect(changes.length).toBeLessThanOrEqual(1);
+    expect(measured.at(-1)).toBe(Math.floor(VIEWPORT_HEIGHT / TALL_ROW_HEIGHT));
   });
 });

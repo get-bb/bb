@@ -35,21 +35,32 @@ function cssPixelValue(value: string): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+interface ResourceViewportMeasurement {
+  pageSize: number;
+  /** The tallest row height the measurement used, carried to the next one. */
+  rowHeight: number;
+}
+
 function measureResourceViewportPageSize(
   viewport: HTMLElement,
   fallbackPageSize: number,
-): number {
+  tallestRowHeight: number,
+): ResourceViewportMeasurement {
   const availableHeight = viewport.clientHeight;
   const panel = viewport.querySelector<HTMLElement>(
     "[data-resource-list-panel]",
   );
-  if (availableHeight <= 0 || panel === null) return fallbackPageSize;
+  if (availableHeight <= 0 || panel === null) {
+    return { pageSize: fallbackPageSize, rowHeight: tallestRowHeight };
+  }
 
   const rowHeights = Array.from(
     panel.querySelectorAll<HTMLElement>("[data-resource-row]"),
     (row) => row.getBoundingClientRect().height,
   ).filter((height) => Number.isFinite(height) && height > 0);
-  if (rowHeights.length === 0) return fallbackPageSize;
+  if (rowHeights.length === 0) {
+    return { pageSize: fallbackPageSize, rowHeight: tallestRowHeight };
+  }
 
   const panelStyle = panel.ownerDocument.defaultView?.getComputedStyle(panel);
   const panelChromeHeight = panelStyle
@@ -58,14 +69,32 @@ function measureResourceViewportPageSize(
       cssPixelValue(panelStyle.borderTopWidth) +
       cssPixelValue(panelStyle.borderBottomWidth)
     : 0;
-  const rowHeight = Math.max(...rowHeights);
-  return Math.max(
-    1,
-    Math.floor((availableHeight - panelChromeHeight) / rowHeight),
-  );
+  // Only rows the current page size selected are on screen to measure, so the
+  // measurement reads back its own output. A page whose tallest row is taller
+  // than the last one shrinks the page size, which drops that row, which
+  // measures a shorter row, which grows the page size back — the two sizes
+  // then trade places forever, re-rendering the list and re-running this
+  // measurement as fast as the microtask queue allows until the tab stops
+  // responding. Keeping the tallest row seen makes the page size monotonic:
+  // it can change at most once per distinct row height, so it always settles.
+  const rowHeight = Math.max(tallestRowHeight, ...rowHeights);
+  return {
+    pageSize: Math.max(
+      1,
+      Math.floor((availableHeight - panelChromeHeight) / rowHeight),
+    ),
+    rowHeight,
+  };
 }
 
-/** Fits complete resource rows into a measured collection scroll viewport. */
+/**
+ * Fits complete resource rows into a measured collection scroll viewport.
+ *
+ * The page size only ever shrinks while one viewport stays mounted, because a
+ * measurement that could grow it again is the loop described in
+ * {@link measureResourceViewportPageSize}. A new collection — a different
+ * viewport element — measures from scratch.
+ */
 export function useResourceViewportPageSize(
   viewport: HTMLElement | null,
   options: ResourceViewportPageSizeOptions = {},
@@ -82,6 +111,8 @@ export function useResourceViewportPageSize(
 
     let observedPanel: HTMLElement | null = null;
     let resizeObserver: ResizeObserver | null = null;
+    let tallestRowHeight = 0;
+    let scheduledFrame: number | null = null;
 
     function observeCurrentPanel() {
       const panel = viewportElement.querySelector<HTMLElement>(
@@ -95,23 +126,40 @@ export function useResourceViewportPageSize(
 
     function measure() {
       observeCurrentPanel();
-      const nextPageSize = measureResourceViewportPageSize(
+      const measurement = measureResourceViewportPageSize(
         viewportElement,
         fallbackPageSize,
+        tallestRowHeight,
       );
+      tallestRowHeight = measurement.rowHeight;
       setPageSize((current) =>
-        current === nextPageSize ? current : nextPageSize,
+        current === measurement.pageSize ? current : measurement.pageSize,
       );
     }
 
+    // Every mutation inside the viewport asks for a measurement, and each one
+    // reads layout back. Browser extensions and plugin content scripts mutate
+    // this subtree too, so coalesce them into one measurement per frame.
+    function scheduleMeasure() {
+      if (typeof requestAnimationFrame !== "function") {
+        measure();
+        return;
+      }
+      if (scheduledFrame !== null) return;
+      scheduledFrame = requestAnimationFrame(() => {
+        scheduledFrame = null;
+        measure();
+      });
+    }
+
     if (typeof ResizeObserver !== "undefined") {
-      resizeObserver = new ResizeObserver(measure);
+      resizeObserver = new ResizeObserver(scheduleMeasure);
       resizeObserver.observe(viewportElement);
     }
     const mutationObserver =
       typeof MutationObserver === "undefined"
         ? null
-        : new MutationObserver(measure);
+        : new MutationObserver(scheduleMeasure);
     mutationObserver?.observe(viewportElement, {
       childList: true,
       subtree: true,
@@ -121,6 +169,12 @@ export function useResourceViewportPageSize(
     return () => {
       mutationObserver?.disconnect();
       resizeObserver?.disconnect();
+      if (
+        scheduledFrame !== null &&
+        typeof cancelAnimationFrame === "function"
+      ) {
+        cancelAnimationFrame(scheduledFrame);
+      }
     };
   }, [fallbackPageSize, viewport]);
 
