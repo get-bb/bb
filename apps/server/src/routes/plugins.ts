@@ -417,13 +417,17 @@ export function registerPluginRoutes(
       return context.json(
         {
           ok: false,
-          error: 'expected { "source": string }',
+          error:
+            'expected { "source": string, "selection"?: { "kind": "root" } | { "kind": "subdirectory", "path": string } | { "kind": "entry", "name": string } }',
         },
         422,
       );
     }
     try {
-      const plugin = await plugins.install(parsed.data.source);
+      const plugin = await plugins.install(
+        parsed.data.source,
+        parsed.data.selection,
+      );
       return context.json({ ok: true, plugin });
     } catch (error) {
       return context.json(

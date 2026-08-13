@@ -30,6 +30,7 @@ import {
   type PluginRemoveResponse,
   type PluginSettingsResponse,
   type PluginSourceDetail,
+  type PluginSourceSelection,
   type PluginTokenResponse,
   type PluginUpdateCheckEntry,
 } from "@bb/server-contract";
@@ -43,6 +44,16 @@ export interface PluginIdArgs {
 /** Install directly from a path:, git:, npm:, or builtin: source spec. */
 export interface PluginInstallArgs {
   source: string;
+  /**
+   * Directory of a multi-plugin repository to install, relative to the
+   * repository root (`git:` and `path:` sources only).
+   */
+  subdirectory?: string;
+  /**
+   * Name of a `.bb/plugins.json` collection entry to install, resolved to its
+   * directory in the repository. Mutually exclusive with `subdirectory`.
+   */
+  plugin?: string;
 }
 
 /** Install an entry from BB's official catalog. */
@@ -149,6 +160,14 @@ export interface PluginsArea {
   updateSettings(
     args: PluginSettingsUpdateArgs,
   ): Promise<PluginUpdateSettingsResult>;
+}
+
+function pluginSourceSelection(args: PluginInstallArgs): PluginSourceSelection {
+  if (args.subdirectory !== undefined) {
+    return { kind: "subdirectory", path: args.subdirectory };
+  }
+  if (args.plugin !== undefined) return { kind: "entry", name: args.plugin };
+  return { kind: "root" };
 }
 
 function pluginPath(pluginId: string, suffix = ""): string {
@@ -272,7 +291,15 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
       );
     },
     async install(input) {
-      const body = pluginInstallSourceRequestSchema.parse(input);
+      if (input.subdirectory !== undefined && input.plugin !== undefined) {
+        throw new Error(
+          "plugin install accepts subdirectory or plugin, not both",
+        );
+      }
+      const body = pluginInstallSourceRequestSchema.parse({
+        source: input.source,
+        selection: pluginSourceSelection(input),
+      });
       const response = await requestParsed(
         "/api/v1/plugins/install",
         pluginInstallResponseSchema,

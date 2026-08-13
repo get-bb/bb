@@ -109,7 +109,66 @@ describe("bb plugin catalog", () => {
     );
     expect(
       JSON.parse(String(vi.mocked(fetch).mock.calls[0]?.[1]?.body)),
-    ).toEqual({ source });
+    ).toEqual({ source, selection: { kind: "root" } });
+  });
+
+  it("sends --plugin and --subdirectory as the install selection", async () => {
+    vi.mocked(fetch).mockImplementation(async () =>
+      json({ ok: true, plugin: installedPlugin }),
+    );
+    const source = "git:github.com/acme/bb-plugins@main";
+
+    await runCommand(
+      ["plugin", "install", source, "--plugin", "linear", "--yes"],
+      register,
+    );
+    await runCommand(
+      [
+        "plugin",
+        "install",
+        source,
+        "--subdirectory",
+        "plugins/linear",
+        "--yes",
+      ],
+      register,
+    );
+
+    expect(
+      vi
+        .mocked(fetch)
+        .mock.calls.map(
+          (call) => JSON.parse(String(call[1]?.body)) as { selection: unknown },
+        )
+        .map((body) => body.selection),
+    ).toEqual([
+      { kind: "entry", name: "linear" },
+      { kind: "subdirectory", path: "plugins/linear" },
+    ]);
+  });
+
+  it("refuses --plugin together with --subdirectory", async () => {
+    const errorSpy = vi.mocked(console.error);
+
+    await expect(
+      runCommand(
+        [
+          "plugin",
+          "install",
+          "git:github.com/acme/bb-plugins@main",
+          "--plugin",
+          "linear",
+          "--subdirectory",
+          "plugins/linear",
+          "--yes",
+        ],
+        register,
+      ),
+    ).rejects.toThrowError("process.exit:1");
+    expect(
+      errorSpy.mock.calls.map((args) => args.join(" ")).join("\n"),
+    ).toMatch(/not both/);
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it("keeps install --json free of human trust preamble output", async () => {

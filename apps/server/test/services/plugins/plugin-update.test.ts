@@ -112,7 +112,7 @@ describe("plugin update service and routes", () => {
       stabilizationWindowMs: 0,
       afterArtifactPromoted: async (args) => afterArtifactPromoted?.(args),
     });
-    await service.install(`git:${repo}@main`);
+    await service.install(`git:${repo}@main`, { kind: "root" });
     app = new Hono();
     registerPluginRoutes(app, { config: { serverPort: 3334 }, db }, service);
   });
@@ -762,7 +762,7 @@ describe("plugin update service and routes", () => {
   it("refuses a pinned git tag unless the source is changed explicitly", async () => {
     await service.remove("updater");
     await git(repo, ["tag", "v1"]);
-    await service.install(`git:${repo}@v1`);
+    await service.install(`git:${repo}@v1`, { kind: "root" });
     const response = await app.request("/plugins/updater/update", {
       method: "POST",
       headers: { "content-type": "application/json" },

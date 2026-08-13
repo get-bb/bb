@@ -83,6 +83,8 @@ export type PluginSourceHistoryEntry = z.infer<
 export const pluginSourceDetailSchema = z.object({
   requested: z.string(),
   resolved: z.string(),
+  /** Repository-relative plugin directory; absent for a root install. */
+  subdirectory: z.string().optional(),
   integrity: z.string().optional(),
   registry: z.string().optional(),
   engines: z.object({
@@ -203,8 +205,32 @@ export const pluginListResponseSchema = z.object({
 });
 export type PluginListResponse = z.infer<typeof pluginListResponseSchema>;
 
+/**
+ * Which plugin of a source an install selects. A repository can hold several
+ * plugins, indexed by a `.bb/plugins.json` collection manifest: "subdirectory"
+ * is the primitive, "entry" resolves a manifest entry name, and "root" installs
+ * the source directory itself.
+ */
+export const pluginSourceSelectionSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("root") }).strict(),
+  z
+    .object({ kind: z.literal("subdirectory"), path: z.string().min(1) })
+    .strict(),
+  z.object({ kind: z.literal("entry"), name: z.string().min(1) }).strict(),
+]);
+export type PluginSourceSelection = z.infer<typeof pluginSourceSelectionSchema>;
+
+export const ROOT_PLUGIN_SOURCE_SELECTION: PluginSourceSelection = {
+  kind: "root",
+};
+
 export const pluginInstallSourceRequestSchema = z
-  .object({ source: z.string().min(1) })
+  .object({
+    source: z.string().min(1),
+    selection: pluginSourceSelectionSchema.default(
+      ROOT_PLUGIN_SOURCE_SELECTION,
+    ),
+  })
   .strict();
 export type PluginInstallSourceRequest = z.infer<
   typeof pluginInstallSourceRequestSchema

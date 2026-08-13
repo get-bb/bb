@@ -752,6 +752,13 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     npm packages must. Managed git/npm installs refuse `engines.bb` /
     `engines.bbPluginSdk` mismatches, manifest vs. artifact identity mismatches,
     and ids reserved by bundled plugins.
+    A `git:`/`path:` repository can hold several plugins. Install one with
+    `--subdirectory <relative-path>`, or with `--plugin <name>` to resolve an
+    entry of the repository's `.bb/plugins.json` collection manifest (the two
+    flags are mutually exclusive, and neither applies to `npm:`/`builtin:`
+    sources). Installs from one repository and commit share a single checkout.
+    A repository that has a collection manifest and is not a plugin itself
+    refuses an unselected install and lists its entry names.
   - `bb plugin outdated` — check installed plugins for compatible updates
     (table; `--json` for raw results). Shows latest compatible candidate and
     any blocked incompatible newer release. Dev builds (bb `0.0.0`) annotate
@@ -763,9 +770,9 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     it after removal.
   - `bb plugin list` — status, background services, schedules, handler timings,
     and each plugin's contributed `bb` command.
-  - `bb plugin source <id> [--json]` — requested and resolved source, engine
-    ranges, install time, integrity/registry details, and recent activation
-    history.
+  - `bb plugin source <id> [--json]` — requested and resolved source, the
+    repository subdirectory for a nested plugin, engine ranges, install time,
+    integrity/registry details, and recent activation history.
   - `bb plugin enable|disable <id>`, `bb plugin reload [id]`,
     `bb plugin remove <id>` (builtin removals are remembered).
   - `bb plugin config <id> [set <key> <value> | unset <key>]` — declared

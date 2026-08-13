@@ -10,6 +10,7 @@ import {
   realpath,
   rename,
   rm,
+  stat,
 } from "node:fs/promises";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import semver from "semver";
@@ -166,6 +167,36 @@ export function parsePluginSource(source: string): ParsedPluginSource {
   return { kind: "path", path };
 }
 
+/**
+ * Normalize a nested-plugin selector to a POSIX relative path inside a
+ * repository. A leading "./" is accepted; absolute paths, backslashes, empty
+ * segments, "." and ".." are rejected. The repository root itself is never a
+ * nested plugin, so a selector that normalizes to nothing is rejected too.
+ */
+export function normalizePluginSubdirectory(value: string): string {
+  const trimmed = value.startsWith("./") ? value.slice(2) : value;
+  if (
+    trimmed.length === 0 ||
+    trimmed.startsWith("/") ||
+    trimmed.includes("\\") ||
+    /^[a-zA-Z]:/.test(trimmed)
+  ) {
+    throw new Error(`invalid plugin subdirectory "${value}"`);
+  }
+  assertSafeSegments(trimmed, "plugin subdirectory");
+  return trimmed;
+}
+
+/** Plugin root inside a checkout: the checkout itself for a root install. */
+export function pluginRootDir(
+  checkoutDir: string,
+  subdirectory: string | null,
+): string {
+  return subdirectory === null
+    ? checkoutDir
+    : join(checkoutDir, ...subdirectory.split("/"));
+}
+
 /** Managed npm install prefix; the plugin root is <prefix>/node_modules/<name>. */
 export function npmInstallPrefix(
   dataDir: string,
@@ -175,7 +206,11 @@ export function npmInstallPrefix(
   return join(dataDir, "plugins", "npm", ...`${name}@${version}`.split("/"));
 }
 
-function resolveInside(root: string, segments: string[], label: string): string {
+function resolveInside(
+  root: string,
+  segments: string[],
+  label: string,
+): string {
   for (const segment of segments) assertSafeSegments(segment, label);
   const absoluteRoot = resolve(root);
   const target = resolve(absoluteRoot, ...segments);
@@ -312,13 +347,20 @@ export async function promoteImmutableDir(args: {
   try {
     await rename(args.stagingDir, args.targetDir);
   } catch (error) {
-    if (!(error instanceof Error) || !("code" in error) || error.code !== "EXDEV") {
+    if (
+      !(error instanceof Error) ||
+      !("code" in error) ||
+      error.code !== "EXDEV"
+    ) {
       if (movedCorruptTarget) await rename(corruptDir, args.targetDir);
       throw error;
     }
     const copyDir = `${args.targetDir}.promoting`;
     try {
-      await cp(args.stagingDir, copyDir, { recursive: true, preserveTimestamps: true });
+      await cp(args.stagingDir, copyDir, {
+        recursive: true,
+        preserveTimestamps: true,
+      });
       await fsyncTree(copyDir);
       await rename(copyDir, args.targetDir);
       const parent = await open(dirname(args.targetDir), constants.O_RDONLY);
@@ -340,6 +382,42 @@ export async function promoteImmutableDir(args: {
   }
 }
 
+/**
+ * Promote a git plugin from its staged checkout into the repo+commit cache.
+ *
+ * One checkout serves every plugin of a multi-plugin repository, so a nested
+ * install must not replace a checkout that a sibling plugin already built into.
+ * When the checkout is already there, only the selected subdirectory moves;
+ * the sibling's dependencies and bundles stay byte-for-byte intact. The
+ * content hash covers the plugin root alone for the same reason.
+ */
+export async function promoteGitPluginArtifact(args: {
+  stagingDir: string;
+  targetDir: string;
+  subdirectory: string | null;
+  contentHash: string;
+}): Promise<void> {
+  const targetExists = await stat(args.targetDir)
+    .then(() => true)
+    .catch(() => false);
+  if (args.subdirectory === null || !targetExists) {
+    await promoteImmutableDir({
+      stagingDir: args.stagingDir,
+      targetDir: args.targetDir,
+      contentHash: args.contentHash,
+    });
+    return;
+  }
+  try {
+    await promoteImmutableDir({
+      stagingDir: pluginRootDir(args.stagingDir, args.subdirectory),
+      targetDir: pluginRootDir(args.targetDir, args.subdirectory),
+      contentHash: args.contentHash,
+    });
+  } finally {
+    await rm(args.stagingDir, { recursive: true, force: true });
+  }
+}
 
 export const INSTALL_COMMAND_TIMEOUT_MS = 5 * 60_000;
 

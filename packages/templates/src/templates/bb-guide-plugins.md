@@ -166,6 +166,11 @@ added/updated/unchanged counts.
                                  Omitted npm specs, ranges, dist-tags, omitted
                                  Git refs, and Git branches track; exact npm
                                  versions, Git tags, and Git commits are pinned
+                                 --subdirectory <path> installs one plugin
+                                 directory of a multi-plugin git:/path:
+                                 repository; --plugin <name> installs the
+                                 .bb/plugins.json entry with that name
+                                 (the two flags are mutually exclusive)
   bb plugin outdated             Check installed plugins for compatible
                                  updates (table; --json for raw results).
                                  Columns: installed, latest compatible,
@@ -179,8 +184,9 @@ added/updated/unchanged counts.
                                  --yes). Use outdated to preview; pinned
                                  installs stay put
   bb plugin list                 Status, services, schedules, handler timings
-  bb plugin source <id> [--json] Show requested/resolved source, engine ranges,
-                                 install time, and recent activation history
+  bb plugin source <id> [--json] Show requested/resolved source, subdirectory,
+                                 engine ranges, install time, and recent
+                                 activation history
   bb plugin enable|disable <id>  Load or unload an installed plugin
   bb plugin reload [id]          Re-run factories against current sources
   bb plugin config <id> [set <key> <value> | unset <key>]
@@ -223,6 +229,40 @@ added/updated/unchanged counts.
                                  on every change rebuild its frontend bundle
                                  (if it declares bb.app) and reload the
                                  plugin; Ctrl+C to stop
+
+Multi-plugin repositories
+
+One repository can hold several plugins. Each plugin directory stays an
+ordinary plugin package with its own package.json and bb manifest. An optional
+collection manifest at .bb/plugins.json indexes them:
+
+  {
+    "schemaVersion": 1,
+    "name": "acme-plugins",
+    "plugins": [
+      { "name": "sidebar", "source": "./plugins/sidebar" },
+      { "name": "status", "source": "./apps/status", "description": "..." }
+    ]
+  }
+
+Every source is a repository-relative directory that starts with "./".
+Absolute paths, "..", and a source that selects the repository root are
+rejected, and so are duplicate entry names and unknown fields. The file is an
+index only: identity, branding, entry points, and engine ranges stay in each
+plugin's own manifest.
+
+Install one plugin of the repository:
+
+  bb plugin install git:github.com/acme/repo@main --plugin sidebar
+  bb plugin install git:github.com/acme/repo@main --subdirectory plugins/sidebar
+  bb plugin install path:/work/repo --plugin sidebar
+
+--subdirectory is the primitive and works without a collection manifest.
+--plugin resolves a name from .bb/plugins.json. Installs from one repository
+and commit share a single checkout. When a repository has a collection
+manifest, is not a plugin itself, and neither flag is given, the install fails
+and lists the entry names. bb records the subdirectory, so outdated, update,
+rollback, and remove keep working per plugin.
 
 BB Official plugins
 

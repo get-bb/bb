@@ -869,6 +869,9 @@ export function registerPluginCommands(
         console.log(`${id}`);
         console.log(`  requested: ${source.requested}`);
         console.log(`  resolved: ${source.resolved}`);
+        if (source.subdirectory !== undefined) {
+          console.log(`  subdirectory: ${source.subdirectory}`);
+        }
         if (source.registry) console.log(`  registry: ${source.registry}`);
         if (source.integrity) console.log(`  integrity: ${source.integrity}`);
         if (source.engines.bb) {
@@ -898,12 +901,40 @@ export function registerPluginCommands(
     .description(
       "Install a bundled official plugin by name, Git repository URL, local path, builtin:<name>, git:<url>[@<ref>], or npm:<name>@<version> (managed sources validate engines ranges and build artifacts; bundled plugin ids are reserved)",
     )
+    .option(
+      "--subdirectory <path>",
+      "Install one plugin directory of a multi-plugin git:/path: repository",
+    )
+    .option(
+      "--plugin <name>",
+      "Install the .bb/plugins.json entry with this name (git:/path: repositories)",
+    )
     .option("--yes", "Skip the confirmation prompt")
     .option("--json", "Output JSON")
     .action(
       action(
-        async (source: string, opts: JsonOutputOptions & { yes?: boolean }) => {
+        async (
+          source: string,
+          opts: JsonOutputOptions & {
+            yes?: boolean;
+            subdirectory?: string;
+            plugin?: string;
+          },
+        ) => {
+          if (opts.subdirectory !== undefined && opts.plugin !== undefined) {
+            throw new Error(
+              "Use --subdirectory or --plugin, not both: --plugin resolves a name from .bb/plugins.json to a subdirectory.",
+            );
+          }
           const intent = await resolveInstallIntent(getUrl(), source);
+          if (
+            intent.kind === "catalog" &&
+            (opts.subdirectory !== undefined || opts.plugin !== undefined)
+          ) {
+            throw new Error(
+              `"${source}" is an official plugin entry; --subdirectory and --plugin apply to git: and path: repositories only.`,
+            );
+          }
           // Catalog entries split by source kind: `builtin:` plugins ship
           // inside the app, git-catalog entries install from their pinned,
           // reviewed commit — the preamble must not claim one is the other.
@@ -928,6 +959,12 @@ export function registerPluginCommands(
             } catch {
               // fall through to the bare path summary
             }
+          }
+          if (opts.subdirectory !== undefined) {
+            summary = `${summary} (subdirectory ${opts.subdirectory})`;
+          }
+          if (opts.plugin !== undefined) {
+            summary = `${summary} (collection plugin ${opts.plugin})`;
           }
           if (!opts.json) {
             console.log(summary);
@@ -960,6 +997,10 @@ export function registerPluginCommands(
             intent.kind === "source"
               ? await createCliBbSdk(getUrl()).plugins.install({
                   source: intent.source,
+                  ...(opts.subdirectory === undefined
+                    ? {}
+                    : { subdirectory: opts.subdirectory }),
+                  ...(opts.plugin === undefined ? {} : { plugin: opts.plugin }),
                 })
               : await createCliBbSdk(getUrl()).plugins.catalog.install({
                   entryId: intent.entry.entryId,

@@ -21,6 +21,10 @@ export function pluginArtifactStorageRoot(
   const parts = artifact.path.split(sep);
   const commitIndex = parts.lastIndexOf(artifact.gitResolvedCommit);
   if (commitIndex === -1) return null;
+  // A nested plugin shares its checkout with every sibling plugin of the same
+  // repository and commit, so collecting it removes its own directory only.
+  // The checkout itself is left for the siblings that still build into it.
+  if (commitIndex < parts.length - 1) return artifact.path;
   return parts.slice(0, commitIndex + 1).join(sep) || sep;
 }
 

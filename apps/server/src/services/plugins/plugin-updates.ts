@@ -300,6 +300,9 @@ export function createPluginUpdates(
       return {
         requested: row.source,
         resolved: installedUpdateVersion(row).display,
+        ...(row.sourceGitSubdirectory === null
+          ? {}
+          : { subdirectory: row.sourceGitSubdirectory }),
         ...(row.npmIntegrity === null ? {} : { integrity: row.npmIntegrity }),
         ...(row.sourceNpmRegistry === null
           ? {}

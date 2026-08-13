@@ -595,13 +595,13 @@ describe("plugin service", () => {
       name: "bb-plugin-reinstalled",
       serverSource: `export default function plugin() {}`,
     });
-    await service.install(rootDir);
+    await service.install(rootDir, { kind: "root" });
     expect(await service.setEnabled("reinstalled", false)).toMatchObject({
       enabled: false,
       status: "disabled",
     });
 
-    const reinstalled = await service.install(rootDir);
+    const reinstalled = await service.install(rootDir, { kind: "root" });
 
     expect(reinstalled).toMatchObject({
       enabled: true,

@@ -191,6 +191,37 @@ bb plugin install git:https://github.com/acme/bb-plugin-notes.git@main
 A bare HTTP(S) repository URL tracks its default branch. Use the `git:` form
 with an explicit branch, tag, or commit when that tracking intent matters.
 
+### Several plugins in one repository
+
+Keep each plugin in its own directory with its own `package.json`, then index
+the directories in a `.bb/plugins.json` collection manifest at the repository
+root:
+
+```json
+{
+  "schemaVersion": 1,
+  "name": "acme-plugins",
+  "plugins": [
+    { "name": "notes", "source": "./plugins/notes" },
+    { "name": "status", "source": "./plugins/status" }
+  ]
+}
+```
+
+Each `source` is a repository-relative directory that starts with `./`. The
+file is an index only — it never overrides a plugin's identity, branding,
+entry points, or engine ranges. Users install one plugin at a time:
+
+```sh
+bb plugin install git:https://github.com/acme/bb-plugins.git@main --plugin notes
+bb plugin install git:https://github.com/acme/bb-plugins.git@main --subdirectory plugins/notes
+bb plugin install path:. --plugin notes
+```
+
+`--subdirectory` works without a collection manifest; `--plugin` resolves an
+entry name from it. If the repository is not itself a plugin, an install with
+neither flag fails and lists the entry names.
+
 BB has one maintained set of official plugins; users cannot add third-party
 catalogs. Official-plugin inclusion is a BB release decision, not part of the
 plugin authoring workflow: official plugins ship bundled inside the app itself

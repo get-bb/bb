@@ -17,9 +17,13 @@ import {
   builtinPluginSource,
   type BundledPluginRegistration,
 } from "./builtin-registry.js";
+import type { PluginSourceSelection } from "@bb/server-contract";
+import { resolveSelectedSubdirectory } from "./collection-manifest.js";
 import {
   isCommitSha,
   parsePluginSource,
+  pluginRootDir,
+  realPathInside,
   runInstallCommand,
 } from "./install-sources.js";
 import { readPluginManifest, type PluginManifest } from "./manifest.js";
@@ -263,9 +267,25 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
 
   async function installPathSource(
     path: string,
+    selection: PluginSourceSelection,
     context: InstallContext = directInstallContext,
   ): Promise<PluginListEntry> {
-    const rootDir = resolve(path);
+    const checkoutDir = resolve(path);
+    const subdirectory = await resolveSelectedSubdirectory({
+      checkoutDir,
+      selection,
+      sourceLabel: checkoutDir,
+    });
+    // A local repository is the author's own directory, so the selected plugin
+    // is recorded by its resolved path; symlink containment still applies.
+    const rootDir =
+      subdirectory === null
+        ? checkoutDir
+        : await realPathInside(
+            checkoutDir,
+            pluginRootDir(checkoutDir, subdirectory),
+            "plugin subdirectory",
+          );
     return registerInstalled({
       rootDir,
       source: `path:${rootDir}`,

@@ -681,9 +681,9 @@ describe("builtin plugin reconciliation", () => {
   it("rejects unknown builtin install sources clearly", async () => {
     service = createService({ db, dataDir: join(workDir, "data") });
 
-    await expect(service.install("builtin:missing")).rejects.toThrow(
-      'unknown builtin plugin "missing"',
-    );
+    await expect(
+      service.install("builtin:missing", { kind: "root" }),
+    ).rejects.toThrow('unknown builtin plugin "missing"');
   });
 
   it("installs and loads a packaged builtin whose source files are omitted", async () => {
@@ -785,12 +785,12 @@ describe("builtin plugin reconciliation", () => {
       rootDir: copiedRoot,
     });
 
-    await expect(service.install("builtin:automations")).resolves.toMatchObject(
-      {
-        id: "automations",
-        status: "running",
-      },
-    );
+    await expect(
+      service.install("builtin:automations", { kind: "root" }),
+    ).resolves.toMatchObject({
+      id: "automations",
+      status: "running",
+    });
     await expect(
       readFile(join(copiedRoot, "dist", "app.css"), "utf8"),
     ).resolves.toBe("/* built */\n");

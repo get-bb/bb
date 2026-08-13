@@ -667,6 +667,40 @@ plugins are pinned to the bundled copy and update with BB app releases. Local
 path installs remain available directly through `bb plugin install ./path` or
 `path:...`, and direct `npm:`/`git:` installs stay supported.
 
+### Multi-plugin repositories
+
+A repository can hold several plugins. Each plugin directory keeps its own
+`package.json` and `bb` manifest; an optional `.bb/plugins.json` collection
+manifest at the repository root indexes them:
+
+```json
+{
+  "schemaVersion": 1,
+  "name": "acme-plugins",
+  "plugins": [
+    { "name": "notes", "source": "./plugins/notes" },
+    { "name": "status", "source": "./plugins/status", "description": "..." }
+  ]
+}
+```
+
+The file is strict: `schemaVersion` must be `1`, names match
+`^[a-z0-9][a-z0-9-]*$`, unknown fields and duplicate names are rejected, and
+each `source` is a repository-relative directory starting with `./` — absolute
+paths, `..`, empty segments, and the repository root itself are refused. An
+invalid file is rejected whole. The manifest is an index only; it never
+overrides a plugin's identity, branding, entry points, or engine ranges.
+
+Install one plugin of the repository with
+`bb plugin install git:<url>[@<ref>] --plugin <name>` (resolves a collection
+entry) or `--subdirectory <relative-path>` (the primitive, which needs no
+collection manifest). Both flags work for `path:` sources and are mutually
+exclusive. Installs from the same repository and commit share one cached
+checkout, and the selected subdirectory is recorded with the install, so
+`bb plugin outdated`, `update`, rollback, and `remove` act per plugin. A
+repository that has a collection manifest and is not a plugin itself refuses
+an unselected install and lists its entry names.
+
 ### Plugin updates
 
 Bundled builtin and official plugins update with BB app releases. For direct
