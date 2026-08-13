@@ -4,17 +4,11 @@ export interface ReviewTransitionInput {
   action: "approve" | "reject";
 }
 
-export interface ReviewTransitionDeps<T> {
-  send(input: ReviewTransitionInput): Promise<T>;
-  refresh(entityId: string): Promise<{ reviewVersion: string }>;
-  isConflict(error: unknown): boolean;
-}
-
-export async function transitionReview<T>(deps: ReviewTransitionDeps<T>, input: ReviewTransitionInput): Promise<T> {
-  try { return await deps.send(input); }
-  catch (error: unknown) {
-    if (!deps.isConflict(error)) throw error;
-    const refreshed = await deps.refresh(input.entityId);
-    return await deps.send({ ...input, expectedReviewVersion: refreshed.reviewVersion });
-  }
-}
+/**
+ * Review/standards lifecycle actions have no lane-local registration in WP-40.
+ * Ordinary Product Security updates use the production Assurance Studio
+ * pusher, which reads the accepted review version before PATCH. A future
+ * lifecycle surface must implement 409 refresh/retry there rather than
+ * exposing an unwired helper from this lane.
+ */
+export const REVIEW_TRANSITION_REGISTRATION = "unavailable" as const;

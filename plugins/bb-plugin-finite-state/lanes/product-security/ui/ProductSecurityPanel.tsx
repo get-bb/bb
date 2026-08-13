@@ -289,6 +289,7 @@ export function ProductSecurityPanel({
   const isVerificationRunDetail = route.detail.length === 2
     && Boolean(route.detail[0])
     && verificationTier !== undefined
+    && verificationTier !== "hardware"
     && isVerificationTier(verificationTier);
   return (
     <section

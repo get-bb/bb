@@ -6,6 +6,7 @@ import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { createPluginContext } from "../../../../lib/context.js";
 import { registerRemoteServices } from "../../../remote/register.js";
 import { registerVerificationRunDetailBackend } from "./backend.js";
+import { observedJobState } from "./backend.js";
 import { queryResultHistory, queryRunDetail } from "./query.js";
 import { AttestationCard } from "./AttestationCard.js";
 import { runVerification, type VerificationJob } from "./actions.js";
@@ -25,7 +26,7 @@ const hosts: Array<ReturnType<typeof createFakePluginHost>> = [];
 afterEach(async () => { cleanup(); await Promise.all(hosts.splice(0).map((host) => host.harness.lifecycle.dispose())); });
 
 const EMPTY_MODEL: RunDetailModel = {
-  requirementId: "REQ-EMPTY", tier: "static", run: null, checks: [], history: [],
+  requirementId: "REQ-EMPTY", projectVersionId: "version-1", tier: "static", run: null, checks: [], history: [],
   historyTotal: 0, historyNext: null, artifacts: [], attestations: [],
   manualMessage: "Manual evidence is unavailable.",
   taraConcurrency: "Head-only concurrency bracket.",
@@ -108,6 +109,11 @@ describe("verification run detail", () => {
     expect(unknown.queryByText(/Detail route/u)).toBeNull();
     unknown.lifecycle.unmount();
 
+    const hardware = renderSlot(productPanel(), { subPath: "verifications/REQ-1/hardware" }, options);
+    expect(hardware.getByText("Matrix route")).toBeTruthy();
+    expect(hardware.queryByText(/Detail route/u)).toBeNull();
+    hardware.lifecycle.unmount();
+
     const unconfigured = renderSlot(productPanel(), { subPath: "verifications/REQ-1/static" }, { context: { projectId: null, threadId: null }, sidebarThreads: { status: "ready", projects: [], threads: [] } });
     expect(unconfigured.getByText("Choose a project")).toBeTruthy();
     unconfigured.lifecycle.unmount();
@@ -134,14 +140,46 @@ describe("verification run detail", () => {
   });
 
   it("serves large logs through authenticated HTTP with byte ranges and confines artifacts", async () => {
-    const { host, ctx, project } = fixture();
+    const { host, ctx, db, project, version } = fixture();
+    const otherVersion = "version-2", otherGeneration = "generation-2", at = "2026-08-13T12:30:00.000Z";
+    db.prepare(`INSERT INTO pull_generation (project_id,project_version_id,generation_id,status,requested_kinds_json,started_at,completed_at,accepted_at) VALUES (?,?,?,'accepted','["requirement"]',?,?,?)`).run(project, otherVersion, otherGeneration, at, at, at);
+    db.prepare(`INSERT INTO sync_state (project_id,project_version_id,entity_kind,accepted_generation_id,base_revision,last_pull) VALUES (?,?,'requirement',?,0,?)`).run(project, otherVersion, otherGeneration, at);
+    db.prepare(`INSERT INTO verification_runs (project_id,project_version_id,generation_id,run_id,tier,matrix_col,kind,status,firmware_digest,log_locator,raw,synced_at) VALUES (?,?,?,'run-1','tier0','static','platform','completed',?,'other/run.log',?,?)`).run(project, otherVersion, otherGeneration, "e".repeat(64), JSON.stringify({ jobs: [{ logTail: ["wrong version"] }] }), at);
+    db.prepare(`INSERT INTO verification_artifacts (project_id,project_version_id,generation_id,artifact_id,run_id,name,kind,locator,sha256,bytes,pulled_at) VALUES (?,?,?,'artifact-2','run-1','report.json','report','other/report.json',?,21,?)`).run(project, otherVersion, otherGeneration, "f".repeat(64), at);
     await registerRemoteServices(host.bb, ctx); registerVerificationRunDetailBackend(host.bb, ctx);
-    const response = await host.harness.behavior.fetchHttp("GET", `/product-security/verifications/log?projectId=${project}&runId=run-1`, { headers: { range: "bytes=0-7" } });
+    const response = await host.harness.behavior.fetchHttp("GET", `/product-security/verifications/log?projectId=${project}&projectVersionId=${version}&runId=run-1`, { headers: { range: "bytes=0-7" } });
     expect(response.status).toBe(206); expect(response.headers.get("content-range")).toBe("bytes 0-7/18"); expect(await response.text()).toBe("line one");
-    const traversal = await host.harness.behavior.fetchHttp("GET", `/product-security/verifications/artifact?projectId=${project}&runId=run-1&artifactName=..%2Fsecret`);
+    const traversal = await host.harness.behavior.fetchHttp("GET", `/product-security/verifications/artifact?projectId=${project}&projectVersionId=${version}&runId=run-1&artifactName=..%2Fsecret`);
     expect(traversal.status).toBe(400);
-    const unavailable = await host.harness.behavior.fetchHttp("GET", `/product-security/verifications/artifact?projectId=${project}&runId=run-1&artifactName=report.json`);
+    const unavailable = await host.harness.behavior.fetchHttp("GET", `/product-security/verifications/artifact?projectId=${project}&projectVersionId=${version}&runId=run-1&artifactName=report.json`);
     expect(unavailable.status).toBe(410); expect(await unavailable.text()).toContain("no approved byte adapter");
+  });
+
+  it("ignores a stale completed cache row and terminates only after this invocation is observed", async () => {
+    const { db, project, version } = fixture();
+    db.prepare(`UPDATE verification_runs SET job_id='job-observed', status='completed', started_at='2026-08-13T12:00:00.000Z', synced_at='2026-08-13T12:00:00.000Z' WHERE run_id='run-1'`).run();
+    const invokedAt = "2026-08-13T13:00:00.000Z";
+    expect(observedJobState(db, { projectId: project, projectVersionId: version, jobId: "job-observed", invokedAt })).toBeNull();
+
+    const client = { async runVerificationChecks() { return { runId: "job-observed", checksQueued: 1, status: "queued" }; } };
+    const staleJobs: VerificationJob[] = [];
+    for await (const job of runVerification({
+      projectId: project, client, now: () => new Date(invokedAt), maxPolls: 1, sleep: async () => undefined,
+      async readJob(jobId, started) { return observedJobState(db, { projectId: project, projectVersionId: version, jobId, invokedAt: started }); },
+    }, { requirementId: "REQ-1", checkId: "check-1" })) staleJobs.push(job);
+    expect(staleJobs.map((job) => job.state)).toEqual(["QUEUED", "TIMEOUT"]);
+
+    db.prepare(`UPDATE verification_runs SET status='completed', started_at='2026-08-13T13:00:01.000Z', synced_at='2026-08-13T13:00:02.000Z' WHERE run_id='run-1'`).run();
+    db.prepare(`INSERT INTO pull_generation (project_id,project_version_id,generation_id,status,requested_kinds_json,started_at,completed_at,accepted_at) VALUES (?,?,?,'accepted','["verificationRun"]',?,?,?)`).run(project, version, "generation-new", invokedAt, invokedAt, invokedAt);
+    db.prepare(`UPDATE sync_state SET accepted_generation_id='generation-new' WHERE project_id=? AND project_version_id=? AND entity_kind='verificationRun'`).run(project, version);
+    expect(observedJobState(db, { projectId: project, projectVersionId: version, jobId: "job-observed", invokedAt })).toBeNull();
+    db.prepare(`UPDATE sync_state SET accepted_generation_id='generation-1' WHERE project_id=? AND project_version_id=? AND entity_kind='verificationRun'`).run(project, version);
+    const observedJobs: VerificationJob[] = [];
+    for await (const job of runVerification({
+      projectId: project, client, now: () => new Date(invokedAt), maxPolls: 1, sleep: async () => undefined,
+      async readJob(jobId, started) { return observedJobState(db, { projectId: project, projectVersionId: version, jobId, invokedAt: started }); },
+    }, { requirementId: "REQ-1", checkId: "check-1" })) observedJobs.push(job);
+    expect(observedJobs.map((job) => job.state)).toEqual(["QUEUED", "COMPLETED"]);
   });
 
   it.each([

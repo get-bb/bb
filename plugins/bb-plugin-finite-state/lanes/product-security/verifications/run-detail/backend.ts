@@ -1,6 +1,8 @@
 import type { BbPluginApi } from "@bb/plugin-sdk";
+import type Database from "better-sqlite3";
 import type { PluginContext } from "../../../../lib/context.js";
 import type { RemoteServices } from "../../../../lib/remote/types.js";
+import { toStorageProjectVersionId } from "../../../../lib/store/index.js";
 import { RemoteLimiter, systemScheduler } from "../../../../lib/remote/rate-limit.js";
 import { registeredPusher } from "../../../sync/engine/adapter.js";
 import { createAssuranceStudioPusher, registerTypedPusher } from "../../../sync/push/pushers.js";
@@ -31,6 +33,26 @@ function jsonError(message: string, status: number): Response {
 }
 
 interface LogRow { raw: string; log_locator: string | null }
+interface JobStateRow { status: string }
+
+export function observedJobState(
+  db: Database.Database,
+  input: { projectId: string; projectVersionId: string; jobId: string; invokedAt: string },
+): "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED" | "TIMEOUT" | null {
+  const row = db.prepare<[string, string, string, string, string, string], JobStateRow>(
+    `SELECT r.status
+       FROM verification_runs r
+       JOIN sync_state s
+         ON s.project_id=r.project_id AND s.project_version_id=r.project_version_id
+        AND s.entity_kind='verificationRun' AND s.accepted_generation_id=r.generation_id
+      WHERE r.project_id=? AND r.project_version_id=?
+        AND (r.job_id=? OR r.run_id=?)
+        AND r.synced_at >= ? AND COALESCE(r.started_at, r.synced_at) >= ?
+      ORDER BY r.synced_at DESC LIMIT 1`,
+  ).get(input.projectId, toStorageProjectVersionId(input.projectVersionId), input.jobId, input.jobId, input.invokedAt, input.invokedAt);
+  const state = row?.status.toUpperCase();
+  return state === "QUEUED" || state === "RUNNING" || state === "COMPLETED" || state === "FAILED" || state === "TIMEOUT" ? state : null;
+}
 
 function cachedLog(raw: string): string {
   try {
@@ -76,20 +98,21 @@ export function registerVerificationRunDetailBackend(
       return queryRunDetail(db, { projectId: input.projectId, projectVersionId: input.projectVersionId, ...identity });
     },
     async verificationsRunStart(input) {
+      if (input.projectVersionId === null) throw new Error("VERIFICATION_PROJECT_VERSION_REQUIRED");
+      const projectVersionId = input.projectVersionId;
       let last: { jobId: string; state: "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED" | "TIMEOUT"; progress?: number } | null = null;
       for await (const job of runVerification({
         projectId: input.projectId,
         client: remote().assuranceStudio,
         publish(job) { bb.realtime.publish("verifications:changed", { projectId: input.projectId, jobId: job.jobId, state: job.state }); },
-        async readJob(jobId) {
-          const row = db.prepare<[string, string, string], { status: string }>(`SELECT status FROM verification_runs WHERE project_id=? AND (job_id=? OR run_id=?) ORDER BY synced_at DESC LIMIT 1`).get(input.projectId, jobId, jobId);
-          if (!row) return null;
-          const state = row.status.toUpperCase();
-          return state === "QUEUED" || state === "RUNNING" || state === "COMPLETED" || state === "FAILED" || state === "TIMEOUT" ? state : null;
+        async readJob(jobId, invokedAt) {
+          return observedJobState(db, { projectId: input.projectId, projectVersionId, jobId, invokedAt });
         },
+        maxPolls: 20,
+        pollIntervalMs: 250,
       }, { requirementId: input.requirementId, ...(input.tier ? { tier: input.tier } : {}), ...(input.checkId ? { checkId: input.checkId } : {}) })) last = job;
       if (!last) throw new Error("VERIFICATION_JOB_NOT_STARTED");
-      return { projectId: input.projectId, projectVersionId: input.projectVersionId, id: last.jobId, state: last.state, progress: last.progress ?? null, message: "Invocation finished; cached result truth refreshes independently." };
+      return { projectId: input.projectId, projectVersionId: input.projectVersionId, id: last.jobId, state: last.state, progress: last.progress ?? null, message: "Five-second cache observation window finished; the detail now rereads accepted evidence without claiming backend cancellation." };
     },
     verificationsManualAttestationRecord() { return manualAttestationUnavailable(); },
     verificationResultHistoryList(input) { return queryResultHistory(db, input); },
@@ -97,9 +120,10 @@ export function registerVerificationRunDetailBackend(
 
   bb.http.route("GET", "/product-security/verifications/log", (http) => {
     const projectId = http.req.query("projectId");
+    const projectVersionId = http.req.query("projectVersionId");
     const runId = http.req.query("runId");
-    if (!projectId || !runId || !SAFE_SURFACE_ID.test(projectId) || !SAFE_SURFACE_ID.test(runId)) return jsonError("Valid projectId and runId are required.", 400);
-    const rows = db.prepare<[string, string], LogRow>(`SELECT r.raw, r.log_locator FROM verification_runs r JOIN sync_state s ON s.project_id=r.project_id AND s.project_version_id=r.project_version_id AND s.entity_kind='verificationRun' AND s.accepted_generation_id=r.generation_id WHERE r.project_id=? AND r.run_id=? LIMIT 2`).all(projectId, runId);
+    if (!projectId || !projectVersionId || !runId || !SAFE_SURFACE_ID.test(projectId) || !SAFE_SURFACE_ID.test(projectVersionId) || !SAFE_SURFACE_ID.test(runId)) return jsonError("Valid projectId, projectVersionId, and runId are required.", 400);
+    const rows = db.prepare<[string, string, string], LogRow>(`SELECT r.raw, r.log_locator FROM verification_runs r JOIN sync_state s ON s.project_id=r.project_id AND s.project_version_id=r.project_version_id AND s.entity_kind='requirement' AND s.accepted_generation_id=r.generation_id WHERE r.project_id=? AND r.project_version_id=? AND r.run_id=? LIMIT 2`).all(projectId, toStorageProjectVersionId(projectVersionId), runId);
     if (rows.length !== 1) return jsonError("Run log is unknown or ambiguous.", 404);
     const body = cachedLog(rows[0]!.raw);
     if (!body) return jsonError(rows[0]!.log_locator ? "The complete logical log has no approved byte adapter." : "No cached log is recorded.", 410);
@@ -113,10 +137,10 @@ export function registerVerificationRunDetailBackend(
   }, { auth: "local" });
 
   bb.http.route("GET", "/product-security/verifications/artifact", (http) => {
-    const projectId = http.req.query("projectId"); const runId = http.req.query("runId"); const artifactName = http.req.query("artifactName");
-    if (!projectId || !runId || !artifactName || !SAFE_SURFACE_ID.test(projectId) || !SAFE_SURFACE_ID.test(runId) || !SAFE_ARTIFACT_NAME.test(artifactName)) return jsonError("Valid confined artifact coordinates are required.", 400);
-    const row = db.prepare<[string, string, string], { name: string; locator: string }>(`SELECT a.name, a.locator FROM verification_artifacts a JOIN sync_state s ON s.project_id=a.project_id AND s.project_version_id=a.project_version_id AND s.entity_kind='verificationRun' AND s.accepted_generation_id=a.generation_id WHERE a.project_id=? AND a.run_id=? AND a.name=? LIMIT 1`).get(projectId, runId, artifactName);
-    if (!row) return jsonError("Artifact metadata is not available.", 404);
-    return jsonError(`Artifact ${row.name} has a confined logical locator, but no approved byte adapter is available.`, 410);
+    const projectId = http.req.query("projectId"); const projectVersionId = http.req.query("projectVersionId"); const runId = http.req.query("runId"); const artifactName = http.req.query("artifactName");
+    if (!projectId || !projectVersionId || !runId || !artifactName || !SAFE_SURFACE_ID.test(projectId) || !SAFE_SURFACE_ID.test(projectVersionId) || !SAFE_SURFACE_ID.test(runId) || !SAFE_ARTIFACT_NAME.test(artifactName)) return jsonError("Valid confined artifact coordinates are required.", 400);
+    const rows = db.prepare<[string, string, string, string], { name: string; locator: string }>(`SELECT a.name, a.locator FROM verification_artifacts a JOIN sync_state s ON s.project_id=a.project_id AND s.project_version_id=a.project_version_id AND s.entity_kind='requirement' AND s.accepted_generation_id=a.generation_id WHERE a.project_id=? AND a.project_version_id=? AND a.run_id=? AND a.name=? LIMIT 2`).all(projectId, toStorageProjectVersionId(projectVersionId), runId, artifactName);
+    if (rows.length !== 1) return jsonError("Artifact metadata is unknown or ambiguous in this project version.", 404);
+    return jsonError(`Artifact ${rows[0]!.name} has a confined logical locator, but no approved byte adapter is available.`, 410);
   }, { auth: "local" });
 }

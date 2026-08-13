@@ -139,15 +139,13 @@ export function queryResultHistory(db: Database.Database, input: DetailPageInput
   };
 }
 
-export function queryRunDetail(db: Database.Database, scope: RunDetailScope, requestedRunId?: string) {
+export function queryRunDetail(db: Database.Database, scope: RunDetailScope) {
   const accepted = acceptedScope(db, scope);
   const cacheState = cache(accepted);
   if (!accepted) throw new Error("VERIFICATION_DETAIL_EMPTY");
   const storageVersion = accepted.project_version_id;
   const generation = accepted.accepted_generation_id;
-  const run = requestedRunId
-    ? db.prepare<unknown[], RunRow>(`SELECT run_id, status, firmware_digest, job_id, started_at, finished_at, target, log_locator FROM verification_runs WHERE project_id=? AND project_version_id=? AND generation_id=? AND run_id=? LIMIT 1`).get(scope.projectId, storageVersion, generation, requestedRunId)
-    : db.prepare<unknown[], RunRow>(`SELECT DISTINCT r.run_id, r.status, r.firmware_digest, r.job_id, r.started_at, r.finished_at, r.target, r.log_locator FROM verification_runs r JOIN verification_results vr ON vr.project_id=r.project_id AND vr.project_version_id=r.project_version_id AND vr.generation_id=r.generation_id AND vr.run_id=r.run_id WHERE vr.project_id=? AND vr.project_version_id=? AND vr.generation_id=? AND vr.requirement_key=? AND vr.tier=? ORDER BY COALESCE(r.started_at,'') DESC, r.run_id LIMIT 1`).get(scope.projectId, storageVersion, generation, scope.requirementId, scope.tier);
+  const run = db.prepare<unknown[], RunRow>(`SELECT DISTINCT r.run_id, r.status, r.firmware_digest, r.job_id, r.started_at, r.finished_at, r.target, r.log_locator FROM verification_runs r JOIN verification_results vr ON vr.project_id=r.project_id AND vr.project_version_id=r.project_version_id AND vr.generation_id=r.generation_id AND vr.run_id=r.run_id WHERE vr.project_id=? AND vr.project_version_id=? AND vr.generation_id=? AND vr.requirement_key=? AND vr.tier=? ORDER BY COALESCE(r.started_at,'') DESC, r.run_id LIMIT 1`).get(scope.projectId, storageVersion, generation, scope.requirementId, scope.tier);
   const checks = db.prepare<unknown[], CheckRow>(
     `SELECT vc.check_id, vc.code, vc.name, vc.check_type, vc.category, vc.description,
             vc.pass_criteria, vc.fail_criteria, vc.input_description, rcm.is_required,
@@ -165,7 +163,7 @@ export function queryRunDetail(db: Database.Database, scope: RunDetailScope, req
   return {
     projectId: scope.projectId, projectVersionId: fromStorageProjectVersionId(storageVersion), kind: "verification-run-detail", key: run?.run_id ?? `${scope.requirementId}:${scope.tier}`, label: `${scope.requirementId} · ${scope.tier}`,
     fields: {
-      requirementId: scope.requirementId, tier: scope.tier, run: run ? { id: run.run_id, status: run.status, firmwareDigest: firmware, jobId: run.job_id, startedAt: run.started_at, finishedAt: run.finished_at, target: run.target, logAvailable: run.log_locator !== null } : null,
+      projectVersionId: fromStorageProjectVersionId(storageVersion), requirementId: scope.requirementId, tier: scope.tier, run: run ? { id: run.run_id, status: run.status, firmwareDigest: firmware, jobId: run.job_id, startedAt: run.started_at, finishedAt: run.finished_at, target: run.target, logAvailable: run.log_locator !== null } : null,
       checks: checks.map((row) => ({ id: row.check_id, code: row.code, name: row.name, type: row.check_type, category: row.category, description: row.description, passCriteria: row.pass_criteria, failCriteria: row.fail_criteria, inputDescription: row.input_description, required: row.is_required === 1, coverageLevel: row.coverage_level, suppressed: row.suppressed === 1 })),
       history: history.items.map((item) => item.fields), historyTotal: history.total, historyNext: history.next,
       artifacts: artifacts.map((row) => ({ id: row.artifact_id, runId: row.run_id, name: row.name, kind: row.kind, mediaType: row.media_type, sha256: row.sha256, bytes: row.bytes, createdAt: row.created_at })),

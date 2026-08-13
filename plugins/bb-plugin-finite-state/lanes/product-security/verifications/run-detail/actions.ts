@@ -7,8 +7,8 @@ export interface ActionDeps {
   projectId: string;
   client: Pick<AssuranceStudioClient, "runVerificationChecks">;
   publish?(job: VerificationJob): void;
-  refresh?(): Promise<void>;
-  readJob?(jobId: string): Promise<VerificationJob["state"] | null>;
+  readJob?(jobId: string, invokedAt: string): Promise<VerificationJob["state"] | null>;
+  now?(): Date;
   sleep?(milliseconds: number): Promise<void>;
   pollIntervalMs?: number;
   maxPolls?: number;
@@ -16,6 +16,7 @@ export interface ActionDeps {
 
 export async function* runVerification(deps: ActionDeps, request: VerificationRunRequest): AsyncIterable<VerificationJob> {
   if (!request.checkId) throw new Error("CHECK_REQUIRED: a mapped verification check must be selected");
+  const invokedAt = (deps.now?.() ?? new Date()).toISOString();
   const response = await deps.client.runVerificationChecks({ projectId: deps.projectId, checkIds: [request.checkId], rerunPassed: true });
   const queued: VerificationJob = { jobId: response.runId, state: "QUEUED", progress: 0 };
   deps.publish?.(queued);
@@ -25,7 +26,7 @@ export async function* runVerification(deps: ActionDeps, request: VerificationRu
   const sleep = deps.sleep ?? ((milliseconds: number) => new Promise<void>((resolve) => setTimeout(resolve, milliseconds)));
   for (let poll = 0; state === null && poll < (deps.maxPolls ?? 60); poll += 1) {
     await sleep(deps.pollIntervalMs ?? 500);
-    state = await deps.readJob?.(response.runId) ?? null;
+    state = await deps.readJob?.(response.runId, invokedAt) ?? null;
     if (state === "QUEUED" || state === "RUNNING") {
       const update: VerificationJob = { jobId: response.runId, state, progress: Math.min(0.95, (poll + 1) / (deps.maxPolls ?? 60)) };
       deps.publish?.(update); yield update; state = null;
@@ -34,7 +35,6 @@ export async function* runVerification(deps: ActionDeps, request: VerificationRu
   const terminal: VerificationJob = { jobId: response.runId, state: state ?? "TIMEOUT", progress: 1 };
   deps.publish?.(terminal);
   yield terminal;
-  await deps.refresh?.();
 }
 
 export function manualAttestationUnavailable(): never {

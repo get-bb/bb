@@ -5,7 +5,6 @@ import type { PlanItem } from "../../sync/plan/index.js";
 import type { PushContext } from "../../sync/push/types.js";
 import { toStorageProjectVersionId } from "../../../lib/store/index.js";
 
-export interface TaraFence { headVersionId: string; workingContentHash?: string }
 export interface HeadOnlyGroupToken { generationId: string; baseRevision: number; itemCount: number }
 interface StateRow { accepted_generation_id: string | null; base_revision: number }
 
@@ -18,6 +17,16 @@ function staleTaraState(message: string): RemoteError {
     retryAfterMs: null,
     details: { code: "stale_tara_state" },
   });
+}
+
+export function isHeadOnlyGroupToken(value: unknown): value is HeadOnlyGroupToken {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const generationId = Reflect.get(value, "generationId");
+  const baseRevision = Reflect.get(value, "baseRevision");
+  const itemCount = Reflect.get(value, "itemCount");
+  return typeof generationId === "string"
+    && Number.isSafeInteger(baseRevision) && Number(baseRevision) >= 0
+    && Number.isSafeInteger(itemCount) && Number(itemCount) >= 0;
 }
 
 function state(db: Database.Database, ctx: PushContext, kind: EntityKind): StateRow | null {
