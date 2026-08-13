@@ -84,10 +84,14 @@ export function CrossLinks({ rows }: { rows: readonly FindingDetailRow[] }): Rea
           ? mapFamily(kind, result.value)
           : [unready(kind, safeMessage(result.reason), "inspect")];
       });
-      const taraReady = results.some(result => result.status === "fulfilled" && result.value.sourceSlug === sourceSlug);
-      resolved.splice(2, 0, taraReady
-        ? { kind: "tara", target: sourceSlug, label: "TARA component", ready: true }
-        : unready("tara", "The TARA component could not be resolved.", "inspect"));
+      // WP-34 has no public TARA readiness family. A source slug identifies a
+      // possible node target, but it does not prove the downstream model or
+      // node exists, so keep this affordance disabled until a real signal ships.
+      resolved.splice(2, 0, unready(
+        "tara",
+        "TARA readiness is unavailable because no public node resolver has shipped.",
+        "inspect",
+      ));
       setLinks(resolved);
       setLoading(false);
     });
@@ -119,7 +123,7 @@ export function CrossLinks({ rows }: { rows: readonly FindingDetailRow[] }): Rea
                 {link.reason ? <p className="mt-1 break-words text-muted-foreground">{link.reason}</p> : null}
               </div>
               {link.ready ? <Button onClick={() => open(link)} size="sm" variant="outline">Open</Button>
-                : link.kind === "verification"
+                : link.kind === "verification" || link.kind === "tara"
                   ? <Button disabled size="sm" variant="ghost">Unavailable</Button>
                   : <Button onClick={() => recover(link)} size="sm" variant="ghost">{link.action === "pull" ? "Pull" : "Inspect"}</Button>}
             </li>

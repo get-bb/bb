@@ -197,19 +197,24 @@ describe("finding detail", () => {
     await waitFor(() => expect(slot.inspection.rpcCalls.filter(call => call.method.startsWith("canvas")).map(call => call.method)).toEqual(expect.arrayContaining([
       "canvasFirmwareLinks", "canvasSbomLinks", "canvasRequirementLinks", "canvasVerificationLinks",
     ])));
-    await waitFor(() => expect(within(section).queryAllByRole("button", { name: "Open" })).toHaveLength(4));
+    await waitFor(() => expect(within(section).queryAllByRole("button", { name: "Open" })).toHaveLength(3));
     const openButtons = within(section).getAllByRole("button", { name: "Open" });
-    expect(openButtons).toHaveLength(4);
+    expect(openButtons).toHaveLength(3);
     for (const button of openButtons) fireEvent.click(button);
     const calls = slot.inspection.navigateCalls.filter(call => call.method === "toPluginPanel");
     expect(calls).toEqual(expect.arrayContaining([
       expect.objectContaining({ path: "firmware", options: expect.objectContaining({ subPath: "tree/usr%2Fbin%2Fgateway" }) }),
       expect.objectContaining({ path: "bom" }),
-      expect.objectContaining({ path: "product-security", options: expect.objectContaining({ subPath: "tara/nodes/gateway" }) }),
       expect.objectContaining({ path: "product-security", options: expect.objectContaining({ subPath: "requirements/trace/REQ-secure-gateway" }) }),
     ]));
+    expect(calls).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: "product-security", options: expect.objectContaining({ subPath: "tara/nodes/gateway" }) }),
+    ]));
+    expect(within(section).getByText(/no public node resolver/u)).toBeTruthy();
     expect(within(section).getByText(/WP-39 ships/u)).toBeTruthy();
-    expect((within(section).getByRole("button", { name: "Unavailable" }) as HTMLButtonElement).disabled).toBe(true);
+    const unavailable = within(section).getAllByRole("button", { name: "Unavailable" }) as HTMLButtonElement[];
+    expect(unavailable).toHaveLength(2);
+    expect(unavailable.every(button => button.disabled)).toBe(true);
   });
 
   it("rejects an invalid encoded key before detail SQL or remote calls", async () => {
