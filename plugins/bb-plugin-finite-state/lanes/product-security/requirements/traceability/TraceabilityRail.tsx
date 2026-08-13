@@ -56,7 +56,7 @@ export function TraceabilityRail({
         </div>
       </div>
       {rail.gaps.length > 0 ? (
-        <div aria-label="Traceability gaps" className="grid gap-2 md:grid-cols-2">
+        <div aria-label="Traceability gaps" className="grid gap-2 md:grid-cols-2" role="region">
           {rail.gaps.map((item, index) => (
             <div className="flex gap-2 rounded-md border border-warning/40 bg-warning/5 p-3 text-xs" key={`${item.from}:${item.to}:${index}`} role="status">
               <Icon aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-warning" name="AlertTriangle" />
