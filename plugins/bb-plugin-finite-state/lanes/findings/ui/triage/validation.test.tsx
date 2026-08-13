@@ -35,4 +35,11 @@ describe("triage draft validation", () => {
     expect(validateTriageDraft({ ...valid(), justification: "CODE_NOT_REACHABLE", pin: "any_version" })).toMatchObject({ ok: false, field: "pin" });
     expect(validateTriageDraft(valid())).toEqual({ ok: true });
   });
+
+  it("rejects justification on every status other than NOT_AFFECTED", () => {
+    for (const status of VEX_STATUS_VALUES.filter(value => value !== "NOT_AFFECTED")) {
+      expect(validateTriageDraft({ ...valid(), status })).toMatchObject({ ok: false, field: "justification" });
+      expect(validateTriageDraft({ ...valid(), status, justification: null })).toEqual({ ok: true });
+    }
+  });
 });

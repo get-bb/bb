@@ -64,6 +64,18 @@ function decision(findingId: string, stableKey: string, expectedSha256: string |
 }
 
 describe("manual triage RPC boundary", () => {
+  it("rejects a justification on a non-NOT_AFFECTED status at the RPC boundary", async () => {
+    const { host, stableKey } = await fixture();
+    const input = {
+      ...scope(),
+      decisions: [{ ...decision("exact-row-a", stableKey, null), status: "EXPLOITABLE", justification: "CODE_NOT_REACHABLE" }],
+    };
+    const parsed = findingsUiRpcContract.triageDecisionsWrite.input.safeParse(input);
+    expect(parsed.success).toBe(false);
+    if (!parsed.success) expect(parsed.error.issues).toEqual(expect.arrayContaining([expect.objectContaining({ path: ["decisions", 0, "justification"], message: "Justification is only valid for NOT_AFFECTED" })]));
+    await expect(host.harness.callRpc("triageDecisionsWrite", input)).rejects.toThrow("rpc input validation failed");
+  });
+
   it("reads and writes the exact selected row through WP-27 without remote mutation", async () => {
     const { host, root, stableKey } = await fixture();
     const target = findingsUiRpcContract.triageTargetsRead.output.parse(await host.harness.callRpc("triageTargetsRead", {

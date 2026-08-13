@@ -47,7 +47,7 @@ function draftFor(target: TriageTarget, status: VexStatus, includeSeed: boolean)
   return {
     stableKey: target.stableKey,
     status,
-    justification: prior?.justification ?? null,
+    justification: status === "NOT_AFFECTED" ? prior?.justification ?? null : null,
     response: prior?.response ?? null,
     reason: prior?.reason ?? (includeSeed ? target.reasonSeed : ""),
     evidence: prior?.provenance.evidence ?? target.evidence,
@@ -334,26 +334,43 @@ export function FindingsTriage({
 
   useFindingsShortcuts(active, shortcut);
 
-  const refreshTargets = useCallback(async (targets: readonly TriageTarget[]): Promise<TriageTarget[]> => {
+  const refreshTargets = useCallback(async (targets: readonly TriageTarget[]): Promise<{
+    targets: TriageTarget[];
+    failures: BulkFailure[];
+    retryTargets: TriageTarget[];
+  }> => {
     if (!workspaceProjectId || !platformProjectId || !projectVersionId) throw new Error("Choose a findings scope before bulk triage.");
     const refreshed: TriageTarget[] = [];
+    const failures: BulkFailure[] = [];
+    const retryTargets: TriageTarget[] = [];
     for (let index = 0; index < targets.length; index += TARGET_PAGE) {
-      const ids = targets.slice(index, index + TARGET_PAGE).map(exact => exact.findingId);
-      const result = await rpc.call("triageTargetsRead", {
-        workspaceProjectId,
-        platformProjectId,
-        projectVersionId,
-        selection: { mode: "exact", findingIds: ids },
-        continuation: null,
-      });
-      const byId = new Map(result.items.map(exact => [exact.findingId, exact]));
-      for (const findingId of ids) {
-        const exact = byId.get(findingId);
-        if (!exact) throw new Error(`The exact selected finding row ${findingId} is no longer available.`);
-        refreshed.push(exact);
+      const requested = targets.slice(index, index + TARGET_PAGE);
+      try {
+        const result = await rpc.call("triageTargetsRead", {
+          workspaceProjectId,
+          platformProjectId,
+          projectVersionId,
+          selection: { mode: "exact", findingIds: requested.map(exact => exact.findingId) },
+          continuation: null,
+        });
+        const byId = new Map(result.items.map(exact => [exact.findingId, exact]));
+        for (const original of requested) {
+          const exact = byId.get(original.findingId);
+          if (exact) refreshed.push(exact);
+          else {
+            failures.push({ findingId: original.findingId, stableKey: original.stableKey, message: `The exact selected finding row ${original.findingId} is no longer available.`, retryable: true });
+            retryTargets.push(original);
+          }
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "The exact selected finding rows could not be refreshed.";
+        for (const original of requested) {
+          failures.push({ findingId: original.findingId, stableKey: original.stableKey, message, retryable: true });
+          retryTargets.push(original);
+        }
       }
     }
-    return refreshed;
+    return { targets: refreshed, failures, retryTargets };
   }, [platformProjectId, projectVersionId, rpc, workspaceProjectId]);
 
   const writeBulkTargets = useCallback(async (
@@ -365,27 +382,42 @@ export function FindingsTriage({
     const retryTargets: TriageTarget[] = [];
     let successes = 0;
     for (let index = 0; index < targets.length; index += WRITE_CHUNK) {
-      const chunk = await refreshTargets(targets.slice(index, index + WRITE_CHUNK));
-      const response = await rpc.call("triageDecisionsWrite", {
-        workspaceProjectId, platformProjectId, projectVersionId,
-        decisions: chunk.map(exact => ({
-          findingId: exact.findingId, stableKey: exact.stableKey,
-          status: draft.status, justification: draft.justification, response: draft.response,
-          reason: draft.reason.trim().replaceAll("{evidence}", exact.evidence),
-          evidence: draft.evidence.trim().replaceAll("{evidence}", exact.evidence), pin: draft.pin,
-          expectedSha256: exact.expectedSha256,
-        })),
-      });
-      response.results.forEach((result, resultIndex) => {
-        const exact = chunk[resultIndex];
-        if (!exact) return;
-        if (result.success) { successes += 1; rememberUndo(result, exact); }
-        else {
-          failures.push({ findingId: result.findingId, stableKey: result.stableKey, message: result.message, retryable: result.retryable });
-          if (result.retryable) retryTargets.push(exact);
+      const requested = targets.slice(index, index + WRITE_CHUNK);
+      const refreshed = await refreshTargets(requested);
+      failures.push(...refreshed.failures);
+      retryTargets.push(...refreshed.retryTargets);
+      if (refreshed.targets.length > 0) {
+        try {
+          const response = await rpc.call("triageDecisionsWrite", {
+            workspaceProjectId, platformProjectId, projectVersionId,
+            decisions: refreshed.targets.map(exact => ({
+              findingId: exact.findingId, stableKey: exact.stableKey,
+              status: draft.status, justification: draft.justification, response: draft.response,
+              reason: draft.reason.trim().replaceAll("{evidence}", exact.evidence),
+              evidence: draft.evidence.trim().replaceAll("{evidence}", exact.evidence), pin: draft.pin,
+              expectedSha256: exact.expectedSha256,
+            })),
+          });
+          refreshed.targets.forEach((exact, resultIndex) => {
+            const result = response.results[resultIndex];
+            if (!result) {
+              failures.push({ findingId: exact.findingId, stableKey: exact.stableKey, message: "The local writer returned no result for this finding.", retryable: true });
+              retryTargets.push(exact);
+            } else if (result.success) { successes += 1; rememberUndo(result, exact); }
+            else {
+              failures.push({ findingId: result.findingId, stableKey: result.stableKey, message: result.message, retryable: result.retryable });
+              if (result.retryable) retryTargets.push(exact);
+            }
+          });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "The local writer failed before returning per-finding results.";
+          for (const exact of refreshed.targets) {
+            failures.push({ findingId: exact.findingId, stableKey: exact.stableKey, message, retryable: true });
+            retryTargets.push(exact);
+          }
         }
-      });
-      setAnnouncement(`Bulk local write progress: ${Math.min(index + chunk.length, targets.length)} of ${targets.length} attempted.`);
+      }
+      setAnnouncement(`Bulk local write progress: ${Math.min(index + requested.length, targets.length)} of ${targets.length} attempted.`);
     }
     setBulkFailures(failures);
     setFailedTargets(retryTargets);
@@ -432,7 +464,7 @@ export function FindingsTriage({
         <span>{readiness}</span>
         <Button aria-description="Open the complete keyboard shortcut reference" onClick={() => setSheet(true)} size="sm" variant="ghost"><Icon aria-hidden="true" className="size-3.5" name="CircleQuestion" />Shortcuts <kbd className="font-mono">?</kbd></Button>
       </div>
-      {draft && target ? <TriageEditor draft={draft} error={writeError} onCancel={() => { setDraft(null); setTarget(null); setWriteError(null); }} onChange={setDraft} onCommit={count > 0 ? () => { setBulkConfirming(true); } : commitSingle} onReasonConfirmed={setReasonConfirmed} onReload={reloadTarget} pending={pending} prior={count > 0 ? null : target.prior} reasonConfirmed={reasonConfirmed} seededReason={!target.prior && draft.reason === target.reasonSeed && target.reasonSeed.length > 0} targetLabel={count > 0 ? `${previewCount.toLocaleString()} local overlay ${previewCount === 1 ? "identity" : "identities"}` : target.label} /> : null}
+      {draft && target ? <TriageEditor draft={draft} error={writeError} onCancel={() => { setDraft(null); setTarget(null); setWriteError(null); }} onChange={next => setDraft(next.status === "NOT_AFFECTED" ? next : { ...next, justification: null })} onCommit={count > 0 ? () => { setBulkConfirming(true); } : commitSingle} onReasonConfirmed={setReasonConfirmed} onReload={reloadTarget} pending={pending} prior={count > 0 ? null : target.prior} reasonConfirmed={reasonConfirmed} seededReason={!target.prior && draft.reason === target.reasonSeed && target.reasonSeed.length > 0} targetLabel={count > 0 ? `${previewCount.toLocaleString()} local overlay ${previewCount === 1 ? "identity" : "identities"}` : target.label} /> : null}
       <BulkDecisionBar confirming={bulkConfirming} count={previewCount} existingDecisionCount={previewExisting} failures={bulkFailures} onCancel={() => { setBulkConfirming(false); setBulkOpen(false); }} onConfirm={() => void confirmBulk(false)} onOpen={() => setBulkOpen(true)} onRetry={() => void confirmBulk(true)} onStatus={status => void prepareBulk(status)} open={bulkOpen} pending={pending} predicate={selection.mode === "predicate"} sharedCollisionRows={previewSharedRows} status={draft?.status ?? null} />
       {sheet ? <ShortcutSheet onOpenChange={setSheet} open /> : null}
     </>

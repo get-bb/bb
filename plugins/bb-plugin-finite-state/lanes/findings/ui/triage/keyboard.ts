@@ -6,15 +6,15 @@ export type TriageShortcut =
   | { action: "open" | "filter" | "toggle" | "range" | "bulk" | "undo" | "sheet" }
   | { action: "status"; status: (typeof VEX_SHORTCUTS)[keyof typeof VEX_SHORTCUTS] };
 
-export function isShortcutSuppressed(target: EventTarget | null): boolean {
+export function isShortcutSuppressed(target: EventTarget | null, key = ""): boolean {
   if (!(target instanceof HTMLElement)) return false;
-  return target instanceof HTMLInputElement
+  if (target instanceof HTMLInputElement
     || target instanceof HTMLTextAreaElement
     || target instanceof HTMLSelectElement
-    || target instanceof HTMLButtonElement
-    || target instanceof HTMLAnchorElement
     || target.isContentEditable
-    || target.closest('[contenteditable="true"], [role="dialog"], [role="combobox"], [role="menu"], [role="listbox"]') !== null;
+    || target.closest('[contenteditable="true"], [role="dialog"], [role="combobox"], [role="menu"], [role="listbox"]') !== null) return true;
+  if (target.closest("button, a") !== null && (key === "Enter" || key === " ")) return true;
+  return key === "Enter" && target.closest("[data-finding-row]") !== null;
 }
 
 export function shortcutFor(event: Pick<KeyboardEvent, "altKey" | "ctrlKey" | "key" | "metaKey">): TriageShortcut | null {
@@ -41,7 +41,7 @@ export function useFindingsShortcuts(
   useEffect(() => {
     if (!active) return;
     const keydown = (event: KeyboardEvent) => {
-      if (isShortcutSuppressed(event.target)) return;
+      if (isShortcutSuppressed(event.target, event.key)) return;
       const shortcut = shortcutFor(event);
       if (!shortcut) return;
       event.preventDefault();

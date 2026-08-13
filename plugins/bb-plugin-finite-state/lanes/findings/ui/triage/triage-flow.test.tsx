@@ -187,6 +187,37 @@ describe("manual triage flow", () => {
     expect(slot.getByText(/27 succeeded, 0 failed/u)).toBeTruthy();
   });
 
+  it("keeps per-key accounting when a later chunk loses an exact row during refresh", async () => {
+    const findings = Array.from({ length: 25 }, (_, index) => finding(index));
+    const slot = await renderFlow({
+      findings,
+      read: input => {
+        const selection = input["selection"] as { mode: string; findingIds?: string[] };
+        const ids = selection.mode === "predicate" ? findings.map(item => item.key) : selection.findingIds ?? [];
+        const available = ids.length === 5 ? ids.filter(id => id !== "finding-22") : ids;
+        return { items: available.map(id => target(id)), total: available.length, next: null };
+      },
+    });
+    fireEvent.click(slot.getByRole("button", { name: "Select all 25" }));
+    fireEvent.keyDown(window, { key: "b" });
+    fireEvent.click(slot.getByRole("button", { name: /eEXPLOITABLE/u }));
+    const editor = await slot.findByRole("form", { name: /25 local overlay identities/u });
+    fireEvent.change(within(editor).getByLabelText("Reason"), { target: { value: "Reviewed every selected finding locally" } });
+    fireEvent.change(within(editor).getByLabelText("Evidence reviewed"), { target: { value: "Reviewed the evidence for every selected row" } });
+    fireEvent.click(within(editor).getByRole("checkbox"));
+    fireEvent.click(within(editor).getByRole("button", { name: /Write YAML/u }));
+    fireEvent.click(await slot.findByRole("button", { name: "Confirm local writes" }));
+
+    await waitFor(() => expect(slot.inspection.rpcCalls.filter(call => call.method === "triageDecisionsWrite")).toHaveLength(2));
+    const writes = slot.inspection.rpcCalls.filter(call => call.method === "triageDecisionsWrite");
+    expect((writes[0]?.input as { decisions: unknown[] }).decisions).toHaveLength(20);
+    expect((writes[1]?.input as { decisions: unknown[] }).decisions).toHaveLength(4);
+    expect(await slot.findByText(/24 succeeded, 1 failed/u)).toBeTruthy();
+    expect(slot.getByText(/stable-22: The exact selected finding row finding-22 is no longer available/u)).toBeTruthy();
+    expect((slot.getByRole("button", { name: "Retry failed" }) as HTMLButtonElement).disabled).toBe(false);
+    await waitFor(() => expect(slot.inspection.rpcCalls.filter(call => call.method === "findingsUiList").length).toBeGreaterThan(1));
+  });
+
   it("shows and preserves the prior local decision before replacement", async () => {
     const prior = {
       status: "NOT_AFFECTED" as const,
@@ -207,6 +238,12 @@ describe("manual triage flow", () => {
     expect(within(existing).getByText("Previously reviewed authored rationale")).toBeTruthy();
     expect((within(editor).getByLabelText("Reason") as HTMLTextAreaElement).value).toBe(prior.reason);
     expect((within(editor).getByLabelText("Evidence reviewed") as HTMLTextAreaElement).value).toBe(prior.provenance.evidence);
+    expect(within(editor).getByText("Not required for EXPLOITABLE.")).toBeTruthy();
+    fireEvent.click(within(editor).getByRole("checkbox"));
+    fireEvent.click(within(editor).getByRole("button", { name: /Write YAML/u }));
+    await waitFor(() => expect(slot.inspection.rpcCalls.filter(call => call.method === "triageDecisionsWrite")).toHaveLength(1));
+    const write = slot.inspection.rpcCalls.find(call => call.method === "triageDecisionsWrite");
+    expect(write?.input).toMatchObject({ decisions: [{ status: "EXPLOITABLE", justification: null }] });
   });
 
   it("writes one exact row for a selected collision identity and discloses the shared sibling", async () => {

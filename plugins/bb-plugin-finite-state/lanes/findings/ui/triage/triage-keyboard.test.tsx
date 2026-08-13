@@ -4,6 +4,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, waitFor, within } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@bb/plugin-sdk/testing/app";
 import { connectedRemoteStatus } from "../../../../test/app-connections.js";
+import { isShortcutSuppressed } from "./keyboard.js";
 import { VEX_SHORTCUTS } from "./validation.js";
 
 const freshCache = { state: "fresh" as const, asOf: "2026-08-13T00:00:00.000Z", message: null, acceptedGenerationId: "generation-1", baseRevision: 1 };
@@ -71,7 +72,9 @@ describe("findings keyboard triage", () => {
     await waitFor(() => expect(document.activeElement).toBe(rows[1]));
     fireEvent.keyDown(window, { key: "k" });
     await waitFor(() => expect(document.activeElement).toBe(rows[0]));
+    const navigations = slot.inspection.navigateCalls.length;
     fireEvent.keyDown(window, { key: "Enter" });
+    expect(slot.inspection.navigateCalls).toHaveLength(navigations + 1);
     expect(slot.inspection.navigateCalls.at(-1)).toMatchObject({ method: "toPluginPanel", options: { subPath: "f/stable-0" } });
   });
 
@@ -86,16 +89,30 @@ describe("findings keyboard triage", () => {
     }
   });
 
-  it("suppresses shortcuts in inputs, controls, and dialogs while leaving host chords untouched", async () => {
+  it("suppresses text entry, dialogs, native control activation, and host chords without killing button letter shortcuts", async () => {
     const slot = await renderTriage();
     const filter = slot.getByLabelText("Filter component");
     filter.focus();
     fireEvent.keyDown(filter, { key: "n" });
     expect(slot.queryByRole("form", { name: /Triage/u })).toBeNull();
+    const firstRow = slot.container.querySelector<HTMLElement>("[data-finding-row]");
+    firstRow?.focus();
+    fireEvent.keyDown(window, { key: "x" });
     const button = slot.getByRole("button", { name: /Shortcuts/u });
     button.focus();
-    fireEvent.keyDown(button, { key: "n" });
-    expect(slot.queryByRole("form", { name: /Triage/u })).toBeNull();
+    fireEvent.keyDown(button, { key: "b" });
+    expect(slot.getByRole("region", { name: /Bulk decision controls/u })).toBeTruthy();
+    expect(isShortcutSuppressed(button, "Enter")).toBe(true);
+    expect(isShortcutSuppressed(button, "n")).toBe(false);
+    const link = document.createElement("a");
+    expect(isShortcutSuppressed(link, "Enter")).toBe(true);
+    expect(isShortcutSuppressed(link, "n")).toBe(false);
+    const notAffected = slot.getByRole("button", { name: /nNOT AFFECTED/u });
+    notAffected.focus();
+    fireEvent.keyDown(notAffected, { key: "e" });
+    const editor = await slot.findByRole("form", { name: /Triage/u });
+    expect(within(editor).getByText("EXPLOITABLE")).toBeTruthy();
+    fireEvent.click(within(editor).getByRole("button", { name: "Cancel" }));
     fireEvent.keyDown(window, { key: "n", metaKey: true });
     expect(slot.queryByRole("form", { name: /Triage/u })).toBeNull();
     fireEvent.click(slot.getByRole("button", { name: /Shortcuts/u }));

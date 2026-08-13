@@ -145,6 +145,9 @@ const triageWriteItemSchema = z.object({
   if (item.status === "NOT_AFFECTED" && item.justification === null) {
     context.addIssue({ code: "custom", path: ["justification"], message: "NOT_AFFECTED requires a frozen VEX justification" });
   }
+  if (item.status !== "NOT_AFFECTED" && item.justification !== null) {
+    context.addIssue({ code: "custom", path: ["justification"], message: "Justification is only valid for NOT_AFFECTED" });
+  }
   if (item.justification === "CODE_NOT_REACHABLE" && item.pin !== "exact_version") {
     context.addIssue({ code: "custom", path: ["pin"], message: "CODE_NOT_REACHABLE requires exact_version" });
   }

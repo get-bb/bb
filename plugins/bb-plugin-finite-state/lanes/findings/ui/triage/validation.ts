@@ -68,6 +68,9 @@ export function validateTriageDraft(
   if (draft.status === "NOT_AFFECTED" && draft.justification === null) {
     return { ok: false, field: "justification", message: "NOT_AFFECTED requires a justification." };
   }
+  if (draft.status !== "NOT_AFFECTED" && draft.justification !== null) {
+    return { ok: false, field: "justification", message: "Justification is only valid for NOT_AFFECTED." };
+  }
   if (draft.response !== null && !responses.has(draft.response)) {
     return { ok: false, field: "response", message: "Choose a response from the frozen VEX vocabulary." };
   }
