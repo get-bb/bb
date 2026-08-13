@@ -118,19 +118,56 @@ describe("app keybindings", () => {
     ).toBe(true);
   });
 
-  it("matches shifted Alt cycles by physical key when macOS composes the key", () => {
+  it.each([
+    ["m", "Â", "KeyM"],
+    ["p", "∏", "KeyP"],
+    ["t", "ˇ", "KeyT"],
+  ])(
+    "matches Alt+Shift+%s by physical key when macOS reports %s",
+    (key, composed, code) => {
+      expect(
+        matchesAppShortcut(
+          {
+            key: composed,
+            code,
+            metaKey: false,
+            ctrlKey: false,
+            altKey: true,
+            shiftKey: true,
+          },
+          { ...ALT_P, key, shift: true },
+          true,
+        ),
+      ).toBe(true);
+    },
+  );
+
+  it("keeps forward and backward Alt cycles mutually exclusive", () => {
+    const input = {
+      key: "m",
+      code: "KeyM",
+      metaKey: false,
+      ctrlKey: false,
+      altKey: true,
+      shiftKey: false,
+    };
+    const forward = { ...ALT_P, key: "m" };
+    const backward = { ...forward, shift: true };
+
+    expect(matchesAppShortcut(input, forward, false)).toBe(true);
+    expect(matchesAppShortcut(input, backward, false)).toBe(false);
     expect(
       matchesAppShortcut(
-        {
-          key: "composed",
-          code: "KeyM",
-          metaKey: false,
-          ctrlKey: false,
-          altKey: true,
-          shiftKey: true,
-        },
-        { ...ALT_P, key: "m", shift: true },
-        true,
+        { ...input, key: "M", shiftKey: true },
+        forward,
+        false,
+      ),
+    ).toBe(false);
+    expect(
+      matchesAppShortcut(
+        { ...input, key: "M", shiftKey: true },
+        backward,
+        false,
       ),
     ).toBe(true);
   });

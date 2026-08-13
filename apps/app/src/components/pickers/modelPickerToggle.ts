@@ -5,8 +5,7 @@ export type ModelPickerToggleAction = "open" | "close" | "ignore";
  * Which mounted picker a model-picker chord addresses. Every composer registers
  * its own handler — including side-chat composers that stay mounted while
  * hidden — so every such chord must scope to the focused pane AND to a single
- * composer within it. Shared by the toggle and the cycle chords so their scope
- * rules cannot drift apart.
+ * composer within it.
  */
 export interface ModelPickerScope {
   /** Whether this picker is disabled (locked/preview surfaces). */
@@ -36,7 +35,7 @@ export interface ModelPickerToggleInput extends ModelPickerScope {
 }
 
 /**
- * Whether this picker instance is the one a model-picker chord addresses.
+ * Whether this picker instance is the one the picker-toggle chord addresses.
  *
  * 1. Disabled pickers never act.
  * 2. Only the focused pane participates (checked before the open rule so a
@@ -46,30 +45,42 @@ export interface ModelPickerToggleInput extends ModelPickerScope {
  *    below can no longer see it.
  * 4. If the caret is inside a composer, only that composer's picker acts; a
  *    sibling composer of the same pane defers to it.
- * 5. An editable target outside every composer keeps its text-entry chord.
- * 6. Otherwise (caret outside every composer, e.g. after keyboard pane
+ * 5. Otherwise (caret outside every composer, e.g. after keyboard pane
  *    navigation) only a split pane's primary composer acts — lone surfaces keep
  *    their prior "do nothing unless the caret is in the composer" behavior.
  */
-export function ownsModelPickerChord(input: ModelPickerToggleInput): boolean {
+export function ownsModelPickerToggleChord(
+  input: ModelPickerToggleInput,
+): boolean {
   if (input.disabled) return false;
   if (!input.isFocusedPane) return false;
   if (input.open) return true;
   if (input.caretInThisComposer) return true;
   if (input.caretInOtherComposerOfPane) return false;
-  if (input.editableOutsideComposer) return false;
   if (!input.isSplitPane) return false;
   return input.isPrimaryComposer;
 }
 
 /**
+ * Cycle chords share the toggle's picker selection, except a closed picker does
+ * not claim Option-composed character input from an unrelated editable. An open
+ * picker still owns the chord because its search input is portaled outside the
+ * composer and cycling is intentionally available there.
+ */
+export function ownsModelPickerCycleChord(
+  input: ModelPickerToggleInput,
+): boolean {
+  if (!input.open && input.editableOutsideComposer) return false;
+  return ownsModelPickerToggleChord(input);
+}
+
+/**
  * Decides what a single {@link ModelReasoningPicker} should do when the
- * `modelPicker.toggle` command (Cmd+Shift+M) fires. The cycle commands share
- * {@link ownsModelPickerChord} with it, so their scope rules cannot drift.
+ * `modelPicker.toggle` command (Cmd+Shift+M) fires.
  */
 export function resolveModelPickerToggle(
   input: ModelPickerToggleInput,
 ): ModelPickerToggleAction {
-  if (!ownsModelPickerChord(input)) return "ignore";
+  if (!ownsModelPickerToggleChord(input)) return "ignore";
   return input.open ? "close" : "open";
 }

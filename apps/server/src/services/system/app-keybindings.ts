@@ -203,9 +203,9 @@ export const DEFAULT_APP_KEYBINDINGS: AppDefaultKeybindings = [
   // Rotate the composer's provider, model, and reasoning level in either
   // direction without opening the picker, scoped exactly like
   // `modelPicker.toggle` above. Alt is otherwise unused by bb, the browser, and
-  // both desktop menus, so these chords shadow nothing. macOS composes
-  // Option+<letter> into another character, so they match on the physical key —
-  // see `normalizeAppShortcutInputKey` in @bb/domain.
+  // both desktop menus, so these chords conflict with no app shortcut. macOS
+  // composes Option+<letter> into another character, so they match on the
+  // physical key — see `normalizeAppShortcutInputKey` in @bb/domain.
   binding("modelPicker.cycleModel", "m", { alt: true }, composerWithoutModal),
   binding(
     "modelPicker.cycleModelBackward",

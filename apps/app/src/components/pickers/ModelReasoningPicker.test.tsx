@@ -17,6 +17,10 @@ import { systemExecutionOptionsQueryKey } from "@/hooks/queries/query-keys";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import {
+  PaneContext,
+  type PaneContextValue,
+} from "@/views/thread-detail/PaneContext";
+import {
   buildFuzzyRegex,
   buildModelNavRows,
   ModelReasoningPicker,
@@ -80,6 +84,21 @@ const reasoningOptions: readonly PickerOption<ReasoningLevel>[] = [
   { value: "high", label: "High" },
 ];
 
+const splitPaneContext: PaneContextValue = {
+  paneId: "test-pane",
+  isFocused: true,
+  isSplitPane: true,
+  secondaryPanelHost: null,
+  reservesWindowPanelToggle: false,
+  onRequestClose: null,
+  isMaximized: false,
+  onToggleMaximize: null,
+  isBoundedPane: true,
+  isTopRow: true,
+  ownsWindowTopLeft: true,
+  navigateInPane: () => undefined,
+};
+
 function availableModel({
   value,
   label,
@@ -128,9 +147,11 @@ function renderPicker({
   reasoningValue = "medium",
   moreModelOptions = [],
   pickerProviderOptions = providerOptions,
+  alternateProviderModels,
   providerRouting,
   selectedProviderId = "codex",
   compact = false,
+  splitPane = false,
 }: {
   onSelectedProviderChange?: ((value: string) => void) | null;
   onModelChange?: (value: string) => void;
@@ -141,9 +162,11 @@ function renderPicker({
   reasoningValue?: ReasoningLevel;
   moreModelOptions?: readonly ModelPickerOption[];
   pickerProviderOptions?: readonly PickerOption<string>[];
+  alternateProviderModels?: AvailableModel[];
   providerRouting?: SystemProvidersQuery;
   selectedProviderId?: string;
   compact?: boolean;
+  splitPane?: boolean;
 } = {}) {
   const { queryClient, wrapper } = createQueryClientTestHarness();
   queryClient.setQueryData(
@@ -153,7 +176,7 @@ function renderPicker({
       providerId: "claude-code",
     }),
     executionOptions({
-      models: [
+      models: alternateProviderModels ?? [
         availableModel({
           value: "claude-opus-4-7",
           label: "Claude Opus 4.7",
@@ -186,13 +209,20 @@ function renderPicker({
       <button type="button">Composer action</button>
     </div>
   );
+  const pickerWithPane = splitPane ? (
+    <PaneContext.Provider value={splitPaneContext}>
+      {picker}
+    </PaneContext.Provider>
+  ) : (
+    picker
+  );
   render(
     compact ? (
       <CompactViewportOverrideProvider isCompactViewport>
-        {picker}
+        {pickerWithPane}
       </CompactViewportOverrideProvider>
     ) : (
-      picker
+      pickerWithPane
     ),
     { wrapper },
   );
@@ -259,7 +289,7 @@ describe("ModelReasoningPicker", () => {
   });
 
   it("does not swallow the provider cycle chord outside its composer", () => {
-    renderPicker({ onSelectedProviderChange: null });
+    renderPicker({ onSelectedProviderChange: null, splitPane: true });
     const outsideTarget = document.createElement("textarea");
     document.body.append(outsideTarget);
 
@@ -268,6 +298,19 @@ describe("ModelReasoningPicker", () => {
         target: outsideTarget,
       }),
     ).toBe(false);
+  });
+
+  it("still opens the split pane's picker from an unrelated editable", () => {
+    renderPicker({ splitPane: true });
+    const outsideTarget = document.createElement("textarea");
+    document.body.append(outsideTarget);
+
+    act(() => {
+      expect(
+        commandHandlers.get("modelPicker.toggle")?.({ target: outsideTarget }),
+      ).toBe(true);
+    });
+    expect(screen.getByRole("dialog")).not.toBeNull();
   });
 
   it("cycles the provider while the picker popover is open", () => {
@@ -281,6 +324,47 @@ describe("ModelReasoningPicker", () => {
       commandHandlers.get("modelPicker.cycleProvider")?.({ target: trigger }),
     ).toBe(true);
     expect(onSelectedProviderChange).toHaveBeenCalledWith("claude-code");
+  });
+
+  it("clears the previous provider's search and highlight when cycling", () => {
+    const alternateProviderModels = [
+      "claude-opus-4-7",
+      "claude-sonnet-4-7",
+      "claude-haiku-4-6",
+      "claude-opus-4-6",
+      "claude-sonnet-4-6",
+      "claude-haiku-4-5",
+    ].map((value, index) =>
+      availableModel({
+        value,
+        label: value,
+        isDefault: index === 0,
+      }),
+    );
+    const { onSelectedProviderChange, onModelChange } = renderPicker({
+      modelOptions: manyCodexModels,
+      alternateProviderModels,
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Provider, model and reasoning" }),
+    );
+    const search = screen.getByPlaceholderText("Search models");
+    fireEvent.change(search, { target: { value: "o4" } });
+    fireEvent.keyDown(search, { key: "ArrowDown" });
+
+    act(() => {
+      expect(
+        commandHandlers.get("modelPicker.cycleProvider")?.({ target: search }),
+      ).toBe(true);
+    });
+
+    expect(onSelectedProviderChange).toHaveBeenCalledWith("claude-code");
+    const nextSearch = screen.getByPlaceholderText(
+      "Search models",
+    ) as HTMLInputElement;
+    expect(nextSearch.value).toBe("");
+    fireEvent.keyDown(nextSearch, { key: "Enter" });
+    expect(onModelChange).not.toHaveBeenCalled();
   });
 
   it("cycles the provider backward while the picker popover is open", () => {

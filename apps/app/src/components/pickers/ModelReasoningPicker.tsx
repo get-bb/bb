@@ -64,7 +64,7 @@ import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcut
 import { isEditableKeyboardTarget } from "@/lib/app-keybindings";
 import { useOptionalPaneContext } from "@/views/thread-detail/PaneContext";
 import {
-  ownsModelPickerChord,
+  ownsModelPickerCycleChord,
   resolveModelPickerToggle,
   type ModelPickerScope,
 } from "./modelPickerToggle";
@@ -565,6 +565,20 @@ export function ModelReasoningPicker({
     [onModelChange],
   );
 
+  const handleProviderSelect = useCallback(
+    (providerId: string) => {
+      onSelectedProviderChange?.(providerId);
+      setPreviewProviderId(
+        open && providerId !== selectedProviderId ? providerId : null,
+      );
+      // Every provider owns a different model list. Never carry a filter or
+      // keyboard highlight across that boundary.
+      setSearchQuery("");
+      setActiveIndex(-1);
+    },
+    [onSelectedProviderChange, open, selectedProviderId],
+  );
+
   // Scope Cmd+Shift+M and the cycle chords to one composer of the focused pane.
   // Standalone/single-pane surfaces have no pane context and default to
   // focused/non-split.
@@ -608,7 +622,7 @@ export function ModelReasoningPicker({
   );
   useAppCommandContext("modelPickerOpen", open && !disabled);
   const ownsCycleChord = (target: EventTarget | null): boolean =>
-    ownsModelPickerChord({ open, ...resolveCommandScope(target) });
+    ownsModelPickerCycleChord({ open, ...resolveCommandScope(target) });
   useAppCommandHandler(
     "modelPicker.toggle",
     ({ target }) => {
@@ -657,8 +671,7 @@ export function ModelReasoningPicker({
             ? nextCycleValue(providerOptions, selectedProviderId)
             : previousCycleValue(providerOptions, selectedProviderId);
         if (next !== null) {
-          onSelectedProviderChange(next);
-          setPreviewProviderId(null);
+          handleProviderSelect(next);
         }
       }
       return true;
@@ -906,16 +919,7 @@ export function ModelReasoningPicker({
                   title={provider.label}
                   onClick={() => {
                     if (provider.value !== activeProviderId) {
-                      onSelectedProviderChange?.(provider.value);
-                      setPreviewProviderId(
-                        provider.value === selectedProviderId
-                          ? null
-                          : provider.value,
-                      );
-                      // The new tab lists a different provider's models, so
-                      // drop the query and highlight from the previous tab.
-                      setSearchQuery("");
-                      setActiveIndex(-1);
+                      handleProviderSelect(provider.value);
                     }
                   }}
                   className={cn(

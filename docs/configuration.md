@@ -214,14 +214,16 @@ delayed shortcut badges without disabling any shortcuts.
 | Composer  | Toggle model picker                | `Mod+Shift+M`                     | All clients              |
 | Composer  | Cycle model forward / backward     | `Alt+M` / `Alt+Shift+M`           | All clients              |
 | Composer  | Cycle provider forward / backward  | `Alt+P` / `Alt+Shift+P`           | All clients              |
-| Composer  | Cycle reasoning forward / backward | `Alt+T` / `Alt+Shift+T`           | All clients              |
+| Composer  | Cycle reasoning effort forward / backward | `Alt+T` / `Alt+Shift+T`    | All clients              |
 | Browser   | Focus location / reload            | `Mod+L` / `Mod+R`                 | Desktop embedded browser |
 | Questions | Choose visible answer 1–9          | `1` … `9`                         | While a question is open |
 
 Cycle commands wrap in both directions. Reasoning cycles only through the
 current model's supported efforts in canonical low-to-high rank order, not the
-provider response order. Navigation and deletion keys remain native in editable
-controls when assigned to an app command.
+provider response order. The cycle shortcuts act only from the active composer
+or an open picker; unrelated editable controls retain their Option-composed
+character input. Navigation and deletion keys remain native in editable controls
+when assigned to an app command.
 
 The desktop application menu uses the same resolved bindings for New Thread,
 New Window, New Tab, Close, and Settings. There is no separate menu shortcut
