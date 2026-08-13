@@ -7,7 +7,11 @@ import type { RemoteArtifact } from "../../../lib/remote/types.js";
 import { rootfsPath, stagingPath } from "../cache/layout.js";
 import { normalizeVirtualPath } from "../cache/path-safety.js";
 import type { FirmwareManifest, FirmwareMount, FirmwareNode } from "../cache/manifest.js";
-import { isFirmwareAdminBytesForbidden, recordAdminBytesRequired } from "./admin-gate.js";
+import {
+  ADMIN_BYTES_RECOVERY,
+  isFirmwareAdminBytesForbidden,
+  recordAdminBytesRequired,
+} from "./admin-gate.js";
 import type { ApiFallbackRequest, ApiFirmwareDeps } from "./fallback.js";
 import { apiFallbackError } from "./fallback.js";
 
@@ -161,13 +165,15 @@ async function hydrateOne(
     const counts = manifest.counts();
     const latestMeta = manifest.readMeta();
     if (latestMeta === null) throw apiFallbackError("MOUNT_INVALID", "Firmware manifest metadata is unavailable.");
+    const remainingErrors = latestMeta.unpackErrors.filter((error) => error !== ADMIN_BYTES_RECOVERY);
     manifest.writeMeta({
       ...latestMeta,
       nodeCount: counts.nodes,
       hydratedCount: counts.hydrated,
-      fullyMaterialized: counts.hydrated === counts.files && latestMeta.unpackErrors.length === 0,
+      fullyMaterialized: counts.hydrated === counts.files && remainingErrors.length === 0,
       materializedAt: (deps.now ?? (() => new Date()))().toISOString(),
       adminBytesOk: true,
+      unpackErrors: remainingErrors,
     });
     deps.cache.verifyIntegrity(manifest);
   } finally {

@@ -16,7 +16,10 @@ import type { ApiFallbackRequest, ApiFirmwareDeps } from "./fallback.js";
 import { apiFallbackError } from "./fallback.js";
 
 export const API_BROWSE_MAX_DEPTH = 8;
-const API_BROWSE_DEPTH = 1;
+// The reviewed Platform tree can omit directory rows entirely. Asking for the
+// largest verified bounded depth is therefore required to discover leaf paths
+// whose ancestors cannot otherwise be scheduled.
+const API_BROWSE_DEPTH = API_BROWSE_MAX_DEPTH;
 const ROOT_PATH = "rootfs";
 
 interface BrowsePage {
@@ -239,6 +242,13 @@ export async function enumerateFirmwareFilesystem(
   const now = deps.now ?? (() => new Date());
   const manifest = deps.cache.open(deps.scope);
   const oldMeta = manifest.readMeta();
+  if (oldMeta?.source === "standalone_unpack") {
+    manifest.close();
+    throw apiFallbackError(
+      "API_FALLBACK_PRIMARY_MOUNT_AVAILABLE",
+      "API fallback will not replace an existing local standalone-unpack mount.",
+    );
+  }
   const resume = oldMeta?.source === "api" && (request.scanId === undefined || oldMeta.scanId === request.scanId);
   const nodes = new Map<string, FirmwareNode>(resume ? manifest.listNodes().map((node) => [node.path, node]) : []);
   const unpackErrors = resume ? [...(oldMeta?.unpackErrors ?? [])] : [];
@@ -306,6 +316,7 @@ export async function enumerateFirmwareFilesystem(
             const warning = `Firmware crawl depth limit reached at ${entry.remotePath}.`;
             const stored = nodes.get(entry.node.path)!;
             nodes.set(entry.node.path, { ...stored, errors: [...stored.errors, warning] });
+            if (!unpackErrors.includes(warning)) unpackErrors.push(warning);
           } else if (visited.has(entry.remotePath) || queue.some((item) => item.path === entry.remotePath)) {
             const warning = `Repeated firmware directory was not crawled twice: ${entry.remotePath}`;
             if (!unpackErrors.includes(warning)) unpackErrors.push(warning);

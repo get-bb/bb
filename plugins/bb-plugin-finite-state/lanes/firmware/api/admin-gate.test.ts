@@ -49,6 +49,7 @@ describe("API firmware admin gate", () => {
     });
     harnesses.push(harness);
     let byteCalls = 0;
+    let faultEnabled = true;
     const client = new PlatformClient({
       baseUrl: "https://platform.invalid",
       token: "token",
@@ -56,7 +57,7 @@ describe("API firmware admin gate", () => {
         const request = new Request(input, init);
         const headers = new Headers(request.headers);
         headers.set("X-Mock-Permissions", MOCK_PLATFORM_ADMIN_PERMISSION);
-        headers.set("X-FS-Mock-Scenario", "platform-firmware-bytes-forbidden");
+        if (faultEnabled) headers.set("X-FS-Mock-Scenario", "platform-firmware-bytes-forbidden");
         if (new URL(request.url).pathname.endsWith("/file")) byteCalls += 1;
         return harness.platform.fetch(new Request(request, { headers }));
       },
@@ -101,11 +102,25 @@ describe("API firmware admin gate", () => {
       });
       expect(byteCalls).toBe(1);
       expect(controller.log()).toHaveLength(1);
-      const manifest = openManifest(scope.worktreeRoot, scope.projectVersionId);
+      let manifest = openManifest(scope.worktreeRoot, scope.projectVersionId);
       expect(manifest.readMeta()).toMatchObject({ adminBytesOk: false, fullyMaterialized: false });
       expect(manifest.getNode("/empty.dat")).toMatchObject({ kind: "file", materialized: false });
       expect(manifest.listNodes().length).toBeGreaterThan(0);
       expect(manifest.readMeta()?.unpackErrors).toContain(ADMIN_BYTES_RECOVERY);
+      manifest.close();
+
+      controller.clear("platform");
+      faultEnabled = false;
+      await materializeFromApi(deps, {
+        pvId: scope.projectVersionId,
+        mode: "files",
+        paths: ["/empty.dat"],
+      }, new AbortController().signal);
+      expect(byteCalls).toBe(2);
+      manifest = openManifest(scope.worktreeRoot, scope.projectVersionId);
+      expect(manifest.readMeta()?.adminBytesOk).toBe(true);
+      expect(manifest.readMeta()?.unpackErrors).not.toContain(ADMIN_BYTES_RECOVERY);
+      expect(manifest.getNode("/empty.dat")?.materialized).toBe(true);
       manifest.close();
     } finally {
       client.close();
