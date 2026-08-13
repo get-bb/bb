@@ -13,9 +13,10 @@ function finding(index: number) {
   return { projectId: "platform-project-1", projectVersionId: "version-1", kind: "finding", key: `finding-${index}`, label: `Finding ${index}`, fields: { stableKey: `stable-${index}`, cve: `CVE-2026-${index}`, componentName: `component-${index}`, componentVersion: "1", severity: "high", reachabilityVerdict: "unreachable", localState: "none" } };
 }
 
-function target(findingId: string) {
+function target(findingId: string, expectedSha256: string | null = null, componentName?: string) {
   const index = Number(findingId.split("-").at(-1));
-  return { findingId, stableKey: `stable-${index}`, cve: `CVE-2026-${index}`, label: `CVE-2026-${index} · component-${index} 1`, component: { purl: null, name: `component-${index}`, group: null, version: "1" }, evidence: "Call graph: no reachable path", reasonSeed: "Call graph: no reachable path", expectedSha256: null, file: null };
+  const name = componentName ?? `component-${index}`;
+  return { findingId, stableKey: `stable-${index}`, cve: `CVE-2026-${index}`, label: `CVE-2026-${index} · ${name} 1`, component: { purl: null, name, group: null, version: "1" }, evidence: "Call graph: no reachable path", reasonSeed: "Call graph: no reachable path", expectedSha256, file: expectedSha256 ? ".fs/triage/gateway.yaml" : null, prior: null };
 }
 
 function success(findingId: string, stableKey: string) {
@@ -44,6 +45,8 @@ afterEach(() => cleanup());
 async function renderFlow(options: {
   write?: (input: Record<string, unknown>) => unknown;
   undo?: () => unknown;
+  read?: (input: Record<string, unknown>) => unknown;
+  findings?: ReturnType<typeof finding>[];
 } = {}) {
   const app = await loadPluginApp(() => import("../../../../app.js"));
   const panel = app.navPanels.find(candidate => candidate.path === "findings");
@@ -55,12 +58,14 @@ async function renderFlow(options: {
       connectionsStatus: connectedRemoteStatus,
       cachedProjectVersions: () => ({ versions: [{ platformProjectId: "platform-project-1", projectVersionId: "version-1", asOf: freshCache.asOf, state: "fresh" }], selectedPlatformProjectId: "platform-project-1", selectedProjectVersionId: "version-1" }),
       findingsSavedViewsGet: () => ({ views: [], sha256: null, recoveredFromCorrupt: false }),
-      findingsUiList: () => ({ items: [finding(0), finding(1), finding(2)], total: 3, next: null, cache: freshCache }),
+      findingsUiList: () => ({ items: options.findings ?? [finding(0), finding(1), finding(2)], total: options.findings?.length ?? 3, next: null, cache: freshCache }),
       triageTargetsRead: input => {
         const record = input as Record<string, unknown>;
+        const overridden = options.read?.(record);
+        if (overridden) return overridden;
         const selection = record["selection"] as { mode?: string; findingIds?: string[] };
-        const ids = selection.mode === "predicate" ? ["finding-0", "finding-1", "finding-2"] : selection.findingIds ?? [];
-        return { items: ids.map(target), total: ids.length, next: null };
+        const ids = selection.mode === "predicate" ? (options.findings ?? [finding(0), finding(1), finding(2)]).map(item => item.key) : selection.findingIds ?? [];
+        return { items: ids.map(id => target(id)), total: ids.length, next: null };
       },
       triageDecisionsWrite: input => {
         const record = input as Record<string, unknown>;
@@ -130,23 +135,105 @@ describe("manual triage flow", () => {
     const slot = await renderFlow({ write: input => {
       attempt += 1;
       const decisions = input.decisions as Array<{ findingId: string; stableKey: string }>;
-      return { results: decisions.map((item, index) => attempt === 1 && index === 1 ? { success: false, findingId: item.findingId, stableKey: item.stableKey, code: "OVERLAY_LOCK_HELD", message: "Writer busy", retryable: true } : success(item.findingId, item.stableKey)) };
+      return { results: decisions.map((item, index) => attempt === 1 && index === 1 ? { success: false, findingId: item.findingId, stableKey: item.stableKey, code: "OVERLAY_CAS_CONFLICT", message: "Externally edited", retryable: true } : success(item.findingId, item.stableKey)) };
     } });
     fireEvent.click(slot.getByRole("button", { name: "Select all 3" }));
     fireEvent.keyDown(window, { key: "b" });
     fireEvent.click(slot.getByRole("button", { name: /eEXPLOITABLE/u }));
-    const editor = await slot.findByRole("form", { name: /3 selected findings/u });
+    const editor = await slot.findByRole("form", { name: /3 local overlay identities/u });
     fireEvent.change(within(editor).getByLabelText("Reason"), { target: { value: "Reviewed each selected finding locally" } });
     fireEvent.change(within(editor).getByLabelText("Evidence reviewed"), { target: { value: "Reviewed cached evidence for each selected row" } });
     fireEvent.click(within(editor).getByRole("checkbox"));
     fireEvent.click(within(editor).getByRole("button", { name: /Write YAML/u }));
     fireEvent.click(await slot.findByRole("button", { name: "Confirm local writes" }));
     expect(await slot.findByText(/1 decision failed; successful YAML changes were kept/u)).toBeTruthy();
-    expect(slot.getByText(/stable-1: Writer busy/u)).toBeTruthy();
+    expect(slot.getByText(/stable-1: Externally edited/u)).toBeTruthy();
     fireEvent.click(slot.getByRole("button", { name: "Retry failed" }));
     await waitFor(() => expect(slot.inspection.rpcCalls.filter(call => call.method === "triageDecisionsWrite")).toHaveLength(2));
     const retry = slot.inspection.rpcCalls.filter(call => call.method === "triageDecisionsWrite").at(-1);
     expect(retry?.input).toMatchObject({ decisions: [{ findingId: "finding-1" }] });
+    const calls = slot.inspection.rpcCalls;
+    const targetReadIndexes = calls.flatMap((call, index) => call.method === "triageTargetsRead" ? [index] : []);
+    expect(calls.findIndex(call => call === retry)).toBeGreaterThan(targetReadIndexes.at(-1) ?? -1);
+  });
+
+  it("refreshes the CAS base across a 20-item chunk boundary", async () => {
+    const findings = Array.from({ length: 27 }, (_, index) => finding(index));
+    let currentSha = SHA_A;
+    const slot = await renderFlow({
+      findings,
+      read: input => {
+        const selection = input["selection"] as { mode: string; findingIds?: string[] };
+        const ids = selection.mode === "predicate" ? findings.map(item => item.key) : selection.findingIds ?? [];
+        return { items: ids.map(id => target(id, currentSha, "gateway")), total: ids.length, next: null };
+      },
+      write: input => {
+        const decisions = input.decisions as Array<{ findingId: string; stableKey: string; expectedSha256: string | null }>;
+        expect(decisions.every(item => item.expectedSha256 === currentSha)).toBe(true);
+        currentSha = currentSha === SHA_A ? SHA_B : "c".repeat(64);
+        return { results: decisions.map(item => ({ ...success(item.findingId, item.stableKey), afterSha256: currentSha, undo: { ...success(item.findingId, item.stableKey).undo, afterSha256: currentSha } })) };
+      },
+    });
+    fireEvent.click(slot.getByRole("button", { name: "Select all 27" }));
+    fireEvent.keyDown(window, { key: "b" });
+    fireEvent.click(slot.getByRole("button", { name: /eEXPLOITABLE/u }));
+    const editor = await slot.findByRole("form", { name: /27 local overlay identities/u });
+    fireEvent.change(within(editor).getByLabelText("Reason"), { target: { value: "Reviewed every selected finding locally" } });
+    fireEvent.change(within(editor).getByLabelText("Evidence reviewed"), { target: { value: "Reviewed the evidence for every selected row" } });
+    fireEvent.click(within(editor).getByRole("checkbox"));
+    fireEvent.click(within(editor).getByRole("button", { name: /Write YAML/u }));
+    fireEvent.click(await slot.findByRole("button", { name: "Confirm local writes" }));
+    await waitFor(() => expect(slot.inspection.rpcCalls.filter(call => call.method === "triageDecisionsWrite")).toHaveLength(2));
+    expect(slot.getByText(/27 succeeded, 0 failed/u)).toBeTruthy();
+  });
+
+  it("shows and preserves the prior local decision before replacement", async () => {
+    const prior = {
+      status: "NOT_AFFECTED" as const,
+      justification: "CODE_NOT_PRESENT" as const,
+      response: "WILL_NOT_FIX" as const,
+      reason: "Previously reviewed authored rationale",
+      pin: "any_version" as const,
+      provenance: { by: "reviewer", at: "2026-08-13T01:00:00.000Z", evidence: "Previously reviewed evidence" },
+      sync: { base: null, pushed_at: null },
+    };
+    const slot = await renderFlow({ read: input => {
+      const selection = input["selection"] as { findingIds?: string[] };
+      return { items: (selection.findingIds ?? []).map(id => ({ ...target(id, SHA_A), prior })), total: 1, next: null };
+    } });
+    fireEvent.keyDown(window, { key: "e" });
+    const editor = await slot.findByRole("form", { name: /Triage/u });
+    const existing = within(editor).getByRole("region", { name: "Existing local decision being replaced" });
+    expect(within(existing).getByText("Previously reviewed authored rationale")).toBeTruthy();
+    expect((within(editor).getByLabelText("Reason") as HTMLTextAreaElement).value).toBe(prior.reason);
+    expect((within(editor).getByLabelText("Evidence reviewed") as HTMLTextAreaElement).value).toBe(prior.provenance.evidence);
+  });
+
+  it("writes one exact row for a selected collision identity and discloses the shared sibling", async () => {
+    const first = finding(0);
+    const sibling = finding(1);
+    first.fields.stableKey = "shared-stable";
+    sibling.fields.stableKey = "shared-stable";
+    const slot = await renderFlow({
+      findings: [first, sibling],
+      read: input => {
+        const selection = input["selection"] as { findingIds?: string[] };
+        const ids = selection.findingIds ?? [];
+        return { items: ids.map(id => ({ ...target(id), stableKey: "shared-stable" })), total: ids.length, next: null };
+      },
+    });
+    fireEvent.keyDown(window, { key: "x" });
+    fireEvent.keyDown(window, { key: "b" });
+    expect(slot.getByText(/1 additional rendered collision row shares/u)).toBeTruthy();
+    fireEvent.click(slot.getByRole("button", { name: /eEXPLOITABLE/u }));
+    const editor = await slot.findByRole("form", { name: /1 local overlay identity/u });
+    confirmEditor(editor);
+    fireEvent.click(within(editor).getByRole("button", { name: /Write YAML/u }));
+    fireEvent.click(await slot.findByRole("button", { name: "Confirm local writes" }));
+    await waitFor(() => expect(slot.inspection.rpcCalls.filter(call => call.method === "triageDecisionsWrite")).toHaveLength(1));
+    const write = slot.inspection.rpcCalls.find(call => call.method === "triageDecisionsWrite");
+    expect(write?.input).toMatchObject({ decisions: [{ findingId: "finding-0", stableKey: "shared-stable" }] });
+    expect((write?.input as { decisions: unknown[] }).decisions).toHaveLength(1);
   });
 
   it("fails undo closed after an external edit", async () => {

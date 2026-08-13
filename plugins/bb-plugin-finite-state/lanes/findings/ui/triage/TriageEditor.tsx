@@ -13,6 +13,15 @@ import {
   validateTriageDraft,
 } from "./validation.js";
 
+interface PriorDecision {
+  status: TriageDraft["status"];
+  justification: TriageDraft["justification"];
+  response: TriageDraft["response"];
+  reason: string;
+  pin: TriageDraft["pin"];
+  provenance: { by: string; at: string; evidence: string };
+}
+
 export interface TriageWriteError {
   kind: "conflict" | "write";
   message: string;
@@ -25,6 +34,7 @@ export function TriageEditor({
   seededReason,
   reasonConfirmed,
   pending,
+  prior,
   error,
   onChange,
   onReasonConfirmed,
@@ -37,6 +47,7 @@ export function TriageEditor({
   seededReason: boolean;
   reasonConfirmed: boolean;
   pending: boolean;
+  prior: PriorDecision | null;
   error: TriageWriteError | null;
   onChange(draft: TriageDraft): void;
   onReasonConfirmed(confirmed: boolean): void;
@@ -83,6 +94,21 @@ export function TriageEditor({
               </Button>
             </div>
           </div>
+
+          {prior ? (
+            <section aria-label="Existing local decision being replaced" className="mt-4 rounded-md border border-warning/40 bg-muted/30 p-3 text-xs">
+              <div className="flex items-center gap-2"><Icon aria-hidden="true" className="size-4 text-warning" name="AlertTriangle" /><p className="font-medium">Replacing an existing local decision</p></div>
+              <dl className="mt-2 grid gap-x-4 gap-y-1 sm:grid-cols-[max-content_1fr]">
+                <dt className="text-muted-foreground">Status</dt><dd className="font-mono">{prior.status}</dd>
+                <dt className="text-muted-foreground">Justification</dt><dd>{prior.justification?.replaceAll("_", " ") ?? "None"}</dd>
+                <dt className="text-muted-foreground">Response</dt><dd>{prior.response?.replaceAll("_", " ") ?? "None"}</dd>
+                <dt className="text-muted-foreground">Reason</dt><dd className="whitespace-pre-wrap break-words">{prior.reason}</dd>
+                <dt className="text-muted-foreground">Evidence</dt><dd className="whitespace-pre-wrap break-words">{prior.provenance.evidence}</dd>
+                <dt className="text-muted-foreground">Authored</dt><dd>{prior.provenance.by} · {prior.provenance.at}</dd>
+              </dl>
+              <p className="mt-2 text-muted-foreground">The replacement draft below starts from these authored fields. Review and confirm every change before writing.</p>
+            </section>
+          ) : null}
 
           <div className="mt-4 grid gap-4 xl:grid-cols-2">
             {draft.status === "NOT_AFFECTED" ? <JustificationPicker onChange={justification} value={draft.justification} /> : (

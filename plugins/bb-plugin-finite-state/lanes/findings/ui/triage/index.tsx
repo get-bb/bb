@@ -43,14 +43,15 @@ function currentRow(rows: readonly FindingRow[], cursorKey: string | null): Find
 }
 
 function draftFor(target: TriageTarget, status: VexStatus, includeSeed: boolean): TriageDraft {
+  const prior = includeSeed ? target.prior : null;
   return {
     stableKey: target.stableKey,
     status,
-    justification: null,
-    response: null,
-    reason: includeSeed ? target.reasonSeed : "",
-    evidence: target.evidence,
-    pin: "exact_version",
+    justification: prior?.justification ?? null,
+    response: prior?.response ?? null,
+    reason: prior?.reason ?? (includeSeed ? target.reasonSeed : ""),
+    evidence: prior?.provenance.evidence ?? target.evidence,
+    pin: prior?.pin ?? "exact_version",
   };
 }
 
@@ -101,6 +102,7 @@ export function FindingsTriage({
   const [bulkConfirming, setBulkConfirming] = useState(false);
   const [bulkFailures, setBulkFailures] = useState<BulkFailure[]>([]);
   const [failedTargets, setFailedTargets] = useState<TriageTarget[]>([]);
+  const [preparedBulk, setPreparedBulk] = useState<{ selection: FindingSelection; targets: TriageTarget[] } | null>(null);
   const undoStack = useRef(new SessionUndoStack());
   const undoEntries = useRef(new Map<UndoToken, UndoEntry>());
   const anchorFindingId = useRef<string | null>(null);
@@ -109,8 +111,20 @@ export function FindingsTriage({
 
   const exactSelectedIds = useMemo(() => {
     if (selection.mode !== "explicit") return [];
-    return rows.filter(row => selection.keys.has(row.stableKey)).map(row => row.findingId);
-  }, [rows, selection]);
+    const chosen = new Map<string, FindingRow>();
+    for (const row of rows) {
+      if (!selection.keys.has(row.stableKey)) continue;
+      const current = chosen.get(row.stableKey);
+      if (!current || row.findingId === cursorKey) chosen.set(row.stableKey, row);
+    }
+    return [...chosen.values()].map(row => row.findingId);
+  }, [cursorKey, rows, selection]);
+
+  const sharedCollisionRows = useMemo(() => {
+    if (selection.mode !== "explicit") return 0;
+    const selectedRows = rows.filter(row => selection.keys.has(row.stableKey)).length;
+    return Math.max(0, selectedRows - exactSelectedIds.length);
+  }, [exactSelectedIds.length, rows, selection]);
 
   const readExactTarget = useCallback(async (row: FindingRow): Promise<TriageTarget> => {
     if (!workspaceProjectId || !platformProjectId || !projectVersionId) throw new Error("Choose a findings scope before triage.");
@@ -256,23 +270,6 @@ export function FindingsTriage({
     if (!range) anchorFindingId.current = row.findingId;
   }, [cursorKey, onSelection, rows, selection]);
 
-  const shortcut = useCallback((command: TriageShortcut) => {
-    if (command.action === "move") move(command.delta);
-    else if (command.action === "open") { const row = currentRow(rows, cursorKey); if (row) onOpen(row.stableKey); }
-    else if (command.action === "filter") { const input = document.querySelector('[aria-label="Filter component"]'); if (input instanceof HTMLElement) input.focus(); }
-    else if (command.action === "toggle") toggle(false);
-    else if (command.action === "range") toggle(true);
-    else if (command.action === "bulk") setBulkOpen(true);
-    else if (command.action === "undo") void undo();
-    else if (command.action === "sheet") setSheet(true);
-    else if (command.action === "status") {
-      if (count > 0) { setBulkOpen(true); setBulkConfirming(true); const row = currentRow(rows, cursorKey); if (row) void readExactTarget(row).then(exact => { setTarget(exact); setDraft(draftFor(exact, command.status, false)); setReasonConfirmed(false); }); }
-      else void beginSingle(command.status);
-    }
-  }, [beginSingle, count, cursorKey, move, onOpen, readExactTarget, rows, toggle, undo]);
-
-  useFindingsShortcuts(active, shortcut);
-
   const loadBulkTargets = useCallback(async (): Promise<TriageTarget[]> => {
     if (!workspaceProjectId || !platformProjectId || !projectVersionId) throw new Error("Choose a findings scope before bulk triage.");
     if (selection.mode === "explicit") {
@@ -296,8 +293,68 @@ export function FindingsTriage({
       targets.push(...result.items);
       continuation = result.next;
     } while (continuation !== null);
-    return targets;
+    const unique = new Map<string, TriageTarget>();
+    for (const exact of targets) if (!unique.has(exact.stableKey)) unique.set(exact.stableKey, exact);
+    return [...unique.values()];
   }, [exactSelectedIds, platformProjectId, projectVersionId, rpc, selection, workspaceProjectId]);
+
+  const prepareBulk = useCallback(async (status: VexStatus) => {
+    const row = currentRow(rows, cursorKey);
+    if (!row) { setAnnouncement("Choose a finding before setting a bulk status."); return; }
+    setBulkOpen(true);
+    setBulkConfirming(true);
+    setPending(true);
+    setBulkFailures([]);
+    try {
+      const [exact, targets] = await Promise.all([readExactTarget(row), loadBulkTargets()]);
+      setPreparedBulk({ selection, targets });
+      setTarget(exact);
+      setDraft(draftFor(exact, status, false));
+      setReasonConfirmed(false);
+      setAnnouncement(`Bulk preview ready: ${targets.length} shared local overlay ${targets.length === 1 ? "identity" : "identities"} will be written.`);
+    } catch (error) {
+      setBulkFailures([{ findingId: "selection", stableKey: "selection", message: error instanceof Error ? error.message : "Bulk target loading failed.", retryable: false }]);
+    } finally { setPending(false); }
+  }, [cursorKey, loadBulkTargets, readExactTarget, rows, selection]);
+
+  const shortcut = useCallback((command: TriageShortcut) => {
+    if (command.action === "move") move(command.delta);
+    else if (command.action === "open") { const row = currentRow(rows, cursorKey); if (row) onOpen(row.stableKey); }
+    else if (command.action === "filter") { const input = document.querySelector('[aria-label="Filter component"]'); if (input instanceof HTMLElement) input.focus(); }
+    else if (command.action === "toggle") toggle(false);
+    else if (command.action === "range") toggle(true);
+    else if (command.action === "bulk") setBulkOpen(true);
+    else if (command.action === "undo") void undo();
+    else if (command.action === "sheet") setSheet(true);
+    else if (command.action === "status") {
+      if (count > 0) void prepareBulk(command.status);
+      else void beginSingle(command.status);
+    }
+  }, [beginSingle, count, cursorKey, move, onOpen, prepareBulk, rows, toggle, undo]);
+
+  useFindingsShortcuts(active, shortcut);
+
+  const refreshTargets = useCallback(async (targets: readonly TriageTarget[]): Promise<TriageTarget[]> => {
+    if (!workspaceProjectId || !platformProjectId || !projectVersionId) throw new Error("Choose a findings scope before bulk triage.");
+    const refreshed: TriageTarget[] = [];
+    for (let index = 0; index < targets.length; index += TARGET_PAGE) {
+      const ids = targets.slice(index, index + TARGET_PAGE).map(exact => exact.findingId);
+      const result = await rpc.call("triageTargetsRead", {
+        workspaceProjectId,
+        platformProjectId,
+        projectVersionId,
+        selection: { mode: "exact", findingIds: ids },
+        continuation: null,
+      });
+      const byId = new Map(result.items.map(exact => [exact.findingId, exact]));
+      for (const findingId of ids) {
+        const exact = byId.get(findingId);
+        if (!exact) throw new Error(`The exact selected finding row ${findingId} is no longer available.`);
+        refreshed.push(exact);
+      }
+    }
+    return refreshed;
+  }, [platformProjectId, projectVersionId, rpc, workspaceProjectId]);
 
   const writeBulkTargets = useCallback(async (
     targets: readonly TriageTarget[],
@@ -308,7 +365,7 @@ export function FindingsTriage({
     const retryTargets: TriageTarget[] = [];
     let successes = 0;
     for (let index = 0; index < targets.length; index += WRITE_CHUNK) {
-      const chunk = targets.slice(index, index + WRITE_CHUNK);
+      const chunk = await refreshTargets(targets.slice(index, index + WRITE_CHUNK));
       const response = await rpc.call("triageDecisionsWrite", {
         workspaceProjectId, platformProjectId, projectVersionId,
         decisions: chunk.map(exact => ({
@@ -334,20 +391,25 @@ export function FindingsTriage({
     setFailedTargets(retryTargets);
     setAnnouncement(`Bulk local writes finished: ${successes} succeeded, ${failures.length} failed. Successful YAML changes were preserved.`);
     if (successes > 0) onCommitted();
-  }, [draft, onCommitted, platformProjectId, projectVersionId, rememberUndo, rpc, workspaceProjectId]);
+  }, [draft, onCommitted, platformProjectId, projectVersionId, refreshTargets, rememberUndo, rpc, workspaceProjectId]);
 
   const confirmBulk = useCallback(async (retry = false) => {
     if (!draft || !reasonConfirmed || !validateTriageDraft(draft).ok) return;
     setPending(true);
     try {
       await writeBulkTargets(
-        retry ? failedTargets : await loadBulkTargets(),
+        retry ? failedTargets : preparedBulk?.selection === selection ? preparedBulk.targets : await loadBulkTargets(),
         retry ? bulkFailures.filter(failure => !failure.retryable) : [],
       );
     }
     catch (error) { setBulkFailures([{ findingId: "selection", stableKey: "selection", message: error instanceof Error ? error.message : "Bulk target loading failed.", retryable: false }]); }
     finally { setPending(false); }
-  }, [bulkFailures, draft, failedTargets, loadBulkTargets, reasonConfirmed, writeBulkTargets]);
+  }, [bulkFailures, draft, failedTargets, loadBulkTargets, preparedBulk, reasonConfirmed, selection, writeBulkTargets]);
+
+  const previewTargets = preparedBulk?.selection === selection ? preparedBulk.targets : null;
+  const previewCount = previewTargets?.length ?? count;
+  const previewSharedRows = Math.max(sharedCollisionRows, previewTargets ? count - previewTargets.length : 0);
+  const previewExisting = previewTargets?.filter(exact => exact.prior !== null).length ?? 0;
 
   const readiness = pending
     ? "Local triage write or target load in progress…"
@@ -370,8 +432,8 @@ export function FindingsTriage({
         <span>{readiness}</span>
         <Button aria-description="Open the complete keyboard shortcut reference" onClick={() => setSheet(true)} size="sm" variant="ghost"><Icon aria-hidden="true" className="size-3.5" name="CircleQuestion" />Shortcuts <kbd className="font-mono">?</kbd></Button>
       </div>
-      {draft && target ? <TriageEditor draft={draft} error={writeError} onCancel={() => { setDraft(null); setTarget(null); setWriteError(null); }} onChange={setDraft} onCommit={count > 0 ? () => { setBulkConfirming(true); } : commitSingle} onReasonConfirmed={setReasonConfirmed} onReload={reloadTarget} pending={pending} reasonConfirmed={reasonConfirmed} seededReason={draft.reason === target.reasonSeed && target.reasonSeed.length > 0} targetLabel={count > 0 ? `${count.toLocaleString()} selected findings` : target.label} /> : null}
-      <BulkDecisionBar confirming={bulkConfirming} count={count} failures={bulkFailures} onCancel={() => { setBulkConfirming(false); setBulkOpen(false); }} onConfirm={() => void confirmBulk(false)} onOpen={() => setBulkOpen(true)} onRetry={() => void confirmBulk(true)} onStatus={status => { setBulkConfirming(true); const row = currentRow(rows, cursorKey); if (row) void readExactTarget(row).then(exact => { setTarget(exact); setDraft(draftFor(exact, status, false)); setReasonConfirmed(false); }); }} open={bulkOpen} pending={pending} predicate={selection.mode === "predicate"} status={draft?.status ?? null} />
+      {draft && target ? <TriageEditor draft={draft} error={writeError} onCancel={() => { setDraft(null); setTarget(null); setWriteError(null); }} onChange={setDraft} onCommit={count > 0 ? () => { setBulkConfirming(true); } : commitSingle} onReasonConfirmed={setReasonConfirmed} onReload={reloadTarget} pending={pending} prior={count > 0 ? null : target.prior} reasonConfirmed={reasonConfirmed} seededReason={!target.prior && draft.reason === target.reasonSeed && target.reasonSeed.length > 0} targetLabel={count > 0 ? `${previewCount.toLocaleString()} local overlay ${previewCount === 1 ? "identity" : "identities"}` : target.label} /> : null}
+      <BulkDecisionBar confirming={bulkConfirming} count={previewCount} existingDecisionCount={previewExisting} failures={bulkFailures} onCancel={() => { setBulkConfirming(false); setBulkOpen(false); }} onConfirm={() => void confirmBulk(false)} onOpen={() => setBulkOpen(true)} onRetry={() => void confirmBulk(true)} onStatus={status => void prepareBulk(status)} open={bulkOpen} pending={pending} predicate={selection.mode === "predicate"} sharedCollisionRows={previewSharedRows} status={draft?.status ?? null} />
       {sheet ? <ShortcutSheet onOpenChange={setSheet} open /> : null}
     </>
   );

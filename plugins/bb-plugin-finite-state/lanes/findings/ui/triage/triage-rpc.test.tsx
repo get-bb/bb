@@ -83,6 +83,20 @@ describe("manual triage RPC boundary", () => {
     expect(host.harness.sdk.callsTo("projects.get")).not.toHaveLength(0);
     expect(host.harness.sdk.callsTo("threads.spawn")).toHaveLength(0);
     expect(host.harness.sdk.callsTo("http.request")).toHaveLength(0);
+
+    const replacementTarget = findingsUiRpcContract.triageTargetsRead.output.parse(await host.harness.callRpc("triageTargetsRead", {
+      ...scope(), selection: { mode: "exact", findingIds: ["exact-row-a"] }, continuation: null,
+    }));
+    expect(replacementTarget.items[0]?.prior).toMatchObject({
+      status: "NOT_AFFECTED",
+      justification: "CODE_NOT_REACHABLE",
+      reason: "Reviewed exact cached row",
+      provenance: { evidence: "Call graph: no path (source: analysis)" },
+    });
+    const stale = findingsUiRpcContract.triageDecisionsWrite.output.parse(await host.harness.callRpc("triageDecisionsWrite", {
+      ...scope(), decisions: [decision("exact-row-a", stableKey, null, "Stale external replacement")],
+    }));
+    expect(stale.results[0]).toMatchObject({ success: false, code: "OVERLAY_CAS_CONFLICT", retryable: true });
   });
 
   it("chains a bounded batch across decisions sharing one component file", async () => {

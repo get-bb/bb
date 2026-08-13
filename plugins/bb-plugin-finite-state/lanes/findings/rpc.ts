@@ -117,6 +117,7 @@ const triageTargetSchema = z.object({
   reasonSeed: z.string(),
   expectedSha256: z.string().length(64).nullable(),
   file: z.string().nullable(),
+  prior: triageStoredDecisionSchema.nullable(),
 }).strict();
 const triageSelectionSchema = z.discriminatedUnion("mode", [
   z.object({
@@ -351,6 +352,7 @@ function triageTarget(corpus: TriageCorpus, finding: CachedFinding) {
     reasonSeed: evidence,
     expectedSha256: snapshot.sha256,
     file: snapshot.file,
+    prior: snapshot.prior,
   };
 }
 
@@ -359,7 +361,7 @@ function triageError(error: unknown): { code: string; message: string; retryable
     ? error.code
     : "TRIAGE_WRITE_FAILED";
   const message = error instanceof Error ? error.message.slice(0, 500) : "The local triage write failed.";
-  return { code, message, retryable: code === "OVERLAY_LOCK_HELD" };
+  return { code, message, retryable: code === "OVERLAY_LOCK_HELD" || code === "OVERLAY_CAS_CONFLICT" };
 }
 
 async function lockBackoff<T>(action: () => Promise<T>): Promise<T> {

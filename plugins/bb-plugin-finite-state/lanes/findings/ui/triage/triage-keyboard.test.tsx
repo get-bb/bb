@@ -17,7 +17,7 @@ function finding(index: number) {
 
 function target(findingId: string) {
   const index = Number(findingId.split("-").at(-1));
-  return { findingId, stableKey: `stable-${index}`, cve: `CVE-2026-${index}`, label: `CVE-2026-${index} · component-${index} 1`, component: { purl: null, name: `component-${index}`, group: null, version: "1" }, evidence: "Call graph: no path", reasonSeed: "Call graph: no path", expectedSha256: null, file: null };
+  return { findingId, stableKey: `stable-${index}`, cve: `CVE-2026-${index}`, label: `CVE-2026-${index} · component-${index} 1`, component: { purl: null, name: `component-${index}`, group: null, version: "1" }, evidence: "Call graph: no path", reasonSeed: "Call graph: no path", expectedSha256: null, file: null, prior: null };
 }
 
 class TriageResizeObserver implements ResizeObserver {

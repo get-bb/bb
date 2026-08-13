@@ -12,9 +12,11 @@ export interface BulkFailure {
 
 const STATUS_BUTTONS = Object.entries(VEX_SHORTCUTS) as Array<[keyof typeof VEX_SHORTCUTS, VexStatus]>;
 
-export function BulkDecisionBar({ count, predicate, open, confirming, pending, status, failures, onOpen, onStatus, onConfirm, onRetry, onCancel }: {
+export function BulkDecisionBar({ count, predicate, sharedCollisionRows, existingDecisionCount, open, confirming, pending, status, failures, onOpen, onStatus, onConfirm, onRetry, onCancel }: {
   count: number;
   predicate: boolean;
+  sharedCollisionRows: number;
+  existingDecisionCount: number;
   open: boolean;
   confirming: boolean;
   pending: boolean;
@@ -38,6 +40,8 @@ export function BulkDecisionBar({ count, predicate, open, confirming, pending, s
         )}
         {confirming && status ? <div className="ml-auto flex items-center gap-2"><span className="text-xs text-muted-foreground">Preview: write {status.replaceAll("_", " ")} to {count.toLocaleString()} local decision{count === 1 ? "" : "s"}?</span><Button disabled={pending} onClick={onConfirm} size="sm">{pending ? "Writing…" : "Confirm local writes"}</Button><Button disabled={pending} onClick={onCancel} size="sm" variant="ghost">Cancel</Button></div> : null}
       </div>
+      {sharedCollisionRows > 0 ? <p className="mt-2 text-xs text-muted-foreground">{sharedCollisionRows.toLocaleString()} additional rendered collision {sharedCollisionRows === 1 ? "row shares" : "rows share"} the selected local overlay identity. One YAML entry is written per shared identity, using one exact finding row.</p> : null}
+      {existingDecisionCount > 0 ? <p className="mt-2 text-xs text-warning">{existingDecisionCount.toLocaleString()} existing local {existingDecisionCount === 1 ? "decision will" : "decisions will"} be replaced by this confirmed bulk write.</p> : null}
       {failures.length > 0 ? <div className="mt-3 rounded-md border border-destructive/40 bg-muted p-3 text-xs" role="alert"><div className="flex items-center justify-between gap-3"><p className="font-medium">{failures.length} decision{failures.length === 1 ? "" : "s"} failed; successful YAML changes were kept.</p><Button disabled={pending || !failures.some(failure => failure.retryable)} onClick={onRetry} size="sm" variant="outline">Retry failed</Button></div><ul className="mt-2 max-h-28 space-y-1 overflow-y-auto font-mono text-muted-foreground">{failures.map(failure => <li key={`${failure.findingId}:${failure.message}`}>{failure.stableKey}: {failure.message}</li>)}</ul></div> : null}
     </section>
   );
