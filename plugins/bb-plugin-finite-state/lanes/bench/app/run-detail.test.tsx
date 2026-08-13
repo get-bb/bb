@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
-import { cleanup } from "@testing-library/react";
+import { cleanup, waitFor } from "@testing-library/react";
 import { installTestPluginRuntime, renderSlot } from "@bb/plugin-sdk/testing/app";
 
 const cache = { state: "fresh" as const, asOf: "2026-08-13T12:00:00.000Z", message: null, acceptedGenerationId: "g1", baseRevision: 1 };
@@ -46,10 +46,14 @@ describe("RunDetail", () => {
       "/api/v1/plugins/finite-state/http/bench/runs/attestation?projectId=p1&runId=run-1",
     );
     expect(slot.getByText("OTA verdict")).toBeTruthy();
-    expect(slot.inspection.rpcCalls).toContainEqual(expect.objectContaining({
-      method: "benchLogsList",
-      input: expect.objectContaining({ projectVersionId: "v1", runId: "run-1" }),
-    }));
+    // The log-tail fetch fires after the run detail renders; poll rather than
+    // asserting synchronously, which raced under CI load.
+    await waitFor(() => {
+      expect(slot.inspection.rpcCalls).toContainEqual(expect.objectContaining({
+        method: "benchLogsList",
+        input: expect.objectContaining({ projectVersionId: "v1", runId: "run-1" }),
+      }));
+    }, { timeout: 10_000 });
   });
 
   it("renders unknown-run recovery and stale cache truthfully", async () => {
