@@ -225,9 +225,9 @@ export function resolveFinding(
 
 /**
  * Resolves callers that only possess the frozen opaque key. The frozen NVG
- * codec case-folds versions, so this compatibility path necessarily compares
- * that folded decoded value. Full-domain resolution above is authoritative
- * whenever exact version case or purl-to-NVG fallback matters.
+ * codec case-folds versions, so this path folds cached versions identically.
+ * A case-only collision returns every matching row; it never selects one.
+ * Full-domain resolution above remains the exact-version upgrade path.
  */
 export function resolveEncodedFinding(
   db: Database.Database,
@@ -259,10 +259,26 @@ export function resolveEncodedFinding(
     version: parsed.component.version,
     cve: parsed.cve,
   };
-  return resolveFinding(
-    db,
-    key,
-    pvId,
-    parsed.tier === "name-group-any-version" ? "any_version" : "exact_version",
+  if (parsed.tier === "name-group-any-version") {
+    return resolveFinding(db, key, pvId, "any_version");
+  }
+
+  const foldedVersion = parsed.component.version;
+  const ngRows = nameGroupRows(db, key, pvId);
+  const rows = ngRows.filter(row =>
+    row.componentVersion !== null
+    && foldFindingComponent(row.componentVersion) === foldedVersion
   );
+  if (rows.length > 0) {
+    return {
+      state: "resolved",
+      tier: 2,
+      reason: "folded_name_group_version_cve",
+      rows,
+      versionChanged: false,
+    };
+  }
+  return ngRows.length > 0
+    ? { state: "stale", reason: "exact_version_changed", candidates: ngRows }
+    : { state: "orphaned", reason: "no_component_cve_match" };
 }

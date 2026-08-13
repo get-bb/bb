@@ -271,7 +271,30 @@ describe("vexDecision resolver registration", () => {
       .resolves.toEqual({ resolved: false });
   });
 
-  it("pins the frozen encoded-only folded-version limitation while full context stays exact", async () => {
+  it("folds both sides for encoded-only uppercase versions instead of reporting a false orphan", async () => {
+    const db = fixture();
+    insertFinding(db, { id: "maven-final", purl: null, version: "4.1.0-Final" });
+    const identity = {
+      cve: "CVE-2026-0037",
+      purl: null,
+      name: "Widget",
+      group: "Acme",
+      version: "4.1.0-Final",
+    };
+    const encoded = findingStableKey({ ...identity }, "name-group-version");
+    registerFindingsStableKeyStub(db);
+    const result = await registeredResolver("vexDecision")?.(
+      encoded,
+      { projectId: PROJECT, projectVersionId: PV },
+    );
+    expect(result).toMatchObject({ resolved: true, detail: { state: "resolved", tier: 2 } });
+    if (result?.resolved) {
+      const detail = result.detail as ReturnType<typeof resolveFinding>;
+      if (detail.state === "resolved") expect(detail.rows.map(row => row.findingId)).toEqual(["maven-final"]);
+    }
+  });
+
+  it("returns every case-colliding encoded match while full context stays exact", async () => {
     const db = fixture();
     insertFinding(db, { id: "exact-case", purl: null, version: "1.0-RC" });
     insertFinding(db, { id: "folded-case", purl: null, version: "1.0-rc" });
@@ -291,7 +314,9 @@ describe("vexDecision resolver registration", () => {
     expect(encodedOnly).toMatchObject({ resolved: true, detail: { state: "resolved", tier: 2 } });
     if (encodedOnly?.resolved) {
       const detail = encodedOnly.detail as ReturnType<typeof resolveFinding>;
-      if (detail.state === "resolved") expect(detail.rows.map(row => row.findingId)).toEqual(["folded-case"]);
+      if (detail.state === "resolved") {
+        expect(detail.rows.map(row => row.findingId)).toEqual(["exact-case", "folded-case"]);
+      }
     }
 
     const fullDomain = await resolver?.(encoded, { projectId: PROJECT, projectVersionId: PV }, {
