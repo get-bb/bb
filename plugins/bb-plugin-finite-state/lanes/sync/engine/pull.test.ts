@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createPluginContext } from "../../../lib/context.js";
 import { PlatformClient } from "../../../lib/remote/platform/client.js";
 import { RemoteLimiter, type Scheduler } from "../../../lib/remote/rate-limit.js";
-import type { Json } from "../../../lib/remote/types.js";
+import { RemoteError, type Json } from "../../../lib/remote/types.js";
 import { ENTITIES } from "../../../lib/sync/registry.js";
 import { createSerializer } from "../serialize/serializer.js";
 import { BaseSnapshotStore } from "../store/base-snapshot.js";
@@ -582,6 +582,40 @@ decisions:
         kind: "vexDecision",
         message: expect.stringContaining("remote id is already claimed"),
       }],
+    });
+  });
+
+  it("preserves a typed remote error code in the surfaced pull failure", async () => {
+    const adapter: EntityAdapter = {
+      kind: "threat",
+      klass: "VERSIONED",
+      serializer: createSerializer("threat"),
+      async *fetchRemote() {
+        throw new RemoteError("Invalid remote paging state", {
+          service: "assurance-studio",
+          code: "REMOTE_INVALID_PAGE_SIZE",
+          status: null,
+          retryable: false,
+          retryAfterMs: null,
+          details: { pageSize: 1_000, maxPageSize: 200 },
+        });
+      },
+      async readWorking() { return []; },
+    };
+
+    await expect(pull(
+      engine(adapter),
+      { projectId: "project", projectVersionId: "version" },
+      ["threat"],
+    )).rejects.toMatchObject({
+      name: "PullFailedError",
+      failures: [{
+        kind: "threat",
+        message: "REMOTE_INVALID_PAGE_SIZE: Invalid remote paging state",
+      }],
+      message: expect.stringContaining(
+        "threat: REMOTE_INVALID_PAGE_SIZE: Invalid remote paging state",
+      ),
     });
   });
 

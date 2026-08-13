@@ -13,7 +13,7 @@ export interface MockRoute {
   auth: "X-Authorization" | "X-API-Key";
   requestMediaTypes: readonly string[];
   responseStatuses: readonly number[];
-  source: "openapi" | "handler-audit";
+  source: "openapi" | "handler-audit" | "client-contract";
   evidence?: string;
 }
 

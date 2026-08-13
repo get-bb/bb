@@ -34,6 +34,9 @@ export interface AssuranceStudioClientOptions {
   limiter?: RemoteLimiter;
 }
 
+/** Largest page the Assurance Studio API and normalized pager accept. */
+export const ASSURANCE_STUDIO_MAX_PAGE_SIZE = 200;
+
 function clean(value: unknown): Json {
   if (value === null || typeof value === "string" || typeof value === "boolean") return value;
   if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -312,7 +315,9 @@ export class AssuranceStudioClient implements AssuranceStudioClientContract {
     );
 
     return iterateRemotePages(page, ctx, {
-      service: "assurance-studio", defaultPageSize: 50, maxPageSize: 200,
+      service: "assurance-studio",
+      defaultPageSize: 50,
+      maxPageSize: ASSURANCE_STUDIO_MAX_PAGE_SIZE,
     }, async request => {
       if (request.index < normalizedIndex) reset();
       while (normalizedIndex < request.index) {

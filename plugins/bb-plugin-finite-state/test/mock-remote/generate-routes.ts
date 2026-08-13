@@ -6,8 +6,11 @@ import { fileURLToPath } from "node:url";
 import { parse as parseYaml } from "yaml";
 
 import {
+  ASSURANCE_STUDIO_CLIENT_CONTRACT_ROUTES,
   ASSURANCE_STUDIO_ROUTE_PATCHES,
+  clientContractRoute,
   handlerAuditRoute,
+  type AssuranceStudioClientContractRoute,
   type AssuranceStudioRoutePatch,
 } from "./as-route-patches.js";
 import type {
@@ -107,6 +110,7 @@ const AS_COLLECTIONS = [
   "components",
   "requirements",
 ] as const;
+const AS_LIST_COLLECTIONS = [...AS_COLLECTIONS, "assets"] as const;
 const AS_ITEM_ROUTES = [
   ["threats", "threatId"],
   ["risks", "riskId"],
@@ -128,10 +132,8 @@ const asItemKeys = (method: "GET" | "PATCH" | "DELETE") =>
 
 /** Deliberate HTTP mappings for the supported named AS methods frozen by WP-06. */
 const WP06_ASSURANCE_STUDIO_ROUTES_BY_OPERATION = {
-  // GET/POST /api/projects/{projectId}/assets remain unsupported: neither
-  // vendored OpenAPI nor the handler audit verifies an asset collection route.
   listEntities: [
-    ...AS_COLLECTIONS.map((collection) => `GET /api/projects/{projectId}/${collection}`),
+    ...AS_LIST_COLLECTIONS.map((collection) => `GET /api/projects/{projectId}/${collection}`),
     "GET /api/projects/{projectId}/attack-paths",
   ],
   getEntity: asItemKeys("GET"),
@@ -320,13 +322,41 @@ export function validateAssuranceStudioRoutePatches(
   }
 }
 
+export function validateAssuranceStudioClientContractRoutes(
+  clientContractRoutes: readonly AssuranceStudioClientContractRoute[],
+  verifiedRoutes: readonly Pick<MockRoute, "method" | "pathTemplate">[],
+): void {
+  const occupied = new Set(verifiedRoutes.map(routeKey));
+  const seen = new Set<string>();
+  for (const route of clientContractRoutes) {
+    const key = `${route.method} ${route.pathTemplate}`;
+    if (route.method !== "GET") {
+      throw new Error(`Client-contract route must be read-only: ${key}`);
+    }
+    if (seen.has(key)) throw new Error(`Duplicate client-contract route: ${key}`);
+    if (occupied.has(key)) {
+      throw new Error(`Client-contract route overlaps a verified route: ${key}`);
+    }
+    seen.add(key);
+  }
+}
+
 function mergeAssuranceStudioRoutes(
   openApiRoutes: readonly MockRoute[],
   patches: readonly AssuranceStudioRoutePatch[],
+  clientContractRoutes: readonly AssuranceStudioClientContractRoute[],
 ): MockRoute[] {
   const routes = new Map(openApiRoutes.map((route) => [routeKey(route), route]));
   for (const patch of patches) {
     const route = handlerAuditRoute(patch);
+    routes.set(routeKey(route), route);
+  }
+  validateAssuranceStudioClientContractRoutes(
+    clientContractRoutes,
+    [...routes.values()],
+  );
+  for (const patch of clientContractRoutes) {
+    const route = clientContractRoute(patch);
     routes.set(routeKey(route), route);
   }
   return [...routes.values()].sort(routeSort);
@@ -405,6 +435,7 @@ export async function generateRouteArtifacts(
   const assuranceStudioReferenceRoutes = mergeAssuranceStudioRoutes(
     assuranceStudioOpenApi.routes,
     ASSURANCE_STUDIO_ROUTE_PATCHES,
+    ASSURANCE_STUDIO_CLIENT_CONTRACT_ROUTES,
   );
   const platformOutput = renderRoutes(
     "platform",

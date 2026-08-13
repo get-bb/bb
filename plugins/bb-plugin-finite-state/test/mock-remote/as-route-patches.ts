@@ -10,6 +10,15 @@ export interface AssuranceStudioRoutePatch {
   readonly evidenceSection: "2" | "6";
 }
 
+export interface AssuranceStudioClientContractRoute {
+  readonly method: MockMethod;
+  readonly pathTemplate: string;
+  readonly operationId: null;
+  readonly requestMediaTypes: readonly string[];
+  readonly responseStatuses: readonly number[];
+  readonly evidence: string;
+}
+
 const JSON_BODY = ["application/json"] as const;
 
 function itemCrud(
@@ -126,6 +135,18 @@ export const ASSURANCE_STUDIO_ROUTE_PATCHES = [
   },
 ] as const satisfies readonly AssuranceStudioRoutePatch[];
 
+/** Seeded-mock routes exercised by the production client but unverified against the upstream service. */
+export const ASSURANCE_STUDIO_CLIENT_CONTRACT_ROUTES = [
+  {
+    method: "GET",
+    pathTemplate: "/api/projects/{projectId}/assets",
+    operationId: null,
+    requestMediaTypes: [],
+    responseStatuses: [],
+    evidence: "FS-153 seeded-mock-only asset list; production route unverified",
+  },
+] as const satisfies readonly AssuranceStudioClientContractRoute[];
+
 export function handlerAuditRoute(
   patch: AssuranceStudioRoutePatch,
 ): MockRoute {
@@ -140,5 +161,22 @@ export function handlerAuditRoute(
     responseStatuses: [...patch.responseStatuses],
     source: "handler-audit",
     evidence: `${patch.evidenceFile} §${patch.evidenceSection}`,
+  };
+}
+
+export function clientContractRoute(
+  patch: AssuranceStudioClientContractRoute,
+): MockRoute {
+  return {
+    routeId: `assurance-studio:${patch.method}:${patch.pathTemplate}`,
+    service: "assurance-studio",
+    method: patch.method,
+    pathTemplate: patch.pathTemplate,
+    operationId: patch.operationId,
+    auth: "X-API-Key",
+    requestMediaTypes: [...patch.requestMediaTypes],
+    responseStatuses: [...patch.responseStatuses],
+    source: "client-contract",
+    evidence: patch.evidence,
   };
 }
