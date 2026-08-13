@@ -14,6 +14,7 @@ import type { VexTuple } from "../overlay/schema.js";
 
 const VEX_REASON_MAX_LENGTH = 10_000;
 const VEX_READ_PAGE_SIZE = 1_000;
+const VEX_TARGETED_READ_LIMIT = 1_000;
 const PROVENANCE_PREFIX = /^\[bb:[A-Za-z0-9][A-Za-z0-9._-]{0,127}\](?: |$)/u;
 
 function optionalString(value: Json | undefined): string | null {
@@ -160,7 +161,7 @@ export function sameVexTuple(left: VexTuple | null, right: VexTuple | null): boo
 }
 
 export async function getTargetDetails(
-  platform: Pick<PlatformClient, "getFindings">,
+  platform: Pick<PlatformClient, "getFindingDetail" | "getFindings">,
   pvId: string,
   findingIds: ReadonlySet<string>,
   signal?: AbortSignal,
@@ -168,6 +169,14 @@ export async function getTargetDetails(
 ): Promise<Map<string, Record<string, Json>>> {
   const details = new Map<string, Record<string, Json>>();
   if (findingIds.size === 0) return details;
+  if (findingIds.size <= VEX_TARGETED_READ_LIMIT) {
+    await Promise.all([...findingIds].map(async (findingId) => {
+      const detail = await platform.getFindingDetail({ projectVersionId: pvId, findingId }, { signal });
+      details.set(findingId, detail);
+      onPage?.(1);
+    }));
+    return details;
+  }
   for await (const page of platform.getFindings({
     projectVersionId: pvId,
     page: { pageSize: VEX_READ_PAGE_SIZE },

@@ -52,7 +52,7 @@ export interface VexBulkProgress {
 
 export interface VexBulkDependencies {
   db: Database.Database;
-  platform: Pick<PlatformClient, "batchSetVexStatus" | "clearVexStatus" | "getFindings">;
+  platform: Pick<PlatformClient, "batchSetVexStatus" | "clearVexStatus" | "getFindingDetail" | "getFindings">;
   publish(progress: VexBulkProgress): void;
   scheduler?: Scheduler;
   random?: () => number;
@@ -67,6 +67,14 @@ interface OverlayGuardRow {
   vex_justification: string | null;
   vex_reason: string | null;
   local_state: string;
+}
+
+interface CachedVexRow {
+  finding_id: string;
+  vex_status: string | null;
+  vex_response: string | null;
+  vex_justification: string | null;
+  vex_reason: string | null;
 }
 
 interface PreparedItem {
@@ -303,7 +311,7 @@ function rejectContendedTargets(prepared: readonly PreparedItem[]): void {
 function detailsByPv(prepared: readonly PreparedItem[], state: "pending" | "provisional"): Map<string, Set<string>> {
   const result = new Map<string, Set<string>>();
   for (const owner of prepared) {
-    if (owner.accumulator.terminal !== null || owner.accumulator.hasErrors && state === "pending") continue;
+    if (owner.accumulator.terminal !== null) continue;
     for (const target of owner.targets) {
       if (owner.accumulator.state(target.findingId) !== state) continue;
       const ids = result.get(target.pvId) ?? new Set<string>();
@@ -314,11 +322,70 @@ function detailsByPv(prepared: readonly PreparedItem[], state: "pending" | "prov
   return result;
 }
 
+function cachedVexByPv(
+  context: PushContext,
+  targetsByPv: ReadonlyMap<string, ReadonlySet<string>>,
+): Map<string, Map<string, VexTuple | null>> {
+  const result = new Map<string, Map<string, VexTuple | null>>();
+  const query = context.db.prepare(
+    `SELECT f.finding_id, f.vex_status, f.vex_response, f.vex_justification, f.vex_reason
+       FROM findings f
+       JOIN sync_state s
+         ON s.project_id = f.project_id
+        AND s.project_version_id = f.project_version_id
+        AND s.entity_kind = 'finding'
+        AND s.accepted_generation_id = f.generation_id
+      WHERE f.project_id = ? AND f.project_version_id = ?
+        AND f.soft_deleted = 0
+        AND f.finding_id IN (SELECT value FROM json_each(?))`,
+  );
+  for (const [pvId, findingIds] of targetsByPv) {
+    const rows = query.all(context.scope.projectId, pvId, JSON.stringify([...findingIds])) as CachedVexRow[];
+    result.set(pvId, new Map(rows.map((row) => [row.finding_id, tupleFromDetail({
+      vexStatus: row.vex_status,
+      vexResponse: row.vex_response,
+      vexJustification: row.vex_justification,
+      vexReason: row.vex_reason,
+    })])));
+  }
+  return result;
+}
+
 async function preflight(
   context: PushContext,
   prepared: readonly PreparedItem[],
   onProgress: (processed: number) => void,
 ): Promise<void> {
+  const pendingByPv = detailsByPv(prepared, "pending");
+  let cached: Map<string, Map<string, VexTuple | null>>;
+  try {
+    cached = cachedVexByPv(context, pendingByPv);
+  } catch (error: unknown) {
+    const detail = errorDetail(error, "VEX_PREFLIGHT_CACHE_FAILED");
+    for (const owner of prepared) for (const target of owner.targets) {
+      if (owner.accumulator.state(target.findingId) === "pending") owner.accumulator.markFailed(target.findingId, detail);
+    }
+    return;
+  }
+  for (const owner of prepared) {
+    if (owner.accumulator.terminal !== null) continue;
+    for (const target of owner.targets) {
+      if (owner.accumulator.state(target.findingId) !== "pending") continue;
+      const cachedTuple = cached.get(target.pvId)?.get(target.findingId);
+      if (cachedTuple === undefined) {
+        owner.accumulator.markFailed(target.findingId, {
+          code: "VEX_PREFLIGHT_CACHE_MISSING",
+          message: `Accepted findings cache omitted ${target.findingId}`,
+          retryable: true,
+        });
+        onProgress(1);
+      } else if (sameVexTuple(cachedTuple, owner.tuple)) {
+        owner.accumulator.markNoop(target.findingId);
+        onProgress(1);
+      }
+    }
+  }
+
   const snapshots = new Map<string, Map<string, Record<string, Json>>>();
   for (const [pvId, ids] of detailsByPv(prepared, "pending")) {
     try {
@@ -333,8 +400,9 @@ async function preflight(
     }
   }
   for (const owner of prepared) {
-    if (owner.accumulator.terminal !== null || owner.accumulator.hasErrors) continue;
+    if (owner.accumulator.terminal !== null) continue;
     for (const target of owner.targets) {
+      if (owner.accumulator.state(target.findingId) !== "pending") continue;
       try {
         const detail = snapshots.get(target.pvId)?.get(target.findingId);
         if (detail === undefined) throw new Error(`Platform findings snapshot omitted ${target.findingId}`);

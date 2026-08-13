@@ -278,10 +278,18 @@ function setDetail(detail: Record<string, Json>, input: VexDecisionInput): void 
   detail["vexReason"] = input.reason ?? null;
 }
 
+interface ReadStats {
+  details: number;
+  pages: number;
+  rows: number;
+}
+
 function successfulPlatform(
   state: Fixture,
   batches: number[],
-): Pick<PlatformClient, "batchSetVexStatus" | "clearVexStatus" | "getFindings"> {
+  reads: ReadStats = { details: 0, pages: 0, rows: 0 },
+  corpusPadding = 0,
+): Pick<PlatformClient, "batchSetVexStatus" | "clearVexStatus" | "getFindingDetail" | "getFindings"> {
   return {
     async batchSetVexStatus(input): Promise<VexBulkSetResult> {
       batches.push(input.findings.length);
@@ -311,12 +319,32 @@ function successfulPlatform(
         }
       }
     },
-    async *getFindings() {
-      yield {
-        items: [...state.details.values()].map((detail) => structuredClone(detail)),
-        total: state.details.size,
-        next: null,
-      };
+    async getFindingDetail(input) {
+      reads.details += 1;
+      const detail = state.details.get(input.findingId);
+      if (detail === undefined) throw new Error(`Missing fake finding ${input.findingId}`);
+      return structuredClone(detail);
+    },
+    async *getFindings(input) {
+      const padding = Array.from({ length: corpusPadding }, (_, index): Record<string, Json> => ({
+        id: `pad-${index}`,
+        cve: "CVE-0000-0000",
+        componentId: "pad",
+        componentFallbackIdentity: "pad",
+        componentPurl: `pkg:npm/pad-${index}@1.0.0`,
+        vexStatus: null,
+        vexResponse: null,
+        vexJustification: null,
+        vexReason: null,
+      }));
+      const corpus = [...padding, ...[...state.details.values()].map((detail) => structuredClone(detail))];
+      const pageSize = input.page?.pageSize ?? 1_000;
+      for (let offset = 0; offset < corpus.length; offset += pageSize) {
+        const items = corpus.slice(offset, offset + pageSize);
+        reads.pages += 1;
+        reads.rows += items.length;
+        yield { items, total: corpus.length, next: null };
+      }
     },
   };
 }
@@ -350,13 +378,8 @@ describe("WP-29 VEX bulk pusher", () => {
     insertGuard(state, key, cve);
     const batches: number[] = [];
     const progress: Array<{ completed: number; total: number }> = [];
-    const platform = successfulPlatform(state, batches);
-    const getFindings = platform.getFindings;
-    let pageReads = 0;
-    platform.getFindings = async function* (input, callContext) {
-      pageReads += 1;
-      yield* getFindings(input, callContext);
-    };
+    const reads: ReadStats = { details: 0, pages: 0, rows: 0 };
+    const platform = successfulPlatform(state, batches, reads, 20_000);
     const applyContext = context(state, platform, (event) => progress.push(event));
 
     const first = await pushVexItems(applyContext, [item(key, cve)]);
@@ -371,12 +394,52 @@ describe("WP-29 VEX bulk pusher", () => {
     expect([...state.details.values()].every((detail) => detail["vexReason"] === "[bb:run-wp29] human rationale")).toBe(true);
     expect(progress.length).toBeLessThanOrEqual(3);
     expect(progress.at(-1)).toEqual({ runId: "run-wp29", completed: 501, total: 501 });
-    expect(pageReads).toBe(2);
+    expect(reads).toEqual({ details: 1_002, pages: 0, rows: 0 });
 
     const second = await pushVexItems(applyContext, [item(key, cve)]);
     expect(batches).toEqual([500, 1]);
     expect(second[0]).toMatchObject({ targets: 501, succeeded: 501, failed: 0, state: "noop" });
-    expect(pageReads).toBe(3);
+    expect(reads).toEqual({ details: 1_503, pages: 0, rows: 0 });
+  });
+
+  it("keeps a one-target push independent of a padded remote corpus", async () => {
+    const state = fixture();
+    const cve = "CVE-2026-2925";
+    const key = insertFinding(state, {
+      id: "29251", cve, purl: "pkg:npm/common@1.0.0", name: "common",
+    });
+    insertGuard(state, key, cve);
+    const batches: number[] = [];
+    const reads: ReadStats = { details: 0, pages: 0, rows: 0 };
+
+    const result = await pushVexItems(
+      context(state, successfulPlatform(state, batches, reads, 20_000)),
+      [item(key, cve)],
+    );
+
+    expect(result[0]).toMatchObject({ state: "applied" });
+    expect(batches).toEqual([1]);
+    expect(reads).toEqual({ details: 2, pages: 0, rows: 0 });
+  });
+
+  it("suppresses a cached noop without any Platform read or write", async () => {
+    const state = fixture();
+    const cve = "CVE-2026-2926";
+    const key = insertFinding(state, {
+      id: "29261", cve, purl: "pkg:npm/cached-noop@1.0.0", name: "cached-noop", tuple: DESIRED,
+    });
+    insertGuard(state, key, cve);
+    const batches: number[] = [];
+    const reads: ReadStats = { details: 0, pages: 0, rows: 0 };
+
+    const result = await pushVexItems(
+      context(state, successfulPlatform(state, batches, reads, 20_000)),
+      [item(key, cve)],
+    );
+
+    expect(result[0]).toMatchObject({ state: "noop" });
+    expect(batches).toEqual([]);
+    expect(reads).toEqual({ details: 0, pages: 0, rows: 0 });
   });
 
   it("groups mixed project versions, set/clear operations, and distinct tuples separately", () => {
@@ -470,6 +533,80 @@ describe("WP-29 VEX bulk pusher", () => {
         code: "VEX_TARGET_CONTENDED", message: expect.stringContaining(purlKey), retryable: false,
       })] }),
     ]);
+  });
+
+  it("still suppresses an already-correct sibling target after another target is contended", async () => {
+    const state = fixture();
+    const cve = "CVE-2026-2923";
+    insertFinding(state, {
+      id: "29231", cve, purl: "pkg:npm/mixed@1.0.0", name: "mixed", version: "1.0.0",
+    });
+    insertFinding(state, {
+      id: "29232", cve, purl: "pkg:npm/mixed@2.0.0", name: "mixed", version: "2.0.0", tuple: DESIRED,
+    });
+    const exactKey = findingStableKey({
+      cve, purl: "pkg:npm/mixed@1.0.0", name: "mixed", group: null, version: "1.0.0",
+    });
+    const broadKey = findingStableKey({
+      cve, purl: null, name: "mixed", group: null, version: null,
+    }, "name-group-any-version");
+    insertGuard(state, exactKey, cve, DESIRED, "exact_version");
+    insertGuard(state, broadKey, cve, DESIRED, "any_version");
+    const batches: number[] = [];
+
+    const results = await pushVexItems(context(state, successfulPlatform(state, batches)), [
+      item(exactKey, cve),
+      item(broadKey, cve),
+    ]);
+
+    expect(batches).toEqual([]);
+    expect(results[1]).toMatchObject({
+      state: "partial",
+      targets: 2,
+      succeeded: 1,
+      failed: 1,
+      errors: [expect.objectContaining({ code: "VEX_TARGET_CONTENDED" })],
+    });
+  });
+
+  it("never writes a sibling target whose remote identity moved after another target is contended", async () => {
+    const state = fixture();
+    const cve = "CVE-2026-2924";
+    insertFinding(state, {
+      id: "29241", cve, purl: "pkg:npm/moved@1.0.0", name: "moved", version: "1.0.0",
+    });
+    insertFinding(state, {
+      id: "29242", cve, purl: "pkg:npm/moved@2.0.0", name: "moved", version: "2.0.0",
+    });
+    const exactKey = findingStableKey({
+      cve, purl: "pkg:npm/moved@1.0.0", name: "moved", group: null, version: "1.0.0",
+    });
+    const broadKey = findingStableKey({
+      cve, purl: null, name: "moved", group: null, version: null,
+    }, "name-group-any-version");
+    insertGuard(state, exactKey, cve, DESIRED, "exact_version");
+    insertGuard(state, broadKey, cve, DESIRED, "any_version");
+    const moved = state.details.get("29242");
+    if (moved === undefined) throw new Error("Missing moved test finding");
+    moved["componentPurl"] = "pkg:npm/different@9.9.9";
+    moved["componentId"] = "different";
+    moved["componentFallbackIdentity"] = "different";
+    const batches: number[] = [];
+
+    const results = await pushVexItems(context(state, successfulPlatform(state, batches)), [
+      item(exactKey, cve),
+      item(broadKey, cve),
+    ]);
+
+    expect(batches).toEqual([]);
+    expect(moved["vexStatus"]).toBeNull();
+    expect(results[1]).toMatchObject({
+      state: "stale",
+      errors: expect.arrayContaining([
+        expect.objectContaining({ code: "VEX_TARGET_CONTENDED" }),
+        expect.objectContaining({ code: "VEX_TARGET_MOVED" }),
+      ]),
+    });
   });
 
   it("fails unknown result ids closed and never treats top-level success as row proof", async () => {
