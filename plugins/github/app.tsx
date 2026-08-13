@@ -1604,19 +1604,24 @@ function readHostCodeTheme(): { dark: string; light: string } {
   };
 }
 
-let hostCodeTheme = readHostCodeTheme();
+/** Read lazily: this module also loads outside a DOM, such as in the plugin
+    bundle tests, where a module-eval `document` access throws. */
+let hostCodeTheme: { dark: string; light: string } | null = null;
 const hostCodeThemeListeners = new Set<() => void>();
 let hostCodeThemeObserver: MutationObserver | null = null;
+
+function getHostCodeTheme(): { dark: string; light: string } {
+  hostCodeTheme ??= readHostCodeTheme();
+  return hostCodeTheme;
+}
 
 function subscribeHostCodeTheme(onStoreChange: () => void): () => void {
   hostCodeThemeListeners.add(onStoreChange);
   if (hostCodeThemeObserver === null) {
     hostCodeThemeObserver = new MutationObserver(() => {
       const next = readHostCodeTheme();
-      if (
-        next.dark === hostCodeTheme.dark &&
-        next.light === hostCodeTheme.light
-      ) {
+      const current = getHostCodeTheme();
+      if (next.dark === current.dark && next.light === current.light) {
         return;
       }
       hostCodeTheme = next;
@@ -1635,8 +1640,8 @@ function subscribeHostCodeTheme(onStoreChange: () => void): () => void {
 function useHostCodeTheme(): { dark: string; light: string } {
   return useSyncExternalStore(
     subscribeHostCodeTheme,
-    () => hostCodeTheme,
-    () => hostCodeTheme,
+    getHostCodeTheme,
+    getHostCodeTheme,
   );
 }
 
