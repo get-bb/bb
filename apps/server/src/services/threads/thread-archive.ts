@@ -4,7 +4,10 @@ import {
   listUnarchivedHiddenSourceThreads,
 } from "@bb/db";
 import type { Environment, Thread } from "@bb/domain";
-import type { AppDeps } from "../../types.js";
+import type {
+  AppDeps,
+  LoggedPendingInteractionWorkSessionDeps,
+} from "../../types.js";
 import {
   requestEnvironmentCleanup,
   requestEnvironmentCleanupAdvance,
@@ -30,12 +33,41 @@ interface ArchiveThreadWithLifecycleEffectsArgs {
   thread: Pick<Thread, "environmentId" | "id" | "status">;
 }
 
+interface ApplyArchivedThreadLifecycleEffectsArgs {
+  environment: {
+    hostId: string;
+    id: string;
+  };
+  thread: Thread;
+}
+
 interface ArchiveEnvironmentThreadsArgs {
   environment: Environment;
 }
 
 interface ArchiveThreadAndChildrenArgs {
   parentThread: Thread;
+}
+
+export function applyArchivedThreadLifecycleEffects(
+  deps: LoggedPendingInteractionWorkSessionDeps,
+  args: ApplyArchivedThreadLifecycleEffectsArgs,
+): void {
+  deps.terminalSessions.closeArchivedThreadTerminals({
+    threadId: args.thread.id,
+  });
+  // Archive only stops active runtime work; manual stop is the pre-start
+  // provisioning cancellation entrypoint.
+  requestActiveRuntimeThreadStopIfNeeded(deps, args.thread, args.environment);
+  dispatchSettledArchivedThreadProviderArchiveCommand(deps, {
+    threadId: args.thread.id,
+  });
+  resetActiveThreadEventPruningState(args.thread.id);
+  pruneThreadEventHistoryBestEffort(deps, {
+    mode: "archived",
+    threadId: args.thread.id,
+  });
+  emitPluginThreadArchived(args.thread);
 }
 
 export function archiveThreadWithLifecycleEffects(
@@ -49,25 +81,10 @@ export function archiveThreadWithLifecycleEffects(
     return null;
   }
 
-  deps.terminalSessions.closeArchivedThreadTerminals({
-    threadId: archivedThread.id,
+  applyArchivedThreadLifecycleEffects(deps, {
+    environment: args.environment,
+    thread: archivedThread,
   });
-  // Archive only stops active runtime work; manual stop is the pre-start
-  // provisioning cancellation entrypoint.
-  requestActiveRuntimeThreadStopIfNeeded(
-    deps,
-    archivedThread,
-    args.environment,
-  );
-  dispatchSettledArchivedThreadProviderArchiveCommand(deps, {
-    threadId: archivedThread.id,
-  });
-  resetActiveThreadEventPruningState(archivedThread.id);
-  pruneThreadEventHistoryBestEffort(deps, {
-    mode: "archived",
-    threadId: archivedThread.id,
-  });
-  emitPluginThreadArchived(archivedThread);
 
   return archivedThread;
 }

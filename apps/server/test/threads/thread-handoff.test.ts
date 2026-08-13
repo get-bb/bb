@@ -11,6 +11,7 @@ import {
   updateHost,
 } from "@bb/db";
 import { describe, expect, it, vi } from "vitest";
+import { ApiError } from "../../src/errors.js";
 import {
   hostDaemonOnlineRpcResponseMessageSchema,
   hostDaemonServerWsMessageSchema,
@@ -356,10 +357,66 @@ describe("thread handoff service", () => {
             )?.status,
         )
         .toBe("failed");
+      expect(
+        getThreadHandoffByReplacementThreadId(
+          harness.db,
+          created.replacementThreadId,
+        ),
+      ).toMatchObject({
+        failureCode: "provider_start_failed",
+        failureMessage: "Provider exited",
+      });
       expect(getThread(harness.db, source.id)).toMatchObject({
         archivedAt: null,
         deletedAt: null,
       });
+    });
+  });
+
+  it("does not infer a browser timeout as terminal handoff failure", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const source = seedThread(harness.deps, {
+        environmentId: environment.id,
+        projectId: project.id,
+      });
+      const requestHostOnlineRpc = harness.deps.hub.requestHostOnlineRpc.bind(
+        harness.deps.hub,
+      );
+      vi.spyOn(harness.deps.hub, "requestHostOnlineRpc").mockImplementation(
+        (args) =>
+          args.message.command.type === "thread.start"
+            ? Promise.reject(
+                new ApiError(
+                  504,
+                  "command_timeout",
+                  "Browser timed out waiting",
+                ),
+              )
+            : requestHostOnlineRpc(args),
+      );
+
+      const created = await createThreadHandoff(
+        harness.deps,
+        request(source.id),
+      );
+      await expect
+        .poll(
+          () =>
+            getThreadHandoffByReplacementThreadId(
+              harness.db,
+              created.replacementThreadId,
+            )?.status,
+        )
+        .toBe("provisioning");
+      expect(getThread(harness.db, source.id)?.archivedAt).toBeNull();
     });
   });
 

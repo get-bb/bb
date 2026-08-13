@@ -1,8 +1,8 @@
-import { and, asc, eq, gt, or } from "drizzle-orm";
+import { and, asc, eq, gt, or, sql } from "drizzle-orm";
 import type { PermissionMode, ReasoningLevel, ServiceTier } from "@bb/domain";
 import type { DbConnection, DbTransaction } from "../connection.js";
 import { createThreadHandoffId } from "../ids.js";
-import { threadHandoffs } from "../schema.js";
+import { events, threadHandoffs } from "../schema.js";
 
 type ThreadHandoffConnection = DbConnection | DbTransaction;
 
@@ -186,6 +186,40 @@ export function listProvisioningThreadHandoffs(
     nextCursor:
       hasMore && last ? { createdAt: last.createdAt, id: last.id } : null,
   };
+}
+
+export function hasNonStaleRootTurnStarted(
+  db: ThreadHandoffConnection,
+  replacementThreadId: string,
+): boolean {
+  return (
+    db
+      .select({ sequence: events.sequence })
+      .from(events)
+      .where(
+        and(
+          eq(events.threadId, replacementThreadId),
+          eq(events.type, "turn/started"),
+          sql`COALESCE(json_extract(${events.data}, '$.parentToolCallId'), '') = ''`,
+          sql`NOT EXISTS (
+            SELECT 1
+            FROM events AS interruption
+            WHERE interruption.thread_id = ${events.threadId}
+              AND interruption.type = 'system/thread/interrupted'
+              AND interruption.sequence < ${events.sequence}
+              AND interruption.sequence > COALESCE((
+                SELECT MAX(request.sequence)
+                FROM events AS request
+                WHERE request.thread_id = ${events.threadId}
+                  AND request.type = 'client/turn/requested'
+                  AND request.sequence < ${events.sequence}
+              ), 0)
+          )`,
+        ),
+      )
+      .limit(1)
+      .get() !== undefined
+  );
 }
 
 function settleThreadHandoff(

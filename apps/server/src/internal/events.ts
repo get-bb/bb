@@ -39,6 +39,10 @@ import {
 } from "../services/system/event-pruning.js";
 import { queueChildThreadTurnNotificationBestEffort } from "../services/threads/child-thread-notifications.js";
 import { isParentNotifiableChildThread } from "../services/threads/thread-parent.js";
+import {
+  settleThreadHandoffFailed,
+  settleThreadHandoffStarted,
+} from "../services/threads/thread-handoff.js";
 import { runQueuedMessageAutoSendForThread } from "../services/threads/queued-messages.js";
 import { deferAfterResponse } from "../services/lib/response-deferral.js";
 import {
@@ -401,6 +405,7 @@ async function applyEventEffects(
           event: { type: "run.started" },
           threadId: entry.threadId,
         });
+        settleThreadHandoffStarted(deps, entry.threadId);
         continue;
       }
 
@@ -463,6 +468,10 @@ async function applyEventEffects(
         event.type === "system/error" &&
         event.code === "provider_process_exited"
       ) {
+        settleThreadHandoffFailed(deps, entry.threadId, {
+          code: event.code,
+          message: event.message,
+        });
         const thread = getThread(deps.db, entry.threadId);
         if (!thread) {
           continue;

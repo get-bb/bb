@@ -5,11 +5,7 @@ import {
   type DbTransaction,
   updateThread,
 } from "@bb/db";
-import type {
-  PromptInput,
-  SystemMessageSubject,
-  Thread,
-} from "@bb/domain";
+import type { PromptInput, SystemMessageSubject, Thread } from "@bb/domain";
 import { renderTemplate } from "@bb/templates";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
 import { NotificationBuffer } from "../lib/notification-buffer.js";
@@ -158,7 +154,7 @@ export async function handleThreadOwnershipChange(
   }
 }
 
-function releaseUnarchivedChildrenFromArchivedThreadInTransaction(
+export function releaseUnarchivedChildrenFromArchivedThreadInTransaction(
   deps: ThreadOwnershipTransactionDeps,
   args: ReleaseUnarchivedChildrenFromArchivedThreadArgs,
 ): void {

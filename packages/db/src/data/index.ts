@@ -168,6 +168,7 @@ export {
   createThreadHandoff,
   getThreadHandoffByReplacementThreadId,
   getThreadHandoffBySourceAndIdempotencyKey,
+  hasNonStaleRootTurnStarted,
   listProvisioningThreadHandoffs,
   markThreadHandoffFailed,
   markThreadHandoffStarted,

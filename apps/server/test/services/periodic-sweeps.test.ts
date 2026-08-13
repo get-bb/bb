@@ -1,12 +1,28 @@
 import { eq } from "drizzle-orm";
-import { CLOSED_SESSION_ROW_RETENTION_MS, hostDaemonSessions } from "@bb/db";
+import {
+  CLOSED_SESSION_ROW_RETENTION_MS,
+  createThreadHandoff,
+  getThread,
+  getThreadHandoffByReplacementThreadId,
+  hostDaemonSessions,
+  markThreadDeleted,
+} from "@bb/db";
+import { turnScope } from "@bb/domain";
 import { describe, expect, it, vi } from "vitest";
 import {
   type PeriodicSweepJob,
+  runThreadHandoffReconciliationSweep,
+  runStartupRecoverySweep,
   runPeriodicSweepJobs,
   runPeriodicSweeps,
 } from "../../src/services/system/periodic-sweeps.js";
-import { seedHostSession } from "../helpers/seed.js";
+import {
+  seedEnvironment,
+  seedEvent,
+  seedHostSession,
+  seedProjectWithSource,
+  seedThread,
+} from "../helpers/seed.js";
 import { testLogger, withTestHarness } from "../helpers/test-app.js";
 
 type ReleaseCallback = () => void;
@@ -180,6 +196,214 @@ describe("runPeriodicSweeps", () => {
       await runPeriodicSweepJobs(deps, jobs, 21_000);
 
       expect(runCount).toBe(2);
+    });
+  });
+});
+
+describe("thread handoff reconciliation", () => {
+  it("pages provisioning handoffs and settles stored root starts after restart", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const fixtures = Array.from({ length: 3 }, (_, index) => {
+        const source = seedThread(harness.deps, {
+          environmentId: environment.id,
+          projectId: project.id,
+        });
+        const replacement = seedThread(harness.deps, {
+          environmentId: environment.id,
+          projectId: project.id,
+          status: "active",
+        });
+        createThreadHandoff(harness.db, {
+          archiveSource: true,
+          environmentId: environment.id,
+          idempotencyKey: `restart-started-${index}`,
+          model: "gpt-5.6-codex",
+          permissionMode: "accept-edits",
+          projectId: project.id,
+          providerId: "codex",
+          reasoningLevel: "high",
+          replacementThreadId: replacement.id,
+          serviceTier: null,
+          sourceThreadId: source.id,
+        });
+        seedEvent(harness.deps, {
+          data: { providerThreadId: `provider-${index}` },
+          environmentId: environment.id,
+          providerThreadId: `provider-${index}`,
+          scope: turnScope(`root-turn-${index}`),
+          sequence: 1,
+          threadId: replacement.id,
+          type: "turn/started",
+        });
+        return { replacement, source };
+      });
+
+      const result = runThreadHandoffReconciliationSweep(harness.deps, {
+        pageSize: 2,
+      });
+
+      expect(result).toEqual({
+        observation: "observed",
+        observed: 3,
+        failed: 0,
+        started: 3,
+      });
+      for (const fixture of fixtures) {
+        expect(
+          getThreadHandoffByReplacementThreadId(
+            harness.db,
+            fixture.replacement.id,
+          ),
+        ).toMatchObject({ status: "started" });
+        expect(getThread(harness.db, fixture.source.id)?.archivedAt).toEqual(
+          expect.any(Number),
+        );
+      }
+    });
+  });
+
+  it("fails terminal replacements without a start and leaves live replacements provisioning", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      function add(status: "starting" | "active" | "error", key: string) {
+        const source = seedThread(harness.deps, {
+          environmentId: environment.id,
+          projectId: project.id,
+        });
+        const replacement = seedThread(harness.deps, {
+          environmentId: environment.id,
+          projectId: project.id,
+          status,
+        });
+        createThreadHandoff(harness.db, {
+          archiveSource: true,
+          environmentId: environment.id,
+          idempotencyKey: key,
+          model: "gpt-5.6-codex",
+          permissionMode: "accept-edits",
+          projectId: project.id,
+          providerId: "codex",
+          reasoningLevel: "high",
+          replacementThreadId: replacement.id,
+          serviceTier: null,
+          sourceThreadId: source.id,
+        });
+        return { replacement, source };
+      }
+      const failed = add("error", "failed-before-start");
+      const deleted = add("starting", "deleted-before-start");
+      const starting = add("starting", "still-starting");
+      const running = add("active", "still-running");
+      markThreadDeleted(harness.db, harness.hub, {
+        threadId: deleted.replacement.id,
+      });
+
+      runThreadHandoffReconciliationSweep(harness.deps);
+      runThreadHandoffReconciliationSweep(harness.deps);
+
+      expect(
+        getThreadHandoffByReplacementThreadId(
+          harness.db,
+          failed.replacement.id,
+        ),
+      ).toMatchObject({
+        status: "failed",
+        failureCode: "replacement_thread_failed",
+      });
+      expect(
+        getThreadHandoffByReplacementThreadId(
+          harness.db,
+          deleted.replacement.id,
+        ),
+      ).toMatchObject({
+        status: "failed",
+        failureCode: "replacement_thread_deleted",
+      });
+      for (const fixture of [starting, running]) {
+        expect(
+          getThreadHandoffByReplacementThreadId(
+            harness.db,
+            fixture.replacement.id,
+          ),
+        ).toMatchObject({ status: "provisioning" });
+        expect(getThread(harness.db, fixture.source.id)?.archivedAt).toBeNull();
+      }
+    });
+  });
+
+  it("does not report an empty reconciliation observation as success", async () => {
+    await withTestHarness(async (harness) => {
+      const info = vi.spyOn(harness.deps.logger, "info");
+
+      expect(runThreadHandoffReconciliationSweep(harness.deps)).toEqual({
+        observation: "empty",
+        observed: 0,
+        failed: 0,
+        started: 0,
+      });
+      expect(info).not.toHaveBeenCalledWith(
+        expect.anything(),
+        "Thread handoff reconciliation completed",
+      );
+    });
+  });
+
+  it("runs handoff reconciliation during startup recovery", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const source = seedThread(harness.deps, {
+        environmentId: environment.id,
+        projectId: project.id,
+      });
+      const replacement = seedThread(harness.deps, {
+        environmentId: environment.id,
+        projectId: project.id,
+        status: "error",
+      });
+      createThreadHandoff(harness.db, {
+        archiveSource: true,
+        environmentId: environment.id,
+        idempotencyKey: "startup-recovery",
+        model: "gpt-5.6-codex",
+        permissionMode: "accept-edits",
+        projectId: project.id,
+        providerId: "codex",
+        reasoningLevel: "high",
+        replacementThreadId: replacement.id,
+        serviceTier: null,
+        sourceThreadId: source.id,
+      });
+
+      await runStartupRecoverySweep(harness.deps);
+
+      expect(
+        getThreadHandoffByReplacementThreadId(harness.db, replacement.id),
+      ).toMatchObject({
+        status: "failed",
+        failureCode: "replacement_thread_failed",
+      });
     });
   });
 });

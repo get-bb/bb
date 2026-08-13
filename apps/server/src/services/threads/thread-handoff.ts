@@ -2,13 +2,16 @@ import { desc, eq } from "drizzle-orm";
 import {
   createThreadHandoff as createThreadHandoffRow,
   createThreadId,
+  archiveThread,
   getThread,
   getThreadHandoffByReplacementThreadId,
   getThreadHandoffBySourceAndIdempotencyKey,
   markThreadHandoffFailed,
+  markThreadHandoffStarted,
   noopNotifier,
   promptHistoryEntries,
   type ThreadHandoffRow,
+  type SettleThreadHandoffResult,
 } from "@bb/db";
 import { promptInputSchema, type PromptInput, type Thread } from "@bb/domain";
 import type {
@@ -18,7 +21,11 @@ import type {
 import { z } from "zod";
 import { ApiError } from "../../errors.js";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
-import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
+import {
+  isCommandTimeoutError,
+  runtimeErrorLogFields,
+} from "../lib/error-log-fields.js";
+import { NotificationBuffer } from "../lib/notification-buffer.js";
 import {
   requireConnectedHostSession,
   requireEnvironment,
@@ -29,6 +36,8 @@ import { validatePromptAttachmentReferences } from "../projects/attachments.js";
 import { emitPluginThreadCreated } from "../plugins/plugin-thread-events.js";
 import { validateExplicitThreadExecution } from "../system/execution-options.js";
 import { createThreadRecord } from "./thread-create-helpers.js";
+import { applyArchivedThreadLifecycleEffects } from "./thread-archive.js";
+import { releaseUnarchivedChildrenFromArchivedThreadInTransaction } from "./thread-ownership.js";
 import {
   advanceThreadProvisioning,
   requestThreadProvision,
@@ -36,6 +45,76 @@ import {
 
 type ThreadHandoffDeps = LoggedPendingInteractionWorkSessionDeps;
 const storedInputSchema = z.array(promptInputSchema).min(1);
+
+export interface ThreadHandoffFailure {
+  code: string;
+  message: string;
+}
+
+export function settleThreadHandoffStarted(
+  deps: ThreadHandoffDeps,
+  replacementThreadId: string,
+): SettleThreadHandoffResult {
+  const notificationBuffer = new NotificationBuffer();
+  const transactionResult = deps.db.transaction(
+    (tx) => {
+      const outcome = markThreadHandoffStarted(tx, { replacementThreadId });
+      if (!outcome.applied || !outcome.handoff.archiveSource) {
+        return { archivedSource: null, outcome };
+      }
+      const source = getThread(tx, outcome.handoff.sourceThreadId);
+      if (!source || source.archivedAt !== null) {
+        return { archivedSource: null, outcome };
+      }
+      const archivedSource = archiveThread(tx, notificationBuffer, source.id);
+      if (archivedSource) {
+        releaseUnarchivedChildrenFromArchivedThreadInTransaction(
+          { db: tx, hub: notificationBuffer },
+          { parentThreadId: archivedSource.id },
+        );
+      }
+      return { archivedSource, outcome };
+    },
+    { behavior: "immediate" },
+  );
+  runPostCommitSideEffect(
+    deps,
+    replacementThreadId,
+    "publish source archive notifications",
+    () => notificationBuffer.flushInto(deps.hub),
+  );
+  const archivedSource = transactionResult.archivedSource;
+  if (archivedSource) {
+    runPostCommitSideEffect(
+      deps,
+      replacementThreadId,
+      "apply source archive lifecycle effects",
+      () => {
+        const environmentId = archivedSource.environmentId;
+        if (!environmentId) {
+          throw new Error("Archived handoff source has no environment");
+        }
+        const environment = requireEnvironment(deps.db, environmentId);
+        applyArchivedThreadLifecycleEffects(deps, {
+          environment,
+          thread: archivedSource,
+        });
+      },
+    );
+  }
+  return transactionResult.outcome;
+}
+
+export function settleThreadHandoffFailed(
+  deps: Pick<ThreadHandoffDeps, "db">,
+  replacementThreadId: string,
+  failure: ThreadHandoffFailure,
+): SettleThreadHandoffResult {
+  return markThreadHandoffFailed(deps.db, {
+    failure,
+    replacementThreadId,
+  });
+}
 
 function sourceLabel(thread: Thread): string {
   return (
@@ -141,12 +220,20 @@ function settleProvisioningFailure(
   replacementThreadId: string,
   error: unknown,
 ): void {
-  markThreadHandoffFailed(deps.db, {
-    replacementThreadId,
-    failure: {
-      code: "thread_provisioning_failed",
-      message: error instanceof Error ? error.message : String(error),
-    },
+  if (isCommandTimeoutError(error)) {
+    return;
+  }
+  settleThreadHandoffFailed(deps, replacementThreadId, {
+    code:
+      error instanceof ApiError
+        ? error.body.code
+        : "thread_provisioning_failed",
+    message:
+      error instanceof ApiError
+        ? error.body.message
+        : error instanceof Error
+          ? error.message
+          : String(error),
   });
 }
 

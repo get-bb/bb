@@ -14,8 +14,11 @@ import {
   getDatabaseCompactionStats,
   getDatabaseFreelistStats,
   getDatabaseMaintenanceActivity,
+  getThread,
+  hasNonStaleRootTurnStarted,
   isDatabaseMaintenanceIdle,
   listDeferredLegacyTables,
+  listProvisioningThreadHandoffs,
   environments,
   pruneClosedSessions,
   pruneDestroyedEnvironments,
@@ -45,6 +48,10 @@ import {
   listProjectsPendingDeletion,
 } from "../projects/project-deletion.js";
 import { hasLiveThreadStartInFlight } from "../threads/thread-lifecycle.js";
+import {
+  settleThreadHandoffFailed,
+  settleThreadHandoffStarted,
+} from "../threads/thread-handoff.js";
 import { advanceThreadProvisioning } from "../threads/thread-provisioning.js";
 import { runQueuedMessageAutoSendSweep } from "../threads/queued-messages.js";
 import { LIVE_DAEMON_COMMAND_TIMEOUT_MS } from "../hosts/live-command.js";
@@ -71,6 +78,7 @@ export const MANAGED_ENVIRONMENT_ARCHIVE_CLEANUP_RECOVERY_INTERVAL_MS =
   15 * 60_000;
 const ORPHANED_ENVIRONMENT_DESTROY_RECOVERY_DELAY_MS =
   LIVE_DAEMON_COMMAND_TIMEOUT_MS;
+const THREAD_HANDOFF_RECONCILIATION_PAGE_SIZE = 100;
 
 export type PeriodicSweepJobCategory =
   | "retention"
@@ -478,10 +486,91 @@ export async function runThreadProvisioningOrphanCleanupSweep(
   }
 }
 
+export interface ThreadHandoffReconciliationResult {
+  failed: number;
+  observation: "empty" | "observed";
+  observed: number;
+  started: number;
+}
+
+export function runThreadHandoffReconciliationSweep(
+  deps: LoggedPendingInteractionWorkSessionDeps,
+  options: { pageSize?: number } = {},
+): ThreadHandoffReconciliationResult {
+  const pageSize = options.pageSize ?? THREAD_HANDOFF_RECONCILIATION_PAGE_SIZE;
+  let after: Parameters<typeof listProvisioningThreadHandoffs>[1]["after"];
+  let failed = 0;
+  let observed = 0;
+  let started = 0;
+
+  do {
+    const page = listProvisioningThreadHandoffs(deps.db, {
+      ...(after ? { after } : {}),
+      limit: pageSize,
+    });
+    observed += page.handoffs.length;
+    for (const handoff of page.handoffs) {
+      try {
+        if (hasNonStaleRootTurnStarted(deps.db, handoff.replacementThreadId)) {
+          if (
+            settleThreadHandoffStarted(deps, handoff.replacementThreadId)
+              .applied
+          ) {
+            started += 1;
+          }
+          continue;
+        }
+        const replacement = getThread(deps.db, handoff.replacementThreadId);
+        const failure =
+          replacement?.deletedAt !== null &&
+          replacement?.deletedAt !== undefined
+            ? {
+                code: "replacement_thread_deleted",
+                message:
+                  "Replacement thread was deleted before its root turn started",
+              }
+            : replacement?.status === "error"
+              ? {
+                  code: "replacement_thread_failed",
+                  message:
+                    "Replacement thread failed before its root turn started",
+                }
+              : null;
+        if (
+          failure &&
+          settleThreadHandoffFailed(deps, handoff.replacementThreadId, failure)
+            .applied
+        ) {
+          failed += 1;
+        }
+      } catch (error) {
+        deps.logger.warn(
+          { err: error, replacementThreadId: handoff.replacementThreadId },
+          "Thread handoff reconciliation candidate failed",
+        );
+      }
+    }
+    after = page.nextCursor ?? undefined;
+  } while (after);
+
+  if (observed === 0) {
+    return { failed, observation: "empty", observed, started };
+  }
+  const result: ThreadHandoffReconciliationResult = {
+    failed,
+    observation: "observed",
+    observed,
+    started,
+  };
+  deps.logger.info(result, "Thread handoff reconciliation completed");
+  return result;
+}
+
 export async function runThreadLifecycleSweep(
   deps: LoggedPendingInteractionWorkSessionDeps,
 ): Promise<void> {
   await runThreadProvisioningOrphanCleanupSweep(deps);
+  runThreadHandoffReconciliationSweep(deps);
 }
 
 async function runMachineAuthPruneSweep(
@@ -552,7 +641,7 @@ const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
     cadenceMs: 0,
     category: "orphan-cleanup",
     name: "thread-provisioning-orphan-cleanup",
-    run: runThreadProvisioningOrphanCleanupSweep,
+    run: runThreadLifecycleSweep,
   },
   {
     cadenceMs: 0,
