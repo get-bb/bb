@@ -19,6 +19,11 @@ type ProviderCliInstallCompletedEvent = Extract<
 type ProviderCliTitlePhase = "failure" | "log";
 type ProviderCliTitleTemplate = (displayName: string) => string;
 
+export const PROVIDER_CLI_FAILURE_LOG_MAX_BYTES = 128 * 1024;
+export const PROVIDER_CLI_FAILURE_MAX_ENTRIES = 32;
+const PROVIDER_CLI_FAILURE_LOG_TRUNCATION_MARKER =
+  "\n\n… provider update output truncated …\n\n";
+
 export interface ProviderCliInstallJob {
   hostId: string;
   issue: ProviderCliActionableIssue;
@@ -152,6 +157,47 @@ function getProviderCliTitle(args: {
   );
 }
 
+function truncateProviderCliFailureLog(log: string): string {
+  const encoder = new TextEncoder();
+  const encodedLog = encoder.encode(log);
+  if (encodedLog.byteLength <= PROVIDER_CLI_FAILURE_LOG_MAX_BYTES) {
+    return log;
+  }
+
+  const encodedMarker = encoder.encode(
+    PROVIDER_CLI_FAILURE_LOG_TRUNCATION_MARKER,
+  );
+  const outputBudget =
+    PROVIDER_CLI_FAILURE_LOG_MAX_BYTES - encodedMarker.byteLength;
+  const headBudget = Math.floor(outputBudget / 2);
+  const tailBudget = outputBudget - headBudget;
+  const head = new TextDecoder()
+    .decode(encodedLog.slice(0, headBudget))
+    .replace(/\uFFFD$/u, "");
+  const tail = new TextDecoder()
+    .decode(encodedLog.slice(-tailBudget))
+    .replace(/^\uFFFD/u, "");
+  return `${head}${PROVIDER_CLI_FAILURE_LOG_TRUNCATION_MARKER}${tail}`;
+}
+
+function setProviderCliInstallFailure(args: {
+  failure: ProviderCliInstallFailure;
+  jobKey: string;
+}): void {
+  const failuresByJobKey = new Map(snapshot.failuresByJobKey);
+  // Refresh an existing key's insertion order so eviction stays least-recent.
+  failuresByJobKey.delete(args.jobKey);
+  failuresByJobKey.set(args.jobKey, args.failure);
+  while (failuresByJobKey.size > PROVIDER_CLI_FAILURE_MAX_ENTRIES) {
+    const oldest = failuresByJobKey.keys().next();
+    if (oldest.done) {
+      break;
+    }
+    failuresByJobKey.delete(oldest.value);
+  }
+  setSnapshot({ failuresByJobKey });
+}
+
 function showProviderCliInstallFailureToast(args: {
   jobKey: string;
   issue: ProviderCliActionableIssue;
@@ -161,16 +207,17 @@ function showProviderCliInstallFailureToast(args: {
 }): void {
   const logDialogState: ProviderCliInstallLogDialogState = {
     displayName: args.issue.status.displayName,
-    log: args.log,
+    log: truncateProviderCliFailureLog(args.log),
     message: args.message,
     title: getProviderCliTitle({ issue: args.issue, phase: "log" }),
   };
-  const failuresByJobKey = new Map(snapshot.failuresByJobKey);
-  failuresByJobKey.set(args.jobKey, {
-    issueFingerprint: args.issue.fingerprint,
-    logDialogState,
+  setProviderCliInstallFailure({
+    jobKey: args.jobKey,
+    failure: {
+      issueFingerprint: args.issue.fingerprint,
+      logDialogState,
+    },
   });
-  setSnapshot({ failuresByJobKey });
 
   appToast.error(getProviderCliTitle({ issue: args.issue, phase: "failure" }), {
     id: args.toastId,

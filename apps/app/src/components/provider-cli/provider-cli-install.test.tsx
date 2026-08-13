@@ -20,6 +20,8 @@ import {
   useProviderCliInstallRunner,
 } from "./provider-cli-install";
 import {
+  PROVIDER_CLI_FAILURE_LOG_MAX_BYTES,
+  PROVIDER_CLI_FAILURE_MAX_ENTRIES,
   registerProviderCliInstallQueryClient,
   resetProviderCliInstallStoreForTests,
 } from "./provider-cli-install-store";
@@ -350,5 +352,62 @@ describe("useProviderCliInstallRunner", () => {
       result.current.startInstall({ hostId: "host_1", issue });
     });
     expect(result.current.failuresByJobKey.has("host_1:codex")).toBe(false);
+  });
+
+  it("bounds retained failures by entry count and log bytes", async () => {
+    const { result } = renderRunner();
+    const issue = issueForProvider("codex");
+
+    for (let index = 0; index <= PROVIDER_CLI_FAILURE_MAX_ENTRIES; index += 1) {
+      const hostId = `host_${index}`;
+      act(() => {
+        result.current.startInstall({ hostId, issue });
+      });
+      const output =
+        index === PROVIDER_CLI_FAILURE_MAX_ENTRIES
+          ? `first line\n${"x".repeat(PROVIDER_CLI_FAILURE_LOG_MAX_BYTES * 2)}\nlast line\n`
+          : "failed\n";
+      await act(async () => {
+        installAt(index).resolve([
+          {
+            type: "started",
+            provider: "codex",
+            command: "codex update",
+          },
+          {
+            type: "output",
+            provider: "codex",
+            stream: "stderr",
+            text: output,
+          },
+          {
+            type: "completed",
+            provider: "codex",
+            success: false,
+            exitCode: 1,
+            signal: null,
+          },
+        ]);
+      });
+    }
+
+    expect(result.current.failuresByJobKey.size).toBe(
+      PROVIDER_CLI_FAILURE_MAX_ENTRIES,
+    );
+    expect(result.current.failuresByJobKey.has("host_0:codex")).toBe(false);
+    const newestFailure = result.current.failuresByJobKey.get(
+      `host_${PROVIDER_CLI_FAILURE_MAX_ENTRIES}:codex`,
+    );
+    if (newestFailure === undefined) {
+      throw new Error("Expected the newest provider failure to be retained");
+    }
+    expect(newestFailure.logDialogState.log).toContain(
+      "provider update output truncated",
+    );
+    expect(newestFailure.logDialogState.log).toContain("$ codex update");
+    expect(newestFailure.logDialogState.log).toContain("last line");
+    expect(
+      new TextEncoder().encode(newestFailure.logDialogState.log).byteLength,
+    ).toBeLessThanOrEqual(PROVIDER_CLI_FAILURE_LOG_MAX_BYTES);
   });
 });
