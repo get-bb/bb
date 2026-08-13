@@ -1,7 +1,13 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import {
   createConnection,
+  SQLITE_BUSY_TIMEOUT_MS,
+  SQLITE_CACHE_SIZE_KIB,
+  SQLITE_MMAP_SIZE_BYTES,
   type SlowDbQueryLogger,
   type SlowDbQueryLogFields,
 } from "../src/connection.js";
@@ -123,5 +129,40 @@ describe("createConnection", () => {
     expect(infoLog.fields.sql.endsWith("...")).toBe(true);
 
     db.$client.close();
+  });
+
+  it("applies the hot-path sqlite pragmas on a file database", () => {
+    const directory = mkdtempSync(join(tmpdir(), "bb-db-pragmas-"));
+    const db = createConnection(join(directory, "bb.db"));
+
+    try {
+      expect(
+        db.$client.prepare("PRAGMA cache_size").get() as {
+          cache_size: number;
+        },
+      ).toEqual({ cache_size: -SQLITE_CACHE_SIZE_KIB });
+      expect(
+        db.$client.prepare("PRAGMA synchronous").get() as {
+          synchronous: number;
+        },
+      ).toEqual({ synchronous: 1 });
+      expect(
+        db.$client.prepare("PRAGMA mmap_size").get() as { mmap_size: number },
+      ).toEqual({ mmap_size: SQLITE_MMAP_SIZE_BYTES });
+      expect(
+        db.$client.prepare("PRAGMA busy_timeout").get() as { timeout: number },
+      ).toEqual({ timeout: SQLITE_BUSY_TIMEOUT_MS });
+      expect(
+        db.$client.prepare("PRAGMA temp_store").get() as { temp_store: number },
+      ).toEqual({ temp_store: 2 });
+      expect(
+        db.$client.prepare("PRAGMA journal_mode").get() as {
+          journal_mode: string;
+        },
+      ).toEqual({ journal_mode: "wal" });
+    } finally {
+      db.$client.close();
+      rmSync(directory, { force: true, recursive: true });
+    }
   });
 });
