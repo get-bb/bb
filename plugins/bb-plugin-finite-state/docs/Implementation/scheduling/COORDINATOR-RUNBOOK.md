@@ -122,6 +122,10 @@ Open the affected surface with `agent-browser`, exercise the reviewed behavior, 
 
 Among the unstarted work packages, this recurring cost applies to 21 UI-owning WPs: WP-21, WP-24, WP-25, WP-26, WP-31, WP-32, WP-33, WP-34, WP-35, WP-36, WP-37, WP-38, WP-39, WP-40, WP-42, WP-45, WP-51, WP-54, WP-55, WP-56, and WP-61. The recurring cost is one live-browser evidence pass per UI WP review.
 
+### Close-out: archive threads once work is merged and review disposed
+
+When a task's PR is merged and its review verdict is disposed (approved and landed, or findings transferred to follow-up tasks), archive every thread attached to that task — implementer, reviewer, and any repair threads — through bb in the same close-out step that moves the task to `done`. Idle threads pin their managed worktrees, and each provisioned worktree holds multiple GiB of `node_modules` and build output that bb's environment lifecycle cannot reclaim until the thread is archived. Deleting `node_modules` by hand frees nothing: pnpm content is hardlinked into the global store, so the space returns only when the worktree is pruned and the store is pruned of orphans (see ledger entry `fact-disk-reclamation-playbook`, mem_xstfcrza7c0). Do not leave threads unarchived as informal history; task comments and PRs are the durable record.
+
 ## 6. Tasks limitations and audit trail
 
 The Tasks surface cannot enforce dependency edges, sequence locks, or decision-owner mutual exclusion. Comments and labels are advisory mirrors. The deterministic validator and coordinator discipline provide enforcement. If a Task comment and manifest disagree, stop dispatch, correct the inconsistency, and rerun validation; do not silently choose one.
