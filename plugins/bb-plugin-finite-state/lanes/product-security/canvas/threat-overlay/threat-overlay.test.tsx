@@ -28,7 +28,9 @@ import {
 } from "./path.js";
 import {
   EMPTY_THREAT_SELECTION,
+  isProgrammaticSelectionSnapshot,
   reduceThreatSelection,
+  threatSelectionKey,
   threatFocusSubPath,
   threatSlugFromPathname,
 } from "./selection.js";
@@ -389,6 +391,41 @@ describe("WP-33 bidirectional selection and deep links", () => {
       }),
     ).toEqual(selected);
   });
+
+  it("ignores intermediate React Flow selection snapshots from one multi-target update", () => {
+    const expectedKey = threatSelectionKey([
+      "component-device",
+      "component-api",
+      "flow-auth",
+    ]);
+    expect(
+      isProgrammaticSelectionSnapshot(expectedKey, [
+        "component-device",
+        "component-api",
+      ]),
+    ).toBe(true);
+    expect(
+      isProgrammaticSelectionSnapshot(expectedKey, [
+        "component-api",
+        "component-device",
+        "flow-auth",
+      ]),
+    ).toBe(true);
+    expect(
+      isProgrammaticSelectionSnapshot(expectedKey, ["component-unrelated"]),
+    ).toBe(false);
+
+    const graphSelection = reduceThreatSelection(EMPTY_THREAT_SELECTION, {
+      type: "graph",
+      targetSlug: "component-api",
+    });
+    expect(
+      reduceThreatSelection(graphSelection, {
+        type: "graph",
+        targetSlug: "component-api",
+      }),
+    ).toBe(graphSelection);
+  });
 });
 
 describe("WP-33 selected attack path", () => {
@@ -423,6 +460,7 @@ describe("WP-33 selected attack path", () => {
         error={null}
         loading={false}
         next={null}
+        onBack={() => undefined}
         onLoadMore={() => undefined}
         onSelectPath={() => undefined}
         paths={[
@@ -431,6 +469,7 @@ describe("WP-33 selected attack path", () => {
         ]}
         selectedPath={selectedPath}
         selectedRouteSignature="route-selected"
+        threatLabel="Threat THREAT-device"
         total={5_000}
       />,
     );
@@ -462,11 +501,13 @@ describe("WP-33 selected attack path", () => {
         error={null}
         loading={true}
         next={null}
+        onBack={() => undefined}
         onLoadMore={() => undefined}
         onSelectPath={() => undefined}
         paths={[]}
         selectedPath={null}
         selectedRouteSignature={null}
+        threatLabel="Threat THREAT-device"
         total={0}
       />,
     );
@@ -476,11 +517,13 @@ describe("WP-33 selected attack path", () => {
         error={null}
         loading={false}
         next={null}
+        onBack={() => undefined}
         onLoadMore={() => undefined}
         onSelectPath={() => undefined}
         paths={[]}
         selectedPath={null}
         selectedRouteSignature={null}
+        threatLabel="Threat THREAT-device"
         total={0}
       />,
     );
@@ -490,11 +533,13 @@ describe("WP-33 selected attack path", () => {
         error="Cached attack-path steps are malformed JSON. Threats and architecture remain usable."
         loading={false}
         next={null}
+        onBack={() => undefined}
         onLoadMore={() => undefined}
         onSelectPath={() => undefined}
         paths={[]}
         selectedPath={null}
         selectedRouteSignature={null}
+        threatLabel="Threat THREAT-device"
         total={0}
       />,
     );
@@ -522,6 +567,22 @@ describe("WP-33 bounded cache and DOM", () => {
       cache,
     );
     expect(second).toBe(first);
+    ctx.db()
+      .prepare(
+        `UPDATE sync_state
+            SET error = 'refresh failed after acceptance'
+          WHERE project_id = ?
+            AND project_version_id = ?
+            AND entity_kind = 'threat'`,
+      )
+      .run(PROJECT_ID, VERSION_ID);
+    const stale = readThreatSnapshot(
+      ctx.db(),
+      { projectId: PROJECT_ID, projectVersionId: null },
+      cache,
+    );
+    expect(stale).not.toBe(first);
+    expect(stale.cache.state).toBe("stale");
     expect(first.threats).toEqual([
       expect.objectContaining({
         slug: "THREAT-custom",

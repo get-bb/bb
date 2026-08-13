@@ -55,15 +55,30 @@ export function ThreatTable({
   const rows = virtualizer.getVirtualItems();
 
   return (
-    <div className="min-h-0 flex-1">
+    <div className="flex min-h-0 flex-1 flex-col">
+      {filterTargetSlug ? (
+        <div className="flex items-center gap-2 border-b border-border bg-muted/60 px-3 py-1.5 text-xs">
+          <Icon aria-hidden="true" className="size-3.5" name="Target" />
+          <span className="min-w-0 truncate">
+            Filtered to {filterTargetSlug} · {visibleThreats.length} threats
+          </span>
+          <button
+            className="ml-auto rounded px-1.5 py-0.5 font-medium text-muted-foreground hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={onClearFilter}
+            type="button"
+          >
+            Clear
+          </button>
+        </div>
+      ) : null}
       <div
         aria-label="Threats"
         aria-rowcount={visibleThreats.length}
-        className="flex h-full min-h-0 flex-col"
+        className="flex min-h-0 flex-1 flex-col"
         role="grid"
       >
         <div
-          className="grid grid-cols-[minmax(13rem,1fr)_8rem_7rem_6rem] items-center gap-3 border-b border-border px-3 py-1.5 text-xs font-medium text-muted-foreground"
+          className="grid grid-cols-[minmax(8rem,1fr)_minmax(4rem,auto)_minmax(3.5rem,auto)_2.5rem] items-center gap-2 border-b border-border px-3 py-1.5 text-xs font-medium text-muted-foreground"
           role="row"
         >
           <span role="columnheader">Threat</span>
@@ -71,21 +86,6 @@ export function ThreatTable({
           <span role="columnheader">Severity</span>
           <span role="columnheader">Paths</span>
         </div>
-        {filterTargetSlug ? (
-          <div className="flex items-center gap-2 border-b border-border bg-muted/60 px-3 py-1.5 text-xs">
-            <Icon aria-hidden="true" className="size-3.5" name="Target" />
-            <span className="min-w-0 truncate">
-              Filtered to {filterTargetSlug} · {visibleThreats.length} threats
-            </span>
-            <button
-              className="ml-auto rounded px-1.5 py-0.5 font-medium text-muted-foreground hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              onClick={onClearFilter}
-              type="button"
-            >
-              Clear
-            </button>
-          </div>
-        ) : null}
         <div
           className="min-h-0 flex-1 overflow-auto"
           data-threat-scroll=""
@@ -106,50 +106,65 @@ export function ThreatTable({
                 const threat = visibleThreats[virtualRow.index];
                 if (!threat) return null;
                 const selected = threat.slug === selectedThreatSlug;
+                const displayCategory = categoryLabel(threat, labels);
                 return (
                   <div
                     aria-rowindex={virtualRow.index + 1}
-                    className="absolute left-0 top-0 w-full px-1 py-0.5"
+                    aria-selected={selected}
+                    className={`absolute left-1 right-1 top-0 grid min-h-13 grid-cols-[minmax(8rem,1fr)_minmax(4rem,auto)_minmax(3.5rem,auto)_2.5rem] items-center gap-2 rounded-md border px-2 text-left text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                      selected
+                        ? "border-primary bg-primary/10 text-foreground"
+                        : "border-transparent hover:border-border hover:bg-muted"
+                    }`}
                     data-index={virtualRow.index}
                     data-threat-row={threat.slug}
                     key={threat.slug}
+                    onClick={() => onSelectThreat(threat)}
+                    onKeyDown={(event) => {
+                      if (event.key !== "Enter" && event.key !== " ") return;
+                      event.preventDefault();
+                      onSelectThreat(threat);
+                    }}
                     role="row"
-                    style={{ transform: `translateY(${virtualRow.start}px)` }}
+                    style={{
+                      transform: `translateY(${virtualRow.start + 2}px)`,
+                    }}
+                    tabIndex={0}
                   >
-                    <button
-                      aria-pressed={selected}
-                      className={`grid min-h-13 w-full grid-cols-[minmax(13rem,1fr)_8rem_7rem_6rem] items-center gap-3 rounded-md border px-2 text-left text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-                        selected
-                          ? "border-primary bg-primary/10 text-foreground"
-                          : "border-transparent hover:border-border hover:bg-muted"
-                      }`}
-                      onClick={() => onSelectThreat(threat)}
-                      type="button"
-                    >
-                      <span className="min-w-0" role="gridcell">
-                        <span className="block truncate text-sm font-medium">
-                          {threat.title}
-                        </span>
-                        <span className="block truncate font-mono text-muted-foreground">
-                          {threat.slug}
-                        </span>
+                    <span className="min-w-0" role="gridcell">
+                      <span className="block truncate text-sm font-medium">
+                        {threat.title}
                       </span>
-                      <span role="gridcell">
-                        <Badge variant="outline">
-                          {categoryLabel(threat, labels)}
-                        </Badge>
+                      <span className="block truncate font-mono text-muted-foreground">
+                        {threat.slug}
                       </span>
-                      <span className="capitalize text-muted-foreground" role="gridcell">
-                        {threat.severity ?? "Unrated"}
-                      </span>
-                      <span
-                        className="inline-flex items-center gap-1 tabular-nums text-muted-foreground"
-                        role="gridcell"
+                    </span>
+                    <span className="min-w-0" role="gridcell">
+                      <Badge
+                        className="block max-w-full truncate"
+                        title={displayCategory}
+                        variant="outline"
                       >
-                        <Icon aria-hidden="true" className="size-3.5" name="GitBranch" />
-                        {threat.attackPathCount}
-                      </span>
-                    </button>
+                        {displayCategory}
+                      </Badge>
+                    </span>
+                    <span
+                      className="capitalize text-muted-foreground"
+                      role="gridcell"
+                    >
+                      {threat.severity ?? "Unrated"}
+                    </span>
+                    <span
+                      className="inline-flex items-center gap-1 tabular-nums text-muted-foreground"
+                      role="gridcell"
+                    >
+                      <Icon
+                        aria-hidden="true"
+                        className="size-3.5"
+                        name="GitBranch"
+                      />
+                      {threat.attackPathCount}
+                    </span>
                   </div>
                 );
               })}

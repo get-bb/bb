@@ -16,12 +16,36 @@ export function ThreatLegend({
         <Icon aria-hidden="true" className="size-3.5" name="Target" />
         STRIDE
       </span>
-      <span title={labels.spoofing}>S</span>
-      <span title={labels.tampering}>T</span>
-      <span title={labels.repudiation}>R</span>
-      <span title={labels.information_disclosure}>I</span>
-      <span title={labels.denial_of_service}>D</span>
-      <span title={labels.elevation_of_privilege}>E</span>
+      <span aria-label={labels.spoofing} role="img" title={labels.spoofing}>
+        S
+      </span>
+      <span aria-label={labels.tampering} role="img" title={labels.tampering}>
+        T
+      </span>
+      <span aria-label={labels.repudiation} role="img" title={labels.repudiation}>
+        R
+      </span>
+      <span
+        aria-label={labels.information_disclosure}
+        role="img"
+        title={labels.information_disclosure}
+      >
+        I
+      </span>
+      <span
+        aria-label={labels.denial_of_service}
+        role="img"
+        title={labels.denial_of_service}
+      >
+        D
+      </span>
+      <span
+        aria-label={labels.elevation_of_privilege}
+        role="img"
+        title={labels.elevation_of_privilege}
+      >
+        E
+      </span>
       <span>O = Other</span>
       {!configured ? (
         <span className="inline-flex items-center gap-1 text-foreground">

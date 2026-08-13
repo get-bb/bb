@@ -9,6 +9,7 @@ export interface AttackPathSummary {
 }
 
 interface AttackPathOverlayProps {
+  threatLabel: string;
   paths: readonly AttackPathSummary[];
   total: number;
   next: string | null;
@@ -16,6 +17,7 @@ interface AttackPathOverlayProps {
   selectedPath: ResolvedAttackPath | null;
   loading: boolean;
   error: string | null;
+  onBack(): void;
   onSelectPath(routeSignature: string): void;
   onLoadMore(): void;
 }
@@ -34,6 +36,7 @@ function displayEvidence(value: unknown): string {
 }
 
 export function AttackPathOverlay({
+  threatLabel,
   paths,
   total,
   next,
@@ -41,17 +44,27 @@ export function AttackPathOverlay({
   selectedPath,
   loading,
   error,
+  onBack,
   onSelectPath,
   onLoadMore,
 }: AttackPathOverlayProps): React.JSX.Element {
   return (
     <section
       aria-label="Attack paths"
-      className="flex min-h-0 w-[min(38rem,48vw)] shrink-0 flex-col overflow-hidden border-l border-border bg-card text-card-foreground"
+      className="flex min-h-0 w-full flex-col overflow-hidden bg-card text-card-foreground"
     >
       <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
+        <button
+          className="rounded-md border border-border bg-background px-2 py-1 text-xs font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          onClick={onBack}
+          type="button"
+        >
+          All threats
+        </button>
         <Icon aria-hidden="true" className="size-4" name="GitBranch" />
-        <h3 className="text-sm font-medium">Attack paths</h3>
+        <h3 className="min-w-0 truncate text-sm font-medium" title={threatLabel}>
+          Attack paths · {threatLabel}
+        </h3>
         <Badge className="ml-auto" variant="secondary">
           {total}
         </Badge>
@@ -107,8 +120,12 @@ export function AttackPathOverlay({
         </div>
       ) : null}
       {selectedPath && !loading ? (
-        <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_13rem] overflow-hidden">
-          <ol className="min-h-0 overflow-auto p-3 text-xs">
+        <div className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)_auto] overflow-hidden">
+          <ol
+            aria-label="Selected attack path steps"
+            className="min-h-0 overflow-auto p-3 text-xs"
+            tabIndex={0}
+          >
             {selectedPath.steps.map((step) => (
               <li
                 className="grid grid-cols-[1.5rem_minmax(0,1fr)] gap-2 border-l border-border pb-3 last:pb-0"
@@ -129,7 +146,7 @@ export function AttackPathOverlay({
                     {step.label}
                   </span>
                   {!step.resolved ? (
-                    <span className="inline-flex items-center gap-1 text-destructive">
+                    <span className="inline-flex items-center gap-1 font-medium text-foreground">
                       <Icon aria-hidden="true" className="size-3" name="AlertTriangle" />
                       Gap — no current node or dataflow maps to this step.
                     </span>
@@ -146,7 +163,7 @@ export function AttackPathOverlay({
               </li>
             ))}
           </ol>
-          <div className="space-y-2 border-l border-border p-3 text-xs">
+          <div className="grid grid-cols-2 gap-2 border-t border-border p-2 text-xs">
             <div className="rounded-md border border-border bg-muted/60 p-2">
               <p className="flex items-center gap-1 font-medium text-foreground">
                 <Icon aria-hidden="true" className="size-3.5" name="ChartColumn" />

@@ -42,7 +42,9 @@ import {
 } from "./path.js";
 import {
   EMPTY_THREAT_SELECTION,
+  isProgrammaticSelectionSnapshot,
   reduceThreatSelection,
+  threatSelectionKey,
   threatFocusSubPath,
   threatSlugFromPathname,
 } from "./selection.js";
@@ -358,15 +360,15 @@ function ConfiguredThreatOverlay({
   const pathListRequestRef = useRef(0);
   const pathDetailRequestRef = useRef(0);
   const programmaticSelectionRef = useRef<string | null>(null);
+  const programmaticSelectionTimerRef = useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
   const appliedDeepLinkRef = useRef<string | null>(null);
-  const routeThreatSlug = useMemo(
-    () =>
-      highlight ??
-      (typeof window === "undefined"
-        ? null
-        : threatSlugFromPathname(window.location.pathname)),
-    [highlight],
-  );
+  const routeThreatSlug =
+    highlight ??
+    (typeof window === "undefined"
+      ? null
+      : threatSlugFromPathname(window.location.pathname));
   const threats = snapshot.state.data?.threats ?? EMPTY_THREATS;
   const aggregates = snapshot.state.data?.aggregates ?? EMPTY_AGGREGATES;
   const labels = snapshot.state.data?.methodology.labels;
@@ -420,12 +422,20 @@ function ConfiguredThreatOverlay({
     const initialThreatSlug = routeThreatSlug;
     if (initialThreatSlug) {
       const marker = `${snapshot.state.data.revision}:${initialThreatSlug}`;
-      if (appliedDeepLinkRef.current === marker) return;
+      if (
+        appliedDeepLinkRef.current === marker &&
+        selectionState.selection.threatSlug === initialThreatSlug
+      ) {
+        return;
+      }
       const threat = snapshot.state.data.threats.find(
         (candidate) => candidate.slug === initialThreatSlug,
       );
       if (threat) {
         appliedDeepLinkRef.current = marker;
+        programmaticSelectionRef.current = threatSelectionKey(
+          threat.targetSlugs,
+        );
         dispatchSelection({ type: "threat", threat });
       }
       return;
@@ -434,7 +444,12 @@ function ConfiguredThreatOverlay({
       appliedDeepLinkRef.current = focus;
       dispatchSelection({ type: "graph", targetSlug: focus });
     }
-  }, [focus, routeThreatSlug, snapshot.state.data]);
+  }, [
+    focus,
+    routeThreatSlug,
+    selectionState.selection.threatSlug,
+    snapshot.state.data,
+  ]);
 
   const loadPaths = useCallback(
     (threatSlug: string, continuation: string | null, append: boolean) => {
@@ -546,6 +561,9 @@ function ConfiguredThreatOverlay({
 
   const selectPath = useCallback(
     (routeSignature: string) => {
+      programmaticSelectionRef.current = threatSelectionKey(
+        selectedThreat?.targetSlugs ?? [],
+      );
       dispatchSelection({
         type: "path",
         routeSignature,
@@ -557,6 +575,9 @@ function ConfiguredThreatOverlay({
 
   useEffect(() => {
     if (!resolvedPath || !pathDetail.routeSignature) return;
+    programmaticSelectionRef.current = threatSelectionKey(
+      resolvedPath.highlightedSlugs,
+    );
     dispatchSelection({
       type: "path",
       routeSignature: pathDetail.routeSignature,
@@ -564,14 +585,20 @@ function ConfiguredThreatOverlay({
     });
   }, [pathDetail.routeSignature, resolvedPath]);
 
-  const architectureSelectionKey = architectureSelectedIds
-    .slice()
-    .sort()
-    .join("|");
+  const architectureSelectionKey = threatSelectionKey(
+    architectureSelectedIds,
+  );
   useEffect(() => {
-    if (programmaticSelectionRef.current === architectureSelectionKey) {
+    const expectedKey = programmaticSelectionRef.current;
+    if (expectedKey !== null) {
+      const isProgrammaticSnapshot = isProgrammaticSelectionSnapshot(
+        expectedKey,
+        architectureSelectedIds,
+      );
+      if (isProgrammaticSnapshot) {
+        return;
+      }
       programmaticSelectionRef.current = null;
-      return;
     }
     const selectedId =
       architectureSelectedIds.length === 1
@@ -601,13 +628,21 @@ function ConfiguredThreatOverlay({
     routeThreatSlug,
   ]);
 
-  const highlightedKey = selectionState.highlightedTargetSlugs
-    .slice()
-    .sort()
-    .join("|");
+  const highlightedKey = threatSelectionKey(
+    selectionState.highlightedTargetSlugs,
+  );
   useEffect(() => {
     const highlightedIds = new Set(selectionState.highlightedTargetSlugs);
     programmaticSelectionRef.current = highlightedKey;
+    if (programmaticSelectionTimerRef.current !== null) {
+      clearTimeout(programmaticSelectionTimerRef.current);
+    }
+    programmaticSelectionTimerRef.current = setTimeout(() => {
+      if (programmaticSelectionRef.current === highlightedKey) {
+        programmaticSelectionRef.current = null;
+      }
+      programmaticSelectionTimerRef.current = null;
+    }, 250);
     setArchitectureSelectedIds(selectionState.highlightedTargetSlugs);
     setNodes((nodes) =>
       nodes.map((node) => ({
@@ -633,19 +668,44 @@ function ConfiguredThreatOverlay({
         padding: 0.4,
       });
     }
+    const selectedThreatSlug = selectionState.selection.threatSlug;
+    if (
+      selectedThreatSlug &&
+      (typeof window === "undefined" ||
+        threatSlugFromPathname(window.location.pathname) !==
+          selectedThreatSlug)
+    ) {
+      navigate.toPluginPanel("product-security", {
+        subPath: threatFocusSubPath(selectedThreatSlug),
+      });
+    }
   }, [
     architectureEdgesBySlug,
     architectureNodesBySlug,
     fitView,
     highlightedKey,
+    navigate,
+    selectionState.selection.threatSlug,
     selectionState.highlightedTargetSlugs,
     setArchitectureSelectedIds,
     setEdges,
     setNodes,
   ]);
 
+  useEffect(
+    () => () => {
+      if (programmaticSelectionTimerRef.current !== null) {
+        clearTimeout(programmaticSelectionTimerRef.current);
+      }
+    },
+    [],
+  );
+
   const selectThreat = useCallback(
     (threat: ThreatSummary) => {
+      programmaticSelectionRef.current = threatSelectionKey(
+        threat.targetSlugs,
+      );
       dispatchSelection({ type: "threat", threat });
       navigate.toPluginPanel("product-security", {
         subPath: threatFocusSubPath(threat.slug),
@@ -653,6 +713,10 @@ function ConfiguredThreatOverlay({
     },
     [navigate],
   );
+  const clearThreat = useCallback(() => {
+    dispatchSelection({ type: "graph", targetSlug: null });
+    navigate.toPluginPanel("product-security", { subPath: "tara" });
+  }, [navigate]);
   const aggregatesMap = useMemo(
     () => aggregatesByTarget(aggregates),
     [aggregates],
@@ -696,47 +760,6 @@ function ConfiguredThreatOverlay({
         <ThreatCanvasMarkers aggregates={validAggregates} labels={labels} />
       ) : null}
       <div className="absolute bottom-3 left-3 right-3 z-20 flex h-64 min-h-0 overflow-hidden rounded-lg border border-border bg-card/95 text-card-foreground shadow-lg backdrop-blur-sm">
-        <section className="flex min-w-0 flex-1 flex-col" aria-label="Threat overlay">
-          <div className="flex min-h-11 items-center gap-3 border-b border-border px-3 py-2">
-            {labels ? (
-              <ThreatLegend
-                configured={snapshot.state.data.methodology.configured}
-                labels={labels}
-              />
-            ) : null}
-            <span className="ml-auto shrink-0 text-xs tabular-nums text-muted-foreground">
-              {snapshot.state.data.threats.length} open threats
-            </span>
-          </div>
-          {snapshot.state.error ||
-          snapshot.state.data.partialError ||
-          snapshot.state.data.cache.state === "stale" ? (
-            <div
-              className="flex items-center gap-2 border-b border-border bg-muted px-3 py-1.5 text-xs text-foreground"
-              role="status"
-            >
-              <Icon aria-hidden="true" className="size-3.5 text-destructive" name="AlertTriangle" />
-              <span className="truncate">
-                {snapshot.state.error
-                  ? "Refresh failed; accepted threats remain usable."
-                  : snapshot.state.data.partialError ??
-                    "Threat overlay is stale; accepted cache remains usable."}
-              </span>
-            </div>
-          ) : null}
-          {labels ? (
-            <ThreatTable
-              filterTargetSlug={selectionState.selection.targetSlug}
-              labels={labels}
-              onClearFilter={() =>
-                dispatchSelection({ type: "graph", targetSlug: null })
-              }
-              onSelectThreat={selectThreat}
-              selectedThreatSlug={selectionState.selection.threatSlug}
-              threats={threats}
-            />
-          ) : null}
-        </section>
         {selectedThreat ? (
           <AttackPathOverlay
             error={
@@ -750,6 +773,7 @@ function ConfiguredThreatOverlay({
                 pathDetail.loading)
             }
             next={pathList.next}
+            onBack={clearThreat}
             onLoadMore={() => {
               if (pathList.threatSlug && pathList.next) {
                 loadPaths(pathList.threatSlug, pathList.next, true);
@@ -759,9 +783,52 @@ function ConfiguredThreatOverlay({
             paths={pathList.items}
             selectedPath={resolvedPath}
             selectedRouteSignature={selectionState.selection.routeSignature}
+            threatLabel={selectedThreat.title}
             total={pathList.total}
           />
-        ) : null}
+        ) : (
+          <section className="flex min-w-0 flex-1 flex-col" aria-label="Threat overlay">
+            <div className="flex min-h-11 items-center gap-3 border-b border-border px-3 py-2">
+              {labels ? (
+                <ThreatLegend
+                  configured={snapshot.state.data.methodology.configured}
+                  labels={labels}
+                />
+              ) : null}
+              <span className="ml-auto shrink-0 text-xs tabular-nums text-muted-foreground">
+                {snapshot.state.data.threats.length} open threats
+              </span>
+            </div>
+            {snapshot.state.error ||
+            snapshot.state.data.partialError ||
+            snapshot.state.data.cache.state === "stale" ? (
+              <div
+                className="flex items-center gap-2 border-b border-border bg-muted px-3 py-1.5 text-xs text-foreground"
+                role="status"
+              >
+                <Icon aria-hidden="true" className="size-3.5 text-destructive" name="AlertTriangle" />
+                <span className="truncate">
+                  {snapshot.state.error
+                    ? "Refresh failed; accepted threats remain usable."
+                    : snapshot.state.data.partialError ??
+                      "Threat overlay is stale; accepted cache remains usable."}
+                </span>
+              </div>
+            ) : null}
+            {labels ? (
+              <ThreatTable
+                filterTargetSlug={selectionState.selection.targetSlug}
+                labels={labels}
+                onClearFilter={() =>
+                  dispatchSelection({ type: "graph", targetSlug: null })
+                }
+                onSelectThreat={selectThreat}
+                selectedThreatSlug={selectionState.selection.threatSlug}
+                threats={threats}
+              />
+            ) : null}
+          </section>
+        )}
       </div>
     </>
   );

@@ -1,6 +1,7 @@
 import { defineRpcContract, type BbPluginApi } from "@bb/plugin-sdk";
 import type { PluginContext } from "../../../../lib/context.js";
 import type Database from "better-sqlite3";
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import {
   jsonValueSchema,
@@ -15,7 +16,11 @@ import {
   type StrideVocabulary,
   type ThreatSummary,
 } from "./aggregate.js";
-import { parseAttackPathSteps, parseExploitability } from "./path.js";
+import {
+  MAX_CACHED_PATH_STEPS,
+  parseAttackPathSteps,
+  parseExploitability,
+} from "./path.js";
 
 const MAX_THREATS = 2_000;
 const MAX_TARGETS_PER_THREAT = 100;
@@ -140,7 +145,7 @@ export const threatOverlayRpcContract = defineRpcContract({
           .object({
             routeSignature: z.string().min(1).max(2048),
             threatSlug: z.string().max(512).nullable(),
-            steps: z.array(cachedStepSchema).max(10_000),
+            steps: z.array(cachedStepSchema).max(MAX_CACHED_PATH_STEPS),
             exploitability: jsonValueSchema,
             viability: z.enum(["viable", "not_viable", "unknown"]),
           })
@@ -422,7 +427,20 @@ export function readThreatSnapshot(
   const sync = syncRow(db, scope, "threat");
   const methodology = readMethodology(db, scope);
   const pathGeneration = acceptedPathGeneration(db, scope).generationId;
-  const revision = `${scope.projectId}:${scope.projectVersionId ?? "@project"}:${sync?.accepted_generation_id ?? "empty"}:${sync?.base_revision ?? 0}:${methodology.generationId}:${pathGeneration ?? "empty-paths"}`;
+  const revision = `sha256:${createHash("sha256")
+    .update(
+      [
+        scope.projectId,
+        scope.projectVersionId ?? "@project",
+        sync?.accepted_generation_id ?? "empty",
+        String(sync?.base_revision ?? 0),
+        sync?.error ? "stale" : "fresh",
+        sync?.last_pull ?? "never",
+        methodology.generationId,
+        pathGeneration ?? "empty-paths",
+      ].join("\0"),
+    )
+    .digest("hex")}`;
   const cached = snapshotCache.get(revision);
   if (cached) return cached;
 

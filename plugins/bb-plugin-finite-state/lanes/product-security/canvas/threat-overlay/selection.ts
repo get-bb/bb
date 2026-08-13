@@ -31,38 +31,86 @@ export const EMPTY_THREAT_SELECTION: ThreatSelectionState = {
   highlightedTargetSlugs: [],
 };
 
+export function threatSelectionKey(slugs: readonly string[]): string {
+  return [...slugs].sort().join("|");
+}
+
+export function isProgrammaticSelectionSnapshot(
+  expectedKey: string,
+  selectedSlugs: readonly string[],
+): boolean {
+  const expectedSlugs = new Set(
+    expectedKey.length > 0 ? expectedKey.split("|") : [],
+  );
+  return selectedSlugs.every((slug) => expectedSlugs.has(slug));
+}
+
 export function reduceThreatSelection(
   current: ThreatSelectionState,
   action: ThreatSelectionAction,
 ): ThreatSelectionState {
   switch (action.type) {
-    case "graph":
+    case "graph": {
+      const highlightedTargetSlugs = action.targetSlug
+        ? [action.targetSlug]
+        : [];
+      if (
+        current.selection.threatSlug === null &&
+        current.selection.targetSlug === action.targetSlug &&
+        current.selection.routeSignature === null &&
+        threatSelectionKey(current.highlightedTargetSlugs) ===
+          threatSelectionKey(highlightedTargetSlugs)
+      ) {
+        return current;
+      }
       return {
         selection: {
           threatSlug: null,
           targetSlug: action.targetSlug,
           routeSignature: null,
         },
-        highlightedTargetSlugs: action.targetSlug ? [action.targetSlug] : [],
+        highlightedTargetSlugs,
       };
-    case "threat":
+    }
+    case "threat": {
+      const highlightedTargetSlugs = [...new Set(action.threat.targetSlugs)];
+      if (
+        current.selection.threatSlug === action.threat.slug &&
+        current.selection.targetSlug === null &&
+        current.selection.routeSignature === null &&
+        threatSelectionKey(current.highlightedTargetSlugs) ===
+          threatSelectionKey(highlightedTargetSlugs)
+      ) {
+        return current;
+      }
       return {
         selection: {
           threatSlug: action.threat.slug,
           targetSlug: null,
           routeSignature: null,
         },
-        highlightedTargetSlugs: [...new Set(action.threat.targetSlugs)],
+        highlightedTargetSlugs,
       };
-    case "path":
+    }
+    case "path": {
+      const highlightedTargetSlugs = [...new Set(action.highlightedSlugs)];
+      if (
+        current.selection.routeSignature === action.routeSignature &&
+        threatSelectionKey(current.highlightedTargetSlugs) ===
+          threatSelectionKey(highlightedTargetSlugs)
+      ) {
+        return current;
+      }
       return {
         selection: {
           ...current.selection,
           routeSignature: action.routeSignature,
         },
-        highlightedTargetSlugs: [...new Set(action.highlightedSlugs)],
+        highlightedTargetSlugs,
       };
+    }
     case "clear-path":
+      if (current.selection.routeSignature === null) return current;
       return {
         ...current,
         selection: { ...current.selection, routeSignature: null },
@@ -79,15 +127,25 @@ export function reduceThreatSelection(
         action.routeSignatures.has(current.selection.routeSignature)
           ? current.selection.routeSignature
           : null;
+      const highlightedTargetSlugs = routeSignature
+        ? current.highlightedTargetSlugs
+        : [...new Set(selectedThreat.targetSlugs)];
+      if (
+        current.selection.threatSlug === selectedThreat.slug &&
+        current.selection.targetSlug === null &&
+        current.selection.routeSignature === routeSignature &&
+        threatSelectionKey(current.highlightedTargetSlugs) ===
+          threatSelectionKey(highlightedTargetSlugs)
+      ) {
+        return current;
+      }
       return {
         selection: {
           threatSlug: selectedThreat.slug,
           targetSlug: null,
           routeSignature,
         },
-        highlightedTargetSlugs: routeSignature
-          ? current.highlightedTargetSlugs
-          : [...new Set(selectedThreat.targetSlugs)],
+        highlightedTargetSlugs,
       };
     }
   }

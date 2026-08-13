@@ -1,5 +1,8 @@
 import type { JsonValue } from "../../../../shared/contract.js";
 
+export const MAX_CACHED_PATH_STEPS = 1_000;
+const MAX_CACHED_PATH_BYTES = 1_000_000;
+
 export interface AttackPathView {
   routeSignature: string;
   threatSlug: string | null;
@@ -60,6 +63,12 @@ function optionalString(
 export function parseAttackPathSteps(
   encoded: string,
 ): { steps: CachedAttackPathStep[]; error: string | null } {
+  if (encoded.length > MAX_CACHED_PATH_BYTES) {
+    return {
+      steps: [],
+      error: "Cached attack-path steps exceed the supported detail size.",
+    };
+  }
   let decoded: unknown;
   try {
     decoded = JSON.parse(encoded);
@@ -73,6 +82,12 @@ export function parseAttackPathSteps(
     return {
       steps: [],
       error: "Cached attack-path steps must be an ordered list.",
+    };
+  }
+  if (decoded.length > MAX_CACHED_PATH_STEPS) {
+    return {
+      steps: [],
+      error: `Cached attack-path steps exceed the ${MAX_CACHED_PATH_STEPS}-step display limit.`,
     };
   }
   const steps: CachedAttackPathStep[] = [];
