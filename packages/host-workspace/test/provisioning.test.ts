@@ -172,7 +172,7 @@ describe("workspace provisioning", () => {
     expect(await new Workspace(targetPath).currentBranch).toBe("feature");
   });
 
-  it("fetches remote base branches before creating worktrees", async () => {
+  it("creates a remote-default worktree at the freshly fetched tip", async () => {
     const { remotePath, repoPath } = await initRemoteBackedRepo();
     const parentDir = await makeTempDir("bb-worktree-remote-parent-");
     const targetPath = path.join(parentDir, "feature");

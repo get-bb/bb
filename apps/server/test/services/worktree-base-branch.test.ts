@@ -55,21 +55,31 @@ describe("resolveDefaultWorktreeBaseBranch", () => {
 });
 
 describe("resolveManagedDefaultBaseBranchSpec", () => {
-  it("returns a named branch when the computed default differs from local", () => {
-    expect(
-      resolveManagedDefaultBaseBranchSpec({
-        defaultBranch: "main",
-        defaultBranchRelation: "local-behind",
-        originDefaultBranch: "origin/main",
-      }),
-    ).toEqual({ kind: "named", name: "origin/main" });
+  it("always selects the remote default for managed fresh-default requests", () => {
+    for (const relation of [
+      "equal",
+      "local-behind",
+      "local-ahead",
+      "diverged",
+      "unknown",
+    ] as const) {
+      expect(
+        resolveManagedDefaultBaseBranchSpec({
+          defaultBranch: "main",
+          defaultBranchRelation: relation,
+          originDefaultBranch: "origin/main",
+        }),
+      ).toEqual({ kind: "named", name: "origin/main" });
+    }
+  });
 
+  it("preserves local fallback when no remote default exists", () => {
     expect(
       resolveManagedDefaultBaseBranchSpec({
         defaultBranch: "main",
-        defaultBranchRelation: "equal",
-        originDefaultBranch: "origin/main",
+        defaultBranchRelation: null,
+        originDefaultBranch: null,
       }),
-    ).toEqual({ kind: "named", name: "origin/main" });
+    ).toEqual({ kind: "default" });
   });
 });

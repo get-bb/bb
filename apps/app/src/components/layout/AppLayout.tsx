@@ -46,6 +46,7 @@ import {
   PluginPanelHeaderActions,
   PluginPanelHeaderCenter,
 } from "@/components/plugin/PluginPanelHeader";
+import { PluginPrimaryTabs } from "@/components/plugin/PluginPrimaryTabs";
 import { ThreadActionsProvider } from "@/components/thread/ThreadActionsProvider";
 import { usePluginSlots, type PluginNavPanelSlot } from "@/lib/plugin-slots";
 import { createLocalStorageSyncStorage } from "@/lib/browser-storage";
@@ -872,6 +873,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                   <main className="flex min-h-0 flex-1 flex-col p-4 md:p-5">
                     {children}
                   </main>
+                  <PluginPrimaryTabs />
                 </div>
               </SidebarInset>
               <SidebarTriggerOverlay

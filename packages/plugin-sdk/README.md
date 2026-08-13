@@ -9,6 +9,37 @@ The authoritative contracts are the exported declarations in
 [`src/app-contract.ts`](src/app-contract.ts). Keep author-facing guidance in
 the built-in `bb-plugin-authoring` skill synchronized with those declarations.
 
+## Global primary tabs
+
+`app.slots.experimental_primaryTab(...)` registers a persistent host-rendered
+bottom tab. Targets are typed plugin-panel, thread, or absolute app routes. A
+tab can own root/reload startup without replacing explicit deep links, choose
+fixed or per-window last-route behavior, declare a recovery target, and mount a
+headless lifecycle component that publishes availability, a configured target,
+and a semantic count badge. The host owns rendering, mobile layout, keyboard
+focus, routing, badge styling, and accessible labels.
+
+Use a plugin-panel target with a query to open a nested surface directly:
+
+```tsx
+app.slots.experimental_primaryTab({
+  id: "tasks",
+  title: "Tasks",
+  icon: "ListTodo",
+  order: 20,
+  defaultStartup: false,
+  routePersistence: "fixed",
+  target: {
+    kind: "plugin-panel",
+    path: "tasks",
+    query: { view: "board" },
+  },
+});
+```
+
+This API is experimental; its stabilization audit is tracked in
+[`docs/api_to_audit.md`](../../docs/api_to_audit.md).
+
 ## Composer customization
 
 Composer UI extensions register through `app.composer.customize(...)`. A

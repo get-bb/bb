@@ -25,6 +25,85 @@ describe("definePluginApp", () => {
   });
 });
 
+describe("collectPluginAppRegistrations — experimental_primaryTab", () => {
+  it("collects typed routing, recovery, and lifecycle contributions", () => {
+    function Lifecycle() {
+      return null;
+    }
+    const definition = definePluginApp((app) => {
+      app.slots.experimental_primaryTab({
+        id: "chief",
+        title: "Chief",
+        icon: "MessageSquare",
+        order: 10,
+        defaultStartup: true,
+        routePersistence: "restore-last",
+        target: {
+          kind: "thread",
+          projectId: "configured-project",
+          threadId: "configured-thread",
+        },
+        recoveryTarget: {
+          kind: "route",
+          path: "/",
+          match: "exact",
+        },
+        lifecycle: Lifecycle,
+      });
+    });
+
+    expect(collectPluginAppRegistrations(definition).primaryTabs).toEqual([
+      {
+        id: "chief",
+        title: "Chief",
+        icon: "MessageSquare",
+        order: 10,
+        defaultStartup: true,
+        routePersistence: "restore-last",
+        target: {
+          kind: "thread",
+          projectId: "configured-project",
+          threadId: "configured-thread",
+        },
+        recoveryTarget: { kind: "route", path: "/", match: "exact" },
+        lifecycle: Lifecycle,
+      },
+    ]);
+  });
+
+  it("rejects duplicate ids and malformed targets", () => {
+    const duplicate = definePluginApp((app) => {
+      for (const title of ["Chief", "Other"]) {
+        app.slots.experimental_primaryTab({
+          id: "chief",
+          title,
+          icon: "MessageSquare",
+          order: 10,
+          defaultStartup: true,
+          routePersistence: "fixed",
+          target: { kind: "route", path: "/", match: "exact" },
+        });
+      }
+    });
+    expect(() => collectPluginAppRegistrations(duplicate)).toThrow(
+      /duplicate id "chief"/,
+    );
+
+    const malformed = definePluginApp((app) => {
+      app.slots.experimental_primaryTab({
+        id: "chief",
+        title: "Chief",
+        icon: "MessageSquare",
+        order: 10,
+        defaultStartup: true,
+        routePersistence: "fixed",
+        target: { kind: "route", path: "relative", match: "exact" },
+      });
+    });
+    expect(() => collectPluginAppRegistrations(malformed)).toThrow(/absolute/);
+  });
+});
+
 describe("collectPluginAppRegistrations — experimental_threadHeaderAction", () => {
   it("collects a header action", () => {
     const definition = definePluginApp((app) => {

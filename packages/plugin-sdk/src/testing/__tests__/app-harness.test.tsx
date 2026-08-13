@@ -224,6 +224,47 @@ const app = await loadPluginApp(
 );
 
 describe("loadPluginApp", () => {
+  it("captures primary-tab registrations with board routing and recovery", async () => {
+    const Lifecycle = () => null;
+    const captured = await loadPluginApp(
+      definePluginApp((builder) => {
+        builder.slots.experimental_primaryTab({
+          id: "tasks",
+          title: "Tasks",
+          icon: "ListTodo",
+          order: 20,
+          defaultStartup: false,
+          routePersistence: "fixed",
+          target: {
+            kind: "plugin-panel",
+            path: "tasks",
+            query: { view: "board" },
+          },
+          recoveryTarget: { kind: "route", path: "/", match: "exact" },
+          lifecycle: Lifecycle,
+        });
+      }),
+    );
+
+    expect(captured.primaryTabs).toEqual([
+      {
+        id: "tasks",
+        title: "Tasks",
+        icon: "ListTodo",
+        order: 20,
+        defaultStartup: false,
+        routePersistence: "fixed",
+        target: {
+          kind: "plugin-panel",
+          path: "tasks",
+          query: { view: "board" },
+        },
+        recoveryTarget: { kind: "route", path: "/", match: "exact" },
+        lifecycle: Lifecycle,
+      },
+    ]);
+  });
+
   it("captures and validates New thread panel action registrations", async () => {
     const run = () => {};
     const captured = await loadPluginApp(

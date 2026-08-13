@@ -8,6 +8,26 @@ const app = await loadPluginApp(() => import("./app"));
 
 afterEach(cleanup);
 
+describe("Tasks primary tab", () => {
+  it("opens the board route directly", () => {
+    expect(app.primaryTabs).toEqual([
+      {
+        id: "tasks",
+        title: "Tasks",
+        icon: "ListTodo",
+        order: 20,
+        defaultStartup: false,
+        routePersistence: "fixed",
+        target: {
+          kind: "plugin-panel",
+          path: "tasks",
+          query: { view: "board" },
+        },
+      },
+    ]);
+  });
+});
+
 describe("Tasks nav panel sidebar accessory", () => {
   it("renders the durable open count and refreshes it on task changes", async () => {
     let openTaskCount = 12;

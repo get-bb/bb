@@ -28,13 +28,14 @@ export function resolveDefaultWorktreeBaseBranch(
 export function resolveManagedDefaultBaseBranchSpec(
   args: ResolveDefaultWorktreeBaseBranchArgs,
 ): BaseBranchSpec {
-  const defaultWorktreeBaseBranch = resolveDefaultWorktreeBaseBranch(args);
-  if (
-    defaultWorktreeBaseBranch &&
-    defaultWorktreeBaseBranch !== args.defaultBranch
-  ) {
-    return { kind: "named", name: defaultWorktreeBaseBranch };
+  // Managed fresh-default requests deliberately prefer the remote-qualified
+  // default even when the local branch is ahead or diverged. Provisioning
+  // fetches remote-qualified refs before branching, so this resolves to the
+  // current remote tip rather than whichever local commit happened to exist.
+  if (args.originDefaultBranch) {
+    return { kind: "named", name: args.originDefaultBranch };
   }
 
+  // Repositories without a remote retain the existing local/default fallback.
   return { kind: "default" };
 }

@@ -4,6 +4,19 @@ import { TasksSidebarAccessory } from "./shell/sidebar-accessory.js";
 import { TaskDirectiveCard, TaskEmbedPanel } from "./views/embed/index.js";
 
 export default definePluginApp((app) => {
+  app.slots.experimental_primaryTab({
+    id: "tasks",
+    title: "Tasks",
+    icon: "ListTodo",
+    order: 20,
+    defaultStartup: false,
+    routePersistence: "fixed",
+    target: {
+      kind: "plugin-panel",
+      path: "tasks",
+      query: { view: "board" },
+    },
+  });
   app.slots.navPanel({
     id: "tasks",
     title: "Tasks",

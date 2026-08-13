@@ -55,6 +55,61 @@ export interface PluginNavPanelProps {
   subPath: string;
 }
 
+/** A host route owned by one primary tab. */
+export type PluginPrimaryTabTarget =
+  | {
+      /** Open one of this plugin's registered nav panels. */
+      kind: "plugin-panel";
+      path: string;
+      /** Optional panel-internal route remainder. */
+      subPath?: string;
+      /** Optional query values appended in deterministic key order. */
+      query?: Readonly<Record<string, string>>;
+    }
+  | {
+      /** Open an existing BB thread. */
+      kind: "thread";
+      projectId: string;
+      threadId: string;
+    }
+  | {
+      /** Open another absolute BB app route. */
+      kind: "route";
+      path: string;
+      /** Whether child routes also select the tab. */
+      match: "exact" | "prefix";
+    };
+
+/** Host-rendered badge state for a primary tab. */
+export interface PluginPrimaryTabBadge {
+  /** Non-negative count. The host may compact large display values. */
+  count: number;
+  /** Screen-reader description, for example "3 tasks need input". */
+  label: string;
+  /** Semantic host treatment; plugins do not style the badge themselves. */
+  tone: "neutral" | "unread" | "needs-input";
+}
+
+/** Live state contributed by a primary tab's lifecycle component. */
+export interface PluginPrimaryTabLifecycleState {
+  /** False selects `recoveryTarget` instead of the primary target. */
+  available: boolean;
+  /** Replace the registration's target, for configured routes or threads. */
+  target?: PluginPrimaryTabTarget;
+  /** Null clears a previous badge contribution. */
+  badge?: PluginPrimaryTabBadge | null;
+}
+
+/** Props passed to a primary tab's headless lifecycle component. */
+export interface PluginPrimaryTabLifecycleProps {
+  /**
+   * Publish the tab's complete live state. Call from an effect, and publish
+   * again whenever configuration, availability, unread state, or counts
+   * change. The host clears the state when the component unmounts.
+   */
+  update(state: PluginPrimaryTabLifecycleState): void;
+}
+
 /**
  * Props passed to a panel tab opened by a `threadPanelAction`.
  *
@@ -255,6 +310,32 @@ export interface PluginNavPanelRegistration {
    * throwing headerContent is hidden without breaking the title bar.
    */
   headerContent?: ComponentType<PluginNavPanelProps>;
+}
+
+/**
+ * A host-rendered, app-wide primary tab in the persistent bottom tab bar.
+ * Experimental: see docs/api_to_audit.md.
+ */
+export interface PluginPrimaryTabRegistration {
+  /** Unique within the plugin; letters, digits, `-`, `_`. */
+  id: string;
+  title: string;
+  /** Icon hint (BB icon name); unknown names fall back to plugin branding. */
+  icon: string;
+  /** Ascending global order; ties resolve by plugin id then tab id. */
+  order: number;
+  /** Whether this tab owns startup on root launch and ordinary reload. */
+  defaultStartup: boolean;
+  /** Fixed tabs always reopen this target; restore-last tabs remember subroutes. */
+  routePersistence: "fixed" | "restore-last";
+  target: PluginPrimaryTabTarget;
+  /** Deterministic destination when the configured target is unavailable. */
+  recoveryTarget?: PluginPrimaryTabTarget;
+  /**
+   * Optional headless component for live configured routing, badge counts,
+   * availability, and cleanup through normal React lifecycle semantics.
+   */
+  lifecycle?: ComponentType<PluginPrimaryTabLifecycleProps>;
 }
 
 /**
@@ -751,6 +832,8 @@ export interface PluginAppSlots {
   homepageSection(registration: PluginHomepageSectionRegistration): void;
   settingsSection(registration: PluginSettingsSectionRegistration): void;
   navPanel(registration: PluginNavPanelRegistration): void;
+  /** Register a global primary tab. Experimental: see docs/api_to_audit.md. */
+  experimental_primaryTab(registration: PluginPrimaryTabRegistration): void;
   /**
    * Add an action to an existing thread's panel launcher. This slot is
    * thread-only; use `experimental_newThreadPanelAction` for root compose.

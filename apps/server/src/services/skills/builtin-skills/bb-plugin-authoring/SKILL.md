@@ -29,7 +29,7 @@ The manifest is `package.json`:
   "name": "bb-plugin-hello",
   "version": "0.1.0",
   "type": "module",
-  "engines": { "bb": ">=0.9", "bbPluginSdk": "^0.4.2" },
+  "engines": { "bb": ">=0.9", "bbPluginSdk": "^0.4.3" },
   "bb": {
     "name": "Hello",
     "description": "A friendly example plugin.",
@@ -97,7 +97,7 @@ The manifest is `package.json`:
   different branded artwork and provide a dark variant when needed.
 - `engines.bb` — optional semver range checked against the bb app version.
 - `engines.bbPluginSdk` — optional semver range for the plugin SDK surface
-  (currently `0.4.2`; the scaffold writes `"^0.4.2"`). Absent means a legacy
+  (currently `0.4.3`; the scaffold writes `"^0.4.3"`). Absent means a legacy
   manifest. Managed (`git:`/`npm:`) installs **refuse** a mismatch against
   the running SDK; path installs surface it as `incompatible` at load.
   Compatible updates (`bb plugin outdated` / `bb plugin update`) only select
@@ -847,6 +847,19 @@ export default definePluginApp((app) => {
     component: Board,
     experimental_sidebarAccessory: OpenIssueCount,
   });
+  app.slots.experimental_primaryTab({
+    id: "board",
+    title: "Board",
+    icon: "Columns",
+    order: 20,
+    defaultStartup: false,
+    routePersistence: "fixed",
+    target: {
+      kind: "plugin-panel",
+      path: "board",
+      query: { view: "board" },
+    },
+  });
   app.slots.threadPanelAction({
     id: "issue",
     title: "Open issue",
@@ -1126,6 +1139,19 @@ Slot props contracts (versioned, additive-only):
   title bar or the panel body. For a classic page, use an outer scroll region
   with `p-4 md:p-5` and wrap its content in a
   `mx-auto w-full max-w-3xl space-y-4` div.
+- `experimental_primaryTab` → a global host-rendered bottom tab. Registration:
+  `{ id, title, icon, order, defaultStartup, routePersistence, target,
+  recoveryTarget?, lifecycle? }`. Targets are discriminated plugin-panel,
+  thread, or absolute app routes; a plugin-panel target can include `subPath`
+  and string `query` values. `defaultStartup` applies only to root launch and
+  ordinary reload, preserving explicit deep links. `routePersistence` is
+  `fixed` or per-window `restore-last`. The optional headless lifecycle
+  component publishes `{ available, target?, badge? }`; use `available: false`
+  with `recoveryTarget` when a configured route/thread is missing. Badges use
+  `{ count, label, tone: "neutral" | "unread" | "needs-input" }`; BB owns the
+  responsive rendering, keyboard focus, semantic color, and accessible label.
+  Multiple tabs sort by `order`, then plugin id and tab id. Experimental: see
+  `docs/api_to_audit.md`.
 - `threadPanelAction` → an entry in the thread right panel's new-tab
   Actions list (next to "Start side chat" / "Start terminal"), labeled
   `title` with your compact plugin icon. This slot is only offered for an

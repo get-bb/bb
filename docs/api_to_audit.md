@@ -5,6 +5,36 @@ entry here (see [AGENTS.md](../AGENTS.md), "Plugin API"). Dropping the prefix
 is the deliberate stabilization step: audit the entry, rename project-wide,
 and delete the entry in the same change.
 
+## `app.slots.experimental_primaryTab` (`@bb/plugin-sdk/app`)
+
+**What it does.** Registers a global host-owned bottom tab with a typed target,
+deterministic global ordering, optional startup ownership, fixed or last-route
+persistence, and a headless lifecycle component. The lifecycle can replace a
+configured target, declare it unavailable, and publish one semantic count for
+neutral, unread, or Needs Input treatment. BB renders the tab, badge, focus
+semantics, responsive layout, accessible label, routing, and recovery target;
+plugins never manipulate host DOM or call one another.
+
+**Audit before stabilizing.**
+
+1. **Arbitration.** Confirm sorting by order/plugin id/tab id and taking the
+   first `defaultStartup` registration is sufficient when unrelated installed
+   plugins claim the same order or startup ownership.
+2. **Startup semantics.** Revisit root launch versus reload behavior, explicit
+   deep-link preservation, and whether browser back/forward should ever apply
+   the default.
+3. **Availability.** Confirm a lifecycle-published boolean plus a declared
+   recovery target is enough for missing configured threads/routes, and decide
+   whether the host should offer built-in thread existence resolution.
+4. **Badge policy.** Validate the single count, three semantic tones, compact
+   `99+` display, and accessible label against localization and competing
+   unread/Needs Input sources.
+5. **Route scope.** Review whether absolute core routes should remain allowed
+   alongside plugin-panel and thread targets, and whether query values need a
+   richer representation.
+6. **Persistence.** Confirm per-window `sessionStorage`, plugin-owned route
+   matching, and cleanup expectations across plugin reload and uninstall.
+
 ## `PluginNavPanelRegistration.experimental_sidebarAccessory`
 
 **What it does.** Lets a nav panel register a no-props, presentational React

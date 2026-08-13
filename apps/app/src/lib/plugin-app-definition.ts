@@ -10,6 +10,8 @@ import {
   type PluginNavPanelRegistration,
   type PluginNewThreadPanelActionRegistration,
   type PluginPendingInteractionRegistration,
+  type PluginPrimaryTabRegistration,
+  type PluginPrimaryTabTarget,
   type PluginSettingsSectionRegistration,
   type PluginSidebarFooterActionRegistration,
   type PluginThreadListRegistration,
@@ -60,6 +62,85 @@ export function isPluginAppDefinition(
   );
 }
 
+function requirePrimaryTabTarget(
+  kind: string,
+  field: string,
+  value: unknown,
+): PluginPrimaryTabTarget {
+  if (typeof value !== "object" || value === null) {
+    throw new Error(`${kind}: "${field}" must be a primary-tab target`);
+  }
+  const target = value as Record<string, unknown>;
+  switch (target.kind) {
+    case "plugin-panel": {
+      const path = requireNonEmptyString(kind, `${field}.path`, target.path);
+      if (!PLUGIN_SLOT_ID_PATTERN.test(path)) {
+        throw new Error(
+          `${kind}: "${field}.path" must match ${String(PLUGIN_SLOT_ID_PATTERN)}`,
+        );
+      }
+      const subPath = requireOptionalString(
+        kind,
+        `${field}.subPath`,
+        target.subPath,
+      );
+      let query: Record<string, string> | undefined;
+      if (target.query !== undefined) {
+        if (
+          typeof target.query !== "object" ||
+          target.query === null ||
+          Array.isArray(target.query)
+        ) {
+          throw new Error(`${kind}: "${field}.query" must be a string map`);
+        }
+        query = {};
+        for (const [key, queryValue] of Object.entries(target.query)) {
+          if (key.length === 0 || typeof queryValue !== "string") {
+            throw new Error(
+              `${kind}: "${field}.query" must contain non-empty keys and string values`,
+            );
+          }
+          query[key] = queryValue;
+        }
+      }
+      return {
+        kind: target.kind,
+        path,
+        ...(subPath !== undefined ? { subPath } : {}),
+        ...(query !== undefined ? { query } : {}),
+      };
+    }
+    case "thread":
+      return {
+        kind: target.kind,
+        projectId: requireNonEmptyString(
+          kind,
+          `${field}.projectId`,
+          target.projectId,
+        ),
+        threadId: requireNonEmptyString(
+          kind,
+          `${field}.threadId`,
+          target.threadId,
+        ),
+      };
+    case "route": {
+      const path = requireNonEmptyString(kind, `${field}.path`, target.path);
+      if (!path.startsWith("/")) {
+        throw new Error(`${kind}: "${field}.path" must be absolute`);
+      }
+      if (target.match !== "exact" && target.match !== "prefix") {
+        throw new Error(
+          `${kind}: "${field}.match" must be "exact" or "prefix"`,
+        );
+      }
+      return { kind: target.kind, path, match: target.match };
+    }
+    default:
+      throw new Error(`${kind}: "${field}.kind" is not supported`);
+  }
+}
+
 /**
  * Run a plugin app definition's setup against a fresh collector and return
  * the validated plain registration set. Throws a human-readable error (the
@@ -73,6 +154,7 @@ export function collectPluginAppRegistrations(
   const homepageSections: PluginHomepageSectionRegistration[] = [];
   const settingsSections: PluginSettingsSectionRegistration[] = [];
   const navPanels: PluginNavPanelRegistration[] = [];
+  const primaryTabs: PluginPrimaryTabRegistration[] = [];
   const threadPanelActions: PluginThreadPanelActionRegistration[] = [];
   const newThreadPanelActions: PluginNewThreadPanelActionRegistration[] = [];
   const composerCustomizations: ComposerCustomization[] = [];
@@ -88,6 +170,7 @@ export function collectPluginAppRegistrations(
     homepageSection: new Set<string>(),
     settingsSection: new Set<string>(),
     navPanel: new Set<string>(),
+    primaryTab: new Set<string>(),
     threadPanelAction: new Set<string>(),
     newThreadPanelAction: new Set<string>(),
     composerCustomization: new Set<string>(),
@@ -170,6 +253,52 @@ export function collectPluginAppRegistrations(
             : {}),
           ...(registration.headerContent !== undefined
             ? { headerContent: registration.headerContent }
+            : {}),
+        });
+      },
+      experimental_primaryTab(registration) {
+        const kind = "slots.experimental_primaryTab";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.primaryTab, id);
+        if (!Number.isSafeInteger(registration.order)) {
+          throw new Error(`${kind}: "order" must be a safe integer`);
+        }
+        if (typeof registration.defaultStartup !== "boolean") {
+          throw new Error(`${kind}: "defaultStartup" must be a boolean`);
+        }
+        if (
+          registration.routePersistence !== "fixed" &&
+          registration.routePersistence !== "restore-last"
+        ) {
+          throw new Error(
+            `${kind}: "routePersistence" must be "fixed" or "restore-last"`,
+          );
+        }
+        if (
+          registration.lifecycle !== undefined &&
+          typeof registration.lifecycle !== "function"
+        ) {
+          throw new Error(`${kind}: "lifecycle" must be a React component`);
+        }
+        primaryTabs.push({
+          id,
+          title: requireNonEmptyString(kind, "title", registration.title),
+          icon: requireNonEmptyString(kind, "icon", registration.icon),
+          order: registration.order,
+          defaultStartup: registration.defaultStartup,
+          routePersistence: registration.routePersistence,
+          target: requirePrimaryTabTarget(kind, "target", registration.target),
+          ...(registration.recoveryTarget !== undefined
+            ? {
+                recoveryTarget: requirePrimaryTabTarget(
+                  kind,
+                  "recoveryTarget",
+                  registration.recoveryTarget,
+                ),
+              }
+            : {}),
+          ...(registration.lifecycle !== undefined
+            ? { lifecycle: registration.lifecycle }
             : {}),
         });
       },
@@ -368,6 +497,7 @@ export function collectPluginAppRegistrations(
     homepageSections,
     settingsSections,
     navPanels,
+    primaryTabs,
     threadPanelActions,
     newThreadPanelActions,
     composerCustomizations,
