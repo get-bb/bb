@@ -6,7 +6,7 @@ import { resolveConflict } from "./conflicts/index.js";
 import { pull, type EngineDeps } from "./engine/pull.js";
 import { status, syncMetadata } from "./engine/status.js";
 import { plan } from "./plan/index.js";
-import { push } from "./push/index.js";
+import { pushAuthorizationUnavailable } from "./push/index.js";
 
 const syncContract = {
   syncPull: rpcContract.syncPull,
@@ -96,7 +96,7 @@ export function registerSyncRpc(bb: BbPluginApi, deps: EngineDeps): void {
       continuation: input.continuation,
     }),
     syncConflictResolve: () => resolveConflict(),
-    syncPush: () => push(),
-    syncPushRetry: () => push(),
+    syncPush: (input) => pushAuthorizationUnavailable(deps, input.humanApprovalCapability),
+    syncPushRetry: (input) => pushAuthorizationUnavailable(deps, input.humanApprovalCapability),
   });
 }
