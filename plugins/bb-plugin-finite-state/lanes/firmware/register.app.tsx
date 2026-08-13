@@ -1,9 +1,21 @@
 import type { PluginAppBuilder } from "@bb/plugin-sdk/app";
 import type { AppContext } from "../../lib/app-context.js";
+import { BinaryOpener } from "./app/binary-opener.js";
+import { FirmwareStatusChip } from "./app/status-chip.js";
 
 export function registerFirmwareApp(
-  _app: PluginAppBuilder,
+  app: PluginAppBuilder,
   _ctx: AppContext,
 ): void {
-  // TODO(L6): firmware frontend registration. See WP-51.
+  app.slots.experimental_threadHeaderAction({
+    id: "firmware-status",
+    title: "Firmware status",
+    component: FirmwareStatusChip,
+  });
+  app.slots.fileOpener({
+    id: "firmware-binary",
+    title: "Firmware binary metadata",
+    extensions: ["bin", "elf", "fw", "img", "ko", "o", "out", "rom", "so"],
+    component: BinaryOpener,
+  });
 }

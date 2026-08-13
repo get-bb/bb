@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { accessSync, constants, lstatSync, realpathSync } from "node:fs";
-import { isAbsolute } from "node:path";
+import { dirname, isAbsolute } from "node:path";
 import type { BbPluginApi, PluginCliContext } from "@bb/plugin-sdk";
 import type { PluginContext } from "../../lib/context.js";
+import type { RemoteServices } from "../../lib/remote/types.js";
 import { rpcContract } from "../../shared/contract.js";
 import { materializeFromApi, hydrateFirmwareFile } from "./api/fallback.js";
 import {
@@ -13,6 +14,7 @@ import {
 } from "./cache/blob-store.js";
 import {
   FirmwareCacheError,
+  rootfsPath,
   validatePvId,
   validateWorktreeRoot,
 } from "./cache/layout.js";
@@ -28,8 +30,13 @@ import {
   openManifest,
   verifyMountIntegrity,
 } from "./cache/manifest.js";
-import { diffFirmware } from "./diff.js";
-import { getFirmwareStatus, listFirmwareMounts, listFirmwareTree, getFirmwareFile } from "./status.js";
+import { diffFirmwarePage } from "./diff.js";
+import {
+  getFirmwareFile,
+  getFirmwareStatusDetail,
+  listFirmwareMounts,
+  listFirmwareTree,
+} from "./status.js";
 import {
   runStandaloneUnpack,
   type StandaloneUnpackWrapperConfig,
@@ -396,6 +403,14 @@ class FirmwareBackgroundCoordinator {
       job.action.state = "FAILED";
       job.action.message = "Standalone firmware unpack was cancelled.";
       job.action.progress = null;
+      this.#ctx.db().prepare(`UPDATE firmware_mounts
+        SET state='error', error_count=MAX(1, error_count), message=?
+        WHERE project_id=? AND project_version_id=? AND generation_id=?`).run(
+          job.action.message,
+          input.projectId,
+          input.projectVersionId,
+          input.jobId,
+        );
     }
     return { ...job.action };
   }
@@ -423,12 +438,34 @@ class FirmwareBackgroundCoordinator {
         job.action.id,
         startedAt,
       );
+    upsertWorkingMount(this.#ctx, {
+      projectId: job.input.projectId,
+      projectVersionId: job.input.projectVersionId,
+      generationId: job.action.id,
+      source: "standalone_unpack",
+      state: "hashing",
+      worktreeRoot: job.record.worktreeRoot,
+      at: startedAt,
+      message: "Hashing the selected firmware image.",
+    });
     const publishProgress = (progress: FirmwareProgress) => {
       if (job.action.state !== "RUNNING") return;
       job.action.progress =
         progress.total > 0 ? progress.done / progress.total : null;
       job.action.message = `Standalone firmware unpack: ${progress.phase}.`;
-      this.#ctx.bb.realtime.publish("fs-firmware-progress", progress);
+      if (progress.phase !== "complete") {
+        upsertWorkingMount(this.#ctx, {
+          projectId: job.input.projectId,
+          projectVersionId: job.input.projectVersionId,
+          generationId: job.action.id,
+          source: "standalone_unpack",
+          state: progress.phase,
+          worktreeRoot: job.record.worktreeRoot,
+          at: now().toISOString(),
+          message: job.action.message,
+        });
+      }
+      this.#ctx.bb.realtime.publish("firmware:progress", progress);
     };
     try {
       await runStandaloneUnpack(
@@ -475,6 +512,9 @@ class FirmwareBackgroundCoordinator {
           job.input.projectVersionId,
           job.action.id,
         );
+      this.#ctx.bb.realtime.publish("firmware:changed", {
+        pvId: job.input.projectVersionId,
+      });
     } catch (error) {
       const cancelled = job.controller.signal.aborted;
       job.action.state =
@@ -505,6 +545,19 @@ class FirmwareBackgroundCoordinator {
           job.input.projectVersionId,
           job.action.id,
         );
+      upsertWorkingMount(this.#ctx, {
+        projectId: job.input.projectId,
+        projectVersionId: job.input.projectVersionId,
+        generationId: job.action.id,
+        source: "standalone_unpack",
+        state: "error",
+        worktreeRoot: job.record.worktreeRoot,
+        at: now().toISOString(),
+        message: job.action.message,
+      });
+      this.#ctx.bb.realtime.publish("firmware:changed", {
+        pvId: job.input.projectVersionId,
+      });
     } finally {
       serviceSignal.removeEventListener("abort", abort);
     }
@@ -544,26 +597,283 @@ export function configureStandaloneUnpackRuntime(
   getFirmwareBackgroundCoordinator(ctx).configure(runtime);
 }
 
+function requiredRuntimeString(input: object, key: string): string {
+  const value = Reflect.get(input, key);
+  if (typeof value !== "string" || value.length === 0) {
+    throw new FirmwareCacheError("INVALID_MOUNT_SCOPE", `Firmware RPC input is missing ${key}.`);
+  }
+  return value;
+}
+
+async function resolveProjectWorktreeRoot(
+  ctx: PluginContext,
+  projectId: string,
+): Promise<string> {
+  const project = await ctx.bb.sdk.projects.get({ projectId });
+  const source = project.sources.find((candidate) => candidate.isDefault) ?? project.sources[0];
+  if (!source) {
+    throw new FirmwareCacheError(
+      "FIRMWARE_EXECUTION_CONTEXT_REQUIRED",
+      "Firmware materialization requires a configured project workspace.",
+    );
+  }
+  return validateWorktreeRoot(source.path);
+}
+
+function actionFromMount(
+  projectId: string,
+  projectVersionId: string,
+  generationId: string,
+  message: string,
+): ActionJob {
+  return {
+    projectId,
+    projectVersionId,
+    id: generationId,
+    state: "COMPLETED",
+    progress: 1,
+    message,
+  };
+}
+
+function upsertWorkingMount(
+  ctx: PluginContext,
+  input: {
+    projectId: string;
+    projectVersionId: string;
+    generationId: string;
+    source: "standalone_unpack" | "api";
+    state: "hashing" | "unpacking" | "validating" | "ingesting" | "error";
+    worktreeRoot: string;
+    at: string;
+    message: string;
+  },
+): void {
+  const previous = ctx.db().prepare(`SELECT input_sha256, artifact_hash, file_count,
+      materialized_files, error_count
+    FROM firmware_mounts
+    WHERE project_id=? AND project_version_id=?
+    ORDER BY pulled_at DESC, generation_id DESC LIMIT 1`).get(
+      input.projectId,
+      input.projectVersionId,
+    ) as {
+      input_sha256: string | null;
+      artifact_hash: string | null;
+      file_count: number;
+      materialized_files: number;
+      error_count: number;
+    } | undefined;
+  ctx.db().prepare(`INSERT INTO firmware_mounts (
+      project_id, project_version_id, generation_id, source, state, root_path,
+      input_sha256, artifact_hash, file_count, materialized_files, error_count,
+      message, pulled_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(project_id, project_version_id, generation_id) DO UPDATE SET
+      state=excluded.state, message=excluded.message, pulled_at=excluded.pulled_at,
+      error_count=excluded.error_count`).run(
+        input.projectId,
+        input.projectVersionId,
+        input.generationId,
+        input.source,
+        input.state,
+        rootfsPath(input.worktreeRoot, input.projectVersionId),
+        previous?.input_sha256 ?? null,
+        previous?.artifact_hash ?? null,
+        previous?.file_count ?? 0,
+        previous?.materialized_files ?? 0,
+        input.state === "error" ? Math.max(1, previous?.error_count ?? 0) : previous?.error_count ?? 0,
+        input.message.slice(0, 20_000),
+        input.at,
+      );
+}
+
+async function materializeApiFromRpc(
+  ctx: PluginContext,
+  cache: FirmwareCacheService,
+  remote: RemoteServices,
+  input: {
+    projectId: string;
+    projectVersionId: string | null;
+    scanId?: string;
+    mode: "metadata" | "files";
+    firmwarePaths?: string[];
+  },
+): Promise<ActionJob> {
+  if (input.projectVersionId === null) {
+    throw new FirmwareCacheError("INVALID_MOUNT_SCOPE", "API firmware materialization requires a project version.");
+  }
+  const projectVersionId = validatePvId(input.projectVersionId);
+  const generationId = randomUUID();
+  const worktreeRoot = await resolveProjectWorktreeRoot(ctx, input.projectId);
+  ctx.db().prepare(`INSERT INTO pull_generation (
+    project_id, project_version_id, generation_id, status,
+    requested_kinds_json, started_at
+  ) VALUES (?, ?, ?, 'staging', '["firmware"]', ?)`).run(
+    input.projectId,
+    projectVersionId,
+    generationId,
+    new Date().toISOString(),
+  );
+  upsertWorkingMount(ctx, {
+    projectId: input.projectId,
+    projectVersionId,
+    generationId,
+    source: "api",
+    state: "validating",
+    worktreeRoot,
+    at: new Date().toISOString(),
+    message: "Loading firmware metadata from the API fallback.",
+  });
+  const controller = new AbortController();
+  try {
+    await materializeFromApi({
+      platform: remote.platform,
+      scope: { worktreeRoot, projectId: input.projectId, projectVersionId, generationId },
+      cache,
+      publishProgress(progress) {
+        upsertWorkingMount(ctx, {
+          projectId: input.projectId,
+          projectVersionId,
+          generationId,
+          source: "api",
+          state: "ingesting",
+          worktreeRoot,
+          at: new Date().toISOString(),
+          message: progress.phase === "hydrating"
+            ? "Hydrating selected firmware files from the API fallback."
+            : "Ingesting firmware metadata from the API fallback.",
+        });
+        ctx.bb.realtime.publish("firmware:progress", progress);
+      },
+    }, {
+      pvId: projectVersionId,
+      mode: input.mode,
+      ...(input.scanId ? { scanId: input.scanId } : {}),
+      ...(input.firmwarePaths ? { paths: input.firmwarePaths } : {}),
+    }, controller.signal);
+    const completedAt = new Date().toISOString();
+    ctx.db().prepare(`UPDATE pull_generation SET status='accepted', completed_at=?, accepted_at=?
+      WHERE project_id=? AND project_version_id=? AND generation_id=?`).run(
+      completedAt,
+      completedAt,
+      input.projectId,
+      projectVersionId,
+      generationId,
+    );
+    ctx.bb.realtime.publish("firmware:changed", { pvId: projectVersionId });
+    return actionFromMount(input.projectId, projectVersionId, generationId, "API firmware fallback completed.");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "API firmware fallback failed.";
+    ctx.db().prepare(`UPDATE pull_generation SET status='failed', completed_at=?, error=?
+      WHERE project_id=? AND project_version_id=? AND generation_id=?`).run(
+      new Date().toISOString(),
+      message.slice(0, 20_000),
+      input.projectId,
+      projectVersionId,
+      generationId,
+    );
+    upsertWorkingMount(ctx, {
+      projectId: input.projectId,
+      projectVersionId,
+      generationId,
+      source: "api",
+      state: "error",
+      worktreeRoot,
+      at: new Date().toISOString(),
+      message,
+    });
+    ctx.bb.realtime.publish("firmware:changed", { pvId: projectVersionId });
+    throw error;
+  }
+}
+
+async function hydrateApiFileFromRpc(
+  ctx: PluginContext,
+  cache: FirmwareCacheService,
+  remote: RemoteServices,
+  input: { projectId: string; projectVersionId: string | null; firmwarePath: string },
+): Promise<ActionJob> {
+  if (input.projectVersionId === null) {
+    throw new FirmwareCacheError("INVALID_MOUNT_SCOPE", "Firmware hydration requires a project version.");
+  }
+  const row = ctx.db().prepare(`SELECT generation_id, root_path FROM firmware_mounts
+    WHERE project_id=? AND project_version_id=?
+    ORDER BY pulled_at DESC, generation_id DESC LIMIT 1`).get(
+      input.projectId,
+      input.projectVersionId,
+    ) as { generation_id: string; root_path: string } | undefined;
+  if (!row) throw new FirmwareCacheError("MOUNT_MISSING", "Firmware metadata must be materialized before hydration.");
+  const worktreeRoot = dirname(dirname(dirname(row.root_path)));
+  await hydrateFirmwareFile({
+    platform: remote.platform,
+    scope: {
+      worktreeRoot,
+      projectId: input.projectId,
+      projectVersionId: input.projectVersionId,
+      generationId: row.generation_id,
+    },
+    cache,
+    publishProgress(progress) {
+      ctx.bb.realtime.publish("firmware:progress", progress);
+    },
+  }, { pvId: input.projectVersionId, path: input.firmwarePath }, new AbortController().signal);
+  ctx.bb.realtime.publish("firmware:changed", { pvId: input.projectVersionId });
+  return actionFromMount(
+    input.projectId,
+    input.projectVersionId,
+    row.generation_id,
+    "Firmware file hydration completed.",
+  );
+}
+
 export function registerFirmware(bb: BbPluginApi, ctx: PluginContext): void {
   const coordinator = getFirmwareBackgroundCoordinator(ctx);
+  const cache = ctx.service("firmware.cache", () => createFirmwareCacheService(ctx));
+  const remote = () => ctx.service<RemoteServices>("remote-services", () => {
+    throw new Error("Firmware API operations require configured remote services");
+  });
 
   bb.background.service("firmware-materialization", {
     start: (signal) => coordinator.start(signal),
   });
   bb.rpc.register(firmwareRpcContract, {
-    firmwareMountsList: listFirmwareMounts,
-    firmwareMountGet: getFirmwareStatus,
-    firmwareTreeList: listFirmwareTree,
-    firmwareFileGet: getFirmwareFile,
-    firmwareDiff: diffFirmware,
+    firmwareMountsList(input) {
+      return listFirmwareMounts({ db: ctx.db(), projectId: input.projectId }, input);
+    },
+    firmwareMountGet(input) {
+      return getFirmwareStatusDetail({ db: ctx.db(), projectId: input.projectId }, {
+        ...input,
+        pageSize: 1,
+        continuation: null,
+      });
+    },
+    firmwareTreeList(input) {
+      return listFirmwareTree({ db: ctx.db(), projectId: input.projectId }, input);
+    },
+    firmwareFileGet(input) {
+      return getFirmwareFile({ db: ctx.db(), projectId: input.projectId }, {
+        ...input,
+        pageSize: 1,
+        continuation: null,
+      });
+    },
+    firmwareDiff(input) {
+      return diffFirmwarePage({ db: ctx.db(), projectId: input.projectId }, {
+        ...input,
+        fromProjectVersionId: requiredRuntimeString(input, "fromProjectVersionId"),
+        toProjectVersionId: requiredRuntimeString(input, "toProjectVersionId"),
+      });
+    },
     firmwareMaterializeStart(input) {
       return input.source === "standalone_unpack"
         ? coordinator.enqueue(input)
-        : materializeFromApi(input);
+        : materializeApiFromRpc(ctx, cache, remote(), input);
     },
     firmwareMaterializeCancel(input) {
       return coordinator.cancel(input);
     },
-    firmwareFileHydrate: hydrateFirmwareFile,
+    firmwareFileHydrate(input) {
+      return hydrateApiFileFromRpc(ctx, cache, remote(), input);
+    },
   });
 }
