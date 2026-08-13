@@ -2035,6 +2035,18 @@ export function buildTimelineTurnSummaryDetails(
     },
     useExactEventRowBounds: exactEventRowsForRequestedTurn.removedRows,
   });
+  // The same whole-item ownership rule the timeline window applies, for the
+  // same reason. A byte cut can fall between an item's `item/started` and its
+  // `item/completed`, and the timeline gives such an item to the newest slice.
+  // Without the rule here, the older slice's details project the item from its
+  // `item/started` row alone and render it "pending" after the turn finished.
+  const wholeItemEventRows = ensureSequenceWindowWholeItemRows(db, {
+    beforeSequence: detailsWindow.beforeSequence,
+    maxInlineOutputChars: detailsInlineOutputLimit,
+    rows: mergeStoredEventRowsById([...requestedTurnStartedRows, ...eventRows]),
+    sequenceStart: detailsWindow.sequenceStart,
+    threadId: thread.id,
+  });
   const eventRowsWithParentedChildren = ensureTimelineWindowParentedRows(db, {
     maxInlineOutputChars: detailsInlineOutputLimit,
     outOfBoundsChildDataByteLimit:
@@ -2044,7 +2056,7 @@ export function buildTimelineTurnSummaryDetails(
       sequenceStart: detailsWindow.sequenceStart,
     },
     threadId: thread.id,
-    rows: mergeStoredEventRowsById([...requestedTurnStartedRows, ...eventRows]),
+    rows: wholeItemEventRows,
   }).rows;
   const eventRowsWithTurnStarts = ensureTimelineWindowTurnStartedRows(db, {
     threadId: thread.id,
