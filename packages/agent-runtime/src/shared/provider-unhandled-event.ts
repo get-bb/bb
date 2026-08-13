@@ -27,6 +27,7 @@ export interface CreateUnhandledProviderEventArgs {
 }
 
 export interface BuildUnhandledProviderEventsArgs {
+  includeKnown?: boolean;
   providerId: string;
   rawEvent: JsonRpcMessage;
   visibilityMetadata: Pick<
@@ -94,7 +95,7 @@ export function buildUnhandledProviderEvents(
   const parsedRawEvent = args.visibilityMetadata.parseRawEvent(args.rawEvent);
   const description =
     args.visibilityMetadata.describeParsedRawEvent(parsedRawEvent);
-  if (description.coverage !== "unknown") {
+  if (!args.includeKnown && description.coverage !== "unknown") {
     return [];
   }
 

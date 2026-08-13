@@ -298,6 +298,7 @@ describe("ThreadPromptContextBanner", () => {
                 id: "thr_child",
                 title: "Investigate failing checks",
                 href: "/threads/thr_child",
+                hasPendingInteraction: false,
               },
             ],
           }}
@@ -334,11 +335,13 @@ describe("ThreadPromptContextBanner", () => {
                 id: "thr_primary",
                 title: "Investigate failing checks",
                 href: "/threads/thr_primary",
+                hasPendingInteraction: false,
               },
               {
                 id: "thr_other",
                 title: "Review the release notes",
                 href: "/threads/thr_other",
+                hasPendingInteraction: false,
               },
             ],
           }}
@@ -372,6 +375,7 @@ describe("ThreadPromptContextBanner", () => {
                 id: "thr_waiting",
                 title: "Waiting for build host",
                 href: "/threads/thr_waiting",
+                hasPendingInteraction: false,
               },
             ],
           }}
@@ -387,6 +391,42 @@ describe("ThreadPromptContextBanner", () => {
     );
     expect(markup).toContain("Active child thread:");
     expect(markup).not.toContain("Running child thread:");
+  });
+
+  it("labels a child blocked on approval instead of active work", () => {
+    const markup = renderToStaticMarkup(
+      <MemoryRouter>
+        <ThreadPromptContextBanner
+          gitSection={null}
+          gitSectionPending={false}
+          archivedSection={null}
+          environmentGoneSection={null}
+          parentThreadSection={null}
+          childThreadsSection={{
+            items: [
+              {
+                id: "thr_blocked",
+                title: "Install workspace tools",
+                href: "/threads/thr_blocked",
+                hasPendingInteraction: true,
+              },
+            ],
+          }}
+          pullRequestSection={null}
+          expandedSection={null}
+          onToggleSection={noop}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(markup).toContain(
+      "1 child thread needs input: Install workspace tools",
+    );
+    expect(markup).toContain("Needs your input:");
+    expect(markup).toContain("Install workspace tools");
+    expect(markup).toContain('data-icon="CircleQuestion"');
+    expect(markup).not.toContain("Active child thread:");
+    expect(markup).not.toContain("animate-shine-icon");
   });
 
   it("labels standalone actionable pull request attention", () => {

@@ -742,6 +742,26 @@ export function createAcpProviderAdapter(
   ): ThreadEvent[] {
     const events: ThreadEvent[] = [];
     const parentToolCallId = context?.parentToolCallId;
+    if (!state.currentTurnId) {
+      switch (update.sessionUpdate) {
+        case "agent_message_chunk":
+        case "agent_thought_chunk":
+        case "tool_call":
+        case "tool_call_update":
+        case "plan":
+          return buildUnhandledProviderEvents({
+            includeKnown: true,
+            providerId: profile.providerId,
+            rawEvent: {
+              jsonrpc: "2.0",
+              method: ACP_UPDATE_METHOD,
+              params: { update },
+            },
+            visibilityMetadata: acpVisibilityMetadata,
+            ...(parentToolCallId ? { parentToolCallId } : {}),
+          });
+      }
+    }
 
     switch (update.sessionUpdate) {
       case "agent_message_chunk": {
@@ -752,11 +772,8 @@ export function createAcpProviderAdapter(
         if (text === undefined) {
           return [];
         }
-        const turnId = turnState.ensureTurnStarted({
-          events,
-          state,
-          threadId: UNSTAMPED_THREAD_ID,
-        });
+        const turnId = state.currentTurnId;
+        if (!turnId) return [];
         flushOpenThoughtItem(events, state, parentToolCallId);
         const itemId = turnState.getOrCreateAssistantMessageId({
           assistantIdPrefix: "acp-assistant",
@@ -787,11 +804,8 @@ export function createAcpProviderAdapter(
         if (text === undefined) {
           return [];
         }
-        const turnId = turnState.ensureTurnStarted({
-          events,
-          state,
-          threadId: UNSTAMPED_THREAD_ID,
-        });
+        const turnId = state.currentTurnId;
+        if (!turnId) return [];
         const itemId = acpReasoningItemIds.getOrCreate({
           state,
           parentToolCallId,
@@ -818,11 +832,8 @@ export function createAcpProviderAdapter(
         if (!parsed.success) {
           return [];
         }
-        const turnId = turnState.ensureTurnStarted({
-          events,
-          state,
-          threadId: UNSTAMPED_THREAD_ID,
-        });
+        const turnId = state.currentTurnId;
+        if (!turnId) return [];
         flushOpenThoughtItem(events, state, parentToolCallId);
         flushOpenAgentMessageItem(events, state, parentToolCallId);
         const item = translateAcpToolCallItem(parsed.data, parentToolCallId);
@@ -914,11 +925,8 @@ export function createAcpProviderAdapter(
         if (!parsed.success) {
           return [];
         }
-        const turnId = turnState.ensureTurnStarted({
-          events,
-          state,
-          threadId: UNSTAMPED_THREAD_ID,
-        });
+        const turnId = state.currentTurnId;
+        if (!turnId) return [];
         const plan: ThreadEventPlanStep[] = parsed.data.entries.map(
           (entry) => ({
             step: entry.content,
@@ -1188,12 +1196,20 @@ export function createAcpProviderAdapter(
           return [];
         }
         const state = resolveState(context);
+        if (!state.currentTurnId) {
+          return buildUnhandledProviderEvents({
+            includeKnown: true,
+            providerId: profile.providerId,
+            rawEvent: {
+              jsonrpc: "2.0",
+              method: ACP_FS_WRITE_METHOD,
+              params: params.data,
+            },
+            visibilityMetadata: acpVisibilityMetadata,
+          });
+        }
         const events: ThreadEvent[] = [];
-        const turnId = turnState.ensureTurnStarted({
-          events,
-          state,
-          threadId: UNSTAMPED_THREAD_ID,
-        });
+        const turnId = state.currentTurnId;
         state.fsWriteCounter += 1;
         events.push({
           type: "item/completed",
@@ -1469,6 +1485,9 @@ export function createAcpProviderAdapter(
         }
       },
     }),
+    clearActiveTurnState(threadId) {
+      finishOpenProviderTurn({ registry: turnState, threadId });
+    },
 
     decodeInteractiveRequest(
       request: ProviderInboundRequest,

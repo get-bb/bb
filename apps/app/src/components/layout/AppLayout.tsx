@@ -734,6 +734,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     null;
   const faviconBadge = shouldShowFaviconAttentionDot({
     currentThreadHasPendingInteraction,
+    currentThreadId: threadId,
     isThreadView,
     sidebarThreads,
     thread,

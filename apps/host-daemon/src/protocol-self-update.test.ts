@@ -101,6 +101,42 @@ describe("protocol self-update", () => {
     );
   });
 
+  it("updates an installer-managed bb-app inside its machine-specific prefix", async () => {
+    vi.stubEnv("BB_APP_NPM_PREFIX", "/machine-data/npm");
+    const test = await createFixture({ useDefaultInstaller: true });
+
+    await expect(test.updater.handleProtocolMismatch()).resolves.toBe(
+      "updated",
+    );
+
+    expect(test.runProcess).toHaveBeenCalledWith(
+      "npm",
+      [
+        "install",
+        "-g",
+        "--prefix",
+        "/machine-data/npm",
+        expect.stringContaining("bb-app-update-"),
+      ],
+      expect.any(Object),
+    );
+  });
+
+  it("keeps legacy global updates when the installer prefix is blank", async () => {
+    vi.stubEnv("BB_APP_NPM_PREFIX", " ");
+    const test = await createFixture({ useDefaultInstaller: true });
+
+    await expect(test.updater.handleProtocolMismatch()).resolves.toBe(
+      "updated",
+    );
+
+    expect(test.runProcess).toHaveBeenCalledWith(
+      "npm",
+      ["install", "-g", expect.stringContaining("bb-app-update-")],
+      expect.any(Object),
+    );
+  });
+
   it("does nothing when auto-update is disabled", async () => {
     const test = await createFixture({ enabled: false });
     await expect(test.updater.handleProtocolMismatch()).resolves.toBe(

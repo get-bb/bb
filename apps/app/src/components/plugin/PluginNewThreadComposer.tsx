@@ -5,7 +5,7 @@ import type { NewThreadComposerProps, NewThreadRequest } from "@bb/plugin-sdk";
 import type { CreateExecutionInputSources } from "@bb/server-contract";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { NewThreadPromptBox } from "@/components/promptbox/NewThreadPromptBox";
-import { withAutomationPromptAction } from "@/components/promptbox/PromptBoxActionsMenu";
+import { withAppPromptActions } from "@/components/promptbox/PromptBoxActionsMenu";
 import { buildProviderPromptActionProps } from "@/components/promptbox/mentions/command-trigger";
 import type { PromptBoxHandle } from "@/components/promptbox/PromptBoxInternal";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
@@ -596,7 +596,7 @@ export function PluginNewThreadComposer({
     [selectedProviderComposerActions],
   );
   const promptActions = useMemo(
-    () => withAutomationPromptAction(providerPromptActions.promptActions),
+    () => withAppPromptActions(providerPromptActions.promptActions),
     [providerPromptActions.promptActions],
   );
   const commandSuggestions = useCommandSuggestions({

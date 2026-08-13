@@ -47,6 +47,11 @@ change, run `bb-app stop && bb-app start` or restart the desktop app. Until
 then, changing or unsetting `BB_SERVER_BIND_HOST` does not close a previous
 `0.0.0.0` listener.
 
+With `--server-bind-host 0.0.0.0`, the startup listener and `app` rows show
+`http://0.0.0.0:<port>`. Health checks and the colocated daemon still connect
+through loopback; this does not narrow the IPv4 wildcard listener. Containers
+must also publish the port to the host.
+
 Server helper completions use `BB_INFERENCE` first, then
 `BB_INFERENCE_FALLBACK` after a transient timeout, rate limit, or
 service-unavailable failure. Their defaults are `codex/gpt-5.6-luna` and

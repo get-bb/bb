@@ -1058,6 +1058,8 @@ export function createCodexProviderAdapter(
     CodexPendingDelegationTurnLink[]
   >();
   const pendingDelegationCallIds = new Set<string>();
+  const pendingDelegationProviderThreadIdByCallId = new Map<string, string>();
+  const processedSubAgentInteractionIds = new Set<string>();
   const trackedSubAgentsByCallId = new Map<string, CodexTrackedSubAgent>();
   const trackedSubAgentCallIdsByAgentThreadId = new Map<string, string>();
 
@@ -1201,6 +1203,12 @@ export function createCodexProviderAdapter(
         continue;
       }
       clearTrackedSubAgentLinks(tracked);
+      if (
+        trackedSubAgentCallIdsByAgentThreadId.get(tracked.agentThreadId) ===
+        tracked.callId
+      ) {
+        trackedSubAgentCallIdsByAgentThreadId.delete(tracked.agentThreadId);
+      }
       trackedSubAgentsByCallId.delete(callId);
     }
   }
@@ -1353,36 +1361,47 @@ export function createCodexProviderAdapter(
       pendingLinks,
     );
     pendingDelegationCallIds.add(args.callId);
+    pendingDelegationProviderThreadIdByCallId.set(
+      args.callId,
+      args.providerThreadId,
+    );
   }
 
   function removePendingDelegationCall(callId: string): void {
     pendingDelegationCallIds.delete(callId);
-    for (const [
-      providerThreadId,
-      pendingLinks,
-    ] of pendingDelegationTurnLinksByProviderThreadId) {
-      const remainingLinks = pendingLinks.filter(
-        (pendingLink) => pendingLink.callId !== callId,
-      );
-      if (remainingLinks.length === 0) {
-        pendingDelegationTurnLinksByProviderThreadId.delete(providerThreadId);
-      } else if (remainingLinks.length !== pendingLinks.length) {
-        pendingDelegationTurnLinksByProviderThreadId.set(
-          providerThreadId,
-          remainingLinks,
-        );
-      }
+    const providerThreadId =
+      pendingDelegationProviderThreadIdByCallId.get(callId);
+    pendingDelegationProviderThreadIdByCallId.delete(callId);
+    if (!providerThreadId) {
+      return;
     }
+    const pendingLinks =
+      pendingDelegationTurnLinksByProviderThreadId.get(providerThreadId);
+    if (!pendingLinks) {
+      return;
+    }
+    const remainingLinks = pendingLinks.filter(
+      (pendingLink) => pendingLink.callId !== callId,
+    );
+    if (remainingLinks.length === 0) {
+      pendingDelegationTurnLinksByProviderThreadId.delete(providerThreadId);
+    } else if (remainingLinks.length !== pendingLinks.length) {
+      pendingDelegationTurnLinksByProviderThreadId.set(
+        providerThreadId,
+        remainingLinks,
+      );
+    }
+  }
+
+  function hasPendingNativeTurnStart(providerThreadId: string): boolean {
+    return (
+      (nativeTurnStartClientRequestIdsByProviderThreadId.get(providerThreadId)
+        ?.length ?? 0) > 0
+    );
   }
 
   function clearTrackedSubAgentLinks(tracked: CodexTrackedSubAgent): void {
     removePendingDelegationCall(tracked.callId);
-    if (
-      trackedSubAgentCallIdsByAgentThreadId.get(tracked.agentThreadId) ===
-      tracked.callId
-    ) {
-      trackedSubAgentCallIdsByAgentThreadId.delete(tracked.agentThreadId);
-    }
     if (
       delegationParentToolCallIdsByProviderThreadId.get(
         tracked.agentThreadId,
@@ -1450,14 +1469,23 @@ export function createCodexProviderAdapter(
         type: event.type,
         scope: event.scope,
       });
-      parentToolCallId =
-        (providerThreadId
-          ? delegationParentToolCallIdsByProviderThreadId.get(providerThreadId)
-          : undefined) ??
-        consumePendingDelegationTurnLink({
+      const mappedFromProviderThread = providerThreadId
+        ? delegationParentToolCallIdsByProviderThreadId.get(providerThreadId)
+        : undefined;
+      if (mappedFromProviderThread) {
+        parentToolCallId = mappedFromProviderThread;
+        // A turn that matches an explicit agent-thread mapping must not also
+        // consume a different agent's FIFO slot on the multiplexed root.
+        removePendingDelegationCall(mappedFromProviderThread);
+      } else if (
+        !providerThreadId ||
+        !hasPendingNativeTurnStart(providerThreadId)
+      ) {
+        parentToolCallId = consumePendingDelegationTurnLink({
           providerThreadId,
           turnId: startedTurnId,
         });
+      }
     }
 
     if (!parentToolCallId && providerThreadId) {
@@ -1524,15 +1552,52 @@ export function createCodexProviderAdapter(
     });
   }
 
+  function findTrackedSubAgentByAgentThreadId(
+    agentThreadId: string,
+  ): CodexTrackedSubAgent | undefined {
+    // Keep this map after a child settles so resume does not scan every
+    // historical agent. Thread close is the only cleanup.
+    const callId = trackedSubAgentCallIdsByAgentThreadId.get(agentThreadId);
+    if (!callId) {
+      return undefined;
+    }
+    return trackedSubAgentsByCallId.get(callId);
+  }
+
+  function rearmTrackedSubAgent(tracked: CodexTrackedSubAgent): void {
+    trackedSubAgentCallIdsByAgentThreadId.set(
+      tracked.agentThreadId,
+      tracked.callId,
+    );
+    if (tracked.agentThreadId !== tracked.parentProviderThreadId) {
+      delegationParentToolCallIdsByProviderThreadId.set(
+        tracked.agentThreadId,
+        tracked.callId,
+      );
+    }
+    enqueuePendingDelegationTurnLink({
+      callId: tracked.callId,
+      parentTurnId: tracked.parentTurnId,
+      providerThreadId: tracked.parentProviderThreadId,
+    });
+  }
+
   function completeCodexTrackedSubAgent(args: {
     status: "completed" | "failed" | "interrupted";
     tracked: CodexTrackedSubAgent;
   }): ThreadEvent | null {
-    if (args.tracked.terminal) {
-      return null;
-    }
+    const alreadyTerminal = args.tracked.terminal;
     args.tracked.terminal = true;
     clearTrackedSubAgentLinks(args.tracked);
+    if (alreadyTerminal && args.tracked.pendingFollowups > 0) {
+      args.tracked.pendingFollowups -= 1;
+    }
+    if (args.tracked.pendingFollowups > 0) {
+      rearmTrackedSubAgent(args.tracked);
+    }
+    if (alreadyTerminal) {
+      return null;
+    }
     return buildCodexSubAgentCompletedEvent(args);
   }
 
@@ -1555,6 +1620,7 @@ export function createCodexProviderAdapter(
           callId: activity.item.id,
           parentProviderThreadId: activity.providerThreadId,
           parentTurnId: activity.turnId,
+          pendingFollowups: 0,
           terminal: false,
         };
         trackedSubAgentsByCallId.set(tracked.callId, tracked);
@@ -1582,10 +1648,24 @@ export function createCodexProviderAdapter(
         });
         return startedEvent ? [startedEvent] : [];
       }
-      case "interacted":
+      case "interacted": {
         // Messaging an existing agent is activity within the original
-        // delegation, not a new timeline row.
+        // delegation, not a new timeline row. A completed agent can receive
+        // followup_task; re-arm the original parent so the next child turn
+        // is not projected as a root turn.
+        if (processedSubAgentInteractionIds.has(activity.item.id)) {
+          return [];
+        }
+        processedSubAgentInteractionIds.add(activity.item.id);
+        const tracked = findTrackedSubAgentByAgentThreadId(
+          activity.item.agentThreadId,
+        );
+        if (tracked?.terminal) {
+          tracked.pendingFollowups += 1;
+          rearmTrackedSubAgent(tracked);
+        }
         return [];
+      }
       case "interrupted": {
         const callId = trackedSubAgentCallIdsByAgentThreadId.get(
           activity.item.agentThreadId,
@@ -2112,14 +2192,14 @@ export function createCodexProviderAdapter(
         );
       }
 
-      const translatedEvents = translateCodexEvent(
-        event,
-        eventTranslationState,
-      ).flatMap(attachAcceptedUserMessageCorrelation);
-      const parentLinkedEvents =
-        attachCodexDelegationParentLinks(translatedEvents);
+      const parentLinkedEvents = attachCodexDelegationParentLinks(
+        translateCodexEvent(event, eventTranslationState),
+      );
+      const translatedEvents = parentLinkedEvents.flatMap(
+        attachAcceptedUserMessageCorrelation,
+      );
       const completedSubAgentEvents =
-        completeFinishedCodexSubAgentTurns(parentLinkedEvents);
+        completeFinishedCodexSubAgentTurns(translatedEvents);
       return reconcileRawCommandOutputLifecycle(
         applyRecoveredCommandOutput(completedSubAgentEvents),
       );

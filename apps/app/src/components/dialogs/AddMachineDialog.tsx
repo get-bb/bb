@@ -116,7 +116,7 @@ function pairingCommand(
   if (serverUrl === null) return null;
   const machineFlag =
     machineCode === null ? "" : ` --machine-code ${machineCode.code}`;
-  return `curl -fsSL ${serverUrl}/install.sh | sh -s -- --join-code ${joinCode} --host-id ${hostId} --server ${serverUrl}${machineFlag}`;
+  return `curl -fL --progress-meter --connect-timeout 10 --max-time 60 --retry 2 ${serverUrl}/install.sh | sh -s -- --join-code ${joinCode} --host-id ${hostId} --server ${serverUrl}${machineFlag}`;
 }
 
 function AddMachineDialogContent({

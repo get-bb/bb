@@ -11,6 +11,7 @@ import {
   systemThreadInterruptedEventDataSchema,
   clientTurnLifecycleEventDataSchema,
   turnRequestEventDataSchema,
+  turnRequestRejectedEventDataSchema,
 } from "./thread-events.js";
 import { jsonValueSchema } from "./json-value.js";
 import {
@@ -636,6 +637,12 @@ const unscopedSystemEventSchema = z.union([
       threadId: z.string(),
     })
     .merge(turnRequestEventDataSchema),
+  z
+    .object({
+      type: z.literal("client/turn/rejected"),
+      threadId: z.string(),
+    })
+    .merge(turnRequestRejectedEventDataSchema),
   z
     .object({
       type: z.literal("client/turn/start"),

@@ -1056,14 +1056,11 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  // Version 110 makes Codex command completion wait for a late full-output
-  // record before publishing the completed item. Older daemons can publish a
-  // truncated completed item when app-server reorders those events, so
-  // enrolled machines must update for the complete command output. Version 109
-  // carried the Claude Code rate-limit adapter behavior and remains part of the
-  // protocol lineage.
-  it("uses protocol version 110 for complete Codex command output", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(110);
+  // Version 112 makes ACP stale-steer results trigger a safe new-turn retry.
+  // Version 111 restores parentToolCallId on a resumed Codex child turn.
+  // Version 110 waits for a late full-output record before command completion.
+  it("uses protocol version 112 for stale ACP steer recovery", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(112);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {

@@ -5,12 +5,11 @@ import {
 import type { IconName } from "@bb/shared-ui/icon";
 import {
   CREATE_AUTOMATION_PROMPT,
+  CREATE_PLUGIN_PROMPT,
   CREATE_SKILL_PROMPT,
-} from "@/lib/automation-prompt";
+} from "@/lib/create-resource-prompts";
 
 export type CreateViaPromptKind = "skill" | "plugin" | "automation";
-
-export const CREATE_PLUGIN_PROMPT = "Create a new bb plugin that ";
 
 interface Example {
   label: string;

@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useNavigate } from "react-router-dom";
+import { NavLink, useNavigate } from "react-router-dom";
 import type { IconName } from "@bb/shared-ui/icon";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import {
@@ -25,6 +25,7 @@ import type {
   ThreadTimelineResponse,
   TimelineWorkflowWorkRow,
 } from "@bb/server-contract";
+import type { ChildThreadPendingAttention } from "@/hooks/queries/child-thread-pending-interactions";
 import { ThreadPendingInteractionBanner } from "@/components/thread/pending-interactions/ThreadPendingInteractionBanner";
 import { PluginPendingInteractionComposer } from "@/components/plugin/PluginPendingInteractionComposer";
 import { PluginComposerBanners } from "@/components/plugin/PluginComposerBanners";
@@ -200,6 +201,8 @@ interface ThreadDetailPromptAreaProps {
   activeBackgroundCommands: TimelineWorkflowWorkRow[];
   /** Parent reference for child threads. Null for root threads. */
   parentThreadSection: ThreadPromptParentThreadSection | null;
+  /** Pending permission or question prompts from delegated child threads. */
+  childPendingInteractions: readonly ChildThreadPendingAttention[];
   /** Active child threads for parent threads. Null otherwise. */
   childThreadsSection: ThreadPromptChildThreadsSection | null;
   /** Pull request summary for the active thread branch. Null when there is no PR. */
@@ -334,6 +337,7 @@ export function ThreadDetailPromptArea({
   activeWorkflows,
   activeBackgroundCommands,
   parentThreadSection,
+  childPendingInteractions,
   childThreadsSection,
   pullRequest,
   sendMessage,
@@ -1406,9 +1410,36 @@ export function ThreadDetailPromptArea({
     thread.id,
     typeaheadConfig,
   ]);
+  const childPendingInteractionBanners = useMemo(
+    () =>
+      childPendingInteractions.map((item) =>
+        isPluginPendingInteraction(item.interaction) ? (
+          <div key={item.interaction.id}>
+            <NavLink
+              to={item.href}
+              className="mb-1 block text-xs text-muted-foreground no-underline hover:underline"
+            >
+              From child thread: {item.childTitle}
+            </NavLink>
+            <PluginPendingInteractionComposer
+              interaction={item.interaction}
+            />
+          </div>
+        ) : (
+          <ThreadPendingInteractionBanner
+            key={item.interaction.id}
+            interaction={item.interaction}
+            sourceThread={{ href: item.href, title: item.childTitle }}
+            threadId={item.childThreadId}
+          />
+        ),
+      ),
+    [childPendingInteractions],
+  );
   const promptStack = useMemo(
     () => (
       <>
+        {childPendingInteractionBanners}
         {activeWorkflows.map((workflow) => (
           <ThreadWorkflowCard
             key={workflow.id}
@@ -1500,6 +1531,7 @@ export function ThreadDetailPromptArea({
     ),
     [
       canUseGitUi,
+      childPendingInteractionBanners,
       contextBannerMergeBase,
       expandedBannerSection,
       handleDeleteQueuedMessage,
@@ -1544,6 +1576,7 @@ export function ThreadDetailPromptArea({
   const bottomContent =
     activePendingInteraction && !shouldHideComposer ? (
       <div className="grid gap-2">
+        {childPendingInteractionBanners}
         {activePromptMode ? activePromptModeCard : null}
         {goal ? activeGoalCard : null}
         <PluginComposerHostProvider value={normalPluginComposerHost}>

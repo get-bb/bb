@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { delimiter, dirname, join } from "node:path";
+import { delimiter, dirname, isAbsolute, join } from "node:path";
 import { promisify } from "node:util";
 import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
 import type { HostDaemonLogger } from "./logger.js";
@@ -136,7 +136,17 @@ async function defaultInstallTarball(
   const path = inheritedPath
     ? `${executableDirectory}${delimiter}${inheritedPath}`
     : executableDirectory;
-  await runProcess("npm", ["install", "-g", tarballPath], {
+  // Installer-managed services keep bb-app under their enrollment data dir.
+  // Legacy/manual daemons omit this and retain their existing global behavior.
+  const rawConfiguredPrefix = process.env.BB_APP_NPM_PREFIX?.trim();
+  const configuredPrefix =
+    rawConfiguredPrefix === "" ? undefined : rawConfiguredPrefix;
+  if (configuredPrefix !== undefined && !isAbsolute(configuredPrefix)) {
+    throw new Error("BB_APP_NPM_PREFIX must be an absolute path");
+  }
+  const prefixArgs =
+    configuredPrefix === undefined ? [] : ["--prefix", configuredPrefix];
+  await runProcess("npm", ["install", "-g", ...prefixArgs, tarballPath], {
     env: { ...process.env, PATH: path },
   });
 }

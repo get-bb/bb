@@ -136,7 +136,10 @@ function resolveDynamicTools(
 export function resolvePermissionEscalation(
   args: ResolvePermissionEscalationArgs,
 ): PermissionEscalation {
-  if (args.initiator !== "user" || args.thread.parentThreadId !== null) {
+  // System turns (parent notifications, recovery) must not prompt. A
+  // user-started turn asks even on a delegated child so a sandbox-blocked
+  // action can surface on the parent instead of failing in silence.
+  if (args.initiator !== "user") {
     return "deny";
   }
 

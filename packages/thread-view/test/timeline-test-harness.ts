@@ -116,6 +116,12 @@ interface AssistantCompletedArgs extends ProviderTurnEventOptions {
   text: string;
 }
 
+interface ClientTurnRejectedArgs extends EventFactoryRowOptions {
+  message?: string;
+  reason?: string;
+  requestId: ClientTurnRequestId;
+}
+
 interface ReasoningCompletedArgs extends ProviderTurnEventOptions {
   itemId?: string;
   text: string;
@@ -275,6 +281,9 @@ export interface TimelineEventFactory {
   clientTurnRequested(
     args: ClientTurnRequestedArgs,
   ): ThreadEventRowOfType<"client/turn/requested">;
+  clientTurnRejected(
+    args: ClientTurnRejectedArgs,
+  ): ThreadEventRowOfType<"client/turn/rejected">;
   commandCompleted(
     args: CommandCompletedArgs,
   ): ThreadEventRowOfType<"item/completed">;
@@ -582,6 +591,18 @@ export function createTimelineEventFactory(
             params: {},
           },
           execution: args.execution ?? defaultExecution,
+        },
+      };
+    },
+    clientTurnRejected(args) {
+      const base = nextThreadScopedRowBase("client-turn-rejected", args);
+      return {
+        ...base,
+        type: "client/turn/rejected",
+        data: {
+          requestId: args.requestId,
+          reason: args.reason ?? "command_failed",
+          message: args.message ?? "The command failed",
         },
       };
     },

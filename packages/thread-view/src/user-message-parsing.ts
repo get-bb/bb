@@ -169,6 +169,12 @@ export interface ParsePendingSteerFromClientRequestArgs extends ParseUserFromCli
   acceptedClientRequest: AcceptedClientRequest | undefined;
 }
 
+export interface ParseRejectedUsersFromClientRequestArgs {
+  decoded: ThreadEvent;
+  meta: EventMeta;
+  options?: BuildEventProjectionMessagesOptions;
+}
+
 type ClientTurnRequestedEvent = Extract<
   ThreadEvent,
   { type: "client/turn/requested" }
@@ -475,6 +481,35 @@ export function parseAcceptedSteersFromClientRequest(
         input,
         meta,
         requestStatus: "accepted",
+      }),
+    );
+  }
+  return messages;
+}
+
+export function parseRejectedUsersFromClientRequest(
+  args: ParseRejectedUsersFromClientRequestArgs,
+): EventProjectionUserMessage[] {
+  const { decoded, meta, options } = args;
+  if (decoded.type !== "client/turn/requested") {
+    return [];
+  }
+  if (!shouldRenderClientRequestedInput(options?.threadStatus)) {
+    return [];
+  }
+
+  const groups = decoded.inputGroups ?? [decoded.input];
+  const messages: EventProjectionUserMessage[] = [];
+  for (const input of groups) {
+    if (!parsePromptInput(input)) continue;
+    const visibleMessageIndex = messages.length;
+    messages.push(
+      buildClientUserMessage({
+        decoded,
+        idSuffix: clientUserMessageIdSuffix(visibleMessageIndex),
+        input,
+        meta,
+        requestStatus: "rejected",
       }),
     );
   }

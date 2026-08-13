@@ -143,6 +143,19 @@ describe("PluginNavSidebarItems", () => {
     ).toBeNull();
   });
 
+  it("keeps the panel options trigger visible on mobile", () => {
+    registerPanel("docs", "Docs");
+
+    renderSidebarItems();
+
+    expect(
+      screen
+        .getByRole("button", { name: "Docs panel options" })
+        .closest("[data-sidebar-hover-actions-mobile]")
+        ?.getAttribute("data-sidebar-hover-actions-mobile"),
+    ).toBe("always");
+  });
+
   it("bounds and truncates a long sidebar accessory", () => {
     registerPanel("tasks", "Tasks", () => (
       <span>123456789012345678901234567890</span>

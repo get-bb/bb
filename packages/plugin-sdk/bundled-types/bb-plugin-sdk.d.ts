@@ -141,7 +141,7 @@ declare const changedMessageSchema: z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
     id: z$1.ZodOptional<z$1.ZodString>;
     metadata: z$1.ZodOptional<z$1.ZodObject<{
         backgroundActivityChanged: z$1.ZodOptional<z$1.ZodBoolean>;
-        eventTypes: z$1.ZodOptional<z$1.ZodReadonly<z$1.ZodArray<z$1.ZodString & z$1.ZodType<"thread/started" | "thread/identity" | "turn/started" | "turn/completed" | "turn/input/accepted" | "thread/name/updated" | "thread/compacted" | "thread/goal/updated" | "thread/goal/cleared" | "item/started" | "item/completed" | "item/agentMessage/delta" | "item/commandExecution/outputDelta" | "item/fileChange/outputDelta" | "item/reasoning/summaryTextDelta" | "item/reasoning/textDelta" | "item/plan/delta" | "item/mcpToolCall/progress" | "item/toolCall/progress" | "item/backgroundTask/progress" | "item/backgroundTask/completed" | "thread/tokenUsage/updated" | "thread/contextWindowUsage/updated" | "turn/plan/updated" | "turn/diff/updated" | "provider/error" | "provider/rateLimits/updated" | "provider/warning" | "provider/modelFallback" | "provider/unhandled" | "client/thread/start" | "client/turn/requested" | "client/turn/start" | "system/error" | "system/manager/user_message" | "system/thread/interrupted" | "system/operation" | "system/permissionGrant/lifecycle" | "system/userQuestion/lifecycle" | "system/thread-provisioning" | "system/provider-turn-watchdog", string, z$1.core.$ZodTypeInternals<"thread/started" | "thread/identity" | "turn/started" | "turn/completed" | "turn/input/accepted" | "thread/name/updated" | "thread/compacted" | "thread/goal/updated" | "thread/goal/cleared" | "item/started" | "item/completed" | "item/agentMessage/delta" | "item/commandExecution/outputDelta" | "item/fileChange/outputDelta" | "item/reasoning/summaryTextDelta" | "item/reasoning/textDelta" | "item/plan/delta" | "item/mcpToolCall/progress" | "item/toolCall/progress" | "item/backgroundTask/progress" | "item/backgroundTask/completed" | "thread/tokenUsage/updated" | "thread/contextWindowUsage/updated" | "turn/plan/updated" | "turn/diff/updated" | "provider/error" | "provider/rateLimits/updated" | "provider/warning" | "provider/modelFallback" | "provider/unhandled" | "client/thread/start" | "client/turn/requested" | "client/turn/start" | "system/error" | "system/manager/user_message" | "system/thread/interrupted" | "system/operation" | "system/permissionGrant/lifecycle" | "system/userQuestion/lifecycle" | "system/thread-provisioning" | "system/provider-turn-watchdog", string>>>>>;
+        eventTypes: z$1.ZodOptional<z$1.ZodReadonly<z$1.ZodArray<z$1.ZodString & z$1.ZodType<"thread/started" | "thread/identity" | "turn/started" | "turn/completed" | "turn/input/accepted" | "thread/name/updated" | "thread/compacted" | "thread/goal/updated" | "thread/goal/cleared" | "item/started" | "item/completed" | "item/agentMessage/delta" | "item/commandExecution/outputDelta" | "item/fileChange/outputDelta" | "item/reasoning/summaryTextDelta" | "item/reasoning/textDelta" | "item/plan/delta" | "item/mcpToolCall/progress" | "item/toolCall/progress" | "item/backgroundTask/progress" | "item/backgroundTask/completed" | "thread/tokenUsage/updated" | "thread/contextWindowUsage/updated" | "turn/plan/updated" | "turn/diff/updated" | "provider/error" | "provider/rateLimits/updated" | "provider/warning" | "provider/modelFallback" | "provider/unhandled" | "client/thread/start" | "client/turn/requested" | "client/turn/start" | "client/turn/rejected" | "system/error" | "system/manager/user_message" | "system/thread/interrupted" | "system/operation" | "system/permissionGrant/lifecycle" | "system/userQuestion/lifecycle" | "system/thread-provisioning" | "system/provider-turn-watchdog", string, z$1.core.$ZodTypeInternals<"thread/started" | "thread/identity" | "turn/started" | "turn/completed" | "turn/input/accepted" | "thread/name/updated" | "thread/compacted" | "thread/goal/updated" | "thread/goal/cleared" | "item/started" | "item/completed" | "item/agentMessage/delta" | "item/commandExecution/outputDelta" | "item/fileChange/outputDelta" | "item/reasoning/summaryTextDelta" | "item/reasoning/textDelta" | "item/plan/delta" | "item/mcpToolCall/progress" | "item/toolCall/progress" | "item/backgroundTask/progress" | "item/backgroundTask/completed" | "thread/tokenUsage/updated" | "thread/contextWindowUsage/updated" | "turn/plan/updated" | "turn/diff/updated" | "provider/error" | "provider/rateLimits/updated" | "provider/warning" | "provider/modelFallback" | "provider/unhandled" | "client/thread/start" | "client/turn/requested" | "client/turn/start" | "client/turn/rejected" | "system/error" | "system/manager/user_message" | "system/thread/interrupted" | "system/operation" | "system/permissionGrant/lifecycle" | "system/userQuestion/lifecycle" | "system/thread-provisioning" | "system/provider-turn-watchdog", string>>>>>;
         hasPendingInteraction: z$1.ZodOptional<z$1.ZodBoolean>;
         projectId: z$1.ZodOptional<z$1.ZodString>;
     }, z$1.core.$strict>>;
@@ -252,8 +252,8 @@ declare const hostSchema: z$1.ZodObject<{
         persistent: "persistent";
     }>;
     status: z$1.ZodEnum<{
-        connected: "connected";
         disconnected: "disconnected";
+        connected: "connected";
     }>;
     maxPermissionMode: z$1.ZodEnum<{
         full: "full";
@@ -1805,6 +1805,12 @@ declare const threadEventSchema: z$1.ZodPipe<z$1.ZodUnknown, z$1.ZodUnion<readon
         }>;
     }, z$1.core.$strip>;
 }, z$1.core.$strip>, z$1.ZodObject<{
+    type: z$1.ZodLiteral<"client/turn/rejected">;
+    threadId: z$1.ZodString;
+    requestId: z$1.ZodString;
+    reason: z$1.ZodString;
+    message: z$1.ZodString;
+}, z$1.core.$strip>, z$1.ZodObject<{
     type: z$1.ZodLiteral<"client/turn/start">;
     threadId: z$1.ZodString;
     direction: z$1.ZodLiteral<"outbound">;
@@ -2576,8 +2582,8 @@ type SkillFilesResponse = z$1.infer<typeof skillFilesResponseSchema>;
 declare const projectResponseSchema: z$1.ZodObject<{
     id: z$1.ZodString;
     kind: z$1.ZodEnum<{
-        standard: "standard";
         personal: "personal";
+        standard: "standard";
     }>;
     name: z$1.ZodString;
     gitRemoteUrl: z$1.ZodNullable<z$1.ZodString>;
@@ -2598,8 +2604,8 @@ type ProjectResponse = z$1.infer<typeof projectResponseSchema>;
 declare const projectWithThreadsResponseSchema: z$1.ZodObject<{
     id: z$1.ZodString;
     kind: z$1.ZodEnum<{
-        standard: "standard";
         personal: "personal";
+        standard: "standard";
     }>;
     name: z$1.ZodString;
     gitRemoteUrl: z$1.ZodNullable<z$1.ZodString>;
@@ -2853,32 +2859,32 @@ declare const environmentDiffFileQuerySchema: z$1.ZodDiscriminatedUnion<[z$1.Zod
     target: z$1.ZodLiteral<"uncommitted">;
     path: z$1.ZodString;
     side: z$1.ZodEnum<{
-        old: "old";
         new: "new";
+        old: "old";
     }>;
 }, z$1.core.$strip>, z$1.ZodObject<{
     target: z$1.ZodLiteral<"branch_committed">;
     mergeBaseRef: z$1.ZodString;
     path: z$1.ZodString;
     side: z$1.ZodEnum<{
-        old: "old";
         new: "new";
+        old: "old";
     }>;
 }, z$1.core.$strip>, z$1.ZodObject<{
     target: z$1.ZodLiteral<"all">;
     mergeBaseRef: z$1.ZodString;
     path: z$1.ZodString;
     side: z$1.ZodEnum<{
-        old: "old";
         new: "new";
+        old: "old";
     }>;
 }, z$1.core.$strip>, z$1.ZodObject<{
     target: z$1.ZodLiteral<"commit">;
     sha: z$1.ZodString;
     path: z$1.ZodString;
     side: z$1.ZodEnum<{
-        old: "old";
         new: "new";
+        old: "old";
     }>;
 }, z$1.core.$strip>], "target">;
 type EnvironmentDiffFileQuery = z$1.infer<typeof environmentDiffFileQuerySchema>;
@@ -3083,21 +3089,21 @@ declare const environmentPullRequestResponseSchema: z$1.ZodDiscriminatedUnion<[z
         }, z$1.core.$strict>;
         review: z$1.ZodObject<{
             state: z$1.ZodEnum<{
+                none: "none";
                 approved: "approved";
                 changes_requested: "changes_requested";
                 review_required: "review_required";
                 review_requested: "review_requested";
-                none: "none";
             }>;
             reviewRequestCount: z$1.ZodNumber;
         }, z$1.core.$strict>;
         mergeability: z$1.ZodObject<{
             state: z$1.ZodEnum<{
                 unknown: "unknown";
+                blocked: "blocked";
                 draft: "draft";
                 mergeable: "mergeable";
                 conflicts: "conflicts";
-                blocked: "blocked";
             }>;
             mergeStateStatus: z$1.ZodNullable<z$1.ZodEnum<{
                 BEHIND: "BEHIND";
@@ -3116,14 +3122,14 @@ declare const environmentPullRequestResponseSchema: z$1.ZodDiscriminatedUnion<[z
             }>>;
         }, z$1.core.$strict>;
         attention: z$1.ZodEnum<{
+            blocked: "blocked";
+            none: "none";
             merged: "merged";
             draft: "draft";
             closed: "closed";
             changes_requested: "changes_requested";
             review_requested: "review_requested";
-            none: "none";
             conflicts: "conflicts";
-            blocked: "blocked";
             checks_failed: "checks_failed";
             checks_pending: "checks_pending";
             ready_to_merge: "ready_to_merge";
@@ -7285,9 +7291,9 @@ declare const terminalSessionSchema: z$1.ZodObject<{
     cols: z$1.ZodNumber;
     rows: z$1.ZodNumber;
     status: z$1.ZodEnum<{
+        running: "running";
         starting: "starting";
         disconnected: "disconnected";
-        running: "running";
         exited: "exited";
     }>;
     exitCode: z$1.ZodNullable<z$1.ZodNumber>;
@@ -7316,9 +7322,9 @@ declare const terminalListResponseSchema: z$1.ZodObject<{
         cols: z$1.ZodNumber;
         rows: z$1.ZodNumber;
         status: z$1.ZodEnum<{
+            running: "running";
             starting: "starting";
             disconnected: "disconnected";
-            running: "running";
             exited: "exited";
         }>;
         exitCode: z$1.ZodNullable<z$1.ZodNumber>;
@@ -7458,6 +7464,7 @@ declare const timelineConversationRowSchema: z$1.ZodDiscriminatedUnion<[z$1.ZodO
         status: z$1.ZodEnum<{
             pending: "pending";
             accepted: "accepted";
+            rejected: "rejected";
         }>;
     }, z$1.core.$strip>;
     mentions: z$1.ZodArray<z$1.ZodObject<{
@@ -8576,8 +8583,8 @@ declare const providerRateLimitRecoveryStatusSchema: z$1.ZodObject<{
         status: z$1.ZodEnum<{
             unknown: "unknown";
             warning: "warning";
-            blocked: "blocked";
             allowed: "allowed";
+            blocked: "blocked";
         }>;
         kind: z$1.ZodEnum<{
             unknown: "unknown";
@@ -8591,17 +8598,17 @@ declare const providerRateLimitRecoveryStatusSchema: z$1.ZodObject<{
             status: z$1.ZodEnum<{
                 unknown: "unknown";
                 warning: "warning";
-                blocked: "blocked";
                 allowed: "allowed";
+                blocked: "blocked";
             }>;
             resetsAtMs: z$1.ZodNullable<z$1.ZodNumber>;
         }, z$1.core.$strip>>;
         reachedReason: z$1.ZodNullable<z$1.ZodString>;
         overageStatus: z$1.ZodNullable<z$1.ZodEnum<{
-            warning: "warning";
-            unavailable: "unavailable";
-            allowed: "allowed";
             rejected: "rejected";
+            warning: "warning";
+            allowed: "allowed";
+            unavailable: "unavailable";
         }>>;
         overageReason: z$1.ZodNullable<z$1.ZodString>;
     }, z$1.core.$strip>>;
@@ -8615,8 +8622,8 @@ declare const providerRateLimitRecoveryStatusSchema: z$1.ZodObject<{
             status: z$1.ZodEnum<{
                 unknown: "unknown";
                 warning: "warning";
-                blocked: "blocked";
                 allowed: "allowed";
+                blocked: "blocked";
             }>;
             kind: z$1.ZodEnum<{
                 unknown: "unknown";
@@ -8630,17 +8637,17 @@ declare const providerRateLimitRecoveryStatusSchema: z$1.ZodObject<{
                 status: z$1.ZodEnum<{
                     unknown: "unknown";
                     warning: "warning";
-                    blocked: "blocked";
                     allowed: "allowed";
+                    blocked: "blocked";
                 }>;
                 resetsAtMs: z$1.ZodNullable<z$1.ZodNumber>;
             }, z$1.core.$strip>>;
             reachedReason: z$1.ZodNullable<z$1.ZodString>;
             overageStatus: z$1.ZodNullable<z$1.ZodEnum<{
-                warning: "warning";
-                unavailable: "unavailable";
-                allowed: "allowed";
                 rejected: "rejected";
+                warning: "warning";
+                allowed: "allowed";
+                unavailable: "unavailable";
             }>>;
             overageReason: z$1.ZodNullable<z$1.ZodString>;
         }, z$1.core.$strip>;
@@ -9471,9 +9478,9 @@ declare const threadWithIncludesResponseSchema: z$1.ZodObject<{
         isGitRepo: z$1.ZodBoolean;
         isWorktree: z$1.ZodBoolean;
         workspaceProvisionType: z$1.ZodEnum<{
-            personal: "personal";
-            "managed-worktree": "managed-worktree";
             unmanaged: "unmanaged";
+            "managed-worktree": "managed-worktree";
+            personal: "personal";
         }>;
         branchName: z$1.ZodNullable<z$1.ZodString>;
         baseBranch: z$1.ZodNullable<z$1.ZodString>;
@@ -10130,8 +10137,8 @@ declare const threadTimelineResponseSchema: z$1.ZodObject<{
         updatedAt: z$1.ZodNumber;
         objective: z$1.ZodString;
         status: z$1.ZodEnum<{
-            active: "active";
             paused: "paused";
+            active: "active";
             budgetLimited: "budgetLimited";
             complete: "complete";
         }>;
@@ -10145,8 +10152,8 @@ declare const threadTimelineResponseSchema: z$1.ZodObject<{
         originalModel: z$1.ZodString;
         fallbackModel: z$1.ZodString;
         reason: z$1.ZodEnum<{
-            provider: "provider";
             refusal: "refusal";
+            provider: "provider";
         }>;
         message: z$1.ZodString;
     }, z$1.core.$strip>>;
