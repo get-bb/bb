@@ -1,5 +1,7 @@
-import type { BbPluginApi } from "@bb/plugin-sdk";
+import { defineRpcContract, type BbPluginApi } from "@bb/plugin-sdk";
 import type Database from "better-sqlite3";
+import { join } from "node:path";
+import { z } from "zod";
 import type { JsonValue } from "../../shared/contract.js";
 import { rpcContract } from "../../shared/contract.js";
 import { listFindingActivity } from "./cache/activity.js";
@@ -20,6 +22,157 @@ const findingsRpcContract = {
   findingsCommentsDelete: rpcContract.findingsCommentsDelete,
   findingsFacets: rpcContract.findingsFacets,
 } as const;
+
+const savedFilterSchema = z.object({
+  severity: z.array(z.string().min(1).max(100)).max(20).optional(),
+  reachability: z.enum(["reachable", "unreachable", "unknown"]).optional(),
+  kev: z.enum(["kev", "vc-kev", "none"]).optional(),
+  epssGte: z.number().min(0).max(1).optional(),
+  component: z.string().max(512).optional(),
+  cve: z.string().max(512).optional(),
+  triage: z.array(z.string().min(1).max(100)).max(50).optional(),
+  findingType: z.array(z.string().min(1).max(100)).max(50).optional(),
+  localState: z.array(z.enum(["none", "local", "conflicted", "stale", "needs_completion"])).max(5).optional(),
+}).strict();
+const savedViewSchema = z.object({
+  schema: z.literal("fs-findings-view/v1"),
+  id: z.string().min(1).max(128),
+  name: z.string().trim().min(1).max(100),
+  filter: savedFilterSchema,
+  sort: z.array(z.object({ field: z.literal("risk"), direction: z.literal("desc") }).strict()).length(1),
+  columns: z.array(z.string().min(1).max(100)).min(1).max(20),
+}).strict();
+const savedViewsDocumentSchema = z.object({
+  schema: z.literal("fs-findings-views/v1"),
+  views: z.array(savedViewSchema).max(100),
+}).strict();
+const savedViewsResultSchema = z.object({
+  views: z.array(savedViewSchema),
+  sha256: z.string().length(64).nullable(),
+  recoveredFromCorrupt: z.boolean(),
+}).strict();
+const findingsUiListInputSchema = z.object({
+  projectId: z.string().min(1).max(512),
+  projectVersionId: z.string().min(1).max(512),
+  pageSize: z.number().int().min(1).max(200),
+  continuation: z.string().min(1).max(4096).nullable(),
+  filters: savedFilterSchema,
+}).strict();
+
+export const findingsUiRpcContract = defineRpcContract({
+  findingsUiList: {
+    input: findingsUiListInputSchema,
+    output: rpcContract.findingsList.output,
+  },
+  cachedProjectVersions: {
+    input: z.object({ projectId: z.string().min(1).max(512) }).strict(),
+    output: z.object({
+      versions: z.array(z.object({
+        platformProjectId: z.string().min(1).max(512),
+        projectVersionId: z.string().min(1).max(512),
+        asOf: z.string().nullable(),
+        state: z.enum(["fresh", "stale"]),
+      }).strict()),
+      selectedPlatformProjectId: z.string().min(1).max(512).nullable(),
+      selectedProjectVersionId: z.string().min(1).max(512).nullable(),
+    }).strict(),
+  },
+  findingsSavedViewsGet: {
+    input: z.object({ projectId: z.string().min(1).max(512) }).strict(),
+    output: savedViewsResultSchema,
+  },
+  findingsSavedViewsPut: {
+    input: z.object({
+      projectId: z.string().min(1).max(512),
+      expectedSha256: z.string().length(64).nullable(),
+      views: z.array(savedViewSchema).max(100),
+    }).strict(),
+    output: savedViewsResultSchema,
+  },
+});
+
+const SAVED_VIEWS_PATH = "product-security/findings/views.json";
+
+async function projectSource(bb: BbPluginApi, projectId: string) {
+  const project = await bb.sdk.projects.get({ projectId });
+  const source = project.sources.find(candidate => candidate.isDefault) ?? project.sources[0];
+  if (!source) throw new Error("FINDINGS_PROJECT_SOURCE_REQUIRED");
+  return source;
+}
+
+function missingFile(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /\bENOENT\b|not found|does not exist/iu.test(message);
+}
+
+function decodeFile(content: string, encoding: "utf8" | "base64"): string {
+  return encoding === "utf8" ? content : Buffer.from(content, "base64").toString("utf8");
+}
+
+async function readSavedViews(bb: BbPluginApi, projectId: string) {
+  const source = await projectSource(bb, projectId);
+  const path = join(source.path, SAVED_VIEWS_PATH);
+  try {
+    const file = await bb.sdk.files.read({ hostId: source.hostId, path, rootPath: source.path });
+    let decoded: unknown;
+    try {
+      decoded = JSON.parse(decodeFile(file.content, file.contentEncoding));
+    } catch {
+      decoded = null;
+    }
+    const parsed = savedViewsDocumentSchema.safeParse(decoded);
+    if (parsed.success) {
+      return { views: parsed.data.views, sha256: file.sha256, recoveredFromCorrupt: false };
+    }
+
+    const quarantinePath = `${path}.corrupt-${file.sha256.slice(0, 12)}.json`;
+    try {
+      await bb.sdk.files.write({
+        hostId: source.hostId,
+        path: quarantinePath,
+        rootPath: source.path,
+        content: decodeFile(file.content, file.contentEncoding),
+        contentEncoding: "utf8",
+        createParents: true,
+        expectedSha256: null,
+      });
+    } catch {
+      // A previous read may already have quarantined these exact bytes.
+    }
+    const repaired = await bb.sdk.files.write({
+      hostId: source.hostId,
+      path,
+      rootPath: source.path,
+      content: `${JSON.stringify({ schema: "fs-findings-views/v1", views: [] }, null, 2)}\n`,
+      contentEncoding: "utf8",
+      createParents: true,
+      expectedSha256: file.sha256,
+    });
+    if (repaired.outcome !== "written") throw new Error("FINDINGS_SAVED_VIEWS_CONFLICT");
+    return { views: [], sha256: repaired.sha256, recoveredFromCorrupt: true };
+  } catch (error) {
+    if (missingFile(error)) return { views: [], sha256: null, recoveredFromCorrupt: false };
+    throw error;
+  }
+}
+
+async function writeSavedViews(
+  bb: BbPluginApi,
+  input: { projectId: string; expectedSha256: string | null; views: z.output<typeof savedViewSchema>[] },
+) {
+  const source = await projectSource(bb, input.projectId);
+  const result = await bb.sdk.files.write({
+    hostId: source.hostId,
+    path: join(source.path, SAVED_VIEWS_PATH),
+    rootPath: source.path,
+    content: `${JSON.stringify({ schema: "fs-findings-views/v1", views: input.views }, null, 2)}\n`,
+    contentEncoding: "utf8",
+    createParents: true,
+    expectedSha256: input.expectedSha256,
+  });
+  if (result.outcome !== "written") throw new Error("FINDINGS_SAVED_VIEWS_CONFLICT");
+  return { views: input.views, sha256: result.sha256, recoveredFromCorrupt: false };
+}
 
 function requireVersion(projectVersionId: string | null): string {
   if (projectVersionId === null) throw new Error("FINDINGS_PROJECT_VERSION_REQUIRED");
@@ -82,6 +235,12 @@ function findingFilter(input: {
     ...(booleanValue(filters, "hasLocalChange") !== undefined
       ? { hasLocalChange: booleanValue(filters, "hasLocalChange") }
       : {}),
+    ...(stringArray(filters, "localState") ? {
+      localState: stringArray(filters, "localState")?.filter(
+        (value): value is NonNullable<FindingsFilter["localState"]>[number] =>
+          value === "none" || value === "local" || value === "conflicted" || value === "stale" || value === "needs_completion",
+      ),
+    } : {}),
   };
 }
 
@@ -122,6 +281,8 @@ function fields(finding: CachedFinding): Record<string, JsonValue> {
     firstSeen: finding.firstSeen,
     softDeleted: finding.softDeleted,
     pulledAt: finding.pulledAt,
+    localState: finding.localState,
+    localFile: finding.localFile,
   };
 }
 
@@ -133,6 +294,16 @@ function summary(finding: CachedFinding) {
     key: finding.findingId,
     label: finding.title ?? finding.cve ?? finding.findingId,
     fields: fields(finding),
+  };
+}
+
+function findingsListResult(db: Database.Database, input: z.output<typeof findingsUiListInputSchema>) {
+  const page = queryFindings(db, findingFilter(input));
+  return {
+    items: page.items.map(summary),
+    total: page.total,
+    next: page.nextCursor,
+    cache: page.cache,
   };
 }
 
@@ -230,6 +401,45 @@ export function registerFindingsRpc(bb: BbPluginApi, db: Database.Database): voi
         total: page.total,
         cache: page.cache,
       };
+    },
+  });
+  bb.rpc.register(findingsUiRpcContract, {
+    findingsUiList(input) {
+      return findingsListResult(db, input);
+    },
+    cachedProjectVersions(input) {
+      // The input is a bb workspace project id; validate that local project
+      // boundary, then derive remote cache scopes from SQLite. Never reuse a
+      // bb id as the Platform project id stored in sync_state.
+      const project = projectSource(bb, input.projectId);
+      const rows = db.prepare(
+        `SELECT project_id, project_version_id, MAX(last_pull) AS as_of,
+                MAX(CASE WHEN error IS NOT NULL THEN 1 ELSE 0 END) AS stale
+           FROM sync_state
+          WHERE entity_kind = 'finding'
+            AND accepted_generation_id IS NOT NULL
+          GROUP BY project_id, project_version_id
+          ORDER BY as_of DESC, project_id ASC, project_version_id ASC`,
+      ).all() as Array<{ project_id: string; project_version_id: string; as_of: string | null; stale: number }>;
+      return project.then(() => {
+        const versions = rows.map(row => ({
+          platformProjectId: row.project_id,
+          projectVersionId: row.project_version_id,
+          asOf: row.as_of,
+          state: row.stale === 1 ? "stale" as const : "fresh" as const,
+        }));
+        return {
+          versions,
+          selectedPlatformProjectId: versions[0]?.platformProjectId ?? null,
+          selectedProjectVersionId: versions[0]?.projectVersionId ?? null,
+        };
+      });
+    },
+    findingsSavedViewsGet(input) {
+      return readSavedViews(bb, input.projectId);
+    },
+    findingsSavedViewsPut(input) {
+      return writeSavedViews(bb, input);
     },
   });
 }
