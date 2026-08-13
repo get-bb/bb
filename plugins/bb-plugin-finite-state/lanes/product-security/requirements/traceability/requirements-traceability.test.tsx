@@ -9,6 +9,7 @@ import { cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { createFakePluginHost } from "@bb/plugin-sdk/testing";
 import { installTestPluginRuntime, renderSlot } from "@bb/plugin-sdk/testing/app";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { getPluginPanelRoutePath } from "../../../../../../apps/app/src/lib/route-paths.js";
 import { createPluginContext } from "../../../../lib/context.js";
 import { reqIdKey } from "../../../../lib/sync/registry.js";
 import { rpcContract } from "../../../../shared/contract.js";
@@ -148,7 +149,7 @@ function rpcPage(fields: TraceabilityListFields, total = 1) {
 }
 
 describe("requirements traceability filters", () => {
-  it("round-trips every filter through canonical requirements/trace subPath state", () => {
+  it("round-trips every filter and cursor through the real host route builder", () => {
     const filters: RequirementFilters = {
       text: "signed update", pattern: ["event_driven", "state_driven"],
       reqType: ["security"], priority: ["P0", "P1"], evidenceState: ["failed", "partial"],
@@ -158,11 +159,17 @@ describe("requirements traceability filters", () => {
     const query = serializeRequirementFilters(filters);
     expect(parseRequirementFilters(query)).toEqual(filters);
     const subPath = traceabilitySubPath(filters, "REQ-104");
-    const detail = subPath.split("/").slice(1).map((segment) => decodeURIComponent(segment));
+    const hostPath = getPluginPanelRoutePath({
+      pluginId: "finite-state",
+      path: "product-security",
+      subPath,
+    });
+    const detail = hostPath.split("/").slice(5);
     expect(parseTraceabilityDetail(detail)).toEqual({
       view: "requirement", requirementId: "REQ-104",
-      filters: { ...filters, cursor: undefined }, malformedId: null,
+      filters, malformedId: null,
     });
+    expect(hostPath).not.toContain("%253D");
   });
 });
 
@@ -220,6 +227,16 @@ describe("requirements traceability backend", () => {
     db.prepare(`INSERT INTO base_snapshot
       (project_id, project_version_id, entity_kind, generation_id, entity_key, payload, content_hash, pulled_at)
       VALUES ('project-1', 'version-1', 'threat', 'g-1', 'threat', ?, 'hash', ?)`).run(JSON.stringify({ fields: { slug: "THREAT-22", name: "Unsigned update", mitigations: ["MIT-signed-update"], affected_components: ["COMP-updater"] } }), "2026-08-12T12:00:00Z");
+    const distractorInsert = db.prepare(`INSERT INTO base_snapshot
+      (project_id, project_version_id, entity_kind, generation_id, entity_key, payload, content_hash, pulled_at)
+      VALUES ('project-1', 'version-1', 'threat', 'g-1', ?, ?, 'hash', ?)`);
+    for (let index = 0; index < 201; index += 1) {
+      distractorInsert.run(
+        `A-${String(index).padStart(3, "0")}`,
+        JSON.stringify({ fields: { slug: `THREAT-${index}`, mitigations: ["MIT-unrelated"] } }),
+        "2026-08-12T12:00:00Z",
+      );
+    }
     db.prepare(`INSERT INTO standards
       (project_id, project_version_id, generation_id, standard_id, code, name, scope, review_version, raw, pulled_at)
       VALUES ('project-1', 'version-1', 'g-1', 'EU-CRA', 'CRA', 'Cyber Resilience Act', 'project', '3', '{}', ?)`).run("2026-08-12T12:00:00Z");
@@ -253,11 +270,18 @@ describe("requirements traceability backend", () => {
     expect(result.total).toBe(1);
     const fields = result.items[0]?.fields as unknown;
     const parsed = fields as TraceabilityListFields;
-    expect(parsed.facets.pattern).toContainEqual({ value: "event_driven", count: 1 });
+    expect(parsed.facets?.pattern).toContainEqual({ value: "event_driven", count: 1 });
     expect(parsed.trace?.rail.nodes.map((node) => node.kind)).toEqual([
       "threat", "requirement", "clause", "commit", "check", "run", "attestation",
     ]);
     expect(parsed.trace?.rail.nodes.find((node) => node.kind === "clause")?.provenance?.source).toContain("review_version 4");
+    const clauseSubPath = parsed.trace?.rail.nodes.find((node) => node.kind === "clause")?.navigation?.subPath;
+    expect(typeof clauseSubPath).toBe("string");
+    const clauseHostPath = getPluginPanelRoutePath({
+      pluginId: "finite-state", path: "product-security", subPath: String(clauseSubPath),
+    });
+    expect(parseTraceabilityDetail(clauseHostPath.split("/").slice(5)).filters.standardClause)
+      .toBe("EU-CRA/annex1-2c");
     expect(parsed.trace?.rail.gaps).toEqual([]);
     expect(host.harness.sdk.callsTo("files.list")).toHaveLength(1);
     const firstPage = rpcContract.requirementsList.output.parse(await host.harness.callRpc("requirementsList", {
@@ -272,11 +296,22 @@ describe("requirements traceability backend", () => {
     }));
     expect(secondPage.items.map((item) => item.key)).toEqual(["REQ-200"]);
     expect(secondPage.next).toBeNull();
+    const completePage = rpcContract.requirementsList.output.parse(await host.harness.callRpc("requirementsList", {
+      projectId: "project-1", projectVersionId: null, pageSize: 2, continuation: null,
+      filters: { view: "traceability" },
+    }));
+    expect(completePage.items[0]?.fields.facets).toBeDefined();
+    expect(completePage.items[1]?.fields.facets).toBeUndefined();
     await host.harness.callRpc("requirementsList", {
       projectId: "project-1", projectVersionId: null, pageSize: 1, continuation: null,
       filters: { view: "traceability", text: "no match" },
     });
     expect(host.harness.sdk.callsTo("files.list")).toHaveLength(1);
+    await host.harness.callRpc("requirementsList", {
+      projectId: "project-1", projectVersionId: null, pageSize: 1, continuation: null,
+      filters: { view: "traceability", refresh: true },
+    });
+    expect(host.harness.sdk.callsTo("files.list")).toHaveLength(2);
     await host.harness.lifecycle.dispose();
     rmSync(root, { recursive: true, force: true });
   });
@@ -289,6 +324,43 @@ describe("requirements traceability backend", () => {
     expect(runner.run).not.toHaveBeenCalled();
     expect(host.harness.sdk.calls).toEqual([]);
     await host.harness.lifecycle.dispose();
+  });
+
+  it("scopes project lookup failures and retries transient git failures", async () => {
+    const rejected = createFakePluginHost({
+      pluginId: "finite-state",
+      sdk: { projects: { get: () => Promise.reject(new Error("host unavailable")) } },
+    });
+    await expect(getRequirementGitHistory(
+      rejected.bb,
+      "project-rejected",
+      "REQ-900",
+      "a".repeat(64),
+    )).resolves.toEqual({ error: expect.stringContaining("host unavailable") });
+    await rejected.harness.lifecycle.dispose();
+
+    const root = mkdtempSync(join(tmpdir(), "fs51-git-retry-"));
+    const directory = join(root, "product-security", "requirements");
+    mkdirSync(directory, { recursive: true });
+    const content = serializeRequirement(requirement("REQ-901"));
+    writeFileSync(join(directory, "REQ-901.yaml"), content);
+    const digest = createHash("sha256").update(content).digest("hex");
+    const host = createFakePluginHost({
+      pluginId: "finite-state",
+      sdk: { projects: { get: () => ({ sources: [{ path: root, isDefault: true }] }) } },
+    });
+    const runner: GitHistoryRunner = {
+      run: vi.fn()
+        .mockRejectedValueOnce(new Error("timed out"))
+        .mockResolvedValueOnce(`${"b".repeat(40)}\0${"2026-08-13T00:00:00Z"}\0Trace Test\0retry worked\n`),
+    };
+    await expect(getRequirementGitHistory(host.bb, "project-retry", "REQ-901", digest, runner))
+      .resolves.toEqual({ error: expect.stringContaining("timed out") });
+    await expect(getRequirementGitHistory(host.bb, "project-retry", "REQ-901", digest, runner))
+      .resolves.toEqual(expect.objectContaining({ hash: "b".repeat(40) }));
+    expect(runner.run).toHaveBeenCalledTimes(2);
+    await host.harness.lifecycle.dispose();
+    rmSync(root, { recursive: true, force: true });
   });
 });
 
@@ -367,12 +439,58 @@ describe("requirements traceability UI", () => {
 
   it("renders no matching requirements as a designed empty state", async () => {
     const { RequirementsTraceabilityLayer } = await import("./index.js");
+    const subPath = traceabilitySubPath({ priority: ["P7"] });
+    const detail = getPluginPanelRoutePath({
+      pluginId: "finite-state",
+      path: "product-security",
+      subPath,
+    }).split("/").slice(5);
     const slot = renderSlot(
       { component: RequirementsTraceabilityLayer },
-      { projectId: "project-1", detail: ["trace"] },
+      { projectId: "project-1", detail },
       { rpc: { requirementsList: () => ({ ...rpcPage({ card: card(), facets, trace: null }, 0), items: [] }) } },
     );
     expect(await slot.findByText("No matching requirements")).toBeTruthy();
+    fireEvent.click(slot.getByText("Priority · 1"));
+    expect(slot.getByRole("checkbox", { name: /P7/ })).toHaveProperty("checked", true);
+    slot.lifecycle.unmount();
+  });
+
+  it("routes the Next cursor through the host and exposes a success-path refresh", async () => {
+    const { RequirementsTraceabilityLayer } = await import("./index.js");
+    const inputs: Array<{ filters?: Record<string, unknown> }> = [];
+    const slot = renderSlot(
+      { component: RequirementsTraceabilityLayer },
+      { projectId: "project-1", detail: ["trace"] },
+      { rpc: { requirementsList: (input) => {
+        inputs.push(input as { filters?: Record<string, unknown> });
+        return { ...rpcPage({ card: card(), facets, trace: null }, 60), next: "trace:v1:REQ-149" };
+      } } },
+    );
+    const nextButton = await slot.findByRole("button", { name: "Next indexed page" });
+    const initialRequestCount = inputs.length;
+    slot.lifecycle.rerender(<RequirementsTraceabilityLayer projectId="project-1" detail={["trace"]} />);
+    await Promise.resolve();
+    expect(inputs).toHaveLength(initialRequestCount);
+    expect(slot.queryByRole("feed")).toBeNull();
+    expect(slot.getByRole("list", { name: "Indexed requirement results" })).toBeTruthy();
+    fireEvent.click(nextButton);
+    const nextNavigation = slot.inspection.navigateCalls.at(-1);
+    expect(nextNavigation?.method).toBe("toPluginPanel");
+    const nextSubPath = nextNavigation?.method === "toPluginPanel"
+      ? nextNavigation.options?.subPath
+      : undefined;
+    expect(typeof nextSubPath).toBe("string");
+    const hostPath = getPluginPanelRoutePath({
+      pluginId: "finite-state",
+      path: "product-security",
+      subPath: String(nextSubPath),
+    });
+    expect(parseTraceabilityDetail(hostPath.split("/").slice(5)).filters.cursor)
+      .toBe("trace:v1:REQ-149");
+
+    fireEvent.click(slot.getByRole("button", { name: "Refresh tracked requirements" }));
+    await waitFor(() => expect(inputs.at(-1)?.filters?.refresh).toBe(true));
     slot.lifecycle.unmount();
   });
 

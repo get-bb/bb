@@ -22,10 +22,10 @@ export function TraceNode({
   node: TraceNodeModel;
   onNavigate?(subPath: string): void;
 }): React.JSX.Element {
-  const body = (
+  return (
     <article
       aria-label={`${title(node.kind)} ${node.id}: ${node.ready ? "ready" : "not ready"}`}
-      className="flex h-full min-h-40 flex-col rounded-lg border border-border bg-card p-3 text-left text-card-foreground shadow-xs transition-colors group-hover:border-primary/50"
+      className="group relative flex h-full min-h-40 flex-col rounded-lg border border-border bg-card p-3 text-left text-card-foreground shadow-xs transition-colors hover:border-primary/50"
     >
       <header className="flex items-center gap-2">
         <span className={node.ready ? "rounded-md bg-success/10 p-1.5 text-success" : "rounded-md bg-warning/10 p-1.5 text-warning"}>
@@ -43,16 +43,14 @@ export function TraceNode({
           {node.provenance.source}{node.provenance.at ? ` · ${node.provenance.at}` : ""}
         </p>
       ) : null}
+      {node.navigation && onNavigate ? (
+        <button
+          aria-label={node.navigation.label}
+          className="absolute inset-0 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          onClick={() => onNavigate(node.navigation?.subPath ?? "")}
+          type="button"
+        />
+      ) : null}
     </article>
   );
-  return node.navigation && onNavigate ? (
-    <button
-      aria-label={node.navigation.label}
-      className="group h-full w-full rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      onClick={() => onNavigate(node.navigation?.subPath ?? "")}
-      type="button"
-    >
-      {body}
-    </button>
-  ) : body;
 }

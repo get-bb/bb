@@ -51,7 +51,7 @@ const traceSchema = z.object({
 }).strict();
 const fieldsSchema = z.object({
   card: requirementCardModelSchema,
-  facets: facetsSchema,
+  facets: facetsSchema.optional(),
   trace: traceSchema.nullable(),
 }).strict();
 
@@ -99,6 +99,7 @@ function RequirementTraceList({
   next,
   onFilters,
   onOpen,
+  onRefresh,
   onRetry,
 }: {
   items: readonly TraceListItem[];
@@ -110,6 +111,7 @@ function RequirementTraceList({
   next: string | null;
   onFilters(filters: RequirementFilters): void;
   onOpen(id: string): void;
+  onRefresh(): void;
   onRetry(): void;
 }): React.JSX.Element {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -128,19 +130,19 @@ function RequirementTraceList({
   }
   return (
     <div className="flex h-full min-h-0 flex-col bg-background text-foreground">
-      <FilterBar facets={facets} filters={filters} onChange={onFilters} total={total} />
+      <FilterBar facets={facets} filters={filters} onChange={onFilters} onRefresh={onRefresh} total={total} />
       {message ? <div className="border-b border-warning/30 bg-warning/5 px-4 py-2 text-xs text-muted-foreground" role="status">{message}</div> : null}
       {state === "ready" && items.length === 0 ? (
         <CenteredState detail="No indexed requirement satisfies every active filter. Clear one or inspect the filter counts." icon="Search" title="No matching requirements" />
       ) : (
-        <div aria-busy={state === "loading"} aria-label="Traceable requirements" className="min-h-0 flex-1 overflow-auto p-4" ref={scrollRef} role="feed">
-          <div className="relative" style={{ height: `${virtualizer.getTotalSize()}px` }}>
+        <div aria-busy={state === "loading"} aria-label="Traceable requirements" className="min-h-0 flex-1 overflow-auto p-4" ref={scrollRef} role="region">
+          <div aria-label="Indexed requirement results" className="relative" role="list" style={{ height: `${virtualizer.getTotalSize()}px` }}>
             {virtualizer.getVirtualItems().map((row) => {
               const item = items[row.index];
               if (!item) return null;
               const card = item.fields.card;
               return (
-                <div className="absolute left-0 top-0 w-full pb-3" data-trace-result-row key={card.requirement.id} style={{ transform: `translateY(${row.start}px)` }}>
+                <div className="absolute left-0 top-0 w-full pb-3" data-trace-result-row key={card.requirement.id} role="listitem" style={{ transform: `translateY(${row.start}px)` }}>
                   <button
                     aria-label={`Inspect traceability for ${card.requirement.id}`}
                     className="group w-full rounded-lg border border-border bg-card p-4 text-left text-card-foreground shadow-xs transition-colors hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -217,28 +219,39 @@ export function RequirementsTraceabilityLayer({
   projectId: string;
   detail?: readonly string[];
 }): React.JSX.Element {
-  const route = useMemo(() => parseTraceabilityDetail(detail), [detail]);
+  const detailKey = detail.join("/");
+  const route = useMemo(
+    () => parseTraceabilityDetail(detailKey.split("/")),
+    [detailKey],
+  );
   const rpc = useRpc<RpcContract>();
   const navigate = useBbNavigate();
   const [state, setState] = useState<ViewState>("loading");
   const [items, setItems] = useState<TraceListItem[]>([]);
   const [total, setTotal] = useState<number | null>(null);
   const [next, setNext] = useState<string | null>(null);
+  const [facetState, setFacetState] = useState<{
+    projectId: string;
+    value: RequirementFacets;
+  } | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [revision, setRevision] = useState(0);
   const [isPending, startTransition] = useTransition();
   const epoch = useRef(0);
+  const refreshRequested = useRef(false);
 
   useEffect(() => {
     if (route.malformedId) return;
     const requestEpoch = ++epoch.current;
     setState("loading");
+    const refresh = refreshRequested.current;
+    refreshRequested.current = false;
     void rpc.call("requirementsList", traceabilityRpcRequest(
       projectId,
       null,
       route.filters,
       route.requirementId,
-      revision > 0,
+      refresh,
     )).then((page) => {
       if (epoch.current !== requestEpoch) return;
       const parsed = page.items.map((item) => ({
@@ -248,6 +261,8 @@ export function RequirementsTraceabilityLayer({
       setItems(parsed);
       setTotal(page.total);
       setNext(page.next);
+      const nextFacets = parsed[0]?.fields.facets;
+      if (nextFacets) setFacetState({ projectId, value: nextFacets });
       setMessage(page.cache.message);
       setState("ready");
     }).catch((error: unknown) => {
@@ -270,7 +285,11 @@ export function RequirementsTraceabilityLayer({
     if (state === "error" || !trace) return <CenteredState action={<button className="h-9 rounded-md border border-input px-4 text-sm font-medium hover:bg-muted" onClick={() => setRevision((value) => value + 1)} type="button">Retry scoped read</button>} detail={message ?? `Requirement ${route.requirementId ?? ""} was not found in the local index.`} icon="AlertTriangle" title="Requirement trace unavailable" />;
     return <RequirementDetail model={trace} onBack={() => go(traceabilitySubPath(route.filters))} onNavigate={(subPath) => go(subPath)} />;
   }
-  const facets = items[0]?.fields.facets;
+  const refresh = () => {
+    refreshRequested.current = true;
+    setRevision((value) => value + 1);
+  };
+  const facets = facetState?.projectId === projectId ? facetState.value : undefined;
   return (
     <div aria-busy={isPending} className="h-full min-h-0">
       <RequirementTraceList
@@ -281,7 +300,8 @@ export function RequirementsTraceabilityLayer({
         next={next}
         onFilters={(filters) => go(traceabilitySubPath(filters), true)}
         onOpen={(id) => go(traceabilitySubPath(route.filters, id))}
-        onRetry={() => setRevision((value) => value + 1)}
+        onRefresh={refresh}
+        onRetry={refresh}
         state={state}
         total={total}
       />

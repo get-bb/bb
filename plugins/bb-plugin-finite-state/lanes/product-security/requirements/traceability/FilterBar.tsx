@@ -23,6 +23,13 @@ function facetCount(facets: readonly { value: string; count: number }[], value: 
   return facets.find((facet) => facet.value === value)?.count ?? 0;
 }
 
+function facetValues(
+  facets: readonly { value: string }[],
+  selected: readonly string[] | undefined,
+): string[] {
+  return [...new Set([...facets.map((item) => item.value), ...(selected ?? [])])];
+}
+
 function MultiFilter<T extends string>({
   label,
   values,
@@ -65,11 +72,13 @@ export function FilterBar({
   facets = EMPTY_FACETS,
   total,
   onChange,
+  onRefresh,
 }: {
   filters: RequirementFilters;
   facets?: RequirementFacets;
   total: number | null;
   onChange(filters: RequirementFilters): void;
+  onRefresh(): void;
 }): React.JSX.Element {
   const evidence = filters.evidenceState ?? [];
   return (
@@ -89,11 +98,20 @@ export function FilterBar({
         <span className="rounded-md border border-border bg-background px-2.5 py-1.5 text-xs tabular-nums text-muted-foreground">
           {total === null ? "—" : total.toLocaleString()} matches
         </span>
+        <button
+          aria-label="Refresh tracked requirements"
+          className="flex h-9 items-center gap-1.5 rounded-md border border-input bg-background px-2.5 text-xs font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          onClick={onRefresh}
+          type="button"
+        >
+          <Icon aria-hidden="true" className="size-3.5" name="RotateCcw" />
+          Refresh
+        </button>
       </div>
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <MultiFilter label="EARS" values={earsPatternSchema.options} selected={filters.pattern} counts={facets.pattern} onChange={(pattern) => onChange({ ...filters, pattern, cursor: undefined })} />
         <MultiFilter label="Type" values={requirementTypeSchema.options} selected={filters.reqType} counts={facets.reqType} onChange={(reqType) => onChange({ ...filters, reqType, cursor: undefined })} />
-        <MultiFilter label="Priority" values={facets.priority.map((item) => item.value)} selected={filters.priority} counts={facets.priority} onChange={(priority) => onChange({ ...filters, priority, cursor: undefined })} />
+        <MultiFilter label="Priority" values={facetValues(facets.priority, filters.priority)} selected={filters.priority} counts={facets.priority} onChange={(priority) => onChange({ ...filters, priority, cursor: undefined })} />
         <MultiFilter label="Evidence" values={requirementEvidenceStateSchema.options} selected={filters.evidenceState} counts={facets.evidenceState} onChange={(evidenceState) => onChange({ ...filters, evidenceState, cursor: undefined })} />
         <label className="sr-only" htmlFor="trace-tier-filter">Tier presence</label>
         <select

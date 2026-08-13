@@ -51,7 +51,7 @@ export interface RequirementFacets {
 
 export interface TraceabilityListFields {
   card: RequirementCardModel;
-  facets: RequirementFacets;
+  facets?: RequirementFacets;
   trace: RequirementTraceModel | null;
 }
 
@@ -486,7 +486,7 @@ export async function queryRequirementsTraceability(args: {
   ).get(...sql.params)?.count ?? 0;
   const page = rows.slice(0, limit);
   const pageFacets = facets(ctx.db(), sql);
-  const items = await Promise.all(page.map(async (row) => {
+  const items = await Promise.all(page.map(async (row, index) => {
     const card = loadCard(row.card_json);
     const trace = requirementId === row.requirement_id
       ? resolveRequirementTrace(
@@ -507,7 +507,7 @@ export async function queryRequirementsTraceability(args: {
       kind: "requirement-trace",
       key: row.requirement_id,
       label: row.requirement_id,
-      fields: fieldsJson({ card, facets: pageFacets, trace }),
+      fields: fieldsJson({ card, ...(index === 0 ? { facets: pageFacets } : {}), trace }),
     };
   }));
   return {

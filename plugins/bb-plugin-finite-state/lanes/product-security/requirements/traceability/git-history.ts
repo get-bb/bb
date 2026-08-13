@@ -9,6 +9,7 @@ import type { GitCommitProvenance } from "./resolvers.js";
 const MAX_REQUIREMENT_BYTES = 1_000_000;
 const MAX_GIT_OUTPUT_BYTES = 32_000;
 const GIT_TIMEOUT_MS = 5_000;
+const MAX_CACHE_ENTRIES = 256;
 const cache = new Map<string, Promise<GitCommitProvenance | { error: string } | null>>();
 
 export interface GitHistoryRunner {
@@ -70,14 +71,13 @@ async function resolveGitHistory(
 ): Promise<GitCommitProvenance | { error: string } | null> {
   const id = requirementIdSchema.safeParse(requirementId);
   if (!id.success) return { error: "Requirement id is malformed; git history was not invoked." };
-  const project = await bb.sdk.projects.get({ projectId });
-  const source = project.sources.find((candidate) => candidate.isDefault) ?? project.sources[0];
-  if (!source) return { error: "Project has no workspace source for git provenance." };
-  const artifactId = `product-security/requirements/${id.data}.yaml`;
-  const absolute = confinedPath(source.path, artifactId);
-  if (!absolute) return { error: "Known requirement path failed confinement." };
-
   try {
+    const project = await bb.sdk.projects.get({ projectId });
+    const source = project.sources.find((candidate) => candidate.isDefault) ?? project.sources[0];
+    if (!source) return { error: "Project has no workspace source for git provenance." };
+    const artifactId = `product-security/requirements/${id.data}.yaml`;
+    const absolute = confinedPath(source.path, artifactId);
+    if (!absolute) return { error: "Known requirement path failed confinement." };
     const info = await stat(absolute);
     if (!info.isFile() || info.size > MAX_REQUIREMENT_BYTES) {
       return { error: "Known requirement file is unavailable or exceeds the safety bound." };
@@ -128,9 +128,21 @@ export function getRequirementGitHistory(
   }
   const key = `${projectId}:${requirementId}:${expectedDigest}`;
   const current = cache.get(key);
-  if (current) return current;
-  const pending = resolveGitHistory(bb, projectId, requirementId, expectedDigest, runner);
+  if (current) {
+    cache.delete(key);
+    cache.set(key, current);
+    return current;
+  }
+  const pending = resolveGitHistory(bb, projectId, requirementId, expectedDigest, runner)
+    .then((result) => {
+      if (result && "error" in result) cache.delete(key);
+      return result;
+    });
   cache.set(key, pending);
+  if (cache.size > MAX_CACHE_ENTRIES) {
+    const oldest = cache.keys().next().value;
+    if (oldest !== undefined) cache.delete(oldest);
+  }
   pending.catch(() => cache.delete(key));
   return pending;
 }

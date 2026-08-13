@@ -2,6 +2,7 @@ import type Database from "better-sqlite3";
 import { toStorageProjectVersionId } from "../../../../lib/store/index.js";
 import { reqIdKey } from "../../../../lib/sync/registry.js";
 import type { RequirementCardModel, RequirementYamlV1 } from "../cards/schema.js";
+import { traceabilitySubPath } from "./filters.js";
 
 export interface TraceNodeModel {
   kind:
@@ -148,19 +149,26 @@ function resolveThreats(
   requirement: RequirementYamlV1,
 ): TraceNodeModel[] {
   if (requirement.mitigations.length === 0) return [];
-  const rows = db.prepare<[string, string], SnapshotRow>(
-    `SELECT snapshot.entity_key, snapshot.payload
+  const mitigations = requirement.mitigations.slice(0, 100);
+  const rows = db.prepare<unknown[], SnapshotRow>(
+    `SELECT DISTINCT snapshot.entity_key, snapshot.payload
        FROM base_snapshot snapshot
        JOIN sync_state state
          ON state.project_id = snapshot.project_id
         AND state.project_version_id = snapshot.project_version_id
         AND state.entity_kind = snapshot.entity_kind
         AND state.accepted_generation_id = snapshot.generation_id
+       JOIN json_each(snapshot.payload, '$.fields.mitigations') mitigation
       WHERE snapshot.project_id = ? AND snapshot.project_version_id = ?
         AND snapshot.entity_kind = 'threat'
+        AND mitigation.value IN (${placeholders(mitigations.length)})
       ORDER BY snapshot.entity_key
-      LIMIT 200`,
-  ).all(scope.projectId, toStorageProjectVersionId(scope.projectVersionId));
+      LIMIT 20`,
+  ).all(
+    scope.projectId,
+    toStorageProjectVersionId(scope.projectVersionId),
+    ...mitigations,
+  );
   const wanted = new Set(requirement.mitigations);
   return rows.flatMap((row) => {
     const fields = snapshotFields(row.payload);
@@ -180,7 +188,7 @@ function resolveThreats(
         ? { navigation: { subPath: `tara/nodes/${component}`, label: `Focus ${component} in canvas` } }
         : { error: "Threat has no affected component available for a focused canvas link." }),
     }];
-  }).slice(0, 20);
+  });
 }
 
 function resolveClauses(
@@ -221,7 +229,10 @@ function resolveClauses(
         at: row.pulled_at,
       },
       navigation: {
-        subPath: `requirements/trace/${requirement.id}/${encodeURIComponent(`clause=${row.clause_id}`)}`,
+        subPath: traceabilitySubPath(
+          { standardClause: row.clause_id },
+          requirement.id,
+        ),
         label: `Inspect cached clause ${row.clause_code}`,
       },
     }];

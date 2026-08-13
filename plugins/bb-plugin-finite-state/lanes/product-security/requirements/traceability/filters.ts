@@ -163,9 +163,11 @@ export function traceabilitySubPath(
   filters: RequirementFilters,
   requirementId?: string | null,
 ): string {
-  const query = serializeRequirementFilters({ ...filters, cursor: undefined });
+  const query = serializeRequirementFilters(filters);
   const requirement = requirementId ? `/${requirementId}` : "";
-  return `requirements/trace${requirement}${query ? `/${encodeURIComponent(query)}` : ""}`;
+  // The host route builder encodes each subPath segment. Hand it the raw
+  // query segment so its single encoding is reversed by the parser below.
+  return `requirements/trace${requirement}${query ? `/${query}` : ""}`;
 }
 
 export function parseTraceabilityDetail(
