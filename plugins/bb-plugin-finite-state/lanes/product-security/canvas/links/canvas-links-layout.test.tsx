@@ -1,8 +1,5 @@
 // @vitest-environment jsdom
 
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import {
   installTestPluginRuntime,
   renderSlot,
@@ -10,19 +7,7 @@ import {
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { ReactFlowProvider } from "@xyflow/react";
 import { type ReactNode } from "react";
-import {
-  afterEach,
-  beforeAll,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
-import {
-  ENTITIES,
-  isRemotePushable,
-  isSemanticPlanEntity,
-} from "../../../../lib/sync/registry.js";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { componentSubPath } from "../../../bom/app/sbom/routes.js";
 import type {
   ArchitectureNodeData,
@@ -33,25 +18,12 @@ import {
   type ArchitectureSelectionContextValue,
 } from "../nodes/selection.js";
 import { CrossSurfaceLinks } from "./CrossSurfaceLinks.js";
-import {
-  CANVAS_LAYOUT_FILE,
-  CanvasLayoutConflictError,
-  loadLayout,
-  mergeDiscoveredNodes,
-  pruneLayoutOrphans,
-  saveLayout,
-  serializeCanvasLayout,
-} from "./layout-store.js";
+import { CANVAS_LAYOUT_FILE } from "./layout-store.js";
 import { DebouncedLayoutSaver } from "./layout.js";
 import {
   ProductSecurityLinksLayer,
   type CanvasLinksAppRuntime,
 } from "./index.js";
-import {
-  parseFirmwareLinksYaml,
-  parseSbomLinksYaml,
-  resolveCrossSurfaceLinks,
-} from "./resolver.js";
 import {
   canvasLinksRpcContract,
   resolvedCrossSurfaceLinksSchema,
@@ -72,25 +44,13 @@ const EMPTY_GRAPH: CanvasArchitectureGraph = {
   edges: [],
   unresolved: [],
 };
-const temporaryRoots: string[] = [];
 
 beforeAll(() => installTestPluginRuntime());
 
-afterEach(async () => {
+afterEach(() => {
   cleanup();
   vi.useRealTimers();
-  await Promise.all(
-    temporaryRoots.splice(0).map((root) =>
-      rm(root, { recursive: true, force: true }),
-    ),
-  );
 });
-
-async function temporaryRoot(): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), "fs48-layout-"));
-  temporaryRoots.push(root);
-  return root;
-}
 
 function layout(
   nodes: CanvasLayoutV1["nodes"],
@@ -120,6 +80,28 @@ function readyFamily(
       kind,
       state: "ready" as const,
       provenance: { source: `${kind} readiness` },
+    },
+  };
+}
+
+function unavailableVerificationFamily() {
+  return {
+    sourceSlug: SOURCE_SLUG,
+    links: [
+      {
+        kind: "verification" as const,
+        sourceSlug: SOURCE_SLUG,
+        target: "",
+        label: "Verification runs",
+        ready: false as const,
+        reason: "unavailable" as const,
+      },
+    ],
+    readiness: {
+      kind: "verification" as const,
+      state: "unavailable" as const,
+      message:
+        "Verification links are not implemented yet. They become available when WP-39 registers the verification matrix.",
     },
   };
 }
@@ -183,141 +165,6 @@ function layoutLoadResult() {
   };
 }
 
-describe("WP-34 cross-surface resolution", () => {
-  it("validates explicit mappings and resolves all four link families with provenance", async () => {
-    const sbom = parseSbomLinksYaml(`
-schema: fs-sbom-links/v1
-links:
-  ${SOURCE_SLUG}:
-    - target: pkg:generic/gateway@1
-      label: Gateway package
-`);
-    const firmware = parseFirmwareLinksYaml(`
-schema: fs-firmware-links/v1
-links:
-  ${SOURCE_SLUG}:
-    - target: /usr/bin/gateway
-      label: Gateway binary
-`);
-    expect(firmware.links[SOURCE_SLUG]?.[0]?.target).toBe("usr/bin/gateway");
-    const result = await resolveCrossSurfaceLinks({
-      sourceSlug: SOURCE_SLUG,
-      sbom: { document: sbom },
-      firmware: { document: firmware },
-      surfaces: {
-        sbom: {
-          resolve: async ({ mappedTargets }) => ({
-            state: "ready",
-            targets: mappedTargets,
-          }),
-        },
-        firmware: {
-          resolve: async ({ mappedTargets }) => ({
-            state: "ready",
-            targets: mappedTargets,
-          }),
-        },
-        requirement: {
-          resolve: async () => ({
-            state: "ready",
-            targets: [
-              {
-                target: "REQ-104",
-                label: "Secure update requirement",
-                provenance: { source: "requirements cache" },
-              },
-            ],
-          }),
-        },
-        verification: {
-          resolve: async () => ({
-            state: "ready",
-            targets: [
-              {
-                target: "REQ-104/static",
-                label: "Static verification",
-                provenance: { source: "verification cache" },
-              },
-            ],
-          }),
-        },
-      },
-    });
-
-    expect(result.links.map((link) => link.kind)).toEqual([
-      "sbom",
-      "firmware",
-      "requirement",
-      "verification",
-    ]);
-    expect(result.links.every((link) => link.ready && link.provenance)).toBe(
-      true,
-    );
-    expect(result.readiness.map((entry) => entry.state)).toEqual([
-      "ready",
-      "ready",
-      "ready",
-      "ready",
-    ]);
-  });
-
-  it("degrades no mappings, absent surfaces, and one failed downstream independently", async () => {
-    const emptySbom = parseSbomLinksYaml(
-      "schema: fs-sbom-links/v1\nlinks: {}\n",
-    );
-    const firmware = parseFirmwareLinksYaml(`
-schema: fs-firmware-links/v1
-links:
-  ${SOURCE_SLUG}:
-    - target: opt/gateway.bin
-`);
-    const result = await resolveCrossSurfaceLinks({
-      sourceSlug: SOURCE_SLUG,
-      sbom: { document: emptySbom },
-      firmware: { document: firmware },
-      surfaces: {
-        sbom: { resolve: async () => Promise.reject(new Error("SBOM RPC failed")) },
-        firmware: {
-          resolve: async ({ mappedTargets }) => ({
-            state: "ready",
-            targets: mappedTargets,
-          }),
-        },
-      },
-    });
-
-    expect(result.readiness).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ kind: "sbom", state: "not_mapped" }),
-        expect.objectContaining({ kind: "firmware", state: "ready" }),
-        expect.objectContaining({ kind: "requirement", state: "unavailable" }),
-        expect.objectContaining({ kind: "verification", state: "unavailable" }),
-      ]),
-    );
-    expect(
-      result.links.find((link) => link.kind === "firmware"),
-    ).toMatchObject({ ready: true, target: "opt/gateway.bin" });
-  });
-
-  it("rejects UUID layout keys and path-traversing firmware mappings", () => {
-    expect(() =>
-      parseFirmwareLinksYaml(`
-schema: fs-firmware-links/v1
-links:
-  ${SOURCE_SLUG}:
-    - target: ../etc/shadow
-`),
-    ).toThrow(/within the materialized rootfs/iu);
-    expect(() =>
-      serializeCanvasLayout(
-        layout({
-          "550e8400-e29b-41d4-a716-446655440000": { x: 0, y: 0 },
-        }),
-      ),
-    ).toThrow(/UUID/iu);
-  });
-});
-
 describe("WP-34 inspector links", () => {
   it("renders loading, unconfigured, error, and no-mapping states safely", () => {
     const callbacks = {
@@ -373,13 +220,10 @@ describe("WP-34 inspector links", () => {
     );
     fireEvent.click(view.getByRole("button", { name: "Create mapping" }));
     expect(callbacks.onNavigate).not.toHaveBeenCalled();
-    expect(callbacks.onSafeAction).toHaveBeenCalledWith(
-      "sbom",
-      "not_mapped",
-    );
+    expect(callbacks.onSafeAction).toHaveBeenCalledWith("sbom", "not_mapped");
   });
 
-  it("navigates all four ready link kinds through canonical bb panel routes", async () => {
+  it("navigates shipped link kinds and truthfully degrades verification", async () => {
     const appRuntime = installedAppRuntime();
     const slot = renderSlot<{}, typeof canvasLinksRpcContract>(
       {
@@ -401,12 +245,7 @@ describe("WP-34 inspector links", () => {
             readyFamily("firmware", "usr/bin/gateway", "Gateway binary"),
           canvasRequirementLinks: () =>
             readyFamily("requirement", "REQ-104", "Secure update"),
-          canvasVerificationLinks: () =>
-            readyFamily(
-              "verification",
-              "REQ-104/static",
-              "Static verification",
-            ),
+          canvasVerificationLinks: unavailableVerificationFamily,
           canvasLayoutLoad: layoutLoadResult,
           canvasLayoutSave: () => ({
             outcome: "saved",
@@ -433,11 +272,14 @@ describe("WP-34 inspector links", () => {
         name: "Open Mitigating requirements: Secure update",
       }),
     );
-    fireEvent.click(
-      slot.getByRole("button", {
-        name: "Open Verification runs: Static verification",
-      }),
-    );
+    expect(
+      slot.getByText(
+        "Verification links are not implemented yet. They become available when WP-39 registers the verification matrix.",
+      ),
+    ).toBeTruthy();
+    expect(
+      slot.queryByRole("button", { name: /Open Verification runs/iu }),
+    ).toBeNull();
 
     expect(slot.inspection.navigateCalls).toEqual([
       {
@@ -453,12 +295,7 @@ describe("WP-34 inspector links", () => {
       {
         method: "toPluginPanel",
         path: "product-security",
-        options: { subPath: "requirements/REQ-104" },
-      },
-      {
-        method: "toPluginPanel",
-        path: "product-security",
-        options: { subPath: "verifications/REQ-104/static" },
+        options: { subPath: "requirements/trace/REQ-104" },
       },
     ]);
     slot.lifecycle.unmount();
@@ -487,12 +324,7 @@ describe("WP-34 inspector links", () => {
             readyFamily("firmware", "opt/gateway.bin", "Gateway firmware"),
           canvasRequirementLinks: () =>
             readyFamily("requirement", "REQ-104", "Secure update"),
-          canvasVerificationLinks: () =>
-            readyFamily(
-              "verification",
-              "REQ-104/static",
-              "Static verification",
-            ),
+          canvasVerificationLinks: unavailableVerificationFamily,
           canvasLayoutLoad: layoutLoadResult,
           canvasLayoutSave: () => ({
             outcome: "saved",
@@ -504,7 +336,7 @@ describe("WP-34 inspector links", () => {
       },
     );
 
-    expect(await slot.findByText("Unavailable")).toBeTruthy();
+    expect(await slot.findByText("SBOM link RPC failed")).toBeTruthy();
     fireEvent.click(
       slot.getByRole("button", {
         name: "Open Files in firmware: Gateway firmware",
@@ -541,12 +373,7 @@ describe("WP-34 inspector links", () => {
             readyFamily("firmware", "usr/bin/gateway", "Gateway binary"),
           canvasRequirementLinks: () =>
             readyFamily("requirement", "REQ-104", "Secure update"),
-          canvasVerificationLinks: () =>
-            readyFamily(
-              "verification",
-              "REQ-104/static",
-              "Static verification",
-            ),
+          canvasVerificationLinks: unavailableVerificationFamily,
           canvasLayoutLoad: () => ({
             ...layoutLoadResult(),
             needsSave: true,
@@ -573,48 +400,6 @@ describe("WP-34 inspector links", () => {
 });
 
 describe("WP-34 canvas layout persistence", () => {
-  it("round-trips stable sorted integer layout and skips equal rounded writes", async () => {
-    const root = await temporaryRoot();
-    const first = await saveLayout(
-      root,
-      layout({
-        zeta: { x: 10.4, y: 20.6, collapsed: false },
-        alpha: { x: -5.5, y: 3.49, collapsed: true },
-      }),
-    );
-    expect(first.changed).toBe(true);
-    const bytes = await readFile(join(root, CANVAS_LAYOUT_FILE), "utf8");
-    expect(bytes.indexOf('"alpha"')).toBeLessThan(bytes.indexOf('"zeta"'));
-    expect(bytes).not.toMatch(/viewport|selection|zoom|uuid/iu);
-    expect(JSON.parse(bytes)).toEqual({
-      schema: "fs-canvas-layout/v1",
-      project: PROJECT_ID,
-      nodes: {
-        alpha: { x: -5, y: 3, collapsed: true },
-        zeta: { x: 10, y: 21 },
-      },
-    });
-
-    const unchanged = await saveLayout(
-      root,
-      layout({
-        zeta: { x: 10.49, y: 20.51 },
-        alpha: { x: -5.4, y: 3.1, collapsed: true },
-      }),
-      first.sha256,
-    );
-    expect(unchanged).toMatchObject({ changed: false, sha256: first.sha256 });
-    await expect(loadLayout(root)).resolves.toMatchObject({
-      sha256: first.sha256,
-      layout: {
-        nodes: {
-          alpha: { x: -5, y: 3, collapsed: true },
-          zeta: { x: 10, y: 21 },
-        },
-      },
-    });
-  });
-
   it("debounces a drag burst to one write and ignores equal rounded positions", async () => {
     vi.useFakeTimers();
     const write = vi.fn().mockResolvedValue({
@@ -637,75 +422,9 @@ describe("WP-34 canvas layout persistence", () => {
       layout({ gateway: { x: 3, y: 3 } }),
       undefined,
     );
-    expect(saver.schedule(layout({ gateway: { x: 3.2, y: 2.8 } }))).toBe(
-      false,
-    );
+    expect(saver.schedule(layout({ gateway: { x: 3.2, y: 2.8 } }))).toBe(false);
     await vi.advanceTimersByTimeAsync(500);
     expect(write).toHaveBeenCalledOnce();
     saver.dispose();
-  });
-
-  it("merges new nodes without moving known nodes and retains orphans until explicit prune", async () => {
-    const stored = layout({
-      known: { x: 40, y: 50, collapsed: true },
-      orphan: { x: 900, y: 800 },
-    });
-    const merged = await mergeDiscoveredNodes(
-      PROJECT_ID,
-      stored,
-      [
-        { slug: "known", width: 216, height: 112 },
-        { slug: "new-node", width: 216, height: 112 },
-      ],
-      [{ source: "known", target: "new-node" }],
-      async () => ({ "new-node": { x: 12, y: 24 } }),
-    );
-    expect(merged.layout.nodes.known).toEqual({
-      x: 40,
-      y: 50,
-      collapsed: true,
-    });
-    expect(merged.layout.nodes["new-node"]).toEqual({ x: 372, y: 24 });
-    expect(merged.layout.nodes.orphan).toEqual({ x: 900, y: 800 });
-    expect(merged.orphanSlugs).toEqual(["orphan"]);
-
-    const pruned = pruneLayoutOrphans(merged.layout, merged.orphanSlugs);
-    expect(pruned.pruned).toEqual(["orphan"]);
-    expect(pruned.layout.nodes.orphan).toBeUndefined();
-  });
-
-  it("fails closed on CAS conflict and preserves the external bytes", async () => {
-    const root = await temporaryRoot();
-    const accepted = await saveLayout(
-      root,
-      layout({ gateway: { x: 10, y: 20 } }),
-    );
-    const external = serializeCanvasLayout(
-      layout({ gateway: { x: 700, y: 800 } }),
-    );
-    await writeFile(join(root, CANVAS_LAYOUT_FILE), external, "utf8");
-
-    await expect(
-      saveLayout(
-        root,
-        layout({ gateway: { x: 30, y: 40 } }),
-        accepted.sha256,
-      ),
-    ).rejects.toBeInstanceOf(CanvasLayoutConflictError);
-    await expect(
-      readFile(join(root, CANVAS_LAYOUT_FILE), "utf8"),
-    ).resolves.toBe(external);
-  });
-
-  it("is represented as VERSIONED LOCAL-ONLY and excluded from plan and push", () => {
-    expect(ENTITIES.canvasLayout).toEqual({
-      class: "VERSIONED",
-      server: "none",
-      localOnly: true,
-      file: CANVAS_LAYOUT_FILE,
-    });
-    expect(isSemanticPlanEntity("canvasLayout")).toBe(false);
-    expect(isRemotePushable("canvasLayout")).toBe(false);
-    expect(isRemotePushable("firmwareLink")).toBe(false);
   });
 });

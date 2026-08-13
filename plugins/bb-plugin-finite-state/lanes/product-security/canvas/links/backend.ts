@@ -2,6 +2,10 @@ import { join } from "node:path";
 import type { BbPluginApi } from "@bb/plugin-sdk";
 import type { z } from "zod";
 import type { PluginContext } from "../../../../lib/context.js";
+import type {
+  PlatformClient,
+  RemoteServices,
+} from "../../../../lib/remote/types.js";
 import {
   jsonValueSchema,
   rpcContract,
@@ -33,6 +37,7 @@ import {
 
 const SBOM_LINKS_FILE = ".fs/links/sbom.yaml";
 const FIRMWARE_LINKS_FILE = ".fs/links/firmware.yaml";
+const MAX_PROJECT_VERSIONS = 2_000;
 
 interface ProjectSource {
   hostId: string;
@@ -125,13 +130,98 @@ async function callOwnRpc<Schema extends z.ZodType>(
   return outputSchema.parse(result);
 }
 
+export async function resolveCurrentProjectVersion(
+  platform: Pick<PlatformClient, "listVersions">,
+  projectId: string,
+  requestedProjectVersionId: string | null,
+): Promise<string> {
+  if (requestedProjectVersionId !== null) return requestedProjectVersionId;
+
+  const versions: Record<string, JsonValue>[] = [];
+  for await (const page of platform.listVersions(projectId, {
+    pageSize: 200,
+  })) {
+    if (versions.length + page.items.length > MAX_PROJECT_VERSIONS) {
+      throw new Error(
+        `Platform project ${projectId} has more than ${MAX_PROJECT_VERSIONS} versions; select a project version explicitly.`,
+      );
+    }
+    versions.push(...page.items);
+  }
+  if (versions.length === 0) {
+    throw new Error(`Platform project ${projectId} has no project versions.`);
+  }
+
+  const priorIds = new Set(
+    versions.flatMap((version) => {
+      const priorId = version["priorVersionId"];
+      return typeof priorId === "string" && priorId.length > 0 ? [priorId] : [];
+    }),
+  );
+  const currentIds = versions.flatMap((version) => {
+    const id = version["id"];
+    return typeof id === "string" && id.length > 0 && !priorIds.has(id)
+      ? [id]
+      : [];
+  });
+  if (currentIds.length !== 1) {
+    throw new Error(
+      `Platform project ${projectId} has ${currentIds.length} current versions; select one explicitly.`,
+    );
+  }
+  const currentId = currentIds[0];
+  if (!currentId) {
+    throw new Error(`Platform project ${projectId} has no current version.`);
+  }
+  return currentId;
+}
+
+export interface CanvasLinksBackendDependencies {
+  resolveProjectVersion(
+    projectId: string,
+    requestedProjectVersionId: string | null,
+  ): Promise<string>;
+}
+
+function defaultBackendDependencies(
+  ctx: PluginContext,
+): CanvasLinksBackendDependencies {
+  return {
+    resolveProjectVersion(projectId, requestedProjectVersionId) {
+      const platform = ctx.service<RemoteServices>("remote-services", () => {
+        throw new Error("Platform services are unavailable.");
+      }).platform;
+      return resolveCurrentProjectVersion(
+        platform,
+        projectId,
+        requestedProjectVersionId,
+      );
+    },
+  };
+}
+
+async function resolvedVersionScope(
+  dependencies: CanvasLinksBackendDependencies,
+  input: { projectId: string; projectVersionId: string | null },
+): Promise<{ projectId: string; projectVersionId: string }> {
+  return {
+    projectId: input.projectId,
+    projectVersionId: await dependencies.resolveProjectVersion(
+      input.projectId,
+      input.projectVersionId,
+    ),
+  };
+}
+
 function sbomSurface(
   bb: BbPluginApi,
-  scope: { projectId: string; projectVersionId: string | null },
+  dependencies: CanvasLinksBackendDependencies,
+  input: { projectId: string; projectVersionId: string | null },
 ): LinkSurfaceResolver {
   return {
     async resolve({ mappedTargets }) {
-      const pages = await Promise.all(
+      const scope = await resolvedVersionScope(dependencies, input);
+      const settled = await Promise.allSettled(
         mappedTargets.map(async (mapping) => ({
           mapping,
           page: await callOwnRpc(
@@ -147,6 +237,13 @@ function sbomSurface(
           ),
         })),
       );
+      const pages = settled.flatMap((result) =>
+        result.status === "fulfilled" ? [result.value] : [],
+      );
+      const failures = settled.length - pages.length;
+      if (pages.length === 0 && failures > 0) {
+        throw new Error("Mapped SBOM targets could not be read safely.");
+      }
       if (pages.some(({ page }) => page.cache.state === "empty")) {
         return {
           state: "not_pulled",
@@ -169,9 +266,9 @@ function sbomSurface(
       return {
         state: "ready",
         targets,
-        ...(targets.length < mappedTargets.length
+        ...(targets.length < mappedTargets.length || failures > 0
           ? {
-              message: `${mappedTargets.length - targets.length} mapped SBOM target(s) are absent from the accepted cache.`,
+              message: `${mappedTargets.length - targets.length} mapped SBOM target(s) are absent or unavailable; other packages remain interactive.`,
             }
           : {}),
         provenance: { source: SBOM_LINKS_FILE },
@@ -182,10 +279,12 @@ function sbomSurface(
 
 function firmwareSurface(
   bb: BbPluginApi,
-  scope: { projectId: string; projectVersionId: string | null },
+  dependencies: CanvasLinksBackendDependencies,
+  input: { projectId: string; projectVersionId: string | null },
 ): LinkSurfaceResolver {
   return {
     async resolve({ mappedTargets }) {
+      const scope = await resolvedVersionScope(dependencies, input);
       const mount = await callOwnRpc(
         bb,
         "firmwareMountGet",
@@ -232,59 +331,17 @@ function firmwareSurface(
   };
 }
 
-function verificationSurface(
-  bb: BbPluginApi,
-  scope: { projectId: string; projectVersionId: string | null },
-): LinkSurfaceResolver {
+function verificationSurface(): LinkSurfaceResolver {
   return {
-    async resolve({ sourceSlug }) {
-      const page = await callOwnRpc(
-        bb,
-        "verificationsMatrix",
-        {
-          ...scope,
-          pageSize: 200,
-          continuation: null,
-          filters: { component: sourceSlug },
-        },
-        rpcContract.verificationsMatrix.output,
-      );
-      if (page.cache.state === "empty") {
-        return {
-          state: "not_pulled",
-          message: "Pull verification evidence before opening runs.",
-        };
-      }
-      const unresolved = page.items.filter(
-        (item) =>
-          typeof item.fields["requirementId"] !== "string" ||
-          typeof item.fields["tier"] !== "string",
-      ).length;
+    async resolve() {
+      // WP-39 owns the frozen verificationsMatrix producer. Until it ships,
+      // returning a designed unavailable family is truthful and keeps the
+      // other three link families independent. This resolver can call the
+      // registered matrix RPC when WP-39 lands.
       return {
-        state: "ready",
-        targets: page.items.flatMap((item) => {
-          const requirementId = item.fields["requirementId"];
-          const tier = item.fields["tier"];
-          return typeof requirementId === "string" && typeof tier === "string"
-            ? [
-                {
-                  target: `${requirementId}/${tier}`,
-                  label: item.label,
-                  provenance: page.cache.asOf
-                    ? { source: "verification cache", at: page.cache.asOf }
-                    : { source: "verification cache" },
-                },
-              ]
-            : [];
-        }),
-        ...(unresolved > 0
-          ? {
-              message: `${unresolved} verification row(s) lack canonical requirement/tier route coordinates.`,
-            }
-          : {}),
-        provenance: page.cache.asOf
-          ? { source: "verification cache", at: page.cache.asOf }
-          : { source: "verification cache" },
+        state: "unavailable",
+        message:
+          "Verification links are not implemented yet. They become available when WP-39 registers the verification matrix.",
       };
     },
   };
@@ -292,7 +349,7 @@ function verificationSurface(
 
 function requirementSurface(
   bb: BbPluginApi,
-  scope: { projectId: string; projectVersionId: string | null },
+  input: { projectId: string; projectVersionId: string | null },
 ): LinkSurfaceResolver {
   return {
     async resolve({ sourceSlug }) {
@@ -300,10 +357,11 @@ function requirementSurface(
         bb,
         "requirementsList",
         {
-          ...scope,
+          projectId: input.projectId,
+          projectVersionId: input.projectVersionId,
           pageSize: 200,
           continuation: null,
-          filters: { component: sourceSlug },
+          filters: { view: "traceability", threat: sourceSlug },
         },
         rpcContract.requirementsList.output,
       );
@@ -369,8 +427,10 @@ async function loadLayoutDocument(
 
 export function registerCanvasLinksBackend(
   bb: BbPluginApi,
-  _ctx: PluginContext,
+  ctx: PluginContext,
+  injectedDependencies?: CanvasLinksBackendDependencies,
 ): void {
+  const dependencies = injectedDependencies ?? defaultBackendDependencies(ctx);
   bb.rpc.register(canvasLinksRpcContract, {
     async canvasSbomLinks(input) {
       const source = await projectSource(bb, input.projectId);
@@ -383,7 +443,10 @@ export function registerCanvasLinksBackend(
       const family = await resolveCrossSurfaceLinkFamily(
         {
           ...emptyResolverInput(input.sourceSlug, {
-            sbom: sbomSurface(bb, input),
+            sbom: sbomSurface(bb, dependencies, {
+              projectId: input.projectId,
+              projectVersionId: input.projectVersionId,
+            }),
           }),
           sbom: mapping,
         },
@@ -402,7 +465,10 @@ export function registerCanvasLinksBackend(
       const family = await resolveCrossSurfaceLinkFamily(
         {
           ...emptyResolverInput(input.sourceSlug, {
-            firmware: firmwareSurface(bb, input),
+            firmware: firmwareSurface(bb, dependencies, {
+              projectId: input.projectId,
+              projectVersionId: input.projectVersionId,
+            }),
           }),
           firmware: mapping,
         },
@@ -413,7 +479,10 @@ export function registerCanvasLinksBackend(
     async canvasRequirementLinks(input) {
       const family = await resolveCrossSurfaceLinkFamily(
         emptyResolverInput(input.sourceSlug, {
-          requirement: requirementSurface(bb, input),
+          requirement: requirementSurface(bb, {
+            projectId: input.projectId,
+            projectVersionId: input.projectVersionId,
+          }),
         }),
         "requirement",
       );
@@ -422,7 +491,7 @@ export function registerCanvasLinksBackend(
     async canvasVerificationLinks(input) {
       const family = await resolveCrossSurfaceLinkFamily(
         emptyResolverInput(input.sourceSlug, {
-          verification: verificationSurface(bb, input),
+          verification: verificationSurface(),
         }),
         "verification",
       );

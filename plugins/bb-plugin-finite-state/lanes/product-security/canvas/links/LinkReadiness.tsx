@@ -33,6 +33,7 @@ const REASON_COPY = {
 
 export interface LinkReadinessProps {
   link: CrossSurfaceLink;
+  message?: string;
   onNavigate(link: CrossSurfaceLink): void;
   onSafeAction(
     kind: CrossSurfaceLinkKind,
@@ -41,6 +42,7 @@ export interface LinkReadinessProps {
 }
 export function LinkReadiness({
   link,
+  message,
   onNavigate,
   onSafeAction,
 }: LinkReadinessProps): React.JSX.Element {
@@ -111,7 +113,9 @@ export function LinkReadiness({
             <p className="font-medium">{presentation.title}</p>
             <Badge variant="outline">{copy.badge}</Badge>
           </div>
-          <p className="mt-1 text-xs text-muted-foreground">{copy.detail}</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {message ?? copy.detail}
+          </p>
           {provenance ? (
             <p className="mt-1 truncate font-mono text-xs text-muted-foreground">
               {provenance}

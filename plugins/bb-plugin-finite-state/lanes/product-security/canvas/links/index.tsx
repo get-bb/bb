@@ -154,6 +154,11 @@ function useCrossSurfaceLinks(
 }
 
 function bytesToBase64Url(value: string): string {
+  if (value.length > 512) {
+    throw new Error(
+      "SBOM component route keys may contain at most 512 characters.",
+    );
+  }
   let binary = "";
   for (const byte of new TextEncoder().encode(value)) {
     binary += String.fromCharCode(byte);
@@ -237,7 +242,7 @@ function ArchitectureLinksLayer({
         });
       } else if (link.kind === "requirement") {
         navigate.toPluginPanel("product-security", {
-          subPath: `requirements/${encodeURIComponent(link.target)}`,
+          subPath: `requirements/trace/${encodeURIComponent(link.target)}`,
         });
       } else {
         const segments = link.target
@@ -263,8 +268,7 @@ function ArchitectureLinksLayer({
           navigate.toPluginPanel("firmware");
         } else {
           navigate.toPluginPanel("product-security", {
-            subPath:
-              kind === "requirement" ? "requirements" : "verifications",
+            subPath: kind === "requirement" ? "requirements" : "verifications",
           });
         }
         return;

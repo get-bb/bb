@@ -24,7 +24,11 @@ export interface CrossSurfaceLinksProps {
 }
 function LoadingLinks(): React.JSX.Element {
   return (
-    <div aria-label="Loading connected surfaces" className="space-y-2" role="status">
+    <div
+      aria-label="Loading connected surfaces"
+      className="space-y-2"
+      role="status"
+    >
       {[0, 1, 2, 3].map((row) => (
         <div
           className="h-14 animate-pulse rounded-md border border-border bg-muted"
@@ -49,7 +53,11 @@ export function CrossSurfaceLinks({
       data-canvas-cross-surface-links=""
     >
       <div className="mb-2 flex items-center gap-2">
-        <Icon aria-hidden="true" className="size-4 text-primary" name="ExternalLink" />
+        <Icon
+          aria-hidden="true"
+          className="size-4 text-primary"
+          name="ExternalLink"
+        />
         <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           Connected surfaces
         </h3>
@@ -82,7 +90,12 @@ export function CrossSurfaceLinks({
               <p className="mt-1 text-xs text-muted-foreground">
                 {value.message}
               </p>
-              <Button className="mt-2" onClick={onRetry} size="sm" variant="outline">
+              <Button
+                className="mt-2"
+                onClick={onRetry}
+                size="sm"
+                variant="outline"
+              >
                 <Icon aria-hidden="true" className="size-4" name="RotateCcw" />
                 Retry links
               </Button>
@@ -93,14 +106,20 @@ export function CrossSurfaceLinks({
 
       {value.state === "ready" ? (
         <ul className="space-y-2">
-          {value.result.links.map((link, index) => (
-            <LinkReadiness
-              key={`${link.kind}:${link.target || link.reason || index}`}
-              link={link}
-              onNavigate={onNavigate}
-              onSafeAction={onSafeAction}
-            />
-          ))}
+          {value.result.links.map((link, index) => {
+            const readiness = value.result.readiness.find(
+              (candidate) => candidate.kind === link.kind,
+            );
+            return (
+              <LinkReadiness
+                key={`${link.kind}:${link.target || link.reason || index}`}
+                link={link}
+                message={readiness?.message}
+                onNavigate={onNavigate}
+                onSafeAction={onSafeAction}
+              />
+            );
+          })}
         </ul>
       ) : null}
     </section>
