@@ -55,7 +55,7 @@ describe("scaffoldPlugin bundled types", () => {
     );
     expect(pkg.engines).toEqual({
       bb: ">=0.9",
-      bbPluginSdk: `^${PLUGIN_SDK_VERSION}`,
+      bbPluginSdk: `>=${PLUGIN_SDK_VERSION}`,
     });
     expect(pkg.bb).toMatchObject({
       name: "Headless",

@@ -5,7 +5,7 @@
   "type": "module",
   "engines": {
     "bb": ">=0.0",
-    "bbPluginSdk": "^0.5.0"
+    "bbPluginSdk": ">=0.4.3"
   },
   "bb": {
     "name": "Agent enrichment",

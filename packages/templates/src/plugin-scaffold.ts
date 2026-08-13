@@ -476,7 +476,9 @@ ${componentsSection}
   \`logo.dark\`). Logo assets must be relative \`.svg\`, \`.png\`, or
   \`.webp\` files.
 - \`engines.bb\` — supported bb app version range.
-- \`engines.bbPluginSdk\` — supported plugin SDK range (scaffold: \`^${PLUGIN_SDK_VERSION}\`).
+- \`engines.bbPluginSdk\` — the lowest plugin SDK you need (scaffold:
+  \`>=${PLUGIN_SDK_VERSION}\`). BB reads this as a floor, not a ceiling: a later
+  SDK in the same major still loads your plugin.
 - \`dependencies\` — every package your source imports that BB does not provide.
   \`bb plugin build\` inlines them into \`dist/\`, and git installs resolve this
   list alone, so a build-required package here rather than in
@@ -560,7 +562,7 @@ export async function scaffoldPlugin(args: ScaffoldPluginArgs): Promise<void> {
         type: "module",
         engines: {
           bb: enginesRange(bbVersion),
-          bbPluginSdk: `^${PLUGIN_SDK_VERSION}`,
+          bbPluginSdk: `>=${PLUGIN_SDK_VERSION}`,
         },
         bb: {
           name: pluginNameOf(packageName),

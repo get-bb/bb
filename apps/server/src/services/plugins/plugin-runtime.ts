@@ -30,6 +30,10 @@ import {
 import { parsePluginSource } from "./install-sources.js";
 import { readPluginManifest, type PluginManifest } from "./manifest.js";
 import {
+  isPluginSdkRangeSatisfied,
+  pluginSdkRangeProblem,
+} from "./sdk-compat.js";
+import {
   createPluginApi,
   isNeedsConfigurationError,
   type BbPluginApi,
@@ -705,8 +709,8 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
 
   function checkPluginSdkRange(manifest: PluginManifest): string | undefined {
     if (!manifest.bbPluginSdkRange) return undefined;
-    if (!semver.satisfies(PLUGIN_SDK_VERSION, manifest.bbPluginSdkRange)) {
-      return `requires bb plugin SDK ${manifest.bbPluginSdkRange}, running SDK is ${PLUGIN_SDK_VERSION}`;
+    if (!isPluginSdkRangeSatisfied(manifest.bbPluginSdkRange)) {
+      return pluginSdkRangeProblem(manifest.bbPluginSdkRange);
     }
     return undefined;
   }

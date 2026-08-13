@@ -748,6 +748,13 @@ does not match the package manifest; installing a non-builtin source whose
 derived id collides with a builtin name (automations, connect,
 custom-instructions, inline-vis, secrets, workflows) is also refused.
 
+`engines.bbPluginSdk` is a floor, not a ceiling. bb reads the lowest version
+the range allows and runs the plugin on any SDK at or above it within the same
+major, so a caret range such as `^0.4.1` keeps working after the SDK moves to
+`0.4.3` or a later `0.x`. Only a plugin that asks for a newer SDK than this bb
+provides, or one pinned to a different major, is incompatible. Declare the
+oldest SDK you need (`>=0.4.3`); a breaking plugin API change bumps the major.
+
 The same tracking intent drives updates: `bb plugin outdated` checks for
 compatible candidates (and reports blocked incompatible newer releases);
 `bb plugin update <id>` / `bb plugin update --all` applies them. Pinned source

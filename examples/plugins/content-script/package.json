@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "engines": {
-    "bbPluginSdk": "^0.5.0"
+    "bbPluginSdk": ">=0.4.3"
   },
   "bb": {
     "name": "Content Script Example",

@@ -6,6 +6,10 @@ import {
   isCommitSha,
   runInstallCommand,
 } from "./install-sources.js";
+import {
+  isPluginSdkRangeSatisfied,
+  pluginSdkRangeProblem,
+} from "./sdk-compat.js";
 
 export type NpmSpecKind = "default" | "exact" | "tag" | "range";
 export type GitRefKind = "branch" | "tag" | "commit";
@@ -234,12 +238,12 @@ export function evaluateCompatibility(args: {
         actual: PLUGIN_SDK_VERSION,
         message: `declares invalid engines.bbPluginSdk range ${JSON.stringify(args.sdkRange)}`,
       });
-    } else if (!semver.satisfies(PLUGIN_SDK_VERSION, args.sdkRange)) {
+    } else if (!isPluginSdkRangeSatisfied(args.sdkRange)) {
       sdkProblems.push({
         engine: "bbPluginSdk",
         required: args.sdkRange,
         actual: PLUGIN_SDK_VERSION,
-        message: `requires bb plugin SDK ${args.sdkRange}, running SDK is ${PLUGIN_SDK_VERSION}`,
+        message: pluginSdkRangeProblem(args.sdkRange),
       });
     }
   }
