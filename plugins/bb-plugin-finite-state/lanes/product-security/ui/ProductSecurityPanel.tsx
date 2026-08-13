@@ -91,6 +91,7 @@ interface LoadedArchitectureCanvasProps {
   projectId: string;
   focusId: string | null;
   onFocusRoute(kind: ArchitectureSelectionKind, slug: string): void;
+  onRepairSourceFile(sourceFile: string, slug: string): void;
 }
 
 function TaraPanel({
@@ -120,6 +121,15 @@ function TaraPanel({
     },
     [navigate],
   );
+  const onRepairSourceFile = useCallback(
+    (sourceFile: string, slug: string) => {
+      navigate.toCompose({
+        initialPrompt: `@${sourceFile} — inspect/repair the unresolved reference for ${slug}`,
+        focusPrompt: true,
+      });
+    },
+    [navigate],
+  );
   const LazyArchitectureCanvas = useMemo(
     () =>
       lazy(async () => {
@@ -138,6 +148,7 @@ function TaraPanel({
             projectId: canvasProjectId,
             focusId: canvasFocusId,
             onFocusRoute: focusRoute,
+            onRepairSourceFile: repairSourceFile,
           }: LoadedArchitectureCanvasProps): React.JSX.Element {
             return (
               <nodeModule.ProductSecurityCanvasWorkspace
@@ -147,6 +158,7 @@ function TaraPanel({
                 key={canvasFocusId ?? "architecture-canvas"}
                 model={model}
                 onFocusRoute={focusRoute}
+                onRepairSourceFile={repairSourceFile}
               >
                 <LoadedCanvasShell
                   features={{
@@ -222,6 +234,7 @@ function TaraPanel({
             graph={graph}
             model={model}
             onFocusRoute={onFocusRoute}
+            onRepairSourceFile={onRepairSourceFile}
             projectId={projectId}
           />
         </Suspense>

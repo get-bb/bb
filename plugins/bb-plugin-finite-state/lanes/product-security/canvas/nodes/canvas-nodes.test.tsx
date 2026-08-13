@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { ReactFlow, useNodesState, type Node } from "@xyflow/react";
 import {
   cleanup,
   fireEvent,
@@ -14,6 +15,7 @@ import {
 } from "@bb/plugin-sdk/testing/app";
 import type { PluginNavPanelProps } from "@bb/plugin-sdk/app";
 import type { JsonValue } from "../../../../shared/contract.js";
+import type { CanvasNodeModel } from "../foundation/types.js";
 import {
   buildArchitectureAdjacency,
   fromCanvasGraph,
@@ -25,6 +27,7 @@ import {
   loadProductSecurityNodeTypes,
   toFoundationCanvasModel,
 } from "./index.js";
+import { ComponentNode } from "./ComponentNode.js";
 
 const cache = {
   state: "fresh" as const,
@@ -33,6 +36,7 @@ const cache = {
   acceptedGenerationId: "generation-wp32",
   baseRevision: 32,
 };
+const clipboardWrite = vi.fn(async (_value: string) => undefined);
 
 const componentTypes = [
   "software",
@@ -45,6 +49,36 @@ const componentTypes = [
   "medical_device",
   "network",
 ] as const;
+
+interface TestCanvasNodeData extends Record<string, unknown> {
+  model: CanvasNodeModel;
+}
+
+function CulledCoordinatorViewport({
+  model,
+}: {
+  model: CanvasNodeModel;
+}): React.JSX.Element {
+  const [nodes, , onNodesChange] = useNodesState<Node<TestCanvasNodeData>>([
+    {
+      id: model.id,
+      type: "component",
+      data: { model },
+      position: { x: 288, y: 0 },
+    },
+  ]);
+  return (
+    <div style={{ height: 600, width: 800 }}>
+      <ReactFlow
+        edges={[]}
+        nodeTypes={{ component: ComponentNode }}
+        nodes={nodes}
+        onNodesChange={onNodesChange}
+        onlyRenderVisibleElements
+      />
+    </div>
+  );
+}
 
 function architectureFixture(): ArchitectureModel {
   return {
@@ -207,6 +241,10 @@ class CanvasResizeObserver implements ResizeObserver {
 
 beforeAll(() => {
   installTestPluginRuntime();
+  Object.defineProperty(navigator, "clipboard", {
+    configurable: true,
+    value: { writeText: clipboardWrite },
+  });
   vi.stubGlobal("ResizeObserver", CanvasResizeObserver);
   vi.stubGlobal(
     "DOMMatrixReadOnly",
@@ -251,6 +289,7 @@ beforeAll(() => {
 afterEach(() => {
   cleanup();
   window.localStorage.clear();
+  vi.clearAllMocks();
 });
 
 describe("WP-32 architecture adapters", () => {
@@ -331,6 +370,20 @@ describe("WP-32 architecture adapters", () => {
       ["flow-telemetry"],
     );
   });
+
+  it("rejects a repeated continuation instead of looping indefinitely", async () => {
+    const { createRpcArchitectureDataSource } =
+      await import("./useNodeData.js");
+    const call = vi.fn(async (input: unknown) => ({
+      ...taraPage(input),
+      next: "repeated-page",
+    }));
+    const source = createRpcArchitectureDataSource(call);
+    await expect(source.read("project-1")).rejects.toThrow(
+      /repeated continuation token/iu,
+    );
+    expect(call).toHaveBeenCalledTimes(8);
+  });
 });
 
 describe("WP-32 inspector and project scope", () => {
@@ -345,6 +398,7 @@ describe("WP-32 inspector and project scope", () => {
         graph={graph}
         model={model}
         onFocusRoute={() => undefined}
+        onRepairSourceFile={() => undefined}
       >
         <div>Canvas placeholder</div>
       </ProductSecurityCanvasWorkspace>,
@@ -370,6 +424,7 @@ describe("WP-32 inspector and project scope", () => {
         graph={graph}
         model={model}
         onFocusRoute={() => undefined}
+        onRepairSourceFile={() => undefined}
       >
         <div>Canvas placeholder</div>
       </ProductSecurityCanvasWorkspace>,
@@ -378,6 +433,71 @@ describe("WP-32 inspector and project scope", () => {
     expect(
       repair.getAllByText("architecture/dataflows/flow-missing-target.yaml")[0],
     ).toBeTruthy();
+  });
+
+  it("keeps coordination mounted when the former first node is not rendered", async () => {
+    const model: ArchitectureModel = {
+      revision: "project-1:culled-coordinator",
+      cache: { pulledAt: cache.asOf, stale: false },
+      nodes: [
+        {
+          slug: "zone-clinical",
+          kind: "zone",
+          name: "Clinical network",
+          sourceFile: "architecture/zones/zone-clinical.yaml",
+        },
+        {
+          slug: "component-bad-zone",
+          kind: "component",
+          name: "Unassigned controller",
+          componentType: "ecu",
+          zone: "zone-not-authored",
+          sourceFile: "architecture/components/component-bad-zone.yaml",
+        },
+      ],
+      dataflows: [],
+    };
+    const graph = toCanvasGraph(model);
+    expect(graph.nodes[0]?.id).toBe("zone-clinical");
+    const foundation = toFoundationCanvasModel(model, graph);
+    const visibleModel = foundation.nodes.find(
+      (node) => node.id === "component-bad-zone",
+    );
+    if (!visibleModel) throw new Error("Visible node fixture is missing");
+    const onFocusRoute = vi.fn();
+    const view = render(
+      <ProductSecurityCanvasWorkspace
+        adjacency={buildArchitectureAdjacency(model)}
+        focusId={null}
+        graph={graph}
+        model={model}
+        onFocusRoute={onFocusRoute}
+        onRepairSourceFile={() => undefined}
+      >
+        <CulledCoordinatorViewport model={visibleModel} />
+      </ProductSecurityCanvasWorkspace>,
+    );
+
+    expect(view.queryByLabelText("zone Clinical network")).toBeNull();
+    const visibleNode = await view.findByLabelText(
+      "component Unassigned controller",
+    );
+    const wrapper = visibleNode.closest(".react-flow__node");
+    if (!wrapper) throw new Error("Visible React Flow node did not render");
+    await waitFor(() => {
+      expect(wrapper.getAttribute("style")).toContain("translate(640px,0px)");
+    });
+    fireEvent.click(wrapper);
+    await waitFor(() => {
+      expect(onFocusRoute).toHaveBeenCalledWith(
+        "node",
+        "component-bad-zone",
+      );
+    });
+    expect(await view.findByText("Slug: component-bad-zone")).toBeTruthy();
+    expect(view.getByText("1 selected")).toBeTruthy();
+    expect(view.getByRole("button", { name: "Fit" }).hasAttribute("disabled"))
+      .toBe(false);
   });
 
   it("selects and persists project scope without injected route context", async () => {
@@ -461,6 +581,26 @@ describe("WP-32 inspector and project scope", () => {
         "finite-state:product-security:project-scope:v1",
       ),
     ).toBe("project-1");
+
+    fireEvent.click(slot.getByRole("button", { name: "Repair via chat" }));
+    expect(slot.inspection.navigateCalls).toContainEqual({
+      method: "toCompose",
+      options: {
+        initialPrompt:
+          "@architecture/components/component-software.yaml — inspect/repair the unresolved reference for component-software",
+        focusPrompt: true,
+      },
+    });
+    fireEvent.click(
+      slot.getByRole("button", {
+        name: "Copy source path architecture/components/component-software.yaml",
+      }),
+    );
+    await waitFor(() => {
+      expect(clipboardWrite).toHaveBeenCalledWith(
+        "architecture/components/component-software.yaml",
+      );
+    });
 
     const nodeWrapper = component.closest(".react-flow__node");
     if (!nodeWrapper) throw new Error("React Flow node wrapper did not render");

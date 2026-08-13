@@ -19,6 +19,7 @@ type TaraListPage = z.output<(typeof rpcContract)["taraList"]["output"]>;
 type TaraListCall = (input: TaraListInput) => Promise<TaraListPage>;
 
 const TARA_KINDS = ["component", "zone", "asset", "dataflow"] as const;
+const MAX_TARA_PAGES_PER_KIND = 1_000;
 type TaraKind = (typeof TARA_KINDS)[number];
 
 function isRecord(value: JsonValue): value is Record<string, JsonValue> {
@@ -221,8 +222,9 @@ async function readKind(
   kind: TaraKind,
 ): Promise<TaraListPage[]> {
   const pages: TaraListPage[] = [];
+  const seenContinuations = new Set<string>();
   let continuation: string | null = null;
-  do {
+  for (let pageIndex = 0; pageIndex < MAX_TARA_PAGES_PER_KIND; pageIndex += 1) {
     const request = {
       projectId,
       projectVersionId: null,
@@ -233,9 +235,18 @@ async function readKind(
     };
     const page = await call(request);
     pages.push(page);
+    if (page.next === null) return pages;
+    if (seenContinuations.has(page.next)) {
+      throw new Error(
+        `TARA ${kind} pagination repeated continuation token “${page.next}”.`,
+      );
+    }
+    seenContinuations.add(page.next);
     continuation = page.next;
-  } while (continuation !== null);
-  return pages;
+  }
+  throw new Error(
+    `TARA ${kind} pagination exceeded ${MAX_TARA_PAGES_PER_KIND} pages.`,
+  );
 }
 
 export interface ArchitectureDataSource {

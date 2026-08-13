@@ -1,5 +1,23 @@
-import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
-import type { EdgeTypes, NodeTypes } from "@xyflow/react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import {
+  ReactFlowProvider,
+  useEdges,
+  useNodes,
+  useOnSelectionChange,
+  useReactFlow,
+  type Edge,
+  type EdgeTypes,
+  type Node,
+  type NodeTypes,
+} from "@xyflow/react";
+import type { CanvasFlowNodeData } from "../foundation/CanvasViewport.js";
 import type { CanvasModel, CanvasNodeModel } from "../foundation/types.js";
 import { AssetNode } from "./AssetNode.js";
 import { ComponentNode } from "./ComponentNode.js";
@@ -10,6 +28,7 @@ import { Stencil } from "./Stencil.js";
 import { ZoneNode } from "./ZoneNode.js";
 import type {
   ArchitectureAdjacency,
+  ArchitectureEdgeData,
   ArchitectureModel,
   ArchitectureNodeData,
   CanvasArchitectureGraph,
@@ -19,10 +38,153 @@ import {
   type ArchitectureContextMenuState,
   type ArchitectureSelectionContextValue,
   type ArchitectureSelectionKind,
+  useArchitectureSelection,
 } from "./selection.js";
 
 interface RichCanvasNodeModel extends CanvasNodeModel {
   architecture: ArchitectureNodeData;
+}
+
+interface CoordinatedCanvasNodeData extends CanvasFlowNodeData {
+  architecture?: ArchitectureNodeData;
+}
+
+interface CoordinatedCanvasEdgeData extends Record<string, unknown> {
+  architecture?: ArchitectureEdgeData;
+}
+
+type CoordinatedCanvasNode = Node<CoordinatedCanvasNodeData>;
+type CoordinatedCanvasEdge = Edge<CoordinatedCanvasEdgeData>;
+
+function hasUnresolvedZoneReference(node: Node<ArchitectureNodeData>): boolean {
+  return Boolean(
+    node.data.unresolvedRefs?.some((reference) => reference.field === "zone"),
+  );
+}
+
+export function CanvasCoordinator(): null {
+  const selection = useArchitectureSelection();
+  const { fitView, setEdges, setNodes } = useReactFlow<
+    CoordinatedCanvasNode,
+    CoordinatedCanvasEdge
+  >();
+  const storedNodeIds = useNodes<CoordinatedCanvasNode>()
+    .map((node) => node.id)
+    .join("|");
+  const storedEdgeIds = useEdges<CoordinatedCanvasEdge>()
+    .map((edge) => edge.id)
+    .join("|");
+  const {
+    edgesBySlug,
+    focusId,
+    graph,
+    nodesBySlug,
+    onFocusRoute,
+    selectedIds,
+    setFitSelection,
+    setSelectedIds,
+  } = selection;
+
+  const synchronizeSelection = useCallback(
+    ({ nodes, edges }: { nodes: Node[]; edges: Edge[] }) => {
+      const ids = [
+        ...nodes.map((node) => node.id),
+        ...edges.map((edge) => edge.id),
+      ];
+      setSelectedIds(ids);
+      if (ids.length !== 1) return;
+      const selectedId = ids[0];
+      if (!selectedId) return;
+      onFocusRoute(
+        edgesBySlug.has(selectedId) ? "edge" : "node",
+        selectedId,
+      );
+    },
+    [edgesBySlug, onFocusRoute, setSelectedIds],
+  );
+  useOnSelectionChange({ onChange: synchronizeSelection });
+
+  useEffect(() => {
+    const desiredNodes = new Map(graph.nodes.map((node) => [node.id, node]));
+    const desiredEdges = new Map(graph.edges.map((edge) => [edge.id, edge]));
+    setNodes((current) =>
+      current.map((node) => {
+        const desired = desiredNodes.get(node.id);
+        if (!desired) return node;
+        return {
+          ...node,
+          type: desired.type,
+          parentId: desired.parentId,
+          extent: desired.extent,
+          expandParent: desired.expandParent,
+          position:
+            desired.parentId || hasUnresolvedZoneReference(desired)
+              ? desired.position
+              : node.position,
+          style: desired.style,
+          data: { ...node.data, architecture: desired.data },
+        };
+      }),
+    );
+    setEdges((current) =>
+      current.map((edge) => {
+        const desired = desiredEdges.get(edge.id);
+        return desired
+          ? {
+              ...edge,
+              type: "dataflow",
+              data: { ...edge.data, architecture: desired.data },
+              markerStart: desired.markerStart,
+              markerEnd: desired.markerEnd,
+            }
+          : edge;
+      }),
+    );
+  }, [
+    graph.edges,
+    graph.nodes,
+    setEdges,
+    setNodes,
+    storedEdgeIds,
+    storedNodeIds,
+  ]);
+
+  useEffect(() => {
+    if (!focusId) return;
+    setNodes((current) =>
+      current.map((node) => ({ ...node, selected: node.id === focusId })),
+    );
+    setEdges((current) =>
+      current.map((edge) => ({ ...edge, selected: edge.id === focusId })),
+    );
+    setSelectedIds([focusId]);
+    void fitView({ nodes: [{ id: focusId }], duration: 180, padding: 0.45 });
+  }, [fitView, focusId, setEdges, setNodes, setSelectedIds]);
+
+  useEffect(() => {
+    setFitSelection(() => {
+      if (selectedIds.length === 0) return;
+      const nodeIds = selectedIds.flatMap((selectedId) => {
+        if (nodesBySlug.has(selectedId)) return [selectedId];
+        const edge = edgesBySlug.get(selectedId);
+        return edge ? [edge.sourceSlug, edge.targetSlug] : [];
+      });
+      void fitView({
+        nodes: [...new Set(nodeIds)].map((selectedId) => ({ id: selectedId })),
+        duration: 180,
+        padding: 0.35,
+      });
+    });
+    return () => setFitSelection(null);
+  }, [
+    edgesBySlug,
+    fitView,
+    nodesBySlug,
+    selectedIds,
+    setFitSelection,
+  ]);
+
+  return null;
 }
 
 export function toFoundationCanvasModel(
@@ -107,6 +269,7 @@ interface ProductSecurityCanvasWorkspaceProps {
   adjacency: ReadonlyMap<string, ArchitectureAdjacency>;
   focusId: string | null;
   onFocusRoute(kind: ArchitectureSelectionKind, slug: string): void;
+  onRepairSourceFile(sourceFile: string, slug: string): void;
   children: ReactNode;
 }
 
@@ -116,6 +279,7 @@ export function ProductSecurityCanvasWorkspace({
   adjacency,
   focusId,
   onFocusRoute,
+  onRepairSourceFile,
   children,
 }: ProductSecurityCanvasWorkspaceProps): React.JSX.Element {
   const [selectedIds, setSelectedIdsState] = useState<readonly string[]>(
@@ -142,7 +306,6 @@ export function ProductSecurityCanvasWorkspace({
     () => new Map(model.dataflows.map((edge) => [edge.slug, edge])),
     [model],
   );
-  const coordinatorId = graph.nodes[0]?.id ?? null;
   const context = useMemo<ArchitectureSelectionContextValue>(
     () => ({
       graph,
@@ -152,7 +315,6 @@ export function ProductSecurityCanvasWorkspace({
       unresolved: graph.unresolved,
       selectedIds,
       focusId,
-      coordinatorId,
       menu,
       setSelectedIds,
       setFitSelection,
@@ -160,11 +322,11 @@ export function ProductSecurityCanvasWorkspace({
       openMenu,
       closeMenu,
       onFocusRoute,
+      onRepairSourceFile,
     }),
     [
       adjacency,
       closeMenu,
-      coordinatorId,
       edgesBySlug,
       fitSelection,
       focusId,
@@ -172,6 +334,7 @@ export function ProductSecurityCanvasWorkspace({
       menu,
       nodesBySlug,
       onFocusRoute,
+      onRepairSourceFile,
       openMenu,
       selectedIds,
       setFitSelection,
@@ -185,7 +348,12 @@ export function ProductSecurityCanvasWorkspace({
         onClick={closeMenu}
       >
         <Stencil />
-        <div className="relative min-w-0 flex-1">{children}</div>
+        <div className="relative min-w-0 flex-1">
+          <ReactFlowProvider>
+            {children}
+            <CanvasCoordinator />
+          </ReactFlowProvider>
+        </div>
         <Inspector />
         <ContextMenu />
       </div>

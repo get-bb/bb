@@ -24,7 +24,6 @@ export interface ArchitectureSelectionContextValue {
   unresolved: readonly UnresolvedRef[];
   selectedIds: readonly string[];
   focusId: string | null;
-  coordinatorId: string | null;
   menu: ArchitectureContextMenuState | null;
   setSelectedIds(ids: readonly string[]): void;
   setFitSelection(callback: (() => void) | null): void;
@@ -32,6 +31,7 @@ export interface ArchitectureSelectionContextValue {
   openMenu(menu: ArchitectureContextMenuState): void;
   closeMenu(): void;
   onFocusRoute(kind: ArchitectureSelectionKind, slug: string): void;
+  onRepairSourceFile(sourceFile: string, slug: string): void;
 }
 
 export const ArchitectureSelectionContext =

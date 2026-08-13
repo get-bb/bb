@@ -86,16 +86,48 @@ function PagedList({
   return <PagedListPage key={revision} label={label} values={values} />;
 }
 
-function SourceLink({ sourceFile }: { sourceFile: string }): React.JSX.Element {
+function SourceFileActions({
+  sourceFile,
+  slug,
+}: {
+  sourceFile: string;
+  slug: string;
+}): React.JSX.Element {
+  const selection = useArchitectureSelection();
+  const [copied, setCopied] = useState(false);
+  const copySourcePath = async (): Promise<void> => {
+    try {
+      await navigator.clipboard.writeText(sourceFile);
+      setCopied(true);
+    } catch {
+      setCopied(false);
+    }
+  };
   return (
-    <a
-      className="inline-flex max-w-full items-center gap-1 text-primary underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      data-source-file={sourceFile}
-      href={sourceFile}
-    >
-      <Icon aria-hidden="true" className="size-4 shrink-0" name="EditFile" />
-      <span className="truncate">{sourceFile}</span>
-    </a>
+    <div className="min-w-0" data-source-file={sourceFile}>
+      <p className="truncate font-mono text-xs text-muted-foreground">
+        {sourceFile}
+      </p>
+      <div className="mt-2 flex flex-wrap gap-2">
+        <Button
+          onClick={() => selection.onRepairSourceFile(sourceFile, slug)}
+          size="sm"
+          variant="outline"
+        >
+          <Icon aria-hidden="true" className="size-4" name="BubbleChatQuestion" />
+          Repair via chat
+        </Button>
+        <Button
+          aria-label={`Copy source path ${sourceFile}`}
+          onClick={() => void copySourcePath()}
+          size="sm"
+          variant="outline"
+        >
+          <Icon aria-hidden="true" className="size-4" name="Copy" />
+          {copied ? "Copied" : "Copy path"}
+        </Button>
+      </div>
+    </div>
   );
 }
 
@@ -116,7 +148,10 @@ function UnresolvedList({
             <Badge variant="destructive">Unresolved {ref.field}</Badge>
             <p className="mt-1 text-muted-foreground">{ref.message}</p>
             <div className="mt-2">
-              <SourceLink sourceFile={ref.sourceFile} />
+              <SourceFileActions
+                slug={ref.ownerSlug}
+                sourceFile={ref.sourceFile}
+              />
             </div>
           </div>
         ))}
@@ -204,7 +239,7 @@ function NodeInspector({
       </InspectorSection>
       <UnresolvedList refs={refs} />
       <InspectorSection title="Source file">
-        <SourceLink sourceFile={node.sourceFile} />
+        <SourceFileActions slug={node.slug} sourceFile={node.sourceFile} />
       </InspectorSection>
     </>
   );
@@ -259,7 +294,7 @@ function EdgeInspector({
       </InspectorSection>
       <UnresolvedList refs={refs} />
       <InspectorSection title="Source file">
-        <SourceLink sourceFile={edge.sourceFile} />
+        <SourceFileActions slug={edge.slug} sourceFile={edge.sourceFile} />
       </InspectorSection>
     </>
   );
