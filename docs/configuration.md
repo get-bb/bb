@@ -200,7 +200,7 @@ delayed shortcut badges without disabling any shortcuts.
 | Threads   | Archive focused thread             | Unassigned                        | Thread view              |
 | Threads   | Previous / next thread             | Surface defaults above            | Desktop / web            |
 | Threads   | Open visible thread 1–9            | Platform defaults above           | Web / desktop            |
-| Layout    | Previous / next chat pane          | `Mod+Shift+[/]`                   | While split              |
+| Layout    | Previous / next chat pane          | Unassigned                        | While split              |
 | Layout    | Focus chat pane 1–8                | Platform defaults above           | Split (web / desktop)    |
 | Layout    | Maximize / restore chat pane       | `Mod+Shift+E`                     | While split              |
 | Layout    | Close focused chat pane            | `Mod+Shift+X`                     | While split              |
