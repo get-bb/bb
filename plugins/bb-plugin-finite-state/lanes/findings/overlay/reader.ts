@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 import { lstat, readdir, readFile, realpath } from "node:fs/promises";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 
-import type { WorkingEntity } from "../../sync/engine/adapter.js";
 import { emitYaml, parseYaml, SerializeError } from "../../sync/serialize/yaml.js";
 import {
   MAX_OVERLAY_BYTES,
@@ -125,7 +124,7 @@ export async function readOverlayFiles(root: string): Promise<{
   const stableKeys = new Map<string, string>();
   for (const parsed of files) {
     const duplicate = Object.keys(parsed.overlay.decisions)
-      .map((cve) => stableKeyFor(parsed.overlay.project, parsed.overlay.component, cve))
+      .map((cve) => `${parsed.overlay.project}\0${stableKeyFor(parsed.overlay.project, parsed.overlay.component, cve)}`)
       .find((key) => stableKeys.has(key));
     if (duplicate !== undefined) {
       errors.push({
@@ -137,26 +136,9 @@ export async function readOverlayFiles(root: string): Promise<{
     }
     accepted.push(parsed);
     for (const cve of Object.keys(parsed.overlay.decisions)) {
-      stableKeys.set(stableKeyFor(parsed.overlay.project, parsed.overlay.component, cve), parsed.file);
+      const scopedKey = `${parsed.overlay.project}\0${stableKeyFor(parsed.overlay.project, parsed.overlay.component, cve)}`;
+      stableKeys.set(scopedKey, parsed.file);
     }
   }
   return { files: accepted, projects: discovered.projects, errors };
-}
-
-export async function readOverlayWorking(root: string): Promise<WorkingEntity[]> {
-  const parsed = await readOverlayFiles(root);
-  if (parsed.errors.length > 0) {
-    const first = parsed.errors[0];
-    throw new SerializeError(first?.file ?? ".fs/triage", first?.line ?? null, `${parsed.errors.length} triage overlay file(s) are invalid`);
-  }
-  return parsed.files.flatMap(({ file, overlay }) => Object.entries(overlay.decisions).map(([cve, decision]) => ({
-    key: stableKeyFor(overlay.project, overlay.component, cve),
-    file,
-    payload: {
-      status: decision.status,
-      justification: decision.justification,
-      response: decision.response,
-      reason: decision.reason,
-    },
-  }))).sort((left, right) => left.key.localeCompare(right.key));
 }

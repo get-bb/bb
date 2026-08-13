@@ -1,11 +1,12 @@
 import { createFakePluginHost } from "@bb/plugin-sdk/testing";
-import { mkdir, mkdtemp, readFile, realpath, rm, unlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createPluginContext } from "../../../lib/context.js";
 import { rebuildOverlayIndex } from "./indexer.js";
+import { readOverlayFiles } from "./reader.js";
 import { stableKeyFor, type DecisionInput } from "./schema.js";
 import { createOverlayWatcher, TRIAGE_OVERLAY_CHANGED_CHANNEL } from "./watcher.js";
 import { setDecision } from "./writer.js";
@@ -60,16 +61,51 @@ describe("triage overlay indexer", () => {
       provenance_by: "engineer",
       evidence: "ticket FS-41",
     });
-    db.prepare("UPDATE overlay_index SET vex_status = 'EXPLOITABLE', local_state = 'pushed'").run();
+    db.prepare(
+      `UPDATE overlay_index
+          SET vex_status = 'EXPLOITABLE', local_state = 'pushed',
+              drift_state = 'reapply', policy_warning_count = 2,
+              policy_violation_count = 3`,
+    ).run();
     await expect(rebuildOverlayIndex(db, root)).resolves.toEqual({ indexed: 1, errors: [] });
-    expect(db.prepare("SELECT vex_status, local_state FROM overlay_index").get())
-      .toEqual({ vex_status: "IN_TRIAGE", local_state: "dirty" });
+    expect(db.prepare(
+      `SELECT vex_status, local_state, drift_state, policy_warning_count,
+              policy_violation_count, indexed_at
+         FROM overlay_index`,
+    ).get()).toEqual({
+      vex_status: "IN_TRIAGE",
+      local_state: "dirty",
+      drift_state: "reapply",
+      policy_warning_count: 2,
+      policy_violation_count: 3,
+      indexed_at: expect.not.stringMatching(/^2026-08-13T09:00:00/u),
+    });
     db.prepare("DELETE FROM overlay_index").run();
     await expect(rebuildOverlayIndex(db, root)).resolves.toEqual({ indexed: 1, errors: [] });
     expect(db.prepare("SELECT COUNT(*) AS count FROM overlay_index").get()).toEqual({ count: 1 });
-    await unlink(join(root, written.file));
+    await rm(join(root, ".fs", "triage", "project-1"), { recursive: true, force: true });
     await expect(rebuildOverlayIndex(db, root)).resolves.toEqual({ indexed: 0, errors: [] });
     expect(db.prepare("SELECT COUNT(*) AS count FROM overlay_index").get()).toEqual({ count: 0 });
+
+    await setDecision(root, decision());
+    await rebuildOverlayIndex(db, root);
+    await rm(join(root, ".fs"), { recursive: true, force: true });
+    await expect(rebuildOverlayIndex(db, root)).resolves.toEqual({ indexed: 0, errors: [] });
+    expect(db.prepare("SELECT COUNT(*) AS count FROM overlay_index").get()).toEqual({ count: 0 });
+  });
+
+  it("allows the same frozen stable key in separate project scopes", async () => {
+    const { root, db } = await fixture();
+    const first = decision();
+    const second = { ...decision(), project: "project-2" };
+    await setDecision(root, first);
+    await setDecision(root, second);
+    const parsed = await readOverlayFiles(root);
+    expect(parsed.errors).toEqual([]);
+    expect(parsed.files.map((file) => file.overlay.project)).toEqual(["project-1", "project-2"]);
+    await expect(rebuildOverlayIndex(db, root)).resolves.toEqual({ indexed: 2, errors: [] });
+    expect(db.prepare("SELECT project_id FROM overlay_index ORDER BY project_id").all())
+      .toEqual([{ project_id: "project-1" }, { project_id: "project-2" }]);
   });
 
   it("isolates malformed siblings and reports duplicate YAML keys with a line", async () => {

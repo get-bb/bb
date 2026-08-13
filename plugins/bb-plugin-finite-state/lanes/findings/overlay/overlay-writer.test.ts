@@ -1,12 +1,16 @@
-import { mkdtemp, readFile, realpath, rm } from "node:fs/promises";
+import { lstat, mkdtemp, readFile, realpath, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { readVexWorking } from "../../sync/entities/vex-decision.js";
-import { readOverlayWorking } from "./reader.js";
 import { parseOverlay, stableKeyFor, type DecisionInput } from "./schema.js";
-import { OverlayCasConflictError, removeDecision, setDecision } from "./writer.js";
+import {
+  OVERLAY_LOCK_STALE_MS,
+  OverlayCasConflictError,
+  removeDecision,
+  setDecision,
+} from "./writer.js";
 
 const roots: string[] = [];
 
@@ -85,7 +89,6 @@ describe("triage overlay writer", () => {
         },
       },
     ].sort((left, right) => left.key.localeCompare(right.key));
-    expect(await readOverlayWorking(projectRoot)).toEqual(semanticPayload);
     expect(await readVexWorking(projectRoot)).toEqual(semanticPayload);
 
     const removed = await removeDecision(projectRoot, {
@@ -168,5 +171,37 @@ describe("triage overlay writer", () => {
     await expect(losingWrite).rejects.toMatchObject({ code: "OVERLAY_CAS_CONFLICT" });
     await expect(losingWrite).rejects.toBeInstanceOf(OverlayCasConflictError);
     expect(await readFile(join(projectRoot, winner.file), "utf8")).toBe(winnerBytes);
+  });
+
+  it("reports active locks without host paths and reclaims stale crash locks", async () => {
+    const projectRoot = await root();
+    const created = await setDecision(projectRoot, input());
+    const lock = join(projectRoot, `${created.file}.lock`);
+    await writeFile(lock, "orphaned writer", "utf8");
+    await expect(setDecision(projectRoot, input("CVE-2026-701"), created.afterSha256)).rejects.toMatchObject({
+      code: "OVERLAY_LOCK_HELD",
+      file: created.file,
+    });
+    const stale = new Date(Date.now() - OVERLAY_LOCK_STALE_MS - 1_000);
+    await utimes(lock, stale, stale);
+    await expect(setDecision(projectRoot, input("CVE-2026-701"), created.afterSha256)).resolves.toMatchObject({
+      file: created.file,
+    });
+    await expect(lstat(lock)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("keeps 200 sequential distinct-component writes bounded", async () => {
+    const projectRoot = await root();
+    const started = performance.now();
+    for (let index = 0; index < 200; index += 1) {
+      const cve = `CVE-2026-${10_000 + index}`;
+      const component = { purl: null, name: `component-${index}`, group: null, version: "1" };
+      await setDecision(projectRoot, {
+        ...input(cve),
+        component,
+        stableKey: stableKeyFor("project-1", component, cve),
+      });
+    }
+    expect(performance.now() - started).toBeLessThan(2_000);
   });
 });

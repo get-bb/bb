@@ -89,6 +89,48 @@ decisions:
     ]);
   });
 
+  it("scopes duplicate stable keys by overlay project", async () => {
+    const root = await worktree();
+    const overlay = (project: string) => `schema: fs-triage/v1
+project: ${project}
+component:
+  purl: pkg:generic/busybox@1.36.1
+  name: busybox
+  group: null
+  version: 1.36.1
+decisions:
+  CVE-2026-11000:
+    status: IN_TRIAGE
+    justification: null
+    response: null
+    reason: reviewing
+`;
+    for (const project of ["project-a", "project-b"]) {
+      const directory = join(root, ".fs", "triage", project);
+      await mkdir(directory, { recursive: true });
+      await writeFile(join(directory, "busybox.yaml"), overlay(project), "utf8");
+    }
+
+    const working = await readVexWorking(root);
+    expect(working).toHaveLength(2);
+    expect(new Set(working.map((row) => row.key)).size).toBe(1);
+    expect(working.map((row) => row.file)).toEqual([
+      ".fs/triage/project-a/busybox.yaml",
+      ".fs/triage/project-b/busybox.yaml",
+    ]);
+
+    await writeFile(join(root, ".fs", "triage", "project-a", "duplicate.yaml"), overlay("project-a"), "utf8");
+    const failure = await readVexWorking(root).catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(VexWorkingReadError);
+    expect(failure).toMatchObject({
+      issues: [expect.objectContaining({ file: ".fs/triage/project-a/duplicate.yaml" })],
+      partialWorking: expect.arrayContaining([
+        expect.objectContaining({ file: ".fs/triage/project-a/busybox.yaml" }),
+        expect.objectContaining({ file: ".fs/triage/project-b/busybox.yaml" }),
+      ]),
+    });
+  });
+
   it("surfaces malformed YAML with valid entities from the other files preserved", async () => {
     const root = await worktree();
     await writeFile(join(root, ".fs", "triage", "broken.yaml"), "decisions:\n  CVE-1: [unterminated\n", "utf8");

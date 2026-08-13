@@ -269,6 +269,7 @@ export async function readVexWorking(worktreeRoot: string): Promise<WorkingEntit
       const document = serializer.fromYaml(await readFile(absoluteFile, "utf8"), file);
       const aggregate = aggregateDecisions(document, file);
       const decisions = aggregate.length > 0 ? aggregate : singleDecision(document, file);
+      const project = typeof document["project"] === "string" ? document["project"] : "";
       if (decisions.length === 0) {
         throw new SerializeError(file, 1, `${basename(file)} is not an fs-triage decision document`);
       }
@@ -276,15 +277,16 @@ export async function readVexWorking(worktreeRoot: string): Promise<WorkingEntit
       const fileKeys = new Set<string>();
       for (const decision of decisions) {
         const key = ENTITIES.vexDecision.key({ cve: decision.cve, ...decision.identity });
-        const prior = keys.get(key);
-        if (prior !== undefined || fileKeys.has(key)) {
+        const scopedKey = `${project}\0${key}`;
+        const prior = keys.get(scopedKey);
+        if (prior !== undefined || fileKeys.has(scopedKey)) {
           throw new SerializeError(file, 1, `decision key is already authored in ${prior ?? file}`);
         }
-        fileKeys.add(key);
+        fileKeys.add(scopedKey);
         fileRows.push({ key, payload: decision.payload, file });
       }
       for (const row of fileRows) {
-        keys.set(row.key, file);
+        keys.set(`${project}\0${row.key}`, file);
         result.push(row);
       }
     } catch (error: unknown) {

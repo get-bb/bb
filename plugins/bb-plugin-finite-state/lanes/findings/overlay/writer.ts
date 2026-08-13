@@ -13,7 +13,7 @@ import {
 import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
 
 import { SerializeError } from "../../sync/serialize/yaml.js";
-import { readOverlayFiles, parseOverlayText, serializeOverlay } from "./reader.js";
+import { parseOverlayText, serializeOverlay } from "./reader.js";
 import {
   decisionFromInput,
   parseOverlay,
@@ -45,6 +45,17 @@ export class OverlayCasConflictError extends Error {
   ) {
     super("Triage overlay changed concurrently. Reload the file and retry the field merge.");
     this.name = "OverlayCasConflictError";
+  }
+}
+
+export const OVERLAY_LOCK_STALE_MS = 30_000;
+
+export class OverlayLockHeldError extends Error {
+  readonly code = "OVERLAY_LOCK_HELD" as const;
+
+  constructor(readonly file: string) {
+    super("Another writer currently holds this triage overlay. Retry after that write finishes.");
+    this.name = "OverlayLockHeldError";
   }
 }
 
@@ -125,24 +136,20 @@ function candidateOverlay(input: DecisionInput): TriageOverlayV1 {
 }
 
 async function componentFile(root: string, project: string, component: TriageOverlayV1["component"]): Promise<string> {
-  const parsed = await readOverlayFiles(root);
-  const existing = parsed.files.find((entry) => entry.overlay.project === project && sameComponent(entry.overlay.component, component));
-  if (existing !== undefined) return existing.absoluteFile;
   const directory = resolve(root, ".fs", "triage", project);
   const base = safeComponent(component.name);
   const plain = resolve(directory, `${base}.yaml`);
-  try {
-    await lstat(plain);
-  } catch (error) {
-    if (missing(error)) return plain;
-    throw error;
-  }
-  const plainError = parsed.errors.find((error) => error.file === normalizeFile(root, plain));
-  if (plainError !== undefined) {
-    throw new SerializeError(plainError.file, plainError.line, plainError.message);
-  }
   const identity = JSON.stringify([component.purl, component.name, component.group, component.version]);
-  return resolve(directory, `${base}-${sha256(identity).slice(0, 10)}.yaml`);
+  const collision = resolve(directory, `${base}-${sha256(identity).slice(0, 10)}.yaml`);
+  const plainCurrent = await readCurrent(root, plain);
+  if (plainCurrent?.overlay.project === project && sameComponent(plainCurrent.overlay.component, component)) return plain;
+  const collisionCurrent = await readCurrent(root, collision);
+  if (collisionCurrent?.overlay.project === project && sameComponent(collisionCurrent.overlay.component, component)) {
+    return collision;
+  }
+  if (plainCurrent === null) return plain;
+  if (collisionCurrent === null) return collision;
+  throw new SerializeError(normalizeFile(root, collision), 1, "Overlay filename collision belongs to a different component identity");
 }
 
 function flatten(value: unknown, prefix = ""): Map<string, string> {
@@ -177,17 +184,43 @@ function decisionState(decision: TriageDecisionV1): OverlayState {
   return JSON.stringify(tuple) === JSON.stringify(decision.sync.base) ? "pushed" : "dirty";
 }
 
-async function withLock<T>(file: string, action: () => Promise<T>): Promise<T> {
+async function acquireLock(root: string, file: string, attempts = 0) {
   const lock = `${file}.lock`;
-  let handle;
   try {
-    handle = await open(lock, "wx", 0o600);
+    return await open(lock, "wx", 0o600);
   } catch (error) {
-    if (typeof error === "object" && error !== null && "code" in error && error.code === "EEXIST") {
-      throw new OverlayCasConflictError(file, undefined, undefined);
+    if (!(typeof error === "object" && error !== null && "code" in error && error.code === "EEXIST")) {
+      throw error;
     }
-    throw error;
+    let metadata;
+    try {
+      metadata = await lstat(lock);
+    } catch (statError) {
+      if (missing(statError) && attempts < 2) return acquireLock(root, file, attempts + 1);
+      throw statError;
+    }
+    if (Date.now() - metadata.mtimeMs > OVERLAY_LOCK_STALE_MS && attempts < 2) {
+      const stale = `${lock}.${process.pid}.${randomUUID()}.stale`;
+      try {
+        await rename(lock, stale);
+      } catch (renameError) {
+        if (missing(renameError)) return acquireLock(root, file, attempts + 1);
+        throw renameError;
+      }
+      try {
+        await unlink(stale);
+      } catch (unlinkError) {
+        if (!missing(unlinkError)) throw unlinkError;
+      }
+      return acquireLock(root, file, attempts + 1);
+    }
+    throw new OverlayLockHeldError(normalizeFile(root, file));
   }
+}
+
+async function withLock<T>(root: string, file: string, action: () => Promise<T>): Promise<T> {
+  const handle = await acquireLock(root, file);
+  const lock = `${file}.lock`;
   try {
     return await action();
   } finally {
@@ -219,7 +252,7 @@ export async function setDecision(root: string, input: DecisionInput, expectedSh
   const initial = candidateOverlay(input);
   const file = await componentFile(projectRoot, initial.project, initial.component);
   await ensureDirectory(projectRoot, dirname(file));
-  return withLock(file, async () => {
+  return withLock(projectRoot, file, async () => {
     const current = await readCurrent(projectRoot, file);
     if (expectedSha256 !== undefined && current?.digest !== expectedSha256) {
       throw new OverlayCasConflictError(normalizeFile(projectRoot, file), expectedSha256, current?.digest);
@@ -253,7 +286,7 @@ export async function removeDecision(root: string, input: RemoveDecisionInput, e
   if (stableKey !== input.stableKey) throw new Error("stableKey does not match the frozen finding identity codec");
   const file = await componentFile(projectRoot, input.project, input.component);
   await ensureDirectory(projectRoot, dirname(file));
-  return withLock(file, async () => {
+  return withLock(projectRoot, file, async () => {
     const current = await readCurrent(projectRoot, file);
     if (current === null) throw new SerializeError(normalizeFile(projectRoot, file), null, "Overlay decision does not exist");
     if (expectedSha256 !== undefined && current.digest !== expectedSha256) {

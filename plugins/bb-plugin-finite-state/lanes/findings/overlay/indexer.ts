@@ -29,6 +29,21 @@ interface ProjectVersionRow {
   project_version_id: string;
 }
 
+interface PreservedProjectionRow {
+  project_id: string;
+  project_version_id: string;
+  stable_key: string;
+  drift_state: "reattached_noop" | "reapply" | "stale" | "orphaned" | "conflict" | "needs_completion" | null;
+  policy_warning_count: number;
+  policy_violation_count: number;
+}
+
+interface PreservedProjection {
+  driftState: PreservedProjectionRow["drift_state"];
+  policyWarningCount: number;
+  policyViolationCount: number;
+}
+
 function projectVersions(db: Database.Database, project: string): string[] {
   const rows = db.prepare(
     `SELECT DISTINCT project_version_id
@@ -110,18 +125,46 @@ const INSERT = `INSERT INTO overlay_index
    file_path, file_sha256, vex_status, vex_response, vex_justification, vex_reason,
    pin, provenance_by, provenance_at, evidence, sync_base, pushed_at, local_state,
    drift_state, match_tier, policy_warning_count, policy_violation_count, indexed_at)
- VALUES (?, ?, 'vexDecision', ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, 0, 0, ?)`;
+ VALUES (?, ?, 'vexDecision', ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
-function indexFile(db: Database.Database, parsed: ParsedOverlayFile): number {
+function projectionKey(project: string, projectVersionId: string, stableKey: string): string {
+  return JSON.stringify([project, projectVersionId, stableKey]);
+}
+
+function preservedProjections(db: Database.Database): Map<string, PreservedProjection> {
+  const rows = db.prepare(
+    `SELECT project_id, project_version_id, stable_key, drift_state,
+            policy_warning_count, policy_violation_count
+       FROM overlay_index
+      WHERE entity_kind = 'vexDecision'`,
+  ).all() as PreservedProjectionRow[];
+  return new Map(rows.map((row) => [
+    projectionKey(row.project_id, row.project_version_id, row.stable_key),
+    {
+      driftState: row.drift_state,
+      policyWarningCount: row.policy_warning_count,
+      policyViolationCount: row.policy_violation_count,
+    },
+  ]));
+}
+
+function indexFile(
+  db: Database.Database,
+  parsed: ParsedOverlayFile,
+  preserved: ReadonlyMap<string, PreservedProjection>,
+  indexedAt: string,
+): number {
   const insert = db.prepare(INSERT);
   let indexed = 0;
   for (const projectVersionId of projectVersions(db, parsed.overlay.project)) {
     for (const [cve, decision] of Object.entries(parsed.overlay.decisions)) {
       const resolution = resolutionFor(db, parsed.overlay, cve, decision, projectVersionId);
+      const stableKey = stableKeyFor(parsed.overlay.project, parsed.overlay.component, cve);
+      const prior = preserved.get(projectionKey(parsed.overlay.project, projectVersionId, stableKey));
       insert.run(
         parsed.overlay.project,
         projectVersionId,
-        stableKeyFor(parsed.overlay.project, parsed.overlay.component, cve),
+        stableKey,
         cve,
         parsed.file,
         parsed.sha256,
@@ -136,8 +179,11 @@ function indexFile(db: Database.Database, parsed: ParsedOverlayFile): number {
         decision.sync.base === null ? null : canonicalJson(decision.sync.base),
         decision.sync.pushed_at,
         stateFor(decision, resolution),
+        prior?.driftState ?? null,
         matchTier(resolution),
-        decision.provenance.at,
+        prior?.policyWarningCount ?? 0,
+        prior?.policyViolationCount ?? 0,
+        indexedAt,
       );
       indexed += 1;
     }
@@ -147,12 +193,14 @@ function indexFile(db: Database.Database, parsed: ParsedOverlayFile): number {
 
 export async function rebuildOverlayIndex(db: Database.Database, root: string): Promise<OverlayIndexReport> {
   const parsed = await readOverlayFiles(root);
+  const indexedAt = new Date().toISOString();
   const indexed = db.transaction(() => {
-    const removeProject = db.prepare(
-      "DELETE FROM overlay_index WHERE entity_kind = 'vexDecision' AND project_id = ?",
+    const preserved = preservedProjections(db);
+    db.prepare("DELETE FROM overlay_index WHERE entity_kind = 'vexDecision'").run();
+    return parsed.files.reduce(
+      (count, file) => count + indexFile(db, file, preserved, indexedAt),
+      0,
     );
-    for (const project of parsed.projects) removeProject.run(project);
-    return parsed.files.reduce((count, file) => count + indexFile(db, file), 0);
   })();
   return { indexed, errors: parsed.errors };
 }
