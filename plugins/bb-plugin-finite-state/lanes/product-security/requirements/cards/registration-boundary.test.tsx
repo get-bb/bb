@@ -131,6 +131,46 @@ describe("requirements registration boundary", () => {
     await host.harness.lifecycle.dispose();
   });
 
+  it("resolves host-listed relative paths beneath the requirements directory", async () => {
+    const host = createFakePluginHost({
+      pluginId: "finite-state",
+      sdk: {
+        projects: {
+          get: () => ({
+            sources: [{ hostId: "host-1", path: "/workspace", isDefault: true }],
+          }),
+        },
+        files: {
+          list: () => ({
+            files: [{ name: "REQ-valid.yaml", path: "REQ-valid.yaml" }],
+            truncated: false,
+          }),
+          read: () => ({
+            content: serializeRequirement(localRequirement("REQ-valid")),
+            contentEncoding: "utf8" as const,
+            sha256: "a".repeat(64),
+          }),
+        },
+      },
+    });
+    registerRequirementsCardsBackend(host.bb, createPluginContext(host.bb));
+    const result = rpcContract.requirementsList.output.parse(
+      await host.harness.callRpc("requirementsList", {
+        projectId: "project-1",
+        projectVersionId: null,
+        pageSize: 50,
+        continuation: null,
+        filters: {},
+      }),
+    );
+    expect(result.items.map((item) => item.key)).toEqual(["REQ-valid"]);
+    expect(host.harness.sdk.callsTo("files.read")[0]?.[0]).toEqual(expect.objectContaining({
+      path: "/workspace/product-security/requirements/REQ-valid.yaml",
+      rootPath: "/workspace",
+    }));
+    await host.harness.lifecycle.dispose();
+  });
+
   it("isolates malformed and nested YAML with file-and-line diagnostics", async () => {
     const host = createFakePluginHost({
       pluginId: "finite-state",

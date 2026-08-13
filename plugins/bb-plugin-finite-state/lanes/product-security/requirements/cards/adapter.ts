@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import type { BbPluginApi } from "@bb/plugin-sdk";
 import { stringify } from "yaml";
 import { normalizeEarsWhitespace, renderEars } from "./render-ears.js";
@@ -321,7 +321,8 @@ export function createSdkRequirementRepository(bb: BbPluginApi): RequirementRepo
             } };
           }
           try {
-            return { document: await readPath(source, file.path, artifactId) };
+            const absolutePath = isAbsolute(file.path) ? file.path : join(directory, file.path);
+            return { document: await readPath(source, absolutePath, artifactId) };
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             const match = message.match(/^(.*):(\d+)\s+([A-Z][A-Z0-9_]*):\s*(.*)$/u);
