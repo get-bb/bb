@@ -40,19 +40,42 @@ describe("KiCad net parsing", () => {
     expect(parsed.nets.some((net) => /unnamed|unknown/iu.test(net.netName))).toBe(false);
   }, 30_000);
 
-  it("matches KiCad-authored pin connectivity and emits plain gap points", async () => {
+  it("matches originally-authored labeled, hierarchical, and unresolved connectivity", async () => {
     const parsed = await parseProject(customFieldsRoot, "custom_fields.kicad_pro");
-    expect(parsed.nets).toEqual([]);
-    expect(parsed.connectivityGaps).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        detail: "Connected pins R1.1, J1.1 have no source-defined net name",
-        at: { x: 125.73, y: 90.17 },
-      }),
-      expect.objectContaining({
-        detail: "Connected pins R1.2, J1.2 have no source-defined net name",
-        at: { x: 142.24, y: 95.25 },
-      }),
-    ]));
+    expect(parsed.nets).toEqual([
+      { netName: "AUX_INPUT", nodes: [{ reference: "U1", pin: "3" }] },
+      { netName: "AUX_OUTPUT", nodes: [{ reference: "U1", pin: "4" }] },
+      { netName: "COMMAND", nodes: [{ reference: "U1", pin: "1" }] },
+      {
+        netName: "CONTROL",
+        nodes: [{ reference: "R3", pin: "1" }, { reference: "U1", pin: "2" }],
+      },
+      {
+        netName: "INPUT_SIGNAL",
+        nodes: [{ reference: "J1", pin: "1" }, { reference: "R1", pin: "1" }],
+      },
+      { netName: "SENSOR_RETURN", nodes: [{ reference: "R3", pin: "2" }] },
+    ]);
+    expect(parsed.connectivityGaps).toEqual([
+      {
+        sheetPath: "custom_fields.kicad_sch",
+        kind: "unresolved_label",
+        detail: "Connected pins R2.2, J1.2 have no source-defined net name",
+        at: { x: 35, y: 45 },
+      },
+      {
+        sheetPath: "custom_fields.kicad_sch",
+        kind: "unresolved_label",
+        detail: "Connected pins R1.2 have no source-defined net name",
+        at: { x: 65, y: 40 },
+      },
+      {
+        sheetPath: "custom_fields.kicad_sch",
+        kind: "unresolved_label",
+        detail: "Connected pins R2.1 have no source-defined net name",
+        at: { x: 90, y: 55 },
+      },
+    ]);
     for (const gap of parsed.connectivityGaps) {
       if (gap.at) expect(Object.keys(gap.at).sort()).toEqual(["x", "y"]);
     }
