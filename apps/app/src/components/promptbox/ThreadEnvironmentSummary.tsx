@@ -84,15 +84,24 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
   return (
     <div className="flex min-w-0 max-w-full items-center gap-2 pr-1.5">
       {visibleProjectName ? (
-        <OptionDisplay
-          label="Project"
-          value={visibleProjectName}
-          compactValue={visibleProjectName}
-          leading={<Icon name="Folder" className="size-4 shrink-0" />}
-          className="h-6 max-w-[10rem] shrink-0"
-          title={environmentPath ?? `Project: ${projectName}`}
-          muted
-        />
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="inline-flex min-w-0 shrink-0">
+              <OptionDisplay
+                label="Project"
+                value={visibleProjectName}
+                compactValue={visibleProjectName}
+                leading={<Icon name="Folder" className="size-4 shrink-0" />}
+                className="h-6 max-w-[10rem]"
+                title=""
+                muted
+              />
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>
+            {environmentPath ?? `Project: ${projectName}`}
+          </TooltipContent>
+        </Tooltip>
       ) : null}
       <OptionDisplay
         label="Environment"

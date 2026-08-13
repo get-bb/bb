@@ -22,34 +22,40 @@ describe("ThreadEnvironmentSummary", () => {
     ).toBe("Worktree");
   });
 
-  it("updates the active workspace directory and full-path tooltip", () => {
+  it("updates the active workspace directory and full-path tooltip", async () => {
     const { container, rerender } = render(
-      <ThreadEnvironmentSummary
-        projectName="project-a"
-        projectRootPath="/path/to/project-a"
-        environmentPath="/path/to/project-b/."
-        environmentLabel="Working locally"
-      />,
+      <TooltipProvider delayDuration={0}>
+        <ThreadEnvironmentSummary
+          projectName="project-a"
+          projectRootPath="/path/to/project-a"
+          environmentPath="/path/to/project-b/."
+          environmentLabel="Working locally"
+        />
+      </TooltipProvider>,
     );
 
-    const projectLabel = container.querySelector(
-      '[data-option-display][title="/path/to/project-b/."]',
-    );
+    const projectLabel = container.querySelector("[data-option-display]");
     expect(
       projectLabel?.querySelector("[data-promptbox-full-label]")?.textContent,
     ).toBe("project-a / project-b");
+    fireEvent.pointerMove(projectLabel?.parentElement ?? projectLabel!);
+    expect((await screen.findByRole("tooltip")).textContent).toBe(
+      "/path/to/project-b/.",
+    );
 
     rerender(
-      <ThreadEnvironmentSummary
-        projectName="project-a"
-        projectRootPath="/path/to/project-a"
-        environmentPath="/other/project-c"
-        environmentLabel="Working locally"
-      />,
+      <TooltipProvider delayDuration={0}>
+        <ThreadEnvironmentSummary
+          projectName="project-a"
+          projectRootPath="/path/to/project-a"
+          environmentPath="/other/project-c"
+          environmentLabel="Working locally"
+        />
+      </TooltipProvider>,
     );
 
     const updatedProjectLabel = container.querySelector(
-      '[data-option-display][title="/other/project-c"]',
+      "[data-option-display]",
     );
     expect(
       updatedProjectLabel?.querySelector("[data-promptbox-full-label]")
@@ -59,12 +65,14 @@ describe("ThreadEnvironmentSummary", () => {
 
   it("keeps only the project name at the project root", () => {
     const { container } = render(
-      <ThreadEnvironmentSummary
-        projectName="project-a"
-        projectRootPath="/path/to/project-a/"
-        environmentPath="/path/to/project-a/child/.."
-        environmentLabel="Working locally"
-      />,
+      <TooltipProvider>
+        <ThreadEnvironmentSummary
+          projectName="project-a"
+          projectRootPath="/path/to/project-a/"
+          environmentPath="/path/to/project-a/child/.."
+          environmentLabel="Working locally"
+        />
+      </TooltipProvider>,
     );
 
     expect(

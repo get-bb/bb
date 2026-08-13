@@ -2563,7 +2563,6 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
           : undefined
       }
       environmentIcon={threadEnvironmentIcon ?? undefined}
-      environmentHostId={environment?.hostId}
       environmentLabel={
         threadEnvironmentDisplay
           ? `${environmentMachinePrefix}${threadEnvironmentDisplay.modeLabel}`
