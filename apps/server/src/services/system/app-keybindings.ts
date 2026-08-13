@@ -170,18 +170,8 @@ export const DEFAULT_APP_KEYBINDINGS: AppDefaultKeybindings = [
   // navigation convention: Control+N on macOS and Ctrl+Shift+N elsewhere,
   // while keeping the shorter Mod chord on desktop.
   ...numberedChatBindings(THREAD_JUMP_APP_COMMAND_IDS, mainWithoutModal),
-  binding(
-    "pane.focus.previous",
-    "[",
-    { mod: true, shift: true },
-    splitWithoutModal,
-  ),
-  binding(
-    "pane.focus.next",
-    "]",
-    { mod: true, shift: true },
-    splitWithoutModal,
-  ),
+  unassignedBinding("pane.focus.previous", splitWithoutModal),
+  unassignedBinding("pane.focus.next", splitWithoutModal),
   ...numberedChatBindings(PANE_FOCUS_APP_COMMAND_IDS, splitWithoutModal),
   binding(
     "pane.maximize.toggle",

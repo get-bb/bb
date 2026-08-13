@@ -5,12 +5,89 @@ import {
   THREAD_JUMP_APP_COMMAND_IDS,
   applyAppKeybindingOverrides,
   appKeybindingOverridesSchema,
+  isAppKeybindingAvailableForClient,
 } from "@bb/domain";
 import { systemConfigResponseSchema } from "@bb/server-contract";
+import { DEFAULT_APP_KEYBINDINGS } from "../../src/services/system/app-keybindings.js";
 import { readJson } from "../helpers/json.js";
 import { withTestHarness } from "../helpers/test-app.js";
 
+const DEFAULT_KEYBINDING_CLIENTS = [
+  { name: "desktop-mac", isDesktop: true, isMac: true },
+  { name: "desktop-other", isDesktop: true, isMac: false },
+  { name: "web-mac", isDesktop: false, isMac: true },
+  { name: "web-other", isDesktop: false, isMac: false },
+] as const;
+
+function shortcutIdentity(
+  binding: ReturnType<typeof applyAppKeybindingOverrides>[number],
+  isMac: boolean,
+): string {
+  const { shortcut } = binding;
+  return JSON.stringify({
+    key: shortcut.key.toLowerCase(),
+    meta: shortcut.meta || (shortcut.mod && isMac),
+    control: shortcut.control || (shortcut.mod && !isMac),
+    alt: shortcut.alt,
+    shift: shortcut.shift,
+  });
+}
+
+function bindingContextsOverlap(
+  left: ReturnType<typeof applyAppKeybindingOverrides>[number],
+  right: ReturnType<typeof applyAppKeybindingOverrides>[number],
+): boolean {
+  const leftAll = new Set(left.when.all);
+  const rightAll = new Set(right.when.all);
+  return (
+    !left.when.none.some((context) => rightAll.has(context)) &&
+    !right.when.none.some((context) => leftAll.has(context))
+  );
+}
+
+function commandPair(left: string, right: string): string {
+  return [left, right].sort().join("+");
+}
+
 describe("app keybindings", () => {
+  it("limits overlapping default chords to intentional scoped navigation", () => {
+    const assignedDefaults = applyAppKeybindingOverrides(
+      DEFAULT_APP_KEYBINDINGS,
+      [],
+    );
+    const actualCollisions = new Set<string>();
+
+    for (const client of DEFAULT_KEYBINDING_CLIENTS) {
+      const availableBindings = assignedDefaults.filter((binding) =>
+        isAppKeybindingAvailableForClient(binding, client),
+      );
+      for (const [index, left] of availableBindings.entries()) {
+        for (const right of availableBindings.slice(index + 1)) {
+          if (
+            left.command === right.command ||
+            shortcutIdentity(left, client.isMac) !==
+              shortcutIdentity(right, client.isMac) ||
+            !bindingContextsOverlap(left, right)
+          ) {
+            continue;
+          }
+          actualCollisions.add(
+            `${client.name}:${commandPair(left.command, right.command)}`,
+          );
+        }
+      }
+    }
+
+    const intentionalCommandPairs = PANE_FOCUS_APP_COMMAND_IDS.map(
+      (paneCommand, index) =>
+        commandPair(paneCommand, THREAD_JUMP_APP_COMMAND_IDS[index]),
+    );
+    const allowedCollisions = DEFAULT_KEYBINDING_CLIENTS.flatMap((client) =>
+      intentionalCommandPairs.map((pair) => `${client.name}:${pair}`),
+    );
+    expect([...actualCollisions].sort()).toEqual(allowedCollisions.sort());
+  });
+
   it("serves validated explicit defaults from system config", async () => {
     await withTestHarness(async (harness) => {
       const response = await harness.app.request("/api/v1/system/config");
@@ -31,6 +108,26 @@ describe("app keybindings", () => {
           desktopOnly: false,
           shortcut: null,
           when: { all: ["mainSurface"], none: ["modalOpen"] },
+        });
+        expect(
+          config.keybindings.some((binding) => binding.command === command),
+        ).toBe(false);
+      }
+      for (const command of [
+        "pane.focus.previous",
+        "pane.focus.next",
+      ] as const) {
+        expect(
+          config.defaultKeybindings.find(
+            (binding) => binding.command === command,
+          ),
+        ).toMatchObject({
+          desktopOnly: false,
+          shortcut: null,
+          when: {
+            all: ["mainSurface", "splitActive"],
+            none: ["modalOpen"],
+          },
         });
         expect(
           config.keybindings.some((binding) => binding.command === command),
@@ -291,24 +388,6 @@ describe("app keybindings", () => {
             when: binding.when,
           })),
       ).toEqual([
-        {
-          command: "pane.focus.previous",
-          desktopOnly: false,
-          key: "[",
-          mod: true,
-          control: false,
-          shift: true,
-          when: { all: ["mainSurface", "splitActive"], none: ["modalOpen"] },
-        },
-        {
-          command: "pane.focus.next",
-          desktopOnly: false,
-          key: "]",
-          mod: true,
-          control: false,
-          shift: true,
-          when: { all: ["mainSurface", "splitActive"], none: ["modalOpen"] },
-        },
         ...PANE_FOCUS_APP_COMMAND_IDS.flatMap((command, index) => [
           {
             command,
