@@ -58,6 +58,8 @@ export class SerialTranscript {
   private handle: FileHandle | null = null;
   private segment = 0;
   private segmentBytes = 0;
+  private totalBytes = 0;
+  private readonly segments: Array<{ path: string; bytes: number }> = [];
   private closed = false;
 
   private constructor(directory: string, maxBytes: number) {
@@ -93,22 +95,49 @@ export class SerialTranscript {
     if (this.handle) return this.handle;
     const path = join(this.directory, `${String(this.segment).padStart(4, "0")}.ndjson`);
     this.handle = await open(path, "a", 0o600);
+    this.segments.push({ path, bytes: 0 });
     return this.handle;
+  }
+
+  private async rotate(): Promise<void> {
+    await this.handle?.close();
+    this.handle = null;
+    this.segment += 1;
+    this.segmentBytes = 0;
+  }
+
+  private async evictFor(frameBytes: number): Promise<void> {
+    while (this.totalBytes + frameBytes > this.maxBytes) {
+      const currentPath = this.handle ? this.segments.at(-1)?.path : undefined;
+      const oldest = this.segments.find((entry) => entry.path !== currentPath);
+      if (!oldest) return;
+      await rm(oldest.path, { force: true });
+      this.totalBytes -= oldest.bytes;
+      this.segments.splice(this.segments.indexOf(oldest), 1);
+    }
   }
 
   async append(line: TranscriptLine): Promise<void> {
     if (this.closed) throw new Error("SERIAL_TRANSCRIPT_CLOSED");
     const frame = `${JSON.stringify(line)}\n`;
     const frameBytes = Buffer.byteLength(frame, "utf8");
-    if (this.segmentBytes > 0 && this.segmentBytes + frameBytes > this.maxBytes) {
-      await this.handle?.close();
-      this.handle = null;
-      this.segment += 1;
-      this.segmentBytes = 0;
+    if (frameBytes > this.maxBytes) {
+      throw new RangeError("Transcript line exceeds the configured per-session byte cap.");
     }
+    const segmentTarget = Math.max(1, Math.floor(this.maxBytes / 2));
+    if (
+      this.segmentBytes > 0 &&
+      (this.segmentBytes + frameBytes > segmentTarget || this.totalBytes + frameBytes > this.maxBytes)
+    ) {
+      await this.rotate();
+    }
+    await this.evictFor(frameBytes);
     const handle = await this.openSegment();
     await handle.write(frame, undefined, "utf8");
     this.segmentBytes += frameBytes;
+    this.totalBytes += frameBytes;
+    const current = this.segments.at(-1);
+    if (current) current.bytes += frameBytes;
   }
 
   async close(): Promise<void> {

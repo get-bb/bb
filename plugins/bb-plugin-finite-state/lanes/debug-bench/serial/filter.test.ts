@@ -18,4 +18,17 @@ describe("serial regex filter", () => {
     expect(() => compileSerialFilter("["))
       .toThrow(expect.objectContaining({ code: "INVALID_SERIAL_FILTER" } satisfies Partial<SerialFilterError>));
   });
+
+  it("rejects patterns with unbounded backtracking work on the free read path", () => {
+    expect(() => compileSerialFilter("(a+)+$"))
+      .toThrow(expect.objectContaining({ code: "INVALID_SERIAL_FILTER" }));
+    expect(() => compileSerialFilter("(a)\\1"))
+      .toThrow(expect.objectContaining({ code: "INVALID_SERIAL_FILTER" }));
+    expect(compileSerialFilter("stage=1[0-9]")({
+      cursor: 1,
+      at: "2026-08-13T12:00:00.000Z",
+      dir: "rx",
+      text: "stage=12",
+    })).toBe(true);
+  });
 });

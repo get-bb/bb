@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { defineRpcContract, type BbPluginApi } from "@bb/plugin-sdk";
 import { z } from "zod";
 import {
@@ -94,9 +95,20 @@ export const serialRpcContract = defineRpcContract({
       ...scopeFields,
       device: z.string().min(1).max(512),
       data: z.string().min(1).max(64 * 1024),
-      confirmed: z.literal(true),
+      sendToken: z.string().min(1).max(512),
     }).strict(),
     output: z.object({ bytes: z.number().int().nonnegative() }).strict(),
+  },
+  benchDevSerialSendReview: {
+    input: z.object({
+      ...scopeFields,
+      device: z.string().min(1).max(512),
+      data: z.string().min(1).max(64 * 1024),
+    }).strict(),
+    output: z.object({
+      sendToken: z.string().min(1).max(512),
+      expiresAt: z.iso.datetime(),
+    }).strict(),
   },
   benchDevSerialAutoConnectStatus: {
     input: z.object(scopeFields).strict(),
@@ -109,18 +121,6 @@ export const serialRpcContract = defineRpcContract({
     }).strict().nullable(),
   },
 } as const);
-
-export const SERIAL_RPC_METHOD_CLASSIFICATIONS = {
-  benchDevSerialSessionCurrent: "read",
-  benchDevSerialSessionOpen: "local-write",
-  benchDevSerialSessionClose: "local-write",
-  benchDevSerialLinesRead: "read",
-  benchDevSerialSend: "local-write",
-  benchDevSerialAutoConnectStatus: "read",
-} as const satisfies Record<
-  keyof typeof serialRpcContract,
-  "read" | "local-write"
->;
 
 function boundedLineText(text: string): string {
   const bytes = Buffer.byteLength(text, "utf8");
@@ -172,6 +172,29 @@ export function registerSerialRpc(
   bb: BbPluginApi,
   runtime: SerialRuntime,
 ): void {
+  const approvals = new Map<string, {
+    projectId: string;
+    projectVersionId: string | null;
+    device: string;
+    data: string;
+    expiresAt: number;
+  }>();
+  const consumeApproval = (input: {
+    projectId: string;
+    projectVersionId: string | null;
+    device: string;
+    data: string;
+    sendToken: string;
+  }): void => {
+    const approval = approvals.get(input.sendToken);
+    approvals.delete(input.sendToken);
+    if (
+      !approval || approval.expiresAt < Date.now() ||
+      approval.projectId !== input.projectId ||
+      approval.projectVersionId !== input.projectVersionId ||
+      approval.device !== input.device || approval.data !== input.data
+    ) throw new SerialSendError();
+  };
   bb.rpc.register(serialRpcContract, {
     benchDevSerialSessionCurrent(input) {
       runtime.observeScope(input);
@@ -192,8 +215,23 @@ export function registerSerialRpc(
       }));
     },
     benchDevSerialSend(input) {
-      // Zod's literal true is the explicit human UI confirmation boundary.
+      consumeApproval(input);
       return runtime.send(input, input.device, input.data);
+    },
+    benchDevSerialSendReview(input) {
+      const now = Date.now();
+      for (const [token, approval] of approvals) {
+        if (approval.expiresAt < now) approvals.delete(token);
+      }
+      while (approvals.size >= 256) {
+        const oldest = approvals.keys().next();
+        if (oldest.done) break;
+        approvals.delete(oldest.value);
+      }
+      const sendToken = `serial-send-${randomUUID()}`;
+      const expiresAt = now + 60_000;
+      approvals.set(sendToken, { ...input, expiresAt });
+      return { sendToken, expiresAt: new Date(expiresAt).toISOString() };
     },
     benchDevSerialAutoConnectStatus(input) {
       runtime.observeScope(input);

@@ -104,6 +104,7 @@ describe("serial session lifecycle", () => {
     transports[0]!.disconnect("cable unplugged");
     await vi.waitFor(() => expect(transports).toHaveLength(2));
     expect(session.state).toBe("connected");
+    expect(transports[0]!.close).toHaveBeenCalledOnce();
     expect(delays).toContain(10);
 
     await session.close();
@@ -126,8 +127,19 @@ describe("serial session lifecycle", () => {
     });
     const session = await runtime.open(scope, deviceId);
     expect(session.record()).toMatchObject({ state: "unconfigured", message: "pyserial missing" });
-    expect(listClaimEvents(db, deviceId)).toEqual([]);
     await runtime.dispose();
+    const reloaded = createSerialRuntime({
+      db,
+      artifactRoot: await root(),
+      publish: () => undefined,
+      helperStatus: async () => ({ configured: false, message: "pyserial missing" }),
+    });
+    expect(reloaded.read(scope, { device: deviceId, maxLines: 10 })).toMatchObject({
+      state: "unconfigured",
+      lines: [],
+    });
+    expect(listClaimEvents(db, deviceId)).toEqual([]);
+    await reloaded.dispose();
   });
 
   it("caps reconnect backoff, closes after exhaustion, and releases its claim", async () => {
@@ -219,6 +231,83 @@ describe("serial session lifecycle", () => {
     });
     await vi.waitFor(() => expect(runtime.autoConnectStatus(serialScope)?.state).toBe("connected"));
     expect(transports).toHaveLength(1);
+    await runtime.dispose();
+  });
+
+  it("falls back to the last-used live registry port when no explicit association exists", async () => {
+    const fx = await createFixture({ confirmationValid: true });
+    fixtures.push(fx);
+    const serialScope = { projectId: fx.ctx.projectId, projectVersionId: fx.ctx.projectVersionId };
+    const flashedDeviceId = upsertCandidate(fx.ctx.db, serialScope, "probe-rs", "probe", {
+      stableIdentity: "probe-fallback", make: "Acme", model: "Probe",
+      connection: "usb:probe-fallback", transport: "local-usb",
+    }, "2026-08-13T12:00:00.000Z").deviceId;
+    const serialDeviceId = upsertCandidate(fx.ctx.db, serialScope, "serial-ports", "serial", {
+      stableIdentity: "serial-fallback", make: "Acme", model: "UART",
+      connection: "tty:/dev/serial-fallback", transport: "local-usb",
+    }, "2026-08-13T12:00:00.000Z").deviceId;
+    const transports: FakeTransport[] = [];
+    const runtime = createSerialRuntime({
+      db: fx.ctx.db,
+      artifactRoot: await root(),
+      publish: () => undefined,
+      helperStatus: async () => ({ configured: true, message: null }),
+      transportFactory: () => {
+        const transport = new FakeTransport();
+        transports.push(transport);
+        return transport;
+      },
+      claimRefreshMs: 1_000_000,
+    });
+    await runtime.open(serialScope, serialDeviceId);
+    await runtime.close(serialScope, serialDeviceId);
+    const build = await runBuild(fx.ctx, {});
+    await runFlash(fx.ctx, {
+      runId: build.runId,
+      device: flashedDeviceId,
+      confirmation: confirmationFixture(),
+    });
+    await vi.waitFor(() => expect(runtime.current(serialScope, serialDeviceId)?.state).toBe("connected"));
+    expect(runtime.autoConnectStatus(serialScope)).toMatchObject({
+      flashedDeviceId,
+      serialDeviceId,
+      state: "connected",
+    });
+    expect(transports).toHaveLength(2);
+    await runtime.dispose();
+  });
+
+  it("bounds unterminated lines and throttles cursor persistence during bursts", async () => {
+    const db = database();
+    const deviceId = seedSerial(db);
+    const transport = new FakeTransport();
+    const prepare = vi.spyOn(db, "prepare");
+    const runtime = createSerialRuntime({
+      db,
+      artifactRoot: await root(),
+      publish: () => undefined,
+      helperStatus: async () => ({ configured: true, message: null }),
+      transportFactory: () => transport,
+      claimRefreshMs: 1_000_000,
+      persistThrottleMs: 1_000,
+      partialLineMaxBytes: 8,
+      ring: { maxLines: 100, maxBytes: 10_000 },
+    });
+    const session = await runtime.open(scope, deviceId);
+    const beforeBurst = prepare.mock.calls.filter(
+      ([sql]) => typeof sql === "string" && sql.includes("INSERT INTO bench_serial_session"),
+    ).length;
+    transport.emit("abcdefghijklmnopqrst");
+    expect(session.read({ maxLines: 10 }).lines.map((line) => line.text)).toEqual([
+      "abcdefgh",
+      "ijklmnop",
+    ]);
+    const afterBurst = prepare.mock.calls.filter(
+      ([sql]) => typeof sql === "string" && sql.includes("INSERT INTO bench_serial_session"),
+    ).length;
+    expect(afterBurst - beforeBurst).toBeLessThanOrEqual(1);
+    await session.close();
+    expect(session.record().latestCursor).toBe(3);
     await runtime.dispose();
   });
 });

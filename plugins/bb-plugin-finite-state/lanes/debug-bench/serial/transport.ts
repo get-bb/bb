@@ -80,6 +80,13 @@ def read_serial():
     except Exception as exc:
         if not stopping.is_set():
             emit({"event":"closed","reason":str(exc)})
+            stopping.set()
+            try:
+                serial_port.close()
+            except Exception:
+                pass
+            serial_port = None
+            os._exit(1)
 
 for raw in sys.stdin:
     try:

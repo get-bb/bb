@@ -14,8 +14,21 @@ export class SerialFilterError extends Error {
 
 export type SerialFilter = (line: SerialLine) => boolean;
 
+function assertBoundedPattern(pattern: string): void {
+  if (pattern.length > 256) {
+    throw new SerialFilterError(pattern, "Pattern exceeds the 256-character safety limit");
+  }
+  if (/\\[1-9]|\\k<|\(\?[=!<]/u.test(pattern)) {
+    throw new SerialFilterError(pattern, "Backreferences and lookaround are not supported on serial reads");
+  }
+  if (/\((?:\\.|\[(?:\\.|[^\]])*\]|[^)])*[+*{](?:\\.|\[(?:\\.|[^\]])*\]|[^)])*\)[+*{]/u.test(pattern)) {
+    throw new SerialFilterError(pattern, "Nested quantified groups are not supported on serial reads");
+  }
+}
+
 export function compileSerialFilter(pattern?: string): SerialFilter {
   if (pattern === undefined || pattern.length === 0) return () => true;
+  assertBoundedPattern(pattern);
   let expression: RegExp;
   try {
     expression = new RegExp(pattern, "u");

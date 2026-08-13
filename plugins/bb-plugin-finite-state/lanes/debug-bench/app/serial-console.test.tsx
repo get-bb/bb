@@ -48,6 +48,10 @@ describe("serial console", () => {
       state: "connected" as const,
     }));
     const send = vi.fn(() => ({ bytes: 7 }));
+    const review = vi.fn(() => ({
+      sendToken: "send-token-1",
+      expiresAt: "2026-08-13T12:01:00.000Z",
+    }));
     const current = vi.fn(() => ({
       ...scope,
       sessionId: "serial-session-1",
@@ -65,6 +69,7 @@ describe("serial console", () => {
       rpc: {
         benchDevSerialSessionCurrent: current,
         benchDevSerialLinesRead: read,
+        benchDevSerialSendReview: review,
         benchDevSerialSend: send,
       },
     });
@@ -85,14 +90,48 @@ describe("serial console", () => {
     expect(send).not.toHaveBeenCalled();
     fireEvent.change(input, { target: { value: "~AT+PING" } });
     fireEvent.click(slot.getByRole("button", { name: "Review" }));
-    expect(slot.getByText("Send these bytes to the device?")).toBeTruthy();
+    expect(await slot.findByText("Send these bytes to the device?")).toBeTruthy();
+    expect(review).toHaveBeenCalledWith(expect.objectContaining({ data: "AT+PING" }));
     expect(send).not.toHaveBeenCalled();
     fireEvent.click(slot.getByRole("button", { name: "Confirm send" }));
     await waitFor(() => expect(send).toHaveBeenCalledWith(expect.objectContaining({
       device: serialDevice.deviceId,
       data: "AT+PING",
-      confirmed: true,
+      sendToken: "send-token-1",
     })));
+    slot.lifecycle.unmount();
+  });
+
+  it("keeps an invalid regex inline and recoverable without replacing the console", async () => {
+    const read = vi.fn((input: unknown) => {
+      if (typeof input === "object" && input !== null && Reflect.get(input, "filter") === "(") {
+        throw new Error("INVALID_SERIAL_FILTER: Unterminated group");
+      }
+      return {
+        lines: [{ cursor: 1, at: "2026-08-13T12:00:00.000Z", dir: "rx" as const, text: "boot ok" }],
+        nextCursor: 1,
+        gaps: [],
+        state: "connected" as const,
+      };
+    });
+    const slot = renderSlot(serialConsole(), {}, {
+      context: { projectId: "project-1", threadId: "thread-1" },
+      rpc: {
+        benchDevSerialSessionCurrent: () => ({
+          ...scope, sessionId: "serial-filter", deviceId: serialDevice.deviceId,
+          state: "connected" as const, baud: 115_200, latestCursor: 1, droppedLines: 0,
+          openedAt: "2026-08-13T12:00:00.000Z", closedAt: null, message: null,
+        }),
+        benchDevSerialLinesRead: read,
+      },
+    });
+    expect(await slot.findByText("Connected")).toBeTruthy();
+    fireEvent.change(slot.getByLabelText("Serial regex filter"), { target: { value: "(" } });
+    expect(await slot.findByText(/INVALID_SERIAL_FILTER/u)).toBeTruthy();
+    expect(slot.getByLabelText("Serial regex filter")).toBeTruthy();
+    expect(slot.getByRole("button", { name: "Pause" })).toBeTruthy();
+    fireEvent.change(slot.getByLabelText("Serial regex filter"), { target: { value: "boot" } });
+    await waitFor(() => expect(slot.queryByText(/INVALID_SERIAL_FILTER/u)).toBeNull());
     slot.lifecycle.unmount();
   });
 

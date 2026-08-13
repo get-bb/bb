@@ -2,15 +2,18 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Database from "better-sqlite3";
+import { createFakePluginHost } from "@bb/plugin-sdk/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MIGRATIONS } from "../../../lib/store/schema.js";
 import { upsertCandidate } from "../registry/store.js";
 import {
   readSerial,
+  registerSerialRpc,
   runFsSerial,
   sendSerial,
   type SendConfirmation,
   type SerialServiceContext,
+  serialRpcContract,
 } from "./fs-serial.js";
 import { createSerialRuntime } from "./session.js";
 import type { SerialPortRef, SerialTransport } from "./transport.js";
@@ -27,7 +30,9 @@ class FakeTransport implements SerialTransport {
 
 const databases: Database.Database[] = [];
 const directories: string[] = [];
+const hosts: Array<ReturnType<typeof createFakePluginHost>> = [];
 afterEach(async () => {
+  await Promise.all(hosts.splice(0).map((host) => host.harness.lifecycle.dispose()));
   for (const db of databases.splice(0)) db.close();
   await Promise.all(directories.splice(0).map((path) => rm(path, { recursive: true, force: true })));
 });
@@ -95,7 +100,7 @@ describe("fs_serial service", () => {
       device: fx.deviceId,
       data: "AT+RESET",
       confirmation: invalidConfirmation,
-    })).rejects.toMatchObject({ code: "SEND_CONFIRMATION_REQUIRED" });
+    })).rejects.toThrow(/SEND_CONFIRMATION_REQUIRED/u);
     expect(fx.transport.write).not.toHaveBeenCalled();
     await expect(sendSerial(fx.context, {
       device: fx.deviceId,
@@ -123,4 +128,63 @@ describe("fs_serial service", () => {
     expect(resumed.lines[0]?.cursor).toBe(result.nextCursor + 1);
     await fx.runtime.dispose();
   });
+
+  it("requires a single-use server-minted RPC token bound to scope, device, and bytes", async () => {
+    const fx = await fixture();
+    const host = createFakePluginHost({ pluginId: "fs122-serial-send-rpc" });
+    hosts.push(host);
+    registerSerialRpc(host.bb, fx.runtime);
+
+    await expect(host.harness.callRpc("benchDevSerialSend", {
+      ...scopeFor(fx.context),
+      device: fx.deviceId,
+      data: "AT+PING",
+      confirmed: true,
+    })).rejects.toThrow();
+    expect(fx.transport.write).not.toHaveBeenCalled();
+
+    const approval = serialRpcContract.benchDevSerialSendReview.output.parse(
+      await host.harness.callRpc("benchDevSerialSendReview", {
+      ...scopeFor(fx.context),
+      device: fx.deviceId,
+      data: "AT+PING",
+      }),
+    );
+    await expect(host.harness.callRpc("benchDevSerialSend", {
+      ...scopeFor(fx.context),
+      device: fx.deviceId,
+      data: "AT+RESET",
+      sendToken: approval.sendToken,
+    })).rejects.toThrow(/SEND_CONFIRMATION_REQUIRED/u);
+    expect(fx.transport.write).not.toHaveBeenCalled();
+
+    const approved = serialRpcContract.benchDevSerialSendReview.output.parse(
+      await host.harness.callRpc("benchDevSerialSendReview", {
+      ...scopeFor(fx.context),
+      device: fx.deviceId,
+      data: "AT+PING",
+      }),
+    );
+    await expect(host.harness.callRpc("benchDevSerialSend", {
+      ...scopeFor(fx.context),
+      device: fx.deviceId,
+      data: "AT+PING",
+      sendToken: approved.sendToken,
+    })).resolves.toEqual({ bytes: 7 });
+    await expect(host.harness.callRpc("benchDevSerialSend", {
+      ...scopeFor(fx.context),
+      device: fx.deviceId,
+      data: "AT+PING",
+      sendToken: approved.sendToken,
+    })).rejects.toThrow(/SEND_CONFIRMATION_REQUIRED/u);
+    expect(fx.transport.write).toHaveBeenCalledOnce();
+    await fx.runtime.dispose();
+  });
 });
+
+function scopeFor(context: SerialServiceContext): {
+  projectId: string;
+  projectVersionId: string | null;
+} {
+  return { projectId: context.projectId, projectVersionId: context.projectVersionId };
+}

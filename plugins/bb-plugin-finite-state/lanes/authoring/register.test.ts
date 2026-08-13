@@ -116,6 +116,10 @@ describe("authoring registration", () => {
     await expect(plugin(host.bb)).resolves.toBeUndefined();
 
     const registeredMethods = host.harness.inspection.registrations.rpcMethods;
+    expect(
+      new Set(registeredMethods).size,
+      "every production RPC, including lane-local additive methods, must be registered once",
+    ).toBe(registeredMethods.length);
     for (const wireMethod of Object.values(RPC_WIRE_METHODS)) {
       expect(
         registeredMethods.filter((registered) => registered === wireMethod).length,

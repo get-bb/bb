@@ -84,9 +84,11 @@ export function SerialConsole({
   const [paused, setPaused] = useState(false);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [filterError, setFilterError] = useState<string | null>(null);
   const viewport = useRef<HTMLDivElement>(null);
   const cursorRef = useRef(0);
   const filterRef = useRef("");
+  const appliedFilterRef = useRef("");
   const pausedRef = useRef(false);
   const sourceKeyRef = useRef("");
   const scope = useMemo(() => ({ projectId, projectVersionId }), [projectId, projectVersionId]);
@@ -118,40 +120,48 @@ export function SerialConsole({
         message: current?.message ?? autoConnect?.message ?? null,
       });
       if (current && !pausedRef.current) {
+        const filterChanged = appliedFilterRef.current !== filterRef.current;
         const readRequest = {
           ...scope,
           device: deviceId,
-          cursor: cursorRef.current,
+          cursor: filterChanged ? 0 : cursorRef.current,
           maxLines: 200,
           ...(filterRef.current ? { filter: filterRef.current } : {}),
         };
         const result = await rpc.call("benchDevSerialLinesRead", readRequest);
         setLines((existing) => {
+          if (filterChanged) return result.lines.slice(-10_000);
           const cursors = new Set(existing.map((line) => line.cursor));
           return [...existing, ...result.lines.filter((line) => !cursors.has(line.cursor))]
             .sort((left, right) => left.cursor - right.cursor)
             .slice(-10_000);
         });
         setGaps((existing) => {
+          if (filterChanged) return result.gaps.slice(-100);
           const keys = new Set(existing.map((gap) => `${gap.afterCursor}:${gap.dropped}`));
           return [...existing, ...result.gaps.filter(
             (gap) => !keys.has(`${gap.afterCursor}:${gap.dropped}`),
           )].slice(-100);
         });
+        appliedFilterRef.current = filterRef.current;
+        setFilterError(null);
         cursorRef.current = result.nextCursor;
       }
     } catch (error) {
-      setState({ kind: "error", message: error instanceof Error ? error.message : "Serial console failed." });
+      const message = error instanceof Error ? error.message : "Serial console failed.";
+      if (message.includes("INVALID_SERIAL_FILTER")) setFilterError(message);
+      else setState({ kind: "error", message });
     }
   }, [deviceId, rpc, scope]);
 
   useEffect(() => {
-    const sourceKey = `${projectId}\u0000${projectVersionId ?? ""}\u0000${deviceId ?? ""}\u0000${filter}`;
+    const sourceKey = `${projectId}\u0000${projectVersionId ?? ""}\u0000${deviceId ?? ""}`;
     pausedRef.current = paused;
     filterRef.current = filter;
     if (sourceKeyRef.current !== sourceKey) {
       sourceKeyRef.current = sourceKey;
       cursorRef.current = 0;
+      appliedFilterRef.current = filter;
       setLines([]);
       setGaps([]);
       setState(serialDevices.length === 0 ? { kind: "empty" } : { kind: "loading" });
@@ -171,14 +181,16 @@ export function SerialConsole({
     virtualizer.scrollToIndex(lines.length - 1, { align: "end" });
   }, [lines.length, paused, virtualizer]);
 
-  const perform = useCallback(async (operation: () => Promise<void>) => {
+  const perform = useCallback(async (operation: () => Promise<void>): Promise<boolean> => {
     setBusy(true);
     setActionError(null);
     try {
       await operation();
       await loadSession();
+      return true;
     } catch (error) {
       setActionError(error instanceof Error ? error.message : "Serial operation failed.");
+      return false;
     } finally {
       setBusy(false);
     }
@@ -229,7 +241,10 @@ export function SerialConsole({
           <Input
             aria-label="Serial regex filter"
             className="h-8 min-w-0 font-mono text-xs"
-            onChange={(event) => setFilter(event.target.value)}
+            onChange={(event) => {
+              setFilterError(null);
+              setFilter(event.target.value);
+            }}
             placeholder="Regex filter"
             value={filter}
           />
@@ -254,6 +269,7 @@ export function SerialConsole({
             </Button>
           )}
         </div>
+        {filterError ? <p className="text-xs text-destructive" role="alert">{filterError}</p> : null}
       </header>
 
       {state.connection === "unconfigured" ? (
@@ -304,14 +320,31 @@ export function SerialConsole({
       <SerialSendBar
         busy={busy}
         connected={state.connection === "connected"}
-        send={async (data) => perform(async () => {
+        review={async (data) => {
+          setBusy(true);
+          setActionError(null);
+          try {
+            if (!deviceId) return null;
+            const result = await rpc.call("benchDevSerialSendReview", {
+              ...scope,
+              device: deviceId,
+              data,
+            });
+            return result.sendToken;
+          } catch (error) {
+            setActionError(error instanceof Error ? error.message : "Serial send review failed.");
+            return null;
+          } finally {
+            setBusy(false);
+          }
+        }}
+        send={(data, sendToken) => perform(async () => {
           if (!deviceId) return;
-          await rpc.call("benchDevSerialSend", { ...scope, device: deviceId, data, confirmed: true });
+          await rpc.call("benchDevSerialSend", { ...scope, device: deviceId, data, sendToken });
         })}
       />
       <p className="border-t border-border px-2 py-1.5 text-xs text-muted-foreground">
-        Transcript policy defaults to 50 MiB segments and the newest 10 sessions per device;
-        host configuration may lower either limit.
+        Transcript policy retains at most 50 MiB per session and the newest 10 sessions per device.
       </p>
     </section>
   );

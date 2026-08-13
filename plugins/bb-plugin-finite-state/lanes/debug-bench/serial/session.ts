@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { Buffer } from "node:buffer";
 import { dirname, join } from "node:path";
 import type Database from "better-sqlite3";
 import {
@@ -225,6 +226,8 @@ export interface SerialRuntimeOptions {
   reconnectJitter?: number;
   claimRefreshMs?: number;
   realtimeThrottleMs?: number;
+  persistThrottleMs?: number;
+  partialLineMaxBytes?: number;
   ring?: SerialRingBufferOptions;
   transcript?: Pick<SerialTranscriptOptions, "maxBytes" | "maxSessions">;
 }
@@ -242,6 +245,8 @@ interface ResolvedRuntimeOptions extends SerialRuntimeOptions {
   reconnectJitter: number;
   claimRefreshMs: number;
   realtimeThrottleMs: number;
+  persistThrottleMs: number;
+  partialLineMaxBytes: number;
 }
 
 export class SerialSession {
@@ -266,6 +271,8 @@ export class SerialSession {
   private readonly lifecycle = new AbortController();
   private hintTimer: ReturnType<typeof setTimeout> | null = null;
   private lastHintAt = 0;
+  private persistTimer: ReturnType<typeof setTimeout> | null = null;
+  private lastPersistAt = 0;
 
   constructor(
     private readonly runtime: SerialRuntime,
@@ -279,7 +286,7 @@ export class SerialSession {
     this.sessionId = `serial-${randomUUID()}`;
     this.openedAt = runtime.options.now().toISOString();
     this.buffer = createSerialRingBuffer(runtime.options.ring);
-    this.persist();
+    this.persistNow();
   }
 
   get state(): SerialSessionState {
@@ -301,7 +308,10 @@ export class SerialSession {
     };
   }
 
-  private persist(): void {
+  private persistNow(): void {
+    if (this.persistTimer) clearTimeout(this.persistTimer);
+    this.persistTimer = null;
+    this.lastPersistAt = this.runtime.options.now().getTime();
     const record = this.record();
     this.runtime.options.db.prepare(
       `INSERT INTO bench_serial_session (
@@ -329,13 +339,26 @@ export class SerialSession {
     );
   }
 
+  private schedulePersist(): void {
+    const elapsed = this.runtime.options.now().getTime() - this.lastPersistAt;
+    if (elapsed >= this.runtime.options.persistThrottleMs) {
+      this.persistNow();
+      return;
+    }
+    if (this.persistTimer) return;
+    this.persistTimer = setTimeout(
+      () => this.persistNow(),
+      this.runtime.options.persistThrottleMs - elapsed,
+    );
+  }
+
   private setState(state: SerialSessionState, message: string | null = null): void {
     this.stateValue = state;
     this.messageValue = message;
     if (state === "closed" || state === "unconfigured") {
       this.closedAtValue ??= this.runtime.options.now().toISOString();
     }
-    this.persist();
+    this.persistNow();
     this.publishHint(true);
   }
 
@@ -366,7 +389,7 @@ export class SerialSession {
       .then(() => transcript.append({ at, dir, text }))
       .catch((error: unknown) => {
         this.messageValue = `Transcript write failed: ${boundedMessage(error)}`;
-        this.persist();
+        this.persistNow();
         this.runtime.options.log?.warn(this.messageValue);
       });
   }
@@ -375,7 +398,7 @@ export class SerialSession {
     const at = this.runtime.options.now().toISOString();
     this.buffer.append({ at, dir, text });
     this.queueTranscript(at, dir, text);
-    this.persist();
+    this.schedulePersist();
     this.publishHint();
   }
 
@@ -384,6 +407,17 @@ export class SerialSession {
     const parts = `${this.partialLine}${decoded}`.split("\n");
     this.partialLine = parts.pop() ?? "";
     for (const part of parts) this.appendLine("rx", part.endsWith("\r") ? part.slice(0, -1) : part);
+    while (Buffer.byteLength(this.partialLine, "utf8") > this.runtime.options.partialLineMaxBytes) {
+      let end = Math.min(this.partialLine.length, this.runtime.options.partialLineMaxBytes);
+      while (
+        end > 0 &&
+        Buffer.byteLength(this.partialLine.slice(0, end), "utf8") >
+          this.runtime.options.partialLineMaxBytes
+      ) end -= 1;
+      if (end === 0) break;
+      this.appendLine("rx", this.partialLine.slice(0, end));
+      this.partialLine = this.partialLine.slice(end);
+    }
   }
 
   private flushPartial(): void {
@@ -442,10 +476,21 @@ export class SerialSession {
     this.transport = transport;
     transport.onData((chunk) => this.receive(chunk));
     transport.onClosed((reason) => {
-      if (this.transport === transport) this.transport = null;
-      this.beginReconnect(reason);
+      if (this.transport !== transport) return;
+      this.transport = null;
+      void transport.close()
+        .catch((error: unknown) => {
+          this.runtime.options.log?.warn(`Serial transport cleanup failed: ${boundedMessage(error)}`);
+        })
+        .finally(() => this.beginReconnect(reason));
     });
-    await transport.open(portFromDevice(device), { baud: this.baud });
+    try {
+      await transport.open(portFromDevice(device), { baud: this.baud });
+    } catch (error) {
+      if (this.transport === transport) this.transport = null;
+      await transport.close().catch(() => undefined);
+      throw error;
+    }
     if (this.explicitClose) {
       await transport.close();
       return;
@@ -557,7 +602,13 @@ export class SerialSession {
     this.explicitClose = true;
     if (this.hintTimer) clearTimeout(this.hintTimer);
     this.hintTimer = null;
+    if (this.persistTimer) clearTimeout(this.persistTimer);
+    this.persistTimer = null;
     this.lifecycle.abort();
+    if (this.stateValue === "unconfigured" && reason === "Plugin scope unloaded.") {
+      this.persistNow();
+      return this.record();
+    }
     await this.transport?.close().catch(() => undefined);
     this.transport = null;
     await this.reconnectTask;
@@ -606,6 +657,8 @@ export class SerialRuntime {
       reconnectJitter: options.reconnectJitter ?? 0.2,
       claimRefreshMs: options.claimRefreshMs ?? 5 * 60_000,
       realtimeThrottleMs: options.realtimeThrottleMs ?? 50,
+      persistThrottleMs: options.persistThrottleMs ?? 50,
+      partialLineMaxBytes: options.partialLineMaxBytes ?? 64 * 1024,
     };
     runtimeByDatabase.set(options.db, this);
     const scopes = options.db.prepare<[], ScopeRow>(
@@ -677,7 +730,12 @@ export class SerialRuntime {
   ): SerialReadResult {
     const session = this.sessions.get(sessionKey(scope, request.device));
     if (!session) {
-      return { lines: [], nextCursor: request.cursor ?? 0, gaps: [], state: "closed" };
+      return {
+        lines: [],
+        nextCursor: request.cursor ?? 0,
+        gaps: [],
+        state: this.current(scope, request.device)?.state ?? "closed",
+      };
     }
     return session.read(request);
   }
@@ -770,10 +828,7 @@ export class SerialRuntime {
     ).get(scope.projectId, toStorageProjectVersionId(scope.projectVersionId));
     if (!preference) return null;
     const lastUsed = getDevice(this.options.db, scope, preference.last_device_id);
-    if (
-      lastUsed?.kind === "serial" &&
-      (event.device === lastUsed.deviceId || event.device === lastUsed.connection)
-    ) return lastUsed;
+    if (lastUsed?.kind === "serial" && !lastUsed.stale) return lastUsed;
     return null;
   }
 
