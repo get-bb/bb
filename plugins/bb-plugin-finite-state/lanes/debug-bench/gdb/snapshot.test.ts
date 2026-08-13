@@ -21,7 +21,7 @@ describe("target snapshot", () => {
     const ticks = [100, 112];
     const snapshot = await snapshotTarget(session, {
       memoryRegions: [{ addr: "0x2000", bytes: 2 }],
-      writeMemoryArtifact: async () => ".fs-bench/run/memory.bin",
+      writeMemoryArtifact: async () => ".fs-bench/probe-runs/run/memory.bin",
       now: () => new Date("2026-08-13T12:00:00.000Z"),
       monotonicNowMs: () => ticks.shift()!,
     });
@@ -32,7 +32,7 @@ describe("target snapshot", () => {
       registers: { pc: "0x0800" },
       frames: [{ level: 0, address: "0x0800", function: "main", file: "main.c", line: 1 }],
       tasks: [],
-      memoryRegions: [{ addr: "0x2000", bytes: 2, artifactPath: ".fs-bench/run/memory.bin" }],
+      memoryRegions: [{ addr: "0x2000", bytes: 2, artifactPath: ".fs-bench/probe-runs/run/memory.bin" }],
     });
     expect(transcript[0]).toBe("halt");
     expect(transcript.at(-1)).toBe("continue");

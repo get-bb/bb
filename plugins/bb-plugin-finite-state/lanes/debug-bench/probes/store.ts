@@ -14,6 +14,7 @@ import { randomUUID } from "node:crypto";
 import { promisify } from "node:util";
 
 export const BENCH_ARTIFACT_DIRECTORY = ".fs-bench" as const;
+export const BENCH_PROBE_RUN_DIRECTORY = "probe-runs" as const;
 export const PROBE_SOURCE_DIRECTORY = ".fs/bench/probes" as const;
 
 const SAFE_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
@@ -244,29 +245,56 @@ function normalizeArtifactPath(value: string): string {
   return segments.join("/");
 }
 
+export interface ProbeRunArtifactDirectory {
+  worktreeRoot: string;
+  artifactRoot: string;
+  runRoot: string;
+  directory: string;
+  relativeDirectory: string;
+}
+
+export async function ensureProbeRunArtifactDirectory(
+  worktreeRoot: string,
+  runId: string,
+  subdirectory: string | null = null,
+): Promise<ProbeRunArtifactDirectory> {
+  validateSegment(runId, "INVALID_RUN_ID");
+  const relativeSubdirectory = subdirectory === null ? null : normalizeArtifactPath(subdirectory);
+  const canonicalWorktree = await realpath(worktreeRoot);
+  const artifactRoot = await assertBenchArtifactRootIgnored(canonicalWorktree);
+  await mkdir(artifactRoot, { recursive: true });
+  await assertRealContainedDirectory(canonicalWorktree, artifactRoot);
+  const relativeRunRoot = `${BENCH_PROBE_RUN_DIRECTORY}/${runId}`;
+  await assertNoSymlinkPath(artifactRoot, relativeRunRoot);
+  const runRoot = join(artifactRoot, BENCH_PROBE_RUN_DIRECTORY, runId);
+  await mkdir(runRoot, { recursive: true });
+  await assertRealContainedDirectory(artifactRoot, join(artifactRoot, BENCH_PROBE_RUN_DIRECTORY));
+  await assertRealContainedDirectory(artifactRoot, runRoot);
+  if (relativeSubdirectory !== null) {
+    await assertNoSymlinkPath(runRoot, relativeSubdirectory);
+    await mkdir(join(runRoot, ...relativeSubdirectory.split("/")), { recursive: true });
+    await assertRealContainedDirectory(runRoot, join(runRoot, ...relativeSubdirectory.split("/")));
+  }
+  const directory = relativeSubdirectory === null
+    ? runRoot
+    : join(runRoot, ...relativeSubdirectory.split("/"));
+  const relativeDirectory = [BENCH_ARTIFACT_DIRECTORY, BENCH_PROBE_RUN_DIRECTORY, runId, relativeSubdirectory]
+    .filter((segment): segment is string => segment !== null)
+    .join("/");
+  return { worktreeRoot: canonicalWorktree, artifactRoot, runRoot, directory, relativeDirectory };
+}
+
 export async function writeBenchArtifact(
   worktreeRoot: string,
   runId: string,
   artifactPath: string,
   bytes: Uint8Array,
 ): Promise<string> {
-  validateSegment(runId, "INVALID_RUN_ID");
   const relativeArtifact = normalizeArtifactPath(artifactPath);
-  const root = await assertBenchArtifactRootIgnored(worktreeRoot);
-  await mkdir(root, { recursive: true });
-  await assertRealContainedDirectory(await realpath(worktreeRoot), root);
-  const runRoot = join(root, runId);
-  await assertNoSymlinkPath(root, runId);
-  await mkdir(runRoot, { recursive: true });
-  await assertRealContainedDirectory(root, runRoot);
   const parentSegments = relativeArtifact.split("/").slice(0, -1).join("/");
-  if (parentSegments) {
-    await assertNoSymlinkPath(runRoot, parentSegments);
-    await mkdir(join(runRoot, parentSegments), { recursive: true });
-    await assertRealContainedDirectory(runRoot, join(runRoot, parentSegments));
-  }
-  await assertNoSymlinkPath(runRoot, relativeArtifact);
-  const destination = join(runRoot, ...relativeArtifact.split("/"));
+  const layout = await ensureProbeRunArtifactDirectory(worktreeRoot, runId, parentSegments || null);
+  await assertNoSymlinkPath(layout.runRoot, relativeArtifact);
+  const destination = join(layout.runRoot, ...relativeArtifact.split("/"));
   await writeFile(destination, bytes, { mode: 0o600, flag: "wx" });
-  return `${BENCH_ARTIFACT_DIRECTORY}/${runId}/${relativeArtifact}`;
+  return `${BENCH_ARTIFACT_DIRECTORY}/${BENCH_PROBE_RUN_DIRECTORY}/${runId}/${relativeArtifact}`;
 }

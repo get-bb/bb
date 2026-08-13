@@ -127,13 +127,20 @@ const artifact = await request({ type: "artifact", id: 2, path: "captures/result
 if (!artifact.ok) throw new Error(artifact.error);
 console.log(JSON.stringify({ type: "result", outcome: "confirmed" }));
 `);
-    const { deps, claim, executeCommand, releaseClaim } = await runtime(python, root);
+    const publishChanged = vi.fn();
+    const { deps, claim, executeCommand, releaseClaim } = await runtime(python, root, { publishChanged });
     const result = await runProbe(deps, request, [claim], new AbortController().signal);
-    expect(result).toMatchObject({ outcome: "confirmed", artifacts: [".fs-bench/probe-run-1/captures/result.csv"] });
+    expect(result).toMatchObject({ outcome: "confirmed", artifacts: [".fs-bench/probe-runs/probe-run-1/captures/result.csv"] });
     expect(executeCommand).toHaveBeenCalledWith("-thread-info", []);
-    expect(await readFile(join(root, ".fs-bench/probe-run-1/captures/result.csv"), "utf8")).toBe("a,b\n");
+    expect(await readFile(join(root, ".fs-bench/probe-runs/probe-run-1/captures/result.csv"), "utf8")).toBe("a,b\n");
     expect(deps.db.prepare("SELECT outcome, finished_at FROM probe_run").get()).toMatchObject({ outcome: "confirmed", finished_at: expect.any(String) });
     expect(releaseClaim).toHaveBeenCalledOnce();
+    expect(publishChanged).toHaveBeenNthCalledWith(1, "probe:changed", {
+      projectId: "project-1", projectVersionId: "pv-1", runId: "probe-run-1",
+    });
+    expect(publishChanged).toHaveBeenNthCalledWith(2, "probe:changed", {
+      projectId: "project-1", projectVersionId: "pv-1", runId: "probe-run-1",
+    });
   }, 15_000);
 
   it("rejects destructive commands before any byte reaches the GDB session", async () => {
@@ -146,7 +153,7 @@ console.log(JSON.stringify({ type: "error", message: response.error }));
     const result = await runProbe(deps, request, [claim], new AbortController().signal);
     expect(result.outcome).toBe("inconclusive");
     expect(executeCommand).not.toHaveBeenCalled();
-    expect(await readFile(join(root, ".fs-bench/probe-run-1/runtime-error.txt"), "utf8"))
+    expect(await readFile(join(root, ".fs-bench/probe-runs/probe-run-1/runtime-error.txt"), "utf8"))
       .toContain("DESTRUCTIVE_REQUIRES_GRANT");
   });
 
@@ -160,7 +167,7 @@ console.log(JSON.stringify({ type: "error", message: response.error }));
     const result = await runProbe(deps, request, [claim], new AbortController().signal);
     expect(result.outcome).toBe("inconclusive");
     expect(executeCommand).not.toHaveBeenCalled();
-    expect(await readFile(join(root, ".fs-bench/probe-run-1/runtime-error.txt"), "utf8"))
+    expect(await readFile(join(root, ".fs-bench/probe-runs/probe-run-1/runtime-error.txt"), "utf8"))
       .toContain("DEVICE_SCOPE_VIOLATION");
   });
 
@@ -176,7 +183,7 @@ console.log(JSON.stringify({ type: "error", message: response.error }));
     );
     expect(result.outcome).toBe("inconclusive");
     expect(deps.openSession).not.toHaveBeenCalled();
-    expect(await readFile(join(root, ".fs-bench/probe-run-1/runtime-error.txt"), "utf8"))
+    expect(await readFile(join(root, ".fs-bench/probe-runs/probe-run-1/runtime-error.txt"), "utf8"))
       .toContain("CLAIM_EXPIRED");
   });
 
@@ -191,6 +198,22 @@ console.log(JSON.stringify({ type: "error", message: response.error }));
       .resolves.toMatchObject({ outcome: "inconclusive" });
     expect(openSession).toHaveBeenCalledOnce();
     expect(releaseClaim).toHaveBeenCalledOnce();
+  });
+
+  it("falls back to claim release and records diagnostics when session disposal rejects", async () => {
+    const root = await worktree();
+    const python = await fixtureBridge('console.log(JSON.stringify({ type: "result", outcome: "confirmed" }));');
+    const { deps, claim, releaseClaim } = await runtime(python, root);
+    const session = await deps.openSession(device.deviceId, claim, new AbortController().signal);
+    session.dispose = vi.fn(async () => { throw new Error("fixture dispose rejected"); });
+    deps.openSession = vi.fn(async () => session);
+
+    const result = await runProbe(deps, request, [claim], new AbortController().signal);
+
+    expect(result.outcome).toBe("inconclusive");
+    expect(releaseClaim).toHaveBeenCalledOnce();
+    expect(await readFile(join(root, ".fs-bench/probe-runs/probe-run-1/runtime-error.txt"), "utf8"))
+      .toContain("fixture dispose rejected");
   });
 
   it("kills a timed-out subprocess and persists inconclusive with an error artifact", async () => {
@@ -209,7 +232,7 @@ setInterval(() => {}, 1000);
     const result = await runProbe(deps, { ...request, timeoutMs: 100 }, [claim], new AbortController().signal);
     expect(Date.now() - started).toBeLessThan(1_500);
     expect(result.outcome).toBe("inconclusive");
-    expect(await readFile(join(root, ".fs-bench/probe-run-1/runtime-error.txt"), "utf8")).toContain("PROBE_TIMEOUT");
+    expect(await readFile(join(root, ".fs-bench/probe-runs/probe-run-1/runtime-error.txt"), "utf8")).toContain("PROBE_TIMEOUT");
   }, 10_000);
 
   it("drains bounded stderr so a chatty probe can finish", async () => {
@@ -232,9 +255,9 @@ console.log(JSON.stringify({ type: "error", message: "fixture exploded", traceba
     const { deps, claim } = await runtime(python, root);
     const result = await runProbe(deps, request, [claim], new AbortController().signal);
     expect(result.outcome).toBe("inconclusive");
-    expect(await readFile(join(root, ".fs-bench/probe-run-1/runtime-error.txt"), "utf8"))
+    expect(await readFile(join(root, ".fs-bench/probe-runs/probe-run-1/runtime-error.txt"), "utf8"))
       .toContain("fixture exploded");
-    expect(await readFile(join(root, ".fs-bench/probe-run-1/runtime-error.txt"), "utf8"))
+    expect(await readFile(join(root, ".fs-bench/probe-runs/probe-run-1/runtime-error.txt"), "utf8"))
       .toContain("fixture stderr diagnostic");
   });
 

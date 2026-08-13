@@ -1,9 +1,17 @@
-import { constants } from "node:fs";
-import { access, copyFile, lstat, mkdir, readFile, realpath } from "node:fs/promises";
+import { access, copyFile, mkdir, readFile, realpath } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import type Database from "better-sqlite3";
-import { toStorageProjectVersionId } from "../../../lib/store/index.js";
+import {
+  attachProbeRunArtifact,
+  PROBE_CHANGED_CHANNEL,
+  type ProbeChangedHint,
+} from "../probes/runs.js";
+import {
+  ensureProbeRunArtifactDirectory,
+  ProbeStoreError,
+  type ProbeRunArtifactDirectory,
+} from "../probes/store.js";
 import type { DeviceClaim } from "../registry/claims.js";
 import type { CaptureArtifact, InstrumentTransport, ProcessRunner } from "./transport.js";
 import { InstrumentError, runInstrumentProcess } from "./transport.js";
@@ -108,27 +116,6 @@ export function validateCaptureConfig(
   }
 }
 
-function assertSegment(value: string, label: string): void {
-  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/u.test(value) || value === "." || value === "..") {
-    throw new InstrumentError("CAPTURE_CONFIG_INVALID", `${label} is not a safe path segment.`);
-  }
-}
-
-async function assertNoSymlink(path: string): Promise<void> {
-  try {
-    const info = await lstat(path);
-    if (info.isSymbolicLink()) {
-      throw new InstrumentError(
-        "CAPTURE_CONFIG_INVALID",
-        `Bench artifact root ${path} must not be a symbolic link.`,
-      );
-    }
-  } catch (error) {
-    if (error instanceof InstrumentError) throw error;
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-  }
-}
-
 export interface ProbeRunArtifactSinkOptions {
   db: Database.Database;
   worktreeRoot: string;
@@ -136,67 +123,30 @@ export interface ProbeRunArtifactSinkOptions {
   projectVersionId: string | null;
   runId: string;
   publishChanged?: (
-    channel: "probe:changed",
-    hint: { projectId: string; projectVersionId: string | null; runId: string },
+    channel: typeof PROBE_CHANGED_CHANNEL,
+    hint: ProbeChangedHint,
   ) => void;
-  isIgnored?: (worktreeRoot: string, relativePath: string) => Promise<boolean>;
 }
 
-interface ProbeArtifactRow { artifacts: string | null }
-
-function parseArtifactPaths(value: string | null): string[] {
-  if (value === null) return [];
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(value);
-  } catch (error) {
-    throw new InstrumentError(
-      "INSTRUMENT_PROTOCOL_ERROR",
-      "The probe run artifact list is malformed.",
-      { cause: error },
-    );
-  }
-  if (!Array.isArray(parsed) || parsed.some((item) => typeof item !== "string")) {
-    throw new InstrumentError(
-      "INSTRUMENT_PROTOCOL_ERROR",
-      "The probe run artifact list is malformed.",
-    );
-  }
-  return parsed;
-}
-
-/**
- * WP-89 owns the eventual shared layout helper. Until it lands, this confined
- * seam follows the coordinator-ratified `.fs-bench/probe-runs/<run>/logic`
- * layout and fails closed unless the root is gitignored.
- */
 export async function createProbeRunArtifactSink(
   options: ProbeRunArtifactSinkOptions,
 ): Promise<CaptureArtifactSink> {
-  assertSegment(options.runId, "Probe run id");
-  const worktreeRoot = await realpath(options.worktreeRoot);
-  const relativeDirectory = join(".fs-bench", "probe-runs", options.runId, "logic");
-  const ignored = await (options.isIgnored ?? defaultIgnoreCheck)(
-    worktreeRoot,
-    relativeDirectory,
-  );
-  if (!ignored) {
-    throw new InstrumentError(
-      "INSTRUMENT_NOT_CONFIGURED",
-      ".fs-bench must be gitignored before instrument artifacts can be written.",
-    );
+  let layout: ProbeRunArtifactDirectory;
+  try {
+    layout = await ensureProbeRunArtifactDirectory(options.worktreeRoot, options.runId, "logic");
+  } catch (error) {
+    if (error instanceof ProbeStoreError) {
+      throw new InstrumentError(
+        error.code === "BENCH_ARTIFACT_ROOT_NOT_IGNORED"
+          ? "INSTRUMENT_NOT_CONFIGURED"
+          : "CAPTURE_CONFIG_INVALID",
+        error.message,
+        { cause: error },
+      );
+    }
+    throw error;
   }
-  const benchRoot = join(worktreeRoot, ".fs-bench");
-  const artifactRoots = [
-    benchRoot,
-    join(benchRoot, "probe-runs"),
-    join(benchRoot, "probe-runs", options.runId),
-    join(benchRoot, "probe-runs", options.runId, "logic"),
-  ];
-  for (const root of artifactRoots) await assertNoSymlink(root);
-  await mkdir(artifactRoots.at(-1)!, { recursive: true });
-  for (const root of artifactRoots) await assertNoSymlink(root);
-  const directory = await realpath(join(benchRoot, "probe-runs", options.runId, "logic"));
+  const { worktreeRoot, directory } = layout;
   const prefix = `${directory}${sep}`;
 
   return {
@@ -209,31 +159,20 @@ export async function createProbeRunArtifactSink(
           "Instrument artifact escaped its probe-run directory.",
         );
       }
-      await access(artifactPath, constants.R_OK);
-      const projectVersionId = toStorageProjectVersionId(options.projectVersionId);
-      const transaction = options.db.transaction((): boolean => {
-        const row = options.db.prepare<[string, string, string], ProbeArtifactRow>(
-          `SELECT artifacts FROM probe_run
-            WHERE project_id = ? AND project_version_id = ? AND run_id = ?`,
-        ).get(options.projectId, projectVersionId, options.runId);
-        if (!row) {
-          throw new InstrumentError(
-            "INSTRUMENT_PROTOCOL_ERROR",
-            `Probe run ${options.runId} was not found.`,
-          );
-        }
-        const relativePath = relative(worktreeRoot, artifactPath).split(sep).join("/");
-        const artifacts = parseArtifactPaths(row.artifacts);
-        if (artifacts.includes(relativePath)) return false;
-        artifacts.push(relativePath);
-        options.db.prepare(
-          `UPDATE probe_run SET artifacts = ?
-            WHERE project_id = ? AND project_version_id = ? AND run_id = ?`,
-        ).run(JSON.stringify(artifacts), options.projectId, projectVersionId, options.runId);
-        return true;
-      });
-      if (transaction.immediate()) {
-        options.publishChanged?.("probe:changed", {
+      await access(artifactPath);
+      const relativePath = relative(worktreeRoot, artifactPath).split(sep).join("/");
+      let changed: boolean;
+      try {
+        changed = attachProbeRunArtifact(options.db, options, options.runId, relativePath);
+      } catch (error) {
+        throw new InstrumentError(
+          "INSTRUMENT_PROTOCOL_ERROR",
+          `Could not attach artifact to probe run ${options.runId}.`,
+          { cause: error },
+        );
+      }
+      if (changed) {
+        options.publishChanged?.(PROBE_CHANGED_CHANNEL, {
           projectId: options.projectId,
           projectVersionId: options.projectVersionId,
           runId: options.runId,
@@ -241,17 +180,6 @@ export async function createProbeRunArtifactSink(
       }
     },
   };
-}
-
-async function defaultIgnoreCheck(worktreeRoot: string, relativePath: string): Promise<boolean> {
-  const result = await runInstrumentProcess({
-    command: "git",
-    args: ["check-ignore", "--quiet", "--", relativePath],
-    cwd: worktreeRoot,
-    timeoutMs: 5_000,
-    maxOutputBytes: 4_096,
-  }, new AbortController().signal).catch(() => null);
-  return result?.code === 0;
 }
 
 export interface ReplayDriverOptions extends InstrumentDriverDeps {

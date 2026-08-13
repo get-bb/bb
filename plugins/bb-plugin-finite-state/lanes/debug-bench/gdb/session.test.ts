@@ -150,6 +150,56 @@ describe("GDB session", () => {
     expect(dependencies.releaseClaim).toHaveBeenCalledOnce();
   });
 
+  it("releases the claim even when GDB server disposal rejects", async () => {
+    const dependencies = await deps();
+    dependencies.releaseClaim.mockImplementation(async (deviceId: string, holder: string) => {
+      dependencies.db.prepare(
+        "UPDATE bench_device SET claimed_by = NULL, claimed_at = NULL WHERE device_id = ? AND claimed_by = ?",
+      ).run(deviceId, holder);
+    });
+    dependencies.startServer.mockResolvedValue({
+      kind: "jlink", host: "127.0.0.1", port: 2331, argv: [],
+      diagnostics: () => ({ stdout: "", stderr: "" }),
+      dispose: async () => { throw new Error("server teardown failed"); },
+    });
+    const session = await openGdbSession(
+      dependencies,
+      device.deviceId,
+      dependencies.claim,
+      new AbortController().signal,
+    );
+
+    await expect(session.dispose()).rejects.toThrow("server teardown failed");
+    expect(dependencies.releaseClaim).toHaveBeenCalledOnce();
+    expect(dependencies.db.prepare("SELECT claimed_by FROM bench_device WHERE device_id = ?").get(device.deviceId))
+      .toEqual({ claimed_by: null });
+  });
+
+  it("retries claim release after a transient SQLite failure", async () => {
+    const dependencies = await deps();
+    dependencies.releaseClaim
+      .mockRejectedValueOnce(new Error("SQLITE_BUSY: database is locked"))
+      .mockImplementationOnce(async (deviceId: string, holder: string) => {
+        dependencies.db.prepare(
+          "UPDATE bench_device SET claimed_by = NULL, claimed_at = NULL WHERE device_id = ? AND claimed_by = ?",
+        ).run(deviceId, holder);
+      });
+    const session = await openGdbSession(
+      dependencies,
+      device.deviceId,
+      dependencies.claim,
+      new AbortController().signal,
+    );
+
+    await expect(session.dispose()).rejects.toThrow("SQLITE_BUSY");
+    expect(dependencies.db.prepare("SELECT claimed_by FROM bench_device WHERE device_id = ?").get(device.deviceId))
+      .toEqual({ claimed_by: "thread-1" });
+    await expect(session.dispose()).resolves.toBeUndefined();
+    expect(dependencies.releaseClaim).toHaveBeenCalledTimes(2);
+    expect(dependencies.db.prepare("SELECT claimed_by FROM bench_device WHERE device_id = ?").get(device.deviceId))
+      .toEqual({ claimed_by: null });
+  });
+
   it("disposes at the deadline when an escaped grandchild inherits GDB stdout", async () => {
     const dependencies = await deps(await fakeGdb(true));
     const session = await openGdbSession(

@@ -6,7 +6,9 @@ import type { DebugGdbSession, HardwareIoThrottle } from "../gdb/session.js";
 import { DebugBenchConfigurationError, resolveExecutable } from "../gdb/server.js";
 import {
   finishProbeRun,
+  PROBE_CHANGED_CHANNEL,
   startProbeRun,
+  type ProbeChangedHint,
   type ProbeOutcome,
   type ProbeRunRecord,
   type ProbeRunScope,
@@ -17,7 +19,7 @@ import {
   type ProbeStore,
 } from "./store.js";
 
-export const PROBE_CHANGED_CHANNEL = "probe:changed" as const;
+export { PROBE_CHANGED_CHANNEL } from "./runs.js";
 
 export interface ProbeRunRequest {
   scriptPath: string;
@@ -40,7 +42,7 @@ export interface ProbeRuntimeDeps extends ProbeRunScope {
   now?: () => Date;
   createRunId?: () => string;
   writeArtifact?: typeof writeBenchArtifact;
-  publishChanged?: (channel: typeof PROBE_CHANGED_CHANNEL, payload: { runId: string }) => void;
+  publishChanged?: (channel: typeof PROBE_CHANGED_CHANNEL, payload: ProbeChangedHint) => void;
   maxProtocolBytes?: number;
   maxStderrBytes?: number;
 }
@@ -105,6 +107,24 @@ function boundedText(name: string, value: string, maximum = 4096): string {
     throw new ProbeRuntimeError("INVALID_PROBE_REQUEST", `${name} must be non-empty and bounded.`);
   }
   return text;
+}
+
+function describeFailure(error: unknown): string {
+  return error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+}
+
+function appendRuntimeFailure(current: unknown, label: string, error: unknown): Error {
+  const detail = `${label}: ${describeFailure(error)}`;
+  if (current === null) {
+    return new ProbeRuntimeError("PROBE_TEARDOWN_FAILED", detail, {
+      cause: error instanceof Error ? error : undefined,
+    });
+  }
+  return new ProbeRuntimeError(
+    "PROBE_TEARDOWN_FAILED",
+    `${describeFailure(current)}\n${detail}`,
+    { cause: error instanceof Error ? error : undefined },
+  );
 }
 
 function validateRequest(request: ProbeRunRequest): ProbeRunRequest {
@@ -365,7 +385,8 @@ export async function runProbe(
   const runId = (deps.createRunId ?? (() => `probe-${randomUUID()}`))();
   const startedAt = now().toISOString();
   startProbeRun(deps.db, { ...deps, runId, scriptPath: script.path, deviceIds: request.deviceIds, hypothesis: request.hypothesis, startedAt });
-  deps.publishChanged?.(PROBE_CHANGED_CHANNEL, { runId });
+  const changedHint = { projectId: deps.projectId, projectVersionId: deps.projectVersionId, runId };
+  deps.publishChanged?.(PROBE_CHANGED_CHANNEL, changedHint);
   const artifacts: string[] = [];
   const sessions = new Map<string, DebugGdbSession>();
   const delegatedClaims = new Set<string>();
@@ -431,12 +452,30 @@ export async function runProbe(
       terminationPromise ??= terminate(child, controller.signal.aborted ? 0 : 1_000);
       await terminationPromise;
     }
-    for (const session of [...sessions.values()].reverse()) {
-      await session.dispose().catch(() => undefined);
+    for (const [deviceId, session] of [...sessions.entries()].reverse()) {
+      try {
+        await session.dispose();
+      } catch (error) {
+        runtimeError = appendRuntimeFailure(runtimeError, `GDB session ${deviceId} teardown failed`, error);
+        const claim = claimMap.get(deviceId)!;
+        try {
+          await deps.releaseClaim(deviceId, claim.holder);
+        } catch (releaseError) {
+          runtimeError = appendRuntimeFailure(
+            runtimeError,
+            `Fallback release for ${deviceId} failed`,
+            releaseError,
+          );
+        }
+      }
     }
     for (const [deviceId, claim] of claimMap) {
       if (delegatedClaims.has(deviceId)) continue;
-      await Promise.resolve(deps.releaseClaim(deviceId, claim.holder)).catch(() => undefined);
+      try {
+        await deps.releaseClaim(deviceId, claim.holder);
+      } catch (error) {
+        runtimeError = appendRuntimeFailure(runtimeError, `Claim release for ${deviceId} failed`, error);
+      }
     }
   }
   if (runtimeError !== null) {
@@ -460,7 +499,7 @@ export async function runProbe(
     outcome = "inconclusive";
   }
   const record = finishProbeRun(deps.db, deps, runId, outcome, artifacts, now().toISOString());
-  deps.publishChanged?.(PROBE_CHANGED_CHANNEL, { runId });
+  deps.publishChanged?.(PROBE_CHANGED_CHANNEL, changedHint);
   if (runtimeError instanceof DebugBenchConfigurationError) throw runtimeError;
   return record;
 }

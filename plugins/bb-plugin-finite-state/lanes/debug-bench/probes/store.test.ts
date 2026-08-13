@@ -80,7 +80,7 @@ describe("probe store", () => {
   it("writes artifacts only beneath the ignored root", async () => {
     const root = await worktree(true);
     await expect(writeBenchArtifact(root, "run-1", "captures/data.csv", Buffer.from("a,b\n")))
-      .resolves.toBe(".fs-bench/run-1/captures/data.csv");
-    expect(await readFile(join(root, ".fs-bench/run-1/captures/data.csv"), "utf8")).toBe("a,b\n");
+      .resolves.toBe(".fs-bench/probe-runs/run-1/captures/data.csv");
+    expect(await readFile(join(root, ".fs-bench/probe-runs/run-1/captures/data.csv"), "utf8")).toBe("a,b\n");
   });
 });

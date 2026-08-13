@@ -19,6 +19,12 @@ export interface ProbeRunScope {
   projectVersionId: string | null;
 }
 
+export const PROBE_CHANGED_CHANNEL = "probe:changed" as const;
+
+export interface ProbeChangedHint extends ProbeRunScope {
+  runId: string;
+}
+
 export interface ProbeRunStart extends ProbeRunScope {
   runId: string;
   scriptPath: string;
@@ -35,6 +41,11 @@ interface ProbeRunRow {
   outcome: ProbeOutcome | null;
   artifacts: string | null;
   started_at: string;
+  finished_at: string | null;
+}
+
+interface ProbeArtifactRow {
+  artifacts: string | null;
   finished_at: string | null;
 }
 
@@ -63,39 +74,100 @@ export function finishProbeRun(
   artifacts: readonly string[],
   finishedAt: string,
 ): ProbeRunRecord {
-  const changed = db.prepare(
-    `UPDATE probe_run SET outcome = ?, artifacts = ?, finished_at = ?
-      WHERE project_id = ? AND project_version_id = ? AND run_id = ? AND finished_at IS NULL`,
-  ).run(
-    outcome,
-    JSON.stringify([...artifacts]),
-    finishedAt,
-    scope.projectId,
-    toStorageProjectVersionId(scope.projectVersionId),
-    runId,
-  ).changes;
-  if (changed !== 1) throw new Error(`PROBE_RUN_NOT_RUNNING:${runId}`);
-  const row = db.prepare<[string, string, string], ProbeRunRow>(
-    `SELECT run_id, script_path, devices, hypothesis, outcome, artifacts, started_at, finished_at
-       FROM probe_run WHERE project_id = ? AND project_version_id = ? AND run_id = ?`,
-  ).get(scope.projectId, toStorageProjectVersionId(scope.projectVersionId), runId);
-  if (!row || row.outcome === null) throw new Error(`PROBE_RUN_NOT_FOUND:${runId}`);
-  return {
-    runId: row.run_id,
-    scriptPath: row.script_path,
-    deviceIds: parseStringArray(row.devices),
-    hypothesis: row.hypothesis ?? "",
-    outcome: row.outcome,
-    artifacts: parseStringArray(row.artifacts ?? "[]"),
-    startedAt: row.started_at,
-    finishedAt: row.finished_at,
-  };
+  const projectVersionId = toStorageProjectVersionId(scope.projectVersionId);
+  return db.transaction((): ProbeRunRecord => {
+    const current = db.prepare<[string, string, string], ProbeArtifactRow>(
+      `SELECT artifacts, finished_at FROM probe_run
+        WHERE project_id = ? AND project_version_id = ? AND run_id = ?`,
+    ).get(scope.projectId, projectVersionId, runId);
+    if (!current) throw new Error(`PROBE_RUN_NOT_FOUND:${runId}`);
+    if (current.finished_at !== null) throw new Error(`PROBE_RUN_NOT_RUNNING:${runId}`);
+    const mergedArtifacts = mergeArtifactPaths(
+      parseArtifactPaths(current.artifacts),
+      artifacts,
+    );
+    const changed = db.prepare(
+      `UPDATE probe_run SET outcome = ?, artifacts = ?, finished_at = ?
+        WHERE project_id = ? AND project_version_id = ? AND run_id = ? AND finished_at IS NULL`,
+    ).run(
+      outcome,
+      JSON.stringify(mergedArtifacts),
+      finishedAt,
+      scope.projectId,
+      projectVersionId,
+      runId,
+    ).changes;
+    if (changed !== 1) throw new Error(`PROBE_RUN_NOT_RUNNING:${runId}`);
+    const row = db.prepare<[string, string, string], ProbeRunRow>(
+      `SELECT run_id, script_path, devices, hypothesis, outcome, artifacts, started_at, finished_at
+         FROM probe_run WHERE project_id = ? AND project_version_id = ? AND run_id = ?`,
+    ).get(scope.projectId, projectVersionId, runId);
+    if (!row || row.outcome === null) throw new Error(`PROBE_RUN_NOT_FOUND:${runId}`);
+    return {
+      runId: row.run_id,
+      scriptPath: row.script_path,
+      deviceIds: parseStringArray(row.devices),
+      hypothesis: row.hypothesis ?? "",
+      outcome: row.outcome,
+      artifacts: parseArtifactPaths(row.artifacts),
+      startedAt: row.started_at,
+      finishedAt: row.finished_at,
+    };
+  }).immediate();
+}
+
+export function attachProbeRunArtifact(
+  db: Database.Database,
+  scope: ProbeRunScope,
+  runId: string,
+  artifactPath: string,
+): boolean {
+  const path = validateArtifactPath(artifactPath);
+  const projectVersionId = toStorageProjectVersionId(scope.projectVersionId);
+  return db.transaction((): boolean => {
+    const row = db.prepare<[string, string, string], ProbeArtifactRow>(
+      `SELECT artifacts, finished_at FROM probe_run
+        WHERE project_id = ? AND project_version_id = ? AND run_id = ?`,
+    ).get(scope.projectId, projectVersionId, runId);
+    if (!row) throw new Error(`PROBE_RUN_NOT_FOUND:${runId}`);
+    const artifacts = parseArtifactPaths(row.artifacts);
+    if (artifacts.includes(path)) return false;
+    artifacts.push(path);
+    const changed = db.prepare(
+      `UPDATE probe_run SET artifacts = ?
+        WHERE project_id = ? AND project_version_id = ? AND run_id = ?`,
+    ).run(JSON.stringify(artifacts), scope.projectId, projectVersionId, runId).changes;
+    if (changed !== 1) throw new Error(`PROBE_RUN_NOT_FOUND:${runId}`);
+    return true;
+  }).immediate();
 }
 
 function parseStringArray(json: string): string[] {
   let parsed: unknown;
   try { parsed = JSON.parse(json); } catch { return []; }
   return Array.isArray(parsed) && parsed.every((value) => typeof value === "string") ? parsed : [];
+}
+
+function validateArtifactPath(value: string): string {
+  if (value.length === 0 || value.length > 4096 || value.includes("\0") || value.includes("\\") ||
+      !value.startsWith(".fs-bench/") || value.split("/").some((segment) => segment === "" || segment === "." || segment === "..")) {
+    throw new Error("INVALID_PROBE_ARTIFACT_PATH");
+  }
+  return value;
+}
+
+function parseArtifactPaths(json: string | null): string[] {
+  if (json === null) return [];
+  let parsed: unknown;
+  try { parsed = JSON.parse(json); } catch { throw new Error("INVALID_PROBE_ARTIFACTS"); }
+  if (!Array.isArray(parsed) || !parsed.every((value) => typeof value === "string")) {
+    throw new Error("INVALID_PROBE_ARTIFACTS");
+  }
+  return parsed.map(validateArtifactPath);
+}
+
+function mergeArtifactPaths(...groups: readonly (readonly string[])[]): string[] {
+  return [...new Set(groups.flatMap((group) => group.map(validateArtifactPath)))];
 }
 
 interface DevelopmentRunsInput extends ProbeRunScope {

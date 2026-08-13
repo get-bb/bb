@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -6,6 +7,7 @@ import Database from "better-sqlite3";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MIGRATIONS } from "../../../lib/store/schema.js";
 import type { DeviceClaim } from "../registry/claims.js";
+import { finishProbeRun } from "../probes/runs.js";
 import {
   createProbeRunArtifactSink,
   createReplayLogicDriver,
@@ -27,6 +29,13 @@ afterEach(() => {
 function directory(): string {
   const value = mkdtempSync(join(tmpdir(), "fs127-instrument-"));
   directories.push(value);
+  return value;
+}
+
+function worktreeDirectory(): string {
+  const value = directory();
+  execFileSync("git", ["init", "--quiet", value]);
+  writeFileSync(join(value, ".gitignore"), ".fs-bench/\n", "utf8");
   return value;
 }
 
@@ -153,7 +162,7 @@ describe("shared instrument driver contract", () => {
 });
 
 describe("probe-run artifact plumbing", () => {
-  it("records only a gitignored capture path and publishes a tiny refetch hint", async () => {
+  it("preserves a gitignored instrument capture when the probe run finishes", async () => {
     const db = new Database(":memory:");
     databases.push(db);
     db.transaction(() => { for (const statement of MIGRATIONS) db.exec(statement); })();
@@ -163,7 +172,7 @@ describe("probe-run artifact plumbing", () => {
         hypothesis, outcome, artifacts, started_at, finished_at
       ) VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, ?, NULL)`,
     ).run("project-1", "version-1", "run-1", ".fs/bench/probes/test.py", "[]", "bus traffic", "2026-08-13T10:00:00.000Z");
-    const worktreeRoot = directory();
+    const worktreeRoot = worktreeDirectory();
     const publishChanged = vi.fn();
     const artifactSink = await createProbeRunArtifactSink({
       db,
@@ -172,16 +181,27 @@ describe("probe-run artifact plumbing", () => {
       projectVersionId: "version-1",
       runId: "run-1",
       publishChanged,
-      isIgnored: async (_root, relativePath) => relativePath.startsWith(".fs-bench/"),
     });
     const path = join(artifactSink.directory, "capture.json");
     writeFileSync(path, "{}", "utf8");
     await artifactSink.record({ path, format: "test", durationMs: 1, channels: 1 });
+    const finished = finishProbeRun(
+      db,
+      { projectId: "project-1", projectVersionId: "version-1" },
+      "run-1",
+      "confirmed",
+      [".fs-bench/probe-runs/run-1/runtime.csv"],
+      "2026-08-13T10:01:00.000Z",
+    );
     const row = db.prepare<[string], { artifacts: string }>(
       "SELECT artifacts FROM probe_run WHERE run_id = ?",
     ).get("run-1");
     expect(row).toBeDefined();
-    expect(JSON.parse(row!.artifacts)).toEqual([".fs-bench/probe-runs/run-1/logic/capture.json"]);
+    expect(JSON.parse(row!.artifacts)).toEqual([
+      ".fs-bench/probe-runs/run-1/logic/capture.json",
+      ".fs-bench/probe-runs/run-1/runtime.csv",
+    ]);
+    expect(finished.artifacts).toEqual(JSON.parse(row!.artifacts));
     expect(publishChanged).toHaveBeenCalledWith("probe:changed", {
       projectId: "project-1",
       projectVersionId: "version-1",

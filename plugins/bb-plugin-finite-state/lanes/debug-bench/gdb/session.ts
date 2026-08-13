@@ -255,10 +255,19 @@ export async function openGdbSession(
 ): Promise<DebugGdbSession> {
   const holder = claim.holder;
   let released = false;
-  const release = async () => {
-    if (released) return;
-    released = true;
-    await deps.releaseClaim(deviceId, holder);
+  let releasePromise: Promise<void> | null = null;
+  const release = (): Promise<void> => {
+    if (released) return Promise.resolve();
+    if (releasePromise) return releasePromise;
+    const attempt = Promise.resolve()
+      .then(() => deps.releaseClaim(deviceId, holder))
+      .then(() => { released = true; });
+    let wrapped: Promise<void>;
+    wrapped = attempt.finally(() => {
+      if (releasePromise === wrapped) releasePromise = null;
+    });
+    releasePromise = wrapped;
+    return wrapped;
   };
   let device: BenchDeviceRecord;
   try {
@@ -266,7 +275,11 @@ export async function openGdbSession(
     device = requireClaim(deps, deviceId, claim);
     signal.throwIfAborted();
   } catch (error) {
-    await release().catch(() => undefined);
+    try {
+      await release();
+    } catch (releaseError) {
+      throw new AggregateError([error, releaseError], "Claim validation and release both failed.");
+    }
     throw error;
   }
   let gdb: string;
@@ -285,20 +298,26 @@ export async function openGdbSession(
   let server: GdbServerHandle | null = null;
   let child: ChildProcess | null = null;
   let transport: MiTransport | null = null;
-  let disposePromise: Promise<void> | null = null;
+  let cleanupPromise: Promise<void> | null = null;
 
-  const dispose = (): Promise<void> => {
-    if (disposePromise) return disposePromise;
-    disposePromise = (async () => {
+  const dispose = async (): Promise<void> => {
+    cleanupPromise ??= (async () => {
       signal.removeEventListener("abort", onAbort);
       transport?.close();
       if (child) await terminate(child);
       if (server) await server.dispose();
-      await release();
     })();
-    return disposePromise;
+    const [cleanup, claimRelease] = await Promise.allSettled([cleanupPromise, release()]);
+    if (cleanup.status === "rejected" && claimRelease.status === "rejected") {
+      throw new AggregateError(
+        [cleanup.reason, claimRelease.reason],
+        "GDB session teardown and claim release both failed.",
+      );
+    }
+    if (cleanup.status === "rejected") throw cleanup.reason;
+    if (claimRelease.status === "rejected") throw claimRelease.reason;
   };
-  const onAbort = () => { void dispose(); };
+  const onAbort = () => { void dispose().catch(() => undefined); };
   signal.addEventListener("abort", onAbort, { once: true });
 
   try {
