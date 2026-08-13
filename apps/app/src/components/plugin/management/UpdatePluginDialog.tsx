@@ -30,13 +30,6 @@ export interface UpdatePluginDialogProps {
   plugin: PluginListItem;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /**
-   * Copy naming the row state a failed update lands in. Required because the
-   * two surfaces disagree — the Tools Hub row says "Update failed", the legacy
-   * Settings row says "Needs attention" — and a default would let a call site
-   * silently point the user at copy that surface never shows.
-   */
-  failureStateLabel: string;
 }
 
 /**
@@ -50,7 +43,6 @@ export function UpdatePluginDialog({
   plugin,
   open,
   onOpenChange,
-  failureStateLabel,
 }: UpdatePluginDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -59,7 +51,6 @@ export function UpdatePluginDialog({
           <UpdatePluginDialogContent
             plugin={plugin}
             onOpenChange={onOpenChange}
-            failureStateLabel={failureStateLabel}
           />
         ) : null}
       </DialogContent>
@@ -70,11 +61,9 @@ export function UpdatePluginDialog({
 function UpdatePluginDialogContent({
   plugin,
   onOpenChange,
-  failureStateLabel,
 }: {
   plugin: PluginListItem;
   onOpenChange: (open: boolean) => void;
-  failureStateLabel: string;
 }) {
   const queryClient = useQueryClient();
   const name = plugin.name ?? plugin.id;
@@ -166,8 +155,8 @@ function UpdatePluginDialogContent({
           </p>
           {rolledBack === null ? null : (
             <p className="text-xs text-subtle-foreground">
-              The plugin is marked &ldquo;{failureStateLabel}&rdquo; in the
-              installed list until an update succeeds.
+              The plugin is marked &ldquo;Update failed&rdquo; in the installed
+              list until an update succeeds.
             </p>
           )}
         </div>

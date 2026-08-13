@@ -294,7 +294,12 @@ describe("PluginSettingsDetail settings gating", () => {
       { wrapper },
     );
 
-    expect(await screen.findByText("Remote access")).toBeDefined();
+    expect(
+      await screen.findByRole("heading", {
+        level: 3,
+        name: "Remote access",
+      }),
+    ).toBeDefined();
     expect(screen.getByText("Custom connect settings")).toBeDefined();
     expect(screen.queryByText("This plugin declares no settings.")).toBeNull();
   });

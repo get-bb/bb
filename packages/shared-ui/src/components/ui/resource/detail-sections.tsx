@@ -10,6 +10,8 @@ export type ResourceDetailSectionKind =
   | "activity";
 
 export interface ResourceDetailSectionProps {
+  id?: string;
+  className?: string;
   label: ReactNode;
   actions?: ReactNode;
   children: ReactNode;
@@ -17,12 +19,18 @@ export interface ResourceDetailSectionProps {
 
 export function ResourceDetailSection({
   kind = "definition",
+  id,
+  className,
   label,
   actions,
   children,
 }: ResourceDetailSectionProps & { kind?: ResourceDetailSectionKind }) {
   return (
-    <section className="space-y-3" data-resource-detail-section={kind}>
+    <section
+      id={id}
+      className={cn("space-y-3", className)}
+      data-resource-detail-section={kind}
+    >
       <div className="flex min-h-6 items-center justify-between gap-3">
         <h2 className="text-sm font-medium text-foreground">{label}</h2>
         {actions ? (

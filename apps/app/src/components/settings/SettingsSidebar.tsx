@@ -8,12 +8,11 @@ import {
 import { COARSE_POINTER_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import {
   SETTINGS_ROUTE_PATH,
-  getSettingsPluginRoutePath,
   getSettingsProviderRoutePath,
   getSettingsRoutePath,
 } from "@/lib/route-paths";
 import { getProviderIconInfo } from "@/lib/provider-icon";
-import { PluginNavIcon, useSettingsNavState } from "./settings-nav";
+import { useSettingsNavState } from "./settings-nav";
 
 interface SettingsSidebarProps {
   onResizeMouseDown: (event: ReactMouseEvent<HTMLDivElement>) => void;
@@ -29,14 +28,8 @@ export function SettingsSidebar({
   showTopReserve,
   appRoutePath,
 }: SettingsSidebarProps) {
-  const {
-    activePluginId,
-    activeProviderId,
-    activeSection,
-    pluginEntries,
-    providerEntries,
-    sections,
-  } = useSettingsNavState();
+  const { activeProviderId, activeSection, providerEntries, sections } =
+    useSettingsNavState();
 
   return (
     <SectionSidebar
@@ -88,25 +81,6 @@ export function SettingsSidebar({
           );
         })}
       </div>
-      {pluginEntries.length > 0 ? (
-        <>
-          <div className="mt-4">
-            <SectionSidebarLabel>Plugins</SectionSidebarLabel>
-          </div>
-          <div className="mt-1 space-y-0.5">
-            {pluginEntries.map((plugin) => (
-              <SectionSidebarRow
-                key={plugin.id}
-                active={activePluginId === plugin.id}
-                label={plugin.name ?? plugin.id}
-                to={getSettingsPluginRoutePath(plugin.id)}
-              >
-                <PluginNavIcon plugin={plugin} />
-              </SectionSidebarRow>
-            ))}
-          </div>
-        </>
-      ) : null}
       {sections.some((section) => section.id === "archived") ? (
         <>
           <div className="mt-4">

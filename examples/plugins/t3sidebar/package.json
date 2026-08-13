@@ -6,7 +6,7 @@
   "description": "An inbox-style sidebar: one flat list of cards that never re-orders.",
   "engines": {
     "bb": ">=0.0",
-    "bbPluginSdk": "^0.4.1"
+    "bbPluginSdk": "^0.5.0"
   },
   "bb": {
     "name": "t3sidebar",

@@ -394,8 +394,8 @@ describe("PluginNavSidebarItems", () => {
   it("saves no Extensions key while the row is absent", async () => {
     registerPanel("docs", "Docs");
 
-    // Extensions is off, so nothing should reserve a slot for a row that never
-    // renders here.
+    // This isolated host renders plugin rows without the Extensions route, so
+    // nothing should reserve a slot for a row that never renders here.
     renderSidebarItems({ storedOrder: ["docs/main"] });
 
     await waitFor(() => {

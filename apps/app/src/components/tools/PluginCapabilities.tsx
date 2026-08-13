@@ -1,7 +1,9 @@
 import type { ReactNode } from "react";
+import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import { Button } from "@bb/shared-ui/button";
-import type { PluginCapability } from "@bb/server-contract";
+import type { PluginCapability, SkillListResponse } from "@bb/server-contract";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import {
   ResourceDetailIncludesSection,
@@ -26,6 +28,16 @@ import {
   type PluginListItem,
 } from "@/hooks/queries/plugin-settings-queries";
 import { usePluginSlots, type PluginSlotSnapshot } from "@/lib/plugin-slots";
+import {
+  getPluginConfigurationRoutePath,
+  getPluginPanelRoutePath,
+  getRootComposeRoutePath,
+  getSettingsRoutePath,
+  getSkillDetailRoutePath,
+  getSkillsRoutePath,
+} from "@/lib/route-paths";
+import { getPluginHomepageSectionAnchor } from "@/lib/plugin-homepage-section";
+import { projectSkillsQueryKey } from "@/hooks/queries/query-keys";
 
 function pluginActivityIcon(
   activity: "service" | "schedule",
@@ -140,6 +152,7 @@ interface PluginCapabilityItem {
   label: ReactNode;
   detail?: ReactNode;
   mono?: boolean;
+  destinationPath?: string;
 }
 
 function namedSurface(
@@ -147,6 +160,7 @@ function namedSurface(
   id: string,
   title: string | undefined,
   description: string,
+  destinationPath?: string,
 ): PluginCapabilityItem {
   const label = title?.trim() || id;
   return {
@@ -164,56 +178,113 @@ function namedSurface(
         </span>
       ),
     mono: label === id,
+    destinationPath,
   };
 }
 
-function namedSlotItems(
+function namedSlotItems<
+  Slot extends { pluginId: string; id: string; title?: string },
+>(
   pluginId: string,
-  slots: readonly { pluginId: string; id: string; title?: string }[],
+  slots: readonly Slot[],
   prefix: string,
   description: string,
+  destinationPath?: (slot: Slot) => string,
 ): PluginCapabilityItem[] {
   return slots
     .filter((slot) => slot.pluginId === pluginId)
-    .map((slot) => namedSurface(prefix, slot.id, slot.title, description));
+    .map((slot) =>
+      namedSurface(
+        prefix,
+        slot.id,
+        slot.title,
+        description,
+        destinationPath?.(slot),
+      ),
+    );
 }
 
 function pluginAppSurfaceItems(
-  pluginId: string,
+  plugin: PluginListItem,
   slots: PluginSlotSnapshot,
 ): PluginCapabilityItem[] {
-  const namedSlots = [
-    [slots.navPanels, "nav", "Adds a page to the app sidebar."],
-    [slots.homepageSections, "homepage", "Adds content to the Home page."],
-    [
+  const pluginId = plugin.id;
+  const settingsSections = slots.settingsSections.filter(
+    (section) => section.pluginId === pluginId,
+  );
+  return [
+    ...(plugin.hasSettings || settingsSections.length > 0
+      ? [
+          namedSurface(
+            "settings",
+            "settings",
+            "Settings",
+            "Opens this plugin's configuration.",
+            getPluginConfigurationRoutePath({ pluginId }),
+          ),
+        ]
+      : []),
+    ...namedSlotItems(
+      pluginId,
+      slots.navPanels,
+      "nav",
+      "Adds a page to the app sidebar.",
+      (panel) =>
+        getPluginPanelRoutePath({
+          pluginId,
+          path: panel.path,
+        }),
+    ),
+    ...namedSlotItems(
+      pluginId,
+      slots.homepageSections,
+      "homepage",
+      "Adds content to the Home page.",
+      (section) =>
+        `${getRootComposeRoutePath()}#${getPluginHomepageSectionAnchor(pluginId, section.id)}`,
+    ),
+    ...namedSlotItems(
+      pluginId,
+      slots.threadLists,
+      "thread-list",
+      "Replaces the sidebar thread list when selected in Appearance.",
+      () => getSettingsRoutePath("appearance"),
+    ),
+    ...namedSlotItems(
+      pluginId,
       slots.threadPanelActions,
       "thread-panel",
       "Adds an action that opens a panel beside a thread.",
-    ],
-    [
+    ),
+    ...namedSlotItems(
+      pluginId,
       slots.newThreadPanelActions,
       "new-thread-panel",
       "Adds an action that opens a panel beside the New thread screen.",
-    ],
-    [
+    ),
+    ...namedSlotItems(
+      pluginId,
       slots.pendingInteractions,
       "input",
       "Renders a custom interaction inside a thread.",
-    ],
-    [
+    ),
+    ...namedSlotItems(
+      pluginId,
       slots.sidebarFooterActions,
       "sidebar",
       "Adds an action to the app sidebar.",
-    ],
-    [
+    ),
+    ...namedSlotItems(
+      pluginId,
       slots.messageActions,
       "message-action",
       "Adds an action to messages in threads.",
-    ],
-  ] as const;
-  return [
-    ...namedSlots.flatMap(([items, prefix, description]) =>
-      namedSlotItems(pluginId, items, prefix, description),
+    ),
+    ...namedSlotItems(
+      pluginId,
+      slots.threadHeaderActions,
+      "thread-header",
+      "Adds an action to thread headers.",
     ),
     ...slots.composerCustomizations
       .filter((slot) => slot.pluginId === pluginId)
@@ -259,6 +330,7 @@ function pluginAppSurfaceItems(
           slot.id,
           slot.title,
           "Opens supported files in a plugin-provided viewer.",
+          getSettingsRoutePath("files"),
         ),
         detail: (
           <span className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
@@ -282,7 +354,22 @@ function pluginAppSurfaceItems(
 
 export function PluginIncludes({ plugin }: { plugin: PluginListItem }) {
   const slots = usePluginSlots();
-  const appItems = pluginAppSurfaceItems(plugin.id, slots);
+  const queryClient = useQueryClient();
+  const cachedSkills = queryClient.getQueryData<SkillListResponse>(
+    projectSkillsQueryKey(PERSONAL_PROJECT_ID),
+  );
+  const appItems = pluginAppSurfaceItems(plugin, slots);
+
+  const skillDestination = (capabilityId: string): string => {
+    const installedSkill = cachedSkills?.skills.find((skill) => {
+      if (skill.pluginId !== plugin.id) return false;
+      const segments = skill.filePath.split(/[\\/]/u);
+      return segments.at(-2) === capabilityId || skill.name === capabilityId;
+    });
+    return installedSkill === undefined
+      ? `${getSkillsRoutePath()}?view=library`
+      : getSkillDetailRoutePath({ skillId: installedSkill.id });
+  };
 
   const declared = (kind: PluginCapability["kind"]): PluginCapabilityItem[] =>
     plugin.capabilities
@@ -292,6 +379,12 @@ export function PluginIncludes({ plugin }: { plugin: PluginListItem }) {
         label: capability.label,
         detail: capability.detail ?? undefined,
         mono: kind === "skill" || kind === "agent-tool",
+        destinationPath:
+          kind === "theme"
+            ? getSettingsRoutePath("appearance")
+            : kind === "skill"
+              ? skillDestination(capability.id)
+              : undefined,
       }));
 
   // `kind` is the name behind the glyph, not a column. Most plugins contribute
@@ -378,7 +471,18 @@ export function PluginIncludes({ plugin }: { plugin: PluginListItem }) {
                   className="text-muted-foreground"
                 />
               }
-              name={item.label}
+              name={
+                item.destinationPath === undefined ? (
+                  item.label
+                ) : (
+                  <Link
+                    to={item.destinationPath}
+                    className="rounded-sm text-xs underline decoration-border underline-offset-4 transition-colors hover:decoration-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  >
+                    {item.label}
+                  </Link>
+                )
+              }
               nameClassName="text-xs"
               mono={item.mono}
               detail={item.detail}

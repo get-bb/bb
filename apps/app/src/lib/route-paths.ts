@@ -5,7 +5,7 @@ export const APP_ROOT_ROUTE_PATH = "/";
 export const AUTH_CALLBACK_ROUTE_PATH = "/auth/callback";
 export const SETTINGS_ROUTE_PATH = "/settings";
 // Settings buckets (general, files, …) plus legacy plugin routes that redirect
-// to the canonical Tools → Plugins surfaces. The static "plugins" segment must
+// to the canonical Extensions → Plugins surfaces. The static "plugins" segment must
 // win over :section so those old deep links resolve before redirecting.
 export const SETTINGS_SECTION_ROUTE_PATH = "/settings/:section";
 export const SETTINGS_PLUGINS_ROUTE_PATH = "/settings/plugins";
@@ -103,10 +103,6 @@ export function getSettingsRoutePath(section?: string): string {
     : `/settings/${encodeURIComponent(section)}`;
 }
 
-export function getSettingsPluginRoutePath(pluginId: string): string {
-  return `/settings/plugins/${encodeURIComponent(pluginId)}`;
-}
-
 export function getSettingsProviderRoutePath(providerId: string): string {
   return `/settings/providers/${encodeURIComponent(providerId)}`;
 }
@@ -174,6 +170,12 @@ export function getPluginDetailRoutePath({
   pluginId,
 }: PluginDetailRoutePathArgs): string {
   return `${TOOLS_PLUGINS_ROUTE_PATH}/${encodeURIComponent(pluginId)}`;
+}
+
+export function getPluginConfigurationRoutePath(
+  args: PluginDetailRoutePathArgs,
+): string {
+  return `${getPluginDetailRoutePath(args)}#configuration`;
 }
 
 export function getAutomationsRoutePath(): string {

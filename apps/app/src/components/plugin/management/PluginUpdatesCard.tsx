@@ -71,7 +71,6 @@ export function PluginUpdateBanner({ plugin }: { plugin: PluginListItem }) {
         }
       />
       <UpdatePluginDialog
-        failureStateLabel="Update failed"
         plugin={plugin}
         open={updateOpen}
         onOpenChange={setUpdateOpen}
@@ -179,7 +178,6 @@ export function PluginDetailReleaseControl({
         Update
       </Button>
       <UpdatePluginDialog
-        failureStateLabel="Update failed"
         plugin={plugin}
         open={detailsOpen}
         onOpenChange={setDetailsOpen}

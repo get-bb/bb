@@ -4,6 +4,8 @@ import {
   getRootComposeRoutePath,
   getPluginsRoutePath,
   isToolsRoutePath,
+  SETTINGS_PLUGIN_ROUTE_PATH,
+  SETTINGS_PLUGINS_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
 } from "@/lib/route-paths";
 
@@ -26,6 +28,13 @@ function isGlobalSettingsRoute(pathname: string): boolean {
   return matchPath(`${SETTINGS_ROUTE_PATH}/*`, pathname) !== null;
 }
 
+function isPluginSettingsCompatibilityRoute(pathname: string): boolean {
+  return (
+    matchPath(SETTINGS_PLUGINS_ROUTE_PATH, pathname) !== null ||
+    matchPath(SETTINGS_PLUGIN_ROUTE_PATH, pathname) !== null
+  );
+}
+
 /**
  * Remembers the most recently visited core-app and global Settings routes
  * while the app shell is mounted. Extensions route memory is intentionally
@@ -34,13 +43,19 @@ function isGlobalSettingsRoute(pathname: string): boolean {
 export function useAppSettingsRouteMemory(): AppSettingsRouteMemory {
   const location = useLocation();
   const currentRoutePath = getLocationRoutePath(location);
-  const isSettingsRoute = isGlobalSettingsRoute(location.pathname);
+  const isCompatibilityRoute = isPluginSettingsCompatibilityRoute(
+    location.pathname,
+  );
+  const isSettingsRoute =
+    !isCompatibilityRoute && isGlobalSettingsRoute(location.pathname);
   const isCurrentToolsRoute = isToolsRoutePath(location.pathname);
   const lastAppRoutePathRef = useRef(
-    isSettingsRoute ? getRootComposeRoutePath() : currentRoutePath,
+    isSettingsRoute || isCompatibilityRoute
+      ? getRootComposeRoutePath()
+      : currentRoutePath,
   );
   const lastCoreAppRoutePathRef = useRef(
-    isSettingsRoute || isCurrentToolsRoute
+    isSettingsRoute || isCurrentToolsRoute || isCompatibilityRoute
       ? getRootComposeRoutePath()
       : currentRoutePath,
   );
@@ -49,6 +64,9 @@ export function useAppSettingsRouteMemory(): AppSettingsRouteMemory {
   );
 
   useEffect(() => {
+    if (isCompatibilityRoute) {
+      return;
+    }
     if (isSettingsRoute) {
       lastSettingsRoutePathRef.current = currentRoutePath;
       return;
@@ -58,20 +76,27 @@ export function useAppSettingsRouteMemory(): AppSettingsRouteMemory {
       return;
     }
     lastCoreAppRoutePathRef.current = currentRoutePath;
-  }, [currentRoutePath, isCurrentToolsRoute, isSettingsRoute]);
+  }, [
+    currentRoutePath,
+    isCompatibilityRoute,
+    isCurrentToolsRoute,
+    isSettingsRoute,
+  ]);
 
   return {
-    appRoutePath: isSettingsRoute
-      ? lastAppRoutePathRef.current
-      : currentRoutePath,
+    appRoutePath:
+      isSettingsRoute || isCompatibilityRoute
+        ? lastAppRoutePathRef.current
+        : currentRoutePath,
     settingsRoutePath: isSettingsRoute
       ? currentRoutePath
       : lastSettingsRoutePathRef.current,
     toolsRoutePath: isCurrentToolsRoute
       ? currentRoutePath
       : getPluginsRoutePath(),
-    toolsBackRoutePath: isCurrentToolsRoute
-      ? lastCoreAppRoutePathRef.current
-      : currentRoutePath,
+    toolsBackRoutePath:
+      isCurrentToolsRoute || isCompatibilityRoute
+        ? lastCoreAppRoutePathRef.current
+        : currentRoutePath,
   };
 }

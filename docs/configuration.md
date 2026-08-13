@@ -596,10 +596,6 @@ Experimental surfaces are changed in Settings → Experiments or with
 `bb settings experiment <key> <true|false>`. Most start off; `editMessages`
 starts on and its toggle is the opt-out. The `newOnboarding` experiment exposes
 the first-run agent and project setup guide.
-The `toolsHub` experiment exposes Extensions for managing skills and plugins,
-while Automations stays in the Plugins section beside threads. The `toolsHub`
-gate only controls the UI. Installed skills, automation execution, plugin
-runtimes, CLI commands, and backend APIs keep working while it is off.
 The `editMessages` experiment is on by default and enables replacing an
 eligible, accepted root user message in a Codex, Claude Code, or Pi thread,
 including failed or incomplete turns. Turn it off to hide the editor. Grouped

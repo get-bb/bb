@@ -123,7 +123,7 @@ export function PluginNavSidebarItems({
 }: {
   onNavigate?: () => void;
   splitEnabled?: boolean;
-  /** Omit to drop the built-in Extensions row, e.g. when its experiment is off. */
+  /** Omit when a host surface should render plugin rows without Extensions. */
   toolsRoutePath?: string;
 }) {
   const { navPanels } = usePluginSlots();

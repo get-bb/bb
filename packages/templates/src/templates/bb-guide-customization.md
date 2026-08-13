@@ -104,10 +104,6 @@ while the experiment is on.
 
 The `newOnboarding` experiment exposes the first-run agent and project setup
 guide.
-The `toolsHub` experiment exposes Extensions for managing skills and plugins.
-Automations stays in the Plugins section beside threads. It does not enable or
-disable installed skills, automation execution, plugin runtimes, CLI commands,
-or backend APIs.
 The default-on `editMessages` experiment enables editing eligible, accepted
 root user messages in Codex, Claude Code, and Pi threads, including failed or
 incomplete turns; turn it off to hide the editor. Opening the editor is

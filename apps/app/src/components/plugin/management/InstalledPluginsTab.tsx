@@ -62,7 +62,6 @@ export function InstalledPluginsTab({
       </ResourceListPanel>
       {updateTarget !== null ? (
         <UpdatePluginDialog
-          failureStateLabel="Update failed"
           plugin={updateTarget}
           open
           onOpenChange={(open) => {

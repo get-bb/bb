@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import {
+  getPluginConfigurationRoutePath,
   getPluginDetailRoutePath,
   getPluginsRoutePath,
   getRegistrySkillDetailRoutePath,
@@ -74,6 +75,9 @@ describe("route path helpers", () => {
     expect(getPluginsRoutePath()).toBe("/tools/plugins");
     expect(getPluginDetailRoutePath({ pluginId: "github" })).toBe(
       "/tools/plugins/github",
+    );
+    expect(getPluginConfigurationRoutePath({ pluginId: "github" })).toBe(
+      "/tools/plugins/github#configuration",
     );
     for (const path of [
       "/tools",

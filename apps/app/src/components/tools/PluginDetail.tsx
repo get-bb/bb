@@ -1,6 +1,7 @@
 import { useState, useSyncExternalStore } from "react";
 import {
   ResourceActivitySection,
+  ResourceDetailConfigurationSection,
   ResourceDetailOverviewSection,
   ResourceDetailPage,
   ResourceDetailReleaseSection,
@@ -21,6 +22,7 @@ import {
 import { formatHomePathForDisplay } from "@bb/shared-ui/lib/utils";
 import { Icon } from "@bb/shared-ui/icon";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
+import { PluginSettingsDetail } from "@/components/plugin/PluginSettings";
 import {
   PluginDetailReleaseControl,
   PluginDetailReleaseStatus,
@@ -57,6 +59,7 @@ import {
   subscribePluginFrontendDiagnostics,
   type PluginFrontendDiagnostic,
 } from "@/lib/plugin-frontend";
+import { usePluginSlots } from "@/lib/plugin-slots";
 
 function pluginSourceLabel(plugin: PluginListItem): string | null {
   return plugin.provenance === "builtin" || plugin.provenance === "catalog"
@@ -276,6 +279,7 @@ export function PluginDetail({
   onOpenSource: (plugin: PluginListItem) => void;
   onDelete: (plugin: PluginListItem) => void;
 }) {
+  const { settingsSections } = usePluginSlots();
   // Hooks run before the loading and not-found returns below, so this has to
   // tolerate a null plugin rather than read `plugin.id` unconditionally.
   const sourceQuery = usePluginSource(plugin?.id ?? "", {
@@ -324,6 +328,9 @@ export function PluginDetail({
     (plugin.updateState.availableVersion !== null ||
       plugin.updateState.blockedVersion !== null ||
       plugin.updateState.lastFailure !== null);
+  const hasConfiguration =
+    plugin.hasSettings ||
+    settingsSections.some((section) => section.pluginId === plugin.id);
 
   const pluginName = plugin.name ?? plugin.id;
   // Uninstall is destructive and irreversible-ish, so it belongs with the other
@@ -411,6 +418,15 @@ export function PluginDetail({
             {plugin.description ?? "This plugin does not describe itself."}
           </p>
         </ResourceDetailOverviewSection>
+        {hasConfiguration ? (
+          <ResourceDetailConfigurationSection
+            id="configuration"
+            className="scroll-mt-4"
+            label="Configuration"
+          >
+            <PluginSettingsDetail plugin={plugin} />
+          </ResourceDetailConfigurationSection>
+        ) : null}
         <ResourceDetailReleaseSection
           label="Release"
           actions={
@@ -426,10 +442,7 @@ export function PluginDetail({
             >
               {installedValue}
             </PluginDetailFieldRow>
-            <PluginDetailFieldRow
-              label="Version"
-              labelClassName="font-medium"
-            >
+            <PluginDetailFieldRow label="Version" labelClassName="font-medium">
               <span className="font-mono text-xs">{plugin.version}</span>
             </PluginDetailFieldRow>
             {hasReleaseUpdate ? (

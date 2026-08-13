@@ -7,7 +7,6 @@ afterEach(cleanup);
 
 function renderSection(overrides?: {
   onNewOnboardingEnabledChange?: (enabled: boolean) => void;
-  onToolsHubEnabledChange?: (enabled: boolean) => void;
 }) {
   return render(
     <ExperimentsSettingsSection
@@ -20,8 +19,6 @@ function renderSection(overrides?: {
       onNewOnboardingEnabledChange={
         overrides?.onNewOnboardingEnabledChange ?? vi.fn()
       }
-      onToolsHubEnabledChange={overrides?.onToolsHubEnabledChange ?? vi.fn()}
-      toolsHubEnabled={false}
     />,
   );
 }
@@ -31,15 +28,6 @@ describe("ExperimentsSettingsSection", () => {
     const onChange = vi.fn();
     renderSection({ onNewOnboardingEnabledChange: onChange });
     fireEvent.click(screen.getByLabelText("New onboarding"));
-    expect(onChange).toHaveBeenCalledWith(true);
-  });
-
-  it("reports Extensions changes", () => {
-    const onChange = vi.fn();
-    renderSection({ onToolsHubEnabledChange: onChange });
-    const toggle = screen.getByLabelText("Extensions");
-    expect(toggle.hasAttribute("disabled")).toBe(false);
-    fireEvent.click(toggle);
     expect(onChange).toHaveBeenCalledWith(true);
   });
 });

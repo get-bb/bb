@@ -100,10 +100,8 @@ message agents, or inspect projects, providers, and environments.
   inspect or change these server-backed values from agents. Pass
   `bb settings usage --machine <id-or-name>` to read provider limits from a
   specific connected machine instead of the primary machine.
-- The default-off `toolsHub` experiment exposes the unified Skills, Plugins,
-  and Automations management UI. Change it with
-  `bb settings experiment toolsHub <true|false>`. It does not load or unload
-  tools.
+- Extensions provides the unified Skills and Plugins management UI, while
+  Automations stays in the Plugins section beside threads.
 - The default-off `newOnboarding` experiment exposes the first-run agent and
   project setup guide. Change it with
   `bb settings experiment newOnboarding <true|false>`. Use
@@ -396,12 +394,10 @@ For review or fix pipelines, get the environment ID from
   target thread workspace.
 - Absolute paths under `BB_THREAD_STORAGE` open as thread-storage files for the
   current thread.
-- Use `bb thread pane maximize|restore|toggle|spotlight|clear-spotlight
-[thread-id]` to change a matching already-open pane in every connected BB app
-  window. `spotlight` focuses that pane and dims the others; `clear-spotlight`
-  focuses it and removes split dimming. Inside a BB thread, omit the id to use
-  `BB_THREAD_ID`. The command reports how many connected clients received the
-  ephemeral action. The SDK equivalent is
+- Use `bb thread pane maximize|restore|toggle [thread-id]` to change a matching
+  already-open pane in every connected BB app window. Inside a BB thread, omit
+  the id to use `BB_THREAD_ID`. The command reports how many connected clients
+  received the ephemeral action. The SDK equivalent is
   `sdk.threads.paneAction({ threadId, action })`.
 - Users can also toggle the focused pane from its header or with the configurable
   `pane.maximize.toggle` app command (default `Mod+Shift+E`).
@@ -764,7 +760,7 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
   - `bb plugin run <id> [args...]` — explicit form of a plugin's CLI command.
   - `bb plugin new <name> [--app]` — scaffold a plugin and install its npm
     dependencies (`--app` adds a frontend entry plus a typecheck-only
-    `tsconfig.json`; scaffold sets `engines.bbPluginSdk` to `^0.4.2`). The
+    `tsconfig.json`; scaffold sets `engines.bbPluginSdk` to `^0.5.0`). The
     install is best-effort and verified: if npm is missing or leaves a package
     out, it says so and prints the manual `npm install --include=dev` step
     rather than reporting success; `bb plugin build [path]` —

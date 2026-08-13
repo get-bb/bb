@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 /**
- * The Tools Hub detail pages share a shell, but the thing that actually keeps
+ * The Extensions detail pages share a shell, but the thing that actually keeps
  * them consistent is each tool type's *recipe*: which semantic sections appear,
  * in which order, under which label, and which of them are allowed to
  * disappear. These tests read the recipe straight off the rendered DOM via
@@ -19,6 +19,8 @@ import {
 import { useState, type ComponentProps } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { PERSONAL_PROJECT_ID } from "@bb/domain";
+import type { SkillSummary } from "@bb/server-contract";
 import type {
   AgentExecutionUpdate,
   AutomationExecutionOptionsResponse,
@@ -40,10 +42,13 @@ import {
 } from "@/lib/plugin-slots";
 import { PluginDetail } from "./PluginDetail";
 import { SkillDetailView } from "./SkillDetailView";
+import { projectSkillsQueryKey } from "@/hooks/queries/query-keys";
+import { sdk } from "@/lib/sdk";
 
 afterEach(() => {
   cleanup();
   resetPluginSlotStoreForTest();
+  vi.restoreAllMocks();
 });
 
 /** The rendered recipe: each section's kind and its visible label, in order. */
@@ -84,8 +89,17 @@ const PLUGIN: PluginListItem = {
   updateState: EMPTY_PLUGIN_UPDATE_STATE,
 };
 
-function renderPlugin(plugin: PluginListItem) {
-  const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+function renderPlugin(
+  plugin: PluginListItem,
+  options?: { skills?: SkillSummary[]; seedSkillsCache?: boolean },
+) {
+  const { wrapper: QueryClientWrapper, queryClient } =
+    createQueryClientTestHarness();
+  if (options?.seedSkillsCache !== false) {
+    queryClient.setQueryData(projectSkillsQueryKey(PERSONAL_PROJECT_ID), {
+      skills: options?.skills ?? [],
+    });
+  }
   return render(
     <MemoryRouter>
       <QueryClientWrapper>
@@ -117,7 +131,6 @@ describe("Plugin detail recipe", () => {
   it("names each activity section after its own object, with no Health wrapper", () => {
     const { container } = renderPlugin({
       ...PLUGIN,
-      hasSettings: true,
       services: [{ name: "sync", state: "running" }],
       schedules: [
         {
@@ -250,9 +263,12 @@ describe("Plugin detail recipe", () => {
       expect(screen.getByText(item).className).toContain("text-xs");
     }
     const skillName = screen.getByText("review");
+    const skillRowContent = skillName.closest("th")?.firstElementChild;
     expect(skillName.closest("th")?.className).toContain("items-center");
-    expect(skillName.parentElement?.className).toContain("items-center");
-    expect(skillName.previousElementSibling?.className).not.toContain("mt-px");
+    expect(skillRowContent?.className).toContain("items-center");
+    expect(skillRowContent?.firstElementChild?.className).not.toContain(
+      "mt-px",
+    );
   });
 
   it("collapses long capability descriptions until requested", () => {
@@ -309,6 +325,152 @@ describe("Plugin detail recipe", () => {
     renderPlugin({ ...PLUGIN, app: { hasApp: true, bundle: null } });
 
     expect(screen.getByText("Issues")).toBeTruthy();
+  });
+
+  it("links every capability with a stable destination to its owning surface", () => {
+    const listSkills = vi
+      .spyOn(sdk.skills, "list")
+      .mockResolvedValue({ skills: [] });
+    setPluginSlotRegistrations("github", {
+      homepageSections: [
+        {
+          id: "dashboard",
+          title: "GitHub dashboard",
+          component: () => null,
+        },
+      ],
+      settingsSections: [
+        {
+          id: "advanced",
+          title: "Advanced settings",
+          component: () => null,
+        },
+      ],
+      navPanels: [
+        {
+          id: "issues",
+          title: "Issues",
+          icon: "Github",
+          path: "issues",
+          component: () => null,
+        },
+      ],
+      threadPanelActions: [
+        {
+          id: "inspect",
+          title: "Inspect issue",
+          component: () => null,
+        },
+      ],
+      sidebarFooterActions: [],
+      threadLists: [
+        {
+          id: "github-threads",
+          title: "GitHub threads",
+          component: () => null,
+        },
+      ],
+      threadHeaderActions: [
+        {
+          id: "sync",
+          title: "Sync status",
+          component: () => null,
+        },
+      ],
+      fileOpeners: [
+        {
+          id: "markdown",
+          title: "Markdown viewer",
+          extensions: ["md"],
+          component: () => null,
+        },
+      ],
+      messageDirectives: [],
+    });
+    const { container } = renderPlugin(
+      {
+        ...PLUGIN,
+        app: { hasApp: true, bundle: null },
+        capabilities: [
+          {
+            kind: "theme",
+            id: "github.dark",
+            label: "GitHub Dark",
+            detail: null,
+          },
+          {
+            kind: "skill",
+            id: "review",
+            label: "review",
+            detail: "Reviews pull requests.",
+          },
+        ],
+      },
+      {
+        skills: [
+          {
+            id: `skill_${"a".repeat(64)}`,
+            name: "review",
+            description: "Reviews pull requests.",
+            provider: null,
+            scope: "plugin",
+            pluginId: "github",
+            filePath: "/plugins/github/skills/review/SKILL.md",
+            manageable: false,
+            registrySkillId: null,
+          },
+        ],
+      },
+    );
+
+    const destinations = [
+      ["Settings", "/tools/plugins/github#configuration"],
+      ["Issues", "/plugins/github/issues"],
+      ["GitHub dashboard", "/#plugin-homepage:github:dashboard"],
+      ["GitHub threads", "/settings/appearance"],
+      ["Markdown viewer", "/settings/files"],
+      ["GitHub Dark", "/settings/appearance"],
+      ["review", `/tools/skills/library/skill_${"a".repeat(64)}`],
+    ] as const;
+    for (const [name, href] of destinations) {
+      expect(screen.getByRole("link", { name }).getAttribute("href")).toBe(
+        href,
+      );
+    }
+    expect(renderedRecipe(container)).toContainEqual([
+      "configuration",
+      "Configuration",
+    ]);
+    expect(screen.getAllByRole("link", { name: "Settings" })).toHaveLength(1);
+    expect(screen.queryByRole("link", { name: "Inspect issue" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Sync status" })).toBeNull();
+    expect(listSkills).not.toHaveBeenCalled();
+  });
+
+  it("links uncached plugin skills to the library without discovering skills", () => {
+    const listSkills = vi
+      .spyOn(sdk.skills, "list")
+      .mockResolvedValue({ skills: [] });
+
+    renderPlugin(
+      {
+        ...PLUGIN,
+        capabilities: [
+          {
+            kind: "skill",
+            id: "review",
+            label: "review",
+            detail: "Reviews pull requests.",
+          },
+        ],
+      },
+      { seedSkillsCache: false },
+    );
+
+    expect(
+      screen.getByRole("link", { name: "review" }).getAttribute("href"),
+    ).toBe("/tools/skills?view=library");
+    expect(listSkills).not.toHaveBeenCalled();
   });
 
   it("does not preview an unloaded frontend app as a capability", () => {

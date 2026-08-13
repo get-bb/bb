@@ -31,6 +31,8 @@ function RouteMemoryTestSurface() {
       <Link to="/settings/providers/codex?tab=models#preferred">
         Codex settings
       </Link>
+      <Link to="/settings/plugins">Legacy plugin collection</Link>
+      <Link to="/settings/plugins/ui-patterns">Legacy plugin detail</Link>
     </>
   );
 }
@@ -95,6 +97,74 @@ describe("useAppSettingsRouteMemory", () => {
     fireEvent.click(screen.getByRole("link", { name: "Tools" }));
     expect(screen.getByTestId("location").textContent).toBe("/tools/plugins");
   });
+
+  it.each([
+    ["collection", "Legacy plugin collection"],
+    ["detail", "Legacy plugin detail"],
+  ])(
+    "does not remember the legacy plugin %s redirect as Settings or app context",
+    (_kind, legacyLinkName) => {
+      render(
+        <MemoryRouter
+          initialEntries={[
+            "/projects/proj_one/threads/thr_one?message=12#event-12",
+          ]}
+        >
+          <RouteMemoryTestSurface />
+        </MemoryRouter>,
+      );
+
+      fireEvent.click(screen.getByRole("link", { name: "Settings" }));
+      fireEvent.click(screen.getByRole("link", { name: "Codex settings" }));
+      fireEvent.click(screen.getByRole("link", { name: "App" }));
+      fireEvent.click(screen.getByRole("link", { name: legacyLinkName }));
+
+      expect(
+        screen.getByRole("link", { name: "Settings" }).getAttribute("href"),
+      ).toBe("/settings/providers/codex?tab=models#preferred");
+      expect(
+        screen.getByRole("link", { name: "Tools" }).getAttribute("href"),
+      ).toBe("/tools/plugins");
+      expect(
+        screen.getByRole("link", { name: "Tools back" }).getAttribute("href"),
+      ).toBe("/projects/proj_one/threads/thr_one?message=12#event-12");
+
+      // Simulate the compatibility route's redirect into Extensions. The
+      // transient legacy URL must not replace either remembered destination.
+      fireEvent.click(screen.getByRole("link", { name: "Plugin detail" }));
+      expect(
+        screen.getByRole("link", { name: "Tools back" }).getAttribute("href"),
+      ).toBe("/projects/proj_one/threads/thr_one?message=12#event-12");
+      fireEvent.click(screen.getByRole("link", { name: "Settings" }));
+      expect(screen.getByTestId("location").textContent).toBe(
+        "/settings/providers/codex?tab=models#preferred",
+      );
+    },
+  );
+
+  it.each(["/settings/plugins", "/settings/plugins/ui-patterns"])(
+    "uses safe defaults when opened directly at legacy plugin route %s",
+    (legacyPluginPath) => {
+      render(
+        <MemoryRouter initialEntries={[legacyPluginPath]}>
+          <RouteMemoryTestSurface />
+        </MemoryRouter>,
+      );
+
+      expect(
+        screen.getByRole("link", { name: "App" }).getAttribute("href"),
+      ).toBe("/");
+      expect(
+        screen.getByRole("link", { name: "Settings" }).getAttribute("href"),
+      ).toBe("/settings");
+      expect(
+        screen.getByRole("link", { name: "Tools" }).getAttribute("href"),
+      ).toBe("/tools/plugins");
+      expect(
+        screen.getByRole("link", { name: "Tools back" }).getAttribute("href"),
+      ).toBe("/");
+    },
+  );
 
   it.each([
     "/tools/automations",
