@@ -460,6 +460,9 @@ async function itemFromEntity(
       && isRecord(refinement.merged)
     ) {
       const merged = structuredClone(refinement.merged);
+      // Invariant: worktree-blind planned-ours is display-only. Such plans stay
+      // degraded and push rejects them with PLAN_STALE; this reclassification
+      // avoids a zero-conflict deadlock without granting apply authority.
       state.working.set(key, merged);
       operation = "update";
       fields = threeWayDiff(base, merged, theirs);
