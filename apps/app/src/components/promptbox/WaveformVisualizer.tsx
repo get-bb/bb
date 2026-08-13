@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { useMediaQuery } from "@bb/shared-ui/hooks/use-media-query";
+import { usePrefersReducedMotion } from "@bb/shared-ui/hooks/use-media-query";
 import { cn } from "@bb/shared-ui/lib/utils";
 
 interface WaveformVisualizerProps {
@@ -24,9 +24,7 @@ export function WaveformVisualizer({
 }: WaveformVisualizerProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const barsRef = useRef<number[]>([]);
-  const prefersReducedMotion = useMediaQuery(
-    "(prefers-reduced-motion: reduce)",
-  );
+  const prefersReducedMotion = usePrefersReducedMotion();
 
   useEffect(() => {
     const canvas = canvasRef.current;
