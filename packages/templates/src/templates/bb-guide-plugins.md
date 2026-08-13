@@ -17,6 +17,13 @@ user-installed plugins come from `bb plugin install` or the official store.
 Plugin state lives under `<bb-data-dir>/plugins/<id>/` (per-plugin SQLite file,
 secrets, logs).
 
+Finite State local firmware unpack is disabled until its reviewed wrapper is
+configured. Set `standaloneUnpackExecutablePath` to the wrapper's absolute
+executable path; `standaloneUnpackImage` defaults to
+`localhost:5000/services-unpack:latest` and can select another reviewed FACT
+image. Configure them with `bb plugin config finite-state set <key> <value>`;
+the plugin applies changes live.
+
 The builtin Custom instructions plugin adds a multiline editor under Settings
 → Custom instructions. Saved text is persisted on this bb host and included in
 agent task instructions; blank text contributes nothing.

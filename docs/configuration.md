@@ -710,6 +710,21 @@ settings accept base-10 integer strings through Extensions → Plugins or
 The five settings other than `maxActiveRuns` are snapshotted into each new run.
 Settings changes do not require a plugin reload.
 
+### Finite State standalone firmware unpack
+
+Local firmware-image materialization in the Finite State plugin is disabled
+until `standaloneUnpackExecutablePath` names the reviewed wrapper executable.
+The companion `standaloneUnpackImage` setting defaults to
+`localhost:5000/services-unpack:latest`. Both apply live:
+
+```bash
+bb plugin config finite-state set standaloneUnpackExecutablePath /absolute/path/to/unpack-wrapper
+bb plugin config finite-state set standaloneUnpackImage localhost:5000/services-unpack:latest
+```
+
+The wrapper setting is host-local. Configure it on the bb host that owns the
+firmware worktree; leaving it blank preserves the explicit unconfigured state.
+
 `bb plugin install npm:<package>[@<version|tag|range>]` requires `npm` on PATH
 (packages are installed with `--ignore-scripts`). Git plugins also use npm with
 lifecycle scripts disabled, so they may depend on third-party packages; bb

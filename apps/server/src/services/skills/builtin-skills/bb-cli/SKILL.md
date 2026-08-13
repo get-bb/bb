@@ -732,6 +732,11 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     `bb plugin remove <id>` (builtin removals are remembered).
   - `bb plugin config <id> [set <key> <value> | unset <key>]` — declared
     settings. Reload the plugin after configuring (`bb plugin reload <id>`).
+    Finite State's local firmware path uses
+    `standaloneUnpackExecutablePath` (blank means disabled) and
+    `standaloneUnpackImage` (default
+    `localhost:5000/services-unpack:latest`); those two settings apply live
+    and do not require reload.
   - `bb plugin logs <id> [-n N] [-f]` — the plugin's `bb.log` output.
   - `bb plugin run <id> [args...]` — explicit form of a plugin's CLI command.
   - `bb plugin new <name> [--app]` — scaffold a plugin (`--app` adds a frontend

@@ -85,7 +85,7 @@ describe("firmware manifest diff", () => {
     before.replaceNodes([
       node("/bin/removed", "a", 10),
       node("/bin/changed", "b", 20),
-      node("/bin/unchanged", "c", 30),
+      node("/bin/unchanged", "c", 999),
     ], meta("pv-before", 3));
     before.database.exec("ALTER TABLE fs_node ADD COLUMN security_features_json TEXT");
     before.database.prepare("UPDATE fs_node SET security_features_json=? WHERE path='/bin/changed'")
@@ -121,6 +121,7 @@ describe("firmware manifest diff", () => {
       afterSize: 25,
       securityRegressions: ["nx: enabled → disabled"],
     });
+    expect(all.some(({ path }) => path === "bin/unchanged")).toBe(false);
     expect(diffFirmware({ db: ctx.db(), projectId: "project-1", pageSize: 2 }, "pv-before", "pv-after").items)
       .toEqual(first.items);
     await harness.lifecycle.dispose();

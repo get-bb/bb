@@ -1,8 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { accessSync, constants, lstatSync, realpathSync } from "node:fs";
-import { dirname, isAbsolute } from "node:path";
+import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import type { BbPluginApi, PluginCliContext } from "@bb/plugin-sdk";
 import type { PluginContext } from "../../lib/context.js";
+import {
+  readRemoteConfig,
+  subscribeRemoteSettings,
+} from "../../lib/remote/config.js";
 import type { RemoteServices } from "../../lib/remote/types.js";
 import { rpcContract } from "../../shared/contract.js";
 import { materializeFromApi, hydrateFirmwareFile } from "./api/fallback.js";
@@ -50,6 +54,7 @@ const firmwareRpcContract = {
   firmwareTreeList: rpcContract.firmwareTreeList,
   firmwareFileGet: rpcContract.firmwareFileGet,
   firmwareDiff: rpcContract.firmwareDiff,
+  firmwareInputIssue: rpcContract.firmwareInputIssue,
   firmwareMaterializeStart: rpcContract.firmwareMaterializeStart,
   firmwareMaterializeCancel: rpcContract.firmwareMaterializeCancel,
   firmwareFileHydrate: rpcContract.firmwareFileHydrate,
@@ -174,8 +179,11 @@ export interface StandaloneUnpackInputRecord {
   worktreeRoot: string;
   projectId: string;
   projectVersionId: string;
+  environmentId: string;
   expiresAt: Date;
 }
+
+export const STANDALONE_UNPACK_INPUT_TTL_MS = 10 * 60 * 1_000;
 
 interface StoredStandaloneUnpackInput extends StandaloneUnpackInputRecord {
   consumed: boolean;
@@ -199,10 +207,17 @@ export class StandaloneUnpackInputRegistry {
         "A unique firmware input id could not be issued.",
       );
     }
-    if (record.expiresAt.getTime() <= this.#now().getTime()) {
+    const now = this.#now().getTime();
+    if (record.expiresAt.getTime() <= now) {
       throw new FirmwareCacheError(
         "FIRMWARE_INPUT_EXPIRED",
         "The verified firmware input has expired.",
+      );
+    }
+    if (record.expiresAt.getTime() > now + STANDALONE_UNPACK_INPUT_TTL_MS) {
+      throw new FirmwareCacheError(
+        "FIRMWARE_INPUT_EXPIRY_TOO_LONG",
+        "The verified firmware input expiry exceeds the ten-minute limit.",
       );
     }
     let firmwarePath: string;
@@ -269,6 +284,7 @@ export class StandaloneUnpackInputRegistry {
       worktreeRoot: record.worktreeRoot,
       projectId: record.projectId,
       projectVersionId: record.projectVersionId,
+      environmentId: record.environmentId,
       expiresAt: record.expiresAt,
     };
   }
@@ -315,7 +331,7 @@ class FirmwareBackgroundCoordinator {
     this.#inputs = inputs;
   }
 
-  configure(runtime: StandaloneUnpackRuntimeConfig): void {
+  configure(runtime: StandaloneUnpackRuntimeConfig | null): void {
     this.#runtime = runtime;
   }
 
@@ -592,7 +608,7 @@ function getFirmwareBackgroundCoordinator(
 
 export function configureStandaloneUnpackRuntime(
   ctx: PluginContext,
-  runtime: StandaloneUnpackRuntimeConfig,
+  runtime: StandaloneUnpackRuntimeConfig | null,
 ): void {
   getFirmwareBackgroundCoordinator(ctx).configure(runtime);
 }
@@ -826,12 +842,76 @@ async function hydrateApiFileFromRpc(
   );
 }
 
+async function issueStandaloneUnpackInput(
+  ctx: PluginContext,
+  input: {
+    projectId: string;
+    projectVersionId: string;
+    environmentId: string;
+    firmwarePath: string;
+  },
+) {
+  const environment = await ctx.bb.sdk.environments.get({ environmentId: input.environmentId });
+  if (environment.projectId !== input.projectId || !environment.path) {
+    throw new FirmwareCacheError(
+      "FIRMWARE_EXECUTION_CONTEXT_INVALID",
+      "The selected environment does not belong to this project or has no workspace.",
+    );
+  }
+  const worktreeRoot = validateWorktreeRoot(environment.path);
+  let firmwarePath: string;
+  try {
+    firmwarePath = realpathSync(resolve(worktreeRoot, input.firmwarePath));
+  } catch (error) {
+    throw new FirmwareCacheError(
+      "FIRMWARE_INPUT_INVALID",
+      "The selected workspace firmware file is unavailable.",
+      { cause: error },
+    );
+  }
+  const relativePath = relative(worktreeRoot, firmwarePath);
+  if (relativePath === ".." || relativePath.startsWith(`..${sep}`) || isAbsolute(relativePath)) {
+    throw new FirmwareCacheError(
+      "FIRMWARE_INPUT_OUTSIDE_WORKTREE",
+      "The selected firmware file resolves outside the environment worktree.",
+    );
+  }
+  const expiresAt = new Date(Date.now() + STANDALONE_UNPACK_INPUT_TTL_MS);
+  const inputId = getStandaloneUnpackInputRegistry(ctx).issue({
+    firmwarePath,
+    worktreeRoot,
+    projectId: input.projectId,
+    projectVersionId: validatePvId(input.projectVersionId),
+    environmentId: input.environmentId,
+    expiresAt,
+  });
+  return {
+    projectId: input.projectId,
+    projectVersionId: input.projectVersionId,
+    inputId,
+    fileName: basename(firmwarePath),
+    expiresAt: expiresAt.toISOString(),
+  };
+}
+
 export function registerFirmware(bb: BbPluginApi, ctx: PluginContext): void {
   const coordinator = getFirmwareBackgroundCoordinator(ctx);
   const cache = ctx.service("firmware.cache", () => createFirmwareCacheService(ctx));
   const remote = () => ctx.service<RemoteServices>("remote-services", () => {
     throw new Error("Firmware API operations require configured remote services");
   });
+  const unsubscribeSettings = subscribeRemoteSettings(ctx, (values) => {
+    const config = readRemoteConfig(values);
+    configureStandaloneUnpackRuntime(ctx, config.standaloneUnpackExecutablePath === null
+      ? null
+      : {
+          wrapper: {
+            executablePath: config.standaloneUnpackExecutablePath,
+            factImage: config.standaloneUnpackImage,
+          },
+        });
+  });
+  bb.onDispose(unsubscribeSettings);
 
   bb.background.service("firmware-materialization", {
     start: (signal) => coordinator.start(signal),
@@ -863,6 +943,9 @@ export function registerFirmware(bb: BbPluginApi, ctx: PluginContext): void {
         fromProjectVersionId: requiredRuntimeString(input, "fromProjectVersionId"),
         toProjectVersionId: requiredRuntimeString(input, "toProjectVersionId"),
       });
+    },
+    firmwareInputIssue(input) {
+      return issueStandaloneUnpackInput(ctx, input);
     },
     firmwareMaterializeStart(input) {
       return input.source === "standalone_unpack"
