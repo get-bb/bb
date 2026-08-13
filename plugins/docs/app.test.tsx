@@ -139,6 +139,7 @@ describe("Docs nav panel", () => {
       name: "Notes sidebar actions",
     });
     expect(slot.getByRole("navigation", { name: "Notes" })).toBeTruthy();
+    expect(toolbar.closest(".w-full")).not.toBeNull();
     expect(slot.container.querySelector("aside")).toBeNull();
     expect(slot.queryByRole("separator")).toBeNull();
     expect(
