@@ -10,6 +10,8 @@ import type {
   PrerequisiteReport,
 } from "../driver.js";
 import {
+  DeviceLostError,
+  InstrumentError,
   resolveInstrumentTransport,
   runInstrumentProcess,
   type ProcessResult,
@@ -26,24 +28,18 @@ const CAPABILITIES: InstrumentCapabilities = {
   maxSampleRateHz: 100_000_000,
   features: [
     "capture:digital",
-    "decode:spi",
-    "decode:i2c",
-    "decode:uart",
-    "decode:can",
     "trigger:edge",
   ],
 };
 
-class DigilentInstrumentError extends Error {
+class DigilentInstrumentError extends InstrumentError {
   constructor(
     readonly code: "CAPTURE_CONFIG_INVALID" | "DEVICE_LOST" | "INSTRUMENT_NOT_FOUND" |
       "INSTRUMENT_NOT_CONFIGURED" | "INSTRUMENT_PROTOCOL_ERROR" | "SESSION_CLOSED",
     message: string,
-    readonly partialArtifact: CaptureArtifact | null = null,
     options?: ErrorOptions,
   ) {
-    super(`${code}: ${message}`, options);
-    this.name = code === "DEVICE_LOST" ? "DeviceLostError" : "InstrumentError";
+    super(code, message, options);
   }
 }
 
@@ -133,7 +129,10 @@ export interface DigilentDriverDeps extends InstrumentDriverDeps {
   registeredSerials?: () => readonly string[];
 }
 
+let cachedPrerequisites: PrerequisiteReport | null = null;
+
 function defaultPrerequisites(): PrerequisiteReport {
+  if (cachedPrerequisites !== null) return cachedPrerequisites;
   const packageProbe = spawnSync("python3", [
     "-c",
     "import importlib.util,sys; sys.exit(0 if importlib.util.find_spec('dwfpy') else 1)",
@@ -159,7 +158,8 @@ function defaultPrerequisites(): PrerequisiteReport {
       remediation: "Install the Digilent WaveForms application/runtime from Digilent.",
     },
   ].filter((item) => !item.configured);
-  return { configured: needsConfiguration.length === 0, needsConfiguration };
+  cachedPrerequisites = { configured: needsConfiguration.length === 0, needsConfiguration };
+  return cachedPrerequisites;
 }
 
 function parseObject(stdout: string): Record<string, unknown> {
@@ -168,7 +168,6 @@ function parseObject(stdout: string): Record<string, unknown> {
     throw new DigilentInstrumentError(
       "INSTRUMENT_PROTOCOL_ERROR",
       "Digilent bridge returned malformed JSON.",
-      null,
       { cause: error },
     );
   }
@@ -281,6 +280,8 @@ export function createDigilentLogicDriver(deps: DigilentDriverDeps): InstrumentD
               `Digilent capture exceeds the ${MAX_CAPTURE_SAMPLES}-sample bound.`,
             );
           }
+          deps.verifyClaim(claim, claim.deviceId);
+          captureSignal.throwIfAborted();
           await mkdir(config.artifactSink.directory, { recursive: true });
           const serial = resolved.serial;
           try {
@@ -301,8 +302,7 @@ export function createDigilentLogicDriver(deps: DigilentDriverDeps): InstrumentD
               const partial = responseArtifact(parseObject(result.stdout), config.artifactSink.directory);
               await config.artifactSink.record(partial);
               release();
-              throw new DigilentInstrumentError(
-                "DEVICE_LOST",
+              throw new DeviceLostError(
                 "Digilent device disappeared during capture; the partial artifact was preserved.",
                 partial,
               );
@@ -311,6 +311,9 @@ export function createDigilentLogicDriver(deps: DigilentDriverDeps): InstrumentD
             const artifact = responseArtifact(parseObject(result.stdout), config.artifactSink.directory);
             await config.artifactSink.record(artifact);
             return artifact;
+          } catch (error) {
+            release();
+            throw error;
           } finally {
             if (captureSignal.aborted) release();
           }

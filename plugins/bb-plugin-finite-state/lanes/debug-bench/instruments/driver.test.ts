@@ -13,6 +13,7 @@ import {
   type CaptureArtifactSink,
   type InstrumentDriver,
 } from "./driver.js";
+import { decodeCapture } from "./logic/decode.js";
 import { createSaleaeDriver } from "./logic/saleae.js";
 
 const directories: string[] = [];
@@ -94,7 +95,12 @@ describe("shared instrument driver contract", () => {
         ? { code: 0, stdout: JSON.stringify({ path: "capture.json", format: "saleae-logic2-manifest-v1", durationMs: 5, channels: 2 }), stderr: "" }
         : { code: 0, stdout: JSON.stringify({ found: true, serials: ["SERIAL-1"] }), stderr: "" };
     });
-    const driver = createSaleaeDriver({ runner, verifyClaim: vi.fn() });
+    const driver = createSaleaeDriver({
+      runner,
+      verifyClaim: vi.fn(),
+      registeredSerials: () => ["SERIAL-1"],
+      serialForDeviceId: () => "SERIAL-1",
+    });
     const captureSink = sink();
     for (const transport of [
       { kind: "usb", serial: "SERIAL-1", path: null },
@@ -139,6 +145,10 @@ describe("shared instrument driver contract", () => {
       vendor: "replay",
     });
     expect(artifactSink.record).toHaveBeenCalledWith(artifact);
+    await expect(decodeCapture(artifact, "spi", { pageSize: 1 })).resolves.toMatchObject({
+      items: [expect.objectContaining({ data: "0x9F 0xEF 0x40 0x18" })],
+      total: 2,
+    });
   });
 });
 

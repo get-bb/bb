@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DeviceClaim } from "../../registry/claims.js";
+import { DeviceLostError, InstrumentError } from "../driver.js";
 import { createDigilentLogicDriver } from "./digilent.js";
 
 const directories: string[] = [];
@@ -43,7 +44,10 @@ describe("Digilent WaveForms driver", () => {
       registeredSerials: () => ["SERIAL-B"],
     });
     await expect(matched.detect({ kind: "usb", serial: "SERIAL-B", path: null }))
-      .resolves.toMatchObject({ kind: "logic" });
+      .resolves.toMatchObject({
+        kind: "logic",
+        features: ["capture:digital", "trigger:edge"],
+      });
   });
 
   it("rejects a capture that exceeds the bounded sample budget before process I/O", async () => {
@@ -88,13 +92,41 @@ describe("Digilent WaveForms driver", () => {
       channels: [0, 1],
       artifactSink: { directory: outputDirectory(), record },
     }, new AbortController().signal);
-    await expect(capture).rejects.toMatchObject({
+    await expect(capture).rejects.toSatisfy((error: unknown) => {
+      expect(error).toBeInstanceOf(InstrumentError);
+      expect(error).toBeInstanceOf(DeviceLostError);
+      expect(error).toMatchObject({
       code: "DEVICE_LOST",
       partialArtifact: expect.objectContaining({ format: "digilent-dwf-partial-v1" }),
+      });
+      return true;
     });
     expect(record).toHaveBeenCalledWith(expect.objectContaining({
       path: expect.stringMatching(/partial-capture\.json$/u),
     }));
+  });
+
+  it("re-verifies the claim before every capture and performs zero I/O after expiry", async () => {
+    let live = true;
+    const verifyClaim = vi.fn(() => {
+      if (!live) throw new Error("CLAIM_EXPIRED");
+    });
+    const runner = vi.fn();
+    const driver = createDigilentLogicDriver({ runner, verifyClaim });
+    const session = await driver.open(
+      { kind: "usb", serial: "SERIAL-A", path: null },
+      claim,
+      new AbortController().signal,
+    );
+    live = false;
+    await expect(session.capture({
+      durationMs: 10,
+      sampleRateHz: 1_000_000,
+      channels: [0],
+      artifactSink: { directory: outputDirectory(), record: vi.fn() },
+    }, new AbortController().signal)).rejects.toThrow("CLAIM_EXPIRED");
+    expect(verifyClaim).toHaveBeenCalledTimes(2);
+    expect(runner).not.toHaveBeenCalled();
   });
 
   it("distinguishes missing dwfpy from a missing WaveForms runtime", () => {
@@ -110,6 +142,13 @@ describe("Digilent WaveForms driver", () => {
     });
     expect(driver.prerequisites().needsConfiguration.map((item) => item.key))
       .toEqual(["digilent.dwfpy", "digilent.waveforms-runtime"]);
+  });
+
+  it("runs the real bounded prerequisite probe without throwing or installing", () => {
+    const report = createDigilentLogicDriver({ verifyClaim: vi.fn() }).prerequisites();
+    expect(report.configured).toBe(report.needsConfiguration.length === 0);
+    expect(report.needsConfiguration.map((item) => item.key).every((key) =>
+      key === "digilent.dwfpy" || key === "digilent.waveforms-runtime")).toBe(true);
   });
 });
 

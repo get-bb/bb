@@ -3,7 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DeviceClaim } from "../../registry/claims.js";
-import { TransportError, type ProcessRequest } from "../transport.js";
+import { InstrumentError } from "../driver.js";
+import { runInstrumentProcess, TransportError, type ProcessRequest } from "../transport.js";
 import { createSaleaeDriver, SALEAE_BRIDGE } from "./saleae.js";
 
 const directories: string[] = [];
@@ -31,7 +32,11 @@ describe("Saleae Logic 2 driver", () => {
       stdout: JSON.stringify({ found: true, serials: ["SERIAL-1"] }),
       stderr: "",
     }));
-    const driver = createSaleaeDriver({ runner, verifyClaim: vi.fn() });
+    const driver = createSaleaeDriver({
+      runner,
+      verifyClaim: vi.fn(),
+      registeredSerials: () => ["SERIAL-1"],
+    });
     await expect(driver.detect({ kind: "lan", host: "logic.local", port: 12_345 }))
       .resolves.toMatchObject({ channels: 16 });
     expect(runner).toHaveBeenCalledWith(expect.objectContaining({
@@ -40,7 +45,7 @@ describe("Saleae Logic 2 driver", () => {
       timeoutMs: 5_000,
     }), expect.any(AbortSignal));
     const payload = JSON.parse(runner.mock.calls[0]![0].args.at(-1)!);
-    expect(payload).toEqual({ address: "logic.local", port: 12_345, serial: null });
+    expect(payload).toEqual({ address: "logic.local", port: 12_345, serial: "SERIAL-1" });
   });
 
   it("reports unreachable Logic 2 distinctly from the missing Python package", () => {
@@ -59,6 +64,13 @@ describe("Saleae Logic 2 driver", () => {
       configured: false,
       needsConfiguration: [expect.objectContaining({ key: "saleae.logic2-app" })],
     });
+  });
+
+  it("runs the real bounded prerequisite probe without throwing or installing", () => {
+    const report = createSaleaeDriver({ verifyClaim: vi.fn() }).prerequisites();
+    expect(report.configured).toBe(report.needsConfiguration.length === 0);
+    expect(report.needsConfiguration.map((item) => item.key).every((key) =>
+      key === "saleae.logic2-automation" || key === "saleae.logic2-app")).toBe(true);
   });
 
   it("propagates capture cancellation through the supervised process and closes cleanly", async () => {
@@ -85,6 +97,124 @@ describe("Saleae Logic 2 driver", () => {
     await expect(capture).rejects.toMatchObject({ code: "PROCESS_ABORTED" });
     await expect(session.close()).resolves.toBeUndefined();
     expect(releaseClaim).toHaveBeenCalledOnce();
+  });
+
+  it("binds LAN enumeration and capture to the serial resolved from the live claim", async () => {
+    const runner = vi.fn(async (request: ProcessRequest) => request.args.at(-2) === "capture"
+      ? {
+          code: 0,
+          stdout: JSON.stringify({
+            path: "capture.json",
+            format: "saleae-logic2-manifest-v1",
+            durationMs: 5,
+            channels: 1,
+          }),
+          stderr: "",
+        }
+      : { code: 0, stdout: JSON.stringify({ found: true, serials: ["SERIAL-1"] }), stderr: "" });
+    const driver = createSaleaeDriver({
+      runner,
+      verifyClaim: vi.fn(),
+      registeredSerials: () => ["SERIAL-1"],
+      serialForDeviceId: (deviceId) => deviceId === claim.deviceId ? "SERIAL-1" : null,
+    });
+    await expect(driver.detect({ kind: "lan", host: "logic.local", port: 10_430 }))
+      .resolves.toMatchObject({ kind: "logic" });
+    const session = await driver.open(
+      { kind: "lan", host: "logic.local", port: 10_430 },
+      claim,
+      new AbortController().signal,
+    );
+    await session.capture({
+      durationMs: 5,
+      sampleRateHz: 1_000_000,
+      channels: [0],
+      artifactSink: { directory: outputDirectory(), record: vi.fn() },
+    }, new AbortController().signal);
+    const captureRequest = runner.mock.calls.find(([request]) => request.args.at(-2) === "capture")![0];
+    expect(JSON.parse(captureRequest.args.at(-1)!)).toMatchObject({ serial: "SERIAL-1" });
+
+    const foreign = createSaleaeDriver({
+      runner: vi.fn(async () => ({
+        code: 0,
+        stdout: JSON.stringify({ found: true, serials: ["FOREIGN"] }),
+        stderr: "",
+      })),
+      verifyClaim: vi.fn(),
+      registeredSerials: () => ["SERIAL-1"],
+    });
+    await expect(foreign.detect({ kind: "lan", host: "logic.local", port: 10_430 }))
+      .resolves.toBeNull();
+    await expect(createSaleaeDriver({ verifyClaim: vi.fn() }).open(
+      { kind: "lan", host: "logic.local", port: 10_430 },
+      claim,
+      new AbortController().signal,
+    )).rejects.toMatchObject({ code: "INSTRUMENT_NOT_FOUND" });
+  });
+
+  it("releases the claim when the real supervisor reaches its deadline", async () => {
+    const releaseClaim = vi.fn();
+    const driver = createSaleaeDriver({
+      verifyClaim: vi.fn(),
+      releaseClaim,
+      runner: async (_request, signal) => await runInstrumentProcess({
+        command: process.execPath,
+        args: ["-e", "setInterval(() => {}, 1000)"],
+        timeoutMs: 100,
+        maxOutputBytes: 1_024,
+      }, signal),
+    });
+    const session = await driver.open(
+      { kind: "usb", serial: "SERIAL-1", path: null },
+      claim,
+      new AbortController().signal,
+    );
+    await expect(session.capture({
+      durationMs: 5,
+      sampleRateHz: 1_000_000,
+      channels: [0],
+      artifactSink: { directory: outputDirectory(), record: vi.fn() },
+    }, new AbortController().signal)).rejects.toMatchObject({ code: "PROCESS_TIMEOUT" });
+    expect(releaseClaim).toHaveBeenCalledOnce();
+  });
+
+  it("uses the exported InstrumentError hierarchy", async () => {
+    const driver = createSaleaeDriver({ runner: vi.fn(), verifyClaim: vi.fn() });
+    const session = await driver.open(
+      { kind: "usb", serial: "SERIAL-1", path: null },
+      claim,
+      new AbortController().signal,
+    );
+    await session.close();
+    await expect(session.capture({
+      durationMs: 5,
+      sampleRateHz: 1_000_000,
+      channels: [0],
+      artifactSink: { directory: outputDirectory(), record: vi.fn() },
+    }, new AbortController().signal)).rejects.toBeInstanceOf(InstrumentError);
+  });
+
+  it("re-verifies the claim before capture and refuses expired access before process I/O", async () => {
+    let live = true;
+    const verifyClaim = vi.fn(() => {
+      if (!live) throw new Error("CLAIM_EXPIRED");
+    });
+    const runner = vi.fn();
+    const driver = createSaleaeDriver({ runner, verifyClaim });
+    const session = await driver.open(
+      { kind: "usb", serial: "SERIAL-1", path: null },
+      claim,
+      new AbortController().signal,
+    );
+    live = false;
+    await expect(session.capture({
+      durationMs: 5,
+      sampleRateHz: 1_000_000,
+      channels: [0],
+      artifactSink: { directory: outputDirectory(), record: vi.fn() },
+    }, new AbortController().signal)).rejects.toThrow("CLAIM_EXPIRED");
+    expect(verifyClaim).toHaveBeenCalledTimes(2);
+    expect(runner).not.toHaveBeenCalled();
   });
 });
 

@@ -1,0 +1,2 @@
+Time [s],Duration [s],Type,Data,Address,Ack,Direction
+0.01,0.0001,write,0x50: 0x00 0x2A,0x50,true,write

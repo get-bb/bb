@@ -1,5 +1,5 @@
 import { Buffer } from "node:buffer";
-import { readFile, realpath } from "node:fs/promises";
+import { readFile, realpath, stat } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import type { CaptureArtifact } from "../driver.js";
 
@@ -29,6 +29,7 @@ export interface Paged<T> {
 export type DecodeErrorCode =
   | "DECODE_CURSOR_INVALID"
   | "DECODE_EXPORT_MALFORMED"
+  | "DECODE_EXPORT_TOO_LARGE"
   | "DECODE_PROTOCOL_UNAVAILABLE";
 
 export class DecodeError extends Error {
@@ -40,6 +41,18 @@ export class DecodeError extends Error {
 
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 200;
+const MAX_MANIFEST_BYTES = 1024 * 1024;
+const MAX_DECODER_EXPORT_BYTES = 64 * 1024 * 1024;
+const MAX_CACHED_EXPORTS = 8;
+
+interface CachedFrames {
+  path: string;
+  size: number;
+  mtimeMs: number;
+  frames: DecodedFrame[];
+}
+
+const exportCache = new Map<string, CachedFrames>();
 
 interface CursorValue { protocol: DecodedProtocol; offset: number }
 
@@ -206,14 +219,75 @@ async function confinedExportPath(manifestPath: string, value: unknown): Promise
   return candidate;
 }
 
+async function readBoundedUtf8(path: string, limit: number, label: string): Promise<string> {
+  let info;
+  try {
+    info = await stat(path);
+  } catch (error) {
+    throw new DecodeError("DECODE_EXPORT_MALFORMED", `${label} is missing or unreadable.`, { cause: error });
+  }
+  if (!info.isFile()) {
+    throw new DecodeError("DECODE_EXPORT_MALFORMED", `${label} must be a regular file.`);
+  }
+  if (info.size > limit) {
+    throw new DecodeError(
+      "DECODE_EXPORT_TOO_LARGE",
+      `${label} exceeds the ${limit}-byte decode bound.`,
+    );
+  }
+  try {
+    return await readFile(path, "utf8");
+  } catch (error) {
+    throw new DecodeError("DECODE_EXPORT_MALFORMED", `${label} is unreadable.`, { cause: error });
+  }
+}
+
+async function cachedCsvFrames(path: string, protocol: DecodedProtocol): Promise<DecodedFrame[]> {
+  const info = await stat(path).catch((error) => {
+    throw new DecodeError("DECODE_EXPORT_MALFORMED", "Vendor decoder export is unreadable.", { cause: error });
+  });
+  if (!info.isFile()) {
+    throw new DecodeError("DECODE_EXPORT_MALFORMED", "Vendor decoder export must be a regular file.");
+  }
+  if (info.size > MAX_DECODER_EXPORT_BYTES) {
+    throw new DecodeError(
+      "DECODE_EXPORT_TOO_LARGE",
+      `Vendor decoder export exceeds the ${MAX_DECODER_EXPORT_BYTES}-byte decode bound.`,
+    );
+  }
+  const key = `${protocol}\0${path}\0${info.size}\0${info.mtimeMs}`;
+  const cached = exportCache.get(key);
+  if (cached !== undefined) return cached.frames;
+  for (const [candidate, value] of exportCache) {
+    if (value.path === path) exportCache.delete(candidate);
+  }
+  const frames = csvFrames(await readBoundedUtf8(
+    path,
+    MAX_DECODER_EXPORT_BYTES,
+    "Vendor decoder export",
+  ), protocol);
+  exportCache.set(key, { path, size: info.size, mtimeMs: info.mtimeMs, frames });
+  while (exportCache.size > MAX_CACHED_EXPORTS) {
+    const oldest = exportCache.keys().next().value;
+    if (oldest === undefined) break;
+    exportCache.delete(oldest);
+  }
+  return frames;
+}
+
 async function readFrames(
   artifact: CaptureArtifact,
   protocol: DecodedProtocol,
 ): Promise<DecodedFrame[]> {
   let parsed: unknown;
   try {
-    parsed = JSON.parse(await readFile(artifact.path, "utf8"));
+    parsed = JSON.parse(await readBoundedUtf8(
+      artifact.path,
+      MAX_MANIFEST_BYTES,
+      "Capture manifest",
+    ));
   } catch (error) {
+    if (error instanceof DecodeError) throw error;
     throw new DecodeError(
       "DECODE_EXPORT_MALFORMED",
       "Capture manifest is not valid JSON.",
@@ -235,7 +309,7 @@ async function readFrames(
   const exports = object(manifest.decoderExports ?? {}, "Vendor decoder exports");
   if (exports[protocol] !== undefined) {
     const path = await confinedExportPath(artifact.path, exports[protocol]);
-    return csvFrames(await readFile(path, "utf8"), protocol);
+    return await cachedCsvFrames(path, protocol);
   }
   throw new DecodeError(
     "DECODE_PROTOCOL_UNAVAILABLE",
@@ -246,8 +320,8 @@ async function readFrames(
 /**
  * Standard artifact format: a small finite-state-logic-v1 JSON manifest points
  * at the vendor-native raw capture (`.sal` + CSV for Saleae, DWF sample export
- * for Digilent) and vendor analyzer CSVs. Replay fixtures embed normalized
- * frames in the same manifest. Only one bounded page crosses this API.
+ * for Digilent) and vendor analyzer CSVs. Replay uses those same bounded CSV
+ * exports. Only one bounded page crosses this API.
  */
 export async function decodeCapture(
   artifact: CaptureArtifact,
@@ -266,7 +340,10 @@ export async function decodeCapture(
   if (offset > frames.length) {
     throw new DecodeError("DECODE_CURSOR_INVALID", "Decode cursor is beyond the frame collection.");
   }
-  const items = frames.slice(offset, offset + pageSize);
+  const items = frames.slice(offset, offset + pageSize).map((frame) => ({
+    ...frame,
+    fields: { ...frame.fields },
+  }));
   const nextOffset = offset + items.length;
   return {
     items,

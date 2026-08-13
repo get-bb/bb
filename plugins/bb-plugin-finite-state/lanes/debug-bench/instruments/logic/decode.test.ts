@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, truncateSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -70,9 +70,10 @@ describe("logic protocol decode", () => {
   it("rejects malformed vendor exports without crashing", async () => {
     const malformed = tempArtifact({
       schema: "finite-state-logic-v1",
-      decoderExports: {},
-      frames: { spi: [{ startTimeSeconds: "soon", type: "data", data: 42 }] },
+      decoderExports: { spi: "malformed.csv" },
+      frames: {},
     });
+    writeFileSync(join(malformed.path, "..", "malformed.csv"), "No Time,No Data\n1,2\n", "utf8");
     await expect(decodeCapture(malformed, "spi"))
       .rejects.toMatchObject({ code: "DECODE_EXPORT_MALFORMED" });
     const absent = tempArtifact({
@@ -82,5 +83,38 @@ describe("logic protocol decode", () => {
     });
     await expect(decodeCapture(absent, "can"))
       .rejects.toMatchObject({ code: "DECODE_PROTOCOL_UNAVAILABLE" });
+  });
+
+  it("confines and size-bounds vendor decoder exports", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "fs127-decode-outside-"));
+    directories.push(directory);
+    const outside = join(directory, "outside.csv");
+    writeFileSync(outside, "Time,Data\n0,escape\n", "utf8");
+    const nested = join(directory, "capture");
+    mkdirSync(nested);
+    const artifact = {
+      path: join(nested, "capture.json"),
+      format: "finite-state-logic-json-v1",
+      durationMs: 1,
+      channels: 1,
+    } satisfies CaptureArtifact;
+    writeFileSync(artifact.path, JSON.stringify({
+      schema: "finite-state-logic-v1",
+      decoderExports: { spi: "../outside.csv" },
+      frames: {},
+    }), "utf8");
+    await expect(decodeCapture(artifact, "spi"))
+      .rejects.toMatchObject({ code: "DECODE_EXPORT_MALFORMED" });
+
+    const oversized = tempArtifact({
+      schema: "finite-state-logic-v1",
+      decoderExports: { can: "large.csv" },
+      frames: {},
+    });
+    const largePath = join(oversized.path, "..", "large.csv");
+    writeFileSync(largePath, "Time,Data\n", "utf8");
+    truncateSync(largePath, 64 * 1024 * 1024 + 1);
+    await expect(decodeCapture(oversized, "can"))
+      .rejects.toMatchObject({ code: "DECODE_EXPORT_TOO_LARGE" });
   });
 });

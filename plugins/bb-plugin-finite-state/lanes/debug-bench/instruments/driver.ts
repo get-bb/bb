@@ -1,61 +1,25 @@
 import { constants } from "node:fs";
-import { access, copyFile, lstat, mkdir, realpath } from "node:fs/promises";
+import { access, copyFile, lstat, mkdir, readFile, realpath } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import type Database from "better-sqlite3";
 import { toStorageProjectVersionId } from "../../../lib/store/index.js";
 import type { DeviceClaim } from "../registry/claims.js";
-import type { InstrumentTransport, ProcessRunner } from "./transport.js";
-import { runInstrumentProcess } from "./transport.js";
+import type { CaptureArtifact, InstrumentTransport, ProcessRunner } from "./transport.js";
+import { InstrumentError, runInstrumentProcess } from "./transport.js";
 import { createDigilentLogicDriver } from "./logic/digilent.js";
 import { createSaleaeDriver } from "./logic/saleae.js";
 
 export type { DeviceClaim } from "../registry/claims.js";
 export type { InstrumentTransport } from "./transport.js";
-
-export type InstrumentErrorCode =
-  | "CAPTURE_CONFIG_INVALID"
-  | "CLAIM_VERIFIER_NOT_CONFIGURED"
-  | "DEVICE_LOST"
-  | "INSTRUMENT_NOT_FOUND"
-  | "INSTRUMENT_NOT_CONFIGURED"
-  | "INSTRUMENT_PROTOCOL_ERROR"
-  | "SESSION_CLOSED";
-
-export class InstrumentError extends Error {
-  constructor(
-    readonly code: InstrumentErrorCode,
-    message: string,
-    options?: ErrorOptions,
-  ) {
-    super(message.startsWith(`${code}:`) ? message : `${code}: ${message}`, options);
-    this.name = "InstrumentError";
-  }
-}
-
-export class DeviceLostError extends InstrumentError {
-  constructor(
-    message: string,
-    readonly partialArtifact: CaptureArtifact | null,
-    options?: ErrorOptions,
-  ) {
-    super("DEVICE_LOST", message, options);
-    this.name = "DeviceLostError";
-  }
-}
+export { DeviceLostError, InstrumentError } from "./transport.js";
+export type { CaptureArtifact, InstrumentErrorCode } from "./transport.js";
 
 export interface InstrumentCapabilities {
   kind: "logic" | "power" | "scope" | "probe" | "serial" | string;
   channels: number;
   maxSampleRateHz: number | null;
   features: readonly string[];
-}
-
-export interface CaptureArtifact {
-  path: string;
-  format: string;
-  durationMs: number;
-  channels: number;
 }
 
 export interface CaptureArtifactSink {
@@ -328,10 +292,11 @@ export function createReplayLogicDriver(options: ReplayDriverOptions): Instrumen
           if (closed) throw new InstrumentError("SESSION_CLOSED", "Instrument session is closed.");
           captureSignal.throwIfAborted();
           validateCaptureConfig(config, REPLAY_CAPABILITIES, 60_000);
+          options.verifyClaim(claim, claim.deviceId);
           const path = join(config.artifactSink.directory, "replay-capture.json");
           await mkdir(dirname(path), { recursive: true });
           try {
-            await copyFile(options.fixturePath, path);
+            await copyReplayFixture(options.fixturePath, path);
             captureSignal.throwIfAborted();
             const artifact = {
               path,
@@ -341,6 +306,9 @@ export function createReplayLogicDriver(options: ReplayDriverOptions): Instrumen
             } satisfies CaptureArtifact;
             await config.artifactSink.record(artifact);
             return artifact;
+          } catch (error) {
+            release();
+            throw error;
           } finally {
             if (captureSignal.aborted) release();
           }
@@ -353,6 +321,41 @@ export function createReplayLogicDriver(options: ReplayDriverOptions): Instrumen
     },
     prerequisites() { return { configured: true, needsConfiguration: [] }; },
   };
+}
+
+async function copyReplayFixture(fixturePath: string, targetPath: string): Promise<void> {
+  const fixtureRoot = dirname(fixturePath);
+  let manifest: unknown;
+  try {
+    manifest = JSON.parse(await readFile(fixturePath, "utf8"));
+  } catch (error) {
+    throw new InstrumentError(
+      "INSTRUMENT_PROTOCOL_ERROR",
+      "Replay capture fixture is not valid JSON.",
+      { cause: error },
+    );
+  }
+  if (typeof manifest !== "object" || manifest === null || Array.isArray(manifest)) {
+    throw new InstrumentError("INSTRUMENT_PROTOCOL_ERROR", "Replay capture fixture must be an object.");
+  }
+  const exports = Reflect.get(manifest, "decoderExports");
+  if (typeof exports !== "object" || exports === null || Array.isArray(exports)) {
+    throw new InstrumentError("INSTRUMENT_PROTOCOL_ERROR", "Replay decoder exports must be an object.");
+  }
+  for (const value of Object.values(exports)) {
+    if (typeof value !== "string" || isAbsolute(value)) {
+      throw new InstrumentError("INSTRUMENT_PROTOCOL_ERROR", "Replay decoder export path is unsafe.");
+    }
+    const source = resolve(fixtureRoot, value);
+    const sourceRelative = relative(fixtureRoot, source);
+    if (sourceRelative === ".." || sourceRelative.startsWith(`..${sep}`)) {
+      throw new InstrumentError("INSTRUMENT_PROTOCOL_ERROR", "Replay decoder export escaped its fixture directory.");
+    }
+    const target = resolve(dirname(targetPath), value);
+    await mkdir(dirname(target), { recursive: true });
+    await copyFile(source, target);
+  }
+  await copyFile(fixturePath, targetPath);
 }
 
 const refuseUnwiredClaim = (): never => {

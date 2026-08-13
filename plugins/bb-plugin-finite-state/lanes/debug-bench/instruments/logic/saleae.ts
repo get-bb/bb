@@ -10,6 +10,7 @@ import type {
   PrerequisiteReport,
 } from "../driver.js";
 import {
+  InstrumentError,
   resolveInstrumentTransport,
   runInstrumentProcess,
   type ProcessResult,
@@ -34,15 +35,14 @@ const CAPABILITIES: InstrumentCapabilities = {
   ],
 };
 
-class SaleaeInstrumentError extends Error {
+class SaleaeInstrumentError extends InstrumentError {
   constructor(
     readonly code: "CAPTURE_CONFIG_INVALID" | "INSTRUMENT_NOT_FOUND" |
       "INSTRUMENT_NOT_CONFIGURED" | "INSTRUMENT_PROTOCOL_ERROR" | "SESSION_CLOSED",
     message: string,
     options?: ErrorOptions,
   ) {
-    super(`${code}: ${message}`, options);
-    this.name = "InstrumentError";
+    super(code, message, options);
   }
 }
 
@@ -135,9 +135,14 @@ export interface SaleaeDecoderConfig {
 
 export interface SaleaeDriverDeps extends InstrumentDriverDeps {
   decoders?: readonly SaleaeDecoderConfig[];
+  registeredSerials?: () => readonly string[];
+  serialForDeviceId?: (deviceId: string) => string | null;
 }
 
+let cachedPrerequisites: PrerequisiteReport | null = null;
+
 function defaultPrerequisites(): PrerequisiteReport {
+  if (cachedPrerequisites !== null) return cachedPrerequisites;
   const sdk = spawnSync("python3", ["-c", "from saleae import automation"], {
     shell: false,
     timeout: 3_000,
@@ -164,19 +169,45 @@ function defaultPrerequisites(): PrerequisiteReport {
       remediation: "Start Logic 2 and enable its Automation API server (default port 10430).",
     },
   ].filter((item) => !item.configured);
-  return { configured: needsConfiguration.length === 0, needsConfiguration };
+  cachedPrerequisites = { configured: needsConfiguration.length === 0, needsConfiguration };
+  return cachedPrerequisites;
 }
 
-function endpoint(transport: ResolvedInstrumentTransport): { address: string; port: number; serial: string | null } {
-  if (transport.kind === "usb" && transport.serial === null) {
+function endpoint(
+  transport: ResolvedInstrumentTransport,
+  serial: string | null,
+): { address: string; port: number; serial: string } {
+  if (serial === null) {
     throw new SaleaeInstrumentError(
       "INSTRUMENT_NOT_FOUND",
-      "Saleae USB capture requires the registry-reconciled serial number; device paths are not stable Logic 2 identities.",
+      "Saleae capture requires a registry-reconciled serial number; paths and network endpoints are not device identities.",
     );
   }
   return transport.kind === "lan"
-    ? { address: transport.host, port: transport.port, serial: null }
-    : { address: "127.0.0.1", port: DEFAULT_LOGIC2_PORT, serial: transport.serial };
+    ? { address: transport.host, port: transport.port, serial }
+    : { address: "127.0.0.1", port: DEFAULT_LOGIC2_PORT, serial };
+}
+
+function detectSerials(
+  transport: ResolvedInstrumentTransport,
+  deps: SaleaeDriverDeps,
+): readonly string[] {
+  const serials = transport.kind === "usb"
+    ? [endpoint(transport, transport.serial).serial]
+    : [...new Set(deps.registeredSerials?.().map((value) => value.trim()).filter(Boolean) ?? [])];
+  if (serials.length === 0) endpoint(transport, null);
+  return serials;
+}
+
+function claimedSerial(
+  transport: ResolvedInstrumentTransport,
+  claimDeviceId: string,
+  deps: SaleaeDriverDeps,
+): string {
+  const serial = transport.kind === "usb"
+    ? transport.serial
+    : deps.serialForDeviceId?.(claimDeviceId)?.trim() || null;
+  return endpoint(transport, serial).serial;
 }
 
 function parseObject(stdout: string): Record<string, unknown> {
@@ -209,9 +240,10 @@ export function createSaleaeDriver(deps: SaleaeDriverDeps): InstrumentDriver {
     id: "saleae-logic2",
     async detect(transport) {
       const resolved = resolveInstrumentTransport(transport);
+      const serialsToReconcile = detectSerials(resolved, deps);
       const result = await runner({
         command: "python3",
-        args: ["-c", SALEAE_BRIDGE, "detect", JSON.stringify(endpoint(resolved))],
+        args: ["-c", SALEAE_BRIDGE, "detect", JSON.stringify(endpoint(resolved, serialsToReconcile[0]!))],
         timeoutMs: 5_000,
         maxOutputBytes: MAX_BRIDGE_OUTPUT_BYTES,
       }, new AbortController().signal);
@@ -220,8 +252,7 @@ export function createSaleaeDriver(deps: SaleaeDriverDeps): InstrumentDriver {
       const serials = Array.isArray(response.serials)
         ? response.serials.filter((serial): serial is string => typeof serial === "string")
         : [];
-      const selected = endpoint(resolved).serial;
-      return response.found === true && (selected === null || serials.includes(selected))
+      return response.found === true && serialsToReconcile.some((serial) => serials.includes(serial))
         ? CAPABILITIES
         : null;
     },
@@ -229,6 +260,7 @@ export function createSaleaeDriver(deps: SaleaeDriverDeps): InstrumentDriver {
       deps.verifyClaim(claim, claim.deviceId);
       signal.throwIfAborted();
       const resolved = resolveInstrumentTransport(transport);
+      const serial = claimedSerial(resolved, claim.deviceId, deps);
       let closed = false;
       let released = false;
       const release = () => {
@@ -245,9 +277,11 @@ export function createSaleaeDriver(deps: SaleaeDriverDeps): InstrumentDriver {
         async capture(config, captureSignal) {
           if (closed) throw new SaleaeInstrumentError("SESSION_CLOSED", "Saleae session is closed.");
           validateSaleaeCapture(config);
+          deps.verifyClaim(claim, claim.deviceId);
+          captureSignal.throwIfAborted();
           await mkdir(config.artifactSink.directory, { recursive: true });
           const request = {
-            ...endpoint(resolved),
+            ...endpoint(resolved, serial),
             durationMs: config.durationMs,
             sampleRateHz: config.sampleRateHz,
             digitalChannels: config.channels,
@@ -278,6 +312,9 @@ export function createSaleaeDriver(deps: SaleaeDriverDeps): InstrumentDriver {
             } satisfies CaptureArtifact;
             await config.artifactSink.record(artifact);
             return artifact;
+          } catch (error) {
+            release();
+            throw error;
           } finally {
             if (captureSignal.aborted) release();
           }
