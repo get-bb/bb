@@ -39,11 +39,14 @@ export interface SbomQuery {
 export interface SbomComponentSummary {
   componentKey: string;
   purl: string | null;
+  cpe: string | null;
   name: string;
   group: string | null;
   version: string | null;
   license: string | null;
   supplier: string | null;
+  source: string | null;
+  isStale: boolean;
   files: string[];
   vuln: {
     critical: number;

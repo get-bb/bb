@@ -17,13 +17,18 @@ export function componentKeyFromIdentity(identity: {
   version: string | null;
 }): string {
   const purl = identity.purl === null ? null : normalizeNonEmpty(identity.purl, "component purl");
-  const name = normalizeNonEmpty(identity.name, "component name");
+  // findingStableKey validates every fallback segment before selecting its purl
+  // tier. Use an inert valid fallback for purl identities so ordinary firmware
+  // names containing path separators cannot invalidate an otherwise exact purl.
+  const name = purl === null
+    ? normalizeNonEmpty(identity.name, "component name")
+    : "purl-identified-component";
   return findingStableKey({
     cve: SBOM_COMPONENT_DISCRIMINATOR,
     purl,
     name,
-    group: identity.group,
-    version: identity.version,
+    group: purl === null ? identity.group : null,
+    version: purl === null ? identity.version : null,
   });
 }
 
@@ -95,6 +100,34 @@ export function recomputeVulnRollup(
   const computedAt = options.computedAt ?? new Date().toISOString();
   installComponentKeyFunction(db);
 
+  // Materialize the expensive JS stable-key mapping exactly once per accepted
+  // finding. The publication join below is then plain indexed equality rather
+  // than invoking the UDF for every component/finding pair.
+  db.exec(`
+    CREATE TEMP TABLE IF NOT EXISTS fs_sbom_finding_keys (
+      finding_id TEXT PRIMARY KEY,
+      component_key TEXT
+    ) WITHOUT ROWID;
+    CREATE INDEX IF NOT EXISTS fs_sbom_finding_keys_component
+      ON fs_sbom_finding_keys(component_key);
+    DELETE FROM fs_sbom_finding_keys;
+  `);
+  db.prepare(
+    `INSERT INTO fs_sbom_finding_keys (finding_id, component_key)
+     SELECT f.finding_id,
+            fs_sbom_component_key(
+              f.component_purl, f.component_name,
+              f.component_group, f.component_version
+            )
+       FROM findings f
+       JOIN sync_state s
+         ON s.project_id = f.project_id
+        AND s.project_version_id = f.project_version_id
+        AND s.entity_kind = 'finding'
+        AND s.accepted_generation_id = f.generation_id
+      WHERE f.project_id = ? AND f.project_version_id = ?`,
+  ).run(projectId, projectVersionId);
+
   db.prepare(
     `DELETE FROM sbom_vuln_rollup
       WHERE project_id = ? AND project_version_id = ? AND generation_id = ?`,
@@ -106,9 +139,10 @@ export function recomputeVulnRollup(
        critical, high, medium, low, kev_count, max_epss,
        reachability_verdict, computed_at
      )
-     WITH accepted_findings AS (
-       SELECT f.*
+     WITH accepted_findings AS MATERIALIZED (
+       SELECT f.*, k.component_key
          FROM findings f
+         JOIN fs_sbom_finding_keys k ON k.finding_id = f.finding_id
          JOIN sync_state s
            ON s.project_id = f.project_id
           AND s.project_version_id = f.project_version_id
@@ -122,25 +156,23 @@ export function recomputeVulnRollup(
               f.in_kev,
               f.in_vc_kev,
               f.epss_score,
-              CASE WHEN f.reachability_score > 0
-                     OR lower(f.reachability_verdict) IN ('reachable','positive')
+              CASE WHEN COALESCE(f.reachability_score > 0, 0) = 1
+                     OR lower(COALESCE(f.reachability_verdict, '')) IN ('reachable','positive')
                    THEN 1 ELSE 0 END AS positive,
-              CASE WHEN f.reachability_score < 0
-                     OR lower(f.reachability_verdict) IN ('unreachable','negative')
+              CASE WHEN COALESCE(f.reachability_score < 0, 0) = 1
+                     OR lower(COALESCE(f.reachability_verdict, '')) IN ('unreachable','negative')
                    THEN 1 ELSE 0 END AS negative,
               CASE WHEN f.finding_id IS NOT NULL
                          AND NOT (
-                           f.reachability_score > 0 OR f.reachability_score < 0
-                           OR lower(f.reachability_verdict) IN
+                           COALESCE(f.reachability_score > 0, 0) = 1
+                           OR COALESCE(f.reachability_score < 0, 0) = 1
+                           OR lower(COALESCE(f.reachability_verdict, '')) IN
                              ('reachable','positive','unreachable','negative')
                          )
                    THEN 1 ELSE 0 END AS inconclusive
          FROM sbom_components c
          LEFT JOIN accepted_findings f
-           ON fs_sbom_component_key(
-                f.component_purl, f.component_name,
-                f.component_group, f.component_version
-              ) = c.component_key
+           ON f.component_key = c.component_key
         WHERE c.project_id = ? AND c.project_version_id = ?
           AND c.generation_id = ?
      )
@@ -174,23 +206,13 @@ export function recomputeVulnRollup(
 
   const ignored = db.prepare<[string, string, string], { count: number }>(
     `SELECT COUNT(*) AS count
-       FROM findings f
-       JOIN sync_state s
-         ON s.project_id = f.project_id
-        AND s.project_version_id = f.project_version_id
-        AND s.entity_kind = 'finding'
-        AND s.accepted_generation_id = f.generation_id
-      WHERE f.project_id = ? AND f.project_version_id = ?
-        AND NOT EXISTS (
-          SELECT 1 FROM sbom_components c
-           WHERE c.project_id = f.project_id
-             AND c.project_version_id = f.project_version_id
-             AND c.generation_id = ?
-             AND c.component_key = fs_sbom_component_key(
-               f.component_purl, f.component_name,
-               f.component_group, f.component_version
-             )
-        )`,
+       FROM fs_sbom_finding_keys k
+       LEFT JOIN sbom_components c
+         ON c.project_id = ?
+        AND c.project_version_id = ?
+        AND c.generation_id = ?
+        AND c.component_key = k.component_key
+      WHERE c.component_key IS NULL`,
   ).get(projectId, projectVersionId, generationId)!;
   if (ignored.count > 0) {
     options.warn?.("Ignored findings without a resolvable SBOM component", {

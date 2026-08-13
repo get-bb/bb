@@ -133,13 +133,27 @@ export function normalizeComponent(value: Json): NormalizedComponent {
   const row = record(value);
   if (!row) throw new SbomPullError("SBOM_INVALID_COMPONENT", "Component row must be an object");
   const componentId = requiredString(row, ["id", "componentId", "uuid"], "id");
-  const name = requiredString(row, ["name"], "name");
+  let name: string;
+  try {
+    name = requiredString(row, ["name"], "name");
+  } catch {
+    throw new SbomPullError("SBOM_INVALID_COMPONENT", `Component ${componentId} has no valid name`);
+  }
   const purl = optionalString(row, ["purl", "packageUrl"]);
   const group = optionalString(row, ["group", "namespace"]);
   const version = optionalString(row, ["version"]);
+  let componentKey: string;
+  try {
+    componentKey = componentKeyFromIdentity({ purl, name, group, version });
+  } catch {
+    throw new SbomPullError(
+      "SBOM_INVALID_COMPONENT",
+      `Component ${componentId} has an invalid stable identity`,
+    );
+  }
   return {
     componentId,
-    componentKey: componentKeyFromIdentity({ purl, name, group, version }),
+    componentKey,
     purl,
     name,
     group,
@@ -411,6 +425,23 @@ function publishStage(
   try {
     return deps.db.transaction(() => {
       deps.db.prepare(
+        `UPDATE pull_generation
+            SET status = 'superseded'
+          WHERE project_id = ? AND project_version_id = ?
+            AND status = 'accepted' AND generation_id <> ?
+            AND generation_id = (
+              SELECT accepted_generation_id FROM sync_state
+               WHERE project_id = ? AND project_version_id = ? AND entity_kind = ?
+            )`,
+      ).run(
+        input.projectId,
+        input.projectVersionId,
+        generationId,
+        input.projectId,
+        input.projectVersionId,
+        ENTITY_KIND,
+      );
+      deps.db.prepare(
         `DELETE FROM sbom_vuln_rollup
           WHERE project_id = ? AND project_version_id = ?`,
       ).run(input.projectId, input.projectVersionId);
@@ -426,7 +457,7 @@ function publishStage(
          )
          SELECT ?, ?, ?, component_id, component_key, purl, name,
                 component_group, version, cpe, license, supplier, source,
-                file_locations, 0, raw, ?
+                file_locations, is_stale, raw, ?
            FROM ${alias}.components`,
       ).run(input.projectId, input.projectVersionId, generationId, pulledAt);
       const rollups = recomputeVulnRollup(deps.db, input.projectVersionId, {
@@ -483,14 +514,23 @@ export async function pullSbom(
   if (input.resume && current?.staging_generation_id && existsSync(path)) {
     stage = openStage(path);
     const saved = meta(stage);
-    if (
-      saved?.project_id === input.projectId &&
+    const sameScope = saved?.project_id === input.projectId &&
       saved.project_version_id === input.projectVersionId &&
-      saved.generation_id === current.staging_generation_id &&
+      saved.generation_id === current.staging_generation_id;
+    const exactCursor = sameScope &&
       saved.continuation === current.staging_continuation &&
       saved.pages === current.staged_pages &&
-      saved.rows === current.staged_rows
-    ) {
+      saved.rows === current.staged_rows;
+    // A crash may occur after the staging page commits but before its shared
+    // cursor advances. A stage exactly one page ahead is authoritative and can
+    // safely heal that bounded window without re-fetching or discarding it.
+    const recoverableCursor = sameScope &&
+      saved.pages === current.staged_pages + 1 &&
+      saved.rows >= current.staged_rows;
+    if (saved && (exactCursor || recoverableCursor)) {
+      if (recoverableCursor) {
+        advanceSharedCursor(deps.db, input, saved.generation_id, saved);
+      }
       generationId = saved.generation_id;
       resumed = true;
     } else {

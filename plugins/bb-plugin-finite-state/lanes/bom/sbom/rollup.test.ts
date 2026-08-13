@@ -57,14 +57,15 @@ function insertFinding(
   score: number | null,
   epss: number | null,
   kev = 0,
+  verdict: string | null = null,
 ): void {
   db.prepare(
     `INSERT INTO findings
        (project_id, project_version_id, generation_id, finding_id, stable_key,
         component_name, component_version, component_purl, severity, epss_score,
-        in_kev, reachability_score, raw, pulled_at)
-     VALUES ('p', 'v', 'finding-g', ?, ?, ?, '1', ?, ?, ?, ?, ?, '{}', 'now')`,
-  ).run(id, `finding-${id}`, name, `pkg:generic/${name}@1`, severity, epss, kev, score);
+        in_kev, reachability_score, reachability_verdict, raw, pulled_at)
+     VALUES ('p', 'v', 'finding-g', ?, ?, ?, '1', ?, ?, ?, ?, ?, ?, '{}', 'now')`,
+  ).run(id, `finding-${id}`, name, `pkg:generic/${name}@1`, severity, epss, kev, score, verdict);
 }
 
 describe("SBOM vulnerability rollup", () => {
@@ -72,7 +73,8 @@ describe("SBOM vulnerability rollup", () => {
     const db = createDb();
     seedGeneration(db);
     const keys = Object.fromEntries(
-      ["reachable", "unreachable", "mixed", "unknown", "empty"].map((name) => [name, insertComponent(db, name)]),
+      ["reachable", "unreachable", "mixed", "unknown", "null-unknown", "empty"]
+        .map((name) => [name, insertComponent(db, name)]),
     );
     insertFinding(db, "r1", "reachable", "critical", 0.8, 0.91, 1);
     insertFinding(db, "r2", "reachable", "high", 0.2, 0.34);
@@ -80,8 +82,10 @@ describe("SBOM vulnerability rollup", () => {
     insertFinding(db, "m1", "mixed", "low", -0.1, 0.4);
     insertFinding(db, "m2", "mixed", "critical", 0.1, 0.8);
     insertFinding(db, "x1", "unknown", "high", 0, null);
+    insertFinding(db, "n1", "null-unknown", "medium", -1, null);
+    insertFinding(db, "n2", "null-unknown", "low", null, null);
 
-    expect(recomputeVulnRollup(db, "v")).toBe(5);
+    expect(recomputeVulnRollup(db, "v")).toBe(6);
     const rows = db.prepare<[], RollupRow>(
       `SELECT component_key, critical, high, medium, low, kev_count,
               max_epss, reachability_verdict
@@ -95,10 +99,53 @@ describe("SBOM vulnerability rollup", () => {
     expect(byKey.get(keys.unreachable)).toMatchObject({ reachability_verdict: "unreachable" });
     expect(byKey.get(keys.mixed)).toMatchObject({ reachability_verdict: "mixed" });
     expect(byKey.get(keys.unknown)).toMatchObject({ reachability_verdict: "unknown" });
+    expect(byKey.get(keys["null-unknown"])).toMatchObject({
+      medium: 1, low: 1, reachability_verdict: "unknown",
+    });
     expect(byKey.get(keys.empty)).toMatchObject({
       critical: 0, high: 0, medium: 0, low: 0, kev_count: 0,
       max_epss: null, reachability_verdict: "unknown",
     });
+    db.close();
+  });
+
+  it("materializes finding keys once and recomputes a 10k-component rollup within budget", () => {
+    const db = createDb();
+    seedGeneration(db);
+    const insertComponentRow = db.prepare(
+      `INSERT INTO sbom_components
+        (project_id, project_version_id, generation_id, component_id,
+         component_key, purl, name, version, raw, pulled_at)
+       VALUES ('p', 'v', 'sbom-g', ?, ?, ?, ?, '1', '{}', 'now')`,
+    );
+    const insertFindingRow = db.prepare(
+      `INSERT INTO findings
+        (project_id, project_version_id, generation_id, finding_id, stable_key,
+         component_name, component_version, component_purl, severity,
+         reachability_score, raw, pulled_at)
+       VALUES ('p', 'v', 'finding-g', ?, ?, ?, '1', ?, 'high', -1, '{}', 'now')`,
+    );
+    db.transaction(() => {
+      for (let index = 0; index < 10_000; index += 1) {
+        const name = `component-${index}`;
+        const purl = `pkg:generic/${name}@1`;
+        insertComponentRow.run(
+          `component-id-${index}`,
+          componentKeyFromIdentity({ purl, name, group: null, version: "1" }),
+          purl,
+          name,
+        );
+        if (index < 4_000) {
+          insertFindingRow.run(`finding-${index}`, `stable-${index}`, name, purl);
+        }
+      }
+    })();
+
+    const started = performance.now();
+    expect(recomputeVulnRollup(db, "v")).toBe(10_000);
+    const elapsedMs = performance.now() - started;
+    expect(elapsedMs).toBeLessThan(5_000);
+    expect(db.prepare("SELECT SUM(high) FROM sbom_vuln_rollup").pluck().get()).toBe(4_000);
     db.close();
   });
 

@@ -12,7 +12,7 @@ import { createMockRemote, type MockRemoteHarness } from "../../../test/mock-rem
 import { registerPlatformHandlers } from "../../../test/mock-remote/platform/register.js";
 import { createMockPlatformState } from "../../../test/mock-remote/platform/state.js";
 import { createBomCommandServices } from "../register.js";
-import { pullSbom } from "./pull.js";
+import { normalizeComponent, pullSbom } from "./pull.js";
 import { querySbom } from "./query.js";
 import { componentKeyFromIdentity } from "./rollup.js";
 
@@ -95,6 +95,31 @@ const rowA = { id: "a", name: "Alpha", purl: "pkg:generic/alpha@1", version: "1"
 const rowB = { id: "b", name: "Beta", purl: null, group: "Core", version: "2" };
 
 describe("resumable SBOM pull", () => {
+  it("uses exact purl identity for path-like names and types invalid fallback rows by id", () => {
+    const normalized = normalizeComponent({
+      id: "firmware-path-row",
+      name: "bin/busybox",
+      group: "vendor/acme",
+      purl: "pkg:generic/busybox@1.36",
+      version: "1.36",
+    });
+    expect(normalized.componentKey).toBe(componentKeyFromIdentity({
+      purl: "pkg:generic/busybox@1.36",
+      name: "any-safe-name",
+      group: null,
+      version: null,
+    }));
+    expect(() => normalizeComponent({
+      id: "invalid-fallback-row",
+      name: "bin/busybox",
+      purl: null,
+      version: "1.36",
+    })).toThrow(expect.objectContaining({
+      code: "SBOM_INVALID_COMPONENT",
+      message: expect.stringContaining("invalid-fallback-row"),
+    }));
+  });
+
   it("fully drains the audited 900-component Platform iterable and publishes one atomic slice", async () => {
     const db = createDb();
     const worktreeRoot = await root();
@@ -201,15 +226,20 @@ describe("resumable SBOM pull", () => {
     ]);
     expect(result).toMatchObject({ components: 2, pages: 3, resumed: true });
     expect(db.prepare("SELECT component_id FROM sbom_components ORDER BY component_id").pluck().all()).toEqual(["a", "b"]);
+    expect(db.prepare("SELECT status FROM pull_generation WHERE generation_id = 'old-g'").pluck().get()).toBe("superseded");
+    expect(db.prepare("SELECT status FROM pull_generation WHERE generation_id = 'generation-next'").pluck().get()).toBe("accepted");
     db.close();
   });
 
-  it("preserves the complete cache and exposes stale retry metadata after 429 exhaustion", async () => {
+  it("preserves the complete cache after a mid-stream 429 and resumes its staged page", async () => {
     const db = createDb();
     const oldKey = seedAccepted(db);
     const worktreeRoot = await root();
     const rateLimited = {
-      async *listComponents(): ReturnType<PlatformClientContract["listComponents"]> {
+      async *listComponents(input: Parameters<PlatformClientContract["listComponents"]>[0]) {
+        if (!input.excluded) {
+          yield { items: [rowA], total: 2, next: "after-one" };
+        }
         throw new RemoteError("Rate limited", {
           service: "platform",
           code: "REMOTE_RATE_LIMITED",
@@ -237,6 +267,36 @@ describe("resumable SBOM pull", () => {
       message: expect.stringMatching(/Platform.*REMOTE_RATE_LIMITED.*Retry/u),
     });
     expect(db.prepare("SELECT is_stale FROM sbom_components").pluck().get()).toBe(1);
+
+    const staged = db.prepare<[], { staged_pages: number; staged_rows: number }>(
+      "SELECT staged_pages, staged_rows FROM sync_state WHERE entity_kind = 'sbomComponent'",
+    ).get()!;
+    expect(staged).toEqual({ staged_pages: 1, staged_rows: 1 });
+    // Simulate the bounded crash window between the page commit and shared
+    // cursor update; resume should heal from the request-owned staging DB.
+    db.prepare(
+      `UPDATE sync_state SET staging_continuation = NULL, staged_pages = 0, staged_rows = 0
+        WHERE entity_kind = 'sbomComponent'`,
+    ).run();
+    const resumedInputs: Array<Parameters<PlatformClientContract["listComponents"]>[0]> = [];
+    const recovered = {
+      async *listComponents(input: Parameters<PlatformClientContract["listComponents"]>[0]) {
+        resumedInputs.push(input);
+        yield input.excluded
+          ? { items: [], total: 0, next: null }
+          : { items: [rowB], total: 2, next: null };
+      },
+    } satisfies Pick<PlatformClientContract, "listComponents">;
+    const result = await pullSbom(
+      { db, platform: recovered, worktreeRoot },
+      { projectId: "p", projectVersionId: "v", resume: true },
+    );
+    expect(result).toMatchObject({ components: 2, pages: 3, resumed: true });
+    expect(resumedInputs[0]).toEqual({
+      excluded: false,
+      page: { pageSize: 200, continuation: "after-one" },
+    });
+    expect(db.prepare("SELECT component_id FROM sbom_components ORDER BY component_id").pluck().all()).toEqual(["a", "b"]);
     db.close();
   });
 
@@ -249,7 +309,7 @@ describe("resumable SBOM pull", () => {
       async *listComponents(input: Parameters<PlatformClientContract["listComponents"]>[0]) {
         yield input.excluded
           ? { items: [], total: 0, next: null }
-          : { items: [rowA], total: 1, next: null };
+          : { items: [{ ...rowA, cpe: "cpe:/a:alpha:alpha:1", isStale: true }], total: 1, next: null };
       },
     } satisfies Pick<PlatformClientContract, "listComponents">;
     const service = createBomCommandServices(host.bb, db, () => platform);
@@ -265,6 +325,11 @@ describe("resumable SBOM pull", () => {
       },
       { channel: "bom:changed", payload: { projectVersionId: "v" } },
     ]);
+    expect(querySbom(db, { projectVersionId: "v" }).items[0]).toMatchObject({
+      cpe: "cpe:/a:alpha:alpha:1",
+      source: "platform",
+      isStale: true,
+    });
     db.close();
   });
 });

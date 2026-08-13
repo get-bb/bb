@@ -21,11 +21,14 @@ interface SyncRow {
 interface QueryRow {
   component_key: string;
   purl: string | null;
+  cpe: string | null;
   name: string;
   component_group: string | null;
   version: string | null;
   license: string | null;
   supplier: string | null;
+  source: string | null;
+  is_stale: number;
   file_locations_json: string;
   pulled_at: string;
   critical: number;
@@ -171,11 +174,14 @@ function queryScoped(
   const grouped = `
     SELECT c.component_key,
            MIN(c.purl) AS purl,
+           MIN(c.cpe) AS cpe,
            MIN(c.name) AS name,
            MIN(c.component_group) AS component_group,
            MIN(c.version) AS version,
            MIN(c.license) AS license,
            MIN(c.supplier) AS supplier,
+           MIN(c.source) AS source,
+           MAX(c.is_stale) AS is_stale,
            json_group_array(COALESCE(c.file_locations, '[]')) AS file_locations_json,
            MAX(c.pulled_at) AS pulled_at,
            COALESCE(MAX(r.critical), 0) AS critical,
@@ -211,11 +217,14 @@ function queryScoped(
     items: visible.map((row) => ({
       componentKey: row.component_key,
       purl: row.purl,
+      cpe: row.cpe,
       name: row.name,
       group: row.component_group,
       version: row.version,
       license: row.license,
       supplier: row.supplier,
+      source: row.source,
+      isStale: row.is_stale === 1,
       files: parseFiles(row.file_locations_json),
       vuln: {
         critical: row.critical,
