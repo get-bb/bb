@@ -326,7 +326,7 @@ async function readAdapterState(
   let workingRows: WorkingEntity[];
   let issues: WorkingIssue[] = [];
   try {
-    workingRows = await adapter.readWorking(worktreeRoot);
+    workingRows = await adapter.readWorking(worktreeRoot, scope);
   } catch (error: unknown) {
     const partial = partialWorkingRead(error);
     if (partial === null) throw error;

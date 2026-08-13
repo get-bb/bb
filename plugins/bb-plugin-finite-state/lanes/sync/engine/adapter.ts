@@ -92,7 +92,7 @@ export interface EntityAdapter {
     onProgress: (progress: AdapterProgress) => void,
   ): AsyncIterable<ServerEntity[]>;
   /** Read authored entities from `worktreeRoot`; malformed files reject with their typed parse error. */
-  readWorking(worktreeRoot: string): Promise<WorkingEntity[]>;
+  readWorking(worktreeRoot: string, scope?: SyncScope): Promise<WorkingEntity[]>;
 }
 
 /** Optional full-domain context for finding resolvers that need more fidelity than the opaque key retains. */

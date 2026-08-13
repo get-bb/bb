@@ -304,9 +304,10 @@ describe("sync pull", () => {
   it("fast-forwards only sync.base in a git-clean VEX file after publication", async () => {
     const root = await mkdtemp(join(tmpdir(), "fs-wp17-fast-forward-"));
     roots.push(root);
-    await mkdir(join(root, ".fs", "triage"), { recursive: true });
-    const file = join(root, ".fs", "triage", "component.yaml");
+    await mkdir(join(root, ".fs", "triage", "project"), { recursive: true });
+    const file = join(root, ".fs", "triage", "project", "component.yaml");
     await writeFile(file, `schema: fs-triage/v1
+project: project
 component:
   purl: pkg:generic/component@1
   name: component
