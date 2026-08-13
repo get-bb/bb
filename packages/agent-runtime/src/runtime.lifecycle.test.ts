@@ -1466,6 +1466,114 @@ rl.on("line", (line) => {
       });
       await runtime.shutdown();
     });
+
+    it("defers ACP session changes until after active steers", async () => {
+      const builtCommands: AdapterCommand[] = [];
+      const events: ThreadEvent[] = [];
+      const runtime = createAgentRuntimeWithAdapters({
+        workspacePath: tmpDir,
+        onEvent: (event) => events.push(event),
+        onToolCall: async () => ({
+          contentItems: [{ type: "inputText", text: "ok" }],
+          success: true,
+        }),
+        adapterFactory: () => {
+          const adapter = createRecordingAdapter({
+            recordedCommands: builtCommands,
+            scriptPath,
+          });
+          return {
+            ...adapter,
+            capabilities: {
+              ...adapter.capabilities,
+              supportsServiceTier: true,
+            },
+          };
+        },
+      });
+
+      await runtime.startThread({
+        environmentId: "env-1",
+        threadId: "t1",
+        projectId: "p1",
+        providerId: "acp-custom",
+        options: fullRuntimeOptions,
+      });
+      await runtime.runTurn({
+        clientRequestId: "creq_222222224i",
+        threadId: "t1",
+        input: [promptTextInput({ text: "delay:1000" })],
+        options: fullRuntimeOptions,
+      });
+      await waitForThreadTurnStarted({
+        events,
+        providerId: "acp-custom",
+        runtime,
+        threadId: "t1",
+        turnId: "turn-1",
+      });
+      builtCommands.length = 0;
+
+      await runtime.steerTurn({
+        clientRequestId: "creq_222222224j",
+        threadId: "t1",
+        expectedTurnId: "turn-1",
+        input: [promptTextInput({ text: "use fast" })],
+        options: { ...fullRuntimeOptions, serviceTier: "fast" },
+      });
+
+      expect(builtCommands).toHaveLength(1);
+      expect(builtCommands[0]).toMatchObject({
+        type: "turn/steer",
+        options: { serviceTier: "fast" },
+      });
+
+      await runtime.steerTurn({
+        clientRequestId: "creq_222222224k",
+        threadId: "t1",
+        expectedTurnId: "turn-1",
+        input: [promptTextInput({ text: "also change the model" })],
+        options: {
+          ...fullRuntimeOptions,
+          model: "test-model-2",
+          serviceTier: "fast",
+        },
+      });
+
+      expect(builtCommands).toHaveLength(2);
+      expect(builtCommands[1]).toMatchObject({
+        type: "turn/steer",
+        options: { model: "test-model-2", serviceTier: "fast" },
+      });
+
+      await waitForThreadTurnCompleted({
+        events,
+        threadId: "t1",
+        turnId: "turn-1",
+      });
+      builtCommands.length = 0;
+
+      await runtime.runTurn({
+        clientRequestId: "creq_222222224m",
+        threadId: "t1",
+        input: [promptTextInput({ text: "next turn" })],
+        options: {
+          ...fullRuntimeOptions,
+          model: "test-model-2",
+          serviceTier: "fast",
+        },
+      });
+
+      expect(builtCommands.map((command) => command.type)).toEqual([
+        "thread/resume",
+        "turn/start",
+      ]);
+      expect(builtCommands[0]).toMatchObject({
+        type: "thread/resume",
+        options: { model: "test-model-2", serviceTier: "fast" },
+      });
+      await runtime.shutdown();
+    });
   });
 
   describe("models", () => {

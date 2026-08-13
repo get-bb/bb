@@ -39,7 +39,14 @@ function requestId(): number {
 
 function sendRequest(method: string, params: object): number {
   const id = requestId();
-  handleLine(JSON.stringify({ jsonrpc: "2.0", id, method, params }));
+  const requestParams = ["turn/start", "turn/steer", "thread/compact"].includes(
+    method,
+  )
+    ? { serviceTier: "default", ...params }
+    : params;
+  handleLine(
+    JSON.stringify({ jsonrpc: "2.0", id, method, params: requestParams }),
+  );
   return id;
 }
 
@@ -1182,6 +1189,53 @@ describe("acp bridge", () => {
     expect(agentMessageTexts()).toContain("echo:hello there");
   });
 
+  it("sends each prompt's resolved service tier in ACP metadata", async () => {
+    const promptLog = join(workspaceDir, "prompt-meta-log.jsonl");
+    const { providerThreadId } = await startThread({
+      envVars: { FAKE_ACP_PROMPT_LOG: promptLog },
+    });
+
+    const defaultTurnId = sendRequest("turn/start", {
+      threadId: providerThreadId,
+      input: [{ type: "text", text: "default prompt", mentions: [] }],
+      serviceTier: "default",
+    });
+    await waitForResponse(defaultTurnId);
+    await waitFor(
+      () =>
+        notifications("acp/turn/completed").length === 1 ? true : undefined,
+      "default turn completion",
+    );
+
+    const fastTurnId = sendRequest("turn/start", {
+      threadId: providerThreadId,
+      input: [{ type: "text", text: "fast prompt", mentions: [] }],
+      serviceTier: "fast",
+    });
+    await waitForResponse(fastTurnId);
+    await waitFor(
+      () =>
+        notifications("acp/turn/completed").length === 2 ? true : undefined,
+      "fast turn completion",
+    );
+
+    expect(
+      readFileSync(promptLog, "utf8")
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line)),
+    ).toEqual([
+      {
+        text: "default prompt",
+        _meta: { "getbb.app/serviceTier": "default" },
+      },
+      {
+        text: "fast prompt",
+        _meta: { "getbb.app/serviceTier": "fast" },
+      },
+    ]);
+  });
+
   it("runs manual compaction as a provider-local maintenance prompt", async () => {
     const promptLog = join(workspaceDir, "prompt-log.jsonl");
     const { providerThreadId } = await startThread({
@@ -1191,6 +1245,7 @@ describe("acp bridge", () => {
 
     const compactId = sendRequest("thread/compact", {
       threadId: providerThreadId,
+      serviceTier: "fast",
     });
     const compactResponse = await waitForResponse(compactId);
     expect(compactResponse.error).toBeUndefined();
@@ -1215,7 +1270,12 @@ describe("acp bridge", () => {
         .trim()
         .split("\n")
         .map((line) => JSON.parse(line)),
-    ).toEqual(["/compact"]);
+    ).toEqual([
+      {
+        text: "/compact",
+        _meta: { "getbb.app/serviceTier": "fast" },
+      },
+    ]);
 
     const turnId = sendRequest("turn/start", {
       threadId: providerThreadId,
@@ -1648,7 +1708,10 @@ describe("acp bridge", () => {
   });
 
   it("delivers stacked steers on the same turn", async () => {
-    const { bbThreadId, providerThreadId } = await startThread();
+    const promptLog = join(workspaceDir, "stacked-steer-prompt-log.jsonl");
+    const { bbThreadId, providerThreadId } = await startThread({
+      envVars: { FAKE_ACP_PROMPT_LOG: promptLog },
+    });
     const turnId = sendRequest("turn/start", {
       threadId: providerThreadId,
       input: [{ type: "text", text: "hang", mentions: [] }],
@@ -1659,11 +1722,13 @@ describe("acp bridge", () => {
       threadId: providerThreadId,
       expectedTurnId: "turn-1",
       input: [{ type: "text", text: "first-steer", mentions: [] }],
+      serviceTier: "fast",
     });
     const secondSteerId = sendRequest("turn/steer", {
       threadId: providerThreadId,
       expectedTurnId: "turn-1",
       input: [{ type: "text", text: "second-steer", mentions: [] }],
+      serviceTier: "default",
     });
     await waitForResponse(firstSteerId);
     await waitForResponse(secondSteerId);
@@ -1677,6 +1742,25 @@ describe("acp bridge", () => {
     expect(agentMessageTexts()).toContain("echo:second-steer");
     expect(notifications("acp/turn/started")).toHaveLength(1);
     expect(notifications("acp/turn/completed")).toHaveLength(1);
+    expect(
+      readFileSync(promptLog, "utf8")
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line)),
+    ).toEqual([
+      {
+        text: "hang",
+        _meta: { "getbb.app/serviceTier": "default" },
+      },
+      {
+        text: "first-steer",
+        _meta: { "getbb.app/serviceTier": "fast" },
+      },
+      {
+        text: "second-steer",
+        _meta: { "getbb.app/serviceTier": "default" },
+      },
+    ]);
   });
 
   it("cancels a stacked steer prompt that also hangs", async () => {

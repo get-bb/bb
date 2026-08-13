@@ -5,6 +5,7 @@
  * `update` payloads it translates into thread events.
  */
 
+import type { ServiceTier } from "@bb/domain";
 import { z } from "zod";
 
 // ---------------------------------------------------------------------------
@@ -30,6 +31,18 @@ const acpContentBlockSchema = z.union([
   acpOtherContentBlockSchema,
 ]);
 export type AcpContentBlock = z.infer<typeof acpContentBlockSchema>;
+
+export type BbServiceTier = ServiceTier;
+
+export interface BbPromptMeta {
+  "getbb.app/serviceTier": BbServiceTier;
+}
+
+export interface AcpSessionPromptParams {
+  sessionId: string;
+  prompt: AcpContentBlock[];
+  _meta: BbPromptMeta;
+}
 
 export function extractAcpContentText(
   content: AcpContentBlock | undefined,

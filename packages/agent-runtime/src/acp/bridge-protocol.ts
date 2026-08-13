@@ -151,17 +151,25 @@ export type AcpBridgeThreadResumeParams = z.infer<
 const acpBridgeTurnStartParamsSchema = z.object({
   threadId: z.string().min(1),
   input: z.array(promptInputSchema),
+  serviceTier: serviceTierSchema,
 });
 
 const acpBridgeTurnSteerParamsSchema = z.object({
   threadId: z.string().min(1),
   expectedTurnId: z.string().min(1),
   input: z.array(promptInputSchema),
+  serviceTier: serviceTierSchema,
 });
 
 const acpBridgeThreadIdParamsSchema = z.object({
   threadId: z.string().min(1),
 });
+
+const acpBridgeThreadCompactParamsSchema = acpBridgeThreadIdParamsSchema.extend(
+  {
+    serviceTier: serviceTierSchema,
+  },
+);
 
 export const acpBridgeCommandSchema = z.discriminatedUnion("method", [
   z.object({
@@ -196,7 +204,7 @@ export const acpBridgeCommandSchema = z.discriminatedUnion("method", [
   }),
   z.object({
     method: z.literal("thread/compact"),
-    params: acpBridgeThreadIdParamsSchema,
+    params: acpBridgeThreadCompactParamsSchema,
   }),
 ]);
 export type AcpBridgeCommand = z.infer<typeof acpBridgeCommandSchema>;

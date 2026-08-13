@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   createStandaloneBuiltinCompactCommandInput,
   DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
+  type RuntimeThreadExecutionOptions,
   threadScope,
   turnScope,
 } from "@bb/domain";
@@ -16,8 +17,15 @@ const fullProviderExecutionContext = {
   permissionScope: "full",
   approvalReviewer: null,
   permissionEscalation: null,
+  serviceTier: "default",
   workflowsEnabled: false,
 } satisfies ProviderExecutionContext;
+
+const fullRuntimeExecutionOptions = {
+  ...fullProviderExecutionContext,
+  model: "composer-2.5",
+  reasoningLevel: "high",
+} satisfies RuntimeThreadExecutionOptions;
 
 type AcpProviderAdapter = ReturnType<typeof createAcpProviderAdapter>;
 
@@ -92,6 +100,25 @@ describe("acp adapter command plans", () => {
     ]);
   });
 
+  it("keeps tier-only changes live without CLI model selection", () => {
+    const adapter = createCompactingAdapter();
+    expect(
+      adapter.classifyExecutionSettingsChange({
+        current: fullRuntimeExecutionOptions,
+        next: { ...fullRuntimeExecutionOptions, serviceTier: "fast" },
+      }),
+    ).toBe("live");
+  });
+
+  it("restarts CLI model selection for tier-only changes", () => {
+    expect(
+      createAdapter().classifyExecutionSettingsChange({
+        current: fullRuntimeExecutionOptions,
+        next: { ...fullRuntimeExecutionOptions, serviceTier: "fast" },
+      }),
+    ).toBe("session");
+  });
+
   it("routes OpenCode's selected compact command through maintenance", () => {
     const adapter = createCompactingAdapter();
     expect(
@@ -106,7 +133,7 @@ describe("acp adapter command plans", () => {
     ).toEqual({
       kind: "request",
       method: "thread/compact",
-      params: { threadId: "sess-1" },
+      params: { threadId: "sess-1", serviceTier: "default" },
     });
   });
 
@@ -299,7 +326,7 @@ describe("acp adapter command plans", () => {
     ).toMatchObject({
       kind: "request",
       method: "turn/start",
-      params: { threadId: "sess-1" },
+      params: { threadId: "sess-1", serviceTier: "default" },
     });
     expect(
       adapter.buildCommandPlan({
@@ -314,7 +341,11 @@ describe("acp adapter command plans", () => {
     ).toMatchObject({
       kind: "request",
       method: "turn/steer",
-      params: { threadId: "sess-1", expectedTurnId: "turn-1" },
+      params: {
+        threadId: "sess-1",
+        expectedTurnId: "turn-1",
+        serviceTier: "default",
+      },
     });
     expect(
       adapter.buildCommandPlan({
@@ -583,6 +614,44 @@ describe("acp adapter model cli", () => {
         modelSelection: { modelId: "custom/strong", reasoningLevel: "high" },
       },
     });
+  });
+
+  it("forwards Fast mode on prompts for custom agents without modelCli", () => {
+    const adapter = createAcpProviderAdapter({
+      profile: {
+        providerId: "acp-custom",
+        displayName: "Custom ACP",
+        agentCommand: { command: "custom-acp", args: ["serve"] },
+      },
+      additionalWorkspaceWriteRoots: [],
+    });
+
+    expect(
+      adapter.buildCommandPlan({
+        type: "turn/start",
+        threadId: "thread-1",
+        providerThreadId: "session-1",
+        input: [promptTextInput({ text: "hi" })],
+        clientRequestId: "creq_23456789af",
+        options: { ...fullProviderExecutionContext, serviceTier: "fast" },
+      }),
+    ).toMatchObject({
+      method: "turn/start",
+      params: { serviceTier: "fast" },
+    });
+  });
+
+  it("rejects prompts without a resolved service tier", () => {
+    expect(() =>
+      createAdapter().buildCommandPlan({
+        type: "turn/start",
+        threadId: "thread-1",
+        providerThreadId: "session-1",
+        input: [promptTextInput({ text: "hi" })],
+        clientRequestId: "creq_23456789ag",
+        options: { ...fullProviderExecutionContext, serviceTier: undefined },
+      }),
+    ).toThrow("ACP prompts require a resolved service tier");
   });
 
   it("uses ACP-native selection for CLI-discovered models without a select flag", () => {

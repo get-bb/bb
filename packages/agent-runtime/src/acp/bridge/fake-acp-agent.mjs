@@ -31,7 +31,7 @@
  * - FAKE_ACP_WRITE_PATH      → target path for the "write-file" prompt
  * - FAKE_ACP_LAUNCH_LOG      → append one line per process launch (used to
  *                              count model-discovery spawns in cache/TTL tests)
- * - FAKE_ACP_PROMPT_LOG      → append one JSON-encoded prompt text per request
+ * - FAKE_ACP_PROMPT_LOG      → append prompt text and metadata as JSON lines
  * - FAKE_ACP_PROMPT_ERROR=1  → reject every session/prompt request
  * - FAKE_ACP_COMPACT_STOP_REASON
  *                            → stop reason returned for /compact
@@ -232,7 +232,7 @@ async function handlePrompt(message) {
   if (process.env.FAKE_ACP_PROMPT_LOG) {
     appendFileSync(
       process.env.FAKE_ACP_PROMPT_LOG,
-      `${JSON.stringify(text)}\n`,
+      `${JSON.stringify({ text, _meta: message.params?._meta })}\n`,
     );
   }
 

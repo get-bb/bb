@@ -16,6 +16,7 @@ import {
 } from "@bb/agent-providers";
 import type {
   PendingInteractionApprovalDecision,
+  ServiceTier,
   ThreadEvent,
   ThreadEventItem,
   ThreadEventItemStatus,
@@ -31,9 +32,11 @@ import {
 import { z } from "zod";
 import type {
   AdapterCommand,
+  ClassifyProviderExecutionSettingsChangeArgs,
   DecodedInteractiveRequest,
   ProviderAdapter,
   ProviderExecutionContext,
+  ProviderExecutionSettingsChange,
   ProviderTranslationContext,
 } from "../provider-adapter.js";
 import { flattenPromptInputGroups } from "../provider-adapter.js";
@@ -437,6 +440,15 @@ function requireAcpSkillRoot(
   return skillRoot;
 }
 
+function requireResolvedAcpServiceTier(
+  options: ProviderExecutionContext,
+): ServiceTier {
+  if (options.serviceTier === undefined) {
+    throw new Error("ACP prompts require a resolved service tier.");
+  }
+  return options.serviceTier;
+}
+
 function sanitizeAcpSkillDescription(description: string): string {
   const sanitized = description
     .replace(/[\r\n]+/gu, " ")
@@ -540,6 +552,31 @@ export function createAcpProviderAdapter(
       ...(profile.cwd !== undefined ? { cwd: profile.cwd } : {}),
       ...(profile.env !== undefined ? { envVars: profile.env } : {}),
     };
+  }
+
+  function usesCliModelSelection(options: { model?: string }): boolean {
+    return (
+      options.model !== undefined &&
+      options.model !== ACP_DEFAULT_MODEL_ID &&
+      buildModelListCommand() !== undefined &&
+      profile.modelCli?.selectFlag !== undefined
+    );
+  }
+
+  function classifyAcpExecutionSettingsChange(
+    args: ClassifyProviderExecutionSettingsChangeArgs,
+  ): ProviderExecutionSettingsChange {
+    const changeWithoutServiceTier = classifySessionExecutionSettingsChange({
+      current: args.current,
+      next: { ...args.next, serviceTier: args.current.serviceTier },
+    });
+    if (changeWithoutServiceTier !== "unchanged") {
+      return changeWithoutServiceTier;
+    }
+    if (args.current.serviceTier === args.next.serviceTier) {
+      return "unchanged";
+    }
+    return usesCliModelSelection(args.next) ? "session" : "live";
   }
 
   function buildReasoningCliParam(): Record<string, unknown> {
@@ -1330,10 +1367,11 @@ export function createAcpProviderAdapter(
   ): Record<string, unknown> {
     const model = options.model;
     const listCommand = buildModelListCommand();
+    const selectFlag = profile.modelCli?.selectFlag;
     if (!model || model === ACP_DEFAULT_MODEL_ID) {
       return {};
     }
-    if (!listCommand || !profile.modelCli?.selectFlag) {
+    if (!usesCliModelSelection(options) || !listCommand || !selectFlag) {
       return {
         modelSelection: {
           modelId: model,
@@ -1349,7 +1387,7 @@ export function createAcpProviderAdapter(
     return {
       modelSelection: {
         listCommand,
-        selectFlag: profile.modelCli.selectFlag,
+        selectFlag,
         model,
         ...(options.reasoningLevel !== undefined
           ? { reasoningLevel: options.reasoningLevel }
@@ -1368,7 +1406,7 @@ export function createAcpProviderAdapter(
       displayName: providerInfo.displayName,
       capabilities: providerInfo.capabilities,
       approvalRequestPolicy: "runtime",
-      classifyExecutionSettingsChange: classifySessionExecutionSettingsChange,
+      classifyExecutionSettingsChange: classifyAcpExecutionSettingsChange,
       process: {
         command: opts.bridgeNodeExecutablePath ?? "node",
         args: resolveBridgeProcessArgs({
@@ -1443,7 +1481,10 @@ export function createAcpProviderAdapter(
               return {
                 kind: "request",
                 method: "thread/compact",
-                params: { threadId: command.providerThreadId },
+                params: {
+                  threadId: command.providerThreadId,
+                  serviceTier: requireResolvedAcpServiceTier(command.options),
+                },
               };
             }
             return {
@@ -1452,6 +1493,7 @@ export function createAcpProviderAdapter(
               params: {
                 threadId: command.providerThreadId,
                 input,
+                serviceTier: requireResolvedAcpServiceTier(command.options),
               },
             };
           }
@@ -1466,6 +1508,7 @@ export function createAcpProviderAdapter(
                   command.input,
                   command.inputGroups,
                 ),
+                serviceTier: requireResolvedAcpServiceTier(command.options),
               },
             };
           case "thread/stop":

@@ -71,6 +71,7 @@ import {
 import { fingerprintAcpLaunchSpec } from "./acp-launch-spec-fingerprint.js";
 
 interface ReconfigureThreadIfNeededArgs {
+  deferSessionChange?: boolean;
   options: AgentRuntimeExecutionOptions;
   threadId: string;
 }
@@ -923,6 +924,13 @@ function createAgentRuntimeInternal(
       current: currentConfig.options,
       next: nextOptions,
     });
+    if (args.deferSessionChange && settingsChange === "session") {
+      // An ACP steer must target the current active session. Replacing that
+      // session would make the steer stale, so retain the old session options
+      // and apply settings that need a fresh session before the next normal
+      // turn. Per-turn settings still ride on this steer command.
+      return;
+    }
     if (settingsChange !== "session") {
       // Live settings ride on the next turn command; record them without
       // replacing the session (which would kill its background tasks).
@@ -1921,6 +1929,7 @@ function createAgentRuntimeInternal(
           // resolve the process again before constructing the steer command.
           const proc = requireProviderProcessForThread(threadId);
           await reconfigureThreadIfNeeded({
+            deferSessionChange: isAcpProviderId(pid),
             threadId,
             options: effectiveExecOpts,
           });

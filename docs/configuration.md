@@ -368,6 +368,26 @@ model ids discovered through `modelCli`, not in an ACP `thought_level` option.
 Grok Build is also separate: it uses `reasoningCli` to launch
 `grok --reasoning-effort <level> agent stdio`.
 
+Every ACP `session/prompt` request includes bb's resolved service tier in ACP
+metadata:
+
+```json
+{
+  "_meta": {
+    "getbb.app/serviceTier": "default"
+  }
+}
+```
+
+The value is `default` or `fast`. bb resolves it separately for each prompt
+after applying the turn's execution-setting precedence. A tier change applies
+to the next prompt. Agents should apply the value only to that prompt and should
+not retain it as the next prompt's default. An explicit `default` clears Fast
+mode inherited from an earlier prompt. bb includes it for agents without
+`modelCli`, so agents can distinguish it from an older bb version that does not
+send this metadata. The value is a routing hint, not proof of provider support,
+entitlement, or authorization.
+
 When an agent declares `thought_level` with no options, bb hides the reasoning
 control. bb also hides it when none of the declared values map to a supported bb
 reasoning level. Omitting `thought_level` keeps the agent-managed reasoning
