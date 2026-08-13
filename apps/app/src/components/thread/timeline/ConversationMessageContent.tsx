@@ -504,22 +504,21 @@ function UserConversationMessage({
             projectId={projectId}
           />
         </div>
-        {messageText ||
-        addToChatAttachments.length > 0 ||
-        onEdit !== undefined ||
-        pluginActions.length > 0 ? (
-          <div className="mt-1 flex justify-end">
-            <MessageActionBar
-              messageText={messageText}
-              alignment="end"
-              mobileActionDisplay={mobileActionDisplay}
-              addToChatAttachments={addToChatAttachments}
-              onAddToChat={onAddToChat}
-              onEdit={onEdit}
-              pluginActions={pluginActions}
-            />
-          </div>
-        ) : null}
+        {/*
+          The bar sits in normal flow: it is hidden by opacity, so it occupies
+          its own height whether or not it is revealed, and it renders nothing
+          at all when the message has no action. `MessageActionBar` is the one
+          place that decides which of those two cases holds.
+        */}
+        <MessageActionBar
+          messageText={messageText}
+          alignment="end"
+          mobileActionDisplay={mobileActionDisplay}
+          addToChatAttachments={addToChatAttachments}
+          onAddToChat={onAddToChat}
+          onEdit={onEdit}
+          pluginActions={pluginActions}
+        />
       </div>
     </div>
   );
@@ -667,26 +666,17 @@ function AssistantConversationMessage({
           `disabled` greys both fork and side chat together when the thread is at
           the spawn-depth cap (both spawn a child thread, one guard).
         */
-        <div className="relative h-5 max-md:pointer-coarse:h-7">
-          <div
-            className={cn(
-              "absolute left-0 top-1",
-              "max-md:pointer-coarse:top-0",
-            )}
-          >
-            <MessageActionBar
-              messageText={text}
-              alignment="start"
-              mobileActionDisplay={mobileActionDisplay}
-              addToChatAttachments={addToChatAttachments}
-              onAddToChat={onAddToChat}
-              onFork={onFork}
-              onSendToMain={onSendToMain}
-              disabled={forkDisabled}
-              pluginActions={pluginActions}
-            />
-          </div>
-        </div>
+        <MessageActionBar
+          messageText={text}
+          alignment="start"
+          mobileActionDisplay={mobileActionDisplay}
+          addToChatAttachments={addToChatAttachments}
+          onAddToChat={onAddToChat}
+          onFork={onFork}
+          onSendToMain={onSendToMain}
+          disabled={forkDisabled}
+          pluginActions={pluginActions}
+        />
       ) : null}
     </div>
   );

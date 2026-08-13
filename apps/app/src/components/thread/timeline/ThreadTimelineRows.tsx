@@ -719,14 +719,19 @@ function TimelineStaticRow({
   );
 }
 
+/**
+ * Vertical rhythm between timeline rows. Most rows are a single 20px line (a
+ * command, a file edit, a bundle summary), so the gap is the dominant cost of
+ * the thread view: the list stays readable at 8px and reads as dense work
+ * rather than as isolated cards. Bundle children run flush inside their group.
+ */
 function timelineRowsListGapClassName(
   spacing: TimelineRowsListSpacing,
 ): string {
   switch (spacing) {
     case "top-level":
-      return "gap-4";
     case "nested":
-      return "gap-3";
+      return "gap-2";
     case "bundle":
       return "gap-0";
   }

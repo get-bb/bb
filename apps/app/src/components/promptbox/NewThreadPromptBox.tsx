@@ -263,6 +263,9 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
         promptBoxRef.current?.insertTextAtCursor(text);
       },
       getTextBeforeCursor: () => promptBoxRef.current?.getTextBeforeCursor(),
+      playVoiceCompletionTransition: () =>
+        promptBoxRef.current?.playVoiceCompletionTransition() ??
+        Promise.resolve(),
     }),
     [],
   );

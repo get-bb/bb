@@ -84,6 +84,7 @@ import {
   createProjectionState,
   finalizeProjectionState,
   flushProjectionBufferedOutputs,
+  flushProjectionBufferedOutputsAfterTurnCompleted,
   onThreadInterrupted,
   onTurnCompleted,
   onTurnStarted,
@@ -614,22 +615,27 @@ function buildFlatProjectionData(
 
     if (isTerminalBufferedTextFlushEvent(eventType)) {
       if (decoded.type === "turn/completed") {
+        const completedTurnId = requireThreadEventScopeTurnId({
+          type: decoded.type,
+          scope: decoded.scope,
+        });
         onTurnCompleted({
           completedAt: meta.createdAt,
           state,
-          turnId: requireThreadEventScopeTurnId({
-            type: decoded.type,
-            scope: decoded.scope,
-          }),
+          turnId: completedTurnId,
           status: decoded.status,
         });
+        flushProjectionBufferedOutputsAfterTurnCompleted(
+          state,
+          completedTurnId,
+        );
       } else {
         onThreadInterrupted({
           completedAt: meta.createdAt,
           state,
         });
+        flushProjectionBufferedOutputs(state);
       }
-      flushProjectionBufferedOutputs(state);
     }
 
     if (decoded.type === "turn/input/accepted") {

@@ -32,8 +32,8 @@ export type WorkspaceDiffTarget = z.infer<typeof workspaceDiffTargetSchema>;
  * - `previousPath` is the rename/copy source for `R`/`C`; `null` otherwise.
  * - `additions`/`deletions` come from `--numstat`; binary files report `0` and
  *   set `binary: true`.
- * - `origin` distinguishes working-tree untracked files (which require the
- *   `--no-index` patch form) from tracked files.
+ * - `origin` distinguishes working-tree untracked files (which require
+ *   alternate-index handling) from tracked files.
  */
 export const rawDiffFileStatSchema = z.object({
   path: z.string(),
