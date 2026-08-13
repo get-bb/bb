@@ -146,21 +146,22 @@ documentation only and are never approval evidence.
 
 ### AMD-0004 — Add a verified Assurance Studio verification-result write
 
-- Status: approved
+- Status: blocked-unverifiable at vendored heads; Option C standing
 - Artifacts:
   - `plugins/bb-plugin-finite-state/lib/remote/types.ts`
 - Contract version: n/a
 - Prior artifact hashes:
   - `lib/remote/types.ts`: `933bf1672ff816879cd246d1e3e9a562c9e1da7bedf16e326d5f75fd12f8ba08`
-- New artifact hashes: pending an approved implementation
+- New artifact hashes: not applicable while blocked; no frozen artifact changes are authorized at the vendored heads
 - Reason: WP-53 can keep its WP-52 checkpoint current locally, but the frozen `AssuranceStudioClient` has no handler-verified method for writing a verification result. `updateEntity(...)` is an intentionally generic entity mutation and is not evidence that the upstream verification-result route, request body, digest binding, or response has been verified. WP-53 therefore has no authorized upstream write and correctly provides no raw fallback.
 - Proposed contract: after grounding the operation in an authoritative Assurance Studio handler, add `createVerificationResult(input, ctx)` to `AssuranceStudioClient`. Its strict input is `{ projectId, checkId, runId, resultId, firmwareDigest, outcome, summary, executedAt, jobId }`, where `firmwareDigest` is lowercase SHA-256, `outcome` is `pass | fail | error`, and `jobId` is nullable; its output is `{ resultId, created }`. The client implementation must bind the result to the named verification check and prepared digest, use `runId + resultId` as the retry/idempotency identity, validate the handler response, and reject unsupported or ambiguous upstream shapes. Artifacts and attestations remain local until separately verified upstream contracts exist. The generic CRUD methods are not a substitute.
 - Migration: verify and record the exact upstream route and handler schema; add the narrow types and client member; add its route-map entry and strict request/response parser; extend the mock only from the same verified handler; add retry/idempotency, check mismatch, digest mismatch, invalid response, and unsupported-route tests; then let WP-53 call only this member after the local transactional checkpoint succeeds. Preserve local evidence as authoritative whenever the method is unavailable or rejects the write.
+- Owner ruling — Option B now, Option C standing: on 2026-08-13 Matt ruled AMD-0004 blocked-unverifiable at the vendored heads. Local evidence is authoritative, and WP-40 proceeds head-only with truthful unavailable states on every upstream verification-result write surface. No `createVerificationResult` implementation, generic CRUD substitute, raw-route fallback, fabricated remote checkpoint, or inferred upstream success is authorized. If the owner later ships a real digest-bound, idempotent verification-result write route, this amendment's already-approved contract text becomes the standing follow-up and must first be grounded against that authoritative handler.
 - Affected WPs and gates: WP-03, WP-05, WP-09, WP-52, WP-53, WP-55, WP-60; frozen remote contract, Assurance Studio client/routes/mock, bench evidence checkpoint, G0–G6
 - Contract owner: Matt Wyckhouse; owner approval relayed via supervisor `thr_rxxqm3px8s` and recorded by coordinator `thr_hg37weivk7` on FS-67 on 2026-08-13
 - Approval provenance: owner Matt Wyckhouse via supervisor `thr_rxxqm3px8s`; coordinator `thr_hg37weivk7`; approved proposal head `e5edf2c09e23dda952e8e8c0a148a9f82a4971c9`
 - Affected-lane reviewer: independent exact-head amendment audit in `thr_fm4ejd6kju`; APPROVE-AMENDMENT at `e5edf2c09e23dda952e8e8c0a148a9f82a4971c9`, recorded on FS-67 on 2026-08-13
-- Broadcast and merge commits: pending
+- Broadcast and merge commits: disposition broadcast through FS-54 and draft PR #90; merge commit pending
 - Evidence: FS-67 review at WP-53 head `7520ccb8b` confirmed that `AssuranceStudioClient` exposes verification reads and `runVerificationChecks(...)`, but no verified verification-result write. WP-53 intentionally retains local evidence and supplies no raw API fallback.
 
 ### AMD-0005 — Expose a prepared-root Forge process lifecycle seam
