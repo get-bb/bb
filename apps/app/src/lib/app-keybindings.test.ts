@@ -11,7 +11,6 @@ import {
   formatAppShortcut,
   formatAppShortcutAria,
   isEditableKeyboardTarget,
-  isNativeEditableKeyEvent,
   matchesAppCommandContext,
 } from "./app-keybindings";
 
@@ -21,6 +20,15 @@ const MOD_N: AppShortcut = {
   meta: false,
   control: false,
   alt: false,
+  shift: false,
+};
+
+const ALT_P: AppShortcut = {
+  key: "p",
+  mod: false,
+  meta: false,
+  control: false,
+  alt: true,
   shift: false,
 };
 
@@ -78,11 +86,15 @@ describe("app keybindings", () => {
     ).toBe(true);
   });
 
-  // macOS composes Option+M into "µ", so an Alt chord that matched on `key`
-  // alone would never fire there — the physical code carries the match instead.
-  it("matches alt chords by physical key across platforms", () => {
-    const ALT_M: AppShortcut = {
-      key: "m",
+  // macOS composes Option+letter chords, so matching on `key` alone would never
+  // fire the composer cycles there — the physical code carries the match.
+  it.each([
+    ["m", "µ", "KeyM"],
+    ["p", "π", "KeyP"],
+    ["t", "†", "KeyT"],
+  ])("matches Alt+%s by physical key when macOS reports %s", (key, composed, code) => {
+    const shortcut: AppShortcut = {
+      key,
       mod: false,
       meta: false,
       control: false,
@@ -92,17 +104,74 @@ describe("app keybindings", () => {
     expect(
       matchesAppShortcut(
         {
-          key: "µ",
-          code: "KeyM",
+          key: composed,
+          code,
           metaKey: false,
           ctrlKey: false,
           altKey: true,
           shiftKey: false,
         },
-        ALT_M,
+        shortcut,
         true,
       ),
     ).toBe(true);
+  });
+
+  it.each([
+    ["m", "Â", "KeyM"],
+    ["p", "∏", "KeyP"],
+    ["t", "ˇ", "KeyT"],
+  ])(
+    "matches Alt+Shift+%s by physical key when macOS reports %s",
+    (key, composed, code) => {
+      expect(
+        matchesAppShortcut(
+          {
+            key: composed,
+            code,
+            metaKey: false,
+            ctrlKey: false,
+            altKey: true,
+            shiftKey: true,
+          },
+          { ...ALT_P, key, shift: true },
+          true,
+        ),
+      ).toBe(true);
+    },
+  );
+
+  it("keeps forward and backward Alt cycles mutually exclusive", () => {
+    const input = {
+      key: "m",
+      code: "KeyM",
+      metaKey: false,
+      ctrlKey: false,
+      altKey: true,
+      shiftKey: false,
+    };
+    const forward = { ...ALT_P, key: "m" };
+    const backward = { ...forward, shift: true };
+
+    expect(matchesAppShortcut(input, forward, false)).toBe(true);
+    expect(matchesAppShortcut(input, backward, false)).toBe(false);
+    expect(
+      matchesAppShortcut(
+        { ...input, key: "M", shiftKey: true },
+        forward,
+        false,
+      ),
+    ).toBe(false);
+    expect(
+      matchesAppShortcut(
+        { ...input, key: "M", shiftKey: true },
+        backward,
+        false,
+      ),
+    ).toBe(true);
+  });
+
+  it("matches an uncomposed alt chord by key across platforms", () => {
     expect(
       matchesAppShortcut(
         {
@@ -113,7 +182,7 @@ describe("app keybindings", () => {
           altKey: true,
           shiftKey: false,
         },
-        ALT_M,
+        { ...ALT_P, key: "m" },
         false,
       ),
     ).toBe(true);
@@ -130,7 +199,7 @@ describe("app keybindings", () => {
           altKey: true,
           shiftKey: false,
         },
-        { ...ALT_M, key: "a" },
+        { ...ALT_P, key: "a" },
         false,
       ),
     ).toBe(true);
@@ -144,7 +213,7 @@ describe("app keybindings", () => {
           altKey: true,
           shiftKey: false,
         },
-        { ...ALT_M, key: "q" },
+        { ...ALT_P, key: "q" },
         false,
       ),
     ).toBe(false);
@@ -182,60 +251,14 @@ describe("app keybindings", () => {
     );
   });
 
-  it("recognizes native navigation and deletion keys in editable controls", () => {
-    const editor = document.createElement("div");
-    editor.setAttribute("contenteditable", "true");
-    document.body.append(editor);
-
-    for (const key of [
-      "ArrowDown",
-      "ArrowLeft",
-      "ArrowRight",
-      "ArrowUp",
-      "Backspace",
-      "Delete",
-      "End",
-      "Home",
-      "PageDown",
-      "PageUp",
-    ]) {
-      const event = new KeyboardEvent("keydown", {
-        altKey: true,
-        bubbles: true,
-        ctrlKey: true,
-        key,
-        metaKey: true,
-        shiftKey: true,
-      });
-      editor.dispatchEvent(event);
-      expect(isNativeEditableKeyEvent(event), key).toBe(true);
-    }
-
-    const formattingEvent = new KeyboardEvent("keydown", {
-      bubbles: true,
-      key: "B",
-      metaKey: true,
-      shiftKey: true,
-    });
-    editor.dispatchEvent(formattingEvent);
-    expect(isNativeEditableKeyEvent(formattingEvent)).toBe(false);
-
-    const outsideEvent = new KeyboardEvent("keydown", {
-      bubbles: true,
-      key: "ArrowUp",
-      metaKey: true,
-      shiftKey: true,
-    });
-    document.body.dispatchEvent(outsideEvent);
-    expect(isNativeEditableKeyEvent(outsideEvent)).toBe(false);
-
-    editor.remove();
-  });
-
   it("formats platform-specific shortcut labels", () => {
     expect(formatAppShortcut(MOD_N, "MacIntel")).toBe("⌘ N");
     expect(formatAppShortcut(MOD_N, "Win32")).toBe("Ctrl + N");
     expect(formatAppShortcutAria(MOD_N, "MacIntel")).toBe("Meta+N");
     expect(formatAppShortcutAria(MOD_N, "Win32")).toBe("Control+N");
+
+    expect(formatAppShortcut(ALT_P, "MacIntel")).toBe("⌥ P");
+    expect(formatAppShortcut(ALT_P, "Win32")).toBe("Alt + P");
+    expect(formatAppShortcutAria(ALT_P, "MacIntel")).toBe("Alt+P");
   });
 });

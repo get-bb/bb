@@ -1,5 +1,5 @@
 import { collectOptionalFieldPaths } from "@bb/test-helpers";
-import { threadScope, type JsonObject } from "@bb/domain";
+import { threadScope, turnScope, type JsonObject } from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import * as contract from "../src/index.js";
 import {
@@ -1056,11 +1056,23 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
-  // Version 112 makes ACP stale-steer results trigger a safe new-turn retry.
-  // Version 111 restores parentToolCallId on a resumed Codex child turn.
-  // Version 110 waits for a late full-output record before command completion.
-  it("uses protocol version 112 for stale ACP steer recovery", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(112);
+  // Version 118 rejects successful provider update results when the daemon
+  // cannot verify a version change. Older daemons can report a no-op Claude
+  // update as successful, so enrolled machines must update for honest results.
+  // Version 117 adds thread/context/cleared to the provider event wire model.
+  // Version 116 reports provider exits that happen while a turn start is
+  // pending. Older daemons can leave the server thread active until the live
+  // command timeout, so enrolled machines must update before handling turns.
+  // Version 115 settles zero-work provider prompts with a complete synthetic
+  // turn lifecycle. Older daemons can leave locally handled prompts active
+  // indefinitely, so enrolled machines must update for reliable completion.
+  // Version 114 lets the daemon report `none` in Pi model reasoning efforts.
+  // A version 113 server accepts that value on the wire but rejects it later
+  // against its Pi provider ladder, so enrolled machines must not run that
+  // mixed version. Version 113 carried the Devin Desktop open target rename
+  // and remains part of the protocol lineage.
+  it("uses protocol version 118 for verified provider update results", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(118);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {
@@ -3024,6 +3036,31 @@ describe("host-daemon session schemas", () => {
       eventGroups: [
         {
           threadId: "thr_123",
+        },
+      ],
+    });
+
+    expect(
+      hostDaemonEventBatchRequestSchema.parse({
+        sessionId: "session_123",
+        eventGroups: [
+          {
+            threadId: "thr_123",
+            events: [
+              {
+                type: "thread/context/cleared",
+                threadId: "thr_123",
+                providerThreadId: "provider-thread-123",
+                scope: turnScope("turn_123"),
+              },
+            ],
+          },
+        ],
+      }),
+    ).toMatchObject({
+      eventGroups: [
+        {
+          events: [{ type: "thread/context/cleared" }],
         },
       ],
     });

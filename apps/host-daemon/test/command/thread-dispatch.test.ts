@@ -1710,6 +1710,7 @@ describe("thread command dispatch", () => {
       threads: [
         {
           activeTurnId: null,
+          pendingTurnStart: false,
           providerThreadId: "provider-1",
           threadId: "thread-1",
         },

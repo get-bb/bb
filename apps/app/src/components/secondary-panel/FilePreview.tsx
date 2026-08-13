@@ -30,6 +30,7 @@ import {
 } from "@bb/shared-ui/tooltip";
 import { TruncateStart } from "@/components/ui/truncate-start.js";
 import { usePreferredTheme } from "@/hooks/useTheme";
+import { useResolvedCodeThemePair } from "@/lib/code-theme";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
 import type {
   FilePreviewLineRange,
@@ -1173,6 +1174,7 @@ function FilePreviewCode({
   path,
 }: FilePreviewCodeProps) {
   const preferredTheme = usePreferredTheme();
+  const codeTheme = useResolvedCodeThemePair();
   const containerRef = useRef<HTMLDivElement>(null);
   const workerPool = useWorkerPool();
   const lastWorkerPoolStatsKeyRef = useRef<string | null>(null);
@@ -1197,6 +1199,7 @@ function FilePreviewCode({
   const options = useMemo<FileOptions<undefined>>(
     () => ({
       themeType: preferredTheme,
+      theme: codeTheme,
       overflow: lineOverflowMode,
       disableFileHeader: true,
       enableGutterUtility: onSelectionAddToChat !== undefined,
@@ -1213,6 +1216,7 @@ function FilePreviewCode({
       onLineSelectionStart: lineSelectionActions.onLineSelectionStart,
     }),
     [
+      codeTheme,
       lineOverflowMode,
       lineRange,
       lineSelectionActions.onGutterUtilityClick,

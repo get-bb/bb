@@ -115,6 +115,25 @@ describe("provider visibility raw events", () => {
     });
   });
 
+  it("classifies Claude conversation resets as normalized", () => {
+    expect(
+      claudeCodeVisibilityMetadata.describeRawEvent({
+        jsonrpc: "2.0",
+        method: "sdk/message",
+        params: {
+          threadId: "thread-1",
+          message: {
+            type: "conversation_reset",
+            session_id: "session-1",
+          },
+        },
+      } satisfies JsonRpcMessage),
+    ).toEqual({
+      kind: "sdk/conversation_reset",
+      coverage: "normalized",
+    });
+  });
+
   it("classifies Claude thinking token system events as noise", () => {
     expect(
       claudeCodeVisibilityMetadata.describeRawEvent({

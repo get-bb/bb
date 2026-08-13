@@ -177,6 +177,19 @@
         "*"
       ]
     },
+    "@bb/desktop#desktop:build:linux": {
+      "dependsOn": [
+        "bb-app#build",
+        "@bb/desktop#build"
+      ],
+      "cache": false,
+      "outputs": [
+        "release/**"
+      ],
+      "passThroughEnv": [
+        "*"
+      ]
+    },
     "@bb/desktop#smoke:packaged": {
       "cache": false,
       "outputs": [],

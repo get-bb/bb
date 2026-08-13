@@ -88,6 +88,7 @@ const piInstructionOverrideSchemaOptions = {
 };
 
 const piReasoningLevelValues = [
+  "off",
   "low",
   "medium",
   "high",
@@ -95,7 +96,7 @@ const piReasoningLevelValues = [
   "max",
 ] as const;
 const piReasoningLevelSchema = z.enum(piReasoningLevelValues);
-type PiReasoningLevel = z.infer<typeof piReasoningLevelSchema>;
+export type PiReasoningLevel = z.infer<typeof piReasoningLevelSchema>;
 const piAdditionalSkillPathsSchema = z.array(z.string()).optional();
 
 const piThreadStartParamsSchema = z
@@ -445,6 +446,31 @@ function createOnSessionDone(
   };
 }
 
+function reportPromptSettled(args: {
+  error?: unknown;
+  sessionSerial: number;
+  threadId: string;
+}): void {
+  if (!getCurrentThreadSession(args)) {
+    return;
+  }
+  const errorMessage =
+    args.error === undefined
+      ? undefined
+      : args.error instanceof Error
+        ? args.error.message
+        : String(args.error);
+  send({
+    jsonrpc: "2.0",
+    method: "pi/prompt/settled",
+    params: {
+      threadId: args.threadId,
+      status: errorMessage === undefined ? "completed" : "failed",
+      ...(errorMessage !== undefined ? { error: errorMessage } : {}),
+    },
+  });
+}
+
 function reportSessionError(
   args: CreateSessionCallbackArgs & { error: unknown },
 ): void {
@@ -767,10 +793,21 @@ async function handleTurnStart(
     return;
   }
 
-  void threadSession.session.prompt(
-    text,
-    images.length > 0 ? images : undefined,
-  );
+  void threadSession.session
+    .prompt(text, images.length > 0 ? images : undefined)
+    .then(
+      () =>
+        reportPromptSettled({
+          sessionSerial: threadSession.sessionSerial,
+          threadId: params.threadId,
+        }),
+      (error: unknown) =>
+        reportPromptSettled({
+          error,
+          sessionSerial: threadSession.sessionSerial,
+          threadId: params.threadId,
+        }),
+    );
   sendResult(id, { threadId: params.threadId });
 }
 

@@ -7,6 +7,7 @@ import type { Context } from "hono";
 import {
   CUSTOM_THEME_CSS_MAX_LENGTH,
   formatPluginThemeId,
+  type DeclaredCodeTheme,
   type JsonValue,
   type PluginThemeMeta,
   type ToolCallResponse,
@@ -46,6 +47,7 @@ import {
   getLastThreadOutput,
 } from "../threads/thread-data.js";
 import type { PluginBrandingAssetVariant } from "./app-bundle.js";
+import { readPluginThemeCodeTheme } from "../system/code-themes.js";
 import { npmInstallPrefix, parsePluginSource } from "./install-sources.js";
 import {
   derivePluginId,
@@ -152,6 +154,8 @@ export interface PluginService {
   listThemes(): PluginThemeMeta[];
   /** Read a loaded plugin palette by its globally namespaced id. */
   readThemeCss(themeId: string): Promise<string | null>;
+  /** Load a plugin theme's declared Pierre / VS Code code theme, if any. */
+  readThemeCodeTheme(themeId: string): DeclaredCodeTheme | null;
   /**
    * Install from a source spec: `path:<dir>` (bare paths accepted),
    * `git:<url-ish>@<ref>` (ref required; cloned into the managed dir under
@@ -1333,6 +1337,22 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         } catch {
           return null;
         }
+      }
+      return null;
+    },
+
+    readThemeCodeTheme(themeId) {
+      for (const [pluginId, plugin] of loaded) {
+        const theme = plugin.manifest.themes.find(
+          (entry) => formatPluginThemeId(pluginId, entry.id) === themeId,
+        );
+        if (!theme) continue;
+        return readPluginThemeCodeTheme(
+          themeId,
+          plugin.manifest.rootDir,
+          theme.codeTheme ?? undefined,
+          theme.codeThemePaths,
+        );
       }
       return null;
     },

@@ -941,7 +941,19 @@ describe("workspace open targets", () => {
           "bin",
           "windsurf",
         ],
-        targetId: "windsurf",
+        targetId: "devin-desktop",
+      },
+      {
+        appName: "Devin",
+        args: ["-g", `${filePath}:15:6`],
+        relativeExecutablePath: [
+          "Contents",
+          "Resources",
+          "app",
+          "bin",
+          "devin-desktop",
+        ],
+        targetId: "devin-desktop",
       },
       {
         appName: "Antigravity",
@@ -1123,7 +1135,7 @@ describe("workspace open targets", () => {
     expect(targets.map((target) => target.id)).toContain("antigravity");
   });
 
-  it("discovers Windsurf with the current bundle id", async () => {
+  it("discovers Devin Desktop with its current bundle id", async () => {
     const execFile = createAvailableExecFile({
       availableBundleIdSubstrings: ["com.exafunction.windsurf"],
     });
@@ -1134,16 +1146,18 @@ describe("workspace open targets", () => {
       }),
     );
 
-    expect(targets.find((target) => target.id === "windsurf")).toMatchObject({
+    expect(
+      targets.find((target) => target.id === "devin-desktop"),
+    ).toMatchObject({
       capabilities: {
         openDirectory: true,
         openFile: true,
         openFileAtColumn: true,
         openFileAtLine: true,
       },
-      icon: { kind: "builtin", name: "windsurf" },
+      icon: { kind: "builtin", name: "devin-desktop" },
       kind: "editor",
-      label: "Windsurf",
+      label: "Devin Desktop",
     });
   });
 
@@ -2263,13 +2277,13 @@ describe("workspace open targets", () => {
     }
   });
 
-  it("uses Windsurf line and column direct-editor commands when available", async () => {
+  it("uses Devin Desktop line and column direct-editor commands when available", async () => {
     const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
     const filePath = path.join(workspacePath, "src", "file.ts");
     const calls: ExecFileCall[] = [];
     const execFile = createAvailableExecFile({
       availableBundleIdSubstrings: ["com.exafunction.windsurf"],
-      availableExecutables: ["windsurf"],
+      availableExecutables: ["devin-desktop"],
       calls,
     });
 
@@ -2283,13 +2297,13 @@ describe("workspace open targets", () => {
           columnNumber: 6,
           lineNumber: 15,
           path: filePath,
-          targetId: "windsurf",
+          targetId: "devin-desktop",
         },
         createRuntime({ execFile }),
       );
 
-      expect(calls.find((call) => call.file === "windsurf")).toEqual({
-        file: "windsurf",
+      expect(calls.find((call) => call.file === "devin-desktop")).toEqual({
+        file: "devin-desktop",
         args: ["-g", `${filePath}:15:6`],
       });
       expect(calls.some((call) => call.file === "open")).toBe(false);

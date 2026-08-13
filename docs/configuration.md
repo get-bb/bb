@@ -184,38 +184,48 @@ before bb receives them.
 pane shortcuts follow Slack's browser-safe convention: web uses
 `Control+1…9` on macOS and `Ctrl+Shift+1…9` on Windows/Linux, while desktop
 uses `Mod+1…9`. The web aliases leave native browser `Mod+1…9` tab switching
-untouched.
+untouched. Previous and next thread use `Mod+Shift+[/]` on desktop and
+`Control+Shift+[/]` on the web.
 
 The "Show keyboard hints when holding CMD / Control" preference defaults
 to on. Set it with
 `bb settings keyboard hints <true|false>`. Turning it off hides the
 delayed shortcut badges without disabling any shortcuts.
 
-| Area      | Command                       | Default                           | Availability             |
-| --------- | ----------------------------- | --------------------------------- | ------------------------ |
-| Threads   | New thread                    | `Mod+N` / `Mod+Shift+O`           | Desktop / web            |
-| Threads   | Search threads                | `Mod+K`                           | All clients              |
-| Threads   | Rename focused thread         | Unassigned                        | Thread view              |
-| Threads   | Archive focused thread        | Unassigned                        | Thread view              |
-| Threads   | Previous / next thread        | `Mod+Shift+[/]` / `Mod+Shift+↑/↓` | Desktop / web            |
-| Threads   | Open visible thread 1–9       | Platform defaults above           | Web / desktop            |
-| Layout    | Previous / next chat pane     | `Mod+Shift+[/]`                   | While split              |
-| Layout    | Focus chat pane 1–8           | Platform defaults above           | Split (web / desktop)    |
-| Layout    | Maximize / restore chat pane  | `Mod+Shift+E`                     | While split              |
-| Layout    | Close focused chat pane       | `Mod+Shift+X`                     | While split              |
-| Window    | New window                    | `Mod+Shift+N`                     | Desktop                  |
-| Window    | Settings                      | `Mod+,`                           | All clients              |
-| Layout    | Toggle sidebar                | `Mod+\`                           | All clients              |
-| Panel     | New tab / close tab / toggle  | `Mod+T` / `Mod+W` / `Mod+J`       | All clients              |
-| Workspace | Quick open file / toggle diff | `Mod+P` / `Mod+D`                 | All clients              |
-| Workspace | Open terminal                 | `Mod+Shift+Enter` / `Mod+Shift+T` | Web / desktop            |
-| Workspace | Open in preferred app         | `Mod+O`                           | All clients              |
-| Composer  | Focus composer                | `Mod+Shift+C`                     | All clients              |
-| Composer  | Toggle model picker           | `Mod+Shift+M`                     | All clients              |
-| Composer  | Next model                    | `Alt+M`                           | All clients              |
-| Composer  | Next reasoning level          | `Alt+T`                           | All clients              |
-| Browser   | Focus location / reload       | `Mod+L` / `Mod+R`                 | Desktop embedded browser |
-| Questions | Choose visible answer 1–9     | `1` … `9`                         | While a question is open |
+| Area      | Command                            | Default                           | Availability             |
+| --------- | ---------------------------------- | --------------------------------- | ------------------------ |
+| Threads   | New thread                         | `Mod+N` / `Mod+Shift+O`           | Desktop / web            |
+| Threads   | Search threads                     | `Mod+K`                           | All clients              |
+| Threads   | Rename focused thread              | Unassigned                        | Thread view              |
+| Threads   | Archive focused thread             | Unassigned                        | Thread view              |
+| Threads   | Previous / next thread             | Surface defaults above            | Desktop / web            |
+| Threads   | Open visible thread 1–9            | Platform defaults above           | Web / desktop            |
+| Layout    | Previous / next chat pane          | Unassigned                        | While split              |
+| Layout    | Focus chat pane 1–8                | Platform defaults above           | Split (web / desktop)    |
+| Layout    | Maximize / restore chat pane       | `Mod+Shift+E`                     | While split              |
+| Layout    | Close focused chat pane            | `Mod+Shift+X`                     | While split              |
+| Window    | New window                         | `Mod+Shift+N`                     | Desktop                  |
+| Window    | Settings                           | `Mod+,`                           | All clients              |
+| Layout    | Toggle sidebar                     | `Mod+\`                           | All clients              |
+| Panel     | New tab / close tab / toggle       | `Mod+T` / `Mod+W` / `Mod+J`       | All clients              |
+| Workspace | Quick open file / toggle diff      | `Mod+P` / `Mod+D`                 | All clients              |
+| Workspace | Open terminal                      | `Mod+Shift+Enter` / `Mod+Shift+T` | Web / desktop            |
+| Workspace | Open in preferred app              | `Mod+O`                           | All clients              |
+| Composer  | Focus composer                     | `Mod+Shift+C`                     | All clients              |
+| Composer  | Toggle model picker                | `Mod+Shift+M`                     | All clients              |
+| Composer  | Cycle model forward / backward     | `Alt+M` / `Alt+Shift+M`           | All clients              |
+| Composer  | Cycle provider forward / backward  | `Alt+P` / `Alt+Shift+P`           | All clients              |
+| Composer  | Cycle reasoning effort forward / backward | `Alt+T` / `Alt+Shift+T`    | All clients              |
+| Browser   | Focus location / reload            | `Mod+L` / `Mod+R`                 | Desktop embedded browser |
+| Questions | Choose visible answer 1–9          | `1` … `9`                         | While a question is open |
+
+Cycle commands wrap in both directions. Reasoning cycles only through the
+current model's supported efforts in canonical low-to-high rank order, not the
+provider response order. The cycle shortcuts act only from the active composer
+or an open picker; unrelated editable controls retain their Option-composed
+character input. A configured app shortcut takes precedence in editable
+controls; when no matching command handles a chord, the control retains its
+native behavior.
 
 The desktop application menu uses the same resolved bindings for New Thread,
 New Window, New Tab, Close, and Settings. There is no separate menu shortcut
@@ -775,7 +785,9 @@ connection does not narrow the listener. `0.0.0.0` exposes IPv4 interfaces only;
 bb does not currently offer an IPv6 wildcard bind option.
 
 The data directory is the root directory for all bb-managed state: the SQLite
-database, logs, host identity, thread storage, custom themes (`theme/`), and
+database, logs, host identity, thread storage, custom themes (`theme/`,
+including optional Pierre / VS Code `pierre-dark.json` and `pierre-light.json`),
+and
 plugins. It defaults to `~/.bb/` for the packaged app. The `pnpm dev` source launcher derives an isolated data
 directory under `~/.bb-dev/<checkout-instance>/` from the checkout path. The
 checkout instance id is the sanitized path to the checkout, relative to your

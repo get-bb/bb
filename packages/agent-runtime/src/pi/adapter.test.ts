@@ -461,6 +461,54 @@ describe("pi provider adapter", () => {
     });
   });
 
+  it("maps none to Pi off for every session launch path", () => {
+    const adapter = createPiProviderAdapter();
+    const options = {
+      ...fullProviderExecutionContext,
+      reasoningLevel: "none",
+    } satisfies ProviderExecutionContext;
+
+    expect(
+      adapter.buildCommandPlan({
+        type: "thread/start",
+        cwd: "/tmp/worktree",
+        threadId: "new-thread",
+        input: [promptTextInput({ text: "hello" })],
+        instructionMode: "append",
+        options,
+      }),
+    ).toMatchObject({
+      method: "thread/start",
+      params: { reasoningLevel: "off" },
+    });
+    expect(
+      adapter.buildCommandPlan({
+        type: "thread/resume",
+        cwd: "/tmp/worktree",
+        threadId: "bb-thread",
+        providerThreadId: "pi-thread",
+        instructionMode: "append",
+        options,
+      }),
+    ).toMatchObject({
+      method: "thread/resume",
+      params: { reasoningLevel: "off" },
+    });
+    expect(
+      adapter.buildCommandPlan({
+        type: "thread/fork",
+        cwd: "/tmp/worktree",
+        threadId: "forked-thread",
+        sourceProviderThreadId: "source-thread",
+        instructionMode: "append",
+        options,
+      }),
+    ).toMatchObject({
+      method: "thread/fork",
+      params: { reasoningLevel: "off" },
+    });
+  });
+
   it("buildCommand thread/start uses baseInstructions for replace instructions", () => {
     const adapter = createPiProviderAdapter();
     const cmd = adapter.buildCommandPlan({
@@ -683,6 +731,40 @@ describe("pi provider adapter", () => {
         scope: turnScope("turn-1"),
       }),
     );
+  });
+
+  it("settles accepted input when the prompt resolves before agent_start", () => {
+    const adapter = createPiProviderAdapter();
+    adapter.translateAcceptedCommand({
+      command: {
+        type: "turn/start",
+        clientRequestId: "creq_222222228e",
+        input: [promptTextInput({ text: "/local-extension-command" })],
+        options: fullProviderExecutionContext,
+        providerThreadId: "pi-session-1",
+        threadId: "bb-t1",
+      },
+    });
+
+    const events = adapter.translateEvent(
+      {
+        jsonrpc: "2.0",
+        method: "pi/prompt/settled",
+        params: { threadId: "bb-t1", status: "completed" },
+      },
+      { threadId: "bb-t1" },
+    );
+
+    expect(events.map((event) => event.type)).toEqual([
+      "turn/started",
+      "turn/input/accepted",
+      "turn/completed",
+    ]);
+    expect(events.at(-1)).toMatchObject({
+      type: "turn/completed",
+      scope: turnScope("turn-1"),
+      status: "completed",
+    });
   });
 
   it("translateEvent keeps turn_start as internal noise while agent_start owns the bb turn", () => {
@@ -2161,6 +2243,52 @@ describe("pi provider adapter", () => {
     expect(models.find((model) => model.isDefault)?.id).toBe(
       "anthropic/claude-sonnet-4",
     );
+  });
+
+  it("exposes off as none without changing models that lack off", () => {
+    const { models } = buildPiAvailableModels({
+      models: [
+        {
+          id: "kimi-k2.7-code",
+          name: "Kimi K2.7 Code",
+          provider: "ollama-cloud",
+          reasoning: true,
+          input: ["text"],
+          supportedThinkingLevels: ["off", "low", "medium", "high"],
+        },
+        {
+          id: "minimax-m2.7",
+          name: "MiniMax M2.7",
+          provider: "ollama-cloud",
+          reasoning: true,
+          input: ["text"],
+          supportedThinkingLevels: ["low", "medium", "high"],
+        },
+        {
+          id: "non-reasoning-model",
+          name: "Non-reasoning model",
+          provider: "custom",
+          reasoning: false,
+          input: ["text"],
+          supportedThinkingLevels: ["off"],
+        },
+      ],
+    });
+
+    expect(
+      models[0]?.supportedReasoningEfforts.map(
+        ({ reasoningEffort }) => reasoningEffort,
+      ),
+    ).toEqual(["none", "low", "medium", "high"]);
+    expect(
+      models[1]?.supportedReasoningEfforts.map(
+        ({ reasoningEffort }) => reasoningEffort,
+      ),
+    ).toEqual(["low", "medium", "high"]);
+    expect(models[2]).toMatchObject({
+      supportedReasoningEfforts: [{ reasoningEffort: "none" }],
+      defaultReasoningEffort: "none",
+    });
   });
 
   it("routes dated Pi versions to the selected-only bucket", () => {

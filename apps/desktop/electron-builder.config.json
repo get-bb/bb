@@ -40,13 +40,19 @@
     "target": [
       {
         "target": "dmg",
-        "arch": ["arm64"]
+        "arch": ["arm64", "x64"]
       },
       {
         "target": "zip",
-        "arch": ["arm64"]
+        "arch": ["arm64", "x64"]
       }
     ]
+  },
+  "linux": {
+    "category": "Development",
+    "executableName": "bb",
+    "icon": "assets/icon.png",
+    "target": [{ "target": "AppImage", "arch": ["x64"] }]
   },
   "dmg": {
     "sign": false

@@ -58,15 +58,21 @@ import {
   useAppCommandContext,
   useAppCommandHandler,
   useAppCommandShortcut,
+  useIndexedAppCommandHandlers,
 } from "@/components/commands/AppCommandProvider";
 import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcutHint";
+import { isEditableKeyboardTarget } from "@/lib/app-keybindings";
 import { useOptionalPaneContext } from "@/views/thread-detail/PaneContext";
 import {
-  ownsModelPickerChord,
+  ownsModelPickerCycleChord,
   resolveModelPickerToggle,
   type ModelPickerScope,
 } from "./modelPickerToggle";
-import { nextCycleValue } from "./modelPickerCycle";
+import {
+  cycleReasoningValue,
+  nextCycleValue,
+  previousCycleValue,
+} from "./modelPickerCycle";
 
 interface ModelLabelParts {
   base: string;
@@ -74,6 +80,18 @@ interface ModelLabelParts {
 }
 
 const FAILED_TO_LOAD_MODELS_LABEL = "Failed to load models";
+const MODEL_CYCLE_COMMANDS = [
+  "modelPicker.cycleModel",
+  "modelPicker.cycleModelBackward",
+] as const;
+const PROVIDER_CYCLE_COMMANDS = [
+  "modelPicker.cycleProvider",
+  "modelPicker.cycleProviderBackward",
+] as const;
+const REASONING_CYCLE_COMMANDS = [
+  "modelPicker.cycleReasoning",
+  "modelPicker.cycleReasoningBackward",
+] as const;
 
 // Below this many models (primary + selected-only) the list is short enough to
 // scan by eye, so the search box is more clutter than help.
@@ -547,6 +565,20 @@ export function ModelReasoningPicker({
     [onModelChange],
   );
 
+  const handleProviderSelect = useCallback(
+    (providerId: string) => {
+      onSelectedProviderChange?.(providerId);
+      setPreviewProviderId(
+        open && providerId !== selectedProviderId ? providerId : null,
+      );
+      // Every provider owns a different model list. Never carry a filter or
+      // keyboard highlight across that boundary.
+      setSearchQuery("");
+      setActiveIndex(-1);
+    },
+    [onSelectedProviderChange, open, selectedProviderId],
+  );
+
   // Scope Cmd+Shift+M and the cycle chords to one composer of the focused pane.
   // Standalone/single-pane surfaces have no pane context and default to
   // focused/non-split.
@@ -582,11 +614,15 @@ export function ModelReasoningPicker({
           caretComposer !== pickerComposer &&
           pickerPane !== null &&
           caretPane === pickerPane,
+        editableOutsideComposer:
+          caretComposer === null && isEditableKeyboardTarget(target),
       };
     },
     [disabled, isFocusedPane, isSplitPane],
   );
   useAppCommandContext("modelPickerOpen", open && !disabled);
+  const ownsCycleChord = (target: EventTarget | null): boolean =>
+    ownsModelPickerCycleChord({ open, ...resolveCommandScope(target) });
   useAppCommandHandler(
     "modelPicker.toggle",
     ({ target }) => {
@@ -600,22 +636,23 @@ export function ModelReasoningPicker({
     },
     50,
   );
-  // Both cycle chords rotate the COMMITTED provider's lists, never a previewed
-  // tab's, so the shortcut means the same thing whether the popover is open or
-  // shut. A preview in progress is dropped so the visible tab keeps matching the
-  // committed selection.
+  // The cycle chords rotate the COMMITTED provider and its lists, never a
+  // previewed tab's, so the shortcut means the same thing whether the popover is
+  // open or shut. A preview in progress is dropped so the visible tab keeps
+  // matching the committed selection.
   //
   // An in-scope chord ALWAYS returns true, even with nowhere to rotate to. A
   // false result makes the command provider bail before `preventDefault()`, and
   // macOS would then insert the composed Option character (Option+M → "µ") into
   // the prompt. Owning the chord and doing nothing is the correct no-op.
-  useAppCommandHandler(
-    "modelPicker.cycleModel",
-    ({ target }) => {
-      if (!ownsModelPickerChord({ open, ...resolveCommandScope(target) })) {
-        return false;
-      }
-      const next = nextCycleValue(modelOptions, modelValue);
+  useIndexedAppCommandHandlers(
+    MODEL_CYCLE_COMMANDS,
+    (index, { target }) => {
+      if (!ownsCycleChord(target)) return false;
+      const next =
+        index === 0
+          ? nextCycleValue(modelOptions, modelValue)
+          : previousCycleValue(modelOptions, modelValue);
       if (next !== null) {
         onModelChange(next);
         setPreviewProviderId(null);
@@ -624,13 +661,32 @@ export function ModelReasoningPicker({
     },
     50,
   );
-  useAppCommandHandler(
-    "modelPicker.cycleReasoning",
-    ({ target }) => {
-      if (!ownsModelPickerChord({ open, ...resolveCommandScope(target) })) {
-        return false;
+  useIndexedAppCommandHandlers(
+    PROVIDER_CYCLE_COMMANDS,
+    (index, { target }) => {
+      if (!ownsCycleChord(target)) return false;
+      if (canSwitchProviders && onSelectedProviderChange !== undefined) {
+        const next =
+          index === 0
+            ? nextCycleValue(providerOptions, selectedProviderId)
+            : previousCycleValue(providerOptions, selectedProviderId);
+        if (next !== null) {
+          handleProviderSelect(next);
+        }
       }
-      const next = nextCycleValue(reasoningOptions, reasoningValue);
+      return true;
+    },
+    50,
+  );
+  useIndexedAppCommandHandlers(
+    REASONING_CYCLE_COMMANDS,
+    (index, { target }) => {
+      if (!ownsCycleChord(target)) return false;
+      const next = cycleReasoningValue(
+        reasoningOptions,
+        reasoningValue,
+        index === 0 ? "forward" : "backward",
+      );
       if (next !== null) {
         onReasoningChange(next);
         setPreviewProviderId(null);
@@ -863,16 +919,7 @@ export function ModelReasoningPicker({
                   title={provider.label}
                   onClick={() => {
                     if (provider.value !== activeProviderId) {
-                      onSelectedProviderChange?.(provider.value);
-                      setPreviewProviderId(
-                        provider.value === selectedProviderId
-                          ? null
-                          : provider.value,
-                      );
-                      // The new tab lists a different provider's models, so
-                      // drop the query and highlight from the previous tab.
-                      setSearchQuery("");
-                      setActiveIndex(-1);
+                      handleProviderSelect(provider.value);
                     }
                   }}
                   className={cn(

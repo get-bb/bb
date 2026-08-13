@@ -449,13 +449,13 @@ describe("AppCommandProvider", () => {
     ["thread.previous" as const, "ArrowUp"],
     ["thread.next" as const, "ArrowDown"],
   ])(
-    "leaves native %s selection to a focused editable control",
+    "dispatches configured %s shortcuts from a focused editable control",
     (command, key) => {
       vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
       renderProvider(
         <>
           <Handler command={command} name={command} result={true} />
-          <textarea aria-label="Composer" defaultValue="alpha beta gamma" />
+          <textarea aria-label="Composer" />
         </>,
       );
       const composer = screen.getByLabelText("Composer");
@@ -470,34 +470,11 @@ describe("AppCommandProvider", () => {
 
       composer.dispatchEvent(event);
 
-      expect(event.defaultPrevented).toBe(false);
-      expect(testState.calls).toEqual([]);
+      expect(event.defaultPrevented).toBe(true);
+      expect(testState.calls).toEqual([command]);
       expect(document.activeElement).toBe(composer);
     },
   );
-
-  it("still dispatches an ordinary app shortcut from a focused editable control", () => {
-    vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
-    renderProvider(
-      <>
-        <Handler name="search" result={true} />
-        <textarea aria-label="Composer" />
-      </>,
-    );
-    const composer = screen.getByLabelText("Composer");
-    composer.focus();
-    const event = new KeyboardEvent("keydown", {
-      bubbles: true,
-      cancelable: true,
-      key: "k",
-      metaKey: true,
-    });
-
-    composer.dispatchEvent(event);
-
-    expect(event.defaultPrevented).toBe(true);
-    expect(testState.calls).toEqual(["search"]);
-  });
 
   it("falls through declining handlers in priority order", () => {
     renderProvider(

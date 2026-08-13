@@ -264,7 +264,7 @@ const SETTINGS_DROPDOWN_CONTENT_CLASS =
 const CREATE_CUSTOM_PALETTE_PROMPT =
   "Create a custom bb palette. First run `bb theme dir` to find the custom theme directory. Ask me for the palette name and visual direction, then create `<theme-dir>/<name>/theme.css` with light and dark theme variables compatible with bb's theme tokens.";
 const PALETTE_SETTING_DESCRIPTION =
-  "Palettes change bb's colors across light and dark mode. Choose a built-in palette or create one from a prompt.";
+  "Palettes change bb's colors, including syntax colors in diffs and file previews. Choose a built-in palette or create one from a prompt.";
 
 // Renders the favicon glyph itself in the candidate color by using the
 // favicon image as a CSS mask, so the preview matches the resulting tab icon.
@@ -1037,8 +1037,9 @@ export function SettingsView() {
     enabled: hasDaemon,
   });
   const [directoryTargetId, setDirectoryTargetId] =
-    useWorkspaceOpenTargetPreference();
-  const [fileTargetId, setFileTargetId] = useFileOpenTargetPreference();
+    useWorkspaceOpenTargetPreference(workspaceOpenTargets);
+  const [fileTargetId, setFileTargetId] =
+    useFileOpenTargetPreference(workspaceOpenTargets);
   const [openLinksInAppBrowser, setOpenLinksInAppBrowser] =
     useOpenLinksInAppBrowserPreference();
   const [rewriteLocalhostLinks, setRewriteLocalhostLinks] =

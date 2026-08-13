@@ -17,9 +17,11 @@ desktop app is published at the same version (see "Publish The Desktop App").
 
 The automated nightly channel is the exception to the manual stable flow. The
 scheduled path in `publish-bb-app.yml` derives a unique next-patch prerelease,
-publishes it under npm's `nightly` dist-tag, then builds and publishes the
-separately installable `bb Nightly` app at `desktop-nightly`. It does not commit
-the generated version or move either stable `latest` pointer. If the
+publishes it under npm's `nightly` dist-tag, then builds the separately
+installable `bb Nightly` app for macOS and Linux and publishes both at
+`desktop-nightly`. It does not commit the generated version or move either
+stable `latest` pointer. Each platform job derives the nightly version from the
+run ID, so the two jobs agree without sharing state. If the
 `npm-release` GitHub environment requires approval, scheduled runs will wait
 for that approval; remove the reviewer gate only if fully unattended nightly
 publishing is intended.
@@ -186,10 +188,15 @@ Report:
 ## Publish The Desktop App
 
 The npm publish does not build or publish the desktop app. The desktop release
-is a separate workflow that builds, signs, and notarizes the macOS app, creates
-the immutable `desktop-v<version>` GitHub release, and moves the `desktop-latest`
-release and its `desktop-version.json` auto-update feed. Run it from the same
-pushed `main` commit, at the same version, for every stable release.
+is a separate workflow. It builds the signed and notarized macOS app and the
+Linux x64 AppImage in parallel jobs, then one publish job creates the immutable
+`desktop-v<version>` GitHub release and moves the `desktop-latest` release with
+both auto-update feeds: `desktop-version.json` for macOS and
+`desktop-version-linux.json` for Linux. Run it from the same pushed `main`
+commit, at the same version, for every stable release.
+
+A failure in either platform job stops the publish job, so no release can ship
+one platform's binaries against the other platform's stale feed.
 
 ```bash
 gh workflow run build-desktop.yml \
@@ -203,7 +210,9 @@ gh workflow run build-desktop.yml \
 - Only a non-prerelease version is published. The workflow refuses to publish a
   prerelease (`X.Y.Z-...`) to `desktop-latest`.
 - macOS signing/notarization secrets must be configured, or the workflow
-  publishes `desktop-version.json` only and withholds the unsigned `.dmg`/`.zip`.
+  withholds the unsigned `.dmg`/`.zip` and publishes both version feeds plus the
+  Linux AppImage. Linux has no notarization equivalent, so it never waits on the
+  Apple secrets.
 - The `desktop-v<version>` release is immutable: if it already exists the
   workflow fails. Bump to a new version rather than re-running the same one.
 - The immutable `desktop-v<version>` release owns GitHub's repository-wide
@@ -252,6 +261,7 @@ Add to the report from "Verify The Release":
 - If the desktop workflow fails because `desktop-v<version>` already exists, do
   not delete the immutable release. Bump to the next version, re-run the npm
   publish, then re-run the desktop workflow.
-- If the desktop workflow publishes `desktop-version.json` only (binaries
-  withheld), the macOS signing secrets are missing or incomplete. Fix the
-  secrets and re-run; do not hand-upload unsigned binaries to `desktop-latest`.
+- If the desktop workflow withholds the macOS binaries (feeds and the Linux
+  AppImage still publish), the macOS signing secrets are missing or incomplete.
+  Fix the secrets and re-run; do not hand-upload unsigned macOS binaries to
+  `desktop-latest`.

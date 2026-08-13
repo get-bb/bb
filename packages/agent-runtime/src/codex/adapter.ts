@@ -665,9 +665,10 @@ function toCodexReasoningEffort(
 ): CodexReasoningEffort {
   const codexEffort = mapBbReasoningLevelToCodex(reasoningLevel);
   if (codexEffort == null) {
-    // "none" is Cursor-only; "ultracode" is Claude-specific. Codex models
-    // never expose either, so model-switch reconciliation maps them away
-    // before here — but fail closed if something slips through.
+    // "none" is exposed by Cursor and some Pi models; "ultracode" is
+    // Claude-specific. Codex models never expose either, so model-switch
+    // reconciliation maps them away before here — but fail closed if
+    // something slips through.
     throw new Error(
       `Codex does not support the ${reasoningLevel} reasoning level.`,
     );

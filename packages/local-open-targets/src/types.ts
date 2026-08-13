@@ -122,16 +122,19 @@ export interface BuildMacRemoteSshOpenArgs {
   sshAuthority: string;
 }
 
-export interface MacLineOpenCommandAdapter {
+export interface MacCommandExecutableAdapter {
   bundledExecutable?: MacBundledExecutableAdapter;
   executable: string;
+}
+
+export interface MacLineOpenCommandAdapter extends MacCommandExecutableAdapter {
+  fallbackExecutables?: MacCommandExecutableAdapter[];
   supportsColumn: boolean;
   toArgs: (args: BuildMacLineOpenArgs) => string[];
 }
 
-export interface MacPathOpenCommandAdapter {
-  bundledExecutable?: MacBundledExecutableAdapter;
-  executable: string;
+export interface MacPathOpenCommandAdapter extends MacCommandExecutableAdapter {
+  fallbackExecutables?: MacCommandExecutableAdapter[];
   toArgs: (path: string) => string[];
 }
 
@@ -145,10 +148,9 @@ export interface MacLocalTerminalOpenCommandAdapter {
   toArgs: (args: BuildMacLocalTerminalOpenArgs) => string[];
 }
 
-export interface MacRemoteSshOpenCommandAdapter {
-  bundledExecutable?: MacBundledExecutableAdapter;
+export interface MacRemoteSshOpenCommandAdapter extends MacCommandExecutableAdapter {
   capabilities: WorkspaceOpenTargetCapabilities;
-  executable: string;
+  fallbackExecutables?: MacCommandExecutableAdapter[];
   requiredExecutables?: string[];
   toArgs: (args: BuildMacRemoteSshOpenArgs) => string[];
 }

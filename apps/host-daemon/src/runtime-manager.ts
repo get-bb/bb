@@ -15,7 +15,7 @@ import type {
   ThreadEvent,
   WorkspaceProvisionType,
 } from "@bb/domain";
-import { turnScope } from "@bb/domain";
+import { threadScope, turnScope } from "@bb/domain";
 import type {
   HostDaemonActiveThread,
   HostDaemonEnvironmentChange,
@@ -1191,9 +1191,10 @@ export class RuntimeManager {
   /**
    * Synthesizes failure events for threads that were mid-turn when their
    * provider process died, from the runtime's final per-thread snapshot.
-   * Threads without an active turn need no synthesized events: in-flight
-   * RPCs fail through the command result path, and idle resident threads
-   * simply resume on their next turn.
+   * A process can also die after a turn request is sent but before the
+   * provider emits turn/started. That request has already made the server
+   * thread active, so synthesize a thread-scoped error to settle it instead
+   * of waiting for the live-command timeout.
    */
   private buildUnexpectedProviderExitEvents(
     info: AgentRuntimeProcessExitInfo,
@@ -1203,7 +1204,21 @@ export class RuntimeManager {
     const events: ThreadEvent[] = [];
 
     for (const thread of info.threads) {
-      if (thread.activeTurnId === null || thread.providerThreadId === null) {
+      if (thread.activeTurnId === null) {
+        if (thread.pendingTurnStart) {
+          events.push({
+            type: "system/error",
+            threadId: thread.threadId,
+            scope: threadScope(),
+            code: "provider_process_exited",
+            message,
+            ...(detail ? { detail } : {}),
+          });
+        }
+        continue;
+      }
+
+      if (thread.providerThreadId === null) {
         continue;
       }
 

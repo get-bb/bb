@@ -396,29 +396,32 @@ describe("pi bridge", () => {
     }
   });
 
-  it("passes thread/start max reasoningLevel through to Pi thinkingLevel", async () => {
-    const bridge = createBridgeJsonRpcTestHarness(handleLine);
-    mockCreateAgentSession.mockImplementation(async () => ({
-      session: createControlledPiAgentSession(),
-    }));
+  it.each(["off", "max"] as const)(
+    "passes thread/start %s reasoningLevel through to Pi thinkingLevel",
+    async (reasoningLevel) => {
+      const bridge = createBridgeJsonRpcTestHarness(handleLine);
+      mockCreateAgentSession.mockImplementation(async () => ({
+        session: createControlledPiAgentSession(),
+      }));
 
-    try {
-      bridge.sendRequest(3, "thread/start", {
-        cwd: "/tmp/worktree",
-        threadId: "thread-reasoning",
-        reasoningLevel: "max",
-      });
-      await bridge.waitForResponse(3);
+      try {
+        bridge.sendRequest(3, "thread/start", {
+          cwd: "/tmp/worktree",
+          threadId: `thread-reasoning-${reasoningLevel}`,
+          reasoningLevel,
+        });
+        await bridge.waitForResponse(3);
 
-      expect(mockCreateAgentSession).toHaveBeenCalledWith(
-        expect.objectContaining({
-          thinkingLevel: "max",
-        }),
-      );
-    } finally {
-      bridge.restore();
-    }
-  });
+        expect(mockCreateAgentSession).toHaveBeenCalledWith(
+          expect.objectContaining({
+            thinkingLevel: reasoningLevel,
+          }),
+        );
+      } finally {
+        bridge.restore();
+      }
+    },
+  );
 
   it("uses the configured bridge session directory for default Pi sessions", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
@@ -879,6 +882,38 @@ describe("pi bridge", () => {
       await expect(bridge.waitForResponse(22)).resolves.toMatchObject({
         id: 22,
         result: { threadId: "thread-steer-consumption" },
+      });
+    } finally {
+      bridge.restore();
+    }
+  });
+
+  it("reports when a turn/start prompt settles without SDK turn events", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const piSession = createControlledPiAgentSession();
+    mockCreateAgentSession.mockResolvedValue({ session: piSession });
+
+    try {
+      bridge.sendRequest(50, "thread/start", {
+        cwd: "/tmp/worktree",
+        threadId: "thread-zero-work",
+      });
+      await bridge.waitForResponse(50);
+
+      bridge.sendRequest(51, "turn/start", {
+        threadId: "thread-zero-work",
+        input: [{ type: "text", text: "/local-extension-command" }],
+      });
+      await bridge.waitForResponse(51);
+      await bridge.flushWork();
+
+      expect(bridge.messages).toContainEqual({
+        jsonrpc: "2.0",
+        method: "pi/prompt/settled",
+        params: {
+          threadId: "thread-zero-work",
+          status: "completed",
+        },
       });
     } finally {
       bridge.restore();

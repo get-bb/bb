@@ -69,8 +69,11 @@ The manifest is `package.json`:
   injected into agent threads as the plugin skills tier.
 - `bb.themes` (optional) — contributes palettes to Settings → Appearance and
   `bb theme list`. Each entry is
-  `{ id, name, description?, css: "./themes/name.css" }`; bb namespaces its
-  selectable id as `plugin:<plugin-id>:<id>`. Only loaded plugins contribute.
+  `{ id, name, description?, css: "./themes/name.css", codeTheme? }`;
+  `codeTheme` is `{ dark?, light? }` where each side is a bundled Shiki /
+  Pierre name or a plugin-relative VS Code theme `.json` file. bb namespaces
+  its selectable id as `plugin:<plugin-id>:<id>`. Only loaded plugins
+  contribute.
 - `bb.name` and `bb.description` (required) — non-empty human-facing plugin
   identity. The top-level package `name` remains the package identity and
   source of the plugin id.
@@ -1459,8 +1462,11 @@ only `definePluginApp` + the hooks):
   `FileDiff` from `@pierre/diffs/react` render patches exactly like the
   app's own diff panel (the host provides the highlighting worker pool via
   React context on every plugin surface; add `@pierre/diffs` to
-  devDependencies for types). Synthesize a `diff --git a/<p> b/<p>` header
-  when your patch source (e.g. the GitHub REST API) omits it — see
+  devDependencies for types). Pass
+  `theme: { dark: document.documentElement.dataset.bbCodeThemeDark,
+  light: document.documentElement.dataset.bbCodeThemeLight }` so a custom
+  UI theme's Pierre JSON applies. Synthesize a `diff --git a/<p> b/<p>`
+  header when your patch source (e.g. the GitHub REST API) omits it — see
   `plugins/github/app.tsx`.
 - Everything else bundles from YOUR `node_modules` (hugeicons, lucide,
   cva/clsx/tailwind-merge, form/calendar/chart libs): run `npm install`

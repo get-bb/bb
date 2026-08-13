@@ -53,6 +53,7 @@ import {
   finishOpenProviderTurn,
 } from "../shared/turn-state.js";
 import { createScopedItemIdFactory } from "../shared/scoped-item-ids.js";
+import { resolveProviderTerminalTurn } from "../shared/provider-terminal-turn.js";
 import {
   buildUnhandledProviderEvents,
   createUnhandledProviderEvent,
@@ -76,6 +77,7 @@ import type { JsonRpcMessage } from "../runtime-json-rpc.js";
 import type { AgentRuntimeSkillRoot } from "../types.js";
 import { toCanonicalPiModelId } from "./model-list.js";
 import { piVisibilityMetadata } from "./visibility.js";
+import type { PiReasoningLevel } from "./bridge/bridge.js";
 
 // ---------------------------------------------------------------------------
 // Pi event and command types
@@ -201,6 +203,16 @@ const piEventTypeSchema = z
     ]),
   })
   .passthrough();
+
+const piPromptSettledEnvelopeSchema = z.object({
+  jsonrpc: z.literal("2.0"),
+  method: z.literal("pi/prompt/settled"),
+  params: z.object({
+    threadId: z.string().min(1),
+    status: z.enum(["completed", "failed"]),
+    error: z.string().optional(),
+  }),
+});
 
 // Pi events we deliberately drop rather than translate. Without this the
 // fallback treats them as unknown and emits a `provider/unhandled` event, which
@@ -452,6 +464,30 @@ function buildPiAdditionalSkillPathsParams(
     : undefined;
 }
 
+// BB's reasoning ladder is a superset of Pi's thinking levels. The only name
+// that differs is BB's "none" (no extended thinking), which Pi calls "off".
+// Levels Pi does not support ("ultracode", "ultra") are dropped so the bridge
+// schema never receives a value it would reject; reconciliation picks the
+// closest supported level before this point, so this is a defensive floor.
+function toPiThinkingLevel(
+  reasoningLevel: ProviderExecutionContext["reasoningLevel"],
+): PiReasoningLevel | undefined {
+  switch (reasoningLevel) {
+    case "none":
+      return "off";
+    case "low":
+    case "medium":
+    case "high":
+    case "xhigh":
+    case "max":
+      return reasoningLevel;
+    case "ultracode":
+    case "ultra":
+    case undefined:
+      return undefined;
+  }
+}
+
 function buildPiConfig(
   threadId: string,
   options?: ProviderExecutionContext,
@@ -636,6 +672,36 @@ export function createPiProviderAdapter(
           });
     }
 
+    const promptSettledEnvelope =
+      piPromptSettledEnvelopeSchema.safeParse(event);
+    if (promptSettledEnvelope.success) {
+      const stateThreadId =
+        context?.threadId ?? promptSettledEnvelope.data.params.threadId;
+      const state = turnState.getOrCreate({ threadId: stateThreadId });
+      const events: ThreadEvent[] = [];
+      const turnId = resolveProviderTerminalTurn({
+        events,
+        registry: turnState,
+        state,
+        threadId: UNSTAMPED_THREAD_ID,
+      });
+      if (turnId === undefined) {
+        return events;
+      }
+      events.push({
+        type: "turn/completed",
+        threadId: UNSTAMPED_THREAD_ID,
+        providerThreadId: "",
+        scope: turnScope(turnId),
+        status: promptSettledEnvelope.data.params.status,
+        ...(promptSettledEnvelope.data.params.error !== undefined
+          ? { error: { message: promptSettledEnvelope.data.params.error } }
+          : {}),
+      });
+      turnState.finishTurn({ state, threadId: stateThreadId });
+      return events;
+    }
+
     const identityEnvelope = threadIdentityEnvelopeSchema.safeParse(event);
     if (identityEnvelope.success) {
       const { threadId = UNSTAMPED_THREAD_ID, providerThreadId } =
@@ -804,32 +870,39 @@ export function createPiProviderAdapter(
         if (!piEvent.success) {
           return buildUnexpectedEvent(event);
         }
-        const currentTurnId = state.currentTurnId;
-        if (!currentTurnId) {
-          break;
+        const currentTurnId = resolveProviderTerminalTurn({
+          events,
+          registry: turnState,
+          state,
+          threadId,
+        });
+        if (currentTurnId === undefined) {
+          return events;
         }
         const lastAssistant = findLastAssistantMessage(piEvent.data.messages);
         if (piEvent.data.willRetry) {
-          return lastAssistant && isPiAssistantError(lastAssistant)
-            ? [
-                {
-                  type: "provider/error",
-                  threadId,
-                  providerThreadId: "",
-                  scope: turnScope(currentTurnId),
-                  message: "Provider error",
-                  detail: lastAssistant.errorMessage,
-                  willRetry: true,
-                },
-              ]
-            : [];
+          if (lastAssistant && isPiAssistantError(lastAssistant)) {
+            events.push({
+              type: "provider/error",
+              threadId,
+              providerThreadId: "",
+              scope: turnScope(currentTurnId),
+              message: "Provider error",
+              detail: lastAssistant.errorMessage,
+              willRetry: true,
+            });
+          }
+          return events;
         }
         if (lastAssistant && isPiAssistantError(lastAssistant)) {
           resetPiCommandOutputSnapshots(state);
-          return turnState.buildErrorEvents({
-            contextThreadId: context?.threadId,
-            detail: lastAssistant.errorMessage,
-          });
+          return [
+            ...events,
+            ...turnState.buildErrorEvents({
+              contextThreadId: context?.threadId,
+              detail: lastAssistant.errorMessage,
+            }),
+          ];
         }
         if (lastAssistant) {
           const text = extractAssistantText(lastAssistant);
@@ -1147,7 +1220,11 @@ export function createPiProviderAdapter(
                   ? { model: command.options.model }
                   : {}),
                 ...(command.options?.reasoningLevel
-                  ? { reasoningLevel: command.options.reasoningLevel }
+                  ? {
+                      reasoningLevel: toPiThinkingLevel(
+                        command.options.reasoningLevel,
+                      ),
+                    }
                   : {}),
                 ...(dynamicTools && dynamicTools.length > 0
                   ? { dynamicTools }
@@ -1187,7 +1264,11 @@ export function createPiProviderAdapter(
                   ? { model: command.options.model }
                   : {}),
                 ...(command.options?.reasoningLevel
-                  ? { reasoningLevel: command.options.reasoningLevel }
+                  ? {
+                      reasoningLevel: toPiThinkingLevel(
+                        command.options.reasoningLevel,
+                      ),
+                    }
                   : {}),
                 ...(dynamicTools && dynamicTools.length > 0
                   ? { dynamicTools }
@@ -1275,7 +1356,11 @@ export function createPiProviderAdapter(
                   ? { model: command.options.model }
                   : {}),
                 ...(command.options?.reasoningLevel
-                  ? { reasoningLevel: command.options.reasoningLevel }
+                  ? {
+                      reasoningLevel: toPiThinkingLevel(
+                        command.options.reasoningLevel,
+                      ),
+                    }
                   : {}),
                 ...(dynamicTools && dynamicTools.length > 0
                   ? { dynamicTools }

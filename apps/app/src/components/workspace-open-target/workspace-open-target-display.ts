@@ -12,6 +12,7 @@ const WORKSPACE_OPEN_TARGET_FALLBACK_LABELS: Record<
   bbedit: "BBEdit",
   cursor: "Cursor",
   "default-app": "Default App",
+  "devin-desktop": "Devin Desktop",
   emacs: "Emacs",
   "file-manager": "File Manager",
   finder: "Finder",
@@ -30,7 +31,6 @@ const WORKSPACE_OPEN_TARGET_FALLBACK_LABELS: Record<
   vscode: "VS Code",
   warp: "Warp",
   webstorm: "WebStorm",
-  windsurf: "Windsurf",
   xcode: "Xcode",
   zed: "Zed",
 };

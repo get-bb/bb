@@ -122,7 +122,14 @@ async function tryPluginCommandProxy(): Promise<void> {
     // machine is the canonical case) — only the running server can say, so
     // an unreachable server must not degrade into commander's "unknown
     // command".
-    console.error(describeUnreachableServer(getUrl(), result.cause));
+    console.error(
+      describeUnreachableServer(
+        getUrl(),
+        result.cause,
+        result.lastTimeoutMs,
+        result.attempts,
+      ),
+    );
     process.exit(1);
   }
   if (result.outcome === "invalid") return;

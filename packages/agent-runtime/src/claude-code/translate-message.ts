@@ -17,12 +17,14 @@ import type {
   ProviderTurnStateRegistry,
 } from "../shared/turn-state.js";
 import { createScopedItemIdFactory } from "../shared/scoped-item-ids.js";
+import { resolveProviderTerminalTurn } from "../shared/provider-terminal-turn.js";
 import { UNSTAMPED_THREAD_ID } from "../shared/unstamped-thread-id.js";
 import type { ProviderTranslationContext } from "../provider-adapter.js";
 import {
   claudeApiRetryMessageSchema,
   claudeAssistantMessageSchema,
   claudeCompactBoundarySystemMessageSchema,
+  claudeConversationResetMessageSchema,
   claudeModelFallbackSystemMessageSchema,
   claudeModelRefusalNoFallbackSystemMessageSchema,
   claudePermissionDeniedSystemMessageSchema,
@@ -457,6 +459,31 @@ export function translateClaudeSdkMessage(
   const fallbackTurnId = resolveClaudeActiveTurnId(args);
 
   switch (messageType.data.type) {
+    case "conversation_reset": {
+      const parsedMessage = claudeConversationResetMessageSchema.safeParse(
+        args.event,
+      );
+      if (!parsedMessage.success) {
+        return args.buildUnexpectedSdkEvent({
+          event: args.event,
+          context: args.context,
+          turnId: fallbackTurnId,
+        });
+      }
+      const turnId = args.ensureTurnStarted({
+        events,
+        state,
+        threadId,
+      });
+      events.push({
+        type: "thread/context/cleared",
+        threadId,
+        providerThreadId: "",
+        scope: turnScope(turnId),
+      });
+      return events;
+    }
+
     case "system": {
       const parsedMessage = claudeSystemMessageSchema.safeParse(args.event);
       if (!parsedMessage.success) {
@@ -908,7 +935,13 @@ export function translateClaudeSdkMessage(
         });
       }
       const message = parsedMessage.data;
-      if (state.currentTurnId) {
+      const turnId = resolveProviderTerminalTurn({
+        events,
+        registry: args.turnState,
+        state,
+        threadId,
+      });
+      if (turnId) {
         const contextWindowUsage = extractClaudeContextWindowUsage({
           fallbackModelContextWindow: state.selectedModelContextWindow,
           latestRequestContextTokens: state.latestRequestContextTokens,
@@ -927,7 +960,7 @@ export function translateClaudeSdkMessage(
             type: "thread/contextWindowUsage/updated",
             threadId,
             providerThreadId: "",
-            scope: turnScope(state.currentTurnId),
+            scope: turnScope(turnId),
             contextWindowUsage,
           });
         }
@@ -936,7 +969,7 @@ export function translateClaudeSdkMessage(
             type: "thread/tokenUsage/updated",
             threadId,
             providerThreadId: "",
-            scope: turnScope(state.currentTurnId),
+            scope: turnScope(turnId),
             tokenUsage,
           });
         }
@@ -968,7 +1001,7 @@ export function translateClaudeSdkMessage(
                       httpStatusCode: resultErrorInfo?.httpStatusCode ?? null,
                     },
               threadId,
-              turnId: state.currentTurnId,
+              turnId,
             }),
           );
         }
@@ -986,7 +1019,7 @@ export function translateClaudeSdkMessage(
           type: "turn/completed",
           threadId,
           providerThreadId: "",
-          scope: turnScope(state.currentTurnId),
+          scope: turnScope(turnId),
           status: failed ? "failed" : "completed",
           ...(state.latestProviderCheckpointId !== undefined
             ? {
