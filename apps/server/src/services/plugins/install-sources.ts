@@ -3,6 +3,7 @@ import { constants } from "node:fs";
 import {
   cp,
   lstat,
+  mkdir,
   open,
   readdir,
   readFile,
@@ -454,6 +455,9 @@ export async function promoteGitPluginArtifact(args: {
       await rm(args.stagingDir, { recursive: true, force: true });
       return args.contentHash;
     }
+    // Garbage collection of a nested plugin can leave its parent directories
+    // behind or empty, so the plugin root of a reinstall needs one.
+    await mkdir(dirname(targetRoot), { recursive: true });
     for (const nested of args.preserveNestedRoots) {
       const from = join(targetRoot, nested);
       const exists = await stat(from)

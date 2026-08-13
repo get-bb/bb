@@ -886,6 +886,32 @@ describe("plugin install flows", () => {
         ).toEqual(["running", "running"]);
       });
 
+      it("reinstalls a nested plugin whose directory was collected", async () => {
+        const repoDir = join(workDir, "repo-collection-recollected");
+        const commit = await writeCollectionRepo(repoDir);
+        const alpha = await service.install(`git:${repoDir}@main`, {
+          kind: "entry",
+          name: "alpha",
+        });
+        expect(await service.remove("collection-alpha")).toBe(true);
+        // Garbage collection removes the plugin root and then its now empty
+        // parent, while the shared checkout stays for the siblings.
+        const checkout = gitArtifactCacheDir(
+          dataDir,
+          `local${repoDir}`,
+          commit,
+        );
+        await rm(join(checkout, "plugins"), { recursive: true, force: true });
+
+        const again = await service.install(`git:${repoDir}@main`, {
+          kind: "entry",
+          name: "alpha",
+        });
+        expect(again.status).toBe("running");
+        expect(again.rootDir).toBe(alpha.rootDir);
+        await stat(join(again.rootDir, "dist", "server.js"));
+      });
+
       it("lists the collection entries when no plugin is selected", async () => {
         const repoDir = join(workDir, "repo-collection-unselected");
         await writeCollectionRepo(repoDir);
