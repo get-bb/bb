@@ -99,6 +99,7 @@ function storyTimeline(
     ],
     activePromptMode: null,
     activeThinking: null,
+    activeTurnActivity: null,
     activeWorkflows: [],
     activeBackgroundCommands: [],
     pendingTodos: null,

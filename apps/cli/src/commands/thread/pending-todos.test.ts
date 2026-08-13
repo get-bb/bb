@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import type { ThreadTimelinePendingTodos } from "@bb/domain";
+import type {
+  ThreadTimelineActiveTurnActivity,
+  ThreadTimelinePendingTodos,
+} from "@bb/domain";
 import type { ThreadTimelineResponse } from "@bb/server-contract";
 import {
   createNodeBbSdk,
@@ -7,7 +10,11 @@ import {
   type FetchImplementation,
 } from "@bb/sdk/node";
 
-import { fetchThreadPendingTodos, printPendingTodos } from "./pending-todos.js";
+import {
+  fetchThreadPendingTodos,
+  printActiveTurnActivity,
+  printPendingTodos,
+} from "./pending-todos.js";
 
 function captureLogLines(fn: () => void): { lines: string[] } {
   const spy = vi.spyOn(console, "log").mockImplementation(() => {});
@@ -100,6 +107,27 @@ describe("printPendingTodos", () => {
   });
 });
 
+describe("printActiveTurnActivity", () => {
+  it("prints the exact phase and marks a quiet turn", () => {
+    const activity: ThreadTimelineActiveTurnActivity = {
+      phase: "command",
+      detail: "pnpm test",
+      startedAt: 10_000,
+      updatedAt: 20_000,
+      lastProgressSequence: 12,
+      quietThresholdMs: 300_000,
+    };
+
+    const { lines } = captureLogLines(() =>
+      printActiveTurnActivity(activity, 321_000),
+    );
+
+    expect(lines).toEqual([
+      "  Active turn: command: pnpm test; last progress 301s ago (quiet)",
+    ]);
+  });
+});
+
 describe("fetchThreadPendingTodos", () => {
   function makeTimelineResponse(
     pendingTodos: ThreadTimelinePendingTodos | null,
@@ -107,6 +135,7 @@ describe("fetchThreadPendingTodos", () => {
     return {
       activePromptMode: null,
       activeThinking: null,
+      activeTurnActivity: null,
       activeWorkflows: [],
       activeBackgroundCommands: [],
       pendingTodos,

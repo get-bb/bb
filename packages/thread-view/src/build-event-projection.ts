@@ -1,4 +1,4 @@
-import type { ThreadEvent } from "@bb/domain";
+import type { Thread, ThreadEvent } from "@bb/domain";
 import {
   LOCAL_WORKFLOW_TASK_TYPE,
   requireThreadEventScopeTurnId,
@@ -94,6 +94,7 @@ import {
 } from "./event-projection-state.js";
 import { buildProjectionActiveThinking } from "./reasoning-lifecycle-projection.js";
 import { projectAssistantAndReasoningEvent } from "./assistant-event-projection.js";
+import { resolveThreadTimelineActiveTurnActivity } from "./active-turn-activity.js";
 
 // --- Projection state machine ---
 
@@ -129,6 +130,7 @@ interface BuildDetailedProjectionArgs {
   contextOnlyToolCallIds?: ReadonlySet<string>;
   events: ThreadEventWithMeta[];
   messages: EventProjectionMessage[];
+  threadStatus: Thread["status"];
   turnMessageDetail: BuildEventProjectionOptions["turnMessageDetail"];
 }
 
@@ -991,6 +993,7 @@ function buildDetailedProjection(
     {
       ...projection,
       state: {
+        activeTurnActivity: null,
         activeThinking: args.activeThinking,
         activeWorkflows: args.activeWorkflows,
         activeBackgroundCommands: args.activeBackgroundCommands,
@@ -1000,10 +1003,20 @@ function buildDetailedProjection(
       contextOnlyToolCallIds: args.contextOnlyToolCallIds,
     },
   );
-  return applyProjectionTurnMessageDetail(
+  const detailedProjection = applyProjectionTurnMessageDetail(
     semanticProjection,
     args.turnMessageDetail,
   );
+  return {
+    ...detailedProjection,
+    state: {
+      ...detailedProjection.state,
+      activeTurnActivity: resolveThreadTimelineActiveTurnActivity({
+        projection: detailedProjection,
+        threadStatus: args.threadStatus,
+      }),
+    },
+  };
 }
 
 function buildFullEventProjection(
@@ -1025,6 +1038,7 @@ function buildFullEventProjection(
     contextOnlyToolCallIds: options.contextOnlyToolCallIds,
     events,
     messages: flatProjection.messages,
+    threadStatus: options.threadStatus ?? "idle",
     turnMessageDetail: options.turnMessageDetail,
   });
 }
@@ -1036,6 +1050,7 @@ export function buildEventProjectionEntries(
   if (!events || events.length === 0) {
     return {
       state: {
+        activeTurnActivity: null,
         activeThinking: null,
         activeWorkflows: [],
         activeBackgroundCommands: [],
@@ -1060,6 +1075,7 @@ export function buildEventProjectionEntries(
     contextOnlyToolCallIds: options.contextOnlyToolCallIds,
     events: orderedEvents,
     messages: flatProjection.messages,
+    threadStatus: options.threadStatus ?? "idle",
     turnMessageDetail: options.turnMessageDetail,
   });
 }
@@ -1071,6 +1087,7 @@ export function buildEventProjection(
   if (!events || events.length === 0) {
     return {
       state: {
+        activeTurnActivity: null,
         activeThinking: null,
         activeWorkflows: [],
         activeBackgroundCommands: [],

@@ -1,4 +1,7 @@
-import type { ActiveThinking } from "@bb/domain";
+import type {
+  ActiveThinking,
+  ThreadTimelineActiveTurnActivity,
+} from "@bb/domain";
 import type { AcceptedClientRequestContext } from "./accepted-client-request-context.js";
 import type {
   BuildEventProjectionMessagesOptions,
@@ -28,6 +31,8 @@ export type EventProjectionTurnMessageDetail =
   (typeof eventProjectionTurnMessageDetailValues)[number];
 
 export interface EventProjectionState {
+  /** Provider-neutral description of the latest material active-turn event. */
+  activeTurnActivity: ThreadTimelineActiveTurnActivity | null;
   /**
    * Root-projection-only ephemeral state that should not be modeled as a
    * timeline row. Nested child projections always expose `activeThinking` as

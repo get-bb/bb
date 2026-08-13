@@ -20,6 +20,7 @@ import {
   type ActiveThinking,
   type Thread,
   type ThreadTimelineActivePromptMode,
+  type ThreadTimelineActiveTurnActivity,
   type ThreadTimelineGoal,
   type ThreadTimelineModelFallback,
   type ThreadTimelinePendingTodos,
@@ -117,6 +118,7 @@ export interface BuildThreadTimelineFromEventsArgs {
 
 export interface ThreadTimelineFromEventsResult {
   activePromptMode: ThreadTimelineActivePromptMode | null;
+  activeTurnActivity: ThreadTimelineActiveTurnActivity | null;
   activeThinking: ActiveThinking | null;
   activeWorkflows: TimelineWorkflowWorkRow[];
   activeBackgroundCommands: TimelineWorkflowWorkRow[];
@@ -1339,6 +1341,7 @@ export function buildThreadTimelineFromEvents(
           threadStatus: args.options.threadStatus,
         }),
     activeThinking: projection.state.activeThinking,
+    activeTurnActivity: projection.state.activeTurnActivity,
     activeWorkflows: projection.state.activeWorkflows.flatMap((message) => {
       const row = buildWorkflowWorkRow(message, ROOT_TIMELINE_ROW_ID_PREFIX);
       return row ? [row] : [];

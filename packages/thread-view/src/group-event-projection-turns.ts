@@ -340,6 +340,7 @@ export function groupEventProjectionTurns(
 
   return {
     state: {
+      activeTurnActivity: null,
       activeThinking: null,
       activeWorkflows: [],
       activeBackgroundCommands: [],

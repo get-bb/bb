@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   activeThinkingSchema,
+  threadTimelineActiveTurnActivitySchema,
   clientTurnRequestIdSchema,
   callerExecutionInputSourceSchema,
   environmentSchema,
@@ -843,6 +844,7 @@ export const threadTimelineResponseSchema = z.object({
   rows: z.array(timelineRowSchema),
   activePromptMode: threadTimelineActivePromptModeSchema.nullable(),
   activeThinking: activeThinkingSchema.nullable(),
+  activeTurnActivity: threadTimelineActiveTurnActivitySchema.nullable(),
   /** Running workflows, most recently started first. */
   activeWorkflows: z.array(timelineWorkflowWorkRowSchema),
   activeBackgroundCommands: z.array(timelineWorkflowWorkRowSchema),

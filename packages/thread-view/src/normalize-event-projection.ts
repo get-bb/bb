@@ -349,6 +349,7 @@ class SemanticProjectionBuilder {
 
     return {
       state: {
+        activeTurnActivity: null,
         activeThinking: null,
         activeWorkflows: [],
         activeBackgroundCommands: [],
@@ -367,6 +368,7 @@ class SemanticProjectionBuilder {
   ): EventProjection {
     return {
       state: {
+        activeTurnActivity: null,
         activeThinking: null,
         activeWorkflows: [],
         activeBackgroundCommands: [],

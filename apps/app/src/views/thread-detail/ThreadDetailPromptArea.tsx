@@ -48,6 +48,7 @@ import { ThreadPromptModeCard } from "@/components/promptbox/banner/ThreadPrompt
 import { ThreadWorkflowCard } from "@/components/promptbox/banner/ThreadWorkflowCard";
 import { ThreadBackgroundCommandsCard } from "@/components/promptbox/banner/ThreadBackgroundCommandsCard";
 import { ThreadModelFallbackCard } from "@/components/promptbox/banner/ThreadModelFallbackCard";
+import { ThreadActiveTurnWatchdogCard } from "@/components/promptbox/banner/ThreadActiveTurnWatchdogCard";
 import { InlineMessageEditorFrame } from "@/components/promptbox/InlineMessageEditorFrame";
 import type {
   WorkspaceChangedFileSelection,
@@ -187,6 +188,8 @@ interface ThreadDetailPromptAreaProps {
   pendingTodos: ThreadTimelinePendingTodos | null;
   /** Active provider prompt mode from the latest timeline projection. Null when no prompt mode is active. */
   activePromptMode: ThreadTimelineActivePromptMode | null;
+  /** Latest material activity in the active turn. */
+  activeTurnActivity: ThreadTimelineResponse["activeTurnActivity"];
   /** Current provider goal from the timeline projection. Null when no goal is active. */
   goal: ThreadTimelineGoal | null;
   /** Active provider fallback; controls the next model selection until another turn is requested. */
@@ -332,6 +335,7 @@ export function ThreadDetailPromptArea({
   contextBannerMergeBase,
   pendingTodos,
   activePromptMode,
+  activeTurnActivity,
   goal,
   modelFallback,
   activeWorkflows,
@@ -1440,6 +1444,11 @@ export function ThreadDetailPromptArea({
     () => (
       <>
         {childPendingInteractionBanners}
+        <ThreadActiveTurnWatchdogCard
+          activity={activeTurnActivity}
+          isStopping={isStopRequested}
+          onStop={handleStopThread}
+        />
         {activeWorkflows.map((workflow) => (
           <ThreadWorkflowCard
             key={workflow.id}
@@ -1548,9 +1557,12 @@ export function ThreadDetailPromptArea({
       isQueueMutationPending,
       queuedMessageEditor,
       activeGoalCard,
+      activeTurnActivity,
       activePromptModeCard,
       isTodoExpanded,
       activeWorkflows,
+      handleStopThread,
+      isStopRequested,
       expandedWorkflowIds,
       toggleWorkflowExpanded,
       activeBackgroundCommands,

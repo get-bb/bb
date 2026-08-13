@@ -658,6 +658,7 @@ function buildPromptAreaElement({
       activeBackgroundAgentCount={0}
       activeBackgroundCommands={[]}
       activePromptMode={activePromptMode}
+      activeTurnActivity={null}
       activeWorkflows={activeWorkflows}
       canUseGitUi={false}
       childPendingInteractions={childPendingInteractions}

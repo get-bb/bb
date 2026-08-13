@@ -818,6 +818,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
   const handleRetryParentThreads = parentThreadSubsetQuery.retry;
   const {
     activePromptMode,
+    activeTurnActivity,
     activeThinking,
     activeWorkflows,
     activeBackgroundCommands,
@@ -2635,6 +2636,7 @@ function ThreadDetailViewInternal(props: ThreadDetailViewInternalProps) {
       pendingInteractionsInitialLoading={pendingInteractionsInitialLoading}
       pendingTodos={pendingTodos}
       activePromptMode={activePromptMode}
+      activeTurnActivity={activeTurnActivity}
       goal={goal}
       modelFallback={modelFallback}
       activeWorkflows={activeWorkflows}

@@ -169,6 +169,7 @@ function emptyEventProjection(): EventProjection {
   return {
     entries: [],
     state: {
+      activeTurnActivity: null,
       activeThinking: null,
       activeWorkflows: [],
       activeBackgroundCommands: [],

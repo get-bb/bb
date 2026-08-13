@@ -181,6 +181,7 @@ function makeThreadTimelineResponse(
   return {
     activePromptMode: null,
     activeThinking: null,
+    activeTurnActivity: null,
     activeWorkflows: [],
     activeBackgroundCommands: [],
     pendingTodos: null,

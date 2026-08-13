@@ -45,6 +45,7 @@ vi.mock("./useThreadTimelineController.js", () => ({
   useThreadTimelineController: () => ({
     activePromptMode: null,
     activeThinking: null,
+    activeTurnActivity: null,
     activeWorkflows: [],
     activeBackgroundCommands: [],
     contextWindowUsage: undefined,
@@ -97,6 +98,7 @@ function baseTimeline(
   return {
     activePromptMode: null,
     activeThinking: null,
+    activeTurnActivity: null,
     activeWorkflows: [],
     activeBackgroundCommands: [],
     contextWindowUsage: undefined,

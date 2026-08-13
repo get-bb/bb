@@ -444,6 +444,7 @@ describe("bb thread show command output", () => {
     expect(
       JSON.parse(String(vi.mocked(console.log).mock.calls[0]?.[0])),
     ).toEqual({
+      activeTurnActivity: null,
       thread,
       environment: {
         ...environment,
@@ -480,6 +481,7 @@ describe("bb thread show command output", () => {
     expect(
       JSON.parse(String(vi.mocked(console.log).mock.calls[0]?.[0])),
     ).toEqual({
+      activeTurnActivity: null,
       thread,
       environment: null,
       pendingTodos: null,

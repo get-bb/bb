@@ -25,6 +25,7 @@ function makeResponse(rowCount: number): ThreadTimelineResponse {
     })),
     activePromptMode: null,
     activeThinking: null,
+    activeTurnActivity: null,
     activeWorkflows: [],
     activeBackgroundCommands: [],
     pendingTodos: null,

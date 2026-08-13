@@ -29,7 +29,11 @@ import {
   fetchEnvironmentInfo,
   printEnvironmentInfo,
 } from "../environment-helpers.js";
-import { fetchThreadPendingTodos, printPendingTodos } from "./pending-todos.js";
+import {
+  fetchThreadTimelineStatus,
+  printActiveTurnActivity,
+  printPendingTodos,
+} from "./pending-todos.js";
 
 interface ThreadShowCommandOptions {
   self?: boolean;
@@ -64,6 +68,7 @@ type ThreadShowEnvironmentJsonPayload = Environment & {
 };
 
 interface ThreadShowJsonPayload extends ThreadStatusPayload {
+  activeTurnActivity: ThreadTimelineResponse["activeTurnActivity"];
   environment: ThreadShowEnvironmentJsonPayload | null;
   pendingTodos: ThreadTimelinePendingTodos | null;
   workStatus?: WorkspaceStatus | null;
@@ -320,15 +325,18 @@ export function registerShowCommand(
             })
           : null;
 
-        const pendingTodos = await fetchThreadPendingTodos({
+        const timelineStatus = await fetchThreadTimelineStatus({
           sdk,
           threadId,
         });
+        const pendingTodos = timelineStatus?.pendingTodos ?? null;
+        const activeTurnActivity = timelineStatus?.activeTurnActivity ?? null;
 
         if (opts.json) {
           const environment = await getEnvironment();
           const jsonPayload: ThreadShowJsonPayload = {
             ...statusPayload,
+            activeTurnActivity,
             environment: threadShowEnvironmentJson(
               environment,
               fetchedPullRequest,
@@ -357,6 +365,8 @@ export function registerShowCommand(
           environmentInfo,
           fetchedPullRequest,
         );
+
+        printActiveTurnActivity(activeTurnActivity);
 
         printPendingTodos(pendingTodos);
 

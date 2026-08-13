@@ -1746,6 +1746,8 @@ function buildThreadTimelineInternal(
       options.page.kind === "latest" ? timeline.activePromptMode : null,
     activeThinking:
       options.page.kind === "latest" ? timeline.activeThinking : null,
+    activeTurnActivity:
+      options.page.kind === "latest" ? timeline.activeTurnActivity : null,
     activeWorkflows:
       options.page.kind === "latest" ? timeline.activeWorkflows : [],
     activeBackgroundCommands:

@@ -1,8 +1,10 @@
 import type {
+  ThreadTimelineActiveTurnActivity,
   ThreadTimelinePendingTodos,
   ThreadTimelinePendingTodoItem,
   ThreadTimelinePendingTodoItemStatus,
 } from "@bb/domain";
+import type { ThreadTimelineResponse } from "@bb/server-contract";
 import type { BbSdk } from "@bb/sdk";
 
 export interface FetchThreadPendingTodosArgs {
@@ -30,6 +32,54 @@ export async function fetchThreadPendingTodos(
   } catch {
     return null;
   }
+}
+
+export async function fetchThreadTimelineStatus(args: {
+  sdk: Pick<BbSdk, "threads">;
+  threadId: string;
+}): Promise<Pick<
+  ThreadTimelineResponse,
+  "activeTurnActivity" | "pendingTodos"
+> | null> {
+  try {
+    const response = await args.sdk.threads.timeline({
+      threadId: args.threadId,
+      summaryOnly: "true",
+    });
+    return {
+      activeTurnActivity: response.activeTurnActivity,
+      pendingTodos: response.pendingTodos,
+    };
+  } catch {
+    return null;
+  }
+}
+
+const ACTIVE_TURN_PHASE_LABEL: Record<
+  ThreadTimelineActiveTurnActivity["phase"],
+  string
+> = {
+  provider: "provider wait",
+  model: "model output",
+  command: "command",
+  tool: "tool",
+  compaction: "compaction",
+  subagent: "subagent",
+  workflow: "workflow",
+};
+
+export function printActiveTurnActivity(
+  activity: ThreadTimelineActiveTurnActivity | null,
+  now = Date.now(),
+): void {
+  if (!activity) return;
+  const quietMs = Math.max(0, now - activity.updatedAt);
+  const quietSeconds = Math.floor(quietMs / 1_000);
+  const stale = quietMs >= activity.quietThresholdMs ? " (quiet)" : "";
+  const detail = activity.detail ? `: ${activity.detail}` : "";
+  console.log(
+    `  Active turn: ${ACTIVE_TURN_PHASE_LABEL[activity.phase]}${detail}; last progress ${quietSeconds}s ago${stale}`,
+  );
 }
 
 const STATUS_BULLET: Record<ThreadTimelinePendingTodoItemStatus, string> = {
