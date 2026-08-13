@@ -33,6 +33,13 @@ import type {
   ProjectKind,
 } from "@bb/domain";
 
+export const threadHandoffStatusValues = [
+  "provisioning",
+  "started",
+  "failed",
+] as const;
+export type ThreadHandoffStatus = (typeof threadHandoffStatusValues)[number];
+
 export const authUsers = sqliteTable(
   "user",
   {
@@ -556,6 +563,79 @@ export const threads = sqliteTable(
     index("threads_active_maintenance_idx")
       .on(table.status)
       .where(sql`${table.deletedAt} IS NULL`),
+  ],
+);
+
+export const threadHandoffs = sqliteTable(
+  "thread_handoffs",
+  {
+    id: text("id").primaryKey(),
+    replacementThreadId: text("replacement_thread_id")
+      .notNull()
+      .references(() => threads.id, { onDelete: "cascade" }),
+    sourceThreadId: text("source_thread_id")
+      .notNull()
+      .references(() => threads.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    environmentId: text("environment_id").references(() => environments.id, {
+      onDelete: "set null",
+    }),
+    providerId: text("provider_id").notNull(),
+    model: text("model").notNull(),
+    reasoningLevel: text("reasoning_level").$type<ReasoningLevel>().notNull(),
+    serviceTier: text("service_tier").$type<ServiceTier>(),
+    permissionMode: text("permission_mode").$type<PermissionMode>().notNull(),
+    archiveSource: integer("archive_source", { mode: "boolean" }).notNull(),
+    idempotencyKey: text("idempotency_key").notNull(),
+    status: text("status", { enum: threadHandoffStatusValues }).notNull(),
+    failureCode: text("failure_code"),
+    failureMessage: text("failure_message"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+    settledAt: integer("settled_at"),
+  },
+  (table) => [
+    uniqueIndex("thread_handoffs_replacement_idx").on(
+      table.replacementThreadId,
+    ),
+    uniqueIndex("thread_handoffs_source_idempotency_idx").on(
+      table.sourceThreadId,
+      table.idempotencyKey,
+    ),
+    index("thread_handoffs_project_idx").on(table.projectId),
+    index("thread_handoffs_environment_idx").on(table.environmentId),
+    index("thread_handoffs_provisioning_page_idx").on(
+      table.status,
+      table.createdAt,
+      table.id,
+    ),
+    check(
+      "thread_handoffs_settlement_shape_check",
+      sql`(
+        (
+          ${table.status} = 'provisioning'
+          AND ${table.settledAt} IS NULL
+          AND ${table.failureCode} IS NULL
+          AND ${table.failureMessage} IS NULL
+        )
+        OR
+        (
+          ${table.status} = 'started'
+          AND ${table.settledAt} IS NOT NULL
+          AND ${table.failureCode} IS NULL
+          AND ${table.failureMessage} IS NULL
+        )
+        OR
+        (
+          ${table.status} = 'failed'
+          AND ${table.settledAt} IS NOT NULL
+          AND length(${table.failureCode}) > 0
+          AND length(${table.failureMessage}) > 0
+        )
+      )`,
+    ),
   ],
 );
 

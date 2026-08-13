@@ -181,6 +181,9 @@ import type {
   ThreadFilesRawQuery,
   ThreadGetQuery,
   ThreadHostFileContentQuery,
+  ThreadHandoffRequest,
+  ThreadHandoffResponse,
+  ThreadHandoffStatus,
   ThreadListQuery,
   ThreadListResponse,
   ThreadConversationOutlineResponse,
@@ -293,6 +296,7 @@ import {
   threadFilesRawQuerySchema,
   threadGetQuerySchema,
   threadHostFileContentQuerySchema,
+  threadHandoffRequestSchema,
   threadListQuerySchema,
   threadOpenRequestSchema,
   threadPaneActionRequestSchema,
@@ -945,6 +949,20 @@ export const publicApiRoutes = {
         forkThreadRequestSchema,
       ),
       response: jsonResponse<ThreadResponse>({ status: 201 }),
+    }),
+    handoff: defineRoute({
+      path: "/threads/handoff",
+      method: "post",
+      request: jsonRequest<EmptyInput, ThreadHandoffRequest>(
+        threadHandoffRequestSchema,
+      ),
+      response: jsonResponse<ThreadHandoffResponse>({ status: 201 }),
+    }),
+    handoffStatus: defineRoute({
+      path: "/threads/handoffs/:id",
+      method: "get",
+      request: noRequest<PathId>(),
+      response: jsonResponse<ThreadHandoffStatus>(),
     }),
     get: defineRoute({
       path: "/threads/:id",

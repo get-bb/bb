@@ -24,6 +24,7 @@ export {
   createProjectSourceId,
   createTerminalSessionId,
   createThreadId,
+  createThreadHandoffId,
   createThreadProvisioningId,
 } from "./ids.js";
 

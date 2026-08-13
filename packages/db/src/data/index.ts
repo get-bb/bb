@@ -165,6 +165,27 @@ export type {
 } from "./threads.js";
 
 export {
+  createThreadHandoff,
+  getThreadHandoffByReplacementThreadId,
+  getThreadHandoffBySourceAndIdempotencyKey,
+  listProvisioningThreadHandoffs,
+  markThreadHandoffFailed,
+  markThreadHandoffStarted,
+} from "./thread-handoffs.js";
+export type {
+  CreateThreadHandoffInput,
+  CreateThreadHandoffResult,
+  ListProvisioningThreadHandoffsArgs,
+  MarkThreadHandoffFailedArgs,
+  MarkThreadHandoffStartedArgs,
+  ProvisioningThreadHandoffPage,
+  SettleThreadHandoffResult,
+  ThreadHandoffIdempotencyKey,
+  ThreadHandoffPageCursor,
+  ThreadHandoffRow,
+} from "./thread-handoffs.js";
+
+export {
   getAppKeybindingOverrides,
   getAppSettings,
   setAppKeybindingOverrides,

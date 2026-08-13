@@ -12,6 +12,7 @@ import {
   createPromptHistoryEntryId,
   createProjectSourceId,
   createThreadId,
+  createThreadHandoffId,
   environments,
   events,
   hostDaemonSessions,
@@ -23,6 +24,7 @@ import {
   queuedThreadMessages,
   threadDynamicContextFileStates,
   threads,
+  threadHandoffs,
 } from "../src/index.js";
 
 interface ColumnNameRow {
@@ -687,6 +689,94 @@ describe("db rebuild schema", () => {
     closeConnection(db);
   });
 
+  it("keeps handoff history tied to its project and threads while allowing environment cleanup", () => {
+    const db = createConnection(":memory:");
+    migrate(db);
+
+    const now = Date.now();
+    const hostId = createHostId();
+    const projectId = createProjectId();
+    const environmentId = createEnvironmentId();
+    const sourceThreadId = createThreadId();
+    const replacementThreadId = createThreadId();
+
+    db.insert(hosts)
+      .values({
+        id: hostId,
+        name: "Local host",
+        type: "persistent",
+        lastSeenAt: now,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run();
+    db.insert(projects)
+      .values({
+        id: projectId,
+        name: "Rebuild",
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run();
+    db.insert(environments)
+      .values({
+        id: environmentId,
+        projectId,
+        hostId,
+        managed: false,
+        isGitRepo: false,
+        workspaceProvisionType: "unmanaged",
+        status: "ready",
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run();
+    for (const threadId of [sourceThreadId, replacementThreadId]) {
+      db.insert(threads)
+        .values({
+          id: threadId,
+          projectId,
+          environmentId,
+          providerId: "codex",
+          status: "idle",
+          latestAttentionAt: now,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .run();
+    }
+    db.insert(threadHandoffs)
+      .values({
+        id: createThreadHandoffId(),
+        sourceThreadId,
+        replacementThreadId,
+        projectId,
+        environmentId,
+        providerId: "codex",
+        model: "gpt-5.6-codex",
+        reasoningLevel: "high",
+        serviceTier: null,
+        permissionMode: "full",
+        archiveSource: true,
+        idempotencyKey: "handoff-key-0001",
+        status: "provisioning",
+        failureCode: null,
+        failureMessage: null,
+        createdAt: now,
+        updatedAt: now,
+        settledAt: null,
+      })
+      .run();
+
+    db.delete(environments).where(eq(environments.id, environmentId)).run();
+    expect(db.select().from(threadHandoffs).get()?.environmentId).toBeNull();
+
+    db.delete(threads).where(eq(threads.id, replacementThreadId)).run();
+    expect(db.select().from(threadHandoffs).all()).toHaveLength(0);
+
+    closeConnection(db);
+  });
+
   it("rejects duplicate event sequence numbers within a thread", () => {
     const db = createConnection(":memory:");
     migrate(db);
@@ -751,6 +841,7 @@ describe("db rebuild schema", () => {
     expect(createEnvironmentId()).toMatch(/^env_/u);
     expect(createEnvironmentProvisioningId()).toMatch(/^epv_/u);
     expect(createThreadId()).toMatch(/^thr_/u);
+    expect(createThreadHandoffId()).toMatch(/^thd_/u);
     expect(createEventId()).toMatch(/^evt_/u);
     expect(createPromptHistoryEntryId()).toMatch(/^phist_/u);
     expect(createQueuedThreadMessageId()).toMatch(/^qmsg_/u);

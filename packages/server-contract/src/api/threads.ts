@@ -52,6 +52,51 @@ export const sendMessageModeSchema = z.enum([
 export const threadCreateOriginSchema = z.enum(["app", "cli", "sdk", "plugin"]);
 export type ThreadCreateOrigin = z.infer<typeof threadCreateOriginSchema>;
 
+export const threadHandoffStateSchema = z.enum([
+  "provisioning",
+  "started",
+  "failed",
+]);
+export type ThreadHandoffState = z.infer<typeof threadHandoffStateSchema>;
+
+export const threadHandoffRequestSchema = z
+  .object({
+    sourceThreadId: z.string().min(1),
+    providerId: z.string().min(1),
+    model: z.string().min(1),
+    reasoningLevel: reasoningLevelSchema,
+    serviceTier: serviceTierSchema.optional(),
+    permissionMode: permissionModeInputSchema,
+    continuationText: z.string().trim().max(8_000).optional(),
+    archiveSource: z.boolean(),
+    idempotencyKey: z.string().min(16).max(128),
+    origin: threadCreateOriginSchema,
+  })
+  .strict();
+export type ThreadHandoffRequest = z.infer<typeof threadHandoffRequestSchema>;
+
+export const threadHandoffFailureSchema = z
+  .object({
+    code: z.string().min(1),
+    message: z.string().min(1),
+  })
+  .strict();
+export type ThreadHandoffFailure = z.infer<typeof threadHandoffFailureSchema>;
+
+export const threadHandoffStatusSchema = z
+  .object({
+    sourceThreadId: z.string().min(1),
+    replacementThreadId: z.string().min(1),
+    state: threadHandoffStateSchema,
+    sourceArchived: z.boolean(),
+    failure: threadHandoffFailureSchema.nullable(),
+  })
+  .strict();
+export type ThreadHandoffStatus = z.infer<typeof threadHandoffStatusSchema>;
+
+export const threadHandoffResponseSchema = threadHandoffStatusSchema;
+export type ThreadHandoffResponse = z.infer<typeof threadHandoffResponseSchema>;
+
 export const executionInputFieldSourceSchema = callerExecutionInputSourceSchema;
 export type ExecutionInputFieldSource = CallerExecutionInputSource;
 
