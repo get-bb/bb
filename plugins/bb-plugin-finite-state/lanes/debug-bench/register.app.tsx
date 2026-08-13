@@ -1,9 +1,21 @@
-import type { PluginAppBuilder } from "@bb/plugin-sdk/app";
+import type { PluginAppBuilder, PluginNavPanelProps } from "@bb/plugin-sdk/app";
 import type { AppContext } from "../../lib/app-context.js";
+import { DevicePanel } from "./app/device-panel.js";
+import { SerialConsole } from "./app/serial-console.js";
+
+function FirmwareBenchPanel(props: PluginNavPanelProps): React.JSX.Element {
+  return <DevicePanel {...props} consoleSlot={<SerialConsole />} />;
+}
 
 export function registerDebugBenchApp(
-  _app: PluginAppBuilder,
+  app: PluginAppBuilder,
   _ctx: AppContext,
 ): void {
-  // NOT_IMPLEMENTED: compiling composition-root seam for the L10 debug-bench lane.
+  app.slots.navPanel({
+    id: "firmware-bench",
+    title: "Firmware Bench",
+    icon: "ElectricPlugs",
+    path: "firmware-bench",
+    component: FirmwareBenchPanel,
+  });
 }

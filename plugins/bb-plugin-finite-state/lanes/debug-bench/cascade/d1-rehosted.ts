@@ -1,0 +1,1 @@
+export function runD1Rehosted(): never { throw new Error("NOT_IMPLEMENTED: WP-91 owns D1 rehosting"); }
