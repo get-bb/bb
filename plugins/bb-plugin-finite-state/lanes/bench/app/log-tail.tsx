@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { z } from "zod";
 import {
   useRealtime,
   useRealtimeConnectionState,
@@ -9,23 +8,7 @@ import {
 import { Alert, AlertDescription } from "@bb/shared-ui/alert";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
-import { rpcContract } from "../../../shared/contract.js";
-
-// The frozen pagedScopedInput helper loses its additive runId in TypeScript
-// inference even though the runtime schema retains it. Contain that defect at
-// this one boundary without weakening the payload internally.
-const benchLogRpcContract = {
-  benchLogsList: {
-    input: z.object({
-      projectId: z.string(),
-      projectVersionId: z.string().nullable(),
-      runId: z.string(),
-      pageSize: z.number(),
-      continuation: z.string().nullable(),
-    }).strict(),
-    output: rpcContract.benchLogsList.output,
-  },
-} as const;
+import type { RpcContract } from "../../../shared/contract.js";
 
 export interface BenchLogLine {
   seq: number;
@@ -64,7 +47,7 @@ function stream(level: string): BenchLogLine["stream"] {
 }
 
 export function LogTail({ projectId, projectVersionId, runId }: LogTailProps): React.JSX.Element {
-  const rpc = useRpc<typeof benchLogRpcContract>();
+  const rpc = useRpc<RpcContract>();
   const connection = useRealtimeConnectionState();
   const scroller = useRef<HTMLDivElement>(null);
   const committedCursor = useRef<string | null>(null);
@@ -85,13 +68,16 @@ export function LogTail({ projectId, projectVersionId, runId }: LogTailProps): R
     }
     inFlight.current = true;
     try {
-      const page = await rpc.call("benchLogsList", {
+      // Keep the frozen schema's erased additive runId on the runtime request
+      // without importing the server contract value into the browser bundle.
+      const request = {
         projectId,
         projectVersionId,
         runId,
         pageSize: 200,
         continuation,
-      });
+      };
+      const page = await rpc.call("benchLogsList", request);
       const incoming = page.items.map((item) => ({
         seq: item.sequence,
         at: item.at,
