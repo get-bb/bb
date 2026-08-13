@@ -141,3 +141,39 @@ documentation only and are never approval evidence.
 - Affected-lane reviewer: independent exact-head audit in `thr_82qsv2zmgw`; APPROVE at `9f81f270f`
 - Broadcast and merge commits: pending
 - Evidence: FS-65 scope audit at base `afb16ac928e053187b5bfe85ace2e8b7887ed751`; `shared/contract.ts` exposes `firmwareMaterializeStart.inputId` but no issuer; `lanes/firmware/register.ts` contains the unconfigured registry/runtime seams and currently trusts the issuer to enforce canonical worktree containment and a bounded expiry; `PluginAppBuilder` exposes no file picker and the backend SDK exposes only `hosts.pickFolder`; non-frozen `lib/remote/config.ts` is the sole settings descriptor owner and has no standalone unpack fields; no standalone wrapper exists in this repository; owner scope decision recorded on FS-65 on 2026-08-13; independent review constraint `mem_i30_pg8cd4c` documents the canonical-symlink escape and unbounded-expiry chain corrected by this proposal.
+
+### AMD-0004 — Add a verified Assurance Studio verification-result write
+
+- Status: proposed
+- Artifacts:
+  - `plugins/bb-plugin-finite-state/lib/remote/types.ts`
+- Contract version: n/a
+- Prior artifact hashes:
+  - `lib/remote/types.ts`: `933bf1672ff816879cd246d1e3e9a562c9e1da7bedf16e326d5f75fd12f8ba08`
+- New artifact hashes: pending an approved implementation
+- Reason: WP-53 can keep its WP-52 checkpoint current locally, but the frozen `AssuranceStudioClient` has no handler-verified method for writing a verification result. `updateEntity(...)` is an intentionally generic entity mutation and is not evidence that the upstream verification-result route, request body, digest binding, or response has been verified. WP-53 therefore has no authorized upstream write and correctly provides no raw fallback.
+- Proposed contract: after grounding the operation in an authoritative Assurance Studio handler, add `createVerificationResult(input, ctx)` to `AssuranceStudioClient`. Its strict input is `{ projectId, checkId, runId, resultId, firmwareDigest, outcome, summary, executedAt, jobId }`, where `firmwareDigest` is lowercase SHA-256, `outcome` is `pass | fail | error`, and `jobId` is nullable; its output is `{ resultId, created }`. The client implementation must bind the result to the named verification check and prepared digest, use `runId + resultId` as the retry/idempotency identity, validate the handler response, and reject unsupported or ambiguous upstream shapes. Artifacts and attestations remain local until separately verified upstream contracts exist. The generic CRUD methods are not a substitute.
+- Migration: verify and record the exact upstream route and handler schema; add the narrow types and client member; add its route-map entry and strict request/response parser; extend the mock only from the same verified handler; add retry/idempotency, check mismatch, digest mismatch, invalid response, and unsupported-route tests; then let WP-53 call only this member after the local transactional checkpoint succeeds. Preserve local evidence as authoritative whenever the method is unavailable or rejects the write.
+- Affected WPs and gates: WP-03, WP-05, WP-09, WP-52, WP-53, WP-55, WP-60; frozen remote contract, Assurance Studio client/routes/mock, bench evidence checkpoint, G0–G6
+- Contract owner: pending human approval
+- Affected-lane reviewer: pending
+- Broadcast and merge commits: pending
+- Evidence: FS-67 review at WP-53 head `7520ccb8b` confirmed that `AssuranceStudioClient` exposes verification reads and `runVerificationChecks(...)`, but no verified verification-result write. WP-53 intentionally retains local evidence and supplies no raw API fallback.
+
+### AMD-0005 — Expose a prepared-root Forge process lifecycle seam
+
+- Status: proposed
+- Artifacts:
+  - `plugins/bb-plugin-finite-state/lib/remote/types.ts`
+- Contract version: n/a
+- Prior artifact hashes:
+  - `lib/remote/types.ts`: `933bf1672ff816879cd246d1e3e9a562c9e1da7bedf16e326d5f75fd12f8ba08`
+- New artifact hashes: pending an approved implementation
+- Reason: the frozen `RemoteServices` contract exposes only an already-connected `ForgeComputeClient`. The configured implementation has no lifecycle adapter that can install WP-50's sealed prepared-root environment before the target Forge process starts, and `penTestRun(...)` deliberately fails unsupported because its required firmware root cannot be established safely. Mapping the prepared root after connection, attaching an arbitrary process, or passing a lazy/API placeholder would violate WP-50/WP-53 digest and host guarantees.
+- Proposed contract: add `ForgePreparedRootLaunch`, `ForgeProcessLifecycle`, and `forgeProcessLifecycle: ForgeProcessLifecycle | null` on `RemoteServices`. `ForgePreparedRootLaunch` is the strict input `{ hostId, projectVersionId, firmwareDigest, rootfsPath, environment }`; `firmwareDigest` is lowercase SHA-256 and `environment` is a readonly string map read directly from the sealed WP-50 object. `ForgeProcessLifecycle.startWithPreparedRoot(input, ctx)` returns `{ started: true }` only after it has server-initiated the configured Forge process on the selected enrolled host with that exact environment present before process start. It must reject remote transports, host mismatches, already-running unowned processes, absent restart ownership, and any launch that cannot preserve the prepared digest/root binding. This is a process-lifecycle seam, not a new Forge action: Tier 1 continues to invoke only `verifyDynamic(...)` and `penTestRun(...)` after launch.
+- Migration: implement a bb-host-backed lifecycle owner for the configured stdio Forge mode; bind it to the selected host and explicit command; start or verified-restart the owned process with the prepared environment; establish the compute client only after successful launch; revalidate WP-50 prepared bytes immediately before lifecycle dispatch; and add remote/persistent fail-closed, host mismatch, environment-before-start, reconnect, and firmware-mutation tests. Leave `forgeProcessLifecycle` null for HTTP/SSE or any configuration without verified process ownership. WP-53 must continue rejecting Tier 1 before creating a run or thread while this member is null.
+- Affected WPs and gates: WP-03, WP-09, WP-50, WP-53, WP-54, WP-60; frozen remote contract, Forge client/transport registration, host execution, prepared firmware handshake, G0–G6
+- Contract owner: pending human approval
+- Affected-lane reviewer: pending
+- Broadcast and merge commits: pending
+- Evidence: FS-67 review at WP-53 head `7520ccb8b` reproduced the default `FIRMWARE_REGISTRATION_UNAVAILABLE` path. Repair head `b0c76335d` fails before run/thread creation, while the configured client remains unable to launch Tier 1 until a lifecycle contract is approved and implemented.
