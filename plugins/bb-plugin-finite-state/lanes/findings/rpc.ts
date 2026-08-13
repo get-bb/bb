@@ -10,7 +10,12 @@ import {
   listFindingComments,
 } from "./cache/comments.js";
 import { getCachedFinding, queryFindings } from "./cache/query.js";
+import { findingsCacheState } from "./cache/query.js";
 import type { CachedFinding, FindingsFilter } from "./cache/types.js";
+import {
+  parseEncodedFindingKey,
+  resolveEncodedFinding,
+} from "./stable-key/index.js";
 
 const findingsRpcContract = {
   findingsList: rpcContract.findingsList,
@@ -88,6 +93,27 @@ export const findingsUiRpcContract = defineRpcContract({
       views: z.array(savedViewSchema).max(100),
     }).strict(),
     output: savedViewsResultSchema,
+  },
+  findingDetailGet: {
+    input: z.object({
+      projectId: z.string().min(1).max(512),
+      projectVersionId: z.string().min(1).max(512),
+      stableKey: z.string().min(1).max(512),
+    }).strict(),
+    output: z.object({
+      state: z.enum(["resolved", "stale", "orphaned"]),
+      tier: z.union([z.literal(1), z.literal(2), z.literal(3)]).nullable(),
+      rows: z.array(rpcContract.findingsGet.output).max(200),
+      cache: rpcContract.findingsList.output.shape.cache,
+    }).strict(),
+  },
+  findingActivityRefresh: {
+    input: z.object({
+      projectId: z.string().min(1).max(512),
+      projectVersionId: z.string().min(1).max(512),
+      findingId: z.string().min(1).max(512),
+    }).strict(),
+    output: z.object({ hydrated: z.number().int().nonnegative() }).strict(),
   },
 });
 
@@ -286,6 +312,58 @@ function fields(finding: CachedFinding): Record<string, JsonValue> {
   };
 }
 
+interface LocalVexRow {
+  vex_status: string | null;
+  vex_response: string | null;
+  vex_justification: string | null;
+  vex_reason: string | null;
+  evidence: string | null;
+  file_path: string;
+  local_state: string;
+  drift_state: string | null;
+}
+
+function projectedLocalState(row: LocalVexRow | undefined): "none" | "local" | "conflicted" | "stale" | "needs_completion" {
+  if (!row) return "none";
+  if (row.local_state === "conflict" || row.drift_state === "conflict") return "conflicted";
+  if (row.local_state === "needs_completion" || row.drift_state === "needs_completion") return "needs_completion";
+  if (row.local_state === "stale" || row.drift_state === "stale" || row.drift_state === "orphaned") return "stale";
+  return "local";
+}
+
+function localVexFields(
+  db: Database.Database,
+  finding: CachedFinding,
+): Record<string, JsonValue> {
+  const row = db.prepare(
+    `SELECT vex_status, vex_response, vex_justification, vex_reason, evidence,
+            file_path, local_state, drift_state
+       FROM overlay_index
+      WHERE project_id = ? AND project_version_id = ?
+        AND entity_kind = 'vexDecision' AND stable_key = ?`,
+  ).get(finding.projectId, finding.projectVersionId, finding.stableKey) as LocalVexRow | undefined;
+  return {
+    ...fields(finding),
+    localVexStatus: row?.vex_status ?? null,
+    localVexResponse: row?.vex_response ?? null,
+    localVexJustification: row?.vex_justification ?? null,
+    localVexReason: row?.vex_reason ?? null,
+    localEvidence: row?.evidence ?? null,
+    localState: projectedLocalState(row),
+    localFile: row?.file_path ?? null,
+    componentSlug: typeof finding.raw["componentSlug"] === "string"
+      ? finding.raw["componentSlug"]
+      : typeof finding.raw["architectureComponentSlug"] === "string"
+        ? finding.raw["architectureComponentSlug"]
+        : null,
+    remediation: typeof finding.raw["remediation"] === "string"
+      ? finding.raw["remediation"]
+      : typeof finding.raw["recommendation"] === "string"
+        ? finding.raw["recommendation"]
+        : null,
+  };
+}
+
 function summary(finding: CachedFinding) {
   return {
     projectId: finding.projectId,
@@ -307,7 +385,17 @@ function findingsListResult(db: Database.Database, input: z.output<typeof findin
   };
 }
 
-export function registerFindingsRpc(bb: BbPluginApi, db: Database.Database): void {
+export function registerFindingsRpc(
+  bb: BbPluginApi,
+  db: Database.Database,
+  deps: {
+    hydrateActivity?: (input: {
+      projectId: string;
+      projectVersionId: string;
+      findingId: string;
+    }) => Promise<number>;
+  } = {},
+): void {
   bb.rpc.register(findingsRpcContract, {
     findingsList(input) {
       const page = queryFindings(db, findingFilter(input));
@@ -440,6 +528,39 @@ export function registerFindingsRpc(bb: BbPluginApi, db: Database.Database): voi
     },
     findingsSavedViewsPut(input) {
       return writeSavedViews(bb, input);
+    },
+    findingDetailGet(input) {
+      // Stable route attributes are untrusted. The frozen codec must reject
+      // them before the first cache read or prepared statement.
+      parseEncodedFindingKey(input.stableKey);
+      const resolution = resolveEncodedFinding(
+        db,
+        input.stableKey,
+        input.projectId,
+        input.projectVersionId,
+      );
+      const cache = findingsCacheState(db, input.projectId, input.projectVersionId);
+      const rows = resolution.state === "orphaned"
+        ? []
+        : resolution.state === "stale"
+          ? resolution.candidates
+          : resolution.rows;
+      const tier = resolution.state === "resolved" ? resolution.tier : null;
+      return {
+        state: resolution.state,
+        tier,
+        rows: rows.map(finding => ({
+          ...summary(finding),
+          fields: localVexFields(db, finding),
+          links: [],
+          cache,
+        })),
+        cache,
+      };
+    },
+    async findingActivityRefresh(input) {
+      if (!deps.hydrateActivity) throw new Error("FINDING_ACTIVITY_REFRESH_UNAVAILABLE");
+      return { hydrated: await deps.hydrateActivity(input) };
     },
   });
 }

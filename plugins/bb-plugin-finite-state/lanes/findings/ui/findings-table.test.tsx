@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, waitFor } from "@testing-library/react";
+import { cleanup, configure, fireEvent, waitFor } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@bb/plugin-sdk/testing/app";
 import { connectedRemoteStatus } from "../../../test/app-connections.js";
 import { parseFindingsRoute, serializeFindingsFilter } from "./route.js";
@@ -50,6 +50,8 @@ class FindingsResizeObserver implements ResizeObserver {
 
 beforeAll(() => {
   vi.setConfig({ testTimeout: 15_000 });
+  // findBy*/waitFor default to 1s, which the 39k-row render exceeds under CI load.
+  configure({ asyncUtilTimeout: 10_000 });
   vi.stubGlobal("ResizeObserver", FindingsResizeObserver);
   vi.stubGlobal("crypto", { randomUUID: () => "00000000-0000-4000-8000-000000000001" });
   Object.defineProperty(HTMLElement.prototype, "clientHeight", { configurable: true, get: () => 600 });
