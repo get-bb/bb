@@ -45,6 +45,7 @@ import {
   getInstalledPlugin,
   listDuePluginSchedules,
   listInstalledPlugins,
+  listPendingGitPluginArtifacts,
   listPluginSchedules,
   markInstalledPluginRemoved,
   recordPluginScheduleResult,
@@ -57,7 +58,11 @@ import {
 } from "../threads/thread-data.js";
 import type { PluginBrandingAssetVariant } from "./app-bundle.js";
 import { readPluginThemeCodeTheme } from "../system/code-themes.js";
-import { npmInstallPrefix, parsePluginSource } from "./install-sources.js";
+import {
+  npmInstallPrefix,
+  parsePluginSource,
+  recoverInterruptedGitPluginPromotion,
+} from "./install-sources.js";
 import {
   derivePluginId,
   readPluginManifest,
@@ -1388,10 +1393,14 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
     async start() {
       await backfillNormalizedPluginRegistrations();
-      await withPluginOperationLock(
-        REGISTRATION_MUTATION_KEY,
-        recoverIncompletePluginRollbacks,
-      );
+      await withPluginOperationLock(REGISTRATION_MUTATION_KEY, async () => {
+        for (const artifact of listPendingGitPluginArtifacts(deps.db)) {
+          await withArtifactLock(artifact.path, () =>
+            recoverInterruptedGitPluginPromotion(artifact.path),
+          );
+        }
+        await recoverIncompletePluginRollbacks();
+      });
       await reconcileBundled();
       await loadAll();
       await withPluginOperationLock(REGISTRATION_MUTATION_KEY, runArtifactGc);

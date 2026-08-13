@@ -208,6 +208,7 @@ export {
   listPluginArtifacts,
   listPluginArtifactsAtOrUnderPath,
   listPluginArtifactsUnderPath,
+  listPendingGitPluginArtifacts,
   listRecentPluginArtifacts,
   setPluginArtifactValidation,
   type CreatePluginArtifactInput,

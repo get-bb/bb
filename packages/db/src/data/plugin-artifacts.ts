@@ -90,6 +90,22 @@ export function listPluginArtifacts(
     .all();
 }
 
+export function listPendingGitPluginArtifacts(
+  db: DbConnection,
+): PluginArtifactRow[] {
+  return db
+    .select()
+    .from(pluginArtifacts)
+    .where(
+      and(
+        eq(pluginArtifacts.sourceKind, "git"),
+        eq(pluginArtifacts.validationResult, "pending"),
+      ),
+    )
+    .orderBy(asc(pluginArtifacts.createdAt), asc(pluginArtifacts.id))
+    .all();
+}
+
 /**
  * Artifacts stored strictly inside `directory`. A multi-plugin repository
  * keeps one checkout per commit, so the plugin roots of its nested plugins

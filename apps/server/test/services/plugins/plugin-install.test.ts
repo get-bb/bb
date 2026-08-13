@@ -6,6 +6,7 @@ import {
   mkdir,
   readFile,
   readdir,
+  rename,
   rm,
   stat,
   symlink,
@@ -701,6 +702,50 @@ describe("plugin install flows", () => {
       // stamped for this exact SDK over the TypeScript source.
       await stat(join(entry.rootDir, "dist", "server.js"));
       await stat(join(entry.rootDir, "dist", "server.meta.json"));
+    });
+
+    it("restores a target moved aside by an interrupted promotion", async () => {
+      const repoDir = join(workDir, "repo-interrupted-promotion");
+      await writePluginFixture(repoDir, {
+        name: "bb-plugin-interrupted-promotion",
+      });
+      await initGitRepo(repoDir);
+      await commitAll(repoDir, "init");
+      const entry = await service.install(`git:${repoDir}@main`, {
+        kind: "root",
+      });
+      const artifact = listPluginArtifacts(db, entry.id)[0];
+      if (artifact === undefined) throw new Error("missing plugin artifact");
+
+      await service.stop();
+      db.$client
+        .prepare(
+          "UPDATE plugin_artifacts SET validation_result = 'pending', validated_at = NULL WHERE id = ?",
+        )
+        .run(artifact.id);
+      await rename(entry.rootDir, `${entry.rootDir}.corrupt`);
+      service = createPluginService({
+        db,
+        hub: {
+          getDaemonSessionIdForHost: () => null,
+          notifyPluginSignal: () => 0,
+          notifySystem: () => {},
+        },
+        logger,
+        dataDir,
+        appVersion: "0.9.0",
+        loadTimeoutMs: 2000,
+      });
+
+      await service.start();
+
+      await stat(join(entry.rootDir, "dist", "server.js"));
+      await expect(stat(`${entry.rootDir}.corrupt`)).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+      expect(
+        service.list().find((plugin) => plugin.id === "interrupted-promotion"),
+      ).toMatchObject({ id: "interrupted-promotion", status: "running" });
     });
 
     it("ignores a repository .npmrc when installing dependencies", async () => {

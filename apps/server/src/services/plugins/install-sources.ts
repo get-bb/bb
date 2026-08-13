@@ -351,6 +351,26 @@ async function fsyncTree(rootDir: string): Promise<void> {
   }
 }
 
+/** Restore or clean the backup left by a process stop during promotion. */
+export async function recoverInterruptedGitPluginPromotion(
+  targetDir: string,
+): Promise<void> {
+  const corruptDir = `${targetDir}.corrupt`;
+  const corruptExists = await lstat(corruptDir)
+    .then(() => true)
+    .catch(() => false);
+  if (!corruptExists) return;
+  const targetExists = await lstat(targetDir)
+    .then(() => true)
+    .catch(() => false);
+  if (targetExists) {
+    await rm(corruptDir, { recursive: true, force: true });
+    return;
+  }
+  await mkdir(dirname(targetDir), { recursive: true });
+  await rename(corruptDir, targetDir);
+}
+
 /**
  * Promote staged bytes into a never-overwritten cache path. EXDEV falls back
  * to a fully fsynced sibling copy followed by an atomic rename. An identical
