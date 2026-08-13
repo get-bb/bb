@@ -38,6 +38,7 @@ import {
   type UpdateInventoryMachine,
 } from "@/hooks/useUpdateInventory";
 import { useDesktopUpdateInfo } from "@/hooks/useDesktopUpdateInfo";
+import { copyToClipboardWithToast } from "@/lib/clipboard";
 import { formatHostUpdateStatus } from "@/lib/host-update-status";
 import { formatRelativeTime } from "@/lib/relative-time";
 import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
@@ -367,12 +368,10 @@ export function BbAppUpdateRows({
           </code>
           <RowButton
             onClick={() => {
-              void navigator.clipboard
-                .writeText(systemVersion.upgradeCommand)
-                .then(() => appToast.success("Upgrade command copied"))
-                .catch(() => {
-                  appToast.error("Couldn't copy upgrade command");
-                });
+              void copyToClipboardWithToast(systemVersion.upgradeCommand, {
+                successMessage: "Upgrade command copied",
+                errorMessage: "Couldn't copy upgrade command",
+              });
             }}
           >
             Copy

@@ -1,4 +1,4 @@
-import { useState, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 import {
   ResourceActivitySection,
   ResourceDetailConfigurationSection,
@@ -47,8 +47,6 @@ import {
 import { PluginBannerBar } from "@/components/tools/plugin-detail-banner";
 import { ProvenancePill } from "@/components/tools/ProvenancePill";
 import { isOfficialProvenance } from "@/components/plugin/plugin-provenance";
-
-import { appToast } from "@/components/ui/app-toast";
 import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
 import {
   usePluginSource,
@@ -61,6 +59,7 @@ import {
   type PluginFrontendDiagnostic,
 } from "@/lib/plugin-frontend";
 import { usePluginSlots } from "@/lib/plugin-slots";
+import { useClipboardCopy } from "@/lib/clipboard";
 
 function pluginSourceLabel(plugin: PluginListItem): string | null {
   return plugin.provenance === "builtin" || plugin.provenance === "catalog"
@@ -83,17 +82,10 @@ export function pluginRemovalLabel(plugin: PluginListItem): string {
 }
 
 function PluginPath({ path }: { path: string }) {
-  const [copied, setCopied] = useState(false);
-
-  async function copyPath() {
-    try {
-      await navigator.clipboard.writeText(path);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1200);
-    } catch {
-      appToast.error("Failed to copy path.");
-    }
-  }
+  const { copied, copy } = useClipboardCopy({
+    text: path,
+    errorMessage: "Failed to copy path.",
+  });
 
   return (
     <TooltipProvider delayDuration={250}>
@@ -102,7 +94,7 @@ function PluginPath({ path }: { path: string }) {
           <button
             type="button"
             aria-label={`Copy plugin path: ${path}`}
-            onClick={copyPath}
+            onClick={() => void copy()}
             className="group -ml-1.5 mt-0.5 inline-flex max-w-full cursor-pointer items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-subtle-foreground transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           >
             <span className="min-w-0 truncate text-left font-mono">

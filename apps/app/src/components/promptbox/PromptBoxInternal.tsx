@@ -63,6 +63,10 @@ import {
   COARSE_POINTER_TEXT_BASE_CLASS,
 } from "@bb/shared-ui/coarse-pointer-sizing";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
+import {
+  getMediaQuerySnapshot,
+  REDUCED_MOTION_QUERY,
+} from "@bb/shared-ui/hooks/use-media-query";
 import { blurActiveKeyboardInputWithin } from "@bb/shared-ui/overlay-trigger";
 import { createJsonLocalStorage } from "@/lib/browser-storage";
 import {
@@ -2038,7 +2042,7 @@ export function PromptBoxInternal({
     const formElement = formRef.current;
     if (fromHeight === null || !formElement) return;
     heightAnimationFromRef.current = null;
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (getMediaQuerySnapshot(REDUCED_MOTION_QUERY)) return;
 
     const previousTransition = formElement.style.transition;
     const previousWillChange = formElement.style.willChange;
