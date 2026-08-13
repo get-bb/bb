@@ -6,6 +6,7 @@ import type {
 } from "./event-projection-types.js";
 import {
   flushBufferedAssistantMessages,
+  flushBufferedAssistantMessagesForTurn,
   type AssistantStreamProjectionState,
 } from "./assistant-stream-projection.js";
 import {
@@ -15,18 +16,21 @@ import {
 import {
   flushActiveToolCell,
   flushPendingToolActivityOutput,
+  flushPendingToolActivityOutputForTurn,
   interruptPendingToolActivity,
 } from "./tool-activity-projection.js";
 import { createToolActivityState } from "./tool-activity-projection.js";
 import {
   createOperationProjectionState,
   flushPendingFileEditOutput,
+  flushPendingFileEditOutputForTurn,
   type CompactionTurnFinalizationStatus,
   type OperationProjectionState,
 } from "./operation-projection.js";
 import {
   createReasoningProjectionState,
   finalizeOpenReasoningLifecycles,
+  finalizeOpenReasoningLifecyclesForTurn,
   type ReasoningProjectionState,
 } from "./reasoning-lifecycle-projection.js";
 import { shouldPreservePendingMessages } from "./user-message-parsing.js";
@@ -72,7 +76,8 @@ interface ThreadInterruptedArgs {
 }
 
 export interface ProjectionState
-  extends AssistantStreamProjectionState,
+  extends
+    AssistantStreamProjectionState,
     OperationProjectionState,
     ReasoningProjectionState,
     BackgroundTaskProjectionState {
@@ -137,7 +142,7 @@ export function onTurnCompleted(args: CompleteTurnArgs): void {
       status: "interrupted",
     });
   }
-  finalizeOpenReasoningLifecycles(args.state);
+  finalizeOpenReasoningLifecyclesForTurn(args.state, args.turnId);
 }
 
 export function onThreadInterrupted(args: ThreadInterruptedArgs): void {
@@ -156,6 +161,15 @@ export function flushProjectionBufferedOutputs(state: ProjectionState): void {
   flushBufferedAssistantMessages(state);
   flushPendingToolActivityOutput(state);
   flushPendingFileEditOutput(state);
+}
+
+export function flushProjectionBufferedOutputsForTurn(
+  state: ProjectionState,
+  turnId: string,
+): void {
+  flushBufferedAssistantMessagesForTurn(state, turnId);
+  flushPendingToolActivityOutputForTurn(state, turnId);
+  flushPendingFileEditOutputForTurn(state, turnId);
 }
 
 function finalizePendingMessages(args: FinalizeProjectionMessagesArgs): void {
