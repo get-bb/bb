@@ -39,7 +39,9 @@ export function unsupportedError(service: RemoteService, operation: string): Rem
 export function parseRetryAfter(value: string | null, now: number): number | null {
   if (value === null) return null;
   const seconds = Number(value);
-  if (Number.isFinite(seconds) && seconds >= 0) return Math.ceil(seconds * 1_000);
+  if (Number.isFinite(seconds)) {
+    return seconds >= 0 ? Math.ceil(seconds * 1_000) : null;
+  }
   const date = Date.parse(value);
   return Number.isFinite(date) ? Math.max(0, date - now) : null;
 }

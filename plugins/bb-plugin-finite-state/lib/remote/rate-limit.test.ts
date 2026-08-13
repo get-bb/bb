@@ -30,7 +30,7 @@ describe("RemoteLimiter", () => {
     expect(order).toEqual([...order].sort((left, right) => left - right));
   });
 
-  it("honors Retry-After, caps backoff, and exhausts after six attempts", async () => {
+  it("clamps Retry-After to max backoff and exhausts after six attempts", async () => {
     const delays: number[] = [];
     const scheduler: Scheduler = {
       now: () => 0,
@@ -43,7 +43,7 @@ describe("RemoteLimiter", () => {
       throw retryable(120_000);
     })).rejects.toMatchObject({ code: "REMOTE_RATE_LIMITED" });
     expect(attempts).toBe(6);
-    expect(delays).toEqual([120_000, 120_000, 120_000, 120_000, 120_000]);
+    expect(delays).toEqual([64_000, 64_000, 64_000, 64_000, 64_000]);
   });
 
   it("aborts queued work and in-flight retry sleep promptly", async () => {

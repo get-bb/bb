@@ -119,7 +119,10 @@ export class RemoteLimiter {
             1_000 * 2 ** (attempt - 1),
           );
           const jittered = Math.floor(exponential * (0.5 + this.#options.random() * 0.5));
-          const delay = error.retryAfterMs ?? jittered;
+          const delay = Math.min(
+            error.retryAfterMs ?? jittered,
+            this.#options.maxBackoffMs,
+          );
           if (activeSignal.aborted) {
             throw limiterError(service, "REMOTE_ABORTED", "Remote operation was aborted");
           }
