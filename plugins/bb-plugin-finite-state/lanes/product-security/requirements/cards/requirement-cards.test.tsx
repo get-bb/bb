@@ -3,6 +3,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@bb/plugin-sdk/testing/app";
+import { connectedRemoteStatus } from "../../../../test/app-connections.js";
 import type { RequirementCardModel } from "./schema.js";
 import { rpcContract } from "../../../../shared/contract.js";
 
@@ -138,11 +139,14 @@ describe("requirement cards", () => {
       { subPath: "requirements" },
       {
         context: { projectId: "project-1", threadId: null },
-        rpc: { requirementsList: () => page([evidence], "Accepted cache is stale.") },
+        rpc: {
+          connectionsStatus: connectedRemoteStatus,
+          requirementsList: () => page([evidence], "Accepted cache is stale."),
+        },
       },
     );
 
-    expect(slot.getByLabelText("Loading requirements")).toBeTruthy();
+    expect(await slot.findByLabelText("Loading requirements")).toBeTruthy();
     expect(await slot.findByLabelText("Evidence status: Failed evidence")).toBeTruthy();
     expect(slot.getByLabelText("Workflow status: verified; this is not evidence")).toBeTruthy();
     expect(slot.getByText("stale")).toBeTruthy();
@@ -160,13 +164,17 @@ describe("requirement cards", () => {
     const panel = await requirementsPanel();
     const unconfigured = renderSlot(panel, { subPath: "requirements" }, {
       context: { projectId: null, threadId: null },
+      rpc: { connectionsStatus: connectedRemoteStatus },
     });
-    expect(unconfigured.getByText("Choose a project")).toBeTruthy();
+    expect(await unconfigured.findByText("Choose a project")).toBeTruthy();
     unconfigured.lifecycle.unmount();
 
     const empty = renderSlot(panel, { subPath: "requirements" }, {
       context: { projectId: "project-1", threadId: null },
-      rpc: { requirementsList: () => page([]) },
+      rpc: {
+        connectionsStatus: connectedRemoteStatus,
+        requirementsList: () => page([]),
+      },
     });
     expect(await empty.findByText("No requirements yet")).toBeTruthy();
     empty.lifecycle.unmount();
@@ -175,6 +183,7 @@ describe("requirement cards", () => {
     const retained = renderSlot(panel, { subPath: "requirements" }, {
       context: { projectId: "project-1", threadId: null },
       rpc: {
+        connectionsStatus: connectedRemoteStatus,
         requirementsList: () => {
           if (fail) throw new Error("local YAML read failed");
           return page([model()]);
