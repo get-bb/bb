@@ -4,6 +4,11 @@ export const ACTION_TOOL_NAMES = [
   "fs_verification_run",
   "fs_bench_run",
   "fs_firmware_materialize",
+  "fs_hw_extract",
+  "fs_build",
+  "fs_flash",
+  "fs_serial",
+  "fs_probe",
 ] as const;
 
 export type ActionToolName = (typeof ACTION_TOOL_NAMES)[number];
@@ -25,6 +30,11 @@ export const AGENT_TOOL_NAMES = [
   "fs_firmware_materialize",
   "fs_bench_status",
   "fs_doc_search",
+  "fs_hw_extract",
+  "fs_build",
+  "fs_flash",
+  "fs_serial",
+  "fs_probe",
 ] as const;
 
 export type AgentToolName = (typeof AGENT_TOOL_NAMES)[number];
@@ -171,6 +181,37 @@ export const AGENT_TOOL_REGISTRY = {
     directive: "fs-doc",
     page: PAGE,
   },
+  fs_hw_extract: {
+    name: "fs_hw_extract",
+    class: "action",
+    server: "none",
+    idempotency: "convergent",
+  },
+  fs_build: {
+    name: "fs_build",
+    class: "action",
+    server: "none",
+    idempotency: "convergent",
+  },
+  fs_flash: {
+    name: "fs_flash",
+    class: "action",
+    server: "none",
+    idempotency: "non-idempotent",
+    destructive: true,
+  },
+  fs_serial: {
+    name: "fs_serial",
+    class: "action",
+    server: "none",
+    idempotency: "non-idempotent",
+  },
+  fs_probe: {
+    name: "fs_probe",
+    class: "action",
+    server: "none",
+    idempotency: "non-idempotent",
+  },
 } as const satisfies AgentToolRegistry;
 
 export const AGENT_SURFACE = {
@@ -192,7 +233,46 @@ const CANONICAL_ACTION_ACCESS = new Map<string, AgentToolSpec["server"]>([
   ["fs_verification_run", "invoke"],
   ["fs_bench_run", "invoke"],
   ["fs_firmware_materialize", "read-fetch"],
+  ["fs_hw_extract", "none"],
+  ["fs_build", "none"],
+  ["fs_flash", "none"],
+  ["fs_serial", "none"],
+  ["fs_probe", "none"],
 ]);
+
+export interface AgentToolExecutionContext {
+  readonly currentTurnId: string;
+  readonly instruction: Readonly<{
+    readonly source: "human" | "plan";
+    readonly turnId: string;
+  }> | null;
+}
+
+export class DestructiveInstructionRequiredError extends Error {
+  constructor(readonly toolName: AgentToolName) {
+    super(
+      `${toolName} requires an explicit human instruction in the current turn; plan-inherited or prior-turn intent does not count.`,
+    );
+    this.name = "DestructiveInstructionRequiredError";
+  }
+}
+
+export function executeAgentToolWithDestructiveGate<Result>(
+  toolName: AgentToolName,
+  context: AgentToolExecutionContext,
+  execute: () => Result,
+): Result {
+  const tool = AGENT_TOOL_REGISTRY[toolName];
+  if (
+    "destructive" in tool
+    && tool.destructive === true
+    && (context.instruction?.source !== "human"
+      || context.instruction.turnId !== context.currentTurnId)
+  ) {
+    throw new DestructiveInstructionRequiredError(toolName);
+  }
+  return execute();
+}
 
 export interface AgentSurfaceCandidate {
   readonly tools: Readonly<Record<string, AgentToolSpec>>;
@@ -209,14 +289,14 @@ export function assertAgentSurface(surface: AgentSurfaceCandidate): void {
     )
   ) {
     throw new Error(
-      "Agent action registry changes require a reviewed amendment; the three-action allowlist is closed.",
+      "Agent action registry changes require a reviewed amendment; the eight-action allowlist is closed.",
     );
   }
   if (
     entries.length !== CANONICAL_TOOL_NAMES.size ||
     entries.some(([name]) => !CANONICAL_TOOL_NAMES.has(name))
   ) {
-    throw new Error("Agent registry must contain exactly sixteen canonical tools.");
+    throw new Error("Agent registry must contain exactly twenty-one canonical tools.");
   }
 
   const names = entries.map(([name]) => name);

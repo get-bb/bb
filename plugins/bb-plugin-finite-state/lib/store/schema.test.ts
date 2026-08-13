@@ -200,6 +200,45 @@ const ROW_COLUMNS = {
     "mime_type", "bytes", "withdrawn", "needs_ocr", "uploaded_at", "analyzed_by", "analyzed_at",
     "cells_extracted", "indexed_at",
   ]),
+  hw_project: [
+    "project_id", "project_version_id", "project_key", "name", "sch_path",
+    "pcb_path", "sch_hash", "pcb_hash", "kicad_version", "discovered_at",
+  ],
+  hw_artifact: [
+    "project_id", "project_version_id", "project_key", "kind", "sheet_path",
+    "path", "source_hash", "cli_version", "generated_at",
+  ],
+  hw_symbol: [
+    "project_id", "project_version_id", "project_key", "sheet_path", "reference",
+    "value", "footprint", "mpn", "manufacturer", "at_x", "at_y", "angle", "unit", "fields",
+  ],
+  hw_net: [
+    "project_id", "project_version_id", "project_key", "net_name", "nodes",
+  ],
+  hw_violation: [
+    "project_id", "project_version_id", "id", "project_key", "kind", "severity",
+    "rule", "description", "refs", "at_x", "at_y", "run_at",
+  ],
+  ground_source: [
+    "project_id", "project_version_id", "source_id", "project_key", "kind", "part",
+    "title", "path", "pages", "indexed_at", "status", "license", "redistributable",
+  ],
+  ground_chunk: [
+    "project_id", "project_version_id", "chunk_id", "source_id", "page", "kind",
+    "anchor", "text", "embedding",
+  ],
+  bench_device: [
+    "project_id", "project_version_id", "device_id", "kind", "make", "model",
+    "connection", "transport", "claimed_by", "claimed_at", "claim_scope", "last_seen",
+  ],
+  probe_run: [
+    "project_id", "project_version_id", "run_id", "script_path", "devices",
+    "hypothesis", "outcome", "artifacts", "started_at", "finished_at",
+  ],
+  build_run: [
+    "project_id", "project_version_id", "run_id", "kind", "target", "toolchain",
+    "status", "artifact", "digest", "log_path", "started_at",
+  ],
 } satisfies Record<
   (typeof SCHEMA_TABLES)[number] | (typeof SCHEMA_VIEWS)[number],
   readonly string[]
@@ -211,9 +250,14 @@ function createDb(): Database.Database {
   const db = new Database(":memory:");
   databases.push(db);
   db.pragma("foreign_keys = ON");
-  for (const statement of MIGRATIONS) db.exec(statement);
+  db.transaction(() => {
+    for (const statement of MIGRATIONS) db.exec(statement);
+  })();
   return db;
 }
+
+const PRE_AMENDMENT_MIGRATION_COUNT = 78;
+const AMD_0010_REBUILD_STATEMENT_COUNT = 22;
 
 function insertGeneration(
   db: Database.Database,
@@ -255,9 +299,10 @@ afterEach(() => {
 
 describe("shared-store-freeze", () => {
   it("applies the positional migration once and fails loudly on a preexisting base table", async () => {
-    expect(SCHEMA_VERSION).toBe(1);
+    expect(SCHEMA_VERSION).toBe(2);
     expect(MIGRATIONS).toHaveLength(
-      SCHEMA_TABLES.length + SCHEMA_INDEXES.length + SCHEMA_VIEWS.length,
+      SCHEMA_TABLES.length + SCHEMA_INDEXES.length + SCHEMA_VIEWS.length
+        + AMD_0010_REBUILD_STATEMENT_COUNT,
     );
     expect(
       MIGRATIONS.filter((statement) => /^CREATE TABLE\b/u.test(statement)).every(
@@ -305,8 +350,8 @@ describe("shared-store-freeze", () => {
     expect(names("table")).toEqual([...SCHEMA_TABLES].sort());
     expect(names("index")).toEqual([...SCHEMA_INDEXES].sort());
     expect(names("view")).toEqual([...SCHEMA_VIEWS].sort());
-    expect(SCHEMA_TABLES).toHaveLength(29);
-    expect(SCHEMA_INDEXES).toHaveLength(48);
+    expect(SCHEMA_TABLES).toHaveLength(39);
+    expect(SCHEMA_INDEXES).toHaveLength(51);
 
     const registryCacheNames = Object.values(ENTITIES).flatMap((entry) =>
       entry.class === "CACHED" ? [entry.table] : [],
@@ -322,6 +367,110 @@ describe("shared-store-freeze", () => {
         .get(storageName);
       expect(kind, storageName).toBe(storageName === "hbom_docs" ? "view" : "table");
     }
+  });
+
+  it("upgrades a populated pre-amendment matrix without row or FK loss", async () => {
+    const host = createFakePluginHost({ pluginId: "finite-state-schema-amd-0010" });
+    const db = host.bb.storage.database();
+    db.pragma("foreign_keys = ON");
+    host.bb.storage.migrate(
+      db,
+      MIGRATIONS.slice(0, PRE_AMENDMENT_MIGRATION_COUNT),
+    );
+    insertGeneration(db, "project-a", "version-a", "generation-a");
+
+    const oldValues = ["static", "emulation", "hil", "manual"] as const;
+    for (const [index, value] of oldValues.entries()) {
+      const runId = `run-${value}`;
+      const resultId = `result-${value}`;
+      db.prepare(
+        `INSERT INTO verification_runs
+           (project_id, project_version_id, generation_id, run_id, tier, matrix_col,
+            kind, trigger, host_id, thread_id, target, config, status, started_at,
+            finished_at, duration_ms, firmware_digest, job_id, log_locator, log_cursor,
+            raw, synced_at)
+         VALUES ('project-a', 'version-a', 'generation-a', ?, 'tier2', ?,
+                 'bench', 'manual', 'host-a', 'thread-a', 'target-a', '{"mode":"test"}',
+                 'completed', '2026-08-13T01:00:00Z', '2026-08-13T01:01:00Z', 60000,
+                 'sha256:firmware', ?, 'logs/run.log', 'cursor-a', '{"run":true}',
+                 '2026-08-13T01:02:00Z')`,
+      ).run(runId, value, `job-${index}`);
+      db.prepare(
+        `INSERT INTO verification_results
+           (project_id, project_version_id, generation_id, result_id, run_id,
+            requirement_key, tier, status, outcome, confidence, evidence_summary,
+            result_data, measured, executed_at, executed_by, failure_reason,
+            remediation_suggestion, fs_version_id, fs_version_name, is_latest,
+            superseded_by, sla_status, mapping_state, raw, pulled_at)
+         VALUES ('project-a', 'version-a', 'generation-a', ?, ?, 'REQ-1', ?,
+                 'verified', 'pass', 'high', 'summary', '{"answer":42}', '{"v":1}',
+                 '2026-08-13T01:01:00Z', 'runner', NULL, NULL, 'fs-v1', 'Version 1',
+                 1, NULL, 'met', 'mapped', '{"result":true}', '2026-08-13T01:02:00Z')`,
+      ).run(resultId, runId, value);
+      db.prepare(
+        `INSERT INTO verification_artifacts
+           (project_id, project_version_id, generation_id, artifact_id, run_id,
+            result_id, name, kind, locator, media_type, sha256, bytes, created_at, pulled_at)
+         VALUES ('project-a', 'version-a', 'generation-a', ?, ?, ?, 'report',
+                 'report', 'artifacts/report.json', 'application/json', 'sha256:artifact',
+                 42, '2026-08-13T01:01:00Z', '2026-08-13T01:02:00Z')`,
+      ).run(`artifact-${value}`, runId, resultId);
+      db.prepare(
+        `INSERT INTO attestations
+           (project_id, project_version_id, generation_id, attestation_id, run_id,
+            format, subject_digest, payload, signature_verified, subject_matches_run,
+            verified, created_at, pulled_at)
+         VALUES ('project-a', 'version-a', 'generation-a', ?, ?, 'in-toto',
+                 'sha256:firmware', '{"statement":true}', 1, 1, 1,
+                 '2026-08-13T01:01:00Z', '2026-08-13T01:02:00Z')`,
+      ).run(`attestation-${value}`, runId);
+    }
+
+    const snapshot = (table: string, orderBy: string) =>
+      db.prepare(`SELECT * FROM ${table} ORDER BY ${orderBy}`).all();
+    const before = {
+      runs: snapshot("verification_runs", "run_id"),
+      results: snapshot("verification_results", "result_id"),
+      artifacts: snapshot("verification_artifacts", "artifact_id"),
+      attestations: snapshot("attestations", "attestation_id"),
+    };
+
+    host.bb.storage.migrate(db, MIGRATIONS);
+
+    expect(snapshot("verification_runs", "run_id")).toEqual(before.runs);
+    expect(snapshot("verification_results", "result_id")).toEqual(before.results);
+    expect(snapshot("verification_artifacts", "artifact_id")).toEqual(before.artifacts);
+    expect(snapshot("attestations", "attestation_id")).toEqual(before.attestations);
+    expect(db.pragma("foreign_key_check")).toEqual([]);
+
+    db.prepare(
+      `INSERT INTO verification_runs
+         (project_id, project_version_id, generation_id, run_id, tier, matrix_col,
+          kind, status, raw, synced_at)
+       VALUES ('project-a', 'version-a', 'generation-a', 'run-hardware', 'tier2',
+               'hardware', 'bench', 'completed', '{}', 'now')`,
+    ).run();
+    db.prepare(
+      `INSERT INTO verification_results
+         (project_id, project_version_id, generation_id, result_id, run_id, tier,
+          status, raw, pulled_at)
+       VALUES ('project-a', 'version-a', 'generation-a', 'result-hardware',
+               'run-hardware', 'hardware', 'verified', '{}', 'now')`,
+    ).run();
+    expect(() =>
+      db.prepare(
+        `INSERT INTO verification_results
+           (project_id, project_version_id, generation_id, result_id, tier,
+            status, raw, pulled_at)
+         VALUES ('project-a', 'version-a', 'generation-a', 'result-hil2',
+                 'hil2', 'verified', '{}', 'now')`,
+      ).run(),
+    ).toThrow(/check constraint failed/i);
+
+    const appliedCount = db.prepare("SELECT count(*) FROM _bb_migrations").pluck().get();
+    host.bb.storage.migrate(db, MIGRATIONS);
+    expect(db.prepare("SELECT count(*) FROM _bb_migrations").pluck().get()).toBe(appliedCount);
+    await host.harness.lifecycle.dispose();
   });
 
   it("keeps exact snake-case row interfaces in mechanical PRAGMA parity", () => {

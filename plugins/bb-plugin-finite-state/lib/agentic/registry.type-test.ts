@@ -13,16 +13,23 @@ type Expect<Value extends true> = Value;
 export type ActionToolNamesAreExactlyClosed = Expect<
   Equal<
     ActionToolName,
-    "fs_verification_run" | "fs_bench_run" | "fs_firmware_materialize"
+    | "fs_verification_run"
+    | "fs_bench_run"
+    | "fs_firmware_materialize"
+    | "fs_hw_extract"
+    | "fs_build"
+    | "fs_flash"
+    | "fs_serial"
+    | "fs_probe"
   >
 >;
 
 const action: AgentToolClass<"fs_bench_run"> = "action";
 const read: AgentToolClass<"fs_sync_plan"> = "read";
 
-// @ts-expect-error A fourth action is outside the closed ActionToolName union.
-const fourthAction: AgentToolClass<"fs_sync_plan"> = "action";
+// @ts-expect-error A ninth action is outside the closed ActionToolName union.
+const ninthAction: AgentToolClass<"fs_sync_plan"> = "action";
 // @ts-expect-error Unknown action identifiers are rejected at compile time.
 const unknownAction: ActionToolName = "fs_other_run";
 
-void [action, read, fourthAction, unknownAction];
+void [action, read, ninthAction, unknownAction];

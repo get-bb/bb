@@ -10,6 +10,10 @@ import { registerFirmwareApp } from "./lanes/firmware/register.app.js";
 import { registerBenchApp } from "./lanes/bench/register.app.js";
 import { registerDocumentsApp } from "./lanes/documents/register.app.js";
 import { registerAgenticApp } from "./lanes/agentic/register.app.js";
+import { registerHardwareApp } from "./lanes/hardware/register.app.js";
+import { registerGroundingApp } from "./lanes/grounding/register.app.js";
+import { registerAuthoringApp } from "./lanes/authoring/register.app.js";
+import { registerDebugBenchApp } from "./lanes/debug-bench/register.app.js";
 
 export default definePluginApp((app) => {
   const ctx = createAppContext();
@@ -22,4 +26,8 @@ export default definePluginApp((app) => {
   registerBenchApp(app, ctx);
   registerDocumentsApp(app, ctx);
   registerAgenticApp(app, ctx); // cross-cutting directives (::fs-plan) + shared wiring
+  registerHardwareApp(app, ctx);
+  registerGroundingApp(app, ctx);
+  registerAuthoringApp(app, ctx);
+  registerDebugBenchApp(app, ctx);
 });
