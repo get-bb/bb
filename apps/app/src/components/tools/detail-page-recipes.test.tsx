@@ -41,7 +41,7 @@ import {
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
 import { PluginDetail } from "./PluginDetail";
-import { SkillDetailView } from "./SkillDetailView";
+import { SkillDetailView, splitMarkdownIntoChunks } from "./SkillDetailView";
 import { projectSkillsQueryKey } from "@/hooks/queries/query-keys";
 import { sdk } from "@/lib/sdk";
 
@@ -707,147 +707,98 @@ describe("Skill detail recipe", () => {
     ).toContain("text-destructive");
   });
 
-  it("keeps short skill content on one page without pagination chrome", () => {
+  it("keeps short skill content in one chunk with no sentinel or pager", () => {
     const { container } = renderSkill(["/skills/writing-voice/SKILL.md"]);
     const viewport = container.querySelector<HTMLElement>(
       "[data-skill-content-viewport]",
     );
-    const content = container.querySelector<HTMLElement>(
-      "[data-skill-content-pages]",
-    );
     expect(viewport).not.toBeNull();
-    expect(content).not.toBeNull();
-    Object.defineProperty(viewport, "clientHeight", {
-      configurable: true,
-      value: 240,
-    });
-    Object.defineProperty(content, "scrollHeight", {
-      configurable: true,
-      value: 120,
-    });
-    act(() => window.dispatchEvent(new Event("resize")));
-
     expect(viewport?.className).toContain("max-h-[60dvh]");
+    expect(viewport?.className).toContain("overflow-y-auto");
     expect(
       screen.queryByRole("navigation", { name: "Skill content pagination" }),
     ).toBeNull();
+    expect(
+      container.querySelector("[data-resource-infinite-sentinel]"),
+    ).toBeNull();
   });
 
-  it("pages through long skill content with first and last page controls", () => {
-    const { container } = renderSkill(["/skills/writing-voice/SKILL.md"]);
-    const viewport = container.querySelector<HTMLElement>(
-      "[data-skill-content-viewport]",
+  it("loads more chunks as the sentinel is reached, with no page buttons", () => {
+    const intersectionCallbacks = new Set<IntersectionObserverCallback>();
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class IntersectionObserverMock {
+        constructor(private readonly callback: IntersectionObserverCallback) {
+          intersectionCallbacks.add(this.callback);
+        }
+        observe() {}
+        unobserve() {}
+        disconnect() {
+          intersectionCallbacks.delete(this.callback);
+        }
+      },
     );
-    const content = container.querySelector<HTMLElement>(
-      "[data-skill-content-pages]",
-    );
-    expect(viewport).not.toBeNull();
-    expect(content).not.toBeNull();
-
-    Object.defineProperty(viewport, "clientHeight", {
-      configurable: true,
-      value: 240,
-    });
-    Object.defineProperty(content, "scrollHeight", {
-      configurable: true,
-      value: 720,
-    });
-    act(() => window.dispatchEvent(new Event("resize")));
-
-    const pagination = screen.getByRole("navigation", {
-      name: "Skill content pagination",
-    });
-    const previous = screen.getByRole("button", { name: /Previous/ });
-    const next = screen.getByRole("button", { name: /Next/ });
-    expect(pagination.textContent).toContain("Page 1 of 3");
-    expect(previous.getAttribute("disabled")).not.toBeNull();
-    expect(next.getAttribute("disabled")).toBeNull();
-
-    fireEvent.click(next);
-    expect(pagination.textContent).toContain("Page 2 of 3");
-    expect(content?.style.transform).toBe("translateY(-240px)");
-
-    fireEvent.click(next);
-    expect(pagination.textContent).toContain("Page 3 of 3");
-    expect(previous.getAttribute("disabled")).toBeNull();
-    expect(next.getAttribute("disabled")).not.toBeNull();
-
-    Object.defineProperty(viewport, "clientHeight", {
-      configurable: true,
-      value: 180,
-    });
-    act(() => window.dispatchEvent(new Event("resize")));
-    expect(pagination.textContent).toContain("Page 3 of 4");
-    expect(next.getAttribute("disabled")).toBeNull();
-
-    fireEvent.click(next);
-    expect(pagination.textContent).toContain("Page 4 of 4");
-    expect(content?.style.transform).toBe("translateY(-540px)");
-    expect(next.getAttribute("disabled")).not.toBeNull();
-  });
-
-  it("pages once per vertical wheel or trackpad gesture", () => {
-    vi.useFakeTimers();
     try {
-      const { container } = renderSkill(["/skills/writing-voice/SKILL.md"]);
-      const viewport = container.querySelector<HTMLElement>(
-        "[data-skill-content-viewport]",
+      // Two 121+ line sections separated by blank lines → two chunks.
+      const section = (marker: string) =>
+        `## ${marker}\n${Array.from({ length: 125 }, (_, i) => `${marker} line ${i}`).join("\n")}\n`;
+      const content = `${section("alpha")}\n${section("omega")}`;
+      const { container } = render(
+        <SkillDetailView
+          title="writing-voice"
+          path="/skills/writing-voice/SKILL.md"
+          files={["/skills/writing-voice/SKILL.md"]}
+          selectedPath="/skills/writing-voice/SKILL.md"
+          onSelectFile={() => {}}
+          contentState={{ kind: "ready", content }}
+        />,
       );
-      const content = container.querySelector<HTMLElement>(
-        "[data-skill-content-pages]",
-      );
-      expect(viewport).not.toBeNull();
-      expect(content).not.toBeNull();
 
-      Object.defineProperty(viewport, "clientHeight", {
-        configurable: true,
-        value: 240,
-      });
-      Object.defineProperty(content, "scrollHeight", {
-        configurable: true,
-        value: 720,
-      });
-      act(() => window.dispatchEvent(new Event("resize")));
-
-      const pagination = screen.getByRole("navigation", {
-        name: "Skill content pagination",
-      });
-      fireEvent.wheel(viewport!, { deltaY: -100 });
-      expect(pagination.textContent).toContain("Page 1 of 3");
-
-      // Trackpads emit several small pixel deltas. Accumulate them, then move
-      // exactly one page for the gesture even if momentum events continue.
-      fireEvent.wheel(viewport!, { deltaY: 24 });
-      expect(pagination.textContent).toContain("Page 1 of 3");
-      fireEvent.wheel(viewport!, { deltaY: 24 });
-      expect(pagination.textContent).toContain("Page 2 of 3");
-      fireEvent.wheel(viewport!, { deltaY: 100 });
-      expect(pagination.textContent).toContain("Page 2 of 3");
+      expect(screen.getByText(/alpha line 0/)).toBeTruthy();
+      expect(screen.queryByText(/omega line 0/)).toBeNull();
+      expect(
+        container.querySelector("[data-resource-infinite-sentinel]"),
+      ).not.toBeNull();
+      expect(screen.queryByRole("button", { name: /Next/ })).toBeNull();
 
       act(() => {
-        vi.advanceTimersByTime(161);
+        for (const callback of intersectionCallbacks) {
+          callback(
+            [{ isIntersecting: true } as IntersectionObserverEntry],
+            {} as IntersectionObserver,
+          );
+        }
       });
-      // Line-mode wheel input is normalized to pixels and uses the same
-      // threshold and one-page-per-gesture behavior.
-      fireEvent.wheel(viewport!, { deltaY: 3, deltaMode: 1 });
-      expect(pagination.textContent).toContain("Page 3 of 3");
 
-      // Momentum can keep moving toward the boundary, then briefly rebound in
-      // the opposite direction. Both events are still part of the gesture that
-      // moved from page 2 to page 3, so the rebound must not navigate back.
-      fireEvent.wheel(viewport!, { deltaY: 100 });
-      expect(pagination.textContent).toContain("Page 3 of 3");
-      fireEvent.wheel(viewport!, { deltaY: -40 });
-      expect(pagination.textContent).toContain("Page 3 of 3");
-
-      act(() => {
-        vi.advanceTimersByTime(161);
-      });
-      fireEvent.wheel(viewport!, { deltaY: -40 });
-      expect(pagination.textContent).toContain("Page 2 of 3");
+      expect(screen.getByText(/omega line 0/)).toBeTruthy();
+      // Everything is shown: the sentinel retires.
+      expect(
+        container.querySelector("[data-resource-infinite-sentinel]"),
+      ).toBeNull();
     } finally {
-      vi.useRealTimers();
+      vi.unstubAllGlobals();
     }
+  });
+
+  it("never splits a chunk inside a code fence", () => {
+    // A fence spanning the would-be boundary must hold the chunk open.
+    const fenced = [
+      "intro",
+      "",
+      "```bash",
+      ...Array.from({ length: 200 }, (_, i) => `command ${i}`),
+      "```",
+      "",
+      "outro",
+    ].join("\n");
+    const chunks = splitMarkdownIntoChunks(fenced);
+    for (const chunk of chunks) {
+      const fenceCount = chunk
+        .split("\n")
+        .filter((line) => line.startsWith("```")).length;
+      expect(fenceCount % 2).toBe(0);
+    }
+    expect(chunks.join("\n")).toBe(fenced);
   });
 });
 

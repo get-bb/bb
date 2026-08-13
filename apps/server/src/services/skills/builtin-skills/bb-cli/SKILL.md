@@ -146,8 +146,17 @@ message agents, or inspect projects, providers, and environments.
 - `bb skill show <skill-id> --json` returns the revision. Pass that revision,
   plus `--file`, to `bb skill update <skill-id>`. Use update or delete only when
   the list says editable.
-- Use `bb skill search [query]` for live skills.sh results. Inspect metadata and
-  the bounded file preview with `bb skill registry detail <registry-skill-id>`.
+- Use `bb skill search [query]` for live skills.sh results. With no query it
+  lists what is trending; `ranking` in the response says which leaderboard you
+  got. Install counts match the Skills browse page — lifetime totals, resolved
+  per skill on the trending ranking, where the leaderboard's own number counts
+  only a 24h window. Resolution is capped at 48 rows per page and a detail page
+  can fail to fetch, so read the two surfaces differently: the `INSTALLS`
+  column prints `—` for a row it could not resolve, while `--json` lists those
+  ids in `unresolvedInstallIds` and leaves their `installs` holding the 24h
+  figure. Every other row's `installs` is the lifetime total. Use
+  `--per-page 48` or less to avoid unresolved rows. Inspect metadata and the
+  bounded file preview with `bb skill registry detail <registry-skill-id>`.
   Install with `bb skill install <registry-skill-id>`; never infer an install
   source from a display name.
 - `bb skill install-cli-skills` copies bb's built-in CLI skills into a machine's

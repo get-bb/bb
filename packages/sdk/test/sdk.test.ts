@@ -1592,6 +1592,7 @@ describe("@bb/sdk", () => {
         body: {
           skills: [registrySkill],
           pagination: { page: 0, perPage: 24, total: 1, hasMore: false },
+          ranking: "trending",
         },
       },
       { body: { stars: 27_053 } },

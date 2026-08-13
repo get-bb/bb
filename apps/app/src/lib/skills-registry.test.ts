@@ -71,6 +71,7 @@ describe("registry skill contracts", () => {
     const page = {
       skills: [registrySkill],
       pagination: { page: 0, perPage: 12, total: 1, hasMore: false },
+      ranking: "all-time" as const,
     };
     const pageFetch = stubJsonResponse(page);
     await expect(fetchRegistrySkills({ query: "", page: 0 })).resolves.toEqual(

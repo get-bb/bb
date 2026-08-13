@@ -2,11 +2,13 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 import { Button } from "./button";
 import { Icon } from "./icon";
+import { cn } from "../../lib/utils";
 
 export const RESOURCE_LIST_PAGE_SIZE = 10;
 export const RESOURCE_GRID_PAGE_SIZE = 12;
@@ -188,6 +190,133 @@ export function useResourcePagination<Item>(
     visibleCount: paginatedItems.length,
     setPage,
   };
+}
+
+interface ResourceInfiniteItemsResult<Item> {
+  /** Every loaded page's rows, in order. */
+  items: readonly Item[];
+  total: number;
+  hasMore: boolean;
+  loadMore: () => void;
+}
+
+/**
+ * The infinite-scroll projection of {@link useResourcePagination}: the same
+ * page machinery (page size, projection reset keys), but pages accumulate as
+ * the user scrolls instead of replacing each other. Pair with
+ * {@link ResourceInfiniteScrollSentinel} at the end of the list.
+ */
+export function useResourceInfiniteItems<Item>(
+  items: readonly Item[],
+  options: ResourcePaginationOptions = {},
+): ResourceInfiniteItemsResult<Item> {
+  const pageSize = Math.max(
+    1,
+    Math.floor(options.pageSize ?? RESOURCE_LIST_PAGE_SIZE),
+  );
+  const resetKey = options.resetKey ?? "";
+  // Render-phase reset, mirroring useResourcePagination's anchor: a new
+  // projection (search, filter, sort) starts back at one page's worth. The
+  // anchor holds the item count reached through loadMore rather than a page
+  // count so a viewport remeasure that shrinks the page size never hides rows
+  // the user already scrolled through; zero means "one page's worth at the
+  // current page size", which tracks remeasures until the first loadMore.
+  const [anchor, setAnchor] = useState({ resetKey, loadedCount: 0 });
+  if (anchor.resetKey !== resetKey) {
+    setAnchor({ resetKey, loadedCount: 0 });
+  }
+  const loadedCount = anchor.resetKey === resetKey ? anchor.loadedCount : 0;
+  const visibleCount = Math.max(pageSize, loadedCount);
+  const visibleItems = useMemo(
+    () => items.slice(0, visibleCount),
+    [items, visibleCount],
+  );
+  const hasMore = items.length > visibleItems.length;
+  const loadMore = useCallback(() => {
+    setAnchor((current) => ({
+      resetKey,
+      loadedCount:
+        (current.resetKey === resetKey
+          ? Math.max(pageSize, current.loadedCount)
+          : pageSize) + pageSize,
+    }));
+  }, [pageSize, resetKey]);
+  return { items: visibleItems, total: items.length, hasMore, loadMore };
+}
+
+/**
+ * Fires `onLoadMore` when scrolled into view inside the nearest resource
+ * collection scroll viewport. Renders a small status row while more rows are
+ * loading so the list visibly grows rather than silently stalling.
+ */
+export function ResourceInfiniteScrollSentinel({
+  hasMore,
+  loading = false,
+  onLoadMore,
+  className,
+}: {
+  hasMore: boolean;
+  /** Shows the loading row and pauses further loadMore calls. */
+  loading?: boolean;
+  onLoadMore: () => void;
+  className?: string;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  // The latest callback without re-observing per render.
+  const onLoadMoreRef = useRef(onLoadMore);
+  onLoadMoreRef.current = onLoadMore;
+
+  useEffect(() => {
+    const element = ref.current;
+    if (
+      element === null ||
+      !hasMore ||
+      loading ||
+      // jsdom has no IntersectionObserver; tests drive loadMore directly.
+      typeof IntersectionObserver === "undefined"
+    ) {
+      return;
+    }
+    // The observer roots at the nearest scroll container that owns the
+    // list: collection viewports tag themselves, and other scrollers (e.g.
+    // the skill-detail content panel) opt in with data-infinite-scroll-root.
+    const root = element.closest(
+      "[data-resource-collection-scroll], [data-infinite-scroll-root]",
+    );
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          onLoadMoreRef.current();
+        }
+      },
+      {
+        root: root instanceof HTMLElement ? root : null,
+        // Start the next page before the user actually hits the end.
+        rootMargin: "240px 0px",
+      },
+    );
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [hasMore, loading]);
+
+  if (!hasMore && !loading) return null;
+  return (
+    <div
+      ref={ref}
+      data-resource-infinite-sentinel
+      className={cn("flex items-center justify-center py-3", className)}
+    >
+      {loading ? (
+        <span
+          className="text-xs text-subtle-foreground"
+          role="status"
+          aria-live="polite"
+        >
+          Loading more…
+        </span>
+      ) : null}
+    </div>
+  );
 }
 
 function scrollToResults(scrollTargetId: string | undefined): void {
