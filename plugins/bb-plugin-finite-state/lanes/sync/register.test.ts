@@ -188,9 +188,17 @@ describe("sync registration", () => {
       },
       cache: { acceptedGenerationId: pulledGenerationId },
     });
-    await expect(host.harness.behavior.callRpc("syncPlan", scope)).rejects.toMatchObject({
-      code: "handler_error",
-      message: expect.stringContaining("NOT_IMPLEMENTED"),
+    await expect(host.harness.behavior.callRpc("syncPlan", scope)).resolves.toMatchObject({
+      ...scope,
+      planId: expect.stringMatching(/^[0-9A-HJKMNP-TV-Z]{26}$/u),
+      planSha256: expect.stringMatching(/^[a-f0-9]{64}$/u),
+      baseGenerationIds: {
+        requirement: pulledGenerationId,
+        vexDecision: pulledGenerationId,
+      },
+      items: expect.any(Array),
+      total: expect.any(Number),
+      cache: { acceptedGenerationId: pulledGenerationId },
     });
     await expect(host.harness.behavior.callRpc("syncPush", {
       ...scope,

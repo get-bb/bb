@@ -4,9 +4,11 @@ import type { Json, PlatformClient } from "../../lib/remote/types.js";
 import { ENTITIES, type EntityKind } from "../../lib/sync/registry.js";
 import { pull, type EngineDeps } from "./engine/pull.js";
 import { status } from "./engine/status.js";
+import { computePlan } from "./plan/index.js";
+import { renderPlanCli } from "./plan/render-cli.js";
 
 interface CliInput {
-  verb: "pull" | "status";
+  verb: "plan" | "pull" | "status";
   surface: string | null;
   json: boolean;
   projectId: string | null;
@@ -41,8 +43,8 @@ function optionValue(args: string[], index: number, option: string): { value: st
 function parseArgs(argv: string[]): CliInput {
   const args = argv[0] === "finite-state" ? argv.slice(1) : [...argv];
   const verb = args.shift();
-  if (verb !== "pull" && verb !== "status") {
-    throw new Error("usage: bb finite-state <pull|status> [surface] [--project ID] [--version ID] [--json]");
+  if (verb !== "plan" && verb !== "pull" && verb !== "status") {
+    throw new Error("usage: bb finite-state <plan|pull|status> [surface] [--project ID] [--version ID] [--json]");
   }
   let surface: string | null = null;
   let json = false;
@@ -142,10 +144,20 @@ async function run(
     ...deps,
     worktreeRoot,
   };
-  const report = input.verb === "pull"
-    ? await pull(cliDeps, scope, kinds)
-    : await status(cliDeps, scope, kinds);
-  return { exitCode: 0, stdout: output(report, input.json), stderr: "" };
+  if (input.verb === "pull") {
+    const report = await pull(cliDeps, scope, kinds);
+    return { exitCode: 0, stdout: output(report, input.json), stderr: "" };
+  }
+  if (input.verb === "status") {
+    const report = await status(cliDeps, scope, kinds);
+    return { exitCode: 0, stdout: output(report, input.json), stderr: "" };
+  }
+  const report = await computePlan(cliDeps, scope, kinds);
+  return {
+    exitCode: 0,
+    stdout: input.json ? output(report, true) : renderPlanCli(report),
+    stderr: "",
+  };
 }
 
 /** Registers the verb-first WP-17 CLI through the plugin's sole CLI hook. */
@@ -161,6 +173,7 @@ export function registerSyncCli(
     commands: [
       { name: "pull", summary: "Pull remote entity state", usage: "pull [surface] [--project ID] [--version ID] [--json]" },
       { name: "status", summary: "Compare working, base, and upstream state", usage: "status [surface] [--project ID] [--version ID] [--json]" },
+      { name: "plan", summary: "Validate and render an ordered sync plan", usage: "plan [surface] [--project ID] [--version ID] [--json]" },
     ],
     run: (argv, context) => run(deps, platform, resolveWorktreeRoot, argv, context),
   });
