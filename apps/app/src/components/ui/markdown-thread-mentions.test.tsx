@@ -240,6 +240,27 @@ describe("MarkdownPreview thread mentions", () => {
     expect(sdk.threads.resolveMentions).not.toHaveBeenCalled();
   });
 
+  it("renders a standalone formatted raw id as a linked pill", () => {
+    renderMarkdown(
+      <MarkdownPreview
+        content="Continue in **thr_dcwivn5n8w**."
+        threadMentions={{ mentions: [], preserveSoftBreaks: true }}
+      />,
+      [
+        threadResponse({
+          id: "thr_dcwivn5n8w",
+          projectId: "proj_target",
+          title: "Formatted target",
+          titleFallback: "Formatted target",
+        }),
+      ],
+    );
+
+    expect(
+      screen.getByRole("link", { name: "Formatted target" }),
+    ).not.toBeNull();
+  });
+
   it("leaves an unresolvable exact raw-id inline-code span as code", async () => {
     const { container } = renderMarkdown(
       <MarkdownPreview
@@ -316,6 +337,37 @@ describe("MarkdownPreview thread mentions", () => {
     expect(screen.queryByRole("link")).toBeNull();
     expect(sdk.threads.get).not.toHaveBeenCalled();
     expect(sdk.threads.resolveMentions).not.toHaveBeenCalled();
+  });
+
+  it("checks raw-id boundaries across formatting and Markdown link labels", () => {
+    const id = "thr_dcwivn5n8w";
+    const content = [
+      `prefix**${id}**`,
+      `/tmp/**${id}**`,
+      `docs/**${id}**`,
+      String.raw`C:\\tmp\\**${id}**`,
+      String.raw`docs\\**${id}**`,
+      `**${id}**/logs`,
+      String.raw`**${id}**\\logs`,
+      `[prefix**${id}**](https://example.com/word)`,
+      `[/tmp/**${id}**](https://example.com/unix)`,
+      `[**${id}**/logs](https://example.com/continuation)`,
+      String.raw`[C:\\tmp\\**${id}**](https://example.com/windows)`,
+    ].join("\n\n");
+    const { container } = renderMarkdown(
+      <MarkdownPreview
+        content={content}
+        threadMentions={{ mentions: [], preserveSoftBreaks: true }}
+      />,
+      [],
+    );
+
+    expect(container.textContent).toContain(`prefix${id}`);
+    expect(container.textContent).toContain(`/tmp/${id}`);
+    expect(container.querySelector('[data-prompt-mention="true"]')).toBeNull();
+    expect(screen.getAllByRole("link")).toHaveLength(4);
+    expect(sdk.threads.resolveMentions).not.toHaveBeenCalled();
+    expect(sdk.threads.get).not.toHaveBeenCalled();
   });
 
   it("preserves the existing serialized mention behavior before a backslash", () => {
@@ -825,6 +877,26 @@ describe("MarkdownPreview thread mentions", () => {
     });
 
     const link = screen.getByRole("link", { name: "thr_2222222222" });
+    expect(link.getAttribute("href")).toBe("https://example.com");
+    expect(screen.getAllByRole("link")).toHaveLength(1);
+  });
+
+  it("preserves one external link for an unresolvable raw id in a mixed label", async () => {
+    renderMarkdown(
+      <MarkdownPreview
+        content="[Open thr_2222222222 details](https://example.com)"
+        threadMentions={{ mentions: [], preserveSoftBreaks: true }}
+      />,
+      [],
+    );
+
+    await waitFor(() => {
+      expect(sdk.threads.resolveMentions).toHaveBeenCalledTimes(1);
+    });
+
+    const link = screen.getByRole("link", {
+      name: "Open thr_2222222222 details",
+    });
     expect(link.getAttribute("href")).toBe("https://example.com");
     expect(screen.getAllByRole("link")).toHaveLength(1);
   });

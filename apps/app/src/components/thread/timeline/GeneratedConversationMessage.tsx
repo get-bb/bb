@@ -39,6 +39,7 @@ import { useThreadTitleDisplayText } from "@/components/thread/ThreadTitleMentio
 import {
   boundedMarkdownPreview,
   closeUnterminatedMarkdownCodeSpan,
+  endsInsideExactRawThreadIdCodeSpan,
   GENERATED_MESSAGE_COLLAPSED_PREVIEW_CHAR_CAP,
 } from "./conversation-message-limits.js";
 
@@ -143,10 +144,11 @@ export function generatedConversationCollapsedPreview(
   );
   const lineBreakMatch = /\r\n|\r|\n/u.exec(previewWindow);
   if (lineBreakMatch !== null) {
+    const text = previewWindow.slice(0, lineBreakMatch.index);
     return {
       hasAdditionalBodyLines: true,
-      parseAsMarkdown: true,
-      text: previewWindow.slice(0, lineBreakMatch.index),
+      parseAsMarkdown: !endsInsideExactRawThreadIdCodeSpan(text),
+      text,
       wasCapped: false,
     };
   }

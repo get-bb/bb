@@ -242,6 +242,23 @@ describe("ConversationMessageContent long user messages", () => {
     expect(container.querySelector("code")?.textContent).toContain(rawThreadId);
   });
 
+  it("does not close a capped mixed code span into an exact raw-id pill", () => {
+    const prefix = "x".repeat(USER_MESSAGE_CHAR_CAP - rawThreadId.length - 1);
+    const text = `${prefix}\`${rawThreadId} remains mixed\` tail`;
+    const { container } = renderLongUserMessage(text);
+
+    expect(screen.queryByRole("link", { name: "Should stay code" })).toBeNull();
+    expect(container.querySelector("code")).toBeNull();
+    expect(container.textContent).toContain(`\`${rawThreadId}`);
+
+    fireEvent.click(screen.getByRole("button", { name: "Show more" }));
+
+    expect(screen.queryByRole("link", { name: "Should stay code" })).toBeNull();
+    expect(container.querySelector("code")?.textContent).toBe(
+      `${rawThreadId} remains mixed`,
+    );
+  });
+
   it("preserves unmatched backticks in short and fully expanded messages", () => {
     const shortView = renderLongUserMessage("hello `world");
 

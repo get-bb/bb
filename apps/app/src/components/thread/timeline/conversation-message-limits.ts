@@ -1,3 +1,5 @@
+import { isRawThreadId } from "@bb/domain";
+
 export const USER_MESSAGE_CHAR_CAP = 4096;
 
 // Generated rows are collapsed by default, so keep their initial Markdown
@@ -13,6 +15,38 @@ export interface BoundedMarkdownPreview {
 
 function isWhitespace(value: string | undefined): boolean {
   return value !== undefined && /\s/u.test(value);
+}
+
+export function endsInsideExactRawThreadIdCodeSpan(text: string): boolean {
+  let openDelimiterLength = 0;
+  let openContentStart = -1;
+  for (let index = 0; index < text.length; index++) {
+    if (text[index] !== "`" || isEscapedBacktick(text, index)) continue;
+    let delimiterEnd = index + 1;
+    while (text[delimiterEnd] === "`") delimiterEnd += 1;
+    const delimiterLength = delimiterEnd - index;
+    if (openDelimiterLength === 0) {
+      openDelimiterLength = delimiterLength;
+      openContentStart = delimiterEnd;
+    } else if (delimiterLength === openDelimiterLength) {
+      openDelimiterLength = 0;
+      openContentStart = -1;
+    }
+    index = delimiterEnd - 1;
+  }
+  return (
+    openDelimiterLength > 0 &&
+    openContentStart >= 0 &&
+    isRawThreadId(text.slice(openContentStart))
+  );
+}
+
+function cappedMarkdownPreview(text: string): BoundedMarkdownPreview {
+  return {
+    parseAsMarkdown: !endsInsideExactRawThreadIdCodeSpan(text),
+    text,
+    wasCapped: true,
+  };
 }
 
 /**
@@ -33,7 +67,7 @@ export function boundedMarkdownPreview(
   const capSplitsToken =
     !isWhitespace(cappedText.at(-1)) && !isWhitespace(previewWindow[cap]);
   if (!capSplitsToken) {
-    return { parseAsMarkdown: true, text: cappedText, wasCapped: true };
+    return cappedMarkdownPreview(cappedText);
   }
 
   const lastWhitespaceIndex = cappedText.search(/\s(?=\S*$)/u);
@@ -41,11 +75,7 @@ export function boundedMarkdownPreview(
     return { parseAsMarkdown: false, text: cappedText, wasCapped: true };
   }
 
-  return {
-    parseAsMarkdown: true,
-    text: cappedText.slice(0, lastWhitespaceIndex + 1),
-    wasCapped: true,
-  };
+  return cappedMarkdownPreview(cappedText.slice(0, lastWhitespaceIndex + 1));
 }
 
 function isEscapedBacktick(text: string, index: number): boolean {

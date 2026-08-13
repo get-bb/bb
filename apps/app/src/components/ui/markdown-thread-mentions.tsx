@@ -68,7 +68,51 @@ function threadMentionNode(
 
 // Splits a text node on serialized mentions and raw thread ids, returning the
 // original node when neither is present so untouched text stays plain.
-function splitTextNodeOnMentions(node: Text): PhrasingContent[] {
+interface PhrasingTextContext {
+  offset: number;
+  text: string;
+}
+
+function collectPhrasingTextContexts(
+  tree: Nodes,
+): WeakMap<object, PhrasingTextContext> {
+  const contexts = new WeakMap<object, PhrasingTextContext>();
+  visit(tree, (node) => {
+    if (
+      node.type !== "paragraph" &&
+      node.type !== "heading" &&
+      node.type !== "tableCell"
+    ) {
+      return;
+    }
+
+    const leaves: Array<{ node: InlineCode | Text; offset: number }> = [];
+    let visibleText = "";
+    visit(node, (descendant) => {
+      if (descendant.type === "text" || descendant.type === "inlineCode") {
+        leaves.push({ node: descendant, offset: visibleText.length });
+        visibleText += descendant.value;
+        return;
+      }
+      if (descendant.type === "image" || descendant.type === "imageReference") {
+        visibleText += descendant.alt ?? "";
+        return;
+      }
+      if (descendant.type === "break") {
+        visibleText += "\n";
+      }
+    });
+    for (const leaf of leaves) {
+      contexts.set(leaf.node, { offset: leaf.offset, text: visibleText });
+    }
+  });
+  return contexts;
+}
+
+function splitTextNodeOnMentions(
+  node: Text,
+  context: PhrasingTextContext | undefined,
+): PhrasingContent[] {
   const { value } = node;
   THREAD_MENTION_PATTERN.lastIndex = 0;
   const replacements: PhrasingContent[] = [];
@@ -79,14 +123,20 @@ function splitTextNodeOnMentions(node: Text): PhrasingContent[] {
     const rawThreadId = match[2];
     const threadId = serializedThreadId ?? rawThreadId;
     const matchEnd = match.index + match[0].length;
+    const boundaryText = rawThreadId === undefined ? value : context?.text;
+    const boundaryStart =
+      rawThreadId === undefined
+        ? match.index
+        : (context?.offset ?? 0) + match.index;
+    const boundaryEnd = boundaryStart + match[0].length;
     if (
       threadId === undefined ||
       !(rawThreadId === undefined
         ? isMentionBoundary(value, match.index)
-        : isRawThreadIdBoundary(value, match.index)) ||
+        : isRawThreadIdBoundary(boundaryText ?? value, boundaryStart)) ||
       !(rawThreadId === undefined
         ? isMentionEndBoundary(value, matchEnd)
-        : isRawThreadIdEndBoundary(value, matchEnd))
+        : isRawThreadIdEndBoundary(boundaryText ?? value, boundaryEnd))
     ) {
       continue;
     }
@@ -243,6 +293,7 @@ function isDirectiveMentionEndBoundary(parent: Parent, index: number): boolean {
 export function remarkThreadMentions() {
   return (tree: Nodes): void => {
     const authoredMarkdownLinkNodes = collectAuthoredMarkdownLinkNodes(tree);
+    const phrasingTextContexts = collectPhrasingTextContexts(tree);
     visit(
       tree,
       "inlineCode",
@@ -251,7 +302,15 @@ export function remarkThreadMentions() {
           parent === undefined ||
           index === undefined ||
           authoredMarkdownLinkNodes.has(node) ||
-          !isRawThreadId(node.value)
+          !isRawThreadId(node.value) ||
+          !isRawThreadIdBoundary(
+            phrasingTextContexts.get(node)?.text ?? node.value,
+            phrasingTextContexts.get(node)?.offset ?? 0,
+          ) ||
+          !isRawThreadIdEndBoundary(
+            phrasingTextContexts.get(node)?.text ?? node.value,
+            (phrasingTextContexts.get(node)?.offset ?? 0) + node.value.length,
+          )
         ) {
           return;
         }
@@ -271,7 +330,10 @@ export function remarkThreadMentions() {
       ) {
         return;
       }
-      const replacements = splitTextNodeOnMentions(node);
+      const replacements = splitTextNodeOnMentions(
+        node,
+        phrasingTextContexts.get(node),
+      );
       if (replacements.length === 1 && replacements[0] === node) {
         return;
       }

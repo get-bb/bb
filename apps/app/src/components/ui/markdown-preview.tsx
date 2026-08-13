@@ -99,7 +99,7 @@ import remarkDirective from "remark-directive";
 import { PromptMentionPill } from "@/components/thread/timeline/ConversationMessageMentions.js";
 import {
   RawThreadMentionBatchProvider,
-  useRawThreadMentionResource,
+  useRawThreadMentionResources,
 } from "@/components/thread/ThreadTitleMentions.js";
 
 export interface MarkdownPreviewProps {
@@ -1032,72 +1032,145 @@ function buildMarkdownComponents({
   promptMentions,
   messageDirectives,
 }: BuildMarkdownComponentsArgs): Components {
-  function RawThreadIdMarkdownLink({
-    threadId,
-    ...anchorProps
-  }: Omit<MarkdownAnchorProps, "children"> & { threadId: string }) {
-    const resource = useRawThreadMentionResource(threadId);
-    if (resource === null) {
-      return (
-        <MarkdownAnchor
-          {...anchorProps}
-          linkRouting={linkRouting}
-          rewriteLocalhostLinks={rewriteLocalhostLinks}
-        >
-          {threadId}
-        </MarkdownAnchor>
-      );
-    }
-    return <PromptMentionPill resource={resource} serializedText={threadId} />;
+  interface RawThreadIdLabelCandidate {
+    end: number;
+    start: number;
+    threadId: string;
   }
 
-  function labelContainsRawThreadId(node: ReactNode): boolean {
-    if (typeof node === "string") {
-      return splitRawThreadIdsInText(node).some(
-        (segment) => segment.rawThreadId !== null,
-      );
+  function flattenMarkdownLinkLabel(node: ReactNode): {
+    codeRanges: ReadonlyArray<{ end: number; start: number }>;
+    text: string;
+  } {
+    const codeRanges: Array<{ end: number; start: number }> = [];
+    let text = "";
+    const append = (child: ReactNode): void => {
+      if (typeof child === "string" || typeof child === "number") {
+        text += String(child);
+        return;
+      }
+      if (!isValidElement(child)) {
+        Children.forEach(child, append);
+        return;
+      }
+      const element = child as ReactElement<{ children?: ReactNode }>;
+      const isCode =
+        element.type === "code" || element.type === MarkdownCodeRenderer;
+      const start = text.length;
+      append(element.props.children);
+      if (isCode && text.length > start) {
+        codeRanges.push({ start, end: text.length });
+      }
+    };
+    append(node);
+    return { codeRanges, text };
+  }
+
+  function rawThreadIdLabelCandidates(
+    node: ReactNode,
+  ): RawThreadIdLabelCandidate[] {
+    const flattened = flattenMarkdownLinkLabel(node);
+    const candidates: RawThreadIdLabelCandidate[] = [];
+    let offset = 0;
+    for (const segment of splitRawThreadIdsInText(flattened.text)) {
+      const start = offset;
+      const end = start + segment.text.length;
+      offset = end;
+      if (
+        segment.rawThreadId === null ||
+        flattened.codeRanges.some(
+          (range) => start < range.end && end > range.start,
+        )
+      ) {
+        continue;
+      }
+      candidates.push({ start, end, threadId: segment.rawThreadId });
     }
-    if (!isValidElement(node)) {
-      return Children.toArray(node).some(labelContainsRawThreadId);
-    }
-    if (node.type === "code" || node.type === MarkdownCodeRenderer) {
-      return false;
-    }
-    return labelContainsRawThreadId(
-      (node.props as { children?: ReactNode }).children,
-    );
+    return candidates;
   }
 
   function renderLiftedMarkdownLinkLabel(
     node: ReactNode,
     anchorProps: Omit<MarkdownAnchorProps, "children">,
+    candidates: readonly RawThreadIdLabelCandidate[],
+    resourceById: ReadonlyMap<string, PromptTextMention["resource"]>,
+    cursor: { value: number },
   ): ReactNode {
-    if (typeof node === "string") {
-      return splitRawThreadIdsInText(node).map((segment, index) =>
-        segment.rawThreadId === null ? (
+    if (typeof node === "string" || typeof node === "number") {
+      const text = String(node);
+      const start = cursor.value;
+      const end = start + text.length;
+      cursor.value = end;
+      const containedCandidates = candidates.filter(
+        (candidate) => candidate.start >= start && candidate.end <= end,
+      );
+      if (containedCandidates.length === 0) {
+        return (
           <MarkdownAnchor
-            key={`text:${index}`}
             {...anchorProps}
             linkRouting={linkRouting}
             rewriteLocalhostLinks={rewriteLocalhostLinks}
           >
-            {segment.text}
+            {text}
           </MarkdownAnchor>
-        ) : (
-          <RawThreadIdMarkdownLink
-            key={`${segment.rawThreadId}:${index}`}
+        );
+      }
+      const rendered: ReactNode[] = [];
+      let localCursor = 0;
+      for (const candidate of containedCandidates) {
+        const candidateStart = candidate.start - start;
+        const candidateEnd = candidate.end - start;
+        if (candidateStart > localCursor) {
+          rendered.push(
+            <MarkdownAnchor
+              key={`text:${localCursor}`}
+              {...anchorProps}
+              linkRouting={linkRouting}
+              rewriteLocalhostLinks={rewriteLocalhostLinks}
+            >
+              {text.slice(localCursor, candidateStart)}
+            </MarkdownAnchor>,
+          );
+        }
+        const resource = resourceById.get(candidate.threadId);
+        if (resource !== undefined) {
+          rendered.push(
+            <PromptMentionPill
+              key={`${candidate.threadId}:${candidateStart}`}
+              resource={resource}
+              serializedText={candidate.threadId}
+            />,
+          );
+        }
+        localCursor = candidateEnd;
+      }
+      if (localCursor < text.length) {
+        rendered.push(
+          <MarkdownAnchor
+            key={`text:${localCursor}`}
             {...anchorProps}
-            threadId={segment.rawThreadId}
-          />
-        ),
-      );
+            linkRouting={linkRouting}
+            rewriteLocalhostLinks={rewriteLocalhostLinks}
+          >
+            {text.slice(localCursor)}
+          </MarkdownAnchor>,
+        );
+      }
+      return rendered;
     }
     if (!isValidElement(node)) {
       return Children.map(node, (child) =>
-        renderLiftedMarkdownLinkLabel(child, anchorProps),
+        renderLiftedMarkdownLinkLabel(
+          child,
+          anchorProps,
+          candidates,
+          resourceById,
+          cursor,
+        ),
       );
     }
     if (node.type === "code" || node.type === MarkdownCodeRenderer) {
+      cursor.value += flattenMarkdownLinkLabel(node).text.length;
       return (
         <MarkdownAnchor
           {...anchorProps}
@@ -1112,14 +1185,45 @@ function buildMarkdownComponents({
     return cloneElement(
       element,
       undefined,
-      renderLiftedMarkdownLinkLabel(element.props.children, anchorProps),
+      renderLiftedMarkdownLinkLabel(
+        element.props.children,
+        anchorProps,
+        candidates,
+        resourceById,
+        cursor,
+      ),
     );
   }
 
   function MarkdownLink(props: MarkdownAnchorProps) {
     const { children, ...anchorProps } = props;
-    if (threadMentions !== undefined && labelContainsRawThreadId(children)) {
-      return <>{renderLiftedMarkdownLinkLabel(children, anchorProps)}</>;
+    const candidates = useMemo(
+      () =>
+        threadMentions === undefined
+          ? []
+          : rawThreadIdLabelCandidates(children),
+      [children],
+    );
+    const candidateThreadIds = useMemo(
+      () => [...new Set(candidates.map((candidate) => candidate.threadId))],
+      [candidates],
+    );
+    const resourceById = useRawThreadMentionResources(candidateThreadIds);
+    const resolvedCandidates = candidates.filter((candidate) =>
+      resourceById.has(candidate.threadId),
+    );
+    if (resolvedCandidates.length > 0) {
+      return (
+        <>
+          {renderLiftedMarkdownLinkLabel(
+            children,
+            anchorProps,
+            resolvedCandidates,
+            resourceById,
+            { value: 0 },
+          )}
+        </>
+      );
     }
     return (
       <MarkdownAnchor

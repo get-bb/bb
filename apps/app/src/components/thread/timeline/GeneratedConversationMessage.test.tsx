@@ -450,6 +450,53 @@ describe("GeneratedConversationMessage markdown body", () => {
     ).toBeNull();
   });
 
+  it("does not close a capped mixed code span into an exact raw-id pill", () => {
+    const prefix = "x".repeat(
+      GENERATED_MESSAGE_COLLAPSED_PREVIEW_CHAR_CAP - RAW_THREAD_ID.length - 1,
+    );
+    const text = `${prefix}\`${RAW_THREAD_ID} remains mixed\` tail`;
+    const { container } = renderAgentMessage(text);
+
+    expect(
+      screen.queryByRole("link", { name: "Raw agent mention target" }),
+    ).toBeNull();
+    expect(container.querySelector("code")).toBeNull();
+    expect(container.textContent).toContain(`\`${RAW_THREAD_ID}`);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /Message from Worker/u }),
+    );
+
+    expect(
+      screen.queryByRole("link", { name: "Raw agent mention target" }),
+    ).toBeNull();
+    expect(container.querySelector("code")?.textContent).toBe(
+      `${RAW_THREAD_ID} remains mixed`,
+    );
+  });
+
+  it("does not close a first-line mixed code span into an exact raw-id pill", () => {
+    const text = `\`${RAW_THREAD_ID}\nremains mixed\``;
+    const { container } = renderAgentMessage(text);
+
+    expect(
+      screen.queryByRole("link", { name: "Raw agent mention target" }),
+    ).toBeNull();
+    expect(container.querySelector("code")).toBeNull();
+    expect(container.textContent).toContain(`\`${RAW_THREAD_ID}`);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /Message from Worker/u }),
+    );
+
+    expect(
+      screen.queryByRole("link", { name: "Raw agent mention target" }),
+    ).toBeNull();
+    expect(container.querySelector("code")?.textContent).toBe(
+      `${RAW_THREAD_ID} remains mixed`,
+    );
+  });
+
   it("preserves an unmatched backtick in an untruncated agent preview", () => {
     const { container } = renderAgentMessage("hello `world");
 

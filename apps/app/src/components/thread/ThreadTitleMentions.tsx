@@ -535,6 +535,54 @@ export function useRawThreadMentionResource(
   return batch.resourceById.get(threadId) ?? null;
 }
 
+/** Resolves several raw ids without creating one hook/subscription per label. */
+export function useRawThreadMentionResources(
+  threadIds: readonly string[],
+): ReadonlyMap<string, PromptMentionResource> {
+  const resources = useContext(ThreadTitleMentionResourcesContext);
+  const queryClient = useContext(QueryClientContext);
+  const batch = useContext(RawThreadMentionBatchContext);
+  useEffect(() => {
+    for (const threadId of threadIds) {
+      const sidebarResource = threadMentionResource(threadId, resources);
+      const cachedThread = queryClient?.getQueryData<ThreadResponse>(
+        threadQueryKey(threadId),
+      );
+      if (sidebarResource === null && cachedThread === undefined) {
+        batch.register(threadId);
+      }
+    }
+  }, [batch, queryClient, resources, threadIds]);
+
+  return useMemo(() => {
+    const resourceById = new Map<string, PromptMentionResource>();
+    for (const threadId of threadIds) {
+      const sidebarResource = threadMentionResource(threadId, resources);
+      if (sidebarResource !== null) {
+        resourceById.set(threadId, sidebarResource);
+        continue;
+      }
+      const cachedThread = queryClient?.getQueryData<ThreadResponse>(
+        threadQueryKey(threadId),
+      );
+      if (cachedThread !== undefined) {
+        resourceById.set(threadId, {
+          kind: "thread",
+          threadId,
+          projectId: cachedThread.projectId,
+          label: getThreadDisplayTitle(cachedThread),
+        });
+        continue;
+      }
+      const batchResource = batch.resourceById.get(threadId);
+      if (batchResource !== undefined) {
+        resourceById.set(threadId, batchResource);
+      }
+    }
+    return resourceById;
+  }, [batch.resourceById, queryClient, resources, threadIds]);
+}
+
 function RawThreadTitleMention({ threadId }: { threadId: string }) {
   const resource = useRawThreadMentionResource(threadId);
   if (resource === null) {
