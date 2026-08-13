@@ -964,9 +964,12 @@ export function createManagedPluginArtifacts(
         artifactId: existingArtifact.id,
       };
     }
+    // Both staging trees stay beside the checkout, never inside it: a nested
+    // plugin root is a directory of the checkout, and a clone dropped in there
+    // would join the plugin root of the repository root plugin.
     const stagingDir = args.promote
       ? `${targetDir}.staging`
-      : `${args.row.rootDir}.update-staging-${randomUUID()}`;
+      : `${targetDir}.update-staging-${randomUUID()}`;
     await rm(stagingDir, { recursive: true, force: true });
     await mkdir(dirname(stagingDir), { recursive: true });
     try {
