@@ -293,6 +293,30 @@ describe("requirements traceability backend", () => {
 });
 
 describe("requirements traceability UI", () => {
+  it("offers traceability only from requirements and navigates to its canonical route", async () => {
+    const { ProductSecurityHeader } = await import("../../ui/ProductSecurityHeader.js");
+    const requirementsHeader = renderSlot(
+      { component: ProductSecurityHeader },
+      { subPath: "requirements" },
+    );
+    fireEvent.click(requirementsHeader.getByRole("button", { name: "Traceability" }));
+    expect(requirementsHeader.inspection.navigateCalls).toContainEqual(expect.objectContaining({
+      method: "toPluginPanel",
+      path: "product-security",
+      options: { subPath: "requirements/trace" },
+    }));
+    requirementsHeader.lifecycle.unmount();
+
+    for (const subPath of ["requirements/trace", "tara"]) {
+      const hiddenHeader = renderSlot(
+        { component: ProductSecurityHeader },
+        { subPath },
+      );
+      expect(hiddenHeader.queryByRole("button", { name: "Traceability" })).toBeNull();
+      hiddenHeader.lifecycle.unmount();
+    }
+  });
+
   it("renders an unconfigured self-fetch state without calling RPC", async () => {
     const { SelfFetchingTraceRail } = await import("./index.js");
     const rpc = vi.fn(() => rpcPage({ card: card(), facets, trace: traceModel() }));
