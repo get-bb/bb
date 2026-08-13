@@ -1647,7 +1647,7 @@ describe("acp bridge", () => {
     expect(notifications("acp/turn/completed")).toHaveLength(1);
   });
 
-  it("cancels once and delivers stacked steers on the same turn", async () => {
+  it("delivers stacked steers on the same turn", async () => {
     const { bbThreadId, providerThreadId } = await startThread();
     const turnId = sendRequest("turn/start", {
       threadId: providerThreadId,
@@ -1674,6 +1674,39 @@ describe("acp bridge", () => {
       stopReason: "end_turn",
     });
     expect(agentMessageTexts()).toContain("echo:first-steer");
+    expect(agentMessageTexts()).toContain("echo:second-steer");
+    expect(notifications("acp/turn/started")).toHaveLength(1);
+    expect(notifications("acp/turn/completed")).toHaveLength(1);
+  });
+
+  it("cancels a stacked steer prompt that also hangs", async () => {
+    const { bbThreadId, providerThreadId } = await startThread();
+    const turnId = sendRequest("turn/start", {
+      threadId: providerThreadId,
+      input: [{ type: "text", text: "hang", mentions: [] }],
+    });
+    await waitForResponse(turnId);
+
+    // The first steer also hangs, so the second steer must trigger a second
+    // cancel instead of waiting for a prompt that never finishes.
+    const firstSteerId = sendRequest("turn/steer", {
+      threadId: providerThreadId,
+      expectedTurnId: "turn-1",
+      input: [{ type: "text", text: "hang again", mentions: [] }],
+    });
+    const secondSteerId = sendRequest("turn/steer", {
+      threadId: providerThreadId,
+      expectedTurnId: "turn-1",
+      input: [{ type: "text", text: "second-steer", mentions: [] }],
+    });
+    await waitForResponse(firstSteerId);
+    await waitForResponse(secondSteerId);
+
+    const completed = await waitForTurnCompleted();
+    expect(completed.params).toEqual({
+      threadId: bbThreadId,
+      stopReason: "end_turn",
+    });
     expect(agentMessageTexts()).toContain("echo:second-steer");
     expect(notifications("acp/turn/started")).toHaveLength(1);
     expect(notifications("acp/turn/completed")).toHaveLength(1);

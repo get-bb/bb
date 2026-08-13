@@ -1683,7 +1683,7 @@ function runTurn(session: AcpThreadSession, firstInput: PromptInput[]): void {
       session.cancelRequested = false;
       try {
         session.promptRequestPending = true;
-        const result = await session.connection.request({
+        const promptResult = session.connection.request({
           method: "session/prompt",
           params: {
             sessionId: session.providerThreadId,
@@ -1691,6 +1691,12 @@ function runTurn(session: AcpThreadSession, firstInput: PromptInput[]): void {
           },
           resultSchema: acpPromptResultSchema,
         });
+        // A steer that stacked behind the cancelled prompt still needs its own
+        // cancel; otherwise this prompt can hang and strand the later input.
+        if (session.queuedInputs.length > 0) {
+          requestSteerCancel(session);
+        }
+        const result = await promptResult;
         stopReason = result.stopReason;
       } catch (error) {
         session.promptRequestPending = false;
