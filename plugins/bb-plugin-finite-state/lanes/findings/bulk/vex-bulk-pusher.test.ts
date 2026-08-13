@@ -422,7 +422,7 @@ describe("WP-29 VEX bulk pusher", () => {
     expect(reads).toEqual({ details: 2, pages: 0, rows: 0 });
   });
 
-  it("suppresses a cached noop without any Platform read or write", async () => {
+  it("suppresses a cached noop write only after targeted Platform proof", async () => {
     const state = fixture();
     const cve = "CVE-2026-2926";
     const key = insertFinding(state, {
@@ -439,7 +439,53 @@ describe("WP-29 VEX bulk pusher", () => {
 
     expect(result[0]).toMatchObject({ state: "noop" });
     expect(batches).toEqual([]);
-    expect(reads).toEqual({ details: 0, pages: 0, rows: 0 });
+    expect(reads).toEqual({ details: 1, pages: 0, rows: 0 });
+  });
+
+  it("keeps a cached noop dirty when targeted Platform proof disagrees", async () => {
+    const state = fixture();
+    const cve = "CVE-2026-2927";
+    const key = insertFinding(state, {
+      id: "29271", cve, purl: "pkg:npm/cached-drift@1.0.0", name: "cached-drift", tuple: DESIRED,
+    });
+    insertGuard(state, key, cve);
+    const remote = state.details.get("29271");
+    if (remote === undefined) throw new Error("Missing cached-drift fixture");
+    remote["vexStatus"] = "FALSE_POSITIVE";
+    remote["vexReason"] = "changed remotely after the accepted pull";
+    const persisted = await persistPlan(state, [item(key, cve)], "01KWP290000000000000000006");
+    const batches: number[] = [];
+    const reads: ReadStats = { details: 0, pages: 0, rows: 0 };
+
+    const report = await push({
+      db: state.db,
+      worktreeRoot: persisted.root,
+      pushers: [createVexBulkPusher({
+        db: state.db,
+        platform: successfulPlatform(state, batches, reads, 20_000),
+        publish: () => undefined,
+      })],
+      createRunId: () => "wp29-cached-drift",
+    }, {
+      scope: { projectId: PROJECT, projectVersionId: PV },
+      planId: persisted.plan.planId,
+      expectedPlanSha256: persisted.plan.planSha256,
+      expectedBaseStateSha256: persisted.plan.baseStateSha256,
+      confirmed: true,
+    });
+
+    expect(report.summary).toEqual({ total: 1, applied: 0, failed: 1, skipped: 0 });
+    expect(report.items[0]?.error).toMatchObject({
+      code: "VEX_READ_BACK_MISMATCH",
+      retryable: false,
+    });
+    expect(report.requiresPull).toBe(true);
+    expect(batches).toEqual([]);
+    expect(reads).toEqual({ details: 1, pages: 0, rows: 0 });
+    expect(new BaseSnapshotStore(state.db).getAccepted(PROJECT, PV, "vexDecision", key)).toBeNull();
+    expect(state.db.prepare(
+      "SELECT local_state FROM overlay_index WHERE stable_key = ?",
+    ).get(key)).toEqual({ local_state: "dirty" });
   });
 
   it("groups mixed project versions, set/clear operations, and distinct tuples separately", () => {

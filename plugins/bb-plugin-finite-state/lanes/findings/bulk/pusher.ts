@@ -308,12 +308,17 @@ function rejectContendedTargets(prepared: readonly PreparedItem[]): void {
   }
 }
 
-function detailsByPv(prepared: readonly PreparedItem[], state: "pending" | "provisional"): Map<string, Set<string>> {
+function detailsByPv(prepared: readonly PreparedItem[], state: "pending" | "verification"): Map<string, Set<string>> {
   const result = new Map<string, Set<string>>();
   for (const owner of prepared) {
     if (owner.accumulator.terminal !== null) continue;
     for (const target of owner.targets) {
-      if (owner.accumulator.state(target.findingId) !== state) continue;
+      const targetState = owner.accumulator.state(target.findingId);
+      if (
+        state === "pending"
+          ? targetState !== "pending"
+          : targetState !== "provisional" && targetState !== "cached-noop"
+      ) continue;
       const ids = result.get(target.pvId) ?? new Set<string>();
       ids.add(target.findingId);
       result.set(target.pvId, ids);
@@ -380,7 +385,7 @@ async function preflight(
         });
         onProgress(1);
       } else if (sameVexTuple(cachedTuple, owner.tuple)) {
-        owner.accumulator.markNoop(target.findingId);
+        owner.accumulator.markCachedNoop(target.findingId);
         onProgress(1);
       }
     }
@@ -503,24 +508,24 @@ async function sendBatches(
   }
 }
 
-async function verifyProvisional(
+async function verifyTargets(
   context: PushContext,
   prepared: readonly PreparedItem[],
   onProgress: (processed: number) => void,
 ): Promise<void> {
   const snapshots = new Map<string, Map<string, Record<string, Json>>>();
-  for (const [pvId, ids] of detailsByPv(prepared, "provisional")) {
+  for (const [pvId, ids] of detailsByPv(prepared, "verification")) {
     try {
       snapshots.set(pvId, await getTargetDetails(context.platform, pvId, ids, context.signal, onProgress));
     } catch (error: unknown) {
       const detail = errorDetail(error, "VEX_READ_BACK_FAILED");
-      for (const owner of prepared) for (const findingId of owner.accumulator.provisionalTargets()) {
+      for (const owner of prepared) for (const findingId of owner.accumulator.verificationTargets()) {
         if (owner.item.projectVersionId === pvId) owner.accumulator.markFailed(findingId, detail);
       }
     }
   }
   for (const owner of prepared) {
-    for (const findingId of owner.accumulator.provisionalTargets()) {
+    for (const findingId of owner.accumulator.verificationTargets()) {
       const pvId = owner.item.projectVersionId;
       if (pvId === null) throw new Error("VEX project version disappeared");
       try {
@@ -539,7 +544,7 @@ async function verifyProvisional(
             retryable: false,
           });
         } else {
-          owner.accumulator.markSucceeded(findingId);
+          owner.accumulator.markVerified(findingId);
         }
       } catch (error: unknown) {
         owner.accumulator.markFailed(findingId, errorDetail(error, "VEX_READ_BACK_FAILED"));
@@ -568,7 +573,7 @@ export async function pushVexItems(context: PushContext, items: PlanItem[]): Pro
   };
   await preflight(context, prepared, count => progress(count));
   await sendBatches(context, prepared, count => progress(count));
-  await verifyProvisional(context, prepared, count => progress(count));
+  await verifyTargets(context, prepared, count => progress(count));
   progress(totalWork - processed, true);
   return prepared.map((owner) => owner.accumulator.result());
 }

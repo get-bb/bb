@@ -19,7 +19,7 @@ export interface VexApplyResult {
   errors: VexApplyError[];
 }
 
-type TargetState = "pending" | "noop" | "provisional" | "succeeded" | "failed";
+type TargetState = "pending" | "cached-noop" | "noop" | "provisional" | "succeeded" | "failed";
 
 export class VexItemAccumulator {
   readonly #states = new Map<string, TargetState>();
@@ -59,12 +59,16 @@ export class VexItemAccumulator {
     this.#states.set(findingId, "noop");
   }
 
+  markCachedNoop(findingId: string): void {
+    this.#states.set(findingId, "cached-noop");
+  }
+
   markProvisional(findingId: string): void {
     this.#states.set(findingId, "provisional");
   }
 
-  markSucceeded(findingId: string): void {
-    this.#states.set(findingId, "succeeded");
+  markVerified(findingId: string): void {
+    this.#states.set(findingId, this.#states.get(findingId) === "cached-noop" ? "noop" : "succeeded");
   }
 
   markFailed(findingId: string, error: VexApplyError): void {
@@ -101,8 +105,10 @@ export class VexItemAccumulator {
     return [...this.#states].filter(([, state]) => state === "pending").map(([findingId]) => findingId);
   }
 
-  provisionalTargets(): string[] {
-    return [...this.#states].filter(([, state]) => state === "provisional").map(([findingId]) => findingId);
+  verificationTargets(): string[] {
+    return [...this.#states]
+      .filter(([, state]) => state === "provisional" || state === "cached-noop")
+      .map(([findingId]) => findingId);
   }
 
   result(): VexApplyResult {
