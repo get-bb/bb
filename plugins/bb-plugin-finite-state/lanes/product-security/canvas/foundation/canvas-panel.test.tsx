@@ -90,6 +90,50 @@ function taraPage(input: unknown, stale = false) {
   return { items: [], total: 0, next: null, cache: pageCache };
 }
 
+function requirementsPage() {
+  return {
+    items: [{
+      projectId: "project-1",
+      projectVersionId: null,
+      kind: "requirement",
+      key: "REQ-secure-update",
+      label: "REQ-secure-update",
+      fields: {
+        requirement: {
+          schema: "fs-requirement/v1",
+          id: "REQ-secure-update",
+          req_type: "security",
+          priority: "P1",
+          status: "draft",
+          ears: {
+            pattern: "ubiquitous",
+            text: "The gateway SHALL reject unsigned firmware",
+            parts: { system: "gateway", response: "reject unsigned firmware" },
+          },
+          source_description: "Protect the update trust boundary.",
+          mitigations: [],
+          controls: [],
+          standards: [],
+          verification: [],
+        },
+        evidenceState: "not_run",
+        stale: false,
+        local: true,
+        tiers: [
+          { tier: "static", state: "not_run", count: 0 },
+          { tier: "emulation", state: "not_run", count: 0 },
+          { tier: "hil", state: "not_run", count: 0 },
+          { tier: "manual", state: "not_run", count: 0 },
+        ],
+        sourceSha256: null,
+      },
+    }],
+    total: 1,
+    next: null,
+    cache,
+  };
+}
+
 const observedElements = new WeakSet<Element>();
 
 class CanvasResizeObserver implements ResizeObserver {
@@ -241,17 +285,21 @@ async function productSecurityPanel() {
 }
 
 describe("WP-31 bb panel qualification", () => {
-  it("registers three subpaths and does not read TARA on another tab", async () => {
+  it("registers three subpaths and self-loads requirements without reading TARA", async () => {
     const panel = await productSecurityPanel();
     const slot = renderSlot(
       panel,
       { subPath: "requirements" },
-      { context: { projectId: "project-1", threadId: null } },
+      {
+        context: { projectId: "project-1", threadId: null },
+        rpc: { requirementsList: () => requirementsPage() },
+      },
     );
-    expect(
-      await slot.findByText("Requirements foundation reserved"),
-    ).toBeTruthy();
-    expect(slot.inspection.rpcCalls).toEqual([]);
+    expect(await slot.findByText("REQ-secure-update")).toBeTruthy();
+    expect(slot.getByLabelText("Evidence status: Not run")).toBeTruthy();
+    expect(slot.inspection.rpcCalls.map((call) => call.method)).toEqual([
+      "requirementsList",
+    ]);
     expect(slot.getByRole("button", { name: "TARA" })).toBeTruthy();
     expect(slot.getByRole("button", { name: "Requirements" })).toBeTruthy();
     expect(slot.getByRole("button", { name: "Verifications" })).toBeTruthy();
