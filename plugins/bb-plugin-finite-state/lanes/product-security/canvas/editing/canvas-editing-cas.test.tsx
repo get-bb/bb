@@ -2,14 +2,20 @@ import { createHash } from "node:crypto";
 import { basename, dirname } from "node:path";
 import { createFakePluginHost } from "@bb/plugin-sdk/testing";
 import { afterEach, describe, expect, it } from "vitest";
+import { createPluginContext } from "../../../../lib/context.js";
+import { registerCanvasEditingBackend } from "./backend.js";
 import {
   casRemoveCanvasFile,
+  canvasDeletedMarkerKey,
   createSdkCanvasFileStore,
   reclaimCanvasDeleteTombstones,
   serializeCanvasEntity,
   type CanvasProjectSource,
 } from "./writer.js";
-import { parseArchitectureEntity } from "./schema.js";
+import {
+  architectureEntityPayload,
+  parseArchitectureEntity,
+} from "./schema.js";
 
 const hosts: Array<ReturnType<typeof createFakePluginHost>> = [];
 const source: CanvasProjectSource = { hostId: "host-1", path: "/workspace" };
@@ -42,6 +48,12 @@ function fakeFiles(
   const host = createFakePluginHost({
     pluginId: `finite-state-cas-${hosts.length}`,
     sdk: {
+      projects: {
+        get: ({ projectId }) => ({
+          id: projectId,
+          sources: [{ ...source, isDefault: true }],
+        }),
+      },
       files: {
         list: ({ path }) => ({
           files: [...files.keys()]
@@ -78,6 +90,19 @@ function fakeFiles(
         remove: ({ path }) => {
           if (!files.delete(path)) throw missing(path);
           return { ok: true as const };
+        },
+        write: ({ path, content, expectedSha256 }) => {
+          const current = files.get(path);
+          const currentSha256 = current === undefined ? null : hash(current);
+          if (currentSha256 !== expectedSha256) {
+            return { outcome: "conflict" as const, currentSha256 };
+          }
+          files.set(path, content);
+          return {
+            outcome: "written" as const,
+            sha256: hash(content),
+            sizeBytes: content.length,
+          };
         },
       },
     },
@@ -194,5 +219,72 @@ describe("WP-35 lane-local CAS delete", () => {
       entity: { slug: "gateway", name: "Gateway" },
     });
     await expect(store.list("component")).resolves.toHaveLength(1);
+  });
+
+  it("returns a truthful null digest from the semantic delete RPC and restores exact undo bytes", async () => {
+    const entity = parseArchitectureEntity("component", {
+      slug: "gateway",
+      name: "Gateway",
+      component_type: "software",
+      criticality: "high",
+      interfaces: [],
+      technologies: [],
+      is_entry_point: true,
+      stores_data: false,
+    });
+    const content = serializeCanvasEntity(entity);
+    const { host, files } = fakeFiles({ [absolute]: content });
+    registerCanvasEditingBackend(host.bb, createPluginContext(host.bb));
+
+    const deleted = await host.harness.callRpc("taraCommandApply", {
+      projectId: "project-delete",
+      projectVersionId: null,
+      operation: "delete",
+      kind: "component",
+      stableKey: "gateway",
+      mode: "cascade",
+      expectedContentSha256: hash(content),
+    });
+    expect(deleted).toMatchObject({
+      stableKey: "gateway",
+      beforeSha256: hash(content),
+      afterSha256: null,
+    });
+    expect(files.has(absolute)).toBe(false);
+    await expect(
+      host.bb.storage.kv.get(
+        canvasDeletedMarkerKey(
+          "project-delete",
+          null,
+          "component",
+          "gateway",
+        ),
+      ),
+    ).resolves.toBe(true);
+
+    const restored = await host.harness.callRpc("taraCommandApply", {
+      projectId: "project-delete",
+      projectVersionId: null,
+      operation: "create",
+      kind: "component",
+      fields: architectureEntityPayload(entity),
+      expectedContentSha256: null,
+    });
+    expect(restored).toMatchObject({
+      stableKey: "gateway",
+      beforeSha256: null,
+      afterSha256: hash(content),
+    });
+    expect(files.get(absolute)).toBe(content);
+    await expect(
+      host.bb.storage.kv.get(
+        canvasDeletedMarkerKey(
+          "project-delete",
+          null,
+          "component",
+          "gateway",
+        ),
+      ),
+    ).resolves.toBeUndefined();
   });
 });

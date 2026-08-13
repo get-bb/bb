@@ -18,8 +18,6 @@ import {
 
 const PROJECT_SCOPE_STORAGE_KEY =
   "finite-state:product-security:project-scope:v1";
-const DELETE_AMENDMENT_MESSAGE =
-  "Delete preview is available, but local deletion remains disabled until AMD-0016 supplies a truthful null post-delete hash.";
 
 type AppRuntimeModule = typeof import("@bb/plugin-sdk/app");
 type EditingAppRuntime = Pick<AppRuntimeModule, "useBbNavigate" | "useRpc">;
@@ -52,6 +50,14 @@ interface UiHistoryEntry {
   before: ArchitectureYamlEntity | null;
   after: ArchitectureYamlEntity | null;
   currentSha256: string | null;
+  deleteMode: "cascade" | "detach";
+}
+
+interface DeleteTarget {
+  kind: CanvasEntityKind;
+  slug: string;
+  entity: ArchitectureYamlEntity | null;
+  expectedSha256: string | null;
 }
 
 function readPersistedProjectId(): string | null {
@@ -73,6 +79,16 @@ function safeError(error: unknown): string {
   return error instanceof Error && error.message.length > 0
     ? error.message.slice(0, 500)
     : "The local YAML operation failed. Reload and compare before retrying.";
+}
+
+function requireAfterSha256(
+  afterSha256: string | null,
+  operation: "create" | "update",
+): string {
+  if (afterSha256 === null) {
+    throw new Error(`Canvas ${operation} completed without a content hash.`);
+  }
+  return afterSha256;
 }
 
 function isJsonRecord(value: JsonValue): value is Record<string, JsonValue> {
@@ -189,6 +205,7 @@ function ProjectEditingLayer({
   const [error, setError] = useState<string | null>(null);
   const [deleteImpact, setDeleteImpact] = useState<DeletionImpact | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
   const undoStack = useRef<UiHistoryEntry[]>([]);
   const redoStack = useRef<UiHistoryEntry[]>([]);
   const [, setHistoryRevision] = useState(0);
@@ -268,7 +285,8 @@ function ProjectEditingLayer({
           slug: entity.slug,
           before: null,
           after: entity,
-          currentSha256: result.afterSha256,
+          currentSha256: requireAfterSha256(result.afterSha256, "create"),
+          deleteMode: "cascade",
         });
       } else {
         if (!form.initial || !form.expectedSha256) {
@@ -288,7 +306,8 @@ function ProjectEditingLayer({
           slug: entity.slug,
           before: form.initial,
           after: entity,
-          currentSha256: result.afterSha256,
+          currentSha256: requireAfterSha256(result.afterSha256, "update"),
+          deleteMode: "cascade",
         });
       }
       if (undoStack.current.length > 50) undoStack.current.shift();
@@ -314,9 +333,32 @@ function ProjectEditingLayer({
   async function previewDelete(): Promise<void> {
     if (!projectId || !selected) return;
     setDeleteOpen(true);
+    setDeleteTarget({
+      kind: selected.kind,
+      slug: selected.slug,
+      entity: null,
+      expectedSha256: null,
+    });
     setDeleteImpact(null);
     setError(null);
     try {
+      const loaded = await editingRpc.call("canvasEditingLoad", {
+        projectId,
+        projectVersionId: null,
+        kind: selected.kind,
+        slug: selected.slug,
+      });
+      if (loaded.state === "missing") {
+        throw new Error(
+          "This entity no longer exists in working YAML. Reload the canvas before deleting.",
+        );
+      }
+      setDeleteTarget({
+        kind: loaded.kind,
+        slug: loaded.slug,
+        entity: parseArchitectureEntity(loaded.kind, loaded.fields),
+        expectedSha256: loaded.sha256,
+      });
       const impact = await rpc.call("taraDeleteImpact", {
         projectId,
         projectVersionId: null,
@@ -338,6 +380,60 @@ function ProjectEditingLayer({
     }
   }
 
+  async function confirmDelete(mode: "cascade" | "detach"): Promise<void> {
+    if (
+      !deleteTarget?.entity ||
+      !deleteTarget.expectedSha256 ||
+      !deleteImpact
+    ) {
+      setError("Reload delete impact before confirming this change.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const result = await rpc.call("taraCommandApply", {
+        projectId,
+        projectVersionId: null,
+        operation: "delete",
+        kind: deleteTarget.kind,
+        stableKey: deleteTarget.slug,
+        mode,
+        expectedContentSha256: deleteTarget.expectedSha256,
+      });
+      if (result.afterSha256 !== null) {
+        throw new Error("Canvas deletion returned an invalid content hash.");
+      }
+      undoStack.current.push({
+        kind: deleteTarget.kind,
+        slug: deleteTarget.slug,
+        before: deleteTarget.entity,
+        after: null,
+        currentSha256: null,
+        deleteMode: mode,
+      });
+      if (undoStack.current.length > 50) undoStack.current.shift();
+      redoStack.current = [];
+      refreshHistoryUi();
+      setDeleteOpen(false);
+      setDeleteTarget(null);
+      setDeleteImpact(null);
+      setMessage(
+        `Deleted ${deleteTarget.kind}/${deleteTarget.slug} from local YAML. Review the reverse-ordered deletion plan in Sync before any human-approved push.`,
+      );
+    } catch (deleteError) {
+      const detail = safeError(deleteError);
+      if (detail.startsWith("LOCAL_WRITE_CONFLICT:")) {
+        invalidateHistory(deleteTarget.kind, deleteTarget.slug);
+        setError(`${detail} Undo and redo for this entity were invalidated.`);
+      } else {
+        setError(detail);
+      }
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function transitionHistory(direction: "undo" | "redo"): Promise<void> {
     if (!projectId) return;
     const source = direction === "undo" ? undoStack.current : redoStack.current;
@@ -352,7 +448,21 @@ function ProjectEditingLayer({
     try {
       let nextSha256: string | null;
       if (target === null && current !== null) {
-        throw new Error(DELETE_AMENDMENT_MESSAGE);
+        if (!entry.currentSha256)
+          throw new Error("History entry has no current CAS hash.");
+        const result = await rpc.call("taraCommandApply", {
+          projectId,
+          projectVersionId: null,
+          operation: "delete",
+          kind: entry.kind,
+          stableKey: entry.slug,
+          mode: entry.deleteMode,
+          expectedContentSha256: entry.currentSha256,
+        });
+        if (result.afterSha256 !== null) {
+          throw new Error("Canvas deletion returned an invalid content hash.");
+        }
+        nextSha256 = null;
       } else if (target !== null && current === null) {
         const result = await rpc.call("taraCommandApply", {
           projectId,
@@ -362,7 +472,7 @@ function ProjectEditingLayer({
           fields: jsonFields(target),
           expectedContentSha256: null,
         });
-        nextSha256 = result.afterSha256;
+        nextSha256 = requireAfterSha256(result.afterSha256, "create");
       } else if (target !== null && current !== null) {
         if (!entry.currentSha256)
           throw new Error("History entry has no current CAS hash.");
@@ -375,7 +485,7 @@ function ProjectEditingLayer({
           fields: replacementPatch(current, target),
           expectedContentSha256: entry.currentSha256,
         });
-        nextSha256 = result.afterSha256;
+        nextSha256 = requireAfterSha256(result.afterSha256, "update");
       } else {
         throw new Error("History entry has no semantic state.");
       }
@@ -474,13 +584,14 @@ function ProjectEditingLayer({
         Redo
       </Button>
       <Button
-        disabled
-        onClick={() => navigate.toPluginPanel("sync")}
+        onClick={() =>
+          navigate.toPluginPanel("sync", { subPath: "product-security" })
+        }
         size="sm"
         type="button"
         variant="outline"
       >
-        Sync review unavailable
+        Review in Sync
       </Button>
     </div>
   );
@@ -547,19 +658,20 @@ function ProjectEditingLayer({
           saving={saving}
         />
       ) : null}
-      {deleteOpen && selected ? (
+      {deleteOpen && deleteTarget ? (
         <DeleteImpactDialog
-          blockedReason={DELETE_AMENDMENT_MESSAGE}
-          entityKind={selected.kind}
+          entityKind={deleteTarget.kind}
           error={error}
           impact={deleteImpact}
           loading={!deleteImpact && !error}
           onCancel={() => {
             setDeleteOpen(false);
+            setDeleteTarget(null);
             setDeleteImpact(null);
             setError(null);
           }}
-          onConfirm={() => undefined}
+          onConfirm={(mode) => void confirmDelete(mode)}
+          saving={saving}
         />
       ) : null}
     </>

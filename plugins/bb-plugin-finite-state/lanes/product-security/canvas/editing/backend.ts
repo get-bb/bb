@@ -40,6 +40,7 @@ import {
   canvasUsedSlugMarkerKey,
   createSdkCanvasFileStore,
   serializeCanvasEntity,
+  type CanvasEditCommand,
   type CanvasFileStore,
   type CanvasProjectSource,
   type EditDeps,
@@ -356,10 +357,34 @@ export function registerCanvasEditingBackend(
   });
 
   const usedSlugs = new Set<string>();
-  async function dependencies(input: {
-    projectId: string;
-    projectVersionId: string | null;
-  }): Promise<{
+  const restorableDeletes = new Map<
+    string,
+    ReturnType<typeof parseArchitectureEntity>
+  >();
+  const editIdentity = (
+    input: { projectId: string; projectVersionId: string | null },
+    kind: CanvasEntityKind,
+    slug: string,
+  ) =>
+    `${input.projectId}\u0000${toStorageProjectVersionId(input.projectVersionId)}\u0000${kind}\u0000${slug}`;
+  const rememberDelete = (
+    identity: string,
+    entity: ReturnType<typeof parseArchitectureEntity>,
+  ) => {
+    restorableDeletes.delete(identity);
+    restorableDeletes.set(identity, entity);
+    if (restorableDeletes.size > 500) {
+      const oldest = restorableDeletes.keys().next().value;
+      if (oldest !== undefined) restorableDeletes.delete(oldest);
+    }
+  };
+  async function dependencies(
+    input: {
+      projectId: string;
+      projectVersionId: string | null;
+    },
+    restoration?: { kind: CanvasEntityKind; slug: string },
+  ): Promise<{
     files: CanvasFileStore;
     deps: EditDeps;
     source: CanvasProjectSource;
@@ -374,6 +399,9 @@ export function registerCanvasEditingBackend(
     const deps: EditDeps = {
       files,
       async slugWasUsed(kind, slug) {
+        if (restoration?.kind === kind && restoration.slug === slug) {
+          return false;
+        }
         const memoryKey = `${input.projectId}\u0000${versionId}\u0000${kind}\u0000${slug}`;
         if (usedSlugs.has(memoryKey)) return true;
         if (
@@ -474,46 +502,91 @@ export function registerCanvasEditingBackend(
 
   bb.rpc.register(editingCommandContract, {
     async taraCommandApply(input) {
-      if (input.operation === "delete") {
-        throw new Error(
-          "TARA_DELETE_CONTRACT_AMENDMENT_PENDING: local delete remains disabled until AMD-0016 supplies a truthful nullable afterSha256 result.",
-        );
+      let command: CanvasEditCommand;
+      let identity: string;
+      let restoration: { kind: CanvasEntityKind; slug: string } | undefined;
+      if (input.operation === "create") {
+        const entity = parseArchitectureEntity(input.kind, input.fields);
+        command = { kind: "create", entity };
+        identity = editIdentity(input, input.kind, entity.slug);
+        const deletedSnapshot = restorableDeletes.get(identity);
+        if (
+          deletedSnapshot &&
+          serializeCanvasEntity(deletedSnapshot) === serializeCanvasEntity(entity)
+        ) {
+          restoration = { kind: entity.kind, slug: entity.slug };
+        }
+      } else if (input.operation === "update") {
+        command = {
+          kind: "update",
+          entityKind: input.kind,
+          slug: input.stableKey,
+          patch: input.fields,
+        };
+        identity = editIdentity(input, input.kind, input.stableKey);
+      } else {
+        command = {
+          kind: "delete",
+          entityKind: input.kind,
+          slug: input.stableKey,
+          mode: input.mode,
+        };
+        identity = editIdentity(input, input.kind, input.stableKey);
       }
-      const { deps, files } = await dependencies(input);
+      const { deps, files } = await dependencies(input, restoration);
       await materializeAcceptedCanvasKind(bb, db, input, input.kind, files);
-      const command =
-        input.operation === "create"
-          ? {
-              kind: "create" as const,
-              entity: parseArchitectureEntity(input.kind, input.fields),
-            }
-          : {
-              kind: "update" as const,
-              entityKind: input.kind,
-              slug: input.stableKey,
-              patch: input.fields,
-            };
+      const beforeDelete =
+        command.kind === "delete"
+          ? await files.read(canvasEntityFile(command.entityKind, command.slug))
+          : null;
       const result = await applyCanvasCommand(
         deps,
         command,
-        input.operation === "update" ? input.expectedContentSha256 : undefined,
+        input.operation === "create"
+          ? undefined
+          : input.expectedContentSha256,
       );
-      if (!result.afterSha256) {
+      if (result.operation !== "delete" && !result.afterSha256) {
         throw new Error(
           "Canvas create/update completed without a content hash.",
         );
       }
-      usedSlugs.add(
-        `${input.projectId}\u0000${toStorageProjectVersionId(input.projectVersionId)}\u0000${input.kind}\u0000${result.slug}`,
-      );
-      await bb.storage.kv.delete(
-        canvasDeletedMarkerKey(
+      if (result.operation === "delete" && result.afterSha256 !== null) {
+        throw new Error("Canvas deletion completed with an invalid content hash.");
+      }
+      const resultIdentity = identity;
+      usedSlugs.add(identity);
+      await bb.storage.kv.set(
+        canvasUsedSlugMarkerKey(
           input.projectId,
           input.projectVersionId,
           input.kind,
           result.slug,
         ),
+        true,
       );
+      if (result.operation === "delete") {
+        if (beforeDelete) rememberDelete(resultIdentity, beforeDelete.entity);
+        await bb.storage.kv.set(
+          canvasDeletedMarkerKey(
+            input.projectId,
+            input.projectVersionId,
+            input.kind,
+            result.slug,
+          ),
+          true,
+        );
+      } else {
+        restorableDeletes.delete(resultIdentity);
+        await bb.storage.kv.delete(
+          canvasDeletedMarkerKey(
+            input.projectId,
+            input.projectVersionId,
+            input.kind,
+            result.slug,
+          ),
+        );
+      }
       bb.realtime.publish("tara:changed", {
         projectId: input.projectId,
         kind: input.kind,

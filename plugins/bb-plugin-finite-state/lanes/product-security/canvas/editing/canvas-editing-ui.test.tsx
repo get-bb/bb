@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 
-import { cleanup } from "@testing-library/react";
+import { cleanup, fireEvent } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@bb/plugin-sdk/testing/app";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { connectedRemoteStatus } from "../../../../test/app-connections.js";
 
 afterEach(() => {
@@ -49,14 +49,12 @@ describe("WP-35 empty-model editing entry", () => {
     expect(await view.findByText("No architecture model yet")).toBeTruthy();
     expect(await view.findByRole("button", { name: "New" })).toBeTruthy();
     expect(view.getByRole("button", { name: "Retry local read" })).toBeTruthy();
-    const syncReview = view.getByRole("button", {
-      name: "Sync review unavailable",
+    fireEvent.click(view.getByRole("button", { name: "Review in Sync" }));
+    expect(view.inspection.navigateCalls).toContainEqual({
+      method: "toPluginPanel",
+      path: "sync",
+      options: { subPath: "product-security" },
     });
-    expect(syncReview).toBeInstanceOf(HTMLButtonElement);
-    if (!(syncReview instanceof HTMLButtonElement)) {
-      throw new Error("Sync review affordance must be a button");
-    }
-    expect(syncReview.disabled).toBe(true);
     view.lifecycle.unmount();
   });
 
@@ -83,6 +81,49 @@ describe("WP-35 empty-model editing entry", () => {
       await view.findByText("Product-security cache unavailable"),
     ).toBeTruthy();
     expect(view.queryByText("No architecture model yet")).toBeNull();
+    view.lifecycle.unmount();
+  });
+});
+
+describe("WP-35 delete confirmation", () => {
+  it("requires the typed slug for a non-restorable blast radius", async () => {
+    const { DeleteImpactDialog } = await import("./delete-impact.js");
+    const onConfirm = vi.fn();
+    const view = renderSlot(
+      { component: DeleteImpactDialog },
+      {
+        entityKind: "threat" as const,
+        impact: {
+          slug: "credential-theft",
+          referrers: [
+            {
+              kind: "dataflow",
+              slug: "credentials",
+              effect: "Cascade deletes this dependent dataflow.",
+            },
+          ],
+          allowedActions: ["cascade" as const],
+          restorable: false,
+        },
+        loading: false,
+        saving: false,
+        error: null,
+        onCancel: vi.fn(),
+        onConfirm,
+      },
+    );
+
+    const confirm = view.getByRole("button", { name: "Delete local YAML" });
+    expect(confirm).toBeInstanceOf(HTMLButtonElement);
+    if (!(confirm instanceof HTMLButtonElement)) {
+      throw new Error("Delete confirmation must be a button");
+    }
+    expect(confirm.disabled).toBe(true);
+    fireEvent.change(view.getByRole("textbox"), {
+      target: { value: "credential-theft" },
+    });
+    fireEvent.click(confirm);
+    expect(onConfirm).toHaveBeenCalledWith("cascade");
     view.lifecycle.unmount();
   });
 });

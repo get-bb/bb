@@ -7,8 +7,8 @@ export interface DeleteImpactDialogProps {
   entityKind: CanvasEntityKind;
   impact: DeletionImpact | null;
   loading: boolean;
+  saving: boolean;
   error: string | null;
-  blockedReason?: string;
   onCancel(): void;
   onConfirm(mode: "cascade" | "detach"): void;
 }
@@ -17,8 +17,8 @@ export function DeleteImpactDialog({
   entityKind,
   impact,
   loading,
+  saving,
   error,
-  blockedReason,
   onCancel,
   onConfirm,
 }: DeleteImpactDialogProps): React.JSX.Element {
@@ -64,14 +64,6 @@ export function DeleteImpactDialog({
               role="alert"
             >
               {error}
-            </p>
-          ) : null}
-          {blockedReason ? (
-            <p
-              className="rounded-md border border-border bg-muted/40 p-3 text-sm text-muted-foreground"
-              role="status"
-            >
-              {blockedReason}
             </p>
           ) : null}
           {impact ? (
@@ -154,15 +146,15 @@ export function DeleteImpactDialog({
             disabled={
               !impact ||
               loading ||
+              saving ||
               Boolean(error) ||
-              Boolean(blockedReason) ||
               !confirmed
             }
             onClick={() => onConfirm(selectedMode)}
             type="button"
             variant="destructive"
           >
-            Delete local YAML
+            {saving ? "Deleting…" : "Delete local YAML"}
           </Button>
         </footer>
       </section>
