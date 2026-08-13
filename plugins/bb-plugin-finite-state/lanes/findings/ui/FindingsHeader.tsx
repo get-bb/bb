@@ -1,6 +1,7 @@
 import { Badge } from "@bb/shared-ui/badge";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
+import { PendingChangesChip } from "../../sync/ui/PendingChangesChip.js";
 import type { FindingSelection } from "./route.js";
 
 function scopeValue(platformProjectId: string, projectVersionId: string): string {
@@ -41,7 +42,12 @@ export function FindingsHeader({ projects, projectId, versions, platformProjectI
         <Button disabled={loaded === 0} onClick={onSelectPage} size="sm" variant="ghost">Select page</Button>
         <Button disabled={total === 0} onClick={onSelectPredicate} size="sm" variant="ghost">Select all {total.toLocaleString()}</Button>
         <Button disabled={selected === 0} onClick={onClearSelection} size="sm" variant="ghost">Clear selection</Button>
-        {/* WP-21 enables the pending-vexDecision Sync chip here once its panel is registered. */}
+        {platformProjectId && projectVersionId ? (
+          <PendingChangesChip
+            scope={{ projectId: platformProjectId, pvId: projectVersionId }}
+            surface="vexDecision"
+          />
+        ) : null}
       </div>
     </header>
   );

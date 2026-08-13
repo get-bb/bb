@@ -1,3 +1,5 @@
+import { useBbNavigate } from "@bb/plugin-sdk/app";
+
 interface RetryStateProps {
   onRetry(): void;
 }
@@ -27,6 +29,7 @@ export function CanvasLoadingState(): React.JSX.Element {
 export function CanvasEmptyState({
   onRetry,
 }: RetryStateProps): React.JSX.Element {
+  const navigate = useBbNavigate();
   return (
     <div className="flex h-full min-h-80 items-center justify-center bg-background p-6 text-foreground">
       <div className="max-w-md rounded-lg border border-border bg-card p-6 text-center text-card-foreground">
@@ -35,13 +38,26 @@ export function CanvasEmptyState({
           Pull Product Security from the Sync panel or add local architecture
           YAML, then retry this cache read.
         </p>
-        <button
-          className="mt-4 rounded-md border border-border bg-background px-3 py-2 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          onClick={onRetry}
-          type="button"
-        >
-          Retry local read
-        </button>
+        <div className="mt-4 flex flex-wrap justify-center gap-2">
+          <button
+            className="rounded-md border border-border bg-background px-3 py-2 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={() =>
+              navigate.toPluginPanel("sync", {
+                subPath: "product-security",
+              })
+            }
+            type="button"
+          >
+            Open Sync
+          </button>
+          <button
+            className="rounded-md border border-border bg-background px-3 py-2 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={onRetry}
+            type="button"
+          >
+            Retry local read
+          </button>
+        </div>
       </div>
     </div>
   );
