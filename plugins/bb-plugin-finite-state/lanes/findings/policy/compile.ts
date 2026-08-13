@@ -44,10 +44,10 @@ function hasValue(actual: string | null, expected: string | string[]): boolean {
   return normalized !== null && values(expected).some((item) => folded(item) === normalized);
 }
 
-function listSql(column: string, selected: string | string[], clauses: string[], parameters: Array<string | number>): void {
-  const list = values(selected);
-  clauses.push(`${column} COLLATE NOCASE IN (${list.map(() => "?").join(", ")})`);
-  parameters.push(...list);
+function foldedListSql(column: string, selected: string | string[], clauses: string[], parameters: Array<string | number>): void {
+  const list = values(selected).map((item) => folded(item));
+  clauses.push(`(${column} IS NOT NULL AND (${list.map(() => "? IS NOT NULL").join(" OR ")}))`);
+  parameters.push(...list.filter((item): item is string => item !== null));
 }
 
 function reachabilityMatches(value: PolicyPredicate["reachability"], score: number | null): boolean {
@@ -77,7 +77,7 @@ export function compilePredicate(predicate: PolicyPredicate): CompiledPredicate 
     clauses.push("f.vuln_in_dataset = ?");
     parameters.push(predicate.vuln_in_dataset ? 1 : 0);
   }
-  if (predicate.band !== undefined) listSql("f.band", predicate.band, clauses, parameters);
+  if (predicate.band !== undefined) foldedListSql("f.band", predicate.band, clauses, parameters);
   if (predicate.kev !== undefined) {
     clauses.push("f.in_kev = ?");
     parameters.push(predicate.kev ? 1 : 0);
@@ -90,25 +90,26 @@ export function compilePredicate(predicate: PolicyPredicate): CompiledPredicate 
     clauses.push("f.epss_score >= ?");
     parameters.push(predicate.epss_gte);
   }
-  if (predicate.severity !== undefined) listSql("f.severity", predicate.severity, clauses, parameters);
+  if (predicate.severity !== undefined) foldedListSql("f.severity", predicate.severity, clauses, parameters);
   if (predicate.component !== undefined) {
-    const list = values(predicate.component);
-    const placeholders = list.map(() => "?").join(", ");
-    clauses.push(`(f.component_name COLLATE NOCASE IN (${placeholders}) OR f.component_purl IN (${placeholders}))`);
-    parameters.push(...list, ...list);
+    const list = values(predicate.component).map((item) => folded(item));
+    clauses.push(`((f.component_name IS NOT NULL OR f.component_purl IS NOT NULL)
+      AND (${list.map(() => "? IS NOT NULL").join(" OR ")}))`);
+    parameters.push(...list.filter((item): item is string => item !== null));
   }
-  if (predicate.finding_type !== undefined) listSql("f.finding_type", predicate.finding_type, clauses, parameters);
+  if (predicate.finding_type !== undefined) foldedListSql("f.finding_type", predicate.finding_type, clauses, parameters);
   if (predicate.cwe !== undefined) {
-    const list = values(predicate.cwe);
+    const list = values(predicate.cwe).map((item) => folded(item));
     clauses.push(`EXISTS (
       SELECT 1 FROM finding_cwes fc
        WHERE fc.project_id = f.project_id
          AND fc.project_version_id = f.project_version_id
          AND fc.generation_id = f.generation_id
          AND fc.finding_id = f.finding_id
-         AND fc.cwe COLLATE NOCASE IN (${list.map(() => "?").join(", ")})
+         AND fc.cwe IS NOT NULL
+         AND (${list.map(() => "? IS NOT NULL").join(" OR ")})
     )`);
-    parameters.push(...list);
+    parameters.push(...list.filter((item): item is string => item !== null));
   }
 
   return {

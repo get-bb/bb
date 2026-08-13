@@ -11,6 +11,7 @@ export interface PolicyRuleReport {
 
 export interface PolicyReport {
   runId: string;
+  policySha256: string;
   dryRun: boolean;
   rules: PolicyRuleReport[];
   written: number;

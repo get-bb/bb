@@ -6,12 +6,16 @@ import type Database from "better-sqlite3";
 
 import { readOverlayFiles } from "../overlay/reader.js";
 import { stableKeyFor, type DecisionInput, type TriageOverlayV1 } from "../overlay/schema.js";
-import { setDecision as writeDecision } from "../overlay/writer.js";
+import {
+  setDecision as writeDecision,
+  type OverlayWriteResult,
+} from "../overlay/writer.js";
 import {
   assertReusableEvaluation,
   candidatesFor,
   evaluatePolicy,
   overlayIndexReader,
+  policyFingerprint,
   type OverlayReader,
   type PolicyScope,
 } from "./evaluate.js";
@@ -19,20 +23,24 @@ import { boundedPush, type PolicyReport } from "./report.js";
 import { parseTriagePolicy, parseTriagePolicyText, type TriagePolicyV1 } from "./schema.js";
 
 const MAX_POLICY_BYTES = 1024 * 1024;
-const LOCK_RETRY_LIMIT = 4;
+const LOCK_RETRY_LIMIT = 13;
+const LOCK_RETRY_MAX_DELAY_MS = 5_000;
 
 export interface PolicyDeps {
   db: Database.Database;
   root: string;
   policy?: TriagePolicyV1;
   overlay?: OverlayReader;
-  expectedPolicySha256?: string;
   setDecision?: typeof writeDecision;
+  readOverlays?: typeof readOverlayFiles;
   sleep?: (milliseconds: number, signal?: AbortSignal) => Promise<void>;
   random?: () => number;
   signal?: AbortSignal;
-  evaluated?: PolicyReport;
 }
+
+export type PolicyApplyOptions =
+  | { dryRun: true }
+  | { dryRun: false; expectedPolicySha256: string; evaluated: PolicyReport };
 
 export class PolicyApplyError extends Error {
   constructor(readonly code: string, message: string) {
@@ -49,26 +57,28 @@ interface LoadedPolicy {
 interface ExistingState {
   exists: boolean;
   expectedFileSha256: string | undefined;
-  error: string | null;
+}
+
+interface OverlaySnapshot {
+  reader: OverlayReader;
+  state(input: DecisionInput): ExistingState;
+  record(input: DecisionInput, result: OverlayWriteResult): void;
 }
 
 function sha256(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
-function sameComponent(left: TriageOverlayV1["component"], right: TriageOverlayV1["component"]): boolean {
-  return left.purl === right.purl
-    && left.name === right.name
-    && left.group === right.group
-    && left.version === right.version;
+function componentIdentity(component: TriageOverlayV1["component"]): string {
+  return JSON.stringify([component.purl, component.name, component.group, component.version]);
+}
+
+function canonicalPolicy(policy: TriagePolicyV1): LoadedPolicy {
+  return { policy, sha256: sha256(policyFingerprint(policy)) };
 }
 
 async function loadPolicy(deps: PolicyDeps): Promise<LoadedPolicy> {
-  if (deps.policy !== undefined) {
-    const policy = parseTriagePolicy(deps.policy);
-    const encoded = JSON.stringify(policy);
-    return { policy, sha256: sha256(encoded) };
-  }
+  if (deps.policy !== undefined) return canonicalPolicy(parseTriagePolicy(deps.policy));
   if (!isAbsolute(deps.root)) throw new PolicyApplyError("POLICY_ROOT_INVALID", "Policy root must be absolute");
   const root = await realpath(deps.root);
   const path = resolve(root, ".fs", "triage", "policy.yaml");
@@ -84,13 +94,13 @@ async function loadPolicy(deps: PolicyDeps): Promise<LoadedPolicy> {
   if (fromRoot.startsWith("..") || isAbsolute(fromRoot) || canonical === root || !canonical.startsWith(`${root}${sep}`)) {
     throw new PolicyApplyError("POLICY_PATH_INVALID", "Policy path escapes the worktree root");
   }
-  const text = await readFile(canonical, "utf8");
-  return { policy: parseTriagePolicyText(text), sha256: sha256(text) };
+  return canonicalPolicy(parseTriagePolicyText(await readFile(canonical, "utf8")));
 }
 
 function copyReport(report: PolicyReport): PolicyReport {
   return {
     runId: report.runId,
+    policySha256: report.policySha256,
     dryRun: report.dryRun,
     rules: report.rules.map((rule) => ({ ...rule, samples: [...rule.samples] })),
     written: report.written,
@@ -100,8 +110,11 @@ function copyReport(report: PolicyReport): PolicyReport {
   };
 }
 
-function assertPolicyCas(expected: string | undefined, actual: string): void {
-  if (expected !== undefined && expected !== actual) {
+function assertPolicyCas(expected: string, actual: string): void {
+  if (!/^[a-f0-9]{64}$/u.test(expected)) {
+    throw new PolicyApplyError("POLICY_PREVIEW_REQUIRED", "Apply requires the lowercase policy SHA-256 returned by preview");
+  }
+  if (expected !== actual) {
     throw new PolicyApplyError("POLICY_CAS_CONFLICT", "Policy changed after preview; evaluate it again before applying");
   }
 }
@@ -123,52 +136,48 @@ function serverDecisionExists(db: Database.Database, scope: PolicyScope, stableK
   ).get(scope.projectId, scope.projectVersionId, stableKey) !== undefined;
 }
 
-async function localExistingState(root: string, input: DecisionInput): Promise<ExistingState> {
-  const parsed = await readOverlayFiles(root);
-  const projectPrefix = `.fs/triage/${input.project}/`;
-  const projectError = parsed.errors.find((error) => error.file.startsWith(projectPrefix));
-  if (projectError !== undefined) {
-    return {
-      exists: false,
-      expectedFileSha256: undefined,
-      error: `Overlay contains invalid YAML: ${projectError.file}`,
-    };
-  }
-  let expectedFileSha256: string | undefined;
-  for (const file of parsed.files) {
-    if (file.overlay.project !== input.project) continue;
-    for (const cve of Object.keys(file.overlay.decisions)) {
-      if (stableKeyFor(file.overlay.project, file.overlay.component, cve) === input.stableKey) {
-        return { exists: true, expectedFileSha256: file.sha256, error: null };
-      }
-    }
-    if (sameComponent(file.overlay.component, input.component)) expectedFileSha256 = file.sha256;
-  }
-  return { exists: false, expectedFileSha256, error: null };
-}
-
-async function currentOverlayReader(
-  db: Database.Database,
-  root: string,
-  scope: PolicyScope,
-): Promise<OverlayReader> {
-  const parsed = await readOverlayFiles(root);
+async function loadOverlaySnapshot(deps: PolicyDeps, scope: PolicyScope): Promise<OverlaySnapshot> {
+  const parsed = await (deps.readOverlays ?? readOverlayFiles)(deps.root);
   const projectPrefix = `.fs/triage/${scope.project}/`;
   const projectError = parsed.errors.find((error) => error.file.startsWith(projectPrefix));
   if (projectError !== undefined) {
     throw new PolicyApplyError("OVERLAY_READ_INVALID", `Overlay contains invalid YAML: ${projectError.file}`);
   }
   const authored = new Set<string>();
+  const componentSha256 = new Map<string, string>();
   for (const file of parsed.files) {
     if (file.overlay.project !== scope.project) continue;
+    componentSha256.set(componentIdentity(file.overlay.component), file.sha256);
     for (const cve of Object.keys(file.overlay.decisions)) {
       authored.add(stableKeyFor(file.overlay.project, file.overlay.component, cve));
     }
   }
-  const indexed = overlayIndexReader(db);
-  return {
+  const indexed = overlayIndexReader(deps.db);
+  const reader: OverlayReader = {
     hasDecision(candidateScope, stableKey) {
       return authored.has(stableKey) || indexed.hasDecision(candidateScope, stableKey);
+    },
+  };
+  return {
+    reader,
+    state(input) {
+      return {
+        exists: reader.hasDecision(scope, input.stableKey),
+        expectedFileSha256: componentSha256.get(componentIdentity(input.component)),
+      };
+    },
+    record(input, result) {
+      authored.add(input.stableKey);
+      componentSha256.set(componentIdentity(input.component), result.afterSha256);
+    },
+  };
+}
+
+function combinedReader(left: OverlayReader | undefined, right: OverlayReader): OverlayReader {
+  if (left === undefined) return right;
+  return {
+    hasDecision(scope, stableKey) {
+      return left.hasDecision(scope, stableKey) || right.hasDecision(scope, stableKey);
     },
   };
 }
@@ -196,19 +205,18 @@ async function writeWithLockRetry(
   deps: PolicyDeps,
   input: DecisionInput,
   expectedSha256: string | undefined,
-): Promise<void> {
+): Promise<OverlayWriteResult> {
   const setDecision = deps.setDecision ?? writeDecision;
   const sleep = deps.sleep ?? defaultSleep;
   const random = deps.random ?? Math.random;
   for (let attempt = 0; ; attempt += 1) {
     deps.signal?.throwIfAborted();
     try {
-      await setDecision(deps.root, input, expectedSha256);
-      return;
+      return await setDecision(deps.root, input, expectedSha256);
     } catch (error) {
       if (errorCode(error) !== "OVERLAY_LOCK_HELD" || attempt >= LOCK_RETRY_LIMIT) throw error;
-      const exponential = Math.min(250, 10 * (2 ** attempt));
-      const jitter = Math.floor(random() * 11);
+      const exponential = Math.min(LOCK_RETRY_MAX_DELAY_MS, 25 * (2 ** attempt));
+      const jitter = Math.floor(random() * 26);
       await sleep(exponential + jitter, deps.signal);
     }
   }
@@ -218,7 +226,6 @@ function persistReport(
   db: Database.Database,
   scope: PolicyScope,
   report: PolicyReport,
-  policySha256: string,
   errorCount: number,
 ): void {
   const held = report.rules.reduce((total, rule) => total + rule.held, 0);
@@ -235,7 +242,7 @@ function persistReport(
     scope.projectVersionId,
     report.runId,
     errorCount === 0 ? "completed" : "partial",
-    policySha256,
+    report.policySha256,
     report.written,
     held,
     conflicts,
@@ -247,43 +254,44 @@ function persistReport(
   );
 }
 
+function requireApplyPreview(options: PolicyApplyOptions): void {
+  if (options.dryRun) return;
+  if (typeof options.expectedPolicySha256 !== "string" || options.evaluated === undefined) {
+    throw new PolicyApplyError("POLICY_PREVIEW_REQUIRED", "Apply requires the exact candidate report and policy digest returned by preview");
+  }
+}
+
 export async function applyPolicy(
   deps: PolicyDeps,
   scope: PolicyScope,
-  options: { dryRun: boolean },
+  options: PolicyApplyOptions,
 ): Promise<PolicyReport> {
+  requireApplyPreview(options);
   const loaded = await loadPolicy(deps);
-  assertPolicyCas(deps.expectedPolicySha256, loaded.sha256);
-  if (deps.evaluated !== undefined) {
-    try {
-      assertReusableEvaluation(deps.evaluated, loaded.policy, scope);
-    } catch (error) {
-      throw new PolicyApplyError("POLICY_EVALUATION_STALE", error instanceof Error ? error.message : String(error));
-    }
-  }
-  const overlay = deps.overlay ?? await currentOverlayReader(deps.db, deps.root, scope);
-  const evaluated = deps.evaluated
-    ?? evaluatePolicy(deps.db, overlay, loaded.policy, scope);
-  const candidates = candidatesFor(evaluated);
-  const report = deps.evaluated === undefined ? evaluated : copyReport(evaluated);
-  if (options.dryRun) return report;
+  const snapshot = await loadOverlaySnapshot(deps, scope);
+  const overlay = combinedReader(deps.overlay, snapshot.reader);
+  if (options.dryRun) return evaluatePolicy(deps.db, overlay, loaded.policy, scope);
 
+  assertPolicyCas(options.expectedPolicySha256, loaded.sha256);
+  try {
+    assertReusableEvaluation(options.evaluated, loaded.policy, scope);
+  } catch (error) {
+    throw new PolicyApplyError("POLICY_EVALUATION_STALE", error instanceof Error ? error.message : String(error));
+  }
+  const candidates = candidatesFor(options.evaluated);
+  const report = copyReport(options.evaluated);
   report.dryRun = false;
   let errorCount = 0;
   for (const candidate of candidates) {
     deps.signal?.throwIfAborted();
-    const local = await localExistingState(deps.root, candidate.input);
-    if (local.error !== null) {
-      errorCount += 1;
-      boundedPush(report.errors, { stableKey: candidate.stableKey, code: "OVERLAY_READ_INVALID", message: local.error });
-      continue;
-    }
+    const local = snapshot.state(candidate.input);
     if (local.exists || serverDecisionExists(deps.db, scope, candidate.stableKey)) {
       report.skippedExisting += 1;
       continue;
     }
     try {
-      await writeWithLockRetry(deps, candidate.input, local.expectedFileSha256);
+      const result = await writeWithLockRetry(deps, candidate.input, local.expectedFileSha256);
+      snapshot.record(candidate.input, result);
       report.written += 1;
     } catch (error) {
       errorCount += 1;
@@ -295,6 +303,6 @@ export async function applyPolicy(
       });
     }
   }
-  persistReport(deps.db, scope, report, loaded.sha256, errorCount);
+  persistReport(deps.db, scope, report, errorCount);
   return report;
 }

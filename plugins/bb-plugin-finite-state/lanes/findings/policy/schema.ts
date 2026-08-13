@@ -75,12 +75,18 @@ const cachePredicateFields = {
   cwe: selectorValue.optional(),
 };
 
-const rulePredicateSchema = z.object(cachePredicateFields).strict();
+function hasSelector(value: object): boolean {
+  return Object.keys(value).length > 0;
+}
+
+const rulePredicateSchema = z.object(cachePredicateFields)
+  .strict()
+  .refine(hasSelector, "Rule predicate must contain at least one selector");
 const holdbackPredicateSchema = z.object({
   ...cachePredicateFields,
   set_status: z.enum(VEX_STATUSES).optional(),
   justification: z.enum(VEX_JUSTIFICATIONS).nullable().optional(),
-}).strict();
+}).strict().refine(hasSelector, "Holdback predicate must contain at least one selector");
 
 const decisionSchema = z.object({
   status: z.enum(VEX_STATUSES),

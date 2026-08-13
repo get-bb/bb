@@ -1,11 +1,11 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import type Database from "better-sqlite3";
 
 import type { DecisionInput } from "../overlay/schema.js";
 import { compilePredicate, type PolicyFinding } from "./compile.js";
 import { boundedPush, sample, type PolicyReport } from "./report.js";
-import type { PolicyDecision, PolicyPredicate, TriagePolicyV1 } from "./schema.js";
+import type { PolicyDecision, TriagePolicyV1 } from "./schema.js";
 
 export interface PolicyScope {
   projectId: string;
@@ -53,6 +53,10 @@ const evaluatedScopes = new WeakMap<PolicyReport, PolicyScope>();
 
 export function policyFingerprint(policy: TriagePolicyV1): string {
   return JSON.stringify(policy);
+}
+
+export function policySha256(policy: TriagePolicyV1): string {
+  return createHash("sha256").update(policyFingerprint(policy)).digest("hex");
 }
 
 function json(value: string | null, fallback: unknown): unknown {
@@ -117,9 +121,8 @@ function allRows(db: Database.Database, scope: PolicyScope): PolicyFinding[] {
 function matchingStableKeys(
   db: Database.Database,
   scope: PolicyScope,
-  predicate: PolicyPredicate,
+  compiled: ReturnType<typeof compilePredicate>,
 ): string[] {
-  const compiled = compilePredicate(predicate);
   const rows = db.prepare(
     `SELECT DISTINCT f.stable_key
        FROM findings f
@@ -261,6 +264,7 @@ export function evaluatePolicy(
   const evaluatedAt = new Date().toISOString();
   const report: PolicyReport = {
     runId: randomUUID(),
+    policySha256: policySha256(policy),
     dryRun: true,
     rules: policy.rules.map((rule) => ({ name: rule.name, matched: 0, wouldWrite: 0, held: 0, samples: [] })),
     written: 0,
@@ -275,11 +279,12 @@ export function evaluatePolicy(
   for (const [ruleIndex, rule] of policy.rules.entries()) {
     const ruleReport = report.rules[ruleIndex];
     if (ruleReport === undefined) throw new Error("Policy rule report is missing");
-    for (const stableKey of matchingStableKeys(db, scope, rule.when)) {
+    const compiled = compilePredicate(rule.when);
+    for (const stableKey of matchingStableKeys(db, scope, compiled)) {
       if (seen.has(stableKey)) continue;
-      seen.add(stableKey);
       const matches = byStableKey.get(stableKey) ?? [];
-      if (matches.length === 0) continue;
+      if (matches.length === 0 || !matches.some((item) => compiled.matches(item))) continue;
+      seen.add(stableKey);
       ruleReport.matched += 1;
       sample(ruleReport, stableKey);
 
@@ -298,6 +303,16 @@ export function evaluatePolicy(
       if (rule.set.status === "NOT_AFFECTED" && rule.set.justification === null) {
         ruleReport.held += 1;
         boundedPush(report.held, { stableKey, rule: rule.name, why: "NOT_AFFECTED requires a justification" });
+        continue;
+      }
+      const pin = rule.set.justification === "CODE_NOT_REACHABLE" ? "exact_version" : rule.set.pin;
+      if (pin === "exact_version" && representative.componentVersion === null) {
+        ruleReport.held += 1;
+        boundedPush(report.held, {
+          stableKey,
+          rule: rule.name,
+          why: "Exact-version policy decision requires component version evidence",
+        });
         continue;
       }
       const holdback = matchingHoldback(policy, matches, rule.set);
@@ -335,7 +350,7 @@ export function evaluatePolicy(
           justification: rule.set.justification,
           response: rule.set.response,
           reason: expanded.reason,
-          pin: rule.set.justification === "CODE_NOT_REACHABLE" ? "exact_version" : rule.set.pin,
+          pin,
           provenance: {
             by: "bb-policy",
             at: evaluatedAt,
