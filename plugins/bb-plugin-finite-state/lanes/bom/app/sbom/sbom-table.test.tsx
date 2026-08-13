@@ -3,6 +3,7 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, waitFor, within } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@bb/plugin-sdk/testing/app";
+import { connectedRemoteStatus } from "../../../../test/app-connections.js";
 import type { JsonValue } from "../../../../shared/contract.js";
 
 const cache = {
@@ -135,13 +136,14 @@ async function renderBom(
         projects: [{ id: "project-1", name: "Project One", isPersonal: false }],
       },
       rpc: {
+        connectionsStatus: connectedRemoteStatus,
         bomSoftwareList: handler,
         bomComponentGet: detailHandler,
         firmwareMountsList: () => ({ items: [], total: 0, next: null, cache }),
       },
     },
   );
-  fireEvent.change(slot.getByLabelText("Finite State project version ID"), {
+  fireEvent.change(await slot.findByLabelText("Finite State project version ID"), {
     target: { value: "version-1" },
   });
   return slot;
