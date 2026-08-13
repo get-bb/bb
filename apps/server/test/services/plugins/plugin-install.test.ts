@@ -923,6 +923,37 @@ describe("plugin install flows", () => {
         ).toEqual(["running", "running"]);
       });
 
+      it("keeps a symlinked nested plugin when the repository root installs", async () => {
+        const repoDir = join(workDir, "repo-collection-root-symlink");
+        await writePluginFixture(join(repoDir, "plugins", "actual"), {
+          name: "bb-plugin-collection-linked-root",
+        });
+        await symlink("actual", join(repoDir, "plugins", "linked"));
+        await writePluginFixture(repoDir, {
+          name: "bb-plugin-collection-top-linked",
+        });
+        await initGitRepo(repoDir);
+        await commitAll(repoDir, "init");
+
+        const linked = await service.install(`git:${repoDir}@main`, {
+          kind: "subdirectory",
+          path: "plugins/linked",
+        });
+        await stat(join(linked.rootDir, "dist", "server.js"));
+        const top = await service.install(`git:${repoDir}@main`, {
+          kind: "root",
+        });
+
+        expect(top.status).toBe("running");
+        await stat(join(linked.rootDir, "dist", "server.js"));
+        expect(
+          service
+            .list()
+            .filter((plugin) => plugin.id.includes("collection-"))
+            .map((plugin) => plugin.status),
+        ).toEqual(["running", "running"]);
+      });
+
       it("reinstalls a nested plugin whose directory was collected", async () => {
         const repoDir = join(workDir, "repo-collection-recollected");
         const commit = await writeCollectionRepo(repoDir);

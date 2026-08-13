@@ -415,10 +415,10 @@ export async function promoteImmutableDir(args: {
  *
  * One checkout serves every plugin of a multi-plugin repository, so a promote
  * must never replace a tree another plugin already built into. Only the
- * selected plugin root moves, and the built trees of the plugins that live
- * inside that root ride along from the target instead of being replaced by
- * the pristine copies of the staged clone. The content hash covers the plugin
- * root alone for the same reason.
+ * selected plugin root moves, and copies of the built trees that live inside
+ * that root ride along from the target. Copying leaves the live checkout whole
+ * until the final promotion if the process stops during preservation. The
+ * content hash covers the plugin root alone for the same reason.
  *
  * Returns the content hash of the promoted plugin root, which differs from
  * the staged hash when a nested plugin was carried over.
@@ -453,7 +453,7 @@ export async function promoteGitPluginArtifact(args: {
     "git plugin subdirectory",
   );
   const targetRoot = pluginRootDir(args.targetDir, args.subdirectory);
-  const preserved: Array<{ from: string; to: string }> = [];
+  let preservedCount = 0;
   try {
     // An identical target is settled before anything moves: `promoteImmutableDir`
     // drops the staging tree in that case, and the carried-over plugins are in
@@ -475,23 +475,26 @@ export async function promoteGitPluginArtifact(args: {
       if (!exists) continue;
       const to = join(stagingRoot, nested);
       await rm(to, { recursive: true, force: true });
-      await rename(from, to);
-      preserved.push({ from, to });
+      const resolvedFrom = await realPathInside(
+        args.targetDir,
+        from,
+        "nested git plugin root",
+      );
+      await cp(resolvedFrom, to, {
+        recursive: true,
+        preserveTimestamps: true,
+      });
+      preservedCount += 1;
     }
     await promoteImmutableDir({
       stagingDir: stagingRoot,
       targetDir: targetRoot,
       contentHash: args.contentHash,
     });
-  } catch (error) {
-    for (const move of preserved.reverse()) {
-      await rename(move.to, move.from).catch(() => {});
-    }
-    throw error;
   } finally {
     await rm(args.stagingDir, { recursive: true, force: true });
   }
-  return preserved.length === 0
+  return preservedCount === 0
     ? args.contentHash
     : await hashInstallDir(targetRoot);
 }
