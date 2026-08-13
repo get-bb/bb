@@ -554,6 +554,7 @@ async function defaultFileClean(root: string, file: string): Promise<boolean> {
 
 async function workingState(
   deps: EngineDeps,
+  scope: SyncScope,
   adapters: readonly EntityAdapter[],
 ): Promise<{
   divergence: string[];
@@ -569,7 +570,7 @@ async function workingState(
   for (const adapter of adapters) {
     let working;
     try {
-      working = await adapter.readWorking(root);
+      working = await adapter.readWorking(root, scope);
     } catch (error: unknown) {
       const partial = partialWorkingRead(error);
       if (partial === null) {
@@ -784,7 +785,7 @@ export async function pull(
   }
   if (failures.length > 0) throw new PullFailedError(generationId, failures);
 
-  const working = await workingState(deps, adapters);
+  const working = await workingState(deps, scope, adapters);
   const acceptedAt = publishGeneration(
     deps,
     scope,
