@@ -595,6 +595,7 @@ export const threadHandoffs = sqliteTable(
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),
     settledAt: integer("settled_at"),
+    archiveEffectsCompletedAt: integer("archive_effects_completed_at"),
   },
   (table) => [
     uniqueIndex("thread_handoffs_replacement_idx").on(
@@ -608,6 +609,13 @@ export const threadHandoffs = sqliteTable(
     index("thread_handoffs_environment_idx").on(table.environmentId),
     index("thread_handoffs_provisioning_page_idx").on(
       table.status,
+      table.createdAt,
+      table.id,
+    ),
+    index("thread_handoffs_archive_effects_page_idx").on(
+      table.status,
+      table.archiveSource,
+      table.archiveEffectsCompletedAt,
       table.createdAt,
       table.id,
     ),

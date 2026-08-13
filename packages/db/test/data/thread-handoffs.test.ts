@@ -6,7 +6,9 @@ import {
   createThreadHandoff,
   getThreadHandoffByReplacementThreadId,
   getThreadHandoffBySourceAndIdempotencyKey,
+  listIncompleteThreadHandoffArchiveEffects,
   listProvisioningThreadHandoffs,
+  markThreadHandoffArchiveEffectsCompleted,
   markThreadHandoffFailed,
   markThreadHandoffStarted,
   type CreateThreadHandoffInput,
@@ -98,6 +100,7 @@ describe("thread handoffs", () => {
       createdAt: 100,
       updatedAt: 100,
       settledAt: null,
+      archiveEffectsCompletedAt: null,
     });
     expect(created.handoff.id).toMatch(/^thd_/u);
     expect(
@@ -297,5 +300,65 @@ describe("thread handoffs", () => {
       limit: 1,
     });
     expect(secondPage).toEqual({ handoffs: [last], nextCursor: null });
+  });
+
+  it("pages only started archive handoffs with incomplete effects and CASes completion", () => {
+    const fixture = setup();
+    const firstInput = handoffInput(fixture, { now: 100 });
+    const noArchiveInput = handoffInput(fixture, {
+      archiveSource: false,
+      sourceThreadId: fixture.threads[2].id,
+      replacementThreadId: fixture.threads[3].id,
+      idempotencyKey: "handoff-key-0002",
+      now: 200,
+    });
+    const lastInput = handoffInput(fixture, {
+      sourceThreadId: fixture.threads[4].id,
+      replacementThreadId: fixture.threads[5].id,
+      idempotencyKey: "handoff-key-0003",
+      now: 300,
+    });
+    const first = createThreadHandoff(fixture.db, firstInput).handoff;
+    createThreadHandoff(fixture.db, noArchiveInput);
+    const last = createThreadHandoff(fixture.db, lastInput).handoff;
+    for (const input of [firstInput, noArchiveInput, lastInput]) {
+      markThreadHandoffStarted(fixture.db, {
+        replacementThreadId: input.replacementThreadId,
+      });
+    }
+
+    const firstPage = listIncompleteThreadHandoffArchiveEffects(fixture.db, {
+      limit: 1,
+    });
+    expect(firstPage.handoffs).toEqual([
+      expect.objectContaining({ id: first.id, archiveEffectsCompletedAt: null }),
+    ]);
+    expect(firstPage.nextCursor).toEqual({ createdAt: 100, id: first.id });
+    const secondPage = listIncompleteThreadHandoffArchiveEffects(fixture.db, {
+      after: firstPage.nextCursor ?? undefined,
+      limit: 1,
+    });
+    expect(secondPage.handoffs).toEqual([
+      expect.objectContaining({ id: last.id, archiveEffectsCompletedAt: null }),
+    ]);
+
+    expect(
+      markThreadHandoffArchiveEffectsCompleted(fixture.db, {
+        replacementThreadId: firstInput.replacementThreadId,
+        completedAt: 400,
+      }),
+    ).toMatchObject({ applied: true });
+    expect(
+      markThreadHandoffArchiveEffectsCompleted(fixture.db, {
+        replacementThreadId: firstInput.replacementThreadId,
+        completedAt: 500,
+      }),
+    ).toMatchObject({ applied: false, reason: "already-completed" });
+    expect(
+      listIncompleteThreadHandoffArchiveEffects(fixture.db, { limit: 10 })
+        .handoffs,
+    ).toEqual([
+      expect.objectContaining({ id: last.id, archiveEffectsCompletedAt: null }),
+    ]);
   });
 });

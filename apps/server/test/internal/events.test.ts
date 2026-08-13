@@ -238,4 +238,49 @@ describe("thread handoff event settlement", () => {
       expect(getThread(harness.db, fixture.source.id)?.archivedAt).toBeNull();
     });
   });
+
+  it("lets a persisted qualifying root start outrank a later provider exit", async () => {
+    await withTestHarness(async (harness) => {
+      const fixture = seedHandoff(harness);
+      seedEvent(harness.deps, {
+        data: { providerThreadId: "provider-replacement" },
+        environmentId: fixture.environment.id,
+        providerThreadId: "provider-replacement",
+        scope: turnScope("persisted-root-turn"),
+        sequence: 1,
+        threadId: fixture.replacement.id,
+        type: "turn/started",
+      });
+
+      const response = await harness.app.request("/internal/session/events", {
+        method: "POST",
+        headers: internalAuthHeaders(harness),
+        body: JSON.stringify({
+          sessionId: fixture.session.id,
+          eventGroups: groupHostDaemonEvents([
+            createTestDaemonEventEnvelope({
+              event: {
+                type: "system/error",
+                threadId: fixture.replacement.id,
+                scope: threadScope(),
+                code: "provider_process_exited",
+                message: "Exit raced recovery",
+              },
+            }),
+          ]),
+        }),
+      });
+
+      expect(response.status).toBe(200);
+      expect(
+        getThreadHandoffByReplacementThreadId(
+          harness.db,
+          fixture.replacement.id,
+        ),
+      ).toMatchObject({ status: "started", failureCode: null });
+      expect(getThread(harness.db, fixture.source.id)?.archivedAt).toEqual(
+        expect.any(Number),
+      );
+    });
+  });
 });

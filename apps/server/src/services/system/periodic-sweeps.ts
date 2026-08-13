@@ -18,6 +18,7 @@ import {
   hasNonStaleRootTurnStarted,
   isDatabaseMaintenanceIdle,
   listDeferredLegacyTables,
+  listIncompleteThreadHandoffArchiveEffects,
   listProvisioningThreadHandoffs,
   environments,
   pruneClosedSessions,
@@ -51,6 +52,7 @@ import { hasLiveThreadStartInFlight } from "../threads/thread-lifecycle.js";
 import {
   settleThreadHandoffFailed,
   settleThreadHandoffStarted,
+  retryThreadHandoffArchiveEffects,
 } from "../threads/thread-handoff.js";
 import { advanceThreadProvisioning } from "../threads/thread-provisioning.js";
 import { runQueuedMessageAutoSendSweep } from "../threads/queued-messages.js";
@@ -552,6 +554,28 @@ export function runThreadHandoffReconciliationSweep(
     }
     after = page.nextCursor ?? undefined;
   } while (after);
+
+  let effectsAfter: Parameters<
+    typeof listIncompleteThreadHandoffArchiveEffects
+  >[1]["after"];
+  do {
+    const page = listIncompleteThreadHandoffArchiveEffects(deps.db, {
+      ...(effectsAfter ? { after: effectsAfter } : {}),
+      limit: pageSize,
+    });
+    observed += page.handoffs.length;
+    for (const handoff of page.handoffs) {
+      try {
+        retryThreadHandoffArchiveEffects(deps, handoff.replacementThreadId);
+      } catch (error) {
+        deps.logger.warn(
+          { err: error, replacementThreadId: handoff.replacementThreadId },
+          "Thread handoff archive effect reconciliation failed",
+        );
+      }
+    }
+    effectsAfter = page.nextCursor ?? undefined;
+  } while (effectsAfter);
 
   if (observed === 0) {
     return { failed, observation: "empty", observed, started };

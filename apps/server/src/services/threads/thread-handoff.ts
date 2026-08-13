@@ -6,6 +6,8 @@ import {
   getThread,
   getThreadHandoffByReplacementThreadId,
   getThreadHandoffBySourceAndIdempotencyKey,
+  hasNonStaleRootTurnStarted,
+  markThreadHandoffArchiveEffectsCompleted,
   markThreadHandoffFailed,
   markThreadHandoffStarted,
   noopNotifier,
@@ -36,7 +38,7 @@ import { validatePromptAttachmentReferences } from "../projects/attachments.js";
 import { emitPluginThreadCreated } from "../plugins/plugin-thread-events.js";
 import { validateExplicitThreadExecution } from "../system/execution-options.js";
 import { createThreadRecord } from "./thread-create-helpers.js";
-import { applyArchivedThreadLifecycleEffects } from "./thread-archive.js";
+import { applyArchivedThreadLifecycleEffectsBestEffort } from "./thread-archive.js";
 import { releaseUnarchivedChildrenFromArchivedThreadInTransaction } from "./thread-ownership.js";
 import {
   advanceThreadProvisioning,
@@ -49,6 +51,94 @@ const storedInputSchema = z.array(promptInputSchema).min(1);
 export interface ThreadHandoffFailure {
   code: string;
   message: string;
+}
+
+function completeThreadHandoffArchiveEffects(
+  deps: ThreadHandoffDeps,
+  args: {
+    notificationBuffer?: NotificationBuffer;
+    replacementThreadId: string;
+    source: Thread;
+  },
+): boolean {
+  let allSucceeded = true;
+  if (args.notificationBuffer) {
+    allSucceeded = args.notificationBuffer.flushIntoBestEffort(
+      deps.hub,
+      (error) => {
+        deps.logger.warn(
+          { replacementThreadId: args.replacementThreadId, err: error },
+          "Failed to publish source archive notification for thread handoff",
+        );
+      },
+    );
+  } else {
+    try {
+      deps.hub.notifyThread(args.source.id, ["archived-changed"], {
+        projectId: args.source.projectId,
+      });
+    } catch (error) {
+      allSucceeded = false;
+      deps.logger.warn(
+        { replacementThreadId: args.replacementThreadId, err: error },
+        "Failed to replay source archive notification for thread handoff",
+      );
+    }
+  }
+  const environmentId = args.source.environmentId;
+  if (!environmentId) {
+    deps.logger.warn(
+      { replacementThreadId: args.replacementThreadId },
+      "Archived handoff source has no environment for lifecycle effects",
+    );
+    return false;
+  }
+  let lifecycleEffectsSucceeded = false;
+  try {
+    const environment = requireEnvironment(deps.db, environmentId);
+    lifecycleEffectsSucceeded = applyArchivedThreadLifecycleEffectsBestEffort(
+      deps,
+      { environment, thread: args.source },
+    );
+  } catch (error) {
+    deps.logger.warn(
+      { replacementThreadId: args.replacementThreadId, err: error },
+      "Failed to resolve source archive lifecycle effects for thread handoff",
+    );
+  }
+  allSucceeded &&= lifecycleEffectsSucceeded;
+  if (allSucceeded) {
+    markThreadHandoffArchiveEffectsCompleted(deps.db, {
+      replacementThreadId: args.replacementThreadId,
+    });
+  }
+  return allSucceeded;
+}
+
+export function retryThreadHandoffArchiveEffects(
+  deps: ThreadHandoffDeps,
+  replacementThreadId: string,
+): boolean {
+  const handoff = getThreadHandoffByReplacementThreadId(
+    deps.db,
+    replacementThreadId,
+  );
+  if (
+    !handoff ||
+    handoff.status !== "started" ||
+    !handoff.archiveSource ||
+    handoff.archiveEffectsCompletedAt !== null
+  ) {
+    return true;
+  }
+  const source = getThread(deps.db, handoff.sourceThreadId);
+  if (!source || source.archivedAt === null) {
+    return false;
+  }
+  return completeThreadHandoffArchiveEffects(deps, {
+    replacementThreadId,
+    source,
+  });
 }
 
 export function settleThreadHandoffStarted(
@@ -77,39 +167,32 @@ export function settleThreadHandoffStarted(
     },
     { behavior: "immediate" },
   );
-  runPostCommitSideEffect(
-    deps,
-    replacementThreadId,
-    "publish source archive notifications",
-    () => notificationBuffer.flushInto(deps.hub),
-  );
   const archivedSource = transactionResult.archivedSource;
   if (archivedSource) {
-    runPostCommitSideEffect(
-      deps,
+    completeThreadHandoffArchiveEffects(deps, {
+      notificationBuffer,
       replacementThreadId,
-      "apply source archive lifecycle effects",
-      () => {
-        const environmentId = archivedSource.environmentId;
-        if (!environmentId) {
-          throw new Error("Archived handoff source has no environment");
-        }
-        const environment = requireEnvironment(deps.db, environmentId);
-        applyArchivedThreadLifecycleEffects(deps, {
-          environment,
-          thread: archivedSource,
-        });
-      },
-    );
+      source: archivedSource,
+    });
+  } else if (
+    transactionResult.outcome.applied &&
+    transactionResult.outcome.handoff.archiveSource
+  ) {
+    markThreadHandoffArchiveEffectsCompleted(deps.db, {
+      replacementThreadId,
+    });
   }
   return transactionResult.outcome;
 }
 
 export function settleThreadHandoffFailed(
-  deps: Pick<ThreadHandoffDeps, "db">,
+  deps: ThreadHandoffDeps,
   replacementThreadId: string,
   failure: ThreadHandoffFailure,
 ): SettleThreadHandoffResult {
+  if (hasNonStaleRootTurnStarted(deps.db, replacementThreadId)) {
+    return settleThreadHandoffStarted(deps, replacementThreadId);
+  }
   return markThreadHandoffFailed(deps.db, {
     failure,
     replacementThreadId,

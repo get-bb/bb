@@ -451,6 +451,12 @@ const eventLargeValuesMigrationPath = resolve(
   "drizzle",
   "0031_mysterious_zaran.sql",
 );
+const threadHandoffArchiveEffectsMigrationPath = resolve(
+  __dirname,
+  "..",
+  "drizzle",
+  "0096_orange_the_liberteens.sql",
+);
 function closeConnection(db: DbConnection): void {
   db.$client.close();
 }
@@ -1303,6 +1309,52 @@ function deleteDeferredCleanupMigrationRows(db: DbConnection): void {
 }
 
 describe("migrate", () => {
+  it("adds durable archive-effect settlement without rebuilding handoff rows", () => {
+    const db = createConnection(":memory:");
+    try {
+      db.$client.exec(`
+        CREATE TABLE thread_handoffs (
+          id text PRIMARY KEY NOT NULL,
+          status text NOT NULL,
+          archive_source integer NOT NULL,
+          created_at integer NOT NULL
+        );
+        INSERT INTO thread_handoffs VALUES ('handoff-existing', 'started', 1, 100);
+      `);
+
+      runMigrationFile({
+        db,
+        migrationPath: threadHandoffArchiveEffectsMigrationPath,
+      });
+
+      expect(
+        db.$client
+          .prepare<[], TableInfoRow>("PRAGMA table_info(thread_handoffs)")
+          .all()
+          .map((column) => column.name),
+      ).toContain("archive_effects_completed_at");
+      expect(
+        db.$client
+          .prepare<
+            [],
+            { archiveEffectsCompletedAt: number | null; id: string }
+          >(
+            `SELECT id, archive_effects_completed_at AS archiveEffectsCompletedAt
+             FROM thread_handoffs`,
+          )
+          .get(),
+      ).toEqual({
+        archiveEffectsCompletedAt: null,
+        id: "handoff-existing",
+      });
+      expect(readIndexNames({ db, tableName: "thread_handoffs" })).toContain(
+        "thread_handoffs_archive_effects_page_idx",
+      );
+    } finally {
+      closeConnection(db);
+    }
+  });
+
   it("backfills the retirement clock only for environments already retiring", () => {
     const db = createConnection(":memory:");
     try {

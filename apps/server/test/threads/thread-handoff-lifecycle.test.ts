@@ -9,6 +9,8 @@ import {
   settleThreadHandoffFailed,
   settleThreadHandoffStarted,
 } from "../../src/services/threads/thread-handoff.js";
+import { runThreadHandoffReconciliationSweep } from "../../src/services/system/periodic-sweeps.js";
+import { setPluginThreadEventEmitter } from "../../src/services/plugins/plugin-thread-events.js";
 import {
   seedEnvironment,
   seedHostSession,
@@ -195,6 +197,114 @@ describe("thread handoff lifecycle settlement", () => {
         failureMessage: "Provider exited before the root turn started",
       });
       expect(getThread(harness.db, source.id)?.archivedAt).toBeNull();
+    });
+  });
+
+  it("contains an archive notification failure and replays incomplete effects", async () => {
+    await withTestHarness(async (harness) => {
+      const { replacement, source } = seedHandoff(harness, {
+        archiveSource: true,
+      });
+      const notify = vi
+        .spyOn(harness.deps.hub, "notifyThread")
+        .mockImplementationOnce(() => {
+          throw new Error("socket failed");
+        });
+      const closeTerminals = vi.spyOn(
+        harness.deps.terminalSessions,
+        "closeArchivedThreadTerminals",
+      );
+
+      settleThreadHandoffStarted(harness.deps, replacement.id);
+
+      expect(closeTerminals).toHaveBeenCalledWith({ threadId: source.id });
+      expect(
+        getThreadHandoffByReplacementThreadId(harness.db, replacement.id),
+      ).toMatchObject({
+        status: "started",
+        archiveEffectsCompletedAt: null,
+      });
+      notify.mockRestore();
+
+      runThreadHandoffReconciliationSweep(harness.deps);
+
+      expect(
+        getThreadHandoffByReplacementThreadId(harness.db, replacement.id),
+      ).toMatchObject({ archiveEffectsCompletedAt: expect.any(Number) });
+    });
+  });
+
+  it("contains terminal cleanup failure, still runs plugin effects, and retries once", async () => {
+    await withTestHarness(async (harness) => {
+      const { replacement, source } = seedHandoff(harness, {
+        archiveSource: true,
+      });
+      const emitThreadArchived = vi.fn();
+      setPluginThreadEventEmitter({
+        emitThreadActive: vi.fn(),
+        emitThreadArchived,
+        emitThreadCreated: vi.fn(),
+        emitThreadDeleted: vi.fn(),
+        emitThreadFailed: vi.fn(),
+        emitThreadIdle: vi.fn(),
+      });
+      const closeTerminals = vi
+        .spyOn(harness.deps.terminalSessions, "closeArchivedThreadTerminals")
+        .mockImplementationOnce(() => {
+          throw new Error("terminal cleanup failed");
+        });
+      try {
+        settleThreadHandoffStarted(harness.deps, replacement.id);
+
+        expect(emitThreadArchived).toHaveBeenCalledWith(
+          expect.objectContaining({ id: source.id }),
+        );
+        expect(
+          getThreadHandoffByReplacementThreadId(harness.db, replacement.id),
+        ).toMatchObject({ archiveEffectsCompletedAt: null });
+        closeTerminals.mockRestore();
+
+        runThreadHandoffReconciliationSweep(harness.deps);
+        const callsAfterCompletion = emitThreadArchived.mock.calls.length;
+        expect(
+          getThreadHandoffByReplacementThreadId(harness.db, replacement.id),
+        ).toMatchObject({ archiveEffectsCompletedAt: expect.any(Number) });
+
+        runThreadHandoffReconciliationSweep(harness.deps);
+        expect(emitThreadArchived).toHaveBeenCalledTimes(callsAfterCompletion);
+      } finally {
+        setPluginThreadEventEmitter(undefined);
+      }
+    });
+  });
+
+  it("rolls back handoff start, source archive, and child release together", async () => {
+    await withTestHarness(async (harness) => {
+      const { replacement, source } = seedHandoff(harness, {
+        archiveSource: true,
+      });
+      const child = seedThread(harness.deps, {
+        environmentId: source.environmentId,
+        parentThreadId: source.id,
+        projectId: source.projectId,
+      });
+      harness.db.$client.exec(`
+        CREATE TRIGGER fail_handoff_child_release
+        BEFORE UPDATE OF parent_thread_id ON threads
+        WHEN OLD.id = '${child.id}' AND NEW.parent_thread_id IS NULL
+        BEGIN
+          SELECT RAISE(ABORT, 'synthetic child release failure');
+        END;
+      `);
+
+      expect(() =>
+        settleThreadHandoffStarted(harness.deps, replacement.id),
+      ).toThrow(/synthetic child release failure/u);
+      expect(
+        getThreadHandoffByReplacementThreadId(harness.db, replacement.id),
+      ).toMatchObject({ status: "provisioning" });
+      expect(getThread(harness.db, source.id)?.archivedAt).toBeNull();
+      expect(getThread(harness.db, child.id)?.parentThreadId).toBe(source.id);
     });
   });
 });

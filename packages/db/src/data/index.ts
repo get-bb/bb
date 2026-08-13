@@ -169,13 +169,17 @@ export {
   getThreadHandoffByReplacementThreadId,
   getThreadHandoffBySourceAndIdempotencyKey,
   hasNonStaleRootTurnStarted,
+  listIncompleteThreadHandoffArchiveEffects,
   listProvisioningThreadHandoffs,
+  markThreadHandoffArchiveEffectsCompleted,
   markThreadHandoffFailed,
   markThreadHandoffStarted,
 } from "./thread-handoffs.js";
 export type {
   CreateThreadHandoffInput,
   CreateThreadHandoffResult,
+  CompleteThreadHandoffArchiveEffectsResult,
+  IncompleteThreadHandoffArchiveEffectsPage,
   ListProvisioningThreadHandoffsArgs,
   MarkThreadHandoffFailedArgs,
   MarkThreadHandoffStartedArgs,

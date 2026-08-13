@@ -59,4 +59,20 @@ export class NotificationBuffer implements DbNotifier {
       notification.flush(notifier);
     }
   }
+
+  flushIntoBestEffort(
+    notifier: DbNotifier,
+    onError: (error: unknown) => void,
+  ): boolean {
+    let allSucceeded = true;
+    for (const notification of this.notifications) {
+      try {
+        notification.flush(notifier);
+      } catch (error) {
+        allSucceeded = false;
+        onError(error);
+      }
+    }
+    return allSucceeded;
+  }
 }
