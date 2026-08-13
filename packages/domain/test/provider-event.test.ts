@@ -4,6 +4,22 @@ import { threadEventSchema, turnScope } from "../src/index.js";
 const CLIENT_REQUEST_ID = "creq_23456789ab";
 
 describe("provider event schema", () => {
+  it("models context clears as turn-scoped provider events", () => {
+    expect(
+      threadEventSchema.parse({
+        type: "thread/context/cleared",
+        threadId: "thr_123",
+        providerThreadId: "provider-thread-123",
+        scope: turnScope("turn_123"),
+      }),
+    ).toEqual({
+      type: "thread/context/cleared",
+      threadId: "thr_123",
+      providerThreadId: "provider-thread-123",
+      scope: turnScope("turn_123"),
+    });
+  });
+
   it("preserves opaque provider rate-limit window keys", () => {
     expect(
       threadEventSchema.parse({

@@ -233,6 +233,7 @@ function operationKindForMessage(
 ): TimelineSystemOperationKind {
   switch (message.opType) {
     case "compaction":
+    case "context-clear":
     case "thread-provisioning":
     case "thread-interrupted":
     case "provider-unhandled":

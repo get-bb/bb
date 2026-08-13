@@ -146,12 +146,19 @@ export const claudeSdkMessageTypeSchema = z
   .object({
     type: z.enum([
       "assistant",
+      "conversation_reset",
       "rate_limit_event",
       "result",
       "stream_event",
       "system",
       "user",
     ]),
+  })
+  .passthrough();
+
+export const claudeConversationResetMessageSchema = z
+  .object({
+    type: z.literal("conversation_reset"),
   })
   .passthrough();
 

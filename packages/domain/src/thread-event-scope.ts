@@ -88,6 +88,7 @@ export const threadEventScopeDefinitionByType = {
       "Thread metadata event; names are not part of a specific turn transcript.",
   },
   "thread/compacted": { policy: "turn" },
+  "thread/context/cleared": { policy: "turn" },
   "thread/goal/updated": {
     policy: "thread",
     rationale:

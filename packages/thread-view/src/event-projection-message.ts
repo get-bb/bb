@@ -237,6 +237,7 @@ export const eventProjectionOperationTypeValues = [
   "thread-provisioning",
   "operation",
   "compaction",
+  "context-clear",
 ] as const;
 export type EventProjectionOperationType =
   (typeof eventProjectionOperationTypeValues)[number];

@@ -229,6 +229,8 @@ function resolveProviderIdentifiers(event: HostDaemonEventEnvelope["event"]): {
       return { providerThreadId: event.providerThreadId };
     case "thread/compacted":
       return { providerThreadId: event.providerThreadId };
+    case "thread/context/cleared":
+      return { providerThreadId: event.providerThreadId };
     case "thread/goal/updated":
     case "thread/goal/cleared":
       return { providerThreadId: event.providerThreadId };

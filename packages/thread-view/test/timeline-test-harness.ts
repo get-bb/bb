@@ -351,6 +351,9 @@ export interface TimelineEventFactory {
   threadCompacted(
     args?: ProviderTurnEventOptions,
   ): ThreadEventRowOfType<"thread/compacted">;
+  threadContextCleared(
+    args?: ProviderTurnEventOptions,
+  ): ThreadEventRowOfType<"thread/context/cleared">;
   turnCompleted(
     args?: ProviderTurnEventOptions & {
       status?: "completed" | "failed" | "interrupted";
@@ -924,6 +927,20 @@ export function createTimelineEventFactory(
       return {
         ...base,
         type: "thread/compacted",
+        data: {
+          ...providerFields(args),
+          threadId: args.threadId ?? defaults.threadId,
+        },
+      };
+    },
+    threadContextCleared(args = {}) {
+      const base = nextProviderTurnScopedRowBase(
+        "thread-context-cleared",
+        args,
+      );
+      return {
+        ...base,
+        type: "thread/context/cleared",
         data: {
           ...providerFields(args),
           threadId: args.threadId ?? defaults.threadId,

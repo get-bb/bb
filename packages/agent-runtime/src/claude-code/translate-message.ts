@@ -24,6 +24,7 @@ import {
   claudeApiRetryMessageSchema,
   claudeAssistantMessageSchema,
   claudeCompactBoundarySystemMessageSchema,
+  claudeConversationResetMessageSchema,
   claudeModelFallbackSystemMessageSchema,
   claudeModelRefusalNoFallbackSystemMessageSchema,
   claudePermissionDeniedSystemMessageSchema,
@@ -458,6 +459,31 @@ export function translateClaudeSdkMessage(
   const fallbackTurnId = resolveClaudeActiveTurnId(args);
 
   switch (messageType.data.type) {
+    case "conversation_reset": {
+      const parsedMessage = claudeConversationResetMessageSchema.safeParse(
+        args.event,
+      );
+      if (!parsedMessage.success) {
+        return args.buildUnexpectedSdkEvent({
+          event: args.event,
+          context: args.context,
+          turnId: fallbackTurnId,
+        });
+      }
+      const turnId = args.ensureTurnStarted({
+        events,
+        state,
+        threadId,
+      });
+      events.push({
+        type: "thread/context/cleared",
+        threadId,
+        providerThreadId: "",
+        scope: turnScope(turnId),
+      });
+      return events;
+    }
+
     case "system": {
       const parsedMessage = claudeSystemMessageSchema.safeParse(args.event);
       if (!parsedMessage.success) {

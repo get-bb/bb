@@ -84,6 +84,19 @@ function compactionMessage(
   };
 }
 
+function contextClearMessage(
+  args: MessageBaseArgs,
+): EventProjectionOperationMessage {
+  return {
+    ...messageBase(args),
+    kind: "operation",
+    opType: "context-clear",
+    title: "Context cleared",
+    status: "completed",
+    completedAt: args.seq,
+  };
+}
+
 function completedTurn(
   messages: EventProjectionMessage[],
   terminalMessage: EventProjectionMessage | undefined,
@@ -128,6 +141,20 @@ describe("groupCompletedTurnMessages", () => {
     ]);
     expect(groups.terminalMessages).toEqual([]);
     expect(groups.trailingMessages).toEqual([]);
+  });
+
+  it("unwraps a singleton context-clear group", () => {
+    const contextClear = contextClearMessage({
+      id: "context-clear",
+      seq: 1,
+    });
+    const groups = groupCompletedTurnMessages(
+      completedTurn([contextClear], undefined),
+    );
+
+    expect(groups.summaryItems).toEqual([
+      { kind: "ungrouped-message", message: contextClear },
+    ]);
   });
 
   it("uses one summary group when no messages are ungroupable", () => {

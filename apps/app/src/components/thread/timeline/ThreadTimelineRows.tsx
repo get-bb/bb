@@ -1564,6 +1564,8 @@ export function systemOperationLeadingIcon(
       return "AlertCircle";
     case "compaction":
       return "CircleArrowShrink";
+    case "context-clear":
+      return "Clean";
     case "generic":
     case "warning":
     case "deprecation":

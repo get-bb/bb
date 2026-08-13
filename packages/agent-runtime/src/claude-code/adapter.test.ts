@@ -2186,7 +2186,7 @@ describe("claude-code provider adapter", () => {
     );
   });
 
-  it("translateEvent settles a zero-work run that never started a turn", () => {
+  it("translateEvent maps a conversation reset and settles its zero-work turn", () => {
     const adapter = createClaudeCodeProviderAdapter();
 
     expect(
@@ -2202,10 +2202,29 @@ describe("claude-code provider adapter", () => {
       }),
     ).toEqual([]);
 
-    // The CLI resolves /clear locally: it emits conversation_reset and then a
-    // success result, with no model call and so no assistant message to start
-    // the turn. The result has to settle it, or the thread stays active.
-    const events = adapter.translateEvent(
+    // The CLI resolves /clear locally: conversation_reset is the successful
+    // context-clear signal, followed by a result with no model call.
+    const resetEvents = adapter.translateEvent(
+      {
+        type: "conversation_reset",
+        session_id: "claude-session-1",
+      },
+      { threadId: "bb-thread-1" },
+    );
+
+    expect(resetEvents.map((event) => event.type)).toEqual([
+      "turn/started",
+      "turn/input/accepted",
+      "thread/context/cleared",
+    ]);
+    expect(resetEvents).toContainEqual({
+      type: "thread/context/cleared",
+      threadId: "",
+      providerThreadId: "",
+      scope: turnScope("turn-1"),
+    });
+
+    const resultEvents = adapter.translateEvent(
       {
         type: "result",
         subtype: "success",
@@ -2217,12 +2236,8 @@ describe("claude-code provider adapter", () => {
       { threadId: "bb-thread-1" },
     );
 
-    expect(events.map((event) => event.type)).toEqual([
-      "turn/started",
-      "turn/input/accepted",
-      "turn/completed",
-    ]);
-    expect(events).toContainEqual(
+    expect(resultEvents.map((event) => event.type)).toEqual(["turn/completed"]);
+    expect(resultEvents).toContainEqual(
       expect.objectContaining({
         type: "turn/completed",
         scope: turnScope("turn-1"),

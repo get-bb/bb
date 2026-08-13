@@ -992,6 +992,29 @@ describe("timeline CLI rendering snapshots", () => {
     expect(timeline.text).not.toContain("Worked for");
   });
 
+  it("shows a context clear as its own completed timeline row", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const timeline = renderTimelineFixture({
+      events: [
+        event.turnStarted(),
+        event.threadContextCleared(),
+        event.turnCompleted(),
+      ],
+      includeNestedRows: false,
+      projectionOptions: {
+        threadStatus: "idle",
+        turnMessageDetail: "summary",
+      },
+    });
+
+    expect(messageKinds(timeline.messages)).toEqual(["operation"]);
+    expect(timeline.turnRows).toHaveLength(0);
+    expect(timeline.text).toMatchInlineSnapshot(`
+      "── Context cleared ─────────────────────────────────────────"
+    `);
+    expect(timeline.text).not.toContain("Worked for");
+  });
+
   it("unwraps failed context compaction from a singleton turn summary", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
     const timeline = renderTimelineFixture({
