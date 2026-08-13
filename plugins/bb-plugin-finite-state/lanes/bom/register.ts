@@ -16,9 +16,14 @@ import {
 } from "./hbom/review.js";
 import { handleSbomExport } from "./sbom/export-http.js";
 import { pullSbom } from "./sbom/pull.js";
-import { querySbomForProject } from "./sbom/query.js";
+import {
+  queryComponentLinks,
+  querySbomForProject,
+  type SbomSort,
+  type SbomSortDirection,
+  type SbomUiQuery,
+} from "./sbom/query.js";
 import type {
-  SbomQuery,
   SbomReachability,
   SbomSeverity,
   SbomPullInput,
@@ -91,24 +96,63 @@ function isReachability(value: string | undefined): value is SbomReachability {
   return value === "reachable" || value === "unreachable" || value === "mixed" || value === "unknown";
 }
 
+function isSort(value: string | undefined): value is SbomSort {
+  return value === "name" || value === "severity" || value === "kev" || value === "license";
+}
+
+function isSortDirection(value: string | undefined): value is SbomSortDirection {
+  return value === "asc" || value === "desc";
+}
+
+const SOFTWARE_FILTERS = new Set([
+  "architectureLinked",
+  "componentKey",
+  "component_key",
+  "direction",
+  "kev",
+  "license",
+  "linked",
+  "localChange",
+  "min_severity",
+  "minimumSeverity",
+  "name",
+  "purl",
+  "reachability",
+  "search",
+  "sort",
+  "source",
+]);
+
 function softwareQuery(input: {
   projectVersionId: string | null;
   pageSize: number;
   continuation: string | null;
   filters?: Record<string, JsonValue>;
-}): SbomQuery {
+}): SbomUiQuery {
   if (input.projectVersionId === null) {
     throw new Error("SBOM_PROJECT_VERSION_REQUIRED: software inventory is version-scoped");
   }
   const filters = input.filters ?? {};
   const severity = optionalString(filters, "minimumSeverity", "min_severity");
   const reachability = optionalString(filters, "reachability");
+  const sort = optionalString(filters, "sort");
+  const direction = optionalString(filters, "direction");
+  const unknown = Object.keys(filters).filter((key) => !SOFTWARE_FILTERS.has(key));
+  if (unknown.length > 0) {
+    throw new Error(`SBOM_FILTER_INVALID: unsupported filters: ${unknown.sort().join(", ")}`);
+  }
   if (severity && !isSeverity(severity)) {
     throw new Error("SBOM_FILTER_INVALID: minimum severity is invalid");
   }
   if (reachability && !isReachability(reachability)) {
     throw new Error("SBOM_FILTER_INVALID: reachability is invalid");
   }
+  if (sort && !isSort(sort)) throw new Error("SBOM_FILTER_INVALID: sort is invalid");
+  if (direction && !isSortDirection(direction)) {
+    throw new Error("SBOM_FILTER_INVALID: direction is invalid");
+  }
+  const linked = optionalBoolean(filters, "linked")
+    ?? optionalBoolean(filters, "architectureLinked");
   return {
     projectVersionId: input.projectVersionId,
     limit: input.pageSize,
@@ -121,6 +165,13 @@ function softwareQuery(input: {
     ...(isSeverity(severity) ? { minimumSeverity: severity } : {}),
     ...(optionalBoolean(filters, "kev") !== undefined ? { kev: optionalBoolean(filters, "kev") } : {}),
     ...(isReachability(reachability) ? { reachability } : {}),
+    ...(optionalString(filters, "source") ? { source: optionalString(filters, "source") } : {}),
+    ...(linked !== undefined ? { linked } : {}),
+    ...(optionalBoolean(filters, "localChange") !== undefined
+      ? { localChange: optionalBoolean(filters, "localChange") }
+      : {}),
+    ...(isSort(sort) ? { sort } : {}),
+    ...(isSortDirection(direction) ? { direction } : {}),
     ...(optionalString(filters, "componentKey", "component_key") ? {
       componentKey: optionalString(filters, "componentKey", "component_key"),
     } : {}),
@@ -154,8 +205,12 @@ export function registerBom(bb: BbPluginApi, ctx: PluginContext): void {
             license: component.license,
             supplier: component.supplier,
             source: component.source,
-            isStale: component.isStale,
+            upstreamStale: component.upstreamStale,
             files: component.files,
+            fileCount: component.files.length,
+            localChange: component.localChange,
+            linked: component.linked,
+            findings: component.findings,
             vuln: component.vuln,
             pulledAt: component.pulledAt,
           },
@@ -177,6 +232,12 @@ export function registerBom(bb: BbPluginApi, ctx: PluginContext): void {
       });
       const component = page.items[0];
       if (!component) throw new Error("SBOM_COMPONENT_NOT_FOUND");
+      const projectedLinks = queryComponentLinks(
+        db,
+        input.projectId,
+        input.projectVersionId,
+        component.purl,
+      );
       return {
         projectId: input.projectId,
         projectVersionId: input.projectVersionId,
@@ -191,12 +252,22 @@ export function registerBom(bb: BbPluginApi, ctx: PluginContext): void {
           license: component.license,
           supplier: component.supplier,
           source: component.source,
-          isStale: component.isStale,
+          upstreamStale: component.upstreamStale,
           files: component.files,
+          fileCount: component.files.length,
+          findings: component.findings,
+          localChange: component.localChange,
+          linked: component.linked,
           vuln: component.vuln,
           pulledAt: component.pulledAt,
         },
-        links: [],
+        links: projectedLinks.map((link) => ({
+          projectId: input.projectId,
+          projectVersionId: input.projectVersionId,
+          kind: link.kind,
+          key: link.key,
+          label: link.label,
+        })),
         cache: page.cache,
       };
     },
