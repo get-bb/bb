@@ -15,6 +15,8 @@ export const DAEMON_ACTIVE_WORK_DISCONNECT_GRACE_MS = LEASE_TIMEOUT_MS;
 export const MANAGED_ENVIRONMENT_RETIRE_GRACE_MS = 5 * 60_000;
 export const WORKSPACE_DIFF_MAX_DIFF_BYTES = 2 * 1024 * 1024;
 export const WORKSPACE_DIFF_MAX_FILE_LIST_BYTES = 256 * 1024;
+/** Bounds untracked file content reads in the legacy full-diff response. */
+export const WORKSPACE_DIFF_MAX_UNTRACKED_FILES = 5000;
 
 /**
  * Per-file diff tiering thresholds (in changed lines = additions + deletions).

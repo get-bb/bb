@@ -57,6 +57,7 @@ function makeGitSection(
       stats: {
         insertions: 2,
         deletions: 0,
+        lineStatsComplete: true,
         files: [changedFile],
       },
     },

@@ -110,6 +110,7 @@ const WORKSPACE_STATUS_AVAILABLE_RESULT: JsonObject = {
     workingTree: {
       insertions: 3,
       deletions: 1,
+      lineStatsComplete: true,
       files: [
         {
           path: "src/index.ts",
@@ -133,6 +134,7 @@ const WORKSPACE_STATUS_AVAILABLE_RESULT: JsonObject = {
     mergeBase: {
       insertions: 5,
       deletions: 0,
+      lineStatsComplete: true,
       files: [
         {
           path: "README.md",
@@ -1056,6 +1058,10 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
+  // Version 119 carries required workspace diff limits and line-stat
+  // completeness over the host wire. Older daemons cannot safely enforce or
+  // interpret those fields, so enrolled machines must update before serving
+  // workspace status and diff requests.
   // Version 118 rejects successful provider update results when the daemon
   // cannot verify a version change. Older daemons can report a no-op Claude
   // update as successful, so enrolled machines must update for honest results.
@@ -1071,8 +1077,8 @@ describe("host-daemon command schemas", () => {
   // against its Pi provider ladder, so enrolled machines must not run that
   // mixed version. Version 113 carried the Devin Desktop open target rename
   // and remains part of the protocol lineage.
-  it("uses protocol version 118 for verified provider update results", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(118);
+  it("uses protocol version 119 for bounded workspace diff results", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(119);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {
@@ -1659,6 +1665,7 @@ describe("host-daemon command schemas", () => {
         target: { type: "uncommitted" },
         maxDiffBytes: 1000,
         maxFileListBytes: 1000,
+        maxUntrackedFiles: 5000,
       },
     ];
 
@@ -2802,6 +2809,7 @@ describe("host-daemon command schemas", () => {
           workingTree: {
             insertions: 0,
             deletions: 0,
+            lineStatsComplete: true,
             files: [],
             hasUncommittedChanges: false,
             state: "clean",

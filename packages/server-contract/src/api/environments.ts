@@ -457,7 +457,7 @@ export const diffFileEntrySchema = z.object({
   binary: z.boolean(),
   /**
    * Whether the entry originates from an untracked working-tree file. Drives
-   * the daemon's patch invocation (untracked files need the `--no-index` form).
+   * the daemon's alternate-index patch handling.
    */
   origin: z.enum(["tracked", "untracked"]),
   /** Server-computed tiering decision. */
