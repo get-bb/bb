@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, waitFor } from "@testing-library/react";
+import { cleanup, configure, fireEvent, waitFor } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@bb/plugin-sdk/testing/app";
 import { connectedRemoteStatus } from "../../../../test/app-connections.js";
 import type { RequirementCardModel } from "./schema.js";
@@ -33,6 +33,7 @@ class RequirementsResizeObserver implements ResizeObserver {
 }
 
 beforeAll(() => {
+  configure({ asyncUtilTimeout: 10_000 });
   vi.stubGlobal("ResizeObserver", RequirementsResizeObserver);
   vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) {
     const height = this instanceof HTMLElement && this.hasAttribute("data-virtual-row")

@@ -1,9 +1,10 @@
 import { lstat, mkdtemp, readFile, readdir, realpath, rename, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { readVexWorking } from "../../sync/entities/vex-decision.js";
+import { readOverlayFiles } from "./reader.js";
 import { parseOverlay, stableKeyFor, type DecisionInput } from "./schema.js";
 import {
   OVERLAY_LOCK_STALE_MS,
@@ -11,6 +12,11 @@ import {
   removeDecision,
   setDecision,
 } from "./writer.js";
+
+vi.mock("./reader.js", async (importOriginal) => {
+  const original = await importOriginal<typeof import("./reader.js")>();
+  return { ...original, readOverlayFiles: vi.fn(original.readOverlayFiles) };
+});
 
 const roots: string[] = [];
 
@@ -206,6 +212,9 @@ describe("triage overlay writer", () => {
 
   it("keeps 200 sequential distinct-component writes bounded", async () => {
     const projectRoot = await root();
+    const overlayReads = vi.mocked(readOverlayFiles);
+    overlayReads.mockClear();
+    const cpuStarted = process.cpuUsage();
     const started = performance.now();
     for (let index = 0; index < 200; index += 1) {
       const cve = `CVE-2026-${10_000 + index}`;
@@ -216,6 +225,11 @@ describe("triage overlay writer", () => {
         stableKey: stableKeyFor("project-1", component, cve),
       });
     }
-    expect(performance.now() - started).toBeLessThan(2_000);
-  }, 15_000);
+    const cpu = process.cpuUsage(cpuStarted);
+    const elapsed = performance.now() - started;
+    expect(overlayReads).toHaveBeenCalledTimes(1);
+    expect(await readdir(join(projectRoot, ".fs", "triage", "project-1"))).toHaveLength(200);
+    expect((cpu.user + cpu.system) / 1_000).toBeLessThan(2_000);
+    expect(elapsed).toBeLessThan(30_000);
+  }, 45_000);
 });

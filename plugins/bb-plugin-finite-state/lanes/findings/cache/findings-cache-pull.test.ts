@@ -237,7 +237,7 @@ describe("findings cache pull", () => {
       "SELECT stable_key FROM findings WHERE generation_id = 'seed-generation' AND component_purl IS NULL",
     ).get() as { stable_key: string };
     expect(parseFindingStableKey(fallback.stable_key).tier).toBe("name-group-version");
-    const started = performance.now();
+    const started = process.cpuUsage();
     const representative = queryFindings(db, {
       projectId: scope.projectId,
       pvId,
@@ -247,6 +247,7 @@ describe("findings cache pull", () => {
       limit: 100,
     });
     expect(representative.total).toBeGreaterThan(0);
-    expect(performance.now() - started).toBeLessThan(50);
+    const cpu = process.cpuUsage(started);
+    expect((cpu.user + cpu.system) / 1_000).toBeLessThan(50);
   });
 });

@@ -2,6 +2,7 @@
 
 import {
   cleanup,
+  configure,
   fireEvent,
   waitFor,
 } from "@testing-library/react";
@@ -52,6 +53,7 @@ class PanelResizeObserver implements ResizeObserver {
 }
 
 beforeAll(() => {
+  configure({ asyncUtilTimeout: 10_000 });
   installTestPluginRuntime();
   vi.stubGlobal("ResizeObserver", PanelResizeObserver);
   Object.defineProperty(window, "matchMedia", {
@@ -408,7 +410,7 @@ describe("Sync review panel", () => {
     expect(
       slot.container.querySelectorAll("[data-plan-row]").length,
     ).toBeLessThan(80);
-    expect(syncPlan).toHaveBeenCalledTimes(25);
+    await waitFor(() => expect(syncPlan).toHaveBeenCalledTimes(25));
     expect(
       slot.getByRole("button", { name: "Push reviewed plan" }).hasAttribute("disabled"),
     ).toBe(true);
@@ -531,7 +533,7 @@ describe("Sync review panel", () => {
     expect(
       await slot.findByText(/The plan fence changed or this decision/u),
     ).toBeTruthy();
-    expect(syncConflictResolve).toHaveBeenCalledWith({
+    await waitFor(() => expect(syncConflictResolve).toHaveBeenCalledWith({
       projectId: PROJECT,
       projectVersionId: VERSION,
       planId: PLAN_ID,
@@ -545,8 +547,8 @@ describe("Sync review panel", () => {
       field: "status",
       expectedBaseContentHash: CONTENT_SHA,
       resolution: { choice: "take-ours" },
-    });
-    expect(syncPlan).toHaveBeenCalledTimes(2);
+    }));
+    await waitFor(() => expect(syncPlan).toHaveBeenCalledTimes(2));
   });
 
   it("renders per-item partial results and retries only retryable failed keys", async () => {

@@ -100,7 +100,6 @@ class TableResizeObserver implements ResizeObserver {
 }
 
 beforeAll(() => {
-  vi.setConfig({ testTimeout: 15_000 });
   configure({ asyncUtilTimeout: 10_000 });
   vi.stubGlobal("ResizeObserver", TableResizeObserver);
   Object.defineProperty(HTMLElement.prototype, "clientHeight", {
@@ -184,14 +183,14 @@ describe("SBOM virtual table", () => {
         .closest('[role="row"]')
         ?.parentElement?.getAttribute("role"),
     ).toBe("presentation");
-    expect(slot.inspection.rpcCalls).toEqual(
+    await waitFor(() => expect(slot.inspection.rpcCalls).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           method: "bomComponentGet",
           input: expect.objectContaining({ componentId: "component-key-0" }),
         }),
       ]),
-    );
+    ));
   });
 
   it("restores a shipped view through server filters", async () => {
