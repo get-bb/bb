@@ -30,7 +30,7 @@ const WORKSPACE_OPEN_TARGET_FALLBACK_LABELS: Record<
   vscode: "VS Code",
   warp: "Warp",
   webstorm: "WebStorm",
-  windsurf: "Windsurf",
+  windsurf: "Devin Desktop",
   xcode: "Xcode",
   zed: "Zed",
 };

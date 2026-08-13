@@ -932,14 +932,14 @@ describe("workspace open targets", () => {
         targetId: "vscode-insiders",
       },
       {
-        appName: "Windsurf",
+        appName: "Devin",
         args: ["-g", `${filePath}:15:6`],
         relativeExecutablePath: [
           "Contents",
           "Resources",
           "app",
           "bin",
-          "windsurf",
+          "devin-desktop",
         ],
         targetId: "windsurf",
       },
@@ -1123,7 +1123,7 @@ describe("workspace open targets", () => {
     expect(targets.map((target) => target.id)).toContain("antigravity");
   });
 
-  it("discovers Windsurf with the current bundle id", async () => {
+  it("discovers Devin Desktop with its current bundle id", async () => {
     const execFile = createAvailableExecFile({
       availableBundleIdSubstrings: ["com.exafunction.windsurf"],
     });
@@ -1143,7 +1143,7 @@ describe("workspace open targets", () => {
       },
       icon: { kind: "builtin", name: "windsurf" },
       kind: "editor",
-      label: "Windsurf",
+      label: "Devin Desktop",
     });
   });
 
@@ -2263,13 +2263,13 @@ describe("workspace open targets", () => {
     }
   });
 
-  it("uses Windsurf line and column direct-editor commands when available", async () => {
+  it("uses Devin Desktop line and column direct-editor commands when available", async () => {
     const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
     const filePath = path.join(workspacePath, "src", "file.ts");
     const calls: ExecFileCall[] = [];
     const execFile = createAvailableExecFile({
       availableBundleIdSubstrings: ["com.exafunction.windsurf"],
-      availableExecutables: ["windsurf"],
+      availableExecutables: ["devin-desktop"],
       calls,
     });
 
@@ -2288,8 +2288,8 @@ describe("workspace open targets", () => {
         createRuntime({ execFile }),
       );
 
-      expect(calls.find((call) => call.file === "windsurf")).toEqual({
-        file: "windsurf",
+      expect(calls.find((call) => call.file === "devin-desktop")).toEqual({
+        file: "devin-desktop",
         args: ["-g", `${filePath}:15:6`],
       });
       expect(calls.some((call) => call.file === "open")).toBe(false);

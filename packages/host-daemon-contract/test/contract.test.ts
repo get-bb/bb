@@ -1056,11 +1056,12 @@ describe("host-daemon local schemas", () => {
 });
 
 describe("host-daemon command schemas", () => {
+  // Version 113 replaces the Windsurf open target with Devin Desktop.
   // Version 112 makes ACP stale-steer results trigger a safe new-turn retry.
   // Version 111 restores parentToolCallId on a resumed Codex child turn.
   // Version 110 waits for a late full-output record before command completion.
-  it("uses protocol version 112 for stale ACP steer recovery", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(112);
+  it("uses protocol version 113 for the Devin Desktop open target", () => {
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(113);
   });
 
   it("binds Plan cancellation to a required turn id and typed result", () => {
