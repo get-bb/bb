@@ -1,3 +1,8 @@
+import {
+  createBbDesktopVersionFeedFileName,
+  type BbDesktopVersionFeedPlatform,
+} from "@bb/desktop-contract";
+
 export type DesktopReleaseChannel = "latest" | "nightly";
 
 export interface DesktopReleaseInfo {
@@ -47,7 +52,12 @@ export const DESKTOP_RELEASE_INFO = createDesktopReleaseInfo(
 export const DESKTOP_UPDATE_RELEASE_BASE_URL =
   DESKTOP_RELEASE_INFO.updateReleaseBaseUrl;
 export const DESKTOP_UPDATE_CHANNEL = DESKTOP_RELEASE_CHANNEL;
-export const DESKTOP_UPDATE_FEED_URL = `${DESKTOP_UPDATE_RELEASE_BASE_URL}desktop-version.json`;
+
+export function createDesktopUpdateFeedUrl(
+  platform: BbDesktopVersionFeedPlatform,
+): string {
+  return `${DESKTOP_UPDATE_RELEASE_BASE_URL}${createBbDesktopVersionFeedFileName(platform)}`;
+}
 
 export interface DesktopAutoUpdateFeedConfig {
   channel: DesktopReleaseChannel;
@@ -60,3 +70,32 @@ export const DESKTOP_AUTO_UPDATE_FEED_CONFIG: DesktopAutoUpdateFeedConfig = {
   provider: "generic",
   url: DESKTOP_UPDATE_RELEASE_BASE_URL,
 };
+
+export interface DesktopUpdateSupport {
+  /**
+   * electron-updater can download a replacement build and install it. Linux
+   * only qualifies inside an AppImage, which is the one Linux target that can
+   * replace its own file in place.
+   */
+  autoUpdate: boolean;
+  /** The JSON version feed can be polled to tell the user a release exists. */
+  versionCheck: boolean;
+}
+
+export interface ResolveDesktopUpdateSupportArgs {
+  env: NodeJS.ProcessEnv;
+  platform: BbDesktopVersionFeedPlatform;
+}
+
+export function resolveDesktopUpdateSupport(
+  args: ResolveDesktopUpdateSupportArgs,
+): DesktopUpdateSupport {
+  if (args.platform === "macos") {
+    return { autoUpdate: true, versionCheck: true };
+  }
+
+  // A distro package or an extracted directory cannot rewrite itself, so those
+  // Linux installs still learn that a release exists but never self-install.
+  const appImagePath = args.env.APPIMAGE?.trim() ?? "";
+  return { autoUpdate: appImagePath.length > 0, versionCheck: true };
+}

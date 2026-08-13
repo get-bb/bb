@@ -42,11 +42,11 @@ function writeNotFound(response) {
   response.end(JSON.stringify({ message: "not found" }));
 }
 
-function createDesktopVersionFeed(version) {
+function createDesktopVersionFeed(platform, version) {
   return {
     schemaVersion: 1,
     channel: "latest",
-    platform: "macos",
+    platform,
     version,
     releaseDate: new Date(0).toISOString(),
     releaseName: `bb desktop ${version}`,
@@ -161,7 +161,13 @@ async function startSmokeServer({
     }
 
     if (request.url === "/desktop-version.json") {
-      writeJson(response, createDesktopVersionFeed(expectedDesktopVersion));
+      writeJson(
+        response,
+        createDesktopVersionFeed(
+          expectedDesktopPlatform,
+          expectedDesktopVersion,
+        ),
+      );
       return;
     }
 
@@ -343,7 +349,7 @@ async function smokePackagedApp() {
   const desktopVersion = await readDesktopPackageVersion();
   const desktopPlatform = process.platform === "darwin" ? "macos" : "linux";
   const appBinary = await resolvePackagedAppBinary({
-    executableName: "bb",
+    executableName: releaseConfig.linuxExecutableName,
     platform: process.platform,
     productName: releaseConfig.applicationName,
     releaseDir,

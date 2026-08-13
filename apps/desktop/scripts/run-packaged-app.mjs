@@ -24,7 +24,7 @@ function createElectronAppEnv(env) {
 
 const child = spawn(
   await resolvePackagedAppBinary({
-    executableName: "bb",
+    executableName: releaseConfig.linuxExecutableName,
     platform: process.platform,
     productName: releaseConfig.applicationName,
     releaseDir,

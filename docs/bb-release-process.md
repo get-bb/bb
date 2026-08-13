@@ -17,9 +17,11 @@ desktop app is published at the same version (see "Publish The Desktop App").
 
 The automated nightly channel is the exception to the manual stable flow. The
 scheduled path in `publish-bb-app.yml` derives a unique next-patch prerelease,
-publishes it under npm's `nightly` dist-tag, then builds and publishes the
-separately installable `bb Nightly` app at `desktop-nightly`. It does not commit
-the generated version or move either stable `latest` pointer. If the
+publishes it under npm's `nightly` dist-tag, then builds the separately
+installable `bb Nightly` app for macOS and Linux and publishes both at
+`desktop-nightly`. It does not commit the generated version or move either
+stable `latest` pointer. Each platform job derives the nightly version from the
+run ID, so the two jobs agree without sharing state. If the
 `npm-release` GitHub environment requires approval, scheduled runs will wait
 for that approval; remove the reviewer gate only if fully unattended nightly
 publishing is intended.
@@ -186,10 +188,15 @@ Report:
 ## Publish The Desktop App
 
 The npm publish does not build or publish the desktop app. The desktop release
-is a separate workflow that builds, signs, and notarizes the macOS app, creates
-the immutable `desktop-v<version>` GitHub release, and moves the `desktop-latest`
-release and its `desktop-version.json` auto-update feed. Run it from the same
-pushed `main` commit, at the same version, for every stable release.
+is a separate workflow. It builds the signed and notarized macOS app and the
+Linux x64 AppImage in parallel jobs, then one publish job creates the immutable
+`desktop-v<version>` GitHub release and moves the `desktop-latest` release with
+both auto-update feeds: `desktop-version.json` for macOS and
+`desktop-version-linux.json` for Linux. Run it from the same pushed `main`
+commit, at the same version, for every stable release.
+
+A failure in either platform job stops the publish job, so no release can ship
+one platform's binaries against the other platform's stale feed.
 
 ```bash
 gh workflow run build-desktop.yml \

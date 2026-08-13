@@ -7,7 +7,7 @@ import {
   type BbDesktopVersionFeed,
 } from "@bb/desktop-contract";
 
-export { DESKTOP_UPDATE_FEED_URL } from "./desktop-update-provider.js";
+export { createDesktopUpdateFeedUrl } from "./desktop-update-provider.js";
 export const DESKTOP_UPDATE_CHECK_INTERVAL_MS = 60 * 60 * 1000;
 export const DESKTOP_UPDATE_CHECK_TIMEOUT_MS = 5_000;
 export const DESKTOP_UPDATE_ACTIVE_MIN_INTERVAL_MS = 15 * 60 * 1000;
@@ -116,7 +116,7 @@ export function parseDesktopVersionFeed(
   } catch (error) {
     return {
       kind: "malformed",
-      reason: `desktop-version.json was not valid JSON: ${formatErrorMessage(
+      reason: `The desktop version feed was not valid JSON: ${formatErrorMessage(
         error,
       )}`,
     };
@@ -126,7 +126,7 @@ export function parseDesktopVersionFeed(
   if (!parsedFeed.success) {
     return {
       kind: "malformed",
-      reason: `desktop-version.json did not match schema: ${parsedFeed.error.message}`,
+      reason: `The desktop version feed did not match schema: ${parsedFeed.error.message}`,
     };
   }
 
@@ -135,7 +135,7 @@ export function parseDesktopVersionFeed(
   if (parsedCurrentVersion === null || parsedFeedVersion === null) {
     return {
       kind: "malformed",
-      reason: `desktop-version.json contained an invalid version: current=${args.currentVersion} feed=${parsedFeed.data.version}`,
+      reason: `The desktop version feed contained an invalid version: current=${args.currentVersion} feed=${parsedFeed.data.version}`,
     };
   }
 

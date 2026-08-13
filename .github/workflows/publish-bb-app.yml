@@ -218,14 +218,14 @@ jobs:
             echo "- commit: \`${GITHUB_SHA}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
-  nightly-desktop:
-    name: Publish bb Nightly desktop
+  nightly-desktop-macos:
+    name: Build bb Nightly desktop (macOS)
     if: ${{ github.event_name == 'schedule' || (inputs.npm_tag == 'nightly' && inputs.dry_run == false) }}
     needs: publish
     runs-on: macos-15-intel
     timeout-minutes: 45
-    permissions:
-      contents: write
+    outputs:
+      version: ${{ steps.nightly_version.outputs.version }}
     env:
       BB_DESKTOP_RELEASE_CHANNEL: nightly
       CSC_IDENTITY_AUTO_DISCOVERY: "false"
@@ -327,22 +327,150 @@ jobs:
             apps/desktop/release/desktop-version.json
           if-no-files-found: error
 
+  nightly-desktop-linux:
+    name: Build bb Nightly desktop (Linux)
+    if: ${{ github.event_name == 'schedule' || (inputs.npm_tag == 'nightly' && inputs.dry_run == false) }}
+    needs: publish
+    # Pinned rather than ubuntu-latest so the glibc the AppImage links against
+    # changes only when we choose it: the build machine's glibc sets the
+    # minimum distro version users need.
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    outputs:
+      version: ${{ steps.nightly_version.outputs.version }}
+    env:
+      BB_DESKTOP_RELEASE_CHANNEL: nightly
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 9.15.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.x
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --prefer-offline
+
+      - name: Prepare nightly version
+        id: nightly_version
+        # The version derives from the run ID and the checked-in package
+        # versions, so this job and the macOS job agree without sharing state.
+        run: |
+          nightly_version="$(node scripts/prepare-nightly-version.mjs)"
+          echo "version=${nightly_version}" >> "$GITHUB_OUTPUT"
+          echo "Prepared bb-app and desktop version ${nightly_version}."
+
+      - name: Typecheck desktop and launcher
+        run: pnpm exec turbo run typecheck --filter=@bb/desktop --filter=bb-app --output-logs=new-only
+
+      - name: Build desktop
+        run: pnpm exec turbo run build --filter=@bb/desktop --output-logs=new-only
+
+      - name: Test desktop and launcher
+        run: pnpm exec turbo run test --filter=@bb/desktop --filter=bb-app --force --output-logs=new-only
+
+      - name: Package x64 nightly AppImage
+        run: pnpm exec turbo run desktop:build:linux --filter=@bb/desktop --force --output-logs=new-only
+
+      - name: Smoke test packaged nightly desktop app
+        # The packaged app opens a real BrowserWindow, so the headless runner
+        # needs a virtual display.
+        run: xvfb-run -a pnpm exec turbo run smoke:packaged --filter=@bb/desktop --force --output-logs=new-only
+
+      - name: Generate nightly desktop version feed
+        run: pnpm --dir apps/desktop run desktop:version-feed
+
+      - name: Upload nightly desktop workflow artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: bb-nightly-desktop-linux-x64-${{ steps.nightly_version.outputs.version }}
+          retention-days: 14
+          path: |
+            apps/desktop/release/*.AppImage
+            apps/desktop/release/*.blockmap
+            apps/desktop/release/nightly-linux.yml
+            apps/desktop/release/desktop-version-linux.json
+          if-no-files-found: error
+
+  nightly-desktop-publish:
+    name: Publish bb Nightly desktop
+    needs:
+      - nightly-desktop-macos
+      - nightly-desktop-linux
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Download macOS nightly desktop artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: bb-nightly-desktop-macos-arm64-x64-${{ needs.nightly-desktop-macos.outputs.version }}
+          path: release/macos
+
+      - name: Download Linux nightly desktop artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: bb-nightly-desktop-linux-x64-${{ needs.nightly-desktop-linux.outputs.version }}
+          path: release/linux
+
       - name: Publish moving nightly desktop release
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.nightly_version.outputs.version }}
+          VERSION: ${{ needs.nightly-desktop-macos.outputs.version }}
         run: |
           set -euo pipefail
 
           nightly_tag="desktop-nightly"
-          release_dir="apps/desktop/release"
-          release_assets=(
-            "$release_dir/desktop-version.json"
-            "$release_dir/nightly-mac.yml"
-            "$release_dir"/*.dmg
-            "$release_dir"/*.zip
-            "$release_dir"/*.blockmap
-          )
+          macos_dir="release/macos"
+          linux_dir="release/linux"
+
+          release_assets=()
+
+          # An unmatched glob would otherwise reach gh as a literal pattern and
+          # fail the upload, so each expansion states whether it is required.
+          add_required_glob() {
+            local matches=("$@")
+            if [[ ! -e "${matches[0]}" ]]; then
+              echo "::error::No release artifact matched ${matches[0]}."
+              exit 1
+            fi
+            release_assets+=("${matches[@]}")
+          }
+
+          add_optional_glob() {
+            local matches=("$@")
+            if [[ -e "${matches[0]}" ]]; then
+              release_assets+=("${matches[@]}")
+            fi
+          }
+
+          # Both platforms reset the same moving release, so a single job
+          # assembles every asset. Splitting the reset across platform jobs
+          # would let whichever finished last delete the other's binaries.
+          add_required_glob "$macos_dir/desktop-version.json"
+          add_required_glob "$macos_dir/nightly-mac.yml"
+          add_required_glob "$macos_dir"/*.dmg
+          add_required_glob "$macos_dir"/*.zip
+          add_required_glob "$macos_dir"/*.blockmap
+          add_required_glob "$linux_dir/desktop-version-linux.json"
+          add_required_glob "$linux_dir/nightly-linux.yml"
+          add_required_glob "$linux_dir"/*.AppImage
+          # AppImage embeds its block map, so a sidecar file is not guaranteed.
+          add_optional_glob "$linux_dir"/*.blockmap
 
           git tag -f "$nightly_tag" "$GITHUB_SHA"
           git push --force origin "refs/tags/${nightly_tag}"
@@ -373,14 +501,16 @@ jobs:
 
       - name: Summarize nightly desktop release
         env:
-          VERSION: ${{ steps.nightly_version.outputs.version }}
+          VERSION: ${{ needs.nightly-desktop-macos.outputs.version }}
         run: |
           {
             echo "## bb Nightly desktop"
             echo
             echo "- version: \`$VERSION\`"
             echo "- app identity: \`dev.bb.desktop.nightly\`"
+            echo "- platforms: macOS arm64 + x64 (signed), Linux x64 AppImage"
             echo "- release: https://github.com/get-bb/bb/releases/tag/desktop-nightly"
-            echo "- update feed: https://github.com/get-bb/bb/releases/download/desktop-nightly/desktop-version.json"
+            echo "- macOS update feed: https://github.com/get-bb/bb/releases/download/desktop-nightly/desktop-version.json"
+            echo "- Linux update feed: https://github.com/get-bb/bb/releases/download/desktop-nightly/desktop-version-linux.json"
             echo "- retention for workflow artifacts: 14 days"
           } >> "$GITHUB_STEP_SUMMARY"

@@ -110,10 +110,13 @@ import { registerDesktopContextMenu } from "./desktop-context-menu.js";
 import { resolveBbDesktopPlatform } from "./desktop-platform.js";
 import {
   createDesktopUpdateService,
-  DESKTOP_UPDATE_FEED_URL,
+  createDesktopUpdateFeedUrl,
   type DesktopUpdateService,
 } from "./desktop-update-check.js";
-import { DESKTOP_RELEASE_INFO } from "./desktop-update-provider.js";
+import {
+  DESKTOP_RELEASE_INFO,
+  resolveDesktopUpdateSupport,
+} from "./desktop-update-provider.js";
 import {
   createDesktopAutoUpdateService,
   createElectronAutoUpdaterAdapter,
@@ -260,6 +263,7 @@ interface ResolveDesktopWindowUrlArgs {
 
 interface ResolveDesktopUpdateFeedUrlArgs {
   env: NodeJS.ProcessEnv;
+  platform: BbDesktopInfo["platform"];
 }
 
 interface FetchSystemConfigArgs {
@@ -364,7 +368,7 @@ function resolveDesktopUpdateFeedUrl(
 ): string {
   const rawFeedUrl = args.env.BB_DESKTOP_VERSION_FEED_URL?.trim();
   if (rawFeedUrl === undefined || rawFeedUrl.length === 0) {
-    return DESKTOP_UPDATE_FEED_URL;
+    return createDesktopUpdateFeedUrl(args.platform);
   }
   return rawFeedUrl;
 }
@@ -2032,8 +2036,10 @@ async function runDesktopApp(): Promise<void> {
   builtinServerUrl = serverUrl;
   desktopBridgePath = bridgePath;
   const desktopVersion = getDesktopVersion(process.env.BB_DESKTOP_VERSION);
+  const desktopPlatform = resolveBbDesktopPlatform(process.platform);
   const desktopUpdateFeedUrl = resolveDesktopUpdateFeedUrl({
     env: process.env,
+    platform: desktopPlatform,
   });
   const userDataPath = app.getPath("userData");
   desktopUserDataPath = userDataPath;
@@ -2123,12 +2129,14 @@ async function runDesktopApp(): Promise<void> {
     },
   });
 
-  const desktopPlatform = resolveBbDesktopPlatform(process.platform);
-  const desktopUpdatesSupported = process.platform === "darwin";
+  const desktopUpdateSupport = resolveDesktopUpdateSupport({
+    env: process.env,
+    platform: desktopPlatform,
+  });
   desktopUpdateService = createDesktopUpdateService({
     currentVersion: desktopVersion,
     enabled:
-      desktopUpdatesSupported &&
+      desktopUpdateSupport.versionCheck &&
       (app.isPackaged || process.env.BB_DESKTOP_VERSION_CHECK === "1"),
     feedUrl: desktopUpdateFeedUrl,
     logger: createDesktopLogger(),
@@ -2137,7 +2145,7 @@ async function runDesktopApp(): Promise<void> {
   desktopAutoUpdateService = createDesktopAutoUpdateService({
     currentVersion: desktopVersion,
     enabled:
-      desktopUpdatesSupported &&
+      desktopUpdateSupport.autoUpdate &&
       shouldEnableDesktopAutoUpdate({
         env: process.env,
         isPackaged: app.isPackaged,
@@ -2186,12 +2194,14 @@ async function runDesktopApp(): Promise<void> {
     },
   });
   registerDesktopBrowserIpc(desktopBrowserViewManager);
-  if (desktopUpdatesSupported) {
+  if (desktopUpdateSupport.versionCheck) {
     desktopUpdateService.start();
+  }
+  if (desktopUpdateSupport.autoUpdate) {
     desktopAutoUpdateService.start();
   } else {
     logger.info(
-      "Desktop update checks disabled on linux: no Linux update feed yet.",
+      "Desktop auto-install is disabled: only the Linux AppImage build can replace itself. Version checks still report new releases.",
     );
   }
 
