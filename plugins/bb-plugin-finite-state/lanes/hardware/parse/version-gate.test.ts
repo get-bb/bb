@@ -7,9 +7,11 @@ const fixtures = dirname(fileURLToPath(new URL("../../../test/fixtures/kicad/REA
 
 describe("KiCad schematic version gate", () => {
   it("rejects KiCad 5 with the file and detected version", async () => {
-    await expect(parseProject(`${fixtures}/legacy`, "legacy.kicad_pro")).rejects.toThrow(
-      "KICAD_VERSION_UNSUPPORTED: legacy.kicad_sch uses unsupported KiCad format 4",
-    );
+    await expect(parseProject(`${fixtures}/legacy`, "legacy.kicad_pro")).rejects.toMatchObject({
+      name: "KicadVersionUnsupportedError",
+      code: "KICAD_VERSION_UNSUPPORTED",
+      message: "KICAD_VERSION_UNSUPPORTED: legacy.kicad_sch uses unsupported KiCad format 4",
+    });
   }, 30_000);
 
   it("rejects a truncated supported-format sheet explicitly", async () => {

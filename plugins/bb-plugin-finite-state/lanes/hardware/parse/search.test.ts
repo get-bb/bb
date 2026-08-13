@@ -62,10 +62,10 @@ const scope = {
 
 describe("hardware semantic search", () => {
   it.each([
-    ["R10", "R10"],
-    ["Dual op", "U3"],
-    ["0603", "R2"],
-    ["OP-2", "U3"],
+    ["r10", "R10"],
+    ["dual OP", "U3"],
+    ["r_0603", "R2"],
+    ["op-2", "U3"],
   ])("finds %s across parsed symbol fields", (query, reference) => {
     const result = listHardwareSymbols(db, {
       ...scope, query, pageSize: 20, cursor: null,
@@ -78,8 +78,14 @@ describe("hardware semantic search", () => {
     expect(first.items.map((item) => item.reference)).toEqual(["R2"]);
     expect(first.total).toBe(2);
     expect(first.cursor).not.toBeNull();
+    expect(listHardwareSymbols(db, {
+      ...scope, query: "R", pageSize: 1, cursor: null,
+    })).toEqual(first);
     const second = listHardwareSymbols(db, { ...scope, query: "R", pageSize: 1, cursor: first.cursor });
     expect(second.items.map((item) => item.reference)).toEqual(["R10"]);
+    expect(listHardwareSymbols(db, {
+      ...scope, query: "R", pageSize: 1, cursor: first.cursor,
+    })).toEqual(second);
 
     const part = getHardwarePart(db, { ...scope, reference: "U3" });
     expect(part.units.map(({ unit, sheetPath }) => [unit, sheetPath])).toEqual([
@@ -98,5 +104,14 @@ describe("hardware semantic search", () => {
     expect(listHardwareNets(db, {
       ...scope, reference: "U3", pageSize: 20, cursor: null,
     }).items).toMatchObject([{ netName: "OP_OUT" }]);
+  });
+
+  it("rejects a cursor issued for a different hardware collection", () => {
+    const nets = listHardwareNets(db, { ...scope, pageSize: 1, cursor: null });
+    expect(nets.cursor).toBeNull();
+    const wrongCursor = Buffer.from("nets:0").toString("base64url");
+    expect(() => listHardwareSymbols(db, {
+      ...scope, pageSize: 1, cursor: wrongCursor,
+    })).toThrow("HW_CURSOR_INVALID");
   });
 });
