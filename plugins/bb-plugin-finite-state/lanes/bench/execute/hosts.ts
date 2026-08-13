@@ -10,6 +10,7 @@ export interface BenchHost {
   id: string;
   name: string;
   connected: boolean;
+  capabilities: string[];
   lastSeenAt: string | null;
 }
 
@@ -40,7 +41,7 @@ function cancellableDelay(milliseconds: number, signal: AbortSignal): Promise<vo
 
 export function createSdkBenchHostProbe(
   bb: BbPluginApi,
-  input: { workspacePath: string; forgeCompute: boolean },
+  input: { workspacePath: string | null; forgeCompute: boolean },
 ): BenchHostProbe {
   return {
     async inspect(hostId, signal) {
@@ -115,14 +116,28 @@ export async function createBenchHostJoinCode(bb: BbPluginApi): Promise<HostEnro
 
 export async function listBenchHosts(
   bb: BbPluginApi,
-  signal?: AbortSignal,
+  options: { signal?: AbortSignal; probe?: BenchHostProbe } = {},
 ): Promise<BenchHost[]> {
-  const hosts = await bb.sdk.hosts.list({ ...(signal ? { signal } : {}) });
-  return hosts.map((host) => ({
-    id: host.id,
-    name: host.name,
-    connected: host.status === "connected",
-    lastSeenAt: host.lastSeenAt === null ? null : new Date(host.lastSeenAt).toISOString(),
+  const hosts = await bb.sdk.hosts.list({ ...(options.signal ? { signal: options.signal } : {}) });
+  return await Promise.all(hosts.map(async (host) => {
+    const connected = host.status === "connected";
+    const inspected = connected && options.probe
+      ? await options.probe.inspect(host.id, options.signal ?? new AbortController().signal)
+      : null;
+    return {
+      id: host.id,
+      name: host.name,
+      connected,
+      capabilities: inspected
+        ? [
+            ...(inspected.forgeCompute ? ["forgeCompute"] : []),
+            ...(inspected.allowPentest ? ["allowPentest"] : []),
+            ...(inspected.docker ? ["docker"] : []),
+            ...(inspected.cveEvidenceVerifier ? ["cveEvidenceVerifier"] : []),
+          ]
+        : [],
+      lastSeenAt: host.lastSeenAt === null ? null : new Date(host.lastSeenAt).toISOString(),
+    };
   }));
 }
 
@@ -134,7 +149,7 @@ export async function selectBenchHost(
   signal: AbortSignal,
 ): Promise<SelectedBenchHost> {
   signal.throwIfAborted();
-  const host = (await listBenchHosts(bb, signal)).find((candidate) => candidate.id === hostId);
+  const host = (await listBenchHosts(bb, { signal })).find((candidate) => candidate.id === hostId);
   if (!host) {
     throw new BenchHostError(
       "HOST_NOT_ENROLLED",

@@ -3,7 +3,11 @@ import type Database from "better-sqlite3";
 import type { PluginContext } from "../../lib/context.js";
 import type { RemoteServices } from "../../lib/remote/types.js";
 import { rpcContract } from "../../shared/contract.js";
-import { createBenchHostJoinCode, listBenchHosts } from "./execute/hosts.js";
+import {
+  createBenchHostJoinCode,
+  createSdkBenchHostProbe,
+  listBenchHosts,
+} from "./execute/hosts.js";
 import { InMemoryBenchJobQueue, runBenchJobService } from "./execute/jobs.js";
 import { createDefaultBenchExecutionDeps, runBench } from "./execute/run.js";
 import { listBenchArtifacts } from "./store/artifacts.js";
@@ -174,7 +178,15 @@ export function registerBench(bb: BbPluginApi, ctx: PluginContext): void {
       };
     },
     async benchHostsList(input) {
-      const hosts = await listBenchHosts(bb);
+      const remote = ctx.service<RemoteServices>("remote-services", () => {
+        throw new Error("REMOTE_SERVICES_NOT_REGISTERED");
+      });
+      const hosts = await listBenchHosts(bb, {
+        probe: createSdkBenchHostProbe(bb, {
+          workspacePath: null,
+          forgeCompute: remote.forgeCompute !== null,
+        }),
+      });
       const offset = input.continuation === null
         ? 0
         : Number.parseInt(Buffer.from(input.continuation, "base64url").toString("utf8"), 10);
@@ -188,7 +200,7 @@ export function registerBench(bb: BbPluginApi, ctx: PluginContext): void {
           id: host.id,
           name: host.name,
           status: host.connected ? "connected" : "disconnected",
-          capabilities: [],
+          capabilities: host.capabilities,
           lastSeenAt: host.lastSeenAt,
         })),
         total: hosts.length,

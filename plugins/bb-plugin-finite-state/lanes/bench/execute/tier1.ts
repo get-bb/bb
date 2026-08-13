@@ -38,7 +38,16 @@ export function validateDeploymentContext(
   context: ForgeDeploymentContext | undefined,
 ): ForgeDeploymentContext {
   if (!context) throw new Error("DEPLOYMENT_CONTEXT_REQUIRED");
-  for (const [name, value] of Object.entries(context)) {
+  const fields = [
+    "productType",
+    "networkExposure",
+    "regulatory",
+    "deploymentNotes",
+    "rootComponentName",
+    "rootComponentType",
+  ] as const;
+  for (const name of fields) {
+    const value = context[name];
     if (typeof value !== "string" || value.trim().length === 0) {
       throw new Error(`DEPLOYMENT_CONTEXT_INVALID: ${name}`);
     }
@@ -89,4 +98,3 @@ export async function dispatchTier1(
   if (!pentest.jobId) throw new Error("FORGE_PENTEST_INVALID_JOB");
   return [dynamicJobId, pentest.jobId];
 }
-

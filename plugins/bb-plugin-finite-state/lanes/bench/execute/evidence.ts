@@ -119,10 +119,10 @@ export async function forgeEvidenceCheckpoint(
   },
   signal: AbortSignal,
 ): Promise<BenchEvidenceBundle> {
-  const logLocators: string[] = [];
+  const logLocators = new Map<string, string | null>();
   for (const job of input.jobs) {
     const locator = await deps.persistLog(input.run.runId, job, signal);
-    if (locator) logLocators.push(locator);
+    logLocators.set(job.jobId, locator);
   }
   const candidate = input.jobs.map(signedEvidence).find((value) => value !== null) ?? null;
   let attestation: BenchAttestationInput | undefined;
@@ -147,7 +147,9 @@ export async function forgeEvidenceCheckpoint(
       ...input.run,
       status: terminalStatus,
       finishedAt: new Date().toISOString(),
-      logLocator: logLocators[0] ?? null,
+      logLocator:
+        input.jobs.map((job) => logLocators.get(job.jobId) ?? null)
+          .find((locator) => locator !== null) ?? null,
       raw: {
         firmwareDigest: input.run.firmwareDigest,
         jobs: input.jobs.map((job) => ({
@@ -157,7 +159,7 @@ export async function forgeEvidenceCheckpoint(
           eventCount: job.eventCount,
           events: job.events,
           logTail: job.logTail,
-          logLocator: logLocators.shift() ?? null,
+          logLocator: logLocators.get(job.jobId) ?? null,
         })),
       },
     },

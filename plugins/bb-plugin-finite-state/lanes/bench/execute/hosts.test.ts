@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   BenchHostError,
   createBenchHostJoinCode,
+  listBenchHosts,
   selectBenchHost,
   startBenchThread,
 } from "./hosts.js";
@@ -93,6 +94,31 @@ describe("bench hosts", () => {
         missing: ["allowPentest", "docker", "cveEvidenceVerifier"],
       }),
     );
+  });
+
+  it("reports inspected capabilities for connected enrolled hosts", async () => {
+    const host = createFakePluginHost({
+      pluginId: "finite-state-bench-host-list-capabilities",
+      sdk: { hosts: { list: async () => [enrolled("host-1")] } },
+    });
+    hosts.push(host);
+    await expect(
+      listBenchHosts(host.bb, {
+        probe: {
+          inspect: async () => ({
+            allowPentest: true,
+            docker: true,
+            cveEvidenceVerifier: false,
+            forgeCompute: true,
+          }),
+        },
+      }),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        id: "host-1",
+        capabilities: ["forgeCompute", "allowPentest", "docker"],
+      }),
+    ]);
   });
 
   it("starts a hidden server-initiated thread on the selected enrolled host", async () => {

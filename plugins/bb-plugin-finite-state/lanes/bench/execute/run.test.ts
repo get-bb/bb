@@ -100,6 +100,87 @@ describe("runBench", () => {
     });
   });
 
+  it("fails closed before creating a run or thread when prepared-root registration is unavailable", async () => {
+    const fixture = createBenchTestStore("execute-run-tier1-lifecycle-unavailable");
+    fixtures.push(fixture);
+    const execution = deps(fixture);
+    execution.hostProbe = {
+      inspect: async () => ({
+        allowPentest: true,
+        docker: true,
+        cveEvidenceVerifier: true,
+        forgeCompute: true,
+      }),
+    };
+    const verifyDynamic = vi.fn(async () => ({ job_id: "unexpected" }));
+    const penTestRun = vi.fn(async () => ({ jobId: "unexpected" }));
+    execution.forgeCompute = {
+      verifyDynamic,
+      penTestRun,
+      getJobStatus: vi.fn(async () => ({
+        jobId: "unexpected",
+        status: "RUNNING" as const,
+        tool: "verify_dynamic",
+        recipe: null,
+        scope: {},
+        environment: {},
+        runId: null,
+        elapsedSeconds: 0,
+        logTail: [],
+        events: [],
+        eventCount: 0,
+        result: null,
+        error: null,
+      })),
+    };
+    execution.prepareFirmware = async () => ({
+      prepared: {
+        pvId: "version-a",
+        rootfsPath: "/prepared/rootfs",
+        artifactHash: DIGEST_A,
+        manifestGeneration: "generation-a",
+        fileCount: 1,
+        environment: { FORGE_QEMU_FIRMWARE_version_a: "/prepared/rootfs" },
+        preparedAt: "2026-08-12T20:00:00.000Z",
+      },
+      firmwareHandshake: { worktreeRoot: "/workspace" },
+      forgeProcess: { kind: "remote", reason: "no prepared-root registration" },
+    });
+    execution.resolveTier1Targets = async () => ({
+      verdictIds: ["REQ-A"],
+      cveId: "CVE-2026-0001",
+      componentId: "component-a",
+      findingId: null,
+    });
+
+    await expect(
+      runBench(
+        execution,
+        {
+          projectId: "project-a",
+          pvId: "version-a",
+          tier: "tier1",
+          hostId: "host-a",
+          requirementId: "REQ-A",
+          target: "CVE-2026-0001@component-a",
+          deploymentContext: {
+            productType: "gateway",
+            networkExposure: "internet",
+            regulatory: "CRA",
+            deploymentNotes: "Production edge",
+            rootComponentName: "Eagle",
+            rootComponentType: "firmware",
+          },
+        },
+        new AbortController().signal,
+      ),
+    ).rejects.toMatchObject({ code: "FIRMWARE_REGISTRATION_UNAVAILABLE" });
+    expect(fixture.db.prepare("SELECT COUNT(*) FROM verification_runs").pluck().get()).toBe(0);
+    expect(fixture.host.harness.inspection.sdk.callsTo("threads.spawn")).toHaveLength(0);
+    expect(verifyDynamic).not.toHaveBeenCalled();
+    expect(penTestRun).not.toHaveBeenCalled();
+  });
+
   it("rejects tiers 2-4 explicitly before any host or persistence call", async () => {
     const fixture = createBenchTestStore("execute-run-tier-reject");
     fixtures.push(fixture);
@@ -119,4 +200,3 @@ describe("runBench", () => {
     expect(fixture.host.harness.inspection.sdk.callsTo("hosts.list")).toHaveLength(0);
   });
 });
-

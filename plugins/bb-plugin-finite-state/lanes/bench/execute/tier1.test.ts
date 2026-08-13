@@ -139,6 +139,11 @@ describe("Tier 1 execution", () => {
     expect(() =>
       validateDeploymentContext({ ...deploymentContext, regulatory: "" }),
     ).toThrow("DEPLOYMENT_CONTEXT_INVALID: regulatory");
+    const missingField = { ...deploymentContext };
+    Reflect.deleteProperty(missingField, "rootComponentType");
+    expect(() => validateDeploymentContext(missingField)).toThrow(
+      "DEPLOYMENT_CONTEXT_INVALID: rootComponentType",
+    );
     expect(() => validateDeploymentContext(undefined)).toThrow("DEPLOYMENT_CONTEXT_REQUIRED");
   });
 

@@ -125,5 +125,24 @@ describe("bench evidence conversion", () => {
     );
     expect(bundle.results[0]).toMatchObject({ outcome: "error" });
   });
-});
 
+  it("keeps each persisted log locator aligned with its originating job", async () => {
+    const first = completed(DIGEST_A);
+    const second = { ...completed(DIGEST_A), jobId: "job-2", tool: "pen_test_run" };
+    const bundle = await forgeEvidenceCheckpoint(
+      {
+        persistLog: async (_runId, job) =>
+          job.jobId === "job-2" ? "runs/run-a/jobs/job-2.log" : null,
+      },
+      { run: evidenceBundle().run, jobs: [first, second], requirementId: "REQ-A" },
+      new AbortController().signal,
+    );
+    expect(bundle.run.logLocator).toBe("runs/run-a/jobs/job-2.log");
+    expect(bundle.run.raw).toMatchObject({
+      jobs: [
+        { jobId: "job-1", logLocator: null },
+        { jobId: "job-2", logLocator: "runs/run-a/jobs/job-2.log" },
+      ],
+    });
+  });
+});
