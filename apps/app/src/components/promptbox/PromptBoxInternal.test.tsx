@@ -2425,6 +2425,265 @@ describe("PromptBoxInternal compact layout", () => {
     expect(cancel).toHaveBeenCalledOnce();
   });
 
+  it("keeps newly mounted voice controls entering until the reveal frame", () => {
+    let nextFrameId = 1;
+    const pendingFrames = new Map<number, FrameRequestCallback>();
+    const requestFrame = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((callback) => {
+        const frameId = nextFrameId++;
+        pendingFrames.set(frameId, callback);
+        return frameId;
+      });
+    const cancelFrame = vi
+      .spyOn(window, "cancelAnimationFrame")
+      .mockImplementation((frameId) => {
+        pendingFrames.delete(frameId);
+      });
+    try {
+      const idleVoice: PromptVoiceConfig = {
+        state: "idle",
+        isSupported: true,
+        stream: null,
+        start: vi.fn(),
+        stop: vi.fn(),
+        cancel: vi.fn(),
+      };
+      const view = render(
+        <PromptBoxInternal {...createPromptBoxProps({ voice: idleVoice })} />,
+      );
+
+      view.rerender(
+        <PromptBoxInternal
+          {...createPromptBoxProps({
+            voice: { ...idleVoice, state: "recording" },
+          })}
+        />,
+      );
+
+      const voiceControls = document.querySelector<HTMLElement>(
+        "[data-promptbox-voice-controls]",
+      );
+      expect(voiceControls?.dataset.voiceTransition).toBe("entering");
+      expect(voiceControls?.hasAttribute("inert")).toBe(true);
+
+      act(() => {
+        const callbacks = Array.from(pendingFrames.values());
+        pendingFrames.clear();
+        for (const callback of callbacks) callback(0);
+      });
+
+      expect(voiceControls?.dataset.voiceTransition).toBe("active");
+      expect(voiceControls?.hasAttribute("inert")).toBe(false);
+    } finally {
+      requestFrame.mockRestore();
+      cancelFrame.mockRestore();
+    }
+  });
+
+  it("finishes the voice exit transition before a ready transcript can be inserted", async () => {
+    vi.useFakeTimers();
+    try {
+      const promptBoxRef = createRef<PromptBoxHandle>();
+      render(
+        <PromptBoxInternal
+          {...createPromptBoxProps({
+            promptBoxRef,
+            value: "Existing draft",
+            voice: {
+              state: "transcribing",
+              isSupported: true,
+              stream: null,
+              start: vi.fn(),
+              stop: vi.fn(),
+              cancel: vi.fn(),
+            },
+          })}
+        />,
+      );
+
+      let transitionFinished = false;
+      let transition: Promise<void> | undefined;
+      act(() => {
+        transition = promptBoxRef.current?.playVoiceCompletionTransition();
+        void transition?.then(() => {
+          transitionFinished = true;
+        });
+      });
+
+      expect(
+        document
+          .querySelector("[data-promptbox-voice-controls]")
+          ?.getAttribute("data-voice-transition"),
+      ).toBe("exiting");
+
+      const voiceControls = document.querySelector<HTMLElement>(
+        "[data-promptbox-voice-controls]",
+      );
+      expect(voiceControls?.hasAttribute("inert")).toBe(true);
+      expect(voiceControls?.getAttribute("aria-hidden")).toBe("true");
+      expect(
+        voiceControls?.querySelector('[aria-label="Cancel transcription"]'),
+      ).toBeTruthy();
+      expect(
+        screen.queryByRole("button", { name: "Cancel transcription" }),
+      ).toBeNull();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(179);
+      });
+      expect(transitionFinished).toBe(false);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+        await transition;
+      });
+      expect(transitionFinished).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("cancels immediately while retaining the voice bar for its exit transition", async () => {
+    vi.useFakeTimers();
+    try {
+      const cancel = vi.fn();
+      const recordingVoice: PromptVoiceConfig = {
+        state: "recording",
+        isSupported: true,
+        stream: null,
+        start: vi.fn(),
+        stop: vi.fn(),
+        cancel,
+      };
+      const view = render(
+        <PromptBoxInternal
+          {...createPromptBoxProps({ voice: recordingVoice })}
+        />,
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: "Cancel recording" }));
+      expect(cancel).toHaveBeenCalledOnce();
+
+      view.rerender(
+        <PromptBoxInternal
+          {...createPromptBoxProps({
+            voice: { ...recordingVoice, state: "idle" },
+          })}
+        />,
+      );
+      expect(
+        document
+          .querySelector("[data-promptbox-voice-controls]")
+          ?.getAttribute("data-voice-transition"),
+      ).toBe("exiting");
+      const voiceControls = document.querySelector<HTMLElement>(
+        "[data-promptbox-voice-controls]",
+      );
+      expect(voiceControls?.hasAttribute("inert")).toBe(true);
+      expect(voiceControls?.getAttribute("aria-hidden")).toBe("true");
+      expect(
+        voiceControls?.querySelector('[aria-label="Cancel recording"]'),
+      ).toBeTruthy();
+      expect(
+        voiceControls?.querySelector('[aria-label="Cancel transcription"]'),
+      ).toBeNull();
+      expect(
+        screen.queryByRole("button", { name: "Cancel recording" }),
+      ).toBeNull();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(180);
+      });
+      expect(
+        document.querySelector("[data-promptbox-voice-controls]"),
+      ).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not delay transcript insertion while the document is hidden", async () => {
+    const originalVisibilityState = Object.getOwnPropertyDescriptor(
+      document,
+      "visibilityState",
+    );
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "hidden",
+    });
+    try {
+      const promptBoxRef = createRef<PromptBoxHandle>();
+      render(
+        <PromptBoxInternal
+          {...createPromptBoxProps({
+            promptBoxRef,
+            voice: {
+              state: "transcribing",
+              isSupported: true,
+              stream: null,
+              start: vi.fn(),
+              stop: vi.fn(),
+              cancel: vi.fn(),
+            },
+          })}
+        />,
+      );
+
+      await expect(
+        promptBoxRef.current?.playVoiceCompletionTransition(),
+      ).resolves.toBeUndefined();
+    } finally {
+      if (originalVisibilityState) {
+        Object.defineProperty(
+          document,
+          "visibilityState",
+          originalVisibilityState,
+        );
+      } else {
+        Reflect.deleteProperty(document, "visibilityState");
+      }
+    }
+  });
+
+  it("does not delay transcript insertion for reduced motion", async () => {
+    const originalMatchMedia = window.matchMedia;
+    window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+      matches: query === "(prefers-reduced-motion: reduce)",
+      media: query,
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
+    }));
+    try {
+      const promptBoxRef = createRef<PromptBoxHandle>();
+      render(
+        <PromptBoxInternal
+          {...createPromptBoxProps({
+            promptBoxRef,
+            voice: {
+              state: "transcribing",
+              isSupported: true,
+              stream: null,
+              start: vi.fn(),
+              stop: vi.fn(),
+              cancel: vi.fn(),
+            },
+          })}
+        />,
+      );
+
+      await expect(
+        promptBoxRef.current?.playVoiceCompletionTransition(),
+      ).resolves.toBeUndefined();
+    } finally {
+      window.matchMedia = originalMatchMedia;
+    }
+  });
+
   it.each(["recording", "transcribing"] as const)(
     "keeps zen sizing coherent while voice is %s",
     async (state) => {
