@@ -10,6 +10,7 @@ import {
   registeredAdapters,
   type EntityAdapter,
   type ServerEntity,
+  type SyncScope,
   type WorkingEntity,
 } from "../engine/adapter.js";
 import type { EngineDeps } from "../engine/pull.js";
@@ -259,9 +260,13 @@ function partialWorking(error: unknown): WorkingEntity[] | null {
   }));
 }
 
-async function workingRows(adapter: EntityAdapter, root: string): Promise<WorkingEntity[]> {
+async function workingRows(
+  adapter: EntityAdapter,
+  root: string,
+  scope: SyncScope,
+): Promise<WorkingEntity[]> {
   try {
-    return await adapter.readWorking(root);
+    return await adapter.readWorking(root, scope);
   } catch (error: unknown) {
     const partial = partialWorking(error);
     if (partial !== null) return partial;
@@ -311,7 +316,10 @@ async function loadEntityState(
   const base = baseRow?.payload;
   const plannedOurs = sidePayload(base, item.fields, "ours");
   const theirs = sidePayload(base, item.fields, "theirs");
-  const rows = await workingRows(adapter, deps.worktreeRoot);
+  const rows = await workingRows(adapter, deps.worktreeRoot, {
+    projectId: plan.projectId,
+    projectVersionId: plan.projectVersionId,
+  });
   const working = rows.find((row) => row.key === item.key) ?? null;
   const ours = working?.payload;
   if ((ours === undefined) !== (plannedOurs === undefined)
@@ -565,10 +573,11 @@ function resolvedBase(
 async function verifyWorking(
   deps: ConflictDeps,
   adapter: EntityAdapter,
+  scope: SyncScope,
   key: string,
   expected: Record<string, unknown> | undefined,
 ): Promise<void> {
-  const actual = (await workingRows(adapter, deps.worktreeRoot)).find((row) => row.key === key)?.payload;
+  const actual = (await workingRows(adapter, deps.worktreeRoot, scope)).find((row) => row.key === key)?.payload;
   if ((actual === undefined) !== (expected === undefined)
     || (actual !== undefined && expected !== undefined && canonicalJson(actual) !== canonicalJson(expected))) {
     throw new ConflictResolutionError("WORKING_VERIFY_FAILED", `Materialized ${adapter.kind}/${key} failed read-back`);
@@ -812,7 +821,10 @@ export async function resolveConflict(
         currentPayload: state.ours,
         nextPayload: nextOurs,
       });
-      await verifyWorking(deps, state.adapter, item.key, nextOurs);
+      await verifyWorking(deps, state.adapter, {
+        projectId: plan.projectId,
+        projectVersionId: plan.projectVersionId,
+      }, item.key, nextOurs);
     }
     if (input.resolution.choice === "take-theirs") {
       const remote = await remoteEntity(deps, state.adapter, plan, item.key);

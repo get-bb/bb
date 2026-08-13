@@ -7,7 +7,7 @@ import { hydrateFindingComments } from "./cache/comments.js";
 import { pullFindings } from "./cache/pull.js";
 import { registerFindingsBulkStub } from "./bulk/index.js";
 import { registerFindingsDriftStub } from "./drift/index.js";
-import { registerFindingsOverlayStub } from "./overlay/index.js";
+import { registerFindingsOverlay } from "./overlay/index.js";
 import { registerFindingsPolicyStub } from "./policy/index.js";
 import { registerFindingsStableKeyStub } from "./stable-key/index.js";
 import { registerFindingsRpc } from "./rpc.js";
@@ -45,7 +45,7 @@ export function registerFindings(bb: BbPluginApi, ctx: PluginContext): void {
   }));
   registerFindingsRpc(bb, db);
   registerFindingsStableKeyStub(db);
-  registerFindingsOverlayStub();
+  registerFindingsOverlay(ctx);
   registerFindingsPolicyStub();
   registerFindingsBulkStub();
   registerFindingsDriftStub();
