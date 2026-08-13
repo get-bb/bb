@@ -293,6 +293,19 @@ describe("requirements traceability backend", () => {
 });
 
 describe("requirements traceability UI", () => {
+  it("renders an unconfigured self-fetch state without calling RPC", async () => {
+    const { SelfFetchingTraceRail } = await import("./index.js");
+    const rpc = vi.fn(() => rpcPage({ card: card(), facets, trace: traceModel() }));
+    const slot = renderSlot(
+      { component: SelfFetchingTraceRail },
+      { projectId: null, requirementId: "REQ-104" },
+      { rpc: { requirementsList: rpc } },
+    );
+    expect(slot.getByText("Choose a project")).toBeTruthy();
+    expect(rpc).not.toHaveBeenCalled();
+    slot.lifecycle.unmount();
+  });
+
   it("self-fetches a rail by stable id and navigates threat nodes to the focused canvas", async () => {
     const { RequirementsTraceabilityLayer } = await import("./index.js");
     const inputs: unknown[] = [];
@@ -325,6 +338,17 @@ describe("requirements traceability UI", () => {
     expect(await slot.findByText("Mapped clause is absent from cached standards truth.")).toBeTruthy();
     expect(slot.getByText("Git history unavailable: bounded lookup failed.")).toBeTruthy();
     expect(slot.getByLabelText("requirement REQ-104: ready")).toBeTruthy();
+    slot.lifecycle.unmount();
+  });
+
+  it("renders no matching requirements as a designed empty state", async () => {
+    const { RequirementsTraceabilityLayer } = await import("./index.js");
+    const slot = renderSlot(
+      { component: RequirementsTraceabilityLayer },
+      { projectId: "project-1", detail: ["trace"] },
+      { rpc: { requirementsList: () => ({ ...rpcPage({ card: card(), facets, trace: null }, 0), items: [] }) } },
+    );
+    expect(await slot.findByText("No matching requirements")).toBeTruthy();
     slot.lifecycle.unmount();
   });
 

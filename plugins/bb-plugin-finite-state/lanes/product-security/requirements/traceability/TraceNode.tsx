@@ -39,7 +39,7 @@ export function TraceNode({
       <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">{node.relation}</p>
       {node.error ? <p className="mt-2 text-xs text-warning">{node.error}</p> : null}
       {node.provenance ? (
-        <p className="mt-auto border-t border-border pt-2 text-[11px] text-muted-foreground">
+        <p className="mt-auto border-t border-border pt-2 text-xs text-muted-foreground">
           {node.provenance.source}{node.provenance.at ? ` · ${node.provenance.at}` : ""}
         </p>
       ) : null}
