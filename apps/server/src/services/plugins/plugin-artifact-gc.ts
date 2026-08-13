@@ -1,5 +1,5 @@
 import { rm } from "node:fs/promises";
-import { dirname, resolve, sep } from "node:path";
+import { dirname, relative, resolve, sep } from "node:path";
 import {
   deletePluginArtifact,
   deletePluginStateSnapshot,
@@ -42,6 +42,16 @@ function isManagedCachePath(dataDir: string, path: string): boolean {
   return candidate.startsWith(`${cacheRoot}${sep}`);
 }
 
+function pathsOverlap(left: string, right: string): boolean {
+  const fromLeft = relative(left, right);
+  const fromRight = relative(right, left);
+  return (
+    fromLeft === "" ||
+    (fromLeft !== ".." && !fromLeft.startsWith(`..${sep}`)) ||
+    (fromRight !== ".." && !fromRight.startsWith(`..${sep}`))
+  );
+}
+
 export async function garbageCollectPluginArtifacts(args: {
   db: DbConnection;
   dataDir: string;
@@ -63,6 +73,7 @@ export async function garbageCollectPluginArtifacts(args: {
     now: args.now,
     cutoff: args.now - args.retentionMs,
   });
+  const collectableIds = new Set(artifacts.map((artifact) => artifact.id));
   for (const artifact of artifacts) {
     const storageRoot = pluginArtifactStorageRoot(artifact);
     if (
@@ -78,14 +89,26 @@ export async function garbageCollectPluginArtifacts(args: {
     // of another plugin. Deleting it would take that plugin's files with it,
     // so this artifact waits for the pass that runs after its last tenant is
     // collected.
-    const tenants = listPluginArtifactsUnderPath(args.db, storageRoot, sep);
-    if (tenants.some((tenant) => tenant.id !== artifact.id)) continue;
     const checkoutRoot = pluginArtifactGitCheckoutRoot(artifact);
+    const checkoutTenants =
+      checkoutRoot === null
+        ? null
+        : listPluginArtifactsAtOrUnderPath(args.db, checkoutRoot, sep);
+    const overlappingTenants =
+      checkoutTenants ??
+      listPluginArtifactsUnderPath(args.db, storageRoot, sep);
+    if (
+      overlappingTenants.some(
+        (tenant) =>
+          tenant.id !== artifact.id &&
+          !collectableIds.has(tenant.id) &&
+          pathsOverlap(storageRoot, tenant.path),
+      )
+    ) {
+      continue;
+    }
     const checkoutHasAnotherTenant =
-      checkoutRoot !== null &&
-      listPluginArtifactsAtOrUnderPath(args.db, checkoutRoot, sep).some(
-        (tenant) => tenant.id !== artifact.id,
-      );
+      checkoutTenants?.some((tenant) => tenant.id !== artifact.id) ?? false;
     try {
       await rm(storageRoot, { recursive: true, force: true });
       if (

@@ -304,6 +304,73 @@ describe("plugin activation snapshots and garbage collection", () => {
     expect(warnings).toEqual([]);
   });
 
+  it("keeps a nested directory while a root plugin still owns it", async () => {
+    const commit = "c".repeat(40);
+    const checkout = join(
+      dataDir,
+      "plugins",
+      "cache",
+      "git",
+      "host",
+      "repo",
+      commit,
+    );
+    const nestedPath = join(checkout, "plugins", "nested");
+    await mkdir(nestedPath, { recursive: true });
+    await writeFile(join(nestedPath, "sentinel"), "keep");
+    const makeArtifact = (id: string, pluginId: string, path: string) =>
+      createPluginArtifact(db, {
+        id,
+        pluginId,
+        sourceKind: "git",
+        npmResolvedVersion: null,
+        gitResolvedCommit: commit,
+        path,
+        integrity: null,
+        contentHash: "hash",
+        validationResult: "valid",
+        validatedAt: 1,
+      });
+    makeArtifact("active-root", "gc-active-root", checkout);
+    makeArtifact("nested-old", "gc-nested-old", nestedPath);
+    upsertInstalledPlugin(db, {
+      id: "gc-active-root",
+      source: "git:https://example.test/repo.git@main",
+      provenance: { kind: "direct" },
+      sourceIntent: {
+        kind: "git",
+        url: "https://example.test/repo.git",
+        subdirectory: null,
+        requestedRef: "main",
+        refKind: "branch",
+      },
+      exactResolution: { kind: "git", commit },
+      updateState: {
+        lastCheckAt: null,
+        availableCompatibleVersion: null,
+        newestIncompatibleVersion: null,
+        statusDetail: null,
+      },
+      activeArtifactId: "active-root",
+      rootDir: checkout,
+      version: "1.0.0",
+      enabled: true,
+    });
+
+    const warnings: string[] = [];
+    await garbageCollectPluginArtifacts({
+      db,
+      dataDir,
+      now: Date.now() + 1_000,
+      retentionMs: 0,
+      warn: (message) => warnings.push(message),
+    });
+
+    await stat(join(nestedPath, "sentinel"));
+    expect(listPluginArtifacts(db, "gc-nested-old")).toHaveLength(1);
+    expect(warnings).toEqual([]);
+  });
+
   it("collects the shared checkout after its last nested plugin", async () => {
     const commit = "b".repeat(40);
     const checkout = join(
