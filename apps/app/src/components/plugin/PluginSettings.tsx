@@ -352,7 +352,10 @@ export function PluginSettingsPage({ pluginId }: { pluginId: string }) {
           <p className="max-w-none text-sm leading-relaxed text-muted-foreground">
             Release, capabilities, and health live on{" "}
             <Link
-              to={getPluginDetailRoutePath({ pluginId })}
+              to={getPluginDetailRoutePath({
+                pluginId,
+                view: "installed",
+              })}
               className="inline-flex items-center gap-0.5 rounded-sm underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             >
               its plugin page
