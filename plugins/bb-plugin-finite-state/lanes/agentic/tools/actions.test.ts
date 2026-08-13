@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createFakePluginHost } from "@bb/plugin-sdk/testing";
 import { createPluginContext } from "../../../lib/context.js";
 import {
+  ActionServiceError,
   BENCH_ACTION_SERVICE,
   FIRMWARE_ACTION_SERVICE,
   VERIFICATION_ACTION_SERVICE,
@@ -68,11 +69,17 @@ describe("action tools", () => {
   });
 
   it("refuses an incomplete bench mount without retrying dispatch", async () => {
-    const run = vi.fn(async () => { throw new Error("MOUNT_INCOMPLETE: fully materialized firmware is required"); });
+    const run = vi.fn(async () => {
+      throw new ActionServiceError(
+        "MOUNT_INCOMPLETE",
+        "Fully materialized firmware is required",
+        "precondition",
+      );
+    });
     const { host } = fixture({ bench: { run } });
     expect(decoded(await host.harness.behavior.callAgentTool("fs_bench_run", {
       pvId: "pv-1", tier: "tier1", requirement: "REQ-1", target: "CVE-1@component-1",
-    }))).toMatchObject({ ok: false, error: { code: "bench_action_failed", retryable: false } });
+    }))).toMatchObject({ ok: false, error: { code: "MOUNT_INCOMPLETE", retryable: false } });
     expect(run).toHaveBeenCalledTimes(1);
   });
 
@@ -94,25 +101,43 @@ describe("action tools", () => {
     const service = ctx.service<ScopedBenchAction>(BENCH_ACTION_SERVICE, () => { throw new Error("missing bench action"); });
     await expect(service.run({ pvId: "pv-missing", tier: "tier1" }, {
       projectId: "project-test", threadId: "thread-test", signal: new AbortController().signal,
-    })).rejects.toThrow(/MOUNT_INCOMPLETE/iu);
+    })).rejects.toMatchObject({ code: "MOUNT_INCOMPLETE", kind: "precondition" });
     expect(remote).not.toHaveBeenCalled();
     expect(host.harness.sdk.callsTo("threads.spawn")).toHaveLength(0);
   });
 
   it("turns verification timeout into status-query recovery and never retries", async () => {
-    const run = vi.fn(async () => { throw new Error("verification dispatch timeout with unknown outcome"); });
+    const run = vi.fn(async () => {
+      throw new ActionServiceError(
+        "verification_dispatch_ambiguous",
+        "Verification dispatch liveness is unknown",
+        "dispatch_ambiguous",
+        { jobId: "verification-job-1" },
+      );
+    });
     const { host } = fixture({ verification: { run } });
     expect(decoded(await host.harness.behavior.callAgentTool("fs_verification_run", {
       requirement: "REQ-1", check: "CHECK-1",
     }))).toMatchObject({
       ok: false,
-      error: { code: "verification_dispatch_ambiguous", hint: expect.stringMatching(/query.*status|query.*run/iu), retryable: false },
+      error: {
+        code: "verification_dispatch_ambiguous",
+        hint: expect.stringMatching(/verification-job-1.*do not dispatch/iu),
+        retryable: false,
+        details: { jobId: "verification-job-1" },
+      },
     });
     expect(run).toHaveBeenCalledTimes(1);
   });
 
   it("surfaces API 403 as metadata-only admin recovery", async () => {
-    const materialize = vi.fn(async () => { throw new Error("403 VIEW_ANY_PROJECT_FILE admin permission required"); });
+    const materialize = vi.fn(async () => {
+      throw new ActionServiceError(
+        "firmware_admin_required",
+        "Firmware byte access is unavailable",
+        "permission",
+      );
+    });
     const { host } = fixture({ firmware: { materialize } });
     expect(decoded(await host.harness.behavior.callAgentTool("fs_firmware_materialize", {
       pvId: "pv-1", mode: "hydrate", paths: ["bin/app"],

@@ -1,7 +1,7 @@
 import type { BbPluginApi, PluginAgentToolContext } from "@bb/plugin-sdk";
 import type { PluginContext } from "../../../lib/context.js";
 import {
-  ACTION_TOOL_ALLOWLIST,
+  ActionServiceError,
   BENCH_ACTION_SERVICE,
   FIRMWARE_ACTION_SERVICE,
   VERIFICATION_ACTION_SERVICE,
@@ -20,8 +20,6 @@ import {
   verificationActionSchema,
 } from "./action-schemas.js";
 
-const STATUS_HINT = "The dispatch outcome is ambiguous. Query the corresponding run/status surface using the returned durable id; do not dispatch a duplicate.";
-
 function toolResponse(result: ToolResult<unknown>) {
   return {
     content: [{ type: "text" as const, text: JSON.stringify(result) }],
@@ -31,6 +29,45 @@ function toolResponse(result: ToolResult<unknown>) {
 
 function safeMessage(error: unknown): string {
   return error instanceof Error ? error.message.slice(0, 2_000) : "Action failed";
+}
+
+function actionFailure(
+  action: "verification" | "bench" | "firmware",
+  error: unknown,
+): ActionServiceError {
+  if (error instanceof ActionServiceError) return error;
+  if (action === "firmware") {
+    return new ActionServiceError(
+      "firmware_action_failed",
+      safeMessage(error),
+      "failed",
+    );
+  }
+  return new ActionServiceError(
+    `${action}_dispatch_ambiguous`,
+    `${action === "bench" ? "Bench" : "Verification"} dispatch liveness is unknown.`,
+    "dispatch_ambiguous",
+  );
+}
+
+function ambiguityHint(error: ActionServiceError): string {
+  if (error.ids.runId) {
+    return `Query the corresponding run/status surface using run id ${error.ids.runId}; do not dispatch a duplicate.`;
+  }
+  if (error.ids.jobId) {
+    return `Query the corresponding run/status surface using job id ${error.ids.jobId}; do not dispatch a duplicate.`;
+  }
+  return "No durable id was returned and dispatch liveness is unknown. Do not retry; inspect the corresponding status surface and owner-service logs before deciding whether another dispatch is safe.";
+}
+
+function failureHint(action: "verification" | "bench" | "firmware", error: ActionServiceError): string {
+  if (error.kind === "dispatch_ambiguous") return ambiguityHint(error);
+  if (action === "verification") return "Resolve the requirement/check mapping, then retry once.";
+  if (action === "bench") return "Fix the selected firmware mount or bench prerequisites before retrying.";
+  if (error.kind === "permission") {
+    return "Metadata remains available. Use local standalone unpack for a whole image, or ask an org admin for VIEW_ANY_PROJECT_FILE before hydrating explicit API files.";
+  }
+  return "Inspect firmware status and retry only the explicit failed paths.";
 }
 
 function audit(
@@ -71,14 +108,12 @@ export function registerActionTools(bb: BbPluginApi, ctx: PluginContext): void {
       try {
         const result = await requireActionService<ScopedVerificationAction>(ctx, VERIFICATION_ACTION_SERVICE)
           .run(input, scope(call));
-        bb.realtime.publish("verifications:changed", { projectId: call.projectId, jobId: result.jobId });
         audit(bb, "fs_verification_run", call, "result", { outcome: "queued", jobId: result.jobId, runId: result.runId });
         return toolResponse(ok({ job_id: result.jobId, ...(result.runId ? { run_id: result.runId } : {}), status: "queued", hint: "Refetch verification evidence by job id; queued is not passed evidence." }));
       } catch (error) {
-        const message = safeMessage(error);
-        audit(bb, "fs_verification_run", call, "result", { outcome: "error" });
-        const ambiguous = /timeout|ambiguous|unknown outcome|connection|abort/iu.test(message);
-        return toolResponse(fail(ambiguous ? "verification_dispatch_ambiguous" : "verification_action_failed", message, ambiguous ? STATUS_HINT : "Resolve the requirement/check mapping, then retry once.", false));
+        const failure = actionFailure("verification", error);
+        audit(bb, "fs_verification_run", call, "result", { outcome: "error", errorCode: failure.code, classification: failure.kind, jobId: failure.ids.jobId, runId: failure.ids.runId });
+        return toolResponse(fail(failure.code, failure.message, failureHint("verification", failure), false, failure.ids));
       }
     },
   });
@@ -96,10 +131,9 @@ export function registerActionTools(bb: BbPluginApi, ctx: PluginContext): void {
         audit(bb, "fs_bench_run", call, "result", { outcome: result.status, runId: result.runId, resultThreadId: result.threadId });
         return toolResponse(ok({ run_id: result.runId, thread_id: result.threadId, status: result.status }));
       } catch (error) {
-        const message = safeMessage(error);
-        audit(bb, "fs_bench_run", call, "result", { outcome: "error" });
-        const ambiguous = /timeout|ambiguous|unknown outcome|connection|abort/iu.test(message);
-        return toolResponse(fail(ambiguous ? "bench_dispatch_ambiguous" : "bench_action_failed", message, ambiguous ? STATUS_HINT : "Fix the selected firmware mount or bench prerequisites before retrying.", false));
+        const failure = actionFailure("bench", error);
+        audit(bb, "fs_bench_run", call, "result", { outcome: "error", errorCode: failure.code, classification: failure.kind, runId: failure.ids.runId, resultThreadId: failure.ids.threadId, jobId: failure.ids.jobId });
+        return toolResponse(fail(failure.code, failure.message, failureHint("bench", failure), false, failure.ids));
       }
     },
   });
@@ -118,14 +152,14 @@ export function registerActionTools(bb: BbPluginApi, ctx: PluginContext): void {
         audit(bb, "fs_firmware_materialize", call, "result", { outcome: "completed", source: result.source, hydrated: result.hydrated, remaining: result.remaining, errors: result.errors });
         return toolResponse(ok({ ...result, serverAccess: input.mode === "hydrate_all" ? "none" : "read-fetch" }));
       } catch (error) {
-        const message = safeMessage(error);
-        audit(bb, "fs_firmware_materialize", call, "result", { outcome: "error" });
-        const admin = /403|admin|VIEW_ANY_PROJECT_FILE|permission/iu.test(message);
-        const whole = input.mode === "hydrate_all";
-        return toolResponse(fail(admin ? "firmware_admin_required" : "firmware_action_failed", message, admin || whole ? "Metadata remains available. Use local standalone unpack for a whole image, or ask an org admin for VIEW_ANY_PROJECT_FILE before hydrating explicit API files." : "Inspect firmware status and retry only the explicit failed paths.", false));
+        const failure = actionFailure("firmware", error);
+        audit(bb, "fs_firmware_materialize", call, "result", { outcome: "error", errorCode: failure.code, classification: failure.kind });
+        const wholeImage = input.mode === "hydrate_all" && failure.kind !== "permission";
+        const hint = wholeImage
+          ? "Metadata remains available. Use local standalone unpack for a whole image before invoking hydrate_all."
+          : failureHint("firmware", failure);
+        return toolResponse(fail(failure.code, failure.message, hint, false));
       }
     },
   });
-
-  if (ACTION_TOOL_ALLOWLIST.length !== 8) throw new Error("ACTION_ALLOWLIST_AMENDMENT_REQUIRED");
 }

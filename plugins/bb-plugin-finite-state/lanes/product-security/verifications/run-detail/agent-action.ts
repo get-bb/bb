@@ -1,6 +1,7 @@
 import type Database from "better-sqlite3";
 import type { PluginContext } from "../../../../lib/context.js";
 import {
+  ActionServiceError,
   VERIFICATION_ACTION_SERVICE,
   type ActionInvocationScope,
   type ScopedVerificationAction,
@@ -41,8 +42,12 @@ function mappedCheck(
           ELSE 'manual' END = ?)
       ORDER BY rcm.project_version_id, rcm.check_id LIMIT 2`,
   ).all(input.projectId, input.requirement, check, check, check, tier, tier);
-  if (rows.length === 0) throw new Error("CHECK_REQUIRED: no accepted mapped verification check matches the requirement and tier");
-  if (rows.length > 1) throw new Error("VERIFICATION_CHECK_AMBIGUOUS: pass the exact check id");
+  if (rows.length === 0) {
+    throw new ActionServiceError("CHECK_REQUIRED", "No accepted mapped verification check matches the requirement and tier", "precondition");
+  }
+  if (rows.length > 1) {
+    throw new ActionServiceError("VERIFICATION_CHECK_AMBIGUOUS", "Pass the exact check id", "precondition");
+  }
   return rows[0]!;
 }
 
@@ -52,30 +57,43 @@ export function registerVerificationAgentAction(
 ): void {
   ctx.service<ScopedVerificationAction>(VERIFICATION_ACTION_SERVICE, () => ({
     async run(input, scope?: ActionInvocationScope) {
-      if (!scope) throw new Error("ACTION_SCOPE_REQUIRED");
+      if (!scope) throw new ActionServiceError("ACTION_SCOPE_REQUIRED", "An explicit action scope is required", "precondition");
+      if (input.tier !== undefined && !isVerificationTier(input.tier)) {
+        throw new ActionServiceError("VERIFICATION_TIER_INVALID", "The verification tier is invalid", "precondition");
+      }
       const selected = mappedCheck(ctx.db(), { projectId: scope.projectId, ...input });
       let first: { jobId: string } | null = null;
-      if (input.tier !== undefined && !isVerificationTier(input.tier)) throw new Error("VERIFICATION_TIER_INVALID");
-      for await (const job of runVerification({
-        projectId: selected.project_id,
-        client,
-        maxPolls: 0,
-        publish(update) {
-          ctx.bb.realtime.publish("verifications:changed", {
-            projectId: selected.project_id,
-            jobId: update.jobId,
-            state: update.state,
-          });
-        },
-      }, { requirementId: selected.requirement_key, checkId: selected.check_id, ...(input.tier ? { tier: input.tier } : {}) })) {
-        first ??= { jobId: job.jobId };
-        break;
+      try {
+        for await (const job of runVerification({
+          projectId: selected.project_id,
+          client,
+          maxPolls: 0,
+          publish(update) {
+            ctx.bb.realtime.publish("verifications:changed", {
+              projectId: selected.project_id,
+              jobId: update.jobId,
+              state: update.state,
+            });
+          },
+        }, { requirementId: selected.requirement_key, checkId: selected.check_id, ...(input.tier ? { tier: input.tier } : {}) })) {
+          first ??= { jobId: job.jobId };
+          break;
+        }
+      } catch {
+        throw new ActionServiceError(
+          "verification_dispatch_ambiguous",
+          "Verification dispatch liveness is unknown.",
+          "dispatch_ambiguous",
+        );
       }
-      if (!first) throw new Error("VERIFICATION_JOB_NOT_STARTED");
-      return {
-        jobId: first.jobId,
-        runId: first.jobId,
-      };
+      if (!first) {
+        throw new ActionServiceError(
+          "verification_dispatch_ambiguous",
+          "Verification dispatch returned no durable job id; liveness is unknown.",
+          "dispatch_ambiguous",
+        );
+      }
+      return { jobId: first.jobId };
     },
   }));
 }

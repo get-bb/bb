@@ -2,6 +2,8 @@ import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { createFakePluginHost } from "@bb/plugin-sdk/testing";
+import plugin from "../../../server.js";
 import {
   ACTION_TOOL_ALLOWLIST,
   assertActionBoundary,
@@ -41,6 +43,18 @@ describe("action allowlist guard", () => {
     expect(() => assertActionBoundary(candidate)).toThrow(/AMENDMENT_REQUIRED/iu);
   });
 
+  it("checks the complete production registration set against the closed registry", async () => {
+    const host = createFakePluginHost({ pluginId: `fs-action-boundary-${crypto.randomUUID()}` });
+    await plugin(host.bb);
+    const registered = host.harness.inspection.registrations.agentTools.map((tool) => tool.name);
+    expect(() => assertActionBoundary(AGENT_SURFACE, registered)).not.toThrow();
+    expect(() => assertActionBoundary(AGENT_SURFACE, [...registered, "fs_rogue_action"]))
+      .toThrow(/REGISTRY_DRIFT/iu);
+    expect(() => assertActionBoundary(AGENT_SURFACE, [...registered, "fs_sync_push"]))
+      .toThrow(/PROHIBITED_AGENT_PUSH_TOOL/iu);
+    await host.harness.lifecycle.dispose();
+  });
+
   it("keeps non-action agent modules disconnected from remote action/write capability", () => {
     const agentic = join(pluginRoot, "lanes/agentic");
     const violations = files(agentic)
@@ -55,13 +69,11 @@ describe("action allowlist guard", () => {
   });
 
   it("never registers or advertises fs_sync_push while allowing prohibition prose", () => {
-    const registrationFiles = [
-      join(pluginRoot, "lib/agentic/registry.ts"),
-      ...files(join(pluginRoot, "lanes/agentic")).filter((path) => /\.(?:ts|tsx)$/u.test(path) && !path.endsWith(".test.ts")),
-    ];
+    const registrationFiles = files(pluginRoot)
+      .filter((path) => /\.(?:ts|tsx)$/u.test(path) && !path.endsWith(".test.ts"));
     const advertised = registrationFiles.flatMap((path) => {
       const source = readFileSync(path, "utf8");
-      return /(?:name\s*:\s*|registerTool\s*\(|tools\s*:\s*\[[^\]]*)["']fs_sync_push["']/su.test(source)
+      return /registerTool\s*\(\s*\{[\s\S]{0,1000}?name\s*:\s*["']fs_sync_push["']/su.test(source)
         ? [relative(pluginRoot, path)] : [];
     });
     expect(advertised).toEqual([]);
