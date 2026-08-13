@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   BB_DESKTOP_BROWSER_MAX_URL_LENGTH,
   bbDesktopBrowserAttachRequestSchema,
+  bbDesktopBrowserFindRequestSchema,
+  bbDesktopBrowserFindResultSchema,
   bbDesktopBrowserSetBoundsRequestSchema,
   bbDesktopBrowserStateSchema,
   clampBbDesktopBrowserViewBounds,
@@ -121,6 +123,37 @@ describe("desktop browser IPC schemas", () => {
         url: longUrl,
         bounds: { x: 0, y: 0, width: 800, height: 600 },
         visible: true,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("validates find requests and result pushes", () => {
+    expect(
+      bbDesktopBrowserFindRequestSchema.safeParse({
+        tabId: "browser:abc",
+        text: "needle",
+        forward: true,
+      }).success,
+    ).toBe(true);
+    expect(
+      bbDesktopBrowserFindRequestSchema.safeParse({
+        tabId: "browser:abc",
+        text: "",
+        forward: true,
+      }).success,
+    ).toBe(false);
+    expect(
+      bbDesktopBrowserFindResultSchema.safeParse({
+        tabId: "browser:abc",
+        activeMatchOrdinal: 2,
+        matches: 7,
+      }).success,
+    ).toBe(true);
+    expect(
+      bbDesktopBrowserFindResultSchema.safeParse({
+        tabId: "browser:abc",
+        activeMatchOrdinal: -1,
+        matches: 0,
       }).success,
     ).toBe(false);
   });

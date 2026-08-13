@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   BB_DESKTOP_BROWSER_MAX_URL_LENGTH,
   type BbDesktopBrowserAttachRequest,
+  type BbDesktopBrowserFindRequest,
   type BbDesktopBrowserNavigateRequest,
   type BbDesktopBrowserSetBoundsRequest,
   type BbDesktopBrowserSetVisibleRequest,
@@ -9,6 +10,7 @@ import {
 import {
   BB_DESKTOP_BROWSER_ATTACH_CHANNEL,
   BB_DESKTOP_BROWSER_DETACH_CHANNEL,
+  BB_DESKTOP_BROWSER_FIND_CHANNEL,
   BB_DESKTOP_BROWSER_GO_BACK_CHANNEL,
   BB_DESKTOP_BROWSER_GO_FORWARD_CHANNEL,
   BB_DESKTOP_BROWSER_NAVIGATE_CHANNEL,
@@ -16,6 +18,7 @@ import {
   BB_DESKTOP_BROWSER_SET_BOUNDS_CHANNEL,
   BB_DESKTOP_BROWSER_SET_VISIBLE_CHANNEL,
   BB_DESKTOP_BROWSER_STOP_CHANNEL,
+  BB_DESKTOP_BROWSER_STOP_FIND_CHANNEL,
 } from "../src/desktop-browser-ipc.js";
 import { registerDesktopBrowserIpc } from "../src/desktop-browser-main-ipc.js";
 import type { DesktopBrowserViewManager } from "../src/desktop-browser-view.js";
@@ -61,9 +64,11 @@ vi.mock("electron", () => ({
 
 type AttachCall = Parameters<DesktopBrowserViewManager["attach"]>[0];
 type DetachCall = Parameters<DesktopBrowserViewManager["detach"]>[0];
+type FindCall = Parameters<DesktopBrowserViewManager["find"]>[0];
 type NavigateCall = Parameters<DesktopBrowserViewManager["navigate"]>[0];
 type SetBoundsCall = Parameters<DesktopBrowserViewManager["setBounds"]>[0];
 type SetVisibleCall = Parameters<DesktopBrowserViewManager["setVisible"]>[0];
+type StopFindCall = Parameters<DesktopBrowserViewManager["stopFind"]>[0];
 type TabCommandCall = Parameters<DesktopBrowserViewManager["reload"]>[0];
 type WindowResizeCall = Parameters<
   DesktopBrowserViewManager["beginWindowResize"]
@@ -94,6 +99,7 @@ class RecordingDesktopBrowserViewManager implements DesktopBrowserViewManager {
   public readonly destroyAllCalls: string[] = [];
   public readonly detachCalls: DetachCall[] = [];
   public readonly endWindowResizeCalls: WindowResizeCall[] = [];
+  public readonly findCalls: FindCall[] = [];
   public readonly goBackCalls: TabCommandCall[] = [];
   public readonly goForwardCalls: TabCommandCall[] = [];
   public readonly navigateCalls: NavigateCall[] = [];
@@ -102,6 +108,7 @@ class RecordingDesktopBrowserViewManager implements DesktopBrowserViewManager {
   public readonly setBoundsCalls: SetBoundsCall[] = [];
   public readonly setVisibleCalls: SetVisibleCall[] = [];
   public readonly stopCalls: TabCommandCall[] = [];
+  public readonly stopFindCalls: StopFindCall[] = [];
 
   attach(args: AttachCall): void {
     this.attachCalls.push(args);
@@ -121,6 +128,10 @@ class RecordingDesktopBrowserViewManager implements DesktopBrowserViewManager {
 
   endWindowResize(hostWindow: WindowResizeCall): void {
     this.endWindowResizeCalls.push(hostWindow);
+  }
+
+  find(args: FindCall): void {
+    this.findCalls.push(args);
   }
 
   goBack(args: TabCommandCall): void {
@@ -153,6 +164,10 @@ class RecordingDesktopBrowserViewManager implements DesktopBrowserViewManager {
 
   stop(args: TabCommandCall): void {
     this.stopCalls.push(args);
+  }
+
+  stopFind(args: StopFindCall): void {
+    this.stopFindCalls.push(args);
   }
 }
 
@@ -207,6 +222,11 @@ describe("registerDesktopBrowserIpc", () => {
       tabId: "browser:a",
       url: "https://example.com/",
     };
+    const findRequest: BbDesktopBrowserFindRequest = {
+      tabId: "browser:a",
+      text: "needle",
+      forward: true,
+    };
 
     sendBrowserIpc({
       channel: BB_DESKTOP_BROWSER_ATTACH_CHANNEL,
@@ -228,6 +248,16 @@ describe("registerDesktopBrowserIpc", () => {
       payload: { tabId: "browser:a" },
       sender: renderer.sender,
     });
+    sendBrowserIpc({
+      channel: BB_DESKTOP_BROWSER_FIND_CHANNEL,
+      payload: findRequest,
+      sender: renderer.sender,
+    });
+    sendBrowserIpc({
+      channel: BB_DESKTOP_BROWSER_STOP_FIND_CHANNEL,
+      payload: { tabId: "browser:a", focusPage: true },
+      sender: renderer.sender,
+    });
 
     expect(manager.attachCalls).toHaveLength(1);
     expect(manager.attachCalls[0]?.hostWindow).toBe(renderer.hostWindow);
@@ -237,6 +267,15 @@ describe("registerDesktopBrowserIpc", () => {
     expect(manager.navigateCalls[0]?.request).toEqual(navigateRequest);
     expect(manager.reloadCalls).toEqual([
       { hostWindow: renderer.hostWindow, tabId: "browser:a" },
+    ]);
+    expect(manager.findCalls).toEqual([
+      { hostWindow: renderer.hostWindow, request: findRequest },
+    ]);
+    expect(manager.stopFindCalls).toEqual([
+      {
+        hostWindow: renderer.hostWindow,
+        request: { tabId: "browser:a", focusPage: true },
+      },
     ]);
   });
 
@@ -276,8 +315,29 @@ describe("registerDesktopBrowserIpc", () => {
       });
     }
 
+    for (const payload of [
+      {
+        tabId: "browser:a",
+        text: "",
+        forward: true,
+      },
+      {
+        tabId: "browser:a",
+        text: "needle",
+        forward: true,
+        extra: true,
+      },
+    ]) {
+      sendBrowserIpc({
+        channel: BB_DESKTOP_BROWSER_FIND_CHANNEL,
+        payload,
+        sender: renderer.sender,
+      });
+    }
+
     expect(manager.attachCalls).toEqual([]);
     expect(manager.navigateCalls).toEqual([]);
+    expect(manager.findCalls).toEqual([]);
   });
 
   it("rejects malformed bounds, visibility, and tab-command payloads", () => {

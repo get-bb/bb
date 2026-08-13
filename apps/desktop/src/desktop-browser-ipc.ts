@@ -12,6 +12,9 @@ export const BB_DESKTOP_BROWSER_GO_FORWARD_CHANNEL =
   "bb-desktop:browser:go-forward";
 export const BB_DESKTOP_BROWSER_RELOAD_CHANNEL = "bb-desktop:browser:reload";
 export const BB_DESKTOP_BROWSER_STOP_CHANNEL = "bb-desktop:browser:stop";
+export const BB_DESKTOP_BROWSER_FIND_CHANNEL = "bb-desktop:browser:find";
+export const BB_DESKTOP_BROWSER_STOP_FIND_CHANNEL =
+  "bb-desktop:browser:stop-find";
 export const BB_DESKTOP_BROWSER_SET_BOUNDS_CHANNEL =
   "bb-desktop:browser:set-bounds";
 export const BB_DESKTOP_BROWSER_SET_VISIBLE_CHANNEL =
@@ -23,3 +26,5 @@ export const BB_DESKTOP_BROWSER_SCOPED_OPEN_TAB_CHANNEL =
   "bb-desktop:browser:scoped-open-tab";
 export const BB_DESKTOP_BROWSER_SNAPSHOT_CHANNEL =
   "bb-desktop:browser:snapshot";
+export const BB_DESKTOP_BROWSER_FIND_RESULT_CHANNEL =
+  "bb-desktop:browser:find-result";

@@ -8,6 +8,7 @@ import { z } from "zod";
  */
 export const BB_DESKTOP_BROWSER_MAX_URL_LENGTH = 4096;
 export const BB_DESKTOP_BROWSER_MAX_TITLE_LENGTH = 1024;
+export const BB_DESKTOP_BROWSER_MAX_FIND_TEXT_LENGTH = 1024;
 
 /**
  * Pixel rect of the panel region the native browser view must overlay,
@@ -142,12 +143,44 @@ export type BbDesktopBrowserSetVisibleRequest = z.infer<
   typeof bbDesktopBrowserSetVisibleRequestSchema
 >;
 
-/** Ref for tab-scoped commands with no other payload (detach/back/forward/reload/stop). */
+export const bbDesktopBrowserFindRequestSchema = z
+  .object({
+    tabId: z.string().min(1),
+    text: z.string().min(1).max(BB_DESKTOP_BROWSER_MAX_FIND_TEXT_LENGTH),
+    forward: z.boolean(),
+  })
+  .strict();
+export type BbDesktopBrowserFindRequest = z.infer<
+  typeof bbDesktopBrowserFindRequestSchema
+>;
+
+export const bbDesktopBrowserStopFindRequestSchema = z
+  .object({
+    tabId: z.string().min(1),
+    focusPage: z.boolean(),
+  })
+  .strict();
+export type BbDesktopBrowserStopFindRequest = z.infer<
+  typeof bbDesktopBrowserStopFindRequestSchema
+>;
+
+/** Ref for tab-scoped commands with no other payload. */
 export const bbDesktopBrowserTabRefSchema = z
   .object({
     tabId: z.string().min(1),
   })
   .strict();
+/** Latest match state for one active find-in-page request. */
+export const bbDesktopBrowserFindResultSchema = z
+  .object({
+    tabId: z.string().min(1),
+    activeMatchOrdinal: z.number().int().nonnegative(),
+    matches: z.number().int().nonnegative(),
+  })
+  .strict();
+export type BbDesktopBrowserFindResult = z.infer<
+  typeof bbDesktopBrowserFindResultSchema
+>;
 
 /**
  * Current navigation state of a browser view, pushed main → renderer on every
@@ -234,6 +267,9 @@ export type BbDesktopBrowserScopedOpenTabHandler = (
 export type BbDesktopBrowserSnapshotHandler = (
   snapshot: BbDesktopBrowserSnapshot,
 ) => void;
+export type BbDesktopBrowserFindResultHandler = (
+  result: BbDesktopBrowserFindResult,
+) => void;
 export type BbDesktopBrowserUnsubscribe = () => void;
 
 export interface BbDesktopBrowserApi {
@@ -246,6 +282,10 @@ export interface BbDesktopBrowserApi {
   goForward(tabId: string): void;
   reload(tabId: string): void;
   stop(tabId: string): void;
+  /** Start or advance native find-in-page. Optional for older desktop shells. */
+  find?(request: BbDesktopBrowserFindRequest): void;
+  /** Clear native find-in-page highlights. Optional for older desktop shells. */
+  stopFind?(request: BbDesktopBrowserStopFindRequest): void;
   setBounds(request: BbDesktopBrowserSetBoundsRequest): void;
   setVisible(request: BbDesktopBrowserSetVisibleRequest): void;
   /** Subscribe to navigation-state pushes for every view in this window. */
@@ -270,5 +310,9 @@ export interface BbDesktopBrowserApi {
    */
   onSnapshot?(
     listener: BbDesktopBrowserSnapshotHandler,
+  ): BbDesktopBrowserUnsubscribe;
+  /** Subscribe to native find-in-page match updates. Optional for version skew. */
+  onFindResult?(
+    listener: BbDesktopBrowserFindResultHandler,
   ): BbDesktopBrowserUnsubscribe;
 }

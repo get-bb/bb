@@ -261,6 +261,11 @@ export const DEFAULT_APP_KEYBINDINGS: AppDefaultKeybindings = [
     desktopOnly: true,
     none: ["modalOpen"],
   }),
+  binding("browser.find", "f", { mod: true }, {
+    all: ["mainSurface", "browserFocus"],
+    desktopOnly: true,
+    none: ["modalOpen"],
+  }),
   binding("browser.reload", "r", { mod: true }, {
     all: ["mainSurface", "browserFocus"],
     desktopOnly: true,

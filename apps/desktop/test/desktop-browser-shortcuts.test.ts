@@ -29,6 +29,19 @@ const keybindings: AppKeybindings = [
     },
     when: { all: ["mainSurface", "browserFocus"], none: [] },
   },
+  {
+    command: "browser.find",
+    desktopOnly: true,
+    shortcut: {
+      key: "f",
+      mod: true,
+      meta: false,
+      control: false,
+      alt: false,
+      shift: false,
+    },
+    when: { all: ["mainSurface", "browserFocus"], none: [] },
+  },
 ];
 
 describe("resolveDesktopBrowserAppCommand", () => {
@@ -47,6 +60,20 @@ describe("resolveDesktopBrowserAppCommand", () => {
         keybindings,
       }),
     ).toBe("browser.focusLocation");
+    expect(
+      resolveDesktopBrowserAppCommand({
+        input: {
+          altKey: false,
+          ctrlKey: false,
+          code: "KeyF",
+          key: "f",
+          metaKey: true,
+          shiftKey: false,
+        },
+        isMac: true,
+        keybindings,
+      }),
+    ).toBe("browser.find");
     expect(
       resolveDesktopBrowserAppCommand({
         input: {

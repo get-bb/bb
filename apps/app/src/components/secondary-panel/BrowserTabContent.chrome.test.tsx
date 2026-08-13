@@ -9,6 +9,7 @@ import {
 } from "@testing-library/react";
 import type {
   BbDesktopBrowserApi,
+  BbDesktopBrowserFindResult,
   BbDesktopBrowserState,
 } from "@bb/desktop-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -16,7 +17,33 @@ import {
   createBbDesktopApi,
   createNoopDesktopBrowserApi,
 } from "@/test/bb-desktop-test-utils";
+import { AppCommandProvider } from "@/components/commands/AppCommandProvider";
 import { BrowserTabContent } from "./BrowserTabContent";
+
+vi.mock("@/hooks/queries/system-queries", () => ({
+  useSystemConfig: () => ({
+    data: {
+      keybindings: [
+        {
+          command: "browser.find",
+          desktopOnly: true,
+          shortcut: {
+            key: "f",
+            mod: true,
+            meta: false,
+            control: false,
+            alt: false,
+            shift: false,
+          },
+          when: {
+            all: ["mainSurface", "browserFocus"],
+            none: ["modalOpen"],
+          },
+        },
+      ],
+    },
+  }),
+}));
 
 const desktopInfo = {
   lastCheckedAt: null,
@@ -30,19 +57,33 @@ const desktopInfo = {
 
 interface BrowserChromeHarness {
   api: BbDesktopBrowserApi;
+  emitFindResult: (result: BbDesktopBrowserFindResult) => void;
   emitState: (state: BbDesktopBrowserState) => void;
+  find: ReturnType<typeof vi.fn>;
   goBack: ReturnType<typeof vi.fn>;
   stop: ReturnType<typeof vi.fn>;
+  stopFind: ReturnType<typeof vi.fn>;
 }
 
 function createBrowserChromeHarness(): BrowserChromeHarness {
   const stateListeners = new Set<(state: BbDesktopBrowserState) => void>();
+  const findResultListeners = new Set<
+    (result: BbDesktopBrowserFindResult) => void
+  >();
+  const find = vi.fn();
   const goBack = vi.fn();
   const stop = vi.fn();
+  const stopFind = vi.fn();
   const api: BbDesktopBrowserApi = {
     ...createNoopDesktopBrowserApi(),
+    find,
     goBack,
     stop,
+    stopFind,
+    onFindResult(listener) {
+      findResultListeners.add(listener);
+      return () => findResultListeners.delete(listener);
+    },
     onState(listener) {
       stateListeners.add(listener);
       return () => stateListeners.delete(listener);
@@ -50,11 +91,16 @@ function createBrowserChromeHarness(): BrowserChromeHarness {
   };
   return {
     api,
+    emitFindResult(result) {
+      for (const listener of findResultListeners) listener(result);
+    },
     emitState(state) {
       for (const listener of stateListeners) listener(state);
     },
+    find,
     goBack,
     stop,
+    stopFind,
   };
 }
 
@@ -75,20 +121,21 @@ function browserState(
 
 function renderBrowserChrome(harness: BrowserChromeHarness, initialUrl = "") {
   window.bbDesktop = createBbDesktopApi(desktopInfo, harness.api);
+  vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
   return render(
-    <>
+    <AppCommandProvider>
       <BrowserTabContent
         tabId="browser:test"
         initialUrl={initialUrl}
         addressFocusRequest={null}
-        canShowNativeBrowserView={false}
+        canShowNativeBrowserView={true}
         visibilityCoordinator={null}
         environmentId={null}
         threadId="thread-1"
         onUpdate={() => {}}
       />
       <button type="button">Outside browser</button>
-    </>,
+    </AppCommandProvider>,
   );
 }
 
@@ -141,5 +188,59 @@ describe("BrowserTabContent persistent navigation", () => {
     act(() => harness.emitState(browserState({ canGoBack: true })));
     fireEvent.click(screen.getByRole("button", { name: "Go back" }));
     expect(harness.goBack).toHaveBeenCalledWith("browser:test");
+  });
+
+  it("opens Find with Command+F and drives native page search", () => {
+    const harness = createBrowserChromeHarness();
+    renderBrowserChrome(harness, "https://example.com/docs");
+
+    fireEvent.keyDown(screen.getByTestId("browser-tab-nav-bar"), {
+      code: "KeyF",
+      key: "f",
+      metaKey: true,
+    });
+    const input = screen.getByRole("textbox", { name: "Find in page" });
+    for (const text of ["d", "do", "docs"]) {
+      fireEvent.change(input, { target: { value: text } });
+      expect(harness.find).toHaveBeenLastCalledWith({
+        tabId: "browser:test",
+        text,
+        forward: true,
+      });
+    }
+
+    act(() =>
+      harness.emitFindResult({
+        tabId: "browser:test",
+        activeMatchOrdinal: 2,
+        matches: 5,
+      }),
+    );
+    expect(screen.getByRole("status").textContent).toBe("2 of 5");
+
+    act(() =>
+      harness.emitFindResult({
+        tabId: "browser:other",
+        activeMatchOrdinal: 1,
+        matches: 99,
+      }),
+    );
+    expect(screen.getByRole("status").textContent).toBe("2 of 5");
+
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(harness.find).toHaveBeenLastCalledWith(
+      expect.objectContaining({ forward: true }),
+    );
+    fireEvent.keyDown(input, { key: "Enter", shiftKey: true });
+    expect(harness.find).toHaveBeenLastCalledWith(
+      expect.objectContaining({ forward: false }),
+    );
+
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(harness.stopFind).toHaveBeenLastCalledWith({
+      tabId: "browser:test",
+      focusPage: true,
+    });
+    expect(screen.queryByTestId("browser-find-bar")).toBeNull();
   });
 });

@@ -72,6 +72,18 @@ type FakeDidFailLoadListener = (
   isMainFrame: boolean,
 ) => void;
 
+interface FakeFoundInPageResult {
+  requestId: number;
+  activeMatchOrdinal: number;
+  matches: number;
+  finalUpdate: boolean;
+}
+
+type FakeFoundInPageListener = (
+  event: FakeWebContentsEvent,
+  result: FakeFoundInPageResult,
+) => void;
+
 interface FakeContextMenuParams {
   editFlags: {
     canCopy: boolean;
@@ -106,6 +118,7 @@ type FakeBeforeInputListener = (
 
 interface FakeWebContentsEventMap {
   "before-input-event": FakeBeforeInputListener;
+  "found-in-page": FakeFoundInPageListener;
   "will-frame-navigate": FakeWillFrameNavigateListener;
   "will-navigate": FakeWillNavigateListener;
   "will-redirect": FakeWillRedirectListener;
@@ -253,16 +266,26 @@ const electronMock = vi.hoisted(() => {
     public canGoForwardResult = false;
     public destroyed = false;
     public focusCalls = 0;
+    public readonly findInPageCalls: Array<{
+      text: string;
+      options: {
+        forward?: boolean;
+        findNext?: boolean;
+        matchCase?: boolean;
+      };
+    }> = [];
     public readonly goBackCalls: string[] = [];
     public readonly goForwardCalls: string[] = [];
     public historyEntries: Array<{ title: string; url: string }> = [];
     public readonly id: number;
     public readonly loadURLCalls: string[] = [];
+    public readonly stopFindInPageCalls: string[] = [];
     public readonly pendingCaptureResolvers: Array<
       (image: FakeNativeImage) => void
     > = [];
     private readonly listeners: FakeWebContentsListeners = {
       "before-input-event": [],
+      "found-in-page": [],
       "will-frame-navigate": [],
       "will-navigate": [],
       "will-redirect": [],
@@ -311,6 +334,18 @@ const electronMock = vi.hoisted(() => {
       this.focusCalls += 1;
     }
 
+    findInPage(
+      text: string,
+      options: {
+        forward?: boolean;
+        findNext?: boolean;
+        matchCase?: boolean;
+      } = {},
+    ): number {
+      this.findInPageCalls.push({ text, options });
+      return this.findInPageCalls.length;
+    }
+
     getTitle(): string {
       return this.title;
     }
@@ -348,6 +383,10 @@ const electronMock = vi.hoisted(() => {
 
     stop(): void {}
 
+    stopFindInPage(action: string): void {
+      this.stopFindInPageCalls.push(action);
+    }
+
     emitDidFailLoad(args: FakeDidFailLoadArgs): void {
       for (const listener of this.listeners["did-fail-load"]) {
         listener(
@@ -378,6 +417,12 @@ const electronMock = vi.hoisted(() => {
         listener(event, resolvedInput);
       }
       return event.defaultPrevented;
+    }
+
+    emitFoundInPage(result: FakeFoundInPageResult): void {
+      for (const listener of this.listeners["found-in-page"]) {
+        listener(fakeWebContentsEvent, result);
+      }
     }
 
     emitDidNavigate(url: string): void {
@@ -598,6 +643,12 @@ function snapshotPushesOf(
   return pushes;
 }
 
+function findResultPushesOf(hostWindow: FakeHostWindow) {
+  return hostWindow.webContents.sentPayloads.filter(
+    (payload) => "activeMatchOrdinal" in payload,
+  );
+}
+
 interface AttachBrowserTabArgs {
   hostWindow: FakeHostWindow;
   manager: DesktopBrowserViewManager;
@@ -698,6 +749,37 @@ function scopedOpenTabPushesOf(
 }
 
 describe("DesktopBrowserViewManager", () => {
+  it("forwards Find from the native view and focuses trusted chrome", () => {
+    const dispatchAppCommand = vi.fn();
+    const focusHostWebContents = vi.fn();
+    const manager = createDesktopBrowserViewManager({
+      dispatchAppCommand,
+      focusHostWebContents,
+      resolveAppCommand: (input) =>
+        input.key === "f" && input.metaKey ? "browser.find" : null,
+    });
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 49,
+    });
+
+    attachBrowserTab({
+      manager,
+      hostWindow,
+      tabId: "browser:a",
+      url: "https://example.com",
+    });
+
+    expect(
+      requireFakeView(0).webContents.emitBeforeInput({ key: "f", meta: true }),
+    ).toBe(true);
+    expect(focusHostWebContents).toHaveBeenCalledWith(49);
+    expect(dispatchAppCommand).toHaveBeenCalledWith({
+      command: "browser.find",
+      hostWebContentsId: 49,
+    });
+  });
+
   it("forwards resolved browser shortcuts and suppresses the untrusted page", () => {
     const dispatchAppCommand = vi.fn();
     const focusHostWebContents = vi.fn();
@@ -740,6 +822,83 @@ describe("DesktopBrowserViewManager", () => {
       }),
     ).toBe(false);
     expect(dispatchAppCommand).toHaveBeenCalledTimes(1);
+  });
+
+  it("finds in the active page, drops stale results, and clears highlights", () => {
+    const manager = createDesktopBrowserViewManager();
+    const hostWindow = new FakeHostWindow({
+      contentBounds: { width: 700, height: 450 },
+      webContentsId: 51,
+    });
+    attachBrowserTab({
+      manager,
+      hostWindow,
+      tabId: "browser:a",
+      url: "https://example.com",
+    });
+    const webContents = requireFakeView(0).webContents;
+
+    manager.find({
+      hostWindow,
+      request: {
+        tabId: "browser:a",
+        text: "needle",
+        forward: true,
+      },
+    });
+    expect(webContents.findInPageCalls).toEqual([
+      {
+        text: "needle",
+        options: { forward: true, findNext: true, matchCase: false },
+      },
+    ]);
+
+    webContents.emitFoundInPage({
+      requestId: 99,
+      activeMatchOrdinal: 1,
+      matches: 4,
+      finalUpdate: true,
+    });
+    webContents.emitFoundInPage({
+      requestId: 1,
+      activeMatchOrdinal: 2,
+      matches: 4,
+      finalUpdate: true,
+    });
+    expect(findResultPushesOf(hostWindow)).toEqual([
+      {
+        tabId: "browser:a",
+        activeMatchOrdinal: 2,
+        matches: 4,
+      },
+    ]);
+
+    manager.find({
+      hostWindow,
+      request: { tabId: "browser:a", text: "needle", forward: false },
+    });
+    manager.find({
+      hostWindow,
+      request: { tabId: "browser:a", text: "other", forward: true },
+    });
+    expect(webContents.findInPageCalls.slice(1)).toEqual([
+      {
+        text: "needle",
+        options: { forward: false, findNext: false, matchCase: false },
+      },
+      {
+        text: "other",
+        options: { forward: true, findNext: true, matchCase: false },
+      },
+    ]);
+
+    const focusCallsBeforeStop = webContents.focusCalls;
+    manager.stopFind({
+      hostWindow,
+      request: { tabId: "browser:a", focusPage: true },
+    });
+    expect(webContents.stopFindInPageCalls).toEqual(["clearSelection"]);
+    expect(webContents.focusCalls).toBe(focusCallsBeforeStop + 1);
   });
 
   it("allows loopback navigation requested from browser chrome", () => {

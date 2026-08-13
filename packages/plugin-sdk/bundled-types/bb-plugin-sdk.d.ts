@@ -87,6 +87,7 @@ declare const appKeybindingOverridesSchema: z$1.ZodArray<z$1.ZodObject<{
         "modelPicker.cycleReasoning": "modelPicker.cycleReasoning";
         "modelPicker.cycleReasoningBackward": "modelPicker.cycleReasoningBackward";
         "browser.focusLocation": "browser.focusLocation";
+        "browser.find": "browser.find";
         "browser.reload": "browser.reload";
         "workspace.openPreferred": "workspace.openPreferred";
     }>;
@@ -6956,6 +6957,7 @@ declare const systemConfigResponseSchema: z$1.ZodObject<{
             "modelPicker.cycleReasoning": "modelPicker.cycleReasoning";
             "modelPicker.cycleReasoningBackward": "modelPicker.cycleReasoningBackward";
             "browser.focusLocation": "browser.focusLocation";
+            "browser.find": "browser.find";
             "browser.reload": "browser.reload";
             "workspace.openPreferred": "workspace.openPreferred";
             "question.select.1": "question.select.1";
@@ -7054,6 +7056,7 @@ declare const systemConfigResponseSchema: z$1.ZodObject<{
             "modelPicker.cycleReasoning": "modelPicker.cycleReasoning";
             "modelPicker.cycleReasoningBackward": "modelPicker.cycleReasoningBackward";
             "browser.focusLocation": "browser.focusLocation";
+            "browser.find": "browser.find";
             "browser.reload": "browser.reload";
             "workspace.openPreferred": "workspace.openPreferred";
             "question.select.1": "question.select.1";
@@ -7152,6 +7155,7 @@ declare const systemConfigResponseSchema: z$1.ZodObject<{
             "modelPicker.cycleReasoning": "modelPicker.cycleReasoning";
             "modelPicker.cycleReasoningBackward": "modelPicker.cycleReasoningBackward";
             "browser.focusLocation": "browser.focusLocation";
+            "browser.find": "browser.find";
             "browser.reload": "browser.reload";
             "workspace.openPreferred": "workspace.openPreferred";
             "question.select.1": "question.select.1";

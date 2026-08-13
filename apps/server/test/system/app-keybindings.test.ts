@@ -457,6 +457,7 @@ describe("app keybindings", () => {
         ...PANE_FOCUS_APP_COMMAND_IDS,
         "terminal.open",
         "browser.focusLocation",
+        "browser.find",
         "browser.reload",
         "window.new",
       ]);

@@ -1,14 +1,17 @@
 import { BrowserWindow, ipcMain, type IpcMainEvent } from "electron";
 import {
   bbDesktopBrowserAttachRequestSchema,
+  bbDesktopBrowserFindRequestSchema,
   bbDesktopBrowserNavigateRequestSchema,
   bbDesktopBrowserSetBoundsRequestSchema,
   bbDesktopBrowserSetVisibleRequestSchema,
+  bbDesktopBrowserStopFindRequestSchema,
   bbDesktopBrowserTabRefSchema,
 } from "@bb/desktop-contract";
 import {
   BB_DESKTOP_BROWSER_ATTACH_CHANNEL,
   BB_DESKTOP_BROWSER_DETACH_CHANNEL,
+  BB_DESKTOP_BROWSER_FIND_CHANNEL,
   BB_DESKTOP_BROWSER_GO_BACK_CHANNEL,
   BB_DESKTOP_BROWSER_GO_FORWARD_CHANNEL,
   BB_DESKTOP_BROWSER_NAVIGATE_CHANNEL,
@@ -16,6 +19,7 @@ import {
   BB_DESKTOP_BROWSER_SET_BOUNDS_CHANNEL,
   BB_DESKTOP_BROWSER_SET_VISIBLE_CHANNEL,
   BB_DESKTOP_BROWSER_STOP_CHANNEL,
+  BB_DESKTOP_BROWSER_STOP_FIND_CHANNEL,
 } from "./desktop-browser-ipc.js";
 import type { DesktopBrowserViewManager } from "./desktop-browser-view.js";
 
@@ -82,6 +86,18 @@ export function registerDesktopBrowserIpc(
     manager.navigate({ hostWindow, request: parsed.data });
   });
 
+  ipcMain.on(BB_DESKTOP_BROWSER_FIND_CHANNEL, (event, payload: unknown) => {
+    const hostWindow = hostWindowFromBrowserIpcEvent(event);
+    if (hostWindow === null) {
+      return;
+    }
+    const parsed = bbDesktopBrowserFindRequestSchema.safeParse(payload);
+    if (!parsed.success) {
+      return;
+    }
+    manager.find({ hostWindow, request: parsed.data });
+  });
+
   ipcMain.on(
     BB_DESKTOP_BROWSER_SET_BOUNDS_CHANNEL,
     (event, payload: unknown) => {
@@ -132,4 +148,18 @@ export function registerDesktopBrowserIpc(
     channel: BB_DESKTOP_BROWSER_STOP_CHANNEL,
     run: (args) => manager.stop(args),
   });
+  ipcMain.on(
+    BB_DESKTOP_BROWSER_STOP_FIND_CHANNEL,
+    (event, payload: unknown) => {
+      const hostWindow = hostWindowFromBrowserIpcEvent(event);
+      if (hostWindow === null) {
+        return;
+      }
+      const parsed = bbDesktopBrowserStopFindRequestSchema.safeParse(payload);
+      if (!parsed.success) {
+        return;
+      }
+      manager.stopFind({ hostWindow, request: parsed.data });
+    },
+  );
 }

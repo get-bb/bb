@@ -4,6 +4,8 @@ import {
   BB_DESKTOP_BROWSER_MAX_URL_LENGTH,
   clampBbDesktopBrowserViewBounds,
   type BbDesktopBrowserAttachRequest,
+  type BbDesktopBrowserFindRequest,
+  type BbDesktopBrowserFindResult,
   type BbDesktopBrowserNavigateRequest,
   type BbDesktopBrowserOpenTabRequest,
   type BbDesktopBrowserScopedOpenTabRequest,
@@ -11,11 +13,13 @@ import {
   type BbDesktopBrowserSetVisibleRequest,
   type BbDesktopBrowserSnapshot,
   type BbDesktopBrowserState,
+  type BbDesktopBrowserStopFindRequest,
   type BbDesktopBrowserViewportBounds,
   type BbDesktopBrowserViewBounds,
 } from "@bb/desktop-contract";
 import type { AppCommandId, AppShortcutInput } from "@bb/domain";
 import {
+  BB_DESKTOP_BROWSER_FIND_RESULT_CHANNEL,
   BB_DESKTOP_BROWSER_OPEN_TAB_CHANNEL,
   BB_DESKTOP_BROWSER_SCOPED_OPEN_TAB_CHANNEL,
   BB_DESKTOP_BROWSER_SNAPSHOT_CHANNEL,
@@ -63,6 +67,7 @@ const ERR_ABORTED = -3;
 interface BrowserViewEntry {
   view: WebContentsView;
   lastErrorText: string | null;
+  lastFind: { requestId: number; text: string } | null;
   currentMainFrameLocalOriginKey: string | null;
   /**
    * The last renderer-measured panel rect. The renderer is the placement
@@ -79,6 +84,7 @@ interface BrowserViewEntry {
 
 export type DesktopBrowserHostWebContentsPayload =
   | BbDesktopBrowserState
+  | BbDesktopBrowserFindResult
   | BbDesktopBrowserOpenTabRequest
   | BbDesktopBrowserScopedOpenTabRequest
   | BbDesktopBrowserSnapshot;
@@ -147,11 +153,13 @@ interface SetEntryDesiredBoundsArgs {
 export interface DesktopBrowserViewManager {
   attach(args: HostScopedRequestArgs<BbDesktopBrowserAttachRequest>): void;
   detach(args: HostScopedTabArgs): void;
+  find(args: HostScopedRequestArgs<BbDesktopBrowserFindRequest>): void;
   navigate(args: HostScopedRequestArgs<BbDesktopBrowserNavigateRequest>): void;
   goBack(args: HostScopedTabArgs): void;
   goForward(args: HostScopedTabArgs): void;
   reload(args: HostScopedTabArgs): void;
   stop(args: HostScopedTabArgs): void;
+  stopFind(args: HostScopedRequestArgs<BbDesktopBrowserStopFindRequest>): void;
   setBounds(
     args: HostScopedRequestArgs<BbDesktopBrowserSetBoundsRequest>,
   ): void;
@@ -460,24 +468,36 @@ export function createDesktopBrowserViewManager(
       if (input.type !== "keyDown" || input.isAutoRepeat || input.isComposing) {
         return;
       }
-      const command = args.resolveAppCommand({
+      const shortcutInput = {
         altKey: input.alt,
         code: input.code,
         ctrlKey: input.control,
         key: input.key,
         metaKey: input.meta,
         shiftKey: input.shift,
-      });
+      };
+      const command = args.resolveAppCommand(shortcutInput);
       if (command === null) return;
       // Prevent both the untrusted page and Electron's application menu from
       // also handling a chord that bb resolved as a browser command.
       event.preventDefault();
-      if (command === "browser.focusLocation") {
+      if (command === "browser.focusLocation" || command === "browser.find") {
         args.focusHostWebContents(hostWindow.webContents.id);
       }
       args.dispatchAppCommand({
         command,
         hostWebContentsId: hostWindow.webContents.id,
+      });
+    });
+
+    webContents.on("found-in-page", (_event, result) => {
+      if (entry.lastFind?.requestId !== result.requestId) {
+        return;
+      }
+      send(hostWindow, BB_DESKTOP_BROWSER_FIND_RESULT_CHANNEL, {
+        tabId,
+        activeMatchOrdinal: result.activeMatchOrdinal,
+        matches: result.matches,
       });
     });
 
@@ -612,6 +632,7 @@ export function createDesktopBrowserViewManager(
     const entry: BrowserViewEntry = {
       view,
       lastErrorText: null,
+      lastFind: null,
       currentMainFrameLocalOriginKey: null,
       desiredBounds: args.desiredBounds,
       popupTimestamps: [],
@@ -702,6 +723,18 @@ export function createDesktopBrowserViewManager(
     detach({ hostWindow, tabId }) {
       destroyEntry(hostWindow, browserViewKey(hostWindow, tabId));
     },
+    find({ hostWindow, request }) {
+      withEntry({ hostWindow, tabId: request.tabId }, (entry) => {
+        entry.lastFind = {
+          requestId: entry.view.webContents.findInPage(request.text, {
+            forward: request.forward,
+            findNext: entry.lastFind?.text !== request.text,
+            matchCase: false,
+          }),
+          text: request.text,
+        };
+      });
+    },
     navigate({ hostWindow, request }) {
       withEntry({ hostWindow, tabId: request.tabId }, (entry) => {
         loadIfNeeded(entry, request.url);
@@ -729,6 +762,17 @@ export function createDesktopBrowserViewManager(
     stop({ hostWindow, tabId }) {
       withEntry({ hostWindow, tabId }, (entry) => {
         entry.view.webContents.stop();
+      });
+    },
+    stopFind({ hostWindow, request }) {
+      withEntry({ hostWindow, tabId: request.tabId }, (entry) => {
+        if (entry.lastFind !== null) {
+          entry.lastFind = null;
+          entry.view.webContents.stopFindInPage("clearSelection");
+        }
+        if (request.focusPage) {
+          entry.view.webContents.focus();
+        }
       });
     },
     setBounds({ hostWindow, request }) {

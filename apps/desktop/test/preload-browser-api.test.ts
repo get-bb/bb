@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { AppCommandId } from "@bb/domain";
 import type {
   BbDesktopApi,
+  BbDesktopBrowserFindResult,
   BbDesktopBrowserOpenTabRequest,
   BbDesktopBrowserScopedOpenTabRequest,
   BbDesktopBrowserSnapshot,
@@ -18,6 +19,8 @@ import {
 import {
   BB_DESKTOP_BROWSER_ATTACH_CHANNEL,
   BB_DESKTOP_BROWSER_DETACH_CHANNEL,
+  BB_DESKTOP_BROWSER_FIND_CHANNEL,
+  BB_DESKTOP_BROWSER_FIND_RESULT_CHANNEL,
   BB_DESKTOP_BROWSER_GO_BACK_CHANNEL,
   BB_DESKTOP_BROWSER_GO_FORWARD_CHANNEL,
   BB_DESKTOP_BROWSER_NAVIGATE_CHANNEL,
@@ -29,6 +32,7 @@ import {
   BB_DESKTOP_BROWSER_SNAPSHOT_CHANNEL,
   BB_DESKTOP_BROWSER_STATE_CHANNEL,
   BB_DESKTOP_BROWSER_STOP_CHANNEL,
+  BB_DESKTOP_BROWSER_STOP_FIND_CHANNEL,
 } from "../src/desktop-browser-ipc.js";
 import {
   BB_DESKTOP_APP_COMMAND_CHANNEL,
@@ -227,9 +231,11 @@ describe("desktop preload browser API", () => {
     expect(Object.keys(api.browser).sort()).toEqual([
       "attach",
       "detach",
+      "find",
       "goBack",
       "goForward",
       "navigate",
+      "onFindResult",
       "onOpenTab",
       "onScopedOpenTab",
       "onSnapshot",
@@ -238,6 +244,7 @@ describe("desktop preload browser API", () => {
       "setBounds",
       "setVisible",
       "stop",
+      "stopFind",
     ]);
     expect(api.browser).not.toHaveProperty("send");
     expect(api.browser).not.toHaveProperty("invoke");
@@ -249,6 +256,12 @@ describe("desktop preload browser API", () => {
     api.browser.goForward("browser:a");
     api.browser.reload("browser:a");
     api.browser.stop("browser:a");
+    api.browser.find?.({
+      tabId: "browser:a",
+      text: "needle",
+      forward: true,
+    });
+    api.browser.stopFind?.({ tabId: "browser:a", focusPage: true });
     api.browser.setBounds(boundsRequest);
     api.browser.setVisible(visibleRequest);
     api.setTheme("dark");
@@ -283,6 +296,18 @@ describe("desktop preload browser API", () => {
       {
         channel: BB_DESKTOP_BROWSER_STOP_CHANNEL,
         payload: { tabId: "browser:a" },
+      },
+      {
+        channel: BB_DESKTOP_BROWSER_FIND_CHANNEL,
+        payload: {
+          tabId: "browser:a",
+          text: "needle",
+          forward: true,
+        },
+      },
+      {
+        channel: BB_DESKTOP_BROWSER_STOP_FIND_CHANNEL,
+        payload: { tabId: "browser:a", focusPage: true },
       },
       {
         channel: BB_DESKTOP_BROWSER_SET_BOUNDS_CHANNEL,
@@ -344,6 +369,7 @@ describe("desktop preload browser API", () => {
   it("validates browser event payloads before notifying renderer listeners", async () => {
     const api = await loadPreload();
     const states: BbDesktopBrowserState[] = [];
+    const findResults: BbDesktopBrowserFindResult[] = [];
     const openTabs: BbDesktopBrowserOpenTabRequest[] = [];
     const scopedOpenTabs: BbDesktopBrowserScopedOpenTabRequest[] = [];
     const snapshots: BbDesktopBrowserSnapshot[] = [];
@@ -371,6 +397,11 @@ describe("desktop preload browser API", () => {
       tabId: "browser:a",
       dataUrl: null,
     };
+    const findResult: BbDesktopBrowserFindResult = {
+      tabId: "browser:a",
+      activeMatchOrdinal: 1,
+      matches: 3,
+    };
 
     api.browser.onState((nextState) => {
       states.push(nextState);
@@ -383,6 +414,9 @@ describe("desktop preload browser API", () => {
     });
     api.browser.onSnapshot?.((nextSnapshot) => {
       snapshots.push(nextSnapshot);
+    });
+    api.browser.onFindResult?.((result) => {
+      findResults.push(result);
     });
     api.onOpenNewTab?.(() => {
       openNewTabCount += 1;
@@ -415,6 +449,10 @@ describe("desktop preload browser API", () => {
       payload: { tabId: "browser:a", dataUrl: 42 },
     });
     emitIpcPayload({
+      channel: BB_DESKTOP_BROWSER_FIND_RESULT_CHANNEL,
+      payload: { ...findResult, matches: -1 },
+    });
+    emitIpcPayload({
       channel: BB_DESKTOP_WINDOW_STATE_CHANGED_CHANNEL,
       payload: { isFullScreen: false, extra: true },
     });
@@ -433,6 +471,10 @@ describe("desktop preload browser API", () => {
     emitIpcPayload({
       channel: BB_DESKTOP_BROWSER_SNAPSHOT_CHANNEL,
       payload: snapshot,
+    });
+    emitIpcPayload({
+      channel: BB_DESKTOP_BROWSER_FIND_RESULT_CHANNEL,
+      payload: findResult,
     });
     emitIpcPayload({
       channel: BB_DESKTOP_WINDOW_STATE_CHANGED_CHANNEL,
@@ -459,6 +501,7 @@ describe("desktop preload browser API", () => {
     expect(openTabs).toEqual([openTab]);
     expect(scopedOpenTabs).toEqual([scopedOpenTab]);
     expect(snapshots).toEqual([snapshot]);
+    expect(findResults).toEqual([findResult]);
     expect(windowStates).toEqual([{ isFullScreen: true }]);
     expect(closeWindowRequestCount).toBe(1);
     expect(openNewTabCount).toBe(1);

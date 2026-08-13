@@ -67,6 +67,7 @@ export const APP_COMMAND_IDS = [
   "modelPicker.cycleReasoning",
   "modelPicker.cycleReasoningBackward",
   "browser.focusLocation",
+  "browser.find",
   "browser.reload",
   "workspace.openPreferred",
   ...QUESTION_SELECT_APP_COMMAND_IDS,

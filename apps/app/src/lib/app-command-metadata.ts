@@ -201,6 +201,11 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
         "Focus the embedded browser address bar.",
       ),
       command(
+        "browser.find",
+        "Find in page",
+        "Search the active embedded browser page.",
+      ),
+      command(
         "browser.reload",
         "Reload page",
         "Reload the active embedded browser page.",

@@ -6,15 +6,20 @@ import {
   useRef,
   useState,
   type FormEvent,
+  type KeyboardEvent,
   type RefObject,
 } from "react";
 import type {
   BbDesktopBrowserApi,
+  BbDesktopBrowserFindResult,
   BbDesktopBrowserState,
   BbDesktopBrowserViewportBounds,
   BbDesktopBrowserViewBounds,
 } from "@bb/desktop-contract";
-import { clampBbDesktopBrowserViewBounds } from "@bb/desktop-contract";
+import {
+  BB_DESKTOP_BROWSER_MAX_FIND_TEXT_LENGTH,
+  clampBbDesktopBrowserViewBounds,
+} from "@bb/desktop-contract";
 import {
   COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
   COARSE_POINTER_HEADER_ICON_BUTTON_CLASS,
@@ -45,6 +50,7 @@ import {
 } from "@/components/commands/AppCommandProvider";
 import type { AppShortcutPresentation } from "@/lib/app-keybindings";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@/components/ui/chromeStyleTokens";
+import { useBrowserFind } from "./useBrowserFind";
 
 export interface BrowserTabContentProps {
   tabId: string;
@@ -93,7 +99,14 @@ interface BrowserChromeProps {
 }
 
 interface NavButtonProps {
-  icon: "ChevronLeft" | "ChevronRight" | "RotateCcw" | "X" | "ExternalLink";
+  icon:
+    | "ChevronDown"
+    | "ChevronLeft"
+    | "ChevronRight"
+    | "ChevronUp"
+    | "ExternalLink"
+    | "RotateCcw"
+    | "X";
   label: string;
   disabled?: boolean;
   onClick: () => void;
@@ -124,6 +137,15 @@ interface BrowserPageLoadErrorProps {
   onOpenExternal: () => void;
   onRetry: () => void;
   url: string;
+}
+
+interface BrowserFindBarProps {
+  inputRef: RefObject<HTMLInputElement | null>;
+  query: string;
+  result: BbDesktopBrowserFindResult | null;
+  onClose: () => void;
+  onMove: (forward: boolean) => void;
+  onQueryChange: (query: string) => void;
 }
 
 const EMPTY_BROWSER_VIEW_BOUNDS: BbDesktopBrowserViewBounds = {
@@ -357,6 +379,90 @@ function BrowserChrome({
   );
 }
 
+function BrowserFindBar({
+  inputRef,
+  query,
+  result,
+  onClose,
+  onMove,
+  onQueryChange,
+}: BrowserFindBarProps) {
+  const hasQuery = query.length > 0;
+  const matchLabel =
+    result === null
+      ? ""
+      : result.matches === 0
+        ? "No matches"
+        : `${result.activeMatchOrdinal} of ${result.matches}`;
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      onClose();
+      return;
+    }
+    if (event.key !== "Enter" || event.nativeEvent.isComposing) {
+      return;
+    }
+    event.preventDefault();
+    onMove(!event.shiftKey);
+  };
+
+  return (
+    <div
+      data-testid="browser-find-bar"
+      role="search"
+      aria-label="Find in page"
+      className={cn(
+        "flex h-10 shrink-0 items-center gap-1 border-t border-border/70 px-2",
+        SECONDARY_PANEL_TOP_CHROME_BACKGROUND_CLASS,
+      )}
+    >
+      <div className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md border border-border/70 bg-background/70 px-2 transition-colors focus-within:border-ring">
+        <Icon
+          name="Search"
+          className="size-3.5 shrink-0 text-muted-foreground"
+          aria-hidden
+        />
+        <input
+          ref={inputRef}
+          type="text"
+          value={query}
+          onChange={(event) => onQueryChange(event.currentTarget.value)}
+          onKeyDown={handleKeyDown}
+          maxLength={BB_DESKTOP_BROWSER_MAX_FIND_TEXT_LENGTH}
+          placeholder="Find in page"
+          aria-label="Find in page"
+          autoComplete="off"
+          spellCheck={false}
+          className="min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
+        />
+        <span
+          role="status"
+          aria-live="polite"
+          className="shrink-0 whitespace-nowrap text-xs tabular-nums text-muted-foreground"
+        >
+          {matchLabel}
+        </span>
+      </div>
+      <NavButton
+        icon="ChevronUp"
+        label="Previous match"
+        disabled={!hasQuery}
+        onClick={() => onMove(false)}
+      />
+      <NavButton
+        icon="ChevronDown"
+        label="Next match"
+        disabled={!hasQuery}
+        onClick={() => onMove(true)}
+      />
+      <NavButton icon="X" label="Close find" onClick={onClose} />
+    </div>
+  );
+}
+
 function BrowserUnavailable() {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
@@ -489,6 +595,12 @@ export function BrowserTabContent({
     attachedBrowserViewIdentity.threadId === threadId;
 
   const hasPage = currentUrl.length > 0;
+  const find = useBrowserFind({
+    active: canShowNativeBrowserView,
+    currentUrl,
+    desktopBrowser,
+    tabId,
+  });
   const pageLoadErrorText = state?.errorText ?? null;
   const hasPageLoadError = pageLoadErrorText !== null && hasPage;
   // A blocking modal (e.g. the git-action dialog) dims the panel with a DOM
@@ -607,7 +719,6 @@ export function BrowserTabContent({
       }
       setResizeSnapshotUrl(snapshot.dataUrl);
     });
-
     return () => {
       unsubscribe();
       unsubscribeSnapshot?.();
@@ -818,6 +929,16 @@ export function BrowserTabContent({
         locationShortcut={locationShortcut}
         reloadShortcut={reloadShortcut}
       />
+      {find.state ? (
+        <BrowserFindBar
+          inputRef={find.inputRef}
+          query={find.state.query}
+          result={find.state.result}
+          onClose={find.close}
+          onMove={find.move}
+          onQueryChange={find.setQuery}
+        />
+      ) : null}
       <div ref={contentRef} className="relative min-h-0 flex-1">
         {hasPageLoadError ? (
           <BrowserPageLoadError
