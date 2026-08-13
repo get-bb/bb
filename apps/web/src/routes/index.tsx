@@ -17,8 +17,6 @@ import {
   MessageQuestionIcon,
   Mic02Icon,
   MoreHorizontalIcon,
-  PauseIcon,
-  PlayIcon,
   PlusMinusSquare01Icon,
   SentIcon,
   Settings01Icon,
@@ -28,23 +26,12 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 
 import changelogMd from "../../../../CHANGELOG.md?raw";
 import { initAnalytics, trackLandingEvent } from "../landing/analytics";
 import bbIcon from "../assets/bb-icon.png";
-import blackstoneLogo from "../assets/company-logos/blackstone.png";
-import datadogLogo from "../assets/company-logos/datadog.svg";
-import figmaLogo from "../assets/company-logos/figma.svg";
-import metaLogo from "../assets/company-logos/meta.svg";
-import moodysLogo from "../assets/company-logos/moodys.png";
-import notionLogo from "../assets/company-logos/notion.png";
-import ownerLogo from "../assets/company-logos/owner.png";
-import pendoLogo from "../assets/company-logos/pendo.svg";
-import renderLogo from "../assets/company-logos/render.svg";
-import shortcutLogo from "../assets/company-logos/shortcut.svg";
-import simileLogo from "../assets/company-logos/simile.svg";
 import hermesAvatar from "../assets/hermes-avatar.jpg";
 import vscodeIcon from "../assets/vscode.png";
 import { RELEASE_META, parseChangelog } from "../landing/changelog";
@@ -77,33 +64,6 @@ import {
 } from "../landing/site";
 import interWoff2 from "@fontsource-variable/inter/files/inter-latin-wght-normal.woff2?url";
 import landingCss from "../landing/landing.css?url";
-
-const COMPANY_PROOF = [
-  ["Meta", metaLogo],
-  ["Figma", figmaLogo],
-  ["Notion", notionLogo],
-  ["Datadog", datadogLogo],
-  ["Owner.com", ownerLogo],
-  ["Pendo", pendoLogo],
-  ["Blackstone", blackstoneLogo],
-  ["Moody's", moodysLogo],
-  ["Shortcut", shortcutLogo],
-  ["Render", renderLogo],
-  ["Simile", simileLogo],
-] as const;
-
-function CompanyProofLogos({ duplicate = false }: { duplicate?: boolean }) {
-  return (
-    <ul className="company-proof-logos" aria-hidden={duplicate || undefined}>
-      {COMPANY_PROOF.map(([name, logo]) => (
-        <li key={name} className="company-proof-company">
-          <img src={logo} alt={duplicate ? "" : name} width={20} height={20} />
-          <span aria-hidden="true">{name}</span>
-        </li>
-      ))}
-    </ul>
-  );
-}
 
 const [LATEST_RELEASE] = parseChangelog(changelogMd);
 if (!LATEST_RELEASE) {
@@ -1717,23 +1677,9 @@ function SpawnSidebar() {
 /* ── Page ─────────────────────────────────────────────────────────── */
 
 function LandingPage() {
-  const [companyProofPaused, setCompanyProofPaused] = useState(false);
-  const [companyProofInView, setCompanyProofInView] = useState(false);
-  const companyProofRef = useRef<HTMLElement>(null);
   useScrollReveal();
   useConstructMock();
   useFitMock();
-
-  useEffect(() => {
-    const companyProof = companyProofRef.current;
-    if (!companyProof) return;
-
-    const observer = new IntersectionObserver(([entry]) => {
-      setCompanyProofInView(entry?.isIntersecting ?? false);
-    });
-    observer.observe(companyProof);
-    return () => observer.disconnect();
-  }, []);
   return (
     <div className="wrap">
       <SiteNav />
@@ -1765,37 +1711,6 @@ function LandingPage() {
       </header>
 
       <HeroAppMock />
-
-      <section
-        ref={companyProofRef}
-        className={`company-proof${companyProofPaused ? " is-paused" : ""}${companyProofInView ? "" : " is-offscreen"}`}
-        aria-labelledby="company-proof-title"
-      >
-        <div className="company-proof-heading">
-          <h2 id="company-proof-title">Used by builders at</h2>
-          <button
-            type="button"
-            className="company-proof-toggle"
-            aria-label={
-              companyProofPaused
-                ? "Resume company logos"
-                : "Pause company logos"
-            }
-            onClick={() => setCompanyProofPaused((paused) => !paused)}
-          >
-            <HugeiconsIcon
-              icon={companyProofPaused ? PlayIcon : PauseIcon}
-              aria-hidden="true"
-            />
-          </button>
-        </div>
-        <div className="company-proof-marquee">
-          <div className="company-proof-track">
-            <CompanyProofLogos />
-            <CompanyProofLogos duplicate />
-          </div>
-        </div>
-      </section>
 
       <Band title="Fully customizable." flip visual={<CustomizeBuild />}>
         <p>
