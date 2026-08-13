@@ -7,16 +7,12 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@bb/shared-ui/tooltip";
+import { normalizeAbsoluteFilePath } from "@/lib/absolute-file-path";
 import type { WorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
 
 const CHECKOUT_CHIP_BASE_CLASS_NAME =
   "flex min-w-0 flex-1 items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-muted-foreground";
 const CHECKOUT_CHIP_BUTTON_CLASS_NAME = `${CHECKOUT_CHIP_BASE_CLASS_NAME} cursor-pointer transition-colors hover:bg-state-hover hover:text-foreground`;
-
-function trimTrailingPathSeparators(path: string): string {
-  const trimmedPath = path.replace(/[\\/]+$/u, "");
-  return trimmedPath || path;
-}
 
 interface ThreadEnvironmentSummaryProps {
   /** Display name of the thread's project, shown alongside the environment. */
@@ -68,13 +64,13 @@ export const ThreadEnvironmentSummary = memo(function ThreadEnvironmentSummary({
 
   const checkoutCopyValue = environmentCheckout?.copyValue ?? null;
   const normalizedProjectRootPath = projectRootPath
-    ? trimTrailingPathSeparators(projectRootPath)
-    : undefined;
+    ? normalizeAbsoluteFilePath({ path: projectRootPath })
+    : null;
   const normalizedEnvironmentPath = environmentPath
-    ? trimTrailingPathSeparators(environmentPath)
-    : undefined;
+    ? normalizeAbsoluteFilePath({ path: environmentPath })
+    : null;
   const environmentDirectoryName = normalizedEnvironmentPath
-    ?.split(/[\\/]/u)
+    ?.split("/")
     .at(-1);
   const visibleProjectName =
     projectName &&
