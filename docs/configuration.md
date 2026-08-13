@@ -191,39 +191,37 @@ to on. Set it with
 `bb settings keyboard hints <true|false>`. Turning it off hides the
 delayed shortcut badges without disabling any shortcuts.
 
-| Area      | Command                       | Default                           | Availability             |
-| --------- | ----------------------------- | --------------------------------- | ------------------------ |
-| Threads   | New thread                    | `Mod+N` / `Mod+Shift+O`           | Desktop / web            |
-| Threads   | Search threads                | `Mod+K`                           | All clients              |
-| Threads   | Rename focused thread         | Unassigned                        | Thread view              |
-| Threads   | Archive focused thread        | Unassigned                        | Thread view              |
-| Threads   | Previous / next thread        | `Mod+Shift+[/]` / `Mod+Shift+↑/↓` | Desktop / web            |
-| Threads   | Open visible thread 1–9       | Platform defaults above           | Web / desktop            |
-| Layout    | Previous / next chat pane     | `Mod+Shift+[/]`                   | While split              |
-| Layout    | Focus chat pane 1–8           | Platform defaults above           | Split (web / desktop)    |
-| Layout    | Maximize / restore chat pane  | `Mod+Shift+E`                     | While split              |
-| Layout    | Close focused chat pane       | `Mod+Shift+X`                     | While split              |
-| Window    | New window                    | `Mod+Shift+N`                     | Desktop                  |
-| Window    | Settings                      | `Mod+,`                           | All clients              |
-| Layout    | Toggle sidebar                | `Mod+\`                           | All clients              |
-| Panel     | New tab / close tab / toggle  | `Mod+T` / `Mod+W` / `Mod+J`       | All clients              |
-| Workspace | Quick open file / toggle diff | `Mod+P` / `Mod+D`                 | All clients              |
-| Workspace | Open terminal                 | `Mod+Shift+Enter` / `Mod+Shift+T` | Web / desktop            |
-| Workspace | Open in preferred app         | `Mod+O`                           | All clients              |
-| Composer  | Focus composer                | `Mod+Shift+C`                     | All clients              |
-| Composer  | Toggle model picker           | `Mod+Shift+M`                     | All clients              |
-| Composer  | Cycle model                   | `Alt+M`                           | All clients              |
-| Composer  | Cycle provider                | `Alt+P`                           | All clients              |
-| Composer  | Cycle reasoning effort        | `Alt+T`                           | All clients              |
-| Browser   | Focus location / reload       | `Mod+L` / `Mod+R`                 | Desktop embedded browser |
-| Questions | Choose visible answer 1–9     | `1` … `9`                         | While a question is open |
+| Area      | Command                            | Default                           | Availability             |
+| --------- | ---------------------------------- | --------------------------------- | ------------------------ |
+| Threads   | New thread                         | `Mod+N` / `Mod+Shift+O`           | Desktop / web            |
+| Threads   | Search threads                     | `Mod+K`                           | All clients              |
+| Threads   | Rename focused thread              | Unassigned                        | Thread view              |
+| Threads   | Archive focused thread             | Unassigned                        | Thread view              |
+| Threads   | Previous / next thread             | `Mod+Shift+[/]` / `Mod+Shift+↑/↓` | Desktop / web            |
+| Threads   | Open visible thread 1–9            | Platform defaults above           | Web / desktop            |
+| Layout    | Previous / next chat pane          | `Mod+Shift+[/]`                   | While split              |
+| Layout    | Focus chat pane 1–8                | Platform defaults above           | Split (web / desktop)    |
+| Layout    | Maximize / restore chat pane       | `Mod+Shift+E`                     | While split              |
+| Layout    | Close focused chat pane            | `Mod+Shift+X`                     | While split              |
+| Window    | New window                         | `Mod+Shift+N`                     | Desktop                  |
+| Window    | Settings                           | `Mod+,`                           | All clients              |
+| Layout    | Toggle sidebar                     | `Mod+\`                           | All clients              |
+| Panel     | New tab / close tab / toggle       | `Mod+T` / `Mod+W` / `Mod+J`       | All clients              |
+| Workspace | Quick open file / toggle diff      | `Mod+P` / `Mod+D`                 | All clients              |
+| Workspace | Open terminal                      | `Mod+Shift+Enter` / `Mod+Shift+T` | Web / desktop            |
+| Workspace | Open in preferred app              | `Mod+O`                           | All clients              |
+| Composer  | Focus composer                     | `Mod+Shift+C`                     | All clients              |
+| Composer  | Toggle model picker                | `Mod+Shift+M`                     | All clients              |
+| Composer  | Cycle model forward / backward     | `Alt+M` / `Alt+Shift+M`           | All clients              |
+| Composer  | Cycle provider forward / backward  | `Alt+P` / `Alt+Shift+P`           | All clients              |
+| Composer  | Cycle reasoning forward / backward | `Alt+T` / `Alt+Shift+T`           | All clients              |
+| Browser   | Focus location / reload            | `Mod+L` / `Mod+R`                 | Desktop embedded browser |
+| Questions | Choose visible answer 1–9          | `1` … `9`                         | While a question is open |
 
-Directional composer commands (`modelPicker.previousModel`,
-`modelPicker.nextModel`, `modelPicker.decreaseReasoning`, and
-`modelPicker.increaseReasoning`) are available in Settings → Keyboard and
-through `bb settings keyboard set`, but have no default bindings. Navigation
-and deletion keys remain native in editable controls even when assigned to an
-app command.
+Cycle commands wrap in both directions. Reasoning cycles only through the
+current model's supported efforts in canonical low-to-high rank order, not the
+provider response order. Navigation and deletion keys remain native in editable
+controls when assigned to an app command.
 
 The desktop application menu uses the same resolved bindings for New Thread,
 New Window, New Tab, Close, and Settings. There is no separate menu shortcut

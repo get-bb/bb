@@ -124,6 +124,8 @@ function renderPicker({
   onReasoningChange = vi.fn(),
   modelOptions = codexModels,
   modelValue = modelOptions[0]?.value ?? "",
+  pickerReasoningOptions = reasoningOptions,
+  reasoningValue = "medium",
   moreModelOptions = [],
   pickerProviderOptions = providerOptions,
   providerRouting,
@@ -135,6 +137,8 @@ function renderPicker({
   onReasoningChange?: (value: ReasoningLevel) => void;
   modelOptions?: readonly ModelPickerOption[];
   modelValue?: string;
+  pickerReasoningOptions?: readonly PickerOption<ReasoningLevel>[];
+  reasoningValue?: ReasoningLevel;
   moreModelOptions?: readonly ModelPickerOption[];
   pickerProviderOptions?: readonly PickerOption<string>[];
   providerRouting?: SystemProvidersQuery;
@@ -171,8 +175,8 @@ function renderPicker({
         modelOptions={modelOptions}
         moreModelOptions={moreModelOptions}
         onModelChange={onModelChange}
-        reasoningValue="medium"
-        reasoningOptions={reasoningOptions}
+        reasoningValue={reasoningValue}
+        reasoningOptions={pickerReasoningOptions}
         onReasoningChange={onReasoningChange}
         fastModeEnabled={false}
         onFastModeChange={vi.fn()}
@@ -203,7 +207,7 @@ afterEach(() => {
 });
 
 describe("ModelReasoningPicker", () => {
-  it("handles navigation commands from a Tab-focused composer control", () => {
+  it("cycles models backward from a Tab-focused composer control", () => {
     const { onModelChange } = renderPicker({
       modelOptions: [
         { value: "gpt-5.5", label: "GPT-5.5" },
@@ -214,10 +218,29 @@ describe("ModelReasoningPicker", () => {
       name: "Composer action",
     });
 
-    expect(commandHandlers.get("modelPicker.nextModel")?.({ target })).toBe(
-      true,
-    );
+    expect(
+      commandHandlers.get("modelPicker.cycleModelBackward")?.({ target }),
+    ).toBe(true);
     expect(onModelChange).toHaveBeenCalledWith("gpt-5.2");
+  });
+
+  it("cycles reasoning backward in canonical order and wraps", () => {
+    const { onReasoningChange } = renderPicker({
+      pickerReasoningOptions: [
+        { value: "max", label: "Max" },
+        { value: "low", label: "Low" },
+        { value: "high", label: "High" },
+      ],
+      reasoningValue: "low",
+    });
+    const target = screen.getByRole("button", {
+      name: "Provider, model and reasoning",
+    });
+
+    expect(
+      commandHandlers.get("modelPicker.cycleReasoningBackward")?.({ target }),
+    ).toBe(true);
+    expect(onReasoningChange).toHaveBeenCalledWith("max");
   });
 
   it("swallows the provider cycle chord when provider switching is locked", () => {
@@ -258,6 +281,26 @@ describe("ModelReasoningPicker", () => {
       commandHandlers.get("modelPicker.cycleProvider")?.({ target: trigger }),
     ).toBe(true);
     expect(onSelectedProviderChange).toHaveBeenCalledWith("claude-code");
+  });
+
+  it("cycles the provider backward while the picker popover is open", () => {
+    const { onSelectedProviderChange } = renderPicker({
+      pickerProviderOptions: [
+        ...providerOptions,
+        { value: "cursor", label: "Cursor" },
+      ],
+    });
+    const trigger = screen.getByRole("button", {
+      name: "Provider, model and reasoning",
+    });
+    fireEvent.click(trigger);
+
+    expect(
+      commandHandlers.get("modelPicker.cycleProviderBackward")?.({
+        target: trigger,
+      }),
+    ).toBe(true);
+    expect(onSelectedProviderChange).toHaveBeenCalledWith("cursor");
   });
 
   it("stays open while changing both the model and reasoning effort", () => {

@@ -200,27 +200,57 @@ export const DEFAULT_APP_KEYBINDINGS: AppDefaultKeybindings = [
   // This later, scoped binding lets the same chord close the picker while the
   // general binding remains blocked by unrelated dialogs.
   binding("modelPicker.toggle", "m", { mod: true, shift: true }, pickerOpenOnly),
-  // Rotate the composer's provider, model, and reasoning level without opening
-  // the picker, scoped exactly like `modelPicker.toggle` above. Alt is otherwise
-  // unused by bb, the browser, and both desktop menus, so these chords shadow
-  // nothing. macOS composes Option+<letter> into another character, so they
-  // match on the physical key — see `normalizeAppShortcutInputKey` in @bb/domain.
+  // Rotate the composer's provider, model, and reasoning level in either
+  // direction without opening the picker, scoped exactly like
+  // `modelPicker.toggle` above. Alt is otherwise unused by bb, the browser, and
+  // both desktop menus, so these chords shadow nothing. macOS composes
+  // Option+<letter> into another character, so they match on the physical key —
+  // see `normalizeAppShortcutInputKey` in @bb/domain.
   binding("modelPicker.cycleModel", "m", { alt: true }, composerWithoutModal),
+  binding(
+    "modelPicker.cycleModelBackward",
+    "m",
+    { alt: true, shift: true },
+    composerWithoutModal,
+  ),
   binding("modelPicker.cycleProvider", "p", { alt: true }, composerWithoutModal),
+  binding(
+    "modelPicker.cycleProviderBackward",
+    "p",
+    { alt: true, shift: true },
+    composerWithoutModal,
+  ),
   binding("modelPicker.cycleReasoning", "t", { alt: true }, composerWithoutModal),
-  // Directional commands are assignable, but intentionally have no defaults.
-  // Arrow chords are semantic text navigation in editable controls and remain
-  // editor-owned regardless of modifiers or user customization.
-  unassignedBinding("modelPicker.previousModel", composerWithoutModal),
-  unassignedBinding("modelPicker.nextModel", composerWithoutModal),
-  unassignedBinding("modelPicker.decreaseReasoning", composerWithoutModal),
-  unassignedBinding("modelPicker.increaseReasoning", composerWithoutModal),
+  binding(
+    "modelPicker.cycleReasoningBackward",
+    "t",
+    { alt: true, shift: true },
+    composerWithoutModal,
+  ),
   // The cycle bindings above stop the moment the popover opens. These later,
   // scoped copies keep cycling available while it is open — the same escape
   // hatch `modelPicker.toggle` uses to close itself.
   binding("modelPicker.cycleModel", "m", { alt: true }, pickerOpenOnly),
+  binding(
+    "modelPicker.cycleModelBackward",
+    "m",
+    { alt: true, shift: true },
+    pickerOpenOnly,
+  ),
   binding("modelPicker.cycleProvider", "p", { alt: true }, pickerOpenOnly),
+  binding(
+    "modelPicker.cycleProviderBackward",
+    "p",
+    { alt: true, shift: true },
+    pickerOpenOnly,
+  ),
   binding("modelPicker.cycleReasoning", "t", { alt: true }, pickerOpenOnly),
+  binding(
+    "modelPicker.cycleReasoningBackward",
+    "t",
+    { alt: true, shift: true },
+    pickerOpenOnly,
+  ),
   binding("browser.focusLocation", "l", { mod: true }, {
     all: ["mainSurface", "browserFocus"],
     desktopOnly: true,

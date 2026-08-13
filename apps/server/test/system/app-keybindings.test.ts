@@ -162,6 +162,7 @@ describe("app keybindings", () => {
       const altChord = (
         command: string,
         key: string,
+        shift: boolean,
         when: { all: string[]; none: string[] },
       ) => ({
         command,
@@ -171,13 +172,13 @@ describe("app keybindings", () => {
           meta: false,
           control: false,
           alt: true,
-          shift: false,
+          shift,
         },
         when,
       });
-      // The cycle chords must stay on plain Alt and share the scope of
-      // `modelPicker.toggle`. Alt is unused elsewhere in bb, so nothing shadows
-      // them and they shadow nothing.
+      // Forward cycles use Alt and backward cycles add Shift. Both directions
+      // share the scope of `modelPicker.toggle` and keep working in the open
+      // picker.
       expect(
         assignedDefaultKeybindings
           .filter((binding) => binding.command.startsWith("modelPicker.cycle"))
@@ -187,69 +188,53 @@ describe("app keybindings", () => {
             when: binding.when,
           })),
       ).toEqual([
-        altChord("modelPicker.cycleModel", "m", composerWhen),
-        altChord("modelPicker.cycleProvider", "p", composerWhen),
-        altChord("modelPicker.cycleReasoning", "t", composerWhen),
+        altChord("modelPicker.cycleModel", "m", false, composerWhen),
+        altChord("modelPicker.cycleModelBackward", "m", true, composerWhen),
+        altChord("modelPicker.cycleProvider", "p", false, composerWhen),
+        altChord("modelPicker.cycleProviderBackward", "p", true, composerWhen),
+        altChord("modelPicker.cycleReasoning", "t", false, composerWhen),
+        altChord("modelPicker.cycleReasoningBackward", "t", true, composerWhen),
         // The picker popover is modal, so a second scoped copy of each chord
         // keeps cycling alive while it is open.
-        altChord("modelPicker.cycleModel", "m", pickerOpenWhen),
-        altChord("modelPicker.cycleProvider", "p", pickerOpenWhen),
-        altChord("modelPicker.cycleReasoning", "t", pickerOpenWhen),
-      ]);
-      const navigationCommands = new Set([
-        "modelPicker.previousModel",
-        "modelPicker.nextModel",
-        "modelPicker.decreaseReasoning",
-        "modelPicker.increaseReasoning",
-      ]);
-      expect(
-        config.defaultKeybindings
-          .filter((binding) => navigationCommands.has(binding.command))
-          .map(({ command, shortcut, when }) => ({
-            command,
-            shortcut,
-            when,
-          })),
-      ).toEqual([
-        {
-          command: "modelPicker.previousModel",
-          shortcut: null,
-          when: composerWhen,
-        },
-        {
-          command: "modelPicker.nextModel",
-          shortcut: null,
-          when: composerWhen,
-        },
-        {
-          command: "modelPicker.decreaseReasoning",
-          shortcut: null,
-          when: composerWhen,
-        },
-        {
-          command: "modelPicker.increaseReasoning",
-          shortcut: null,
-          when: composerWhen,
-        },
-      ]);
-      expect(
-        assignedDefaultKeybindings.filter((binding) =>
-          navigationCommands.has(binding.command),
+        altChord("modelPicker.cycleModel", "m", false, pickerOpenWhen),
+        altChord("modelPicker.cycleModelBackward", "m", true, pickerOpenWhen),
+        altChord("modelPicker.cycleProvider", "p", false, pickerOpenWhen),
+        altChord(
+          "modelPicker.cycleProviderBackward",
+          "p",
+          true,
+          pickerOpenWhen,
         ),
-      ).toEqual([]);
+        altChord("modelPicker.cycleReasoning", "t", false, pickerOpenWhen),
+        altChord(
+          "modelPicker.cycleReasoningBackward",
+          "t",
+          true,
+          pickerOpenWhen,
+        ),
+      ]);
       // Alt defaults remain confined to composer cycling commands, so unrelated
       // actions cannot shadow these chords.
       expect(
         assignedDefaultKeybindings
           .filter((binding) => binding.shortcut.alt)
-          .map((binding) => binding.command),
+          .map((binding) => ({
+            command: binding.command,
+            shift: binding.shortcut.shift,
+          })),
       ).toEqual([
-        "modelPicker.cycleModel",
-        "modelPicker.cycleProvider",
-        "modelPicker.cycleReasoning",
-        "modelPicker.cycleModel",
-        "modelPicker.cycleProvider",
-        "modelPicker.cycleReasoning",
+        { command: "modelPicker.cycleModel", shift: false },
+        { command: "modelPicker.cycleModelBackward", shift: true },
+        { command: "modelPicker.cycleProvider", shift: false },
+        { command: "modelPicker.cycleProviderBackward", shift: true },
+        { command: "modelPicker.cycleReasoning", shift: false },
+        { command: "modelPicker.cycleReasoningBackward", shift: true },
+        { command: "modelPicker.cycleModel", shift: false },
+        { command: "modelPicker.cycleModelBackward", shift: true },
+        { command: "modelPicker.cycleProvider", shift: false },
+        { command: "modelPicker.cycleProviderBackward", shift: true },
+        { command: "modelPicker.cycleReasoning", shift: false },
+        { command: "modelPicker.cycleReasoningBackward", shift: true },
       ]);
       expect(
         assignedDefaultKeybindings

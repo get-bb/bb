@@ -64,13 +64,12 @@ import { AppCommandShortcutHint } from "@/components/commands/AppCommandShortcut
 import { isEditableKeyboardTarget } from "@/lib/app-keybindings";
 import { useOptionalPaneContext } from "@/views/thread-detail/PaneContext";
 import {
-  ownsClosedModelPickerNavigationChord,
   ownsModelPickerChord,
   resolveModelPickerToggle,
   type ModelPickerScope,
 } from "./modelPickerToggle";
 import {
-  adjacentReasoningValue,
+  cycleReasoningValue,
   nextCycleValue,
   previousCycleValue,
 } from "./modelPickerCycle";
@@ -81,13 +80,17 @@ interface ModelLabelParts {
 }
 
 const FAILED_TO_LOAD_MODELS_LABEL = "Failed to load models";
-const MODEL_NAVIGATION_COMMANDS = [
-  "modelPicker.previousModel",
-  "modelPicker.nextModel",
+const MODEL_CYCLE_COMMANDS = [
+  "modelPicker.cycleModel",
+  "modelPicker.cycleModelBackward",
 ] as const;
-const REASONING_NAVIGATION_COMMANDS = [
-  "modelPicker.decreaseReasoning",
-  "modelPicker.increaseReasoning",
+const PROVIDER_CYCLE_COMMANDS = [
+  "modelPicker.cycleProvider",
+  "modelPicker.cycleProviderBackward",
+] as const;
+const REASONING_CYCLE_COMMANDS = [
+  "modelPicker.cycleReasoning",
+  "modelPicker.cycleReasoningBackward",
 ] as const;
 
 // Below this many models (primary + selected-only) the list is short enough to
@@ -606,11 +609,6 @@ export function ModelReasoningPicker({
   useAppCommandContext("modelPickerOpen", open && !disabled);
   const ownsCycleChord = (target: EventTarget | null): boolean =>
     ownsModelPickerChord({ open, ...resolveCommandScope(target) });
-  const ownsClosedNavigationChord = (target: EventTarget | null): boolean =>
-    ownsClosedModelPickerNavigationChord({
-      open,
-      ...resolveCommandScope(target),
-    });
   useAppCommandHandler(
     "modelPicker.toggle",
     ({ target }) => {
@@ -633,11 +631,14 @@ export function ModelReasoningPicker({
   // false result makes the command provider bail before `preventDefault()`, and
   // macOS would then insert the composed Option character (Option+M → "µ") into
   // the prompt. Owning the chord and doing nothing is the correct no-op.
-  useAppCommandHandler(
-    "modelPicker.cycleModel",
-    ({ target }) => {
+  useIndexedAppCommandHandlers(
+    MODEL_CYCLE_COMMANDS,
+    (index, { target }) => {
       if (!ownsCycleChord(target)) return false;
-      const next = nextCycleValue(modelOptions, modelValue);
+      const next =
+        index === 0
+          ? nextCycleValue(modelOptions, modelValue)
+          : previousCycleValue(modelOptions, modelValue);
       if (next !== null) {
         onModelChange(next);
         setPreviewProviderId(null);
@@ -646,12 +647,15 @@ export function ModelReasoningPicker({
     },
     50,
   );
-  useAppCommandHandler(
-    "modelPicker.cycleProvider",
-    ({ target }) => {
+  useIndexedAppCommandHandlers(
+    PROVIDER_CYCLE_COMMANDS,
+    (index, { target }) => {
       if (!ownsCycleChord(target)) return false;
       if (canSwitchProviders && onSelectedProviderChange !== undefined) {
-        const next = nextCycleValue(providerOptions, selectedProviderId);
+        const next =
+          index === 0
+            ? nextCycleValue(providerOptions, selectedProviderId)
+            : previousCycleValue(providerOptions, selectedProviderId);
         if (next !== null) {
           onSelectedProviderChange(next);
           setPreviewProviderId(null);
@@ -661,46 +665,14 @@ export function ModelReasoningPicker({
     },
     50,
   );
-  useAppCommandHandler(
-    "modelPicker.cycleReasoning",
-    ({ target }) => {
+  useIndexedAppCommandHandlers(
+    REASONING_CYCLE_COMMANDS,
+    (index, { target }) => {
       if (!ownsCycleChord(target)) return false;
-      const next = nextCycleValue(reasoningOptions, reasoningValue);
-      if (next !== null) {
-        onReasoningChange(next);
-        setPreviewProviderId(null);
-      }
-      return true;
-    },
-    50,
-  );
-  // The navigation chords are scoped to the CLOSED picker of the composer that
-  // holds the caret, so they share none of the cycle chords' fallbacks.
-  useIndexedAppCommandHandlers(
-    MODEL_NAVIGATION_COMMANDS,
-    (index, { target }) => {
-      if (!ownsClosedNavigationChord(target)) return false;
-      const next =
-        index === 0
-          ? previousCycleValue(modelOptions, modelValue)
-          : nextCycleValue(modelOptions, modelValue);
-      if (next === null) return false;
-      onModelChange(next);
-      setPreviewProviderId(null);
-      return true;
-    },
-    50,
-  );
-  useIndexedAppCommandHandlers(
-    REASONING_NAVIGATION_COMMANDS,
-    (index, { target }) => {
-      if (!ownsClosedNavigationChord(target) || reasoningOptions.length < 2) {
-        return false;
-      }
-      const next = adjacentReasoningValue(
+      const next = cycleReasoningValue(
         reasoningOptions,
         reasoningValue,
-        index === 0 ? "decrease" : "increase",
+        index === 0 ? "forward" : "backward",
       );
       if (next !== null) {
         onReasoningChange(next);

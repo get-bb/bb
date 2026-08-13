@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ReasoningLevel } from "@bb/domain";
 import {
-  adjacentReasoningValue,
+  cycleReasoningValue,
   nextCycleValue,
   previousCycleValue,
 } from "./modelPickerCycle";
@@ -44,46 +44,49 @@ describe("previousCycleValue", () => {
   });
 });
 
-describe("adjacentReasoningValue", () => {
+describe("cycleReasoningValue", () => {
   const unorderedOptions = [
     { value: "max", label: "Max" },
     { value: "low", label: "Low" },
     { value: "high", label: "High" },
   ] satisfies readonly { value: ReasoningLevel; label: string }[];
 
-  it("uses canonical rank rather than provider response order", () => {
-    expect(adjacentReasoningValue(unorderedOptions, "low", "increase")).toBe(
+  it("cycles in canonical rank rather than provider response order", () => {
+    expect(cycleReasoningValue(unorderedOptions, "low", "forward")).toBe(
       "high",
     );
-    expect(adjacentReasoningValue(unorderedOptions, "high", "increase")).toBe(
+    expect(cycleReasoningValue(unorderedOptions, "high", "forward")).toBe(
       "max",
     );
-    expect(adjacentReasoningValue(unorderedOptions, "high", "decrease")).toBe(
+    expect(cycleReasoningValue(unorderedOptions, "high", "backward")).toBe(
       "low",
     );
   });
 
-  it("clamps instead of wrapping at either canonical edge", () => {
-    expect(adjacentReasoningValue(unorderedOptions, "max", "increase")).toBeNull();
-    expect(adjacentReasoningValue(unorderedOptions, "low", "decrease")).toBeNull();
+  it("wraps at both canonical edges", () => {
+    expect(cycleReasoningValue(unorderedOptions, "max", "forward")).toBe("low");
+    expect(cycleReasoningValue(unorderedOptions, "low", "backward")).toBe(
+      "max",
+    );
   });
 
-  it("keeps direction when the current effort is unsupported", () => {
-    expect(adjacentReasoningValue(unorderedOptions, "medium", "increase")).toBe(
+  it("keeps canonical direction when the current effort is unsupported", () => {
+    expect(cycleReasoningValue(unorderedOptions, "medium", "forward")).toBe(
       "high",
     );
-    expect(adjacentReasoningValue(unorderedOptions, "medium", "decrease")).toBe(
+    expect(cycleReasoningValue(unorderedOptions, "medium", "backward")).toBe(
       "low",
     );
   });
 
-  it("requires two choices", () => {
+  it("returns null when there is nowhere to move", () => {
     expect(
-      adjacentReasoningValue(
+      cycleReasoningValue(
         [{ value: "high", label: "High" }],
-        "medium",
-        "increase",
+        "high",
+        "forward",
       ),
     ).toBeNull();
+    expect(cycleReasoningValue([], "medium", "forward")).toBeNull();
   });
 });

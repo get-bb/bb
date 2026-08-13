@@ -1,7 +1,4 @@
-import {
-  reasoningLevelValues,
-  type ReasoningLevel,
-} from "@bb/domain";
+import { reasoningLevelValues, type ReasoningLevel } from "@bb/domain";
 import type { PickerOption } from "./OptionPicker";
 
 /**
@@ -35,26 +32,39 @@ export function previousCycleValue<T extends string>(
 }
 
 /**
- * The adjacent supported reasoning value in canonical rank order. Provider
- * responses may list efforts in any order, so their array order cannot define
- * what increase and decrease mean.
+ * The next supported reasoning value in canonical rank order, wrapping at
+ * either end. Provider responses may list efforts in any order, so their array
+ * order cannot define what forward and backward mean.
  */
-export function adjacentReasoningValue(
+export function cycleReasoningValue(
   options: readonly PickerOption<ReasoningLevel>[],
   current: ReasoningLevel,
-  direction: "decrease" | "increase",
+  direction: "forward" | "backward",
 ): ReasoningLevel | null {
-  if (options.length < 2) return null;
-
   const supported = new Set(options.map((option) => option.value));
-  const offset = direction === "increase" ? 1 : -1;
-  for (
-    let rank = reasoningLevelValues.indexOf(current) + offset;
-    rank >= 0 && rank < reasoningLevelValues.length;
-    rank += offset
-  ) {
-    const candidate = reasoningLevelValues[rank];
-    if (candidate !== undefined && supported.has(candidate)) return candidate;
+  const orderedOptions = reasoningLevelValues.filter((level) =>
+    supported.has(level),
+  );
+  const currentRank = reasoningLevelValues.indexOf(current);
+  let candidate: ReasoningLevel | undefined;
+  if (direction === "forward") {
+    candidate = orderedOptions.find(
+      (level) => reasoningLevelValues.indexOf(level) > currentRank,
+    );
+    candidate ??= orderedOptions[0];
+  } else {
+    for (let index = orderedOptions.length - 1; index >= 0; index -= 1) {
+      const level = orderedOptions[index];
+      if (
+        level !== undefined &&
+        reasoningLevelValues.indexOf(level) < currentRank
+      ) {
+        candidate = level;
+        break;
+      }
+    }
+    candidate ??= orderedOptions.at(-1);
   }
-  return null;
+  if (candidate === undefined || candidate === current) return null;
+  return candidate;
 }

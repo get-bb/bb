@@ -118,6 +118,23 @@ describe("app keybindings", () => {
     ).toBe(true);
   });
 
+  it("matches shifted Alt cycles by physical key when macOS composes the key", () => {
+    expect(
+      matchesAppShortcut(
+        {
+          key: "composed",
+          code: "KeyM",
+          metaKey: false,
+          ctrlKey: false,
+          altKey: true,
+          shiftKey: true,
+        },
+        { ...ALT_P, key: "m", shift: true },
+        true,
+      ),
+    ).toBe(true);
+  });
+
   it("matches an uncomposed alt chord by key across platforms", () => {
     expect(
       matchesAppShortcut(
