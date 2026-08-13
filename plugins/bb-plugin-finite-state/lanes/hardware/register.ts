@@ -480,11 +480,22 @@ export function createHardwareCommandHandlers(ctx: PluginContext): HardwareExtra
 
 export function registerHardware(bb: BbPluginApi, ctx: PluginContext): void {
   const db = ctx.db();
+  let disposed = false;
   const capability = ctx.service("hardware.kicad-capability", () => detectKicadCli());
-  void capability.then((value) => {
-    if (!value.installed) bb.status.needsConfiguration("Install KiCad 7+ to enable hardware artifact extraction.");
-    else if (!value.supported) bb.status.needsConfiguration(`KiCad 7+ is required; detected ${value.version ?? "an unreadable version"}.`);
-  });
+  void capability
+    .then((value) => {
+      if (disposed) return;
+      if (!value.installed) bb.status.needsConfiguration("Install KiCad 7+ to enable hardware artifact extraction.");
+      else if (!value.supported) bb.status.needsConfiguration(`KiCad 7+ is required; detected ${value.version ?? "an unreadable version"}.`);
+    })
+    .catch((error: unknown) => {
+      const detail = error instanceof Error ? `${error.name}: ${error.message}` : "unknown error";
+      if (error instanceof Error && error.name === "PluginContextStaleError") {
+        ctx.log.warn(`Ignored stale KiCad capability status callback: ${detail}`);
+        return;
+      }
+      ctx.log.error(`KiCad capability detection failed: ${detail}`);
+    });
   const watchers = ctx.service("hardware.source-watchers", () => new Map<string, HardwareSourceWatcher>());
   const discovery = ctx.service("hardware.discovery-coordinator", () =>
     new HardwareDiscoveryCoordinator(ctx, watchers));
@@ -496,6 +507,7 @@ export function registerHardware(bb: BbPluginApi, ctx: PluginContext): void {
   }));
   ctx.service("hardware.command-services", () => createHardwareCommandHandlers(ctx));
   bb.onDispose(() => {
+    disposed = true;
     for (const watcher of watchers.values()) watcher.stop();
     watchers.clear();
   });
