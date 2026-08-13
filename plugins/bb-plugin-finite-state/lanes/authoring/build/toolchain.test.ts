@@ -38,7 +38,13 @@ function probe(id: string, unlocks: "build" | "flash"): ToolchainProbe {
 }
 
 function context(path: string, probes: readonly ToolchainProbe[]): ToolchainContext {
-  return { cacheKey: {}, path, probes, probeTimeoutMs: 5_000 };
+  return {
+    cacheKey: {},
+    path,
+    probes,
+    probeTimeoutMs: 5_000,
+    signal: new AbortController().signal,
+  };
 }
 
 describe("toolchain detection", () => {
@@ -53,7 +59,7 @@ describe("toolchain detection", () => {
     });
   });
 
-  it("finds an executable and treats an unparsable version as missing", async () => {
+  it("configures a complete build capability while reporting a missing flash capability", async () => {
     const foundDir = await fixtureBinary("fixture-gcc", "printf 'fixture 1.2.3\\n'");
     const badDir = await fixtureBinary("fixture-bad", "printf 'unexpected output\\n'");
     const report = await detectToolchains(
@@ -62,7 +68,7 @@ describe("toolchain detection", () => {
         probe("fixture-bad", "flash"),
       ]),
     );
-    expect(report.configured).toBe(false);
+    expect(report.configured).toBe(true);
     expect(report.found).toMatchObject([{ id: "fixture-gcc", version: "1.2.3" }]);
     expect(report.missing).toEqual([{ id: "fixture-bad", unlocks: "flash" }]);
   });
@@ -93,5 +99,42 @@ describe("toolchain detection", () => {
     second.cacheKey = cacheKey;
     expect((await detectToolchains(second)).configured).toBe(false);
     expect((await redetectToolchains(second)).configured).toBe(true);
+  });
+
+  it("does not reuse a stable holder entry across different PATH values", async () => {
+    const emptyDirectory = await mkdtemp(join(tmpdir(), "fs-toolchain-path-empty-"));
+    cleanup.push(emptyDirectory);
+    const foundDirectory = await fixtureBinary("path-tool", "printf 'fixture 4.0.0\\n'");
+    const cacheKey = {};
+    const absent = context(emptyDirectory, [probe("path-tool", "build")]);
+    absent.cacheKey = cacheKey;
+    expect((await detectToolchains(absent)).configured).toBe(false);
+
+    const found = context(foundDirectory, [probe("path-tool", "build")]);
+    found.cacheKey = cacheKey;
+    expect((await detectToolchains(found)).found[0]?.version).toBe("4.0.0");
+  });
+
+  it("does not reuse a stable holder entry across different probe sets", async () => {
+    const directory = await fixtureBinary("probe-a", "printf 'fixture 5.0.0\\n'");
+    const secondDirectory = await fixtureBinary("probe-b", "printf 'fixture 6.0.0\\n'");
+    const cacheKey = {};
+    const first = context(`${directory}:${secondDirectory}`, [probe("probe-a", "build")]);
+    first.cacheKey = cacheKey;
+    expect((await detectToolchains(first)).found[0]?.id).toBe("probe-a");
+
+    const second = context(`${directory}:${secondDirectory}`, [probe("probe-b", "build")]);
+    second.cacheKey = cacheKey;
+    expect((await detectToolchains(second)).found[0]?.id).toBe("probe-b");
+  });
+
+  it("cancels an in-flight version probe through the lifecycle signal", async () => {
+    const directory = await fixtureBinary("hanging-tool", "/bin/sleep 30");
+    const controller = new AbortController();
+    const ctx = context(directory, [probe("hanging-tool", "build")]);
+    ctx.signal = controller.signal;
+    const pending = detectToolchains(ctx);
+    setTimeout(() => controller.abort(), 20);
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
   });
 });

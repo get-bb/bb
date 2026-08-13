@@ -26,6 +26,7 @@ import {
   DEFAULT_TOOLCHAIN_PROBES,
   detectToolchains,
   type ToolchainReport,
+  type ToolchainProbe,
 } from "./build/toolchain.js";
 
 const authoringRpcContract = {
@@ -47,13 +48,36 @@ export type AuthoringBuildService = (
 
 export type AuthoringFlashService = typeof runFlashAction;
 
+export interface AuthoringRegistrationOptions {
+  toolchains: {
+    path: string;
+    probes: readonly ToolchainProbe[];
+    probeTimeoutMs: number;
+  };
+}
+
+export interface AuthoringRegistration {
+  /** Resolves after the supervisor completes recovery and host detection. */
+  ready: Promise<void>;
+}
+
 export function reportToolchainConfiguration(
   bb: BbPluginApi,
   report: ToolchainReport,
 ): ToolchainReport {
   if (!report.configured) {
+    const missing = (["build", "flash"] as const)
+      .map((capability) => ({
+        capability,
+        tools: report.missing
+          .filter((tool) => tool.unlocks === capability)
+          .map((tool) => tool.id),
+      }))
+      .filter((entry) => entry.tools.length > 0)
+      .map((entry) => `${entry.capability} missing ${entry.tools.join(", ")}`)
+      .join("; ");
     bb.status.needsConfiguration(
-      "Firmware build/flash toolchains are not configured on this host. Install project prerequisites and explicitly re-detect; Finite State never auto-installs them.",
+      `No complete firmware capability is configured on this host${missing ? `: ${missing}` : ""}. Install project prerequisites and explicitly re-detect; Finite State never auto-installs them.`,
     );
   }
   return report;
@@ -94,26 +118,23 @@ function buildRunFilters(input: object): {
   return { kinds, statuses };
 }
 
-export function registerAuthoring(bb: BbPluginApi, ctx: PluginContext): void {
+export function registerAuthoring(
+  bb: BbPluginApi,
+  ctx: PluginContext,
+  options: AuthoringRegistrationOptions = {
+    toolchains: {
+      path: process.env.PATH ?? "",
+      probes: DEFAULT_TOOLCHAIN_PROBES,
+      probeTimeoutMs: 2_000,
+    },
+  },
+): AuthoringRegistration {
   const db = ctx.db();
   const publish = (hint: BuildRunChangedHint): void => publishBuildChanged(bb, hint);
-  const recovery = recoverOrphanedBuildRuns({ db, publish }).catch((error: unknown) => {
-    ctx.log.error(
-      `Authoring build-run recovery failed: ${error instanceof Error ? error.message : "unknown error"}`,
-    );
+  let resolveReady: () => void = () => undefined;
+  const ready = new Promise<void>((resolve) => {
+    resolveReady = resolve;
   });
-  void detectToolchains({
-    cacheKey: db,
-    path: process.env.PATH ?? "",
-    probes: DEFAULT_TOOLCHAIN_PROBES,
-    probeTimeoutMs: 2_000,
-  })
-    .then((report) => reportToolchainConfiguration(bb, report))
-    .catch((error: unknown) => {
-      ctx.log.warn(
-        `Authoring toolchain detection failed: ${error instanceof Error ? error.message : "unknown error"}`,
-      );
-    });
   bb.rpc.register(authoringRpcContract, {
     authoringCitationsList(input) {
       return listCitationFilesNotImplemented(input);
@@ -160,7 +181,33 @@ export function registerAuthoring(bb: BbPluginApi, ctx: PluginContext): void {
   );
   bb.background.service("authoring-build-supervisor", {
     async start(signal) {
-      await recovery;
+      try {
+        await recoverOrphanedBuildRuns({ db, publish }).catch((error: unknown) => {
+          ctx.log.error(
+            `Authoring build-run recovery failed: ${error instanceof Error ? error.message : "unknown error"}`,
+          );
+        });
+        if (!signal.aborted) {
+          await detectToolchains({
+            cacheKey: db,
+            path: options.toolchains.path,
+            probes: options.toolchains.probes,
+            probeTimeoutMs: options.toolchains.probeTimeoutMs,
+            signal,
+          })
+            .then((report) => {
+              if (!signal.aborted) reportToolchainConfiguration(bb, report);
+            })
+            .catch((error: unknown) => {
+              if (signal.aborted) return;
+              ctx.log.warn(
+                `Authoring toolchain detection failed: ${error instanceof Error ? error.message : "unknown error"}`,
+              );
+            });
+        }
+      } finally {
+        resolveReady();
+      }
       await new Promise<void>((resolve) => {
         if (signal.aborted) resolve();
         else signal.addEventListener("abort", () => resolve(), { once: true });
@@ -171,6 +218,7 @@ export function registerAuthoring(bb: BbPluginApi, ctx: PluginContext): void {
     cancelAuthoringJobs(db);
     clearFlashCompletedHandlers(db);
   });
+  return { ready };
 }
 
 export type { AuthoringContext, BuildActionResult, FlashActionResult };

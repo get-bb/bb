@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { access, realpath, stat } from "node:fs/promises";
 import { delimiter, isAbsolute, join } from "node:path";
 import { constants } from "node:fs";
@@ -23,6 +23,7 @@ export interface ToolchainContext {
   path: string;
   probes: readonly ToolchainProbe[];
   probeTimeoutMs: number;
+  signal: AbortSignal;
 }
 
 export const DEFAULT_TOOLCHAIN_PROBES: readonly ToolchainProbe[] = [
@@ -63,8 +64,9 @@ export const DEFAULT_TOOLCHAIN_PROBES: readonly ToolchainProbe[] = [
   },
 ] as const;
 
-const cache = new WeakMap<object, Promise<ToolchainReport>>();
+const cache = new WeakMap<object, Map<string, Promise<ToolchainReport>>>();
 const MAX_VERSION_BYTES = 64 * 1024;
+const CAPABILITIES = ["build", "flash"] as const;
 
 function firstVersionLine(output: string): string | null {
   const line = output.split(/\r?\n/u).map((value) => value.trim()).find(Boolean);
@@ -99,6 +101,16 @@ function validateContext(ctx: ToolchainContext): void {
   }
 }
 
+function killProbeTree(child: ChildProcess): void {
+  if (child.pid === undefined) return;
+  try {
+    if (process.platform === "win32") child.kill("SIGKILL");
+    else process.kill(-child.pid, "SIGKILL");
+  } catch {
+    // The probe may have exited between the timeout/abort and the signal.
+  }
+}
+
 export async function resolveExecutable(binary: string, pathValue: string): Promise<string | null> {
   if (binary.includes("\0") || pathValue.includes("\0")) return null;
   const candidates = isAbsolute(binary)
@@ -125,21 +137,25 @@ async function captureVersion(
   executable: string,
   args: readonly string[],
   timeoutMs: number,
+  signal: AbortSignal,
 ): Promise<string | null> {
   return await new Promise((resolve) => {
     const child = spawn(executable, args, {
       env: { LANG: "C", LC_ALL: "C", PATH: "" },
+      detached: process.platform !== "win32",
       shell: false,
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true,
     });
     let output = "";
     let overflow = false;
+    let forcedStop = false;
     let settled = false;
     const finish = (value: string | null): void => {
       if (settled) return;
       settled = true;
       clearTimeout(timeout);
+      signal.removeEventListener("abort", abort);
       resolve(value);
     };
     const collect = (chunk: Buffer): void => {
@@ -147,19 +163,33 @@ async function captureVersion(
       output += chunk.toString("utf8");
       if (Buffer.byteLength(output, "utf8") > MAX_VERSION_BYTES) {
         overflow = true;
-        child.kill("SIGKILL");
+        forcedStop = true;
+        killProbeTree(child);
       }
     };
     child.stdout.on("data", collect);
     child.stderr.on("data", collect);
+    const abort = (): void => {
+      forcedStop = true;
+      killProbeTree(child);
+    };
     const timeout = setTimeout(() => {
-      child.kill("SIGKILL");
-      finish(null);
+      forcedStop = true;
+      killProbeTree(child);
     }, timeoutMs);
+    signal.addEventListener("abort", abort, { once: true });
+    if (signal.aborted) abort();
     child.once("error", () => finish(null));
     child.once("close", (code) => {
-      finish(code === 0 && !overflow ? output : null);
+      finish(code === 0 && !overflow && !forcedStop ? output : null);
     });
+  });
+}
+
+function throwIfAborted(signal: AbortSignal): void {
+  if (!signal.aborted) return;
+  throw Object.assign(new Error("Toolchain detection cancelled"), {
+    name: "AbortError",
   });
 }
 
@@ -168,12 +198,20 @@ async function probeToolchains(ctx: ToolchainContext): Promise<ToolchainReport> 
   const found: ToolchainReport["found"] = [];
   const missing: ToolchainReport["missing"] = [];
   for (const probe of ctx.probes) {
+    throwIfAborted(ctx.signal);
     const executable = await resolveExecutable(probe.binary, ctx.path);
+    throwIfAborted(ctx.signal);
     if (executable === null) {
       missing.push({ id: probe.id, unlocks: probe.unlocks });
       continue;
     }
-    const output = await captureVersion(executable, probe.versionArgs, ctx.probeTimeoutMs);
+    const output = await captureVersion(
+      executable,
+      probe.versionArgs,
+      ctx.probeTimeoutMs,
+      ctx.signal,
+    );
+    throwIfAborted(ctx.signal);
     const version = output === null ? null : probe.parse(output);
     if (version === null) {
       missing.push({ id: probe.id, unlocks: probe.unlocks });
@@ -181,25 +219,52 @@ async function probeToolchains(ctx: ToolchainContext): Promise<ToolchainReport> 
     }
     found.push({ id: probe.id, version, path: executable });
   }
+  const configured = CAPABILITIES.some(
+    (capability) =>
+      ctx.probes.some((probe) => probe.unlocks === capability) &&
+      !missing.some((probe) => probe.unlocks === capability),
+  );
   return {
     found,
     missing,
-    configured: found.length > 0 && missing.length === 0,
+    configured,
   };
 }
 
+function cacheIdentity(ctx: ToolchainContext): string {
+  return JSON.stringify({
+    path: ctx.path,
+    probeTimeoutMs: ctx.probeTimeoutMs,
+    probes: ctx.probes.map((probe) => ({
+      id: probe.id,
+      binary: probe.binary,
+      versionArgs: probe.versionArgs,
+      unlocks: probe.unlocks,
+    })),
+  });
+}
+
 export function detectToolchains(ctx: ToolchainContext): Promise<ToolchainReport> {
-  const existing = cache.get(ctx.cacheKey);
+  const identity = cacheIdentity(ctx);
+  let entries = cache.get(ctx.cacheKey);
+  const existing = entries?.get(identity);
   if (existing) return existing;
+  if (!entries) {
+    entries = new Map();
+    cache.set(ctx.cacheKey, entries);
+  }
   const pending = probeToolchains(ctx).catch((error: unknown) => {
-    cache.delete(ctx.cacheKey);
+    entries.delete(identity);
+    if (entries.size === 0) cache.delete(ctx.cacheKey);
     throw error;
   });
-  cache.set(ctx.cacheKey, pending);
+  entries.set(identity, pending);
   return pending;
 }
 
 export function redetectToolchains(ctx: ToolchainContext): Promise<ToolchainReport> {
-  cache.delete(ctx.cacheKey);
+  const entries = cache.get(ctx.cacheKey);
+  entries?.delete(cacheIdentity(ctx));
+  if (entries?.size === 0) cache.delete(ctx.cacheKey);
   return detectToolchains(ctx);
 }

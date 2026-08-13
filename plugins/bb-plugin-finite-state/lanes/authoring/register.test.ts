@@ -12,19 +12,6 @@ afterEach(async () => {
   await Promise.all(hosts.splice(0).map((host) => host.harness.lifecycle.dispose()));
 });
 
-async function eventually(assertion: () => void): Promise<void> {
-  const deadline = Date.now() + 5_000;
-  while (true) {
-    try {
-      assertion();
-      return;
-    } catch (error) {
-      if (Date.now() >= deadline) throw error;
-      await new Promise((resolve) => setTimeout(resolve, 20));
-    }
-  }
-}
-
 describe("authoring registration", () => {
   it("narrows probe history to zero, wires local-auth logs, and recovers queued rows", async () => {
     const host = createFakePluginHost({ pluginId: `fs-authoring-register-${crypto.randomUUID()}` });
@@ -46,7 +33,23 @@ describe("authoring registration", () => {
       startedAt: "2026-08-13T12:00:00.000Z",
     });
 
-    registerAuthoring(host.bb, ctx);
+    const registration = registerAuthoring(host.bb, ctx, {
+      toolchains: {
+        path: await buildLogRoot(db),
+        probes: [
+          {
+            id: "fixture-missing-compiler",
+            binary: "fixture-missing-compiler",
+            versionArgs: ["--version"],
+            unlocks: "build",
+            parse: () => null,
+          },
+        ],
+        probeTimeoutMs: 50,
+      },
+    });
+    const service = host.harness.behavior.runService("authoring-build-supervisor");
+    await registration.ready;
 
     expect(host.harness.inspection.registrations.httpRoutes).toContainEqual(
       expect.objectContaining({
@@ -66,15 +69,13 @@ describe("authoring registration", () => {
     });
     expect(probes).toEqual({ items: [], total: 0, cursor: null });
 
-    await eventually(() => {
-      expect(
-        getBuildRun(
-          db,
-          { projectId: "project-a", projectVersionId: "version-a" },
-          "build-queued",
-        )?.status,
-      ).toBe("failed");
-    });
+    expect(
+      getBuildRun(
+        db,
+        { projectId: "project-a", projectVersionId: "version-a" },
+        "build-queued",
+      )?.status,
+    ).toBe("failed");
     expect(await readFile(logPath, "utf8")).toContain(
       "orphaned: plugin restarted while the job was queued",
     );
@@ -87,8 +88,10 @@ describe("authoring registration", () => {
     expect(response.status).toBe(206);
     expect(await response.text()).toBe("prior");
 
-    await eventually(() => {
-      expect(host.harness.inspection.needsConfigurationMessages).toHaveLength(1);
-    });
+    expect(host.harness.inspection.needsConfigurationMessages).toEqual([
+      expect.stringContaining("build missing fixture-missing-compiler"),
+    ]);
+    service.controller.abort();
+    await service.done;
   });
 });
