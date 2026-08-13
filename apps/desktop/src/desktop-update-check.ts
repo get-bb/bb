@@ -19,6 +19,7 @@ export interface DesktopUpdateLogger {
 }
 
 export interface ParseDesktopVersionFeedArgs {
+  channel: BbDesktopVersionFeed["channel"];
   checkedAt: string;
   currentVersion: string;
   payloadText: string;
@@ -41,6 +42,7 @@ export type DesktopVersionFeedParseResult =
   | ValidDesktopVersionFeedParseResult;
 
 export interface CreateDesktopUpdateServiceArgs {
+  channel: BbDesktopVersionFeed["channel"];
   currentVersion: string;
   enabled: boolean;
   feedUrl: string;
@@ -127,6 +129,22 @@ export function parseDesktopVersionFeed(
     return {
       kind: "malformed",
       reason: `The desktop version feed did not match schema: ${parsedFeed.error.message}`,
+    };
+  }
+
+  // Both platforms publish a feed into the same release tag, so a swapped or
+  // mis-uploaded asset is now possible where it was not before. A feed that
+  // does not describe this build must never raise an update prompt.
+  if (parsedFeed.data.platform !== args.platform) {
+    return {
+      kind: "malformed",
+      reason: `The desktop version feed is for another platform: expected ${args.platform}, got ${parsedFeed.data.platform}`,
+    };
+  }
+  if (parsedFeed.data.channel !== args.channel) {
+    return {
+      kind: "malformed",
+      reason: `The desktop version feed is for another channel: expected ${args.channel}, got ${parsedFeed.data.channel}`,
     };
   }
 
@@ -237,6 +255,7 @@ export function createDesktopUpdateService(
       }
 
       const parsed = parseDesktopVersionFeed({
+        channel: args.channel,
         checkedAt,
         currentVersion: args.currentVersion,
         payloadText,

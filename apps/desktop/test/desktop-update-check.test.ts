@@ -41,6 +41,7 @@ function createFeedResponse(version: string): Response {
 describe("desktop update feed parsing", () => {
   it("accepts a valid desktop-version.json payload", () => {
     const result = parseDesktopVersionFeed({
+      channel: "latest",
       checkedAt,
       currentVersion: "0.0.1",
       payloadText: JSON.stringify(createFeed("0.0.2")),
@@ -84,6 +85,7 @@ describe("desktop update feed parsing", () => {
     };
 
     const result = parseDesktopVersionFeed({
+      channel: "latest",
       checkedAt,
       currentVersion: "0.0.1",
       payloadText: JSON.stringify(payload),
@@ -95,6 +97,7 @@ describe("desktop update feed parsing", () => {
 
   it("rejects malformed JSON", () => {
     const result = parseDesktopVersionFeed({
+      channel: "latest",
       checkedAt,
       currentVersion: "0.0.1",
       payloadText: "{",
@@ -104,8 +107,65 @@ describe("desktop update feed parsing", () => {
     expect(result.kind).toBe("malformed");
   });
 
+  it("rejects a feed that describes another platform", () => {
+    // macOS and Linux feeds share a release tag, so a swapped upload would
+    // otherwise advertise a Linux build to macOS users as an update.
+    const result = parseDesktopVersionFeed({
+      channel: "latest",
+      checkedAt,
+      currentVersion: "0.0.1",
+      payloadText: JSON.stringify({
+        ...createFeed("0.0.2"),
+        platform: "linux",
+      }),
+      platform: "macos",
+    });
+
+    expect(result.kind).toBe("malformed");
+    if (result.kind !== "malformed") {
+      throw new Error("Expected a cross-platform feed to be rejected");
+    }
+    expect(result.reason).toContain("another platform");
+  });
+
+  it("rejects a feed that describes another channel", () => {
+    // A stable build must never take an update from the nightly feed.
+    const result = parseDesktopVersionFeed({
+      channel: "latest",
+      checkedAt,
+      currentVersion: "0.0.1",
+      payloadText: JSON.stringify({
+        ...createFeed("0.0.2"),
+        channel: "nightly",
+      }),
+      platform: "macos",
+    });
+
+    expect(result.kind).toBe("malformed");
+    if (result.kind !== "malformed") {
+      throw new Error("Expected a cross-channel feed to be rejected");
+    }
+    expect(result.reason).toContain("another channel");
+  });
+
+  it("accepts a Linux feed on a Linux build", () => {
+    const result = parseDesktopVersionFeed({
+      channel: "latest",
+      checkedAt,
+      currentVersion: "0.0.1",
+      payloadText: JSON.stringify({
+        ...createFeed("0.0.2"),
+        platform: "linux",
+      }),
+      platform: "linux",
+    });
+
+    expect(result.kind).toBe("valid");
+  });
+
   it("does not mark a lower feed version as an available update", () => {
     const result = parseDesktopVersionFeed({
+      channel: "latest",
       checkedAt,
       currentVersion: "0.0.2",
       payloadText: JSON.stringify(createFeed("0.0.1")),
@@ -141,6 +201,7 @@ describe("desktop update service", () => {
       throw new Error("network offline");
     };
     const service = createDesktopUpdateService({
+      channel: "latest",
       currentVersion: "0.0.1",
       enabled: true,
       feedUrl: "https://example.test/desktop-version.json",
@@ -200,6 +261,7 @@ describe("desktop update service", () => {
         });
       };
       const service = createDesktopUpdateService({
+        channel: "latest",
         currentVersion: "0.0.1",
         enabled: true,
         feedUrl: "https://example.test/desktop-version.json",
@@ -238,6 +300,7 @@ describe("desktop update service", () => {
       return createFeedResponse("0.0.2");
     };
     const service = createDesktopUpdateService({
+      channel: "latest",
       currentVersion: "0.0.1",
       enabled: true,
       feedUrl: "https://example.test/desktop-version.json",
@@ -265,6 +328,7 @@ describe("desktop update service", () => {
 
   it("reports the injected linux platform in its base info", () => {
     const service = createDesktopUpdateService({
+      channel: "latest",
       currentVersion: "0.0.1",
       enabled: false,
       feedUrl: "https://example.test/desktop-version.json",

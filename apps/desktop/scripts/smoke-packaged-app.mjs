@@ -13,9 +13,8 @@ import { resolvePackagedAppBinary } from "./packaged-app-paths.mjs";
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const desktopPackageRoot = resolve(scriptDirectory, "..");
 const releaseDir = join(desktopPackageRoot, "release");
-const releaseConfig = createDesktopReleaseConfig(
-  resolveDesktopReleaseChannel(process.env),
-);
+const releaseChannel = resolveDesktopReleaseChannel(process.env);
+const releaseConfig = createDesktopReleaseConfig(releaseChannel);
 const startupTimeoutMs = 20_000;
 const exitTimeoutMs = 5_000;
 const postReadySettleMs = 300;
@@ -45,7 +44,9 @@ function writeNotFound(response) {
 function createDesktopVersionFeed(platform, version) {
   return {
     schemaVersion: 1,
-    channel: "latest",
+    // The app rejects a feed whose channel is not its own, so a nightly
+    // packaged build must be smoked against a nightly feed.
+    channel: releaseChannel,
     platform,
     version,
     releaseDate: new Date(0).toISOString(),

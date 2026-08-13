@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
+import { accessSync, constants as fsConstants } from "node:fs";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import {
   app,
   BrowserWindow,
@@ -115,6 +116,7 @@ import {
 } from "./desktop-update-check.js";
 import {
   DESKTOP_RELEASE_INFO,
+  DESKTOP_UPDATE_CHANNEL,
   resolveDesktopUpdateSupport,
 } from "./desktop-update-provider.js";
 import {
@@ -361,6 +363,25 @@ function resolveDesktopWindowUrl(args: ResolveDesktopWindowUrlArgs): string {
     throw new Error("BB_DESKTOP_APP_URL must be an http(s) URL");
   }
   return rawAppUrl;
+}
+
+/**
+ * electron-updater unlinks the running AppImage before it moves the downloaded
+ * one into place, so both operations need write and search access on the parent
+ * directory. Without that access the install deletes the user's app and leaves
+ * nothing behind, so this gates the install path rather than the download.
+ */
+function canReplaceAppImage(appImagePath: string): boolean {
+  try {
+    accessSync(
+      dirname(appImagePath),
+      // eslint-disable-next-line no-bitwise
+      fsConstants.W_OK | fsConstants.X_OK,
+    );
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function resolveDesktopUpdateFeedUrl(
@@ -1550,6 +1571,20 @@ function registerDesktopUpdateIpc(): void {
       desktopAutoUpdateService.installUpdate();
       return;
     }
+    // finishQuit stops the local runtime, and it cannot be undone. Re-check
+    // that the swap can still succeed first: permissions may have changed
+    // since startup, and on Linux a failed swap would otherwise leave a shell
+    // with no runtime and no application file.
+    const appImagePath = process.env.APPIMAGE?.trim() ?? "";
+    if (
+      process.platform === "linux" &&
+      (appImagePath.length === 0 || !canReplaceAppImage(appImagePath))
+    ) {
+      createDesktopLogger().error(
+        `Desktop update install skipped: ${appImagePath || "this build"} cannot be replaced in place. The runtime stays up; download the new AppImage instead.`,
+      );
+      return;
+    }
     quitting = true;
     stoppingForQuit = true;
     await finishQuit();
@@ -2130,10 +2165,12 @@ async function runDesktopApp(): Promise<void> {
   });
 
   const desktopUpdateSupport = resolveDesktopUpdateSupport({
+    canReplaceAppImage,
     env: process.env,
     platform: desktopPlatform,
   });
   desktopUpdateService = createDesktopUpdateService({
+    channel: DESKTOP_UPDATE_CHANNEL,
     currentVersion: desktopVersion,
     enabled:
       desktopUpdateSupport.versionCheck &&

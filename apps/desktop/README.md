@@ -110,10 +110,22 @@ Linux gets both update paths, but they are not equivalent:
 
 - The JSON version feed (`desktop-version-linux.json`) is polled on every Linux
   install and reports that a newer release exists.
-- Self-installing auto-update runs only inside an AppImage, which electron-updater
-  detects through the `APPIMAGE` environment variable. An extracted directory or
-  a distribution package has no single file to replace, so it reports new
-  versions without installing them.
+- Self-installing auto-update runs only inside an AppImage whose directory the
+  app can write to. electron-updater detects the AppImage through the `APPIMAGE`
+  environment variable, and its install step unlinks the running file *before*
+  moving the replacement in — so a read-only directory would delete the app and
+  leave nothing behind. Both the startup check and the install handler verify
+  write and search access on the parent directory first.
+- Everything else — an extracted directory, a distribution package, or an
+  AppImage in a read-only location — reports new versions without installing
+  them.
+
+The Linux AppImage is unsigned, and electron-updater performs no signature
+check on Linux: it verifies only the SHA-512 recorded in the update metadata
+that ships beside it. macOS installs through Squirrel, which additionally
+requires the replacement to satisfy the running app's code-signing
+requirement. Write access to the release assets is therefore sufficient to
+push code to Linux clients. Treat the release token accordingly.
 
 ## Releasing
 

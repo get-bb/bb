@@ -99,7 +99,7 @@ jobs:
 
           HAS_SIGNING_SECRETS="false"
           if [[ "${#PRESENT_SECRET_NAMES[@]}" -eq 0 ]]; then
-            echo "::warning::macOS signing/notarization secrets are not configured; building unsigned workflow artifacts and publishing desktop-version.json only."
+            echo "::warning::macOS signing/notarization secrets are not configured; building unsigned macOS workflow artifacts that a publish run will withhold. Both version feeds and the Linux AppImage still publish."
           elif [[ "${#MISSING_SECRET_NAMES[@]}" -eq 0 ]]; then
             echo "macOS signing/notarization secrets are complete; signed and notarized artifacts will be produced."
             HAS_SIGNING_SECRETS="true"
@@ -175,7 +175,9 @@ jobs:
         run: pnpm exec turbo run test --filter=@bb/desktop --filter=bb-app --force --output-logs=new-only
 
       - name: Package x64 AppImage
-        run: pnpm exec turbo run desktop:build:linux --filter=@bb/desktop --force --output-logs=new-only
+        # No --force: the packaging task is already cache: false, and forcing also
+        # rebuilds its cached bb-app/@bb/desktop dependencies a second time.
+        run: pnpm exec turbo run desktop:build:linux --filter=@bb/desktop --output-logs=new-only
 
       - name: Smoke test packaged desktop app
         # The packaged app opens a real BrowserWindow, so the headless runner
@@ -210,18 +212,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Download macOS desktop artifacts
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: bb-desktop-macos-arm64-x64
-          path: release/macos
-
-      - name: Download Linux desktop artifacts
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: bb-desktop-linux-x64
-          path: release/linux
-
+      # The plan runs before the downloads: a qa or publish=false run has no use
+      # for several hundred MB of binaries it will never upload.
       - name: Plan release publication
         id: release_plan
         env:
@@ -257,6 +249,20 @@ jobs:
             echo "should_publish=$SHOULD_PUBLISH"
             echo "publish_macos_binaries=$PUBLISH_MACOS_BINARIES"
           } >> "$GITHUB_OUTPUT"
+
+      - name: Download macOS desktop artifacts
+        if: steps.release_plan.outputs.should_publish == 'true'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: bb-desktop-macos-arm64-x64
+          path: release/macos
+
+      - name: Download Linux desktop artifacts
+        if: steps.release_plan.outputs.should_publish == 'true'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: bb-desktop-linux-x64
+          path: release/linux
 
       - name: Publish stable desktop release feed
         if: steps.release_plan.outputs.should_publish == 'true'

@@ -83,6 +83,11 @@ export interface DesktopUpdateSupport {
 }
 
 export interface ResolveDesktopUpdateSupportArgs {
+  /**
+   * Whether the AppImage at this path can actually be replaced in place.
+   * Injected so the decision stays testable without touching a real file.
+   */
+  canReplaceAppImage: (appImagePath: string) => boolean;
   env: NodeJS.ProcessEnv;
   platform: BbDesktopVersionFeedPlatform;
 }
@@ -97,5 +102,15 @@ export function resolveDesktopUpdateSupport(
   // A distro package or an extracted directory cannot rewrite itself, so those
   // Linux installs still learn that a release exists but never self-install.
   const appImagePath = args.env.APPIMAGE?.trim() ?? "";
-  return { autoUpdate: appImagePath.length > 0, versionCheck: true };
+  if (appImagePath.length === 0) {
+    return { autoUpdate: false, versionCheck: true };
+  }
+
+  // electron-updater's AppImage install unlinks the running file before it
+  // moves the replacement in, so a read-only directory destroys the user's
+  // install instead of failing harmlessly. Never offer the install path there.
+  return {
+    autoUpdate: args.canReplaceAppImage(appImagePath),
+    versionCheck: true,
+  };
 }

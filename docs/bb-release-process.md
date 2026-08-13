@@ -210,7 +210,9 @@ gh workflow run build-desktop.yml \
 - Only a non-prerelease version is published. The workflow refuses to publish a
   prerelease (`X.Y.Z-...`) to `desktop-latest`.
 - macOS signing/notarization secrets must be configured, or the workflow
-  publishes `desktop-version.json` only and withholds the unsigned `.dmg`/`.zip`.
+  withholds the unsigned `.dmg`/`.zip` and publishes both version feeds plus the
+  Linux AppImage. Linux has no notarization equivalent, so it never waits on the
+  Apple secrets.
 - The `desktop-v<version>` release is immutable: if it already exists the
   workflow fails. Bump to a new version rather than re-running the same one.
 - The immutable `desktop-v<version>` release owns GitHub's repository-wide
@@ -259,6 +261,7 @@ Add to the report from "Verify The Release":
 - If the desktop workflow fails because `desktop-v<version>` already exists, do
   not delete the immutable release. Bump to the next version, re-run the npm
   publish, then re-run the desktop workflow.
-- If the desktop workflow publishes `desktop-version.json` only (binaries
-  withheld), the macOS signing secrets are missing or incomplete. Fix the
-  secrets and re-run; do not hand-upload unsigned binaries to `desktop-latest`.
+- If the desktop workflow withholds the macOS binaries (feeds and the Linux
+  AppImage still publish), the macOS signing secrets are missing or incomplete.
+  Fix the secrets and re-run; do not hand-upload unsigned macOS binaries to
+  `desktop-latest`.
