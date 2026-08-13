@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { mkdir, rename, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { join, resolve, sep } from "node:path";
 
 import { RemoteError } from "../../../lib/remote/types.js";
 import { toStorageProjectVersionId } from "../../../lib/store/index.js";
@@ -25,6 +25,7 @@ import { blastRadius } from "./blast-radius.js";
 import {
   classifyThreeWay,
   conflictingFields,
+  sameEntity,
   threeWayDiff,
 } from "./diff.js";
 import { orderPlanItems, planItemId, type ReferenceGraph } from "./order.js";
@@ -358,11 +359,18 @@ async function fetchRemoteState(
     const rows: ServerEntity[] = [];
     for await (const page of state.adapter.fetchRemote(scope, () => undefined)) rows.push(...page);
     const idToSlug = acceptedIdResolver(deps, scope, storageVersionId);
-    result.set(state.adapter.kind, mapComparable(
-      rows,
-      (row) => comparablePayload(state.adapter, row.payload, true, idToSlug),
-      state.adapter.kind,
-    ));
+    try {
+      result.set(state.adapter.kind, mapComparable(
+        rows,
+        (row) => comparablePayload(state.adapter, row.payload, true, idToSlug),
+        state.adapter.kind,
+      ));
+    } catch (error: unknown) {
+      if (error instanceof PlanRemoteDataError) throw error;
+      throw new PlanRemoteDataError(
+        `${state.adapter.kind} remote payload could not be normalized: ${error instanceof Error ? error.message : "invalid data"}`,
+      );
+    }
   }
   return result;
 }
@@ -428,11 +436,12 @@ function itemFromEntity(
   const base = state.base.get(key);
   const working = state.working.get(key);
   const theirs = remote.get(key);
-  const fields = orphan ? [] : threeWayDiff(base, working, theirs);
+  const semanticFields = orphan ? [] : threeWayDiff(base, working, theirs);
   const operation = orphan
     ? "orphan" as const
     : classifyThreeWay(base, working, theirs, state.adapter.klass !== "OVERLAY");
-  const conflictFields = operation === "conflict" ? conflictingFields(fields) : [];
+  const fields = operation === "noop" ? [] : semanticFields;
+  const conflictFields = operation === "conflict" ? conflictingFields(semanticFields) : [];
   const baseRow = state.baseRows.find((row) => row.entityKey === key);
   const payload = working ?? base ?? theirs;
   return {
@@ -458,7 +467,7 @@ function invalidWorkingItems(scope: SyncScope, state: AdapterState): PlanItem[] 
   return state.issues.map((issue, index) => ({
     ...scope,
     kind: state.adapter.kind,
-    key: `invalid:${index + 1}:${issue.file}`,
+    key: `invalid:${index + 1}:${contentHash(issue.file).slice(0, 16)}`,
     label: issue.file,
     operation: "noop",
     expectedBaseContentHash: null,
@@ -480,13 +489,21 @@ function effectivePayload(
   remote: ReadonlyMap<string, Record<string, unknown>>,
 ): Readonly<Record<string, unknown>> | undefined {
   if (item.operation === "delete") return state.base.get(item.key);
+  if (item.operation === "noop") {
+    const base = state.base.get(item.key);
+    const theirs = remote.get(item.key);
+    if (!sameEntity(base, theirs)) return theirs;
+  }
   return state.working.get(item.key) ?? state.base.get(item.key) ?? remote.get(item.key);
 }
 
 function aliases(item: PlanItem, payload: Readonly<Record<string, unknown>>): string[] {
   const values = new Set([item.key, item.label]);
   try {
-    for (const segment of parseKey(item.key)) values.add(segment);
+    const segments = parseKey(item.key);
+    const tail = segments.at(-1);
+    if (tail !== undefined) values.add(tail);
+    if (segments[0] === "finding" && segments[2] !== undefined) values.add(segments[2]);
   } catch {
     // A typed working-file error item may intentionally use a diagnostic key.
   }
@@ -598,9 +615,52 @@ async function persistPlan(worktreeRoot: string, planValue: Plan): Promise<void>
     await writeFile(temporary, `${JSON.stringify(planValue, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
     await rename(temporary, destination);
   } catch (error: unknown) {
-    const { rm } = await import("node:fs/promises");
     await rm(temporary, { force: true }).catch(() => undefined);
     throw error;
+  }
+}
+
+function regexLiteral(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+}
+
+function sourceBlockLine(kind: EntityKind, key: string, text: string): number {
+  const lines = text.split("\n");
+  if (kind === "vexDecision") {
+    try {
+      const segments = parseKey(key);
+      const cve = segments[0] === "finding" ? segments[2] : undefined;
+      if (cve !== undefined) {
+        const aggregate = new RegExp(`^\\s+${regexLiteral(cve)}:\\s*(?:#.*)?$`, "u");
+        const aggregateLine = lines.findIndex((line) => aggregate.test(line));
+        if (aggregateLine >= 0) return aggregateLine + 1;
+      }
+    } catch {
+      // Fall through to the first authored decision field.
+    }
+    const decisionLine = lines.findIndex((line) => /^(?:status|justification|needs_completion|drift_state):/u.test(line));
+    if (decisionLine >= 0) return decisionLine + 1;
+  }
+  return 1;
+}
+
+async function sourceLocationFor(
+  worktreeRoot: string,
+  kind: EntityKind,
+  row: WorkingEntity,
+): Promise<SourceLocation> {
+  const root = resolve(worktreeRoot);
+  const absolute = resolve(root, ...row.file.split("/"));
+  if (absolute !== root && !absolute.startsWith(`${root}${sep}`)) {
+    return { file: row.file, line: 1 };
+  }
+  try {
+    return {
+      file: row.file,
+      line: sourceBlockLine(kind, row.key, await readFile(absolute, "utf8")),
+    };
+  } catch {
+    return { file: row.file, line: 1 };
   }
 }
 
@@ -671,7 +731,12 @@ export async function computePlan(
       const payload = effectivePayload(item, state, remoteRows);
       if (payload !== undefined) payloads.set(planItemId(item), payload);
       const working = state.workingRows.find((row) => row.key === key);
-      if (working !== undefined) sources.set(planItemId(item), { file: working.file, line: 1 });
+      if (working !== undefined && deps.worktreeRoot !== undefined && deps.worktreeRoot !== null) {
+        sources.set(
+          planItemId(item),
+          await sourceLocationFor(deps.worktreeRoot, state.adapter.kind, working),
+        );
+      }
     }
     items.push(...invalidWorkingItems(scope, state));
   }

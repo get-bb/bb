@@ -1,4 +1,4 @@
-import { readFile, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { readFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -15,6 +15,7 @@ import { createSerializer } from "../serialize/serializer.js";
 import { blastRadius } from "./blast-radius.js";
 import { classifyThreeWay } from "./diff.js";
 import { computePlan, loadPlan } from "./index.js";
+import { renderPlanCli } from "./render-cli.js";
 
 const hosts: Array<ReturnType<typeof createFakePluginHost>> = [];
 const roots: string[] = [];
@@ -127,6 +128,61 @@ describe("three-way plan", () => {
     expect(plan.items.find((item) => item.label === "REQ-NOOP")?.fields).toEqual([]);
   });
 
+  it("computes the SPEC summary and blocks its referenced delete", async () => {
+    const updates = Array.from({ length: 3 }, (_, index) => requirement(`REQ-UPDATE-${index + 1}`, "base"));
+    const conflicts = Array.from({ length: 2 }, (_, index) => requirement(`REQ-CONFLICT-${index + 1}`, "base"));
+    const deleted = requirement("REQ-DELETE-1", "base delete");
+    const referrer = requirement("REQ-REFERRER", "referrer", { dependsOn: ["REQ-DELETE-1"] });
+    const creates = Array.from({ length: 6 }, (_, index) => requirement(`REQ-CREATE-${index + 1}`, "new"));
+    let remote = [...updates, ...conflicts, deleted, referrer];
+    let authored = remote.map((entity) => working(entity));
+    const setup = await fixture(() => remote, () => authored);
+    await pull(setup.deps, scope, ["requirement"]);
+
+    remote = [
+      ...updates,
+      ...conflicts.map((entity, index) => requirement(`REQ-CONFLICT-${index + 1}`, "theirs")),
+      deleted,
+      referrer,
+    ];
+    authored = [
+      ...creates.map((entity) => working(entity)),
+      ...updates.map((entity) => working(entity, "ours")),
+      ...conflicts.map((entity) => working(entity, "ours")),
+      working(referrer),
+    ];
+
+    const plan = await computePlan({ ...setup.deps, worktreeRoot: setup.root }, scope, ["requirement"]);
+    expect(renderPlanCli(plan).split("\n", 1)[0]).toBe(
+      "Plan: 6 to create, 3 to update, 1 to delete, 2 conflicts",
+    );
+    expect(plan.items.find((entry) => entry.label === "REQ-DELETE-1")).toMatchObject({
+      operation: "delete",
+      referrers: [{ label: "REQ-REFERRER" }],
+      error: { code: "REFERENTIAL_INTEGRITY", message: "referenced by REQ-REFERRER" },
+    });
+  });
+
+  it("blocks a delete when a fresh upstream-only referrer now targets it", async () => {
+    const target = requirement("REQ-UPSTREAM-TARGET", "target");
+    const referrer = requirement("REQ-UPSTREAM-REF", "referrer");
+    let remote = [target, referrer];
+    let authored = remote.map((entity) => working(entity));
+    const setup = await fixture(() => remote, () => authored);
+    await pull(setup.deps, scope, ["requirement"]);
+
+    remote = [target, requirement("REQ-UPSTREAM-REF", "referrer", {
+      dependsOn: ["REQ-UPSTREAM-TARGET"],
+    })];
+    authored = [working(referrer)];
+    const plan = await computePlan({ ...setup.deps, worktreeRoot: setup.root }, scope, ["requirement"]);
+    expect(plan.items.find((entry) => entry.label === "REQ-UPSTREAM-TARGET")).toMatchObject({
+      operation: "delete",
+      referrers: [{ label: "REQ-UPSTREAM-REF" }],
+      error: { code: "REFERENTIAL_INTEGRITY" },
+    });
+  });
+
   it("is read-only across accepted base, authored YAML, and remote state while persisting its sidecar", async () => {
     const entity = requirement("REQ-READ-ONLY", "base");
     let remote = [entity];
@@ -146,6 +202,10 @@ describe("three-way plan", () => {
     expect(await readFile(yamlFile, "utf8")).toBe(beforeYaml);
     expect(canonicalJson(remote)).toBe(beforeRemote);
     expect(loadPlan(setup.root, plan.planId)).toEqual(plan);
+    const sidecar = join(setup.root, ".fs-sync", `plan-${plan.planId}.json`);
+    const persisted = await readFile(sidecar, "utf8");
+    await writeFile(sidecar, persisted.replace("local edit", "tampered edit"), "utf8");
+    expect(loadPlan(setup.root, plan.planId)).toBeNull();
   });
 
   it("degrades atomically to the accepted base after repeated 429 exhaustion", async () => {
@@ -198,6 +258,59 @@ describe("three-way plan", () => {
     expect(plan.summary.conflicts).toBe(0);
   });
 
+  it("reports the exact aggregate YAML block for an incomplete NOT_AFFECTED decision", async () => {
+    const host = createFakePluginHost({ pluginId: `finite-state-plan-vex-${hosts.length}` });
+    hosts.push(host);
+    const root = await mkdtemp(join(tmpdir(), "finite-state-plan-vex-"));
+    roots.push(root);
+    const file = ".fs/triage/aggregate.yaml";
+    await mkdir(join(root, ".fs/triage"), { recursive: true });
+    await writeFile(join(root, file), `component:
+  name: busybox
+  version: "1.36.1"
+decisions:
+  CVE-2026-3200:
+    status: NOT_AFFECTED
+    justification: null
+`, "utf8");
+    const key = ENTITIES.vexDecision.key({
+      cve: "CVE-2026-3200",
+      name: "busybox",
+      version: "1.36.1",
+    });
+    const adapter: EntityAdapter = {
+      kind: "vexDecision",
+      klass: "OVERLAY",
+      serializer: createSerializer("vexDecision"),
+      async *fetchRemote() { yield []; },
+      async readWorking() {
+        return [{
+          key,
+          file,
+          payload: {
+            status: "NOT_AFFECTED",
+            justification: null,
+            response: null,
+            reason: null,
+          },
+        }];
+      },
+    };
+    const plan = await computePlan({
+      db: createPluginContext(host.bb).db(),
+      worktreeRoot: root,
+      adapters: [adapter],
+      now: () => new Date("2026-08-12T20:00:00.000Z"),
+    }, scope, ["vexDecision"]);
+    expect(plan.validationErrors).toEqual([
+      expect.objectContaining({
+        code: "VEX_JUSTIFICATION_REQUIRED",
+        artifactId: file,
+        line: 5,
+      }),
+    ]);
+  });
+
   it("sets the blast-radius gate at twenty-one changes and for every delete", () => {
     const item = (index: number, operation: "create" | "delete") => ({
       projectId: scope.projectId,
@@ -217,6 +330,11 @@ describe("three-way plan", () => {
     expect(blastRadius(Array.from({ length: 21 }, (_, index) => item(index, "create"))).requiresHumanReview)
       .toBe(true);
     expect(blastRadius([item(1, "delete")]).requiresHumanReview).toBe(true);
+    const conflicts = Array.from({ length: 21 }, (_, index) => ({
+      ...item(index, "create"),
+      operation: "conflict" as const,
+    }));
+    expect(blastRadius(conflicts).requiresHumanReview).toBe(true);
   });
 });
 

@@ -28,7 +28,7 @@ function firstDescription(item: PlanItem): string | null {
     .find((field) => field !== undefined);
   if (selected === undefined || !selected.ours.present) return null;
   const text = rowValue(selected.ours).replaceAll("\n", " ");
-  return `"${text.replaceAll('"', '\\"')}"`;
+  return JSON.stringify(text);
 }
 
 function updateDescription(item: PlanItem): string | null {
