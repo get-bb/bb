@@ -11,6 +11,7 @@ import type {
 } from "./types.js";
 
 const SHA256 = /^[a-f0-9]{64}$/u;
+const IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,511}$/u;
 
 interface CountRow {
   count: number;
@@ -39,6 +40,17 @@ function validateEnvelope(payload: string): void {
   }
 }
 
+function serializedIdentifiers(
+  values: readonly string[] | undefined,
+  label: string,
+): string | null {
+  if (values === undefined) return null;
+  if (values.length > 10_000 || values.some((value) => !IDENTIFIER.test(value))) {
+    throw new Error(`Bench attestation ${label} must contain valid identifiers`);
+  }
+  return JSON.stringify([...new Set(values)].sort());
+}
+
 export function upsertBenchAttestation(
   db: Database.Database,
   location: StoredRunLocation,
@@ -55,8 +67,23 @@ export function upsertBenchAttestation(
   const subjectMatchesRun = runDigest !== null && attestation.subjectDigest === runDigest;
   const signatureVerified = attestation.verified;
   const verified = signatureVerified && subjectMatchesRun;
+  const requirementIds = serializedIdentifiers(attestation.requirementIds, "requirementIds");
+  const checkIds = serializedIdentifiers(attestation.checkIds, "checkIds");
+  const resultRefs = serializedIdentifiers(attestation.resultRefs, "resultRefs");
+  if (attestation.signerIdentity !== undefined && attestation.signerIdentity.length > 2_000) {
+    throw new Error("Bench attestation signerIdentity is too large");
+  }
   const attestationId = `bench-attestation-${createHash("sha256")
-    .update([bundle.run.runId, attestation.format, attestation.subjectDigest, attestation.payload].join("\0"))
+    .update([
+      bundle.run.runId,
+      attestation.format,
+      attestation.subjectDigest,
+      attestation.payload,
+      requirementIds ?? "",
+      checkIds ?? "",
+      resultRefs ?? "",
+      attestation.signerIdentity ?? "",
+    ].join("\0"))
     .digest("hex")}`;
   const write = db
     .prepare(
@@ -68,7 +95,8 @@ export function upsertBenchAttestation(
           verified, created_at, pulled_at)
        VALUES
          (@projectId, @projectVersionId, @generationId, @attestationId, @runId,
-          @format, NULL, @subjectDigest, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+          @format, NULL, @subjectDigest, NULL, NULL, @requirementIds, @checkIds,
+          @resultRefs, @signerIdentity, NULL,
           NULL, @payload, @signatureVerified, @subjectMatchesRun, @verified,
           @createdAt, @pulledAt)
        ON CONFLICT (project_id, project_version_id, generation_id, attestation_id) DO UPDATE SET
@@ -76,11 +104,19 @@ export function upsertBenchAttestation(
          signature_verified = excluded.signature_verified,
          subject_matches_run = excluded.subject_matches_run,
          verified = excluded.verified,
+         requirement_ids = excluded.requirement_ids,
+         check_ids = excluded.check_ids,
+         result_refs = excluded.result_refs,
+         signer_identity = excluded.signer_identity,
          pulled_at = excluded.pulled_at
        WHERE attestations.payload IS NOT excluded.payload
           OR attestations.signature_verified IS NOT excluded.signature_verified
           OR attestations.subject_matches_run IS NOT excluded.subject_matches_run
-          OR attestations.verified IS NOT excluded.verified`,
+          OR attestations.verified IS NOT excluded.verified
+          OR attestations.requirement_ids IS NOT excluded.requirement_ids
+          OR attestations.check_ids IS NOT excluded.check_ids
+          OR attestations.result_refs IS NOT excluded.result_refs
+          OR attestations.signer_identity IS NOT excluded.signer_identity`,
     )
     .run({
       projectId: location.projectId,
@@ -91,6 +127,10 @@ export function upsertBenchAttestation(
       format: attestation.format,
       subjectDigest: attestation.subjectDigest,
       payload: attestation.payload,
+      requirementIds,
+      checkIds,
+      resultRefs,
+      signerIdentity: attestation.signerIdentity ?? null,
       signatureVerified: signatureVerified ? 1 : 0,
       subjectMatchesRun: subjectMatchesRun ? 1 : 0,
       verified: verified ? 1 : 0,

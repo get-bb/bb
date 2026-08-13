@@ -747,7 +747,8 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     Evaluate the full cached requirement matrix with
     `bb finite-state bench verdict <pv-id> [--digest <sha256>] [--json]`.
     Omit `--digest` for the currently mounted firmware; an explicit digest is
-    labeled historical when it differs from the mounted bytes.
+    labeled historical when it differs from the mounted bytes. Exit status is
+    `0` only for Safe to OTA, `1` for Not safe to OTA, and `2` for Inconclusive.
   - `bb plugin logs <id> [-n N] [-f]` — the plugin's `bb.log` output.
   - `bb plugin run <id> [args...]` — explicit form of a plugin's CLI command.
   - `bb plugin new <name> [--app]` — scaffold a plugin (`--app` adds a frontend

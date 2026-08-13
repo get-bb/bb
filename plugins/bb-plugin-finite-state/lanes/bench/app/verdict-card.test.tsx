@@ -92,6 +92,38 @@ describe("VerdictCard", () => {
     );
   });
 
+  it("does not call an out-of-scope or invalid attestation a verified proof", async () => {
+    const { VerdictCard } = await import("./verdict-card.js");
+    for (const state of ["insufficient_scope", "invalid_signature"] as const) {
+      const result = verdict("INCONCLUSIVE", {
+        evidence: [{
+          ...verdict("SAFE_TO_OTA").evidence[0]!,
+          state,
+          attestationVerified: true,
+        }],
+      });
+      const slot = renderSlot({ component: () => <VerdictCard id="v1" /> }, {}, {
+        context: { projectId: "p1" },
+        rpc: { benchOtaVerdictGet: () => result },
+      });
+      expect(await slot.findAllByText(state === "insufficient_scope"
+        ? "Insufficient attestation scope"
+        : "Invalid signature")).toHaveLength(2);
+      expect(slot.getByText("No counted proof has a verified, subject-bound signature.")).toBeTruthy();
+      slot.lifecycle.unmount();
+    }
+  });
+
+  it("qualifies a safe verdict when the mounted digest is unknown", async () => {
+    const { VerdictCard } = await import("./verdict-card.js");
+    const slot = renderSlot({ component: () => <VerdictCard digest={DIGEST_A} id="v1" /> }, {}, {
+      context: { projectId: "p1" },
+      rpc: { benchOtaVerdictGet: () => verdict("SAFE_TO_OTA", { currentMountedDigest: null }) },
+    });
+    expect(await slot.findByText("Mounted digest unknown")).toBeTruthy();
+    expect(slot.getByText("unavailable")).toBeTruthy();
+  });
+
   it("uses an embedded project scope when the surrounding panel has no project context", async () => {
     const { VerdictCard } = await import("./verdict-card.js");
     const slot = renderSlot(

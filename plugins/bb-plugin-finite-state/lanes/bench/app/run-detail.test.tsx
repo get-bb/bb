@@ -55,7 +55,6 @@ describe("RunDetail", () => {
     expect(slot.getByRole("link", { name: "Download envelope" }).getAttribute("href")).toBe(
       "/api/v1/plugins/finite-state/http/bench/runs/attestation?projectId=p1&runId=run-1",
     );
-    expect(slot.getByText("OTA verdict")).toBeTruthy();
     expect(await slot.findByText("Inconclusive")).toBeTruthy();
     // The log-tail fetch fires after the run detail renders; poll rather than
     // asserting synchronously, which raced under CI load.

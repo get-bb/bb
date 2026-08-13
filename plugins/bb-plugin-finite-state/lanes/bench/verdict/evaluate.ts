@@ -14,6 +14,7 @@ export type CoverageState =
   | "skipped"
   | "unsigned"
   | "invalid_signature"
+  | "insufficient_scope"
   | "stale_digest";
 
 export type VerdictIssueCode = "MODEL_UNAVAILABLE" | "MISSING_CURRENT_DIGEST";
@@ -108,7 +109,7 @@ export interface VerdictResult {
   computedAt: string;
 }
 
-const TERMINAL_RUN_STATUSES = new Set(["completed", "failed", "timeout"]);
+const FAILURE_RUN_STATUSES = new Set(["completed", "failed", "timeout"]);
 
 function candidateTimestamp(candidate: VerdictCandidateInput): string {
   return candidate.resultExecutedAt
@@ -155,19 +156,22 @@ function evidenceReference(
   };
 }
 
+function attestationAuthenticatesDigest(
+  attestation: VerdictAttestationInput,
+  digest: string,
+): boolean {
+  return attestation.verified
+    && attestation.signatureVerified
+    && attestation.subjectMatchesDigest
+    && attestation.subjectDigest === digest;
+}
+
 function attestationCovers(
   attestation: VerdictAttestationInput,
   cell: VerdictRequirementInput,
   candidate: VerdictCandidateInput,
-  digest: string,
 ): boolean {
-  if (
-    !attestation.verified
-    || !attestation.signatureVerified
-    || !attestation.subjectMatchesDigest
-    || attestation.subjectDigest !== digest
-    || candidate.checkId === null
-  ) return false;
+  if (candidate.checkId === null) return false;
   const requirementCovered = attestation.requirementIds.includes(cell.requirementId);
   const checkCovered = attestation.checkIds.includes(candidate.checkId);
   const resultCovered = attestation.resultRefs.includes(candidate.resultId);
@@ -195,40 +199,57 @@ function stateForMappedCheck(
       : evidenceReference(cell, "not_run");
   }
   const matching = relevant.filter((candidate) => candidate.firmwareDigest === digest);
-  const terminal = matching.find((candidate) =>
-    candidate.runStatus !== null && TERMINAL_RUN_STATUSES.has(candidate.runStatus));
-  if (terminal) {
-    if (terminal.outcome === "fail" || terminal.resultStatus === "failed") {
-      return evidenceReference(cell, "failed", terminal);
+  const failure = matching.find((candidate) =>
+    candidate.runStatus !== null
+    && FAILURE_RUN_STATUSES.has(candidate.runStatus)
+    && (candidate.outcome === "fail" || candidate.resultStatus === "failed"));
+  if (failure) return evidenceReference(cell, "failed", failure);
+  const error = matching.find((candidate) =>
+    candidate.runStatus !== null
+    && FAILURE_RUN_STATUSES.has(candidate.runStatus)
+    && (candidate.outcome === "error" || candidate.resultStatus === "error"));
+  if (error) return evidenceReference(cell, "error", error);
+  const completed = matching.find((candidate) => candidate.runStatus === "completed");
+  if (completed) {
+    if (completed.outcome === "fail" || completed.resultStatus === "failed") {
+      return evidenceReference(cell, "failed", completed);
     }
-    if (terminal.outcome === "error" || terminal.resultStatus === "error") {
-      return evidenceReference(cell, "error", terminal);
+    if (completed.outcome === "error" || completed.resultStatus === "error") {
+      return evidenceReference(cell, "error", completed);
     }
-    if (terminal.outcome === "skipped" || terminal.resultStatus === "skipped") {
-      return evidenceReference(cell, "skipped", terminal);
+    if (completed.outcome === "skipped" || completed.resultStatus === "skipped") {
+      return evidenceReference(cell, "skipped", completed);
     }
-    if (terminal.outcome === "pass" || terminal.resultStatus === "verified") {
-      const attestations = [...terminal.attestations].sort((left, right) =>
+    if (completed.outcome === "pass" || completed.resultStatus === "verified") {
+      const attestations = [...completed.attestations].sort((left, right) =>
         right.createdAt.localeCompare(left.createdAt)
         || right.attestationId.localeCompare(left.attestationId));
-      const proof = attestations.find((attestation) =>
-        attestationCovers(attestation, cell, terminal, digest));
-      if (proof) return evidenceReference(cell, "proven", terminal, proof);
+      const authenticated = attestations.filter((attestation) =>
+        attestationAuthenticatesDigest(attestation, digest));
+      const proof = authenticated.find((attestation) =>
+        attestationCovers(attestation, cell, completed));
+      if (proof) return evidenceReference(cell, "proven", completed, proof);
+      const outOfScope = authenticated[0];
+      if (outOfScope) {
+        return evidenceReference(cell, "insufficient_scope", completed, outOfScope);
+      }
       const attempted = attestations[0];
       return evidenceReference(
         cell,
         attempted ? "invalid_signature" : "unsigned",
-        terminal,
+        completed,
         attempted,
       );
     }
-    return evidenceReference(cell, "not_run", terminal);
+    return evidenceReference(cell, "not_run", completed);
   }
   const running = matching.find((candidate) =>
     candidate.runStatus === "queued"
     || candidate.runStatus === "running"
     || candidate.resultStatus === "running");
   if (running) return evidenceReference(cell, "running", running);
+  const incomplete = matching[0];
+  if (incomplete) return evidenceReference(cell, "not_run", incomplete);
   const stale = relevant.find((candidate) => candidate.firmwareDigest !== digest);
   return stale
     ? evidenceReference(cell, "stale_digest", stale)

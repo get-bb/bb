@@ -133,6 +133,7 @@ describe("evaluateOtaVerdict", () => {
     ["skipped", { mappedCheckIds: ["check-a"] }, [candidate({ outcome: "skipped", resultStatus: "skipped" })]],
     ["unsigned", { mappedCheckIds: ["check-a"] }, [candidate({ attestations: [] })]],
     ["invalid_signature", { mappedCheckIds: ["check-a"] }, [candidate({ attestations: [{ ...candidate().attestations[0]!, verified: false, signatureVerified: false }] })]],
+    ["insufficient_scope", { mappedCheckIds: ["check-a"] }, [candidate({ attestations: [{ ...candidate().attestations[0]!, resultRefs: [] }] })]],
     ["stale_digest", { mappedCheckIds: ["check-a"] }, [candidate({ firmwareDigest: DIGEST_B })]],
   ] as const)("classifies %s as an inconclusive gap", (state, cell, candidates) => {
     const result = evaluateOtaVerdict(input({
@@ -209,6 +210,24 @@ describe("evaluateOtaVerdict", () => {
     expect(renderVerdictCli(result)).toContain("historical; not currently mounted");
   });
 
+  it("never counts a pass from a failed or timed-out run as proof", () => {
+    for (const runStatus of ["failed", "timeout"] as const) {
+      const result = evaluateOtaVerdict(input({ candidates: [candidate({ runStatus })] }));
+      expect(result).toMatchObject({
+        verdict: "INCONCLUSIVE",
+        proven: 0,
+        evidence: [{ state: "not_run", runId: "run-a" }],
+      });
+    }
+  });
+
+  it("still gives failed evidence from a failed run NOT_SAFE precedence", () => {
+    const result = evaluateOtaVerdict(input({
+      candidates: [candidate({ runStatus: "failed", outcome: "fail", resultStatus: "failed" })],
+    }));
+    expect(result).toMatchObject({ verdict: "NOT_SAFE", evidence: [{ state: "failed" }] });
+  });
+
   it("renders deterministic, ANSI-free CLI output with exact evidence references", () => {
     const output = renderVerdictCli(evaluateOtaVerdict(input()));
     expect(output).toBe([
@@ -232,6 +251,7 @@ describe("evaluateOtaVerdict", () => {
     const nonProven: readonly CoverageState[] = [
       "failed", "error", "unmapped", "not_run", "running", "skipped",
       "unsigned", "invalid_signature", "stale_digest",
+      "insufficient_scope",
     ];
     for (const state of nonProven) {
       const overrides: Partial<VerdictInput> = state === "unmapped"
@@ -245,7 +265,9 @@ describe("evaluateOtaVerdict", () => {
               : state === "unsigned"
                 ? { candidates: [candidate({ attestations: [] })] }
                 : state === "invalid_signature"
-                  ? { candidates: [candidate({ attestations: [{ ...candidate().attestations[0]!, resultRefs: [] }] })] }
+                  ? { candidates: [candidate({ attestations: [{ ...candidate().attestations[0]!, verified: false, signatureVerified: false }] })] }
+                  : state === "insufficient_scope"
+                    ? { candidates: [candidate({ attestations: [{ ...candidate().attestations[0]!, resultRefs: [] }] })] }
                   : state === "stale_digest"
                     ? { candidates: [candidate({ firmwareDigest: DIGEST_B })] }
                     : { candidates: [candidate({ outcome: state === "failed" ? "fail" : "error", resultStatus: state })] };

@@ -3,6 +3,10 @@ import { reqIdKey } from "../../../lib/sync/registry.js";
 import { createBenchTestStore, DIGEST_A, DIGEST_B, SYNCED_AT } from "../store/test-helpers.js";
 import { getOtaVerdict } from "./query.js";
 import { createBenchVerdictCliRunner } from "./render-cli.js";
+import { benchResultId, storeEvidenceCheckpointWithResult } from "../store/results.js";
+import { evidenceBundle } from "../store/test-helpers.js";
+import type { ForgeJobSnapshot } from "../../../lib/remote/types.js";
+import { forgeEvidenceCheckpoint } from "../execute/evidence.js";
 
 const stores: Array<ReturnType<typeof createBenchTestStore>> = [];
 
@@ -131,6 +135,93 @@ describe("getOtaVerdict", () => {
       });
   });
 
+  it("reaches Safe to OTA through the production evidence checkpoint writer", async () => {
+    const seeded = fixture("writer-safe");
+    const resultId = benchResultId("run-a", seeded.requirementKey, "check-a");
+    const job: ForgeJobSnapshot = {
+      jobId: "job-1",
+      status: "COMPLETED",
+      tool: "check-a",
+      recipe: "qemu",
+      scope: {},
+      environment: {},
+      runId: "run-a",
+      elapsedSeconds: 2,
+      logTail: [],
+      events: [],
+      eventCount: 0,
+      result: {
+        outcome: "pass",
+        checkId: "check-a",
+        summary: "Verified boot passed.",
+        attestation: {
+          format: "in-toto",
+          subjectDigest: DIGEST_A,
+          payload: "{}",
+          signature: "signed-envelope",
+        },
+      },
+      error: null,
+    };
+    const bundle = await forgeEvidenceCheckpoint(
+      {
+        persistLog: async () => null,
+        verifier: { verify: async () => ({
+          requirementIds: ["REQ-A"],
+          checkIds: ["check-a"],
+          resultRefs: [resultId],
+          signerIdentity: "builder@example.test",
+        }) },
+      },
+      {
+        run: evidenceBundle().run,
+        jobs: [job],
+        requirementId: seeded.requirementKey,
+      },
+      new AbortController().signal,
+    );
+    storeEvidenceCheckpointWithResult(seeded.db, bundle, SYNCED_AT);
+    await expect(getOtaVerdict(
+      { db: seeded.db, projectId: "project-a", now: () => SYNCED_AT },
+      "version-a",
+    )).resolves.toMatchObject({
+      verdict: "SAFE_TO_OTA",
+      evidence: [{
+        state: "proven",
+        resultId,
+        signerIdentity: "builder@example.test",
+      }],
+    });
+  });
+
+  it("keeps legacy verified attestations without explicit coverage inconclusive", async () => {
+    const seeded = fixture("writer-legacy-scope");
+    storeEvidenceCheckpointWithResult(seeded.db, evidenceBundle({
+      results: [{
+        requirementId: seeded.requirementKey,
+        checkId: "check-a",
+        outcome: "pass",
+        evidenceSummary: "Verified boot passed.",
+      }],
+      attestation: {
+        format: "in-toto",
+        subjectDigest: DIGEST_A,
+        payload: "{}",
+        verified: true,
+      },
+    }), SYNCED_AT);
+    expect(seeded.db.prepare(
+      "SELECT requirement_ids, check_ids, result_refs FROM attestations",
+    ).get()).toEqual({ requirement_ids: null, check_ids: null, result_refs: null });
+    await expect(getOtaVerdict(
+      { db: seeded.db, projectId: "project-a", now: () => SYNCED_AT },
+      "version-a",
+    )).resolves.toMatchObject({
+      verdict: "INCONCLUSIVE",
+      evidence: [{ state: "insufficient_scope", attestationVerified: true }],
+    });
+  });
+
   it("runs the verdict CLI in project context with matching text and JSON counts", async () => {
     const seeded = fixture("cli");
     seedProof(seeded);
@@ -139,6 +230,19 @@ describe("getOtaVerdict", () => {
     const json = await run(["verdict", "version-a", "--json"], { projectId: "project-a" });
     expect(text).toMatchObject({ exitCode: 0, stderr: "", stdout: expect.stringContaining("Coverage: 1/1 required cells proven; 0 failed; 0 gaps") });
     expect(JSON.parse(json.stdout ?? "")).toMatchObject({ verdict: "SAFE_TO_OTA", required: 1, proven: 1, failed: 0, gaps: 0 });
+    const inconclusive = await run(["verdict", "version-missing", "--json"], { projectId: "project-a" });
+    expect(inconclusive.exitCode).toBe(2);
+  });
+
+  it("returns a nonzero CLI status for Not safe to OTA", async () => {
+    const seeded = fixture("cli-not-safe");
+    seedProof(seeded);
+    seeded.db.prepare(
+      "UPDATE verification_results SET status = 'failed', outcome = 'fail' WHERE result_id = 'result-a'",
+    ).run();
+    const run = createBenchVerdictCliRunner(seeded.db, () => SYNCED_AT);
+    const result = await run(["verdict", "version-a"], { projectId: "project-a" });
+    expect(result).toMatchObject({ exitCode: 1, stdout: expect.stringContaining("Verdict: Not safe to OTA") });
   });
 
   it("rejects a subject-mismatched attestation as invalid signature evidence", async () => {

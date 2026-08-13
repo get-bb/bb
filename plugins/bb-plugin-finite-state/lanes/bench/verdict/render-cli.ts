@@ -113,7 +113,9 @@ export function createBenchVerdictCliRunner(
       digest,
     );
     return {
-      exitCode: 0,
+      exitCode: result.verdict === "SAFE_TO_OTA"
+        ? 0
+        : result.verdict === "NOT_SAFE" ? 1 : 2,
       stdout: json ? `${JSON.stringify(result)}\n` : renderVerdictCli(result),
       stderr: "",
     };

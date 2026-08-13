@@ -56,6 +56,7 @@ const STATE_LABELS: Record<VerdictEvidence["state"], string> = {
   skipped: "Skipped",
   unsigned: "Unsigned",
   invalid_signature: "Invalid signature",
+  insufficient_scope: "Insufficient attestation scope",
   stale_digest: "Stale digest",
 };
 
@@ -122,7 +123,10 @@ export function VerdictCard({ id, digest, projectId: embeddedProjectId }: Verdic
 
   const style = VERDICT_STYLE[result.verdict];
   const blockers = result.evidence.filter((entry) => entry.required && entry.state !== "proven");
-  const signatures = result.evidence.filter((entry) => entry.attestationVerified);
+  const signatures = result.evidence.filter((entry) =>
+    entry.state === "proven" && entry.attestationVerified);
+  const mountedDigestUnknown = result.firmwareDigest !== null
+    && result.currentMountedDigest === null;
   const tiers = new Map<string, { proven: number; total: number }>();
   const requirements = new Map<string, { proven: number; total: number }>();
   for (const entry of result.evidence) {
@@ -141,11 +145,11 @@ export function VerdictCard({ id, digest, projectId: embeddedProjectId }: Verdic
       <header className="flex flex-wrap items-start gap-3 border-b border-border/70 p-4">
         <span className={`rounded-md bg-background/70 p-2 ${style.color}`}><Icon aria-hidden="true" name={style.icon} /></span>
         <div className="min-w-0 flex-1"><p className={`text-lg font-semibold ${style.color}`}>{style.label}</p><p className="mt-1 text-xs text-muted-foreground">Deterministic verdict across the product-version requirement matrix</p></div>
-        {result.stale ? <Badge className="border-warning/40 text-warning" variant="outline">Historical — not current</Badge> : null}
+        {result.stale ? <Badge className="border-warning/40 text-warning" variant="outline">Historical — not current</Badge> : mountedDigestUnknown ? <Badge className="border-warning/40 text-warning" variant="outline">Mounted digest unknown</Badge> : null}
       </header>
 
       <div className="space-y-4 p-4">
-        <div><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Firmware digest</p><p className="mt-1 break-all font-mono text-xs">{result.firmwareDigest ?? "Unavailable"}</p>{result.stale ? <p className="mt-1 text-xs text-warning">Currently mounted: <span className="font-mono">{result.currentMountedDigest}</span></p> : null}</div>
+        <div><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Firmware digest</p><p className="mt-1 break-all font-mono text-xs">{result.firmwareDigest ?? "Unavailable"}</p>{result.stale || mountedDigestUnknown ? <p className="mt-1 text-xs text-warning">Currently mounted: <span className="font-mono">{result.currentMountedDigest ?? "unavailable"}</span></p> : null}</div>
         {result.issues.length > 0 ? <Alert><Icon name="AlertTriangle" /><AlertDescription>{result.issues.map((issue) => <p key={issue.code}><span className="font-medium">{issue.code}</span> — {issue.message}</p>)}</AlertDescription></Alert> : null}
         {error ? <Alert variant="destructive"><AlertDescription className="flex items-center gap-3"><span>Showing the last computed verdict. Refresh failed: {error}</span><Button className="ml-auto" onClick={() => setRevision((value) => value + 1)} size="sm" variant="outline">Retry</Button></AlertDescription></Alert> : null}
 

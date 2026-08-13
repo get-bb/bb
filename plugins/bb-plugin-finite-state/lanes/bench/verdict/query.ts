@@ -28,6 +28,7 @@ const evidenceSchema = z.object({
   state: z.enum([
     "proven", "failed", "error", "unmapped", "not_run", "running",
     "skipped", "unsigned", "invalid_signature", "stale_digest",
+    "insufficient_scope",
   ]),
   required: z.boolean(),
   runId: identifierSchema.optional(),
