@@ -2046,30 +2046,12 @@ export function buildTimelineTurnSummaryDetails(
     threadId: thread.id,
   });
   // The floor queries measured the slice before closure, and closure backfills
-  // the earlier lifecycle rows of the items this slice owns — bytes no floor
-  // query ever counted, and a command line is one the inline-output cap cannot
-  // shorten. Keep the response inside the limit the floor enforces: when the
-  // backfill does not fit, drop it. The item still renders from the rows inside
-  // the slice, keeping its identity and its completed state and losing only its
-  // start time, and the ownership rule this route needs costs no bytes at all.
-  // Failing the request instead would take away every oversized turn's details,
-  // because a byte page is cut to sit right at the limit with nothing to spare.
-  const requestedTurnStartedRowIds = new Set(
-    requestedTurnStartedRows.map((row) => row.id),
-  );
-  const budgetedEventRows =
-    byteLengthOfStoredEventRows(wholeItemEventRows) >
-    THREAD_TIMELINE_EVENT_DATA_BYTE_LIMIT
-      ? wholeItemEventRows.filter(
-          (row) =>
-            row.sequence >= detailsWindow.sequenceStart ||
-            requestedTurnStartedRowIds.has(row.id),
-        )
-      : wholeItemEventRows;
-  // What the route actually holds, so the parent expansion spends what is left
-  // rather than a pre-closure estimate of it.
+  // the earlier lifecycle rows of the items this slice owns. Measure what the
+  // route actually holds, so the parent expansion spends what is left rather
+  // than a pre-closure estimate of it. The subtraction may go negative, which
+  // is the safe direction: the parent fetch then stays inside its bounds.
   const detailsEventDataBytes =
-    byteLengthOfStoredEventRows(budgetedEventRows);
+    byteLengthOfStoredEventRows(wholeItemEventRows);
   const eventRowsWithParentedChildren = ensureTimelineWindowParentedRows(db, {
     maxInlineOutputChars: detailsInlineOutputLimit,
     outOfBoundsChildDataByteLimit:
@@ -2079,7 +2061,7 @@ export function buildTimelineTurnSummaryDetails(
       sequenceStart: detailsWindow.sequenceStart,
     },
     threadId: thread.id,
-    rows: budgetedEventRows,
+    rows: wholeItemEventRows,
   }).rows;
   const eventRowsWithTurnStarts = ensureTimelineWindowTurnStartedRows(db, {
     threadId: thread.id,
