@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { uiCodeThemeDeclarationSchema } from "./code-theme.js";
 
 const requiredManifestString = z.string().trim().min(1);
 
@@ -62,6 +63,7 @@ export const pluginBbManifestSchema = z
             name: requiredManifestString,
             description: requiredManifestString.optional(),
             css: requiredManifestString,
+            codeTheme: uiCodeThemeDeclarationSchema.optional(),
           })
           .strict(),
       )

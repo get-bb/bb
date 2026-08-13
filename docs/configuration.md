@@ -775,7 +775,9 @@ connection does not narrow the listener. `0.0.0.0` exposes IPv4 interfaces only;
 bb does not currently offer an IPv6 wildcard bind option.
 
 The data directory is the root directory for all bb-managed state: the SQLite
-database, logs, host identity, thread storage, custom themes (`theme/`), and
+database, logs, host identity, thread storage, custom themes (`theme/`,
+including optional Pierre / VS Code `pierre-dark.json` and `pierre-light.json`),
+and
 plugins. It defaults to `~/.bb/` for the packaged app. The `pnpm dev` source launcher derives an isolated data
 directory under `~/.bb-dev/<checkout-instance>/` from the checkout path. The
 checkout instance id is the sanitized path to the checkout, relative to your

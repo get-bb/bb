@@ -1,6 +1,7 @@
 import { useEffect, useSyncExternalStore } from "react";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { refreshThemeColorMeta } from "@/hooks/useTheme";
+import { applyResolvedCodeTheme } from "@/lib/code-theme";
 import {
   applyAppThemeCss,
   getAppThemeEpoch,
@@ -16,7 +17,14 @@ import {
  */
 export function useAppTheme(): void {
   const { data } = useSystemConfig();
-  const css = data?.appearance ? resolveAppThemeCss(data.appearance) : null;
+  const appearance = data?.appearance;
+  const css = appearance ? resolveAppThemeCss(appearance) : null;
+
+  // Register Pierre files during render so child File/FileDiff mounts and the
+  // worker-pool sync effect see the resolved names on the same pass.
+  if (appearance?.resolvedCodeTheme !== undefined) {
+    applyResolvedCodeTheme(appearance.resolvedCodeTheme);
+  }
 
   useEffect(() => {
     if (css === null) return;

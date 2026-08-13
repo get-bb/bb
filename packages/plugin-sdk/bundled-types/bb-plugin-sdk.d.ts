@@ -97,6 +97,11 @@ declare const appKeybindingOverridesSchema: z$1.ZodArray<z$1.ZodObject<{
 }, z$1.core.$strict>>;
 type AppKeybindingOverrides = z$1.infer<typeof appKeybindingOverridesSchema>;
 
+interface JsonObject {
+    [key: string]: JsonValue$1;
+}
+type JsonValue$1 = string | number | boolean | null | JsonValue$1[] | JsonObject;
+
 declare const appThemeSchema: z$1.ZodObject<{
     themeId: z$1.ZodString;
     customCss: z$1.ZodNullable<z$1.ZodString>;
@@ -111,6 +116,11 @@ declare const appThemeSchema: z$1.ZodObject<{
         purple: "purple";
         pink: "pink";
     }>;
+    resolvedCodeTheme: z$1.ZodDefault<z$1.ZodObject<{
+        dark: z$1.ZodString;
+        light: z$1.ZodString;
+        files: z$1.ZodRecord<z$1.ZodString, z$1.ZodType<JsonObject, unknown, z$1.core.$ZodTypeInternals<JsonObject, unknown>>>;
+    }, z$1.core.$strict>>;
 }, z$1.core.$strip>;
 type AppTheme = z$1.infer<typeof appThemeSchema>;
 /**
@@ -266,11 +276,6 @@ declare const hostSchema: z$1.ZodObject<{
     updatedAt: z$1.ZodNumber;
 }, z$1.core.$strip>;
 type Host = z$1.infer<typeof hostSchema>;
-
-interface JsonObject {
-    [key: string]: JsonValue$1;
-}
-type JsonValue$1 = string | number | boolean | null | JsonValue$1[] | JsonObject;
 
 declare const pendingInteractionResolutionSchema: z$1.ZodUnion<readonly [z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
     decision: z$1.ZodLiteral<"allow_once">;
@@ -7168,6 +7173,11 @@ declare const systemConfigResponseSchema: z$1.ZodObject<{
             purple: "purple";
             pink: "pink";
         }>;
+        resolvedCodeTheme: z$1.ZodDefault<z$1.ZodObject<{
+            dark: z$1.ZodString;
+            light: z$1.ZodString;
+            files: z$1.ZodRecord<z$1.ZodString, z$1.ZodType<JsonObject, unknown, z$1.core.$ZodTypeInternals<JsonObject, unknown>>>;
+        }, z$1.core.$strict>>;
     }, z$1.core.$strip>;
     customThemes: z$1.ZodArray<z$1.ZodString>;
     pluginThemes: z$1.ZodArray<z$1.ZodObject<{
@@ -7224,6 +7234,11 @@ declare const themeCatalogResponseSchema: z$1.ZodObject<{
             purple: "purple";
             pink: "pink";
         }>;
+        resolvedCodeTheme: z$1.ZodDefault<z$1.ZodObject<{
+            dark: z$1.ZodString;
+            light: z$1.ZodString;
+            files: z$1.ZodRecord<z$1.ZodString, z$1.ZodType<JsonObject, unknown, z$1.core.$ZodTypeInternals<JsonObject, unknown>>>;
+        }, z$1.core.$strict>>;
     }, z$1.core.$strip>;
 }, z$1.core.$strip>;
 type ThemeCatalogResponse = z$1.infer<typeof themeCatalogResponseSchema>;

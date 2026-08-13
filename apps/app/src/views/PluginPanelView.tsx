@@ -7,6 +7,10 @@ import {
   createDiffWorker,
   getDiffWorkerPoolSize,
 } from "@/lib/diff-worker-pool";
+import {
+  useResolvedCodeThemePair,
+  useSyncPierreWorkerPoolTheme,
+} from "@/lib/code-theme";
 import { usePluginSlots } from "@/lib/plugin-slots";
 
 // Plugins can render `@pierre/diffs` FileDiff (the specifier is shimmed to
@@ -17,7 +21,10 @@ const WORKER_POOL_OPTIONS = {
   workerFactory: createDiffWorker,
   poolSize: getDiffWorkerPoolSize(),
 };
-const HIGHLIGHTER_OPTIONS = {};
+function PierreWorkerPoolThemeSync() {
+  useSyncPierreWorkerPoolTheme();
+  return null;
+}
 
 /**
  * The route surface for plugin `navPanel` slots (plugin design §5.2):
@@ -39,6 +46,7 @@ interface PluginPanelViewProps {
 }
 
 export function PluginPanelView(props: PluginPanelViewProps = {}) {
+  const theme = useResolvedCodeThemePair();
   const params = useParams<{
     pluginId: string;
     panelPath: string;
@@ -86,8 +94,9 @@ export function PluginPanelView(props: PluginPanelViewProps = {}) {
     ) : (
       <WorkerPoolContextProvider
         poolOptions={WORKER_POOL_OPTIONS}
-        highlighterOptions={HIGHLIGHTER_OPTIONS}
+        highlighterOptions={{ theme }}
       >
+        <PierreWorkerPoolThemeSync />
         {slotMount}
       </WorkerPoolContextProvider>
     );

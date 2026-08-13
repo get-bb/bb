@@ -192,6 +192,11 @@ describe("@bb/sdk", () => {
       themeId: "nord",
       customCss: null,
       faviconColor: "teal" as const,
+      resolvedCodeTheme: {
+        dark: "nord",
+        light: "nord",
+        files: {},
+      },
     };
     const queue = createFetchQueue([{ body: appearance }]);
     const sdk = createBbSdk({
@@ -220,12 +225,22 @@ describe("@bb/sdk", () => {
         themeId: "dracula",
         customCss: null,
         faviconColor: "purple" as const,
+        resolvedCodeTheme: {
+          dark: "dracula",
+          light: "dracula",
+          files: {},
+        },
       },
     };
     const updated = {
       themeId: "nord",
       customCss: null,
       faviconColor: "purple" as const,
+      resolvedCodeTheme: {
+        dark: "nord",
+        light: "nord",
+        files: {},
+      },
     };
     const queue = createFetchQueue([{ body: current }, { body: updated }]);
     const sdk = createBbSdk({

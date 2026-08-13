@@ -1589,6 +1589,27 @@ function ChecksSection({ checks }: { checks: PullCheck[] }) {
   );
 }
 
+function readHostCodeTheme(): { dark: string; light: string } {
+  const root = document.documentElement.dataset;
+  return {
+    dark: root.bbCodeThemeDark ?? "pierre-dark",
+    light: root.bbCodeThemeLight ?? "pierre-light",
+  };
+}
+
+function useHostCodeTheme(): { dark: string; light: string } {
+  const [theme, setTheme] = useState(readHostCodeTheme);
+  useEffect(() => {
+    const observer = new MutationObserver(() => setTheme(readHostCodeTheme()));
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-bb-code-theme-dark", "data-bb-code-theme-light"],
+    });
+    return () => observer.disconnect();
+  }, []);
+  return theme;
+}
+
 /** The host toggles dark mode via a `dark` class on <html>; pierre's diff
     themes are picked per render, so track it live. */
 function useIsDarkTheme(): boolean {
@@ -1616,6 +1637,7 @@ function useIsDarkTheme(): boolean {
  */
 function DiffPatch({ path, patch }: { path: string; patch: string }) {
   const dark = useIsDarkTheme();
+  const codeTheme = useHostCodeTheme();
   const fileDiff = useMemo<FileDiffMetadata | null>(() => {
     const normalized = patch.replace(/\r\n/g, "\n").trimEnd();
     if (normalized.length === 0) return null;
@@ -1635,8 +1657,9 @@ function DiffPatch({ path, patch }: { path: string; patch: string }) {
         overflow: "scroll",
         disableFileHeader: true,
         themeType: dark ? "dark" : "light",
+        theme: codeTheme,
       }) as const,
-    [dark],
+    [codeTheme, dark],
   );
   if (fileDiff === null) {
     return (

@@ -682,6 +682,17 @@ This is the BB habit: custom app-theme work belongs in
    id). To edit an existing theme, change its `theme.css` in place.
 3. Activate it: `bb theme set <name>`. Changes apply live to every open window.
 
+Code colors follow the active palette. Built-in palettes use the matching
+Shiki pair (Nord, Dracula, Solarized, Gruvbox, Catppuccin). To restyle diffs
+for a custom palette, put Pierre / VS Code theme JSON next to the stylesheet:
+
+- `pierre-dark.json` and `pierre-light.json` in the same folder, or
+- `theme.json` with `{ "codeTheme": { "dark": "…", "light": "…" } }` — each
+  side is a bundled Shiki name (`github-dark`) or a folder-relative `.json`
+  file.
+
+See [Pierre theme authoring](https://diffs.com/theme) for the JSON shape.
+
 To author the stylesheet, **read `references/theming.md` (in this skill's
 directory) first.** It is the full design-token reference — what every CSS
 variable drives, which tokens to set vs. which auto-derive — plus the two-block

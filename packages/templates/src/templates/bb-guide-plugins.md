@@ -371,10 +371,13 @@ plugin id is the final package-name component minus `bb-plugin-`, so both forms
 use `hello`.
 
 Plugins can contribute palettes with `bb.themes`: an array of
-`{ id, name, description?, css }`, where `css` is a plugin-relative `.css`
-file. Loaded plugin palettes appear in Settings → Appearance and `bb theme
-list`; their selectable id is `plugin:<plugin-id>:<theme-id>`. Disabling or
-removing the owning plugin makes bb fall back to the default palette.
+`{ id, name, description?, css, codeTheme? }`, where `css` is a
+plugin-relative `.css` file and optional `codeTheme` is
+`{ dark?, light? }` (a bundled Shiki / Pierre name or a plugin-relative
+VS Code theme `.json`). Loaded plugin palettes appear in Settings →
+Appearance and `bb theme list`; their selectable id is
+`plugin:<plugin-id>:<theme-id>`. Disabling or removing the owning plugin
+makes bb fall back to the default palette.
 
 Branding is explicit. Declare `bb.branding.icon` as either the plugin's
 canonical BB icon name or a plugin-relative compact SVG such as
