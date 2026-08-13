@@ -1,3 +1,5 @@
+import type { PluginContext } from "../context.js";
+
 export const REMOTE_SETTING_DESCRIPTORS = {
   platformBaseUrl: { type: "string", label: "Platform URL", default: "" },
   platformToken: { type: "string", label: "Platform token", secret: true },
@@ -38,6 +40,18 @@ export const REMOTE_SETTING_DESCRIPTORS = {
     options: ["1", "2", "4", "8"] as string[],
     default: "4",
   },
+  standaloneUnpackExecutablePath: {
+    type: "string",
+    label: "Standalone unpack wrapper",
+    description: "Absolute path to the reviewed standalone firmware unpack wrapper. Leave blank to keep local unpack disabled.",
+    default: "",
+  },
+  standaloneUnpackImage: {
+    type: "string",
+    label: "FACT extractor image",
+    description: "Container image used by the standalone firmware unpack wrapper.",
+    default: "localhost:5000/services-unpack:latest",
+  },
 } as const;
 
 export interface RemoteSettingValues {
@@ -52,6 +66,8 @@ export interface RemoteSettingValues {
   forgeCommand: string;
   forgeAuthToken: string | undefined;
   forgeConcurrency: string;
+  standaloneUnpackExecutablePath: string;
+  standaloneUnpackImage: string;
 }
 
 export interface RemoteConfig {
@@ -66,11 +82,51 @@ export interface RemoteConfig {
   platformConcurrency: number;
   asConcurrency: number;
   forgeConcurrency: number;
+  standaloneUnpackExecutablePath: string | null;
+  standaloneUnpackImage: string;
+}
+
+type RemoteSettingsListener = (values: RemoteSettingValues) => void;
+
+interface RemoteSettingsChannel {
+  current: RemoteSettingValues | null;
+  listeners: Set<RemoteSettingsListener>;
+}
+
+function remoteSettingsChannel(ctx: PluginContext): RemoteSettingsChannel {
+  return ctx.service("remote-settings.current", () => ({
+    current: null,
+    listeners: new Set<RemoteSettingsListener>(),
+  }));
+}
+
+export function publishRemoteSettings(
+  ctx: PluginContext,
+  values: RemoteSettingValues,
+): void {
+  const channel = remoteSettingsChannel(ctx);
+  channel.current = { ...values };
+  for (const listener of channel.listeners) listener(channel.current);
+}
+
+export function subscribeRemoteSettings(
+  ctx: PluginContext,
+  listener: RemoteSettingsListener,
+): () => void {
+  const channel = remoteSettingsChannel(ctx);
+  channel.listeners.add(listener);
+  if (channel.current) listener(channel.current);
+  return () => channel.listeners.delete(listener);
 }
 
 function optional(value: string | undefined): string | null {
   const trimmed = value?.trim() ?? "";
   return trimmed.length === 0 ? null : trimmed;
+}
+
+function nonEmpty(value: string, fallback: string): string {
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : fallback;
 }
 
 function concurrency(value: string, allowed: readonly string[], fallback: number): number {
@@ -110,7 +166,22 @@ export function readRemoteConfig(values: RemoteSettingValues): RemoteConfig {
       REMOTE_SETTING_DESCRIPTORS.forgeConcurrency.options,
       4,
     ),
+    standaloneUnpackExecutablePath: optional(values.standaloneUnpackExecutablePath),
+    standaloneUnpackImage: nonEmpty(
+      values.standaloneUnpackImage,
+      REMOTE_SETTING_DESCRIPTORS.standaloneUnpackImage.default,
+    ),
   };
+}
+
+export function standaloneUnpackConfigChanged(
+  next: RemoteSettingValues,
+  prev: RemoteSettingValues,
+): boolean {
+  return (
+    next.standaloneUnpackExecutablePath !== prev.standaloneUnpackExecutablePath ||
+    next.standaloneUnpackImage !== prev.standaloneUnpackImage
+  );
 }
 
 export function platformConfigChanged(

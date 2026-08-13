@@ -1,6 +1,10 @@
 import type { BbPluginApi } from "@bb/plugin-sdk";
 import type { PluginContext } from "../../lib/context.js";
-import { REMOTE_SETTING_DESCRIPTORS } from "../../lib/remote/config.js";
+import {
+  publishRemoteSettings,
+  REMOTE_SETTING_DESCRIPTORS,
+  standaloneUnpackConfigChanged,
+} from "../../lib/remote/config.js";
 import { createRemoteServiceController } from "../../lib/remote/index.js";
 import { rpcContract } from "../../shared/contract.js";
 
@@ -12,9 +16,11 @@ export async function registerRemoteServices(
 ): Promise<void> {
   const settings = bb.settings.define(REMOTE_SETTING_DESCRIPTORS);
   const initial = await settings.get();
+  publishRemoteSettings(ctx, initial);
   const controller = createRemoteServiceController(ctx, initial);
   ctx.service("remote-services", () => controller.services);
   settings.onChange((next, prev) => {
+    if (standaloneUnpackConfigChanged(next, prev)) publishRemoteSettings(ctx, next);
     void controller.reconfigure(next, prev);
   });
   bb.rpc.register(connectionsContract, {

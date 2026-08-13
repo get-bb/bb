@@ -9,7 +9,7 @@
 import { defineRpcContract } from "@bb/plugin-sdk";
 import { z } from "zod";
 
-export const CONTRACT_VERSION = 1 as const;
+export const CONTRACT_VERSION = 2 as const;
 
 export type JsonValue =
   | null
@@ -82,6 +82,7 @@ export const RPC_WIRE_METHODS = {
   "firmware.tree.list": "firmwareTreeList",
   "firmware.file.get": "firmwareFileGet",
   "firmware.diff": "firmwareDiff",
+  "firmware.input.issue": "firmwareInputIssue",
   "firmware.materialize.start": "firmwareMaterializeStart",
   "firmware.materialize.cancel": "firmwareMaterializeCancel",
   "firmware.file.hydrate": "firmwareFileHydrate",
@@ -155,6 +156,7 @@ export const RPC_METHOD_CLASSIFICATIONS = {
   firmwareTreeList: "read",
   firmwareFileGet: "read",
   firmwareDiff: "read",
+  firmwareInputIssue: "action",
   firmwareMaterializeStart: "action",
   firmwareMaterializeCancel: "action",
   firmwareFileHydrate: "action",
@@ -1396,6 +1398,25 @@ export const rpcContract = defineRpcContract({
       toProjectVersionId: projectVersionIdSchema,
     }),
     output: pageResultSchema(entitySummarySchema),
+  },
+  firmwareInputIssue: {
+    input: z
+      .object({
+        projectId: identifierSchema,
+        projectVersionId: projectVersionIdSchema,
+        environmentId: identifierSchema,
+        firmwarePath: relativeArtifactSchema,
+      })
+      .strict(),
+    output: z
+      .object({
+        projectId: identifierSchema,
+        projectVersionId: projectVersionIdSchema,
+        inputId: identifierSchema,
+        fileName: z.string().min(1).max(500),
+        expiresAt: timestampSchema,
+      })
+      .strict(),
   },
   firmwareMaterializeStart: {
     input: z.discriminatedUnion("source", [

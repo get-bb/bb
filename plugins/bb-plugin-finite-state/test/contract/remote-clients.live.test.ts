@@ -53,6 +53,8 @@ live("designated read-only remote contracts", () => {
         forgeCommand: process.env.FS_FORGE_COMMAND ?? "",
         forgeAuthToken: process.env.FS_FORGE_TOKEN,
         forgeConcurrency: "4",
+        standaloneUnpackExecutablePath: "",
+        standaloneUnpackImage: "localhost:5000/services-unpack:latest",
       };
       const config = readRemoteConfig(values);
       const transport = await createForgeMcpTransport(config);

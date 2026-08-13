@@ -34,27 +34,6 @@ export function apiFallbackError(code: string, message: string, cause?: unknown)
   return new FirmwareCacheError(code, message, cause === undefined ? undefined : { cause });
 }
 
-function isApiFirmwareDeps(value: unknown): value is ApiFirmwareDeps {
-  return value !== null && typeof value === "object" &&
-    "platform" in value && value.platform !== null && typeof value.platform === "object" &&
-    "browseFirmwareFilesystem" in value.platform && typeof value.platform.browseFirmwareFilesystem === "function" &&
-    "getFirmwareFile" in value.platform && typeof value.platform.getFirmwareFile === "function" &&
-    "scope" in value && value.scope !== null && typeof value.scope === "object" &&
-    "worktreeRoot" in value.scope && typeof value.scope.worktreeRoot === "string" &&
-    "projectId" in value.scope && typeof value.scope.projectId === "string" &&
-    "projectVersionId" in value.scope && typeof value.scope.projectVersionId === "string" &&
-    "generationId" in value.scope && typeof value.scope.generationId === "string" &&
-    "cache" in value && value.cache !== null && typeof value.cache === "object" &&
-    "open" in value.cache && typeof value.cache.open === "function" &&
-    "putBlob" in value.cache && typeof value.cache.putBlob === "function" &&
-    "linkNode" in value.cache && typeof value.cache.linkNode === "function" &&
-    "commit" in value.cache && typeof value.cache.commit === "function" &&
-    "readiness" in value.cache && typeof value.cache.readiness === "function" &&
-    "verifyIntegrity" in value.cache && typeof value.cache.verifyIntegrity === "function" &&
-    (!("now" in value) || value.now === undefined || typeof value.now === "function") &&
-    (!("publishProgress" in value) || value.publishProgress === undefined || typeof value.publishProgress === "function");
-}
-
 function assertRequest(deps: ApiFirmwareDeps, request: ApiFallbackRequest): void {
   if (request.pvId !== deps.scope.projectVersionId) {
     throw apiFallbackError(
@@ -82,31 +61,11 @@ function assertRequest(deps: ApiFirmwareDeps, request: ApiFallbackRequest): void
   }
 }
 
-export async function materializeFromApi(
+export function materializeFromApi(
   deps: ApiFirmwareDeps,
   request: ApiFallbackRequest,
   signal: AbortSignal,
-): Promise<FirmwareMount>;
-/** WP-51 owns wiring the frozen RPC action to verified scope, client, and cache dependencies. */
-export function materializeFromApi(input: unknown): never;
-export function materializeFromApi(
-  depsOrInput: ApiFirmwareDeps | unknown,
-  request?: ApiFallbackRequest,
-  signal?: AbortSignal,
-): Promise<FirmwareMount> | never {
-  if (request === undefined || signal === undefined) {
-    throw apiFallbackError(
-      "API_FALLBACK_CONFIGURATION_REQUIRED",
-      "API firmware fallback requires an explicit verified client and firmware execution scope.",
-    );
-  }
-  if (!isApiFirmwareDeps(depsOrInput)) {
-    throw apiFallbackError(
-      "API_FALLBACK_CONFIGURATION_REQUIRED",
-      "API firmware fallback dependencies are malformed.",
-    );
-  }
-  const deps = depsOrInput;
+): Promise<FirmwareMount> {
   assertRequest(deps, request);
   return materializeFromApiImpl(deps, request, signal);
 }
@@ -125,10 +84,14 @@ async function materializeFromApiImpl(
   }
 }
 
-/** Compatibility seam for the frozen RPC handler; WP-51 supplies its dependencies. */
-export function hydrateFirmwareFile(_input: unknown): never {
-  throw apiFallbackError(
-    "API_FALLBACK_CONFIGURATION_REQUIRED",
-    "API firmware hydration requires an explicit verified client and firmware execution scope.",
-  );
+export function hydrateFirmwareFile(
+  deps: ApiFirmwareDeps,
+  request: { pvId: string; path: string },
+  signal: AbortSignal,
+): Promise<FirmwareMount> {
+  return materializeFromApi(deps, {
+    pvId: request.pvId,
+    mode: "files",
+    paths: [request.path],
+  }, signal);
 }
