@@ -8,7 +8,7 @@ import {
   type Thread,
 } from "@bb/domain";
 import { groupHostDaemonEvents } from "@bb/host-daemon-contract";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   hasLiveThreadStartInFlight,
   requestThreadStart,
@@ -42,6 +42,7 @@ const START_EXECUTION = {
 
 interface StartLiveThreadStartRpcArgs {
   harness: TestAppHarness;
+  onFailure?: (error: unknown) => void | Promise<void>;
   requestIdValue: number;
 }
 
@@ -95,6 +96,7 @@ async function startLiveThreadStartRpc(
     projectId: project.id,
     providerId: thread.providerId,
     syncGeneratedTitle: false,
+    ...(args.onFailure !== undefined ? { onFailure: args.onFailure } : {}),
   });
 
   const startCommand = await waitForQueuedCommand(
@@ -114,6 +116,60 @@ async function failLiveStartRpc(args: FailLiveStartRpcArgs): Promise<void> {
 }
 
 describe("live thread start handoff", () => {
+  it.each([
+    {
+      callbackKind: "throws synchronously",
+      onFailure: () => {
+        throw new Error("sync callback failure");
+      },
+    },
+    {
+      callbackKind: "rejects asynchronously",
+      onFailure: async () => {
+        throw new Error("async callback failure");
+      },
+    },
+  ])(
+    "contains an onFailure callback that $callbackKind without hiding the provider failure",
+    async ({ onFailure }) => {
+      await withTestHarness(async (harness) => {
+        const warn = vi.spyOn(harness.deps.logger, "warn");
+        const fixture = await startLiveThreadStartRpc({
+          harness,
+          onFailure,
+          requestIdValue: 10,
+        });
+
+        await failLiveStartRpc({
+          harness,
+          startCommand: fixture.startCommand,
+        });
+
+        await expect
+          .poll(() => hasLiveThreadStartInFlight(fixture.thread.id))
+          .toBe(false);
+        expect(warn).toHaveBeenCalledWith(
+          expect.objectContaining({
+            err: expect.objectContaining({
+              message: expect.stringMatching(/callback failure/),
+            }),
+            threadId: fixture.thread.id,
+          }),
+          "Thread start failure callback failed",
+        );
+        expect(warn).toHaveBeenCalledWith(
+          expect.objectContaining({
+            err: expect.objectContaining({
+              message: "Test settled live thread start",
+            }),
+            threadId: fixture.thread.id,
+          }),
+          "Live thread start command failed",
+        );
+      });
+    },
+  );
+
   it("sends live stop when manual stop races with an unsettled thread start", async () => {
     await withTestHarness(async (harness) => {
       const fixture = await startLiveThreadStartRpc({

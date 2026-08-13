@@ -142,6 +142,14 @@ export interface PrepareReadyThreadTurnDispatchArgs {
 
 const threadStartRequestDeduper = createAsyncDeduper<string, void>();
 
+export type ThreadStartFailureHandler = (
+  error: unknown,
+) => void | Promise<void>;
+
+type RequestThreadStartArgs = ThreadStartCommandArgs & {
+  onFailure?: ThreadStartFailureHandler;
+};
+
 type InFlightThreadRpcKind =
   | "thread.start"
   | "thread.start.title-sync"
@@ -1166,7 +1174,7 @@ function dispatchThreadStartFromRequest(
 
 export async function requestThreadStart(
   deps: CommandResultSideEffectsDeps,
-  args: ThreadStartCommandArgs & { onFailure?: (error: unknown) => void },
+  args: RequestThreadStartArgs,
 ): Promise<void> {
   await threadStartRequestDeduper.run(args.thread.id, () =>
     requestThreadStartOnce(deps, args),
@@ -1175,7 +1183,7 @@ export async function requestThreadStart(
 
 async function requestThreadStartOnce(
   deps: CommandResultSideEffectsDeps,
-  args: ThreadStartCommandArgs & { onFailure?: (error: unknown) => void },
+  args: RequestThreadStartArgs,
 ): Promise<void> {
   if (hasLiveThreadStartInFlight(args.thread.id)) {
     return;
@@ -1208,12 +1216,19 @@ async function requestThreadStartOnce(
       hostId: args.environment.hostId,
       timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
     })
-      .catch((error) => {
-        args.onFailure?.(error);
+      .catch(async (error) => {
         deps.logger.warn(
           { err: error, threadId: args.thread.id },
           "Live thread start command failed",
         );
+        try {
+          await args.onFailure?.(error);
+        } catch (callbackError) {
+          deps.logger.warn(
+            { err: callbackError, threadId: args.thread.id },
+            "Thread start failure callback failed",
+          );
+        }
       })
       .finally(() => {
         inFlightThreadRpcGuard.release(args.thread.id, "thread.start");

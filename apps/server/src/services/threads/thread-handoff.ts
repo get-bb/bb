@@ -181,6 +181,22 @@ function advanceHandoffProvisioning(
     });
 }
 
+function runPostCommitSideEffect(
+  deps: ThreadHandoffDeps,
+  replacementThreadId: string,
+  label: string,
+  effect: () => void,
+): void {
+  try {
+    effect();
+  } catch (error) {
+    deps.logger.warn(
+      { replacementThreadId, ...runtimeErrorLogFields(deps.config, error) },
+      `Failed to ${label} for replacement thread`,
+    );
+  }
+}
+
 export async function createThreadHandoff(
   deps: ThreadHandoffDeps,
   request: ThreadHandoffRequest,
@@ -279,11 +295,22 @@ export async function createThreadHandoff(
   if (!transactionResult.created)
     return toStatus(deps, transactionResult.handoff);
   const replacement = transactionResult.thread;
-  deps.hub.notifyThread(replacement.id, ["thread-created"], {
-    projectId: replacement.projectId,
+  runPostCommitSideEffect(
+    deps,
+    replacement.id,
+    "notify thread creation",
+    () => {
+      deps.hub.notifyThread(replacement.id, ["thread-created"], {
+        projectId: replacement.projectId,
+      });
+    },
+  );
+  runPostCommitSideEffect(deps, replacement.id, "notify project", () => {
+    deps.hub.notifyProject(replacement.projectId, ["threads-changed"]);
   });
-  deps.hub.notifyProject(replacement.projectId, ["threads-changed"]);
-  emitPluginThreadCreated(replacement);
+  runPostCommitSideEffect(deps, replacement.id, "emit plugin event", () => {
+    emitPluginThreadCreated(replacement);
+  });
   try {
     const context = requestThreadProvision(deps, {
       thread: replacement,

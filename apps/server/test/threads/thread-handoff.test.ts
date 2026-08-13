@@ -10,7 +10,7 @@ import {
   markThreadDeleted,
   updateHost,
 } from "@bb/db";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   hostDaemonOnlineRpcResponseMessageSchema,
   hostDaemonServerWsMessageSchema,
@@ -165,6 +165,45 @@ describe("thread handoff service", () => {
           permissionMode: "full",
         },
       });
+    });
+  });
+
+  it("still provisions the committed replacement when a thread notification throws", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const source = seedThread(harness.deps, {
+        environmentId: environment.id,
+        projectId: project.id,
+      });
+      vi.spyOn(harness.deps.hub, "notifyThread").mockImplementationOnce(() => {
+        throw new Error("stale socket");
+      });
+
+      const created = await createThreadHandoff(
+        harness.deps,
+        request(source.id),
+      );
+      await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.start" &&
+          command.threadId === created.replacementThreadId,
+      );
+
+      expect(
+        listQueuedThreadCommands(
+          harness,
+          "thread.start",
+          created.replacementThreadId,
+        ),
+      ).toHaveLength(1);
     });
   });
 

@@ -18,7 +18,10 @@ import {
   buildCwdBranchEntries,
   createClientTurnRequestId,
 } from "./thread-events.js";
-import { requestThreadStart } from "./thread-lifecycle.js";
+import {
+  requestThreadStart,
+  type ThreadStartFailureHandler,
+} from "./thread-lifecycle.js";
 import { resolvePermissionEscalation } from "./thread-runtime-config.js";
 import {
   attachedEnvironmentIdForContext,
@@ -80,7 +83,7 @@ interface RequestThreadReprovisionArgs {
 
 interface AdvanceThreadProvisioningArgs {
   context?: ThreadProvisionContext;
-  onThreadStartFailure?: (error: unknown) => void;
+  onThreadStartFailure?: ThreadStartFailureHandler;
   threadId: string;
 }
 
@@ -103,7 +106,7 @@ interface ThreadProvisionWorkspaceReadyTransactionDeps {
 interface EnvironmentPayloadThreadArgs {
   context: ThreadProvisionProvisionableContext;
   environment: Environment;
-  onThreadStartFailure?: (error: unknown) => void;
+  onThreadStartFailure?: ThreadStartFailureHandler;
   thread: Thread;
 }
 
