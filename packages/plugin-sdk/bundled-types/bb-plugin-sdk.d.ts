@@ -2904,8 +2904,8 @@ declare const environmentDiffFileResponseSchema: z$1.ZodObject<{
     path: z$1.ZodString;
     content: z$1.ZodString;
     contentEncoding: z$1.ZodEnum<{
-        base64: "base64";
         utf8: "utf8";
+        base64: "base64";
     }>;
     mimeType: z$1.ZodOptional<z$1.ZodString>;
     sizeBytes: z$1.ZodNumber;
@@ -2968,6 +2968,7 @@ declare const environmentStatusResponseSchema: z$1.ZodDiscriminatedUnion<[z$1.Zo
         workingTree: z$1.ZodObject<{
             insertions: z$1.ZodNumber;
             deletions: z$1.ZodNumber;
+            lineStatsComplete: z$1.ZodBoolean;
             files: z$1.ZodArray<z$1.ZodObject<{
                 path: z$1.ZodString;
                 status: z$1.ZodEnum<{
@@ -3013,6 +3014,7 @@ declare const environmentStatusResponseSchema: z$1.ZodDiscriminatedUnion<[z$1.Zo
         mergeBase: z$1.ZodNullable<z$1.ZodObject<{
             insertions: z$1.ZodNumber;
             deletions: z$1.ZodNumber;
+            lineStatsComplete: z$1.ZodBoolean;
             files: z$1.ZodArray<z$1.ZodObject<{
                 path: z$1.ZodString;
                 status: z$1.ZodEnum<{
@@ -5742,6 +5744,7 @@ declare const hostDaemonCommandRegistry: {
             workingTree: z$1.ZodObject<{
                 insertions: z$1.ZodNumber;
                 deletions: z$1.ZodNumber;
+                lineStatsComplete: z$1.ZodBoolean;
                 files: z$1.ZodArray<z$1.ZodObject<{
                     path: z$1.ZodString;
                     status: z$1.ZodEnum<{
@@ -5787,6 +5790,7 @@ declare const hostDaemonCommandRegistry: {
             mergeBase: z$1.ZodNullable<z$1.ZodObject<{
                 insertions: z$1.ZodNumber;
                 deletions: z$1.ZodNumber;
+                lineStatsComplete: z$1.ZodBoolean;
                 files: z$1.ZodArray<z$1.ZodObject<{
                     path: z$1.ZodString;
                     status: z$1.ZodEnum<{
@@ -5857,6 +5861,7 @@ declare const hostDaemonCommandRegistry: {
         }, z$1.core.$strip>], "type">;
         maxDiffBytes: z$1.ZodNumber;
         maxFileListBytes: z$1.ZodNumber;
+        maxUntrackedFiles: z$1.ZodNumber;
     }, z$1.core.$strict>, z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
         outcome: z$1.ZodLiteral<"available">;
         diff: z$1.ZodObject<{
@@ -5905,6 +5910,7 @@ declare const hostDaemonCommandRegistry: {
             type: z$1.ZodLiteral<"commit">;
             sha: z$1.ZodString;
         }, z$1.core.$strip>], "type">;
+        maxFiles: z$1.ZodNumber;
     }, z$1.core.$strict>, z$1.ZodDiscriminatedUnion<[z$1.ZodObject<{
         outcome: z$1.ZodLiteral<"available">;
         files: z$1.ZodArray<z$1.ZodObject<{

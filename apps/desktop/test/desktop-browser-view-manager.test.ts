@@ -1,4 +1,4 @@
-import type { WebContentsView } from "electron";
+import type { RenderProcessGoneDetails, WebContentsView } from "electron";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BbDesktopBrowserViewBounds } from "@bb/desktop-contract";
 import {
@@ -104,6 +104,16 @@ type FakeBeforeInputListener = (
   input: FakeInput,
 ) => void;
 
+type FakeRenderProcessGoneDetails = Pick<
+  RenderProcessGoneDetails,
+  "exitCode" | "reason"
+>;
+
+type FakeRenderProcessGoneListener = (
+  event: FakeWebContentsEvent,
+  details: FakeRenderProcessGoneDetails,
+) => void;
+
 interface FakeWebContentsEventMap {
   "before-input-event": FakeBeforeInputListener;
   "will-frame-navigate": FakeWillFrameNavigateListener;
@@ -111,53 +121,19 @@ interface FakeWebContentsEventMap {
   "will-redirect": FakeWillRedirectListener;
   "did-start-loading": FakeVoidWebContentsListener;
   "did-stop-loading": FakeVoidWebContentsListener;
+  "did-finish-load": FakeVoidWebContentsListener;
   "did-navigate": FakeDidNavigateListener;
   "did-navigate-in-page": FakeDidNavigateInPageListener;
   "did-start-navigation": FakeVoidWebContentsListener;
   "page-title-updated": FakeVoidWebContentsListener;
   "did-fail-load": FakeDidFailLoadListener;
   "context-menu": FakeContextMenuListener;
+  "render-process-gone": FakeRenderProcessGoneListener;
 }
-
-type FakeResourceType =
-  | "mainFrame"
-  | "subFrame"
-  | "stylesheet"
-  | "script"
-  | "image"
-  | "font"
-  | "object"
-  | "xhr"
-  | "ping"
-  | "cspReport"
-  | "media"
-  | "webSocket"
-  | "other";
 
 interface FakeWebFrameMain {
   origin: string;
 }
-
-interface FakeOnBeforeRequestDetails {
-  url: string;
-  method?: string;
-  resourceType: FakeResourceType;
-  webContentsId?: number;
-  frame?: FakeWebFrameMain | null;
-}
-
-interface FakeWebRequestCallbackResponse {
-  cancel: boolean;
-}
-
-type FakeOnBeforeRequestCallback = (
-  response: FakeWebRequestCallbackResponse,
-) => void;
-
-type FakeOnBeforeRequestListener = (
-  details: FakeOnBeforeRequestDetails,
-  callback: FakeOnBeforeRequestCallback,
-) => void;
 
 interface FakeSessionEvent {
   preventDefault(): void;
@@ -258,6 +234,7 @@ const electronMock = vi.hoisted(() => {
     public historyEntries: Array<{ title: string; url: string }> = [];
     public readonly id: number;
     public readonly loadURLCalls: string[] = [];
+    public reloadCalls = 0;
     public readonly pendingCaptureResolvers: Array<
       (image: FakeNativeImage) => void
     > = [];
@@ -268,12 +245,14 @@ const electronMock = vi.hoisted(() => {
       "will-redirect": [],
       "did-start-loading": [],
       "did-stop-loading": [],
+      "did-finish-load": [],
       "did-navigate": [],
       "did-navigate-in-page": [],
       "did-start-navigation": [],
       "page-title-updated": [],
       "did-fail-load": [],
       "context-menu": [],
+      "render-process-gone": [],
     };
     private title = "";
     private url = "";
@@ -340,7 +319,9 @@ const electronMock = vi.hoisted(() => {
       this.listeners[eventName].push(listener);
     }
 
-    reload(): void {}
+    reload(): void {
+      this.reloadCalls += 1;
+    }
 
     setWindowOpenHandler(handler: FakeWindowOpenHandler): void {
       this.windowOpenHandler = handler;
@@ -357,6 +338,18 @@ const electronMock = vi.hoisted(() => {
           args.validatedURL,
           args.isMainFrame,
         );
+      }
+    }
+
+    emitRenderProcessGone(details: FakeRenderProcessGoneDetails): void {
+      for (const listener of this.listeners["render-process-gone"]) {
+        listener(fakeWebContentsEvent, details);
+      }
+    }
+
+    emitDidFinishLoad(): void {
+      for (const listener of this.listeners["did-finish-load"]) {
+        listener();
       }
     }
 
@@ -462,15 +455,8 @@ const electronMock = vi.hoisted(() => {
 
   class FakeSession {
     public readonly willDownloadListeners: FakeSessionListener[] = [];
-    public beforeRequestListener: FakeOnBeforeRequestListener | null = null;
     public permissionCheckHandler: FakePermissionCheckHandler | null = null;
     public permissionRequestHandler: FakePermissionRequestHandler | null = null;
-    public readonly webRequest = {
-      onBeforeRequest: (listener: FakeOnBeforeRequestListener | null): void => {
-        this.beforeRequestListener = listener;
-      },
-    };
-
     on(eventName: "will-download", listener: FakeSessionListener): void {
       this.willDownloadListeners.push(listener);
     }
@@ -569,6 +555,7 @@ class FakeHostWindow implements DesktopBrowserHostWindow {
 }
 
 beforeEach(() => {
+  vi.useRealTimers();
   electronMock.fakeSessions.length = 0;
   electronMock.fakeViews.length = 0;
 });
@@ -605,14 +592,6 @@ interface AttachBrowserTabArgs {
   url: string;
 }
 
-interface BrowserRequestBlockedArgs {
-  url: string;
-  method?: string;
-  resourceType: FakeResourceType;
-  frameOrigin?: string | null;
-  webContentsId?: number;
-}
-
 function attachBrowserTab(args: AttachBrowserTabArgs): void {
   args.manager.attach({
     hostWindow: args.hostWindow,
@@ -636,43 +615,21 @@ function requireFakeView(
   return view;
 }
 
-function requireOnBeforeRequestListener(): FakeOnBeforeRequestListener {
-  const fakeSession = electronMock.fakeSessions.at(-1);
-  expect(fakeSession).toBeDefined();
-  if (fakeSession === undefined) {
-    throw new Error("Expected a browser session to be created.");
-  }
-  const listener = fakeSession.beforeRequestListener;
-  expect(listener).not.toBeNull();
-  if (listener === null) {
-    throw new Error("Expected an onBeforeRequest listener to be registered.");
-  }
-  return listener;
-}
-
-function browserRequestBlocked(args: BrowserRequestBlockedArgs): boolean {
-  const details: FakeOnBeforeRequestDetails = {
-    url: args.url,
-    method: args.method ?? "GET",
-    resourceType: args.resourceType,
-  };
-  if (args.webContentsId !== undefined) {
-    details.webContentsId = args.webContentsId;
-  }
-  if (args.frameOrigin !== undefined) {
-    details.frame =
-      args.frameOrigin === null ? null : { origin: args.frameOrigin };
-  }
-
-  const responses: FakeWebRequestCallbackResponse[] = [];
-  requireOnBeforeRequestListener()(details, (nextResponse) => {
-    responses.push(nextResponse);
+function createRendererRecoveryFixture(webContentsId: number) {
+  const manager = createDesktopBrowserViewManager({
+    partition: "persist:test",
   });
-  const response = responses[0];
-  if (response === undefined) {
-    throw new Error("Expected onBeforeRequest to invoke its callback.");
-  }
-  return response.cancel;
+  const hostWindow = new FakeHostWindow({
+    contentBounds: { width: 700, height: 450 },
+    webContentsId,
+  });
+  attachBrowserTab({
+    manager,
+    hostWindow,
+    tabId: "browser:a",
+    url: "https://example.com/original",
+  });
+  return { manager, hostWindow, view: requireFakeView(0) };
 }
 
 function openTabPushesOf(hostWindow: FakeHostWindow): string[] {
@@ -742,636 +699,7 @@ describe("DesktopBrowserViewManager", () => {
     expect(dispatchAppCommand).toHaveBeenCalledTimes(1);
   });
 
-  it("allows loopback navigation requested from browser chrome", () => {
-    const manager = createDesktopBrowserViewManager({
-      partition: "persist:test",
-    });
-    const hostWindow = new FakeHostWindow({
-      contentBounds: { width: 700, height: 450 },
-      webContentsId: 51,
-    });
-
-    attachBrowserTab({
-      manager,
-      hostWindow,
-      tabId: "browser:a",
-      url: "",
-    });
-    const view = requireFakeView(0);
-
-    manager.navigate({
-      hostWindow,
-      request: {
-        tabId: "browser:a",
-        url: "http://localhost:5173/",
-      },
-    });
-
-    expect(view.webContents.loadURLCalls).toEqual(["http://localhost:5173/"]);
-    expect(
-      browserRequestBlocked({
-        url: "http://localhost:5173/",
-        resourceType: "mainFrame",
-        webContentsId: view.webContents.id,
-      }),
-    ).toBe(false);
-  });
-
-  it("allows an initial loopback tab load when Electron omits webContents attribution", () => {
-    const manager = createDesktopBrowserViewManager({
-      partition: "persist:test",
-    });
-    const hostWindow = new FakeHostWindow({
-      contentBounds: { width: 700, height: 450 },
-      webContentsId: 53,
-    });
-
-    attachBrowserTab({
-      manager,
-      hostWindow,
-      tabId: "browser:a",
-      url: "http://localhost:5173/",
-    });
-    const view = requireFakeView(0);
-
-    expect(view.webContents.loadURLCalls).toEqual(["http://localhost:5173/"]);
-    expect(
-      browserRequestBlocked({
-        url: "http://localhost:5173/",
-        resourceType: "mainFrame",
-      }),
-    ).toBe(false);
-    expect(
-      browserRequestBlocked({
-        url: "http://localhost:5173/",
-        resourceType: "mainFrame",
-        webContentsId: 0,
-      }),
-    ).toBe(false);
-  });
-
-  it("blocks local main-frame form posts while allowing local get navigations", () => {
-    const manager = createDesktopBrowserViewManager({
-      partition: "persist:test",
-    });
-    const hostWindow = new FakeHostWindow({
-      contentBounds: { width: 700, height: 450 },
-      webContentsId: 53,
-    });
-
-    attachBrowserTab({
-      manager,
-      hostWindow,
-      tabId: "browser:a",
-      url: "https://example.com/",
-    });
-    const view = requireFakeView(0);
-
-    expect(
-      browserRequestBlocked({
-        url: "http://localhost:38886/api/v1/threads/thr_1/archive",
-        method: "GET",
-        resourceType: "mainFrame",
-        webContentsId: view.webContents.id,
-      }),
-    ).toBe(false);
-    expect(
-      browserRequestBlocked({
-        url: "http://localhost:38886/api/v1/threads/thr_1/archive",
-        method: "POST",
-        resourceType: "mainFrame",
-        webContentsId: view.webContents.id,
-      }),
-    ).toBe(true);
-    expect(
-      browserRequestBlocked({
-        url: "http://192.168.1.1/",
-        method: "GET",
-        resourceType: "mainFrame",
-        webContentsId: view.webContents.id,
-      }),
-    ).toBe(true);
-    expect(view.webContents.emitWillNavigate("http://192.168.1.1/")).toBe(true);
-  });
-
-  it("allows unattributed loopback main-frame requests with matching tabs", () => {
-    const manager = createDesktopBrowserViewManager({
-      partition: "persist:test",
-    });
-    const hostWindow = new FakeHostWindow({
-      contentBounds: { width: 700, height: 450 },
-      webContentsId: 54,
-    });
-
-    attachBrowserTab({
-      manager,
-      hostWindow,
-      tabId: "browser:a",
-      url: "http://localhost:5173/",
-    });
-    attachBrowserTab({
-      manager,
-      hostWindow,
-      tabId: "browser:b",
-      url: "http://localhost:5173/path",
-    });
-
-    expect(
-      browserRequestBlocked({
-        url: "http://localhost:5173/",
-        resourceType: "mainFrame",
-      }),
-    ).toBe(false);
-  });
-
-  it("keeps top-level loopback navigation allowed after a failed local load", () => {
-    const manager = createDesktopBrowserViewManager({
-      partition: "persist:test",
-    });
-    const hostWindow = new FakeHostWindow({
-      contentBounds: { width: 700, height: 450 },
-      webContentsId: 52,
-    });
-
-    attachBrowserTab({
-      manager,
-      hostWindow,
-      tabId: "browser:a",
-      url: "http://localhost:5173/",
-    });
-    const view = requireFakeView(0);
-
-    expect(
-      browserRequestBlocked({
-        url: "http://localhost:5173/",
-        resourceType: "mainFrame",
-        webContentsId: view.webContents.id,
-      }),
-    ).toBe(false);
-
-    view.webContents.emitDidFailLoad({
-      errorCode: -102,
-      errorDescription: "Connection refused",
-      isMainFrame: true,
-      validatedURL: "http://localhost:5173/",
-    });
-
-    expect(
-      browserRequestBlocked({
-        url: "http://localhost:5173/",
-        resourceType: "mainFrame",
-        webContentsId: view.webContents.id,
-      }),
-    ).toBe(false);
-  });
-
-  it("keeps top-level loopback navigation allowed after an aborted local load", () => {
-    const manager = createDesktopBrowserViewManager({
-      partition: "persist:test",
-    });
-    const hostWindow = new FakeHostWindow({
-      contentBounds: { width: 700, height: 450 },
-      webContentsId: 62,
-    });
-
-    attachBrowserTab({
-      manager,
-      hostWindow,
-      tabId: "browser:a",
-      url: "https://example.com/",
-    });
-    const view = requireFakeView(0);
-    view.webContents.emitDidNavigate("https://example.com/");
-
-    manager.navigate({
-      hostWindow,
-      request: {
-        tabId: "browser:a",
-        url: "http://localhost:5173/",
-      },
-    });
-
-    expect(
-      browserRequestBlocked({
-        url: "http://localhost:5173/",
-        resourceType: "mainFrame",
-        webContentsId: view.webContents.id,
-      }),
-    ).toBe(false);
-
-    view.webContents.emitDidFailLoad({
-      errorCode: -3,
-      errorDescription: "Aborted",
-      isMainFrame: true,
-      validatedURL: "http://localhost:5173/",
-    });
-
-    expect(view.webContents.emitWillNavigate("http://localhost:5173/")).toBe(
-      false,
-    );
-    expect(
-      browserRequestBlocked({
-        url: "http://localhost:5173/",
-        resourceType: "mainFrame",
-        webContentsId: view.webContents.id,
-      }),
-    ).toBe(false);
-  });
-
-  it("keeps top-level loopback navigation allowed after a local load is stopped", () => {
-    const manager = createDesktopBrowserViewManager({
-      partition: "persist:test",
-    });
-    const hostWindow = new FakeHostWindow({
-      contentBounds: { width: 700, height: 450 },
-      webContentsId: 63,
-    });
-
-    attachBrowserTab({
-      manager,
-      hostWindow,
-      tabId: "browser:a",
-      url: "https://example.com/",
-    });
-    const view = requireFakeView(0);
-    view.webContents.emitDidNavigate("https://example.com/");
-
-    manager.navigate({
-      hostWindow,
-      request: {
-        tabId: "browser:a",
-        url: "http://localhost:5173/",
-      },
-    });
-
-    expect(
-      browserRequestBlocked({
-        url: "http://localhost:5173/",
-        resourceType: "mainFrame",
-        webContentsId: view.webContents.id,
-      }),
-    ).toBe(false);
-
-    manager.stop({ hostWindow, tabId: "browser:a" });
-
-    expect(
-      browserRequestBlocked({
-        url: "http://localhost:5173/",
-        resourceType: "mainFrame",
-        webContentsId: view.webContents.id,
-      }),
-    ).toBe(false);
-  });
-
-  it("allows reloads of the current local main frame", () => {
-    const manager = createDesktopBrowserViewManager({
-      partition: "persist:test",
-    });
-    const hostWindow = new FakeHostWindow({
-      contentBounds: { width: 700, height: 450 },
-      webContentsId: 61,
-    });
-
-    attachBrowserTab({
-      manager,
-      hostWindow,
-      tabId: "browser:a",
-      url: "http://localhost:5173/",
-    });
-    const view = requireFakeView(0);
-    view.webContents.emitDidNavigate("http://localhost:5173/");
-
-    expect(
-      browserRequestBlocked({
-        url: "http://localhost:5173/",
-        resourceType: "mainFrame",
-        webContentsId: view.webContents.id,
-      }),
-    ).toBe(false);
-
-    manager.reload({ hostWindow, tabId: "browser:a" });
-
-    expect(
-      browserRequestBlocked({
-        url: "http://localhost:5173/",
-        resourceType: "mainFrame",
-        webContentsId: view.webContents.id,
-      }),
-    ).toBe(false);
-  });
-
-  it("clears local subresource access after a local page commits to a public page", () => {
-    const manager = createDesktopBrowserViewManager({
-      partition: "persist:test",
-    });
-    const hostWindow = new FakeHostWindow({
-      contentBounds: { width: 700, height: 450 },
-      webContentsId: 53,
-    });
-
-    attachBrowserTab({
-      manager,
-      hostWindow,
-      tabId: "browser:a",
-      url: "http://localhost:5173/",
-    });
-    const view = requireFakeView(0);
-    view.webContents.emitDidNavigate("http://localhost:5173/");
-
-    expect(
-      view.webContents.emitWillFrameNavigate(
-        "http://localhost:5173/dashboard",
-        true,
-        "http://localhost:5173",
-      ),
-    ).toBe(false);
-    expect(
-      browserRequestBlocked({
-        url: "http://localhost:5173/dashboard",
-        resourceType: "mainFrame",
-        webContentsId: view.webContents.id,
-      }),
-    ).toBe(false);
-    expect(
-      browserRequestBlocked({
-        url: "http://localhost:5173/app.js",
-        resourceType: "script",
-        webContentsId: view.webContents.id,
-        frameOrigin: "http://localhost:5173",
-      }),
-    ).toBe(false);
-
-    view.webContents.emitDidNavigate("https://example.com/");
-
-    expect(
-      browserRequestBlocked({
-        url: "http://localhost:5173/app.js",
-        resourceType: "script",
-        webContentsId: view.webContents.id,
-        frameOrigin: "http://localhost:5173",
-      }),
-    ).toBe(true);
-  });
-
-  it("allows public-to-local top-level redirects after public commit", () => {
-    const manager = createDesktopBrowserViewManager({
-      partition: "persist:test",
-    });
-    const hostWindow = new FakeHostWindow({
-      contentBounds: { width: 700, height: 450 },
-      webContentsId: 54,
-    });
-
-    attachBrowserTab({
-      manager,
-      hostWindow,
-      tabId: "browser:a",
-      url: "https://example.com/",
-    });
-    const view = requireFakeView(0);
-    view.webContents.emitDidNavigate("https://example.com/");
-
-    expect(
-      view.webContents.emitWillRedirect("http://localhost:38886/", true),
-    ).toBe(false);
-    expect(
-      browserRequestBlocked({
-        url: "http://localhost:38886/",
-        resourceType: "mainFrame",
-        webContentsId: view.webContents.id,
-      }),
-    ).toBe(false);
-  });
-
-  it("allows local back and forward history as top-level navigation", () => {
-    const manager = createDesktopBrowserViewManager({
-      partition: "persist:test",
-    });
-    const hostWindow = new FakeHostWindow({
-      contentBounds: { width: 700, height: 450 },
-      webContentsId: 55,
-    });
-
-    attachBrowserTab({
-      manager,
-      hostWindow,
-      tabId: "browser:a",
-      url: "http://localhost:5173/",
-    });
-    const view = requireFakeView(0);
-    view.webContents.emitDidNavigate("http://localhost:5173/");
-    view.webContents.emitDidNavigate("https://example.com/");
-    view.webContents.historyEntries = [
-      { title: "Local", url: "http://localhost:5173/" },
-      { title: "Public", url: "https://example.com/" },
-    ];
-    view.webContents.activeHistoryIndex = 1;
-    view.webContents.canGoBackResult = true;
-
-    manager.goBack({ hostWindow, tabId: "browser:a" });
-
-    expect(view.webContents.goBackCalls).toEqual(["goBack"]);
-    expect(view.webContents.emitWillNavigate("http://localhost:5173/")).toBe(
-      false,
-    );
-    expect(
-      browserRequestBlocked({
-        url: "http://localhost:5173/",
-        resourceType: "mainFrame",
-        webContentsId: view.webContents.id,
-      }),
-    ).toBe(false);
-
-    view.webContents.historyEntries = [
-      { title: "Public", url: "https://example.com/" },
-      { title: "Local", url: "http://localhost:5173/" },
-    ];
-    view.webContents.activeHistoryIndex = 0;
-    view.webContents.canGoForwardResult = true;
-
-    manager.goForward({ hostWindow, tabId: "browser:a" });
-
-    expect(view.webContents.goForwardCalls).toEqual(["goForward"]);
-    expect(view.webContents.emitWillNavigate("http://localhost:5173/")).toBe(
-      false,
-    );
-    expect(
-      browserRequestBlocked({
-        url: "http://localhost:5173/",
-        resourceType: "mainFrame",
-        webContentsId: view.webContents.id,
-      }),
-    ).toBe(false);
-  });
-
-  it("allows same-origin local back and forward history", () => {
-    const manager = createDesktopBrowserViewManager({
-      partition: "persist:test",
-    });
-    const hostWindow = new FakeHostWindow({
-      contentBounds: { width: 700, height: 450 },
-      webContentsId: 64,
-    });
-
-    attachBrowserTab({
-      manager,
-      hostWindow,
-      tabId: "browser:a",
-      url: "http://localhost:5173/route-b",
-    });
-    const view = requireFakeView(0);
-    view.webContents.emitDidNavigate("http://localhost:5173/route-b");
-    view.webContents.historyEntries = [
-      { title: "Route A", url: "http://localhost:5173/route-a" },
-      { title: "Route B", url: "http://localhost:5173/route-b" },
-    ];
-    view.webContents.activeHistoryIndex = 1;
-    view.webContents.canGoBackResult = true;
-
-    manager.goBack({ hostWindow, tabId: "browser:a" });
-
-    expect(view.webContents.goBackCalls).toEqual(["goBack"]);
-    expect(
-      view.webContents.emitWillNavigate("http://localhost:5173/route-a"),
-    ).toBe(false);
-    expect(
-      browserRequestBlocked({
-        url: "http://localhost:5173/route-a",
-        resourceType: "mainFrame",
-        webContentsId: view.webContents.id,
-      }),
-    ).toBe(false);
-
-    view.webContents.emitDidNavigate("http://localhost:5173/route-a");
-    view.webContents.activeHistoryIndex = 0;
-    view.webContents.canGoForwardResult = true;
-
-    manager.goForward({ hostWindow, tabId: "browser:a" });
-
-    expect(view.webContents.goForwardCalls).toEqual(["goForward"]);
-    expect(
-      view.webContents.emitWillNavigate("http://localhost:5173/route-b"),
-    ).toBe(false);
-    expect(
-      browserRequestBlocked({
-        url: "http://localhost:5173/route-b",
-        resourceType: "mainFrame",
-        webContentsId: view.webContents.id,
-      }),
-    ).toBe(false);
-  });
-
-  it("allows same-origin local subresources and cross-port top-level navigation", () => {
-    const manager = createDesktopBrowserViewManager({
-      partition: "persist:test",
-    });
-    const hostWindow = new FakeHostWindow({
-      contentBounds: { width: 700, height: 450 },
-      webContentsId: 56,
-    });
-
-    attachBrowserTab({
-      manager,
-      hostWindow,
-      tabId: "browser:a",
-      url: "http://localhost:5173/",
-    });
-    const view = requireFakeView(0);
-    view.webContents.emitDidNavigate("http://localhost:5173/");
-
-    expect(
-      browserRequestBlocked({
-        url: "http://localhost:5173/app.js",
-        resourceType: "script",
-        webContentsId: view.webContents.id,
-        frameOrigin: "http://localhost:5173",
-      }),
-    ).toBe(false);
-    expect(
-      browserRequestBlocked({
-        url: "ws://localhost:5173/socket",
-        resourceType: "webSocket",
-        webContentsId: view.webContents.id,
-        frameOrigin: "http://localhost:5173",
-      }),
-    ).toBe(false);
-    expect(
-      browserRequestBlocked({
-        url: "http://localhost:38886/api",
-        resourceType: "xhr",
-        webContentsId: view.webContents.id,
-        frameOrigin: "http://localhost:5173",
-      }),
-    ).toBe(true);
-    expect(
-      view.webContents.emitWillFrameNavigate(
-        "http://localhost:38886/",
-        true,
-        "http://localhost:5173",
-      ),
-    ).toBe(false);
-    expect(
-      browserRequestBlocked({
-        url: "http://localhost:5173/app.js",
-        resourceType: "script",
-        webContentsId: view.webContents.id,
-        frameOrigin: "http://localhost:5173",
-      }),
-    ).toBe(false);
-  });
-
-  it("allows top-level localhost frame navigation but blocks public iframe subresources", () => {
-    const manager = createDesktopBrowserViewManager({
-      partition: "persist:test",
-    });
-    const hostWindow = new FakeHostWindow({
-      contentBounds: { width: 700, height: 450 },
-      webContentsId: 57,
-    });
-
-    attachBrowserTab({
-      manager,
-      hostWindow,
-      tabId: "browser:a",
-      url: "http://localhost:5173/",
-    });
-    const view = requireFakeView(0);
-    view.webContents.emitDidNavigate("http://localhost:5173/");
-
-    expect(
-      view.webContents.emitWillFrameNavigate(
-        "http://localhost:5173/dashboard",
-        true,
-        "https://example.com",
-      ),
-    ).toBe(false);
-    expect(
-      browserRequestBlocked({
-        url: "http://localhost:5173/dashboard",
-        resourceType: "mainFrame",
-        webContentsId: view.webContents.id,
-        frameOrigin: "http://localhost:5173",
-      }),
-    ).toBe(false);
-    expect(
-      browserRequestBlocked({
-        url: "http://localhost:5173/app.js",
-        resourceType: "script",
-        webContentsId: view.webContents.id,
-        frameOrigin: "http://localhost:5173",
-      }),
-    ).toBe(false);
-    expect(
-      browserRequestBlocked({
-        url: "http://localhost:5173/api",
-        resourceType: "xhr",
-        webContentsId: view.webContents.id,
-        frameOrigin: "https://example.com",
-      }),
-    ).toBe(true);
-  });
-
-  it("does not surface loopback popups as trusted browser tabs", () => {
+  it("surfaces a loopback popup as an in-panel tab, never a native window", () => {
     const manager = createDesktopBrowserViewManager({
       partition: "persist:test",
     });
@@ -1388,11 +716,15 @@ describe("DesktopBrowserViewManager", () => {
     });
     const view = requireFakeView(0);
 
+    // The native popup is always denied; an allowed http(s) URL becomes a tab.
+    // A local dev app opening its own admin page on another port is ordinary.
     expect(view.webContents.emitWindowOpen("http://localhost:38886/")).toEqual({
       action: "deny",
     });
-    expect(openTabPushesOf(hostWindow)).toEqual([]);
-    expect(scopedOpenTabPushesOf(hostWindow)).toEqual([]);
+    expect(openTabPushesOf(hostWindow)).toEqual(["http://localhost:38886/"]);
+    expect(scopedOpenTabPushesOf(hostWindow)).toEqual([
+      { tabId: "browser:a", url: "http://localhost:38886/" },
+    ]);
   });
 
   it("surfaces public popups with their source browser tab id", () => {
@@ -1424,71 +756,6 @@ describe("DesktopBrowserViewManager", () => {
         url: "https://example.com/docs",
       },
     ]);
-  });
-
-  it("clears local subresource attribution on release and destroy", () => {
-    const manager = createDesktopBrowserViewManager({
-      partition: "persist:test",
-    });
-    const hostWindow = new FakeHostWindow({
-      contentBounds: { width: 700, height: 450 },
-      webContentsId: 59,
-    });
-
-    attachBrowserTab({
-      manager,
-      hostWindow,
-      tabId: "browser:a",
-      url: "http://localhost:5173/",
-    });
-    attachBrowserTab({
-      manager,
-      hostWindow,
-      tabId: "browser:b",
-      url: "http://localhost:3000/",
-    });
-    const releasedView = requireFakeView(0);
-    const destroyedView = requireFakeView(1);
-    releasedView.webContents.emitDidNavigate("http://localhost:5173/");
-    destroyedView.webContents.emitDidNavigate("http://localhost:3000/");
-
-    manager.releaseWindow(hostWindow.webContents.id);
-
-    expect(releasedView.webContents.destroyed).toBe(true);
-    expect(destroyedView.webContents.destroyed).toBe(true);
-    expect(
-      browserRequestBlocked({
-        url: "http://localhost:5173/app.js",
-        resourceType: "script",
-        webContentsId: releasedView.webContents.id,
-        frameOrigin: "http://localhost:5173",
-      }),
-    ).toBe(true);
-
-    const secondHostWindow = new FakeHostWindow({
-      contentBounds: { width: 700, height: 450 },
-      webContentsId: 60,
-    });
-    attachBrowserTab({
-      manager,
-      hostWindow: secondHostWindow,
-      tabId: "browser:c",
-      url: "http://localhost:5173/",
-    });
-    const destroyAllView = requireFakeView(2);
-    destroyAllView.webContents.emitDidNavigate("http://localhost:5173/");
-
-    manager.destroyAll();
-
-    expect(destroyAllView.webContents.destroyed).toBe(true);
-    expect(
-      browserRequestBlocked({
-        url: "http://localhost:5173/app.js",
-        resourceType: "script",
-        webContentsId: destroyAllView.webContents.id,
-        frameOrigin: "http://localhost:5173",
-      }),
-    ).toBe(true);
   });
 
   it("snapshots then hides visible views on resize, revealing them clamped to the shrunken window", async () => {
@@ -1790,6 +1057,103 @@ describe("DesktopBrowserViewManager", () => {
 
     const view = requireFakeView(0);
     expect(view.webContents.focusCalls).toBe(1);
+  });
+
+  it("defers hidden memory-eviction recovery until the panel shows the current page", () => {
+    vi.useFakeTimers();
+    const { hostWindow, manager, view } = createRendererRecoveryFixture(75);
+    view.webContents.emitDidNavigate("https://example.com/current");
+    manager.setVisible({
+      hostWindow,
+      request: { tabId: "browser:a", visible: false },
+    });
+
+    view.webContents.emitRenderProcessGone({
+      exitCode: 0,
+      reason: "memory-eviction",
+    });
+
+    expect(view.webContents.reloadCalls).toBe(0);
+    expect(view.visible).toBe(false);
+
+    manager.setVisible({
+      hostWindow,
+      request: { tabId: "browser:a", visible: true },
+    });
+    expect(view.visible).toBe(false);
+    vi.runOnlyPendingTimers();
+
+    expect(view.webContents.reloadCalls).toBe(1);
+    expect(view.webContents.getURL()).toBe("https://example.com/current");
+    expect(electronMock.fakeViews).toHaveLength(1);
+    expect(view.visible).toBe(true);
+  });
+
+  it("stops automatic recovery after two repeated renderer crashes", () => {
+    vi.useFakeTimers();
+    const { hostWindow, view } = createRendererRecoveryFixture(76);
+
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+      view.webContents.emitRenderProcessGone({
+        exitCode: 1,
+        reason: "crashed",
+      });
+      expect(view.visible).toBe(false);
+      vi.runOnlyPendingTimers();
+      expect(view.webContents.reloadCalls).toBe(attempt);
+      expect(view.visible).toBe(true);
+    }
+
+    view.webContents.emitRenderProcessGone({
+      exitCode: 1,
+      reason: "crashed",
+    });
+    vi.runOnlyPendingTimers();
+
+    expect(view.webContents.reloadCalls).toBe(2);
+    expect(view.visible).toBe(false);
+    expect(hostWindow.webContents.sentPayloads.at(-1)).toMatchObject({
+      tabId: "browser:a",
+      errorText: "The page renderer stopped repeatedly",
+    });
+  });
+
+  it.each(["launch-failed", "integrity-failure"] as const)(
+    "does not automatically retry a %s renderer failure",
+    (reason) => {
+      vi.useFakeTimers();
+      const { hostWindow, view } = createRendererRecoveryFixture(77);
+
+      view.webContents.emitRenderProcessGone({ exitCode: 1, reason });
+      vi.runOnlyPendingTimers();
+
+      expect(view.webContents.reloadCalls).toBe(0);
+      expect(view.visible).toBe(false);
+      expect(hostWindow.webContents.sentPayloads.at(-1)).toMatchObject({
+        tabId: "browser:a",
+        errorText: "The page renderer could not start",
+      });
+    },
+  );
+
+  it("resets the renderer recovery limit after a page finishes loading", () => {
+    vi.useFakeTimers();
+    const { view } = createRendererRecoveryFixture(78);
+
+    view.webContents.emitRenderProcessGone({
+      exitCode: 1,
+      reason: "crashed",
+    });
+    vi.runOnlyPendingTimers();
+    view.webContents.emitDidFinishLoad();
+    view.webContents.emitRenderProcessGone({
+      exitCode: 1,
+      reason: "crashed",
+    });
+    vi.runOnlyPendingTimers();
+
+    expect(view.webContents.reloadCalls).toBe(2);
+    expect(view.visible).toBe(true);
   });
 
   it("does not focus a freshly-attached inactive tab", () => {

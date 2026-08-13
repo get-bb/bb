@@ -457,7 +457,7 @@ export const diffFileEntrySchema = z.object({
   binary: z.boolean(),
   /**
    * Whether the entry originates from an untracked working-tree file. Drives
-   * the daemon's patch invocation (untracked files need the `--no-index` form).
+   * the daemon's alternate-index patch handling.
    */
   origin: z.enum(["tracked", "untracked"]),
   /** Server-computed tiering decision. */
@@ -475,7 +475,8 @@ export const diffPatchEntrySchema = z.object({
 export type DiffPatchEntry = z.infer<typeof diffPatchEntrySchema>;
 
 // `too_many_files` is specific to the diff table of contents: the server
-// declines to enumerate a diff whose TOC exceeds the server's `DIFF_FILES_MAX_COUNT`
+// declines to enumerate a diff whose TOC exceeds the server's
+// `WORKSPACE_DIFF_MAX_FILES`
 // entry cap. `/status` and `/diff` never produce it, so it stays off the shared
 // `environmentWorkspaceNotApplicableReasonSchema`.
 const diffFilesNotApplicableOutcomeSchema = z

@@ -33,6 +33,7 @@ interface FlushBufferedTextMessagesArgs {
   buffers: Map<string, VisibleTextBuffer>;
   finalizedKeys: Set<string>;
   openMessages: Map<string, EventProjectionAssistantTextMessage>;
+  shouldFlush: (message: EventProjectionAssistantTextMessage) => boolean;
   state: AssistantStreamProjectionState;
   visibleKeys: Set<string>;
 }
@@ -67,12 +68,14 @@ export function syncBufferedTextMessage(
 }
 
 function flushBufferedTextMessages(args: FlushBufferedTextMessagesArgs): void {
-  const pendingMessages = Array.from(args.openMessages.entries()).sort(
-    (left, right) =>
-      left[1].sourceSeqStart - right[1].sourceSeqStart ||
-      left[1].sourceSeqEnd - right[1].sourceSeqEnd ||
-      left[1].createdAt - right[1].createdAt,
-  );
+  const pendingMessages = Array.from(args.openMessages.entries())
+    .filter(([, message]) => args.shouldFlush(message))
+    .sort(
+      (left, right) =>
+        left[1].sourceSeqStart - right[1].sourceSeqStart ||
+        left[1].sourceSeqEnd - right[1].sourceSeqEnd ||
+        left[1].createdAt - right[1].createdAt,
+    );
 
   for (const [messageKey, message] of pendingMessages) {
     const buffer = args.buffers.get(messageKey);
@@ -90,11 +93,10 @@ function flushBufferedTextMessages(args: FlushBufferedTextMessagesArgs): void {
       message.status = "completed";
     }
     args.finalizedKeys.add(messageKey);
+    args.openMessages.delete(messageKey);
+    args.buffers.delete(messageKey);
+    args.visibleKeys.delete(messageKey);
   }
-
-  args.openMessages.clear();
-  args.buffers.clear();
-  args.visibleKeys.clear();
 }
 
 export function flushBufferedAssistantMessages(
@@ -104,6 +106,22 @@ export function flushBufferedAssistantMessages(
     buffers: state.assistantTextBuffersByKey,
     finalizedKeys: state.finalizedAssistantMessageKeys,
     openMessages: state.openAssistantMessagesByKey,
+    shouldFlush: () => true,
+    state,
+    visibleKeys: state.visibleAssistantMessageKeys,
+  });
+}
+
+export function flushBufferedAssistantMessagesForTurn(
+  state: AssistantStreamProjectionState,
+  turnId: string,
+): void {
+  flushBufferedTextMessages({
+    buffers: state.assistantTextBuffersByKey,
+    finalizedKeys: state.finalizedAssistantMessageKeys,
+    openMessages: state.openAssistantMessagesByKey,
+    shouldFlush: (message) =>
+      message.scope.kind === "turn" && message.scope.turnId === turnId,
     state,
     visibleKeys: state.visibleAssistantMessageKeys,
   });

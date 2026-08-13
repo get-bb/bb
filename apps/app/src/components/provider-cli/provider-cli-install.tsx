@@ -135,6 +135,7 @@ export function useProviderCliInstallRunner() {
   );
 
   return {
+    failuresByJobKey: snapshot.failuresByJobKey,
     queuedJobKeys: snapshot.queuedJobKeys,
     runningJobKey: snapshot.runningJobKey,
     startInstall: startProviderCliInstall,

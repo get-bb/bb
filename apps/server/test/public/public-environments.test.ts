@@ -45,6 +45,7 @@ describe("public environments", () => {
           workingTree: {
             insertions: 0,
             deletions: 0,
+            lineStatsComplete: true,
             files: [],
             hasUncommittedChanges: false,
             state: "clean",
@@ -112,6 +113,7 @@ describe("public environments", () => {
           workingTree: {
             insertions: 0,
             deletions: 0,
+            lineStatsComplete: true,
             files: [],
             hasUncommittedChanges: false,
             state: "clean",
