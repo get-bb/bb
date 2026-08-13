@@ -1,2 +1,10 @@
-/** WP-29 replaces this compiling registration seam. */
-export function registerFindingsBulkStub(): void {}
+export { VEX_PLATFORM_BATCH_LIMIT, chunkVexTargets, type VexBulkTarget } from "./chunk.js";
+export { type VexApplyResult } from "./results.js";
+export {
+  createVexBulkPusher,
+  pushVexItems,
+  registerVexBulkPusher as registerFindingsBulk,
+  type PushContext,
+  type VexBulkDependencies,
+  type VexBulkProgress,
+} from "./pusher.js";
