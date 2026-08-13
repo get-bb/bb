@@ -147,7 +147,7 @@ describe("sync registration", () => {
     expect(() => registerAdapter(foreignAdapter)).toThrow(DuplicateAdapterError);
   });
 
-  it("serves frozen pull/status RPCs and explicit NOT_IMPLEMENTED stubs", async () => {
+  it("serves frozen sync RPCs and fails push closed when human authorization is unavailable", async () => {
     const scope = platformScope();
     const pulled = await host.harness.behavior.callRpc("syncPull", {
       ...scope,
@@ -205,15 +205,23 @@ describe("sync registration", () => {
         acceptedGenerationId: pulledGenerationId,
       },
     });
-    await expect(host.harness.behavior.callRpc("syncPush", {
+    const pushInput = {
       ...scope,
       planId: "plan-wp17",
       expectedPlanSha256: "a".repeat(64),
       expectedBaseStateSha256: "b".repeat(64),
       humanApprovalCapability: "approval-capability-wp17-00000000",
+    };
+    await expect(host.harness.behavior.callRpc("syncPush", pushInput)).rejects.toMatchObject({
+      code: "handler_error",
+      message: expect.stringContaining("authorization-unavailable"),
+    });
+    await expect(host.harness.behavior.callRpc("syncPushRetry", {
+      ...pushInput,
+      runId: "push-run-wp19",
     })).rejects.toMatchObject({
       code: "handler_error",
-      message: expect.stringContaining("NOT_IMPLEMENTED"),
+      message: expect.stringContaining("authorization-unavailable"),
     });
     expect(host.harness.registrations.rpcMethods).toEqual(expect.arrayContaining([
       "syncPull",
