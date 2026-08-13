@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { constants } from "node:fs";
 import { access, realpath, stat } from "node:fs/promises";
 import { delimiter, dirname, isAbsolute, join } from "node:path";
@@ -116,40 +116,86 @@ function narrowedEnvironment(): NodeJS.ProcessEnv {
 
 interface ProcessResult extends DriverResult { stdout: string }
 
+function killProcessTree(child: ChildProcess, signal: NodeJS.Signals): void {
+  if (child.pid === undefined) return;
+  try {
+    if (process.platform === "win32") child.kill(signal);
+    else process.kill(-child.pid, signal);
+  } catch {
+    // The process group may have exited between the timeout and the signal.
+  }
+}
+
 function runProcess(
   command: DriverCommand,
   timeoutMs: number,
   maxBuffer: number,
 ): Promise<ProcessResult> {
   return new Promise((resolve) => {
-    let timedOut = false;
+    let settled = false;
+    let stdout = "";
+    let stderr = "";
+    let outputBytes = 0;
+    let timeoutTimer: NodeJS.Timeout | null = null;
     let killTimer: NodeJS.Timeout | null = null;
-    const child = execFile(command.executable, command.args, {
+    const child = spawn(command.executable, command.args, {
       cwd: command.cwd,
       env: narrowedEnvironment(),
-      encoding: "utf8",
-      maxBuffer,
+      detached: process.platform !== "win32",
+      shell: false,
+      stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true,
-    }, (error, stdout, stderr) => {
-      clearTimeout(timeoutTimer);
-      if (killTimer) clearTimeout(killTimer);
-      if (!error) return resolve({ exitCode: 0, stdout, stderr });
-      const failure = error as Error & { code?: number | string; killed?: boolean; signal?: string };
-      if (timedOut) {
-        return resolve({ exitCode: -1, stdout, stderr: `KICAD_CLI_TIMEOUT: process exceeded ${timeoutMs}ms`, code: "KICAD_CLI_TIMEOUT" });
-      }
-      if (failure.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") {
-        return resolve({ exitCode: -1, stdout, stderr: `KICAD_CLI_OUTPUT_LIMIT: process output exceeded ${maxBuffer} bytes`, code: "KICAD_CLI_OUTPUT_LIMIT" });
-      }
-      if (typeof failure.code === "number") {
-        return resolve({ exitCode: failure.code, stdout, stderr, code: "KICAD_EXIT_NONZERO" });
-      }
-      return resolve({ exitCode: -1, stdout, stderr: `KICAD_CLI_SPAWN_FAILED: ${failure.message}`, code: "KICAD_CLI_SPAWN_FAILED" });
     });
-    const timeoutTimer = setTimeout(() => {
-      timedOut = true;
-      child.kill("SIGTERM");
-      killTimer = setTimeout(() => child.kill("SIGKILL"), CLI_KILL_GRACE_MS);
+    const finish = (result: ProcessResult): void => {
+      if (settled) return;
+      settled = true;
+      if (timeoutTimer) clearTimeout(timeoutTimer);
+      if (killTimer) clearTimeout(killTimer);
+      resolve(result);
+    };
+    const collect = (target: "stdout" | "stderr", chunk: Buffer): void => {
+      if (settled) return;
+      outputBytes += chunk.byteLength;
+      if (outputBytes > maxBuffer) {
+        killProcessTree(child, "SIGKILL");
+        child.stdout.destroy();
+        child.stderr.destroy();
+        finish({
+          exitCode: -1,
+          stdout,
+          stderr: `KICAD_CLI_OUTPUT_LIMIT: process output exceeded ${maxBuffer} bytes`,
+          code: "KICAD_CLI_OUTPUT_LIMIT",
+        });
+        return;
+      }
+      if (target === "stdout") stdout += chunk.toString("utf8");
+      else stderr += chunk.toString("utf8");
+    };
+    child.stdout.on("data", (chunk: Buffer) => collect("stdout", chunk));
+    child.stderr.on("data", (chunk: Buffer) => collect("stderr", chunk));
+    child.once("error", (error) => finish({
+      exitCode: -1,
+      stdout,
+      stderr: `KICAD_CLI_SPAWN_FAILED: ${error.message}`,
+      code: "KICAD_CLI_SPAWN_FAILED",
+    }));
+    child.once("close", (exitCode) => {
+      if (exitCode === 0) finish({ exitCode, stdout, stderr });
+      else finish({ exitCode: exitCode ?? -1, stdout, stderr, code: "KICAD_EXIT_NONZERO" });
+    });
+    timeoutTimer = setTimeout(() => {
+      if (settled) return;
+      killProcessTree(child, "SIGTERM");
+      child.stdout.destroy();
+      child.stderr.destroy();
+      finish({
+        exitCode: -1,
+        stdout: "",
+        stderr: `KICAD_CLI_TIMEOUT: process exceeded ${timeoutMs}ms`,
+        code: "KICAD_CLI_TIMEOUT",
+      });
+      killTimer = setTimeout(() => killProcessTree(child, "SIGKILL"), CLI_KILL_GRACE_MS);
+      killTimer.unref();
     }, timeoutMs);
   });
 }

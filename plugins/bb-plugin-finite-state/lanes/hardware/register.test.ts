@@ -220,10 +220,14 @@ process.exit(9);
 
   it("clips the diagnostic tail and scrubs credentials before frozen output validation", () => {
     const tail = "final KiCad error";
-    const detail = safeHardwareDetail(`${"prefix\n".repeat(100)}https://user:secret@example.test/path?token=secret\n${tail}`);
+    const detail = safeHardwareDetail(
+      `${"prefix\n".repeat(100)}https://user:secret@example.test/path?token=secret\n` +
+      "Authorization: Bearer super-secret-header\n" + tail,
+    );
     expect(detail).toHaveLength(500);
     expect(detail).toContain(tail);
     expect(detail).toContain("diagnostic truncated; tail shown");
-    expect(detail).not.toMatch(/secret|token=/u);
+    expect(detail).toContain("[credential redacted]");
+    expect(detail).not.toMatch(/secret|token=|authorization|bearer/iu);
   });
 });

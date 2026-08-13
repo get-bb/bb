@@ -75,4 +75,26 @@ describe("kicad-cli driver", () => {
     }, { maxBuffer: 128 });
     expect(outputLimit).toMatchObject({ exitCode: -1, code: "KICAD_CLI_OUTPUT_LIMIT" });
   });
+
+  it.skipIf(process.platform === "win32")(
+    "bounds timeout wall clock when a grandchild inherits the output pipes",
+    async () => {
+      const cwd = await mkdtemp(join(tmpdir(), "fs-hw-driver-tree-"));
+      const script = [
+        "const { spawn } = require('node:child_process');",
+        "spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'inherit' });",
+        "setInterval(() => {}, 1000);",
+      ].join("\n");
+      const startedAt = performance.now();
+      const result = await runKicadProcess({
+        executable: process.execPath,
+        args: ["-e", script],
+        cwd,
+        minMajor: 7,
+      }, { timeoutMs: 50 });
+
+      expect(result).toMatchObject({ exitCode: -1, code: "KICAD_CLI_TIMEOUT" });
+      expect(performance.now() - startedAt).toBeLessThan(2_000);
+    },
+  );
 });

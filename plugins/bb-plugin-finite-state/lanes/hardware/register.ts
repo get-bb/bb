@@ -170,10 +170,10 @@ const TRUNCATION_MARKER = "\n[diagnostic truncated; tail shown]";
 
 export function safeHardwareDetail(value: string): string {
   const scrubbed = value
-    .replace(/authorization(?:\s*[:=]\s*|\s+)\S+/giu, "authorization [redacted]")
-    .replace(/bearer\s+\S+/giu, "credential [redacted]")
-    .replace(/api[_-]?key\s*[:=]\s*\S+/giu, "credential [redacted]")
-    .replace(/token\s*=\s*[^\s&]+/giu, "credential=[redacted]")
+    .replace(/\bauthorization\b[^\r\n]*/giu, "[credential redacted]")
+    .replace(/bearer\s+\S+/giu, "[credential redacted]")
+    .replace(/api[_-]?key\s*[:=]\s*\S+/giu, "[credential redacted]")
+    .replace(/token\s*=\s*[^\s&]+/giu, "[credential redacted]")
     .replace(/https?:\/\/\S+/giu, (url) => url.includes("?") || url.includes("@") ? "[credentialed URL redacted]" : url);
   if (scrubbed.length <= SAFE_DETAIL_MAX_LENGTH) return scrubbed;
   return `${scrubbed.slice(-(SAFE_DETAIL_MAX_LENGTH - TRUNCATION_MARKER.length))}${TRUNCATION_MARKER}`;
