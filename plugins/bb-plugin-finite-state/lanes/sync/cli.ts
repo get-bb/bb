@@ -14,6 +14,8 @@ interface CliInput {
   projectLevel: boolean;
 }
 
+type WorktreeRootResolver = (context: PluginCliContext) => Promise<string>;
+
 function isRecord(value: unknown): value is Record<string, Json> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -128,15 +130,17 @@ function output(value: unknown, json: boolean): string {
 async function run(
   deps: EngineDeps,
   platform: PlatformClient,
+  resolveWorktreeRoot: WorktreeRootResolver,
   argv: string[],
   context: PluginCliContext,
 ) {
   const input = parseArgs(argv);
+  const worktreeRoot = await resolveWorktreeRoot(context);
   const scope = await resolveScope(platform, input);
   const kinds = surfaceKinds(input.surface);
   const cliDeps: EngineDeps = {
     ...deps,
-    worktreeRoot: context.cwd ?? deps.worktreeRoot ?? process.cwd(),
+    worktreeRoot,
   };
   const report = input.verb === "pull"
     ? await pull(cliDeps, scope, kinds)
@@ -149,6 +153,7 @@ export function registerSyncCli(
   bb: BbPluginApi,
   deps: EngineDeps,
   platform: PlatformClient,
+  resolveWorktreeRoot: WorktreeRootResolver,
 ): void {
   bb.cli.register({
     name: "finite-state",
@@ -157,6 +162,6 @@ export function registerSyncCli(
       { name: "pull", summary: "Pull remote entity state", usage: "pull [surface] [--project ID] [--version ID] [--json]" },
       { name: "status", summary: "Compare working, base, and upstream state", usage: "status [surface] [--project ID] [--version ID] [--json]" },
     ],
-    run: (argv, context) => run(deps, platform, argv, context),
+    run: (argv, context) => run(deps, platform, resolveWorktreeRoot, argv, context),
   });
 }

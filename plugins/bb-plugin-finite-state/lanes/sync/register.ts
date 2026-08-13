@@ -1,4 +1,4 @@
-import type { BbPluginApi } from "@bb/plugin-sdk";
+import type { BbPluginApi, PluginCliContext } from "@bb/plugin-sdk";
 import type { PluginContext } from "../../lib/context.js";
 import type { RemoteServices } from "../../lib/remote/types.js";
 import { registerSyncCli } from "./cli.js";
@@ -10,6 +10,29 @@ import {
   fastForwardVexWorking,
 } from "./entities/vex-decision.js";
 import { registerSyncRpc } from "./rpc.js";
+
+async function resolveSyncWorktreeRoot(
+  ctx: PluginContext,
+  cliContext: PluginCliContext,
+): Promise<string> {
+  if (!cliContext.threadId) {
+    throw new Error(
+      "SYNC_EXECUTION_CONTEXT_REQUIRED: invoke from a bb thread; cwd is not trusted as a worktree identity",
+    );
+  }
+  const thread = await ctx.bb.sdk.threads.get({ threadId: cliContext.threadId });
+  if (
+    !thread.environmentId
+    || (cliContext.projectId !== undefined && thread.projectId !== cliContext.projectId)
+  ) {
+    throw new Error("SYNC_EXECUTION_CONTEXT_INVALID: thread project/environment mismatch");
+  }
+  const environment = await ctx.bb.sdk.environments.get({ environmentId: thread.environmentId });
+  if (environment.projectId !== thread.projectId || !environment.path) {
+    throw new Error("SYNC_EXECUTION_CONTEXT_INVALID: environment has no verified workspace path");
+  }
+  return environment.path;
+}
 
 export function registerSync(bb: BbPluginApi, ctx: PluginContext): void {
   const remote = ctx.service<RemoteServices>("remote-services", () => {
@@ -28,5 +51,6 @@ export function registerSync(bb: BbPluginApi, ctx: PluginContext): void {
     },
   };
   registerSyncRpc(bb, deps);
-  registerSyncCli(bb, deps, remote.platform);
+  registerSyncCli(bb, deps, remote.platform, (cliContext) =>
+    resolveSyncWorktreeRoot(ctx, cliContext));
 }

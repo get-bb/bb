@@ -39,6 +39,19 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
+function isWorkingEntity(value: unknown): value is WorkingEntity {
+  return isRecord(value)
+    && typeof value["key"] === "string"
+    && isRecord(value["payload"])
+    && typeof value["file"] === "string";
+}
+
+function partialWorkingRead(error: unknown): WorkingEntity[] | null {
+  if (!isRecord(error)) return null;
+  const working = error["partialWorking"];
+  return Array.isArray(working) && working.every(isWorkingEntity) ? working : null;
+}
+
 function compareChange(
   left: Readonly<{ kind: EntityKind; key: string }>,
   right: Readonly<{ kind: EntityKind; key: string }>,
@@ -169,9 +182,16 @@ async function statusAdapter(
   const remoteRows = await remoteEntities(adapter, scope);
   const worktreeRoot = deps.worktreeRoot;
   const workingAvailable = worktreeRoot !== undefined && worktreeRoot !== null;
-  const workingRows: WorkingEntity[] = worktreeRoot === undefined || worktreeRoot === null
-    ? []
-    : await adapter.readWorking(worktreeRoot);
+  let workingRows: WorkingEntity[] = [];
+  if (worktreeRoot !== undefined && worktreeRoot !== null) {
+    try {
+      workingRows = await adapter.readWorking(worktreeRoot);
+    } catch (error: unknown) {
+      const partial = partialWorkingRead(error);
+      if (partial === null) throw error;
+      workingRows = partial;
+    }
+  }
   const idToSlug = acceptedIdResolver(deps, scope, storageVersionId);
 
   const base = mapComparable(baseRows.map((row) => ({ key: row.entityKey, payload: row.payload })),

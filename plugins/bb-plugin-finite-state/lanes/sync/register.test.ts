@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-import { createFakePluginHost } from "@bb/plugin-sdk/testing";
+import { createFakePluginHost, makeThreadResponse } from "@bb/plugin-sdk/testing";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createPluginContext } from "../../lib/context.js";
@@ -95,6 +95,16 @@ beforeAll(async () => {
   registerSync(host.bb, context);
   registerAdapter(foreignAdapter);
   root = await mkdtemp(join(tmpdir(), "fs-wp17-register-"));
+  host.harness.sdk.stub("threads.get", async () => makeThreadResponse({
+    id: "thread-sync-cli",
+    projectId: "bb-project-sync",
+    environmentId: "environment-sync-cli",
+  }));
+  host.harness.sdk.stub("environments.get", async () => ({
+    id: "environment-sync-cli",
+    projectId: "bb-project-sync",
+    path: root,
+  }));
 });
 
 afterAll(async () => {
@@ -141,18 +151,43 @@ describe("sync registration", () => {
     const scope = platformScope();
     const pulled = await host.harness.behavior.callRpc("syncPull", {
       ...scope,
-      kinds: ["vexDecision"],
+      kinds: ["requirement", "vexDecision"],
     });
     expect(pulled).toMatchObject({
       ...scope,
       generationId: expect.any(String),
       baseStateSha256: expect.stringMatching(/^[a-f0-9]{64}$/u),
-      kinds: { vexDecision: { fetched: expect.any(Number), baseRows: expect.any(Number) } },
+      kinds: {
+        requirement: { fetched: 1, baseRows: 1 },
+        vexDecision: { fetched: expect.any(Number), baseRows: expect.any(Number) },
+      },
     });
-    await expect(host.harness.behavior.callRpc("syncStatus", {
+    if (
+      typeof pulled !== "object"
+      || pulled === null
+      || !("generationId" in pulled)
+      || typeof pulled.generationId !== "string"
+    ) {
+      throw new Error("syncPull returned no generation id");
+    }
+    const pulledGenerationId = pulled.generationId;
+    const statusReport = await host.harness.behavior.callRpc("syncStatus", {
       ...scope,
-      kinds: ["vexDecision"],
-    })).resolves.toMatchObject({ ...scope, local: [], upstream: [], conflicts: [], orphans: [] });
+    });
+    // Frozen RPC inputs carry no thread or worktree capability, so working
+    // local/orphan state is intentionally unavailable on this surface.
+    expect(statusReport).toMatchObject({
+      ...scope,
+      local: [],
+      upstream: [],
+      conflicts: [],
+      orphans: [],
+      acceptedGenerationIds: {
+        requirement: pulledGenerationId,
+        vexDecision: pulledGenerationId,
+      },
+      cache: { acceptedGenerationId: pulledGenerationId },
+    });
     await expect(host.harness.behavior.callRpc("syncPlan", scope)).rejects.toMatchObject({
       code: "handler_error",
       message: expect.stringContaining("NOT_IMPLEMENTED"),
@@ -228,7 +263,11 @@ reason: ${JSON.stringify(localReason)}
     await rm(join(root, ".fs"), { recursive: true, force: true });
     const result = await host.harness.behavior.runCli(
       ["finite-state", "pull", "triage"],
-      { cwd: root },
+      {
+        cwd: "/untrusted-cwd-must-not-be-used",
+        threadId: "thread-sync-cli",
+        projectId: "bb-project-sync",
+      },
     );
     expect(result.exitCode).toBe(0);
     expect(JSON.parse(result.stdout)).toMatchObject({
@@ -236,10 +275,27 @@ reason: ${JSON.stringify(localReason)}
     });
     const machine = await host.harness.behavior.runCli(
       ["status", "triage", "--json"],
-      { cwd: root },
+      {
+        cwd: "/untrusted-cwd-must-not-be-used",
+        threadId: "thread-sync-cli",
+        projectId: "bb-project-sync",
+      },
     );
     expect(machine).toMatchObject({ exitCode: 0, stderr: "" });
     expect(JSON.parse(machine.stdout)).toMatchObject({ local: [], conflicts: [], orphans: [] });
     expect(host.harness.realtimeSignals.some((signal) => signal.channel === "fs-sync-pull")).toBe(true);
+    expect(host.harness.sdk.callsTo("threads.get")).toHaveLength(2);
+    expect(host.harness.sdk.callsTo("environments.get")).toHaveLength(2);
+  });
+
+  it("refuses CLI working-tree access without a bb thread identity", async () => {
+    const result = await host.harness.behavior.runCli(["status", "triage", "--json"], {
+      cwd: root,
+    });
+    expect(result).toMatchObject({
+      exitCode: 1,
+      stdout: "",
+      stderr: expect.stringContaining("SYNC_EXECUTION_CONTEXT_REQUIRED"),
+    });
   });
 });

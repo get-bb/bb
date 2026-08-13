@@ -9,10 +9,16 @@ import { createPluginContext } from "../../../lib/context.js";
 import type { Json } from "../../../lib/remote/types.js";
 import { ENTITIES } from "../../../lib/sync/registry.js";
 import { pull } from "../engine/pull.js";
+import { status } from "../engine/status.js";
 import type { EntityAdapter } from "../engine/adapter.js";
 import { createSerializer } from "../serialize/serializer.js";
 import { SerializeError } from "../serialize/yaml.js";
-import { projectVexDecision, readVexWorking } from "./vex-decision.js";
+import {
+  fastForwardVexWorking,
+  projectVexDecision,
+  readVexWorking,
+  VexWorkingReadError,
+} from "./vex-decision.js";
 
 const FIXTURE = resolve(import.meta.dirname, "../../../test/mock-remote/fixtures/platform/findings.jsonl");
 const roots: string[] = [];
@@ -83,19 +89,42 @@ decisions:
     ]);
   });
 
-  it("surfaces malformed YAML as SerializeError with its artifact path", async () => {
+  it("surfaces malformed YAML with valid entities from the other files preserved", async () => {
     const root = await worktree();
     await writeFile(join(root, ".fs", "triage", "broken.yaml"), "decisions:\n  CVE-1: [unterminated\n", "utf8");
-    await expect(readVexWorking(root)).rejects.toEqual(expect.objectContaining({
+    await writeFile(join(root, ".fs", "triage", "valid.yaml"), `cve: CVE-2026-20000
+purl: pkg:generic/valid@1
+name: valid
+version: "1"
+status: IN_TRIAGE
+justification: null
+response: null
+reason: null
+`, "utf8");
+    const failure = await readVexWorking(root).catch((error: unknown) => error);
+    expect(failure).toEqual(expect.objectContaining({
       name: "SerializeError",
       file: ".fs/triage/broken.yaml",
+      issues: [expect.objectContaining({ file: ".fs/triage/broken.yaml" })],
+      partialWorking: [expect.objectContaining({ file: ".fs/triage/valid.yaml" })],
     }));
-    await expect(readVexWorking(root)).rejects.toBeInstanceOf(SerializeError);
+    expect(failure).toBeInstanceOf(SerializeError);
+    expect(failure).toBeInstanceOf(VexWorkingReadError);
   });
 
-  it("keeps the remote page coherent when one working YAML file is malformed", async () => {
+  it("reports one broken file while fast-forwarding and statusing a well-formed peer", async () => {
     const root = await worktree();
     await writeFile(join(root, ".fs", "triage", "broken.yaml"), "decisions:\n  CVE-1: [unterminated\n", "utf8");
+    const validFile = join(root, ".fs", "triage", "valid.yaml");
+    await writeFile(validFile, `cve: CVE-2020-10000
+purl: pkg:generic/eagle-component-001@1.0.0
+name: eagle-component-001
+version: 1.0.0
+status: NOT_AFFECTED
+justification: CODE_NOT_PRESENT
+response: null
+reason: local evidence
+`, "utf8");
     const remote = projectVexDecision(JSON.parse(
       (await readFile(FIXTURE, "utf8")).split("\n", 1)[0] ?? "{}",
     ) as Record<string, Json>);
@@ -116,13 +145,31 @@ decisions:
       db: createPluginContext(host.bb).db(),
       adapters: [adapter],
       worktreeRoot: root,
+      isFileClean: async () => true,
+      fastForwardWorking: ({ worktreeRoot, files, baseRows }: {
+        worktreeRoot: string;
+        files: readonly string[];
+        baseRows: Parameters<typeof fastForwardVexWorking>[2];
+      }) => fastForwardVexWorking(worktreeRoot, files, baseRows),
       createGenerationId: () => "generation-malformed-working",
       now: () => new Date("2026-08-12T21:00:00.000Z"),
     };
     await expect(pull(deps, { projectId: "project", projectVersionId: "version" }, ["vexDecision"]))
       .resolves.toMatchObject({
         kinds: { vexDecision: { fetched: 1, baseRows: 1 } },
-        divergence: ["vexDecision/read-error"],
+        workingFastForwarded: false,
+        divergence: ["vexDecision/.fs/triage/broken.yaml/read-error"],
       });
+    expect(await readFile(validFile, "utf8")).toContain("base:");
+    await expect(status(
+      deps,
+      { projectId: "project", projectVersionId: "version" },
+      ["vexDecision"],
+    )).resolves.toMatchObject({
+      local: [{ kind: "vexDecision", key: remote.key, fields: expect.arrayContaining(["status"]) }],
+      upstream: [],
+      conflicts: [],
+      orphans: [],
+    });
   });
 });

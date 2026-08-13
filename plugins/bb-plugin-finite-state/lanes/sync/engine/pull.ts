@@ -15,6 +15,7 @@ import {
   type EntityAdapter,
   type ServerEntity,
   type SyncScope,
+  type WorkingEntity,
 } from "./adapter.js";
 
 const execFileAsync = promisify(execFile);
@@ -106,6 +107,38 @@ interface ExistingStagingRow {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isWorkingEntity(value: unknown): value is WorkingEntity {
+  return isRecord(value)
+    && typeof value["key"] === "string"
+    && isRecord(value["payload"])
+    && typeof value["file"] === "string";
+}
+
+function isWorkingReadIssue(value: unknown): value is { file: string } {
+  return isRecord(value) && typeof value["file"] === "string";
+}
+
+function partialWorkingRead(error: unknown): {
+  working: WorkingEntity[];
+  errorFiles: string[];
+} | null {
+  if (!isRecord(error)) return null;
+  const working = error["partialWorking"];
+  const issues = error["issues"];
+  if (
+    !Array.isArray(working)
+    || !working.every(isWorkingEntity)
+    || !Array.isArray(issues)
+    || !issues.every(isWorkingReadIssue)
+  ) {
+    return null;
+  }
+  return {
+    working,
+    errorFiles: issues.map((issue) => issue.file),
+  };
 }
 
 function errorMessage(error: unknown): string {
@@ -233,6 +266,10 @@ function beginGeneration(
           WHERE project_id = ? AND project_version_id = ?
             AND staging_generation_id = ?`,
       ).run(scope.projectId, storageVersionId, previousGenerationId);
+      deps.db.prepare(
+        `DELETE FROM base_snapshot
+          WHERE project_id = ? AND project_version_id = ? AND generation_id = ?`,
+      ).run(scope.projectId, storageVersionId, previousGenerationId);
     }
     deps.db.prepare(
       `INSERT INTO pull_generation
@@ -287,13 +324,17 @@ function existingStagingRows(
   storageVersionId: string,
   kind: EntityKind,
   generationId: string,
+  entityKeys: readonly string[],
 ): Map<string, ExistingStagingRow> {
+  const keys = [...new Set(entityKeys)];
+  if (keys.length === 0) return new Map();
+  const placeholders = keys.map(() => "?").join(", ");
   const rows = db.prepare(
     `SELECT entity_key, remote_id, payload
        FROM base_snapshot
       WHERE project_id = ? AND project_version_id = ? AND entity_kind = ?
-        AND generation_id = ?`,
-  ).all(scope.projectId, storageVersionId, kind, generationId);
+        AND generation_id = ? AND entity_key IN (${placeholders})`,
+  ).all(scope.projectId, storageVersionId, kind, generationId, ...keys);
   const result = new Map<string, ExistingStagingRow>();
   for (const row of rows) {
     if (
@@ -367,6 +408,7 @@ function writePage(
     storageVersionId,
     adapter.kind,
     generationId,
+    entities.map((entity) => entity.key),
   );
   const unique = uniquePage(adapter, entities, existing);
   const pulledAt = nowIso(deps);
@@ -457,6 +499,7 @@ async function pullAdapter(
           storageVersionId,
           adapter.kind,
           generationId,
+          page.map((entity) => entity.key),
         ),
       );
       if (unseen.length > 0) {
@@ -527,9 +570,16 @@ async function workingState(
     let working;
     try {
       working = await adapter.readWorking(root);
-    } catch {
-      divergence.push(`${adapter.kind}/read-error`);
-      continue;
+    } catch (error: unknown) {
+      const partial = partialWorkingRead(error);
+      if (partial === null) {
+        divergence.push(`${adapter.kind}/read-error`);
+        continue;
+      }
+      working = partial.working;
+      for (const file of partial.errorFiles) {
+        divergence.push(`${adapter.kind}/${file}/read-error`);
+      }
     }
     const clean = new Set<string>();
     for (const entity of working) {
@@ -640,6 +690,22 @@ function publishGeneration(
           AND status = 'staging'`,
     ).run(acceptedAt, acceptedAt, scope.projectId, storageVersionId, generationId);
     if (accepted.changes !== 1) throw new Error(`Publication generation fence moved for ${generationId}`);
+    // Base rows are machinery, not history: retain only rows referenced by
+    // the current accepted or active staging pointer for their own kind.
+    deps.db.prepare(
+      `DELETE FROM base_snapshot
+        WHERE project_id = ? AND project_version_id = ?
+          AND NOT EXISTS (
+            SELECT 1 FROM sync_state AS state
+             WHERE state.project_id = base_snapshot.project_id
+               AND state.project_version_id = base_snapshot.project_version_id
+               AND state.entity_kind = base_snapshot.entity_kind
+               AND (
+                 state.accepted_generation_id = base_snapshot.generation_id
+                 OR state.staging_generation_id = base_snapshot.generation_id
+               )
+          )`,
+    ).run(scope.projectId, storageVersionId);
     deps.db.prepare(
       `UPDATE pull_generation AS generation
           SET status = 'superseded'

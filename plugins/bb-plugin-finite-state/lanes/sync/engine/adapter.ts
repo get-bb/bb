@@ -9,9 +9,12 @@
  *   serializer: createSerializer("requirement"),
  *   async *fetchRemote(scope, onProgress) {
  *     let page = 0;
- *     for await (const remotePage of client.listRequirements(scope.projectId)) {
+ *     for await (const remotePage of client.listEntities("requirement", {
+ *       projectId: scope.projectId,
+ *       page: { pageSize: 1_000 },
+ *     })) {
  *       page += 1;
- *       onProgress({ page, of: remotePage.total === null ? null : Math.ceil(remotePage.total / 50) });
+ *       onProgress({ page, of: remotePage.total === null ? null : Math.ceil(remotePage.total / 1_000) });
  *       yield remotePage.items.map(projectRequirement);
  *     }
  *   },
@@ -21,6 +24,11 @@
  *
  * Adapter factories close over their lane's narrow client. The engine never
  * imports a transport or the cross-lane `RemoteServices` aggregate.
+ *
+ * The gate's shipped signatures deliberately use `SyncScope.projectVersionId`,
+ * pass the pull `generationId` to every `CachePuller`, and return generation
+ * fences (`generationId` and `acceptedAt`) in `PullReport`. Consumer lanes
+ * must build against these signatures rather than the earlier WP sketch.
  */
 import { ENTITIES, type EntityKind } from "../../../lib/sync/registry.js";
 import type { EntitySerializer } from "../serialize/serializer.js";
@@ -68,7 +76,7 @@ export interface AdapterProgress {
  * Empty pages are significant because the engine checkpoints every page.
  */
 export interface EntityAdapter {
-  /** Registry kind; registration rejects kinds absent from frozen `ENTITIES`. */
+  /** Registry kind, statically constrained to the frozen `EntityKind` union. */
   kind: EntityKind;
   /** Semantic class, which must match the frozen registry entry. */
   klass: "VERSIONED" | "OVERLAY";
@@ -92,7 +100,10 @@ export type KeyResolver = (
   scope: SyncScope,
 ) => Promise<{ resolved: true; detail: unknown } | { resolved: false }>;
 
-/** Refreshes one CACHED surface into tables owned by the registering lane. */
+/**
+ * Refreshes one CACHED surface into tables owned by the registering lane.
+ * `generationId` binds those rows to the same atomic pull publication.
+ */
 export type CachePuller = (
   scope: SyncScope,
   generationId: string,
@@ -122,8 +133,11 @@ const resolvers = new Map<EntityKind, KeyResolver>();
 const pushers = new Map<EntityKind, unknown>();
 const cachePullers = new Map<EntityKind, CachePuller>();
 
-/** Registers one adapter and throws when its kind is already owned. */
+/** Registers one adapter and rejects unknown, mismatched, or duplicate kinds. */
 export function registerAdapter(adapter: EntityAdapter): void {
+  if (!Object.hasOwn(ENTITIES, adapter.kind)) {
+    throw new InvalidAdapterError(`Unknown sync adapter kind: ${adapter.kind}`);
+  }
   const entry = ENTITIES[adapter.kind];
   if (entry.class !== "VERSIONED" && entry.class !== "OVERLAY") {
     throw new InvalidAdapterError(`${adapter.kind} cannot have a sync adapter because it is ${entry.class}`);

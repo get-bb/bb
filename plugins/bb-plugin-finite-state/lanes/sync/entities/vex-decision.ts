@@ -234,31 +234,67 @@ function singleDecision(
   }];
 }
 
+/**
+ * A typed parse failure that preserves entities from every valid triage file.
+ * Engines surface `issues` while continuing with `partialWorking`.
+ */
+export class VexWorkingReadError extends SerializeError {
+  readonly issues: readonly SerializeError[];
+  readonly partialWorking: readonly WorkingEntity[];
+
+  constructor(issues: readonly SerializeError[], partialWorking: readonly WorkingEntity[]) {
+    const first = issues[0];
+    if (first === undefined) throw new TypeError("VexWorkingReadError requires at least one issue");
+    super(
+      first.file,
+      first.line,
+      `${issues.length} triage file${issues.length === 1 ? "" : "s"} could not be parsed`,
+      { cause: first },
+    );
+    this.issues = [...issues];
+    this.partialWorking = [...partialWorking];
+  }
+}
+
 /** Reads all `.fs/triage` decision YAML beneath a worktree. */
 export async function readVexWorking(worktreeRoot: string): Promise<WorkingEntity[]> {
   const root = resolve(worktreeRoot);
   const serializer = createSerializer("vexDecision");
   const result: WorkingEntity[] = [];
   const keys = new Map<string, string>();
+  const issues: SerializeError[] = [];
   for (const absoluteFile of await yamlFiles(join(root, ".fs", "triage"))) {
     const file = normalizedFile(root, absoluteFile);
-    const document = serializer.fromYaml(await readFile(absoluteFile, "utf8"), file);
-    const aggregate = aggregateDecisions(document, file);
-    const decisions = aggregate.length > 0 ? aggregate : singleDecision(document, file);
-    if (decisions.length === 0) {
-      throw new SerializeError(file, 1, `${basename(file)} is not an fs-triage decision document`);
-    }
-    for (const decision of decisions) {
-      const key = ENTITIES.vexDecision.key({ cve: decision.cve, ...decision.identity });
-      const prior = keys.get(key);
-      if (prior !== undefined) {
-        throw new SerializeError(file, 1, `decision key is already authored in ${prior}`);
+    try {
+      const document = serializer.fromYaml(await readFile(absoluteFile, "utf8"), file);
+      const aggregate = aggregateDecisions(document, file);
+      const decisions = aggregate.length > 0 ? aggregate : singleDecision(document, file);
+      if (decisions.length === 0) {
+        throw new SerializeError(file, 1, `${basename(file)} is not an fs-triage decision document`);
       }
-      keys.set(key, file);
-      result.push({ key, payload: decision.payload, file });
+      const fileRows: WorkingEntity[] = [];
+      const fileKeys = new Set<string>();
+      for (const decision of decisions) {
+        const key = ENTITIES.vexDecision.key({ cve: decision.cve, ...decision.identity });
+        const prior = keys.get(key);
+        if (prior !== undefined || fileKeys.has(key)) {
+          throw new SerializeError(file, 1, `decision key is already authored in ${prior ?? file}`);
+        }
+        fileKeys.add(key);
+        fileRows.push({ key, payload: decision.payload, file });
+      }
+      for (const row of fileRows) {
+        keys.set(row.key, file);
+        result.push(row);
+      }
+    } catch (error: unknown) {
+      if (!(error instanceof SerializeError)) throw error;
+      issues.push(error);
     }
   }
-  return result.sort((left, right) => left.key.localeCompare(right.key));
+  result.sort((left, right) => left.key.localeCompare(right.key));
+  if (issues.length > 0) throw new VexWorkingReadError(issues, result);
+  return result;
 }
 
 function syncBlock(value: unknown): Record<string, unknown> {

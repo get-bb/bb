@@ -358,6 +358,129 @@ decisions:
     expect(written).toContain("reason: server");
   });
 
+  it("retains only the current accepted base rows across repeated pulls", async () => {
+    const key = ENTITIES.requirement.key({ reqId: "REQ-RETENTION" });
+    let title = "revision-0";
+    const adapter: EntityAdapter = {
+      kind: "requirement",
+      klass: "VERSIONED",
+      serializer: createSerializer("requirement"),
+      async *fetchRemote(scope, progress) {
+        progress({ page: 1, of: 1 });
+        yield [{
+          key,
+          remoteId: "remote-retention",
+          payload: {
+            id: "remote-retention",
+            projectId: scope.projectId,
+            kind: "requirement",
+            fields: { reqId: "REQ-RETENTION", title },
+            humanEdited: null,
+            reviewStatus: null,
+            reviewVersion: null,
+          },
+        }];
+      },
+      async readWorking() { return []; },
+    };
+    let generation = 0;
+    const deps = engine(adapter, {
+      createGenerationId: () => `generation-retention-${++generation}`,
+    });
+    const selectedScope = { projectId: "project-retention", projectVersionId: "version-retention" };
+    for (let revision = 1; revision <= 4; revision += 1) {
+      title = `revision-${revision}`;
+      await pull(deps, selectedScope, ["requirement"]);
+    }
+    expect(deps.db.prepare(
+      "SELECT COUNT(*) FROM base_snapshot WHERE project_id = ? AND project_version_id = ?",
+    ).pluck().get(selectedScope.projectId, selectedScope.projectVersionId)).toBe(1);
+    expect(deps.db.prepare(
+      "SELECT generation_id FROM base_snapshot WHERE project_id = ? AND project_version_id = ?",
+    ).pluck().get(selectedScope.projectId, selectedScope.projectVersionId)).toBe("generation-retention-4");
+    expect(deps.db.prepare(
+      "SELECT status, COUNT(*) AS count FROM pull_generation GROUP BY status ORDER BY status",
+    ).all()).toEqual([
+      { status: "accepted", count: 1 },
+      { status: "superseded", count: 3 },
+    ]);
+  });
+
+  it("deletes a stranded staging base when a differently scoped generation supersedes it", async () => {
+    const requirementKey = ENTITIES.requirement.key({ reqId: "REQ-STRANDED" });
+    const threatKey = ENTITIES.threat.key({ slug: "THREAT-STRANDED" });
+    let resetAfterPage = true;
+    const requirement: EntityAdapter = {
+      kind: "requirement",
+      klass: "VERSIONED",
+      serializer: createSerializer("requirement"),
+      async *fetchRemote(scope, progress) {
+        progress({ page: 1, of: 1 });
+        yield [{
+          key: requirementKey,
+          remoteId: "remote-requirement-stranded",
+          payload: {
+            id: "remote-requirement-stranded",
+            projectId: scope.projectId,
+            kind: "requirement",
+            fields: { reqId: "REQ-STRANDED", title: "Requirement" },
+            humanEdited: null,
+            reviewStatus: null,
+            reviewVersion: null,
+          },
+        }];
+        if (resetAfterPage) throw new TypeError("mock reset after whole page");
+      },
+      async readWorking() { return []; },
+    };
+    const threat: EntityAdapter = {
+      kind: "threat",
+      klass: "VERSIONED",
+      serializer: createSerializer("threat"),
+      async *fetchRemote(scope, progress) {
+        progress({ page: 1, of: 1 });
+        yield [{
+          key: threatKey,
+          remoteId: "remote-threat-stranded",
+          payload: {
+            id: "remote-threat-stranded",
+            projectId: scope.projectId,
+            kind: "threat",
+            fields: { slug: "THREAT-STRANDED", title: "Threat" },
+            humanEdited: null,
+            reviewStatus: null,
+            reviewVersion: null,
+          },
+        }];
+      },
+      async readWorking() { return []; },
+    };
+    let generation = 0;
+    const deps = engine(requirement, {
+      adapters: [requirement, threat],
+      createGenerationId: () => `generation-stranded-${++generation}`,
+    });
+    const selectedScope = { projectId: "project-stranded", projectVersionId: "version-stranded" };
+    await expect(pull(deps, selectedScope, ["requirement"]))
+      .rejects.toBeInstanceOf(PullFailedError);
+    expect(deps.db.prepare(
+      "SELECT COUNT(*) FROM base_snapshot WHERE generation_id = 'generation-stranded-1'",
+    ).pluck().get()).toBe(1);
+
+    resetAfterPage = false;
+    await expect(pull(deps, selectedScope, ["requirement", "threat"]))
+      .resolves.toMatchObject({ generationId: "generation-stranded-2" });
+    expect(deps.db.prepare(
+      "SELECT COUNT(*) FROM base_snapshot WHERE generation_id = 'generation-stranded-1'",
+    ).pluck().get()).toBe(0);
+    expect(deps.db.prepare(
+      "SELECT generation_id, COUNT(*) AS count FROM base_snapshot GROUP BY generation_id",
+    ).all()).toEqual([{ generation_id: "generation-stranded-2", count: 2 }]);
+    expect(deps.db.prepare(
+      "SELECT status FROM pull_generation WHERE generation_id = 'generation-stranded-1'",
+    ).pluck().get()).toBe("superseded");
+  });
+
   it("keeps same keys and remote ids isolated across project, version, and project-level scopes", async () => {
     const key = ENTITIES.requirement.key({ reqId: "REQ-SCOPED" });
     const adapter: EntityAdapter = {

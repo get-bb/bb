@@ -26,13 +26,13 @@ function entityKinds(values: string[] | undefined): EntityKind[] | undefined {
 }
 
 function cacheState(metadata: ReturnType<typeof syncMetadata>) {
-  const accepted = Object.values(metadata.acceptedGenerationIds);
+  const accepted = new Set(Object.values(metadata.acceptedGenerationIds));
   const revisions = Object.values(metadata.baseRevisions);
   return {
     state: metadata.lastPull === null ? "empty" as const : "fresh" as const,
     asOf: metadata.lastPull,
     message: null,
-    acceptedGenerationId: accepted.length === 1 ? accepted[0] ?? null : null,
+    acceptedGenerationId: accepted.size === 1 ? accepted.values().next().value ?? null : null,
     baseRevision: revisions.length === 0 ? 0 : Math.max(...revisions),
   };
 }
