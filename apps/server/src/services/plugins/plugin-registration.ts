@@ -1,4 +1,5 @@
 import { resolve } from "node:path";
+import { isBbManagedWorkspacePath } from "../threads/worktree-paths.js";
 import {
   getInstalledPlugin,
   getInstalledPluginRegistration,
@@ -334,6 +335,13 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
             pluginRootDir(checkoutDir, subdirectory),
             "plugin subdirectory",
           );
+    if (isBbManagedWorkspacePath({ dataDir: deps.dataDir, path: rootDir })) {
+      logger.warn(
+        `plugin "${rootDir}" is installed from inside a bb-managed workspace; ` +
+          "its source will be deleted when that environment is destroyed (e.g. when the owning thread is archived). " +
+          "Reinstall from a stable path outside the managed workspace to avoid losing it.",
+      );
+    }
     return registerInstalled({
       rootDir,
       source: `path:${rootDir}`,
