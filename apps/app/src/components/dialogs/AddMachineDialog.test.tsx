@@ -1,6 +1,13 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import type { Host } from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BbHttpError, sdk } from "@/lib/sdk";
@@ -40,6 +47,11 @@ function host(overrides: Partial<Host> & Pick<Host, "id" | "name">): Host {
 }
 
 const existingHost = host({ id: "host_primary", name: "MacBook Pro" });
+const writeTextMock = vi.fn().mockResolvedValue(undefined);
+Object.defineProperty(navigator, "clipboard", {
+  configurable: true,
+  value: { writeText: writeTextMock },
+});
 
 afterEach(() => {
   cleanup();
@@ -91,6 +103,12 @@ describe("AddMachineDialog", () => {
     expect(
       screen.getByText("Waiting for the machine to connect…"),
     ).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy" }));
+    await waitFor(() => {
+      expect(writeTextMock).toHaveBeenCalledWith(command.textContent);
+      expect(screen.getByRole("button", { name: "Copied" })).toBeDefined();
+    });
 
     // Baseline host list is loaded before the new machine appears.
     await waitFor(() => {

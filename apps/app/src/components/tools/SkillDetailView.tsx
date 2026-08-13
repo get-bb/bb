@@ -18,8 +18,8 @@ import {
   TooltipTrigger,
 } from "@bb/shared-ui/tooltip";
 import { FilePreview } from "@/components/secondary-panel/FilePreview.js";
-import { appToast } from "@/components/ui/app-toast";
 import { ProvenancePill } from "@/components/tools/ProvenancePill";
+import { useClipboardCopy } from "@/lib/clipboard";
 
 export type SkillDetailTitleBadge = {
   label: string;
@@ -69,18 +69,11 @@ export function SkillOwnershipBadge({
 }
 
 function SkillPath({ path, href }: { path: string; href?: string }) {
-  const [copied, setCopied] = useState(false);
+  const { copied, copy } = useClipboardCopy({
+    text: path,
+    errorMessage: "Failed to copy path.",
+  });
   const displayPath = formatHomePathForDisplay(path);
-
-  async function copyPath() {
-    try {
-      await navigator.clipboard.writeText(path);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1200);
-    } catch {
-      appToast.error("Failed to copy path.");
-    }
-  }
 
   return (
     <TooltipProvider delayDuration={250}>
@@ -105,7 +98,7 @@ function SkillPath({ path, href }: { path: string; href?: string }) {
             <button
               type="button"
               aria-label={`Copy skill path: ${path}`}
-              onClick={copyPath}
+              onClick={() => void copy()}
               className="group -ml-1.5 inline-flex max-w-full cursor-pointer items-center gap-1 rounded-md px-1.5 py-1 text-xs text-subtle-foreground transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             >
               <span className="truncate font-mono">{displayPath}</span>

@@ -1,3 +1,4 @@
+import { useCallback, useEffect, useState } from "react";
 import { appToast } from "@/components/ui/app-toast";
 
 interface CopyToClipboardOptions {
@@ -30,4 +31,33 @@ export async function copyToClipboardWithToast(
     if (errorMessage) appToast.error(errorMessage);
     return false;
   }
+}
+
+export interface ClipboardCopyOptions extends CopyToClipboardOptions {
+  text: string;
+}
+
+export function useClipboardCopy({
+  text,
+  successMessage = null,
+  errorMessage = "Failed to copy",
+}: ClipboardCopyOptions) {
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!copied) return;
+    const timeoutId = window.setTimeout(() => setCopied(false), 2000);
+    return () => window.clearTimeout(timeoutId);
+  }, [copied]);
+
+  const copy = useCallback(async () => {
+    if (!text || copied) return;
+    const success = await copyToClipboardWithToast(text, {
+      successMessage,
+      errorMessage,
+    });
+    if (success) setCopied(true);
+  }, [text, copied, successMessage, errorMessage]);
+
+  return { copied, copy };
 }
