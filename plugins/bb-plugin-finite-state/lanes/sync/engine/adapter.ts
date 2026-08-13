@@ -3,6 +3,8 @@
  *
  * @example Register an entity owned by another lane without editing L2:
  * ```ts
+ * import { ASSURANCE_STUDIO_MAX_PAGE_SIZE } from "../../../lib/remote/assurance-studio/client.js";
+ *
  * registerAdapter({
  *   kind: "requirement",
  *   klass: "VERSIONED",
@@ -11,10 +13,15 @@
  *     let page = 0;
  *     for await (const remotePage of client.listEntities("requirement", {
  *       projectId: scope.projectId,
- *       page: { pageSize: 1_000 },
+ *       page: { pageSize: ASSURANCE_STUDIO_MAX_PAGE_SIZE },
  *     })) {
  *       page += 1;
- *       onProgress({ page, of: remotePage.total === null ? null : Math.ceil(remotePage.total / 1_000) });
+ *       onProgress({
+ *         page,
+ *         of: remotePage.total === null
+ *           ? null
+ *           : Math.ceil(remotePage.total / ASSURANCE_STUDIO_MAX_PAGE_SIZE),
+ *       });
  *       yield remotePage.items.map(projectRequirement);
  *     }
  *   },

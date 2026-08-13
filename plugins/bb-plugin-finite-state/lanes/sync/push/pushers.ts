@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
 
+import { ASSURANCE_STUDIO_MAX_PAGE_SIZE } from "../../../lib/remote/assurance-studio/client.js";
 import { RemoteLimiter } from "../../../lib/remote/rate-limit.js";
 import {
   RemoteError,
@@ -266,7 +267,7 @@ async function findEntity(
   return await options.limiter.run(async () => {
     for await (const page of options.client.listEntities(remoteKind, {
       projectId: context.scope.projectId,
-      page: { pageSize: 200 },
+      page: { pageSize: ASSURANCE_STUDIO_MAX_PAGE_SIZE },
     }, { signal: context.signal })) {
       for (const entity of page.items) {
         const payload = semanticEntity(

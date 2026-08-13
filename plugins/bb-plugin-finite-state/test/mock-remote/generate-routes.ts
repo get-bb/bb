@@ -322,6 +322,25 @@ export function validateAssuranceStudioRoutePatches(
   }
 }
 
+export function validateAssuranceStudioClientContractRoutes(
+  clientContractRoutes: readonly AssuranceStudioClientContractRoute[],
+  verifiedRoutes: readonly Pick<MockRoute, "method" | "pathTemplate">[],
+): void {
+  const occupied = new Set(verifiedRoutes.map(routeKey));
+  const seen = new Set<string>();
+  for (const route of clientContractRoutes) {
+    const key = `${route.method} ${route.pathTemplate}`;
+    if (route.method !== "GET") {
+      throw new Error(`Client-contract route must be read-only: ${key}`);
+    }
+    if (seen.has(key)) throw new Error(`Duplicate client-contract route: ${key}`);
+    if (occupied.has(key)) {
+      throw new Error(`Client-contract route overlaps a verified route: ${key}`);
+    }
+    seen.add(key);
+  }
+}
+
 function mergeAssuranceStudioRoutes(
   openApiRoutes: readonly MockRoute[],
   patches: readonly AssuranceStudioRoutePatch[],
@@ -332,6 +351,10 @@ function mergeAssuranceStudioRoutes(
     const route = handlerAuditRoute(patch);
     routes.set(routeKey(route), route);
   }
+  validateAssuranceStudioClientContractRoutes(
+    clientContractRoutes,
+    [...routes.values()],
+  );
   for (const patch of clientContractRoutes) {
     const route = clientContractRoute(patch);
     routes.set(routeKey(route), route);

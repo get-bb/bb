@@ -4,10 +4,14 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { ASSURANCE_STUDIO_ROUTE_PATCHES } from "./as-route-patches.js";
+import {
+  ASSURANCE_STUDIO_ROUTE_PATCHES,
+  type AssuranceStudioClientContractRoute,
+} from "./as-route-patches.js";
 import {
   assertCallableKeysResolved,
   runRouteGeneration,
+  validateAssuranceStudioClientContractRoutes,
   validateAssuranceStudioRoutePatches,
 } from "./generate-routes.js";
 import { createMockRemote, type MockRemoteHarness } from "./server.js";
@@ -96,6 +100,30 @@ describe("remote-mock-routing-gate", () => {
     ).toThrow("evidence not found");
   });
 
+  it("client-contract routes are unique, read-only, and cannot shadow verified routes", () => {
+    const route = (method: "GET" | "POST", pathTemplate: string) => ({
+      method,
+      pathTemplate,
+      operationId: null,
+      requestMediaTypes: [],
+      responseStatuses: [],
+      evidence: "test-only",
+    }) satisfies AssuranceStudioClientContractRoute;
+
+    expect(() => validateAssuranceStudioClientContractRoutes(
+      [route("POST", "/write")],
+      [],
+    )).toThrow("must be read-only");
+    expect(() => validateAssuranceStudioClientContractRoutes(
+      [route("GET", "/duplicate"), route("GET", "/duplicate")],
+      [],
+    )).toThrow("Duplicate client-contract route");
+    expect(() => validateAssuranceStudioClientContractRoutes(
+      [route("GET", "/verified")],
+      [{ method: "GET", pathTemplate: "/verified" }],
+    )).toThrow("overlaps a verified route");
+  });
+
   it("duplicate and unknown route registration fail startup", () => {
     expect(() =>
       createHarness((service, registry) => {
@@ -168,7 +196,7 @@ describe("remote-mock-routing-gate", () => {
         method: "GET",
         pathTemplate: "/api/projects/{projectId}/assets",
         source: "client-contract",
-        evidence: expect.stringContaining("FS-153"),
+        evidence: expect.stringContaining("production route unverified"),
       }),
     );
     expect(

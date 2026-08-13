@@ -406,7 +406,7 @@ export const ASSURANCE_STUDIO_REFERENCE_ROUTES = [
     "requestMediaTypes": [],
     "responseStatuses": [],
     "source": "client-contract",
-    "evidence": "FS-153 production AssuranceStudioClient.listEntities contract"
+    "evidence": "FS-153 seeded-mock-only asset list; production route unverified"
   },
   {
     "routeId": "assurance-studio:DELETE:/api/projects/{projectId}/assets/{assetId}",

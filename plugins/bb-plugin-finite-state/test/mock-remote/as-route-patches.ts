@@ -135,7 +135,7 @@ export const ASSURANCE_STUDIO_ROUTE_PATCHES = [
   },
 ] as const satisfies readonly AssuranceStudioRoutePatch[];
 
-/** Routes required by the closed production client but absent from verified upstream references. */
+/** Seeded-mock routes exercised by the production client but unverified against the upstream service. */
 export const ASSURANCE_STUDIO_CLIENT_CONTRACT_ROUTES = [
   {
     method: "GET",
@@ -143,7 +143,7 @@ export const ASSURANCE_STUDIO_CLIENT_CONTRACT_ROUTES = [
     operationId: null,
     requestMediaTypes: [],
     responseStatuses: [],
-    evidence: "FS-153 production AssuranceStudioClient.listEntities contract",
+    evidence: "FS-153 seeded-mock-only asset list; production route unverified",
   },
 ] as const satisfies readonly AssuranceStudioClientContractRoute[];
 
