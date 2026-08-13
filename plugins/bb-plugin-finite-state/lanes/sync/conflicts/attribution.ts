@@ -13,6 +13,7 @@ export type AttributionProvider = (
 
 const providers = new Map<EntityKind, AttributionProvider>();
 const cache = new Map<string, Promise<ConflictAttribution>>();
+const MAX_ATTRIBUTION_CACHE_ENTRIES = 512;
 
 function unavailable(): ConflictAttribution {
   return { actor: null, at: null, source: null, available: false };
@@ -105,10 +106,20 @@ export function conflictAttribution(
   const id = cacheKey(kind, key, normalizedPaths);
   const current = cache.get(id);
   if (current !== undefined) return current;
-  const pending = withTimeout(provider(kind, key, normalizedPaths), timeoutMs)
+  const pending = withTimeout(
+    Promise.resolve().then(() => provider(kind, key, normalizedPaths)),
+    timeoutMs,
+  )
     .then((value) => value.available ? { ...value } : unavailable())
     .catch(() => unavailable());
+  if (cache.size >= MAX_ATTRIBUTION_CACHE_ENTRIES) {
+    const oldest = cache.keys().next().value;
+    if (oldest !== undefined) cache.delete(oldest);
+  }
   cache.set(id, pending);
+  void pending.then((value) => {
+    if (!value.available && cache.get(id) === pending) cache.delete(id);
+  });
   return pending;
 }
 
@@ -152,15 +163,30 @@ export async function attributeConflicts(
   return conflicts.map((conflict) => attributed.get(conflict) ?? conflict);
 }
 
-/** Owned hook that projects rich pointer conflicts into the frozen plan shape. */
-export async function refinePlanConflicts(input: {
+export interface PlanConflictRefinement {
+  merged: unknown;
+  conflicts: Conflict[];
+}
+
+/** Owned hook that preserves the semantic merge while projecting frozen plan conflicts. */
+export async function refinePlanCandidate(input: {
   kind: EntityKind;
   key: string;
   base: unknown;
   ours: unknown;
   theirs: unknown;
   attributionTimeoutMs?: number;
-}): Promise<Conflict[]> {
+}): Promise<PlanConflictRefinement> {
   const detected = detectConflicts(input);
-  return (await attributeConflicts(detected.conflicts, input.attributionTimeoutMs)).map(planConflict);
+  return {
+    merged: detected.merged,
+    conflicts: (await attributeConflicts(detected.conflicts, input.attributionTimeoutMs)).map(planConflict),
+  };
+}
+
+/** Backward-compatible owned projection used by focused callers. */
+export async function refinePlanConflicts(
+  input: Parameters<typeof refinePlanCandidate>[0],
+): Promise<Conflict[]> {
+  return (await refinePlanCandidate(input)).conflicts;
 }

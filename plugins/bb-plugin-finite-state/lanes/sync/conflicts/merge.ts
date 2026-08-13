@@ -1,4 +1,10 @@
+import { createHash, randomUUID } from "node:crypto";
+import { readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { resolve, sep } from "node:path";
+
+import type { EntityAdapter } from "../engine/adapter.js";
 import { canonicalJson } from "../serialize/canonical.js";
+import { emitYaml } from "../serialize/yaml.js";
 
 export interface SemanticNode {
   present: boolean;
@@ -8,6 +14,27 @@ export interface SemanticNode {
 export interface SetMergeResult {
   merged: unknown[];
   opposed: boolean;
+}
+
+export interface WorkingMaterializationInput {
+  adapter: EntityAdapter;
+  worktreeRoot: string;
+  key: string;
+  file: string | null;
+  expectedFileSha256: string | null;
+  currentPayload: Record<string, unknown> | undefined;
+  nextPayload: Record<string, unknown> | undefined;
+}
+
+export interface WorkingMaterialization {
+  rollback(): Promise<void>;
+}
+
+export class WorkingMaterializationError extends Error {
+  constructor(readonly code: string, message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "WorkingMaterializationError";
+  }
 }
 
 export function escapePointerSegment(segment: string): string {
@@ -34,6 +61,136 @@ export function sameSemanticNode(left: SemanticNode, right: SemanticNode): boole
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+export function sha256Text(bytes: string): string {
+  return createHash("sha256").update(bytes, "utf8").digest("hex");
+}
+
+export function confinedWorkingFile(root: string, relativeFile: string): string {
+  const absoluteRoot = resolve(root);
+  const absolute = resolve(absoluteRoot, ...relativeFile.split("/"));
+  if (absolute !== absoluteRoot && !absolute.startsWith(`${absoluteRoot}${sep}`)) {
+    throw new WorkingMaterializationError(
+      "WORKING_PATH_INVALID",
+      "Adapter returned a file outside the worktree",
+    );
+  }
+  return absolute;
+}
+
+function semanticCandidateMatches(
+  candidate: Record<string, unknown>,
+  payload: Readonly<Record<string, unknown>>,
+): boolean {
+  return Object.entries(payload).every(([key, value]) => (
+    Object.hasOwn(candidate, key) && canonicalJson(candidate[key]) === canonicalJson(value)
+  ));
+}
+
+function semanticCandidates(
+  value: unknown,
+  payload: Readonly<Record<string, unknown>>,
+  depth = 0,
+): Array<{ value: Record<string, unknown>; depth: number }> {
+  if (Array.isArray(value)) {
+    return value.flatMap((entry) => semanticCandidates(entry, payload, depth + 1));
+  }
+  if (!isRecord(value)) return [];
+  const result = semanticCandidateMatches(value, payload) ? [{ value, depth }] : [];
+  for (const [key, child] of Object.entries(value)) {
+    if (key !== "sync") result.push(...semanticCandidates(child, payload, depth + 1));
+  }
+  return result;
+}
+
+async function replaceFileCas(
+  file: string,
+  expectedSha256: string,
+  contents: string,
+): Promise<WorkingMaterialization> {
+  const original = await readFile(file, "utf8");
+  if (sha256Text(original) !== expectedSha256) {
+    throw new WorkingMaterializationError(
+      "FILE_STALE",
+      "Working YAML changed before semantic materialization",
+    );
+  }
+  const metadata = await stat(file);
+  const temporary = `${file}.${process.pid}.${randomUUID()}.tmp`;
+  const writtenSha256 = sha256Text(contents);
+  try {
+    await writeFile(temporary, contents, { encoding: "utf8", mode: metadata.mode });
+    if (sha256Text(await readFile(file, "utf8")) !== expectedSha256) {
+      throw new WorkingMaterializationError(
+        "FILE_STALE",
+        "Working YAML changed during semantic materialization",
+      );
+    }
+    await rename(temporary, file);
+  } catch (error: unknown) {
+    await rm(temporary, { force: true }).catch(() => undefined);
+    throw error;
+  }
+  return {
+    async rollback() {
+      if (sha256Text(await readFile(file, "utf8")) !== writtenSha256) {
+        throw new WorkingMaterializationError(
+          "ROLLBACK_STALE",
+          "Working YAML changed before materialization rollback",
+        );
+      }
+      const rollback = `${file}.${process.pid}.${randomUUID()}.rollback`;
+      try {
+        await writeFile(rollback, original, { encoding: "utf8", mode: metadata.mode });
+        await rename(rollback, file);
+      } catch (error: unknown) {
+        await rm(rollback, { force: true }).catch(() => undefined);
+        throw error;
+      }
+    },
+  };
+}
+
+/**
+ * Locates one adapter-owned semantic mapping, preserves document identity and
+ * bookkeeping fields, serializes through that adapter, and writes with SHA CAS.
+ */
+export async function materializeExistingWorking(
+  input: WorkingMaterializationInput,
+): Promise<WorkingMaterialization> {
+  if (
+    input.file === null
+    || input.expectedFileSha256 === null
+    || input.currentPayload === undefined
+    || input.nextPayload === undefined
+  ) {
+    throw new WorkingMaterializationError(
+      "WORKING_MATERIALIZER_REQUIRED",
+      `${input.adapter.kind}/${input.key} requires its surface-owned create/delete materializer`,
+    );
+  }
+  const file = confinedWorkingFile(input.worktreeRoot, input.file);
+  const document = input.adapter.serializer.fromYaml(await readFile(file, "utf8"), input.file);
+  const candidates = semanticCandidates(document, input.currentPayload);
+  const shallowest = candidates.reduce((minimum, candidate) => Math.min(minimum, candidate.depth), Infinity);
+  const matches = candidates.filter((candidate) => candidate.depth === shallowest);
+  const target = matches[0];
+  if (target === undefined || matches.length !== 1) {
+    throw new WorkingMaterializationError(
+      "WORKING_LOCATION_AMBIGUOUS",
+      `Registered adapter could not identify one semantic mapping for ${input.adapter.kind}/${input.key}`,
+    );
+  }
+  for (const key of Object.keys(input.currentPayload)) {
+    if (!Object.hasOwn(input.nextPayload, key)) delete target.value[key];
+  }
+  for (const [key, value] of Object.entries(input.nextPayload)) {
+    target.value[key] = structuredClone(value);
+  }
+  const contents = emitYaml(document);
+  input.adapter.serializer.fromYaml(contents, input.file);
+  return replaceFileCas(file, input.expectedFileSha256, contents);
 }
 
 function memberIdentity(value: unknown): string {

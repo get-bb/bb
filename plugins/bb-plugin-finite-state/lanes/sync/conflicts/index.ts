@@ -5,9 +5,11 @@ import { ConflictResolutionError } from "./resolve.js";
 export {
   attributeConflicts,
   conflictAttribution,
+  refinePlanCandidate,
   refinePlanConflicts,
   registerAttributionProvider,
   type AttributionProvider,
+  type PlanConflictRefinement,
 } from "./attribution.js";
 export {
   detectConflicts,

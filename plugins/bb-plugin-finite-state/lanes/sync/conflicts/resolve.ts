@@ -1,6 +1,6 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { readFile, rename, rm, stat, writeFile } from "node:fs/promises";
-import { join, resolve, sep } from "node:path";
+import { join } from "node:path";
 
 import { toStorageProjectVersionId } from "../../../lib/store/index.js";
 import { parseKey, type EntityKind } from "../../../lib/sync/registry.js";
@@ -15,7 +15,6 @@ import {
 import type { EngineDeps } from "../engine/pull.js";
 import { syncMetadata } from "../engine/status.js";
 import { contentHash, canonicalJson } from "../serialize/canonical.js";
-import { emitYaml } from "../serialize/yaml.js";
 import {
   loadPlanForDeps,
   type Conflict,
@@ -38,29 +37,26 @@ import { IdMapStore } from "../store/id-map.js";
 import { attributeConflicts } from "./attribution.js";
 import { detectConflicts, type FieldConflict } from "./detect.js";
 import {
+  confinedWorkingFile,
   escapePointerSegment,
+  materializeExistingWorking,
+  sha256Text,
   writePointer,
   type SemanticNode,
+  type WorkingMaterialization,
+  type WorkingMaterializationInput,
+} from "./merge.js";
+
+export {
+  materializeExistingWorking,
+  type WorkingMaterialization,
+  type WorkingMaterializationInput,
 } from "./merge.js";
 
 export type ConflictResolution =
   | { choice: "take-ours" }
   | { choice: "take-theirs" }
   | { choice: "edited"; value: unknown };
-
-export interface WorkingMaterializationInput {
-  adapter: EntityAdapter;
-  worktreeRoot: string;
-  key: string;
-  file: string | null;
-  expectedFileSha256: string | null;
-  currentPayload: Record<string, unknown> | undefined;
-  nextPayload: Record<string, unknown> | undefined;
-}
-
-export interface WorkingMaterialization {
-  rollback(): Promise<void>;
-}
 
 export interface ConflictDeps extends EngineDeps {
   worktreeRoot: string;
@@ -119,10 +115,6 @@ function jsonValue(value: unknown): JsonValue {
 
 function safeClone<T>(value: T): T {
   return structuredClone(value);
-}
-
-function sha256(bytes: string): string {
-  return createHash("sha256").update(bytes, "utf8").digest("hex");
 }
 
 function planRoot(deps: ConflictDeps): string {
@@ -206,6 +198,43 @@ function withExistingResolutions(
   });
 }
 
+function assertUnresolvedConflictsRemainDetectable(
+  item: PlanItem,
+  detected: readonly FieldConflict[],
+): void {
+  const detectedPaths = new Set(detected.map((conflict) => conflict.path));
+  const missing = item.conflicts.find((conflict) => (
+    conflict.resolution === null && !detectedPaths.has(normalizePath(conflict.field))
+  ));
+  if (missing !== undefined) {
+    throw new ConflictResolutionError(
+      "CONFLICT_STATE_INVALID",
+      `Unresolved conflict ${item.kind}/${item.key}${normalizePath(missing.field)} is no longer detectable`,
+    );
+  }
+}
+
+function conflictHistory(
+  item: PlanItem,
+  detected: readonly FieldConflict[],
+  current: readonly FieldConflict[],
+): Conflict[] {
+  const currentByPath = new Map(current.map((conflict) => [conflict.path, conflict]));
+  const projected = detected.map((conflict) => fieldConflictToPlan(currentByPath.get(conflict.path) ?? conflict));
+  const projectedPaths = new Set(projected.map((conflict) => normalizePath(conflict.field)));
+  const resolvedHistory = item.conflicts.filter((conflict) => (
+    conflict.resolution !== null && !projectedPaths.has(normalizePath(conflict.field))
+  ));
+  const currentHistory = current
+    .filter((conflict) => conflict.resolution !== null && !projectedPaths.has(conflict.path))
+    .map(fieldConflictToPlan);
+  return [...projected, ...resolvedHistory, ...currentHistory]
+    .filter((conflict, index, all) => (
+      all.findIndex((candidate) => normalizePath(candidate.field) === normalizePath(conflict.field)) === index
+    ))
+    .sort((left, right) => normalizePath(left.field).localeCompare(normalizePath(right.field)));
+}
+
 function adapterFor(deps: ConflictDeps, kind: EntityKind): EntityAdapter {
   const adapter = [...(deps.adapters ?? registeredAdapters())].find((candidate) => candidate.kind === kind);
   if (adapter === undefined) {
@@ -238,15 +267,6 @@ async function workingRows(adapter: EntityAdapter, root: string): Promise<Workin
     if (partial !== null) return partial;
     throw error;
   }
-}
-
-function confinedFile(root: string, relativeFile: string): string {
-  const absoluteRoot = resolve(root);
-  const absolute = resolve(absoluteRoot, ...relativeFile.split("/"));
-  if (absolute !== absoluteRoot && !absolute.startsWith(`${absoluteRoot}${sep}`)) {
-    throw new ConflictResolutionError("WORKING_PATH_INVALID", "Adapter returned a file outside the worktree");
-  }
-  return absolute;
 }
 
 function sidePayload(
@@ -300,7 +320,7 @@ async function loadEntityState(
   }
   const fileSha256 = working === null
     ? null
-    : sha256(await readFile(confinedFile(deps.worktreeRoot, working.file), "utf8"));
+    : sha256Text(await readFile(confinedWorkingFile(deps.worktreeRoot, working.file), "utf8"));
   return { adapter, baseRow, base, ours, theirs, working, fileSha256 };
 }
 
@@ -372,107 +392,6 @@ async function remoteEntity(
     }
   }
   return found;
-}
-
-function semanticCandidateMatches(
-  candidate: Record<string, unknown>,
-  payload: Readonly<Record<string, unknown>>,
-): boolean {
-  return Object.entries(payload).every(([key, value]) => (
-    Object.hasOwn(candidate, key) && canonicalJson(candidate[key]) === canonicalJson(value)
-  ));
-}
-
-function semanticCandidates(
-  value: unknown,
-  payload: Readonly<Record<string, unknown>>,
-  depth = 0,
-): Array<{ value: Record<string, unknown>; depth: number }> {
-  if (Array.isArray(value)) {
-    return value.flatMap((entry) => semanticCandidates(entry, payload, depth + 1));
-  }
-  if (!isRecord(value)) return [];
-  const result = semanticCandidateMatches(value, payload) ? [{ value, depth }] : [];
-  for (const [key, child] of Object.entries(value)) {
-    if (key !== "sync") result.push(...semanticCandidates(child, payload, depth + 1));
-  }
-  return result;
-}
-
-async function replaceFileCas(file: string, expectedSha256: string, contents: string): Promise<WorkingMaterialization> {
-  const original = await readFile(file, "utf8");
-  if (sha256(original) !== expectedSha256) {
-    throw new ConflictResolutionError("FILE_STALE", "Working YAML changed before conflict resolution");
-  }
-  const metadata = await stat(file);
-  const temporary = `${file}.${process.pid}.${randomUUID()}.tmp`;
-  const writtenSha256 = sha256(contents);
-  try {
-    await writeFile(temporary, contents, { encoding: "utf8", mode: metadata.mode });
-    if (sha256(await readFile(file, "utf8")) !== expectedSha256) {
-      throw new ConflictResolutionError("FILE_STALE", "Working YAML changed during conflict resolution");
-    }
-    await rename(temporary, file);
-  } catch (error: unknown) {
-    await rm(temporary, { force: true }).catch(() => undefined);
-    throw error;
-  }
-  return {
-    async rollback() {
-      if (sha256(await readFile(file, "utf8")) !== writtenSha256) {
-        throw new ConflictResolutionError("ROLLBACK_STALE", "Working YAML changed before rollback");
-      }
-      const rollback = `${file}.${process.pid}.${randomUUID()}.rollback`;
-      try {
-        await writeFile(rollback, original, { encoding: "utf8", mode: metadata.mode });
-        await rename(rollback, file);
-      } catch (error: unknown) {
-        await rm(rollback, { force: true }).catch(() => undefined);
-        throw error;
-      }
-    },
-  };
-}
-
-/**
- * Default existing-file materializer. It locates the shallowest semantic
- * mapping produced by the registered adapter, preserves document identity and
- * bookkeeping fields, serializes through that adapter, and writes with SHA CAS.
- */
-export async function materializeExistingWorking(
-  input: WorkingMaterializationInput,
-): Promise<WorkingMaterialization> {
-  if (
-    input.file === null
-    || input.expectedFileSha256 === null
-    || input.currentPayload === undefined
-    || input.nextPayload === undefined
-  ) {
-    throw new ConflictResolutionError(
-      "WORKING_MATERIALIZER_REQUIRED",
-      `${input.adapter.kind}/${input.key} requires its surface-owned create/delete materializer`,
-    );
-  }
-  const file = confinedFile(input.worktreeRoot, input.file);
-  const document = input.adapter.serializer.fromYaml(await readFile(file, "utf8"), input.file);
-  const candidates = semanticCandidates(document, input.currentPayload);
-  const shallowest = candidates.reduce((minimum, candidate) => Math.min(minimum, candidate.depth), Infinity);
-  const matches = candidates.filter((candidate) => candidate.depth === shallowest);
-  const target = matches[0];
-  if (target === undefined || matches.length !== 1) {
-    throw new ConflictResolutionError(
-      "WORKING_LOCATION_AMBIGUOUS",
-      `Registered adapter could not identify one semantic mapping for ${input.adapter.kind}/${input.key}`,
-    );
-  }
-  for (const key of Object.keys(input.currentPayload)) {
-    if (!Object.hasOwn(input.nextPayload, key)) delete target.value[key];
-  }
-  for (const [key, value] of Object.entries(input.nextPayload)) target.value[key] = safeClone(value);
-  // Round-trip validation happens before the CAS write; the adapter's reader
-  // is run again after materialization by resolveConflict.
-  input.adapter.serializer.fromYaml(emitYaml(document), input.file);
-  return replaceFileCas(file, input.expectedFileSha256, emitYaml(document));
 }
 
 function localOperation(
@@ -629,6 +548,20 @@ function resolvedOurs(
   return next;
 }
 
+function resolvedBase(
+  base: Record<string, unknown> | undefined,
+  conflict: FieldConflict,
+  resolution: ConflictResolution,
+): Record<string, unknown> | undefined {
+  if (resolution.choice !== "take-theirs") return base === undefined ? undefined : safeClone(base);
+  const next = writePointer(base, conflict.path, semanticNode(conflict.theirs));
+  if (next === undefined) return undefined;
+  if (!isRecord(next)) {
+    throw new ConflictResolutionError("CONFLICT_STATE_INVALID", "An accepted semantic entity must remain a JSON object");
+  }
+  return next;
+}
+
 async function verifyWorking(
   deps: ConflictDeps,
   adapter: EntityAdapter,
@@ -655,11 +588,12 @@ function assertPlanBaseFence(deps: ConflictDeps, plan: Plan): void {
   }
 }
 
-function advanceBaseToTheirs(
+function advanceBaseToResolution(
   deps: ConflictDeps,
   plan: Plan,
   item: PlanItem,
   baseRow: BaseRow | null,
+  nextBase: Record<string, unknown> | undefined,
   remote: ServerEntity | null,
 ): void {
   const generationId = plan.baseGenerationIds[item.kind];
@@ -669,7 +603,10 @@ function advanceBaseToTheirs(
   }
   const store = new BaseSnapshotStore(deps.db);
   const storageVersionId = toStorageProjectVersionId(plan.projectVersionId);
-  if (remote === null) {
+  if (nextBase === undefined) {
+    if (remote !== null) {
+      throw new ConflictResolutionError("CONFLICT_STATE_INVALID", "A deleted accepted base requires a deleted remote entity");
+    }
     if (baseRow === null) return;
     store.deleteAccepted(plan.projectId, storageVersionId, item.kind, item.key, {
       generationId,
@@ -678,12 +615,15 @@ function advanceBaseToTheirs(
     });
     return;
   }
+  if (remote === null) {
+    throw new ConflictResolutionError("CONFLICT_STATE_INVALID", "A partial accepted base requires a remote entity identity");
+  }
   store.advanceAccepted(plan.projectId, storageVersionId, item.kind, item.key, {
     generationId,
     baseRevision,
     contentHash: baseRow?.contentHash ?? null,
   }, {
-    payload: remote.payload,
+    payload: nextBase,
     remoteId: remote.remoteId,
     pulledAt: (deps.now?.() ?? new Date()).toISOString(),
   });
@@ -804,6 +744,7 @@ export async function resolveConflict(
     deps.resolvedBy,
     resolvedAt,
   );
+  assertUnresolvedConflictsRemainDetectable(item, attributed);
   const path = normalizePath(input.path);
   const target = attributed.find((conflict) => conflict.path === path);
   if (target === undefined || target.resolution !== null) {
@@ -811,22 +752,33 @@ export async function resolveConflict(
   }
   if (input.resolution.choice === "edited") canonicalJson(input.resolution.value);
   const nextOurs = resolvedOurs(state.ours, target, input.resolution);
-  const nextBase = input.resolution.choice === "take-theirs" ? state.theirs : state.base;
-  const nextConflicts = attributed.map((conflict) => conflict === target
+  const nextBase = resolvedBase(state.base, target, input.resolution);
+  const currentConflicts = attributed.map((conflict) => conflict === target
     ? { ...conflict, resolution: resolutionFor(input.resolution, deps.resolvedBy, resolvedAt) }
     : conflict);
-  const unresolved = nextConflicts.some((conflict) => conflict.resolution === null);
+  const redetected = await attributeConflicts(detectConflicts({
+    kind: item.kind,
+    key: item.key,
+    base: nextBase,
+    ours: nextOurs,
+    theirs: state.theirs,
+  }).conflicts, deps.attributionTimeoutMs);
+  const currentByPath = new Map(currentConflicts.map((conflict) => [conflict.path, conflict]));
+  const unresolved = redetected.some((conflict) => {
+    const current = currentByPath.get(conflict.path);
+    return current === undefined || current.resolution === null;
+  });
   const operation = unresolved ? "conflict" : localOperation(nextBase, nextOurs);
   const fields = operation === "noop"
     ? []
     : operation === "conflict"
-      ? item.fields
+      ? threeWayDiff(nextBase, nextOurs, state.theirs)
       : threeWayDiff(nextBase, nextOurs, nextBase);
   const nextItem: PlanItem = {
     ...item,
     operation,
     fields,
-    conflicts: nextConflicts.map(fieldConflictToPlan),
+    conflicts: conflictHistory(item, redetected, currentConflicts),
     error: null,
     referrers: [],
   };
@@ -869,7 +821,7 @@ export async function resolveConflict(
           && canonicalJson(remote.payload) !== canonicalJson(state.theirs))) {
         throw new ConflictResolutionError("REMOTE_STALE", `Remote ${item.kind}/${item.key} moved after planning`);
       }
-      advanceBaseToTheirs(deps, plan, item, state.baseRow, remote);
+      advanceBaseToResolution(deps, plan, item, state.baseRow, nextBase, remote);
       candidate = refreshBaseFences(deps, candidate);
       const refreshedTarget = candidate.items.find((value) => value.kind === item.kind && value.key === item.key);
       if (refreshedTarget !== undefined) {

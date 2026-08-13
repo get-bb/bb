@@ -251,7 +251,7 @@ describe("conflict attribution", () => {
     expect((await attributeConflicts(detected))[0]?.suggestion).toBeNull();
   });
 
-  it("turns provider failure and timeout into usable unavailable conflicts", async () => {
+  it("turns provider failure and timeout into usable unavailable conflicts and retries them", async () => {
     const detected = detectConflicts({
       kind,
       key,
@@ -259,8 +259,16 @@ describe("conflict attribution", () => {
       ours: { title: "ours" },
       theirs: { title: "theirs" },
     }).conflicts;
+    let failureCalls = 0;
     registerAttributionProvider(kind, async () => {
-      throw new Error("audit unavailable");
+      failureCalls += 1;
+      if (failureCalls === 1) throw new Error("audit unavailable");
+      return {
+        actor: "reviewer@example.com",
+        at: "2026-08-13T01:00:00.000Z",
+        source: "human",
+        available: true,
+      };
     });
     expect((await attributeConflicts(detected))[0]?.attribution).toEqual({
       actor: null,
@@ -268,8 +276,22 @@ describe("conflict attribution", () => {
       source: null,
       available: false,
     });
+    expect((await attributeConflicts(detected))[0]?.attribution.available).toBe(true);
+    expect(failureCalls).toBe(2);
 
-    registerAttributionProvider(kind, async () => await new Promise(() => undefined));
+    let timeoutCalls = 0;
+    registerAttributionProvider(kind, async () => {
+      timeoutCalls += 1;
+      if (timeoutCalls === 1) return await new Promise(() => undefined);
+      return {
+        actor: "reviewer@example.com",
+        at: "2026-08-13T01:00:00.000Z",
+        source: "human",
+        available: true,
+      };
+    });
     expect((await attributeConflicts(detected, 5))[0]?.attribution.available).toBe(false);
+    expect((await attributeConflicts(detected, 5))[0]?.attribution.available).toBe(true);
+    expect(timeoutCalls).toBe(2);
   });
 });

@@ -11,7 +11,7 @@ import { ENTITIES, type EntityKind } from "../../../lib/sync/registry.js";
 import type { EntityAdapter, ServerEntity } from "../engine/adapter.js";
 import { syncMetadata } from "../engine/status.js";
 import { conflictingFields, threeWayDiff } from "../plan/diff.js";
-import type { Plan, PlanItem, PlanOp } from "../plan/index.js";
+import { computePlan, type Plan, type PlanItem, type PlanOp } from "../plan/index.js";
 import { blastRadius } from "../plan/blast-radius.js";
 import { registerValidator } from "../plan/validate.js";
 import { canonicalJson, contentHash } from "../serialize/canonical.js";
@@ -345,6 +345,82 @@ describe("explicit conflict resolution", () => {
       }],
     });
   });
+
+  it.each([
+    { first: "title", title: "take-theirs", description: "take-ours" },
+    { first: "description", title: "take-theirs", description: "take-ours" },
+    { first: "title", title: "take-ours", description: "take-theirs" },
+    { first: "description", title: "take-ours", description: "take-theirs" },
+  ] as const)(
+    "keeps the sibling conflict live when resolving $first first ($title/$description)",
+    async ({ first, title, description }) => {
+      const basePayload = { slug: "threat-multi", title: "base-title", description: "base-description" };
+      const oursPayload = { slug: "threat-multi", title: "ours-title", description: "ours-description" };
+      const theirsPayload = { slug: "threat-multi", title: "theirs-title", description: "theirs-description" };
+      const value = await fixture({
+        kind: "threat",
+        base: basePayload,
+        ours: oursPayload,
+        theirs: theirsPayload,
+      });
+      const choices = { title, description };
+      const second = first === "title" ? "description" : "title";
+      const firstPlan = await resolveConflict(value.deps, {
+        planId: value.plan.planId,
+        expectedPlanSha256: value.plan.planSha256,
+        kind: "threat",
+        key: value.key,
+        path: `/${first}`,
+        resolution: { choice: choices[first] },
+      });
+
+      const firstItem = firstPlan.items[0];
+      expect(firstItem?.operation).toBe("conflict");
+      expect(firstItem?.conflicts.find((conflict) => conflict.field === `/${first}`)?.resolution)
+        .toEqual({ choice: choices[first] });
+      expect(firstItem?.conflicts.find((conflict) => conflict.field === `/${second}`)?.resolution)
+        .toBeNull();
+      const baseAfterFirst = new BaseSnapshotStore(value.deps.db)
+        .getAccepted(PROJECT, VERSION, "threat", value.key)?.payload;
+      expect(baseAfterFirst).toEqual({
+        ...basePayload,
+        ...(choices[first] === "take-theirs" ? { [first]: theirsPayload[first] } : {}),
+      });
+
+      const replanned = await computePlan(
+        value.deps,
+        { projectId: PROJECT, projectVersionId: VERSION },
+        ["threat"],
+      );
+      const replannedItem = replanned.items.find((item) => item.key === value.key);
+      expect(replannedItem?.operation).toBe("conflict");
+      expect(replannedItem?.conflicts.some((conflict) => conflict.field === `/${second}`)).toBe(true);
+
+      const resolved = await resolveConflict(value.deps, {
+        planId: firstPlan.planId,
+        expectedPlanSha256: firstPlan.planSha256,
+        kind: "threat",
+        key: value.key,
+        path: `/${second}`,
+        resolution: { choice: choices[second] },
+      });
+      const authored = createSerializer("threat").fromYaml(await readFile(value.file, "utf8"), value.file);
+      expect(authored).toEqual({
+        slug: "threat-multi",
+        title: title === "take-theirs" ? theirsPayload.title : oursPayload.title,
+        description: description === "take-theirs" ? theirsPayload.description : oursPayload.description,
+      });
+      expect(new BaseSnapshotStore(value.deps.db).getAccepted(PROJECT, VERSION, "threat", value.key)?.payload)
+        .toEqual({
+          ...basePayload,
+          ...(title === "take-theirs" ? { title: theirsPayload.title } : {}),
+          ...(description === "take-theirs" ? { description: theirsPayload.description } : {}),
+        });
+      expect(resolved.items[0]?.operation).toBe("update");
+      expect(resolved.items[0]?.conflicts).toHaveLength(2);
+      expect(resolved.items[0]?.conflicts.every((conflict) => conflict.resolution !== null)).toBe(true);
+    },
+  );
 
   it("rejects stale plan/working fences without a partial base or plan write", async () => {
     const value = await fixture({

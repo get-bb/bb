@@ -13,6 +13,7 @@ import type { EntityAdapter, ServerEntity, WorkingEntity } from "../engine/adapt
 import { pull, type EngineDeps } from "../engine/pull.js";
 import { canonicalJson } from "../serialize/canonical.js";
 import { createSerializer } from "../serialize/serializer.js";
+import { emitYaml } from "../serialize/yaml.js";
 import { blastRadius } from "./blast-radius.js";
 import { classifyThreeWay } from "./diff.js";
 import {
@@ -73,8 +74,26 @@ async function fixture(
       progress({ page: 1, of: 1 });
       yield remote();
     },
-    async readWorking() {
-      return authored();
+    async readWorking(worktreeRoot) {
+      return await Promise.all(authored().map(async (row) => {
+        try {
+          return {
+            ...row,
+            payload: this.serializer.fromYaml(
+              await readFile(join(worktreeRoot, row.file), "utf8"),
+              row.file,
+            ),
+          };
+        } catch (error: unknown) {
+          if (
+            error !== null
+            && typeof error === "object"
+            && "code" in error
+            && error.code === "ENOENT"
+          ) return row;
+          throw error;
+        }
+      }));
     },
   };
   const deps: EngineDeps = {
@@ -192,6 +211,41 @@ describe("three-way plan", () => {
         resolution: null,
       }],
     });
+  });
+
+  it("materializes a disjoint semantic merge and returns an applicable update", async () => {
+    const base = requirement("REQ-DISJOINT", "base title", {
+      metadata: { owner: "base-owner", stable: true },
+    });
+    let remote = [base];
+    let authored = [working(base)];
+    const setup = await fixture(() => remote, () => authored);
+    await pull(setup.deps, scope, ["requirement"]);
+
+    remote = [requirement("REQ-DISJOINT", "base title", {
+      metadata: { owner: "remote-owner", stable: true },
+    })];
+    authored = [working(base, "local title")];
+    const authoredFile = join(setup.root, authored[0]?.file ?? "missing");
+    await mkdir(dirname(authoredFile), { recursive: true });
+    await writeFile(authoredFile, emitYaml(authored[0]?.payload ?? {}), "utf8");
+
+    const plan = await computePlan(
+      { ...setup.deps, worktreeRoot: setup.root },
+      scope,
+      ["requirement"],
+    );
+    const item = plan.items.find((candidate) => candidate.key === base.key);
+    expect(item).toMatchObject({ operation: "update", conflicts: [] });
+    expect(item?.fields.map((field) => field.field)).toEqual(["metadata", "title"]);
+    expect(plan.summary).toMatchObject({ updates: 1, conflicts: 0 });
+    expect(createSerializer("requirement").fromYaml(await readFile(authoredFile, "utf8"), authoredFile))
+      .toEqual({
+        reqId: "REQ-DISJOINT",
+        title: "local title",
+        metadata: { owner: "remote-owner", stable: true },
+      });
+    expect(loadPlan(setup.root, plan.planId)).toEqual(plan);
   });
 
   it("computes the SPEC summary and blocks its referenced delete", async () => {
