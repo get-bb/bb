@@ -16,6 +16,7 @@ import {
 import { maximizedPaneIdAtom, splitLayoutAtom } from "@/lib/split-layout/atoms";
 import type { SplitLayout } from "@/lib/split-layout";
 import { SidebarProvider } from "@/components/ui/sidebar";
+import { ThreadActionsProvider } from "@/components/thread/ThreadActionsProvider";
 import { AppPageHeader } from "@/components/layout/AppPageHeader";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { PaneContext, type PaneContextValue } from "./PaneContext";
@@ -202,15 +203,19 @@ function SplitWorkspaceStory({ maximized = false }: { maximized?: boolean }) {
     <QueryClientProvider client={queryClient}>
       <JotaiProvider store={store}>
         <SidebarProvider>
-          <div className="flex h-screen min-h-[640px] w-full flex-col bg-background p-4 md:p-5">
-            <SplitThreadArea
-              routeContent={{
-                kind: "thread",
-                projectId: PROJECT_ID,
-                threadId: ACTIVE_THREAD_ID,
-              }}
-            />
-          </div>
+          {/* The panes render the real ThreadDetailView, which reads the thread
+              actions (archive, rename, …) its header and shortcuts invoke. */}
+          <ThreadActionsProvider>
+            <div className="flex h-screen min-h-[640px] w-full flex-col bg-background p-4 md:p-5">
+              <SplitThreadArea
+                routeContent={{
+                  kind: "thread",
+                  projectId: PROJECT_ID,
+                  threadId: ACTIVE_THREAD_ID,
+                }}
+              />
+            </div>
+          </ThreadActionsProvider>
         </SidebarProvider>
       </JotaiProvider>
     </QueryClientProvider>

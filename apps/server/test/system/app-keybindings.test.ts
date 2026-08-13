@@ -226,17 +226,19 @@ describe("app keybindings", () => {
           when: { all: ["mainSurface", "modelPickerOpen"], none: [] },
         },
       ]);
-      // No other default binding may use Alt, so the cycle chords cannot be
-      // shadowed by an earlier binding for the same chord.
+      // Alt bindings are enumerated with their keys: bb gives each Alt chord a
+      // distinct key so no Alt command can be shadowed by an earlier binding
+      // for the same chord.
       expect(
         config.defaultKeybindings
           .filter((binding) => binding.shortcut.alt)
-          .map((binding) => binding.command),
+          .map((binding) => `${binding.command}:${binding.shortcut.key}`),
       ).toEqual([
-        "modelPicker.cycleModel",
-        "modelPicker.cycleReasoning",
-        "modelPicker.cycleModel",
-        "modelPicker.cycleReasoning",
+        "thread.archive:a",
+        "modelPicker.cycleModel:m",
+        "modelPicker.cycleReasoning:t",
+        "modelPicker.cycleModel:m",
+        "modelPicker.cycleReasoning:t",
       ]);
       expect(
         config.defaultKeybindings
