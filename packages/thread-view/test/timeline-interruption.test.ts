@@ -64,6 +64,59 @@ function renderIdleTimeline(events: ThreadEventRow[]) {
 }
 
 describe("timeline interruption projection", () => {
+  it("keeps post-turn automatic compaction pending while the thread is idle", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const events = [
+      event.turnStarted({ createdAt: 0 }),
+      event.turnCompleted({ createdAt: 1_000 }),
+      event.contextCompactionStarted({ createdAt: 2_000 }),
+    ];
+    const timeline = renderIdleTimeline(events);
+
+    expect(timeline.messages).toContainEqual(
+      expect.objectContaining({
+        kind: "operation",
+        opType: "compaction",
+        status: "pending",
+        title: "Compacting context",
+        completedAt: null,
+      }),
+    );
+
+    const completedTimeline = renderIdleTimeline([
+      ...events,
+      event.threadCompacted({ createdAt: 3_000 }),
+    ]);
+    expect(completedTimeline.messages).toContainEqual(
+      expect.objectContaining({
+        kind: "operation",
+        opType: "compaction",
+        status: "completed",
+        title: "Context compacted",
+        completedAt: 3_000,
+      }),
+    );
+  });
+
+  it("interrupts post-turn compaction when the thread is explicitly interrupted", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const timeline = renderIdleTimeline([
+      event.turnStarted({ createdAt: 0 }),
+      event.turnCompleted({ createdAt: 1_000 }),
+      event.contextCompactionStarted({ createdAt: 2_000 }),
+      event.systemThreadInterrupted({ createdAt: 3_000 }),
+    ]);
+
+    expect(timeline.messages).toContainEqual(
+      expect.objectContaining({
+        kind: "operation",
+        opType: "compaction",
+        status: "interrupted",
+        title: "Context compaction interrupted",
+      }),
+    );
+  });
+
   it("uses interrupted turn completion time for pending command and tool rows", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
     const timeline = renderIdleTimeline([
