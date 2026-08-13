@@ -2,9 +2,15 @@ import { createHash } from "node:crypto";
 import { cp, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
+import { createFakePluginHost } from "@bb/plugin-sdk/testing";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { createPluginContext } from "../../../lib/context.js";
 import { PlatformClient } from "../../../lib/remote/platform/client.js";
+import { findingStableKey } from "../../../lib/sync/registry.js";
+import { pullFindings } from "../../../lanes/findings/cache/pull.js";
+import type { SyncScope } from "../../../lanes/sync/engine/adapter.js";
+import { pull, type EngineDeps } from "../../../lanes/sync/engine/pull.js";
 import {
   VEX_JUSTIFICATIONS,
   VEX_RESPONSES,
@@ -23,9 +29,11 @@ import {
 const FIXTURE_ROOT = resolve(import.meta.dirname, "../fixtures");
 const TOKEN = "platform-test-token";
 const harnesses: MockRemoteHarness[] = [];
+const hosts: Array<ReturnType<typeof createFakePluginHost>> = [];
 
 afterEach(async () => {
   await Promise.all(harnesses.splice(0).map((harness) => harness.close()));
+  await Promise.all(hosts.splice(0).map((host) => host.harness.lifecycle.dispose()));
 });
 
 function setup(): {
@@ -95,6 +103,65 @@ describe("mock-direct-platform-data", () => {
     expect(Array.isArray(raw)).toBe(true);
     expect(response.headers.get("x-offset")).toBe("0");
     expect(JSON.stringify(raw)).not.toMatch(/file_path|preview|saved_to|continuation/u);
+  });
+
+  it("pulls the real nested component wire through PlatformClient and pullFindings", async () => {
+    const { client, state } = setup();
+    const project = [...state.projects.values()][0];
+    const projectVersionId = String(
+      [...state.versions.values()].find((version) => version.priorVersionId !== null)?.id,
+    );
+    const [finding] = await collect(client.getFindings({
+      projectVersionId,
+      page: { pageSize: 1 },
+    }));
+    expect(finding).toBeDefined();
+    if (finding === undefined) throw new Error("Mock Platform returned no finding");
+    expect(finding.component).toEqual(expect.objectContaining({
+      appId: expect.any(String),
+      id: expect.any(String),
+      name: expect.any(String),
+      vcId: expect.any(String),
+      version: expect.any(String),
+    }));
+    expect(Object.keys(finding.component ?? {}).sort()).toEqual(["appId", "id", "name", "vcId", "version"]);
+    expect(finding).not.toHaveProperty("componentId");
+    expect(finding).not.toHaveProperty("componentPurl");
+
+    const component = finding.component;
+    if (component === null || Array.isArray(component) || typeof component !== "object") {
+      throw new Error("Mock Platform finding component is not an object");
+    }
+    const joined = state.components.get(String(component.id));
+    if (joined === undefined) throw new Error("Mock Platform finding component did not join by ComponentV0.id");
+    if (typeof project?.id !== "string") throw new Error("Mock Platform returned no project");
+    const host = createFakePluginHost({ pluginId: "finite-state-platform-finding-wire" });
+    hosts.push(host);
+    const db = createPluginContext(host.bb).db();
+    const scope: SyncScope = { projectId: project.id, projectVersionId };
+    const deps: EngineDeps = {
+      db,
+      worktreeRoot: null,
+      now: () => new Date("2026-08-13T00:00:00.000Z"),
+      createGenerationId: () => "nested-wire-generation",
+      cachePullers: [{
+        kind: "finding",
+        pull: (pullScope, generationId, onProgress) =>
+          pullFindings({ db, platform: client }, pullScope, generationId, onProgress).then(() => undefined),
+      }],
+    };
+
+    await pull(deps, scope, ["finding"]);
+    const cached = db.prepare(
+      "SELECT stable_key FROM findings WHERE project_id = ? AND project_version_id = ? AND finding_id = ?",
+    ).get(scope.projectId, projectVersionId, finding.id) as { stable_key: string } | undefined;
+    expect(cached?.stable_key).toBe(findingStableKey({
+      cve: String(finding.cve),
+      purl: typeof joined.purl === "string" ? joined.purl : null,
+      name: String(joined.name),
+      group: typeof joined.group === "string" ? joined.group : null,
+      version: typeof joined.version === "string" ? joined.version : null,
+    }, "purl"));
   });
 
   it("binds all four reviewed findings-summary routes through PlatformClient", async () => {

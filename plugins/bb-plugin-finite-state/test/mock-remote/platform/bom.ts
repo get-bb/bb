@@ -61,9 +61,14 @@ function scopedSbomBytes(
       const vulnerabilities = new Map<string, Record<string, unknown>>();
       for (const finding of state.findings.values()) {
         if (finding.projectVersionId !== projectVersionId || typeof finding.vexStatus !== "string") continue;
+        const component = finding.component;
+        if (
+          component === null || Array.isArray(component) || typeof component !== "object" ||
+          !("id" in component) || typeof component.id !== "string"
+        ) continue;
         vulnerabilities.set(String(finding.id), {
           id: finding.cve,
-          affects: [{ ref: finding.componentId }],
+          affects: [{ ref: component.id }],
           analysis: {
             state: finding.vexStatus,
             response: typeof finding.vexResponse === "string" ? [finding.vexResponse] : [],

@@ -24,6 +24,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
+function isJsonRecord(value: Json | undefined): value is Record<string, Json> {
+  return value !== null && value !== undefined && typeof value === "object" && !Array.isArray(value);
+}
+
 function requiredString(
   row: Readonly<Record<string, Json>>,
   field: string,
@@ -43,6 +47,11 @@ function optionalString(
   if (value === undefined || value === null) return null;
   if (typeof value !== "string") throw new TypeError(`Platform finding ${field} must be a string or null`);
   return value;
+}
+
+function nestedComponent(row: Readonly<Record<string, Json>>): Readonly<Record<string, Json>> | null {
+  const value = row["component"];
+  return isJsonRecord(value) ? value : null;
 }
 
 function purlIdentity(purl: string | null): {
@@ -84,10 +93,13 @@ function vexPayload(row: Readonly<Record<string, Json>>): Record<string, unknown
 }
 
 function findingIdentity(row: Readonly<Record<string, Json>>) {
+  const component = nestedComponent(row);
+  const componentId = optionalString(row, "componentId")
+    ?? (component === null ? null : optionalString(component, "id"));
+  if (componentId === null) throw new TypeError("Platform finding is missing component identity id");
   const purl = optionalString(row, "componentPurl");
   const parsed = purlIdentity(purl);
-  const fallback = optionalString(row, "componentFallbackIdentity")
-    ?? requiredString(row, "componentId");
+  const fallback = optionalString(row, "componentFallbackIdentity") ?? componentId;
   return {
     cve: requiredString(row, "cve"),
     purl,

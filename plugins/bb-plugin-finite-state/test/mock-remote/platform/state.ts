@@ -209,7 +209,8 @@ export function createMockPlatformState(fixtureRoot: string): MockPlatformState 
     });
   });
   for (const finding of initialFindings.values()) {
-    const componentId = stringField(finding, "componentId", "platform finding");
+    const component = object(finding.component, "platform finding component");
+    const componentId = stringField(component, "id", "platform finding component");
     if (!initialComponents.has(componentId)) {
       throw new MockPlatformFixtureError(`Finding references unknown component ${componentId}`);
     }

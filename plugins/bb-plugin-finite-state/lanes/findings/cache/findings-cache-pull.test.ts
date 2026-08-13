@@ -25,6 +25,80 @@ function pages<T>(values: RemotePage<T>[]): AsyncIterable<RemotePage<T>> {
 }
 
 describe("findings cache pull", () => {
+  it("keeps stable keys byte-identical for equivalent flat and nested component identities", () => {
+    const identities = new Map([
+      ["component-1", {
+        name: "Mbed TLS",
+        group: "Arm",
+        version: "3.0.0",
+        purl: "pkg:generic/mbed-tls@3.0.0",
+      }],
+    ]);
+    const finding = {
+      id: "finding-1",
+      cve: "CVE-2026-34877",
+      title: "CVE-2026-34877 - Mbed TLS@3.0.0",
+      type: "cve",
+    } satisfies Record<string, Json>;
+    const flat = normalizeFinding({
+      ...finding,
+      componentId: "component-1",
+      componentName: "Mbed TLS",
+      componentGroup: "Arm",
+      componentVersion: "3.0.0",
+      componentPurl: "pkg:generic/mbed-tls@3.0.0",
+    }, identities);
+    const nested = normalizeFinding({
+      ...finding,
+      component: {
+        appId: "app-component-1",
+        id: "component-1",
+        name: "Mbed TLS",
+        vcId: "vc-component-1",
+        version: "3.0.0",
+      },
+    }, identities);
+    const missingJoin = normalizeFinding({
+      ...finding,
+      component: {
+        appId: "app-component-1",
+        id: "component-1",
+        name: "Mbed TLS",
+        vcId: "vc-component-1",
+        version: "3.0.0",
+      },
+    }, new Map());
+
+    expect(nested.stableKey).toBe(flat.stableKey);
+    expect(nested.stableKey).toBe(findingStableKey({
+      cve: "CVE-2026-34877",
+      purl: "pkg:generic/mbed-tls@3.0.0",
+      name: "Mbed TLS",
+      group: "Arm",
+      version: "3.0.0",
+    }, "purl"));
+    expect(missingJoin.stableKey).toBe(findingStableKey({
+      cve: "CVE-2026-34877",
+      purl: null,
+      name: "Mbed TLS",
+      group: null,
+      version: "3.0.0",
+    }, "name-group-version"));
+    expect(missingJoin.stableKey).not.toBe(nested.stableKey);
+  });
+
+  it("reports payload keys when component identity is genuinely missing", () => {
+    expect(() => normalizeFinding({
+      id: "finding-without-component-name",
+      cve: "CVE-2026-0001",
+      component: { id: "component-1", version: "1.0.0" },
+      severity: "high",
+    }, new Map())).toThrow(
+      "Finding finding-without-component-name has no component name for canonical identity; "
+      + "payload keys [component, cve, id, severity]; component keys [id, version]",
+    );
+  });
+
   it("treats null, absent, and empty primary aliases identically across stable identity inputs", () => {
     const identities = new Map([
       ["component-1", {

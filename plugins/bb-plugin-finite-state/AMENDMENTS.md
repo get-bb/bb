@@ -483,3 +483,9 @@ specs: `docs/Product Specs/SPEC 07` and `SPEC 08`.*
   composition root" rule for the whole L9/L10 build.
 - Affected WPs and gates: WP-71 (implementation); the WP-09 composition-root
   guard baseline; every L9/L10 package consumes the stubs.
+
+### AMD-0019 — Platform finding fixture shape
+
+- Status: withdrawn — superseded by owner ruling retiring the WP-08 fixture freeze (2026-08-13)
+- Proposal record: FS-164 task comment `01KZYJGP57P3WQAPS7HT9KF98V`
+- Disposition: the proposed content landed as ordinary reviewed work under the fixture-fidelity rule in PR #102.

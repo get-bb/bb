@@ -60,9 +60,13 @@ interface ComponentRecord extends Record<string, JsonValue> {
 interface FindingRecord extends Record<string, JsonValue> {
   id: string;
   projectVersionId: string;
-  componentId: string;
-  componentPurl: string | null;
-  componentFallbackIdentity: string | null;
+  component: {
+    appId: string;
+    id: string;
+    name: string;
+    vcId: string;
+    version: string;
+  };
   cve: string;
   severity: string;
   title: string;
@@ -191,9 +195,16 @@ function buildCorpus(seed: string): {
       return {
         id: (8_000_000_000_000_000_000n + BigInt(index)).toString(),
         projectVersionId,
-        componentId: component.id,
-        componentPurl: component.purl,
-        componentFallbackIdentity: component.fallbackIdentity,
+        // FindingV0 wire authority: docs/Implementation/api-reference/
+        // finite-state-api-v0.3.0.reference.md § Findings, `component`.
+        // The live API nests exactly these component identity fields.
+        component: {
+          appId: `app-${component.id}`,
+          id: component.id,
+          name: component.name,
+          vcId: `vc-${component.id}`,
+          version: component.version,
+        },
         cve: `CVE-${cveYear}-${(10_000 + index).toString().padStart(5, "0")}`,
         severity: severities[index % severities.length],
         title: index === 8 ? "Überlauf in München gateway" : `Generated finding ${index + 1}`,
@@ -534,7 +545,7 @@ function buildCorpus(seed: string): {
     ],
   };
   const csvRows = findings.slice(0, 25).map((finding) =>
-    [finding.id, finding.cve, finding.componentId, finding.severity].join(","),
+    [finding.id, finding.cve, finding.component.id, finding.severity].join(","),
   );
 
   const drafts: FileDraft[] = [

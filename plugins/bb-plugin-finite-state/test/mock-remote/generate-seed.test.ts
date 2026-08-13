@@ -46,9 +46,13 @@ interface ComponentFixture {
 interface FindingFixture {
   id: string;
   projectVersionId: string;
-  componentId: string;
-  componentPurl: string | null;
-  componentFallbackIdentity: string | null;
+  component: {
+    appId: string;
+    id: string;
+    name: string;
+    vcId: string;
+    version: string;
+  };
   cve: string;
   severity: string;
 }
@@ -352,12 +356,21 @@ describe("deterministic-seed-corpus", () => {
 
     const componentIds = new Set(components.map((component) => component.id));
     const componentPurls = new Set(components.flatMap((component) => component.purl ? [component.purl] : []));
-    const fallbackIdentities = new Set(components.flatMap((component) => component.fallbackIdentity ? [component.fallbackIdentity] : []));
     for (const finding of findings) {
       expectReference(versionIds, finding.projectVersionId, `platform/findings.jsonl finding ${finding.id}`);
-      expectReference(componentIds, finding.componentId, `platform/findings.jsonl finding ${finding.id}`);
-      if (finding.componentPurl) expectReference(componentPurls, finding.componentPurl, `platform/findings.jsonl finding ${finding.id}`);
-      if (finding.componentFallbackIdentity) expectReference(fallbackIdentities, finding.componentFallbackIdentity, `platform/findings.jsonl finding ${finding.id}`);
+      expectReference(componentIds, finding.component.id, `platform/findings.jsonl finding ${finding.id}`);
+      expect(Object.keys(finding.component).sort()).toEqual(["appId", "id", "name", "vcId", "version"]);
+      const component = components.find((candidate) => candidate.id === finding.component.id);
+      expect(finding.component).toEqual({
+        appId: `app-${component?.id}`,
+        id: component?.id,
+        name: component?.name,
+        vcId: `vc-${component?.id}`,
+        version: component?.version,
+      });
+      expect(finding).not.toHaveProperty("componentId");
+      expect(finding).not.toHaveProperty("componentPurl");
+      expect(finding).not.toHaveProperty("componentFallbackIdentity");
     }
     const findingIds = new Set(findings.map((finding) => finding.id));
     for (const result of vex.results) expectReference(findingIds, result.findingId, "platform/vex-bulk-partial.json results");
@@ -371,7 +384,7 @@ describe("deterministic-seed-corpus", () => {
     expect(vexLines[0]).toBe("finding_id,cve,component_id,severity");
     expect(vexLines.slice(1, -1)).toEqual(
       findings.slice(0, 25).map((finding) =>
-        [finding.id, finding.cve, finding.componentId, finding.severity].join(","),
+        [finding.id, finding.cve, finding.component.id, finding.severity].join(","),
       ),
     );
     expect(vexLines.at(-1)).toBe("# rows_written=25 rows_skipped=2");

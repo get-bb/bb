@@ -128,6 +128,12 @@ function jsonField(row: Record<string, Json>, keys: readonly string[], fallback:
   return JSON.stringify(fallback);
 }
 
+function payloadKeyDetail(row: Record<string, Json>, component: Record<string, Json> | null): string {
+  const topLevelKeys = Object.keys(row).sort().join(", ") || "none";
+  const componentKeys = component ? Object.keys(component).sort().join(", ") || "none" : "none";
+  return `payload keys [${topLevelKeys}]; component keys [${componentKeys}]`;
+}
+
 function componentFromRow(row: Record<string, Json>): ComponentIdentity | null {
   const id = stringValue(row, ["id", "componentId", "uuid"]);
   const name = stringValue(row, ["name", "componentName"]);
@@ -161,22 +167,34 @@ export function normalizeFinding(
   if (!row) throw new FindingsCacheError("FINDING_INVALID_ROW", "Finding row must be an object");
   const findingId = requiredString(row, ["id", "findingId", "uuid"], "id");
   const cve = requiredString(row, ["cve", "findingIdentifier", "vulnerabilityId"], `${findingId} CVE`);
-  const componentId = stringValue(row, ["componentId", "componentUuid"]);
+  const component = record(row["component"] ?? null);
+  const componentId = stringValue(row, ["componentId", "componentUuid"])
+    ?? (component ? stringValue(component, ["id"]) : null);
   const joined = componentId ? identities.get(componentId) : undefined;
-  const componentPurl = stringValue(row, ["componentPurl", "purl", "packageUrl"]) ?? joined?.purl ?? null;
-  const componentName = stringValue(row, ["componentName", "name"]) ?? joined?.name ?? null;
-  const componentGroup = stringValue(row, ["componentGroup", "group", "namespace"]) ?? joined?.group ?? null;
-  const componentVersion = stringValue(row, ["componentVersion", "version"]) ?? joined?.version ?? null;
+  const componentPurl = stringValue(row, ["componentPurl", "purl", "packageUrl"])
+    ?? joined?.purl
+    ?? null;
+  const componentName = stringValue(row, ["componentName", "name"])
+    ?? (component ? stringValue(component, ["name"]) : null)
+    ?? joined?.name
+    ?? null;
+  const componentGroup = stringValue(row, ["componentGroup", "group", "namespace"])
+    ?? joined?.group
+    ?? null;
+  const componentVersion = stringValue(row, ["componentVersion", "version"])
+    ?? (component ? stringValue(component, ["version"]) : null)
+    ?? joined?.version
+    ?? null;
   if (!componentName) {
     throw new FindingsCacheError(
       "FINDING_COMPONENT_IDENTITY_MISSING",
-      `Finding ${findingId} has no component name for canonical identity`,
+      `Finding ${findingId} has no component name for canonical identity; ${payloadKeyDetail(row, component)}`,
     );
   }
   if (!componentPurl && !componentVersion) {
     throw new FindingsCacheError(
       "FINDING_COMPONENT_IDENTITY_MISSING",
-      `Finding ${findingId} has neither purl nor exact component version`,
+      `Finding ${findingId} has neither purl nor exact component version; ${payloadKeyDetail(row, component)}`,
     );
   }
   let stableKey: string;

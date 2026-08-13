@@ -1,9 +1,13 @@
 {
   "items": [
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0001",
-      "componentPurl": "pkg:generic/eagle-component-001@1.0.0",
+      "component": {
+        "appId": "app-component-0001",
+        "id": "component-0001",
+        "name": "eagle-component-001",
+        "vcId": "vc-component-0001",
+        "version": "1.0.0"
+      },
       "cve": "CVE-2020-10000",
       "id": "8000000000000000000",
       "projectVersionId": "pv-a481df87dadf",
@@ -13,9 +17,13 @@
       "vexStatus": "IN_TRIAGE"
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0002",
-      "componentPurl": "pkg:generic/eagle-component-002@2.0.0",
+      "component": {
+        "appId": "app-component-0002",
+        "id": "component-0002",
+        "name": "eagle-component-002",
+        "vcId": "vc-component-0002",
+        "version": "2.0.0"
+      },
       "cve": "CVE-2021-10001",
       "id": "8000000000000000001",
       "projectVersionId": "pv-a481df87dadf",
@@ -25,9 +33,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0003",
-      "componentPurl": "pkg:generic/eagle-component-003@1.2.2",
+      "component": {
+        "appId": "app-component-0003",
+        "id": "component-0003",
+        "name": "eagle-component-003",
+        "vcId": "vc-component-0003",
+        "version": "1.2.2"
+      },
       "cve": "CVE-2022-10002",
       "id": "8000000000000000002",
       "projectVersionId": "pv-a481df87dadf",
@@ -37,9 +49,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0004",
-      "componentPurl": "pkg:generic/eagle-component-004@1.3.3",
+      "component": {
+        "appId": "app-component-0004",
+        "id": "component-0004",
+        "name": "eagle-component-004",
+        "vcId": "vc-component-0004",
+        "version": "1.3.3"
+      },
       "cve": "CVE-2023-10003",
       "id": "8000000000000000003",
       "projectVersionId": "pv-a481df87dadf",
@@ -49,9 +65,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": "sha256:3b43068d98d399379736cb2dc3e789f12537dff511af3e7e2cbafb223882c4fe",
-      "componentId": "component-0005",
-      "componentPurl": null,
+      "component": {
+        "appId": "app-component-0005",
+        "id": "component-0005",
+        "name": "eagle-component-005",
+        "vcId": "vc-component-0005",
+        "version": "1.4.4"
+      },
       "cve": "CVE-2024-10004",
       "id": "8000000000000000004",
       "projectVersionId": "pv-a481df87dadf",
@@ -61,9 +81,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0006",
-      "componentPurl": "pkg:generic/eagle-component-006@1.5.5",
+      "component": {
+        "appId": "app-component-0006",
+        "id": "component-0006",
+        "name": "eagle-component-006",
+        "vcId": "vc-component-0006",
+        "version": "1.5.5"
+      },
       "cve": "CVE-2025-10005",
       "id": "8000000000000000005",
       "projectVersionId": "pv-a481df87dadf",
@@ -73,9 +97,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0007",
-      "componentPurl": "pkg:generic/eagle-component-007@1.6.6",
+      "component": {
+        "appId": "app-component-0007",
+        "id": "component-0007",
+        "name": "eagle-component-007",
+        "vcId": "vc-component-0007",
+        "version": "1.6.6"
+      },
       "cve": "CVE-2026-10006",
       "id": "8000000000000000006",
       "projectVersionId": "pv-a481df87dadf",
@@ -85,9 +113,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0008",
-      "componentPurl": "pkg:generic/eagle-component-008@1.7.7",
+      "component": {
+        "appId": "app-component-0008",
+        "id": "component-0008",
+        "name": "eagle-component-008",
+        "vcId": "vc-component-0008",
+        "version": "1.7.7"
+      },
       "cve": "CVE-2020-10007",
       "id": "8000000000000000007",
       "projectVersionId": "pv-a481df87dadf",
@@ -97,9 +129,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0009",
-      "componentPurl": "pkg:generic/m%C3%BCnchen-%C2%B5tls@1.8.8",
+      "component": {
+        "appId": "app-component-0009",
+        "id": "component-0009",
+        "name": "münchen-µtls",
+        "vcId": "vc-component-0009",
+        "version": "1.8.8"
+      },
       "cve": "CVE-2021-10008",
       "id": "8000000000000000008",
       "projectVersionId": "pv-a481df87dadf",
@@ -109,9 +145,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0010",
-      "componentPurl": "pkg:generic/eagle-component-010@1.9.9",
+      "component": {
+        "appId": "app-component-0010",
+        "id": "component-0010",
+        "name": "eagle-component-010",
+        "vcId": "vc-component-0010",
+        "version": "1.9.9"
+      },
       "cve": "CVE-2022-10009",
       "id": "8000000000000000009",
       "projectVersionId": "pv-a481df87dadf",
@@ -121,9 +161,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0011",
-      "componentPurl": "pkg:generic/eagle-component-011@1.10.10",
+      "component": {
+        "appId": "app-component-0011",
+        "id": "component-0011",
+        "name": "eagle-component-011",
+        "vcId": "vc-component-0011",
+        "version": "1.10.10"
+      },
       "cve": "CVE-2023-10010",
       "id": "8000000000000000010",
       "projectVersionId": "pv-a481df87dadf",
@@ -133,9 +177,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0012",
-      "componentPurl": "pkg:generic/eagle-component-012@1.11.0",
+      "component": {
+        "appId": "app-component-0012",
+        "id": "component-0012",
+        "name": "eagle-component-012",
+        "vcId": "vc-component-0012",
+        "version": "1.11.0"
+      },
       "cve": "CVE-2024-10011",
       "id": "8000000000000000011",
       "projectVersionId": "pv-a481df87dadf",
@@ -145,9 +193,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0013",
-      "componentPurl": "pkg:generic/eagle-component-013@1.12.1",
+      "component": {
+        "appId": "app-component-0013",
+        "id": "component-0013",
+        "name": "eagle-component-013",
+        "vcId": "vc-component-0013",
+        "version": "1.12.1"
+      },
       "cve": "CVE-2025-10012",
       "id": "8000000000000000012",
       "projectVersionId": "pv-a481df87dadf",
@@ -157,9 +209,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0014",
-      "componentPurl": "pkg:generic/eagle-component-014@1.13.2",
+      "component": {
+        "appId": "app-component-0014",
+        "id": "component-0014",
+        "name": "eagle-component-014",
+        "vcId": "vc-component-0014",
+        "version": "1.13.2"
+      },
       "cve": "CVE-2026-10013",
       "id": "8000000000000000013",
       "projectVersionId": "pv-a481df87dadf",
@@ -169,9 +225,13 @@
       "vexStatus": "IN_TRIAGE"
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0015",
-      "componentPurl": "pkg:generic/eagle-component-015@1.14.3",
+      "component": {
+        "appId": "app-component-0015",
+        "id": "component-0015",
+        "name": "eagle-component-015",
+        "vcId": "vc-component-0015",
+        "version": "1.14.3"
+      },
       "cve": "CVE-2020-10014",
       "id": "8000000000000000014",
       "projectVersionId": "pv-a481df87dadf",
@@ -181,9 +241,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0016",
-      "componentPurl": "pkg:generic/eagle-component-016@1.15.4",
+      "component": {
+        "appId": "app-component-0016",
+        "id": "component-0016",
+        "name": "eagle-component-016",
+        "vcId": "vc-component-0016",
+        "version": "1.15.4"
+      },
       "cve": "CVE-2021-10015",
       "id": "8000000000000000015",
       "projectVersionId": "pv-a481df87dadf",
@@ -193,9 +257,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0017",
-      "componentPurl": "pkg:generic/eagle-component-017@1.16.5",
+      "component": {
+        "appId": "app-component-0017",
+        "id": "component-0017",
+        "name": "eagle-component-017",
+        "vcId": "vc-component-0017",
+        "version": "1.16.5"
+      },
       "cve": "CVE-2022-10016",
       "id": "8000000000000000016",
       "projectVersionId": "pv-a481df87dadf",
@@ -205,9 +273,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0018",
-      "componentPurl": "pkg:generic/eagle-component-018@1.0.6",
+      "component": {
+        "appId": "app-component-0018",
+        "id": "component-0018",
+        "name": "eagle-component-018",
+        "vcId": "vc-component-0018",
+        "version": "1.0.6"
+      },
       "cve": "CVE-2023-10017",
       "id": "8000000000000000017",
       "projectVersionId": "pv-a481df87dadf",
@@ -217,9 +289,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0019",
-      "componentPurl": "pkg:generic/eagle-component-019@1.1.7",
+      "component": {
+        "appId": "app-component-0019",
+        "id": "component-0019",
+        "name": "eagle-component-019",
+        "vcId": "vc-component-0019",
+        "version": "1.1.7"
+      },
       "cve": "CVE-2024-10018",
       "id": "8000000000000000018",
       "projectVersionId": "pv-a481df87dadf",
@@ -229,9 +305,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0020",
-      "componentPurl": "pkg:generic/eagle-component-020@1.2.8",
+      "component": {
+        "appId": "app-component-0020",
+        "id": "component-0020",
+        "name": "eagle-component-020",
+        "vcId": "vc-component-0020",
+        "version": "1.2.8"
+      },
       "cve": "CVE-2025-10019",
       "id": "8000000000000000019",
       "projectVersionId": "pv-a481df87dadf",
@@ -241,9 +321,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0021",
-      "componentPurl": "pkg:generic/eagle-component-021@1.3.9",
+      "component": {
+        "appId": "app-component-0021",
+        "id": "component-0021",
+        "name": "eagle-component-021",
+        "vcId": "vc-component-0021",
+        "version": "1.3.9"
+      },
       "cve": "CVE-2026-10020",
       "id": "8000000000000000020",
       "projectVersionId": "pv-a481df87dadf",
@@ -253,9 +337,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0022",
-      "componentPurl": "pkg:generic/eagle-component-022@1.4.10",
+      "component": {
+        "appId": "app-component-0022",
+        "id": "component-0022",
+        "name": "eagle-component-022",
+        "vcId": "vc-component-0022",
+        "version": "1.4.10"
+      },
       "cve": "CVE-2020-10021",
       "id": "8000000000000000021",
       "projectVersionId": "pv-a481df87dadf",
@@ -265,9 +353,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0023",
-      "componentPurl": "pkg:generic/eagle-component-023@1.5.0",
+      "component": {
+        "appId": "app-component-0023",
+        "id": "component-0023",
+        "name": "eagle-component-023",
+        "vcId": "vc-component-0023",
+        "version": "1.5.0"
+      },
       "cve": "CVE-2021-10022",
       "id": "8000000000000000022",
       "projectVersionId": "pv-a481df87dadf",
@@ -277,9 +369,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0024",
-      "componentPurl": "pkg:generic/eagle-component-024@1.6.1",
+      "component": {
+        "appId": "app-component-0024",
+        "id": "component-0024",
+        "name": "eagle-component-024",
+        "vcId": "vc-component-0024",
+        "version": "1.6.1"
+      },
       "cve": "CVE-2022-10023",
       "id": "8000000000000000023",
       "projectVersionId": "pv-a481df87dadf",
@@ -289,9 +385,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0025",
-      "componentPurl": "pkg:generic/eagle-component-025@1.7.2",
+      "component": {
+        "appId": "app-component-0025",
+        "id": "component-0025",
+        "name": "eagle-component-025",
+        "vcId": "vc-component-0025",
+        "version": "1.7.2"
+      },
       "cve": "CVE-2023-10024",
       "id": "8000000000000000024",
       "projectVersionId": "pv-a481df87dadf",
@@ -301,9 +401,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0026",
-      "componentPurl": "pkg:generic/eagle-component-026@1.8.3",
+      "component": {
+        "appId": "app-component-0026",
+        "id": "component-0026",
+        "name": "eagle-component-026",
+        "vcId": "vc-component-0026",
+        "version": "1.8.3"
+      },
       "cve": "CVE-2024-10025",
       "id": "8000000000000000025",
       "projectVersionId": "pv-a481df87dadf",
@@ -313,9 +417,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0027",
-      "componentPurl": "pkg:generic/eagle-component-027@1.9.4",
+      "component": {
+        "appId": "app-component-0027",
+        "id": "component-0027",
+        "name": "eagle-component-027",
+        "vcId": "vc-component-0027",
+        "version": "1.9.4"
+      },
       "cve": "CVE-2025-10026",
       "id": "8000000000000000026",
       "projectVersionId": "pv-a481df87dadf",
@@ -325,9 +433,13 @@
       "vexStatus": "IN_TRIAGE"
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0028",
-      "componentPurl": "pkg:generic/eagle-component-028@1.10.5",
+      "component": {
+        "appId": "app-component-0028",
+        "id": "component-0028",
+        "name": "eagle-component-028",
+        "vcId": "vc-component-0028",
+        "version": "1.10.5"
+      },
       "cve": "CVE-2026-10027",
       "id": "8000000000000000027",
       "projectVersionId": "pv-a481df87dadf",
@@ -337,9 +449,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0029",
-      "componentPurl": "pkg:generic/eagle-component-029@1.11.6",
+      "component": {
+        "appId": "app-component-0029",
+        "id": "component-0029",
+        "name": "eagle-component-029",
+        "vcId": "vc-component-0029",
+        "version": "1.11.6"
+      },
       "cve": "CVE-2020-10028",
       "id": "8000000000000000028",
       "projectVersionId": "pv-a481df87dadf",
@@ -349,9 +465,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0030",
-      "componentPurl": "pkg:generic/eagle-component-030@1.12.7",
+      "component": {
+        "appId": "app-component-0030",
+        "id": "component-0030",
+        "name": "eagle-component-030",
+        "vcId": "vc-component-0030",
+        "version": "1.12.7"
+      },
       "cve": "CVE-2021-10029",
       "id": "8000000000000000029",
       "projectVersionId": "pv-a481df87dadf",
@@ -361,9 +481,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0031",
-      "componentPurl": "pkg:generic/eagle-component-031@1.13.8",
+      "component": {
+        "appId": "app-component-0031",
+        "id": "component-0031",
+        "name": "eagle-component-031",
+        "vcId": "vc-component-0031",
+        "version": "1.13.8"
+      },
       "cve": "CVE-2022-10030",
       "id": "8000000000000000030",
       "projectVersionId": "pv-a481df87dadf",
@@ -373,9 +497,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0032",
-      "componentPurl": "pkg:generic/eagle-component-032@1.14.9",
+      "component": {
+        "appId": "app-component-0032",
+        "id": "component-0032",
+        "name": "eagle-component-032",
+        "vcId": "vc-component-0032",
+        "version": "1.14.9"
+      },
       "cve": "CVE-2023-10031",
       "id": "8000000000000000031",
       "projectVersionId": "pv-a481df87dadf",
@@ -385,9 +513,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0033",
-      "componentPurl": "pkg:generic/eagle-component-033@1.15.10",
+      "component": {
+        "appId": "app-component-0033",
+        "id": "component-0033",
+        "name": "eagle-component-033",
+        "vcId": "vc-component-0033",
+        "version": "1.15.10"
+      },
       "cve": "CVE-2024-10032",
       "id": "8000000000000000032",
       "projectVersionId": "pv-a481df87dadf",
@@ -397,9 +529,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0034",
-      "componentPurl": "pkg:generic/eagle-component-034@1.16.0",
+      "component": {
+        "appId": "app-component-0034",
+        "id": "component-0034",
+        "name": "eagle-component-034",
+        "vcId": "vc-component-0034",
+        "version": "1.16.0"
+      },
       "cve": "CVE-2025-10033",
       "id": "8000000000000000033",
       "projectVersionId": "pv-a481df87dadf",
@@ -409,9 +545,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0035",
-      "componentPurl": "pkg:generic/eagle-component-035@1.0.1",
+      "component": {
+        "appId": "app-component-0035",
+        "id": "component-0035",
+        "name": "eagle-component-035",
+        "vcId": "vc-component-0035",
+        "version": "1.0.1"
+      },
       "cve": "CVE-2026-10034",
       "id": "8000000000000000034",
       "projectVersionId": "pv-a481df87dadf",
@@ -421,9 +561,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0036",
-      "componentPurl": "pkg:generic/eagle-component-036@1.1.2",
+      "component": {
+        "appId": "app-component-0036",
+        "id": "component-0036",
+        "name": "eagle-component-036",
+        "vcId": "vc-component-0036",
+        "version": "1.1.2"
+      },
       "cve": "CVE-2020-10035",
       "id": "8000000000000000035",
       "projectVersionId": "pv-a481df87dadf",
@@ -433,9 +577,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0037",
-      "componentPurl": "pkg:generic/eagle-component-037@1.2.3",
+      "component": {
+        "appId": "app-component-0037",
+        "id": "component-0037",
+        "name": "eagle-component-037",
+        "vcId": "vc-component-0037",
+        "version": "1.2.3"
+      },
       "cve": "CVE-2021-10036",
       "id": "8000000000000000036",
       "projectVersionId": "pv-a481df87dadf",
@@ -445,9 +593,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0038",
-      "componentPurl": "pkg:generic/eagle-component-038@1.3.4",
+      "component": {
+        "appId": "app-component-0038",
+        "id": "component-0038",
+        "name": "eagle-component-038",
+        "vcId": "vc-component-0038",
+        "version": "1.3.4"
+      },
       "cve": "CVE-2022-10037",
       "id": "8000000000000000037",
       "projectVersionId": "pv-a481df87dadf",
@@ -457,9 +609,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0039",
-      "componentPurl": "pkg:generic/eagle-component-039@1.4.5",
+      "component": {
+        "appId": "app-component-0039",
+        "id": "component-0039",
+        "name": "eagle-component-039",
+        "vcId": "vc-component-0039",
+        "version": "1.4.5"
+      },
       "cve": "CVE-2023-10038",
       "id": "8000000000000000038",
       "projectVersionId": "pv-a481df87dadf",
@@ -469,9 +625,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0040",
-      "componentPurl": "pkg:generic/eagle-component-040@1.5.6",
+      "component": {
+        "appId": "app-component-0040",
+        "id": "component-0040",
+        "name": "eagle-component-040",
+        "vcId": "vc-component-0040",
+        "version": "1.5.6"
+      },
       "cve": "CVE-2024-10039",
       "id": "8000000000000000039",
       "projectVersionId": "pv-a481df87dadf",
@@ -481,9 +641,13 @@
       "vexStatus": "IN_TRIAGE"
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0041",
-      "componentPurl": "pkg:generic/eagle-component-041@1.6.7",
+      "component": {
+        "appId": "app-component-0041",
+        "id": "component-0041",
+        "name": "eagle-component-041",
+        "vcId": "vc-component-0041",
+        "version": "1.6.7"
+      },
       "cve": "CVE-2025-10040",
       "id": "8000000000000000040",
       "projectVersionId": "pv-a481df87dadf",
@@ -493,9 +657,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0042",
-      "componentPurl": "pkg:generic/eagle-component-042@1.7.8",
+      "component": {
+        "appId": "app-component-0042",
+        "id": "component-0042",
+        "name": "eagle-component-042",
+        "vcId": "vc-component-0042",
+        "version": "1.7.8"
+      },
       "cve": "CVE-2026-10041",
       "id": "8000000000000000041",
       "projectVersionId": "pv-a481df87dadf",
@@ -505,9 +673,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0043",
-      "componentPurl": "pkg:generic/eagle-component-043@1.8.9",
+      "component": {
+        "appId": "app-component-0043",
+        "id": "component-0043",
+        "name": "eagle-component-043",
+        "vcId": "vc-component-0043",
+        "version": "1.8.9"
+      },
       "cve": "CVE-2020-10042",
       "id": "8000000000000000042",
       "projectVersionId": "pv-a481df87dadf",
@@ -517,9 +689,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0044",
-      "componentPurl": "pkg:generic/eagle-component-044@1.9.10",
+      "component": {
+        "appId": "app-component-0044",
+        "id": "component-0044",
+        "name": "eagle-component-044",
+        "vcId": "vc-component-0044",
+        "version": "1.9.10"
+      },
       "cve": "CVE-2021-10043",
       "id": "8000000000000000043",
       "projectVersionId": "pv-a481df87dadf",
@@ -529,9 +705,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0045",
-      "componentPurl": "pkg:generic/eagle-component-045@1.10.0",
+      "component": {
+        "appId": "app-component-0045",
+        "id": "component-0045",
+        "name": "eagle-component-045",
+        "vcId": "vc-component-0045",
+        "version": "1.10.0"
+      },
       "cve": "CVE-2022-10044",
       "id": "8000000000000000044",
       "projectVersionId": "pv-a481df87dadf",
@@ -541,9 +721,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0046",
-      "componentPurl": "pkg:generic/eagle-component-046@1.11.1",
+      "component": {
+        "appId": "app-component-0046",
+        "id": "component-0046",
+        "name": "eagle-component-046",
+        "vcId": "vc-component-0046",
+        "version": "1.11.1"
+      },
       "cve": "CVE-2023-10045",
       "id": "8000000000000000045",
       "projectVersionId": "pv-a481df87dadf",
@@ -553,9 +737,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0047",
-      "componentPurl": "pkg:generic/eagle-component-047@1.12.2",
+      "component": {
+        "appId": "app-component-0047",
+        "id": "component-0047",
+        "name": "eagle-component-047",
+        "vcId": "vc-component-0047",
+        "version": "1.12.2"
+      },
       "cve": "CVE-2024-10046",
       "id": "8000000000000000046",
       "projectVersionId": "pv-a481df87dadf",
@@ -565,9 +753,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0048",
-      "componentPurl": "pkg:generic/eagle-component-048@1.13.3",
+      "component": {
+        "appId": "app-component-0048",
+        "id": "component-0048",
+        "name": "eagle-component-048",
+        "vcId": "vc-component-0048",
+        "version": "1.13.3"
+      },
       "cve": "CVE-2025-10047",
       "id": "8000000000000000047",
       "projectVersionId": "pv-a481df87dadf",
@@ -577,9 +769,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0049",
-      "componentPurl": "pkg:generic/eagle-component-049@1.14.4",
+      "component": {
+        "appId": "app-component-0049",
+        "id": "component-0049",
+        "name": "eagle-component-049",
+        "vcId": "vc-component-0049",
+        "version": "1.14.4"
+      },
       "cve": "CVE-2026-10048",
       "id": "8000000000000000048",
       "projectVersionId": "pv-a481df87dadf",
@@ -589,9 +785,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0050",
-      "componentPurl": "pkg:generic/eagle-component-050@1.15.5",
+      "component": {
+        "appId": "app-component-0050",
+        "id": "component-0050",
+        "name": "eagle-component-050",
+        "vcId": "vc-component-0050",
+        "version": "1.15.5"
+      },
       "cve": "CVE-2020-10049",
       "id": "8000000000000000049",
       "projectVersionId": "pv-a481df87dadf",
@@ -601,9 +801,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0051",
-      "componentPurl": "pkg:generic/eagle-component-051@1.16.6",
+      "component": {
+        "appId": "app-component-0051",
+        "id": "component-0051",
+        "name": "eagle-component-051",
+        "vcId": "vc-component-0051",
+        "version": "1.16.6"
+      },
       "cve": "CVE-2021-10050",
       "id": "8000000000000000050",
       "projectVersionId": "pv-a481df87dadf",
@@ -613,9 +817,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0052",
-      "componentPurl": "pkg:generic/eagle-component-052@1.0.7",
+      "component": {
+        "appId": "app-component-0052",
+        "id": "component-0052",
+        "name": "eagle-component-052",
+        "vcId": "vc-component-0052",
+        "version": "1.0.7"
+      },
       "cve": "CVE-2022-10051",
       "id": "8000000000000000051",
       "projectVersionId": "pv-a481df87dadf",
@@ -625,9 +833,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0053",
-      "componentPurl": "pkg:generic/eagle-component-053@1.1.8",
+      "component": {
+        "appId": "app-component-0053",
+        "id": "component-0053",
+        "name": "eagle-component-053",
+        "vcId": "vc-component-0053",
+        "version": "1.1.8"
+      },
       "cve": "CVE-2023-10052",
       "id": "8000000000000000052",
       "projectVersionId": "pv-a481df87dadf",
@@ -637,9 +849,13 @@
       "vexStatus": "IN_TRIAGE"
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0054",
-      "componentPurl": "pkg:generic/eagle-component-054@1.2.9",
+      "component": {
+        "appId": "app-component-0054",
+        "id": "component-0054",
+        "name": "eagle-component-054",
+        "vcId": "vc-component-0054",
+        "version": "1.2.9"
+      },
       "cve": "CVE-2024-10053",
       "id": "8000000000000000053",
       "projectVersionId": "pv-a481df87dadf",
@@ -649,9 +865,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0055",
-      "componentPurl": "pkg:generic/eagle-component-055@1.3.10",
+      "component": {
+        "appId": "app-component-0055",
+        "id": "component-0055",
+        "name": "eagle-component-055",
+        "vcId": "vc-component-0055",
+        "version": "1.3.10"
+      },
       "cve": "CVE-2025-10054",
       "id": "8000000000000000054",
       "projectVersionId": "pv-a481df87dadf",
@@ -661,9 +881,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0056",
-      "componentPurl": "pkg:generic/eagle-component-056@1.4.0",
+      "component": {
+        "appId": "app-component-0056",
+        "id": "component-0056",
+        "name": "eagle-component-056",
+        "vcId": "vc-component-0056",
+        "version": "1.4.0"
+      },
       "cve": "CVE-2026-10055",
       "id": "8000000000000000055",
       "projectVersionId": "pv-a481df87dadf",
@@ -673,9 +897,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0057",
-      "componentPurl": "pkg:generic/eagle-component-057@1.5.1",
+      "component": {
+        "appId": "app-component-0057",
+        "id": "component-0057",
+        "name": "eagle-component-057",
+        "vcId": "vc-component-0057",
+        "version": "1.5.1"
+      },
       "cve": "CVE-2020-10056",
       "id": "8000000000000000056",
       "projectVersionId": "pv-a481df87dadf",
@@ -685,9 +913,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0058",
-      "componentPurl": "pkg:generic/eagle-component-058@1.6.2",
+      "component": {
+        "appId": "app-component-0058",
+        "id": "component-0058",
+        "name": "eagle-component-058",
+        "vcId": "vc-component-0058",
+        "version": "1.6.2"
+      },
       "cve": "CVE-2021-10057",
       "id": "8000000000000000057",
       "projectVersionId": "pv-a481df87dadf",
@@ -697,9 +929,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0059",
-      "componentPurl": "pkg:generic/eagle-component-059@1.7.3",
+      "component": {
+        "appId": "app-component-0059",
+        "id": "component-0059",
+        "name": "eagle-component-059",
+        "vcId": "vc-component-0059",
+        "version": "1.7.3"
+      },
       "cve": "CVE-2022-10058",
       "id": "8000000000000000058",
       "projectVersionId": "pv-a481df87dadf",
@@ -709,9 +945,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0060",
-      "componentPurl": "pkg:generic/eagle-component-060@1.8.4",
+      "component": {
+        "appId": "app-component-0060",
+        "id": "component-0060",
+        "name": "eagle-component-060",
+        "vcId": "vc-component-0060",
+        "version": "1.8.4"
+      },
       "cve": "CVE-2023-10059",
       "id": "8000000000000000059",
       "projectVersionId": "pv-a481df87dadf",
@@ -721,9 +961,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0061",
-      "componentPurl": "pkg:generic/eagle-component-061@1.9.5",
+      "component": {
+        "appId": "app-component-0061",
+        "id": "component-0061",
+        "name": "eagle-component-061",
+        "vcId": "vc-component-0061",
+        "version": "1.9.5"
+      },
       "cve": "CVE-2024-10060",
       "id": "8000000000000000060",
       "projectVersionId": "pv-a481df87dadf",
@@ -733,9 +977,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0062",
-      "componentPurl": "pkg:generic/eagle-component-062@1.10.6",
+      "component": {
+        "appId": "app-component-0062",
+        "id": "component-0062",
+        "name": "eagle-component-062",
+        "vcId": "vc-component-0062",
+        "version": "1.10.6"
+      },
       "cve": "CVE-2025-10061",
       "id": "8000000000000000061",
       "projectVersionId": "pv-a481df87dadf",
@@ -745,9 +993,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0063",
-      "componentPurl": "pkg:generic/eagle-component-063@1.11.7",
+      "component": {
+        "appId": "app-component-0063",
+        "id": "component-0063",
+        "name": "eagle-component-063",
+        "vcId": "vc-component-0063",
+        "version": "1.11.7"
+      },
       "cve": "CVE-2026-10062",
       "id": "8000000000000000062",
       "projectVersionId": "pv-a481df87dadf",
@@ -757,9 +1009,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0064",
-      "componentPurl": "pkg:generic/eagle-component-064@1.12.8",
+      "component": {
+        "appId": "app-component-0064",
+        "id": "component-0064",
+        "name": "eagle-component-064",
+        "vcId": "vc-component-0064",
+        "version": "1.12.8"
+      },
       "cve": "CVE-2020-10063",
       "id": "8000000000000000063",
       "projectVersionId": "pv-a481df87dadf",
@@ -769,9 +1025,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0065",
-      "componentPurl": "pkg:generic/eagle-component-065@1.13.9",
+      "component": {
+        "appId": "app-component-0065",
+        "id": "component-0065",
+        "name": "eagle-component-065",
+        "vcId": "vc-component-0065",
+        "version": "1.13.9"
+      },
       "cve": "CVE-2021-10064",
       "id": "8000000000000000064",
       "projectVersionId": "pv-a481df87dadf",
@@ -781,9 +1041,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0066",
-      "componentPurl": "pkg:generic/eagle-component-066@1.14.10",
+      "component": {
+        "appId": "app-component-0066",
+        "id": "component-0066",
+        "name": "eagle-component-066",
+        "vcId": "vc-component-0066",
+        "version": "1.14.10"
+      },
       "cve": "CVE-2022-10065",
       "id": "8000000000000000065",
       "projectVersionId": "pv-a481df87dadf",
@@ -793,9 +1057,13 @@
       "vexStatus": "IN_TRIAGE"
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0067",
-      "componentPurl": "pkg:generic/eagle-component-067@1.15.0",
+      "component": {
+        "appId": "app-component-0067",
+        "id": "component-0067",
+        "name": "eagle-component-067",
+        "vcId": "vc-component-0067",
+        "version": "1.15.0"
+      },
       "cve": "CVE-2023-10066",
       "id": "8000000000000000066",
       "projectVersionId": "pv-a481df87dadf",
@@ -805,9 +1073,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0068",
-      "componentPurl": "pkg:generic/eagle-component-068@1.16.1",
+      "component": {
+        "appId": "app-component-0068",
+        "id": "component-0068",
+        "name": "eagle-component-068",
+        "vcId": "vc-component-0068",
+        "version": "1.16.1"
+      },
       "cve": "CVE-2024-10067",
       "id": "8000000000000000067",
       "projectVersionId": "pv-a481df87dadf",
@@ -817,9 +1089,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0069",
-      "componentPurl": "pkg:generic/eagle-component-069@1.0.2",
+      "component": {
+        "appId": "app-component-0069",
+        "id": "component-0069",
+        "name": "eagle-component-069",
+        "vcId": "vc-component-0069",
+        "version": "1.0.2"
+      },
       "cve": "CVE-2025-10068",
       "id": "8000000000000000068",
       "projectVersionId": "pv-a481df87dadf",
@@ -829,9 +1105,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0070",
-      "componentPurl": "pkg:generic/eagle-component-070@1.1.3",
+      "component": {
+        "appId": "app-component-0070",
+        "id": "component-0070",
+        "name": "eagle-component-070",
+        "vcId": "vc-component-0070",
+        "version": "1.1.3"
+      },
       "cve": "CVE-2026-10069",
       "id": "8000000000000000069",
       "projectVersionId": "pv-a481df87dadf",
@@ -841,9 +1121,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0071",
-      "componentPurl": "pkg:generic/eagle-component-071@1.2.4",
+      "component": {
+        "appId": "app-component-0071",
+        "id": "component-0071",
+        "name": "eagle-component-071",
+        "vcId": "vc-component-0071",
+        "version": "1.2.4"
+      },
       "cve": "CVE-2020-10070",
       "id": "8000000000000000070",
       "projectVersionId": "pv-a481df87dadf",
@@ -853,9 +1137,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0072",
-      "componentPurl": "pkg:generic/eagle-component-072@1.3.5",
+      "component": {
+        "appId": "app-component-0072",
+        "id": "component-0072",
+        "name": "eagle-component-072",
+        "vcId": "vc-component-0072",
+        "version": "1.3.5"
+      },
       "cve": "CVE-2021-10071",
       "id": "8000000000000000071",
       "projectVersionId": "pv-a481df87dadf",
@@ -865,9 +1153,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0073",
-      "componentPurl": "pkg:generic/eagle-component-073@1.4.6",
+      "component": {
+        "appId": "app-component-0073",
+        "id": "component-0073",
+        "name": "eagle-component-073",
+        "vcId": "vc-component-0073",
+        "version": "1.4.6"
+      },
       "cve": "CVE-2022-10072",
       "id": "8000000000000000072",
       "projectVersionId": "pv-a481df87dadf",
@@ -877,9 +1169,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0074",
-      "componentPurl": "pkg:generic/eagle-component-074@1.5.7",
+      "component": {
+        "appId": "app-component-0074",
+        "id": "component-0074",
+        "name": "eagle-component-074",
+        "vcId": "vc-component-0074",
+        "version": "1.5.7"
+      },
       "cve": "CVE-2023-10073",
       "id": "8000000000000000073",
       "projectVersionId": "pv-a481df87dadf",
@@ -889,9 +1185,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0075",
-      "componentPurl": "pkg:generic/eagle-component-075@1.6.8",
+      "component": {
+        "appId": "app-component-0075",
+        "id": "component-0075",
+        "name": "eagle-component-075",
+        "vcId": "vc-component-0075",
+        "version": "1.6.8"
+      },
       "cve": "CVE-2024-10074",
       "id": "8000000000000000074",
       "projectVersionId": "pv-a481df87dadf",
@@ -901,9 +1201,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0076",
-      "componentPurl": "pkg:generic/eagle-component-076@1.7.9",
+      "component": {
+        "appId": "app-component-0076",
+        "id": "component-0076",
+        "name": "eagle-component-076",
+        "vcId": "vc-component-0076",
+        "version": "1.7.9"
+      },
       "cve": "CVE-2025-10075",
       "id": "8000000000000000075",
       "projectVersionId": "pv-a481df87dadf",
@@ -913,9 +1217,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0077",
-      "componentPurl": "pkg:generic/eagle-component-077@1.8.10",
+      "component": {
+        "appId": "app-component-0077",
+        "id": "component-0077",
+        "name": "eagle-component-077",
+        "vcId": "vc-component-0077",
+        "version": "1.8.10"
+      },
       "cve": "CVE-2026-10076",
       "id": "8000000000000000076",
       "projectVersionId": "pv-a481df87dadf",
@@ -925,9 +1233,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0078",
-      "componentPurl": "pkg:generic/eagle-component-078@1.9.0",
+      "component": {
+        "appId": "app-component-0078",
+        "id": "component-0078",
+        "name": "eagle-component-078",
+        "vcId": "vc-component-0078",
+        "version": "1.9.0"
+      },
       "cve": "CVE-2020-10077",
       "id": "8000000000000000077",
       "projectVersionId": "pv-a481df87dadf",
@@ -937,9 +1249,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0079",
-      "componentPurl": "pkg:generic/eagle-component-079@1.10.1",
+      "component": {
+        "appId": "app-component-0079",
+        "id": "component-0079",
+        "name": "eagle-component-079",
+        "vcId": "vc-component-0079",
+        "version": "1.10.1"
+      },
       "cve": "CVE-2021-10078",
       "id": "8000000000000000078",
       "projectVersionId": "pv-a481df87dadf",
@@ -949,9 +1265,13 @@
       "vexStatus": "IN_TRIAGE"
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0080",
-      "componentPurl": "pkg:generic/eagle-component-080@1.11.2",
+      "component": {
+        "appId": "app-component-0080",
+        "id": "component-0080",
+        "name": "eagle-component-080",
+        "vcId": "vc-component-0080",
+        "version": "1.11.2"
+      },
       "cve": "CVE-2022-10079",
       "id": "8000000000000000079",
       "projectVersionId": "pv-a481df87dadf",
@@ -961,9 +1281,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0081",
-      "componentPurl": "pkg:generic/eagle-component-081@1.12.3",
+      "component": {
+        "appId": "app-component-0081",
+        "id": "component-0081",
+        "name": "eagle-component-081",
+        "vcId": "vc-component-0081",
+        "version": "1.12.3"
+      },
       "cve": "CVE-2023-10080",
       "id": "8000000000000000080",
       "projectVersionId": "pv-a481df87dadf",
@@ -973,9 +1297,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0082",
-      "componentPurl": "pkg:generic/eagle-component-082@1.13.4",
+      "component": {
+        "appId": "app-component-0082",
+        "id": "component-0082",
+        "name": "eagle-component-082",
+        "vcId": "vc-component-0082",
+        "version": "1.13.4"
+      },
       "cve": "CVE-2024-10081",
       "id": "8000000000000000081",
       "projectVersionId": "pv-a481df87dadf",
@@ -985,9 +1313,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0083",
-      "componentPurl": "pkg:generic/eagle-component-083@1.14.5",
+      "component": {
+        "appId": "app-component-0083",
+        "id": "component-0083",
+        "name": "eagle-component-083",
+        "vcId": "vc-component-0083",
+        "version": "1.14.5"
+      },
       "cve": "CVE-2025-10082",
       "id": "8000000000000000082",
       "projectVersionId": "pv-a481df87dadf",
@@ -997,9 +1329,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0084",
-      "componentPurl": "pkg:generic/eagle-component-084@1.15.6",
+      "component": {
+        "appId": "app-component-0084",
+        "id": "component-0084",
+        "name": "eagle-component-084",
+        "vcId": "vc-component-0084",
+        "version": "1.15.6"
+      },
       "cve": "CVE-2026-10083",
       "id": "8000000000000000083",
       "projectVersionId": "pv-a481df87dadf",
@@ -1009,9 +1345,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0085",
-      "componentPurl": "pkg:generic/eagle-component-085@1.16.7",
+      "component": {
+        "appId": "app-component-0085",
+        "id": "component-0085",
+        "name": "eagle-component-085",
+        "vcId": "vc-component-0085",
+        "version": "1.16.7"
+      },
       "cve": "CVE-2020-10084",
       "id": "8000000000000000084",
       "projectVersionId": "pv-a481df87dadf",
@@ -1021,9 +1361,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0086",
-      "componentPurl": "pkg:generic/eagle-component-086@1.0.8",
+      "component": {
+        "appId": "app-component-0086",
+        "id": "component-0086",
+        "name": "eagle-component-086",
+        "vcId": "vc-component-0086",
+        "version": "1.0.8"
+      },
       "cve": "CVE-2021-10085",
       "id": "8000000000000000085",
       "projectVersionId": "pv-a481df87dadf",
@@ -1033,9 +1377,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0087",
-      "componentPurl": "pkg:generic/eagle-component-087@1.1.9",
+      "component": {
+        "appId": "app-component-0087",
+        "id": "component-0087",
+        "name": "eagle-component-087",
+        "vcId": "vc-component-0087",
+        "version": "1.1.9"
+      },
       "cve": "CVE-2022-10086",
       "id": "8000000000000000086",
       "projectVersionId": "pv-a481df87dadf",
@@ -1045,9 +1393,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0088",
-      "componentPurl": "pkg:generic/eagle-component-088@1.2.10",
+      "component": {
+        "appId": "app-component-0088",
+        "id": "component-0088",
+        "name": "eagle-component-088",
+        "vcId": "vc-component-0088",
+        "version": "1.2.10"
+      },
       "cve": "CVE-2023-10087",
       "id": "8000000000000000087",
       "projectVersionId": "pv-a481df87dadf",
@@ -1057,9 +1409,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0089",
-      "componentPurl": "pkg:generic/eagle-component-089@1.3.0",
+      "component": {
+        "appId": "app-component-0089",
+        "id": "component-0089",
+        "name": "eagle-component-089",
+        "vcId": "vc-component-0089",
+        "version": "1.3.0"
+      },
       "cve": "CVE-2024-10088",
       "id": "8000000000000000088",
       "projectVersionId": "pv-a481df87dadf",
@@ -1069,9 +1425,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0090",
-      "componentPurl": "pkg:generic/eagle-component-090@1.4.1",
+      "component": {
+        "appId": "app-component-0090",
+        "id": "component-0090",
+        "name": "eagle-component-090",
+        "vcId": "vc-component-0090",
+        "version": "1.4.1"
+      },
       "cve": "CVE-2025-10089",
       "id": "8000000000000000089",
       "projectVersionId": "pv-a481df87dadf",
@@ -1081,9 +1441,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0091",
-      "componentPurl": "pkg:generic/eagle-component-091@1.5.2",
+      "component": {
+        "appId": "app-component-0091",
+        "id": "component-0091",
+        "name": "eagle-component-091",
+        "vcId": "vc-component-0091",
+        "version": "1.5.2"
+      },
       "cve": "CVE-2026-10090",
       "id": "8000000000000000090",
       "projectVersionId": "pv-a481df87dadf",
@@ -1093,9 +1457,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0092",
-      "componentPurl": "pkg:generic/eagle-component-092@1.6.3",
+      "component": {
+        "appId": "app-component-0092",
+        "id": "component-0092",
+        "name": "eagle-component-092",
+        "vcId": "vc-component-0092",
+        "version": "1.6.3"
+      },
       "cve": "CVE-2020-10091",
       "id": "8000000000000000091",
       "projectVersionId": "pv-a481df87dadf",
@@ -1105,9 +1473,13 @@
       "vexStatus": "IN_TRIAGE"
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0093",
-      "componentPurl": "pkg:generic/eagle-component-093@1.7.4",
+      "component": {
+        "appId": "app-component-0093",
+        "id": "component-0093",
+        "name": "eagle-component-093",
+        "vcId": "vc-component-0093",
+        "version": "1.7.4"
+      },
       "cve": "CVE-2021-10092",
       "id": "8000000000000000092",
       "projectVersionId": "pv-a481df87dadf",
@@ -1117,9 +1489,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0094",
-      "componentPurl": "pkg:generic/eagle-component-094@1.8.5",
+      "component": {
+        "appId": "app-component-0094",
+        "id": "component-0094",
+        "name": "eagle-component-094",
+        "vcId": "vc-component-0094",
+        "version": "1.8.5"
+      },
       "cve": "CVE-2022-10093",
       "id": "8000000000000000093",
       "projectVersionId": "pv-a481df87dadf",
@@ -1129,9 +1505,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0095",
-      "componentPurl": "pkg:generic/eagle-component-095@1.9.6",
+      "component": {
+        "appId": "app-component-0095",
+        "id": "component-0095",
+        "name": "eagle-component-095",
+        "vcId": "vc-component-0095",
+        "version": "1.9.6"
+      },
       "cve": "CVE-2023-10094",
       "id": "8000000000000000094",
       "projectVersionId": "pv-a481df87dadf",
@@ -1141,9 +1521,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0096",
-      "componentPurl": "pkg:generic/eagle-component-096@1.10.7",
+      "component": {
+        "appId": "app-component-0096",
+        "id": "component-0096",
+        "name": "eagle-component-096",
+        "vcId": "vc-component-0096",
+        "version": "1.10.7"
+      },
       "cve": "CVE-2024-10095",
       "id": "8000000000000000095",
       "projectVersionId": "pv-a481df87dadf",
@@ -1153,9 +1537,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0097",
-      "componentPurl": "pkg:generic/eagle-component-097@1.11.8",
+      "component": {
+        "appId": "app-component-0097",
+        "id": "component-0097",
+        "name": "eagle-component-097",
+        "vcId": "vc-component-0097",
+        "version": "1.11.8"
+      },
       "cve": "CVE-2025-10096",
       "id": "8000000000000000096",
       "projectVersionId": "pv-a481df87dadf",
@@ -1165,9 +1553,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0098",
-      "componentPurl": "pkg:generic/eagle-component-098@1.12.9",
+      "component": {
+        "appId": "app-component-0098",
+        "id": "component-0098",
+        "name": "eagle-component-098",
+        "vcId": "vc-component-0098",
+        "version": "1.12.9"
+      },
       "cve": "CVE-2026-10097",
       "id": "8000000000000000097",
       "projectVersionId": "pv-a481df87dadf",
@@ -1177,9 +1569,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0099",
-      "componentPurl": "pkg:generic/eagle-component-099@1.13.10",
+      "component": {
+        "appId": "app-component-0099",
+        "id": "component-0099",
+        "name": "eagle-component-099",
+        "vcId": "vc-component-0099",
+        "version": "1.13.10"
+      },
       "cve": "CVE-2020-10098",
       "id": "8000000000000000098",
       "projectVersionId": "pv-a481df87dadf",
@@ -1189,9 +1585,13 @@
       "vexStatus": null
     },
     {
-      "componentFallbackIdentity": null,
-      "componentId": "component-0100",
-      "componentPurl": "pkg:generic/eagle-component-100@1.14.0",
+      "component": {
+        "appId": "app-component-0100",
+        "id": "component-0100",
+        "name": "eagle-component-100",
+        "vcId": "vc-component-0100",
+        "version": "1.14.0"
+      },
       "cve": "CVE-2021-10099",
       "id": "8000000000000000099",
       "projectVersionId": "pv-a481df87dadf",

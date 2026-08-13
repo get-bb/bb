@@ -6,9 +6,13 @@
       "id": "comment-1"
     }
   ],
-  "componentFallbackIdentity": null,
-  "componentId": "component-0001",
-  "componentPurl": "pkg:generic/eagle-component-001@1.0.0",
+  "component": {
+    "appId": "app-component-0001",
+    "id": "component-0001",
+    "name": "eagle-component-001",
+    "vcId": "vc-component-0001",
+    "version": "1.0.0"
+  },
   "cve": "CVE-2020-10000",
   "cves": {
     "CVE-2020-10000": {

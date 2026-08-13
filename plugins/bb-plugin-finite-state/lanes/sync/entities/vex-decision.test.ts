@@ -37,19 +37,23 @@ async function worktree(): Promise<string> {
   return root;
 }
 
+async function firstFixtureFinding(): Promise<Record<string, Json>> {
+  const findingLine = (await readFile(FIXTURE, "utf8")).split("\n", 1)[0];
+  if (findingLine === undefined) throw new Error("fixture is empty");
+  return JSON.parse(findingLine) as Record<string, Json>;
+}
+
 describe("vexDecision adapter", () => {
   it("projects frozen Platform fixture bytes to the canonical tuple and stable key", async () => {
-    const first = (await readFile(FIXTURE, "utf8")).split("\n", 1)[0];
-    if (first === undefined) throw new Error("fixture is empty");
-    const row = JSON.parse(first) as Record<string, Json>;
-    const projected = projectVexDecision(row);
+    const finding = await firstFixtureFinding();
+    const projected = projectVexDecision(finding);
     expect(projected).toEqual({
       key: ENTITIES.vexDecision.key({
         cve: "CVE-2020-10000",
-        purl: "pkg:generic/eagle-component-001@1.0.0",
-        name: "eagle-component-001",
+        purl: null,
+        name: "component-0001",
         group: null,
-        version: "1.0.0",
+        version: null,
       }),
       remoteId: "8000000000000000000",
       payload: {
@@ -59,6 +63,16 @@ describe("vexDecision adapter", () => {
         reason: null,
       },
     });
+    const component = finding["component"];
+    if (component === null || Array.isArray(component) || typeof component !== "object") {
+      throw new Error("finding fixture has no nested component");
+    }
+    const flat = projectVexDecision({
+      ...finding,
+      component: null,
+      componentId: String(component["id"]),
+    });
+    expect(projected?.key).toBe(flat?.key);
   });
 
   it("parses aggregate .fs/triage YAML into one working entity per decision", async () => {
@@ -193,9 +207,9 @@ reason: null
     await writeFile(validFile, `schema: fs-triage/v1
 project: project
 component:
-  purl: pkg:generic/eagle-component-001@1.0.0
-  name: eagle-component-001
-  version: 1.0.0
+  purl: null
+  name: component-0001
+  version: null
 decisions:
   CVE-2020-10000:
     status: NOT_AFFECTED
@@ -203,9 +217,7 @@ decisions:
     response: null
     reason: local evidence
 `, "utf8");
-    const remote = projectVexDecision(JSON.parse(
-      (await readFile(FIXTURE, "utf8")).split("\n", 1)[0] ?? "{}",
-    ) as Record<string, Json>);
+    const remote = projectVexDecision(await firstFixtureFinding());
     if (remote === null) throw new Error("fixture has no VEX tuple");
     const adapter: EntityAdapter = {
       kind: "vexDecision",
