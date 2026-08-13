@@ -1,9 +1,4 @@
-export {
-  createConnection,
-  SQLITE_BUSY_TIMEOUT_MS,
-  SQLITE_CACHE_SIZE_KIB,
-  SQLITE_MMAP_SIZE_BYTES,
-} from "./connection.js";
+export { createConnection } from "./connection.js";
 export type {
   CreateConnectionOptions,
   DbConnection,

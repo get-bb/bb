@@ -183,7 +183,6 @@ export function createConnection(
   sqlite.pragma(`cache_size = -${SQLITE_CACHE_SIZE_KIB}`);
   sqlite.pragma(`mmap_size = ${SQLITE_MMAP_SIZE_BYTES}`);
   sqlite.pragma(`busy_timeout = ${SQLITE_BUSY_TIMEOUT_MS}`);
-  sqlite.pragma("temp_store = MEMORY");
   instrumentSqliteClient(sqlite, options);
 
   const db = drizzle({ client: sqlite, schema });

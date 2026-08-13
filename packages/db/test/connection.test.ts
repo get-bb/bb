@@ -153,9 +153,6 @@ describe("createConnection", () => {
         db.$client.prepare("PRAGMA busy_timeout").get() as { timeout: number },
       ).toEqual({ timeout: SQLITE_BUSY_TIMEOUT_MS });
       expect(
-        db.$client.prepare("PRAGMA temp_store").get() as { temp_store: number },
-      ).toEqual({ temp_store: 2 });
-      expect(
         db.$client.prepare("PRAGMA journal_mode").get() as {
           journal_mode: string;
         },
