@@ -7,7 +7,6 @@ import {
   type CSSProperties,
 } from "react";
 import { useNavigate } from "react-router-dom";
-import { Button } from "@bb/shared-ui/button";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { PluginNewThreadComposer } from "@/components/plugin/PluginNewThreadComposer";
@@ -356,21 +355,6 @@ export function ShowcaseHeroCarousel({
             )}
           >
             <div className="mx-auto w-full max-w-[44rem]">
-              {/* Dismiss-in-place: the composer swapped into the showcase's
-                  slot, so closing it restores that slot. A separate row above
-                  the card keeps it clear of the composer's own corner
-                  controls. ("Back to…" phrasing wrongly implied navigation.) */}
-              <div className="mb-1 flex justify-end">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="size-7 p-0 text-muted-foreground"
-                  aria-label="Close the composer"
-                  onClick={() => setSeedAndNotify(null)}
-                >
-                  <Icon name="X" className="size-4" />
-                </Button>
-              </div>
               <PluginNewThreadComposer
                 // Remounting per open re-seeds the prompt; the composer treats
                 // initialPrompt as a mount-time seed, not a controlled value.

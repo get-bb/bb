@@ -264,6 +264,45 @@ describe("PluginsOverview", () => {
     await waitFor(() => expect(catalogRequests()).toHaveLength(1));
   });
 
+  it("enters creation explicitly and returns with the labeled back control", async () => {
+    installFetch();
+    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+    render(
+      <MemoryRouter initialEntries={["/extensions/plugins"]}>
+        <QueryClientWrapper>
+          <PluginsOverview />
+        </QueryClientWrapper>
+      </MemoryRouter>,
+    );
+
+    await screen.findByText("GitHub");
+    const createPlugin = screen.getByRole("button", {
+      name: "Create a plugin",
+    });
+
+    fireEvent.click(createPlugin);
+    expect(screen.getByTestId("inline-composer")).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Back to browse plugins" }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Close the composer" }),
+    ).toBeNull();
+
+    // Create is an enter action, not a mode toggle: a repeated activation
+    // leaves the creation surface open.
+    fireEvent.click(createPlugin);
+    expect(screen.getByTestId("inline-composer")).toBeTruthy();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Back to browse plugins" }),
+    );
+    expect(screen.queryByTestId("inline-composer")).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Back to browse plugins" }),
+    ).toBeNull();
+  });
+
   it("shows category filters only in Browse", async () => {
     installFetch([
       AUTOMATIONS_PLUGIN,

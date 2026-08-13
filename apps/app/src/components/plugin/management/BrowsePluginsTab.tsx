@@ -131,12 +131,28 @@ export function BrowsePluginsTab({
       <div className={cn("space-y-7", TOOLS_PAGE_BAND_CLASSES)}>
         {/* The create control sits at the page's top right, like every other
             collection's actions row; the hero keeps only its showcase. */}
-        <div className="flex justify-end">
+        <div
+          className={cn(
+            "flex items-center gap-3",
+            composing ? "justify-between" : "justify-end",
+          )}
+        >
+          {composing ? (
+            <button
+              type="button"
+              className="inline-flex shrink-0 cursor-pointer items-center gap-1 whitespace-nowrap rounded-sm text-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              onClick={closeComposer}
+            >
+              <Icon name="ChevronLeft" className="size-3.5" />
+              Back to browse plugins
+            </button>
+          ) : null}
           <div className="flex items-stretch">
             <Button
-              aria-pressed={composing}
               className="rounded-r-none"
-              onClick={() => (composing ? closeComposer() : openComposer())}
+              onClick={() => {
+                if (!composing) openComposer();
+              }}
             >
               <Icon name="MessageSquarePlus" className="size-3.5" />
               Create a plugin

@@ -110,24 +110,6 @@ describe("BrowseHeroCarousel", () => {
     expect(screen.getAllByRole("tab")).toHaveLength(BROWSE_ARCHETYPES.length);
   });
 
-  it("closes from its own dismiss control, reporting the transition", () => {
-    const onComposingChange = vi.fn();
-    render(
-      <BrowseHeroCarousel
-        autoplay={false}
-        openRequest={{ nonce: 1, seed: CREATE_PLUGIN_PROMPT }}
-        onComposingChange={onComposingChange}
-      />,
-    );
-    expect(screen.getByTestId("real-composer")).toBeTruthy();
-
-    fireEvent.click(screen.getByRole("button", { name: "Close the composer" }));
-
-    expect(screen.queryByTestId("real-composer")).toBeNull();
-    expect(screen.getAllByRole("tab")).toHaveLength(BROWSE_ARCHETYPES.length);
-    expect(onComposingChange).toHaveBeenLastCalledWith(false);
-  });
-
   it("reports composing transitions exactly once each", () => {
     const onComposingChange = vi.fn();
     const { rerender } = render(
