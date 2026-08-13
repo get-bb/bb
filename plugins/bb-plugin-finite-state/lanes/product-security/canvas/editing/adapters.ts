@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type {
@@ -245,10 +246,7 @@ function requiredStringList(
 ): string[] {
   for (const name of names) {
     const value = fields[name];
-    if (
-      Array.isArray(value) &&
-      value.every((item) => typeof item === "string")
-    ) {
+    if (Array.isArray(value) && value.every((item) => typeof item === "string")) {
       return value;
     }
   }
@@ -276,11 +274,7 @@ function remoteReference(
 ): string | undefined {
   const value = stringField(fields, ...names);
   if (!value) return undefined;
-  const mapped = resolver.remoteToSlug(scope, kind, value);
-  if (mapped) return mapped;
-  throw new Error(
-    `UNRESOLVED_REMOTE_ID: ${kind} identifier “${value}” is absent from id_map.`,
-  );
+  return resolver.remoteToSlug(scope, kind, value) ?? derivedRemoteSlug(kind, value);
 }
 
 function remoteReferenceList(
@@ -307,24 +301,32 @@ function remoteReferenceList(
     );
   }
   return references.map((value) => {
-    const mapped = resolver.remoteToSlug(scope, kind, value);
-    if (mapped) return mapped;
-    throw new Error(
-      `UNRESOLVED_REMOTE_ID: ${kind} identifier “${value}” is absent from id_map.`,
-    );
+    return resolver.remoteToSlug(scope, kind, value) ?? derivedRemoteSlug(kind, value);
   });
+}
+
+function derivedRemoteSlug(
+  kind: CanvasEntityKind | "mitigation",
+  remoteId: string,
+): string {
+  // Fresh pulls must resolve a referenced remote ID before its entity may have
+  // been fetched, so the fallback must be derivable from the ID alone. Including
+  // a name would make the result order-dependent and can break cross-kind links.
+  const identity = createHash("sha256").update(remoteId).digest("hex").slice(0, 20);
+  return `${kind}-${identity}`;
 }
 
 function remotePayload(
   kind: CanvasEntityKind,
+  remoteId: string,
   fields: Record<string, Json>,
   scope: SyncScope,
   resolver: AdapterSlugResolver,
 ): Record<string, unknown> {
-  const slug = stringField(fields, "slug");
+  const slug = resolver.remoteToSlug(scope, kind, remoteId)
+    ?? derivedRemoteSlug(kind, remoteId);
   const name = stringField(fields, "name", "title", "label");
-  if (!slug || !name)
-    throw new Error(`${kind} remote payload lacks slug or name.`);
+  if (!name) throw new Error(`${kind} remote payload lacks name.`);
   const description = stringField(fields, "description", "summary");
   const common = { slug, name, ...optional("description", description) };
   switch (kind) {
@@ -432,12 +434,7 @@ function remotePayload(
           "to",
         ),
         ...optional("protocol", stringField(fields, "protocol")),
-        data_types: requiredStringList(
-          kind,
-          fields,
-          "data_types",
-          "dataTypes",
-        ),
+        data_types: requiredStringList(kind, fields, "data_types", "dataTypes"),
         encrypted: requiredBooleanField(
           kind,
           fields,
@@ -539,7 +536,7 @@ export function projectRemoteEntity(
   const entity = parseCanvasEntity(
     kind,
     createSerializer(kind).toYaml(
-      remotePayload(kind, fields, scope, resolver),
+      remotePayload(kind, remote.id, fields, scope, resolver),
       {
         idToSlug() {
           return null;

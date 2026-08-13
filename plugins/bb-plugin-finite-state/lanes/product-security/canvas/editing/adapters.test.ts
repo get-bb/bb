@@ -64,34 +64,40 @@ function stringField(entity: AsEntity, ...names: string[]): string | undefined {
   return undefined;
 }
 
-function canvasFields(kind: (typeof TARA_KINDS)[number], entity: AsEntity): Record<string, Json> {
-  const common = {
-    slug: entity.id,
-    name: stringField(entity, "name", "title") ?? entity.id,
-  };
+function canvasFields(
+  kind: (typeof TARA_KINDS)[number],
+  entity: AsEntity,
+): Record<string, Json> {
+  const common = { name: stringField(entity, "name", "title") ?? entity.id };
   switch (kind) {
     case "component": {
       const zoneId = stringField(entity, "zoneId");
       return {
         ...common,
         component_type: "software",
-        criticality: "medium",
-        interfaces: [],
-        technologies: [],
-        is_entry_point: false,
+        criticality: "high",
+        interfaces: [{ name: "mock-wire" }],
+        technologies: ["typescript"],
+        is_entry_point: true,
         stores_data: false,
         ...(zoneId === undefined ? {} : { zone_id: zoneId }),
       };
     }
     case "zone":
-      return { ...common, trust_level: "untrusted" };
+      return { ...common, trust_level: "semi_trusted" };
     case "asset":
-      return { ...common, asset_type: "data", criticality: "medium" };
+      return {
+        ...common,
+        asset_type: "credential",
+        criticality: "critical",
+        data_classification: "confidential",
+      };
     case "dataflow":
       return {
         ...common,
         source_component_id: stringField(entity, "sourceId") ?? "as-component-01",
         target_component_id: stringField(entity, "targetId") ?? "as-component-02",
+        protocol: stringField(entity, "protocol") ?? "MQTT",
         data_types: ["telemetry"],
         is_encrypted: true,
         is_authenticated: true,
@@ -104,12 +110,12 @@ function canvasFields(kind: (typeof TARA_KINDS)[number], entity: AsEntity): Reco
         ...common,
         category: stringField(entity, "stride") ?? "spoofing",
         threat_source: "stride_analysis",
-        severity: "medium",
+        severity: "high",
         affected_component_ids: componentId === undefined ? [] : [componentId],
         affected_asset_ids: assetId === undefined ? [] : [assetId],
         affected_dataflow_ids: [],
         mitigation_ids: [],
-        assumptions: [],
+        assumptions: ["mock assumption"],
       };
     }
   }
@@ -153,8 +159,16 @@ describe("canvas remote adapters", () => {
       },
     });
 
+    // The seeded records intentionally exercise fixture-specific aliases. Fill
+    // the remaining required AS semantics over the real client, but never add
+    // slug: this is the wire contract whose regression FS-155 repairs.
+    const seededFieldsByName = new Map<string, Record<string, Json>>();
     for (const kind of TARA_KINDS) {
       for (const entity of await listAll(client, kind)) {
+        const seededName = stringField(entity, "name", "title");
+        if (seededName !== undefined) {
+          seededFieldsByName.set(seededName, entity.fields);
+        }
         await client.updateEntity(kind, {
           projectId: PROJECT_ID,
           id: entity.id,
@@ -166,8 +180,8 @@ describe("canvas remote adapters", () => {
 
     requestedPageSizes.length = 0;
     const resolver: AdapterSlugResolver = {
-      remoteToSlug: (_scope, _kind, remoteId) => remoteId,
-      slugToRemote: (_scope, _kind, slug) => slug,
+      remoteToSlug: () => null,
+      slugToRemote: () => null,
     };
     const scope = { projectId: PROJECT_ID, projectVersionId: null };
     const adapters = createCanvasEntityAdapters(client, resolver);
@@ -188,11 +202,48 @@ describe("canvas remote adapters", () => {
       }]),
     ));
     const snapshots = new BaseSnapshotStore(db);
+    const acceptedByName = new Map<string, Record<string, unknown>>();
     for (const kind of TARA_KINDS) {
-      expect(snapshots.listAccepted(PROJECT_ID, "@project", kind)).toHaveLength(
-        expectedCounts[kind],
-      );
+      const accepted = snapshots.listAccepted(PROJECT_ID, "@project", kind);
+      expect(accepted).toHaveLength(expectedCounts[kind]);
+      for (const row of accepted) {
+        expect(row.payload).toMatchObject({
+          slug: expect.stringMatching(new RegExp(`^${kind}-[0-9a-f]{20}$`, "u")),
+        });
+        const name = row.payload["name"];
+        if (typeof name === "string") acceptedByName.set(name, row.payload);
+      }
     }
+    const componentSlug = acceptedByName.get("Architecture node 1")?.["slug"];
+    const nextComponentSlug = acceptedByName.get("Architecture node 2")?.["slug"];
+    const zoneSlug = acceptedByName.get("Untrusted")?.["slug"];
+    const assetSlug = acceptedByName.get("Protected asset 1")?.["slug"];
+    expect(acceptedByName.get("Architecture node 1")).toMatchObject({
+      name: "Architecture node 1",
+      zone: zoneSlug,
+    });
+    expect(acceptedByName.get("Untrusted")).toMatchObject({
+      name: "Untrusted",
+    });
+    expect(acceptedByName.get("Protected asset 1")).toMatchObject({
+      name: "Protected asset 1",
+    });
+    expect(acceptedByName.get("Dataflow 1")).toMatchObject({
+      name: "Dataflow 1",
+      from: componentSlug,
+      to: nextComponentSlug,
+      protocol: seededFieldsByName.get("Dataflow 1")?.["protocol"],
+      data_types: ["telemetry"],
+      encrypted: true,
+      authenticated: true,
+      bidirectional: false,
+    });
+    expect(acceptedByName.get("Threat 1")).toMatchObject({
+      name: "Threat 1",
+      category: seededFieldsByName.get("Threat 1")?.["stride"],
+      affected_components: [componentSlug],
+      affected_assets: [assetSlug],
+    });
     expect(requestedPageSizes).toEqual(
       TARA_KINDS.map(() => ASSURANCE_STUDIO_MAX_PAGE_SIZE),
     );

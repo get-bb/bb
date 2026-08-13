@@ -675,8 +675,8 @@ describe("WP-35 plan ordering and adapter projections", () => {
     });
     expect(flowPatch).not.toHaveProperty("source_component_id");
     for (const [id, fields] of [
-      ["remote-flow-create", flowCreate],
-      ["remote-flow-patch", flowPatch],
+      ["remote-telemetry", flowCreate],
+      ["remote-telemetry", flowPatch],
     ] as const) {
       expect(
         projectRemoteEntity(
@@ -709,8 +709,8 @@ describe("WP-35 plan ordering and adapter projections", () => {
     expect(assetPatch.criticality).toBe("critical");
     expect(assetPatch).not.toHaveProperty("business_value");
     for (const [id, fields] of [
-      ["remote-asset-create", assetCreate],
-      ["remote-asset-patch", assetPatch],
+      ["remote-credentials", assetCreate],
+      ["remote-credentials", assetPatch],
     ] as const) {
       expect(
         projectRemoteEntity(
@@ -731,7 +731,7 @@ describe("WP-35 plan ordering and adapter projections", () => {
     }
   });
 
-  it("rejects missing remote semantics and slug-shaped identifiers absent from id_map", () => {
+  it("rejects missing remote semantics, derives fresh references, and preserves accepted identity", () => {
     const fields = projectCreateFields(
       component("gateway", "Gateway"),
       scope,
@@ -755,14 +755,52 @@ describe("WP-35 plan ordering and adapter projections", () => {
         projectionResolver,
       ),
     ).toThrow(/REMOTE_FIELD_MISSING.*criticality/iu);
-    expect(() =>
+    expect(
       projectRemoteEntity(
         "component",
         remote({ zone_id: "edge-zone" }),
         scope,
         projectionResolver,
-      ),
-    ).toThrow(/UNRESOLVED_REMOTE_ID.*edge-zone.*id_map/iu);
+      ).payload["fields"],
+    ).toMatchObject({ zone: expect.stringMatching(/^zone-[0-9a-f]{20}$/u) });
+    expect(
+      projectRemoteEntity(
+        "component",
+        remote({ slug: "wire-renamed-gateway" }),
+        scope,
+        projectionResolver,
+      ).payload["fields"],
+    ).toMatchObject({ slug: "gateway" });
+  });
+
+  it("ignores an unmapped wire slug so inbound references share the ID-derived identity", () => {
+    const remoteId = "unmapped-gateway-id";
+    const fields = projectCreateFields(
+      component("gateway", "Gateway"),
+      scope,
+      projectionResolver,
+    );
+    const projected = projectRemoteEntity(
+      "component",
+      {
+        id: remoteId,
+        projectId: scope.projectId,
+        kind: "component",
+        reviewVersion: null,
+        reviewStatus: null,
+        humanEdited: null,
+        fields: { ...fields, slug: "wire-unmapped-gateway" },
+      },
+      scope,
+      {
+        remoteToSlug: () => null,
+        slugToRemote: () => null,
+      },
+    );
+
+    expect(projected.payload["fields"]).toMatchObject({
+      slug: `component-${hash(remoteId).slice(0, 20)}`,
+    });
   });
 });
 
