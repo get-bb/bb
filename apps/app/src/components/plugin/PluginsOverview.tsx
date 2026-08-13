@@ -82,18 +82,27 @@ export function PluginsOverview() {
   const [installedQuery, setInstalledQuery] = useState("");
   const [installedViewport, setInstalledViewport] =
     useState<HTMLDivElement | null>(null);
-  const installedPageSize = useResourceViewportPageSize(installedViewport);
   const [installedSortDirection, setInstalledSortDirection] = useState<
     "asc" | "desc"
   >("asc");
   // Empty means unfiltered: the menu has no explicit "All" row.
   const [typeFilters, setTypeFilters] = useState<PluginTypeFilter[]>([]);
+  const normalizedInstalledQuery = installedQuery.trim().toLowerCase();
+  // One projection identity resets both the accumulated rows and their
+  // viewport measurement when search, filters, or sorting changes.
+  const installedResetKey = [
+    normalizedInstalledQuery,
+    installedSortDirection,
+    [...typeFilters].sort().join(","),
+  ].join("\u0000");
+  const installedPageSize = useResourceViewportPageSize(installedViewport, {
+    resetKey: installedResetKey,
+  });
   const [addDialog, setAddDialog] = useState<{
     open: boolean;
     initial: AddPluginInitial | null;
   }>({ open: false, initial: null });
 
-  const normalizedInstalledQuery = installedQuery.trim().toLowerCase();
   const visiblePlugins = useMemo(
     () =>
       plugins
@@ -140,11 +149,7 @@ export function PluginsOverview() {
   // (viewport-fit chunk size, projection reset keys) but rows accumulate.
   const installedList = useResourceInfiniteItems(visiblePlugins, {
     pageSize: installedPageSize,
-    resetKey: [
-      normalizedInstalledQuery,
-      installedSortDirection,
-      [...typeFilters].sort().join(","),
-    ].join("\u0000"),
+    resetKey: installedResetKey,
   });
 
   // Installed's New plugin goes to the real new-thread page: the inline hero
