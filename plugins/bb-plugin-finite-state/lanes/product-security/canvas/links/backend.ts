@@ -1,11 +1,9 @@
 import { join } from "node:path";
 import type { BbPluginApi } from "@bb/plugin-sdk";
+import type Database from "better-sqlite3";
 import type { z } from "zod";
 import type { PluginContext } from "../../../../lib/context.js";
-import type {
-  PlatformClient,
-  RemoteServices,
-} from "../../../../lib/remote/types.js";
+import { PROJECT_LEVEL_VERSION_ID } from "../../../../lib/store/index.js";
 import {
   jsonValueSchema,
   rpcContract,
@@ -37,7 +35,6 @@ import {
 
 const SBOM_LINKS_FILE = ".fs/links/sbom.yaml";
 const FIRMWARE_LINKS_FILE = ".fs/links/firmware.yaml";
-const MAX_PROJECT_VERSIONS = 2_000;
 
 interface ProjectSource {
   hostId: string;
@@ -130,83 +127,42 @@ async function callOwnRpc<Schema extends z.ZodType>(
   return outputSchema.parse(result);
 }
 
-export async function resolveCurrentProjectVersion(
-  platform: Pick<PlatformClient, "listVersions">,
+interface VersionRow {
+  project_version_id: string;
+}
+
+export function resolveCachedProjectVersionId(
+  db: Database.Database,
   projectId: string,
   requestedProjectVersionId: string | null,
-): Promise<string> {
+): string {
   if (requestedProjectVersionId !== null) return requestedProjectVersionId;
-
-  const versions: Record<string, JsonValue>[] = [];
-  for await (const page of platform.listVersions(projectId, {
-    pageSize: 200,
-  })) {
-    if (versions.length + page.items.length > MAX_PROJECT_VERSIONS) {
-      throw new Error(
-        `Platform project ${projectId} has more than ${MAX_PROJECT_VERSIONS} versions; select a project version explicitly.`,
-      );
-    }
-    versions.push(...page.items);
-  }
-  if (versions.length === 0) {
-    throw new Error(`Platform project ${projectId} has no project versions.`);
-  }
-
-  const priorIds = new Set(
-    versions.flatMap((version) => {
-      const priorId = version["priorVersionId"];
-      return typeof priorId === "string" && priorId.length > 0 ? [priorId] : [];
-    }),
-  );
-  const currentIds = versions.flatMap((version) => {
-    const id = version["id"];
-    return typeof id === "string" && id.length > 0 && !priorIds.has(id)
-      ? [id]
-      : [];
-  });
-  if (currentIds.length !== 1) {
+  const row = db
+    .prepare<[string, string], VersionRow>(
+      `SELECT project_version_id
+         FROM sync_state
+        WHERE project_id = ? AND project_version_id <> ?
+          AND accepted_generation_id IS NOT NULL
+        ORDER BY last_pull DESC, project_version_id DESC
+        LIMIT 1`,
+    )
+    .get(projectId, PROJECT_LEVEL_VERSION_ID);
+  if (!row) {
     throw new Error(
-      `Platform project ${projectId} has ${currentIds.length} current versions; select one explicitly.`,
+      "No accepted local cache identifies a project version. Pull a version-scoped surface first.",
     );
   }
-  const currentId = currentIds[0];
-  if (!currentId) {
-    throw new Error(`Platform project ${projectId} has no current version.`);
-  }
-  return currentId;
+  return row.project_version_id;
 }
 
-export interface CanvasLinksBackendDependencies {
-  resolveProjectVersion(
-    projectId: string,
-    requestedProjectVersionId: string | null,
-  ): Promise<string>;
-}
-
-function defaultBackendDependencies(
-  ctx: PluginContext,
-): CanvasLinksBackendDependencies {
-  return {
-    resolveProjectVersion(projectId, requestedProjectVersionId) {
-      const platform = ctx.service<RemoteServices>("remote-services", () => {
-        throw new Error("Platform services are unavailable.");
-      }).platform;
-      return resolveCurrentProjectVersion(
-        platform,
-        projectId,
-        requestedProjectVersionId,
-      );
-    },
-  };
-}
-
-async function resolvedVersionScope(
-  dependencies: CanvasLinksBackendDependencies,
+function resolvedVersionScope(
+  db: Database.Database,
   input: { projectId: string; projectVersionId: string | null },
-): Promise<{ projectId: string; projectVersionId: string }> {
+): { projectId: string; projectVersionId: string } {
   return {
     projectId: input.projectId,
-    projectVersionId: await dependencies.resolveProjectVersion(
+    projectVersionId: resolveCachedProjectVersionId(
+      db,
       input.projectId,
       input.projectVersionId,
     ),
@@ -215,12 +171,12 @@ async function resolvedVersionScope(
 
 function sbomSurface(
   bb: BbPluginApi,
-  dependencies: CanvasLinksBackendDependencies,
+  db: Database.Database,
   input: { projectId: string; projectVersionId: string | null },
 ): LinkSurfaceResolver {
   return {
     async resolve({ mappedTargets }) {
-      const scope = await resolvedVersionScope(dependencies, input);
+      const scope = resolvedVersionScope(db, input);
       const settled = await Promise.allSettled(
         mappedTargets.map(async (mapping) => ({
           mapping,
@@ -279,12 +235,12 @@ function sbomSurface(
 
 function firmwareSurface(
   bb: BbPluginApi,
-  dependencies: CanvasLinksBackendDependencies,
+  db: Database.Database,
   input: { projectId: string; projectVersionId: string | null },
 ): LinkSurfaceResolver {
   return {
     async resolve({ mappedTargets }) {
-      const scope = await resolvedVersionScope(dependencies, input);
+      const scope = resolvedVersionScope(db, input);
       const mount = await callOwnRpc(
         bb,
         "firmwareMountGet",
@@ -428,9 +384,8 @@ async function loadLayoutDocument(
 export function registerCanvasLinksBackend(
   bb: BbPluginApi,
   ctx: PluginContext,
-  injectedDependencies?: CanvasLinksBackendDependencies,
 ): void {
-  const dependencies = injectedDependencies ?? defaultBackendDependencies(ctx);
+  const db = ctx.db();
   bb.rpc.register(canvasLinksRpcContract, {
     async canvasSbomLinks(input) {
       const source = await projectSource(bb, input.projectId);
@@ -443,7 +398,7 @@ export function registerCanvasLinksBackend(
       const family = await resolveCrossSurfaceLinkFamily(
         {
           ...emptyResolverInput(input.sourceSlug, {
-            sbom: sbomSurface(bb, dependencies, {
+            sbom: sbomSurface(bb, db, {
               projectId: input.projectId,
               projectVersionId: input.projectVersionId,
             }),
@@ -465,7 +420,7 @@ export function registerCanvasLinksBackend(
       const family = await resolveCrossSurfaceLinkFamily(
         {
           ...emptyResolverInput(input.sourceSlug, {
-            firmware: firmwareSurface(bb, dependencies, {
+            firmware: firmwareSurface(bb, db, {
               projectId: input.projectId,
               projectVersionId: input.projectVersionId,
             }),

@@ -3,7 +3,6 @@ import { defineRpcContract } from "@bb/plugin-sdk";
 import { createFakePluginHost } from "@bb/plugin-sdk/testing";
 import { describe, expect, it, vi } from "vitest";
 import { createPluginContext } from "../../../../lib/context.js";
-import type { PlatformClient } from "../../../../lib/remote/types.js";
 import {
   ENTITIES,
   isRemotePushable,
@@ -12,7 +11,7 @@ import {
 import { rpcContract } from "../../../../shared/contract.js";
 import {
   registerCanvasLinksBackend,
-  resolveCurrentProjectVersion,
+  resolveCachedProjectVersionId,
 } from "./backend.js";
 import {
   CANVAS_LAYOUT_FILE,
@@ -61,12 +60,40 @@ function layout(nodes: CanvasLayoutV1["nodes"]): CanvasLayoutV1 {
   };
 }
 
+function seedAcceptedVersion(
+  context: ReturnType<typeof createPluginContext>,
+): void {
+  context
+    .db()
+    .prepare(
+      `INSERT INTO pull_generation (
+        project_id, project_version_id, generation_id, status,
+        requested_kinds_json, started_at, completed_at, accepted_at
+      ) VALUES (?, ?, 'generation-1', 'accepted', '["sbomComponent"]', ?, ?, ?)`,
+    )
+    .run(
+      PROJECT_ID,
+      VERSION_ID,
+      "2026-08-13T12:00:00.000Z",
+      "2026-08-13T12:00:01.000Z",
+      "2026-08-13T12:00:01.000Z",
+    );
+  context
+    .db()
+    .prepare(
+      `INSERT INTO sync_state (
+        project_id, project_version_id, entity_kind,
+        accepted_generation_id, last_pull
+      ) VALUES (?, ?, 'sbomComponent', 'generation-1', ?)`,
+    )
+    .run(PROJECT_ID, VERSION_ID, "2026-08-13T12:00:01.000Z");
+}
+
 describe("WP-34 production link RPC boundary", () => {
   it("strips lane-only fields, resolves the current version, and isolates unshipped verification", async () => {
     let dispatchRpc:
       | ((method: string, input?: unknown) => Promise<unknown>)
       | undefined;
-    const resolveProjectVersion = vi.fn(async () => VERSION_ID);
     const host = createFakePluginHost({
       pluginId: "finite-state",
       sdk: {
@@ -172,9 +199,9 @@ describe("WP-34 production link RPC boundary", () => {
         };
       },
     });
-    registerCanvasLinksBackend(host.bb, createPluginContext(host.bb), {
-      resolveProjectVersion,
-    });
+    const context = createPluginContext(host.bb);
+    seedAcceptedVersion(context);
+    registerCanvasLinksBackend(host.bb, context);
 
     const input = {
       projectId: PROJECT_ID,
@@ -207,7 +234,6 @@ describe("WP-34 production link RPC boundary", () => {
         message: expect.stringMatching(/WP-39.*verification matrix/iu),
       },
     });
-    expect(resolveProjectVersion).toHaveBeenCalledTimes(2);
     expect(captured.bom).toHaveBeenCalledWith({
       projectId: PROJECT_ID,
       projectVersionId: VERSION_ID,
@@ -246,25 +272,21 @@ describe("WP-34 production link RPC boundary", () => {
     await host.harness.lifecycle.dispose();
   });
 
-  it("derives the one current project version from the frozen Platform contract", async () => {
-    const platform: Pick<PlatformClient, "listVersions"> = {
-      async *listVersions() {
-        yield {
-          items: [
-            { id: "version-prior", priorVersionId: null },
-            { id: VERSION_ID, priorVersionId: "version-prior" },
-          ],
-          total: 2,
-          next: null,
-        };
-      },
-    };
-    await expect(
-      resolveCurrentProjectVersion(platform, PROJECT_ID, null),
-    ).resolves.toBe(VERSION_ID);
-    await expect(
-      resolveCurrentProjectVersion(platform, PROJECT_ID, "selected-version"),
-    ).resolves.toBe("selected-version");
+  it("resolves the latest accepted local version without a Platform call", () => {
+    const host = createFakePluginHost({ pluginId: "finite-state" });
+    const context = createPluginContext(host.bb);
+    seedAcceptedVersion(context);
+    expect(resolveCachedProjectVersionId(context.db(), PROJECT_ID, null)).toBe(
+      VERSION_ID,
+    );
+    expect(
+      resolveCachedProjectVersionId(
+        context.db(),
+        PROJECT_ID,
+        "selected-version",
+      ),
+    ).toBe("selected-version");
+    expect(host.harness.sdk.calls).toEqual([]);
   });
 });
 
@@ -309,9 +331,7 @@ describe("WP-34 production layout RPC boundary", () => {
         },
       },
     });
-    registerCanvasLinksBackend(host.bb, createPluginContext(host.bb), {
-      resolveProjectVersion: async () => VERSION_ID,
-    });
+    registerCanvasLinksBackend(host.bb, createPluginContext(host.bb));
 
     const initial = layout({
       orphan: { x: 900, y: 800 },
