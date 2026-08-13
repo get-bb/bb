@@ -18,13 +18,13 @@ import {
 } from "../engine/adapter.js";
 import type { EngineDeps } from "../engine/pull.js";
 import { syncMetadata } from "../engine/status.js";
+import { refinePlanCandidate } from "../conflicts/attribution.js";
 import { canonicalJson, contentHash } from "../serialize/canonical.js";
 import { BaseSnapshotStore, type BaseRow } from "../store/base-snapshot.js";
 import { IdMapStore } from "../store/id-map.js";
 import { blastRadius } from "./blast-radius.js";
 import {
   classifyThreeWay,
-  conflictingFields,
   sameEntity,
   threeWayDiff,
 } from "./diff.js";
@@ -426,28 +426,50 @@ async function resolveOrphans(
   return result;
 }
 
-function itemFromEntity(
+async function itemFromEntity(
   scope: SyncScope,
   state: AdapterState,
   remote: ReadonlyMap<string, Record<string, unknown>>,
   key: string,
   orphan: boolean,
-): PlanItem {
+): Promise<PlanItem> {
   const base = state.base.get(key);
   const working = state.working.get(key);
   const theirs = remote.get(key);
   const semanticFields = orphan ? [] : threeWayDiff(base, working, theirs);
-  const operation = orphan
+  let operation: PlanOp = orphan
     ? "orphan" as const
     : !state.workingAvailable && !sameEntity(base, theirs)
-      // Without authored state, upstream drift is a conservative unresolved
-      // conflict: it must stay visible, but must never be mistaken for a write.
+      // Without authored state, start conservatively; semantic refinement
+      // below can still prove a zero-conflict payload for the planned apply.
       ? "conflict" as const
       : classifyThreeWay(base, working, theirs, state.adapter.klass !== "OVERLAY");
-  const fields = operation === "noop" ? [] : semanticFields;
-  const conflictFields = operation === "conflict" ? conflictingFields(semanticFields) : [];
+  let fields = operation === "noop" ? [] : semanticFields;
+  let conflicts: Conflict[] = [];
+  if (operation === "conflict") {
+    const refinement = await refinePlanCandidate({
+      kind: state.adapter.kind,
+      key,
+      base,
+      ours: working,
+      theirs,
+    });
+    conflicts = refinement.conflicts;
+    if (
+      conflicts.length === 0
+      && isRecord(refinement.merged)
+    ) {
+      const merged = structuredClone(refinement.merged);
+      // Invariant: worktree-blind planned-ours is display-only. Such plans stay
+      // degraded and push rejects them with PLAN_STALE; this reclassification
+      // avoids a zero-conflict deadlock without granting apply authority.
+      state.working.set(key, merged);
+      operation = "update";
+      fields = threeWayDiff(base, merged, theirs);
+    }
+  }
   const baseRow = state.baseRows.find((row) => row.entityKey === key);
-  const payload = working ?? base ?? theirs;
+  const payload = state.working.get(key) ?? base ?? theirs;
   return {
     ...scope,
     kind: state.adapter.kind,
@@ -456,12 +478,7 @@ function itemFromEntity(
     operation,
     expectedBaseContentHash: baseRow?.contentHash ?? null,
     fields,
-    conflicts: conflictFields.map((field) => ({
-      ...field,
-      attribution: null,
-      suggestion: null,
-      resolution: null,
-    })),
+    conflicts,
     referrers: [],
     error: null,
   };
@@ -744,7 +761,7 @@ export async function computePlan(
   for (const state of states) {
     const remoteRows = remote.get(state.adapter.kind) ?? new Map();
     for (const key of candidateKeys(state, remoteRows)) {
-      const item = itemFromEntity(
+      const item = await itemFromEntity(
         scope,
         state,
         remoteRows,
