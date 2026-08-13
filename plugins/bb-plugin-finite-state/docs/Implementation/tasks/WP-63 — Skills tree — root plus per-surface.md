@@ -4,6 +4,13 @@
 **Depends on:** WP-58, WP-59, WP-60 and completed surface contracts · **Blocks:** WP-65, WP-67–70
 **Produces a FROZEN artifact:** no
 
+> **SPEC 07/08 intake note (2026-08-12).** The tree later gains
+> `fs-hardware` (WP-81) and `fs-bringup` / `fs-debug-bench` / `fs-citation` /
+> `fs-porting` / `fs-instruments` (WP-96 — hand-written by hardware
+> bring-up practitioners; scaffolded there, not here). Keep the root skill's
+> surface directory extensible and reserve those names now so no later
+> collision forces a rename.
+
 ## Files you own
 ```
 plugins/bb-plugin-finite-state/skills/fs-finite-state/SKILL.md

@@ -192,9 +192,14 @@ function duplicates(values) {
   return [...repeated].sort();
 }
 
+// WP01-WP70 are the FS-93 audit universe (WP01-WP07 minus WP02 had already
+// started). WP71-WP98 are the SPEC 07/08 intake adopted 2026-08-12; all were
+// unstarted at adoption, so the whole range is remaining.
+const TOTAL_WORK_PACKAGES = 98;
+
 function expectedRemainingWorkPackages() {
   const expected = ["WP02"];
-  for (let number = 8; number <= 70; number += 1) {
+  for (let number = 8; number <= TOTAL_WORK_PACKAGES; number += 1) {
     expected.push(`WP${String(number).padStart(2, "0")}`);
   }
   return expected;
@@ -297,12 +302,14 @@ export function validateManifest(manifest) {
       errors.push(`workPackages contains unexpected ${wp}`);
   }
 
-  if (known.length !== 70)
+  if (known.length !== TOTAL_WORK_PACKAGES)
     errors.push(
-      `knownWorkPackages must contain 70 entries, found ${known.length}`,
+      `knownWorkPackages must contain ${TOTAL_WORK_PACKAGES} entries, found ${known.length}`,
     );
-  if (manifest.effectiveWorkPackageCount !== 70)
-    errors.push("effectiveWorkPackageCount must remain 70");
+  if (manifest.effectiveWorkPackageCount !== TOTAL_WORK_PACKAGES)
+    errors.push(
+      `effectiveWorkPackageCount must remain ${TOTAL_WORK_PACKAGES}`,
+    );
   validateProhibitedWorkPackages(manifest.dispatchPolicy, knownSet, errors);
   validateStoppedWorkPackages(manifest.dispatchPolicy, knownSet, errors);
   validatePromotionPolicy(

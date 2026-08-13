@@ -1,6 +1,6 @@
 # IMPLEMENTATION PLAN — `bb-plugin-finite-state`
 
-*Owner: Matt Wyckhouse. Status: ready to dispatch under the FS-93 scheduling gates. This is the tech-lead document — read before assigning any work. It converts SPECs 00–06 into a repo, a dependency graph, nine logical lanes, and a set of frozen interfaces that let those lanes run without colliding.*
+*Owner: Matt Wyckhouse. Status: ready to dispatch under the FS-93 scheduling gates. This is the tech-lead document — read before assigning any work. It converts SPECs 00–08 into a repo, a dependency graph, eleven logical lanes, and a set of frozen interfaces that let those lanes run without colliding. SPECs 07–08 were adopted 2026-08-12, after the freeze: their intake is §5.2, their WPs are WP-71…WP-98, and their frozen-contract changes are the proposed AMD-0010…AMD-0014 entries in `AMENDMENTS.md`.*
 
 **Companion artifacts:** `HANDOFF — Product & Architecture.md` (self-contained product and system overview) · `ADR — Direct APIs & Optional Forge Compute.md` (current integration ruling) · `api-reference/` (vendored reviewed API snapshots) · `AGENTS.md` (the instruction file every coding agent reads) · `tasks/WP-*.md` (the work packages) · `scheduling/PROGRAM-BOOTSTRAP.md` (binding decisions and model policy) · `scheduling/wp-coupling-manifest.json` (effective dispatch graph) · `scheduling/COORDINATOR-RUNBOOK.md` (cap and dispatch procedure) · `RECON — bb SDK & Forge Surface.md` (historical code-grounded recon, superseded by the ADR where noted).
 
@@ -146,9 +146,39 @@ Everything else outside `plugins/bb-plugin-finite-state/` needs a `FORK-DELTA.md
 | **L5 BOM** | `lanes/bom/` | 04 | WP-41…46 | WP-13 |
 | **L6 Firmware/Bench/Docs** | `lanes/firmware/`, `lanes/bench/`, `lanes/documents/` | 05 | WP-47…56 | WP-13 |
 | **L7 Agentic** | `lanes/agentic/`, `skills/` | 06 | WP-57…64 | WP-13; per-surface tools follow their surface |
-| **L8 Demo & E2E** | `test/e2e/`, `demo/` | 06 §6 | WP-65…70 | G3 |
+| **L8 Demo & E2E** | `test/e2e/`, `demo/` | 06 §6 | WP-65…70, WP-98 | G3 |
+| **L9 Hardware Design Plane** | `lanes/hardware/`, `test/fixtures/kicad/` | 07 | WP-72…81 | WP-71 (AMD-0010…0014 landed) |
+| **L10 Firmware Authoring & Bench Loop** | `lanes/authoring/`, `lanes/grounding/`, `lanes/debug-bench/` | 08 | WP-82…97 | WP-71 (AMD-0010…0014 landed) |
 
 **L4's canvas is a sub-lane.** It is ~2–2.5 weeks on its own and has no dependency on the other L4 work beyond the registry. Assign it a dedicated agent from the start.
+
+### 5.2 SPEC 07/08 intake (added 2026-08-12, post-freeze)
+
+SPECs 07 and 08 arrived after the frozen interfaces shipped, so their intake is
+amendment-first: **WP-71 implements AMD-0010…AMD-0013 (plus the AMD-0014
+dependency batch) as one consolidated change, and nothing in L9/L10 dispatches
+before it merges.** The amendments are drafted as `proposed` in `AMENDMENTS.md`
+and require the contract owner's approval.
+
+Four facts that shape these lanes:
+
+1. **They do not gate G4.** The Golden Loop demo bar is unchanged; the
+   authoring-grade beat 11 lands post-G4 as WP-98 (Golden Loop v2). L9/L10 run
+   as depth-pass lanes in parallel with G4→G6 work.
+2. **They are local-first.** Neither lane mutates Platform or Assurance
+   Studio; there are no new remote mocks (WP-10…13 untouched) and no new push
+   paths. The six new ACTION tools invoke local subprocesses/hardware only
+   (AMD-0013), and `fs_flash` carries the new `destructive` in-turn rule.
+3. **They add host prerequisites bb cannot ship:** `kicad-cli` (KiCad 7+),
+   a Python runtime for probe scripts, and per-instrument SDKs. Every consumer
+   degrades via `needsConfiguration` — parsing/search/linking work with no
+   KiCad installed; grounding works with no bench attached. Debug-mode tool
+   gating and the authoring gate pipeline must be plugin-only mechanisms
+   (`ADR — bb Is Not Modified.md`); WP-90 and WP-95 carry explicit
+   stop-and-report feasibility checks.
+4. **Two long leads start early:** the RE-corpus grounding (WP-97, the moat)
+   and the KiCanvas go/no-go spike inside WP-74 (rendering only; the parser,
+   cache, linking, and HBOM path never depend on the renderer).
 
 ### 5.1 Decision ownership and operational concurrency
 
@@ -200,6 +230,30 @@ Use `fs-critical` (Codex `gpt-5.6-sol`, `xhigh`) for L2 sync and the L4 canvas. 
 
 This diagram shows product prerequisites at lane scale. Dispatch uses the effective per-WP dependency graph in `scheduling/wp-coupling-manifest.json`, including owner-serialization edges such as WP-19 → WP-20 and WP-56 → WP-44.
 
+**SPEC 07/08 extension (post-freeze):**
+
+```
+        AMD-0010…0014 approved
+                 │
+                 ▼
+        WP-71 consolidated amendment implementation
+                 │
+        ┌────────┴──────────────────────────┐
+        ▼                                   ▼
+ L9 hardware WP-72…81                L10 authoring/bench WP-82…97
+   72→73→{74→75, 76, 77}               {82,83}→84→85   86→87   88→89→90→91
+   73+WP-44→78   73→79   77+WP-39→80     92/93/94 (deferrable drivers)
+   {73…80}+WP-57→81                      85+86→95   {82…91}+WP-57→96
+        └───────────────┬───────────────────┘
+                        ▼
+              WP-98 Golden Loop v2 authoring beat (post-G4; dep WP-69, 95, 96)
+```
+
+Cross-lane joins: WP-78 needs WP-44 (HBOM cells) · WP-80 needs WP-39 (matrix
+UI) · WP-81/96 follow WP-57 conventions and coordinate with WP-60…64 · WP-91
+reuses WP-53 rehosting and WP-48 unpack · WP-82 reuses the WP-56 document
+store. None of L9/L10 sits on the G4 critical path.
+
 ---
 
 ## 7. Remote-service mocks — the thing that makes fan-out possible
@@ -236,7 +290,7 @@ Demo-complete-first: a thin vertical slice of all fourteen Golden Loop beats bef
 | **G5** | Golden Loop runs against real Platform + AS on a real product; Forge-compute beats also pass when configured | It's true and degradation boundaries hold |
 | **G6** | Per-surface definition of done (SPEC 00 §12) met on all surfaces | It's a product |
 
-**G4 is the demo bar.** Everything between G4 and G6 is the depth pass and can be resequenced against whatever the demo feedback says.
+**G4 is the demo bar.** Everything between G4 and G6 is the depth pass and can be resequenced against whatever the demo feedback says. **SPECs 07/08 do not move any gate:** L9/L10 are depth-pass lanes, and the authoring-grade Golden Loop beat 11 (WP-98) lands after G4 as a v2 beat rather than raising the G4 bar.
 
 **Hard rule at every gate:** `pnpm exec turbo run typecheck test lint build --filter=bb-plugin-finite-state` is green. A gate is not a vibe.
 
@@ -255,9 +309,12 @@ Demo-complete-first: a thin vertical slice of all fourteen Golden Loop beats bef
 | L6 Firmware/Bench/Docs | 5–7 wk | 2 | 3.5 wk |
 | L7 Agentic | 2.5–3.5 wk | 1 | 2 wk (trails surfaces) |
 | L8 Demo & E2E | 1.5 wk | 1 | 1 wk |
-| **Total** | **~30–37 agent-weeks** | **~14–16 potential; operationally capped below** | **~6–7 wk scenario, not a dispatch promise** |
+| **Total (SPECs 00–06)** | **~30–37 agent-weeks** | **~14–16 potential; operationally capped below** | **~6–7 wk scenario, not a dispatch promise** |
+| L9 Hardware Design Plane | ~5.5 wk | 1–2 | post-G4 depth lane |
+| L10 Firmware Authoring & Bench | ~11.5 wk (8i–8k and 8n deferrable/long-lead) | 2 | post-G4 depth lane |
+| **Total (SPECs 00–08)** | **~47–54 agent-weeks** | — | — |
 
-Then **G4 → G6 is roughly another 4–5 weeks** of depth work at lower parallelism.
+Then **G4 → G6 is roughly another 4–5 weeks** of depth work at lower parallelism — and L9/L10 add ~17 agent-weeks on top, running in that same window and after. That is a near-half-again increase to the program; it is proportionate (SPEC 08 is the entire write direction) but it should be staffed as a deliberate decision, not absorbed silently.
 
 **Reality adjustment:** these are agent-weeks, not human-weeks, and they assume competent review throughput. The operational cap is four now, six only after WP-10 through WP-13 and readiness validation, and nine only after the second conditional promotion gate. The binding constraint is usually **human review bandwidth and merge serialization**, not nominal owner demand. Plan for one reviewer per two or three active lanes, and expect the actual schedule to be set by how fast frozen-interface amendments get adjudicated.
 
@@ -278,6 +335,10 @@ Then **G4 → G6 is roughly another 4–5 weeks** of depth work at lower paralle
 | R11 | Optional Forge outage accidentally breaks core data surfaces | Medium | High | Nullable `ForgeComputeClient`, narrow injection, independent health states, and a mandatory “Forge stopped” integration test |
 | R9 | Agent tools can't be individually approval-gated | **Confirmed fact** | Medium | The safety model is **architectural, not UI**: no push tool exists. Rewrite SPEC 06 §5.3 claims accordingly (done) |
 | R10 | Human review becomes the bottleneck and lanes idle | High | Medium | Batch reviews on a cadence. Let lanes stack PRs. Prefer many small WPs over few large ones — already reflected in the WP granularity |
+| R12 | **KiCanvas is a stalled early alpha** (KiCad 8/9 parsing incomplete, embedding API unpublished); adopting it for rendering strands the schematic viewer | Medium | Medium | It is not the plan of record. `kicad-cli` SVG is; the WP-74 spike may adopt KiCanvas *for rendering only*, behind a fallback, with a vendored fork if it graduates past demo use |
+| R13 | **`fs_flash` can brick a device or a unit on a line** — allowlisting alone does not change that | Low | High | AMD-0013's `destructive` primitive: explicit human instruction in the current turn, plan-inherited intent does not count, enforced by one mechanism and one test (WP-90) |
+| R14 | **Catalog licensing/size**: of eight SVD vendors only Raspberry Pi is redistributable; `catalog.db` size at 2.5M facts is unmeasured | **Confirmed fact** / Medium | Medium | Two-flavour build (`--redistributable-only` ships; full builds locally); license per source queryable in `ground_source`; measure size before designing fetch UX (WP-83) |
+| R15 | **Debug-mode tool gating or the authoring gate pipeline turns out to need a bb change**, violating the bb-is-not-modified ADR | Medium | High | WP-90/WP-95 open with a plugin-only feasibility check and a hard stop-and-report; fallback shapes (session-scoped tool registration, gate-as-CLI-preflight) are named in the WPs, and dropping the capability beats forking bb |
 
 ---
 

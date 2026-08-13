@@ -92,6 +92,13 @@ beforeAll(async () => {
   };
   context = createPluginContext(host.bb);
   context.service<RemoteServices>("remote-services", () => services);
+  context.service("firmware.cli", () => ({
+    run: async (argv: string[]) => ({
+      exitCode: 0,
+      stdout: `${JSON.stringify({ namespace: "firmware", argv })}\n`,
+      stderr: "",
+    }),
+  }));
   registerSync(host.bb, context);
   registerAdapter(foreignAdapter);
   root = await mkdtemp(join(tmpdir(), "fs-wp17-register-"));
@@ -147,7 +154,7 @@ describe("sync registration", () => {
     expect(() => registerAdapter(foreignAdapter)).toThrow(DuplicateAdapterError);
   });
 
-  it("serves frozen pull/status RPCs and explicit NOT_IMPLEMENTED stubs", async () => {
+  it("serves frozen sync RPCs and fails push closed when human authorization is unavailable", async () => {
     const scope = platformScope();
     const pulled = await host.harness.behavior.callRpc("syncPull", {
       ...scope,
@@ -205,15 +212,23 @@ describe("sync registration", () => {
         acceptedGenerationId: pulledGenerationId,
       },
     });
-    await expect(host.harness.behavior.callRpc("syncPush", {
+    const pushInput = {
       ...scope,
       planId: "plan-wp17",
       expectedPlanSha256: "a".repeat(64),
       expectedBaseStateSha256: "b".repeat(64),
       humanApprovalCapability: "approval-capability-wp17-00000000",
+    };
+    await expect(host.harness.behavior.callRpc("syncPush", pushInput)).rejects.toMatchObject({
+      code: "handler_error",
+      message: expect.stringContaining("authorization-unavailable"),
+    });
+    await expect(host.harness.behavior.callRpc("syncPushRetry", {
+      ...pushInput,
+      runId: "push-run-wp19",
     })).rejects.toMatchObject({
       code: "handler_error",
-      message: expect.stringContaining("NOT_IMPLEMENTED"),
+      message: expect.stringContaining("authorization-unavailable"),
     });
     expect(host.harness.registrations.rpcMethods).toEqual(expect.arrayContaining([
       "syncPull",
@@ -299,6 +314,22 @@ reason: ${JSON.stringify(localReason)}
     expect(host.harness.realtimeSignals.some((signal) => signal.channel === "fs-sync-pull")).toBe(true);
     expect(host.harness.sdk.callsTo("threads.get")).toHaveLength(2);
     expect(host.harness.sdk.callsTo("environments.get")).toHaveLength(2);
+  });
+
+  it("delegates the firmware namespace without changing sync verb parsing", async () => {
+    const result = await host.harness.behavior.runCli(
+      ["finite-state", "firmware", "status", "pv-1", "--json"],
+      { threadId: "thread-sync-cli", projectId: "bb-project-sync" },
+    );
+
+    expect(result).toEqual({
+      exitCode: 0,
+      stdout: `${JSON.stringify({
+        namespace: "firmware",
+        argv: ["status", "pv-1", "--json"],
+      })}\n`,
+      stderr: "",
+    });
   });
 
   it("refuses CLI working-tree access without a bb thread identity", async () => {

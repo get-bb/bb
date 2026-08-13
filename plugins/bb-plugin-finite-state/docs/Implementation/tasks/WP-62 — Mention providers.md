@@ -4,6 +4,12 @@
 **Depends on:** WP-57 and query/index services from WP-22, WP-23, WP-36, WP-41, WP-44, WP-52, WP-56 · **Blocks:** WP-65, WP-67–69
 **Produces a FROZEN artifact:** no
 
+> **SPEC 07 intake note (2026-08-12).** WP-81 later extends the `fs-intel`
+> provider on `#` to resolve reference designators (`#U3`), pattern-
+> disambiguated, surface named in the result label. Design `fs-intel`'s
+> internal source registry so a third resolver can be added without
+> re-registering the provider or touching this WP's files.
+
 ## Files you own
 ```
 plugins/bb-plugin-finite-state/lanes/agentic/mentions/register.ts

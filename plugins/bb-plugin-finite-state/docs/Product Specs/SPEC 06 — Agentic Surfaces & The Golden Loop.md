@@ -587,3 +587,12 @@ Most of this layer ships *inside* Phases 2–5 — each surface lands its own to
 6. **Token-budget telemetry.** The ~4 KB soft budget is a design target; instrument real tool-response sizes during rehearsal and tighten schemas where the p95 exceeds it.
 7. **Stage push target.** Does the live demo push to a seeded dev AS tenant (safe, resettable) or a production-like tenant (impressive, riskier)? Recommendation: dev tenant with production data shapes; record one production-tenant run as the "it's real" backup.
 8. **Skill-triggering regression.** Skills select by description; provider-model updates can shift routing. Add the §9 triggering eval to CI so a model bump that breaks routing fails loudly.
+
+---
+
+## Amendments applied by later specs
+
+- **The ACTION-class allowlist grows from three to nine (AMD-0013).** SPEC 07 §8 adds `fs_hw_extract`; SPEC 08 §6 adds `fs_build`, `fs_flash`, `fs_serial`, `fs_probe`, plus read/write tools that follow the existing classes. The distinction that holds: every new ACTION tool invokes a local subprocess or local hardware — none mutates Platform or Assurance Studio, so the model-mutation boundary (§5.3) is unchanged. The union stays closed and the guard test enumerates all nine by name. **There is still no push tool, and there will never be one.**
+- **SPEC 08 decision 9.3 — the `destructive` primitive.** A tool may declare `destructive: true`: it then requires an explicit human instruction *in the current turn* — intent inherited from a previously approved plan does not count. One mechanism, one test, generalized here rather than special-cased per tool. `fs_flash` is the first user; erase, fuse programming, and factory-line actuation are next.
+- **Golden Loop beat 11 becomes real.** "Implement the fix in firmware source" is no longer a generic-coding-agent hand-wave: SPEC 08's authoring loop (grounding, citation gating, build/flash/serial) is the machinery behind it. The G4 demo bar is unchanged — the authoring-grade beat 11 lands post-G4 as a Golden Loop v2 beat (WP-98).
+- **Mentions.** SPEC 07 §8 extends `fs-intel` on `#` to resolve reference designators (`#U3`), disambiguated by pattern with the surface named in the result label.

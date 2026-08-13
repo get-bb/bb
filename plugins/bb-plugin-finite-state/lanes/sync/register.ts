@@ -2,6 +2,7 @@ import type { BbPluginApi, PluginCliContext } from "@bb/plugin-sdk";
 import type { PluginContext } from "../../lib/context.js";
 import type { RemoteServices } from "../../lib/remote/types.js";
 import { registerSyncCli } from "./cli.js";
+import type { NamespacedCliRunner } from "./cli.js";
 import { registerAdapter, registerResolver } from "./engine/adapter.js";
 import type { EngineDeps } from "./engine/pull.js";
 import {
@@ -51,6 +52,16 @@ export function registerSync(bb: BbPluginApi, ctx: PluginContext): void {
     },
   };
   registerSyncRpc(bb, deps);
-  registerSyncCli(bb, deps, remote.platform, (cliContext) =>
-    resolveSyncWorktreeRoot(ctx, cliContext));
+  registerSyncCli(
+    bb,
+    deps,
+    remote.platform,
+    (cliContext) => resolveSyncWorktreeRoot(ctx, cliContext),
+    {
+      firmware: (argv, cliContext) => ctx.service<{ run: NamespacedCliRunner }>(
+        "firmware.cli",
+        () => { throw new Error("Firmware CLI services are unavailable"); },
+      ).run(argv, cliContext),
+    },
+  );
 }

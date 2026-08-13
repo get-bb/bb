@@ -4,6 +4,16 @@
 **Depends on:** WP-57, WP-40, WP-49, WP-50, WP-53 · **Blocks:** WP-63, WP-65
 **Produces a FROZEN artifact:** no — adding an action requires `AMENDMENTS.md` and a registry-contract change
 
+> **SPEC 07/08 intake note (2026-08-12).** AMD-0013 (proposed) extends the
+> closed `ActionToolName` union from three to nine — `fs_hw_extract`,
+> `fs_build`, `fs_flash`, `fs_serial`, `fs_probe` join, all local-subprocess/
+> local-hardware, none model-mutating — and adds the `destructive: true`
+> in-turn primitive. If AMD-0013 has merged when this WP dispatches, the
+> guard test enumerates all nine by name and additionally asserts the
+> destructive mechanism exists (implementation in WP-90). If it has not, the
+> three-name guard ships as specified and WP-71 revises it. Either way: the
+> union stays closed, and there is no push tool.
+
 ## Files you own
 ```
 plugins/bb-plugin-finite-state/lanes/agentic/tools/actions.ts

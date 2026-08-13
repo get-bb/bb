@@ -1,9 +1,12 @@
 import type { BbPluginApi } from "@bb/plugin-sdk";
 import type { PluginContext } from "../../../../lib/context.js";
+import { initializeTraceabilityIndex } from "./query.js";
 
 export function registerRequirementsTraceabilityBackend(
   _bb: BbPluginApi,
-  _ctx: PluginContext,
+  ctx: PluginContext,
 ): void {
-  // WP-37 replaces this server-safe lane-local registration seam.
+  // The frozen requirementsList RPC remains registered by WP-36. WP-37 owns
+  // its read-only discriminator branch and prepares only the local SQL index.
+  initializeTraceabilityIndex(ctx.db());
 }
