@@ -30,7 +30,11 @@
  * fences (`generationId` and `acceptedAt`) in `PullReport`. Consumer lanes
  * must build against these signatures rather than the earlier WP sketch.
  */
-import { ENTITIES, type EntityKind } from "../../../lib/sync/registry.js";
+import {
+  ENTITIES,
+  type EntityKind,
+  type FindingIdentity,
+} from "../../../lib/sync/registry.js";
 import type { EntitySerializer } from "../serialize/serializer.js";
 
 /** Project and optional project-version scope shared by every sync adapter. */
@@ -91,13 +95,23 @@ export interface EntityAdapter {
   readWorking(worktreeRoot: string): Promise<WorkingEntity[]>;
 }
 
+/** Optional full-domain context for finding resolvers that need more fidelity than the opaque key retains. */
+export interface FindingResolverContext {
+  readonly kind: "finding";
+  readonly identity: FindingIdentity;
+  readonly pin: "exact_version" | "any_version";
+}
+
 /**
  * Resolves an overlay key against the current canonical server corpus.
  * WP-17 uses exact matching; later lanes replace it with a tiered resolver.
+ * Existing encoded-key-only callers remain valid; finding-aware callers may
+ * supply the additive context needed for lossless purl fallback and exact versions.
  */
 export type KeyResolver = (
   key: string,
   scope: SyncScope,
+  context?: FindingResolverContext,
 ) => Promise<{ resolved: true; detail: unknown } | { resolved: false }>;
 
 /**

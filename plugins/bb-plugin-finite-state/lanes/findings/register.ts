@@ -44,7 +44,7 @@ export function registerFindings(bb: BbPluginApi, ctx: PluginContext): void {
       hydrateFindingComments(db, remote.platform, input),
   }));
   registerFindingsRpc(bb, db);
-  registerFindingsStableKeyStub();
+  registerFindingsStableKeyStub(db);
   registerFindingsOverlayStub();
   registerFindingsPolicyStub();
   registerFindingsBulkStub();
