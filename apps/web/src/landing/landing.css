@@ -582,6 +582,8 @@ code,
    product demo so it supports trust without competing with the hero CTA or
    being confused with the provider compatibility row above. */
 .company-proof {
+  --company-proof-gap: 40px;
+  --company-proof-edge-gap: 20px;
   position: relative;
   left: 50%;
   display: flex;
@@ -679,11 +681,10 @@ code,
 .company-proof-logos {
   display: flex;
   align-items: center;
-  justify-content: space-around;
-  min-width: 100vw;
+  width: max-content;
   flex: none;
-  gap: 32px;
-  padding: 0 32px;
+  gap: var(--company-proof-gap);
+  padding: 0 var(--company-proof-edge-gap);
   list-style: none;
 }
 
@@ -2747,14 +2748,10 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   }
 
   .company-proof {
+    --company-proof-gap: 26px;
+    --company-proof-edge-gap: 13px;
     gap: 16px;
     padding: 34px 0 38px;
-  }
-
-  .company-proof-logos {
-    justify-content: flex-start;
-    gap: 26px;
-    padding: 0 22px;
   }
 
   .company-proof-company {
